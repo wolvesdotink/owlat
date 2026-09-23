@@ -4201,7 +4201,7 @@
 			"postboxReplyQueueStrip": {
 				"dismissLabel": "Dismiss reply queue reminder",
 				"dismissTitle": "Dismiss for this session",
-				"openQueue": "Open answer queue",
+				"openQueue": "Open Answer queue",
 				"waiting": "{count} email is waiting on your reply | {count} emails are waiting on your reply"
 			},
 			"postboxReviewSlot": {
@@ -5048,7 +5048,7 @@
 						"label": "Send automatically when confident"
 					},
 					"draft": {
-						"description": "The AI drafts a reply to each message. A person reviews and sends it from the answer queue.",
+						"description": "The AI drafts a reply to each message. A person reviews and sends it from the Answer queue.",
 						"label": "Draft only"
 					},
 					"off": {
@@ -5622,7 +5622,7 @@
 		"today": {
 			"answer": {
 				"title": "{count} needs an answer from you | {count} need an answer from you",
-				"cta": "Review answer queue",
+				"cta": "Review Answer queue",
 				"drafts": "{count} draft ready | {count} drafts ready",
 				"mail": "{count} in your inboxes",
 				"team": "{count} in the team inbox",
@@ -6450,7 +6450,7 @@
 						"byRule": "Each rule below sets how sure the AI must be and how many replies it may send per day. Messages without a rule always wait for review.",
 						"dailyHelp": "The most replies sent automatically per day. After that, replies wait for review.",
 						"dailyLabel": "Daily limit",
-						"thresholdHelp": "Replies the AI is less sure about wait in the answer queue for review.",
+						"thresholdHelp": "Replies the AI is less sure about wait in the Answer queue for review.",
 						"thresholdLabel": "How sure the AI must be",
 						"thresholdMax": "100%: send nothing",
 						"thresholdMin": "0%: send every reply",
@@ -7246,7 +7246,7 @@
 						},
 						"fullReference": "Full API reference",
 						"intro": "Authenticate with a scoped API key from {settingsLink}.",
-						"introLink": "Settings → API keys",
+						"introLink": "Settings → Workspace → API",
 						"pageTitle": "API quickstart — Owlat",
 						"table": {
 							"endpoint": "Endpoint",
@@ -9116,7 +9116,7 @@
 				"accessTitle": "Team inbox is limited to admins",
 				"accessBody": "Your role ({role}) doesn't include the shared customer inbox. Your own mail lives in Postbox.",
 				"openMyPostbox": "Open my Postbox",
-				"accessHint": "Need access? Ask an organization admin to change your role in Settings → Team.",
+				"accessHint": "Need access? Ask an organization admin to change your role in Settings → Workspace → Team.",
 				"sortedBy": "Sorted by {sort}",
 				"sortSwitchTo": "Sort by {sort}",
 				"waitingOver24h": "{count} customer has waited more than a day for an answer | {count} customers have waited more than a day for an answer",
@@ -9242,7 +9242,7 @@
 				"loading": "Loading updates…",
 				"noSubject": "No subject",
 				"open": "Open",
-				"openAnswerQueue": "Open answer queue",
+				"openAnswerQueue": "Open Answer queue",
 				"pageTitle": "Updates — Owlat",
 				"replyRequestedToast": "The agent is drafting a reply. It will show up in the review queue.",
 				"requestReply": "Draft a reply",
@@ -15260,7 +15260,7 @@
 				},
 				"postbox": {
 					"aiDraft": {
-						"description": "When a personal message needs a reply, have a draft waiting in the answer queue. You always review it before it is sent.",
+						"description": "When a personal message needs a reply, have a draft waiting in the Answer queue. You always review it before it is sent.",
 						"label": "Draft replies in personal mail"
 					},
 					"description": "Per-user mailboxes with webmail UI, IMAP/SMTP for native clients, and MX-based delivery (Gmail-equivalent).",

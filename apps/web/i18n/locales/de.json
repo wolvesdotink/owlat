@@ -22,7 +22,7 @@
 			"strongPasswordPlaceholder": "Wählen Sie ein sicheres Passwort"
 		},
 		"footer": {
-			"poweredBy": "Läuft mit {owlat}"
+			"poweredBy": "Betrieben mit {owlat}"
 		},
 		"forgotPassword": {
 			"backToLogin": "Zurück zur Anmeldung",
@@ -164,7 +164,7 @@
 		"none": "Keine",
 		"open": "Öffnen",
 		"optional": "Optional",
-		"poweredBy": "Bereitgestellt von {brand}",
+		"poweredBy": "Betrieben mit {brand}",
 		"preview": "Vorschau",
 		"refresh": "Aktualisieren",
 		"remove": "Entfernen",
@@ -1098,7 +1098,7 @@
 				"hideValue": "Wert verbergen",
 				"info": {
 					"chat": "Chat ist nativ integriert und erfordert keine zusätzliche Konfiguration.",
-					"email": "E-Mail ist integriert — hier gibt es keine Zugangsdaten zu hinterlegen. Den E-Mail-Versand konfigurieren Sie unter Sendedomains und Ihren Zustellanbieter in den technischen Einstellungen."
+					"email": "E-Mail ist integriert — hier gibt es keine Zugangsdaten zu hinterlegen. Den E-Mail-Versand konfigurieren Sie unter Sendedomains und Ihren Zustellungsanbieter in den technischen Einstellungen."
 				},
 				"operations": {
 					"saveConfiguration": "Kanalkonfiguration speichern"
@@ -2444,7 +2444,7 @@
 				"acceptedToast": "Test-E-Mail für {email} angenommen",
 				"invalidRecipient": "Geben Sie eine gültige E-Mail-Adresse des Empfängers ein.",
 				"lastSuccess": "Letzter erfolgreicher Test: {timestamp}",
-				"needsProvider": "Richten Sie einen Versandanbieter ein, bevor Sie einen Test senden.",
+				"needsProvider": "Richten Sie einen Zustellungsanbieter ein, bevor Sie einen Test senden.",
 				"operationLabel": "Test-E-Mail senden",
 				"receipt": "{provider} hat die Nachricht {messageId} in {latencyMs} ms nach {attempts} angenommen. Die Zustellung an den Empfänger ist damit {not} bestätigt; prüfen Sie sie im Postfach des Empfängers oder in den Rückmeldungen des Anbieters.",
 				"receiptAttempts": "1 Versuch | {count} Versuchen",
@@ -2541,7 +2541,7 @@
 				"optionalSuffix": "(optional)",
 				"probeFailed": "Der Anbieter konnte nicht erreicht werden. Versuchen Sie es erneut.",
 				"relayOffer": "Sie zahlen bereits für einen E-Mail-Anbieter? Dann können Sie darüber senden, während Ihr eigener Server aufwärmt, und beide vergleichen. Owlat sendet auch ohne einen solchen Anbieter.",
-				"providerLegend": "Versandanbieter",
+				"providerLegend": "Zustellungsanbieter",
 				"requireVerifiedWarning": "„Immer verschlüsseln und verifizieren“ kann dazu führen, dass Mail an Empfänger zurückkommt, deren Mailserver ein falsch konfiguriertes oder selbstsigniertes Zertifikat haben. Nutzen Sie diese Option nur, wenn Sie wissen, dass Ihre Empfänger gültige Zertifikate pflegen.",
 				"restartRequiredTitle": "Neustart erforderlich",
 				"subtitle": "Der Dienst, der Ihre ausgehende Mail zustellt. Wechseln Sie ihn oder aktualisieren Sie seine Zugangsdaten hier; die Änderung wird vor dem Anwenden getestet.",
@@ -5638,7 +5638,7 @@
 			},
 			"changed": {
 				"title": "Was sich getan hat",
-				"subtitle": "in Unterhaltungen, die du schon kennst",
+				"subtitle": "in Unterhaltungen, die Sie schon kennen",
 				"newFrom": "{count} neue Nachricht von {name}: | {count} neue Nachrichten, zuletzt von {name}:",
 				"more": "und {count} weitere Unterhaltung. | und {count} weitere Unterhaltungen."
 			},
@@ -6059,7 +6059,7 @@
 					},
 					"howItWorks": {
 						"body": "Jeder Nachrichtentyp kann seine eigene Anbieterstrategie nutzen. Ohne Route wird Mail über den Standardanbieter {provider} versendet, den Sie auf der Seite {link} wählen. Konfigurieren Sie eine Route, um Failover hinzuzufügen oder den Verkehr auf mehrere Anbieter aufzuteilen.",
-						"link": "Versandanbieter",
+						"link": "Zustellungsanbieter",
 						"title": "So funktioniert das Routing"
 					},
 					"lede": "Wählen Sie, welcher E-Mail-Anbieter welchen Nachrichtentyp versendet, mit Failover und gewichteter Lastverteilung über mehrere Anbieter",
@@ -6189,7 +6189,7 @@
 				"eyebrow": "Workspace",
 				"groups": {
 					"ai": "KI-Anbieter, KI-Antworten und Agentenzustand.",
-					"delivery": "Versandgesundheit, Domains, Zustelldienst, Webhooks sowie zurückgehaltene oder fehlgeschlagene eingehende Mail.",
+					"delivery": "Versandgesundheit, Domains, Zustellungsanbieter, Webhooks sowie zurückgehaltene oder fehlgeschlagene eingehende Mail.",
 					"features": "Welche Funktionen aktiv sind, Kanäle, Formulare, Kontakteigenschaften und das E-Mail-Design.",
 					"system": "Name und Voreinstellungen des Workspace, Desktop-App-Updates, Systemaktualisierungen und Backups.",
 					"team": "Mitglieder, Einladungen, Team-Postfächer, Kampagnenabsender, die API und das Audit-Protokoll."
@@ -6481,7 +6481,7 @@
 					"savedToast": "Kanalkonfiguration erfolgreich gespeichert",
 					"subtitle": "Verbinden und überwachen Sie die Nachrichtenintegrationen — SMS, WhatsApp und Webchat/Webhooks —, die Ihre Kontakte über E-Mail hinaus erreichen. Nach der Aktivierung senden Sie eine Nachricht an einen Kontakt aus dessen einheitlicher Chronik, und auch Antworten des KI-Agenten laufen darüber. E-Mail und Team-Chat sind eingebaut und benötigen hier keine Einrichtung; um den E-Mail-Versand zu konfigurieren, richten Sie Ihren {transportLink} und eine verifizierte {domainLink} ein.",
 					"subtitleDomainLink": "Absenderdomain",
-					"subtitleTransportLink": "Zustellanbieter",
+					"subtitleTransportLink": "Zustellungsanbieter",
 					"title": "Nachrichtenkanäle"
 				},
 				"desktopUpdates": {
@@ -7246,7 +7246,7 @@
 						},
 						"fullReference": "Vollständige API-Referenz",
 						"intro": "Authentifizieren Sie sich mit einem eingeschränkten API-Schlüssel aus {settingsLink}.",
-						"introLink": "Einstellungen → API-Schlüssel",
+						"introLink": "Einstellungen → Workspace → API",
 						"pageTitle": "API-Schnellstart — Owlat",
 						"table": {
 							"endpoint": "Endpunkt",
@@ -8970,7 +8970,7 @@
 						"processing": "Owlat liest diese Nachricht noch. Sie können gleich antworten.",
 						"quarantined": "Diese Nachricht liegt in der Quarantäne.",
 						"sending": "Ihre Antwort ist unterwegs.",
-						"update": "Diese Nachricht wurde als Update eingeordnet, das keine Antwort braucht."
+						"update": "Diese Nachricht steht unter Neuigkeiten und braucht keine Antwort."
 					},
 					"bodyLabel": "Ihre Antwort",
 					"editedDraft": "Bearbeiteter Entwurf",
@@ -9114,9 +9114,9 @@
 				"unsnoozeThreadOperation": "Zurückstellung aufheben",
 				"updateThreadStatusOperation": "Status der Konversation ändern",
 				"accessTitle": "Das Team-Postfach ist Administratoren vorbehalten",
-				"accessBody": "Deine Rolle ({role}) umfasst das gemeinsame Kundenpostfach nicht. Deine eigene Post liegt in der Postbox.",
+				"accessBody": "Ihre Rolle ({role}) umfasst das gemeinsame Kundenpostfach nicht. Ihre eigene Post liegt in der Postbox.",
 				"openMyPostbox": "Meine Postbox öffnen",
-				"accessHint": "Du brauchst Zugriff? Bitte eine Organisations-Administration, deine Rolle unter Einstellungen → Team zu ändern.",
+				"accessHint": "Sie brauchen Zugriff? Bitten Sie eine Administration der Organisation, Ihre Rolle unter Einstellungen → Workspace → Team zu ändern.",
 				"sortedBy": "Sortiert nach {sort}",
 				"sortSwitchTo": "Nach {sort} sortieren",
 				"waitingOver24h": "{count} Person wartet seit über einem Tag auf eine Antwort | {count} Personen warten seit über einem Tag auf eine Antwort",
@@ -10434,7 +10434,7 @@
 				"eveningNamed": "Guten Abend, {name}"
 			},
 			"since": {
-				"label": "Seit du zuletzt reingeschaut hast ({when}):",
+				"label": "Seit Ihrem letzten Besuch ({when}):",
 				"fallback": "In den letzten 24 Stunden:",
 				"newMail": "keine neue E-Mail | {count} neue E-Mail | {count} neue E-Mails",
 				"newMailCapped": "mehr als {count} neue E-Mails",
@@ -11041,7 +11041,7 @@
 			"mtaIdentityIntro": "Das MTA-Profil ist aktiviert. Geben Sie vor dem Start die öffentlichen Quell-IPs und den Hostnamen an, auf den deren PTR-Einträge verweisen.",
 			"next": "Weiter: Administratorkonto",
 			"pageTitle": "Owlat-Einrichtung — E-Mail-Anbieter",
-			"providerLegend": "Zustellanbieter",
+			"providerLegend": "Zustellungsanbieter",
 			"providerOptionalHint": "Keine der gewählten Funktionen versendet Massen-E-Mails, daher ist dies optional. Passwort-Zurücksetzungen und Einladungen brauchen trotzdem einen Versandweg.",
 			"providerRequiredHint": "Wählen Sie einen Anbieter, um fortzufahren. Newsletter, automatische E-Mails und die E-Mails Ihrer App werden darüber versendet.",
 			"providers": {
@@ -11059,7 +11059,7 @@
 				},
 				"none": {
 					"hint": "Externe Postfächer lesen; kein Marketing- und kein transaktionaler Versand. System- und Authentifizierungs-E-Mails benötigen dennoch einen Transportweg.",
-					"label": "Kein Zustellanbieter (nur Empfang / nur IMAP)"
+					"label": "Kein Zustellungsanbieter (nur Empfang / nur IMAP)"
 				},
 				"resend": {
 					"hint": "Verwaltete API mit großzügigem Gratis-Kontingent. Hervorragende Entwicklererfahrung.",
@@ -11100,7 +11100,7 @@
 			"intro": "Schalten Sie ein, was dieser Workspace braucht. Unter „Anpassen“ wählen Sie einzelne Funktionen. Sie können all das später in den Einstellungen ändern.",
 			"next": "Weiter: E-Mail-Anbieter",
 			"pageTitle": "Owlat-Einrichtung — Funktionen",
-			"providerNote": "Für Kampagnen oder Mails über die API brauchen Sie einen Zustellanbieter, etwa Ihren eigenen Mailserver, Resend oder SES. Den wählen Sie im nächsten Schritt. Ein verbundenes persönliches Postfach reicht dafür nicht.",
+			"providerNote": "Für Kampagnen oder Mails über die API brauchen Sie einen Zustellungsanbieter, etwa Ihren eigenen Mailserver, Resend oder SES. Den wählen Sie im nächsten Schritt. Ein verbundenes persönliches Postfach reicht dafür nicht.",
 			"title": "Wählen Sie, was Sie {accent}",
 			"titleAccent": "aktivieren möchten"
 		},
@@ -11149,7 +11149,7 @@
 			"migratingDesc": "Wir bieten neuen Nutzern beim ersten Login einen E-Mail-Import an.",
 			"migratingTitle": "Wechsel von einer anderen Plattform",
 			"migrationLegend": "Wechseln Sie von einer anderen Plattform oder starten Sie neu mit Owlat?",
-			"needsDeliveryProvider": "benötigt einen Zustellanbieter",
+			"needsDeliveryProvider": "benötigt einen Zustellungsanbieter",
 			"needsMta": "benötigt den integrierten MTA",
 			"next": "Weiter: Funktionen",
 			"noProviderNeeded": "kein Anbieter nötig",
@@ -11181,7 +11181,7 @@
 			"applying": "Wird angewendet…",
 			"blockers": {
 				"admin": "Legen Sie das Administratorkonto an, um fortzufahren",
-				"provider": "Wählen Sie einen Zustellanbieter, um fortzufahren",
+				"provider": "Wählen Sie einen Zustellungsanbieter, um fortzufahren",
 				"token": "Geben Sie das Einrichtungs-Token ein, um fortzufahren"
 			},
 			"complete": {
@@ -11527,7 +11527,7 @@
 				"contacts": "Kontakte",
 				"controls": "Zustellungssteuerung",
 				"deliverability": "Zustellbarkeit",
-				"deliveryProvider": "Zustelldienst",
+				"deliveryProvider": "Zustellungsanbieter",
 				"desktopUpdates": "Desktop-App-Updates",
 				"emailTheme": "E-Mail-Design",
 				"features": "Funktionen",
@@ -13692,7 +13692,7 @@
 				"emailitKeyRequired": "Geben Sie Ihren Emailit-API-Schlüssel ein.",
 				"fromEmailInvalid": "Geben Sie eine gültige Absenderadresse ein oder lassen Sie das Feld leer.",
 				"mandrillKeyRequired": "Geben Sie Ihren API-Schlüssel für Mailchimp Transactional (Mandrill) ein.",
-				"providerRequired": "Ein Zustelldienst ist erforderlich, weil Kampagnen, Transaktionsmails oder Automationen aktiviert sind. Wählen Sie Ihren eigenen MTA, Amazon SES oder ein SMTP-Relay — oder deaktivieren Sie den Massenversand.",
+				"providerRequired": "Ein Zustellungsanbieter ist erforderlich, weil Kampagnen, Transaktionsmails oder Automationen aktiviert sind. Wählen Sie Ihren eigenen MTA, Amazon SES oder ein SMTP-Relay — oder deaktivieren Sie den Massenversand.",
 				"resendKeyRequired": "Geben Sie Ihren Resend-API-Schlüssel ein.",
 				"sesIncomplete": "Region, Zugriffsschlüssel-ID und geheimer Zugriffsschlüssel sind für SES alle erforderlich.",
 				"smtpIncomplete": "Server-Host, Benutzername und Passwort sind für ein SMTP-Relay alle erforderlich.",
@@ -13707,7 +13707,7 @@
 				"navigation": "Navigation",
 				"organize": "Organisieren",
 				"triage": "Triage",
-				"workspace": "Arbeitsbereiche",
+				"workspace": "Workspaces",
 				"review": "Updates-Liste"
 			},
 			"labels": {
@@ -13752,7 +13752,7 @@
 				"showShortcuts": "Tastenkürzel anzeigen",
 				"snooze": "Zurückstellen",
 				"starUnstar": "Markieren / Markierung entfernen",
-				"switchWorkspace": "Arbeitsbereich wechseln",
+				"switchWorkspace": "Workspace wechseln",
 				"toggleCheatSheet": "Diese Kurzübersicht ein-/ausblenden",
 				"toggleRead": "Gelesen-Status umschalten",
 				"toggleSidebar": "Seitenleiste ein-/ausblenden",
@@ -15336,27 +15336,27 @@
 			},
 			"imap_only": {
 				"audience": "Mail lesen, die bei Google, Fastmail oder auf einem Firmenserver liegt.",
-				"description": "Das eigene Postfach jeder Person über IMAP verbinden, um Mail zu lesen und zu durchsuchen, und 1:1 über deren eigenes SMTP antworten. Kein Owlat-Zustellanbieter, kein Marketing, keine transaktionale API.",
+				"description": "Das eigene Postfach jeder Person über IMAP verbinden, um Mail zu lesen und zu durchsuchen, und 1:1 über deren eigenes SMTP antworten. Kein Owlat-Zustellungsanbieter, kein Marketing, keine transaktionale API.",
 				"label": "Nur IMAP (lesen + persönlich antworten)"
 			},
 			"marketing": {
 				"audience": "Kampagnen, Automatisierungen und Formulare für eine Kontaktliste betreiben.",
-				"description": "Broadcast-Kampagnen, Drip-Automatisierungen, Anmeldeformulare und die transaktionale API über einen Zustellanbieter mit einer verifizierten, authentifizierten Versanddomain.",
+				"description": "Broadcast-Kampagnen, Drip-Automatisierungen, Anmeldeformulare und die transaktionale API über einen Zustellungsanbieter mit einer verifizierten, authentifizierten Versanddomain.",
 				"label": "Marketing-Plattform"
 			},
 			"team_inbox": {
 				"audience": "Eingehende Mail als Team in einem gemeinsamen Postfach triagieren.",
-				"description": "Ein gemeinsames Postfach, das eingehende Konversationen zu Threads bündelt und Antworten über einen Zustellanbieter versendet. Benötigt eine eingehende Quelle (den integrierten MTA oder einen Kanal-Webhook).",
+				"description": "Ein gemeinsames Postfach, das eingehende Konversationen zu Threads bündelt und Antworten über einen Zustellungsanbieter versendet. Benötigt eine eingehende Quelle (den integrierten MTA oder einen Kanal-Webhook).",
 				"label": "Team-Postfach (gemeinsam)"
 			},
 			"team_inbox_ai": {
 				"audience": "Gemeinsames Postfach mit KI-Klassifizierung und Antwortentwürfen.",
-				"description": "Das gemeinsame Postfach plus der KI-Agent (eingehende Mail klassifizieren, Antworten entwerfen). Erfordert zusätzlich zu einem Zustellanbieter und einer eingehenden Quelle einen LLM-Anbieter.",
+				"description": "Das gemeinsame Postfach plus der KI-Agent (eingehende Mail klassifizieren, Antworten entwerfen). Erfordert zusätzlich zu einem Zustellungsanbieter und einer eingehenden Quelle einen LLM-Anbieter.",
 				"label": "Team-Postfach + KI-Agent"
 			},
 			"transactional": {
 				"audience": "Belege, Passwort-Resets und andere programmatische Mail versenden.",
-				"description": "Die transaktionale API bzw. das SDK über einen Zustellanbieter (Resend, SES oder den integrierten MTA) mit einer verifizierten Versanddomain. Keine Marketing-Kampagnen.",
+				"description": "Die transaktionale API bzw. das SDK über einen Zustellungsanbieter (Resend, SES oder den integrierten MTA) mit einer verifizierten Versanddomain. Keine Marketing-Kampagnen.",
 				"label": "Transaktionaler API-Dienst"
 			}
 		},
