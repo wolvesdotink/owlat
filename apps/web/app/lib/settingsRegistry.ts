@@ -151,12 +151,14 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 			control('writingSuggestions', 'reading', all(hasMail, flag('ai'))),
 			control('autoSummarize', 'reading', all(hasMail, flag('ai'))),
 			control('sendSound', 'reading', hasMail),
-			control('dailyBriefEmail', 'daily-brief', hasMail),
-			control('sharedLinks', 'shared-links', hasMail),
-			control('shortcuts', 'shortcuts', hasMail),
-			control('sealedMail', 'sealed-mail', all(hasMail, flag('sealedMail'))),
-			control('mailboxes', 'mailboxes', hasMail),
 		],
+	}),
+	entry('shortcuts', {
+		path: `${SETTINGS_ROOT}/shortcuts`,
+		icon: 'lucide:keyboard',
+		section: 'general',
+		gate: hasMail,
+		controls: [control('shortcuts', 'shortcuts', hasMail)],
 	}),
 	entry('filters', {
 		path: `${SETTINGS_ROOT}/filters`,
@@ -207,7 +209,10 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		gate: hasMail,
 		// Someone looking for "disconnect" types that word, not "connected
 		// mailboxes" — the control anchor is what makes the palette find it.
-		controls: [control('connectedAccount', 'connected-account', flag('mail.external'))],
+		controls: [
+			control('mailboxes', 'mailboxes', hasMail),
+			control('connectedAccount', 'connected-account', flag('mail.external')),
+		],
 	}),
 	entry('addAccount', {
 		path: `${SETTINGS_ROOT}/add-account`,
@@ -220,11 +225,16 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		path: `${SETTINGS_ROOT}/account`,
 		icon: 'lucide:user-cog',
 		section: 'account',
+		controls: [control('dailyBriefEmail', 'daily-brief', hasMail)],
 	}),
 	entry('security', {
 		path: `${SETTINGS_ROOT}/security`,
 		icon: 'lucide:shield-check',
 		section: 'account',
+		controls: [
+			control('sealedMail', 'sealed-mail', all(hasMail, flag('sealedMail'))),
+			control('sharedLinks', 'shared-links', hasMail),
+		],
 	}),
 	entry('appPasswords', {
 		path: `${SETTINGS_ROOT}/app-passwords`,

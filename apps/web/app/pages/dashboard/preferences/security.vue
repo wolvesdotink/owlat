@@ -26,6 +26,10 @@ definePageMeta({
 const { currentSession } = useAuth();
 const { showToast } = useToast();
 
+// Mail exists on this instance: sealed mail and shared file links are mail's.
+const { isEnabled: isFeatureEnabled } = useFeatureFlag();
+const hasMail = computed(() => isFeatureEnabled('postbox') || isFeatureEnabled('mail.external'));
+
 /** Descriptors from the pure modules are resolved here, at the render boundary. */
 function say(text: LocalizedText): string {
 	return typeof text === 'string' ? text : t(text.key, text.params ?? {});
@@ -134,7 +138,10 @@ async function confirmSignOutOthers() {
 			</header>
 
 			<div v-if="isLoading" class="p-8 flex justify-center">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
+				<Icon
+					name="lucide:loader-2"
+					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
+				/>
 			</div>
 			<p v-else-if="hasLoadError" class="p-8 text-center text-text-secondary">
 				{{ t('dashboard.preferences.security.sessions.loadFailed') }}
@@ -204,6 +211,16 @@ async function confirmSignOutOthers() {
 			rotates the session — which is exactly what the event says.
 		-->
 		<PreferencesTwoFactor @sessions-changed="refresh" />
+
+		<div v-if="hasMail" class="mt-6">
+			<!-- Your mail is sealed: per-address key coverage plus the recovery kit,
+			     behind a password re-prompt. Self-hides when the sealedMail flag is off. -->
+			<PostboxSealedMailCard />
+
+			<!-- Files shared as links: every link the composer handed out, with an
+			     immediate revoke. Self-hides until something is shared. -->
+			<PostboxSharedLinksSettings />
+		</div>
 
 		<UiConfirmationDialog
 			:open="sessionToRevoke !== null"
