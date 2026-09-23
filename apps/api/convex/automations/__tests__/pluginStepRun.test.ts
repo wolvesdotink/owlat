@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import { createTestAutomation, enableFeatures } from '../../__tests__/factories';
+import type { StepKind } from '../steps/catalog';
 import {
 	runDueScheduled,
 	runOf,
@@ -25,7 +26,9 @@ import {
 	type T,
 } from './walkerHarness';
 
-const PLUGIN_KIND = 'plugin.deliverability.notify';
+// The generated catalog is empty in the repo, so the static `StepKind` type has
+// no plugin members; the mocked catalog below widens the RUNTIME validator only.
+const PLUGIN_KIND = 'plugin.deliverability.notify' as StepKind;
 
 const pluginExecute = vi.hoisted(() => vi.fn());
 
