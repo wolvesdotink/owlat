@@ -535,24 +535,6 @@ const agentOriginalDraft = (message: NonNullable<typeof messages.value>[number])
 // (legacy closed threads still read "Resolved" via the shared status chip).
 const statusOptions = ['open', 'waiting', 'resolved'] as const;
 
-/**
- * The status picker is a pill menu, not a native `<select>`: it sits at the end
- * of a row of pill controls (Discuss / Assign / Snooze) and an input-styled
- * rectangle with a native chevron broke that rhythm — and skipped the shared
- * control treatment (press feedback, tiered motion) its neighbours all get.
- */
-const statusMenuOpen = ref(false);
-// The assignee popover takes `open` as a controlled prop (same as the list
-// row's picker); unbound, its trigger toggled a value nothing read back.
-const assignMenuOpen = ref(false);
-// Narrow screens keep one primary action (Reply) in the header; everything
-// else moves into this overflow menu instead of wrapping off the edge.
-const moreMenuOpen = ref(false);
-const assignedToMe = computed(() => !!user.value?.id && thread.value?.assignedTo === user.value.id);
-function toggleAssignToMe() {
-	if (assignedToMe.value) void handleAssign(undefined);
-	else assignToMe();
-}
 const currentStatus = computed<(typeof statusOptions)[number]>(() => {
 	const status = thread.value?.status;
 	// Legacy `closed` (and anything unexpected) reads as Resolved.
@@ -672,204 +654,23 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 					<InboxThreadPresence :people="presencePeople" class="mt-3" />
 				</div>
 
-				<!-- Actions. Reply is the one primary action; on a narrow screen the
-				     rest folds into the ⋯ menu instead of wrapping off the edge. -->
-				<div class="flex shrink-0 items-center gap-2">
-					<UiButton
-						v-if="isAdmin"
-						size="sm"
-						class="gap-1.5"
-						data-testid="thread-reply"
-						:aria-keyshortcuts="'r'"
-						@click="openReply"
-					>
-						<Icon name="lucide:reply" class="w-4 h-4" />
-						{{ t('dashboard.inbox.detail.reply') }}
-					</UiButton>
-
-					<div class="hidden sm:flex items-center gap-2">
-						<template v-if="chatEnabled">
-							<NuxtLink
-								v-for="channel in discussionChannels"
-								:key="channel._id"
-								:to="`/dashboard/chat/${channel._id}`"
-								class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-brand-subtle text-brand hover:bg-brand-subtle/70 transition-colors"
-								:title="
-									t('dashboard.inbox.detail.discussInChannelTitle', { channel: channel.name })
-								"
-							>
-								<Icon name="lucide:message-circle" class="w-3.5 h-3.5" />
-								#{{ channel.name }}
-							</NuxtLink>
-							<UiButton
-								v-if="discussionChannels.length === 0"
-								variant="outline"
-								size="sm"
-								@click="showNewChannel = true"
-							>
-								<template #iconLeft>
-									<Icon name="lucide:message-circle-plus" class="w-3.5 h-3.5" />
-								</template>
-								{{ t('dashboard.inbox.detail.discussInChannel') }}
-							</UiButton>
-						</template>
-						<!-- Assignee picker — avatar popover (Me / members / Unassign).
-						     `open` is a controlled prop: without the binding the popover
-						     can never open (the row's picker models it the same way). -->
-						<InboxAssignPopover
-							v-model:open="assignMenuOpen"
-							:members="assignMembers"
-							:current-user-id="user?.id ?? null"
-							:assigned-to="thread.assignedTo ?? null"
-							position="right"
-							@assign="onAssign"
-						>
-							<template #trigger>
-								<UiButton
-									variant="secondary"
-									size="sm"
-									type="button"
-									class="gap-1.5"
-									:aria-label="
-										assignedMemberName
-											? t('dashboard.inbox.detail.assignedToAria', { name: assignedMemberName })
-											: t('dashboard.inbox.detail.assignThreadAria')
-									"
-								>
-									<UiAvatar
-										v-if="thread.assignedTo"
-										:name="assignedMemberName ?? undefined"
-										deterministic-color
-										size="sm"
-									/>
-									<Icon v-else name="lucide:user-plus" class="w-4 h-4" />
-									<span class="max-w-[10rem] truncate">
-										{{ assignedMemberName ?? t('dashboard.inbox.detail.assign') }}
-									</span>
-								</UiButton>
-							</template>
-						</InboxAssignPopover>
-						<!-- Snooze / unsnooze — reuses the Postbox snooze presets. -->
-						<UiButton
-							v-if="isSnoozed"
-							variant="secondary"
-							size="sm"
-							class="gap-1.5"
-							@click="onUnsnooze"
-						>
-							<Icon name="lucide:alarm-clock-off" class="w-4 h-4" />
-							{{ t('dashboard.inbox.detail.unsnooze') }}
-						</UiButton>
-						<UiButton
-							v-else
-							variant="secondary"
-							size="sm"
-							class="gap-1.5"
-							@click="showSnoozeDialog = true"
-						>
-							<Icon name="lucide:alarm-clock" class="w-4 h-4" />
-							{{ t('dashboard.inbox.detail.snooze') }}
-						</UiButton>
-						<!-- The ONE status control. The agent's processing state is a
-						     hint on the reply composer, not a second status. -->
-						<UiDropdownMenu v-model:open="statusMenuOpen" position="right">
-							<template #trigger>
-								<UiButton
-									variant="secondary"
-									size="sm"
-									type="button"
-									class="gap-1.5"
-									data-testid="thread-status"
-									:aria-label="t('dashboard.inbox.detail.changeStatusAria')"
-								>
-									{{ t(`dashboard.inbox.detail.statuses.${currentStatus}`) }}
-									<template #iconRight>
-										<Icon name="lucide:chevron-down" class="w-4 h-4 text-text-tertiary" />
-									</template>
-								</UiButton>
-							</template>
-							<UiDropdownMenuItem
-								v-for="s in statusOptions"
-								:key="s"
-								@click="handleStatusChange(s)"
-							>
-								<span class="flex-1 truncate">
-									{{ t(`dashboard.inbox.detail.statuses.${s}`) }}
-								</span>
-								<Icon
-									v-if="s === currentStatus"
-									name="lucide:check"
-									class="w-4 h-4 text-brand shrink-0"
-								/>
-							</UiDropdownMenuItem>
-						</UiDropdownMenu>
-					</div>
-
-					<!-- Narrow screens: everything but Reply in one menu. -->
-					<UiDropdownMenu v-model:open="moreMenuOpen" position="right" class="sm:hidden">
-						<template #trigger>
-							<UiButton
-								variant="secondary"
-								size="sm"
-								type="button"
-								data-testid="thread-more"
-								:aria-label="t('dashboard.inbox.detail.moreActions')"
-							>
-								<Icon name="lucide:ellipsis" class="w-4 h-4" />
-							</UiButton>
-						</template>
-						<template v-if="chatEnabled">
-							<UiDropdownMenuItem
-								v-for="channel in discussionChannels"
-								:key="channel._id"
-								@click="router.push(`/dashboard/chat/${channel._id}`)"
-							>
-								<Icon name="lucide:message-circle" class="w-4 h-4 shrink-0" />
-								<span class="flex-1 truncate">#{{ channel.name }}</span>
-							</UiDropdownMenuItem>
-							<UiDropdownMenuItem
-								v-if="discussionChannels.length === 0"
-								@click="showNewChannel = true"
-							>
-								<Icon name="lucide:message-circle-plus" class="w-4 h-4 shrink-0" />
-								<span class="flex-1 truncate">{{
-									t('dashboard.inbox.detail.discussInChannel')
-								}}</span>
-							</UiDropdownMenuItem>
-						</template>
-						<UiDropdownMenuItem v-if="isAdmin" @click="toggleAssignToMe">
-							<Icon
-								:name="assignedToMe ? 'lucide:user-minus' : 'lucide:user-plus'"
-								class="w-4 h-4 shrink-0"
-							/>
-							<span class="flex-1 truncate">
-								{{
-									assignedToMe
-										? t('dashboard.inbox.detail.unassignMe')
-										: t('dashboard.inbox.detail.assignToMe')
-								}}
-							</span>
-						</UiDropdownMenuItem>
-						<UiDropdownMenuItem v-if="isSnoozed" @click="onUnsnooze">
-							<Icon name="lucide:alarm-clock-off" class="w-4 h-4 shrink-0" />
-							<span class="flex-1 truncate">{{ t('dashboard.inbox.detail.unsnooze') }}</span>
-						</UiDropdownMenuItem>
-						<UiDropdownMenuItem v-else @click="showSnoozeDialog = true">
-							<Icon name="lucide:alarm-clock" class="w-4 h-4 shrink-0" />
-							<span class="flex-1 truncate">{{ t('dashboard.inbox.detail.snooze') }}</span>
-						</UiDropdownMenuItem>
-						<UiDropdownMenuItem v-for="s in statusOptions" :key="s" @click="handleStatusChange(s)">
-							<span class="flex-1 truncate">
-								{{ t(`dashboard.inbox.detail.markAs.${s}`) }}
-							</span>
-							<Icon
-								v-if="s === currentStatus"
-								name="lucide:check"
-								class="w-4 h-4 text-brand shrink-0"
-							/>
-						</UiDropdownMenuItem>
-					</UiDropdownMenu>
-				</div>
+				<InboxThreadHeaderActions
+					:is-admin="isAdmin"
+					:chat-enabled="chatEnabled"
+					:discussion-channels="discussionChannels"
+					:members="assignMembers"
+					:current-user-id="user?.id ?? null"
+					:assigned-to="thread.assignedTo ?? null"
+					:assigned-member-name="assignedMemberName"
+					:is-snoozed="isSnoozed"
+					:current-status="currentStatus"
+					@reply="openReply"
+					@assign="onAssign"
+					@new-channel="showNewChannel = true"
+					@snooze="showSnoozeDialog = true"
+					@unsnooze="onUnsnooze"
+					@status="handleStatusChange"
+				/>
 			</div>
 
 			<PostboxSnoozeDialog
