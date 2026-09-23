@@ -25,7 +25,7 @@
 			"label": "Erweitert"
 		},
 		"emptyState": {
-			"nothingYet": "Noch nichts vorhanden",
+			"allClear": "Alles in Ordnung",
 			"noResults": "Keine Treffer",
 			"clear": "Filter zurücksetzen"
 		},

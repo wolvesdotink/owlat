@@ -25,7 +25,7 @@
 			"label": "Advanced"
 		},
 		"emptyState": {
-			"nothingYet": "Nothing here yet",
+			"allClear": "All clear",
 			"noResults": "No matches",
 			"clear": "Clear filters"
 		},

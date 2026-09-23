@@ -52,7 +52,7 @@ describe('UiEmptyState — the landing ladder', () => {
 		const heading = el.querySelector('h2');
 		expect(heading?.textContent?.trim()).toBe('No webhooks yet');
 		// …and not as the bolded paragraph it used to be.
-		expect(el.querySelector('p')?.textContent).not.toContain('No webhooks yet');
+		expect(el.querySelector('p')?.textContent ?? '').not.toContain('No webhooks yet');
 
 		unmount();
 	});
@@ -66,14 +66,30 @@ describe('UiEmptyState — the landing ladder', () => {
 		unmount();
 	});
 
-	it('leads with an eyebrow micro-label, defaulted per variant', () => {
+	it('shows no eyebrow on a plain empty state unless the caller passes one', () => {
+		// "Nothing here yet" used to be the fallback, and it read wrong on every
+		// page where empty is the good outcome (Updates, Quarantine, Failed).
 		const empty = mountEmptyState({ title: 'No webhooks yet' });
-		expect(empty.el.querySelector('.lp-eyebrow')?.textContent?.trim()).toBe('Nothing here yet');
+		expect(empty.el.querySelector('.lp-eyebrow')).toBeNull();
+		expect(empty.el.textContent).not.toContain('Nothing here yet');
 		empty.unmount();
+	});
 
+	it('keeps the no-results eyebrow, since a hidden match is worth naming', () => {
 		const filtered = mountEmptyState({ title: 'No open conversations', variant: 'no-results' });
 		expect(filtered.el.querySelector('.lp-eyebrow')?.textContent?.trim()).toBe('No matches');
 		filtered.unmount();
+	});
+
+	it('renders tone="clear" as good news: a check glyph and "All clear"', () => {
+		const { el, unmount } = mountEmptyState({ title: "You're caught up", tone: 'clear' });
+
+		const eyebrow = el.querySelector('.lp-eyebrow');
+		expect(eyebrow?.textContent?.trim()).toBe('All clear');
+		expect(eyebrow?.getAttribute('data-tone')).toBe('clear');
+		expect(eyebrow?.querySelector('i')).not.toBeNull();
+
+		unmount();
 	});
 
 	it('lets a caller word its own eyebrow', () => {
@@ -106,7 +122,11 @@ describe('UiEmptyState — the landing ladder', () => {
 	});
 
 	it('keeps the icon as a hairline glyph in the eyebrow, never a filled disc', () => {
-		const { el, unmount } = mountEmptyState({ title: 'No domains', icon: 'lucide:globe' });
+		const { el, unmount } = mountEmptyState({
+			title: 'No domains',
+			eyebrow: 'Domains',
+			icon: 'lucide:globe',
+		});
 
 		const glyph = el.querySelector('.lp-eyebrow i');
 		expect(glyph).not.toBeNull();
@@ -115,6 +135,12 @@ describe('UiEmptyState — the landing ladder', () => {
 		expect(el.querySelector('[class*="rounded-full"]')).toBeNull();
 
 		unmount();
+
+		// Without an eyebrow the glyph stands alone, still unfilled.
+		const bare = mountEmptyState({ title: 'No domains', icon: 'lucide:globe' });
+		expect(bare.el.querySelector('.lp-eyebrow')).toBeNull();
+		expect(bare.el.querySelector('i')).not.toBeNull();
+		bare.unmount();
 	});
 
 	it('renders the action passed as children, not only through #action', () => {
