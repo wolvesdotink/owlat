@@ -76,7 +76,10 @@ describe('previous-release rows still validate', () => {
 });
 
 describe('the compatibility check itself', () => {
-	const table = (fields: Parameters<typeof v.object>[0]) => v.object(fields).json;
+	// `json` is how `defineSchema` exports a validator; convex keeps it out of
+	// the public types, so the tables above and these fixtures read it the same way.
+	const table = (fields: Parameters<typeof v.object>[0]) =>
+		(v.object(fields) as unknown as { json: ValidatorJSON }).json;
 	const previous = {
 		sends: table({
 			status: v.union(v.literal('queued'), v.literal('sent')),
