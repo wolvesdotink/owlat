@@ -38,7 +38,7 @@ export function pageHostsComposerStack(path: string): boolean {
 }
 
 /** What a composer opened on a route should be addressed to. */
-export type ComposeContext = { kind: 'contact'; contactId: string };
+type ComposeContext = { kind: 'contact'; contactId: string };
 
 /** Contact detail pages: the Audience list's and a topic's member view. */
 const CONTACT_ROUTE_PATTERNS: readonly RegExp[] = [

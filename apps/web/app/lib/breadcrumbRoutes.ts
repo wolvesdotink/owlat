@@ -29,8 +29,8 @@ export interface RouteConfig {
 }
 
 /** The Marketing workspace crumb — the word the sidebar's switch shows. */
-export const MARKETING = 'shared.breadcrumbRoutes.sections.marketing';
-export const MARKETING_HREF = '/dashboard/marketing';
+const MARKETING = 'shared.breadcrumbRoutes.sections.marketing';
+const MARKETING_HREF = '/dashboard/marketing';
 
 /** "Marketing › Campaigns", the parent of every campaign page. */
 export const MARKETING_CAMPAIGNS = {
