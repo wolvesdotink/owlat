@@ -11179,8 +11179,8 @@
 					"title": "Features"
 				},
 				"mode": {
-					"desc": "Pick a starting point — IMAP-only, marketing, full suite…",
-					"title": "Operating mode"
+					"desc": "Tell us what your team wants to do.",
+					"title": "Goals"
 				},
 				"review": {
 					"desc": "Check every answer, then launch.",
@@ -11191,20 +11191,40 @@
 			"title": "Welcome to {brand}."
 		},
 		"mode": {
-			"custom": "Custom / decide later",
-			"docsLink": "Operating Modes",
+			"advancedIntro": "Start from a named setup instead of the answer above. See {docsLink} for what each one turns on.",
+			"advancedSummary": "Advanced: pick a preset",
+			"aiDraftsHint": "Owlat suggests a reply for each new conversation. You approve before anything is sent. Needs an AI provider.",
+			"aiDraftsLabel": "Draft replies with AI",
+			"docsLink": "Operating modes",
 			"eyebrow": "Owlat setup",
 			"freshDesc": "Owlat is our home. No import needed.",
 			"freshTitle": "Starting fresh",
-			"intro": "Pick the closest mode to pre-fill your features — you can fine-tune everything on the next step. See {docsLink} for the full matrix.",
+			"intro": "Your answer turns on the right features. You can change any of them on the next step.",
 			"migratingDesc": "We'll offer new users a mail import at first login.",
 			"migratingTitle": "Moving from another platform",
 			"migrationLegend": "Are you moving from another platform, or starting fresh on Owlat?",
 			"needsDeliveryProvider": "needs a delivery provider",
 			"needsMta": "needs the built-in MTA",
+			"next": "Next: Features",
 			"noProviderNeeded": "no provider needed",
-			"pageTitle": "Owlat setup — Operating mode",
-			"title": "How will you run {brand}?"
+			"outcomeLegend": "What does your team want to do?",
+			"outcomes": {
+				"both": {
+					"description": "A shared inbox for conversations, plus newsletters and automated email from the same place.",
+					"label": "Both"
+				},
+				"conversations": {
+					"description": "Work through customer and team email in one shared inbox and reply together.",
+					"label": "Answer customer and team email together"
+				},
+				"sending": {
+					"description": "Newsletters, automated sequences and email your app sends, like receipts and password resets.",
+					"label": "Send newsletters and automated email"
+				}
+			},
+			"pageTitle": "Owlat setup — Goals",
+			"recommended": "Recommended",
+			"title": "What will you use {brand} for?"
 		},
 		"review": {
 			"activeFeatures": "Active features",
@@ -14701,7 +14721,7 @@
 				"admin": "Account",
 				"email": "Email",
 				"features": "Features",
-				"mode": "Mode",
+				"mode": "Goals",
 				"review": "Review"
 			}
 		},
@@ -15380,7 +15400,7 @@
 		"operatingModes": {
 			"crm_only": {
 				"audience": "Manage contacts and data; no email send or receive.",
-				"description": "Contacts, segments, imports, and forms with no outbound or inbound mail. A degenerate baseline you can grow from.",
+				"description": "Contacts, segments, imports, and forms, without sending or receiving mail. You can turn more on later.",
 				"label": "CRM only"
 			},
 			"full": {

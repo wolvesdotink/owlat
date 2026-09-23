@@ -11179,8 +11179,8 @@
 					"title": "Funktionen"
 				},
 				"mode": {
-					"desc": "Wählen Sie einen Ausgangspunkt — nur IMAP, Marketing, komplette Suite…",
-					"title": "Betriebsmodus"
+					"desc": "Sagen Sie uns, was Ihr Team tun möchte.",
+					"title": "Ziele"
 				},
 				"review": {
 					"desc": "Prüfen Sie jede Angabe und starten Sie dann.",
@@ -11191,20 +11191,40 @@
 			"title": "Willkommen bei {brand}."
 		},
 		"mode": {
-			"custom": "Benutzerdefiniert / später entscheiden",
+			"advancedIntro": "Starten Sie statt mit der Antwort oben mit einer benannten Konfiguration. Was jede davon einschaltet, steht unter {docsLink}.",
+			"advancedSummary": "Erweitert: Vorlage wählen",
+			"aiDraftsHint": "Owlat schlägt für jede neue Unterhaltung eine Antwort vor. Sie geben sie frei, bevor etwas gesendet wird. Benötigt einen KI-Anbieter.",
+			"aiDraftsLabel": "Antworten mit KI entwerfen",
 			"docsLink": "Betriebsmodi",
 			"eyebrow": "Owlat-Einrichtung",
 			"freshDesc": "Owlat ist unser Zuhause. Kein Import nötig.",
 			"freshTitle": "Neu starten",
-			"intro": "Wählen Sie den passendsten Modus, um Ihre Funktionen vorauszufüllen — im nächsten Schritt können Sie alles fein einstellen. Die vollständige Matrix finden Sie unter {docsLink}.",
+			"intro": "Ihre Antwort schaltet die passenden Funktionen ein. Im nächsten Schritt können Sie jede davon ändern.",
 			"migratingDesc": "Wir bieten neuen Nutzern beim ersten Login einen E-Mail-Import an.",
 			"migratingTitle": "Wechsel von einer anderen Plattform",
 			"migrationLegend": "Wechseln Sie von einer anderen Plattform oder starten Sie neu mit Owlat?",
 			"needsDeliveryProvider": "benötigt einen Zustellanbieter",
 			"needsMta": "benötigt den integrierten MTA",
+			"next": "Weiter: Funktionen",
 			"noProviderNeeded": "kein Anbieter nötig",
-			"pageTitle": "Owlat-Einrichtung — Betriebsmodus",
-			"title": "Wie werden Sie {brand} betreiben?"
+			"outcomeLegend": "Was möchte Ihr Team tun?",
+			"outcomes": {
+				"both": {
+					"description": "Ein gemeinsames Postfach für Unterhaltungen, dazu Newsletter und automatische E-Mails an einem Ort.",
+					"label": "Beides"
+				},
+				"conversations": {
+					"description": "Kunden- und Team-E-Mails in einem gemeinsamen Postfach bearbeiten und gemeinsam beantworten.",
+					"label": "Kunden- und Team-E-Mails gemeinsam beantworten"
+				},
+				"sending": {
+					"description": "Newsletter, automatische Abfolgen und E-Mails aus Ihrer App, etwa Belege und Passwort-Zurücksetzungen.",
+					"label": "Newsletter und automatische E-Mails senden"
+				}
+			},
+			"pageTitle": "Owlat-Einrichtung — Ziele",
+			"recommended": "Empfohlen",
+			"title": "Wofür werden Sie {brand} nutzen?"
 		},
 		"review": {
 			"activeFeatures": "Aktive Funktionen",
@@ -14701,7 +14721,7 @@
 				"admin": "Konto",
 				"email": "E-Mail",
 				"features": "Funktionen",
-				"mode": "Modus",
+				"mode": "Ziele",
 				"review": "Prüfen"
 			}
 		},
@@ -15380,7 +15400,7 @@
 		"operatingModes": {
 			"crm_only": {
 				"audience": "Kontakte und Daten verwalten; kein E-Mail-Versand und kein Empfang.",
-				"description": "Kontakte, Segmente, Importe und Formulare ohne aus- oder eingehende Mail. Eine minimale Ausgangsbasis, aus der Sie wachsen können.",
+				"description": "Kontakte, Segmente, Importe und Formulare, ohne E-Mails zu senden oder zu empfangen. Weiteres können Sie später einschalten.",
 				"label": "Nur CRM"
 			},
 			"full": {

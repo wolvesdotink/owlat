@@ -33,6 +33,7 @@ function mountPage(component: typeof SetupModePage) {
 		stubs: {
 			UiBadge: true,
 			UiCard: { template: '<div><slot /></div>' },
+			UiCheckbox: true,
 			UiErrorAlert: true,
 			UiHeroField: true,
 			UiStepIndicator: true,

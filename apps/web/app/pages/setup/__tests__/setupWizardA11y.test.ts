@@ -40,7 +40,12 @@ beforeEach(() => {
 
 const pages = [
 	{ name: 'welcome', component: SetupIndexPage, loaded: 'Welcome to Owlat', indicator: false },
-	{ name: 'mode', component: SetupModePage, loaded: 'How will you run Owlat?', indicator: true },
+	{
+		name: 'mode',
+		component: SetupModePage,
+		loaded: 'What will you use Owlat for?',
+		indicator: true,
+	},
 	{
 		name: 'features',
 		component: SetupFeaturesPage,
@@ -65,7 +70,7 @@ const pages = [
 const RAW_STEP_KEY = /shared\.useSetupWizard\./;
 
 /** The `en` catalog's `shared.useSetupWizard.steps.*`, in wizard order. */
-const STEP_LABELS = ['Mode', 'Features', 'Email', 'Account', 'Review'];
+const STEP_LABELS = ['Goals', 'Features', 'Email', 'Account', 'Review'];
 
 /**
  * REGRESSION — the step indicator is handed DISPLAY TEXT, never message keys.
