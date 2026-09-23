@@ -7100,7 +7100,6 @@
 						"userLabel": "Benutzer",
 						"userOption": "{name} · {email}"
 					},
-					"checkingWorkspaces": "Es wird geprüft, wie viele Workspaces diese Instanz hat",
 					"admins": {
 						"add": "Admin hinzufügen",
 						"added": "Hinzugefügt",

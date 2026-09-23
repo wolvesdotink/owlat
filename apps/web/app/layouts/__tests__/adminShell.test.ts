@@ -170,10 +170,11 @@ describe('the admin rail', () => {
 		expect(wrapper.find('nav[aria-label="Workspace settings (compact)"]').exists()).toBe(false);
 	});
 
-	it('hides the operator console on a self-hosted deployment', () => {
+	it('keeps the operator console on a self-hosted deployment', () => {
+		// Held content and the platform-admin roster exist on self-host too.
 		deploymentMode = 'selfhost';
 		const hrefs = railLinks(mountLayout()).map(([href]) => href);
-		expect(hrefs).not.toContain('/dashboard/admin/operator');
+		expect(hrefs).toContain('/dashboard/admin/operator');
 		expect(hrefs).toContain('/dashboard/admin/system');
 	});
 

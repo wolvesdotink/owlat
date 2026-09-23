@@ -42,9 +42,7 @@ const FULL: AdminEnvironment = {
 	isFeatureEnabled: () => true,
 	isPlatformAdmin: true,
 	hasPlugins: true,
-	isSelfHosted: false,
 };
-const SELF_HOSTED: AdminEnvironment = { ...FULL, isSelfHosted: true };
 const NO_AI: AdminEnvironment = {
 	...FULL,
 	isFeatureEnabled: (flag) => flag !== 'ai.agent' && flag !== 'ai.autonomy',
@@ -193,11 +191,9 @@ describe('gates', () => {
 		}
 	});
 
-	it('hides the operator console on a self-hosted, single-workspace deployment', () => {
-		const ids = reachableAdminEntries(SELF_HOSTED).map((entry) => entry.id);
-		expect(ids).not.toContain('operator');
-		// The rest of the platform tooling still belongs to the platform admin.
-		expect(ids).toEqual(expect.arrayContaining(['system', 'backups']));
+	it('keeps the operator console for the platform admin on every deployment', () => {
+		// Content held for review and the platform-admin roster exist on
+		// self-hosted instances too; the console is their only UI.
 		expect(reachableAdminEntries(FULL).map((entry) => entry.id)).toContain('operator');
 	});
 
@@ -221,7 +217,6 @@ describe('gates', () => {
 			isFeatureEnabled: () => false,
 			isPlatformAdmin: false,
 			hasPlugins: false,
-			isSelfHosted: true,
 		};
 		for (const env of [FULL, WORKSPACE_ADMIN, bare]) {
 			expect(adminAreasFor(env).filter((area) => area.entries.length === 0)).toEqual([]);

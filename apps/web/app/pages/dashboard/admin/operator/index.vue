@@ -2,11 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { formatNumber } from '~/utils/formatters';
-import {
-	OPERATOR_CONSOLE_FALLBACK_ROUTE,
-	formatRate,
-	operatorConsoleVisibility,
-} from '~/utils/operatorConsole';
+import { formatRate } from '~/utils/operatorConsole';
 
 const { t, locale } = useI18n();
 
@@ -34,7 +30,7 @@ const { data: flaggedOrgs } = useConvexQuery(
 	api.platformAdmin.queries.listFlaggedOrganizations,
 	() => ({})
 );
-const { data: allOrgs, error: allOrgsError } = useConvexQuery(
+const { data: allOrgs } = useConvexQuery(
 	api.platformAdmin.queries.listAllOrganizations,
 	() => ({})
 );
@@ -44,26 +40,6 @@ const { data: orgDetail } = useConvexQuery(
 );
 const { data: admins } = useConvexQuery(api.platformAdmin.queries.listPlatformAdmins, () => ({}));
 const { data: allUsers } = useConvexQuery(api.platformAdmin.queries.listAllUsers, () => ({}));
-
-// ── Self-host, one workspace: nothing here that Delivery → Health doesn't show ──
-// The tabs are multi-tenant tooling; on a single-workspace self-hosted instance
-// they are three empty lists, so the console steps aside and sends the visitor
-// to the page its overview repeats.
-const runtimeConfig = useRuntimeConfig();
-const visibility = computed(() =>
-	operatorConsoleVisibility({
-		deploymentMode: runtimeConfig.public.deploymentMode as string | undefined,
-		workspaceCount: allOrgs.value?.length,
-		isCountUnavailable: allOrgsError.value !== null,
-	})
-);
-watch(
-	visibility,
-	(value) => {
-		if (value === 'hide') void navigateTo(OPERATOR_CONSOLE_FALLBACK_ROUTE, { replace: true });
-	},
-	{ immediate: true }
-);
 
 /** Counts written the way the reader's locale writes them ("128,400", "128.400"). */
 const formatCount = (value: number | undefined | null) => formatNumber(value, locale.value);
@@ -295,7 +271,7 @@ const anyMutationLoading = computed(
 </script>
 
 <template>
-	<div v-if="visibility === 'show'" class="p-6 lg:p-8 max-w-[1100px] mx-auto">
+	<div class="p-6 lg:p-8 max-w-[1100px] mx-auto">
 		<!-- Header -->
 		<div class="mb-6">
 			<div class="flex items-center gap-3">
@@ -797,13 +773,5 @@ const anyMutationLoading = computed(
 				}}</UiButton>
 			</template>
 		</UiModal>
-	</div>
-	<div
-		v-else
-		class="flex items-center justify-center py-16"
-		role="status"
-		:aria-label="t('dashboard.admin.operator.index.checkingWorkspaces')"
-	>
-		<UiSpinner />
 	</div>
 </template>

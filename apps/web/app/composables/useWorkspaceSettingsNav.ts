@@ -15,7 +15,6 @@ import { adminAreasFor, adminAttentionBadges } from '~/lib/adminSettingsNav';
  */
 export function useWorkspaceSettingsNav(enabled: Readonly<Ref<boolean>>) {
 	const { isEnabled: isFeatureEnabled } = useFeatureFlag();
-	const config = useRuntimeConfig();
 
 	// Deployment-level tooling is scoped to this deployment's platform admin —
 	// the same gate the three pages carry as `platform-admin` route middleware.
@@ -28,7 +27,6 @@ export function useWorkspaceSettingsNav(enabled: Readonly<Ref<boolean>>) {
 		isFeatureEnabled,
 		isPlatformAdmin: isPlatformAdmin.value === true,
 		hasPlugins: bundledPluginComposition.length > 0,
-		isSelfHosted: config.public.deploymentMode === 'selfhost',
 	}));
 
 	const areas = computed(() => (enabled.value ? adminAreasFor(environment.value) : []));

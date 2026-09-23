@@ -9,35 +9,6 @@
 
 import { formatPercentage } from '~/utils/formatters';
 
-/**
- * Whether the Operator Console has anything to offer on this deployment.
- *
- * Its tabs — content review across tenants, the workspace list, the platform
- * admin roster — are hosted multi-tenant tooling. A self-hosted instance with
- * one workspace sees three empty tabs and an overview that repeats Delivery →
- * Health, so there the console is hidden, unless the instance really does
- * hold more than one workspace.
- *
- * `pending` while the workspace count is unknown on a self-hosted instance, so
- * the page neither flashes the console nor redirects on a guess. If the count
- * cannot be read at all the console shows (its tabs report their own errors)
- * instead of waiting forever.
- */
-export type OperatorConsoleVisibility = 'show' | 'hide' | 'pending';
-
-export function operatorConsoleVisibility(input: {
-	deploymentMode: string | undefined;
-	workspaceCount: number | undefined;
-	isCountUnavailable?: boolean;
-}): OperatorConsoleVisibility {
-	if (input.deploymentMode !== 'selfhost') return 'show';
-	if (input.workspaceCount === undefined) return input.isCountUnavailable ? 'show' : 'pending';
-	return input.workspaceCount > 1 ? 'show' : 'hide';
-}
-
-/** Where a hidden console sends its visitor: the page its overview repeated. */
-export const OPERATOR_CONSOLE_FALLBACK_ROUTE = '/dashboard/admin/delivery';
-
 /** UiBadge variant for an org abuse status. */
 export function abuseStatusVariant(
 	status: string | undefined

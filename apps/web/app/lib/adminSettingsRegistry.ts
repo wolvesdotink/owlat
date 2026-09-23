@@ -36,12 +36,6 @@ export interface AdminEnvironment {
 	isPlatformAdmin: boolean;
 	/** This build ships at least one plugin that has settings. */
 	hasPlugins: boolean;
-	/**
-	 * A self-hosted deployment (`deploymentMode === 'selfhost'`). A self-hosted
-	 * instance holds exactly one workspace, so the multi-tenant operator console
-	 * would only ever show empty tabs there.
-	 */
-	isSelfHosted: boolean;
 }
 
 export type AdminGate = (env: AdminEnvironment) => boolean;
@@ -56,8 +50,6 @@ const anyFlag =
 		keys.some((key) => env.isFeatureEnabled(key));
 const platformOnly: AdminGate = (env) => env.isPlatformAdmin;
 const withPlugins: AdminGate = (env) => env.hasPlugins;
-/** The operator console is for hosted, multi-workspace deployments. */
-const multiTenantPlatform: AdminGate = (env) => env.isPlatformAdmin && !env.isSelfHosted;
 
 /** The groups the rail renders as eyebrows, in this order. */
 export type AdminAreaKey = 'overview' | 'team' | 'delivery' | 'ai' | 'features' | 'system';
@@ -449,7 +441,7 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		titleKey: label('operatorConsole'),
 		icon: 'lucide:shield-alert',
 		area: 'system',
-		gate: multiTenantPlatform,
+		gate: platformOnly,
 		wide: true,
 	},
 ];
