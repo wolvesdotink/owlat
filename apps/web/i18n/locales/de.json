@@ -264,7 +264,7 @@
 				"sendReply": "Antwort senden",
 				"subjectPlaceholder": "Betreff (optional)",
 				"subtitle": "Vom Agenten erstellte Entwürfe und Eskalationen, die auf Ihre Aktion warten.",
-				"title": "Prüf-Warteschlange",
+				"title": "Team-Entwürfe zum Prüfen",
 				"toasts": {
 					"draftApproved": "Entwurf freigegeben und zum Senden eingereiht",
 					"draftRejected": "Entwurf abgelehnt",
@@ -799,6 +799,29 @@
 				"openRate": "Öffnungen",
 				"sparklineLabel": "Trend der Varianten-Öffnungsrate für {name}",
 				"viewCampaign": "Kampagne ansehen"
+			},
+			"funnel": {
+				"ariaLabel": "Versand-Trichter",
+				"ofPrevious": "{percent} vom vorherigen Schritt",
+				"stepTitle": "{step}: {count} von {previous} ({previousStep})",
+				"steps": {
+					"clicked": "Geklickt",
+					"delivered": "Zugestellt",
+					"opened": "Geöffnet",
+					"sent": "Gesendet",
+					"unsubscribed": "Abgemeldet"
+				}
+			},
+			"reportHeadline": {
+				"aboveClick": "{open} geöffnet und {click} geklickt — Klickrate über deinem Durchschnitt.",
+				"aboveOpen": "{open} geöffnet und {click} geklickt — Öffnungsrate über deinem Durchschnitt.",
+				"belowClick": "{open} geöffnet und {click} geklickt — Klickrate unter deinem Durchschnitt.",
+				"belowOpen": "{open} geöffnet und {click} geklickt — Öffnungsrate unter deinem Durchschnitt.",
+				"bestClick": "{open} geöffnet und {click} geklickt — die beste Klickrate deiner letzten {count} Kampagnen.",
+				"bestOpen": "{open} geöffnet und {click} geklickt — die beste Öffnungsrate deiner letzten {count} Kampagnen.",
+				"highUnsubscribe": "{open} geöffnet und {click} geklickt, aber deutlich mehr Abmeldungen als im Durchschnitt.",
+				"none": "{open} geöffnet und {click} geklickt.",
+				"onPar": "{open} geöffnet und {click} geklickt — im Rahmen deines Durchschnitts."
 			},
 			"steps": {
 				"contentStep": {
@@ -1922,7 +1945,8 @@
 				"progressCount": "{completed} von {total} erledigt",
 				"progressLabel": "Fortschritt der ersten Schritte",
 				"subtitle": "Alles, was noch zu tun ist, damit Owlat für Sie arbeitet — an einem Ort.",
-				"title": "Erste Schritte"
+				"title": "Erste Schritte",
+				"continue": "Einrichtung fortsetzen"
 			},
 			"gettingStartedResources": {
 				"convexCta": "Dashboard starten ↗",
@@ -1954,7 +1978,10 @@
 				"label": "Hauptnavigation",
 				"mail": "E-Mail",
 				"more": "Mehr",
-				"people": "Kontakte"
+				"people": "Kontakte",
+				"today": "Heute",
+				"answer": "Antworten",
+				"inbox": "Posteingang"
 			},
 			"quickCreateMenu": {
 				"more": "Weitere Aktionen zum Erstellen"
@@ -3312,6 +3339,69 @@
 				"nameRequired": "Ein Vorlagenname ist erforderlich"
 			}
 		},
+		"marketing": {
+			"audience": {
+				"bounceRate": "Bounce-Rate {rate}",
+				"complaintRate": "Beschwerderate {rate}",
+				"healthIssue": "Versand braucht Aufmerksamkeit",
+				"healthOk": "Versand-Setup ist in Ordnung",
+				"limit": "Unter {limit} halten",
+				"newContacts": "Neue Kontakte pro Tag",
+				"newContactsAria": "Neue Kontakte pro Tag, letzte 30 Tage",
+				"newContactsTotal": "{count} in 30 Tagen",
+				"noRates": "Noch keine Bounce- oder Beschwerdedaten: In den letzten 30 Tagen wurde nichts verschickt.",
+				"truncated": "Sehr viele Neuzugänge: Die ältesten Tage sind eventuell zu niedrig."
+			},
+			"headline": {
+				"aboveClick": "Klickrate über deinem Durchschnitt.",
+				"aboveOpen": "Öffnungsrate über deinem Durchschnitt.",
+				"belowClick": "Klickrate unter deinem Durchschnitt.",
+				"belowOpen": "Öffnungsrate unter deinem Durchschnitt.",
+				"bestClick": "Beste Klickrate seit {count} Kampagnen.",
+				"bestOpen": "Beste Öffnungsrate seit {count} Kampagnen.",
+				"highUnsubscribe": "Deutlich mehr Abmeldungen als im Durchschnitt.",
+				"onPar": "Im Rahmen deines Durchschnitts."
+			},
+			"latest": {
+				"clicked": "Geklickt",
+				"delivered": "Zugestellt",
+				"opened": "Geöffnet",
+				"sending": "Wird versendet",
+				"sendingProgress": "Wird versendet · {percent}",
+				"sentLine": "Verschickt {date} · {delivered} zugestellt",
+				"unsubscribed": "Abgemeldet",
+				"vsAverage": "{points} Pkt. ggü. Ø"
+			},
+			"nextUp": {
+				"drafts": "Entwürfe",
+				"draftsEmpty": "Keine Entwürfe in Arbeit.",
+				"edited": "Bearbeitet {when}",
+				"needsYou": "Braucht dich",
+				"needsYouEmpty": "Nichts wartet auf eine Entscheidung.",
+				"noTime": "Keine Versandzeit festgelegt",
+				"reviewBefore": "Prüfen vor {date}",
+				"scheduled": "Geplant",
+				"scheduledEmpty": "Nichts geplant.",
+				"showAllDrafts": "Alle Entwürfe",
+				"showAllScheduled": "Alle {count} geplanten anzeigen"
+			},
+			"period": {
+				"comparisonNote": "Verglichen mit den 30 Tagen davor. Die Minidiagramme zeigen die letzten 12 Wochen.",
+				"percentChange": "{percent} ggü. den 30 Tagen davor",
+				"pointsChange": "{points} Pkt. ggü. den 30 Tagen davor",
+				"sparkLabel": "{metric}, Woche für Woche über die letzten 12 Wochen",
+				"tiles": {
+					"bounceRate": "Bounce-Rate",
+					"clickRate": "Klickrate",
+					"delivered": "Zugestellt",
+					"openRate": "Öffnungsrate",
+					"unsubscribeRate": "Abmelderate"
+				}
+			},
+			"rateBars": {
+				"average": "Gestrichelte Linie: dein Durchschnitt, {value}"
+			}
+		},
 		"mediaPickerModal": {
 			"browseFiles": "Dateien durchsuchen",
 			"defaultTitle": "Bild auswählen",
@@ -3439,7 +3529,9 @@
 				"sendAs": "Senden als",
 				"subject": "Betreff",
 				"switchToAll": "an alle antworten",
-				"to": "An"
+				"to": "An",
+				"leavesTeamInbox": "Diese Unterhaltung kam an {team}. Eine Antwort von deiner eigenen Adresse nimmt sie aus dem geteilten Postfach.",
+				"switchBack": "Stattdessen als {team} antworten"
 			},
 			"postboxComposerFollowUp": {
 				"armedTitle": "Erinnerung, falls bis {datetime} keine Antwort kommt — zum Entfernen klicken",
@@ -3452,7 +3544,8 @@
 				"sending": "Wird gesendet…",
 				"signature": "Signatur",
 				"uploadingTitle": "Warten, bis die Anhänge vollständig hochgeladen sind…",
-				"previewAsSent": "Vorschau wie gesendet"
+				"previewAsSent": "Vorschau wie gesendet",
+				"sendAs": "Senden als {name}"
 			},
 			"postboxComposerGuards": {
 				"alignment": {
@@ -3622,8 +3715,8 @@
 				"noCustomFolders": "Keine eigenen Ordner",
 				"noLabels": "Noch keine Labels",
 				"renameFolder": "Ordner umbenennen",
-				"replyQueue": "Antwort-Warteschlange",
-				"replyQueueAriaLabel": "Antwort-Warteschlange, {count}",
+				"replyQueue": "Antwortliste",
+				"replyQueueAriaLabel": "Antwortliste, {count}",
 				"snoozed": "Zurückgestellt",
 				"subscriptions": "Abonnements",
 				"pinnedSearchesHeading": "Angeheftete Suchen",
@@ -4787,6 +4880,25 @@
 				"toastDeleting": "Postfach und Mails werden gelöscht.",
 				"toastDisconnected": "Postfach getrennt.",
 				"updateCredentials": "Passwort aktualisieren"
+			},
+			"threadDiscussion": {
+				"close": "Diskussion ausblenden",
+				"composerLabel": "Nachricht an das Team",
+				"count": "{count} in der Diskussion",
+				"empty": "Noch keine Diskussion – frag ein Teammitglied zu dieser E-Mail.",
+				"hint": "Enter zum Senden · Shift+Enter für eine neue Zeile",
+				"internal": "intern",
+				"markReadOperation": "Team-Diskussion als gelesen markieren",
+				"placeholder": "An das Team schreiben… (geht nicht an {counterparty})",
+				"placeholderNoCounterparty": "An das Team schreiben… (geht nicht an den Absender)",
+				"regionLabel": "Team-Diskussion zu dieser E-Mail",
+				"send": "Senden",
+				"sendOperation": "In der Team-Diskussion posten",
+				"title": "Team-Diskussion",
+				"toggle": "Besprechen",
+				"toggleHide": "Team-Diskussion ausblenden",
+				"toggleShow": "Team-Diskussion einblenden",
+				"unknownAuthor": "Ehemaliges Mitglied"
 			}
 		},
 		"preferences": {
@@ -5381,6 +5493,180 @@
 				"failed": "Dieses Panel hatte ein Problem und wurde ausgeblendet, damit der Rest der Seite weiter funktioniert.",
 				"loading": "{label} wird geladen…",
 				"tryAgain": "Erneut versuchen"
+			}
+		},
+		"shell": {
+			"status": {
+				"draftReady": "Entwurf bereit",
+				"needsYou": "Braucht dich",
+				"needsReview": "Prüfen",
+				"mentioned": "Hat dich erwähnt",
+				"working": "Agent schreibt",
+				"updated": "Aktualisiert",
+				"resultsIn": "Ergebnisse da",
+				"running": "Läuft",
+				"scheduled": "Geplant",
+				"waiting": "Wartet auf Antwort"
+			},
+			"noSubject": "(kein Betreff)",
+			"teamInbox": "Team-Postfach",
+			"inboxGroup": {
+				"expand": "Unterhaltungen in {name} anzeigen",
+				"collapse": "Unterhaltungen in {name} ausblenden",
+				"unread": "{count} ungelesen",
+				"compose": "Neue E-Mail von {name}",
+				"moreUnread": "eine weitere ungelesen | {count} weitere ungelesen",
+				"showMore": "Mehr anzeigen"
+			},
+			"chat": {
+				"title": "Chat",
+				"all": "Chat öffnen",
+				"allWithUnread": "{count} neu",
+				"empty": "Nichts Neues im Chat."
+			},
+			"options": {
+				"label": "Seitenleisten-Optionen",
+				"perInbox": "Unterhaltungen pro Postfach",
+				"fewer": "Weniger anzeigen",
+				"more": "Mehr anzeigen",
+				"order": "Reihenfolge",
+				"sortRecent": "Neueste zuerst",
+				"sortPriority": "Dringendste zuerst"
+			},
+			"nav": {
+				"today": "Heute",
+				"answer": "Antwortliste",
+				"allInboxes": "Alle Postfächer",
+				"inboxes": "Postfächer",
+				"more": "Mehr",
+				"answerCount": "eine wartet auf Antwort | {count} warten auf Antwort"
+			},
+			"marketing": {
+				"overview": "Übersicht",
+				"campaigns": "Kampagnen",
+				"newCampaign": "Neue Kampagne",
+				"allCampaigns": "Alle Kampagnen",
+				"automations": "Automatisierungen",
+				"allAutomations": "Alle Automatisierungen",
+				"audience": "Zielgruppe",
+				"templates": "Vorlagen",
+				"draft": "Entwurf",
+				"deliveryHealthy": "Zustellung in Ordnung",
+				"deliveryNeedsAttention": "Zustellung braucht Aufmerksamkeit"
+			},
+			"footer": {
+				"settings": "Einstellungen",
+				"assistant": "Assistent",
+				"shortcuts": "Tastenkürzel"
+			},
+			"settings": {
+				"title": "Einstellungen",
+				"back": "Zurück",
+				"search": "Einstellungen durchsuchen",
+				"results": "Passende Einstellungen",
+				"noResults": "Keine Einstellung passt.",
+				"workspace": "Arbeitsbereich"
+			}
+		},
+		"today": {
+			"answer": {
+				"title": "eine E-Mail wartet auf deine Antwort | {count} E-Mails warten auf deine Antwort",
+				"cta": "Antwortliste durchgehen",
+				"drafts": "eine mit fertigem Entwurf | {count} mit fertigem Entwurf",
+				"mail": "eine E-Mail | {count} E-Mails",
+				"team": "ein Team-Entwurf | {count} Team-Entwürfe",
+				"mentions": "eine Erwähnung | {count} Erwähnungen",
+				"minutes": "etwa eine Minute | etwa {count} Minuten",
+				"clearTitle": "Nichts wartet auf eine Antwort",
+				"clearBody": "Neue Fragen landen in der Antwortliste, sobald sie ankommen.",
+				"needsTitle": "Wartet auf Antwort",
+				"allInQueue": "Alle {count} in der Liste",
+				"draftReady": "Entwurf bereit",
+				"mention": "Erwähnung",
+				"mentionTitle": "#{room}: „{preview}“"
+			},
+			"changed": {
+				"title": "Was sich getan hat",
+				"subtitle": "in Unterhaltungen, die du schon kennst",
+				"newFrom": "Eine neue Nachricht von {name}: | {count} neue Nachrichten, zuletzt von {name}:",
+				"more": "und eine weitere Unterhaltung. | und {count} weitere Unterhaltungen."
+			},
+			"openInboxes": "Alle Postfächer öffnen",
+			"updates": {
+				"title": "Neuigkeiten",
+				"subtitle": "keine Antwort nötig",
+				"keysMove": "bewegen",
+				"worth": "Gut zu wissen",
+				"also": "Außerdem angekommen",
+				"empty": "Nichts Neues ohne Antwortbedarf. Neuigkeiten von Menschen und Diensten erscheinen hier.",
+				"more": "Eine weitere Neuigkeit wartet. | {count} weitere Neuigkeiten warten."
+			},
+			"filed": {
+				"title": "Abgelegt:",
+				"newsletter": "ein Newsletter | {count} Newsletter",
+				"notification": "eine Benachrichtigung | {count} Benachrichtigungen",
+				"receipt": "eine Quittung | {count} Quittungen",
+				"promotion": "eine Werbung | {count} Werbungen",
+				"spam": "ein Spam abgefangen | {count} Spam abgefangen",
+				"reassure": "Nichts davon braucht eine Antwort."
+			},
+			"line": {
+				"done": "Erledigt",
+				"replyAnyway": "Trotzdem antworten"
+			},
+			"source": {
+				"one": "Quelle: E-Mail von {from}, „{subject}“",
+				"many": "Quellen: {count} E-Mails, zuerst „{subject}“",
+				"open": "öffnen",
+				"fullThread": "ganze Unterhaltung"
+			},
+			"peek": {
+				"label": "E-Mail-Vorschau",
+				"back": "Zurück zu Heute",
+				"position": "E-Mail {index} von {total}",
+				"previous": "Vorherige E-Mail",
+				"next": "Nächste E-Mail",
+				"gone": "Diese E-Mail ist hier nicht mehr verfügbar. Vielleicht wurde sie verschoben oder gelöscht.",
+				"done": "Erledigt",
+				"openThread": "Unterhaltung öffnen",
+				"markReadOperation": "Als gelesen markieren"
+			}
+		},
+		"answer": {
+			"filter": {
+				"label": "Antworten anzeigen aus",
+				"all": "Alle"
+			},
+			"band": {
+				"answeringAs": "Antwort als {name}",
+				"replyingIn": "Antwort in #{room}",
+				"teamDetail": "Antworten gehen von der Adresse des Team-Postfachs raus",
+				"chatDetail": "intern, wird nicht per E-Mail verschickt",
+				"followUp": "Nachfassen",
+				"draftReady": "Entwurf bereit",
+				"question": "braucht deine Angabe",
+				"needsReply": "braucht eine Antwort",
+				"agentDraft": "Agent-Entwurf · prüfen",
+				"escalation": "an dich eskaliert",
+				"mention": "Erwähnung"
+			},
+			"mention": {
+				"reply": "Im Chat antworten",
+				"markRead": "Als gelesen markieren",
+				"markReadOperation": "Erwähnung als gelesen markieren"
+			},
+			"empty": {
+				"title": "Nichts wartet auf eine Antwort",
+				"body": "Neue Fragen erscheinen hier, sobald sie ankommen – aus jedem Postfach, das du liest."
+			},
+			"backToToday": "Zurück zu Heute",
+			"done": {
+				"title": "Alles erledigt",
+				"summary": "{summary} in dieser Sitzung.",
+				"body": "Heute beginnt ab hier neu."
+			},
+			"mail": {
+				"writeOwn": "Selbst schreiben"
 			}
 		}
 	},
@@ -8842,10 +9128,10 @@
 				"listAriaLabel": "Konversationen im Team-Posteingang",
 				"loadMore": "Mehr laden",
 				"pageTitle": "Team-Posteingang — Owlat",
-				"reviewQueue": "Prüfliste",
+				"reviewQueue": "Entwürfe prüfen",
 				"snoozeThreadOperation": "Konversation zurückstellen",
 				"subtitle": "Kundengespräche, die Ihr Team gemeinsam bearbeitet.",
-				"title": "Team-Posteingang",
+				"title": "Team-Postfach",
 				"undo": {
 					"assigned": "Zugewiesen",
 					"assignedTo": "{name} zugewiesen",
@@ -9123,6 +9409,38 @@
 				"subtitle": "Durchsuchen und verwalten Sie das Wissen, das aus Ihren Gesprächen und Dateien gewonnen wurde.",
 				"title": "Wissensgraph"
 			}
+		},
+		"marketing": {
+			"errorMessage": "Beim Laden deiner Kampagnenzahlen ist etwas schiefgelaufen. Versuche es gleich noch einmal.",
+			"errorTitle": "Übersicht konnte nicht geladen werden",
+			"firstRun": {
+				"description": "Sobald deine erste Kampagne verschickt ist, zeigt diese Seite, wie sie im Vergleich zu deinem Durchschnitt abgeschnitten hat und wie sich alle Kampagnen entwickeln. Bis dahin: Fang unten mit einem Entwurf an.",
+				"title": "So erscheinen deine Kampagnen hier"
+			},
+			"latest": {
+				"subtitle": "Verglichen mit deinem Durchschnitt der letzten {count} verschickten Kampagnen",
+				"title": "Neueste Kampagnen"
+			},
+			"newCampaign": "Neue Kampagne",
+			"nextUp": {
+				"errorTitle": "Die nächsten Schritte konnten nicht geladen werden",
+				"subtitle": "Was eine Entscheidung braucht, dann was ansteht",
+				"title": "Als Nächstes"
+			},
+			"pageTitle": "Marketing-Übersicht — Owlat",
+			"period": {
+				"audience": "Zielgruppe & Versand",
+				"byCampaignNote": "Letzte 10 verschickte Kampagnen, die älteste links. Gestrichelte Linie: Durchschnitt.",
+				"clickRateByCampaign": "Klickrate, Kampagne für Kampagne",
+				"openRateByCampaign": "Öffnungsrate, Kampagne für Kampagne",
+				"opensPerDay": "Öffnungen pro Tag (alle E-Mails)",
+				"opensPerDayNote": "Kampagnen und Transaktions-E-Mails zusammen; die Tagessummen trennen sie nicht.",
+				"sameOrderNote": "Dieselben Kampagnen, dieselbe Reihenfolge.",
+				"subtitle": "{campaigns} Kampagnen · {delivered} E-Mails zugestellt",
+				"title": "Alle Kampagnen, letzte 30 Tage"
+			},
+			"title": "Marketing-Übersicht",
+			"todoChip": "{count} offen"
 		},
 		"postbox": {
 			"contacts": {
@@ -9506,10 +9824,14 @@
 				"noMailboxes": "Noch keine Postfächer. Fügen Sie Ihr erstes Konto hinzu, um Mail zu empfangen.",
 				"pageTitle": "Einstellungen — Owlat",
 				"renameIntro": "Anzeigename für {address}. Die Adresse selbst kann nicht geändert werden.",
-				"renameMailbox": "Postfach umbenennen",
+				"renameMailbox": "Name und Farbe",
 				"renameOperation": "Postfach umbenennen",
 				"subtitle": "Wie Owlat für Sie aussieht, liest und sendet.",
-				"teamManage": "Team · verwalten"
+				"teamManage": "Team · verwalten",
+				"colour": "Farbe",
+				"colourAutomatic": "Automatisch",
+				"colourSlot": "Farbe {n}",
+				"colourHelp": "Die Markierung dieses Postfachs in der Seitenleiste, auf Heute, in der Antwortliste und neben „Senden“ – immer zusammen mit seinem Namen."
 			},
 			"members": {
 				"detail": {
@@ -10133,6 +10455,63 @@
 			"loading": "Visualisierungen werden geladen...",
 			"pageTitle": "Visualisierungen — Owlat",
 			"title": "Visualisierungen"
+		},
+		"today": {
+			"pageTitle": "Heute",
+			"greeting": {
+				"morning": "Guten Morgen",
+				"morningNamed": "Guten Morgen, {name}",
+				"afternoon": "Guten Tag",
+				"afternoonNamed": "Guten Tag, {name}",
+				"evening": "Guten Abend",
+				"eveningNamed": "Guten Abend, {name}"
+			},
+			"since": {
+				"label": "Seit du zuletzt reingeschaut hast ({when}):",
+				"fallback": "In den letzten 24 Stunden:",
+				"newMail": "keine neue E-Mail | eine neue E-Mail | {count} neue E-Mails",
+				"newMailCapped": "mehr als {count} neue E-Mails",
+				"moved": "eine Unterhaltung, die du kennst, hat sich bewegt | {count} Unterhaltungen, die du kennst, haben sich bewegt",
+				"mentions": "eine Erwähnung im Chat | {count} Erwähnungen im Chat"
+			},
+			"markAllSeen": "Alles als gesehen markieren",
+			"markedSeen": "Als gesehen markiert. Heute beginnt ab hier neu.",
+			"replyRequested": "Der Agent schreibt eine Antwort. Sie wartet in der Antwortliste.",
+			"openQueue": "Liste öffnen",
+			"deliveryAlert": "Die Zustellung braucht Aufmerksamkeit.",
+			"openDelivery": "Zustellung öffnen",
+			"operations": {
+				"done": "Als erledigt markieren",
+				"replyAnyway": "Antwort anfordern",
+				"markSeen": "Als gesehen markieren"
+			}
+		},
+		"answer": {
+			"pageTitle": "Antwortliste"
+		},
+		"inboxes": {
+			"pageTitle": "Alle Postfächer",
+			"title": "Alle Postfächer",
+			"subtitle": "Alle Unterhaltungen aus dem einen Postfach, das du liest | Alle Unterhaltungen aus den {count} Postfächern, die du liest",
+			"filterLabel": "Unterhaltungen filtern",
+			"allInboxes": "Alle",
+			"show": {
+				"all": "Alles",
+				"unread": "Ungelesen",
+				"needs": "Braucht dich"
+			},
+			"clearCategory": "Alle Kategorien anzeigen",
+			"category": {
+				"newsletter": "Newsletter",
+				"notification": "Benachrichtigungen",
+				"receipt": "Quittungen",
+				"promotion": "Werbung",
+				"spam": "Spam",
+				"person": "Von Menschen",
+				"other": "Sonstiges"
+			},
+			"empty": "Keine Unterhaltung passt zu diesen Filtern.",
+			"footnote": "Zeigt die neuesten {count} Unterhaltungen je Postfach. Öffne ein Postfach für alles, auch Gesendet, Archiv und Suche."
 		}
 	},
 	"desktop": {
@@ -11208,10 +11587,14 @@
 				"audience": "Zielgruppe",
 				"automations": "Automationen",
 				"campaigns": "Kampagnen",
-				"dashboard": "Dashboard",
+				"dashboard": "Heute",
 				"delivery": "Zustellung",
+				"marketing": "Marketing",
 				"preferences": "Einstellungen",
-				"send": "Senden"
+				"send": "Senden",
+				"answer": "Antwortliste",
+				"inboxes": "Alle Postfächer",
+				"teamInbox": "Team-Postfach"
 			},
 			"subsections": {
 				"instance": "Instanz",
@@ -11519,7 +11902,7 @@
 					"allThreads": "Alle Konversationen",
 					"codeTasks": "Code-Aufgaben",
 					"quarantine": "Quarantäne",
-					"reviewQueue": "Prüf-Warteschlange",
+					"reviewQueue": "Entwürfe prüfen",
 					"updates": "Neuigkeiten"
 				},
 				"knowledge": {
@@ -11532,13 +11915,16 @@
 					"preferences": "Einstellungen",
 					"sent": "Gesendet",
 					"spam": "Spam",
-					"trash": "Papierkorb"
+					"trash": "Papierkorb",
+					"answerQueue": "Antwortliste",
+					"allInboxes": "Alle Postfächer"
 				},
 				"send": {
 					"automations": "Automationen",
 					"campaigns": "Kampagnen",
 					"templatesAndBlocks": "Vorlagen & Blöcke",
-					"transactional": "Transaktional"
+					"transactional": "Transaktional",
+					"overview": "Marketing-Übersicht"
 				}
 			},
 			"sections": {
@@ -11549,7 +11935,7 @@
 				"customers": "Kundschaft",
 				"inbox": "Team-Postfach",
 				"knowledge": "Wissen",
-				"postbox": "Mail",
+				"postbox": "Postfächer",
 				"preferences": "Einstellungen",
 				"send": "Senden"
 			}
@@ -13430,7 +13816,9 @@
 				"toggleRead": "Gelesen-Status umschalten",
 				"toggleSidebar": "Seitenleiste ein-/ausblenden",
 				"toggleTodayBrowse": "Zwischen Heute / Durchsuchen wechseln (Posteingang)",
-				"undoTriage": "Letzte Triage rückgängig machen"
+				"undoTriage": "Letzte Triage rückgängig machen",
+				"goToAnswer": "Zur Antwortliste",
+				"goToMarketing": "Zu Marketing"
 			}
 		},
 		"signatureBadge": {
@@ -15117,7 +15505,7 @@
 			},
 			"collapseSidebar": "Seitenleiste einklappen",
 			"contexts": {
-				"inbox": "Posteingang",
+				"inbox": "Unterhaltungen",
 				"marketing": "Marketing"
 			},
 			"dashboardTooltip": "Dashboard",

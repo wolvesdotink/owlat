@@ -33,6 +33,7 @@
 
 import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
+import { components } from '../_generated/api';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { batchGet } from '../_utils/batchLoader';
 import { isFeatureEnabled } from '../lib/featureFlags';
@@ -118,6 +119,40 @@ export async function requireMailboxAccess(
 		return { ok: true, userId: s.userId, mailbox, role: membership.role };
 	}
 	return { ok: false, reason: 'forbidden' };
+}
+
+/**
+ * The same policy as {@link requireMailboxAccess}, asked about SOMEONE ELSE:
+ * could `userId` read `mailbox` right now? Used where a write fans out to other
+ * people — a mention in a mail-thread discussion must only notify teammates who
+ * can open the thread it points at.
+ *
+ * Mirrors the session gate branch for branch: personal-mail capability on, the
+ * mailbox active, then the mailbox's own user, an explicit `mailboxMembers` row,
+ * or an owner/admin member of the mailbox's organization. The org-role lookup
+ * runs last because it is the only branch that leaves this database.
+ */
+export async function canUserReadMailbox(
+	ctx: QueryCtx,
+	mailbox: Doc<'mailboxes'>,
+	userId: string
+): Promise<boolean> {
+	if (!(await personalMailEnabled(ctx))) return false;
+	if (mailbox.status !== 'active') return false;
+	if (mailbox.userId === userId) return true;
+	const membership = await ctx.db
+		.query('mailboxMembers')
+		.withIndex('by_mailbox_user', (q) => q.eq('mailboxId', mailbox._id).eq('authUserId', userId))
+		.unique();
+	if (membership) return true;
+	const member = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
+		model: 'member',
+		where: [
+			{ field: 'organizationId', value: mailbox.organizationId },
+			{ field: 'userId', value: userId },
+		],
+	})) as { role?: string } | null;
+	return member?.role === 'owner' || member?.role === 'admin';
 }
 
 /**

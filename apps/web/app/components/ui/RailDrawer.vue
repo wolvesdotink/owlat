@@ -53,7 +53,7 @@ onUnmounted(() => {
 		<div v-if="open" class="fixed inset-0 bg-scrim/50 z-40 md:hidden" @click="close" />
 	</Transition>
 
-	<DashboardNavigationPortal :title="navigationTitle ?? ''">
+	<DashboardNavigationPortal :title="navigationTitle ?? ''" inline>
 		<div
 			v-bind="$attrs"
 			class="fixed top-0 left-0 z-50 h-full w-72 flex-shrink-0 flex transition-transform pt-[env(safe-area-inset-top)] md:pt-0 md:static md:z-auto md:h-auto md:translate-x-0 md:transition-none"

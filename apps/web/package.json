@@ -14,7 +14,7 @@
 		"generate:desktop": "cross-env OWLAT_DESKTOP=true NUXT_PUBLIC_CONVEX_URL= NUXT_PUBLIC_CONVEX_SITE_URL= nuxt generate",
 		"preview": "nuxt preview",
 		"postinstall": "nuxt prepare",
-		"typecheck": "nuxt typecheck && tsc -p e2e/tsconfig.json",
+		"typecheck": "cross-env NODE_OPTIONS=--max-old-space-size=8192 nuxt typecheck && tsc -p e2e/tsconfig.json",
 		"lint": "oxlint --config ../../oxlintrc.json app server e2e scripts && bash scripts/check-dead-tokens.sh && bash scripts/check-icon-names.sh",
 		"lint:fix": "oxlint --config ../../oxlintrc.json app server e2e scripts --fix",
 		"test": "vitest run",

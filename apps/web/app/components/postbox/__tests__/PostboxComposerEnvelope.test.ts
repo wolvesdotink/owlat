@@ -46,7 +46,12 @@ function identity(over: Partial<SendAsIdentity> & Pick<SendAsIdentity, 'address'
 // The envelope's field labels flow through vue-i18n now; `useI18n` is a Nuxt
 // auto-import, so it has to exist as a global for the component's setup.
 beforeAll(() => {
-	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+	Object.assign(globalThis, {
+		useI18n: i18nStubs.useI18n,
+		// The From row's inbox chip reads the viewer's inboxes; none here, so the
+		// chip stays out and the picker is what is under test.
+		useInboxes: () => ({ byId: ref(new Map()) }),
+	});
 });
 
 const mountOpts = {
@@ -57,6 +62,7 @@ const mountOpts = {
 			Icon: true,
 			PostboxRecipientField: true,
 			PostboxComposerGuards: true,
+			InboxChip: true,
 		},
 	},
 };

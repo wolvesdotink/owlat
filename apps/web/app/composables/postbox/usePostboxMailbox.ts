@@ -35,6 +35,20 @@ export function usePostboxMailbox() {
 
 	const setCurrentMailbox = setActiveMailboxId;
 
+	// Deep links from outside the Postbox (the sidebar's inbox groups, Today,
+	// the Answer queue) name the inbox a thread lives in with `?mailbox=`, so a
+	// row from Support opens in Support even when the last-used inbox differs.
+	// Only a mailbox the caller can actually read is honoured.
+	const route = useRoute();
+	watch(
+		[() => route.query['mailbox'], mailboxes],
+		([requested, list]) => {
+			if (typeof requested !== 'string' || requested === persistedId.value) return;
+			if (list.some((m) => m._id === requested)) setActiveMailboxId(requested as Id<'mailboxes'>);
+		},
+		{ immediate: true }
+	);
+
 	// Switch to a mailbox and land on its inbox rather than a folder/message id
 	// that only exists in the previous mailbox. Shared by the sidebar switcher and
 	// the Cmd-K palette so the switch behaviour lives in one place.

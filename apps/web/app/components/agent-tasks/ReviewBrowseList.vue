@@ -16,7 +16,7 @@ import type { ReviewRow } from '~/utils/reviewRow';
  * cards (trust chips, revise box, draft options, coach panel — each card's
  * anatomy lives in ReviewBrowseCard) with multi-select bulk approve/reject.
  * Split out of review.vue so the page just switches between this and the Focus
- * card-stack flow (ReviewFocusFlow). Emits `focus` when the
+ * card-stack flow (the Answer queue). Emits `focus` when the
  * reviewer opens the focused one-task-at-a-time flow instead.
  */
 const emit = defineEmits<{ (e: 'focus'): void }>();

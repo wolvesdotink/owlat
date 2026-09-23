@@ -12,8 +12,9 @@
  *
  *   - BROWSE: the neutral "already handled" toast, NO undo countdown armed, and
  *     the row stays hidden (it really did leave the queue).
- *   - FOCUS: the same toast, no undo entry, and the flow advances to the next
- *     card WITHOUT tallying an approve in the end-state summary.
+ *   - ANSWER QUEUE CARD: the same toast, no undo entry, and the card asks the
+ *     flow to SKIP it (not complete it), so the end-state summary never
+ *     tallies an approve that did not happen.
  *
  * Both mount against the real English catalog, so the assertions are the
  * sentences a reviewer actually reads.
@@ -46,8 +47,7 @@ vi.mock('~/composables/useOrganization', () => ({
 
 import ReviewBrowseList from '../ReviewBrowseList.vue';
 import ReviewBrowseCard from '../ReviewBrowseCard.vue';
-import ReviewFocusFlow from '../ReviewFocusFlow.vue';
-import AgentTaskFlow from '../AgentTaskFlow.vue';
+import AnswerTeamCard from '~/components/answer/AnswerTeamCard.vue';
 import { queryResult } from '~/__tests__/queryStubs';
 
 const ALREADY_HANDLED = 'Already handled — this draft was approved or declined by someone else';
@@ -199,40 +199,34 @@ describe('browse list — a lost-race approve', () => {
 	});
 });
 
-describe('focus flow — a lost-race approve', () => {
-	// The shell is stubbed so its props (position / complete / can-undo) and the
-	// end-state summary slot are directly assertable.
-	const flowStub = defineComponent({
-		props: {
-			position: { type: Number, default: 0 },
-			total: { type: Number, default: 0 },
-			currentKey: { type: String, default: null },
-			complete: { type: Boolean, default: false },
-			canUndo: { type: Boolean, default: false },
-		},
-		template: '<div><slot /><div class="done"><slot name="done" /></div></div>',
-	});
-
-	function mountFocus() {
-		stubQueueGlobals([queueItem('m1'), queueItem('m2')]);
+describe('answer queue card — a lost-race approve', () => {
+	function mountCard(item = queueItem('m1')) {
+		stubQueueGlobals([item]);
 		vi.stubGlobal('useAuth', () => ({ user: ref({ id: 'me' }) }));
 		vi.stubGlobal('useOrganization', () => ({ members: ref([]), fetchMembers: vi.fn() }));
 		vi.stubGlobal('useConvexQuery', () => queryResult([]));
-		return mount(ReviewFocusFlow, {
+		const controls = {
+			complete: vi.fn(),
+			skip: vi.fn(),
+			undoSelf: vi.fn(),
+			back: vi.fn(),
+			next: vi.fn(),
+		};
+		const wrapper = mount(AnswerTeamCard, {
 			attachTo: document.body,
+			props: { entry: item as never, controls },
 			global: {
 				plugins: [createTestI18n()],
 				stubs: {
 					...passthroughStubs,
-					AgentTaskFlow: flowStub,
 					TaskCardShell: { template: '<div><slot /></div>' },
 					TaskContext: { template: '<div><slot /></div>' },
 					TaskAsk: true,
 					TaskActions: { template: '<div><slot /></div>' },
-					TaskCardRenderer: true,
 				},
 			},
 		});
+		return { wrapper, controls };
 	}
 
 	/** The `a` shortcut on the focused card — the same path the button takes. */
@@ -241,31 +235,24 @@ describe('focus flow — a lost-race approve', () => {
 		await flushPromises();
 	}
 
-	it('advances past the card without tallying an approve or an undo', async () => {
-		onApprove
-			.mockResolvedValueOnce({ ok: true, result: { success: false, reason: 'not_found' } })
-			.mockResolvedValueOnce({ ok: true, result: { success: true } });
-		const wrapper = mountFocus();
-		await flushPromises();
-		expect(wrapper.findComponent(flowStub).props('currentKey')).toBe('m1');
-
+	it('skips the card without tallying an approve or arming an undo', async () => {
+		onApprove.mockResolvedValueOnce({ ok: true, result: { success: false, reason: 'not_found' } });
+		const { wrapper, controls } = mountCard();
 		await pressApprove();
-
 		expect(toasts).toEqual([[ALREADY_HANDLED, 'info']]);
 		expect(arm).not.toHaveBeenCalled();
-		// The card is behind us — but it was never OUR approval, so no undo entry.
-		const shell = wrapper.findComponent(flowStub);
-		expect(shell.props('currentKey')).toBe('m2');
-		expect(shell.props('position')).toBe(2);
-		expect(shell.props('canUndo')).toBe(false);
+		expect(controls.skip).toHaveBeenCalledTimes(1);
+		expect(controls.complete).not.toHaveBeenCalled();
+		wrapper.unmount();
+	});
 
-		// The second card IS approved by us — the end-state counts exactly one.
+	it('completes a real approval with an outcome the end state can tally', async () => {
+		onApprove.mockResolvedValueOnce({ ok: true, result: { success: true } });
+		const { wrapper, controls } = mountCard();
 		await pressApprove();
-		expect(toasts[1]).toEqual(['Draft approved and queued for sending', undefined]);
-		expect(wrapper.findComponent(flowStub).props('complete')).toBe(true);
-		expect(wrapper.find('.done').text()).toContain('1 approved');
-		expect(wrapper.find('.done').text()).not.toContain('2 approved');
-
+		expect(toasts).toEqual([['Draft approved and queued for sending', undefined]]);
+		expect(controls.complete).toHaveBeenCalledWith('approved', undefined);
+		expect(controls.skip).not.toHaveBeenCalled();
 		wrapper.unmount();
 	});
 });

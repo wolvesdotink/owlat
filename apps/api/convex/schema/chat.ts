@@ -42,16 +42,29 @@ export const chatTables = {
 		// Inline-linked external email thread (the "Slack channel discussing an
 		// inbox conversation" feature). Channels only; DMs are not linked.
 		linkedInboxThreadId: v.optional(v.id('conversationThreads')),
+		// Why the room exists, when it is not an ordinary sidebar room. Absent on
+		// every channel and DM. 'mail_thread_discussion' marks the internal
+		// "Team discussion" bound to one Postbox thread (`linkedMailThreadId`):
+		// auto-created on the first post, never listed in the chat sidebar or the
+		// channel browser, and readable by exactly the people who can read the
+		// thread's mailbox (chat/_helpers.ts delegates its room checks to
+		// mail/permissions.ts). Such rooms carry no chatRoomMembers rows.
+		purpose: v.optional(v.literal('mail_thread_discussion')),
+		// The Postbox thread a 'mail_thread_discussion' room belongs to.
+		linkedMailThreadId: v.optional(v.id('mailThreads')),
 		// AGGREGATED — touched by messages.sendMessage / deleteMessage. Do not
 		// write from user-facing mutations directly.
 		lastMessageAt: v.number(),
 		messageCount: v.number(),
 	})
-		.index('by_kind', ['kind'])
+		// `purpose` second so the chat sidebar reads only ordinary channels
+		// (`purpose` undefined) and per-thread discussions never eat its page.
+		.index('by_kind_and_purpose', ['kind', 'purpose'])
 		.index('by_visibility', ['visibility'])
 		.index('by_last_message_at', ['lastMessageAt'])
 		.index('by_kind_and_normalized_name', ['kind', 'normalizedName'])
-		.index('by_linked_inbox_thread', ['linkedInboxThreadId']),
+		.index('by_linked_inbox_thread', ['linkedInboxThreadId'])
+		.index('by_linked_mail_thread', ['linkedMailThreadId']),
 
 	chatRoomMembers: defineTable({
 		roomId: v.id('chatRooms'),

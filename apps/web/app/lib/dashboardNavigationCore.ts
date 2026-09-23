@@ -113,12 +113,6 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 				gate: adminOnly,
 			},
 			{
-				name: 'shared.dashboardNavigation.items.inbox.updates',
-				href: '/dashboard/inbox/updates',
-				icon: 'lucide:newspaper',
-				gate: adminOnly,
-			},
-			{
 				name: 'shared.dashboardNavigation.items.inbox.codeTasks',
 				href: '/dashboard/inbox/code-tasks',
 				icon: 'lucide:code',
@@ -138,9 +132,19 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		icon: 'lucide:mailbox',
 		href: '/dashboard/postbox',
 		gate: anyFlag('postbox', 'mail.external'),
-		// Every postbox page renders its own folder rail, so the sidebar shows one
-		// flat link; these items are palette-only.
+		// The Conversations sidebar renders the inboxes themselves; these items
+		// are palette-only destinations.
 		items: [
+			{
+				name: 'shared.dashboardNavigation.items.postbox.answerQueue',
+				href: '/dashboard/answer',
+				icon: 'lucide:reply-all',
+			},
+			{
+				name: 'shared.dashboardNavigation.items.postbox.allInboxes',
+				href: '/dashboard/inboxes',
+				icon: 'lucide:inbox',
+			},
 			{
 				name: 'shared.dashboardNavigation.items.postbox.inbox',
 				href: '/dashboard/postbox/inbox',
@@ -207,6 +211,12 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		name: 'shared.dashboardNavigation.sections.send',
 		icon: 'lucide:send',
 		items: [
+			{
+				name: 'shared.dashboardNavigation.items.send.overview',
+				href: '/dashboard/marketing',
+				icon: 'lucide:chart-no-axes-column',
+				gate: flag('campaigns'),
+			},
 			{
 				name: 'shared.dashboardNavigation.items.send.campaigns',
 				href: '/dashboard/campaigns',
@@ -329,3 +339,15 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		items: PREFERENCES_ITEMS,
 	},
 ];
+
+/**
+ * Every href the core table declares. The sidebar renders core destinations as
+ * the workspace's own rows, so anything outside this set is a plugin
+ * contribution it lists separately.
+ */
+export const CORE_NAV_HREFS: ReadonlySet<string> = new Set(
+	CORE_SECTIONS.flatMap((section) => [
+		...(section.href ? [section.href] : []),
+		...section.items.map((item) => item.href),
+	])
+);

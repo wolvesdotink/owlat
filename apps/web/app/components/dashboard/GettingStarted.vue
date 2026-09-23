@@ -34,8 +34,13 @@ const props = withDefaults(
 		 * journey belongs.
 		 */
 		personalOnly?: boolean;
+		/**
+		 * Start as one slim progress row that expands into the full checklist
+		 * (Today). A deep link to a step (`?step=`) opens it expanded.
+		 */
+		compact?: boolean;
 	}>(),
-	{ isAdmin: false, personalOnly: false }
+	{ isAdmin: false, personalOnly: false, compact: false }
 );
 
 const { t } = useI18n();
@@ -191,6 +196,11 @@ const focusedStepId = computed(() =>
 	typeof route.query['step'] === 'string' ? route.query['step'] : null
 );
 
+const expanded = ref(!props.compact || focusedStepId.value !== null);
+watch(focusedStepId, (stepId) => {
+	if (stepId) expanded.value = true;
+});
+
 function stepDomId(stepId: string): string {
 	return `getting-started-step-${stepId}`;
 }
@@ -240,7 +250,50 @@ async function handleDismiss() {
 		leave-to-class="opacity-0 -translate-y-2"
 	>
 		<section
-			v-if="model.visible"
+			v-if="model.visible && !expanded"
+			class="mb-6 flex items-center gap-3 rounded-xl border border-border-subtle bg-bg-elevated px-4 py-3"
+			role="region"
+			:aria-label="t('components.dashboard.gettingStarted.title')"
+		>
+			<Icon name="lucide:list-checks" class="size-4 shrink-0 text-text-tertiary" />
+			<p class="min-w-0 flex-1 truncate text-sm text-text-secondary">
+				<span class="font-medium text-text-primary">{{
+					t('components.dashboard.gettingStarted.title')
+				}}</span>
+				·
+				{{
+					t('components.dashboard.gettingStarted.progressCount', {
+						completed: model.completedCount,
+						total: model.totalCount,
+					})
+				}}
+			</p>
+			<div class="hidden w-28 shrink-0 sm:block">
+				<UiProgressBar
+					size="sm"
+					:value="progressPercentage"
+					:aria-label="t('components.dashboard.gettingStarted.progressLabel')"
+				/>
+			</div>
+			<UiButton
+				variant="secondary"
+				size="sm"
+				class="shrink-0 whitespace-nowrap"
+				@click="expanded = true"
+			>
+				{{ t('components.dashboard.gettingStarted.continue') }}
+			</UiButton>
+			<button
+				class="rounded-lg p-1.5 text-text-tertiary transition-colors hover:bg-bg-surface hover:text-text-secondary"
+				:title="t('common.dismiss')"
+				:aria-label="t('components.dashboard.gettingStarted.dismissLabel')"
+				@click="handleDismiss"
+			>
+				<Icon name="lucide:x" class="h-4 w-4" />
+			</button>
+		</section>
+		<section
+			v-else-if="model.visible"
 			class="card mb-8"
 			role="region"
 			:aria-label="t('components.dashboard.gettingStarted.title')"

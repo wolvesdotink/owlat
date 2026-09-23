@@ -7,8 +7,9 @@
 
 import { v } from 'convex/values';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
 import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
-import { chatQuery, chatMutation } from './_helpers';
+import { chatQuery, chatMutation, loadDiscussionMailboxForSession } from './_helpers';
 import { getOrThrow } from '../_utils/errors';
 import { batchGet } from '../_utils/batchLoader';
 
@@ -71,17 +72,47 @@ export const listMyUnreadMentions = chatQuery({
 			),
 		]);
 
+		// A mention in a mail-thread discussion points at the email thread, not a
+		// chat room, and is only shown while the caller can still read that
+		// thread's mailbox (access can be revoked after the mention was written).
+		// One mailbox check per distinct discussion room on the page.
+		const discussionAccess = new Map<
+			string,
+			Awaited<ReturnType<typeof loadDiscussionMailboxForSession>>
+		>();
+
 		const result = [];
 		for (const mention of mentions) {
 			const message = messages.get(mention.messageId);
 			if (!message || message.deletedAt) continue;
 			const room = rooms.get(mention.roomId);
 			if (!room) continue;
+			let mailThread: {
+				threadId: Id<'mailThreads'>;
+				mailboxId: Id<'mailboxes'>;
+				latestMessageId: Id<'mailMessages'> | null;
+			} | null = null;
+			let roomName = room.name;
+			if (room.purpose) {
+				const key = room._id.toString();
+				if (!discussionAccess.has(key)) {
+					discussionAccess.set(key, await loadDiscussionMailboxForSession(ctx, room));
+				}
+				const access = discussionAccess.get(key);
+				if (!access) continue;
+				mailThread = {
+					threadId: access.thread._id,
+					mailboxId: access.thread.mailboxId,
+					latestMessageId: access.thread.latestMessageId ?? null,
+				};
+				roomName = access.thread.latestSubject;
+			}
 			result.push({
 				_id: mention._id,
 				roomId: mention.roomId,
-				roomName: room.name,
+				roomName,
 				roomKind: room.kind,
+				mailThread,
 				messageId: mention.messageId,
 				messagePreview: message.text.slice(0, 180),
 				mentioningMemberId: mention.mentioningMemberId,

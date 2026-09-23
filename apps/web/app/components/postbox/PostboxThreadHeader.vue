@@ -71,6 +71,8 @@ const ITEM_CLASS =
 					({{ messageCount }})
 				</span>
 			</h1>
+			<!-- Host-owned thread actions (the reader's "Discuss" toggle). -->
+			<slot name="actions" />
 			<!-- The conversation's state, made checkable. -->
 			<PostboxOverflowMenu
 				class="flex-shrink-0"

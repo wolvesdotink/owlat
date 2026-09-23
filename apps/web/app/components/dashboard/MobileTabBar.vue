@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The phone's bottom bar: Home, Mail, create, People, More.
+ * The phone's bottom bar: Today, Answer, create, Inbox, More.
  *
  * Before this, the entire mobile chrome was a hamburger, a logo and a search
  * icon — every destination and every create started by opening the drawer and
@@ -47,52 +47,52 @@ interface TabItem {
 	href: string;
 	icon: string;
 	label: string;
+	/** Things waiting (the Answer queue's size); shown as a count on the icon. */
+	badge?: number;
 }
 
+const { count: answerCount } = useAnswerQueue();
+
 /**
- * Mail goes wherever this instance's mail actually lives: the personal Postbox
- * when it is on, the shared team inbox otherwise, and the slot disappears
- * entirely on an instance with neither rather than linking to a 404.
+ * The inbox slot goes wherever this instance's mail actually lives: every
+ * inbox at once when personal mail is on, the shared team inbox otherwise, and
+ * the slot disappears on an instance with neither rather than linking to a 404.
  */
-const mailTab = computed<TabItem | null>(() => {
+const inboxTab = computed<TabItem | null>(() => {
 	const href =
 		isFeatureEnabled('postbox') || isFeatureEnabled('mail.external')
-			? '/dashboard/postbox/inbox'
+			? '/dashboard/inboxes'
 			: isFeatureEnabled('inbox')
 				? '/dashboard/inbox'
 				: null;
 	if (!href) return null;
 	return {
-		id: 'mail',
+		id: 'inbox',
 		href,
-		icon: 'lucide:mailbox',
-		label: t('components.dashboard.mobileTabBar.mail'),
+		icon: 'lucide:inbox',
+		label: t('components.dashboard.mobileTabBar.inbox'),
 	};
 });
 
-/** The slots left of the create button. */
-const leadingTabs = computed<TabItem[]>(() => {
-	const tabs: TabItem[] = [
-		{
-			id: 'home',
-			href: '/dashboard',
-			icon: 'lucide:layout-dashboard',
-			label: t('components.dashboard.mobileTabBar.home'),
-		},
-	];
-	if (mailTab.value) tabs.push(mailTab.value);
-	return tabs;
-});
-
-/** The slots right of it — "More" is a button, so it is not in this list. */
-const trailingTabs = computed<TabItem[]>(() => [
+/** Today and the Answer queue — the two places a day starts from. */
+const leadingTabs = computed<TabItem[]>(() => [
 	{
-		id: 'people',
-		href: '/dashboard/audience/contacts',
-		icon: 'lucide:users',
-		label: t('components.dashboard.mobileTabBar.people'),
+		id: 'today',
+		href: '/dashboard',
+		icon: 'lucide:sun',
+		label: t('components.dashboard.mobileTabBar.today'),
+	},
+	{
+		id: 'answer',
+		href: '/dashboard/answer',
+		icon: 'lucide:reply-all',
+		label: t('components.dashboard.mobileTabBar.answer'),
+		badge: answerCount.value,
 	},
 ]);
+
+/** The slots right of it — "More" is a button, so it is not in this list. */
+const trailingTabs = computed<TabItem[]>(() => (inboxTab.value ? [inboxTab.value] : []));
 
 /** Same rule the rail uses: the overview matches exactly, sections by prefix. */
 function isActive(href: string): boolean {
@@ -165,7 +165,15 @@ function run(action: (typeof actions.value)[number]): void {
 							:class="isActive(tab.href) ? 'text-text-primary font-medium' : 'text-text-tertiary'"
 							:aria-current="isActive(tab.href) ? 'page' : undefined"
 						>
-							<Icon :name="tab.icon" class="w-5 h-5" />
+							<span class="relative">
+								<Icon :name="tab.icon" class="w-5 h-5" />
+								<span
+									v-if="tab.badge"
+									class="absolute -right-2.5 -top-1.5 min-w-4 rounded-full bg-brand px-1 text-center text-[10px] font-semibold leading-4 text-text-inverse"
+									data-testid="mobile-tab-bar-badge"
+									>{{ tab.badge > 99 ? '99+' : tab.badge }}</span
+								>
+							</span>
 							{{ tab.label }}
 						</NuxtLink>
 					</li>

@@ -21,7 +21,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { reactive } from 'vue';
 import UiSkeleton from '@owlat/ui/components/ui/Skeleton.vue';
-import { dashboardShellStubs, installNuxtStubs } from '~/__tests__/a11y';
+import { dashboardShellStubs, installNuxtStubs, shellComponents } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import DashboardLayout from '../dashboard.vue';
 
@@ -78,6 +78,13 @@ function mountLayout(pending = false): VueWrapper {
 		...authStub(pending),
 		useRoute: () => route,
 		useBreadcrumbs: () => ({ breadcrumbs: ref([]), setBreadcrumbs: vi.fn() }),
+		// Conversations: the workspace whose rail holds Today (the "home" row).
+		useSidebarContext: () => ({
+			showToggle: ref(true),
+			activeContext: ref('inbox'),
+			sidebarSections: ref([]),
+			switchContext: vi.fn(),
+		}),
 	});
 	return mount(DashboardLayout, {
 		attachTo: document.body,
@@ -86,7 +93,7 @@ function mountLayout(pending = false): VueWrapper {
 			plugins: [createTestI18n()],
 			// Real, not stubbed: the pending row IS a skeleton, so stubbing it
 			// away would leave nothing to assert about.
-			components: { UiSkeleton },
+			components: { UiSkeleton, ...shellComponents },
 			stubs: {
 				DesktopTitlebar: true,
 				DashboardShellHeader: true,
@@ -97,6 +104,9 @@ function mountLayout(pending = false): VueWrapper {
 				Icon: true,
 				UiBadge: true,
 				UiThemeToggle: true,
+				UiDropdownMenu: true,
+				UiDropdownMenuItem: true,
+				UiDropdownDivider: true,
 				NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 			},
 		},
@@ -104,7 +114,7 @@ function mountLayout(pending = false): VueWrapper {
 }
 
 /**
- * The identity trigger: the last button in the rail, below the theme toggle.
+ * The identity trigger: the account button in the rail's footer.
  * Matched by content rather than position — a skeleton while pending, the
  * user's initials once resolved — so a new footer row cannot silently retarget
  * these assertions.
@@ -168,8 +178,8 @@ describe('dashboard sidebar — one accent', () => {
 	it('selects with the neutral surface ladder, not a terracotta pill', () => {
 		const wrapper = mountLayout(false);
 
-		// The Home link is active at /dashboard; it is the widest selection
-		// recipe in the rail and used to be `bg-brand-subtle text-brand`.
+		// Today is active at /dashboard; it is the widest selection recipe in the
+		// rail and the old Home link used to be `bg-brand-subtle text-brand`.
 		const home = document.querySelector('aside nav a[href="/dashboard"]');
 		expect(home?.className).toContain('bg-(--surface-2-selected)');
 		expect(home?.className).toContain('text-text-primary');

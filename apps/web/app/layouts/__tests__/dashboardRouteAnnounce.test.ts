@@ -18,7 +18,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick, reactive } from 'vue';
-import { dashboardShellStubs, installNuxtStubs } from '~/__tests__/a11y';
+import { shellComponents, dashboardShellStubs, installNuxtStubs } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useAnnounce } from '~/composables/useAnnounce';
 import AppLiveRegion from '~/components/AppLiveRegion.vue';
@@ -72,7 +72,7 @@ function mountLayout(): VueWrapper {
 		global: {
 			plugins: [createTestI18n()],
 			mocks: { resolveComponent: (name: string) => name },
-			components: { AppLiveRegion },
+			components: { AppLiveRegion, ...shellComponents },
 			// Everything the shell pulls in that is not the subject here. The rail
 			// links are NOT stubbed: one of them is the focus case below.
 			stubs: {

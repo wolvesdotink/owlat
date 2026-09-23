@@ -73,6 +73,7 @@ export type PostboxReaderMessage = {
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { extractEmailAddress } from '~/utils/emailAddress';
+import { discussionCounterpartyLabel } from '~/utils/postboxThreadDiscussion';
 import { deriveReplyRisk, senderRiskInputOf, type ReplyRisk } from '~/utils/senderAuth';
 import { formatCompactRelativeTime } from '~/utils/formatters';
 import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
@@ -529,6 +530,14 @@ const threadCounterpart = computed(() => {
 	return '';
 });
 
+// Team discussion (chat/mailDiscussion.ts): the internal panel beside (xl) or
+// below the conversation, and whom its composer is NOT writing to.
+const { articleClass: discussionArticleClass } = usePostboxThreadDiscussionPanel();
+const discussionThreadId = computed(() => readerThread.value?._id ?? props.message.threadId);
+const discussionCounterparty = computed(() =>
+	discussionCounterpartyLabel(allMessages.value, ownAddresses.value)
+);
+
 // The correspondent's PUBLIC sealing-key status, read once per thread (E5). The
 // key-change BANNER stays here — it is an alarm — while the key panel travels
 // into that sender's trust chip popover, and `keyChanged` turns the same chip
@@ -694,7 +703,7 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 </script>
 
 <template>
-	<article class="pbx-reader-article p-6 max-w-4xl mx-auto">
+	<article class="pbx-reader-article p-6 max-w-4xl mx-auto" :class="discussionArticleClass">
 		<PostboxThreadHeader
 			:subject="message.subject"
 			:message-count="allMessages.length"
@@ -708,7 +717,11 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			@toggle-mute="toggleOpenThreadMute"
 			@toggle-alert="toggleOpenThreadAlert"
 			@mark-read="markOpenThreadRead"
-		/>
+		>
+			<template #actions>
+				<PostboxThreadDiscussionToggle v-if="discussionThreadId" :thread-id="discussionThreadId" />
+			</template>
+		</PostboxThreadHeader>
 
 		<!-- The same conversation, seen from the other surface (idea 31). Renders
 		     only when this message ALSO exists in the Team Inbox and the viewer is
@@ -820,6 +833,13 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			     nothing is ever applied without the explicit click. -->
 			<PostboxTriageSuggestion v-if="latestMessage" :message-id="latestMessage._id" />
 		</div>
+
+		<PostboxThreadDiscussion
+			v-if="discussionThreadId"
+			:thread-id="discussionThreadId"
+			:mailbox-id="message.mailboxId"
+			:counterparty-label="discussionCounterparty"
+		/>
 
 		<!-- One-time-per-thread confirm before replying to a message that failed
 		     sender authentication (flag `senderAuthBadges`). -->

@@ -264,7 +264,7 @@
 				"sendReply": "Send Reply",
 				"subjectPlaceholder": "Subject (optional)",
 				"subtitle": "Agent-generated drafts and escalations waiting for your action.",
-				"title": "Review Queue",
+				"title": "Team drafts to review",
 				"toasts": {
 					"draftApproved": "Draft approved and queued for sending",
 					"draftRejected": "Draft rejected",
@@ -799,6 +799,29 @@
 				"openRate": "Open",
 				"sparklineLabel": "Variant open-rate trend for {name}",
 				"viewCampaign": "View campaign"
+			},
+			"funnel": {
+				"ariaLabel": "Send funnel",
+				"ofPrevious": "{percent} of previous",
+				"stepTitle": "{step}: {count} of {previous} ({previousStep})",
+				"steps": {
+					"clicked": "Clicked",
+					"delivered": "Delivered",
+					"opened": "Opened",
+					"sent": "Sent",
+					"unsubscribed": "Unsubscribed"
+				}
+			},
+			"reportHeadline": {
+				"aboveClick": "{open} opened and {click} clicked — above your average click rate.",
+				"aboveOpen": "{open} opened and {click} clicked — above your average open rate.",
+				"belowClick": "{open} opened and {click} clicked — below your average click rate.",
+				"belowOpen": "{open} opened and {click} clicked — below your average open rate.",
+				"bestClick": "{open} opened and {click} clicked — the best click rate in your last {count} campaigns.",
+				"bestOpen": "{open} opened and {click} clicked — the best open rate in your last {count} campaigns.",
+				"highUnsubscribe": "{open} opened and {click} clicked, but unsubscribes ran well above your average.",
+				"none": "{open} opened and {click} clicked.",
+				"onPar": "{open} opened and {click} clicked — in line with your average."
 			},
 			"steps": {
 				"contentStep": {
@@ -1922,7 +1945,8 @@
 				"progressCount": "{completed} of {total} done",
 				"progressLabel": "Getting started progress",
 				"subtitle": "Everything left to do to get Owlat working for you — in one place.",
-				"title": "Getting started"
+				"title": "Getting started",
+				"continue": "Continue setup"
 			},
 			"gettingStartedResources": {
 				"convexCta": "Launch dashboard ↗",
@@ -1954,7 +1978,10 @@
 				"label": "Primary navigation",
 				"mail": "Mail",
 				"more": "More",
-				"people": "People"
+				"people": "People",
+				"today": "Today",
+				"answer": "Answer",
+				"inbox": "Inbox"
 			},
 			"quickCreateMenu": {
 				"more": "More create options"
@@ -3312,6 +3339,69 @@
 				"nameRequired": "Template name is required"
 			}
 		},
+		"marketing": {
+			"audience": {
+				"bounceRate": "Bounce rate {rate}",
+				"complaintRate": "Complaint rate {rate}",
+				"healthIssue": "Sending needs attention",
+				"healthOk": "Sending setup looks healthy",
+				"limit": "Keep under {limit}",
+				"newContacts": "New contacts per day",
+				"newContactsAria": "New contacts per day, last 30 days",
+				"newContactsTotal": "{count} in 30 days",
+				"noRates": "No bounce or complaint data yet: nothing was sent in the last 30 days.",
+				"truncated": "Very busy intake: the oldest days may undercount."
+			},
+			"headline": {
+				"aboveClick": "Above your average click rate.",
+				"aboveOpen": "Above your average open rate.",
+				"belowClick": "Below your average click rate.",
+				"belowOpen": "Below your average open rate.",
+				"bestClick": "Best click rate in {count} campaigns.",
+				"bestOpen": "Best open rate in {count} campaigns.",
+				"highUnsubscribe": "Unsubscribes ran well above your average.",
+				"onPar": "In line with your average."
+			},
+			"latest": {
+				"clicked": "Clicked",
+				"delivered": "Delivered",
+				"opened": "Opened",
+				"sending": "Sending",
+				"sendingProgress": "Sending · {percent}",
+				"sentLine": "Sent {date} · {delivered} delivered",
+				"unsubscribed": "Unsubscribed",
+				"vsAverage": "{points} pts vs avg"
+			},
+			"nextUp": {
+				"drafts": "Drafts",
+				"draftsEmpty": "No drafts in progress.",
+				"edited": "Edited {when}",
+				"needsYou": "Needs you",
+				"needsYouEmpty": "Nothing is waiting on a decision.",
+				"noTime": "No send time set",
+				"reviewBefore": "Review before {date}",
+				"scheduled": "Scheduled",
+				"scheduledEmpty": "Nothing scheduled.",
+				"showAllDrafts": "All drafts",
+				"showAllScheduled": "Show all {count} scheduled"
+			},
+			"period": {
+				"comparisonNote": "Compared with the 30 days before. Sparklines show the last 12 weeks.",
+				"percentChange": "{percent} vs prior 30 days",
+				"pointsChange": "{points} pts vs prior 30 days",
+				"sparkLabel": "{metric}, week by week over the last 12 weeks",
+				"tiles": {
+					"bounceRate": "Bounce rate",
+					"clickRate": "Click rate",
+					"delivered": "Delivered",
+					"openRate": "Open rate",
+					"unsubscribeRate": "Unsubscribe rate"
+				}
+			},
+			"rateBars": {
+				"average": "Dashed line: your average, {value}"
+			}
+		},
 		"mediaPickerModal": {
 			"browseFiles": "Browse files",
 			"defaultTitle": "Select Image",
@@ -3439,7 +3529,9 @@
 				"sendAs": "Send as",
 				"subject": "Subject",
 				"switchToAll": "switch to all",
-				"to": "To"
+				"to": "To",
+				"leavesTeamInbox": "This conversation came in to {team}. Replying from your own address takes it out of the shared inbox.",
+				"switchBack": "Reply as {team} instead"
 			},
 			"postboxComposerFollowUp": {
 				"armedTitle": "Reminder if no reply by {datetime} — click to remove",
@@ -3452,7 +3544,8 @@
 				"sending": "Sending…",
 				"signature": "Signature",
 				"uploadingTitle": "Waiting for attachments to finish uploading…",
-				"previewAsSent": "Preview as sent"
+				"previewAsSent": "Preview as sent",
+				"sendAs": "Send as {name}"
 			},
 			"postboxComposerGuards": {
 				"alignment": {
@@ -3622,8 +3715,8 @@
 				"noCustomFolders": "No custom folders",
 				"noLabels": "No labels yet",
 				"renameFolder": "Rename folder",
-				"replyQueue": "Reply Queue",
-				"replyQueueAriaLabel": "Reply Queue, {count}",
+				"replyQueue": "Answer queue",
+				"replyQueueAriaLabel": "Answer queue, {count}",
 				"snoozed": "Snoozed",
 				"subscriptions": "Subscriptions",
 				"pinnedSearchesHeading": "Pinned searches",
@@ -3958,7 +4051,7 @@
 					}
 				},
 				"screener": {
-					"hint": "When on, mail from someone you've never corresponded with is held out of the Reply Queue until you accept the sender — their mail still lands in the inbox. Keeps triage focused on people you know. Off by default.",
+					"hint": "When on, mail from someone you've never corresponded with is held out of the Answer queue until you accept the sender — their mail still lands in the inbox. Keeps triage focused on people you know. Off by default.",
 					"label": "Screen first-time senders"
 				}
 			},
@@ -4174,7 +4267,7 @@
 			"postboxSenderControls": {
 				"accept": "Accept sender",
 				"acceptOperation": "Accept sender",
-				"acceptTitle": "Accept this first-time sender into the Reply Queue",
+				"acceptTitle": "Accept this first-time sender into the Answer queue",
 				"markVip": "Mark sender as VIP",
 				"removeVip": "Remove VIP",
 				"vipOperation": "VIP"
@@ -4787,6 +4880,25 @@
 				"toastDeleting": "Deleting this mailbox and its mail.",
 				"toastDisconnected": "Mailbox disconnected.",
 				"updateCredentials": "Update password"
+			},
+			"threadDiscussion": {
+				"close": "Hide discussion",
+				"composerLabel": "Message to the team",
+				"count": "{count} in discussion",
+				"empty": "No discussion yet — ask a teammate about this email.",
+				"hint": "Enter to send · Shift+Enter for a new line",
+				"internal": "internal",
+				"markReadOperation": "Mark the team discussion read",
+				"placeholder": "Write to the team… (not sent to {counterparty})",
+				"placeholderNoCounterparty": "Write to the team… (not sent to the sender)",
+				"regionLabel": "Team discussion about this email",
+				"send": "Send",
+				"sendOperation": "Post to the team discussion",
+				"title": "Team discussion",
+				"toggle": "Discuss",
+				"toggleHide": "Hide the team discussion",
+				"toggleShow": "Show the team discussion",
+				"unknownAuthor": "Former member"
 			}
 		},
 		"preferences": {
@@ -5381,6 +5493,180 @@
 				"failed": "This panel ran into a problem and was hidden to keep the rest of the page working.",
 				"loading": "Loading {label}…",
 				"tryAgain": "Try again"
+			}
+		},
+		"shell": {
+			"status": {
+				"draftReady": "Draft ready",
+				"needsYou": "Needs you",
+				"needsReview": "Needs review",
+				"mentioned": "Mentioned you",
+				"working": "Agent drafting",
+				"updated": "Updated",
+				"resultsIn": "Results in",
+				"running": "Running",
+				"scheduled": "Scheduled",
+				"waiting": "Waiting on them"
+			},
+			"noSubject": "(no subject)",
+			"teamInbox": "Team inbox",
+			"inboxGroup": {
+				"expand": "Show conversations in {name}",
+				"collapse": "Hide conversations in {name}",
+				"unread": "{count} unread",
+				"compose": "New email from {name}",
+				"moreUnread": "one more unread | {count} more unread",
+				"showMore": "Show more"
+			},
+			"chat": {
+				"title": "Chat",
+				"all": "Open chat",
+				"allWithUnread": "{count} new",
+				"empty": "Nothing new in chat."
+			},
+			"options": {
+				"label": "Sidebar options",
+				"perInbox": "Conversations per inbox",
+				"fewer": "Show fewer",
+				"more": "Show more",
+				"order": "Order",
+				"sortRecent": "Most recent first",
+				"sortPriority": "Most urgent first"
+			},
+			"nav": {
+				"today": "Today",
+				"answer": "Answer queue",
+				"allInboxes": "All inboxes",
+				"inboxes": "Inboxes",
+				"more": "More",
+				"answerCount": "one waiting for an answer | {count} waiting for an answer"
+			},
+			"marketing": {
+				"overview": "Overview",
+				"campaigns": "Campaigns",
+				"newCampaign": "New campaign",
+				"allCampaigns": "All campaigns",
+				"automations": "Automations",
+				"allAutomations": "All automations",
+				"audience": "Audience",
+				"templates": "Templates",
+				"draft": "Draft",
+				"deliveryHealthy": "Delivery healthy",
+				"deliveryNeedsAttention": "Delivery needs attention"
+			},
+			"footer": {
+				"settings": "Settings",
+				"assistant": "Assistant",
+				"shortcuts": "Keyboard shortcuts"
+			},
+			"settings": {
+				"title": "Settings",
+				"back": "Back",
+				"search": "Search settings",
+				"results": "Matching settings",
+				"noResults": "No setting matches.",
+				"workspace": "Workspace"
+			}
+		},
+		"today": {
+			"answer": {
+				"title": "one email needs an answer from you | {count} emails need an answer from you",
+				"cta": "Review answer queue",
+				"drafts": "one with a draft ready | {count} with drafts ready",
+				"mail": "one email | {count} emails",
+				"team": "one team draft | {count} team drafts",
+				"mentions": "one mention | {count} mentions",
+				"minutes": "about a minute | about {count} minutes",
+				"clearTitle": "Nothing needs an answer",
+				"clearBody": "New questions land in the Answer queue as they arrive.",
+				"needsTitle": "Needs an answer",
+				"allInQueue": "All {count} in the queue",
+				"draftReady": "draft ready",
+				"mention": "mention",
+				"mentionTitle": "#{room}: {preview}"
+			},
+			"changed": {
+				"title": "What changed",
+				"subtitle": "in conversations you already know",
+				"newFrom": "One new message from {name}: | {count} new messages, latest from {name}:",
+				"more": "and one more conversation. | and {count} more conversations."
+			},
+			"openInboxes": "Open all inboxes",
+			"updates": {
+				"title": "Updates",
+				"subtitle": "no reply needed",
+				"keysMove": "move",
+				"worth": "Worth knowing",
+				"also": "Also arrived",
+				"empty": "Nothing new that needs no reply. Updates from people and services show up here.",
+				"more": "One more update is waiting. | {count} more updates are waiting."
+			},
+			"filed": {
+				"title": "Filed away:",
+				"newsletter": "one newsletter | {count} newsletters",
+				"notification": "one notification | {count} notifications",
+				"receipt": "one receipt | {count} receipts",
+				"promotion": "one promotion | {count} promotions",
+				"spam": "one spam caught | {count} spam caught",
+				"reassure": "None of these need a reply."
+			},
+			"line": {
+				"done": "Done",
+				"replyAnyway": "Reply anyway"
+			},
+			"source": {
+				"one": "Source: email from {from}, “{subject}”",
+				"many": "Sources: {count} emails, first “{subject}”",
+				"open": "open",
+				"fullThread": "full conversation"
+			},
+			"peek": {
+				"label": "Email preview",
+				"back": "Back to Today",
+				"position": "Email {index} of {total}",
+				"previous": "Previous email",
+				"next": "Next email",
+				"gone": "This email is no longer available here. It may have been moved or deleted.",
+				"done": "Done",
+				"openThread": "Open conversation",
+				"markReadOperation": "Mark as read"
+			}
+		},
+		"answer": {
+			"filter": {
+				"label": "Show answers from",
+				"all": "All"
+			},
+			"band": {
+				"answeringAs": "Answering as {name}",
+				"replyingIn": "Replying in #{room}",
+				"teamDetail": "replies go out from the team inbox address",
+				"chatDetail": "internal, not sent by email",
+				"followUp": "follow-up",
+				"draftReady": "draft ready",
+				"question": "needs your input",
+				"needsReply": "needs a reply",
+				"agentDraft": "agent draft · review",
+				"escalation": "escalated to you",
+				"mention": "mention"
+			},
+			"mention": {
+				"reply": "Reply in chat",
+				"markRead": "Mark read",
+				"markReadOperation": "Mark mention read"
+			},
+			"empty": {
+				"title": "Nothing needs an answer",
+				"body": "New questions show up here as they arrive, from every inbox you read."
+			},
+			"backToToday": "Back to Today",
+			"done": {
+				"title": "All caught up",
+				"summary": "{summary} this session.",
+				"body": "Today now starts fresh from here."
+			},
+			"mail": {
+				"writeOwn": "Write my own"
 			}
 		}
 	},
@@ -8842,10 +9128,10 @@
 				"listAriaLabel": "Team inbox threads",
 				"loadMore": "Load More",
 				"pageTitle": "Team Inbox — Owlat",
-				"reviewQueue": "Review Queue",
+				"reviewQueue": "Review drafts",
 				"snoozeThreadOperation": "Snooze thread",
 				"subtitle": "Customer conversations your team handles together.",
-				"title": "Team Inbox",
+				"title": "Team inbox",
 				"undo": {
 					"assigned": "Assigned",
 					"assignedTo": "Assigned to {name}",
@@ -9124,6 +9410,38 @@
 				"title": "Knowledge Graph"
 			}
 		},
+		"marketing": {
+			"errorMessage": "Something went wrong loading your campaign numbers. Try again in a moment.",
+			"errorTitle": "Couldn't load the overview",
+			"firstRun": {
+				"description": "Once your first campaign goes out, this page shows how it did against your average and how all your campaigns are trending. Until then, start with a draft below.",
+				"title": "How your campaigns will show up here"
+			},
+			"latest": {
+				"subtitle": "Compared with your average over the last {count} sent campaigns",
+				"title": "Latest campaigns"
+			},
+			"newCampaign": "New campaign",
+			"nextUp": {
+				"errorTitle": "Couldn't load what's next",
+				"subtitle": "What needs a decision, then what's queued",
+				"title": "Next up"
+			},
+			"pageTitle": "Marketing overview — Owlat",
+			"period": {
+				"audience": "Audience & sending",
+				"byCampaignNote": "Last 10 sent campaigns, oldest on the left. Dashed line: average.",
+				"clickRateByCampaign": "Click rate, campaign by campaign",
+				"openRateByCampaign": "Open rate, campaign by campaign",
+				"opensPerDay": "Opens per day (all email)",
+				"opensPerDayNote": "Campaigns and transactional email together; the daily totals don't separate them.",
+				"sameOrderNote": "Same campaigns, same order.",
+				"subtitle": "{campaigns} campaigns · {delivered} emails delivered",
+				"title": "All campaigns, last 30 days"
+			},
+			"title": "Marketing overview",
+			"todoChip": "{count} to do"
+		},
 		"postbox": {
 			"contacts": {
 				"addContact": "Add contact",
@@ -9240,7 +9558,7 @@
 				"addMailAccount": "Add mail account",
 				"noMailbox": "No mailbox yet",
 				"noMailboxHint": "Provision your first personal mailbox to start receiving mail.",
-				"pageTitle": "Reply Queue — Owlat"
+				"pageTitle": "Answer queue — Owlat"
 			},
 			"search": {
 				"backToResults": "Results",
@@ -9506,10 +9824,14 @@
 				"noMailboxes": "No mailboxes yet. Add your first account to start receiving mail.",
 				"pageTitle": "Preferences — Owlat",
 				"renameIntro": "Display name for {address}. The address itself can't be changed.",
-				"renameMailbox": "Rename mailbox",
+				"renameMailbox": "Name and colour",
 				"renameOperation": "Rename mailbox",
 				"subtitle": "How Owlat looks, reads and sends for you.",
-				"teamManage": "Team · manage"
+				"teamManage": "Team · manage",
+				"colour": "Colour",
+				"colourAutomatic": "Automatic",
+				"colourSlot": "Colour {n}",
+				"colourHelp": "The chip this inbox wears in the sidebar, on Today, in the Answer queue and next to Send — always together with its name."
 			},
 			"members": {
 				"detail": {
@@ -10133,6 +10455,63 @@
 			"loading": "Loading visualizations...",
 			"pageTitle": "Visualizations — Owlat",
 			"title": "Visualizations"
+		},
+		"today": {
+			"pageTitle": "Today",
+			"greeting": {
+				"morning": "Good morning",
+				"morningNamed": "Good morning, {name}",
+				"afternoon": "Good afternoon",
+				"afternoonNamed": "Good afternoon, {name}",
+				"evening": "Good evening",
+				"eveningNamed": "Good evening, {name}"
+			},
+			"since": {
+				"label": "Since you last looked ({when}):",
+				"fallback": "In the last 24 hours:",
+				"newMail": "no new email | one new email | {count} new emails",
+				"newMailCapped": "more than {count} new emails",
+				"moved": "one conversation you follow moved | {count} conversations you follow moved",
+				"mentions": "one chat mention | {count} chat mentions"
+			},
+			"markAllSeen": "Mark all as seen",
+			"markedSeen": "Marked as seen. Today starts fresh from here.",
+			"replyRequested": "The agent is drafting a reply. It will wait in the Answer queue.",
+			"openQueue": "Open queue",
+			"deliveryAlert": "Mail delivery needs attention.",
+			"openDelivery": "Open delivery",
+			"operations": {
+				"done": "Mark as done",
+				"replyAnyway": "Ask for a reply",
+				"markSeen": "Mark as seen"
+			}
+		},
+		"answer": {
+			"pageTitle": "Answer queue"
+		},
+		"inboxes": {
+			"pageTitle": "All inboxes",
+			"title": "All inboxes",
+			"subtitle": "Every conversation from the one inbox you read | Every conversation from the {count} inboxes you read",
+			"filterLabel": "Filter conversations",
+			"allInboxes": "All",
+			"show": {
+				"all": "Everything",
+				"unread": "Unread",
+				"needs": "Needs you"
+			},
+			"clearCategory": "Show every category",
+			"category": {
+				"newsletter": "Newsletters",
+				"notification": "Notifications",
+				"receipt": "Receipts",
+				"promotion": "Promotions",
+				"spam": "Spam",
+				"person": "From people",
+				"other": "Other"
+			},
+			"empty": "No conversations match these filters.",
+			"footnote": "Shows the latest {count} conversations of each inbox. Open an inbox for everything, including sent, archive and search."
 		}
 	},
 	"desktop": {
@@ -11208,10 +11587,14 @@
 				"audience": "Audience",
 				"automations": "Automations",
 				"campaigns": "Campaigns",
-				"dashboard": "Dashboard",
+				"dashboard": "Today",
 				"delivery": "Delivery",
+				"marketing": "Marketing",
 				"preferences": "Preferences",
-				"send": "Send"
+				"send": "Send",
+				"answer": "Answer queue",
+				"inboxes": "All inboxes",
+				"teamInbox": "Team inbox"
 			},
 			"subsections": {
 				"instance": "Instance",
@@ -11519,7 +11902,7 @@
 					"allThreads": "All Threads",
 					"codeTasks": "Code Tasks",
 					"quarantine": "Quarantine",
-					"reviewQueue": "Review Queue",
+					"reviewQueue": "Review drafts",
 					"updates": "Updates"
 				},
 				"knowledge": {
@@ -11532,13 +11915,16 @@
 					"preferences": "Preferences",
 					"sent": "Sent",
 					"spam": "Spam",
-					"trash": "Trash"
+					"trash": "Trash",
+					"answerQueue": "Answer queue",
+					"allInboxes": "All inboxes"
 				},
 				"send": {
 					"automations": "Automations",
 					"campaigns": "Campaigns",
 					"templatesAndBlocks": "Templates & blocks",
-					"transactional": "Transactional"
+					"transactional": "Transactional",
+					"overview": "Marketing overview"
 				}
 			},
 			"sections": {
@@ -11547,9 +11933,9 @@
 				"audience": "Audience",
 				"chat": "Chat",
 				"customers": "Customers",
-				"inbox": "Team Inbox",
+				"inbox": "Team inbox",
 				"knowledge": "Knowledge",
-				"postbox": "Mail",
+				"postbox": "Inboxes",
 				"preferences": "Preferences",
 				"send": "Send"
 			}
@@ -13430,7 +13816,9 @@
 				"toggleRead": "Toggle read",
 				"toggleSidebar": "Hide / show sidebar",
 				"toggleTodayBrowse": "Toggle Today / Browse (inbox)",
-				"undoTriage": "Undo last triage"
+				"undoTriage": "Undo last triage",
+				"goToAnswer": "Go to the Answer queue",
+				"goToMarketing": "Go to Marketing"
 			}
 		},
 		"signatureBadge": {
@@ -15117,7 +15505,7 @@
 			},
 			"collapseSidebar": "Collapse sidebar",
 			"contexts": {
-				"inbox": "Inbox",
+				"inbox": "Conversations",
 				"marketing": "Marketing"
 			},
 			"dashboardTooltip": "Dashboard",

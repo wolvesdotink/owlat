@@ -5,15 +5,12 @@
 
 import { v } from 'convex/values';
 import { internalQuery, internalMutation } from '../_generated/server';
-import { internal } from '../_generated/api';
 import {
 	getMutationContext,
 	getUserIdFromSession,
 	requireOrgPermission,
 	hasPermission,
 } from '../lib/sessionOrganization';
-import { isFeatureEnabled } from '../lib/featureFlags';
-import { rateLimiter } from '../rateLimiter';
 import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import {
 	chatQuery,
@@ -22,14 +19,13 @@ import {
 	assertCanWriteRoom,
 	getMembership,
 	getRoomOrThrow,
+	isMailThreadDiscussion,
 	loadProfileSummary,
-	parseMentionHandles,
 	requireMessageText,
-	isAssistantInvoked,
 	ASSISTANT_AUTHOR_ID,
 	type ProfileSummary,
 } from './_helpers';
-import { resolveMentionsToMemberIds } from './mentions';
+import { insertRoomMessage } from './messageInsert';
 import { isChatAttachment } from './attachmentAccess';
 import {
 	assistantToolCallValidator,
@@ -110,12 +106,8 @@ export const listMessages = chatQuery({
 /**
  * Send a chat message into a room. Caller must be a member.
  *
- * Side effects:
- *  - Inserts a chatMessages row
- *  - Inserts a chatMentions row per resolved @-mention (best-effort: handles
- *    that can't be resolved to a known userProfile are silently dropped)
- *  - Bumps chatRooms.lastMessageAt / messageCount
- *  - Updates the sender's chatRoomMembers.lastReadAt
+ * Side effects live in `messageInsert.insertRoomMessage` (mentions, room
+ * aggregates, the sender's lastReadAt, the @assistant reply).
  */
 export const sendMessage = chatMutation({
 	args: {
@@ -142,93 +134,15 @@ export const sendMessage = chatMutation({
 			}
 		}
 
-		// Resolve @mentions to known userProfiles. Unknown handles are dropped
-		// silently; they remain in the message text but don't generate a
-		// chatMentions row (and thus don't notify anyone).
-		//
-		// Match logic: a handle like "@alice.smith" matches a profile whose
-		// email prefix or slugified name equals "alice.smith". userProfiles is
-		// bounded (one row per org member), so a single .take(500) scan is
-		// cheap and acceptable here.
-		const resolvedMentions = await resolveMentionsToMemberIds(ctx, parseMentionHandles(text));
-
-		// Only mention users who are members of THIS room. Without this filter an
-		// @mention in a private channel or DM would write a chatMentions row for a
-		// non-member, leaking a preview of the message (and the room name) to
-		// someone with no access to the room via `mentions.listMyUnreadMentions`.
-		const uniqueMentions: string[] = [];
-		for (const memberId of resolvedMentions) {
-			const membershipOfMentioned = await getMembership(ctx, args.roomId, memberId);
-			if (membershipOfMentioned) uniqueMentions.push(memberId);
-		}
-
-		const now = Date.now();
-		const messageId = await ctx.db.insert('chatMessages', {
-			roomId: args.roomId,
+		// Mentions (resolved against userProfiles, filtered to room members), the
+		// room aggregates, the sender's read marker and the @assistant hand-off.
+		return await insertRoomMessage(ctx, {
+			room,
 			authorId: userId,
 			text,
-			mentions: uniqueMentions.length > 0 ? uniqueMentions : undefined,
-			attachmentIds:
-				args.attachmentIds && args.attachmentIds.length > 0 ? args.attachmentIds : undefined,
-			createdAt: now,
+			attachmentIds: args.attachmentIds,
+			authorMembership: membership,
 		});
-
-		for (const mentionedMemberId of uniqueMentions) {
-			if (mentionedMemberId === userId) continue; // never notify self
-			await ctx.db.insert('chatMentions', {
-				messageId,
-				roomId: args.roomId,
-				mentionedMemberId,
-				mentioningMemberId: userId,
-				createdAt: now,
-			});
-		}
-
-		// AGGREGATED: the messages module is the only writer of these fields.
-		await ctx.db.patch(args.roomId, {
-			lastMessageAt: now,
-			messageCount: (room.messageCount ?? 0) + 1,
-			updatedAt: now,
-		});
-
-		// Sender just read their own message.
-		await ctx.db.patch(membership._id, { lastReadAt: now });
-
-		// @assistant — when the reserved handle is used and the AI assistant feature
-		// is on, post a streaming AI reply visible to the whole room and let the
-		// runner fill it in. Soft-checked (no throw): if the feature is off the
-		// human message still posts normally, the @assistant just goes unanswered.
-		//
-		// Each turn is a capable-tier streaming LLM call plus up to 8 tool steps
-		// (some of which fire more capable-tier calls), so a scripted @assistant
-		// loop could drain the self-hoster's LLM budget. Rate-limit per user the
-		// same way the personal-assistant path does — but soft-skip on limit: the
-		// human message still posts, only the assistant reply is withheld.
-		if (isAssistantInvoked(text) && (await isFeatureEnabled(ctx, 'ai.assistant'))) {
-			const rl = await rateLimiter.limit(ctx, 'assistantChatPerUser', { key: userId });
-			if (rl.ok) {
-				const assistantMessageId = await ctx.db.insert('chatMessages', {
-					roomId: args.roomId,
-					authorId: ASSISTANT_AUTHOR_ID,
-					text: '',
-					aiStatus: 'streaming',
-					aiPromptMessageId: messageId,
-					createdAt: now + 1,
-				});
-				await ctx.db.patch(args.roomId, {
-					lastMessageAt: now + 1,
-					messageCount: (room.messageCount ?? 0) + 2,
-					updatedAt: now + 1,
-				});
-				await ctx.scheduler.runAfter(0, internal.assistant.runner.runForChat, {
-					roomId: args.roomId,
-					assistantMessageId,
-					promptMessageId: messageId,
-				});
-			}
-		}
-
-		return messageId;
 	},
 });
 
@@ -267,6 +181,12 @@ export const deleteMessage = chatMutation({
 			throwNotFound('Message');
 		}
 		if (message.authorId !== userId) {
+			// A mail-thread discussion has no room admins, and chat:manage is not
+			// mailbox access: only the author may remove their own message there.
+			const room = await ctx.db.get(message.roomId);
+			if (room && isMailThreadDiscussion(room)) {
+				throwForbidden('Only the author can delete this message');
+			}
 			// Not your message — must be admin in this room OR org chat:manage.
 			if (!hasPermission(role, 'chat:manage')) {
 				const membership = await getMembership(ctx, message.roomId, userId);

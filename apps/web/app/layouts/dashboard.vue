@@ -1,14 +1,10 @@
 <script setup lang="ts">
-import { logError } from '~/lib/runtimeLog';
 import { announcedPageLabel, shouldMoveFocusToMain } from '~/utils/liveAnnounce';
-import type { NavigationSection } from '~/composables/useDashboardNavigation';
 import { useSectionNavigation } from '~/composables/useSectionNavigation';
+import { CORE_NAV_HREFS } from '~/lib/dashboardNavigationCore';
 
 const { t } = useI18n();
-const { user, signOut, isPending } = useAuth();
-const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const route = useRoute();
-const router = useRouter();
 
 // Initialize keyboard shortcuts
 const { registerNavigationShortcuts } = useKeyboardShortcuts();
@@ -27,13 +23,11 @@ const {
 	effectiveCollapsed: preferredCollapsed,
 	effectiveHidden,
 	isPeeking,
-	sectionStates,
 	focusArea,
 	isFocusPinned,
 	setRoutePath,
 	toggleCollapsed,
 	toggleHidden,
-	toggleSection,
 	openPeek,
 	closePeek,
 	setDesktopViewport,
@@ -47,18 +41,18 @@ const showSectionNavigation = computed(() => !!activeSection.value && !showAppNa
 const sectionNavigationTarget = ref<HTMLElement | null>(null);
 provide('section-navigation-target', sectionNavigationTarget);
 
-async function switchNavigation() {
-	showAppNavigation.value = !showAppNavigation.value;
-	await nextTick();
-	const target = showAppNavigation.value ? '#app-navigation' : '#section-navigation';
-	document.querySelector<HTMLElement>(`${target} a, ${target} button`)?.focus();
-}
+// Settings' Back returns to the last page of real work, however many settings
+// pages were visited in between.
+const settingsReturnTo = useState<string | null>('settings-return-to', () => null);
+const isSettingsPath = (path: string) =>
+	path.startsWith('/dashboard/preferences') || path.startsWith('/dashboard/admin');
 
 watch(
 	() => route.path,
 	(path) => {
 		setRoutePath(path);
 		showAppNavigation.value = false;
+		if (!isSettingsPath(path)) settingsReturnTo.value = route.fullPath;
 	},
 	{ immediate: true }
 );
@@ -229,12 +223,21 @@ onMounted(() => {
 });
 
 // Cmd/Ctrl-\ toggles the sidebar's hidden mode (desktop only; the composable
-// guards the breakpoint). Registered alongside the other global shortcuts.
+// guards the breakpoint), Cmd/Ctrl-, opens Settings. Registered alongside the
+// other global shortcuts.
 onMounted(() => {
 	const handleToggleHidden = (e: KeyboardEvent) => {
 		if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
 			e.preventDefault();
 			toggleHidden();
+		}
+		if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === ',') {
+			e.preventDefault();
+			void navigateTo('/dashboard/preferences');
+		}
+		if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j') {
+			e.preventDefault();
+			void navigateTo('/dashboard/assistant');
 		}
 	};
 	document.addEventListener('keydown', handleToggleHidden);
@@ -285,88 +288,29 @@ onUnmounted(cancelPeekClose);
 // Mobile sidebar state
 const isSidebarOpen = ref(false);
 
-// User dropdown state
-const isUserDropdownOpen = ref(false);
-const userDropdownRef = ref<HTMLElement | null>(null);
-
-// Navigation sections with items — filtered by feature flags (shared with the
-// global command palette via useDashboardNavigation) and narrowed to the
-// active sidebar context (Inbox ↔ Marketing) with shared sections appended.
-// The toggle is emergent: it renders only while both contexts have sections.
-const { showToggle, activeContext, sidebarSections, firstSharedKey, switchContext } =
-	useSidebarContext();
+// The sidebar renders one workspace at a time (Conversations ↔ Marketing). The
+// toggle is emergent: it only exists while both workspaces survived the flags.
+const { showToggle, activeContext, sidebarSections, switchContext } = useSidebarContext();
 
 // Frozen at setup, so `label` holds a MESSAGE KEY the template resolves rather
 // than a sentence captured in whatever locale was active at mount.
 const sidebarContexts = [
-	{ key: 'inbox', label: 'shell.dashboard.contexts.inbox', icon: 'lucide:inbox' },
+	{ key: 'inbox', label: 'shell.dashboard.contexts.inbox', icon: 'lucide:messages-square' },
 	{ key: 'marketing', label: 'shell.dashboard.contexts.marketing', icon: 'lucide:megaphone' },
 ] as const;
 
-// Check if a route is active (exact or prefix match)
-const isActiveRoute = (href: string) => {
-	// For overview/index pages, use exact match
-	if (href === '/dashboard/audience' || href === '/dashboard/admin') {
-		return route.path === href;
-	}
-	if (href === '/dashboard/send') {
-		// "Templates & blocks" owns the Send overview + template/blocks/media
-		// surfaces, but NOT the transactional subtree (its own "Transactional" item).
-		return (
-			route.path === href ||
-			(route.path.startsWith(href + '/') && !route.path.startsWith('/dashboard/send/transactional'))
-		);
-	}
-	if (href === '/dashboard/admin/delivery') {
-		return route.path === href;
-	}
-	if (href === '/dashboard/knowledge') {
-		// Knowledge list + entry detail pages, but not the Graph subpage (its own item).
-		return (
-			route.path === href ||
-			(route.path.startsWith(href + '/') && !route.path.startsWith('/dashboard/knowledge/graph'))
-		);
-	}
-	return route.path.startsWith(href);
-};
+// Plugin-contributed destinations for the active workspace. Core destinations
+// render as the workspace's own rows; anything a plugin adds is listed after.
+const pluginItems = computed(() =>
+	sidebarSections.value
+		.filter((section) => section.key !== 'administration' && section.key !== 'preferences')
+		.flatMap((section) => section.items)
+		.filter((item) => !CORE_NAV_HREFS.has(item.href))
+);
 
-// Check if any item in a section is active
-const isSectionActive = (section: NavigationSection) => {
-	return section.items.some((item) => isActiveRoute(item.href));
-};
-
-// Get the overview route for a section
-const getSectionOverviewRoute = (sectionKey: string) => {
-	const routes: Record<string, string> = {
-		inbox: '/dashboard/inbox',
-		chat: '/dashboard/chat',
-		assistant: '/dashboard/assistant',
-		send: '/dashboard/send',
-		knowledge: '/dashboard/knowledge',
-		audience: '/dashboard/audience',
-		administration: '/dashboard/admin',
-		preferences: '/dashboard/preferences',
-	};
-	return routes[sectionKey] || '/dashboard';
-};
-
-// Handle section header click - navigate when collapsed, toggle when expanded
-const handleSectionClick = (section: NavigationSection) => {
-	if (isCollapsed.value) {
-		router.push(getSectionOverviewRoute(section.key));
-	} else {
-		toggleSection(section.key);
-	}
-};
-
-// Handle sign out
-const handleSignOut = async () => {
-	try {
-		await signOut();
-	} catch (e) {
-		logError('Sign out failed:', e);
-	}
-};
+// Sidebar rows are Alt+1…9 jump targets (⌘1–9 is the desktop workspace switcher).
+const appNavigationRef = ref<HTMLElement | null>(null);
+useSidebarJumpHints(appNavigationRef);
 
 // Close sidebar when route changes (mobile)
 watch(
@@ -383,32 +327,6 @@ watch(isFocusMode, (active) => {
 	if (active) closePeek();
 });
 
-// Close dropdowns when clicking outside
-const handleClickOutside = (event: MouseEvent) => {
-	if (userDropdownRef.value && !userDropdownRef.value.contains(event.target as Node)) {
-		isUserDropdownOpen.value = false;
-	}
-};
-
-onMounted(() => {
-	document.addEventListener('click', handleClickOutside);
-});
-
-onUnmounted(() => {
-	document.removeEventListener('click', handleClickOutside);
-});
-
-// Get user initials for avatar
-const userInitials = computed(() => {
-	if (!user.value?.name) return '?';
-	return user.value.name
-		.split(' ')
-		.map((n) => n[0])
-		.join('')
-		.toUpperCase()
-		.slice(0, 2);
-});
-
 // Search opens the app command palette. Desktop hides the header GlobalSearch in
 // favour of the titlebar pill; the mobile button opens the palette through the
 // shared control so the event name lives in one place.
@@ -420,29 +338,6 @@ useDesktopNotifications();
 // "You can send now" — one in-app toast for a member whose onboarding first-send
 // step was blocked while the instance had no outbound transport.
 useSendReadyNotice();
-
-/** The Chat badge's tooltip — one unread mention reads differently from many. */
-const mentionsTitle = (count: number) =>
-	t(count === 1 ? 'shell.dashboard.chatMentions.one' : 'shell.dashboard.chatMentions.other', {
-		count,
-	});
-
-// Live unread chat mention count for the Chat section badge.
-// Only subscribe when the chat flag is on (the composable's query asserts the
-// flag server-side; we also gate the subscription here to keep the network
-// quiet when chat is disabled).
-const chatMentionCount = computed(() => 0);
-const chatMentions = isFeatureEnabled('chat') ? useChatMentions() : null;
-const liveChatMentionCount = computed(() => chatMentions?.count.value ?? chatMentionCount.value);
-
-// Live delivery-health roll-up for the Administration section's status dot. Stays
-// invisible while healthy; shows a warning/error dot with a title tooltip
-// naming the worst offender otherwise.
-const {
-	isVisible: isDeliveryHealthVisible,
-	reason: deliveryHealthReason,
-	dotClass: deliveryHealthDotClass,
-} = useDeliveryHealth();
 
 // Quick Query used to be a second modal with its own Cmd/Ctrl+Shift+K handler
 // and its own open event. Both now live in `AppCommandPalette`, which opens
@@ -616,22 +511,8 @@ const sidebarDesktopClass = computed(() => {
 				</div>
 			</div>
 
-			<!-- Navigation with collapsible sections -->
-			<div v-if="activeSection" class="px-3 pt-3 pb-2">
-				<button
-					type="button"
-					class="flex min-h-9 w-full items-center gap-2 rounded-lg px-2 text-sm text-text-secondary hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-					@click="switchNavigation"
-				>
-					<Icon
-						:name="showSectionNavigation ? 'lucide:arrow-left' : 'lucide:arrow-right'"
-						class="size-4 shrink-0"
-					/>
-					<span class="truncate">{{
-						showSectionNavigation ? t('shell.dashboard.appNavigation') : activeSection.title
-					}}</span>
-				</button>
-			</div>
+			<!-- Settings takes the sidebar over (its own nav, search and Back);
+			     daily work never does. -->
 			<div
 				id="section-navigation"
 				ref="sectionNavigationTarget"
@@ -645,169 +526,13 @@ const sidebarDesktopClass = computed(() => {
 				class="flex-1 min-h-0 px-2 py-3 overflow-y-auto"
 				:aria-label="t('shell.dashboard.appNavigation')"
 			>
-				<!-- Dashboard link (always visible) -->
-				<div class="mb-2">
-					<NuxtLink
-						to="/dashboard"
-						:class="[
-							'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-							route.path === '/dashboard'
-								? 'bg-(--surface-2-selected) text-text-primary'
-								: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
-							{ 'justify-center': isCollapsed },
-						]"
-						:title="isCollapsed ? t('shell.dashboard.dashboardTooltip') : undefined"
-					>
-						<Icon
-							name="lucide:layout-dashboard"
-							:class="[
-								'w-5 h-5 flex-shrink-0',
-								route.path === '/dashboard' ? 'text-brand' : 'text-text-tertiary',
-							]"
-						/>
-						<span v-if="!isCollapsed">{{ t('shell.dashboard.home') }}</span>
-					</NuxtLink>
-				</div>
-
-				<!-- Collapsible sections — the active context's sections first, shared
-				     sections (Assistant, Knowledge, Settings) after the divider -->
-				<div class="space-y-1">
-					<div v-for="section in sidebarSections" :key="section.key" class="mb-1">
-						<div
-							v-if="section.key === firstSharedKey"
-							class="my-2 border-t border-border-subtle"
-							aria-hidden="true"
-						/>
-						<!-- Flat section: a single link, no collapsible sub-list. Used when
-						     the destination carries its own in-page navigation (Postbox's
-						     folder rail) or the section has only one page (Chat, Assistant). -->
-						<NuxtLink
-							v-if="section.href"
-							:to="section.href"
-							:class="[
-								'relative flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-								isActiveRoute(section.href)
-									? 'bg-(--surface-2-selected) text-text-primary'
-									: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
-								{ 'justify-center': isCollapsed },
-							]"
-							:title="isCollapsed ? t(section.name) : undefined"
-						>
-							<Icon
-								:name="section.icon"
-								:class="[
-									'w-5 h-5 flex-shrink-0',
-									isActiveRoute(section.href) ? 'text-brand' : 'text-text-tertiary',
-								]"
-							/>
-							<span v-if="!isCollapsed" class="flex-1 text-left">{{ t(section.name) }}</span>
-							<!-- Chat mention badge: inline expanded; corner overlay collapsed. -->
-							<span
-								v-if="section.key === 'chat' && liveChatMentionCount > 0 && !isCollapsed"
-								class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-error text-text-inverse"
-								:title="mentionsTitle(liveChatMentionCount)"
-							>
-								{{ liveChatMentionCount > 99 ? '99+' : liveChatMentionCount }}
-							</span>
-							<span
-								v-if="section.key === 'chat' && liveChatMentionCount > 0 && isCollapsed"
-								class="absolute top-1 right-1 min-w-4 h-4 px-1 rounded-full bg-error text-text-inverse text-2xs leading-4 font-semibold text-center ring-2 ring-bg-elevated"
-								:title="mentionsTitle(liveChatMentionCount)"
-							>
-								{{ liveChatMentionCount > 99 ? '99+' : liveChatMentionCount }}
-							</span>
-						</NuxtLink>
-
-						<!-- Section header -->
-						<button
-							v-else
-							:class="[
-								'relative w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-								isSectionActive(section)
-									? 'text-text-primary'
-									: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
-								{ 'justify-center': isCollapsed },
-							]"
-							:title="isCollapsed ? t(section.name) : undefined"
-							@click="handleSectionClick(section)"
-						>
-							<Icon
-								:name="section.icon"
-								:class="[
-									'w-5 h-5 flex-shrink-0',
-									isSectionActive(section) ? 'text-text-primary' : 'text-text-tertiary',
-								]"
-							/>
-							<span v-if="!isCollapsed" class="flex-1 text-left">{{ t(section.name) }}</span>
-							<span
-								v-if="section.key === 'chat' && liveChatMentionCount > 0"
-								class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-error text-text-inverse"
-								:title="mentionsTitle(liveChatMentionCount)"
-							>
-								{{ liveChatMentionCount > 99 ? '99+' : liveChatMentionCount }}
-							</span>
-							<!-- Delivery health dot: worst-of reputation / domains / provider.
-							     Hidden while healthy. Expanded → inline; collapsed → corner overlay. -->
-							<span
-								v-if="section.key === 'administration' && isDeliveryHealthVisible && !isCollapsed"
-								class="w-2 h-2 rounded-full flex-shrink-0"
-								:class="deliveryHealthDotClass"
-								:title="deliveryHealthReason"
-								:aria-label="deliveryHealthReason"
-							/>
-							<span
-								v-if="section.key === 'administration' && isDeliveryHealthVisible && isCollapsed"
-								class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full ring-2 ring-bg-base"
-								:class="deliveryHealthDotClass"
-								:title="deliveryHealthReason"
-								:aria-label="deliveryHealthReason"
-							/>
-							<Icon
-								v-if="!isCollapsed"
-								name="lucide:chevron-down"
-								:class="[
-									'w-4 h-4 text-text-tertiary transition-transform duration-(--motion-moderate)',
-									sectionStates[section.key] ? '' : '-rotate-90',
-								]"
-							/>
-						</button>
-
-						<!-- Section items -->
-						<Transition
-							enter-active-class="transition-all duration-(--motion-moderate) ease-spring"
-							enter-from-class="opacity-0 max-h-0"
-							enter-to-class="opacity-100 max-h-96"
-							leave-active-class="transition-all duration-(--motion-moderate-exit) ease-exit"
-							leave-from-class="opacity-100 max-h-96"
-							leave-to-class="opacity-0 max-h-0"
-						>
-							<ul
-								v-if="!section.href && !isCollapsed && sectionStates[section.key]"
-								class="mt-1 ml-4 space-y-0.5 overflow-hidden"
-							>
-								<li v-for="item in section.items" :key="item.name">
-									<NuxtLink
-										:to="item.href"
-										:class="[
-											'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-											isActiveRoute(item.href)
-												? 'bg-(--surface-2-selected) text-text-primary font-medium'
-												: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
-										]"
-									>
-										<Icon
-											:name="item.icon"
-											:class="[
-												'w-4 h-4',
-												isActiveRoute(item.href) ? 'text-brand' : 'text-text-tertiary',
-											]"
-										/>
-										{{ t(item.name) }}
-									</NuxtLink>
-								</li>
-							</ul>
-						</Transition>
-					</div>
+				<div ref="appNavigationRef">
+					<ShellConversationsNav
+						v-if="activeContext === 'inbox' || !showToggle"
+						:collapsed="isCollapsed"
+						:extra-items="pluginItems"
+					/>
+					<ShellMarketingNav v-else :collapsed="isCollapsed" :extra-items="pluginItems" />
 				</div>
 			</nav>
 
@@ -840,96 +565,7 @@ const sidebarDesktopClass = computed(() => {
 				</button>
 			</div>
 
-			<!-- Theme toggle -->
-			<div class="px-2 py-2 border-t border-border-subtle">
-				<UiThemeToggle
-					:class="[
-						'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full',
-						'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
-						{ 'justify-center': isCollapsed },
-					]"
-				>
-					<span v-if="!isCollapsed">{{ t('shell.dashboard.theme') }}</span>
-				</UiThemeToggle>
-			</div>
-
-			<!-- User Profile Dropdown -->
-			<div ref="userDropdownRef" class="relative px-2 py-2 border-t border-border-subtle">
-				<button
-					:class="[
-						'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-bg-surface transition-colors',
-						{ 'justify-center': isCollapsed },
-					]"
-					:title="isCollapsed ? user?.name || t('shell.dashboard.userFallback') : undefined"
-					:aria-busy="isPending ? 'true' : undefined"
-					@click="isUserDropdownOpen = !isUserDropdownOpen"
-				>
-					<!-- Avatar. While the session resolves this is a skeleton at the
-					     row's exact geometry, not a "..." glyph, so nothing reflows
-					     when the name lands. UiSkeleton is aria-hidden, hence the
-					     sr-only label below that keeps the trigger named. -->
-					<UiSkeleton v-if="isPending" circle class="w-8 h-8 flex-shrink-0" />
-					<div
-						v-else
-						class="w-8 h-8 rounded-full bg-bg-surface flex items-center justify-center text-sm font-medium text-text-secondary flex-shrink-0"
-					>
-						{{ userInitials }}
-					</div>
-					<span v-if="isPending" class="sr-only">{{ t('common.loading') }}</span>
-
-					<!-- User info -->
-					<div v-if="!isCollapsed" class="flex-1 text-left min-w-0">
-						<template v-if="isPending">
-							<UiSkeleton class="h-3.5 w-24" />
-							<UiSkeleton class="h-3 w-32 mt-2.5" />
-						</template>
-						<template v-else>
-							<p class="text-sm font-medium text-text-primary truncate">
-								{{ user?.name || t('shell.dashboard.userFallback') }}
-							</p>
-							<p class="text-xs text-text-tertiary truncate">
-								{{ user?.email || '' }}
-							</p>
-						</template>
-					</div>
-
-					<!-- Chevron -->
-					<Icon
-						v-if="!isCollapsed"
-						name="lucide:chevron-down"
-						:class="[
-							'w-4 h-4 text-text-tertiary transition-transform',
-							isUserDropdownOpen ? 'rotate-180' : '',
-						]"
-					/>
-				</button>
-
-				<!-- Dropdown menu -->
-				<Transition
-					enter-active-class="transition-all duration-(--motion-moderate)"
-					enter-from-class="opacity-0 translate-y-2"
-					enter-to-class="opacity-100 translate-y-0"
-					leave-active-class="transition-all duration-(--motion-moderate-exit)"
-					leave-from-class="opacity-100 translate-y-0"
-					leave-to-class="opacity-0 translate-y-2"
-				>
-					<div
-						v-if="isUserDropdownOpen"
-						:class="[
-							'absolute bottom-full mb-2 bg-bg-surface border border-border-default rounded-lg shadow-lg overflow-hidden',
-							isCollapsed ? 'left-2 right-2' : 'left-2 right-2',
-						]"
-					>
-						<button
-							class="w-full flex items-center gap-3 px-4 py-3 text-sm text-error hover:bg-error-subtle transition-colors"
-							@click="handleSignOut"
-						>
-							<Icon name="lucide:log-out" class="w-4 h-4" />
-							<span v-if="!isCollapsed">{{ t('shell.dashboard.signOut') }}</span>
-						</button>
-					</div>
-				</Transition>
-			</div>
+			<ShellSidebarFooter :collapsed="isCollapsed" />
 		</aside>
 
 		<!-- Main content area -->
@@ -1001,6 +637,7 @@ const sidebarDesktopClass = computed(() => {
 }
 .section-navigation :deep(> div) {
 	width: 100%;
+	padding: 0.75rem 0.5rem;
 }
 .section-navigation :deep(aside) {
 	width: 100%;

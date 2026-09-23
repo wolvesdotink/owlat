@@ -13,6 +13,7 @@ import type { QueryCtx, MutationCtx } from '../_generated/server';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { hasPermission, type OrganizationRole } from '../lib/sessionOrganization';
 import { authedQuery, authedMutation, featureGated } from '../lib/authedFunctions';
+import { requireMailboxAccess } from '../mail/permissions';
 
 /**
  * Feature-gated function builders for the chat module. They compose the
@@ -87,6 +88,32 @@ export function normalizeDmKey(memberIds: string[]): string {
 	return [...new Set(memberIds)].sort().join(',');
 }
 
+/** `chatRooms.purpose` of the per-thread "Team discussion" room (chat/mailDiscussion.ts). */
+export const MAIL_THREAD_DISCUSSION = 'mail_thread_discussion' as const;
+
+/** Is this the internal discussion bound to a Postbox thread? */
+export function isMailThreadDiscussion(room: Doc<'chatRooms'>): boolean {
+	return room.purpose === MAIL_THREAD_DISCUSSION;
+}
+
+/**
+ * The mailbox whose readers may see a mail-thread discussion room, or null
+ * when the room is not one, the thread is gone, or the SESSION cannot read
+ * that mailbox. Session-scoped by construction: it goes through
+ * `requireMailboxAccess`, the one mailbox gate, so a discussion is visible to
+ * exactly the people who can read the thread — no chat membership involved.
+ */
+export async function loadDiscussionMailboxForSession(
+	ctx: QueryCtx | MutationCtx,
+	room: Doc<'chatRooms'>
+): Promise<{ userId: string; thread: Doc<'mailThreads'> } | null> {
+	if (!isMailThreadDiscussion(room) || !room.linkedMailThreadId) return null;
+	const thread = await ctx.db.get(room.linkedMailThreadId);
+	if (!thread) return null;
+	const access = await requireMailboxAccess(ctx, thread.mailboxId);
+	return access.ok ? { userId: access.userId, thread } : null;
+}
+
 /**
  * Load a chat room or throw NOT_FOUND. Does not check membership.
  */
@@ -116,12 +143,21 @@ export async function getMembership(
  *
  * Public channels: any authenticated org member can browse.
  * Private channels + DMs: must be a member.
+ * Mail-thread discussions: must be able to read the thread's mailbox — chat
+ * membership is ignored in both directions (these rooms carry none).
  */
 export async function assertCanReadRoom(
 	ctx: QueryCtx | MutationCtx,
 	room: Doc<'chatRooms'>,
 	memberId: string
 ): Promise<void> {
+	if (isMailThreadDiscussion(room)) {
+		const access = await loadDiscussionMailboxForSession(ctx, room);
+		if (!access || access.userId !== memberId) {
+			throwForbidden('You do not have access to this room');
+		}
+		return;
+	}
 	if (room.kind === 'channel' && room.visibility === 'public') {
 		return;
 	}
@@ -136,12 +172,20 @@ export async function assertCanReadRoom(
  *
  * Even public channels require membership to write — readers have to join
  * first. DMs and private channels require participation.
+ *
+ * Mail-thread discussions are refused here: they have no membership to return,
+ * and their one write path (`chat/mailDiscussion.post`) checks mailbox access
+ * itself.
  */
 export async function assertCanWriteRoom(
 	ctx: QueryCtx | MutationCtx,
 	roomId: Id<'chatRooms'>,
 	memberId: string
 ): Promise<Doc<'chatRoomMembers'>> {
+	const room = await ctx.db.get(roomId);
+	if (room && isMailThreadDiscussion(room)) {
+		throwForbidden('Post to this discussion from its email thread');
+	}
 	const membership = await getMembership(ctx, roomId, memberId);
 	if (!membership) {
 		throwForbidden('Join the room before posting');
@@ -156,6 +200,10 @@ export async function assertCanWriteRoom(
  * Path 1: the caller is a per-room admin (`chatRoomMembers.role === 'admin'`).
  * Path 2: the caller has the org-level `chat:manage` permission (escape hatch
  * for owners/admins to govern channels they didn't create).
+ *
+ * Nobody administers a mail-thread discussion: its audience IS the mailbox's
+ * readers, so adding a member, renaming or linking it would either grant
+ * nothing or grant access around the mailbox gate.
  */
 export async function assertCanAdministerRoom(
 	ctx: QueryCtx | MutationCtx,
@@ -163,6 +211,9 @@ export async function assertCanAdministerRoom(
 	memberId: string,
 	orgRole: OrganizationRole
 ): Promise<void> {
+	if (isMailThreadDiscussion(room)) {
+		throwForbidden('Thread discussions follow mailbox access and cannot be managed');
+	}
 	if (hasPermission(orgRole, 'chat:manage')) {
 		return;
 	}

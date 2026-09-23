@@ -23,6 +23,8 @@ const props = defineProps<{
 	/** Deterministic pre-send findings (plan idea 6); empty means nothing to say. */
 	preflight?: PreflightFinding[];
 	lastSavedLabel: string;
+	/** The identity Send goes out as — named on the button ("Send as Support"). */
+	sendAs?: { mailboxId: string; label: string } | null;
 }>();
 
 const followUpRemindAt = defineModel<number | null>('followUpRemindAt', {
@@ -39,6 +41,15 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+// Name the inbox on the Send button, so it is never a guess whose name a reply
+// goes out under. The short inbox name (the chip's) when known, else the label.
+const { byId: inboxById } = useInboxes();
+const sendAsName = computed(() => {
+	const identity = props.sendAs;
+	if (!identity) return null;
+	return inboxById.value.get(identity.mailboxId as Id<'mailboxes'>)?.name ?? identity.label ?? null;
+});
 
 // While an upload is in flight the Send button is disabled (canSend is false);
 // explain the wait in its tooltip instead of showing the keyboard hint.
@@ -98,7 +109,13 @@ function onPickFiles(event: Event) {
 					class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none"
 				/>
 				<Icon v-else name="lucide:send" class="w-4 h-4 mr-1.5" />
-				{{ sending ? t('components.postbox.postboxComposerFooter.sending') : t('common.send') }}
+				{{
+					sending
+						? t('components.postbox.postboxComposerFooter.sending')
+						: sendAsName
+							? t('components.postbox.postboxComposerFooter.sendAs', { name: sendAsName })
+							: t('common.send')
+				}}
 			</UiButton>
 			<UiButton
 				variant="ghost"
