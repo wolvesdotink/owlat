@@ -12,13 +12,14 @@ const { t } = useI18n();
 const route = useRoute();
 const { user, signOut, isPending } = useAuth();
 const { isEnabled } = useFeatureFlag();
-const { isAdmin } = usePermissions();
 const { openHelpModal } = useKeyboardShortcuts();
 
 const settingsActive = computed(
 	() => route.path.startsWith('/dashboard/preferences') || route.path.startsWith('/dashboard/admin')
 );
-const showAssistant = computed(() => isAdmin.value && isEnabled('ai.assistant'));
+// Every member gets the Assistant while the feature is on — the route itself is
+// member-level, and onboarding promises it to everyone.
+const showAssistant = computed(() => isEnabled('ai.assistant'));
 
 const menuOpen = ref(false);
 const menuRef = ref<HTMLElement | null>(null);

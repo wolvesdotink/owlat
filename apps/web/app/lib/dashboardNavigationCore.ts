@@ -196,7 +196,8 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		name: 'shared.dashboardNavigation.sections.assistant',
 		icon: 'lucide:sparkles',
 		href: '/dashboard/assistant',
-		gate: (env) => adminOnly(env) && flag('ai.assistant')(env),
+		// Every member, like the route: the user menu and ⌘J offer it to all.
+		gate: flag('ai.assistant'),
 		items: [
 			{
 				name: 'shared.dashboardNavigation.items.assistant.chat',
@@ -285,7 +286,8 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		key: 'knowledge',
 		name: 'shared.dashboardNavigation.sections.knowledge',
 		icon: 'lucide:brain',
-		gate: (env) => adminOnly(env) && flag('ai.knowledge')(env),
+		// Every member: Knowledge sits in the Conversations sidebar next to Chat.
+		gate: flag('ai.knowledge'),
 		items: [
 			{
 				name: 'shared.dashboardNavigation.items.knowledge.explorer',

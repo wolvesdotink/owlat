@@ -223,8 +223,10 @@ onMounted(() => {
 });
 
 // Cmd/Ctrl-\ toggles the sidebar's hidden mode (desktop only; the composable
-// guards the breakpoint), Cmd/Ctrl-, opens Settings. Registered alongside the
+// guards the breakpoint), Cmd/Ctrl-, opens Settings, and Cmd/Ctrl-J opens the
+// Assistant for every member while the feature is on. Registered alongside the
 // other global shortcuts.
+const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 onMounted(() => {
 	const handleToggleHidden = (e: KeyboardEvent) => {
 		if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
@@ -235,7 +237,13 @@ onMounted(() => {
 			e.preventDefault();
 			void navigateTo('/dashboard/preferences');
 		}
-		if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j') {
+		if (
+			(e.metaKey || e.ctrlKey) &&
+			!e.shiftKey &&
+			!e.altKey &&
+			e.key.toLowerCase() === 'j' &&
+			isFeatureEnabled('ai.assistant')
+		) {
 			e.preventDefault();
 			void navigateTo('/dashboard/assistant');
 		}
