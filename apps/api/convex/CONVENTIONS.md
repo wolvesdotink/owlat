@@ -657,7 +657,12 @@ N:
   step guarantees.
 
 Removing an argument, result field or endpoint is itself a contract step for a
-later release.
+later release. This covers internal functions too: an N-1 action still running
+at deploy time, or a job N-1 queued before it, calls functions by path. When N
+stops calling one, keep it for a release with its old arguments, delegating to
+the new code, and list it in `PREVIOUS_RELEASE_ENTRIES` in
+`scripts/check-entry-wiring.ts` (the webhook fanout and delivery functions are
+the first entries).
 
 **Migration manifest.** A release that needs data work ships a manifest listing,
 per migration: its module (`migrations/NNNN_name:run`), whether it must finish
