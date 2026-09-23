@@ -112,6 +112,7 @@ const STUBS = {
 	UiIconBox: true,
 	UiSpinner: true,
 	UiPageHeader: { template: '<div><slot /><slot name="actions" /></div>' },
+	AudienceTabs: true,
 	UiQueryBoundary: SLOTTED,
 	UiEmptyState: { template: '<div><slot name="action" /></div>' },
 	DashboardListSkeleton: true,

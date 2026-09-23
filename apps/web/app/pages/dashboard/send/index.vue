@@ -1,7 +1,24 @@
 <script setup lang="ts">
+/**
+ * Templates: one list of every email template with a type filter (#787).
+ *
+ * This used to be an overview of stat tiles, a "Quick Actions" row (which
+ * also linked Media and Files) and two "recent" cards, each with its own
+ * create button. Now there is one list, one filter and one "New template".
+ * Saved blocks keep their own page, linked from the header; images are
+ * picked from inside the email editor.
+ */
 import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
+import type { BackendOperationResult } from '~/composables/useBackendOperation';
+import { formatCompactRelativeTime } from '~/utils/formatters';
+import {
+	TEMPLATE_TYPE_FILTERS,
+	parseTemplateTypeFilter,
+	type TemplateTypeFilter,
+} from '~/utils/templateListFilter';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 useHead({ title: () => t('dashboard.send.index.pageTitle') });
 
@@ -10,318 +27,212 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-// Fetch template counts
+const route = useRoute();
+const router = useRouter();
+const { can, showGateFor } = usePermissions();
+const canManage = computed(() => can('templates:manage'));
+const showManageGate = computed(() => showGateFor('templates:manage'));
+const { isPending: authPending, isAuthenticated } = useAuth();
+
+// The filter lives in the URL (`?type=marketing`), so a filtered list can be
+// linked to and survives a reload.
+const typeFilter = computed<TemplateTypeFilter>({
+	get: () => parseTemplateTypeFilter(route.query['type']),
+	set: (value) => {
+		void router.replace({ query: { ...route.query, type: value === 'all' ? undefined : value } });
+	},
+});
+
+const { data: typeCounts } = useOrganizationQuery(
+	api.emailTemplates.organization.countByTypeByOrganization
+);
+const { data: blocksStats } = useOrganizationQuery(api.emailBlocks.blocks.getStatsByTeam);
+
 const {
-	data: templateCounts,
-	isLoading: countsLoading,
-	error: countsError,
-} = useOrganizationQuery(api.emailTemplates.organization.countByTypeByOrganization);
+	results: templates,
+	status,
+	isLoading,
+	error,
+	loadMore,
+} = usePaginatedQuery(
+	api.emailTemplates.emails.list,
+	() => {
+		if (authPending.value || !isAuthenticated.value) return 'skip';
+		return typeFilter.value === 'all' ? {} : { type: typeFilter.value };
+	},
+	{ initialNumItems: 50 }
+);
 
-// Fetch recently edited templates
-const {
-	data: recentTemplates,
-	isLoading: templatesLoading,
-	error: templatesError,
-} = useOrganizationQuery(api.emailTemplates.organization.getRecentByOrganization, { limit: 5 });
+function countFor(filter: TemplateTypeFilter): number | null {
+	const counts = typeCounts.value;
+	if (!counts) return null;
+	if (filter === 'all') return counts['total'] ?? 0;
+	return counts[filter] ?? 0;
+}
 
-// Fetch blocks stats
-const {
-	data: blocksStats,
-	isLoading: blocksStatsLoading,
-	error: blocksStatsError,
-} = useOrganizationQuery(api.emailBlocks.blocks.getStatsByTeam);
+const filterOptions = computed(() =>
+	TEMPLATE_TYPE_FILTERS.map((filter) => {
+		const count = countFor(filter);
+		const label = t(`dashboard.send.index.filters.${filter}`);
+		return {
+			value: filter,
+			label: count === null ? label : `${label} (${count.toLocaleString(locale.value)})`,
+		};
+	})
+);
 
-// Fetch recent blocks
-const {
-	data: recentBlocks,
-	isLoading: blocksLoading,
-	error: blocksError,
-} = useOrganizationQuery(api.emailBlocks.blocks.getRecentByTeam, { limit: 3 });
+const blockCount = computed(() => blocksStats.value?.total ?? null);
 
-// Stats for display
-const stats = computed(() => [
-	{
-		label: t('dashboard.send.index.stats.totalTemplates'),
-		value: templateCounts.value?.['total'] ?? 0,
-		icon: 'lucide:mail',
-	},
-	{
-		label: t('dashboard.send.index.stats.marketing'),
-		value: templateCounts.value?.['marketing'] ?? 0,
-		icon: 'lucide:megaphone',
-	},
-	{
-		label: t('dashboard.send.index.stats.transactional'),
-		value: templateCounts.value?.['transactional'] ?? 0,
-		icon: 'lucide:file-code',
-	},
-	{
-		label: t('dashboard.send.index.stats.savedBlocks'),
-		value: blocksStats.value?.total ?? 0,
-		icon: 'lucide:layout-grid',
-	},
-]);
+// Every template type opens in the same email editor.
+function editPath(id: Id<'emailTemplates'>): string {
+	return `/dashboard/send/emails/${id}/edit`;
+}
 
-// Quick actions
-const quickActions = computed(() => [
-	{
-		label: t('dashboard.send.index.quickActions.marketing.label'),
-		href: '/dashboard/send/marketing',
-		icon: 'lucide:megaphone',
-		description: t('dashboard.send.index.quickActions.marketing.description'),
-	},
-	{
-		label: t('dashboard.send.index.quickActions.transactional.label'),
-		href: '/dashboard/send/transactional',
-		icon: 'lucide:file-code',
-		description: t('dashboard.send.index.quickActions.transactional.description'),
-	},
-	{
-		label: t('dashboard.send.index.quickActions.blocks.label'),
-		href: '/dashboard/send/blocks',
-		icon: 'lucide:layout-grid',
-		description: t('dashboard.send.index.quickActions.blocks.description'),
-	},
-	{
-		label: t('dashboard.send.index.quickActions.media.label'),
-		href: '/dashboard/send/media',
-		icon: 'lucide:image',
-		description: t('dashboard.send.index.quickActions.media.description'),
-	},
-	{
-		label: t('dashboard.send.index.quickActions.files.label'),
-		href: '/dashboard/files',
-		icon: 'lucide:file-search',
-		description: t('dashboard.send.index.quickActions.files.description'),
-	},
-]);
-
-// Get type badge color. `lavender` was never a token — `bg-lavender-subtle
-// text-lavender` resolved to nothing, so transactional badges rendered
-// chip-less. `info` is the real quiet tint that pairs with brand here.
-function getTypeBadgeClass(type: string): string {
+function typeBadgeClass(type: string): string {
 	return type === 'marketing' ? 'bg-brand-subtle text-brand' : 'bg-info-subtle text-info';
+}
+
+// --- New template (the same library modal the marketing list uses) ---------
+const { run: createTemplate } = useBackendOperation(api.emailTemplates.emails.create, {
+	label: () => t('dashboard.send.index.createOperation'),
+});
+const { run: createFromPreset } = useBackendOperation(
+	api.emailTemplates.organization.createFromPreset,
+	{ label: () => t('dashboard.send.index.createOperation') }
+);
+
+const isLibraryOpen = ref(false);
+const libraryRef = ref<{
+	handleCreate: (
+		createTemplate: (args: {
+			name: string;
+			type: 'marketing' | 'transactional';
+		}) => Promise<BackendOperationResult<Id<'emailTemplates'>>>,
+		createFromPreset: (args: {
+			name: string;
+			subject: string;
+			content: string;
+			type: 'marketing' | 'transactional';
+		}) => Promise<BackendOperationResult<Id<'emailTemplates'>>>
+	) => Promise<void>;
+	isCreating: boolean;
+} | null>(null);
+
+async function handleCreateSubmit() {
+	await libraryRef.value?.handleCreate(createTemplate, createFromPreset);
+}
+
+function handleCreated(templateId: Id<'emailTemplates'>) {
+	void router.push(editPath(templateId));
 }
 </script>
 
 <template>
 	<div class="p-6 lg:p-8">
-		<!-- Header -->
 		<UiPageHeader
 			:title="t('dashboard.send.index.title')"
 			:description="t('dashboard.send.index.subtitle')"
-			class="mb-8"
+			class="mb-6"
+		>
+			<template #actions>
+				<UiButton variant="secondary" to="/dashboard/send/blocks">
+					<template #iconLeft><Icon name="lucide:layout-grid" class="w-4 h-4" /></template>
+					{{
+						blockCount === null
+							? t('dashboard.send.index.savedBlocks')
+							: t('dashboard.send.index.savedBlocksCount', {
+									count: blockCount.toLocaleString(locale),
+								})
+					}}
+				</UiButton>
+				<UiButton v-if="canManage" data-testid="new-template" @click="isLibraryOpen = true">
+					<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+					{{ t('dashboard.send.index.newTemplate') }}
+				</UiButton>
+				<p v-else-if="showManageGate" class="text-xs text-text-tertiary">
+					{{ t('dashboard.send.index.adminsOnly') }}
+				</p>
+			</template>
+		</UiPageHeader>
+
+		<UiSegmentedControl
+			v-model="typeFilter"
+			:options="filterOptions"
+			size="sm"
+			class="mb-4"
+			data-testid="template-type-filter"
 		/>
 
-		<!-- Stats Cards -->
-		<UiErrorAlert
-			v-if="countsError || templatesError || blocksStatsError || blocksError"
-			:message="t('dashboard.send.index.loadError')"
-			class="mb-8"
-		/>
-		<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-			<div
-				v-for="stat in stats"
-				:key="stat.label"
-				class="card group hover:border-border-default transition-colors"
+		<UiCard padding="none" overflow="hidden">
+			<UiQueryBoundary
+				:loading="isLoading && templates.length === 0"
+				:error="error"
+				:error-title="t('dashboard.send.index.loadError')"
 			>
-				<div class="flex items-start justify-between">
-					<div>
-						<p class="text-sm text-text-secondary">{{ stat.label }}</p>
-						<div class="flex items-center gap-2 mt-1">
-							<p
-								v-if="countsLoading || blocksStatsLoading"
-								class="text-3xl font-semibold text-text-tertiary"
-							>
-								--
-							</p>
-							<p v-else class="text-3xl font-semibold text-text-primary">
-								{{ stat.value }}
-							</p>
-							<Icon
-								v-if="countsLoading || blocksStatsLoading"
-								name="lucide:loader-2"
-								class="w-4 h-4 animate-spin motion-reduce:animate-none text-text-tertiary"
-							/>
-						</div>
-					</div>
-					<UiIconBox :icon="stat.icon" />
-				</div>
-			</div>
-		</div>
+				<template #loading>
+					<DashboardListSkeleton variant="card" leading :rows="5" />
+				</template>
 
-		<!-- Quick Actions -->
-		<div class="mb-8">
-			<h2 class="text-lg font-semibold text-text-primary mb-4">
-				{{ t('dashboard.send.index.quickActionsHeading') }}
-			</h2>
-			<div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-				<NuxtLink
-					v-for="action in quickActions"
-					:key="action.label"
-					:to="action.href"
-					class="card group hover:border-brand transition-colors cursor-pointer"
-				>
-					<div class="flex items-center gap-4">
-						<UiIconBox
-							:icon="action.icon"
-							class="group-hover:bg-brand group-hover:text-text-inverse transition-colors"
-						/>
-						<div>
-							<p class="font-medium text-text-primary group-hover:text-brand transition-colors">
-								{{ action.label }}
-							</p>
-							<p class="text-sm text-text-tertiary">{{ action.description }}</p>
-						</div>
-					</div>
-				</NuxtLink>
-			</div>
-		</div>
+				<UiEmptyState
+					v-if="templates.length === 0"
+					icon="lucide:file-text"
+					:title="
+						typeFilter === 'all'
+							? t('dashboard.send.index.empty.title')
+							: t(`dashboard.send.index.empty.filtered.${typeFilter}`)
+					"
+					:description="canManage ? t('dashboard.send.index.empty.description') : undefined"
+				/>
 
-		<!-- Two column layout for recent items -->
-		<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-			<!-- Recently Edited Templates -->
-			<div>
-				<div class="flex items-center justify-between mb-4">
-					<h2 class="text-lg font-semibold text-text-primary">
-						{{ t('dashboard.send.index.recentlyEdited') }}
-					</h2>
-					<NuxtLink
-						to="/dashboard/send/marketing"
-						class="text-sm text-brand hover:text-brand-hover flex items-center gap-1"
-					>
-						{{ t('common.viewAll') }}
-						<Icon name="lucide:arrow-right" class="w-3 h-3" />
-					</NuxtLink>
-				</div>
-				<div class="card">
-					<!-- Loading state -->
-					<div v-if="templatesLoading" class="flex items-center justify-center py-8">
-						<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary" />
-					</div>
-
-					<!-- Empty state -->
-					<div
-						v-else-if="!recentTemplates || recentTemplates.length === 0"
-						class="flex flex-col items-center justify-center py-12 text-center"
-					>
-						<UiIconBox
-							icon="lucide:file-text"
-							size="xl"
-							variant="surface"
-							rounded="full"
-							class="mb-4"
-						/>
-						<p class="text-text-secondary font-medium">
-							{{ t('dashboard.send.index.noTemplatesTitle') }}
-						</p>
-						<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-							{{ t('dashboard.send.index.noTemplatesDescription') }}
-						</p>
-						<UiButton to="/dashboard/send/marketing" class="mt-6 gap-2">
-							<Icon name="lucide:plus" class="w-4 h-4" />
-							{{ t('dashboard.send.index.createTemplate') }}
-						</UiButton>
-					</div>
-
-					<!-- Templates list -->
-					<div v-else class="divide-y divide-border-subtle">
+				<ul v-else class="divide-y divide-border-subtle" data-testid="template-list">
+					<li v-for="template in templates" :key="template._id">
 						<NuxtLink
-							v-for="template in recentTemplates"
-							:key="template._id"
-							:to="`/dashboard/send/emails/${template._id}/edit`"
-							class="flex items-center gap-4 py-3 first:pt-0 last:pb-0 hover:bg-bg-surface -mx-4 px-4 transition-colors"
+							:to="editPath(template._id)"
+							class="flex items-center gap-4 px-4 py-3 hover:bg-bg-surface transition-colors"
 						>
 							<UiIconBox icon="lucide:mail" size="sm" variant="surface" rounded="lg" />
 							<div class="flex-1 min-w-0">
-								<p class="text-sm text-text-primary truncate font-medium">
-									{{ template.name }}
+								<p class="text-sm text-text-primary truncate font-medium">{{ template.name }}</p>
+								<p v-if="template.subject" class="text-xs text-text-tertiary truncate">
+									{{ template.subject }}
 								</p>
-								<div class="flex items-center gap-2 mt-0.5">
-									<span
-										:class="['text-xs px-1.5 py-0.5 rounded', getTypeBadgeClass(template.type)]"
-									>
-										{{ t(`dashboard.send.index.templateTypes.${template.type}`) }}
-									</span>
-									<span class="text-xs text-text-tertiary flex items-center gap-1">
-										<Icon name="lucide:clock" class="w-3 h-3" />
-										{{ formatCompactRelativeTime(template.updatedAt) }}
-									</span>
-								</div>
 							</div>
+							<span
+								:class="['text-xs px-1.5 py-0.5 rounded shrink-0', typeBadgeClass(template.type)]"
+							>
+								{{ t(`dashboard.send.index.templateTypes.${template.type}`) }}
+							</span>
+							<span
+								class="hidden sm:inline text-xs text-text-tertiary shrink-0 w-24 text-right tabular-nums"
+							>
+								{{ formatCompactRelativeTime(template.updatedAt) }}
+							</span>
 						</NuxtLink>
-					</div>
-				</div>
-			</div>
+					</li>
+				</ul>
+			</UiQueryBoundary>
+		</UiCard>
 
-			<!-- Saved Blocks -->
-			<div>
-				<div class="flex items-center justify-between mb-4">
-					<h2 class="text-lg font-semibold text-text-primary">
-						{{ t('dashboard.send.index.savedBlocks') }}
-					</h2>
-					<NuxtLink
-						to="/dashboard/send/blocks"
-						class="text-sm text-brand hover:text-brand-hover flex items-center gap-1"
-					>
-						{{ t('common.viewAll') }}
-						<Icon name="lucide:arrow-right" class="w-3 h-3" />
-					</NuxtLink>
-				</div>
-				<div class="card">
-					<!-- Loading state -->
-					<div v-if="blocksLoading" class="flex items-center justify-center py-8">
-						<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary" />
-					</div>
-
-					<!-- Empty state -->
-					<div
-						v-else-if="!recentBlocks || recentBlocks.length === 0"
-						class="flex flex-col items-center justify-center py-12 text-center"
-					>
-						<UiIconBox
-							icon="lucide:layout-grid"
-							size="xl"
-							variant="surface"
-							rounded="full"
-							class="mb-4"
-						/>
-						<p class="text-text-secondary font-medium">
-							{{ t('dashboard.send.index.noBlocksTitle') }}
-						</p>
-						<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-							{{ t('dashboard.send.index.noBlocksDescription') }}
-						</p>
-					</div>
-
-					<!-- Blocks list -->
-					<div v-else class="divide-y divide-border-subtle">
-						<div
-							v-for="block in recentBlocks"
-							:key="block._id"
-							class="flex items-center gap-4 py-3 first:pt-0 last:pb-0"
-						>
-							<UiIconBox icon="lucide:layout-grid" size="sm" variant="surface" rounded="lg" />
-							<div class="flex-1 min-w-0">
-								<p class="text-sm text-text-primary truncate font-medium">
-									{{ block.name }}
-								</p>
-								<div class="flex items-center gap-2 mt-0.5">
-									<span
-										v-if="block.blockCount && block.blockCount > 1"
-										class="text-xs px-1.5 py-0.5 rounded bg-brand/10 text-brand"
-									>
-										{{ t('dashboard.send.index.blockCount', { count: block.blockCount }) }}
-									</span>
-									<span class="text-xs text-text-tertiary">
-										{{ t('dashboard.send.index.usedTimes', { count: block.usageCount }) }}
-									</span>
-								</div>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
+		<div v-if="templates.length > 0 && status === 'CanLoadMore'" class="flex justify-center mt-6">
+			<UiButton variant="outline" size="sm" @click="loadMore(50)">
+				{{ t('dashboard.send.index.loadMore') }}
+			</UiButton>
 		</div>
+
+		<LazyMailTemplateLibraryModal
+			ref="libraryRef"
+			v-model:open="isLibraryOpen"
+			@create="handleCreated"
+		>
+			<template #submit-button="{ isCreating }">
+				<UiButton type="submit" :loading="isCreating" @click="handleCreateSubmit">
+					{{
+						isCreating
+							? t('dashboard.send.index.creating')
+							: t('dashboard.send.index.createAndEdit')
+					}}
+				</UiButton>
+			</template>
+		</LazyMailTemplateLibraryModal>
 	</div>
 </template>

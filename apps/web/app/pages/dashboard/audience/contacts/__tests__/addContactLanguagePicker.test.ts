@@ -69,6 +69,7 @@ function languageOptionTexts(): string[] {
 				UiSelect: selectStub,
 				UiModal: { template: '<div><slot /></div>' },
 				UiPageHeader: { template: '<div><slot /><slot name="actions" /></div>' },
+				AudienceTabs: true,
 				UiInput: true,
 				UiErrorAlert: true,
 				UiSpinner: true,

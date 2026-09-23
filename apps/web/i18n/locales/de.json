@@ -7901,7 +7901,7 @@
 					"deselectAll": "Auswahl aufheben",
 					"deselectContact": "Auswahl von {email} aufheben",
 					"empty": {
-						"descriptionManage": "Legen Sie los, indem Sie Ihre erste Kundin oder Ihren ersten Kunden hinzufügen oder eine CSV-Datei importieren.",
+						"descriptionManage": "Fügen Sie Ihren ersten Kontakt hinzu oder importieren Sie eine CSV-Datei.",
 						"descriptionReadOnly": "Es wurden noch keine Kundinnen und Kunden hinzugefügt.",
 						"title": "Noch keine Kontakte"
 					},
@@ -7956,69 +7956,6 @@
 						"emailCopied": "E-Mail-Adresse kopiert",
 						"imported": "{count} Kontakt erfolgreich verarbeitet | {count} Kontakte erfolgreich verarbeitet"
 					}
-				}
-			},
-			"index": {
-				"activity": {
-					"descriptions": {
-						"created": "wurde hinzugefügt",
-						"topicConfirmed": "hat das Abonnement bestätigt",
-						"topicSubscribed": "wurde zu einem Thema angemeldet",
-						"topicUnsubscribed": "wurde von einem Thema abgemeldet"
-					},
-					"emptyBody": "Aktivitäten erscheinen hier, sobald Kontakte Themen abonnieren oder abbestellen.",
-					"emptyTitle": "Keine aktuelle Aktivität",
-					"errorTitle": "Letzte Aktivität konnte nicht geladen werden",
-					"loading": "Aktivität wird geladen...",
-					"title": "Letzte Aktivität"
-				},
-				"addContact": "Kontakt hinzufügen",
-				"growth": {
-					"barValue": "{count} neue Abonnenten",
-					"chartLabel": "Neue Abonnenten pro Tag in den letzten 30 Tagen",
-					"errorTitle": "Abonnenten-Wachstum konnte nicht geladen werden",
-					"loading": "Diagramm wird geladen...",
-					"newCount": "+{count} neu",
-					"title": "Abonnenten-Wachstum (30 Tage)"
-				},
-				"pageTitle": "Zielgruppe — Owlat",
-				"quickActions": {
-					"addContact": {
-						"description": "Einen neuen Kontakt manuell hinzufügen",
-						"label": "Kontakt hinzufügen"
-					},
-					"createSegment": {
-						"description": "Ein dynamisches Zielgruppensegment erstellen",
-						"label": "Segment erstellen"
-					},
-					"createTopic": {
-						"description": "Ein neues Thema erstellen",
-						"label": "Thema erstellen"
-					}
-				},
-				"quickActionsHeading": "Schnellaktionen",
-				"recentContacts": {
-					"emptyBody": "Fügen Sie Ihren ersten Kontakt hinzu, um loszulegen.",
-					"emptyTitle": "Noch keine Kontakte",
-					"errorTitle": "Aktuelle Kontakte konnten nicht geladen werden",
-					"loading": "Kontakte werden geladen...",
-					"title": "Zuletzt hinzugefügt"
-				},
-				"stats": {
-					"segments": "Segmente",
-					"topics": "Themen",
-					"totalContacts": "Kontakte gesamt"
-				},
-				"subtitle": "Verwalten Sie Ihre Kontakte, Themen und Segmente.",
-				"title": "Zielgruppe",
-				"topTopics": {
-					"contactCount": "{count} Kontakte",
-					"createTopic": "Thema erstellen",
-					"emptyBody": "Erstellen Sie ein Thema, um Ihre Kontakte zu organisieren.",
-					"emptyTitle": "Noch keine Themen",
-					"errorTitle": "Top-Themen konnten nicht geladen werden",
-					"loading": "Themen werden geladen...",
-					"title": "Top-Themen"
 				}
 			},
 			"segments": {
@@ -8130,7 +8067,6 @@
 			"suppressions": {
 				"addSuppression": "Unterdrückung hinzufügen",
 				"adding": "Wird hinzugefügt...",
-				"backToAudience": "Zurück zur Zielgruppe",
 				"empty": {
 					"description": "Nichts ist unterdrückt. Adressen werden automatisch aufgenommen, wenn sie unzustellbar sind oder wenn jemand einen Versand als Spam markiert.",
 					"title": "Keine Unterdrückungen"
@@ -10184,52 +10120,35 @@
 				}
 			},
 			"index": {
-				"blockCount": "{count} Bausteine",
-				"createTemplate": "Vorlage erstellen",
-				"loadError": "Einige Mail-Daten konnten nicht geladen werden. Laden Sie die Seite neu, um es erneut zu versuchen.",
-				"noBlocksDescription": "Speichern Sie wiederverwendbare Bausteine aus Ihrem E-Mail-Editor, um sie in mehreren Vorlagen zu nutzen.",
-				"noBlocksTitle": "Keine Bausteine gespeichert",
-				"noTemplatesDescription": "Erstellen Sie Ihre erste E-Mail-Vorlage, um loszulegen.",
-				"noTemplatesTitle": "Noch keine Vorlagen",
-				"pageTitle": "Vorlagen & Bausteine — Owlat",
-				"quickActions": {
-					"blocks": {
-						"description": "Gespeicherte Bausteine ansehen und verwalten",
-						"label": "Bausteine durchsuchen"
+				"adminsOnly": "Nur Admins können Vorlagen erstellen.",
+				"createAndEdit": "Erstellen und bearbeiten",
+				"createOperation": "Vorlage erstellen",
+				"creating": "Wird erstellt…",
+				"empty": {
+					"description": "Legen Sie mit „Neue Vorlage“ eine an. Sie können mit einem fertigen Design beginnen.",
+					"filtered": {
+						"marketing": "Noch keine Marketing-Vorlagen",
+						"transactional": "Noch keine transaktionalen Vorlagen"
 					},
-					"files": {
-						"description": "Hochgeladene Dateien durchsuchen",
-						"label": "Dateien"
-					},
-					"marketing": {
-						"description": "Newsletter oder Werbe-E-Mail erstellen",
-						"label": "Marketing-E-Mails"
-					},
-					"media": {
-						"description": "Bilder hochladen und verwalten",
-						"label": "Medien"
-					},
-					"transactional": {
-						"description": "Per API ausgelöste E-Mail erstellen",
-						"label": "Transaktionale E-Mails"
-					}
+					"title": "Noch keine Vorlagen"
 				},
-				"quickActionsHeading": "Schnellaktionen",
-				"recentlyEdited": "Zuletzt bearbeitet",
-				"savedBlocks": "Gespeicherte Bausteine",
-				"stats": {
+				"filters": {
+					"all": "Alle",
 					"marketing": "Marketing",
-					"savedBlocks": "Gespeicherte Bausteine",
-					"totalTemplates": "Vorlagen gesamt",
 					"transactional": "Transaktional"
 				},
-				"subtitle": "Verwalten Sie Ihre E-Mail-Vorlagen und wiederverwendbaren Bausteine.",
+				"loadError": "Vorlagen konnten nicht geladen werden",
+				"loadMore": "Mehr laden",
+				"newTemplate": "Neue Vorlage",
+				"pageTitle": "Vorlagen — Owlat",
+				"savedBlocks": "Gespeicherte Bausteine",
+				"savedBlocksCount": "Gespeicherte Bausteine ({count})",
+				"subtitle": "E-Mail-Designs, die Sie in Kampagnen, Automationen und im API-Versand wiederverwenden.",
 				"templateTypes": {
 					"marketing": "Marketing",
 					"transactional": "Transaktional"
 				},
-				"title": "Vorlagen & Bausteine",
-				"usedTimes": "{count}-mal verwendet"
+				"title": "Vorlagen"
 			},
 			"marketing": {
 				"index": {
@@ -11903,7 +11822,6 @@
 				},
 				"audience": {
 					"contacts": "Kontakte",
-					"overview": "Übersicht",
 					"segments": "Segmente",
 					"suppressions": "Sperrlisten",
 					"topics": "Themen"

@@ -39,7 +39,6 @@ import DashboardLayout from '~/layouts/dashboard.vue';
 import DashboardHome from '../index.vue';
 import CampaignsIndex from '../campaigns/index.vue';
 import CampaignsNew from '../campaigns/new.vue';
-import AudienceIndex from '../audience/index.vue';
 import ContactsIndex from '../audience/contacts/index.vue';
 import SendIndex from '../send/index.vue';
 import InboxIndex from '../inbox/index.vue';
@@ -180,9 +179,8 @@ const pages: readonly AuditedPage[] = [
 	{ name: 'dashboard home', component: DashboardHome, loaded: 'In the last 24 hours' },
 	{ name: 'campaigns list', component: CampaignsIndex, loaded: 'New campaign' },
 	{ name: 'new campaign wizard', component: CampaignsNew, loaded: 'Create campaign' },
-	{ name: 'audience overview', component: AudienceIndex, loaded: 'Add Contact' },
 	{ name: 'contacts list', component: ContactsIndex, loaded: 'No contacts yet' },
-	{ name: 'send overview', component: SendIndex, loaded: 'Templates & blocks' },
+	{ name: 'templates list', component: SendIndex, loaded: 'No templates yet' },
 	{ name: 'team inbox', component: InboxIndex, loaded: 'Inbox zero' },
 	{ name: 'admin overview', component: AdminIndex, loaded: 'Your instance at a glance' },
 	// The settings screen is the one page here whose title lives in the shell

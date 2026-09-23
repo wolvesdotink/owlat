@@ -99,8 +99,7 @@ describe('buildNavigationSections — plugin contributions', () => {
 		);
 		const audience = sections.find((s) => s.key === 'audience');
 		expect(audience?.items.at(-1)?.href).toBe('/dashboard/audience/pipeline');
-		expect(audience?.items.map((i) => i.href).slice(0, 5)).toEqual([
-			'/dashboard/audience',
+		expect(audience?.items.map((i) => i.href).slice(0, 4)).toEqual([
 			'/dashboard/audience/contacts',
 			'/dashboard/audience/topics',
 			'/dashboard/audience/segments',

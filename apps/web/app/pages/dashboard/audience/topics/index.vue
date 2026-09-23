@@ -285,6 +285,7 @@ onMounted(() => {
 
 <template>
 	<div class="p-6 lg:p-8">
+		<AudienceTabs />
 		<!-- Header -->
 		<UiPageHeader
 			:title="t('dashboard.audience.topics.index.title')"

@@ -7872,7 +7872,7 @@
 					}
 				},
 				"index": {
-					"addContact": "Add Contact",
+					"addContact": "Add contact",
 					"addedOn": "Added {date}",
 					"allLoaded": "All contacts loaded",
 					"bulk": {
@@ -7901,7 +7901,7 @@
 					"deselectAll": "Deselect all",
 					"deselectContact": "Deselect {email}",
 					"empty": {
-						"descriptionManage": "Get started by adding your first customer or importing a CSV file.",
+						"descriptionManage": "Add your first contact or import a CSV file.",
 						"descriptionReadOnly": "No customers have been added yet.",
 						"title": "No contacts yet"
 					},
@@ -7956,69 +7956,6 @@
 						"emailCopied": "Email address copied",
 						"imported": "Successfully processed {count} contact | Successfully processed {count} contacts"
 					}
-				}
-			},
-			"index": {
-				"activity": {
-					"descriptions": {
-						"created": "was added",
-						"topicConfirmed": "confirmed subscription",
-						"topicSubscribed": "was subscribed to a topic",
-						"topicUnsubscribed": "was unsubscribed from a topic"
-					},
-					"emptyBody": "Activity will appear here as contacts subscribe to or unsubscribe from topics.",
-					"emptyTitle": "No recent activity",
-					"errorTitle": "Couldn't load recent activity",
-					"loading": "Loading activity...",
-					"title": "Recent Activity"
-				},
-				"addContact": "Add Contact",
-				"growth": {
-					"barValue": "{count} new subscribers",
-					"chartLabel": "New subscribers per day over the last 30 days",
-					"errorTitle": "Couldn't load subscriber growth",
-					"loading": "Loading chart...",
-					"newCount": "+{count} new",
-					"title": "Subscriber Growth (30 days)"
-				},
-				"pageTitle": "Audience — Owlat",
-				"quickActions": {
-					"addContact": {
-						"description": "Manually add a new contact",
-						"label": "Add Contact"
-					},
-					"createSegment": {
-						"description": "Build a dynamic audience segment",
-						"label": "Create Segment"
-					},
-					"createTopic": {
-						"description": "Create a new topic",
-						"label": "Create Topic"
-					}
-				},
-				"quickActionsHeading": "Quick Actions",
-				"recentContacts": {
-					"emptyBody": "Add your first contact to get started.",
-					"emptyTitle": "No contacts yet",
-					"errorTitle": "Couldn't load recent contacts",
-					"loading": "Loading contacts...",
-					"title": "Recently Added"
-				},
-				"stats": {
-					"segments": "Segments",
-					"topics": "Topics",
-					"totalContacts": "Total Contacts"
-				},
-				"subtitle": "Manage your contacts, topics, and segments.",
-				"title": "Audience",
-				"topTopics": {
-					"contactCount": "{count} contacts",
-					"createTopic": "Create Topic",
-					"emptyBody": "Create a topic to organize your contacts.",
-					"emptyTitle": "No topics yet",
-					"errorTitle": "Couldn't load top topics",
-					"loading": "Loading topics...",
-					"title": "Top Topics"
 				}
 			},
 			"segments": {
@@ -8130,7 +8067,6 @@
 			"suppressions": {
 				"addSuppression": "Add suppression",
 				"adding": "Adding...",
-				"backToAudience": "Back to Audience",
 				"empty": {
 					"description": "Nothing is suppressed. Addresses are added automatically when they bounce or when someone marks a send as spam.",
 					"title": "No suppressions"
@@ -10184,52 +10120,35 @@
 				}
 			},
 			"index": {
-				"blockCount": "{count} blocks",
-				"createTemplate": "Create Template",
-				"loadError": "Some mail data couldn't be loaded. Reload the page to try again.",
-				"noBlocksDescription": "Save reusable blocks from your email editor to use across templates.",
-				"noBlocksTitle": "No blocks saved",
-				"noTemplatesDescription": "Create your first email template to get started.",
-				"noTemplatesTitle": "No templates yet",
-				"pageTitle": "Templates & blocks — Owlat",
-				"quickActions": {
-					"blocks": {
-						"description": "View and manage saved blocks",
-						"label": "Browse Blocks"
+				"adminsOnly": "Only admins can create templates.",
+				"createAndEdit": "Create and edit",
+				"createOperation": "Create template",
+				"creating": "Creating…",
+				"empty": {
+					"description": "Start one with New template. You can begin from a ready-made design.",
+					"filtered": {
+						"marketing": "No marketing templates yet",
+						"transactional": "No transactional templates yet"
 					},
-					"files": {
-						"description": "Browse uploaded files",
-						"label": "Files"
-					},
-					"marketing": {
-						"description": "Create a newsletter or promotional email",
-						"label": "Marketing Emails"
-					},
-					"media": {
-						"description": "Upload and manage images",
-						"label": "Media"
-					},
-					"transactional": {
-						"description": "Create an API-triggered email",
-						"label": "Transactional Emails"
-					}
+					"title": "No templates yet"
 				},
-				"quickActionsHeading": "Quick Actions",
-				"recentlyEdited": "Recently Edited",
-				"savedBlocks": "Saved Blocks",
-				"stats": {
+				"filters": {
+					"all": "All",
 					"marketing": "Marketing",
-					"savedBlocks": "Saved Blocks",
-					"totalTemplates": "Total Templates",
 					"transactional": "Transactional"
 				},
-				"subtitle": "Manage your email templates and reusable blocks.",
+				"loadError": "Couldn't load templates",
+				"loadMore": "Load more",
+				"newTemplate": "New template",
+				"pageTitle": "Templates — Owlat",
+				"savedBlocks": "Saved blocks",
+				"savedBlocksCount": "Saved blocks ({count})",
+				"subtitle": "Email designs you reuse in campaigns, automations and API sends.",
 				"templateTypes": {
-					"marketing": "marketing",
-					"transactional": "transactional"
+					"marketing": "Marketing",
+					"transactional": "Transactional"
 				},
-				"title": "Templates & blocks",
-				"usedTimes": "Used {count} times"
+				"title": "Templates"
 			},
 			"marketing": {
 				"index": {
@@ -11903,7 +11822,6 @@
 				},
 				"audience": {
 					"contacts": "Contacts",
-					"overview": "Overview",
 					"segments": "Segments",
 					"suppressions": "Suppressions",
 					"topics": "Topics"

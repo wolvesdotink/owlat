@@ -250,12 +250,6 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		href: undefined,
 		items: [
 			{
-				name: 'shared.dashboardNavigation.items.audience.overview',
-				href: '/dashboard/audience',
-				icon: 'lucide:layout-dashboard',
-				gate: adminOnly,
-			},
-			{
 				name: 'shared.dashboardNavigation.items.audience.contacts',
 				href: '/dashboard/audience/contacts',
 				icon: 'lucide:users',
