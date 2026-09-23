@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { SettingsSectionView } from '~/lib/settingsRegistry';
-import { adminRailEntryFor, type AdminAreaView } from '~/lib/adminSettingsRegistry';
+import { adminRailEntryFor } from '~/lib/adminSettingsRegistry';
+import { type AdminAreaView } from '~/lib/adminSettingsNav';
 
 /**
  * The Settings sidebar. It takes the sidebar over while you are in Settings,

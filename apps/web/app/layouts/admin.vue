@@ -16,16 +16,18 @@
  * Nests inside `dashboard` so Settings keeps the app rail, header and ⌘K.
  */
 import {
-	ADMIN_COMMAND_PROVIDER_ID,
-	ADMIN_COMMAND_PROVIDER_PRIORITY,
 	ADMIN_ROOT,
 	adminEntryFor,
 	adminRailEntryFor,
-	adminTabsFor,
-	buildAdminSurfaceGroups,
 	reachableAdminEntries,
 	type AdminAreaKey,
 } from '~/lib/adminSettingsRegistry';
+import {
+	ADMIN_COMMAND_PROVIDER_ID,
+	ADMIN_COMMAND_PROVIDER_PRIORITY,
+	adminTabsFor,
+	buildAdminSurfaceGroups,
+} from '~/lib/adminSettingsNav';
 import { routePrefixMatcher } from '~/lib/commandPaletteRegistry';
 import { settingsSectionsFor } from '~/lib/settingsRegistry';
 import SettingsPageShell from '~/components/settings/PageShell.vue';

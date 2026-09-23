@@ -16,19 +16,21 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
 	ADMIN_AREAS,
-	ADMIN_COMMAND_GROUP_KEY,
 	ADMIN_REGISTRY,
 	ADMIN_ROOT,
-	adminAreaLead,
-	adminAreasFor,
-	adminAttentionBadges,
 	adminEntryFor,
 	adminRailEntryFor,
-	adminTabsFor,
-	buildAdminSurfaceGroups,
 	reachableAdminEntries,
 	type AdminEnvironment,
 } from '../adminSettingsRegistry';
+import {
+	ADMIN_COMMAND_GROUP_KEY,
+	adminAreaLead,
+	adminAreasFor,
+	adminAttentionBadges,
+	adminTabsFor,
+	buildAdminSurfaceGroups,
+} from '../adminSettingsNav';
 import { createTestI18n } from '~/__tests__/i18n';
 
 const { t, te } = createTestI18n().global;

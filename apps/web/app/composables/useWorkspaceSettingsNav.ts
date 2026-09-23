@@ -1,12 +1,8 @@
 import { api } from '@owlat/api';
 import type { Ref } from 'vue';
 import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
-import {
-	adminAreasFor,
-	adminAttentionBadges,
-	reachableAdminEntries,
-	type AdminEnvironment,
-} from '~/lib/adminSettingsRegistry';
+import { reachableAdminEntries, type AdminEnvironment } from '~/lib/adminSettingsRegistry';
+import { adminAreasFor, adminAttentionBadges } from '~/lib/adminSettingsNav';
 
 /**
  * The Workspace half of the Settings sidebar, as both settings layouts need it:

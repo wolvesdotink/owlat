@@ -14,10 +14,10 @@
 import {
 	ADMIN_REGISTRY,
 	ADMIN_ROOT,
-	adminAreaLead,
 	adminEntryById,
 	type AdminEntry,
 } from './adminSettingsRegistry';
+import { adminAreaLead } from './adminSettingsNav';
 import { SETTINGS_REGISTRY, SETTINGS_ROOT } from './settingsRegistry';
 
 /**
