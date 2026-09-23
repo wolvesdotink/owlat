@@ -1,6 +1,7 @@
 import { v } from 'convex/values';
 import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
+import { publicQuery } from '../lib/authedFunctions';
 import type { Id } from '../_generated/dataModel';
 import { normalizeEmail } from '../lib/inputGuards';
 import type { UnsubscribeOutcome } from '../topics/subscription';
@@ -9,6 +10,30 @@ type ProcessUnsubscribeResult =
 	| { success: false; reason: 'not_found' }
 	| { success: true; alreadyUnsubscribed: true }
 	| { success: true; alreadyUnsubscribed: false; listsRemoved: number };
+
+/**
+ * Who is sending — for the recipient-facing pages (unsubscribe, preferences,
+ * subscription confirmation). A recipient has never heard of Owlat, so those
+ * pages lead with the sender's name, and when a link is broken or expired they
+ * offer the sender's address as the other way to opt out.
+ *
+ * Token-independent on purpose: the error states are exactly the ones where no
+ * token resolves. It returns only what every campaign already carries in its
+ * From header — the instance's default sender name and address.
+ */
+// public: recipient pages name the sender before (or without) a valid token; returns only the public From identity
+// authz: no session on recipient pages; the From name and address are public by construction.
+// token-safe: projects instanceSettings to the sender name and address only.
+export const getRecipientSender = publicQuery({
+	args: {},
+	handler: async (ctx): Promise<{ name: string | null; contactEmail: string | null }> => {
+		const settings = await ctx.db.query('instanceSettings').first();
+		return {
+			name: settings?.defaultFromName?.trim() || null,
+			contactEmail: settings?.defaultFromEmail?.trim() || null,
+		};
+	},
+});
 
 // Internal query to get contact for unsubscribe verification
 export const getContactForUnsubscribe = internalQuery({

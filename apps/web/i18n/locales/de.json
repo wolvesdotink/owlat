@@ -10932,9 +10932,9 @@
 				"unavailable": "Dieser Archiv-Link ist ungültig oder die Kampagne ist nicht mehr verfügbar."
 			},
 			"frameTitle": "Archivierte E-Mail",
-			"loading": "Archiv wird geladen...",
+			"loading": "Archiv wird geladen…",
 			"ogDescription": "E-Mail von {organization}",
-			"pageTitle": "Kampagnen-Archiv — Owlat",
+			"pageTitle": "Kampagnen-Archiv",
 			"seoTitle": "Kampagnen-Archiv",
 			"seoTitleLoaded": "{subject} — {organization}"
 		},
@@ -10957,11 +10957,11 @@
 			},
 			"footnote": "Mit der Bestätigung willigen Sie ein, E-Mails von {organization} zu erhalten.",
 			"header": "E-Mail-Bestätigung",
-			"pageTitle": "Anmeldung bestätigen — Owlat",
-			"processing": "Wird bestätigt...",
+			"pageTitle": "Anmeldung bestätigen",
+			"processing": "Wird bestätigt…",
 			"submit": "Anmeldung bestätigen",
 			"successBody": "Sie haben Ihre Anmeldung bei {organization} erfolgreich bestätigt.",
-			"successHeading": "Anmeldung bestätigt!",
+			"successHeading": "Anmeldung bestätigt",
 			"successNote": "{email} ist jetzt angemeldet und erhält Neuigkeiten."
 		},
 		"preferences": {
@@ -10980,14 +10980,14 @@
 			"greeting": "Hallo {name},",
 			"heading": "Ihre E-Mail-Einstellungen verwalten",
 			"intro": "Aktualisieren Sie Ihre E-Mail-Einstellungen für {organization}.",
-			"loading": "Ihre Einstellungen werden geladen...",
+			"loading": "Ihre Einstellungen werden geladen…",
 			"metaDescription": "Verwalten Sie Ihre E-Mail-Themen und -Einstellungen.",
 			"noChanges": "Keine Änderungen",
 			"noTopics": "Keine Themen verfügbar.",
-			"pageTitle": "E-Mail-Einstellungen — Owlat",
+			"pageTitle": "E-Mail-Einstellungen",
 			"save": "Einstellungen speichern",
 			"saved": "Ihre Einstellungen wurden gespeichert.",
-			"saving": "Wird gespeichert...",
+			"saving": "Wird gespeichert…",
 			"topicSwitchLabel": "Abonnement für {topic}",
 			"topicsHeading": "Themen"
 		},
@@ -11002,15 +11002,17 @@
 			"expiredHeading": "Vorschau-Link abgelaufen",
 			"expiresIn": "Läuft in {hours} Std. ab",
 			"frameTitle": "Geteilte E-Mail-Vorschau",
-			"loading": "Vorschau wird geladen...",
+			"loading": "Vorschau wird geladen…",
 			"ogDescription": "E-Mail-Vorschau von {organization}",
-			"pageTitle": "Geteilte Vorschau — Owlat",
+			"pageTitle": "Geteilte Vorschau",
 			"seoTitle": "Geteilte Vorschau",
 			"seoTitleLoaded": "{subject} — {organization}"
 		},
 		"shared": {
+			"contactSender": "Fragen? Schreiben Sie an {email}.",
+			"contactToOptOut": "Um diese E-Mails abzubestellen, können Sie auch an {email} schreiben.",
 			"emailPreferences": "E-Mail-Einstellungen",
-			"verifying": "Ihr Link wird geprüft..."
+			"verifying": "Ihr Link wird geprüft…"
 		},
 		"unsubscribe": {
 			"alreadyBody": "Sie waren bereits von E-Mails von {organization} abgemeldet.",
@@ -11030,11 +11032,11 @@
 			"footnote": "Sie erhalten dann keine Marketing-E-Mails mehr. Transaktions-E-Mails können weiterhin gesendet werden.",
 			"greeting": "Hallo {name},",
 			"metaDescription": "Verwalten Sie Ihre E-Mail-Einstellungen.",
-			"pageTitle": "Abmelden — Owlat",
-			"processing": "Wird verarbeitet...",
+			"pageTitle": "Abmelden",
+			"processing": "Wird verarbeitet…",
 			"submit": "Ja, abmelden",
 			"successBody": "Sie haben sich von E-Mails von {organization} abgemeldet.",
-			"successHeading": "Erfolgreich abgemeldet",
+			"successHeading": "Sie sind abgemeldet",
 			"successNote": "Sie erhalten künftig keine Marketing-E-Mails mehr an {email}."
 		}
 	},
