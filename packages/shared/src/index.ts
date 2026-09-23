@@ -160,7 +160,7 @@ export {
 // (certificate hashing) which does not resolve in the Nuxt web client bundle that
 // consumes this barrel. Server code (apps/api, apps/mta) imports it directly from
 // the `@owlat/shared/dane` subpath instead.
-export { StreamByteLimitExceeded, readStreamBytes } from './cappedStream';
+export { StreamByteLimitExceeded, readStreamBytes, readStreamPrefix } from './cappedStream';
 export {
 	type TlsRptPolicy,
 	type TlsRptFailureDetail,

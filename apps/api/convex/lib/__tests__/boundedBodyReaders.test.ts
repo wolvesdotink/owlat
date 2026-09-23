@@ -1,6 +1,8 @@
 /**
- * The bounded body readers in ssrfGuard: `readStreamPrefix` (the primitive),
- * `readCappedBytes` (reject past the cap) and `readBodyPreview` (keep the head).
+ * The bounded body readers: `readStreamPrefix` (the primitive, in
+ * `@owlat/shared` next to `readStreamBytes`, which HTTP actions read request
+ * bodies with) and, in ssrfGuard, `readCappedBytes` (reject past the cap) and
+ * `readBodyPreview` (keep the head).
  *
  * Every stream here is pull-based with a zero high-water mark, so the meter
  * counts exactly the bytes the reader asked the producer for. That is the
@@ -9,12 +11,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-	CappedReadOverflow,
-	readBodyPreview,
-	readCappedBytes,
-	readStreamPrefix,
-} from '../ssrfGuard';
+import { readStreamBytes, readStreamPrefix, StreamByteLimitExceeded } from '@owlat/shared';
+import { CappedReadOverflow, readBodyPreview, readCappedBytes } from '../ssrfGuard';
 import { meteredStream } from './meteredStream';
 
 const encode = (text: string) => new TextEncoder().encode(text);
@@ -75,6 +73,20 @@ describe('readCappedBytes', () => {
 	it('throws CappedReadOverflow past the cap without draining the producer', async () => {
 		const { stream, meter } = endless(512);
 		await expect(readCappedBytes(stream, 2048)).rejects.toBeInstanceOf(CappedReadOverflow);
+		expect(meter.pulledBytes).toBeLessThanOrEqual(2048 + 512);
+		expect(meter.cancelled).toBe(true);
+	});
+});
+
+describe('readStreamBytes', () => {
+	it('returns a body of exactly the cap', async () => {
+		const bytes = await readStreamBytes(fromChunks([encode('ab'), encode('cd')]).stream, 4);
+		expect(new TextDecoder().decode(bytes!)).toBe('abcd');
+	});
+
+	it('throws StreamByteLimitExceeded past the cap without draining the producer', async () => {
+		const { stream, meter } = endless(512);
+		await expect(readStreamBytes(stream, 2048)).rejects.toBeInstanceOf(StreamByteLimitExceeded);
 		expect(meter.pulledBytes).toBeLessThanOrEqual(2048 + 512);
 		expect(meter.cancelled).toBe(true);
 	});
