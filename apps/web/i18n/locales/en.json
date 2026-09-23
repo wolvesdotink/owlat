@@ -10809,7 +10809,8 @@
 			"participation": "We are neither willing nor obliged to take part in dispute resolution proceedings before a consumer arbitration board."
 		},
 		"footer": {
-			"copyright": "© {year} {company}. All rights reserved."
+			"copyright": "© {year} {company}. All rights reserved.",
+			"poweredBy": "Powered by Owlat"
 		},
 		"pageTitle": "Imprint — Owlat",
 		"provider": {
@@ -15515,7 +15516,8 @@
 			"noEmail": "not provided"
 		},
 		"footer": {
-			"copyright": "© {year} {company}. All rights reserved."
+			"copyright": "© {year} {company}. All rights reserved.",
+			"poweredBy": "Powered by Owlat"
 		},
 		"governingLaw": {
 			"body": "These Terms are governed by and construed in accordance with the laws of the Federal Republic of Germany. The exclusive place of jurisdiction for all disputes arising from or in connection with these Terms is Berlin, Germany, to the extent permitted by law.",

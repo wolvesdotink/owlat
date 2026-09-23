@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { workspaceDisplayName } from '~/utils/instanceEntry';
 const { t } = useI18n();
 
 useHead({ title: () => t('imprint.pageTitle') });
 
 const { public: config } = useRuntimeConfig();
+const operatorName = workspaceDisplayName(config);
 </script>
 
 <template>
@@ -97,10 +99,12 @@ const { public: config } = useRuntimeConfig();
 
 		<!-- Footer -->
 		<footer class="px-6 py-8 text-center text-text-tertiary text-sm">
-			<I18nT keypath="imprint.footer.copyright" tag="p" scope="global">
+			<!-- The operator's legal pages carry the operator's name, not the vendor's. -->
+			<I18nT v-if="operatorName" keypath="imprint.footer.copyright" tag="p" scope="global">
 				<template #year>{{ new Date().getFullYear() }}</template>
-				<template #company><a href="https://wolves.ink">Wolves</a></template>
+				<template #company>{{ operatorName }}</template>
 			</I18nT>
+			<p v-else>{{ t('imprint.footer.poweredBy') }}</p>
 		</footer>
 	</div>
 </template>

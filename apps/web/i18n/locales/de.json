@@ -10809,7 +10809,8 @@
 			"participation": "Wir sind nicht bereit oder verpflichtet, an Streitbeilegungsverfahren vor einer Verbraucherschlichtungsstelle teilzunehmen."
 		},
 		"footer": {
-			"copyright": "© {year} {company}. Alle Rechte vorbehalten."
+			"copyright": "© {year} {company}. Alle Rechte vorbehalten.",
+			"poweredBy": "Betrieben mit Owlat"
 		},
 		"pageTitle": "Impressum — Owlat",
 		"provider": {
@@ -15515,7 +15516,8 @@
 			"noEmail": "nicht hinterlegt"
 		},
 		"footer": {
-			"copyright": "© {year} {company}. Alle Rechte vorbehalten."
+			"copyright": "© {year} {company}. Alle Rechte vorbehalten.",
+			"poweredBy": "Betrieben mit Owlat"
 		},
 		"governingLaw": {
 			"body": "Diese Bedingungen unterliegen dem Recht der Bundesrepublik Deutschland und werden entsprechend ausgelegt. Ausschließlicher Gerichtsstand für alle Streitigkeiten aus oder im Zusammenhang mit diesen Bedingungen ist Berlin, Deutschland, soweit gesetzlich zulässig.",
