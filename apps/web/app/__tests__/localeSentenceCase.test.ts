@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import en from '~~/i18n/locales/en.json';
-import uiEn from '../../../../packages/ui/i18n/locales/en.json';
+import uiEn from '@owlat/ui/i18n/locales/en.json';
 
 /**
  * UI copy uses sentence case: "Save changes", not "Save Changes".
