@@ -12,7 +12,7 @@ import { createTestKnowledgeEntry } from './factories';
 import type { Id } from '../_generated/dataModel';
 import type * as SessionOrganization from '../lib/sessionOrganization';
 
-const sessionMock = vi.hoisted(() => ({ role: 'owner' as 'owner' | 'admin' | 'member' }));
+const sessionMock = vi.hoisted(() => ({ role: 'owner' as 'owner' | 'admin' | 'editor' }));
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual<typeof SessionOrganization>('../lib/sessionOrganization');
@@ -28,10 +28,9 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockImplementation(async () => session()),
 		requireAdminContext: vi.fn().mockImplementation(async () => {
-			actual.requirePermission(
-				actual.hasPermission(sessionMock.role, 'organization:manage'),
-				'Only owners and admins can perform this action'
-			);
+			if (!actual.hasPermission(sessionMock.role, 'organization:manage')) {
+				throw new Error('Only owners and admins can perform this action');
+			}
 			return session();
 		}),
 	};
@@ -75,7 +74,7 @@ describe('curated knowledge answers are admin-only', () => {
 	it('refuses a member authoring or rewriting a curated answer', async () => {
 		const t = convexTest(schema, modules);
 		const extracted = await seedEntry(t, {});
-		sessionMock.role = 'member';
+		sessionMock.role = 'editor';
 
 		await expect(
 			t.mutation(api.knowledge.graph.createPolicyEntry, {
@@ -103,7 +102,7 @@ describe('curated knowledge answers are admin-only', () => {
 			entryType: 'faq',
 			content: '30 days.',
 		});
-		sessionMock.role = 'member';
+		sessionMock.role = 'editor';
 
 		await expect(
 			t.mutation(api.knowledge.graph.updateEntry, { entryId: curated, content: 'Forever.' })
@@ -119,7 +118,7 @@ describe('curated knowledge answers are admin-only', () => {
 	it('still lets a member correct an extracted fact', async () => {
 		const t = convexTest(schema, modules);
 		const extracted = await seedEntry(t, { content: 'old' });
-		sessionMock.role = 'member';
+		sessionMock.role = 'editor';
 
 		await t.mutation(api.knowledge.graph.updateEntry, { entryId: extracted, content: 'new' });
 		const entry = await t.run((ctx) => ctx.db.get(extracted));
