@@ -1,15 +1,27 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ref, nextTick } from 'vue';
 
 // The bridge module imports value exports from @owlat/email-builder (whose entry
-// pulls in .vue SFCs) and @owlat/api. The pure helpers under test touch neither,
-// so stub both so the module imports cleanly without a Vue/SFC plugin.
+// pulls in .vue SFCs) and @owlat/api. Stub both so the module imports cleanly
+// without a Vue/SFC plugin; the api stub carries only the references the bridge
+// hands to (stubbed) useBackendOperation.
 vi.mock('@owlat/email-builder', () => ({
 	provideEmailBuilderHandlers: vi.fn(),
 }));
-vi.mock('@owlat/api', () => ({ api: {} }));
+vi.mock('@owlat/api', () => ({
+	api: {
+		storage: { generateUploadUrl: 'storage.generateUploadUrl' },
+		mediaAssets: { create: 'mediaAssets.create' },
+		emailBlocks: { blocks: { create: 'emailBlocks.blocks.create' } },
+	},
+}));
 
-import { createUploadImageHandler, useEditorDirtyTracking } from '../useEmailEditorBridge';
+import { ref, nextTick } from 'vue';
+import {
+	createSavedBlockSaveHandler,
+	createUploadImageHandler,
+	useEmailEditorBridge,
+} from '../useEmailEditorBridge';
+import { SurfacedOperationError } from '~/lib/operationError';
 
 describe('createUploadImageHandler', () => {
 	let deps: {
@@ -118,63 +130,157 @@ describe('createUploadImageHandler', () => {
 	});
 });
 
-describe('useEditorDirtyTracking', () => {
-	it('stays clean through initialize, flips dirty on a tracked edit, resets on markClean', async () => {
-		const source = ref<{ name: string } | null>(null);
-		const name = ref('');
-		const blocks = ref<unknown[]>([]);
-		const onDirtyChange = vi.fn();
+describe('createSavedBlockSaveHandler', () => {
+	const block = { id: 'b1', type: 'text', content: { html: 'Hi' } } as never;
 
-		const { hasChanges, markClean, isInitialized } = useEditorDirtyTracking({
-			source,
-			initialize: (s) => {
-				name.value = s.name;
-				blocks.value = [{ id: '1' }];
-			},
-			watchSources: [() => name.value, () => blocks.value],
-			onDirtyChange,
+	it('resolves once the block is stored', async () => {
+		const createEmailBlock = vi.fn().mockResolvedValue({ ok: true, result: 'block_1' });
+		const save = createSavedBlockSaveHandler(createEmailBlock);
+
+		await expect(save({ name: 'Header', content: [block] })).resolves.toBeUndefined();
+		expect(createEmailBlock).toHaveBeenCalledWith({
+			name: 'Header',
+			content: JSON.stringify([block]),
 		});
-
-		expect(hasChanges.value).toBe(false);
-		expect(isInitialized.value).toBe(false);
-
-		// Data loads → initialize runs, but the editor must not be marked dirty.
-		source.value = { name: 'Loaded' };
-		await nextTick(); // flush source watcher (initialize + change watcher no-op)
-		await nextTick(); // flush the deferred isInitialized flag
-
-		expect(name.value).toBe('Loaded');
-		expect(isInitialized.value).toBe(true);
-		expect(hasChanges.value).toBe(false);
-
-		// A real edit flips dirty.
-		name.value = 'Edited';
-		await nextTick();
-		expect(hasChanges.value).toBe(true);
-		expect(onDirtyChange).toHaveBeenLastCalledWith(true);
-
-		// A save resets it.
-		markClean();
-		expect(hasChanges.value).toBe(false);
-		expect(onDirtyChange).toHaveBeenLastCalledWith(false);
 	});
 
-	it('treats extraWatch-style sources (e.g. attachments) as dirty-tracked', async () => {
-		const source = ref<{ name: string } | null>({ name: 'X' });
-		const attachments = ref<string[]>([]);
+	it('rejects on a failed operation result so the save dialog stays open', async () => {
+		// useBackendOperation never throws: it toasts and resolves { ok: false }.
+		// Resolving here told the builder the block was saved.
+		const createEmailBlock = vi.fn().mockResolvedValue({ ok: false });
+		const save = createSavedBlockSaveHandler(createEmailBlock);
 
-		const { hasChanges } = useEditorDirtyTracking({
-			source,
-			initialize: () => {},
-			watchSources: [() => attachments.value],
+		await expect(save({ name: 'Header', content: [block] })).rejects.toBeInstanceOf(
+			SurfacedOperationError
+		);
+	});
+});
+
+describe('useEmailEditorBridge save', () => {
+	interface TemplateRow {
+		_id: string;
+		name: string;
+		subject: string;
+		contentRevision?: number;
+	}
+
+	beforeEach(() => {
+		vi.stubGlobal('useI18n', () => ({ t: (key: string) => key }));
+		vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn() }));
+		vi.stubGlobal('useUnsavedChanges', () => ({
+			showDialog: ref(false),
+			confirmDiscard: vi.fn(),
+			confirmSave: vi.fn(),
+			cancelNavigation: vi.fn(),
+			setHasChanges: vi.fn(),
+		}));
+		vi.stubGlobal('useKeyboardShortcuts', () => ({
+			registerSaveShortcut: vi.fn(),
+			unregisterShortcut: vi.fn(),
+		}));
+		// No component instance here; the shortcut wiring is not under test.
+		vi.stubGlobal('onMounted', vi.fn());
+		vi.stubGlobal('onUnmounted', vi.fn());
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	async function settle() {
+		await nextTick();
+		await nextTick();
+	}
+
+	function setup() {
+		const source = ref<TemplateRow | null>({
+			_id: 't1',
+			name: 'Welcome',
+			subject: 'Hello',
+			contentRevision: 2,
 		});
+		let finishSave: () => void = () => {};
+		const save = vi.fn(
+			() =>
+				new Promise<void>((resolve) => {
+					finishSave = resolve;
+				})
+		);
+		const bridge = useEmailEditorBridge({
+			source,
+			revision: (row) => row.contentRevision ?? 0,
+			initialize: (row, ctx) => {
+				ctx.name.value = row.name;
+				ctx.subject.value = row.subject;
+			},
+			save,
+		});
+		return { source, save, bridge, finish: () => finishSave() };
+	}
 
-		await nextTick(); // immediate init runs synchronously; flush isInitialized
+	it('hands the save the loaded row and its revision, then clears dirty on the echo', async () => {
+		const { source, save, bridge, finish } = setup();
+		await settle();
+		bridge.subject.value = 'Hello there';
 		await nextTick();
-		expect(hasChanges.value).toBe(false);
+		expect(bridge.hasChanges.value).toBe(true);
 
-		attachments.value = [...attachments.value, 'invoice.pdf'];
+		const pending = bridge.save();
+		expect(save).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ source: expect.objectContaining({ _id: 't1' }), revision: 2 })
+		);
+
+		source.value = { _id: 't1', name: 'Welcome', subject: 'Hello there', contentRevision: 3 };
+		await settle();
+		finish();
+		await pending;
+
+		expect(bridge.hasChanges.value).toBe(false);
+		expect(bridge.subject.value).toBe('Hello there');
+	});
+
+	it('keeps the editor dirty for an edit made while the save was in flight', async () => {
+		const { source, save, bridge, finish } = setup();
+		await settle();
+		bridge.subject.value = 'Hello there';
 		await nextTick();
-		expect(hasChanges.value).toBe(true);
+
+		const pending = bridge.save();
+		bridge.subject.value = 'Hello there, friend';
+		await nextTick();
+		source.value = { _id: 't1', name: 'Welcome', subject: 'Hello there', contentRevision: 3 };
+		await settle();
+		finish();
+		await pending;
+
+		expect(bridge.hasChanges.value).toBe(true);
+		expect(bridge.subject.value).toBe('Hello there, friend');
+
+		// The follow-up save is built on the write that just landed.
+		void bridge.save();
+		expect(save).toHaveBeenLastCalledWith(
+			expect.anything(),
+			expect.objectContaining({ revision: 3 })
+		);
+		finish();
+	});
+
+	it('stays dirty when the surface save throws', async () => {
+		const source = ref<TemplateRow | null>({ _id: 't1', name: 'Welcome', subject: 'Hello' });
+		const bridge = useEmailEditorBridge({
+			source,
+			initialize: (row, ctx) => {
+				ctx.subject.value = row.subject;
+			},
+			save: () => Promise.reject(new Error('Save failed')),
+		});
+		await settle();
+		bridge.subject.value = 'Edited';
+		await nextTick();
+
+		await expect(bridge.save()).rejects.toThrow('Save failed');
+		expect(bridge.hasChanges.value).toBe(true);
+		expect(bridge.isSaving.value).toBe(false);
 	});
 });

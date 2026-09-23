@@ -14460,7 +14460,8 @@
 		"useEmailEditorBridge": {
 			"getUploadUrlOperation": "Get upload URL",
 			"saveBlockOperation": "Save block",
-			"saveMediaAssetOperation": "Save media asset"
+			"saveMediaAssetOperation": "Save media asset",
+			"staleRevision": "This email was changed somewhere else after you opened it, so your edits were not saved. Copy anything you want to keep, then reload the page to get the latest version."
 		},
 		"useFormSettings": {
 			"errors": {

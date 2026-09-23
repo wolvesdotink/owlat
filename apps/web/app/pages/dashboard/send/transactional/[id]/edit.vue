@@ -142,6 +142,7 @@ const {
 	save: handleSave,
 } = useEmailEditorBridge({
 	source: email,
+	revision: (row) => row.contentRevision ?? 0,
 	extraWatch: [() => attachments.value, () => showUnsubscribe.value, () => plainTextOverride.value],
 	initialize: (e, ctx) => {
 		ctx.name.value = e.name;
@@ -166,31 +167,33 @@ const {
 			attachments.value = [];
 		}
 	},
-	save: async (ctx) => {
+	save: async (ctx, base) => {
+		// Everything is read here, before the first await; the payload is built
+		// from this snapshot and the row the draft was loaded from.
+		const id = emailId.value;
+		const surfaceFields = {
+			attachments: JSON.stringify(attachments.value),
+			showUnsubscribe: showUnsubscribe.value,
+		};
 		await publishableEmailSave({
-			identifier: { emailType: 'transactional', emailId: emailId.value },
-			blocks: ctx.blocks.value,
+			draft: {
+				name: ctx.name.value,
+				subject: ctx.subject.value,
+				blocks: ctx.blocks.value,
+				plainTextOverride: plainTextOverride.value,
+			},
+			base: {
+				supportedLanguages: base.source?.supportedLanguages ?? [],
+				defaultLanguage: base.source?.defaultLanguage ?? 'en',
+				translations: base.source?.translations,
+				revision: base.revision,
+			},
 			renderOptions: { theme: emailTheme.value, variableType: 'data' },
-			supportedLanguages: email.value?.supportedLanguages ?? [],
-			defaultLanguage: email.value?.defaultLanguage ?? 'en',
-			plainTextOverride: plainTextOverride.value,
-			update: async (payload) => {
+			commit: async (payload) => {
 				// The bridge clears the dirty flag only when save() resolves. The
-				// operation module has toasted any categorized failure; throw so the
-				// editor stays dirty instead of being marked clean on a failed save.
-				const result = await updateEmail({
-					id: emailId.value,
-					name: ctx.name.value,
-					subject: ctx.subject.value,
-					content: JSON.stringify(ctx.blocks.value),
-					htmlContent: payload.htmlContent,
-					htmlTranslations: payload.htmlTranslations,
-					linkedBlockIds: payload.linkedBlockIds,
-					plainTextContent: payload.plainTextContent,
-					plainTextOverride: payload.plainTextOverride,
-					attachments: JSON.stringify(attachments.value),
-					showUnsubscribe: showUnsubscribe.value,
-				});
+				// operation module has toasted any categorized failure (including a
+				// stale revision); throw so the editor stays dirty.
+				const result = await updateEmail({ id, ...payload, ...surfaceFields });
 				if (!result.ok) throw new Error('Save failed');
 			},
 		});
