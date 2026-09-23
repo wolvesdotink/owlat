@@ -71,6 +71,13 @@ watch(
 	() => route.fullPath,
 	() => revealAnchor(route.hash)
 );
+
+// The compact row: every My settings page, in rail order.
+const compactEntries = computed(() =>
+	sections.value.flatMap((section) =>
+		section.entries.map((entry) => ({ path: entry.path, title: t(entry.titleKey) }))
+	)
+);
 </script>
 
 <template>
@@ -90,35 +97,17 @@ watch(
 				     a media query, not a branch), so they need DISTINGUISHABLE landmark
 				     names. -->
 				<template #above>
-					<nav
-						class="lg:hidden -mx-1 mb-5 flex gap-1.5 overflow-x-auto pb-1"
-						:aria-label="t('shell.preferences.navLabelCompact')"
-					>
-						<template v-for="section in sections" :key="section.key">
-							<NuxtLink
-								v-for="entry in section.entries"
-								:key="entry.path"
-								:to="entry.path"
-								class="shrink-0 rounded-full border px-3 py-1 text-xs transition-colors duration-(--motion-fast)"
-								:class="
-									route.path === entry.path
-										? 'border-brand bg-brand-subtle font-medium text-brand'
-										: 'border-border-default text-text-secondary hover:text-text-primary'
-								"
-								:aria-current="route.path === entry.path ? 'page' : undefined"
-							>
-								{{ t(entry.titleKey) }}
-							</NuxtLink>
-						</template>
-						<!-- The way over to the Workspace half, for owners and admins. -->
-						<NuxtLink
-							v-if="adminAreas.length > 0"
-							to="/dashboard/admin"
-							class="shrink-0 rounded-full border border-border-default px-3 py-1 text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary"
-						>
-							{{ t('components.shell.settings.tabs.workspace') }}
-						</NuxtLink>
-					</nav>
+					<ShellSettingsCompactNav
+						class="-mx-1 mb-5"
+						:label="t('shell.preferences.navLabelCompact')"
+						:entries="compactEntries"
+						:current-path="route.path"
+						:across="
+							adminAreas.length > 0
+								? { path: '/dashboard/admin', title: t('components.shell.settings.tabs.workspace') }
+								: null
+						"
+					/>
 
 					<h1 v-if="heading" class="mb-6 text-2xl font-medium tracking-[-0.02em] text-text-primary">
 						{{ heading }}

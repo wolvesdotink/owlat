@@ -63,13 +63,20 @@ const tabs = computed(() => adminTabsFor(route.path, environment.value));
  * to the other groups.
  *
  * On the overview that leaves one pill pointing at the page you are already on,
- * so the row hides itself there.
+ * so only the trailing link to My settings stays there.
  */
 const compactEntries = computed(() => {
 	const overview = areas.value.find((area) => area.key === 'overview')?.entries ?? [];
 	const current = areas.value.find((area) => area.key === activeArea.value)?.entries ?? [];
 	return [...overview.filter((entry) => !current.includes(entry)), ...current];
 });
+// On the overview that list is one pill pointing at itself: show only the way
+// across to My settings there.
+const compactPills = computed(() =>
+	compactEntries.value.length > 1
+		? compactEntries.value.map((entry) => ({ path: entry.path, title: t(entry.titleKey) }))
+		: []
+);
 
 // ⌘K, from inside Workspace settings: every admin destination this deployment
 // has, above the core groups. The core navigation group caps at eight rows
@@ -107,26 +114,16 @@ registerCommandPaletteProvider({
 					<!-- Same destinations, laid out for a narrow viewport. Both rails are in
 					     the DOM at once (the swap is a media query, not a branch), so they
 					     need DISTINGUISHABLE landmark names. -->
-					<nav
-						v-if="compactEntries.length > 1"
-						class="lg:hidden flex gap-1.5 overflow-x-auto px-4 pt-6 sm:px-6 pb-1"
-						:aria-label="t('shell.admin.navLabelCompact')"
-					>
-						<NuxtLink
-							v-for="entry in compactEntries"
-							:key="entry.path"
-							:to="entry.path"
-							class="shrink-0 rounded-full px-3 py-1 text-xs transition-colors duration-(--motion-fast)"
-							:class="
-								railPath === entry.path
-									? 'bg-bg-surface font-medium text-text-primary'
-									: 'text-text-secondary hover:bg-bg-surface hover:text-text-primary'
-							"
-							:aria-current="railPath === entry.path ? 'page' : undefined"
-						>
-							{{ t(entry.titleKey) }}
-						</NuxtLink>
-					</nav>
+					<ShellSettingsCompactNav
+						class="px-4 pt-6 sm:px-6"
+						:label="t('shell.admin.navLabelCompact')"
+						:entries="compactPills"
+						:current-path="railPath"
+						:across="{
+							path: '/dashboard/preferences',
+							title: t('components.shell.settings.tabs.mine'),
+						}"
+					/>
 
 					<SettingsPageShell :wide="wide">
 						<template v-if="tabs.length > 0" #above>

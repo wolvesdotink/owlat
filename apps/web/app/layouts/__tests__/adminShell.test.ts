@@ -161,13 +161,18 @@ describe('the admin rail', () => {
 			'/dashboard/admin/delivery/activity',
 			'/dashboard/admin/delivery/migrate',
 			'/dashboard/admin/delivery/advanced',
+			// The way across to the other half of Settings, as in My settings.
+			'/dashboard/preferences',
 		]);
 	});
 
-	it('drops the compact row on the hub, where it would point at itself', () => {
+	it('on the hub, keeps only the way across to My settings in the compact row', () => {
 		route.path = '/dashboard/admin';
 		const wrapper = mountLayout();
-		expect(wrapper.find('nav[aria-label="Workspace settings (compact)"]').exists()).toBe(false);
+		const compact = wrapper
+			.findAll('nav[aria-label="Workspace settings (compact)"] a')
+			.map((link) => [link.attributes('href'), link.text()]);
+		expect(compact).toEqual([['/dashboard/preferences', 'My settings']]);
 	});
 
 	it('keeps the operator console on a self-hosted deployment', () => {
