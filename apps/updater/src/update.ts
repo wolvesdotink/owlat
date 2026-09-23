@@ -2,7 +2,7 @@
  * POST /update — apply a release to the running stack.
  *
  * The order is the whole design: validate the caller's template, prove the
- * Docker API can finish the job, stage the template, pull, deploy the Convex
+ * Docker API can finish the job, make room on the disk, stage the template, pull, deploy the Convex
  * functions against the still-running old backend, and only then promote the
  * file and recreate the containers. Every one of those steps up to the promote
  * can fail leaving the running stack exactly as it was.
@@ -35,6 +35,7 @@ import {
 	scheduleUpdaterRecreateSafely,
 	servicesToRecreate,
 } from './rollout.js';
+import { diskSpacePreflight, pullFailureMessage, reclaimUnusedImages } from './storage.js';
 
 const COMPOSE_FILE = join(OWLAT_DIR, 'docker-compose.yml');
 
@@ -130,6 +131,20 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		return json(res, 500, { error: preflight.stderr, steps });
 	}
 
+	// Step 2b: Make room for the release, then prove there is room. Nothing
+	// ever removed a superseded release's images, so an instance that updated
+	// often enough filled its disk, and the pull died with `no space left on
+	// device` on every retry after. Reclaiming first lets exactly that instance
+	// update itself out of the hole; the check after it turns a disk that is
+	// full for some other reason into a sentence instead of a failed pull.
+	steps.push(reclaimUnusedImages());
+	const disk = diskSpacePreflight();
+	steps.push(disk);
+	if (!disk.ok) {
+		console.error('[update] refused before staging:', disk.stderr);
+		return json(res, 507, { error: disk.stderr, steps });
+	}
+
 	// Step 3: STAGE the validated template. The live docker-compose.yml is only
 	// replaced after pull + convex-deploy succeed — previously it was
 	// overwritten first, so a failed update left a half-applied breaking
@@ -170,7 +185,9 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 
 	if (!pull.ok) {
 		await discardStaged();
-		return json(res, 500, { error: 'Docker pull failed — update aborted, nothing changed', steps });
+		const error = pullFailureMessage(pull.stderr);
+		console.error('[update]', error);
+		return json(res, 500, { error, steps });
 	}
 
 	// Step 5 (P2.4 / S5): deploy Convex functions BEFORE restarting app

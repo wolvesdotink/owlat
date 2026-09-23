@@ -4,11 +4,18 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const { execFileSyncMock, rateLimitedMock } = vi.hoisted(() => ({
+const { execFileSyncMock, rateLimitedMock, freeBytesMock } = vi.hoisted(() => ({
 	execFileSyncMock: vi.fn(),
 	rateLimitedMock: vi.fn(() => false),
+	freeBytesMock: vi.fn((): number => 50 * 1024 ** 3),
 }));
 vi.mock('node:child_process', () => ({ execFileSync: execFileSyncMock }));
+// Only statfs is faked: the tests stage real files in a temp OWLAT_DIR, but the
+// free space of the disk they run on is not something a test may depend on.
+vi.mock('node:fs', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('node:fs')>();
+	return { ...actual, statfsSync: () => ({ bavail: freeBytesMock(), bsize: 1 }) };
+});
 vi.mock('../security.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../security.js')>();
 	return { ...actual, isRateLimited: rateLimitedMock };
@@ -36,6 +43,7 @@ afterAll(() => server.close());
 
 beforeEach(() => {
 	rateLimitedMock.mockReturnValue(false);
+	freeBytesMock.mockReset().mockReturnValue(50 * 1024 ** 3);
 	execFileSyncMock.mockReset().mockImplementation(dockerFixture);
 	writeFileSync(
 		join(OWLAT_DIR, '.env'),
@@ -56,6 +64,11 @@ function dockerFixture(file: unknown, args: unknown): string {
 	if (cmd.includes('config --services')) {
 		return 'web\nconvex\nmta\nupdater\ndocker-socket-proxy\n';
 	}
+	if (cmd.startsWith('docker inspect') && cmd.includes('org.opencontainers.image.source')) {
+		return `${OWLAT_SOURCE}\n`;
+	}
+	if (cmd.startsWith('docker image prune'))
+		return 'Deleted Images:\n…\nTotal reclaimed space: 15.91GB\n';
 	if (cmd.startsWith('docker inspect')) {
 		return [
 			'ghcr.io/wolvesdotink/updater:0.5.0',
@@ -66,6 +79,9 @@ function dockerFixture(file: unknown, args: unknown): string {
 	if (cmd.startsWith('docker run')) return 'helper-container-id\n';
 	return '';
 }
+
+/** The OCI source label every published Owlat image carries. */
+const OWLAT_SOURCE = 'https://github.com/wolvesdotink/owlat';
 
 /** A docker that fails `match`, and behaves for everything else. */
 function dockerFailing(match: (cmd: string) => boolean, stderr: string) {
@@ -261,6 +277,8 @@ describe('POST /update', () => {
 		const json = (await res.json()) as { steps?: Array<{ step: string }> };
 		expect(json.steps?.map((s) => s.step)).toEqual([
 			'docker-api-preflight',
+			'reclaim-images',
+			'disk-space-preflight',
 			'stage-compose',
 			'pull',
 			'convex-deploy',
@@ -307,6 +325,8 @@ describe('POST /update', () => {
 		const json = (await res.json()) as { steps?: Array<{ step: string; ok?: boolean }> };
 		expect(json.steps?.map((s) => s.step)).toEqual([
 			'docker-api-preflight',
+			'reclaim-images',
+			'disk-space-preflight',
 			'stage-compose',
 			'pull',
 			'convex-deploy',
@@ -365,6 +385,96 @@ describe('POST /update', () => {
 			'services: {} # original\n'
 		);
 		expect(existsSync(join(OWLAT_DIR, 'docker-compose.next.yml'))).toBe(false);
+	});
+
+	/**
+	 * Nothing used to remove a superseded release's images, so an instance that
+	 * updated often enough filled its disk and every pull after that died with
+	 * `no space left on device`.
+	 */
+	describe('disk space', () => {
+		it('removes unused Owlat images — and only those — before it pulls', async () => {
+			const res = await post('/update');
+			expect(res.status).toBe(200);
+			const cmds = commandLines();
+			const prune = cmds.findIndex((c) => c.startsWith('docker image prune'));
+			const pull = cmds.findIndex((c) => c.endsWith(' pull'));
+			expect(cmds[prune]).toBe(
+				`docker image prune --all --force --filter label=org.opencontainers.image.source=${OWLAT_SOURCE}`
+			);
+			expect(prune).toBeLessThan(pull);
+			const json = (await res.json()) as { steps: { step: string; stdout: string }[] };
+			expect(json.steps.find((s) => s.step === 'reclaim-images')?.stdout).toContain('15.91GB');
+		});
+
+		it('prunes nothing when its own image carries no source label (a dev build)', async () => {
+			execFileSyncMock.mockImplementation((file: unknown, args: unknown) => {
+				const cmd = [String(file), ...((args as string[]) ?? [])].join(' ');
+				if (cmd.includes('org.opencontainers.image.source')) return '\n';
+				return dockerFixture(file, args);
+			});
+			const res = await post('/update');
+			expect(res.status).toBe(200);
+			expect(commandLines().some((c) => c.startsWith('docker image prune'))).toBe(false);
+		});
+
+		it('still updates when the prune fails — the free-space check decides', async () => {
+			execFileSyncMock.mockImplementation(
+				dockerFailing((cmd) => cmd.startsWith('docker image prune'), 'permission denied')
+			);
+			const res = await post('/update');
+			expect(res.status).toBe(200);
+		});
+
+		it('refuses before staging or pulling when the disk has no room for a release', async () => {
+			writeFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'services: {} # original\n');
+			freeBytesMock.mockReturnValue(1.2 * 1024 ** 3);
+			const template = [
+				'services:',
+				'  web:',
+				'    image: ghcr.io/wolvesdotink/web:9.9.9',
+				'',
+			].join('\n');
+			const res = await post('/update', { composeTemplate: template });
+			expect(res.status).toBe(507);
+			const json = (await res.json()) as { error: string };
+			expect(json.error).toContain('Not enough disk space to update: 1.2 GB free');
+			expect(json.error).toContain('docker image prune -a');
+			expect(composeCommands()).toEqual([]);
+			expect(existsSync(join(OWLAT_DIR, 'docker-compose.next.yml'))).toBe(false);
+			expect(readFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'utf-8')).toBe(
+				'services: {} # original\n'
+			);
+		});
+
+		it('names a full disk when the pull itself runs out of space', async () => {
+			execFileSyncMock.mockImplementation(
+				dockerFailing(
+					(cmd) => cmd.endsWith(' pull'),
+					' Image ghcr.io/wolvesdotink/web:0.5.5 Pulling \n 4c7692787e55 Pull complete 0B\n' +
+						'failed to copy: failed to send write: write /var/lib/containerd/io.containerd.content.v1.content/ingest/x/data: no space left on device\n'
+				)
+			);
+			const res = await post('/update');
+			expect(res.status).toBe(500);
+			const json = (await res.json()) as { error: string };
+			expect(json.error).toMatch(/^Docker pull failed: the host disk is full/);
+		});
+
+		it("puts the pull's own last error line in the message, not its layer progress", async () => {
+			execFileSyncMock.mockImplementation(
+				dockerFailing(
+					(cmd) => cmd.endsWith(' pull'),
+					' 4c7692787e55 Pulling fs layer 0B\nError response from daemon: manifest unknown\n'
+				)
+			);
+			const res = await post('/update');
+			const json = (await res.json()) as { error: string };
+			expect(json.error).toBe(
+				'Docker pull failed (Error response from daemon: manifest unknown). ' +
+					'The update was aborted and nothing changed.'
+			);
+		});
 	});
 
 	it('stops before docker compose up when convex-deploy fails', async () => {
