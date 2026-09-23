@@ -203,7 +203,6 @@ import type * as confirmationEmail from '../confirmationEmail.js';
 import type * as confirmationEmailQueries from '../confirmationEmailQueries.js';
 import type * as connectedApps_actions from '../connectedApps/actions.js';
 import type * as connectedApps_connectionTest from '../connectedApps/connectionTest.js';
-import type * as connectedApps_hookDeliveryLog from '../connectedApps/hookDeliveryLog.js';
 import type * as connectedApps_hookProtocol from '../connectedApps/hookProtocol.js';
 import type * as connectedApps_hookSignature from '../connectedApps/hookSignature.js';
 import type * as connectedApps_lifecycle from '../connectedApps/lifecycle.js';
@@ -963,7 +962,6 @@ import type * as plugins_sendTransportWebhookModules_generated from '../plugins/
 import type * as automations_steps_catalog from '../automations/steps/catalog.js';
 import type * as automations_steps_pluginStep from '../automations/steps/pluginStep.js';
 import type * as automations_triggers_catalog from '../automations/triggers/catalog.js';
-import type * as automations_triggers_pluginTriggers from '../automations/triggers/pluginTriggers.js';
 import type * as conditions_catalog from '../conditions/catalog.js';
 import type * as plugins_automationStepAuthorization from '../plugins/automationStepAuthorization.js';
 import type * as plugins_hostedModuleSnapshot from '../plugins/hostedModuleSnapshot.js';
@@ -1363,7 +1361,6 @@ declare const fullApi: ApiFromModules<{
 	confirmationEmailQueries: typeof confirmationEmailQueries;
 	'connectedApps/actions': typeof connectedApps_actions;
 	'connectedApps/connectionTest': typeof connectedApps_connectionTest;
-	'connectedApps/hookDeliveryLog': typeof connectedApps_hookDeliveryLog;
 	'connectedApps/hookProtocol': typeof connectedApps_hookProtocol;
 	'connectedApps/hookSignature': typeof connectedApps_hookSignature;
 	'connectedApps/lifecycle': typeof connectedApps_lifecycle;
@@ -2127,7 +2124,6 @@ declare const fullApi: ApiFromModules<{
 	'automations/steps/catalog': typeof automations_steps_catalog;
 	'automations/steps/pluginStep': typeof automations_steps_pluginStep;
 	'automations/triggers/catalog': typeof automations_triggers_catalog;
-	'automations/triggers/pluginTriggers': typeof automations_triggers_pluginTriggers;
 	'conditions/catalog': typeof conditions_catalog;
 	'plugins/automationStepAuthorization': typeof plugins_automationStepAuthorization;
 	'plugins/hostedModuleSnapshot': typeof plugins_hostedModuleSnapshot;
