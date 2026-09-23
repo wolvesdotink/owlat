@@ -17,8 +17,10 @@ import {
 	hasAgentDraft,
 	latestClassification,
 	needsTakeOver,
+	otherWaitingDrafts,
 	pickReplyTarget,
 	replyBlocker,
+	replySubject,
 } from '~/utils/teamThreadReply';
 import { isApproveAlreadyHandled } from '~/composables/useReviewApproveUndo';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
@@ -57,8 +59,6 @@ const {
 	messages,
 	contact,
 	threadLoading,
-	editedDraftResponse,
-	editedDraftSubject,
 	handleApprove,
 	handleReject,
 	handleRetry,
@@ -357,7 +357,24 @@ const onUnsnooze = async () => {
 // ── Reply composer ──
 // The composer answers one message: the newest still waiting for a reply,
 // otherwise the newest message (whose state then says why nothing can go out).
-const replyTarget = computed(() => pickReplyTarget(messages.value));
+// A person can pick an earlier message that also holds a waiting draft; the
+// choice holds while that message still waits for a reply.
+const chosenTargetId = ref<Id<'inboundMessages'> | null>(null);
+const replyTarget = computed(() => {
+	const chosen = chosenTargetId.value
+		? messages.value.find(
+				(m) => m._id === chosenTargetId.value && m.processingStatus === 'draft_ready'
+			)
+		: undefined;
+	return chosen ?? pickReplyTarget(messages.value);
+});
+const waitingDraftIds = computed(
+	() => new Set(otherWaitingDrafts(messages.value, replyTarget.value).map((m) => m._id))
+);
+function answerMessage(messageId: Id<'inboundMessages'>) {
+	chosenTargetId.value = messageId;
+	openReply();
+}
 const replyTargetBlocker = computed(() =>
 	replyTarget.value
 		? replyBlocker(replyTarget.value.processingStatus, {
@@ -380,6 +397,9 @@ const replyDraft = computed(() =>
 	hasAgentDraft(replyTarget.value)
 		? (replyTarget.value.draftResponse ?? null)
 		: null
+);
+const replyDefaultSubject = computed(() =>
+	replyTarget.value ? replySubject(replyTarget.value) : null
 );
 const replyOriginalDraft = computed(() =>
 	replyTarget.value && replyDraft.value ? agentOriginalDraft(replyTarget.value) : null
@@ -420,7 +440,7 @@ function refusedSend(result: unknown): boolean {
  * path); anything typed is saved as the working draft first and then approved —
  * the same edit → approve path the Answer queue's "Write my own" takes.
  */
-const onComposerSend = async (body: string, fromDraft: boolean) => {
+const onComposerSend = async (body: string, fromDraft: boolean, subject: string) => {
 	const target = replyTarget.value;
 	if (!target || isHeld.value || isSending.value) return;
 	isSending.value = true;
@@ -433,13 +453,12 @@ const onComposerSend = async (body: string, fromDraft: boolean) => {
 		if (fromDraft) {
 			result = await handleApprove(target._id);
 		} else {
-			editedDraftResponse.value = body;
-			editedDraftSubject.value = target.draftSubject ?? '';
-			result = await saveEditedDraft(target._id);
+			result = await saveEditedDraft(target._id, { body, subject });
 		}
 		if (!result.ok || refusedSend(result.result)) return;
 		composerRef.value?.reset();
 		composerOpen.value = false;
+		chosenTargetId.value = null;
 		showToast(t('dashboard.inbox.detail.replySentToast'));
 	} finally {
 		isSending.value = false;
@@ -449,14 +468,12 @@ const onComposerSend = async (body: string, fromDraft: boolean) => {
 // Save WITHOUT sending: persist the edit as a draft revision. The message stays
 // waiting for review ("Saved · edited by you"); no collision hold applies
 // because nothing is sent.
-const onComposerSave = async (body: string) => {
+const onComposerSave = async (body: string, subject: string) => {
 	const target = replyTarget.value;
 	if (!target) return;
 	isSending.value = true;
 	try {
-		editedDraftResponse.value = body;
-		editedDraftSubject.value = target.draftSubject ?? '';
-		const result = await saveDraftOnly(target._id);
+		const result = await saveDraftOnly(target._id, { body, subject });
 		if (result.ok) showToast(t('dashboard.inbox.detail.toasts.draftSavedNotApproved'));
 	} finally {
 		isSending.value = false;
@@ -903,6 +920,25 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						     list needs no extra query; the component owns the download. -->
 						<InboxMessageAttachments :message="message" />
 
+						<!-- Another message in this thread also has a draft waiting: say so,
+						     and let the person answer or reject it here, in order. -->
+						<div
+							v-if="isAdmin && waitingDraftIds.has(message._id)"
+							class="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-warning/10 p-3"
+							data-testid="thread-waiting-draft"
+						>
+							<p class="flex-1 text-xs text-text-secondary">
+								{{ t('dashboard.inbox.detail.waitingDraft.notice') }}
+							</p>
+							<UiButton variant="secondary" size="sm" @click="answerMessage(message._id)">
+								<Icon name="lucide:reply" class="w-3.5 h-3.5" />
+								{{ t('dashboard.inbox.detail.waitingDraft.answer') }}
+							</UiButton>
+							<UiButton variant="ghost" size="sm" @click="openRejectModal(message._id)">
+								{{ t('dashboard.inbox.detail.composer.rejectDraft') }}
+							</UiButton>
+						</div>
+
 						<!-- Failure reason + manual retry (terminal 'failed' state) -->
 						<div
 							v-if="message.processingStatus === 'failed'"
@@ -1120,6 +1156,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						:blocker="replyTargetBlocker"
 						:draft="replyDraft"
 						:original-draft="replyOriginalDraft"
+						:subject="replyDefaultSubject"
 						:busy="isSending"
 						:held="isHeld"
 						:held-reason="holdReason"

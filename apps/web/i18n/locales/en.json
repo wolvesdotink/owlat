@@ -8975,7 +8975,8 @@
 					"saveDraft": "Save draft",
 					"send": "Send reply",
 					"sendHint": "Send",
-					"writeOwn": "Write my own"
+					"writeOwn": "Write my own",
+					"subjectLabel": "Subject"
 				},
 				"contact": "Contact",
 				"details": "Details",
@@ -9054,7 +9055,11 @@
 				"undoAutoSendOperation": "Undo automatic send",
 				"unsnooze": "Unsnooze",
 				"unsnoozedToast": "Thread unsnoozed",
-				"viewContactProfile": "View contact profile"
+				"viewContactProfile": "View contact profile",
+				"waitingDraft": {
+					"notice": "A draft reply to this message is also waiting.",
+					"answer": "Answer this message"
+				}
 			},
 			"failed": {
 				"emptyBody": "Every inbound message processed successfully.",
@@ -14630,20 +14635,6 @@
 		"useThreadDetail": {
 			"approveDraft": "Approve draft",
 			"assignThread": "Assign thread",
-			"processingStatus": {
-				"approved": "Approved",
-				"archived": "Archived",
-				"awaitingClarification": "Waiting for your input",
-				"classified": "Classified",
-				"draftReady": "Draft ready",
-				"failed": "Failed",
-				"informational": "No reply needed",
-				"processing": "Processing",
-				"quarantined": "Quarantined",
-				"received": "Received",
-				"rejected": "Rejected",
-				"sent": "Sent"
-			},
 			"rejectDraft": "Reject draft",
 			"retryMessage": "Retry message",
 			"saveDraft": "Save draft",

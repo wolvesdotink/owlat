@@ -8975,7 +8975,8 @@
 					"saveDraft": "Entwurf speichern",
 					"send": "Antwort senden",
 					"sendHint": "Senden",
-					"writeOwn": "Selbst schreiben"
+					"writeOwn": "Selbst schreiben",
+					"subjectLabel": "Betreff"
 				},
 				"contact": "Kontakt",
 				"details": "Details",
@@ -9054,7 +9055,11 @@
 				"undoAutoSendOperation": "Automatischen Versand rückgängig machen",
 				"unsnooze": "Zurückstellung aufheben",
 				"unsnoozedToast": "Zurückstellung aufgehoben",
-				"viewContactProfile": "Kontaktprofil ansehen"
+				"viewContactProfile": "Kontaktprofil ansehen",
+				"waitingDraft": {
+					"notice": "Auch für diese Nachricht wartet ein Antwortentwurf.",
+					"answer": "Diese Nachricht beantworten"
+				}
 			},
 			"failed": {
 				"emptyBody": "Jede eingehende Nachricht wurde erfolgreich verarbeitet.",
@@ -14630,20 +14635,6 @@
 		"useThreadDetail": {
 			"approveDraft": "Entwurf freigeben",
 			"assignThread": "Konversation zuweisen",
-			"processingStatus": {
-				"approved": "Freigegeben",
-				"archived": "Archiviert",
-				"awaitingClarification": "Wartet auf Ihre Eingabe",
-				"classified": "Klassifiziert",
-				"draftReady": "Entwurf bereit",
-				"failed": "Fehlgeschlagen",
-				"informational": "Keine Antwort nötig",
-				"processing": "In Verarbeitung",
-				"quarantined": "In Quarantäne",
-				"received": "Empfangen",
-				"rejected": "Abgelehnt",
-				"sent": "Gesendet"
-			},
 			"rejectDraft": "Entwurf ablehnen",
 			"retryMessage": "Nachricht erneut versuchen",
 			"saveDraft": "Entwurf speichern",

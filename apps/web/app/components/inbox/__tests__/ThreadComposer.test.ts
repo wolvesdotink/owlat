@@ -37,7 +37,7 @@ describe('InboxThreadComposer', () => {
 		await wrapper.get('[data-testid="thread-composer-send"]').trigger('click');
 
 		expect(wrapper.emitted('update:open')?.[0]).toEqual([true]);
-		expect(wrapper.emitted('send')?.[0]).toEqual(['We have refunded the invoice.', false]);
+		expect(wrapper.emitted('send')?.[0]).toEqual(['We have refunded the invoice.', false, '']);
 		expect(wrapper.get('[data-testid="thread-composer-send"]').text()).toBe('Send reply');
 		wrapper.unmount();
 	});
@@ -62,7 +62,7 @@ describe('InboxThreadComposer', () => {
 		const send = wrapper.get('[data-testid="thread-composer-send"]');
 		expect(send.text()).toBe('Review & send');
 		await send.trigger('click');
-		expect(wrapper.emitted('send')?.[0]).toEqual(['Hi Ana, here is your invoice.', true]);
+		expect(wrapper.emitted('send')?.[0]).toEqual(['Hi Ana, here is your invoice.', true, '']);
 		wrapper.unmount();
 	});
 
@@ -76,10 +76,10 @@ describe('InboxThreadComposer', () => {
 		expect(wrapper.find('[data-testid="thread-composer-save"]').exists()).toBe(true);
 
 		await wrapper.get('[data-testid="thread-composer-send"]').trigger('click');
-		expect(wrapper.emitted('send')?.[0]).toEqual(['Hi Ana, sorry for the wait.', false]);
+		expect(wrapper.emitted('send')?.[0]).toEqual(['Hi Ana, sorry for the wait.', false, '']);
 
 		await wrapper.get('[data-testid="thread-composer-save"]').trigger('click');
-		expect(wrapper.emitted('save')?.[0]).toEqual(['Hi Ana, sorry for the wait.']);
+		expect(wrapper.emitted('save')?.[0]).toEqual(['Hi Ana, sorry for the wait.', '']);
 		wrapper.unmount();
 	});
 
@@ -113,7 +113,7 @@ describe('InboxThreadComposer', () => {
 		const body = wrapper.get('[data-testid="thread-composer-body"]');
 		await body.setValue('Done.');
 		await body.trigger('keydown', { key: 'Enter', ctrlKey: true });
-		expect(wrapper.emitted('send')?.[0]).toEqual(['Done.', false]);
+		expect(wrapper.emitted('send')?.[0]).toEqual(['Done.', false, '']);
 		wrapper.unmount();
 	});
 
@@ -130,6 +130,31 @@ describe('InboxThreadComposer', () => {
 		expect(wrapper.find('[data-testid="thread-composer-body"]').exists()).toBe(false);
 		expect(wrapper.get('[data-testid="thread-composer-blocked"]').text()).toContain(
 			'The agent is drafting a reply.'
+		);
+		wrapper.unmount();
+	});
+
+	it('sends under the pre-filled subject, and an edited subject is the person’s own', async () => {
+		const wrapper = mountComposer({ draft: 'Hi Ana.', subject: 'Re: Invoice' });
+		const subject = wrapper.get('[data-testid="thread-composer-subject"]');
+		expect((subject.element as HTMLInputElement).value).toBe('Re: Invoice');
+
+		await subject.setValue('Re: Invoice 1042');
+		await wrapper.get('[data-testid="thread-composer-send"]').trigger('click');
+		expect(wrapper.emitted('send')?.[0]).toEqual(['Hi Ana.', false, 'Re: Invoice 1042']);
+		wrapper.unmount();
+	});
+
+	it('hands focus back to the reply line when the box collapses', async () => {
+		const wrapper = mountComposer({ open: true });
+		const body = wrapper.get('[data-testid="thread-composer-body"]');
+		(body.element as HTMLTextAreaElement).focus();
+		await body.trigger('keydown', { key: 'Escape' });
+		await wrapper.setProps({ open: false });
+		await nextTick();
+		await nextTick();
+		expect(document.activeElement).toBe(
+			wrapper.get('[data-testid="thread-composer-open"]').element
 		);
 		wrapper.unmount();
 	});

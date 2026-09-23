@@ -6,6 +6,8 @@ import {
 	hasAgentDraft,
 	latestClassification,
 	needsTakeOver,
+	otherWaitingDrafts,
+	replySubject,
 	pickReplyTarget,
 	replyBlocker,
 } from '../teamThreadReply';
@@ -134,5 +136,25 @@ describe('classification line', () => {
 		];
 		expect(latestClassification(messages)?.category).toBe('billing');
 		expect(latestClassification([{ _creationTime: 1 }])).toBeNull();
+	});
+});
+
+describe('otherWaitingDrafts', () => {
+	it('lists every other message with a waiting draft, oldest first', () => {
+		const a = msg('a', 1, 'draft_ready');
+		const b = msg('b', 2, 'sent');
+		const c = msg('c', 3, 'draft_ready');
+		const d = msg('d', 4, 'draft_ready');
+		expect(otherWaitingDrafts([d, a, b, c], d).map((m) => m._id)).toEqual(['a', 'c']);
+		expect(otherWaitingDrafts(undefined, null)).toEqual([]);
+	});
+});
+
+describe('replySubject', () => {
+	it('keeps the draft subject, else answers the message subject once', () => {
+		expect(replySubject({ draftSubject: 'Re: Invoice', subject: 'Invoice' })).toBe('Re: Invoice');
+		expect(replySubject({ subject: 'Invoice' })).toBe('Re: Invoice');
+		expect(replySubject({ subject: 'RE: Invoice' })).toBe('RE: Invoice');
+		expect(replySubject({})).toBe('');
 	});
 });

@@ -14,7 +14,8 @@
  *    an answer, already answered): the box stays collapsed and says why.
  *
  * Presentation only: the page owns the mutations and receives `send` (with
- * whether the text differs from the agent draft), `save` and `reject`.
+ * whether the text differs from the agent draft, and the subject), `save` and
+ * `reject`.
  * The send colour and label match the Answer queue (TaskActions' primary).
  */
 import TaskActions from '~/components/agent-tasks/TaskActions.vue';
@@ -30,6 +31,8 @@ const props = withDefaults(
 		draft?: string | null;
 		/** The agent's original draft — the "before" of the edit diff. */
 		originalDraft?: string | null;
+		/** The reply's subject to pre-fill (the draft's, or "Re: …"). */
+		subject?: string | null;
 		/** Expanded? Two-way, so the page's Reply button and `r` can open it. */
 		open?: boolean;
 		busy?: boolean;
@@ -41,6 +44,7 @@ const props = withDefaults(
 		blocker: null,
 		draft: null,
 		originalDraft: null,
+		subject: null,
 		open: false,
 		busy: false,
 		held: false,
@@ -50,10 +54,10 @@ const props = withDefaults(
 
 const emit = defineEmits<{
 	(e: 'update:open', value: boolean): void;
-	/** Send `body`. `fromDraft` = unchanged agent draft (plain approve). */
-	(e: 'send', body: string, fromDraft: boolean): void;
+	/** Send `body` under `subject`. `fromDraft` = unchanged agent draft (plain approve). */
+	(e: 'send', body: string, fromDraft: boolean, subject: string): void;
 	/** Keep the edit as the working draft without sending. */
-	(e: 'save', body: string): void;
+	(e: 'save', body: string, subject: string): void;
 	(e: 'reject'): void;
 	/** The person is typing (or stopped) — drives the "is replying" presence. */
 	(e: 'typing', active: boolean): void;
@@ -63,7 +67,10 @@ const { t } = useI18n();
 
 const hasDraft = computed(() => !!props.draft?.trim());
 const body = ref(props.draft ?? '');
+const subject = ref(props.subject ?? '');
 const textarea = ref<HTMLTextAreaElement | null>(null);
+const trigger = ref<HTMLButtonElement | null>(null);
+const section = ref<HTMLElement | null>(null);
 
 const isOpen = computed(() => props.blocker === null && (props.open || hasDraft.value));
 
@@ -76,8 +83,31 @@ watch(
 		if (!touched.value) body.value = next ?? '';
 	}
 );
+watch(
+	() => props.subject,
+	(next) => {
+		if (!touched.value) subject.value = next ?? '';
+	}
+);
 
-const edited = computed(() => hasDraft.value && body.value.trim() !== (props.draft ?? '').trim());
+// Collapsing swaps the focused textarea for the one-line trigger. Hand focus to
+// the trigger so a keyboard or screen-reader user keeps their place instead of
+// landing back on <body> — whether Escape/Cancel closed it or the page did
+// after a send.
+watch(isOpen, (open, wasOpen) => {
+	if (open || !wasOpen) return;
+	const active = import.meta.client ? document.activeElement : null;
+	const focusWasHere =
+		!active || active === document.body || (section.value?.contains(active) ?? false);
+	if (!focusWasHere) return;
+	void nextTick(() => trigger.value?.focus());
+});
+
+const subjectEdited = computed(() => subject.value.trim() !== (props.subject ?? '').trim());
+const edited = computed(
+	() =>
+		hasDraft.value && (body.value.trim() !== (props.draft ?? '').trim() || subjectEdited.value)
+);
 const diffBase = computed(() => props.originalDraft ?? props.draft ?? '');
 const showDiff = computed(
 	() => hasDraft.value && body.value.trim() !== '' && body.value.trim() !== diffBase.value.trim()
@@ -97,6 +127,11 @@ function onInput(event: Event) {
 	body.value = (event.target as HTMLTextAreaElement).value;
 }
 
+function onSubjectInput(event: Event) {
+	touched.value = true;
+	subject.value = (event.target as HTMLInputElement).value;
+}
+
 function focus() {
 	emit('update:open', true);
 	void nextTick(() => {
@@ -107,7 +142,7 @@ function focus() {
 
 function send() {
 	if (!canSend.value || props.held) return;
-	emit('send', body.value, hasDraft.value && !edited.value);
+	emit('send', body.value, hasDraft.value && !edited.value, subject.value);
 }
 
 function writeOwn() {
@@ -119,11 +154,11 @@ function writeOwn() {
 function restoreDraft() {
 	touched.value = false;
 	body.value = props.draft ?? '';
+	subject.value = props.subject ?? '';
 }
 
 function cancel() {
-	touched.value = false;
-	body.value = props.draft ?? '';
+	restoreDraft();
 	emit('update:open', false);
 }
 
@@ -141,6 +176,7 @@ function onKeydown(event: KeyboardEvent) {
 function reset() {
 	touched.value = false;
 	body.value = '';
+	subject.value = props.subject ?? '';
 }
 
 defineExpose({ focus, reset });
@@ -151,6 +187,7 @@ const secondaryButton =
 
 <template>
 	<section
+		ref="section"
 		class="card"
 		data-testid="thread-composer"
 		:aria-label="t('dashboard.inbox.detail.composer.label')"
@@ -172,6 +209,7 @@ const secondaryButton =
 		<!-- Collapsed: one line that opens the box. -->
 		<button
 			v-else-if="!isOpen"
+			ref="trigger"
 			type="button"
 			class="flex w-full items-center gap-3 rounded-lg text-left text-sm text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
 			data-testid="thread-composer-open"
@@ -207,6 +245,17 @@ const secondaryButton =
 					}}
 				</span>
 			</div>
+
+			<input
+				:value="subject"
+				type="text"
+				class="input w-full text-sm"
+				:aria-label="t('dashboard.inbox.detail.composer.subjectLabel')"
+				:placeholder="t('dashboard.inbox.detail.composer.subjectLabel')"
+				data-testid="thread-composer-subject"
+				@input="onSubjectInput"
+				@keydown="onKeydown"
+			/>
 
 			<textarea
 				ref="textarea"
@@ -264,7 +313,7 @@ const secondaryButton =
 					:class="secondaryButton"
 					:disabled="busy || !body.trim()"
 					data-testid="thread-composer-save"
-					@click="emit('save', body)"
+					@click="emit('save', body, subject)"
 				>
 					<Icon name="lucide:save" class="w-3.5 h-3.5" />
 					{{ t('dashboard.inbox.detail.composer.saveDraft') }}

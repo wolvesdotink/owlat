@@ -22,6 +22,8 @@ export interface ReplyTargetMessage {
 	_id: string;
 	processingStatus: string;
 	draftResponse?: string | null;
+	draftSubject?: string | null;
+	subject?: string | null;
 	_creationTime: number;
 }
 
@@ -122,6 +124,33 @@ export function pickReplyTarget<T extends ReplyTargetMessage>(
 	if (!messages || messages.length === 0) return null;
 	const newestFirst = [...messages].sort((a, b) => b._creationTime - a._creationTime);
 	return newestFirst.find((m) => m.processingStatus === 'draft_ready') ?? newestFirst[0] ?? null;
+}
+
+/**
+ * The messages other than the target that also hold a draft waiting for a
+ * person, oldest first. Each gets its own note in the thread so none is
+ * answered out of order or silently left behind.
+ */
+export function otherWaitingDrafts<T extends ReplyTargetMessage>(
+	messages: readonly T[] | null | undefined,
+	target: T | null
+): T[] {
+	if (!messages) return [];
+	return messages
+		.filter((m) => m.processingStatus === 'draft_ready' && m._id !== target?._id)
+		.sort((a, b) => a._creationTime - b._creationTime);
+}
+
+/**
+ * The subject a reply goes out under: the draft's, otherwise "Re: <subject>"
+ * (the server's own fallback, `buildReplySubject`).
+ */
+export function replySubject(message: Pick<ReplyTargetMessage, 'draftSubject' | 'subject'>): string {
+	const draft = message.draftSubject?.trim();
+	if (draft) return draft;
+	const subject = message.subject ?? '';
+	if (!subject) return '';
+	return subject.toLowerCase().startsWith('re:') ? subject : `Re: ${subject}`;
 }
 
 /** Does the target carry an agent draft worth pre-filling the composer with? */
