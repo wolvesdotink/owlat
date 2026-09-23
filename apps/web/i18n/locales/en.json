@@ -9821,10 +9821,14 @@
 				"noMailboxes": "No mailboxes yet. Add your first account to start receiving mail.",
 				"pageTitle": "Preferences — Owlat",
 				"renameIntro": "Display name for {address}. The address itself can't be changed.",
-				"renameMailbox": "Rename mailbox",
+				"renameMailbox": "Name and colour",
 				"renameOperation": "Rename mailbox",
 				"subtitle": "How Owlat looks, reads and sends for you.",
-				"teamManage": "Team · manage"
+				"teamManage": "Team · manage",
+				"colour": "Colour",
+				"colourAutomatic": "Automatic",
+				"colourSlot": "Colour {n}",
+				"colourHelp": "The chip this inbox wears in the sidebar, on Today, in the Answer queue and next to Send — always together with its name."
 			},
 			"members": {
 				"detail": {
@@ -13809,7 +13813,9 @@
 				"toggleRead": "Toggle read",
 				"toggleSidebar": "Hide / show sidebar",
 				"toggleTodayBrowse": "Toggle Today / Browse (inbox)",
-				"undoTriage": "Undo last triage"
+				"undoTriage": "Undo last triage",
+				"goToAnswer": "Go to the Answer queue",
+				"goToMarketing": "Go to Marketing"
 			}
 		},
 		"signatureBadge": {

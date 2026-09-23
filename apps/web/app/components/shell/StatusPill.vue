@@ -26,7 +26,7 @@ const label = computed(() => t(CONVERSATION_STATUS_LABEL[props.status]));
 	>
 		<span
 			class="size-1.5 shrink-0 rounded-full bg-current"
-			:class="PULSING_STATUSES.has(status) ? 'motion-safe:animate-pulse' : ''"
+			:class="PULSING_STATUSES.has(status) ? 'animate-pulse motion-reduce:animate-none' : ''"
 			aria-hidden="true"
 		/>
 		<span v-if="!dotOnly">{{ label }}</span>

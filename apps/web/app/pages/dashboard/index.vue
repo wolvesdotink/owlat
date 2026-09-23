@@ -21,8 +21,9 @@ useHead({ title: () => t('dashboard.today.pageTitle') });
 definePageMeta({ layout: 'dashboard', middleware: 'auth' });
 
 const { user } = useAuth();
-const { hasActiveOrganization, role } = useOrganizationContext();
-const isAdmin = computed(() => role.value === 'owner' || role.value === 'admin');
+const { hasActiveOrganization } = useOrganizationContext();
+// The team-inbox lines (and their Done / Reply anyway) exist for admins only.
+const { isAdmin } = usePermissions();
 const userId = computed(() => user.value?.id ?? null);
 const firstName = computed(() => user.value?.name?.split(' ')[0] ?? '');
 

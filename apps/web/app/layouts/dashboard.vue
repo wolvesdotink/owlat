@@ -235,6 +235,10 @@ onMounted(() => {
 			e.preventDefault();
 			void navigateTo('/dashboard/preferences');
 		}
+		if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j') {
+			e.preventDefault();
+			void navigateTo('/dashboard/assistant');
+		}
 	};
 	document.addEventListener('keydown', handleToggleHidden);
 	onUnmounted(() => document.removeEventListener('keydown', handleToggleHidden));

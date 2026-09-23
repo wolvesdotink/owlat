@@ -41,6 +41,11 @@ const { data: isPlatformAdmin } = useConvexQuery(
 	api.platformAdmin.platformAdmin.isPlatformAdmin,
 	() => (isAdmin.value ? {} : 'skip')
 );
+const knowledge = computed(() => ({
+	explorer: isAdmin.value && isFeatureEnabled('ai.knowledge'),
+	graph:
+		isAdmin.value && isFeatureEnabled('ai.knowledge') && isFeatureEnabled('ai.knowledge.analytics'),
+}));
 const adminAreas = computed(() =>
 	isAdmin.value
 		? adminAreasFor({
@@ -93,7 +98,11 @@ watch(
 					<!-- Settings (this + Administration) takes the sidebar over on desktop. -->
 					<DashboardNavigationPortal :title="t('components.shell.settings.title')">
 						<div class="hidden lg:block w-56 shrink-0 self-start">
-							<ShellSettingsNav :you-sections="sections" :admin-areas="adminAreas" />
+							<ShellSettingsNav
+								:you-sections="sections"
+								:admin-areas="adminAreas"
+								:knowledge="knowledge"
+							/>
 						</div>
 					</DashboardNavigationPortal>
 

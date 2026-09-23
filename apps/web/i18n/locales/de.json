@@ -5583,7 +5583,7 @@
 				"allInQueue": "Alle {count} in der Liste",
 				"draftReady": "Entwurf bereit",
 				"mention": "Erwähnung",
-				"mentionTitle": "#{room}: {preview}"
+				"mentionTitle": "#{room}: „{preview}“"
 			},
 			"changed": {
 				"title": "Was sich getan hat",
@@ -9821,10 +9821,14 @@
 				"noMailboxes": "Noch keine Postfächer. Fügen Sie Ihr erstes Konto hinzu, um Mail zu empfangen.",
 				"pageTitle": "Einstellungen — Owlat",
 				"renameIntro": "Anzeigename für {address}. Die Adresse selbst kann nicht geändert werden.",
-				"renameMailbox": "Postfach umbenennen",
+				"renameMailbox": "Name und Farbe",
 				"renameOperation": "Postfach umbenennen",
 				"subtitle": "Wie Owlat für Sie aussieht, liest und sendet.",
-				"teamManage": "Team · verwalten"
+				"teamManage": "Team · verwalten",
+				"colour": "Farbe",
+				"colourAutomatic": "Automatisch",
+				"colourSlot": "Farbe {n}",
+				"colourHelp": "Die Markierung dieses Postfachs in der Seitenleiste, auf Heute, in der Antwortliste und neben „Senden“ – immer zusammen mit seinem Namen."
 			},
 			"members": {
 				"detail": {
@@ -13809,7 +13813,9 @@
 				"toggleRead": "Gelesen-Status umschalten",
 				"toggleSidebar": "Seitenleiste ein-/ausblenden",
 				"toggleTodayBrowse": "Zwischen Heute / Durchsuchen wechseln (Posteingang)",
-				"undoTriage": "Letzte Triage rückgängig machen"
+				"undoTriage": "Letzte Triage rückgängig machen",
+				"goToAnswer": "Zur Antwortliste",
+				"goToMarketing": "Zu Marketing"
 			}
 		},
 		"signatureBadge": {

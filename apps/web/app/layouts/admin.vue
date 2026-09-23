@@ -53,6 +53,11 @@ const environment = computed<AdminEnvironment>(() => ({
 
 const areas = computed(() => adminAreasFor(environment.value));
 
+// The admin layout is admin-gated, so the knowledge links only follow the flags.
+const knowledge = computed(() => ({
+	explorer: isFeatureEnabled('ai.knowledge'),
+	graph: isFeatureEnabled('ai.knowledge') && isFeatureEnabled('ai.knowledge.analytics'),
+}));
 // The personal half of Settings, shown above the workspace areas in one nav.
 const { isDesktop } = useDesktopContext();
 const youSections = computed(() =>
@@ -108,7 +113,11 @@ registerCommandPaletteProvider({
 				<!-- Settings (Preferences + this) takes the sidebar over on desktop. -->
 				<DashboardNavigationPortal :title="t('components.shell.settings.title')">
 					<div class="hidden lg:block w-56 shrink-0 self-start">
-						<ShellSettingsNav :you-sections="youSections" :admin-areas="areas" />
+						<ShellSettingsNav
+							:you-sections="youSections"
+							:admin-areas="areas"
+							:knowledge="knowledge"
+						/>
 					</div>
 				</DashboardNavigationPortal>
 

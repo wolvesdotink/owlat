@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { INBOX_COLOR_SLOTS, INBOX_SLOT_SWATCH } from '~/utils/inboxIdentity';
 
 const { t } = useI18n();
 
@@ -27,19 +28,32 @@ const setDisplayName = useBackendOperation(api.mail.mailbox.identity.setDisplayN
 	inlineTarget: renameError,
 });
 
+// The inbox's colour — the swatch its chip wears everywhere a reply can start.
+// `null` = automatic (the next free colour in order).
+const { byId: inboxById } = useInboxes();
+const colorValue = ref<number | null>(null);
+const colorSlots = Array.from({ length: INBOX_COLOR_SLOTS }, (_, slot) => slot);
+const setAppearance = useBackendOperation(api.mail.mailbox.appearance.setAppearance, {
+	label: () => t('dashboard.preferences.index.renameOperation'),
+	inlineTarget: renameError,
+});
+
 function openRename(mb: MailboxRow) {
 	renameTarget.value = mb;
 	renameValue.value = mb.displayName ?? '';
+	colorValue.value = mb.colorSlot ?? null;
 	renameError.value = null;
 }
 
 async function handleRename() {
 	if (!renameTarget.value) return;
-	const res = await setDisplayName.run({
-		mailboxId: renameTarget.value._id as Id<'mailboxes'>,
-		displayName: renameValue.value,
-	});
+	const mailboxId = renameTarget.value._id as Id<'mailboxes'>;
+	const res = await setDisplayName.run({ mailboxId, displayName: renameValue.value });
 	if (!res.ok) return;
+	if ((renameTarget.value.colorSlot ?? null) !== colorValue.value) {
+		const colour = await setAppearance.run({ mailboxId, colorSlot: colorValue.value });
+		if (!colour.ok) return;
+	}
 	renameTarget.value = null;
 }
 
@@ -142,7 +156,14 @@ async function handleDelete() {
 						class="px-5 py-3 flex items-center justify-between gap-3"
 					>
 						<div class="min-w-0">
-							<p class="font-medium truncate">{{ mb.address }}</p>
+							<p class="flex items-center gap-2 font-medium">
+								<InboxChip
+									v-if="inboxById.get(mb._id)"
+									:name="inboxById.get(mb._id)!.name"
+									:slot="inboxById.get(mb._id)!.slot"
+								/>
+								<span class="truncate">{{ mb.address }}</span>
+							</p>
 							<p class="text-xs text-text-tertiary">
 								{{
 									t('dashboard.preferences.index.mailboxMeta', {
@@ -231,6 +252,41 @@ async function handleDelete() {
 							{{ t('dashboard.preferences.index.displayNameHelp') }}
 						</p>
 					</div>
+					<fieldset>
+						<legend class="text-sm font-medium mb-1">
+							{{ t('dashboard.preferences.index.colour') }}
+						</legend>
+						<div class="flex flex-wrap items-center gap-2">
+							<button
+								type="button"
+								class="rounded-full border px-2.5 py-1 text-xs"
+								:class="
+									colorValue === null
+										? 'border-brand text-text-primary'
+										: 'border-border-default text-text-secondary'
+								"
+								:aria-pressed="colorValue === null"
+								@click="colorValue = null"
+							>
+								{{ t('dashboard.preferences.index.colourAutomatic') }}
+							</button>
+							<button
+								v-for="slot in colorSlots"
+								:key="slot"
+								type="button"
+								class="flex size-7 items-center justify-center rounded-md border"
+								:class="colorValue === slot ? 'border-text-primary' : 'border-transparent'"
+								:aria-pressed="colorValue === slot"
+								:aria-label="t('dashboard.preferences.index.colourSlot', { n: slot + 1 })"
+								@click="colorValue = slot"
+							>
+								<span class="size-4 rounded-[3px]" :class="INBOX_SLOT_SWATCH[slot]" />
+							</button>
+						</div>
+						<p class="text-xs text-text-tertiary mt-1">
+							{{ t('dashboard.preferences.index.colourHelp') }}
+						</p>
+					</fieldset>
 					<p v-if="renameError" class="text-sm text-error">{{ renameError }}</p>
 				</form>
 				<template #footer>

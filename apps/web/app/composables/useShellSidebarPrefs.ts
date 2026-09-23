@@ -10,12 +10,21 @@ export const SIDEBAR_THREADS_MIN = 0;
 export const SIDEBAR_THREADS_MAX = 10;
 export const SIDEBAR_THREADS_DEFAULT = 3;
 
-const threadsPerInbox = useLocalStorage<number>(
-	'sidebar-threads-per-inbox',
-	SIDEBAR_THREADS_DEFAULT
-);
-const threadSort = useLocalStorage<SidebarThreadSort>('sidebar-thread-sort', 'recent');
-const collapsedGroups = useLocalStorage<string[]>('sidebar-collapsed-groups', []);
+// Module-level singletons (one set of preferences per tab), created on first
+// use so importing the constants above never touches storage.
+let storage: {
+	threadsPerInbox: ReturnType<typeof useLocalStorage<number>>;
+	threadSort: ReturnType<typeof useLocalStorage<SidebarThreadSort>>;
+	collapsedGroups: ReturnType<typeof useLocalStorage<string[]>>;
+} | null = null;
+function prefsStorage() {
+	storage ??= {
+		threadsPerInbox: useLocalStorage<number>('sidebar-threads-per-inbox', SIDEBAR_THREADS_DEFAULT),
+		threadSort: useLocalStorage<SidebarThreadSort>('sidebar-thread-sort', 'recent'),
+		collapsedGroups: useLocalStorage<string[]>('sidebar-collapsed-groups', []),
+	};
+	return storage;
+}
 
 export function clampThreadsPerInbox(value: number): number {
 	if (!Number.isFinite(value)) return SIDEBAR_THREADS_DEFAULT;
@@ -23,6 +32,7 @@ export function clampThreadsPerInbox(value: number): number {
 }
 
 export function useShellSidebarPrefs() {
+	const { threadsPerInbox, threadSort, collapsedGroups } = prefsStorage();
 	const perInbox = computed({
 		get: () => clampThreadsPerInbox(threadsPerInbox.data.value),
 		set: (value: number) => threadsPerInbox.set(clampThreadsPerInbox(value)),
@@ -31,9 +41,11 @@ export function useShellSidebarPrefs() {
 		get: () => threadSort.data.value,
 		set: (value: SidebarThreadSort) => threadSort.set(value),
 	});
-	const isCollapsed = (key: string) => collapsedGroups.data.value.includes(key);
+	const collapsedList = () =>
+		Array.isArray(collapsedGroups.data.value) ? collapsedGroups.data.value : [];
+	const isCollapsed = (key: string) => collapsedList().includes(key);
 	const toggleGroup = (key: string) => {
-		const current = collapsedGroups.data.value;
+		const current = collapsedList();
 		collapsedGroups.set(
 			current.includes(key) ? current.filter((k) => k !== key) : [...current, key]
 		);

@@ -12,7 +12,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { reactive } from 'vue';
-import { installNuxtStubs, queryResult } from '~/__tests__/a11y';
+import { installNuxtStubs, queryResult, shellComponents } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import type { CommandPaletteProvider } from '~/lib/commandPaletteRegistry';
 import AdminLayout from '../admin.vue';
@@ -59,6 +59,7 @@ beforeEach(() => {
 			registered = provider;
 		},
 		navigateTo: vi.fn(),
+		useDesktopContext: () => ({ isDesktop: ref(false) }),
 	});
 });
 
@@ -67,6 +68,7 @@ function mountLayout(): VueWrapper {
 		slots: { default: '<h1>Page under the admin shell</h1>' },
 		global: {
 			plugins: [createTestI18n()],
+			components: { ...shellComponents },
 			stubs: {
 				DashboardNavigationPortal: { template: '<div><slot /></div>' },
 				// The shell this one nests inside is audited on its own; here it is

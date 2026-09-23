@@ -201,10 +201,12 @@ export function useKeyboardShortcuts() {
 	function registerNavigationShortcuts() {
 		const routes: Record<string, string> = {
 			'global.goToDashboard': '/dashboard',
+			'global.goToAnswer': '/dashboard/answer',
 			'global.goToContacts': '/dashboard/audience/contacts',
 			'global.goToEmails': '/dashboard/send',
 			'global.goToAutomations': '/dashboard/automations',
-			'global.goToCampaigns': '/dashboard/campaigns',
+			// g+m opens the Marketing workspace on its overview.
+			'global.goToCampaigns': '/dashboard/marketing',
 			'global.goToTransactional': '/dashboard/send/transactional',
 			// g+s routes to the administration area, not the preferences pages.
 			'global.goToAdmin': '/dashboard/admin',

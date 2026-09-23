@@ -14,7 +14,33 @@ import type { AdminAreaView } from '~/lib/adminSettingsRegistry';
 const props = defineProps<{
 	youSections: readonly SettingsSectionView[];
 	adminAreas: readonly AdminAreaView[];
+	/**
+	 * What the agent knows lives here now (it is tuning, not daily work):
+	 * the knowledge explorer and graph, for admins with the feature on.
+	 */
+	knowledge?: { explorer: boolean; graph: boolean };
 }>();
+
+const knowledgeLinks = computed(() => [
+	...(props.knowledge?.explorer
+		? [
+				{
+					path: '/dashboard/knowledge',
+					icon: 'lucide:brain',
+					titleKey: 'shared.dashboardNavigation.items.knowledge.explorer',
+				},
+			]
+		: []),
+	...(props.knowledge?.graph
+		? [
+				{
+					path: '/dashboard/knowledge/graph',
+					icon: 'lucide:share-2',
+					titleKey: 'shared.dashboardNavigation.items.knowledge.graph',
+				},
+			]
+		: []),
+]);
 
 const { t } = useI18n();
 const route = useRoute();
@@ -41,6 +67,12 @@ const results = computed(() => {
 				group: t(a.titleKey),
 			}))
 		),
+		...knowledgeLinks.value.map((e) => ({
+			path: e.path,
+			icon: e.icon,
+			title: t(e.titleKey),
+			group: t('shared.dashboardNavigation.sections.knowledge'),
+		})),
 	];
 	return all.filter(
 		(r) =>
@@ -162,6 +194,22 @@ function openFirstResult() {
 					</ul>
 				</div>
 			</nav>
+			<div v-if="knowledgeLinks.length > 0" class="mb-3">
+				<p class="px-3 pb-1 text-2xs font-medium uppercase tracking-wider text-text-tertiary">
+					{{ t('shared.dashboardNavigation.sections.knowledge') }}
+				</p>
+				<ul>
+					<li v-for="entry in knowledgeLinks" :key="entry.path">
+						<NuxtLink
+							:to="entry.path"
+							class="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface hover:text-text-primary"
+						>
+							<Icon :name="entry.icon" class="size-4 shrink-0" />
+							<span class="truncate">{{ t(entry.titleKey) }}</span>
+						</NuxtLink>
+					</li>
+				</ul>
+			</div>
 		</template>
 	</div>
 </template>

@@ -145,6 +145,7 @@ function openShortcuts() {
 					>
 						<Icon name="lucide:sparkles" class="size-4 text-text-tertiary" />
 						<span class="flex-1">{{ t('components.shell.footer.assistant') }}</span>
+						<kbd class="font-mono text-2xs text-text-tertiary">⌘J</kbd>
 					</NuxtLink>
 					<button
 						type="button"

@@ -83,12 +83,12 @@ function isActive(to: string, exact: boolean): boolean {
 			<span v-if="!props.collapsed" class="flex-1 truncate">{{ item.label }}</span>
 			<span
 				v-if="item.count > 0 && !props.collapsed"
-				class="rounded-full bg-brand px-1.5 text-2xs font-semibold leading-4 text-text-inverse"
+				class="rounded-full bg-bg-surface px-1.5 text-2xs font-semibold leading-4 text-text-primary tabular-nums"
 				>{{ item.count > 99 ? '99+' : item.count }}</span
 			>
 			<span
 				v-else-if="item.count > 0"
-				class="absolute right-1.5 top-1 size-2 rounded-full bg-brand ring-2 ring-bg-elevated"
+				class="absolute right-1.5 top-1 size-2 rounded-full bg-text-primary ring-2 ring-bg-elevated"
 				:aria-label="t('components.shell.nav.answerCount', { count: item.count }, item.count)"
 			/>
 		</NuxtLink>
