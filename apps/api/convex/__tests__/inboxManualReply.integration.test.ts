@@ -258,6 +258,26 @@ describe('manualReply.takeOverReply', () => {
 		expect(message?.processingStatus).toBe('draft_ready');
 	});
 
+	it('drops the thrown-out draft when a rejected or archived message is reopened', async () => {
+		for (const status of ['rejected', 'archived']) {
+			const t = convexTest(schema, modules);
+			const messageId = await seed(t, status);
+			await t.run(async (ctx) => {
+				await ctx.db.patch(messageId, {
+					draftResponse: 'The wrong answer the teammate rejected.',
+					draftSubject: 'Re: wrong',
+				});
+			});
+			await t
+				.withIdentity(testIdentity)
+				.mutation(api.inbox.manualReply.takeOverReply, { inboundMessageId: messageId });
+			const message = await t.run((ctx) => ctx.db.get(messageId));
+			expect(message?.processingStatus).toBe('draft_ready');
+			expect(message?.draftResponse).toBeUndefined();
+			expect(message?.draftSubject).toBeUndefined();
+		}
+	});
+
 	it('answers a message the pipeline never picked up, once it has waited', async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await seed(t, 'received');

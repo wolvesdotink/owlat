@@ -114,6 +114,9 @@ const TAKEOVER_ONLY_SOURCES: ReadonlySet<ProcessingStatus> = new Set([
 	'archived',
 ]);
 
+/** Closed states whose leftover draft a manual takeover discards. */
+const CLEARS_DRAFT_ON_TAKEOVER: ReadonlySet<ProcessingStatus> = new Set(['rejected', 'archived']);
+
 export function requiresManualTakeover(from: ProcessingStatus, to: ProcessingStatus): boolean {
 	return to === 'draft_ready' && TAKEOVER_ONLY_SOURCES.has(from);
 }
@@ -225,6 +228,13 @@ function reduceDraftReady(
 	if (input.draftResponse !== undefined) patch['draftResponse'] = input.draftResponse;
 	if (input.draftSubject !== undefined) patch['draftSubject'] = input.draftSubject;
 	if (input.confidenceScore !== undefined) patch['confidenceScore'] = input.confidenceScore;
+	// A person reopening a closed message writes the reply themselves. The draft
+	// it still carries was thrown out (rejected) or never used (archived); left
+	// in place it would come back as a live, approvable agent draft.
+	if (input.manualTakeover === true && CLEARS_DRAFT_ON_TAKEOVER.has(message.processingStatus)) {
+		patch['draftResponse'] = undefined;
+		patch['draftSubject'] = undefined;
+	}
 	// Complaint / urgent messages skip the drafter (classifying → draft_ready),
 	// so they'd otherwise miss extraction. Fire it here only on that direct edge
 	// — the normal drafting → draft_ready transition already extracted at
