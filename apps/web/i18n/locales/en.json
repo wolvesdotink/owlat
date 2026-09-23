@@ -6611,15 +6611,14 @@
 						"titleFallback": "Disable feature?"
 					},
 					"configUnverified": "Plugin configuration could not be verified.",
-					"deliveryProviderRequirement": "A delivery provider — set EMAIL_PROVIDER to a registered transport, configure its requirements, then restart",
 					"inboundDnsHint": "Receiving mail needs MX + inbound-port DNS. Add the records under {link} so inbound mail reaches this instance.",
 					"inboundDnsLink": "Settings → Domains → Receiving",
 					"missingEnv": {
-						"body": "This feature requires the following environment variables set in {path}:",
 						"gotIt": "Got it",
-						"howTo": "Run {envCommand} on the host, then {restartCommand}.",
 						"title": "{label} needs config",
-						"titleFallback": "Configuration needed"
+						"titleFallback": "Configuration needed",
+						"deliveryBody": "Sending needs a delivery provider first. Set one up on the Delivery provider page; this feature starts sending once it can.",
+						"openDelivery": "Set up a delivery provider"
 					},
 					"pageTitle": "Features — Owlat",
 					"pluginStatus": {

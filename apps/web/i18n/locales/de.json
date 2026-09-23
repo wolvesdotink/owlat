@@ -6611,15 +6611,14 @@
 						"titleFallback": "Funktion deaktivieren?"
 					},
 					"configUnverified": "Die Plugin-Konfiguration konnte nicht überprüft werden.",
-					"deliveryProviderRequirement": "Ein Zustellanbieter — setzen Sie EMAIL_PROVIDER auf einen registrierten Transport, konfigurieren Sie dessen Voraussetzungen und starten Sie dann neu",
 					"inboundDnsHint": "Für den Mail-Empfang werden MX- und Eingangsport-DNS-Einträge benötigt. Legen Sie die Einträge unter {link} an, damit eingehende Mail diese Instanz erreicht.",
 					"inboundDnsLink": "Einstellungen → Domains → Empfang",
 					"missingEnv": {
-						"body": "Diese Funktion benötigt die folgenden Umgebungsvariablen in {path}:",
 						"gotIt": "Verstanden",
-						"howTo": "Führen Sie {envCommand} auf dem Host aus und danach {restartCommand}.",
 						"title": "{label} benötigt eine Konfiguration",
-						"titleFallback": "Konfiguration erforderlich"
+						"titleFallback": "Konfiguration erforderlich",
+						"deliveryBody": "Für den Versand braucht es zuerst einen Zustellungsanbieter. Richten Sie ihn auf der Seite Zustellungsanbieter ein; diese Funktion sendet, sobald das möglich ist.",
+						"openDelivery": "Zustellungsanbieter einrichten"
 					},
 					"pageTitle": "Funktionen — Owlat",
 					"pluginStatus": {

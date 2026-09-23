@@ -163,6 +163,7 @@ const stubs = {
 	UiIconBox: true,
 	Icon: true,
 	NuxtLink: true,
+	DeliveryEnvSetupSteps: true,
 };
 
 function mountFeatures() {

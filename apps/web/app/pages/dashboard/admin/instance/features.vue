@@ -92,7 +92,11 @@ const pendingCascade = ref<{
 	value: boolean;
 	cascaded: FeatureFlagKey[];
 } | null>(null);
-const missingEnv = ref<{ flag: FeatureFlagKey; vars: string[] } | null>(null);
+const missingEnv = ref<{
+	flag: FeatureFlagKey;
+	vars: string[];
+	needsDeliveryProvider?: boolean;
+} | null>(null);
 const pendingPluginApproval = ref<{
 	flag: FeatureFlagKey;
 	capabilities: readonly string[];
@@ -148,10 +152,7 @@ async function onToggle(flag: FeatureFlagKey, value: boolean) {
 	// best-effort hint from the live delivery-configured state.
 	const isSendingFlag = (SENDING_FLAGS_REQUIRING_DELIVERY as readonly string[]).includes(flag);
 	if (value && isSendingFlag && deliveryConfigured.value === false) {
-		missingEnv.value = {
-			flag,
-			vars: [t('dashboard.admin.instance.features.deliveryProviderRequirement')],
-		};
+		missingEnv.value = { flag, vars: [], needsDeliveryProvider: true };
 	}
 
 	// Disabling a feature that others depend on needs explicit confirmation.

@@ -117,6 +117,10 @@ function mountPage() {
 			UiModal: modalStub,
 			UiButton: buttonStub,
 			NuxtLink: true,
+			DeliveryEnvSetupSteps: {
+				props: ['variables'],
+				template: '<pre data-testid="env-setup">{{ variables.join(\'\\n\') }}</pre>',
+			},
 		},
 	});
 }
@@ -185,7 +189,8 @@ describe('Settings Features — plugin approval behavior', () => {
 		const wrapper = mountPage();
 		await wrapper.find(policySwitch).trigger('click');
 
-		expect(wrapper.find('[data-testid="modal"]').text()).toContain('POLICY_TOKEN');
+		// The missing variable goes in the copyable .env block.
+		expect(wrapper.find('[data-testid="env-setup"]').text()).toBe('POLICY_TOKEN');
 		expect(wrapper.find('[data-testid="confirmation"]').exists()).toBe(false);
 		expect(setFeatureFlag).not.toHaveBeenCalled();
 	});
