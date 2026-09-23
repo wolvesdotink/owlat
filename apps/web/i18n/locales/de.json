@@ -10578,7 +10578,7 @@
 				"confirmPasswordPlaceholder": "Passwort bestätigen",
 				"hidePassword": "Passwort ausblenden",
 				"namePlaceholder": "Ihr Name",
-				"passwordPlaceholder": "Passwort (mind. 12 Zeichen)",
+				"passwordPlaceholder": "Passwort (mind. {min} Zeichen)",
 				"seedDemo": "Demodaten anlegen (zum Ausprobieren)",
 				"showPassword": "Passwort anzeigen"
 			},

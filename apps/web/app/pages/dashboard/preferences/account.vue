@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { isValidEmail, sanitizeCsvCell } from '@owlat/shared';
 import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
+import { passwordChangeProblem } from '~/utils/passwordChange';
 import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 import Papa from 'papaparse';
@@ -169,15 +170,9 @@ const newPassword = ref('');
 const confirmPassword = ref('');
 const savingPassword = ref(false);
 async function changePassword() {
-	if (newPassword.value.length < MIN_PASSWORD_LENGTH) {
-		showToast(
-			t('dashboard.preferences.account.passwordTooShort', { min: MIN_PASSWORD_LENGTH }),
-			'error'
-		);
-		return;
-	}
-	if (newPassword.value !== confirmPassword.value) {
-		showToast(t('dashboard.preferences.account.passwordsDoNotMatch'), 'error');
+	const problem = passwordChangeProblem(newPassword.value, confirmPassword.value);
+	if (problem) {
+		showToast(t(problem.key, problem.params ?? {}), 'error');
 		return;
 	}
 	savingPassword.value = true;
@@ -515,24 +510,22 @@ const daysRemaining = computed(() => {
 					{{ t('dashboard.preferences.account.changePasswordDescription') }}
 				</p>
 				<form class="space-y-3 max-w-md" @submit.prevent="changePassword">
-					<UiInput
+					<AuthPasswordInput
 						id="cur-pw"
 						v-model="currentPassword"
-						type="password"
 						:label="t('dashboard.preferences.account.currentPasswordLabel')"
 						autocomplete="current-password"
 					/>
-					<UiInput
+					<AuthPasswordInput
 						id="new-pw"
 						v-model="newPassword"
-						type="password"
 						:label="t('dashboard.preferences.account.newPasswordLabel')"
+						:help-text="t('auth.fields.passwordHelp', { min: MIN_PASSWORD_LENGTH })"
 						autocomplete="new-password"
 					/>
-					<UiInput
+					<AuthPasswordInput
 						id="confirm-pw"
 						v-model="confirmPassword"
-						type="password"
 						:label="t('dashboard.preferences.account.confirmPasswordLabel')"
 						autocomplete="new-password"
 					/>
