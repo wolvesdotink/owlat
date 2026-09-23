@@ -15,6 +15,9 @@
  *   (inbox/messages.ts), so they would otherwise sit there for good.
  * - `rejected` / `archived`: a teammate threw out a wrong draft, or the agent
  *   filed the message away, and a person wants to answer after all.
+ * - `awaiting_clarification`: the agent asked a question, and the person
+ *   would rather write the reply than answer it. The open questions are
+ *   dropped.
  *
  * It never overrides the agent while it is still working — the scan-finished
  * check alone is not enough, the `ai.agent` flag is read here too — and it
@@ -58,6 +61,7 @@ export function takeOverRefusal(
 		case 'failed':
 		case 'rejected':
 		case 'archived':
+		case 'awaiting_clarification':
 			return null;
 		case 'security_check':
 			if (!facts.scanFinished) return 'The security check has not finished yet';
@@ -89,6 +93,47 @@ async function agentActionsFor(ctx: QueryCtx, message: Doc<'inboundMessages'>) {
 		.query('agentActions')
 		.withIndex('by_inbound_message', (q) => q.eq('inboundMessageId', message._id))
 		.take(50);
+}
+
+/** The per-message facts the thread composer needs to apply {@link takeOverRefusal}. */
+export interface TakeOverView {
+	/** How long a `received` message waits before a person may take it over. */
+	receivedWaitMs: number;
+	/** Facts for each message still `received` or in `security_check`. */
+	messages: Array<{
+		messageId: Doc<'inboundMessages'>['_id'];
+		scanFinished: boolean;
+		pipelineStarted: boolean;
+	}>;
+}
+
+/**
+ * The takeover facts for a thread's messages, so the composer applies the same
+ * rule {@link takeOverReply} does instead of a copy of it. Only the time-based
+ * part (`receivedLongEnough`) is left to the client, which has a ticking clock.
+ */
+export async function takeOverViewFor(
+	ctx: QueryCtx,
+	messages: readonly Doc<'inboundMessages'>[]
+): Promise<TakeOverView> {
+	const pending = messages.filter(
+		(m) => m.processingStatus === 'received' || m.processingStatus === 'security_check'
+	);
+	return {
+		receivedWaitMs: await receivedWaitMs(ctx),
+		messages: await Promise.all(
+			pending.map(async (message) => {
+				const actions = await agentActionsFor(ctx, message);
+				return {
+					messageId: message._id,
+					scanFinished: actions.some(
+						(a) => a.actionType === 'security_scan' && a.status === 'completed'
+					),
+					pipelineStarted: actions.length > 0,
+				};
+			})
+		),
+	};
 }
 
 export const takeOverReply = adminMutation({

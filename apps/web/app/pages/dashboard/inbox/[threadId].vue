@@ -58,6 +58,7 @@ const {
 	thread,
 	messages,
 	contact,
+	takeOver,
 	threadLoading,
 	handleApprove,
 	handleReject,
@@ -375,15 +376,21 @@ function answerMessage(messageId: Id<'inboundMessages'>) {
 	chosenTargetId.value = messageId;
 	openReply();
 }
-const replyTargetBlocker = computed(() =>
-	replyTarget.value
-		? replyBlocker(replyTarget.value.processingStatus, {
-				agentEnabled: isFeatureEnabled('ai.agent'),
-				receivedAt: replyTarget.value._creationTime,
-				now: now.value,
-			})
-		: null
-);
+const replyTargetBlocker = computed(() => {
+	const target = replyTarget.value;
+	if (!target) return null;
+	// The server's own takeover facts (getThread), so the composer never opens
+	// on a message `takeOverReply` would refuse.
+	const facts = takeOver.value?.messages.find((m) => m.messageId === target._id);
+	return replyBlocker(target.processingStatus, {
+		agentEnabled: isFeatureEnabled('ai.agent'),
+		scanFinished: facts?.scanFinished,
+		pipelineStarted: facts?.pipelineStarted,
+		receivedWaitMs: takeOver.value?.receivedWaitMs,
+		receivedAt: target._creationTime,
+		now: now.value,
+	});
+});
 // A message no agent will answer (failed, agent off, never picked up, rejected
 // or archived) is taken over first, so the normal edit → approve path can send
 // a person's reply.

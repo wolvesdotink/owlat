@@ -13,6 +13,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	const thread = computed(() => threadData.value?.thread ?? null);
 	const messages = computed(() => threadData.value?.messages ?? []);
 	const contact = computed(() => threadData.value?.contact ?? null);
+	const takeOver = computed(() => threadData.value?.takeOver ?? null);
 
 	// Mutations
 	const { run: approveDraft } = useBackendOperation(api.inbox.mutations.approveDraft, {
@@ -118,6 +119,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		thread,
 		messages,
 		contact,
+		takeOver,
 		threadLoading,
 		// Actions
 		handleApprove,

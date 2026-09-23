@@ -26,7 +26,7 @@ const EXPECTED_EDGES: Readonly<Record<ProcessingStatus, readonly ProcessingStatu
 	informational: ['drafting', 'archived'],
 	drafting: ['draft_ready', 'approved'],
 	draft_ready: ['approved', 'rejected', 'archived'],
-	awaiting_clarification: ['drafting', 'archived'],
+	awaiting_clarification: ['drafting', 'archived', 'draft_ready'],
 	approved: ['sent', 'draft_ready'],
 	sent: [],
 	rejected: ['draft_ready'],
@@ -55,10 +55,13 @@ describe('inbox lifecycle edge conformance', () => {
 		expect(STATUSES.filter((s) => isClosedStatus(s))).toEqual(['sent', 'rejected', 'archived']);
 	});
 
-	it('lets only a person reopen received, rejected and archived messages', () => {
+	it('lets only a person move received, clarification, rejected and archived messages to draft_ready', () => {
 		for (const from of STATUSES) {
 			expect(requiresManualTakeover(from, 'draft_ready'), from).toBe(
-				from === 'received' || from === 'rejected' || from === 'archived'
+				from === 'received' ||
+					from === 'awaiting_clarification' ||
+					from === 'rejected' ||
+					from === 'archived'
 			);
 		}
 		expect(requiresManualTakeover('received', 'security_check')).toBe(false);

@@ -71,8 +71,10 @@ export const PROCESSING_LIFECYCLE = defineLifecycle<ProcessingStatus>(
 		// abandoned-question fallback cron gives up after the window and drafts a
 		// flagged best-guess. `archived` is the dismiss edge (permitted uniformly by
 		// the `* → archived` star-source in dispatch; declared here to keep the
-		// contract in sync).
-		awaiting_clarification: ['drafting', 'archived'],
+		// contract in sync). `draft_ready` is a person writing the reply
+		// themselves instead of answering the agent's questions
+		// (inbox/manualReply.ts); only a takeover may take it.
+		awaiting_clarification: ['drafting', 'archived', 'draft_ready'],
 		drafting: ['draft_ready', 'approved'],
 		draft_ready: ['approved', 'rejected', 'archived'],
 		// `draft_ready` is the fail-soft degrade for a cancelled delayed auto-send
@@ -105,11 +107,13 @@ export function isClosedStatus(status: ProcessingStatus): boolean {
 
 /**
  * States only a person may move to `draft_ready` (with `manualTakeover`): the
- * closed ones, and `received`, which the pipeline would otherwise leave
- * through `security_check`.
+ * closed ones, `received`, which the pipeline would otherwise leave through
+ * `security_check`, and `awaiting_clarification`, which the agent leaves
+ * through `drafting`.
  */
 const TAKEOVER_ONLY_SOURCES: ReadonlySet<ProcessingStatus> = new Set([
 	'received',
+	'awaiting_clarification',
 	'rejected',
 	'archived',
 ]);
@@ -234,6 +238,10 @@ function reduceDraftReady(
 	if (input.manualTakeover === true && CLEARS_DRAFT_ON_TAKEOVER.has(message.processingStatus)) {
 		patch['draftResponse'] = undefined;
 		patch['draftSubject'] = undefined;
+	}
+	// Writing the reply instead of answering the agent: its questions are moot.
+	if (input.manualTakeover === true && message.processingStatus === 'awaiting_clarification') {
+		patch['pendingClarification'] = undefined;
 	}
 	// Complaint / urgent messages skip the drafter (classifying → draft_ready),
 	// so they'd otherwise miss extraction. Fire it here only on that direct edge

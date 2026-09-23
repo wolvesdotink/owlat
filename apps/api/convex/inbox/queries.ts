@@ -22,6 +22,7 @@ import {
 	type ThreadFilter,
 } from './threadFilters';
 import { searchThreads } from './threadSearch';
+import { takeOverViewFor } from './manualReply';
 import {
 	openConversationThreadPreview,
 	openInboundMessageRow,
@@ -268,6 +269,9 @@ export const getThread = publicQuery({
 			// the columns the row HAS, so an absent body stays absent.
 			messages: await openInboundMessageRows(messages),
 			contact,
+			// What the reply composer needs to know before offering a manual reply:
+			// the same facts `manualReply.takeOverReply` checks.
+			takeOver: await takeOverViewFor(ctx, messages),
 		};
 	},
 });

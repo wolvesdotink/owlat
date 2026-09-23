@@ -8967,7 +8967,6 @@
 					"blocked": {
 						"answered": "Diese Nachricht wurde beantwortet. Sie können wieder antworten, sobald eine neue Nachricht eintrifft.",
 						"drafting": "Der Agent entwirft gerade eine Antwort. Sie erscheint hier, sobald sie fertig ist.",
-						"needsInput": "Der Agent braucht oben Ihre Antworten, bevor er eine Antwort entwerfen kann.",
 						"processing": "Owlat liest diese Nachricht noch. Sie können gleich antworten.",
 						"quarantined": "Diese Nachricht liegt in der Quarantäne.",
 						"sending": "Ihre Antwort ist unterwegs.",

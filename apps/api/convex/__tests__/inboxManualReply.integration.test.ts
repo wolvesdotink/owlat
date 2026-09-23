@@ -10,7 +10,7 @@ import {
 	createTestInboundMessage,
 	createTestConversationThread,
 } from './factories';
-import { takeOverRefusal } from '../inbox/manualReply';
+import { MIN_RECEIVED_WAIT_MS, takeOverRefusal, takeOverViewFor } from '../inbox/manualReply';
 
 // The approved agent reply no longer dispatches inline — it enqueues a
 // `transactionalSends` Send row on the workpool, and `completeSend` drives the
@@ -126,8 +126,8 @@ describe('takeOverRefusal', () => {
 		receivedLongEnough: true,
 	};
 
-	it('allows failed, rejected and archived messages', () => {
-		for (const status of ['failed', 'rejected', 'archived'] as const) {
+	it('allows failed, clarification, rejected and archived messages', () => {
+		for (const status of ['failed', 'awaiting_clarification', 'rejected', 'archived'] as const) {
 			expect(takeOverRefusal(status, facts), status).toBeNull();
 		}
 	});
@@ -276,6 +276,70 @@ describe('manualReply.takeOverReply', () => {
 			expect(message?.draftResponse).toBeUndefined();
 			expect(message?.draftSubject).toBeUndefined();
 		}
+	});
+
+	it('lets a person write the reply instead of answering the agent', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seed(t, 'awaiting_clarification');
+		await t.run(async (ctx) => {
+			await ctx.db.patch(messageId, {
+				pendingClarification: {
+					questions: [{ id: 'q1', slotType: 'free_text', text: 'Which order?' }],
+					askedAt: Date.now(),
+				},
+			});
+		});
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.manualReply.takeOverReply, { inboundMessageId: messageId });
+		const message = await t.run((ctx) => ctx.db.get(messageId));
+		expect(message?.processingStatus).toBe('draft_ready');
+		expect(message?.pendingClarification).toBeUndefined();
+	});
+
+	it('never lets a pipeline step skip a clarification straight to draft_ready', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seed(t, 'awaiting_clarification');
+		const outcome = await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: messageId,
+			input: { to: 'draft_ready', at: Date.now(), draftResponse: 'late agent draft' },
+		});
+		expect(outcome.ok).toBe(false);
+	});
+
+	it('hands the composer the same facts the takeover checks', async () => {
+		const t = convexTest(schema, modules);
+		const scanned = await seed(t, 'security_check', 'completed');
+		const scanning = await seed(t, 'security_check', 'running');
+		const idle = await seed(t, 'received');
+		const view = await t.run(async (ctx) => {
+			const rows = await Promise.all([scanned, scanning, idle].map((id) => ctx.db.get(id)));
+			return takeOverViewFor(
+				ctx,
+				rows.filter((r) => r !== null)
+			);
+		});
+		expect(view.receivedWaitMs).toBeGreaterThanOrEqual(MIN_RECEIVED_WAIT_MS);
+		const byId = new Map(view.messages.map((m) => [m.messageId, m]));
+		expect(byId.get(scanned)).toMatchObject({ scanFinished: true, pipelineStarted: true });
+		expect(byId.get(scanning)).toMatchObject({ scanFinished: false, pipelineStarted: true });
+		expect(byId.get(idle)).toMatchObject({ scanFinished: false, pipelineStarted: false });
+	});
+
+	it('waits out a long follow-up window before a received message can be taken over', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('agentConfig', {
+				isAutoReplyEnabled: false,
+				confidenceThreshold: 0.8,
+				maxDailyAutoReplies: 100,
+				coalesceWindowMs: 10 * 60 * 1000,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+		const view = await t.run((ctx) => takeOverViewFor(ctx, []));
+		expect(view.receivedWaitMs).toBe(11 * 60 * 1000);
 	});
 
 	it('answers a message the pipeline never picked up, once it has waited', async () => {

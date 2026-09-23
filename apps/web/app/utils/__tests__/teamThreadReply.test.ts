@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
 	REPLY_BLOCKER_KEYS,
-	RECEIVED_TAKEOVER_AFTER_MS,
 	classificationSummary,
 	hasAgentDraft,
 	latestClassification,
@@ -26,9 +25,16 @@ describe('replyBlocker', () => {
 	});
 
 	it('lets a person reply when the agent is off and the scan has stopped the pipeline', () => {
-		expect(replyBlocker('security_check', { agentEnabled: false })).toBeNull();
+		expect(replyBlocker('security_check', { agentEnabled: false, scanFinished: true })).toBeNull();
+		// The scan is still running: the server refuses, so the composer waits too.
+		expect(replyBlocker('security_check', { agentEnabled: false, scanFinished: false })).toBe(
+			'processing'
+		);
+		expect(replyBlocker('security_check', { agentEnabled: false })).toBe('processing');
 		// With the agent on, the same state means it is still reading.
-		expect(replyBlocker('security_check', { agentEnabled: true })).toBe('processing');
+		expect(replyBlocker('security_check', { agentEnabled: true, scanFinished: true })).toBe(
+			'processing'
+		);
 		// The scan has not run yet: never answer ahead of the quarantine check.
 		expect(replyBlocker('received', { agentEnabled: false })).toBe('processing');
 	});
@@ -39,18 +45,30 @@ describe('replyBlocker', () => {
 		expect(needsTakeOver('rejected')).toBe(true);
 	});
 
-	it('opens the composer on a message the pipeline never picked up', () => {
+	it('opens the composer on a message the pipeline never picked up, after the server wait', () => {
 		const receivedAt = 1_000_000;
+		// The server's wait follows the follow-up window, so it can exceed 5 minutes.
+		const waiting = { agentEnabled: true, pipelineStarted: false, receivedWaitMs: 11 * 60_000 };
+		expect(replyBlocker('received', { ...waiting, receivedAt, now: receivedAt + 6 * 60_000 })).toBe(
+			'processing'
+		);
 		expect(
-			replyBlocker('received', { agentEnabled: true, receivedAt, now: receivedAt + 60_000 })
-		).toBe('processing');
+			replyBlocker('received', { ...waiting, receivedAt, now: receivedAt + 11 * 60_000 })
+		).toBeNull();
+		// A pipeline run started and stalled: still the agent's.
 		expect(
 			replyBlocker('received', {
-				agentEnabled: true,
+				...waiting,
+				pipelineStarted: true,
 				receivedAt,
-				now: receivedAt + RECEIVED_TAKEOVER_AFTER_MS,
+				now: receivedAt + 60 * 60_000,
 			})
-		).toBeNull();
+		).toBe('processing');
+	});
+
+	it('lets a person write the reply instead of answering the agent', () => {
+		expect(replyBlocker('awaiting_clarification')).toBeNull();
+		expect(needsTakeOver('awaiting_clarification')).toBe(true);
 	});
 
 	it('takes the message over first unless it already waits on a person', () => {
@@ -64,7 +82,6 @@ describe('replyBlocker', () => {
 		expect(replyBlocker('classifying')).toBe('processing');
 		// Approving mid-draft would race the agent's own draft_ready.
 		expect(replyBlocker('drafting')).toBe('drafting');
-		expect(replyBlocker('awaiting_clarification')).toBe('needsInput');
 		expect(replyBlocker('informational')).toBe('update');
 		expect(replyBlocker('approved')).toBe('sending');
 		expect(replyBlocker('sent')).toBe('answered');

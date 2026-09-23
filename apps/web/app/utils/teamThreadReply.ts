@@ -7,7 +7,8 @@
  * (`approveDraft`), which schedules the send with its undo window. That path
  * starts at `draft_ready`. A message no agent is going to answer — it failed,
  * the agent is off and the pipeline stopped after the security scan, the
- * pipeline never picked it up (automated mail, the cost cap), or a teammate
+ * pipeline never picked it up (automated mail, the cost cap), the agent is
+ * waiting on a question the person would rather not answer, or a teammate
  * rejected the draft or it was archived — is first taken over
  * (`manualReply.takeOverReply` → `draft_ready`), so a person can always write
  * the reply themselves. States where the agent is still working, or where the
@@ -35,7 +36,6 @@ export interface ReplyTargetMessage {
 export type ReplyBlocker =
 	| 'processing'
 	| 'drafting'
-	| 'needsInput'
 	| 'update'
 	| 'sending'
 	| 'answered'
@@ -46,7 +46,6 @@ const BLOCKERS: Record<string, ReplyBlocker> = {
 	security_check: 'processing',
 	classifying: 'processing',
 	drafting: 'drafting',
-	awaiting_clarification: 'needsInput',
 	informational: 'update',
 	approved: 'sending',
 	sent: 'answered',
@@ -57,29 +56,33 @@ const BLOCKERS: Record<string, ReplyBlocker> = {
 export const REPLY_BLOCKER_KEYS: Record<ReplyBlocker, string> = {
 	processing: 'dashboard.inbox.detail.composer.blocked.processing',
 	drafting: 'dashboard.inbox.detail.composer.blocked.drafting',
-	needsInput: 'dashboard.inbox.detail.composer.blocked.needsInput',
 	update: 'dashboard.inbox.detail.composer.blocked.update',
 	sending: 'dashboard.inbox.detail.composer.blocked.sending',
 	answered: 'dashboard.inbox.detail.composer.blocked.answered',
 	quarantined: 'dashboard.inbox.detail.composer.blocked.quarantined',
 };
 
-/** What the viewer's instance allows, and the clock, for the states that depend on them. */
+/**
+ * What the viewer's instance allows, the server's takeover facts for the
+ * message, and the clock. The facts come from `getThread`'s `takeOver` block,
+ * computed by the same code `manualReply.takeOverReply` checks, so the composer
+ * never opens on a message the server would refuse. A missing fact reads as
+ * "not yet", never as sendable.
+ */
 export interface ReplyContext {
 	/** Is the AI agent on? When it is off, a scanned message rests in `security_check`. */
 	agentEnabled: boolean;
+	/** The message's security scan has completed. */
+	scanFinished?: boolean;
+	/** Any agent action exists for the message: a pipeline run started. */
+	pipelineStarted?: boolean;
+	/** How long a `received` message waits before a person may take it over. */
+	receivedWaitMs?: number;
 	/** When the message arrived (`_creationTime`). */
 	receivedAt?: number;
 	/** The current time. */
 	now?: number;
 }
-
-/**
- * How long a message sits in `received` before the composer assumes no
- * pipeline run is coming (automated mail, the agent cost cap). Mirrors the
- * server's `MIN_RECEIVED_WAIT_MS`; the server has the final word.
- */
-export const RECEIVED_TAKEOVER_AFTER_MS = 5 * 60 * 1000;
 
 /**
  * `null` = a person can reply to this message now (possibly after taking it
@@ -91,12 +94,18 @@ export function replyBlocker(
 ): ReplyBlocker | null {
 	if (status === 'draft_ready' || status === 'failed') return null;
 	if (status === 'rejected' || status === 'archived') return null;
-	if (status === 'security_check' && !context.agentEnabled) return null;
+	// Writing the reply instead of answering the agent's questions.
+	if (status === 'awaiting_clarification') return null;
+	if (status === 'security_check' && !context.agentEnabled && context.scanFinished === true) {
+		return null;
+	}
 	if (
 		status === 'received' &&
+		context.pipelineStarted === false &&
+		context.receivedWaitMs !== undefined &&
 		context.receivedAt !== undefined &&
 		context.now !== undefined &&
-		context.now - context.receivedAt >= RECEIVED_TAKEOVER_AFTER_MS
+		context.now - context.receivedAt >= context.receivedWaitMs
 	) {
 		return null;
 	}
