@@ -8,6 +8,11 @@
  * unrecoverable — sits on a settings page nobody has a reason to open. So this
  * says it once, above the list, and points at that page.
  *
+ * The words are for members, not operators (#776): what changed ("mail to
+ * other Owlat users is now encrypted"), that nothing changes for them, and one
+ * plain action. "Sealed" and "recovery kit" stay on the settings page, where
+ * there is room to explain them.
+ *
  * Once. Dismissing stamps `sealedMailNudgeSeenAt`, which is a per-user server
  * preference rather than local storage precisely because "shown once" has to
  * mean once per person, not once per browser. Following the link dismisses it
@@ -29,7 +34,7 @@ async function dismiss() {
 
 async function openSettings() {
 	await dismissSealedMailNudge();
-	await navigateTo('/dashboard/preferences#sealed-mail');
+	await navigateTo('/dashboard/preferences/security#sealed-mail');
 }
 </script>
 

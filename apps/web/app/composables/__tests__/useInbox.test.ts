@@ -10,12 +10,12 @@ import { useInbox } from '../useInbox';
  */
 describe('useInbox pagination', () => {
 	// One controllable { data } per useConvexQuery call, in call order.
-	let created: Array<{ data: Ref<unknown> }> = [];
+	let created: Array<{ data: Ref<unknown>; args: () => unknown }> = [];
 
 	beforeEach(() => {
 		created = [];
-		vi.stubGlobal('useConvexQuery', () => {
-			const handle = { data: ref<unknown>(undefined), isLoading: ref(false) };
+		vi.stubGlobal('useConvexQuery', (_query: unknown, args: () => unknown) => {
+			const handle = { data: ref<unknown>(undefined), isLoading: ref(false), args };
 			created.push(handle);
 			return handle;
 		});
@@ -82,5 +82,40 @@ describe('useInbox pagination', () => {
 		threadsData.value = { threads: [thread('x')], nextCursor: null };
 		await nextTick();
 		expect(threads.value.map((t) => t._id)).toEqual(['x']);
+	});
+
+	it('sends the assignment filter to the list and the tab counts', () => {
+		const { assignee, threads, loadMoreThreads } = useInbox();
+		const [list, counts] = created;
+		expect(list!.args()).not.toHaveProperty('assignee');
+		expect(counts!.args()).toEqual({});
+
+		assignee.value = 'me';
+		expect(list!.args()).toMatchObject({ filter: 'open', assignee: 'me' });
+		expect(counts!.args()).toEqual({ assignee: 'me' });
+		expect(threads.value).toHaveLength(0);
+		expect(typeof loadMoreThreads).toBe('function');
+	});
+
+	it('reads an old ?filter=mine link as Open, assigned to me', () => {
+		vi.stubGlobal('useRoute', () => ({ query: { filter: 'mine' } }));
+		const { filter, assignee } = useInbox();
+		expect(filter.value).toBe('open');
+		expect(assignee.value).toBe('me');
+	});
+
+	it('applies a legacy waiting-24h sort to this view without saving it', () => {
+		const set = vi.fn();
+		vi.stubGlobal('useRoute', () => ({ query: { filter: 'waiting-24h' } }));
+		vi.stubGlobal('useLocalStorage', (_key: string, def: unknown) => ({ data: ref(def), set }));
+		const { sort, setSort } = useInbox();
+
+		expect(sort.value).toBe('oldest-waiting');
+		expect(created[0]!.args()).toMatchObject({ sort: 'oldest-waiting' });
+		expect(set).not.toHaveBeenCalled();
+
+		// Picking a sort is a real choice: it is saved and ends the override.
+		setSort('newest');
+		expect(set).toHaveBeenCalledWith('newest');
 	});
 });

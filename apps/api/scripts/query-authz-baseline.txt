@@ -30,12 +30,10 @@ convex/chat/messages.ts:myUnreadCounts
 convex/chat/rooms.ts:getRoom
 convex/chat/rooms.ts:listMyChannels
 convex/chat/rooms.ts:listPublicChannels
-convex/contacts/activities.ts:getRecent
 convex/contacts/activities.ts:listByContact
 convex/contacts/analytics.ts:getAudienceStats
 convex/contacts/analytics.ts:getRecent
 convex/contacts/analytics.ts:getSubscriberGrowth
-convex/contacts/analytics.ts:getTopTopics
 convex/contacts/contacts.ts:get
 convex/contacts/contacts.ts:list
 convex/contacts/identities.ts:getMergeSuggestions
@@ -60,14 +58,12 @@ convex/domains/domains.ts:listByOrganization
 convex/domains/domains.ts:listVerified
 convex/domains/trackingDomains.ts:listTrackingDomains
 convex/emailBlocks/blocks.ts:get
-convex/emailBlocks/blocks.ts:getRecentByTeam
 convex/emailBlocks/blocks.ts:getStatsByTeam
 convex/emailBlocks/blocks.ts:list
 convex/emailTemplates/emails.ts:get
 convex/emailTemplates/emails.ts:list
 convex/emailTemplates/i18n.ts:getForLanguage
 convex/emailTemplates/organization.ts:countByTypeByOrganization
-convex/emailTemplates/organization.ts:getRecentByOrganization
 convex/forms/endpoints.ts:getSubmissions
 convex/forms/endpoints.ts:listByTeam
 convex/integrationImports/walker.ts:getImportProgress

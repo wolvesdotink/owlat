@@ -1,4 +1,4 @@
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -42,6 +42,9 @@ function labelsFor(route: string, viewerRole: typeof role.value = 'admin') {
 	return trailFor(route, viewerRole).map((item) => t(item.label));
 }
 
+/** A page that only forwards elsewhere (`definePageMeta({ redirect })`) shows no trail. */
+const isRedirectStub = (source: string) => /definePageMeta\(\{\s*redirect:/.test(source);
+
 /** Every `.vue` page under `pages/dashboard/<area>`, as a concrete route path. */
 async function routesUnder(area: string): Promise<string[]> {
 	const root = join(pagesRoot, 'dashboard', area);
@@ -57,7 +60,9 @@ async function routesUnder(area: string): Promise<string[]> {
 		);
 		return nested.flat();
 	};
-	const files = await walk(root);
+	const all = await walk(root);
+	const sources = await Promise.all(all.map((file) => readFile(file, 'utf8')));
+	const files = all.filter((_, index) => !isRedirectStub(sources[index]!));
 	return files
 		.map((file) => {
 			const route = `/${relative(pagesRoot, file)
@@ -82,32 +87,64 @@ describe('useBreadcrumbs', () => {
 		// The slug-capitalization fallback drifts from the sidebar ('Ai Provider'
 		// vs 'AI provider') and starts at the bare URL segment ('Admin'), so a
 		// configured Administration/Preferences route never starts with it.
-		it('every Administration page has a configured trail', async () => {
+		it('every Workspace settings page has a configured trail', async () => {
 			const uncovered: string[] = [];
 			for (const route of await routesUnder('admin')) {
-				const first = labelsFor(route)[0];
-				if (first !== 'Administration' && first !== 'Delivery') uncovered.push(route);
+				if (labelsFor(route)[0] !== 'Workspace') uncovered.push(route);
 			}
 			expect(uncovered).toEqual([]);
 		});
 
-		it('every Preferences page has a configured trail', async () => {
+		// The Marketing workspace was split out of "Send"; every page in it has to
+		// say so, including the detail pages no exact entry names.
+		it('every campaign, automation and template page starts at Marketing', async () => {
 			const uncovered: string[] = [];
-			for (const route of await routesUnder('preferences')) {
-				if (labelsFor(route)[0] !== 'Preferences') uncovered.push(route);
+			for (const area of ['campaigns', 'automations', 'send']) {
+				for (const route of await routesUnder(area)) {
+					if (labelsFor(route)[0] !== 'Marketing') uncovered.push(route);
+				}
 			}
 			expect(uncovered).toEqual([]);
+		});
+
+		it('every My settings page has a configured trail', async () => {
+			const uncovered: string[] = [];
+			for (const route of await routesUnder('preferences')) {
+				if (labelsFor(route)[0] !== 'My settings') uncovered.push(route);
+			}
+			expect(uncovered).toEqual([]);
+		});
+	});
+
+	describe('the Marketing workspace', () => {
+		it.each([
+			['/dashboard/campaigns', ['Marketing', 'Campaigns']],
+			['/dashboard/campaigns/new', ['Marketing', 'Campaigns', 'New campaign']],
+			['/dashboard/campaigns/abc123/edit', ['Marketing', 'Campaigns', 'Edit campaign']],
+			['/dashboard/automations', ['Marketing', 'Automations']],
+			['/dashboard/automations/abc123', ['Marketing', 'Automations']],
+			['/dashboard/send', ['Marketing', 'Templates']],
+			['/dashboard/send/emails/abc123/edit', ['Marketing', 'Templates', 'Edit template']],
+		])('%s reads %j', (route, trail) => {
+			expect(labelsFor(route)).toEqual(trail);
+		});
+
+		it('never says "Send" as a section', () => {
+			expect(labelsFor('/dashboard/send/transactional')[0]).toBe('Marketing');
 		});
 	});
 
 	describe('label alignment with the sidebar / hub pages', () => {
 		it.each([
 			['/dashboard/admin/instance/ai-provider', 'AI provider'],
-			['/dashboard/admin/instance/agent', 'AI agent'],
-			['/dashboard/admin/instance/sealed-mail', 'Secure mail'],
-			['/dashboard/admin/instance/channels', 'Channels'],
+			['/dashboard/admin/instance/ai-replies', 'AI replies'],
+			['/dashboard/admin/instance/sealed-mail', 'Sealed mail'],
+			['/dashboard/admin/instance/channels', 'Messaging channels'],
 			['/dashboard/admin/team/connected-apps', 'Connected apps'],
-			['/dashboard/admin/system', 'System & Updates'],
+			['/dashboard/admin/team/senders', 'Campaign senders'],
+			['/dashboard/admin/delivery/transport', 'Delivery provider'],
+			['/dashboard/admin/delivery/quarantine', 'Quarantine'],
+			['/dashboard/admin/system', 'System & updates'],
 			['/dashboard/admin/backups', 'Backups'],
 			['/dashboard/preferences/external-account', 'Connected mailboxes'],
 			['/dashboard/preferences/writing-voice', 'Writing voice'],
@@ -115,27 +152,37 @@ describe('useBreadcrumbs', () => {
 			expect(labelsFor(route).at(-1)).toBe(page);
 		});
 
-		it('nests instance pages under the Instance hub', () => {
-			expect(labelsFor('/dashboard/admin/instance/features')).toEqual([
-				'Administration',
-				'Instance',
-				'Features',
+		it('files a page under its Workspace group, named as the sidebar names it', () => {
+			expect(labelsFor('/dashboard/admin/delivery/webhooks')).toEqual([
+				'Workspace',
+				'Email delivery',
+				'Webhooks',
 			]);
+			expect(labelsFor('/dashboard/admin/team/audit')).toEqual(['Workspace', 'Team', 'Audit log']);
 		});
 
-		it('nests team pages under the Team & access hub', () => {
-			expect(labelsFor('/dashboard/admin/team/audit')).toEqual([
-				'Administration',
-				'Team & access',
-				'Audit Log',
+		it('never repeats a name: a group lead page is its own crumb', () => {
+			expect(labelsFor('/dashboard/admin/team')).toEqual(['Workspace', 'Team']);
+			expect(labelsFor('/dashboard/admin/instance/features')).toEqual(['Workspace', 'Features']);
+			expect(labelsFor('/dashboard/admin')).toEqual(['Workspace']);
+		});
+
+		it('nests a tabbed page under the sidebar row that stands for it', () => {
+			expect(labelsFor('/dashboard/admin/delivery/advanced/cells')).toEqual([
+				'Workspace',
+				'Advanced',
+				'Delivery cells',
 			]);
+			expect(trailFor('/dashboard/admin/delivery/advanced/cells')[1]?.href).toBe(
+				'/dashboard/admin/delivery/advanced'
+			);
 		});
 
 		// RouteConfig carries a single subsection level, so the deepest useful
 		// parent (the plugin list) is the one that gets the crumb.
 		it('resolves the per-plugin settings route through a pattern', () => {
 			expect(labelsFor('/dashboard/admin/instance/plugins/acme-crm')).toEqual([
-				'Administration',
+				'Workspace',
 				'Plugins',
 				'Plugin settings',
 			]);
@@ -165,12 +212,12 @@ describe('useBreadcrumbs', () => {
 		it('members do not get a redundant Contacts subsection on a contact detail page', () => {
 			expect(labelsFor('/dashboard/audience/contacts/abc123', 'editor')).toEqual([
 				'Customers',
-				'Contact Details',
+				'Contact details',
 			]);
 			expect(labelsFor('/dashboard/audience/contacts/abc123', 'admin')).toEqual([
 				'Audience',
 				'Contacts',
-				'Contact Details',
+				'Contact details',
 			]);
 		});
 	});
@@ -238,6 +285,38 @@ describe('useBreadcrumbs', () => {
 			expect(matches('/dashboard/postbox/inbox')).toBe(true);
 			for (const page of ['contacts', 'files', 'search', 'reply-queue', 'subscriptions']) {
 				expect(matches(`/dashboard/postbox/${page}`)).toBe(false);
+			}
+		});
+	});
+
+	/**
+	 * The mailbox's own pages fell through to the slug fallback, so search read
+	 * "Postbox > Search" beside folders that read "Inboxes > Inbox" (#776).
+	 */
+	describe('postbox page trails', () => {
+		it.each([
+			['/dashboard/postbox/search', 'Search'],
+			['/dashboard/postbox/contacts', 'Contacts'],
+			['/dashboard/postbox/files', 'Files'],
+			['/dashboard/postbox/subscriptions', 'Subscriptions'],
+			['/dashboard/postbox/migrate', 'Import mail'],
+		])('names %s under the same section as the folders', (route, page) => {
+			expect(labelsFor(route)).toEqual([
+				...labelsFor('/dashboard/postbox/inbox').slice(0, 1),
+				page,
+			]);
+		});
+
+		it('names a custom folder list by its section, not by the URL', () => {
+			expect(labelsFor('/dashboard/postbox/j57customfolderid0000000000000')).toEqual(['Inboxes']);
+		});
+
+		it('never says Postbox anywhere in the area', async () => {
+			// `/dashboard/postbox` and `/reply-queue` only redirect; no trail renders.
+			const redirects = new Set(['/dashboard/postbox', '/dashboard/postbox/reply-queue']);
+			for (const route of await routesUnder('postbox')) {
+				if (redirects.has(route)) continue;
+				expect(labelsFor(route)).not.toContain('Postbox');
 			}
 		});
 	});

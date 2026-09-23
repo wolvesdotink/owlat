@@ -8,7 +8,7 @@ import { api } from '@owlat/api';
  * screen adapts to the instance mode:
  *
  * - FRESH START (default, `isMigrationMode` off): a pure product welcome that
- *   flows straight into the Postbox. No import surface is ever shown.
+ *   lands on Today. No import surface is ever shown.
  * - MIGRATION MODE (`isMigrationMode` on): two equal choices — bring existing
  *   email over, or start fresh — plus a quiet "I'll do this later" skip.
  *
@@ -46,8 +46,8 @@ const firstName = computed<string>(() => {
 
 // Reaching this screen makes the member "returning" for the rest of the session:
 // flip the session-scoped flag the first-login middleware reads BEFORE the exit
-// links can fire. Both exits ("I'll do this later" → /dashboard, "Go to my inbox"
-// → /dashboard/postbox) land on trigger paths, so without this a fast click could
+// links can fire. Every exit ("I'll do this later", "Go to Today") lands on
+// /dashboard, a trigger path, so without this a fast click could
 // beat the fire-and-forget mutation below and bounce the member back to /welcome.
 const firstLoginResolved = useState('first-login-resolved', () => false);
 firstLoginResolved.value = true;
@@ -113,7 +113,7 @@ onMounted(async () => {
 						</NuxtLink>
 
 						<NuxtLink
-							to="/dashboard/postbox"
+							to="/dashboard"
 							class="group flex flex-col rounded-xl border border-border-subtle bg-bg-surface/50 p-5 text-left transition-all hover:border-brand hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 						>
 							<UiIconBox icon="lucide:sparkles" variant="surface" size="sm" />
@@ -138,7 +138,7 @@ onMounted(async () => {
 					</div>
 				</template>
 
-				<!-- FRESH START (default): a two-minute setup that lands in Postbox. -->
+				<!-- FRESH START (default): a two-minute setup that lands on Today. -->
 				<template v-else>
 					<OnboardingFreshStart />
 				</template>

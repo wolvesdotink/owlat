@@ -102,13 +102,8 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 				icon: 'lucide:message-square',
 			},
 			{
-				name: 'shared.dashboardNavigation.items.inbox.allActivity',
-				href: '/dashboard/inbox/activity',
-				icon: 'lucide:activity',
-			},
-			{
 				name: 'shared.dashboardNavigation.items.inbox.reviewQueue',
-				href: '/dashboard/inbox/review',
+				href: '/dashboard/answer?in=team',
 				icon: 'lucide:check-circle',
 				gate: adminOnly,
 			},
@@ -117,12 +112,6 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 				href: '/dashboard/inbox/code-tasks',
 				icon: 'lucide:code',
 				gate: (env) => adminOnly(env) && flag('inbox.codeTasks')(env),
-			},
-			{
-				name: 'shared.dashboardNavigation.items.inbox.quarantine',
-				href: '/dashboard/inbox/quarantine',
-				icon: 'lucide:shield-alert',
-				gate: adminOnly,
 			},
 		],
 	},
@@ -196,7 +185,8 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		name: 'shared.dashboardNavigation.sections.assistant',
 		icon: 'lucide:sparkles',
 		href: '/dashboard/assistant',
-		gate: (env) => adminOnly(env) && flag('ai.assistant')(env),
+		// Every member, like the route: the user menu and ⌘J offer it to all.
+		gate: flag('ai.assistant'),
 		items: [
 			{
 				name: 'shared.dashboardNavigation.items.assistant.chat',
@@ -206,9 +196,11 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		],
 	},
 	{
-		// Unified "Send" section: everything you send from, in one place.
+		// The Marketing workspace: everything you send to an audience. Named with
+		// the breadcrumb's own section key, so the palette's context line, the
+		// trail and the sidebar switch say the same word.
 		key: 'send',
-		name: 'shared.dashboardNavigation.sections.send',
+		name: 'shared.breadcrumbRoutes.sections.marketing',
 		icon: 'lucide:send',
 		items: [
 			{
@@ -236,7 +228,7 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 				gate: (env) => adminOnly(env) && flag('transactional')(env),
 			},
 			{
-				name: 'shared.dashboardNavigation.items.send.templatesAndBlocks',
+				name: 'shared.dashboardNavigation.items.send.templates',
 				href: '/dashboard/send',
 				icon: 'lucide:layout-grid',
 				gate: adminOnly,
@@ -249,12 +241,6 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		icon: 'lucide:users',
 		href: undefined,
 		items: [
-			{
-				name: 'shared.dashboardNavigation.items.audience.overview',
-				href: '/dashboard/audience',
-				icon: 'lucide:layout-dashboard',
-				gate: adminOnly,
-			},
 			{
 				name: 'shared.dashboardNavigation.items.audience.contacts',
 				href: '/dashboard/audience/contacts',
@@ -283,7 +269,8 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		key: 'knowledge',
 		name: 'shared.dashboardNavigation.sections.knowledge',
 		icon: 'lucide:brain',
-		gate: (env) => adminOnly(env) && flag('ai.knowledge')(env),
+		// Every member: Knowledge sits in the Conversations sidebar next to Chat.
+		gate: flag('ai.knowledge'),
 		items: [
 			{
 				name: 'shared.dashboardNavigation.items.knowledge.explorer',
@@ -295,6 +282,13 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 				href: '/dashboard/knowledge/graph',
 				icon: 'lucide:share-2',
 				gate: flag('ai.knowledge.analytics'),
+			},
+			{
+				// The semantic file library the assistant's searchFiles tool reads.
+				// Nothing else links to it since the Templates overview went away.
+				name: 'shared.dashboardNavigation.items.knowledge.files',
+				href: '/dashboard/files',
+				icon: 'lucide:file-search',
 			},
 		],
 	},
@@ -328,7 +322,8 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 	},
 	{
 		key: 'preferences',
-		name: 'shared.dashboardNavigation.sections.preferences',
+		// The same name the Settings tab and the breadcrumb use ("My settings").
+		name: 'shared.breadcrumbRoutes.sections.preferences',
 		icon: 'lucide:settings',
 		href: '/dashboard/preferences',
 		// Every Preferences page renders the layout's own left nav, so the sidebar

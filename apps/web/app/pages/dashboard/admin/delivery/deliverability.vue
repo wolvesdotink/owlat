@@ -180,7 +180,7 @@ async function copyReport() {
 </script>
 
 <template>
-	<div class="mx-auto max-w-6xl p-4 sm:p-6 lg:p-8">
+	<div>
 		<header class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 			<div class="flex items-start gap-3">
 				<UiIconBox icon="lucide:shield-check" size="lg" variant="brand" rounded="xl" />

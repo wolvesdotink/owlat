@@ -139,11 +139,19 @@ export function useAutomationSteps(
 	// in the SortableJS `@end` event (oldIndex/newIndex) — `automation.steps` is
 	// still the un-reordered server order. Apply the move to the id list before
 	// persisting, otherwise the reorder is a silent no-op.
-	const handleDragEnd = async (event?: { oldIndex?: number | null; newIndex?: number | null }) => {
-		if (!automation.value?.steps) return;
+	/**
+	 * Persist a drag. Resolves `false` when the new order was NOT saved (the
+	 * mutation failed and was toasted), so a caller that already shows the
+	 * dropped order can put the server's order back.
+	 */
+	const handleDragEnd = async (event?: {
+		oldIndex?: number | null;
+		newIndex?: number | null;
+	}): Promise<boolean> => {
+		if (!automation.value?.steps) return true;
 		const oldIndex = event?.oldIndex;
 		const newIndex = event?.newIndex;
-		if (oldIndex == null || newIndex == null || oldIndex === newIndex) return;
+		if (oldIndex == null || newIndex == null || oldIndex === newIndex) return true;
 		const stepOrder = automation.value.steps.map((step) => step._id);
 		if (
 			oldIndex < 0 ||
@@ -151,15 +159,16 @@ export function useAutomationSteps(
 			newIndex < 0 ||
 			newIndex >= stepOrder.length
 		) {
-			return;
+			return true;
 		}
 		const [moved] = stepOrder.splice(oldIndex, 1);
-		if (moved === undefined) return;
+		if (moved === undefined) return true;
 		stepOrder.splice(newIndex, 0, moved);
-		await reorderStepsMutation({
+		const result = await reorderStepsMutation({
 			automationId: automationId.value,
 			stepOrder,
 		});
+		return result.ok;
 	};
 
 	// ─── Validation (per-step delegated to editor modules) ──────────────

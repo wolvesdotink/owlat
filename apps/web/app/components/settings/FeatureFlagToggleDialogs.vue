@@ -16,7 +16,12 @@ import { useFeatureCopy } from '~/composables/useFeatureCopy';
 defineProps<{
 	pendingCascade: { flag: FeatureFlagKey; value: boolean; cascaded: FeatureFlagKey[] } | null;
 	pendingPluginApproval: { flag: FeatureFlagKey; capabilities: readonly string[] } | null;
-	missingEnv: { flag: FeatureFlagKey; vars: string[] } | null;
+	/**
+	 * What enabling the flag still needs: environment variables by name, or —
+	 * for a sending flag — a delivery provider, which is set up on its own page
+	 * rather than as one variable.
+	 */
+	missingEnv: { flag: FeatureFlagKey; vars: string[]; needsDeliveryProvider?: boolean } | null;
 	registry: FeatureFlagRegistry;
 	isSaving: boolean;
 }>();
@@ -107,34 +112,29 @@ const { flagKeyLabel } = useFeatureCopy();
 		"
 		@update:open="(v: boolean) => !v && $emit('closeMissingEnv')"
 	>
-		<I18nT
-			keypath="dashboard.admin.instance.features.missingEnv.body"
-			tag="p"
-			scope="global"
-			class="text-text-secondary"
-		>
-			<template #path>
-				<code class="text-sm bg-bg-surface px-1.5 py-0.5 rounded">/opt/owlat/.env</code>
-			</template>
-		</I18nT>
-		<ul class="mt-3 space-y-1.5">
-			<li v-for="v in missingEnv?.vars ?? []" :key="v">
-				<code class="text-sm bg-bg-surface px-1.5 py-0.5 rounded">{{ v }}</code>
-			</li>
-		</ul>
-		<I18nT
-			keypath="dashboard.admin.instance.features.missingEnv.howTo"
-			tag="p"
-			scope="global"
-			class="mt-3 text-sm text-text-tertiary"
-		>
-			<template #envCommand>
-				<code class="bg-bg-surface px-1.5 py-0.5 rounded">owlat env &lt;KEY&gt; &lt;VALUE&gt;</code>
-			</template>
-			<template #restartCommand>
-				<code class="bg-bg-surface px-1.5 py-0.5 rounded">owlat restart</code>
-			</template>
-		</I18nT>
+		<!-- A sending flag needs a provider, not one variable: send the operator
+		     to the page that sets one up. -->
+		<div v-if="missingEnv?.needsDeliveryProvider" class="space-y-3">
+			<p class="text-text-secondary">
+				{{ t('dashboard.admin.instance.features.missingEnv.deliveryBody') }}
+			</p>
+			<UiButton
+				variant="secondary"
+				to="/dashboard/admin/delivery/transport"
+				@click="$emit('closeMissingEnv')"
+			>
+				{{ t('dashboard.admin.instance.features.missingEnv.openDelivery') }}
+			</UiButton>
+		</div>
+		<!-- The same copyable .env lines and `owlat` commands every delivery page
+		     hands over. This page cannot see the server's .env, so it does not wait
+		     for a connection. -->
+		<DeliveryEnvSetupSteps
+			v-else-if="missingEnv"
+			:variables="missingEnv.vars"
+			:connected="false"
+			:await-connection="false"
+		/>
 
 		<template #footer>
 			<UiButton @click="$emit('closeMissingEnv')">{{

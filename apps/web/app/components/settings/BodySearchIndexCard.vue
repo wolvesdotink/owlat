@@ -102,11 +102,11 @@ async function stopBackfill() {
 				</p>
 			</div>
 			<UiSpinner v-if="isLoading" size="sm" />
-			<UiToggle
+			<UiSwitch
 				v-else
 				:model-value="isEnabled"
 				:disabled="!canManageOrganization || isSaving"
-				:label="isEnabled ? t('common.enabled') : t('common.disabled')"
+				:label="t('components.settings.bodySearchIndexCard.title')"
 				data-testid="body-search-indexing"
 				@update:model-value="onToggle"
 			/>

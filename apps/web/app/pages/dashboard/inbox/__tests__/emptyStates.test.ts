@@ -41,14 +41,14 @@ interface Guard {
 const guards: Guard[] = [
 	{
 		name: 'failed',
-		page: '../failed.vue',
+		page: '../../admin/delivery/failed.vue',
 		emptyBinding: '!failedMessages || failedMessages.length === 0',
 		emptyTitle: "t('dashboard.inbox.failed.emptyTitle')",
 		dataBranchMarker: 'v-for="message in failedMessages"',
 	},
 	{
 		name: 'quarantine',
-		page: '../quarantine.vue',
+		page: '../../admin/delivery/quarantine.vue',
 		emptyBinding: '!quarantinedMessages || quarantinedMessages.length === 0',
 		emptyTitle: "t('dashboard.inbox.quarantine.emptyTitle')",
 		dataBranchMarker: 'v-for="message in quarantinedMessages"',
@@ -69,7 +69,7 @@ const guards: Guard[] = [
 	},
 	{
 		name: 'activity',
-		page: '../activity.vue',
+		page: '../../admin/delivery/activity.vue',
 		emptyBinding: 'timeline.length === 0',
 		// The activity feed's guided copy lives in its own component, which is
 		// itself a thin wrapper over the shared ladder.
@@ -102,8 +102,15 @@ describe.each(guards)(
 describe('inbox list — a filtered view is a no-results state, not an empty queue', () => {
 	const source = read('../index.vue');
 
-	it('reads quieter and offers the way back to the default pill', () => {
+	it('reads quieter and offers the way back to the default tab and assignment', () => {
 		expect(source).toContain(`:variant="isFiltered ? 'no-results' : 'empty'"`);
-		expect(source).toContain('@clear="filter = DEFAULT_INBOX_FILTER"');
+		expect(source).toContain('@clear="clearFilters"');
+		expect(source).toMatch(
+			/filter\.value = DEFAULT_INBOX_FILTER;\s+assignee\.value = DEFAULT_INBOX_ASSIGNEE;/
+		);
+	});
+
+	it('reads inbox zero as good news, not as "nothing here yet"', () => {
+		expect(source).toContain(`:tone="isFiltered ? 'default' : 'clear'"`);
 	});
 });

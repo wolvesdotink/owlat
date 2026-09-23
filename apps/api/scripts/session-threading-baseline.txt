@@ -1,5 +1,4 @@
 convex/agent/knowledgeBackfill.ts:cancel
-convex/agentConfigMutations.ts:killSwitch
 convex/agentConfigMutations.ts:updateConfig
 convex/analytics/complianceTelemetry.ts:getComplianceTelemetry
 convex/analytics/dashboard.ts:getRecentActivity
@@ -169,7 +168,6 @@ convex/integrationImports/walker.ts:startIntegrationImport
 convex/knowledge/edgeBackfill.ts:cancel
 convex/knowledge/graph.ts:addRelation
 convex/knowledge/graph.ts:createEntry
-convex/knowledge/graph.ts:createPolicyEntry
 convex/knowledge/graph.ts:deleteEntry
 convex/knowledge/graph.ts:removeRelation
 convex/knowledge/graph.ts:setCommitmentStatus

@@ -18,6 +18,8 @@ import {
 	type ProviderRouteMessageType as MessageType,
 	type ProviderRouteStrategy as Strategy,
 } from '~/utils/providerRouteOptions';
+import { composedSendProviderCatalogEntry } from '~/utils/composedSendProviderCatalog';
+import { transportKindLabel } from '~/utils/transportState';
 
 const { t } = useI18n();
 
@@ -61,9 +63,23 @@ interface DeliverabilityFallback {
 const { data: routesData, isLoading: routesLoading } = useOrganizationQuery(
 	api.providerRoutes.listRoutes
 );
-const { data: transportCatalog, isLoading: catalogLoading } = useOrganizationQuery(
-	api.providerRoutes.listTransportCatalog
-);
+const {
+	data: transportCatalog,
+	isLoading: catalogLoading,
+	refetch: refetchCatalog,
+} = useOrganizationQuery(api.providerRoutes.listTransportCatalog);
+
+// The default provider BY NAME — what a message type without a route uses. The
+// page used to name the environment variable instead of the provider.
+const { data: sendStatus } = useOrganizationQuery(api.delivery.status.getStatus);
+const defaultProviderName = computed(() => {
+	const kind = sendStatus.value?.provider;
+	return kind ? t(transportKindLabel(kind)) : t('dashboard.admin.delivery.providerRouting.notSet');
+});
+
+/** The variables a transport needs on the server — the setup it offers when not connected. */
+const setupVariablesFor = (providerType: string): readonly string[] =>
+	composedSendProviderCatalogEntry(providerType)?.requiredEnvVars ?? [];
 
 // The IP-pool names the built-in MTA routes through — used to autocomplete the
 // per-route override and warn on an unknown pool name (silently ignored by the
@@ -272,7 +288,7 @@ watch(isEditDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div>
 		<!-- Header -->
 		<div class="mb-6">
 			<div class="flex items-center gap-3">
@@ -319,9 +335,14 @@ watch(isEditDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 							class="text-sm text-text-secondary"
 							scope="global"
 						>
-							<template #envVar>
-								<code class="px-1 py-0.5 rounded bg-bg-surface text-text-primary text-xs"
-									>EMAIL_PROVIDER</code
+							<template #provider>
+								<span class="font-medium text-text-primary">{{ defaultProviderName }}</span>
+							</template>
+							<template #link>
+								<NuxtLink
+									to="/dashboard/admin/delivery/transport"
+									class="text-brand hover:underline"
+									>{{ t('dashboard.admin.delivery.providerRouting.howItWorks.link') }}</NuxtLink
 								>
 							</template>
 						</I18nT>
@@ -342,6 +363,7 @@ watch(isEditDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 					:route="routeByType.get(type.value)"
 					:strategy-label="strategyLabelFor"
 					:provider-label="providerLabel"
+					:default-provider-name="defaultProviderName"
 					@edit="startEdit(type.value)"
 					@reset="resetMessageType = type.value"
 				/>
@@ -395,6 +417,8 @@ watch(isEditDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 					:strategy="editStrategy"
 					:provider-label="providerLabel"
 					:provider-available="providerAvailable"
+					:setup-variables="setupVariablesFor"
+					@refresh="refetchCatalog"
 				/>
 
 				<!-- IP pool -->

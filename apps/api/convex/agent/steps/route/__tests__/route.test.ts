@@ -70,6 +70,7 @@ function makeExecuteCtx(message: FakeMessage, mutationNames: string[] = []) {
 			if (name.includes('getMessage')) return withFrom;
 			if (name.includes('getAgentConfig')) return null;
 			if (name.includes('getBudgetStatus')) return { autonomousAutoSendAllowed: true };
+			if (name.includes('getShadowMode')) return { enabled: false };
 			throw new Error(`unexpected runQuery: ${name}`);
 		},
 		runMutation: async (ref: unknown) => {

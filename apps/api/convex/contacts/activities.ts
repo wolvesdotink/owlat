@@ -1,10 +1,6 @@
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
-import { batchGet } from '../_utils/batchLoader';
-import {
-	contactActivityTypeValidator,
-	type ContactActivityType,
-} from '../contactActivities/catalog';
+import type { ContactActivityType } from '../contactActivities/catalog';
 
 /** Activity-type literal union. Re-exported for back-compat with existing callers. */
 export type ActivityType = ContactActivityType;
@@ -53,58 +49,6 @@ export const listByContact = authedQuery({
 			nextCursor,
 			hasMore,
 		};
-	},
-});
-
-// Get recent activities (for dashboard)
-export const getRecent = authedQuery({
-	args: {
-		limit: v.optional(v.number()),
-		activityTypes: v.optional(v.array(contactActivityTypeValidator)),
-	},
-	handler: async (ctx, args) => {
-		const limit = args.limit ?? 10;
-
-		let recentActivities;
-
-		if (args.activityTypes && args.activityTypes.length > 0) {
-			// When filtering by type, we need to over-fetch since we filter post-query
-			// Take more than needed to account for filtering, then slice
-			const activities = await ctx.db
-				.query('contactActivities')
-				.order('desc')
-				.take(limit * 10);
-
-			const allowed = new Set<ContactActivityType>(args.activityTypes);
-			recentActivities = activities.filter((a) => allowed.has(a.activityType)).slice(0, limit);
-		} else {
-			// No type filter — efficient take
-			recentActivities = await ctx.db.query('contactActivities').order('desc').take(limit);
-		}
-
-		// Batch-load all contacts at once
-		const contactIds = recentActivities.map((a) => a.contactId);
-		const contactsMap = await batchGet(ctx, contactIds);
-
-		const activitiesWithContacts = recentActivities.map((activity) => {
-			const contact = contactsMap.get(activity.contactId);
-			return {
-				...activity,
-				// Don't surface a soft-deleted (GDPR-erased) contact's PII
-				// (email/name) — treat it as an unresolved contact.
-				contact:
-					contact && contact.deletedAt === undefined
-						? {
-								_id: contact._id,
-								email: contact.email,
-								firstName: contact.firstName,
-								lastName: contact.lastName,
-							}
-						: null,
-			};
-		});
-
-		return activitiesWithContacts;
 	},
 });
 

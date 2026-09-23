@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { mobileMoreDestinations } from '~/lib/mobileMoreDestinations';
+
 /**
  * The phone's bottom bar: Today, Answer, create, Inbox, More.
  *
@@ -15,6 +17,10 @@
  * are hitting, and at z-(--z-header) the bar outranks every one of those
  * overlays, so "stays visible" reads as "paints over them".
  *
+ * "More" opens its own sheet with the destinations the bar does not hold
+ * (Team inbox, Chat, Marketing, Settings, …), not the full navigation drawer the
+ * header's menu button already opens (#778).
+ *
  * The slot you are on is marked by weight and primary text, the way the desktop
  * rail marks its active row — a permanently terracotta tab would spend the one
  * accent a screen gets on chrome rather than on the page's own content.
@@ -28,8 +34,6 @@ const props = defineProps<{
 	navigationOpen?: boolean;
 }>();
 
-const emit = defineEmits<{ openNavigation: [] }>();
-
 const { t } = useI18n();
 const route = useRoute();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
@@ -41,6 +45,7 @@ const { activeComposerId } = usePostboxComposerStack();
 const { isOpen: isRailDrawerOpen } = useRailDrawer();
 
 const isSheetOpen = ref(false);
+const isMoreOpen = ref(false);
 
 interface TabItem {
 	id: string;
@@ -99,6 +104,22 @@ function isActive(href: string): boolean {
 	return href === '/dashboard' ? route.path === href : route.path.startsWith(href);
 }
 
+// "More": the gated sidebar sections, minus what the bar already holds.
+const { navigationSections } = useDashboardNavigation();
+const moreDestinations = computed(() =>
+	mobileMoreDestinations(navigationSections.value, [
+		...leadingTabs.value.map((tab) => tab.href),
+		...trailingTabs.value.map((tab) => tab.href),
+	])
+);
+/** More reads as current while you are on one of its destinations. */
+const isMoreActive = computed(
+	() =>
+		!leadingTabs.value.some((tab) => isActive(tab.href)) &&
+		!trailingTabs.value.some((tab) => isActive(tab.href)) &&
+		moreDestinations.value.some((destination) => isActive(destination.href))
+);
+
 /**
  * Is a dialog on screen? Watched rather than asked once, because the bar
  * outlives every overlay the app opens and no single component owns them all.
@@ -131,6 +152,7 @@ const isVisible = computed(
 		activeComposerId.value === null &&
 		!hasDialog.value &&
 		!isSheetOpen.value &&
+		!isMoreOpen.value &&
 		!isRailDrawerOpen.value &&
 		!props.navigationOpen
 );
@@ -205,9 +227,12 @@ function run(action: (typeof actions.value)[number]): void {
 					<li class="flex-1">
 						<button
 							type="button"
-							class="w-full h-full flex flex-col items-center justify-center gap-1 text-2xs text-text-tertiary transition-colors duration-(--motion-fast) hover:text-text-primary"
+							class="w-full h-full flex flex-col items-center justify-center gap-1 text-2xs transition-colors duration-(--motion-fast) hover:text-text-primary"
+							:class="isMoreActive ? 'text-text-primary font-medium' : 'text-text-tertiary'"
+							aria-haspopup="dialog"
+							:aria-expanded="isMoreOpen"
 							data-testid="mobile-tab-bar-more"
-							@click="emit('openNavigation')"
+							@click="isMoreOpen = true"
 						>
 							<Icon name="lucide:menu" class="w-5 h-5" />
 							{{ t('components.dashboard.mobileTabBar.more') }}
@@ -235,6 +260,28 @@ function run(action: (typeof actions.value)[number]): void {
 					<Icon :name="action.icon" class="w-5 h-5 text-text-tertiary" />
 					{{ action.label }}
 				</button>
+			</li>
+		</ul>
+	</UiModal>
+
+	<!-- Everywhere else you can go, as a short list rather than the full drawer. -->
+	<UiModal
+		:open="isMoreOpen"
+		:title="t('components.dashboard.mobileTabBar.more')"
+		size="sm"
+		@update:open="isMoreOpen = $event"
+	>
+		<ul class="-m-2 space-y-1" data-testid="mobile-tab-bar-more-list">
+			<li v-for="destination in moreDestinations" :key="destination.key">
+				<NuxtLink
+					:to="destination.href"
+					class="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left text-text-primary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover"
+					:aria-current="isActive(destination.href) ? 'page' : undefined"
+					@click="isMoreOpen = false"
+				>
+					<Icon :name="destination.icon" class="w-5 h-5 text-text-tertiary" />
+					{{ t(destination.name) }}
+				</NuxtLink>
 			</li>
 		</ul>
 	</UiModal>

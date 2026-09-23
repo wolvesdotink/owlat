@@ -129,4 +129,89 @@ describe('routeStep.execute — shadow mode', () => {
 		expect(output.decision).toBe('auto_approve');
 		expect(recorded).toHaveLength(0);
 	});
+
+	it('stays in human review when the shadow log write throws', async () => {
+		const ctx = makeStepCtx<Parameters<typeof routeStep.execute>[0]>({
+			queries: {
+				getBudgetStatus: { autonomousAutoSendAllowed: true },
+				getCircuitBreakersInternal: [],
+				checkPermissionInternal: { mode: 'enabled', allowed: true, reason: 'rule permits' },
+				getMessage: {
+					from: 'Alice Customer <alice@customer.example>',
+					draftResponse: cleanDraft,
+					securityFlags: { guardUnavailable: false },
+				},
+				getShadowMode: { enabled: true },
+			},
+			mutations: {
+				incrementDailyCount: { allowed: true },
+				recordShadowDecision: () => {
+					throw new Error('scorecard write failed');
+				},
+				recordAgentDecision: null,
+			},
+		});
+
+		const { output } = await routeStep.execute(ctx, sampleInput);
+		expect(output.decision).toBe('human_review');
+	});
+
+	it('treats an unreadable shadow setting as shadow on', async () => {
+		const recorded: Recorded[] = [];
+		const ctx = makeStepCtx<Parameters<typeof routeStep.execute>[0]>({
+			queries: {
+				getBudgetStatus: { autonomousAutoSendAllowed: true },
+				getCircuitBreakersInternal: [],
+				checkPermissionInternal: { mode: 'enabled', allowed: true, reason: 'rule permits' },
+				getMessage: {
+					from: 'Alice Customer <alice@customer.example>',
+					draftResponse: cleanDraft,
+					securityFlags: { guardUnavailable: false },
+				},
+				getShadowMode: () => {
+					throw new Error('config read failed');
+				},
+			},
+			mutations: {
+				recordShadowDecision: (args) => {
+					recorded.push(args as Recorded);
+					return null;
+				},
+				recordAgentDecision: null,
+			},
+		});
+
+		const { output } = await routeStep.execute(ctx, sampleInput);
+		expect(output.decision).toBe('human_review');
+		expect(recorded).toHaveLength(1);
+	});
+
+	it('does not charge the per-category daily cap while shadow is on', async () => {
+		const charged: unknown[] = [];
+		const ctx = makeStepCtx<Parameters<typeof routeStep.execute>[0]>({
+			queries: {
+				getBudgetStatus: { autonomousAutoSendAllowed: true },
+				getCircuitBreakersInternal: [],
+				checkPermissionInternal: { mode: 'enabled', allowed: true, reason: 'rule permits' },
+				getMessage: {
+					from: 'Alice Customer <alice@customer.example>',
+					draftResponse: cleanDraft,
+					securityFlags: { guardUnavailable: false },
+				},
+				getShadowMode: { enabled: true },
+			},
+			mutations: {
+				incrementDailyCount: (args) => {
+					charged.push(args);
+					return { allowed: true };
+				},
+				recordShadowDecision: null,
+				recordAgentDecision: null,
+			},
+		});
+
+		const { output } = await routeStep.execute(ctx, sampleInput);
+		expect(output.decision).toBe('human_review');
+		expect(charged).toHaveLength(0);
+	});
 });

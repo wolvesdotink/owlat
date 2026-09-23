@@ -79,16 +79,10 @@ const recordedAtLabel = computed(() =>
 </script>
 
 <template>
-	<div class="mx-auto max-w-3xl p-6 lg:p-8 space-y-6">
+	<div class="space-y-6">
 		<!-- Header -->
 		<div>
-			<NuxtLink
-				to="/dashboard/admin"
-				class="text-sm text-text-tertiary hover:text-brand transition-colors"
-			>
-				← {{ t('common.settings') }}
-			</NuxtLink>
-			<h1 class="mt-2 text-2xl font-medium tracking-[-0.02em] text-text-primary">
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 				{{ t('dashboard.admin.backups.title') }}
 			</h1>
 			<p class="mt-1 text-text-secondary">

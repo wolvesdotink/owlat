@@ -211,7 +211,7 @@ const sendingDetail = computed(() => {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div>
 		<!-- Header. The four ramp pages used to hide in an "Advanced tools"
 			 disclosure alongside it, which made the settings that gate how fast this
 			 deployment may send reachable from exactly one collapsed control; they
@@ -293,12 +293,11 @@ const sendingDetail = computed(() => {
 				<p class="text-sm">{{ abuseWarning.message }}</p>
 			</div>
 
-			<DeliveryComplianceTelemetryCard />
-
-			<!-- Stat tiles: bounce / complaint / send budget — each with a real
-				 day-over-day delta direction and its threshold as a muted hint. -->
-			<UiCard>
-				<div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+			<!-- Sender compliance: the heading and every number it introduces in
+				 one card. The stat tiles (bounce / complaint / send budget — each with
+				 a real day-over-day delta and its threshold as a muted hint) lead. -->
+			<DeliveryComplianceTelemetryCard>
+				<div class="grid grid-cols-1 sm:grid-cols-3 gap-6" data-testid="compliance-stat-tiles">
 					<UiStatTile
 						v-for="tile in statTiles"
 						:key="tile.key"
@@ -311,7 +310,7 @@ const sendingDetail = computed(() => {
 						:value-tone="tileValueTone[tile.tone]"
 					/>
 				</div>
-			</UiCard>
+			</DeliveryComplianceTelemetryCard>
 
 			<!-- Depth-on-demand: per-IP warm-up, total volume, last sync. -->
 			<DeliverySendingDetails

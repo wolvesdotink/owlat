@@ -236,9 +236,9 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 	'postbox.aiDraft': {
 		key: 'postbox.aiDraft',
 		category: 'ai',
-		label: 'Draft-on-arrival for personal mail',
+		label: 'Draft replies in personal mail',
 		description:
-			'Pre-generate a reply draft (with a confidence + quality self-check) into the Reply Queue the moment a personal-mail message that needs a reply lands, so the owner can review-and-send instead of starting from a blank composer. Human review only — never auto-sends.',
+			'When a personal message needs a reply, have a draft waiting in the Answer queue. You always review it before it is sent.',
 		default: false,
 		// Needs the AI master toggle for an LLM provider, plus *a* mailbox source
 		// to draft for — either hosted Postbox or a connected external mailbox
@@ -277,7 +277,7 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 		key: 'ai',
 		category: 'ai',
 		label: 'AI features',
-		description: 'Master toggle for all AI-powered features. Requires an LLM provider.',
+		description: 'Turn on the AI features below. Needs an AI provider.',
 		default: false,
 		cascadesOff: [
 			'ai.agent',
@@ -296,8 +296,9 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 	'ai.agent': {
 		key: 'ai.agent',
 		category: 'ai',
-		label: 'AI agent (classify + draft)',
-		description: 'Auto-classify inbound mail by intent and draft suggested replies.',
+		label: 'Draft replies for me',
+		description:
+			'Sort incoming team mail by topic and draft a reply to each message, ready for you to review.',
 		default: false,
 		requires: ['ai', 'inbox'],
 		cascadesOff: ['ai.autonomy', 'inbox.codeTasks'],
@@ -305,9 +306,9 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 	'ai.autonomy': {
 		key: 'ai.autonomy',
 		category: 'ai',
-		label: 'Autonomous actions',
+		label: 'Rules for each type of message',
 		description:
-			'Let the agent send replies and take actions without human approval when confidence is high.',
+			'Decide per type of message when AI replies may go out without review, and add rules in plain words. Set them up under AI replies.',
 		default: false,
 		requires: ['ai', 'ai.agent'],
 	},
@@ -322,9 +323,9 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 	'ai.decisionPlane': {
 		key: 'ai.decisionPlane',
 		category: 'ai',
-		label: 'Decision plane',
+		label: 'Separate model for quick decisions',
 		description:
-			'Answer the yes/no, category and score judgements the AI features make with a dedicated decision provider instead of a text model. Off, every judgement stays on your configured language model.',
+			'Use a separate decision service for quick calls, such as whether a message needs a reply or which topic it belongs to. Off, your main AI model makes them.',
 		default: false,
 		requires: ['ai'],
 	},
@@ -332,34 +333,34 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 		key: 'ai.knowledge',
 		category: 'ai',
 		label: 'Knowledge graph',
-		description: 'Semantic extraction from conversations to build context for agent drafts.',
+		description: 'Learn facts from your conversations so drafted replies can use them.',
 		default: false,
 		requires: ['ai'],
 	},
 	'ai.knowledge.autoLink': {
 		key: 'ai.knowledge.autoLink',
 		category: 'ai',
-		label: 'Auto-link knowledge (LLM)',
+		label: 'Connect related facts',
 		description:
-			'Infer typed edges between knowledge entries with an LLM pass and backfill existing entries. The deterministic rule-based linker runs whenever the knowledge graph is on; this adds the LLM-inferred edges.',
+			'Use AI to spot how saved facts relate to each other, including the ones you already have. Simple links are made either way.',
 		default: false,
 		requires: ['ai.knowledge'],
 	},
 	'ai.knowledge.graphRetrieval': {
 		key: 'ai.knowledge.graphRetrieval',
 		category: 'ai',
-		label: 'Graph-augmented retrieval',
+		label: 'Use related facts in drafts',
 		description:
-			'Expand semantic-search results along knowledge-graph edges (seed-then-expand) before grounding agent drafts. Kill switch: when off, retrieval is byte-identical to the flat path.',
+			'Find related facts when drafting replies, not only the closest matches. Off, drafts use the closest matches only.',
 		default: false,
 		requires: ['ai.knowledge'],
 	},
 	'ai.knowledge.analytics': {
 		key: 'ai.knowledge.analytics',
 		category: 'ai',
-		label: 'Knowledge graph analytics',
+		label: 'Knowledge insights',
 		description:
-			'Compute graph analytics (centrality, clusters) on a cron and surface a knowledge-graph dashboard.',
+			'See which facts matter most and how they group together, on a knowledge dashboard.',
 		default: false,
 		requires: ['ai.knowledge'],
 	},
@@ -368,7 +369,7 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 		category: 'ai',
 		label: 'AI assistant & chat',
 		description:
-			'Multi-turn, streaming, tool-calling AI assistant (a dedicated chat surface) plus @assistant replies inside team chat. Searches your knowledge, files, contacts, campaigns, and drafts copy on request.',
+			'An assistant you can chat with, plus @assistant replies inside team chat. It searches your knowledge, files, contacts and campaigns, and drafts copy on request.',
 		default: false,
 		requires: ['ai'],
 	},
@@ -376,7 +377,7 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 		key: 'ai.visualizations',
 		category: 'ai',
 		label: 'AI dashboards',
-		description: 'Generate charts and dashboards from natural-language prompts.',
+		description: 'Describe a chart in plain words and get it built from your data.',
 		default: false,
 		requires: ['ai'],
 	},
@@ -458,7 +459,7 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 	sealedMail: {
 		key: 'sealedMail',
 		category: 'security',
-		label: 'Sealed Mail (end-to-end encryption)',
+		label: 'Sealed mail (end-to-end encryption)',
 		description:
 			'Encrypt personal mail end-to-end between Owlat instances when every recipient has a usable key, and render a "Sealed" badge for encrypted messages.',
 		// Ships ON by default (Sealed Mail release): auto-seals wherever Postbox +
@@ -958,7 +959,7 @@ export interface FeaturePack {
 export const FEATURE_PACKS: Record<FeaturePackKey, FeaturePack> = {
 	emailClient: {
 		key: 'emailClient',
-		label: 'Email Client',
+		label: 'Email client',
 		description: 'Inbox, chat, and personal mail (Postbox) as one bundle.',
 		flags: ['inbox', 'chat', 'postbox'],
 	},
@@ -972,7 +973,7 @@ export const FEATURE_PACKS: Record<FeaturePackKey, FeaturePack> = {
 		key: 'ai',
 		label: 'AI',
 		description:
-			'AI agent, autonomy, knowledge graph (+ auto-link, graph retrieval, analytics), assistant, and dashboards.',
+			'Reply drafts, auto-send rules, a knowledge graph, an assistant and AI dashboards.',
 		flags: [
 			'ai',
 			'ai.agent',

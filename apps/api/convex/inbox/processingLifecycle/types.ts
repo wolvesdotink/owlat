@@ -102,6 +102,12 @@ export type TransitionInput =
 	| {
 			to: 'draft_ready';
 			at: number;
+			/**
+			 * A person taking the message over to write the reply
+			 * (inbox/manualReply.ts). Required to leave `received`, `rejected` or
+			 * `archived`, so a late pipeline step can never reopen them.
+			 */
+			manualTakeover?: true;
 			completedActionId?: Id<'agentActions'>;
 			output?: string;
 			draftResponse?: string;
@@ -236,6 +242,7 @@ export const transitionInputValidator = v.union(
 	v.object({
 		to: v.literal('draft_ready'),
 		at: v.number(),
+		manualTakeover: v.optional(v.literal(true)),
 		completedActionId: v.optional(v.id('agentActions')),
 		output: v.optional(v.string()),
 		draftResponse: v.optional(v.string()),

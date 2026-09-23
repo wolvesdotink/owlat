@@ -4,8 +4,8 @@ import ReviewApproveUndoToast from '~/components/agent-tasks/ReviewApproveUndoTo
 /**
  * The Answer queue page: everything waiting on the viewer's answer, one card
  * at a time. Replaces the separate personal Reply Queue and the team Review
- * Queue's focus mode (both routes redirect here); the team's browse list stays
- * at /dashboard/inbox/review.
+ * Queue (both routes redirect here). `?in=team` narrows it to the team inbox,
+ * `?in=<mailboxId>` to one mailbox, `?in=chat` to chat mentions.
  */
 const { t } = useI18n();
 useHead({ title: () => t('dashboard.answer.pageTitle') });

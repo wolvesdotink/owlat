@@ -36,10 +36,13 @@ import type {
 //
 // The graph itself lives in the generic lifecycle core (`lib/lifecycle.ts`,
 // ADR-0058); the reducers below and the effect runner in `./effects.ts` stay
-// where they are. `sent`, `rejected` and `archived` declare no outgoing edges,
-// which is what makes them terminal — there is no second hand-maintained
-// terminal set to drift from the graph — and this machine publishes the
-// distinct `terminal` refusal, so `reportsTerminalRefusals` is on.
+// where they are. `sent` declares no outgoing edges, which is what makes it
+// terminal. `rejected` and `archived` are CLOSED rather than terminal: their
+// one outgoing edge is a person reopening the message to write the reply
+// themselves (`→ draft_ready`, inbox/manualReply.ts). Every other move out of a
+// closed state — the pipeline failing it, archiving it again, a stray walker
+// step — is refused with the same `terminal` reason as before (see
+// `isClosedStatus`).
 
 export const PROCESSING_LIFECYCLE = defineLifecycle<ProcessingStatus>(
 	{
@@ -47,8 +50,16 @@ export const PROCESSING_LIFECYCLE = defineLifecycle<ProcessingStatus>(
 		// archives superseded `received` messages with reason 'coalesced'). The
 		// `* → archived` star-source branch in dispatch() already permits it; this
 		// entry keeps the declared contract in sync with runtime behavior.
-		received: ['security_check', 'archived'],
-		security_check: ['classifying', 'quarantined', 'archived'],
+		// `draft_ready` is the human takeover of a message the pipeline never
+		// picked up: automated/self-send mail and mail over the agent cost cap stay
+		// in `received` without a walker run (inbox/messages.ts), and a person can
+		// still answer it (inbox/manualReply.ts gates when).
+		received: ['security_check', 'archived', 'draft_ready'],
+		// `draft_ready` is the human takeover (inbox/manualReply.ts): with the
+		// agent off the pipeline stops after a clean scan, and a person writes the
+		// reply themselves. The mutation only takes this edge once the scan has
+		// finished, so a message is never answered ahead of its quarantine check.
+		security_check: ['classifying', 'quarantined', 'archived', 'draft_ready'],
 		quarantined: ['received', 'archived'],
 		classifying: ['drafting', 'draft_ready', 'awaiting_clarification', 'informational', 'archived'],
 		// Needs no reply: parked for the Updates dashboard. A reader can dismiss
@@ -60,8 +71,10 @@ export const PROCESSING_LIFECYCLE = defineLifecycle<ProcessingStatus>(
 		// abandoned-question fallback cron gives up after the window and drafts a
 		// flagged best-guess. `archived` is the dismiss edge (permitted uniformly by
 		// the `* → archived` star-source in dispatch; declared here to keep the
-		// contract in sync).
-		awaiting_clarification: ['drafting', 'archived'],
+		// contract in sync). `draft_ready` is a person writing the reply
+		// themselves instead of answering the agent's questions
+		// (inbox/manualReply.ts); only a takeover may take it.
+		awaiting_clarification: ['drafting', 'archived', 'draft_ready'],
 		drafting: ['draft_ready', 'approved'],
 		draft_ready: ['approved', 'rejected', 'archived'],
 		// `draft_ready` is the fail-soft degrade for a cancelled delayed auto-send
@@ -69,16 +82,52 @@ export const PROCESSING_LIFECYCLE = defineLifecycle<ProcessingStatus>(
 		// human review queue rather than silently dropping it.
 		approved: ['sent', 'draft_ready'],
 		sent: [],
-		rejected: [],
-		archived: [],
-		failed: ['received'],
+		// A person reopens a rejected draft or an archived message to write the
+		// reply themselves (inbox/manualReply.ts).
+		rejected: ['draft_ready'],
+		archived: ['draft_ready'],
+		// `received` is the retry; `draft_ready` is a person writing the reply
+		// the agent failed to (inbox/manualReply.ts).
+		failed: ['received', 'draft_ready'],
 	},
 	{ reportsTerminalRefusals: true }
 );
 
-// `to: 'failed'` can come from any non-terminal source; checked separately.
+/**
+ * Closed: nothing more happens to the message unless a person reopens it
+ * (`rejected`/`archived` → `draft_ready`). The star-source edges (`→ failed`,
+ * `→ archived`) and refusal reasons treat these exactly like the terminal
+ * `sent`.
+ */
+const CLOSED_STATES: ReadonlySet<ProcessingStatus> = new Set(['sent', 'rejected', 'archived']);
+
+export function isClosedStatus(status: ProcessingStatus): boolean {
+	return CLOSED_STATES.has(status) || PROCESSING_LIFECYCLE.isTerminal(status);
+}
+
+/**
+ * States only a person may move to `draft_ready` (with `manualTakeover`): the
+ * closed ones, `received`, which the pipeline would otherwise leave through
+ * `security_check`, and `awaiting_clarification`, which the agent leaves
+ * through `drafting`.
+ */
+const TAKEOVER_ONLY_SOURCES: ReadonlySet<ProcessingStatus> = new Set([
+	'received',
+	'awaiting_clarification',
+	'rejected',
+	'archived',
+]);
+
+/** Closed states whose leftover draft a manual takeover discards. */
+const CLEARS_DRAFT_ON_TAKEOVER: ReadonlySet<ProcessingStatus> = new Set(['rejected', 'archived']);
+
+export function requiresManualTakeover(from: ProcessingStatus, to: ProcessingStatus): boolean {
+	return to === 'draft_ready' && TAKEOVER_ONLY_SOURCES.has(from);
+}
+
+// `to: 'failed'` can come from any open source; checked separately.
 export function canFail(from: ProcessingStatus): boolean {
-	return !PROCESSING_LIFECYCLE.isTerminal(from);
+	return !isClosedStatus(from);
 }
 
 // ─── Reducer ────────────────────────────────────────────────────────────────
@@ -183,6 +232,17 @@ function reduceDraftReady(
 	if (input.draftResponse !== undefined) patch['draftResponse'] = input.draftResponse;
 	if (input.draftSubject !== undefined) patch['draftSubject'] = input.draftSubject;
 	if (input.confidenceScore !== undefined) patch['confidenceScore'] = input.confidenceScore;
+	// A person reopening a closed message writes the reply themselves. The draft
+	// it still carries was thrown out (rejected) or never used (archived); left
+	// in place it would come back as a live, approvable agent draft.
+	if (input.manualTakeover === true && CLEARS_DRAFT_ON_TAKEOVER.has(message.processingStatus)) {
+		patch['draftResponse'] = undefined;
+		patch['draftSubject'] = undefined;
+	}
+	// Writing the reply instead of answering the agent: its questions are moot.
+	if (input.manualTakeover === true && message.processingStatus === 'awaiting_clarification') {
+		patch['pendingClarification'] = undefined;
+	}
 	// Complaint / urgent messages skip the drafter (classifying → draft_ready),
 	// so they'd otherwise miss extraction. Fire it here only on that direct edge
 	// — the normal drafting → draft_ready transition already extracted at

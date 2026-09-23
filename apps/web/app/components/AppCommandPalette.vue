@@ -223,18 +223,21 @@ function syncCaret() {
 }
 
 async function openPalette(detail?: CommandPaletteOpenDetail) {
+	// A caller may hand over the query to refine (the mail search page's box).
+	const initialQuery = detail?.query ?? '';
 	open.value = true;
-	searchQuery.value = '';
+	setImmediate(initialQuery);
 	activeIndex.value = 0;
-	caret.value = 0;
+	caret.value = initialQuery.length;
 	pendingArgument.value = null;
 	resetScope(detail?.scope);
-	mailScope.resetQuery();
+	mailScope.resetQuery(initialQuery);
 	inboxScope.resetQuery();
 	askScope.reset();
 	loadRecent();
 	await nextTick();
 	inputEl.value?.focus();
+	inputEl.value?.setSelectionRange(initialQuery.length, initialQuery.length);
 }
 
 function close() {

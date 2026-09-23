@@ -25,7 +25,13 @@ import {
 	type TransitionInput,
 	type TransitionOutcome,
 } from './types';
-import { canFail, PROCESSING_LIFECYCLE, reduce } from './reducers';
+import {
+	canFail,
+	isClosedStatus,
+	PROCESSING_LIFECYCLE,
+	reduce,
+	requiresManualTakeover,
+} from './reducers';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -287,25 +293,31 @@ export async function dispatch(
 ): Promise<TransitionOutcome> {
 	const from = message.processingStatus as ProcessingStatus;
 
-	// Failure can happen from any non-terminal state — star-source.
+	// Failure can happen from any open state — star-source.
 	if (input.to === 'failed') {
 		if (!canFail(from)) {
 			return { ok: false, reason: 'terminal', from, to: input.to };
 		}
 	} else if (input.to === 'archived' && from !== 'security_check') {
 		// Block-sender / spam-from-classifier can archive from any
-		// non-terminal state — star-source for archived too.
-		if (PROCESSING_LIFECYCLE.isTerminal(from)) {
+		// open state — star-source for archived too.
+		if (isClosedStatus(from)) {
 			return { ok: false, reason: 'terminal', from, to: input.to };
 		}
-	} else if (!PROCESSING_LIFECYCLE.isLegalEdge(from, input.to)) {
+	} else if (
+		!PROCESSING_LIFECYCLE.isLegalEdge(from, input.to) ||
+		(requiresManualTakeover(from, input.to) &&
+			!(input.to === 'draft_ready' && input.manualTakeover === true))
+	) {
+		// Leaving `received`, `rejected` or `archived` for `draft_ready` is a
+		// person's takeover only, never a late pipeline step.
 		// Deliberately `isLegalEdge` rather than the core's `classify`: this
 		// machine has never granted the implicit self-loop pass, and a same-state
 		// re-drive (`drafting → drafting`) must keep refusing rather than
 		// re-running the reducer and re-firing its effects.
 		return {
 			ok: false,
-			reason: PROCESSING_LIFECYCLE.isTerminal(from) ? 'terminal' : 'illegal_edge',
+			reason: isClosedStatus(from) ? 'terminal' : 'illegal_edge',
 			from,
 			to: input.to,
 		};

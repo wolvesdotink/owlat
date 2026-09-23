@@ -5,7 +5,8 @@ import CampaignSendPlanLine from '~/components/campaigns/CampaignSendPlanLine.vu
 import CampaignAbComparison from '~/components/dashboard/CampaignAbComparison.vue';
 import CampaignFunnel from '~/components/campaigns/CampaignFunnel.vue';
 import CampaignReportHeadline from '~/components/campaigns/CampaignReportHeadline.vue';
-import { selectPreviousComparable, computeStatDeltas, NO_DELTAS } from '~/utils/campaignReport';
+import CampaignReportComparison from '~/components/campaigns/CampaignReportComparison.vue';
+import { selectPreviousComparable } from '~/utils/campaignReport';
 import { formatNumber } from '~/utils/formatters';
 
 const { t } = useI18n();
@@ -76,7 +77,7 @@ const { data: opensTimeline } = useConvexQuery(api.delivery.sends.getOpensTimeli
 }));
 
 // Recent sent-campaign snapshots — used to diff this send against the prior
-// comparable send (same kind) for the hero-tile deltas. Cheap (index take, no
+// comparable send (same kind) for the comparison row. Cheap (index take, no
 // emailSends read); the pure selection + delta math runs client-side.
 const { data: comparableSends } = useConvexQuery(
 	api.campaigns.analytics.getComparableSentCampaigns,
@@ -255,18 +256,7 @@ const sentCount = computed(() => {
 	return stats.value.total - stats.value.queued - stats.value.failed;
 });
 
-// Rates
-const openRate = computed(() => {
-	if (!stats.value || !stats.value.delivered) return 0;
-	return (stats.value.uniqueOpens / stats.value.delivered) * 100;
-});
-
-const clickRate = computed(() => {
-	if (!stats.value || !stats.value.delivered) return 0;
-	return (stats.value.uniqueClicks / stats.value.delivered) * 100;
-});
-
-// Delta vs previous comparable send ---------------------------------------
+// The previous comparable campaign, for the comparison row -----------------
 const previousComparable = computed(() => {
 	const list = comparableSends.value;
 	const sentAt = campaign.value?.sentAt;
@@ -278,53 +268,14 @@ const previousComparable = computed(() => {
 	});
 });
 
-const deltas = computed(() => {
-	if (!stats.value) {
-		return NO_DELTAS;
-	}
-	return computeStatDeltas(
-		{
-			sent: sentCount.value,
-			delivered: stats.value.delivered,
-			opened: stats.value.uniqueOpens,
-			clicked: stats.value.uniqueClicks,
-			bounced: stats.value.bounced,
-		},
-		previousComparable.value
-	);
-});
-
-// Hero stat tiles — Delivered / Opened / Clicked / Bounced.
-const heroTiles = computed(() => {
-	if (!stats.value) return [];
-	const s = stats.value;
-	return [
-		{
-			key: 'delivered',
-			label: t('dashboard.campaigns.detail.report.tiles.delivered'),
-			value: s.delivered,
-			delta: deltas.value.delivered,
-		},
-		{
-			key: 'opened',
-			label: t('dashboard.campaigns.detail.report.tiles.opened'),
-			value: s.uniqueOpens,
-			delta: deltas.value.opened,
-		},
-		{
-			key: 'clicked',
-			label: t('dashboard.campaigns.detail.report.tiles.clicked'),
-			value: s.uniqueClicks,
-			delta: deltas.value.clicked,
-		},
-		{
-			key: 'bounced',
-			label: t('dashboard.campaigns.detail.report.tiles.bounced'),
-			value: s.bounced,
-			delta: deltas.value.bounced,
-		},
-	];
-});
+/** This send's counters in the shape the comparison row diffs. */
+const currentSnapshot = computed(() => ({
+	sent: sentCount.value,
+	delivered: stats.value?.delivered ?? 0,
+	opened: stats.value?.uniqueOpens ?? 0,
+	clicked: stats.value?.uniqueClicks ?? 0,
+	bounced: stats.value?.bounced ?? 0,
+}));
 
 // Opens timeline → first-48h curve for UiTrendChart. Labels are hours since
 // the first recorded open; the peak is direct-labeled by the chart.
@@ -468,7 +419,7 @@ const loadPrevClicked = () => {
 				</div>
 
 				<!-- The story first: one sentence, then the funnel it comes from. -->
-				<div v-if="hasSendStarted && stats" class="card p-4 sm:p-6 mb-8">
+				<div v-if="(hasSendStarted || isSendPending) && stats" class="card p-4 sm:p-6 mb-8">
 					<CampaignReportHeadline
 						v-if="reportStatus === 'sent'"
 						class="mb-5"
@@ -488,6 +439,15 @@ const loadPrevClicked = () => {
 						:opened="stats.uniqueOpens"
 						:clicked="stats.uniqueClicks"
 						:unsubscribed="campaign.statsUnsubscribed ?? 0"
+						:bounced="stats.bounced"
+					/>
+					<!-- One comparison row with the previous campaign — rates only. -->
+					<CampaignReportComparison
+						class="mt-5 pt-4 border-t border-border-subtle"
+						:current="currentSnapshot"
+						:previous="previousComparable"
+						:is-a-b-test="campaign.isABTest ?? false"
+						:pending="isSendPending"
 					/>
 				</div>
 
@@ -518,41 +478,6 @@ const loadPrevClicked = () => {
 					</div>
 				</div>
 
-				<!-- Hero stat tiles -->
-				<div class="card p-4 sm:p-6 mb-8">
-					<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-						<UiStatTile
-							v-for="tile in heroTiles"
-							:key="tile.key"
-							:label="tile.label"
-							:value="formatNumber(tile.value)"
-							:delta="tile.delta.text"
-							:delta-direction="tile.delta.direction"
-						/>
-					</div>
-					<p class="mt-4 text-xs text-text-tertiary">
-						<!-- Zeros on a send that has not gone out yet are a state, not a
-						     result — say so instead of comparing them to anything. -->
-						<template v-if="isSendPending">{{
-							t('dashboard.campaigns.detail.report.comparison.pendingCounts')
-						}}</template>
-						<template v-else-if="previousComparable">
-							{{
-								campaign.isABTest
-									? t('dashboard.campaigns.detail.report.comparison.changeVsPreviousAb', {
-											name: previousComparable.name,
-										})
-									: t('dashboard.campaigns.detail.report.comparison.changeVsPrevious', {
-											name: previousComparable.name,
-										})
-							}}
-						</template>
-						<template v-else>{{
-							t('dashboard.campaigns.detail.report.comparison.noComparable')
-						}}</template>
-					</p>
-				</div>
-
 				<!-- A/B Test fold-in -->
 				<div v-if="campaign.isABTest && abTestStats" class="mb-8">
 					<CampaignAbComparison
@@ -560,59 +485,6 @@ const loadPrevClicked = () => {
 						:is-selecting-winner="isSelectingWinner"
 						@select-winner="handleSelectWinner"
 					/>
-				</div>
-
-				<!-- Open & Click rate (progress bars read better than a bare number vs a 100% target) -->
-				<div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-8">
-					<div class="card p-4 sm:p-6">
-						<div class="flex items-baseline justify-between mb-4">
-							<h3 class="text-base font-medium text-text-primary">
-								{{ t('dashboard.campaigns.detail.report.openRate') }}
-							</h3>
-							<span class="font-display text-3xl text-text-primary tabular-nums leading-none"
-								>{{ openRate.toFixed(1) }}%</span
-							>
-						</div>
-						<div class="h-2 bg-bg-surface rounded-full overflow-hidden">
-							<div
-								class="h-full bg-brand rounded-full transition-all duration-(--motion-slow) ease-(--ease-spring)"
-								:style="{ width: `${Math.min(openRate, 100)}%` }"
-							/>
-						</div>
-						<p class="text-sm text-text-tertiary mt-3 tabular-nums">
-							{{
-								t('dashboard.campaigns.detail.report.openedOfDelivered', {
-									opened: formatNumber(stats?.uniqueOpens ?? 0),
-									delivered: formatNumber(stats?.delivered ?? 0),
-								})
-							}}
-						</p>
-					</div>
-
-					<div class="card p-4 sm:p-6">
-						<div class="flex items-baseline justify-between mb-4">
-							<h3 class="text-base font-medium text-text-primary">
-								{{ t('dashboard.campaigns.detail.report.clickRate') }}
-							</h3>
-							<span class="font-display text-3xl text-text-primary tabular-nums leading-none"
-								>{{ clickRate.toFixed(1) }}%</span
-							>
-						</div>
-						<div class="h-2 bg-bg-surface rounded-full overflow-hidden">
-							<div
-								class="h-full bg-brand rounded-full transition-all duration-(--motion-slow) ease-(--ease-spring)"
-								:style="{ width: `${Math.min(clickRate, 100)}%` }"
-							/>
-						</div>
-						<p class="text-sm text-text-tertiary mt-3 tabular-nums">
-							{{
-								t('dashboard.campaigns.detail.report.clickedOfDelivered', {
-									clicked: formatNumber(stats?.uniqueClicks ?? 0),
-									delivered: formatNumber(stats?.delivered ?? 0),
-								})
-							}}
-						</p>
-					</div>
 				</div>
 
 				<!-- Opens Timeline -->

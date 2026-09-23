@@ -366,7 +366,7 @@ export function useDesktopNotifications() {
 					showToast(localize(assignmentGroupToastMessage(plan.count)), 'success', {
 						action: {
 							label: t('common.open'),
-							onAction: () => void navigateTo('/dashboard/inbox?filter=mine'),
+							onAction: () => void navigateTo('/dashboard/inbox?assignee=me'),
 						},
 					});
 					if (notif) {

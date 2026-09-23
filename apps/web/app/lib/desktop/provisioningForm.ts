@@ -11,11 +11,11 @@
  * Split out of `provisioning.ts` to keep that file under the size cap; the SSH
  * orchestration there stays focused on transport + timeline.
  */
+import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
 import { type InstanceHostnames, setupConfigPath } from './provisioning';
 
 // ---- admin password validation (live, pre-submit) --------------------------
-
-export const MIN_ADMIN_PASSWORD_LENGTH = 12;
+// The admin account is an ordinary account: the one shared minimum applies.
 
 export type PasswordStrength = 'empty' | 'weak' | 'fair' | 'strong';
 
@@ -39,12 +39,12 @@ export interface PasswordAssessment {
 /**
  * Live length + strength read-out for the admin password, shown as the user
  * types (before provisioning starts). Strength blends length with character
- * variety; nothing below {@link MIN_ADMIN_PASSWORD_LENGTH} ever reads above
+ * variety; nothing below {@link MIN_PASSWORD_LENGTH} ever reads above
  * "weak" — the minimum is the floor, not a strong password.
  */
 export function assessPassword(password: string): PasswordAssessment {
 	const length = password.length;
-	const meetsMinLength = length >= MIN_ADMIN_PASSWORD_LENGTH;
+	const meetsMinLength = length >= MIN_PASSWORD_LENGTH;
 	if (length === 0) {
 		return {
 			length,
@@ -66,7 +66,7 @@ export function assessPassword(password: string): PasswordAssessment {
 			strength: 'weak',
 			label: {
 				key: 'shared.desktop.provisioningForm.password.tooShort',
-				params: { length, min: MIN_ADMIN_PASSWORD_LENGTH },
+				params: { length, min: MIN_PASSWORD_LENGTH },
 			},
 			score: 1,
 		};
@@ -110,12 +110,12 @@ export interface AdminPasswordCheck {
  * one rule (the form previously checked only the length, only on submit).
  */
 export function validateAdminPassword(password: string, confirm: string): AdminPasswordCheck {
-	if (password.length < MIN_ADMIN_PASSWORD_LENGTH) {
+	if (password.length < MIN_PASSWORD_LENGTH) {
 		return {
 			ok: false,
 			error: {
 				key: 'shared.desktop.provisioningForm.errors.passwordTooShort',
-				params: { min: MIN_ADMIN_PASSWORD_LENGTH },
+				params: { min: MIN_PASSWORD_LENGTH },
 			},
 		};
 	}

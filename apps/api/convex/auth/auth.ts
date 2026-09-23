@@ -2,6 +2,7 @@ import { betterAuth } from 'better-auth';
 import { organization, oneTimeToken, twoFactor } from 'better-auth/plugins';
 import { createAccessControl } from 'better-auth/plugins/access';
 import { getOptional, getRequired, getBoolean } from '../lib/env';
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
 import {
 	defaultStatements,
 	adminAc,
@@ -93,8 +94,8 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 		baseURL: getOptional('SITE_URL'),
 		emailAndPassword: {
 			enabled: true,
-			minPasswordLength: 10,
-			maxPasswordLength: 128,
+			minPasswordLength: MIN_PASSWORD_LENGTH,
+			maxPasswordLength: MAX_PASSWORD_LENGTH,
 			// When enabled (REQUIRE_EMAIL_VERIFICATION), an unverified account cannot
 			// sign in — BetterAuth sends a verification link instead. Guarded so
 			// existing installs default to the prior behavior.

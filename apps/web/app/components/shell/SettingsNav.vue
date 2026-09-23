@@ -1,50 +1,48 @@
 <script setup lang="ts">
 import type { SettingsSectionView } from '~/lib/settingsRegistry';
-import type { AdminAreaView } from '~/lib/adminSettingsRegistry';
+import { adminRailEntryFor } from '~/lib/adminSettingsRegistry';
+import { type AdminAreaView } from '~/lib/adminSettingsNav';
 
 /**
- * One Settings navigation for both halves of what used to be two sidebar
- * sections: "You" (Preferences — account, mail, device) and, for owners and
- * admins, "Workspace" (Administration — delivery, instance, team, …). It takes
- * the sidebar over while you are in Settings, like a separate mode, with its
- * own search and a way back to where you were.
+ * The Settings sidebar. It takes the sidebar over while you are in Settings,
+ * like a separate mode, with its own search and a way back to where you were.
+ *
+ * Two tabs split it the way people think about it: "My settings" (your
+ * account, your mail, this device) and, for owners and admins, "Workspace"
+ * (team, email delivery, AI, features, system). One long column of both put
+ * the workspace half below the fold. The tab follows the page you are on and
+ * can be switched to browse the other half without leaving it; search always
+ * covers both.
  *
  * Both registries stay the single source of truth; this only renders them.
  */
 const props = defineProps<{
 	youSections: readonly SettingsSectionView[];
 	adminAreas: readonly AdminAreaView[];
-	/**
-	 * What the agent knows lives here now (it is tuning, not daily work):
-	 * the knowledge explorer and graph, for admins with the feature on.
-	 */
-	knowledge?: { explorer: boolean; graph: boolean };
+	/** Attention counts by entry path (quarantine, failed messages). */
+	badges?: Readonly<Record<string, number>>;
 }>();
-
-const knowledgeLinks = computed(() => [
-	...(props.knowledge?.explorer
-		? [
-				{
-					path: '/dashboard/knowledge',
-					icon: 'lucide:brain',
-					titleKey: 'shared.dashboardNavigation.items.knowledge.explorer',
-				},
-			]
-		: []),
-	...(props.knowledge?.graph
-		? [
-				{
-					path: '/dashboard/knowledge/graph',
-					icon: 'lucide:share-2',
-					titleKey: 'shared.dashboardNavigation.items.knowledge.graph',
-				},
-			]
-		: []),
-]);
 
 const { t } = useI18n();
 const route = useRoute();
 const returnTo = useState<string | null>('settings-return-to', () => null);
+
+type SettingsTab = 'mine' | 'workspace';
+const hasWorkspace = computed(() => props.adminAreas.length > 0);
+const tabForRoute = (): SettingsTab =>
+	hasWorkspace.value && route.path.startsWith('/dashboard/admin') ? 'workspace' : 'mine';
+const activeTab = ref<SettingsTab>(tabForRoute());
+watch(
+	() => [route.path, hasWorkspace.value] as const,
+	() => {
+		activeTab.value = tabForRoute();
+	}
+);
+
+/** Anything waiting on the Workspace side, for the dot on its tab. */
+const workspaceNeedsAttention = computed(() =>
+	Object.values(props.badges ?? {}).some((count) => count > 0)
+);
 
 const query = ref('');
 const normalized = computed(() => query.value.trim().toLowerCase());
@@ -67,12 +65,6 @@ const results = computed(() => {
 				group: t(a.titleKey),
 			}))
 		),
-		...knowledgeLinks.value.map((e) => ({
-			path: e.path,
-			icon: e.icon,
-			title: t(e.titleKey),
-			group: t('shared.dashboardNavigation.sections.knowledge'),
-		})),
 	];
 	return all.filter(
 		(r) =>
@@ -81,8 +73,13 @@ const results = computed(() => {
 	);
 });
 
+/** The rail row that stands for this page — its parent for a hidden child page. */
+const currentRailPath = computed(() => adminRailEntryFor(route.path)?.path ?? route.path);
 function isCurrent(path: string): boolean {
-	return route.path === path;
+	return currentRailPath.value === path;
+}
+function badgeFor(path: string): number {
+	return props.badges?.[path] ?? 0;
 }
 function leaveSettings() {
 	void navigateTo(returnTo.value ?? '/dashboard');
@@ -91,6 +88,13 @@ function openFirstResult() {
 	const first = results.value[0];
 	if (first) void navigateTo(first.path);
 }
+
+const tabs = computed(() => [
+	{ key: 'mine' as const, label: t('components.shell.settings.tabs.mine') },
+	...(hasWorkspace.value
+		? [{ key: 'workspace' as const, label: t('components.shell.settings.tabs.workspace') }]
+		: []),
+]);
 </script>
 
 <template>
@@ -108,6 +112,41 @@ function openFirstResult() {
 				{{ t('components.shell.settings.back') }}
 			</button>
 		</div>
+
+		<!-- My settings / Workspace. Only an admin has the second half, so a
+		     member sees no switch at all. -->
+		<div
+			v-if="tabs.length > 1"
+			class="mx-2 flex gap-1 rounded-lg bg-bg-surface p-0.5"
+			role="group"
+			:aria-label="t('components.shell.settings.tabsLabel')"
+		>
+			<button
+				v-for="tab in tabs"
+				:key="tab.key"
+				type="button"
+				class="relative flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors duration-(--motion-fast)"
+				:class="
+					activeTab === tab.key
+						? 'bg-bg-elevated text-text-primary shadow-sm'
+						: 'text-text-secondary hover:text-text-primary'
+				"
+				:aria-pressed="activeTab === tab.key"
+				@click="activeTab = tab.key"
+			>
+				{{ tab.label }}
+				<template
+					v-if="tab.key === 'workspace' && workspaceNeedsAttention && activeTab !== 'workspace'"
+				>
+					<span
+						class="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-error"
+						aria-hidden="true"
+					/>
+					<span class="sr-only">{{ t('components.shell.settings.needsAttention') }}</span>
+				</template>
+			</button>
+		</div>
+
 		<label
 			class="mx-2 flex items-center gap-2 rounded-lg bg-bg-surface px-2.5 py-1.5 text-xs text-text-tertiary focus-within:ring-2 focus-within:ring-brand"
 		>
@@ -138,71 +177,22 @@ function openFirstResult() {
 			</li>
 		</ul>
 
-		<template v-else>
-			<nav :aria-label="t('shell.preferences.navLabel')">
-				<div v-for="section in youSections" :key="section.key" class="mb-3">
-					<p class="px-3 pb-1 text-2xs font-medium uppercase tracking-wider text-text-tertiary">
-						{{ t(section.titleKey) }}
-					</p>
-					<ul>
-						<li v-for="entry in section.entries" :key="entry.path">
-							<NuxtLink
-								:to="entry.path"
-								class="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors duration-(--motion-fast)"
-								:class="
-									isCurrent(entry.path)
-										? 'bg-bg-surface font-medium text-text-primary'
-										: 'text-text-secondary hover:bg-bg-surface hover:text-text-primary'
-								"
-								:aria-current="isCurrent(entry.path) ? 'page' : undefined"
-							>
-								<Icon :name="entry.icon" class="size-4 shrink-0" />
-								<span class="truncate">{{ t(entry.titleKey) }}</span>
-							</NuxtLink>
-						</li>
-					</ul>
-				</div>
-			</nav>
-
-			<p
-				v-if="adminAreas.length > 0"
-				class="mx-3 border-t border-border-subtle pt-3 text-2xs font-semibold text-text-secondary"
-			>
-				{{ t('components.shell.settings.workspace') }}
-			</p>
-			<nav v-if="adminAreas.length > 0" :aria-label="t('shell.admin.navLabel')">
-				<div v-for="area in adminAreas" :key="area.key" class="mb-3">
-					<p class="px-3 pb-1 text-2xs font-medium uppercase tracking-wider text-text-tertiary">
-						{{ t(area.titleKey) }}
-					</p>
-					<ul>
-						<li v-for="entry in area.entries" :key="entry.path">
-							<NuxtLink
-								:to="entry.path"
-								class="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors duration-(--motion-fast)"
-								:class="
-									isCurrent(entry.path)
-										? 'bg-bg-surface font-medium text-text-primary'
-										: 'text-text-secondary hover:bg-bg-surface hover:text-text-primary'
-								"
-								:aria-current="isCurrent(entry.path) ? 'page' : undefined"
-							>
-								<Icon :name="entry.icon" class="size-4 shrink-0" />
-								<span class="truncate">{{ t(entry.titleKey) }}</span>
-							</NuxtLink>
-						</li>
-					</ul>
-				</div>
-			</nav>
-			<div v-if="knowledgeLinks.length > 0" class="mb-3">
+		<nav v-else-if="activeTab === 'mine'" :aria-label="t('shell.preferences.navLabel')">
+			<div v-for="section in youSections" :key="section.key" class="mb-3">
 				<p class="px-3 pb-1 text-2xs font-medium uppercase tracking-wider text-text-tertiary">
-					{{ t('shared.dashboardNavigation.sections.knowledge') }}
+					{{ t(section.titleKey) }}
 				</p>
 				<ul>
-					<li v-for="entry in knowledgeLinks" :key="entry.path">
+					<li v-for="entry in section.entries" :key="entry.path">
 						<NuxtLink
 							:to="entry.path"
-							class="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface hover:text-text-primary"
+							class="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors duration-(--motion-fast)"
+							:class="
+								isCurrent(entry.path)
+									? 'bg-bg-surface font-medium text-text-primary'
+									: 'text-text-secondary hover:bg-bg-surface hover:text-text-primary'
+							"
+							:aria-current="isCurrent(entry.path) ? 'page' : undefined"
 						>
 							<Icon :name="entry.icon" class="size-4 shrink-0" />
 							<span class="truncate">{{ t(entry.titleKey) }}</span>
@@ -210,6 +200,46 @@ function openFirstResult() {
 					</li>
 				</ul>
 			</div>
-		</template>
+		</nav>
+
+		<nav v-else :aria-label="t('shell.admin.navLabel')">
+			<div v-for="area in adminAreas" :key="area.key" class="mb-3">
+				<!-- The overview leads the tab on its own; it is not a group. -->
+				<p
+					v-if="area.key !== 'overview'"
+					class="px-3 pb-1 text-2xs font-medium uppercase tracking-wider text-text-tertiary"
+				>
+					{{ t(area.titleKey) }}
+				</p>
+				<ul>
+					<li v-for="entry in area.entries" :key="entry.path">
+						<NuxtLink
+							:to="entry.path"
+							class="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors duration-(--motion-fast)"
+							:class="
+								isCurrent(entry.path)
+									? 'bg-bg-surface font-medium text-text-primary'
+									: 'text-text-secondary hover:bg-bg-surface hover:text-text-primary'
+							"
+							:aria-current="isCurrent(entry.path) ? 'page' : undefined"
+						>
+							<Icon :name="entry.icon" class="size-4 shrink-0" />
+							<span class="truncate">{{ t(entry.titleKey) }}</span>
+							<template v-if="badgeFor(entry.path) > 0">
+								<span
+									class="ml-auto rounded-full bg-error-subtle px-1.5 text-2xs font-medium tabular-nums text-error"
+									aria-hidden="true"
+								>
+									{{ badgeFor(entry.path) }}
+								</span>
+								<span class="sr-only">
+									{{ t('components.shell.settings.waitingCount', { count: badgeFor(entry.path) }) }}
+								</span>
+							</template>
+						</NuxtLink>
+					</li>
+				</ul>
+			</div>
+		</nav>
 	</div>
 </template>

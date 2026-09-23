@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { isValidEmail } from '@owlat/shared';
-import { mapSenderVerification } from '~/utils/campaignSenderVerification';
+import { useAddCampaignSender } from '~/composables/useAddCampaignSender';
 
 const { t } = useI18n();
 
@@ -144,60 +143,29 @@ async function confirmRemove() {
 
 // --- Add-sender modal --------------------------------------------------------
 const isAddOpen = ref(false);
-const addForm = reactive({ email: '', displayName: '' });
-const addError = ref<string | null>(null);
-
-const { run: createSender, isLoading: creating } = useBackendOperation(
-	api.campaigns.senders.create,
-	{ label: () => t('dashboard.admin.team.senders.operations.add'), inlineTarget: addError }
-);
+const {
+	email: newSenderEmail,
+	displayName: newSenderName,
+	addError,
+	creating,
+	verification,
+	verificationMessage,
+	reset: resetAdd,
+	add: addSender,
+} = useAddCampaignSender({ operationLabel: () => t('dashboard.admin.team.senders.operations.add') });
 
 function openAdd() {
-	addForm.email = '';
-	addForm.displayName = '';
-	addError.value = null;
+	resetAdd();
 	isAddOpen.value = true;
 }
 
-const hasValidEmail = computed(() => isValidEmail(addForm.email.trim()));
-
-const { data: domainStatus, error: domainStatusError } = useOrganizationQuery(
-	api.domains.domains.getEmailDomainVerificationStatus,
-	() => {
-		const email = addForm.email.trim();
-		if (!email || !isValidEmail(email)) return undefined;
-		return { email };
-	}
-);
-
-const verification = computed(() =>
-	mapSenderVerification(domainStatus.value, hasValidEmail.value, domainStatusError.value !== null)
-);
-
-// The verification hint comes from a shared presentation table, which carries
-// message KEYS (with params where the copy names the domain) rather than copy.
-const verificationMessage = computed(() => {
-	const message = verification.value.message as unknown as
-		| string
-		| { key: string; params?: Record<string, unknown> };
-	return typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
-});
-
 async function onSubmitAdd() {
-	addError.value = null;
-	if (!verification.value.canAdd) return;
-	const result = await createSender({
-		email: addForm.email.trim(),
-		displayName: addForm.displayName.trim() || undefined,
-	});
-	if (result.ok) {
-		isAddOpen.value = false;
-	}
+	if (await addSender()) isAddOpen.value = false;
 }
 </script>
 
 <template>
-	<div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+	<div class="space-y-6">
 		<!-- Header -->
 		<div>
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
@@ -380,7 +348,7 @@ async function onSubmitAdd() {
 
 				<div>
 					<UiInput
-						v-model="addForm.email"
+						v-model="newSenderEmail"
 						type="email"
 						:label="t('dashboard.admin.team.senders.addModal.emailLabel')"
 						:placeholder="t('dashboard.admin.team.senders.addModal.emailPlaceholder')"
@@ -416,7 +384,7 @@ async function onSubmitAdd() {
 				</div>
 
 				<UiInput
-					v-model="addForm.displayName"
+					v-model="newSenderName"
 					:label="t('dashboard.admin.team.senders.addModal.displayNameLabel')"
 					:placeholder="t('dashboard.admin.team.senders.addModal.displayNamePlaceholder')"
 					:disabled="creating"

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canFail, PROCESSING_LIFECYCLE } from '../reducers';
+import { canFail, isClosedStatus, PROCESSING_LIFECYCLE, requiresManualTakeover } from '../reducers';
 import type { ProcessingStatus } from '../types';
 
 const STATUSES = [
@@ -19,19 +19,19 @@ const STATUSES = [
 ] as const satisfies readonly ProcessingStatus[];
 
 const EXPECTED_EDGES: Readonly<Record<ProcessingStatus, readonly ProcessingStatus[]>> = {
-	received: ['security_check', 'archived'],
-	security_check: ['classifying', 'quarantined', 'archived'],
+	received: ['security_check', 'archived', 'draft_ready'],
+	security_check: ['classifying', 'quarantined', 'archived', 'draft_ready'],
 	quarantined: ['received', 'archived'],
 	classifying: ['drafting', 'draft_ready', 'awaiting_clarification', 'informational', 'archived'],
 	informational: ['drafting', 'archived'],
 	drafting: ['draft_ready', 'approved'],
 	draft_ready: ['approved', 'rejected', 'archived'],
-	awaiting_clarification: ['drafting', 'archived'],
+	awaiting_clarification: ['drafting', 'archived', 'draft_ready'],
 	approved: ['sent', 'draft_ready'],
 	sent: [],
-	rejected: [],
-	archived: [],
-	failed: ['received'],
+	rejected: ['draft_ready'],
+	archived: ['draft_ready'],
+	failed: ['received', 'draft_ready'],
 };
 
 describe('inbox lifecycle edge conformance', () => {
@@ -47,14 +47,23 @@ describe('inbox lifecycle edge conformance', () => {
 		}
 	});
 
-	it('keeps failure star-sourced only from non-terminal states', () => {
+	it('keeps failure star-sourced only from open states', () => {
 		for (const status of STATUSES) {
-			expect(canFail(status), status).toBe(!PROCESSING_LIFECYCLE.isTerminal(status));
+			expect(canFail(status), status).toBe(!isClosedStatus(status));
 		}
-		expect(STATUSES.filter((s) => PROCESSING_LIFECYCLE.isTerminal(s))).toEqual([
-			'sent',
-			'rejected',
-			'archived',
-		]);
+		expect(STATUSES.filter((s) => PROCESSING_LIFECYCLE.isTerminal(s))).toEqual(['sent']);
+		expect(STATUSES.filter((s) => isClosedStatus(s))).toEqual(['sent', 'rejected', 'archived']);
+	});
+
+	it('lets only a person move received, clarification, rejected and archived messages to draft_ready', () => {
+		for (const from of STATUSES) {
+			expect(requiresManualTakeover(from, 'draft_ready'), from).toBe(
+				from === 'received' ||
+					from === 'awaiting_clarification' ||
+					from === 'rejected' ||
+					from === 'archived'
+			);
+		}
+		expect(requiresManualTakeover('received', 'security_check')).toBe(false);
 	});
 });

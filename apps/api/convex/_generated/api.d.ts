@@ -526,7 +526,6 @@ import type * as inbox_askEagernessSettings from '../inbox/askEagernessSettings.
 import type * as inbox_attachmentMatch from '../inbox/attachmentMatch.js';
 import type * as inbox_attachmentSuggest from '../inbox/attachmentSuggest.js';
 import type * as inbox_attachmentValidators from '../inbox/attachmentValidators.js';
-import type * as inbox_bulkMutations from '../inbox/bulkMutations.js';
 import type * as inbox_clarification from '../inbox/clarification.js';
 import type * as inbox_clarificationLog from '../inbox/clarificationLog.js';
 import type * as inbox_clarificationLocalize from '../inbox/clarificationLocalize.js';
@@ -538,6 +537,7 @@ import type * as inbox_decisionFeedback from '../inbox/decisionFeedback.js';
 import type * as inbox_draftRevisions from '../inbox/draftRevisions.js';
 import type * as inbox_inboundIngest from '../inbox/inboundIngest.js';
 import type * as inbox_inboundWebhookHttp from '../inbox/inboundWebhookHttp.js';
+import type * as inbox_manualReply from '../inbox/manualReply.js';
 import type * as inbox_messages from '../inbox/messages.js';
 import type * as inbox_mutations from '../inbox/mutations.js';
 import type * as inbox_presence from '../inbox/presence.js';
@@ -1686,7 +1686,6 @@ declare const fullApi: ApiFromModules<{
 	'inbox/attachmentMatch': typeof inbox_attachmentMatch;
 	'inbox/attachmentSuggest': typeof inbox_attachmentSuggest;
 	'inbox/attachmentValidators': typeof inbox_attachmentValidators;
-	'inbox/bulkMutations': typeof inbox_bulkMutations;
 	'inbox/clarification': typeof inbox_clarification;
 	'inbox/clarificationLog': typeof inbox_clarificationLog;
 	'inbox/clarificationLocalize': typeof inbox_clarificationLocalize;
@@ -1698,6 +1697,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/draftRevisions': typeof inbox_draftRevisions;
 	'inbox/inboundIngest': typeof inbox_inboundIngest;
 	'inbox/inboundWebhookHttp': typeof inbox_inboundWebhookHttp;
+	'inbox/manualReply': typeof inbox_manualReply;
 	'inbox/messages': typeof inbox_messages;
 	'inbox/mutations': typeof inbox_mutations;
 	'inbox/presence': typeof inbox_presence;

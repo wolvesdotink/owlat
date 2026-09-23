@@ -1,9 +1,8 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { categoryIcon } from '~/utils/agentCategories';
 
 export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
-	const { t, locale } = useI18n();
+	const { t } = useI18n();
 
 	// Fetch thread with messages
 	const { data: threadData, isLoading: threadLoading } = useConvexQuery(
@@ -14,11 +13,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	const thread = computed(() => threadData.value?.thread ?? null);
 	const messages = computed(() => threadData.value?.messages ?? []);
 	const contact = computed(() => threadData.value?.contact ?? null);
-
-	// Draft editing state
-	const isEditingDraft = ref(false);
-	const editedDraftResponse = ref('');
-	const editedDraftSubject = ref('');
+	const takeOver = computed(() => threadData.value?.takeOver ?? null);
 
 	// Mutations
 	const { run: approveDraft } = useBackendOperation(api.inbox.mutations.approveDraft, {
@@ -68,56 +63,37 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		return await retryFailedMessage({ inboundMessageId: messageId });
 	};
 
-	const startEditDraft = (message: {
-		draftResponse?: string | null;
-		draftSubject?: string | null;
-	}) => {
-		editedDraftResponse.value = message.draftResponse ?? '';
-		editedDraftSubject.value = message.draftSubject ?? '';
-		isEditingDraft.value = true;
-	};
+	/** The reply a person wrote: its body, and the subject (blank = keep the default). */
+	interface ReplyText {
+		body: string;
+		subject: string;
+	}
 
-	const cancelEditDraft = () => {
-		isEditingDraft.value = false;
-		editedDraftResponse.value = '';
-		editedDraftSubject.value = '';
-	};
-
-	// "Save & Approve": persist the edited draft, then approve it so the message
-	// transitions to `approved` and is queued for sending. `editDraft` only
-	// patches the draft text (leaving the message in `draft_ready`), so the
+	// Send a person's reply: persist it as the working draft, then approve it so
+	// the message transitions to `approved` and is queued for sending. `editDraft`
+	// only patches the draft text (leaving the message in `draft_ready`), so the
 	// follow-up `approveDraft` reads the just-saved text and fires the transition.
 	// Each step toasts its own categorized failure and resolves to `ok: false`,
 	// so a failed save short-circuits before approval.
-	const saveEditedDraft = async (messageId: Id<'inboundMessages'>) => {
+	const saveEditedDraft = async (messageId: Id<'inboundMessages'>, reply: ReplyText) => {
 		const saved = await editDraft({
 			inboundMessageId: messageId,
-			draftResponse: editedDraftResponse.value,
-			draftSubject: editedDraftSubject.value || undefined,
+			draftResponse: reply.body,
+			draftSubject: reply.subject || undefined,
 		});
 		if (!saved.ok) return saved;
-
-		const approved = await approveDraft({ inboundMessageId: messageId });
-		if (!approved.ok) return approved;
-
-		isEditingDraft.value = false;
-		return approved;
+		return await approveDraft({ inboundMessageId: messageId });
 	};
 
-	// Inline "Save": persist the working edit as a draft revision
-	// WITHOUT approving — the message stays in `draft_ready`, the agent original
-	// is preserved as revision 0, and no autonomy feedback is recorded. Editing
-	// mode closes on success; the saved text becomes the visible working draft.
-	const saveDraftOnly = async (messageId: Id<'inboundMessages'>) => {
-		const saved = await saveDraftRevision({
+	// Save WITHOUT sending: persist the edit as a draft revision — the message
+	// stays in `draft_ready`, the agent original is preserved as revision 0, and
+	// no autonomy feedback is recorded.
+	const saveDraftOnly = async (messageId: Id<'inboundMessages'>, reply: ReplyText) => {
+		return await saveDraftRevision({
 			inboundMessageId: messageId,
-			draftResponse: editedDraftResponse.value,
-			draftSubject: editedDraftSubject.value || undefined,
+			draftResponse: reply.body,
+			draftSubject: reply.subject || undefined,
 		});
-		if (!saved.ok) return saved;
-
-		isEditingDraft.value = false;
-		return saved;
 	};
 
 	const handleAssign = async (assignedTo?: string) => {
@@ -138,83 +114,22 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		return await unsnoozeThread({ threadId: threadId.value });
 	};
 
-	// Processing status helpers
-	const getProcessingStatusColor = (status: string) => {
-		const colors: Record<string, string> = {
-			received: 'text-text-tertiary bg-bg-surface',
-			processing: 'text-brand bg-brand-subtle',
-			security_check: 'text-brand bg-brand-subtle',
-			classifying: 'text-brand bg-brand-subtle',
-			drafting: 'text-brand bg-brand-subtle',
-			classified: 'text-brand bg-brand-subtle',
-			awaiting_clarification: 'text-warning bg-warning/10',
-			informational: 'text-text-secondary bg-bg-surface',
-			draft_ready: 'text-warning bg-warning/10',
-			approved: 'text-success bg-success-subtle',
-			sent: 'text-success bg-success-subtle',
-			quarantined: 'text-error bg-error-subtle',
-			failed: 'text-error bg-error-subtle',
-		};
-		return colors[status] || 'text-text-tertiary bg-bg-surface';
-	};
-
-	const PROCESSING_STATUS_KEYS: Record<string, string> = {
-		received: 'shared.useThreadDetail.processingStatus.received',
-		processing: 'shared.useThreadDetail.processingStatus.processing',
-		security_check: 'shared.useThreadDetail.processingStatus.processing',
-		classifying: 'shared.useThreadDetail.processingStatus.processing',
-		drafting: 'shared.useThreadDetail.processingStatus.processing',
-		awaiting_clarification: 'shared.useThreadDetail.processingStatus.awaitingClarification',
-		informational: 'shared.useThreadDetail.processingStatus.informational',
-		rejected: 'shared.useThreadDetail.processingStatus.rejected',
-		archived: 'shared.useThreadDetail.processingStatus.archived',
-		classified: 'shared.useThreadDetail.processingStatus.classified',
-		draft_ready: 'shared.useThreadDetail.processingStatus.draftReady',
-		approved: 'shared.useThreadDetail.processingStatus.approved',
-		sent: 'shared.useThreadDetail.processingStatus.sent',
-		quarantined: 'shared.useThreadDetail.processingStatus.quarantined',
-		failed: 'shared.useThreadDetail.processingStatus.failed',
-	};
-
-	// An unknown status has no message of its own — it renders as the raw value,
-	// exactly as it always has, rather than as a missing key.
-	const getProcessingStatusLabel = (status: string) => {
-		const key = PROCESSING_STATUS_KEYS[status];
-		return key === undefined ? status : t(key);
-	};
-
-	const getCategoryIcon = categoryIcon;
-
-	const formatTimestamp = (timestamp: number) => {
-		return new Date(timestamp).toLocaleString(locale.value);
-	};
-
 	return {
 		// Data
 		thread,
 		messages,
 		contact,
+		takeOver,
 		threadLoading,
-		// Draft editing
-		isEditingDraft,
-		editedDraftResponse,
-		editedDraftSubject,
 		// Actions
 		handleApprove,
 		handleReject,
 		handleRetry,
-		startEditDraft,
-		cancelEditDraft,
 		saveEditedDraft,
 		saveDraftOnly,
 		handleAssign,
 		handleStatusChange,
 		handleSnooze,
 		handleUnsnooze,
-		// Helpers
-		getProcessingStatusColor,
-		getProcessingStatusLabel,
-		getCategoryIcon,
-		formatTimestamp,
 	};
 }

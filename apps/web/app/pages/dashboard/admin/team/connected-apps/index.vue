@@ -188,7 +188,7 @@ function testIcon(outcome: TestResult['outcome']): string {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-4xl mx-auto">
+	<div>
 		<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
 			<div>
 				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">

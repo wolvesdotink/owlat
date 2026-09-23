@@ -139,7 +139,7 @@ function confirmOrphanClear() {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-3xl mx-auto">
+	<div>
 		<NuxtLink
 			to="/dashboard/admin/instance/plugins"
 			class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-brand mb-4"

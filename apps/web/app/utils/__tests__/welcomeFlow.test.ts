@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	AI_CONNECTED_STEP_ID,
 	CHECKLIST_STEPS,
+	completedChecklistSteps,
 	isAiConnected,
 	isChecklistComplete,
 	isWelcomeTriggerPath,
@@ -154,5 +155,51 @@ describe('isChecklistComplete — completeness is per visible step', () => {
 
 	it('an empty set is never complete', () => {
 		expect(isChecklistComplete('fresh', new Set())).toBe(false);
+	});
+});
+
+describe('completedChecklistSteps — where each step reads its completion', () => {
+	const none = {
+		stamps: null,
+		aiConfigured: false,
+		hasDisplayName: false,
+		hasSignature: false,
+		hasChosenNotifications: false,
+	};
+
+	it('reads a member’s three steps from real state, not stamps', () => {
+		expect([...completedChecklistSteps('fresh', 'member', none)]).toEqual([]);
+		const done = completedChecklistSteps('fresh', 'member', {
+			...none,
+			hasDisplayName: true,
+			hasChosenNotifications: true,
+		});
+		expect([...done].sort()).toEqual(['notifications', 'profileName']);
+		expect(isChecklistComplete('fresh', done, 'member')).toBe(false);
+		const all = completedChecklistSteps('fresh', 'member', {
+			...none,
+			hasDisplayName: true,
+			hasSignature: true,
+			hasChosenNotifications: true,
+		});
+		expect(isChecklistComplete('fresh', all, 'member')).toBe(true);
+	});
+
+	it('reads an admin’s steps from stamps and the AI config', () => {
+		const done = completedChecklistSteps('fresh', 'admin', {
+			...none,
+			stamps: { mailboxReady: 1, firstSendDone: null },
+			aiConfigured: true,
+		});
+		expect([...done].sort()).toEqual(['aiConnected', 'mailboxReady']);
+	});
+
+	it('counts migration stamps for a member bringing mail over', () => {
+		const done = completedChecklistSteps('migration', 'member', {
+			...none,
+			stamps: { importDone: 5 },
+		});
+		expect([...done]).toEqual(['importDone']);
+		expect(visibleChecklistSteps('migration', 'member')).toHaveLength(6);
 	});
 });

@@ -81,6 +81,25 @@ const {
 	getStepDescription,
 } = useAutomationSteps(automationId, automation, emailTemplates);
 
+// The list the drag handle reorders. VueDraggable writes the new order back
+// through v-model the moment an item is dropped, so the row stays where the
+// user put it while `handleDragEnd` persists the move; the next server
+// snapshot then replaces this copy.
+const orderedSteps = ref<typeof mutableSteps.value>([]);
+watch(
+	mutableSteps,
+	(steps) => {
+		orderedSteps.value = [...steps];
+	},
+	{ immediate: true }
+);
+// A failed save leaves the server order unchanged, so no new snapshot arrives
+// to replace the dropped order: put the saved order back ourselves.
+async function onStepDragEnd(event: { oldIndex?: number | null; newIndex?: number | null }) {
+	const saved = await handleDragEnd(event);
+	if (!saved) orderedSteps.value = [...mutableSteps.value];
+}
+
 // Provide reference data to descendant Condition editor modules
 provideConditionEditorContext({ contactProperties, topics });
 
@@ -368,7 +387,11 @@ onUnmounted(() => {
 							:disabled="isSavingDraft"
 							@click="handleSaveDraft"
 						>
-							<Icon v-if="isSavingDraft" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+							<Icon
+								v-if="isSavingDraft"
+								name="lucide:loader-2"
+								class="w-4 h-4 animate-spin motion-reduce:animate-none"
+							/>
 							<Icon v-else name="lucide:save" class="w-4 h-4" />
 							{{ t('dashboard.automations.detail.edit.saveDraft') }}
 						</UiButton>
@@ -381,7 +404,11 @@ onUnmounted(() => {
 							:disabled="isActivating"
 							@click="handleToggleStatus"
 						>
-							<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+							<Icon
+								v-if="isActivating"
+								name="lucide:loader-2"
+								class="w-4 h-4 animate-spin motion-reduce:animate-none"
+							/>
 							<Icon v-else name="lucide:pause" class="w-4 h-4" />
 							{{ t('dashboard.automations.detail.edit.pause') }}
 						</UiButton>
@@ -391,7 +418,11 @@ onUnmounted(() => {
 							:disabled="isActivating"
 							@click="handleToggleStatus"
 						>
-							<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+							<Icon
+								v-if="isActivating"
+								name="lucide:loader-2"
+								class="w-4 h-4 animate-spin motion-reduce:animate-none"
+							/>
 							<Icon v-else name="lucide:play" class="w-4 h-4" />
 							{{ t('dashboard.automations.detail.edit.resume') }}
 						</UiButton>
@@ -406,7 +437,11 @@ onUnmounted(() => {
 							"
 							@click="handleShowActivateConfirm"
 						>
-							<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+							<Icon
+								v-if="isActivating"
+								name="lucide:loader-2"
+								class="w-4 h-4 animate-spin motion-reduce:animate-none"
+							/>
 							<Icon v-else name="lucide:play" class="w-4 h-4" />
 							{{ t('dashboard.automations.detail.edit.activate') }}
 						</UiButton>
@@ -446,7 +481,10 @@ onUnmounted(() => {
 
 		<!-- Loading State -->
 		<div v-if="isLoadingAutomation" class="flex-1 flex items-center justify-center">
-			<Icon name="lucide:loader-2" class="w-8 h-8 animate-spin motion-reduce:animate-none text-brand" />
+			<Icon
+				name="lucide:loader-2"
+				class="w-8 h-8 animate-spin motion-reduce:animate-none text-brand"
+			/>
 		</div>
 
 		<!-- Not Found -->
@@ -567,159 +605,161 @@ onUnmounted(() => {
 					</div>
 
 					<!-- Steps List -->
+					<!-- vue-draggable-plus renders only its default slot: the rows are a
+						plain v-for inside it (the old vuedraggable `#item` slot is ignored). -->
 					<VueDraggable
-						v-if="mutableSteps.length > 0"
-						:model-value="mutableSteps"
-						item-key="_id"
+						v-if="orderedSteps.length > 0"
+						v-model="orderedSteps"
 						handle=".drag-handle"
 						ghost-class="opacity-50"
-						@end="handleDragEnd"
+						@end="onStepDragEnd"
 					>
-						<template #item="{ element: step, index }">
-							<div class="relative">
-								<!-- Step Card -->
-								<div
-									:class="[
-										'card p-4 cursor-pointer transition-all',
-										selectedStepId === step._id
-											? 'ring-2 ring-brand border-brand'
-											: 'hover:border-border-default',
-									]"
-									@click="requestSelectStep(step._id)"
-								>
-									<div class="flex items-center gap-3">
-										<!-- Drag Handle -->
-										<div
-											class="drag-handle cursor-grab active:cursor-grabbing p-1 -ml-1 text-text-tertiary hover:text-text-secondary"
-										>
-											<Icon name="lucide:grip-vertical" class="w-4 h-4" />
-										</div>
+						<div
+							v-for="(step, index) in orderedSteps"
+							:key="step._id"
+							class="relative"
+							data-testid="automation-step"
+						>
+							<!-- Step Card -->
+							<div
+								:class="[
+									'card p-4 cursor-pointer transition-all',
+									selectedStepId === step._id
+										? 'ring-2 ring-brand border-brand'
+										: 'hover:border-border-default',
+								]"
+								@click="requestSelectStep(step._id)"
+							>
+								<div class="flex items-center gap-3">
+									<!-- Drag Handle -->
+									<div
+										class="drag-handle cursor-grab active:cursor-grabbing p-1 -ml-1 text-text-tertiary hover:text-text-secondary"
+									>
+										<Icon name="lucide:grip-vertical" class="w-4 h-4" />
+									</div>
 
-										<!-- Step Icon (resolved via the step editor module registry;
-												page-local accent palette via STEP_ACCENT) -->
-										<div
-											:class="[
-												'p-2 rounded-lg flex items-center justify-center',
-												stepAccent(step.stepType).iconClass,
-											]"
-										>
-											<Icon :name="stepInfo(step.stepType).icon" class="w-5 h-5" />
-										</div>
+									<!-- Step Icon (resolved via the step editor module registry;
+											page-local accent palette via STEP_ACCENT) -->
+									<div
+										:class="[
+											'p-2 rounded-lg flex items-center justify-center',
+											stepAccent(step.stepType).iconClass,
+										]"
+									>
+										<Icon :name="stepInfo(step.stepType).icon" class="w-5 h-5" />
+									</div>
 
-										<!-- Step Content -->
-										<div class="flex-1 min-w-0">
-											<div class="flex items-center gap-2">
+									<!-- Step Content -->
+									<div class="flex-1 min-w-0">
+										<div class="flex items-center gap-2">
+											<span class="text-xs font-medium text-text-tertiary uppercase tracking-wide">
+												{{
+													t('dashboard.automations.detail.edit.stepNumber', { number: index + 1 })
+												}}
+											</span>
+										</div>
+										<p class="font-medium text-text-primary">
+											{{ t(stepInfo(step.stepType).label) }}
+										</p>
+										<!-- Description: plain text when no pill accent, pill chrome when defined. -->
+										<p
+											v-if="!stepAccent(step.stepType).pill"
+											class="text-sm text-text-secondary truncate"
+										>
+											{{ getStepDescription(step) }}
+										</p>
+										<div v-else class="mt-2">
+											<div
+												:class="[
+													'inline-flex items-center gap-2 px-3 py-1.5 rounded-full border',
+													stepAccent(step.stepType).pill!.bg,
+													stepAccent(step.stepType).pill!.border,
+												]"
+											>
+												<Icon
+													:name="stepInfo(step.stepType).icon"
+													:class="['w-3.5 h-3.5', stepAccent(step.stepType).pill!.text]"
+												/>
 												<span
-													class="text-xs font-medium text-text-tertiary uppercase tracking-wide"
+													:class="['text-sm font-medium', stepAccent(step.stepType).pill!.text]"
 												>
-													{{
-														t('dashboard.automations.detail.edit.stepNumber', { number: index + 1 })
-													}}
+													{{ getStepDescription(step) }}
 												</span>
 											</div>
-											<p class="font-medium text-text-primary">
-												{{ t(stepInfo(step.stepType).label) }}
-											</p>
-											<!-- Description: plain text when no pill accent, pill chrome when defined. -->
+										</div>
+									</div>
+
+									<!-- Delete Button -->
+									<button
+										class="p-2 text-text-tertiary hover:text-error transition-colors"
+										@click.stop="handleDeleteStep(step._id)"
+										:aria-label="t('common.delete')"
+									>
+										<Icon name="lucide:trash-2" class="w-4 h-4" />
+									</button>
+								</div>
+							</div>
+
+							<!-- Connector Line -->
+							<div class="flex flex-col items-center">
+								<div class="w-0.5 h-4 bg-border-default" />
+
+								<!-- Add Step Button (after this step) -->
+								<div class="relative" @click.stop>
+									<button
+										class="flex items-center justify-center w-8 h-8 rounded-full bg-bg-surface border border-border-default text-text-tertiary hover:text-brand hover:border-brand transition-colors"
+										@click="addStepDropdownIndex = addStepDropdownIndex === index ? null : index"
+										:aria-label="t('common.add')"
+									>
+										<Icon name="lucide:plus" class="w-4 h-4" />
+									</button>
+
+									<!-- Dropdown -->
+									<div
+										v-if="addStepDropdownIndex === index"
+										class="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-20"
+									>
+										<div class="p-2">
 											<p
-												v-if="!stepAccent(step.stepType).pill"
-												class="text-sm text-text-secondary truncate"
+												class="text-xs font-medium text-text-tertiary uppercase tracking-wide px-2 py-1"
 											>
-												{{ getStepDescription(step) }}
+												{{ t('dashboard.automations.detail.edit.addStep') }}
 											</p>
-											<div v-else class="mt-2">
+											<button
+												v-for="type in stepTypes"
+												:key="type.id"
+												class="flex items-center gap-3 w-full p-2 rounded-lg text-left transition-colors hover:bg-bg-surface"
+												@click="handleAddStep(type.id, index + 1)"
+											>
 												<div
 													:class="[
-														'inline-flex items-center gap-2 px-3 py-1.5 rounded-full border',
-														stepAccent(step.stepType).pill!.bg,
-														stepAccent(step.stepType).pill!.border,
+														'p-2 rounded-lg flex items-center justify-center',
+														getIconColorClass(type.color),
 													]"
 												>
 													<Icon
-														:name="stepInfo(step.stepType).icon"
-														:class="['w-3.5 h-3.5', stepAccent(step.stepType).pill!.text]"
+														:name="
+															type.id === 'email'
+																? 'lucide:mail'
+																: type.id === 'delay'
+																	? 'lucide:clock'
+																	: 'lucide:git-branch'
+														"
+														class="w-4 h-4"
 													/>
-													<span
-														:class="['text-sm font-medium', stepAccent(step.stepType).pill!.text]"
-													>
-														{{ getStepDescription(step) }}
-													</span>
 												</div>
-											</div>
+												<div class="flex-1 min-w-0">
+													<p class="font-medium text-text-primary text-sm">{{ t(type.label) }}</p>
+													<p class="text-xs text-text-secondary">{{ t(type.description) }}</p>
+												</div>
+											</button>
 										</div>
-
-										<!-- Delete Button -->
-										<button
-											class="p-2 text-text-tertiary hover:text-error transition-colors"
-											@click.stop="handleDeleteStep(step._id)"
-											:aria-label="t('common.delete')"
-										>
-											<Icon name="lucide:trash-2" class="w-4 h-4" />
-										</button>
 									</div>
 								</div>
 
-								<!-- Connector Line -->
-								<div class="flex flex-col items-center">
-									<div class="w-0.5 h-4 bg-border-default" />
-
-									<!-- Add Step Button (after this step) -->
-									<div class="relative" @click.stop>
-										<button
-											class="flex items-center justify-center w-8 h-8 rounded-full bg-bg-surface border border-border-default text-text-tertiary hover:text-brand hover:border-brand transition-colors"
-											@click="addStepDropdownIndex = addStepDropdownIndex === index ? null : index"
-											:aria-label="t('common.add')"
-										>
-											<Icon name="lucide:plus" class="w-4 h-4" />
-										</button>
-
-										<!-- Dropdown -->
-										<div
-											v-if="addStepDropdownIndex === index"
-											class="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-20"
-										>
-											<div class="p-2">
-												<p
-													class="text-xs font-medium text-text-tertiary uppercase tracking-wide px-2 py-1"
-												>
-													{{ t('dashboard.automations.detail.edit.addStep') }}
-												</p>
-												<button
-													v-for="type in stepTypes"
-													:key="type.id"
-													class="flex items-center gap-3 w-full p-2 rounded-lg text-left transition-colors hover:bg-bg-surface"
-													@click="handleAddStep(type.id, index + 1)"
-												>
-													<div
-														:class="[
-															'p-2 rounded-lg flex items-center justify-center',
-															getIconColorClass(type.color),
-														]"
-													>
-														<Icon
-															:name="
-																type.id === 'email'
-																	? 'lucide:mail'
-																	: type.id === 'delay'
-																		? 'lucide:clock'
-																		: 'lucide:git-branch'
-															"
-															class="w-4 h-4"
-														/>
-													</div>
-													<div class="flex-1 min-w-0">
-														<p class="font-medium text-text-primary text-sm">{{ t(type.label) }}</p>
-														<p class="text-xs text-text-secondary">{{ t(type.description) }}</p>
-													</div>
-												</button>
-											</div>
-										</div>
-									</div>
-
-									<div v-if="index < mutableSteps.length - 1" class="w-0.5 h-4 bg-border-default" />
-								</div>
+								<div v-if="index < orderedSteps.length - 1" class="w-0.5 h-4 bg-border-default" />
 							</div>
-						</template>
+						</div>
 					</VueDraggable>
 
 					<!-- Empty State - No Steps -->
@@ -890,7 +930,11 @@ onUnmounted(() => {
 									:disabled="isActivating"
 									@click="handleConfirmActivate"
 								>
-									<Icon v-if="isActivating" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+									<Icon
+										v-if="isActivating"
+										name="lucide:loader-2"
+										class="w-4 h-4 animate-spin motion-reduce:animate-none"
+									/>
 									<Icon v-else name="lucide:play" class="w-4 h-4" />
 									{{
 										isActivating

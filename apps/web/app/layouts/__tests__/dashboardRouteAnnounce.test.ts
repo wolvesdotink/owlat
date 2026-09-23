@@ -79,6 +79,7 @@ function mountLayout(): VueWrapper {
 				DesktopTitlebar: true,
 				DashboardShellHeader: true,
 				AppCommandPalette: true,
+				ShellComposerOverlay: true,
 				KeyboardShortcutsHelp: true,
 				Icon: true,
 				UiBadge: true,

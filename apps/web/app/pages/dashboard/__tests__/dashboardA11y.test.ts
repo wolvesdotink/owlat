@@ -39,7 +39,6 @@ import DashboardLayout from '~/layouts/dashboard.vue';
 import DashboardHome from '../index.vue';
 import CampaignsIndex from '../campaigns/index.vue';
 import CampaignsNew from '../campaigns/new.vue';
-import AudienceIndex from '../audience/index.vue';
 import ContactsIndex from '../audience/contacts/index.vue';
 import SendIndex from '../send/index.vue';
 import InboxIndex from '../inbox/index.vue';
@@ -58,6 +57,10 @@ vi.mock('~/composables/useOrganization', () => ({
 		isLoading: ref(false),
 	}),
 }));
+
+// The admin overview reads the Workspace groups, which count the bundled
+// plugins; the generated module registers a Nuxt plugin on import.
+vi.mock('~/plugins/plugin-composition.generated', () => ({ bundledPluginComposition: [] }));
 
 beforeEach(() => {
 	installNuxtStubs({
@@ -112,7 +115,9 @@ beforeEach(() => {
 		useTopicsList: () => ({ results: ref([]), isLoading: ref(false), status: ref('Exhausted') }),
 		useInbox: () => ({
 			filter: ref('open'),
+			assignee: ref('anyone'),
 			sort: ref('newest'),
+			setSort: vi.fn(),
 			toggleSort: vi.fn(),
 			filterCounts: ref({}),
 			threads: ref([]),
@@ -179,15 +184,14 @@ interface AuditedPage {
 const pages: readonly AuditedPage[] = [
 	{ name: 'dashboard home', component: DashboardHome, loaded: 'In the last 24 hours' },
 	{ name: 'campaigns list', component: CampaignsIndex, loaded: 'New campaign' },
-	{ name: 'new campaign wizard', component: CampaignsNew, loaded: 'Create Campaign' },
-	{ name: 'audience overview', component: AudienceIndex, loaded: 'Add Contact' },
+	{ name: 'new campaign wizard', component: CampaignsNew, loaded: 'Create campaign' },
 	{ name: 'contacts list', component: ContactsIndex, loaded: 'No contacts yet' },
-	{ name: 'send overview', component: SendIndex, loaded: 'Templates & blocks' },
+	{ name: 'templates list', component: SendIndex, loaded: 'No templates yet' },
 	{ name: 'team inbox', component: InboxIndex, loaded: 'Inbox zero' },
-	{ name: 'admin overview', component: AdminIndex, loaded: 'Your instance at a glance' },
+	{ name: 'admin overview', component: AdminIndex, loaded: 'Overview' },
 	// The settings screen is the one page here whose title lives in the shell
 	// header rather than in its own body, so it owns h2 sections and no h1.
-	{ name: 'settings overview', component: SettingsIndex, loaded: 'Mailboxes', ownsH1: false },
+	{ name: 'settings overview', component: SettingsIndex, loaded: 'How Owlat looks', ownsH1: false },
 ];
 
 describe.each(pages)('$name — accessibility', ({ component, loaded, ownsH1 }) => {

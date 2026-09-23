@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { rules } from '~/composables/useFormValidation';
+import { joinList, missingSetupItems } from '~/utils/campaignSetupReadiness';
 
 type AudienceType = 'topic' | 'segment';
 
@@ -17,7 +18,7 @@ interface Props {
 	campaignId: Id<'campaigns'> | null;
 }
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const props = defineProps<Props>();
 
@@ -177,12 +178,8 @@ const validate = (): boolean => {
 	// incomplete (mirrors the server gate).
 	if (senderPickerRef.value?.validate() != null) return false;
 
-	if (audienceType.value === 'topic' && !selectedTopicId.value) {
-		audienceError.value = t('components.campaigns.steps.setupStep.errors.topicRequired');
-		return false;
-	}
-	if (audienceType.value === 'segment' && !selectedSegmentId.value) {
-		audienceError.value = t('components.campaigns.steps.setupStep.errors.segmentRequired');
+	if (!audience.value) {
+		audienceError.value = t('components.campaigns.steps.setupStep.errors.recipientsRequired');
 		return false;
 	}
 
@@ -238,13 +235,27 @@ const handleSubmit = async () => {
 	}
 };
 
-const canSubmit = computed(() => {
-	if (isLoading.value) return false;
-	if (!senderPickerRef.value?.isReady) return false;
-	if (audienceType.value === 'topic' && !selectedTopicId.value) return false;
-	if (audienceType.value === 'segment' && !selectedSegmentId.value) return false;
-	return true;
+// What still stands between the user and Next — listed beside the disabled
+// button (#785) so a greyed-out Next is never a riddle.
+const missing = computed(() =>
+	missingSetupItems({
+		hasName: form.campaignName.trim().length > 0,
+		senderReady: senderPickerRef.value?.isReady === true,
+		hasRecipients: audience.value !== null,
+	})
+);
+
+const missingText = computed(() => {
+	if (missing.value.length === 0) return null;
+	const items = missing.value.map((item) =>
+		t(`components.campaigns.steps.setupStep.missing.items.${item}`)
+	);
+	return t('components.campaigns.steps.setupStep.missing.label', {
+		items: joinList(items, locale.value),
+	});
 });
+
+const canSubmit = computed(() => !isLoading.value && missing.value.length === 0);
 
 // Exposed for the review step's live-edit read (falls back to the persisted
 // campaign when this step is deactivated by <KeepAlive>).
@@ -396,14 +407,29 @@ defineExpose({
 		</div>
 
 		<!-- Actions -->
-		<div class="flex items-center justify-between pt-2">
+		<div class="flex flex-wrap items-center justify-between gap-3 pt-2">
 			<UiButton variant="secondary" @click="emit('cancel')">{{ t('common.cancel') }}</UiButton>
-			<UiButton type="submit" :loading="isLoading" :disabled="!canSubmit">
-				{{ isLoading ? t('common.saving') : t('common.next') }}
-				<template v-if="!isLoading" #iconRight>
-					<Icon name="lucide:arrow-right" class="w-4 h-4" />
-				</template>
-			</UiButton>
+			<div class="flex flex-wrap items-center justify-end gap-3 ml-auto">
+				<p
+					v-if="missingText && !isLoading"
+					id="setup-missing"
+					class="text-sm text-text-tertiary text-right"
+					data-testid="setup-missing"
+				>
+					{{ missingText }}
+				</p>
+				<UiButton
+					type="submit"
+					:loading="isLoading"
+					:disabled="!canSubmit"
+					:aria-describedby="missingText ? 'setup-missing' : undefined"
+				>
+					{{ isLoading ? t('common.saving') : t('common.next') }}
+					<template v-if="!isLoading" #iconRight>
+						<Icon name="lucide:arrow-right" class="w-4 h-4" />
+					</template>
+				</UiButton>
+			</div>
 		</div>
 	</form>
 </template>

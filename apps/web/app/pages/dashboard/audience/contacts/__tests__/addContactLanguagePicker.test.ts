@@ -69,6 +69,7 @@ function languageOptionTexts(): string[] {
 				UiSelect: selectStub,
 				UiModal: { template: '<div><slot /></div>' },
 				UiPageHeader: { template: '<div><slot /><slot name="actions" /></div>' },
+				AudienceTabs: true,
 				UiInput: true,
 				UiErrorAlert: true,
 				UiSpinner: true,
@@ -82,7 +83,7 @@ function languageOptionTexts(): string[] {
 			},
 		},
 	});
-	const picker = wrapper.find('select[aria-label="Preferred Language"]');
+	const picker = wrapper.find('select[aria-label="Preferred language"]');
 	expect(picker.exists()).toBe(true);
 	return picker.findAll('option').map((o) => o.text());
 }

@@ -72,14 +72,9 @@ watch(
 			</p>
 		</header>
 
-		<label class="flex items-center gap-2 text-sm">
-			<input
-				type="checkbox"
-				:checked="enabled"
-				:disabled="isSaving"
-				@change="onToggle(($event.target as HTMLInputElement).checked)"
-			/>
+		<label class="flex items-center justify-between gap-4 text-sm">
 			{{ t('components.postbox.postboxDailyBriefSettings.enable') }}
+			<UiSwitch :model-value="enabled" :disabled="isSaving" @update:model-value="onToggle" />
 		</label>
 
 		<div v-if="enabled" class="mt-3 flex items-center gap-2">

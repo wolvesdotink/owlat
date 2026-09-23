@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import type { AdminAreaKey } from '~/lib/adminSettingsRegistry';
+import { useWorkspaceSettingsNav } from '~/composables/useWorkspaceSettingsNav';
 
 const { t } = useI18n();
 
@@ -19,31 +21,42 @@ const deliveryTone = computed(() =>
 	level.value === 'error' ? 'text-error' : level.value === 'warn' ? 'text-warning' : 'text-success'
 );
 
-const areas = computed(() => [
-	{
-		title: t('dashboard.admin.index.areas.delivery.title'),
-		description: t('dashboard.admin.index.areas.delivery.description'),
-		href: '/dashboard/admin/delivery',
-		icon: 'lucide:truck',
-	},
-	{
-		title: t('dashboard.admin.index.areas.team.title'),
-		description: t('dashboard.admin.index.areas.team.description'),
-		href: '/dashboard/admin/team',
-		icon: 'lucide:users-round',
-	},
-	{
-		title: t('dashboard.admin.index.areas.instance.title'),
-		description: t('dashboard.admin.index.areas.instance.description'),
-		href: '/dashboard/admin/instance',
-		icon: 'lucide:server-cog',
-	},
-]);
+// The five Workspace groups, straight from the registry the Settings sidebar
+// reads, each opening on its lead page. The System group already carries the
+// platform-admin pages for whoever holds that role.
+const { areas: registryAreas, badges } = useWorkspaceSettingsNav(ref(true));
+const GROUP_ICONS: Record<AdminAreaKey, string> = {
+	overview: 'lucide:gauge',
+	team: 'lucide:users-round',
+	delivery: 'lucide:truck',
+	ai: 'lucide:sparkles',
+	features: 'lucide:toggle-right',
+	system: 'lucide:server-cog',
+};
+const groups = computed(() =>
+	registryAreas.value
+		.filter((area) => area.key !== 'overview' && area.entries.length > 0)
+		.map((area) => ({
+			key: area.key,
+			title: t(area.titleKey),
+			description: t(`dashboard.admin.index.groups.${area.key}`),
+			href: area.entries[0]!.path,
+			icon: GROUP_ICONS[area.key],
+		}))
+);
+
+// Held or failed incoming mail: the one thing on the Workspace side that waits
+// on a person. Links to the first list that has something in it.
+const attention = computed(() => {
+	const entries = Object.entries(badges.value);
+	const count = entries.reduce((sum, [, n]) => sum + n, 0);
+	return count > 0 ? { count, href: entries[0]![0] } : null;
+});
 
 // Operator tooling and deployment maintenance are scoped to this deployment's
 // platform admin (each destination also carries the `platform-admin` route
-// middleware), so the group only appears for them — same gate the old Settings
-// hub used, and the same note for everyone else explaining the absence.
+// middleware). Everyone else gets a note explaining the absence, and an owner
+// on an instance where nobody holds the role gets the claim below.
 const { data: isPlatformAdmin } = useConvexQuery(
 	api.platformAdmin.platformAdmin.isPlatformAdmin,
 	() => ({})
@@ -71,34 +84,13 @@ async function onClaimPlatformAdmin() {
 	// on its own the moment the row lands — nothing to refetch here.
 	if (r.ok) showToast(t('dashboard.admin.index.claimPlatform.success'));
 }
-
-const platformAreas = computed(() => [
-	{
-		title: t('dashboard.admin.index.platformAreas.operator.title'),
-		description: t('dashboard.admin.index.platformAreas.operator.description'),
-		href: '/dashboard/admin/operator',
-		icon: 'lucide:shield-alert',
-	},
-	{
-		title: t('dashboard.admin.index.platformAreas.system.title'),
-		description: t('dashboard.admin.index.platformAreas.system.description'),
-		href: '/dashboard/admin/system',
-		icon: 'lucide:cpu',
-	},
-	{
-		title: t('dashboard.admin.index.platformAreas.backups.title'),
-		description: t('dashboard.admin.index.platformAreas.backups.description'),
-		href: '/dashboard/admin/backups',
-		icon: 'lucide:database-backup',
-	},
-]);
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-6xl">
+	<div>
 		<header class="mb-8">
 			<p class="lp-eyebrow mb-1">{{ t('dashboard.admin.index.eyebrow') }}</p>
-			<h1 class="text-3xl font-semibold text-text-primary">
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 				{{ t('dashboard.admin.index.title') }}
 			</h1>
 			<p class="mt-2 text-text-secondary max-w-2xl">
@@ -128,43 +120,36 @@ const platformAreas = computed(() => [
 			</div>
 		</NuxtLink>
 
-		<div class="grid gap-4 md:grid-cols-3">
-			<NuxtLink v-for="area in areas" :key="area.href" :to="area.href" class="group">
+		<NuxtLink
+			v-if="attention"
+			:to="attention.href"
+			class="card mb-6 flex items-center justify-between gap-4 border-error/20 hover:bg-bg-surface transition-colors"
+		>
+			<span class="flex items-center gap-3">
+				<UiIconBox icon="lucide:shield-alert" size="sm" variant="error" rounded="lg" />
+				<span class="font-medium text-text-primary">
+					{{ t('dashboard.admin.index.attention', { count: attention.count }, attention.count) }}
+				</span>
+			</span>
+			<Icon name="lucide:arrow-right" class="w-5 h-5 text-text-tertiary" />
+		</NuxtLink>
+
+		<div class="grid gap-4 sm:grid-cols-2">
+			<NuxtLink v-for="group in groups" :key="group.key" :to="group.href" class="group">
 				<UiCard hoverable class="h-full">
-					<UiIconBox :icon="area.icon" size="md" variant="surface" rounded="lg" />
-					<h2 class="mt-4 text-lg font-semibold text-text-primary">{{ area.title }}</h2>
-					<p class="mt-1 text-sm text-text-secondary">{{ area.description }}</p>
-					<span
-						class="mt-5 inline-flex items-center gap-1 text-sm font-medium text-text-secondary group-hover:text-text-primary transition-colors duration-(--motion-fast)"
-					>
-						{{ t('common.open') }} <Icon name="lucide:arrow-right" class="w-4 h-4" />
-					</span>
+					<div class="flex items-start gap-3">
+						<UiIconBox :icon="group.icon" size="sm" variant="surface" rounded="lg" />
+						<div>
+							<h2 class="font-semibold text-text-primary">{{ group.title }}</h2>
+							<p class="mt-1 text-sm text-text-secondary">{{ group.description }}</p>
+						</div>
+					</div>
 				</UiCard>
 			</NuxtLink>
 		</div>
 
-		<!-- Platform: deployment-level tooling, platform admin only -->
-		<section v-if="isPlatformAdmin === true" class="mt-10">
-			<h2 class="mb-4 text-lg font-semibold text-text-primary">
-				{{ t('dashboard.admin.index.platform') }}
-			</h2>
-			<div class="grid gap-4 md:grid-cols-3">
-				<NuxtLink v-for="area in platformAreas" :key="area.href" :to="area.href" class="group">
-					<UiCard hoverable class="h-full">
-						<div class="flex items-start gap-3">
-							<UiIconBox :icon="area.icon" size="sm" variant="surface" rounded="lg" />
-							<div>
-								<h3 class="font-semibold text-text-primary">{{ area.title }}</h3>
-								<p class="mt-1 text-sm text-text-secondary">{{ area.description }}</p>
-							</div>
-						</div>
-					</UiCard>
-				</NuxtLink>
-			</div>
-		</section>
-
 		<!-- Nobody holds the roster yet and this is the owner: offer the claim -->
-		<section v-else-if="canClaimPlatformAdmin" class="mt-10">
+		<section v-if="isPlatformAdmin !== true && canClaimPlatformAdmin" class="mt-10">
 			<h2 class="mb-4 text-lg font-semibold text-text-primary">
 				{{ t('dashboard.admin.index.platform') }}
 			</h2>

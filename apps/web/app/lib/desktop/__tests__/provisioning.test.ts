@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
 import { SetupStep } from '@owlat/shared/setupProgress';
 import {
 	createTimeline,
@@ -41,7 +42,6 @@ import {
 	removeSetupConfigCommand,
 	stderrTail,
 	SERVER_IP_PLACEHOLDER,
-	MIN_ADMIN_PASSWORD_LENGTH,
 } from '../provisioningForm';
 import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 
@@ -411,7 +411,7 @@ describe('assessPassword — live length/strength read-out', () => {
 		const a = assessPassword('aB3$xY'); // 6 chars, all 4 classes
 		expect(a.meetsMinLength).toBe(false);
 		expect(a.strength).toBe('weak');
-		expect(render(a.label)).toContain(`/${MIN_ADMIN_PASSWORD_LENGTH}`);
+		expect(render(a.label)).toContain(`/${MIN_PASSWORD_LENGTH}`);
 	});
 
 	it('a long, varied password reads strong', () => {

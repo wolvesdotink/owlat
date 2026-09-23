@@ -134,11 +134,7 @@ const handleCancel = () => {
 				</div>
 			</div>
 			<div class="flex items-center gap-2">
-				<UiToggle
-					v-model="form.enabled"
-					:label="form.enabled ? t('common.enabled') : t('common.disabled')"
-					size="sm"
-				/>
+				<UiSwitch v-model="form.enabled" :label="categoryLabel" />
 			</div>
 		</div>
 

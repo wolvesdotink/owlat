@@ -311,6 +311,26 @@ describe('AppCommandPalette — route-aware scope', () => {
 		});
 	});
 
+	it('opens with the query it is handed, so the search page can refine in place (#777)', async () => {
+		installStubs('/dashboard/postbox/search');
+		await openPalette();
+		await press('Escape');
+		window.dispatchEvent(
+			new CustomEvent(COMMAND_PALETTE_OPEN_EVENT, {
+				detail: { scope: 'mail', query: 'from:ines invoice' },
+			})
+		);
+		await nextTick();
+		await nextTick();
+		const input = document.body.querySelector('input');
+		expect(input?.value).toBe('from:ines invoice');
+		await press('Enter');
+		expect(navigateTo).toHaveBeenCalledWith({
+			path: '/dashboard/postbox/search',
+			query: { q: 'from:ines invoice' },
+		});
+	});
+
 	it('cycles the scope on Tab', async () => {
 		await openPalette();
 		expect(scopeChip()).toBe('Everything');

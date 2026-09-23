@@ -56,6 +56,25 @@ beforeEach(() => {
 });
 
 describe('ComplianceTelemetryCard', () => {
+	it('holds the page figures under its own heading, in one card (#793)', () => {
+		vi.stubGlobal('useI18n', i18nStubs.useI18n);
+		vi.stubGlobal('useOrganizationQuery', () => ({
+			data: ref(telemetryFixture()),
+			isLoading: ref(false),
+		}));
+		const wrapper = mount(ComplianceTelemetryCard, {
+			global: {
+				plugins: [createTestI18n()],
+				stubs: { ...stubs, UiCard: { template: '<section class="card"><slot /></section>' } },
+			},
+			slots: { default: '<div data-testid="page-tiles">tiles</div>' },
+		});
+		const cards = wrapper.findAll('section.card');
+		expect(cards).toHaveLength(1);
+		expect(cards[0]!.find('h2, h3').exists()).toBe(true);
+		expect(cards[0]!.find('[data-testid="page-tiles"]').exists()).toBe(true);
+	});
+
 	it('renders a loading state without inventing telemetry', () => {
 		const wrapper = mountCard(null, true);
 		expect(wrapper.find('[data-testid="compliance-loading"]').exists()).toBe(true);

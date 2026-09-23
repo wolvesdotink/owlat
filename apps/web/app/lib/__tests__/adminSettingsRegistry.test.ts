@@ -16,15 +16,21 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
 	ADMIN_AREAS,
-	ADMIN_COMMAND_GROUP_KEY,
 	ADMIN_REGISTRY,
 	ADMIN_ROOT,
-	adminAreasFor,
 	adminEntryFor,
-	buildAdminSurfaceGroups,
+	adminRailEntryFor,
 	reachableAdminEntries,
 	type AdminEnvironment,
 } from '../adminSettingsRegistry';
+import {
+	ADMIN_COMMAND_GROUP_KEY,
+	adminAreaLead,
+	adminAreasFor,
+	adminAttentionBadges,
+	adminTabsFor,
+	buildAdminSurfaceGroups,
+} from '../adminSettingsNav';
 import { createTestI18n } from '~/__tests__/i18n';
 
 const { t, te } = createTestI18n().global;
@@ -47,7 +53,13 @@ const NO_MAIL: AdminEnvironment = {
 };
 const WORKSPACE_ADMIN: AdminEnvironment = { ...FULL, isPlatformAdmin: false, hasPlugins: false };
 
-/** Every `.vue` page file under `pages/dashboard/admin`. */
+/**
+ * A page that only forwards to another route (`definePageMeta({ redirect })`).
+ * It keeps an old URL working, renders nothing, and so has no rail entry.
+ */
+const isRedirectStub = (source: string) => /definePageMeta\(\{\s*redirect:/.test(source);
+
+/** Every `.vue` page file under `pages/dashboard/admin`, redirect stubs left out. */
 async function adminPageFiles(): Promise<string[]> {
 	const walk = async (directory: string): Promise<string[]> => {
 		const entries = await readdir(directory, { withFileTypes: true });
@@ -60,7 +72,9 @@ async function adminPageFiles(): Promise<string[]> {
 		);
 		return nested.flat();
 	};
-	return (await walk(adminPages)).sort();
+	const files = await walk(adminPages);
+	const sources = await Promise.all(files.map((file) => readFile(file, 'utf8')));
+	return files.filter((_, index) => !isRedirectStub(sources[index]!)).sort();
 }
 
 /** Those pages as routes, dynamic ones (`plugins/[id]`) left out. */
@@ -131,13 +145,37 @@ describe('ADMIN_REGISTRY — coverage', () => {
 });
 
 describe('gates', () => {
-	it('drops the AI pages when the agent and autonomy flags are off', () => {
+	it('drops agent health when the agent flags are off, but keeps the on-ramps', () => {
 		const ids = reachableAdminEntries(NO_AI).map((entry) => entry.id);
-		expect(ids).not.toContain('agent');
 		expect(ids).not.toContain('agentHealth');
-		expect(ids).not.toContain('autonomy');
-		// The on-ramp stays: this is the page where AI gets turned on.
+		// The on-ramps stay: AI provider turns AI on, and AI replies is where the
+		// agent is switched back on after "Off".
 		expect(ids).toContain('aiProvider');
+		expect(ids).toContain('aiReplies');
+	});
+
+	it('drops AI replies only when AI itself is off', () => {
+		const ids = reachableAdminEntries({
+			...FULL,
+			isFeatureEnabled: (flag) => flag !== 'ai',
+		}).map((entry) => entry.id);
+		expect(ids).not.toContain('aiReplies');
+		expect(ids).toContain('aiProvider');
+	});
+
+	it('keeps the old agent and autonomy URLs as redirects to AI replies', async () => {
+		for (const leaf of ['agent', 'autonomy']) {
+			const source = await readFile(join(adminPages, 'instance', `${leaf}.vue`), 'utf8');
+			expect(isRedirectStub(source)).toBe(true);
+			expect(source).toContain(`redirect: '${ADMIN_ROOT}/instance/ai-replies'`);
+		}
+	});
+
+	it('lists one AI replies page instead of the old agent and autonomy pages', () => {
+		const paths = ADMIN_REGISTRY.map((entry) => entry.path);
+		expect(paths).toContain(`${ADMIN_ROOT}/instance/ai-replies`);
+		expect(paths).not.toContain(`${ADMIN_ROOT}/instance/agent`);
+		expect(paths).not.toContain(`${ADMIN_ROOT}/instance/autonomy`);
 	});
 
 	it('drops team inboxes on an instance with no mail at all', () => {
@@ -153,21 +191,107 @@ describe('gates', () => {
 		}
 	});
 
-	it('drops an empty area rather than rendering an empty eyebrow', () => {
-		expect(adminAreasFor(FULL).map((area) => area.key)).toEqual([
-			'overview',
-			'delivery',
-			'advanced',
-			'instance',
-			'team',
-			'platform',
-		]);
-		expect(adminAreasFor(WORKSPACE_ADMIN).map((area) => area.key)).not.toContain('platform');
+	it('keeps the operator console for the platform admin on every deployment', () => {
+		// Content held for review and the platform-admin roster exist on
+		// self-hosted instances too; the console is their only UI.
+		expect(reachableAdminEntries(FULL).map((entry) => entry.id)).toContain('operator');
 	});
 
-	it('groups every reachable entry into exactly one area', () => {
+	it('renders the Workspace tab as the overview plus five groups', () => {
+		expect(adminAreasFor(FULL).map((area) => area.key)).toEqual([
+			'overview',
+			'team',
+			'delivery',
+			'ai',
+			'features',
+			'system',
+		]);
+		// A workspace admin keeps System (general settings, desktop updates)
+		// without the platform pages.
+		const system = adminAreasFor(WORKSPACE_ADMIN).find((area) => area.key === 'system');
+		expect(system?.entries.map((entry) => entry.id)).toEqual(['instanceGeneral', 'desktopUpdates']);
+	});
+
+	it('never renders a group with nothing in it', () => {
+		const bare: AdminEnvironment = {
+			isFeatureEnabled: () => false,
+			isPlatformAdmin: false,
+			hasPlugins: false,
+		};
+		for (const env of [FULL, WORKSPACE_ADMIN, bare]) {
+			expect(adminAreasFor(env).filter((area) => area.entries.length === 0)).toEqual([]);
+		}
+	});
+
+	it('lists every reachable, non-hidden entry in exactly one group', () => {
 		const grouped = adminAreasFor(FULL).flatMap((area) => area.entries);
-		expect(grouped).toEqual(reachableAdminEntries(FULL));
+		expect(grouped).toEqual(reachableAdminEntries(FULL).filter((entry) => !entry.hidden));
+	});
+
+	it('keeps hidden pages out of the rail but reachable', () => {
+		const listed = adminAreasFor(FULL).flatMap((area) => area.entries.map((entry) => entry.id));
+		const reachable = reachableAdminEntries(FULL).map((entry) => entry.id);
+		for (const id of ['rampControls', 'cells', 'independence', 'measurement', 'apiDocs']) {
+			expect(listed).not.toContain(id);
+			expect(reachable).toContain(id);
+		}
+		// One API row, one Advanced row.
+		expect(listed.filter((id) => id === 'apiKeys' || id === 'apiDocs')).toEqual(['apiKeys']);
+		expect(listed).toContain('advanced');
+	});
+
+	it('gives every hidden page a parent that is listed', () => {
+		const listed = new Set(
+			ADMIN_REGISTRY.filter((entry) => !entry.hidden).map((entry) => entry.id)
+		);
+		const orphans = ADMIN_REGISTRY.filter(
+			(entry) => entry.hidden && (!entry.parent || !listed.has(entry.parent))
+		).map((entry) => entry.id);
+		expect(orphans).toEqual([]);
+	});
+
+	it('files quarantine, failed messages and activity under Email delivery', () => {
+		for (const id of ['quarantine', 'failed', 'activity']) {
+			expect(ADMIN_REGISTRY.find((entry) => entry.id === id)?.area).toBe('delivery');
+		}
+		const noInbox: AdminEnvironment = { ...FULL, isFeatureEnabled: (flag) => flag !== 'inbox' };
+		const ids = reachableAdminEntries(noInbox).map((entry) => entry.id);
+		expect(ids).not.toContain('quarantine');
+		expect(ids).not.toContain('failed');
+	});
+});
+
+describe('rail, tabs and badges', () => {
+	it('stands a hidden page in for its parent row', () => {
+		expect(adminRailEntryFor(`${ADMIN_ROOT}/delivery/advanced/cells`)?.id).toBe('advanced');
+		expect(adminRailEntryFor(`${ADMIN_ROOT}/team/api/docs`)?.id).toBe('apiKeys');
+		expect(adminRailEntryFor(`${ADMIN_ROOT}/delivery/domains`)?.id).toBe('domains');
+		expect(adminRailEntryFor('/dashboard/preferences')).toBeUndefined();
+	});
+
+	it('renders the four ramp pages as tabs, and nothing else', () => {
+		const tabs = adminTabsFor(`${ADMIN_ROOT}/delivery/advanced/measurement`, FULL).map(
+			(entry) => entry.id
+		);
+		expect(tabs).toEqual(['rampControls', 'cells', 'independence', 'measurement']);
+		expect(adminTabsFor(`${ADMIN_ROOT}/delivery/advanced`, FULL)).toHaveLength(4);
+		// A hidden child of a parent without tabs gets none.
+		expect(adminTabsFor(`${ADMIN_ROOT}/team/api/docs`, FULL)).toEqual([]);
+		expect(adminTabsFor(`${ADMIN_ROOT}/delivery/domains`, FULL)).toEqual([]);
+	});
+
+	it('badges an entry only while its count is above zero', () => {
+		const entries = reachableAdminEntries(FULL);
+		expect(adminAttentionBadges(entries, { quarantined: 3, failed: 0 })).toEqual({
+			[`${ADMIN_ROOT}/delivery/quarantine`]: 3,
+		});
+		expect(adminAttentionBadges(entries, {})).toEqual({});
+	});
+
+	it('leads each group with its first listed page', () => {
+		expect(adminAreaLead('team')?.id).toBe('team');
+		expect(adminAreaLead('delivery')?.id).toBe('delivery');
+		expect(adminAreaLead('ai')?.id).toBe('aiProvider');
 	});
 });
 
@@ -201,7 +325,7 @@ describe('buildAdminSurfaceGroups', () => {
 		const [group] = buildAdminSurfaceGroups(deps, '');
 		const webhooks = group?.items.find((item) => item.id === 'admin:webhooks');
 		expect(webhooks?.label).toBe('Webhooks');
-		expect(webhooks?.subtitle).toBe('Delivery');
+		expect(webhooks?.subtitle).toBe('Email delivery');
 	});
 
 	it('filters on the typed query', () => {

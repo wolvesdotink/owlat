@@ -49,8 +49,12 @@ describe('PostboxSealedMailNudge', () => {
 	it('explains the change and offers the way to act on it', () => {
 		const wrapper = mountNudge();
 		expect(wrapper.find('[data-testid="sealed-mail-nudge"]').exists()).toBe(true);
-		expect(wrapper.text()).toContain('only you can read it');
-		expect(wrapper.text()).toContain('save your recovery kit');
+		expect(wrapper.text()).toContain(
+			'Mail to other Owlat users is now encrypted. Nothing changes for you.'
+		);
+		expect(wrapper.text()).toContain('Back up your key');
+		// Operator words stay on the settings page (#776).
+		expect(wrapper.text()).not.toMatch(/sealed|recovery kit/i);
 	});
 
 	it('says nothing on an instance that never turned sealing on', () => {
@@ -75,6 +79,6 @@ describe('PostboxSealedMailNudge', () => {
 		await wrapper.find('[data-testid="sealed-mail-nudge-open"]').trigger('click');
 		await flushPromises();
 		expect(dismiss).toHaveBeenCalledTimes(1);
-		expect(navigate).toHaveBeenCalledWith('/dashboard/preferences#sealed-mail');
+		expect(navigate).toHaveBeenCalledWith('/dashboard/preferences/security#sealed-mail');
 	});
 });

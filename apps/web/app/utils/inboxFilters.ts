@@ -6,19 +6,30 @@
  * carries NO query param, keeping the canonical URL clean.
  */
 
-export const INBOX_FILTERS = [
-	'open',
-	'mine',
-	'unassigned',
-	'waiting',
-	'waiting-24h',
-	'snoozed',
-	'resolved',
-] as const;
+/**
+ * The status tabs. Four, one per thread state: assignment is a separate
+ * filter ({@link INBOX_ASSIGNEES}) and "waiting over 24h" is a highlight + sort
+ * inside Open, not a tab of its own (it was a subset of another tab).
+ */
+export const INBOX_FILTERS = ['open', 'waiting', 'snoozed', 'resolved'] as const;
 
 export type InboxFilter = (typeof INBOX_FILTERS)[number];
 
 export const DEFAULT_INBOX_FILTER: InboxFilter = 'open';
+
+/** The assignment filter beside the status tabs. `anyone` = no narrowing. */
+export const INBOX_ASSIGNEES = ['anyone', 'me', 'unassigned'] as const;
+
+export type InboxAssignee = (typeof INBOX_ASSIGNEES)[number];
+
+export const DEFAULT_INBOX_ASSIGNEE: InboxAssignee = 'anyone';
+
+/** Label per assignment option, as catalog keys (module scope never calls `useI18n`). */
+export const INBOX_ASSIGNEE_META: Record<InboxAssignee, { label: string }> = {
+	anyone: { label: 'shared.inboxAssignees.anyone' },
+	me: { label: 'shared.inboxAssignees.me' },
+	unassigned: { label: 'shared.inboxAssignees.unassigned' },
+};
 
 /**
  * How the list is ordered. `needs-attention` floats drafts-ready then
@@ -69,18 +80,9 @@ export function nextInboxSort(current: InboxSort): InboxSort {
  */
 export const INBOX_FILTER_META: Record<InboxFilter, { label: string; empty: string }> = {
 	open: { label: 'shared.inboxFilters.open.label', empty: 'shared.inboxFilters.open.empty' },
-	mine: { label: 'shared.inboxFilters.mine.label', empty: 'shared.inboxFilters.mine.empty' },
-	unassigned: {
-		label: 'shared.inboxFilters.unassigned.label',
-		empty: 'shared.inboxFilters.unassigned.empty',
-	},
 	waiting: {
 		label: 'shared.inboxFilters.waiting.label',
 		empty: 'shared.inboxFilters.waiting.empty',
-	},
-	'waiting-24h': {
-		label: 'shared.inboxFilters.waiting24h.label',
-		empty: 'shared.inboxFilters.waiting24h.empty',
 	},
 	snoozed: {
 		label: 'shared.inboxFilters.snoozed.label',
@@ -97,13 +99,47 @@ function isInboxFilter(value: unknown): value is InboxFilter {
 }
 
 /**
+ * Links minted before the tabs were split: `?filter=mine`, `?filter=unassigned`
+ * and `?filter=waiting-24h` still resolve — to the Open tab, with the
+ * assignment (or the oldest-waiting order) they used to mean.
+ */
+const LEGACY_FILTERS: Record<string, { assignee?: InboxAssignee; sort?: InboxSort }> = {
+	mine: { assignee: 'me' },
+	unassigned: { assignee: 'unassigned' },
+	'waiting-24h': { sort: 'oldest-waiting' },
+};
+
+function firstValue(raw: unknown): unknown {
+	return Array.isArray(raw) ? raw[0] : raw;
+}
+
+/**
  * Parse the `?filter=` query value into a filter, falling back to the default
  * for anything absent or unrecognised (Vue Router yields `string | string[] |
- * null | undefined` for a query key).
+ * null | undefined` for a query key). A legacy slug lands on the default tab.
  */
 export function parseInboxFilter(raw: unknown): InboxFilter {
-	const value = Array.isArray(raw) ? raw[0] : raw;
+	const value = firstValue(raw);
 	return isInboxFilter(value) ? value : DEFAULT_INBOX_FILTER;
+}
+
+/**
+ * The assignment a view asks for: `?assignee=` wins, otherwise a legacy
+ * `?filter=mine|unassigned` supplies it, otherwise anyone.
+ */
+export function parseInboxAssignee(rawAssignee: unknown, rawFilter?: unknown): InboxAssignee {
+	const value = firstValue(rawAssignee);
+	if (typeof value === 'string' && (INBOX_ASSIGNEES as readonly string[]).includes(value)) {
+		return value as InboxAssignee;
+	}
+	const legacy = firstValue(rawFilter);
+	return (typeof legacy === 'string' && LEGACY_FILTERS[legacy]?.assignee) || DEFAULT_INBOX_ASSIGNEE;
+}
+
+/** The sort a legacy `?filter=` slug implies, if any (`waiting-24h` → oldest waiting). */
+export function legacyInboxSort(rawFilter: unknown): InboxSort | undefined {
+	const legacy = firstValue(rawFilter);
+	return typeof legacy === 'string' ? LEGACY_FILTERS[legacy]?.sort : undefined;
 }
 
 /**
@@ -114,34 +150,28 @@ export function inboxFilterToQuery(filter: InboxFilter): string | undefined {
 	return filter === DEFAULT_INBOX_FILTER ? undefined : filter;
 }
 
+/** Same for the assignment: `anyone` keeps the URL bare. */
+export function inboxAssigneeToQuery(assignee: InboxAssignee): string | undefined {
+	return assignee === DEFAULT_INBOX_ASSIGNEE ? undefined : assignee;
+}
+
+/** The `assignee` argument the queries take (`anyone` = absent). */
+export function inboxAssigneeArg(assignee: InboxAssignee): 'me' | 'unassigned' | undefined {
+	return assignee === 'anyone' ? undefined : assignee;
+}
+
 /**
- * Live counts for the pill row, exactly as `getThreadFilterCounts` returns
- * them. The wire field for the escalation pill is `waitingOver24h` rather than
- * the filter's own slug — a Convex object field is an identifier, and the slug
- * carries a hyphen — so {@link INBOX_FILTER_COUNT_KEY} is the one place the
- * two names are tied together.
+ * Live counts for the tab row, as `getThreadFilterCounts` returns them (already
+ * narrowed by the active assignment). `waitingOver24h` is not a tab: it feeds
+ * the "waiting over 24h" highlight inside Open. The query also returns legacy
+ * `mine` / `unassigned` counts the page no longer reads.
  */
 export interface InboxFilterCounts {
 	open: number;
-	mine: number;
-	unassigned: number;
 	waiting: number;
-	waitingOver24h: number;
 	snoozed: number;
 	resolved: number;
+	waitingOver24h: number;
 	/** Counts read at most this many rows; a slice at the ceiling shows "99+". */
 	cap: number;
 }
-
-export const INBOX_FILTER_COUNT_KEY: Record<
-	InboxFilter,
-	Exclude<keyof InboxFilterCounts, 'cap'>
-> = {
-	open: 'open',
-	mine: 'mine',
-	unassigned: 'unassigned',
-	waiting: 'waiting',
-	'waiting-24h': 'waitingOver24h',
-	snoozed: 'snoozed',
-	resolved: 'resolved',
-};

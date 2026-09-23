@@ -305,14 +305,14 @@ async function confirmRemove() {
 							:can-run="hasRetroactiveActions(f.actions as FilterAction[])"
 						/>
 					</div>
-					<label class="flex items-center gap-1.5 text-sm">
-						<input
-							type="checkbox"
-							:checked="f.isEnabled"
-							@change="setEnabled(f._id, ($event.target as HTMLInputElement).checked)"
+					<span class="flex items-center gap-1.5 text-sm">
+						<UiSwitch
+							:model-value="f.isEnabled"
+							:label="`${t('common.enabled')}: ${f.name}`"
+							@update:model-value="(on: boolean) => setEnabled(f._id, on)"
 						/>
-						{{ t('common.enabled') }}
-					</label>
+						<span aria-hidden="true">{{ t('common.enabled') }}</span>
+					</span>
 					<UiButton variant="ghost" type="button" @click="startEdit(f)">
 						{{ t('common.edit') }}
 					</UiButton>

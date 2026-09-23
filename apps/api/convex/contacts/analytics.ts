@@ -2,7 +2,6 @@ import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
 import { getCachedContactCount } from '../lib/contactCountHelpers';
 import { countWithPagination } from '../lib/pagination';
-import { topicListing } from '../topics/listing';
 import { redactContactCapabilityFields } from './listing';
 
 // Upper bound on the "recent contacts" dashboard read. Callers pass a small
@@ -124,37 +123,5 @@ export const getRecent = authedQuery({
 			.order('desc')
 			.take(limit);
 		return recent.map(redactContactCapabilityFields);
-	},
-});
-
-// Query to get top topics by contact count (for HTTP API)
-export const getTopTopics = authedQuery({
-	args: {
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		const limit = args.limit ?? 5;
-
-		const lists = await ctx.db.query('topics').collect(); // bounded: org topics (org-scale config)
-
-		// Reuse the shared topic listing enrichment for the contact count so
-		// this dashboard path and the entity's list/get cannot drift. It reads
-		// the denormalized `topic.cachedMemberCount` in O(1) and only falls back
-		// to a bounded `countWithPagination` on `by_topic` when the cache is
-		// absent — never the old unbounded collect of every membership,
-		// which threw once a topic passed ~32k members.
-		const listsWithCounts = await Promise.all(
-			lists.map(async (list) => {
-				const { contactCount } = await topicListing.enrich!(ctx.db, list);
-				return {
-					...list,
-					contactCount,
-				};
-			})
-		);
-
-		// Sort by contact count descending and take limit
-		listsWithCounts.sort((a, b) => b.contactCount - a.contactCount);
-		return listsWithCounts.slice(0, limit);
 	},
 });

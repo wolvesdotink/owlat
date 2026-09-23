@@ -114,32 +114,25 @@ const groups = computed(() => [
 		href: '/dashboard/admin/instance/ai-provider',
 		icon: 'lucide:sparkles',
 	},
-	...(isEnabled('ai.agent')
+	// AI replies holds the Off choice, so it stays reachable while `ai.agent`
+	// is off: it is where the agent gets turned back on.
+	...(isEnabled('ai')
 		? [
 				{
-					title: t('dashboard.admin.instance.index.groups.agent.title'),
-					description: t('dashboard.admin.instance.index.groups.agent.description'),
-					href: '/dashboard/admin/instance/agent',
+					title: t('dashboard.admin.instance.index.groups.aiReplies.title'),
+					description: t('dashboard.admin.instance.index.groups.aiReplies.description'),
+					href: '/dashboard/admin/instance/ai-replies',
 					icon: 'lucide:bot',
 				},
+			]
+		: []),
+	...(isEnabled('ai.agent')
+		? [
 				{
 					title: t('dashboard.admin.instance.index.groups.agentHealth.title'),
 					description: t('dashboard.admin.instance.index.groups.agentHealth.description'),
 					href: '/dashboard/admin/instance/agent-health',
 					icon: 'lucide:activity',
-				},
-			]
-		: []),
-	// Autonomy carries the kill switch, so it must stay one click from here
-	// whenever the flag that unlocks the page is on (the page mirrors this gate
-	// with `requiresFeature: 'ai.autonomy'`).
-	...(isEnabled('ai.autonomy')
-		? [
-				{
-					title: t('dashboard.admin.instance.index.groups.autonomy.title'),
-					description: t('dashboard.admin.instance.index.groups.autonomy.description'),
-					href: '/dashboard/admin/instance/autonomy',
-					icon: 'lucide:sliders-horizontal',
 				},
 			]
 		: []),
@@ -167,7 +160,7 @@ const groups = computed(() => [
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-6xl">
+	<div>
 		<header class="mb-8">
 			<h1 class="text-3xl font-semibold text-text-primary">
 				{{ t('dashboard.admin.instance.index.title') }}

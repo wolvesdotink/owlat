@@ -8,6 +8,7 @@ import {
 } from '~/composables/setupWizardValidation';
 import { RELAY_REMOVAL_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
 import { OWN_SEND_PROVIDER_KIND } from '@owlat/shared/sendProviderCatalog';
+import TransportEditorSummary from './TransportEditorSummary.vue';
 import { isComposedSendProviderKind } from '~/utils/composedSendProviderCatalog';
 import {
 	TRANSPORT_EDITOR_PROVIDER_OPTIONS,
@@ -302,7 +303,7 @@ function cancel() {
 				</div>
 				<UiButton v-if="!isEditing" variant="secondary" size="sm" @click="isEditing = true">
 					<template #iconLeft><Icon name="lucide:settings-2" class="w-4 h-4" /></template>
-					{{ t('components.delivery.transportEditor.editTransport') }}
+					{{ t('components.delivery.transportEditor.changeProvider') }}
 				</UiButton>
 			</div>
 		</template>
@@ -468,24 +469,6 @@ function cancel() {
 			</DeliveryRampConfirmDialog>
 		</div>
 
-		<div v-else class="px-6 py-5">
-			<I18nT
-				keypath="components.delivery.transportEditor.activeTransport"
-				tag="p"
-				scope="global"
-				class="text-sm text-text-secondary"
-			>
-				<template #provider>
-					<span class="font-medium text-text-primary">
-						{{ currentProvider ?? t('components.delivery.transportEditor.notSet') }}
-					</span>
-				</template>
-			</I18nT>
-			<!-- One endpoint, two doors: name the relationship so neither affordance
-			     looks like it does something the other does not. -->
-			<p class="text-sm text-text-secondary mt-2">
-				{{ t('components.delivery.transportEditor.guidedVersionNote') }}
-			</p>
-		</div>
+		<TransportEditorSummary v-else :current-provider="currentProvider" />
 	</UiCard>
 </template>

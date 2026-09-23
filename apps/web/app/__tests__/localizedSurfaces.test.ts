@@ -19,6 +19,8 @@ import { defineComponent, h, ref } from 'vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from './i18n';
 import UiInput from '@owlat/ui/components/ui/Input.vue';
 import AuthShell from '../components/auth/AuthShell.vue';
+import AuthPasswordInput from '../components/auth/AuthPasswordInput.vue';
+import AuthLegalFooter from '../components/auth/AuthLegalFooter.vue';
 import LoginPage from '../pages/auth/login.vue';
 import RegisterPage from '../pages/auth/register.vue';
 import ForgotPasswordPage from '../pages/auth/forgot-password.vue';
@@ -83,12 +85,15 @@ beforeAll(() => {
 			resetPassword,
 		}),
 		useAuthForm: fakeAuthForm,
+		useRecipientSender: () => ({ senderName: ref(null), contactEmail: ref(null) }),
 		useBackendOperation: () => ({ run: vi.fn(async () => null), isLoading: ref(false) }),
 		useOrganizationContext: () => ({ organization }),
 		useConvexQuery: () => ({ data: workspaceSettings, isLoading: settingsLoading }),
 		useNuxtApp: () => ({ $convex: null }),
 		useState: (_key: string, init: () => unknown) => ref(init()),
 		useSlots: () => ({}),
+		// A stock self-host install: no operator branding or legal details.
+		useRuntimeConfig: () => ({ public: { deploymentMode: 'selfhost', companyName: '' } }),
 	});
 });
 
@@ -120,7 +125,13 @@ function mountSurface(component: unknown) {
 	return mount(component as never, {
 		global: {
 			plugins: [createTestI18n()],
-			components: { NuxtLink: NuxtLinkStub, UiInput, AuthShell },
+			components: {
+				NuxtLink: NuxtLinkStub,
+				UiInput,
+				AuthShell,
+				AuthPasswordInput,
+				AuthLegalFooter,
+			},
 			stubs: {
 				Icon: { template: '<span />' },
 				UiHeroField: HeroFieldStub,
@@ -361,7 +372,7 @@ describe('auth/register', () => {
 		expect(w.text()).toContain("You've been invited to an Owlat workspace.");
 		// `terms` is one sentence with a link slot — never two concatenated halves.
 		expect(w.text()).toContain('I agree to the');
-		expect(w.text()).toContain('Terms of Service');
+		expect(w.text()).toContain('Terms of service');
 		expectFullyLocalized(w);
 	});
 

@@ -11,7 +11,7 @@ export class ContactsPage extends BasePage {
 	constructor(page: Page) {
 		super(page);
 		this.searchInput = page.getByPlaceholder('Search by email or name...');
-		this.addContactButton = this.headerAction('Add Contact');
+		this.addContactButton = this.headerAction('Add contact');
 		this.importButton = page.getByRole('button', { name: 'Import' });
 		this.selectAllCheckbox = page.locator('thead button').first();
 		this.selectedCountText = page.locator('text=/\\d+ selected/');

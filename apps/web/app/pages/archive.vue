@@ -174,7 +174,7 @@ onMounted(async () => {
 				keypath="common.poweredBy"
 				tag="p"
 				scope="global"
-				class="pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] text-center text-sm text-text-tertiary"
+				class="pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] text-center text-xs text-text-tertiary"
 			>
 				<template #brand><span class="font-display">Owlat</span></template>
 			</I18nT>

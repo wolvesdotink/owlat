@@ -13,6 +13,7 @@ definePageMeta({
 });
 
 const route = useRoute();
+const { senderName, contactEmail } = useRecipientSender();
 const config = useRuntimeConfig();
 
 // Types
@@ -184,8 +185,7 @@ async function savePreferences() {
 			successMessage.value = null;
 		}, 5000);
 	} catch (err) {
-		error.value =
-			err instanceof Error ? err.message : t('recipient.preferences.errors.saveFailed');
+		error.value = err instanceof Error ? err.message : t('recipient.preferences.errors.saveFailed');
 	} finally {
 		isSaving.value = false;
 	}
@@ -199,11 +199,8 @@ async function savePreferences() {
 	<div
 		class="flex min-h-dvh flex-col items-center justify-center gap-8 bg-bg-deep px-5 pt-[max(2.5rem,env(safe-area-inset-top))] pb-[max(2.5rem,env(safe-area-inset-bottom))] text-text-primary"
 	>
-		<!-- Logo/Brand -->
-		<header class="text-center">
-			<h1 class="font-display text-4xl text-text-primary">Owlat</h1>
-			<p class="mt-2 text-text-secondary">{{ t('recipient.shared.emailPreferences') }}</p>
-		</header>
+		<!-- The sender, not Owlat: the recipient knows who emailed them. -->
+		<RecipientHeader :name="senderName" :purpose="t('recipient.shared.emailPreferences')" />
 
 		<!-- Loading State -->
 		<div v-if="isLoading" class="card w-full max-w-lg py-8 text-center">
@@ -238,6 +235,7 @@ async function savePreferences() {
 					{{ t('recipient.preferences.errorHeading') }}
 				</h2>
 				<p class="text-text-secondary">{{ error }}</p>
+				<RecipientContactHint :email="contactEmail" keypath="recipient.shared.contactToOptOut" />
 			</div>
 		</div>
 
@@ -255,7 +253,9 @@ async function savePreferences() {
 						{{ t('recipient.preferences.greeting', { name: contactInfo.firstName }) }}
 					</template>
 					<I18nT keypath="recipient.preferences.intro" tag="span" scope="global">
-						<template #organization><strong>{{ contactInfo.teamName }}</strong></template>
+						<template #organization
+							><strong>{{ contactInfo.teamName }}</strong></template
+						>
 					</I18nT>
 				</p>
 				<p class="mt-1 text-sm break-words text-text-tertiary">
@@ -372,9 +372,7 @@ async function savePreferences() {
 					{{ t('recipient.preferences.saving') }}
 				</span>
 				<span v-else>
-					{{
-						hasChanges ? t('recipient.preferences.save') : t('recipient.preferences.noChanges')
-					}}
+					{{ hasChanges ? t('recipient.preferences.save') : t('recipient.preferences.noChanges') }}
 				</span>
 			</UiButton>
 
@@ -383,10 +381,7 @@ async function savePreferences() {
 			</p>
 		</div>
 
-		<!-- Footer -->
-		<I18nT keypath="common.poweredBy" tag="p" scope="global" class="text-sm text-text-tertiary">
-			<template #brand><span class="font-display">Owlat</span></template>
-		</I18nT>
+		<RecipientFooter />
 	</div>
 </template>
 

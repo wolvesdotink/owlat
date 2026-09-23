@@ -68,7 +68,7 @@ function mountTrackingForm() {
 			subdomainPlaceholder: 'track',
 			blockFreemail: false,
 			showApexNote: false,
-			submitLabel: 'Add Tracking Domain',
+			submitLabel: 'Add tracking domain',
 		},
 		global: { plugins: [createTestI18n()], stubs },
 	});
@@ -108,7 +108,7 @@ describe('X2 — the tracking flow reuses AddDomainForm, not a fork', () => {
 		expect(form.props('blockFreemail')).toBe(false);
 		expect(form.props('showApexNote')).toBe(false);
 		expect(form.props('suggestions')).toEqual(['track', 'links', 'click']);
-		expect(form.props('submitLabel')).toBe('Add Tracking Domain');
+		expect(form.props('submitLabel')).toBe('Add tracking domain');
 	});
 });
 

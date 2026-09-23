@@ -85,6 +85,12 @@ beforeEach(() => {
 			})),
 			mutation: vi.fn(async () => ({ ok: true })),
 		}),
+		// The recipient pages lead with the sender's name and offer its address.
+		useRecipientSender: () => ({
+			sender: ref({ name: 'Analytical Engines', contactEmail: 'hello@engines.example' }),
+			senderName: ref('Analytical Engines'),
+			contactEmail: ref('hello@engines.example'),
+		}),
 		// The cancel-deletion page's whole render hinges on the mutation resolving.
 		useBackendOperation: () => ({
 			run: vi.fn(async () => ({ ok: true })),
@@ -99,18 +105,18 @@ beforeEach(() => {
 });
 
 const pages = [
-	{ name: 'unsubscribe', component: UnsubscribePage, loaded: 'Unsubscribe from Emails' },
-	{ name: 'preference centre', component: PreferencesPage, loaded: 'Manage Your Email' },
+	{ name: 'unsubscribe', component: UnsubscribePage, loaded: 'Unsubscribe from emails' },
+	{ name: 'preference centre', component: PreferencesPage, loaded: 'Manage your email' },
 	{
 		name: 'double opt-in confirmation',
 		component: ConfirmPage,
-		loaded: 'Confirm Your Subscription',
+		loaded: 'Confirm your subscription',
 	},
 	{ name: 'campaign archive', component: ArchivePage, loaded: 'Analytical Engines' },
 	{ name: 'shared campaign', component: SharePage, loaded: 'Shared campaign' },
-	{ name: 'cancel account deletion', component: CancelDeletionPage, loaded: 'Deletion Cancelled' },
+	{ name: 'cancel account deletion', component: CancelDeletionPage, loaded: 'Deletion cancelled' },
 	{ name: 'imprint', component: ImprintPage, loaded: 'Imprint' },
-	{ name: 'terms', component: TermsPage, loaded: 'Terms of Service' },
+	{ name: 'terms', component: TermsPage, loaded: 'Terms of service' },
 ] as const;
 
 describe.each(pages)('$name page — accessibility', ({ component, loaded }) => {

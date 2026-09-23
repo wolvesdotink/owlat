@@ -15,10 +15,15 @@ export type EntryType =
 	| 'preference'
 	| 'goal'
 	| 'relationship'
-	| 'action_item';
+	| 'action_item'
+	| 'policy'
+	| 'faq';
 
 export type EntryTypeVariant = 'default' | 'success' | 'warning' | 'error' | 'neutral';
 
+// Mirrors the backend ENTRY_TYPES tuple (schema/knowledge.ts): the seven types
+// people and the agent record, plus the two curated canonical-answer types.
+// Drives the list tabs, the legend and the graph filter.
 export const ENTRY_TYPES: EntryType[] = [
 	'fact',
 	'decision',
@@ -27,7 +32,17 @@ export const ENTRY_TYPES: EntryType[] = [
 	'goal',
 	'relationship',
 	'action_item',
+	'policy',
+	'faq',
 ];
+
+// Policy and FAQ entries are canonical answers: they are written through the
+// canonical-answer form, which marks them authoritative. The generic entry form
+// offers only the other seven.
+export const POLICY_ENTRY_TYPES: readonly EntryType[] = ['policy', 'faq'];
+export const AUTHORABLE_ENTRY_TYPES: EntryType[] = ENTRY_TYPES.filter(
+	(type) => !POLICY_ENTRY_TYPES.includes(type)
+);
 
 export const TYPE_CONFIG: Record<
 	EntryType,
@@ -40,10 +55,12 @@ export const TYPE_CONFIG: Record<
 	goal: { variant: 'success', icon: 'lucide:target', label: 'Goal' },
 	relationship: { variant: 'error', icon: 'lucide:link', label: 'Relationship' },
 	action_item: { variant: 'warning', icon: 'lucide:check-square', label: 'Action Item' },
+	policy: { variant: 'success', icon: 'lucide:shield-check', label: 'Policy' },
+	faq: { variant: 'default', icon: 'lucide:help-circle', label: 'FAQ' },
 };
 
 // Mirrors the backend sourceTypeValidator union (schema/knowledge.ts).
-export type SourceType = 'email' | 'chat' | 'manual' | 'file' | 'agent_extracted';
+export type SourceType = 'email' | 'chat' | 'manual' | 'file' | 'agent_extracted' | 'curated';
 
 export const SOURCE_CONFIG: Record<string, { icon: string; label: string }> = {
 	email: { icon: 'lucide:mail', label: 'Email' },
@@ -51,7 +68,14 @@ export const SOURCE_CONFIG: Record<string, { icon: string; label: string }> = {
 	manual: { icon: 'lucide:pen-line', label: 'Manual' },
 	file: { icon: 'lucide:file', label: 'File' },
 	agent_extracted: { icon: 'lucide:bot', label: 'AI Extracted' },
+	curated: { icon: 'lucide:badge-check', label: 'Canonical answer' },
 };
+
+// `curated` marks a canonical answer and is set only by the canonical-answer
+// form; the generic entry form never offers it.
+export const AUTHORABLE_SOURCE_TYPES: SourceType[] = (
+	Object.keys(SOURCE_CONFIG) as SourceType[]
+).filter((source) => source !== 'curated');
 
 export const entryTypeVariant = (type: string): EntryTypeVariant =>
 	TYPE_CONFIG[type as EntryType]?.variant ?? 'neutral';

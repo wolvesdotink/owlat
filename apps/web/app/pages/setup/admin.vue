@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { SETUP_WIZARD_STEPS } from '~/composables/useSetupWizard';
+import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
 import { validateAdmin, adminIsValid } from '~/composables/setupWizardValidation';
 
 definePageMeta({ layout: false });
@@ -20,9 +21,15 @@ const displaySteps = computed(() =>
 );
 
 const submitted = ref(false);
-// Track touched fields so an error only shows after the user has left the field
-// (or after an advance attempt), not while they're still typing.
+// Track touched fields so an error only shows after the user has typed
+// something and left the field, or after an advance attempt — never on mount,
+// and never while they're still typing. The email field is autofocused, so a
+// blur on an untouched, empty field (clicking elsewhere, switching tabs) must
+// not paint "Enter a valid email address" before anything was entered.
 const touched = reactive({ email: false, password: false });
+function markTouched(field: 'email' | 'password') {
+	if (admin.value[field] !== '') touched[field] = true;
+}
 
 const errors = computed(() => validateAdmin(admin.value));
 // The rules module is pure, so its fields carry message keys (see the i18n
@@ -32,7 +39,7 @@ const emailError = computed(() =>
 );
 const passwordError = computed(() =>
 	(submitted.value || touched.password) && errors.value.password
-		? t(errors.value.password)
+		? t(errors.value.password, { min: MIN_PASSWORD_LENGTH })
 		: undefined
 );
 
@@ -88,7 +95,7 @@ function next() {
 						autofocus
 						required
 						:error="emailError"
-						@blur="touched.email = true"
+						@blur="markTouched('email')"
 					/>
 					<UiInput
 						v-model="admin.name"
@@ -96,16 +103,14 @@ function next() {
 						:placeholder="t('setup.admin.displayNamePlaceholder')"
 						autocomplete="name"
 					/>
-					<UiInput
+					<AuthPasswordInput
 						v-model="admin.password"
-						type="password"
 						:label="t('auth.fields.password')"
-						:placeholder="t('setup.admin.passwordPlaceholder')"
 						autocomplete="new-password"
 						required
 						:error="passwordError"
-						:help-text="t('setup.admin.passwordHelp')"
-						@blur="touched.password = true"
+						:help-text="t('auth.fields.passwordHelp', { min: MIN_PASSWORD_LENGTH })"
+						@blur="markTouched('password')"
 					/>
 				</form>
 			</UiCard>

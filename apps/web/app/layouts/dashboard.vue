@@ -23,9 +23,6 @@ const {
 	effectiveCollapsed: preferredCollapsed,
 	effectiveHidden,
 	isPeeking,
-	focusArea,
-	isFocusPinned,
-	setRoutePath,
 	toggleCollapsed,
 	toggleHidden,
 	openPeek,
@@ -50,7 +47,6 @@ const isSettingsPath = (path: string) =>
 watch(
 	() => route.path,
 	(path) => {
-		setRoutePath(path);
 		showAppNavigation.value = false;
 		if (!isSettingsPath(path)) settingsReturnTo.value = route.fullPath;
 	},
@@ -223,8 +219,10 @@ onMounted(() => {
 });
 
 // Cmd/Ctrl-\ toggles the sidebar's hidden mode (desktop only; the composable
-// guards the breakpoint), Cmd/Ctrl-, opens Settings. Registered alongside the
+// guards the breakpoint), Cmd/Ctrl-, opens Settings, and Cmd/Ctrl-J opens the
+// Assistant for every member while the feature is on. Registered alongside the
 // other global shortcuts.
+const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 onMounted(() => {
 	const handleToggleHidden = (e: KeyboardEvent) => {
 		if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
@@ -235,7 +233,13 @@ onMounted(() => {
 			e.preventDefault();
 			void navigateTo('/dashboard/preferences');
 		}
-		if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j') {
+		if (
+			(e.metaKey || e.ctrlKey) &&
+			!e.shiftKey &&
+			!e.altKey &&
+			e.key.toLowerCase() === 'j' &&
+			isFeatureEnabled('ai.assistant')
+		) {
 			e.preventDefault();
 			void navigateTo('/dashboard/assistant');
 		}
@@ -344,14 +348,8 @@ useSendReadyNotice();
 // pre-switched to its Ask scope behind the same `ai.knowledge` gate — one
 // overlay, one shortcut owner, and knowledge answers next to object results.
 
-// The collapse control's one label. In a focus area it reads as a pin, because
-// that is what it writes; elsewhere it stays the collapse/expand it always was.
+// The collapse control's one label.
 const sidebarToggleLabel = computed(() => {
-	if (focusArea.value) {
-		return isFocusPinned.value
-			? t('shell.dashboard.unpinSidebar')
-			: t('shell.dashboard.pinSidebar');
-	}
 	return isCollapsed.value
 		? t('shell.dashboard.expandSidebar')
 		: t('shell.dashboard.collapseSidebar');
@@ -536,10 +534,7 @@ const sidebarDesktopClass = computed(() => {
 				</div>
 			</nav>
 
-			<!-- Collapse toggle button. Inside a focus area (Postbox) the same control
-			     pins the sidebar open instead of writing the global preference, so
-			     the icon-rail default there is reversible without changing what the
-			     sidebar does everywhere else. -->
+			<!-- Collapse toggle button: one preference, the same on every page. -->
 			<div v-if="!activeSection" class="hidden lg:flex px-2 py-1 border-t border-border-subtle">
 				<button
 					:class="[
@@ -548,17 +543,10 @@ const sidebarDesktopClass = computed(() => {
 						{ 'justify-center': isCollapsed },
 					]"
 					:title="sidebarToggleLabel"
-					:aria-pressed="focusArea ? isFocusPinned : undefined"
 					@click="toggleCollapsed"
 				>
 					<Icon
-						v-if="!isCollapsed"
-						:name="focusArea ? 'lucide:pin-off' : 'lucide:panel-left-close'"
-						class="w-5 h-5 text-text-tertiary"
-					/>
-					<Icon
-						v-else
-						:name="focusArea ? 'lucide:pin' : 'lucide:panel-left'"
+						:name="isCollapsed ? 'lucide:panel-left' : 'lucide:panel-left-close'"
 						class="w-5 h-5 text-text-tertiary"
 					/>
 					<span v-if="!isCollapsed">{{ sidebarToggleLabel }}</span>
@@ -603,6 +591,10 @@ const sidebarDesktopClass = computed(() => {
 		<!-- App-wide command palette (Cmd/Ctrl-K), route-scoped: mail search on
 		     Postbox, knowledge Ask on Cmd/Ctrl+Shift+K, objects everywhere else -->
 		<AppCommandPalette />
+
+		<!-- Compose over the current page (the top-bar button, the palette and
+		     the c chord), never by navigating to the mailbox. -->
+		<ShellComposerOverlay />
 
 		<!-- Keyboard shortcuts help modal -->
 		<KeyboardShortcutsHelp />

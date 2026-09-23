@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { formatNumber } from '~/utils/formatters';
+import { formatRate, operatorConsoleLayout } from '~/utils/operatorConsole';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 useHead({ title: () => t('dashboard.admin.operator.index.pageTitle') });
 
@@ -39,7 +41,14 @@ const { data: orgDetail } = useConvexQuery(
 const { data: admins } = useConvexQuery(api.platformAdmin.queries.listPlatformAdmins, () => ({}));
 const { data: allUsers } = useConvexQuery(api.platformAdmin.queries.listAllUsers, () => ({}));
 
-const tabs = computed(() => [
+/** Counts written the way the reader's locale writes them ("128,400", "128.400"). */
+const formatCount = (value: number | undefined | null) => formatNumber(value, locale.value);
+const formatPercent = (value: number | undefined) => formatRate(value, locale.value);
+
+const deploymentMode = useRuntimeConfig().public.deploymentMode as string | undefined;
+const layout = computed(() => operatorConsoleLayout(deploymentMode, allOrgs.value?.length));
+
+const allTabs = computed(() => [
 	{ value: 'overview', label: t('dashboard.admin.operator.index.tabs.overview') },
 	{
 		value: 'review',
@@ -57,6 +66,13 @@ const tabs = computed(() => [
 		count: admins.value?.length ?? 0,
 	},
 ]);
+const tabs = computed(() =>
+	allTabs.value.filter((tab) => layout.value.tabs.includes(tab.value as TabValue))
+);
+// A trimmed console never strands the reader on a tab it no longer shows.
+watch(layout, ({ tabs: shown }) => {
+	if (!shown.includes(activeTab.value)) activeTab.value = 'overview';
+});
 
 // ── Mutations ─────────────────────────────────────────────────────────────────
 const { run: approveCampaign, isLoading: approvingCampaign } = useBackendOperation(
@@ -265,7 +281,7 @@ const anyMutationLoading = computed(
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-[1100px] mx-auto">
+	<div>
 		<!-- Header -->
 		<div class="mb-6">
 			<div class="flex items-center gap-3">
@@ -286,30 +302,32 @@ const anyMutationLoading = computed(
 		<!-- ── OVERVIEW ── -->
 		<div v-if="activeTab === 'overview'" class="space-y-6">
 			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-				<div class="card p-5">
-					<p class="text-xs text-text-tertiary uppercase tracking-wider">
-						{{ t('dashboard.admin.operator.index.stats.totalSent') }}
-					</p>
-					<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ stats?.sending?.totalSent ?? 0 }}
-					</p>
-				</div>
-				<div class="card p-5">
-					<p class="text-xs text-text-tertiary uppercase tracking-wider">
-						{{ t('dashboard.admin.operator.index.stats.bounceRate') }}
-					</p>
-					<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ formatRate(stats?.sending?.bounceRate) }}
-					</p>
-				</div>
-				<div class="card p-5">
-					<p class="text-xs text-text-tertiary uppercase tracking-wider">
-						{{ t('dashboard.admin.operator.index.stats.complaintRate') }}
-					</p>
-					<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ formatRate(stats?.sending?.complaintRate) }}
-					</p>
-				</div>
+				<template v-if="layout.showDeliveryStats">
+					<div class="card p-5">
+						<p class="text-xs text-text-tertiary uppercase tracking-wider">
+							{{ t('dashboard.admin.operator.index.stats.totalSent') }}
+						</p>
+						<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
+							{{ formatCount(stats?.sending?.totalSent) }}
+						</p>
+					</div>
+					<div class="card p-5">
+						<p class="text-xs text-text-tertiary uppercase tracking-wider">
+							{{ t('dashboard.admin.operator.index.stats.bounceRate') }}
+						</p>
+						<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
+							{{ formatPercent(stats?.sending?.bounceRate) }}
+						</p>
+					</div>
+					<div class="card p-5">
+						<p class="text-xs text-text-tertiary uppercase tracking-wider">
+							{{ t('dashboard.admin.operator.index.stats.complaintRate') }}
+						</p>
+						<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
+							{{ formatPercent(stats?.sending?.complaintRate) }}
+						</p>
+					</div>
+				</template>
 				<div class="card p-5">
 					<p class="text-xs text-text-tertiary uppercase tracking-wider">
 						{{ t('dashboard.admin.operator.index.stats.abuseStatus') }}
@@ -550,9 +568,9 @@ const anyMutationLoading = computed(
 							<p class="mt-1 text-xs text-text-tertiary">
 								{{
 									t('dashboard.admin.operator.index.flagged.rates', {
-										bounce: formatRate(o.bounceRate),
-										complaint: formatRate(o.complaintRate),
-										sent: o.totalSent,
+										bounce: formatPercent(o.bounceRate),
+										complaint: formatPercent(o.complaintRate),
+										sent: formatCount(o.totalSent),
 									})
 								}}
 							</p>
@@ -602,7 +620,9 @@ const anyMutationLoading = computed(
 								<td class="py-2">
 									<UiBadge :variant="riskLevelVariant(o.riskLevel)">{{ o.riskLevel }}</UiBadge>
 								</td>
-								<td class="py-2 text-right text-text-secondary">{{ o.contactCount }}</td>
+								<td class="py-2 text-right text-text-secondary">
+									{{ formatCount(o.contactCount) }}
+								</td>
 							</tr>
 						</tbody>
 					</table>

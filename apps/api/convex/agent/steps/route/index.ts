@@ -141,6 +141,18 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 		// this only swaps WHICH score feeds their threshold comparison.
 		const gateScore = resolveAutoApproveScore(input.draftQuality);
 
+		// Shadow mode is read BEFORE deciding, and fails CLOSED: the stored
+		// default is shadow on (`getShadowMode`), so a read error is treated the
+		// same way. "Draft only" on the AI replies page is shadow mode, and it has
+		// to be a hard stop for every tier — including the per-category rules.
+		let shadowEnabled = true;
+		try {
+			const shadow = await ctx.runQuery(internal.agent.shadowScorecard.getShadowMode, {});
+			shadowEnabled = shadow.enabled;
+		} catch {
+			// swallowed: an unreadable shadow setting keeps the safe default (on)
+		}
+
 		// Compute the routing decision + its precise reason. The tiers, order, and
 		// safety gates are UNCHANGED — this only collects the outcome into one
 		// value so the reason can be persisted alongside it (below) for the review
@@ -181,6 +193,18 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 					// a withheld send doesn't consume an auto-reply slot.
 					const gate = await runFinalAutoSendGates(ctx, input.inboundMessageId);
 					if (!gate.safe) return { decision: 'human_review', reason: gate.reason };
+
+					// Shadow mode never sends, so it must not spend a daily-cap slot
+					// either. The permission check above already applied the cap
+					// advisorily, which is all a would-have-sent observation needs.
+					if (shadowEnabled) {
+						return {
+							decision: 'auto_approve',
+							reason:
+								autonomy.reason ??
+								`Per-category autonomy rule for ${input.category} permits auto-approval.`,
+						};
+					}
 
 					// Atomically charge the per-category daily cap. The query above is
 					// advisory for the cap — `incrementDailyCount` is the authority and
@@ -244,33 +268,33 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 
 		// SHADOW ("would-have-sent") MODE — the entire send-side safety net for a
 		// slice that hasn't earned real auto-send yet. When shadow is on (the
-		// DEFAULT posture), the decision computed above is logged as a
-		// would-have-sent observation and the message is routed to human review
-		// regardless: NOTHING auto-sends while shadow is on. FAIL-SOFT: any error
-		// here (including a config/query hiccup) leaves the real decision above
-		// standing, so shadow observability can never wedge the walker or flip a
-		// human-review outcome into a send.
-		try {
-			const shadow = await ctx.runQuery(internal.agent.shadowScorecard.getShadowMode, {});
-			if (shadow.enabled) {
+		// DEFAULT posture, and what "Draft only" sets), the decision computed above
+		// is logged as a would-have-sent observation and the message is routed to
+		// human review regardless: NOTHING auto-sends while shadow is on. The flip
+		// to human review happens FIRST and outside the try, so a logging failure
+		// can only lose the observation, never turn into a send.
+		if (shadowEnabled) {
+			const wouldHaveSent = decision === 'auto_approve';
+			const decidedReason = reason;
+			if (wouldHaveSent) {
+				decision = 'human_review';
+				reason =
+					'Shadow mode: the agent would have auto-sent this reply — logged to the graduation scorecard, not sent. Routing to human review.';
+			}
+			try {
 				await ctx.runMutation(internal.agent.shadowScorecard.recordShadowDecision, {
 					inboundMessageId: input.inboundMessageId,
 					category: input.category,
-					wouldHaveSent: decision === 'auto_approve',
-					reason,
+					wouldHaveSent,
+					reason: decidedReason,
 					confidence: input.confidence,
 					...(input.draftQuality && typeof input.draftQuality.score === 'number'
 						? { draftQualityScore: input.draftQuality.score }
 						: {}),
 				});
-				if (decision === 'auto_approve') {
-					decision = 'human_review';
-					reason =
-						'Shadow mode: the agent would have auto-sent this reply — logged to the graduation scorecard, not sent. Routing to human review.';
-				}
+			} catch {
+				// swallowed: shadow logging is best-effort; the message stays in review
 			}
-		} catch {
-			// swallowed: shadow logging is best-effort; the real decision stands
 		}
 
 		// Persist the decision + reason + confidence onto the inbound message so

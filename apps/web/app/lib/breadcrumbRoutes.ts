@@ -7,10 +7,17 @@
  * logic-only, and the coverage-parity test in
  * `composables/__tests__/useBreadcrumbs.test.ts` guards the tables as data.
  *
- * The Preferences trails are not written out here: they are derived from
- * `lib/settingsRegistry`, the one declaration the hub, the left nav and the
- * command palette also read.
+ * The settings trails are not written out here: My settings is derived from
+ * `lib/settingsRegistry` and Workspace from `lib/adminSettingsRegistry`, the
+ * declarations the Settings sidebar and the command palette also read.
  */
+import {
+	ADMIN_REGISTRY,
+	ADMIN_ROOT,
+	adminEntryById,
+	type AdminEntry,
+} from './adminSettingsRegistry';
+import { adminAreaLead } from './adminSettingsNav';
 import { SETTINGS_REGISTRY, SETTINGS_ROOT } from './settingsRegistry';
 
 /**
@@ -27,6 +34,34 @@ export interface RouteConfig {
 	subsectionHref?: string;
 	page?: string;
 }
+
+/** The Marketing workspace crumb — the word the sidebar's switch shows. */
+const MARKETING = 'shared.breadcrumbRoutes.sections.marketing';
+const MARKETING_HREF = '/dashboard/marketing';
+
+/** "Marketing › Campaigns", the parent of every campaign page. */
+export const MARKETING_CAMPAIGNS = {
+	section: MARKETING,
+	sectionHref: MARKETING_HREF,
+	subsection: 'shared.breadcrumbRoutes.pages.campaigns',
+	subsectionHref: '/dashboard/campaigns',
+} as const;
+
+/** "Marketing › Automations", the parent of every automation page. */
+export const MARKETING_AUTOMATIONS = {
+	section: MARKETING,
+	sectionHref: MARKETING_HREF,
+	subsection: 'shared.breadcrumbRoutes.pages.automations',
+	subsectionHref: '/dashboard/automations',
+} as const;
+
+/** "Marketing › Templates", the parent of every template page. */
+export const MARKETING_TEMPLATES = {
+	section: MARKETING,
+	sectionHref: MARKETING_HREF,
+	subsection: 'shared.breadcrumbRoutes.pages.templates',
+	subsectionHref: '/dashboard/send',
+} as const;
 
 /**
  * The Preferences trails, projected out of the settings registry.
@@ -53,6 +88,47 @@ function preferencesRouteConfigs(): Record<string, RouteConfig> {
 	);
 }
 
+/**
+ * The Workspace trails, projected out of the admin registry: "Workspace", then
+ * the page's group (or, for a page that hangs off another one, that page), then
+ * the page. The words are the rail's own, so the crumb and the nav cannot print
+ * two names for one page. A group crumb that would repeat the page (the group's
+ * lead page) is left out.
+ */
+function adminRouteConfigs(): Record<string, RouteConfig> {
+	const section = 'shared.breadcrumbRoutes.sections.workspace';
+	const configFor = (entry: AdminEntry): RouteConfig => {
+		if (entry.path === ADMIN_ROOT) return { section, sectionHref: ADMIN_ROOT };
+		const parent = entry.parent ? adminEntryById(entry.parent) : undefined;
+		const group = parent ?? adminAreaLead(entry.area);
+		const subsection =
+			parent !== undefined
+				? { subsection: parent.titleKey, subsectionHref: parent.path }
+				: group && group.path !== entry.path
+					? {
+							subsection: `shell.admin.areas.${entry.area}`,
+							subsectionHref: group.path,
+						}
+					: {};
+		return { section, sectionHref: ADMIN_ROOT, ...subsection, page: entry.titleKey };
+	};
+	return Object.fromEntries(ADMIN_REGISTRY.map((entry) => [entry.path, configFor(entry)]));
+}
+
+/** One section crumb for every mailbox page; each page adds its own name. */
+function postboxPageConfigs(pages: Record<string, string>): Record<string, RouteConfig> {
+	return Object.fromEntries(
+		Object.entries(pages).map(([path, page]) => [
+			path,
+			{
+				section: 'shared.dashboardNavigation.sections.postbox',
+				sectionHref: '/dashboard/postbox/inbox',
+				page,
+			},
+		])
+	);
+}
+
 // Define route configurations for the new navigation structure
 export const routeConfigs: Record<string, RouteConfig> = {
 	// Dashboard
@@ -73,52 +149,59 @@ export const routeConfigs: Record<string, RouteConfig> = {
 		sectionHref: '/dashboard/inbox',
 	},
 
-	// Send section
-	'/dashboard/send': {
-		section: 'shared.breadcrumbRoutes.sections.send',
-		sectionHref: '/dashboard/send',
-		page: 'shared.breadcrumbRoutes.pages.templatesAndBlocks',
-	},
-	'/dashboard/send/marketing': {
-		section: 'shared.breadcrumbRoutes.sections.send',
-		sectionHref: '/dashboard/send',
-		page: 'shared.breadcrumbRoutes.pages.marketing',
-	},
-	'/dashboard/send/transactional': {
-		section: 'shared.breadcrumbRoutes.sections.send',
-		sectionHref: '/dashboard/send',
-		page: 'shared.breadcrumbRoutes.pages.transactional',
-	},
-	'/dashboard/send/blocks': {
-		section: 'shared.breadcrumbRoutes.sections.send',
-		sectionHref: '/dashboard/send',
-		page: 'shared.breadcrumbRoutes.pages.blocks',
-	},
-	'/dashboard/send/media': {
-		section: 'shared.breadcrumbRoutes.sections.send',
-		sectionHref: '/dashboard/send',
-		page: 'shared.breadcrumbRoutes.pages.media',
-	},
+	// The mailbox's own pages. Same section crumb as its folders and messages
+	// (`breadcrumbPatterns.ts`), so the area has one name wherever you are in it
+	// instead of "Inboxes" on a folder and a URL slug ("Postbox") on search.
+	...postboxPageConfigs({
+		'/dashboard/postbox/search': 'shared.breadcrumbRoutes.pages.mailSearch',
+		'/dashboard/postbox/contacts': 'shared.breadcrumbRoutes.pages.contacts',
+		'/dashboard/postbox/files': 'shared.breadcrumbRoutes.pages.files',
+		'/dashboard/postbox/subscriptions': 'shared.breadcrumbRoutes.pages.subscriptions',
+		'/dashboard/postbox/migrate': 'shared.breadcrumbRoutes.pages.importMail',
+	}),
 
-	// Marketing workspace
+	// Marketing workspace. Campaigns, automations and templates are filed under
+	// it, matching the sidebar's Marketing switch — the trail used to say "Send",
+	// a section the sidebar no longer has.
 	'/dashboard/marketing': {
-		section: 'shared.breadcrumbRoutes.sections.marketing',
-		sectionHref: '/dashboard/marketing',
+		section: MARKETING,
+		sectionHref: MARKETING_HREF,
 		page: 'shared.breadcrumbRoutes.pages.overview',
 	},
-
-	// Campaigns section
-	// Filed under Send, matching the sidebar — the section crumb was
-	// `campaigns` too, so the index route read "Campaigns > Campaigns".
 	'/dashboard/campaigns': {
-		section: 'shared.breadcrumbRoutes.sections.send',
-		sectionHref: '/dashboard/send',
+		section: MARKETING,
+		sectionHref: MARKETING_HREF,
 		page: 'shared.breadcrumbRoutes.pages.campaigns',
 	},
 	'/dashboard/campaigns/new': {
-		section: 'shared.breadcrumbRoutes.sections.campaigns',
-		sectionHref: '/dashboard/campaigns',
+		...MARKETING_CAMPAIGNS,
 		page: 'shared.breadcrumbRoutes.pages.newCampaign',
+	},
+	'/dashboard/automations': {
+		section: MARKETING,
+		sectionHref: MARKETING_HREF,
+		page: 'shared.breadcrumbRoutes.pages.automations',
+	},
+	'/dashboard/send': {
+		section: MARKETING,
+		sectionHref: MARKETING_HREF,
+		page: 'shared.breadcrumbRoutes.pages.templates',
+	},
+	'/dashboard/send/marketing': {
+		...MARKETING_TEMPLATES,
+		page: 'shared.breadcrumbRoutes.pages.marketing',
+	},
+	'/dashboard/send/transactional': {
+		...MARKETING_TEMPLATES,
+		page: 'shared.breadcrumbRoutes.pages.transactional',
+	},
+	'/dashboard/send/blocks': {
+		...MARKETING_TEMPLATES,
+		page: 'shared.breadcrumbRoutes.pages.blocks',
+	},
+	'/dashboard/send/media': {
+		...MARKETING_TEMPLATES,
+		page: 'shared.breadcrumbRoutes.pages.media',
 	},
 
 	// Audience section
@@ -148,244 +231,12 @@ export const routeConfigs: Record<string, RouteConfig> = {
 		page: 'shared.breadcrumbRoutes.pages.suppressions',
 	},
 
-	// Administration section
-	'/dashboard/admin': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		page: 'shared.breadcrumbRoutes.pages.overview',
-	},
-	'/dashboard/admin/backups': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		page: 'shared.breadcrumbRoutes.pages.backups',
-	},
-	'/dashboard/admin/operator': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		page: 'shared.breadcrumbRoutes.pages.operatorConsole',
-	},
-	'/dashboard/admin/system': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		page: 'shared.breadcrumbRoutes.pages.systemAndUpdates',
-	},
-	'/dashboard/admin/instance': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		page: 'shared.breadcrumbRoutes.pages.instance',
-	},
-	'/dashboard/admin/instance/general': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.instance',
-		subsectionHref: '/dashboard/admin/instance',
-		page: 'shared.breadcrumbRoutes.pages.general',
-	},
-	'/dashboard/admin/instance/features': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.instance',
-		subsectionHref: '/dashboard/admin/instance',
-		page: 'shared.breadcrumbRoutes.pages.features',
-	},
-	'/dashboard/admin/instance/desktop-updates': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.instance',
-		subsectionHref: '/dashboard/admin/instance',
-		page: 'shared.breadcrumbRoutes.pages.desktopUpdates',
-	},
-	'/dashboard/admin/instance/channels': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.instance',
-		subsectionHref: '/dashboard/admin/instance',
-		page: 'shared.breadcrumbRoutes.pages.channels',
-	},
-	'/dashboard/admin/instance/ai-provider': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.instance',
-		subsectionHref: '/dashboard/admin/instance',
-		page: 'shared.breadcrumbRoutes.pages.aiProvider',
-	},
-	'/dashboard/admin/instance/agent': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.instance',
-		subsectionHref: '/dashboard/admin/instance',
-		page: 'shared.breadcrumbRoutes.pages.aiAgent',
-	},
-	'/dashboard/admin/instance/agent-health': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.instance',
-		subsectionHref: '/dashboard/admin/instance',
-		page: 'shared.breadcrumbRoutes.pages.agentHealth',
-	},
-	'/dashboard/admin/instance/autonomy': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.instance',
-		subsectionHref: '/dashboard/admin/instance',
-		page: 'shared.breadcrumbRoutes.pages.autonomyRules',
-	},
-	'/dashboard/admin/instance/sealed-mail': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.instance',
-		subsectionHref: '/dashboard/admin/instance',
-		page: 'shared.breadcrumbRoutes.pages.secureMail',
-	},
-	'/dashboard/admin/instance/plugins': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.instance',
-		subsectionHref: '/dashboard/admin/instance',
-		page: 'shared.breadcrumbRoutes.pages.plugins',
-	},
-	'/dashboard/admin/delivery': {
-		section: 'shared.breadcrumbRoutes.sections.delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		page: 'shared.breadcrumbRoutes.pages.health',
-	},
-	'/dashboard/admin/delivery/deliverability': {
-		section: 'shared.breadcrumbRoutes.sections.delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		page: 'shared.breadcrumbRoutes.pages.deliverability',
-	},
-	'/dashboard/admin/delivery/advanced/measurement': {
-		section: 'shared.breadcrumbRoutes.sections.delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		page: 'shared.breadcrumbRoutes.pages.measurement',
-	},
-	'/dashboard/admin/delivery/advanced/independence': {
-		section: 'shared.breadcrumbRoutes.sections.delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		page: 'shared.breadcrumbRoutes.pages.independence',
-	},
-	'/dashboard/admin/delivery/advanced/cells': {
-		section: 'shared.breadcrumbRoutes.sections.delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		page: 'shared.breadcrumbRoutes.pages.cells',
-	},
-	'/dashboard/admin/delivery/advanced/controls': {
-		section: 'shared.breadcrumbRoutes.sections.delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		page: 'shared.breadcrumbRoutes.pages.controls',
-	},
-	'/dashboard/admin/delivery/transport': {
-		section: 'shared.breadcrumbRoutes.sections.delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		subsection: 'shared.breadcrumbRoutes.subsections.setup',
-		subsectionHref: '/dashboard/admin/delivery',
-		page: 'shared.breadcrumbRoutes.pages.deliveryProvider',
-	},
-	'/dashboard/admin/delivery/domains': {
-		section: 'shared.breadcrumbRoutes.sections.delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		subsection: 'shared.breadcrumbRoutes.subsections.setup',
-		subsectionHref: '/dashboard/admin/delivery',
-		page: 'shared.breadcrumbRoutes.pages.sendingDomains',
-	},
-	'/dashboard/admin/delivery/migrate': {
-		section: 'shared.breadcrumbRoutes.sections.delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		subsection: 'shared.breadcrumbRoutes.subsections.setup',
-		subsectionHref: '/dashboard/admin/delivery',
-		page: 'shared.breadcrumbRoutes.pages.migrateFromMailchimp',
-	},
-	'/dashboard/admin/delivery/provider-routing': {
-		section: 'shared.breadcrumbRoutes.sections.delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		subsection: 'shared.breadcrumbRoutes.subsections.setup',
-		subsectionHref: '/dashboard/admin/delivery',
-		page: 'shared.breadcrumbRoutes.pages.providerRouting',
-	},
-	'/dashboard/admin/delivery/webhooks': {
-		section: 'shared.breadcrumbRoutes.sections.delivery',
-		sectionHref: '/dashboard/admin/delivery',
-		subsection: 'shared.breadcrumbRoutes.subsections.setup',
-		subsectionHref: '/dashboard/admin/delivery',
-		page: 'shared.breadcrumbRoutes.pages.webhooks',
-	},
-	'/dashboard/admin/team': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		page: 'shared.breadcrumbRoutes.pages.teamAccess',
-	},
-	'/dashboard/admin/instance/email-theme': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.instance',
-		subsectionHref: '/dashboard/admin/instance',
-		page: 'shared.breadcrumbRoutes.pages.emailTheme',
-	},
-	'/dashboard/admin/team/api': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.teamAccess',
-		subsectionHref: '/dashboard/admin/team',
-		page: 'shared.breadcrumbRoutes.pages.apiKeys',
-	},
-	'/dashboard/admin/team/api/docs': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.teamAccess',
-		subsectionHref: '/dashboard/admin/team',
-		page: 'shared.breadcrumbRoutes.pages.apiQuickstart',
-	},
-	'/dashboard/admin/team/senders': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.teamAccess',
-		subsectionHref: '/dashboard/admin/team',
-		page: 'shared.breadcrumbRoutes.pages.campaignSenders',
-	},
-	'/dashboard/admin/team/inboxes': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.teamAccess',
-		subsectionHref: '/dashboard/admin/team',
-		page: 'shared.breadcrumbRoutes.pages.teamInboxes',
-	},
-	'/dashboard/admin/team/connected-apps': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.teamAccess',
-		subsectionHref: '/dashboard/admin/team',
-		page: 'shared.breadcrumbRoutes.pages.connectedApps',
-	},
-	'/dashboard/admin/instance/forms': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.instance',
-		subsectionHref: '/dashboard/admin/instance',
-		page: 'shared.breadcrumbRoutes.pages.forms',
-	},
-	'/dashboard/admin/team/audit': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.teamAccess',
-		subsectionHref: '/dashboard/admin/team',
-		page: 'shared.breadcrumbRoutes.pages.auditLog',
-	},
-	'/dashboard/admin/instance/properties': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.instance',
-		subsectionHref: '/dashboard/admin/instance',
-		page: 'shared.breadcrumbRoutes.pages.contactProperties',
-	},
+	// Workspace settings (`/dashboard/admin/**`) are DERIVED — see
+	// `adminRouteConfigs` below.
 
 	// Preferences section (personal, per-user settings) is DERIVED — see
 	// `preferencesRouteConfigs` below.
 
-	// Automations section
-	'/dashboard/automations': {
-		section: 'shared.breadcrumbRoutes.sections.automations',
-		sectionHref: '/dashboard/automations',
-	},
-
 	...preferencesRouteConfigs(),
+	...adminRouteConfigs(),
 };

@@ -2,8 +2,9 @@
 /**
  * Switch-track toggle (track + sliding thumb), the control the dashboard
  * previously hand-rolled in three divergent idioms — several copies without
- * role="switch". For the icon-style toggle see UiToggle; for tri-state pack
- * toggles (on/partial/off) keep a bespoke control.
+ * role="switch". It is the one on/off control: the switch shows the state, so
+ * `label` names the setting, never "On"/"Off". For tri-state pack toggles
+ * (on/partial/off) keep a bespoke control.
  */
 interface Props {
 	modelValue?: boolean;

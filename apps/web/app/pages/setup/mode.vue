@@ -6,6 +6,14 @@ import {
 	type OperatingModeKey,
 } from '@owlat/shared/operatingModes';
 import { SETUP_WIZARD_STEPS } from '~/composables/useSetupWizard';
+import {
+	DEFAULT_SETUP_OUTCOME,
+	SETUP_OUTCOMES,
+	outcomeAnswersEmail,
+	outcomeFlags,
+	type SetupOutcome,
+} from '~/composables/setupWizardOutcomes';
+import { setupChoiceClass } from '~/utils/setupChoiceCard';
 
 definePageMeta({ layout: false });
 
@@ -24,14 +32,35 @@ const displaySteps = computed(() =>
 	SETUP_WIZARD_STEPS.map((step) => ({ ...step, label: t(step.label) }))
 );
 
-// Pre-fill the flag set from a named mode, then continue to the fine-tune step.
-function pick(key: OperatingModeKey) {
-	flags.value = operatingModeFlags(key);
+// The question most teams can answer: what do you want to do? The answer
+// pre-fills the feature flags; the next step fine-tunes them. "Both" is
+// preselected, so continuing without a click is the recommended setup.
+const outcome = useState<SetupOutcome>('setupOutcome', () => DEFAULT_SETUP_OUTCOME);
+const aiDrafts = useState<boolean>('setupOutcomeAiDrafts', () => false);
+const offersAiDrafts = computed(() => outcomeAnswersEmail(outcome.value));
+
+// The answer the flags were last filled from. Coming back to this step and
+// continuing with the same answer keeps whatever the operator tuned on the
+// Features step; only a different answer starts the flags over.
+const appliedAnswer = useState<string | null>('setupOutcomeApplied', () => null);
+
+function next() {
+	const withAiDrafts = aiDrafts.value && offersAiDrafts.value;
+	const answer = `outcome:${outcome.value}:${withAiDrafts}`;
+	if (appliedAnswer.value !== answer) {
+		flags.value = outcomeFlags(outcome.value, withAiDrafts);
+		appliedAnswer.value = answer;
+	}
 	router.push('/setup/features');
 }
 
-// Start from defaults and tune everything by hand.
-function custom() {
+// Advanced: start from one of the named operator presets instead.
+function pick(key: OperatingModeKey) {
+	const answer = `preset:${key}`;
+	if (appliedAnswer.value !== answer) {
+		flags.value = operatingModeFlags(key);
+		appliedAnswer.value = answer;
+	}
 	router.push('/setup/features');
 }
 </script>
@@ -63,111 +92,192 @@ function custom() {
 				>
 					<template #brand><span class="lp-title-accent">Owlat</span></template>
 				</I18nT>
-				<I18nT
-					keypath="setup.mode.intro"
-					tag="p"
-					scope="global"
-					class="text-text-secondary leading-relaxed"
-				>
-					<template #docsLink>
-						<a
-							href="https://docs.owlat.app/guide/operating-modes"
-							target="_blank"
-							rel="noopener"
-							class="link"
-							>{{ t('setup.mode.docsLink') }}</a
-						>
-					</template>
-				</I18nT>
+				<p class="text-text-secondary leading-relaxed">{{ t('setup.mode.intro') }}</p>
 			</header>
 
-			<!-- Fresh start vs. migration. Default: fresh (Owlat is its own platform).
-			     When "moving" is chosen, first-login onboarding offers a mail import.
+			<form @submit.prevent="next">
+				<!-- What the team wants to do, in their words. Selected cards use the
+				     brand-tinted border the rest of the wizard shares (setupChoiceCard). -->
+				<fieldset class="mb-8" data-testid="setup-outcomes">
+					<legend class="mb-3 text-sm font-medium text-text-primary">
+						{{ t('setup.mode.outcomeLegend') }}
+					</legend>
+					<div class="space-y-3">
+						<label
+							v-for="option in SETUP_OUTCOMES"
+							:key="option.key"
+							class="flex cursor-pointer items-start gap-3 p-5"
+							:class="setupChoiceClass(outcome === option.key)"
+							:data-testid="`setup-outcome-${option.key}`"
+						>
+							<input
+								v-model="outcome"
+								type="radio"
+								name="setup-outcome"
+								:value="option.key"
+								class="mt-1 accent-brand"
+							/>
+							<UiIconBox
+								:icon="option.icon"
+								size="sm"
+								:variant="outcome === option.key ? 'brand' : 'surface'"
+								rounded="lg"
+							/>
+							<span class="min-w-0 flex-1">
+								<span class="flex flex-wrap items-center gap-2 font-medium text-text-primary">
+									{{ t(option.label) }}
+									<UiBadge v-if="option.key === DEFAULT_SETUP_OUTCOME" variant="default">{{
+										t('setup.mode.recommended')
+									}}</UiBadge>
+								</span>
+								<span class="mt-1 block text-sm text-text-secondary">{{
+									t(option.description)
+								}}</span>
+							</span>
+						</label>
+					</div>
 
-			     Selection is the +10% surface tint one rung up the shadow ladder, not a
-			     painted terracotta border with a brand wash: DESIGN-LANGUAGE rule 2 makes
-			     elevation a shadow ring, and rule 1 leaves this screen's single accent to
-			     the step rail. -->
-
-			<fieldset class="card mb-8 p-5">
-				<legend class="px-2 text-sm font-medium text-text-primary">
-					{{ t('setup.mode.migrationLegend') }}
-				</legend>
-				<div class="mt-2 grid gap-3 sm:grid-cols-2">
-					<button
-						type="button"
-						:aria-pressed="!isMigrationMode"
-						class="rounded-xl border p-4 text-left transition-[border-color,background-color,box-shadow] duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-						:class="
-							!isMigrationMode
-								? 'border-transparent bg-(--surface-2-selected) shadow-surface-2'
-								: 'border-transparent bg-surface-1 shadow-surface-1 hover:shadow-surface-2'
-						"
-						@click="isMigrationMode = false"
+					<div
+						v-if="offersAiDrafts"
+						class="mt-4 flex items-start justify-between gap-4"
+						data-testid="setup-outcome-ai-drafts"
 					>
-						<span class="flex items-center gap-2 font-medium text-text-primary">
-							<Icon name="lucide:sparkles" class="h-4 w-4" />
-							{{ t('setup.mode.freshTitle') }}
-						</span>
-						<span class="mt-1 block text-sm text-text-secondary">{{
-							t('setup.mode.freshDesc')
-						}}</span>
-					</button>
-					<button
-						type="button"
-						:aria-pressed="isMigrationMode"
-						class="rounded-xl border p-4 text-left transition-[border-color,background-color,box-shadow] duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-						:class="
-							isMigrationMode
-								? 'border-transparent bg-(--surface-2-selected) shadow-surface-2'
-								: 'border-transparent bg-surface-1 shadow-surface-1 hover:shadow-surface-2'
-						"
-						@click="isMigrationMode = true"
-					>
-						<span class="flex items-center gap-2 font-medium text-text-primary">
-							<Icon name="lucide:import" class="h-4 w-4" />
-							{{ t('setup.mode.migratingTitle') }}
-						</span>
-						<span class="mt-1 block text-sm text-text-secondary">{{
-							t('setup.mode.migratingDesc')
-						}}</span>
-					</button>
-				</div>
-			</fieldset>
-
-			<ul class="space-y-3">
-				<li v-for="key in OPERATING_MODE_KEYS" :key="key">
-					<button
-						type="button"
-						class="group w-full text-left rounded-xl border border-transparent bg-surface-1 shadow-surface-1 p-5 transition-[border-color,box-shadow] duration-(--motion-fast) ease-spring hover:shadow-surface-2"
-						@click="pick(key)"
-					>
-						<div class="flex flex-wrap items-center gap-2">
-							<span class="font-medium text-text-primary">{{ t(OPERATING_MODES[key].label) }}</span>
-							<UiBadge v-if="OPERATING_MODES[key].needsDeliveryProvider" variant="warning">{{
-								t('setup.mode.needsDeliveryProvider')
-							}}</UiBadge>
-							<UiBadge v-else-if="OPERATING_MODES[key].needsMta" variant="neutral">{{
-								t('setup.mode.needsMta')
-							}}</UiBadge>
-							<UiBadge v-else variant="neutral">{{ t('setup.mode.noProviderNeeded') }}</UiBadge>
+						<div class="min-w-0">
+							<label for="setup-ai-drafts" class="block text-sm font-medium text-text-primary">
+								{{ t('setup.mode.aiDraftsLabel') }}
+							</label>
+							<p id="setup-ai-drafts-hint" class="text-sm text-text-tertiary">
+								{{ t('setup.mode.aiDraftsHint') }}
+							</p>
 						</div>
-						<p class="mt-1.5 text-sm text-text-secondary">{{ t(OPERATING_MODES[key].audience) }}</p>
-						<p class="mt-1 text-sm text-text-tertiary">{{ t(OPERATING_MODES[key].description) }}</p>
-					</button>
-				</li>
-			</ul>
+						<UiSwitch
+							id="setup-ai-drafts"
+							v-model="aiDrafts"
+							aria-describedby="setup-ai-drafts-hint"
+						/>
+					</div>
+				</fieldset>
 
-			<footer class="mt-8 flex items-center justify-between border-t border-border-subtle pt-6">
-				<UiButton variant="ghost" @click="router.push('/setup')">
-					<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4 mr-2" /></template>
-					{{ t('common.back') }}
-				</UiButton>
-				<UiButton variant="secondary" @click="custom">
-					{{ t('setup.mode.custom') }}
-					<template #iconRight><Icon name="lucide:arrow-right" class="w-4 h-4 ml-2" /></template>
-				</UiButton>
-			</footer>
+				<!-- Fresh start vs. migration. Default: fresh (Owlat is its own platform).
+				     When "moving" is chosen, first-login onboarding offers a mail import. -->
+				<fieldset class="mb-8">
+					<legend class="mb-3 text-sm font-medium text-text-primary">
+						{{ t('setup.mode.migrationLegend') }}
+					</legend>
+					<div class="grid gap-3 sm:grid-cols-2">
+						<label
+							class="flex cursor-pointer items-start gap-3 p-4"
+							:class="setupChoiceClass(!isMigrationMode)"
+						>
+							<input
+								type="radio"
+								name="setup-migration"
+								class="mt-1 accent-brand"
+								:checked="!isMigrationMode"
+								@change="isMigrationMode = false"
+							/>
+							<span>
+								<span class="flex items-center gap-2 font-medium text-text-primary">
+									<Icon name="lucide:sparkles" class="h-4 w-4" />
+									{{ t('setup.mode.freshTitle') }}
+								</span>
+								<span class="mt-1 block text-sm text-text-secondary">{{
+									t('setup.mode.freshDesc')
+								}}</span>
+							</span>
+						</label>
+						<label
+							class="flex cursor-pointer items-start gap-3 p-4"
+							:class="setupChoiceClass(isMigrationMode)"
+						>
+							<input
+								type="radio"
+								name="setup-migration"
+								class="mt-1 accent-brand"
+								:checked="isMigrationMode"
+								@change="isMigrationMode = true"
+							/>
+							<span>
+								<span class="flex items-center gap-2 font-medium text-text-primary">
+									<Icon name="lucide:import" class="h-4 w-4" />
+									{{ t('setup.mode.migratingTitle') }}
+								</span>
+								<span class="mt-1 block text-sm text-text-secondary">{{
+									t('setup.mode.migratingDesc')
+								}}</span>
+							</span>
+						</label>
+					</div>
+				</fieldset>
+
+				<!-- The eight operator presets, for people who want a specific shape.
+				     Picking one replaces the answer above and moves on. -->
+				<details class="mb-2 rounded-xl bg-surface-1 shadow-surface-1" data-testid="setup-presets">
+					<summary
+						class="cursor-pointer select-none px-5 py-4 text-sm font-medium text-text-primary"
+					>
+						{{ t('setup.mode.advancedSummary') }}
+					</summary>
+					<div class="px-5 pb-5">
+						<p class="mb-3 text-sm text-text-secondary">
+							<I18nT keypath="setup.mode.advancedIntro" scope="global">
+								<template #docsLink>
+									<a
+										href="https://docs.owlat.app/guide/operating-modes"
+										target="_blank"
+										rel="noopener"
+										class="link"
+										>{{ t('setup.mode.docsLink') }}</a
+									>
+								</template>
+							</I18nT>
+						</p>
+						<ul class="space-y-3">
+							<li v-for="key in OPERATING_MODE_KEYS" :key="key">
+								<button
+									type="button"
+									class="w-full p-4"
+									:class="setupChoiceClass(false)"
+									:data-testid="`setup-preset-${key}`"
+									@click="pick(key)"
+								>
+									<span class="flex flex-wrap items-center gap-2">
+										<span class="font-medium text-text-primary">{{
+											t(OPERATING_MODES[key].label)
+										}}</span>
+										<UiBadge v-if="OPERATING_MODES[key].needsDeliveryProvider" variant="neutral">{{
+											t('setup.mode.needsDeliveryProvider')
+										}}</UiBadge>
+										<UiBadge v-else-if="OPERATING_MODES[key].needsMta" variant="neutral">{{
+											t('setup.mode.needsMta')
+										}}</UiBadge>
+										<UiBadge v-else variant="neutral">{{
+											t('setup.mode.noProviderNeeded')
+										}}</UiBadge>
+									</span>
+									<span class="mt-1.5 block text-sm text-text-secondary">{{
+										t(OPERATING_MODES[key].audience)
+									}}</span>
+									<span class="mt-1 block text-sm text-text-tertiary">{{
+										t(OPERATING_MODES[key].description)
+									}}</span>
+								</button>
+							</li>
+						</ul>
+					</div>
+				</details>
+
+				<footer class="mt-8 flex items-center justify-between border-t border-border-subtle pt-6">
+					<UiButton type="button" variant="ghost" @click="router.push('/setup')">
+						<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4 mr-2" /></template>
+						{{ t('common.back') }}
+					</UiButton>
+					<UiButton type="submit" variant="primary" data-testid="setup-mode-next">
+						{{ t('setup.mode.next') }}
+						<template #iconRight><Icon name="lucide:arrow-right" class="w-4 h-4 ml-2" /></template>
+					</UiButton>
+				</footer>
+			</form>
 		</div>
 	</div>
 </template>

@@ -3,9 +3,9 @@ import { NuxtLink } from '#components';
 import { api } from '@owlat/api';
 import { buildGettingStarted, type InstanceFlagId } from '~/utils/gettingStarted';
 import {
-	AI_CONNECTED_STEP_ID,
+	completedChecklistSteps,
 	isAiConnected,
-	visibleChecklistSteps,
+	type ChecklistAudience,
 	type ChecklistStepId,
 	type OnboardingMode,
 } from '~/utils/welcomeFlow';
@@ -137,19 +137,48 @@ const mode = computed<OnboardingMode>(() =>
 
 const aiConfigured = computed(() => isAiConnected(flagsConfigStatus.value));
 
-// The resolved set of completed personal step ids. `aiConnected` is org-scoped
-// (derived from AI config); every other step is a per-user stamp.
-const personalCompleted = computed<ReadonlySet<ChecklistStepId>>(() => {
-	const done = new Set<ChecklistStepId>();
-	for (const step of visibleChecklistSteps(mode.value)) {
-		const complete =
-			step.id === AI_CONNECTED_STEP_ID
-				? aiConfigured.value
-				: (onboarding.value?.[step.id] ?? null) !== null;
-		if (complete) done.add(step.id);
+// Whose personal list this is: a member gets their own three steps (name,
+// signature, notifications); an admin also gets the instance-facing ones.
+const audience = computed<ChecklistAudience>(() => (isInstanceViewer.value ? 'admin' : 'member'));
+
+// The member's own steps are read from real state rather than stamps: the
+// mailbox's display name, whether it has a signature, and the notification
+// setting. These are the same records the welcome form writes.
+const { currentMailbox, isLoading: isLoadingMailbox } = usePostboxMailbox();
+const { data: signatures, isLoading: isLoadingSignatures } = useConvexQuery(
+	api.mail.signatures.list,
+	() => {
+		const mailbox = currentMailbox.value;
+		return audience.value === 'member' && mailbox ? { mailboxId: mailbox._id } : 'skip';
 	}
-	return done;
-});
+);
+const { data: mailSettings, isLoading: isLoadingMailSettings } = useConvexQuery(
+	api.mail.settings.get,
+	() => (audience.value === 'member' ? {} : 'skip')
+);
+const isLoadingMemberSignals = computed(
+	() =>
+		audience.value === 'member' &&
+		(isLoadingMailbox.value ||
+			(currentMailbox.value !== null && isLoadingSignatures.value) ||
+			isLoadingMailSettings.value)
+);
+
+// The resolved set of completed personal step ids — stamps, the org-scoped
+// `aiConnected`, and the member's derived steps (see `completedChecklistSteps`).
+const personalCompleted = computed<ReadonlySet<ChecklistStepId>>(() =>
+	completedChecklistSteps(mode.value, audience.value, {
+		stamps: onboarding.value,
+		aiConfigured: aiConfigured.value,
+		hasDisplayName: Boolean(currentMailbox.value?.displayName?.trim()),
+		hasSignature: (signatures.value?.length ?? 0) > 0,
+		// The welcome form confirms the choice even when it keeps the default,
+		// and only stamps `mailboxReady` once it has been submitted.
+		hasChosenNotifications:
+			mailSettings.value?.notifyAbout !== undefined ||
+			(onboarding.value?.mailboxReady ?? null) !== null,
+	})
+);
 
 const instanceFlags = computed<Record<InstanceFlagId, boolean>>(() => ({
 	sendPathReady: instanceProgress.value?.sendPathReady ?? false,
@@ -168,6 +197,7 @@ const isLoading = computed(
 		isLoadingOnboarding.value ||
 		isLoadingSettings.value ||
 		isLoadingAiConfig.value ||
+		isLoadingMemberSignals.value ||
 		(isInstanceViewer.value && isLoadingInstance.value)
 );
 

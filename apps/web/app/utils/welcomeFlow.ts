@@ -41,7 +41,28 @@ export type ChecklistStepId =
 	| 'importDone'
 	| 'knowledgeIndexed'
 	| 'sendingSwitched'
-	| 'firstSendDone';
+	| 'firstSendDone'
+	| MemberStepId;
+
+/**
+ * The three steps a regular member is asked for: the name people see, a
+ * signature, and how much to be notified about. They are exactly what the
+ * fresh-start welcome form sets, so each links there. Their completion is read
+ * from real state (the mailbox's display name, its signatures, the
+ * notification setting), not from a `userOnboarding` stamp.
+ */
+export type MemberStepId = 'profileName' | 'signature' | 'notifications';
+
+/** The steps whose completion IS a `userOnboarding` stamp on the backend. */
+export type StampedChecklistStepId = Exclude<ChecklistStepId, MemberStepId | 'aiConnected'>;
+
+/**
+ * Who the personal checklist is for. A member sees only their own three steps
+ * (plus the import steps when the instance is bringing mail over); everything
+ * that touches instance setup — the AI provider, mailbox provisioning, the
+ * first test send — stays with admins.
+ */
+export type ChecklistAudience = 'admin' | 'member';
 
 /**
  * The single checklist step whose completion is sourced from the org's
@@ -136,7 +157,7 @@ export const CHECKLIST_STEPS: readonly ChecklistStepMeta[] = [
 		id: 'sendingSwitched',
 		title: 'shared.welcomeFlow.steps.sendingSwitched.title',
 		description: 'shared.welcomeFlow.steps.sendingSwitched.description',
-		href: '/dashboard/preferences#postbox-sending-heading',
+		href: '/dashboard/preferences/external-account#postbox-sending-heading',
 		cta: 'shared.welcomeFlow.steps.sendingSwitched.cta',
 		icon: 'lucide:refresh-cw',
 		migrationOnly: true,
@@ -152,12 +173,98 @@ export const CHECKLIST_STEPS: readonly ChecklistStepMeta[] = [
 	},
 ] as const;
 
+/** A member's own steps, in the order the welcome form asks for them. */
+export const MEMBER_STEPS: readonly ChecklistStepMeta[] = [
+	{
+		id: 'profileName',
+		title: 'shared.welcomeFlow.steps.profileName.title',
+		description: 'shared.welcomeFlow.steps.profileName.description',
+		href: '/welcome',
+		cta: 'shared.welcomeFlow.steps.profileName.cta',
+		icon: 'lucide:user-round',
+		migrationOnly: false,
+	},
+	{
+		id: 'signature',
+		title: 'shared.welcomeFlow.steps.signature.title',
+		description: 'shared.welcomeFlow.steps.signature.description',
+		href: '/welcome',
+		cta: 'shared.welcomeFlow.steps.signature.cta',
+		icon: 'lucide:signature',
+		migrationOnly: false,
+	},
+	{
+		id: 'notifications',
+		title: 'shared.welcomeFlow.steps.notifications.title',
+		description: 'shared.welcomeFlow.steps.notifications.description',
+		href: '/welcome',
+		cta: 'shared.welcomeFlow.steps.notifications.cta',
+		icon: 'lucide:bell',
+		migrationOnly: false,
+	},
+] as const;
+
 /**
- * The checklist steps visible for `mode`. In fresh-start mode the import and
- * post-import steps are hidden entirely; in migration mode every step shows.
+ * The checklist steps visible for `mode` and `audience`. In fresh-start mode
+ * the import and post-import steps are hidden entirely; in migration mode they
+ * show for everyone, because bringing your own mail over is personal. A member
+ * otherwise sees only {@link MEMBER_STEPS}; an admin sees the full list.
  */
-export function visibleChecklistSteps(mode: OnboardingMode): ChecklistStepMeta[] {
+export function visibleChecklistSteps(
+	mode: OnboardingMode,
+	audience: ChecklistAudience = 'admin'
+): ChecklistStepMeta[] {
+	if (audience === 'member') {
+		const migration =
+			mode === 'migration' ? CHECKLIST_STEPS.filter((step) => step.migrationOnly) : [];
+		return [...MEMBER_STEPS, ...migration];
+	}
 	return CHECKLIST_STEPS.filter((step) => mode === 'migration' || !step.migrationOnly);
+}
+
+/** The real state each non-stamp step's completion is read from. */
+export interface ChecklistSignals {
+	/** The member's `userOnboarding` row (`null`/`undefined` before the first write). */
+	stamps: Partial<Record<StampedChecklistStepId, number | null | undefined>> | null | undefined;
+	/** An AI provider is configured for the instance (see {@link isAiConnected}). */
+	aiConfigured: boolean;
+	/** The member's mailbox carries a display name. */
+	hasDisplayName: boolean;
+	/** The member's mailbox has at least one signature. */
+	hasSignature: boolean;
+	/**
+	 * The member chose a notification scope: either saved one explicitly or
+	 * finished the welcome form, where the choice is confirmed.
+	 */
+	hasChosenNotifications: boolean;
+}
+
+function isStepComplete(id: ChecklistStepId, signals: ChecklistSignals): boolean {
+	switch (id) {
+		case 'aiConnected':
+			return signals.aiConfigured;
+		case 'profileName':
+			return signals.hasDisplayName;
+		case 'signature':
+			return signals.hasSignature;
+		case 'notifications':
+			return signals.hasChosenNotifications;
+		default:
+			return (signals.stamps?.[id] ?? null) !== null;
+	}
+}
+
+/** The completed subset of the steps visible for `mode` and `audience`. */
+export function completedChecklistSteps(
+	mode: OnboardingMode,
+	audience: ChecklistAudience,
+	signals: ChecklistSignals
+): Set<ChecklistStepId> {
+	const done = new Set<ChecklistStepId>();
+	for (const step of visibleChecklistSteps(mode, audience)) {
+		if (isStepComplete(step.id, signals)) done.add(step.id);
+	}
+	return done;
 }
 
 /**
@@ -167,9 +274,10 @@ export function visibleChecklistSteps(mode: OnboardingMode): ChecklistStepMeta[]
  */
 export function isChecklistComplete(
 	mode: OnboardingMode,
-	completed: ReadonlySet<ChecklistStepId>
+	completed: ReadonlySet<ChecklistStepId>,
+	audience: ChecklistAudience = 'admin'
 ): boolean {
-	return visibleChecklistSteps(mode).every((step) => completed.has(step.id));
+	return visibleChecklistSteps(mode, audience).every((step) => completed.has(step.id));
 }
 
 /**

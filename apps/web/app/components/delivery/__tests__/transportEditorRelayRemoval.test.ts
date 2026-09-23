@@ -60,7 +60,7 @@ function mountEditor(currentProvider = 'ses') {
 }
 
 async function beginEditing(wrapper: ReturnType<typeof mountEditor>): Promise<void> {
-	const edit = wrapper.findAll('button').find((node) => node.text().includes('Edit transport'));
+	const edit = wrapper.findAll('button').find((node) => node.text().includes('Change provider'));
 	if (edit === undefined) throw new Error('The editor never offered its edit affordance');
 	await edit.trigger('click');
 }

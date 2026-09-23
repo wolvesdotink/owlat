@@ -259,34 +259,36 @@ const advanceIds = computed(() =>
 		:data-reading-pane="readingPane"
 		:style="paneStyle"
 	>
-		<!-- Landing mode: the focused Today column replaces the three panes on
-		     the inbox route until the user opens a message or switches to
-		     Browse (header button / B / Esc back). pbx-fade is opacity-only and
-		     inert under prefers-reduced-motion. -->
+		<!-- Pane 1: folder rail — collapsible icon strip; self-contained (search,
+		     folder CRUD, labels, Answer queue/Snoozed/Contacts, Cmd+Shift+D).
+		     Below lg the drawer wrapper takes it off-canvas so the list gets the
+		     full width. It sits outside the mode switch so the folders stay in
+		     reach in both Priority and All mail. -->
+		<PostboxFolderDrawer
+			v-model:open="railOpen"
+			:mailbox-id="mailboxId"
+			:folder-role="folderRole"
+			:folder-id="folderId"
+		/>
+
+		<!-- Landing mode: the focused Priority column replaces the list and
+		     reader on the inbox route until the user opens a message or switches
+		     to All mail (header switch / B / Esc back). pbx-fade is opacity-only
+		     and inert under prefers-reduced-motion. -->
 		<Transition name="pbx-fade" mode="out-in">
 			<PostboxTodayView
 				v-if="todayActive"
 				:mailbox-id="mailboxId"
 				:initial-message-id="activeMessageId"
 				@browse="switchInboxMode('browse')"
+				@open-rail="railOpen = true"
 				@view-auto-filed="viewAutoFiled"
 				@reader-closed="onTodayReaderClosed"
 			/>
+			<!-- The list + reader split. Its own flex container so the reading
+			     pane can flip it to a column ('bottom') without taking the folder
+			     rail with it. -->
 			<div v-else class="flex w-full min-w-0">
-				<!-- Pane 1: folder rail — collapsible icon strip; self-contained (search,
-		     folder CRUD, labels, Reply Queue/Snoozed/Contacts, Cmd+Shift+D).
-		     Below lg the drawer wrapper takes it off-canvas so the list gets the
-		     full width. -->
-				<PostboxFolderDrawer
-					v-model:open="railOpen"
-					:mailbox-id="mailboxId"
-					:folder-role="folderRole"
-					:folder-id="folderId"
-				/>
-
-				<!-- The list + reader split. Its own flex container so the reading
-				     pane can flip it to a column ('bottom') without taking the folder
-				     rail with it. -->
 				<div class="pbx-pane-split flex flex-1 min-w-0 min-h-0">
 					<!-- Pane 2: thread/message list — the whole width below lg, and hidden
 			     entirely once a message is open (the reader takes over). Its lg
@@ -484,8 +486,6 @@ const advanceIds = computed(() =>
 				</div>
 			</div>
 		</Transition>
-
-		<PostboxComposeFab :mailbox-id="mailboxId" :hidden="!!activeMessageId" />
 
 		<PostboxShortcutHelp />
 	</div>

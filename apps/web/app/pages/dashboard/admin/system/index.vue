@@ -110,7 +110,7 @@ function formatDuration(start?: number, end?: number) {
 </script>
 
 <template>
-	<div class="max-w-[960px] mx-auto p-8 space-y-6">
+	<div class="space-y-6">
 		<!-- Page header -->
 		<div>
 			<h1 class="mt-2 text-2xl font-medium tracking-[-0.02em] text-text-primary">

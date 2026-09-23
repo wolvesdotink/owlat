@@ -3,8 +3,8 @@
  *
  * The sidebar renders one *context* (workspace) at a time so it stays focused
  * on what the user is currently doing: Conversations (Today, the Answer queue,
- * every inbox, Chat) or Marketing (Overview, Campaigns, Automations, Audience,
- * Templates). Assistant, Knowledge and Settings are shared — owned by neither,
+ * every inbox, Chat, Knowledge) or Marketing (Overview, Campaigns, Automations,
+ * Audience, Templates). Assistant and Settings are shared — owned by neither,
  * reached from the sidebar footer and ⌘K rather than listed in either.
  *
  * The route is the source of truth: landing anywhere inside a context's route
@@ -30,7 +30,7 @@ const SECTION_CONTEXT: Record<SectionKey, SidebarContext | 'shared'> = {
 	assistant: 'shared',
 	send: 'marketing',
 	audience: 'marketing',
-	knowledge: 'shared',
+	knowledge: 'inbox',
 	administration: 'shared',
 	preferences: 'shared',
 };
@@ -47,6 +47,8 @@ const CONTEXT_ROUTE_PREFIXES: Record<SidebarContext, string[]> = {
 		'/dashboard/answer',
 		'/dashboard/postbox',
 		'/dashboard/chat',
+		'/dashboard/knowledge',
+		'/dashboard/files',
 	],
 	marketing: [
 		'/dashboard/marketing',

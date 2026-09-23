@@ -6,7 +6,7 @@ import type { NavigationItem } from '~/lib/dashboardNavigationCore';
  * sidebar lists the work, not pages). Three pinned destinations — Today, the
  * Answer queue, All inboxes — then every inbox the viewer reads with its
  * latest conversations and one status each, the team inbox for owners/admins,
- * and chat. Collapsed (the icon rail) it keeps the pinned icons and one swatch
+ * chat, and Knowledge for every member while it is on. Collapsed (the icon rail) it keeps the pinned icons and one swatch
  * per inbox.
  */
 const props = defineProps<{
@@ -25,6 +25,11 @@ const { perInbox, sort, isCollapsed, toggleGroup } = useShellSidebarPrefs();
 
 const showTeamInbox = computed(() => isAdmin.value && isEnabled('inbox'));
 const showChat = computed(() => isAdmin.value && isEnabled('chat'));
+// Knowledge is for every member (the welcome page promises it to all), so it
+// is gated on the feature alone. Named with the navigation table's own key, so
+// the sidebar and ⌘K say the same word.
+const showKnowledge = computed(() => isEnabled('ai.knowledge'));
+const KNOWLEDGE_HREF = '/dashboard/knowledge';
 
 const pinned = computed(() => [
 	{
@@ -130,6 +135,17 @@ function isActive(to: string, exact: boolean): boolean {
 			>
 				<Icon name="lucide:message-circle" class="size-4.5" />
 			</NuxtLink>
+			<NuxtLink
+				v-if="showKnowledge"
+				:to="KNOWLEDGE_HREF"
+				:title="t('shared.dashboardNavigation.sections.knowledge')"
+				:aria-current="isActive(KNOWLEDGE_HREF, false) ? 'page' : undefined"
+				class="flex justify-center rounded-lg py-2 hover:bg-(--surface-2-hover) hover:text-text-primary"
+				:class="isActive(KNOWLEDGE_HREF, false) ? 'text-brand' : 'text-text-tertiary'"
+				data-testid="shell-nav-knowledge"
+			>
+				<Icon name="lucide:brain" class="size-4.5" />
+			</NuxtLink>
 		</template>
 
 		<template v-else>
@@ -163,6 +179,27 @@ function isActive(to: string, exact: boolean): boolean {
 				:collapsed="isCollapsed('chat')"
 				@toggle="toggleGroup('chat')"
 			/>
+			<NuxtLink
+				v-if="showKnowledge"
+				:to="KNOWLEDGE_HREF"
+				:aria-current="isActive(KNOWLEDGE_HREF, false) ? 'page' : undefined"
+				class="mt-3 flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+				:class="
+					isActive(KNOWLEDGE_HREF, false)
+						? 'bg-(--surface-2-selected) text-text-primary'
+						: 'text-text-secondary hover:bg-(--surface-2-hover) hover:text-text-primary'
+				"
+				data-testid="shell-nav-knowledge"
+			>
+				<Icon
+					name="lucide:brain"
+					class="size-4.5 shrink-0"
+					:class="isActive(KNOWLEDGE_HREF, false) ? 'text-brand' : 'text-text-tertiary'"
+				/>
+				<span class="flex-1 truncate">{{
+					t('shared.dashboardNavigation.sections.knowledge')
+				}}</span>
+			</NuxtLink>
 			<template v-if="extraItems.length > 0">
 				<div class="mt-3 px-2 text-2xs font-medium uppercase tracking-wider text-text-tertiary">
 					{{ t('components.shell.nav.more') }}

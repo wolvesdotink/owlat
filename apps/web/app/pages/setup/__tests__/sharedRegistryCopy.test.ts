@@ -33,6 +33,7 @@ function mountPage(component: typeof SetupModePage) {
 		stubs: {
 			UiBadge: true,
 			UiCard: { template: '<div><slot /></div>' },
+			UiSwitch: true,
 			UiErrorAlert: true,
 			UiHeroField: true,
 			UiStepIndicator: true,
@@ -69,7 +70,7 @@ describe('setup wizard — shared registry copy', () => {
 		const wrapper = mountPage(SetupFeaturesPage);
 		const text = wrapper.text();
 
-		expect(text).toContain('Email Client');
+		expect(text).toContain('Email client');
 		expect(text).toContain('Inbox, chat, and personal mail (Postbox) as one bundle.');
 		expect(text).toContain('Marketing campaigns');
 		expect(text).toContain('Schedule and send broadcast campaigns to contacts and segments.');

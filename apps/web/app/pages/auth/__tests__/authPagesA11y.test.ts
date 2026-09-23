@@ -10,11 +10,14 @@
  * that only exists once something has gone wrong.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ref } from 'vue';
 import { auditA11y, installNuxtStubs } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 // The shared hero shell carries the page's <h1>, so it has to be resolved for
 // the audit to see the heading — an unresolved wrapper drops its named slots.
 import AuthShell from '~/components/auth/AuthShell.vue';
+import AuthPasswordInput from '~/components/auth/AuthPasswordInput.vue';
+import AuthLegalFooter from '~/components/auth/AuthLegalFooter.vue';
 import LoginPage from '../login.vue';
 import RegisterPage from '../register.vue';
 import ForgotPasswordPage from '../forgot-password.vue';
@@ -36,6 +39,7 @@ beforeEach(() => {
 		// `safeRedirect` is an auto-imported util the login page calls on submit.
 		safeRedirect: (target: unknown, fallback: string) =>
 			typeof target === 'string' ? target : fallback,
+		useRecipientSender: () => ({ senderName: ref(null), contactEmail: ref(null) }),
 	});
 });
 
@@ -54,7 +58,10 @@ const pages = [
 describe.each(pages)('$name page — accessibility', ({ component, loaded, invalidFields }) => {
 	it('has no axe violations at rest', async () => {
 		const violations = await auditA11y(component, {
-			global: { plugins: [createTestI18n()], components: { AuthShell } },
+			global: {
+				plugins: [createTestI18n()],
+				components: { AuthShell, AuthPasswordInput, AuthLegalFooter },
+			},
 			prepare: (wrapper) => expect(wrapper.text()).toContain(loaded),
 		});
 		expect(violations).toEqual([]);
@@ -62,7 +69,10 @@ describe.each(pages)('$name page — accessibility', ({ component, loaded, inval
 
 	it('has no axe violations once every field has failed validation', async () => {
 		const violations = await auditA11y(component, {
-			global: { plugins: [createTestI18n()], components: { AuthShell } },
+			global: {
+				plugins: [createTestI18n()],
+				components: { AuthShell, AuthPasswordInput, AuthLegalFooter },
+			},
 			// Submitting the empty form is the shortest path to the error branch:
 			// each field's validator fires and renders its message.
 			prepare: async (wrapper) => {

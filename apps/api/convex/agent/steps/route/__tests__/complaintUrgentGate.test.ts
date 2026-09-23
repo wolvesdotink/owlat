@@ -43,6 +43,8 @@ function makeCtx(classification: { category: string; priority: string } | undefi
 					: {}),
 			},
 			getBudgetStatus: { autonomousAutoSendAllowed: true },
+			// Shadow off: these cases exercise the real send decision.
+			getShadowMode: { enabled: false },
 		},
 		mutations: { incrementDailyCount: { allowed: true } },
 	});

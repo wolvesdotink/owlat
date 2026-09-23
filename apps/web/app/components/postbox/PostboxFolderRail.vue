@@ -2,6 +2,7 @@
 import type { Id } from '@owlat/api/dataModel';
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import { resolveActiveShortcut } from '~/utils/shortcutScope';
+import { answerQueueHrefFor } from '~/utils/postboxReplyQueue';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -33,9 +34,19 @@ const moreFolders = computed(() =>
 const { collapsed: savedCollapsed, toggle: toggleRail } = usePostboxRailCollapsed();
 const railCollapsed = computed(() => !props.forceExpanded && savedCollapsed.value);
 
-// Reply Queue rail badge (the count subscription is shared/deduped with the
-// inbox strip in PostboxLayout).
+// Answer queue row: the one queue, filtered to this mailbox, with a count that
+// says which mailbox it covers — the sidebar's Answer queue counts every inbox,
+// so a bare number here read as a second queue that disagreed with it (#767).
+// The count subscription is shared/deduped with the inbox strip in PostboxLayout.
 const { count: replyQueueCount } = usePostboxReplyQueue(mailboxIdRef);
+const { sections: mailboxSections } = usePostboxMailbox();
+const mailboxName = computed(
+	() =>
+		[...mailboxSections.value.personal, ...mailboxSections.value.team].find(
+			(mailbox) => mailbox.mailboxId === props.mailboxId
+		)?.label ?? t('components.postbox.postboxFolderRail.thisInbox')
+);
+const answerQueueHref = computed(() => answerQueueHrefFor(props.mailboxId));
 
 // Folder and label CRUD used to live on these rows as hover-revealed pencils
 // and trashcans plus two header buttons. They are setup-time verbs, so they all
@@ -149,14 +160,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 		class="border-r border-border-subtle bg-bg-elevated flex flex-col"
 		:class="railCollapsed ? 'w-12 p-2 gap-1.5 items-center' : 'w-56 p-3 gap-2'"
 	>
-		<!-- Identity + the one primary verb, in one compact block. The mailbox
-		     switcher is a single small chip (it was a stacked section with two
-		     headings and a row per mailbox) and still renders nothing at all for
-		     a lone personal mailbox — a chip offering one choice is chrome. -->
-		<div class="flex flex-col gap-1.5" :class="{ 'items-center': railCollapsed }">
-			<PostboxMailboxSwitcher :mailbox-id="mailboxId" :collapsed="railCollapsed" />
-			<PostboxComposeButton :mailbox-id="mailboxId" :collapsed="railCollapsed" />
-		</div>
+		<!-- Identity. The mailbox switcher is a single small chip and renders
+		     nothing at all for a lone personal mailbox — a chip offering one
+		     choice is chrome. Compose is the top bar's (and the phone tab bar's)
+		     one create button, so the rail no longer carries a second one. -->
+		<PostboxMailboxSwitcher :mailbox-id="mailboxId" :collapsed="railCollapsed" />
 
 		<PostboxFolderList
 			:folders="primaryFolders"
@@ -165,19 +173,28 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 			:collapsed="railCollapsed"
 		/>
 
-		<!-- Reply Queue — the AI task list of emails waiting on a reply. A virtual
-		     view like Snoozed (threads stay in their folders), but it carries a
-		     live count and a workflow, so it stays out of "More". -->
+		<!-- Answer queue — mail in this mailbox waiting on a reply. It opens the
+		     one Answer queue filtered to this mailbox, and its count names the
+		     mailbox so it cannot be mistaken for the all-inbox count. -->
 		<PostboxRailLink
-			to="/dashboard/postbox/reply-queue"
+			:to="answerQueueHref"
 			icon="lucide:reply"
 			:label="t('components.postbox.postboxFolderRail.replyQueue')"
 			:collapsed="railCollapsed"
 			:count="replyQueueCount"
+			:count-text="
+				t(
+					'components.postbox.postboxFolderRail.replyQueueScopedCount',
+					{ count: replyQueueCount, name: mailboxName },
+					replyQueueCount
+				)
+			"
 			:count-label="
-				t('components.postbox.postboxFolderRail.replyQueueAriaLabel', {
-					count: replyQueueCount,
-				})
+				t(
+					'components.postbox.postboxFolderRail.replyQueueAriaLabel',
+					{ count: replyQueueCount, name: mailboxName },
+					replyQueueCount
+				)
 			"
 		/>
 

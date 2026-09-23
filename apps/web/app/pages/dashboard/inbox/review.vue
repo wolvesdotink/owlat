@@ -1,29 +1,16 @@
 <script setup lang="ts">
-import ReviewApproveUndoToast from '~/components/agent-tasks/ReviewApproveUndoToast.vue';
-import ReviewBrowseList from '~/components/agent-tasks/ReviewBrowseList.vue';
-
-const { t } = useI18n();
-
-useHead({ title: () => t('dashboard.inbox.review.pageTitle') });
-
+/**
+ * Retired: "Team drafts to review" was a second answer queue with its own
+ * layout, colours and shortcut legend. The Answer queue, filtered to the team
+ * inbox, is the one place drafts are reviewed and sent; old links land there.
+ * Its bulk approve/reject list went with it on purpose (#767): drafts are
+ * reviewed one card at a time, with the shortcuts each card shows.
+ */
 definePageMeta({
-	layout: 'dashboard',
-	middleware: 'auth',
-	requiresFeature: 'inbox',
+	redirect: { path: '/dashboard/answer', query: { in: 'team' } },
 });
-
-// The keyboard-first browse list of every agent draft (bulk approve/reject).
-// "Focus" — one card at a time — is the Answer queue, filtered to the team
-// inbox, where these drafts sit alongside everything else waiting on you.
-function focusInAnswerQueue() {
-	void navigateTo({ path: '/dashboard/answer', query: { in: 'team' } });
-}
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
-		<ReviewBrowseList @focus="focusInAnswerQueue" />
-		<!-- One shared countdown-undo toast for approvals ("Approved — Undo (14s)"). -->
-		<ReviewApproveUndoToast />
-	</div>
+	<div />
 </template>

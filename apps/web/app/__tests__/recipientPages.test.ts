@@ -81,3 +81,17 @@ describe('framed email stays readable and sandboxed', () => {
 		expect(pages[name]).toMatch(/<iframe[\s\S]*?title="[^"]+"/);
 	});
 });
+
+describe('recipient pages are headed by the sender, not the platform', () => {
+	it.each(cardPages)('%s never uses "Owlat" as its heading', (name) => {
+		// The recipient knows the sender, not Owlat; "Owlat" as the heading of an
+		// unsubscribe page reads like phishing. Owlat is the footer credit only.
+		expect(pages[name]).not.toMatch(/<h1[^>]*>\s*Owlat\s*<\/h1>/);
+		expect(pages[name]).toContain('<RecipientHeader');
+		expect(pages[name]).toContain('<RecipientFooter');
+	});
+
+	it.each(cardPages)('%s offers the sender address when the link fails', (name) => {
+		expect(pages[name]).toContain('<RecipientContactHint');
+	});
+});

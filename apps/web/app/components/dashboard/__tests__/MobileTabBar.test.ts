@@ -15,6 +15,7 @@ import { ref, defineComponent, h } from 'vue';
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 
 import MobileTabBar from '../MobileTabBar.vue';
+import { buildNavigationSections } from '~/lib/dashboardNavigation';
 
 let flags: readonly FeatureFlagKey[] | 'all';
 let path: string;
@@ -79,6 +80,15 @@ beforeEach(() => {
 	vi.stubGlobal('usePostboxComposerStack', () => ({ activeComposerId }));
 	vi.stubGlobal('useRailDrawer', () => ({ isOpen: railDrawerOpen, setOpen: vi.fn() }));
 	vi.stubGlobal('useAnswerQueue', () => ({ count: answerCount }));
+	vi.stubGlobal('useDashboardNavigation', () => ({
+		navigationSections: computed(() =>
+			buildNavigationSections({
+				isFeatureEnabled: (flag) => flags === 'all' || flags.includes(flag),
+				isDesktop: false,
+				role: 'owner',
+			})
+		),
+	}));
 });
 
 afterEach(() => {
@@ -134,11 +144,39 @@ describe('slots', () => {
 			.filter((link) => link.attributes('aria-current') === 'page');
 		expect(current.map((link) => link.attributes('href'))).toEqual(['/dashboard/answer']);
 	});
+});
 
-	it('hands the drawer back to the shell instead of owning it', async () => {
+describe('More (#778)', () => {
+	it('opens a list of the destinations the bar does not hold, not the full drawer', async () => {
 		const bar = mountBar();
 		await bar.get('[data-testid="mobile-tab-bar-more"]').trigger('click');
-		expect(bar.emitted('openNavigation')).toHaveLength(1);
+		expect(bar.emitted('openNavigation')).toBeUndefined();
+
+		const hrefs = bar
+			.findAll('[data-testid="mobile-tab-bar-more-list"] a')
+			.map((link) => link.attributes('href'));
+		expect(hrefs).toContain('/dashboard/chat');
+		expect(hrefs).toContain('/dashboard/marketing');
+		expect(hrefs).toContain('/dashboard/preferences');
+		for (const tab of ['/dashboard', '/dashboard/answer', '/dashboard/inboxes']) {
+			expect(hrefs).not.toContain(tab);
+		}
+		// The sheet owns the bottom of the screen while it is up.
+		expect(bar.find('[data-testid="mobile-tab-bar"]').exists()).toBe(false);
+	});
+
+	it('closes when a destination is picked', async () => {
+		const bar = mountBar();
+		await bar.get('[data-testid="mobile-tab-bar-more"]').trigger('click');
+		await bar.get('[data-testid="mobile-tab-bar-more-list"] a').trigger('click');
+		expect(bar.find('[data-testid="mobile-tab-bar-more-list"]').exists()).toBe(false);
+		expect(bar.find('[data-testid="mobile-tab-bar"]').exists()).toBe(true);
+	});
+
+	it('reads as current on one of its destinations', () => {
+		path = '/dashboard/chat';
+		const more = mountBar().get('[data-testid="mobile-tab-bar-more"]');
+		expect(more.classes()).toContain('font-medium');
 	});
 });
 

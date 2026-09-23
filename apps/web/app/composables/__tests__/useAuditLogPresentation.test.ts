@@ -79,7 +79,7 @@ describe('useAuditLogPresentation action catalog parity', () => {
 describe('useAuditLogPresentation presentation helpers', () => {
 	it('labels known verbs and humanises unknown ones', () => {
 		expect(t(getActionLabel('campaign.created'))).toBe('Created');
-		expect(t(getActionLabel('team_member.role_changed'))).toBe('Role Changed');
+		expect(t(getActionLabel('team_member.role_changed'))).toBe('Role changed');
 		// dkim_rotated is the action that had drifted out of the local catalog;
 		// it now both appears in the dropdown and gets a humanised label. It has
 		// no catalog entry, so the humanised literal is what `t` renders.
@@ -98,7 +98,7 @@ describe('useAuditLogPresentation presentation helpers', () => {
 	it('maps resources to icons and labels, falling back to the raw key', () => {
 		expect(getResourceIcon('campaign')).toBe('lucide:send');
 		expect(getResourceIcon('unknown_resource')).toBe('lucide:clipboard-list');
-		expect(t(getResourceLabel('api_key'))).toBe('API Key');
+		expect(t(getResourceLabel('api_key'))).toBe('API key');
 		expect(t(getResourceLabel('unknown_resource'))).toBe('unknown_resource');
 	});
 

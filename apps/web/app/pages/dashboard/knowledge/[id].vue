@@ -37,6 +37,11 @@ const { data: entryData, isLoading } = useOrganizationQuery(api.knowledge.graph.
 }));
 
 const entry = computed(() => entryData.value?.entry ?? null);
+
+// A curated answer is admin-authored and quoted to customers; the backend
+// refuses a member's edit or delete, so the buttons stay hidden for them.
+const { isAdmin } = usePermissions();
+const canChangeEntry = computed(() => entry.value?.isAuthoritative !== true || isAdmin.value);
 const outgoingRelations = computed(() => entryData.value?.outgoing ?? []);
 const incomingRelations = computed(() => entryData.value?.incoming ?? []);
 const hasRelations = computed(
@@ -297,7 +302,7 @@ const handleRemoveRelation = async (relationId: string) => {
 				</div>
 
 				<!-- Actions -->
-				<div class="flex items-center gap-2 flex-shrink-0">
+				<div v-if="canChangeEntry" class="flex items-center gap-2 flex-shrink-0">
 					<UiButton variant="secondary" class="gap-2" @click="showEditForm = true">
 						<Icon name="lucide:pencil" class="w-4 h-4" />
 						{{ t('common.edit') }}

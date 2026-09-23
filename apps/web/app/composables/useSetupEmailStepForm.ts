@@ -125,7 +125,6 @@ export function useSetupEmailStepForm(wizard: {
 	const transactionalIps = ref(env.value['IP_POOLS_TRANSACTIONAL'] ?? '');
 	const campaignIps = ref(env.value['IP_POOLS_CAMPAIGN'] ?? '');
 	const ehloHostname = ref(env.value['EHLO_HOSTNAME'] ?? '');
-	const ehloHostnames = ref(env.value['EHLO_HOSTNAMES'] ?? '');
 	const resendKey = ref(env.value['RESEND_API_KEY'] ?? '');
 	const emailitKey = ref(env.value['EMAILIT_API_KEY'] ?? '');
 	const mandrillKey = ref(env.value['MANDRILL_API_KEY'] ?? '');
@@ -187,7 +186,6 @@ export function useSetupEmailStepForm(wizard: {
 			transactionalIps: transactionalIps.value,
 			campaignIps: campaignIps.value,
 			ehloHostname: ehloHostname.value,
-			ehloHostnames: ehloHostnames.value,
 		},
 		fromEmail: fromEmail.value,
 		fromName: fromName.value,
@@ -203,7 +201,6 @@ export function useSetupEmailStepForm(wizard: {
 		transactionalIps,
 		campaignIps,
 		ehloHostname,
-		ehloHostnames,
 		resendKey,
 		emailitKey,
 		mandrillKey,

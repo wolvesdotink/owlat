@@ -45,47 +45,6 @@ async function insertContact(
 	);
 }
 
-describe('contacts.analytics.getTopTopics — denormalized counts', () => {
-	it('reports contactCount from cachedMemberCount without collecting the membership set', async () => {
-		const t = convexTest(schema, modules);
-
-		// A topic whose denormalized count says 5000 members but has ZERO
-		// contactTopics rows. If the query still counted memberships via
-		// `.collect()` it would report 0; reading the denormalized counter
-		// reports 5000. This proves the unbounded membership scan is gone.
-		await t.run((ctx) =>
-			ctx.db.insert('topics', {
-				name: 'Denorm topic',
-				cachedMemberCount: 5000,
-				createdAt: Date.now(),
-			})
-		);
-
-		const topics = await t.query(api.contacts.analytics.getTopTopics, { limit: 5 });
-		const denorm = topics.find((topic) => topic.name === 'Denorm topic');
-		expect(denorm?.contactCount).toBe(5000);
-	});
-
-	it('falls back to the real membership count when no cache is present', async () => {
-		const t = convexTest(schema, modules);
-
-		const topicId = await t.run((ctx) =>
-			ctx.db.insert('topics', { name: 'Uncached topic', createdAt: Date.now() })
-		);
-		// Two real memberships, no cachedMemberCount.
-		for (let i = 0; i < 2; i++) {
-			const contactId = await insertContact(t, Date.now());
-			await t.run((ctx) =>
-				ctx.db.insert('contactTopics', { contactId, topicId, addedAt: Date.now() })
-			);
-		}
-
-		const topics = await t.query(api.contacts.analytics.getTopTopics, { limit: 5 });
-		const uncached = topics.find((topic) => topic.name === 'Uncached topic');
-		expect(uncached?.contactCount).toBe(2);
-	});
-});
-
 describe('contacts.analytics.getSubscriberGrowth — bounded scan', () => {
 	it('returns a { days, truncated } series without unbounded-collecting', async () => {
 		const t = convexTest(schema, modules);

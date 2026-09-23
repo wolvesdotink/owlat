@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { isValidEmail, sanitizeCsvCell } from '@owlat/shared';
+import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
+import { passwordChangeProblem } from '~/utils/passwordChange';
 import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 import Papa from 'papaparse';
@@ -26,6 +28,10 @@ definePageMeta({
 });
 
 const { hasActiveOrganization, role } = useOrganizationContext();
+
+// Mail exists on this instance (hosted or connected): the daily brief is mail.
+const { isEnabled: isFeatureEnabled } = useFeatureFlag();
+const hasMail = computed(() => isFeatureEnabled('postbox') || isFeatureEnabled('mail.external'));
 const { user } = useAuth();
 
 // Account deletion erases different data depending on the member's role.
@@ -164,12 +170,9 @@ const newPassword = ref('');
 const confirmPassword = ref('');
 const savingPassword = ref(false);
 async function changePassword() {
-	if (newPassword.value.length < 10) {
-		showToast(t('dashboard.preferences.account.passwordTooShort'), 'error');
-		return;
-	}
-	if (newPassword.value !== confirmPassword.value) {
-		showToast(t('dashboard.preferences.account.passwordsDoNotMatch'), 'error');
+	const problem = passwordChangeProblem(newPassword.value, confirmPassword.value);
+	if (problem) {
+		showToast(t(problem.key, problem.params ?? {}), 'error');
 		return;
 	}
 	savingPassword.value = true;
@@ -507,24 +510,22 @@ const daysRemaining = computed(() => {
 					{{ t('dashboard.preferences.account.changePasswordDescription') }}
 				</p>
 				<form class="space-y-3 max-w-md" @submit.prevent="changePassword">
-					<UiInput
+					<AuthPasswordInput
 						id="cur-pw"
 						v-model="currentPassword"
-						type="password"
 						:label="t('dashboard.preferences.account.currentPasswordLabel')"
 						autocomplete="current-password"
 					/>
-					<UiInput
+					<AuthPasswordInput
 						id="new-pw"
 						v-model="newPassword"
-						type="password"
 						:label="t('dashboard.preferences.account.newPasswordLabel')"
+						:help-text="t('auth.fields.passwordHelp', { min: MIN_PASSWORD_LENGTH })"
 						autocomplete="new-password"
 					/>
-					<UiInput
+					<AuthPasswordInput
 						id="confirm-pw"
 						v-model="confirmPassword"
-						type="password"
 						:label="t('dashboard.preferences.account.confirmPasswordLabel')"
 						autocomplete="new-password"
 					/>
@@ -543,6 +544,10 @@ const daysRemaining = computed(() => {
 					</NuxtLink>
 				</p>
 			</div>
+
+			<!-- Daily brief by email: opt-in delivery of the digest that otherwise
+			     only exists at the top of Today. -->
+			<PostboxDailyBriefSettings v-if="hasMail" />
 
 			<!-- Pending Deletion Banner -->
 			<div v-if="pendingDeletion" class="card p-0 overflow-hidden border-warning/30 bg-warning/5">

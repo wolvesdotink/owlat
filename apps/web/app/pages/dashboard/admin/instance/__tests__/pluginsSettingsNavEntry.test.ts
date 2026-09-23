@@ -80,7 +80,7 @@ function mountPage() {
 			UiDisclosure: passthroughStub,
 			UiModal: passthroughStub,
 			NuxtLink: nuxtLinkStub,
-			UiToggle: true,
+			UiSwitch: true,
 			UiInput: true,
 			UiButton: true,
 			UiBadge: true,

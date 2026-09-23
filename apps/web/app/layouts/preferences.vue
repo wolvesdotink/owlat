@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The Preferences shell: a persistent left nav, one title, one padding.
+ * The My settings shell: the Settings sidebar, one title, one page frame.
  *
  * There was no Preferences layout. Thirteen pages hand-rolled the same wrapper
  * (`p-6 lg:p-8`, a max width, `<PreferencesBackLink>`, an `<h1>`), the copies
@@ -15,16 +15,18 @@
  * (several are richer than a registry line — links, inline code) and their own
  * actions, and start straight in on content.
  *
+ * The frame itself (width, padding, title style) is `SettingsPageShell`, the
+ * same one the Workspace pages sit in, so both halves of Settings line up.
+ *
  * Nests inside `dashboard` so Preferences keeps the app rail, header, and ⌘K.
  */
-import { api } from '@owlat/api';
-import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
-import { adminAreasFor } from '~/lib/adminSettingsRegistry';
 import {
 	settingsAnchorFromHash,
 	settingsEntryFor,
 	settingsSectionsFor,
 } from '~/lib/settingsRegistry';
+import SettingsPageShell from '~/components/settings/PageShell.vue';
+import { useWorkspaceSettingsNav } from '~/composables/useWorkspaceSettingsNav';
 
 const { t } = useI18n();
 const route = useRoute();
@@ -35,26 +37,9 @@ const sections = computed(() =>
 	settingsSectionsFor({ isFeatureEnabled, isDesktop: isDesktop.value })
 );
 
-// Owners and admins see the workspace half of Settings in the same nav.
+// Owners and admins get the Workspace tab of the same sidebar.
 const { isAdmin } = usePermissions();
-const { data: isPlatformAdmin } = useConvexQuery(
-	api.platformAdmin.platformAdmin.isPlatformAdmin,
-	() => (isAdmin.value ? {} : 'skip')
-);
-const knowledge = computed(() => ({
-	explorer: isAdmin.value && isFeatureEnabled('ai.knowledge'),
-	graph:
-		isAdmin.value && isFeatureEnabled('ai.knowledge') && isFeatureEnabled('ai.knowledge.analytics'),
-}));
-const adminAreas = computed(() =>
-	isAdmin.value
-		? adminAreasFor({
-				isFeatureEnabled,
-				isPlatformAdmin: isPlatformAdmin.value === true,
-				hasPlugins: bundledPluginComposition.length > 0,
-			})
-		: []
-);
+const { areas: adminAreas, badges } = useWorkspaceSettingsNav(isAdmin);
 
 const activeEntry = computed(() => settingsEntryFor(route.path));
 const heading = computed(() => (activeEntry.value ? t(activeEntry.value.titleKey) : ''));
@@ -86,69 +71,53 @@ watch(
 	() => route.fullPath,
 	() => revealAnchor(route.hash)
 );
+
+// The compact row: every My settings page, in rail order.
+const compactEntries = computed(() =>
+	sections.value.flatMap((section) =>
+		section.entries.map((entry) => ({ path: entry.path, title: t(entry.titleKey) }))
+	)
+);
 </script>
 
 <template>
 	<div>
 		<!-- A native root keeps nested layout transitions from leaving the page blank. -->
 		<NuxtLayout name="dashboard">
-			<div class="p-6 lg:p-8">
-				<div class="mx-auto flex w-full max-w-5xl gap-8">
-					<!-- Section navigation lives in the dashboard sidebar on desktop. -->
-					<!-- Settings (this + Administration) takes the sidebar over on desktop. -->
-					<DashboardNavigationPortal :title="t('components.shell.settings.title')">
-						<div class="hidden lg:block w-56 shrink-0 self-start">
-							<ShellSettingsNav
-								:you-sections="sections"
-								:admin-areas="adminAreas"
-								:knowledge="knowledge"
-							/>
-						</div>
-					</DashboardNavigationPortal>
-
-					<div class="min-w-0 flex-1">
-						<!-- Below lg the rail becomes a scrollable pill row, so switching
-					     pages still costs one tap instead of a trip back to the hub. -->
-						<!-- Same destinations as the rail above, laid out for a narrow
-					     viewport. Both are in the DOM at once (the swap is a media
-					     query, not a branch), so they need DISTINGUISHABLE landmark
-					     names — two `<nav>`s answering to "Preferences sections" is a
-					     landmark list a screen-reader user cannot choose from. -->
-						<nav
-							class="lg:hidden -mx-1 mb-5 flex gap-1.5 overflow-x-auto pb-1"
-							:aria-label="t('shell.preferences.navLabelCompact')"
-						>
-							<template v-for="section in sections" :key="section.key">
-								<NuxtLink
-									v-for="entry in section.entries"
-									:key="entry.path"
-									:to="entry.path"
-									class="shrink-0 rounded-full border px-3 py-1 text-xs transition-colors duration-(--motion-fast)"
-									:class="
-										route.path === entry.path
-											? 'border-brand bg-brand-subtle font-medium text-brand'
-											: 'border-border-default text-text-secondary hover:text-text-primary'
-									"
-									:aria-current="route.path === entry.path ? 'page' : undefined"
-								>
-									{{ t(entry.titleKey) }}
-								</NuxtLink>
-							</template>
-						</nav>
-
-						<h1
-							v-if="heading"
-							class="mb-6 text-2xl font-medium tracking-[-0.02em] text-text-primary"
-						>
-							{{ heading }}
-						</h1>
-
-						<div :class="flashedAnchor ? 'settings-anchor-flash' : undefined">
-							<slot />
-						</div>
-					</div>
+			<!-- Settings takes the sidebar over on desktop. -->
+			<DashboardNavigationPortal :title="t('components.shell.settings.title')">
+				<div class="hidden lg:block w-56 shrink-0 self-start">
+					<ShellSettingsNav :you-sections="sections" :admin-areas="adminAreas" :badges="badges" />
 				</div>
-			</div>
+			</DashboardNavigationPortal>
+
+			<SettingsPageShell>
+				<!-- Below lg the sidebar becomes a scrollable pill row, so switching
+				     pages still costs one tap. Both are in the DOM at once (the swap is
+				     a media query, not a branch), so they need DISTINGUISHABLE landmark
+				     names. -->
+				<template #above>
+					<ShellSettingsCompactNav
+						class="-mx-1 mb-5"
+						:label="t('shell.preferences.navLabelCompact')"
+						:entries="compactEntries"
+						:current-path="route.path"
+						:across="
+							adminAreas.length > 0
+								? { path: '/dashboard/admin', title: t('components.shell.settings.tabs.workspace') }
+								: null
+						"
+					/>
+
+					<h1 v-if="heading" class="mb-6 text-2xl font-medium tracking-[-0.02em] text-text-primary">
+						{{ heading }}
+					</h1>
+				</template>
+
+				<div :class="flashedAnchor ? 'settings-anchor-flash' : undefined">
+					<slot />
+				</div>
+			</SettingsPageShell>
 		</NuxtLayout>
 	</div>
 </template>

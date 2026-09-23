@@ -1,6 +1,11 @@
 <script setup lang="ts">
 /**
- * Settings → Connected mailboxes.
+ * My settings → Connected mailboxes: every mailbox you use, and everything
+ * about how it sends.
+ *
+ * The mailbox list, "Is my mail arriving?", the sending choice and the mailbox
+ * move used to sit on General between the reading settings and the keyboard
+ * shortcuts. They are about mailboxes, so they are here.
  *
  * This route used to redirect into the import wizard, which meant the only
  * place to end a connection was a screen you reach to START one — and only
@@ -29,11 +34,18 @@ const externalEnabled = computed(() => isEnabled('mail.external'));
 
 <template>
 	<div>
-		<header class="mb-6">
+		<header class="mb-6 flex items-start justify-between gap-4">
 			<p class="text-text-secondary">
 				{{ t('dashboard.preferences.externalAccount.subheading') }}
 			</p>
+			<UiButton class="shrink-0" @click="navigateTo('/dashboard/preferences/add-account')">
+				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
+				{{ t('dashboard.preferences.index.addAccount') }}
+			</UiButton>
 		</header>
+
+		<!-- The mailboxes themselves: colour, rename, delete (admins). -->
+		<PreferencesMailboxList class="mb-6" />
 
 		<!-- Carries the anchor so a settings deep link (`#connected-account`, from
 		     the palette) has something to find on first paint, before the card
@@ -53,9 +65,10 @@ const externalEnabled = computed(() => isEnabled('mail.external'));
 
 		<PostboxConnectedAccountCard v-else-if="externalEnabled" />
 
-		<!-- The feature is off on this instance: say so instead of showing an
-		     empty card with a button that leads to a locked wizard. -->
-		<section v-else class="card p-5">
+		<!-- Connecting outside accounts is off on this instance (the page is
+		     reachable through Postbox): say only that, so it never reads as the
+		     member's own mailboxes being switched off. -->
+		<section v-else class="card p-5 mb-6">
 			<h2 class="font-semibold">
 				{{ t('dashboard.preferences.externalAccount.featureOffTitle') }}
 			</h2>
@@ -63,5 +76,18 @@ const externalEnabled = computed(() => isEnabled('mail.external'));
 				{{ t('dashboard.preferences.externalAccount.featureOffBody') }}
 			</p>
 		</section>
+
+		<!-- Is my mail arriving? The member-readable half of what the admin
+		     delivery pages answer: my address's verification, my transport
+		     alignment, and how my recent sends actually landed. -->
+		<PostboxSendingHealthCard />
+
+		<!-- Sending: reversible outbound-transport choice for a connected external
+		     mailbox (own SMTP vs this instance). Self-hides for hosted-only users. -->
+		<PostboxSendingSettings />
+
+		<!-- Move my mailbox here: the staged full move of a connected external
+		     mailbox onto a hosted one. Self-hides for hosted-only users. -->
+		<PostboxMailboxMove />
 	</div>
 </template>

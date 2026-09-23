@@ -33,6 +33,10 @@ import {
 	volumeSentence,
 } from '~/utils/deliverabilityIndependenceCopy';
 import { formatNumber, formatShortDate } from '~/utils/formatters';
+import { hasNoIndependenceTraffic } from '~/utils/deliveryAdvancedEmpty';
+// Imported, not auto-resolved: the empty state is this screen's content, and
+// a mount that resolved it to nothing would hide the one thing it says.
+import DeliveryAdvancedEmptyState from '~/components/delivery/AdvancedEmptyState.vue';
 
 const { t, locale } = useI18n();
 
@@ -81,6 +85,20 @@ useHead({
 		t('dashboard.admin.delivery.advanced.independence.pageTitle', { headline: headline.value }),
 });
 const chartHeadingId = useId();
+
+/**
+ * STANDALONE AND NOTHING SENT YET: the chart has no bars and the projection
+ * nothing to project, so the two cards give way to one empty state saying what
+ * fills this screen. Today's capacity above them is still a real figure and
+ * stays. With a relay connected the cards keep their own calm empty copy —
+ * "not enough history yet" is the truthful answer there.
+ */
+const isQuietStandalone = computed(
+	() =>
+		summary.value !== undefined &&
+		isStandalone.value &&
+		hasNoIndependenceTraffic(summary.value.series)
+);
 
 /**
  * THE HEADLINE NUMBER. `null` means nothing has been sent in the window — a fact
@@ -155,7 +173,7 @@ function confirmRelayRemoval(): void {
 </script>
 
 <template>
-	<div class="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
+	<div>
 		<header class="mb-6">
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">{{ headline }}</h1>
 			<p class="mt-1 max-w-2xl text-sm text-text-secondary">
@@ -201,7 +219,14 @@ function confirmRelayRemoval(): void {
 					</p>
 				</UiCard>
 
-				<UiCard>
+				<DeliveryAdvancedEmptyState
+					v-if="isQuietStandalone"
+					icon="lucide:trending-up"
+					:title="t('dashboard.admin.delivery.advanced.independence.empty.title')"
+					:description="t('dashboard.admin.delivery.advanced.independence.empty.description')"
+				/>
+
+				<UiCard v-if="!isQuietStandalone">
 					<h2 :id="chartHeadingId" class="text-base font-semibold text-text-primary">
 						{{ t('dashboard.admin.delivery.advanced.independence.dailySending') }}
 					</h2>
@@ -213,7 +238,7 @@ function confirmRelayRemoval(): void {
 					/>
 				</UiCard>
 
-				<UiCard>
+				<UiCard v-if="!isQuietStandalone">
 					<h2 class="text-base font-semibold text-text-primary">
 						{{ t('dashboard.admin.delivery.advanced.independence.whenYouStopPaying') }}
 					</h2>
@@ -261,6 +286,12 @@ function confirmRelayRemoval(): void {
 					</UiButton>
 				</UiCard>
 			</div>
+			<DeliveryAdvancedEmptyState
+				v-else
+				icon="lucide:trending-up"
+				:title="t('dashboard.admin.delivery.advanced.independence.empty.title')"
+				:description="t('dashboard.admin.delivery.advanced.independence.empty.description')"
+			/>
 		</UiQueryBoundary>
 
 		<DeliveryRampConfirmDialog

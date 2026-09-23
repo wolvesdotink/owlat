@@ -93,7 +93,7 @@ watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { 
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div>
 		<!-- Header -->
 		<div class="mb-6">
 			<div class="flex items-center justify-between">
@@ -233,22 +233,14 @@ watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { 
 						</div>
 
 						<div class="flex items-center gap-2">
-							<!-- Toggle Active -->
-							<UiButton
-								variant="ghost"
-								class="p-2"
-								:title="
-									form.isActive
-										? t('dashboard.admin.instance.forms.disableForm')
-										: t('dashboard.admin.instance.forms.enableForm')
-								"
-								@click.stop="handleToggleActive(form)"
-							>
-								<Icon
-									:name="form.isActive ? 'lucide:toggle-right' : 'lucide:toggle-left'"
-									:class="['w-5 h-5', form.isActive ? 'text-success' : 'text-text-tertiary']"
-								/>
-							</UiButton>
+							<!-- Active: the switch's state is the form's state -->
+							<UiSwitch
+								:model-value="form.isActive"
+								:label="form.name"
+								class="mr-1"
+								@click.stop
+								@update:model-value="handleToggleActive(form)"
+							/>
 							<!-- Edit -->
 							<UiButton
 								variant="ghost"

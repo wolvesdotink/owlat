@@ -126,14 +126,11 @@ async function confirmRemove() {
 							}}
 						</p>
 					</div>
-					<label class="flex items-center gap-1.5 text-sm">
-						<input
-							type="checkbox"
-							:checked="rule.isEnabled"
-							@change="handleToggle(rule._id, ($event.target as HTMLInputElement).checked)"
-						/>
-						{{ t('common.enabled') }}
-					</label>
+					<UiSwitch
+						:model-value="rule.isEnabled"
+						:label="t('dashboard.preferences.forwarding.ruleSwitch', { address: rule.forwardTo })"
+						@update:model-value="handleToggle(rule._id, $event)"
+					/>
 					<UiButton
 						variant="ghost"
 						type="button"

@@ -79,14 +79,6 @@ const knownStructureDrift = {
 			tables: ['5x3', '8x3', '34x4'],
 		},
 	},
-	'1.guide/29.team-inbox.md': {
-		en: { headings: '22332332233222222', fences: [], tables: ['10x2', '6x2', '6x2'] },
-		de: { headings: '223323322222222', fences: [], tables: ['10x2', '6x2', '6x2'] },
-	},
-	'1.guide/30.ai-agent.md': {
-		en: { headings: '232333333222222', fences: [], tables: ['5x3', '8x2', '5x3', '7x2'] },
-		de: { headings: '23233333222222', fences: [], tables: ['5x3', '8x2', '5x3', '7x2'] },
-	},
 	'1.guide/34.code-tasks.md': {
 		en: { headings: '22223333322', fences: [], tables: ['8x3', '8x2', '16x2'] },
 		de: { headings: '22223333322', fences: [], tables: ['8x3', '8x2', '13x2'] },

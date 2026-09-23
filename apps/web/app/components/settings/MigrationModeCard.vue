@@ -129,14 +129,10 @@ async function confirmAndEnable() {
 					{{ t('components.settings.migrationModeCard.adminsOnly') }}
 				</p>
 			</div>
-			<UiToggle
+			<UiSwitch
 				:model-value="isMigrationMode"
 				:disabled="!canManage || isSaving"
-				:label="
-					isMigrationMode
-						? t('components.settings.migrationModeCard.on')
-						: t('components.settings.migrationModeCard.off')
-				"
+				:label="t('components.settings.migrationModeCard.title')"
 				@update:model-value="onToggle"
 			/>
 		</div>

@@ -27,6 +27,7 @@ const stubs = {
 		template: '<div data-testid="preset-step-stub" :data-blocked="String(isBlocked)" />',
 	},
 	DeliveryRelayDomainStatus: { template: '<div data-testid="domain-status-stub" />' },
+	UiButton: { template: '<button type="button"><slot /></button>' },
 };
 
 interface Identity {
@@ -103,8 +104,16 @@ async function mountPage(over: Partial<PageState> = {}) {
 		error: ref(null),
 		refetch: vi.fn(),
 	}));
+	vi.stubGlobal('useCopyToClipboard', () => ({ copy: vi.fn(), isCopied: () => false }));
 	const component = (await import('../migrate.vue')).default;
-	return mount(component, { global: { stubs, plugins: [createTestI18n()] } });
+	const EnvSetupSteps = (await import('~/components/delivery/EnvSetupSteps.vue')).default;
+	return mount(component, {
+		global: {
+			stubs,
+			components: { DeliveryEnvSetupSteps: EnvSetupSteps },
+			plugins: [createTestI18n()],
+		},
+	});
 }
 
 function stepState(wrapper: Awaited<ReturnType<typeof mountPage>>, id: string): string | undefined {
@@ -130,8 +139,10 @@ describe('the flow renders the runbook in order', () => {
 	it('confirms the key by presence, never by value', async () => {
 		const wrapper = await mountPage();
 		expect(stepState(wrapper, 'connect')).toBe('complete');
-		const text = wrapper.find('[data-testid="migration-key-present"]').text();
-		expect(text).toContain('MANDRILL_API_KEY');
+		const present = wrapper.find('[data-testid="migration-key-present"]');
+		expect(present.find('[data-testid="env-setup-connected"]').text()).toContain('Connected');
+		// Connected means no remedy: the setup blocks are gone.
+		expect(present.find('[data-testid="env-setup-env"]').exists()).toBe(false);
 	});
 
 	it('sends the operator to the environment when the key is missing', async () => {
@@ -143,6 +154,11 @@ describe('the flow renders the runbook in order', () => {
 		});
 		expect(stepState(wrapper, 'connect')).toBe('current');
 		expect(wrapper.find('[data-testid="migration-key-missing"]').exists()).toBe(true);
+		// The exact lines to paste and the owlat commands, names only.
+		expect(wrapper.find('[data-testid="env-setup-env"]').text()).toBe('MANDRILL_API_KEY=');
+		expect(wrapper.find('[data-testid="env-setup-cli"]').text()).toBe(
+			'owlat env MANDRILL_API_KEY <value>\nowlat restart'
+		);
 		// Everything downstream of the key is locked, and says why.
 		expect(stepState(wrapper, 'history')).toBe('blocked');
 		expect(stepState(wrapper, 'preset')).toBe('blocked');

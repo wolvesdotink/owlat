@@ -21,22 +21,35 @@
  *    (less vertical air, smaller heading) because it is a transient state, and
  *    the action UNDOES the filter: wire `@clear` for the default "Clear
  *    filters" control, or pass your own through `#action`.
+ *
+ * `tone="clear"` is for states where empty is the GOOD outcome (inbox zero,
+ * nothing quarantined, no failures): a check glyph and an "All clear" eyebrow
+ * instead of wording that implies something is still expected to arrive.
+ *
+ * The `empty` variant has no default eyebrow — "Nothing here yet" read wrong on
+ * every page where empty is fine. Pass `eyebrow` when the page wants one.
  */
-import { computed, getCurrentInstance, useSlots } from "vue";
-import { useUiI18n } from "../../composables/useUiI18n";
+import { computed, getCurrentInstance, useSlots } from 'vue';
+import { useUiI18n } from '../../composables/useUiI18n';
 
-type EmptyStateVariant = "empty" | "no-results";
+type EmptyStateVariant = 'empty' | 'no-results';
+type EmptyStateTone = 'default' | 'clear';
 
 interface Props {
 	/** The one line that says what is missing. Rendered as a real heading. */
 	title: string;
-	/** Uppercase micro-label above the title. Defaults per variant. */
+	/**
+	 * Uppercase micro-label above the title. Only `no-results` and
+	 * `tone="clear"` have a default; otherwise none renders unless passed.
+	 */
 	eyebrow?: string;
 	/** One secondary lead sentence. Keep it to a sentence. */
 	description?: string;
 	/** Decorative glyph inside the eyebrow row. No disc, no fill. */
 	icon?: string;
 	variant?: EmptyStateVariant;
+	/** `clear` marks an empty that is good news: check glyph, "All clear". */
+	tone?: EmptyStateTone;
 	/** Heading level, so the state slots into the page's heading walk. */
 	headingLevel?: 2 | 3 | 4;
 	/** Label for the built-in `no-results` clear control. */
@@ -47,7 +60,8 @@ const props = withDefaults(defineProps<Props>(), {
 	eyebrow: undefined,
 	description: undefined,
 	icon: undefined,
-	variant: "empty",
+	variant: 'empty',
+	tone: 'default',
 	headingLevel: 2,
 	clearLabel: undefined,
 });
@@ -63,15 +77,23 @@ const slots = useSlots();
 // Captured during setup for the same reason QueryBoundary does it:
 // `getCurrentInstance()` is null once the render function has run.
 const instance = getCurrentInstance();
-const hasClearListener = computed(() => !!instance?.vnode.props?.["onClear"]);
+const hasClearListener = computed(() => !!instance?.vnode.props?.['onClear']);
 
-const isNoResults = computed(() => props.variant === "no-results");
+const isNoResults = computed(() => props.variant === 'no-results');
 
-const headingTag = computed(() => `h${props.headingLevel}` as "h2" | "h3" | "h4");
+const headingTag = computed(() => `h${props.headingLevel}` as 'h2' | 'h3' | 'h4');
 
-const eyebrowText = computed(
-	() =>
-		props.eyebrow ?? t(isNoResults.value ? "ui.emptyState.noResults" : "ui.emptyState.nothingYet"),
+const isClear = computed(() => props.tone === 'clear');
+
+const eyebrowText = computed<string | undefined>(() => {
+	if (props.eyebrow) return props.eyebrow;
+	if (isClear.value) return t('ui.emptyState.allClear');
+	if (isNoResults.value) return t('ui.emptyState.noResults');
+	return undefined;
+});
+
+const eyebrowIcon = computed(
+	() => props.icon ?? (isClear.value ? 'lucide:circle-check' : undefined)
 );
 
 /**
@@ -79,22 +101,38 @@ const eyebrowText = computed(
  * the component's children, and the version this replaces rendered ONLY
  * `#action` — so those buttons silently did not exist.
  */
-const hasAction = computed(() => !!slots["action"] || !!slots["default"]);
+const hasAction = computed(() => !!slots['action'] || !!slots['default']);
 
 const showClear = computed(() => isNoResults.value && !hasAction.value && hasClearListener.value);
 </script>
 
 <template>
 	<div class="flex flex-col items-center px-6 text-center" :class="isNoResults ? 'py-10' : 'py-12'">
-		<p class="lp-eyebrow flex items-center justify-center gap-1.5">
-			<Icon v-if="icon" :name="icon" class="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+		<p
+			v-if="eyebrowText"
+			class="lp-eyebrow flex items-center justify-center gap-1.5"
+			:class="isClear ? 'text-success' : undefined"
+			:data-tone="tone"
+		>
+			<Icon
+				v-if="eyebrowIcon"
+				:name="eyebrowIcon"
+				class="w-3.5 h-3.5 shrink-0"
+				aria-hidden="true"
+			/>
 			<span>{{ eyebrowText }}</span>
 		</p>
+		<Icon
+			v-else-if="eyebrowIcon"
+			:name="eyebrowIcon"
+			class="w-4 h-4 shrink-0 text-text-tertiary"
+			aria-hidden="true"
+		/>
 
 		<component
 			:is="headingTag"
-			class="mt-3 max-w-xl text-balance font-medium tracking-[-0.02em] text-text-primary"
-			:class="isNoResults ? 'text-lg' : 'text-xl'"
+			:class="[eyebrowText || eyebrowIcon ? 'mt-3' : '', isNoResults ? 'text-lg' : 'text-xl']"
+			class="max-w-xl text-balance font-medium tracking-[-0.02em] text-text-primary"
 		>
 			{{ title }}
 		</component>
@@ -116,7 +154,7 @@ const showClear = computed(() => isNoResults.value && !hasAction.value && hasCle
 			class="mt-5"
 			@click="emit('clear')"
 		>
-			{{ clearLabel ?? t("ui.emptyState.clear") }}
+			{{ clearLabel ?? t('ui.emptyState.clear') }}
 		</UiButton>
 	</div>
 </template>

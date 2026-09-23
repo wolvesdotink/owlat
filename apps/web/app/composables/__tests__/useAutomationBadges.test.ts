@@ -55,10 +55,10 @@ describe('useAutomationBadges', () => {
 
 	it('maps triggers to their expected labels', () => {
 		const { getTriggerDisplay } = useAutomationBadges();
-		expect(t(getTriggerDisplay('contact_created').label)).toBe('Contact Created');
-		expect(t(getTriggerDisplay('contact_updated').label)).toBe('Contact Updated');
-		expect(t(getTriggerDisplay('event_received').label)).toBe('Event Received');
-		expect(t(getTriggerDisplay('topic_subscribed').label)).toBe('Subscribed to Topic');
+		expect(t(getTriggerDisplay('contact_created').label)).toBe('Contact created');
+		expect(t(getTriggerDisplay('contact_updated').label)).toBe('Contact updated');
+		expect(t(getTriggerDisplay('event_received').label)).toBe('Event received');
+		expect(t(getTriggerDisplay('topic_subscribed').label)).toBe('Subscribed to topic');
 	});
 
 	it('every badge label is a key the catalog carries', () => {

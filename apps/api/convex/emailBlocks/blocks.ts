@@ -1,8 +1,8 @@
 /**
  * Saved block (public surface) — thin shells that delegate row writes
  * to the **Saved block (module)** at `emailBlocks/module.ts`, plus the
- * read queries (`list`, `get`, `getStatsByTeam`, `getRecentByTeam`)
- * unchanged from the pre-ADR-0023 `emailBlocks.ts`.
+ * read queries (`list`, `get`, `getStatsByTeam`) unchanged from the
+ * pre-ADR-0023 `emailBlocks.ts`.
  *
  * The legacy `incrementUsage` mutation is gone — zero callers, and the
  * canonical writer of `emailBlocks.usageCount` is now the lifecycle's
@@ -72,33 +72,11 @@ export const get = authedQuery({
 export const getStatsByTeam = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		const blocks = await ctx.db
-			.query('emailBlocks')
-			.collect();
+		const blocks = await ctx.db.query('emailBlocks').collect();
 		// bounded: emailBlocks is intrinsically small (one row per saved block)
 		return {
 			total: blocks.length,
 		};
-	},
-});
-
-export const getRecentByTeam = authedQuery({
-	args: {
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		const limit = args.limit ?? 5;
-		const blocks = await ctx.db
-			.query('emailBlocks')
-			.collect();
-		// bounded: emailBlocks is intrinsically small (one row per saved block)
-
-		blocks.sort((a, b) => b.updatedAt - a.updatedAt);
-
-		return blocks.slice(0, limit).map((block) => ({
-			...block,
-			blockCount: getBlockCount(block.content),
-		}));
 	},
 });
 
@@ -108,9 +86,7 @@ export const list = authedQuery({
 		sortBy: v.optional(v.union(v.literal('recent'), v.literal('mostUsed'), v.literal('name'))),
 	},
 	handler: async (ctx, args) => {
-		let blocks = await ctx.db
-			.query('emailBlocks')
-			.collect();
+		let blocks = await ctx.db.query('emailBlocks').collect();
 		// bounded: emailBlocks is intrinsically small (one row per saved block)
 
 		if (args.search) {
@@ -156,7 +132,11 @@ export const create = authedMutation({
 		content: v.string(),
 	},
 	handler: async (ctx, args): Promise<Id<'emailBlocks'>> => {
-		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can create saved blocks');
+		await requireOrgPermission(
+			ctx,
+			'templates:manage',
+			'Only owners and admins can create saved blocks'
+		);
 		const outcome = await ctx.runMutation(internal.emailBlocks.module.create, {
 			name: args.name,
 			description: args.description,
@@ -181,7 +161,11 @@ export const update = authedMutation({
 		content: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Id<'emailBlocks'>> => {
-		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can update saved blocks');
+		await requireOrgPermission(
+			ctx,
+			'templates:manage',
+			'Only owners and admins can update saved blocks'
+		);
 		const outcome = await ctx.runMutation(internal.emailBlocks.module.update, {
 			blockId: args.blockId,
 			patch: {
@@ -205,7 +189,11 @@ export const update = authedMutation({
 export const duplicate = authedMutation({
 	args: { blockId: v.id('emailBlocks') },
 	handler: async (ctx, args): Promise<Id<'emailBlocks'>> => {
-		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can duplicate saved blocks');
+		await requireOrgPermission(
+			ctx,
+			'templates:manage',
+			'Only owners and admins can duplicate saved blocks'
+		);
 		const outcome = await ctx.runMutation(internal.emailBlocks.module.duplicate, {
 			blockId: args.blockId,
 			userId: SYSTEM_USER_ID,
@@ -225,7 +213,11 @@ export const duplicate = authedMutation({
 export const remove = authedMutation({
 	args: { blockId: v.id('emailBlocks') },
 	handler: async (ctx, args): Promise<void> => {
-		await requireOrgPermission(ctx, 'templates:manage', 'Only owners and admins can delete saved blocks');
+		await requireOrgPermission(
+			ctx,
+			'templates:manage',
+			'Only owners and admins can delete saved blocks'
+		);
 		const outcome = await ctx.runMutation(internal.emailBlocks.module.remove, {
 			blockId: args.blockId,
 			userId: SYSTEM_USER_ID,

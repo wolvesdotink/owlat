@@ -1,12 +1,13 @@
 /**
- * Autonomy trust controls (feat: graduation nudge, kill switch, auto-demotion).
+ * Autonomy trust controls (feat: graduation nudge, AI replies mode, auto-demotion).
  *
  * Covers the server-side behaviour behind the settings UI:
  *   - a confirmed BAD auto-send outcome auto-demotes that sender/category to
  *     draft-only (a disabled per-sender rule) and surfaces a first-class
  *     incident via listAutoDemotions; a GOOD outcome never demotes;
- *   - the one-click kill switch disables the ai.autonomy flag, forces the
- *     legacy auto-reply toggle off, and cancels an in-flight delayed auto-send;
+ *   - the AI replies mode: "draft" turns the global tier off, puts shadow mode
+ *     on (so per-category rules cannot send either) and cancels an in-flight
+ *     delayed auto-send; "auto" turns the tier on and leaves shadow mode;
  *   - the graduation suggestion only widens the live threshold on EXPLICIT
  *     accept — recording a suggestion never changes the rule.
  */
@@ -200,18 +201,59 @@ describe('autonomyOutcome — auto-demotion on a bad outcome', () => {
 });
 
 // ============================================================
-// (2) One-click kill switch
+// (2) The AI replies mode: one control over both send switches
 // ============================================================
 
-describe('agentConfigMutations.killSwitch', () => {
-	it('halts future + in-flight auto-sends and reverts to draft-only', async () => {
-		const t = convexTest(schema, modules);
-		await enableFeatures(t, ['ai.autonomy']); // ai.autonomy (+ ai, ai.agent) on
+async function seedPendingAutoSend(t: ReturnType<typeof convexTest>) {
+	return t.run(async (ctx) => {
+		const {
+			channel: _channel,
+			updatedAt: _updatedAt,
+			...threadDoc
+		} = createTestConversationThread({ contactId: undefined });
+		const threadId = await ctx.db.insert('conversationThreads', threadDoc as never);
+		const id = await ctx.db.insert('inboundMessages', {
+			...createTestInboundMessage({
+				threadId,
+				contactId: undefined,
+				processingStatus: 'approved',
+				draftResponse: 'Auto reply',
+			}),
+		} as never);
+		const scheduledFnId = await ctx.scheduler.runAfter(
+			60_000,
+			internal.agent.agentPipeline.sendApprovedReply,
+			{ inboundMessageId: id, autonomous: true }
+		);
+		await ctx.db.patch(id, {
+			pendingAutoSend: { scheduledFnId, sendAt: Date.now() + 60_000, scheduledAt: Date.now() },
+		});
+		return id;
+	});
+}
 
-		// Legacy global auto-reply is also ON.
+describe('agentConfigMutations.setReplyMode', () => {
+	it('"auto" turns the global tier on AND leaves shadow mode, so replies can really send', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.agent']);
+
+		// No config row yet: the mode creates one.
+		await t.mutation(api.agentConfigMutations.setReplyMode, { mode: 'auto' });
+
+		const cfg = await t.run(async (ctx) => (await ctx.db.query('agentConfig').take(1))[0]);
+		expect(cfg!.isAutoReplyEnabled).toBe(true);
+		expect(cfg!.isShadowMode).toBe(false);
+		const shadow = await t.query(internal.agent.shadowScorecard.getShadowMode, {});
+		expect(shadow.enabled).toBe(false);
+	});
+
+	it('"draft" stops every send path — global tier, per-category rules, and in-flight sends', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.autonomy']); // per-category rules on
 		await t.run(async (ctx) => {
 			await ctx.db.insert('agentConfig', {
 				isAutoReplyEnabled: true,
+				isShadowMode: false,
 				confidenceThreshold: 0.8,
 				maxDailyAutoReplies: 100,
 				coalesceWindowMs: 30000,
@@ -219,62 +261,41 @@ describe('agentConfigMutations.killSwitch', () => {
 				updatedAt: Date.now(),
 			});
 		});
+		const messageId = await seedPendingAutoSend(t);
 
-		// An autonomous send is sitting in its undo window.
-		const messageId = await t.run(async (ctx) => {
-			const {
-				channel: _channel,
-				updatedAt: _updatedAt,
-				...threadDoc
-			} = createTestConversationThread({ contactId: undefined });
-			const threadId = await ctx.db.insert('conversationThreads', threadDoc as never);
-			const id = await ctx.db.insert('inboundMessages', {
-				...createTestInboundMessage({
-					threadId,
-					contactId: undefined,
-					processingStatus: 'approved',
-					draftResponse: 'Auto reply',
-				}),
-			} as never);
-			const scheduledFnId = await ctx.scheduler.runAfter(
-				60_000,
-				internal.agent.agentPipeline.sendApprovedReply,
-				{ inboundMessageId: id, autonomous: true }
-			);
-			await ctx.db.patch(id, {
-				pendingAutoSend: { scheduledFnId, sendAt: Date.now() + 60_000, scheduledAt: Date.now() },
-			});
-			return id;
-		});
-
-		// killSwitch schedules the bulk-cancel via runAfter(0); that scheduled
-		// mutation only fires on a macrotask, so drain it under fake timers.
-		// Advance by a single millisecond per pump so ONLY the due-now cancel
-		// fires — never the 60s-out sendApprovedReply (which stays queued and is
-		// then cancelled, not run).
 		vi.useFakeTimers();
 		try {
-			await t.mutation(api.agentConfigMutations.killSwitch, {});
+			await t.mutation(api.agentConfigMutations.setReplyMode, { mode: 'draft' });
 			await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1));
 		} finally {
 			vi.useRealTimers();
 		}
 
-		// Feature flag off …
+		const cfg = await t.run(async (ctx) => (await ctx.db.query('agentConfig').take(1))[0]);
+		expect(cfg!.isAutoReplyEnabled).toBe(false);
+		// Shadow on: the route step sends nothing, per-category rule or not.
+		const shadow = await t.query(internal.agent.shadowScorecard.getShadowMode, {});
+		expect(shadow.enabled).toBe(true);
+
+		// The rules flag is left alone — its rules stay editable on the page.
 		const flags = await t.run(async (ctx) => {
 			const s = await ctx.db.query('instanceSettings').first();
 			return s?.featureFlags as Record<string, boolean> | undefined;
 		});
-		expect(flags?.['ai.autonomy']).toBe(false);
+		expect(flags?.['ai.autonomy']).toBe(true);
 
-		// … legacy toggle off …
-		const cfg = await t.run(async (ctx) => (await ctx.db.query('agentConfig').take(1))[0]);
-		expect(cfg!.isAutoReplyEnabled).toBe(false);
-
-		// … and the in-flight send was pulled back to human review.
 		const msg = await t.run(async (ctx) => ctx.db.get(messageId));
 		expect(msg!.processingStatus).toBe('draft_ready');
 		expect(msg!.pendingAutoSend).toBeUndefined();
+	});
+
+	it('records who changed the mode in the audit log', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.agentConfigMutations.setReplyMode, { mode: 'auto' });
+		const logs = await t.run(async (ctx) => ctx.db.query('auditLogs').collect());
+		const entry = logs.find((l) => l.action === 'agent.config_updated');
+		expect(entry).toBeDefined();
+		expect(entry!.userId).toBe('test-user');
 	});
 });
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import { usePostboxReplyQueueBanner } from '~/composables/postbox/usePostboxBanners';
+import { answerQueueHrefFor } from '~/utils/postboxReplyQueue';
 
 // Reply Queue inbox "waiting on your reply" strip. Inbox-only, non-empty queue
 // only, and dismissible for the session (in-memory state, resets on reload).
@@ -30,7 +31,7 @@ const { count, dismissed, visible } = usePostboxReplyQueueBanner(
 		<span class="flex-1 truncate text-text-secondary">
 			{{ t('components.postbox.postboxReplyQueueStrip.waiting', { count }, count) }}
 		</span>
-		<NuxtLink to="/dashboard/postbox/reply-queue" class="text-brand hover:underline flex-shrink-0">
+		<NuxtLink :to="answerQueueHrefFor(mailboxId)" class="text-brand hover:underline flex-shrink-0">
 			{{ t('components.postbox.postboxReplyQueueStrip.openQueue') }}
 		</NuxtLink>
 		<!-- 44px square: a dismiss control that small is otherwise a coin toss on a

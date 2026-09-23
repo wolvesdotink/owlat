@@ -7,7 +7,6 @@ import type {
 } from '~/composables/useOrganization';
 import { ROLE_DEFINITIONS, roleDefinition } from '~/utils/teamRoles';
 import { formatShortDate } from '~/utils/formatters';
-import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
 
 const { t, locale } = useI18n();
 
@@ -20,10 +19,8 @@ definePageMeta({
 
 // Use BetterAuth organization management
 const {
-	organization,
 	members,
 	invitations,
-	currentMemberRole,
 	isLoading,
 	isLoadingMembers,
 	membersError,
@@ -36,10 +33,6 @@ const {
 	cancelInvite,
 	resendInvite,
 } = useOrganization();
-
-// Owner/admin may change instance settings (settings:manage). Mirrors the
-// backend gate on the migration-mode toggle.
-const canManageSettings = computed(() => isOwner.value || currentMemberRole.value === 'admin');
 
 // Roster search + per-member mailbox status (hosted / external / none).
 const { memberSearch, filteredMembers, isMailboxStatusPending, mailboxMetaFor } =
@@ -78,28 +71,6 @@ const isTransferring = ref(false);
 // Cancel invite modal state
 const inviteToCancel = ref<OrganizationInvitation | null>(null);
 const isCancelling = ref(false);
-
-// Delete organization (owner-only Danger Zone)
-const { canDeleteOrganization, isAdmin } = usePermissions();
-
-// Connected apps (Tier-2 external integrations) bind to a bundled plugin, so the
-// card shows whenever plugins are bundled. It must also stay reachable when a
-// plugin is removed from the build but connected-app records remain, so admins
-// can still revoke/delete them: query the (owner/admin-gated) list only in that
-// empty-build case, and skip it for anyone who couldn't read it anyway.
-const { data: connectedAppsForNav } = useConvexQuery(api.connectedApps.queries.listByTeam, () =>
-	isAdmin.value && bundledPluginComposition.length === 0 ? {} : 'skip'
-);
-const hasConnectedApps = computed(() => (connectedAppsForNav.value?.length ?? 0) > 0);
-const showConnectedApps = computed(
-	() => bundledPluginComposition.length > 0 || hasConnectedApps.value
-);
-const { signOut } = useAuth();
-const showDeleteOrgModal = ref(false);
-const isDeletingOrg = ref(false);
-const { run: removeOrganization } = useBackendOperation(api.workspaces.settings.remove, {
-	label: () => t('dashboard.admin.team.operations.deleteWorkspace'),
-});
 
 // Email-verification recovery (H3 escape hatch). When REQUIRE_EMAIL_VERIFICATION
 // is on, an account that never received its verification link (mail outage, wrong
@@ -276,28 +247,6 @@ const handleTransferOwnership = async () => {
 	}
 };
 
-// Handle delete organization — schedules the backend deletion walker,
-// then signs the owner out (the whole tenant is being wiped). The modal only
-// confirms once DELETE was typed.
-const handleDeleteOrganization = async () => {
-	isDeletingOrg.value = true;
-
-	const result = await removeOrganization({});
-	if (!result.ok) {
-		isDeletingOrg.value = false;
-		return;
-	}
-
-	showToast(t('dashboard.admin.team.toasts.workspaceDeletionStarted'));
-	showDeleteOrgModal.value = false;
-
-	try {
-		await signOut();
-	} catch {
-		isDeletingOrg.value = false;
-	}
-};
-
 /**
  * `utils/teamRoles` is a module-scope definition set whose label/summary/detail
  * carry i18n keys rather than sentences (the registry convention); a plain string
@@ -325,17 +274,24 @@ const formatExpiryTime = (expiresAt: Date) => {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<!-- Members, invites and roles, nothing else: the pages that used to sit here
+	     as link cards are in the Settings sidebar, and workspace-wide switches
+	     (import on first login, deleting the workspace) live in Workspace → General. -->
+	<div>
 		<!-- Header -->
 		<div class="mb-6">
-			<div class="flex items-center justify-between">
-				<div>
+			<div class="flex items-start justify-between gap-4">
+				<div class="min-w-0">
 					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 						{{ t('dashboard.admin.team.title') }}
 					</h1>
 					<p class="mt-1 text-text-secondary">{{ t('dashboard.admin.team.lede') }}</p>
 				</div>
-				<UiButton v-if="canManageMembers" @click="inviteModal?.open()">
+				<UiButton
+					v-if="canManageMembers"
+					class="shrink-0 whitespace-nowrap"
+					@click="inviteModal?.open()"
+				>
 					<template #iconLeft>
 						<Icon name="lucide:user-plus" class="w-4 h-4" />
 					</template>
@@ -343,63 +299,6 @@ const formatExpiryTime = (expiresAt: Date) => {
 				</UiButton>
 			</div>
 		</div>
-		<nav
-			class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 mb-8"
-			:aria-label="t('dashboard.admin.team.nav.label')"
-		>
-			<NuxtLink to="/dashboard/admin/team/inboxes" class="card !p-4 hover:bg-bg-surface">
-				<Icon name="lucide:mails" class="w-5 h-5 text-brand" />
-				<p class="mt-2 font-medium text-text-primary">
-					{{ t('dashboard.admin.team.nav.inboxes.title') }}
-				</p>
-				<p class="text-xs text-text-secondary">
-					{{ t('dashboard.admin.team.nav.inboxes.description') }}
-				</p>
-			</NuxtLink>
-			<NuxtLink to="/dashboard/admin/team/senders" class="card !p-4 hover:bg-bg-surface">
-				<Icon name="lucide:at-sign" class="w-5 h-5 text-brand" />
-				<p class="mt-2 font-medium text-text-primary">
-					{{ t('dashboard.admin.team.nav.senders.title') }}
-				</p>
-				<p class="text-xs text-text-secondary">
-					{{ t('dashboard.admin.team.nav.senders.description') }}
-				</p>
-			</NuxtLink>
-			<NuxtLink to="/dashboard/admin/team/api" class="card !p-4 hover:bg-bg-surface">
-				<Icon name="lucide:key-round" class="w-5 h-5 text-brand" />
-				<p class="mt-2 font-medium text-text-primary">
-					{{ t('dashboard.admin.team.nav.apiKeys.title') }}
-				</p>
-				<p class="text-xs text-text-secondary">
-					{{ t('dashboard.admin.team.nav.apiKeys.description') }}
-				</p>
-			</NuxtLink>
-			<NuxtLink to="/dashboard/admin/team/audit" class="card !p-4 hover:bg-bg-surface">
-				<Icon name="lucide:clipboard-list" class="w-5 h-5 text-brand" />
-				<p class="mt-2 font-medium text-text-primary">
-					{{ t('dashboard.admin.team.nav.audit.title') }}
-				</p>
-				<p class="text-xs text-text-secondary">
-					{{ t('dashboard.admin.team.nav.audit.description') }}
-				</p>
-			</NuxtLink>
-			<!-- Shown while plugins are bundled, and while records from a removed
-			     plugin remain, so external access stays revocable. -->
-			<NuxtLink
-				v-if="showConnectedApps"
-				to="/dashboard/admin/team/connected-apps"
-				class="card !p-4 hover:bg-bg-surface"
-			>
-				<Icon name="lucide:plug" class="w-5 h-5 text-brand" />
-				<p class="mt-2 font-medium text-text-primary">
-					{{ t('dashboard.admin.team.nav.connectedApps.title') }}
-				</p>
-				<p class="text-xs text-text-secondary">
-					{{ t('dashboard.admin.team.nav.connectedApps.description') }}
-				</p>
-			</NuxtLink>
-		</nav>
-
 		<!-- Loading State -->
 		<div v-if="isLoading && members.length === 0" class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
@@ -428,9 +327,6 @@ const formatExpiryTime = (expiresAt: Date) => {
 
 		<!-- Content -->
 		<div v-else class="space-y-8">
-			<!-- Onboarding: migration mode (offer new users a mail import at first login) -->
-			<SettingsMigrationModeCard :can-manage="canManageSettings" />
-
 			<!-- Non-blocking refresh error: we have a (possibly stale) roster, but the
 			     latest refetch failed. Offer a retry without hiding the table. -->
 			<div
@@ -813,35 +709,6 @@ const formatExpiryTime = (expiresAt: Date) => {
 					</div>
 				</div>
 			</UiCard>
-
-			<!-- Danger Zone — Delete Organization (owner only) -->
-			<UiCard v-if="canDeleteOrganization" padding="none" overflow="hidden" class="border-error/20">
-				<template #header>
-					<div class="flex items-center gap-3">
-						<UiIconBox icon="lucide:trash-2" size="sm" variant="error" rounded="lg" />
-						<div>
-							<h2 class="text-lg font-semibold text-error">
-								{{ t('dashboard.admin.team.dangerZone.title') }}
-							</h2>
-							<p class="text-sm text-error/80">
-								{{ t('dashboard.admin.team.dangerZone.subtitle') }}
-							</p>
-						</div>
-					</div>
-				</template>
-
-				<div class="p-6">
-					<p class="text-text-secondary text-sm mb-4">
-						{{ t('dashboard.admin.team.dangerZone.body') }}
-					</p>
-					<UiButton variant="danger" @click="showDeleteOrgModal = true">
-						<template #iconLeft>
-							<Icon name="lucide:trash-2" class="w-4 h-4" />
-						</template>
-						{{ t('dashboard.admin.team.dangerZone.title') }}
-					</UiButton>
-				</div>
-			</UiCard>
 		</div>
 
 		<!-- Invite Member Modal (self-contained; opened via ref from the gated buttons) -->
@@ -866,14 +733,6 @@ const formatExpiryTime = (expiresAt: Date) => {
 			:busy="isCancelling"
 			@close="inviteToCancel = null"
 			@confirm="handleCancelInvite"
-		/>
-
-		<SettingsTeamDeleteWorkspaceModal
-			:open="showDeleteOrgModal"
-			:workspace-name="organization?.name"
-			:busy="isDeletingOrg"
-			@close="showDeleteOrgModal = false"
-			@confirm="handleDeleteOrganization"
 		/>
 	</div>
 </template>

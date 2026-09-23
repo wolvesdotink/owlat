@@ -98,6 +98,7 @@ function mountLayout(pending = false): VueWrapper {
 				DesktopTitlebar: true,
 				DashboardShellHeader: true,
 				AppCommandPalette: true,
+				ShellComposerOverlay: true,
 				KeyboardShortcutsHelp: true,
 				QueryQuickQueryPanel: true,
 				AppLiveRegion: true,

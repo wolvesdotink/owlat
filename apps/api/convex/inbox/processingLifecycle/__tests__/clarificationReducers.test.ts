@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PROCESSING_LIFECYCLE, reduce } from '../reducers';
+import { PROCESSING_LIFECYCLE, reduce, requiresManualTakeover } from '../reducers';
 import type { Doc, Id } from '../../../_generated/dataModel';
 import type { PendingClarification, TransitionInput } from '../types';
 
@@ -54,8 +54,10 @@ describe('clarification legal edges', () => {
 		expect(PROCESSING_LIFECYCLE.isLegalEdge('awaiting_clarification', 'archived')).toBe(true);
 	});
 
-	it('awaiting_clarification may NOT jump straight to draft_ready or approved', () => {
-		expect(PROCESSING_LIFECYCLE.isLegalEdge('awaiting_clarification', 'draft_ready')).toBe(false);
+	it('awaiting_clarification reaches draft_ready only as a person taking over, never approved', () => {
+		// The agent resumes through drafting; draft_ready is a manual takeover.
+		expect(PROCESSING_LIFECYCLE.isLegalEdge('awaiting_clarification', 'draft_ready')).toBe(true);
+		expect(requiresManualTakeover('awaiting_clarification', 'draft_ready')).toBe(true);
 		expect(PROCESSING_LIFECYCLE.isLegalEdge('awaiting_clarification', 'approved')).toBe(false);
 	});
 

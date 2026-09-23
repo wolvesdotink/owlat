@@ -31,7 +31,7 @@ const openThreads = computed(() => stats.value?.openThreads ?? 0);
 					</h3>
 				</div>
 				<NuxtLink
-					to="/dashboard/inbox/review"
+					to="/dashboard/answer?in=team"
 					class="text-xs font-medium whitespace-nowrap text-text-secondary hover:text-brand transition-colors"
 				>
 					{{ t('common.viewAll') }}

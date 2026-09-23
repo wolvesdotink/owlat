@@ -43,6 +43,8 @@ function makeCtx(opts: { autonomyThreshold?: number; recordThrows?: boolean }) {
 			},
 			getAgentConfig: null,
 			getBudgetStatus: { autonomousAutoSendAllowed: true },
+			// Shadow off: these cases exercise the real send decision.
+			getShadowMode: { enabled: false },
 		},
 		mutations: {
 			incrementDailyCount: { allowed: true },

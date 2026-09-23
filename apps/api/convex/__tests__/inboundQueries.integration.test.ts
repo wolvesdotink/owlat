@@ -399,20 +399,96 @@ describe('inboundQueries.getThreadFilterCounts', () => {
 			.withIdentity(testIdentity)
 			.query(api.inbox.queries.getThreadFilterCounts, {});
 
-		// open excludes the snoozed row; mine = the one assigned to me;
-		// unassigned = open/waiting with no owner (the plain open + the waiting +
-		// the neglected one); waiting/resolved/snoozed each = 1; waitingOver24h
-		// counts only the three-day-old open row.
+		// open excludes the snoozed row; waiting/resolved/snoozed each = 1;
+		// waitingOver24h counts only the three-day-old open row. The legacy
+		// mine / unassigned counts are gone: assignment narrows every count.
+		expect(counts).not.toHaveProperty('mine');
+		expect(counts).not.toHaveProperty('unassigned');
 		expect(counts).toMatchObject({
 			open: 3,
-			mine: 1,
-			unassigned: 3,
 			waiting: 1,
 			waitingOver24h: 1,
 			resolved: 1,
 			snoozed: 1,
 			cap: 100,
 		});
+	});
+
+	it('narrows status counts and the list by the assignment filter', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['inbox']);
+
+		await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, status: 'open', assignedTo: 'test-user-123' })
+			);
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, status: 'waiting', assignedTo: 'test-user-123' })
+			);
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, status: 'open', assignedTo: 'someone-else' })
+			);
+			await ctx.db.insert('conversationThreads', threadData({ contactId, status: 'open' }));
+			await ctx.db.insert('conversationThreads', threadData({ contactId, status: 'resolved' }));
+		});
+
+		const asMe = t.withIdentity(testIdentity);
+		const mine = await asMe.query(api.inbox.queries.getThreadFilterCounts, { assignee: 'me' });
+		expect(mine).toMatchObject({ open: 1, waiting: 1, resolved: 0, snoozed: 0 });
+
+		const nobody = await asMe.query(api.inbox.queries.getThreadFilterCounts, {
+			assignee: 'unassigned',
+		});
+		expect(nobody).toMatchObject({ open: 1, waiting: 0, resolved: 1 });
+
+		const list = await asMe.query(api.inbox.queries.listThreads, {
+			filter: 'open',
+			assignee: 'me',
+		});
+		expect(list.threads).toHaveLength(1);
+		expect(list.threads[0]?.assignedTo).toBe('test-user-123');
+	});
+
+	it('pages an assignment-filtered tab in activity order, not creation order', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['inbox']);
+		await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			// Created first, but the customer wrote most recently.
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({
+					contactId,
+					subject: 'old thread, fresh reply',
+					status: 'open',
+					assignedTo: 'test-user-123',
+					lastMessageAt: 3_000,
+				})
+			);
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({
+					contactId,
+					subject: 'newer thread, quiet',
+					status: 'open',
+					assignedTo: 'test-user-123',
+					lastMessageAt: 1_000,
+				})
+			);
+		});
+		const list = await t.withIdentity(testIdentity).query(api.inbox.queries.listThreads, {
+			filter: 'open',
+			assignee: 'me',
+			sort: 'newest',
+		});
+		expect(list.threads.map((thread) => thread.subject)).toEqual([
+			'old thread, fresh reply',
+			'newer thread, quiet',
+		]);
 	});
 });
 

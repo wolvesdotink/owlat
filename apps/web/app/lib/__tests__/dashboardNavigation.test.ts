@@ -44,11 +44,15 @@ describe('buildNavigationSections — role-aware information architecture', () =
 	it('gives editors a customer-first surface with no administrative destinations', () => {
 		const sections = buildNavigationSections({ ...allFlags, role: 'editor' });
 		const hrefs = sections.flatMap((section) => section.items.map((item) => item.href));
+		// Assistant and Knowledge are for every member while their features are
+		// on — only the administrative destinations stay out.
 		expect(sections.map((section) => section.key)).toEqual([
 			'inbox',
 			'postbox',
+			'assistant',
 			'send',
 			'audience',
+			'knowledge',
 			'preferences',
 		]);
 		const audienceSection = sections.find((section) => section.key === 'audience');
@@ -58,6 +62,18 @@ describe('buildNavigationSections — role-aware information architecture', () =
 		expect(hrefs.some((href) => href.startsWith('/dashboard/admin/'))).toBe(false);
 		expect(hrefs).not.toContain('/dashboard/automations');
 		expect(hrefs).not.toContain('/dashboard/send/transactional');
+		expect(hrefs).toContain('/dashboard/assistant');
+		expect(hrefs).toContain('/dashboard/knowledge');
+	});
+
+	it('keeps Assistant and Knowledge behind their feature flags', () => {
+		const sections = buildNavigationSections({
+			...allFlags,
+			role: 'editor',
+			isFeatureEnabled: (flag) => flag !== 'ai.assistant' && flag !== 'ai.knowledge',
+		});
+		expect(sections.some((section) => section.key === 'assistant')).toBe(false);
+		expect(sections.some((section) => section.key === 'knowledge')).toBe(false);
 	});
 
 	it('fails closed while the organization role is unresolved', () => {
@@ -99,8 +115,7 @@ describe('buildNavigationSections — plugin contributions', () => {
 		);
 		const audience = sections.find((s) => s.key === 'audience');
 		expect(audience?.items.at(-1)?.href).toBe('/dashboard/audience/pipeline');
-		expect(audience?.items.map((i) => i.href).slice(0, 5)).toEqual([
-			'/dashboard/audience',
+		expect(audience?.items.map((i) => i.href).slice(0, 4)).toEqual([
 			'/dashboard/audience/contacts',
 			'/dashboard/audience/topics',
 			'/dashboard/audience/segments',

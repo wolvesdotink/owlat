@@ -1,12 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import {
+	DEFAULT_INBOX_ASSIGNEE,
+	INBOX_ASSIGNEES,
+	INBOX_ASSIGNEE_META,
 	INBOX_FILTERS,
-	INBOX_FILTER_COUNT_KEY,
 	INBOX_FILTER_META,
 	INBOX_SORTS,
 	DEFAULT_INBOX_FILTER,
 	DEFAULT_INBOX_SORT,
+	inboxAssigneeArg,
+	inboxAssigneeToQuery,
+	legacyInboxSort,
 	nextInboxSort,
+	parseInboxAssignee,
 	parseInboxFilter,
 	inboxFilterToQuery,
 	resolveInboxSort,
@@ -24,7 +30,7 @@ describe('inbox filter URL state', () => {
 
 	it('keeps the default view out of the URL', () => {
 		expect(inboxFilterToQuery(DEFAULT_INBOX_FILTER)).toBeUndefined();
-		expect(inboxFilterToQuery('unassigned')).toBe('unassigned');
+		expect(inboxFilterToQuery('waiting')).toBe('waiting');
 	});
 
 	it('falls back to the default for absent or unknown values', () => {
@@ -35,23 +41,51 @@ describe('inbox filter URL state', () => {
 	});
 
 	it('accepts a repeated query key by taking the first value', () => {
-		expect(parseInboxFilter(['waiting', 'mine'])).toBe('waiting');
-		expect(parseInboxFilter(['nope', 'mine'] as string[])).toBe(DEFAULT_INBOX_FILTER);
+		expect(parseInboxFilter(['waiting', 'resolved'])).toBe('waiting');
+		expect(parseInboxFilter(['nope', 'waiting'] as string[])).toBe(DEFAULT_INBOX_FILTER);
 	});
 
-	it('parses each known slug verbatim', () => {
-		const slugs: InboxFilter[] = [
-			'open',
-			'mine',
-			'unassigned',
-			'waiting',
-			'waiting-24h',
-			'snoozed',
-			'resolved',
-		];
+	it('has exactly four status tabs, with no assignment mixed in', () => {
+		const slugs: InboxFilter[] = ['open', 'waiting', 'snoozed', 'resolved'];
+		expect([...INBOX_FILTERS]).toEqual(slugs);
 		for (const slug of slugs) {
 			expect(parseInboxFilter(slug)).toBe(slug);
 		}
+	});
+});
+
+describe('inbox assignment filter', () => {
+	it('offers Anyone / Me / Unassigned, defaulting to anyone', () => {
+		expect([...INBOX_ASSIGNEES]).toEqual(['anyone', 'me', 'unassigned']);
+		expect(DEFAULT_INBOX_ASSIGNEE).toBe('anyone');
+		for (const a of INBOX_ASSIGNEES) {
+			expect(INBOX_ASSIGNEE_META[a].label).toMatch(/^shared\.inboxAssignees\./);
+		}
+	});
+
+	it('round-trips through ?assignee= and keeps anyone out of the URL', () => {
+		for (const a of INBOX_ASSIGNEES) {
+			expect(parseInboxAssignee(inboxAssigneeToQuery(a))).toBe(a);
+		}
+		expect(inboxAssigneeToQuery('anyone')).toBeUndefined();
+		expect(parseInboxAssignee('bogus')).toBe('anyone');
+	});
+
+	it('only sends an assignee to the query when one is picked', () => {
+		expect(inboxAssigneeArg('anyone')).toBeUndefined();
+		expect(inboxAssigneeArg('me')).toBe('me');
+		expect(inboxAssigneeArg('unassigned')).toBe('unassigned');
+	});
+
+	it('keeps old ?filter= links working: they become Open + an assignee or an order', () => {
+		expect(parseInboxFilter('mine')).toBe('open');
+		expect(parseInboxAssignee(undefined, 'mine')).toBe('me');
+		expect(parseInboxAssignee(undefined, 'unassigned')).toBe('unassigned');
+		// An explicit ?assignee= wins over the legacy meaning.
+		expect(parseInboxAssignee('anyone', 'mine')).toBe('anyone');
+		expect(parseInboxFilter('waiting-24h')).toBe('open');
+		expect(legacyInboxSort('waiting-24h')).toBe('oldest-waiting');
+		expect(legacyInboxSort('waiting')).toBeUndefined();
 	});
 });
 
@@ -62,15 +96,6 @@ describe('inbox filter registry', () => {
 			expect(meta.label, filter).toMatch(/^shared\.inboxFilters\./);
 			expect(meta.empty, filter).toMatch(/^shared\.inboxFilters\./);
 		}
-	});
-
-	it('maps every pill to a count field, with the escalation pill renamed', () => {
-		for (const filter of INBOX_FILTERS) {
-			expect(INBOX_FILTER_COUNT_KEY[filter], filter).toBeTruthy();
-		}
-		// The slug carries a hyphen; a Convex object field cannot.
-		expect(INBOX_FILTER_COUNT_KEY['waiting-24h']).toBe('waitingOver24h');
-		expect(INBOX_FILTER_COUNT_KEY.open).toBe('open');
 	});
 });
 

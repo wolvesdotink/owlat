@@ -47,6 +47,11 @@ import {
 	type RampControlRefusal,
 	type RampPromotionCondition,
 } from '~/utils/deliverabilityRamp';
+import { isRampInactive } from '~/utils/deliveryAdvancedEmpty';
+// Imported, not auto-resolved: the empty state is this screen's content, and
+// a mount that resolved it to nothing would hide the one thing it says.
+import DeliveryAdvancedEmptyState from '~/components/delivery/AdvancedEmptyState.vue';
+import DeliveryRampIdleNotice from '~/components/delivery/RampIdleNotice.vue';
 
 const { t } = useI18n();
 
@@ -173,6 +178,8 @@ const selectedCellKey = ref<string | null>(null);
 const pendingForceShare = ref<number | null>(null);
 
 const cells = computed<readonly RampCellControl[]>(() => controls.value?.cells ?? []);
+/** No cell is under the ramp yet: the controls work, but say where to begin. */
+const isRampIdle = computed(() => cells.value.length > 0 && isRampInactive(cells.value));
 const selectedCell = computed<RampCellControl | null>(
 	() => cells.value.find((cell) => cell.cellKey === selectedCellKey.value) ?? null
 );
@@ -283,7 +290,7 @@ async function changePreset(
 </script>
 
 <template>
-	<div class="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
+	<div>
 		<header class="mb-6">
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 				{{ t('dashboard.admin.delivery.advanced.controls.title') }}
@@ -318,7 +325,16 @@ async function changePreset(
 				</div>
 			</template>
 
-			<div v-if="controls" class="space-y-5">
+			<DeliveryAdvancedEmptyState
+				v-if="controls && cells.length === 0"
+				icon="lucide:sliders-horizontal"
+				:title="t('dashboard.admin.delivery.advanced.controls.empty.title')"
+				:description="t('dashboard.admin.delivery.advanced.controls.empty.description')"
+			/>
+
+			<div v-else-if="controls" class="space-y-5">
+				<DeliveryRampIdleNotice v-if="isRampIdle" />
+
 				<UiCard v-if="controls.isControllerPaused">
 					<p class="text-sm text-text-secondary" data-testid="ramp-global-pause">
 						{{ t('dashboard.admin.delivery.advanced.controls.globalPause') }}

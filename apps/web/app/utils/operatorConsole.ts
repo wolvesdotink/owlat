@@ -70,10 +70,19 @@ export function scanLevelVariant(
 	}
 }
 
-/** Format a 0–1 rate as a percentage string (e.g. 0.0123 → "1.23%"). */
-export function formatRate(rate: number | undefined): string {
+/**
+ * Format a 0–1 rate as a percentage string (e.g. 0.0123 → "1.23%"). With a
+ * locale, the number is written the way that locale writes it ("1,23 %" in
+ * German); without one it keeps the plain form.
+ */
+export function formatRate(rate: number | undefined, locale?: string): string {
 	if (rate === undefined || Number.isNaN(rate)) return '—';
-	return formatPercentage(rate, 2, true);
+	if (locale === undefined) return formatPercentage(rate, 2, true);
+	return new Intl.NumberFormat(locale, {
+		style: 'percent',
+		minimumFractionDigits: 2,
+		maximumFractionDigits: 2,
+	}).format(rate);
 }
 
 /**
@@ -98,4 +107,25 @@ export function auditActionLabel(action: string | undefined): string {
 		default:
 			return action ?? 'shared.operatorConsole.auditAction.unknown';
 	}
+}
+
+export type OperatorTab = 'overview' | 'review' | 'organizations' | 'admins';
+
+/**
+ * What the console shows. A self-hosted instance with one workspace has no
+ * other workspaces to police, and Delivery health already shows its sending
+ * numbers, so it drops the Workspaces tab and the overview's delivery stats
+ * and keeps what it still needs: content review, the admin roster and the
+ * abuse signals (#800). An unknown count (still loading) keeps everything, so
+ * a multi-workspace console never flashes a trimmed view.
+ */
+export function operatorConsoleLayout(
+	deploymentMode: string | undefined,
+	workspaceCount: number | undefined
+): { tabs: OperatorTab[]; showDeliveryStats: boolean } {
+	const singleWorkspace =
+		deploymentMode !== 'hosted' && workspaceCount !== undefined && workspaceCount <= 1;
+	return singleWorkspace
+		? { tabs: ['overview', 'review', 'admins'], showDeliveryStats: false }
+		: { tabs: ['overview', 'review', 'organizations', 'admins'], showDeliveryStats: true };
 }

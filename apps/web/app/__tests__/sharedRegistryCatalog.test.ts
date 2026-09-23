@@ -199,28 +199,28 @@ describe('sharedPkg.deliverabilityChecklist — the catalog mirrors the checklis
  * renderable card with no catalog entry falls back to that English forever.
  */
 const DASHBOARD_CARDS: Record<string, { label: string; description: string }> = {
-	verification_queue: { label: 'Review Queue', description: 'Pending agent drafts needing review' },
+	verification_queue: { label: 'Review queue', description: 'Pending agent drafts needing review' },
 	campaign_performance: {
-		label: 'Campaign Performance',
+		label: 'Campaign performance',
 		description: 'Recent campaign metrics',
 	},
 	channel_health: {
-		label: 'Channel Health',
+		label: 'Channel health',
 		description: 'Status of all communication channels',
 	},
-	agent_health: { label: 'Agent Health', description: 'AI agent pipeline metrics' },
-	recent_contacts: { label: 'Recent Contacts', description: 'Newly added or active contacts' },
+	agent_health: { label: 'Agent health', description: 'AI agent pipeline metrics' },
+	recent_contacts: { label: 'Recent contacts', description: 'Newly added or active contacts' },
 	recent_activity: {
-		label: 'Recent Activity',
+		label: 'Recent activity',
 		description: 'Org-wide audit log and contact activity feed',
 	},
-	queue_depth: { label: 'Queue Depth', description: 'Inbound message processing queue' },
-	delivery_rates: { label: 'Delivery Rates', description: 'Email delivery success rates' },
+	queue_depth: { label: 'Queue depth', description: 'Inbound message processing queue' },
+	delivery_rates: { label: 'Delivery rates', description: 'Email delivery success rates' },
 	pinned_visualizations: { label: 'Visualizations', description: 'Pinned data visualizations' },
 	knowledge_graph: { label: 'Knowledge', description: 'Recent knowledge entries' },
-	upcoming_campaigns: { label: 'Upcoming Campaigns', description: 'Scheduled campaigns' },
-	cost_by_step: { label: 'LLM Cost by Step', description: 'Token cost per agent-pipeline step' },
-	accuracy_trend: { label: 'Accuracy Trend', description: 'Auto-approve vs. rejection over time' },
+	upcoming_campaigns: { label: 'Upcoming campaigns', description: 'Scheduled campaigns' },
+	cost_by_step: { label: 'LLM cost by step', description: 'Token cost per agent-pipeline step' },
+	accuracy_trend: { label: 'Accuracy trend', description: 'Auto-approve vs. rejection over time' },
 };
 
 describe('sharedPkg.adaptiveDashboard — the catalog mirrors the backend card catalog', () => {

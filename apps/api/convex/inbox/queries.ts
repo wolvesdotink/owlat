@@ -17,10 +17,12 @@ import { compareNeedsAttention, compareOldestWaiting } from './threadSort';
 import {
 	FILTER_COUNT_CAP,
 	buildThreadQuery,
+	threadAssigneeValidator,
 	threadFilterValidator,
 	type ThreadFilter,
 } from './threadFilters';
 import { searchThreads } from './threadSearch';
+import { takeOverViewFor } from './manualReply';
 import {
 	openConversationThreadPreview,
 	openInboundMessageRow,
@@ -95,6 +97,9 @@ async function enrichThreadRows(
 export const listThreads = publicQuery({
 	args: {
 		filter: v.optional(threadFilterValidator),
+		// Assignment filter shown beside the status tabs (Anyone / Me /
+		// Unassigned). Absent = anyone. Narrows the status slice.
+		assignee: v.optional(threadAssigneeValidator),
 		// Ordering. `needs-attention` (the default view) floats drafts-ready then
 		// unassigned-unread then oldest-open to the top; `oldest-waiting` puts
 		// the longest-waiting customer first; `newest` is plain recency.
@@ -125,6 +130,7 @@ export const listThreads = publicQuery({
 			const hits = await searchThreads(ctx, {
 				search: args.search,
 				filter: args.filter,
+				...(args.assignee ? { assignee: args.assignee } : {}),
 				userId: session.userId,
 				now,
 				limit,
@@ -145,7 +151,7 @@ export const listThreads = publicQuery({
 		//   - oldest-waiting  → the same ascending walk (oldest inbound activity is
 		//                        the longest wait), re-floated by the waiting rule.
 		//   - newest          → most-recent activity first (desc).
-		const built = buildThreadQuery(ctx, args.filter, session.userId, now);
+		const built = buildThreadQuery(ctx, args.filter, session.userId, now, args.assignee);
 		const order: 'asc' | 'desc' =
 			args.filter === 'snoozed' || sort === 'needs-attention' || sort === 'oldest-waiting'
 				? 'asc'
@@ -178,12 +184,14 @@ export const listThreads = publicQuery({
  *
  * Each count reads at most `FILTER_COUNT_CAP` rows off the same index the list
  * uses, so a pill never triggers an unbounded scan; a slice at the cap renders
- * as "99+" in the UI. Subscribed only by the inbox landing view.
+ * as "99+" in the UI. Subscribed only by the inbox landing view. `assignee`
+ * narrows the status counts the same way it narrows the list, so a tab's count
+ * always matches what it shows.
  */
 // public: soft-auth — admin-only shared inbox; returns empty for non-admins
 export const getThreadFilterCounts = publicQuery({
-	args: {},
-	handler: async (ctx) => {
+	args: { assignee: v.optional(threadAssigneeValidator) },
+	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'inbox');
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!isSharedInboxReader(session)) return null;
@@ -191,17 +199,19 @@ export const getThreadFilterCounts = publicQuery({
 		const now = Date.now();
 		const userId = session.userId;
 		const countFilter = async (filter: ThreadFilter) => {
-			const rows = await buildThreadQuery(ctx, filter, userId, now).take(FILTER_COUNT_CAP);
+			const rows = await buildThreadQuery(ctx, filter, userId, now, args.assignee).take(
+				FILTER_COUNT_CAP
+			);
 			return rows.length;
 		};
 
 		// The escalation pill is `waitingOver24h` on the wire: a Convex object field
 		// is an identifier and the filter slug carries a hyphen. The web registry
 		// (utils/inboxFilters) is where the two names are tied together.
-		const [open, mine, unassigned, waiting, waitingOver24h, snoozed, resolved] = await Promise.all([
+		// No `mine` / `unassigned` counts: those are the assignment control now,
+		// not tabs, and `assignee` already narrows every count below.
+		const [open, waiting, waitingOver24h, snoozed, resolved] = await Promise.all([
 			countFilter('open'),
-			countFilter('mine'),
-			countFilter('unassigned'),
 			countFilter('waiting'),
 			countFilter('waiting-24h'),
 			countFilter('snoozed'),
@@ -210,8 +220,6 @@ export const getThreadFilterCounts = publicQuery({
 
 		return {
 			open,
-			mine,
-			unassigned,
 			waiting,
 			waitingOver24h,
 			snoozed,
@@ -259,6 +267,9 @@ export const getThread = publicQuery({
 			// the columns the row HAS, so an absent body stays absent.
 			messages: await openInboundMessageRows(messages),
 			contact,
+			// What the reply composer needs to know before offering a manual reply:
+			// the same facts `manualReply.takeOverReply` checks.
+			takeOver: await takeOverViewFor(ctx, messages),
 		};
 	},
 });

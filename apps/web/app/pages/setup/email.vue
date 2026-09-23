@@ -3,6 +3,7 @@ import { SETUP_WIZARD_STEPS, buildProviderEnv } from '~/composables/useSetupWiza
 import { apiFetch } from '~/lib/csrfFetch';
 import { emailStepIsValid } from '~/composables/setupWizardValidation';
 import { useSetupEmailStepForm } from '~/composables/useSetupEmailStepForm';
+import { setupChoiceClass } from '~/utils/setupChoiceCard';
 
 definePageMeta({ layout: false });
 
@@ -29,7 +30,6 @@ const {
 	transactionalIps,
 	campaignIps,
 	ehloHostname,
-	ehloHostnames,
 	resendKey,
 	emailitKey,
 	mandrillKey,
@@ -176,32 +176,28 @@ async function next() {
 				<!-- A real <form> so Enter in any credential field advances the step, the
 				     same affordance the Admin step already has. -->
 				<form @submit.prevent="next">
-					<div class="mb-5">
-						<UiErrorAlert
-							v-if="requiresProvider"
-							variant="info"
-							:title="t('setup.email.providerRequiredTitle')"
-							:message="t('setup.email.providerRequiredMessage')"
-						/>
-						<UiErrorAlert
-							v-else
-							variant="info"
-							:title="t('setup.email.providerOptionalTitle')"
-							:message="t('setup.email.providerOptionalMessage')"
-						/>
-					</div>
+					<!-- A neutral hint, and only while nothing is picked: once a provider
+					     is selected there is nothing left to tell the operator. -->
+					<p
+						v-if="provider === 'none'"
+						class="mb-5 flex items-start gap-2 text-sm text-text-secondary"
+						data-testid="setup-provider-hint"
+					>
+						<Icon name="lucide:info" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
+						{{
+							requiresProvider
+								? t('setup.email.providerRequiredHint')
+								: t('setup.email.providerOptionalHint')
+						}}
+					</p>
 
 					<fieldset class="space-y-2 mb-2">
 						<legend class="sr-only">{{ t('setup.email.providerLegend') }}</legend>
 						<label
 							v-for="opt in providerOptions"
 							:key="opt.value"
-							class="flex items-start gap-3 rounded-xl border p-4 cursor-pointer transition-[border-color,background-color,box-shadow] duration-(--motion-fast) ease-spring"
-							:class="
-								provider === opt.value
-									? 'border-transparent bg-(--surface-2-selected) shadow-surface-2'
-									: 'border-transparent bg-surface-1 shadow-surface-1 hover:shadow-surface-2'
-							"
+							class="flex items-start gap-3 p-4 cursor-pointer"
+							:class="setupChoiceClass(provider === opt.value)"
 						>
 							<input
 								v-model="provider"
@@ -307,18 +303,14 @@ async function next() {
 								placeholder="587"
 								autocomplete="off"
 							/>
-							<label
-								class="flex items-center gap-3 rounded-xl bg-surface-1 shadow-surface-1 border border-transparent p-3 cursor-pointer transition-[box-shadow] duration-(--motion-fast) ease-spring hover:shadow-surface-2"
+							<div
+								class="flex items-center justify-between gap-3 rounded-xl bg-surface-1 shadow-surface-1 border border-transparent p-3"
 							>
-								<input
-									v-model="smtpSecure"
-									type="checkbox"
-									class="h-4 w-4 rounded border-border-default bg-bg-deep text-brand focus-visible:ring-1 focus-visible:ring-brand"
-								/>
-								<span class="text-sm text-text-secondary">
+								<label for="setup-smtp-secure" class="text-sm text-text-secondary cursor-pointer">
 									{{ t('setup.email.smtpSecureLabel') }}
-								</span>
-							</label>
+								</label>
+								<UiSwitch id="setup-smtp-secure" v-model="smtpSecure" />
+							</div>
 						</div>
 						<UiInput
 							v-model="smtpUsername"
@@ -367,12 +359,6 @@ async function next() {
 							:label="t('setup.email.ehloHostnameLabel')"
 							placeholder="mail.example.com"
 							:help-text="t('setup.email.ehloHostnameHelp')"
-						/>
-						<UiInput
-							v-model="ehloHostnames"
-							:label="t('setup.email.ehloOverridesLabel')"
-							placeholder='{"203.0.113.11":"mail2.example.com"}'
-							:help-text="t('setup.email.ehloOverridesHelp')"
 						/>
 						<!--
 							The PTR record is the one piece of this step that is not a field:

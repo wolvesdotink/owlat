@@ -9,8 +9,12 @@
  * and anything the sidebar already lists keeps its own wording.
  */
 import { describe, it, expect } from 'vitest';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { NavigationEnvironment } from '../dashboardNavigationCore';
 import { routePaletteTargets } from '../commandPaletteRoutes';
+import { ADMIN_AREAS, adminEntryFor } from '../adminSettingsRegistry';
 import { createTestI18n } from '~/__tests__/i18n';
 
 const { t } = createTestI18n().global;
@@ -43,21 +47,48 @@ describe('routePaletteTargets', () => {
 
 	it('labels a leaf with its page crumb and the level above it', () => {
 		const target = routePaletteTargets(env(), new Set()).find(
-			(entry) => entry.href === '/dashboard/admin/instance/ai-provider'
+			(entry) => entry.href === '/dashboard/audience/segments'
 		);
 		expect(target).toMatchObject({
-			labelKey: 'shared.breadcrumbRoutes.pages.aiProvider',
-			contextKey: 'shared.breadcrumbRoutes.subsections.instance',
+			labelKey: 'shared.breadcrumbRoutes.pages.segments',
+			contextKey: 'shared.breadcrumbRoutes.sections.audience',
+			icon: 'lucide:users',
+		});
+	});
+
+	it('names an admin page with the title and area its own rail prints', () => {
+		const targets = routePaletteTargets(env(), new Set());
+		for (const target of targets.filter((entry) => entry.href.startsWith('/dashboard/admin'))) {
+			const entry = adminEntryFor(target.href);
+			if (!entry) continue;
+			const area = ADMIN_AREAS.find((candidate) => candidate.key === entry.area)!;
+			expect(target.labelKey, target.href).toBe(entry.titleKey);
+			expect(target.contextKey, target.href).toBe(area.titleKey);
+		}
+		const webhooks = targets.find((entry) => entry.href === '/dashboard/admin/delivery/webhooks');
+		expect(webhooks).toMatchObject({
+			labelKey: 'shared.breadcrumbRoutes.pages.webhooks',
+			// The Workspace group the page sits in, as the Settings sidebar names it.
+			contextKey: 'shell.admin.areas.delivery',
 			icon: 'lucide:shield-check',
 		});
 	});
 
 	it('gives a section root no context line', () => {
 		const target = routePaletteTargets(env(), new Set()).find(
-			(entry) => entry.href === '/dashboard/automations'
+			(entry) => entry.href === '/dashboard'
 		);
-		expect(target?.labelKey).toBe('shared.breadcrumbRoutes.sections.automations');
+		expect(target?.labelKey).toBe('shared.breadcrumbRoutes.sections.dashboard');
 		expect(target?.contextKey).toBeUndefined();
+	});
+
+	it('files campaigns, automations and templates under Marketing, not Send', () => {
+		const targets = routePaletteTargets(env(), new Set());
+		for (const href of ['/dashboard/campaigns', '/dashboard/automations', '/dashboard/send']) {
+			const target = targets.find((entry) => entry.href === href);
+			expect(target?.contextKey, href).toBe('shared.breadcrumbRoutes.sections.marketing');
+			expect(t(target!.contextKey!)).toBe('Marketing');
+		}
 	});
 
 	it('renders every derived key as words, never as a key path', () => {
@@ -90,5 +121,33 @@ describe('routePaletteTargets', () => {
 		expect(reachable).not.toContain('/dashboard/admin');
 		expect(reachable).not.toContain('/dashboard/admin/delivery');
 		expect(reachable).toContain('/dashboard/admin/delivery/webhooks');
+	});
+});
+
+/**
+ * #799: one destination, one row. A page that only redirects lands where
+ * another row already goes, so the palette never offers it.
+ */
+describe('palette targets and redirect-only pages', () => {
+	const pages = join(dirname(fileURLToPath(import.meta.url)), '../../pages');
+	function pageSource(href: string): string | null {
+		for (const candidate of [`${href}.vue`, `${href}/index.vue`]) {
+			const file = join(pages, candidate);
+			if (existsSync(file)) return readFileSync(file, 'utf8');
+		}
+		return null;
+	}
+
+	it('never offers a page that only redirects somewhere else', () => {
+		const redirecting = hrefs(env({ role: 'owner', isDesktop: true })).filter((href) => {
+			const source = pageSource(href);
+			return source !== null && /\bredirect:|await navigateTo\(/.test(source);
+		});
+		expect(redirecting).toEqual([]);
+	});
+
+	it('gives no two rows the same destination', () => {
+		const all = hrefs(env({ role: 'owner', isDesktop: true }));
+		expect(new Set(all).size).toBe(all.length);
 	});
 });

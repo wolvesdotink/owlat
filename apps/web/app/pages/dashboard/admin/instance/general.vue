@@ -53,7 +53,12 @@ const { run: setFeatureFlag } = useBackendOperation(api.workspaces.featureFlags.
 });
 
 // Feature flag state — archive default lives on `campaigns.archive`, not on instanceSettings
-const { flags } = useFeatureFlag();
+const { flags, isEnabled: isFeatureEnabled } = useFeatureFlag();
+
+// Mail search only means something where mail is stored: a hosted postbox or a
+// connected mailbox. Same gate the settings registry uses for mail settings.
+const hasMail = computed(() => isFeatureEnabled('postbox') || isFeatureEnabled('mail.external'));
+const mailSearchHeadingId = useId();
 
 // Form state
 const form = reactive({
@@ -235,7 +240,7 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div>
 		<!-- Header -->
 		<div class="mb-6">
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
@@ -436,6 +441,27 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 			<SettingsInboundRetentionCard />
 		</div>
 
+		<!-- Mail search: how much of each message search can reach. It used to
+		     sit on the Sealed mail page; people looking for why search misses
+		     things look here, and the search page's limit notice links here. -->
+		<section
+			v-if="hasActiveOrganization && hasMail"
+			id="mail-search"
+			class="mt-8 scroll-mt-6 border-t border-border-subtle pt-8"
+			:aria-labelledby="mailSearchHeadingId"
+			data-testid="general-mail-search"
+		>
+			<div class="mb-4">
+				<h2 :id="mailSearchHeadingId" class="text-lg font-medium text-text-primary">
+					{{ t('dashboard.admin.instance.general.mailSearch.title') }}
+				</h2>
+				<p class="text-sm text-text-secondary mt-0.5">
+					{{ t('dashboard.admin.instance.general.mailSearch.subtitle') }}
+				</p>
+			</div>
+			<SettingsBodySearchIndexCard />
+		</section>
+
 		<!-- Unsaved Changes Dialog -->
 		<UnsavedChangesDialog
 			:show="showUnsavedDialog"
@@ -443,5 +469,24 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 			@discard="confirmDiscard"
 			@save="confirmSave"
 		/>
+
+		<!-- ── Moved here from the Team page (#795) ───────────────────────────
+		     Workspace-wide switches that are not about who is on the team. Both
+		     save on their own, outside this page's Save button. -->
+
+		<!-- Import on first login: offer new users a mail import. Everyone who
+		     reaches this page is an owner or admin, so they may change it. -->
+		<div class="mt-8">
+			<SettingsMigrationModeCard
+				id="import-on-first-login"
+				class="scroll-mt-6"
+				:can-manage="true"
+			/>
+		</div>
+
+		<!-- Danger zone: delete the workspace (owner only, typed confirmation). -->
+		<div class="mt-8">
+			<SettingsWorkspaceDangerZone />
+		</div>
 	</div>
 </template>

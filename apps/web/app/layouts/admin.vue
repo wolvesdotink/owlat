@@ -1,91 +1,86 @@
 <script setup lang="ts">
 /**
- * The Administration shell: a persistent left rail over every admin page.
+ * The Workspace settings shell: the Settings sidebar over every admin page, and
+ * the one page frame (`SettingsPageShell`) every settings page shares.
  *
- * Administration was hub-and-spoke. Thirty-odd pages hung off three hub grids in
- * the plain `dashboard` layout, so Domains → Transport → Webhooks cost a trip
- * back through the hub each time, and the four ramp pages were folded into a
- * collapsed disclosure on the Delivery hub — in no rail, no hub grid and no ⌘K.
- * This layout gives the area the rail Preferences has had since the settings
- * registry landed, reading the same one table (`lib/adminSettingsRegistry`) the
- * palette provider below reads.
+ * Administration was hub-and-spoke: thirty-odd pages hung off three hub grids,
+ * so Domains → Transport → Webhooks cost a trip back through the hub each time.
+ * This layout reads the one admin table (`lib/adminSettingsRegistry`) for the
+ * sidebar's Workspace tab, the palette provider below and the tab strip over
+ * grouped pages ("Advanced" is one sidebar row with four tabs).
  *
- * Unlike `preferences`, it renders NO page title and NO padding of its own: the
- * admin pages each own a real header (a verdict chip, a warm-up sentence, an
- * operating-mode picker) and their own `p-6 lg:p-8` wrapper. The layout adds the
- * rail and nothing else, so the hubs keep their card grids untouched.
+ * Pages own their header (a verdict chip, a warm-up sentence, an actions row);
+ * the shell owns the width, the padding and the title style, so moving between
+ * neighbours no longer makes the content jump sideways.
  *
- * Nests inside `dashboard` so Administration keeps the app rail, header and ⌘K.
+ * Nests inside `dashboard` so Settings keeps the app rail, header and ⌘K.
  */
-import { api } from '@owlat/api';
-import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
+import {
+	ADMIN_ROOT,
+	adminEntryFor,
+	adminRailEntryFor,
+	reachableAdminEntries,
+	type AdminAreaKey,
+} from '~/lib/adminSettingsRegistry';
 import {
 	ADMIN_COMMAND_PROVIDER_ID,
 	ADMIN_COMMAND_PROVIDER_PRIORITY,
-	ADMIN_ROOT,
-	adminAreasFor,
-	adminEntryFor,
+	adminTabsFor,
 	buildAdminSurfaceGroups,
-	reachableAdminEntries,
-	type AdminAreaKey,
-	type AdminEnvironment,
-} from '~/lib/adminSettingsRegistry';
+} from '~/lib/adminSettingsNav';
 import { routePrefixMatcher } from '~/lib/commandPaletteRegistry';
 import { settingsSectionsFor } from '~/lib/settingsRegistry';
+import SettingsPageShell from '~/components/settings/PageShell.vue';
+import { useWorkspaceSettingsNav } from '~/composables/useWorkspaceSettingsNav';
 
 const { t } = useI18n();
 const route = useRoute();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 
-// Deployment-level tooling is scoped to this deployment's platform admin — the
-// same gate the admin hub puts on its Platform card grid, and the same gate the
-// three pages carry as `platform-admin` route middleware.
-const { data: isPlatformAdmin } = useConvexQuery(
-	api.platformAdmin.platformAdmin.isPlatformAdmin,
-	() => ({})
-);
+const { environment, areas, badges } = useWorkspaceSettingsNav(ref(true));
 
-const environment = computed<AdminEnvironment>(() => ({
-	isFeatureEnabled,
-	isPlatformAdmin: isPlatformAdmin.value === true,
-	hasPlugins: bundledPluginComposition.length > 0,
-}));
-
-const areas = computed(() => adminAreasFor(environment.value));
-
-// The admin layout is admin-gated, so the knowledge links only follow the flags.
-const knowledge = computed(() => ({
-	explorer: isFeatureEnabled('ai.knowledge'),
-	graph: isFeatureEnabled('ai.knowledge') && isFeatureEnabled('ai.knowledge.analytics'),
-}));
-// The personal half of Settings, shown above the workspace areas in one nav.
+// The personal half of Settings, behind the sidebar's "My settings" tab.
 const { isDesktop } = useDesktopContext();
 const youSections = computed(() =>
 	settingsSectionsFor({ isFeatureEnabled, isDesktop: isDesktop.value })
 );
 
-/** The area the current page belongs to — what the compact row narrows to. */
+/** The group the current page belongs to — what the compact row narrows to. */
 const activeArea = computed<AdminAreaKey | null>(() => adminEntryFor(route.path)?.area ?? null);
+/** The rail row standing for this page (its parent, for a hidden child). */
+const railPath = computed(() => adminRailEntryFor(route.path)?.path ?? route.path);
+
+/** Tables that need room opt out of the reading width. */
+const wide = computed(() => adminEntryFor(route.path)?.wide === true);
+
+/** Sibling pages shown as tabs (the "Advanced" delivery pages). */
+const tabs = computed(() => adminTabsFor(route.path, environment.value));
 
 /**
- * Below `lg` the rail becomes a scrollable pill row. It lists the CURRENT area's
- * pages rather than all thirty-odd — a phone-width strip of every admin page is
- * a scroll, not a navigation — plus Administration itself, which is the way back
- * to the other areas' hubs.
+ * Below `lg` the sidebar becomes a scrollable pill row. It lists the CURRENT
+ * group's pages rather than all thirty-odd — a phone-width strip of every admin
+ * page is a scroll, not a navigation — plus the overview, which is the way back
+ * to the other groups.
  *
- * On the Administration hub that leaves one pill pointing at the page you are
- * already on, so the row hides itself there: the hub's own card grid is the
- * navigation at that width.
+ * On the overview that leaves one pill pointing at the page you are already on,
+ * so only the trailing link to My settings stays there.
  */
 const compactEntries = computed(() => {
 	const overview = areas.value.find((area) => area.key === 'overview')?.entries ?? [];
 	const current = areas.value.find((area) => area.key === activeArea.value)?.entries ?? [];
 	return [...overview.filter((entry) => !current.includes(entry)), ...current];
 });
+// On the overview that list is one pill pointing at itself: show only the way
+// across to My settings there.
+const compactPills = computed(() =>
+	compactEntries.value.length > 1
+		? compactEntries.value.map((entry) => ({ path: entry.path, title: t(entry.titleKey) }))
+		: []
+);
 
-// ⌘K, from inside Administration: every admin destination this deployment has,
-// above the core groups. The core navigation group caps at eight rows across the
-// whole app, which is exactly where the sibling admin pages fall off.
+// ⌘K, from inside Workspace settings: every admin destination this deployment
+// has, above the core groups. The core navigation group caps at eight rows
+// across the whole app, which is exactly where the sibling admin pages fall off.
 registerCommandPaletteProvider({
 	id: ADMIN_COMMAND_PROVIDER_ID,
 	priority: ADMIN_COMMAND_PROVIDER_PRIORITY,
@@ -108,47 +103,52 @@ registerCommandPaletteProvider({
 		<!-- A native root keeps nested layout transitions from leaving the page blank. -->
 		<NuxtLayout name="dashboard">
 			<div class="flex w-full items-start">
-				<!-- The desktop tree lives in the shell's scrollable navigation area,
-			     so all destinations remain reachable without a second sidebar. -->
-				<!-- Settings (Preferences + this) takes the sidebar over on desktop. -->
+				<!-- Settings takes the sidebar over on desktop. -->
 				<DashboardNavigationPortal :title="t('components.shell.settings.title')">
 					<div class="hidden lg:block w-56 shrink-0 self-start">
-						<ShellSettingsNav
-							:you-sections="youSections"
-							:admin-areas="areas"
-							:knowledge="knowledge"
-						/>
+						<ShellSettingsNav :you-sections="youSections" :admin-areas="areas" :badges="badges" />
 					</div>
 				</DashboardNavigationPortal>
 
 				<div class="min-w-0 flex-1">
 					<!-- Same destinations, laid out for a narrow viewport. Both rails are in
-				     the DOM at once (the swap is a media query, not a branch), so they
-				     need DISTINGUISHABLE landmark names — two `<nav>`s answering to
-				     "Administration sections" is a landmark list a screen-reader user
-				     cannot choose from. -->
-					<nav
-						v-if="compactEntries.length > 1"
-						class="lg:hidden flex gap-1.5 overflow-x-auto px-6 pt-6 pb-1"
-						:aria-label="t('shell.admin.navLabelCompact')"
-					>
-						<NuxtLink
-							v-for="entry in compactEntries"
-							:key="entry.path"
-							:to="entry.path"
-							class="shrink-0 rounded-full px-3 py-1 text-xs transition-colors duration-(--motion-fast)"
-							:class="
-								route.path === entry.path
-									? 'bg-bg-surface font-medium text-text-primary'
-									: 'text-text-secondary hover:bg-bg-surface hover:text-text-primary'
-							"
-							:aria-current="route.path === entry.path ? 'page' : undefined"
-						>
-							{{ t(entry.titleKey) }}
-						</NuxtLink>
-					</nav>
+					     the DOM at once (the swap is a media query, not a branch), so they
+					     need DISTINGUISHABLE landmark names. -->
+					<ShellSettingsCompactNav
+						class="px-4 pt-6 sm:px-6"
+						:label="t('shell.admin.navLabelCompact')"
+						:entries="compactPills"
+						:current-path="railPath"
+						:across="{
+							path: '/dashboard/preferences',
+							title: t('components.shell.settings.tabs.mine'),
+						}"
+					/>
 
-					<slot />
+					<SettingsPageShell :wide="wide">
+						<template v-if="tabs.length > 0" #above>
+							<nav
+								class="mb-6 flex gap-1 overflow-x-auto border-b border-border-subtle"
+								:aria-label="t('shell.admin.tabsLabel')"
+							>
+								<NuxtLink
+									v-for="tab in tabs"
+									:key="tab.path"
+									:to="tab.path"
+									class="-mb-px shrink-0 border-b-2 px-3 py-2 text-sm transition-colors duration-(--motion-fast)"
+									:class="
+										route.path === tab.path
+											? 'border-brand font-medium text-text-primary'
+											: 'border-transparent text-text-secondary hover:text-text-primary'
+									"
+									:aria-current="route.path === tab.path ? 'page' : undefined"
+								>
+									{{ t(tab.titleKey) }}
+								</NuxtLink>
+							</nav>
+						</template>
+						<slot />
+					</SettingsPageShell>
 				</div>
 			</div>
 		</NuxtLayout>

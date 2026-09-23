@@ -28,6 +28,7 @@ import {
 	type DnsRecordRow,
 } from '~/lib/desktop/provisioningForm';
 import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
+import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
 
 const { t } = useI18n();
 
@@ -786,7 +787,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 										:type="revealPassword ? 'text' : 'password'"
 										:class="[inputClass, 'pr-10']"
 										autocomplete="new-password"
-										:placeholder="t('desktop.setup.admin.passwordPlaceholder')"
+										:placeholder="t('desktop.setup.admin.passwordPlaceholder', { min: MIN_PASSWORD_LENGTH })"
 									/>
 									<button
 										type="button"

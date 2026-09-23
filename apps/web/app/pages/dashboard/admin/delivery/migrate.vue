@@ -34,6 +34,7 @@ import {
 	MIGRATION_RELAY_KIND,
 	type MigrationStepState,
 } from '~/utils/mandrillMigration';
+import DeliveryEnvSetupSteps from '~/components/delivery/EnvSetupSteps.vue';
 
 const { t } = useI18n();
 
@@ -61,7 +62,16 @@ definePageMeta({
 // before this page renders. So the steps below are written for an admin reader,
 // with no in-page permission read and no "owners and admins only" card that
 // nobody could reach.
-const { data: catalog } = useOrganizationQuery(api.providerRoutes.listTransportCatalog);
+const { data: catalog, refetch: refetchCatalog } = useOrganizationQuery(
+	api.providerRoutes.listTransportCatalog
+);
+
+/**
+ * What step 1 asks for. The key is a credential, so it lives in the server's
+ * `.env`, never in the database — the step hands over the exact lines and
+ * commands, then re-reads the catalog until the server reports it connected.
+ */
+const CONNECT_VARIABLES = ['MANDRILL_API_KEY'] as const;
 const { data: routes } = useOrganizationQuery(api.providerRoutes.listRoutes);
 const { data: identities } = useOrganizationQuery(api.domains.mandrillRelayQueries.listIdentities);
 
@@ -113,7 +123,7 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div>
 		<div class="mb-6">
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 				{{ t('dashboard.admin.delivery.migrate.title') }}
@@ -148,30 +158,19 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 						<!-- 1 · Connect ------------------------------------------------ -->
 						<template v-if="step.id === 'connect'">
 							<p
-								v-if="isKeyConnected"
-								class="text-sm text-success"
-								data-testid="migration-key-present"
+								v-if="!isKeyConnected"
+								class="text-sm text-text-secondary"
+								data-testid="migration-key-missing"
 							>
-								<I18nT keypath="dashboard.admin.delivery.migrate.connect.present" scope="global">
-									<template #envVar><code>MANDRILL_API_KEY</code></template>
-								</I18nT>
+								{{ t('dashboard.admin.delivery.migrate.connect.missing') }}
 							</p>
-							<div v-else class="space-y-2" data-testid="migration-key-missing">
-								<I18nT
-									keypath="dashboard.admin.delivery.migrate.connect.missing"
-									tag="p"
-									class="text-sm text-text-secondary"
-									scope="global"
-								>
-									<template #envVar><code>MANDRILL_API_KEY</code></template>
-								</I18nT>
-								<NuxtLink
-									to="/dashboard/admin/delivery/transport"
-									class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand"
-								>
-									<Icon name="lucide:external-link" class="h-4 w-4" />
-									{{ t('dashboard.admin.delivery.migrate.connect.transportLink') }}
-								</NuxtLink>
+							<div :data-testid="isKeyConnected ? 'migration-key-present' : 'migration-key-setup'">
+								<DeliveryEnvSetupSteps
+									:variables="CONNECT_VARIABLES"
+									:connected="isKeyConnected"
+									:connected-label="t('dashboard.admin.delivery.migrate.connect.present')"
+									@refresh="refetchCatalog"
+								/>
 							</div>
 						</template>
 

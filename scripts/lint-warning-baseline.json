@@ -330,7 +330,6 @@
 	"[\"apps/web/app/utils/getImageDimensions.ts\",\"unicorn(prefer-add-event-listener)\",\"Prefer `addEventListener()` over their `on`-function counterparts.\",\"onload\"]": 1,
 	"[\"apps/web/app/utils/postboxOfflineStore.ts\",\"unicorn(prefer-add-event-listener)\",\"Prefer `addEventListener()` over their `on`-function counterparts.\",\"onerror\"]": 2,
 	"[\"apps/web/app/utils/recipientKeyStatus.ts\",\"typescript(consistent-type-imports)\",\"All imports in the declaration are only used as types. Use `import type`.\",\"import { api } from '@owlat/api';\"]": 1,
-	"[\"apps/web/app/utils/reviewRow.ts\",\"typescript(consistent-type-imports)\",\"All imports in the declaration are only used as types. Use `import type`.\",\"import { api } from '@owlat/api';\"]": 1,
 	"[\"apps/web/app/utils/teamRoles.ts\",\"typescript(consistent-type-imports)\",\"All imports in the declaration are only used as types. Use `import type`.\",\"import { api } from '@owlat/api';\"]": 1,
 	"[\"apps/web/server/api/auth/[...].ts\",\"eslint(no-new)\",\"Do not use 'new' for side effects.\",\"new URL\"]": 1,
 	"[\"apps/web/server/api/auth/[...].ts\",\"unicorn(no-array-for-each)\",\"Do not use `Array#forEach`\",\"forEach\"]": 1,

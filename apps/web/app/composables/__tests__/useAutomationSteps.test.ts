@@ -13,14 +13,16 @@ const i18n = createTestI18n();
  */
 describe('useAutomationSteps.handleDragEnd', () => {
 	let runCalls: unknown[];
+	let runOk: boolean;
 
 	beforeEach(() => {
 		runCalls = [];
+		runOk = true;
 		vi.stubGlobal('useI18n', () => i18n.global);
 		vi.stubGlobal('useBackendOperation', () => ({
 			run: (args: unknown) => {
 				runCalls.push(args);
-				return Promise.resolve({ ok: true, result: 'ok' });
+				return Promise.resolve(runOk ? { ok: true, result: 'ok' } : { ok: false });
 			},
 			isLoading: ref(false),
 			inlineError: ref(null),
@@ -52,6 +54,13 @@ describe('useAutomationSteps.handleDragEnd', () => {
 		const { handleDragEnd } = makeSteps();
 		await handleDragEnd({ oldIndex: 2, newIndex: 0 });
 		expect(runCalls[0]).toEqual({ automationId: 'auto1', stepOrder: ['s3', 's1', 's2'] });
+	});
+
+	it('reports whether the new order was saved', async () => {
+		const { handleDragEnd } = makeSteps();
+		expect(await handleDragEnd({ oldIndex: 0, newIndex: 1 })).toBe(true);
+		runOk = false;
+		expect(await handleDragEnd({ oldIndex: 0, newIndex: 1 })).toBe(false);
 	});
 
 	it('does not call the mutation for a no-op drag (same index)', async () => {

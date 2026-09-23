@@ -11,6 +11,19 @@ import {
 	replyCollisionToast,
 	sendHoldReason,
 } from '~/utils/replyCollision';
+import { capitalize, formatRelativeTime } from '~/utils/formatters';
+import {
+	classificationSummary,
+	hasAgentDraft,
+	latestClassification,
+	needsTakeOver,
+	otherWaitingDrafts,
+	pickReplyTarget,
+	replyBlocker,
+	replySubject,
+} from '~/utils/teamThreadReply';
+import { isApproveAlreadyHandled } from '~/composables/useReviewApproveUndo';
+import { isEditableTarget } from '~/utils/postboxShortcuts';
 
 const { t, te, locale } = useI18n();
 
@@ -45,26 +58,47 @@ const {
 	thread,
 	messages,
 	contact,
+	takeOver,
 	threadLoading,
-	isEditingDraft,
-	editedDraftResponse,
-	editedDraftSubject,
 	handleApprove,
 	handleReject,
 	handleRetry,
-	startEditDraft,
-	cancelEditDraft,
 	saveEditedDraft,
 	saveDraftOnly,
 	handleStatusChange,
 	handleSnooze,
 	handleUnsnooze,
-	getProcessingStatusColor,
-	getProcessingStatusLabel,
-	getCategoryIcon,
-	formatTimestamp,
 	handleAssign,
 } = useThreadDetail(threadId);
+const { isEnabled: isFeatureEnabled } = useFeatureFlag();
+
+// Times read relative ("2 hours ago"), with the exact moment in the reader's
+// locale on hover — the same as everywhere else in the app.
+function absoluteTime(timestamp: number): string {
+	return new Date(timestamp).toLocaleString(locale.value, {
+		dateStyle: 'medium',
+		timeStyle: 'short',
+	});
+}
+
+// Breadcrumb: this is a Team inbox thread, not the generic "Inbox" the path
+// fallback derives from the URL segment.
+const { setDynamicBreadcrumbs, clearDynamicBreadcrumbs } = useBreadcrumbs();
+setDynamicBreadcrumbs([
+	{ label: 'shared.breadcrumbRoutes.sections.teamInbox', href: '/dashboard/inbox' },
+	{ label: 'dashboard.inbox.detail.breadcrumb' },
+]);
+onBeforeUnmount(clearDynamicBreadcrumbs);
+
+// The header's one-line classification ("Billing · urgent"), from the newest
+// message the agent classified. The detail sits behind the admin disclosure.
+const classificationLine = computed(() => {
+	const summary = classificationSummary(latestClassification(messages.value));
+	if (!summary) return null;
+	const parts = [capitalize(classificationLabel('categories', summary.category))];
+	if (summary.priority) parts.push(classificationLabel('priorities', summary.priority));
+	return parts.join(' · ');
+});
 
 // Snooze picker — reuses the Postbox snooze presets (PostboxSnoozeDialog).
 const showSnoozeDialog = ref(false);
@@ -97,22 +131,16 @@ const assignToMe = () => {
 	const me = user.value?.id;
 	if (me) void handleAssign(me);
 };
+// `r` opens the reply composer, as the shortcut sheet promises.
 function onThreadKeydown(event: KeyboardEvent) {
-	if (event.key !== 'i' && event.key !== 'I') return;
+	const key = event.key.toLowerCase();
+	if (key !== 'i' && key !== 'r') return;
 	if (event.metaKey || event.ctrlKey || event.altKey) return;
-	const target = event.target as HTMLElement | null;
 	// Never hijack typing in an input / textarea / contenteditable.
-	if (
-		target &&
-		(target.isContentEditable ||
-			target.tagName === 'INPUT' ||
-			target.tagName === 'TEXTAREA' ||
-			target.tagName === 'SELECT')
-	) {
-		return;
-	}
+	if (isEditableTarget(event.target)) return;
 	event.preventDefault();
-	assignToMe();
+	if (key === 'i') assignToMe();
+	else openReply();
 }
 onMounted(() => window.addEventListener('keydown', onThreadKeydown));
 onBeforeUnmount(() => window.removeEventListener('keydown', onThreadKeydown));
@@ -141,9 +169,10 @@ const assignedMemberName = computed(() => {
 });
 
 // Live thread presence — heartbeat while this thread is open, flip to "replying"
-// while the draft editor is active. `others` excludes the current user; resolve
+// while the person is writing in the composer. `others` excludes the current user; resolve
 // each to a display name/avatar via the already-fetched org members.
-const { others: presenceOthers } = useThreadPresence(threadId, { replying: isEditingDraft });
+const composerTyping = ref(false);
+const { others: presenceOthers } = useThreadPresence(threadId, { replying: composerTyping });
 const presencePeople = computed(() =>
 	presenceOthers.value.map((p) => {
 		const m = members.value.find((x) => x.userId === p.userId);
@@ -173,9 +202,7 @@ const holdReason = computed(() =>
 );
 
 // Actions state
-const isApproving = ref(false);
 const isRejecting = ref(false);
-const isSavingEdit = ref(false);
 const isRetrying = ref(false);
 const rejectReason = ref('');
 const showRejectModal = ref(false);
@@ -328,25 +355,152 @@ const onUnsnooze = async () => {
 	if (result.ok) showToast(t('dashboard.inbox.detail.unsnoozedToast'));
 };
 
-const onApprove = async (messageId: Id<'inboundMessages'>) => {
-	if (isHeld.value) return;
-	isApproving.value = true;
+// ── Reply composer ──
+// The composer answers one message: the newest still waiting for a reply,
+// otherwise the newest message (whose state then says why nothing can go out).
+// A person can pick an earlier message that also holds a waiting draft; the
+// choice holds while that message still waits for a reply.
+const chosenTargetId = ref<Id<'inboundMessages'> | null>(null);
+const replyTarget = computed(() => {
+	const chosen = chosenTargetId.value
+		? messages.value.find(
+				(m) => m._id === chosenTargetId.value && m.processingStatus === 'draft_ready'
+			)
+		: undefined;
+	return chosen ?? pickReplyTarget(messages.value);
+});
+const waitingDraftIds = computed(
+	() => new Set(otherWaitingDrafts(messages.value, replyTarget.value).map((m) => m._id))
+);
+function answerMessage(messageId: Id<'inboundMessages'>) {
+	chosenTargetId.value = messageId;
+	openReply();
+}
+const replyTargetBlocker = computed(() => {
+	const target = replyTarget.value;
+	if (!target) return null;
+	// The server's own takeover facts (getThread), so the composer never opens
+	// on a message `takeOverReply` would refuse.
+	const facts = takeOver.value?.messages.find((m) => m.messageId === target._id);
+	return replyBlocker(target.processingStatus, {
+		agentEnabled: isFeatureEnabled('ai.agent'),
+		scanFinished: facts?.scanFinished,
+		pipelineStarted: facts?.pipelineStarted,
+		receivedWaitMs: takeOver.value?.receivedWaitMs,
+		receivedAt: target._creationTime,
+		now: now.value,
+	});
+});
+// A message no agent will answer (failed, agent off, never picked up, rejected
+// or archived) is taken over first, so the normal edit → approve path can send
+// a person's reply.
+const { run: takeOverReply } = useBackendOperation(api.inbox.manualReply.takeOverReply, {
+	label: () => t('dashboard.inbox.detail.takeOverOperation'),
+});
+// A rejected draft was thrown out on purpose: the person starts from an empty box.
+const replyDraft = computed(() =>
+	replyTarget.value &&
+	replyTarget.value.processingStatus !== 'rejected' &&
+	hasAgentDraft(replyTarget.value)
+		? (replyTarget.value.draftResponse ?? null)
+		: null
+);
+const replyDefaultSubject = computed(() =>
+	replyTarget.value ? replySubject(replyTarget.value) : null
+);
+const replyOriginalDraft = computed(() =>
+	replyTarget.value && replyDraft.value ? agentOriginalDraft(replyTarget.value) : null
+);
+const replySenderLabel = computed(() => {
+	if (contact.value) {
+		const name = `${contact.value.firstName ?? ''} ${contact.value.lastName ?? ''}`.trim();
+		return name || contact.value.email || '';
+	}
+	return replyTarget.value?.from ?? '';
+});
+const composerOpen = ref(false);
+const composerRef = ref<{ focus: () => void; reset: () => void } | null>(null);
+const isSending = ref(false);
+
+function openReply() {
+	composerRef.value?.focus();
+}
+// "Compose email" (top bar, palette, shortcut) on a thread answers the thread.
+watch(useThreadReplyRequest(), () => openReply());
+
+/** A refused send: a teammate just replied, or someone handled it first. */
+function refusedSend(result: unknown): boolean {
+	if (isReplyCollision(result)) {
+		showToast(
+			collisionText(replyCollisionToast(result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
+			'error'
+		);
+		return true;
+	}
+	if (isApproveAlreadyHandled(result)) {
+		showToast(t('shared.reviewApprove.alreadyHandled'), 'info');
+		return true;
+	}
+	return false;
+}
+
+/**
+ * Send from the composer. An unchanged agent draft is a plain approve (the fast
+ * path); anything typed is saved as the working draft first and then approved —
+ * the same edit → approve path the Answer queue's "Write my own" takes.
+ */
+const onComposerSend = async (body: string, fromDraft: boolean, subject: string) => {
+	const target = replyTarget.value;
+	if (!target || isHeld.value || isSending.value) return;
+	isSending.value = true;
 	try {
-		const result = await handleApprove(messageId);
-		if (!result.ok) return;
-		// Server refused because a teammate just replied — toast, don't claim success.
-		if (isReplyCollision(result.result)) {
-			showToast(
-				collisionText(replyCollisionToast(result.result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
-				'error'
-			);
-			return;
+		if (needsTakeOver(target.processingStatus)) {
+			const takenOver = await takeOverReply({ inboundMessageId: target._id });
+			if (!takenOver.ok) return;
 		}
-		showToast(t('dashboard.inbox.detail.draftApprovedToast'));
+		let result;
+		if (fromDraft) {
+			result = await handleApprove(target._id);
+		} else {
+			result = await saveEditedDraft(target._id, { body, subject });
+		}
+		if (!result.ok || refusedSend(result.result)) return;
+		composerRef.value?.reset();
+		composerOpen.value = false;
+		chosenTargetId.value = null;
+		showToast(t('dashboard.inbox.detail.replySentToast'));
 	} finally {
-		isApproving.value = false;
+		isSending.value = false;
 	}
 };
+
+// Save WITHOUT sending: persist the edit as a draft revision. The message stays
+// waiting for review ("Saved · edited by you"); no collision hold applies
+// because nothing is sent.
+const onComposerSave = async (body: string, subject: string) => {
+	const target = replyTarget.value;
+	if (!target) return;
+	isSending.value = true;
+	try {
+		const result = await saveDraftOnly(target._id, { body, subject });
+		if (result.ok) showToast(t('dashboard.inbox.detail.toasts.draftSavedNotApproved'));
+	} finally {
+		isSending.value = false;
+	}
+};
+
+// An update the classifier filed as needing no reply can be sent to drafting
+// after all; the draft then opens in the composer.
+const { run: requestReply, isLoading: isRequestingReply } = useBackendOperation(
+	api.inbox.updates.requestReply,
+	{ label: () => t('dashboard.inbox.detail.requestReplyOperation') }
+);
+async function onRequestReply() {
+	const target = replyTarget.value;
+	if (!target || !isAdmin.value) return;
+	const result = await requestReply({ inboundMessageId: target._id });
+	if (result.ok) showToast(t('dashboard.inbox.detail.replyRequestedToast'));
+}
 
 const openRejectModal = (messageId: Id<'inboundMessages'>) => {
 	actionMessageId.value = messageId;
@@ -378,40 +532,6 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 	}
 };
 
-const onSaveEdit = async (messageId: Id<'inboundMessages'>) => {
-	if (isHeld.value) return;
-	isSavingEdit.value = true;
-	try {
-		const result = await saveEditedDraft(messageId);
-		if (!result.ok) return;
-		// Server refused because a teammate just replied — toast, don't claim success.
-		if (isReplyCollision(result.result)) {
-			showToast(
-				collisionText(replyCollisionToast(result.result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
-				'error'
-			);
-			return;
-		}
-		showToast(t('dashboard.inbox.detail.draftSavedToast'));
-	} finally {
-		isSavingEdit.value = false;
-	}
-};
-
-// Inline Save: persist the edit as a draft revision WITHOUT
-// approving. The message stays in the review queue ("Saved · edited by you");
-// no collision hold applies because nothing is sent.
-const onSaveOnly = async (messageId: Id<'inboundMessages'>) => {
-	isSavingEdit.value = true;
-	try {
-		const result = await saveDraftOnly(messageId);
-		if (!result.ok) return;
-		showToast(t('dashboard.inbox.detail.toasts.draftSavedNotApproved'));
-	} finally {
-		isSavingEdit.value = false;
-	}
-};
-
 // The diff's "before" side is the AGENT's original draft (revision 0), not the
 // latest saved text — otherwise the first save would destroy the agent-vs-human
 // diff. Falls back to the working draft for messages never saved.
@@ -424,17 +544,6 @@ const agentOriginalDraft = (message: NonNullable<typeof messages.value>[number])
 // (legacy closed threads still read "Resolved" via the shared status chip).
 const statusOptions = ['open', 'waiting', 'resolved'] as const;
 
-/**
- * The status picker is a pill menu, not a native `<select>`: it sits at the end
- * of a row of pill controls (Discuss / Assign / Snooze) and an input-styled
- * rectangle with a native chevron broke that rhythm — and skipped the shared
- * control treatment (press feedback, tiered motion) its neighbours all get.
- */
-const statusMenuOpen = ref(false);
-// The assignee popover takes `open` as a controlled prop (same as the list
-// row's picker); unbound, its trigger toggled a value nothing read back.
-const assignMenuOpen = ref(false);
-const detailsAssignMenuOpen = ref(false);
 const currentStatus = computed<(typeof statusOptions)[number]>(() => {
 	const status = thread.value?.status;
 	// Legacy `closed` (and anything unexpected) reads as Resolved.
@@ -444,7 +553,6 @@ const currentStatus = computed<(typeof statusOptions)[number]>(() => {
 // Chat integration: surface existing chat channels that already discuss this
 // thread, and offer to spin up a new one. Only active when the chat flag is
 // enabled — the query throws FEATURE_DISABLED otherwise.
-const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const chatEnabled = computed(() => isFeatureEnabled('chat'));
 
 const { data: discussionChannelsData } = useConvexQuery(
@@ -507,140 +615,71 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 		<!-- Thread Content -->
 		<template v-else>
 			<!-- Header -->
-			<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
-				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+			<div class="flex items-start justify-between gap-4 mb-6">
+				<div class="min-w-0">
+					<!-- The subject, once. Messages below don't repeat it. -->
+					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary break-words">
 						{{ thread.subject || t('dashboard.inbox.detail.noSubject') }}
 					</h1>
-					<div class="flex items-center gap-3 mt-2">
-						<InboxStatusChip
-							:status="thread.status"
-							:latest-draft-status="thread.latestDraftStatus"
-							:snoozed-until="thread.snoozedUntil"
-							:snooze-returned-at="thread.snoozeReturnedAt"
-						/>
-						<span v-if="contact" class="text-sm text-text-secondary">
-							{{ contact.email }}
+					<p
+						class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-tertiary"
+						data-testid="thread-meta"
+					>
+						<span v-if="contact" class="text-text-secondary">{{ contact.email }}</span>
+						<span v-if="contact" aria-hidden="true">·</span>
+						<span>
+							{{
+								t(
+									'dashboard.inbox.detail.messageCount',
+									{ count: thread.messageCount ?? 0 },
+									thread.messageCount ?? 0
+								)
+							}}
 						</span>
-						<span class="text-sm text-text-tertiary">
-							{{ t('dashboard.inbox.detail.messageCount', { count: thread.messageCount ?? 0 }) }}
-						</span>
-					</div>
+						<!-- What the agent made of it, in one line. Detail is admin-only,
+						     behind "Why did the agent do this?" on the message. -->
+						<template v-if="classificationLine">
+							<span aria-hidden="true">·</span>
+							<span data-testid="thread-classification">{{ classificationLine }}</span>
+						</template>
+						<template v-if="isSnoozed && thread.snoozedUntil">
+							<span aria-hidden="true">·</span>
+							<span class="inline-flex items-center gap-1">
+								<Icon name="lucide:alarm-clock" class="w-3.5 h-3.5" aria-hidden="true" />
+								<time
+									:datetime="new Date(thread.snoozedUntil).toISOString()"
+									:title="absoluteTime(thread.snoozedUntil)"
+								>
+									{{
+										t('dashboard.inbox.detail.snoozedUntil', {
+											time: formatRelativeTime(thread.snoozedUntil),
+										})
+									}}
+								</time>
+							</span>
+						</template>
+					</p>
 					<!-- Who else is here — pulsing viewer ring + "is replying" banner -->
 					<InboxThreadPresence :people="presencePeople" class="mt-3" />
 				</div>
 
-				<!-- Status actions -->
-				<div class="flex items-center gap-2">
-					<div v-if="chatEnabled" class="flex items-center gap-1">
-						<NuxtLink
-							v-for="channel in discussionChannels"
-							:key="channel._id"
-							:to="`/dashboard/chat/${channel._id}`"
-							class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-brand-subtle text-brand hover:bg-brand-subtle/70 transition-colors"
-							:title="t('dashboard.inbox.detail.discussInChannelTitle', { channel: channel.name })"
-						>
-							<Icon name="lucide:message-circle" class="w-3.5 h-3.5" />
-							#{{ channel.name }}
-						</NuxtLink>
-						<UiButton
-							v-if="discussionChannels.length === 0"
-							variant="outline"
-							size="sm"
-							@click="showNewChannel = true"
-						>
-							<template #iconLeft>
-								<Icon name="lucide:message-circle-plus" class="w-3.5 h-3.5" />
-							</template>
-							{{ t('dashboard.inbox.detail.discussInChannel') }}
-						</UiButton>
-					</div>
-					<!-- Assignee picker — avatar popover (Me / members / Unassign).
-					     `open` is a controlled prop: without the binding the popover
-					     can never open (the row's picker models it the same way). -->
-					<InboxAssignPopover
-						v-model:open="assignMenuOpen"
-						:members="assignMembers"
-						:current-user-id="user?.id ?? null"
-						:assigned-to="thread.assignedTo ?? null"
-						position="right"
-						@assign="onAssign"
-					>
-						<template #trigger>
-							<UiButton
-								variant="secondary"
-								size="sm"
-								type="button"
-								class="gap-1.5"
-								:aria-label="
-									assignedMemberName
-										? t('dashboard.inbox.detail.assignedToAria', { name: assignedMemberName })
-										: t('dashboard.inbox.detail.assignThreadAria')
-								"
-							>
-								<UiAvatar
-									v-if="thread.assignedTo"
-									:name="assignedMemberName ?? undefined"
-									deterministic-color
-									size="sm"
-								/>
-								<Icon v-else name="lucide:user-plus" class="w-4 h-4" />
-								<span class="max-w-[10rem] truncate">
-									{{ assignedMemberName ?? t('dashboard.inbox.detail.assign') }}
-								</span>
-							</UiButton>
-						</template>
-					</InboxAssignPopover>
-					<!-- Snooze / unsnooze — reuses the Postbox snooze presets. -->
-					<UiButton
-						variant="secondary"
-						size="sm"
-						v-if="isSnoozed"
-						class="gap-1.5"
-						@click="onUnsnooze"
-					>
-						<Icon name="lucide:alarm-clock-off" class="w-4 h-4" />
-						{{ t('dashboard.inbox.detail.unsnooze') }}
-					</UiButton>
-					<UiButton
-						variant="secondary"
-						size="sm"
-						v-else
-						class="gap-1.5"
-						@click="showSnoozeDialog = true"
-					>
-						<Icon name="lucide:alarm-clock" class="w-4 h-4" />
-						{{ t('dashboard.inbox.detail.snooze') }}
-					</UiButton>
-					<!-- Status picker — the same pill trigger + menu the assignee
-					     control two places to the left uses. -->
-					<UiDropdownMenu v-model:open="statusMenuOpen" position="right">
-						<template #trigger>
-							<UiButton
-								variant="secondary"
-								size="sm"
-								type="button"
-								class="gap-1.5"
-								:aria-label="t('dashboard.inbox.detail.changeStatusAria')"
-							>
-								{{ t(`dashboard.inbox.detail.statuses.${currentStatus}`) }}
-								<template #iconRight>
-									<Icon name="lucide:chevron-down" class="w-4 h-4 text-text-tertiary" />
-								</template>
-							</UiButton>
-						</template>
-						<UiDropdownMenuItem v-for="s in statusOptions" :key="s" @click="handleStatusChange(s)">
-							<span class="flex-1 truncate">
-								{{ t(`dashboard.inbox.detail.statuses.${s}`) }}
-							</span>
-							<Icon
-								v-if="s === currentStatus"
-								name="lucide:check"
-								class="w-4 h-4 text-brand shrink-0"
-							/>
-						</UiDropdownMenuItem>
-					</UiDropdownMenu>
-				</div>
+				<InboxThreadHeaderActions
+					:is-admin="isAdmin"
+					:chat-enabled="chatEnabled"
+					:discussion-channels="discussionChannels"
+					:members="assignMembers"
+					:current-user-id="user?.id ?? null"
+					:assigned-to="thread.assignedTo ?? null"
+					:assigned-member-name="assignedMemberName"
+					:is-snoozed="isSnoozed"
+					:current-status="currentStatus"
+					@reply="openReply"
+					@assign="onAssign"
+					@new-channel="showNewChannel = true"
+					@snooze="showSnoozeDialog = true"
+					@unsnooze="onUnsnooze"
+					@status="handleStatusChange"
+				/>
 			</div>
 
 			<PostboxSnoozeDialog
@@ -662,22 +701,18 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 				<div class="lg:col-span-2 space-y-4">
 					<div v-for="message in messages" :key="message._id" class="card">
 						<!-- Message Header -->
-						<div class="flex items-center justify-between mb-4">
-							<div class="flex items-center gap-3">
-								<UiIconBox icon="lucide:mail" size="sm" variant="surface" rounded="full" />
-								<div>
-									<p class="text-text-primary font-medium text-sm">{{ message.from }}</p>
-									<p class="text-xs text-text-tertiary">
-										{{ formatTimestamp(message._creationTime) }}
-									</p>
-								</div>
+						<div class="flex items-center gap-3 mb-4">
+							<UiIconBox icon="lucide:mail" size="sm" variant="surface" rounded="full" />
+							<div class="min-w-0">
+								<p class="text-text-primary font-medium text-sm truncate">{{ message.from }}</p>
+								<time
+									class="text-xs text-text-tertiary"
+									:datetime="new Date(message._creationTime).toISOString()"
+									:title="absoluteTime(message._creationTime)"
+								>
+									{{ formatRelativeTime(message._creationTime) }}
+								</time>
 							</div>
-							<span
-								class="text-xs px-2 py-0.5 rounded-full"
-								:class="getProcessingStatusColor(message.processingStatus)"
-							>
-								{{ getProcessingStatusLabel(message.processingStatus) }}
-							</span>
 						</div>
 
 						<!-- The mirror of the Postbox reader's strip (idea 31): this
@@ -686,15 +721,8 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						     unless the viewer is permitted on both surfaces. -->
 						<InboxCrossSurfaceStrip :inbound-message-id="message._id" class="mb-3" />
 
-						<!-- Subject -->
-						<p v-if="message.subject" class="text-text-primary font-medium mb-2">
-							{{ message.subject }}
-						</p>
-
 						<!-- Message Body -->
-						<div
-							class="text-text-secondary text-sm whitespace-pre-wrap border-t border-border-subtle pt-4"
-						>
+						<div class="text-text-secondary text-sm whitespace-pre-wrap">
 							{{ message.textBody || t('dashboard.inbox.detail.noTextContent') }}
 						</div>
 
@@ -702,38 +730,23 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						     list needs no extra query; the component owns the download. -->
 						<InboxMessageAttachments :message="message" />
 
-						<!-- Classification -->
-						<div v-if="message.classification" class="mt-4 p-3 bg-bg-surface rounded-lg">
-							<p class="text-xs text-text-tertiary mb-2 font-medium uppercase tracking-wider">
-								{{ t('dashboard.inbox.detail.aiClassification') }}
+						<!-- Another message in this thread also has a draft waiting: say so,
+						     and let the person answer or reject it here, in order. -->
+						<div
+							v-if="isAdmin && waitingDraftIds.has(message._id)"
+							class="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-warning/10 p-3"
+							data-testid="thread-waiting-draft"
+						>
+							<p class="flex-1 text-xs text-text-secondary">
+								{{ t('dashboard.inbox.detail.waitingDraft.notice') }}
 							</p>
-							<div class="flex flex-wrap gap-2">
-								<span
-									class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-brand-subtle text-brand"
-								>
-									<Icon :name="getCategoryIcon(message.classification.category)" class="w-3 h-3" />
-									{{ classificationLabel('categories', message.classification.category) }}
-								</span>
-								<span class="text-xs px-2 py-1 rounded-full bg-bg-elevated text-text-secondary">
-									{{
-										t('dashboard.inbox.detail.priorityChip', {
-											priority: classificationLabel('priorities', message.classification.priority),
-										})
-									}}
-								</span>
-								<span class="text-xs px-2 py-1 rounded-full bg-bg-elevated text-text-secondary">
-									{{ classificationLabel('sentiments', message.classification.sentiment) }}
-								</span>
-								<span
-									class="text-xs px-2 py-1 rounded-full bg-bg-elevated text-text-secondary font-mono"
-								>
-									{{
-										t('dashboard.inbox.detail.confidenceChip', {
-											percent: Math.round((message.classification.confidence ?? 0) * 100),
-										})
-									}}
-								</span>
-							</div>
+							<UiButton variant="secondary" size="sm" @click="answerMessage(message._id)">
+								<Icon name="lucide:reply" class="w-3.5 h-3.5" />
+								{{ t('dashboard.inbox.detail.waitingDraft.answer') }}
+							</UiButton>
+							<UiButton variant="ghost" size="sm" @click="openRejectModal(message._id)">
+								{{ t('dashboard.inbox.detail.composer.rejectDraft') }}
+							</UiButton>
 						</div>
 
 						<!-- Failure reason + manual retry (terminal 'failed' state) -->
@@ -741,7 +754,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							v-if="message.processingStatus === 'failed'"
 							class="mt-4 p-3 bg-error-subtle rounded-lg"
 						>
-							<p class="text-xs text-error font-medium uppercase tracking-wider mb-2">
+							<p class="text-xs text-error font-medium mb-2">
 								{{ t('dashboard.inbox.detail.processingFailed') }}
 							</p>
 							<p v-if="message.errorMessage" class="text-sm text-text-primary break-words mb-3">
@@ -889,135 +902,13 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							</UiButton>
 						</div>
 
-						<!-- Agent processing trace -->
-						<InboxAgentActionTimeline :inbound-message-id="message._id" />
-
-						<!-- Draft Response -->
-						<div
-							v-if="message.processingStatus === 'draft_ready' && reusedAnswers(message).length > 0"
-							class="mt-4 surface-1 rounded-(--radius-card) p-4"
-							data-testid="reused-answers"
-						>
-							<span class="lp-eyebrow">{{ t('dashboard.inbox.detail.reusedAnswersEyebrow') }}</span>
-							<p class="mt-1 text-sm font-medium text-text-primary">
-								{{ t('dashboard.inbox.detail.reusedAnswersTitle') }}
-							</p>
-							<ul class="mt-2 space-y-1.5 text-sm">
-								<li
-									v-for="question in reusedAnswers(message)"
-									:key="question.id"
-									class="flex items-baseline gap-2"
-								>
-									<Icon
-										name="lucide:history"
-										class="w-3.5 h-3.5 shrink-0 translate-y-0.5 text-text-tertiary"
-									/>
-									<span class="text-text-secondary">{{ questionCopy(question).text }}</span>
-									<span class="font-medium text-text-primary">{{ question.answer?.value }}</span>
-								</li>
-							</ul>
-							<p class="mt-2 text-xs text-text-tertiary">
-								{{ t('dashboard.inbox.detail.reusedAnswersHint') }}
-								<NuxtLink
-									to="/dashboard/admin/instance/autonomy"
-									class="underline hover:text-text-primary"
-									>{{ t('dashboard.inbox.detail.reusedAnswersManage') }}</NuxtLink
-								>
-							</p>
-						</div>
-
-						<div
-							v-if="message.draftResponse && message.processingStatus === 'draft_ready'"
-							class="mt-4 border-t border-border-subtle pt-4"
-						>
-							<div class="flex items-center gap-2 mb-3">
-								<Icon name="lucide:bot" class="w-4 h-4 text-brand" />
-								<p class="text-sm font-medium text-brand">
-									{{ t('dashboard.inbox.detail.agentDraft') }}
-								</p>
-							</div>
-
-							<!-- Editing mode: edit with a live before/after diff so the
-							     reviewer sees what changed before it becomes the outgoing
-							     draft. Apply saves + approves; Discard reverts to the original. -->
-							<template v-if="isEditingDraft">
-								<div class="space-y-3">
-									<input
-										v-model="editedDraftSubject"
-										type="text"
-										class="input w-full text-sm"
-										:placeholder="t('dashboard.inbox.detail.subjectPlaceholder')"
-									/>
-									<InboxDraftDiffEditor
-										v-model="editedDraftResponse"
-										:original="agentOriginalDraft(message)"
-										:saving="isSavingEdit"
-										:held="isHeld"
-										:held-reason="holdReason"
-										show-save
-										@apply="onSaveEdit(message._id)"
-										@save="onSaveOnly(message._id)"
-										@discard="cancelEditDraft"
-									/>
-								</div>
-							</template>
-
-							<!-- View mode -->
-							<template v-else>
-								<div
-									class="text-text-primary text-sm whitespace-pre-wrap bg-brand-subtle/30 rounded-lg p-4"
-								>
-									{{ message.draftResponse }}
-								</div>
-
-								<!-- Action Buttons -->
-								<div class="flex items-center gap-2 mt-4">
-									<UiButton
-										size="sm"
-										class="gap-1 disabled:cursor-not-allowed"
-										:disabled="isApproving || isHeld"
-										:aria-disabled="isHeld ? 'true' : undefined"
-										@click="onApprove(message._id)"
-									>
-										<UiSpinner v-if="isApproving" size="xs" tone="inverse" />
-										<Icon v-else name="lucide:check" class="w-3 h-3" />
-										{{ t('dashboard.inbox.detail.approveAndSend') }}
-									</UiButton>
-									<UiButton
-										variant="secondary"
-										size="sm"
-										class="gap-1"
-										@click="startEditDraft(message)"
-									>
-										<Icon name="lucide:pencil" class="w-3 h-3" />
-										{{ t('common.edit') }}
-									</UiButton>
-									<UiButton
-										variant="ghost"
-										size="sm"
-										class="gap-1 text-error hover:bg-error-subtle"
-										@click="openRejectModal(message._id)"
-									>
-										<Icon name="lucide:x" class="w-3 h-3" />
-										{{ t('dashboard.inbox.detail.reject') }}
-									</UiButton>
-								</div>
-								<!-- Soft-hold reason: a teammate is replying; releases on its own. -->
-								<p
-									v-if="isHeld && holdReason"
-									class="mt-2 inline-flex items-center gap-1.5 text-2xs text-text-tertiary"
-									data-testid="thread-held-reason"
-									role="status"
-								>
-									<Icon
-										name="lucide:pencil-line"
-										class="w-3 h-3 text-warning shrink-0"
-										aria-hidden="true"
-									/>
-									<span>{{ holdReason }}</span>
-								</p>
-							</template>
-						</div>
+						<!-- The agent's working, for admins, behind one disclosure. -->
+						<InboxAgentInsight
+							v-if="isAdmin && (message.classification || message.processingStatus !== 'received')"
+							:inbound-message-id="message._id"
+							:classification="message.classification ?? null"
+							:decision-reason="message.agentDecision?.reason ?? null"
+						/>
 					</div>
 
 					<!-- Empty messages -->
@@ -1026,6 +917,76 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						icon="lucide:mail"
 						:title="t('dashboard.inbox.detail.noMessages')"
 					/>
+
+					<!-- Answers the agent reused from memory for the draft below. -->
+					<div
+						v-if="
+							replyTarget &&
+							replyTarget.processingStatus === 'draft_ready' &&
+							reusedAnswers(replyTarget).length > 0
+						"
+						class="surface-1 rounded-(--radius-card) p-4"
+						data-testid="reused-answers"
+					>
+						<span class="lp-eyebrow">{{ t('dashboard.inbox.detail.reusedAnswersEyebrow') }}</span>
+						<p class="mt-1 text-sm font-medium text-text-primary">
+							{{ t('dashboard.inbox.detail.reusedAnswersTitle') }}
+						</p>
+						<ul class="mt-2 space-y-1.5 text-sm">
+							<li
+								v-for="question in reusedAnswers(replyTarget)"
+								:key="question.id"
+								class="flex items-baseline gap-2"
+							>
+								<Icon
+									name="lucide:history"
+									class="w-3.5 h-3.5 shrink-0 translate-y-0.5 text-text-tertiary"
+								/>
+								<span class="text-text-secondary">{{ questionCopy(question).text }}</span>
+								<span class="font-medium text-text-primary">{{ question.answer?.value }}</span>
+							</li>
+						</ul>
+						<p class="mt-2 text-xs text-text-tertiary">
+							{{ t('dashboard.inbox.detail.reusedAnswersHint') }}
+							<NuxtLink
+								to="/dashboard/admin/instance/ai-replies"
+								class="underline hover:text-text-primary"
+								>{{ t('dashboard.inbox.detail.reusedAnswersManage') }}</NuxtLink
+							>
+						</p>
+					</div>
+
+					<!-- Reply composer: on every thread, pre-filled with the agent's
+					     draft when there is one. -->
+					<InboxThreadComposer
+						v-if="isAdmin && replyTarget"
+						ref="composerRef"
+						v-model:open="composerOpen"
+						:sender-label="replySenderLabel"
+						:blocker="replyTargetBlocker"
+						:draft="replyDraft"
+						:original-draft="replyOriginalDraft"
+						:subject="replyDefaultSubject"
+						:busy="isSending"
+						:held="isHeld"
+						:held-reason="holdReason"
+						@send="onComposerSend"
+						@save="onComposerSave"
+						@reject="openRejectModal(replyTarget._id)"
+						@typing="composerTyping = $event"
+					>
+						<template v-if="replyTargetBlocker === 'update'" #blocked-action>
+							<UiButton
+								variant="secondary"
+								size="sm"
+								:loading="isRequestingReply"
+								@click="onRequestReply"
+							>
+								<Icon name="lucide:sparkles" class="w-3.5 h-3.5" />
+								{{ t('dashboard.inbox.detail.requestReply') }}
+							</UiButton>
+						</template>
+					</InboxThreadComposer>
 				</div>
 
 				<!-- Sidebar -->
@@ -1058,21 +1019,13 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						</div>
 					</div>
 
-					<!-- Thread Details -->
+					<!-- Thread Details. Status is changed in the header (its one
+					     control) and not repeated here. -->
 					<div class="card">
 						<h2 class="text-lg font-medium text-text-primary mb-4">
 							{{ t('dashboard.inbox.detail.details') }}
 						</h2>
 						<div class="space-y-3">
-							<div>
-								<p class="text-xs text-text-tertiary mb-1">{{ t('common.status') }}</p>
-								<InboxStatusChip
-									:status="thread.status"
-									:latest-draft-status="thread.latestDraftStatus"
-									:snoozed-until="thread.snoozedUntil"
-									:snooze-returned-at="thread.snoozeReturnedAt"
-								/>
-							</div>
 							<div>
 								<p class="text-xs text-text-tertiary">{{ t('dashboard.inbox.detail.messages') }}</p>
 								<p class="text-text-primary">{{ thread.messageCount ?? 0 }}</p>
@@ -1102,12 +1055,18 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								<p class="text-xs text-text-tertiary">
 									{{ t('dashboard.inbox.detail.lastMessage') }}
 								</p>
-								<p class="text-text-primary text-sm">{{ formatTimestamp(thread.lastMessageAt) }}</p>
+								<time
+									class="text-text-primary text-sm"
+									:datetime="new Date(thread.lastMessageAt).toISOString()"
+									:title="absoluteTime(thread.lastMessageAt)"
+								>
+									{{ formatRelativeTime(thread.lastMessageAt) }}
+								</time>
 							</div>
 						</div>
 					</div>
 
-					<!-- Cross-channel unified timeline for this thread -->
+					<!-- Other channels on this thread — renders nothing until one speaks. -->
 					<InboxThreadChannelTimeline :thread-id="threadId" />
 				</div>
 			</div>

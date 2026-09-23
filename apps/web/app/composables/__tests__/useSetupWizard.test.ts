@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
 import en from '~~/i18n/locales/en.json';
 import {
 	SETUP_STEPS,
@@ -55,7 +56,6 @@ function emailDraft(overrides: Partial<EmailStepDraft> = {}): EmailStepDraft {
 			transactionalIps: '203.0.113.10',
 			campaignIps: '203.0.113.11',
 			ehloHostname: 'mail.example.com',
-			ehloHostnames: '',
 		},
 		fromEmail: '',
 		fromName: '',
@@ -127,10 +127,16 @@ describe('admin step navigation gate', () => {
 		});
 	});
 
-	it('cannot advance with a password under 12 characters', () => {
-		expect(validateAdmin({ ...validAdmin, password: 'short' })).toEqual({
-			password: 'shared.setupWizardValidation.admin.passwordTooShort',
-		});
+	it('cannot advance with a password under the shared minimum', () => {
+		expect(validateAdmin({ ...validAdmin, password: 'a'.repeat(MIN_PASSWORD_LENGTH - 1) })).toEqual(
+			{
+				password: 'shared.setupWizardValidation.admin.passwordTooShort',
+			}
+		);
+	});
+
+	it('accepts a password exactly at the shared minimum (same rule as the server)', () => {
+		expect(validateAdmin({ ...validAdmin, password: 'a'.repeat(MIN_PASSWORD_LENGTH) })).toEqual({});
 	});
 
 	it('can advance once email and password are valid', () => {
@@ -228,23 +234,11 @@ describe('email step navigation gate', () => {
 				transactionalIps: '',
 				campaignIps: '',
 				ehloHostname: '',
-				ehloHostnames: '',
 			},
 		});
 		expect(validateEmailStep(draft)).toMatchObject({
 			mtaIdentity: 'shared.setupMtaIdentity.missingIpsOrHostname',
 		});
-	});
-
-	it('rejects malformed per-IP EHLO JSON', () => {
-		const draft = emailDraft({
-			mtaIdentity: { ...emailDraft().mtaIdentity!, ehloHostnames: 'not json' },
-		});
-		// The validator returns a catalog key (the wizard renders it through `t`),
-		// so the wording is asserted where it now lives.
-		const message = validateEmailStep(draft).mtaIdentity;
-		expect(message).toBe('shared.setupMtaIdentity.invalidEhloHostnames');
-		expect(en.shared.setupMtaIdentity.invalidEhloHostnames).toContain('JSON object');
 	});
 });
 
@@ -257,6 +251,13 @@ describe('buildProviderEnv', () => {
 		expect(env['EMAIL_PROVIDER']).toBe('resend');
 		expect(env['RESEND_API_KEY']).toBe('re_live_123');
 		expect(env['AWS_SES_REGION']).toBeUndefined();
+	});
+
+	it('leaves per-IP EHLO overrides set on the Delivery provider page alone', () => {
+		const overrides = '{"203.0.113.11":"mail2.example.com"}';
+		const env = buildProviderEnv({ EHLO_HOSTNAMES: overrides }, emailDraft({ provider: 'mta' }));
+		expect(env['EHLO_HOSTNAME']).toBe('mail.example.com');
+		expect(env['EHLO_HOSTNAMES']).toBe(overrides);
 	});
 
 	it('writes the SMTP relay env from a preset draft, defaulting a blank port to 587', () => {

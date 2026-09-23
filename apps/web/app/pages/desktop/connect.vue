@@ -191,18 +191,12 @@ async function handleTwoFactorSubmit() {
 						class="input input-sm text-sm"
 					/>
 				</div>
-				<div>
-					<label class="label mb-1 text-sm" for="password">{{
-						t('desktop.connect.password')
-					}}</label>
-					<input
-						id="password"
-						v-model="password"
-						type="password"
-						autocomplete="current-password"
-						class="input input-sm text-sm"
-					/>
-				</div>
+				<AuthPasswordInput
+					id="password"
+					v-model="password"
+					autocomplete="current-password"
+					:label="t('desktop.connect.password')"
+				/>
 				<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
 				<UiButton type="submit" :disabled="isLoading" full-width>
 					{{ isLoading ? t('desktop.connect.signingInButton') : t('desktop.connect.submit') }}

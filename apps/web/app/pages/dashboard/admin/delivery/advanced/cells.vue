@@ -18,6 +18,10 @@ import { api } from '@owlat/api';
 import { rampCellLabel, type RampCellControl } from '~/utils/deliverabilityRamp';
 import type { DeliverabilityDashboardCell } from '~/utils/deliverabilityMeasurement';
 import { decisionWindowLabel } from '~/utils/deliverabilityWindows';
+import { isRampInactive } from '~/utils/deliveryAdvancedEmpty';
+// Imported, not auto-resolved: the empty state is this screen's content, and
+// a mount that resolved it to nothing would hide the one thing it says.
+import DeliveryAdvancedEmptyState from '~/components/delivery/AdvancedEmptyState.vue';
 
 const { t } = useI18n();
 
@@ -61,6 +65,12 @@ const historyHeadingId = useId();
 const selectedCellKey = ref<string | null>(null);
 
 const cells = computed<readonly RampCellControl[]>(() => controls.value?.cells ?? []);
+
+/**
+ * No cell is managed by the ramp yet — every row would read "not managed",
+ * which answers none of the grid's questions. Say what fills it instead.
+ */
+const isEmpty = computed(() => isRampInactive(cells.value));
 
 const selectedCell = computed<RampCellControl | null>(
 	() => cells.value.find((cell) => cell.cellKey === selectedCellKey.value) ?? null
@@ -106,7 +116,7 @@ function select(cellKey: string): void {
 </script>
 
 <template>
-	<div class="mx-auto max-w-6xl p-4 sm:p-6 lg:p-8">
+	<div>
 		<header class="mb-6">
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 				{{ t('dashboard.admin.delivery.advanced.cells.title') }}
@@ -138,7 +148,14 @@ function select(cellKey: string): void {
 				</div>
 			</template>
 
-			<div class="space-y-5">
+			<DeliveryAdvancedEmptyState
+				v-if="isEmpty"
+				icon="lucide:grid-3x3"
+				:title="t('dashboard.admin.delivery.advanced.cells.empty.title')"
+				:description="t('dashboard.admin.delivery.advanced.cells.empty.description')"
+			/>
+
+			<div v-else class="space-y-5">
 				<UiCard>
 					<h2 :id="gridHeadingId" class="text-base font-semibold text-text-primary">
 						{{ t('dashboard.admin.delivery.advanced.cells.gridHeading') }}

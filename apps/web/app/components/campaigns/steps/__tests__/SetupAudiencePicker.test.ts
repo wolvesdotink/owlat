@@ -71,3 +71,72 @@ describe('SetupAudiencePicker — the eligible-recipient readout', () => {
 		expect(renderCount(null)).toBe('0');
 	});
 });
+
+describe('SetupAudiencePicker — one recipients control (#785)', () => {
+	const topics = [
+		{ _id: 'topic_1' as never, name: 'Newsletter', contactCount: 1200 },
+		{ _id: 'topic_2' as never, name: 'Product updates' },
+	];
+	const segments = [{ _id: 'segment_1' as never, name: 'Active buyers', cachedCount: 340 }];
+
+	function mountPicker(
+		model: {
+			audienceType?: 'topic' | 'segment';
+			selectedTopicId?: string | null;
+			selectedSegmentId?: string | null;
+		} = {},
+		lists: { topics?: typeof topics; segments?: typeof segments } = {}
+	) {
+		return mount(SetupAudiencePicker, {
+			props: {
+				topics: lists.topics ?? topics,
+				segments: lists.segments ?? segments,
+				audienceCount: null,
+				error: null,
+				audienceType: model.audienceType ?? 'topic',
+				selectedTopicId: (model.selectedTopicId ?? null) as never,
+				selectedSegmentId: (model.selectedSegmentId ?? null) as never,
+			},
+			global: { plugins: [createTestI18n()], stubs },
+		});
+	}
+
+	it('offers topics and segments in one select, grouped, each with its count', () => {
+		const wrapper = mountPicker();
+		const select = wrapper.find('[data-testid="audience-picker"]');
+		const groups = select.findAll('optgroup');
+		expect(groups.map((g) => g.attributes('label'))).toEqual([
+			'Topics: people who subscribed',
+			'Segments: contacts matching saved filters',
+		]);
+		const labels = select.findAll('option').map((o) => o.text());
+		expect(labels).toEqual([
+			'Choose recipients',
+			'Everyone subscribed to Newsletter (1,200)',
+			'Everyone subscribed to Product updates',
+			'Contacts in Active buyers (340)',
+		]);
+	});
+
+	it('writes a segment pick back as kind + id and clears the topic', async () => {
+		const wrapper = mountPicker({ selectedTopicId: 'topic_1' });
+		await wrapper.find('[data-testid="audience-picker"]').setValue('segment:segment_1');
+		expect(wrapper.emitted('update:audienceType')?.at(-1)).toEqual(['segment']);
+		expect(wrapper.emitted('update:selectedSegmentId')?.at(-1)).toEqual(['segment_1']);
+		expect(wrapper.emitted('update:selectedTopicId')?.at(-1)).toEqual([null]);
+	});
+
+	it('shows the current selection from the models', () => {
+		const wrapper = mountPicker({ audienceType: 'segment', selectedSegmentId: 'segment_1' });
+		const select = wrapper.find('[data-testid="audience-picker"]').element as HTMLSelectElement;
+		expect(select.value).toBe('segment:segment_1');
+		expect(wrapper.text()).toContain('no unsubscribe link is added');
+	});
+
+	it('links to creating a topic or segment when there are none', () => {
+		const wrapper = mountPicker({}, { topics: [], segments: [] });
+		expect(wrapper.find('[data-testid="audience-empty"]').text()).toContain(
+			'There are no topics or segments yet.'
+		);
+	});
+});

@@ -23,6 +23,9 @@ const {
 } = useKnowledgeGraph();
 
 const showCreateForm = ref(false);
+// Curated answers are admin-authored (knowledge.graph.createPolicyEntry);
+// members read them but do not see the form.
+const { isAdmin } = usePermissions();
 const policyTitle = ref('');
 const policyContent = ref('');
 const { data: policies } = useConvexQuery(api.knowledge.graph.listPolicies, () => ({ limit: 10 }));
@@ -196,7 +199,7 @@ const handleCancelled = () => {
 					<p class="mt-2 text-sm text-text-secondary">
 						{{ t('dashboard.knowledge.index.canonicalAnswersBody') }}
 					</p>
-					<div class="mt-4 space-y-2">
+					<div v-if="isAdmin" class="mt-4 space-y-2">
 						<UiInput
 							v-model="policyTitle"
 							:label="t('dashboard.knowledge.index.questionLabel')"

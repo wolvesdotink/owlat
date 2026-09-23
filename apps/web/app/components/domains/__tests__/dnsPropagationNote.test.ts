@@ -28,7 +28,7 @@ describe('DnsPropagationNote', () => {
 	it('states the propagation delay and the next action', () => {
 		const text = mountNote().text();
 		expect(text).toContain('up to 48 hours');
-		expect(text).toContain('Verify Domain');
+		expect(text).toContain('Verify domain');
 	});
 
 	it('links to the DNS docs and opens it safely in a new tab', () => {

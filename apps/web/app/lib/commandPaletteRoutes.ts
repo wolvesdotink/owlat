@@ -13,6 +13,9 @@
  *   - what is left is gated the same way the sidebar gates its sections, by the
  *     SAME pure environment (`NavigationEnvironment`) — a member never gets an
  *     admin destination offered, and a disabled feature takes its pages with it;
+ *   - an Administration page takes its title and area from
+ *     `lib/adminSettingsRegistry`, the table its rail reads, so the palette
+ *     and the rail cannot name one page two ways;
  *   - Preferences is skipped entirely: the sidebar derives those from the
  *     settings registry, and the breadcrumb table's copy also carries the hidden
  *     wizard entries the registry keeps out of navigation on purpose.
@@ -24,6 +27,7 @@
 import type { NavigationEnvironment } from './dashboardNavigationCore';
 import { minRole } from './dashboardNavigationCore';
 import { routeConfigs } from './breadcrumbRoutes';
+import { ADMIN_AREAS, adminEntryFor } from './adminSettingsRegistry';
 
 /** One labelled destination the palette can offer, as message keys. */
 export interface RoutePaletteTarget {
@@ -61,12 +65,9 @@ const SUBTREE_GATES: ReadonlyArray<readonly [string, (env: NavigationEnvironment
 /** Section key → icon, so a palette row is not a wall of identical glyphs. */
 const SECTION_ICONS: Readonly<Record<string, string>> = {
 	'shared.breadcrumbRoutes.sections.dashboard': 'lucide:sun',
-	'shared.breadcrumbRoutes.sections.send': 'lucide:send',
-	'shared.breadcrumbRoutes.sections.campaigns': 'lucide:megaphone',
+	'shared.breadcrumbRoutes.sections.marketing': 'lucide:megaphone',
 	'shared.breadcrumbRoutes.sections.audience': 'lucide:users',
-	'shared.breadcrumbRoutes.sections.administration': 'lucide:shield-check',
-	'shared.breadcrumbRoutes.sections.delivery': 'lucide:truck',
-	'shared.breadcrumbRoutes.sections.automations': 'lucide:zap',
+	'shared.breadcrumbRoutes.sections.workspace': 'lucide:shield-check',
 	'shared.breadcrumbRoutes.sections.preferences': 'lucide:settings',
 };
 
@@ -88,6 +89,18 @@ function gateFor(href: string): (env: NavigationEnvironment) => boolean {
 }
 
 /**
+ * Routes whose page only redirects to another listed page. They keep their
+ * breadcrumb entry (old links still land and crumb correctly), but a palette
+ * row for them would be a second row to the same destination: "Overview ·
+ * Audience" opening the contact list beside "Contacts". The test next door
+ * fails when a redirect-only page is offered and missing here.
+ */
+const REDIRECT_ONLY_ROUTES: ReadonlySet<string> = new Set([
+	'/dashboard/audience',
+	'/dashboard/admin/delivery/advanced',
+]);
+
+/**
  * Every labelled route the palette should offer beyond `knownHrefs` (the
  * sidebar's own destinations), gated for `env` and in table order. Pure.
  */
@@ -96,11 +109,23 @@ export function routePaletteTargets(
 	knownHrefs: ReadonlySet<string>
 ): RoutePaletteTarget[] {
 	return Object.entries(routeConfigs)
-		.filter(([href]) => !knownHrefs.has(href) && gateFor(href)(env))
+		.filter(
+			([href]) => !knownHrefs.has(href) && !REDIRECT_ONLY_ROUTES.has(href) && gateFor(href)(env)
+		)
 		.map(([href, config]) => {
 			// The crumb trail, deepest last: the label is where you land, the
 			// context is the step above it. A section root (`/dashboard`) is one
 			// crumb long and gets no context line rather than repeating itself.
+			const icon = SECTION_ICONS[config.section] ?? FALLBACK_ICON;
+			// An Administration page is named by the admin registry — the title and
+			// area its own rail prints — so a rename there reaches ⌘K too.
+			const adminEntry = adminEntryFor(href);
+			const areaKey = adminEntry
+				? ADMIN_AREAS.find((area) => area.key === adminEntry.area)?.titleKey
+				: undefined;
+			if (adminEntry && areaKey) {
+				return { href, labelKey: adminEntry.titleKey, contextKey: areaKey, icon };
+			}
 			const trail = [config.section, config.subsection, config.page].filter(
 				(key): key is string => key !== undefined
 			);
@@ -108,7 +133,7 @@ export function routePaletteTargets(
 				href,
 				labelKey: trail[trail.length - 1]!,
 				...(trail.length > 1 ? { contextKey: trail[trail.length - 2]! } : {}),
-				icon: SECTION_ICONS[config.section] ?? FALLBACK_ICON,
+				icon,
 			};
 		});
 }

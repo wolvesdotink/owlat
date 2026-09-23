@@ -380,9 +380,9 @@ export const cancelAutoSend = internalMutation({
 
 // ─── Kill-switch bulk cancel ─────────────────────────────────────────────────
 //
-// When the operator flips the auto-reply kill switch off (updateConfig sets
-// `isAutoReplyEnabled=false`), every autonomous send still sitting in its undo
-// window must be pulled back — otherwise a queued send fires seconds after the
+// When the operator switches AI replies to Draft only (setReplyMode('draft')
+// sets `isAutoReplyEnabled=false` and shadow on), every autonomous send still
+// sitting in its undo window must be pulled back — otherwise a queued send fires seconds after the
 // operator thought they stopped it. Scan the `approved` messages and cancel any
 // that still hold a live `pendingAutoSend` marker, routing each back to human
 // review. Scheduled off the admin mutation so a large scan never blocks the
