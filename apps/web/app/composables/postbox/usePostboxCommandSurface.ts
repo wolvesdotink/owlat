@@ -134,7 +134,7 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 			},
 			{
 				key: 'postbox-folders',
-				heading: t('shared.postbox.usePostboxCommandSurface.groups.postbox'),
+				heading: t('shared.dashboardNavigation.sections.postbox'),
 				order: 12,
 				mode: 'labels',
 				items: [

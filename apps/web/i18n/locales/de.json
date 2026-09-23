@@ -11907,8 +11907,7 @@
 				"customers": "Kundschaft",
 				"inbox": "Team-Postfach",
 				"knowledge": "Wissen",
-				"postbox": "Postfächer",
-				"preferences": "Einstellungen"
+				"postbox": "Postfächer"
 			}
 		},
 		"data": {
@@ -12919,7 +12918,6 @@
 				"groups": {
 					"labels": "Labels",
 					"mailbox": "Postfach",
-					"postbox": "Postbox",
 					"switchMailbox": "Postfach wechseln"
 				},
 				"items": {

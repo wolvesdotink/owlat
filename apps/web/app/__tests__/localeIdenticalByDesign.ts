@@ -366,7 +366,6 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'shared.mandrillRelayStatus.outstanding.dkim',
 	'shared.mandrillRelayStatus.outstanding.spf',
 	'shared.postbox.usePostboxCommandSurface.groups.labels',
-	'shared.postbox.usePostboxCommandSurface.groups.postbox',
 	'shared.postbox.usePostboxThreadCategories.options.newsletter',
 	'shared.postbox.usePostboxThreadCategories.options.person',
 	// Product names, identical in every locale.

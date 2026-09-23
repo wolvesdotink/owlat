@@ -315,7 +315,8 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 	},
 	{
 		key: 'preferences',
-		name: 'shared.dashboardNavigation.sections.preferences',
+		// The same name the Settings tab and the breadcrumb use ("My settings").
+		name: 'shared.breadcrumbRoutes.sections.preferences',
 		icon: 'lucide:settings',
 		href: '/dashboard/preferences',
 		// Every Preferences page renders the layout's own left nav, so the sidebar

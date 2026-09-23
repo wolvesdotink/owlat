@@ -11907,8 +11907,7 @@
 				"customers": "Customers",
 				"inbox": "Team inbox",
 				"knowledge": "Knowledge",
-				"postbox": "Inboxes",
-				"preferences": "Preferences"
+				"postbox": "Inboxes"
 			}
 		},
 		"data": {
@@ -12919,7 +12918,6 @@
 				"groups": {
 					"labels": "Labels",
 					"mailbox": "Mailbox",
-					"postbox": "Postbox",
 					"switchMailbox": "Switch mailbox"
 				},
 				"items": {
