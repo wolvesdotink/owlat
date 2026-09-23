@@ -21,8 +21,8 @@ import en from '~~/i18n/locales/en.json';
 
 const appRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** Tests stub their own keys; the dev-only UI mock is never shipped. */
-const SKIP_DIRS = new Set(['node_modules', '__tests__', 'uiMock', '.nuxt', '.output', 'dist']);
+/** Tests stub their own keys; build output is not source. */
+const SKIP_DIRS = new Set(['node_modules', '__tests__', '.nuxt', '.output', 'dist']);
 
 /**
  * `t('a.b')`, `$t("a.b")`, `te('a.b')`, `tm('a.b')`, `rt('a.b')`, including a
