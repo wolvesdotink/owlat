@@ -732,32 +732,32 @@
 		},
 		"campaigns": {
 			"abTestConfig": {
-				"contentOption": "Email Content",
+				"contentOption": "Email content",
 				"contentOptionDescription": "Test different email templates",
 				"durationHint": "After this time, the winning variant will automatically be sent to the remaining {remaining}% of your audience.",
 				"durationHours": "{n} hour | {n} hours",
-				"durationLabel": "Test Duration (hours)",
+				"durationLabel": "Test duration (hours)",
 				"enableDescription": "Split your audience to test different versions of your email",
 				"enableSwitchLabel": "Enable A/B testing",
-				"enableTitle": "Enable A/B Testing",
+				"enableTitle": "Enable A/B testing",
 				"splitExplanation": "{variantA} of audience gets Variant A, {variantB} gets Variant B. The remaining {remaining} will receive the winning version.",
-				"splitLabel": "Test Split Percentage",
-				"subjectBLabel": "Subject Line B",
-				"subjectBPlaceholder": "e.g., Don't miss out on this special offer!",
-				"subjectOption": "Subject Line",
+				"splitLabel": "Test split percentage",
+				"subjectBLabel": "Subject line B",
+				"subjectBPlaceholder": "e.g. Don't miss out on this special offer!",
+				"subjectOption": "Subject line",
 				"subjectOptionDescription": "Test different subject lines",
-				"templateBLabel": "Email Template B",
+				"templateBLabel": "Email template B",
 				"templateBPlaceholder": "Select a template...",
 				"testTypeLabel": "What do you want to test?",
-				"title": "A/B Testing",
-				"variantAHeading": "Variant A (Original)",
+				"title": "A/B testing",
+				"variantAHeading": "Variant A (original)",
 				"variantBHeading": "Variant B",
-				"winnerClickRate": "Click Rate",
+				"winnerClickRate": "Click rate",
 				"winnerClickRateHint": "Most clicks wins",
 				"winnerLabel": "How should we pick the winner?",
 				"winnerManual": "Manual",
 				"winnerManualHint": "You decide",
-				"winnerOpenRate": "Open Rate",
+				"winnerOpenRate": "Open rate",
 				"winnerOpenRateHint": "Most opens wins"
 			},
 			"campaignSendPlanLine": {
@@ -832,7 +832,7 @@
 			},
 			"steps": {
 				"contentStep": {
-					"choiceLabel": "Email Template Choice",
+					"choiceLabel": "Email template choice",
 					"createTemplateOperation": "Create email template",
 					"errors": {
 						"selectTemplate": "Please select a marketing email template",
@@ -840,35 +840,35 @@
 						"templateName": "Please enter a name for the new template"
 					},
 					"existingDescription": "Pick from your saved marketing templates.",
-					"existingTemplatesLabel": "Existing Templates",
-					"existingTitle": "Use Existing Marketing Email",
+					"existingTemplatesLabel": "Existing templates",
+					"existingTitle": "Use an existing marketing email",
 					"newDescription": "A new template will be created only when you continue.",
 					"newTemplateNameHint": "This will create a new draft marketing template and link it to this campaign.",
-					"newTemplateNameLabel": "New Template Name",
-					"newTemplateNamePlaceholder": "e.g., Summer Launch Email",
-					"newTitle": "Create New Marketing Email Template",
+					"newTemplateNameLabel": "New template name",
+					"newTemplateNamePlaceholder": "e.g. Summer launch email",
+					"newTitle": "Create a new marketing email",
 					"noMatches": "No templates match your search.",
 					"noSubject": "No subject",
 					"searchPlaceholder": "Search by name or subject...",
 					"selectedTemplate": "Selected template",
-					"subjectLabel": "Email Subject",
-					"subjectPlaceholder": "e.g., Your weekly newsletter is here!",
+					"subjectLabel": "Email subject",
+					"subjectPlaceholder": "e.g. Your weekly newsletter is here!",
 					"subtitle": "Select an existing marketing template, or explicitly create a new one for this campaign.",
-					"templateNameDefault": "{name} Email",
-					"title": "Campaign Email",
+					"templateNameDefault": "{name} email",
+					"title": "Campaign email",
 					"updateContentOperation": "Update campaign content"
 				},
 				"reviewStep": {
-					"abTesting": "A/B Testing",
+					"abTesting": "A/B testing",
 					"audience": "Audience",
 					"blocked": {
 						"domainMissing": "Sending is disabled because \"{domain}\" is not registered. Add and verify it in Settings → Domains.",
 						"domainUnverified": "Sending is disabled because \"{domain}\" is not verified. Complete DNS verification in Settings → Domains."
 					},
-					"campaignName": "Campaign Name",
+					"campaignName": "Campaign name",
 					"dateLabel": "Date",
 					"editLater": "You can edit this email after the campaign is created.",
-					"emailContent": "Email Content",
+					"emailContent": "Email content",
 					"errors": {
 						"dateRequired": "Please select a date for scheduling",
 						"timeInPast": "Scheduled time must be in the future",
@@ -883,81 +883,87 @@
 					"recipientTimezone": "Send at recipient's local time",
 					"recipientTimezoneHint": "Emails will be sent at {time} in each contact's timezone. Contacts without a timezone will receive the email at your selected time.",
 					"replyTo": "Reply-to: {email}",
-					"scheduleCampaign": "Schedule Campaign",
-					"scheduleLater": "Schedule for Later",
+					"scheduleCampaign": "Schedule campaign",
+					"scheduleLater": "Schedule for later",
 					"scheduleLaterDescription": "Choose a specific date and time to send your campaign.",
 					"scheduleOperation": "Schedule campaign",
 					"scheduledTimeFallback": "the scheduled time",
 					"scheduling": "Scheduling...",
-					"sendCampaign": "Send Campaign",
+					"sendCampaign": "Send campaign",
 					"sendConfirm": {
 						"cancel": "Cancel",
 						"confirm": "Send now",
 						"description": "{name} goes out to everyone in this audience. You have {seconds} seconds to call it back before the first message leaves.",
 						"title": "Send to {count} recipients?"
 					},
-					"sendNow": "Send Now",
+					"sendNow": "Send now",
 					"sendNowDescription": "Your campaign will start sending immediately to all recipients.",
 					"sendNowOperation": "Send campaign now",
-					"sendTest": "Send Test",
+					"sendTest": "Send test",
 					"sending": "Sending...",
 					"splitSummary": "{split}% each for test, winner sent to remaining {remaining}%",
 					"subtitle": "Review your campaign settings before sending.",
 					"template": "Template:",
 					"testEmailDescription": "Preview how your email will look by sending a test to yourself.",
-					"testEmailTitle": "Send Test Email",
-					"testingSubjects": "Testing Subject Lines",
-					"testingTemplates": "Testing Email Templates",
+					"testEmailTitle": "Send test email",
+					"testingSubjects": "Testing subject lines",
+					"testingTemplates": "Testing email templates",
 					"timeLabel": "Time",
-					"title": "Review & Send",
+					"title": "Review and send",
 					"toast": {
 						"scheduled": "Campaign scheduled successfully!",
 						"scheduledPerTimezone": "Campaign scheduled for {time} in each recipient's timezone!",
 						"sending": "Campaign is now sending!"
 					},
-					"whenToSend": "When to Send",
+					"whenToSend": "When to send",
 					"winnerBy": "Winner by: {criteria}",
 					"winnerByAfterHours": "Winner by: {criteria} (after {hours}h)",
 					"winnerCriteria": {
-						"clickRate": "Best Click Rate",
-						"manual": "Manual Selection",
-						"openRate": "Best Open Rate"
+						"clickRate": "Best click rate",
+						"manual": "Manual selection",
+						"openRate": "Best open rate"
 					}
+				},
+				"setupAddSenderInline": {
+					"emailLabel": "Sender address",
+					"emailPlaceholder": "e.g. news{'@'}example.com",
+					"manageAll": "Manage all senders",
+					"nameLabel": "Sender name (optional)",
+					"namePlaceholder": "e.g. Example newsletter",
+					"operation": "Add campaign sender",
+					"setUpDomain": "Set up the domain",
+					"submit": "Add sender"
 				},
 				"setupAudiencePicker": {
 					"createSegment": "Create a segment",
 					"createTopic": "Create a topic",
-					"eligible": "Eligible recipients.",
-					"eligibleForTopic": "Eligible recipients for this topic.",
+					"empty": "There are no topics or segments yet.",
 					"estimatedRecipients": "Estimated recipients",
-					"noDescription": "No description provided",
-					"noSegments": "No segments found.",
-					"noSelection": "Select an audience to see the estimated recipient count.",
-					"noTopics": "No topics found.",
+					"noSelection": "Pick recipients to see how many contacts will get this campaign.",
 					"nonEligible": "{nonEligible} of {total} contacts in this topic are not eligible (no email address, unsubscribed/suppressed, or double opt-in not completed) and will be excluded.",
-					"segmentCriteria": "Segment Criteria",
-					"segmentOption": "Saved Segment",
-					"segmentOptionDescription": "Target contacts matching specific criteria from a saved segment.",
-					"segmentPlaceholder": "Select a segment...",
-					"segmentSummary": "Contacts matching \"{segment}\" criteria will receive this campaign.",
-					"segmentWarning": "Segments target all matching contacts regardless of topic subscription. Some contacts may not have completed double opt-in. No unsubscribe link will be included since there is no specific topic to unsubscribe from.",
-					"subtitle": "Choose who will receive this campaign.",
-					"title": "Audience",
-					"topicOption": "Specific Topic",
-					"topicOptionDescription": "Send to contacts subscribed to a specific topic.",
-					"topicOptionLabel": "{name} ({count} contacts)",
-					"topicPlaceholder": "Select a topic...",
-					"topicSummary": "Subscribed contacts in \"{topic}\" will receive this campaign."
+					"placeholder": "Choose recipients",
+					"segmentOption": "Contacts in {name} ({count})",
+					"segmentOptionNoCount": "Contacts in {name}",
+					"segmentWarning": "A segment reaches every matching contact, including people who never subscribed to a topic or haven't confirmed double opt-in. There is no topic to unsubscribe from, so no unsubscribe link is added.",
+					"segmentsGroup": "Segments: contacts matching saved filters",
+					"sendTo": "Send to",
+					"subtitle": "Choose who gets this campaign.",
+					"title": "Recipients",
+					"topicHelp": "Only people subscribed to this topic get it, and every email has a link to unsubscribe from the topic.",
+					"topicOption": "Everyone subscribed to {name} ({count})",
+					"topicOptionNoCount": "Everyone subscribed to {name}",
+					"topicsGroup": "Topics: people who subscribed"
 				},
 				"setupSenderPicker": {
-					"addSender": "Add a campaign sender",
-					"askAdmin": "Ask your admin to add a campaign sender before you can send.",
+					"askAdmin": "Ask an admin of this workspace to add one. Only admins can add senders.",
+					"askNamedAdmin": "Ask {names} to add one. Only admins can add senders.",
 					"curatedHint": "Recipients see this name and address. Manage the list in Settings → Campaign senders.",
 					"domainNeverChecked": "never",
 					"domainNotRegistered": "Domain \"{domain}\" is not registered. You can continue editing, but sending is disabled until you add and verify this domain in Settings → Domains.",
 					"domainNotVerified": "Domain \"{domain}\" is not verified. You can continue editing, but sending is disabled until DNS verification completes in Settings → Domains.",
 					"domainStale": "Domain verification is stale (last checked {lastChecked}). Consider re-verifying.",
 					"domainVerified": "Domain \"{domain}\" is verified",
+					"emptyAdmin": "No campaign senders yet. Add the address this campaign should come from.",
 					"emptyTitle": "No campaign senders have been set up yet.",
 					"errors": {
 						"invalidEmail": "Enter a valid from address",
@@ -966,11 +972,11 @@
 						"senderBlocked": "This sender can’t be used right now."
 					},
 					"fromEmailHint": "The email address your campaign will be sent from.",
-					"fromEmailLabel": "From Email",
+					"fromEmailLabel": "From address",
 					"fromEmailPlaceholder": "e.g., hello{'@'}acme.com",
 					"fromNameHint": "The name recipients will see when they receive your email.",
-					"fromNameLabel": "From Name",
-					"fromNamePlaceholder": "e.g., John from Acme Inc",
+					"fromNameLabel": "From name",
+					"fromNamePlaceholder": "e.g. John from Acme",
 					"loadFailed": "Could not load campaign senders. Please try again.",
 					"loading": "Loading senders…",
 					"selectPlaceholder": "Choose a sender",
@@ -980,16 +986,23 @@
 					"addABTest": "Add an A/B test",
 					"addABTestHint": "Optional — send two versions to part of your audience, then the winner to the rest.",
 					"detailsSubtitle": "Name your campaign and set the sender.",
-					"detailsTitle": "Campaign Details",
+					"detailsTitle": "Campaign details",
 					"errors": {
 						"nameRequired": "Campaign name is required",
-						"replyToInvalid": "Please enter a valid email address",
-						"segmentRequired": "Please select a segment",
-						"topicRequired": "Please select a topic"
+						"recipientsRequired": "Choose who gets this campaign",
+						"replyToInvalid": "Please enter a valid email address"
+					},
+					"missing": {
+						"items": {
+							"name": "a campaign name",
+							"recipients": "recipients",
+							"sender": "a sender"
+						},
+						"label": "Still needed: {items}"
 					},
 					"nameHint": "This name is for your reference and won't be visible to recipients.",
-					"nameLabel": "Campaign Name",
-					"namePlaceholder": "e.g., Summer Newsletter 2026",
+					"nameLabel": "Campaign name",
+					"namePlaceholder": "e.g. Summer newsletter 2026",
 					"operations": {
 						"createCampaign": "Create campaign",
 						"disableABTest": "Disable A/B test",
@@ -999,8 +1012,8 @@
 					},
 					"optional": "(optional)",
 					"removeABTest": "Remove A/B test",
-					"replyToHint": "Replies will be sent to this address. Leave empty to use the From Email.",
-					"replyToLabel": "Reply-to Email {optional}",
+					"replyToHint": "Replies go to this address. Leave it empty to use the sender address.",
+					"replyToLabel": "Reply-to address {optional}",
 					"replyToPlaceholder": "e.g., support{'@'}acme.com"
 				}
 			},
@@ -1011,16 +1024,16 @@
 				"intro": "Send a test email to preview how your campaign will look to recipients.",
 				"languageDefault": "Default ({language})",
 				"languageHint": "Preview how the email looks in different languages.",
-				"languageLabel": "Preview Language",
+				"languageLabel": "Preview language",
 				"queuedBody": "Check your inbox at {email}",
-				"queuedHeading": "Test Email Queued!",
+				"queuedHeading": "Test email queued",
 				"queueing": "Queueing...",
-				"recipientLabel": "Recipient Email",
+				"recipientLabel": "Recipient email",
 				"recipientPlaceholder": "you{'@'}example.com",
 				"sendFailed": "Failed to queue test email",
 				"subjectLabel": "Subject:",
-				"submit": "Queue Test",
-				"title": "Queue Test Email"
+				"submit": "Queue test",
+				"title": "Queue test email"
 			},
 			"undoSendToast": {
 				"sending": "Sending \"{name}\" in {seconds}s",
@@ -8570,14 +8583,14 @@
 				"edit": {
 					"actions": {
 						"reschedule": "Reschedule",
-						"saveDraft": "Save Draft",
+						"saveDraft": "Save draft",
 						"schedule": "Schedule",
-						"sendNow": "Send Now"
+						"sendNow": "Send now"
 					},
 					"archive": {
 						"description": "Add a \"View in browser\" link at the top of sent emails and create a public archive page.",
 						"switchLabel": "Public archive",
-						"title": "Public Archive"
+						"title": "Public archive"
 					},
 					"audience": {
 						"eligible": "eligible recipients",
@@ -8585,108 +8598,108 @@
 						"ineligibleDescription": "{excluded} of {total} contacts in this topic are not eligible (no email address, unsubscribed/suppressed, or double opt-in not completed) and will be excluded.",
 						"ineligibleTitle": "Some subscribers won't receive this campaign",
 						"segmentDescription": "Target contacts matching specific criteria.",
-						"segmentTitle": "Saved Segment",
+						"segmentTitle": "Saved segment",
 						"selectSegment": "Select a segment...",
 						"selectTopic": "Select a topic...",
 						"title": "Audience",
 						"topicDescription": "Send to contacts subscribed to a specific topic.",
 						"topicOption": "{name} ({count} contacts)",
-						"topicTitle": "Specific Topic"
+						"topicTitle": "Specific topic"
 					},
-					"backToCampaigns": "Back to Campaigns",
+					"backToCampaigns": "Back to campaigns",
 					"badges": {
 						"draft": "Draft",
 						"scheduled": "Scheduled",
-						"underReview": "Under Review"
+						"underReview": "Under review"
 					},
 					"cannotEditDescription": "This campaign is {status} and cannot be edited.",
 					"cannotEditTitle": "Cannot edit this campaign",
 					"content": {
-						"editEmail": "Edit Email",
+						"editEmail": "Edit email",
 						"linkedEmailNote": "This campaign is linked to one marketing email. Edit the linked email in the builder.",
 						"noSubject": "No subject",
 						"noTemplate": "No template selected",
-						"subject": "Email Subject",
-						"subjectPlaceholder": "e.g., Your weekly newsletter is here!",
-						"template": "Email Template",
-						"title": "Email Content"
+						"subject": "Email subject",
+						"subjectPlaceholder": "e.g. Your weekly newsletter is here!",
+						"template": "Email template",
+						"title": "Email content"
 					},
 					"contentBlocked": {
 						"description": "Your previous send attempt was blocked by our content scanner. Please update your content and try again.",
-						"title": "Content Blocked"
+						"title": "Content blocked"
 					},
 					"details": {
-						"campaignName": "Campaign Name",
-						"campaignNamePlaceholder": "e.g., Summer Newsletter 2026",
-						"fromEmail": "From Email",
+						"campaignName": "Campaign name",
+						"campaignNamePlaceholder": "e.g. Summer newsletter 2026",
+						"fromEmail": "From address",
 						"fromEmailPlaceholder": "e.g., hello{'@'}acme.com",
-						"fromName": "From Name",
-						"fromNamePlaceholder": "e.g., John from Acme Inc",
+						"fromName": "From name",
+						"fromNamePlaceholder": "e.g. John from Acme",
 						"optionalSuffix": "(optional)",
-						"replyTo": "Reply-to Email",
+						"replyTo": "Reply-to address",
 						"replyToPlaceholder": "e.g., support{'@'}acme.com",
-						"title": "Campaign Details"
+						"title": "Campaign details"
 					},
 					"errorTitle": "Couldn't load this campaign",
 					"loadingLabel": "Loading campaign...",
 					"loadingName": "Loading...",
 					"notFoundDescription": "The campaign you're looking for doesn't exist or you don't have access to it.",
 					"notFoundTitle": "Campaign not found",
-					"pageTitle": "Edit Campaign — Owlat",
+					"pageTitle": "Edit campaign — Owlat",
 					"schedule": {
 						"date": "Date",
 						"inRecipientTimezone": "{time} in each recipient's timezone",
 						"recipientTimezone": "Send at recipient's local time",
 						"recipientTimezoneHint": "Emails will be sent at {time} in each contact's timezone. Contacts without a timezone will receive the email at your selected time.",
-						"retitle": "Reschedule Campaign",
+						"retitle": "Reschedule campaign",
 						"theScheduledTime": "the scheduled time",
 						"time": "Time",
 						"timezoneExamples": "For example: {time} ET, {time} PT, {time} GMT, etc.",
-						"title": "Schedule Campaign",
+						"title": "Schedule campaign",
 						"willBeSent": "Campaign will be sent:",
 						"willBeSentAt": "Campaign will be sent at:"
 					},
 					"scheduledNotice": {
-						"cancelCampaign": "Cancel Campaign",
+						"cancelCampaign": "Cancel campaign",
 						"description": "This campaign is scheduled to send on {date}. You can reschedule it, send it now, or cancel it.",
-						"title": "Campaign Scheduled",
-						"unschedule": "Unschedule to Edit"
+						"title": "Campaign scheduled",
+						"unschedule": "Unschedule to edit"
 					},
 					"sendConfirm": {
 						"description": "This sends to {count} recipient(s) immediately and can't be undone.",
 						"title": "Send campaign now?"
 					},
 					"test": {
-						"button": "Send Test",
+						"button": "Send test",
 						"description": "Preview how your email will look.",
-						"title": "Send Test Email"
+						"title": "Send test email"
 					},
-					"title": "Edit Campaign",
-					"titleScheduled": "Edit Scheduled Campaign",
+					"title": "Edit campaign",
+					"titleScheduled": "Edit scheduled campaign",
 					"underReview": {
 						"description": "This campaign has been flagged by our content scanner and is pending review by a platform administrator. You will be able to send it once it has been approved.",
-						"issuesTitle": "Content Issues Detected",
-						"title": "Campaign Under Review"
+						"issuesTitle": "Content issues detected",
+						"title": "Campaign under review"
 					},
 					"warmup": {
 						"dayOf": "Day {day} of ~30",
 						"estimateDetail": "This campaign has {count} recipients. {message}",
 						"estimatedDays": "Estimated send time: ~1 day | Estimated send time: ~{days} days",
 						"graduatedDescription": "Your IPs are fully warmed. Campaigns will send at full speed.",
-						"graduatedTitle": "Fully Warmed",
+						"graduatedTitle": "Fully warmed",
 						"progress": "Warmup progress",
 						"remainingCapacity": "Today's remaining capacity",
 						"remainingOfCap": "{remaining} of {cap} emails",
 						"subtitle": "Your sending capacity based on IP reputation warming",
-						"title": "IP Warmup Status"
+						"title": "IP warmup status"
 					}
 				},
 				"report": {
 					"archive": {
-						"copyLink": "Copy Link",
-						"title": "Public Archive"
+						"copyLink": "Copy link",
+						"title": "Public archive"
 					},
-					"backToCampaigns": "Back to Campaigns",
+					"backToCampaigns": "Back to campaigns",
 					"cancelledLine": "Cancelled before it went out",
 					"clickedEmpty": "No contacts have clicked links in this email yet",
 					"comparison": {
@@ -8715,7 +8728,7 @@
 					"notFoundTitle": "Campaign not found",
 					"openedEmpty": "No contacts have opened this email yet",
 					"opensCount": "{count} opens",
-					"pageTitle": "Campaign Report — Owlat",
+					"pageTitle": "Campaign report — Owlat",
 					"pagination": {
 						"next": "Next",
 						"previous": "Previous",
@@ -8751,12 +8764,12 @@
 				},
 				"sends": {
 					"detail": {
-						"backToReport": "Back to Campaign Report",
+						"backToReport": "Back to campaign report",
 						"errorTitle": "Couldn't load send details",
 						"loadingLabel": "Loading send details...",
 						"notFoundDescription": "This email send may have been deleted or you don't have access to it.",
 						"notFoundTitle": "Send not found",
-						"pageTitle": "Send Details — Owlat",
+						"pageTitle": "Send details — Owlat",
 						"variant": "Variant {variant}"
 					}
 				}
@@ -8817,14 +8830,14 @@
 					"description": "This campaign has not been saved yet. Leaving now loses what you filled in.",
 					"title": "Leave without saving?"
 				},
-				"pageTitle": "Create Campaign — Owlat",
+				"pageTitle": "Create campaign — Owlat",
 				"steps": {
 					"content": "Content",
 					"review": "Review",
 					"setup": "Setup"
 				},
 				"subtitle": "Set up your email campaign",
-				"title": "Create Campaign"
+				"title": "Create campaign"
 			}
 		},
 		"chat": {

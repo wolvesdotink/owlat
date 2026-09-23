@@ -924,40 +924,46 @@
 						"openRate": "Beste Öffnungsrate"
 					}
 				},
+				"setupAddSenderInline": {
+					"emailLabel": "Absenderadresse",
+					"emailPlaceholder": "z. B. news{'@'}example.com",
+					"manageAll": "Alle Absender verwalten",
+					"nameLabel": "Absendername (optional)",
+					"namePlaceholder": "z. B. Beispiel-Newsletter",
+					"operation": "Kampagnen-Absender hinzufügen",
+					"setUpDomain": "Domain einrichten",
+					"submit": "Absender hinzufügen"
+				},
 				"setupAudiencePicker": {
 					"createSegment": "Segment erstellen",
 					"createTopic": "Thema erstellen",
-					"eligible": "Zulässige Empfänger.",
-					"eligibleForTopic": "Zulässige Empfänger für dieses Thema.",
+					"empty": "Es gibt noch keine Themen oder Segmente.",
 					"estimatedRecipients": "Geschätzte Empfänger",
-					"noDescription": "Keine Beschreibung vorhanden",
-					"noSegments": "Keine Segmente gefunden.",
-					"noSelection": "Wählen Sie eine Zielgruppe, um die geschätzte Empfängerzahl zu sehen.",
-					"noTopics": "Keine Themen gefunden.",
+					"noSelection": "Wählen Sie Empfänger aus, um zu sehen, wie viele Kontakte diese Kampagne erhalten.",
 					"nonEligible": "{nonEligible} von {total} Kontakten in diesem Thema sind nicht zulässig (keine E-Mail-Adresse, abgemeldet/gesperrt oder Double-Opt-in nicht abgeschlossen) und werden ausgeschlossen.",
-					"segmentCriteria": "Segmentkriterien",
-					"segmentOption": "Gespeichertes Segment",
-					"segmentOptionDescription": "Kontakte ansprechen, die den Kriterien eines gespeicherten Segments entsprechen.",
-					"segmentPlaceholder": "Segment auswählen ...",
-					"segmentSummary": "Kontakte, die den Kriterien von \"{segment}\" entsprechen, erhalten diese Kampagne.",
-					"segmentWarning": "Segmente sprechen alle passenden Kontakte an, unabhängig vom Themen-Abonnement. Einige Kontakte haben das Double-Opt-in möglicherweise nicht abgeschlossen. Es wird kein Abmeldelink eingefügt, da es kein bestimmtes Thema gibt, von dem man sich abmelden könnte.",
+					"placeholder": "Empfänger auswählen",
+					"segmentOption": "Kontakte in {name} ({count})",
+					"segmentOptionNoCount": "Kontakte in {name}",
+					"segmentWarning": "Ein Segment erreicht alle passenden Kontakte, auch Personen, die nie ein Thema abonniert oder das Double-Opt-in nicht bestätigt haben. Da es kein Thema zum Abmelden gibt, wird kein Abmeldelink eingefügt.",
+					"segmentsGroup": "Segmente: Kontakte, die gespeicherten Filtern entsprechen",
+					"sendTo": "Senden an",
 					"subtitle": "Wählen Sie, wer diese Kampagne erhält.",
-					"title": "Zielgruppe",
-					"topicOption": "Bestimmtes Thema",
-					"topicOptionDescription": "An Kontakte senden, die ein bestimmtes Thema abonniert haben.",
-					"topicOptionLabel": "{name} ({count} Kontakte)",
-					"topicPlaceholder": "Thema auswählen ...",
-					"topicSummary": "Abonnierte Kontakte in \"{topic}\" erhalten diese Kampagne."
+					"title": "Empfänger",
+					"topicHelp": "Nur Abonnenten dieses Themas erhalten sie, und jede E-Mail enthält einen Link, um sich vom Thema abzumelden.",
+					"topicOption": "Alle Abonnenten von {name} ({count})",
+					"topicOptionNoCount": "Alle Abonnenten von {name}",
+					"topicsGroup": "Themen: Personen, die sich angemeldet haben"
 				},
 				"setupSenderPicker": {
-					"addSender": "Kampagnen-Absender hinzufügen",
-					"askAdmin": "Bitten Sie Ihre Administration, einen Kampagnen-Absender anzulegen, bevor Sie senden können.",
+					"askAdmin": "Bitten Sie eine Person mit Adminrechten in diesem Workspace, einen anzulegen. Nur Admins können Absender hinzufügen.",
+					"askNamedAdmin": "Bitten Sie {names}, einen anzulegen. Nur Admins können Absender hinzufügen.",
 					"curatedHint": "Empfänger sehen diesen Namen und diese Adresse. Die Liste verwalten Sie unter Einstellungen → Kampagnen-Absender.",
 					"domainNeverChecked": "nie",
 					"domainNotRegistered": "Domain „{domain}“ ist nicht registriert. Sie können weiter bearbeiten, aber das Senden ist deaktiviert, bis Sie diese Domain unter Einstellungen → Domains hinzufügen und verifizieren.",
 					"domainNotVerified": "Domain „{domain}“ ist nicht verifiziert. Sie können weiter bearbeiten, aber das Senden ist deaktiviert, bis die DNS-Verifizierung unter Einstellungen → Domains abgeschlossen ist.",
 					"domainStale": "Die Domain-Verifizierung ist veraltet (zuletzt geprüft: {lastChecked}). Erwägen Sie eine erneute Verifizierung.",
 					"domainVerified": "Domain „{domain}“ ist verifiziert",
+					"emptyAdmin": "Noch keine Kampagnen-Absender. Fügen Sie die Adresse hinzu, von der diese Kampagne kommen soll.",
 					"emptyTitle": "Es wurden noch keine Kampagnen-Absender eingerichtet.",
 					"errors": {
 						"invalidEmail": "Geben Sie eine gültige Absenderadresse ein",
@@ -983,9 +989,16 @@
 					"detailsTitle": "Kampagnendetails",
 					"errors": {
 						"nameRequired": "Kampagnenname ist erforderlich",
-						"replyToInvalid": "Bitte geben Sie eine gültige E-Mail-Adresse ein",
-						"segmentRequired": "Bitte wählen Sie ein Segment aus",
-						"topicRequired": "Bitte wählen Sie ein Thema aus"
+						"recipientsRequired": "Wählen Sie, wer diese Kampagne erhält",
+						"replyToInvalid": "Bitte geben Sie eine gültige E-Mail-Adresse ein"
+					},
+					"missing": {
+						"items": {
+							"name": "ein Kampagnenname",
+							"recipients": "Empfänger",
+							"sender": "ein Absender"
+						},
+						"label": "Noch offen: {items}"
 					},
 					"nameHint": "Dieser Name dient nur Ihrer Orientierung und ist für Empfänger nicht sichtbar.",
 					"nameLabel": "Kampagnenname",
