@@ -10,9 +10,15 @@ import { v } from 'convex/values';
 import { internalMutation, internalQuery } from '../_generated/server';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
-import { publicQuery, authedMutation } from '../lib/authedFunctions';
+import { publicQuery, authedMutation, adminMutation } from '../lib/authedFunctions';
 import { assertFeatureEnabled } from '../lib/featureFlags';
-import { getMutationContext, isActiveOrgMember } from '../lib/sessionOrganization';
+import {
+	getMutationContext,
+	hasPermission,
+	isActiveOrgMember,
+	requirePermission,
+} from '../lib/sessionOrganization';
+import type { MutationSessionContext } from '../lib/sessionOrganization';
 import { batchGet } from '../_utils/batchLoader';
 import { throwInvalidInput } from '../_utils/errors';
 import { sameContactScope } from '../lib/contactScope';
@@ -231,6 +237,22 @@ export const getByContact = publicQuery({
 // ============================================================
 
 /**
+ * Curated answers (`isAuthoritative`) are what the agent quotes to customers
+ * ahead of everything else, so only owners and admins may write them. Members
+ * keep editing and deleting the rest of the graph.
+ */
+function requireCuratedWriter(
+	session: MutationSessionContext,
+	entry: Pick<Doc<'knowledgeEntries'>, 'isAuthoritative'>
+): void {
+	if (entry.isAuthoritative !== true) return;
+	requirePermission(
+		hasPermission(session.role, 'organization:manage'),
+		'Only owners and admins can change a curated answer'
+	);
+}
+
+/**
  * Create a new knowledge entry.
  *
  * Org member only: knowledge entries feed the agent's drafting pipeline and
@@ -307,10 +329,11 @@ export const updateEntry = authedMutation({
 		expiresAt: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await getMutationContext(ctx);
+		const session = await getMutationContext(ctx);
 
 		const entry = await ctx.db.get(args.entryId);
 		if (!entry) return null;
+		requireCuratedWriter(session, entry);
 
 		const now = Date.now();
 		const patch: Partial<Doc<'knowledgeEntries'>> = {
@@ -369,10 +392,11 @@ export const deleteEntry = authedMutation({
 		entryId: v.id('knowledgeEntries'),
 	},
 	handler: async (ctx, args) => {
-		await getMutationContext(ctx);
+		const session = await getMutationContext(ctx);
 
 		const entry = await ctx.db.get(args.entryId);
 		if (!entry) return null;
+		requireCuratedWriter(session, entry);
 
 		// Tear down the contact junction mirror first so no orphan rows survive.
 		await syncEntryContacts(ctx, args.entryId, undefined);
@@ -584,8 +608,8 @@ const policyEntryTypeValidator = v.union(...POLICY_ENTRY_TYPES.map((t) => v.lite
  * filled by the extraction/embedding pipeline; the FTS leg works immediately from
  * `searchableText`, so a fresh policy is retrievable at once.
  */
-// all-members: any org member can curate canonical answers; mirrors createEntry's write tier
-export const createPolicyEntry = authedMutation({
+// admin-only: a curated answer outranks every extracted fact and is quoted to customers
+export const createPolicyEntry = adminMutation({
 	args: {
 		entryId: v.optional(v.id('knowledgeEntries')),
 		entryType: v.optional(policyEntryTypeValidator),
@@ -595,8 +619,6 @@ export const createPolicyEntry = authedMutation({
 		expiresAt: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await getMutationContext(ctx);
-
 		if (args.title.trim().length === 0 || args.content.trim().length === 0) {
 			throwInvalidInput('A curated answer needs both a question and an answer.');
 		}
