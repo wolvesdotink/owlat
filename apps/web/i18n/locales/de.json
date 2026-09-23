@@ -802,9 +802,16 @@
 			},
 			"funnel": {
 				"ariaLabel": "Versand-Trichter",
-				"ofPrevious": "{percent} vom vorherigen Schritt",
+				"rates": {
+					"bounced": "{percent} der gesendeten",
+					"clicked": "{percent} der geöffneten",
+					"delivered": "{percent} der gesendeten",
+					"opened": "{percent} der zugestellten",
+					"unsubscribed": "{percent} der zugestellten"
+				},
 				"stepTitle": "{step}: {count} von {previous} ({previousStep})",
 				"steps": {
+					"bounced": "Unzustellbar",
 					"clicked": "Geklickt",
 					"delivered": "Zugestellt",
 					"opened": "Geöffnet",
@@ -8681,14 +8688,16 @@
 					},
 					"backToCampaigns": "Zurück zu den Kampagnen",
 					"cancelledLine": "Vor dem Versand abgebrochen",
-					"clickRate": "Klickrate",
 					"clickedEmpty": "Bisher hat kein Kontakt Links in dieser E-Mail geklickt",
-					"clickedOfDelivered": "{clicked} von {delivered} zugestellten haben einen Link geklickt",
 					"comparison": {
-						"changeVsPrevious": "Veränderung gegenüber Ihrem letzten Versand · {name}",
-						"changeVsPreviousAb": "Veränderung gegenüber Ihrem letzten A/B-Versand · {name}",
-						"noComparable": "Es gibt noch keinen vergleichbaren früheren Versand.",
-						"pendingCounts": "Diese Werte füllen sich, während der Versand läuft."
+						"clickRate": "Klickrate",
+						"noChange": "unverändert",
+						"noComparable": "Noch keine frühere Kampagne zum Vergleich.",
+						"openRate": "Öffnungsrate",
+						"pendingCounts": "Diese Werte füllen sich, während der Versand läuft.",
+						"points": "{change} Pkt.",
+						"versus": "Verglichen mit {name}:",
+						"versusAb": "Verglichen mit Ihrem letzten A/B-Test, {name}:"
 					},
 					"declareWinnerOperation": "A/B-Test-Gewinner festlegen",
 					"duplicateOperation": "Kampagne duplizieren",
@@ -8704,9 +8713,7 @@
 					"noEmail": "Keine E-Mail",
 					"notFoundDescription": "Diese Kampagne wurde möglicherweise gelöscht oder Sie haben keinen Zugriff darauf.",
 					"notFoundTitle": "Kampagne nicht gefunden",
-					"openRate": "Öffnungsrate",
 					"openedEmpty": "Bisher hat kein Kontakt diese E-Mail geöffnet",
-					"openedOfDelivered": "{opened} von {delivered} zugestellten geöffnet",
 					"opensCount": "{count} Öffnungen",
 					"pageTitle": "Kampagnenbericht — Owlat",
 					"pagination": {
@@ -8728,12 +8735,6 @@
 					"tabs": {
 						"clicked": "Geklickt ({count})",
 						"opened": "Geöffnet ({count})"
-					},
-					"tiles": {
-						"bounced": "Unzustellbar",
-						"clicked": "Geklickt",
-						"delivered": "Zugestellt",
-						"opened": "Geöffnet"
 					},
 					"timeline": {
 						"chartLabel": "Öffnungen in den ersten 48 Stunden",

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
 	selectPreviousComparable,
-	computeStatDeltas,
+	compareRates,
 	type ComparableCampaign,
 } from '~/utils/campaignReport';
 
@@ -63,52 +63,56 @@ describe('selectPreviousComparable', () => {
 	});
 });
 
-describe('computeStatDeltas', () => {
-	it('returns empty deltas when there is no previous send', () => {
-		const current = { sent: 100, delivered: 90, opened: 45, clicked: 9, bounced: 10 };
-		const deltas = computeStatDeltas(current, null);
-		expect(deltas.opened).toEqual({ text: null, direction: 'flat' });
-		expect(deltas.bounced).toEqual({ text: null, direction: 'flat' });
+describe('compareRates', () => {
+	it('gives the rates without a change when there is no previous campaign', () => {
+		const current = { sent: 100, delivered: 80, opened: 40, clicked: 8, bounced: 20 };
+		expect(compareRates(current, null)).toEqual([
+			{ key: 'openRate', rate: 0.5, pointsChange: null, direction: 'flat' },
+			{ key: 'clickRate', rate: 0.1, pointsChange: null, direction: 'flat' },
+		]);
 	});
 
-	it('reports an open-rate improvement as up', () => {
-		// prev open rate 40% (40/100), current 50% (50/100) → +10 pts, up.
-		const deltas = computeStatDeltas(
-			{ sent: 100, delivered: 100, opened: 50, clicked: 0, bounced: 0 },
-			{ sent: 100, delivered: 100, opened: 40, clicked: 0, bounced: 0 }
+	it('reports an open-rate improvement in points, as up', () => {
+		// prev open rate 33.5% (335/1000), current 38.4% (384/1000) → +4.9 pts.
+		const [open] = compareRates(
+			{ sent: 1000, delivered: 1000, opened: 384, clicked: 0, bounced: 0 },
+			{ sent: 1000, delivered: 1000, opened: 335, clicked: 0, bounced: 0 }
 		);
-		expect(deltas.opened).toEqual({ text: '10.0 pts', direction: 'up' });
-	});
-
-	it('treats fewer bounces as an improvement (up)', () => {
-		// prev bounce rate 10%, current 4% → improvement, direction up.
-		const deltas = computeStatDeltas(
-			{ sent: 100, delivered: 96, opened: 0, clicked: 0, bounced: 4 },
-			{ sent: 100, delivered: 90, opened: 0, clicked: 0, bounced: 10 }
-		);
-		expect(deltas.bounced).toEqual({ text: '6.0 pts', direction: 'up' });
+		expect(open).toMatchObject({ key: 'openRate', pointsChange: 4.9, direction: 'up' });
 	});
 
 	it('flags a click-rate regression as down', () => {
-		const deltas = computeStatDeltas(
+		const [, click] = compareRates(
 			{ sent: 100, delivered: 100, opened: 0, clicked: 5, bounced: 0 },
 			{ sent: 100, delivered: 100, opened: 0, clicked: 12, bounced: 0 }
 		);
-		expect(deltas.clicked).toEqual({ text: '7.0 pts', direction: 'down' });
+		expect(click).toMatchObject({ key: 'clickRate', pointsChange: -7, direction: 'down' });
 	});
 
-	it('reports a flat delta when rates are unchanged', () => {
+	it('reports no change as flat, never as a signed zero', () => {
 		const snapshot = { sent: 100, delivered: 100, opened: 30, clicked: 5, bounced: 0 };
-		const deltas = computeStatDeltas(snapshot, snapshot);
-		expect(deltas.opened).toEqual({ text: '0.0 pts', direction: 'flat' });
+		for (const row of compareRates(snapshot, snapshot)) {
+			expect(row.direction).toBe('flat');
+			expect(Object.is(row.pointsChange, -0)).toBe(false);
+			expect(row.pointsChange).toBe(0);
+		}
 	});
 
 	it('handles a zero-denominator previous send without dividing by zero', () => {
-		const deltas = computeStatDeltas(
+		const [open] = compareRates(
 			{ sent: 100, delivered: 80, opened: 40, clicked: 0, bounced: 0 },
 			{ sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0 }
 		);
 		// prev open rate is 0 (no deliveries); current 50% → +50 pts, up.
-		expect(deltas.opened).toEqual({ text: '50.0 pts', direction: 'up' });
+		expect(open).toMatchObject({ pointsChange: 50, direction: 'up' });
+	});
+
+	it('only ever compares rates, never counts', () => {
+		const rows = compareRates(
+			{ sent: 100, delivered: 100, opened: 50, clicked: 10, bounced: 0 },
+			{ sent: 10, delivered: 10, opened: 5, clicked: 1, bounced: 0 }
+		);
+		expect(rows.map((r) => r.key)).toEqual(['openRate', 'clickRate']);
+		expect(rows.every((r) => r.pointsChange === 0)).toBe(true);
 	});
 });

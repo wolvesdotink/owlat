@@ -802,9 +802,16 @@
 			},
 			"funnel": {
 				"ariaLabel": "Send funnel",
-				"ofPrevious": "{percent} of previous",
+				"rates": {
+					"bounced": "{percent} of sent",
+					"clicked": "{percent} of opened",
+					"delivered": "{percent} of sent",
+					"opened": "{percent} of delivered",
+					"unsubscribed": "{percent} of delivered"
+				},
 				"stepTitle": "{step}: {count} of {previous} ({previousStep})",
 				"steps": {
+					"bounced": "Bounced",
 					"clicked": "Clicked",
 					"delivered": "Delivered",
 					"opened": "Opened",
@@ -8681,14 +8688,16 @@
 					},
 					"backToCampaigns": "Back to Campaigns",
 					"cancelledLine": "Cancelled before it went out",
-					"clickRate": "Click rate",
 					"clickedEmpty": "No contacts have clicked links in this email yet",
-					"clickedOfDelivered": "{clicked} of {delivered} delivered clicked a link",
 					"comparison": {
-						"changeVsPrevious": "Change vs your previous send · {name}",
-						"changeVsPreviousAb": "Change vs your previous A/B send · {name}",
-						"noComparable": "No comparable prior send to compare against yet.",
-						"pendingCounts": "These fill in as the send goes out."
+						"clickRate": "Click rate",
+						"noChange": "no change",
+						"noComparable": "No earlier campaign to compare with yet.",
+						"openRate": "Open rate",
+						"pendingCounts": "These fill in as the send goes out.",
+						"points": "{change} pts",
+						"versus": "Compared with {name}:",
+						"versusAb": "Compared with your previous A/B test, {name}:"
 					},
 					"declareWinnerOperation": "Declare A/B test winner",
 					"duplicateOperation": "Duplicate campaign",
@@ -8704,9 +8713,7 @@
 					"noEmail": "No email",
 					"notFoundDescription": "This campaign may have been deleted or you don't have access to it.",
 					"notFoundTitle": "Campaign not found",
-					"openRate": "Open rate",
 					"openedEmpty": "No contacts have opened this email yet",
-					"openedOfDelivered": "{opened} of {delivered} delivered opened",
 					"opensCount": "{count} opens",
 					"pageTitle": "Campaign Report — Owlat",
 					"pagination": {
@@ -8728,12 +8735,6 @@
 					"tabs": {
 						"clicked": "Clicked ({count})",
 						"opened": "Opened ({count})"
-					},
-					"tiles": {
-						"bounced": "Bounced",
-						"clicked": "Clicked",
-						"delivered": "Delivered",
-						"opened": "Opened"
 					},
 					"timeline": {
 						"chartLabel": "Opens over the first 48 hours",
