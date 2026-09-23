@@ -1628,6 +1628,7 @@
 			},
 			"timelineStatsCard": {
 				"byChannel": "By Channel",
+				"channelCount": "{received} received · {sent} sent",
 				"channels": {
 					"chat": "Chat",
 					"email": "Email",
@@ -1668,7 +1669,7 @@
 					"read": "read"
 				},
 				"subtitle": "Every message across all channels, newest first.",
-				"title": "Unified Timeline"
+				"title": "Messages"
 			}
 		},
 		"dashboard": {
@@ -7770,9 +7771,9 @@
 					"activity": {
 						"emptyBody": "Activity will appear here when you send emails to this contact.",
 						"emptyTitle": "No activity yet",
-						"loadMore": "Load More",
+						"loadMore": "Load more",
 						"loading": "Loading activities...",
-						"title": "Activity Timeline"
+						"title": "Activity"
 					},
 					"backToCustomers": "Back to Contacts",
 					"contactDetails": "Contact Details",
@@ -7785,7 +7786,6 @@
 					},
 					"deleting": "Deleting...",
 					"details": "Details",
-					"doiStatus": "{status} confirmation",
 					"exportData": "Export data",
 					"exportDataTitle": "Export this contact's personal data (GDPR access request)",
 					"exporting": "Exporting…",
@@ -7820,7 +7820,6 @@
 					"sending": "Sending…",
 					"source": "Source",
 					"tabs": {
-						"activity": "Activity",
 						"files": "Files",
 						"identities": "Identities",
 						"knowledge": "Knowledge",
@@ -7943,10 +7942,10 @@
 			"index": {
 				"activity": {
 					"descriptions": {
-						"created": "was added",
-						"topicConfirmed": "confirmed subscription",
-						"topicSubscribed": "was subscribed to a topic",
-						"topicUnsubscribed": "was unsubscribed from a topic"
+						"created": "{name} was added",
+						"topicConfirmed": "{name} confirmed their subscription",
+						"topicSubscribed": "{name} subscribed to a topic",
+						"topicUnsubscribed": "{name} unsubscribed from a topic"
 					},
 					"emptyBody": "Activity will appear here as contacts subscribe to or unsubscribe from topics.",
 					"emptyTitle": "No recent activity",
@@ -14431,8 +14430,8 @@
 			"clearPropertyOperation": "Clear contact property",
 			"deleteContactOperation": "Delete contact",
 			"doiStatus": {
-				"confirmed": "Confirmed",
-				"pending": "Pending"
+				"confirmed": "Subscription confirmed",
+				"pending": "Waiting for confirmation"
 			},
 			"notSet": "Not set",
 			"resendConfirmationOperation": "Resend confirmation email",

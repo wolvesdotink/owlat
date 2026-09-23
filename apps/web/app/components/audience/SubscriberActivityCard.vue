@@ -46,20 +46,18 @@ function getActivityIcon(activityType: string) {
 	}
 }
 
-// Format activity description
-function formatActivityDescription(activityType: string): string {
-	switch (activityType) {
-		case 'topic_subscribed':
-			return t('dashboard.audience.index.activity.descriptions.topicSubscribed');
-		case 'topic_unsubscribed':
-			return t('dashboard.audience.index.activity.descriptions.topicUnsubscribed');
-		case 'topic_confirmed':
-			return t('dashboard.audience.index.activity.descriptions.topicConfirmed');
-		case 'created':
-			return t('dashboard.audience.index.activity.descriptions.created');
-		default:
-			return activityType;
-	}
+// The whole line is one translated sentence with the contact's name as a
+// parameter, so the name never runs into the verb and each language can put it
+// where its word order wants it ("{name} was added", "{name} wurde hinzugefügt").
+const ACTIVITY_SENTENCE_KEYS: Record<ActivityType, string> = {
+	topic_subscribed: 'dashboard.audience.index.activity.descriptions.topicSubscribed',
+	topic_unsubscribed: 'dashboard.audience.index.activity.descriptions.topicUnsubscribed',
+	topic_confirmed: 'dashboard.audience.index.activity.descriptions.topicConfirmed',
+	created: 'dashboard.audience.index.activity.descriptions.created',
+};
+
+function activitySentenceKey(activityType: string): string | null {
+	return ACTIVITY_SENTENCE_KEYS[activityType as ActivityType] ?? null;
 }
 
 // Get contact display name
@@ -123,19 +121,28 @@ function getContactName(
 							<Icon :name="getActivityIcon(activity.activityType).icon" class="w-4 h-4" />
 						</div>
 						<div class="flex-1 min-w-0">
-							<p class="text-sm text-text-primary">
-								<NuxtLink
-									v-if="activity.contact"
-									:to="`/dashboard/audience/contacts/${activity.contact._id}`"
-									class="font-medium hover:text-brand transition-colors"
-								>
-									{{ getContactName(activity.contact) }}
-								</NuxtLink>
-								<span v-else class="font-medium">{{ t('common.unknown') }}</span>
-								<span class="text-text-secondary">
-									{{ formatActivityDescription(activity.activityType) }}
-								</span>
-							</p>
+							<i18n-t
+								v-if="activitySentenceKey(activity.activityType)"
+								:keypath="activitySentenceKey(activity.activityType)!"
+								scope="global"
+								tag="p"
+								class="text-sm text-text-secondary"
+								data-testid="activity-sentence"
+							>
+								<template #name>
+									<NuxtLink
+										v-if="activity.contact"
+										:to="`/dashboard/audience/contacts/${activity.contact._id}`"
+										class="font-medium text-text-primary hover:text-brand transition-colors"
+									>
+										{{ getContactName(activity.contact) }}
+									</NuxtLink>
+									<span v-else class="font-medium text-text-primary">{{
+										t('common.unknown')
+									}}</span>
+								</template>
+							</i18n-t>
+							<p v-else class="text-sm text-text-secondary">{{ activity.activityType }}</p>
 						</div>
 						<span class="text-xs text-text-tertiary flex items-center gap-1 flex-shrink-0">
 							<Icon name="lucide:clock" class="w-3 h-3" />

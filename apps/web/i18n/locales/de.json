@@ -1628,6 +1628,7 @@
 			},
 			"timelineStatsCard": {
 				"byChannel": "Nach Kanal",
+				"channelCount": "{received} empfangen · {sent} gesendet",
 				"channels": {
 					"chat": "Chat",
 					"email": "E-Mail",
@@ -1668,7 +1669,7 @@
 					"read": "gelesen"
 				},
 				"subtitle": "Jede Nachricht über alle Kanäle hinweg, neueste zuerst.",
-				"title": "Kanalübergreifende Chronik"
+				"title": "Nachrichten"
 			}
 		},
 		"dashboard": {
@@ -7772,7 +7773,7 @@
 						"emptyTitle": "Noch keine Aktivität",
 						"loadMore": "Mehr laden",
 						"loading": "Aktivitäten werden geladen...",
-						"title": "Aktivitätsverlauf"
+						"title": "Aktivität"
 					},
 					"backToCustomers": "Zurück zu Kontakten",
 					"contactDetails": "Kontaktdetails",
@@ -7785,7 +7786,6 @@
 					},
 					"deleting": "Wird gelöscht...",
 					"details": "Details",
-					"doiStatus": "Bestätigung: {status}",
 					"exportData": "Daten exportieren",
 					"exportDataTitle": "Die personenbezogenen Daten dieses Kontakts exportieren (DSGVO-Auskunftsersuchen)",
 					"exporting": "Wird exportiert…",
@@ -7820,7 +7820,6 @@
 					"sending": "Wird gesendet…",
 					"source": "Quelle",
 					"tabs": {
-						"activity": "Aktivität",
 						"files": "Dateien",
 						"identities": "Identitäten",
 						"knowledge": "Wissen",
@@ -7943,10 +7942,10 @@
 			"index": {
 				"activity": {
 					"descriptions": {
-						"created": "wurde hinzugefügt",
-						"topicConfirmed": "hat das Abonnement bestätigt",
-						"topicSubscribed": "wurde zu einem Thema angemeldet",
-						"topicUnsubscribed": "wurde von einem Thema abgemeldet"
+						"created": "{name} wurde hinzugefügt",
+						"topicConfirmed": "{name} hat das Abonnement bestätigt",
+						"topicSubscribed": "{name} wurde zu einem Thema angemeldet",
+						"topicUnsubscribed": "{name} wurde von einem Thema abgemeldet"
 					},
 					"emptyBody": "Aktivitäten erscheinen hier, sobald Kontakte Themen abonnieren oder abbestellen.",
 					"emptyTitle": "Keine aktuelle Aktivität",
@@ -14431,8 +14430,8 @@
 			"clearPropertyOperation": "Kontakteigenschaft löschen",
 			"deleteContactOperation": "Kontakt löschen",
 			"doiStatus": {
-				"confirmed": "Bestätigt",
-				"pending": "Ausstehend"
+				"confirmed": "Anmeldung bestätigt",
+				"pending": "Wartet auf Bestätigung"
 			},
 			"notSet": "Nicht gesetzt",
 			"resendConfirmationOperation": "Bestätigungs-E-Mail erneut senden",
