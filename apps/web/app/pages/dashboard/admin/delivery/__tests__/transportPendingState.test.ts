@@ -92,6 +92,7 @@ const globalOptions = {
 		DeliveryTransportEditor: true,
 		DeliveryTransportConnectionWizard: true,
 		DeliveryMtaStsModeCard: true,
+		DeliveryInboundTlsRequirementCard: true,
 		DeliveryTrustedForwardersCard: true,
 		DeliveryTestSendCard: true,
 		DeliverySignedWebhookCard: true,
@@ -146,5 +147,71 @@ describe('the delivery transport page never renders a bare header', () => {
 		expect(wrapper.find('ui-error-alert-stub').exists()).toBe(true);
 		expect(wrapper.find('ui-empty-state-stub').exists()).toBe(false);
 		expect(wrapper.find('ui-skeleton-stub').exists()).toBe(false);
+	});
+});
+
+describe('one door to change the provider, and receiving rules in one place', () => {
+	it('offers the connection checks only when a relay is the active provider', () => {
+		stubPage({ status: transportStatus(), isLoading: false, error: null });
+		const onRelay = mount(TransportPage, { global: globalOptions });
+		expect(onRelay.find('delivery-transport-connection-wizard-stub').exists()).toBe(true);
+		expect(
+			onRelay.find('delivery-transport-connection-wizard-stub').attributes('checks-only')
+		).toBeDefined();
+		onRelay.unmount();
+
+		stubPage({
+			status: { ...transportStatus(), provider: 'mta', requiredEnv: [] },
+			isLoading: false,
+			error: null,
+		});
+		const onOwnServer = mount(TransportPage, { global: globalOptions });
+		expect(onOwnServer.find('delivery-transport-connection-wizard-stub').exists()).toBe(false);
+		// The editor is still there: it is the one "Change provider" entry.
+		expect(onOwnServer.find('delivery-transport-editor-stub').exists()).toBe(true);
+		onOwnServer.unmount();
+	});
+
+	it('groups the incoming-mail rules under one section, TLS requirement included', () => {
+		stubPage({ status: transportStatus(), isLoading: false, error: null });
+		const wrapper = mount(TransportPage, { global: globalOptions });
+		const inbound = wrapper.find('#inbound');
+		expect(inbound.exists()).toBe(true);
+		expect(inbound.find('h2').text()).toBe(en.dashboard.admin.delivery.transport.inbound.title);
+		expect(inbound.find('delivery-inbound-tls-requirement-card-stub').exists()).toBe(true);
+		expect(inbound.find('delivery-mta-sts-mode-card-stub').exists()).toBe(true);
+		wrapper.unmount();
+	});
+
+	it('asks for the variables that pick a provider when none is set', () => {
+		stubPage({
+			status: { ...transportStatus(), provider: null, canSend: false, requiredEnv: [] },
+			isLoading: false,
+			error: null,
+		});
+		const wrapper = mount(TransportPage, { global: globalOptions });
+		expect(wrapper.find('[data-testid="env-setup-env"]').text()).toBe('EMAIL_PROVIDER=');
+		wrapper.unmount();
+	});
+
+	it('lists every missing variable of the active provider in catalog order', () => {
+		stubPage({
+			status: {
+				...transportStatus(),
+				canSend: false,
+				requiredEnv: [
+					{ name: 'AWS_SES_SECRET_ACCESS_KEY', isPresent: false },
+					{ name: 'AWS_SES_REGION', isPresent: false },
+					{ name: 'AWS_SES_ACCESS_KEY_ID', isPresent: true },
+				],
+			},
+			isLoading: false,
+			error: null,
+		});
+		const wrapper = mount(TransportPage, { global: globalOptions });
+		expect(wrapper.find('[data-testid="env-setup-cli"]').text()).toBe(
+			'owlat env AWS_SES_REGION <value>\nowlat env AWS_SES_SECRET_ACCESS_KEY <value>\nowlat restart'
+		);
+		wrapper.unmount();
 	});
 });

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { CORE_SEND_PROVIDER_CATALOG_ENTRIES } from '@owlat/shared/sendProviderCatalog';
-import { buildDeliveryEnvSnippet, buildProviderEnvSkeleton } from '../deliveryEnvSnippet';
+import {
+	buildDeliveryEnvSnippet,
+	buildEnvCliCommands,
+	buildProviderEnvSkeleton,
+	orderProviderEnvNames,
+} from '../deliveryEnvSnippet';
 
 describe('buildDeliveryEnvSnippet', () => {
 	it('emits one blank-valued line per missing var, in order', () => {
@@ -72,5 +77,50 @@ describe('buildProviderEnvSkeleton', () => {
 	it('falls back to the reported list whole for a transport this build does not carry', () => {
 		expect(buildProviderEnvSkeleton('postmark', ['POSTMARK_TOKEN'])).toBe('POSTMARK_TOKEN=');
 		expect(buildProviderEnvSkeleton(null, ['EMAIL_PROVIDER'])).toBe('EMAIL_PROVIDER=');
+	});
+});
+
+describe('buildEnvCliCommands', () => {
+	it('sets each variable with the owlat CLI, then restarts', () => {
+		expect(buildEnvCliCommands(['MANDRILL_API_KEY'])).toBe(
+			'owlat env MANDRILL_API_KEY <value>\nowlat restart'
+		);
+		expect(buildEnvCliCommands(['AWS_SES_REGION', 'AWS_SES_ACCESS_KEY_ID'])).toBe(
+			'owlat env AWS_SES_REGION <value>\nowlat env AWS_SES_ACCESS_KEY_ID <value>\nowlat restart'
+		);
+	});
+
+	it('is empty when there is nothing to set, so the block can hide', () => {
+		expect(buildEnvCliCommands([])).toBe('');
+		expect(buildEnvCliCommands(['', '  '])).toBe('');
+	});
+
+	it('de-duplicates and trims like the .env snippet', () => {
+		expect(buildEnvCliCommands([' EMAIL_PROVIDER ', 'EMAIL_PROVIDER'])).toBe(
+			'owlat env EMAIL_PROVIDER <value>\nowlat restart'
+		);
+	});
+
+	it('never carries a value, only the placeholder', () => {
+		for (const line of buildEnvCliCommands(['RESEND_API_KEY']).split('\n').slice(0, -1)) {
+			expect(line).toMatch(/^owlat env [A-Z_]+ <value>$/);
+		}
+	});
+});
+
+describe('orderProviderEnvNames', () => {
+	it('orders by the catalog entry and keeps undeclared names after', () => {
+		expect(
+			orderProviderEnvNames('ses', ['EXTRA_VAR', 'AWS_SES_SECRET_ACCESS_KEY', 'AWS_SES_REGION'])
+		).toEqual(['AWS_SES_REGION', 'AWS_SES_SECRET_ACCESS_KEY', 'EXTRA_VAR']);
+	});
+
+	it('agrees with the skeleton it feeds', () => {
+		const missing = ['AWS_SES_SECRET_ACCESS_KEY', 'AWS_SES_REGION'];
+		expect(buildProviderEnvSkeleton('ses', missing)).toBe(
+			orderProviderEnvNames('ses', missing)
+				.map((name) => `${name}=`)
+				.join('\n')
+		);
 	});
 });

@@ -42,6 +42,8 @@ const props = defineProps<{
 	route?: RouteSummary;
 	strategyLabel: (strategy: string) => string;
 	providerLabel: (providerType: string) => string;
+	/** The provider a type without a route falls back to, by name. */
+	defaultProviderName?: string;
 }>();
 
 const emit = defineEmits<{ edit: []; reset: [] }>();
@@ -77,7 +79,13 @@ const description = computed(() => localized(props.messageType.description));
 					<!-- Default fallback summary -->
 					<p v-else class="mt-3 text-xs text-text-tertiary inline-flex items-center gap-1.5">
 						<Icon name="lucide:server" class="w-3.5 h-3.5" />
-						{{ t('dashboard.admin.delivery.providerRouting.usingDefault') }}
+						{{
+							defaultProviderName
+								? t('dashboard.admin.delivery.providerRouting.usingDefaultNamed', {
+										provider: defaultProviderName,
+									})
+								: t('dashboard.admin.delivery.providerRouting.usingDefault')
+						}}
 					</p>
 				</div>
 			</div>
@@ -94,9 +102,7 @@ const description = computed(() => localized(props.messageType.description));
 				</UiButton>
 				<UiButton variant="secondary" class="gap-2" @click="emit('edit')">
 					<Icon name="lucide:settings-2" class="w-4 h-4" />
-					{{
-						route ? t('common.edit') : t('dashboard.admin.delivery.providerRouting.configure')
-					}}
+					{{ route ? t('common.edit') : t('dashboard.admin.delivery.providerRouting.configure') }}
 				</UiButton>
 			</div>
 		</div>

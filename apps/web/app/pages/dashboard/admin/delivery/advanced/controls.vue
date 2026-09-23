@@ -47,6 +47,10 @@ import {
 	type RampControlRefusal,
 	type RampPromotionCondition,
 } from '~/utils/deliverabilityRamp';
+import { DELIVERY_MIGRATE_ROUTE, isRampInactive } from '~/utils/deliveryAdvancedEmpty';
+// Imported, not auto-resolved: the empty state is this screen's content, and
+// a mount that resolved it to nothing would hide the one thing it says.
+import DeliveryAdvancedEmptyState from '~/components/delivery/AdvancedEmptyState.vue';
 
 const { t } = useI18n();
 
@@ -173,6 +177,8 @@ const selectedCellKey = ref<string | null>(null);
 const pendingForceShare = ref<number | null>(null);
 
 const cells = computed<readonly RampCellControl[]>(() => controls.value?.cells ?? []);
+/** No cell is under the ramp yet: the controls work, but say where to begin. */
+const isRampIdle = computed(() => cells.value.length > 0 && isRampInactive(cells.value));
 const selectedCell = computed<RampCellControl | null>(
 	() => cells.value.find((cell) => cell.cellKey === selectedCellKey.value) ?? null
 );
@@ -318,7 +324,27 @@ async function changePreset(
 				</div>
 			</template>
 
-			<div v-if="controls" class="space-y-5">
+			<DeliveryAdvancedEmptyState
+				v-if="controls && cells.length === 0"
+				icon="lucide:sliders-horizontal"
+				:title="t('dashboard.admin.delivery.advanced.controls.empty.title')"
+				:description="t('dashboard.admin.delivery.advanced.controls.empty.description')"
+			/>
+
+			<div v-else-if="controls" class="space-y-5">
+				<UiCard v-if="isRampIdle" data-testid="ramp-controls-idle">
+					<p class="text-sm text-text-secondary">
+						{{ t('dashboard.admin.delivery.advanced.controls.idle.body') }}
+					</p>
+					<NuxtLink
+						:to="DELIVERY_MIGRATE_ROUTE"
+						class="mt-2 inline-flex items-center gap-2 text-sm text-brand hover:underline"
+					>
+						<Icon name="lucide:arrow-right-left" class="h-4 w-4" />
+						{{ t('components.delivery.advancedEmptyState.migrateAction') }}
+					</NuxtLink>
+				</UiCard>
+
 				<UiCard v-if="controls.isControllerPaused">
 					<p class="text-sm text-text-secondary" data-testid="ramp-global-pause">
 						{{ t('dashboard.admin.delivery.advanced.controls.globalPause') }}

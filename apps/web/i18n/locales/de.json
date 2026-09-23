@@ -2058,6 +2058,9 @@
 					"title": "One-Click-Verarbeitung p95"
 				}
 			},
+			"advancedEmptyState": {
+				"migrateAction": "Mit „Von Mailchimp umziehen“ beginnen"
+			},
 			"deliverabilityChecklistGroups": {
 				"copyDiagnostic": "Diagnose kopieren",
 				"diagnosticCopied": "Diagnose kopiert",
@@ -2215,6 +2218,17 @@
 				"title": "Versanddomains",
 				"window30d": "30 T"
 			},
+			"envSetupSteps": {
+				"blankValues": "Tragen Sie jeden Wert nach dem =-Zeichen ein. Die Werte bleiben auf Ihrem Server; diese Seite prüft nur, ob sie vorhanden sind.",
+				"checkNow": "Jetzt prüfen",
+				"cliTitle": "Oder führen Sie diese Befehle auf dem Server aus",
+				"connected": "Verbunden",
+				"copyCommands": "Befehle kopieren",
+				"copyEnv": ".env-Zeilen kopieren",
+				"envTitle": "Fügen Sie diese Zeilen in die .env-Datei auf Ihrem Server ein und starten Sie dann neu",
+				"guideLink": "Leitfaden zu Umgebungsvariablen",
+				"waiting": "Warten, bis der Server die neuen Werte sieht. Das aktualisiert sich nach dem Neustart von selbst."
+			},
 			"independenceTrendChart": {
 				"day": "Tag",
 				"emptyNothingSent": "Es wurde noch nichts gesendet, daher gibt es keinen Verlauf zu zeichnen. Das füllt sich von selbst, sobald E-Mails hinausgehen.",
@@ -2224,6 +2238,12 @@
 				"relay": "Relay",
 				"summary": "Täglicher Versand über {days} Tage: {own} Nachrichten von Ihrem eigenen Server.",
 				"summaryWithRelay": "Täglicher Versand über {days} Tage: {own} Nachrichten von Ihrem eigenen Server und {reference} über das Relay."
+			},
+			"inboundTlsRequirementCard": {
+				"description": "Weist Absender ab, die ohne Verschlüsselung (STARTTLS) zustellen wollen. Sie erhalten die dauerhafte Antwort „550 5.7.10 Encryption needed“, sodass die Nachricht nie angenommen oder gespeichert wird.",
+				"plaintextWarning": "Unverschlüsselte eingehende Zustellung ist erlaubt. Schalten Sie dies nur für alte Mailserver ab, die kein TLS beherrschen.",
+				"title": "TLS für eingehende Mail verlangen",
+				"updateOperation": "TLS-Regel für eingehende Mail aktualisieren"
 			},
 			"measurementCellCard": {
 				"comparison": "Vergleich",
@@ -2511,6 +2531,11 @@
 				"checkAlignment": "Ausrichtung prüfen",
 				"checkFailed": "Die Prüfung konnte nicht ausgeführt werden. Es hat sich nichts geändert — versuchen Sie es erneut.",
 				"checkingDns": "DNS wird geprüft…",
+				"checks": {
+					"actionLabel": "Prüfungen starten",
+					"body": "Senden Sie einen Live-Test über diesen Anbieter und prüfen Sie dann, ob SPF, DKIM und DMARC für ihn und für Ihren eigenen Server übereinstimmen.",
+					"title": "Verbindung prüfen"
+				},
 				"noSendingDomain": "Es wurde keine verifizierte Versanddomain mit einer eigenen MTA-Signaturidentität gefunden, daher gibt es noch nichts zu vergleichen. Verifizieren Sie zuerst eine Versanddomain.",
 				"optionalSuffix": "(optional)",
 				"position": "Schritt {index} von {total}: {title}",
@@ -2536,35 +2561,35 @@
 				"testFailedTitle": "Test fehlgeschlagen"
 			},
 			"transportEditor": {
-				"activeTransport": "Der aktive Transport ist {provider}. Wählen Sie einen anderen Anbieter oder erneuern Sie dessen Zugangsdaten — die Änderung wird hier getestet und direkt angewendet.",
+				"activeTransport": "Mail wird über {provider} versendet.",
 				"applyFailed": "Der Transport konnte nicht angewendet werden. Versuchen Sie es erneut.",
 				"applyFailedTitle": "Konnte nicht angewendet werden",
 				"applyTransport": "Transport anwenden",
 				"applying": "Wird angewendet…",
+				"changeProvider": "Anbieter wechseln",
 				"credentialsNeverShown": "Vorhandene Zugangsdaten werden nie angezeigt. Geben Sie sie erneut ein, um den Transport zu ändern.",
 				"credentialsVerifiedTitle": "Zugangsdaten bestätigt",
 				"disconnectConfirmLabel": "Trennen und zu meinem eigenen MTA wechseln",
 				"disconnectDialogTitle": "Relay trennen?",
-				"editTransport": "Transport bearbeiten",
 				"fromEmailLabel": "Standard-Absenderadresse",
 				"fromEmailPlaceholder": "noreply{'@'}ihredomain.de",
 				"fromIdentity": "Absenderidentität",
 				"fromIdentityHint": "Leer lassen, um die aktuelle Standard-Absenderadresse beizubehalten.",
 				"fromNameLabel": "Absendername",
 				"fromNamePlaceholder": "Owlat",
-				"guidedVersionNote": "„E-Mail-Anbieter verbinden“ unten ist die geführte Variante davon: dieselbe Änderung, Schritt für Schritt mit einem Live-Testversand und DNS-Ausrichtungsprüfungen.",
 				"noPreApplyCheck": "Dieser Transport kann vor dem Anwenden nicht getestet werden — wenden Sie ihn an und nutzen Sie dann unten „Test-E-Mail senden“, um die Zustellung zu bestätigen.",
 				"notSet": "nicht gesetzt",
 				"optionalSuffix": "(optional)",
 				"probeFailed": "Der Anbieter konnte nicht erreicht werden. Versuchen Sie es erneut.",
+				"relayOffer": "Sie zahlen bereits für einen E-Mail-Anbieter? Dann können Sie darüber senden, während Ihr eigener Server aufwärmt, und beide vergleichen. Owlat sendet auch ohne einen solchen Anbieter.",
 				"providerLegend": "Versandanbieter",
 				"requireVerifiedWarning": "„Immer verschlüsseln und verifizieren“ kann dazu führen, dass Mail an Empfänger zurückkommt, deren Mailserver ein falsch konfiguriertes oder selbstsigniertes Zertifikat haben. Nutzen Sie diese Option nur, wenn Sie wissen, dass Ihre Empfänger gültige Zertifikate pflegen.",
 				"restartRequiredTitle": "Neustart erforderlich",
-				"subtitle": "Transport wechseln oder Zugangsdaten aktualisieren — hier getestet und angewendet, ganz ohne CLI",
+				"subtitle": "Der Dienst, der Ihre ausgehende Mail zustellt. Wechseln Sie ihn oder aktualisieren Sie seine Zugangsdaten hier; die Änderung wird vor dem Anwenden getestet.",
 				"testCredentials": "Zugangsdaten testen",
 				"testFailedTitle": "Test fehlgeschlagen",
 				"testing": "Wird getestet…",
-				"title": "Anbieter wechseln"
+				"title": "Versandanbieter"
 			},
 			"trustedForwardersCard": {
 				"addLabel": "Domain eines vertrauenswürdigen Weiterleiters hinzufügen",
@@ -5739,8 +5764,8 @@
 				"runSucceeded": "erfolgreich",
 				"scheduleSwitchLabel": "Tägliche Backups geplant",
 				"scheduled": "Geplant",
-				"sealedMailBody": "Mail, die versiegelt eintrifft, wird verschlüsselt gespeichert. Nur Ihr Instanz-Secret ({secret}) und die Wiederherstellungs-Kits, die Sie in den Sealed-Mail-Einstellungen herunterladen, können sie wieder öffnen.",
-				"sealedMailLink": "Zu den Sealed-Mail-Einstellungen",
+				"sealedMailBody": "Mail, die versiegelt eintrifft, wird verschlüsselt gespeichert. Nur Ihr Instanz-Secret ({secret}) und die Wiederherstellungs-Kits, die Sie in den Einstellungen für versiegelte Mail herunterladen, können sie wieder öffnen.",
+				"sealedMailLink": "Zu den Einstellungen für versiegelte Mail",
 				"sealedMailTitle": "Sealed Mail und Ihr Instanz-Secret",
 				"sealedMailWarning": "Wenn Sie das Instanz-Secret verlieren und kein Wiederherstellungs-Kit aufbewahrt haben, lässt sich bereits empfangene versiegelte Mail nicht mehr öffnen, und ein Datenbank-Backup allein bringt sie nicht zurück. Nehmen Sie das Instanz-Secret in Ihre Backups auf und laden Sie für jede Adresse ein Wiederherstellungs-Kit herunter, bevor Sie sich auf Sealed Mail verlassen.",
 				"title": "Backups",
@@ -5754,6 +5779,10 @@
 				"advanced": {
 					"cells": {
 						"controlsLink": "Diese Zelle pausieren, begrenzen oder zurücksetzen",
+						"empty": {
+							"description": "Diese Tabelle erscheint, sobald ein Relay und Ihr eigener Server sich den Verkehr teilen oder das Aufwärmen eine Zelle übernimmt. Beginnen Sie mit „Von Mailchimp umziehen“.",
+							"title": "Noch keine Zustellzellen in Gebrauch"
+						},
 						"errorMessage": "Die Zellzustände konnten nicht geladen werden. Ihre Mail ist davon nicht betroffen — diese Seite liest nur.",
 						"errorTitle": "Die Zustellungszellen konnten nicht geladen werden",
 						"evidenceAbsent": "Für diese Zelle wurden noch keine Messungen erfasst. Es ist nichts falsch — die Prüfungen füllen sich, während Mail hinausgeht.",
@@ -5774,6 +5803,10 @@
 					"controls": {
 						"errorMessage": "Die Steuerung konnte nicht geladen werden. Ihre Mail ist davon nicht betroffen — es hat sich nichts geändert.",
 						"errorTitle": "Die Zustellungssteuerung konnte nicht geladen werden",
+						"empty": {
+							"description": "Die Steuerung erscheint, sobald ein Relay und Ihr eigener Server sich den Verkehr teilen oder das Aufwärmen Zellen verwaltet. Beginnen Sie mit „Von Mailchimp umziehen“.",
+							"title": "Noch keine Zellen zu steuern"
+						},
 						"forceDialog": {
 							"confirm": "Vorrücken erzwingen",
 							"consequence": "Damit rückt {cell} auf {share} vor, ohne dass eine Prüfung dem zustimmt. Ist das neue Volumen für diesen Anbieter zu viel, trifft der Schaden die Reputation Ihrer Versanddomain und braucht Wochen zur Behebung — die Zahl zurückzusetzen macht das nicht rückgängig.",
@@ -5783,6 +5816,9 @@
 						},
 						"globalPause": "Die gesamte Ramp ist pausiert. Jede Zelle ist dort festgehalten, wo sie steht; die Prüfungen laufen weiter, sodass Sie sehen können, was geschehen wäre.",
 						"howHard": "Wie stark hochfahren",
+						"idle": {
+							"body": "Noch wird keine Zelle verwaltet. Nehmen Sie unten eine auf, damit das Aufwärmen sie übernimmt, oder verlagern Sie Verkehr Schritt für Schritt von einem bezahlten Anbieter."
+						},
 						"ledeActions": "Was jeder Stream trägt, steht ebenfalls hier — setzen Sie eine Zelle auf die Ramp, halten Sie eine Zelle, begrenzen Sie sie, treiben Sie sie an oder beginnen Sie von vorn, und wählen Sie, wie stark jeder Stream hochfährt.",
 						"ledeIntro": "Was die Ramp von sich aus zurückgenommen hat und warum.",
 						"ledeRecorded": "Alles hier wird protokolliert.",
@@ -5811,6 +5847,10 @@
 							"confirm": "Zu den Relay-Einstellungen",
 							"title": "Das Relay trennen?"
 						},
+						"empty": {
+							"description": "Diese Seite zeigt, wie viel Ihrer Mail Ihr eigener Server trägt und wann Sie kein Relay mehr bezahlen müssten. Sie füllt sich, sobald Mail versendet wird. Beginnen Sie mit „Von Mailchimp umziehen“.",
+							"title": "Noch nichts gesendet"
+						},
 						"disconnectAction": "Das Relay trennen…",
 						"disconnectHeading": "Das Relay trennen",
 						"errorMessage": "Diese Zahlen konnten nicht geladen werden. Ihre Mail ist davon nicht betroffen — diese Seite liest nur.",
@@ -5826,6 +5866,10 @@
 						"errorMessage": "Die Versandmessungen konnten nicht geladen werden. Ihre Mail ist davon nicht betroffen — diese Seite liest nur.",
 						"errorTitle": "Zustellungsmessungen konnten nicht geladen werden",
 						"loadingLabel": "Zustellungsmessungen werden geladen",
+						"empty": {
+							"description": "Diese Seite vergleicht die Zustellergebnisse Zelle für Zelle, sobald Mail versendet wird. Mit einem verbundenen Relay stellt sie Relay und eigenen Server nebeneinander. Beginnen Sie mit „Von Mailchimp umziehen“.",
+							"title": "Noch nichts gemessen"
+						},
 						"pageTitle": "Zustellungsmessung — Owlat",
 						"windowNote": "Berichtszeitraum: {reported} · Prüfungen entschieden über {decision}"
 					}
@@ -5975,9 +6019,8 @@
 				},
 				"migrate": {
 					"connect": {
-						"missing": "Erstellen Sie in Mailchimp Transactional einen API-Schlüssel (Settings → API keys), setzen Sie ihn als {envVar} in der Umgebung dieser Installation und starten Sie neu. Zugangsdaten liegen niemals in der Datenbank, daher kann Ihnen diese Seite immer nur sagen, ob der Schlüssel vorhanden ist — nie, wie er lautet.",
-						"present": "Mailchimp Transactional ist verbunden — Owlat sieht einen {envVar} in der Umgebung dieser Installation.",
-						"transportLink": "Transporteinrichtung, mit dem einfügefertigen Umgebungsblock"
+						"missing": "Erstellen Sie in Mailchimp Transactional einen API-Schlüssel (Settings → API keys) und tragen Sie ihn mit einem der Blöcke unten auf dem Server ein. Der Schlüssel bleibt in der Umgebung des Servers; diese Seite prüft nur, ob er vorhanden ist.",
+						"present": "Verbunden. Owlat sieht den Mailchimp-Transactional-Schlüssel auf dem Server."
 					},
 					"domain": {
 						"domainsLink": "Versanddomains",
@@ -5999,6 +6042,7 @@
 					"editModal": {
 						"enableOne": "Aktivieren Sie mindestens einen Anbieter.",
 						"failoverOrder": "Reihenfolge = Failover-Priorität",
+						"hideSetup": "Einrichtung ausblenden",
 						"ipPool": "IP-Pool (optional)",
 						"ipPoolHint": "Überschreibt den IP-Pool für den eingebauten MTA-Anbieter. Leer lassen, um den Standard des Anbieters zu verwenden.",
 						"ipPoolPlaceholder": "z. B. transactional",
@@ -6009,6 +6053,7 @@
 						"providers": "Anbieter",
 						"save": "Route speichern",
 						"saving": "Wird gespeichert...",
+						"showSetup": "Einrichten",
 						"strategy": "Strategie",
 						"title": "Route — {messageType}",
 						"unavailable": "Nicht verfügbar",
@@ -6018,7 +6063,8 @@
 						"noProvider": "Aktivieren Sie vor dem Speichern mindestens einen Anbieter"
 					},
 					"howItWorks": {
-						"body": "Jeder Nachrichtentyp kann seine eigene Anbieterstrategie nutzen. Ist keine Route konfiguriert, fällt der Versand auf den Anbieter zurück, der über die Umgebungsvariable {envVar} gesetzt ist. Konfigurieren Sie eine Route, um Failover zu aktivieren oder den Verkehr auf mehrere Anbieter aufzuteilen.",
+						"body": "Jeder Nachrichtentyp kann seine eigene Anbieterstrategie nutzen. Ohne Route wird Mail über den Standardanbieter {provider} versendet, den Sie auf der Seite {link} wählen. Konfigurieren Sie eine Route, um Failover hinzuzufügen oder den Verkehr auf mehrere Anbieter aufzuteilen.",
+						"link": "Versandanbieter",
 						"title": "So funktioniert das Routing"
 					},
 					"lede": "Wählen Sie, welcher E-Mail-Anbieter welchen Nachrichtentyp versendet, mit Failover und gewichteter Lastverteilung über mehrere Anbieter",
@@ -6026,6 +6072,7 @@
 						"description": "Erstellen oder wählen Sie einen Workspace, um das Anbieter-Routing zu konfigurieren.",
 						"title": "Kein Workspace ausgewählt"
 					},
+					"notSet": "nicht gesetzt",
 					"operations": {
 						"reset": "Anbieter-Route zurücksetzen",
 						"save": "Anbieter-Route speichern"
@@ -6033,7 +6080,7 @@
 					"pageTitle": "Anbieter-Routing — Owlat",
 					"resetModal": {
 						"confirm": "Auf Standard zurücksetzen",
-						"description": "Dieser Nachrichtentyp fällt auf den Standardanbieter zurück, der über die Umgebungsvariable EMAIL_PROVIDER gesetzt ist.",
+						"description": "Dieser Nachrichtentyp nutzt wieder den Standardanbieter.",
 						"title": "Anbieter-Route zurücksetzen"
 					},
 					"resetToDefault": "Auf Standard zurücksetzen",
@@ -6042,12 +6089,14 @@
 						"reset": "Anbieter-Route auf den Standard zurückgesetzt",
 						"saved": "Anbieter-Route gespeichert"
 					},
-					"usingDefault": "Der Standardanbieter wird verwendet (EMAIL_PROVIDER)"
+					"usingDefault": "Der Standardanbieter wird verwendet",
+					"usingDefaultNamed": "Der Standardanbieter wird verwendet ({provider})"
 				},
 				"transport": {
 					"canSend": {
 						"no": "Diese Instanz kann keine E-Mails versenden",
-						"noBody": "Es ist kein nutzbarer Zustellungsanbieter konfiguriert. Bis das der Fall ist, schlagen Kampagnen und transaktionale Sendungen fehl. Setzen Sie {envVar} und die zugehörigen Zugangsdaten in Ihrer Umgebung.",
+						"connected": "Verbunden. Der Server sieht die neuen Werte.",
+						"noBody": "Es ist kein nutzbarer Zustellungsanbieter konfiguriert, daher schlagen Kampagnen und transaktionale Mail fehl. Wählen Sie unten unter „Anbieter wechseln“ einen aus oder tragen Sie die fehlenden Werte auf dem Server ein.",
 						"yes": "Diese Instanz kann E-Mails versenden",
 						"yesBody": "Ein Zustellungsanbieter ist konfiguriert und seine Zugangsdaten sind vorhanden. Senden Sie unten eine Test-E-Mail, um den gesamten Weg durchgängig zu bestätigen."
 					},
@@ -6071,18 +6120,13 @@
 						"description": "Für diese Installation wurde noch kein Transport konfiguriert, daher gibt es hier nichts zu berichten. Richten Sie einen in der Zustellungseinrichtung ein.",
 						"title": "Kein Transport konfiguriert"
 					},
-					"env": {
-						"addToEnv": "In Ihre {file} eintragen, dann die Instanz neu starten",
-						"blankValues": "Die Werte bleiben leer — tragen Sie Ihre echten Zugangsdaten ein. Sie werden hier niemals angezeigt.",
-						"cliHint": "Führen Sie {command} aus, um jede Variable aufzulisten, die Ihre aktuelle Konfiguration benötigt. Siehe den {guideLink}.",
-						"cliTitle": "Oder jede einzeln über die CLI setzen",
-						"copyCommand": "Befehl kopieren",
-						"copySnippet": ".env-Auszug kopieren",
-						"guideLink": "Leitfaden zu Umgebungsvariablen"
-					},
 					"error": {
 						"message": "Die Zustellungskonfiguration ist nur für Eigentümer und Administratoren sichtbar. Wenn Sie Administrator sind, laden Sie die Seite neu und versuchen Sie es erneut.",
 						"title": "Zustellungsstatus konnte nicht geladen werden"
+					},
+					"inbound": {
+						"subtitle": "Wie andere Mailserver an Sie zustellen",
+						"title": "Eingehende Mail"
 					},
 					"lede": "Konfigurieren und prüfen Sie den E-Mail-Zustellungsanbieter, über den diese Instanz versendet",
 					"loadingLabel": "Transporteinstellungen werden geladen…",
@@ -6725,6 +6769,10 @@
 					"fromNameHelp": "Der Absendername, den Empfängerinnen und Empfänger in ihrem Postfach sehen.",
 					"fromNamePlaceholder": "z. B. Firmenname",
 					"loading": "Einstellungen werden geladen...",
+					"mailSearch": {
+						"subtitle": "Wie viel von jeder Nachricht die Suche findet",
+						"title": "Mailsuche"
+					},
 					"manageSenders": "Adressen verwalten, von denen Kampagnen senden dürfen",
 					"noWorkspaceBody": "Erstellen oder wählen Sie einen Workspace, um Einstellungen zu verwalten.",
 					"noWorkspaceTitle": "Kein Workspace ausgewählt",
@@ -6838,7 +6886,7 @@
 						},
 						"sealedMail": {
 							"description": "Legen Sie die Organisationsrichtlinie für geschützte persönliche Nachrichten fest.",
-							"title": "Sichere Mail"
+							"title": "Versiegelte Mail"
 						}
 					},
 					"keepData": "Deaktivierte Funktionen behalten ihre vorhandenen Daten.",
@@ -7011,7 +7059,7 @@
 					"typesTitle": "Eigenschaftstypen"
 				},
 				"sealedMail": {
-					"disabledNotice": "Sealed Mail ist für diesen Workspace ausgeschaltet, daher wird noch nichts versiegelt. Sie können die Richtlinie unten trotzdem wählen — sie greift, sobald Sealed Mail unter „Funktionen“ aktiviert ist.",
+					"disabledNotice": "Versiegelte Mail ist für diesen Workspace ausgeschaltet, daher wird noch nichts versiegelt. Sie können die Richtlinie unten trotzdem wählen. Sie greift, sobald versiegelte Mail unter „Funktionen“ eingeschaltet ist.",
 					"exportKitOperation": "Wiederherstellungs-Kit exportieren",
 					"importKitOperation": "Wiederherstellungs-Kit importieren",
 					"intro": "Wie Owlat persönliche Mail zwischen Ihnen und anderen Owlat-Workspaces verschlüsselt.",
@@ -7030,7 +7078,7 @@
 							"title": "Nie versiegeln"
 						}
 					},
-					"pageTitle": "Sealed Mail — Owlat",
+					"pageTitle": "Versiegelte Mail — Owlat",
 					"policyLegend": "Versiegelungsrichtlinie",
 					"reSeal": {
 						"button": "Sealed Mail neu versiegeln",
@@ -7049,12 +7097,7 @@
 						"restoreLabel": "Aus einem Wiederherstellungs-Kit wiederherstellen",
 						"title": "Wiederherstellungs-Kit"
 					},
-					"title": "Sealed Mail",
-					"tls": {
-						"description": "Weist Absender ab, die ohne STARTTLS zustellen wollen. Sie erhalten die dauerhafte Antwort „550 5.7.10 Encryption needed“, sodass die Nachricht nie angenommen oder gespeichert wird.",
-						"plaintextWarning": "Unverschlüsselte eingehende Zustellung ist erlaubt. Schalten Sie dies nur für alte Mailserver ab, die kein TLS beherrschen.",
-						"title": "TLS für eingehende Mail verlangen"
-					},
+					"title": "Versiegelte Mail",
 					"toasts": {
 						"kitDownloaded": "Wiederherstellungs-Kit heruntergeladen. Bewahren Sie es an einem privaten Ort offline auf.",
 						"kitImported": "Wiederherstellungs-Kit importiert. Sealed Mail für diese Adresse kann wieder geöffnet werden.",
@@ -7062,7 +7105,7 @@
 						"noKeyForAddress": "Für diese Adresse existiert noch kein Sealed-Mail-Schlüssel.",
 						"reSealStarted": "Das Neuversiegeln wurde gestartet. Sobald es abgeschlossen ist, können Sie das vorherige Instanz-Secret entfernen."
 					},
-					"updateOperation": "Sealed-Mail-Einstellungen aktualisieren"
+					"updateOperation": "Einstellungen für versiegelte Mail aktualisieren"
 				}
 			},
 			"operator": {
@@ -7080,6 +7123,7 @@
 						"userLabel": "Benutzer",
 						"userOption": "{name} · {email}"
 					},
+					"checkingWorkspaces": "Es wird geprüft, wie viele Workspaces diese Instanz hat",
 					"admins": {
 						"add": "Admin hinzufügen",
 						"added": "Hinzugefügt",
@@ -9546,7 +9590,7 @@
 				"depth": {
 					"disabled": "Diese Instanz durchsucht nur die ersten 200 Zeichen einer Nachricht.",
 					"indexing": "Nachrichtentexte werden indexiert — ältere E-Mails werden weiterhin über ihre ersten 200 Zeichen durchsucht.",
-					"pending": "Ältere E-Mails werden weiterhin über ihre ersten 200 Zeichen durchsucht. Ein Administrator kann sie unter Einstellungen → Sealed Mail indexieren."
+					"pending": "Ältere E-Mails werden weiterhin über ihre ersten 200 Zeichen durchsucht. Ein Administrator kann sie unter Einstellungen → Allgemein → Mailsuche indexieren."
 				}
 			},
 			"subscriptions": {
@@ -11519,7 +11563,7 @@
 				"overview": "Übersicht",
 				"plugins": "Plugins",
 				"providerRouting": "Anbieter-Routing",
-				"secureMail": "Sichere Mail",
+				"secureMail": "Versiegelte Mail",
 				"segments": "Segmente",
 				"sendingDomains": "Versanddomains",
 				"suppressions": "Sperrlisten",

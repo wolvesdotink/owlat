@@ -58,6 +58,12 @@ const SPAM_RATE_LABEL = {
 				</div>
 			</div>
 
+			<!-- The page's own compliance figures (bounce, complaint, send budget)
+			     go here, under this heading, so the heading and the numbers it
+			     introduces are one card rather than a title card above a card of
+			     unlabelled tiles. -->
+			<slot />
+
 			<div
 				v-if="isLoading"
 				data-testid="compliance-loading"

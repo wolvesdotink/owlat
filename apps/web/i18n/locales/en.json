@@ -2058,6 +2058,9 @@
 					"title": "One-click processing p95"
 				}
 			},
+			"advancedEmptyState": {
+				"migrateAction": "Start in Migrate from Mailchimp"
+			},
 			"deliverabilityChecklistGroups": {
 				"copyDiagnostic": "Copy diagnostic",
 				"diagnosticCopied": "Diagnostic copied",
@@ -2215,6 +2218,17 @@
 				"title": "Sending domains",
 				"window30d": "30d"
 			},
+			"envSetupSteps": {
+				"blankValues": "Fill in each value after the = sign. Values stay on your server; this page only checks that they are there.",
+				"checkNow": "Check now",
+				"cliTitle": "Or run these commands on the server",
+				"connected": "Connected",
+				"copyCommands": "Copy the commands",
+				"copyEnv": "Copy the .env lines",
+				"envTitle": "Add these lines to the .env file on your server, then restart",
+				"guideLink": "Environment variable guide",
+				"waiting": "Waiting for the server to see the new values. This updates by itself after the restart."
+			},
 			"independenceTrendChart": {
 				"day": "Day",
 				"emptyNothingSent": "Nothing has been sent yet, so there is no trend to draw. This fills in on its own as mail goes out.",
@@ -2224,6 +2238,12 @@
 				"relay": "Relay",
 				"summary": "Daily sending over {days} days: {own} messages from your own server.",
 				"summaryWithRelay": "Daily sending over {days} days: {own} messages from your own server and {reference} through the relay."
+			},
+			"inboundTlsRequirementCard": {
+				"description": "Reject senders that try to deliver without encryption (STARTTLS). They get a permanent “550 5.7.10 Encryption needed” response, so the message is never accepted or stored.",
+				"plaintextWarning": "Unencrypted incoming delivery is allowed. Only turn this off for old mail servers that cannot use TLS.",
+				"title": "Require TLS for incoming mail",
+				"updateOperation": "Update the incoming TLS rule"
 			},
 			"measurementCellCard": {
 				"comparison": "Comparison",
@@ -2511,6 +2531,11 @@
 				"checkAlignment": "Check alignment",
 				"checkFailed": "The check could not run. Nothing has changed — try again.",
 				"checkingDns": "Checking DNS…",
+				"checks": {
+					"actionLabel": "Run the checks",
+					"body": "Send a live test through this provider, then check that SPF, DKIM and DMARC line up for it and for your own server.",
+					"title": "Check the connection"
+				},
 				"noSendingDomain": "No verified sending domain with an own-MTA signing identity was found, so there is nothing to compare yet. Verify a sending domain first.",
 				"optionalSuffix": "(optional)",
 				"position": "Step {index} of {total}: {title}",
@@ -2536,35 +2561,35 @@
 				"testFailedTitle": "Test failed"
 			},
 			"transportEditor": {
-				"activeTransport": "The active transport is {provider}. Choose a different provider or rotate its credentials — the change is tested and applied in place.",
+				"activeTransport": "Mail goes out through {provider}.",
 				"applyFailed": "Could not apply the transport. Try again.",
 				"applyFailedTitle": "Couldn't apply",
 				"applyTransport": "Apply transport",
 				"applying": "Applying…",
+				"changeProvider": "Change provider",
 				"credentialsNeverShown": "Existing credentials are never shown. Re-enter them to change the transport.",
 				"credentialsVerifiedTitle": "Credentials verified",
 				"disconnectConfirmLabel": "Disconnect and switch to my own MTA",
 				"disconnectDialogTitle": "Disconnect the relay?",
-				"editTransport": "Edit transport",
 				"fromEmailLabel": "Default From address",
 				"fromEmailPlaceholder": "noreply{'@'}yourdomain.com",
 				"fromIdentity": "From identity",
 				"fromIdentityHint": "Leave blank to keep the current default From address.",
 				"fromNameLabel": "From name",
 				"fromNamePlaceholder": "Owlat",
-				"guidedVersionNote": "“Connect an email provider” below is the guided version of this: the same change, walked step by step with a live send test and DNS alignment checks.",
 				"noPreApplyCheck": "This transport can't be tested before applying — apply, then use \"Send a test email\" below to confirm delivery.",
 				"notSet": "not set",
 				"optionalSuffix": "(optional)",
 				"probeFailed": "Could not reach the provider. Try again.",
+				"relayOffer": "Already paying for an email provider? You can send through it while your own server warms up, and compare the two. Owlat sends fine without one.",
 				"providerLegend": "Delivery provider",
 				"requireVerifiedWarning": "“Always encrypt and verify” can bounce mail to receivers whose mail servers have a misconfigured or self-signed certificate. Use it only if you know your recipients keep valid certificates.",
 				"restartRequiredTitle": "Restart required",
-				"subtitle": "Switch transport or update credentials — tested and applied here, no CLI needed",
+				"subtitle": "The service that carries your outgoing mail. Switch it or update its credentials here; the change is tested before it applies.",
 				"testCredentials": "Test credentials",
 				"testFailedTitle": "Test failed",
 				"testing": "Testing…",
-				"title": "Change provider"
+				"title": "Sending provider"
 			},
 			"trustedForwardersCard": {
 				"addLabel": "Add a trusted forwarder domain",
@@ -5739,8 +5764,8 @@
 				"runSucceeded": "succeeded",
 				"scheduleSwitchLabel": "Daily backups scheduled",
 				"scheduled": "Scheduled",
-				"sealedMailBody": "Mail that arrives sealed is stored encrypted. The only things that can open it again are your instance secret ({secret}) and the recovery kits you download from Sealed Mail settings.",
-				"sealedMailLink": "Go to Sealed Mail settings",
+				"sealedMailBody": "Mail that arrives sealed is stored encrypted. The only things that can open it again are your instance secret ({secret}) and the recovery kits you download from Sealed mail settings.",
+				"sealedMailLink": "Go to Sealed mail settings",
 				"sealedMailTitle": "Sealed Mail and your instance secret",
 				"sealedMailWarning": "If you lose the instance secret and haven't kept any recovery kits, sealed mail you already received can no longer be opened, and a database backup alone will not bring it back. Keep the instance secret in your backups, and download a recovery kit for each address before you rely on Sealed Mail.",
 				"title": "Backups",
@@ -5754,6 +5779,10 @@
 				"advanced": {
 					"cells": {
 						"controlsLink": "Pause, pin or reset this cell",
+						"empty": {
+							"description": "This table appears once a relay and your own server share traffic, or once you let the warm-up take over a cell. Start in Migrate from Mailchimp.",
+							"title": "No delivery cells in use yet"
+						},
 						"errorMessage": "The cell states could not be loaded. Your mail is unaffected — this page only reads.",
 						"errorTitle": "Couldn’t load the delivery cells",
 						"evidenceAbsent": "No measurements have been recorded for this cell yet. Nothing is wrong — the checks fill in as mail goes out.",
@@ -5774,6 +5803,10 @@
 					"controls": {
 						"errorMessage": "The controls could not be loaded. Your mail is unaffected — nothing has changed.",
 						"errorTitle": "Couldn’t load the delivery controls",
+						"empty": {
+							"description": "The controls appear once a relay and your own server share traffic, or once the warm-up has cells to manage. Start in Migrate from Mailchimp.",
+							"title": "No cells to control yet"
+						},
 						"forceDialog": {
 							"confirm": "Force-advance",
 							"consequence": "This moves {cell} to {share} without any check agreeing to it. If the new volume is too much for that provider, the damage lands on your sending domain’s reputation and takes weeks to undo — putting the number back does not undo it.",
@@ -5783,6 +5816,9 @@
 						},
 						"globalPause": "The whole ramp is paused. Every cell is pinned where it is; the checks keep running so you can see what would have happened.",
 						"howHard": "How hard to ramp",
+						"idle": {
+							"body": "No cell is managed yet. Enroll one below to let the warm-up take it over, or move traffic from a paid provider step by step."
+						},
 						"ledeActions": "What each stream is carrying is here too — put a cell on the ramp, hold a cell, cap it, push it, or start it over, and choose how hard each stream ramps.",
 						"ledeIntro": "What the ramp pulled back on its own, and why.",
 						"ledeRecorded": "Everything here is recorded.",
@@ -5811,6 +5847,10 @@
 							"confirm": "Take me to the relay settings",
 							"title": "Disconnect the relay?"
 						},
+						"empty": {
+							"description": "This page shows how much of your mail your own server carries, and when you could stop paying for a relay. It fills in once mail goes out. Start in Migrate from Mailchimp.",
+							"title": "Nothing sent yet"
+						},
 						"disconnectAction": "Disconnect the relay…",
 						"disconnectHeading": "Disconnecting the relay",
 						"errorMessage": "These numbers could not be loaded. Your mail is unaffected — this page only reads.",
@@ -5826,6 +5866,10 @@
 						"errorMessage": "The sending measurements could not be loaded. Your mail is unaffected — this page only reads.",
 						"errorTitle": "Couldn’t load delivery measurements",
 						"loadingLabel": "Loading delivery measurements",
+						"empty": {
+							"description": "This page compares delivery results cell by cell once mail goes out. With a relay connected it compares the relay and your own server side by side. Start in Migrate from Mailchimp.",
+							"title": "Nothing measured yet"
+						},
 						"pageTitle": "Delivery measurement — Owlat",
 						"windowNote": "Reported window: {reported} · checks decided over {decision}"
 					}
@@ -5975,9 +6019,8 @@
 				},
 				"migrate": {
 					"connect": {
-						"missing": "Create an API key in Mailchimp Transactional (Settings → API keys), set it as {envVar} in this deployment's environment, and restart. Credentials never live in the database, so this page can only ever tell you whether the key is present — never what it is.",
-						"present": "Mailchimp Transactional is connected — Owlat can see a {envVar} in this deployment's environment.",
-						"transportLink": "Transport setup, with the paste-ready environment block"
+						"missing": "Create an API key in Mailchimp Transactional (Settings → API keys), then add it on the server with one of the blocks below. The key stays in the server’s environment; this page only checks that it is there.",
+						"present": "Connected. Owlat can see the Mailchimp Transactional key on the server."
 					},
 					"domain": {
 						"domainsLink": "Sending domains",
@@ -5999,6 +6042,7 @@
 					"editModal": {
 						"enableOne": "Enable at least one provider.",
 						"failoverOrder": "Order = failover priority",
+						"hideSetup": "Hide setup",
 						"ipPool": "IP pool (optional)",
 						"ipPoolHint": "Overrides the IP pool for the built-in MTA provider. Leave blank to use the provider's default.",
 						"ipPoolPlaceholder": "e.g. transactional",
@@ -6009,6 +6053,7 @@
 						"providers": "Providers",
 						"save": "Save Route",
 						"saving": "Saving...",
+						"showSetup": "Set up",
 						"strategy": "Strategy",
 						"title": "Route — {messageType}",
 						"unavailable": "Unavailable",
@@ -6018,7 +6063,8 @@
 						"noProvider": "Enable at least one provider before saving"
 					},
 					"howItWorks": {
-						"body": "Each message type can use its own provider strategy. When no route is configured, sends fall back to the provider set by the {envVar} environment variable. Configure a route to enable failover or to split traffic across multiple providers.",
+						"body": "Each message type can use its own provider strategy. Without a route, mail goes out through the default provider, {provider}, which you choose on the {link} page. Configure a route to add failover or to split traffic across providers.",
+						"link": "Delivery provider",
 						"title": "How routing works"
 					},
 					"lede": "Choose which email provider sends each message type, with failover and weighted workload-split across providers",
@@ -6026,6 +6072,7 @@
 						"description": "Create or select a workspace to configure provider routing.",
 						"title": "No workspace selected"
 					},
+					"notSet": "not set",
 					"operations": {
 						"reset": "Reset provider route",
 						"save": "Save provider route"
@@ -6033,7 +6080,7 @@
 					"pageTitle": "Provider Routing — Owlat",
 					"resetModal": {
 						"confirm": "Reset to Default",
-						"description": "This message type will revert to the default provider set by the EMAIL_PROVIDER environment variable.",
+						"description": "This message type goes back to the default provider.",
 						"title": "Reset Provider Route"
 					},
 					"resetToDefault": "Reset to default",
@@ -6042,12 +6089,14 @@
 						"reset": "Provider route reset to the default",
 						"saved": "Provider route saved"
 					},
-					"usingDefault": "Using the default provider (EMAIL_PROVIDER)"
+					"usingDefault": "Using the default provider",
+					"usingDefaultNamed": "Using the default provider ({provider})"
 				},
 				"transport": {
 					"canSend": {
 						"no": "This instance cannot send email",
-						"noBody": "No usable delivery provider is configured. Until one is, campaigns and transactional sends will fail. Set {envVar} and its credentials in your environment.",
+						"connected": "Connected. The server sees the new values.",
+						"noBody": "No usable delivery provider is configured, so campaigns and transactional mail fail. Choose one under “Change provider” below, or add the missing values on the server.",
 						"yes": "This instance can send email",
 						"yesBody": "A delivery provider is configured and its credentials are present. Send a test email below to confirm the full path end-to-end."
 					},
@@ -6071,18 +6120,13 @@
 						"description": "No transport has been configured for this deployment yet, so there is nothing to report here. Set one up from delivery setup.",
 						"title": "No transport configured"
 					},
-					"env": {
-						"addToEnv": "Add to your {file}, then restart the instance",
-						"blankValues": "Values are left blank — fill in your real credentials. They are never displayed here.",
-						"cliHint": "Run {command} to list every variable your current configuration needs. See the {guideLink}.",
-						"cliTitle": "Or set each one from the CLI",
-						"copyCommand": "Copy command",
-						"copySnippet": "Copy .env snippet",
-						"guideLink": "environment variables guide"
-					},
 					"error": {
 						"message": "Delivery configuration is only visible to owners and admins. If you are an admin, reload to try again.",
 						"title": "Couldn't load delivery status"
+					},
+					"inbound": {
+						"subtitle": "How other mail servers deliver to you",
+						"title": "Incoming mail"
 					},
 					"lede": "Configure and validate the email delivery provider this instance sends through",
 					"loadingLabel": "Loading transport settings…",
@@ -6725,6 +6769,10 @@
 					"fromNameHelp": "The sender name recipients will see in their inbox.",
 					"fromNamePlaceholder": "e.g., Company Name",
 					"loading": "Loading settings...",
+					"mailSearch": {
+						"subtitle": "How much of each message search can find",
+						"title": "Mail search"
+					},
 					"manageSenders": "Manage the addresses campaigns can send from",
 					"noWorkspaceBody": "Create or select a workspace to manage settings.",
 					"noWorkspaceTitle": "No workspace selected",
@@ -6838,7 +6886,7 @@
 						},
 						"sealedMail": {
 							"description": "Set organization policy for protected personal messages.",
-							"title": "Secure mail"
+							"title": "Sealed mail"
 						}
 					},
 					"keepData": "Disabled features keep their existing data.",
@@ -7011,7 +7059,7 @@
 					"typesTitle": "Property Types"
 				},
 				"sealedMail": {
-					"disabledNotice": "Sealed Mail is turned off for this workspace, so nothing is sealed yet. You can still choose the policy below — it takes effect once Sealed Mail is enabled in Features.",
+					"disabledNotice": "Sealed mail is turned off for this workspace, so nothing is sealed yet. You can still choose the policy below. It takes effect once sealed mail is turned on in Features.",
 					"exportKitOperation": "Export recovery kit",
 					"importKitOperation": "Import recovery kit",
 					"intro": "How Owlat encrypts personal mail between you and other Owlat workspaces.",
@@ -7030,7 +7078,7 @@
 							"title": "Never seal"
 						}
 					},
-					"pageTitle": "Sealed Mail — Owlat",
+					"pageTitle": "Sealed mail — Owlat",
 					"policyLegend": "Sealing policy",
 					"reSeal": {
 						"button": "Re-seal sealed mail",
@@ -7049,12 +7097,7 @@
 						"restoreLabel": "Restore from a recovery kit",
 						"title": "Recovery kit"
 					},
-					"title": "Sealed Mail",
-					"tls": {
-						"description": "Reject senders that try to deliver without STARTTLS. They receive a permanent “550 5.7.10 Encryption needed” response, so the message is never accepted or stored.",
-						"plaintextWarning": "Plaintext inbound delivery is allowed. Only disable this for legacy mail servers that cannot use TLS.",
-						"title": "Require TLS for incoming mail"
-					},
+					"title": "Sealed mail",
 					"toasts": {
 						"kitDownloaded": "Recovery kit downloaded. Store it somewhere private and offline.",
 						"kitImported": "Recovery kit imported. Sealed mail for this address can be opened again.",
@@ -7062,7 +7105,7 @@
 						"noKeyForAddress": "No sealed-mail key exists for that address yet.",
 						"reSealStarted": "Re-sealing started. Once it finishes you can remove the previous instance secret."
 					},
-					"updateOperation": "Update Sealed Mail settings"
+					"updateOperation": "Update sealed mail settings"
 				}
 			},
 			"operator": {
@@ -7080,6 +7123,7 @@
 						"userLabel": "User",
 						"userOption": "{name} · {email}"
 					},
+					"checkingWorkspaces": "Checking how many workspaces this instance has",
 					"admins": {
 						"add": "Add admin",
 						"added": "Added",
@@ -9546,7 +9590,7 @@
 				"depth": {
 					"disabled": "This instance searches only the first 200 characters of a message.",
 					"indexing": "Indexing message bodies — older mail is still searched by its first 200 characters.",
-					"pending": "Older mail is still searched by its first 200 characters. An admin can index it in Settings → Sealed Mail."
+					"pending": "Older mail is still searched by its first 200 characters. An admin can index it in Settings → General → Mail search."
 				}
 			},
 			"subscriptions": {
@@ -11519,7 +11563,7 @@
 				"overview": "Overview",
 				"plugins": "Plugins",
 				"providerRouting": "Provider Routing",
-				"secureMail": "Secure mail",
+				"secureMail": "Sealed mail",
 				"segments": "Segments",
 				"sendingDomains": "Sending Domains",
 				"suppressions": "Suppressions",

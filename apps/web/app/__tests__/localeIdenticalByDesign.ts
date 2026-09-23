@@ -201,8 +201,6 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'dashboard.admin.instance.plugins.index.title',
 	'dashboard.admin.instance.properties.fields.keyFallback',
 	'dashboard.admin.instance.properties.types.string.label',
-	'dashboard.admin.instance.sealedMail.pageTitle',
-	'dashboard.admin.instance.sealedMail.title',
 	'dashboard.admin.operator.index.addAdminModal.userOption',
 	'dashboard.admin.operator.index.roleOptions.admin',
 	'dashboard.admin.operator.index.roleOptions.superadmin',

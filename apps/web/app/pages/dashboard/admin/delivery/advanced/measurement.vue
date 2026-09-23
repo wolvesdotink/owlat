@@ -41,6 +41,10 @@ import {
 	type DeliverabilityDashboardCell,
 } from '~/utils/deliverabilityMeasurement';
 import { decisionWindowLabel, reportedWindowLabel } from '~/utils/deliverabilityWindows';
+import { hasNoMeasuredTraffic } from '~/utils/deliveryAdvancedEmpty';
+// Imported, not auto-resolved: the empty state is this screen's content, and
+// a mount that resolved it to nothing would hide the one thing it says.
+import DeliveryAdvancedEmptyState from '~/components/delivery/AdvancedEmptyState.vue';
 
 const { t } = useI18n();
 
@@ -127,6 +131,14 @@ const standaloneCopy = computed(() =>
  * Cells with traffic first, quiet cells after — a quiet cell is still shown
  * (its emptiness is a fact about the account), it just does not lead.
  */
+/**
+ * Nothing went out in the window on either arm: every card below would be an
+ * empty chart. One sentence about what fills this screen says it better.
+ */
+const isEmpty = computed(
+	() => dashboard.value !== undefined && hasNoMeasuredTraffic(dashboard.value?.cells ?? [])
+);
+
 const cells = computed<DeliverabilityDashboardCell[]>(() => {
 	const all = [...(dashboard.value?.cells ?? [])];
 	return all.sort((a, b) => Number(isZeroVolume(a)) - Number(isZeroVolume(b)));
@@ -200,7 +212,14 @@ const decisionLabel = computed(() => {
 				</div>
 			</template>
 
-			<div class="space-y-5">
+			<DeliveryAdvancedEmptyState
+				v-if="isEmpty"
+				icon="lucide:activity"
+				:title="t('dashboard.admin.delivery.advanced.measurement.empty.title')"
+				:description="t('dashboard.admin.delivery.advanced.measurement.empty.description')"
+			/>
+
+			<div v-else class="space-y-5">
 				<!--
 					Standalone is a supported configuration, stated plainly and once —
 					and stated only where the cards below agree with it. The WORDS come

@@ -204,6 +204,8 @@ export interface WizardProps {
 	returnPathTransportId?: string | null;
 	returnPathCapability?: ReturnPathCapabilityValue | null;
 	canSend?: boolean;
+	/** The transport page's mode: the provider is connected, only the checks remain. */
+	checksOnly?: boolean;
 }
 
 export function mountWizard(props: WizardProps = {}) {

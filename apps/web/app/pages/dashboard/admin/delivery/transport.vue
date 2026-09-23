@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { SEND_TRANSPORT_KINDS } from '@owlat/shared/sendProviderCatalog';
-import { buildProviderEnvSkeleton } from '~/utils/deliveryEnvSnippet';
+import { SEND_TRANSPORT_KINDS, isOwnSendProviderKind } from '@owlat/shared/sendProviderCatalog';
+import { orderProviderEnvNames } from '~/utils/deliveryEnvSnippet';
 import {
 	providerFeedbackPanel,
 	providerFeedbackSigningKeyEnvVar,
@@ -91,20 +91,23 @@ const missingEnvNames = computed(() =>
 	(status.value?.requiredEnv ?? []).filter((entry) => !entry.isPresent).map((entry) => entry.name)
 );
 
-// Paste-ready `.env` skeleton for the missing vars (one `NAME=` line, empty
-// values), in the order the ACTIVE KIND'S CATALOG ENTRY declares them. Empty
-// string when nothing is missing → the snippet block hides.
-const envSnippet = computed(() =>
-	buildProviderEnvSkeleton(status.value?.provider, missingEnvNames.value)
-);
-
-// CLI command to set the first missing var, as a concrete example the operator
-// can adapt. Falls back to the generic form when the list is empty.
-const envSetCommand = computed(() => {
-	const first = missingEnvNames.value[0];
-	return first ? `owlat-setup env ${first} <value>` : 'owlat-setup env <KEY> <value>';
+// What the can-send card asks the operator to set, in the order the ACTIVE
+// KIND'S CATALOG ENTRY declares them. With no provider chosen at all there are
+// no per-provider requirements yet, so the one variable that picks it is asked
+// for instead of rendering "cannot send" with nothing to do about it.
+const missingEnv = computed<string[]>(() => {
+	if (status.value === undefined || status.value === null || canSend.value) return [];
+	const ordered = orderProviderEnvNames(status.value.provider, missingEnvNames.value);
+	if (ordered.length > 0) return ordered;
+	return status.value.provider ? [] : ['EMAIL_PROVIDER'];
 });
 
+// The connection checks follow the provider: they compare a relay with our own
+// server, so they are offered once a relay is the active provider.
+const hasRelayProvider = computed(() => {
+	const provider = status.value?.provider;
+	return typeof provider === 'string' && provider !== '' && !isOwnSendProviderKind(provider);
+});
 
 // Transport connection wizard — an OFFER, never a to-do item.
 // Both reads are DNS-facing and non-secret, and both are answered ENTIRELY on
@@ -137,6 +140,8 @@ const {
 	isLoading: tlsReportLoading,
 	error: tlsReportError,
 } = useOrganizationQuery(api.domains.tlsReports.getTlsReportSummary);
+
+const inboundHeadingId = useId();
 </script>
 
 <template>
@@ -231,39 +236,31 @@ const {
 				<!-- Can-send status -->
 				<DeliveryTransportCanSendCard
 					:can-send="canSend"
-					:env-snippet="envSnippet"
-					:env-set-command="envSetCommand"
+					:missing-env="missingEnv"
+					@refresh="refetchStatus"
 				/>
 
-				<!-- Editable transport editor — change provider / rotate credentials in
-				     place, tested and applied through the same env-patch the setup wizard
-				     uses. The status cards above stay the read-only at-a-glance summary. -->
+				<!-- The page's ONE "Change provider" door — switch provider or rotate
+				     credentials in place, tested and applied through the same env-patch
+				     the setup wizard uses. The status cards stay the read-only summary. -->
 				<DeliveryTransportEditor
 					:current-provider="status.provider"
 					:current-outbound-tls-mode="status.outboundTlsMode"
 					@applied="refetchStatus"
 				/>
 
-				<!-- Optional guided "connect an ESP" flow: credentials → live send test
-				     → live-DNS alignment → return-path capability. Skipping it leaves the
-				     deployment fully functional on its own MTA, so it renders as
-				     a plain offer with no warning state of any kind. -->
+				<!-- The follow-up to a change, not a second way to make it: once a relay
+				     is the active provider, walk the live send test, DNS alignment and
+				     return-path capability. Never a warning — skipping it changes nothing. -->
 				<DeliveryTransportConnectionWizard
+					v-if="hasRelayProvider"
+					checks-only
 					:alignment-arms="alignmentArms"
 					:return-path-transport-id="returnPathReadiness?.transportId"
 					:return-path-capability="returnPathReadiness?.capability"
 					:can-send="canSend"
 					@applied="refetchStatus"
 				/>
-
-				<!-- Inbound TLS hardening: publish our own MTA-STS policy (none →
-				     testing → enforce). Receiving posture, but it lives beside the
-				     transport controls so all TLS policy is in one place. -->
-				<DeliveryMtaStsModeCard />
-
-				<!-- Inbound sender authenticity: which forwarders we trust to rescue a
-				     DMARC fail on mailing-list / forwarded mail (Sealed Mail A5). -->
-				<DeliveryTrustedForwardersCard />
 
 				<!-- Provider + required env presence -->
 				<UiCard padding="none" overflow="hidden">
@@ -386,12 +383,40 @@ const {
 					:last-event-at="feedbackStatus?.lastEventAt ?? null"
 				/>
 
-				<!-- Inbound TLS reports (TLS-RPT, RFC 8460) partners send us -->
-				<DeliveryTlsReportCard
-					:summary="tlsReportSummary"
-					:is-loading="tlsReportLoading"
-					:error="tlsReportError"
-				/>
+				<!-- Incoming mail: everything about how other servers deliver TO us,
+				     grouped so receiving posture is not mistaken for sending settings. -->
+				<section
+					id="inbound"
+					class="space-y-6 scroll-mt-6"
+					:aria-labelledby="inboundHeadingId"
+					data-testid="transport-inbound"
+				>
+					<div>
+						<h2 :id="inboundHeadingId" class="text-lg font-semibold text-text-primary">
+							{{ t('dashboard.admin.delivery.transport.inbound.title') }}
+						</h2>
+						<p class="text-sm text-text-secondary">
+							{{ t('dashboard.admin.delivery.transport.inbound.subtitle') }}
+						</p>
+					</div>
+
+					<!-- Refuse senders that will not encrypt the connection. -->
+					<DeliveryInboundTlsRequirementCard />
+
+					<!-- Publish our own MTA-STS policy (none → testing → enforce). -->
+					<DeliveryMtaStsModeCard />
+
+					<!-- Which forwarders we trust to rescue a DMARC fail on
+					     mailing-list / forwarded mail. -->
+					<DeliveryTrustedForwardersCard />
+
+					<!-- Inbound TLS reports (TLS-RPT, RFC 8460) partners send us -->
+					<DeliveryTlsReportCard
+						:summary="tlsReportSummary"
+						:is-loading="tlsReportLoading"
+						:error="tlsReportError"
+					/>
+				</section>
 			</div>
 		</UiQueryBoundary>
 	</div>

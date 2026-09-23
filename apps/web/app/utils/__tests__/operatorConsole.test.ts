@@ -6,6 +6,7 @@ import {
 	scanLevelVariant,
 	formatRate,
 	auditActionLabel,
+	operatorConsoleVisibility,
 } from '../operatorConsole';
 import { createTestI18n } from '~/__tests__/i18n';
 
@@ -93,5 +94,57 @@ describe('auditActionLabel', () => {
 	it('echoes unknown actions unchanged and handles undefined', () => {
 		expect(auditActionLabel('something.else')).toBe('something.else');
 		expect(t(auditActionLabel(undefined))).toBe('Unknown action');
+	});
+});
+
+describe('operatorConsoleVisibility', () => {
+	it('always shows on a hosted deployment', () => {
+		expect(operatorConsoleVisibility({ deploymentMode: 'cloud', workspaceCount: 1 })).toBe('show');
+		expect(operatorConsoleVisibility({ deploymentMode: 'cloud', workspaceCount: undefined })).toBe(
+			'show'
+		);
+	});
+
+	it('hides on a self-hosted instance with one workspace (or none)', () => {
+		expect(operatorConsoleVisibility({ deploymentMode: 'selfhost', workspaceCount: 1 })).toBe(
+			'hide'
+		);
+		expect(operatorConsoleVisibility({ deploymentMode: 'selfhost', workspaceCount: 0 })).toBe(
+			'hide'
+		);
+	});
+
+	it('shows on a self-hosted instance that really holds several workspaces', () => {
+		expect(operatorConsoleVisibility({ deploymentMode: 'selfhost', workspaceCount: 2 })).toBe(
+			'show'
+		);
+	});
+
+	it('waits for the count instead of guessing on self-host', () => {
+		expect(
+			operatorConsoleVisibility({ deploymentMode: 'selfhost', workspaceCount: undefined })
+		).toBe('pending');
+	});
+
+	it('shows the console when the count cannot be read, instead of waiting forever', () => {
+		expect(
+			operatorConsoleVisibility({
+				deploymentMode: 'selfhost',
+				workspaceCount: undefined,
+				isCountUnavailable: true,
+			})
+		).toBe('show');
+	});
+});
+
+describe('formatRate with a locale', () => {
+	it('writes the rate the way the locale does', () => {
+		expect(formatRate(0.0123, 'en-US')).toBe('1.23%');
+		expect(formatRate(0.0123, 'de-DE')).toBe('1,23\u00a0%');
+	});
+
+	it('keeps the dash for a missing rate', () => {
+		expect(formatRate(undefined, 'de-DE')).toBe('—');
+		expect(formatRate(Number.NaN, 'en-US')).toBe('—');
 	});
 });
