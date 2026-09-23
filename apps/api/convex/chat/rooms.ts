@@ -209,10 +209,11 @@ export const listMyChannels = chatQuery({
 			.collect(); // bounded: caller's chat rooms (~tens)
 		const memberRoomIds = new Set(memberships.map((m) => m.roomId));
 
-		// All channels ordered by recent activity.
+		// All ordinary channels, newest first. Mail-thread discussions share the
+		// 'channel' kind but carry a `purpose`, so the index leaves them out.
 		const channels = await ctx.db
 			.query('chatRooms')
-			.withIndex('by_kind', (q) => q.eq('kind', 'channel'))
+			.withIndex('by_kind_and_purpose', (q) => q.eq('kind', 'channel').eq('purpose', undefined))
 			.order('desc')
 			.take(500);
 
@@ -249,7 +250,9 @@ export const listPublicChannels = chatQuery({
 
 		// Filter to channels (a future DM might mistakenly default 'public', but
 		// our writers always force DMs to 'private' so this is defensive).
-		const onlyChannels = channels.filter((c) => c.kind === 'channel' && !c.archivedAt);
+		const onlyChannels = channels.filter(
+			(c) => c.kind === 'channel' && !c.purpose && !c.archivedAt
+		);
 
 		const memberships = await ctx.db
 			.query('chatRoomMembers')
