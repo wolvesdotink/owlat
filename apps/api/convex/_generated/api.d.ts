@@ -66,6 +66,8 @@ import type * as analytics_engagementPercentile from '../analytics/engagementPer
 import type * as analytics_engagementScore from '../analytics/engagementScore.js';
 import type * as analytics_engagementScoreSync from '../analytics/engagementScoreSync.js';
 import type * as analytics_llmUsage from '../analytics/llmUsage.js';
+import type * as analytics_marketingOverview from '../analytics/marketingOverview.js';
+import type * as analytics_marketingOverviewMath from '../analytics/marketingOverviewMath.js';
 import type * as analytics_reporter from '../analytics/reporter.js';
 import type * as analytics_reputationQueries from '../analytics/reputationQueries.js';
 import type * as analytics_reputationSnapshots from '../analytics/reputationSnapshots.js';
@@ -1219,6 +1221,8 @@ declare const fullApi: ApiFromModules<{
 	'analytics/engagementScore': typeof analytics_engagementScore;
 	'analytics/engagementScoreSync': typeof analytics_engagementScoreSync;
 	'analytics/llmUsage': typeof analytics_llmUsage;
+	'analytics/marketingOverview': typeof analytics_marketingOverview;
+	'analytics/marketingOverviewMath': typeof analytics_marketingOverviewMath;
 	'analytics/reporter': typeof analytics_reporter;
 	'analytics/reputationQueries': typeof analytics_reputationQueries;
 	'analytics/reputationSnapshots': typeof analytics_reputationSnapshots;

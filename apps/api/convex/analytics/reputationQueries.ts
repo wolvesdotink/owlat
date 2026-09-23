@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import type { DatabaseReader } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { getDailySendVolume } from '../lib/sendingLimits';
 import {
@@ -49,6 +50,15 @@ export function toReputationDto(summary: ReputationSummary): ReputationDto {
 	};
 }
 
+/**
+ * The org's rolling 30-day reputation, shaped for a card: the single read the
+ * Delivery overview and the Marketing overview share, so the two can never
+ * quote different bounce/complaint rates for the same window.
+ */
+export async function readOrgReputation(db: DatabaseReader): Promise<ReputationDto> {
+	return toReputationDto(await summarize(db, { kind: 'org' }));
+}
+
 // ============ PUBLIC QUERIES ============
 
 /**
@@ -74,8 +84,7 @@ export const getSendingOverview = authedQuery({
 		// Rolling 30-day org reputation, derived on read through the single
 		// summarizer, then shaped for the card (`null` on no in-window
 		// activity, so the UI can show its empty state).
-		const orgSummary = await summarize(ctx.db, { kind: 'org' });
-		const reputation = toReputationDto(orgSummary);
+		const reputation = await readOrgReputation(ctx.db);
 
 		return {
 			warming: warmingState
