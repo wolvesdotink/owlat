@@ -14840,10 +14840,25 @@
 					"description": "Fügen Sie ein persönliches Postfach hinzu, damit Sie hier Mail senden und empfangen können.",
 					"title": "Richten Sie Ihr Postfach ein"
 				},
+				"notifications": {
+					"cta": "Auswählen",
+					"description": "Legen Sie fest, worüber Sie benachrichtigt werden möchten.",
+					"title": "Benachrichtigungen auswählen"
+				},
+				"profileName": {
+					"cta": "Name eintragen",
+					"description": "Legen Sie den Namen fest, den Empfänger Ihrer Mail sehen.",
+					"title": "Ihren Namen eintragen"
+				},
 				"sendingSwitched": {
 					"cta": "Umstellen",
 					"description": "Versenden Sie ausgehende Mail über Owlat, sobald Ihre Domain verifiziert ist.",
 					"title": "Versand auf diese Instanz umstellen"
+				},
+				"signature": {
+					"cta": "Signatur hinzufügen",
+					"description": "Fügen Sie eine Signatur unter neue Nachrichten ein.",
+					"title": "Signatur hinzufügen"
 				}
 			}
 		},

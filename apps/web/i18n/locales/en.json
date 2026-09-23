@@ -14840,10 +14840,25 @@
 					"description": "Add a personal mailbox so you can send and receive mail here.",
 					"title": "Set up your mailbox"
 				},
+				"notifications": {
+					"cta": "Choose",
+					"description": "Pick what you want to be notified about.",
+					"title": "Choose your notifications"
+				},
+				"profileName": {
+					"cta": "Add name",
+					"description": "Set the name people see on your mail.",
+					"title": "Add your name"
+				},
 				"sendingSwitched": {
 					"cta": "Switch",
 					"description": "Start sending outbound mail from Owlat once your domain is verified.",
 					"title": "Switch sending to this instance"
+				},
+				"signature": {
+					"cta": "Add signature",
+					"description": "Add a signature to the bottom of new messages.",
+					"title": "Add a signature"
 				}
 			}
 		},

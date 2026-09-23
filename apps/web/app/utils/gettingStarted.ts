@@ -10,7 +10,8 @@
  *
  * - the VIEWER: an admin/owner sees the instance go-live steps AND, when they are
  *   also a fresh member, their personal setup steps — in one card. A plain member
- *   sees only their personal steps (instance setup is not theirs to do).
+ *   sees only three steps of their own — name, signature, notifications — since
+ *   instance setup (and the AI provider) is not theirs to do.
  * - the instance MODE: `fresh` vs `migration` decides which personal steps show
  *   (import / "AI learns your history" / the post-import sending switch appear
  *   only when bringing mail over — see {@link visibleChecklistSteps}).
@@ -205,7 +206,10 @@ export interface GettingStartedInput {
 	showBackupsStep: boolean;
 	/** Per-user state (from `auth/userOnboarding.ts`). */
 	userDismissed: boolean;
-	/** The resolved set of completed personal step ids (incl. derived aiConnected). */
+	/**
+	 * The resolved set of completed personal step ids (incl. the derived ones —
+	 * see `completedChecklistSteps` in `~/utils/welcomeFlow`).
+	 */
 	personalCompleted: ReadonlySet<ChecklistStepId>;
 	/**
 	 * Whether the instance can actually deliver mail (member-safe read of the
@@ -348,30 +352,35 @@ export function buildGettingStarted(input: GettingStartedInput): GettingStartedM
 	}
 
 	// Personal section — everyone with an unfinished personal checklist.
-	const personalComplete = isChecklistComplete(input.mode, input.personalCompleted);
+	// A member is asked for their own three steps only; the rest of the personal
+	// list (AI provider, mailbox provisioning, the first test send) is an admin's.
+	const personalComplete = isChecklistComplete(input.mode, input.personalCompleted, input.role);
 	const personalActive = !input.userDismissed && !personalComplete;
 	if (personalActive) {
-		const steps: GettingStartedStep[] = visibleChecklistSteps(input.mode).map((step) => {
-			const completed = input.personalCompleted.has(step.id);
-			// A send step with no transport behind it is blocked, not open: the
-			// member has nothing to do until the instance can send. The block lifts
-			// on its own the moment `sendPathReady` flips (the same edge that
-			// notifies them — see `auth/sendReadyNotices.ts`).
-			const blocked = !completed && !input.sendPathReady && SEND_BLOCKED_STEP_IDS.has(step.id);
-			return {
-				id: step.id,
-				title: step.title,
-				description: step.description,
-				href: step.href,
-				cta: step.cta,
-				icon: step.icon,
-				completed,
-				...(blocked ? { blocked: true, blockedReason: SEND_BLOCKED_REASON } : {}),
-			};
-		});
+		const steps: GettingStartedStep[] = visibleChecklistSteps(input.mode, input.role).map(
+			(step) => {
+				const completed = input.personalCompleted.has(step.id);
+				// A send step with no transport behind it is blocked, not open: the
+				// member has nothing to do until the instance can send. The block lifts
+				// on its own the moment `sendPathReady` flips (the same edge that
+				// notifies them — see `auth/sendReadyNotices.ts`).
+				const blocked = !completed && !input.sendPathReady && SEND_BLOCKED_STEP_IDS.has(step.id);
+				return {
+					id: step.id,
+					title: step.title,
+					description: step.description,
+					href: step.href,
+					cta: step.cta,
+					icon: step.icon,
+					completed,
+					...(blocked ? { blocked: true, blockedReason: SEND_BLOCKED_REASON } : {}),
+				};
+			}
+		);
 		// Last row: the door back into the guided welcome, so the flow the member
 		// skipped once is never unreachable. Not a step — see FINISH_SETUP_STEP.
-		steps.push({ ...FINISH_SETUP_STEP, completed: false });
+		// A member's own steps already open that flow, so they do not get it twice.
+		if (input.role === 'admin') steps.push({ ...FINISH_SETUP_STEP, completed: false });
 		sections.push({
 			id: 'personal',
 			title: 'shared.gettingStarted.personalSection.title',
