@@ -32,11 +32,11 @@ beforeEach(() => {
 const stubs = {
 	UiCard: { template: '<section><slot /></section>' },
 	UiIconBox: true,
-	UiToggle: {
+	UiSwitch: {
 		props: ['modelValue', 'disabled', 'label'],
 		emits: ['update:modelValue'],
 		template:
-			'<button type="button" role="switch" :aria-checked="String(modelValue)" :disabled="disabled" @click="$emit(\'update:modelValue\', !modelValue)">{{ label }}</button>',
+			'<button type="button" role="switch" :aria-checked="String(modelValue)" :aria-label="label" :disabled="disabled" @click="$emit(\'update:modelValue\', !modelValue)" />',
 	},
 };
 
@@ -48,7 +48,10 @@ describe('InboundTlsRequirementCard', () => {
 	it('reads an unset value as required, like the backend', () => {
 		const wrapper = mountCard();
 		expect(wrapper.text()).toContain('Require TLS for incoming mail');
-		expect(wrapper.find('[role="switch"]').attributes('aria-checked')).toBe('true');
+		const toggle = wrapper.find('[role="switch"]');
+		expect(toggle.attributes('aria-checked')).toBe('true');
+		// The switch is named for the setting; its state is aria-checked, not the label.
+		expect(toggle.attributes('aria-label')).toBe('Require TLS for incoming mail');
 		expect(wrapper.find('[data-testid="inbound-tls-plaintext-warning"]').exists()).toBe(false);
 	});
 

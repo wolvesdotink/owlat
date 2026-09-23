@@ -67,10 +67,10 @@ async function setRequired(value: boolean) {
 					</p>
 				</div>
 			</div>
-			<UiToggle
+			<UiSwitch
 				:model-value="isRequired"
 				:disabled="saving || settings === undefined"
-				:label="isRequired ? t('common.required') : t('common.optional')"
+				:label="t('components.delivery.inboundTlsRequirementCard.title')"
 				data-testid="inbound-tls-required"
 				@update:model-value="setRequired"
 			/>

@@ -106,14 +106,9 @@ const handleSave = () => {
 					</p>
 				</div>
 			</div>
-			<UiToggle
+			<UiSwitch
 				v-model="form.enabled"
-				:label="
-					form.enabled
-						? t('components.autonomy.autonomyWorkingHours.on')
-						: t('components.autonomy.autonomyWorkingHours.off')
-				"
-				size="sm"
+				:label="t('components.autonomy.autonomyWorkingHours.title')"
 			/>
 		</div>
 

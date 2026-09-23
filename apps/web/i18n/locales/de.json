@@ -666,8 +666,6 @@
 				"daysLabel": "Tage",
 				"fromLabel": "Von",
 				"hint": "Antworten, die außerhalb dieser Zeiten entschieden werden, werden für die morgendliche Prüfung durch einen Menschen zurückgehalten — nicht gesendet.",
-				"off": "Aus",
-				"on": "An",
 				"save": "Arbeitszeiten speichern",
 				"subtitle": "Automatisch nur während der Geschäftszeiten senden.",
 				"timezoneLabel": "Zeitzone",
@@ -5192,8 +5190,6 @@
 				"confirmTitle": "E-Mail-Import ebenfalls aktivieren?",
 				"enableImportOperation": "Import externer Postfächer aktivieren",
 				"loading": "Einstellung wird geladen…",
-				"off": "Aus",
-				"on": "Ein",
 				"subtitle": "Legt fest, wie neue Teammitglieder begrüßt werden.",
 				"title": "Kommen Sie von einer anderen Plattform?",
 				"toastOff": "Migrationsmodus aus — neue Nutzer erhalten eine Willkommensseite für den Neustart.",
@@ -6694,7 +6690,6 @@
 						"records": "Dabei werden auch {count} Eingangsdatensätze gelöscht.",
 						"title": "Formular-Endpunkt löschen"
 					},
-					"disableForm": "Formular deaktivieren",
 					"editForm": "Formular bearbeiten",
 					"editModal": {
 						"save": "Änderungen speichern",
@@ -6704,7 +6699,6 @@
 					"embedCode": "Einbettungscode",
 					"emptyBody": "Erstellen Sie Ihren ersten Formular-Endpunkt, um Anmeldungen von Ihrer Website zu sammeln.",
 					"emptyTitle": "Noch keine Formular-Endpunkte",
-					"enableForm": "Formular aktivieren",
 					"endpointUrl": "URL des Formular-Endpunkts",
 					"fields": {
 						"doubleOptIn": "Double-Opt-in aktivieren",

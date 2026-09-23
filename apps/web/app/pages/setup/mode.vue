@@ -123,14 +123,25 @@ function pick(key: OperatingModeKey) {
 						</label>
 					</div>
 
-					<UiCheckbox
+					<div
 						v-if="offersAiDrafts"
-						v-model="aiDrafts"
-						class="mt-4"
-						:label="t('setup.mode.aiDraftsLabel')"
-						:description="t('setup.mode.aiDraftsHint')"
+						class="mt-4 flex items-start justify-between gap-4"
 						data-testid="setup-outcome-ai-drafts"
-					/>
+					>
+						<div class="min-w-0">
+							<label for="setup-ai-drafts" class="block text-sm font-medium text-text-primary">
+								{{ t('setup.mode.aiDraftsLabel') }}
+							</label>
+							<p id="setup-ai-drafts-hint" class="text-sm text-text-tertiary">
+								{{ t('setup.mode.aiDraftsHint') }}
+							</p>
+						</div>
+						<UiSwitch
+							id="setup-ai-drafts"
+							v-model="aiDrafts"
+							aria-describedby="setup-ai-drafts-hint"
+						/>
+					</div>
 				</fieldset>
 
 				<!-- Fresh start vs. migration. Default: fresh (Owlat is its own platform).

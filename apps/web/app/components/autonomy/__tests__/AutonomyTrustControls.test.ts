@@ -6,7 +6,7 @@
  *     slice, emits `accept-offer` with the (category, sender), and renders
  *     NOTHING when there is nothing to graduate.
  *
- * Global UI auto-imports (UiCard/UiIconBox/UiToggle/Icon) are stubbed; `ref`/
+ * Global UI auto-imports (UiCard/UiIconBox/UiSwitch/Icon) are stubbed; `ref`/
  * `computed` are polyfilled by the web vitest setup. Both components render
  * their copy through vue-i18n, so they are mounted against the REAL catalog —
  * the sentences asserted below are the ones a person actually reads.
@@ -26,7 +26,7 @@ const stubs = {
 	UiCard: { template: '<div><slot /></div>' },
 	UiIconBox: true,
 	UiSpinner: true,
-	UiToggle: true,
+	UiSwitch: true,
 };
 /** A fresh i18n instance per mount — locale state must not leak between them. */
 const mountOpts = () => ({ global: { plugins: [createTestI18n()], stubs } });

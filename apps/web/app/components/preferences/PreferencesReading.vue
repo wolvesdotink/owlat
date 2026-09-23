@@ -81,18 +81,6 @@ function onSwipeChange(direction: 'left' | 'right', event: Event) {
 	const value = (event.target as HTMLSelectElement).value as PostboxSwipeAction;
 	void setSwipeAction(direction, value);
 }
-
-function onWritingSuggestionsChange(event: Event) {
-	void setWritingSuggestions((event.target as HTMLInputElement).checked);
-}
-
-function onAutoSummarizeChange(event: Event) {
-	void setAutoSummarize((event.target as HTMLInputElement).checked);
-}
-
-function onSendSoundChange(event: Event) {
-	void setSendSound((event.target as HTMLInputElement).checked);
-}
 </script>
 
 <template>
@@ -297,13 +285,11 @@ function onSendSoundChange(event: Event) {
 					{{ t('components.preferences.preferencesReading.writingSuggestionsHelp') }}
 				</p>
 			</div>
-			<input
+			<UiSwitch
 				id="postbox-writing-suggestions"
-				type="checkbox"
-				class="shrink-0 h-4 w-4"
-				:checked="writingSuggestions"
+				:model-value="writingSuggestions"
 				:disabled="isSaving"
-				@change="onWritingSuggestionsChange"
+				@update:model-value="setWritingSuggestions"
 			/>
 		</div>
 		<div
@@ -318,13 +304,11 @@ function onSendSoundChange(event: Event) {
 					{{ t('components.preferences.preferencesReading.autoSummarizeHelp') }}
 				</p>
 			</div>
-			<input
+			<UiSwitch
 				id="postbox-auto-summarize"
-				type="checkbox"
-				class="shrink-0 h-4 w-4"
-				:checked="autoSummarize"
+				:model-value="autoSummarize"
 				:disabled="isSaving"
-				@change="onAutoSummarizeChange"
+				@update:model-value="setAutoSummarize"
 			/>
 		</div>
 		<div
@@ -338,13 +322,11 @@ function onSendSoundChange(event: Event) {
 					{{ t('components.preferences.preferencesReading.sendSoundHelp') }}
 				</p>
 			</div>
-			<input
+			<UiSwitch
 				id="postbox-send-sound"
-				type="checkbox"
-				class="shrink-0 h-4 w-4"
-				:checked="sendSound"
+				:model-value="sendSound"
 				:disabled="isSaving"
-				@change="onSendSoundChange"
+				@update:model-value="setSendSound"
 			/>
 		</div>
 	</section>

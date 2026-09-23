@@ -60,7 +60,6 @@ const globalOptions = {
 		UiInput: true,
 		UiSelect: true,
 		UiSwitch: true,
-		UiToggle: true,
 		UiSpinner: true,
 		UiEmptyState: true,
 		UnsavedChangesDialog: true,

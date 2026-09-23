@@ -158,7 +158,7 @@ const stubs = {
 	UiCard: passthroughStub,
 	UiConfirmationDialog: confirmationStub,
 	UiModal: modalStub,
-	UiToggle: toggleStub,
+	UiSwitch: toggleStub,
 	UiSpinner: true,
 	UiIconBox: true,
 	Icon: true,

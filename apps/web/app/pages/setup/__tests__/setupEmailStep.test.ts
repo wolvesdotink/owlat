@@ -46,6 +46,7 @@ function mountStep() {
 			UiCard: { template: '<div><slot /></div>' },
 			UiErrorAlert: true,
 			UiSelect: true,
+			UiSwitch: true,
 		},
 		components: { UiInput },
 	});

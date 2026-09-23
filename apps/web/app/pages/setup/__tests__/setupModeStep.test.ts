@@ -13,7 +13,7 @@ import { outcomeFlags } from '~/composables/setupWizardOutcomes';
 import { operatingModeFlags } from '@owlat/shared/operatingModes';
 import { SETUP_CHOICE_SELECTED } from '~/utils/setupChoiceCard';
 import UiBadge from '@owlat/ui/components/ui/Badge.vue';
-import UiCheckbox from '@owlat/ui/components/ui/Checkbox.vue';
+import UiSwitch from '@owlat/ui/components/ui/Switch.vue';
 import SetupModePage from '../mode.vue';
 
 const push = vi.fn();
@@ -46,7 +46,7 @@ beforeEach(() => {
 function mountStep() {
 	return mountDashboardPage(SetupModePage, {
 		stubs: { UiHeroField: true, UiStepIndicator: true },
-		components: { UiBadge, UiCheckbox },
+		components: { UiBadge, UiSwitch },
 	});
 }
 
@@ -69,7 +69,10 @@ describe('setup mode step', () => {
 	it('applies the chosen answer and the AI drafting option', async () => {
 		const wrapper = mountStep();
 		await wrapper.get('[data-testid="setup-outcome-conversations"] input').setValue(true);
-		await wrapper.get('[data-testid="setup-outcome-ai-drafts"] input').setValue(true);
+		const aiDrafts = wrapper.get('[data-testid="setup-outcome-ai-drafts"] [role="switch"]');
+		expect(aiDrafts.attributes('aria-checked')).toBe('false');
+		await aiDrafts.trigger('click');
+		expect(aiDrafts.attributes('aria-checked')).toBe('true');
 		await wrapper.get('form').trigger('submit');
 		expect(useSetupWizard().flags.value).toEqual(outcomeFlags('conversations', true));
 	});

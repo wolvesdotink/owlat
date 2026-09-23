@@ -666,8 +666,6 @@
 				"daysLabel": "Days",
 				"fromLabel": "From",
 				"hint": "Replies decided outside these hours are held for morning human review — not sent.",
-				"off": "Off",
-				"on": "On",
 				"save": "Save working hours",
 				"subtitle": "Only auto-send during business hours.",
 				"timezoneLabel": "Timezone",
@@ -5192,8 +5190,6 @@
 				"confirmTitle": "Turn on mail import too?",
 				"enableImportOperation": "Enable external mailbox import",
 				"loading": "Loading setting…",
-				"off": "Off",
-				"on": "On",
 				"subtitle": "Controls how new teammates are welcomed.",
 				"title": "Coming from another platform?",
 				"toastOff": "Migration mode off — new users get a fresh-start welcome.",
@@ -6694,7 +6690,6 @@
 						"records": "This will also delete {count} submission record(s).",
 						"title": "Delete form endpoint"
 					},
-					"disableForm": "Disable form",
 					"editForm": "Edit form",
 					"editModal": {
 						"save": "Save changes",
@@ -6704,7 +6699,6 @@
 					"embedCode": "Embed code",
 					"emptyBody": "Create your first form endpoint to start collecting signups from your website.",
 					"emptyTitle": "No form endpoints yet",
-					"enableForm": "Enable form",
 					"endpointUrl": "Form endpoint URL",
 					"fields": {
 						"doubleOptIn": "Enable double opt-in",

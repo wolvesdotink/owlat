@@ -303,18 +303,14 @@ async function next() {
 								placeholder="587"
 								autocomplete="off"
 							/>
-							<label
-								class="flex items-center gap-3 rounded-xl bg-surface-1 shadow-surface-1 border border-transparent p-3 cursor-pointer transition-[box-shadow] duration-(--motion-fast) ease-spring hover:shadow-surface-2"
+							<div
+								class="flex items-center justify-between gap-3 rounded-xl bg-surface-1 shadow-surface-1 border border-transparent p-3"
 							>
-								<input
-									v-model="smtpSecure"
-									type="checkbox"
-									class="h-4 w-4 rounded border-border-default bg-bg-deep text-brand focus-visible:ring-1 focus-visible:ring-brand"
-								/>
-								<span class="text-sm text-text-secondary">
+								<label for="setup-smtp-secure" class="text-sm text-text-secondary cursor-pointer">
 									{{ t('setup.email.smtpSecureLabel') }}
-								</span>
-							</label>
+								</label>
+								<UiSwitch id="setup-smtp-secure" v-model="smtpSecure" />
+							</div>
 						</div>
 						<UiInput
 							v-model="smtpUsername"
