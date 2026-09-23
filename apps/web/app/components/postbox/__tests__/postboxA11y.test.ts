@@ -4,16 +4,16 @@
  *
  * Mail is the one screen in this app a person lives in all day, and it is the
  * one built almost entirely out of custom controls: a contenteditable body, a
- * combobox search bar, a virtualized list of `<li>` rows that behave like a
+ * virtualized list of `<li>` rows that behave like a
  * grid, and a reader whose chrome is two dozen icon-only buttons. None of that
  * gets an accessible name for free the way a `<button>Send</button>` does, so
  * the four surfaces are audited here with axe against the REAL message catalog
  * (see `~/__tests__/a11y` for what the harness does and does not cover).
  *
- * Two label defects are what motivated the suite and are pinned as their own
- * regression cases at the bottom: the composer body (`role="textbox"` on a
- * contenteditable div, which nothing can label implicitly) and the search bar
- * (`role="combobox"` whose only "label" was a placeholder).
+ * A label defect is what motivated the suite and is pinned as its own
+ * regression case at the bottom: the composer body (`role="textbox"` on a
+ * contenteditable div, which nothing can label implicitly). Mail search is the
+ * app-wide command palette, audited with it.
  *
  * The child feature components are left unresolved on purpose — that is the
  * harness's deal, and each carries its own suite. What is audited here is each
@@ -29,7 +29,6 @@ import {
 } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useClickOutside } from '~/composables/useClickOutside';
-import { useCommandPaletteRecents } from '~/composables/useCommandPaletteRecents';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { useDropZone } from '~/composables/useDropZone';
 import { useLocalStorage } from '~/composables/useLocalStorage';
@@ -47,7 +46,6 @@ import PostboxComposer from '../PostboxComposer.vue';
 import PostboxComposerEnvelope from '../PostboxComposerEnvelope.vue';
 import PostboxComposerFooter from '../PostboxComposerFooter.vue';
 import PostboxComposerHeader from '../PostboxComposerHeader.vue';
-import PostboxSearchBar from '../PostboxSearchBar.vue';
 import PostboxBasicEditor from '../PostboxBasicEditor.vue';
 
 // The generated Convex `api` object only ever reaches the stubbed query and
@@ -139,9 +137,6 @@ function postboxStubs(rows: PostboxThreadRowMessage[]): Record<string, unknown> 
 		useClickOutside,
 		useClickOutsideSelector: useClickOutside,
 		useDebouncedSearch,
-		// The search bar reads the one scope-tagged palette history (Mail tag);
-		// it is localStorage-only, so the real one runs here.
-		useCommandPaletteRecents,
 		useDropZone,
 		useLocalStorage,
 		useRichText,
@@ -339,17 +334,5 @@ describe('custom-role controls carry an accessible name', () => {
 				expect(wrapper.get('.absolute.top-3').attributes('aria-hidden')).toBe('true');
 			},
 		});
-	});
-
-	it('names the search combobox with a label rather than its placeholder', async () => {
-		const violations = await auditA11y(PostboxSearchBar, {
-			...withCatalog(),
-			props: { modelValue: '' },
-			prepare: (wrapper) => {
-				const box = wrapper.get('[role="combobox"]');
-				expect(box.attributes('aria-label')).toBe('Search mail');
-			},
-		});
-		expect(violations).toEqual([]);
 	});
 });

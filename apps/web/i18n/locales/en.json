@@ -4230,7 +4230,6 @@
 			},
 			"postboxSearchBar": {
 				"placeholder": "Search mail (from:sara has:attachment older_than:7d…)",
-				"suggestionsLabel": "Search suggestions",
 				"suggestions": {
 					"from": "sender address or name",
 					"to": "recipient address or name",
@@ -4250,10 +4249,8 @@
 					"before": "received before a date",
 					"after": "received after a date",
 					"newerThan": "within the last 7d, 24h, 30m",
-					"olderThan": "older than 7d, 24h, 30m",
-					"recent": "Recent"
-				},
-				"label": "Search mail"
+					"olderThan": "older than 7d, 24h, 30m"
+				}
 			},
 			"postboxSecurityBadge": {
 				"cantDecryptSuffix": "· can't decrypt",
@@ -9565,8 +9562,11 @@
 				"backToResults": "Results",
 				"noResultsHint": "Try fewer or broader terms, or operators like from:, has:attachment, is:unread.",
 				"noResultsTitle": "No results for this search",
-				"keepSearching": "Keep searching",
-				"pageEmptyWithMore": "No matches on this page. There are more messages to search.",
+				"pageEmptyWithMore": "No matches in recent mail.",
+				"searchOlder": "Search older mail",
+				"searchingOlder": "Searching older mail…",
+				"changeSearch": "Change search",
+				"searchMail": "Search mail",
 				"operatorHint": "Try operators like {from}, {hasAttachment}, {before}, {label}, {isUnread}.",
 				"pageTitle": "Search — Owlat",
 				"selectResult": "Select a result",
@@ -9579,9 +9579,10 @@
 				"saveNamePlaceholder": "Name this search",
 				"alreadySaved": "Saved as {name}",
 				"depth": {
-					"disabled": "This instance searches only the first 200 characters of a message.",
-					"indexing": "Indexing message bodies — older mail is still searched by its first 200 characters.",
-					"pending": "Older mail is still searched by its first 200 characters. An admin can index it in Settings → Sealed Mail."
+					"disabled": "Search only reads the first 200 characters of each message.",
+					"indexing": "Message bodies are being indexed. Until that finishes, older mail is searched by its first 200 characters.",
+					"pending": "Older mail is searched by its first 200 characters until its message bodies are indexed.",
+					"openSettings": "Open search settings"
 				}
 			},
 			"subscriptions": {

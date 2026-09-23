@@ -8,9 +8,10 @@ import type { PaletteScope } from '~/lib/commandPaletteScope';
  * `owlat:command-palette-open` event name lives in exactly one place instead of
  * being inlined per file.
  *
- * A caller may name the SCOPE to open in (Postbox's `/` opens on Mail). Without
- * one the palette follows the route, which is the common case; the detail is
- * optional so a plain `Event` from an older caller still opens it.
+ * A caller may name the SCOPE to open in (Postbox's `/` opens on Mail) and the
+ * QUERY to start from. Without them the palette follows the route and opens
+ * empty, which is the common case; the detail is optional so a plain `Event`
+ * from an older caller still opens it.
  *
  * Surfaces without a palette (e.g. /desktop/welcome) simply don't render an
  * opener: the desktop titlebar's search pill is gated on its `show-search`
@@ -21,6 +22,12 @@ export const COMMAND_PALETTE_OPEN_EVENT = 'owlat:command-palette-open';
 /** Detail carried by the open event. Absent detail means "follow the route". */
 export interface CommandPaletteOpenDetail {
 	scope?: PaletteScope;
+	/**
+	 * Text to open with, caret at the end. The mail search page passes its
+	 * current query, so refining a search happens in this one box instead of a
+	 * second one on the page.
+	 */
+	query?: string;
 }
 
 export interface CommandPaletteControls {

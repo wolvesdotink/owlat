@@ -4230,7 +4230,6 @@
 			},
 			"postboxSearchBar": {
 				"placeholder": "E-Mails durchsuchen (from:sara has:attachment older_than:7d…)",
-				"suggestionsLabel": "Suchvorschläge",
 				"suggestions": {
 					"from": "Absenderadresse oder Name",
 					"to": "Empfängeradresse oder Name",
@@ -4250,10 +4249,8 @@
 					"before": "empfangen vor einem Datum",
 					"after": "empfangen nach einem Datum",
 					"newerThan": "aus den letzten 7d, 24h, 30m",
-					"olderThan": "älter als 7d, 24h, 30m",
-					"recent": "Zuletzt"
-				},
-				"label": "E-Mails durchsuchen"
+					"olderThan": "älter als 7d, 24h, 30m"
+				}
 			},
 			"postboxSecurityBadge": {
 				"cantDecryptSuffix": "· nicht entschlüsselbar",
@@ -9565,8 +9562,11 @@
 				"backToResults": "Ergebnisse",
 				"noResultsHint": "Versuchen Sie weniger oder allgemeinere Begriffe oder Operatoren wie from:, has:attachment, is:unread.",
 				"noResultsTitle": "Keine Ergebnisse für diese Suche",
-				"keepSearching": "Weiter suchen",
-				"pageEmptyWithMore": "Keine Treffer auf dieser Seite. Es gibt weitere Nachrichten zu durchsuchen.",
+				"pageEmptyWithMore": "Keine Treffer in den neueren E-Mails.",
+				"searchOlder": "Ältere E-Mails durchsuchen",
+				"searchingOlder": "Ältere E-Mails werden durchsucht…",
+				"changeSearch": "Suche ändern",
+				"searchMail": "E-Mails durchsuchen",
 				"operatorHint": "Verwenden Sie Operatoren wie {from}, {hasAttachment}, {before}, {label}, {isUnread}.",
 				"pageTitle": "Suche — Owlat",
 				"selectResult": "Wählen Sie ein Ergebnis",
@@ -9579,9 +9579,10 @@
 				"saveNamePlaceholder": "Suche benennen",
 				"alreadySaved": "Gespeichert als {name}",
 				"depth": {
-					"disabled": "Diese Instanz durchsucht nur die ersten 200 Zeichen einer Nachricht.",
-					"indexing": "Nachrichtentexte werden indexiert — ältere E-Mails werden weiterhin über ihre ersten 200 Zeichen durchsucht.",
-					"pending": "Ältere E-Mails werden weiterhin über ihre ersten 200 Zeichen durchsucht. Ein Administrator kann sie unter Einstellungen → Sealed Mail indexieren."
+					"disabled": "Die Suche liest nur die ersten 200 Zeichen jeder Nachricht.",
+					"indexing": "Nachrichtentexte werden indexiert. Bis das fertig ist, werden ältere E-Mails über ihre ersten 200 Zeichen durchsucht.",
+					"pending": "Ältere E-Mails werden über ihre ersten 200 Zeichen durchsucht, bis ihre Nachrichtentexte indexiert sind.",
+					"openSettings": "Sucheinstellungen öffnen"
 				}
 			},
 			"subscriptions": {
