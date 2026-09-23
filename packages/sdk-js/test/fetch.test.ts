@@ -106,11 +106,15 @@ describe('createHttpClient', () => {
 
 	describe('response parsing', () => {
 		it('should parse JSON response and return data + rateLimit', async () => {
-			mockFetch(200, { data: { id: '123' } }, {
-				'X-RateLimit-Limit': '100',
-				'X-RateLimit-Remaining': '99',
-				'X-RateLimit-Reset': '1700000000',
-			});
+			mockFetch(
+				200,
+				{ data: { id: '123' } },
+				{
+					'X-RateLimit-Limit': '100',
+					'X-RateLimit-Remaining': '99',
+					'X-RateLimit-Reset': '1700000000',
+				}
+			);
 			const http = createClient();
 			const result = await http.get('/test');
 
@@ -318,7 +322,7 @@ describe('createHttpClient', () => {
 			mockFetch(
 				429,
 				{ error: { message: 'Slow down', category: 'rate_limited', data: { retryAfter: 45 } } },
-				{ 'Retry-After': '30' },
+				{ 'Retry-After': '30' }
 			);
 			const http = createClient();
 
@@ -406,11 +410,15 @@ describe('createHttpClient', () => {
 
 	describe('rate limit extraction', () => {
 		it('should extract all rate limit headers', async () => {
-			mockFetch(200, { ok: true }, {
-				'X-RateLimit-Limit': '50',
-				'X-RateLimit-Remaining': '42',
-				'X-RateLimit-Reset': '1700001000',
-			});
+			mockFetch(
+				200,
+				{ ok: true },
+				{
+					'X-RateLimit-Limit': '50',
+					'X-RateLimit-Remaining': '42',
+					'X-RateLimit-Reset': '1700001000',
+				}
+			);
 			const http = createClient();
 			const result = await http.get('/test');
 
@@ -422,11 +430,15 @@ describe('createHttpClient', () => {
 		});
 
 		it('should include rate limit on error responses', async () => {
-			mockFetch(404, { error: { message: 'Not found', category: 'not_found' } }, {
-				'X-RateLimit-Limit': '100',
-				'X-RateLimit-Remaining': '98',
-				'X-RateLimit-Reset': '1700000000',
-			});
+			mockFetch(
+				404,
+				{ error: { message: 'Not found', category: 'not_found' } },
+				{
+					'X-RateLimit-Limit': '100',
+					'X-RateLimit-Remaining': '98',
+					'X-RateLimit-Reset': '1700000000',
+				}
+			);
 			const http = createClient();
 
 			try {
@@ -458,10 +470,10 @@ describe('createHttpClient', () => {
 			return vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
 				const r = responses[Math.min(call, responses.length - 1)];
 				call++;
-				return new Response(
-					r.body !== undefined ? JSON.stringify(r.body) : null,
-					{ status: r.status, headers: new Headers() },
-				);
+				return new Response(r.body !== undefined ? JSON.stringify(r.body) : null, {
+					status: r.status,
+					headers: new Headers(),
+				});
 			});
 		}
 
@@ -478,9 +490,7 @@ describe('createHttpClient', () => {
 		});
 
 		it('should NOT retry POST on network error (server may have processed it)', async () => {
-			const spy = vi
-				.spyOn(globalThis, 'fetch')
-				.mockRejectedValue(new TypeError('Failed to fetch'));
+			const spy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'));
 			const http = createRetryClient();
 
 			await expect(http.post('/test')).rejects.toMatchObject({ code: 'network_error' });
@@ -539,9 +549,11 @@ describe('createHttpClient', () => {
 		// "success" the resource layer then dereferences. Each call returns a
 		// fresh Response so the body can be re-read across retries.
 		function mockEmptyBody(status: number, headers: Record<string, string> = {}) {
-			return vi.spyOn(globalThis, 'fetch').mockImplementation(
-				async () => new Response(null, { status, headers: new Headers(headers) }),
-			);
+			return vi
+				.spyOn(globalThis, 'fetch')
+				.mockImplementation(
+					async () => new Response(null, { status, headers: new Headers(headers) })
+				);
 		}
 
 		function retryClient() {
@@ -615,10 +627,8 @@ describe('createHttpClient', () => {
 						: JSON.stringify({ data: 'ok' }),
 					{
 						status: isFirst ? 429 : 200,
-						headers: new Headers(
-							isFirst ? { 'Retry-After': String(retryAfterSeconds) } : {},
-						),
-					},
+						headers: new Headers(isFirst ? { 'Retry-After': String(retryAfterSeconds) } : {}),
+					}
 				);
 			});
 		}
