@@ -41,9 +41,16 @@
 #
 # Scope note: the grep matches inline `.query('<table>')` scans inside a query
 # span — the enumeration path where these leaks happen (getRecent,
-# topics.getContacts, listShareLinks). A read that fetches a single row by id in
-# a shared helper is out of scope for this conservative gate; check-query-authz.sh
-# and code review remain the backstop for those.
+# topics.getContacts, listShareLinks). It cannot see a row that arrives through
+# an id read or a helper (`ctx.db.get(thread.contactId)`, `batchGet`,
+# `getOrThrow`): a grep can neither tell which table an id points at nor whether
+# the handler projected the row before returning it, so any pattern broad enough
+# to catch those would also flag the reads that already project. That half is
+# covered by the companion type-level gate
+# convex/lib/__tests__/publicReturnRedaction.test.ts, which walks the declared
+# return type of every public query, mutation and action in the generated `api`
+# and fails when a capability field is reachable in it. It runs in
+# `turbo typecheck`, not here.
 
 set -uo pipefail
 repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"

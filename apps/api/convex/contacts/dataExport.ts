@@ -13,6 +13,7 @@ import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
+import { redactContactCapabilityFields } from './listing';
 import {
 	openBodyPreservingLegacyForContactExport,
 	openConversationPreviewPreservingLegacyForContactExport,
@@ -139,7 +140,10 @@ export const exportContactData = authedQuery({
 
 		return {
 			exportedAt: Date.now(),
-			contact,
+			// The pending DOI token is a consent capability, not personal data
+			// about the subject; a bundle handed outside the instance must not
+			// carry it.
+			contact: redactContactCapabilityFields(contact),
 			identities: await capped(identities),
 			topics: await capped(topics),
 			propertyValues: await capped(propertyValues),
