@@ -11,7 +11,10 @@
 
 import { modules as backendModules } from './testModules';
 
-const EXCLUDED_MODULE_MARKERS = ['sesActions', 'agentSecurity', 'llmProvider'] as const;
+// No module is named `sesActions` any more; the marker only matched
+// `mail/aliasesActions.ts` by accident, so alias-cache actions the mail suites
+// schedule could not be found and failed in the background.
+const EXCLUDED_MODULE_MARKERS = ['agentSecurity', 'llmProvider'] as const;
 
 export const modules = Object.fromEntries(
 	Object.entries(backendModules).filter(
