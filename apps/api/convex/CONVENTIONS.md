@@ -692,7 +692,7 @@ while the downgrade window is open, restore the backup after it closes.
 the previous release's table validators (`previousRelease.json`) and fails when
 the current schema rejects any of them: a field made required, a type changed, a
 union narrowed, a field or table dropped. Refresh the snapshot at each release
-(`bun run --cwd apps/api schema-compat:refresh` on the release commit, see
+(`release:cut` puts the refreshed snapshot in the release commit; see
 `docs/RELEASING.md`), never to make a failure go away. A deliberately retired
 table goes in the test's `RETIRED_TABLES` in the contract PR. The guard covers
 the schema half of the contract only. It does not check function arguments,
