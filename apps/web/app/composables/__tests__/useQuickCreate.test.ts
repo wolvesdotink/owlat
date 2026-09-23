@@ -27,6 +27,8 @@ let contact: { email?: string } | null;
 let contactFails: boolean;
 /** When set, `requireConvex()` throws — the no-client path. */
 let convexUnavailable: boolean;
+/** The shell's shared `useState` values, by key. */
+let states: Record<string, ReturnType<typeof ref>>;
 
 beforeEach(() => {
 	path = '/dashboard/campaigns';
@@ -59,6 +61,11 @@ beforeEach(() => {
 	vi.stubGlobal('navigateTo', (to: unknown) => {
 		navigations.push(to);
 		return Promise.resolve();
+	});
+	states = {};
+	vi.stubGlobal('useState', (key: string, init: () => unknown) => {
+		states[key] ??= ref(init());
+		return states[key];
 	});
 	vi.stubGlobal('requireConvex', () => {
 		if (convexUnavailable) throw new Error('no client');
@@ -112,6 +119,18 @@ describe('openCompose', () => {
 		expect(queries).toEqual([CONTACT_GET]);
 		expect(navigations).toEqual([]);
 		expect(opened).toEqual([{ mailboxId: 'mbx_2', prefillTo: ['ada@example.com'] }]);
+	});
+
+	it('answers a Team inbox thread in its own composer instead of a personal one', async () => {
+		path = '/dashboard/inbox/thread_1';
+		activeMailboxId.value = 'mbx_2';
+
+		const { openCompose } = await quickCreate();
+		await openCompose();
+
+		expect(opened).toEqual([]);
+		expect(navigations).toEqual([]);
+		expect(states['inbox:thread-reply-request']?.value).toBe(1);
 	});
 
 	it('opens an empty composer when the contact cannot be read', async () => {

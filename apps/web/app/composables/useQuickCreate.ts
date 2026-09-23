@@ -37,6 +37,7 @@ export function useQuickCreate() {
 	const route = useRoute();
 	const stack = usePostboxComposerStack();
 	const { activeMailboxId, setActiveMailboxId } = usePostboxActiveMailbox();
+	const threadReplyRequest = useThreadReplyRequest();
 
 	/**
 	 * The mailbox a new composer belongs to: the shared Postbox selection when
@@ -68,7 +69,7 @@ export function useQuickCreate() {
 	 */
 	async function resolvePrefillTo(): Promise<string[]> {
 		const context = composeContextForPath(route.path);
-		if (!context) return [];
+		if (context?.kind !== 'contact') return [];
 		try {
 			const contact = await requireConvex().query(api.contacts.contacts.get, {
 				contactId: context.contactId as Id<'contacts'>,
@@ -85,6 +86,12 @@ export function useQuickCreate() {
 	 * nothing to compose from instead of a silently dead keystroke.
 	 */
 	async function openCompose(): Promise<void> {
+		// On a Team inbox thread, Compose means "answer this thread": the page's
+		// own reply composer takes it, so the reply goes out from the team address.
+		if (composeContextForPath(route.path)?.kind === 'thread') {
+			threadReplyRequest.value += 1;
+			return;
+		}
 		const [mailboxId, prefillTo] = await Promise.all([
 			resolveComposeMailboxId(),
 			resolvePrefillTo(),
@@ -102,4 +109,13 @@ export function useQuickCreate() {
 	}
 
 	return { openCompose, openNewContact };
+}
+
+/**
+ * A counter the Team inbox thread page watches: each bump asks it to open and
+ * focus its reply composer. Shared state rather than an event, so the request
+ * is a plain reactive value a test can read.
+ */
+export function useThreadReplyRequest(): Ref<number> {
+	return useState<number>('inbox:thread-reply-request', () => 0);
 }

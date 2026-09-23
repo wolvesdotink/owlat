@@ -47,6 +47,17 @@ describe('composeContextForPath', () => {
 		});
 	});
 
+	it('answers a Team inbox thread, but not the static inbox pages beside it', () => {
+		expect(composeContextForPath('/dashboard/inbox/thread_1')).toEqual({
+			kind: 'thread',
+			threadId: 'thread_1',
+		});
+		for (const page of ['activity', 'code-tasks', 'failed', 'quarantine', 'review', 'updates']) {
+			expect(composeContextForPath(`/dashboard/inbox/${page}`), page).toBeNull();
+		}
+		expect(composeContextForPath('/dashboard/inbox')).toBeNull();
+	});
+
 	it('has no context on list pages or elsewhere', () => {
 		expect(composeContextForPath('/dashboard/audience/contacts')).toBeNull();
 		expect(composeContextForPath('/dashboard')).toBeNull();

@@ -425,6 +425,8 @@ const isSending = ref(false);
 function openReply() {
 	composerRef.value?.focus();
 }
+// "Compose email" (top bar, palette, shortcut) on a thread answers the thread.
+watch(useThreadReplyRequest(), () => openReply());
 
 /** A refused send: a teammate just replied, or someone handled it first. */
 function refusedSend(result: unknown): boolean {
