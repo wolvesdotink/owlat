@@ -1,8 +1,8 @@
 /**
  * Saved block (public surface) — thin shells that delegate row writes
  * to the **Saved block (module)** at `emailBlocks/module.ts`, plus the
- * read queries (`list`, `get`, `getStatsByTeam`, `getRecentByTeam`)
- * unchanged from the pre-ADR-0023 `emailBlocks.ts`.
+ * read queries (`list`, `get`, `getStatsByTeam`) unchanged from the
+ * pre-ADR-0023 `emailBlocks.ts`.
  *
  * The legacy `incrementUsage` mutation is gone — zero callers, and the
  * canonical writer of `emailBlocks.usageCount` is now the lifecycle's
