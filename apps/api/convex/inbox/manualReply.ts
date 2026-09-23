@@ -110,8 +110,7 @@ export const takeOverReply = adminMutation({
 			agentEnabled: status === 'security_check' && (await isFeatureEnabled(ctx, 'ai.agent')),
 			pipelineStarted: actions.length > 0,
 			receivedLongEnough:
-				status === 'received' &&
-				Date.now() - message._creationTime >= (await receivedWaitMs(ctx)),
+				status === 'received' && Date.now() - message._creationTime >= (await receivedWaitMs(ctx)),
 		});
 		if (refusal) throwInvalidState(refusal);
 

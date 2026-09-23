@@ -15,7 +15,8 @@ beforeAll(() => {
 
 const button = {
 	emits: ['click'],
-	template: '<button type="button" @click="$emit(\'click\', $event)"><slot /><slot name="iconLeft" /></button>',
+	template:
+		'<button type="button" @click="$emit(\'click\', $event)"><slot /><slot name="iconLeft" /></button>',
 };
 
 function mountActions(props: Record<string, unknown> = {}) {

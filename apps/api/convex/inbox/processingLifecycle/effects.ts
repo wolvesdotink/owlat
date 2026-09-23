@@ -25,7 +25,13 @@ import {
 	type TransitionInput,
 	type TransitionOutcome,
 } from './types';
-import { canFail, isClosedStatus, PROCESSING_LIFECYCLE, reduce, requiresManualTakeover } from './reducers';
+import {
+	canFail,
+	isClosedStatus,
+	PROCESSING_LIFECYCLE,
+	reduce,
+	requiresManualTakeover,
+} from './reducers';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 

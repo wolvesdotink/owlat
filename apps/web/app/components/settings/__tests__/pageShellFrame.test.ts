@@ -10,8 +10,7 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const pagesRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../pages');
-const FRAME =
-	/^(?:(?:sm|md|lg|xl|2xl):)?(?:(?:p|px|py|pt|pb|pl|pr)-\S+|max-w-\S+|mx-auto)$/;
+const FRAME = /^(?:(?:sm|md|lg|xl|2xl):)?(?:(?:p|px|py|pt|pb|pl|pr)-\S+|max-w-\S+|mx-auto)$/;
 
 function vueFiles(dir: string): string[] {
 	return readdirSync(dir).flatMap((name) => {

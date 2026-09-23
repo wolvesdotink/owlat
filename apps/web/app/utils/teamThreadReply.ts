@@ -145,7 +145,9 @@ export function otherWaitingDrafts<T extends ReplyTargetMessage>(
  * The subject a reply goes out under: the draft's, otherwise "Re: <subject>"
  * (the server's own fallback, `buildReplySubject`).
  */
-export function replySubject(message: Pick<ReplyTargetMessage, 'draftSubject' | 'subject'>): string {
+export function replySubject(
+	message: Pick<ReplyTargetMessage, 'draftSubject' | 'subject'>
+): string {
 	const draft = message.draftSubject?.trim();
 	if (draft) return draft;
 	const subject = message.subject ?? '';
