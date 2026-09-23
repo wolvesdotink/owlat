@@ -9997,7 +9997,7 @@
 				"pageTitle": "Writing voice — Owlat"
 			},
 			"externalAccount": {
-				"featureOffBody": "Your mailboxes above work as usual. Connecting an account from another provider (Gmail, Outlook, any IMAP server) is switched off on this Owlat instance. An admin can turn it on in Settings.",
+				"featureOffBody": "Your mailboxes above work as usual. Connecting an account from another provider, such as Gmail or Outlook, is switched off on this Owlat instance. An admin can turn it on in Settings.",
 				"featureOffTitle": "Connecting outside mail accounts is turned off",
 				"pageTitle": "Connected mailboxes — Owlat",
 				"subheading": "Your mailboxes, how they send, and mailboxes elsewhere that Owlat keeps in step."

@@ -9997,7 +9997,7 @@
 				"pageTitle": "Schreibstil — Owlat"
 			},
 			"externalAccount": {
-				"featureOffBody": "Ihre Postfächer oben funktionieren wie gewohnt. Das Verbinden eines Kontos bei einem anderen Anbieter (Gmail, Outlook, jeder IMAP-Server) ist auf dieser Owlat-Instanz abgeschaltet. Ein Admin kann es in den Einstellungen einschalten.",
+				"featureOffBody": "Ihre Postfächer oben funktionieren wie gewohnt. Das Verbinden eines Kontos bei einem anderen Anbieter, etwa Gmail oder Outlook, ist auf dieser Owlat-Instanz abgeschaltet. Ein Admin kann es in den Einstellungen einschalten.",
 				"featureOffTitle": "Das Verbinden externer Postfächer ist ausgeschaltet",
 				"pageTitle": "Verbundene Postfächer — Owlat",
 				"subheading": "Ihre Postfächer, wie sie senden, und Postfächer anderswo, die Owlat im Gleichschritt hält."
