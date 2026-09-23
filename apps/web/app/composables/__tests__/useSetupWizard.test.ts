@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import en from '~~/i18n/locales/en.json';
+import { describe, it, expect, beforeEach } from "vitest";
+import { MIN_PASSWORD_LENGTH } from "@owlat/shared/passwordPolicy";
+import en from "~~/i18n/locales/en.json";
 import {
 	SETUP_STEPS,
 	buildProviderEnv,
@@ -12,53 +13,53 @@ import {
 	type AdminDraft,
 	type EmailStepDraft,
 	type SmtpRelayDraft,
-} from '../useSetupWizard';
+} from "../useSetupWizard";
 import {
 	adminIsValid,
 	emailStepIsValid,
 	isSetupEmailValid,
 	validateAdmin,
 	validateEmailStep,
-} from '../setupWizardValidation';
+} from "../setupWizardValidation";
 import {
 	SETUP_DRAFT_STORAGE_KEY,
 	readSetupDraft,
 	serializeSetupDraft,
 	parseSetupDraft,
 	type SetupDraft,
-} from '../setupWizardDraft';
-import { getDefaultFlags, type FeatureFlagState } from '@owlat/shared/featureFlags';
+} from "../setupWizardDraft";
+import { getDefaultFlags, type FeatureFlagState } from "@owlat/shared/featureFlags";
 
 const validAdmin: AdminDraft = {
-	email: 'admin@example.com',
-	name: 'Alex Operator',
-	password: 'a-very-long-password',
+	email: "admin@example.com",
+	name: "Alex Operator",
+	password: "a-very-long-password",
 };
 
 const blankSmtp: SmtpRelayDraft = {
-	preset: 'custom',
-	host: '',
-	port: '',
+	preset: "custom",
+	host: "",
+	port: "",
 	secure: false,
-	username: '',
-	password: '',
+	username: "",
+	password: "",
 };
 
 function emailDraft(overrides: Partial<EmailStepDraft> = {}): EmailStepDraft {
 	return {
-		provider: 'mta',
+		provider: "mta",
 		requiresProvider: true,
-		resendKey: '',
-		ses: { region: 'us-east-1', accessKeyId: '', secretAccessKey: '' },
+		resendKey: "",
+		ses: { region: "us-east-1", accessKeyId: "", secretAccessKey: "" },
 		smtp: { ...blankSmtp },
 		mtaIdentity: {
-			transactionalIps: '203.0.113.10',
-			campaignIps: '203.0.113.11',
-			ehloHostname: 'mail.example.com',
-			ehloHostnames: '',
+			transactionalIps: "203.0.113.10",
+			campaignIps: "203.0.113.11",
+			ehloHostname: "mail.example.com",
+			ehloHostnames: "",
 		},
-		fromEmail: '',
-		fromName: '',
+		fromEmail: "",
+		fromName: "",
 		...overrides,
 	};
 }
@@ -67,12 +68,12 @@ function emailDraft(overrides: Partial<EmailStepDraft> = {}): EmailStepDraft {
 function smtpRelay(overrides: Partial<SmtpRelayDraft> = {}): SmtpRelayDraft {
 	const preset = SMTP_RELAY_PRESETS.mailgun;
 	return {
-		preset: 'mailgun',
+		preset: "mailgun",
 		host: preset.host,
 		port: preset.port,
 		secure: preset.secure,
-		username: 'postmaster@mg.acme.test',
-		password: 'relay-secret',
+		username: "postmaster@mg.acme.test",
+		password: "relay-secret",
 		...overrides,
 	};
 }
@@ -85,9 +86,9 @@ const receiveOnlyFlags: FeatureFlagState = {
 	automations: false,
 };
 
-describe('useSetupWizard step model', () => {
-	it('exposes five ordered, numbered steps ending in review', () => {
-		expect(SETUP_STEPS.map((s) => s.id)).toEqual(['mode', 'features', 'email', 'admin', 'review']);
+describe("useSetupWizard step model", () => {
+	it("exposes five ordered, numbered steps ending in review", () => {
+		expect(SETUP_STEPS.map((s) => s.id)).toEqual(["mode", "features", "email", "admin", "review"]);
 		expect(SETUP_STEPS.map((s) => s.number)).toEqual([1, 2, 3, 4, 5]);
 	});
 
@@ -99,7 +100,7 @@ describe('useSetupWizard step model', () => {
 	 * produced an unannounced account step. It now maps THIS list through
 	 * `setup.index.steps.<id>.*`, which only holds while every id has copy.
 	 */
-	it('has splash copy for every step, so the preview cannot understate the wizard', () => {
+	it("has splash copy for every step, so the preview cannot understate the wizard", () => {
 		const splash = en.setup.index.steps as Record<string, { title: string; desc: string }>;
 		for (const step of SETUP_STEPS) {
 			expect(splash[step.id]?.title, `missing title for ${step.id}`).toBeTruthy();
@@ -110,286 +111,292 @@ describe('useSetupWizard step model', () => {
 	});
 });
 
-describe('email validation helper', () => {
-	it.each(['admin@example.com', 'a.b@sub.example.co', '  trimmed@example.com  '])(
-		'accepts %s',
-		(value) => expect(isSetupEmailValid(value)).toBe(true)
+describe("email validation helper", () => {
+	it.each(["admin@example.com", "a.b@sub.example.co", "  trimmed@example.com  "])(
+		"accepts %s",
+		(value) => expect(isSetupEmailValid(value)).toBe(true),
 	);
-	it.each(['', 'no-at-sign', 'missing@tld', '@nolocal.com'])('rejects %s', (value) =>
-		expect(isSetupEmailValid(value)).toBe(false)
+	it.each(["", "no-at-sign", "missing@tld", "@nolocal.com"])("rejects %s", (value) =>
+		expect(isSetupEmailValid(value)).toBe(false),
 	);
 });
 
-describe('admin step navigation gate', () => {
-	it('cannot advance with an invalid email', () => {
-		expect(validateAdmin({ ...validAdmin, email: 'not-an-email' })).toEqual({
-			email: 'shared.setupWizardValidation.admin.emailInvalid',
+describe("admin step navigation gate", () => {
+	it("cannot advance with an invalid email", () => {
+		expect(validateAdmin({ ...validAdmin, email: "not-an-email" })).toEqual({
+			email: "shared.setupWizardValidation.admin.emailInvalid",
 		});
 	});
 
-	it('cannot advance with a password under 12 characters', () => {
-		expect(validateAdmin({ ...validAdmin, password: 'short' })).toEqual({
-			password: 'shared.setupWizardValidation.admin.passwordTooShort',
-		});
+	it("cannot advance with a password under the shared minimum", () => {
+		expect(validateAdmin({ ...validAdmin, password: "a".repeat(MIN_PASSWORD_LENGTH - 1) })).toEqual(
+			{
+				password: "shared.setupWizardValidation.admin.passwordTooShort",
+			},
+		);
 	});
 
-	it('can advance once email and password are valid', () => {
+	it("accepts a password exactly at the shared minimum (same rule as the server)", () => {
+		expect(validateAdmin({ ...validAdmin, password: "a".repeat(MIN_PASSWORD_LENGTH) })).toEqual({});
+	});
+
+	it("can advance once email and password are valid", () => {
 		expect(validateAdmin(validAdmin)).toEqual({});
 		expect(adminIsValid(validAdmin)).toBe(true);
 	});
 });
 
-describe('email step navigation gate', () => {
+describe("email step navigation gate", () => {
 	it('cannot advance with "none" when a delivery provider is required', () => {
-		const draft = emailDraft({ provider: 'none', requiresProvider: true });
+		const draft = emailDraft({ provider: "none", requiresProvider: true });
 		expect(validateEmailStep(draft)).toMatchObject({
-			provider: 'shared.setupWizardValidation.email.providerRequired',
+			provider: "shared.setupWizardValidation.email.providerRequired",
 		});
 	});
 
 	it('can advance with "none" when no provider is required (receive-only)', () => {
-		const draft = emailDraft({ provider: 'none', requiresProvider: false });
+		const draft = emailDraft({ provider: "none", requiresProvider: false });
 		expect(emailStepIsValid(draft)).toBe(true);
 	});
 
-	it('cannot advance with Resend selected but no API key', () => {
-		const draft = emailDraft({ provider: 'resend', resendKey: '' });
+	it("cannot advance with Resend selected but no API key", () => {
+		const draft = emailDraft({ provider: "resend", resendKey: "" });
 		expect(validateEmailStep(draft)).toMatchObject({
-			resendKey: 'shared.setupWizardValidation.email.resendKeyRequired',
+			resendKey: "shared.setupWizardValidation.email.resendKeyRequired",
 		});
 	});
 
-	it('cannot advance with SES selected but missing credentials', () => {
-		const draft = emailDraft({ provider: 'ses' });
+	it("cannot advance with SES selected but missing credentials", () => {
+		const draft = emailDraft({ provider: "ses" });
 		expect(validateEmailStep(draft)).toMatchObject({
-			ses: 'shared.setupWizardValidation.email.sesIncomplete',
+			ses: "shared.setupWizardValidation.email.sesIncomplete",
 		});
 	});
 
-	it('cannot advance with an SMTP relay missing host/username/password', () => {
-		const draft = emailDraft({ provider: 'smtp', smtp: { ...blankSmtp } });
+	it("cannot advance with an SMTP relay missing host/username/password", () => {
+		const draft = emailDraft({ provider: "smtp", smtp: { ...blankSmtp } });
 		expect(validateEmailStep(draft)).toMatchObject({
-			smtp: 'shared.setupWizardValidation.email.smtpIncomplete',
+			smtp: "shared.setupWizardValidation.email.smtpIncomplete",
 		});
 	});
 
-	it('cannot advance with an SMTP relay host but missing credentials', () => {
+	it("cannot advance with an SMTP relay host but missing credentials", () => {
 		const draft = emailDraft({
-			provider: 'smtp',
-			smtp: smtpRelay({ username: '', password: '' }),
+			provider: "smtp",
+			smtp: smtpRelay({ username: "", password: "" }),
 		});
 		expect(validateEmailStep(draft)).toMatchObject({
-			smtp: 'shared.setupWizardValidation.email.smtpIncomplete',
+			smtp: "shared.setupWizardValidation.email.smtpIncomplete",
 		});
 	});
 
-	it('rejects a non-numeric or out-of-range SMTP port', () => {
-		for (const port of ['abc', '70000']) {
+	it("rejects a non-numeric or out-of-range SMTP port", () => {
+		for (const port of ["abc", "70000"]) {
 			expect(
-				validateEmailStep(emailDraft({ provider: 'smtp', smtp: smtpRelay({ port }) })).smtp
-			).toBe('shared.setupWizardValidation.email.smtpPortInvalid');
+				validateEmailStep(emailDraft({ provider: "smtp", smtp: smtpRelay({ port }) })).smtp,
+			).toBe("shared.setupWizardValidation.email.smtpPortInvalid");
 		}
 	});
 
-	it('accepts a complete SMTP relay (blank port defaults to 587)', () => {
-		expect(emailStepIsValid(emailDraft({ provider: 'smtp', smtp: smtpRelay({ port: '' }) }))).toBe(
-			true
+	it("accepts a complete SMTP relay (blank port defaults to 587)", () => {
+		expect(emailStepIsValid(emailDraft({ provider: "smtp", smtp: smtpRelay({ port: "" }) }))).toBe(
+			true,
 		);
-		expect(emailStepIsValid(emailDraft({ provider: 'smtp', smtp: smtpRelay() }))).toBe(true);
+		expect(emailStepIsValid(emailDraft({ provider: "smtp", smtp: smtpRelay() }))).toBe(true);
 	});
 
-	it('ships prefilled STARTTLS-on-587 presets for each named relay', () => {
-		for (const key of ['mailgun', 'postmark', 'sendgrid', 'brevo'] as const) {
+	it("ships prefilled STARTTLS-on-587 presets for each named relay", () => {
+		for (const key of ["mailgun", "postmark", "sendgrid", "brevo"] as const) {
 			const preset = SMTP_RELAY_PRESETS[key];
-			expect(preset.host).not.toBe('');
-			expect(preset.port).toBe('587');
+			expect(preset.host).not.toBe("");
+			expect(preset.port).toBe("587");
 			expect(preset.secure).toBe(false);
 		}
-		expect(SMTP_RELAY_PRESETS.custom.host).toBe('');
+		expect(SMTP_RELAY_PRESETS.custom.host).toBe("");
 	});
 
-	it('rejects a malformed optional From address', () => {
-		const draft = emailDraft({ provider: 'mta', fromEmail: 'bogus' });
+	it("rejects a malformed optional From address", () => {
+		const draft = emailDraft({ provider: "mta", fromEmail: "bogus" });
 		expect(validateEmailStep(draft)).toMatchObject({
-			fromEmail: 'shared.setupWizardValidation.email.fromEmailInvalid',
+			fromEmail: "shared.setupWizardValidation.email.fromEmailInvalid",
 		});
 	});
 
-	it('accepts a blank From address (the field is optional)', () => {
-		expect(emailStepIsValid(emailDraft({ provider: 'mta', fromEmail: '' }))).toBe(true);
+	it("accepts a blank From address (the field is optional)", () => {
+		expect(emailStepIsValid(emailDraft({ provider: "mta", fromEmail: "" }))).toBe(true);
 	});
 
-	it('requires the outbound IP and EHLO identity whenever the MTA profile is enabled', () => {
+	it("requires the outbound IP and EHLO identity whenever the MTA profile is enabled", () => {
 		const draft = emailDraft({
-			provider: 'smtp',
+			provider: "smtp",
 			smtp: smtpRelay(),
 			mtaProfileEnabled: true,
 			mtaIdentity: {
-				transactionalIps: '',
-				campaignIps: '',
-				ehloHostname: '',
-				ehloHostnames: '',
+				transactionalIps: "",
+				campaignIps: "",
+				ehloHostname: "",
+				ehloHostnames: "",
 			},
 		});
 		expect(validateEmailStep(draft)).toMatchObject({
-			mtaIdentity: 'shared.setupMtaIdentity.missingIpsOrHostname',
+			mtaIdentity: "shared.setupMtaIdentity.missingIpsOrHostname",
 		});
 	});
 
-	it('rejects malformed per-IP EHLO JSON', () => {
+	it("rejects malformed per-IP EHLO JSON", () => {
 		const draft = emailDraft({
-			mtaIdentity: { ...emailDraft().mtaIdentity!, ehloHostnames: 'not json' },
+			mtaIdentity: { ...emailDraft().mtaIdentity!, ehloHostnames: "not json" },
 		});
 		// The validator returns a catalog key (the wizard renders it through `t`),
 		// so the wording is asserted where it now lives.
 		const message = validateEmailStep(draft).mtaIdentity;
-		expect(message).toBe('shared.setupMtaIdentity.invalidEhloHostnames');
-		expect(en.shared.setupMtaIdentity.invalidEhloHostnames).toContain('JSON object');
+		expect(message).toBe("shared.setupMtaIdentity.invalidEhloHostnames");
+		expect(en.shared.setupMtaIdentity.invalidEhloHostnames).toContain("JSON object");
 	});
 });
 
-describe('buildProviderEnv', () => {
-	it('writes the provider and its credentials, clearing stale keys', () => {
+describe("buildProviderEnv", () => {
+	it("writes the provider and its credentials, clearing stale keys", () => {
 		const env = buildProviderEnv(
-			{ AWS_SES_REGION: 'eu-west-1', RESEND_API_KEY: 'old' },
-			emailDraft({ provider: 'resend', resendKey: 're_live_123' })
+			{ AWS_SES_REGION: "eu-west-1", RESEND_API_KEY: "old" },
+			emailDraft({ provider: "resend", resendKey: "re_live_123" }),
 		);
-		expect(env['EMAIL_PROVIDER']).toBe('resend');
-		expect(env['RESEND_API_KEY']).toBe('re_live_123');
-		expect(env['AWS_SES_REGION']).toBeUndefined();
+		expect(env["EMAIL_PROVIDER"]).toBe("resend");
+		expect(env["RESEND_API_KEY"]).toBe("re_live_123");
+		expect(env["AWS_SES_REGION"]).toBeUndefined();
 	});
 
-	it('writes the SMTP relay env from a preset draft, defaulting a blank port to 587', () => {
+	it("writes the SMTP relay env from a preset draft, defaulting a blank port to 587", () => {
 		const env = buildProviderEnv(
-			{ RESEND_API_KEY: 'old' },
-			emailDraft({ provider: 'smtp', smtp: smtpRelay({ port: '' }) })
+			{ RESEND_API_KEY: "old" },
+			emailDraft({ provider: "smtp", smtp: smtpRelay({ port: "" }) }),
 		);
-		expect(env['EMAIL_PROVIDER']).toBe('smtp');
-		expect(env['SMTP_RELAY_HOST']).toBe('smtp.mailgun.org');
-		expect(env['SMTP_RELAY_USERNAME']).toBe('postmaster@mg.acme.test');
-		expect(env['SMTP_RELAY_PASSWORD']).toBe('relay-secret');
-		expect(env['SMTP_RELAY_SECURE']).toBe('false');
+		expect(env["EMAIL_PROVIDER"]).toBe("smtp");
+		expect(env["SMTP_RELAY_HOST"]).toBe("smtp.mailgun.org");
+		expect(env["SMTP_RELAY_USERNAME"]).toBe("postmaster@mg.acme.test");
+		expect(env["SMTP_RELAY_PASSWORD"]).toBe("relay-secret");
+		expect(env["SMTP_RELAY_SECURE"]).toBe("false");
 		// Blank port ⇒ write the default 587 explicitly so a stale on-disk value
 		// (apply.post.ts merges over .env) can't survive and diverge.
-		expect(env['SMTP_RELAY_PORT']).toBe('587');
+		expect(env["SMTP_RELAY_PORT"]).toBe("587");
 		// Stale credentials from another provider are cleared.
-		expect(env['RESEND_API_KEY']).toBeUndefined();
+		expect(env["RESEND_API_KEY"]).toBeUndefined();
 	});
 
-	it('writes an explicit SMTP port and implicit-TLS flag when set', () => {
+	it("writes an explicit SMTP port and implicit-TLS flag when set", () => {
 		const env = buildProviderEnv(
 			{},
-			emailDraft({ provider: 'smtp', smtp: smtpRelay({ port: '465', secure: true }) })
+			emailDraft({ provider: "smtp", smtp: smtpRelay({ port: "465", secure: true }) }),
 		);
-		expect(env['SMTP_RELAY_PORT']).toBe('465');
-		expect(env['SMTP_RELAY_SECURE']).toBe('true');
+		expect(env["SMTP_RELAY_PORT"]).toBe("465");
+		expect(env["SMTP_RELAY_SECURE"]).toBe("true");
 	});
 
-	it('clears stale SMTP relay keys when switching to another provider', () => {
+	it("clears stale SMTP relay keys when switching to another provider", () => {
 		const env = buildProviderEnv(
-			{ EMAIL_PROVIDER: 'smtp', SMTP_RELAY_HOST: 'smtp.old.test', SMTP_RELAY_PASSWORD: 'x' },
-			emailDraft({ provider: 'resend', resendKey: 're_new' })
+			{ EMAIL_PROVIDER: "smtp", SMTP_RELAY_HOST: "smtp.old.test", SMTP_RELAY_PASSWORD: "x" },
+			emailDraft({ provider: "resend", resendKey: "re_new" }),
 		);
-		expect(env['EMAIL_PROVIDER']).toBe('resend');
-		expect(env['SMTP_RELAY_HOST']).toBeUndefined();
-		expect(env['SMTP_RELAY_PASSWORD']).toBeUndefined();
+		expect(env["EMAIL_PROVIDER"]).toBe("resend");
+		expect(env["SMTP_RELAY_HOST"]).toBeUndefined();
+		expect(env["SMTP_RELAY_PASSWORD"]).toBeUndefined();
 	});
 
 	it('clears the provider entirely for "none"', () => {
 		const env = buildProviderEnv(
-			{ EMAIL_PROVIDER: 'mta' },
-			emailDraft({ provider: 'none', requiresProvider: false })
+			{ EMAIL_PROVIDER: "mta" },
+			emailDraft({ provider: "none", requiresProvider: false }),
 		);
-		expect(env['EMAIL_PROVIDER']).toBeUndefined();
+		expect(env["EMAIL_PROVIDER"]).toBeUndefined();
 	});
 
-	it('flows the optional From-identity into the apply env', () => {
+	it("flows the optional From-identity into the apply env", () => {
 		const env = buildProviderEnv(
 			{},
-			emailDraft({ provider: 'mta', fromEmail: 'hello@acme.test', fromName: 'Acme' })
+			emailDraft({ provider: "mta", fromEmail: "hello@acme.test", fromName: "Acme" }),
 		);
-		expect(env['DEFAULT_FROM_EMAIL']).toBe('hello@acme.test');
-		expect(env['DEFAULT_FROM_NAME']).toBe('Acme');
+		expect(env["DEFAULT_FROM_EMAIL"]).toBe("hello@acme.test");
+		expect(env["DEFAULT_FROM_NAME"]).toBe("Acme");
 	});
 
-	it('drops a previously-set From-identity when cleared', () => {
+	it("drops a previously-set From-identity when cleared", () => {
 		const env = buildProviderEnv(
-			{ DEFAULT_FROM_EMAIL: 'old@acme.test', DEFAULT_FROM_NAME: 'Old' },
-			emailDraft({ provider: 'mta', fromEmail: '', fromName: '' })
+			{ DEFAULT_FROM_EMAIL: "old@acme.test", DEFAULT_FROM_NAME: "Old" },
+			emailDraft({ provider: "mta", fromEmail: "", fromName: "" }),
 		);
-		expect(env['DEFAULT_FROM_EMAIL']).toBeUndefined();
-		expect(env['DEFAULT_FROM_NAME']).toBeUndefined();
+		expect(env["DEFAULT_FROM_EMAIL"]).toBeUndefined();
+		expect(env["DEFAULT_FROM_NAME"]).toBeUndefined();
 	});
 
-	it('writes MTA identity env even when direct delivery uses an SMTP relay', () => {
+	it("writes MTA identity env even when direct delivery uses an SMTP relay", () => {
 		const env = buildProviderEnv(
 			{},
-			emailDraft({ provider: 'smtp', smtp: smtpRelay(), mtaProfileEnabled: true })
+			emailDraft({ provider: "smtp", smtp: smtpRelay(), mtaProfileEnabled: true }),
 		);
 		expect(env).toMatchObject({
-			EMAIL_PROVIDER: 'smtp',
-			IP_POOLS_TRANSACTIONAL: '203.0.113.10',
-			IP_POOLS_CAMPAIGN: '203.0.113.11',
-			EHLO_HOSTNAME: 'mail.example.com',
+			EMAIL_PROVIDER: "smtp",
+			IP_POOLS_TRANSACTIONAL: "203.0.113.10",
+			IP_POOLS_CAMPAIGN: "203.0.113.11",
+			EHLO_HOSTNAME: "mail.example.com",
 		});
 	});
 });
 
-describe('review step renders the collected config', () => {
-	it('summarizes enabled features, provider, From-identity, and admin', () => {
+describe("review step renders the collected config", () => {
+	it("summarizes enabled features, provider, From-identity, and admin", () => {
 		const env = buildProviderEnv(
 			{},
 			emailDraft({
-				provider: 'resend',
-				resendKey: 're_1',
-				fromEmail: 'team@acme.test',
-				fromName: 'Acme',
-			})
+				provider: "resend",
+				resendKey: "re_1",
+				fromEmail: "team@acme.test",
+				fromName: "Acme",
+			}),
 		);
 		const summary = buildSetupSummary(getDefaultFlags(), env, validAdmin);
 
-		expect(summary.provider).toBe('resend');
-		expect(summary.providerLabel).toBe('Resend');
-		expect(summary.fromIdentity).toBe('Acme <team@acme.test>');
-		expect(summary.adminEmail).toBe('admin@example.com');
-		expect(summary.adminName).toBe('Alex Operator');
+		expect(summary.provider).toBe("resend");
+		expect(summary.providerLabel).toBe("Resend");
+		expect(summary.fromIdentity).toBe("Acme <team@acme.test>");
+		expect(summary.adminEmail).toBe("admin@example.com");
+		expect(summary.adminName).toBe("Alex Operator");
 		// Defaults enable campaigns + transactional, so those surface as active.
-		expect(summary.activeFeatures).toContain('campaigns');
+		expect(summary.activeFeatures).toContain("campaigns");
 		expect(summary.missingProvider).toBe(false);
 	});
 
-	it('summarizes an SMTP relay install', () => {
-		const env = buildProviderEnv({}, emailDraft({ provider: 'smtp', smtp: smtpRelay() }));
+	it("summarizes an SMTP relay install", () => {
+		const env = buildProviderEnv({}, emailDraft({ provider: "smtp", smtp: smtpRelay() }));
 		const summary = buildSetupSummary(getDefaultFlags(), env, validAdmin);
-		expect(summary.provider).toBe('smtp');
-		expect(summary.providerLabel).toBe('SMTP relay');
+		expect(summary.provider).toBe("smtp");
+		expect(summary.providerLabel).toBe("SMTP relay");
 		expect(summary.missingProvider).toBe(false);
 	});
 
-	it('flags a missing provider when bulk sending is on but none was chosen', () => {
+	it("flags a missing provider when bulk sending is on but none was chosen", () => {
 		const summary = buildSetupSummary(getDefaultFlags(), {}, validAdmin);
-		expect(summary.provider).toBe('none');
+		expect(summary.provider).toBe("none");
 		expect(summary.missingProvider).toBe(true);
 	});
 
-	it('does not require a provider for a receive-only feature set', () => {
+	it("does not require a provider for a receive-only feature set", () => {
 		const summary = buildSetupSummary(receiveOnlyFlags, {}, validAdmin);
 		expect(summary.missingProvider).toBe(false);
-		expect(summary.activeFeatures).not.toContain('campaigns');
+		expect(summary.activeFeatures).not.toContain("campaigns");
 	});
 
-	it('renders a From-identity of just the address when no name is set', () => {
+	it("renders a From-identity of just the address when no name is set", () => {
 		const summary = buildSetupSummary(
 			getDefaultFlags(),
-			{ EMAIL_PROVIDER: 'mta', DEFAULT_FROM_EMAIL: 'solo@acme.test' },
-			validAdmin
+			{ EMAIL_PROVIDER: "mta", DEFAULT_FROM_EMAIL: "solo@acme.test" },
+			validAdmin,
 		);
-		expect(summary.fromIdentity).toBe('solo@acme.test');
+		expect(summary.fromIdentity).toBe("solo@acme.test");
 	});
 });
 
-describe('migration-mode question writes the apply body', () => {
-	it('defaults to a fresh start (isMigrationMode false)', () => {
+describe("migration-mode question writes the apply body", () => {
+	it("defaults to a fresh start (isMigrationMode false)", () => {
 		const body = buildApplyBody(getDefaultFlags(), {}, validAdmin, false);
 		expect(body.isMigrationMode).toBe(false);
 	});
@@ -403,155 +410,155 @@ describe('migration-mode question writes the apply body', () => {
 	});
 });
 
-describe('post-apply readiness probe', () => {
-	it('treats a 403 (setup mode cleared) as ready to advance', () => {
+describe("post-apply readiness probe", () => {
+	it("treats a 403 (setup mode cleared) as ready to advance", () => {
 		expect(interpretSetupModeProbe(403)).toBe(true);
 	});
-	it('keeps waiting while setup mode is still live', () => {
+	it("keeps waiting while setup mode is still live", () => {
 		expect(interpretSetupModeProbe(400)).toBe(false);
 		expect(interpretSetupModeProbe(200)).toBe(false);
 		expect(interpretSetupModeProbe(503)).toBe(false);
 	});
 });
 
-describe('draft persistence round-trip', () => {
+describe("draft persistence round-trip", () => {
 	const fullDraft: SetupDraft = {
 		flags: getDefaultFlags(),
-		env: { EMAIL_PROVIDER: 'resend', RESEND_API_KEY: 're_live_1' },
+		env: { EMAIL_PROVIDER: "resend", RESEND_API_KEY: "re_live_1" },
 		admin: validAdmin,
 		isMigrationMode: true,
-		token: 'stk_abc123',
+		token: "stk_abc123",
 	};
 
-	it('restores every non-secret field after a serialize→parse reload', () => {
+	it("restores every non-secret field after a serialize→parse reload", () => {
 		const restored = parseSetupDraft(serializeSetupDraft(fullDraft));
 		expect(restored).toEqual({
 			flags: fullDraft.flags,
 			env: fullDraft.env,
 			// Password blanked, token dropped — the two bearer secrets never persist.
-			admin: { ...validAdmin, password: '' },
+			admin: { ...validAdmin, password: "" },
 			isMigrationMode: true,
 		});
 	});
 
-	it('never persists the admin password or the setup token', () => {
+	it("never persists the admin password or the setup token", () => {
 		const serialized = serializeSetupDraft(fullDraft);
 		// The raw sessionStorage payload must not contain either secret verbatim.
 		expect(serialized).not.toContain(validAdmin.password);
-		expect(serialized).not.toContain('stk_abc123');
+		expect(serialized).not.toContain("stk_abc123");
 		const restored = parseSetupDraft(serialized);
 		expect(restored?.token).toBeUndefined();
-		expect(restored?.admin?.password).toBe('');
+		expect(restored?.admin?.password).toBe("");
 		// Provider credentials in `env` are still restored (narrower tradeoff).
-		expect(restored?.env?.['RESEND_API_KEY']).toBe('re_live_1');
+		expect(restored?.env?.["RESEND_API_KEY"]).toBe("re_live_1");
 	});
 
-	it('refuses to surface a password from a legacy entry that still carries one', () => {
+	it("refuses to surface a password from a legacy entry that still carries one", () => {
 		const restored = parseSetupDraft(
 			JSON.stringify({
-				admin: { email: 'a@b.co', name: 'Admin', password: 'leaked-legacy-secret' },
-				token: 'stk_legacy',
-			})
+				admin: { email: "a@b.co", name: "Admin", password: "leaked-legacy-secret" },
+				token: "stk_legacy",
+			}),
 		);
-		expect(restored?.admin?.password).toBe('');
+		expect(restored?.admin?.password).toBe("");
 		expect(restored?.token).toBeUndefined();
 	});
 
-	it('returns null for a missing or non-JSON payload so a bad entry never crashes', () => {
+	it("returns null for a missing or non-JSON payload so a bad entry never crashes", () => {
 		expect(parseSetupDraft(null)).toBeNull();
 		expect(parseSetupDraft(undefined)).toBeNull();
-		expect(parseSetupDraft('')).toBeNull();
-		expect(parseSetupDraft('not-json')).toBeNull();
+		expect(parseSetupDraft("")).toBeNull();
+		expect(parseSetupDraft("not-json")).toBeNull();
 		// Valid JSON that isn't an object is still rejected.
 		expect(parseSetupDraft('"just a string"')).toBeNull();
-		expect(parseSetupDraft('42')).toBeNull();
+		expect(parseSetupDraft("42")).toBeNull();
 	});
 
-	it('drops fields of the wrong shape rather than trusting them', () => {
+	it("drops fields of the wrong shape rather than trusting them", () => {
 		const restored = parseSetupDraft(
 			JSON.stringify({
 				token: 5,
-				isMigrationMode: 'yes',
-				admin: { email: 'x' },
-				env: { OK: 'v', BAD: 3 },
-				flags: { campaigns: 'on' },
-			})
+				isMigrationMode: "yes",
+				admin: { email: "x" },
+				env: { OK: "v", BAD: 3 },
+				flags: { campaigns: "on" },
+			}),
 		);
 		expect(restored).toEqual({});
 	});
 
-	it('accepts a partial draft, surfacing only the well-typed non-secret fields', () => {
-		const restored = parseSetupDraft(JSON.stringify({ token: 'stk_x', isMigrationMode: false }));
+	it("accepts a partial draft, surfacing only the well-typed non-secret fields", () => {
+		const restored = parseSetupDraft(JSON.stringify({ token: "stk_x", isMigrationMode: false }));
 		// `token` is never surfaced from storage, so only the migration flag remains.
 		expect(restored).toEqual({ isMigrationMode: false });
 	});
 });
 
-describe('readSetupDraft — sessionStorage read the reload restore hinges on', () => {
+describe("readSetupDraft — sessionStorage read the reload restore hinges on", () => {
 	const fullDraft: SetupDraft = {
 		flags: getDefaultFlags(),
-		env: { EMAIL_PROVIDER: 'resend', RESEND_API_KEY: 're_live_1' },
+		env: { EMAIL_PROVIDER: "resend", RESEND_API_KEY: "re_live_1" },
 		admin: validAdmin,
 		isMigrationMode: true,
-		token: 'stk_abc123',
+		token: "stk_abc123",
 	};
 
 	beforeEach(() => {
 		sessionStorage.clear();
 	});
 
-	it('returns the persisted (secret-stripped) draft seeded under the namespaced key', () => {
+	it("returns the persisted (secret-stripped) draft seeded under the namespaced key", () => {
 		sessionStorage.setItem(SETUP_DRAFT_STORAGE_KEY, serializeSetupDraft(fullDraft));
 		expect(readSetupDraft()).toEqual({
 			flags: fullDraft.flags,
 			env: fullDraft.env,
-			admin: { ...validAdmin, password: '' },
+			admin: { ...validAdmin, password: "" },
 			isMigrationMode: true,
 		});
 	});
 
-	it('returns null when no draft has been persisted', () => {
+	it("returns null when no draft has been persisted", () => {
 		expect(readSetupDraft()).toBeNull();
 	});
 });
 
-describe('the post-setup handoff URL', () => {
+describe("the post-setup handoff URL", () => {
 	// The wizard's ONE full page load: the review step's finale hands off here on
 	// a click, instead of the two `window.location.href` reloads that used to fire
 	// on their own and drop the operator on a bare login form.
-	const target = '/auth/login?postSetup=1&email=admin%40acme.test';
+	const target = "/auth/login?postSetup=1&email=admin%40acme.test";
 
-	it('is the server-chosen login target when no destination was picked', () => {
+	it("is the server-chosen login target when no destination was picked", () => {
 		expect(setupSignInHref(target)).toBe(target);
 	});
 
 	it('carries the picked destination through as the login form\'s "redirect"', () => {
-		expect(setupSignInHref(target, '/dashboard/postbox')).toBe(
-			`${target}&redirect=%2Fdashboard%2Fpostbox`
+		expect(setupSignInHref(target, "/dashboard/postbox")).toBe(
+			`${target}&redirect=%2Fdashboard%2Fpostbox`,
 		);
 	});
 
-	it('opens the query string when the target has none', () => {
-		expect(setupSignInHref('/auth/login', '/dashboard/admin/team')).toBe(
-			'/auth/login?redirect=%2Fdashboard%2Fadmin%2Fteam'
+	it("opens the query string when the target has none", () => {
+		expect(setupSignInHref("/auth/login", "/dashboard/admin/team")).toBe(
+			"/auth/login?redirect=%2Fdashboard%2Fadmin%2Fteam",
 		);
 	});
 
-	it('encodes the destination rather than splicing it in raw', () => {
+	it("encodes the destination rather than splicing it in raw", () => {
 		// A destination is never operator input here, but an un-encoded `&` would
 		// still silently truncate the redirect into a second query parameter.
-		expect(setupSignInHref(target, '/dashboard/x?a=1&b=2')).toContain(
-			'redirect=%2Fdashboard%2Fx%3Fa%3D1%26b%3D2'
+		expect(setupSignInHref(target, "/dashboard/x?a=1&b=2")).toContain(
+			"redirect=%2Fdashboard%2Fx%3Fa%3D1%26b%3D2",
 		);
 	});
 });
 
-describe('setupStepPath', () => {
-	it('maps each step id to its /setup/* route', () => {
-		expect(setupStepPath('mode')).toBe('/setup/mode');
-		expect(setupStepPath('features')).toBe('/setup/features');
-		expect(setupStepPath('email')).toBe('/setup/email');
-		expect(setupStepPath('admin')).toBe('/setup/admin');
-		expect(setupStepPath('review')).toBe('/setup/review');
+describe("setupStepPath", () => {
+	it("maps each step id to its /setup/* route", () => {
+		expect(setupStepPath("mode")).toBe("/setup/mode");
+		expect(setupStepPath("features")).toBe("/setup/features");
+		expect(setupStepPath("email")).toBe("/setup/email");
+		expect(setupStepPath("admin")).toBe("/setup/admin");
+		expect(setupStepPath("review")).toBe("/setup/review");
 	});
 });

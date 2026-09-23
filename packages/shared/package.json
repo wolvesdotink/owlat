@@ -122,6 +122,10 @@
 			"types": "./src/setupToken.ts",
 			"import": "./src/setupToken.ts"
 		},
+		"./passwordPolicy": {
+			"types": "./src/passwordPolicy.ts",
+			"import": "./src/passwordPolicy.ts"
+		},
 		"./passwordHash": {
 			"types": "./src/passwordHash.ts",
 			"import": "./src/passwordHash.ts"

@@ -17,8 +17,9 @@
  * are imported here as types only, so nothing about this split creates a cycle.
  */
 
-import { validateMtaIdentityDraft } from '~/utils/setupMtaIdentity';
-import type { AdminDraft, EmailStepDraft } from './useSetupWizard';
+import { meetsMinPasswordLength } from "@owlat/shared/passwordPolicy";
+import { validateMtaIdentityDraft } from "~/utils/setupMtaIdentity";
+import type { AdminDraft, EmailStepDraft } from "./useSetupWizard";
 
 // Mirrors the server's deliberately-lenient check in apply.post.ts so the client
 // never blocks an address the backend would accept (or vice-versa). Named
@@ -29,8 +30,6 @@ export function isSetupEmailValid(value: string): boolean {
 	return EMAIL_RE.test(value.trim());
 }
 
-const MIN_PASSWORD_LENGTH = 12;
-
 export interface AdminErrors {
 	email?: string;
 	password?: string;
@@ -39,12 +38,12 @@ export interface AdminErrors {
 export function validateAdmin(admin: AdminDraft): AdminErrors {
 	const errors: AdminErrors = {};
 	if (!isSetupEmailValid(admin.email)) {
-		errors.email = 'shared.setupWizardValidation.admin.emailInvalid';
+		errors.email = "shared.setupWizardValidation.admin.emailInvalid";
 	}
-	if (admin.password.length < MIN_PASSWORD_LENGTH) {
-		// The catalog message spells the same minimum out (the rules are pure, so a
-		// message here is a KEY a screen resolves — it cannot interpolate a value).
-		errors.password = 'shared.setupWizardValidation.admin.passwordTooShort';
+	if (!meetsMinPasswordLength(admin.password)) {
+		// The rules are pure, so a message here is a KEY; the screen resolves it
+		// with `{ min: MIN_PASSWORD_LENGTH }` from the same shared policy.
+		errors.password = "shared.setupWizardValidation.admin.passwordTooShort";
 	}
 	return errors;
 }
@@ -67,7 +66,7 @@ export interface EmailStepErrors {
 /** A relay port is optional (defaults to 587), but if given must be a real port. */
 function isValidSmtpPort(port: string): boolean {
 	const trimmed = port.trim();
-	if (trimmed === '') return true;
+	if (trimmed === "") return true;
 	if (!/^\d+$/.test(trimmed)) return false;
 	const n = Number.parseInt(trimmed, 10);
 	return n >= 1 && n <= 65535;
@@ -76,39 +75,39 @@ function isValidSmtpPort(port: string): boolean {
 export function validateEmailStep(draft: EmailStepDraft): EmailStepErrors {
 	const errors: EmailStepErrors = {};
 
-	if (draft.provider === 'none' && draft.requiresProvider) {
-		errors.provider = 'shared.setupWizardValidation.email.providerRequired';
+	if (draft.provider === "none" && draft.requiresProvider) {
+		errors.provider = "shared.setupWizardValidation.email.providerRequired";
 	}
-	if (draft.provider === 'resend' && draft.resendKey.trim() === '') {
-		errors.resendKey = 'shared.setupWizardValidation.email.resendKeyRequired';
+	if (draft.provider === "resend" && draft.resendKey.trim() === "") {
+		errors.resendKey = "shared.setupWizardValidation.email.resendKeyRequired";
 	}
-	if (draft.provider === 'emailit' && (draft.emailitKey ?? '').trim() === '') {
-		errors.emailitKey = 'shared.setupWizardValidation.email.emailitKeyRequired';
+	if (draft.provider === "emailit" && (draft.emailitKey ?? "").trim() === "") {
+		errors.emailitKey = "shared.setupWizardValidation.email.emailitKeyRequired";
 	}
-	if (draft.provider === 'mandrill' && draft.mandrillKey.trim() === '') {
-		errors.mandrillKey = 'shared.setupWizardValidation.email.mandrillKeyRequired';
+	if (draft.provider === "mandrill" && draft.mandrillKey.trim() === "") {
+		errors.mandrillKey = "shared.setupWizardValidation.email.mandrillKeyRequired";
 	}
-	if (draft.provider === 'ses') {
+	if (draft.provider === "ses") {
 		const { region, accessKeyId, secretAccessKey } = draft.ses;
 		if (!region.trim() || !accessKeyId.trim() || !secretAccessKey.trim()) {
-			errors.ses = 'shared.setupWizardValidation.email.sesIncomplete';
+			errors.ses = "shared.setupWizardValidation.email.sesIncomplete";
 		}
 	}
-	if (draft.provider === 'smtp') {
+	if (draft.provider === "smtp") {
 		const { host, port, username, password } = draft.smtp;
 		if (!host.trim() || !username.trim() || !password.trim()) {
-			errors.smtp = 'shared.setupWizardValidation.email.smtpIncomplete';
+			errors.smtp = "shared.setupWizardValidation.email.smtpIncomplete";
 		} else if (!isValidSmtpPort(port)) {
-			errors.smtp = 'shared.setupWizardValidation.email.smtpPortInvalid';
+			errors.smtp = "shared.setupWizardValidation.email.smtpPortInvalid";
 		}
 	}
-	if (draft.provider === 'mta' || draft.mtaProfileEnabled) {
+	if (draft.provider === "mta" || draft.mtaProfileEnabled) {
 		const identityError = validateMtaIdentityDraft(draft.mtaIdentity);
 		if (identityError) errors.mtaIdentity = identityError;
 	}
 	// From-identity is optional, but if supplied it must be a real address.
-	if (draft.fromEmail.trim() !== '' && !isSetupEmailValid(draft.fromEmail)) {
-		errors.fromEmail = 'shared.setupWizardValidation.email.fromEmailInvalid';
+	if (draft.fromEmail.trim() !== "" && !isSetupEmailValid(draft.fromEmail)) {
+		errors.fromEmail = "shared.setupWizardValidation.email.fromEmailInvalid";
 	}
 
 	return errors;
@@ -200,6 +199,6 @@ const TRANSPORT_EDITOR_OWNED_ERRORS = {
 export function transportStepIsValid(draft: EmailStepDraft): boolean {
 	const errors = validateEmailStep(draft);
 	return (Object.keys(errors) as (keyof EmailStepErrors)[]).every(
-		(key) => !TRANSPORT_EDITOR_OWNED_ERRORS[key]
+		(key) => !TRANSPORT_EDITOR_OWNED_ERRORS[key],
 	);
 }
