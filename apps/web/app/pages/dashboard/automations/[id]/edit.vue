@@ -93,6 +93,12 @@ watch(
 	},
 	{ immediate: true }
 );
+// A failed save leaves the server order unchanged, so no new snapshot arrives
+// to replace the dropped order: put the saved order back ourselves.
+async function onStepDragEnd(event: { oldIndex?: number | null; newIndex?: number | null }) {
+	const saved = await handleDragEnd(event);
+	if (!saved) orderedSteps.value = [...mutableSteps.value];
+}
 
 // Provide reference data to descendant Condition editor modules
 provideConditionEditorContext({ contactProperties, topics });
@@ -606,7 +612,7 @@ onUnmounted(() => {
 						v-model="orderedSteps"
 						handle=".drag-handle"
 						ghost-class="opacity-50"
-						@end="handleDragEnd"
+						@end="onStepDragEnd"
 					>
 						<div
 							v-for="(step, index) in orderedSteps"
