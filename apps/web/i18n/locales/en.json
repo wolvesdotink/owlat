@@ -4826,8 +4826,8 @@
 				}
 			},
 			"postboxSealedMailNudge": {
-				"action": "see what this means and save your recovery kit",
-				"body": "Mail between Owlat instances is now sealed, so only you can read it. That also means the key matters:"
+				"action": "Back up your key",
+				"body": "Mail to other Owlat users is now encrypted. Nothing changes for you."
 			},
 			"postboxRailMoreGroup": {
 				"more": "More",

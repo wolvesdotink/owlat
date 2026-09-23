@@ -4826,8 +4826,8 @@
 				}
 			},
 			"postboxSealedMailNudge": {
-				"action": "ansehen, was das bedeutet, und Wiederherstellungspaket sichern",
-				"body": "Post zwischen Owlat-Instanzen ist jetzt versiegelt, sodass nur Sie sie lesen können. Damit zählt auch der Schlüssel:"
+				"action": "Schlüssel sichern",
+				"body": "Post an andere Owlat-Nutzer ist jetzt verschlüsselt. Für Sie ändert sich nichts."
 			},
 			"postboxRailMoreGroup": {
 				"more": "Mehr",
