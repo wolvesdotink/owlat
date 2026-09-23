@@ -168,6 +168,12 @@ export const CONTACT_RELATIONS: readonly ErasureRelation[] = [
 		action: 'delete',
 		why: 'The index-able mirror of semanticFiles.contactIds.',
 	},
+	{
+		table: 'contactErasureJobs',
+		field: 'contactId',
+		action: 'delete',
+		why: 'The erasure’s own progress row; deleted in the same transaction as the contact row.',
+	},
 ];
 
 /**

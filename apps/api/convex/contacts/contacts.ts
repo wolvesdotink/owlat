@@ -11,7 +11,9 @@ import { listResources, countFacet } from '../lib/listing';
 import { contactListing, redactContactCapabilityFields } from './listing';
 import { contactCreateSourceValidator } from './resolution';
 import { reconcileContactCount } from '../lib/contactCountHelpers';
-import { softDeleteContact, permanentlyDeleteContactWithRelations } from '../lib/contactMutations';
+import { softDeleteContact } from '../lib/contactMutations';
+import { eraseContactNow } from './erasure/walker';
+import { sweepContactRetention } from './erasure/retention';
 import { recordAuditLog } from '../lib/auditLog';
 import { trackEvent } from '../lib/posthogHelpers';
 import { validateStringLength, normalizeEmail, STRING_LIMITS } from '../lib/inputGuards';
@@ -686,7 +688,12 @@ export const removeForTeam = internalMutation({
 
 		// REST/API-key delete is a hard delete (no human session to attach a
 		// 30-day soft-delete grace to). The UI delete (`remove` above) soft-deletes.
-		await permanentlyDeleteContactWithRelations(ctx, args.contactId);
+		// The tombstone hides the contact and frees its identifiers at once; the
+		// erasure's first bounded transaction runs right here, so an ordinary
+		// contact is gone on return and only a large history finishes in the
+		// background.
+		await softDeleteContact(ctx, args.contactId, 'api');
+		await eraseContactNow(ctx, args.contactId, 'api_delete');
 	},
 });
 
@@ -741,8 +748,10 @@ export const reconcileAllContactCounts = internalMutation({
 });
 
 /**
- * Permanently delete contacts whose soft-delete is older than the retention window.
- * Default 30 days. Cascades to children via permanentlyDeleteContactWithRelations.
+ * Daily retention sweep: hand contacts whose soft-delete is older than the
+ * retention window (default 30 days) to the erasure walker, and restart
+ * erasures that stalled or failed. The walker deletes each contact and its
+ * dependents in bounded, resumable transactions (contacts/erasure/).
  */
 export const cleanupSoftDeletedContacts = internalMutation({
 	args: {
@@ -751,28 +760,9 @@ export const cleanupSoftDeletedContacts = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		const retentionMs = (args.retentionDays ?? 30) * 24 * 60 * 60 * 1000;
-		const cutoff = Date.now() - retentionMs;
-		const limit = Math.min(args.batchLimit ?? 100, 500);
-
-		// by_deleted_at index orders by deletedAt ascending; we want the oldest
-		// soft-deleted rows below the cutoff. .filter is bounded by .take(limit).
-		const expired = await ctx.db
-			.query('contacts')
-			.withIndex('by_deleted_at')
-			.filter((q) =>
-				q.and(q.neq(q.field('deletedAt'), undefined), q.lt(q.field('deletedAt'), cutoff))
-			)
-			.take(limit);
-
-		let purged = 0;
-		for (const contact of expired) {
-			// Count was decremented at soft-delete time; don't double-decrement now.
-			await permanentlyDeleteContactWithRelations(ctx, contact._id, {
-				decrementCount: false,
-			});
-			purged++;
-		}
-
-		return { purged };
+		return sweepContactRetention(ctx, {
+			cutoff: Date.now() - retentionMs,
+			limit: Math.min(args.batchLimit ?? 100, 500),
+		});
 	},
 });
