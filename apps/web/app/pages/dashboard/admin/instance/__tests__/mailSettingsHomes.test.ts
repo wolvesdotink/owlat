@@ -69,6 +69,9 @@ const globalOptions = {
 		SettingsInboundRetentionCard: true,
 		SettingsBodySearchIndexCard: true,
 		SettingsConnectedWorkspaces: true,
+		// Workspace settings sections that share the General page.
+		SettingsMigrationModeCard: true,
+		SettingsWorkspaceDangerZone: true,
 	},
 	components: { UiQueryBoundary: QueryBoundary },
 	plugins: [createTestI18n()],
