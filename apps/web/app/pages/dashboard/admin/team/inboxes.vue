@@ -123,7 +123,7 @@ async function confirmPurge() {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-3xl mx-auto space-y-6">
+	<div class="space-y-6">
 		<!-- Header -->
 		<div class="flex items-start justify-between gap-4">
 			<div>

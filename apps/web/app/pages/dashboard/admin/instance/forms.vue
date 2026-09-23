@@ -93,7 +93,7 @@ watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { 
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div>
 		<!-- Header -->
 		<div class="mb-6">
 			<div class="flex items-center justify-between">

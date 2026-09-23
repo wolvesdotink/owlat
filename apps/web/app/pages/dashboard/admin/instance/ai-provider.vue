@@ -137,7 +137,7 @@ watch(isDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div>
 		<div class="flex items-center gap-4 mb-8">
 			<UiIconBox icon="lucide:sparkles" size="xl" variant="brand" rounded="full" />
 			<div>

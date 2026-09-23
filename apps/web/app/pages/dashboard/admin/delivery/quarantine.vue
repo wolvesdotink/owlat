@@ -68,7 +68,7 @@ const confirmBlock = async () => {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div>
 		<!-- Header -->
 		<div class="flex items-center gap-4 mb-8">
 			<div>

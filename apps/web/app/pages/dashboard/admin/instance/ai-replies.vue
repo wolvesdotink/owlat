@@ -195,7 +195,7 @@ const { data: feedbackStats } = useConvexQuery(api.autonomyFeedback.getFeedbackS
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div>
 		<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
 			<div class="flex items-center gap-4">
 				<UiIconBox icon="lucide:bot" size="xl" variant="brand" rounded="full" />

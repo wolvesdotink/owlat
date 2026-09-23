@@ -211,7 +211,7 @@ const sendingDetail = computed(() => {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div>
 		<!-- Header. The four ramp pages used to hide in an "Advanced tools"
 			 disclosure alongside it, which made the settings that gate how fast this
 			 deployment may send reachable from exactly one collapsed control; they

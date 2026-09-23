@@ -116,7 +116,7 @@ function select(cellKey: string): void {
 </script>
 
 <template>
-	<div class="mx-auto max-w-6xl p-4 sm:p-6 lg:p-8">
+	<div>
 		<header class="mb-6">
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 				{{ t('dashboard.admin.delivery.advanced.cells.title') }}

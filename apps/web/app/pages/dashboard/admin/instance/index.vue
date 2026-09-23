@@ -160,7 +160,7 @@ const groups = computed(() => [
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-6xl">
+	<div>
 		<header class="mb-8">
 			<h1 class="text-3xl font-semibold text-text-primary">
 				{{ t('dashboard.admin.instance.index.title') }}

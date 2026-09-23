@@ -276,7 +276,7 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div>
 		<!-- Header -->
 		<div class="mb-6">
 			<!-- Stacked below `sm`: at 390px a side-by-side header leaves the title

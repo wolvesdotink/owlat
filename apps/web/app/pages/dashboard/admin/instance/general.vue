@@ -240,7 +240,7 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div>
 		<!-- Header -->
 		<div class="mb-6">
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">

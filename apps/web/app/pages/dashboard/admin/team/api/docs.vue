@@ -66,7 +66,7 @@ const endpoints = computed(() => [
 </script>
 
 <template>
-	<div class="max-w-3xl">
+	<div>
 		<div class="mb-8">
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 				{{ t('dashboard.admin.team.api.docs.title') }}

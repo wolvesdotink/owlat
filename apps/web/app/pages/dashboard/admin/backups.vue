@@ -79,7 +79,7 @@ const recordedAtLabel = computed(() =>
 </script>
 
 <template>
-	<div class="mx-auto max-w-3xl p-6 lg:p-8 space-y-6">
+	<div class="space-y-6">
 		<!-- Header -->
 		<div>
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">

@@ -261,7 +261,7 @@ async function togglePack(packKey: FeaturePackKey) {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-4xl mx-auto">
+	<div>
 		<!-- Header -->
 		<div class="mb-8">
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">

@@ -165,7 +165,7 @@ async function onSubmitAdd() {
 </script>
 
 <template>
-	<div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+	<div class="space-y-6">
 		<!-- Header -->
 		<div>
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">

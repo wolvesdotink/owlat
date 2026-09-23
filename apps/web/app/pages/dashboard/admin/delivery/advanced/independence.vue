@@ -173,7 +173,7 @@ function confirmRelayRemoval(): void {
 </script>
 
 <template>
-	<div class="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
+	<div>
 		<header class="mb-6">
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">{{ headline }}</h1>
 			<p class="mt-1 max-w-2xl text-sm text-text-secondary">
