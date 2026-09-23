@@ -23,8 +23,8 @@ import {
 	retryStateValidator,
 	type WorkerEnvelopeInput,
 } from './workerEnvelope';
-import { sendWorkerOutcomeValidator } from './workerOutcome';
-import { refuseMarketingDispatch } from './marketingDispatchGate';
+import { sendWorkerOutcomeValidator, type SendWorkerOutcome } from './workerOutcome';
+import { marketingDispatchRecipient, type MarketingDispatchRefusal } from './marketingDispatchGate';
 
 /**
  * Email Worker Action for Workpool-based Email Sending
@@ -370,7 +370,7 @@ export const sendSingleEmail = internalAction({
 	// the union here is what makes the shape the completion callback matches
 	// against something the runtime already refused to let past.
 	returns: sendWorkerOutcomeValidator,
-	handler: async (ctx, { envelopeInput, retryState }) => {
+	handler: async (ctx, { envelopeInput, retryState }): Promise<SendWorkerOutcome> => {
 		// The last gate before dispatch, for MARKETING envelopes (campaigns and
 		// automation steps): the address must not be on the blocklist and the
 		// contact must still be eligible for marketing (not unsubscribed from
@@ -379,8 +379,14 @@ export const sendSingleEmail = internalAction({
 		// suppression obligation (CAN-SPAM §316.5, Gmail/Yahoo 2024) holds until
 		// the message leaves. Point reads only. Returned, never thrown, so the
 		// workpool does not retry; see delivery/marketingDispatchGate.ts.
-		const refusal = await refuseMarketingDispatch(ctx, envelopeInput);
-		if (refusal) return refusal;
+		const marketingRecipient = marketingDispatchRecipient(envelopeInput);
+		if (marketingRecipient) {
+			const refusal: MarketingDispatchRefusal | null = await ctx.runQuery(
+				internal.delivery.marketingDispatchGate.checkMarketingDispatch,
+				marketingRecipient
+			);
+			if (refusal) return refusal;
+		}
 
 		const composeInput = buildComposeInput(envelopeInput);
 		const composed = composeForSend(composeInput);

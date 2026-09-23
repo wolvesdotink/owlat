@@ -24,8 +24,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, type ActionCtx } from '../_generated/server';
-import { internal } from '../_generated/api';
+import { internalQuery } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { findBlockedByEmail } from '../blockedEmails/lookup';
 import {
@@ -34,23 +33,32 @@ import {
 } from '../lib/marketingEligibility';
 import type { WorkerEnvelopeInput } from './workerEnvelope';
 
-/** Why a marketing envelope may not be dispatched. */
-type MarketingDispatchRefusal = 'blocklist' | MarketingIneligibility;
+/** The worker's pre-dispatch refusal (see {@link checkMarketingDispatch}). */
+export type MarketingDispatchRefusal = { kind: 'suppressed'; reason?: MarketingIneligibility };
 
+/**
+ * The worker's `suppressed` outcome when a marketing envelope must not be
+ * dispatched, else `null`. A blocklist hit carries no `reason` — the shape the
+ * arm had before contact eligibility joined it.
+ */
 export const checkMarketingDispatch = internalQuery({
 	args: {
 		email: v.string(),
 		contactId: v.optional(v.id('contacts')),
 	},
 	handler: async (ctx, args): Promise<MarketingDispatchRefusal | null> => {
-		if ((await findBlockedByEmail(ctx, args.email)) !== null) return 'blocklist';
+		if ((await findBlockedByEmail(ctx, args.email)) !== null) return { kind: 'suppressed' };
 		if (args.contactId === undefined) return null;
-		return await loadContactMarketingIneligibility(ctx, args.contactId);
+		const reason = await loadContactMarketingIneligibility(ctx, args.contactId);
+		return reason === null ? null : { kind: 'suppressed', reason };
 	},
 });
 
-/** The address and contact to gate, or `null` when the envelope is not marketing. */
-function marketingRecipient(
+/**
+ * The address and contact the worker must pass to {@link checkMarketingDispatch}
+ * before dispatching `envelope`, or `null` when the envelope is not marketing.
+ */
+export function marketingDispatchRecipient(
 	envelope: WorkerEnvelopeInput
 ): { email: string; contactId?: Id<'contacts'> } | null {
 	if (envelope.kind === 'campaign') {
@@ -65,25 +73,4 @@ function marketingRecipient(
 		};
 	}
 	return null;
-}
-
-/**
- * The worker's `suppressed` outcome when a marketing envelope must not be
- * dispatched, else `null`. The worker RETURNS it (never throws) so the
- * workpool does not retry; the Send completion handler turns it into a
- * terminal non-delivery. A blocklist hit carries no `reason` — the shape the
- * arm had before contact eligibility joined it.
- */
-export async function refuseMarketingDispatch(
-	ctx: Pick<ActionCtx, 'runQuery'>,
-	envelope: WorkerEnvelopeInput
-): Promise<{ kind: 'suppressed'; reason?: MarketingIneligibility } | null> {
-	const recipient = marketingRecipient(envelope);
-	if (recipient === null) return null;
-	const refusal = await ctx.runQuery(
-		internal.delivery.marketingDispatchGate.checkMarketingDispatch,
-		recipient
-	);
-	if (refusal === null) return null;
-	return refusal === 'blocklist' ? { kind: 'suppressed' } : { kind: 'suppressed', reason: refusal };
 }

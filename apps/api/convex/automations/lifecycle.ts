@@ -368,20 +368,9 @@ const BREAKER_ACTOR = 'system:automation-breaker';
  * consecutive-failure counter and, at the threshold, trips the breaker by
  * pausing the automation through the lifecycle (so the pause is audit-logged,
  * attributed to BREAKER_ACTOR). The counter resets on any completed run
- * (`stepExecutorQueries.completeAutomationRun`).
- */
-export const recordRunFailure = internalMutation({
-	args: {
-		automationId: v.id('automations'),
-	},
-	handler: async (ctx, args) => {
-		await recordAutomationRunFailure(ctx, args.automationId);
-	},
-});
-
-/**
- * {@link recordRunFailure} as a helper, so the step walker can fail a step,
- * cancel its run and count the failure in ONE transaction.
+ * (`stepExecutorQueries.completeRun`). Called by the step walker's
+ * fail-and-cancel transition, in the same transaction as the step failure and
+ * the run cancellation.
  */
 export async function recordAutomationRunFailure(
 	ctx: MutationCtx,

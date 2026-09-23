@@ -11,8 +11,10 @@ import {
 import {
 	AUTOMATION_LIFECYCLE,
 	AUTOMATION_FAILURE_BREAKER_THRESHOLD,
+	recordAutomationRunFailure,
 	type AutomationStatus,
 } from '../automations/lifecycle';
+import { completeRun } from '../automations/stepExecutorQueries';
 import type { Id } from '../_generated/dataModel';
 
 const modules = import.meta.glob('../**/*.*s');
@@ -597,7 +599,7 @@ describe('Automation lifecycle — circuit breaker', () => {
 		const t = convexTest(schema, modules);
 		const id = await makeActiveAutomation(t);
 		for (let i = 0; i < AUTOMATION_FAILURE_BREAKER_THRESHOLD - 1; i++) {
-			await t.mutation(internal.automations.lifecycle.recordRunFailure, { automationId: id });
+			await t.run(async (ctx) => recordAutomationRunFailure(ctx, id));
 		}
 		await t.run(async (ctx) => {
 			const a = await ctx.db.get(id);
@@ -610,7 +612,7 @@ describe('Automation lifecycle — circuit breaker', () => {
 		const t = convexTest(schema, modules);
 		const id = await makeActiveAutomation(t);
 		for (let i = 0; i < AUTOMATION_FAILURE_BREAKER_THRESHOLD; i++) {
-			await t.mutation(internal.automations.lifecycle.recordRunFailure, { automationId: id });
+			await t.run(async (ctx) => recordAutomationRunFailure(ctx, id));
 		}
 		await t.run(async (ctx) => {
 			const a = await ctx.db.get(id);
@@ -623,8 +625,8 @@ describe('Automation lifecycle — circuit breaker', () => {
 	it('resets the streak when a run completes successfully', async () => {
 		const t = convexTest(schema, modules);
 		const id = await makeActiveAutomation(t);
-		await t.mutation(internal.automations.lifecycle.recordRunFailure, { automationId: id });
-		await t.mutation(internal.automations.lifecycle.recordRunFailure, { automationId: id });
+		await t.run(async (ctx) => recordAutomationRunFailure(ctx, id));
+		await t.run(async (ctx) => recordAutomationRunFailure(ctx, id));
 
 		let runId!: Id<'automationRuns'>;
 		await t.run(async (ctx) => {
@@ -638,9 +640,7 @@ describe('Automation lifecycle — circuit breaker', () => {
 				triggeredBy: 'contact_created',
 			});
 		});
-		await t.mutation(internal.automations.stepExecutorQueries.completeAutomationRun, {
-			automationRunId: runId,
-		});
+		await t.run(async (ctx) => completeRun(ctx, runId));
 		await t.run(async (ctx) => {
 			const a = await ctx.db.get(id);
 			expect(a!.consecutiveRunFailures).toBe(0);
