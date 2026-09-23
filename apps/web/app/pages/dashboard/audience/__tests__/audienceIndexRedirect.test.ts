@@ -5,26 +5,21 @@
  * `?action=add` links still open the add-contact form.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { flushPromises, mount } from '@vue/test-utils';
-import { defineComponent, h, Suspense } from 'vue';
-
+import { mount } from '@vue/test-utils';
 import AudienceIndex from '../index.vue';
-import { installNuxtStubs } from '~/__tests__/a11y';
+
+type Redirect = (to: { query: Record<string, string>; hash: string }) => unknown;
 
 describe('audience index', () => {
-	it('redirects to the contact list, keeping the query', async () => {
-		const navigateTo = vi.fn(async () => {});
-		installNuxtStubs({
-			navigateTo,
-			useRoute: () => ({ path: '/dashboard/audience', query: { action: 'add' }, hash: '' }),
+	it('redirects to the contact list, keeping the query and hash', () => {
+		const definePageMeta = vi.fn();
+		vi.stubGlobal('definePageMeta', definePageMeta);
+		mount(AudienceIndex);
+		const meta = definePageMeta.mock.calls[0]?.[0] as { redirect: Redirect };
+		expect(meta.redirect({ query: { action: 'add' }, hash: '#x' })).toEqual({
+			path: '/dashboard/audience/contacts',
+			query: { action: 'add' },
+			hash: '#x',
 		});
-		mount(
-			defineComponent({ render: () => h(Suspense, null, { default: () => h(AudienceIndex) }) })
-		);
-		await flushPromises();
-		expect(navigateTo).toHaveBeenCalledWith(
-			{ path: '/dashboard/audience/contacts', query: { action: 'add' }, hash: '' },
-			{ replace: true }
-		);
 	});
 });

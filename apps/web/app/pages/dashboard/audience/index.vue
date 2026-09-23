@@ -5,18 +5,11 @@
  * stat tiles, quick actions and a second "Add contact" is gone. The route
  * stays so every existing link keeps working, and its query string is carried
  * over: `/dashboard/audience?action=add` still opens the add-contact form.
+ * A route-level redirect, like every other retired page.
  */
 definePageMeta({
-	layout: 'dashboard',
-	middleware: 'auth',
+	redirect: (to) => ({ path: '/dashboard/audience/contacts', query: to.query, hash: to.hash }),
 });
-
-const route = useRoute();
-
-await navigateTo(
-	{ path: '/dashboard/audience/contacts', query: route.query, hash: route.hash },
-	{ replace: true }
-);
 </script>
 
 <template>

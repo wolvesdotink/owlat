@@ -89,6 +89,18 @@ function gateFor(href: string): (env: NavigationEnvironment) => boolean {
 }
 
 /**
+ * Routes whose page only redirects to another listed page. They keep their
+ * breadcrumb entry (old links still land and crumb correctly), but a palette
+ * row for them would be a second row to the same destination: "Overview ·
+ * Audience" opening the contact list beside "Contacts". The test next door
+ * fails when a redirect-only page is offered and missing here.
+ */
+const REDIRECT_ONLY_ROUTES: ReadonlySet<string> = new Set([
+	'/dashboard/audience',
+	'/dashboard/admin/delivery/advanced',
+]);
+
+/**
  * Every labelled route the palette should offer beyond `knownHrefs` (the
  * sidebar's own destinations), gated for `env` and in table order. Pure.
  */
@@ -97,7 +109,9 @@ export function routePaletteTargets(
 	knownHrefs: ReadonlySet<string>
 ): RoutePaletteTarget[] {
 	return Object.entries(routeConfigs)
-		.filter(([href]) => !knownHrefs.has(href) && gateFor(href)(env))
+		.filter(
+			([href]) => !knownHrefs.has(href) && !REDIRECT_ONLY_ROUTES.has(href) && gateFor(href)(env)
+		)
 		.map(([href, config]) => {
 			// The crumb trail, deepest last: the label is where you land, the
 			// context is the step above it. A section root (`/dashboard`) is one

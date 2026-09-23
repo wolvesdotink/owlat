@@ -296,7 +296,7 @@ export default defineNuxtConfig({
 		// matching command-center pill.
 		'/dashboard/campaigns/all': { redirect: '/dashboard/campaigns' },
 		'/dashboard/campaigns/reports': { redirect: '/dashboard/campaigns?status=sent' },
-		'/dashboard/inbox/channels': { redirect: '/dashboard/inbox/activity' },
+		'/dashboard/inbox/channels': { redirect: '/dashboard/admin/delivery/activity' },
 
 		// NOTE: pre-release `/dashboard/settings/*` and `/dashboard/delivery/*` URLs
 		// intentionally 404 — the app never shipped, so no compatibility redirects

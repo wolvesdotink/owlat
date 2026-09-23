@@ -9,6 +9,9 @@
  * and anything the sidebar already lists keeps its own wording.
  */
 import { describe, it, expect } from 'vitest';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { NavigationEnvironment } from '../dashboardNavigationCore';
 import { routePaletteTargets } from '../commandPaletteRoutes';
 import { ADMIN_AREAS, adminEntryFor } from '../adminSettingsRegistry';
@@ -118,5 +121,33 @@ describe('routePaletteTargets', () => {
 		expect(reachable).not.toContain('/dashboard/admin');
 		expect(reachable).not.toContain('/dashboard/admin/delivery');
 		expect(reachable).toContain('/dashboard/admin/delivery/webhooks');
+	});
+});
+
+/**
+ * #799: one destination, one row. A page that only redirects lands where
+ * another row already goes, so the palette never offers it.
+ */
+describe('palette targets and redirect-only pages', () => {
+	const pages = join(dirname(fileURLToPath(import.meta.url)), '../../pages');
+	function pageSource(href: string): string | null {
+		for (const candidate of [`${href}.vue`, `${href}/index.vue`]) {
+			const file = join(pages, candidate);
+			if (existsSync(file)) return readFileSync(file, 'utf8');
+		}
+		return null;
+	}
+
+	it('never offers a page that only redirects somewhere else', () => {
+		const redirecting = hrefs(env({ role: 'owner', isDesktop: true })).filter((href) => {
+			const source = pageSource(href);
+			return source !== null && /\bredirect:|await navigateTo\(/.test(source);
+		});
+		expect(redirecting).toEqual([]);
+	});
+
+	it('gives no two rows the same destination', () => {
+		const all = hrefs(env({ role: 'owner', isDesktop: true }));
+		expect(new Set(all).size).toBe(all.length);
 	});
 });
