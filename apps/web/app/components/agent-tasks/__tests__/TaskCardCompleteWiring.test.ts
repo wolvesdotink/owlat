@@ -7,7 +7,7 @@
  * A completion with no explicit outcome falls back to `'completed'`.
  *
  * TaskCardRenderer + useTaskFlow are both Convex-free, so this mounts them
- * composed exactly as ReviewFocusFlow / PostboxReplyFlow compose them, without
+ * composed exactly as the Answer queue composes them, without
  * the heavy flow shells.
  */
 import { describe, it, expect, beforeAll, vi } from 'vitest';

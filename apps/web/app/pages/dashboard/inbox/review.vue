@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import ReviewApproveUndoToast from '~/components/agent-tasks/ReviewApproveUndoToast.vue';
 import ReviewBrowseList from '~/components/agent-tasks/ReviewBrowseList.vue';
-import ReviewFocusFlow from '~/components/agent-tasks/ReviewFocusFlow.vue';
 
 const { t } = useI18n();
 
@@ -13,21 +12,18 @@ definePageMeta({
 	requiresFeature: 'inbox',
 });
 
-// "Focus" runs the same one-task-at-a-time card-stack flow (useTaskFlow) over
-// these review items; ReviewBrowseList stays as the keyboard-first browse
-// alternative. Separate flow from the personal Reply Queue — different data
-// source, never interleaved. The two views are mutually exclusive: the browse
-// list is a doing-adjacent surface, the Focus flow is the self-contained
-// one-task surface (its own chrome + "Back to list" exit).
-const focusMode = ref(false);
+// The keyboard-first browse list of every agent draft (bulk approve/reject).
+// "Focus" — one card at a time — is the Answer queue, filtered to the team
+// inbox, where these drafts sit alongside everything else waiting on you.
+function focusInAnswerQueue() {
+	void navigateTo({ path: '/dashboard/answer', query: { in: 'team' } });
+}
 </script>
 
 <template>
 	<div class="p-6 lg:p-8">
-		<ReviewFocusFlow v-if="focusMode" @exit="focusMode = false" />
-		<ReviewBrowseList v-else @focus="focusMode = true" />
-		<!-- One shared countdown-undo toast for approvals ("Approved — Undo (14s)"),
-		     armed by whichever surface just approved. -->
+		<ReviewBrowseList @focus="focusInAnswerQueue" />
+		<!-- One shared countdown-undo toast for approvals ("Approved — Undo (14s)"). -->
 		<ReviewApproveUndoToast />
 	</div>
 </template>
