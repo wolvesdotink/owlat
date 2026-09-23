@@ -4073,7 +4073,7 @@
 					}
 				},
 				"screener": {
-					"hint": "Wenn an, wird Post von jemandem, mit dem Sie noch nie korrespondiert haben, aus der Antwort-Warteschlange herausgehalten, bis Sie den Absender akzeptieren — die Post landet trotzdem im Posteingang. Hält die Triage auf Personen fokussiert, die Sie kennen. Standardmäßig aus.",
+					"hint": "Wenn an, wird Post von jemandem, mit dem Sie noch nie korrespondiert haben, aus der Antwortliste herausgehalten, bis Sie den Absender akzeptieren — die Post landet trotzdem im Posteingang. Hält die Triage auf Personen fokussiert, die Sie kennen. Standardmäßig aus.",
 					"label": "Erstabsender prüfen"
 				}
 			},
@@ -4199,7 +4199,7 @@
 				"title": "Prüfen Sie diesen Absender, bevor Sie antworten"
 			},
 			"postboxReplyQueueStrip": {
-				"dismissLabel": "Erinnerung an die Antwort-Warteschlange ausblenden",
+				"dismissLabel": "Erinnerung an die Antwortliste ausblenden",
 				"dismissTitle": "Für diese Sitzung ausblenden",
 				"openQueue": "Antwortliste öffnen",
 				"waiting": "{count} E-Mail wartet auf Ihre Antwort | {count} E-Mails warten auf Ihre Antwort"
@@ -4285,7 +4285,7 @@
 			"postboxSenderControls": {
 				"accept": "Absender akzeptieren",
 				"acceptOperation": "Absender akzeptieren",
-				"acceptTitle": "Diesen erstmaligen Absender in die Antwort-Warteschlange aufnehmen",
+				"acceptTitle": "Diesen erstmaligen Absender in die Antwortliste aufnehmen",
 				"markVip": "Absender als VIP markieren",
 				"removeVip": "VIP entfernen",
 				"vipOperation": "VIP"
@@ -5048,7 +5048,7 @@
 						"label": "Automatisch senden, wenn die KI sicher ist"
 					},
 					"draft": {
-						"description": "Die KI entwirft zu jeder Nachricht eine Antwort. Eine Person prüft sie und sendet sie aus der Antwort-Warteschlange.",
+						"description": "Die KI entwirft zu jeder Nachricht eine Antwort. Eine Person prüft sie und sendet sie aus der Antwortliste.",
 						"label": "Nur entwerfen"
 					},
 					"off": {
@@ -6450,7 +6450,7 @@
 						"byRule": "Jede Regel unten legt fest, wie sicher sich die KI sein muss und wie viele Antworten sie pro Tag senden darf. Nachrichten ohne Regel warten immer auf Prüfung.",
 						"dailyHelp": "Höchstens so viele Antworten werden pro Tag automatisch gesendet. Danach warten Antworten auf Prüfung.",
 						"dailyLabel": "Tageslimit",
-						"thresholdHelp": "Antworten, bei denen die KI weniger sicher ist, warten in der Antwort-Warteschlange auf Prüfung.",
+						"thresholdHelp": "Antworten, bei denen die KI weniger sicher ist, warten in der Antwortliste auf Prüfung.",
 						"thresholdLabel": "Wie sicher die KI sein muss",
 						"thresholdMax": "100 %: nichts senden",
 						"thresholdMin": "0 %: jede Antwort senden",
@@ -7532,7 +7532,7 @@
 						"discoveringFolders": "Ordner werden gezählt…",
 						"failed": "Der Import wurde vor dem Ende abgebrochen.",
 						"failedKept": "Die bisher importierten {imported} Nachrichten wurden behalten.",
-						"idleNote": "Ein großes Archiv kann einige Stunden dauern. Sie können dieses Panel schließen — der Import läuft weiter, und importierte Unterhaltungen landen nie in der Antwort-Warteschlange.",
+						"idleNote": "Ein großes Archiv kann einige Stunden dauern. Sie können dieses Panel schließen — der Import läuft weiter, und importierte Unterhaltungen landen nie in der Antwortliste.",
 						"importing": "Die vorhandene Mail wird hereingeholt. Das läuft weiter, wenn Sie das Panel schließen.",
 						"indexCount": "{indexed} von {imported} Unterhaltungen gelernt",
 						"indexProgressLabel": "Lernfortschritt",
@@ -9534,7 +9534,7 @@
 				"addMailAccount": "E-Mail-Konto hinzufügen",
 				"noMailbox": "Noch kein Postfach",
 				"noMailboxHint": "Richten Sie Ihr erstes persönliches Postfach ein, um E-Mails zu empfangen.",
-				"pageTitle": "Antwort-Warteschlange — Owlat"
+				"pageTitle": "Antwortliste — Owlat"
 			},
 			"search": {
 				"backToResults": "Ergebnisse",
@@ -15256,7 +15256,7 @@
 				},
 				"postbox": {
 					"aiDraft": {
-						"description": "Braucht eine persönliche Nachricht eine Antwort, liegt ein Entwurf in der Antwort-Warteschlange bereit. Sie prüfen ihn immer, bevor er gesendet wird.",
+						"description": "Braucht eine persönliche Nachricht eine Antwort, liegt ein Entwurf in der Antwortliste bereit. Sie prüfen ihn immer, bevor er gesendet wird.",
 						"label": "Antworten in persönlicher Mail entwerfen"
 					},
 					"description": "Postfächer pro Benutzer mit Webmail-Oberfläche, IMAP/SMTP für native Clients und MX-basierter Zustellung (Gmail-Äquivalent).",
