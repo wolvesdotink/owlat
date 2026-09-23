@@ -47,7 +47,7 @@
 			"tagline": "Melden Sie sich bei Ihrem Owlat-Konto an.",
 			"title": "Willkommen",
 			"titleAccent": "zurück",
-			"workspaceTagline": "Melden Sie sich bei Ihrem Arbeitsbereich an.",
+			"workspaceTagline": "Melden Sie sich bei Ihrem Workspace an.",
 			"twoFactor": {
 				"title": "Noch ein Schritt",
 				"body": "Gib den sechsstelligen Code aus deiner Authenticator-App ein.",
@@ -5612,7 +5612,7 @@
 				"search": "Einstellungen durchsuchen",
 				"tabs": {
 					"mine": "Meine Einstellungen",
-					"workspace": "Arbeitsbereich"
+					"workspace": "Workspace"
 				},
 				"tabsLabel": "Einstellungsbereich",
 				"results": "Passende Einstellungen",
@@ -6186,7 +6186,7 @@
 				},
 				"attention": "{count} eingehende Nachricht wartet auf Sie | {count} eingehende Nachrichten warten auf Sie",
 				"deliveryVerdict": "Zustellungsbewertung",
-				"eyebrow": "Arbeitsbereich",
+				"eyebrow": "Workspace",
 				"groups": {
 					"ai": "KI-Anbieter, KI-Antworten und Agentenzustand.",
 					"delivery": "Versandgesundheit, Domains, Zustelldienst, Webhooks sowie zurückgehaltene oder fehlgeschlagene eingehende Mail.",
@@ -11569,7 +11569,7 @@
 				"dashboard": "Heute",
 				"marketing": "Marketing",
 				"preferences": "Meine Einstellungen",
-				"workspace": "Arbeitsbereich",
+				"workspace": "Workspace",
 				"answer": "Antwortliste",
 				"inboxes": "Alle Postfächer",
 				"teamInbox": "Team-Postfach"
@@ -11900,7 +11900,7 @@
 				}
 			},
 			"sections": {
-				"administration": "Arbeitsbereich-Einstellungen",
+				"administration": "Workspace-Einstellungen",
 				"assistant": "Assistent",
 				"audience": "Zielgruppe",
 				"chat": "Chat",
@@ -15430,13 +15430,13 @@
 				"delivery": "E-Mail-Zustellung",
 				"features": "Funktionen",
 				"ai": "KI",
-				"overview": "Arbeitsbereich",
+				"overview": "Workspace",
 				"system": "System",
 				"team": "Team"
 			},
-			"navLabel": "Einstellungen des Arbeitsbereichs",
-			"navLabelCompact": "Einstellungen des Arbeitsbereichs (kompakt)",
-			"paletteHeading": "Einstellungen des Arbeitsbereichs",
+			"navLabel": "Einstellungen des Workspace",
+			"navLabelCompact": "Einstellungen des Workspace (kompakt)",
+			"paletteHeading": "Einstellungen des Workspace",
 			"tabsLabel": "Erweiterte Zustellungsseiten"
 		},
 		"dashboard": {

@@ -415,4 +415,10 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'shell.dashboard.contexts.marketing',
 	'shell.dashboard.dashboardTooltip',
 	'welcome.freshStart.optional',
+	// "Workspace" is the German product term too (about 120 strings use it),
+	// so the Settings tab, its crumb and the admin overview keep it.
+	'components.shell.settings.tabs.workspace',
+	'dashboard.admin.index.eyebrow',
+	'shared.breadcrumbRoutes.sections.workspace',
+	'shell.admin.areas.overview',
 ];
