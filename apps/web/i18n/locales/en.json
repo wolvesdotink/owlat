@@ -2213,6 +2213,12 @@
 				"summary": "Daily sending over {days} days: {own} messages from your own server.",
 				"summaryWithRelay": "Daily sending over {days} days: {own} messages from your own server and {reference} through the relay."
 			},
+			"inboundTlsRequirementCard": {
+				"description": "Reject senders that try to deliver without encryption (STARTTLS). They get a permanent “550 5.7.10 Encryption needed” response, so the message is never accepted or stored.",
+				"plaintextWarning": "Unencrypted incoming delivery is allowed. Only turn this off for old mail servers that cannot use TLS.",
+				"title": "Require TLS for incoming mail",
+				"updateOperation": "Update the incoming TLS rule"
+			},
 			"measurementCellCard": {
 				"comparison": "Comparison",
 				"empty": "Nothing has been sent in this cell during the reported window. There is nothing to measure yet, and that is fine.",
@@ -5722,8 +5728,8 @@
 				"runSucceeded": "succeeded",
 				"scheduleSwitchLabel": "Daily backups scheduled",
 				"scheduled": "Scheduled",
-				"sealedMailBody": "Mail that arrives sealed is stored encrypted. The only things that can open it again are your instance secret ({secret}) and the recovery kits you download from Sealed Mail settings.",
-				"sealedMailLink": "Go to Sealed Mail settings",
+				"sealedMailBody": "Mail that arrives sealed is stored encrypted. The only things that can open it again are your instance secret ({secret}) and the recovery kits you download from Sealed mail settings.",
+				"sealedMailLink": "Go to Sealed mail settings",
 				"sealedMailTitle": "Sealed Mail and your instance secret",
 				"sealedMailWarning": "If you lose the instance secret and haven't kept any recovery kits, sealed mail you already received can no longer be opened, and a database backup alone will not bring it back. Keep the instance secret in your backups, and download a recovery kit for each address before you rely on Sealed Mail.",
 				"title": "Backups",
@@ -6708,6 +6714,10 @@
 					"fromNameHelp": "The sender name recipients will see in their inbox.",
 					"fromNamePlaceholder": "e.g., Company Name",
 					"loading": "Loading settings...",
+					"mailSearch": {
+						"subtitle": "How much of each message search can find",
+						"title": "Mail search"
+					},
 					"manageSenders": "Manage the addresses campaigns can send from",
 					"noWorkspaceBody": "Create or select a workspace to manage settings.",
 					"noWorkspaceTitle": "No workspace selected",
@@ -6821,7 +6831,7 @@
 						},
 						"sealedMail": {
 							"description": "Set organization policy for protected personal messages.",
-							"title": "Secure mail"
+							"title": "Sealed mail"
 						}
 					},
 					"keepData": "Disabled features keep their existing data.",
@@ -6994,7 +7004,7 @@
 					"typesTitle": "Property Types"
 				},
 				"sealedMail": {
-					"disabledNotice": "Sealed Mail is turned off for this workspace, so nothing is sealed yet. You can still choose the policy below — it takes effect once Sealed Mail is enabled in Features.",
+					"disabledNotice": "Sealed mail is turned off for this workspace, so nothing is sealed yet. You can still choose the policy below. It takes effect once sealed mail is turned on in Features.",
 					"exportKitOperation": "Export recovery kit",
 					"importKitOperation": "Import recovery kit",
 					"intro": "How Owlat encrypts personal mail between you and other Owlat workspaces.",
@@ -7013,7 +7023,7 @@
 							"title": "Never seal"
 						}
 					},
-					"pageTitle": "Sealed Mail — Owlat",
+					"pageTitle": "Sealed mail — Owlat",
 					"policyLegend": "Sealing policy",
 					"reSeal": {
 						"button": "Re-seal sealed mail",
@@ -7032,12 +7042,7 @@
 						"restoreLabel": "Restore from a recovery kit",
 						"title": "Recovery kit"
 					},
-					"title": "Sealed Mail",
-					"tls": {
-						"description": "Reject senders that try to deliver without STARTTLS. They receive a permanent “550 5.7.10 Encryption needed” response, so the message is never accepted or stored.",
-						"plaintextWarning": "Plaintext inbound delivery is allowed. Only disable this for legacy mail servers that cannot use TLS.",
-						"title": "Require TLS for incoming mail"
-					},
+					"title": "Sealed mail",
 					"toasts": {
 						"kitDownloaded": "Recovery kit downloaded. Store it somewhere private and offline.",
 						"kitImported": "Recovery kit imported. Sealed mail for this address can be opened again.",
@@ -7045,7 +7050,7 @@
 						"noKeyForAddress": "No sealed-mail key exists for that address yet.",
 						"reSealStarted": "Re-sealing started. Once it finishes you can remove the previous instance secret."
 					},
-					"updateOperation": "Update Sealed Mail settings"
+					"updateOperation": "Update sealed mail settings"
 				}
 			},
 			"operator": {
@@ -9596,7 +9601,7 @@
 				"depth": {
 					"disabled": "This instance searches only the first 200 characters of a message.",
 					"indexing": "Indexing message bodies — older mail is still searched by its first 200 characters.",
-					"pending": "Older mail is still searched by its first 200 characters. An admin can index it in Settings → Sealed Mail."
+					"pending": "Older mail is still searched by its first 200 characters. An admin can index it in Settings → General → Mail search."
 				}
 			},
 			"subscriptions": {
@@ -11586,7 +11591,7 @@
 				"overview": "Overview",
 				"plugins": "Plugins",
 				"providerRouting": "Provider Routing",
-				"secureMail": "Secure mail",
+				"secureMail": "Sealed mail",
 				"segments": "Segments",
 				"sendingDomains": "Sending Domains",
 				"suppressions": "Suppressions",

@@ -2,12 +2,17 @@
 import { api } from '@owlat/api';
 
 /**
- * Sealed Mail settings (flag `sealedMail`). The org-level sealing policy:
+ * Sealed mail settings (flag `sealedMail`). The org-level sealing policy:
  * `auto` seals whenever every recipient can receive sealed mail; `ask` keeps
  * sealing available but never seals automatically; `off` never
  * seals. Owner/admin only — the backend floor is `settings:manage`, and the
  * `admin` route middleware below redirects a non-admin to /dashboard before this
  * page renders, so the page itself never has to say "owners and admins only".
+ *
+ * This page is about sealing and nothing else: the sealing policy, recovery
+ * kits and re-sealing after a secret change. "Require TLS for incoming mail"
+ * (a receiving rule) lives on Delivery provider → Incoming mail, and "Search
+ * inside message bodies" on General → Mail search.
  */
 const { t } = useI18n();
 
@@ -31,13 +36,11 @@ type SealPolicy = 'auto' | 'ask' | 'off';
 // Local mirror so the choice feels instant; the query re-emits the authoritative
 // value on save. Unset ⇒ `auto` (the resolution-time default).
 const policy = ref<SealPolicy>('auto');
-const isInboundTlsRequired = ref(true);
 watch(
 	settings,
 	(value) => {
 		const stored = value?.sealPolicy;
 		policy.value = stored === 'ask' || stored === 'off' ? stored : 'auto';
-		isInboundTlsRequired.value = value?.isInboundTlsRequired !== false;
 	},
 	{ immediate: true }
 );
@@ -73,14 +76,6 @@ async function choose(value: SealPolicy) {
 	policy.value = value;
 	const result = await saveSettings({ sealPolicy: value });
 	if (!result.ok) policy.value = previous;
-}
-
-async function setInboundTlsRequired(value: boolean) {
-	if (value === isInboundTlsRequired.value) return;
-	const previous = isInboundTlsRequired.value;
-	isInboundTlsRequired.value = value;
-	const result = await saveSettings({ isInboundTlsRequired: value });
-	if (!result.ok) isInboundTlsRequired.value = previous;
 }
 
 // ── Recovery kit. The armored private key + plain-words
@@ -203,34 +198,6 @@ async function runReSeal() {
 					</span>
 				</label>
 			</fieldset>
-
-			<section class="space-y-4 card p-5">
-				<div class="flex items-start justify-between gap-4">
-					<div class="min-w-0">
-						<h2 class="text-base font-semibold text-text-primary">
-							{{ t('dashboard.admin.instance.sealedMail.tls.title') }}
-						</h2>
-						<p class="mt-1 text-sm text-text-secondary">
-							{{ t('dashboard.admin.instance.sealedMail.tls.description') }}
-						</p>
-						<p v-if="!isInboundTlsRequired" class="mt-2 text-xs text-warning">
-							{{ t('dashboard.admin.instance.sealedMail.tls.plaintextWarning') }}
-						</p>
-					</div>
-					<UiToggle
-						:model-value="isInboundTlsRequired"
-						:disabled="saving"
-						:label="isInboundTlsRequired ? t('common.required') : t('common.optional')"
-						data-testid="inbound-tls-required"
-						@update:model-value="setInboundTlsRequired"
-					/>
-				</div>
-			</section>
-
-			<!-- Deep body search (idea 32 / ADR-0059): the other lever on how much
-			     plaintext this instance keeps indexable. It belongs beside the
-			     sealing policy because that is what it trades against. -->
-			<SettingsBodySearchIndexCard />
 
 			<!-- Recovery kit: download the private key for an address so
 			     sealed mail can be restored later; import one to restore access. -->

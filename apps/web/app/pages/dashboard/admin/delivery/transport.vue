@@ -140,6 +140,8 @@ const {
 	isLoading: tlsReportLoading,
 	error: tlsReportError,
 } = useOrganizationQuery(api.domains.tlsReports.getTlsReportSummary);
+
+const inboundHeadingId = useId();
 </script>
 
 <template>
@@ -259,15 +261,6 @@ const {
 					:can-send="canSend"
 					@applied="refetchStatus"
 				/>
-
-				<!-- Inbound TLS hardening: publish our own MTA-STS policy (none →
-				     testing → enforce). Receiving posture, but it lives beside the
-				     transport controls so all TLS policy is in one place. -->
-				<DeliveryMtaStsModeCard />
-
-				<!-- Inbound sender authenticity: which forwarders we trust to rescue a
-				     DMARC fail on mailing-list / forwarded mail (Sealed Mail A5). -->
-				<DeliveryTrustedForwardersCard />
 
 				<!-- Provider + required env presence -->
 				<UiCard padding="none" overflow="hidden">
@@ -390,12 +383,40 @@ const {
 					:last-event-at="feedbackStatus?.lastEventAt ?? null"
 				/>
 
-				<!-- Inbound TLS reports (TLS-RPT, RFC 8460) partners send us -->
-				<DeliveryTlsReportCard
-					:summary="tlsReportSummary"
-					:is-loading="tlsReportLoading"
-					:error="tlsReportError"
-				/>
+				<!-- Incoming mail: everything about how other servers deliver TO us,
+				     grouped so receiving posture is not mistaken for sending settings. -->
+				<section
+					id="inbound"
+					class="space-y-6 scroll-mt-6"
+					:aria-labelledby="inboundHeadingId"
+					data-testid="transport-inbound"
+				>
+					<div>
+						<h2 :id="inboundHeadingId" class="text-lg font-semibold text-text-primary">
+							{{ t('dashboard.admin.delivery.transport.inbound.title') }}
+						</h2>
+						<p class="text-sm text-text-secondary">
+							{{ t('dashboard.admin.delivery.transport.inbound.subtitle') }}
+						</p>
+					</div>
+
+					<!-- Refuse senders that will not encrypt the connection. -->
+					<DeliveryInboundTlsRequirementCard />
+
+					<!-- Publish our own MTA-STS policy (none → testing → enforce). -->
+					<DeliveryMtaStsModeCard />
+
+					<!-- Which forwarders we trust to rescue a DMARC fail on
+					     mailing-list / forwarded mail. -->
+					<DeliveryTrustedForwardersCard />
+
+					<!-- Inbound TLS reports (TLS-RPT, RFC 8460) partners send us -->
+					<DeliveryTlsReportCard
+						:summary="tlsReportSummary"
+						:is-loading="tlsReportLoading"
+						:error="tlsReportError"
+					/>
+				</section>
 			</div>
 		</UiQueryBoundary>
 	</div>

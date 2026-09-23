@@ -2213,6 +2213,12 @@
 				"summary": "Täglicher Versand über {days} Tage: {own} Nachrichten von Ihrem eigenen Server.",
 				"summaryWithRelay": "Täglicher Versand über {days} Tage: {own} Nachrichten von Ihrem eigenen Server und {reference} über das Relay."
 			},
+			"inboundTlsRequirementCard": {
+				"description": "Weist Absender ab, die ohne Verschlüsselung (STARTTLS) zustellen wollen. Sie erhalten die dauerhafte Antwort „550 5.7.10 Encryption needed“, sodass die Nachricht nie angenommen oder gespeichert wird.",
+				"plaintextWarning": "Unverschlüsselte eingehende Zustellung ist erlaubt. Schalten Sie dies nur für alte Mailserver ab, die kein TLS beherrschen.",
+				"title": "TLS für eingehende Mail verlangen",
+				"updateOperation": "TLS-Regel für eingehende Mail aktualisieren"
+			},
 			"measurementCellCard": {
 				"comparison": "Vergleich",
 				"empty": "In dieser Zelle wurde im berichteten Zeitraum nichts gesendet. Es gibt noch nichts zu messen, und das ist in Ordnung.",
@@ -5722,8 +5728,8 @@
 				"runSucceeded": "erfolgreich",
 				"scheduleSwitchLabel": "Tägliche Backups geplant",
 				"scheduled": "Geplant",
-				"sealedMailBody": "Mail, die versiegelt eintrifft, wird verschlüsselt gespeichert. Nur Ihr Instanz-Secret ({secret}) und die Wiederherstellungs-Kits, die Sie in den Sealed-Mail-Einstellungen herunterladen, können sie wieder öffnen.",
-				"sealedMailLink": "Zu den Sealed-Mail-Einstellungen",
+				"sealedMailBody": "Mail, die versiegelt eintrifft, wird verschlüsselt gespeichert. Nur Ihr Instanz-Secret ({secret}) und die Wiederherstellungs-Kits, die Sie in den Einstellungen für versiegelte Mail herunterladen, können sie wieder öffnen.",
+				"sealedMailLink": "Zu den Einstellungen für versiegelte Mail",
 				"sealedMailTitle": "Sealed Mail und Ihr Instanz-Secret",
 				"sealedMailWarning": "Wenn Sie das Instanz-Secret verlieren und kein Wiederherstellungs-Kit aufbewahrt haben, lässt sich bereits empfangene versiegelte Mail nicht mehr öffnen, und ein Datenbank-Backup allein bringt sie nicht zurück. Nehmen Sie das Instanz-Secret in Ihre Backups auf und laden Sie für jede Adresse ein Wiederherstellungs-Kit herunter, bevor Sie sich auf Sealed Mail verlassen.",
 				"title": "Backups",
@@ -6708,6 +6714,10 @@
 					"fromNameHelp": "Der Absendername, den Empfängerinnen und Empfänger in ihrem Postfach sehen.",
 					"fromNamePlaceholder": "z. B. Firmenname",
 					"loading": "Einstellungen werden geladen...",
+					"mailSearch": {
+						"subtitle": "Wie viel von jeder Nachricht die Suche findet",
+						"title": "Mailsuche"
+					},
 					"manageSenders": "Adressen verwalten, von denen Kampagnen senden dürfen",
 					"noWorkspaceBody": "Erstellen oder wählen Sie einen Workspace, um Einstellungen zu verwalten.",
 					"noWorkspaceTitle": "Kein Workspace ausgewählt",
@@ -6821,7 +6831,7 @@
 						},
 						"sealedMail": {
 							"description": "Legen Sie die Organisationsrichtlinie für geschützte persönliche Nachrichten fest.",
-							"title": "Sichere Mail"
+							"title": "Versiegelte Mail"
 						}
 					},
 					"keepData": "Deaktivierte Funktionen behalten ihre vorhandenen Daten.",
@@ -6994,7 +7004,7 @@
 					"typesTitle": "Eigenschaftstypen"
 				},
 				"sealedMail": {
-					"disabledNotice": "Sealed Mail ist für diesen Workspace ausgeschaltet, daher wird noch nichts versiegelt. Sie können die Richtlinie unten trotzdem wählen — sie greift, sobald Sealed Mail unter „Funktionen“ aktiviert ist.",
+					"disabledNotice": "Versiegelte Mail ist für diesen Workspace ausgeschaltet, daher wird noch nichts versiegelt. Sie können die Richtlinie unten trotzdem wählen. Sie greift, sobald versiegelte Mail unter „Funktionen“ eingeschaltet ist.",
 					"exportKitOperation": "Wiederherstellungs-Kit exportieren",
 					"importKitOperation": "Wiederherstellungs-Kit importieren",
 					"intro": "Wie Owlat persönliche Mail zwischen Ihnen und anderen Owlat-Workspaces verschlüsselt.",
@@ -7013,7 +7023,7 @@
 							"title": "Nie versiegeln"
 						}
 					},
-					"pageTitle": "Sealed Mail — Owlat",
+					"pageTitle": "Versiegelte Mail — Owlat",
 					"policyLegend": "Versiegelungsrichtlinie",
 					"reSeal": {
 						"button": "Sealed Mail neu versiegeln",
@@ -7032,12 +7042,7 @@
 						"restoreLabel": "Aus einem Wiederherstellungs-Kit wiederherstellen",
 						"title": "Wiederherstellungs-Kit"
 					},
-					"title": "Sealed Mail",
-					"tls": {
-						"description": "Weist Absender ab, die ohne STARTTLS zustellen wollen. Sie erhalten die dauerhafte Antwort „550 5.7.10 Encryption needed“, sodass die Nachricht nie angenommen oder gespeichert wird.",
-						"plaintextWarning": "Unverschlüsselte eingehende Zustellung ist erlaubt. Schalten Sie dies nur für alte Mailserver ab, die kein TLS beherrschen.",
-						"title": "TLS für eingehende Mail verlangen"
-					},
+					"title": "Versiegelte Mail",
 					"toasts": {
 						"kitDownloaded": "Wiederherstellungs-Kit heruntergeladen. Bewahren Sie es an einem privaten Ort offline auf.",
 						"kitImported": "Wiederherstellungs-Kit importiert. Sealed Mail für diese Adresse kann wieder geöffnet werden.",
@@ -7045,7 +7050,7 @@
 						"noKeyForAddress": "Für diese Adresse existiert noch kein Sealed-Mail-Schlüssel.",
 						"reSealStarted": "Das Neuversiegeln wurde gestartet. Sobald es abgeschlossen ist, können Sie das vorherige Instanz-Secret entfernen."
 					},
-					"updateOperation": "Sealed-Mail-Einstellungen aktualisieren"
+					"updateOperation": "Einstellungen für versiegelte Mail aktualisieren"
 				}
 			},
 			"operator": {
@@ -9596,7 +9601,7 @@
 				"depth": {
 					"disabled": "Diese Instanz durchsucht nur die ersten 200 Zeichen einer Nachricht.",
 					"indexing": "Nachrichtentexte werden indexiert — ältere E-Mails werden weiterhin über ihre ersten 200 Zeichen durchsucht.",
-					"pending": "Ältere E-Mails werden weiterhin über ihre ersten 200 Zeichen durchsucht. Ein Administrator kann sie unter Einstellungen → Sealed Mail indexieren."
+					"pending": "Ältere E-Mails werden weiterhin über ihre ersten 200 Zeichen durchsucht. Ein Administrator kann sie unter Einstellungen → Allgemein → Mailsuche indexieren."
 				}
 			},
 			"subscriptions": {
@@ -11586,7 +11591,7 @@
 				"overview": "Übersicht",
 				"plugins": "Plugins",
 				"providerRouting": "Anbieter-Routing",
-				"secureMail": "Sichere Mail",
+				"secureMail": "Versiegelte Mail",
 				"segments": "Segmente",
 				"sendingDomains": "Versanddomains",
 				"suppressions": "Sperrlisten",
