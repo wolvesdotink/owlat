@@ -3316,6 +3316,69 @@
 				"nameRequired": "Template name is required"
 			}
 		},
+		"marketing": {
+			"audience": {
+				"bounceRate": "Bounce rate {rate}",
+				"complaintRate": "Complaint rate {rate}",
+				"healthIssue": "Sending needs attention",
+				"healthOk": "Sending setup looks healthy",
+				"limit": "Keep under {limit}",
+				"newContacts": "New contacts per day",
+				"newContactsAria": "New contacts per day, last 30 days",
+				"newContactsTotal": "{count} in 30 days",
+				"noRates": "No bounce or complaint data yet: nothing was sent in the last 30 days.",
+				"truncated": "Very busy intake: the oldest days may undercount."
+			},
+			"headline": {
+				"aboveClick": "Above your average click rate.",
+				"aboveOpen": "Above your average open rate.",
+				"belowClick": "Below your average click rate.",
+				"belowOpen": "Below your average open rate.",
+				"bestClick": "Best click rate in {count} campaigns.",
+				"bestOpen": "Best open rate in {count} campaigns.",
+				"highUnsubscribe": "Unsubscribes ran well above your average.",
+				"onPar": "In line with your average."
+			},
+			"latest": {
+				"clicked": "Clicked",
+				"delivered": "Delivered",
+				"opened": "Opened",
+				"sending": "Sending",
+				"sendingProgress": "Sending · {percent}",
+				"sentLine": "Sent {date} · {delivered} delivered",
+				"unsubscribed": "Unsubscribed",
+				"vsAverage": "{points} pts vs avg"
+			},
+			"nextUp": {
+				"drafts": "Drafts",
+				"draftsEmpty": "No drafts in progress.",
+				"edited": "Edited {when}",
+				"needsYou": "Needs you",
+				"needsYouEmpty": "Nothing is waiting on a decision.",
+				"noTime": "No send time set",
+				"reviewBefore": "Review before {date}",
+				"scheduled": "Scheduled",
+				"scheduledEmpty": "Nothing scheduled.",
+				"showAllDrafts": "All drafts",
+				"showAllScheduled": "Show all {count} scheduled"
+			},
+			"period": {
+				"comparisonNote": "Compared with the 30 days before. Sparklines show the last 12 weeks.",
+				"percentChange": "{percent} vs prior 30 days",
+				"pointsChange": "{points} pts vs prior 30 days",
+				"sparkLabel": "{metric}, week by week over the last 12 weeks",
+				"tiles": {
+					"bounceRate": "Bounce rate",
+					"clickRate": "Click rate",
+					"delivered": "Delivered",
+					"openRate": "Open rate",
+					"unsubscribeRate": "Unsubscribe rate"
+				}
+			},
+			"rateBars": {
+				"average": "Dashed line: your average, {value}"
+			}
+		},
 		"mediaPickerModal": {
 			"browseFiles": "Browse files",
 			"defaultTitle": "Select Image",
@@ -9302,6 +9365,38 @@
 				"title": "Knowledge Graph"
 			}
 		},
+		"marketing": {
+			"errorMessage": "Something went wrong loading your campaign numbers. Try again in a moment.",
+			"errorTitle": "Couldn't load the overview",
+			"firstRun": {
+				"description": "Once your first campaign goes out, this page shows how it did against your average and how all your campaigns are trending. Until then, start with a draft below.",
+				"title": "How your campaigns will show up here"
+			},
+			"latest": {
+				"subtitle": "Compared with your average over the last {count} sent campaigns",
+				"title": "Latest campaigns"
+			},
+			"newCampaign": "New campaign",
+			"nextUp": {
+				"errorTitle": "Couldn't load what's next",
+				"subtitle": "What needs a decision, then what's queued",
+				"title": "Next up"
+			},
+			"pageTitle": "Marketing overview — Owlat",
+			"period": {
+				"audience": "Audience & sending",
+				"byCampaignNote": "Last 10 sent campaigns, oldest on the left. Dashed line: average.",
+				"clickRateByCampaign": "Click rate, campaign by campaign",
+				"openRateByCampaign": "Open rate, campaign by campaign",
+				"opensPerDay": "Opens per day (all email)",
+				"opensPerDayNote": "Campaigns and transactional email together; the daily totals don't separate them.",
+				"sameOrderNote": "Same campaigns, same order.",
+				"subtitle": "{campaigns} campaigns · {delivered} emails delivered",
+				"title": "All campaigns, last 30 days"
+			},
+			"title": "Marketing overview",
+			"todoChip": "{count} to do"
+		},
 		"postbox": {
 			"contacts": {
 				"addContact": "Add contact",
@@ -11445,6 +11540,7 @@
 				"campaigns": "Campaigns",
 				"dashboard": "Today",
 				"delivery": "Delivery",
+				"marketing": "Marketing",
 				"preferences": "Preferences",
 				"send": "Send",
 				"answer": "Answer queue",

@@ -3316,6 +3316,69 @@
 				"nameRequired": "Ein Vorlagenname ist erforderlich"
 			}
 		},
+		"marketing": {
+			"audience": {
+				"bounceRate": "Bounce-Rate {rate}",
+				"complaintRate": "Beschwerderate {rate}",
+				"healthIssue": "Versand braucht Aufmerksamkeit",
+				"healthOk": "Versand-Setup ist in Ordnung",
+				"limit": "Unter {limit} halten",
+				"newContacts": "Neue Kontakte pro Tag",
+				"newContactsAria": "Neue Kontakte pro Tag, letzte 30 Tage",
+				"newContactsTotal": "{count} in 30 Tagen",
+				"noRates": "Noch keine Bounce- oder Beschwerdedaten: In den letzten 30 Tagen wurde nichts verschickt.",
+				"truncated": "Sehr viele Neuzugänge: Die ältesten Tage sind eventuell zu niedrig."
+			},
+			"headline": {
+				"aboveClick": "Klickrate über deinem Durchschnitt.",
+				"aboveOpen": "Öffnungsrate über deinem Durchschnitt.",
+				"belowClick": "Klickrate unter deinem Durchschnitt.",
+				"belowOpen": "Öffnungsrate unter deinem Durchschnitt.",
+				"bestClick": "Beste Klickrate seit {count} Kampagnen.",
+				"bestOpen": "Beste Öffnungsrate seit {count} Kampagnen.",
+				"highUnsubscribe": "Deutlich mehr Abmeldungen als im Durchschnitt.",
+				"onPar": "Im Rahmen deines Durchschnitts."
+			},
+			"latest": {
+				"clicked": "Geklickt",
+				"delivered": "Zugestellt",
+				"opened": "Geöffnet",
+				"sending": "Wird versendet",
+				"sendingProgress": "Wird versendet · {percent}",
+				"sentLine": "Verschickt {date} · {delivered} zugestellt",
+				"unsubscribed": "Abgemeldet",
+				"vsAverage": "{points} Pkt. ggü. Ø"
+			},
+			"nextUp": {
+				"drafts": "Entwürfe",
+				"draftsEmpty": "Keine Entwürfe in Arbeit.",
+				"edited": "Bearbeitet {when}",
+				"needsYou": "Braucht dich",
+				"needsYouEmpty": "Nichts wartet auf eine Entscheidung.",
+				"noTime": "Keine Versandzeit festgelegt",
+				"reviewBefore": "Prüfen vor {date}",
+				"scheduled": "Geplant",
+				"scheduledEmpty": "Nichts geplant.",
+				"showAllDrafts": "Alle Entwürfe",
+				"showAllScheduled": "Alle {count} geplanten anzeigen"
+			},
+			"period": {
+				"comparisonNote": "Verglichen mit den 30 Tagen davor. Die Minidiagramme zeigen die letzten 12 Wochen.",
+				"percentChange": "{percent} ggü. den 30 Tagen davor",
+				"pointsChange": "{points} Pkt. ggü. den 30 Tagen davor",
+				"sparkLabel": "{metric}, Woche für Woche über die letzten 12 Wochen",
+				"tiles": {
+					"bounceRate": "Bounce-Rate",
+					"clickRate": "Klickrate",
+					"delivered": "Zugestellt",
+					"openRate": "Öffnungsrate",
+					"unsubscribeRate": "Abmelderate"
+				}
+			},
+			"rateBars": {
+				"average": "Gestrichelte Linie: dein Durchschnitt, {value}"
+			}
+		},
 		"mediaPickerModal": {
 			"browseFiles": "Dateien durchsuchen",
 			"defaultTitle": "Bild auswählen",
@@ -9302,6 +9365,38 @@
 				"title": "Wissensgraph"
 			}
 		},
+		"marketing": {
+			"errorMessage": "Beim Laden deiner Kampagnenzahlen ist etwas schiefgelaufen. Versuche es gleich noch einmal.",
+			"errorTitle": "Übersicht konnte nicht geladen werden",
+			"firstRun": {
+				"description": "Sobald deine erste Kampagne verschickt ist, zeigt diese Seite, wie sie im Vergleich zu deinem Durchschnitt abgeschnitten hat und wie sich alle Kampagnen entwickeln. Bis dahin: Fang unten mit einem Entwurf an.",
+				"title": "So erscheinen deine Kampagnen hier"
+			},
+			"latest": {
+				"subtitle": "Verglichen mit deinem Durchschnitt der letzten {count} verschickten Kampagnen",
+				"title": "Neueste Kampagnen"
+			},
+			"newCampaign": "Neue Kampagne",
+			"nextUp": {
+				"errorTitle": "Die nächsten Schritte konnten nicht geladen werden",
+				"subtitle": "Was eine Entscheidung braucht, dann was ansteht",
+				"title": "Als Nächstes"
+			},
+			"pageTitle": "Marketing-Übersicht — Owlat",
+			"period": {
+				"audience": "Zielgruppe & Versand",
+				"byCampaignNote": "Letzte 10 verschickte Kampagnen, die älteste links. Gestrichelte Linie: Durchschnitt.",
+				"clickRateByCampaign": "Klickrate, Kampagne für Kampagne",
+				"openRateByCampaign": "Öffnungsrate, Kampagne für Kampagne",
+				"opensPerDay": "Öffnungen pro Tag (alle E-Mails)",
+				"opensPerDayNote": "Kampagnen und Transaktions-E-Mails zusammen; die Tagessummen trennen sie nicht.",
+				"sameOrderNote": "Dieselben Kampagnen, dieselbe Reihenfolge.",
+				"subtitle": "{campaigns} Kampagnen · {delivered} E-Mails zugestellt",
+				"title": "Alle Kampagnen, letzte 30 Tage"
+			},
+			"title": "Marketing-Übersicht",
+			"todoChip": "{count} offen"
+		},
 		"postbox": {
 			"contacts": {
 				"addContact": "Kontakt hinzufügen",
@@ -11445,6 +11540,7 @@
 				"campaigns": "Kampagnen",
 				"dashboard": "Heute",
 				"delivery": "Zustellung",
+				"marketing": "Marketing",
 				"preferences": "Einstellungen",
 				"send": "Senden",
 				"answer": "Antwortliste",

@@ -100,6 +100,13 @@ export const routeConfigs: Record<string, RouteConfig> = {
 		page: 'shared.breadcrumbRoutes.pages.media',
 	},
 
+	// Marketing workspace
+	'/dashboard/marketing': {
+		section: 'shared.breadcrumbRoutes.sections.marketing',
+		sectionHref: '/dashboard/marketing',
+		page: 'shared.breadcrumbRoutes.pages.overview',
+	},
+
 	// Campaigns section
 	// Filed under Send, matching the sidebar — the section crumb was
 	// `campaigns` too, so the index route read "Campaigns > Campaigns".

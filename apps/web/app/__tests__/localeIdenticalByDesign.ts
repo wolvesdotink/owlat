@@ -327,6 +327,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'shared.breadcrumbRoutes.pages.plugins',
 	'shared.breadcrumbRoutes.pages.systemAndUpdates',
 	'shared.breadcrumbRoutes.pages.webhooks',
+	'shared.breadcrumbRoutes.sections.marketing',
 	'shared.channelKinds.addable.sms',
 	'shared.channelKinds.addable.whatsapp',
 	'shared.dashboardNavigation.items.assistant.chat',

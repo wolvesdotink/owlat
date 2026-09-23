@@ -54,6 +54,7 @@ export const PATH_FEATURE_RULES: ReadonlyArray<{
 	anyOf?: FeatureFlagKey[];
 }> = [
 	{ prefix: '/dashboard/campaigns', required: 'campaigns' },
+	{ prefix: '/dashboard/marketing', required: 'campaigns' },
 	{ prefix: '/dashboard/automations', required: 'automations' },
 	{ prefix: '/dashboard/visualizations', required: 'ai.visualizations' },
 	{ prefix: '/dashboard/send/marketing', required: 'campaigns' },
