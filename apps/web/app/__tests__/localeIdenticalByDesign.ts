@@ -420,5 +420,6 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'components.shell.settings.tabs.workspace',
 	'dashboard.admin.index.eyebrow',
 	'shared.breadcrumbRoutes.sections.workspace',
+	'shared.shortcuts.groups.workspace',
 	'shell.admin.areas.overview',
 ];

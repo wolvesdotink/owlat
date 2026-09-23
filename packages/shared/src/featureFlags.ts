@@ -238,7 +238,7 @@ export const FEATURE_FLAGS: Record<CoreFeatureFlagKey, CoreFeatureFlagDefinition
 		category: 'ai',
 		label: 'Draft replies in personal mail',
 		description:
-			'When a personal message needs a reply, have a draft waiting in the answer queue. You always review it before it is sent.',
+			'When a personal message needs a reply, have a draft waiting in the Answer queue. You always review it before it is sent.',
 		default: false,
 		// Needs the AI master toggle for an LLM provider, plus *a* mailbox source
 		// to draft for — either hosted Postbox or a connected external mailbox
