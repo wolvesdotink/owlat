@@ -11058,8 +11058,6 @@
 			"campaignIpsLabel": "Campaign IPs",
 			"ehloHostnameHelp": "Set each IP PTR exactly to its EHLO hostname, then point that hostname back to the IP.",
 			"ehloHostnameLabel": "Default EHLO / PTR hostname",
-			"ehloOverridesHelp": "Use when different source IPs have different PTR hostnames.",
-			"ehloOverridesLabel": "Per-IP EHLO overrides (optional JSON)",
 			"emailitKeyLabel": "Emailit API key",
 			"errors": {
 				"missingToken": "Enter the setup token printed by `owlat setup` to verify the provider, then try again.",
@@ -11073,7 +11071,7 @@
 			"fromIdentityIntro": "The default From address for system mail. Leave blank to derive it from your sending domain later.",
 			"fromIdentityOptional": "(optional)",
 			"fromNameLabel": "From name",
-			"intro": "Three honest ways to send: run your own mail server for full control, hand delivery to Amazon SES, or relay through an SMTP provider you already pay for.",
+			"intro": "Pick how Owlat sends mail. You can change this later in Settings.",
 			"mandrillHint": "Mailchimp Transactional → Settings → API keys. Bounce and complaint feedback needs a webhook too — Delivery → Provider has the URL and the events to enable once setup is done.",
 			"mandrillKeyLabel": "Mailchimp Transactional API key",
 			"mtaIdentityHeading": "Outbound IP identity",
@@ -11081,10 +11079,8 @@
 			"next": "Next: Admin account",
 			"pageTitle": "Owlat setup — Email provider",
 			"providerLegend": "Delivery provider",
-			"providerOptionalMessage": "No bulk sending is enabled. Note that system/auth emails (password reset, invitations) still need a transport.",
-			"providerOptionalTitle": "A delivery provider is optional",
-			"providerRequiredMessage": "You enabled campaigns, transactional, or automations — these send through a delivery provider, so one is required.",
-			"providerRequiredTitle": "A delivery provider is required",
+			"providerOptionalHint": "None of the features you picked send bulk mail, so this is optional. Password resets and invitations still need a way to send.",
+			"providerRequiredHint": "Pick a provider to continue. Newsletters, automated email and your app's email are sent through it.",
 			"providers": {
 				"emailit": {
 					"hint": "Managed email API with signed delivery feedback and idempotent sends.",
