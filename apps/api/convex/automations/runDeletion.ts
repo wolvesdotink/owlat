@@ -8,8 +8,8 @@
  * derived active total (entered − completed − cancelled, see statShards.ts)
  * counted it as active forever. This module:
  *
- *   1. terminates a running run through the cancellation transition, so the
- *      cancelled counter moves exactly as `cancelAutomationRun` moves it;
+ *   1. terminates a running run through the walker's own cancellation
+ *      (`cancelRun`), so the cancelled counter moves exactly once;
  *   2. deletes the step runs newest first — the in-flight ones (the only
  *      pending/executing rows a run has are its latest) go in the first batch
  *      — releasing each in-flight row from its step's pending/executing gauge;
@@ -20,56 +20,26 @@
  * the run row is deleted last, which is what makes a partial pass resumable.
  *
  * Scheduled `executeStep` invocations are not tracked by id and cannot be
- * cancelled here. A fresh invocation resolves the run first and stops when it
- * is gone, and cannot claim a step run that is gone. A run whose deletion
- * spans several transactions exists in between as `cancelled`; the step walker
- * does not re-check run status before executing today, so the in-flight step
- * runs are deliberately the first rows removed.
- *
- * The cancellation transition and the gauge arithmetic mirror
- * `stepExecutorQueries.ts` (`cancelAutomationRun`, `statDelta`), whose helpers
- * are private to that module; keep the two in step.
+ * cancelled here; the orchestration mutations make them harmless instead
+ * (stepOrchestration.ts). A claim of a step run that is gone is dropped, and a
+ * claim while the run is already `cancelled` (a deletion spanning several
+ * transactions) skips the step run without running its side effect. An
+ * attempt that claimed before the deletion and is still inside its side
+ * effect finds its step run gone at finalize/retry and is a stale no-op, so
+ * it can neither advance nor resurrect the run. The recovery sweep only reads
+ * step runs that still exist, so a deleted row is never re-dispatched.
  */
 
 import type { MutationCtx } from '../_generated/server';
-import type { Doc, Id } from '../_generated/dataModel';
-import { bumpAutomationStats } from './statShards';
+import type { Id } from '../_generated/dataModel';
+import {
+	applyStepStatusTransition,
+	cancelRun,
+	isTerminalStepRunStatus,
+} from './stepExecutorQueries';
 
 /** Step runs read per query while draining one run. */
 const STEP_RUN_CHUNK = 64;
-
-type StepRunStatus = Doc<'automationStepRuns'>['status'];
-
-/**
- * The gauge patch that releases one deleted step run from its step. Only the
- * in-flight gauges move: completed / failed / skipped are lifetime funnel
- * totals, like the run-level completed and cancelled counters, and a run that
- * really happened stays counted after its contact is gone.
- */
-function inFlightGaugeRelease(
-	step: Doc<'automationSteps'>,
-	status: StepRunStatus
-): Partial<Doc<'automationSteps'>> | null {
-	switch (status) {
-		case 'pending':
-			return { statPending: Math.max(0, (step.statPending ?? 0) - 1) };
-		case 'executing':
-			return { statExecuting: Math.max(0, (step.statExecuting ?? 0) - 1) };
-		default:
-			return null;
-	}
-}
-
-/**
- * Move a running run to `cancelled` and bump the cancelled counter, as
- * `cancelAutomationRun` does. A run that already finished is left alone, so a
- * repeated call can never count one run twice.
- */
-async function terminateRun(ctx: MutationCtx, run: Doc<'automationRuns'>): Promise<void> {
-	if (run.status !== 'running') return;
-	await ctx.db.patch(run._id, { status: 'cancelled', completedAt: Date.now() });
-	await bumpAutomationStats(ctx, run.automationId, { statsCancelled: 1 });
-}
 
 interface RunDeletionProgress {
 	/** True once the run row itself is gone (or was already gone). */
@@ -90,7 +60,7 @@ export async function deleteAutomationRun(
 	const run = await ctx.db.get(runId);
 	if (!run) return { isDeleted: true, rowsTouched: 0 };
 
-	await terminateRun(ctx, run);
+	await cancelRun(ctx, run._id);
 	let rowsTouched = 1;
 
 	while (rowsTouched < maxRows) {
@@ -104,9 +74,13 @@ export async function deleteAutomationRun(
 			return { isDeleted: true, rowsTouched: rowsTouched + 1 };
 		}
 		for (const stepRun of stepRuns) {
-			const step = await ctx.db.get(stepRun.automationStepId);
-			const release = step ? inFlightGaugeRelease(step, stepRun.status) : null;
-			if (step && release) await ctx.db.patch(step._id, release);
+			// Only the in-flight gauges are released: completed / failed / skipped
+			// are lifetime funnel totals, like the run-level completed and
+			// cancelled counters, and work that really happened stays counted
+			// after its contact is gone.
+			if (!isTerminalStepRunStatus(stepRun.status)) {
+				await applyStepStatusTransition(ctx, stepRun.automationStepId, stepRun.status, null);
+			}
 			await ctx.db.delete(stepRun._id);
 			rowsTouched += 1;
 		}
