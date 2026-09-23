@@ -190,6 +190,15 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		why: 'Step runs are the run’s own execution record. In-flight ones are taken off the step’s pending/executing gauges as they go.',
 	},
 
+	// ── automationStepRuns ──
+	{
+		parent: 'automationStepRuns',
+		table: 'transactionalSends',
+		field: 'automationStepRunId',
+		action: 'retain',
+		why: 'An opaque idempotency key, not content; the Send itself is governed by its contactId (scrubbed above). Nothing dereferences it: the intake only looks it up by the id of a live step run, and ids are never reused, so the dangling key is inert. Keeping it means an email attempt still in flight during the erasure resolves to this Send instead of enqueuing a second one.',
+	},
+
 	// ── conversationThreads ──
 	{
 		parent: 'conversationThreads',
