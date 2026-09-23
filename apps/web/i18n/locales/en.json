@@ -455,6 +455,8 @@
 		"automations": {
 			"stepEditorPanel": {
 				"delete": "Delete Step",
+				"emptyBody": "Pick a step in the workflow to change its settings.",
+				"emptyTitle": "No step selected",
 				"save": "Save Changes",
 				"title": "Step Settings"
 			},
