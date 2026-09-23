@@ -310,7 +310,7 @@ describe('core:inbox-threads — the Team Inbox corpus', () => {
 		expect(group?.order).toBe(3);
 		expect(group?.cap).toBe(5);
 		expect(group?.items.map((item) => item.id)).toEqual(['inbox-thread:thread1']);
-		expect(t(group?.heading ?? '')).toBe('Team Inbox');
+		expect(t(group?.heading ?? '')).toBe('Team inbox');
 	});
 
 	it('answers the unprefixed palette, not a `>`/`@`/`#` mode', () => {

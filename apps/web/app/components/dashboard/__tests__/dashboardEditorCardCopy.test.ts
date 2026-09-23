@@ -36,7 +36,7 @@ function availableCard(type: string) {
 /**
  * Mounted CLOSED and then opened, because that transition is what seeds the
  * editor's working copy of the active cards — a panel mounted already-open
- * shows an empty "Active Cards" list, exactly as it does in the app.
+ * shows an empty "Active cards" list, exactly as it does in the app.
  */
 async function mountEditor(
 	overrides: Partial<InstanceType<typeof DashboardEditor>['$props']> = {}
@@ -68,7 +68,7 @@ async function mountEditor(
 describe('DashboardEditor — card names', () => {
 	it('names an active card from the catalog, not from the query payload', async () => {
 		const text = (await mountEditor()).text();
-		expect(text).toContain('Review Queue');
+		expect(text).toContain('Review queue');
 		expect(text).toContain('Pending agent drafts needing review');
 		expect(text).not.toContain('WIRE verification_queue');
 		expect(text).not.toContain('WIRE DESC verification_queue');
@@ -76,15 +76,15 @@ describe('DashboardEditor — card names', () => {
 
 	it('names the add-a-card list from the catalog', async () => {
 		const text = (await mountEditor()).text();
-		// Not among the active cards, so these are the "Add Cards" entries.
-		expect(text).toContain('LLM Cost by Step');
+		// Not among the active cards, so these are the "Add cards" entries.
+		expect(text).toContain('LLM cost by step');
 		expect(text).toContain('Token cost per agent-pipeline step');
 		expect(text).not.toContain('WIRE cost_by_step');
 	});
 
 	it('names the cards inside an adaptive rule from the catalog', async () => {
 		const text = (await mountEditor()).text();
-		expect(text).toContain('Delivery Rates');
+		expect(text).toContain('Delivery rates');
 		expect(text).not.toContain('WIRE delivery_rates');
 	});
 

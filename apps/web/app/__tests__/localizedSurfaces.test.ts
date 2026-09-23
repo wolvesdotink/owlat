@@ -371,7 +371,7 @@ describe('auth/register', () => {
 		expect(w.text()).toContain("You've been invited to an Owlat workspace.");
 		// `terms` is one sentence with a link slot — never two concatenated halves.
 		expect(w.text()).toContain('I agree to the');
-		expect(w.text()).toContain('Terms of Service');
+		expect(w.text()).toContain('Terms of service');
 		expectFullyLocalized(w);
 	});
 

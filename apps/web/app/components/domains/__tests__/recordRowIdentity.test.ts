@@ -161,7 +161,7 @@ describe('RecordRow — MAIL FROM heading (regression: mail.mail.example.com)', 
 		const w = mountRow({}, true);
 		const heading = w.find('[data-testid="mailfrom-heading"]');
 		expect(heading.exists()).toBe(true);
-		expect(heading.text()).toContain('MAIL FROM Domain (bounce.example.com)');
+		expect(heading.text()).toContain('MAIL FROM domain (bounce.example.com)');
 		// The old hardcoded-prefix bug produced this for a `mail.example.com` domain.
 		expect(heading.text()).not.toContain('mail.mail.example.com');
 	});
@@ -186,7 +186,7 @@ describe('RecordRow — MAIL FROM heading (regression: mail.mail.example.com)', 
 			true
 		);
 		const heading = w.find('[data-testid="mailfrom-heading"]');
-		expect(heading.text()).toContain('MAIL FROM Domain (mail.example.com)');
+		expect(heading.text()).toContain('MAIL FROM domain (mail.example.com)');
 	});
 
 	it('drops the parenthetical when the mailFrom record carries no host or hostname', () => {
@@ -201,7 +201,7 @@ describe('RecordRow — MAIL FROM heading (regression: mail.mail.example.com)', 
 		);
 		const heading = w.find('[data-testid="mailfrom-heading"]');
 		expect(heading.exists()).toBe(true);
-		expect(heading.text().trim()).toBe('MAIL FROM Domain');
+		expect(heading.text().trim()).toBe('MAIL FROM domain');
 	});
 });
 

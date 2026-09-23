@@ -93,12 +93,12 @@ beforeEach(() => {
 		},
 	});
 	Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: () => {} });
-	vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(
-		function (this: HTMLAnchorElement) {
-			const pending = downloads[downloads.length - 1];
-			if (pending) pending.filename = this.getAttribute('download') ?? '';
-		}
-	);
+	vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+		this: HTMLAnchorElement
+	) {
+		const pending = downloads[downloads.length - 1];
+		if (pending) pending.filename = this.getAttribute('download') ?? '';
+	});
 });
 
 // NOTE: no `vi.unstubAllGlobals()` teardown — it would also drop the Vue
@@ -192,7 +192,7 @@ describe('CsvImportModal — the close guard', () => {
 		expect(wrapper.text()).not.toContain(DISCARD_PROMPT);
 		expect(csvImport.step.value).toBe('mapping');
 		// Back on the mapping step, not a blank upload.
-		expect(wrapper.text()).toContain('Handle Duplicates');
+		expect(wrapper.text()).toContain('Handle duplicates');
 	});
 
 	/** Escape/backdrop dismiss the TOP layer — the prompt — never the wizard. */

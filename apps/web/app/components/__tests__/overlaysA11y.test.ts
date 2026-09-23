@@ -189,7 +189,7 @@ describe('keyboard shortcuts help — accessibility', () => {
 			global: { plugins: [createTestI18n()] },
 			// The dialog teleports to <body>, so the mount wrapper is empty by
 			// design and the rendered copy has to be read off the document.
-			prepare: () => expect(document.body.textContent).toContain('Go to Dashboard'),
+			prepare: () => expect(document.body.textContent).toContain('Go to dashboard'),
 		});
 		expect(violations).toEqual([]);
 	});

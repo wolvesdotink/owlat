@@ -114,9 +114,9 @@ const pages = [
 	},
 	{ name: 'campaign archive', component: ArchivePage, loaded: 'Analytical Engines' },
 	{ name: 'shared campaign', component: SharePage, loaded: 'Shared campaign' },
-	{ name: 'cancel account deletion', component: CancelDeletionPage, loaded: 'Deletion Cancelled' },
+	{ name: 'cancel account deletion', component: CancelDeletionPage, loaded: 'Deletion cancelled' },
 	{ name: 'imprint', component: ImprintPage, loaded: 'Imprint' },
-	{ name: 'terms', component: TermsPage, loaded: 'Terms of Service' },
+	{ name: 'terms', component: TermsPage, loaded: 'Terms of service' },
 ] as const;
 
 describe.each(pages)('$name page — accessibility', ({ component, loaded }) => {

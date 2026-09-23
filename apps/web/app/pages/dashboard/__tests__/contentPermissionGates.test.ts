@@ -243,8 +243,8 @@ describe('blocks list', () => {
 		role.value = 'admin';
 		const wrapper = await mountPage(() => import('../send/blocks/index.vue'), blocksQuery);
 
-		expect(wrapper.find('button[title="Quick Settings"]').exists()).toBe(true);
-		expect(wrapper.find('button[title="Edit Content"]').exists()).toBe(true);
+		expect(wrapper.find('button[title="Quick settings"]').exists()).toBe(true);
+		expect(wrapper.find('button[title="Edit content"]').exists()).toBe(true);
 		wrapper.unmount();
 	});
 
@@ -252,10 +252,10 @@ describe('blocks list', () => {
 		role.value = 'editor';
 		const wrapper = await mountPage(() => import('../send/blocks/index.vue'), blocksQuery);
 
-		expect(wrapper.find('button[title="Quick Settings"]').exists()).toBe(false);
+		expect(wrapper.find('button[title="Quick settings"]').exists()).toBe(false);
 		expect(wrapper.text()).toContain('Only owners and admins can create or delete blocks.');
 		// Opening a block to read it is not a write, so it stays.
-		expect(wrapper.find('button[title="Edit Content"]').exists()).toBe(true);
+		expect(wrapper.find('button[title="Edit content"]').exists()).toBe(true);
 		expect(wrapper.text()).toContain('Footer with address');
 		wrapper.unmount();
 	});

@@ -189,7 +189,7 @@ describe('contactPropertyEditorModule', () => {
 			expect(text.key).toBe(
 				'shared.conditions.contact_property.builtInDescriptions.firstName.equals'
 			);
-			expect(render(text)).toBe('First Name equals "Ada"');
+			expect(render(text)).toBe('First name equals "Ada"');
 		});
 	});
 });

@@ -212,12 +212,12 @@ describe('useBreadcrumbs', () => {
 		it('members do not get a redundant Contacts subsection on a contact detail page', () => {
 			expect(labelsFor('/dashboard/audience/contacts/abc123', 'editor')).toEqual([
 				'Customers',
-				'Contact Details',
+				'Contact details',
 			]);
 			expect(labelsFor('/dashboard/audience/contacts/abc123', 'admin')).toEqual([
 				'Audience',
 				'Contacts',
-				'Contact Details',
+				'Contact details',
 			]);
 		});
 	});

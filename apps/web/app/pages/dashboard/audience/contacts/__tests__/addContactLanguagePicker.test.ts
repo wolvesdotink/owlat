@@ -83,7 +83,7 @@ function languageOptionTexts(): string[] {
 			},
 		},
 	});
-	const picker = wrapper.find('select[aria-label="Preferred Language"]');
+	const picker = wrapper.find('select[aria-label="Preferred language"]');
 	expect(picker.exists()).toBe(true);
 	return picker.findAll('option').map((o) => o.text());
 }

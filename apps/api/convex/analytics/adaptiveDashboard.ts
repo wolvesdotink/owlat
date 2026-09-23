@@ -33,47 +33,47 @@ import { widgetSizeValidator } from '../lib/convexValidators';
 const DEFAULT_CARDS = [
 	{
 		type: 'verification_queue',
-		label: 'Review Queue',
+		label: 'Review queue',
 		description: 'Pending agent drafts needing review',
 	},
 	{
 		type: 'campaign_performance',
-		label: 'Campaign Performance',
+		label: 'Campaign performance',
 		description: 'Recent campaign metrics',
 	},
 	{
 		type: 'channel_health',
-		label: 'Channel Health',
+		label: 'Channel health',
 		description: 'Status of all communication channels',
 	},
-	{ type: 'agent_health', label: 'Agent Health', description: 'AI agent pipeline metrics' },
+	{ type: 'agent_health', label: 'Agent health', description: 'AI agent pipeline metrics' },
 	{
 		type: 'recent_contacts',
-		label: 'Recent Contacts',
+		label: 'Recent contacts',
 		description: 'Newly added or active contacts',
 	},
 	{
 		type: 'recent_activity',
-		label: 'Recent Activity',
+		label: 'Recent activity',
 		description: 'Org-wide audit log and contact activity feed',
 	},
-	{ type: 'queue_depth', label: 'Queue Depth', description: 'Inbound message processing queue' },
-	{ type: 'delivery_rates', label: 'Delivery Rates', description: 'Email delivery success rates' },
+	{ type: 'queue_depth', label: 'Queue depth', description: 'Inbound message processing queue' },
+	{ type: 'delivery_rates', label: 'Delivery rates', description: 'Email delivery success rates' },
 	{
 		type: 'pinned_visualizations',
 		label: 'Visualizations',
 		description: 'Pinned data visualizations',
 	},
 	{ type: 'knowledge_graph', label: 'Knowledge', description: 'Recent knowledge entries' },
-	{ type: 'upcoming_campaigns', label: 'Upcoming Campaigns', description: 'Scheduled campaigns' },
+	{ type: 'upcoming_campaigns', label: 'Upcoming campaigns', description: 'Scheduled campaigns' },
 	{
 		type: 'cost_by_step',
-		label: 'LLM Cost by Step',
+		label: 'LLM cost by step',
 		description: 'Token cost per agent-pipeline step',
 	},
 	{
 		type: 'accuracy_trend',
-		label: 'Accuracy Trend',
+		label: 'Accuracy trend',
 		description: 'Auto-approve vs. rejection over time',
 	},
 	// Every type here must have a renderer in apps/web's DashboardCardRenderer.vue
