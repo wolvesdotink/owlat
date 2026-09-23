@@ -18,7 +18,8 @@
 			"default": "./convex/_generated/server.js"
 		},
 		"./automations": "./convex/automations/automations.ts",
-		"./auditActions": "./convex/auditActions/catalog.ts"
+		"./auditActions": "./convex/auditActions/catalog.ts",
+		"./translationMerge": "./convex/emailTemplates/translationMerge.ts"
 	},
 	"scripts": {
 		"dev": "convex dev",

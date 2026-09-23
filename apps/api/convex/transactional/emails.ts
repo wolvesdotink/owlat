@@ -16,6 +16,7 @@ import { assertFeatureEnabled } from '../lib/featureFlags';
 import { dataVariablesSchemaValidator } from '../lib/convexValidators';
 import { assertEditableForPublishableChange } from './lifecycle';
 import { applyUsageCountDelta } from '../emailBlocks/module';
+import { assertContentRevision, nextContentRevision } from '../lib/contentRevision';
 
 // Data variable type for schema definition
 export type DataVariableType = 'string' | 'number' | 'boolean' | 'date';
@@ -172,6 +173,9 @@ export const update = authedMutation({
 		attachments: v.optional(v.string()),
 		// Allow editing publishable content on a `published` row; default `false`.
 		forceWhilePublished: v.optional(v.boolean()),
+		// The `contentRevision` the caller's payload was built on. When given, the
+		// write is refused with `conflict` if the row has moved on since.
+		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'transactional');
@@ -183,6 +187,7 @@ export const update = authedMutation({
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
 		assertEditableForPublishableChange(email, args.forceWhilePublished);
+		assertContentRevision(email, args.expectedContentRevision);
 
 		// If updating slug, check for uniqueness
 		if (args.slug && args.slug !== email.slug) {
@@ -221,8 +226,10 @@ export const update = authedMutation({
 			linkedBlockIds: string[];
 			attachments: string;
 			searchableText: string;
+			contentRevision: number;
 			updatedAt: number;
 		}> = {
+			contentRevision: nextContentRevision(email),
 			updatedAt: Date.now(),
 		};
 

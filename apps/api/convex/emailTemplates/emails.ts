@@ -13,6 +13,7 @@ import { recordAuditLog } from '../lib/auditLog';
 import { assertEditableForPublishableChange } from './lifecycle';
 import { applyUsageCountDelta } from '../emailBlocks/module';
 import { captureTemplateVersion } from './versions';
+import { assertContentRevision, nextContentRevision } from '../lib/contentRevision';
 
 // Query to get a single email template by ID
 export const get = authedQuery({
@@ -50,6 +51,9 @@ export const update = authedMutation({
 		linkedBlockIds: v.optional(v.array(v.string())),
 		// Allow editing publishable content on a `published` row; default `false`.
 		forceWhilePublished: v.optional(v.boolean()),
+		// The `contentRevision` the caller's payload was built on. When given, the
+		// write is refused with `conflict` if the row has moved on since.
+		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const session = await requireOrgPermission(
@@ -61,6 +65,7 @@ export const update = authedMutation({
 		const template = await getOrThrow(ctx, args.templateId, 'Email template');
 
 		assertEditableForPublishableChange(template, args.forceWhilePublished);
+		assertContentRevision(template, args.expectedContentRevision);
 
 		const updates: {
 			name?: string;
@@ -76,8 +81,9 @@ export const update = authedMutation({
 			htmlTranslations?: string;
 			linkedBlockIds?: string[];
 			searchableText?: string;
+			contentRevision: number;
 			updatedAt: number;
-		} = { updatedAt: Date.now() };
+		} = { contentRevision: nextContentRevision(template), updatedAt: Date.now() };
 
 		if (args.name !== undefined) {
 			updates.name = args.name.trim();
@@ -157,7 +163,9 @@ export const update = authedMutation({
 
 		// Audit the content/metadata edit — the documented email_template.updated
 		// action was never emitted from this handler.
-		const changedFields = Object.keys(updates).filter((k) => k !== 'updatedAt');
+		const changedFields = Object.keys(updates).filter(
+			(k) => k !== 'updatedAt' && k !== 'contentRevision'
+		);
 		await recordAuditLog(ctx, {
 			userId: session.userId,
 			action: 'email_template.updated',

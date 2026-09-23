@@ -592,6 +592,7 @@ import type * as lib_clock from '../lib/clock.js';
 import type * as lib_codeAgentGuard from '../lib/codeAgentGuard.js';
 import type * as lib_codeTaskRetry from '../lib/codeTaskRetry.js';
 import type * as lib_constants from '../lib/constants.js';
+import type * as lib_contentRevision from '../lib/contentRevision.js';
 import type * as lib_contactCountHelpers from '../lib/contactCountHelpers.js';
 import type * as lib_contactHelpers from '../lib/contactHelpers.js';
 import type * as lib_contactJunctions from '../lib/contactJunctions.js';
@@ -1752,6 +1753,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/codeAgentGuard': typeof lib_codeAgentGuard;
 	'lib/codeTaskRetry': typeof lib_codeTaskRetry;
 	'lib/constants': typeof lib_constants;
+	'lib/contentRevision': typeof lib_contentRevision;
 	'lib/contactCountHelpers': typeof lib_contactCountHelpers;
 	'lib/contactHelpers': typeof lib_contactHelpers;
 	'lib/contactJunctions': typeof lib_contactJunctions;

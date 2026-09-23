@@ -15,6 +15,7 @@ import {
 	TEMPLATE_TRANSLATABLE_FIELDS,
 	type Translation,
 } from '../lib/emailTranslations';
+import { nextContentRevision } from '../lib/contentRevision';
 
 // Query to get email template content for a specific language
 // Returns the content for the requested language, falling back to default language if not available
@@ -57,7 +58,11 @@ export const addTranslation = authedMutation({
 
 		const patch = addLanguage(template, args.language, TEMPLATE_TRANSLATABLE_FIELDS);
 
-		await ctx.db.patch(args.templateId, { ...patch, updatedAt: Date.now() });
+		await ctx.db.patch(args.templateId, {
+			...patch,
+			contentRevision: nextContentRevision(template),
+			updatedAt: Date.now(),
+		});
 
 		return args.templateId;
 	},
@@ -93,8 +98,9 @@ export const updateTranslation = authedMutation({
 			const updates: {
 				subject?: string;
 				previewText?: string;
+				contentRevision: number;
 				updatedAt: number;
-			} = { updatedAt: Date.now() };
+			} = { contentRevision: nextContentRevision(template), updatedAt: Date.now() };
 
 			if (args.subject !== undefined) {
 				updates.subject = args.subject.trim();
@@ -129,6 +135,7 @@ export const updateTranslation = authedMutation({
 
 		await ctx.db.patch(args.templateId, {
 			translations: serializeTranslations(translations),
+			contentRevision: nextContentRevision(template),
 			updatedAt: Date.now(),
 		});
 
@@ -155,7 +162,11 @@ export const removeTranslation = authedMutation({
 
 		const patch = removeLanguage(template, args.language);
 
-		await ctx.db.patch(args.templateId, { ...patch, updatedAt: Date.now() });
+		await ctx.db.patch(args.templateId, {
+			...patch,
+			contentRevision: nextContentRevision(template),
+			updatedAt: Date.now(),
+		});
 
 		return args.templateId;
 	},
@@ -229,6 +240,7 @@ export const setDefaultLanguage = authedMutation({
 			content: newDefaultContent,
 			defaultLanguage: args.language,
 			translations: serializeTranslations(updatedTranslations),
+			contentRevision: nextContentRevision(template),
 			updatedAt: Date.now(),
 		});
 

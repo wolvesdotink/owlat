@@ -12,6 +12,7 @@ import {
 	serializeTranslations,
 	TRANSACTIONAL_TRANSLATABLE_FIELDS,
 } from '../lib/emailTranslations';
+import { nextContentRevision } from '../lib/contentRevision';
 
 /**
  * Get transactional email content for a specific language
@@ -57,7 +58,11 @@ export const addTranslation = authedMutation({
 
 		const patch = addLanguage(email, args.language, TRANSACTIONAL_TRANSLATABLE_FIELDS);
 
-		await ctx.db.patch(args.id, { ...patch, updatedAt: Date.now() });
+		await ctx.db.patch(args.id, {
+			...patch,
+			contentRevision: nextContentRevision(email),
+			updatedAt: Date.now(),
+		});
 
 		return args.id;
 	},
@@ -91,8 +96,9 @@ export const updateTranslation = authedMutation({
 		if (args.language === defaultLanguage) {
 			const updates: {
 				subject?: string;
+				contentRevision: number;
 				updatedAt: number;
-			} = { updatedAt: Date.now() };
+			} = { contentRevision: nextContentRevision(email), updatedAt: Date.now() };
 
 			if (args.subject !== undefined) {
 				updates.subject = args.subject.trim();
@@ -121,6 +127,7 @@ export const updateTranslation = authedMutation({
 
 		await ctx.db.patch(args.id, {
 			translations: serializeTranslations(translations),
+			contentRevision: nextContentRevision(email),
 			updatedAt: Date.now(),
 		});
 
@@ -149,7 +156,11 @@ export const removeTranslation = authedMutation({
 
 		const patch = removeLanguage(email, args.language);
 
-		await ctx.db.patch(args.id, { ...patch, updatedAt: Date.now() });
+		await ctx.db.patch(args.id, {
+			...patch,
+			contentRevision: nextContentRevision(email),
+			updatedAt: Date.now(),
+		});
 
 		return args.id;
 	},
