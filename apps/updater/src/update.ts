@@ -21,6 +21,11 @@
  *   - `partially-applied`: `up` failed and the stack was started forward again
  *     (there is no rollback: the old release's containers are gone by then).
  *
+ * A service that was already failing before the update does not make the
+ * rollout `started`; it comes back as a warning (readiness.ts). The verdict is
+ * also written to the install directory for /health (rolloutState.ts), since
+ * the web container that asked is normally recreated before the answer.
+ *
  * Split out of server.ts, which also owns /health, /configure-ip and
  * /rotate-env (CONVENTIONS.md ~500 LOC rule). The rollout's own plumbing — the
  * preflight, the service list, the self-replacement hand-off — lives in
@@ -45,10 +50,14 @@ import {
 	servicesToRecreate,
 } from './rollout.js';
 import { diskSpacePreflight, pullFailureMessage, reclaimUnusedImages } from './storage.js';
-import { verifyReadiness } from './readiness.js';
+import { failingBeforeRollout, verifyReadiness } from './readiness.js';
+import { writeLastRollout, type LastRollout, type RolloutOutcome } from './rolloutState.js';
 
-/** How far the release got, reported from the recreate on (see the header). */
-type RolloutState = 'healthy' | 'started' | 'partially-applied';
+interface UpdateAnswer {
+	error?: string;
+	rollout?: RolloutOutcome;
+	[key: string]: unknown;
+}
 
 const COMPOSE_FILE = join(OWLAT_DIR, 'docker-compose.yml');
 
@@ -130,6 +139,30 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		}
 	}
 
+	// From here on every answer is also the last rollout's verdict (see the
+	// header): the record says `applying` until one is reached.
+	const record: LastRollout = {
+		targetVersion: composeTemplate ? parseReleaseVersionFromTemplate(composeTemplate) : null,
+		startedAt: Date.now(),
+		phase: 'applying',
+	};
+	writeLastRollout(record);
+	const answer = (
+		status: number,
+		body: UpdateAnswer,
+		verdict: { summary?: string; warnings?: string[] } = {}
+	) => {
+		writeLastRollout({
+			...record,
+			phase: 'done',
+			outcome: body.rollout ?? (status < 300 ? 'healthy' : 'failed'),
+			summary: verdict.summary ?? body.error,
+			warnings: verdict.warnings ?? [],
+			finishedAt: Date.now(),
+		});
+		json(res, status, body);
+	};
+
 	// Step 2: Prove the Docker API will let this rollout finish before anything
 	// is staged, pulled or deployed. The endpoints the socket proxy grants are
 	// the one precondition an update cannot recover from halfway through, and
@@ -141,7 +174,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		// Also in this sidecar's own log: a refusal the operator can only read
 		// by re-triggering the update is not much of an explanation.
 		console.error('[update] refused before staging:', preflight.stderr);
-		return json(res, 500, { error: preflight.stderr, steps });
+		return answer(500, { error: preflight.stderr, steps });
 	}
 
 	// Step 2b: Make room for the release, then prove there is room. Nothing
@@ -155,7 +188,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	steps.push(disk);
 	if (!disk.ok) {
 		console.error('[update] refused before staging:', disk.stderr);
-		return json(res, 507, { error: disk.stderr, steps });
+		return answer(507, { error: disk.stderr, steps });
 	}
 
 	// Step 3: STAGE the validated template. The live docker-compose.yml is only
@@ -171,7 +204,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 			composeFileForUpdate = STAGED_FILE;
 			steps.push({ step: 'stage-compose', stdout: 'New compose template staged', stderr: '' });
 		} catch (err) {
-			return json(res, 500, {
+			return answer(500, {
 				error: 'Failed to stage compose file',
 				details: errorMessage(err),
 				steps,
@@ -200,7 +233,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		await discardStaged();
 		const error = pullFailureMessage(pull.stderr);
 		console.error('[update]', error);
-		return json(res, 500, { error, steps });
+		return answer(500, { error, steps });
 	}
 
 	// Step 5 (P2.4 / S5): deploy Convex functions BEFORE restarting app
@@ -220,7 +253,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 
 	if (!deploy.ok) {
 		await discardStaged();
-		return json(res, 500, {
+		return answer(500, {
 			error: 'convex-deploy failed — update aborted, running stack untouched',
 			steps,
 		});
@@ -233,7 +266,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 			await unlink(STAGED_FILE);
 			steps.push({ step: 'write-compose', stdout: 'Compose file updated', stderr: '' });
 		} catch (err) {
-			return json(res, 500, {
+			return answer(500, {
 				error: 'Failed to promote compose file',
 				details: errorMessage(err),
 				steps,
@@ -260,8 +293,12 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	const plan = servicesToRecreate();
 	if (plan.error) {
 		steps.push({ step: 'up', ok: false, stdout: '', stderr: plan.error });
-		return json(res, 500, { error: `docker compose up failed: ${plan.error}`, steps });
+		return answer(500, { error: `docker compose up failed: ${plan.error}`, steps });
 	}
+
+	// What was already broken before the release touched it, so the verdict
+	// can tell the rollout's failures from the stack's.
+	const preExisting = failingBeforeRollout(plan.services, composeArgv());
 
 	const up = exec(
 		'docker',
@@ -287,18 +324,20 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 			recovery.ok ? recovery.stdout : recovery.stderr
 		);
 
-		return json(res, 500, {
+		return answer(500, {
 			error: recovery.ok
 				? 'docker compose up failed — the stack was restarted and is serving again, ' +
 					'but the release may be only partly applied. Re-run the update.'
 				: `docker compose up failed and the stack is not fully running. ${recovery.stderr}`,
-			rollout: 'partially-applied' satisfies RolloutState,
+			rollout: 'partially-applied' satisfies RolloutOutcome,
 			steps,
 		});
 	}
 
-	// Step 9: `up` has started the release; wait (bounded) until it is serving.
-	const readiness = await verifyReadiness(plan.services, composeArgv());
+	// Step 9: `up` has started the release; wait (bounded, per the cadence each
+	// service declares) until it is serving.
+	writeLastRollout({ ...record, phase: 'verifying' });
+	const readiness = await verifyReadiness(plan.services, composeArgv(), { preExisting });
 	steps.push({
 		step: 'readiness',
 		ok: readiness.ready,
@@ -315,15 +354,29 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	steps.push(scheduleUpdaterRecreateSafely());
 
 	if (!readiness.ready) {
-		return json(res, 500, {
-			error:
-				'The release was applied and its containers started, but the stack did not pass the ' +
-				`readiness check. ${readiness.summary} Check \`docker compose ps\` and the logs of the ` +
-				'services named above on the host.',
-			rollout: 'started' satisfies RolloutState,
-			steps,
-		});
+		return answer(
+			500,
+			{
+				error:
+					'The release was applied and its containers started, but the stack did not pass the ' +
+					`readiness check. ${readiness.summary} Check \`docker compose ps\` and the logs of the ` +
+					'services named above on the host.',
+				rollout: 'started' satisfies RolloutOutcome,
+				warnings: readiness.warnings,
+				steps,
+			},
+			{ warnings: readiness.warnings }
+		);
 	}
 
-	json(res, 200, { success: true, rollout: 'healthy' satisfies RolloutState, steps });
+	answer(
+		200,
+		{
+			success: true,
+			rollout: 'healthy' satisfies RolloutOutcome,
+			warnings: readiness.warnings,
+			steps,
+		},
+		{ summary: readiness.summary, warnings: readiness.warnings }
+	);
 }

@@ -175,7 +175,9 @@ describe('POST /update', () => {
 		expect(cmds[0]).toBe(`${COMPOSE} pull`);
 		expect(cmds[1]).toBe(`${COMPOSE} --profile deploy run --rm convex-deploy`);
 		expect(cmds[2]).toBe(`${COMPOSE} config --services`);
-		expect(cmds[3]).toBe(`${COMPOSE} up -d --remove-orphans web convex mta`);
+		// What was already failing before the release touched anything.
+		expect(cmds[3]).toBe(`${COMPOSE} ps --all --format json`);
+		expect(cmds[4]).toBe(`${COMPOSE} up -d --remove-orphans web convex mta`);
 	});
 
 	/**
@@ -644,12 +646,16 @@ describe('POST /update — readiness after the recreate', () => {
 		steps: Array<{ step: string; ok?: boolean; stdout: string; stderr: string }>;
 	};
 
-	/** Answer the readiness check's `ps` from `script`, repeating its last entry. */
-	function psSequence(script: string[]) {
-		let call = 0;
+	/**
+	 * Answer the readiness check's `ps` from `script`, repeating its last entry.
+	 * The first `ps` is the snapshot taken before `up`, answered by `before`.
+	 */
+	function psSequence(script: string[], before = composePs(RUNNING)) {
+		let call = -1;
 		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
 			if ([file, ...args].join(' ').includes(' ps --all --format json')) {
-				return script[Math.min(call++, script.length - 1)];
+				call++;
+				return call === 0 ? before : script[Math.min(call - 1, script.length - 1)];
 			}
 			return dockerFixture(file, args);
 		});
@@ -768,6 +774,183 @@ describe('POST /update — readiness after the recreate', () => {
 		expect(recovery?.stderr).toContain('convex (failing its healthcheck)');
 		expect(json.error).not.toContain('serving again');
 		expect(json.rollout).toBe('partially-applied');
+	});
+});
+
+describe('POST /update — failures that were there before', () => {
+	const convexUnhealthy = composePs([
+		{ Service: 'web', State: 'running' },
+		{ Service: 'convex', State: 'running', Health: 'unhealthy' },
+		{ Service: 'mta', State: 'running' },
+	]);
+
+	it('reports a service already unhealthy before the update as a warning, not a failure', async () => {
+		execFileSyncMock.mockImplementation((file: string, args: string[]) =>
+			[file, ...args].join(' ').includes(' ps --all --format json')
+				? convexUnhealthy
+				: dockerFixture(file, args)
+		);
+
+		const res = await post('/update');
+		expect(res.status).toBe(200);
+		const json = (await res.json()) as { rollout?: string; warnings?: string[] };
+		expect(json.rollout).toBe('healthy');
+		expect(json.warnings).toEqual([
+			'convex was already failing its healthcheck before the update and is still failing its healthcheck',
+		]);
+	});
+
+	it('still fails a service the update broke', async () => {
+		let calls = 0;
+		execFileSyncMock.mockImplementation((file: string, args: string[]) =>
+			[file, ...args].join(' ').includes(' ps --all --format json')
+				? calls++ === 0
+					? composePs(RUNNING)
+					: convexUnhealthy
+				: dockerFixture(file, args)
+		);
+
+		const res = await post('/update');
+		expect(res.status).toBe(500);
+		expect(await res.json()).toMatchObject({ rollout: 'started', warnings: [] });
+	});
+});
+
+describe('the last rollout, on /health', () => {
+	const RECORD = join(OWLAT_DIR, '.owlat-last-rollout.json');
+	const TEMPLATE = [
+		'services:',
+		'  web:',
+		`    image: ghcr.io/wolvesdotink/web:0.4.17@sha256:${'a'.repeat(64)}`,
+		'',
+	].join('\n');
+
+	async function health() {
+		const res = await fetch(`${base}/health`, { headers: AUTH });
+		return (await res.json()) as {
+			lastRollout: Record<string, unknown> | null;
+			rolloutInProgress: string | null;
+		};
+	}
+
+	it('is written while the update waits for readiness, then carries the verdict', async () => {
+		const phases: string[] = [];
+		let calls = 0;
+		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+			if ([file, ...args].join(' ').includes(' ps --all --format json') && calls++ > 0) {
+				phases.push(JSON.parse(readFileSync(RECORD, 'utf-8')).phase);
+			}
+			return dockerFixture(file, args);
+		});
+
+		const res = await post('/update', { composeTemplate: TEMPLATE });
+		expect(res.status).toBe(200);
+
+		expect(phases[0]).toBe('verifying');
+		const { lastRollout } = await health();
+		expect(lastRollout).toMatchObject({
+			targetVersion: '0.4.17',
+			phase: 'done',
+			outcome: 'healthy',
+			warnings: [],
+		});
+		expect(lastRollout?.['summary']).toContain('services are up');
+	});
+
+	it('records a rollout that started but did not become healthy as started', async () => {
+		readiness.webStatus(503);
+
+		await post('/update', { composeTemplate: TEMPLATE });
+
+		const { lastRollout } = await health();
+		expect(lastRollout).toMatchObject({ targetVersion: '0.4.17', outcome: 'started' });
+		expect(lastRollout?.['summary']).toContain('web answered HTTP 503');
+	});
+
+	it('records an update that stopped before the recreate as failed', async () => {
+		execFileSyncMock.mockImplementation(dockerFailing((c) => c.includes(' pull'), 'pull denied'));
+
+		await post('/update', { composeTemplate: TEMPLATE });
+
+		expect((await health()).lastRollout).toMatchObject({ phase: 'done', outcome: 'failed' });
+	});
+
+	it('reports a record left mid-rollout by an updater that stopped as interrupted', async () => {
+		writeFileSync(
+			RECORD,
+			JSON.stringify({ targetVersion: '0.4.17', startedAt: 1, phase: 'verifying' })
+		);
+
+		const { lastRollout, rolloutInProgress } = await health();
+
+		expect(rolloutInProgress).toBeNull();
+		expect(lastRollout).toMatchObject({ phase: 'done', outcome: 'interrupted' });
+	});
+});
+
+describe('one rollout at a time', () => {
+	/**
+	 * Holds an /update inside the rollout lock: its handler waits for a request
+	 * body that only arrives when `release` is called.
+	 */
+	async function updateInFlight() {
+		const { request } = await import('node:http');
+		const req = request(`${base}/update`, {
+			method: 'POST',
+			headers: { ...AUTH, 'content-type': 'application/json' },
+		});
+		const answered = new Promise<number>((resolve) =>
+			req.on('response', (res) => {
+				res.resume();
+				resolve(res.statusCode ?? 0);
+			})
+		);
+		req.flushHeaders();
+		req.write('{"compose');
+		// Until the server is inside the handler, the lock is not taken yet.
+		for (let i = 0; i < 50; i++) {
+			const res = await fetch(`${base}/health`, { headers: AUTH });
+			if (((await res.json()) as { rolloutInProgress: string | null }).rolloutInProgress) break;
+			await new Promise((r) => setTimeout(r, 10));
+		}
+		return {
+			release: () => {
+				req.end('Template":null}');
+				return answered;
+			},
+		};
+	}
+
+	it.each(['/update', '/apply-profiles', '/rotate-env'])(
+		'answers 409 to %s while an update is in flight, and runs nothing',
+		async (path) => {
+			const inFlight = await updateInFlight();
+			execFileSyncMock.mockClear();
+
+			const res = await post(path, {});
+
+			expect(res.status).toBe(409);
+			expect(((await res.json()) as { error: string }).error).toContain('still applying an update');
+			expect(execFileSyncMock).not.toHaveBeenCalled();
+			expect(await inFlight.release()).toBe(200);
+		}
+	);
+
+	it('releases the lock once the rollout answered, even when it failed', async () => {
+		execFileSyncMock.mockImplementation(dockerFailing((c) => c.includes(' pull'), 'pull denied'));
+		expect((await post('/update')).status).toBe(500);
+
+		execFileSyncMock.mockImplementation(dockerFixture);
+		expect((await post('/update')).status).toBe(200);
+	});
+
+	it('does not tell an unauthenticated caller that a rollout is in flight', async () => {
+		const inFlight = await updateInFlight();
+
+		const res = await post('/apply-profiles', {}, {});
+
+		expect(res.status).toBe(401);
+		await inFlight.release();
 	});
 });
 
