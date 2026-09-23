@@ -7090,6 +7090,7 @@
 						"userLabel": "User",
 						"userOption": "{name} · {email}"
 					},
+					"checkingWorkspaces": "Checking how many workspaces this instance has",
 					"admins": {
 						"add": "Add admin",
 						"added": "Added",

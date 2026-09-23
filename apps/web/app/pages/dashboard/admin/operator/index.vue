@@ -1,8 +1,14 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { formatNumber } from '~/utils/formatters';
+import {
+	OPERATOR_CONSOLE_FALLBACK_ROUTE,
+	formatRate,
+	operatorConsoleVisibility,
+} from '~/utils/operatorConsole';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 useHead({ title: () => t('dashboard.admin.operator.index.pageTitle') });
 
@@ -28,7 +34,7 @@ const { data: flaggedOrgs } = useConvexQuery(
 	api.platformAdmin.queries.listFlaggedOrganizations,
 	() => ({})
 );
-const { data: allOrgs } = useConvexQuery(
+const { data: allOrgs, error: allOrgsError } = useConvexQuery(
 	api.platformAdmin.queries.listAllOrganizations,
 	() => ({})
 );
@@ -38,6 +44,30 @@ const { data: orgDetail } = useConvexQuery(
 );
 const { data: admins } = useConvexQuery(api.platformAdmin.queries.listPlatformAdmins, () => ({}));
 const { data: allUsers } = useConvexQuery(api.platformAdmin.queries.listAllUsers, () => ({}));
+
+// ── Self-host, one workspace: nothing here that Delivery → Health doesn't show ──
+// The tabs are multi-tenant tooling; on a single-workspace self-hosted instance
+// they are three empty lists, so the console steps aside and sends the visitor
+// to the page its overview repeats.
+const runtimeConfig = useRuntimeConfig();
+const visibility = computed(() =>
+	operatorConsoleVisibility({
+		deploymentMode: runtimeConfig.public.deploymentMode as string | undefined,
+		workspaceCount: allOrgs.value?.length,
+		isCountUnavailable: allOrgsError.value !== null,
+	})
+);
+watch(
+	visibility,
+	(value) => {
+		if (value === 'hide') void navigateTo(OPERATOR_CONSOLE_FALLBACK_ROUTE, { replace: true });
+	},
+	{ immediate: true }
+);
+
+/** Counts written the way the reader's locale writes them ("128,400", "128.400"). */
+const formatCount = (value: number | undefined | null) => formatNumber(value, locale.value);
+const formatPercent = (value: number | undefined) => formatRate(value, locale.value);
 
 const tabs = computed(() => [
 	{ value: 'overview', label: t('dashboard.admin.operator.index.tabs.overview') },
@@ -265,7 +295,7 @@ const anyMutationLoading = computed(
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-[1100px] mx-auto">
+	<div v-if="visibility === 'show'" class="p-6 lg:p-8 max-w-[1100px] mx-auto">
 		<!-- Header -->
 		<div class="mb-6">
 			<div class="flex items-center gap-3">
@@ -291,7 +321,7 @@ const anyMutationLoading = computed(
 						{{ t('dashboard.admin.operator.index.stats.totalSent') }}
 					</p>
 					<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ stats?.sending?.totalSent ?? 0 }}
+						{{ formatCount(stats?.sending?.totalSent) }}
 					</p>
 				</div>
 				<div class="card p-5">
@@ -299,7 +329,7 @@ const anyMutationLoading = computed(
 						{{ t('dashboard.admin.operator.index.stats.bounceRate') }}
 					</p>
 					<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ formatRate(stats?.sending?.bounceRate) }}
+						{{ formatPercent(stats?.sending?.bounceRate) }}
 					</p>
 				</div>
 				<div class="card p-5">
@@ -307,7 +337,7 @@ const anyMutationLoading = computed(
 						{{ t('dashboard.admin.operator.index.stats.complaintRate') }}
 					</p>
 					<p class="mt-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ formatRate(stats?.sending?.complaintRate) }}
+						{{ formatPercent(stats?.sending?.complaintRate) }}
 					</p>
 				</div>
 				<div class="card p-5">
@@ -550,9 +580,9 @@ const anyMutationLoading = computed(
 							<p class="mt-1 text-xs text-text-tertiary">
 								{{
 									t('dashboard.admin.operator.index.flagged.rates', {
-										bounce: formatRate(o.bounceRate),
-										complaint: formatRate(o.complaintRate),
-										sent: o.totalSent,
+										bounce: formatPercent(o.bounceRate),
+										complaint: formatPercent(o.complaintRate),
+										sent: formatCount(o.totalSent),
 									})
 								}}
 							</p>
@@ -602,7 +632,9 @@ const anyMutationLoading = computed(
 								<td class="py-2">
 									<UiBadge :variant="riskLevelVariant(o.riskLevel)">{{ o.riskLevel }}</UiBadge>
 								</td>
-								<td class="py-2 text-right text-text-secondary">{{ o.contactCount }}</td>
+								<td class="py-2 text-right text-text-secondary">
+									{{ formatCount(o.contactCount) }}
+								</td>
 							</tr>
 						</tbody>
 					</table>
@@ -765,5 +797,13 @@ const anyMutationLoading = computed(
 				}}</UiButton>
 			</template>
 		</UiModal>
+	</div>
+	<div
+		v-else
+		class="flex items-center justify-center py-16"
+		role="status"
+		:aria-label="t('dashboard.admin.operator.index.checkingWorkspaces')"
+	>
+		<UiSpinner />
 	</div>
 </template>
