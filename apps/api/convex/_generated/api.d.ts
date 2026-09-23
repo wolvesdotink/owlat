@@ -526,7 +526,6 @@ import type * as inbox_askEagernessSettings from '../inbox/askEagernessSettings.
 import type * as inbox_attachmentMatch from '../inbox/attachmentMatch.js';
 import type * as inbox_attachmentSuggest from '../inbox/attachmentSuggest.js';
 import type * as inbox_attachmentValidators from '../inbox/attachmentValidators.js';
-import type * as inbox_bulkMutations from '../inbox/bulkMutations.js';
 import type * as inbox_clarification from '../inbox/clarification.js';
 import type * as inbox_clarificationLog from '../inbox/clarificationLog.js';
 import type * as inbox_clarificationLocalize from '../inbox/clarificationLocalize.js';
@@ -1687,7 +1686,6 @@ declare const fullApi: ApiFromModules<{
 	'inbox/attachmentMatch': typeof inbox_attachmentMatch;
 	'inbox/attachmentSuggest': typeof inbox_attachmentSuggest;
 	'inbox/attachmentValidators': typeof inbox_attachmentValidators;
-	'inbox/bulkMutations': typeof inbox_bulkMutations;
 	'inbox/clarification': typeof inbox_clarification;
 	'inbox/clarificationLog': typeof inbox_clarificationLog;
 	'inbox/clarificationLocalize': typeof inbox_clarificationLocalize;

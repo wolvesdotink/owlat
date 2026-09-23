@@ -1,8 +1,6 @@
 /**
- * Shared helpers behind the human review-queue decisions (approve / reject /
- * edit), used by both the single-message mutations (`./mutations.ts`) and the
- * batch mutations (`./bulkMutations.ts`) so the two surfaces feed the SAME
- * learning-loop and collision signals rather than drifting copies.
+ * Helpers behind the human review decisions (approve / reject / edit) in
+ * `./mutations.ts`: the learning-loop feedback and the reply-collision hold.
  */
 
 import { v } from 'convex/values';
