@@ -33,22 +33,23 @@ vi.mock('../lib/contactCountHelpers', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -180,17 +181,23 @@ describe('contactRelationships.listByContact', () => {
 			contactB = await ctx.db.insert('contacts', createTestContact({ email: 'b@example.com' }));
 			contactC = await ctx.db.insert('contacts', createTestContact({ email: 'c@example.com' }));
 			// A -> B (outgoing from A)
-			await ctx.db.insert('contactRelationships', createTestContactRelationship({
-				fromContactId: contactA,
-				toContactId: contactB,
-				relationship: 'colleague',
-			}));
+			await ctx.db.insert(
+				'contactRelationships',
+				createTestContactRelationship({
+					fromContactId: contactA,
+					toContactId: contactB,
+					relationship: 'colleague',
+				})
+			);
 			// C -> A (incoming to A)
-			await ctx.db.insert('contactRelationships', createTestContactRelationship({
-				fromContactId: contactC,
-				toContactId: contactA,
-				relationship: 'manager_of',
-			}));
+			await ctx.db.insert(
+				'contactRelationships',
+				createTestContactRelationship({
+					fromContactId: contactC,
+					toContactId: contactA,
+					relationship: 'manager_of',
+				})
+			);
 		});
 
 		// Verify both directions via raw DB (query requires auth)
@@ -212,6 +219,141 @@ describe('contactRelationships.listByContact', () => {
 	});
 });
 
+describe('contactRelationships.listByContact projection', () => {
+	const DOI_TOKEN = 'pending-doi-token-must-not-leak';
+
+	it('redacts DOI capability fields from related contacts in both directions', async () => {
+		const t = convexTest(schema, modules);
+		let parent!: Id<'contacts'>;
+		let outgoingTarget!: Id<'contacts'>;
+		let incomingSource!: Id<'contacts'>;
+
+		await t.run(async (ctx) => {
+			parent = await ctx.db.insert('contacts', createTestContact({ email: 'parent@example.com' }));
+			const pendingDoi = {
+				doiStatus: 'pending',
+				doiConfirmationToken: DOI_TOKEN,
+				doiTokenExpiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+			};
+			outgoingTarget = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'out@example.com', ...pendingDoi })
+			);
+			incomingSource = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'in@example.com', ...pendingDoi })
+			);
+			await ctx.db.insert(
+				'contactRelationships',
+				createTestContactRelationship({ fromContactId: parent, toContactId: outgoingTarget })
+			);
+			await ctx.db.insert(
+				'contactRelationships',
+				createTestContactRelationship({
+					fromContactId: incomingSource,
+					toContactId: parent,
+					relationship: 'manager_of',
+				})
+			);
+		});
+
+		const result = await t.query(api.contacts.relationships.listByContact, {
+			contactId: parent,
+		});
+
+		expect(result).toHaveLength(2);
+		const byDirection = Object.fromEntries(result.map((rel) => [rel.direction, rel]));
+		expect(byDirection['outgoing']?.relatedContact._id).toBe(outgoingTarget);
+		expect(byDirection['outgoing']?.relatedContact.email).toBe('out@example.com');
+		expect(byDirection['incoming']?.relatedContact._id).toBe(incomingSource);
+		expect(byDirection['incoming']?.relatedContact.email).toBe('in@example.com');
+		for (const rel of result) {
+			expect(rel.relatedContact).not.toHaveProperty('doiConfirmationToken');
+			expect(rel.relatedContact).not.toHaveProperty('doiTokenExpiresAt');
+		}
+		// Belt and braces: the token must not surface anywhere in the payload.
+		expect(JSON.stringify(result)).not.toContain(DOI_TOKEN);
+	});
+
+	it('drops relationships whose other side is soft-deleted or missing', async () => {
+		const t = convexTest(schema, modules);
+		let parent!: Id<'contacts'>;
+		let live!: Id<'contacts'>;
+
+		await t.run(async (ctx) => {
+			parent = await ctx.db.insert('contacts', createTestContact({ email: 'parent@example.com' }));
+			live = await ctx.db.insert('contacts', createTestContact({ email: 'live@example.com' }));
+			const erasedOut = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'erased-out@example.com', deletedAt: Date.now() })
+			);
+			const erasedIn = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'erased-in@example.com', deletedAt: Date.now() })
+			);
+			const gone = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'gone@example.com' })
+			);
+			await ctx.db.insert(
+				'contactRelationships',
+				createTestContactRelationship({ fromContactId: parent, toContactId: live })
+			);
+			await ctx.db.insert(
+				'contactRelationships',
+				createTestContactRelationship({ fromContactId: parent, toContactId: erasedOut })
+			);
+			await ctx.db.insert(
+				'contactRelationships',
+				createTestContactRelationship({ fromContactId: erasedIn, toContactId: parent })
+			);
+			await ctx.db.insert(
+				'contactRelationships',
+				createTestContactRelationship({ fromContactId: parent, toContactId: gone })
+			);
+			await ctx.db.delete(gone);
+		});
+
+		const result = await t.query(api.contacts.relationships.listByContact, {
+			contactId: parent,
+		});
+
+		expect(result.map((rel) => rel.relatedContact._id)).toEqual([live]);
+		expect(JSON.stringify(result)).not.toContain('erased-');
+	});
+
+	it('returns nothing for a soft-deleted or missing parent contact', async () => {
+		const t = convexTest(schema, modules);
+		let erasedParent!: Id<'contacts'>;
+		let goneParent!: Id<'contacts'>;
+
+		await t.run(async (ctx) => {
+			erasedParent = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'erased@example.com', deletedAt: Date.now() })
+			);
+			goneParent = await ctx.db.insert('contacts', createTestContact());
+			const other = await ctx.db.insert('contacts', createTestContact({ email: 'o@example.com' }));
+			for (const parent of [erasedParent, goneParent]) {
+				await ctx.db.insert(
+					'contactRelationships',
+					createTestContactRelationship({ fromContactId: parent, toContactId: other })
+				);
+				await ctx.db.insert(
+					'contactRelationships',
+					createTestContactRelationship({ fromContactId: other, toContactId: parent })
+				);
+			}
+			await ctx.db.delete(goneParent);
+		});
+
+		for (const contactId of [erasedParent, goneParent]) {
+			const result = await t.query(api.contacts.relationships.listByContact, { contactId });
+			expect(result).toEqual([]);
+		}
+	});
+});
+
 // ============ contactRelationships.getGraph ============
 
 describe('contactRelationships.getGraph', () => {
@@ -228,23 +370,32 @@ describe('contactRelationships.getGraph', () => {
 			contactC = await ctx.db.insert('contacts', createTestContact({ email: 'c@example.com' }));
 			contactD = await ctx.db.insert('contacts', createTestContact({ email: 'd@example.com' }));
 			// A -> B (depth 1)
-			await ctx.db.insert('contactRelationships', createTestContactRelationship({
-				fromContactId: contactA,
-				toContactId: contactB,
-				relationship: 'colleague',
-			}));
+			await ctx.db.insert(
+				'contactRelationships',
+				createTestContactRelationship({
+					fromContactId: contactA,
+					toContactId: contactB,
+					relationship: 'colleague',
+				})
+			);
 			// B -> C (depth 2)
-			await ctx.db.insert('contactRelationships', createTestContactRelationship({
-				fromContactId: contactB,
-				toContactId: contactC,
-				relationship: 'manager_of',
-			}));
+			await ctx.db.insert(
+				'contactRelationships',
+				createTestContactRelationship({
+					fromContactId: contactB,
+					toContactId: contactC,
+					relationship: 'manager_of',
+				})
+			);
 			// C -> D (depth 3, beyond default depth=2)
-			await ctx.db.insert('contactRelationships', createTestContactRelationship({
-				fromContactId: contactC,
-				toContactId: contactD,
-				relationship: 'knows',
-			}));
+			await ctx.db.insert(
+				'contactRelationships',
+				createTestContactRelationship({
+					fromContactId: contactC,
+					toContactId: contactD,
+					relationship: 'knows',
+				})
+			);
 		});
 
 		// BFS from A with depth=1 should only reach A and B
@@ -304,16 +455,22 @@ describe('contactRelationships.getGraph', () => {
 			contactA = await ctx.db.insert('contacts', createTestContact({ email: 'a@example.com' }));
 			contactB = await ctx.db.insert('contacts', createTestContact({ email: 'b@example.com' }));
 			contactC = await ctx.db.insert('contacts', createTestContact({ email: 'c@example.com' }));
-			await ctx.db.insert('contactRelationships', createTestContactRelationship({
-				fromContactId: contactA,
-				toContactId: contactB,
-				relationship: 'colleague',
-			}));
-			await ctx.db.insert('contactRelationships', createTestContactRelationship({
-				fromContactId: contactB,
-				toContactId: contactC,
-				relationship: 'knows',
-			}));
+			await ctx.db.insert(
+				'contactRelationships',
+				createTestContactRelationship({
+					fromContactId: contactA,
+					toContactId: contactB,
+					relationship: 'colleague',
+				})
+			);
+			await ctx.db.insert(
+				'contactRelationships',
+				createTestContactRelationship({
+					fromContactId: contactB,
+					toContactId: contactC,
+					relationship: 'knows',
+				})
+			);
 		});
 
 		// BFS from A with depth=2 should reach A, B, and C
@@ -369,13 +526,22 @@ describe('contactRelationships.updateConfidence', () => {
 		let relId!: Id<'contactRelationships'>;
 
 		await t.run(async (ctx) => {
-			const contactA = await ctx.db.insert('contacts', createTestContact({ email: 'a@example.com' }));
-			const contactB = await ctx.db.insert('contacts', createTestContact({ email: 'b@example.com' }));
-			relId = await ctx.db.insert('contactRelationships', createTestContactRelationship({
-				fromContactId: contactA,
-				toContactId: contactB,
-				confidence: 0.5,
-			}));
+			const contactA = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'a@example.com' })
+			);
+			const contactB = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'b@example.com' })
+			);
+			relId = await ctx.db.insert(
+				'contactRelationships',
+				createTestContactRelationship({
+					fromContactId: contactA,
+					toContactId: contactB,
+					confidence: 0.5,
+				})
+			);
 		});
 
 		await t.mutation(api.contacts.relationships.updateConfidence, {
@@ -398,12 +564,21 @@ describe('contactRelationships.remove', () => {
 		let relId!: Id<'contactRelationships'>;
 
 		await t.run(async (ctx) => {
-			const contactA = await ctx.db.insert('contacts', createTestContact({ email: 'a@example.com' }));
-			const contactB = await ctx.db.insert('contacts', createTestContact({ email: 'b@example.com' }));
-			relId = await ctx.db.insert('contactRelationships', createTestContactRelationship({
-				fromContactId: contactA,
-				toContactId: contactB,
-			}));
+			const contactA = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'a@example.com' })
+			);
+			const contactB = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'b@example.com' })
+			);
+			relId = await ctx.db.insert(
+				'contactRelationships',
+				createTestContactRelationship({
+					fromContactId: contactA,
+					toContactId: contactB,
+				})
+			);
 		});
 
 		await t.mutation(api.contacts.relationships.remove, { relationshipId: relId });
