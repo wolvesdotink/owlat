@@ -24,6 +24,7 @@ import {
 	type WorkerEnvelopeInput,
 } from './workerEnvelope';
 import { sendWorkerOutcomeValidator } from './workerOutcome';
+import { refuseMarketingDispatch } from './marketingDispatchGate';
 
 /**
  * Email Worker Action for Workpool-based Email Sending
@@ -370,30 +371,16 @@ export const sendSingleEmail = internalAction({
 	// against something the runtime already refused to let past.
 	returns: sendWorkerOutcomeValidator,
 	handler: async (ctx, { envelopeInput, retryState }) => {
-		// Suppression re-check — campaign path only. Campaigns filter the blocklist
-		// once, at audience-resolution time, then enqueue. But the timezone path
-		// can schedule a send up to ~24h out and the rate-limited campaign queue
-		// can run long, so a recipient who hard-bounces / complains / is manually
-		// blocked AFTER resolution but BEFORE this worker runs would still receive
-		// the already-queued campaign email. Re-read the blocklist here — the last
-		// gate before dispatch — to honor the suppression obligation (CAN-SPAM
-		// §316.5 + the Gmail/Yahoo 2024 sender requirements). O(1) indexed point
-		// read via `blockedEmails.by_email`; NOT a scan. The non-campaign path
-		// already gates at intake (delivery/nonCampaignIntake.ts, via
-		// delivery/sendIntakeGates.ts), so it is not re-checked.
-		if (envelopeInput.kind === 'campaign') {
-			const blocked = await ctx.runQuery(internal.blockedEmails.isBlockedInternal, {
-				email: envelopeInput.to,
-			});
-			if (blocked) {
-				// Finalize as skipped without delivering. Return normally (do NOT
-				// throw) so the workpool run counts as a success and does not retry;
-				// the Send completion handler translates the `suppressed` arm into a
-				// terminal non-delivery transition (status 'failed', code
-				// RECIPIENT_SUPPRESSED).
-				return { kind: 'suppressed' as const };
-			}
-		}
+		// The last gate before dispatch, for MARKETING envelopes (campaigns and
+		// automation steps): the address must not be on the blocklist and the
+		// contact must still be eligible for marketing (not unsubscribed from
+		// everything, not deleted). Both can change after audience resolution or
+		// intake — a timezone-scheduled campaign can wait ~24h — and the
+		// suppression obligation (CAN-SPAM §316.5, Gmail/Yahoo 2024) holds until
+		// the message leaves. Point reads only. Returned, never thrown, so the
+		// workpool does not retry; see delivery/marketingDispatchGate.ts.
+		const refusal = await refuseMarketingDispatch(ctx, envelopeInput);
+		if (refusal) return refusal;
 
 		const composeInput = buildComposeInput(envelopeInput);
 		const composed = composeForSend(composeInput);

@@ -38,17 +38,22 @@ import type { MessageType } from '../lib/sendProviders/route';
 import { recordSendAssignments } from './sendAssignments';
 import { normalizeEngagementScore } from './workerEnvelope';
 import { runSendIntakeGates, type SendIntakeRejectionReason } from './sendIntakeGates';
+import { loadContactMarketingIneligibility } from '../lib/marketingEligibility';
 
 // ============================================================
 // Public types
 // ============================================================
 
 /**
- * Why the non-campaign intake refused. Exactly the shared
- * {@link SendIntakeRejectionReason} vocabulary — this intake takes no template
- * and no caller-supplied variables, so it has no reasons of its own to add.
+ * Why the non-campaign intake refused. The shared
+ * {@link SendIntakeRejectionReason} vocabulary plus one reason of its own:
+ * `recipient_ineligible` — the recipient CONTACT may no longer receive
+ * marketing (soft-deleted, erased, or globally unsubscribed; see
+ * `lib/marketingEligibility.ts`). Only marketing-scope kinds are gated on it,
+ * and it is permanent for this contact, like `recipient_blocked`. `detail`
+ * carries the `MarketingIneligibility` value.
  */
-export type NonCampaignIntakeRejectionReason = SendIntakeRejectionReason;
+export type NonCampaignIntakeRejectionReason = SendIntakeRejectionReason | 'recipient_ineligible';
 
 /**
  * The discriminated outcome, modelled on `transactional/dispatch.ts`'s
@@ -153,9 +158,25 @@ export const intake = internalMutation({
 		// stamped by the transactional composer (see below).
 		listUnsubscribe: v.optional(v.boolean()),
 		convexSiteUrl: v.optional(v.string()),
+		// Idempotency key for automation email steps: the step run producing the
+		// send. A retried or recovered step re-enters with the same key and gets
+		// the Send it already created back, instead of a second Send.
+		automationStepRunId: v.optional(v.id('automationStepRuns')),
 	},
 	handler: async (ctx, args): Promise<NonCampaignIntakeOutcome> => {
 		const messageType = MESSAGE_TYPE_BY_KIND[args.kind];
+
+		// Idempotent replay: checked before any gate, because the first call's
+		// row is already the committed answer. Whether that Send may still go out
+		// is the worker's last gate to decide, not a second intake verdict.
+		if (args.automationStepRunId !== undefined) {
+			const stepRunId = args.automationStepRunId;
+			const existing = await ctx.db
+				.query('transactionalSends')
+				.withIndex('by_automation_step_run', (q) => q.eq('automationStepRunId', stepRunId))
+				.first();
+			if (existing) return { ok: true, sendId: existing._id, queued: true };
+		}
 
 		// The shared pre-row gate sequence: abuse → provider-ready → suppression.
 		// The `resolved_route` probe makes the provider gate resolve THIS send's
@@ -176,6 +197,17 @@ export const intake = internalMutation({
 		if (!gates.ok) return gates;
 		const resolvedRoute = gates.route;
 
+		// Contact-level marketing eligibility, for marketing-scope kinds only: a
+		// contact that unsubscribed from everything or was deleted while an
+		// automation waited must not get its next step. The transactional scope
+		// (agent 1:1 replies) keeps its own policy — the blocklist alone.
+		if (SUPPRESSION_SCOPE_BY_KIND[args.kind] === 'marketing' && args.contactId) {
+			const ineligibility = await loadContactMarketingIneligibility(ctx, args.contactId);
+			if (ineligibility !== null) {
+				return { ok: false, reason: 'recipient_ineligible', detail: ineligibility };
+			}
+		}
+
 		const sendId = await ctx.db.insert('transactionalSends', {
 			kind: args.kind,
 			email: args.email,
@@ -184,6 +216,7 @@ export const intake = internalMutation({
 			subject: args.subject,
 			...(args.contactId ? { contactId: args.contactId } : {}),
 			...(args.automationId ? { automationId: args.automationId } : {}),
+			...(args.automationStepRunId ? { automationStepRunId: args.automationStepRunId } : {}),
 			...(args.inboundMessageId ? { inboundMessageId: args.inboundMessageId } : {}),
 			...(args.transactionalEmailId ? { transactionalEmailId: args.transactionalEmailId } : {}),
 			...(resolvedRoute ? { providerType: resolvedRoute.providerType } : {}),

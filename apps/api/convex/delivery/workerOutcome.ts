@@ -1,6 +1,7 @@
 import { type Infer, v } from 'convex/values';
 import { matchesValidator } from '../lib/validatorMatch';
 import { envelopeInputValidator, retryStateValidator } from './workerEnvelope';
+import { marketingIneligibilityValidator } from '../lib/marketingEligibility';
 
 // ============================================================================
 // The worker → completion wire (module).
@@ -114,8 +115,8 @@ const awaitingFeedbackArm = v.object({
 });
 
 /**
- * The recipient was on the blocklist at the worker's pre-dispatch suppression
- * re-check, so nothing was dispatched at all — the send was deliberately NOT
+ * The recipient was on the blocklist, or its contact was no longer eligible
+ * for marketing, at the worker's pre-dispatch gate, so nothing was dispatched at all — the send was deliberately NOT
  * delivered.
  *
  * The worker RETURNS this rather than throwing, so the workpool run counts as a
@@ -125,7 +126,12 @@ const awaitingFeedbackArm = v.object({
  * and why, while it was missing from the type, it was a runtime shape nothing
  * described.
  */
-const suppressedArm = v.object({ kind: v.literal('suppressed') });
+const suppressedArm = v.object({
+	kind: v.literal('suppressed'),
+	// Absent for a blocklist hit (the arm's original meaning). Set when the
+	// CONTACT may no longer receive marketing — see lib/marketingEligibility.ts.
+	reason: v.optional(marketingIneligibilityValidator),
+});
 
 export const sendWorkerOutcomeValidator = v.union(
 	acceptedArm,
