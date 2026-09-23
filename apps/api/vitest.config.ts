@@ -40,9 +40,16 @@ export default defineConfig({
 				},
 			},
 		],
-		// convex-test produces "Write outside of transaction" unhandled rejections
-		// when mutations call ctx.scheduler.runAfter() — this is a known limitation
-		dangerouslyIgnoreUnhandledErrors: true,
+		// Unhandled errors fail the run; nothing is filtered. The suite used to set
+		// `dangerouslyIgnoreUnhandledErrors` for convex-test's "Write outside of
+		// transaction" rejections from `ctx.scheduler.runAfter()`. convex-test now
+		// runs each scheduled function in its own transaction, so that message now
+		// means a write landed with no transaction open, such as an un-awaited
+		// `ctx.db` call finishing after its mutation returned: a real bug. A test
+		// whose scheduled work outlives it should drain that work with
+		// `t.finishAllScheduledFunctions(...)` before returning, rather than be
+		// excused here. `convex/__tests__/unhandledErrorGate.test.ts` checks that
+		// a leaked rejection still fails the run.
 		coverage: {
 			provider: 'v8',
 			reporter: ['text', 'json-summary', 'html'],

@@ -21,10 +21,41 @@ export default defineConfig({
 			provider: 'v8',
 			reporter: ['text', 'json-summary', 'html'],
 			reportsDirectory: './coverage',
-			include: ['app/composables/**/*.ts', 'app/utils/**/*.ts'],
-			exclude: ['app/**/__tests__/**'],
+			// The denominator is the whole app, Vue surfaces and Nitro server included,
+			// so a file nobody tests still counts against the total instead of
+			// dropping out of it.
+			include: ['app/**/*.{ts,vue}', 'server/**/*.ts'],
+			exclude: ['**/__tests__/**', '**/*.d.ts', '**/*.generated.ts', 'app/generated/**'],
+			// Floors, not targets: each sits a point or two under what the suite
+			// measured when it was set (2026-09-23), so real erosion fails the run
+			// while ordinary churn does not. Raise one when its path's coverage
+			// climbs; lowering one needs a reason in the commit.
+			//
+			// The global floor is mostly Vue components and pages, where coverage is
+			// thin. The per-path floors hold the risky code to a higher bar: the Nitro
+			// server (auth proxy, setup, self-update, transport apply), app/lib (CSRF,
+			// auth client, command palette, desktop lifecycle), the desktop updater
+			// and workspace lifecycle on its own, and the route guards. A glob's
+			// floor is checked on its own files; the global floor still counts them.
+			// Threshold globs skip dot segments, so the server key names
+			// `routes/.well-known/` explicitly or those routes would count only
+			// toward the global floor.
 			thresholds: {
-				lines: 20,
+				lines: 50,
+				statements: 49,
+				functions: 41,
+				branches: 43,
+				'server/{**,routes/.well-known/**}': {
+					lines: 69,
+					statements: 68,
+					functions: 68,
+					branches: 59,
+				},
+				'app/lib/**': { lines: 90, statements: 89, functions: 86, branches: 86 },
+				'app/lib/desktop/**': { lines: 89, statements: 87, functions: 77, branches: 85 },
+				'app/middleware/**': { lines: 95, statements: 90, functions: 95, branches: 87 },
+				'app/utils/**': { lines: 93, statements: 92, functions: 93, branches: 87 },
+				'app/composables/**': { lines: 58, statements: 56, functions: 49, branches: 48 },
 			},
 		},
 	},

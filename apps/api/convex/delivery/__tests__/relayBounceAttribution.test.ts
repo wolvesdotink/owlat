@@ -60,6 +60,17 @@ function actionCtx(t: ReturnType<typeof convexTest>): ActionCtx {
 	} as unknown as ActionCtx;
 }
 
+/**
+ * Run the effects the transition scheduled (suppression mirror, reputation,
+ * webhook fan-out, transport outcome) to completion before the test returns.
+ * Left alone they fire on real timers after the file's last test, and their
+ * output lands after vitest has torn the worker down, which the run reports
+ * as an unhandled error.
+ */
+async function settleScheduledEffects(t: ReturnType<typeof convexTest>) {
+	await t.finishAllScheduledFunctions(() => {});
+}
+
 /** A queued campaign send that left through the RELAY, not the owned MTA. */
 async function seedRelaySend(t: ReturnType<typeof convexTest>, status: 'queued' | 'sent') {
 	return await t.run(async (ctx) => {
@@ -97,6 +108,8 @@ describe('a relayed bounce arriving on our own VERP stream', () => {
 			at: Date.now(),
 		});
 
+		await settleScheduledEffects(t);
+
 		const send = await t.run(async (ctx) => await ctx.db.get(sendId));
 		expect(send?.status).toBe('bounced');
 		// The transport that actually carried the message is NOT rewritten by the
@@ -114,6 +127,8 @@ describe('a relayed bounce arriving on our own VERP stream', () => {
 			providerMessageId: RELAY_MESSAGE_ID,
 			at: Date.now(),
 		});
+
+		await settleScheduledEffects(t);
 
 		const send = await t.run(async (ctx) => await ctx.db.get(sendId));
 		expect(send?.status).toBe('complained');
