@@ -174,7 +174,6 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'dashboard.admin.instance.emailTheme.fonts.trebuchetMs',
 	'dashboard.admin.instance.emailTheme.fonts.verdana',
 	'dashboard.admin.instance.emailTheme.px',
-	'dashboard.admin.instance.features.packs.flags',
 	'dashboard.admin.instance.general.timezones.americaAnchorage',
 	'dashboard.admin.instance.general.timezones.americaPhoenix',
 	'dashboard.admin.instance.general.timezones.asiaDubai',

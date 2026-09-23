@@ -8,15 +8,12 @@
  */
 
 import { v } from 'convex/values';
-import { applyToggle } from '@owlat/shared/featureFlags';
 import type { Doc } from './_generated/dataModel';
 import { internal } from './_generated/api';
 import { publicQuery, adminMutation } from './lib/authedFunctions';
 import { recordAuditLog } from './lib/auditLog';
-import { getStoredFlags } from './lib/featureFlags';
 import { requireAdminContext, isActiveOrgMember } from './lib/sessionOrganization';
 import { clampHumanApproveUndoDelayMs } from './inbox/processingLifecycle/effects';
-import { FEATURE_FLAG_REGISTRY } from './plugins/featureFlagRegistry';
 
 /** Clamp a minute-of-day into [0, 1439] so a bad client value can't wedge the window. */
 function clampMinuteOfDay(minute: number): number {
@@ -178,75 +175,68 @@ export const updateConfig = adminMutation({
 });
 
 /**
- * ONE-CLICK KILL SWITCH — stop all autonomous auto-sending NOW.
+ * AI REPLIES MODE — the one "Draft only / Send automatically when confident"
+ * control on the AI replies page. (Its third choice, Off, is the `ai.agent`
+ * feature flag and goes through `setFeatureFlag`.)
  *
- * Halting auto-send previously took TWO separate settings: disabling the
- * `ai.autonomy` feature flag AND flipping `agentConfig.isAutoReplyEnabled` off
- * (either one alone leaves a send path open). This mutation does BOTH atomically
- * plus cancels every autonomous send still sitting in its undo window, so a
- * single button reverts the deployment to DRAFT-ONLY in seconds:
+ * Two settings decide whether a reply leaves unattended, and before this they
+ * lived on different pages: `isAutoReplyEnabled` (the global confidence tier)
+ * and `isShadowMode`, which nothing in the UI could set — so an admin could turn
+ * "Auto-reply" on and still never see a reply sent. This sets both together:
  *
- *   1. Disable the `ai.autonomy` flag (per-category graduated autonomy tier).
- *   2. Set `agentConfig.isAutoReplyEnabled = false` (legacy global tier).
- *   3. Schedule the bulk cancel of in-flight delayed auto-sends, routing each
- *      queued reply back to human review (coordinates with the send-delay/undo
- *      window — a reply that already left the queue is left alone).
+ *   - `draft`: `isAutoReplyEnabled = false` and shadow ON. Shadow mode routes
+ *     every would-be send to human review, so per-category rules
+ *     (`ai.autonomy`) cannot send either, while the would-have-sent
+ *     observations keep feeding the graduation scorecard. Any autonomous send
+ *     still sitting in its undo window is pulled back to review.
+ *   - `auto`: `isAutoReplyEnabled = true` and shadow OFF. With `ai.autonomy` on,
+ *     the per-category rules decide; with it off, the global threshold and
+ *     daily limit do. Every final safety gate (working hours, circuit breakers,
+ *     outbound scans) still applies.
  *
- * The agent itself (`ai.agent`) stays ON, so inbound mail is still classified
- * and DRAFTED for human review — only the unattended SEND is stopped. Nothing
- * is dropped; every held reply lands in the review queue. Owner/admin only.
+ * Owner/admin only.
  */
-export const killSwitch = adminMutation({
-	args: {},
+export const setReplyMode = adminMutation({
+	args: { mode: v.union(v.literal('draft'), v.literal('auto')) },
 	returns: v.null(),
-	handler: async (ctx) => {
-		const { userId } = await requireAdminContext(ctx);
+	handler: async (ctx, args, session) => {
 		const now = Date.now();
+		const sendsAutomatically = args.mode === 'auto';
+		const patch = {
+			isAutoReplyEnabled: sendsAutomatically,
+			isShadowMode: !sendsAutomatically,
+			updatedAt: now,
+		};
 
-		// 1. Disable the ai.autonomy feature flag via the shared cascade so any
-		//    dependent flags resolve consistently (same writer as setFeatureFlag).
-		const stored = await getStoredFlags(ctx);
-		const { next } = applyToggle(stored, 'ai.autonomy', false, FEATURE_FLAG_REGISTRY);
-		const settings = await ctx.db.query('instanceSettings').first();
-		if (settings) {
-			await ctx.db.patch(settings._id, { featureFlags: next, updatedAt: now });
-		} else {
-			await ctx.db.insert('instanceSettings', {
-				featureFlags: next,
-				createdAt: now,
-				updatedAt: now,
-			});
-		}
-
-		// 2. Force the legacy global auto-reply toggle off.
 		const configs = await ctx.db.query('agentConfig').take(1);
 		if (configs.length > 0) {
-			await ctx.db.patch(configs[0]!._id, { isAutoReplyEnabled: false, updatedAt: now });
+			await ctx.db.patch(configs[0]!._id, patch);
 		} else {
 			await ctx.db.insert('agentConfig', {
-				isAutoReplyEnabled: false,
+				...patch,
 				confidenceThreshold: 0.8,
 				maxDailyAutoReplies: 100,
 				coalesceWindowMs: 30000,
 				createdAt: now,
-				updatedAt: now,
 			});
 		}
 
-		// 3. Cancel every autonomous send still in its undo window, routing each
-		//    back to human review. Scheduled so a large scan never blocks this
-		//    write; fail-soft per message.
-		await ctx.scheduler.runAfter(
-			0,
-			internal.inbox.processingLifecycle.cancelPendingAutoSendsForKillSwitch,
-			{}
-		);
+		// Draft only must mean nothing leaves unattended from now on — including a
+		// reply already approved and waiting out its undo delay. Scheduled so the
+		// (bounded) scan never blocks this write; fail-soft per message.
+		if (!sendsAutomatically) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.inbox.processingLifecycle.cancelPendingAutoSendsForKillSwitch,
+				{}
+			);
+		}
 
 		await recordAuditLog(ctx, {
-			userId,
-			action: 'agent.kill_switch',
+			userId: session.userId,
+			action: 'agent.config_updated',
 			resource: 'agent_config',
-			details: { revertedToDraftOnly: true },
+			details: { replyMode: args.mode },
 		});
 
 		return null;

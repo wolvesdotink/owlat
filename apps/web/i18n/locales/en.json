@@ -601,14 +601,6 @@
 				"suggestionEvidence": "{approved}/{sampleSize} approved, {rate} rejection rate",
 				"title": "Ready to graduate"
 			},
-			"autonomyKillSwitch": {
-				"body": "Instantly revert to {mode}: turns off graduated autonomy and the legacy auto-reply, and pulls back any auto-send still in its undo window. The agent keeps drafting replies for you to review — nothing is dropped.",
-				"bodyMode": "draft-only",
-				"confirmCta": "Yes, stop now",
-				"confirmQuestion": "Revert to draft-only?",
-				"stopCta": "Stop auto-sending",
-				"title": "Stop auto-sending now"
-			},
 			"autonomyLearningControls": {
 				"answeredTimes": "{scope} · answered {count} time | {scope} · answered {count} times",
 				"categories": {
@@ -3270,7 +3262,7 @@
 			},
 			"graphView": {
 				"analyticsOffBody": "Enable {setting} in Settings to view the graph and its insights.",
-				"analyticsOffSetting": "Knowledge graph analytics",
+				"analyticsOffSetting": "Knowledge insights",
 				"analyticsOffTitle": "Graph analytics are off",
 				"centerHere": "Center here",
 				"closePanel": "Close panel",
@@ -5082,6 +5074,24 @@
 			"aiModelPicker": {
 				"customPlaceholder": "Enter a model id"
 			},
+			"aiReplyModeControl": {
+				"defaultBadge": "Default",
+				"legend": "AI replies",
+				"options": {
+					"auto": {
+						"description": "The AI sends replies it is sure about and leaves the rest for review. Set when and how often below.",
+						"label": "Send automatically when confident"
+					},
+					"draft": {
+						"description": "The AI drafts a reply to each message. A person reviews and sends it from the answer queue.",
+						"label": "Draft only"
+					},
+					"off": {
+						"description": "The AI doesn't draft or send replies.",
+						"label": "Off"
+					}
+				}
+			},
 			"bodySearchIndexCard": {
 				"adminsOnly": "Only owners and admins can change this.",
 				"backfillAgain": "Index again",
@@ -5149,10 +5159,24 @@
 				"switch": "Switch"
 			},
 			"featureFlagMetadata": {
-				"dockerProfile": "Docker profile: {profiles}",
-				"package": "Package: {name}",
-				"requestedAccess": "Requests access: {capabilities}",
-				"requiredEnv": "Requires env: {vars}"
+				"dockerProfile": "Docker profile",
+				"flagKey": "Flag key",
+				"package": "Package",
+				"requestedAccess": "Requests access",
+				"requiredEnv": "Environment variables",
+				"summary": "Technical details"
+			},
+			"featurePackList": {
+				"customize": "Customize ({on} of {total} on)",
+				"enableFirst": "Turn on {flags} first",
+				"more": {
+					"description": "Integrations, security checks and delivery tools you can turn on one by one.",
+					"label": "More features"
+				},
+				"needsOneOf": "Needs one of: {flags}",
+				"needsSetup": "Needs setup",
+				"needsSetupTitle": "On, but not set up yet. Missing: {missing}",
+				"partial": "Some on"
 			},
 			"inboundRetentionCard": {
 				"adminOnly": "Only owners and admins can change this.",
@@ -6251,48 +6275,7 @@
 						"pending": "Queued",
 						"running": "Scanning mail history"
 					},
-					"cancelBackfillOperation": "Cancel backfill",
-					"limits": {
-						"coalesceHelp": "Wait this many seconds for additional messages before processing a thread. Prevents redundant processing of rapid message bursts.",
-						"coalesceLabel": "Message Coalescing Window",
-						"dailyHelp": "Maximum number of auto-approved replies per day. Excess messages go to the review queue.",
-						"dailyLabel": "Daily Auto-Reply Limit",
-						"description": "Set thresholds for auto-approval and rate limits.",
-						"seconds": "seconds",
-						"thresholdHelp": "Minimum confidence score required for auto-approval. Drafts below this threshold go to the review queue.",
-						"thresholdLabel": "Confidence Threshold",
-						"thresholdMax": "100% (never auto-approve)",
-						"thresholdMin": "0% (all to review)",
-						"title": "Confidence & Limits"
-					},
-					"loading": "Loading agent settings...",
-					"pageTitle": "AI Agent Settings — Owlat",
-					"pipeline": {
-						"autoReplyHelp": "Allow the agent to send replies without human approval when confidence is above threshold.",
-						"autoReplyLabel": "Auto-Reply",
-						"autoReplySwitch": "Auto-reply",
-						"description": "Control whether the AI agent processes inbound messages.",
-						"enableHelp": "When enabled, inbound messages are classified and drafted automatically.",
-						"enableLabel": "Enable Agent Pipeline",
-						"enableSwitch": "Enable AI agent",
-						"title": "Agent Pipeline"
-					},
-					"saveChanges": "Save Changes",
-					"saveOperation": "Save agent settings",
-					"savedToast": "Agent settings saved successfully",
-					"subtitle": "Configure how the AI agent processes inbound messages and generates drafts.",
-					"title": "AI Agent",
-					"toggleOperation": "Toggle agent",
-					"tone": {
-						"description": "Define how the agent communicates on behalf of your workspace.",
-						"signatureHelp": "Signature appended to agent-generated email replies.",
-						"signatureLabel": "Email Signature",
-						"signaturePlaceholder": "e.g., Best regards,\nThe Support Team\nsupport{'@'}yourcompany.com",
-						"title": "Tone & Signature",
-						"toneHelp": "Describe the communication style for agent-generated drafts.",
-						"toneLabel": "Tone Description",
-						"tonePlaceholder": "e.g., Professional and friendly. Use the customer's first name. Keep responses concise but thorough."
-					}
+					"cancelBackfillOperation": "Cancel backfill"
 				},
 				"agentHealth": {
 					"charts": {
@@ -6448,39 +6431,79 @@
 					"testConnection": "Test connection",
 					"title": "AI Provider"
 				},
-				"autonomy": {
-					"addRule": "Add Rule",
-					"createFirstRule": "Create First Rule",
-					"emptyBody": "Create rules to control how the AI agent handles different types of messages. Each category can have its own confidence threshold and daily limits.",
-					"emptyTitle": "No autonomy rules configured",
-					"errorMessage": "We hit an error loading autonomy rules. Reload to try again.",
-					"errorTitle": "Couldn't load autonomy rules",
-					"howItWorks": {
-						"step1": "The agent classifies each inbound message into a category.",
-						"step2": "If confidence exceeds the threshold and daily limit is not reached, the action is auto-approved.",
-						"step3": "Otherwise, the action goes to the review queue for human approval.",
-						"step4": "Thresholds auto-adjust weekly based on rejection patterns. High rejections tighten the threshold; low rejections loosen it.",
-						"title": "How It Works"
+				"aiReplies": {
+					"loading": "Loading AI reply settings…",
+					"mode": {
+						"description": "This applies to every team inbox. You can switch at any time.",
+						"needsFeatures": "AI replies need AI features and the team inbox turned on.",
+						"title": "What the AI does with new mail"
 					},
-					"loading": "Loading autonomy rules...",
+					"openFeatures": "Open Features",
 					"operations": {
-						"applySuggestion": "Apply graduation suggestion",
-						"dismissDemotion": "Dismiss demotion alert",
-						"enableSender": "Enable auto-send for sender",
-						"killSwitch": "Stop auto-sending",
-						"saveWorkingHours": "Save working hours"
+						"applySuggestion": "Apply suggestion",
+						"dismissDemotion": "Dismiss alert",
+						"enableSender": "Turn on automatic sending for a sender",
+						"save": "Save AI reply settings",
+						"saveWorkingHours": "Save working hours",
+						"setMode": "Change AI replies"
 					},
-					"pageTitle": "Autonomy Rules — Owlat",
-					"subtitle": "Configure per-category rules that control when the AI agent can auto-approve actions and when human review is required. Thresholds automatically adjust based on human feedback patterns.",
-					"title": "Graduated Autonomy",
+					"pageTitle": "AI replies — Owlat",
+					"rules": {
+						"add": "Add rule",
+						"description": "Set how sure the AI must be before it sends each type of message, and add rules in plain words. Messages without a rule wait for review.",
+						"draftOnlyNote": "These rules only send replies while the AI is set to send automatically. Right now every reply waits for review.",
+						"emptyBody": "Add a rule for a type of message, such as support or billing, to let the AI send those replies on its own.",
+						"emptyTitle": "No rules yet",
+						"errorMessage": "Reload the page to try again.",
+						"errorTitle": "Couldn't load the rules",
+						"offBody": "Rules for each type of message are turned off in Features. Turn them on to set rules per type of message and in plain words.",
+						"title": "Rules for each type of message"
+					},
+					"rulesFlag": {
+						"change": "Change in Features",
+						"label": "Rules for each type of message:",
+						"off": "Off",
+						"on": "On"
+					},
+					"saveChanges": "Save changes",
+					"subtitle": "Choose whether the AI drafts replies for your team, sends the ones it is sure about, or stays off.",
+					"title": "AI replies",
 					"toasts": {
 						"alertDismissed": "Alert dismissed",
-						"autoSendingStopped": "Auto-sending stopped — reverted to draft-only",
-						"ruleDeleted": "Autonomy rule deleted",
-						"ruleSaved": "Autonomy rule saved successfully",
-						"senderEnabled": "Auto-send enabled for {sender}",
-						"suggestionApplied": "Graduation suggestion applied",
+						"mode": {
+							"auto": "AI replies now send automatically when the AI is confident",
+							"draft": "AI replies set to draft only",
+							"off": "AI replies turned off"
+						},
+						"ruleDeleted": "Rule deleted",
+						"ruleSaved": "Rule saved",
+						"saved": "AI reply settings saved",
+						"senderEnabled": "Automatic sending turned on for {sender}",
+						"suggestionApplied": "Suggestion applied",
 						"workingHoursSaved": "Working hours saved"
+					},
+					"tone": {
+						"coalesceHelp": "When someone sends several messages in a row, wait this long and answer them together.",
+						"coalesceLabel": "Wait for follow-up messages",
+						"description": "Tone and signature for every reply the AI drafts.",
+						"seconds": "seconds",
+						"signatureHelp": "Added to the end of every email reply the AI drafts.",
+						"signatureLabel": "Signature",
+						"signaturePlaceholder": "e.g., Best regards,\nThe Support Team\nsupport{'@'}yourcompany.com",
+						"title": "How replies read",
+						"toneHelp": "Describe how replies should sound.",
+						"toneLabel": "Tone",
+						"tonePlaceholder": "e.g., Professional and friendly. Use the customer's first name. Keep responses concise but thorough."
+					},
+					"when": {
+						"byRule": "Each rule below sets how sure the AI must be and how many replies it may send per day. Messages without a rule always wait for review.",
+						"dailyHelp": "The most replies sent automatically per day. After that, replies wait for review.",
+						"dailyLabel": "Daily limit",
+						"thresholdHelp": "Replies the AI is less sure about wait in the answer queue for review.",
+						"thresholdLabel": "How sure the AI must be",
+						"thresholdMax": "100%: send nothing",
+						"thresholdMin": "0%: send every reply",
+						"title": "When to send automatically"
 					}
 				},
 				"channels": {
@@ -6636,18 +6659,8 @@
 						"title": "Disable {label}?",
 						"titleFallback": "Disable feature?"
 					},
-					"categories": {
-						"ai": "AI",
-						"deliverability": "Analytics & deliverability",
-						"integrations": "Integrations",
-						"plugins": "Bundled plugins",
-						"receiving": "Receiving",
-						"security": "Security & scanning",
-						"sending": "Sending"
-					},
 					"configUnverified": "Plugin configuration could not be verified.",
 					"deliveryProviderRequirement": "A delivery provider — set EMAIL_PROVIDER to a registered transport, configure its requirements, then restart",
-					"enableRequiredFirst": "Enable {flags} first",
 					"inboundDnsHint": "Receiving mail needs MX + inbound-port DNS. Add the records under {link} so inbound mail reaches this instance.",
 					"inboundDnsLink": "Settings → Domains → Receiving",
 					"missingEnv": {
@@ -6656,15 +6669,6 @@
 						"howTo": "Run {envCommand} on the host, then {restartCommand}.",
 						"title": "{label} needs config",
 						"titleFallback": "Configuration needed"
-					},
-					"needsConfig": "Needs config",
-					"needsConfigTitle": "Enabled but not configured — missing: {missing}",
-					"needsOneOf": "Needs one of: {flags}",
-					"packs": {
-						"description": "Bundles of related flags. Toggling a pack flips every flag inside it (and their dependencies).",
-						"flags": "Flags: {flags}",
-						"partial": "Partial",
-						"title": "Feature packs"
 					},
 					"pageTitle": "Features — Owlat",
 					"pluginStatus": {
@@ -6836,10 +6840,6 @@
 					"disableCount": "Disable ({count})",
 					"enableCount": "Enable ({count})",
 					"groups": {
-						"agent": {
-							"description": "Configure the organization-wide agent and inspect its health.",
-							"title": "AI agent"
-						},
 						"agentHealth": {
 							"description": "Live accuracy, escalations, and recent agent runs.",
 							"title": "Agent health"
@@ -6848,9 +6848,9 @@
 							"description": "Choose the hosted or self-run model provider and turn AI on.",
 							"title": "AI provider"
 						},
-						"autonomy": {
-							"description": "How much the agent may act on its own, and the switch that stops it.",
-							"title": "Autonomy"
+						"aiReplies": {
+							"description": "Choose whether the AI drafts replies for review, sends them when confident, or stays off.",
+							"title": "AI replies"
 						},
 						"channels": {
 							"description": "Messaging channels available across the instance.",
@@ -11126,24 +11126,11 @@
 			"validating": "Validating…"
 		},
 		"features": {
-			"categories": {
-				"ai": "AI",
-				"deliverability": "Analytics & deliverability",
-				"integrations": "Integrations",
-				"receiving": "Receiving",
-				"security": "Security & scanning",
-				"sending": "Sending"
-			},
 			"eyebrow": "Owlat setup",
-			"intro": "Toggle a master feature off and its sub-features disable automatically. You can change all of this later.",
+			"intro": "Turn on what this workspace needs. Open Customize to pick single features. You can change all of this later in Settings.",
 			"next": "Next: Email provider",
-			"packsHeading": "Feature packs",
-			"packsIntro": "Pick a bundle. Toggling a pack flips every flag it contains.",
 			"pageTitle": "Owlat setup — Features",
-			"partial": "partial",
-			"providerRequiredMessage": "Campaigns, transactional, or automations are enabled — the Email step will require a delivery provider (MTA, Resend, or SES). A connected external mailbox is not one.",
-			"providerRequiredTitle": "A delivery provider is required next",
-			"requires": "requires: {features}",
+			"providerNote": "Sending campaigns or API mail needs a delivery provider, such as your own mail server, Resend or SES. You'll pick one in the next step. A connected personal mailbox can't be used for this.",
 			"title": "Pick what to {accent}",
 			"titleAccent": "enable"
 		},
@@ -11528,12 +11515,11 @@
 		"breadcrumbRoutes": {
 			"pages": {
 				"agentHealth": "Agent health",
-				"aiAgent": "AI agent",
 				"aiProvider": "AI provider",
+				"aiReplies": "AI replies",
 				"apiKeys": "API Keys",
 				"apiQuickstart": "API Quickstart",
 				"auditLog": "Audit Log",
-				"autonomyRules": "Autonomy rules",
 				"backups": "Backups",
 				"blocks": "Blocks",
 				"campaignSenders": "Campaign senders",
@@ -15193,41 +15179,41 @@
 			"flags": {
 				"ai": {
 					"agent": {
-						"description": "Auto-classify inbound mail by intent and draft suggested replies.",
-						"label": "AI agent (classify + draft)"
+						"description": "Sort incoming team mail by topic and draft a reply to each message, ready for you to review.",
+						"label": "Draft replies for me"
 					},
 					"assistant": {
-						"description": "Multi-turn, streaming, tool-calling AI assistant (a dedicated chat surface) plus {'@'}assistant replies inside team chat. Searches your knowledge, files, contacts, campaigns, and drafts copy on request.",
+						"description": "An assistant you can chat with, plus {'@'}assistant replies inside team chat. It searches your knowledge, files, contacts and campaigns, and drafts copy on request.",
 						"label": "AI assistant & chat"
 					},
 					"autonomy": {
-						"description": "Let the agent send replies and take actions without human approval when confidence is high.",
-						"label": "Autonomous actions"
+						"description": "Decide per type of message when AI replies may go out without review, and add rules in plain words. Set them up under AI replies.",
+						"label": "Rules for each type of message"
 					},
 					"decisionPlane": {
-						"description": "Answer the yes/no, category and score judgements the AI features make with a dedicated decision provider instead of a text model. Off, every judgement stays on your configured language model.",
-						"label": "Decision plane"
+						"description": "Use a separate decision service for quick calls, such as whether a message needs a reply or which topic it belongs to. Off, your main AI model makes them.",
+						"label": "Separate model for quick decisions"
 					},
-					"description": "Master toggle for all AI-powered features. Requires an LLM provider.",
+					"description": "Turn on the AI features below. Needs an AI provider.",
 					"knowledge": {
 						"analytics": {
-							"description": "Compute graph analytics (centrality, clusters) on a cron and surface a knowledge-graph dashboard.",
-							"label": "Knowledge graph analytics"
+							"description": "See which facts matter most and how they group together, on a knowledge dashboard.",
+							"label": "Knowledge insights"
 						},
 						"autoLink": {
-							"description": "Infer typed edges between knowledge entries with an LLM pass and backfill existing entries. The deterministic rule-based linker runs whenever the knowledge graph is on; this adds the LLM-inferred edges.",
-							"label": "Auto-link knowledge (LLM)"
+							"description": "Use AI to spot how saved facts relate to each other, including the ones you already have. Simple links are made either way.",
+							"label": "Connect related facts"
 						},
-						"description": "Semantic extraction from conversations to build context for agent drafts.",
+						"description": "Learn facts from your conversations so drafted replies can use them.",
 						"graphRetrieval": {
-							"description": "Expand semantic-search results along knowledge-graph edges (seed-then-expand) before grounding agent drafts. Kill switch: when off, retrieval is byte-identical to the flat path.",
-							"label": "Graph-augmented retrieval"
+							"description": "Find related facts when drafting replies, not only the closest matches. Off, drafts use the closest matches only.",
+							"label": "Use related facts in drafts"
 						},
 						"label": "Knowledge graph"
 					},
 					"label": "AI features",
 					"visualizations": {
-						"description": "Generate charts and dashboards from natural-language prompts.",
+						"description": "Describe a chart in plain words and get it built from your data.",
 						"label": "AI dashboards"
 					}
 				},
@@ -15307,8 +15293,8 @@
 				},
 				"postbox": {
 					"aiDraft": {
-						"description": "Pre-generate a reply draft (with a confidence + quality self-check) into the Reply Queue the moment a personal-mail message that needs a reply lands, so the owner can review-and-send instead of starting from a blank composer. Human review only — never auto-sends.",
-						"label": "Draft-on-arrival for personal mail"
+						"description": "When a personal message needs a reply, have a draft waiting in the answer queue. You always review it before it is sent.",
+						"label": "Draft replies in personal mail"
 					},
 					"description": "Per-user mailboxes with webmail UI, IMAP/SMTP for native clients, and MX-based delivery (Gmail-equivalent).",
 					"label": "Personal mail (Postbox)"
@@ -15352,12 +15338,12 @@
 			},
 			"packs": {
 				"ai": {
-					"description": "AI agent, autonomy, knowledge graph (+ auto-link, graph retrieval, analytics), assistant, and dashboards.",
+					"description": "Reply drafts, auto-send rules, a knowledge graph, an assistant and AI dashboards.",
 					"label": "AI"
 				},
 				"emailClient": {
 					"description": "Inbox, chat, and personal mail (Postbox) as one bundle.",
-					"label": "Email Client"
+					"label": "Email client"
 				},
 				"marketing": {
 					"description": "Campaigns, automations, and the transactional API.",

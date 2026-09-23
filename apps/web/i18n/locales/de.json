@@ -601,14 +601,6 @@
 				"suggestionEvidence": "{approved}/{sampleSize} freigegeben, {rate} Ablehnungsquote",
 				"title": "Bereit für mehr Autonomie"
 			},
-			"autonomyKillSwitch": {
-				"body": "Sofort zurück auf {mode}: schaltet die abgestufte Autonomie und die alte automatische Antwort ab und holt jeden automatischen Versand zurück, der noch im Rückgängig-Fenster ist. Der Agent entwirft weiterhin Antworten zu Ihrer Prüfung — nichts geht verloren.",
-				"bodyMode": "nur Entwürfe",
-				"confirmCta": "Ja, jetzt stoppen",
-				"confirmQuestion": "Zurück auf nur Entwürfe?",
-				"stopCta": "Automatischen Versand stoppen",
-				"title": "Automatischen Versand jetzt stoppen"
-			},
 			"autonomyLearningControls": {
 				"answeredTimes": "{scope} · {count}-mal beantwortet | {scope} · {count}-mal beantwortet",
 				"categories": {
@@ -3270,7 +3262,7 @@
 			},
 			"graphView": {
 				"analyticsOffBody": "Aktivieren Sie {setting} in den Einstellungen, um den Graphen und seine Einblicke zu sehen.",
-				"analyticsOffSetting": "Wissensgraph-Analysen",
+				"analyticsOffSetting": "Wissens-Einblicke",
 				"analyticsOffTitle": "Graph-Analysen sind deaktiviert",
 				"centerHere": "Hier zentrieren",
 				"closePanel": "Panel schließen",
@@ -5082,6 +5074,24 @@
 			"aiModelPicker": {
 				"customPlaceholder": "Modell-ID eingeben"
 			},
+			"aiReplyModeControl": {
+				"defaultBadge": "Standard",
+				"legend": "KI-Antworten",
+				"options": {
+					"auto": {
+						"description": "Die KI sendet Antworten, bei denen sie sicher ist, und lässt den Rest zur Prüfung liegen. Wann und wie oft, legen Sie unten fest.",
+						"label": "Automatisch senden, wenn die KI sicher ist"
+					},
+					"draft": {
+						"description": "Die KI entwirft zu jeder Nachricht eine Antwort. Eine Person prüft sie und sendet sie aus der Antwort-Warteschlange.",
+						"label": "Nur entwerfen"
+					},
+					"off": {
+						"description": "Die KI entwirft und sendet keine Antworten.",
+						"label": "Aus"
+					}
+				}
+			},
 			"bodySearchIndexCard": {
 				"adminsOnly": "Nur Inhaber und Administratoren können dies ändern.",
 				"backfillAgain": "Erneut indexieren",
@@ -5149,10 +5159,24 @@
 				"switch": "Wechseln"
 			},
 			"featureFlagMetadata": {
-				"dockerProfile": "Docker-Profil: {profiles}",
-				"package": "Paket: {name}",
-				"requestedAccess": "Fordert Zugriff an: {capabilities}",
-				"requiredEnv": "Benötigt Umgebungsvariablen: {vars}"
+				"dockerProfile": "Docker-Profil",
+				"flagKey": "Flag-Schlüssel",
+				"package": "Paket",
+				"requestedAccess": "Fordert Zugriff an",
+				"requiredEnv": "Umgebungsvariablen",
+				"summary": "Technische Details"
+			},
+			"featurePackList": {
+				"customize": "Anpassen ({on} von {total} an)",
+				"enableFirst": "Schalten Sie zuerst {flags} ein",
+				"more": {
+					"description": "Integrationen, Sicherheitsprüfungen und Zustellungswerkzeuge, die Sie einzeln einschalten können.",
+					"label": "Weitere Funktionen"
+				},
+				"needsOneOf": "Benötigt eines von: {flags}",
+				"needsSetup": "Einrichtung nötig",
+				"needsSetupTitle": "Eingeschaltet, aber noch nicht eingerichtet. Es fehlt: {missing}",
+				"partial": "Teilweise an"
 			},
 			"inboundRetentionCard": {
 				"adminOnly": "Nur Inhaber und Administratoren können das ändern.",
@@ -6251,48 +6275,7 @@
 						"pending": "In Warteschlange",
 						"running": "Mail-Verlauf wird durchsucht"
 					},
-					"cancelBackfillOperation": "Nachverarbeitung abbrechen",
-					"limits": {
-						"coalesceHelp": "So viele Sekunden auf weitere Nachrichten warten, bevor ein Thread verarbeitet wird. Verhindert die mehrfache Verarbeitung schneller Nachrichtenfolgen.",
-						"coalesceLabel": "Zeitfenster für Nachrichtenbündelung",
-						"dailyHelp": "Maximale Anzahl automatisch freigegebener Antworten pro Tag. Darüber hinausgehende Nachrichten gehen in die Prüfwarteschlange.",
-						"dailyLabel": "Tageslimit für automatische Antworten",
-						"description": "Legen Sie Schwellenwerte für die automatische Freigabe und Ratenbegrenzungen fest.",
-						"seconds": "Sekunden",
-						"thresholdHelp": "Mindestkonfidenz für die automatische Freigabe. Entwürfe unterhalb dieser Schwelle gehen in die Prüfwarteschlange.",
-						"thresholdLabel": "Konfidenzschwelle",
-						"thresholdMax": "100 % (nie automatisch freigeben)",
-						"thresholdMin": "0 % (alles zur Prüfung)",
-						"title": "Konfidenz & Limits"
-					},
-					"loading": "Agent-Einstellungen werden geladen...",
-					"pageTitle": "KI-Agent-Einstellungen — Owlat",
-					"pipeline": {
-						"autoReplyHelp": "Erlauben Sie dem Agenten, Antworten ohne menschliche Freigabe zu senden, wenn die Konfidenz über dem Schwellenwert liegt.",
-						"autoReplyLabel": "Automatische Antwort",
-						"autoReplySwitch": "Automatische Antwort",
-						"description": "Steuern Sie, ob der KI-Agent eingehende Nachrichten verarbeitet.",
-						"enableHelp": "Wenn aktiviert, werden eingehende Nachrichten automatisch klassifiziert und beantwortet.",
-						"enableLabel": "Agenten-Pipeline aktivieren",
-						"enableSwitch": "KI-Agent aktivieren",
-						"title": "Agenten-Pipeline"
-					},
-					"saveChanges": "Änderungen speichern",
-					"saveOperation": "Agent-Einstellungen speichern",
-					"savedToast": "Agent-Einstellungen erfolgreich gespeichert",
-					"subtitle": "Legen Sie fest, wie der KI-Agent eingehende Nachrichten verarbeitet und Entwürfe erstellt.",
-					"title": "KI-Agent",
-					"toggleOperation": "Agent umschalten",
-					"tone": {
-						"description": "Legen Sie fest, wie der Agent im Namen Ihres Workspace kommuniziert.",
-						"signatureHelp": "Signatur, die an vom Agenten erstellte E-Mail-Antworten angehängt wird.",
-						"signatureLabel": "E-Mail-Signatur",
-						"signaturePlaceholder": "z. B. Mit freundlichen Grüßen,\nIhr Support-Team\nsupport{'@'}ihrefirma.de",
-						"title": "Tonfall & Signatur",
-						"toneHelp": "Beschreiben Sie den Kommunikationsstil für vom Agenten erstellte Entwürfe.",
-						"toneLabel": "Beschreibung des Tonfalls",
-						"tonePlaceholder": "z. B. professionell und freundlich. Den Vornamen der Kundin oder des Kunden verwenden. Antworten knapp, aber gründlich halten."
-					}
+					"cancelBackfillOperation": "Nachverarbeitung abbrechen"
 				},
 				"agentHealth": {
 					"charts": {
@@ -6448,39 +6431,79 @@
 					"testConnection": "Verbindung testen",
 					"title": "KI-Anbieter"
 				},
-				"autonomy": {
-					"addRule": "Regel hinzufügen",
-					"createFirstRule": "Erste Regel erstellen",
-					"emptyBody": "Erstellen Sie Regeln, die steuern, wie der KI-Agent verschiedene Nachrichtenarten behandelt. Jede Kategorie kann eine eigene Konfidenzschwelle und eigene Tageslimits haben.",
-					"emptyTitle": "Keine Autonomieregeln konfiguriert",
-					"errorMessage": "Beim Laden der Autonomieregeln ist ein Fehler aufgetreten. Laden Sie die Seite neu, um es erneut zu versuchen.",
-					"errorTitle": "Autonomieregeln konnten nicht geladen werden",
-					"howItWorks": {
-						"step1": "Der Agent ordnet jede eingehende Nachricht einer Kategorie zu.",
-						"step2": "Liegt die Konfidenz über der Schwelle und ist das Tageslimit nicht erreicht, wird die Aktion automatisch freigegeben.",
-						"step3": "Andernfalls geht die Aktion zur menschlichen Freigabe in die Prüfwarteschlange.",
-						"step4": "Die Schwellenwerte passen sich wöchentlich anhand der Ablehnungsmuster an. Viele Ablehnungen verschärfen die Schwelle, wenige lockern sie.",
-						"title": "So funktioniert es"
+				"aiReplies": {
+					"loading": "Einstellungen für KI-Antworten werden geladen…",
+					"mode": {
+						"description": "Das gilt für alle Team-Posteingänge. Sie können jederzeit wechseln.",
+						"needsFeatures": "Für KI-Antworten müssen die KI-Funktionen und der Team-Posteingang eingeschaltet sein.",
+						"title": "Was die KI mit neuer Mail macht"
 					},
-					"loading": "Autonomieregeln werden geladen...",
+					"openFeatures": "Funktionen öffnen",
 					"operations": {
-						"applySuggestion": "Stufenvorschlag anwenden",
-						"dismissDemotion": "Herabstufungshinweis schließen",
-						"enableSender": "Automatischen Versand für Absender aktivieren",
-						"killSwitch": "Automatischen Versand stoppen",
-						"saveWorkingHours": "Arbeitszeiten speichern"
+						"applySuggestion": "Vorschlag übernehmen",
+						"dismissDemotion": "Hinweis schließen",
+						"enableSender": "Automatisches Senden für einen Absender einschalten",
+						"save": "Einstellungen für KI-Antworten speichern",
+						"saveWorkingHours": "Arbeitszeiten speichern",
+						"setMode": "KI-Antworten ändern"
 					},
-					"pageTitle": "Autonomieregeln — Owlat",
-					"subtitle": "Konfigurieren Sie Regeln je Kategorie, die festlegen, wann der KI-Agent Aktionen automatisch freigeben darf und wann eine menschliche Prüfung nötig ist. Die Schwellenwerte passen sich automatisch an das Feedback der Menschen an.",
-					"title": "Gestufte Autonomie",
+					"pageTitle": "KI-Antworten — Owlat",
+					"rules": {
+						"add": "Regel hinzufügen",
+						"description": "Legen Sie pro Nachrichtenart fest, wie sicher sich die KI sein muss, bevor sie sendet, und fügen Sie Regeln in eigenen Worten hinzu. Nachrichten ohne Regel warten auf Prüfung.",
+						"draftOnlyNote": "Diese Regeln senden nur, solange die KI automatisch senden darf. Im Moment wartet jede Antwort auf Prüfung.",
+						"emptyBody": "Fügen Sie eine Regel für eine Nachrichtenart hinzu, etwa Support oder Abrechnung, damit die KI diese Antworten selbst senden darf.",
+						"emptyTitle": "Noch keine Regeln",
+						"errorMessage": "Laden Sie die Seite neu, um es noch einmal zu versuchen.",
+						"errorTitle": "Die Regeln konnten nicht geladen werden",
+						"offBody": "Regeln pro Nachrichtenart sind unter Funktionen ausgeschaltet. Schalten Sie sie ein, um Regeln pro Nachrichtenart und in eigenen Worten festzulegen.",
+						"title": "Regeln pro Nachrichtenart"
+					},
+					"rulesFlag": {
+						"change": "Unter Funktionen ändern",
+						"label": "Regeln pro Nachrichtenart:",
+						"off": "Aus",
+						"on": "An"
+					},
+					"saveChanges": "Änderungen speichern",
+					"subtitle": "Legen Sie fest, ob die KI Antworten für Ihr Team entwirft, sichere Antworten selbst sendet oder ausgeschaltet bleibt.",
+					"title": "KI-Antworten",
 					"toasts": {
 						"alertDismissed": "Hinweis geschlossen",
-						"autoSendingStopped": "Automatischer Versand gestoppt — zurück auf reinen Entwurfsmodus",
-						"ruleDeleted": "Autonomieregel gelöscht",
-						"ruleSaved": "Autonomieregel erfolgreich gespeichert",
-						"senderEnabled": "Automatischer Versand für {sender} aktiviert",
-						"suggestionApplied": "Stufenvorschlag angewendet",
+						"mode": {
+							"auto": "KI-Antworten werden jetzt automatisch gesendet, wenn die KI sicher ist",
+							"draft": "KI-Antworten auf „Nur entwerfen“ gestellt",
+							"off": "KI-Antworten ausgeschaltet"
+						},
+						"ruleDeleted": "Regel gelöscht",
+						"ruleSaved": "Regel gespeichert",
+						"saved": "Einstellungen für KI-Antworten gespeichert",
+						"senderEnabled": "Automatisches Senden für {sender} eingeschaltet",
+						"suggestionApplied": "Vorschlag übernommen",
 						"workingHoursSaved": "Arbeitszeiten gespeichert"
+					},
+					"tone": {
+						"coalesceHelp": "Schreibt jemand mehrere Nachrichten hintereinander, so lange warten und sie gemeinsam beantworten.",
+						"coalesceLabel": "Auf weitere Nachrichten warten",
+						"description": "Tonfall und Signatur für jede Antwort, die die KI entwirft.",
+						"seconds": "Sekunden",
+						"signatureHelp": "Wird an jede E-Mail-Antwort angehängt, die die KI entwirft.",
+						"signatureLabel": "Signatur",
+						"signaturePlaceholder": "z. B. Mit freundlichen Grüßen,\nIhr Support-Team\nsupport{'@'}ihrefirma.de",
+						"title": "Wie Antworten klingen",
+						"toneHelp": "Beschreiben Sie, wie Antworten klingen sollen.",
+						"toneLabel": "Tonfall",
+						"tonePlaceholder": "z. B. professionell und freundlich. Den Vornamen der Kundin oder des Kunden verwenden. Antworten knapp, aber gründlich halten."
+					},
+					"when": {
+						"byRule": "Jede Regel unten legt fest, wie sicher sich die KI sein muss und wie viele Antworten sie pro Tag senden darf. Nachrichten ohne Regel warten immer auf Prüfung.",
+						"dailyHelp": "Höchstens so viele Antworten werden pro Tag automatisch gesendet. Danach warten Antworten auf Prüfung.",
+						"dailyLabel": "Tageslimit",
+						"thresholdHelp": "Antworten, bei denen die KI weniger sicher ist, warten in der Antwort-Warteschlange auf Prüfung.",
+						"thresholdLabel": "Wie sicher die KI sein muss",
+						"thresholdMax": "100 %: nichts senden",
+						"thresholdMin": "0 %: jede Antwort senden",
+						"title": "Wann automatisch gesendet wird"
 					}
 				},
 				"channels": {
@@ -6636,18 +6659,8 @@
 						"title": "{label} deaktivieren?",
 						"titleFallback": "Funktion deaktivieren?"
 					},
-					"categories": {
-						"ai": "KI",
-						"deliverability": "Analyse & Zustellbarkeit",
-						"integrations": "Integrationen",
-						"plugins": "Mitgelieferte Plugins",
-						"receiving": "Empfang",
-						"security": "Sicherheit & Prüfung",
-						"sending": "Versand"
-					},
 					"configUnverified": "Die Plugin-Konfiguration konnte nicht überprüft werden.",
 					"deliveryProviderRequirement": "Ein Zustellanbieter — setzen Sie EMAIL_PROVIDER auf einen registrierten Transport, konfigurieren Sie dessen Voraussetzungen und starten Sie dann neu",
-					"enableRequiredFirst": "Aktivieren Sie zuerst {flags}",
 					"inboundDnsHint": "Für den Mail-Empfang werden MX- und Eingangsport-DNS-Einträge benötigt. Legen Sie die Einträge unter {link} an, damit eingehende Mail diese Instanz erreicht.",
 					"inboundDnsLink": "Einstellungen → Domains → Empfang",
 					"missingEnv": {
@@ -6656,15 +6669,6 @@
 						"howTo": "Führen Sie {envCommand} auf dem Host aus und danach {restartCommand}.",
 						"title": "{label} benötigt eine Konfiguration",
 						"titleFallback": "Konfiguration erforderlich"
-					},
-					"needsConfig": "Konfiguration nötig",
-					"needsConfigTitle": "Aktiviert, aber nicht konfiguriert — es fehlt: {missing}",
-					"needsOneOf": "Benötigt eines von: {flags}",
-					"packs": {
-						"description": "Bündel zusammengehöriger Flags. Beim Umschalten eines Pakets werden alle darin enthaltenen Flags (und deren Abhängigkeiten) umgeschaltet.",
-						"flags": "Flags: {flags}",
-						"partial": "Teilweise",
-						"title": "Funktionspakete"
 					},
 					"pageTitle": "Funktionen — Owlat",
 					"pluginStatus": {
@@ -6836,10 +6840,6 @@
 					"disableCount": "Deaktivieren ({count})",
 					"enableCount": "Aktivieren ({count})",
 					"groups": {
-						"agent": {
-							"description": "Konfigurieren Sie den organisationsweiten Agenten und prüfen Sie seinen Zustand.",
-							"title": "KI-Agent"
-						},
 						"agentHealth": {
 							"description": "Live-Genauigkeit, Eskalationen und jüngste Agentenläufe.",
 							"title": "Agentenzustand"
@@ -6848,9 +6848,9 @@
 							"description": "Wählen Sie den gehosteten oder selbst betriebenen Modellanbieter und schalten Sie die KI ein.",
 							"title": "KI-Anbieter"
 						},
-						"autonomy": {
-							"description": "Wie viel der Agent eigenständig tun darf und der Schalter, der ihn stoppt.",
-							"title": "Autonomie"
+						"aiReplies": {
+							"description": "Legen Sie fest, ob die KI Antworten zur Prüfung entwirft, sie bei hoher Sicherheit selbst sendet oder aus bleibt.",
+							"title": "KI-Antworten"
 						},
 						"channels": {
 							"description": "Nachrichtenkanäle, die in der gesamten Instanz verfügbar sind.",
@@ -11126,24 +11126,11 @@
 			"validating": "Wird geprüft…"
 		},
 		"features": {
-			"categories": {
-				"ai": "KI",
-				"deliverability": "Analysen & Zustellbarkeit",
-				"integrations": "Integrationen",
-				"receiving": "Empfang",
-				"security": "Sicherheit & Prüfung",
-				"sending": "Versand"
-			},
 			"eyebrow": "Owlat-Einrichtung",
-			"intro": "Wenn Sie eine übergeordnete Funktion deaktivieren, werden ihre Unterfunktionen automatisch deaktiviert. Sie können all das später ändern.",
+			"intro": "Schalten Sie ein, was dieser Workspace braucht. Unter „Anpassen“ wählen Sie einzelne Funktionen. Sie können all das später in den Einstellungen ändern.",
 			"next": "Weiter: E-Mail-Anbieter",
-			"packsHeading": "Funktionspakete",
-			"packsIntro": "Wählen Sie ein Bündel. Das Umschalten eines Pakets ändert alle darin enthaltenen Schalter.",
 			"pageTitle": "Owlat-Einrichtung — Funktionen",
-			"partial": "teilweise",
-			"providerRequiredMessage": "Kampagnen, transaktionaler Versand oder Automatisierungen sind aktiviert — im Schritt „E-Mail“ wird ein Zustellanbieter benötigt (MTA, Resend oder SES). Ein verbundenes externes Postfach zählt nicht dazu.",
-			"providerRequiredTitle": "Im nächsten Schritt wird ein Zustellanbieter benötigt",
-			"requires": "erfordert: {features}",
+			"providerNote": "Für Kampagnen oder Mails über die API brauchen Sie einen Zustellanbieter, etwa Ihren eigenen Mailserver, Resend oder SES. Den wählen Sie im nächsten Schritt. Ein verbundenes persönliches Postfach reicht dafür nicht.",
 			"title": "Wählen Sie, was Sie {accent}",
 			"titleAccent": "aktivieren möchten"
 		},
@@ -11528,12 +11515,11 @@
 		"breadcrumbRoutes": {
 			"pages": {
 				"agentHealth": "Agentenzustand",
-				"aiAgent": "KI-Agent",
 				"aiProvider": "KI-Anbieter",
+				"aiReplies": "KI-Antworten",
 				"apiKeys": "API-Schlüssel",
 				"apiQuickstart": "API-Schnellstart",
 				"auditLog": "Audit-Protokoll",
-				"autonomyRules": "Autonomieregeln",
 				"backups": "Backups",
 				"blocks": "Blöcke",
 				"campaignSenders": "Kampagnenabsender",
@@ -15193,41 +15179,41 @@
 			"flags": {
 				"ai": {
 					"agent": {
-						"description": "Eingehende Mail automatisch nach Absicht klassifizieren und Antwortvorschläge entwerfen.",
-						"label": "KI-Agent (klassifizieren + entwerfen)"
+						"description": "Eingehende Team-Mail nach Thema sortieren und zu jeder Nachricht eine Antwort entwerfen, die Sie prüfen können.",
+						"label": "Antworten für mich entwerfen"
 					},
 					"assistant": {
-						"description": "KI-Assistent mit mehreren Gesprächsrunden, Streaming und Tool-Calling (eine eigene Chat-Oberfläche) sowie {'@'}assistant-Antworten im Team-Chat. Durchsucht Ihr Wissen, Ihre Dateien, Kontakte und Kampagnen und verfasst auf Wunsch Texte.",
+						"description": "Ein Assistent, mit dem Sie chatten können, dazu {'@'}assistant-Antworten im Team-Chat. Er durchsucht Ihr Wissen, Ihre Dateien, Kontakte und Kampagnen und verfasst auf Wunsch Texte.",
 						"label": "KI-Assistent & Chat"
 					},
 					"autonomy": {
-						"description": "Der Agent versendet Antworten und führt Aktionen ohne menschliche Freigabe aus, wenn die Konfidenz hoch ist.",
-						"label": "Autonome Aktionen"
+						"description": "Pro Nachrichtenart festlegen, wann KI-Antworten ohne Prüfung rausgehen dürfen, und Regeln in eigenen Worten hinzufügen. Eingerichtet wird das unter KI-Antworten.",
+						"label": "Regeln pro Nachrichtenart"
 					},
 					"decisionPlane": {
-						"description": "Ja/Nein-, Kategorie- und Bewertungsentscheidungen der KI-Funktionen von einem eigenen Entscheidungsanbieter statt von einem Textmodell beantworten lassen. Ausgeschaltet bleibt jede Entscheidung bei dem von Ihnen konfigurierten Sprachmodell.",
-						"label": "Entscheidungsebene"
+						"description": "Einen eigenen Entscheidungsdienst für schnelle Einschätzungen nutzen, etwa ob eine Nachricht eine Antwort braucht oder zu welchem Thema sie gehört. Ausgeschaltet trifft Ihr KI-Hauptmodell diese Entscheidungen.",
+						"label": "Eigenes Modell für schnelle Entscheidungen"
 					},
-					"description": "Hauptschalter für alle KI-gestützten Funktionen. Benötigt einen LLM-Anbieter.",
+					"description": "Schaltet die KI-Funktionen darunter ein. Benötigt einen KI-Anbieter.",
 					"knowledge": {
 						"analytics": {
-							"description": "Graph-Analysen (Zentralität, Cluster) per Cron berechnen und ein Wissensgraph-Dashboard bereitstellen.",
-							"label": "Wissensgraph-Analysen"
+							"description": "Auf einem Wissens-Dashboard sehen, welche Fakten am wichtigsten sind und wie sie zusammenhängen.",
+							"label": "Wissens-Einblicke"
 						},
 						"autoLink": {
-							"description": "Typisierte Kanten zwischen Wissenseinträgen per LLM-Durchlauf ableiten und für bestehende Einträge nachtragen. Der deterministische, regelbasierte Linker läuft immer, wenn der Wissensgraph aktiv ist; dies ergänzt die vom LLM abgeleiteten Kanten.",
-							"label": "Wissen automatisch verknüpfen (LLM)"
+							"description": "Mit KI erkennen, wie gespeicherte Fakten zusammenhängen, auch bei bereits vorhandenen. Einfache Verknüpfungen entstehen in jedem Fall.",
+							"label": "Verwandte Fakten verknüpfen"
 						},
-						"description": "Semantische Extraktion aus Konversationen, um Kontext für Agentenentwürfe aufzubauen.",
+						"description": "Fakten aus Ihren Gesprächen lernen, damit Antwortentwürfe sie nutzen können.",
 						"graphRetrieval": {
-							"description": "Ergebnisse der semantischen Suche entlang der Wissensgraph-Kanten erweitern (erst Startpunkte, dann Ausweitung), bevor Agentenentwürfe fundiert werden. Notausschalter: Wenn aus, ist die Suche Byte-identisch mit dem flachen Pfad.",
-							"label": "Graphgestützte Suche"
+							"description": "Beim Entwerfen von Antworten auch verwandte Fakten finden, nicht nur die direkten Treffer. Ausgeschaltet nutzen Entwürfe nur die direkten Treffer.",
+							"label": "Verwandte Fakten in Entwürfen nutzen"
 						},
 						"label": "Wissensgraph"
 					},
 					"label": "KI-Funktionen",
 					"visualizations": {
-						"description": "Diagramme und Dashboards aus natürlichsprachlichen Prompts erzeugen.",
+						"description": "Ein Diagramm in eigenen Worten beschreiben und aus Ihren Daten erstellen lassen.",
 						"label": "KI-Dashboards"
 					}
 				},
@@ -15307,8 +15293,8 @@
 				},
 				"postbox": {
 					"aiDraft": {
-						"description": "Erzeugt einen Antwortentwurf (mit Konfidenz- und Qualitäts-Selbstprüfung) vorab in der Antwort-Warteschlange, sobald eine persönliche Nachricht eintrifft, die eine Antwort braucht — so kann die Person, der das Postfach gehört, prüfen und senden, statt mit einem leeren Editor zu beginnen. Nur mit menschlicher Prüfung — es wird nie automatisch versendet.",
-						"label": "Entwurf bei Eingang für persönliche Mail"
+						"description": "Braucht eine persönliche Nachricht eine Antwort, liegt ein Entwurf in der Antwort-Warteschlange bereit. Sie prüfen ihn immer, bevor er gesendet wird.",
+						"label": "Antworten in persönlicher Mail entwerfen"
 					},
 					"description": "Postfächer pro Benutzer mit Webmail-Oberfläche, IMAP/SMTP für native Clients und MX-basierter Zustellung (Gmail-Äquivalent).",
 					"label": "Persönliche Mail (Postbox)"
@@ -15352,7 +15338,7 @@
 			},
 			"packs": {
 				"ai": {
-					"description": "KI-Agent, Autonomie, Wissensgraph (+ automatische Verknüpfung, Graphsuche, Analysen), Assistent und Dashboards.",
+					"description": "Antwortentwürfe, Regeln für automatisches Senden, ein Wissensgraph, ein Assistent und KI-Dashboards.",
 					"label": "KI"
 				},
 				"emailClient": {

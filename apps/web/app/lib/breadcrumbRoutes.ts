@@ -209,12 +209,12 @@ export const routeConfigs: Record<string, RouteConfig> = {
 		subsectionHref: '/dashboard/admin/instance',
 		page: 'shared.breadcrumbRoutes.pages.aiProvider',
 	},
-	'/dashboard/admin/instance/agent': {
+	'/dashboard/admin/instance/ai-replies': {
 		section: 'shared.breadcrumbRoutes.sections.administration',
 		sectionHref: '/dashboard/admin',
 		subsection: 'shared.breadcrumbRoutes.subsections.instance',
 		subsectionHref: '/dashboard/admin/instance',
-		page: 'shared.breadcrumbRoutes.pages.aiAgent',
+		page: 'shared.breadcrumbRoutes.pages.aiReplies',
 	},
 	'/dashboard/admin/instance/agent-health': {
 		section: 'shared.breadcrumbRoutes.sections.administration',
@@ -222,13 +222,6 @@ export const routeConfigs: Record<string, RouteConfig> = {
 		subsection: 'shared.breadcrumbRoutes.subsections.instance',
 		subsectionHref: '/dashboard/admin/instance',
 		page: 'shared.breadcrumbRoutes.pages.agentHealth',
-	},
-	'/dashboard/admin/instance/autonomy': {
-		section: 'shared.breadcrumbRoutes.sections.administration',
-		sectionHref: '/dashboard/admin',
-		subsection: 'shared.breadcrumbRoutes.subsections.instance',
-		subsectionHref: '/dashboard/admin/instance',
-		page: 'shared.breadcrumbRoutes.pages.autonomyRules',
 	},
 	'/dashboard/admin/instance/sealed-mail': {
 		section: 'shared.breadcrumbRoutes.sections.administration',

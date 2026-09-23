@@ -47,7 +47,7 @@ const read = (rel: string): string => readFileSync(resolve(here, '..', rel), 'ut
 const guardedPages = {
 	'admin/delivery/provider-routing.vue': read('admin/delivery/provider-routing.vue'),
 	'admin/delivery/webhooks.vue': read('admin/delivery/webhooks.vue'),
-	'admin/instance/agent.vue': read('admin/instance/agent.vue'),
+	'admin/instance/ai-replies.vue': read('admin/instance/ai-replies.vue'),
 	'admin/instance/ai-provider.vue': read('admin/instance/ai-provider.vue'),
 	'admin/instance/email-theme.vue': read('admin/instance/email-theme.vue'),
 	'admin/instance/forms.vue': read('admin/instance/forms.vue'),

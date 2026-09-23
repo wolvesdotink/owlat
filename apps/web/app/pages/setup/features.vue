@@ -1,24 +1,21 @@
 <script setup lang="ts">
 import {
-	FEATURE_PACKS,
-	ALL_FEATURE_PACK_KEYS,
 	applyPackToggle,
+	applyToggle,
 	FEATURE_FLAGS,
-	getFlagsByCategory,
+	FEATURE_PACKS,
 	isPackEnabled,
 	needsDeliveryProvider,
+	SENDING_FLAGS_REQUIRING_DELIVERY,
 	type FeatureFlagKey,
 	type FeaturePackKey,
 } from '@owlat/shared/featureFlags';
 import { SETUP_WIZARD_STEPS } from '~/composables/useSetupWizard';
-import { useFeatureCopy } from '~/composables/useFeatureCopy';
+import FeaturePackList from '~/components/settings/FeaturePackList.vue';
 
 definePageMeta({ layout: false });
 
 const { t } = useI18n();
-// The shared registry keeps its English (the setup CLI prints it); these resolve
-// each flag/pack through `sharedPkg.featureFlags.*`.
-const { flagLabel, flagDescription, packLabel, packDescription } = useFeatureCopy();
 
 useHead({ title: () => t('setup.features.pageTitle') });
 
@@ -33,40 +30,26 @@ const displaySteps = computed(() =>
 	SETUP_WIZARD_STEPS.map((step) => ({ ...step, label: t(step.label) }))
 );
 
-const byCategory = computed(() => getFlagsByCategory());
-const sendingNeedsProvider = computed(() => needsDeliveryProvider(flags.value));
+// The "sending needs a delivery provider" note answers a choice, so it waits
+// for one: it appears once the operator has switched sending on here (the
+// Marketing pack or one of its sending flags), not on arrival. The Email step
+// asks for the provider either way.
+const choseSending = ref(false);
+const showProviderNote = computed(() => choseSending.value && needsDeliveryProvider(flags.value));
 
-function categoryLabel(cat: string): string {
-	const map: Record<string, string> = {
-		sending: t('setup.features.categories.sending'),
-		receiving: t('setup.features.categories.receiving'),
-		ai: t('setup.features.categories.ai'),
-		integrations: t('setup.features.categories.integrations'),
-		security: t('setup.features.categories.security'),
-		deliverability: t('setup.features.categories.deliverability'),
-	};
-	return map[cat] ?? cat;
+const isSendingFlag = (key: FeatureFlagKey) =>
+	(SENDING_FLAGS_REQUIRING_DELIVERY as readonly string[]).includes(key);
+
+function toggleFlag(key: FeatureFlagKey, value: boolean) {
+	flags.value = applyToggle(flags.value, key, value, FEATURE_FLAGS).next;
+	if (value && isSendingFlag(key)) choseSending.value = true;
 }
-
-function toggle(key: FeatureFlagKey) {
-	flags.value = { ...flags.value, [key]: !resolved.value[key] };
-}
-
-const packState = computed(() => {
-	const state: Record<FeaturePackKey, 'on' | 'off' | 'partial'> = {} as Record<
-		FeaturePackKey,
-		'on' | 'off' | 'partial'
-	>;
-	for (const key of ALL_FEATURE_PACK_KEYS) {
-		state[key] = isPackEnabled(flags.value, key);
-	}
-	return state;
-});
 
 function togglePack(packKey: FeaturePackKey) {
-	const nextValue = packState.value[packKey] !== 'on';
-	const { next: nextFlags } = applyPackToggle(flags.value, packKey, nextValue, FEATURE_FLAGS);
-	flags.value = nextFlags;
+	const nextValue = isPackEnabled(flags.value, packKey) !== 'on'; // off/partial → on
+	const flagsInPack = FEATURE_PACKS[packKey].flags;
+	flags.value = applyPackToggle(flags.value, packKey, nextValue, FEATURE_FLAGS).next;
+	if (nextValue && flagsInPack.some(isSendingFlag)) choseSending.value = true;
 }
 </script>
 
@@ -104,84 +87,25 @@ function togglePack(packKey: FeaturePackKey) {
 				</p>
 			</header>
 
-			<div v-if="sendingNeedsProvider" class="mb-6">
-				<UiErrorAlert
-					variant="info"
-					:title="t('setup.features.providerRequiredTitle')"
-					:message="t('setup.features.providerRequiredMessage')"
-				/>
-			</div>
-
-			<UiCard padding="lg" class="mb-6">
-				<h2 class="font-medium text-text-primary">{{ t('setup.features.packsHeading') }}</h2>
-				<p class="text-sm text-text-tertiary mb-4">
-					{{ t('setup.features.packsIntro') }}
-				</p>
-				<ul class="space-y-2">
-					<li
-						v-for="packKey in ALL_FEATURE_PACK_KEYS"
-						:key="packKey"
-						class="rounded-xl bg-surface-1 shadow-surface-1 border border-transparent p-4 transition-[box-shadow,opacity] duration-(--motion-fast) ease-spring hover:shadow-surface-2"
-						:class="{ 'opacity-60': packState[packKey] === 'off' }"
+			<FeaturePackList
+				class="mb-6"
+				:registry="FEATURE_FLAGS"
+				:stored="flags"
+				:resolved="resolved"
+				@toggle-pack="togglePack"
+				@toggle-flag="toggleFlag"
+			>
+				<template #pack-note="{ group }">
+					<p
+						v-if="group.key === 'marketing' && showProviderNote"
+						class="mt-2 flex items-start gap-2 text-sm text-text-secondary"
+						data-testid="setup-provider-note"
 					>
-						<label class="flex items-start gap-3 cursor-pointer">
-							<input
-								type="checkbox"
-								class="mt-1 h-4 w-4 rounded border-border-default bg-bg-deep text-brand focus:ring-brand focus:ring-offset-0"
-								:checked="packState[packKey] === 'on'"
-								:indeterminate.prop="packState[packKey] === 'partial'"
-								@change="togglePack(packKey)"
-							/>
-							<div class="flex-1">
-								<div class="flex items-baseline gap-2 font-medium text-text-primary">
-									{{ packLabel(packKey) }}
-									<UiBadge v-if="packState[packKey] === 'partial'" variant="neutral">{{
-										t('setup.features.partial')
-									}}</UiBadge>
-								</div>
-								<p class="text-sm text-text-secondary mt-0.5">
-									{{ packDescription(packKey) }}
-								</p>
-							</div>
-						</label>
-					</li>
-				</ul>
-			</UiCard>
-
-			<section v-for="(defs, cat) in byCategory" :key="cat" class="mb-6">
-				<h2 class="text-xs font-semibold uppercase tracking-wide text-text-tertiary mb-3">
-					{{ categoryLabel(cat) }}
-				</h2>
-				<ul class="space-y-2">
-					<li
-						v-for="def in defs"
-						:key="def.key"
-						class="rounded-xl bg-surface-1 shadow-surface-1 border border-transparent p-4 transition-[box-shadow,opacity] duration-(--motion-fast) ease-spring hover:shadow-surface-2"
-						:class="{ 'opacity-60': !resolved[def.key] }"
-					>
-						<label class="flex items-start gap-3 cursor-pointer">
-							<input
-								type="checkbox"
-								class="mt-1 h-4 w-4 rounded border-border-default bg-bg-deep text-brand focus:ring-brand focus:ring-offset-0 disabled:opacity-50"
-								:checked="resolved[def.key]"
-								:disabled="!!def.requires?.some((dep) => !resolved[dep as FeatureFlagKey])"
-								@change="toggle(def.key)"
-							/>
-							<div class="flex-1">
-								<div class="flex items-baseline gap-2 font-medium text-text-primary">
-									{{ flagLabel(def) }}
-									<span
-										v-if="def.requires?.length"
-										class="text-xs font-normal text-text-tertiary"
-										>{{ t('setup.features.requires', { features: def.requires.join(', ') }) }}</span
-									>
-								</div>
-								<p class="text-sm text-text-secondary mt-0.5">{{ flagDescription(def) }}</p>
-							</div>
-						</label>
-					</li>
-				</ul>
-			</section>
+						<Icon name="lucide:info" class="w-4 h-4 mt-0.5 shrink-0 text-text-tertiary" />
+						{{ t('setup.features.providerNote') }}
+					</p>
+				</template>
+			</FeaturePackList>
 
 			<footer class="mt-8 flex items-center justify-between border-t border-border-subtle pt-6">
 				<UiButton variant="ghost" @click="router.push('/setup/mode')">
