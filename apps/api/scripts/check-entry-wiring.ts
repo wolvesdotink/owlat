@@ -390,6 +390,20 @@ function reachedEntries(entries: readonly ConvexEntry[]): ReadonlySet<string> {
  */
 const UNREACHED_ENTRIES: readonly string[] = [];
 
+/**
+ * PREVIOUS-RELEASE ENTRY POINTS — kept for one release because the previous
+ * release reaches them by path during the deploy window: its actions still
+ * running when the new functions go live, and scheduler jobs it queued before
+ * the deploy (`CONVENTIONS.md`, "Old clients and workers against new
+ * functions"). Nothing in this release calls them, which is the point. Each
+ * line names why it stays; the next release deletes the entry and its line.
+ * Exact in both directions like the ledger above.
+ */
+const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
+	'webhooks/fanout.ts#fanoutEvent': 'fanout jobs queued before the deploy',
+	'webhooks/fanout.ts#deliverEvent': 'single-target jobs queued before the deploy',
+};
+
 // ─── The checks ─────────────────────────────────────────────────────────────
 
 check(CONVEX_SOURCES.size > 500, `walked only ${CONVEX_SOURCES.size} backend modules`);
@@ -448,9 +462,15 @@ for (const landmark of [
 }
 
 const reached = reachedEntries(CONVEX_ENTRIES);
-const unreached = CONVEX_ENTRIES.filter(
+const unreachedWithShims = CONVEX_ENTRIES.filter(
 	(entry) => !isHandRun(entry.module) && !reached.has(label(entry))
 ).map(label);
+const unreached = unreachedWithShims.filter((entry) => !(entry in PREVIOUS_RELEASE_ENTRIES));
+
+expectEmpty(
+	Object.keys(PREVIOUS_RELEASE_ENTRIES).filter((entry) => !unreachedWithShims.includes(entry)),
+	'a previous-release entry gained a caller or was deleted — take its line out of PREVIOUS_RELEASE_ENTRIES:'
+);
 
 expectEmpty(
 	unreached.filter((entry) => !UNREACHED_ENTRIES.includes(entry)),
@@ -478,5 +498,5 @@ if (failures.length > 0) {
 	process.exit(1);
 }
 console.log(
-	`check-entry-wiring: OK (${CONVEX_ENTRIES.length} entry points, ${UNREACHED_ENTRIES.length} on the ledger)`
+	`check-entry-wiring: OK (${CONVEX_ENTRIES.length} entry points, ${UNREACHED_ENTRIES.length} on the ledger, ${Object.keys(PREVIOUS_RELEASE_ENTRIES).length} kept for the previous release)`
 );
