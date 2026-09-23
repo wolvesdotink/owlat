@@ -24,6 +24,8 @@ Headers sent with every webhook delivery:
 - `X-Signature` — HMAC-SHA256 over the body, hex-encoded
 - `X-Timestamp` — Unix seconds when the delivery was attempted
 - `X-Webhook-Id` — Convex ID of the webhook subscription
+- `X-Webhook-Delivery-Id` — ID of this delivery (its delivery-log row); identical on every retry, so receivers can deduplicate redeliveries
+- `X-Webhook-Attempt` — attempt number of this request, starting at 1
 - `User-Agent` — `Owlat-Webhooks/1.0`
 - `Content-Type` — `application/json`
 
