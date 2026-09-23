@@ -38,17 +38,6 @@ function onNotifyAboutChange(event: Event) {
 	void setNotifyAbout(value);
 }
 
-function onBadgeNonPeopleChange(event: Event) {
-	void setBadgeNonPeople((event.target as HTMLInputElement).checked);
-}
-
-function onSenderScreenerChange(event: Event) {
-	void setSenderScreener((event.target as HTMLInputElement).checked);
-}
-
-function onHidePreviewChange(event: Event) {
-	void setHidePreview((event.target as HTMLInputElement).checked);
-}
 </script>
 
 <template>
@@ -89,13 +78,11 @@ function onHidePreviewChange(event: Event) {
 					{{ t('components.postbox.postboxNotificationSettings.badgeAll.hint') }}
 				</p>
 			</div>
-			<input
+			<UiSwitch
 				id="postbox-badge-nonpeople"
-				type="checkbox"
-				class="shrink-0 h-4 w-4"
-				:checked="badgeNonPeople"
+				:model-value="badgeNonPeople"
 				:disabled="isSaving"
-				@change="onBadgeNonPeopleChange"
+				@update:model-value="setBadgeNonPeople"
 			/>
 		</div>
 		<PostboxQuietHoursFields
@@ -112,13 +99,11 @@ function onHidePreviewChange(event: Event) {
 					{{ t('components.postbox.postboxNotificationSettings.hidePreview.hint') }}
 				</p>
 			</div>
-			<input
+			<UiSwitch
 				id="postbox-hide-preview"
-				type="checkbox"
-				class="shrink-0 h-4 w-4"
-				:checked="hidePreview"
+				:model-value="hidePreview"
 				:disabled="isSaving"
-				@change="onHidePreviewChange"
+				@update:model-value="setHidePreview"
 			/>
 		</div>
 		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
@@ -130,13 +115,11 @@ function onHidePreviewChange(event: Event) {
 					{{ t('components.postbox.postboxNotificationSettings.screener.hint') }}
 				</p>
 			</div>
-			<input
+			<UiSwitch
 				id="postbox-sender-screener"
-				type="checkbox"
-				class="shrink-0 h-4 w-4"
-				:checked="senderScreener"
+				:model-value="senderScreener"
 				:disabled="isSaving"
-				@change="onSenderScreenerChange"
+				@update:model-value="setSenderScreener"
 			/>
 		</div>
 	</section>

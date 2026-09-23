@@ -43,10 +43,6 @@ const {
 
 const clearingCache = ref(false);
 
-function onOfflineCacheChange(event: Event) {
-	setOfflineCacheEnabled((event.target as HTMLInputElement).checked);
-}
-
 async function onClearOfflineCache() {
 	clearingCache.value = true;
 	try {
@@ -80,12 +76,10 @@ async function onClearOfflineCache() {
 					{{ t('components.postbox.postboxOfflineSettings.writesDisabled') }}
 				</p>
 			</div>
-			<input
+			<UiSwitch
 				id="postbox-offline-cache"
-				type="checkbox"
-				class="shrink-0 h-4 w-4"
-				:checked="offlineCacheEnabled"
-				@change="onOfflineCacheChange"
+				:model-value="offlineCacheEnabled"
+				@update:model-value="setOfflineCacheEnabled"
 			/>
 		</div>
 		<div

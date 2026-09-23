@@ -82,7 +82,7 @@ const restore = async (contactId: Id<'contacts'>) => {
 			<div class="flex items-center gap-2 pb-2">
 				<UiSwitch id="suppression-sunset-enabled" v-model="policyForm.isEnabled" />
 				<label for="suppression-sunset-enabled" class="text-sm text-text-secondary">
-					{{ t('common.enabled') }}
+					{{ t('components.audience.suppressionSunsetControls.enabledLabel') }}
 				</label>
 			</div>
 			<UiInput

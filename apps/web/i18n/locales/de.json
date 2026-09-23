@@ -388,7 +388,8 @@
 				"savePolicyOperation": "Bereinigungsrichtlinie speichern",
 				"setExemptionOperation": "Bereinigungsausnahme ändern",
 				"suppressAfterDays": "Sperrung nach Tagen",
-				"title": "Automatische Listenbereinigung"
+				"title": "Automatische Listenbereinigung",
+				"enabledLabel": "Inaktive Kontakte automatisch bereinigen"
 			},
 			"suppressionsImportModal": {
 				"added": "Hinzugefügt",
@@ -9783,7 +9784,8 @@
 				"removeDescription": "Eingehende Mail wird nicht mehr an diese Adresse weitergeleitet.",
 				"removeOperation": "Weiterleitungsregel entfernen",
 				"removeTitle": "Weiterleitungsregel entfernen?",
-				"updateOperation": "Weiterleitungsregel aktualisieren"
+				"updateOperation": "Weiterleitungsregel aktualisieren",
+				"ruleSwitch": "Weiterleiten an {address}"
 			},
 			"index": {
 				"addAccount": "Mailkonto hinzufügen",
@@ -9974,7 +9976,7 @@
 			"vacation": {
 				"defaultBody": "Ich bin derzeit nicht per E-Mail erreichbar und antworte nach meiner Rückkehr.",
 				"defaultSubject": "Abwesend",
-				"enabledLabel": "Abwesenheitsnotiz aktiviert",
+				"enabledLabel": "Automatische Antwort senden",
 				"end": "Ende (optional)",
 				"intro": "Antwortet während Ihrer Abwesenheit einmal pro Absender alle N Tage. Mail von Mailinglisten und automatisch versendete Mail wird stillschweigend übersprungen (RFC 3834).",
 				"message": "Nachricht",

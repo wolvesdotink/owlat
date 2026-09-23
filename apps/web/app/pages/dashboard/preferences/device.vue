@@ -36,14 +36,6 @@ const { autostartEnabled, isReady: autostartReady, setAutostart } = useDesktopSe
 const { workspaces, activeId, switchTo, removeWorkspace, setWorkspaceAccent } =
 	useDesktopWorkspaces();
 
-function checked(event: Event): boolean {
-	return (event.target as HTMLInputElement).checked;
-}
-
-async function onAutostartToggle(event: Event) {
-	await setAutostart(checked(event));
-}
-
 function onStartupWorkspaceChange(event: Event) {
 	const value = (event.target as HTMLSelectElement).value;
 	setGlobal('startupWorkspaceId', value || null);
@@ -94,12 +86,10 @@ async function confirmRemoveWorkspace() {
 							t('desktop.settings.notifications.description')
 						}}</span>
 					</span>
-					<input
-						type="checkbox"
-						class="h-5 w-5 shrink-0"
-						:checked="settings.global.notificationsEnabled"
+					<UiSwitch
+						:model-value="settings.global.notificationsEnabled"
 						:disabled="!isReady"
-						@change="setGlobal('notificationsEnabled', checked($event))"
+						@update:model-value="setGlobal('notificationsEnabled', $event)"
 					/>
 				</label>
 				<label
@@ -113,12 +103,10 @@ async function confirmRemoveWorkspace() {
 							t('desktop.settings.unreadBadge.description')
 						}}</span>
 					</span>
-					<input
-						type="checkbox"
-						class="h-5 w-5 shrink-0"
-						:checked="settings.global.showUnreadBadge"
+					<UiSwitch
+						:model-value="settings.global.showUnreadBadge"
 						:disabled="!isReady"
-						@change="setGlobal('showUnreadBadge', checked($event))"
+						@update:model-value="setGlobal('showUnreadBadge', $event)"
 					/>
 				</label>
 			</section>
@@ -139,12 +127,10 @@ async function confirmRemoveWorkspace() {
 							t('desktop.settings.autostart.description')
 						}}</span>
 					</span>
-					<input
-						type="checkbox"
-						class="h-5 w-5 shrink-0"
-						:checked="autostartEnabled"
+					<UiSwitch
+						:model-value="autostartEnabled"
 						:disabled="!autostartReady"
-						@change="onAutostartToggle"
+						@update:model-value="setAutostart"
 					/>
 				</label>
 				<label
@@ -299,12 +285,10 @@ async function confirmRemoveWorkspace() {
 							<!-- Device-local mute -->
 							<label class="flex items-center gap-2 text-xs text-text-secondary">
 								{{ t('desktop.settings.workspaces.mute') }}
-								<input
-									type="checkbox"
-									class="h-4 w-4"
-									:checked="workspaceLocal(ws.id).muteNotifications"
+								<UiSwitch
+									:model-value="workspaceLocal(ws.id).muteNotifications"
 									:disabled="!isReady"
-									@change="setWorkspaceLocal(ws.id, 'muteNotifications', checked($event))"
+									@update:model-value="setWorkspaceLocal(ws.id, 'muteNotifications', $event)"
 								/>
 							</label>
 						</div>

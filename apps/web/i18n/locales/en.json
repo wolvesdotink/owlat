@@ -388,7 +388,8 @@
 				"savePolicyOperation": "Save sunset policy",
 				"setExemptionOperation": "Change sunset exemption",
 				"suppressAfterDays": "Suppress after days",
-				"title": "Automatic list sunsetting"
+				"title": "Automatic list sunsetting",
+				"enabledLabel": "Clean up inactive contacts automatically"
 			},
 			"suppressionsImportModal": {
 				"added": "Added",
@@ -9783,7 +9784,8 @@
 				"removeDescription": "Inbound mail will no longer be forwarded to this address.",
 				"removeOperation": "Remove forwarding rule",
 				"removeTitle": "Remove forwarding rule?",
-				"updateOperation": "Update forwarding rule"
+				"updateOperation": "Update forwarding rule",
+				"ruleSwitch": "Forward to {address}"
 			},
 			"index": {
 				"addAccount": "Add mail account",
@@ -9974,7 +9976,7 @@
 			"vacation": {
 				"defaultBody": "I'm away from email and will respond when I return.",
 				"defaultSubject": "Out of office",
-				"enabledLabel": "Auto-reply enabled",
+				"enabledLabel": "Send an automatic reply",
 				"end": "End (optional)",
 				"intro": "Reply once per sender per N days while you're away. Mailing-list and auto-submitted mail is silently skipped (RFC 3834).",
 				"message": "Message",

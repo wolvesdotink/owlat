@@ -86,9 +86,9 @@ async function confirmDisable() {
 		</header>
 
 		<section v-if="mailboxId" class="card p-5 space-y-4">
-			<label class="flex items-center gap-2">
-				<input v-model="draft.enabled" type="checkbox" />
+			<label class="flex items-center justify-between gap-4">
 				<span class="font-medium">{{ t('dashboard.preferences.vacation.enabledLabel') }}</span>
+				<UiSwitch v-model="draft.enabled" />
 			</label>
 
 			<div>
