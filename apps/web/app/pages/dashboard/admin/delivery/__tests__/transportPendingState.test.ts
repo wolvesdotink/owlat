@@ -95,6 +95,7 @@ const globalOptions = {
 		DeliveryInboundTlsRequirementCard: true,
 		DeliveryTrustedForwardersCard: true,
 		DeliveryTestSendCard: true,
+		DeliveryEhloOverridesCard: true,
 		DeliverySignedWebhookCard: true,
 		DeliverySnsTopicCard: true,
 		DeliveryTlsReportCard: true,
@@ -155,6 +156,8 @@ describe('one door to change the provider, and receiving rules in one place', ()
 		stubPage({ status: transportStatus(), isLoading: false, error: null });
 		const onRelay = mount(TransportPage, { global: globalOptions });
 		expect(onRelay.find('delivery-transport-connection-wizard-stub').exists()).toBe(true);
+		// Per-IP EHLO names belong to our own MTA, not a relay.
+		expect(onRelay.find('delivery-ehlo-overrides-card-stub').exists()).toBe(false);
 		expect(
 			onRelay.find('delivery-transport-connection-wizard-stub').attributes('checks-only')
 		).toBeDefined();
@@ -167,6 +170,7 @@ describe('one door to change the provider, and receiving rules in one place', ()
 		});
 		const onOwnServer = mount(TransportPage, { global: globalOptions });
 		expect(onOwnServer.find('delivery-transport-connection-wizard-stub').exists()).toBe(false);
+		expect(onOwnServer.find('delivery-ehlo-overrides-card-stub').exists()).toBe(true);
 		// The editor is still there: it is the one "Change provider" entry.
 		expect(onOwnServer.find('delivery-transport-editor-stub').exists()).toBe(true);
 		onOwnServer.unmount();
