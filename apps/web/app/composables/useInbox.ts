@@ -82,9 +82,7 @@ export function useInbox(gate?: Ref<boolean>) {
 	// first". That order holds for this view only: following an old link must
 	// not rewrite the viewer's saved sort. Picking a sort drops the override.
 	const legacySort = ref<InboxSort | null>(legacyInboxSort(route.query['filter']) ?? null);
-	const sort = computed<InboxSort>(
-		() => legacySort.value ?? resolveInboxSort(storedSort.value)
-	);
+	const sort = computed<InboxSort>(() => legacySort.value ?? resolveInboxSort(storedSort.value));
 	const setSort = (next: InboxSort) => {
 		legacySort.value = null;
 		setStoredSort(next);

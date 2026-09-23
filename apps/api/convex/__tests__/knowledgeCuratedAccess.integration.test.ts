@@ -10,12 +10,12 @@ import schema from '../schema';
 import { api } from '../_generated/api';
 import { createTestKnowledgeEntry } from './factories';
 import type { Id } from '../_generated/dataModel';
+import type * as SessionOrganization from '../lib/sessionOrganization';
 
 const sessionMock = vi.hoisted(() => ({ role: 'owner' as 'owner' | 'admin' | 'member' }));
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual =
-		await vi.importActual<typeof import('../lib/sessionOrganization')>('../lib/sessionOrganization');
+	const actual = await vi.importActual<typeof SessionOrganization>('../lib/sessionOrganization');
 	const session = () => ({
 		userId: 'test-user',
 		role: sessionMock.role,
@@ -108,9 +108,9 @@ describe('curated knowledge answers are admin-only', () => {
 		await expect(
 			t.mutation(api.knowledge.graph.updateEntry, { entryId: curated, content: 'Forever.' })
 		).rejects.toThrow(/curated answer/);
-		await expect(
-			t.mutation(api.knowledge.graph.deleteEntry, { entryId: curated })
-		).rejects.toThrow(/curated answer/);
+		await expect(t.mutation(api.knowledge.graph.deleteEntry, { entryId: curated })).rejects.toThrow(
+			/curated answer/
+		);
 
 		const entry = await t.run((ctx) => ctx.db.get(curated));
 		expect(entry?.content).toBe('30 days.');
