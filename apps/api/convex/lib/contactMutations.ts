@@ -3,6 +3,10 @@ import type { Id } from '../_generated/dataModel';
 import { decrementContactCount } from './contactCountHelpers';
 import { deleteBlobQuietly } from './storageBlobs';
 import { deleteIdentitiesForContact } from '../contacts/resolution';
+import { deleteAutomationRun } from '../automations/runDeletion';
+
+/** Step runs removed per lifecycle call while draining one automation run. */
+const RUN_DELETION_BATCH = 256;
 import {
 	repointContactJunction,
 	detachContactJunction,
@@ -375,13 +379,18 @@ export async function permanentlyDeleteContactWithRelations(
 	}
 
 	// automationRuns carries a REQUIRED contactId — a run is intrinsically
-	// per-contact and can't be left unlinked, so it cascades with the contact.
+	// per-contact and can't be left unlinked, so it cascades with the contact,
+	// through the run lifecycle: a running run is cancelled first (so the
+	// automation's active total stays right) and its step runs go with it.
 	const automationRuns = await ctx.db
 		.query('automationRuns')
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
 		.collect(); // bounded: one contact's automation runs (cascade)
 	for (const run of automationRuns) {
-		await ctx.db.delete(run._id);
+		let progress = await deleteAutomationRun(ctx, run._id, RUN_DELETION_BATCH);
+		while (!progress.isDeleted) {
+			progress = await deleteAutomationRun(ctx, run._id, RUN_DELETION_BATCH);
+		}
 	}
 
 	// Send rows: soft-delete for stat integrity AND scrub the denormalized

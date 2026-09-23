@@ -123,6 +123,7 @@ import type * as automations_automations from '../automations/automations.js';
 import type * as automations_guards from '../automations/guards.js';
 import type * as automations_lifecycle from '../automations/lifecycle.js';
 import type * as automations_listing from '../automations/listing.js';
+import type * as automations_runDeletion from '../automations/runDeletion.js';
 import type * as automations_statShards from '../automations/statShards.js';
 import type * as automations_stepExecutorQueries from '../automations/stepExecutorQueries.js';
 import type * as automations_stepWalker from '../automations/stepWalker.js';
@@ -1284,6 +1285,7 @@ declare const fullApi: ApiFromModules<{
 	'automations/guards': typeof automations_guards;
 	'automations/lifecycle': typeof automations_lifecycle;
 	'automations/listing': typeof automations_listing;
+	'automations/runDeletion': typeof automations_runDeletion;
 	'automations/statShards': typeof automations_statShards;
 	'automations/stepExecutorQueries': typeof automations_stepExecutorQueries;
 	'automations/stepWalker': typeof automations_stepWalker;
