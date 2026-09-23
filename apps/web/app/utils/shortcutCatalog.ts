@@ -31,7 +31,6 @@ const G = {
 	triage: 'shared.shortcuts.groups.triage',
 	organize: 'shared.shortcuts.groups.organize',
 	compose: 'shared.shortcuts.groups.compose',
-	review: 'shared.shortcuts.groups.review',
 	workspace: 'shared.shortcuts.groups.workspace',
 } as const;
 
@@ -385,72 +384,6 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		labelKey: L('minimizeComposer'),
 		groupKey: G.compose,
 		remappable: false,
-	},
-
-	// --- Review Queue ---------------------------------------------------------
-	{
-		id: 'review.next',
-		scope: 'review',
-		keys: ['j', 'ArrowDown'],
-		labelKey: L('next'),
-		groupKey: G.review,
-	},
-	{
-		id: 'review.previous',
-		scope: 'review',
-		keys: ['k', 'ArrowUp'],
-		labelKey: L('previous'),
-		groupKey: G.review,
-	},
-	{
-		id: 'review.open',
-		scope: 'review',
-		keys: ['Enter'],
-		labelKey: L('openThread'),
-		groupKey: G.review,
-		remappable: false,
-	},
-	{
-		id: 'review.pickOption',
-		scope: 'review',
-		keys: ['1', '2', '3', '4', '5', '6', '7', '8', '9'],
-		displayKeys: '1–9',
-		labelKey: L('pickOption'),
-		groupKey: G.review,
-		remappable: false,
-	},
-	{
-		id: 'review.approve',
-		scope: 'review',
-		keys: ['a'],
-		labelKey: L('approveAndSend'),
-		groupKey: G.review,
-	},
-	{ id: 'review.edit', scope: 'review', keys: ['e'], labelKey: L('edit'), groupKey: G.review },
-	{ id: 'review.skip', scope: 'review', keys: ['s'], labelKey: L('skip'), groupKey: G.review },
-	{ id: 'review.reject', scope: 'review', keys: ['#'], labelKey: L('reject'), groupKey: G.review },
-	{
-		id: 'review.toggleSelect',
-		scope: 'review',
-		keys: ['Space', 'x'],
-		labelKey: L('select'),
-		groupKey: G.review,
-	},
-	{
-		id: 'review.extendSelection',
-		scope: 'review',
-		keys: ['J', 'K'],
-		displayKeys: 'shift+j/k',
-		labelKey: L('extendSelection'),
-		groupKey: G.review,
-		remappable: false,
-	},
-	{
-		id: 'review.selectAll',
-		scope: 'review',
-		keys: ['*'],
-		labelKey: L('selectAll'),
-		groupKey: G.review,
 	},
 
 	// --- Desktop workspaces ---------------------------------------------------

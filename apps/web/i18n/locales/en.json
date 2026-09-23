@@ -247,45 +247,6 @@
 				"sendingIn": "{what} — sending in {seconds}s",
 				"undo": "Undo ({seconds}s)"
 			},
-			"reviewBrowseList": {
-				"agentDraft": "Agent draft",
-				"approveAndSend": "Review & send",
-				"classifierConfidence": "Classifier confidence {percent}%",
-				"empty": {
-					"body": "No drafts need your review right now.",
-					"title": "All caught up!"
-				},
-				"escalatedBecause": "Escalated because: {reason}",
-				"escalatedHeading": "Escalated — write a reply",
-				"focus": "Focus",
-				"heldBecause": "Held because: {reason}",
-				"listLabel": "Review queue",
-				"loading": "Loading review queue...",
-				"noTextContent": "(No text content)",
-				"openThread": "Open thread",
-				"reject": "Reject",
-				"replyPlaceholder": "Type your reply…",
-				"savedAt": "Saved {when}",
-				"savedEditedByYou": "Saved · edited by you",
-				"selectMessage": "Select message from {sender}",
-				"sendReply": "Send reply",
-				"subjectPlaceholder": "Subject (optional)",
-				"subtitle": "Agent-generated drafts and escalations waiting for your action.",
-				"title": "Team drafts to review",
-				"toasts": {
-					"draftApproved": "Draft approved and queued for sending",
-					"draftRejected": "Draft rejected",
-					"replySent": "Reply sent",
-					"suggestedAttachment": "Suggested attachment: {filename} — open the reply to attach and send"
-				},
-				"viewThread": "View thread"
-			},
-			"reviewBulkActionBar": {
-				"approveCount": "Approve {count}",
-				"rejectCount": "Reject {count}",
-				"selectAll": "Select all",
-				"selected": "{count} selected"
-			},
 			"reviewFocusFlow": {
 				"reviewAndSend": "Review & send",
 				"backToInbox": "Back to inbox",
@@ -13352,24 +13313,9 @@
 		"reviewApprove": {
 			"alreadyHandled": "Already handled — this draft was approved or declined by someone else"
 		},
-		"reviewBulkActions": {
-			"approveDrafts": "Approve drafts",
-			"rejectDrafts": "Reject drafts",
-			"undoApprovals": "Undo approvals"
-		},
 		"reviewBulkSummary": {
-			"approved": "{count} approved",
-			"gone": "{count} no longer in the queue",
-			"heldByMany": "{count} held — teammates are replying",
-			"heldByOne": "{count} held — {name} is replying",
-			"noDraft": "{count} had no draft",
-			"rejected": "{count} rejected",
-			"tooLateMany": "Too late to undo — the replies are already on their way",
 			"tooLateOne": "Too late to undo — the reply is already on its way",
-			"undoneMany": "Approvals undone — {count} drafts are back in the queue",
-			"undoneOne": "Approval undone — the draft is back in the queue",
-			"undonePartialMany": "{cancelled} approvals undone — {missed} already sent",
-			"undonePartialOne": "{cancelled} approval undone — {missed} already sent"
+			"undoneOne": "Approval undone — the draft is back in the queue"
 		},
 		"sealComposer": {
 			"cannotSeal": {
@@ -13747,18 +13693,15 @@
 				"general": "General",
 				"navigation": "Navigation",
 				"organize": "Organize",
-				"review": "Answer queue",
 				"triage": "Triage",
 				"workspace": "Workspaces"
 			},
 			"labels": {
 				"addLabel": "Add label",
-				"approveAndSend": "Review & send",
 				"archive": "Archive",
 				"closeCancel": "Close / cancel",
 				"closeConversation": "Close the open conversation / back to Priority",
 				"compose": "Compose",
-				"edit": "Edit",
 				"extendSelection": "Extend selection",
 				"focusComposer": "Focus the composer",
 				"focusSearch": "Focus search",
@@ -13780,27 +13723,19 @@
 				"moveToTrash": "Move to trash",
 				"muteConversation": "Mute conversation",
 				"newItem": "New item (context-aware)",
-				"next": "Next",
 				"nextMessage": "Next message",
 				"nextUnread": "Next unread",
 				"openMessage": "Open message",
 				"openSearch": "Open search",
-				"openThread": "Open thread",
-				"pickOption": "Pick option",
-				"previous": "Previous",
 				"previousMessage": "Previous message",
 				"previousUnread": "Previous unread",
-				"reject": "Reject",
 				"reply": "Reply",
 				"replyAll": "Reply all",
 				"save": "Save (when editing)",
 				"scheduleSend": "Schedule send (in composer)",
-				"select": "Select",
-				"selectAll": "Select all",
 				"selectDeselect": "Select / deselect",
 				"send": "Send (in composer)",
 				"showShortcuts": "Show keyboard shortcuts",
-				"skip": "Skip",
 				"snooze": "Snooze",
 				"starUnstar": "Star / unstar",
 				"switchWorkspace": "Switch workspace",

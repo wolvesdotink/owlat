@@ -247,45 +247,6 @@
 				"sendingIn": "{what} — wird in {seconds} s gesendet",
 				"undo": "Rückgängig ({seconds} s)"
 			},
-			"reviewBrowseList": {
-				"agentDraft": "Agenten-Entwurf",
-				"approveAndSend": "Prüfen & senden",
-				"classifierConfidence": "Klassifikator-Konfidenz {percent} %",
-				"empty": {
-					"body": "Derzeit muss kein Entwurf von Ihnen geprüft werden.",
-					"title": "Alles erledigt!"
-				},
-				"escalatedBecause": "Eskaliert, weil: {reason}",
-				"escalatedHeading": "Eskaliert — schreiben Sie eine Antwort",
-				"focus": "Fokus",
-				"heldBecause": "Zurückgehalten, weil: {reason}",
-				"listLabel": "Prüf-Warteschlange",
-				"loading": "Prüf-Warteschlange wird geladen...",
-				"noTextContent": "(Kein Textinhalt)",
-				"openThread": "Konversation öffnen",
-				"reject": "Ablehnen",
-				"replyPlaceholder": "Schreiben Sie Ihre Antwort…",
-				"savedAt": "Gespeichert am {when}",
-				"savedEditedByYou": "Gespeichert · von Ihnen bearbeitet",
-				"selectMessage": "Nachricht von {sender} auswählen",
-				"sendReply": "Antwort senden",
-				"subjectPlaceholder": "Betreff (optional)",
-				"subtitle": "Vom Agenten erstellte Entwürfe und Eskalationen, die auf Ihre Aktion warten.",
-				"title": "Team-Entwürfe zum Prüfen",
-				"toasts": {
-					"draftApproved": "Entwurf freigegeben und zum Senden eingereiht",
-					"draftRejected": "Entwurf abgelehnt",
-					"replySent": "Antwort gesendet",
-					"suggestedAttachment": "Vorgeschlagener Anhang: {filename} — öffnen Sie die Antwort, um ihn anzuhängen und zu senden"
-				},
-				"viewThread": "Konversation ansehen"
-			},
-			"reviewBulkActionBar": {
-				"approveCount": "{count} genehmigen",
-				"rejectCount": "{count} ablehnen",
-				"selectAll": "Alle auswählen",
-				"selected": "{count} ausgewählt"
-			},
 			"reviewFocusFlow": {
 				"reviewAndSend": "Prüfen & senden",
 				"backToInbox": "Zurück zum Posteingang",
@@ -13352,24 +13313,9 @@
 		"reviewApprove": {
 			"alreadyHandled": "Bereits erledigt — dieser Entwurf wurde von jemand anderem freigegeben oder abgelehnt"
 		},
-		"reviewBulkActions": {
-			"approveDrafts": "Entwürfe genehmigen",
-			"rejectDrafts": "Entwürfe ablehnen",
-			"undoApprovals": "Genehmigungen rückgängig machen"
-		},
 		"reviewBulkSummary": {
-			"approved": "{count} genehmigt",
-			"gone": "{count} nicht mehr in der Warteschlange",
-			"heldByMany": "{count} zurückgehalten — Teammitglieder antworten bereits",
-			"heldByOne": "{count} zurückgehalten — {name} antwortet bereits",
-			"noDraft": "{count} ohne Entwurf",
-			"rejected": "{count} abgelehnt",
-			"tooLateMany": "Zu spät — die Antworten sind bereits unterwegs",
 			"tooLateOne": "Zu spät — die Antwort ist bereits unterwegs",
-			"undoneMany": "Genehmigungen rückgängig gemacht — {count} Entwürfe sind zurück in der Warteschlange",
-			"undoneOne": "Genehmigung rückgängig gemacht — der Entwurf ist zurück in der Warteschlange",
-			"undonePartialMany": "{cancelled} Genehmigungen rückgängig gemacht — {missed} bereits gesendet",
-			"undonePartialOne": "{cancelled} Genehmigung rückgängig gemacht — {missed} bereits gesendet"
+			"undoneOne": "Genehmigung rückgängig gemacht — der Entwurf ist zurück in der Warteschlange"
 		},
 		"sealComposer": {
 			"cannotSeal": {
@@ -13747,18 +13693,15 @@
 				"general": "Allgemein",
 				"navigation": "Navigation",
 				"organize": "Organisieren",
-				"review": "Antwortliste",
 				"triage": "Triage",
 				"workspace": "Arbeitsbereiche"
 			},
 			"labels": {
 				"addLabel": "Label hinzufügen",
-				"approveAndSend": "Prüfen & senden",
 				"archive": "Archivieren",
 				"closeCancel": "Schließen / Abbrechen",
 				"closeConversation": "Geöffnete Unterhaltung schließen / zurück zu Priorität",
 				"compose": "Verfassen",
-				"edit": "Bearbeiten",
 				"extendSelection": "Auswahl erweitern",
 				"focusComposer": "Editor fokussieren",
 				"focusSearch": "Suche fokussieren",
@@ -13780,27 +13723,19 @@
 				"moveToTrash": "In den Papierkorb verschieben",
 				"muteConversation": "Unterhaltung stummschalten",
 				"newItem": "Neues Element (kontextabhängig)",
-				"next": "Weiter",
 				"nextMessage": "Nächste Nachricht",
 				"nextUnread": "Nächste ungelesene",
 				"openMessage": "Nachricht öffnen",
 				"openSearch": "Suche öffnen",
-				"openThread": "Unterhaltung öffnen",
-				"pickOption": "Option wählen",
-				"previous": "Zurück",
 				"previousMessage": "Vorherige Nachricht",
 				"previousUnread": "Vorherige ungelesene",
-				"reject": "Ablehnen",
 				"reply": "Antworten",
 				"replyAll": "Allen antworten",
 				"save": "Speichern (beim Bearbeiten)",
 				"scheduleSend": "Senden planen (im Editor)",
-				"select": "Auswählen",
-				"selectAll": "Alle auswählen",
 				"selectDeselect": "Auswählen / Auswahl aufheben",
 				"send": "Senden (im Editor)",
 				"showShortcuts": "Tastenkürzel anzeigen",
-				"skip": "Überspringen",
 				"snooze": "Zurückstellen",
 				"starUnstar": "Markieren / Markierung entfernen",
 				"switchWorkspace": "Arbeitsbereich wechseln",

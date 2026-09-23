@@ -30,7 +30,7 @@
  * is no per-surface parsing to get subtly wrong.
  */
 
-export type ShortcutScope = 'global' | 'postbox' | 'review' | 'composer' | 'workspace';
+export type ShortcutScope = 'global' | 'postbox' | 'composer' | 'workspace';
 
 export interface ShortcutDefinition {
 	/** Stable id, `scope.verb` (e.g. `postbox.archive`). Never shown to a user. */
