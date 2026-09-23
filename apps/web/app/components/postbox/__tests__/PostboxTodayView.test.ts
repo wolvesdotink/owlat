@@ -171,18 +171,21 @@ describe('PostboxTodayView', () => {
 		queue.items.value = [queueItem('q1', { threadId: 't1', fromAddress: 'boss@example.com' })];
 		const w = mountView();
 		const text = w.text();
-		// Section order: header count → For you → Today → Show past. ("Today" is
-		// also a segment of the header's mode switch now, so the Today SECTION is
-		// anchored by its id rather than by the first occurrence of the word.)
+		// Section order: header count → For you → Received today → Show past.
 		expect(text.indexOf('Inbox')).toBeLessThan(text.indexOf('For you (1)'));
-		expect(text.indexOf('For you (1)')).toBeLessThan(text.indexOf('Show past mails (1)'));
+		expect(text.indexOf('For you (1)')).toBeLessThan(text.indexOf('Received today'));
+		expect(text.indexOf('Received today')).toBeLessThan(text.indexOf('Show past mails (1)'));
+		// "Today" names the home page only (#776).
+		expect(text).not.toMatch(/\bToday\b/);
 		expect(w.find('#postbox-for-you').exists()).toBe(true);
 		expect(w.find('#postbox-today').exists()).toBe(true);
-		// The strip carries the ask + one muted context line and routes to the queue.
+		// The strip carries the ask + one muted context line and routes to the
+		// Answer queue, filtered to this mailbox (#767).
 		expect(text).toContain('Need the deck');
 		expect(text).toContain('Boss — Can you send it today?');
 		expect(text).toContain('Answer');
-		expect(w.find('a[href="/dashboard/postbox/reply-queue"]').exists()).toBe(true);
+		expect(w.find('a[href="/dashboard/answer?in=mbx-1"]').exists()).toBe(true);
+		expect(w.find('a[href="/dashboard/postbox/reply-queue"]').exists()).toBe(false);
 		// Today rows go through the shared thread list (hover actions, j/k, triage).
 		expect(w.find('.thread-list').attributes('data-count')).toBe('1');
 	});
@@ -206,6 +209,14 @@ describe('PostboxTodayView', () => {
 		expect(viewButton).toBeTruthy();
 		await viewButton!.trigger('click');
 		expect(w.emitted('view-auto-filed')).toBeTruthy();
+	});
+
+	it('asks the layout for the folder drawer from its header handle', async () => {
+		feed.messages.value = [];
+		queue.items.value = [];
+		const w = mountView();
+		await w.find('button[aria-label="Open folders"]').trigger('click');
+		expect(w.emitted('open-rail')).toBeTruthy();
 	});
 
 	it('shows the quiet All clear line at inbox zero and no For you section', () => {

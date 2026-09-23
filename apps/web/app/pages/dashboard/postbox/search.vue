@@ -15,20 +15,41 @@ definePageMeta({
 const route = useRoute();
 const router = useRouter();
 
-const query = ref(String(route.query['q'] ?? ''));
+// The query lives in the URL. This page is where ⌘K's Mail search lands on
+// Enter, and it has no search box of its own (#777): refining opens that same
+// box with the current query, and its Enter comes back here with a new `?q=`.
+const query = computed({
+	get: () => String(route.query['q'] ?? ''),
+	set: (q: string) => {
+		void router.replace({ query: { ...route.query, q } });
+	},
+});
+const { open: openCommandPalette } = useCommandPalette();
+function refineSearch() {
+	openCommandPalette({ scope: 'mail', query: query.value });
+}
+
 const { currentMailbox, isLoading: mailboxesLoading } = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 
 // Keyset-paginated results: "Load more" walks past the first page via the
 // backend's opaque cursor instead of silently stopping at a cap.
-const { parsed, results, isLoading, isLoadingMore, hasMore, canLoadMore, loadMore } =
-	usePostboxSearch(mailboxId, query);
+const {
+	parsed,
+	results,
+	isLoading,
+	isLoadingMore,
+	hasMore,
+	canLoadMore,
+	loadMore,
+	isWalking,
+	searchOlder,
+} = usePostboxSearch(mailboxId, query);
 
 // The backend post-filters a page after the indexed read, so a page can come
 // back with zero surviving hits while later pages still hold matches (pinned by
-// postboxSearch.integration.test.ts). That is NOT "no results" — it needs the
-// cursor to keep walking, so it gets its own state rather than the guided
-// dead-end empty state.
+// postboxSearch.integration.test.ts). That is NOT "no results" — it offers
+// "Search older mail", which keeps walking until something matches.
 const exhausted = computed(() => results.value.length === 0 && !hasMore.value);
 const pageEmptyWithMore = computed(() => results.value.length === 0 && hasMore.value);
 const chips = computed(() => describeChips(parsed.value));
@@ -50,10 +71,6 @@ const { data: activeMessage } = useConvexQuery(api.mail.mailbox.messages.getMess
 	activeMessageId.value ? { messageId: activeMessageId.value as Id<'mailMessages'> } : 'skip'
 );
 
-watch(query, (q) => {
-	router.replace({ query: { ...route.query, q } });
-});
-
 function removeChip(key: string) {
 	query.value = removeSearchOperator(query.value, key);
 }
@@ -66,15 +83,18 @@ function clearAllChips() {
 // ── How deep this search actually reaches (idea 32) ────────────────────────
 // Server-side search indexes either the 200-character snippet or the ~8KB body
 // excerpt, and the deeper index is instance opt-in plus a per-mailbox backfill.
-// A search that quietly stops at character 200 is the failure the whole idea
-// exists to remove, so the box says which of those it is doing rather than
-// letting an empty result imply the text is not there.
-const { data: instanceSettings } = useConvexQuery(api.workspaces.settings.get, {});
+// Only an admin can change that, so only an admin is told, with a link to the
+// setting (#777). A member cannot act on it, and "search reads 200 characters"
+// only teaches them that search does not work.
+const { isAdmin } = usePermissions();
+const { data: instanceSettings } = useConvexQuery(api.workspaces.settings.get, () =>
+	isAdmin.value ? {} : 'skip'
+);
 const { data: bodySearchJob } = useConvexQuery(api.mail.bodySearchBackfill.status, () =>
-	mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
+	isAdmin.value && mailboxId.value ? { mailboxId: mailboxId.value } : 'skip'
 );
 const bodySearchHint = computed(() => {
-	if (!query.value.trim()) return null;
+	if (!isAdmin.value || !query.value.trim() || instanceSettings.value === undefined) return null;
 	return bodySearchDepthHint(
 		resolveBodySearchDepth({
 			isIndexingEnabled: instanceSettings.value?.isBodySearchIndexingEnabled === true,
@@ -125,7 +145,27 @@ async function confirmSave() {
 					:class="activeMessageId ? 'hidden lg:flex' : 'flex'"
 				>
 					<header class="border-b border-border-subtle px-4 py-3 space-y-2">
-						<PostboxSearchBar v-model="query" :mailbox-id="mailboxId" />
+						<!-- Not a second search box: it shows what was searched and opens the
+						     one search (⌘K) to change it. -->
+						<button
+							type="button"
+							class="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-border-subtle bg-bg-base text-sm text-left hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+							:aria-label="t('dashboard.postbox.search.changeSearch')"
+							data-testid="mail-search-refine"
+							@click="refineSearch"
+						>
+							<Icon name="lucide:search" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+							<span
+								class="flex-1 truncate"
+								:class="query.trim() ? 'text-text-primary' : 'text-text-tertiary'"
+								>{{ query.trim() || t('dashboard.postbox.search.searchMail') }}</span
+							>
+							<kbd
+								class="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-text-tertiary bg-bg-elevated border border-border-subtle rounded"
+							>
+								<span class="text-xs">⌘</span>K
+							</kbd>
+						</button>
 						<!-- Save this search: a recurring question ("unread from my boss")
 						     otherwise gets retyped every morning. Saving pins it into the
 						     folder rail, where it is one click and a bookmarkable URL. -->
@@ -168,14 +208,22 @@ async function confirmSave() {
 								{{ t('dashboard.postbox.search.saveThisSearch') }}
 							</button>
 						</div>
-						<!-- Quiet, never a banner: it explains a limit, it is not an alert. -->
+						<!-- Admins only, and quiet: it explains a limit and where to lift it. -->
 						<p
 							v-if="bodySearchHint"
-							class="flex items-center gap-1.5 text-xs text-text-tertiary"
+							class="flex items-start gap-1.5 text-xs text-text-tertiary"
 							data-testid="body-search-depth-hint"
 						>
-							<Icon name="lucide:info" class="w-3 h-3 flex-shrink-0" />
-							{{ t(bodySearchHint.key) }}
+							<Icon name="lucide:info" class="w-3 h-3 mt-0.5 flex-shrink-0" />
+							<span>
+								{{ t(bodySearchHint.key) }}
+								<NuxtLink
+									to="/dashboard/admin/instance/general#mail-search"
+									class="text-brand hover:underline"
+									data-testid="body-search-depth-link"
+									>{{ t('dashboard.postbox.search.depth.openSettings') }}</NuxtLink
+								>
+							</span>
 						</p>
 						<div v-if="chips.length > 0" class="flex flex-wrap gap-1">
 							<button
@@ -205,25 +253,22 @@ async function confirmSave() {
 							<template #isUnread><code>is:unread</code></template>
 						</I18nT>
 						<PostboxThreadListSkeleton v-else-if="isLoading && results.length === 0" :rows="6" />
-						<!-- Page filtered to zero with matches still ahead: keep the cursor
-					     reachable instead of claiming the search found nothing. -->
+						<!-- Recent pages filtered to zero with older mail still ahead: one
+					     click walks back until something matches or the mail runs out,
+					     instead of claiming the search found nothing. -->
 						<div
 							v-else-if="pageEmptyWithMore"
 							class="p-6 text-center text-sm text-text-tertiary"
 							role="status"
+							data-testid="search-older"
 						>
-							<p>{{ t('dashboard.postbox.search.pageEmptyWithMore') }}</p>
-							<p v-if="isLoadingMore" class="mt-3 text-xs">
-								{{ t('components.postbox.postboxThreadList.loadingMore') }}
-							</p>
-							<button
-								v-else-if="canLoadMore"
-								type="button"
-								class="mt-3 text-sm text-brand hover:underline"
-								@click="loadMore"
-							>
-								{{ t('dashboard.postbox.search.keepSearching') }}
-							</button>
+							<p v-if="isWalking">{{ t('dashboard.postbox.search.searchingOlder') }}</p>
+							<template v-else>
+								<p>{{ t('dashboard.postbox.search.pageEmptyWithMore') }}</p>
+								<UiButton variant="secondary" size="sm" class="mt-3" @click="searchOlder">
+									{{ t('dashboard.postbox.search.searchOlder') }}
+								</UiButton>
+							</template>
 						</div>
 						<!-- Guided empty state: a zero-hit search offers one-click escapes —
 					     drop an operator or clear them all — instead of a dead end. -->

@@ -3538,9 +3538,6 @@
 				"run": "Meinen Entwurf prüfen",
 				"suggestionCategory": "{category}:"
 			},
-			"postboxComposeButton": {
-				"compose": "Verfassen"
-			},
 			"postboxComposer": {
 				"bodyPlaceholder": "Schreiben Sie Ihre Nachricht…",
 				"composerName": "Postbox-Entwurf {timestamp}",
@@ -3767,9 +3764,11 @@
 				"noLabels": "Noch keine Labels",
 				"renameFolder": "Ordner umbenennen",
 				"replyQueue": "Antwortliste",
-				"replyQueueAriaLabel": "Antwortliste, {count}",
+				"replyQueueAriaLabel": "Antwortliste, {count} offen in {name}",
+				"replyQueueScopedCount": "{count} in {name}",
 				"snoozed": "Zurückgestellt",
 				"subscriptions": "Abonnements",
+				"thisInbox": "diesem Posteingang",
 				"pinnedSearchesHeading": "Angeheftete Suchen",
 				"unpinSearch": "Suche lösen",
 				"unpinSearchAriaLabel": "Gespeicherte Suche {name} lösen",
@@ -3801,8 +3800,10 @@
 				"title": "Erinnern, falls bis dahin keine Antwort kommt"
 			},
 			"postboxInboxModeToggle": {
+				"all": "Alle E-Mails",
 				"label": "Posteingangsansicht",
-				"title": "Heute oder das ganze Postfach (B)"
+				"priority": "Priorität",
+				"title": "Wichtige E-Mails oder alle E-Mails (B)"
 			},
 			"postboxInlineReply": {
 				"dialogLabel": "Inline-Antwort",
@@ -4230,7 +4231,7 @@
 			"postboxReplyQueueStrip": {
 				"dismissLabel": "Erinnerung an die Antwort-Warteschlange ausblenden",
 				"dismissTitle": "Für diese Sitzung ausblenden",
-				"openQueue": "Warteschlange öffnen",
+				"openQueue": "Antwortliste öffnen",
 				"waiting": "{count} E-Mail wartet auf Ihre Antwort | {count} E-Mails warten auf Ihre Antwort"
 			},
 			"postboxReviewSlot": {
@@ -4279,7 +4280,6 @@
 			},
 			"postboxSearchBar": {
 				"placeholder": "E-Mails durchsuchen (from:sara has:attachment older_than:7d…)",
-				"suggestionsLabel": "Suchvorschläge",
 				"suggestions": {
 					"from": "Absenderadresse oder Name",
 					"to": "Empfängeradresse oder Name",
@@ -4299,10 +4299,8 @@
 					"before": "empfangen vor einem Datum",
 					"after": "empfangen nach einem Datum",
 					"newerThan": "aus den letzten 7d, 24h, 30m",
-					"olderThan": "älter als 7d, 24h, 30m",
-					"recent": "Zuletzt"
-				},
-				"label": "E-Mails durchsuchen"
+					"olderThan": "älter als 7d, 24h, 30m"
+				}
 			},
 			"postboxSecurityBadge": {
 				"cantDecryptSuffix": "· nicht entschlüsselbar",
@@ -4517,13 +4515,13 @@
 			"postboxTodayView": {
 				"allClear": "Alles erledigt — nichts Neues braucht Ihre Aufmerksamkeit.",
 				"answer": "Antworten",
-				"browse": "Durchsuchen",
 				"forYou": "Für Sie",
 				"forYouDetail": "{who} — {snippet}",
 				"forYouHeading": "Für Sie ({count})",
 				"inbox": "Posteingang",
 				"past": "Früher",
 				"pastMails": "Frühere E-Mails",
+				"receivedToday": "Heute eingegangen",
 				"reviewAndSend": "Prüfen & senden",
 				"showPast": "Frühere E-Mails anzeigen ({count})",
 				"view": "anzeigen",
@@ -4876,8 +4874,8 @@
 				}
 			},
 			"postboxSealedMailNudge": {
-				"action": "ansehen, was das bedeutet, und Wiederherstellungspaket sichern",
-				"body": "Post zwischen Owlat-Instanzen ist jetzt versiegelt, sodass nur Sie sie lesen können. Damit zählt auch der Schlüssel:"
+				"action": "Schlüssel sichern",
+				"body": "Post an andere Owlat-Nutzer ist jetzt verschlüsselt. Für Sie ändert sich nichts."
 			},
 			"postboxRailMoreGroup": {
 				"more": "Mehr",
@@ -9574,8 +9572,11 @@
 				"backToResults": "Ergebnisse",
 				"noResultsHint": "Versuchen Sie weniger oder allgemeinere Begriffe oder Operatoren wie from:, has:attachment, is:unread.",
 				"noResultsTitle": "Keine Ergebnisse für diese Suche",
-				"keepSearching": "Weiter suchen",
-				"pageEmptyWithMore": "Keine Treffer auf dieser Seite. Es gibt weitere Nachrichten zu durchsuchen.",
+				"pageEmptyWithMore": "Keine Treffer in den neueren E-Mails.",
+				"searchOlder": "Ältere E-Mails durchsuchen",
+				"searchingOlder": "Ältere E-Mails werden durchsucht…",
+				"changeSearch": "Suche ändern",
+				"searchMail": "E-Mails durchsuchen",
 				"operatorHint": "Verwenden Sie Operatoren wie {from}, {hasAttachment}, {before}, {label}, {isUnread}.",
 				"pageTitle": "Suche — Owlat",
 				"selectResult": "Wählen Sie ein Ergebnis",
@@ -9588,9 +9589,10 @@
 				"saveNamePlaceholder": "Suche benennen",
 				"alreadySaved": "Gespeichert als {name}",
 				"depth": {
-					"disabled": "Diese Instanz durchsucht nur die ersten 200 Zeichen einer Nachricht.",
-					"indexing": "Nachrichtentexte werden indexiert — ältere E-Mails werden weiterhin über ihre ersten 200 Zeichen durchsucht.",
-					"pending": "Ältere E-Mails werden weiterhin über ihre ersten 200 Zeichen durchsucht. Ein Administrator kann sie unter Einstellungen → Allgemein → Mailsuche indexieren."
+					"disabled": "Die Suche liest nur die ersten 200 Zeichen jeder Nachricht.",
+					"indexing": "Nachrichtentexte werden indexiert. Bis das fertig ist, werden ältere E-Mails über ihre ersten 200 Zeichen durchsucht.",
+					"pending": "Ältere E-Mails werden über ihre ersten 200 Zeichen durchsucht, bis ihre Nachrichtentexte indexiert sind.",
+					"openSettings": "Sucheinstellungen öffnen"
 				}
 			},
 			"subscriptions": {
@@ -11562,11 +11564,14 @@
 				"emailTheme": "E-Mail-Design",
 				"features": "Funktionen",
 				"failedMessages": "Fehlgeschlagene Nachrichten",
+				"files": "Dateien",
 				"forms": "Formulare",
 				"general": "Allgemein",
 				"health": "Zustellungsgesundheit",
+				"importMail": "E-Mails importieren",
 				"independence": "Unabhängigkeit",
 				"instance": "Instanz",
+				"mailSearch": "Suche",
 				"marketing": "Marketing",
 				"measurement": "Messung",
 				"media": "Medien",
@@ -11580,6 +11585,7 @@
 				"quarantine": "Quarantäne",
 				"segments": "Segmente",
 				"sendingDomains": "Versanddomains",
+				"subscriptions": "Abonnements",
 				"suppressions": "Sperrlisten",
 				"systemAndUpdates": "System & Updates",
 				"team": "Team",
@@ -13762,7 +13768,7 @@
 				"approveAndSend": "Prüfen & senden",
 				"archive": "Archivieren",
 				"closeCancel": "Schließen / Abbrechen",
-				"closeConversation": "Geöffnete Unterhaltung schließen / zurück zu Heute",
+				"closeConversation": "Geöffnete Unterhaltung schließen / zurück zu Priorität",
 				"compose": "Verfassen",
 				"edit": "Bearbeiten",
 				"extendSelection": "Auswahl erweitern",
@@ -13813,7 +13819,7 @@
 				"toggleCheatSheet": "Diese Kurzübersicht ein-/ausblenden",
 				"toggleRead": "Gelesen-Status umschalten",
 				"toggleSidebar": "Seitenleiste ein-/ausblenden",
-				"toggleTodayBrowse": "Zwischen Heute / Durchsuchen wechseln (Posteingang)",
+				"toggleTodayBrowse": "Zwischen Priorität und Alle E-Mails wechseln (Posteingang)",
 				"undoTriage": "Letzte Triage rückgängig machen",
 				"goToAnswer": "Zur Antwortliste",
 				"goToMarketing": "Zu Marketing"
@@ -15531,8 +15537,6 @@
 			"theme": "Design",
 			"userFallback": "Benutzer",
 			"navigatedTo": "Zu {page} gewechselt",
-			"pinSidebar": "Seitenleiste angeheftet lassen",
-			"unpinSidebar": "Seitenleiste lösen",
 			"appNavigation": "App-Navigation",
 			"mailNavigation": "Postfach",
 			"assistantNavigation": "Assistent"

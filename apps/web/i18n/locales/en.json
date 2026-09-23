@@ -3538,9 +3538,6 @@
 				"run": "Coach my draft",
 				"suggestionCategory": "{category}:"
 			},
-			"postboxComposeButton": {
-				"compose": "Compose"
-			},
 			"postboxComposer": {
 				"bodyPlaceholder": "Write your message…",
 				"composerName": "Postbox compose {timestamp}",
@@ -3767,9 +3764,11 @@
 				"noLabels": "No labels yet",
 				"renameFolder": "Rename folder",
 				"replyQueue": "Answer queue",
-				"replyQueueAriaLabel": "Answer queue, {count}",
+				"replyQueueAriaLabel": "Answer queue, {count} waiting in {name}",
+				"replyQueueScopedCount": "{count} in {name}",
 				"snoozed": "Snoozed",
 				"subscriptions": "Subscriptions",
+				"thisInbox": "this inbox",
 				"pinnedSearchesHeading": "Pinned searches",
 				"unpinSearch": "Unpin search",
 				"unpinSearchAriaLabel": "Unpin the saved search {name}",
@@ -3801,8 +3800,10 @@
 				"title": "Remind me if no reply by"
 			},
 			"postboxInboxModeToggle": {
-				"label": "Inbox surface",
-				"title": "Today or the full mailbox (B)"
+				"all": "All mail",
+				"label": "Inbox view",
+				"priority": "Priority",
+				"title": "Priority mail or all mail (B)"
 			},
 			"postboxInlineReply": {
 				"dialogLabel": "Inline reply",
@@ -4230,7 +4231,7 @@
 			"postboxReplyQueueStrip": {
 				"dismissLabel": "Dismiss reply queue reminder",
 				"dismissTitle": "Dismiss for this session",
-				"openQueue": "Open queue",
+				"openQueue": "Open answer queue",
 				"waiting": "{count} email is waiting on your reply | {count} emails are waiting on your reply"
 			},
 			"postboxReviewSlot": {
@@ -4279,7 +4280,6 @@
 			},
 			"postboxSearchBar": {
 				"placeholder": "Search mail (from:sara has:attachment older_than:7d…)",
-				"suggestionsLabel": "Search suggestions",
 				"suggestions": {
 					"from": "sender address or name",
 					"to": "recipient address or name",
@@ -4299,10 +4299,8 @@
 					"before": "received before a date",
 					"after": "received after a date",
 					"newerThan": "within the last 7d, 24h, 30m",
-					"olderThan": "older than 7d, 24h, 30m",
-					"recent": "Recent"
-				},
-				"label": "Search mail"
+					"olderThan": "older than 7d, 24h, 30m"
+				}
 			},
 			"postboxSecurityBadge": {
 				"cantDecryptSuffix": "· can't decrypt",
@@ -4517,13 +4515,13 @@
 			"postboxTodayView": {
 				"allClear": "All clear — nothing new needs you.",
 				"answer": "Answer",
-				"browse": "Browse",
 				"forYou": "For you",
 				"forYouDetail": "{who} — {snippet}",
 				"forYouHeading": "For you ({count})",
 				"inbox": "Inbox",
 				"past": "Past",
 				"pastMails": "Past mails",
+				"receivedToday": "Received today",
 				"reviewAndSend": "Review & send",
 				"showPast": "Show past mails ({count})",
 				"view": "view",
@@ -4876,8 +4874,8 @@
 				}
 			},
 			"postboxSealedMailNudge": {
-				"action": "see what this means and save your recovery kit",
-				"body": "Mail between Owlat instances is now sealed, so only you can read it. That also means the key matters:"
+				"action": "Back up your key",
+				"body": "Mail to other Owlat users is now encrypted. Nothing changes for you."
 			},
 			"postboxRailMoreGroup": {
 				"more": "More",
@@ -9574,8 +9572,11 @@
 				"backToResults": "Results",
 				"noResultsHint": "Try fewer or broader terms, or operators like from:, has:attachment, is:unread.",
 				"noResultsTitle": "No results for this search",
-				"keepSearching": "Keep searching",
-				"pageEmptyWithMore": "No matches on this page. There are more messages to search.",
+				"pageEmptyWithMore": "No matches in recent mail.",
+				"searchOlder": "Search older mail",
+				"searchingOlder": "Searching older mail…",
+				"changeSearch": "Change search",
+				"searchMail": "Search mail",
 				"operatorHint": "Try operators like {from}, {hasAttachment}, {before}, {label}, {isUnread}.",
 				"pageTitle": "Search — Owlat",
 				"selectResult": "Select a result",
@@ -9588,9 +9589,10 @@
 				"saveNamePlaceholder": "Name this search",
 				"alreadySaved": "Saved as {name}",
 				"depth": {
-					"disabled": "This instance searches only the first 200 characters of a message.",
-					"indexing": "Indexing message bodies — older mail is still searched by its first 200 characters.",
-					"pending": "Older mail is still searched by its first 200 characters. An admin can index it in Settings → General → Mail search."
+					"disabled": "Search only reads the first 200 characters of each message.",
+					"indexing": "Message bodies are being indexed. Until that finishes, older mail is searched by its first 200 characters.",
+					"pending": "Older mail is searched by its first 200 characters until its message bodies are indexed.",
+					"openSettings": "Open search settings"
 				}
 			},
 			"subscriptions": {
@@ -11562,11 +11564,14 @@
 				"emailTheme": "Email theme",
 				"features": "Features",
 				"failedMessages": "Failed messages",
+				"files": "Files",
 				"forms": "Forms",
 				"general": "General",
 				"health": "Delivery health",
+				"importMail": "Import mail",
 				"independence": "Independence",
 				"instance": "Instance",
+				"mailSearch": "Search",
 				"marketing": "Marketing",
 				"measurement": "Measurement",
 				"media": "Media",
@@ -11580,6 +11585,7 @@
 				"quarantine": "Quarantine",
 				"segments": "Segments",
 				"sendingDomains": "Sending domains",
+				"subscriptions": "Subscriptions",
 				"suppressions": "Suppressions",
 				"systemAndUpdates": "System & updates",
 				"team": "Team",
@@ -13762,7 +13768,7 @@
 				"approveAndSend": "Review & send",
 				"archive": "Archive",
 				"closeCancel": "Close / Cancel",
-				"closeConversation": "Close the open conversation / back to Today",
+				"closeConversation": "Close the open conversation / back to Priority",
 				"compose": "Compose",
 				"edit": "Edit",
 				"extendSelection": "Extend selection",
@@ -13813,7 +13819,7 @@
 				"toggleCheatSheet": "Show / hide this cheat sheet",
 				"toggleRead": "Toggle read",
 				"toggleSidebar": "Hide / show sidebar",
-				"toggleTodayBrowse": "Toggle Today / Browse (inbox)",
+				"toggleTodayBrowse": "Switch between Priority and All mail (inbox)",
 				"undoTriage": "Undo last triage",
 				"goToAnswer": "Go to the Answer queue",
 				"goToMarketing": "Go to Marketing"
@@ -15531,8 +15537,6 @@
 			"theme": "Theme",
 			"userFallback": "User",
 			"navigatedTo": "Navigated to {page}",
-			"pinSidebar": "Pin sidebar open",
-			"unpinSidebar": "Unpin sidebar",
 			"appNavigation": "App navigation",
 			"mailNavigation": "Mail",
 			"assistantNavigation": "Assistant"

@@ -217,6 +217,30 @@ describe('usePostboxCursorFeed', () => {
 		expect(firstLoading!.value).toBe(false);
 	});
 
+	it('stays loading-more until the asked-for page lands, even with the previous one kept', async () => {
+		// The tail subscription keeps its previous page while the next loads, so
+		// its own loading flag can read false with the new page still pending.
+		// "Search older mail" walks pages on this flag (#777).
+		stubConvexQuery();
+		const resetKey = ref('inbox');
+		const { feed } = mountFeed(resetKey);
+
+		emitFirst!([{ _id: 'a', subject: 'A' }], 'cursor-1');
+		await nextTick();
+		feed.loadMore();
+		emitTail!([{ _id: 'b', subject: 'B' }], 'cursor-2');
+		await nextTick();
+		expect(feed.isLoadingMore.value).toBe(false);
+
+		feed.loadMore();
+		await nextTick();
+		expect(feed.isLoadingMore.value).toBe(true);
+
+		emitTail!([{ _id: 'c', subject: 'C' }], null);
+		await nextTick();
+		expect(feed.isLoadingMore.value).toBe(false);
+	});
+
 	it('reports hasMore from the active frontier', async () => {
 		stubConvexQuery();
 		const resetKey = ref('inbox');

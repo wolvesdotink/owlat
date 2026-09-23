@@ -15,6 +15,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { parseSearchQuery } from '~/utils/postboxSearchQuery';
+import { searchWalkStep } from '~/utils/postboxSearchWalk';
 
 /** How long the box has to be still before the subscription re-opens. */
 const SEARCH_DEBOUNCE_MS = 250;
@@ -34,26 +35,60 @@ export function usePostboxSearch(mailboxId: Ref<Id<'mailboxes'> | null>, query: 
 	// Keyset-paginated: "Load more" walks past the first page via the backend's
 	// opaque cursor instead of silently stopping at the old 200-row cap. Any
 	// change to the parsed query restarts from a fresh first page.
-	const { rows, isLoading, isLoadingMore, hasMore, canLoadMore, loadMore } = usePostboxCursorFeed(
-		api.mail.mailbox.search.search,
-		() => {
-			if (!mailboxId.value) return 'skip';
-			const trimmed = debouncedQuery.value.trim();
-			if (!trimmed) return 'skip';
-			return {
-				mailboxId: mailboxId.value,
-				...parsed.value,
-				limit: 50,
-			};
-		},
-		computed(() => JSON.stringify(parsed.value)),
-		{ keepPreviousData: true }
-	);
+	const { rows, isLoading, isLoadingMore, error, hasMore, canLoadMore, loadMore } =
+		usePostboxCursorFeed(
+			api.mail.mailbox.search.search,
+			() => {
+				if (!mailboxId.value) return 'skip';
+				const trimmed = debouncedQuery.value.trim();
+				if (!trimmed) return 'skip';
+				return {
+					mailboxId: mailboxId.value,
+					...parsed.value,
+					limit: 50,
+				};
+			},
+			computed(() => JSON.stringify(parsed.value)),
+			{ keepPreviousData: true }
+		);
 
 	// While the box is ahead of the subscription the on-screen rows belong to
 	// the previous query, so the page has to read as loading rather than as a
 	// settled (and wrong) result set.
 	const isDebouncing = computed(() => query.value !== debouncedQuery.value);
+
+	// "Search older mail": one click keeps reading older pages until something
+	// matches or the mailbox runs out (see utils/postboxSearchWalk). A new query
+	// ends any walk in progress.
+	const isWalking = ref(false);
+	const pagesWalked = ref(0);
+	function searchOlder() {
+		pagesWalked.value = 0;
+		isWalking.value = true;
+	}
+	watch(debouncedQuery, () => {
+		isWalking.value = false;
+	});
+	watch(
+		[isWalking, () => rows.value.length, hasMore, canLoadMore, isLoadingMore, error],
+		() => {
+			if (!isWalking.value) return;
+			const step = searchWalkStep({
+				resultCount: rows.value.length,
+				hasMore: hasMore.value,
+				canLoadMore: canLoadMore.value,
+				isLoadingMore: isLoadingMore.value,
+				hasError: error.value != null,
+				pagesWalked: pagesWalked.value,
+			});
+			if (step === 'stop') isWalking.value = false;
+			else if (step === 'load') {
+				pagesWalked.value += 1;
+				loadMore();
+			}
+		},
+		{ flush: 'post' }
+	);
 
 	return {
 		parsed,
@@ -63,5 +98,7 @@ export function usePostboxSearch(mailboxId: Ref<Id<'mailboxes'> | null>, query: 
 		hasMore,
 		canLoadMore,
 		loadMore,
+		isWalking: readonly(isWalking),
+		searchOlder,
 	};
 }

@@ -87,6 +87,20 @@ function adminRouteConfigs(): Record<string, RouteConfig> {
 	return Object.fromEntries(ADMIN_REGISTRY.map((entry) => [entry.path, configFor(entry)]));
 }
 
+/** One section crumb for every mailbox page; each page adds its own name. */
+function postboxPageConfigs(pages: Record<string, string>): Record<string, RouteConfig> {
+	return Object.fromEntries(
+		Object.entries(pages).map(([path, page]) => [
+			path,
+			{
+				section: 'shared.dashboardNavigation.sections.postbox',
+				sectionHref: '/dashboard/postbox/inbox',
+				page,
+			},
+		])
+	);
+}
+
 // Define route configurations for the new navigation structure
 export const routeConfigs: Record<string, RouteConfig> = {
 	// Dashboard
@@ -106,6 +120,17 @@ export const routeConfigs: Record<string, RouteConfig> = {
 		section: 'shared.breadcrumbRoutes.sections.teamInbox',
 		sectionHref: '/dashboard/inbox',
 	},
+
+	// The mailbox's own pages. Same section crumb as its folders and messages
+	// (`breadcrumbPatterns.ts`), so the area has one name wherever you are in it
+	// instead of "Inboxes" on a folder and a URL slug ("Postbox") on search.
+	...postboxPageConfigs({
+		'/dashboard/postbox/search': 'shared.breadcrumbRoutes.pages.mailSearch',
+		'/dashboard/postbox/contacts': 'shared.breadcrumbRoutes.pages.contacts',
+		'/dashboard/postbox/files': 'shared.breadcrumbRoutes.pages.files',
+		'/dashboard/postbox/subscriptions': 'shared.breadcrumbRoutes.pages.subscriptions',
+		'/dashboard/postbox/migrate': 'shared.breadcrumbRoutes.pages.importMail',
+	}),
 
 	// Send section
 	'/dashboard/send': {

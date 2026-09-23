@@ -117,6 +117,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'components.postbox.postboxFilterRuleBuilder.sizePlaceholder',
 	'components.postbox.postboxFolderList.roles.spam',
 	'components.postbox.postboxFolderRail.labelsHeading',
+	'components.postbox.postboxFolderRail.replyQueueScopedCount',
 	'components.postbox.postboxLayout.folderRoles.spam',
 	'components.postbox.postboxMailboxConnectForm.ssl',
 	// Protocol names and RFC header field names — the same words in both

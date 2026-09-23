@@ -204,8 +204,17 @@ export function usePostboxCursorFeed<
 		rows: computed(() => accumulated.value as Rows),
 		/** True only while the FIRST page is pending — never during a Load more. */
 		isLoading,
-		/** True while a "Load more" page is in flight. */
-		isLoadingMore: computed(() => (tailCursor.value ? tailLoading.value : false)),
+		/**
+		 * True from the "Load more" click until that page has landed. The tail
+		 * query keeps the previous page's data while the next one loads, so its
+		 * own loading flag is not enough: the page is pending until a segment
+		 * exists under the cursor that was asked for.
+		 */
+		isLoadingMore: computed(() => {
+			const key = tailKey.value;
+			if (!tailCursor.value || !key) return false;
+			return tailLoading.value || !tailSegments.value.has(key);
+		}),
 		isRefetching,
 		error: computed(() => error.value ?? tailError.value),
 		hasMore,

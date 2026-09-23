@@ -68,9 +68,6 @@ const { t } = useI18n();
 	<!-- The phone's primary verbs. It teleports itself to the bottom of the
 	     viewport; it lives here so it appears and disappears with the rest of
 	     the shell chrome (focus mode unmounts this component). The drawer state
-	     travels down so the bar can step aside for the drawer it opens. -->
-	<DashboardMobileTabBar
-		:navigation-open="navigationOpen"
-		@open-navigation="emit('openNavigation')"
-	/>
+	     travels down so the bar can step aside for the drawer. -->
+	<DashboardMobileTabBar :navigation-open="navigationOpen" />
 </template>

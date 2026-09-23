@@ -86,6 +86,20 @@ export const patternConfigs: PatternConfig[] = [
 			};
 		},
 	},
+	/**
+	 * A custom folder's message list: /dashboard/postbox/<folderId>. Its name is
+	 * not on the route, so the trail is the section alone — never the slug
+	 * fallback's "Postbox". The mailbox's named pages are exact routes in
+	 * `breadcrumbRoutes.ts` and are excluded here so this can't swallow them.
+	 */
+	{
+		pattern:
+			/^\/dashboard\/postbox\/(?!(?:search|contacts|files|subscriptions|migrate|reply-queue|label)$)([^/]+)$/,
+		getConfig: () => ({
+			section: 'shared.dashboardNavigation.sections.postbox',
+			sectionHref: '/dashboard/postbox/inbox',
+		}),
+	},
 	// A label's message list — same raw-id problem, same fixed-label answer.
 	{
 		pattern: /^\/dashboard\/postbox\/label\/([^/]+)$/,

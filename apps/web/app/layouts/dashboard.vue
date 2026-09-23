@@ -23,9 +23,6 @@ const {
 	effectiveCollapsed: preferredCollapsed,
 	effectiveHidden,
 	isPeeking,
-	focusArea,
-	isFocusPinned,
-	setRoutePath,
 	toggleCollapsed,
 	toggleHidden,
 	openPeek,
@@ -50,7 +47,6 @@ const isSettingsPath = (path: string) =>
 watch(
 	() => route.path,
 	(path) => {
-		setRoutePath(path);
 		showAppNavigation.value = false;
 		if (!isSettingsPath(path)) settingsReturnTo.value = route.fullPath;
 	},
@@ -344,14 +340,8 @@ useSendReadyNotice();
 // pre-switched to its Ask scope behind the same `ai.knowledge` gate — one
 // overlay, one shortcut owner, and knowledge answers next to object results.
 
-// The collapse control's one label. In a focus area it reads as a pin, because
-// that is what it writes; elsewhere it stays the collapse/expand it always was.
+// The collapse control's one label.
 const sidebarToggleLabel = computed(() => {
-	if (focusArea.value) {
-		return isFocusPinned.value
-			? t('shell.dashboard.unpinSidebar')
-			: t('shell.dashboard.pinSidebar');
-	}
 	return isCollapsed.value
 		? t('shell.dashboard.expandSidebar')
 		: t('shell.dashboard.collapseSidebar');
@@ -536,10 +526,7 @@ const sidebarDesktopClass = computed(() => {
 				</div>
 			</nav>
 
-			<!-- Collapse toggle button. Inside a focus area (Postbox) the same control
-			     pins the sidebar open instead of writing the global preference, so
-			     the icon-rail default there is reversible without changing what the
-			     sidebar does everywhere else. -->
+			<!-- Collapse toggle button: one preference, the same on every page. -->
 			<div v-if="!activeSection" class="hidden lg:flex px-2 py-1 border-t border-border-subtle">
 				<button
 					:class="[
@@ -548,17 +535,10 @@ const sidebarDesktopClass = computed(() => {
 						{ 'justify-center': isCollapsed },
 					]"
 					:title="sidebarToggleLabel"
-					:aria-pressed="focusArea ? isFocusPinned : undefined"
 					@click="toggleCollapsed"
 				>
 					<Icon
-						v-if="!isCollapsed"
-						:name="focusArea ? 'lucide:pin-off' : 'lucide:panel-left-close'"
-						class="w-5 h-5 text-text-tertiary"
-					/>
-					<Icon
-						v-else
-						:name="focusArea ? 'lucide:pin' : 'lucide:panel-left'"
+						:name="isCollapsed ? 'lucide:panel-left' : 'lucide:panel-left-close'"
 						class="w-5 h-5 text-text-tertiary"
 					/>
 					<span v-if="!isCollapsed">{{ sidebarToggleLabel }}</span>

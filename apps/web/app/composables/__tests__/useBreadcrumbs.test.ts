@@ -259,6 +259,38 @@ describe('useBreadcrumbs', () => {
 		});
 	});
 
+	/**
+	 * The mailbox's own pages fell through to the slug fallback, so search read
+	 * "Postbox > Search" beside folders that read "Inboxes > Inbox" (#776).
+	 */
+	describe('postbox page trails', () => {
+		it.each([
+			['/dashboard/postbox/search', 'Search'],
+			['/dashboard/postbox/contacts', 'Contacts'],
+			['/dashboard/postbox/files', 'Files'],
+			['/dashboard/postbox/subscriptions', 'Subscriptions'],
+			['/dashboard/postbox/migrate', 'Import mail'],
+		])('names %s under the same section as the folders', (route, page) => {
+			expect(labelsFor(route)).toEqual([
+				...labelsFor('/dashboard/postbox/inbox').slice(0, 1),
+				page,
+			]);
+		});
+
+		it('names a custom folder list by its section, not by the URL', () => {
+			expect(labelsFor('/dashboard/postbox/j57customfolderid0000000000000')).toEqual(['Inboxes']);
+		});
+
+		it('never says Postbox anywhere in the area', async () => {
+			// `/dashboard/postbox` and `/reply-queue` only redirect; no trail renders.
+			const redirects = new Set(['/dashboard/postbox', '/dashboard/postbox/reply-queue']);
+			for (const route of await routesUnder('postbox')) {
+				if (redirects.has(route)) continue;
+				expect(labelsFor(route)).not.toContain('Postbox');
+			}
+		});
+	});
+
 	it('dynamic overrides still win over the route table', () => {
 		path.value = '/dashboard/admin/instance/general';
 		setDynamicBreadcrumbs([{ label: 'Custom' }]);
