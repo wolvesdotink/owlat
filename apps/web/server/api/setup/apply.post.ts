@@ -27,6 +27,7 @@ import {
 	renderComposeOverrideYaml,
 } from '@owlat/shared/composeOverride';
 import { readEnvFile, writeEnvFile } from '@owlat/shared/setupEnv';
+import { MIN_PASSWORD_LENGTH, meetsMinPasswordLength } from '@owlat/shared/passwordPolicy';
 import { sealRelayPasswordForBackup } from '@owlat/shared/envBackupBox';
 import { ensureSecrets } from '@owlat/shared/setupSecrets';
 import { hashPassword } from '@owlat/shared/passwordHash';
@@ -65,8 +66,11 @@ export default defineEventHandler(
 		if (!/^.+@.+\..+$/.test(body.admin.email)) {
 			return { ok: false, message: 'Invalid admin email.' };
 		}
-		if (body.admin.password.length < 12) {
-			return { ok: false, message: 'Admin password must be at least 12 characters.' };
+		if (!meetsMinPasswordLength(body.admin.password ?? '')) {
+			return {
+				ok: false,
+				message: `Admin password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
+			};
 		}
 
 		// Reject control characters in any operator-supplied env value before it

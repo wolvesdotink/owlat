@@ -17,6 +17,7 @@
  * are imported here as types only, so nothing about this split creates a cycle.
  */
 
+import { meetsMinPasswordLength } from '@owlat/shared/passwordPolicy';
 import { validateMtaIdentityDraft } from '~/utils/setupMtaIdentity';
 import type { AdminDraft, EmailStepDraft } from './useSetupWizard';
 
@@ -29,8 +30,6 @@ export function isSetupEmailValid(value: string): boolean {
 	return EMAIL_RE.test(value.trim());
 }
 
-const MIN_PASSWORD_LENGTH = 12;
-
 export interface AdminErrors {
 	email?: string;
 	password?: string;
@@ -41,9 +40,9 @@ export function validateAdmin(admin: AdminDraft): AdminErrors {
 	if (!isSetupEmailValid(admin.email)) {
 		errors.email = 'shared.setupWizardValidation.admin.emailInvalid';
 	}
-	if (admin.password.length < MIN_PASSWORD_LENGTH) {
-		// The catalog message spells the same minimum out (the rules are pure, so a
-		// message here is a KEY a screen resolves — it cannot interpolate a value).
+	if (!meetsMinPasswordLength(admin.password)) {
+		// The rules are pure, so a message here is a KEY; the screen resolves it
+		// with `{ min: MIN_PASSWORD_LENGTH }` from the same shared policy.
 		errors.password = 'shared.setupWizardValidation.admin.passwordTooShort';
 	}
 	return errors;

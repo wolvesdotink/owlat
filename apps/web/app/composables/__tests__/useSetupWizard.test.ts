@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
 import en from '~~/i18n/locales/en.json';
 import {
 	SETUP_STEPS,
@@ -127,10 +128,16 @@ describe('admin step navigation gate', () => {
 		});
 	});
 
-	it('cannot advance with a password under 12 characters', () => {
-		expect(validateAdmin({ ...validAdmin, password: 'short' })).toEqual({
-			password: 'shared.setupWizardValidation.admin.passwordTooShort',
-		});
+	it('cannot advance with a password under the shared minimum', () => {
+		expect(validateAdmin({ ...validAdmin, password: 'a'.repeat(MIN_PASSWORD_LENGTH - 1) })).toEqual(
+			{
+				password: 'shared.setupWizardValidation.admin.passwordTooShort',
+			}
+		);
+	});
+
+	it('accepts a password exactly at the shared minimum (same rule as the server)', () => {
+		expect(validateAdmin({ ...validAdmin, password: 'a'.repeat(MIN_PASSWORD_LENGTH) })).toEqual({});
 	});
 
 	it('can advance once email and password are valid', () => {

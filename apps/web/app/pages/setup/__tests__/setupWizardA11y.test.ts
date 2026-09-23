@@ -18,6 +18,9 @@ import { auditA11y, installNuxtStubs } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useSetupWizard } from '~/composables/useSetupWizard';
 import { useWizard } from '~/composables/useWizard';
+// The admin step's password field is an app component, not a UI-layer one;
+// resolved here so the audit sees the field and its reveal toggle.
+import AuthPasswordInput from '~/components/auth/AuthPasswordInput.vue';
 import SetupIndexPage from '../index.vue';
 import SetupModePage from '../mode.vue';
 import SetupFeaturesPage from '../features.vue';
@@ -37,7 +40,12 @@ beforeEach(() => {
 
 const pages = [
 	{ name: 'welcome', component: SetupIndexPage, loaded: 'Welcome to Owlat', indicator: false },
-	{ name: 'mode', component: SetupModePage, loaded: 'How will you run Owlat?', indicator: true },
+	{
+		name: 'mode',
+		component: SetupModePage,
+		loaded: 'What will you use Owlat for?',
+		indicator: true,
+	},
 	{
 		name: 'features',
 		component: SetupFeaturesPage,
@@ -62,7 +70,7 @@ const pages = [
 const RAW_STEP_KEY = /shared\.useSetupWizard\./;
 
 /** The `en` catalog's `shared.useSetupWizard.steps.*`, in wizard order. */
-const STEP_LABELS = ['Mode', 'Features', 'Email', 'Account', 'Review'];
+const STEP_LABELS = ['Goals', 'Features', 'Email', 'Account', 'Review'];
 
 /**
  * REGRESSION — the step indicator is handed DISPLAY TEXT, never message keys.
@@ -90,7 +98,7 @@ describe.each(pages)(
 	({ component, loaded, indicator }) => {
 		it('has no axe violations', async () => {
 			const violations = await auditA11y(component, {
-				global: { plugins: [createTestI18n()] },
+				global: { plugins: [createTestI18n()], components: { AuthPasswordInput } },
 				prepare: (wrapper) => {
 					expect(wrapper.text()).toContain(loaded);
 					if (indicator) expectStepIndicatorLocalized(wrapper);

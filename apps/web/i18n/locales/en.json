@@ -17,8 +17,12 @@
 			"email": "Email",
 			"emailPlaceholder": "you{'@'}example.com",
 			"password": "Password",
-			"passwordHelp": "Must be at least 10 characters",
+			"passwordHelp": "Use at least {min} characters.",
+			"showPassword": "Show password",
 			"strongPasswordPlaceholder": "Choose a strong password"
+		},
+		"footer": {
+			"poweredBy": "Powered by {owlat}"
 		},
 		"forgotPassword": {
 			"backToLogin": "Back to login",
@@ -43,6 +47,7 @@
 			"tagline": "Sign in to your Owlat account.",
 			"title": "Welcome",
 			"titleAccent": "back",
+			"workspaceTagline": "Sign in to your workspace.",
 			"twoFactor": {
 				"title": "One more step",
 				"body": "Enter the six-digit code your authenticator app is showing.",
@@ -76,6 +81,7 @@
 			"titleAccent": "account"
 		},
 		"resetPassword": {
+			"backToSignIn": "Back to sign in",
 			"confirmPasswordLabel": "Confirm password",
 			"confirmPasswordPlaceholder": "Re-enter your new password",
 			"failed": "Failed to reset password. The link may have expired.",
@@ -99,7 +105,7 @@
 			"nameRequired": "Name is required",
 			"nameTooShort": "Name must be at least 2 characters",
 			"passwordRequired": "Password is required",
-			"passwordTooShort": "Password must be at least 10 characters",
+			"passwordTooShort": "Password must be at least {min} characters",
 			"passwordsDoNotMatch": "Passwords do not match",
 			"termsRequired": "You must agree to the Terms of Service"
 		}
@@ -11001,8 +11007,6 @@
 			"intro": "The first user. You can invite teammates from the dashboard after launch.",
 			"next": "Next: Review",
 			"pageTitle": "Owlat setup — Admin account",
-			"passwordHelp": "At least 12 characters.",
-			"passwordPlaceholder": "At least 12 characters",
 			"title": "{accent} account",
 			"titleAccent": "Admin"
 		},
@@ -11011,8 +11015,6 @@
 			"campaignIpsLabel": "Campaign IPs",
 			"ehloHostnameHelp": "Set each IP PTR exactly to its EHLO hostname, then point that hostname back to the IP.",
 			"ehloHostnameLabel": "Default EHLO / PTR hostname",
-			"ehloOverridesHelp": "Use when different source IPs have different PTR hostnames.",
-			"ehloOverridesLabel": "Per-IP EHLO overrides (optional JSON)",
 			"emailitKeyLabel": "Emailit API key",
 			"errors": {
 				"missingToken": "Enter the setup token printed by `owlat setup` to verify the provider, then try again.",
@@ -11026,7 +11028,7 @@
 			"fromIdentityIntro": "The default From address for system mail. Leave blank to derive it from your sending domain later.",
 			"fromIdentityOptional": "(optional)",
 			"fromNameLabel": "From name",
-			"intro": "Three honest ways to send: run your own mail server for full control, hand delivery to Amazon SES, or relay through an SMTP provider you already pay for.",
+			"intro": "Pick how Owlat sends mail. You can change this later in Settings.",
 			"mandrillHint": "Mailchimp Transactional → Settings → API keys. Bounce and complaint feedback needs a webhook too — Delivery → Provider has the URL and the events to enable once setup is done.",
 			"mandrillKeyLabel": "Mailchimp Transactional API key",
 			"mtaIdentityHeading": "Outbound IP identity",
@@ -11034,10 +11036,8 @@
 			"next": "Next: Admin account",
 			"pageTitle": "Owlat setup — Email provider",
 			"providerLegend": "Delivery provider",
-			"providerOptionalMessage": "No bulk sending is enabled. Note that system/auth emails (password reset, invitations) still need a transport.",
-			"providerOptionalTitle": "A delivery provider is optional",
-			"providerRequiredMessage": "You enabled campaigns, transactional, or automations — these send through a delivery provider, so one is required.",
-			"providerRequiredTitle": "A delivery provider is required",
+			"providerOptionalHint": "None of the features you picked send bulk mail, so this is optional. Password resets and invitations still need a way to send.",
+			"providerRequiredHint": "Pick a provider to continue. Newsletters, automated email and your app's email are sent through it.",
 			"providers": {
 				"emailit": {
 					"hint": "Managed email API with signed delivery feedback and idempotent sends.",
@@ -11119,8 +11119,8 @@
 					"title": "Features"
 				},
 				"mode": {
-					"desc": "Pick a starting point — IMAP-only, marketing, full suite…",
-					"title": "Operating mode"
+					"desc": "Tell us what your team wants to do.",
+					"title": "Goals"
 				},
 				"review": {
 					"desc": "Check every answer, then launch.",
@@ -11131,20 +11131,40 @@
 			"title": "Welcome to {brand}."
 		},
 		"mode": {
-			"custom": "Custom / decide later",
-			"docsLink": "Operating Modes",
+			"advancedIntro": "Start from a named setup instead of the answer above. See {docsLink} for what each one turns on.",
+			"advancedSummary": "Advanced: pick a preset",
+			"aiDraftsHint": "Owlat suggests a reply for each new conversation. You approve before anything is sent. Needs an AI provider.",
+			"aiDraftsLabel": "Draft replies with AI",
+			"docsLink": "Operating modes",
 			"eyebrow": "Owlat setup",
 			"freshDesc": "Owlat is our home. No import needed.",
 			"freshTitle": "Starting fresh",
-			"intro": "Pick the closest mode to pre-fill your features — you can fine-tune everything on the next step. See {docsLink} for the full matrix.",
+			"intro": "Your answer turns on the right features. You can change any of them on the next step.",
 			"migratingDesc": "We'll offer new users a mail import at first login.",
 			"migratingTitle": "Moving from another platform",
 			"migrationLegend": "Are you moving from another platform, or starting fresh on Owlat?",
 			"needsDeliveryProvider": "needs a delivery provider",
 			"needsMta": "needs the built-in MTA",
+			"next": "Next: Features",
 			"noProviderNeeded": "no provider needed",
-			"pageTitle": "Owlat setup — Operating mode",
-			"title": "How will you run {brand}?"
+			"outcomeLegend": "What does your team want to do?",
+			"outcomes": {
+				"both": {
+					"description": "A shared inbox for conversations, plus newsletters and automated email from the same place.",
+					"label": "Both"
+				},
+				"conversations": {
+					"description": "Work through customer and team email in one shared inbox and reply together.",
+					"label": "Answer customer and team email together"
+				},
+				"sending": {
+					"description": "Newsletters, automated sequences and email your app sends, like receipts and password resets.",
+					"label": "Send newsletters and automated email"
+				}
+			},
+			"pageTitle": "Owlat setup — Goals",
+			"recommended": "Recommended",
+			"title": "What will you use {brand} for?"
 		},
 		"review": {
 			"activeFeatures": "Active features",
@@ -11153,6 +11173,11 @@
 			"appliedMessage": "Finishing up — the app is loading your configuration, then we'll take you to sign in. This usually takes a few seconds.",
 			"appliedTitle": "Setup applied",
 			"applying": "Applying…",
+			"blockers": {
+				"admin": "Create the admin account to continue",
+				"provider": "Choose a delivery provider to continue",
+				"token": "Enter the setup token to continue"
+			},
 			"complete": {
 				"eyebrow": "Owlat setup",
 				"intro": "Your instance is configured and running. Sign in once against the restarted process and pick up wherever you like.",
@@ -11185,15 +11210,15 @@
 			"finishing": "Finishing…",
 			"fromIdentity": "From identity",
 			"generatedSecrets": "Generated secrets",
-			"generatedSecretsNote": "{secrets} — created on apply.",
+			"generatedSecretsNote": "We'll generate the secrets your server needs and save them to {file}.",
+			"generatedSecretsShow": "Show their names",
 			"intro": "Last chance to change anything. You can also flip toggles from Settings → Features after launch.",
 			"launch": "Launch Owlat",
 			"mailboxImport": "Mailbox import",
 			"mailboxImportEnabled": "Enabled — new users can import mail from your old platform at first login.",
-			"missingProviderMessage": "Campaigns, transactional, or automations are enabled but no delivery provider is configured. Go back to the Email step and choose MTA, Resend, or SES.",
-			"missingProviderTitle": "No delivery provider configured",
 			"noneEnabled": "None enabled",
 			"notSet": "(not set)",
+			"otherFeatures": "Other",
 			"pageTitle": "Owlat setup — Review",
 			"restartTimeout": "On a managed install this finishes on its own. If you're running a manual {command} stack, restart the web container — we'll continue automatically the moment it's back.",
 			"setupTokenHelp": "Printed by the owlat setup command when it enabled setup mode. Required to launch — it proves you're the operator who started setup.",
@@ -13680,7 +13705,7 @@
 		"setupWizardValidation": {
 			"admin": {
 				"emailInvalid": "Enter a valid email address.",
-				"passwordTooShort": "Use at least 12 characters."
+				"passwordTooShort": "Use at least {min} characters."
 			},
 			"email": {
 				"emailitKeyRequired": "Enter your Emailit API key.",
@@ -14642,7 +14667,7 @@
 				"admin": "Account",
 				"email": "Email",
 				"features": "Features",
-				"mode": "Mode",
+				"mode": "Goals",
 				"review": "Review"
 			}
 		},
@@ -15321,7 +15346,7 @@
 		"operatingModes": {
 			"crm_only": {
 				"audience": "Manage contacts and data; no email send or receive.",
-				"description": "Contacts, segments, imports, and forms with no outbound or inbound mail. A degenerate baseline you can grow from.",
+				"description": "Contacts, segments, imports, and forms, without sending or receiving mail. You can turn more on later.",
 				"label": "CRM only"
 			},
 			"full": {

@@ -5,12 +5,20 @@ import {
 	buildApplyBody,
 	setupSignInHref,
 } from '~/composables/useSetupWizard';
+import { FEATURE_FLAGS, type FeatureFlagKey } from '@owlat/shared/featureFlags';
+import {
+	SETUP_TOKEN_FIELD_ID,
+	groupActiveFeatures,
+	launchBlockers,
+} from '~/composables/setupWizardReview';
+import { useFeatureCopy } from '~/composables/useFeatureCopy';
 import { isCsrfRejection } from '~/lib/csrf';
 import { apiFetch } from '~/lib/csrfFetch';
 
 definePageMeta({ layout: false });
 
 const { t } = useI18n();
+const { flagKeyLabel, packLabel } = useFeatureCopy();
 
 useHead({ title: () => t('setup.review.pageTitle') });
 
@@ -28,7 +36,36 @@ const displaySteps = computed(() =>
 
 // The privileged apply endpoint authenticates with the one-time setup token.
 const trimmedToken = computed(() => setupToken.value.trim());
-const canLaunch = computed(() => !summary.value.missingProvider && trimmedToken.value !== '');
+
+// Every reason Launch is disabled, listed next to the button and linked to the
+// step (or field) that fixes it — a disabled button alone explains nothing.
+const blockers = computed(() =>
+	launchBlockers({
+		missingProvider: summary.value.missingProvider,
+		admin: admin.value,
+		setupToken: setupToken.value,
+	})
+);
+const canLaunch = computed(() => blockers.value.length === 0);
+
+// Active features by their names, under the pack they belong to.
+const featureGroups = computed(() => groupActiveFeatures(summary.value.activeFeatures));
+function groupLabel(pack: ReturnType<typeof groupActiveFeatures>[number]['pack']): string {
+	return pack === 'other' ? t('setup.review.otherFeatures') : packLabel(pack);
+}
+function featureLabel(flag: FeatureFlagKey): string {
+	return flagKeyLabel(flag, FEATURE_FLAGS[flag as keyof typeof FEATURE_FLAGS]);
+}
+
+// A blocker that lives on this page (the setup token) focuses its field rather
+// than navigating; the rest go back to their wizard step.
+function goToBlocker(to: string) {
+	if (to.startsWith('#')) {
+		document.getElementById(to.slice(1))?.focus();
+		return;
+	}
+	router.push(to);
+}
 
 const GENERATED_SECRETS = [
 	'BETTER_AUTH_SECRET',
@@ -259,14 +296,13 @@ onUnmounted(stopPolling);
 							{{ t('setup.review.activeFeatures') }}
 						</dt>
 						<dd>
-							<!-- `neutral`, not `default`: this is an inventory read-out, not a
-							     status. Nine `bg-brand/10 text-brand` chips would be nine
-							     terracotta marks on the one screen whose step rail was made
-							     monochrome precisely to stop that (DESIGN-LANGUAGE rule 1). -->
-							<div v-if="summary.activeFeatures.length" class="flex flex-wrap gap-1.5">
-								<UiBadge v-for="f in summary.activeFeatures" :key="f" variant="neutral">{{
-									f
-								}}</UiBadge>
+							<div v-if="featureGroups.length" class="space-y-3" data-testid="review-features">
+								<div v-for="group in featureGroups" :key="group.pack">
+									<p class="text-xs font-medium text-text-tertiary">{{ groupLabel(group.pack) }}</p>
+									<p class="text-sm text-text-primary">
+										{{ group.flags.map(featureLabel).join(', ') }}
+									</p>
+								</div>
 							</div>
 							<span v-else class="text-sm text-text-tertiary">{{
 								t('setup.review.noneEnabled')
@@ -318,22 +354,26 @@ onUnmounted(stopPolling);
 						<dt class="text-sm font-medium text-text-secondary">
 							{{ t('setup.review.generatedSecrets') }}
 						</dt>
-						<I18nT
-							keypath="setup.review.generatedSecretsNote"
-							tag="dd"
-							scope="global"
-							class="text-sm text-text-tertiary"
-						>
-							<template #secrets>
-								<span class="font-mono">{{ GENERATED_SECRETS.join(', ') }}</span>
-							</template>
-						</I18nT>
+						<dd class="text-sm text-text-secondary">
+							<I18nT keypath="setup.review.generatedSecretsNote" tag="p" scope="global">
+								<template #file><code class="font-mono">.env</code></template>
+							</I18nT>
+							<details class="mt-1" data-testid="review-secrets">
+								<summary class="cursor-pointer text-text-tertiary hover:text-text-secondary">
+									{{ t('setup.review.generatedSecretsShow') }}
+								</summary>
+								<ul class="mt-1 font-mono text-xs text-text-tertiary">
+									<li v-for="name in GENERATED_SECRETS" :key="name">{{ name }}</li>
+								</ul>
+							</details>
+						</dd>
 					</div>
 				</dl>
 			</UiCard>
 
 			<div class="mt-5">
 				<UiInput
+					:id="SETUP_TOKEN_FIELD_ID"
 					v-model="setupToken"
 					type="password"
 					:label="t('setup.review.setupTokenLabel')"
@@ -341,14 +381,6 @@ onUnmounted(stopPolling);
 					autocomplete="off"
 					autofocus
 					:help-text="t('setup.review.setupTokenHelp')"
-				/>
-			</div>
-
-			<div v-if="summary.missingProvider" class="mt-5">
-				<UiErrorAlert
-					variant="warning"
-					:title="t('setup.review.missingProviderTitle')"
-					:message="t('setup.review.missingProviderMessage')"
 				/>
 			</div>
 
@@ -378,27 +410,49 @@ onUnmounted(stopPolling);
 				</RestartProgress>
 			</div>
 
-			<footer class="mt-8 flex items-center justify-between border-t border-border-subtle pt-6">
+			<footer
+				class="mt-8 flex flex-wrap items-start justify-between gap-4 border-t border-border-subtle pt-6"
+			>
 				<UiButton variant="ghost" :disabled="phase !== 'idle'" @click="router.push('/setup/admin')">
 					<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4 mr-2" /></template>
 					{{ t('common.back') }}
 				</UiButton>
-				<UiButton
-					:loading="phase === 'applying'"
-					:disabled="phase !== 'idle' || !canLaunch"
-					@click="apply"
-				>
-					{{
-						phase === 'applying'
-							? t('setup.review.applying')
-							: phase === 'finalizing'
-								? t('setup.review.finishing')
-								: t('setup.review.launch')
-					}}
-					<template v-if="phase === 'idle'" #iconRight
-						><Icon name="lucide:rocket" class="w-4 h-4 ml-2"
-					/></template>
-				</UiButton>
+				<div class="flex flex-col items-end gap-3">
+					<ul
+						v-if="phase === 'idle' && blockers.length"
+						id="launch-blockers"
+						class="space-y-1 text-right text-sm text-text-secondary"
+						data-testid="launch-blockers"
+					>
+						<li v-for="blocker in blockers" :key="blocker.id">
+							<a
+								:href="blocker.to"
+								class="link"
+								:data-testid="`launch-blocker-${blocker.id}`"
+								@click.prevent="goToBlocker(blocker.to)"
+								>{{ t(blocker.message) }}</a
+							>
+						</li>
+					</ul>
+					<UiButton
+						:loading="phase === 'applying'"
+						:disabled="phase !== 'idle' || !canLaunch"
+						:aria-describedby="phase === 'idle' && blockers.length ? 'launch-blockers' : undefined"
+						data-testid="launch-button"
+						@click="apply"
+					>
+						{{
+							phase === 'applying'
+								? t('setup.review.applying')
+								: phase === 'finalizing'
+									? t('setup.review.finishing')
+									: t('setup.review.launch')
+						}}
+						<template v-if="phase === 'idle'" #iconRight
+							><Icon name="lucide:rocket" class="w-4 h-4 ml-2"
+						/></template>
+					</UiButton>
+				</div>
 			</footer>
 		</div>
 	</div>

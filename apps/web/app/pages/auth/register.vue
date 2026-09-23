@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { isValidEmail } from '@owlat/shared';
+import { MIN_PASSWORD_LENGTH, meetsMinPasswordLength } from '@owlat/shared/passwordPolicy';
+import { registrationOpenFor } from '~/utils/instanceEntry';
 
 const { t } = useI18n();
 
@@ -18,10 +20,7 @@ const router = useRouter();
 const route = useRoute();
 
 // Allow registration only for invited users (redirect to /invite/accept)
-const isInviteRedirect = computed(() => {
-	const redirect = route.query['redirect'] as string | undefined;
-	return redirect ? decodeURIComponent(redirect).startsWith('/invite/accept') : false;
-});
+const isInviteRedirect = computed(() => registrationOpenFor(route.query['redirect']));
 
 // Form state
 const name = ref('');
@@ -73,8 +72,8 @@ function validatePassword(): boolean {
 		errors.password = t('auth.validation.passwordRequired');
 		return false;
 	}
-	if (password.value.length < 10) {
-		errors.password = t('auth.validation.passwordTooShort');
+	if (!meetsMinPasswordLength(password.value)) {
+		errors.password = t('auth.validation.passwordTooShort', { min: MIN_PASSWORD_LENGTH });
 		return false;
 	}
 	errors.password = '';
@@ -188,15 +187,14 @@ async function handleSubmit() {
 			/>
 
 			<!-- Password Field -->
-			<UiInput
+			<AuthPasswordInput
 				id="password"
 				v-model="password"
-				type="password"
 				autocomplete="new-password"
 				:label="t('auth.fields.password')"
 				:placeholder="t('auth.fields.strongPasswordPlaceholder')"
 				:error="errors.password"
-				:help-text="t('auth.fields.passwordHelp')"
+				:help-text="t('auth.fields.passwordHelp', { min: MIN_PASSWORD_LENGTH })"
 				@blur="validatePassword"
 			/>
 
