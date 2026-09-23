@@ -13707,7 +13707,8 @@
 				"navigation": "Navigation",
 				"organize": "Organize",
 				"triage": "Triage",
-				"workspace": "Workspaces"
+				"workspace": "Workspaces",
+				"review": "Updates list"
 			},
 			"labels": {
 				"addLabel": "Add label",
@@ -13758,7 +13759,10 @@
 				"toggleTodayBrowse": "Switch between Priority and All mail (inbox)",
 				"undoTriage": "Undo last triage",
 				"goToAnswer": "Go to the Answer queue",
-				"goToMarketing": "Go to marketing"
+				"goToMarketing": "Go to marketing",
+				"next": "Next",
+				"previous": "Previous",
+				"openThread": "Open thread"
 			}
 		},
 		"signatureBadge": {

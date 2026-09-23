@@ -31,6 +31,7 @@ const G = {
 	triage: 'shared.shortcuts.groups.triage',
 	organize: 'shared.shortcuts.groups.organize',
 	compose: 'shared.shortcuts.groups.compose',
+	review: 'shared.shortcuts.groups.review',
 	workspace: 'shared.shortcuts.groups.workspace',
 } as const;
 
@@ -383,6 +384,30 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		keys: ['Escape'],
 		labelKey: L('minimizeComposer'),
 		groupKey: G.compose,
+		remappable: false,
+	},
+
+	// --- Review lists (the Team inbox Updates page) --------------------------
+	{
+		id: 'review.next',
+		scope: 'review',
+		keys: ['j', 'ArrowDown'],
+		labelKey: L('next'),
+		groupKey: G.review,
+	},
+	{
+		id: 'review.previous',
+		scope: 'review',
+		keys: ['k', 'ArrowUp'],
+		labelKey: L('previous'),
+		groupKey: G.review,
+	},
+	{
+		id: 'review.open',
+		scope: 'review',
+		keys: ['Enter'],
+		labelKey: L('openThread'),
+		groupKey: G.review,
 		remappable: false,
 	},
 

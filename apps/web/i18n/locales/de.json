@@ -13707,7 +13707,8 @@
 				"navigation": "Navigation",
 				"organize": "Organisieren",
 				"triage": "Triage",
-				"workspace": "Arbeitsbereiche"
+				"workspace": "Arbeitsbereiche",
+				"review": "Updates-Liste"
 			},
 			"labels": {
 				"addLabel": "Label hinzufügen",
@@ -13758,7 +13759,10 @@
 				"toggleTodayBrowse": "Zwischen Priorität und Alle E-Mails wechseln (Posteingang)",
 				"undoTriage": "Letzte Triage rückgängig machen",
 				"goToAnswer": "Zur Antwortliste",
-				"goToMarketing": "Zu Marketing"
+				"goToMarketing": "Zu Marketing",
+				"next": "Weiter",
+				"previous": "Zurück",
+				"openThread": "Unterhaltung öffnen"
 			}
 		},
 		"signatureBadge": {
