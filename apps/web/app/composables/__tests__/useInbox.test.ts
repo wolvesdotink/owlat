@@ -103,4 +103,19 @@ describe('useInbox pagination', () => {
 		expect(filter.value).toBe('open');
 		expect(assignee.value).toBe('me');
 	});
+
+	it('applies a legacy waiting-24h sort to this view without saving it', () => {
+		const set = vi.fn();
+		vi.stubGlobal('useRoute', () => ({ query: { filter: 'waiting-24h' } }));
+		vi.stubGlobal('useLocalStorage', (_key: string, def: unknown) => ({ data: ref(def), set }));
+		const { sort, setSort } = useInbox();
+
+		expect(sort.value).toBe('oldest-waiting');
+		expect(created[0]!.args()).toMatchObject({ sort: 'oldest-waiting' });
+		expect(set).not.toHaveBeenCalled();
+
+		// Picking a sort is a real choice: it is saved and ends the override.
+		setSort('newest');
+		expect(set).toHaveBeenCalledWith('newest');
+	});
 });

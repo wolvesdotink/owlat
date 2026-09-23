@@ -78,16 +78,20 @@ export function useInbox(gate?: Ref<boolean>) {
 	// Normalised on read: the stored value predates the "oldest waiting" order,
 	// and a browser holding something unknown must not select a nonexistent
 	// backend index.
-	const sort = computed<InboxSort>(() => resolveInboxSort(storedSort.value));
+	// `?filter=waiting-24h` used to be a tab; it now means "Open, longest wait
+	// first". That order holds for this view only: following an old link must
+	// not rewrite the viewer's saved sort. Picking a sort drops the override.
+	const legacySort = ref<InboxSort | null>(legacyInboxSort(route.query['filter']) ?? null);
+	const sort = computed<InboxSort>(
+		() => legacySort.value ?? resolveInboxSort(storedSort.value)
+	);
 	const setSort = (next: InboxSort) => {
+		legacySort.value = null;
 		setStoredSort(next);
 	};
 	const toggleSort = () => {
 		setSort(nextInboxSort(sort.value));
 	};
-	// `?filter=waiting-24h` used to be a tab; it now means "Open, longest wait first".
-	const impliedSort = legacyInboxSort(route.query['filter']);
-	if (impliedSort) setSort(impliedSort);
 
 	// ── Thread list (keyset pagination; the args pick the backend index) ──
 	const threadCursor = ref<string | undefined>(undefined);
