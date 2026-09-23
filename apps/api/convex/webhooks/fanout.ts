@@ -12,21 +12,17 @@
  *
  * The actual HTTP delivery + retry machinery still lives in
  * `webhooks/delivery.ts::deliverWebhookInternal`. This module is only the
- * fanout dispatcher above it.
+ * fanout dispatcher above it: the delivery rows and their first attempts are
+ * written by one mutation each (`deliveryQueries.enqueue*`), so a crash here
+ * can never leave a row with no attempt scheduled.
  */
 
 import { v } from 'convex/values';
-import { MAX_WEBHOOK_ATTEMPTS } from '../lib/constants';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { Doc, Id } from '../_generated/dataModel';
+import type { Id } from '../_generated/dataModel';
 import { jsonPrimitiveRecord } from '../lib/convexValidators';
-import {
-	subscribableWebhookEventValidator,
-	webhookEventValidator,
-} from './events';
-
-
+import { subscribableWebhookEventValidator, webhookEventValidator } from './events';
 
 interface FanoutResult {
 	success: boolean;
@@ -63,55 +59,12 @@ export const fanoutEvent = internalAction({
 	handler: async (ctx, args): Promise<FanoutResult> => {
 		const { event, data } = args;
 
-		const webhooks: Doc<'webhooks'>[] = await ctx.runQuery(
-			internal.webhooks.deliveryQueries.getWebhooksForEvent,
-			{ event }
+		const deliveries = await ctx.runMutation(
+			internal.webhooks.deliveryQueries.enqueueFanoutDeliveries,
+			{ event, payload: { event, timestamp: new Date().toISOString(), data } }
 		);
 
-		if (webhooks.length === 0) {
-			return { success: true, webhooksTriggered: 0 };
-		}
-
-		const payloadObj = {
-			event,
-			timestamp: new Date().toISOString(),
-			data,
-		};
-		const payloadStr = JSON.stringify(payloadObj);
-
-		const results = await Promise.all(
-			webhooks.map(async (webhook) => {
-				const logId = await ctx.runMutation(
-					internal.webhooks.deliveryQueries.createDeliveryLog,
-					{
-						webhookId: webhook._id,
-						event,
-						payload: payloadObj,
-						attemptNumber: 1,
-						maxAttempts: MAX_WEBHOOK_ATTEMPTS,
-					}
-				);
-
-				await ctx.scheduler.runAfter(
-					0,
-					internal.webhooks.delivery.deliverWebhookInternal,
-					{
-						webhookId: webhook._id,
-						logId,
-						payload: payloadStr,
-						attemptNumber: 1,
-					}
-				);
-
-				return { webhookId: webhook._id, logId };
-			})
-		);
-
-		return {
-			success: true,
-			webhooksTriggered: webhooks.length,
-			deliveries: results,
-		};
+		return { success: true, webhooksTriggered: deliveries.length, deliveries };
 	},
 });
 
@@ -129,40 +82,12 @@ export const deliverEvent = internalAction({
 	handler: async (ctx, args): Promise<DeliverResult> => {
 		const { webhookId, event, data } = args;
 
-		const webhook = await ctx.runQuery(
-			internal.webhooks.deliveryQueries.getWebhook,
-			{ webhookId }
-		);
-		if (!webhook) return { success: false, error: 'Webhook not found' };
-
-		const payloadObj = {
+		const logId = await ctx.runMutation(internal.webhooks.deliveryQueries.enqueueDelivery, {
+			webhookId,
 			event,
-			timestamp: new Date().toISOString(),
-			data,
-		};
-		const payloadStr = JSON.stringify(payloadObj);
-
-		const logId = await ctx.runMutation(
-			internal.webhooks.deliveryQueries.createDeliveryLog,
-			{
-				webhookId,
-				event,
-				payload: payloadObj,
-				attemptNumber: 1,
-				maxAttempts: MAX_WEBHOOK_ATTEMPTS,
-			}
-		);
-
-		await ctx.scheduler.runAfter(
-			0,
-			internal.webhooks.delivery.deliverWebhookInternal,
-			{
-				webhookId,
-				logId,
-				payload: payloadStr,
-				attemptNumber: 1,
-			}
-		);
+			payload: { event, timestamp: new Date().toISOString(), data },
+		});
+		if (!logId) return { success: false, error: 'Webhook not found' };
 
 		return { success: true, logId };
 	},

@@ -62,6 +62,24 @@ export const webhookTables = {
 		completedAt: v.optional(v.number()), // When delivery completed (success or final failure)
 		// Duration of the request in milliseconds
 		durationMs: v.optional(v.number()),
+		// Attempt identity. Every scheduled attempt (first try, retry, or a
+		// reconciler recovery) bumps the sequence, and an invocation whose
+		// sequence no longer matches the row is a stale duplicate and does
+		// nothing. Absent on rows written before attempts were tracked.
+		attemptSeq: v.optional(v.number()),
+		// The scheduler job carrying the current attempt, written in the same
+		// mutation that persisted the row state, so the reconciler can tell a
+		// queued/running attempt from one that was lost.
+		scheduledFunctionId: v.optional(v.id('_scheduled_functions')),
+		// When the current attempt was claimed by its invocation. A second
+		// invocation of the same attempt sees this and backs off.
+		attemptClaimedAt: v.optional(v.number()),
+		// Past this instant a non-terminal row whose attempt is no longer queued
+		// or running is overdue and gets re-scheduled. Cleared on completion.
+		recoverAfter: v.optional(v.number()),
+		// How many times the reconciler re-issued a lost attempt; bounded so an
+		// attempt that crashes every time ends as `failed` instead of looping.
+		recoveryCount: v.optional(v.number()),
 	})
 		.index('by_webhook', ['webhookId'])
 		// Delivery-stats reads one webhook's logs over a recent window; the
@@ -72,7 +90,9 @@ export const webhookTables = {
 		// Retention cleanup range-scans one status for rows older than a cutoff;
 		// the compound index seeks straight to the old tail instead of scanning
 		// every row of that status.
-		.index('by_status_and_completed_at', ['status', 'completedAt']),
+		.index('by_status_and_completed_at', ['status', 'completedAt'])
+		// The delivery reconciler range-scans overdue pending/retrying rows.
+		.index('by_status_and_recover_after', ['status', 'recoverAfter']),
 
 	// Webhook Payloads - raw webhook payloads for audit and dispute resolution
 	webhookPayloads: defineTable({
