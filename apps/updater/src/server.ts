@@ -292,7 +292,7 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 	if (!recreate.ok) {
 		// The containers hold the OLD secret and may be stopped; .env already
 		// holds the new one. Start them back up before answering.
-		const recovery = recoverStackAfterFailedUp(plan.services);
+		const recovery = await recoverStackAfterFailedUp(plan.services);
 		console.error('[rotate-env] recreate failed:', recreate.stderr);
 		return json(res, 500, {
 			error: recovery.ok

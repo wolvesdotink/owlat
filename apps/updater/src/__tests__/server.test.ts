@@ -29,20 +29,27 @@ process.env['PORT'] = '0';
 
 // Dynamic import AFTER env is staged — server.ts reads env at module load.
 const { buildRequestListener } = await import('../server.js');
+const { fastReadiness } = await import('./readinessStubs.js');
 
 let server: Server;
 let base: string;
+let readiness: ReturnType<typeof fastReadiness>;
 
 beforeAll(async () => {
+	readiness = fastReadiness();
 	server = createServer(buildRequestListener());
 	await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
 	const addr = server.address();
 	if (typeof addr === 'object' && addr) base = `http://127.0.0.1:${addr.port}`;
 });
 
-afterAll(() => server.close());
+afterAll(() => {
+	server.close();
+	readiness.restore();
+});
 
 beforeEach(() => {
+	readiness.webStatus(200);
 	rateLimitedMock.mockReturnValue(false);
 	freeBytesMock.mockReset().mockReturnValue(50 * 1024 ** 3);
 	execFileSyncMock.mockReset().mockImplementation(dockerFixture);
@@ -78,6 +85,8 @@ function dockerFixture(file: unknown, args: unknown): string {
 		].join('\n');
 	}
 	if (cmd.startsWith('docker run')) return 'helper-container-id\n';
+	// The readiness check after `up`: every recreated service is up.
+	if (cmd.includes(' ps --all --format json')) return composePs(RUNNING);
 	return '';
 }
 
@@ -98,7 +107,9 @@ function dockerFailing(match: (cmd: string) => boolean, stderr: string) {
 }
 
 /** `docker compose ps --format json` rows, in the NDJSON shape Compose emits. */
-function composePs(rows: Array<{ Service: string; State: string }>): string {
+function composePs(
+	rows: Array<{ Service: string; State: string; Health?: string; Status?: string }>
+): string {
 	return rows
 		.map((row) => JSON.stringify({ Image: 'ghcr.io/wolvesdotink/x:1.0.0', Health: '', ...row }))
 		.join('\n');
@@ -286,6 +297,7 @@ describe('POST /update', () => {
 			'write-compose',
 			'pin-version',
 			'up',
+			'readiness',
 			'self-update',
 		]);
 		// pull/deploy ran against the STAGED file, not the live one
@@ -334,6 +346,7 @@ describe('POST /update', () => {
 			'write-compose',
 			'pin-version',
 			'up',
+			'readiness',
 			'self-update',
 		]);
 		expect(json.steps?.find((s) => s.step === 'pin-version')?.ok).toBe(true);
@@ -530,7 +543,7 @@ describe('POST /update', () => {
 				err.stderr = 'error during connect: EOF';
 				throw err;
 			}
-			if (cmd.includes(' ps --format json')) return composePs(RUNNING);
+			if (cmd.includes(' ps --all --format json')) return composePs(RUNNING);
 			return dockerFixture(file, args);
 		});
 
@@ -563,7 +576,7 @@ describe('POST /update', () => {
 				err.stderr = 'error during connect: EOF';
 				throw err;
 			}
-			if (cmd.includes(' ps --format json')) {
+			if (cmd.includes(' ps --all --format json')) {
 				return composePs([
 					{ Service: 'web', State: 'exited' },
 					{ Service: 'convex', State: 'running' },
@@ -582,7 +595,7 @@ describe('POST /update', () => {
 
 		const recovery = json.steps.at(-1);
 		expect(recovery).toMatchObject({ step: 'up-recovery', ok: false });
-		expect(recovery?.stderr).toContain('still not running: web, mta');
+		expect(recovery?.stderr).toContain('not healthy: web (exited), mta (exited)');
 		expect(recovery?.stderr).toContain('docker compose up -d');
 		expect(json.error).toContain('not fully running');
 	});
@@ -593,8 +606,11 @@ describe('POST /update', () => {
 	 * as one.
 	 */
 	it('reports an unreadable container list as unknown, not as a dead stack', async () => {
-		execFileSyncMock.mockImplementation(
-			dockerFailing((cmd) => cmd.includes(' up -d'), 'error during connect: EOF')
+		const failing = dockerFailing((cmd) => cmd.includes(' up -d'), 'error during connect: EOF');
+		execFileSyncMock.mockImplementation((file: unknown, args: unknown) =>
+			[String(file), ...((args as string[]) ?? [])].join(' ').includes(' ps ')
+				? ''
+				: failing(file, args)
 		);
 
 		const res = await post('/update');
@@ -603,13 +619,155 @@ describe('POST /update', () => {
 		const recovery = json.steps.at(-1);
 		expect(recovery?.step).toBe('up-recovery');
 		expect(recovery?.stderr).toContain('could not be read back');
-		expect(recovery?.stderr).not.toContain('still not running');
+		expect(recovery?.stderr).not.toContain('not healthy');
+		expect(recovery?.stderr).not.toContain('not started');
 	});
 
 	it('rate-limits update requests', async () => {
 		rateLimitedMock.mockReturnValue(true);
 		const res = await post('/update');
 		expect(res.status).toBe(429);
+	});
+});
+
+/**
+ * `docker compose up -d` returning 0 means the containers were started, not
+ * that the release is serving. The answer is a success only once every started
+ * service meets the readiness contract (readiness.ts), and from the recreate on
+ * it says how far the release got: `healthy`, `started` or `partially-applied`.
+ */
+describe('POST /update — readiness after the recreate', () => {
+	type UpdateAnswer = {
+		success?: boolean;
+		rollout?: string;
+		error?: string;
+		steps: Array<{ step: string; ok?: boolean; stdout: string; stderr: string }>;
+	};
+
+	/** Answer the readiness check's `ps` from `script`, repeating its last entry. */
+	function psSequence(script: string[]) {
+		let call = 0;
+		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+			if ([file, ...args].join(' ').includes(' ps --all --format json')) {
+				return script[Math.min(call++, script.length - 1)];
+			}
+			return dockerFixture(file, args);
+		});
+	}
+
+	it('answers success with rollout healthy only after the readiness check passed', async () => {
+		const res = await post('/update');
+		expect(res.status).toBe(200);
+		const json = (await res.json()) as UpdateAnswer;
+		expect(json).toMatchObject({ success: true, rollout: 'healthy' });
+		const readinessStep = json.steps.find((s) => s.step === 'readiness');
+		expect(readinessStep?.ok).toBe(true);
+		expect(readinessStep?.stdout).toContain('web answered HTTP 200');
+		// Checked after the recreate, before the updater hands itself over.
+		const order = json.steps.map((s) => s.step);
+		expect(order.indexOf('readiness')).toBe(order.indexOf('up') + 1);
+		expect(order.at(-1)).toBe('self-update');
+	});
+
+	it('does not report success while a running service fails its healthcheck', async () => {
+		psSequence([
+			composePs([
+				{ Service: 'web', State: 'running' },
+				{ Service: 'convex', State: 'running', Health: 'unhealthy' },
+				{ Service: 'mta', State: 'running' },
+			]),
+		]);
+
+		const res = await post('/update');
+		expect(res.status).toBe(500);
+		const json = (await res.json()) as UpdateAnswer;
+		expect(json.success).toBeUndefined();
+		expect(json.rollout).toBe('started');
+		expect(json.error).toContain('convex (failing its healthcheck)');
+		expect(json.steps.find((s) => s.step === 'readiness')).toMatchObject({ ok: false });
+		// The release is promoted and running either way: the updater still follows it.
+		expect(json.steps.at(-1)).toMatchObject({ step: 'self-update', ok: true });
+	});
+
+	it('waits for a healthcheck that passes after the recreate returned', async () => {
+		const starting = composePs([
+			{ Service: 'web', State: 'running' },
+			{ Service: 'convex', State: 'running', Health: 'starting' },
+			{ Service: 'mta', State: 'running' },
+		]);
+		psSequence([starting, starting, composePs(RUNNING)]);
+
+		const res = await post('/update');
+		expect(res.status).toBe(200);
+		expect(await res.json()).toMatchObject({ success: true, rollout: 'healthy' });
+	});
+
+	it('does not report success when a service crashes right after starting', async () => {
+		psSequence([
+			composePs(RUNNING),
+			composePs([
+				{ Service: 'web', State: 'running' },
+				{ Service: 'convex', State: 'running' },
+				{ Service: 'mta', State: 'restarting', Status: 'Restarting (1) 1 second ago' },
+			]),
+		]);
+
+		const res = await post('/update');
+		expect(res.status).toBe(500);
+		const json = (await res.json()) as UpdateAnswer;
+		expect(json.rollout).toBe('started');
+		expect(json.error).toContain('mta (restarting after a crash)');
+	});
+
+	it('does not report success while the web app does not answer', async () => {
+		readiness.webStatus(503);
+
+		const res = await post('/update');
+		expect(res.status).toBe(500);
+		const json = (await res.json()) as UpdateAnswer;
+		expect(json.rollout).toBe('started');
+		expect(json.error).toContain('web answered HTTP 503');
+	});
+
+	it('reports a failed recreate as partially applied, and never as a rollback', async () => {
+		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+			if ([file, ...args].join(' ').includes(' up -d --remove-orphans')) {
+				throw Object.assign(new Error('boom'), { stdout: '', stderr: 'error during connect: EOF' });
+			}
+			return dockerFixture(file, args);
+		});
+
+		const res = await post('/update');
+		expect(res.status).toBe(500);
+		const json = (await res.json()) as UpdateAnswer;
+		expect(json.rollout).toBe('partially-applied');
+		expect(json.steps.map((s) => s.step)).not.toContain('readiness');
+		expect(`${json.error} ${JSON.stringify(json.steps)}`).not.toMatch(/roll(ed)?[ -]?back/i);
+	});
+
+	it('does not call a recovered stack serving while a service in it is unhealthy', async () => {
+		execFileSyncMock.mockImplementation((file: string, args: string[]) => {
+			const cmd = [file, ...args].join(' ');
+			if (cmd.includes(' up -d --remove-orphans')) {
+				throw Object.assign(new Error('boom'), { stdout: '', stderr: 'error during connect: EOF' });
+			}
+			if (cmd.includes(' ps --all --format json')) {
+				return composePs([
+					{ Service: 'web', State: 'running' },
+					{ Service: 'convex', State: 'running', Health: 'unhealthy' },
+					{ Service: 'mta', State: 'running' },
+				]);
+			}
+			return dockerFixture(file, args);
+		});
+
+		const res = await post('/update');
+		const json = (await res.json()) as UpdateAnswer;
+		const recovery = json.steps.at(-1);
+		expect(recovery).toMatchObject({ step: 'up-recovery', ok: false });
+		expect(recovery?.stderr).toContain('convex (failing its healthcheck)');
+		expect(json.error).not.toContain('serving again');
+		expect(json.rollout).toBe('partially-applied');
 	});
 });
 
@@ -703,7 +861,7 @@ describe('POST /rotate-env', () => {
 				err.stderr = 'Cannot connect to the Docker daemon at tcp://docker-socket-proxy:2375.';
 				throw err;
 			}
-			if (cmd.includes(' ps --format json')) return composePs(RUNNING);
+			if (cmd.includes(' ps --all --format json')) return composePs(RUNNING);
 			return dockerFixture(file, args);
 		});
 

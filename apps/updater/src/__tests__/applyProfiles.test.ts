@@ -31,18 +31,24 @@ process.env['PORT'] = '0';
 
 // Dynamic import AFTER env is staged — server.ts reads env at module load.
 const { buildRequestListener } = await import('../server.js');
+const { fastReadiness } = await import('./readinessStubs.js');
 
 let server: Server;
 let base: string;
+let readiness: ReturnType<typeof fastReadiness>;
 
 beforeAll(async () => {
+	readiness = fastReadiness();
 	server = createServer(buildRequestListener());
 	await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
 	const addr = server.address();
 	if (typeof addr === 'object' && addr) base = `http://127.0.0.1:${addr.port}`;
 });
 
-afterAll(() => server.close());
+afterAll(() => {
+	server.close();
+	readiness.restore();
+});
 
 const ENV_FILE = join(OWLAT_DIR, '.env');
 const OVERRIDE_FILE = join(OWLAT_DIR, 'docker-compose.override.yml');
@@ -320,7 +326,7 @@ describe('compose invocation + per-service health', () => {
 			if (cmd.includes(' up -d --remove-orphans')) {
 				throw Object.assign(new Error('boom'), { stdout: '', stderr: 'daemon down' });
 			}
-			if (cmd.includes(' ps --format json')) {
+			if (cmd.includes(' ps --all --format json')) {
 				return ['web', 'convex', 'mail-sync']
 					.map((service) => JSON.stringify({ Service: service, State: 'running', Image: '' }))
 					.join('\n');
@@ -347,7 +353,7 @@ describe('compose invocation + per-service health', () => {
 			if (cmd.includes(' up -d')) {
 				throw Object.assign(new Error('boom'), { stdout: '', stderr: 'daemon down' });
 			}
-			if (cmd.includes(' ps --format json')) {
+			if (cmd.includes(' ps --all --format json')) {
 				return JSON.stringify({ Service: 'convex', State: 'running', Image: '' });
 			}
 			return dockerFixture(file, args);
@@ -361,7 +367,7 @@ describe('compose invocation + per-service health', () => {
 		};
 		const recovery = body.steps.at(-1);
 		expect(recovery).toMatchObject({ step: 'up-recovery', ok: false });
-		expect(recovery?.stderr).toContain('still not running: web, mail-sync');
+		expect(recovery?.stderr).toContain('not started: web (no container), mail-sync (no container)');
 		expect(recovery?.stderr).toContain('docker compose up -d');
 		expect(body.error).toContain('not fully running');
 	});
