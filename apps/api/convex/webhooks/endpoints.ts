@@ -1,15 +1,14 @@
 import { v } from 'convex/values';
-import { internal } from '../_generated/api';
 import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
-import { CURRENT_WEBHOOK_PAYLOAD_VERSION } from '../lib/constants';
 import { randomToken } from '../lib/randomToken';
 import { recordAuditLog } from '../lib/auditLog';
 import { subscribableWebhookEventValidator } from './events';
 import { test as testEventModule } from './events/test';
 import { isDisallowedIpAddress } from '../lib/ipBlocklist';
+import { enqueueWebhookDelivery } from './deliveryAttempts';
 import type { Doc } from '../_generated/dataModel';
 
 /**
@@ -100,9 +99,9 @@ export const listByOrganization = authedQuery({
 	},
 });
 
-// Firing webhook notifications resolves the per-event active set via the
-// internal query webhooks/deliveryQueries.getWebhooksForEvent (the live caller
-// is webhooks/fanout.ts). A public `listByEvent` authedQuery duplicating that
+// Firing webhook notifications resolves the per-event active set inside the
+// internal webhooks/deliveryQueries.enqueueFanoutDeliveries mutation (fed by
+// webhooks/fanout.ts). A public `listByEvent` authedQuery duplicating that
 // logic used to live here with no caller — removed.
 
 // ============ MUTATIONS ============
@@ -371,25 +370,10 @@ export const sendTestWebhook = authedMutation({
 				webhookName: webhook.name,
 			}),
 		};
-		const payloadStr = JSON.stringify(payloadObj);
-
-		const now = Date.now();
-		const logId = await ctx.db.insert('webhookDeliveryLogs', {
+		const logId = await enqueueWebhookDelivery(ctx, {
 			webhookId: args.webhookId,
 			event: 'test',
 			payload: payloadObj,
-			payloadVersion: CURRENT_WEBHOOK_PAYLOAD_VERSION,
-			attemptNumber: 1,
-			maxAttempts: 3,
-			status: 'pending',
-			scheduledAt: now,
-		});
-
-		await ctx.scheduler.runAfter(0, internal.webhooks.delivery.deliverWebhookInternal, {
-			webhookId: args.webhookId,
-			logId,
-			payload: payloadStr,
-			attemptNumber: 1,
 		});
 
 		return { success: true, logId };

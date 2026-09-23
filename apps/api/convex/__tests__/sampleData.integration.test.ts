@@ -213,10 +213,11 @@ describe('sample data — inert on a real instance', () => {
 		// The fixture URL is a host nobody configured; the delivery pool must not
 		// consider the row a subscriber to the operator's own events.
 		for (const event of ['contact.created', 'email.sent'] as const) {
-			const subscribers = await t.query(internal.webhooks.deliveryQueries.getWebhooksForEvent, {
-				event,
-			});
-			expect(subscribers).toEqual([]);
+			const deliveries = await t.mutation(
+				internal.webhooks.deliveryQueries.enqueueFanoutDeliveries,
+				{ event, payload: { event, timestamp: new Date().toISOString(), data: {} } }
+			);
+			expect(deliveries).toEqual([]);
 		}
 	});
 });

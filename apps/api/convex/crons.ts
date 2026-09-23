@@ -103,6 +103,16 @@ crons.interval(
 // Clean up old webhook delivery logs weekly
 // Removes logs older than 30 days to prevent unbounded growth
 crons.interval('cleanup webhook logs', { hours: 168 }, internal.webhooks.cleanup.cleanupOldLogs);
+
+// Re-issue outbound webhook attempts that were lost (the scheduler job failed or
+// vanished before recording an outcome), so no delivery sits in pending/retrying
+// forever. Bounded batches; see webhooks/deliveryReconciler.ts.
+crons.interval(
+	'reconcile overdue webhook deliveries',
+	{ minutes: 5 },
+	internal.webhooks.deliveryReconciler.reconcileOverdueDeliveries,
+	{}
+);
 // Seed-placement probe ledger housekeeping, registered from the analytics
 // domain sibling next to the functions it schedules.
 registerSeedPlacementCrons(crons);
