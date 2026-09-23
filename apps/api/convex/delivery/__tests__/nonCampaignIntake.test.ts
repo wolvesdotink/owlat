@@ -276,6 +276,55 @@ describe('delivery.nonCampaignIntake.intake — typed rejections', () => {
 		expect(reply.ok).toBe(true);
 	});
 
+	// Contact-level marketing eligibility (issue #809, finding 2). A global
+	// unsubscribe writes no blocklist row and a soft-deleted contact stays
+	// readable, so the blocklist gate alone let both through.
+	it.each([
+		['contact_unsubscribed', { unsubscribedAt: 1 }],
+		['contact_deleted', { deletedAt: 1, deletedBy: 'user-1' }],
+	] as const)(
+		'refuses the automation kind for a %s contact and writes nothing',
+		async (detail, contactState) => {
+			const t = convexTest(schema, modules);
+			const contactId = await t.run(async (ctx) =>
+				ctx.db.insert('contacts', createTestContact({ email: 'gone@example.com', ...contactState }))
+			);
+
+			const outcome = await t.mutation(internal.delivery.nonCampaignIntake.intake, {
+				kind: 'automation' as const,
+				email: 'gone@example.com',
+				contactId,
+				subject: 'Hi',
+				html: '<p>Hi</p>',
+				from: 'Owlat <noreply@example.com>',
+			});
+
+			expect(outcome).toEqual({ ok: false, reason: 'recipient_ineligible', detail });
+			await expectNothingWritten(t);
+		}
+	);
+
+	it('keeps the transactional policy for agent replies to an unsubscribed contact', async () => {
+		const t = convexTest(schema, modules);
+		const contactId = await t.run(async (ctx) =>
+			ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'asked@example.com', unsubscribedAt: 1 })
+			)
+		);
+
+		const reply = await t.mutation(internal.delivery.nonCampaignIntake.intake, {
+			kind: 'agent_reply' as const,
+			email: 'asked@example.com',
+			contactId,
+			subject: 'Re: Hi',
+			html: '<p>Re: Hi</p>',
+			from: 'Owlat <support@example.com>',
+		});
+
+		expect(reply.ok).toBe(true);
+	});
+
 	it('returns ok with a queued row for a non-blocked recipient (positive control)', async () => {
 		const t = convexTest(schema, modules);
 
