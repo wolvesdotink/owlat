@@ -23,7 +23,15 @@ const DEFAULT_PROVIDERS: ProviderEntry[] = [
 
 function mountEditor(relay = 'resend', providers: ProviderEntry[] = DEFAULT_PROVIDERS) {
 	return mount(DeliverabilityFallbackEditor, {
-		global: { plugins: [createTestI18n()] },
+		global: {
+			plugins: [createTestI18n()],
+			stubs: {
+				UiSwitch: {
+					props: ['modelValue'],
+					template: '<button type="button" role="switch" :aria-checked="modelValue" />',
+				},
+			},
+		},
 		props: {
 			messageType: 'campaign',
 			providers,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from "vue";
+import { computed, useId, watch } from "vue";
 import { eligibleFallbackRelays } from "~/utils/providerRouting";
 
 interface ProviderEntry {
@@ -14,6 +14,10 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+const idBase = useId();
+const escapeHatchLabelId = `${idBase}-escape-hatch`;
+const escapeHatchHintId = `${idBase}-escape-hatch-hint`;
+const warmupOverflowLabelId = `${idBase}-warmup-overflow`;
 
 const isEnabled = defineModel<boolean>("enabled", { required: true });
 const relay = defineModel<string>("relay", { required: true });
@@ -35,21 +39,21 @@ watch(
 
 <template>
 	<div class="rounded-lg border border-border-subtle p-4 space-y-3">
-		<label class="flex items-start gap-3 cursor-pointer">
-			<input
-				v-model="isEnabled"
-				type="checkbox"
-				class="mt-1 rounded border-border-subtle text-brand focus:ring-brand"
-			/>
+		<div class="flex items-start justify-between gap-3">
 			<span>
-				<span class="block text-sm font-medium text-text-primary">
+				<span :id="escapeHatchLabelId" class="block text-sm font-medium text-text-primary">
 					{{ t('components.delivery.deliverabilityFallbackEditor.escapeHatchLabel') }}
 				</span>
-				<span class="block text-xs text-text-tertiary mt-0.5">
+				<span :id="escapeHatchHintId" class="block text-xs text-text-tertiary mt-0.5">
 					{{ t('components.delivery.deliverabilityFallbackEditor.escapeHatchHint') }}
 				</span>
 			</span>
-		</label>
+			<UiSwitch
+				v-model="isEnabled"
+				:aria-labelledby="escapeHatchLabelId"
+				:aria-describedby="escapeHatchHintId"
+			/>
+		</div>
 		<div v-if="isEnabled" class="space-y-3 pl-7">
 			<div>
 				<label for="fallback-relay" class="label">
@@ -71,16 +75,12 @@ watch(
 					{{ t('components.delivery.deliverabilityFallbackEditor.relayHint') }}
 				</p>
 			</div>
-			<label v-if="messageType === 'campaign'" class="flex items-start gap-2 cursor-pointer">
-				<input
-					v-model="isWarmupOverflowEnabled"
-					type="checkbox"
-					class="mt-0.5 rounded border-border-subtle text-brand focus:ring-brand"
-				/>
-				<span class="text-sm text-text-secondary">
+			<div v-if="messageType === 'campaign'" class="flex items-start justify-between gap-3">
+				<span :id="warmupOverflowLabelId" class="text-sm text-text-secondary">
 					{{ t('components.delivery.deliverabilityFallbackEditor.warmupOverflowLabel') }}
 				</span>
-			</label>
+				<UiSwitch v-model="isWarmupOverflowEnabled" :aria-labelledby="warmupOverflowLabelId" />
+			</div>
 		</div>
 	</div>
 </template>
