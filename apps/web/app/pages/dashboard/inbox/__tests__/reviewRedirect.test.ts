@@ -21,7 +21,7 @@ describe('one answer queue', () => {
 
 	it('points the Team inbox "Review drafts" button at the same place', () => {
 		const source = read('../index.vue');
-		expect(source).toContain(":to=\"{ path: '/dashboard/answer', query: { in: 'team' } }\"");
+		expect(source).toContain('to="/dashboard/answer?in=team"');
 		expect(source).not.toContain('to="/dashboard/inbox/review"');
 	});
 });

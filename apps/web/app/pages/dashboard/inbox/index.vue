@@ -241,7 +241,7 @@ const showOldestFirst = () => setSort('oldest-waiting');
 
 			<div class="flex items-center gap-3">
 				<!-- The one answer queue, filtered to this inbox. -->
-				<UiButton :to="{ path: '/dashboard/answer', query: { in: 'team' } }" class="gap-2">
+				<UiButton to="/dashboard/answer?in=team" class="gap-2">
 					<Icon name="lucide:check-circle" class="w-4 h-4" />
 					{{ t('dashboard.inbox.index.reviewQueue') }}
 					<span

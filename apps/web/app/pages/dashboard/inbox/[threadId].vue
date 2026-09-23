@@ -381,7 +381,7 @@ const replyOriginalDraft = computed(() =>
 const replySenderLabel = computed(() => {
 	if (contact.value) {
 		const name = `${contact.value.firstName ?? ''} ${contact.value.lastName ?? ''}`.trim();
-		return name || contact.value.email;
+		return name || contact.value.email || '';
 	}
 	return replyTarget.value?.from ?? '';
 });
