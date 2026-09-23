@@ -2,6 +2,7 @@
 import { isValidEmail } from '@owlat/shared';
 import { requiresTwoFactor } from '~/utils/accountTwoFactor';
 import { useTwoFactorChallenge } from '~/composables/useTwoFactorChallenge';
+import { registrationOpenFor, workspaceDisplayName } from '~/utils/instanceEntry';
 
 const { t } = useI18n();
 
@@ -17,6 +18,19 @@ const route = useRoute();
 // Coming out of the first-run setup wizard: show a success banner and pre-fill
 // the admin email so the just-created account is one keystroke from signing in.
 const justCompletedSetup = computed(() => route.query['postSetup'] === '1');
+
+// The instance's root is this page, so it greets visitors with the operator's
+// workspace name when one is configured rather than the product's.
+const workspaceName = workspaceDisplayName(useRuntimeConfig().public);
+
+// Registration is invite-only: "Create an account" only leads anywhere when
+// this sign-in was reached from an invitation, so it is offered only then —
+// pointing at the same invitation the register form needs.
+const canRegister = computed(() => registrationOpenFor(route.query['redirect']));
+const registerHref = computed(() => ({
+	path: '/auth/register',
+	query: { redirect: route.query['redirect'] as string },
+}));
 const prefilledEmail = typeof route.query['email'] === 'string' ? route.query['email'] : '';
 
 // Form state
@@ -77,14 +91,11 @@ function validateEmail(): boolean {
 	return true;
 }
 
-// Validate password
+// Signing in only needs a password to check. Its length is the server's call:
+// an account created under an older minimum must still be able to sign in.
 function validatePassword(): boolean {
 	if (!password.value) {
 		errors.password = t('auth.validation.passwordRequired');
-		return false;
-	}
-	if (password.value.length < 10) {
-		errors.password = t('auth.validation.passwordTooShort');
 		return false;
 	}
 	errors.password = '';
@@ -138,10 +149,13 @@ async function handleTwoFactorSubmit() {
 </script>
 
 <template>
-	<AuthShell :subtitle="t('auth.login.tagline')">
+	<AuthShell :subtitle="workspaceName ? t('auth.login.workspaceTagline') : t('auth.login.tagline')">
 		<template #title>
-			{{ t('auth.login.title') }}
-			<span class="lp-title-accent">{{ t('auth.login.titleAccent') }}</span>
+			<template v-if="workspaceName">{{ workspaceName }}</template>
+			<template v-else>
+				{{ t('auth.login.title') }}
+				<span class="lp-title-accent">{{ t('auth.login.titleAccent') }}</span>
+			</template>
 		</template>
 
 		<!-- Post-setup success banner -->
@@ -174,10 +188,9 @@ async function handleTwoFactorSubmit() {
 			/>
 
 			<!-- Password Field -->
-			<UiInput
+			<AuthPasswordInput
 				id="password"
 				v-model="password"
-				type="password"
 				autocomplete="current-password"
 				:label="t('auth.fields.password')"
 				:placeholder="t('auth.login.passwordPlaceholder')"
@@ -245,10 +258,13 @@ async function handleTwoFactorSubmit() {
 		</form>
 
 		<template #footer>
-			{{ t('auth.login.noAccount') }}
-			<NuxtLink to="/auth/register" class="link font-medium">
-				{{ t('auth.login.createAccount') }}
-			</NuxtLink>
+			<p v-if="canRegister">
+				{{ t('auth.login.noAccount') }}
+				<NuxtLink :to="registerHref" class="link font-medium">
+					{{ t('auth.login.createAccount') }}
+				</NuxtLink>
+			</p>
+			<AuthLegalFooter />
 		</template>
 	</AuthShell>
 </template>

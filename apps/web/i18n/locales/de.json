@@ -17,8 +17,12 @@
 			"email": "E-Mail",
 			"emailPlaceholder": "sie{'@'}beispiel.de",
 			"password": "Passwort",
-			"passwordHelp": "Mindestens 10 Zeichen",
+			"passwordHelp": "Mindestens {min} Zeichen.",
+			"showPassword": "Passwort anzeigen",
 			"strongPasswordPlaceholder": "Wählen Sie ein sicheres Passwort"
+		},
+		"footer": {
+			"poweredBy": "Läuft mit {owlat}"
 		},
 		"forgotPassword": {
 			"backToLogin": "Zurück zur Anmeldung",
@@ -43,6 +47,7 @@
 			"tagline": "Melden Sie sich bei Ihrem Owlat-Konto an.",
 			"title": "Willkommen",
 			"titleAccent": "zurück",
+			"workspaceTagline": "Melden Sie sich bei Ihrem Arbeitsbereich an.",
 			"twoFactor": {
 				"title": "Noch ein Schritt",
 				"body": "Gib den sechsstelligen Code aus deiner Authenticator-App ein.",
@@ -76,6 +81,7 @@
 			"titleAccent": "Konto"
 		},
 		"resetPassword": {
+			"backToSignIn": "Zurück zur Anmeldung",
 			"confirmPasswordLabel": "Passwort bestätigen",
 			"confirmPasswordPlaceholder": "Neues Passwort erneut eingeben",
 			"failed": "Das Passwort konnte nicht zurückgesetzt werden. Der Link ist möglicherweise abgelaufen.",
@@ -99,7 +105,7 @@
 			"nameRequired": "Name ist erforderlich",
 			"nameTooShort": "Der Name muss mindestens 2 Zeichen lang sein",
 			"passwordRequired": "Passwort ist erforderlich",
-			"passwordTooShort": "Das Passwort muss mindestens 10 Zeichen lang sein",
+			"passwordTooShort": "Das Passwort muss mindestens {min} Zeichen lang sein",
 			"passwordsDoNotMatch": "Die Passwörter stimmen nicht überein",
 			"termsRequired": "Sie müssen den Nutzungsbedingungen zustimmen"
 		}
@@ -11044,8 +11050,6 @@
 			"intro": "Der erste Nutzer. Nach dem Start können Sie Teammitglieder aus dem Dashboard einladen.",
 			"next": "Weiter: Überprüfung",
 			"pageTitle": "Owlat-Einrichtung — Administratorkonto",
-			"passwordHelp": "Mindestens 12 Zeichen.",
-			"passwordPlaceholder": "Mindestens 12 Zeichen",
 			"title": "{accent}-Konto",
 			"titleAccent": "Administrator"
 		},
@@ -13735,7 +13739,7 @@
 		"setupWizardValidation": {
 			"admin": {
 				"emailInvalid": "Geben Sie eine gültige E-Mail-Adresse ein.",
-				"passwordTooShort": "Verwenden Sie mindestens 12 Zeichen."
+				"passwordTooShort": "Mindestens {min} Zeichen."
 			},
 			"email": {
 				"emailitKeyRequired": "Geben Sie Ihren Emailit-API-Schlüssel ein.",

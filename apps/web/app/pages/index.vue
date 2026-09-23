@@ -1,4 +1,20 @@
 <script setup lang="ts">
+import { instanceRootRedirect } from '~/utils/instanceEntry';
+
+/**
+ * The product hero is for the hosted marketing deployment only. On a
+ * self-hosted instance `/` is the company's own door: the sign-in page, whose
+ * guest middleware sends an already signed-in visitor on to the dashboard.
+ */
+definePageMeta({
+	middleware: [
+		() => {
+			const target = instanceRootRedirect(useRuntimeConfig().public);
+			if (target) return navigateTo(target, { replace: true });
+		},
+	],
+});
+
 const { t } = useI18n();
 
 // Capability spread mirrors the feature packs an install can turn on
@@ -58,11 +74,7 @@ useHead({ title: () => t('home.pageTitle') });
 			<ul
 				class="mt-14 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-sm text-text-tertiary"
 			>
-				<li
-					v-for="(capability, index) in capabilities"
-					:key="capability"
-					class="flex items-center"
-				>
+				<li v-for="(capability, index) in capabilities" :key="capability" class="flex items-center">
 					<span v-if="index > 0" class="mr-3 text-text-disabled" aria-hidden="true">&middot;</span>
 					{{ capability }}
 				</li>

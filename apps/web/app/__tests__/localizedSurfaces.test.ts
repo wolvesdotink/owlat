@@ -19,6 +19,8 @@ import { defineComponent, h, ref } from 'vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from './i18n';
 import UiInput from '@owlat/ui/components/ui/Input.vue';
 import AuthShell from '../components/auth/AuthShell.vue';
+import AuthPasswordInput from '../components/auth/AuthPasswordInput.vue';
+import AuthLegalFooter from '../components/auth/AuthLegalFooter.vue';
 import LoginPage from '../pages/auth/login.vue';
 import RegisterPage from '../pages/auth/register.vue';
 import ForgotPasswordPage from '../pages/auth/forgot-password.vue';
@@ -89,6 +91,8 @@ beforeAll(() => {
 		useNuxtApp: () => ({ $convex: null }),
 		useState: (_key: string, init: () => unknown) => ref(init()),
 		useSlots: () => ({}),
+		// A stock self-host install: no operator branding or legal details.
+		useRuntimeConfig: () => ({ public: { deploymentMode: 'selfhost', companyName: '' } }),
 	});
 });
 
@@ -120,7 +124,13 @@ function mountSurface(component: unknown) {
 	return mount(component as never, {
 		global: {
 			plugins: [createTestI18n()],
-			components: { NuxtLink: NuxtLinkStub, UiInput, AuthShell },
+			components: {
+				NuxtLink: NuxtLinkStub,
+				UiInput,
+				AuthShell,
+				AuthPasswordInput,
+				AuthLegalFooter,
+			},
 			stubs: {
 				Icon: { template: '<span />' },
 				UiHeroField: HeroFieldStub,

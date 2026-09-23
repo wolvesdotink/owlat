@@ -34,6 +34,15 @@ const landingCss = readFileSync(
  */
 const home = en.home;
 
+describe('instance root', () => {
+	it('keeps the hero for the hosted marketing site only and sends self-hosted visitors to sign-in', () => {
+		// The decision itself is unit-tested in utils/__tests__/instanceEntry.test.ts;
+		// this pins that the page actually consults it before rendering.
+		expect(source).toContain('instanceRootRedirect(useRuntimeConfig().public)');
+		expect(source).toMatch(/definePageMeta\(\{\s*middleware:/);
+	});
+});
+
 describe('landing page copy', () => {
 	it('titles the tab with the platform positioning, not the old marketing pitch', () => {
 		// `<Page> — Owlat` is the convention every other page in the app follows.

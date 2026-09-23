@@ -1,37 +1,37 @@
-import { betterAuth } from "better-auth";
-import { organization, oneTimeToken, twoFactor } from "better-auth/plugins";
-import { createAccessControl } from "better-auth/plugins/access";
-import { getOptional, getRequired, getBoolean } from "../lib/env";
-import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "@owlat/shared/passwordPolicy";
+import { betterAuth } from 'better-auth';
+import { organization, oneTimeToken, twoFactor } from 'better-auth/plugins';
+import { createAccessControl } from 'better-auth/plugins/access';
+import { getOptional, getRequired, getBoolean } from '../lib/env';
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
 import {
 	defaultStatements,
 	adminAc,
 	ownerAc,
 	memberAc,
-} from "better-auth/plugins/organization/access";
-import { createClient } from "@convex-dev/better-auth";
-import { convex, crossDomain } from "@convex-dev/better-auth/plugins";
-import { components, internal } from "../_generated/api";
-import type { DataModel } from "../_generated/dataModel";
-import type { ActionCtx } from "../_generated/server";
+} from 'better-auth/plugins/organization/access';
+import { createClient } from '@convex-dev/better-auth';
+import { convex, crossDomain } from '@convex-dev/better-auth/plugins';
+import { components, internal } from '../_generated/api';
+import type { DataModel } from '../_generated/dataModel';
+import type { ActionCtx } from '../_generated/server';
 // NOTE: `auth.config.ts` must live at the convex root under exactly that name —
 // it is Convex's instance auth configuration, evaluated at push time to
 // register the JWT provider. Nesting it into a domain folder (as `auth/config.ts`)
 // silently strips ALL auth providers from freshly-pushed deployments: sessions
 // still work (BetterAuth plane) but every `ctx.auth.getUserIdentity()` returns
 // null and every authed query throws "Not authenticated".
-import authConfig from "../auth.config";
-import { isDevDeployment } from "../devShortcuts/_guard";
+import authConfig from '../auth.config';
+import { isDevDeployment } from '../devShortcuts/_guard';
 import {
 	generateInvitationEmailHtml,
 	generateInboxInviteEmailHtml,
 	generatePasswordResetEmailHtml,
 	generateChangeEmailVerificationHtml,
 	generateNewEmailVerificationHtml,
-} from "../lib/systemEmails";
-import { resolveBetterAuthIpAddressConfig } from "./ipAddress";
-import { resolveTrustedOrigins } from "./trustedOrigins";
-import { assertRegistrationAllowed } from "./registrationGate";
+} from '../lib/systemEmails';
+import { resolveBetterAuthIpAddressConfig } from './ipAddress';
+import { resolveTrustedOrigins } from './trustedOrigins';
+import { assertRegistrationAllowed } from './registrationGate';
 
 // Custom access control to use 'editor' instead of 'member'
 // This matches the legacy team role system
@@ -61,7 +61,7 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 	// existed (they'd have no verified flag). Unset ⇒ off (current behavior); when
 	// on it also gates sign-in. Invitation acceptance always requires verification
 	// independently: existing members can enumerate pending invitation IDs.
-	const requireEmailVerification = getBoolean("REQUIRE_EMAIL_VERIFICATION");
+	const requireEmailVerification = getBoolean('REQUIRE_EMAIL_VERIFICATION');
 	return {
 		// Cast required: BetterAuth component bundles its own copy of Convex types
 		// which are structurally identical but nominally different (bun duplicate resolution)
@@ -89,9 +89,9 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 		// on every push. Reading on first access keeps the fail-closed throw for
 		// real auth flows (app context, env available) without breaking the push.
 		get secret() {
-			return getRequired("BETTER_AUTH_SECRET");
+			return getRequired('BETTER_AUTH_SECRET');
 		},
-		baseURL: getOptional("SITE_URL"),
+		baseURL: getOptional('SITE_URL'),
 		emailAndPassword: {
 			enabled: true,
 			minPasswordLength: MIN_PASSWORD_LENGTH,
@@ -107,8 +107,8 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 				user: { name?: string; email: string };
 				token: string;
 			}) => {
-				const siteUrl = getOptional("SITE_URL") || "http://localhost:3000";
-				const fromDomain = getOptional("DEFAULT_FROM_DOMAIN") || "mail.owlat.app";
+				const siteUrl = getOptional('SITE_URL') || 'http://localhost:3000';
+				const fromDomain = getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app';
 				const resetUrl = `${siteUrl}/auth/reset-password?token=${encodeURIComponent(token)}`;
 
 				const html = generatePasswordResetEmailHtml(user.name || user.email, resetUrl);
@@ -116,7 +116,7 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 				await sendViaMta({
 					to: user.email,
 					from: `Owlat <noreply@${fromDomain}>`,
-					subject: "Reset your password — Owlat",
+					subject: 'Reset your password — Owlat',
 					html,
 				});
 			},
@@ -155,7 +155,7 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 					newEmail: string;
 					url: string;
 				}) => {
-					const fromDomain = getOptional("DEFAULT_FROM_DOMAIN") || "mail.owlat.app";
+					const fromDomain = getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app';
 
 					const html = generateChangeEmailVerificationHtml(user.name || user.email, newEmail, url);
 
@@ -163,7 +163,7 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 						// Sent to the CURRENT address on file, not the new one.
 						to: user.email,
 						from: `Owlat <noreply@${fromDomain}>`,
-						subject: "Confirm your new email — Owlat",
+						subject: 'Confirm your new email — Owlat',
 						html,
 					});
 				},
@@ -187,7 +187,7 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 				user: { name?: string; email: string };
 				url: string;
 			}) => {
-				const fromDomain = getOptional("DEFAULT_FROM_DOMAIN") || "mail.owlat.app";
+				const fromDomain = getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app';
 
 				const html = generateNewEmailVerificationHtml(user.name || user.email, user.email, url);
 
@@ -195,7 +195,7 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 					// Sent to the NEW address (user.email is the claimed one here).
 					to: user.email,
 					from: `Owlat <noreply@${fromDomain}>`,
-					subject: "Verify your new login email — Owlat",
+					subject: 'Verify your new login email — Owlat',
 					html,
 				});
 			},
@@ -272,7 +272,7 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 			// the one-time-token verify endpoint the desktop handshake redeems.
 			// Must precede `convex` so its before-hook resolves the session that
 			// `/convex/token` then mints a JWT from.
-			crossDomain({ siteUrl: getOptional("SITE_URL") || "http://localhost:3000" }),
+			crossDomain({ siteUrl: getOptional('SITE_URL') || 'http://localhost:3000' }),
 			// TOTP two-factor. Enrolment is entirely opt-in and lives on
 			// /dashboard/preferences/security: nothing about sign-in changes for an
 			// account that never enables it, and the plugin only intercepts
@@ -291,7 +291,7 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 			// convex/betterAuth/schema.ts — Convex rejects writes of undeclared
 			// fields, so the account-lockout counter would otherwise throw on the
 			// first wrong code. authSchemaParity.test.ts holds that mirror exact.
-			twoFactor({ issuer: "Owlat" }),
+			twoFactor({ issuer: 'Owlat' }),
 			// Convex plugin provides /convex/token and /convex/jwks endpoints
 			// Required for Convex client authentication via JWT
 			convex({
@@ -302,7 +302,7 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 
 						return {
 							...claims,
-							activeOrganizationId: session["activeOrganizationId"] ?? null,
+							activeOrganizationId: session['activeOrganizationId'] ?? null,
 						};
 					},
 					// REVOCATION WINDOW (accepted): the payload carries
@@ -335,7 +335,7 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 				// the existing tenant.
 				allowUserToCreateOrganization: false,
 				// Default role for organization creator
-				creatorRole: "owner",
+				creatorRole: 'owner',
 				// Maximum members per organization (reasonable limit)
 				membershipLimit: 50,
 				// Invitation expiration: 7 days (in seconds)
@@ -352,8 +352,8 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 						organizationId: org.id,
 					});
 
-					const siteUrl = getOptional("SITE_URL") || "http://localhost:3000";
-					const fromDomain = getOptional("DEFAULT_FROM_DOMAIN") || "mail.owlat.app";
+					const siteUrl = getOptional('SITE_URL') || 'http://localhost:3000';
+					const fromDomain = getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app';
 
 					// Build accept URL - BetterAuth uses the invitation ID
 					const acceptUrl = `${siteUrl}/invite/accept?id=${encodeURIComponent(invitation.id)}`;
@@ -363,7 +363,7 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 					// membership; otherwise send the generic org invite.
 					const inboxContext = await ctx.runQuery(
 						internal.mail.pendingInboxMembership.inboxInviteContextForEmail,
-						{ organizationId: org.id, email },
+						{ organizationId: org.id, email }
 					);
 
 					const inviterDisplayName = inviter.user.name || inviter.user.email;
@@ -373,14 +373,14 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 								inviterDisplayName,
 								inviter.user.email,
 								inboxContext.inboxAddress,
-								acceptUrl,
+								acceptUrl
 							)
 						: generateInvitationEmailHtml(
 								org.name,
 								inviterDisplayName,
 								inviter.user.email,
 								acceptUrl,
-								invitation.role,
+								invitation.role
 							);
 
 					await sendViaMta({

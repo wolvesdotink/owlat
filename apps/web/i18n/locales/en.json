@@ -17,8 +17,12 @@
 			"email": "Email",
 			"emailPlaceholder": "you{'@'}example.com",
 			"password": "Password",
-			"passwordHelp": "Must be at least 10 characters",
+			"passwordHelp": "Use at least {min} characters.",
+			"showPassword": "Show password",
 			"strongPasswordPlaceholder": "Choose a strong password"
+		},
+		"footer": {
+			"poweredBy": "Powered by {owlat}"
 		},
 		"forgotPassword": {
 			"backToLogin": "Back to login",
@@ -43,6 +47,7 @@
 			"tagline": "Sign in to your Owlat account.",
 			"title": "Welcome",
 			"titleAccent": "back",
+			"workspaceTagline": "Sign in to your workspace.",
 			"twoFactor": {
 				"title": "One more step",
 				"body": "Enter the six-digit code your authenticator app is showing.",
@@ -76,6 +81,7 @@
 			"titleAccent": "account"
 		},
 		"resetPassword": {
+			"backToSignIn": "Back to sign in",
 			"confirmPasswordLabel": "Confirm password",
 			"confirmPasswordPlaceholder": "Re-enter your new password",
 			"failed": "Failed to reset password. The link may have expired.",
@@ -99,7 +105,7 @@
 			"nameRequired": "Name is required",
 			"nameTooShort": "Name must be at least 2 characters",
 			"passwordRequired": "Password is required",
-			"passwordTooShort": "Password must be at least 10 characters",
+			"passwordTooShort": "Password must be at least {min} characters",
 			"passwordsDoNotMatch": "Passwords do not match",
 			"termsRequired": "You must agree to the Terms of Service"
 		}
@@ -11044,8 +11050,6 @@
 			"intro": "The first user. You can invite teammates from the dashboard after launch.",
 			"next": "Next: Review",
 			"pageTitle": "Owlat setup — Admin account",
-			"passwordHelp": "At least 12 characters.",
-			"passwordPlaceholder": "At least 12 characters",
 			"title": "{accent} account",
 			"titleAccent": "Admin"
 		},
@@ -13735,7 +13739,7 @@
 		"setupWizardValidation": {
 			"admin": {
 				"emailInvalid": "Enter a valid email address.",
-				"passwordTooShort": "Use at least 12 characters."
+				"passwordTooShort": "Use at least {min} characters."
 			},
 			"email": {
 				"emailitKeyRequired": "Enter your Emailit API key.",

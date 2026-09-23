@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { MIN_PASSWORD_LENGTH, meetsMinPasswordLength } from '@owlat/shared/passwordPolicy';
+
 const { t } = useI18n();
 
 useHead({ title: () => t('auth.resetPassword.pageTitle') });
@@ -29,8 +31,8 @@ function validateNewPassword(): boolean {
 		errors.newPassword = t('auth.validation.passwordRequired');
 		return false;
 	}
-	if (newPassword.value.length < 10) {
-		errors.newPassword = t('auth.validation.passwordTooShort');
+	if (!meetsMinPasswordLength(newPassword.value)) {
+		errors.newPassword = t('auth.validation.passwordTooShort', { min: MIN_PASSWORD_LENGTH });
 		return false;
 	}
 	errors.newPassword = '';
@@ -109,22 +111,20 @@ async function handleSubmit() {
 			</div>
 
 			<form class="space-y-5" @submit.prevent="handleSubmit">
-				<UiInput
+				<AuthPasswordInput
 					id="new-password"
 					v-model="newPassword"
-					type="password"
 					autocomplete="new-password"
 					:label="t('auth.resetPassword.newPasswordLabel')"
 					:placeholder="t('auth.fields.strongPasswordPlaceholder')"
-					:help-text="t('auth.fields.passwordHelp')"
+					:help-text="t('auth.fields.passwordHelp', { min: MIN_PASSWORD_LENGTH })"
 					:error="errors.newPassword"
 					@blur="validateNewPassword"
 				/>
 
-				<UiInput
+				<AuthPasswordInput
 					id="confirm-password"
 					v-model="confirmPassword"
-					type="password"
 					autocomplete="new-password"
 					:label="t('auth.resetPassword.confirmPasswordLabel')"
 					:placeholder="t('auth.resetPassword.confirmPasswordPlaceholder')"
@@ -136,6 +136,12 @@ async function handleSubmit() {
 					{{ isLoading ? t('auth.resetPassword.submitting') : t('auth.resetPassword.submit') }}
 				</UiButton>
 			</form>
+		</template>
+
+		<template v-if="!isSuccess" #footer>
+			<NuxtLink to="/auth/login" class="link font-medium">
+				{{ t('auth.resetPassword.backToSignIn') }}
+			</NuxtLink>
 		</template>
 	</AuthShell>
 </template>
