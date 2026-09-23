@@ -60,6 +60,18 @@ export const routeConfigs: Record<string, RouteConfig> = {
 		section: 'shared.breadcrumbRoutes.sections.dashboard',
 		sectionHref: '/dashboard',
 	},
+	'/dashboard/answer': {
+		section: 'shared.breadcrumbRoutes.sections.answer',
+		sectionHref: '/dashboard/answer',
+	},
+	'/dashboard/inboxes': {
+		section: 'shared.breadcrumbRoutes.sections.inboxes',
+		sectionHref: '/dashboard/inboxes',
+	},
+	'/dashboard/inbox': {
+		section: 'shared.breadcrumbRoutes.sections.teamInbox',
+		sectionHref: '/dashboard/inbox',
+	},
 
 	// Send section
 	'/dashboard/send': {

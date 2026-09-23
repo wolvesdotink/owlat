@@ -21,6 +21,7 @@ let path: string;
 let activeComposerId: ReturnType<typeof ref<string | null>>;
 let railDrawerOpen: ReturnType<typeof ref<boolean>>;
 let actions: Array<{ id: string; label: string; icon: string; run: () => void }>;
+let answerCount: ReturnType<typeof ref<number>>;
 
 const NuxtLink = defineComponent({
 	props: { to: { type: String, default: '' } },
@@ -59,6 +60,7 @@ beforeEach(() => {
 	path = '/dashboard';
 	activeComposerId = ref<string | null>(null);
 	railDrawerOpen = ref(false);
+	answerCount = ref(0);
 	actions = [
 		{ id: 'compose', label: 'Compose email', icon: 'lucide:pencil', run: vi.fn() },
 		{ id: 'contact', label: 'Contact', icon: 'lucide:user-plus', run: vi.fn() },
@@ -76,6 +78,7 @@ beforeEach(() => {
 	vi.stubGlobal('useQuickCreateMenu', () => ({ actions: computed(() => actions) }));
 	vi.stubGlobal('usePostboxComposerStack', () => ({ activeComposerId }));
 	vi.stubGlobal('useRailDrawer', () => ({ isOpen: railDrawerOpen, setOpen: vi.fn() }));
+	vi.stubGlobal('useAnswerQueue', () => ({ count: answerCount }));
 });
 
 afterEach(() => {
@@ -88,23 +91,24 @@ describe('slots', () => {
 			.findAll('li')
 			.map((item) => item.text());
 		expect(labels).toEqual([
-			'components.dashboard.mobileTabBar.home',
-			'components.dashboard.mobileTabBar.mail',
+			'components.dashboard.mobileTabBar.today',
+			'components.dashboard.mobileTabBar.answer',
 			'',
-			'components.dashboard.mobileTabBar.people',
+			'components.dashboard.mobileTabBar.inbox',
 			'components.dashboard.mobileTabBar.more',
 		]);
 	});
 
-	it('sends Mail to the Postbox when this instance runs one', () => {
+	it('sends Inbox to every inbox at once when this instance runs personal mail', () => {
 		const hrefs = mountBar()
 			.findAll('a')
 			.map((link) => link.attributes('href'));
-		expect(hrefs).toEqual([
-			'/dashboard',
-			'/dashboard/postbox/inbox',
-			'/dashboard/audience/contacts',
-		]);
+		expect(hrefs).toEqual(['/dashboard', '/dashboard/answer', '/dashboard/inboxes']);
+	});
+
+	it('shows how many things wait in the Answer queue', () => {
+		answerCount.value = 4;
+		expect(mountBar().get('[data-testid="mobile-tab-bar-badge"]').text()).toBe('4');
 	});
 
 	it('falls back to the shared inbox when the Postbox is off', () => {
@@ -115,22 +119,20 @@ describe('slots', () => {
 		expect(hrefs).toContain('/dashboard/inbox');
 	});
 
-	it('drops the Mail slot entirely rather than linking to a surface that is off', () => {
+	it('drops the Inbox slot entirely rather than linking to a surface that is off', () => {
 		flags = [];
 		const hrefs = mountBar()
 			.findAll('a')
 			.map((link) => link.attributes('href'));
-		expect(hrefs).toEqual(['/dashboard', '/dashboard/audience/contacts']);
+		expect(hrefs).toEqual(['/dashboard', '/dashboard/answer']);
 	});
 
 	it('marks the destination you are on', () => {
-		path = '/dashboard/audience/contacts';
+		path = '/dashboard/answer';
 		const current = mountBar()
 			.findAll('a')
 			.filter((link) => link.attributes('aria-current') === 'page');
-		expect(current.map((link) => link.attributes('href'))).toEqual([
-			'/dashboard/audience/contacts',
-		]);
+		expect(current.map((link) => link.attributes('href'))).toEqual(['/dashboard/answer']);
 	});
 
 	it('hands the drawer back to the shell instead of owning it', async () => {

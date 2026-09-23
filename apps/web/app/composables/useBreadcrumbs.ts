@@ -80,7 +80,7 @@ export function useBreadcrumbs() {
 			// Generate breadcrumb from path segments
 			const segments = path.split('/').filter(Boolean);
 			if (segments.length > 0 && segments[0] === 'dashboard') {
-				items.push({ label: 'Dashboard', href: '/dashboard' });
+				items.push({ label: 'shared.breadcrumbRoutes.sections.dashboard', href: '/dashboard' });
 				for (let i = 1; i < segments.length; i++) {
 					const segment = segments[i];
 					// Skip IDs (assuming IDs are long strings or contain numbers)

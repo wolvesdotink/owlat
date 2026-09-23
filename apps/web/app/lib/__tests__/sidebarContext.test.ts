@@ -30,16 +30,23 @@ describe('contextForPath', () => {
 		expect(contextForPath('/dashboard/admin/delivery')).toBeNull();
 	});
 
+	it('claims Today, the Answer queue and All inboxes for Conversations', () => {
+		expect(contextForPath('/dashboard')).toBe('inbox');
+		expect(contextForPath('/dashboard/answer')).toBe('inbox');
+		expect(contextForPath('/dashboard/inboxes')).toBe('inbox');
+		expect(contextForPath('/dashboard/marketing')).toBe('marketing');
+	});
+
 	it('returns null for shared routes', () => {
-		expect(contextForPath('/dashboard')).toBeNull();
 		expect(contextForPath('/dashboard/assistant')).toBeNull();
 		expect(contextForPath('/dashboard/knowledge/graph')).toBeNull();
 		expect(contextForPath('/dashboard/admin/instance/features')).toBeNull();
 	});
 
 	it('matches whole path segments only', () => {
-		expect(contextForPath('/dashboard/inboxes')).toBeNull();
+		expect(contextForPath('/dashboard/answers')).toBeNull();
 		expect(contextForPath('/dashboard/sendgrid')).toBeNull();
+		expect(contextForPath('/dashboard/marketingx')).toBeNull();
 	});
 
 	it('ignores query and hash', () => {
@@ -100,14 +107,13 @@ describe('resolveSwitchTarget', () => {
 	});
 
 	it('ignores a last-visited route the target context does not own', () => {
-		expect(resolveSwitchTarget('inbox', '/dashboard/campaigns', sections)).toBe(
-			'/dashboard/postbox/inbox'
-		);
+		expect(resolveSwitchTarget('inbox', '/dashboard/campaigns', sections)).toBe('/dashboard');
 	});
 
-	it('falls back to the preferred home when its item is visible', () => {
-		expect(resolveSwitchTarget('inbox', undefined, sections)).toBe('/dashboard/postbox/inbox');
-		expect(resolveSwitchTarget('marketing', undefined, sections)).toBe('/dashboard/campaigns');
+	it('falls back to the preferred home: Today for Conversations, the overview for Marketing', () => {
+		expect(resolveSwitchTarget('inbox', undefined, sections)).toBe('/dashboard');
+		const withOverview = [...sections, section('send', ['/dashboard/marketing'])];
+		expect(resolveSwitchTarget('marketing', undefined, withOverview)).toBe('/dashboard/marketing');
 	});
 
 	it('falls back to the first visible item when the preferred home was flag-filtered out', () => {
@@ -115,7 +121,6 @@ describe('resolveSwitchTarget', () => {
 			section('inbox', ['/dashboard/inbox']),
 			section('send', ['/dashboard/send']),
 		];
-		expect(resolveSwitchTarget('inbox', undefined, noPostbox)).toBe('/dashboard/inbox');
 		expect(resolveSwitchTarget('marketing', undefined, noPostbox)).toBe('/dashboard/send');
 	});
 

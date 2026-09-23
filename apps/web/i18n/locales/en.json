@@ -1922,7 +1922,8 @@
 				"progressCount": "{completed} of {total} done",
 				"progressLabel": "Getting started progress",
 				"subtitle": "Everything left to do to get Owlat working for you — in one place.",
-				"title": "Getting started"
+				"title": "Getting started",
+				"continue": "Continue setup"
 			},
 			"gettingStartedResources": {
 				"convexCta": "Launch dashboard ↗",
@@ -1954,7 +1955,10 @@
 				"label": "Primary navigation",
 				"mail": "Mail",
 				"more": "More",
-				"people": "People"
+				"people": "People",
+				"today": "Today",
+				"answer": "Answer",
+				"inbox": "Inbox"
 			},
 			"quickCreateMenu": {
 				"more": "More create options"
@@ -3439,7 +3443,9 @@
 				"sendAs": "Send as",
 				"subject": "Subject",
 				"switchToAll": "switch to all",
-				"to": "To"
+				"to": "To",
+				"leavesTeamInbox": "This conversation came in to {team}. Replying from your own address takes it out of the shared inbox.",
+				"switchBack": "Reply as {team} instead"
 			},
 			"postboxComposerFollowUp": {
 				"armedTitle": "Reminder if no reply by {datetime} — click to remove",
@@ -3452,7 +3458,8 @@
 				"sending": "Sending…",
 				"signature": "Signature",
 				"uploadingTitle": "Waiting for attachments to finish uploading…",
-				"previewAsSent": "Preview as sent"
+				"previewAsSent": "Preview as sent",
+				"sendAs": "Send as {name}"
 			},
 			"postboxComposerGuards": {
 				"alignment": {
@@ -5381,6 +5388,177 @@
 				"failed": "This panel ran into a problem and was hidden to keep the rest of the page working.",
 				"loading": "Loading {label}…",
 				"tryAgain": "Try again"
+			}
+		},
+		"shell": {
+			"status": {
+				"draftReady": "Draft ready",
+				"needsYou": "Needs you",
+				"needsReview": "Needs review",
+				"mentioned": "Mentioned you",
+				"working": "Agent drafting",
+				"updated": "Updated",
+				"resultsIn": "Results in",
+				"running": "Running",
+				"scheduled": "Scheduled",
+				"waiting": "Waiting on them"
+			},
+			"noSubject": "(no subject)",
+			"teamInbox": "Team inbox",
+			"inboxGroup": {
+				"expand": "Show conversations in {name}",
+				"collapse": "Hide conversations in {name}",
+				"unread": "{count} unread",
+				"compose": "New email from {name}",
+				"moreUnread": "one more unread | {count} more unread",
+				"showMore": "Show more"
+			},
+			"chat": {
+				"title": "Chat",
+				"all": "Open chat",
+				"allWithUnread": "{count} new",
+				"empty": "Nothing new in chat."
+			},
+			"options": {
+				"label": "Sidebar options",
+				"perInbox": "Conversations per inbox",
+				"fewer": "Show fewer",
+				"more": "Show more",
+				"order": "Order",
+				"sortRecent": "Most recent first",
+				"sortPriority": "Most urgent first"
+			},
+			"nav": {
+				"today": "Today",
+				"answer": "Answer queue",
+				"allInboxes": "All inboxes",
+				"inboxes": "Inboxes",
+				"more": "More",
+				"answerCount": "one waiting for an answer | {count} waiting for an answer"
+			},
+			"marketing": {
+				"overview": "Overview",
+				"campaigns": "Campaigns",
+				"newCampaign": "New campaign",
+				"allCampaigns": "All campaigns",
+				"automations": "Automations",
+				"allAutomations": "All automations",
+				"audience": "Audience",
+				"templates": "Templates",
+				"draft": "Draft",
+				"deliveryHealthy": "Delivery healthy",
+				"deliveryNeedsAttention": "Delivery needs attention"
+			},
+			"footer": {
+				"settings": "Settings",
+				"assistant": "Assistant",
+				"shortcuts": "Keyboard shortcuts"
+			},
+			"settings": {
+				"title": "Settings",
+				"back": "Back",
+				"search": "Search settings",
+				"results": "Matching settings",
+				"noResults": "No setting matches.",
+				"workspace": "Workspace"
+			}
+		},
+		"today": {
+			"answer": {
+				"title": "one email needs an answer from you | {count} emails need an answer from you",
+				"cta": "Review answer queue",
+				"drafts": "one with a draft ready | {count} with drafts ready",
+				"mail": "one email | {count} emails",
+				"team": "one team draft | {count} team drafts",
+				"mentions": "one mention | {count} mentions",
+				"minutes": "about a minute | about {count} minutes",
+				"clearTitle": "Nothing needs an answer",
+				"clearBody": "New questions land in the Answer queue as they arrive.",
+				"needsTitle": "Needs an answer",
+				"allInQueue": "All {count} in the queue",
+				"draftReady": "draft ready",
+				"mention": "mention",
+				"mentionTitle": "#{room}: {preview}"
+			},
+			"changed": {
+				"title": "What changed",
+				"subtitle": "in conversations you already know",
+				"newFrom": "One new message from {name}: | {count} new messages, latest from {name}:",
+				"more": "and one more conversation. | and {count} more conversations."
+			},
+			"openInboxes": "Open all inboxes",
+			"updates": {
+				"title": "Updates",
+				"subtitle": "no reply needed",
+				"keysMove": "move",
+				"worth": "Worth knowing",
+				"also": "Also arrived",
+				"empty": "Nothing new that needs no reply. Updates from people and services show up here.",
+				"more": "One more update is waiting. | {count} more updates are waiting."
+			},
+			"filed": {
+				"title": "Filed away:",
+				"newsletter": "one newsletter | {count} newsletters",
+				"notification": "one notification | {count} notifications",
+				"receipt": "one receipt | {count} receipts",
+				"promotion": "one promotion | {count} promotions",
+				"spam": "one spam caught | {count} spam caught",
+				"reassure": "None of these need a reply."
+			},
+			"line": {
+				"done": "Done",
+				"replyAnyway": "Reply anyway"
+			},
+			"source": {
+				"one": "Source: email from {from}, “{subject}”",
+				"many": "Sources: {count} emails, first “{subject}”",
+				"open": "open",
+				"fullThread": "full conversation"
+			},
+			"peek": {
+				"label": "Email preview",
+				"back": "Back to Today",
+				"position": "Email {index} of {total}",
+				"previous": "Previous email",
+				"next": "Next email",
+				"gone": "This email is no longer available here. It may have been moved or deleted.",
+				"done": "Done",
+				"openThread": "Open conversation",
+				"markReadOperation": "Mark as read"
+			}
+		},
+		"answer": {
+			"filter": {
+				"label": "Show answers from",
+				"all": "All"
+			},
+			"band": {
+				"answeringAs": "Answering as {name}",
+				"replyingIn": "Replying in #{room}",
+				"teamDetail": "the team inbox address, on behalf of the team",
+				"chatDetail": "internal, not sent by email",
+				"followUp": "follow-up",
+				"draftReady": "draft ready",
+				"question": "needs your input",
+				"needsReply": "needs a reply",
+				"agentDraft": "agent draft · review",
+				"escalation": "escalated to you",
+				"mention": "mention"
+			},
+			"mention": {
+				"reply": "Reply in chat",
+				"markRead": "Mark read",
+				"markReadOperation": "Mark mention read"
+			},
+			"empty": {
+				"title": "Nothing needs an answer",
+				"body": "New questions show up here as they arrive, from every inbox you read."
+			},
+			"backToToday": "Back to Today",
+			"done": {
+				"title": "All caught up",
+				"summary": "{summary} this session.",
+				"body": "Today now starts fresh from here."
 			}
 		}
 	},
@@ -10133,6 +10311,63 @@
 			"loading": "Loading visualizations...",
 			"pageTitle": "Visualizations — Owlat",
 			"title": "Visualizations"
+		},
+		"today": {
+			"pageTitle": "Today",
+			"greeting": {
+				"morning": "Good morning",
+				"morningNamed": "Good morning, {name}",
+				"afternoon": "Good afternoon",
+				"afternoonNamed": "Good afternoon, {name}",
+				"evening": "Good evening",
+				"eveningNamed": "Good evening, {name}"
+			},
+			"since": {
+				"label": "Since you last looked ({when}):",
+				"fallback": "In the last 24 hours:",
+				"newMail": "no new email | one new email | {count} new emails",
+				"newMailCapped": "more than {count} new emails",
+				"moved": "one conversation you follow moved | {count} conversations you follow moved",
+				"mentions": "one chat mention | {count} chat mentions"
+			},
+			"markAllSeen": "Mark all as seen",
+			"markedSeen": "Marked as seen. Today starts fresh from here.",
+			"replyRequested": "The agent is drafting a reply. It will wait in the Answer queue.",
+			"openQueue": "Open queue",
+			"deliveryAlert": "Mail delivery needs attention.",
+			"openDelivery": "Open delivery",
+			"operations": {
+				"done": "Mark as done",
+				"replyAnyway": "Ask for a reply",
+				"markSeen": "Mark as seen"
+			}
+		},
+		"answer": {
+			"pageTitle": "Answer queue"
+		},
+		"inboxes": {
+			"pageTitle": "All inboxes",
+			"title": "All inboxes",
+			"subtitle": "Every conversation from the one inbox you read | Every conversation from the {count} inboxes you read",
+			"filterLabel": "Filter conversations",
+			"allInboxes": "All",
+			"show": {
+				"all": "Everything",
+				"unread": "Unread",
+				"needs": "Needs you"
+			},
+			"clearCategory": "Show every category",
+			"category": {
+				"newsletter": "Newsletters",
+				"notification": "Notifications",
+				"receipt": "Receipts",
+				"promotion": "Promotions",
+				"spam": "Spam",
+				"person": "From people",
+				"other": "Other"
+			},
+			"empty": "No conversations match these filters.",
+			"footnote": "Shows the latest {count} conversations of each inbox. Open an inbox for everything, including sent, archive and search."
 		}
 	},
 	"desktop": {
@@ -11208,10 +11443,13 @@
 				"audience": "Audience",
 				"automations": "Automations",
 				"campaigns": "Campaigns",
-				"dashboard": "Dashboard",
+				"dashboard": "Today",
 				"delivery": "Delivery",
 				"preferences": "Preferences",
-				"send": "Send"
+				"send": "Send",
+				"answer": "Answer queue",
+				"inboxes": "All inboxes",
+				"teamInbox": "Team inbox"
 			},
 			"subsections": {
 				"instance": "Instance",
@@ -11532,13 +11770,16 @@
 					"preferences": "Preferences",
 					"sent": "Sent",
 					"spam": "Spam",
-					"trash": "Trash"
+					"trash": "Trash",
+					"answerQueue": "Answer queue",
+					"allInboxes": "All inboxes"
 				},
 				"send": {
 					"automations": "Automations",
 					"campaigns": "Campaigns",
 					"templatesAndBlocks": "Templates & blocks",
-					"transactional": "Transactional"
+					"transactional": "Transactional",
+					"overview": "Marketing overview"
 				}
 			},
 			"sections": {
@@ -15117,7 +15358,7 @@
 			},
 			"collapseSidebar": "Collapse sidebar",
 			"contexts": {
-				"inbox": "Inbox",
+				"inbox": "Conversations",
 				"marketing": "Marketing"
 			},
 			"dashboardTooltip": "Dashboard",

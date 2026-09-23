@@ -1,10 +1,11 @@
 /**
  * Pure model for the sidebar's Inbox ↔ Marketing context toggle.
  *
- * The sidebar renders one *context* at a time so it stays focused on what the
- * user is currently doing: Inbox (Team Inbox, Postbox, Chat) or Marketing
- * (Send, Audience, Delivery). Dashboard, Assistant, Knowledge and Settings are
- * shared — visible in both contexts and owned by neither.
+ * The sidebar renders one *context* (workspace) at a time so it stays focused
+ * on what the user is currently doing: Conversations (Today, the Answer queue,
+ * every inbox, Chat) or Marketing (Overview, Campaigns, Automations, Audience,
+ * Templates). Assistant, Knowledge and Settings are shared — owned by neither,
+ * reached from the sidebar footer and ⌘K rather than listed in either.
  *
  * The route is the source of truth: landing anywhere inside a context's route
  * subtree activates that context; shared routes are sticky and keep the last
@@ -40,8 +41,15 @@ const SECTION_CONTEXT: Record<SectionKey, SidebarContext | 'shared'> = {
  * `/dashboard/campaigns/new` is Marketing even though no nav item points at it.
  */
 const CONTEXT_ROUTE_PREFIXES: Record<SidebarContext, string[]> = {
-	inbox: ['/dashboard/inbox', '/dashboard/postbox', '/dashboard/chat'],
+	inbox: [
+		'/dashboard/inbox',
+		'/dashboard/inboxes',
+		'/dashboard/answer',
+		'/dashboard/postbox',
+		'/dashboard/chat',
+	],
 	marketing: [
+		'/dashboard/marketing',
 		'/dashboard/campaigns',
 		'/dashboard/automations',
 		'/dashboard/send',
@@ -55,9 +63,21 @@ const CONTEXT_ROUTE_PREFIXES: Record<SidebarContext, string[]> = {
  * item of the context wins.
  */
 const PREFERRED_CONTEXT_HOME: Record<SidebarContext, string> = {
-	inbox: '/dashboard/postbox/inbox',
-	marketing: '/dashboard/campaigns',
+	inbox: '/dashboard',
+	marketing: '/dashboard/marketing',
 };
+
+/**
+ * Routes a context owns EXACTLY (not as a subtree). Today (`/dashboard`) is
+ * the Conversations home, but a prefix rule would claim the whole app.
+ */
+const CONTEXT_EXACT_ROUTES: Record<SidebarContext, string[]> = {
+	inbox: ['/dashboard'],
+	marketing: [],
+};
+
+/** Homes that exist for every viewer, so they never need a nav item to be valid. */
+const UNGATED_HOMES = new Set(['/dashboard']);
 
 const ownsPath = (prefix: string, path: string) => path === prefix || path.startsWith(`${prefix}/`);
 
@@ -69,6 +89,7 @@ const ownsPath = (prefix: string, path: string) => path === prefix || path.start
 export function contextForPath(fullPath: string): SidebarContext | null {
 	const path = fullPath.split(/[?#]/, 1)[0] ?? fullPath;
 	for (const context of SIDEBAR_CONTEXTS) {
+		if (CONTEXT_EXACT_ROUTES[context].includes(path)) return context;
 		if (CONTEXT_ROUTE_PREFIXES[context].some((prefix) => ownsPath(prefix, path))) {
 			return context;
 		}
@@ -108,6 +129,6 @@ export function resolveSwitchTarget(
 		.filter((section) => SECTION_CONTEXT[section.key] === target)
 		.flatMap((section) => section.items.map((item) => item.href));
 	const preferred = PREFERRED_CONTEXT_HOME[target];
-	if (hrefs.includes(preferred)) return preferred;
+	if (UNGATED_HOMES.has(preferred) || hrefs.includes(preferred)) return preferred;
 	return hrefs[0] ?? '/dashboard';
 }
