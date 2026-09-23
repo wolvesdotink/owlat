@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * A password field with a show/hide toggle, for every screen where someone
- * types an account password (sign-in, register, reset, the setup wizard's
- * admin step).
+ * types an account password (sign-in, register, reset, desktop sign-in, the
+ * two-factor password prompts, the setup wizard's admin step).
  *
  * It mirrors `UiInput`'s markup and classes rather than wrapping it: the
  * toggle has to be a real, focusable button inside the input's box, and

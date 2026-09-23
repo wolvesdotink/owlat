@@ -268,10 +268,9 @@ async function copyManualKey() {
 				<p class="text-sm text-text-secondary">
 					{{ t('dashboard.preferences.security.twoFactor.setup.passwordStep') }}
 				</p>
-				<UiInput
+				<AuthPasswordInput
 					id="twofactor-password"
 					v-model="enrolPassword"
-					type="password"
 					autocomplete="current-password"
 					:label="t('dashboard.preferences.security.twoFactor.setup.passwordLabel')"
 					:error="failureMessage(enrolError)"
@@ -402,10 +401,9 @@ async function copyManualKey() {
 				<p class="text-sm text-text-secondary">
 					{{ t('dashboard.preferences.security.twoFactor.disableDialog.body') }}
 				</p>
-				<UiInput
+				<AuthPasswordInput
 					id="twofactor-disable-password"
 					v-model="disablePassword"
-					type="password"
 					autocomplete="current-password"
 					:label="t('dashboard.preferences.security.twoFactor.disableDialog.passwordLabel')"
 					:error="failureMessage(disableError)"
@@ -436,10 +434,9 @@ async function copyManualKey() {
 				<p class="text-sm text-text-secondary">
 					{{ t('dashboard.preferences.security.twoFactor.regenerateDialog.body') }}
 				</p>
-				<UiInput
+				<AuthPasswordInput
 					id="twofactor-regenerate-password"
 					v-model="regeneratePassword"
-					type="password"
 					autocomplete="current-password"
 					:label="t('dashboard.preferences.security.twoFactor.regenerateDialog.passwordLabel')"
 					:error="failureMessage(regenerateError)"
