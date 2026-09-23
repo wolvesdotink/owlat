@@ -93,16 +93,12 @@ export const inboxTables = {
 		createdAt: v.number(),
 	})
 		.index('by_status', ['status'])
-		// Status + recency: lets the Team Inbox filter pills page an Open / Waiting
-		// / Resolved view in true lastMessageAt order (both directions) instead of
-		// falling back to creation order on the plain by_status index.
+		// Status (optionally after the assignee) + recency: the status tabs, with or
+		// without Me / Unassigned, page in lastMessageAt order (inbox/threadFilters.ts).
 		.index('by_status_and_last_message_at', ['status', 'lastMessageAt'])
 		.index('by_last_message_at', ['lastMessageAt'])
 		.index('by_contact', ['contactId'])
 		.index('by_assigned_to', ['assignedTo'])
-		// Assignment + status + recency: the Team Inbox's Me / Unassigned filter
-		// on a status tab pages in lastMessageAt order, like the tab without it,
-		// and only reads that assignee's threads in that status.
 		.index('by_assigned_to_and_status_and_last_message_at', [
 			'assignedTo',
 			'status',
