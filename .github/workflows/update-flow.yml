@@ -1,0 +1,102 @@
+name: Update flow
+
+# A real in-app update, end to end (scripts/e2e-update-flow.sh): install the
+# previous release, have the updater apply the latest one, check the stack
+# landed on it.
+#
+# Two modes:
+#   - pull requests that touch the updater: the PR's updater image performs the
+#     rollout, so a change to the rollout is tested by a rollout;
+#   - nightly, on every published release, and on dispatch: the shipped updater
+#     of the previous release does it, which is exactly what an operator
+#     clicking "Update now" runs.
+#
+# Needs no secrets: everything comes from the public release assets and GHCR.
+on:
+  pull_request:
+    paths:
+      - 'apps/updater/**'
+      - 'packages/shared/src/containerHealth*'
+      - 'scripts/e2e-update-flow.sh'
+      - '.github/workflows/update-flow.yml'
+  release:
+    types: [published]
+  schedule:
+    - cron: '30 4 * * *' # nightly 04:30 UTC, after the E2E run
+  workflow_dispatch:
+    inputs:
+      from:
+        description: 'Version to install first (default: the release before the latest)'
+        required: false
+      to:
+        description: 'Version to update to (default: the latest release)'
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-flow-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  update-flow:
+    name: Update ${{ github.event_name == 'pull_request' && '(this PR''s updater)' || '(shipped updater)' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Resolve versions
+        id: versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FROM: ${{ inputs.from }}
+          TO: ${{ inputs.to }}
+        run: |
+          # Published, non-prerelease server releases (v*), newest first.
+          mapfile -t releases < <(gh release list --repo "$GITHUB_REPOSITORY" \
+            --exclude-drafts --exclude-pre-releases --limit 20 --json tagName \
+            -q '.[].tagName | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))')
+          TO="${TO:-${releases[0]}}"
+          if [ -z "$FROM" ]; then
+            for i in "${!releases[@]}"; do
+              if [ "${releases[$i]}" = "v${TO#v}" ]; then FROM="${releases[$((i + 1))]:-}"; fi
+            done
+          fi
+          if [ -z "$FROM" ] || [ -z "$TO" ]; then
+            echo "::error::cannot resolve versions (from='$FROM' to='$TO')"
+            exit 1
+          fi
+          echo "from=${FROM#v}" >> "$GITHUB_OUTPUT"
+          echo "to=${TO#v}" >> "$GITHUB_OUTPUT"
+          echo "Updating ${FROM#v} → ${TO#v}"
+
+      # Two releases' images plus a Convex backend come to ~10 GB; a stock
+      # runner has about 14 GB free, and the updater refuses to pull below 4.
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker image prune -a -f >/dev/null
+          df -h /
+
+      - name: Build this PR's updater
+        if: github.event_name == 'pull_request'
+        run: |
+          docker build -f apps/updater/Dockerfile \
+            --build-arg OWLAT_VERSION=${{ steps.versions.outputs.to }} \
+            --build-arg OWLAT_GIT_SHA=${{ github.sha }} \
+            -t ghcr.io/wolvesdotink/updater:ci-${{ github.sha }} .
+          echo "UPDATER_IMAGE=ghcr.io/wolvesdotink/updater:ci-${{ github.sha }}" >> "$GITHUB_ENV"
+
+      # As root, like a real install: the updater runs with every capability
+      # dropped, so it can only write an install directory root owns.
+      - name: Run the update
+        run: |
+          sudo --preserve-env=UPDATER_IMAGE,OWLAT_REPO \
+            bash scripts/e2e-update-flow.sh \
+            "${{ steps.versions.outputs.from }}" "${{ steps.versions.outputs.to }}"
