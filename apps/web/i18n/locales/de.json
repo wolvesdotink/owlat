@@ -4711,13 +4711,13 @@
 				"undo": "Rückgängig"
 			},
 			"postboxCrossSurfaceStrip": {
-				"alsoInTeamInbox": "Auch im Team-Posteingang",
+				"alsoInTeamInbox": "Auch im Team-Postfach",
 				"assigned": "zugewiesen an {assignee}",
 				"assignedWithDraft": "zugewiesen an {assignee}, Entwurf ausstehend",
 				"draftPending": "Entwurf ausstehend",
 				"unassigned": "noch niemandem zugewiesen",
 				"replied": "dort bereits beantwortet",
-				"open": "Im Team-Posteingang öffnen"
+				"open": "Im Team-Postfach öffnen"
 			},
 			"postboxDailyBriefSettings": {
 				"title": "Tagesüberblick per E-Mail",
@@ -5146,7 +5146,7 @@
 			"inboundRetentionCard": {
 				"adminOnly": "Nur Inhaber und Administratoren können das ändern.",
 				"dayOption": "{count} Tage",
-				"description": "Wie lange der Team-Posteingang die Originaldatei einer Nachricht samt Anhängen behält. Nachrichten, Absender und Details bleiben in jedem Fall erhalten; entfernt werden nur die gespeicherten Dateien. Persönliche Postfächer sind nicht betroffen.",
+				"description": "Wie lange das Team-Postfach die Originaldatei einer Nachricht samt Anhängen behält. Nachrichten, Absender und Details bleiben in jedem Fall erhalten; entfernt werden nur die gespeicherten Dateien. Persönliche Postfächer sind nicht betroffen.",
 				"label": "Dateien behalten für",
 				"savedToast": "Speicherdauer aktualisiert",
 				"scanNote": "Der Assistent liest Anhänge nur, wenn die Anhangsprüfung auf dem Mailserver aktiviert ist. Ohne sie werden Dateien weiterhin gespeichert und können heruntergeladen werden, aber nie verarbeitet.",
@@ -5621,11 +5621,11 @@
 		},
 		"today": {
 			"answer": {
-				"title": "{count} wartet auf deine Antwort | {count} warten auf deine Antwort",
+				"title": "{count} wartet auf Ihre Antwort | {count} warten auf Ihre Antwort",
 				"cta": "Antwortliste durchgehen",
 				"drafts": "{count} Entwurf fertig | {count} Entwürfe fertig",
-				"mail": "{count} in deinen Postfächern",
-				"team": "{count} im Team-Posteingang",
+				"mail": "{count} in Ihren Postfächern",
+				"team": "{count} im Team-Postfach",
 				"mentions": "{count} Erwähnung | {count} Erwähnungen",
 				"minutes": "etwa {count} Minute | etwa {count} Minuten",
 				"clearTitle": "Nichts wartet auf eine Antwort",
@@ -6385,8 +6385,8 @@
 				"aiReplies": {
 					"loading": "Einstellungen für KI-Antworten werden geladen…",
 					"mode": {
-						"description": "Das gilt für alle Team-Posteingänge. Sie können jederzeit wechseln.",
-						"needsFeatures": "Für KI-Antworten müssen die KI-Funktionen und der Team-Posteingang eingeschaltet sein.",
+						"description": "Das gilt für alle Team-Postfächer. Sie können jederzeit wechseln.",
+						"needsFeatures": "Für KI-Antworten müssen die KI-Funktionen und das Team-Postfach eingeschaltet sein.",
 						"title": "Was die KI mit neuer Mail macht"
 					},
 					"openFeatures": "Funktionen öffnen",
@@ -9097,9 +9097,9 @@
 					"waiting": "Keine Konversation wartet auf eine Kundenantwort."
 				},
 				"errorTitle": "Posteingang konnte nicht geladen werden",
-				"listAriaLabel": "Konversationen im Team-Posteingang",
+				"listAriaLabel": "Konversationen im Team-Postfach",
 				"loadMore": "Mehr laden",
-				"pageTitle": "Team-Posteingang — Owlat",
+				"pageTitle": "Team-Postfach — Owlat",
 				"reviewQueue": "Entwürfe prüfen",
 				"snoozeThreadOperation": "Konversation zurückstellen",
 				"subtitle": "Kundengespräche, die Ihr Team gemeinsam bearbeitet.",
@@ -10439,7 +10439,7 @@
 				"fallback": "In den letzten 24 Stunden:",
 				"newMail": "keine neue E-Mail | {count} neue E-Mail | {count} neue E-Mails",
 				"newMailCapped": "mehr als {count} neue E-Mails",
-				"moved": "{count} Unterhaltung, die du kennst, hat sich bewegt | {count} Unterhaltungen, die du kennst, haben sich bewegt",
+				"moved": "{count} Unterhaltung, die Sie verfolgen, hat sich bewegt | {count} Unterhaltungen, die Sie verfolgen, haben sich bewegt",
 				"mentions": "{count} Erwähnung im Chat | {count} Erwähnungen im Chat"
 			},
 			"markAllSeen": "Alles als gesehen markieren",
