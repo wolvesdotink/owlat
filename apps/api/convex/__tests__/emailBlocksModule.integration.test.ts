@@ -183,6 +183,8 @@ describe('Saved block module — update', () => {
 			const template = await ctx.db.get(templateId!);
 			expect(template?.htmlRenderState).toBeDefined();
 			expect(template?.htmlRenderState?.stale).toBe(true);
+			// The content moved under any open editor, so its draft is now stale.
+			expect(template?.contentRevision).toBe(1);
 
 			const blocks = parseTemplateBlocks(template?.content ?? '');
 			// Content propagated — text is now 'new'

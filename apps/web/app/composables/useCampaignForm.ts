@@ -4,7 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { emailRegex } from '@owlat/shared';
 import type { useCampaignABTest } from './useCampaignABTest';
 import { useCampaignActions } from './useCampaignActions';
-import { useEditorDirtyTracking } from './useEmailEditorBridge';
+import { useEditorDirtyTracking } from './useEditorDirtyTracking';
 
 type ABTest = ReturnType<typeof useCampaignABTest>;
 

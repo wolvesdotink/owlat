@@ -83,6 +83,10 @@ export const templateTables = {
 		searchableText: v.optional(v.string()),
 		// Schema version for `content` (EditorBlock[]). Bump on block shape change.
 		contentBlockVersion: v.optional(v.number()),
+		// Editor-content revision: advanced by every write to the fields an
+		// editor save derives its payload from, so a save built on an older
+		// revision is refused (lib/contentRevision.ts). Absent = 0.
+		contentRevision: v.optional(v.number()),
 		// Renderer engine version that produced `htmlContent`. Bump when rendering output changes materially.
 		rendererVersion: v.optional(v.number()),
 		// Saved-block rerender state. `stale: true` means `htmlContent` no
@@ -219,6 +223,10 @@ export const templateTables = {
 		searchableText: v.optional(v.string()),
 		// Schema version for `content` (EditorBlock[]). Bump on block shape change.
 		contentBlockVersion: v.optional(v.number()),
+		// Editor-content revision: advanced by every write to the fields an
+		// editor save derives its payload from, so a save built on an older
+		// revision is refused (lib/contentRevision.ts). Absent = 0.
+		contentRevision: v.optional(v.number()),
 		// Renderer engine version that produced `htmlContent`. Bump when rendering output changes materially.
 		rendererVersion: v.optional(v.number()),
 		// Schema version for `attachments` JSON. Bump on shape change.

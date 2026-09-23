@@ -108,6 +108,7 @@ const {
 	save: handleSave,
 } = useEmailEditorBridge({
 	source: template,
+	revision: (row) => row.contentRevision ?? 0,
 	extraWatch: [() => plainTextOverride.value],
 	initialize: (t, ctx) => {
 		ctx.name.value = t.name;
@@ -122,29 +123,29 @@ const {
 			ctx.blocks.value = [];
 		}
 	},
-	save: async (ctx) => {
+	save: async (ctx, base) => {
+		// Everything is read here, before the first await; the payload is built
+		// from this snapshot and the row the draft was loaded from.
+		const id = templateId.value;
 		await publishableEmailSave({
-			identifier: { emailType: 'marketing', emailId: templateId.value },
-			blocks: ctx.blocks.value,
+			draft: {
+				name: ctx.name.value,
+				subject: ctx.subject.value,
+				blocks: ctx.blocks.value,
+				plainTextOverride: plainTextOverride.value,
+			},
+			base: {
+				supportedLanguages: base.source?.supportedLanguages ?? [],
+				defaultLanguage: base.source?.defaultLanguage ?? 'en',
+				translations: base.source?.translations,
+				revision: base.revision,
+			},
 			renderOptions: { theme: emailTheme.value, variableType: 'personalization' },
-			supportedLanguages: template.value?.supportedLanguages ?? [],
-			defaultLanguage: template.value?.defaultLanguage ?? 'en',
-			plainTextOverride: plainTextOverride.value,
-			update: async (payload) => {
+			commit: async (payload) => {
 				// The bridge clears the dirty flag only when save() resolves. The
-				// operation module has toasted any categorized failure; throw so the
-				// editor stays dirty instead of being marked clean on a failed save.
-				const result = await updateTemplate({
-					templateId: templateId.value,
-					name: ctx.name.value,
-					subject: ctx.subject.value,
-					content: JSON.stringify(ctx.blocks.value),
-					htmlContent: payload.htmlContent,
-					htmlTranslations: payload.htmlTranslations,
-					linkedBlockIds: payload.linkedBlockIds,
-					plainTextContent: payload.plainTextContent,
-					plainTextOverride: payload.plainTextOverride,
-				});
+				// operation module has toasted any categorized failure (including a
+				// stale revision); throw so the editor stays dirty.
+				const result = await updateTemplate({ templateId: id, ...payload });
 				if (!result.ok) throw new Error('Save failed');
 			},
 		});

@@ -1,4 +1,4 @@
-import { ref, watch, nextTick, type Ref } from 'vue';
+import { ref, type Ref } from 'vue';
 import {
 	provideEmailBuilderHandlers,
 	type EditorBlock,
@@ -8,6 +8,9 @@ import {
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { getImageDimensions } from '~/utils/getImageDimensions';
+import { SurfacedOperationError } from '~/lib/operationError';
+import { useEditorDirtyTracking } from './useEditorDirtyTracking';
+import type { BackendOperationResult } from './useBackendOperation';
 import {
 	registerUploadedMediaReference,
 	type MediaAssetReferenceDeps,
@@ -91,79 +94,33 @@ export function createUploadImageHandler(
 	};
 }
 
-// ---------------------------------------------------------------------------
-// load → dirty loop — also pure (only Vue reactivity), so dirty-tracking
-// correctness is testable without mounting a page.
-// ---------------------------------------------------------------------------
-
-export interface UseEditorDirtyTrackingOptions<S> {
-	/** The loaded row; `initialize` runs each time it becomes truthy. */
-	source: Ref<S>;
-	/** Per-surface parse of the loaded row into the tracked refs. */
-	initialize: (source: NonNullable<S>) => void;
-	/** Getters for the refs whose deep changes mark the editor dirty. */
-	watchSources: (() => unknown)[];
-	/** Notified whenever the dirty flag flips (bridges to `setHasChanges`). */
-	onDirtyChange?: (dirty: boolean) => void;
-}
-
-export interface UseEditorDirtyTrackingReturn {
-	hasChanges: Ref<boolean>;
-	isInitialized: Ref<boolean>;
-	markClean: () => void;
-}
-
 /**
- * The generic "set from server, then start tracking" loop: `initialize` the
- * tracked refs from the loaded row without marking dirty, then flip `hasChanges`
- * on any subsequent tracked-ref edit until `markClean()` (called after a save).
+ * Build the `savedBlocks.save` handler from the `emailBlocks.blocks.create`
+ * operation. The operation resolves `{ ok: false }` on failure (it never
+ * throws), but the builder's contract is promise-shaped: it keeps its save
+ * dialog open, name intact, only when the handler rejects. So a failed result
+ * must become a rejection — marked as already surfaced, because the operation
+ * module has toasted it.
  */
-export function useEditorDirtyTracking<S>(
-	opts: UseEditorDirtyTrackingOptions<S>
-): UseEditorDirtyTrackingReturn {
-	const hasChanges = ref(false);
-	const isInitialized = ref(false);
-
-	const setDirty = (dirty: boolean) => {
-		hasChanges.value = dirty;
-		opts.onDirtyChange?.(dirty);
-	};
-
-	watch(
-		opts.source,
-		(source) => {
-			if (!source) return;
-			opts.initialize(source);
-			setDirty(false);
-			// Defer "initialized" by a tick so the writes initialize() just made
-			// don't trip the change watcher below.
-			void nextTick(() => {
-				isInitialized.value = true;
-			});
-		},
-		{ immediate: true }
-	);
-
-	watch(
-		opts.watchSources,
-		() => {
-			// Only track changes after the initial data has been loaded.
-			if (!isInitialized.value) return;
-			setDirty(true);
-		},
-		{ deep: true }
-	);
-
-	return {
-		hasChanges,
-		isInitialized,
-		markClean: () => setDirty(false),
+export function createSavedBlockSaveHandler(
+	createEmailBlock: (args: {
+		name: string;
+		content: string;
+	}) => Promise<BackendOperationResult<unknown>>
+): (block: { name: string; content: EditorBlock[] }) => Promise<void> {
+	return async (block) => {
+		const created = await createEmailBlock({
+			name: block.name,
+			content: JSON.stringify(block.content),
+		});
+		if (!created.ok) throw new SurfacedOperationError('Saving the block failed');
 	};
 }
 
 // ---------------------------------------------------------------------------
-// The bridge — composes the pure pieces above with the unsaved-changes guard,
-// the media-picker and test-email plumbing, and produces the handler set.
+// The bridge — composes the upload pipeline above and the dirty tracker
+// (useEditorDirtyTracking.ts) with the unsaved-changes guard, the media-picker
+// and test-email plumbing, and produces the handler set.
 // ---------------------------------------------------------------------------
 
 /** The universal canvas refs the bridge owns and a surface's closures write. */
@@ -173,15 +130,29 @@ export interface EmailEditorBridgeContext {
 	name: Ref<string>;
 }
 
+/** The server state a save is built on, frozen when the save starts. */
+export interface EmailEditorSaveBase<S> {
+	/** The row the draft was hydrated from (translation overlays, languages). */
+	source: NonNullable<S> | null;
+	/** Its revision, for the backend's concurrent-writer check. */
+	revision: number | undefined;
+}
+
 export interface EmailEditorBridgeOptions<S> {
 	/** The loaded row (template / email / block). */
 	source: Ref<S>;
 	/** Per-surface parse → sets blocks/subject/name (and page-owned refs). */
 	initialize: (source: NonNullable<S>, ctx: EmailEditorBridgeContext) => void;
-	/** Per-surface serialize + mutation. Throw to abort (keeps the editor dirty). */
-	save: (ctx: EmailEditorBridgeContext) => Promise<void>;
+	/**
+	 * Per-surface serialize + mutation. Throw to abort (keeps the editor dirty).
+	 * Read the draft synchronously before the first `await`: anything read after
+	 * it may already include edits made while the save is in flight.
+	 */
+	save: (ctx: EmailEditorBridgeContext, base: EmailEditorSaveBase<S>) => Promise<void>;
 	/** Surface-specific dirty-tracked refs (e.g. attachments, description). */
 	extraWatch?: (() => unknown)[];
+	/** The row's editor-content revision; enables the stale-draft check. */
+	revision?: (source: NonNullable<S>) => number;
 }
 
 export interface EmailEditorBridgeReturn {
@@ -244,8 +215,9 @@ export function useEmailEditorBridge<S>(
 	});
 
 	// Load → dirty loop.
-	const { hasChanges, markClean } = useEditorDirtyTracking({
+	const { hasChanges, beginSubmit, acknowledge } = useEditorDirtyTracking({
 		source: opts.source,
+		revision: opts.revision,
 		initialize: (source) => opts.initialize(source, ctx),
 		watchSources: [
 			() => blocks.value,
@@ -299,23 +271,19 @@ export function useEmailEditorBridge<S>(
 				});
 				return (result ?? []) as SavedBlock[];
 			},
-			save: async (block) => {
-				await createEmailBlock({
-					name: block.name,
-					content: JSON.stringify(block.content),
-				});
-			},
+			save: createSavedBlockSaveHandler(createEmailBlock),
 		},
 	});
 
-	// The save entrypoint: clears dirty only when opts.save resolves. A surface
-	// throws from opts.save to abort (validation failure, mutation error), which
-	// keeps the editor dirty and propagates — matching the pages' prior behaviour.
+	// The save entrypoint. A surface throws from opts.save to abort (validation
+	// failure, mutation error), which keeps the editor dirty and propagates. A
+	// save that lands clears dirty only if nothing was edited while it ran.
 	const save = async () => {
 		isSaving.value = true;
+		const submission = beginSubmit();
 		try {
-			await opts.save(ctx);
-			markClean();
+			await opts.save(ctx, { source: submission.base, revision: submission.revision });
+			acknowledge(submission);
 		} finally {
 			isSaving.value = false;
 		}
