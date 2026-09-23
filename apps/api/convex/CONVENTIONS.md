@@ -590,9 +590,113 @@ Postbox table in the sibling that owns its feature, not in `schema/mail.ts`.
 
 ## Schema evolution (post-launch immutability)
 
-Pre-launch we move freely. Post-launch, any change to data on disk is a
-migration: existing rows already use the old shape, and external consumers
-(SDKs, webhook receivers) depend on the wire contract.
+Self-hosted deployments update in place. The updater runs `convex deploy`
+against the live backend and only then recreates the web, MTA and worker
+containers (`apps/updater/src/update.ts`, step 5 before step 8). Every row the
+previous release wrote is still there, and for a while the previous release's
+clients and workers call the new functions. So any change to data on disk is a
+migration, and external consumers (SDKs, webhook receivers) depend on the wire
+contract. The operator-facing side of this policy is the "Migrations" section
+of `apps/docs/content/en/3.developer/20.platform-operations.md`.
+
+> **Open decision (Marcel): when reset-based development ends.** Owlat is
+> pre-1.0, and the maintenance docs still allow a release to "reset specific
+> tables" if its release notes say so. No release has been named after which a
+> reset stops being an acceptable upgrade path. Until that decision is recorded
+> here, treat every release as carrying data that must survive: follow the
+> contract below, and reset only where a release's notes say so explicitly.
+
+### Release data compatibility
+
+**Upgrade window.**
+
+- Release N must upgrade a deployment running N-1 (any patch of it) with no
+  step beyond what N's migration manifest lists.
+- Skipping releases works across additive releases. The update check offers
+  only the latest release, so a deployment several releases behind jumps
+  straight to it. A release whose migration a later contract step depends on is
+  a _stepping stone_: the contract release's notes name it, and a deployment
+  that has not completed the stepping stone's migrations installs it first. A
+  contract the schema can see fails safe when skipped (the deploy rejects the
+  leftover rows and the updater leaves the old stack running). A contract the
+  schema cannot see (a JSON blob's shape, a value's meaning) has to check the
+  migration record and refuse to run.
+- Downgrades: redeploying N-1's functions works only while N has written
+  nothing N-1's schema rejects, which in practice ends with the first row that
+  carries a field N added. After that, going back means restoring the
+  pre-update backup.
+
+**Expand, migrate, contract.** An incompatible change (renaming a field,
+changing its type, narrowing a union, making a field required, dropping a field
+or table, a new shape for a JSON blob) ships in three steps over at least two
+releases:
+
+1. **Expand** (release N). Add the new shape next to the old one: a new optional
+   field, a widened union, a bumped `<field>Version`. Readers accept both shapes;
+   writers write the new one or both.
+2. **Migrate** (release N, after deploy). A migration listed in N's manifest
+   rewrites old rows into the new shape, bounded and resumable (below).
+3. **Contract** (N+1 or later, once the migration has completed). Stop reading
+   and writing the old shape, then remove it from the schema. A field or table
+   leaves the schema only after the migration has emptied it.
+
+Expand and contract for the same field never ship in one release.
+
+**Old clients and workers against new functions.** Between `convex-deploy` and
+`docker compose up -d`, and for as long as a browser tab or desktop client stays
+open, N-1's web app, MTA, workers and desktop clients call N's functions. So in
+N:
+
+- public functions, HTTP routes and the internal functions the MTA and workers
+  call keep accepting N-1's arguments: new arguments are optional, and no
+  argument is removed or narrowed;
+- no result field that N-1 reads is removed or changes meaning;
+- rows N-1 code keeps writing in the old shape still validate, which the expand
+  step guarantees.
+
+Removing an argument, result field or endpoint is itself a contract step for a
+later release.
+
+**Migration manifest.** A release that needs data work ships a manifest listing,
+per migration: its module (`migrations/NNNN_name:run`), whether it must finish
+before users are let back in or may run in the background, whether a later
+contract depends on it (stepping stone), and a rough cost. Nothing reads a
+machine-readable manifest yet and the updater does not run migrations, so for
+now the manifest lives in the release notes, in the form the maintenance docs
+use for the 0044 chat-media migration.
+
+**Durable progress and completion.** A migration records its progress in the
+deployment's database, not only in its return value: the cursor of each pass,
+counts, when it started and completed, and the release that introduced it. A
+contract step and a stepping-stone check read that record. No migration ledger
+table exists yet; the first migration that a contract step depends on adds it.
+
+**Bounded, resumable backfills.** A migration pages through its table
+(`.paginate()` with a cursor, a fixed page size well under the transaction
+limits) and does one bounded mutation per page. It never `.collect()`s a table
+that grows with customer data. Every page is idempotent, so a re-run after a
+crash, timeout or redeploy either continues from the stored cursor or redoes a
+page harmlessly. A row the migration cannot map fails loudly with its id rather
+than being dropped.
+
+**Recovery.** Operators take a backup before every update (the maintenance docs
+require it; the in-app flow does not enforce it yet). A migration is safe to
+re-run after an interruption. A migration that fails leaves the deployment on the
+expanded schema, which both the old and the new code accept. The release notes
+of any release with a manifest say how to roll back: redeploy the old functions
+while the downgrade window is open, restore the backup after it closes.
+
+**The guard.** `convex/__tests__/schemaCompat/compat.test.ts` builds rows from
+the previous release's table validators (`previousRelease.json`) and fails when
+the current schema rejects any of them: a field made required, a type changed, a
+union narrowed, a field or table dropped. Refresh the snapshot at each release
+(`bun run --cwd apps/api schema-compat:refresh` on the release commit, see
+`docs/RELEASING.md`), never to make a failure go away. A deliberately retired
+table goes in the test's `RETIRED_TABLES` in the contract PR. The guard covers
+the schema half of the contract only. It does not check function arguments,
+JSON stored in strings or what values mean, and it is no substitute for
+upgrading a real previous-release dataset. The release E2E does not do that
+either: its seeded leg carries over Redis and ClamAV volumes, not Convex data.
 
 ### Never do these without a version bump
 

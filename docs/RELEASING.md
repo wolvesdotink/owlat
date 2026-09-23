@@ -12,6 +12,20 @@ bun run release:cut <version|major|minor|patch>   # bump + changelog + commit + 
 git push origin main v<X.Y.Z>
 ```
 
+Then move the schema-compatibility guard forward to the release just cut, so
+later PRs are checked against the rows this release can store (see "Release
+data compatibility" in `apps/api/convex/CONVENTIONS.md`):
+
+```sh
+bun run --cwd apps/api schema-compat:refresh   # snapshots the newest vX.Y.Z tag
+git add apps/api/convex/__tests__/schemaCompat/previousRelease.json
+git commit -m "test(api): snapshot the v<X.Y.Z> schema for the compat guard"
+git push origin main
+```
+
+The snapshot's diff shows that release's schema changes, one field per line. If
+the release ships data migrations, its notes carry the migration manifest.
+
 Pushing the tag triggers one of three pipelines:
 
 | Tag              | Workflow                | Ships                                                                                        |
