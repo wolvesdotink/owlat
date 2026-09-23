@@ -1,10 +1,15 @@
 import { api } from '@owlat/api';
 import {
 	DEFAULT_INBOX_SORT,
+	inboxAssigneeArg,
+	inboxAssigneeToQuery,
 	inboxFilterToQuery,
+	legacyInboxSort,
 	nextInboxSort,
+	parseInboxAssignee,
 	parseInboxFilter,
 	resolveInboxSort,
+	type InboxAssignee,
 	type InboxFilter,
 	type InboxSort,
 } from '~/utils/inboxFilters';
@@ -25,26 +30,43 @@ export function useInbox(gate?: Ref<boolean>) {
 	const router = useRouter();
 	const subscribed = () => !gate || gate.value;
 
-	// ── Filter state, mirrored in the URL (`?filter=`) ──
+	// ── Filter state, mirrored in the URL (`?filter=` status tab, `?assignee=`) ──
 	// Reads seed from the current query; writes replace the query (shareable,
-	// bookmarkable, back/forward works, and the default view stays bare).
+	// bookmarkable, back/forward works, and the default view stays bare). A
+	// legacy `?filter=mine|unassigned|waiting-24h` link seeds the assignment
+	// (or the oldest-waiting order) it used to mean.
 	const filter = ref<InboxFilter>(parseInboxFilter(route.query['filter']));
+	const assignee = ref<InboxAssignee>(
+		parseInboxAssignee(route.query['assignee'], route.query['filter'])
+	);
 
 	watch(
-		() => route.query['filter'],
-		(raw) => {
-			const next = parseInboxFilter(raw);
-			if (next !== filter.value) filter.value = next;
+		() => [route.query['filter'], route.query['assignee']] as const,
+		([rawFilter, rawAssignee]) => {
+			const nextFilter = parseInboxFilter(rawFilter);
+			if (nextFilter !== filter.value) filter.value = nextFilter;
+			const nextAssignee = parseInboxAssignee(rawAssignee, rawFilter);
+			if (nextAssignee !== assignee.value) assignee.value = nextAssignee;
 		}
 	);
-	watch(filter, (next) => {
-		const desired = inboxFilterToQuery(next);
-		const raw = route.query['filter'];
-		const current = Array.isArray(raw) ? raw[0] : raw;
-		if ((current ?? undefined) === desired) return;
+	watch([filter, assignee], ([nextFilter, nextAssignee]) => {
+		const desired = {
+			filter: inboxFilterToQuery(nextFilter),
+			assignee: inboxAssigneeToQuery(nextAssignee),
+		};
+		const first = (raw: unknown) => (Array.isArray(raw) ? raw[0] : raw) ?? undefined;
+		if (
+			first(route.query['filter']) === desired.filter &&
+			first(route.query['assignee']) === desired.assignee
+		) {
+			return;
+		}
 		const query = { ...route.query };
-		if (desired === undefined) delete query['filter'];
-		else query['filter'] = desired;
+		for (const key of ['filter', 'assignee'] as const) {
+			const value = desired[key];
+			if (value === undefined) delete query[key];
+			else query[key] = value;
+		}
 		void router.replace({ query });
 	});
 
@@ -57,9 +79,15 @@ export function useInbox(gate?: Ref<boolean>) {
 	// and a browser holding something unknown must not select a nonexistent
 	// backend index.
 	const sort = computed<InboxSort>(() => resolveInboxSort(storedSort.value));
-	const toggleSort = () => {
-		setStoredSort(nextInboxSort(sort.value));
+	const setSort = (next: InboxSort) => {
+		setStoredSort(next);
 	};
+	const toggleSort = () => {
+		setSort(nextInboxSort(sort.value));
+	};
+	// `?filter=waiting-24h` used to be a tab; it now means "Open, longest wait first".
+	const impliedSort = legacyInboxSort(route.query['filter']);
+	if (impliedSort) setSort(impliedSort);
 
 	// ── Thread list (keyset pagination; the args pick the backend index) ──
 	const threadCursor = ref<string | undefined>(undefined);
@@ -69,8 +97,10 @@ export function useInbox(gate?: Ref<boolean>) {
 		error: threadsError,
 	} = useConvexQuery(api.inbox.queries.listThreads, () => {
 		if (!subscribed()) return 'skip';
+		const assigneeArg = inboxAssigneeArg(assignee.value);
 		return {
 			filter: filter.value,
+			...(assigneeArg ? { assignee: assigneeArg } : {}),
 			sort: sort.value,
 			limit: 25,
 			cursor: threadCursor.value,
@@ -103,7 +133,7 @@ export function useInbox(gate?: Ref<boolean>) {
 	// keyset cursor minted for the prior view is invalid. Reset to a fresh first
 	// page synchronously — before the query re-subscribes.
 	watch(
-		[filter, sort],
+		[filter, assignee, sort],
 		() => {
 			threadCursor.value = undefined;
 			accumulatedThreads.value = [];
@@ -115,9 +145,11 @@ export function useInbox(gate?: Ref<boolean>) {
 	const hasMoreThreads = computed(() => !!threadsData.value?.nextCursor);
 
 	// ── Filter-pill counts (bounded reads; a slice at the cap renders "99+") ──
-	const { data: filterCounts } = useConvexQuery(api.inbox.queries.getThreadFilterCounts, () =>
-		subscribed() ? {} : 'skip'
-	);
+	const { data: filterCounts } = useConvexQuery(api.inbox.queries.getThreadFilterCounts, () => {
+		if (!subscribed()) return 'skip';
+		const assigneeArg = inboxAssigneeArg(assignee.value);
+		return assigneeArg ? { assignee: assigneeArg } : {};
+	});
 
 	// Review-queue badge count (drafts ready) — a real pipeline counter, retained
 	// even though the old 8-cell stats grid is gone.
@@ -135,7 +167,9 @@ export function useInbox(gate?: Ref<boolean>) {
 	return {
 		// State
 		filter,
+		assignee,
 		sort,
+		setSort,
 		toggleSort,
 		filterCounts,
 		threads,

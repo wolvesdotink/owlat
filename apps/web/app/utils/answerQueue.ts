@@ -47,3 +47,23 @@ export function compareAnswerItems(a: AnswerOrderInput, b: AnswerOrderInput): nu
 	if (byScore !== 0) return byScore;
 	return a.at - b.at;
 }
+
+/**
+ * The `?in=` filter on the Answer queue: `all`, `team` (the team inbox),
+ * `chat` (mentions) or a mailbox id. This is how every "review these" link
+ * lands on the one queue already narrowed — the Team inbox's "Review drafts"
+ * button and the retired `/dashboard/inbox/review` route both open `?in=team`.
+ */
+export function parseAnswerFilter(raw: unknown): string {
+	return typeof raw === 'string' && raw.length > 0 ? raw : 'all';
+}
+
+export function answerItemMatches(
+	item: { source: AnswerSource; mailboxId?: string },
+	filter: string
+): boolean {
+	if (filter === 'all') return true;
+	if (filter === 'team') return item.source === 'team';
+	if (filter === 'chat') return item.source === 'mention';
+	return item.source === 'mail' && item.mailboxId === filter;
+}

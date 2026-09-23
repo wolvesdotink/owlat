@@ -28,7 +28,7 @@
 
 import type { QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
-import { threadMatchesFilter, type ThreadFilter } from './threadFilters';
+import { threadMatchesFilter, type ThreadAssignee, type ThreadFilter } from './threadFilters';
 
 /**
  * How many relevance-ranked rows are read from EACH search index before the
@@ -46,6 +46,8 @@ interface ThreadSearchOptions {
 	search: string;
 	/** The active pill, applied as a predicate rather than an index. */
 	filter?: ThreadFilter;
+	/** The assignment filter next to the status tabs (absent = anyone). */
+	assignee?: ThreadAssignee;
 	/** Viewer, for the `mine` slice. */
 	userId: string;
 	now: number;
@@ -74,7 +76,8 @@ export function mergeThreadSearchHits(
 	for (const thread of [...bySubject, ...byParticipant]) {
 		if (seen.has(thread._id)) continue;
 		seen.add(thread._id);
-		if (!threadMatchesFilter(thread, options.filter, options.userId, options.now)) continue;
+		if (!threadMatchesFilter(thread, options.filter, options.userId, options.now, options.assignee))
+			continue;
 		survivors.push(thread);
 	}
 	survivors.sort((a, b) => b.lastMessageAt - a.lastMessageAt || (a._id < b._id ? -1 : 1));

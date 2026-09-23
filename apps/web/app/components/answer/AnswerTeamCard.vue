@@ -272,7 +272,7 @@ const secondaryButton =
 			</div>
 			<InboxDecisionRationale :grounding-sources="message.groundingSources" class="mb-4" />
 			<TaskActions
-				:primary-label="t('components.agentTasks.reviewFocusFlow.approveAndSend')"
+				:primary-label="t('components.agentTasks.reviewFocusFlow.reviewAndSend')"
 				primary-icon="lucide:check"
 				:primary-disabled="busy"
 				:primary-loading="busy"
@@ -281,6 +281,7 @@ const secondaryButton =
 				:skip-label="t('components.agentTasks.reviewFocusFlow.reject')"
 				skip-destructive
 				:skip-disabled="busy"
+				:hints="[{ keys: ['a'], label: t('components.agentTasks.reviewFocusFlow.reviewAndSend') }]"
 				@primary="approve"
 				@skip="reject"
 			>

@@ -34,6 +34,17 @@ export const threadFilterValidator = v.union(
 	v.literal('resolved')
 );
 
+/**
+ * The assignment filter the Team Inbox shows NEXT TO the status tabs
+ * (Anyone / Me / Unassigned). Absent = anyone. It narrows a status slice
+ * (`open`, `waiting`, `waiting-24h`, `snoozed`, `resolved`); the legacy
+ * `mine` / `unassigned` pills already carry their own assignment and ignore it.
+ */
+export const threadAssigneeValidator = v.union(v.literal('me'), v.literal('unassigned'));
+
+/** Derived from the validator, so the two can never drift apart. */
+export type ThreadAssignee = Infer<typeof threadAssigneeValidator>;
+
 /** How many rows a filter-count pill will read before rendering "99+". */
 export const FILTER_COUNT_CAP = 100;
 
@@ -53,9 +64,13 @@ export function buildThreadQuery(
 	ctx: QueryCtx,
 	filter: ThreadFilter | undefined,
 	userId: string,
-	now: number
+	now: number,
+	assignee?: ThreadAssignee
 ) {
 	const base = ctx.db.query('conversationThreads');
+	if (assignee && filter && ASSIGNABLE_STATUS_FILTERS.has(filter)) {
+		return buildAssignedStatusQuery(ctx, filter, userId, now, assignee);
+	}
 	switch (filter) {
 		case 'open':
 			// Active conversations; a snoozed thread stays hidden until it wakes.
@@ -110,6 +125,57 @@ export function buildThreadQuery(
 	}
 }
 
+/** The status slices an assignment filter can narrow. */
+const ASSIGNABLE_STATUS_FILTERS: ReadonlySet<ThreadFilter> = new Set<ThreadFilter>([
+	'open',
+	'waiting',
+	'waiting-24h',
+	'snoozed',
+	'resolved',
+]);
+
+/**
+ * A status slice narrowed to one assignment. Walks the `by_assigned_to` index
+ * (the assignment is the equality the index can serve) and applies the status
+ * slice as a filter — the same shape the `mine` / `unassigned` pills have
+ * always used, so paging stays keyset-complete.
+ */
+function buildAssignedStatusQuery(
+	ctx: QueryCtx,
+	filter: ThreadFilter,
+	userId: string,
+	now: number,
+	assignee: ThreadAssignee
+) {
+	const owner = assignee === 'me' ? userId : undefined;
+	const indexed = ctx.db
+		.query('conversationThreads')
+		.withIndex('by_assigned_to', (idx) => idx.eq('assignedTo', owner));
+	switch (filter) {
+		case 'snoozed':
+			return indexed.filter((f) => f.gt(f.field('snoozedUntil'), now));
+		case 'resolved':
+			return indexed.filter((f) => f.eq(f.field('status'), 'resolved'));
+		case 'waiting-24h':
+			return indexed.filter((f) =>
+				f.and(
+					f.eq(f.field('status'), 'open'),
+					f.lte(f.field('lastMessageAt'), now - WAITING_OVER_24H_MS),
+					f.or(f.eq(f.field('snoozedUntil'), undefined), f.lte(f.field('snoozedUntil'), now))
+				)
+			);
+		default: {
+			const status = filter === 'waiting' ? 'waiting' : 'open';
+			return indexed.filter((f) =>
+				f.and(
+					f.eq(f.field('status'), status),
+					f.or(f.eq(f.field('snoozedUntil'), undefined), f.lte(f.field('snoozedUntil'), now))
+				)
+			);
+		}
+	}
+}
+
 /**
  * The same slice as {@link buildThreadQuery}, expressed as a PREDICATE over a
  * loaded row.
@@ -128,8 +194,13 @@ export function threadMatchesFilter(
 	thread: Doc<'conversationThreads'>,
 	filter: ThreadFilter | undefined,
 	userId: string,
-	now: number
+	now: number,
+	assignee?: ThreadAssignee
 ): boolean {
+	if (assignee && filter && ASSIGNABLE_STATUS_FILTERS.has(filter)) {
+		const owner = assignee === 'me' ? userId : undefined;
+		if (thread.assignedTo !== owner) return false;
+	}
 	// "Not snoozed" is the shared clause every active slice carries; `snoozedUntil`
 	// is only ever a future value at write time, so a lapsed one reads as awake.
 	const awake = thread.snoozedUntil === undefined || thread.snoozedUntil <= now;

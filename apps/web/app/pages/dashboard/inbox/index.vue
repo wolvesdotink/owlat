@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { InboxThreadRowThread } from '~/components/inbox/InboxThreadRow.vue';
 import { useOrganization } from '~/composables/useOrganization';
 import {
+	DEFAULT_INBOX_ASSIGNEE,
 	DEFAULT_INBOX_FILTER,
 	INBOX_FILTER_META,
 	INBOX_SORT_META,
@@ -40,7 +41,9 @@ const displayRole = computed(() => {
 
 const {
 	filter,
+	assignee,
 	sort,
+	setSort,
 	toggleSort,
 	filterCounts,
 	threads,
@@ -68,22 +71,14 @@ const { run: unsnoozeThread } = useBackendOperation(api.inbox.snooze.unsnoozeThr
 
 type TeamThread = InboxThreadRowThread & { _id: Id<'conversationThreads'> };
 
-// Filters whose rows require an open/waiting, not-snoozed thread — resolving or
+// Tabs whose rows require an open/waiting, not-snoozed thread — resolving or
 // snoozing a row removes it from these, so those actions hide optimistically.
-const ACTIVE_WORK_FILTERS = new Set<InboxFilter>([
-	'open',
-	'mine',
-	'unassigned',
-	'waiting',
-	'waiting-24h',
-]);
+const ACTIVE_WORK_FILTERS = new Set<InboxFilter>(['open', 'waiting']);
 
 // Optimistic hide + one-slot undo toast (Cmd/Ctrl+Z), reusing the Postbox house
 // composables. The list renders `visibleThreads`; a failed mutation restores the
 // row and a successful one is undoable for ~8s.
-const { visible: visibleThreads, run: runTriage } = useInboxTriage(
-	threads as Ref<TeamThread[]>
-);
+const { visible: visibleThreads, run: runTriage } = useInboxTriage(threads as Ref<TeamThread[]>);
 
 // Org members for the row hover assignee picker (Me / members / Unassign).
 const { members, fetchMembers } = useOrganization();
@@ -113,10 +108,10 @@ function assignLabel(assignedTo: string | undefined): string {
 		: t('dashboard.inbox.index.undo.assigned');
 }
 
-/** Does assigning to `assignedTo` drop the row from the active filter? */
+/** Does assigning to `assignedTo` drop the row from the active assignment filter? */
 function assignLeavesView(assignedTo: string | undefined): boolean {
-	if (filter.value === 'unassigned') return assignedTo !== undefined;
-	if (filter.value === 'mine') return assignedTo !== user.value?.id;
+	if (assignee.value === 'unassigned') return assignedTo !== undefined;
+	if (assignee.value === 'me') return assignedTo !== user.value?.id;
 	return false;
 }
 
@@ -175,7 +170,7 @@ async function onSnoozeConfirm(timestamp: number) {
 
 // ── List keyboard: j/k move, Enter opens, i assigns-to-me. Shares the Postbox
 // listbox composable so the conventions match. Reset focus on filter/sort. ──
-const listKey = computed(() => `${filter.value}:${sort.value}`);
+const listKey = computed(() => `${filter.value}:${assignee.value}:${sort.value}`);
 const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard<TeamThread>({
 	items: visibleThreads,
 	resetKey: listKey,
@@ -200,18 +195,37 @@ onUnmounted(() => {
 	if (waitingClock !== undefined) window.clearInterval(waitingClock);
 });
 
-// Empty-state copy per active pill. The shared filter registry keeps its plain
-// English fallback, so an unknown filter still reads as a sentence.
+// Empty-state copy per active tab + assignment. An assignment on an active tab
+// has its own sentence ("Nothing is assigned to you right now."); otherwise the
+// tab's. The registry holds a KEY, not a sentence — resolve it rather than
+// rendering `shared.inboxFilters.…` at a person.
 const emptyMessage = computed(() => {
+	if (assignee.value !== DEFAULT_INBOX_ASSIGNEE && ACTIVE_WORK_FILTERS.has(filter.value)) {
+		return t(`dashboard.inbox.index.empty.${assignee.value}`);
+	}
 	const key = `dashboard.inbox.index.empty.${filter.value}`;
-	// The registry holds a KEY, not a sentence — resolve it rather than
-	// rendering `shared.inboxFilters.…` at a person.
 	return te(key) ? t(key) : t(INBOX_FILTER_META[filter.value].empty);
 });
 
-// A non-default pill hides rows that exist, which is a no-results state — the
-// empty state says so and offers the way back rather than a dead end.
-const isFiltered = computed(() => filter.value !== DEFAULT_INBOX_FILTER);
+// A non-default tab or assignment hides rows that exist, which is a no-results
+// state — the empty state says so and offers the way back rather than a dead
+// end. The default view (Open, anyone) running empty is inbox zero: good news.
+const isFiltered = computed(
+	() => filter.value !== DEFAULT_INBOX_FILTER || assignee.value !== DEFAULT_INBOX_ASSIGNEE
+);
+function clearFilters() {
+	filter.value = DEFAULT_INBOX_FILTER;
+	assignee.value = DEFAULT_INBOX_ASSIGNEE;
+}
+
+// "Waiting over 24h" is a highlight inside Open rather than a tab: how many
+// customers have waited on us for more than a day, and a one-tap switch to the
+// order that puts them first.
+const waitingOver24h = computed(() => {
+	if (filter.value !== 'open') return 0;
+	return filterCounts.value?.waitingOver24h ?? 0;
+});
+const showOldestFirst = () => setSort('oldest-waiting');
 </script>
 
 <template>
@@ -226,7 +240,8 @@ const isFiltered = computed(() => filter.value !== DEFAULT_INBOX_FILTER);
 			</div>
 
 			<div class="flex items-center gap-3">
-				<UiButton to="/dashboard/inbox/review" class="gap-2">
+				<!-- The one answer queue, filtered to this inbox. -->
+				<UiButton :to="{ path: '/dashboard/answer', query: { in: 'team' } }" class="gap-2">
 					<Icon name="lucide:check-circle" class="w-4 h-4" />
 					{{ t('dashboard.inbox.index.reviewQueue') }}
 					<span
@@ -263,7 +278,7 @@ const isFiltered = computed(() => filter.value !== DEFAULT_INBOX_FILTER);
 		<template v-else>
 			<!-- Filter pills (live counts) + needs-attention sort chip -->
 			<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
-				<InboxFilterPills v-model="filter" :counts="filterCounts" />
+				<InboxFilterPills v-model="filter" v-model:assignee="assignee" :counts="filterCounts" />
 
 				<!-- The sort chip states the CURRENT order and cycles to the next
 				     one; with three orders a toggle would have had to hide one. -->
@@ -284,6 +299,26 @@ const isFiltered = computed(() => filter.value !== DEFAULT_INBOX_FILTER);
 				</button>
 			</div>
 
+			<!-- Waiting over 24h — a highlight within Open, not a tab. -->
+			<p
+				v-if="waitingOver24h > 0"
+				class="-mt-3 mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-secondary"
+				data-testid="inbox-waiting-over-24h"
+			>
+				<Icon name="lucide:timer" class="w-4 h-4 text-warning shrink-0" aria-hidden="true" />
+				<span>
+					{{ t('dashboard.inbox.index.waitingOver24h', { count: waitingOver24h }, waitingOver24h) }}
+				</span>
+				<button
+					v-if="sort !== 'oldest-waiting'"
+					type="button"
+					class="text-brand hover:underline"
+					@click="showOldestFirst"
+				>
+					{{ t('dashboard.inbox.index.showLongestWaitFirst') }}
+				</button>
+			</p>
+
 			<!-- Loading — Postbox list skeleton geometry -->
 			<UiQueryBoundary
 				:loading="threadsLoading && threads.length === 0"
@@ -300,10 +335,11 @@ const isFiltered = computed(() => filter.value !== DEFAULT_INBOX_FILTER);
 				     offers the way back to the full list. -->
 				<template #empty>
 					<UiEmptyState
-						icon="lucide:inbox"
+						:icon="isFiltered ? 'lucide:inbox' : undefined"
 						:title="emptyMessage"
 						:variant="isFiltered ? 'no-results' : 'empty'"
-						@clear="filter = DEFAULT_INBOX_FILTER"
+						:tone="isFiltered ? 'default' : 'clear'"
+						@clear="clearFilters"
 					/>
 				</template>
 

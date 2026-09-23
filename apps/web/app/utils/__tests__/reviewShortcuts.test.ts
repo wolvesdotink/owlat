@@ -43,7 +43,7 @@ describe('resolveReviewShortcut', () => {
 
 	it('exposes a keyboard-hint legend covering every action', () => {
 		const labels = reviewShortcutLegend().map((row) => t(row.label));
-		expect(labels).toContain('Approve & send');
+		expect(labels).toContain('Review & send');
 		expect(labels).toContain('Edit');
 		expect(labels).toContain('Reject');
 		expect(labels).toContain('Skip');

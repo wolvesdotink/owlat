@@ -115,7 +115,9 @@ beforeEach(() => {
 		useTopicsList: () => ({ results: ref([]), isLoading: ref(false), status: ref('Exhausted') }),
 		useInbox: () => ({
 			filter: ref('open'),
+			assignee: ref('anyone'),
 			sort: ref('newest'),
+			setSort: vi.fn(),
 			toggleSort: vi.fn(),
 			filterCounts: ref({}),
 			threads: ref([]),
