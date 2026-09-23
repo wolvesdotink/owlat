@@ -5,7 +5,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
-import { listResources, countFacet } from '../lib/listing';
+import { countFacet } from '../lib/listing';
 import { emailTemplateListing } from './listing';
 
 // Count of templates by type (API-key shell) — the descriptor's `byType` facet
@@ -15,22 +15,6 @@ export const countByTypeByOrganization = authedQuery({
 	handler: async (ctx) => {
 		const counts = await countFacet(ctx.db, emailTemplateListing, 'byType');
 		return counts as Record<string, number>;
-	},
-});
-
-// Recently edited templates (dashboard widget) — the recent N rows of the
-// descriptor's default browse (updatedAt-descending).
-export const getRecentByOrganization = authedQuery({
-	args: {
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		// Clamp the page size — a member could otherwise request an arbitrarily
-		// large page of templates.
-		const result = await listResources(ctx.db, emailTemplateListing, {
-			paginationOpts: { numItems: Math.min(args.limit ?? 5, 50), cursor: null },
-		});
-		return result.page;
 	},
 });
 
