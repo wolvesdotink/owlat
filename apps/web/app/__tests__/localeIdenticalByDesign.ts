@@ -38,6 +38,8 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'components.contacts.integrationImportModal.providers.stripe.name',
 	'components.contacts.suppressionNotice.detail',
 	'components.contacts.timelineStatsCard.channels.chat',
+	'components.contacts.timelineStatsCard.channels.generic',
+	'components.contacts.unifiedTimelineTab.channels.generic',
 	'components.contacts.timelineStatsCard.channels.sms',
 	'components.contacts.timelineStatsCard.channels.whatsapp',
 	'components.contacts.unifiedTimelineTab.channels.chat',

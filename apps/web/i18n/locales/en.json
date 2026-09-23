@@ -1611,7 +1611,7 @@
 				"channels": {
 					"chat": "Chat",
 					"email": "Email",
-					"generic": "Generic",
+					"generic": "Webhook",
 					"sms": "SMS",
 					"whatsapp": "WhatsApp"
 				},
@@ -1627,7 +1627,7 @@
 				"channels": {
 					"chat": "Chat",
 					"email": "Email",
-					"generic": "Generic",
+					"generic": "Webhook",
 					"sms": "SMS",
 					"whatsapp": "WhatsApp"
 				},
