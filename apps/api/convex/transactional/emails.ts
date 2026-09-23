@@ -209,6 +209,7 @@ export const update = authedMutation({
 			}
 		}
 
+		const contentRevision = nextContentRevision(email);
 		const updates: Partial<{
 			name: string;
 			slug: string;
@@ -226,10 +227,11 @@ export const update = authedMutation({
 			linkedBlockIds: string[];
 			attachments: string;
 			searchableText: string;
+			htmlRenderState: { stale: boolean };
 			contentRevision: number;
 			updatedAt: number;
 		}> = {
-			contentRevision: nextContentRevision(email),
+			contentRevision,
 			updatedAt: Date.now(),
 		};
 
@@ -238,6 +240,12 @@ export const update = authedMutation({
 		if (args.subject !== undefined) updates.subject = args.subject;
 		if (args.content !== undefined) updates.content = args.content;
 		if (args.htmlContent !== undefined) updates.htmlContent = args.htmlContent;
+		// Blocks and the HTML rendered from them, in one write: the HTML matches
+		// the content again, so a saved-block rerender still pending for the
+		// previous revision has nothing left to fix (it no-ops on the moved row).
+		if (args.content !== undefined && args.htmlContent !== undefined && email.htmlRenderState) {
+			updates.htmlRenderState = { stale: false };
+		}
 		if (args.plainTextContent !== undefined) updates.plainTextContent = args.plainTextContent;
 		if (args.plainTextOverride !== undefined) {
 			// Patching to `undefined` REMOVES the column — that is what "the author
@@ -273,7 +281,8 @@ export const update = authedMutation({
 		}
 
 		await ctx.db.patch(args.id, updates);
-		return args.id;
+		// The revision this write stored; the editor builds its next save on it.
+		return { id: args.id, contentRevision };
 	},
 });
 
@@ -286,6 +295,10 @@ export const publish = authedMutation({
 		htmlContent: v.string(), // Required to ensure HTML is generated
 		// Pre-rendered HTML for each translation language
 		htmlTranslations: v.optional(v.string()),
+		// The `contentRevision` the HTML was rendered from. When given, a row
+		// that has moved on is refused with `conflict` instead of going live
+		// with HTML that no longer matches its content.
+		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'transactional');
@@ -299,6 +312,7 @@ export const publish = authedMutation({
 		if (email.status === 'published') {
 			throwInvalidState('Transactional email is already published');
 		}
+		assertContentRevision(email, args.expectedContentRevision, 'publish');
 
 		const outcome = await ctx.runMutation(internal.transactional.lifecycle.transition, {
 			emailId: args.id,

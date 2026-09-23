@@ -13,8 +13,8 @@
  * paths can't drift apart again.
  */
 
-import { describe, it, expect } from 'vitest';
-import { rerenderRow } from '../rendering';
+import { describe, it, expect, vi } from 'vitest';
+import { MAX_RERENDER_ATTEMPTS, rerenderConsumerRow, rerenderRow } from '../rendering';
 
 const buttonContent = JSON.stringify([
 	{
@@ -122,5 +122,67 @@ describe('rerenderRow plain-text regeneration', () => {
 			undefined
 		);
 		expect(plainTextContent).toBe('[Go] https://example.com');
+	});
+});
+
+describe('rerenderConsumerRow', () => {
+	type Row = { content: string; subject: string; contentRevision: number };
+	const row = (contentRevision: number): Row => ({ ...baseRow, contentRevision });
+
+	it('patches once when the row is still at the revision it rendered', async () => {
+		const patch = vi.fn().mockResolvedValue('applied');
+		const outcome = await rerenderConsumerRow({
+			load: async () => row(3),
+			render: (r) => rerenderRow(r, 'personalization', undefined),
+			patch,
+		});
+		expect(outcome).toBe('applied');
+		expect(patch).toHaveBeenCalledOnce();
+	});
+
+	it('renders again from the current row when the patch finds it moved and still stale', async () => {
+		const loads = [row(3), row(4)];
+		const render = vi.fn((r: Row) => rerenderRow(r, 'personalization', undefined));
+		const patch = vi.fn().mockResolvedValueOnce('moved').mockResolvedValueOnce('applied');
+
+		const outcome = await rerenderConsumerRow({ load: async () => loads.shift()!, render, patch });
+
+		expect(outcome).toBe('applied');
+		expect(render.mock.calls.map(([r]) => r.contentRevision)).toEqual([3, 4]);
+		expect(patch.mock.calls.map(([r]) => r.contentRevision)).toEqual([3, 4]);
+	});
+
+	it('stops without a second render when a newer write already fixed the HTML', async () => {
+		const render = vi.fn((r: Row) => rerenderRow(r, 'personalization', undefined));
+		const outcome = await rerenderConsumerRow({
+			load: async () => row(3),
+			render,
+			patch: async () => 'superseded',
+		});
+		expect(outcome).toBe('superseded');
+		expect(render).toHaveBeenCalledOnce();
+	});
+
+	it('throws for the workpool to retry once the row moved on every attempt', async () => {
+		const patch = vi.fn().mockResolvedValue('moved');
+		await expect(
+			rerenderConsumerRow({
+				load: async () => row(1),
+				render: (r) => rerenderRow(r, 'personalization', undefined),
+				patch,
+			})
+		).rejects.toThrow(/kept changing/);
+		expect(patch).toHaveBeenCalledTimes(MAX_RERENDER_ATTEMPTS);
+	});
+
+	it('skips a deleted row', async () => {
+		const patch = vi.fn();
+		const outcome = await rerenderConsumerRow({
+			load: async () => null,
+			render: (r: Row) => rerenderRow(r, 'personalization', undefined),
+			patch,
+		});
+		expect(outcome).toBe('gone');
+		expect(patch).not.toHaveBeenCalled();
 	});
 });

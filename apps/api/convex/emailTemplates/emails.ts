@@ -81,6 +81,7 @@ export const update = authedMutation({
 			htmlTranslations?: string;
 			linkedBlockIds?: string[];
 			searchableText?: string;
+			htmlRenderState?: { stale: boolean };
 			contentRevision: number;
 			updatedAt: number;
 		} = { contentRevision: nextContentRevision(template), updatedAt: Date.now() };
@@ -103,6 +104,13 @@ export const update = authedMutation({
 
 		if (args.htmlContent !== undefined) {
 			updates.htmlContent = args.htmlContent;
+		}
+
+		// Blocks and the HTML rendered from them, in one write: the HTML matches
+		// the content again, so a saved-block rerender still pending for the
+		// previous revision has nothing left to fix (it no-ops on the moved row).
+		if (args.content !== undefined && args.htmlContent !== undefined && template.htmlRenderState) {
+			updates.htmlRenderState = { stale: false };
 		}
 
 		if (args.plainTextContent !== undefined) {
@@ -174,7 +182,8 @@ export const update = authedMutation({
 			details: { changedFields: changedFields.join(', ') },
 		});
 
-		return args.templateId;
+		// The revision this write stored; the editor builds its next save on it.
+		return { templateId: args.templateId, contentRevision: updates.contentRevision };
 	},
 });
 
@@ -186,6 +195,10 @@ export const publish = authedMutation({
 		// Pre-rendered HTML for each translation language
 		// Structure: { "de": { "htmlContent": "...", "subject": "..." }, ... }
 		htmlTranslations: v.optional(v.string()),
+		// The `contentRevision` the HTML was rendered from. When given, a row
+		// that has moved on is refused with `conflict` instead of going live
+		// with HTML that no longer matches its content.
+		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const session = await requireOrgPermission(
@@ -193,6 +206,11 @@ export const publish = authedMutation({
 			'templates:manage',
 			'Only owners and admins can publish email templates'
 		);
+
+		if (args.expectedContentRevision !== undefined) {
+			const template = await ctx.db.get(args.templateId);
+			if (template) assertContentRevision(template, args.expectedContentRevision, 'publish');
+		}
 
 		const outcome = await ctx.runMutation(internal.emailTemplates.lifecycle.transition, {
 			templateId: args.templateId,
