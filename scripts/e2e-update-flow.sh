@@ -226,10 +226,20 @@ pass "every service is running"
 wait_for_web || fail "web does not answer after the update"
 pass "web answers at $TO"
 
-drift="$(docker run --rm --network "$network" curlimages/curl:8.10.1 -fsS --retry 10 --retry-all-errors \
-	-H "x-instance-secret: $INSTANCE_SECRET" http://updater:3200/health | jq -r '.versionDrift')"
-[[ "$drift" == "false" ]] || fail "the replaced updater reports version drift: $drift"
-pass "updater /health reports no version drift"
+health="$(docker run --rm --network "$network" curlimages/curl:8.10.1 -fsS --retry 10 --retry-all-errors \
+	-H "x-instance-secret: $INSTANCE_SECRET" http://updater:3200/health)"
+if [[ -n "${UPDATER_IMAGE:-}" ]]; then
+	# The image under test is tagged `ci-<sha>`, which /health rightly calls
+	# drift. Every OTHER Owlat container has to be on TO.
+	behind="$(jq -r --arg to "$TO" '[.containers[] | select(.service != "updater")
+		| select(.image | test("^ghcr.io/wolvesdotink/")) | select(.imageTag != $to) | .service] | join(", ")' <<<"$health")"
+	[[ -z "$behind" ]] || fail "updater /health reports containers behind $TO: $behind"
+	pass "updater /health sees every Owlat container on $TO"
+else
+	drift="$(jq -r '.versionDrift' <<<"$health")"
+	[[ "$drift" == "false" ]] || fail "the replaced updater reports version drift: $drift"
+	pass "updater /health reports no version drift"
+fi
 
 if docker image inspect "$from_deploy_image" >/dev/null 2>&1; then
 	# Only an updater that reclaims space removes it; FROM's may predate that.
