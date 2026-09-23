@@ -4880,6 +4880,25 @@
 				"toastDeleting": "Postfach und Mails werden gelöscht.",
 				"toastDisconnected": "Postfach getrennt.",
 				"updateCredentials": "Passwort aktualisieren"
+			},
+			"threadDiscussion": {
+				"close": "Diskussion ausblenden",
+				"composerLabel": "Nachricht an das Team",
+				"count": "{count} in der Diskussion",
+				"empty": "Noch keine Diskussion – frag ein Teammitglied zu dieser E-Mail.",
+				"hint": "Enter zum Senden · Shift+Enter für eine neue Zeile",
+				"internal": "intern",
+				"markReadOperation": "Team-Diskussion als gelesen markieren",
+				"placeholder": "An das Team schreiben… (geht nicht an {counterparty})",
+				"placeholderNoCounterparty": "An das Team schreiben… (geht nicht an den Absender)",
+				"regionLabel": "Team-Diskussion zu dieser E-Mail",
+				"send": "Senden",
+				"sendOperation": "In der Team-Diskussion posten",
+				"title": "Team-Diskussion",
+				"toggle": "Besprechen",
+				"toggleHide": "Team-Diskussion ausblenden",
+				"toggleShow": "Team-Diskussion einblenden",
+				"unknownAuthor": "Ehemaliges Mitglied"
 			}
 		},
 		"preferences": {

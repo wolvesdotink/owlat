@@ -4880,6 +4880,25 @@
 				"toastDeleting": "Deleting this mailbox and its mail.",
 				"toastDisconnected": "Mailbox disconnected.",
 				"updateCredentials": "Update password"
+			},
+			"threadDiscussion": {
+				"close": "Hide discussion",
+				"composerLabel": "Message to the team",
+				"count": "{count} in discussion",
+				"empty": "No discussion yet — ask a teammate about this email.",
+				"hint": "Enter to send · Shift+Enter for a new line",
+				"internal": "internal",
+				"markReadOperation": "Mark the team discussion read",
+				"placeholder": "Write to the team… (not sent to {counterparty})",
+				"placeholderNoCounterparty": "Write to the team… (not sent to the sender)",
+				"regionLabel": "Team discussion about this email",
+				"send": "Send",
+				"sendOperation": "Post to the team discussion",
+				"title": "Team discussion",
+				"toggle": "Discuss",
+				"toggleHide": "Hide the team discussion",
+				"toggleShow": "Show the team discussion",
+				"unknownAuthor": "Former member"
 			}
 		},
 		"preferences": {

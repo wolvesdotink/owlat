@@ -447,7 +447,7 @@ const advanceIds = computed(() =>
 				     beside it, so the empty "Select a message" pane never shows there.
 				     With the reading pane off it only exists once a message is open. -->
 					<section
-						class="pbx-pane-reader flex-1 min-w-0 min-h-0 overflow-auto bg-bg-base"
+						class="pbx-pane-reader @container flex-1 min-w-0 min-h-0 overflow-auto bg-bg-base"
 						:class="readerPaneVisibility"
 					>
 						<!-- Drill-in back navigation (mobile only; on lg the list is still

@@ -15,21 +15,37 @@ const router = useRouter();
 // withList=true: this panel is the one place that actually wants the 50-row
 // feed, so the composable's lazy `listMyUnreadMentions` subscription opens here.
 const { mentions, mentionsLoading, markMentionRead } = useChatMentions(() => true);
+const { setActiveMailboxId } = usePostboxActiveMailbox();
 
 const handleOpen = async (mention: {
 	_id: Id<'chatMentions'>;
 	roomId: Id<'chatRooms'>;
+	mailThread: {
+		mailboxId: Id<'mailboxes'>;
+		latestMessageId: Id<'mailMessages'> | null;
+	} | null;
 }) => {
 	// Mark this single mention read first so the badge updates immediately, then
 	// navigate; the room open will also clear the rest for that room.
 	await markMentionRead(mention._id);
-	router.push(`/dashboard/chat/${mention.roomId}`);
+	// A mention in an email's Team discussion opens the email, in its mailbox:
+	// the discussion lives beside it, not in the chat sidebar.
+	if (mention.mailThread?.latestMessageId) {
+		setActiveMailboxId(mention.mailThread.mailboxId);
+		router.push(`/dashboard/postbox/inbox/${mention.mailThread.latestMessageId}`);
+	} else {
+		router.push(`/dashboard/chat/${mention.roomId}`);
+	}
 	emit('close');
 };
 </script>
 
 <template>
-	<ChatDialogShell :title="t('components.chat.chatMentionsDialog.title')" size="lg" @close="emit('close')">
+	<ChatDialogShell
+		:title="t('components.chat.chatMentionsDialog.title')"
+		size="lg"
+		@close="emit('close')"
+	>
 		<div class="flex-1 overflow-y-auto p-3">
 			<div v-if="mentionsLoading" class="flex items-center justify-center py-8">
 				<UiSpinner size="md" />
@@ -58,7 +74,13 @@ const handleOpen = async (mention: {
 					@click="handleOpen(mention)"
 				>
 					<Icon
-						:name="mention.roomKind === 'dm' ? 'lucide:message-square' : 'lucide:hash'"
+						:name="
+							mention.mailThread
+								? 'lucide:mail'
+								: mention.roomKind === 'dm'
+									? 'lucide:message-square'
+									: 'lucide:hash'
+						"
 						class="w-4 h-4 text-text-tertiary flex-shrink-0 mt-0.5"
 					/>
 					<div class="flex-1 min-w-0">
