@@ -137,7 +137,7 @@ export async function handleApplyProfiles(req: IncomingMessage, res: ServerRespo
 		// A profile toggle recreates running services, so a recreate that dies
 		// halfway leaves them stopped — the same dark instance a failed release
 		// rollout produces, for a change the operator thought was a checkbox.
-		const recovery = recoverStackAfterFailedUp(plan.services);
+		const recovery = await recoverStackAfterFailedUp(plan.services);
 		steps.push(recovery);
 		console.error('[apply-profiles] `up` failed:', up.stderr);
 		return json(res, 500, {

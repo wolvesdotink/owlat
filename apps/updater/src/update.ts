@@ -12,6 +12,15 @@
  * the guarantee instead — when it fails, the stack is started back up and the
  * caller is told, in as many words, whether the instance is serving.
  *
+ * A recreate that exits 0 has only STARTED the release. Success is reported
+ * once the started services meet the readiness contract in readiness.ts, and
+ * every answer from the recreate on carries a `rollout` state:
+ *
+ *   - `healthy`: `up` succeeded and every service passed the readiness check;
+ *   - `started`: `up` succeeded, but the readiness check did not pass in time;
+ *   - `partially-applied`: `up` failed and the stack was started forward again
+ *     (there is no rollback: the old release's containers are gone by then).
+ *
  * Split out of server.ts, which also owns /health, /configure-ip and
  * /rotate-env (CONVENTIONS.md ~500 LOC rule). The rollout's own plumbing — the
  * preflight, the service list, the self-replacement hand-off — lives in
@@ -36,6 +45,10 @@ import {
 	servicesToRecreate,
 } from './rollout.js';
 import { diskSpacePreflight, pullFailureMessage, reclaimUnusedImages } from './storage.js';
+import { verifyReadiness } from './readiness.js';
+
+/** How far the release got, reported from the recreate on (see the header). */
+type RolloutState = 'healthy' | 'started' | 'partially-applied';
 
 const COMPOSE_FILE = join(OWLAT_DIR, 'docker-compose.yml');
 
@@ -263,7 +276,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		// the time `up` runs the release is pulled, deployed and promoted, and a
 		// recreate that dies halfway leaves its services stopped. So there is
 		// nothing to roll back to — recovery is to finish starting them.
-		const recovery = recoverStackAfterFailedUp(plan.services);
+		const recovery = await recoverStackAfterFailedUp(plan.services);
 		steps.push(recovery);
 		// In this sidecar's own log too. An operator whose instance just went dark
 		// reads `docker logs owlat-updater-1` long before they think to re-trigger
@@ -279,14 +292,38 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 				? 'docker compose up failed — the stack was restarted and is serving again, ' +
 					'but the release may be only partly applied. Re-run the update.'
 				: `docker compose up failed and the stack is not fully running. ${recovery.stderr}`,
+			rollout: 'partially-applied' satisfies RolloutState,
 			steps,
 		});
 	}
 
-	// Step 9: Hand this container's own replacement to a helper that outlives
+	// Step 9: `up` has started the release; wait (bounded) until it is serving.
+	const readiness = await verifyReadiness(plan.services, composeArgv());
+	steps.push({
+		step: 'readiness',
+		ok: readiness.ready,
+		stdout: readiness.ready ? readiness.summary : '',
+		stderr: readiness.ready ? '' : readiness.summary,
+	});
+	if (!readiness.ready) console.error('[update] release started but not ready:', readiness.summary);
+
+	// Step 10: Hand this container's own replacement to a helper that outlives
 	// it, so the updater does not stay a release behind forever. Reported, never
-	// fatal — the release is already live on every other service.
+	// fatal. It runs whether or not the readiness check passed: the new release
+	// is promoted and running either way, and an updater left on the old image
+	// is one more thing out of step with it.
 	steps.push(scheduleUpdaterRecreateSafely());
 
-	json(res, 200, { success: true, steps });
+	if (!readiness.ready) {
+		return json(res, 500, {
+			error:
+				'The release was applied and its containers started, but the stack did not pass the ' +
+				`readiness check. ${readiness.summary} Check \`docker compose ps\` and the logs of the ` +
+				'services named above on the host.',
+			rollout: 'started' satisfies RolloutState,
+			steps,
+		});
+	}
+
+	json(res, 200, { success: true, rollout: 'healthy' satisfies RolloutState, steps });
 }
