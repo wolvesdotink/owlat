@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { isValidEmail, sanitizeCsvCell } from '@owlat/shared';
+import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
 import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 import Papa from 'papaparse';
@@ -168,8 +169,11 @@ const newPassword = ref('');
 const confirmPassword = ref('');
 const savingPassword = ref(false);
 async function changePassword() {
-	if (newPassword.value.length < 10) {
-		showToast(t('dashboard.preferences.account.passwordTooShort'), 'error');
+	if (newPassword.value.length < MIN_PASSWORD_LENGTH) {
+		showToast(
+			t('dashboard.preferences.account.passwordTooShort', { min: MIN_PASSWORD_LENGTH }),
+			'error'
+		);
 		return;
 	}
 	if (newPassword.value !== confirmPassword.value) {

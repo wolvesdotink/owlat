@@ -9674,7 +9674,7 @@
 				"pageTitle": "Account Settings — Owlat",
 				"passwordChangeFailed": "Could not change password",
 				"passwordChanged": "Password changed",
-				"passwordTooShort": "New password must be at least 10 characters",
+				"passwordTooShort": "New password must be at least {min} characters",
 				"passwordsDoNotMatch": "New passwords do not match",
 				"processing": "Processing...",
 				"profileDescription": "Your display name, used as the sender identity.",

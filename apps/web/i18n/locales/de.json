@@ -9674,7 +9674,7 @@
 				"pageTitle": "Kontoeinstellungen — Owlat",
 				"passwordChangeFailed": "Passwort konnte nicht geändert werden",
 				"passwordChanged": "Passwort geändert",
-				"passwordTooShort": "Das neue Passwort muss mindestens 10 Zeichen lang sein",
+				"passwordTooShort": "Das neue Passwort muss mindestens {min} Zeichen lang sein",
 				"passwordsDoNotMatch": "Die neuen Passwörter stimmen nicht überein",
 				"processing": "Wird verarbeitet...",
 				"profileDescription": "Ihr Anzeigename, der als Absenderidentität verwendet wird.",
