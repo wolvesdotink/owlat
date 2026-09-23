@@ -62,8 +62,8 @@ export const automationTables = {
 		//   remaps them on reorder/remove/insert so they follow the moved steps.
 		config: stepConfigValidator,
 		// Denormalized per-status step-run counts, maintained by the step-run
-		// transition mutations (stepExecutorQueries.ts: createStepRun /
-		// markStepExecuting / markStepCompleted / markStepFailed). getStepAnalytics
+		// step-run transitions (stepExecutorQueries.ts helpers, driven by the
+		// walker's mutations in stepOrchestration.ts). getStepAnalytics
 		// + getAutomationStats read these off the bounded step rows instead of
 		// scanning every run × step-run on the reactive automation detail page.
 		statPending: v.optional(v.number()),
@@ -128,11 +128,22 @@ export const automationTables = {
 		delayUntil: v.optional(v.number()),
 		// Error tracking
 		errorMessage: v.optional(v.string()),
+		// The execution attempt that currently owns this step run (0 for the
+		// first claim, +1 per retry or lease recovery). It doubles as the fencing
+		// token: finalize/retry mutations carrying an older attempt are stale and
+		// change nothing. See automations/stepOrchestration.ts.
 		retryCount: v.optional(v.number()),
+		// Lease on an `executing` step run. Set by every claim and extended when a
+		// retry is scheduled; an executing row whose lease has expired was
+		// interrupted mid-attempt (the action died between two commits) and is
+		// re-dispatched by the recovery sweep. Absent on rows claimed before
+		// leases existed, which the sweep leaves alone.
+		leaseExpiresAt: v.optional(v.number()),
 	})
 		.index('by_automation_run', ['automationRunId'])
 		.index('by_status', ['status'])
-		.index('by_status_and_delay_until', ['status', 'delayUntil']),
+		.index('by_status_and_delay_until', ['status', 'delayUntil'])
+		.index('by_status_and_lease_expires_at', ['status', 'leaseExpiresAt']),
 
 	// Write-sharded automation run counters (inc-only: entered/completed/cancelled).
 	// fireTrigger / complete / cancel bump a RANDOM shard instead of the single

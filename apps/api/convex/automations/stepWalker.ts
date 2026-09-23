@@ -1,25 +1,15 @@
 'use node';
 
 import { v } from 'convex/values';
-import { MAX_RETRY_ATTEMPTS, RETRY_DELAYS_MS } from '../lib/constants';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import { stepModuleFor, computeEntryDelay } from './steps';
+import { stepModuleFor } from './steps';
 import { isPluginStepKind, type CoreStepKind } from './steps/catalog';
 import { executePluginStep } from './steps/pluginStep';
 import { PENDING_DELAY_BATCH } from './stepExecutorQueries';
+import { RECOVERY_BATCH } from './stepOrchestration';
 import type { StepOutcome } from './types';
-
-// ============== Retry policy ==============
-
-// Retry configuration lives in lib/constants.
-
-// Hard ceiling on step executions per automation run. A condition step may
-// branch to an earlier step (the editor allows any target), so without a cap a
-// cycle would loop forever and re-send the email step on every pass. 100 is far
-// above any legitimate linear automation length.
-const MAX_STEPS_PER_RUN = 100;
 
 // ============== Re-exports (compat) ==============
 
@@ -41,78 +31,51 @@ interface ExecuteStepResult {
 	cancelled?: boolean;
 }
 
+type ClaimedStep = {
+	step: Doc<'automationSteps'>;
+	contact: Doc<'contacts'>;
+	automation: Doc<'automations'>;
+};
+
 /**
- * Advance to the next step in an automation run: schedule it, or mark the
- * run completed if the index is past the end. Uses the next step's module
- * `entryDelay` to compute the scheduling delay — no `if (step.kind === ...)`
- * branching at the walker layer.
- *
- * `currentStepIndex` is the index of the step that just finished. When a
- * condition step branches forward (`nextStepIndex` is beyond the sequential
- * `currentStepIndex + 1`), the steps in between are recorded as `skipped` step
- * runs so the analytics funnel reflects what each contact bypassed.
+ * Run the step's side effect — the only part of a step that is not a
+ * transaction. Plugin step kinds run through the host-gated runner (authorize →
+ * bounded input → module → scrubbed result); core kinds dispatch to their
+ * module directly. A throw is folded into a `failed` outcome so the caller has
+ * one retry path.
  */
-async function advanceToStep(
+async function runStepSideEffect(
 	ctx: ActionCtx,
-	automationRunId: Id<'automationRuns'>,
-	currentStepIndex: number,
-	nextStepIndex: number,
-	allSteps: Doc<'automationSteps'>[]
-): Promise<ExecuteStepResult> {
-	// Record `skipped` rows for any steps a forward condition branch jumped over.
-	if (nextStepIndex > currentStepIndex + 1) {
-		await ctx.runMutation(internal.automations.stepExecutorQueries.markStepsSkipped, {
-			automationRunId,
-			fromStepIndex: currentStepIndex + 1,
-			toStepIndex: nextStepIndex,
-		});
-	}
-
-	if (nextStepIndex >= allSteps.length) {
-		await ctx.runMutation(internal.automations.stepExecutorQueries.completeAutomationRun, {
-			automationRunId,
-		});
-		return { success: true, completed: true };
-	}
-
-	const nextStep = allSteps.find((s) => s.stepIndex === nextStepIndex);
-	if (!nextStep) {
-		await ctx.runMutation(internal.automations.stepExecutorQueries.completeAutomationRun, {
-			automationRunId,
-		});
-		return { success: true, completed: true };
-	}
-
-	const delayMs = computeEntryDelay(nextStep);
-	const nextStepAt = delayMs > 0 ? Date.now() + delayMs : undefined;
-
-	await ctx.runMutation(internal.automations.stepExecutorQueries.advanceAutomationRun, {
-		automationRunId,
-		nextStepIndex,
-		nextStepAt,
-	});
-
-	const nextStepRunId = await ctx.runMutation(
-		internal.automations.stepExecutorQueries.createStepRun,
-		{
-			automationRunId,
-			automationStepId: nextStep._id,
-			stepIndex: nextStepIndex,
-			stepType: nextStep.stepType,
-			delayUntil: nextStepAt,
+	claimed: ClaimedStep,
+	stepRunId: Id<'automationStepRuns'>
+): Promise<StepOutcome> {
+	const { step, contact, automation } = claimed;
+	try {
+		if (isPluginStepKind(step.stepType)) {
+			return await executePluginStep(ctx, step, contact);
 		}
-	);
-
-	await ctx.scheduler.runAfter(delayMs, internal.automations.stepWalker.executeStep, {
-		automationRunId,
-		stepRunId: nextStepRunId,
-	});
-
-	return { success: true, nextStepScheduled: true, delayMs };
+		const module = stepModuleFor(step.stepType as CoreStepKind);
+		const config = module.parseConfig(step.config);
+		return await module.execute(ctx, {
+			config: config as never,
+			contact,
+			automation,
+			stepRunId,
+		});
+	} catch (error) {
+		return { status: 'failed', error: error instanceof Error ? error.message : 'Unknown error' };
+	}
 }
 
 // ============== Main action: execute one step ==============
 
+/**
+ * Execute one attempt of one step run. The state around the side effect lives
+ * in three mutations (see `stepOrchestration.ts`): the claim binds this attempt
+ * to the persisted step run, and exactly one of finalize or retry-or-fail
+ * commits its result. If this action dies anywhere in between, the step run's
+ * lease expires and `processPendingDelays` recovers it.
+ */
 export const executeStep = internalAction({
 	args: {
 		automationRunId: v.id('automationRuns'),
@@ -120,148 +83,54 @@ export const executeStep = internalAction({
 		retryCount: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<ExecuteStepResult> => {
-		const retryCount = args.retryCount ?? 0;
+		const attempt = args.retryCount ?? 0;
 
-		const runData = await ctx.runQuery(
-			internal.automations.stepExecutorQueries.getAutomationRunWithContact,
-			{ automationRunId: args.automationRunId }
-		);
-
-		if (!runData) {
-			await ctx.runMutation(internal.automations.stepExecutorQueries.markStepFailed, {
-				stepRunId: args.stepRunId,
-				errorMessage: 'Automation run or contact not found',
-				retryCount,
-			});
-			return { success: false, error: 'Run not found' };
-		}
-
-		const { run, contact, automation } = runData;
-
-		if (automation.status !== 'active') {
-			await ctx.runMutation(internal.automations.stepExecutorQueries.markStepFailed, {
-				stepRunId: args.stepRunId,
-				errorMessage: 'Automation is no longer active',
-				retryCount,
-			});
-			await ctx.runMutation(internal.automations.stepExecutorQueries.cancelAutomationRun, {
-				automationRunId: args.automationRunId,
-			});
-			return { success: false, error: 'Automation inactive' };
-		}
-
-		const step = await ctx.runQuery(internal.automations.stepExecutorQueries.getAutomationStep, {
-			automationId: run.automationId,
-			stepIndex: run.currentStepIndex,
+		const claim = await ctx.runMutation(internal.automations.stepOrchestration.claimStepRun, {
+			stepRunId: args.stepRunId,
+			attempt,
 		});
+		// Another invocation already owns (or finished) this step — drop this duplicate.
+		if (claim.kind === 'dropped') return { success: true };
+		if (claim.kind === 'ended') return { success: false, error: claim.reason, cancelled: true };
 
-		if (!step) {
-			await ctx.runMutation(internal.automations.stepExecutorQueries.markStepFailed, {
-				stepRunId: args.stepRunId,
-				errorMessage: 'Step not found',
-				retryCount,
-			});
-			return { success: false, error: 'Step not found' };
+		const outcome = await runStepSideEffect(ctx, claim, args.stepRunId);
+
+		if (outcome.status === 'failed') {
+			const retry = await ctx.runMutation(
+				internal.automations.stepOrchestration.retryOrFailStepRun,
+				{ stepRunId: args.stepRunId, attempt, errorMessage: outcome.error }
+			);
+			if (retry.kind === 'retrying') {
+				return { success: false, error: outcome.error, retrying: true };
+			}
+			return { success: false, error: outcome.error, cancelled: retry.kind === 'failed' };
 		}
 
-		// Fresh dispatch (retryCount 0) must atomically claim the pending step so
-		// a duplicate scheduler firing (cron vs. original runAfter) can't execute
-		// it twice. Retries (retryCount > 0) re-enter on an already-`executing`
-		// step run that this same chain owns, so they skip the claim.
-		if (retryCount === 0) {
-			const claim = await ctx.runMutation(
-				internal.automations.stepExecutorQueries.markStepExecuting,
-				{ stepRunId: args.stepRunId }
-			);
-			if (!claim.claimed) {
-				// Another invocation already owns this step — drop this duplicate.
+		const finalized = await ctx.runMutation(
+			internal.automations.stepOrchestration.finalizeStepRun,
+			{
+				stepRunId: args.stepRunId,
+				attempt,
+				outcome:
+					outcome.status === 'contact_ineligible'
+						? { kind: 'contact_ineligible', reason: outcome.reason }
+						: {
+								kind: 'completed',
+								emailSendId: outcome.emailSendId,
+								nextStepIndex: outcome.nextStepIndex,
+							},
+			}
+		);
+		switch (finalized.kind) {
+			case 'scheduled':
+				return { success: true, nextStepScheduled: true, delayMs: finalized.delayMs };
+			case 'completed':
+				return { success: true, completed: true };
+			case 'cancelled':
+				return { success: false, error: 'Contact ineligible', cancelled: true };
+			case 'stale':
+			case 'run_ended':
 				return { success: true };
-			}
-			if (claim.stepsExecuted > MAX_STEPS_PER_RUN) {
-				await ctx.runMutation(internal.automations.stepExecutorQueries.markStepFailed, {
-					stepRunId: args.stepRunId,
-					errorMessage: `Automation exceeded ${MAX_STEPS_PER_RUN} step executions — cancelled to prevent a loop`,
-					retryCount,
-				});
-				await ctx.runMutation(internal.automations.stepExecutorQueries.cancelAutomationRun, {
-					automationRunId: args.automationRunId,
-				});
-				return { success: false, error: 'Max steps exceeded', cancelled: true };
-			}
-		}
-
-		try {
-			// Plugin step kinds run through the host-gated runner (authorize →
-			// bounded input → module → scrubbed result); core kinds dispatch to
-			// their module directly. Both feed the same retry/idempotency path.
-			let outcome: StepOutcome;
-			if (isPluginStepKind(step.stepType)) {
-				outcome = await executePluginStep(ctx, step, contact);
-			} else {
-				const module = stepModuleFor(step.stepType as CoreStepKind);
-				const config = module.parseConfig(step.config);
-				outcome = await module.execute(ctx, {
-					config: config as never,
-					contact,
-					automation,
-					stepRunId: args.stepRunId,
-				});
-			}
-
-			if (outcome.status === 'failed') {
-				throw new Error(outcome.error);
-			}
-
-			// Mark the step completed — emailSendId is set only when the email
-			// module returns one.
-			await ctx.runMutation(internal.automations.stepExecutorQueries.markStepCompleted, {
-				stepRunId: args.stepRunId,
-				emailSendId: outcome.emailSendId,
-			});
-
-			// Decide where to go next: explicit override (condition branch) or
-			// sequential `currentStepIndex + 1`.
-			const allSteps = await ctx.runQuery(
-				internal.automations.stepExecutorQueries.getAutomationSteps,
-				{ automationId: run.automationId }
-			);
-			const nextStepIndex = outcome.nextStepIndex ?? run.currentStepIndex + 1;
-			return await advanceToStep(
-				ctx,
-				args.automationRunId,
-				run.currentStepIndex,
-				nextStepIndex,
-				allSteps
-			);
-		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-			if (retryCount < MAX_RETRY_ATTEMPTS) {
-				const retryDelay = RETRY_DELAYS_MS[retryCount] ?? 30000;
-				await ctx.scheduler.runAfter(retryDelay, internal.automations.stepWalker.executeStep, {
-					automationRunId: args.automationRunId,
-					stepRunId: args.stepRunId,
-					retryCount: retryCount + 1,
-				});
-				return { success: false, error: errorMessage, retrying: true };
-			}
-
-			await ctx.runMutation(internal.automations.stepExecutorQueries.markStepFailed, {
-				stepRunId: args.stepRunId,
-				errorMessage,
-				retryCount,
-			});
-			await ctx.runMutation(internal.automations.stepExecutorQueries.cancelAutomationRun, {
-				automationRunId: args.automationRunId,
-			});
-			// Circuit breaker: a run that exhausted its retries is a systematic
-			// failure (a broken step), not bad luck — count it toward auto-pausing
-			// the automation so it stops re-failing for every subsequent contact.
-			await ctx.runMutation(internal.automations.lifecycle.recordRunFailure, {
-				automationId: run.automationId,
-			});
-
-			return { success: false, error: errorMessage, cancelled: true };
 		}
 	},
 });
@@ -282,67 +151,23 @@ export const startAutomationRun = internalAction({
 		automationRunId: v.id('automationRuns'),
 	},
 	handler: async (ctx, args): Promise<StartAutomationResult> => {
-		const runData = await ctx.runQuery(
-			internal.automations.stepExecutorQueries.getAutomationRunWithContact,
+		// One mutation: create the first step run and schedule it together.
+		const started = await ctx.runMutation(
+			internal.automations.stepOrchestration.beginAutomationRun,
 			{ automationRunId: args.automationRunId }
 		);
-
-		if (!runData) {
-			return { success: false, error: 'Automation run not found' };
+		switch (started.kind) {
+			case 'not_found':
+				return { success: false, error: 'Automation run not found' };
+			case 'automation_inactive':
+				return { success: false, error: 'Automation is not active' };
+			case 'already_started':
+				return { success: true, message: 'Run already started' };
+			case 'completed':
+				return { success: true, completed: true, message: 'No steps to execute' };
+			case 'scheduled':
+				return { success: true, stepRunId: started.stepRunId, delayMs: started.delayMs };
 		}
-
-		const { run, automation } = runData;
-
-		if (automation.status !== 'active') {
-			await ctx.runMutation(internal.automations.stepExecutorQueries.cancelAutomationRun, {
-				automationRunId: args.automationRunId,
-			});
-			return { success: false, error: 'Automation is not active' };
-		}
-
-		const firstStep = await ctx.runQuery(
-			internal.automations.stepExecutorQueries.getAutomationStep,
-			{
-				automationId: run.automationId,
-				stepIndex: 0,
-			}
-		);
-
-		if (!firstStep) {
-			await ctx.runMutation(internal.automations.stepExecutorQueries.completeAutomationRun, {
-				automationRunId: args.automationRunId,
-			});
-			return { success: true, completed: true, message: 'No steps to execute' };
-		}
-
-		const delayMs = computeEntryDelay(firstStep);
-		const delayUntil = delayMs > 0 ? Date.now() + delayMs : undefined;
-
-		if (delayMs > 0) {
-			await ctx.runMutation(internal.automations.stepExecutorQueries.advanceAutomationRun, {
-				automationRunId: args.automationRunId,
-				nextStepIndex: 0,
-				nextStepAt: delayUntil,
-			});
-		}
-
-		const stepRunId = await ctx.runMutation(
-			internal.automations.stepExecutorQueries.createStepRun,
-			{
-				automationRunId: args.automationRunId,
-				automationStepId: firstStep._id,
-				stepIndex: 0,
-				stepType: firstStep.stepType,
-				delayUntil,
-			}
-		);
-
-		await ctx.scheduler.runAfter(delayMs, internal.automations.stepWalker.executeStep, {
-			automationRunId: args.automationRunId,
-			stepRunId,
-		});
-
-		return { success: true, stepRunId, delayMs };
 	},
 });
 
@@ -350,7 +175,7 @@ export const startAutomationRun = internalAction({
 
 export const processPendingDelays = internalAction({
 	args: {},
-	handler: async (ctx) => {
+	handler: async (ctx): Promise<{ processedCount: number; recoveredCount: number }> => {
 		const pendingRuns = await ctx.runQuery(
 			internal.automations.stepExecutorQueries.getPendingDelayStepRuns
 		);
@@ -364,12 +189,26 @@ export const processPendingDelays = internalAction({
 			processedCount++;
 		}
 
+		// Orchestration recovery: attempts whose lease expired were interrupted
+		// between two commits. Re-dispatch each as the NEXT attempt; the claim's
+		// fencing CAS drops it if a scheduled retry got there first.
+		const interruptedRuns = await ctx.runQuery(
+			internal.automations.stepOrchestration.getInterruptedStepRuns
+		);
+		for (const stepRun of interruptedRuns) {
+			await ctx.scheduler.runAfter(0, internal.automations.stepWalker.executeStep, {
+				automationRunId: stepRun.automationRunId,
+				stepRunId: stepRun._id,
+				retryCount: (stepRun.retryCount ?? 0) + 1,
+			});
+		}
+
 		// A full page means more may be due — drain across ticks rather than fanning
-		// out the whole overflow in one transaction. markStepExecuting's CAS makes a
+		// out the whole overflow in one transaction. The claim CAS makes a
 		// re-fired step idempotent.
-		if (pendingRuns.length === PENDING_DELAY_BATCH) {
+		if (pendingRuns.length === PENDING_DELAY_BATCH || interruptedRuns.length === RECOVERY_BATCH) {
 			await ctx.scheduler.runAfter(0, internal.automations.stepWalker.processPendingDelays, {});
 		}
-		return { processedCount };
+		return { processedCount, recoveredCount: interruptedRuns.length };
 	},
 });

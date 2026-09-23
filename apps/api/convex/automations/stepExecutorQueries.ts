@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { bumpAutomationStats } from './statShards';
+import { stepKindValidator } from './steps/catalog';
 
 // ============== Denormalized step-run status counters ==============
 
@@ -33,7 +34,7 @@ function statDelta(
  * shared step row, so getStepAnalytics / getAutomationStats can read the funnel
  * off the bounded step rows instead of scanning every run × step-run.
  */
-async function applyStepStatusTransition(
+export async function applyStepStatusTransition(
 	ctx: MutationCtx,
 	automationStepId: Id<'automationSteps'>,
 	from: StepRunStatus | null,
@@ -48,59 +49,125 @@ async function applyStepStatusTransition(
 	});
 }
 
-// ============== Internal Queries ==============
-
-// Get automation run with contact data
-export const getAutomationRunWithContact = internalQuery({
+/**
+ * Insert a `pending` step run for `step` and count it. The step's kind is read
+ * off the step row itself, so a run can never record a different kind than the
+ * step it executes.
+ */
+export async function insertStepRun(
+	ctx: MutationCtx,
 	args: {
-		automationRunId: v.id('automationRuns'),
-	},
-	handler: async (ctx, args) => {
-		const run = await ctx.db.get(args.automationRunId);
-		if (!run) return null;
+		automationRunId: Id<'automationRuns'>;
+		step: Pick<Doc<'automationSteps'>, '_id' | 'stepIndex' | 'stepType'>;
+		delayUntil: number | undefined;
+	}
+): Promise<Id<'automationStepRuns'>> {
+	const stepRunId = await ctx.db.insert('automationStepRuns', {
+		automationRunId: args.automationRunId,
+		automationStepId: args.step._id,
+		stepIndex: args.step.stepIndex,
+		stepType: args.step.stepType,
+		status: 'pending',
+		scheduledAt: Date.now(),
+		delayUntil: args.delayUntil,
+		retryCount: 0,
+	});
+	await applyStepStatusTransition(ctx, args.step._id, null, 'pending');
+	return stepRunId;
+}
 
-		const contact = await ctx.db.get(run.contactId);
-		if (!contact) return null;
+/**
+ * Move a step run to `to`, patching `fields` and keeping the step counters in
+ * step. Terminal step runs never move again: a late duplicate must not flip a
+ * completed run to failed or count it twice.
+ */
+export async function transitionStepRun(
+	ctx: MutationCtx,
+	stepRun: Doc<'automationStepRuns'>,
+	to: StepRunStatus,
+	fields: Partial<Doc<'automationStepRuns'>> = {}
+): Promise<boolean> {
+	if (isTerminalStepRunStatus(stepRun.status)) return false;
+	await ctx.db.patch(stepRun._id, { ...fields, status: to });
+	await applyStepStatusTransition(ctx, stepRun.automationStepId, stepRun.status, to);
+	return true;
+}
 
-		const automation = await ctx.db.get(run.automationId);
-		if (!automation) return null;
+export function isTerminalStepRunStatus(status: StepRunStatus): boolean {
+	return status === 'completed' || status === 'failed' || status === 'skipped';
+}
 
-		return { run, contact, automation };
-	},
-});
-
-// Get automation step by automation and index
-export const getAutomationStep = internalQuery({
-	args: {
-		automationId: v.id('automations'),
-		stepIndex: v.number(),
-	},
-	handler: async (ctx, args) => {
+/**
+ * Record terminal `skipped` step runs for the steps a forward condition branch
+ * jumps over, `fromStepIndex` inclusive to `toStepIndex` exclusive.
+ */
+export async function recordSkippedSteps(
+	ctx: MutationCtx,
+	run: Pick<Doc<'automationRuns'>, '_id' | 'automationId'>,
+	fromStepIndex: number,
+	toStepIndex: number
+): Promise<void> {
+	const now = Date.now();
+	for (let stepIndex = fromStepIndex; stepIndex < toStepIndex; stepIndex++) {
 		const step = await ctx.db
 			.query('automationSteps')
 			.withIndex('by_automation_and_index', (q) =>
-				q.eq('automationId', args.automationId).eq('stepIndex', args.stepIndex)
+				q.eq('automationId', run.automationId).eq('stepIndex', stepIndex)
 			)
 			.first();
+		if (!step) continue;
 
-		return step;
-	},
-});
+		await ctx.db.insert('automationStepRuns', {
+			automationRunId: run._id,
+			automationStepId: step._id,
+			stepIndex,
+			stepType: step.stepType,
+			status: 'skipped',
+			scheduledAt: now,
+			completedAt: now,
+			retryCount: 0,
+		});
+		await applyStepStatusTransition(ctx, step._id, null, 'skipped');
+	}
+}
 
-// Get all steps for an automation
-export const getAutomationSteps = internalQuery({
-	args: {
-		automationId: v.id('automations'),
-	},
-	handler: async (ctx, args) => {
-		const steps = await ctx.db
-			.query('automationSteps')
-			.withIndex('by_automation', (q) => q.eq('automationId', args.automationId))
-			.collect(); // bounded: one automation's steps
+/**
+ * Finalize a still-running run as `completed`. A duplicate firing is a no-op, so
+ * the shared statsActive (derived from entered − completed − cancelled) is never
+ * decremented twice.
+ */
+export async function completeRun(
+	ctx: MutationCtx,
+	automationRunId: Id<'automationRuns'>
+): Promise<void> {
+	const run = await ctx.db.get(automationRunId);
+	if (!run || run.status !== 'running') return;
 
-		return steps.sort((a, b) => a.stepIndex - b.stepIndex);
-	},
-});
+	await ctx.db.patch(automationRunId, { status: 'completed', completedAt: Date.now() });
+	await bumpAutomationStats(ctx, run.automationId, { statsCompleted: 1 });
+
+	// A run completing successfully clears the circuit-breaker streak — only
+	// CONSECUTIVE failures should trip it.
+	const automation = await ctx.db.get(run.automationId);
+	if (automation && (automation.consecutiveRunFailures ?? 0) > 0) {
+		await ctx.db.patch(run.automationId, { consecutiveRunFailures: 0 });
+	}
+}
+
+/** Finalize a still-running run as `cancelled` (see {@link completeRun}). */
+export async function cancelRun(
+	ctx: MutationCtx,
+	automationRunId: Id<'automationRuns'>
+): Promise<void> {
+	const run = await ctx.db.get(automationRunId);
+	if (!run || run.status !== 'running') return;
+
+	await ctx.db.patch(automationRunId, { status: 'cancelled', completedAt: Date.now() });
+	// Sharded counter — statsActive is derived by the rollup.
+	await bumpAutomationStats(ctx, run.automationId, { statsCancelled: 1 });
+}
+
+// ============== Internal Queries ==============
 
 // Get email template for step execution
 export const getEmailTemplateForStep = internalQuery({
@@ -145,31 +212,29 @@ export const getPendingDelayStepRuns = internalQuery({
 });
 
 // ============== Internal Mutations ==============
+//
+// Single-transition mutations. The walker itself drives step runs through the
+// atomic orchestration mutations in stepOrchestration.ts; these remain as the
+// individually addressable transitions (and the seams the counter tests use).
 
-// Create an automation step run record
+// Create an automation step run record. `stepType` takes the canonical,
+// plugin-extensible kind validator — the same one `automationSteps.stepType`
+// and `automationStepRuns.stepType` are stored under — so a plugin step kind is
+// accepted here exactly where the schema accepts it.
 export const createStepRun = internalMutation({
 	args: {
 		automationRunId: v.id('automationRuns'),
 		automationStepId: v.id('automationSteps'),
 		stepIndex: v.number(),
-		stepType: v.union(v.literal('email'), v.literal('delay'), v.literal('condition')),
+		stepType: stepKindValidator,
 		delayUntil: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const now = Date.now();
-		const stepRunId = await ctx.db.insert('automationStepRuns', {
+		return await insertStepRun(ctx, {
 			automationRunId: args.automationRunId,
-			automationStepId: args.automationStepId,
-			stepIndex: args.stepIndex,
-			stepType: args.stepType,
-			status: 'pending',
-			scheduledAt: now,
+			step: { _id: args.automationStepId, stepIndex: args.stepIndex, stepType: args.stepType },
 			delayUntil: args.delayUntil,
-			retryCount: 0,
 		});
-
-		await applyStepStatusTransition(ctx, args.automationStepId, null, 'pending');
-		return stepRunId;
 	},
 });
 
@@ -193,44 +258,16 @@ export const markStepsSkipped = internalMutation({
 
 		const run = await ctx.db.get(args.automationRunId);
 		if (!run) return;
-
-		const now = Date.now();
-		for (let stepIndex = args.fromStepIndex; stepIndex < args.toStepIndex; stepIndex++) {
-			const step = await ctx.db
-				.query('automationSteps')
-				.withIndex('by_automation_and_index', (q) =>
-					q.eq('automationId', run.automationId).eq('stepIndex', stepIndex)
-				)
-				.first();
-			if (!step) continue;
-
-			await ctx.db.insert('automationStepRuns', {
-				automationRunId: args.automationRunId,
-				automationStepId: step._id,
-				stepIndex,
-				stepType: step.stepType,
-				status: 'skipped',
-				scheduledAt: now,
-				completedAt: now,
-				retryCount: 0,
-			});
-			await applyStepStatusTransition(ctx, step._id, null, 'skipped');
-		}
+		await recordSkippedSteps(ctx, run, args.fromStepIndex, args.toStepIndex);
 	},
 });
 
-// Atomically claim a pending step run for execution.
-//
-// Two independent schedulers can target the same pending step: the original
-// `runAfter(delayMs)` AND the `processPendingDelays` cron (which re-schedules
-// any pending step whose delay has elapsed). Without an atomic guard both fire,
-// the step executes twice, and a delay-gated email goes out twice. Claiming is
-// therefore a single pending → executing CAS: only the first caller wins.
-//
-// It also enforces the per-run step-execution cap (loop protection): each claim
-// bumps `automationRuns.stepsExecuted`, and the caller cancels the run when the
-// returned count exceeds the cap (a backward-branching condition step would
-// otherwise loop forever, re-sending on every pass).
+// Atomically claim a pending step run for execution: a single pending →
+// executing CAS, so of two schedulers targeting one step (the original
+// `runAfter(delayMs)` and the `processPendingDelays` sweep) only the first wins.
+// Each claim bumps `automationRuns.stepsExecuted` for the per-run loop cap.
+// The walker claims through `stepOrchestration.claimStepRun`, which applies the
+// same CAS plus the run/contact/lease checks.
 export const markStepExecuting = internalMutation({
 	args: {
 		stepRunId: v.id('automationStepRuns'),
@@ -248,11 +285,7 @@ export const markStepExecuting = internalMutation({
 			return { claimed: false, stepsExecuted: currentCount };
 		}
 
-		await ctx.db.patch(args.stepRunId, {
-			status: 'executing',
-			startedAt: Date.now(),
-		});
-		await applyStepStatusTransition(ctx, stepRun.automationStepId, 'pending', 'executing');
+		await transitionStepRun(ctx, stepRun, 'executing', { startedAt: Date.now() });
 
 		const stepsExecuted = currentCount + 1;
 		if (run) {
@@ -271,17 +304,11 @@ export const markStepCompleted = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		const stepRun = await ctx.db.get(args.stepRunId);
-		// Skip any already-terminal step run: a duplicate executeStep firing (the
-		// runAfter scheduler vs the processPendingDelays cron both target one
-		// pending step) must not flip a completed→failed / re-count it. Guarding
-		// only `=== 'completed'` left the cross-terminal flip open.
-		if (!stepRun || stepRun.status === 'completed' || stepRun.status === 'failed') return;
-		await ctx.db.patch(args.stepRunId, {
-			status: 'completed',
+		if (!stepRun) return;
+		await transitionStepRun(ctx, stepRun, 'completed', {
 			completedAt: Date.now(),
 			emailSendId: args.emailSendId,
 		});
-		await applyStepStatusTransition(ctx, stepRun.automationStepId, stepRun.status, 'completed');
 	},
 });
 
@@ -294,29 +321,11 @@ export const markStepFailed = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		const stepRun = await ctx.db.get(args.stepRunId);
-		// Skip any already-terminal step run (see markStepCompleted).
-		if (!stepRun || stepRun.status === 'failed' || stepRun.status === 'completed') return;
-		await ctx.db.patch(args.stepRunId, {
-			status: 'failed',
+		if (!stepRun) return;
+		await transitionStepRun(ctx, stepRun, 'failed', {
 			completedAt: Date.now(),
 			errorMessage: args.errorMessage,
 			retryCount: args.retryCount,
-		});
-		await applyStepStatusTransition(ctx, stepRun.automationStepId, stepRun.status, 'failed');
-	},
-});
-
-// Update automation run to next step
-export const advanceAutomationRun = internalMutation({
-	args: {
-		automationRunId: v.id('automationRuns'),
-		nextStepIndex: v.number(),
-		nextStepAt: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		await ctx.db.patch(args.automationRunId, {
-			currentStepIndex: args.nextStepIndex,
-			nextStepAt: args.nextStepAt,
 		});
 	},
 });
@@ -327,30 +336,7 @@ export const completeAutomationRun = internalMutation({
 		automationRunId: v.id('automationRuns'),
 	},
 	handler: async (ctx, args) => {
-		const run = await ctx.db.get(args.automationRunId);
-		// Only finalize a still-running run: a duplicate firing must not decrement
-		// the shared automations.statsActive twice (which inflates the derived
-		// `cancelled`/understates `running` in getAutomationStats).
-		if (!run || run.status !== 'running') return;
-
-		const now = Date.now();
-
-		// Update the run status
-		await ctx.db.patch(args.automationRunId, {
-			status: 'completed',
-			completedAt: now,
-		});
-
-		// Sharded counter — statsActive is derived (entered − completed − cancelled)
-		// by the rollup, so we only bump completed here.
-		await bumpAutomationStats(ctx, run.automationId, { statsCompleted: 1 });
-
-		// A run completing successfully clears the circuit-breaker streak — only
-		// CONSECUTIVE failures should trip it.
-		const automation = await ctx.db.get(run.automationId);
-		if (automation && (automation.consecutiveRunFailures ?? 0) > 0) {
-			await ctx.db.patch(run.automationId, { consecutiveRunFailures: 0 });
-		}
+		await completeRun(ctx, args.automationRunId);
 	},
 });
 
@@ -360,20 +346,6 @@ export const cancelAutomationRun = internalMutation({
 		automationRunId: v.id('automationRuns'),
 	},
 	handler: async (ctx, args) => {
-		const run = await ctx.db.get(args.automationRunId);
-		// Only finalize a still-running run (see completeAutomationRun) — prevents
-		// double-decrementing statsActive on a duplicate firing.
-		if (!run || run.status !== 'running') return;
-
-		const now = Date.now();
-
-		// Update the run status
-		await ctx.db.patch(args.automationRunId, {
-			status: 'cancelled',
-			completedAt: now,
-		});
-
-		// Sharded counter — statsActive is derived by the rollup.
-		await bumpAutomationStats(ctx, run.automationId, { statsCancelled: 1 });
+		await cancelRun(ctx, args.automationRunId);
 	},
 });
