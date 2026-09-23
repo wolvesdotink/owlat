@@ -267,6 +267,35 @@ describe('independence screen', () => {
 		wrapper.unmount();
 	});
 
+	it('explains an empty standalone screen and keeps today’s capacity', () => {
+		data.value = independenceSummary({
+			referenceTransportId: null,
+			isRelayConfigured: false,
+			ownShare: null,
+			series: [{ day: NOW, own: 0, reference: 0 }],
+			projection: { kind: 'already_independent' },
+			relayRemoval: { kind: 'safe' },
+			monthToDateOwnSends: 0,
+		});
+		const wrapper = mountPage();
+		const empty = wrapper.find('[data-testid="delivery-advanced-empty"]');
+		expect(empty.exists()).toBe(true);
+		expect(empty.find('ui-empty-state-stub').attributes('title')).toBe('Nothing sent yet');
+		// The capacity is a real figure before anything was sent, so it stays.
+		expect(wrapper.find('[data-testid="independence-headline"]').text()).toBe('4,000');
+		// The chart and the projection had nothing to say, so they are gone.
+		expect(wrapper.find('[data-testid="independence-chart"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="independence-projection"]').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
+	it('says what fills the screen when the summary resolves to nothing', () => {
+		data.value = undefined;
+		const wrapper = mountPage();
+		expect(wrapper.find('[data-testid="delivery-advanced-empty"]').exists()).toBe(true);
+		wrapper.unmount();
+	});
+
 	it('renders a young account calmly instead of quoting 0%', () => {
 		data.value = independenceSummary({
 			ownShare: null,

@@ -2035,6 +2035,9 @@
 					"title": "One-Click-Verarbeitung p95"
 				}
 			},
+			"advancedEmptyState": {
+				"migrateAction": "Mit „Von Mailchimp umziehen“ beginnen"
+			},
 			"deliverabilityChecklistGroups": {
 				"copyDiagnostic": "Diagnose kopieren",
 				"diagnosticCopied": "Diagnose kopiert",
@@ -5743,6 +5746,10 @@
 				"advanced": {
 					"cells": {
 						"controlsLink": "Diese Zelle pausieren, begrenzen oder zurücksetzen",
+						"empty": {
+							"description": "Diese Tabelle erscheint, sobald ein Relay und Ihr eigener Server sich den Verkehr teilen oder das Aufwärmen eine Zelle übernimmt. Beginnen Sie mit „Von Mailchimp umziehen“.",
+							"title": "Noch keine Zustellzellen in Gebrauch"
+						},
 						"errorMessage": "Die Zellzustände konnten nicht geladen werden. Ihre Mail ist davon nicht betroffen — diese Seite liest nur.",
 						"errorTitle": "Die Zustellungszellen konnten nicht geladen werden",
 						"evidenceAbsent": "Für diese Zelle wurden noch keine Messungen erfasst. Es ist nichts falsch — die Prüfungen füllen sich, während Mail hinausgeht.",
@@ -5763,6 +5770,10 @@
 					"controls": {
 						"errorMessage": "Die Steuerung konnte nicht geladen werden. Ihre Mail ist davon nicht betroffen — es hat sich nichts geändert.",
 						"errorTitle": "Die Zustellungssteuerung konnte nicht geladen werden",
+						"empty": {
+							"description": "Die Steuerung erscheint, sobald ein Relay und Ihr eigener Server sich den Verkehr teilen oder das Aufwärmen Zellen verwaltet. Beginnen Sie mit „Von Mailchimp umziehen“.",
+							"title": "Noch keine Zellen zu steuern"
+						},
 						"forceDialog": {
 							"confirm": "Vorrücken erzwingen",
 							"consequence": "Damit rückt {cell} auf {share} vor, ohne dass eine Prüfung dem zustimmt. Ist das neue Volumen für diesen Anbieter zu viel, trifft der Schaden die Reputation Ihrer Versanddomain und braucht Wochen zur Behebung — die Zahl zurückzusetzen macht das nicht rückgängig.",
@@ -5772,6 +5783,9 @@
 						},
 						"globalPause": "Die gesamte Ramp ist pausiert. Jede Zelle ist dort festgehalten, wo sie steht; die Prüfungen laufen weiter, sodass Sie sehen können, was geschehen wäre.",
 						"howHard": "Wie stark hochfahren",
+						"idle": {
+							"body": "Noch wird keine Zelle verwaltet. Nehmen Sie unten eine auf, damit das Aufwärmen sie übernimmt, oder verlagern Sie Verkehr Schritt für Schritt von einem bezahlten Anbieter."
+						},
 						"ledeActions": "Was jeder Stream trägt, steht ebenfalls hier — setzen Sie eine Zelle auf die Ramp, halten Sie eine Zelle, begrenzen Sie sie, treiben Sie sie an oder beginnen Sie von vorn, und wählen Sie, wie stark jeder Stream hochfährt.",
 						"ledeIntro": "Was die Ramp von sich aus zurückgenommen hat und warum.",
 						"ledeRecorded": "Alles hier wird protokolliert.",
@@ -5800,6 +5814,10 @@
 							"confirm": "Zu den Relay-Einstellungen",
 							"title": "Das Relay trennen?"
 						},
+						"empty": {
+							"description": "Diese Seite zeigt, wie viel Ihrer Mail Ihr eigener Server trägt und wann Sie kein Relay mehr bezahlen müssten. Sie füllt sich, sobald Mail versendet wird. Beginnen Sie mit „Von Mailchimp umziehen“.",
+							"title": "Noch nichts gesendet"
+						},
 						"disconnectAction": "Das Relay trennen…",
 						"disconnectHeading": "Das Relay trennen",
 						"errorMessage": "Diese Zahlen konnten nicht geladen werden. Ihre Mail ist davon nicht betroffen — diese Seite liest nur.",
@@ -5815,6 +5833,10 @@
 						"errorMessage": "Die Versandmessungen konnten nicht geladen werden. Ihre Mail ist davon nicht betroffen — diese Seite liest nur.",
 						"errorTitle": "Zustellungsmessungen konnten nicht geladen werden",
 						"loadingLabel": "Zustellungsmessungen werden geladen",
+						"empty": {
+							"description": "Diese Seite vergleicht die Zustellergebnisse Zelle für Zelle, sobald Mail versendet wird. Mit einem verbundenen Relay stellt sie Relay und eigenen Server nebeneinander. Beginnen Sie mit „Von Mailchimp umziehen“.",
+							"title": "Noch nichts gemessen"
+						},
 						"pageTitle": "Zustellungsmessung — Owlat",
 						"windowNote": "Berichtszeitraum: {reported} · Prüfungen entschieden über {decision}"
 					}

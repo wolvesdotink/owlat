@@ -2035,6 +2035,9 @@
 					"title": "One-click processing p95"
 				}
 			},
+			"advancedEmptyState": {
+				"migrateAction": "Start in Migrate from Mailchimp"
+			},
 			"deliverabilityChecklistGroups": {
 				"copyDiagnostic": "Copy diagnostic",
 				"diagnosticCopied": "Diagnostic copied",
@@ -5743,6 +5746,10 @@
 				"advanced": {
 					"cells": {
 						"controlsLink": "Pause, pin or reset this cell",
+						"empty": {
+							"description": "This table appears once a relay and your own server share traffic, or once you let the warm-up take over a cell. Start in Migrate from Mailchimp.",
+							"title": "No delivery cells in use yet"
+						},
 						"errorMessage": "The cell states could not be loaded. Your mail is unaffected — this page only reads.",
 						"errorTitle": "Couldn’t load the delivery cells",
 						"evidenceAbsent": "No measurements have been recorded for this cell yet. Nothing is wrong — the checks fill in as mail goes out.",
@@ -5763,6 +5770,10 @@
 					"controls": {
 						"errorMessage": "The controls could not be loaded. Your mail is unaffected — nothing has changed.",
 						"errorTitle": "Couldn’t load the delivery controls",
+						"empty": {
+							"description": "The controls appear once a relay and your own server share traffic, or once the warm-up has cells to manage. Start in Migrate from Mailchimp.",
+							"title": "No cells to control yet"
+						},
 						"forceDialog": {
 							"confirm": "Force-advance",
 							"consequence": "This moves {cell} to {share} without any check agreeing to it. If the new volume is too much for that provider, the damage lands on your sending domain’s reputation and takes weeks to undo — putting the number back does not undo it.",
@@ -5772,6 +5783,9 @@
 						},
 						"globalPause": "The whole ramp is paused. Every cell is pinned where it is; the checks keep running so you can see what would have happened.",
 						"howHard": "How hard to ramp",
+						"idle": {
+							"body": "No cell is managed yet. Enroll one below to let the warm-up take it over, or move traffic from a paid provider step by step."
+						},
 						"ledeActions": "What each stream is carrying is here too — put a cell on the ramp, hold a cell, cap it, push it, or start it over, and choose how hard each stream ramps.",
 						"ledeIntro": "What the ramp pulled back on its own, and why.",
 						"ledeRecorded": "Everything here is recorded.",
@@ -5800,6 +5814,10 @@
 							"confirm": "Take me to the relay settings",
 							"title": "Disconnect the relay?"
 						},
+						"empty": {
+							"description": "This page shows how much of your mail your own server carries, and when you could stop paying for a relay. It fills in once mail goes out. Start in Migrate from Mailchimp.",
+							"title": "Nothing sent yet"
+						},
 						"disconnectAction": "Disconnect the relay…",
 						"disconnectHeading": "Disconnecting the relay",
 						"errorMessage": "These numbers could not be loaded. Your mail is unaffected — this page only reads.",
@@ -5815,6 +5833,10 @@
 						"errorMessage": "The sending measurements could not be loaded. Your mail is unaffected — this page only reads.",
 						"errorTitle": "Couldn’t load delivery measurements",
 						"loadingLabel": "Loading delivery measurements",
+						"empty": {
+							"description": "This page compares delivery results cell by cell once mail goes out. With a relay connected it compares the relay and your own server side by side. Start in Migrate from Mailchimp.",
+							"title": "Nothing measured yet"
+						},
 						"pageTitle": "Delivery measurement — Owlat",
 						"windowNote": "Reported window: {reported} · checks decided over {decision}"
 					}

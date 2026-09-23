@@ -300,3 +300,45 @@ describe('measurement page — states', () => {
 		wrapper.unmount();
 	});
 });
+
+describe('measurement page — nothing measured yet', () => {
+	it('explains what fills the screen and where to start, instead of quiet cards', () => {
+		data.value = dashboard({
+			isRelayConfigured: false,
+			referenceTransportId: null,
+			cells: [
+				cellView({ own: armSummary({ sent: 0 }), reference: null }),
+				cellView({
+					cellKey: 'campaign:outlook',
+					cell: { stream: 'campaign', destinationProvider: 'microsoft' },
+					own: armSummary({ sent: 0 }),
+					reference: null,
+				}),
+			],
+		});
+		const wrapper = mountPage();
+		const empty = wrapper.find('[data-testid="delivery-advanced-empty"]');
+		expect(empty.exists()).toBe(true);
+		expect(empty.find('ui-empty-state-stub').attributes('title')).toBe('Nothing measured yet');
+		expect(empty.find('ui-empty-state-stub').attributes('description')).toContain(
+			'Migrate from Mailchimp'
+		);
+		expect(wrapper.findAllComponents(MeasurementCellCard)).toHaveLength(0);
+		// Still one h1: the empty state does not replace the page's heading.
+		expect(wrapper.findAll('h1')).toHaveLength(1);
+		wrapper.unmount();
+	});
+
+	it('keeps the cards once any cell carried mail', () => {
+		data.value = dashboard({
+			cells: [
+				cellView(),
+				cellView({ cellKey: 'x', own: armSummary({ sent: 0 }), reference: null }),
+			],
+		});
+		const wrapper = mountPage();
+		expect(wrapper.find('[data-testid="delivery-advanced-empty"]').exists()).toBe(false);
+		expect(wrapper.findAllComponents(MeasurementCellCard)).toHaveLength(2);
+		wrapper.unmount();
+	});
+});
