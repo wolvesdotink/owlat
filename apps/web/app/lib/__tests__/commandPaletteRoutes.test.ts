@@ -43,11 +43,12 @@ describe('routePaletteTargets', () => {
 
 	it('labels a leaf with its page crumb and the level above it', () => {
 		const target = routePaletteTargets(env(), new Set()).find(
-			(entry) => entry.href === '/dashboard/admin/instance/ai-provider'
+			(entry) => entry.href === '/dashboard/admin/delivery/webhooks'
 		);
 		expect(target).toMatchObject({
-			labelKey: 'shared.breadcrumbRoutes.pages.aiProvider',
-			contextKey: 'shared.breadcrumbRoutes.subsections.instance',
+			labelKey: 'shared.breadcrumbRoutes.pages.webhooks',
+			// The Workspace group the page sits in, as the Settings sidebar names it.
+			contextKey: 'shell.admin.areas.delivery',
 			icon: 'lucide:shield-check',
 		});
 	});

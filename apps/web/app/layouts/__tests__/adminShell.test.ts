@@ -24,12 +24,15 @@ vi.mock('~/plugins/plugin-composition.generated', () => ({
 	bundledPluginComposition: [Object.freeze({ packageName: '@example/plugin' })],
 }));
 
+// Each function reference remembers its own path, so the query stub below can
+// answer the platform-admin check and the inbound counters differently.
 vi.mock('@owlat/api', () => {
-	const anyPath: unknown = new Proxy(function () {}, {
-		get: () => anyPath,
-		apply: () => anyPath,
-	});
-	return { api: anyPath };
+	const at = (path: string): unknown =>
+		new Proxy(function () {}, {
+			get: (_target, key) => (key === '__path' ? path : at(`${path}.${String(key)}`)),
+			apply: () => at(path),
+		});
+	return { api: at('api') };
 });
 
 const route = reactive({
@@ -46,15 +49,25 @@ const route = reactive({
 let registered: CommandPaletteProvider | null = null;
 /** Whether this deployment's platform admin is the one looking. */
 let isPlatformAdmin = true;
+/** The inbound counters the attention badges read. */
+let inboundStats: { quarantined: number; failed: number } | null = null;
+/** `NUXT_PUBLIC_DEPLOYMENT_MODE`. */
+let deploymentMode = 'hosted';
 
 beforeEach(() => {
 	route.path = '/dashboard/admin/delivery/domains';
 	registered = null;
 	isPlatformAdmin = true;
+	inboundStats = null;
+	deploymentMode = 'hosted';
 	installNuxtStubs({
 		...i18nStubs,
 		useRoute: () => route,
-		useConvexQuery: () => queryResult(isPlatformAdmin),
+		useConvexQuery: (reference: { __path: string }) =>
+			reference.__path.endsWith('getInboundStats')
+				? queryResult(inboundStats)
+				: queryResult(isPlatformAdmin),
+		useRuntimeConfig: () => ({ public: { deploymentMode } }),
 		registerCommandPaletteProvider: (provider: CommandPaletteProvider) => {
 			registered = provider;
 		},
@@ -84,7 +97,7 @@ function mountLayout(): VueWrapper {
 /** The wide-viewport rail's links, as `[href, label]`. */
 function railLinks(wrapper: VueWrapper): [string, string][] {
 	return wrapper
-		.findAll('nav[aria-label="Administration sections"] a')
+		.findAll('nav[aria-label="Workspace settings"] a')
 		.map((link) => [link.attributes('href') ?? '', link.text()]);
 }
 
@@ -98,23 +111,17 @@ describe('the admin rail', () => {
 				'/dashboard/admin/delivery/transport',
 				// The ramp pages that used to live behind a collapsed disclosure on
 				// one hub, and appeared in no navigation at all.
-				'/dashboard/admin/delivery/advanced/controls',
-				'/dashboard/admin/delivery/advanced/measurement',
+				'/dashboard/admin/delivery/advanced',
+				'/dashboard/admin/delivery/quarantine',
 				'/dashboard/admin/instance/features',
 				'/dashboard/admin/team/audit',
 			])
 		);
 		const eyebrows = wrapper
-			.findAll('nav[aria-label="Administration sections"] p')
+			.findAll('nav[aria-label="Workspace settings"] p')
 			.map((paragraph) => paragraph.text());
-		expect(eyebrows).toEqual([
-			'Administration',
-			'Delivery',
-			'Advanced',
-			'Instance',
-			'Team & access',
-			'Platform',
-		]);
+		// The overview leads without an eyebrow; then the five groups.
+		expect(eyebrows).toEqual(['Team', 'Email delivery', 'AI', 'Features', 'System']);
 	});
 
 	it('marks the page being viewed', () => {
@@ -139,7 +146,7 @@ describe('the admin rail', () => {
 	it('narrows to the current area at phone width', () => {
 		const wrapper = mountLayout();
 		const compact = wrapper
-			.findAll('nav[aria-label="Administration sections (compact)"] a')
+			.findAll('nav[aria-label="Workspace settings (compact)"] a')
 			.map((link) => link.attributes('href'));
 		expect(compact).toEqual([
 			'/dashboard/admin',
@@ -149,16 +156,74 @@ describe('the admin rail', () => {
 			'/dashboard/admin/delivery/deliverability',
 			'/dashboard/admin/delivery/webhooks',
 			'/dashboard/admin/delivery/provider-routing',
+			'/dashboard/admin/delivery/quarantine',
+			'/dashboard/admin/delivery/failed',
+			'/dashboard/admin/delivery/activity',
 			'/dashboard/admin/delivery/migrate',
+			'/dashboard/admin/delivery/advanced',
 		]);
 	});
 
 	it('drops the compact row on the hub, where it would point at itself', () => {
 		route.path = '/dashboard/admin';
 		const wrapper = mountLayout();
-		expect(wrapper.find('nav[aria-label="Administration sections (compact)"]').exists()).toBe(
-			false
+		expect(wrapper.find('nav[aria-label="Workspace settings (compact)"]').exists()).toBe(false);
+	});
+
+	it('hides the operator console on a self-hosted deployment', () => {
+		deploymentMode = 'selfhost';
+		const hrefs = railLinks(mountLayout()).map(([href]) => href);
+		expect(hrefs).not.toContain('/dashboard/admin/operator');
+		expect(hrefs).toContain('/dashboard/admin/system');
+	});
+
+	it('badges quarantine and failed messages while something waits there', () => {
+		inboundStats = { quarantined: 2, failed: 0 };
+		const wrapper = mountLayout();
+		const quarantine = wrapper.find(
+			'nav[aria-label="Workspace settings"] a[href="/dashboard/admin/delivery/quarantine"]'
 		);
+		expect(quarantine.text()).toContain('2');
+		expect(quarantine.text()).toContain('2 waiting');
+		const failed = wrapper.find(
+			'nav[aria-label="Workspace settings"] a[href="/dashboard/admin/delivery/failed"]'
+		);
+		expect(failed.text()).not.toContain('waiting');
+	});
+
+	it('switches the sidebar between My settings and Workspace', async () => {
+		const wrapper = mountLayout();
+		const tabs = wrapper.findAll('[role="group"] button');
+		expect(tabs.map((tab) => tab.text())).toEqual(['My settings', 'Workspace']);
+		expect(tabs[1]!.attributes('aria-pressed')).toBe('true');
+		await tabs[0]!.trigger('click');
+		expect(wrapper.find('nav[aria-label="Workspace settings"]').exists()).toBe(false);
+		expect(wrapper.find('nav[aria-label="Preferences sections"]').exists()).toBe(true);
+	});
+
+	it('shows the ramp pages as tabs under one Advanced row', () => {
+		route.path = '/dashboard/admin/delivery/advanced/cells';
+		const wrapper = mountLayout();
+		const tabs = wrapper
+			.findAll('nav[aria-label="Advanced delivery pages"] a')
+			.map((link) => link.attributes('href'));
+		expect(tabs).toEqual([
+			'/dashboard/admin/delivery/advanced/controls',
+			'/dashboard/admin/delivery/advanced/cells',
+			'/dashboard/admin/delivery/advanced/independence',
+			'/dashboard/admin/delivery/advanced/measurement',
+		]);
+		const current = wrapper
+			.find('nav[aria-label="Workspace settings"] a[aria-current="page"]')
+			.attributes('href');
+		expect(current).toBe('/dashboard/admin/delivery/advanced');
+	});
+
+	it('frames every page at the reading width, and lets wide tables opt out', () => {
+		route.path = '/dashboard/admin/delivery/webhooks';
+		expect(mountLayout().find('.settings-page-shell').attributes('data-width')).toBe('reading');
+		route.path = '/dashboard/admin/delivery/domains';
+		expect(mountLayout().find('.settings-page-shell').attributes('data-width')).toBe('wide');
 	});
 
 	it('renders the page it wraps, and adds no heading of its own', () => {
@@ -184,7 +249,7 @@ describe('the admin palette provider', () => {
 
 		const [group] = provider.build({ query: 'webhook', mode: 'all' });
 		expect(group?.items.map((item) => item.label)).toEqual(['Webhooks']);
-		expect(group?.items[0]?.subtitle).toBe('Delivery');
+		expect(group?.items[0]?.subtitle).toBe('Email delivery');
 	});
 
 	it('offers only what this deployment reaches', () => {

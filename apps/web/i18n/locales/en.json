@@ -4924,9 +4924,6 @@
 			"preferencesBackLink": {
 				"label": "Back to Preferences"
 			},
-			"preferencesDestinations": {
-				"ariaLabel": "Preferences sections"
-			},
 			"preferencesExportManifest": {
 				"loading": "Counting…",
 				"moreThan": "more than {count}",
@@ -5561,11 +5558,17 @@
 			},
 			"settings": {
 				"title": "Settings",
+				"waitingCount": "{count} waiting",
 				"back": "Back",
+				"needsAttention": "Something here needs a look",
 				"search": "Search settings",
+				"tabs": {
+					"mine": "My settings",
+					"workspace": "Workspace"
+				},
+				"tabsLabel": "Settings area",
 				"results": "Matching settings",
-				"noResults": "No setting matches.",
-				"workspace": "Workspace"
+				"noResults": "No setting matches."
 			}
 		},
 		"today": {
@@ -5879,13 +5882,13 @@
 						"updateDmarc": "Update DMARC policy",
 						"verify": "Verify domain"
 					},
-					"pageTitle": "Sending Domains — Owlat",
+					"pageTitle": "Sending domains — Owlat",
 					"removeModal": {
 						"confirm": "Remove Domain",
 						"description": "Are you sure you want to remove {domain}? You will no longer be able to send emails from this domain.",
 						"title": "Remove Domain"
 					},
-					"title": "Sending Domains",
+					"title": "Sending domains",
 					"toasts": {
 						"dmarcMonitorOnly": "DMARC set to monitor-only. Re-publish the updated _dmarc record, then verify.",
 						"dmarcRaised": "DMARC policy raised to {policy}. Re-publish the updated _dmarc record, then verify.",
@@ -5997,14 +6000,14 @@
 						"reset": "Reset provider route",
 						"save": "Save provider route"
 					},
-					"pageTitle": "Provider Routing — Owlat",
+					"pageTitle": "Provider routing — Owlat",
 					"resetModal": {
 						"confirm": "Reset to Default",
 						"description": "This message type will revert to the default provider set by the EMAIL_PROVIDER environment variable.",
 						"title": "Reset Provider Route"
 					},
 					"resetToDefault": "Reset to default",
-					"title": "Provider Routing",
+					"title": "Provider routing",
 					"toasts": {
 						"reset": "Provider route reset to the default",
 						"saved": "Provider route saved"
@@ -6105,49 +6108,29 @@
 				}
 			},
 			"index": {
-				"areas": {
-					"delivery": {
-						"description": "Sending health, domains, transport, routing, and webhooks.",
-						"title": "Delivery"
-					},
-					"instance": {
-						"description": "Workspace defaults, operating mode, features, AI, channels, and plugins.",
-						"title": "Instance"
-					},
-					"team": {
-						"description": "Members, shared inboxes, approved senders, API keys, and connected apps.",
-						"title": "Team & access"
-					}
-				},
 				"claimPlatform": {
 					"action": "Enable for my account",
-					"body": "Nobody on this instance holds platform admin, so system updates, backups, and the operator console are unreachable. As the owner of this workspace you can take that role now — you'll be able to grant it to other members afterwards.",
+					"body": "Nobody on this instance holds platform admin, so system updates and backups are unreachable. As the owner of this workspace you can take that role now, and grant it to other members afterwards.",
 					"operation": "Claim platform admin",
-					"success": "Operator tools enabled. System updates, backups, and the operator console are now available.",
+					"success": "Operator tools enabled. System updates and backups are now under System.",
 					"title": "Operator tools are not enabled yet"
 				},
+				"attention": "{count} incoming message needs a look | {count} incoming messages need a look",
 				"deliveryVerdict": "Delivery verdict",
-				"eyebrow": "Administration",
-				"learnMore": "Learn more →",
-				"lede": "Start with the verdicts here. Detailed configuration and operator tools are one level deeper when you need them.",
-				"pageTitle": "Administration — Owlat",
-				"platform": "Platform",
-				"platformAdminOnly": "Operator tools, system updates, and backups are held by this deployment's platform admin and aren't shown here.",
-				"platformAreas": {
-					"backups": {
-						"description": "Schedule daily backups, run one now, and find the restore command.",
-						"title": "Backups"
-					},
-					"operator": {
-						"description": "Review held content, workspace sending status, and platform admins.",
-						"title": "Operator console"
-					},
-					"system": {
-						"description": "Stack version, container health, and in-app updates.",
-						"title": "System & updates"
-					}
+				"eyebrow": "Workspace",
+				"groups": {
+					"ai": "AI provider, AI replies and agent health.",
+					"delivery": "Sending health, domains, the delivery provider, webhooks, and held or failed incoming mail.",
+					"features": "Which features are on, channels, forms, contact properties and the email theme.",
+					"system": "Workspace name and defaults, desktop app updates, system updates and backups.",
+					"team": "Members, invites, team inboxes, campaign senders, the API and the audit log."
 				},
-				"title": "Your instance at a glance",
+				"learnMore": "Learn more →",
+				"lede": "Start with the verdicts here. Everything else sits in the five groups below, the same ones the Settings sidebar lists.",
+				"pageTitle": "Overview — Owlat",
+				"platform": "Operator tools",
+				"platformAdminOnly": "System updates and backups are held by this deployment's platform admin and aren't shown here.",
+				"title": "Overview",
 				"verdict": {
 					"error": "Sending needs attention",
 					"ok": "Sending is healthy",
@@ -6262,9 +6245,9 @@
 							"label": "Queue Depth"
 						}
 					},
-					"pageTitle": "Agent Health — Owlat",
+					"pageTitle": "Agent health — Owlat",
 					"subtitle": "Monitor the AI agent pipeline performance, circuit breaker states, and key metrics.",
-					"title": "Agent Health & Monitoring"
+					"title": "Agent health"
 				},
 				"aiProvider": {
 					"connectionWorks": "Connection works",
@@ -6364,12 +6347,12 @@
 						"title": "Language model"
 					},
 					"loading": "Loading AI settings…",
-					"pageTitle": "AI Provider — Owlat",
+					"pageTitle": "AI provider — Owlat",
 					"save": "Save AI provider",
 					"saveFirstTest": "Save first, then test.",
 					"subtitle": "Choose the AI backend every AI feature uses. Pick a hosted provider and paste a key, or point at a model you host yourself.",
 					"testConnection": "Test connection",
-					"title": "AI Provider"
+					"title": "AI provider"
 				},
 				"autonomy": {
 					"addRule": "Add Rule",
@@ -6523,7 +6506,7 @@
 						"verdana": "Verdana"
 					},
 					"loading": "Loading theme settings...",
-					"pageTitle": "Email Theme — Owlat",
+					"pageTitle": "Email theme — Owlat",
 					"preview": {
 						"body": "Thank you for subscribing! We're excited to have you on board. Stay tuned for updates, tips, and exclusive content delivered straight to your inbox.",
 						"button": "Get Started",
@@ -6543,7 +6526,7 @@
 					"settingsSubtitle": "Set colors and fonts for your emails",
 					"settingsTitle": "Theme Settings",
 					"subtitle": "Configure default styling for your email templates",
-					"title": "Email Theme",
+					"title": "Email theme",
 					"unsaved": "Unsaved"
 				},
 				"features": {
@@ -6673,7 +6656,7 @@
 					"subtitle": "Create embeddable signup forms for your website",
 					"tip": "{label} Copy this HTML and paste it into your website. Style the form with CSS to match your design. The form will submit data directly to your Owlat account.",
 					"tipLabel": "Tip:",
-					"title": "Form Endpoints",
+					"title": "Forms",
 					"topicLine": "Topic: {topic}"
 				},
 				"general": {
@@ -6805,7 +6788,7 @@
 						},
 						"sealedMail": {
 							"description": "Set organization policy for protected personal messages.",
-							"title": "Secure mail"
+							"title": "Sealed mail"
 						}
 					},
 					"keepData": "Disabled features keep their existing data.",
@@ -6813,7 +6796,7 @@
 					"nothing": "Nothing",
 					"operatingMode": "Operating mode",
 					"operatingModeHelp": "Choose a coarse product shape. You will preview every feature change before it is applied, and turning a feature off keeps its data.",
-					"pageTitle": "Instance administration — Owlat",
+					"pageTitle": "Instance — Owlat",
 					"reviewTitle": "Review operating-mode changes",
 					"subtitle": "Configuration that affects everyone in this workspace.",
 					"title": "Instance"
@@ -6949,9 +6932,9 @@
 						"remove": "Delete property",
 						"update": "Update property"
 					},
-					"pageTitle": "Contact Properties — Owlat",
+					"pageTitle": "Contact properties — Owlat",
 					"subtitle": "Create and manage custom fields for your contacts",
-					"title": "Contact Properties",
+					"title": "Contact properties",
 					"toasts": {
 						"created": "Property \"{label}\" created",
 						"deleted": "Property \"{label}\" deleted",
@@ -6997,7 +6980,7 @@
 							"title": "Never seal"
 						}
 					},
-					"pageTitle": "Sealed Mail — Owlat",
+					"pageTitle": "Sealed mail — Owlat",
 					"policyLegend": "Sealing policy",
 					"reSeal": {
 						"button": "Re-seal sealed mail",
@@ -7016,7 +6999,7 @@
 						"restoreLabel": "Restore from a recovery kit",
 						"title": "Recovery kit"
 					},
-					"title": "Sealed Mail",
+					"title": "Sealed mail",
 					"tls": {
 						"description": "Reject senders that try to deliver without STARTTLS. They receive a permanent “550 5.7.10 Encryption needed” response, so the message is never accepted or stored.",
 						"plaintextWarning": "Plaintext inbound delivery is allowed. Only disable this for legacy mail servers that cannot use TLS.",
@@ -7075,7 +7058,7 @@
 						"removeAdmin": "Remove platform admin",
 						"setStatus": "Set workspace status"
 					},
-					"pageTitle": "Operator Console — Owlat",
+					"pageTitle": "Operator console — Owlat",
 					"rejectModal": {
 						"body": "Rejecting returns \"{name}\" to draft. The reason is recorded in the audit log.",
 						"reasonLabel": "Reason",
@@ -7125,7 +7108,7 @@
 						"overview": "Overview",
 						"review": "Content Review"
 					},
-					"title": "Operator Console",
+					"title": "Operator console",
 					"toasts": {
 						"adminAdded": "Platform admin added.",
 						"adminRemoved": "Removed {email} from platform admins.",
@@ -7180,12 +7163,12 @@
 						"title": "Update history"
 					},
 					"intro": "Current Owlat version, container health, and in-app update history.",
-					"pageTitle": "System & Updates — Owlat",
+					"pageTitle": "System & updates — Owlat",
 					"success": {
 						"body": "Now running v{version}. Reloading this page…",
 						"title": "Update complete."
 					},
-					"title": "System & Updates",
+					"title": "System & updates",
 					"toasts": {
 						"checkComplete": "Update check complete.",
 						"checkFailed": "Check failed: {error}",
@@ -7209,7 +7192,6 @@
 			"team": {
 				"api": {
 					"docs": {
-						"backToKeys": "Back to API Keys",
 						"baseUrlMissing": "Not configured (NUXT_PUBLIC_CONVEX_SITE_URL)",
 						"baseUrlTitle": "Your API base URL",
 						"createContact": "Create a contact",
@@ -7224,12 +7206,12 @@
 						"fullReference": "Full API reference",
 						"intro": "Authenticate with a scoped API key from {settingsLink}.",
 						"introLink": "Settings → API Keys",
-						"pageTitle": "API Quickstart — Owlat",
+						"pageTitle": "API quickstart — Owlat",
 						"table": {
 							"endpoint": "Endpoint",
 							"method": "Method"
 						},
-						"title": "API Quickstart"
+						"title": "API quickstart"
 					},
 					"index": {
 						"actions": {
@@ -7284,7 +7266,7 @@
 							"rename": "Rename API key",
 							"revoke": "Revoke API key"
 						},
-						"pageTitle": "API Keys — Owlat",
+						"pageTitle": "API — Owlat",
 						"rateLimit": {
 							"exampleHeaders": "Example response headers:",
 							"headerColumn": "Header",
@@ -7338,7 +7320,7 @@
 							"key": "Key",
 							"lastUsed": "Last Used"
 						},
-						"title": "API Keys",
+						"title": "API",
 						"toasts": {
 							"copyFailed": "Failed to copy to clipboard",
 							"created": "API key created successfully",
@@ -7377,7 +7359,7 @@
 						"description": "Create or select a workspace to view the audit log.",
 						"title": "No workspace selected"
 					},
-					"pageTitle": "Audit Logs — Owlat",
+					"pageTitle": "Audit log — Owlat",
 					"resetFilters": "Reset",
 					"searchPlaceholder": "Search by user, action, or details...",
 					"stats": {
@@ -7386,7 +7368,7 @@
 						"totalActions": "Total Actions"
 					},
 					"subtitle": "Track all team member actions and changes",
-					"title": "Audit Log"
+					"title": "Audit log"
 				},
 				"cancelInviteModal": {
 					"body": "Are you sure you want to cancel the invitation to {email}? They will not be able to join the team with this invite link.",
@@ -7455,8 +7437,9 @@
 				},
 				"dangerZone": {
 					"body": "Deleting the workspace permanently removes every team member, all contacts, campaigns, automations, mailboxes, and analytics. This action cannot be undone.",
+					"heading": "Danger zone",
 					"subtitle": "Permanently delete this workspace and all of its data",
-					"title": "Delete Workspace"
+					"title": "Delete workspace"
 				},
 				"deleteModal": {
 					"confirm": "Delete Workspace",
@@ -7573,7 +7556,7 @@
 						"rotationScheduled": "Key rotation scheduled for {address}"
 					}
 				},
-				"inviteMember": "Invite Member",
+				"inviteMember": "Invite",
 				"invites": {
 					"copyLink": "Copy invite link",
 					"count": "{count} pending invitation | {count} pending invitations",
@@ -7617,35 +7600,12 @@
 					"title": "Members",
 					"transferOwnership": "Transfer ownership"
 				},
-				"nav": {
-					"apiKeys": {
-						"description": "Programmatic access",
-						"title": "API keys"
-					},
-					"audit": {
-						"description": "Workspace activity",
-						"title": "Audit log"
-					},
-					"connectedApps": {
-						"description": "External integrations",
-						"title": "Connected apps"
-					},
-					"inboxes": {
-						"description": "Shared mail access",
-						"title": "Team inboxes"
-					},
-					"label": "Team and access settings",
-					"senders": {
-						"description": "Campaign identities",
-						"title": "Approved senders"
-					}
-				},
 				"operations": {
 					"deleteWorkspace": "Delete workspace",
 					"markEmailVerified": "Mark email verified",
 					"resendVerification": "Resend verification email"
 				},
-				"pageTitle": "Team Management — Owlat",
+				"pageTitle": "Team — Owlat",
 				"removeModal": {
 					"body": "Are you sure you want to remove {member} from this team? They will lose access to all team resources.",
 					"confirm": "Remove Member",
@@ -7709,7 +7669,7 @@
 					"title": "Campaign senders"
 				},
 				"staleList": "This list may be out of date — {error}.",
-				"title": "Team Members",
+				"title": "Team",
 				"toasts": {
 					"cancelInviteFailed": "Failed to cancel invitation",
 					"emailAlreadyVerified": "{email} is already verified",
@@ -8950,7 +8910,7 @@
 				"channels": {
 					"chat": "Chat",
 					"email": "Email",
-					"generic": "Generic",
+					"generic": "Webhook",
 					"sms": "SMS",
 					"whatsapp": "WhatsApp"
 				},
@@ -9107,12 +9067,12 @@
 				"failureReason": "Failure reason",
 				"loading": "Loading failed messages...",
 				"noTextContent": "(No text content)",
-				"pageTitle": "Failed Messages — Owlat",
-				"retriedToast": "Message re-enqueued for processing",
+				"pageTitle": "Failed messages — Owlat",
+				"retriedToast": "Trying this message again",
 				"retryOperation": "Retry message",
-				"retryProcessing": "Retry processing",
-				"subtitle": "Inbound messages whose processing failed after the automatic retries were exhausted. Read the error and re-enqueue once the cause is resolved.",
-				"title": "Failed Messages"
+				"retryProcessing": "Try again",
+				"subtitle": "Incoming messages that could not be handled, even after trying again on their own. Check the reason, fix the cause, then try again.",
+				"title": "Failed messages"
 			},
 			"index": {
 				"assignThreadOperation": "Assign thread",
@@ -9154,7 +9114,7 @@
 				"blockDialogDescription": "Future messages from “{sender}” will be blocked automatically. You can unblock them later from Suppressions.",
 				"blockDialogTitle": "Block sender",
 				"blockOperation": "Block sender",
-				"blockSender": "Block Sender",
+				"blockSender": "Block sender",
 				"blockedToast": "Sender blocked",
 				"emptyBody": "All inbound messages passed the security filter.",
 				"emptyTitle": "No quarantined messages",
@@ -9211,10 +9171,10 @@
 					}
 				},
 				"pageTitle": "Quarantine — Owlat",
-				"release": "Release (False Positive)",
+				"release": "Release, it is safe",
 				"releaseOperation": "Release message",
-				"releasedToast": "Message released to processing pipeline",
-				"subtitle": "Messages flagged by the inbound security filter. Review before releasing to the pipeline.",
+				"releasedToast": "Message released. It will be handled like any other.",
+				"subtitle": "Incoming messages the safety check held back. Release the ones that are fine, or block the sender.",
 				"title": "Quarantine",
 				"whyHeldLabel": "Why this was held"
 			},
@@ -9822,11 +9782,11 @@
 				"mailboxes": "Mailboxes",
 				"noDisplayName": "(no display name)",
 				"noMailboxes": "No mailboxes yet. Add your first account to start receiving mail.",
-				"pageTitle": "Preferences — Owlat",
+				"pageTitle": "General — Owlat",
 				"renameIntro": "Display name for {address}. The address itself can't be changed.",
 				"renameMailbox": "Name and colour",
 				"renameOperation": "Rename mailbox",
-				"subtitle": "How Owlat looks, reads and sends for you.",
+				"subtitle": "How Owlat looks and how your mail reads.",
 				"teamManage": "Team · manage",
 				"colour": "Colour",
 				"colourAutomatic": "Automatic",
@@ -9956,6 +9916,10 @@
 					}
 				}
 			},
+			"shortcuts": {
+				"intro": "Pick a set of keys you already know from another mail app, or change single keys. Press ? anywhere to see them.",
+				"pageTitle": "Keyboard shortcuts — Owlat"
+			},
 			"signatures": {
 				"bodyPlaceholder": "— Marcel",
 				"deleteConfirm": "Delete signature",
@@ -10015,7 +9979,7 @@
 				"featureOffBody": "This Owlat instance has the feature switched off. An admin can turn it on from Settings, and then you can connect a mailbox here.",
 				"featureOffTitle": "Connected mailboxes are turned off",
 				"pageTitle": "Connected mailboxes — Owlat",
-				"subheading": "A mailbox somewhere else that Owlat keeps in step with this one."
+				"subheading": "Your mailboxes, how they send, and mailboxes elsewhere that Owlat keeps in step."
 			}
 		},
 		"send": {
@@ -11535,30 +11499,34 @@
 		"breadcrumbRoutes": {
 			"pages": {
 				"agentHealth": "Agent health",
+				"activity": "All activity",
+				"advanced": "Advanced",
 				"aiAgent": "AI agent",
 				"aiProvider": "AI provider",
-				"apiKeys": "API Keys",
-				"apiQuickstart": "API Quickstart",
-				"auditLog": "Audit Log",
+				"aiReplies": "AI replies",
+				"api": "API",
+				"apiQuickstart": "API quickstart",
+				"auditLog": "Audit log",
 				"autonomyRules": "Autonomy rules",
 				"backups": "Backups",
 				"blocks": "Blocks",
 				"campaignSenders": "Campaign senders",
 				"campaigns": "Campaigns",
-				"cells": "Cells",
-				"channels": "Channels",
+				"cells": "Delivery cells",
+				"channels": "Messaging channels",
 				"connectedApps": "Connected apps",
 				"contactProperties": "Contact properties",
 				"contacts": "Contacts",
-				"controls": "Controls",
+				"controls": "Delivery controls",
 				"deliverability": "Deliverability",
 				"deliveryProvider": "Delivery provider",
-				"desktopUpdates": "Desktop updates",
-				"emailTheme": "Email Theme",
+				"desktopUpdates": "Desktop app updates",
+				"emailTheme": "Email theme",
 				"features": "Features",
+				"failedMessages": "Failed messages",
 				"forms": "Forms",
 				"general": "General",
-				"health": "Health",
+				"health": "Delivery health",
 				"independence": "Independence",
 				"instance": "Instance",
 				"marketing": "Marketing",
@@ -11566,40 +11534,35 @@
 				"media": "Media",
 				"migrateFromMailchimp": "Migrate from Mailchimp",
 				"newCampaign": "New Campaign",
-				"operatorConsole": "Operator Console",
+				"operatorConsole": "Operator console",
 				"overview": "Overview",
 				"plugins": "Plugins",
-				"providerRouting": "Provider Routing",
-				"secureMail": "Secure mail",
+				"providerRouting": "Provider routing",
+				"sealedMail": "Sealed mail",
+				"quarantine": "Quarantine",
 				"segments": "Segments",
-				"sendingDomains": "Sending Domains",
+				"sendingDomains": "Sending domains",
 				"suppressions": "Suppressions",
-				"systemAndUpdates": "System & Updates",
-				"teamAccess": "Team & access",
-				"teamInboxes": "Team Inboxes",
+				"systemAndUpdates": "System & updates",
+				"team": "Team",
+				"teamInboxes": "Team inboxes",
 				"templatesAndBlocks": "Templates & blocks",
 				"topics": "Topics",
 				"transactional": "Transactional",
 				"webhooks": "Webhooks"
 			},
 			"sections": {
-				"administration": "Administration",
 				"audience": "Audience",
 				"automations": "Automations",
 				"campaigns": "Campaigns",
 				"dashboard": "Today",
-				"delivery": "Delivery",
 				"marketing": "Marketing",
-				"preferences": "Preferences",
+				"preferences": "My settings",
 				"send": "Send",
+				"workspace": "Workspace",
 				"answer": "Answer queue",
 				"inboxes": "All inboxes",
 				"teamInbox": "Team inbox"
-			},
-			"subsections": {
-				"instance": "Instance",
-				"setup": "Setup",
-				"teamAccess": "Team & access"
 			}
 		},
 		"campaignAttention": {
@@ -11879,10 +11842,10 @@
 		"dashboardNavigation": {
 			"items": {
 				"administration": {
-					"delivery": "Delivery",
+					"delivery": "Delivery health",
 					"instance": "Instance",
 					"overview": "Overview",
-					"teamAccess": "Team & access"
+					"teamAccess": "Team"
 				},
 				"assistant": {
 					"chat": "Chat"
@@ -11928,7 +11891,7 @@
 				}
 			},
 			"sections": {
-				"administration": "Administration",
+				"administration": "Workspace settings",
 				"assistant": "Assistant",
 				"audience": "Audience",
 				"chat": "Chat",
@@ -13540,6 +13503,11 @@
 					"title": "General",
 					"description": "Appearance, language and how mail reads",
 					"keywords": "settings, options, hub, preferences"
+				},
+				"shortcuts": {
+					"title": "Keyboard shortcuts",
+					"description": "Your key map and remapped keys",
+					"keywords": "keyboard, shortcuts, hotkeys, key bindings, remap, keys"
 				},
 				"filters": {
 					"title": "Filters",
@@ -15486,16 +15454,17 @@
 	"shell": {
 		"admin": {
 			"areas": {
-				"advanced": "Advanced",
-				"delivery": "Delivery",
-				"instance": "Instance",
-				"overview": "Administration",
-				"platform": "Platform",
-				"team": "Team & access"
+				"delivery": "Email delivery",
+				"features": "Features",
+				"ai": "AI",
+				"overview": "Workspace",
+				"system": "System",
+				"team": "Team"
 			},
-			"navLabel": "Administration sections",
-			"navLabelCompact": "Administration sections (compact)",
-			"paletteHeading": "Administration"
+			"navLabel": "Workspace settings",
+			"navLabelCompact": "Workspace settings (compact)",
+			"paletteHeading": "Workspace settings",
+			"tabsLabel": "Advanced delivery pages"
 		},
 		"dashboard": {
 			"alphaBadge": "Alpha",

@@ -82,19 +82,18 @@ describe('useBreadcrumbs', () => {
 		// The slug-capitalization fallback drifts from the sidebar ('Ai Provider'
 		// vs 'AI provider') and starts at the bare URL segment ('Admin'), so a
 		// configured Administration/Preferences route never starts with it.
-		it('every Administration page has a configured trail', async () => {
+		it('every Workspace settings page has a configured trail', async () => {
 			const uncovered: string[] = [];
 			for (const route of await routesUnder('admin')) {
-				const first = labelsFor(route)[0];
-				if (first !== 'Administration' && first !== 'Delivery') uncovered.push(route);
+				if (labelsFor(route)[0] !== 'Workspace') uncovered.push(route);
 			}
 			expect(uncovered).toEqual([]);
 		});
 
-		it('every Preferences page has a configured trail', async () => {
+		it('every My settings page has a configured trail', async () => {
 			const uncovered: string[] = [];
 			for (const route of await routesUnder('preferences')) {
-				if (labelsFor(route)[0] !== 'Preferences') uncovered.push(route);
+				if (labelsFor(route)[0] !== 'My settings') uncovered.push(route);
 			}
 			expect(uncovered).toEqual([]);
 		});
@@ -104,10 +103,13 @@ describe('useBreadcrumbs', () => {
 		it.each([
 			['/dashboard/admin/instance/ai-provider', 'AI provider'],
 			['/dashboard/admin/instance/agent', 'AI agent'],
-			['/dashboard/admin/instance/sealed-mail', 'Secure mail'],
-			['/dashboard/admin/instance/channels', 'Channels'],
+			['/dashboard/admin/instance/sealed-mail', 'Sealed mail'],
+			['/dashboard/admin/instance/channels', 'Messaging channels'],
 			['/dashboard/admin/team/connected-apps', 'Connected apps'],
-			['/dashboard/admin/system', 'System & Updates'],
+			['/dashboard/admin/team/senders', 'Campaign senders'],
+			['/dashboard/admin/delivery/transport', 'Delivery provider'],
+			['/dashboard/admin/delivery/quarantine', 'Quarantine'],
+			['/dashboard/admin/system', 'System & updates'],
 			['/dashboard/admin/backups', 'Backups'],
 			['/dashboard/preferences/external-account', 'Connected mailboxes'],
 			['/dashboard/preferences/writing-voice', 'Writing voice'],
@@ -115,27 +117,37 @@ describe('useBreadcrumbs', () => {
 			expect(labelsFor(route).at(-1)).toBe(page);
 		});
 
-		it('nests instance pages under the Instance hub', () => {
-			expect(labelsFor('/dashboard/admin/instance/features')).toEqual([
-				'Administration',
-				'Instance',
-				'Features',
+		it('files a page under its Workspace group, named as the sidebar names it', () => {
+			expect(labelsFor('/dashboard/admin/delivery/webhooks')).toEqual([
+				'Workspace',
+				'Email delivery',
+				'Webhooks',
 			]);
+			expect(labelsFor('/dashboard/admin/team/audit')).toEqual(['Workspace', 'Team', 'Audit log']);
 		});
 
-		it('nests team pages under the Team & access hub', () => {
-			expect(labelsFor('/dashboard/admin/team/audit')).toEqual([
-				'Administration',
-				'Team & access',
-				'Audit Log',
+		it('never repeats a name: a group lead page is its own crumb', () => {
+			expect(labelsFor('/dashboard/admin/team')).toEqual(['Workspace', 'Team']);
+			expect(labelsFor('/dashboard/admin/instance/features')).toEqual(['Workspace', 'Features']);
+			expect(labelsFor('/dashboard/admin')).toEqual(['Workspace']);
+		});
+
+		it('nests a tabbed page under the sidebar row that stands for it', () => {
+			expect(labelsFor('/dashboard/admin/delivery/advanced/cells')).toEqual([
+				'Workspace',
+				'Advanced',
+				'Delivery cells',
 			]);
+			expect(trailFor('/dashboard/admin/delivery/advanced/cells')[1]?.href).toBe(
+				'/dashboard/admin/delivery/advanced'
+			);
 		});
 
 		// RouteConfig carries a single subsection level, so the deepest useful
 		// parent (the plugin list) is the one that gets the crumb.
 		it('resolves the per-plugin settings route through a pattern', () => {
 			expect(labelsFor('/dashboard/admin/instance/plugins/acme-crm')).toEqual([
-				'Administration',
+				'Workspace',
 				'Plugins',
 				'Plugin settings',
 			]);
