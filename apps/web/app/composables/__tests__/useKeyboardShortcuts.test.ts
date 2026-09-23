@@ -82,7 +82,7 @@ describe('useKeyboardShortcuts — sequence chords', () => {
 
 	it('swallows the second key of an UNBOUND pair rather than leaking it', () => {
 		press('g');
-		const stray = press('q');
+		const stray = press('z');
 		expect(push).not.toHaveBeenCalled();
 		// Consumed by the chord, not passed on as a single-key shortcut. The
 		// buffer is cleared before window-level handlers run, so the claim has to

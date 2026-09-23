@@ -113,6 +113,24 @@ for (const [path, module] of Object.entries({
 }
 
 /**
+ * The shell's own components (the sidebar's workspaces, rows and footer), under
+ * the `Shell` prefix Nuxt gives `components/shell/`, plus the inbox chip they
+ * wear. Registered for real so a layout audit sees the sidebar the app renders.
+ */
+export const shellComponents: Record<string, Component> = {};
+for (const [path, module] of Object.entries(
+	import.meta.glob('../components/shell/*.vue', { eager: true })
+)) {
+	const name = path.split('/').pop()?.replace('.vue', '');
+	if (name) shellComponents[`Shell${name}`] = (module as { default: Component }).default;
+}
+for (const [path, module] of Object.entries(
+	import.meta.glob('../components/inbox/InboxChip.vue', { eager: true })
+)) {
+	if (path) shellComponents['InboxChip'] = (module as { default: Component }).default;
+}
+
+/**
  * Component names Vue could not resolve during the audit currently running.
  * Feature components land here on purpose (they are left unresolved so a page
  * audit stays about the page's own chrome); a `Ui*` name landing here means the
@@ -121,7 +139,7 @@ for (const [path, module] of Object.entries({
 const unresolvedComponents = new Set<string>();
 
 const a11yGlobal = {
-	components: { ...uiComponents, NuxtLink: NuxtLinkStub, Icon: IconStub },
+	components: { ...uiComponents, ...shellComponents, NuxtLink: NuxtLinkStub, Icon: IconStub },
 	// Several components pick their root element with
 	// `<component :is="cond ? 'div' : resolveComponent('NuxtLink')">` (the app
 	// gets this identifier from Nuxt's auto-imports). Template expressions
@@ -467,6 +485,57 @@ export function dashboardShellStubs(): Record<string, unknown> {
 			switchContext: vi.fn(),
 		}),
 		useDashboardNavigation: () => ({ navigationSections: ref(sections) }),
+		// The sidebar's live reads: inboxes, the Answer queue's size, chat rooms.
+		// Empty but present, so the rail renders its structure without Convex.
+		useInboxes: () => ({
+			inboxes: ref([]),
+			byId: ref(new Map()),
+			ids: ref([]),
+			hasPersonalMail: ref(true),
+			isLoading: ref(false),
+		}),
+		useAnswerQueue: () => ({
+			items: ref([]),
+			count: ref(0),
+			counts: ref({ mail: 0, team: 0, mention: 0, drafts: 0 }),
+			isLoading: ref(false),
+			teamEnabled: ref(false),
+			chatEnabled: ref(false),
+		}),
+		useShellSidebarPrefs: () => ({
+			perInbox: ref(3),
+			sort: ref('recent'),
+			isCollapsed: () => false,
+			toggleGroup: vi.fn(),
+		}),
+		useSidebarJumpHints: vi.fn(),
+		// Today's live model, empty: an instance with nothing new yet.
+		useToday: () => ({
+			since: ref(0),
+			isFallback: ref(true),
+			previousSeenAt: ref(null),
+			model: ref({
+				newMail: 0,
+				isNewMailCapped: false,
+				changed: [],
+				changedHidden: 0,
+				worth: [],
+				also: [],
+				alsoHidden: 0,
+				filed: { newsletter: 0, notification: 0, receipt: 0, promotion: 0, spam: 0 },
+				filedTotal: 0,
+			}),
+			isLoading: ref(false),
+			teamOn: ref(false),
+			markSeen: vi.fn(),
+			undoMarkSeen: vi.fn(),
+		}),
+		useChatRooms: () => ({
+			channels: ref([]),
+			archivedChannels: ref([]),
+			dms: ref([]),
+			isLoading: ref(false),
+		}),
 		// Real: the trail is built from the route registries and the stubbed
 		// route, and the shell announces its last crumb on every navigation.
 		useBreadcrumbs,

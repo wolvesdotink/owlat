@@ -328,6 +328,9 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'shared.breadcrumbRoutes.pages.systemAndUpdates',
 	'shared.breadcrumbRoutes.pages.webhooks',
 	'shared.breadcrumbRoutes.sections.marketing',
+	// A product noun ("Chat") and the category name ("Spam") read the same in German.
+	'components.shell.chat.title',
+	'dashboard.inboxes.category.spam',
 	'shared.channelKinds.addable.sms',
 	'shared.channelKinds.addable.whatsapp',
 	'shared.dashboardNavigation.items.assistant.chat',

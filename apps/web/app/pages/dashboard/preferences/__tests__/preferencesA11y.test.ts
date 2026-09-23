@@ -31,6 +31,10 @@ import { useFormValidation } from '~/composables/useFormValidation';
 import { useLocalStorage } from '~/composables/useLocalStorage';
 import PreferencesLayout from '~/layouts/preferences.vue';
 
+// The layout reads the bundled-plugin list (for the Settings nav's workspace
+// half); the generated module is a Nuxt plugin, which needs a Nuxt runtime.
+vi.mock('~/plugins/plugin-composition.generated', () => ({ bundledPluginComposition: [] }));
+
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
 		get: () => anyPath,

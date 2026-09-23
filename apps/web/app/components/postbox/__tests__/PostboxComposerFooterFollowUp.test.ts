@@ -31,6 +31,7 @@ beforeAll(() => {
 		// The footer/toggle copy flows through vue-i18n now; `useI18n` is a Nuxt
 		// auto-import, so it has to exist as a global for their setup.
 		useI18n: i18nStubs.useI18n,
+		useInboxes: () => ({ byId: ref(new Map()) }),
 	});
 });
 
