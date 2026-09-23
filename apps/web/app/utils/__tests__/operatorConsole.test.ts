@@ -6,6 +6,7 @@ import {
 	scanLevelVariant,
 	formatRate,
 	auditActionLabel,
+	operatorConsoleLayout,
 } from '../operatorConsole';
 import { createTestI18n } from '~/__tests__/i18n';
 
@@ -105,5 +106,22 @@ describe('formatRate with a locale', () => {
 	it('keeps the dash for a missing rate', () => {
 		expect(formatRate(undefined, 'de-DE')).toBe('—');
 		expect(formatRate(Number.NaN, 'en-US')).toBe('—');
+	});
+});
+
+describe('operatorConsoleLayout', () => {
+	it('trims a single-workspace self-host to review, admins and the abuse overview', () => {
+		expect(operatorConsoleLayout('selfhost', 1)).toEqual({
+			tabs: ['overview', 'review', 'admins'],
+			showDeliveryStats: false,
+		});
+	});
+
+	it('keeps the full console for several workspaces, for hosted, and while loading', () => {
+		const full = ['overview', 'review', 'organizations', 'admins'];
+		expect(operatorConsoleLayout('selfhost', 2).tabs).toEqual(full);
+		expect(operatorConsoleLayout('hosted', 1).tabs).toEqual(full);
+		expect(operatorConsoleLayout('selfhost', undefined).tabs).toEqual(full);
+		expect(operatorConsoleLayout('selfhost', 2).showDeliveryStats).toBe(true);
 	});
 });

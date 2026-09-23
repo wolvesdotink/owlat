@@ -108,3 +108,24 @@ export function auditActionLabel(action: string | undefined): string {
 			return action ?? 'shared.operatorConsole.auditAction.unknown';
 	}
 }
+
+export type OperatorTab = 'overview' | 'review' | 'organizations' | 'admins';
+
+/**
+ * What the console shows. A self-hosted instance with one workspace has no
+ * other workspaces to police, and Delivery health already shows its sending
+ * numbers, so it drops the Workspaces tab and the overview's delivery stats
+ * and keeps what it still needs: content review, the admin roster and the
+ * abuse signals (#800). An unknown count (still loading) keeps everything, so
+ * a multi-workspace console never flashes a trimmed view.
+ */
+export function operatorConsoleLayout(
+	deploymentMode: string | undefined,
+	workspaceCount: number | undefined
+): { tabs: OperatorTab[]; showDeliveryStats: boolean } {
+	const singleWorkspace =
+		deploymentMode !== 'hosted' && workspaceCount !== undefined && workspaceCount <= 1;
+	return singleWorkspace
+		? { tabs: ['overview', 'review', 'admins'], showDeliveryStats: false }
+		: { tabs: ['overview', 'review', 'organizations', 'admins'], showDeliveryStats: true };
+}
