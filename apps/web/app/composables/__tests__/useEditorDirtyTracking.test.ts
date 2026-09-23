@@ -277,4 +277,97 @@ describe('useEditorDirtyTracking', () => {
 		expect(editor.name.value).toBe('Re-keyed by the server');
 		expect(editor.hasChanges.value).toBe(false);
 	});
+
+	it('builds on the revision the server says it stored, not on expected + 1', async () => {
+		// The update mutation reports the revision it stored; the tracker takes
+		// that instead of inferring where the write landed.
+		const editor = setupEditor({ _id: 't1', name: 'Original', contentRevision: 3 });
+		await settle();
+		editor.name.value = 'First';
+		await nextTick();
+
+		const submission = editor.beginSubmit();
+		editor.name.value = 'First, then more';
+		await nextTick();
+		editor.acknowledge(submission, 9);
+
+		expect(editor.beginSubmit().revision).toBe(9);
+	});
+
+	it('does not hydrate a row older than the write it just acknowledged', async () => {
+		const editor = setupEditor({ _id: 't1', name: 'Original', contentRevision: 3, sendCount: 0 });
+		await settle();
+		editor.name.value = 'Saved text';
+		await nextTick();
+		const submission = editor.beginSubmit();
+
+		// A bookkeeping write at the old revision arrives while the save runs.
+		editor.source.value = { _id: 't1', name: 'Original', contentRevision: 3, sendCount: 1 };
+		await settle();
+		editor.acknowledge(submission, 4);
+		await settle();
+
+		expect(editor.hasChanges.value).toBe(false);
+		expect(editor.name.value).toBe('Saved text');
+		expect(editor.initialize).toHaveBeenCalledOnce();
+
+		// The echo of the write then hydrates as usual.
+		editor.source.value = { _id: 't1', name: 'Saved text', contentRevision: 4, sendCount: 1 };
+		await settle();
+		expect(editor.initialize).toHaveBeenCalledTimes(2);
+		expect(editor.beginSubmit().revision).toBe(4);
+	});
+
+	it('reports every hydration to onHydrate, after initialize', async () => {
+		const source = ref<Row | null>({ _id: 't1', name: 'First', contentRevision: 1 });
+		const name = ref('');
+		const seen: string[] = [];
+		useEditorDirtyTracking({
+			source,
+			initialize: (row) => {
+				name.value = row.name;
+			},
+			onHydrate: () => seen.push(name.value),
+			watchSources: [() => name.value],
+			revision: (row) => row.contentRevision ?? 0,
+		});
+		await settle();
+		source.value = { _id: 't1', name: 'Collaborator', contentRevision: 2 };
+		await settle();
+
+		expect(seen).toEqual(['First', 'Collaborator']);
+	});
+
+	it('rebase keeps the draft and builds it on the latest row', async () => {
+		const editor = setupEditor({ _id: 't1', name: 'Original', contentRevision: 3 });
+		await settle();
+		editor.name.value = 'Mine';
+		await nextTick();
+		const theirs = { _id: 't1', name: 'Theirs', contentRevision: 5 };
+		editor.source.value = theirs;
+		await settle();
+		expect(editor.beginSubmit().revision).toBe(3);
+
+		editor.rebase();
+
+		expect(editor.name.value).toBe('Mine');
+		expect(editor.hasChanges.value).toBe(true);
+		expect(editor.beginSubmit()).toMatchObject({ base: theirs, revision: 5 });
+	});
+
+	it('reload drops the draft for the latest row', async () => {
+		const editor = setupEditor({ _id: 't1', name: 'Original', contentRevision: 3 });
+		await settle();
+		editor.name.value = 'Mine';
+		await nextTick();
+		editor.source.value = { _id: 't1', name: 'Theirs', contentRevision: 5 };
+		await settle();
+
+		editor.reload();
+		await settle();
+
+		expect(editor.name.value).toBe('Theirs');
+		expect(editor.hasChanges.value).toBe(false);
+		expect(editor.beginSubmit().revision).toBe(5);
+	});
 });

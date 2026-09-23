@@ -33,8 +33,9 @@ const {
 	refetch: refetchEmail,
 } = useConvexQuery(api.transactional.emails.get, () => ({ id: emailId.value }));
 
-// Mutations
-const { run: updateEmail } = useBackendOperation(api.transactional.emails.update, {
+// Mutations. The save rejects on failure (StaleDraftError for a stale
+// revision, which the bridge turns into the conflict dialog).
+const commitEmail = useEditorSaveOperation(api.transactional.emails.update, {
 	label: () => t('dashboard.send.transactional.detail.edit.operations.save'),
 });
 const { run: publishEmail } = useBackendOperation(api.transactional.emails.publish, {
@@ -139,7 +140,13 @@ const {
 	showTestEmailModal,
 	testEmailHtml,
 	onSendTest: handleSendTest,
-	save: handleSave,
+	requestSave,
+	builderRef,
+	conflict,
+	isResolvingConflict,
+	keepMyVersion,
+	loadLatestVersion,
+	dismissConflict,
 } = useEmailEditorBridge({
 	source: email,
 	revision: (row) => row.contentRevision ?? 0,
@@ -175,7 +182,7 @@ const {
 			attachments: JSON.stringify(attachments.value),
 			showUnsubscribe: showUnsubscribe.value,
 		};
-		await publishableEmailSave({
+		return await publishableEmailSave({
 			draft: {
 				name: ctx.name.value,
 				subject: ctx.subject.value,
@@ -189,13 +196,8 @@ const {
 				revision: base.revision,
 			},
 			renderOptions: { theme: emailTheme.value, variableType: 'data' },
-			commit: async (payload) => {
-				// The bridge clears the dirty flag only when save() resolves. The
-				// operation module has toasted any categorized failure (including a
-				// stale revision); throw so the editor stays dirty.
-				const result = await updateEmail({ id, ...payload, ...surfaceFields });
-				if (!result.ok) throw new Error('Save failed');
-			},
+			commit: async (payload) =>
+				(await commitEmail({ id, ...payload, ...surfaceFields })).contentRevision,
 		});
 	},
 });
@@ -219,6 +221,9 @@ const handleTogglePublish = async () => {
 		if (email.value.status === 'published') {
 			await unpublishEmail({ id: emailId.value });
 		} else {
+			// The revision the HTML below is rendered from, read before any await:
+			// a write landing while it renders refuses the publish.
+			const expectedContentRevision = email.value.contentRevision ?? 0;
 			// Generate HTML content before publishing
 			const htmlContent = await generateHtml();
 			const supported = email.value.supportedLanguages ?? [];
@@ -231,7 +236,12 @@ const handleTogglePublish = async () => {
 			);
 			const htmlTranslations = JSON.stringify(translationsObject);
 
-			await publishEmail({ id: emailId.value, htmlContent, htmlTranslations });
+			await publishEmail({
+				id: emailId.value,
+				htmlContent,
+				htmlTranslations,
+				expectedContentRevision,
+			});
 		}
 	} finally {
 		isPublishing.value = false;
@@ -330,6 +340,7 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 			<!-- Email Builder + Attachments -->
 			<EmailBuilder
 				v-else
+				ref="builderRef"
 				v-model:blocks="blocks"
 				v-model:subject="subject"
 				v-model:name="name"
@@ -343,7 +354,7 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 				:plain-text-override="plainTextOverride"
 				:allow-plain-text-override="true"
 				@update:plain-text-override="plainTextOverride = $event"
-				@save="handleSave"
+				@save="requestSave"
 				@back="handleBack"
 				@send-test="handleSendTest"
 				@create-variable="handleCreateVariable"
@@ -421,6 +432,14 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="confirmSave"
+		/>
+
+		<EmailEditorConflictDialog
+			:open="conflict !== null"
+			:is-resolving="isResolvingConflict"
+			@keep="keepMyVersion"
+			@load="loadLatestVersion"
+			@close="dismissConflict"
 		/>
 
 		<!-- Send Test Email Modal -->

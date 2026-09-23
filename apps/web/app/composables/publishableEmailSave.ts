@@ -62,8 +62,11 @@ export interface PublishableEmailSaveArgs {
 	base: PublishableEmailBase;
 	/** Theme + variableType used for both the default render and translations. */
 	renderOptions: RenderOptions;
-	/** Persist the payload. Throw on failure so the editor stays dirty. */
-	commit: (payload: PublishableEmailPayload) => Promise<void>;
+	/**
+	 * Persist the payload. Throw on failure so the editor stays dirty; resolve
+	 * with the revision the write stored.
+	 */
+	commit: (payload: PublishableEmailPayload) => Promise<number>;
 }
 
 interface TranslationOverlay {
@@ -134,6 +137,7 @@ function buildPublishableEmailPayload(
 	};
 }
 
-export async function publishableEmailSave(args: PublishableEmailSaveArgs): Promise<void> {
-	await args.commit(buildPublishableEmailPayload(args.draft, args.base, args.renderOptions));
+/** Build the payload and commit it; resolves with the revision the write stored. */
+export async function publishableEmailSave(args: PublishableEmailSaveArgs): Promise<number> {
+	return await args.commit(buildPublishableEmailPayload(args.draft, args.base, args.renderOptions));
 }
