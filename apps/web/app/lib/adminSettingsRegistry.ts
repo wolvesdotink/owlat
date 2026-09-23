@@ -1,19 +1,19 @@
 /**
- * THE admin table: every Administration destination, the area it belongs to,
- * and the gate it is registered behind.
+ * THE admin table: every Workspace settings destination, the group it belongs
+ * to, and the gate it is registered behind.
  *
  * Administration grew the same way Preferences did before `settingsRegistry.ts`
  * existed — one hub per area, each hub hand-listing its own cards, and the
- * breadcrumb table restating the same routes a third time. The result was a
- * tree you could only walk from the top: Domains → Transport → Webhooks meant
- * two trips through the Delivery hub, and the four ramp pages (`advanced/cells`,
- * `controls`, `independence`, `measurement`) hung off a collapsed disclosure on
- * that hub, so they appeared in no rail, no hub grid and no ⌘K.
+ * breadcrumb table restating the same routes a third time. This module is the
+ * one declaration the Settings sidebar's Workspace tab, the admin palette
+ * provider and the admin breadcrumbs (`lib/breadcrumbRoutes.ts`) all read, so a
+ * page has one name in the nav, the crumb and the palette.
  *
- * This module is the one declaration the admin layout's rail and its palette
- * provider read. Titles are the SAME i18n keys `lib/breadcrumbRoutes.ts` prints
- * for each route, so the rail, the crumb and the palette cannot drift into three
- * names for one page.
+ * The Workspace tab has five groups — Team, Email delivery, AI, Features,
+ * System — plus the overview on top. Pages that belong to another page (the
+ * four ramp pages under "Advanced", the API quickstart under "API", the AI
+ * pages that now redirect into "AI replies") are `hidden`: reachable, crumbed
+ * and searchable, but represented in the rail by their `parent`.
  *
  * Pure data plus pure predicates (no Vue, no Nuxt, no Convex), so the whole
  * flag/platform-admin matrix is unit-testable — see
@@ -23,7 +23,7 @@
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import { type PaletteGroup, type PaletteItem, filterItems } from './commandPalette';
 
-/** Where the Administration tree lives. Everything under it is registry-owned. */
+/** Where the Workspace settings tree lives. Everything under it is registry-owned. */
 export const ADMIN_ROOT = '/dashboard/admin';
 
 /**
@@ -37,6 +37,12 @@ export interface AdminEnvironment {
 	isPlatformAdmin: boolean;
 	/** This build ships at least one plugin that has settings. */
 	hasPlugins: boolean;
+	/**
+	 * A self-hosted deployment (`deploymentMode === 'selfhost'`). A self-hosted
+	 * instance holds exactly one workspace, so the multi-tenant operator console
+	 * would only ever show empty tabs there.
+	 */
+	isSelfHosted: boolean;
 }
 
 export type AdminGate = (env: AdminEnvironment) => boolean;
@@ -51,35 +57,62 @@ const anyFlag =
 		keys.some((key) => env.isFeatureEnabled(key));
 const platformOnly: AdminGate = (env) => env.isPlatformAdmin;
 const withPlugins: AdminGate = (env) => env.hasPlugins;
+/** The operator console is for hosted, multi-workspace deployments. */
+const multiTenantPlatform: AdminGate = (env) => env.isPlatformAdmin && !env.isSelfHosted;
 
 /** The groups the rail renders as eyebrows, in this order. */
-export type AdminAreaKey = 'overview' | 'delivery' | 'advanced' | 'instance' | 'team' | 'platform';
+export type AdminAreaKey = 'overview' | 'team' | 'delivery' | 'ai' | 'features' | 'system';
 
 export const ADMIN_AREAS: readonly {
 	readonly key: AdminAreaKey;
 	readonly titleKey: string;
 }[] = [
 	{ key: 'overview', titleKey: 'shell.admin.areas.overview' },
-	{ key: 'delivery', titleKey: 'shell.admin.areas.delivery' },
-	{ key: 'advanced', titleKey: 'shell.admin.areas.advanced' },
-	{ key: 'instance', titleKey: 'shell.admin.areas.instance' },
 	{ key: 'team', titleKey: 'shell.admin.areas.team' },
-	{ key: 'platform', titleKey: 'shell.admin.areas.platform' },
+	{ key: 'delivery', titleKey: 'shell.admin.areas.delivery' },
+	{ key: 'ai', titleKey: 'shell.admin.areas.ai' },
+	{ key: 'features', titleKey: 'shell.admin.areas.features' },
+	{ key: 'system', titleKey: 'shell.admin.areas.system' },
 ];
 
-/** One Administration destination. */
+/**
+ * A live count that earns a rail entry an attention badge. The layout resolves
+ * it (it owns the Convex read); the registry only says which count it is.
+ */
+export type AdminAttentionKey = 'quarantined' | 'failed';
+
+/** One Workspace settings destination. */
 export interface AdminEntry {
 	readonly id: string;
 	readonly path: string;
 	/**
-	 * i18n KEY for the label — the breadcrumb table's own page key, so the rail
-	 * and the crumb print one string. Module scope cannot call `useI18n`, so
-	 * every consumer resolves it at its own render boundary.
+	 * i18n KEY for the label — used by the rail, the crumb and the palette alike,
+	 * so the three print one string. Module scope cannot call `useI18n`, so every
+	 * consumer resolves it at its own render boundary.
 	 */
 	readonly titleKey: string;
 	readonly icon: string;
 	readonly area: AdminAreaKey;
 	readonly gate?: AdminGate;
+	/**
+	 * Reachable, crumbed and searchable, but not listed in the rail — the rail
+	 * shows its `parent` instead, and marks the parent current while you are here.
+	 */
+	readonly hidden?: boolean;
+	/** Id of the rail entry that stands for this page. Only set on hidden entries. */
+	readonly parent?: string;
+	/**
+	 * The page's hidden children render as tabs above it (the "Advanced" group of
+	 * ramp pages is one rail entry with four tabs, not four rail entries).
+	 */
+	readonly tabs?: boolean;
+	/**
+	 * Tables that need room (domains, cells) opt out of the settings shell's
+	 * reading width.
+	 */
+	readonly wide?: boolean;
+	/** Badge this entry with a live count when it is non-zero. */
+	readonly attention?: AdminAttentionKey;
 }
 
 /** Breadcrumb page label, by its key leaf. Keeps the table below readable. */
@@ -87,8 +120,8 @@ const label = (leaf: string) => `shared.breadcrumbRoutes.pages.${leaf}`;
 
 /**
  * The canonical admin table, in the order the rail renders it. Area grouping is
- * by `area`; ordering within an area is this order. Each area leads with the hub
- * that owns it, because the hub is a real destination (a roll-up), not a menu.
+ * by `area`; ordering within an area is this order. The first visible entry of
+ * an area is its lead page: the breadcrumb's group crumb links there.
  */
 export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 	{
@@ -99,218 +132,12 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		area: 'overview',
 	},
 
-	// ── Delivery ─────────────────────────────────────────────────────────────
-	{
-		id: 'delivery',
-		path: `${ADMIN_ROOT}/delivery`,
-		titleKey: label('health'),
-		icon: 'lucide:activity',
-		area: 'delivery',
-	},
-	{
-		id: 'domains',
-		path: `${ADMIN_ROOT}/delivery/domains`,
-		titleKey: label('sendingDomains'),
-		icon: 'lucide:globe',
-		area: 'delivery',
-	},
-	{
-		id: 'transport',
-		path: `${ADMIN_ROOT}/delivery/transport`,
-		titleKey: label('deliveryProvider'),
-		icon: 'lucide:truck',
-		area: 'delivery',
-	},
-	{
-		id: 'deliverability',
-		path: `${ADMIN_ROOT}/delivery/deliverability`,
-		titleKey: label('deliverability'),
-		icon: 'lucide:shield-check',
-		area: 'delivery',
-	},
-	{
-		id: 'webhooks',
-		path: `${ADMIN_ROOT}/delivery/webhooks`,
-		titleKey: label('webhooks'),
-		icon: 'lucide:webhook',
-		area: 'delivery',
-	},
-	{
-		id: 'providerRouting',
-		path: `${ADMIN_ROOT}/delivery/provider-routing`,
-		titleKey: label('providerRouting'),
-		icon: 'lucide:route',
-		area: 'delivery',
-	},
-	{
-		id: 'migrate',
-		path: `${ADMIN_ROOT}/delivery/migrate`,
-		titleKey: label('migrateFromMailchimp'),
-		icon: 'lucide:import',
-		area: 'delivery',
-	},
-
-	// ── Delivery → Advanced ──────────────────────────────────────────────────
-	// The ramp pages. They gate how fast this deployment may send, which is not a
-	// reasonable thing to fold away behind a disclosure on one hub.
-	{
-		id: 'rampControls',
-		path: `${ADMIN_ROOT}/delivery/advanced/controls`,
-		titleKey: label('controls'),
-		icon: 'lucide:sliders-horizontal',
-		area: 'advanced',
-	},
-	{
-		id: 'cells',
-		path: `${ADMIN_ROOT}/delivery/advanced/cells`,
-		titleKey: label('cells'),
-		icon: 'lucide:grid-3x3',
-		area: 'advanced',
-	},
-	{
-		id: 'independence',
-		path: `${ADMIN_ROOT}/delivery/advanced/independence`,
-		titleKey: label('independence'),
-		icon: 'lucide:plug',
-		area: 'advanced',
-	},
-	{
-		id: 'measurement',
-		path: `${ADMIN_ROOT}/delivery/advanced/measurement`,
-		titleKey: label('measurement'),
-		icon: 'lucide:target',
-		area: 'advanced',
-	},
-
-	// ── Instance ─────────────────────────────────────────────────────────────
-	{
-		id: 'instance',
-		path: `${ADMIN_ROOT}/instance`,
-		titleKey: label('instance'),
-		icon: 'lucide:server-cog',
-		area: 'instance',
-	},
-	{
-		id: 'instanceGeneral',
-		path: `${ADMIN_ROOT}/instance/general`,
-		titleKey: label('general'),
-		icon: 'lucide:building-2',
-		area: 'instance',
-	},
-	{
-		id: 'features',
-		path: `${ADMIN_ROOT}/instance/features`,
-		titleKey: label('features'),
-		icon: 'lucide:toggle-right',
-		area: 'instance',
-	},
-	{
-		id: 'emailTheme',
-		path: `${ADMIN_ROOT}/instance/email-theme`,
-		titleKey: label('emailTheme'),
-		icon: 'lucide:palette',
-		area: 'instance',
-	},
-	{
-		id: 'properties',
-		path: `${ADMIN_ROOT}/instance/properties`,
-		titleKey: label('contactProperties'),
-		icon: 'lucide:tags',
-		area: 'instance',
-	},
-	{
-		id: 'forms',
-		path: `${ADMIN_ROOT}/instance/forms`,
-		titleKey: label('forms'),
-		icon: 'lucide:file-text',
-		area: 'instance',
-	},
-	{
-		id: 'channels',
-		path: `${ADMIN_ROOT}/instance/channels`,
-		titleKey: label('channels'),
-		icon: 'lucide:radio',
-		area: 'instance',
-	},
-	{
-		id: 'desktopUpdates',
-		path: `${ADMIN_ROOT}/instance/desktop-updates`,
-		titleKey: label('desktopUpdates'),
-		icon: 'lucide:monitor-down',
-		area: 'instance',
-	},
-	{
-		// Deliberately ungated: this is the page where AI gets turned on, so
-		// hiding it behind the `ai` flag would be a chicken-and-egg lockout (the
-		// page itself makes the same call in its `definePageMeta`).
-		id: 'aiProvider',
-		path: `${ADMIN_ROOT}/instance/ai-provider`,
-		titleKey: label('aiProvider'),
-		icon: 'lucide:sparkles',
-		area: 'instance',
-	},
-	{
-		// Gated on `ai`, not `ai.agent`: the page's "Off" choice turns the agent
-		// off, and the same page is where it gets turned back on.
-		id: 'aiReplies',
-		path: `${ADMIN_ROOT}/instance/ai-replies`,
-		titleKey: label('aiReplies'),
-		icon: 'lucide:bot',
-		area: 'instance',
-		gate: flag('ai'),
-	},
-	{
-		id: 'agentHealth',
-		path: `${ADMIN_ROOT}/instance/agent-health`,
-		titleKey: label('agentHealth'),
-		icon: 'lucide:activity',
-		area: 'instance',
-		gate: flag('ai.agent'),
-	},
-	{
-		id: 'sealedMail',
-		path: `${ADMIN_ROOT}/instance/sealed-mail`,
-		titleKey: label('secureMail'),
-		icon: 'lucide:lock',
-		area: 'instance',
-		gate: flag('sealedMail'),
-	},
-	{
-		id: 'plugins',
-		path: `${ADMIN_ROOT}/instance/plugins`,
-		titleKey: label('plugins'),
-		icon: 'lucide:puzzle',
-		area: 'instance',
-		gate: withPlugins,
-	},
-
-	// ── Team & access ────────────────────────────────────────────────────────
+	// ── Team ─────────────────────────────────────────────────────────────────
 	{
 		id: 'team',
 		path: `${ADMIN_ROOT}/team`,
-		titleKey: label('teamAccess'),
+		titleKey: label('team'),
 		icon: 'lucide:users-round',
-		area: 'team',
-	},
-	{
-		id: 'apiKeys',
-		path: `${ADMIN_ROOT}/team/api`,
-		titleKey: label('apiKeys'),
-		icon: 'lucide:key-round',
-		area: 'team',
-	},
-	{
-		id: 'apiDocs',
-		path: `${ADMIN_ROOT}/team/api/docs`,
-		titleKey: label('apiQuickstart'),
-		icon: 'lucide:book-open',
-		area: 'team',
-	},
-	{
-		id: 'senders',
-		path: `${ADMIN_ROOT}/team/senders`,
-		titleKey: label('campaignSenders'),
-		icon: 'lucide:send',
 		area: 'team',
 	},
 	{
@@ -321,6 +148,30 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		area: 'team',
 		// Same pair the page's `requiresAnyFeature` names.
 		gate: anyFlag('postbox', 'mail.external'),
+	},
+	{
+		id: 'senders',
+		path: `${ADMIN_ROOT}/team/senders`,
+		titleKey: label('campaignSenders'),
+		icon: 'lucide:send',
+		area: 'team',
+	},
+	{
+		id: 'apiKeys',
+		path: `${ADMIN_ROOT}/team/api`,
+		titleKey: label('api'),
+		icon: 'lucide:key-round',
+		area: 'team',
+	},
+	{
+		// One API entry in the rail: the keys page links to the quickstart.
+		id: 'apiDocs',
+		path: `${ADMIN_ROOT}/team/api/docs`,
+		titleKey: label('apiQuickstart'),
+		icon: 'lucide:book-open',
+		area: 'team',
+		hidden: true,
+		parent: 'apiKeys',
 	},
 	{
 		id: 'connectedApps',
@@ -337,13 +188,252 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		area: 'team',
 	},
 
-	// ── Platform (this deployment, not this workspace) ───────────────────────
+	// ── Email delivery ───────────────────────────────────────────────────────
+	{
+		id: 'delivery',
+		path: `${ADMIN_ROOT}/delivery`,
+		titleKey: label('health'),
+		icon: 'lucide:activity',
+		area: 'delivery',
+	},
+	{
+		id: 'domains',
+		path: `${ADMIN_ROOT}/delivery/domains`,
+		titleKey: label('sendingDomains'),
+		icon: 'lucide:globe',
+		area: 'delivery',
+		wide: true,
+	},
+	{
+		id: 'transport',
+		path: `${ADMIN_ROOT}/delivery/transport`,
+		titleKey: label('deliveryProvider'),
+		icon: 'lucide:truck',
+		area: 'delivery',
+	},
+	{
+		id: 'deliverability',
+		path: `${ADMIN_ROOT}/delivery/deliverability`,
+		titleKey: label('deliverability'),
+		icon: 'lucide:shield-check',
+		area: 'delivery',
+		wide: true,
+	},
+	{
+		id: 'webhooks',
+		path: `${ADMIN_ROOT}/delivery/webhooks`,
+		titleKey: label('webhooks'),
+		icon: 'lucide:webhook',
+		area: 'delivery',
+	},
+	{
+		id: 'providerRouting',
+		path: `${ADMIN_ROOT}/delivery/provider-routing`,
+		titleKey: label('providerRouting'),
+		icon: 'lucide:route',
+		area: 'delivery',
+	},
+	// Received mail the pipeline held back or could not process. These used to
+	// live under the team inbox, where the people who can act on them would
+	// never look; here they carry a badge when something is waiting.
+	{
+		id: 'quarantine',
+		path: `${ADMIN_ROOT}/delivery/quarantine`,
+		titleKey: label('quarantine'),
+		icon: 'lucide:shield-alert',
+		area: 'delivery',
+		gate: flag('inbox'),
+		attention: 'quarantined',
+	},
+	{
+		id: 'failed',
+		path: `${ADMIN_ROOT}/delivery/failed`,
+		titleKey: label('failedMessages'),
+		icon: 'lucide:alert-triangle',
+		area: 'delivery',
+		gate: flag('inbox'),
+		attention: 'failed',
+	},
+	{
+		id: 'activity',
+		path: `${ADMIN_ROOT}/delivery/activity`,
+		titleKey: label('activity'),
+		icon: 'lucide:radio-tower',
+		area: 'delivery',
+		gate: flag('inbox'),
+	},
+	{
+		id: 'migrate',
+		path: `${ADMIN_ROOT}/delivery/migrate`,
+		titleKey: label('migrateFromMailchimp'),
+		icon: 'lucide:import',
+		area: 'delivery',
+	},
+	{
+		// One rail entry for the four ramp pages; the page itself forwards to
+		// the first of them, and the layout renders all four as tabs.
+		id: 'advanced',
+		path: `${ADMIN_ROOT}/delivery/advanced`,
+		titleKey: label('advanced'),
+		icon: 'lucide:sliders-horizontal',
+		area: 'delivery',
+		tabs: true,
+	},
+	{
+		id: 'rampControls',
+		path: `${ADMIN_ROOT}/delivery/advanced/controls`,
+		titleKey: label('controls'),
+		icon: 'lucide:sliders-horizontal',
+		area: 'delivery',
+		hidden: true,
+		parent: 'advanced',
+	},
+	{
+		id: 'cells',
+		path: `${ADMIN_ROOT}/delivery/advanced/cells`,
+		titleKey: label('cells'),
+		icon: 'lucide:grid-3x3',
+		area: 'delivery',
+		hidden: true,
+		parent: 'advanced',
+		wide: true,
+	},
+	{
+		id: 'independence',
+		path: `${ADMIN_ROOT}/delivery/advanced/independence`,
+		titleKey: label('independence'),
+		icon: 'lucide:plug',
+		area: 'delivery',
+		hidden: true,
+		parent: 'advanced',
+	},
+	{
+		id: 'measurement',
+		path: `${ADMIN_ROOT}/delivery/advanced/measurement`,
+		titleKey: label('measurement'),
+		icon: 'lucide:target',
+		area: 'delivery',
+		hidden: true,
+		parent: 'advanced',
+		wide: true,
+	},
+
+	// ── AI ───────────────────────────────────────────────────────────────────
+	{
+		// Deliberately ungated: this is the page where AI gets turned on, so
+		// hiding it behind the `ai` flag would be a chicken-and-egg lockout (the
+		// page itself makes the same call in its `definePageMeta`).
+		id: 'aiProvider',
+		path: `${ADMIN_ROOT}/instance/ai-provider`,
+		titleKey: label('aiProvider'),
+		icon: 'lucide:sparkles',
+		area: 'ai',
+	},
+	{
+		// Gated on `ai`, not `ai.agent`: the page's "Off" choice turns the agent
+		// off, and the same page is where it gets turned back on. The old agent
+		// and autonomy URLs are redirect stubs into this page.
+		id: 'aiReplies',
+		path: `${ADMIN_ROOT}/instance/ai-replies`,
+		titleKey: label('aiReplies'),
+		icon: 'lucide:bot',
+		area: 'ai',
+		gate: flag('ai'),
+	},
+	{
+		id: 'agentHealth',
+		path: `${ADMIN_ROOT}/instance/agent-health`,
+		titleKey: label('agentHealth'),
+		icon: 'lucide:heart-pulse',
+		area: 'ai',
+		gate: flag('ai.agent'),
+	},
+
+	// ── Features ─────────────────────────────────────────────────────────────
+	{
+		id: 'features',
+		path: `${ADMIN_ROOT}/instance/features`,
+		titleKey: label('features'),
+		icon: 'lucide:toggle-right',
+		area: 'features',
+	},
+	{
+		// The operating-mode picker. It sets feature flags in bulk, so it hangs
+		// off Features rather than holding a rail row of its own.
+		id: 'instance',
+		path: `${ADMIN_ROOT}/instance`,
+		titleKey: label('instance'),
+		icon: 'lucide:server-cog',
+		area: 'features',
+		hidden: true,
+		parent: 'features',
+	},
+	{
+		id: 'channels',
+		path: `${ADMIN_ROOT}/instance/channels`,
+		titleKey: label('channels'),
+		icon: 'lucide:radio',
+		area: 'features',
+	},
+	{
+		id: 'forms',
+		path: `${ADMIN_ROOT}/instance/forms`,
+		titleKey: label('forms'),
+		icon: 'lucide:file-text',
+		area: 'features',
+	},
+	{
+		id: 'properties',
+		path: `${ADMIN_ROOT}/instance/properties`,
+		titleKey: label('contactProperties'),
+		icon: 'lucide:tags',
+		area: 'features',
+	},
+	{
+		id: 'emailTheme',
+		path: `${ADMIN_ROOT}/instance/email-theme`,
+		titleKey: label('emailTheme'),
+		icon: 'lucide:palette',
+		area: 'features',
+	},
+	{
+		id: 'sealedMail',
+		path: `${ADMIN_ROOT}/instance/sealed-mail`,
+		titleKey: label('sealedMail'),
+		icon: 'lucide:lock',
+		area: 'features',
+		gate: flag('sealedMail'),
+	},
+	{
+		id: 'plugins',
+		path: `${ADMIN_ROOT}/instance/plugins`,
+		titleKey: label('plugins'),
+		icon: 'lucide:puzzle',
+		area: 'features',
+		gate: withPlugins,
+	},
+
+	// ── System ───────────────────────────────────────────────────────────────
+	{
+		id: 'instanceGeneral',
+		path: `${ADMIN_ROOT}/instance/general`,
+		titleKey: label('general'),
+		icon: 'lucide:building-2',
+		area: 'system',
+	},
+	{
+		id: 'desktopUpdates',
+		path: `${ADMIN_ROOT}/instance/desktop-updates`,
+		titleKey: label('desktopUpdates'),
+		icon: 'lucide:monitor-down',
+		area: 'system',
+	},
 	{
 		id: 'system',
 		path: `${ADMIN_ROOT}/system`,
 		titleKey: label('systemAndUpdates'),
 		icon: 'lucide:cpu',
-		area: 'platform',
+		area: 'system',
 		gate: platformOnly,
 	},
 	{
@@ -351,7 +441,7 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		path: `${ADMIN_ROOT}/backups`,
 		titleKey: label('backups'),
 		icon: 'lucide:database-backup',
-		area: 'platform',
+		area: 'system',
 		gate: platformOnly,
 	},
 	{
@@ -359,8 +449,9 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		path: `${ADMIN_ROOT}/operator`,
 		titleKey: label('operatorConsole'),
 		icon: 'lucide:shield-alert',
-		area: 'platform',
-		gate: platformOnly,
+		area: 'system',
+		gate: multiTenantPlatform,
+		wide: true,
 	},
 ];
 
@@ -369,7 +460,32 @@ export function adminEntryFor(path: string): AdminEntry | undefined {
 	return ADMIN_REGISTRY.find((candidate) => candidate.path === path);
 }
 
-/** The entries this environment may reach, in registry order. Pure. */
+/** Registry lookup by id. */
+export function adminEntryById(id: string): AdminEntry | undefined {
+	return ADMIN_REGISTRY.find((candidate) => candidate.id === id);
+}
+
+/**
+ * The rail entry that stands for `path`: the page itself when it is listed, its
+ * parent when it is a hidden child. Undefined outside the registry. Pure.
+ */
+export function adminRailEntryFor(path: string): AdminEntry | undefined {
+	const entry = adminEntryFor(path);
+	if (!entry) return undefined;
+	return entry.parent ? (adminEntryById(entry.parent) ?? entry) : entry;
+}
+
+/**
+ * The tab strip for `path`: the hidden children of a `tabs` parent, when the
+ * current page is one of them (or the parent itself). Empty otherwise. Pure.
+ */
+export function adminTabsFor(path: string, env: AdminEnvironment): AdminEntry[] {
+	const rail = adminRailEntryFor(path);
+	if (!rail?.tabs) return [];
+	return reachableAdminEntries(env).filter((candidate) => candidate.parent === rail.id);
+}
+
+/** The entries this environment may reach, hidden ones included, in registry order. Pure. */
 export function reachableAdminEntries(env: AdminEnvironment): AdminEntry[] {
 	return ADMIN_REGISTRY.filter((candidate) => !candidate.gate || candidate.gate(env));
 }
@@ -381,15 +497,37 @@ export interface AdminAreaView {
 }
 
 /**
- * The reachable entries grouped into their areas, in registry order, with empty
- * areas dropped — what the layout's rail renders. Pure.
+ * The reachable, listed entries grouped into their areas, in registry order,
+ * with empty areas dropped — what the Workspace tab renders. Pure.
  */
 export function adminAreasFor(env: AdminEnvironment): AdminAreaView[] {
-	const reachable = reachableAdminEntries(env);
+	const listed = reachableAdminEntries(env).filter((candidate) => !candidate.hidden);
 	return ADMIN_AREAS.map((area) => ({
 		...area,
-		entries: reachable.filter((candidate) => candidate.area === area.key),
+		entries: listed.filter((candidate) => candidate.area === area.key),
 	})).filter((area) => area.entries.length > 0);
+}
+
+/**
+ * The first listed entry of an area — where the breadcrumb's group crumb
+ * points. Ignores gates on purpose: a crumb describes where a page lives. Pure.
+ */
+export function adminAreaLead(area: AdminAreaKey): AdminEntry | undefined {
+	return ADMIN_REGISTRY.find((candidate) => candidate.area === area && !candidate.hidden);
+}
+
+/** The attention count for each entry path that has one and is non-zero. Pure. */
+export function adminAttentionBadges(
+	entries: readonly AdminEntry[],
+	counts: Partial<Record<AdminAttentionKey, number>>
+): Record<string, number> {
+	const badges: Record<string, number> = {};
+	for (const candidate of entries) {
+		if (!candidate.attention) continue;
+		const count = counts[candidate.attention] ?? 0;
+		if (count > 0) badges[candidate.path] = count;
+	}
+	return badges;
 }
 
 // ── Command palette ─────────────────────────────────────────────────────────
@@ -414,16 +552,16 @@ export interface AdminSurfaceDeps {
 }
 
 /**
- * The Administration shell's contextual group: every admin destination the
- * deployment has, while you are standing in the admin tree.
+ * The Workspace settings' contextual palette group: every admin destination
+ * the deployment has, while you are standing in the admin tree.
  *
  * The core navigation provider caps at eight rows across the whole app, so from
- * inside Administration the sibling pages you actually want are the ones that
- * fall off the end. This group puts them at the top instead, with their area as
- * the context line. Item ids are the registry's own (`admin:<id>`) rather than
- * the core `nav:<href>` ids: sharing those would make the group dedup itself
- * away to nothing wherever core already offers the route, which here is
- * everywhere. Pure.
+ * inside Workspace settings the sibling pages you actually want are the ones
+ * that fall off the end. This group puts them at the top instead, with their
+ * group as the context line. Item ids are the registry's own (`admin:<id>`)
+ * rather than the core `nav:<href>` ids: sharing those would make the group
+ * dedup itself away to nothing wherever core already offers the route. Hidden
+ * entries are offered too: they are real pages, just not rail rows. Pure.
  */
 export function buildAdminSurfaceGroups(deps: AdminSurfaceDeps, query: string): PaletteGroup[] {
 	const items: PaletteItem[] = deps.entries().map((entry) => ({

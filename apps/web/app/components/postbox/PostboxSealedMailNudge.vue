@@ -29,7 +29,7 @@ async function dismiss() {
 
 async function openSettings() {
 	await dismissSealedMailNudge();
-	await navigateTo('/dashboard/preferences#sealed-mail');
+	await navigateTo('/dashboard/preferences/security#sealed-mail');
 }
 </script>
 

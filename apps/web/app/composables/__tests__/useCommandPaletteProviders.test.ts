@@ -128,7 +128,9 @@ describe('navigation', () => {
 
 		// The ramp controls are the deepest of them: four clicks through a hub and
 		// a collapsed disclosure, and previously no keyboard route at all.
-		expect(labels).toEqual(expect.arrayContaining(['AI provider', 'Webhooks', 'Controls']));
+		expect(labels).toEqual(
+			expect.arrayContaining(['AI provider', 'Webhooks', 'Delivery controls'])
+		);
 	});
 
 	it('navigates to the route it names', async () => {

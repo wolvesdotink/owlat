@@ -26,6 +26,10 @@ definePageMeta({
 });
 
 const { hasActiveOrganization, role } = useOrganizationContext();
+
+// Mail exists on this instance (hosted or connected): the daily brief is mail.
+const { isEnabled: isFeatureEnabled } = useFeatureFlag();
+const hasMail = computed(() => isFeatureEnabled('postbox') || isFeatureEnabled('mail.external'));
 const { user } = useAuth();
 
 // Account deletion erases different data depending on the member's role.
@@ -543,6 +547,10 @@ const daysRemaining = computed(() => {
 					</NuxtLink>
 				</p>
 			</div>
+
+			<!-- Daily brief by email: opt-in delivery of the digest that otherwise
+			     only exists at the top of Today. -->
+			<PostboxDailyBriefSettings v-if="hasMail" />
 
 			<!-- Pending Deletion Banner -->
 			<div v-if="pendingDeletion" class="card p-0 overflow-hidden border-warning/30 bg-warning/5">

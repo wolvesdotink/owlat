@@ -75,6 +75,6 @@ describe('PostboxSealedMailNudge', () => {
 		await wrapper.find('[data-testid="sealed-mail-nudge-open"]').trigger('click');
 		await flushPromises();
 		expect(dismiss).toHaveBeenCalledTimes(1);
-		expect(navigate).toHaveBeenCalledWith('/dashboard/preferences#sealed-mail');
+		expect(navigate).toHaveBeenCalledWith('/dashboard/preferences/security#sealed-mail');
 	});
 });

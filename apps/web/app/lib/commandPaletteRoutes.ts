@@ -64,8 +64,7 @@ const SECTION_ICONS: Readonly<Record<string, string>> = {
 	'shared.breadcrumbRoutes.sections.send': 'lucide:send',
 	'shared.breadcrumbRoutes.sections.campaigns': 'lucide:megaphone',
 	'shared.breadcrumbRoutes.sections.audience': 'lucide:users',
-	'shared.breadcrumbRoutes.sections.administration': 'lucide:shield-check',
-	'shared.breadcrumbRoutes.sections.delivery': 'lucide:truck',
+	'shared.breadcrumbRoutes.sections.workspace': 'lucide:shield-check',
 	'shared.breadcrumbRoutes.sections.automations': 'lucide:zap',
 	'shared.breadcrumbRoutes.sections.preferences': 'lucide:settings',
 };

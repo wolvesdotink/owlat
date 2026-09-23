@@ -4974,9 +4974,6 @@
 			"preferencesBackLink": {
 				"label": "Zurück zu den Einstellungen"
 			},
-			"preferencesDestinations": {
-				"ariaLabel": "Einstellungsbereiche"
-			},
 			"preferencesExportManifest": {
 				"loading": "Wird gezählt…",
 				"moreThan": "mehr als {count}",
@@ -5643,11 +5640,17 @@
 			},
 			"settings": {
 				"title": "Einstellungen",
+				"waitingCount": "{count} wartend",
 				"back": "Zurück",
+				"needsAttention": "Hier wartet etwas auf Sie",
 				"search": "Einstellungen durchsuchen",
+				"tabs": {
+					"mine": "Meine Einstellungen",
+					"workspace": "Arbeitsbereich"
+				},
+				"tabsLabel": "Einstellungsbereich",
 				"results": "Passende Einstellungen",
-				"noResults": "Keine Einstellung passt.",
-				"workspace": "Arbeitsbereich"
+				"noResults": "Keine Einstellung passt."
 			}
 		},
 		"today": {
@@ -6206,49 +6209,29 @@
 				}
 			},
 			"index": {
-				"areas": {
-					"delivery": {
-						"description": "Versandgesundheit, Domains, Transport, Routing und Webhooks.",
-						"title": "Zustellung"
-					},
-					"instance": {
-						"description": "Workspace-Voreinstellungen, Betriebsmodus, Funktionen, KI, Kanäle und Plugins.",
-						"title": "Instanz"
-					},
-					"team": {
-						"description": "Mitglieder, gemeinsame Postfächer, freigegebene Absender, API-Schlüssel und verbundene Apps.",
-						"title": "Team & Zugriff"
-					}
-				},
 				"claimPlatform": {
 					"action": "Für mein Konto aktivieren",
-					"body": "Auf dieser Installation hat niemand die Rolle „Plattformadministrator“, daher sind Systemaktualisierungen, Backups und die Betriebskonsole nicht erreichbar. Als Inhaber dieses Workspace können Sie die Rolle jetzt übernehmen — danach können Sie sie auch anderen Mitgliedern erteilen.",
+					"body": "Auf dieser Installation hat niemand die Rolle „Plattformadministrator“, daher sind Systemaktualisierungen und Backups nicht erreichbar. Als Inhaber dieses Workspace können Sie die Rolle jetzt übernehmen und sie danach anderen Mitgliedern erteilen.",
 					"operation": "Plattformadministrator übernehmen",
-					"success": "Betriebswerkzeuge aktiviert. Systemaktualisierungen, Backups und die Betriebskonsole stehen jetzt zur Verfügung.",
+					"success": "Betriebswerkzeuge aktiviert. Systemaktualisierungen und Backups finden Sie jetzt unter „System“.",
 					"title": "Betriebswerkzeuge sind noch nicht aktiviert"
 				},
+				"attention": "{count} eingehende Nachricht wartet auf Sie | {count} eingehende Nachrichten warten auf Sie",
 				"deliveryVerdict": "Zustellungsbewertung",
-				"eyebrow": "Administration",
-				"learnMore": "Mehr erfahren →",
-				"lede": "Beginnen Sie hier mit den Bewertungen. Detaillierte Konfiguration und Betriebswerkzeuge liegen eine Ebene tiefer, wenn Sie sie brauchen.",
-				"pageTitle": "Administration — Owlat",
-				"platform": "Plattform",
-				"platformAdminOnly": "Betriebswerkzeuge, Systemaktualisierungen und Backups liegen beim Plattformadministrator dieser Installation und werden hier nicht angezeigt.",
-				"platformAreas": {
-					"backups": {
-						"description": "Tägliche Backups planen, eines sofort ausführen und den Wiederherstellungsbefehl finden.",
-						"title": "Backups"
-					},
-					"operator": {
-						"description": "Zurückgehaltene Inhalte, Versandstatus von Workspaces und Plattformadministratoren prüfen.",
-						"title": "Betreiberkonsole"
-					},
-					"system": {
-						"description": "Stack-Version, Container-Zustand und In-App-Aktualisierungen.",
-						"title": "System & Aktualisierungen"
-					}
+				"eyebrow": "Arbeitsbereich",
+				"groups": {
+					"ai": "KI-Anbieter, KI-Antworten und Agentenzustand.",
+					"delivery": "Versandgesundheit, Domains, Zustelldienst, Webhooks sowie zurückgehaltene oder fehlgeschlagene eingehende Mail.",
+					"features": "Welche Funktionen aktiv sind, Kanäle, Formulare, Kontakteigenschaften und das E-Mail-Design.",
+					"system": "Name und Voreinstellungen des Workspace, Desktop-App-Updates, Systemaktualisierungen und Backups.",
+					"team": "Mitglieder, Einladungen, Team-Postfächer, Kampagnenabsender, die API und das Audit-Protokoll."
 				},
-				"title": "Ihre Instanz auf einen Blick",
+				"learnMore": "Mehr erfahren →",
+				"lede": "Beginnen Sie hier mit den Bewertungen. Alles Weitere steckt in den fünf Gruppen unten, denselben wie in der Seitenleiste der Einstellungen.",
+				"pageTitle": "Übersicht — Owlat",
+				"platform": "Betriebswerkzeuge",
+				"platformAdminOnly": "Systemaktualisierungen und Backups liegen beim Plattformadministrator dieser Installation und werden hier nicht angezeigt.",
+				"title": "Übersicht",
 				"verdict": {
 					"error": "Der Versand braucht Aufmerksamkeit",
 					"ok": "Der Versand ist gesund",
@@ -6324,7 +6307,7 @@
 					},
 					"pageTitle": "Agentenzustand — Owlat",
 					"subtitle": "Überwachen Sie die Leistung der KI-Agenten-Pipeline, die Zustände der Schutzschalter und die wichtigsten Kennzahlen.",
-					"title": "Agentenzustand & Überwachung"
+					"title": "Agentenzustand"
 				},
 				"aiProvider": {
 					"connectionWorks": "Verbindung funktioniert",
@@ -6754,7 +6737,7 @@
 					"subtitle": "Erstellen Sie einbettbare Anmeldeformulare für Ihre Website",
 					"tip": "{label} Kopieren Sie dieses HTML und fügen Sie es in Ihre Website ein. Gestalten Sie das Formular per CSS passend zu Ihrem Design. Das Formular sendet die Daten direkt an Ihr Owlat-Konto.",
 					"tipLabel": "Tipp:",
-					"title": "Formular-Endpunkte",
+					"title": "Formulare",
 					"topicLine": "Thema: {topic}"
 				},
 				"general": {
@@ -6894,7 +6877,7 @@
 					"nothing": "Nichts",
 					"operatingMode": "Betriebsmodus",
 					"operatingModeHelp": "Wählen Sie eine grobe Produktform. Sie sehen jede Funktionsänderung in der Vorschau, bevor sie angewendet wird, und beim Abschalten einer Funktion bleiben deren Daten erhalten.",
-					"pageTitle": "Instanzverwaltung — Owlat",
+					"pageTitle": "Instanz — Owlat",
 					"reviewTitle": "Änderungen am Betriebsmodus prüfen",
 					"subtitle": "Konfiguration, die alle in diesem Workspace betrifft.",
 					"title": "Instanz"
@@ -7286,7 +7269,6 @@
 			"team": {
 				"api": {
 					"docs": {
-						"backToKeys": "Zurück zu den API-Schlüsseln",
 						"baseUrlMissing": "Nicht konfiguriert (NUXT_PUBLIC_CONVEX_SITE_URL)",
 						"baseUrlTitle": "Ihre API-Basis-URL",
 						"createContact": "Einen Kontakt anlegen",
@@ -7361,7 +7343,7 @@
 							"rename": "API-Schlüssel umbenennen",
 							"revoke": "API-Schlüssel widerrufen"
 						},
-						"pageTitle": "API-Schlüssel — Owlat",
+						"pageTitle": "API — Owlat",
 						"rateLimit": {
 							"exampleHeaders": "Beispiel für Antwort-Header:",
 							"headerColumn": "Header",
@@ -7415,7 +7397,7 @@
 							"key": "Schlüssel",
 							"lastUsed": "Zuletzt verwendet"
 						},
-						"title": "API-Schlüssel",
+						"title": "API",
 						"toasts": {
 							"copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen",
 							"created": "API-Schlüssel erfolgreich erstellt",
@@ -7454,7 +7436,7 @@
 						"description": "Erstellen oder wählen Sie einen Workspace, um das Audit-Protokoll anzusehen.",
 						"title": "Kein Workspace ausgewählt"
 					},
-					"pageTitle": "Audit-Protokolle — Owlat",
+					"pageTitle": "Audit-Protokoll — Owlat",
 					"resetFilters": "Zurücksetzen",
 					"searchPlaceholder": "Nach Benutzer, Aktion oder Details suchen...",
 					"stats": {
@@ -7532,6 +7514,7 @@
 				},
 				"dangerZone": {
 					"body": "Das Löschen des Workspace entfernt dauerhaft alle Teammitglieder, sämtliche Kontakte, Kampagnen, Automatisierungen, Postfächer und Auswertungen. Diese Aktion kann nicht rückgängig gemacht werden.",
+					"heading": "Gefahrenbereich",
 					"subtitle": "Diesen Workspace und alle seine Daten dauerhaft löschen",
 					"title": "Workspace löschen"
 				},
@@ -7650,7 +7633,7 @@
 						"rotationScheduled": "Schlüsselrotation für {address} eingeplant"
 					}
 				},
-				"inviteMember": "Mitglied einladen",
+				"inviteMember": "Einladen",
 				"invites": {
 					"copyLink": "Einladungslink kopieren",
 					"count": "{count} ausstehende Einladung | {count} ausstehende Einladungen",
@@ -7694,35 +7677,12 @@
 					"title": "Mitglieder",
 					"transferOwnership": "Eigentümerschaft übertragen"
 				},
-				"nav": {
-					"apiKeys": {
-						"description": "Programmatischer Zugriff",
-						"title": "API-Schlüssel"
-					},
-					"audit": {
-						"description": "Workspace-Aktivität",
-						"title": "Audit-Log"
-					},
-					"connectedApps": {
-						"description": "Externe Integrationen",
-						"title": "Verbundene Apps"
-					},
-					"inboxes": {
-						"description": "Gemeinsamer Mailzugriff",
-						"title": "Team-Postfächer"
-					},
-					"label": "Team- und Zugriffseinstellungen",
-					"senders": {
-						"description": "Kampagnenidentitäten",
-						"title": "Freigegebene Absender"
-					}
-				},
 				"operations": {
 					"deleteWorkspace": "Workspace löschen",
 					"markEmailVerified": "E-Mail-Adresse als verifiziert markieren",
 					"resendVerification": "Verifizierungs-E-Mail erneut senden"
 				},
-				"pageTitle": "Teamverwaltung — Owlat",
+				"pageTitle": "Team — Owlat",
 				"removeModal": {
 					"body": "Möchten Sie {member} wirklich aus diesem Team entfernen? Die Person verliert den Zugriff auf alle Teamressourcen.",
 					"confirm": "Mitglied entfernen",
@@ -7786,7 +7746,7 @@
 					"title": "Kampagnen-Absender"
 				},
 				"staleList": "Diese Liste ist möglicherweise nicht aktuell — {error}.",
-				"title": "Teammitglieder",
+				"title": "Team",
 				"toasts": {
 					"cancelInviteFailed": "Die Einladung konnte nicht zurückgezogen werden",
 					"emailAlreadyVerified": "{email} ist bereits verifiziert",
@@ -8955,7 +8915,7 @@
 				"channels": {
 					"chat": "Chat",
 					"email": "E-Mail",
-					"generic": "Allgemein",
+					"generic": "Webhook",
 					"sms": "SMS",
 					"whatsapp": "WhatsApp"
 				},
@@ -9113,10 +9073,10 @@
 				"loading": "Fehlgeschlagene Nachrichten werden geladen …",
 				"noTextContent": "(Kein Textinhalt)",
 				"pageTitle": "Fehlgeschlagene Nachrichten — Owlat",
-				"retriedToast": "Nachricht erneut zur Verarbeitung eingereiht",
+				"retriedToast": "Nachricht wird erneut versucht",
 				"retryOperation": "Nachricht erneut verarbeiten",
-				"retryProcessing": "Erneut verarbeiten",
-				"subtitle": "Eingehende Nachrichten, deren Verarbeitung nach allen automatischen Wiederholungen fehlgeschlagen ist. Lesen Sie den Fehler und reihen Sie sie erneut ein, sobald die Ursache behoben ist.",
+				"retryProcessing": "Erneut versuchen",
+				"subtitle": "Eingehende Nachrichten, die sich auch nach automatischen Wiederholungen nicht verarbeiten ließen. Prüfen Sie den Grund, beheben Sie die Ursache und versuchen Sie es dann erneut.",
 				"title": "Fehlgeschlagene Nachrichten"
 			},
 			"index": {
@@ -9216,10 +9176,10 @@
 					}
 				},
 				"pageTitle": "Quarantäne — Owlat",
-				"release": "Freigeben (Fehlalarm)",
+				"release": "Freigeben, sie ist unbedenklich",
 				"releaseOperation": "Nachricht freigeben",
-				"releasedToast": "Nachricht zur Verarbeitung freigegeben",
-				"subtitle": "Nachrichten, die der eingehende Sicherheitsfilter markiert hat. Prüfen Sie sie, bevor Sie sie freigeben.",
+				"releasedToast": "Nachricht freigegeben. Sie wird wie jede andere behandelt.",
+				"subtitle": "Eingehende Nachrichten, die die Sicherheitsprüfung zurückgehalten hat. Geben Sie unbedenkliche frei oder blockieren Sie den Absender.",
 				"title": "Quarantäne",
 				"whyHeldLabel": "Warum diese Nachricht zurückgehalten wurde"
 			},
@@ -9832,11 +9792,11 @@
 				"mailboxes": "Postfächer",
 				"noDisplayName": "(kein Anzeigename)",
 				"noMailboxes": "Noch keine Postfächer. Fügen Sie Ihr erstes Konto hinzu, um Mail zu empfangen.",
-				"pageTitle": "Einstellungen — Owlat",
+				"pageTitle": "Allgemein — Owlat",
 				"renameIntro": "Anzeigename für {address}. Die Adresse selbst kann nicht geändert werden.",
 				"renameMailbox": "Name und Farbe",
 				"renameOperation": "Postfach umbenennen",
-				"subtitle": "Wie Owlat für Sie aussieht, liest und sendet.",
+				"subtitle": "Wie Owlat aussieht und wie sich Ihre Post liest.",
 				"teamManage": "Team · verwalten",
 				"colour": "Farbe",
 				"colourAutomatic": "Automatisch",
@@ -9966,6 +9926,10 @@
 					}
 				}
 			},
+			"shortcuts": {
+				"intro": "Wählen Sie eine Tastenbelegung, die Sie aus einer anderen Mail-App kennen, oder ändern Sie einzelne Tasten. Drücken Sie überall ?, um sie zu sehen.",
+				"pageTitle": "Tastenkürzel — Owlat"
+			},
 			"signatures": {
 				"bodyPlaceholder": "— Marcel",
 				"deleteConfirm": "Signatur löschen",
@@ -10025,7 +9989,7 @@
 				"featureOffBody": "Auf dieser Owlat-Instanz ist die Funktion abgeschaltet. Eine Administratorin kann sie in den Einstellungen einschalten, danach kannst du hier ein Postfach verbinden.",
 				"featureOffTitle": "Verbundene Postfächer sind ausgeschaltet",
 				"pageTitle": "Verbundene Postfächer — Owlat",
-				"subheading": "Ein Postfach woanders, das Owlat mit diesem hier im Gleichschritt hält."
+				"subheading": "Ihre Postfächer, wie sie senden, und Postfächer anderswo, die Owlat im Gleichschritt hält."
 			}
 		},
 		"send": {
@@ -11515,29 +11479,32 @@
 		"breadcrumbRoutes": {
 			"pages": {
 				"agentHealth": "Agentenzustand",
+				"activity": "Alle Aktivitäten",
+				"advanced": "Erweitert",
 				"aiProvider": "KI-Anbieter",
 				"aiReplies": "KI-Antworten",
-				"apiKeys": "API-Schlüssel",
+				"api": "API",
 				"apiQuickstart": "API-Schnellstart",
 				"auditLog": "Audit-Protokoll",
 				"backups": "Backups",
 				"blocks": "Blöcke",
 				"campaignSenders": "Kampagnenabsender",
 				"campaigns": "Kampagnen",
-				"cells": "Zellen",
-				"channels": "Kanäle",
+				"cells": "Zustellungszellen",
+				"channels": "Nachrichtenkanäle",
 				"connectedApps": "Verbundene Apps",
 				"contactProperties": "Kontakteigenschaften",
 				"contacts": "Kontakte",
-				"controls": "Steuerung",
+				"controls": "Zustellungssteuerung",
 				"deliverability": "Zustellbarkeit",
 				"deliveryProvider": "Zustelldienst",
-				"desktopUpdates": "Desktop-Updates",
+				"desktopUpdates": "Desktop-App-Updates",
 				"emailTheme": "E-Mail-Design",
 				"features": "Funktionen",
+				"failedMessages": "Fehlgeschlagene Nachrichten",
 				"forms": "Formulare",
 				"general": "Allgemein",
-				"health": "Zustand",
+				"health": "Zustellungsgesundheit",
 				"independence": "Unabhängigkeit",
 				"instance": "Instanz",
 				"marketing": "Marketing",
@@ -11549,12 +11516,13 @@
 				"overview": "Übersicht",
 				"plugins": "Plugins",
 				"providerRouting": "Anbieter-Routing",
-				"secureMail": "Versiegelte Mail",
+				"sealedMail": "Versiegelte Mail",
+				"quarantine": "Quarantäne",
 				"segments": "Segmente",
 				"sendingDomains": "Versanddomains",
 				"suppressions": "Sperrlisten",
 				"systemAndUpdates": "System & Updates",
-				"teamAccess": "Team & Zugriff",
+				"team": "Team",
 				"teamInboxes": "Team-Postfächer",
 				"templatesAndBlocks": "Vorlagen & Blöcke",
 				"topics": "Themen",
@@ -11562,23 +11530,17 @@
 				"webhooks": "Webhooks"
 			},
 			"sections": {
-				"administration": "Verwaltung",
 				"audience": "Zielgruppe",
 				"automations": "Automationen",
 				"campaigns": "Kampagnen",
 				"dashboard": "Heute",
-				"delivery": "Zustellung",
 				"marketing": "Marketing",
-				"preferences": "Einstellungen",
+				"preferences": "Meine Einstellungen",
 				"send": "Senden",
+				"workspace": "Arbeitsbereich",
 				"answer": "Antwortliste",
 				"inboxes": "Alle Postfächer",
 				"teamInbox": "Team-Postfach"
-			},
-			"subsections": {
-				"instance": "Instanz",
-				"setup": "Einrichtung",
-				"teamAccess": "Team & Zugriff"
 			}
 		},
 		"campaignAttention": {
@@ -11858,10 +11820,10 @@
 		"dashboardNavigation": {
 			"items": {
 				"administration": {
-					"delivery": "Zustellung",
+					"delivery": "Zustellungsgesundheit",
 					"instance": "Instanz",
 					"overview": "Übersicht",
-					"teamAccess": "Team & Zugriff"
+					"teamAccess": "Team"
 				},
 				"assistant": {
 					"chat": "Chat"
@@ -11906,7 +11868,7 @@
 				}
 			},
 			"sections": {
-				"administration": "Verwaltung",
+				"administration": "Arbeitsbereich-Einstellungen",
 				"assistant": "Assistent",
 				"audience": "Zielgruppe",
 				"chat": "Chat",
@@ -13518,6 +13480,11 @@
 					"title": "Allgemein",
 					"description": "Erscheinungsbild, Sprache und wie sich Post liest",
 					"keywords": "Einstellungen, Optionen, Übersicht, Voreinstellungen"
+				},
+				"shortcuts": {
+					"title": "Tastenkürzel",
+					"description": "Ihre Tastenbelegung und geänderte Tasten",
+					"keywords": "Tastatur, Tastenkürzel, Hotkeys, Tastenbelegung, neu belegen, Tasten"
 				},
 				"filters": {
 					"title": "Filter",
@@ -15464,16 +15431,17 @@
 	"shell": {
 		"admin": {
 			"areas": {
-				"advanced": "Erweitert",
-				"delivery": "Zustellung",
-				"instance": "Instanz",
-				"overview": "Verwaltung",
-				"platform": "Plattform",
-				"team": "Team & Zugriff"
+				"delivery": "E-Mail-Zustellung",
+				"features": "Funktionen",
+				"ai": "KI",
+				"overview": "Arbeitsbereich",
+				"system": "System",
+				"team": "Team"
 			},
-			"navLabel": "Verwaltungsbereiche",
-			"navLabelCompact": "Verwaltungsbereiche (kompakt)",
-			"paletteHeading": "Verwaltung"
+			"navLabel": "Einstellungen des Arbeitsbereichs",
+			"navLabelCompact": "Einstellungen des Arbeitsbereichs (kompakt)",
+			"paletteHeading": "Einstellungen des Arbeitsbereichs",
+			"tabsLabel": "Erweiterte Zustellungsseiten"
 		},
 		"dashboard": {
 			"alphaBadge": "Alpha",

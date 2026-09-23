@@ -201,7 +201,7 @@ export const patternConfigs: PatternConfig[] = [
 	{
 		pattern: /^\/dashboard\/admin\/instance\/plugins\/([^/]+)$/,
 		getConfig: () => ({
-			section: 'shared.breadcrumbRoutes.sections.administration',
+			section: 'shared.breadcrumbRoutes.sections.workspace',
 			sectionHref: '/dashboard/admin',
 			subsection: 'shared.breadcrumbPatterns.subsections.plugins',
 			subsectionHref: '/dashboard/admin/instance/plugins',

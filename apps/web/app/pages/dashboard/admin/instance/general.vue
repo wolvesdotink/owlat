@@ -469,5 +469,24 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 			@discard="confirmDiscard"
 			@save="confirmSave"
 		/>
+
+		<!-- ── Moved here from the Team page (#795) ───────────────────────────
+		     Workspace-wide switches that are not about who is on the team. Both
+		     save on their own, outside this page's Save button. -->
+
+		<!-- Import on first login: offer new users a mail import. Everyone who
+		     reaches this page is an owner or admin, so they may change it. -->
+		<div class="mt-8">
+			<SettingsMigrationModeCard
+				id="import-on-first-login"
+				class="scroll-mt-6"
+				:can-manage="true"
+			/>
+		</div>
+
+		<!-- Danger zone: delete the workspace (owner only, typed confirmation). -->
+		<div class="mt-8">
+			<SettingsWorkspaceDangerZone />
+		</div>
 	</div>
 </template>

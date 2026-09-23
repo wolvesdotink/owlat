@@ -136,7 +136,7 @@ export const CHECKLIST_STEPS: readonly ChecklistStepMeta[] = [
 		id: 'sendingSwitched',
 		title: 'shared.welcomeFlow.steps.sendingSwitched.title',
 		description: 'shared.welcomeFlow.steps.sendingSwitched.description',
-		href: '/dashboard/preferences#postbox-sending-heading',
+		href: '/dashboard/preferences/external-account#postbox-sending-heading',
 		cta: 'shared.welcomeFlow.steps.sendingSwitched.cta',
 		icon: 'lucide:refresh-cw',
 		migrationOnly: true,
