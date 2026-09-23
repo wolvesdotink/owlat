@@ -453,6 +453,9 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 
 		<PostboxComposerFooter
 			v-model:follow-up-remind-at="followUpRemindAt"
+			:send-as="
+				availableIdentities.find((i) => i.address === fromAddress) ?? availableIdentities[0]
+			"
 			:can-send="canSend"
 			:sending="sending"
 			:is-uploading="isUploading"

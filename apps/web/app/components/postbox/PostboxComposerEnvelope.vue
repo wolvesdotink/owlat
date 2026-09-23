@@ -110,6 +110,28 @@ const selectedAuth = computed<SenderAuthDisplay | null>(() =>
 	selectedIdentity.value ? identityAuth(selectedIdentity.value) : null
 );
 
+// Inbox identity: the From row always shows WHICH inbox this goes out from as
+// the inbox's chip (the same one the sidebar, Today and the Answer queue use).
+const { byId: inboxById } = useInboxes();
+const fromInbox = computed(() => {
+	const identity = selectedIdentity.value ?? props.availableIdentities[0];
+	return identity ? (inboxById.value.get(identity.mailboxId as Id<'mailboxes'>) ?? null) : null;
+});
+// Replying to a team inbox's mail from a personal address takes the thread out
+// of the shared inbox. Allowed — sometimes that is the point — but said aloud.
+const teamIdentity = computed(
+	() => props.availableIdentities.find((i) => i.kind !== 'personal') ?? null
+);
+const isLeavingTeamInbox = computed(
+	() => selectedIdentity.value?.kind === 'personal' && teamIdentity.value !== null
+);
+const teamInboxName = computed(() =>
+	teamIdentity.value
+		? (inboxById.value.get(teamIdentity.value.mailboxId as Id<'mailboxes'>)?.name ??
+			teamIdentity.value.label)
+		: ''
+);
+
 function onFromChange(event: Event) {
 	const target = event.target as HTMLSelectElement;
 	if (!target.value) return;
@@ -170,11 +192,21 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 
 <template>
 	<div class="flex flex-col gap-1 p-3 border-b border-border-subtle text-sm">
-		<div v-if="showFromDropdown" class="flex items-baseline gap-2">
+		<div class="flex items-center gap-2">
 			<label class="text-text-tertiary w-12">{{
 				t('components.postbox.postboxComposerEnvelope.from')
 			}}</label>
+			<InboxChip
+				v-if="fromInbox"
+				:name="fromInbox.name"
+				:slot="fromInbox.slot"
+				data-testid="postbox-from-inbox"
+			/>
+			<span v-if="!showFromDropdown" class="truncate text-text-secondary">{{
+				fromAddress || firstIdentityAddress
+			}}</span>
 			<select
+				v-else
 				:value="fromAddress || firstIdentityAddress"
 				class="flex-1 bg-transparent outline-none font-medium border-0"
 				data-testid="postbox-from-select"
@@ -209,6 +241,20 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 				</template>
 			</select>
 		</div>
+		<p
+			v-if="isLeavingTeamInbox"
+			class="ml-14 rounded-md bg-warning-subtle px-2.5 py-1.5 text-xs text-warning"
+			data-testid="postbox-from-leaves-team"
+		>
+			{{ t('components.postbox.postboxComposerEnvelope.leavesTeamInbox', { team: teamInboxName }) }}
+			<button
+				type="button"
+				class="ml-1 font-medium underline"
+				@click="teamIdentity && emit('from-change', teamIdentity.address)"
+			>
+				{{ t('components.postbox.postboxComposerEnvelope.switchBack', { team: teamInboxName }) }}
+			</button>
+		</p>
 		<!-- Live authenticity of the selected From identity: domain verification +
 			   transport alignment. A broken identity (unverified domain or a misaligned
 			   transport) is surfaced here with a plain-language reason and is disabled
