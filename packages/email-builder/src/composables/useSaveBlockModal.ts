@@ -48,7 +48,9 @@ export function useSaveBlockModal(options: UseSaveBlockModalOptions): UseSaveBlo
 			});
 			closeSaveBlockModal();
 		} catch {
-			// Save failed silently
+			// Not saved: keep the dialog open with the typed name so the user can
+			// retry. Reporting the failure is the host's job (see
+			// `EmailBuilderHandlers.savedBlocks.save`).
 		} finally {
 			isSavingBlock.value = false;
 		}

@@ -24,7 +24,7 @@ describe('useSaveBlockModal', () => {
 		const selectedBlock = computed<EditorBlock | null>(() => makeTextBlock('b1'));
 		const modal = withHandlers(
 			{ uploadImage: vi.fn(), savedBlocks: { fetch: vi.fn(), save: vi.fn() } },
-			() => useSaveBlockModal({ selectedBlock }),
+			() => useSaveBlockModal({ selectedBlock })
 		);
 
 		expect(modal.showSaveBlockModal.value).toBe(false);
@@ -45,7 +45,7 @@ describe('useSaveBlockModal', () => {
 		const selectedBlock = computed<EditorBlock | null>(() => block);
 		const modal = withHandlers(
 			{ uploadImage: vi.fn(), savedBlocks: { fetch: vi.fn(), save } },
-			() => useSaveBlockModal({ selectedBlock }),
+			() => useSaveBlockModal({ selectedBlock })
 		);
 
 		modal.openSaveBlockModal();
@@ -63,7 +63,7 @@ describe('useSaveBlockModal', () => {
 		const noBlock = computed<EditorBlock | null>(() => null);
 		const noBlockModal = withHandlers(
 			{ uploadImage: vi.fn(), savedBlocks: { fetch: vi.fn(), save } },
-			() => useSaveBlockModal({ selectedBlock: noBlock }),
+			() => useSaveBlockModal({ selectedBlock: noBlock })
 		);
 		noBlockModal.saveBlockName.value = 'name';
 		await noBlockModal.saveAsReusableBlock();
@@ -72,19 +72,19 @@ describe('useSaveBlockModal', () => {
 		const block = computed<EditorBlock | null>(() => makeTextBlock('b1'));
 		const blankNameModal = withHandlers(
 			{ uploadImage: vi.fn(), savedBlocks: { fetch: vi.fn(), save } },
-			() => useSaveBlockModal({ selectedBlock: block }),
+			() => useSaveBlockModal({ selectedBlock: block })
 		);
 		blankNameModal.saveBlockName.value = '   ';
 		await blankNameModal.saveAsReusableBlock();
 		expect(save).not.toHaveBeenCalled();
 	});
 
-	it('stays open when the save handler rejects', async () => {
+	it('stays open with the entered name when the save handler rejects', async () => {
 		const save = vi.fn().mockRejectedValue(new Error('boom'));
 		const block = computed<EditorBlock | null>(() => makeTextBlock('b1'));
 		const modal = withHandlers(
 			{ uploadImage: vi.fn(), savedBlocks: { fetch: vi.fn(), save } },
-			() => useSaveBlockModal({ selectedBlock: block }),
+			() => useSaveBlockModal({ selectedBlock: block })
 		);
 
 		modal.openSaveBlockModal();
@@ -93,6 +93,13 @@ describe('useSaveBlockModal', () => {
 
 		expect(save).toHaveBeenCalled();
 		expect(modal.showSaveBlockModal.value).toBe(true);
+		expect(modal.saveBlockName.value).toBe('My Header');
 		expect(modal.isSavingBlock.value).toBe(false);
+
+		// A retry that lands closes and resets as usual.
+		save.mockResolvedValueOnce(undefined);
+		await modal.saveAsReusableBlock();
+		expect(modal.showSaveBlockModal.value).toBe(false);
+		expect(modal.saveBlockName.value).toBe('');
 	});
 });
