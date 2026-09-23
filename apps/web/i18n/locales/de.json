@@ -15652,7 +15652,7 @@
 	"welcome": {
 		"fresh": {
 			"body": "Den Import überspringen und mit einem leeren Posteingang starten.",
-			"cta": "Zum Posteingang",
+			"cta": "Weiter zu Heute",
 			"title": "Neu anfangen"
 		},
 		"freshStart": {
@@ -15661,11 +15661,11 @@
 			"checkingTransport": "Es wird geprüft, ob der Versand bereit ist…",
 			"defaultSignatureName": "Standard",
 			"emailMyself": "An mich senden",
-			"finish": "Zum Posteingang",
+			"finish": "Weiter zu Heute",
 			"nameHint": "Diesen Namen sehen die Empfänger Ihrer Mail.",
 			"nameLabel": "Ihr Name",
 			"namePlaceholder": "z. B. Marcel Pfeifer",
-			"notifyHint": "Das können Sie später in den Postbox-Einstellungen feinjustieren.",
+			"notifyHint": "Das können Sie später in Ihren Einstellungen ändern.",
 			"notifyLabel": "Benachrichtigen bei",
 			"notifyOptions": {
 				"everything": "Alles",
@@ -15697,7 +15697,7 @@
 			"tips": {
 				"command": "Mit {keys} suchen Sie, springen Sie und führen jeden Befehl aus.",
 				"compose": "Drücken Sie überall {key}, um eine neue Nachricht zu schreiben.",
-				"knowledge": "Der Tab {tab} macht aus Ihrer Post Antworten — und wird mit jeder Nachricht besser."
+				"knowledge": "{tab} finden Sie neben Kontakte unter Unterhaltungen. Dort sammeln sich Antworten aus der Mail Ihres Teams, und mit jeder neuen Mail wird es besser."
 			},
 			"tipsHeading": "Ein paar Dinge, die Sie mögen werden"
 		},

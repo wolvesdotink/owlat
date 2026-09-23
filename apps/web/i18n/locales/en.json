@@ -15652,7 +15652,7 @@
 	"welcome": {
 		"fresh": {
 			"body": "Skip the import and begin with a clean inbox.",
-			"cta": "Go to my inbox",
+			"cta": "Go to Today",
 			"title": "Start fresh"
 		},
 		"freshStart": {
@@ -15661,11 +15661,11 @@
 			"checkingTransport": "Checking whether sending is ready…",
 			"defaultSignatureName": "Default",
 			"emailMyself": "Email myself",
-			"finish": "Go to my inbox",
+			"finish": "Go to Today",
 			"nameHint": "This is the name people see on your mail.",
 			"nameLabel": "Your name",
 			"namePlaceholder": "e.g. Marcel Pfeifer",
-			"notifyHint": "You can fine-tune this later in Postbox settings.",
+			"notifyHint": "You can change this later in your settings.",
 			"notifyLabel": "Notify me about",
 			"notifyOptions": {
 				"everything": "Everything",
@@ -15697,7 +15697,7 @@
 			"tips": {
 				"command": "Hit {keys} to search, jump, and run any command.",
 				"compose": "Press {key} anywhere to write a new message.",
-				"knowledge": "The {tab} tab turns your mail into answers — it gets sharper as messages pile up."
+				"knowledge": "{tab} sits next to Contacts in Conversations. It collects answers from your team's mail and gets better as more mail comes in."
 			},
 			"tipsHeading": "A few things you'll love"
 		},
