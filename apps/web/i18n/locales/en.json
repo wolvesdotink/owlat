@@ -3234,7 +3234,9 @@
 					"decision": "Decision",
 					"event": "Event",
 					"fact": "Fact",
+					"faq": "FAQ",
 					"goal": "Goal",
+					"policy": "Policy",
 					"preference": "Preference",
 					"relationship": "Relationship"
 				},
@@ -3251,13 +3253,16 @@
 					"decision": "Decision",
 					"event": "Event",
 					"fact": "Fact",
+					"faq": "FAQ",
 					"goal": "Goal",
+					"policy": "Policy",
 					"preference": "Preference",
 					"relationship": "Relationship"
 				},
 				"sourceTypes": {
 					"agent_extracted": "AI Extracted",
 					"chat": "Chat",
+					"curated": "Canonical answer",
 					"email": "Email",
 					"file": "File",
 					"manual": "Manual"
@@ -3275,7 +3280,9 @@
 					"decision": "Decision",
 					"event": "Event",
 					"fact": "Fact",
+					"faq": "FAQ",
 					"goal": "Goal",
+					"policy": "Policy",
 					"preference": "Preference",
 					"relationship": "Relationship"
 				},
@@ -3286,6 +3293,7 @@
 				"sourceTypes": {
 					"agent_extracted": "AI Extracted",
 					"chat": "Chat",
+					"curated": "Canonical answer",
 					"email": "Email",
 					"file": "File",
 					"manual": "Manual"
@@ -3306,7 +3314,9 @@
 					"decision": "Decision",
 					"event": "Event",
 					"fact": "Fact",
+					"faq": "FAQ",
 					"goal": "Goal",
+					"policy": "Policy",
 					"preference": "Preference",
 					"relationship": "Relationship"
 				},
@@ -9330,7 +9340,9 @@
 					"decision": "Decision",
 					"event": "Event",
 					"fact": "Fact",
+					"faq": "FAQ",
 					"goal": "Goal",
+					"policy": "Policy",
 					"preference": "Preference",
 					"relationship": "Relationship"
 				},
@@ -9360,6 +9372,7 @@
 				"sourceTypes": {
 					"agent_extracted": "AI Extracted",
 					"chat": "Chat",
+					"curated": "Canonical answer",
 					"email": "Email",
 					"file": "File",
 					"manual": "Manual"
@@ -9392,7 +9405,9 @@
 					"decision": "Decision",
 					"event": "Event",
 					"fact": "Fact",
+					"faq": "FAQ",
 					"goal": "Goal",
+					"policy": "Policy",
 					"preference": "Preference",
 					"relationship": "Relationship"
 				},
@@ -9403,12 +9418,12 @@
 				"howItWorksStep3": "Entries are linked to contacts and related to each other, forming a navigable knowledge graph.",
 				"noResultsBody": "No knowledge entries match \"{query}\". Try a different search term.",
 				"noResultsTitle": "No results found",
-				"pageTitle": "Knowledge Graph — Owlat",
+				"pageTitle": "Knowledge — Owlat",
 				"questionLabel": "Question",
 				"questionPlaceholder": "What is our return policy?",
 				"searchPlaceholder": "Search knowledge entries...",
 				"subtitle": "Browse, search, and manage extracted knowledge from your conversations and files.",
-				"title": "Knowledge Graph"
+				"title": "Knowledge"
 			}
 		},
 		"marketing": {

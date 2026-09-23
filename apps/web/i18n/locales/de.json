@@ -3234,7 +3234,9 @@
 					"decision": "Entscheidung",
 					"event": "Ereignis",
 					"fact": "Fakt",
+					"faq": "FAQ",
 					"goal": "Ziel",
+					"policy": "Richtlinie",
 					"preference": "Präferenz",
 					"relationship": "Beziehung"
 				},
@@ -3251,13 +3253,16 @@
 					"decision": "Entscheidung",
 					"event": "Ereignis",
 					"fact": "Fakt",
+					"faq": "FAQ",
 					"goal": "Ziel",
+					"policy": "Richtlinie",
 					"preference": "Präferenz",
 					"relationship": "Beziehung"
 				},
 				"sourceTypes": {
 					"agent_extracted": "KI-extrahiert",
 					"chat": "Chat",
+					"curated": "Kanonische Antwort",
 					"email": "E-Mail",
 					"file": "Datei",
 					"manual": "Manuell"
@@ -3275,7 +3280,9 @@
 					"decision": "Entscheidung",
 					"event": "Ereignis",
 					"fact": "Fakt",
+					"faq": "FAQ",
 					"goal": "Ziel",
+					"policy": "Richtlinie",
 					"preference": "Präferenz",
 					"relationship": "Beziehung"
 				},
@@ -3286,6 +3293,7 @@
 				"sourceTypes": {
 					"agent_extracted": "KI-extrahiert",
 					"chat": "Chat",
+					"curated": "Kanonische Antwort",
 					"email": "E-Mail",
 					"file": "Datei",
 					"manual": "Manuell"
@@ -3306,7 +3314,9 @@
 					"decision": "Entscheidung",
 					"event": "Ereignis",
 					"fact": "Fakt",
+					"faq": "FAQ",
 					"goal": "Ziel",
+					"policy": "Richtlinie",
 					"preference": "Präferenz",
 					"relationship": "Beziehung"
 				},
@@ -9330,7 +9340,9 @@
 					"decision": "Entscheidung",
 					"event": "Ereignis",
 					"fact": "Fakt",
+					"faq": "FAQ",
 					"goal": "Ziel",
+					"policy": "Richtlinie",
 					"preference": "Präferenz",
 					"relationship": "Beziehung"
 				},
@@ -9360,6 +9372,7 @@
 				"sourceTypes": {
 					"agent_extracted": "Von der KI gewonnen",
 					"chat": "Chat",
+					"curated": "Kanonische Antwort",
 					"email": "E-Mail",
 					"file": "Datei",
 					"manual": "Manuell"
@@ -9392,7 +9405,9 @@
 					"decision": "Entscheidung",
 					"event": "Ereignis",
 					"fact": "Fakt",
+					"faq": "FAQ",
 					"goal": "Ziel",
+					"policy": "Richtlinie",
 					"preference": "Präferenz",
 					"relationship": "Beziehung"
 				},
@@ -9403,12 +9418,12 @@
 				"howItWorksStep3": "Einträge sind mit Kontakten und untereinander verknüpft und bilden so einen navigierbaren Wissensgraphen.",
 				"noResultsBody": "Keine Wissenseinträge passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff.",
 				"noResultsTitle": "Keine Ergebnisse gefunden",
-				"pageTitle": "Wissensgraph — Owlat",
+				"pageTitle": "Wissen — Owlat",
 				"questionLabel": "Frage",
 				"questionPlaceholder": "Wie lauten unsere Rückgabebedingungen?",
 				"searchPlaceholder": "Wissenseinträge durchsuchen …",
 				"subtitle": "Durchsuchen und verwalten Sie das Wissen, das aus Ihren Gesprächen und Dateien gewonnen wurde.",
-				"title": "Wissensgraph"
+				"title": "Wissen"
 			}
 		},
 		"marketing": {
