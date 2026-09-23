@@ -85,6 +85,7 @@ beforeAll(() => {
 			resetPassword,
 		}),
 		useAuthForm: fakeAuthForm,
+		useRecipientSender: () => ({ senderName: ref(null), contactEmail: ref(null) }),
 		useBackendOperation: () => ({ run: vi.fn(async () => null), isLoading: ref(false) }),
 		useOrganizationContext: () => ({ organization }),
 		useConvexQuery: () => ({ data: workspaceSettings, isLoading: settingsLoading }),

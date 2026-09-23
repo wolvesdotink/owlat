@@ -19,9 +19,13 @@ const route = useRoute();
 // the admin email so the just-created account is one keystroke from signing in.
 const justCompletedSetup = computed(() => route.query['postSetup'] === '1');
 
-// The instance's root is this page, so it greets visitors with the operator's
-// workspace name when one is configured rather than the product's.
-const workspaceName = workspaceDisplayName(useRuntimeConfig().public);
+// The instance's root is this page, so it greets visitors with the workspace's
+// name rather than the product's: the operator's NUXT_PUBLIC_COMPANY_NAME when
+// set, otherwise the name the workspace sends mail under (the same public,
+// unauthenticated read the unsubscribe pages use).
+const configuredWorkspaceName = workspaceDisplayName(useRuntimeConfig().public);
+const { senderName } = useRecipientSender();
+const workspaceName = computed(() => configuredWorkspaceName ?? senderName.value);
 
 // Registration is invite-only: "Create an account" only leads anywhere when
 // this sign-in was reached from an invitation, so it is offered only then —

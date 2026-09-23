@@ -28,6 +28,9 @@ import ResetPasswordPage from '../reset-password.vue';
 
 const signInWithEmail = vi.fn(async () => ({}));
 
+/** What the public sender read returns (the workspace's from-name). */
+let senderName: string | null = null;
+
 function stubs(query: Record<string, string>, publicConfig: Record<string, unknown> = {}) {
 	installNuxtStubs({
 		...i18nStubs,
@@ -37,6 +40,7 @@ function stubs(query: Record<string, string>, publicConfig: Record<string, unkno
 		useRuntimeConfig: () => ({
 			public: { deploymentMode: 'selfhost', companyName: '', ...publicConfig },
 		}),
+		useRecipientSender: () => ({ senderName: ref(senderName) }),
 		useAuth: () => ({
 			isAuthenticated: ref(false),
 			signInWithEmail,
@@ -57,6 +61,7 @@ function mountPage(component: object) {
 }
 
 beforeEach(() => {
+	senderName = null;
 	signInWithEmail.mockClear();
 });
 
@@ -92,6 +97,13 @@ describe('sign-in', () => {
 		// The operator's own legal pages exist, so the footer links to them.
 		expect(wrapper.find('a[href="/imprint"]').exists()).toBe(true);
 		expect(wrapper.text()).not.toContain('Powered by');
+	});
+
+	it("falls back to the workspace's sending name when no company name is configured", () => {
+		senderName = 'Northwind Studio';
+		stubs({});
+		const wrapper = mountPage(LoginPage);
+		expect(wrapper.find('h1').text()).toBe('Northwind Studio');
 	});
 
 	it('shows "Powered by Owlat" instead of empty legal pages when none are configured', () => {

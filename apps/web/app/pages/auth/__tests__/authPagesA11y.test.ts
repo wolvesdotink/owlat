@@ -10,6 +10,7 @@
  * that only exists once something has gone wrong.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ref } from 'vue';
 import { auditA11y, installNuxtStubs } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 // The shared hero shell carries the page's <h1>, so it has to be resolved for
@@ -38,6 +39,7 @@ beforeEach(() => {
 		// `safeRedirect` is an auto-imported util the login page calls on submit.
 		safeRedirect: (target: unknown, fallback: string) =>
 			typeof target === 'string' ? target : fallback,
+		useRecipientSender: () => ({ senderName: ref(null), contactEmail: ref(null) }),
 	});
 });
 
