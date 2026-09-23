@@ -11,6 +11,8 @@
  *
  * Presentation only: the page owns the data and the writes.
  */
+import type { AssignPopoverMember } from '~/components/inbox/AssignPopover.vue';
+
 const THREAD_STATUSES = ['open', 'waiting', 'resolved'] as const;
 type ThreadStatus = (typeof THREAD_STATUSES)[number];
 
@@ -18,7 +20,7 @@ const props = defineProps<{
 	isAdmin: boolean;
 	chatEnabled: boolean;
 	discussionChannels: readonly { _id: string; name: string }[];
-	members: readonly { userId: string; name?: string | null; email?: string | null; image?: string | null }[];
+	members: AssignPopoverMember[];
 	currentUserId: string | null;
 	assignedTo: string | null;
 	assignedMemberName: string | null;
