@@ -65,8 +65,9 @@ const externalEnabled = computed(() => isEnabled('mail.external'));
 
 		<PostboxConnectedAccountCard v-else-if="externalEnabled" />
 
-		<!-- The feature is off on this instance: say so instead of showing an
-		     empty card with a button that leads to a locked wizard. -->
+		<!-- Connecting outside accounts is off on this instance (the page is
+		     reachable through Postbox): say only that, so it never reads as the
+		     member's own mailboxes being switched off. -->
 		<section v-else class="card p-5 mb-6">
 			<h2 class="font-semibold">
 				{{ t('dashboard.preferences.externalAccount.featureOffTitle') }}
