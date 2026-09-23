@@ -91,12 +91,42 @@ describe('useBreadcrumbs', () => {
 			expect(uncovered).toEqual([]);
 		});
 
+		// The Marketing workspace was split out of "Send"; every page in it has to
+		// say so, including the detail pages no exact entry names.
+		it('every campaign, automation and template page starts at Marketing', async () => {
+			const uncovered: string[] = [];
+			for (const area of ['campaigns', 'automations', 'send']) {
+				for (const route of await routesUnder(area)) {
+					if (labelsFor(route)[0] !== 'Marketing') uncovered.push(route);
+				}
+			}
+			expect(uncovered).toEqual([]);
+		});
+
 		it('every Preferences page has a configured trail', async () => {
 			const uncovered: string[] = [];
 			for (const route of await routesUnder('preferences')) {
 				if (labelsFor(route)[0] !== 'Preferences') uncovered.push(route);
 			}
 			expect(uncovered).toEqual([]);
+		});
+	});
+
+	describe('the Marketing workspace', () => {
+		it.each([
+			['/dashboard/campaigns', ['Marketing', 'Campaigns']],
+			['/dashboard/campaigns/new', ['Marketing', 'Campaigns', 'New campaign']],
+			['/dashboard/campaigns/abc123/edit', ['Marketing', 'Campaigns', 'Edit campaign']],
+			['/dashboard/automations', ['Marketing', 'Automations']],
+			['/dashboard/automations/abc123', ['Marketing', 'Automations']],
+			['/dashboard/send', ['Marketing', 'Templates']],
+			['/dashboard/send/emails/abc123/edit', ['Marketing', 'Templates', 'Edit template']],
+		])('%s reads %j', (route, trail) => {
+			expect(labelsFor(route)).toEqual(trail);
+		});
+
+		it('never says "Send" as a section', () => {
+			expect(labelsFor('/dashboard/send/transactional')[0]).toBe('Marketing');
 		});
 	});
 

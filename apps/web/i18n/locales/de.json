@@ -11525,11 +11525,9 @@
 			},
 			"subsections": {
 				"contacts": "Kontakte",
-				"marketing": "Marketing",
 				"plugins": "Plugins",
 				"segments": "Segmente",
-				"topics": "Themen",
-				"transactional": "Transaktional"
+				"topics": "Themen"
 			}
 		},
 		"breadcrumbRoutes": {
@@ -11541,6 +11539,7 @@
 				"apiQuickstart": "API-Schnellstart",
 				"auditLog": "Audit-Protokoll",
 				"autonomyRules": "Autonomieregeln",
+				"automations": "Automationen",
 				"backups": "Backups",
 				"blocks": "Blöcke",
 				"campaignSenders": "Kampagnenabsender",
@@ -11561,7 +11560,7 @@
 				"health": "Zustand",
 				"independence": "Unabhängigkeit",
 				"instance": "Instanz",
-				"marketing": "Marketing",
+				"marketing": "Marketing-E-Mails",
 				"measurement": "Messung",
 				"media": "Medien",
 				"migrateFromMailchimp": "Von Mailchimp migrieren",
@@ -11577,7 +11576,7 @@
 				"systemAndUpdates": "System & Updates",
 				"teamAccess": "Team & Zugriff",
 				"teamInboxes": "Team-Postfächer",
-				"templatesAndBlocks": "Vorlagen & Blöcke",
+				"templates": "Vorlagen",
 				"topics": "Themen",
 				"transactional": "Transaktional",
 				"webhooks": "Webhooks"
@@ -11585,13 +11584,10 @@
 			"sections": {
 				"administration": "Verwaltung",
 				"audience": "Zielgruppe",
-				"automations": "Automationen",
-				"campaigns": "Kampagnen",
 				"dashboard": "Heute",
 				"delivery": "Zustellung",
 				"marketing": "Marketing",
 				"preferences": "Einstellungen",
-				"send": "Senden",
 				"answer": "Antwortliste",
 				"inboxes": "Alle Postfächer",
 				"teamInbox": "Team-Postfach"
@@ -11922,7 +11918,7 @@
 				"send": {
 					"automations": "Automationen",
 					"campaigns": "Kampagnen",
-					"templatesAndBlocks": "Vorlagen & Blöcke",
+					"templates": "Vorlagen",
 					"transactional": "Transaktional",
 					"overview": "Marketing-Übersicht"
 				}
@@ -11936,8 +11932,7 @@
 				"inbox": "Team-Postfach",
 				"knowledge": "Wissen",
 				"postbox": "Postfächer",
-				"preferences": "Einstellungen",
-				"send": "Senden"
+				"preferences": "Einstellungen"
 			}
 		},
 		"data": {

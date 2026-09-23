@@ -27,6 +27,9 @@ export function useQuickCreateMenu() {
 	const { isDesktop } = useDesktopContext();
 	const { role } = usePermissions();
 	const { openCompose, openNewContact } = useQuickCreate();
+	// The top-bar primary follows the workspace (New campaign in Marketing,
+	// Compose in Conversations); the other verbs stay in the dropdown.
+	const { activeContext } = useSidebarContext();
 
 	const environment = computed(() => ({
 		isFeatureEnabled,
@@ -57,9 +60,12 @@ export function useQuickCreateMenu() {
 		quickCreateEntriesFor(environment.value).map(toAction)
 	);
 
-	/** What the split button's primary half does; `null` when there is nothing to create. */
+	/**
+	 * What the split button's primary half does — the active workspace's own
+	 * verb when allowed; `null` when there is nothing to create.
+	 */
 	const defaultAction = computed<QuickCreateAction | null>(() => {
-		const entry = defaultQuickCreateEntry(environment.value);
+		const entry = defaultQuickCreateEntry(environment.value, activeContext.value);
 		return entry ? toAction(entry) : null;
 	});
 

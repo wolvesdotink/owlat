@@ -54,10 +54,19 @@ describe('routePaletteTargets', () => {
 
 	it('gives a section root no context line', () => {
 		const target = routePaletteTargets(env(), new Set()).find(
-			(entry) => entry.href === '/dashboard/automations'
+			(entry) => entry.href === '/dashboard'
 		);
-		expect(target?.labelKey).toBe('shared.breadcrumbRoutes.sections.automations');
+		expect(target?.labelKey).toBe('shared.breadcrumbRoutes.sections.dashboard');
 		expect(target?.contextKey).toBeUndefined();
+	});
+
+	it('files campaigns, automations and templates under Marketing, not Send', () => {
+		const targets = routePaletteTargets(env(), new Set());
+		for (const href of ['/dashboard/campaigns', '/dashboard/automations', '/dashboard/send']) {
+			const target = targets.find((entry) => entry.href === href);
+			expect(target?.contextKey, href).toBe('shared.breadcrumbRoutes.sections.marketing');
+			expect(t(target!.contextKey!)).toBe('Marketing');
+		}
 	});
 
 	it('renders every derived key as words, never as a key path', () => {

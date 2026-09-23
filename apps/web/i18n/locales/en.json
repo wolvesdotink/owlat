@@ -11509,15 +11509,15 @@
 		},
 		"breadcrumbPatterns": {
 			"pages": {
-				"campaignReport": "Campaign Report",
+				"campaignReport": "Campaign report",
 				"contactDetails": "Contact Details",
 				"contactInTopic": "Contact in Topic",
-				"editAutomation": "Edit Automation",
-				"editCampaign": "Edit Campaign",
-				"editTemplate": "Edit Template",
+				"editAutomation": "Edit automation",
+				"editCampaign": "Edit campaign",
+				"editTemplate": "Edit template",
 				"label": "Label",
 				"message": "Message",
-				"newAutomation": "New Automation",
+				"newAutomation": "New automation",
 				"pluginSettings": "Plugin settings",
 				"segmentDetails": "Segment Details",
 				"teamInboxMembers": "Team inbox members",
@@ -11525,11 +11525,9 @@
 			},
 			"subsections": {
 				"contacts": "Contacts",
-				"marketing": "Marketing",
 				"plugins": "Plugins",
 				"segments": "Segments",
-				"topics": "Topics",
-				"transactional": "Transactional"
+				"topics": "Topics"
 			}
 		},
 		"breadcrumbRoutes": {
@@ -11541,6 +11539,7 @@
 				"apiQuickstart": "API Quickstart",
 				"auditLog": "Audit Log",
 				"autonomyRules": "Autonomy rules",
+				"automations": "Automations",
 				"backups": "Backups",
 				"blocks": "Blocks",
 				"campaignSenders": "Campaign senders",
@@ -11561,11 +11560,11 @@
 				"health": "Health",
 				"independence": "Independence",
 				"instance": "Instance",
-				"marketing": "Marketing",
+				"marketing": "Marketing emails",
 				"measurement": "Measurement",
 				"media": "Media",
 				"migrateFromMailchimp": "Migrate from Mailchimp",
-				"newCampaign": "New Campaign",
+				"newCampaign": "New campaign",
 				"operatorConsole": "Operator Console",
 				"overview": "Overview",
 				"plugins": "Plugins",
@@ -11577,7 +11576,7 @@
 				"systemAndUpdates": "System & Updates",
 				"teamAccess": "Team & access",
 				"teamInboxes": "Team Inboxes",
-				"templatesAndBlocks": "Templates & blocks",
+				"templates": "Templates",
 				"topics": "Topics",
 				"transactional": "Transactional",
 				"webhooks": "Webhooks"
@@ -11585,13 +11584,10 @@
 			"sections": {
 				"administration": "Administration",
 				"audience": "Audience",
-				"automations": "Automations",
-				"campaigns": "Campaigns",
 				"dashboard": "Today",
 				"delivery": "Delivery",
 				"marketing": "Marketing",
 				"preferences": "Preferences",
-				"send": "Send",
 				"answer": "Answer queue",
 				"inboxes": "All inboxes",
 				"teamInbox": "Team inbox"
@@ -11922,7 +11918,7 @@
 				"send": {
 					"automations": "Automations",
 					"campaigns": "Campaigns",
-					"templatesAndBlocks": "Templates & blocks",
+					"templates": "Templates",
 					"transactional": "Transactional",
 					"overview": "Marketing overview"
 				}
@@ -11936,8 +11932,7 @@
 				"inbox": "Team inbox",
 				"knowledge": "Knowledge",
 				"postbox": "Inboxes",
-				"preferences": "Preferences",
-				"send": "Send"
+				"preferences": "Preferences"
 			}
 		},
 		"data": {

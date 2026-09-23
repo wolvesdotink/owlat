@@ -61,12 +61,10 @@ const SUBTREE_GATES: ReadonlyArray<readonly [string, (env: NavigationEnvironment
 /** Section key → icon, so a palette row is not a wall of identical glyphs. */
 const SECTION_ICONS: Readonly<Record<string, string>> = {
 	'shared.breadcrumbRoutes.sections.dashboard': 'lucide:sun',
-	'shared.breadcrumbRoutes.sections.send': 'lucide:send',
-	'shared.breadcrumbRoutes.sections.campaigns': 'lucide:megaphone',
+	'shared.breadcrumbRoutes.sections.marketing': 'lucide:megaphone',
 	'shared.breadcrumbRoutes.sections.audience': 'lucide:users',
 	'shared.breadcrumbRoutes.sections.administration': 'lucide:shield-check',
 	'shared.breadcrumbRoutes.sections.delivery': 'lucide:truck',
-	'shared.breadcrumbRoutes.sections.automations': 'lucide:zap',
 	'shared.breadcrumbRoutes.sections.preferences': 'lucide:settings',
 };
 

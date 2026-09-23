@@ -16,6 +16,7 @@ let roleRef: ReturnType<typeof ref<string | null>>;
 let navigations: unknown[];
 let composed: number;
 let newContacts: number;
+let workspace: ReturnType<typeof ref<'inbox' | 'marketing'>>;
 
 beforeEach(() => {
 	flags = 'all';
@@ -23,6 +24,7 @@ beforeEach(() => {
 	navigations = [];
 	composed = 0;
 	newContacts = 0;
+	workspace = ref<'inbox' | 'marketing'>('inbox');
 
 	vi.stubGlobal('useI18n', () => ({ t: (key: string) => key }));
 	vi.stubGlobal('useFeatureFlag', () => ({
@@ -40,6 +42,7 @@ beforeEach(() => {
 			return Promise.resolve();
 		},
 	}));
+	vi.stubGlobal('useSidebarContext', () => ({ activeContext: workspace }));
 	vi.stubGlobal('navigateTo', (to: unknown) => {
 		navigations.push(to);
 		return Promise.resolve();
@@ -118,5 +121,23 @@ describe('useQuickCreateMenu', () => {
 
 		expect(actions.value).toEqual([]);
 		expect(defaultAction.value).toBeNull();
+	});
+
+	it('leads with Compose in Conversations and New campaign in Marketing', async () => {
+		const { defaultAction, actions } = await menu();
+		expect(defaultAction.value?.id).toBe('compose');
+
+		workspace.value = 'marketing';
+		expect(defaultAction.value?.id).toBe('campaign');
+		// The other verb is still one click away, in the dropdown.
+		expect(actions.value.map((action) => action.id)).toContain('compose');
+	});
+
+	it('falls back to Compose in Marketing when campaigns are off', async () => {
+		flags = ['postbox'];
+		workspace.value = 'marketing';
+		const { defaultAction } = await menu();
+
+		expect(defaultAction.value?.id).toBe('compose');
 	});
 });

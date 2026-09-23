@@ -206,9 +206,11 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		],
 	},
 	{
-		// Unified "Send" section: everything you send from, in one place.
+		// The Marketing workspace: everything you send to an audience. Named with
+		// the breadcrumb's own section key, so the palette's context line, the
+		// trail and the sidebar switch say the same word.
 		key: 'send',
-		name: 'shared.dashboardNavigation.sections.send',
+		name: 'shared.breadcrumbRoutes.sections.marketing',
 		icon: 'lucide:send',
 		items: [
 			{
@@ -236,7 +238,7 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 				gate: (env) => adminOnly(env) && flag('transactional')(env),
 			},
 			{
-				name: 'shared.dashboardNavigation.items.send.templatesAndBlocks',
+				name: 'shared.dashboardNavigation.items.send.templates',
 				href: '/dashboard/send',
 				icon: 'lucide:layout-grid',
 				gate: adminOnly,
