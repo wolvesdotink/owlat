@@ -188,7 +188,8 @@ describe('AI replies page', () => {
 		expect(flagRow.text()).toContain('Off');
 		expect(flagRow.text()).toContain('Change in Features');
 		expect(wrapper.find('[data-testid="ai-replies-rules-off"]').exists()).toBe(true);
-		expect(queryArgs.get(getFunctionName(api.autonomy.listRules))).toBe('skip');
-		expect(queryArgs.get(getFunctionName(api.autonomyOutcome.listAutoDemotions))).toBe('skip');
+		// The rules section is not mounted, so its queries never subscribe.
+		expect(queryArgs.has(getFunctionName(api.autonomy.listRules))).toBe(false);
+		expect(queryArgs.has(getFunctionName(api.autonomyOutcome.listAutoDemotions))).toBe(false);
 	});
 });
