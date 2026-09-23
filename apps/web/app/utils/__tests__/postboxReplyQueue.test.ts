@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+	answerQueueHrefFor,
 	compareReplyQueueItems,
 	replyQueueHeadline,
 	formatReplyQueueDueHint,
@@ -119,5 +120,15 @@ describe('formatReplyQueueDueHint', () => {
 	it('returns null for missing or unparseable hints', () => {
 		expect(formatReplyQueueDueHint(undefined)).toBeNull();
 		expect(formatReplyQueueDueHint('whenever you can')).toBeNull();
+	});
+});
+
+describe('answerQueueHrefFor', () => {
+	it('opens the one answer queue filtered to the mailbox (#767)', () => {
+		expect(answerQueueHrefFor('mb_ada')).toBe('/dashboard/answer?in=mb_ada');
+	});
+
+	it('keeps an odd id inside the query value', () => {
+		expect(answerQueueHrefFor('a&b')).toBe('/dashboard/answer?in=a%26b');
 	});
 });

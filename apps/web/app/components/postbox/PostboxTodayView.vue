@@ -1,14 +1,15 @@
 <script setup lang="ts">
 /**
- * The Postbox "Today" landing surface — the focused single-column view the
- * inbox opens on (mode 'today'; the three-pane UI stays available as
- * 'browse'). One task at a time, top to bottom:
+ * The Postbox "Priority" landing surface — the focused single-column view the
+ * inbox opens on (stored mode 'today'; the list + reader UI is "All mail",
+ * stored as 'browse'). The folder rail stays beside it. One task at a time,
+ * top to bottom:
  *
- *   - minimal header ("Inbox (n)" + the shared Today|Browse switch)
+ *   - minimal header ("Inbox (n)" + the shared Priority|All mail switch)
  *   - the Brief slot (empty placeholder region — the Daily Brief lands here)
  *   - "FOR YOU (n)": compact agent-task strips from the existing Reply Queue
- *     feed; clicking routes to the Reply Queue page
- *   - "TODAY": thread rows (received since local midnight + unread from
+ *     feed; clicking opens the Answer queue filtered to this mailbox
+ *   - "RECEIVED TODAY": thread rows (received since local midnight + unread from
  *     yesterday), reusing PostboxThreadList so hover quick-actions, unread
  *     emphasis, j/k/Enter and single-key triage all carry over unchanged
  *   - a quiet roll-up line for auto-filed smart-inbox mail (newsletters /
@@ -29,6 +30,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
 import { partitionTodayMessages, formatAutoFiledLine } from '~/utils/postboxTodayPartition';
 import {
+	answerQueueHrefFor,
 	replyQueueHeadline,
 	type ReplyQueueItem,
 	type ReplyQueueText,
@@ -52,8 +54,10 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-	/** Switch to the three-pane browse mode (header button / B / Cmd-B). */
+	/** Switch to All mail, the list + reader (header switch / B / Cmd-B). */
 	browse: [];
+	/** Open the folder drawer (below lg, where the rail is off-canvas). */
+	'open-rail': [];
 	/** Open the auto-filed mail: browse mode with the Categories view. */
 	'view-auto-filed': [];
 	/** The reader overlay closed (Esc / scrim / advance past the ends) — the
@@ -109,9 +113,10 @@ const olderRows = computed(() => partition.value.older);
 const autoFiledLine = computed(() => formatAutoFiledLine(partition.value.autoFiledCounts));
 
 // "For you" — the existing Reply Queue feed (usePostboxReplyQueue already
-// ranks by priority). The strips stay compact: the queue PAGE remains the
-// doing-surface, so every strip routes there.
+// ranks by priority). The strips stay compact: the Answer queue remains the
+// doing-surface, so every strip routes there, filtered to this mailbox.
 const FOR_YOU_CAP = 5;
+const answerQueueHref = computed(() => answerQueueHrefFor(props.mailboxId));
 const { items: forYouItems, count: forYouCount } = usePostboxReplyQueue(mailboxIdRef);
 const forYouVisible = computed(() => forYouItems.value.slice(0, FOR_YOU_CAP));
 
@@ -242,7 +247,16 @@ function onModeSelect(mode: PostboxInboxMode) {
 			     same control the browse list header carries, so the two surfaces
 			     name each other instead of each offering a one-way exit. -->
 			<header class="flex items-center justify-between gap-3">
-				<h1 class="text-lg font-semibold text-text-primary">
+				<!-- Folder drawer handle (below lg, where the rail is off-canvas). -->
+				<button
+					type="button"
+					class="lg:hidden -ml-2 w-11 h-11 flex items-center justify-center flex-shrink-0 rounded text-text-secondary hover:text-text-primary hover:bg-bg-surface focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+					:aria-label="t('components.postbox.postboxLayout.openFolders')"
+					@click="emit('open-rail')"
+				>
+					<Icon name="lucide:panel-left" class="w-4 h-4" />
+				</button>
+				<h1 class="flex-1 min-w-0 text-lg font-semibold text-text-primary">
 					{{ t('components.postbox.postboxTodayView.inbox') }}
 					<span class="font-normal text-text-tertiary tabular-nums">({{ todayRows.length }})</span>
 				</h1>
@@ -271,7 +285,7 @@ function onModeSelect(mode: PostboxInboxMode) {
 				>
 					<li v-for="item in forYouVisible" :key="item.messageId">
 						<NuxtLink
-							to="/dashboard/postbox/reply-queue"
+							:to="answerQueueHref"
 							class="flex items-center gap-3 px-4 py-3 hover:bg-(--surface-1-hover) focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-brand/40 outline-none"
 						>
 							<Icon
@@ -293,16 +307,19 @@ function onModeSelect(mode: PostboxInboxMode) {
 					</li>
 				</ul>
 				<div v-if="forYouCount > FOR_YOU_CAP" class="mt-1.5 text-right">
-					<NuxtLink to="/dashboard/postbox/reply-queue" class="text-xs text-brand hover:underline">
+					<NuxtLink :to="answerQueueHref" class="text-xs text-brand hover:underline">
 						{{ t('components.postbox.postboxTodayView.viewAllCount', { count: forYouCount }) }}
 					</NuxtLink>
 				</div>
 			</section>
 
-			<!-- TODAY: the day's mail, same rows/shortcuts as the browse list. -->
-			<section id="postbox-today" :aria-label="t('common.today')">
+			<!-- RECEIVED TODAY: the day's mail, same rows/shortcuts as the full list. -->
+			<section
+				id="postbox-today"
+				:aria-label="t('components.postbox.postboxTodayView.receivedToday')"
+			>
 				<h2 class="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
-					{{ t('common.today') }}
+					{{ t('components.postbox.postboxTodayView.receivedToday') }}
 				</h2>
 				<div
 					v-if="todayRows.length > 0"

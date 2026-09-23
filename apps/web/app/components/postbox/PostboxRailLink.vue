@@ -25,6 +25,12 @@ withDefaults(
 		/** Marks the row current (rail state, not route matching). */
 		active?: boolean;
 		/**
+		 * Words to show in place of the bare number when expanded, for a count
+		 * that needs its scope said ("2 in Ada"). The collapsed badge stays a
+		 * number; `countLabel` carries the words there.
+		 */
+		countText?: string;
+		/**
 		 * Accessible name to use instead of `label` while a count is showing —
 		 * "Reply Queue, 2" reads better than the bare name, and the phrasing
 		 * belongs to the caller's message catalog, not to a generic row.
@@ -33,7 +39,14 @@ withDefaults(
 		/** Lighter weight, for secondary destinations. */
 		muted?: boolean;
 	}>(),
-	{ collapsed: false, count: 0, active: false, countLabel: undefined, muted: false }
+	{
+		collapsed: false,
+		count: 0,
+		active: false,
+		countText: undefined,
+		countLabel: undefined,
+		muted: false,
+	}
 );
 </script>
 
@@ -48,16 +61,18 @@ withDefaults(
 			muted ? 'text-text-tertiary hover:text-text-secondary' : '',
 			active ? 'bg-bg-surface text-brand' : 'hover:bg-bg-surface',
 		]"
-		:title="collapsed ? label : undefined"
+		:title="collapsed ? label : count > 0 ? countLabel : undefined"
 		:aria-label="collapsed ? (count > 0 ? (countLabel ?? label) : label) : undefined"
 		:aria-current="active ? 'page' : undefined"
 	>
 		<Icon :name="icon" class="w-4 h-4 flex-shrink-0" />
 		<template v-if="!collapsed">
 			<span class="flex-1 truncate">{{ label }}</span>
-			<span v-if="count > 0" class="text-xs font-medium text-text-secondary flex-shrink-0">{{
-				count
-			}}</span>
+			<span
+				v-if="count > 0"
+				class="text-xs font-medium text-text-secondary truncate max-w-[50%] flex-shrink-0"
+				>{{ countText ?? count }}</span
+			>
 		</template>
 		<span
 			v-else-if="count > 0"

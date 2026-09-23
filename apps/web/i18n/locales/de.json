@@ -3487,9 +3487,6 @@
 				"run": "Meinen Entwurf prüfen",
 				"suggestionCategory": "{category}:"
 			},
-			"postboxComposeButton": {
-				"compose": "Verfassen"
-			},
 			"postboxComposer": {
 				"bodyPlaceholder": "Schreiben Sie Ihre Nachricht…",
 				"composerName": "Postbox-Entwurf {timestamp}",
@@ -3716,9 +3713,11 @@
 				"noLabels": "Noch keine Labels",
 				"renameFolder": "Ordner umbenennen",
 				"replyQueue": "Antwortliste",
-				"replyQueueAriaLabel": "Antwortliste, {count}",
+				"replyQueueAriaLabel": "Antwortliste, {count} offen in {name}",
+				"replyQueueScopedCount": "{count} in {name}",
 				"snoozed": "Zurückgestellt",
 				"subscriptions": "Abonnements",
+				"thisInbox": "diesem Posteingang",
 				"pinnedSearchesHeading": "Angeheftete Suchen",
 				"unpinSearch": "Suche lösen",
 				"unpinSearchAriaLabel": "Gespeicherte Suche {name} lösen",
@@ -3750,8 +3749,10 @@
 				"title": "Erinnern, falls bis dahin keine Antwort kommt"
 			},
 			"postboxInboxModeToggle": {
+				"all": "Alle E-Mails",
 				"label": "Posteingangsansicht",
-				"title": "Heute oder das ganze Postfach (B)"
+				"priority": "Priorität",
+				"title": "Wichtige E-Mails oder alle E-Mails (B)"
 			},
 			"postboxInlineReply": {
 				"dialogLabel": "Inline-Antwort",
@@ -4180,7 +4181,7 @@
 			"postboxReplyQueueStrip": {
 				"dismissLabel": "Erinnerung an die Antwort-Warteschlange ausblenden",
 				"dismissTitle": "Für diese Sitzung ausblenden",
-				"openQueue": "Warteschlange öffnen",
+				"openQueue": "Antwortliste öffnen",
 				"waiting": "{count} E-Mail wartet auf Ihre Antwort | {count} E-Mails warten auf Ihre Antwort"
 			},
 			"postboxReviewSlot": {
@@ -4467,13 +4468,13 @@
 			"postboxTodayView": {
 				"allClear": "Alles erledigt — nichts Neues braucht Ihre Aufmerksamkeit.",
 				"answer": "Antworten",
-				"browse": "Durchsuchen",
 				"forYou": "Für Sie",
 				"forYouDetail": "{who} — {snippet}",
 				"forYouHeading": "Für Sie ({count})",
 				"inbox": "Posteingang",
 				"past": "Früher",
 				"pastMails": "Frühere E-Mails",
+				"receivedToday": "Heute eingegangen",
 				"reviewAndSend": "Prüfen & senden",
 				"showPast": "Frühere E-Mails anzeigen ({count})",
 				"view": "anzeigen",
@@ -13764,7 +13765,7 @@
 				"approveAndSend": "Freigeben & senden",
 				"archive": "Archivieren",
 				"closeCancel": "Schließen / Abbrechen",
-				"closeConversation": "Geöffnete Unterhaltung schließen / zurück zu Heute",
+				"closeConversation": "Geöffnete Unterhaltung schließen / zurück zu Priorität",
 				"compose": "Verfassen",
 				"edit": "Bearbeiten",
 				"extendSelection": "Auswahl erweitern",
@@ -13815,7 +13816,7 @@
 				"toggleCheatSheet": "Diese Kurzübersicht ein-/ausblenden",
 				"toggleRead": "Gelesen-Status umschalten",
 				"toggleSidebar": "Seitenleiste ein-/ausblenden",
-				"toggleTodayBrowse": "Zwischen Heute / Durchsuchen wechseln (Posteingang)",
+				"toggleTodayBrowse": "Zwischen Priorität und Alle E-Mails wechseln (Posteingang)",
 				"undoTriage": "Letzte Triage rückgängig machen",
 				"goToAnswer": "Zur Antwortliste",
 				"goToMarketing": "Zu Marketing"

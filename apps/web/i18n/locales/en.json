@@ -3487,9 +3487,6 @@
 				"run": "Coach my draft",
 				"suggestionCategory": "{category}:"
 			},
-			"postboxComposeButton": {
-				"compose": "Compose"
-			},
 			"postboxComposer": {
 				"bodyPlaceholder": "Write your message…",
 				"composerName": "Postbox compose {timestamp}",
@@ -3716,9 +3713,11 @@
 				"noLabels": "No labels yet",
 				"renameFolder": "Rename folder",
 				"replyQueue": "Answer queue",
-				"replyQueueAriaLabel": "Answer queue, {count}",
+				"replyQueueAriaLabel": "Answer queue, {count} waiting in {name}",
+				"replyQueueScopedCount": "{count} in {name}",
 				"snoozed": "Snoozed",
 				"subscriptions": "Subscriptions",
+				"thisInbox": "this inbox",
 				"pinnedSearchesHeading": "Pinned searches",
 				"unpinSearch": "Unpin search",
 				"unpinSearchAriaLabel": "Unpin the saved search {name}",
@@ -3750,8 +3749,10 @@
 				"title": "Remind me if no reply by"
 			},
 			"postboxInboxModeToggle": {
-				"label": "Inbox surface",
-				"title": "Today or the full mailbox (B)"
+				"all": "All mail",
+				"label": "Inbox view",
+				"priority": "Priority",
+				"title": "Priority mail or all mail (B)"
 			},
 			"postboxInlineReply": {
 				"dialogLabel": "Inline reply",
@@ -4180,7 +4181,7 @@
 			"postboxReplyQueueStrip": {
 				"dismissLabel": "Dismiss reply queue reminder",
 				"dismissTitle": "Dismiss for this session",
-				"openQueue": "Open queue",
+				"openQueue": "Open answer queue",
 				"waiting": "{count} email is waiting on your reply | {count} emails are waiting on your reply"
 			},
 			"postboxReviewSlot": {
@@ -4467,13 +4468,13 @@
 			"postboxTodayView": {
 				"allClear": "All clear — nothing new needs you.",
 				"answer": "Answer",
-				"browse": "Browse",
 				"forYou": "For you",
 				"forYouDetail": "{who} — {snippet}",
 				"forYouHeading": "For you ({count})",
 				"inbox": "Inbox",
 				"past": "Past",
 				"pastMails": "Past mails",
+				"receivedToday": "Received today",
 				"reviewAndSend": "Review & send",
 				"showPast": "Show past mails ({count})",
 				"view": "view",
@@ -13764,7 +13765,7 @@
 				"approveAndSend": "Approve & send",
 				"archive": "Archive",
 				"closeCancel": "Close / Cancel",
-				"closeConversation": "Close the open conversation / back to Today",
+				"closeConversation": "Close the open conversation / back to Priority",
 				"compose": "Compose",
 				"edit": "Edit",
 				"extendSelection": "Extend selection",
@@ -13815,7 +13816,7 @@
 				"toggleCheatSheet": "Show / hide this cheat sheet",
 				"toggleRead": "Toggle read",
 				"toggleSidebar": "Hide / show sidebar",
-				"toggleTodayBrowse": "Toggle Today / Browse (inbox)",
+				"toggleTodayBrowse": "Switch between Priority and All mail (inbox)",
 				"undoTriage": "Undo last triage",
 				"goToAnswer": "Go to the Answer queue",
 				"goToMarketing": "Go to Marketing"

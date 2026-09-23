@@ -7,6 +7,15 @@
 export type ReplyQueueUrgency = 'high' | 'normal' | 'low';
 
 /**
+ * The one answer queue, narrowed to one mailbox. The personal Reply Queue page
+ * is gone; every "waiting on your reply" entry in the mailbox links here so a
+ * mailbox count and the queue it opens always describe the same rows (#767).
+ */
+export function answerQueueHrefFor(mailboxId: string): string {
+	return `/dashboard/answer?in=${encodeURIComponent(mailboxId)}`;
+}
+
+/**
  * A string a screen renders: either a piece of the message itself (a subject,
  * an AI ask summary — text that is already in the sender's own words) or an
  * i18n key, optionally with its interpolations. This module is pure, so it
