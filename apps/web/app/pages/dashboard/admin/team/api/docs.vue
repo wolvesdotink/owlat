@@ -42,31 +42,41 @@ const endpoints = computed(() => [
 		path: '/api/v1/contacts/:id',
 		description: t('dashboard.admin.team.api.docs.endpoints.contact'),
 	},
-	{ method: 'POST', path: '/api/v1/events', description: t('dashboard.admin.team.api.docs.endpoints.events') },
+	{
+		method: 'POST',
+		path: '/api/v1/events',
+		description: t('dashboard.admin.team.api.docs.endpoints.events'),
+	},
 	{
 		method: 'POST',
 		path: '/api/v1/transactional',
 		description: t('dashboard.admin.team.api.docs.endpoints.transactional'),
 	},
-	{ method: '*', path: '/api/v1/topics/…', description: t('dashboard.admin.team.api.docs.endpoints.topics') },
-	{ method: 'GET', path: '/api/v1/health', description: t('dashboard.admin.team.api.docs.endpoints.health') },
+	{
+		method: '*',
+		path: '/api/v1/topics/…',
+		description: t('dashboard.admin.team.api.docs.endpoints.topics'),
+	},
+	{
+		method: 'GET',
+		path: '/api/v1/health',
+		description: t('dashboard.admin.team.api.docs.endpoints.health'),
+	},
 ]);
 </script>
 
 <template>
 	<div class="max-w-3xl">
 		<div class="mb-8">
-			<NuxtLink
-				to="/dashboard/admin/team/api"
-				class="text-sm text-text-secondary inline-flex items-center gap-1 hover:text-text-primary mb-4"
-			>
-				<Icon name="lucide:arrow-left" class="w-3.5 h-3.5" />
-				{{ t('dashboard.admin.team.api.docs.backToKeys') }}
-			</NuxtLink>
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 				{{ t('dashboard.admin.team.api.docs.title') }}
 			</h1>
-			<I18nT keypath="dashboard.admin.team.api.docs.intro" tag="p" scope="global" class="text-text-secondary mt-1">
+			<I18nT
+				keypath="dashboard.admin.team.api.docs.intro"
+				tag="p"
+				scope="global"
+				class="text-text-secondary mt-1"
+			>
 				<template #settingsLink>
 					<NuxtLink to="/dashboard/admin/team/api" class="link">{{
 						t('dashboard.admin.team.api.docs.introLink')
@@ -76,7 +86,9 @@ const endpoints = computed(() => [
 		</div>
 
 		<UiCard class="mb-6">
-			<h2 class="text-sm font-medium text-text-secondary mb-2">{{ t('dashboard.admin.team.api.docs.baseUrlTitle') }}</h2>
+			<h2 class="text-sm font-medium text-text-secondary mb-2">
+				{{ t('dashboard.admin.team.api.docs.baseUrlTitle') }}
+			</h2>
 			<div class="flex items-center gap-2">
 				<code
 					class="flex-1 px-3 py-2 bg-bg-surface border border-border-subtle rounded-lg text-sm text-text-primary overflow-x-auto"
@@ -96,7 +108,9 @@ const endpoints = computed(() => [
 
 		<UiCard class="mb-6">
 			<div class="flex items-center justify-between mb-2">
-				<h2 class="text-sm font-medium text-text-secondary">{{ t('dashboard.admin.team.api.docs.createContact') }}</h2>
+				<h2 class="text-sm font-medium text-text-secondary">
+					{{ t('dashboard.admin.team.api.docs.createContact') }}
+				</h2>
 				<UiButton variant="ghost" size="sm" @click="copy(curlExample, 'curl')">
 					<Icon :name="copiedKey === 'curl' ? 'lucide:check' : 'lucide:copy'" class="w-4 h-4" />
 				</UiButton>
@@ -110,7 +124,9 @@ const endpoints = computed(() => [
 			<table class="w-full text-sm">
 				<thead>
 					<tr class="border-b border-border-subtle text-left">
-						<th class="px-4 py-3 font-medium text-text-secondary">{{ t('dashboard.admin.team.api.docs.table.method') }}</th>
+						<th class="px-4 py-3 font-medium text-text-secondary">
+							{{ t('dashboard.admin.team.api.docs.table.method') }}
+						</th>
 						<th class="px-4 py-3 font-medium text-text-secondary">
 							{{ t('dashboard.admin.team.api.docs.table.endpoint') }}
 						</th>
