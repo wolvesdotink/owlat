@@ -1,4 +1,4 @@
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -42,6 +42,9 @@ function labelsFor(route: string, viewerRole: typeof role.value = 'admin') {
 	return trailFor(route, viewerRole).map((item) => t(item.label));
 }
 
+/** A page that only forwards elsewhere (`definePageMeta({ redirect })`) shows no trail. */
+const isRedirectStub = (source: string) => /definePageMeta\(\{\s*redirect:/.test(source);
+
 /** Every `.vue` page under `pages/dashboard/<area>`, as a concrete route path. */
 async function routesUnder(area: string): Promise<string[]> {
 	const root = join(pagesRoot, 'dashboard', area);
@@ -57,7 +60,9 @@ async function routesUnder(area: string): Promise<string[]> {
 		);
 		return nested.flat();
 	};
-	const files = await walk(root);
+	const all = await walk(root);
+	const sources = await Promise.all(all.map((file) => readFile(file, 'utf8')));
+	const files = all.filter((_, index) => !isRedirectStub(sources[index]!));
 	return files
 		.map((file) => {
 			const route = `/${relative(pagesRoot, file)
@@ -103,7 +108,7 @@ describe('useBreadcrumbs', () => {
 	describe('label alignment with the sidebar / hub pages', () => {
 		it.each([
 			['/dashboard/admin/instance/ai-provider', 'AI provider'],
-			['/dashboard/admin/instance/agent', 'AI agent'],
+			['/dashboard/admin/instance/ai-replies', 'AI replies'],
 			['/dashboard/admin/instance/sealed-mail', 'Secure mail'],
 			['/dashboard/admin/instance/channels', 'Channels'],
 			['/dashboard/admin/team/connected-apps', 'Connected apps'],

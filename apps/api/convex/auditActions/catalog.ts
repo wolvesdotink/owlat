@@ -285,8 +285,9 @@ export const AUDIT_ACTION_LITERALS = [
 	action('agent.config_updated'),
 	action('agent.backfill_started'),
 	action('agent.backfill_cancelled'),
-	// Autonomy trust controls. Kill switch reverts to draft-only globally
-	// (agentConfigMutations.killSwitch); demotion-acknowledged clears a
+	// Autonomy trust controls. Kill switch rows come from the retired one-click
+	// stop (now the AI replies page's "Draft only", logged as
+	// agent.config_updated) and stay readable; demotion-acknowledged clears a
 	// per-sender auto-demotion incident alert (autonomyOutcome.ts).
 	action('agent.kill_switch'),
 	action('agent.demotion_acknowledged'),

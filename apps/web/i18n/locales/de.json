@@ -599,14 +599,6 @@
 				"suggestionEvidence": "{approved}/{sampleSize} freigegeben, {rate} Ablehnungsquote",
 				"title": "Bereit für mehr Autonomie"
 			},
-			"autonomyKillSwitch": {
-				"body": "Sofort zurück auf {mode}: schaltet die abgestufte Autonomie und die alte automatische Antwort ab und holt jeden automatischen Versand zurück, der noch im Rückgängig-Fenster ist. Der Agent entwirft weiterhin Antworten zu Ihrer Prüfung — nichts geht verloren.",
-				"bodyMode": "nur Entwürfe",
-				"confirmCta": "Ja, jetzt stoppen",
-				"confirmQuestion": "Zurück auf nur Entwürfe?",
-				"stopCta": "Automatischen Versand stoppen",
-				"title": "Automatischen Versand jetzt stoppen"
-			},
 			"autonomyLearningControls": {
 				"answeredTimes": "{scope} · {count}-mal beantwortet | {scope} · {count}-mal beantwortet",
 				"categories": {
@@ -5024,6 +5016,24 @@
 			"aiModelPicker": {
 				"customPlaceholder": "Modell-ID eingeben"
 			},
+			"aiReplyModeControl": {
+				"defaultBadge": "Standard",
+				"legend": "KI-Antworten",
+				"options": {
+					"auto": {
+						"description": "Die KI sendet Antworten, bei denen sie sicher ist, und lässt den Rest zur Prüfung liegen. Wann und wie oft, legen Sie unten fest.",
+						"label": "Automatisch senden, wenn die KI sicher ist"
+					},
+					"draft": {
+						"description": "Die KI entwirft zu jeder Nachricht eine Antwort. Eine Person prüft sie und sendet sie aus der Antwort-Warteschlange.",
+						"label": "Nur entwerfen"
+					},
+					"off": {
+						"description": "Die KI entwirft und sendet keine Antworten.",
+						"label": "Aus"
+					}
+				}
+			},
 			"bodySearchIndexCard": {
 				"adminsOnly": "Nur Inhaber und Administratoren können dies ändern.",
 				"backfillAgain": "Erneut indexieren",
@@ -6188,48 +6198,7 @@
 						"pending": "In Warteschlange",
 						"running": "Mail-Verlauf wird durchsucht"
 					},
-					"cancelBackfillOperation": "Nachverarbeitung abbrechen",
-					"limits": {
-						"coalesceHelp": "So viele Sekunden auf weitere Nachrichten warten, bevor ein Thread verarbeitet wird. Verhindert die mehrfache Verarbeitung schneller Nachrichtenfolgen.",
-						"coalesceLabel": "Zeitfenster für Nachrichtenbündelung",
-						"dailyHelp": "Maximale Anzahl automatisch freigegebener Antworten pro Tag. Darüber hinausgehende Nachrichten gehen in die Prüfwarteschlange.",
-						"dailyLabel": "Tageslimit für automatische Antworten",
-						"description": "Legen Sie Schwellenwerte für die automatische Freigabe und Ratenbegrenzungen fest.",
-						"seconds": "Sekunden",
-						"thresholdHelp": "Mindestkonfidenz für die automatische Freigabe. Entwürfe unterhalb dieser Schwelle gehen in die Prüfwarteschlange.",
-						"thresholdLabel": "Konfidenzschwelle",
-						"thresholdMax": "100 % (nie automatisch freigeben)",
-						"thresholdMin": "0 % (alles zur Prüfung)",
-						"title": "Konfidenz & Limits"
-					},
-					"loading": "Agent-Einstellungen werden geladen...",
-					"pageTitle": "KI-Agent-Einstellungen — Owlat",
-					"pipeline": {
-						"autoReplyHelp": "Erlauben Sie dem Agenten, Antworten ohne menschliche Freigabe zu senden, wenn die Konfidenz über dem Schwellenwert liegt.",
-						"autoReplyLabel": "Automatische Antwort",
-						"autoReplySwitch": "Automatische Antwort",
-						"description": "Steuern Sie, ob der KI-Agent eingehende Nachrichten verarbeitet.",
-						"enableHelp": "Wenn aktiviert, werden eingehende Nachrichten automatisch klassifiziert und beantwortet.",
-						"enableLabel": "Agenten-Pipeline aktivieren",
-						"enableSwitch": "KI-Agent aktivieren",
-						"title": "Agenten-Pipeline"
-					},
-					"saveChanges": "Änderungen speichern",
-					"saveOperation": "Agent-Einstellungen speichern",
-					"savedToast": "Agent-Einstellungen erfolgreich gespeichert",
-					"subtitle": "Legen Sie fest, wie der KI-Agent eingehende Nachrichten verarbeitet und Entwürfe erstellt.",
-					"title": "KI-Agent",
-					"toggleOperation": "Agent umschalten",
-					"tone": {
-						"description": "Legen Sie fest, wie der Agent im Namen Ihres Workspace kommuniziert.",
-						"signatureHelp": "Signatur, die an vom Agenten erstellte E-Mail-Antworten angehängt wird.",
-						"signatureLabel": "E-Mail-Signatur",
-						"signaturePlaceholder": "z. B. Mit freundlichen Grüßen,\nIhr Support-Team\nsupport{'@'}ihrefirma.de",
-						"title": "Tonfall & Signatur",
-						"toneHelp": "Beschreiben Sie den Kommunikationsstil für vom Agenten erstellte Entwürfe.",
-						"toneLabel": "Beschreibung des Tonfalls",
-						"tonePlaceholder": "z. B. professionell und freundlich. Den Vornamen der Kundin oder des Kunden verwenden. Antworten knapp, aber gründlich halten."
-					}
+					"cancelBackfillOperation": "Nachverarbeitung abbrechen"
 				},
 				"agentHealth": {
 					"charts": {
@@ -6385,39 +6354,79 @@
 					"testConnection": "Verbindung testen",
 					"title": "KI-Anbieter"
 				},
-				"autonomy": {
-					"addRule": "Regel hinzufügen",
-					"createFirstRule": "Erste Regel erstellen",
-					"emptyBody": "Erstellen Sie Regeln, die steuern, wie der KI-Agent verschiedene Nachrichtenarten behandelt. Jede Kategorie kann eine eigene Konfidenzschwelle und eigene Tageslimits haben.",
-					"emptyTitle": "Keine Autonomieregeln konfiguriert",
-					"errorMessage": "Beim Laden der Autonomieregeln ist ein Fehler aufgetreten. Laden Sie die Seite neu, um es erneut zu versuchen.",
-					"errorTitle": "Autonomieregeln konnten nicht geladen werden",
-					"howItWorks": {
-						"step1": "Der Agent ordnet jede eingehende Nachricht einer Kategorie zu.",
-						"step2": "Liegt die Konfidenz über der Schwelle und ist das Tageslimit nicht erreicht, wird die Aktion automatisch freigegeben.",
-						"step3": "Andernfalls geht die Aktion zur menschlichen Freigabe in die Prüfwarteschlange.",
-						"step4": "Die Schwellenwerte passen sich wöchentlich anhand der Ablehnungsmuster an. Viele Ablehnungen verschärfen die Schwelle, wenige lockern sie.",
-						"title": "So funktioniert es"
+				"aiReplies": {
+					"loading": "Einstellungen für KI-Antworten werden geladen…",
+					"mode": {
+						"description": "Das gilt für alle Team-Posteingänge. Sie können jederzeit wechseln.",
+						"needsFeatures": "Für KI-Antworten müssen die KI-Funktionen und der Team-Posteingang eingeschaltet sein.",
+						"title": "Was die KI mit neuer Mail macht"
 					},
-					"loading": "Autonomieregeln werden geladen...",
+					"openFeatures": "Funktionen öffnen",
 					"operations": {
-						"applySuggestion": "Stufenvorschlag anwenden",
-						"dismissDemotion": "Herabstufungshinweis schließen",
-						"enableSender": "Automatischen Versand für Absender aktivieren",
-						"killSwitch": "Automatischen Versand stoppen",
-						"saveWorkingHours": "Arbeitszeiten speichern"
+						"applySuggestion": "Vorschlag übernehmen",
+						"dismissDemotion": "Hinweis schließen",
+						"enableSender": "Automatisches Senden für einen Absender einschalten",
+						"save": "Einstellungen für KI-Antworten speichern",
+						"saveWorkingHours": "Arbeitszeiten speichern",
+						"setMode": "KI-Antworten ändern"
 					},
-					"pageTitle": "Autonomieregeln — Owlat",
-					"subtitle": "Konfigurieren Sie Regeln je Kategorie, die festlegen, wann der KI-Agent Aktionen automatisch freigeben darf und wann eine menschliche Prüfung nötig ist. Die Schwellenwerte passen sich automatisch an das Feedback der Menschen an.",
-					"title": "Gestufte Autonomie",
+					"pageTitle": "KI-Antworten — Owlat",
+					"rules": {
+						"add": "Regel hinzufügen",
+						"description": "Legen Sie pro Nachrichtenart fest, wie sicher sich die KI sein muss, bevor sie sendet, und fügen Sie Regeln in eigenen Worten hinzu. Nachrichten ohne Regel warten auf Prüfung.",
+						"draftOnlyNote": "Diese Regeln senden nur, solange die KI automatisch senden darf. Im Moment wartet jede Antwort auf Prüfung.",
+						"emptyBody": "Fügen Sie eine Regel für eine Nachrichtenart hinzu, etwa Support oder Abrechnung, damit die KI diese Antworten selbst senden darf.",
+						"emptyTitle": "Noch keine Regeln",
+						"errorMessage": "Laden Sie die Seite neu, um es noch einmal zu versuchen.",
+						"errorTitle": "Die Regeln konnten nicht geladen werden",
+						"offBody": "Regeln pro Nachrichtenart sind unter Funktionen ausgeschaltet. Schalten Sie sie ein, um Regeln pro Nachrichtenart und in eigenen Worten festzulegen.",
+						"title": "Regeln pro Nachrichtenart"
+					},
+					"rulesFlag": {
+						"change": "Unter Funktionen ändern",
+						"label": "Regeln pro Nachrichtenart:",
+						"off": "Aus",
+						"on": "An"
+					},
+					"saveChanges": "Änderungen speichern",
+					"subtitle": "Legen Sie fest, ob die KI Antworten für Ihr Team entwirft, sichere Antworten selbst sendet oder ausgeschaltet bleibt.",
+					"title": "KI-Antworten",
 					"toasts": {
 						"alertDismissed": "Hinweis geschlossen",
-						"autoSendingStopped": "Automatischer Versand gestoppt — zurück auf reinen Entwurfsmodus",
-						"ruleDeleted": "Autonomieregel gelöscht",
-						"ruleSaved": "Autonomieregel erfolgreich gespeichert",
-						"senderEnabled": "Automatischer Versand für {sender} aktiviert",
-						"suggestionApplied": "Stufenvorschlag angewendet",
+						"mode": {
+							"auto": "KI-Antworten werden jetzt automatisch gesendet, wenn die KI sicher ist",
+							"draft": "KI-Antworten auf „Nur entwerfen“ gestellt",
+							"off": "KI-Antworten ausgeschaltet"
+						},
+						"ruleDeleted": "Regel gelöscht",
+						"ruleSaved": "Regel gespeichert",
+						"saved": "Einstellungen für KI-Antworten gespeichert",
+						"senderEnabled": "Automatisches Senden für {sender} eingeschaltet",
+						"suggestionApplied": "Vorschlag übernommen",
 						"workingHoursSaved": "Arbeitszeiten gespeichert"
+					},
+					"tone": {
+						"coalesceHelp": "Schreibt jemand mehrere Nachrichten hintereinander, so lange warten und sie gemeinsam beantworten.",
+						"coalesceLabel": "Auf weitere Nachrichten warten",
+						"description": "Tonfall und Signatur für jede Antwort, die die KI entwirft.",
+						"seconds": "Sekunden",
+						"signatureHelp": "Wird an jede E-Mail-Antwort angehängt, die die KI entwirft.",
+						"signatureLabel": "Signatur",
+						"signaturePlaceholder": "z. B. Mit freundlichen Grüßen,\nIhr Support-Team\nsupport{'@'}ihrefirma.de",
+						"title": "Wie Antworten klingen",
+						"toneHelp": "Beschreiben Sie, wie Antworten klingen sollen.",
+						"toneLabel": "Tonfall",
+						"tonePlaceholder": "z. B. professionell und freundlich. Den Vornamen der Kundin oder des Kunden verwenden. Antworten knapp, aber gründlich halten."
+					},
+					"when": {
+						"byRule": "Jede Regel unten legt fest, wie sicher sich die KI sein muss und wie viele Antworten sie pro Tag senden darf. Nachrichten ohne Regel warten immer auf Prüfung.",
+						"dailyHelp": "Höchstens so viele Antworten werden pro Tag automatisch gesendet. Danach warten Antworten auf Prüfung.",
+						"dailyLabel": "Tageslimit",
+						"thresholdHelp": "Antworten, bei denen die KI weniger sicher ist, warten in der Antwort-Warteschlange auf Prüfung.",
+						"thresholdLabel": "Wie sicher die KI sein muss",
+						"thresholdMax": "100 %: nichts senden",
+						"thresholdMin": "0 %: jede Antwort senden",
+						"title": "Wann automatisch gesendet wird"
 					}
 				},
 				"channels": {
@@ -6750,10 +6759,6 @@
 					"disableCount": "Deaktivieren ({count})",
 					"enableCount": "Aktivieren ({count})",
 					"groups": {
-						"agent": {
-							"description": "Konfigurieren Sie den organisationsweiten Agenten und prüfen Sie seinen Zustand.",
-							"title": "KI-Agent"
-						},
 						"agentHealth": {
 							"description": "Live-Genauigkeit, Eskalationen und jüngste Agentenläufe.",
 							"title": "Agentenzustand"
@@ -6762,9 +6767,9 @@
 							"description": "Wählen Sie den gehosteten oder selbst betriebenen Modellanbieter und schalten Sie die KI ein.",
 							"title": "KI-Anbieter"
 						},
-						"autonomy": {
-							"description": "Wie viel der Agent eigenständig tun darf und der Schalter, der ihn stoppt.",
-							"title": "Autonomie"
+						"aiReplies": {
+							"description": "Legen Sie fest, ob die KI Antworten zur Prüfung entwirft, sie bei hoher Sicherheit selbst sendet oder aus bleibt.",
+							"title": "KI-Antworten"
 						},
 						"channels": {
 							"description": "Nachrichtenkanäle, die in der gesamten Instanz verfügbar sind.",
@@ -11517,12 +11522,11 @@
 		"breadcrumbRoutes": {
 			"pages": {
 				"agentHealth": "Agentenzustand",
-				"aiAgent": "KI-Agent",
 				"aiProvider": "KI-Anbieter",
+				"aiReplies": "KI-Antworten",
 				"apiKeys": "API-Schlüssel",
 				"apiQuickstart": "API-Schnellstart",
 				"auditLog": "Audit-Protokoll",
-				"autonomyRules": "Autonomieregeln",
 				"backups": "Backups",
 				"blocks": "Blöcke",
 				"campaignSenders": "Kampagnenabsender",

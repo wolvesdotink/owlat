@@ -250,12 +250,14 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		area: 'instance',
 	},
 	{
-		id: 'agent',
-		path: `${ADMIN_ROOT}/instance/agent`,
-		titleKey: label('aiAgent'),
+		// Gated on `ai`, not `ai.agent`: the page's "Off" choice turns the agent
+		// off, and the same page is where it gets turned back on.
+		id: 'aiReplies',
+		path: `${ADMIN_ROOT}/instance/ai-replies`,
+		titleKey: label('aiReplies'),
 		icon: 'lucide:bot',
 		area: 'instance',
-		gate: flag('ai.agent'),
+		gate: flag('ai'),
 	},
 	{
 		id: 'agentHealth',
@@ -264,14 +266,6 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		icon: 'lucide:activity',
 		area: 'instance',
 		gate: flag('ai.agent'),
-	},
-	{
-		id: 'autonomy',
-		path: `${ADMIN_ROOT}/instance/autonomy`,
-		titleKey: label('autonomyRules'),
-		icon: 'lucide:sliders-horizontal',
-		area: 'instance',
-		gate: flag('ai.autonomy'),
 	},
 	{
 		id: 'sealedMail',

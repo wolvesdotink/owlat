@@ -2,8 +2,6 @@
 /**
  * Autonomy trust-control components render + emit the right actions.
  *
- *   - AutonomyKillSwitch: renders the stop control, reveals a confirm step, and
- *     emits `confirm` only once the operator confirms.
  *   - AutonomyGraduationNudge: renders an actionable offer for a graduated
  *     slice, emits `accept-offer` with the (category, sender), and renders
  *     NOTHING when there is nothing to graduate.
@@ -16,7 +14,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 
-import AutonomyKillSwitch from '../AutonomyKillSwitch.vue';
 import AutonomyGraduationNudge from '../AutonomyGraduationNudge.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 
@@ -33,28 +30,6 @@ const stubs = {
 };
 /** A fresh i18n instance per mount — locale state must not leak between them. */
 const mountOpts = () => ({ global: { plugins: [createTestI18n()], stubs } });
-
-describe('AutonomyKillSwitch', () => {
-	it('renders the stop control and emits confirm only after confirmation', async () => {
-		const wrapper = mount(AutonomyKillSwitch, mountOpts());
-		expect(wrapper.text()).toContain('Stop auto-sending');
-		expectFullyLocalized(wrapper);
-
-		// No confirm emitted from just opening.
-		await wrapper.get('[data-testid="kill-switch-open"]').trigger('click');
-		expect(wrapper.emitted('confirm')).toBeUndefined();
-
-		// Confirming emits exactly once.
-		await wrapper.get('[data-testid="kill-switch-confirm"]').trigger('click');
-		expect(wrapper.emitted('confirm')).toHaveLength(1);
-	});
-
-	it('disables the confirm control while busy', () => {
-		const wrapper = mount(AutonomyKillSwitch, { ...mountOpts(), props: { busy: true } });
-		// The open button is disabled while a kill switch is in flight.
-		expect(wrapper.get('[data-testid="kill-switch-open"]').attributes('disabled')).toBeDefined();
-	});
-});
 
 describe('AutonomyGraduationNudge', () => {
 	it('renders a graduated offer and emits accept-offer with the slice key', async () => {

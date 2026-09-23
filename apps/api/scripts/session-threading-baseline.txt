@@ -1,5 +1,4 @@
 convex/agent/knowledgeBackfill.ts:cancel
-convex/agentConfigMutations.ts:killSwitch
 convex/agentConfigMutations.ts:updateConfig
 convex/analytics/complianceTelemetry.ts:getComplianceTelemetry
 convex/analytics/dashboard.ts:getRecentActivity

@@ -47,7 +47,13 @@ const NO_MAIL: AdminEnvironment = {
 };
 const WORKSPACE_ADMIN: AdminEnvironment = { ...FULL, isPlatformAdmin: false, hasPlugins: false };
 
-/** Every `.vue` page file under `pages/dashboard/admin`. */
+/**
+ * A page that only forwards to another route (`definePageMeta({ redirect })`).
+ * It keeps an old URL working, renders nothing, and so has no rail entry.
+ */
+const isRedirectStub = (source: string) => /definePageMeta\(\{\s*redirect:/.test(source);
+
+/** Every `.vue` page file under `pages/dashboard/admin`, redirect stubs left out. */
 async function adminPageFiles(): Promise<string[]> {
 	const walk = async (directory: string): Promise<string[]> => {
 		const entries = await readdir(directory, { withFileTypes: true });
@@ -60,7 +66,9 @@ async function adminPageFiles(): Promise<string[]> {
 		);
 		return nested.flat();
 	};
-	return (await walk(adminPages)).sort();
+	const files = await walk(adminPages);
+	const sources = await Promise.all(files.map((file) => readFile(file, 'utf8')));
+	return files.filter((_, index) => !isRedirectStub(sources[index]!)).sort();
 }
 
 /** Those pages as routes, dynamic ones (`plugins/[id]`) left out. */
@@ -131,13 +139,37 @@ describe('ADMIN_REGISTRY — coverage', () => {
 });
 
 describe('gates', () => {
-	it('drops the AI pages when the agent and autonomy flags are off', () => {
+	it('drops agent health when the agent flags are off, but keeps the on-ramps', () => {
 		const ids = reachableAdminEntries(NO_AI).map((entry) => entry.id);
-		expect(ids).not.toContain('agent');
 		expect(ids).not.toContain('agentHealth');
-		expect(ids).not.toContain('autonomy');
-		// The on-ramp stays: this is the page where AI gets turned on.
+		// The on-ramps stay: AI provider turns AI on, and AI replies is where the
+		// agent is switched back on after "Off".
 		expect(ids).toContain('aiProvider');
+		expect(ids).toContain('aiReplies');
+	});
+
+	it('drops AI replies only when AI itself is off', () => {
+		const ids = reachableAdminEntries({
+			...FULL,
+			isFeatureEnabled: (flag) => flag !== 'ai',
+		}).map((entry) => entry.id);
+		expect(ids).not.toContain('aiReplies');
+		expect(ids).toContain('aiProvider');
+	});
+
+	it('keeps the old agent and autonomy URLs as redirects to AI replies', async () => {
+		for (const leaf of ['agent', 'autonomy']) {
+			const source = await readFile(join(adminPages, 'instance', `${leaf}.vue`), 'utf8');
+			expect(isRedirectStub(source)).toBe(true);
+			expect(source).toContain(`redirect: '${ADMIN_ROOT}/instance/ai-replies'`);
+		}
+	});
+
+	it('lists one AI replies page instead of the old agent and autonomy pages', () => {
+		const paths = ADMIN_REGISTRY.map((entry) => entry.path);
+		expect(paths).toContain(`${ADMIN_ROOT}/instance/ai-replies`);
+		expect(paths).not.toContain(`${ADMIN_ROOT}/instance/agent`);
+		expect(paths).not.toContain(`${ADMIN_ROOT}/instance/autonomy`);
 	});
 
 	it('drops team inboxes on an instance with no mail at all', () => {
