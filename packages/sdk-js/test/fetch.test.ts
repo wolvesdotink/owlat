@@ -151,8 +151,11 @@ describe('createHttpClient', () => {
 		});
 
 		it('should throw parse_error for unparseable response body', async () => {
-			vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-				new Response('not json', { status: 200 })
+			// A fresh Response per call: a shared one has its body consumed by
+			// the first request, which the client rightly reports as a network
+			// failure rather than a parse error.
+			vi.spyOn(globalThis, 'fetch').mockImplementation(
+				async () => new Response('not json', { status: 200 })
 			);
 			const http = createClient();
 
