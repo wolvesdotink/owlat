@@ -39,14 +39,28 @@ const outcome = useState<SetupOutcome>('setupOutcome', () => DEFAULT_SETUP_OUTCO
 const aiDrafts = useState<boolean>('setupOutcomeAiDrafts', () => false);
 const offersAiDrafts = computed(() => outcomeAnswersEmail(outcome.value));
 
+// The answer the flags were last filled from. Coming back to this step and
+// continuing with the same answer keeps whatever the operator tuned on the
+// Features step; only a different answer starts the flags over.
+const appliedAnswer = useState<string | null>('setupOutcomeApplied', () => null);
+
 function next() {
-	flags.value = outcomeFlags(outcome.value, aiDrafts.value && offersAiDrafts.value);
+	const withAiDrafts = aiDrafts.value && offersAiDrafts.value;
+	const answer = `outcome:${outcome.value}:${withAiDrafts}`;
+	if (appliedAnswer.value !== answer) {
+		flags.value = outcomeFlags(outcome.value, withAiDrafts);
+		appliedAnswer.value = answer;
+	}
 	router.push('/setup/features');
 }
 
 // Advanced: start from one of the named operator presets instead.
 function pick(key: OperatingModeKey) {
-	flags.value = operatingModeFlags(key);
+	const answer = `preset:${key}`;
+	if (appliedAnswer.value !== answer) {
+		flags.value = operatingModeFlags(key);
+		appliedAnswer.value = answer;
+	}
 	router.push('/setup/features');
 }
 </script>

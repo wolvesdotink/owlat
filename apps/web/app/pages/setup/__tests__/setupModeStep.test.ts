@@ -77,6 +77,22 @@ describe('setup mode step', () => {
 		expect(useSetupWizard().flags.value).toEqual(outcomeFlags('conversations', true));
 	});
 
+	it('keeps flags tuned on the Features step when the same answer is continued again', async () => {
+		const wrapper = mountStep();
+		await wrapper.get('form').trigger('submit');
+		const wizard = useSetupWizard();
+		// The operator tunes a flag on the next step, then comes back here.
+		wizard.flags.value = { ...wizard.flags.value, chat: !wizard.flags.value.chat };
+		const tuned = { ...wizard.flags.value };
+		await wrapper.get('form').trigger('submit');
+		expect(wizard.flags.value).toEqual(tuned);
+
+		// A different answer does start the flags over.
+		await wrapper.get('[data-testid="setup-outcome-sending"] input').setValue(true);
+		await wrapper.get('form').trigger('submit');
+		expect(wizard.flags.value).toEqual(outcomeFlags('sending', false));
+	});
+
 	it('does not offer AI drafting when the team only sends', async () => {
 		const wrapper = mountStep();
 		await wrapper.get('[data-testid="setup-outcome-sending"] input').setValue(true);
