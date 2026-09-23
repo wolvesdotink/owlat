@@ -23,7 +23,7 @@ const props = defineProps<{
 	/** Deterministic pre-send findings (plan idea 6); empty means nothing to say. */
 	preflight?: PreflightFinding[];
 	lastSavedLabel: string;
-	/** The identity Send goes out as — named on the button ("Send as Support"). */
+	/** The identity Send goes out as — named beside the button ("Send · as Support"). */
 	sendAs?: { mailboxId: string; label: string } | null;
 }>();
 
@@ -42,8 +42,10 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
-// Name the inbox on the Send button, so it is never a guess whose name a reply
-// goes out under. The short inbox name (the chip's) when known, else the label.
+// Name the inbox beside the Send button, so it is never a guess whose name a
+// reply goes out under. The short inbox name (the chip's) when known, else the
+// label. Beside, not on: a long name inside the button wrapped it onto two
+// lines in the narrow floating composer.
 const { byId: inboxById } = useInboxes();
 const sendAsName = computed(() => {
 	const identity = props.sendAs;
@@ -95,143 +97,149 @@ function onPickFiles(event: Event) {
 </script>
 
 <template>
-	<footer class="px-3 py-2 border-t border-border-subtle flex items-center justify-between">
-		<div class="flex items-center gap-2">
-			<UiButton
-				type="button"
-				:title="sendTitle"
-				:disabled="!canSend || sending || isScheduled"
-				@click="emit('send')"
-			>
-				<Icon
-					v-if="sending"
-					name="lucide:loader-2"
-					class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none"
-				/>
-				<Icon v-else name="lucide:send" class="w-4 h-4 mr-1.5" />
-				{{
-					sending
-						? t('components.postbox.postboxComposerFooter.sending')
-						: sendAsName
-							? t('components.postbox.postboxComposerFooter.sendAs', { name: sendAsName })
-							: t('common.send')
-				}}
-			</UiButton>
-			<UiButton
-				variant="ghost"
-				type="button"
-				:title="t('components.postbox.postboxComposerFooter.attachFiles')"
-				@click="onAttachClick"
-			>
-				<Icon name="lucide:paperclip" class="w-4 h-4" />
-			</UiButton>
-			<!-- A proxy for the paperclip button above, opened by `.click()` and
+	<footer class="px-3 py-2 border-t border-border-subtle flex flex-col gap-1.5">
+		<div class="flex items-center justify-between gap-2 min-w-0">
+			<div class="flex items-center gap-2 min-w-0">
+				<UiButton
+					type="button"
+					class="shrink-0 whitespace-nowrap"
+					:title="sendTitle"
+					:disabled="!canSend || sending || isScheduled"
+					@click="emit('send')"
+				>
+					<Icon
+						v-if="sending"
+						name="lucide:loader-2"
+						class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none"
+					/>
+					<Icon v-else name="lucide:send" class="w-4 h-4 mr-1.5" />
+					{{ sending ? t('components.postbox.postboxComposerFooter.sending') : t('common.send') }}
+				</UiButton>
+				<span
+					v-if="sendAsName"
+					class="min-w-0 truncate text-xs text-text-tertiary"
+					:title="t('components.postbox.postboxComposerFooter.sendAs', { name: sendAsName })"
+					data-testid="postbox-send-as"
+					>{{ t('components.postbox.postboxComposerFooter.sendAs', { name: sendAsName }) }}</span
+				>
+				<UiButton
+					variant="ghost"
+					type="button"
+					class="shrink-0"
+					:title="t('components.postbox.postboxComposerFooter.attachFiles')"
+					@click="onAttachClick"
+				>
+					<Icon name="lucide:paperclip" class="w-4 h-4" />
+				</UiButton>
+				<!-- A proxy for the paperclip button above, opened by `.click()` and
 			     never seen or tabbed to. Out of the accessibility tree explicitly:
 			     `class="hidden"` is a stylesheet away from being an unlabelled,
 			     focusable file field a screen reader would announce. -->
-			<input
-				ref="fileInput"
-				type="file"
-				multiple
-				class="hidden"
-				aria-hidden="true"
-				tabindex="-1"
-				@change="onPickFiles"
-			/>
-			<!-- Secondary controls collapse behind ⋯ to keep the footer
+				<input
+					ref="fileInput"
+					type="file"
+					multiple
+					class="hidden"
+					aria-hidden="true"
+					tabindex="-1"
+					@change="onPickFiles"
+				/>
+				<!-- Secondary controls collapse behind ⋯ to keep the footer
 			     lean; the schedule shortcut (Cmd/Ctrl+Shift+Enter) still works. -->
-			<PostboxOverflowMenu
-				:label="t('components.postbox.postboxComposerFooter.moreOptions')"
-				align="left"
-				direction="up"
-			>
-				<template #default="{ close }">
-					<div class="px-3 py-1.5">
-						<PostboxComposerFollowUp
-							v-model:remind-at="followUpRemindAt"
-							v-model:picker-open="followUpPickerOpen"
-							:disabled="isScheduled"
-						/>
-					</div>
-					<label
-						v-if="showSignaturePicker"
-						class="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary"
-					>
-						<Icon name="lucide:pen-line" class="w-4 h-4 text-text-tertiary" />
-						<span>{{ t('components.postbox.postboxComposerFooter.signature') }}</span>
-						<select
-							:value="activeSignatureId ?? ''"
-							class="ml-auto bg-bg-surface border border-border-subtle rounded px-1.5 py-1 text-xs outline-none"
-							:aria-label="t('components.postbox.postboxComposerFooter.signature')"
-							@change="emit('signature-change', $event)"
+				<PostboxOverflowMenu
+					:label="t('components.postbox.postboxComposerFooter.moreOptions')"
+					align="left"
+					direction="up"
+				>
+					<template #default="{ close }">
+						<div class="px-3 py-1.5">
+							<PostboxComposerFollowUp
+								v-model:remind-at="followUpRemindAt"
+								v-model:picker-open="followUpPickerOpen"
+								:disabled="isScheduled"
+							/>
+						</div>
+						<label
+							v-if="showSignaturePicker"
+							class="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary"
 						>
-							<option value="">{{ t('common.none') }}</option>
-							<option v-for="sig in signatures" :key="sig._id" :value="sig._id">
-								{{ sig.name }}
-							</option>
-						</select>
-					</label>
-					<div class="border-t border-border-subtle my-1" />
-					<!-- Plan idea 14: the HTML, the REAL text/plain alternative and a
+							<Icon name="lucide:pen-line" class="w-4 h-4 text-text-tertiary" />
+							<span>{{ t('components.postbox.postboxComposerFooter.signature') }}</span>
+							<select
+								:value="activeSignatureId ?? ''"
+								class="ml-auto bg-bg-surface border border-border-subtle rounded px-1.5 py-1 text-xs outline-none"
+								:aria-label="t('components.postbox.postboxComposerFooter.signature')"
+								@change="emit('signature-change', $event)"
+							>
+								<option value="">{{ t('common.none') }}</option>
+								<option v-for="sig in signatures" :key="sig._id" :value="sig._id">
+									{{ sig.name }}
+								</option>
+							</select>
+						</label>
+						<div class="border-t border-border-subtle my-1" />
+						<!-- Plan idea 14: the HTML, the REAL text/plain alternative and a
 					     dark rendering, from the same builder the send path uses. -->
-					<button
-						type="button"
-						role="menuitem"
-						class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
-						@click="
-							previewOpen = true;
-							close();
-						"
-					>
-						<Icon name="lucide:scan-eye" class="w-4 h-4 text-text-tertiary" />
-						{{ t('components.postbox.postboxComposerFooter.previewAsSent') }}
-					</button>
-					<div class="border-t border-border-subtle my-1" />
-					<button
-						type="button"
-						role="menuitem"
-						class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface disabled:opacity-50"
-						:title="scheduleShortcutHint"
-						:disabled="!canSend || sending || isScheduled"
-						@click="
-							emit('schedule');
-							close();
-						"
-					>
-						<Icon name="lucide:clock" class="w-4 h-4 text-text-tertiary" />
-						{{ t('components.postbox.postboxComposerFooter.scheduleSend') }}
-					</button>
-					<div class="border-t border-border-subtle my-1" />
-					<div class="px-3 py-1.5">
-						<PostboxComposerModeControls
-							:mode="composerMode"
-							:persistent-toolbar="persistentToolbar"
-							@toggle-toolbar="emit('toggle-toolbar')"
-							@switch-mode="emit('switch-mode', $event)"
-						/>
-					</div>
-				</template>
-			</PostboxOverflowMenu>
-			<!-- Plan idea 6: the always-on checks, stated beside Send and nowhere
-			     else. Advisory — Send stays enabled. -->
-			<PostboxComposerPreflightChip :findings="preflight ?? []" />
-			<!-- Deliberately a sibling of the ⋯ menu, not slot content: the dialog
+						<button
+							type="button"
+							role="menuitem"
+							class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
+							@click="
+								previewOpen = true;
+								close();
+							"
+						>
+							<Icon name="lucide:scan-eye" class="w-4 h-4 text-text-tertiary" />
+							{{ t('components.postbox.postboxComposerFooter.previewAsSent') }}
+						</button>
+						<div class="border-t border-border-subtle my-1" />
+						<button
+							type="button"
+							role="menuitem"
+							class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface disabled:opacity-50"
+							:title="scheduleShortcutHint"
+							:disabled="!canSend || sending || isScheduled"
+							@click="
+								emit('schedule');
+								close();
+							"
+						>
+							<Icon name="lucide:clock" class="w-4 h-4 text-text-tertiary" />
+							{{ t('components.postbox.postboxComposerFooter.scheduleSend') }}
+						</button>
+						<div class="border-t border-border-subtle my-1" />
+						<div class="px-3 py-1.5">
+							<PostboxComposerModeControls
+								:mode="composerMode"
+								:persistent-toolbar="persistentToolbar"
+								@toggle-toolbar="emit('toggle-toolbar')"
+								@switch-mode="emit('switch-mode', $event)"
+							/>
+						</div>
+					</template>
+				</PostboxOverflowMenu>
+				<!-- Deliberately a sibling of the ⋯ menu, not slot content: the dialog
 			     must survive the panel closing (see followUpPickerOpen above). -->
-			<!-- Plan idea 14: read-only, derived from the send path's own builder. -->
-			<PostboxPreviewAsSent
-				:open="previewOpen"
-				:subject="subject"
-				:body-html="bodyHtml"
-				:body-blocks="bodyBlocks"
-				:composer-mode="composerMode"
-				@update:open="previewOpen = $event"
-			/>
-			<PostboxFollowUpDialog
-				:open="followUpPickerOpen"
-				@update:open="followUpPickerOpen = $event"
-				@confirm="(ts) => (followUpRemindAt = ts)"
-			/>
+				<!-- Plan idea 14: read-only, derived from the send path's own builder. -->
+				<PostboxPreviewAsSent
+					:open="previewOpen"
+					:subject="subject"
+					:body-html="bodyHtml"
+					:body-blocks="bodyBlocks"
+					:composer-mode="composerMode"
+					@update:open="previewOpen = $event"
+				/>
+				<PostboxFollowUpDialog
+					:open="followUpPickerOpen"
+					@update:open="followUpPickerOpen = $event"
+					@confirm="(ts) => (followUpRemindAt = ts)"
+				/>
+			</div>
+			<span class="shrink-0 text-xs text-text-tertiary">{{ lastSavedLabel }}</span>
 		</div>
-		<span class="text-xs text-text-tertiary">{{ lastSavedLabel }}</span>
+		<!-- Plan idea 6: the always-on checks, on their own line under Send so a
+		     long list wraps instead of being cut off. Advisory — Send stays
+		     enabled. -->
+		<PostboxComposerPreflightChip :findings="preflight ?? []" />
 	</footer>
 </template>

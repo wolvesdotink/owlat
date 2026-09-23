@@ -46,4 +46,18 @@ describe('PostboxComposerPreflightChip', () => {
 		]);
 		expect(wrapper.text()).toBe('2 checks: no subject · “[TODO]” left in the message');
 	});
+
+	it('wraps a long list instead of cutting it off', () => {
+		const wrapper = mountChip([
+			{ id: 'emptySubject', key: 'shared.postbox.preflight.emptySubject' },
+			{
+				id: 'placeholder',
+				key: 'shared.postbox.preflight.placeholder',
+				params: { token: '[TODO]' },
+			},
+		]);
+		const text = wrapper.get('[data-testid="postbox-preflight-chip"] span');
+		expect(text.classes()).not.toContain('truncate');
+		expect(text.classes()).toContain('break-words');
+	});
 });

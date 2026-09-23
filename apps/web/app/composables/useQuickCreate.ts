@@ -1,5 +1,6 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { composeContextForPath } from '~/lib/composeContext';
 
 /**
  * The app's CREATE verbs, in one place, so every surface that offers "compose"
@@ -13,13 +14,17 @@ import type { Id } from '@owlat/api/dataModel';
  * not reachable from anywhere else. This is that shared entry point (the "one
  * quick-create registry" T6 will hang the header split-button off).
  *
- * Composers only RENDER inside the Postbox (`PostboxComposerStack` is mounted
- * there), so composing from another surface navigates first and then opens —
- * the stack is shared `useState`, so the composer is already in it by the time
- * the Postbox paints.
+ * The composer is an OVERLAY on the page you are on: the shell mounts the same
+ * floating composer stack the Postbox uses (`ShellComposerOverlay`), so
+ * composing from Today, a campaign or a contact never navigates away. The stack
+ * is shared `useState`, so whichever host is mounted renders the new composer.
+ * On a contact page the composer is addressed to that contact.
  */
 
-/** Where the composer lives when the caller is not already in the Postbox. */
+/**
+ * Where Compose lands when there is no mailbox to compose from: the Postbox's
+ * mailbox guard explains why, instead of a silently dead button.
+ */
 const POSTBOX_COMPOSE_ROUTE = '/dashboard/postbox/inbox';
 
 /** The contacts list, told to open its Add dialog on arrival. */
@@ -27,11 +32,6 @@ const NEW_CONTACT_ROUTE = {
 	path: '/dashboard/audience/contacts',
 	query: { action: 'add' },
 } as const;
-
-/** True while `path` is the Postbox surface (or one of its children). */
-function isPostboxPath(path: string): boolean {
-	return path === '/dashboard/postbox' || path.startsWith('/dashboard/postbox/');
-}
 
 export function useQuickCreate() {
 	const route = useRoute();
@@ -62,15 +62,38 @@ export function useQuickCreate() {
 	}
 
 	/**
-	 * Open a real composer. Off the Postbox this lands there first; with no
-	 * mailbox at all it still lands there, where `PostboxMailboxGuard` explains
-	 * why there is nothing to compose from instead of a silently dead keystroke.
+	 * The recipients the current page implies: the contact's address on a
+	 * contact page. Read once through the client (no live subscription), and
+	 * best-effort — a contact that cannot be read just means an empty To field.
+	 */
+	async function resolvePrefillTo(): Promise<string[]> {
+		const context = composeContextForPath(route.path);
+		if (!context) return [];
+		try {
+			const contact = await requireConvex().query(api.contacts.contacts.get, {
+				contactId: context.contactId as Id<'contacts'>,
+			});
+			return contact?.email ? [contact.email] : [];
+		} catch {
+			return [];
+		}
+	}
+
+	/**
+	 * Open a real composer over the current page. With no mailbox at all it
+	 * lands on the Postbox, where `PostboxMailboxGuard` explains why there is
+	 * nothing to compose from instead of a silently dead keystroke.
 	 */
 	async function openCompose(): Promise<void> {
-		const mailboxId = await resolveComposeMailboxId();
-		if (!isPostboxPath(route.path)) await navigateTo(POSTBOX_COMPOSE_ROUTE);
-		if (!mailboxId) return;
-		stack.open({ mailboxId });
+		const [mailboxId, prefillTo] = await Promise.all([
+			resolveComposeMailboxId(),
+			resolvePrefillTo(),
+		]);
+		if (!mailboxId) {
+			await navigateTo(POSTBOX_COMPOSE_ROUTE);
+			return;
+		}
+		stack.open(prefillTo.length > 0 ? { mailboxId, prefillTo } : { mailboxId });
 	}
 
 	/** Open the contacts list with its Add contact dialog already up. */

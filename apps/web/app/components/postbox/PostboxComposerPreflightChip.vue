@@ -29,10 +29,10 @@ const summary = computed(() =>
 <template>
 	<span
 		v-if="findings.length > 0"
-		class="inline-flex items-center gap-1.5 min-w-0 text-xs text-text-tertiary"
+		class="flex items-start gap-1.5 min-w-0 text-xs text-text-tertiary"
 		data-testid="postbox-preflight-chip"
 	>
-		<Icon name="lucide:list-checks" class="w-3.5 h-3.5 shrink-0 text-warning" />
-		<span class="truncate max-w-[18rem]" :title="summary">{{ summary }}</span>
+		<Icon name="lucide:list-checks" class="w-3.5 h-3.5 mt-px shrink-0 text-warning" />
+		<span class="min-w-0 break-words">{{ summary }}</span>
 	</span>
 </template>

@@ -604,6 +604,10 @@ const sidebarDesktopClass = computed(() => {
 		     Postbox, knowledge Ask on Cmd/Ctrl+Shift+K, objects everywhere else -->
 		<AppCommandPalette />
 
+		<!-- Compose over the current page (the top-bar button, the palette and
+		     the c chord), never by navigating to the mailbox. -->
+		<ShellComposerOverlay />
+
 		<!-- Keyboard shortcuts help modal -->
 		<KeyboardShortcutsHelp />
 
