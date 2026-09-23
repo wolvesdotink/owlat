@@ -2,6 +2,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
+import { expectScheduledFailure } from './helpers/scheduledFailures';
 
 /**
  * Signature / secret-verification tests for the webhook handlers NOT covered by
@@ -48,6 +49,10 @@ const modules = Object.fromEntries(
 			!p.includes('llmProvider')
 	)
 );
+
+// Accepted inbound mail schedules the agent walker, which is excluded above;
+// it fails to resolve when it runs.
+beforeEach(() => expectScheduledFailure('agent/walker:start'));
 
 function setupTest() {
 	const t = convexTest(schema, modules);
