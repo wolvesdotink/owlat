@@ -9,8 +9,8 @@ import { composeContextForPath } from '~/lib/composeContext';
  * The command palette used to fake both: "Compose" navigated to the inbox LIST
  * and "New contact" to the contacts LIST, so a palette that promised to create
  * something just moved you somewhere and left you to find the button. The real
- * mechanisms already existed — `PostboxComposeButton` opens the composer stack,
- * and the contacts page opens its Add dialog for `?action=add` — they were just
+ * mechanisms already existed — the Postbox composer stack, and the contacts
+ * page's Add dialog for `?action=add` — they were just
  * not reachable from anywhere else. This is that shared entry point (the "one
  * quick-create registry" T6 will hang the header split-button off).
  *
