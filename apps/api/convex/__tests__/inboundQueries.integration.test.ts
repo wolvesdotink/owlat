@@ -453,6 +453,44 @@ describe('inboundQueries.getThreadFilterCounts', () => {
 		expect(list.threads).toHaveLength(1);
 		expect(list.threads[0]?.assignedTo).toBe('test-user-123');
 	});
+
+	it('pages an assignment-filtered tab in activity order, not creation order', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['inbox']);
+		await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			// Created first, but the customer wrote most recently.
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({
+					contactId,
+					subject: 'old thread, fresh reply',
+					status: 'open',
+					assignedTo: 'test-user-123',
+					lastMessageAt: 3_000,
+				})
+			);
+			await ctx.db.insert(
+				'conversationThreads',
+				threadData({
+					contactId,
+					subject: 'newer thread, quiet',
+					status: 'open',
+					assignedTo: 'test-user-123',
+					lastMessageAt: 1_000,
+				})
+			);
+		});
+		const list = await t.withIdentity(testIdentity).query(api.inbox.queries.listThreads, {
+			filter: 'open',
+			assignee: 'me',
+			sort: 'newest',
+		});
+		expect(list.threads.map((thread) => thread.subject)).toEqual([
+			'old thread, fresh reply',
+			'newer thread, quiet',
+		]);
+	});
 });
 
 // ============ getThread ============

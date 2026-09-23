@@ -100,7 +100,16 @@ export const inboxTables = {
 		.index('by_last_message_at', ['lastMessageAt'])
 		.index('by_contact', ['contactId'])
 		.index('by_assigned_to', ['assignedTo'])
+		// Assignment + status + recency: the Team Inbox's Me / Unassigned filter
+		// on a status tab pages in lastMessageAt order, like the tab without it,
+		// and only reads that assignee's threads in that status.
+		.index('by_assigned_to_and_status_and_last_message_at', [
+			'assignedTo',
+			'status',
+			'lastMessageAt',
+		])
 		.index('by_snoozed_until', ['snoozedUntil'])
+		.index('by_assigned_to_and_snoozed_until', ['assignedTo', 'snoozedUntil'])
 		.index('by_normalized_subject_and_contact', ['normalizedSubject', 'contactIdentifier'])
 		// Team Inbox TEXT SEARCH. Two indexes rather than one denormalized
 		// `searchableText` column: a thread's subject and its participant are both

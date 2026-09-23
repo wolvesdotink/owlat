@@ -135,10 +135,10 @@ const ASSIGNABLE_STATUS_FILTERS: ReadonlySet<ThreadFilter> = new Set<ThreadFilte
 ]);
 
 /**
- * A status slice narrowed to one assignment. Walks the `by_assigned_to` index
- * (the assignment is the equality the index can serve) and applies the status
- * slice as a filter — the same shape the `mine` / `unassigned` pills have
- * always used, so paging stays keyset-complete.
+ * A status slice narrowed to one assignment. Walks the compound
+ * assignment + status + recency index (or assignment + snooze time for
+ * Snoozed), so a page comes back in the same order as the unfiltered tab and
+ * the scan only ever touches that assignee's threads in that status.
  */
 function buildAssignedStatusQuery(
 	ctx: QueryCtx,
@@ -148,30 +148,36 @@ function buildAssignedStatusQuery(
 	assignee: ThreadAssignee
 ) {
 	const owner = assignee === 'me' ? userId : undefined;
-	const indexed = ctx.db
-		.query('conversationThreads')
-		.withIndex('by_assigned_to', (idx) => idx.eq('assignedTo', owner));
+	const base = ctx.db.query('conversationThreads');
 	switch (filter) {
 		case 'snoozed':
-			return indexed.filter((f) => f.gt(f.field('snoozedUntil'), now));
-		case 'resolved':
-			return indexed.filter((f) => f.eq(f.field('status'), 'resolved'));
-		case 'waiting-24h':
-			return indexed.filter((f) =>
-				f.and(
-					f.eq(f.field('status'), 'open'),
-					f.lte(f.field('lastMessageAt'), now - WAITING_OVER_24H_MS),
-					f.or(f.eq(f.field('snoozedUntil'), undefined), f.lte(f.field('snoozedUntil'), now))
-				)
+			return base.withIndex('by_assigned_to_and_snoozed_until', (idx) =>
+				idx.eq('assignedTo', owner).gt('snoozedUntil', now)
 			);
+		case 'resolved':
+			return base.withIndex('by_assigned_to_and_status_and_last_message_at', (idx) =>
+				idx.eq('assignedTo', owner).eq('status', 'resolved')
+			);
+		case 'waiting-24h':
+			return base
+				.withIndex('by_assigned_to_and_status_and_last_message_at', (idx) =>
+					idx
+						.eq('assignedTo', owner)
+						.eq('status', 'open')
+						.lte('lastMessageAt', now - WAITING_OVER_24H_MS)
+				)
+				.filter((f) =>
+					f.or(f.eq(f.field('snoozedUntil'), undefined), f.lte(f.field('snoozedUntil'), now))
+				);
 		default: {
 			const status = filter === 'waiting' ? 'waiting' : 'open';
-			return indexed.filter((f) =>
-				f.and(
-					f.eq(f.field('status'), status),
-					f.or(f.eq(f.field('snoozedUntil'), undefined), f.lte(f.field('snoozedUntil'), now))
+			return base
+				.withIndex('by_assigned_to_and_status_and_last_message_at', (idx) =>
+					idx.eq('assignedTo', owner).eq('status', status)
 				)
-			);
+				.filter((f) =>
+					f.or(f.eq(f.field('snoozedUntil'), undefined), f.lte(f.field('snoozedUntil'), now))
+				);
 		}
 	}
 }
