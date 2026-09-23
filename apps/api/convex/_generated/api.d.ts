@@ -538,6 +538,7 @@ import type * as inbox_decisionFeedback from '../inbox/decisionFeedback.js';
 import type * as inbox_draftRevisions from '../inbox/draftRevisions.js';
 import type * as inbox_inboundIngest from '../inbox/inboundIngest.js';
 import type * as inbox_inboundWebhookHttp from '../inbox/inboundWebhookHttp.js';
+import type * as inbox_manualReply from '../inbox/manualReply.js';
 import type * as inbox_messages from '../inbox/messages.js';
 import type * as inbox_mutations from '../inbox/mutations.js';
 import type * as inbox_presence from '../inbox/presence.js';
@@ -1698,6 +1699,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/draftRevisions': typeof inbox_draftRevisions;
 	'inbox/inboundIngest': typeof inbox_inboundIngest;
 	'inbox/inboundWebhookHttp': typeof inbox_inboundWebhookHttp;
+	'inbox/manualReply': typeof inbox_manualReply;
 	'inbox/messages': typeof inbox_messages;
 	'inbox/mutations': typeof inbox_mutations;
 	'inbox/presence': typeof inbox_presence;

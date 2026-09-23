@@ -20,7 +20,7 @@ const STATUSES = [
 
 const EXPECTED_EDGES: Readonly<Record<ProcessingStatus, readonly ProcessingStatus[]>> = {
 	received: ['security_check', 'archived'],
-	security_check: ['classifying', 'quarantined', 'archived'],
+	security_check: ['classifying', 'quarantined', 'archived', 'draft_ready'],
 	quarantined: ['received', 'archived'],
 	classifying: ['drafting', 'draft_ready', 'awaiting_clarification', 'informational', 'archived'],
 	informational: ['drafting', 'archived'],
@@ -31,7 +31,7 @@ const EXPECTED_EDGES: Readonly<Record<ProcessingStatus, readonly ProcessingStatu
 	sent: [],
 	rejected: [],
 	archived: [],
-	failed: ['received'],
+	failed: ['received', 'draft_ready'],
 };
 
 describe('inbox lifecycle edge conformance', () => {

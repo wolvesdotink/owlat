@@ -48,7 +48,11 @@ export const PROCESSING_LIFECYCLE = defineLifecycle<ProcessingStatus>(
 		// `* → archived` star-source branch in dispatch() already permits it; this
 		// entry keeps the declared contract in sync with runtime behavior.
 		received: ['security_check', 'archived'],
-		security_check: ['classifying', 'quarantined', 'archived'],
+		// `draft_ready` is the human takeover (inbox/manualReply.ts): with the
+		// agent off the pipeline stops after a clean scan, and a person writes the
+		// reply themselves. The mutation only takes this edge once the scan has
+		// finished, so a message is never answered ahead of its quarantine check.
+		security_check: ['classifying', 'quarantined', 'archived', 'draft_ready'],
 		quarantined: ['received', 'archived'],
 		classifying: ['drafting', 'draft_ready', 'awaiting_clarification', 'informational', 'archived'],
 		// Needs no reply: parked for the Updates dashboard. A reader can dismiss
@@ -71,7 +75,9 @@ export const PROCESSING_LIFECYCLE = defineLifecycle<ProcessingStatus>(
 		sent: [],
 		rejected: [],
 		archived: [],
-		failed: ['received'],
+		// `received` is the retry; `draft_ready` is a person writing the reply
+		// the agent failed to (inbox/manualReply.ts).
+		failed: ['received', 'draft_ready'],
 	},
 	{ reportsTerminalRefusals: true }
 );
