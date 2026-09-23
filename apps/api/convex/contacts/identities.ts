@@ -16,6 +16,7 @@ import { logInfo } from '../lib/runtimeLog';
 import { mergeContactRelations } from '../lib/contactMutations';
 import { decrementContactCount } from '../lib/contactCountHelpers';
 import { recordAuditLog } from '../lib/auditLog';
+import { redactContactCapabilityFields, type PublicContact } from './listing';
 
 // ============================================================
 // Queries
@@ -37,12 +38,16 @@ export const listByContact = authedQuery({
 /**
  * Find potential merge candidates for a contact.
  * Returns other contacts that share identifiers with the given contact.
+ *
+ * Candidates leave through the same capability-field redaction as every other
+ * member-readable contact read, and soft-deleted contacts are never offered on
+ * either side: an erased contact is not a merge source or target.
  */
 export const getMergeSuggestions = authedQuery({
 	args: { contactId: v.id('contacts') },
 	handler: async (ctx, args) => {
 		const contact = await ctx.db.get(args.contactId);
-		if (!contact) return [];
+		if (!contact || contact.deletedAt !== undefined) return [];
 
 		const identities = await ctx.db
 			.query('contactIdentities')
@@ -51,7 +56,7 @@ export const getMergeSuggestions = authedQuery({
 
 		const candidateIds = new Set<string>();
 		const suggestions: Array<{
-			contact: Doc<'contacts'>;
+			contact: PublicContact;
 			matchedIdentities: Array<{ channel: string; identifier: string }>;
 		}> = [];
 
@@ -72,7 +77,7 @@ export const getMergeSuggestions = authedQuery({
 				candidateIds.add(key);
 
 				const candidateContact = await ctx.db.get(match.contactId);
-				if (!candidateContact) continue;
+				if (!candidateContact || candidateContact.deletedAt !== undefined) continue;
 
 				// Gather all shared identities
 				const candidateIdentities = await ctx.db
@@ -85,7 +90,7 @@ export const getMergeSuggestions = authedQuery({
 				);
 
 				suggestions.push({
-					contact: candidateContact,
+					contact: redactContactCapabilityFields(candidateContact),
 					matchedIdentities: shared.map((s) => ({
 						channel: s.channel,
 						identifier: s.identifier,

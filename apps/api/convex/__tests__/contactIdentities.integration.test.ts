@@ -397,6 +397,72 @@ describe('contactIdentities.getMergeSuggestions', () => {
 		});
 	});
 
+	it('redacts DOI capability fields and skips soft-deleted candidates', async () => {
+		const t = convexTest(schema, modules);
+		let contactA!: Id<'contacts'>;
+		let pendingCandidate!: Id<'contacts'>;
+		const DOI_TOKEN = 'merge-candidate-doi-token';
+
+		await t.run(async (ctx) => {
+			contactA = await ctx.db.insert('contacts', createTestContact({ email: 'a@example.com' }));
+			pendingCandidate = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'pending@example.com',
+					doiStatus: 'pending',
+					doiConfirmationToken: DOI_TOKEN,
+					doiTokenExpiresAt: Date.now() + 60_000,
+				})
+			);
+			const erasedCandidate = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'erased@example.com', deletedAt: Date.now() })
+			);
+			for (const contactId of [contactA, pendingCandidate, erasedCandidate]) {
+				await ctx.db.insert(
+					'contactIdentities',
+					createTestContactIdentity({ contactId, channel: 'phone', identifier: '+15550100' })
+				);
+			}
+		});
+
+		const suggestions = await t.query(api.contacts.identities.getMergeSuggestions, {
+			contactId: contactA,
+		});
+
+		expect(suggestions.map((s) => s.contact._id)).toEqual([pendingCandidate]);
+		expect(suggestions[0]!.contact).not.toHaveProperty('doiConfirmationToken');
+		expect(suggestions[0]!.contact).not.toHaveProperty('doiTokenExpiresAt');
+		expect(JSON.stringify(suggestions)).not.toContain(DOI_TOKEN);
+	});
+
+	it('suggests nothing for a soft-deleted contact', async () => {
+		const t = convexTest(schema, modules);
+		let erased!: Id<'contacts'>;
+
+		await t.run(async (ctx) => {
+			erased = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'erased@example.com', deletedAt: Date.now() })
+			);
+			const live = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'live@example.com' })
+			);
+			for (const contactId of [erased, live]) {
+				await ctx.db.insert(
+					'contactIdentities',
+					createTestContactIdentity({ contactId, channel: 'phone', identifier: '+15550101' })
+				);
+			}
+		});
+
+		const suggestions = await t.query(api.contacts.identities.getMergeSuggestions, {
+			contactId: erased,
+		});
+		expect(suggestions).toEqual([]);
+	});
+
 	it('should not suggest contacts without shared identifiers', async () => {
 		const t = convexTest(schema, modules);
 		let contactA!: Id<'contacts'>;

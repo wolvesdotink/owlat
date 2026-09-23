@@ -23,6 +23,7 @@ import {
 } from './threadFilters';
 import { searchThreads } from './threadSearch';
 import { takeOverViewFor } from './manualReply';
+import { redactContactCapabilityFields } from '../contacts/listing';
 import {
 	openConversationThreadPreview,
 	openInboundMessageRow,
@@ -251,11 +252,10 @@ export const getThread = publicQuery({
 			.order('asc')
 			.collect(); // bounded: one thread's inbound messages
 
-		// Get contact info if linked
-		let contact = null;
-		if (thread.contactId) {
-			contact = await ctx.db.get(thread.contactId);
-		}
+		// Get contact info if linked. Redacted like every other contact read:
+		// the thread view has no use for the pending DOI token.
+		const linkedContact = thread.contactId ? await ctx.db.get(thread.contactId) : null;
+		const contact = linkedContact ? redactContactCapabilityFields(linkedContact) : null;
 
 		return {
 			thread: await openConversationThreadPreview(thread),
@@ -303,7 +303,7 @@ export const getReviewQueue = publicQuery({
 				return {
 					message: await openInboundMessageRow(msg),
 					thread: thread ? await openConversationThreadPreview(thread) : null,
-					contact,
+					contact: contact ? redactContactCapabilityFields(contact) : null,
 				};
 			})
 		);
