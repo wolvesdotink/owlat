@@ -13,6 +13,8 @@
  *   - what is left is gated the same way the sidebar gates its sections, by the
  *     SAME pure environment (`NavigationEnvironment`) — a member never gets an
  *     admin destination offered, and a disabled feature takes its pages with it;
+ *   - an Administration page also passes its registry gate (`AdminEnvironment`),
+ *     so ⌘K never offers a page the Settings rail has left out;
  *   - an Administration page takes its title and area from
  *     `lib/adminSettingsRegistry`, the table its rail reads, so the palette
  *     and the rail cannot name one page two ways;
@@ -27,7 +29,12 @@
 import type { NavigationEnvironment } from './dashboardNavigationCore';
 import { minRole } from './dashboardNavigationCore';
 import { routeConfigs } from './breadcrumbRoutes';
-import { ADMIN_AREAS, adminEntryFor } from './adminSettingsRegistry';
+import {
+	ADMIN_AREAS,
+	adminEntryFor,
+	isAdminEntryReachable,
+	type AdminEnvironment,
+} from './adminSettingsRegistry';
 
 /** One labelled destination the palette can offer, as message keys. */
 export interface RoutePaletteTarget {
@@ -101,16 +108,33 @@ const REDIRECT_ONLY_ROUTES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * An Administration page also answers to its own registry gate (a platform-only
+ * page, a plugin page, the ramp's Advanced group before the ramp exists), the
+ * one the rail and the admin palette group read. Routes the registry does not
+ * own pass. Pure.
+ */
+function passesAdminGate(href: string, admin: AdminEnvironment): boolean {
+	const entry = adminEntryFor(href);
+	return !entry || isAdminEntryReachable(entry, admin);
+}
+
+/**
  * Every labelled route the palette should offer beyond `knownHrefs` (the
- * sidebar's own destinations), gated for `env` and in table order. Pure.
+ * sidebar's own destinations), gated for `env` and `admin` and in table order.
+ * Pure.
  */
 export function routePaletteTargets(
 	env: NavigationEnvironment,
-	knownHrefs: ReadonlySet<string>
+	knownHrefs: ReadonlySet<string>,
+	admin: AdminEnvironment
 ): RoutePaletteTarget[] {
 	return Object.entries(routeConfigs)
 		.filter(
-			([href]) => !knownHrefs.has(href) && !REDIRECT_ONLY_ROUTES.has(href) && gateFor(href)(env)
+			([href]) =>
+				!knownHrefs.has(href) &&
+				!REDIRECT_ONLY_ROUTES.has(href) &&
+				gateFor(href)(env) &&
+				passesAdminGate(href, admin)
 		)
 		.map(([href, config]) => {
 			// The crumb trail, deepest last: the label is where you land, the

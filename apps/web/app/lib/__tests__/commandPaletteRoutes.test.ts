@@ -14,7 +14,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { NavigationEnvironment } from '../dashboardNavigationCore';
 import { routePaletteTargets } from '../commandPaletteRoutes';
-import { ADMIN_AREAS, adminEntryFor } from '../adminSettingsRegistry';
+import { ADMIN_AREAS, adminEntryFor, type AdminEnvironment } from '../adminSettingsRegistry';
 import { createTestI18n } from '~/__tests__/i18n';
 
 const { t } = createTestI18n().global;
@@ -28,8 +28,20 @@ function env(overrides: Partial<NavigationEnvironment> = {}): NavigationEnvironm
 	};
 }
 
-function hrefs(environment = env(), known: Iterable<string> = []): string[] {
-	return routePaletteTargets(environment, new Set(known)).map((target) => target.href);
+/** A platform admin on a deployment that has every admin page, the ramp included. */
+const ADMIN: AdminEnvironment = {
+	isFeatureEnabled: () => true,
+	isPlatformAdmin: true,
+	hasPlugins: true,
+	hasRampStarted: true,
+};
+
+function hrefs(
+	environment = env(),
+	known: Iterable<string> = [],
+	admin: AdminEnvironment = ADMIN
+): string[] {
+	return routePaletteTargets(environment, new Set(known), admin).map((target) => target.href);
 }
 
 describe('routePaletteTargets', () => {
@@ -46,7 +58,7 @@ describe('routePaletteTargets', () => {
 	});
 
 	it('labels a leaf with its page crumb and the level above it', () => {
-		const target = routePaletteTargets(env(), new Set()).find(
+		const target = routePaletteTargets(env(), new Set(), ADMIN).find(
 			(entry) => entry.href === '/dashboard/audience/segments'
 		);
 		expect(target).toMatchObject({
@@ -57,7 +69,7 @@ describe('routePaletteTargets', () => {
 	});
 
 	it('names an admin page with the title and area its own rail prints', () => {
-		const targets = routePaletteTargets(env(), new Set());
+		const targets = routePaletteTargets(env(), new Set(), ADMIN);
 		for (const target of targets.filter((entry) => entry.href.startsWith('/dashboard/admin'))) {
 			const entry = adminEntryFor(target.href);
 			if (!entry) continue;
@@ -75,7 +87,7 @@ describe('routePaletteTargets', () => {
 	});
 
 	it('gives a section root no context line', () => {
-		const target = routePaletteTargets(env(), new Set()).find(
+		const target = routePaletteTargets(env(), new Set(), ADMIN).find(
 			(entry) => entry.href === '/dashboard'
 		);
 		expect(target?.labelKey).toBe('shared.breadcrumbRoutes.sections.dashboard');
@@ -83,7 +95,7 @@ describe('routePaletteTargets', () => {
 	});
 
 	it('files campaigns, automations and templates under Marketing, not Send', () => {
-		const targets = routePaletteTargets(env(), new Set());
+		const targets = routePaletteTargets(env(), new Set(), ADMIN);
 		for (const href of ['/dashboard/campaigns', '/dashboard/automations', '/dashboard/send']) {
 			const target = targets.find((entry) => entry.href === href);
 			expect(target?.contextKey, href).toBe('shared.breadcrumbRoutes.sections.marketing');
@@ -92,7 +104,7 @@ describe('routePaletteTargets', () => {
 	});
 
 	it('renders every derived key as words, never as a key path', () => {
-		for (const target of routePaletteTargets(env(), new Set())) {
+		for (const target of routePaletteTargets(env(), new Set(), ADMIN)) {
 			expect(t(target.labelKey)).not.toBe(target.labelKey);
 			if (target.contextKey) expect(t(target.contextKey)).not.toBe(target.contextKey);
 		}
@@ -109,6 +121,29 @@ describe('routePaletteTargets', () => {
 		const reachable = hrefs(env({ isFeatureEnabled: (flag) => flag !== 'campaigns' }));
 		expect(reachable.filter((href) => href.startsWith('/dashboard/campaigns'))).toEqual([]);
 		expect(reachable).toContain('/dashboard/admin/instance/ai-provider');
+	});
+
+	it('leaves out the ramp pages until the ramp has started, as the rail does', () => {
+		const ramp = (href: string) => href.startsWith('/dashboard/admin/delivery/advanced');
+		expect(hrefs(env(), [], { ...ADMIN, hasRampStarted: false }).filter(ramp)).toEqual([]);
+		expect(hrefs().filter(ramp)).toEqual([
+			'/dashboard/admin/delivery/advanced/controls',
+			'/dashboard/admin/delivery/advanced/cells',
+			'/dashboard/admin/delivery/advanced/independence',
+			'/dashboard/admin/delivery/advanced/measurement',
+		]);
+	});
+
+	it('leaves out the deployment tooling for a workspace admin, as the rail does', () => {
+		const reachable = hrefs(env(), [], { ...ADMIN, isPlatformAdmin: false });
+		for (const href of [
+			'/dashboard/admin/system',
+			'/dashboard/admin/backups',
+			'/dashboard/admin/operator',
+		]) {
+			expect(reachable).not.toContain(href);
+			expect(hrefs()).toContain(href);
+		}
 	});
 
 	it('leaves Preferences to the settings registry', () => {

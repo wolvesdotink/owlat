@@ -42,7 +42,10 @@ const FULL: AdminEnvironment = {
 	isFeatureEnabled: () => true,
 	isPlatformAdmin: true,
 	hasPlugins: true,
+	hasRampStarted: true,
 };
+/** Every deployment out of the box: no cell has ever been put on the ramp. */
+const NO_RAMP: AdminEnvironment = { ...FULL, hasRampStarted: false };
 const NO_AI: AdminEnvironment = {
 	...FULL,
 	isFeatureEnabled: (flag) => flag !== 'ai.agent' && flag !== 'ai.autonomy',
@@ -217,8 +220,9 @@ describe('gates', () => {
 			isFeatureEnabled: () => false,
 			isPlatformAdmin: false,
 			hasPlugins: false,
+			hasRampStarted: false,
 		};
-		for (const env of [FULL, WORKSPACE_ADMIN, bare]) {
+		for (const env of [FULL, WORKSPACE_ADMIN, NO_RAMP, bare]) {
 			expect(adminAreasFor(env).filter((area) => area.entries.length === 0)).toEqual([]);
 		}
 	});
@@ -258,6 +262,58 @@ describe('gates', () => {
 		const ids = reachableAdminEntries(noInbox).map((entry) => entry.id);
 		expect(ids).not.toContain('quarantine');
 		expect(ids).not.toContain('failed');
+	});
+});
+
+describe('the ramp gate on Advanced', () => {
+	const RAMP_PAGES = ['rampControls', 'cells', 'independence', 'measurement'];
+	const deliveryRail = (env: AdminEnvironment) =>
+		adminAreasFor(env)
+			.find((area) => area.key === 'delivery')
+			?.entries.map((entry) => entry.id) ?? [];
+
+	it('leaves Advanced out of the rail until the ramp has started', () => {
+		expect(deliveryRail(NO_RAMP)).not.toContain('advanced');
+		// The rest of Email delivery is untouched.
+		expect(deliveryRail(NO_RAMP)).toEqual(deliveryRail(FULL).filter((id) => id !== 'advanced'));
+	});
+
+	it('lists Advanced once the ramp has started', () => {
+		expect(deliveryRail(FULL)).toContain('advanced');
+	});
+
+	it('takes the four ramp pages out of the palette with it', () => {
+		const offered = (env: AdminEnvironment) =>
+			buildAdminSurfaceGroups(
+				{
+					entries: () => reachableAdminEntries(env),
+					t: (key: string) => t(key),
+					areaTitleKey: (area: string) => `shell.admin.areas.${area}`,
+					onOpen: () => {},
+				},
+				''
+			)[0]?.items.map((item) => item.id) ?? [];
+		for (const id of ['advanced', ...RAMP_PAGES]) {
+			expect(offered(NO_RAMP)).not.toContain(`admin:${id}`);
+			expect(offered(FULL)).toContain(`admin:${id}`);
+		}
+	});
+
+	it('still renders the tabs for someone who lands on a ramp page by URL', () => {
+		for (const path of [
+			`${ADMIN_ROOT}/delivery/advanced`,
+			`${ADMIN_ROOT}/delivery/advanced/cells`,
+		]) {
+			expect(adminTabsFor(path, NO_RAMP).map((entry) => entry.id)).toEqual(RAMP_PAGES);
+		}
+	});
+
+	it('keeps every ramp page a real route with an empty state that says how to start', async () => {
+		for (const leaf of ['controls', 'cells', 'independence', 'measurement']) {
+			const source = await readFile(join(adminPages, 'delivery/advanced', `${leaf}.vue`), 'utf8');
+			expect(isRedirectStub(source), leaf).toBe(false);
+			expect(source, leaf).toContain('<DeliveryAdvancedEmptyState');
+		}
 	});
 });
 
