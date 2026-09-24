@@ -36,6 +36,8 @@ export interface AdminEnvironment {
 	isPlatformAdmin: boolean;
 	/** This build ships at least one plugin that has settings. */
 	hasPlugins: boolean;
+	/** The delivery ramp has taken over a cell (now, or within decision retention). */
+	hasRampStarted: boolean;
 }
 
 export type AdminGate = (env: AdminEnvironment) => boolean;
@@ -50,6 +52,7 @@ const anyFlag =
 		keys.some((key) => env.isFeatureEnabled(key));
 const platformOnly: AdminGate = (env) => env.isPlatformAdmin;
 const withPlugins: AdminGate = (env) => env.hasPlugins;
+const rampStarted: AdminGate = (env) => env.hasRampStarted;
 
 /** The groups the rail renders as eyebrows, in this order. */
 export type AdminAreaKey = 'overview' | 'team' | 'delivery' | 'ai' | 'features' | 'system';
@@ -263,11 +266,17 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 	{
 		// One rail entry for the four ramp pages; the page itself forwards to
 		// the first of them, and the layout renders all four as tabs.
+		//
+		// Listed only once the ramp has taken over a cell. The gate hides the
+		// rail and palette rows (children inherit it), not the routes: a docs
+		// link still lands on tabs and an empty state that says how to start.
+		// Deliverability and the migration guide link to Controls directly.
 		id: 'advanced',
 		path: `${ADMIN_ROOT}/delivery/advanced`,
 		titleKey: label('advanced'),
 		icon: 'lucide:sliders-horizontal',
 		area: 'delivery',
+		gate: rampStarted,
 		tabs: true,
 	},
 	{
@@ -466,7 +475,22 @@ export function adminRailEntryFor(path: string): AdminEntry | undefined {
 	return entry.parent ? (adminEntryById(entry.parent) ?? entry) : entry;
 }
 
+/** The entry's own gate, ignoring its parent's. Pure. */
+export function passesOwnGate(entry: AdminEntry, env: AdminEnvironment): boolean {
+	return !entry.gate || entry.gate(env);
+}
+
+/**
+ * Whether `env` offers this entry: its own gate, plus its parent's for a hidden
+ * child, so a gated-off group takes its tabs out of the palette too. Pure.
+ */
+export function isAdminEntryReachable(entry: AdminEntry, env: AdminEnvironment): boolean {
+	if (!passesOwnGate(entry, env)) return false;
+	const parent = entry.parent ? adminEntryById(entry.parent) : undefined;
+	return !parent || passesOwnGate(parent, env);
+}
+
 /** The entries this environment may reach, hidden ones included, in registry order. Pure. */
 export function reachableAdminEntries(env: AdminEnvironment): AdminEntry[] {
-	return ADMIN_REGISTRY.filter((candidate) => !candidate.gate || candidate.gate(env));
+	return ADMIN_REGISTRY.filter((candidate) => isAdminEntryReachable(candidate, env));
 }

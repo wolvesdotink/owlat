@@ -270,6 +270,37 @@ export const getRampControls = authedQuery({
 	},
 });
 
+/**
+ * HAS THE RAMP EVER TAKEN OVER A CELL — the one bit the Settings rail reads to
+ * decide whether Email delivery lists "Advanced" at all.
+ *
+ * The four Advanced screens describe a ramp; before one exists they are empty
+ * tables, and an instance that never ramps should not carry the rail row. The
+ * way in (enrolling a cell) stays on the Deliverability page and the migration
+ * guide, which link to Controls directly.
+ *
+ * TWO FACTS, EITHER ONE IS ENOUGH. A managed per-stream row is the ramp as it
+ * stands now, the same test `isRampManaged` makes above; a `mixDecisions` row is
+ * the ramp having run inside the retention window, which keeps the row listed
+ * after a controller outage let the route-state lease lapse. Both reads are
+ * bounded: one indexed `first()` and the organization's ~21 route-state rows.
+ */
+// all-members: a single boolean about the caller's organization's ramp; no
+// shares, credentials or recipient identities leave the server.
+export const hasRampStarted = authedQuery({
+	args: {},
+	handler: async (ctx): Promise<boolean> => {
+		const organizationId = await getSingletonOrganizationId(ctx);
+		const decision = await ctx.db
+			.query('mixDecisions')
+			.withIndex('by_org_time', (q) => q.eq('organizationId', organizationId))
+			.first();
+		if (decision !== null) return true;
+		const byCell = await loadRouteStatesByCell(ctx, organizationId);
+		return [...byCell.values()].some((row) => row.ownShare !== undefined);
+	},
+});
+
 // all-members: one cell's decision timeline — the audit trail behind the share.
 export const listCellDecisions = authedQuery({
 	args: {

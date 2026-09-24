@@ -1,8 +1,8 @@
 import { api } from '@owlat/api';
 import type { Ref } from 'vue';
-import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
-import { reachableAdminEntries, type AdminEnvironment } from '~/lib/adminSettingsRegistry';
+import { reachableAdminEntries } from '~/lib/adminSettingsRegistry';
 import { adminAreasFor, adminAttentionBadges } from '~/lib/adminSettingsNav';
+import { useAdminEnvironment } from '~/composables/useAdminEnvironment';
 
 /**
  * The Workspace half of the Settings sidebar, as both settings layouts need it:
@@ -15,19 +15,7 @@ import { adminAreasFor, adminAttentionBadges } from '~/lib/adminSettingsNav';
  */
 export function useWorkspaceSettingsNav(enabled: Readonly<Ref<boolean>>) {
 	const { isEnabled: isFeatureEnabled } = useFeatureFlag();
-
-	// Deployment-level tooling is scoped to this deployment's platform admin —
-	// the same gate the three pages carry as `platform-admin` route middleware.
-	const { data: isPlatformAdmin } = useConvexQuery(
-		api.platformAdmin.platformAdmin.isPlatformAdmin,
-		() => (enabled.value ? {} : 'skip')
-	);
-
-	const environment = computed<AdminEnvironment>(() => ({
-		isFeatureEnabled,
-		isPlatformAdmin: isPlatformAdmin.value === true,
-		hasPlugins: bundledPluginComposition.length > 0,
-	}));
+	const { environment } = useAdminEnvironment(enabled);
 
 	const areas = computed(() => (enabled.value ? adminAreasFor(environment.value) : []));
 

@@ -10,6 +10,7 @@ import {
 	ADMIN_AREAS,
 	ADMIN_REGISTRY,
 	adminRailEntryFor,
+	passesOwnGate,
 	reachableAdminEntries,
 	type AdminAreaKey,
 	type AdminAttentionKey,
@@ -20,11 +21,17 @@ import {
 /**
  * The tab strip for `path`: the hidden children of a `tabs` parent, when the
  * current page is one of them (or the parent itself). Empty otherwise. Pure.
+ *
+ * Each tab answers to its OWN gate only. A parent gated out of the rail (the
+ * ramp's Advanced group before the ramp exists) is still a set of real pages
+ * when someone lands on one by URL, and its siblings stay one click away.
  */
 export function adminTabsFor(path: string, env: AdminEnvironment): AdminEntry[] {
 	const rail = adminRailEntryFor(path);
 	if (!rail?.tabs) return [];
-	return reachableAdminEntries(env).filter((candidate) => candidate.parent === rail.id);
+	return ADMIN_REGISTRY.filter(
+		(candidate) => candidate.parent === rail.id && passesOwnGate(candidate, env)
+	);
 }
 
 export interface AdminAreaView {

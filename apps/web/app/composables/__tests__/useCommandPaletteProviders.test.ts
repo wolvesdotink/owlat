@@ -13,12 +13,15 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
+import { api } from '@owlat/api';
+import { getFunctionName, type FunctionReference } from 'convex/server';
 import type { PaletteItem } from '~/lib/commandPalette';
 import { createTestI18n } from '~/__tests__/i18n';
 
 const { t } = createTestI18n().global;
 
 let role: 'owner' | 'admin' | 'editor' | null;
+let hasRampStarted: boolean;
 let disabledFlags: string[];
 let openCompose: ReturnType<typeof vi.fn>;
 let openNewContact: ReturnType<typeof vi.fn>;
@@ -39,6 +42,7 @@ const SIDEBAR_SECTIONS = [
 
 beforeEach(() => {
 	role = 'admin';
+	hasRampStarted = true;
 	disabledFlags = [];
 	openCompose = vi.fn(async () => {});
 	openNewContact = vi.fn(async () => {});
@@ -51,6 +55,18 @@ beforeEach(() => {
 	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(false) }));
 	vi.stubGlobal('useDashboardNavigation', () => ({ navigationSections: ref(SIDEBAR_SECTIONS) }));
 	vi.stubGlobal('usePermissions', () => ({ role: ref(role) }));
+	// The admin registry's reads: a platform admin, and the ramp as the test sets it.
+	vi.stubGlobal('useConvexQuery', (query: FunctionReference<'query'>, args: () => unknown) => {
+		if (args() === 'skip') return { data: ref(undefined) };
+		const name = getFunctionName(query);
+		if (name === getFunctionName(api.delivery.rampControlQueries.hasRampStarted)) {
+			return { data: ref(hasRampStarted) };
+		}
+		if (name === getFunctionName(api.platformAdmin.platformAdmin.isPlatformAdmin)) {
+			return { data: ref(true) };
+		}
+		return { data: ref(undefined) };
+	});
 	vi.stubGlobal('useQuickCreate', () => ({ openCompose, openNewContact }));
 	vi.stubGlobal('useSidebarContext', () => ({
 		showToggle: ref(false),
@@ -131,6 +147,18 @@ describe('navigation', () => {
 		expect(labels).toEqual(
 			expect.arrayContaining(['AI provider', 'Webhooks', 'Delivery controls'])
 		);
+	});
+
+	it('leaves the ramp pages out until the ramp has started', async () => {
+		hasRampStarted = false;
+		const { navItems } = await providers();
+		const ramp = navItems.value.filter((item) =>
+			item.id.startsWith('nav:/dashboard/admin/delivery/advanced')
+		);
+
+		expect(ramp).toEqual([]);
+		// The rest of Email delivery is still one keystroke away.
+		expect(byId(navItems.value, 'nav:/dashboard/admin/delivery/webhooks')).toBeDefined();
 	});
 
 	it('navigates to the route it names', async () => {
