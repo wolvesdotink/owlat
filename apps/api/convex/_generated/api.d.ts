@@ -1172,6 +1172,7 @@ import type * as webhooks_unresolvedBounce from '../webhooks/unresolvedBounce.js
 import type * as webhooks_yahooCflObservation from '../webhooks/yahooCflObservation.js';
 import type * as workspaces_abuseGate from '../workspaces/abuseGate.js';
 import type * as workspaces_abuseStatus from '../workspaces/abuseStatus.js';
+import type * as workspaces_branding from '../workspaces/branding.js';
 import type * as workspaces_deletion_steps__common from '../workspaces/deletion/steps/_common.js';
 import type * as workspaces_deletion_steps_accountExportArtifacts from '../workspaces/deletion/steps/accountExportArtifacts.js';
 import type * as workspaces_deletion_steps_contacts from '../workspaces/deletion/steps/contacts.js';
@@ -2357,6 +2358,7 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/yahooCflObservation': typeof webhooks_yahooCflObservation;
 	'workspaces/abuseGate': typeof workspaces_abuseGate;
 	'workspaces/abuseStatus': typeof workspaces_abuseStatus;
+	'workspaces/branding': typeof workspaces_branding;
 	'workspaces/deletion/steps/_common': typeof workspaces_deletion_steps__common;
 	'workspaces/deletion/steps/accountExportArtifacts': typeof workspaces_deletion_steps_accountExportArtifacts;
 	'workspaces/deletion/steps/contacts': typeof workspaces_deletion_steps_contacts;
