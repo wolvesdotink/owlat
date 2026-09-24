@@ -11,9 +11,14 @@ test.describe('Settings — Team Members', () => {
 	});
 
 	test('navigate to team settings', async ({ page }) => {
-		await expect(page.getByRole('heading', { name: 'Team Members' })).toBeVisible({
+		// The Settings split (#788, #800) renamed the page to "Team"; its roster
+		// is the "Members" section.
+		await expect(page.getByRole('heading', { level: 1, name: 'Team', exact: true })).toBeVisible({
 			timeout: 15_000,
 		});
+		await expect(
+			page.getByRole('heading', { level: 2, name: 'Members', exact: true })
+		).toBeVisible();
 	});
 
 	test('current user appears in members list', async ({ page }) => {
@@ -32,7 +37,7 @@ test.describe('Settings — Team Members', () => {
 		await teamPage.waitForModal();
 
 		// Try to submit without entering an email
-		await teamPage.clickModalButton(/Send Invitation/);
+		await teamPage.clickModalButton(/Send invitation/i);
 
 		// Validation error should appear
 		await expect(teamPage.modal.getByText('Email is required')).toBeVisible({
@@ -48,7 +53,7 @@ test.describe('Settings — Team Members', () => {
 		await teamPage.modal.getByLabel(/Email Address/i).fill('not-an-email');
 
 		// Submit
-		await teamPage.clickModalButton(/Send Invitation/);
+		await teamPage.clickModalButton(/Send invitation/i);
 
 		// Validation error for invalid email format
 		await expect(teamPage.modal.getByText('Please enter a valid email address')).toBeVisible({

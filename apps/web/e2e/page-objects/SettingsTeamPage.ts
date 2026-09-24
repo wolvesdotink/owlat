@@ -6,11 +6,13 @@ export class SettingsTeamPage extends BasePage {
 
 	constructor(page: Page) {
 		super(page);
-		this.inviteButton = page.getByRole('button', { name: 'Invite Member' });
+		// Exact: the empty roster's "Invite a teammate" and the pending
+		// invites' "Copy invite link" contain the same word.
+		this.inviteButton = page.getByRole('button', { name: 'Invite', exact: true });
 	}
 
 	async goto() {
 		await this.page.goto('/dashboard/admin/team');
-		await this.expectOnPage('Team Members');
+		await this.expectOnPage(/^Team$/);
 	}
 }

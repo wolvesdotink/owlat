@@ -51,7 +51,9 @@ setup('bootstrap the instance and save auth state', async ({ page, request }) =>
 
 	await page.goto('/auth/login');
 	await page.getByLabel('Email').fill(owner.email);
-	await page.getByLabel('Password').fill(owner.password);
+	// Exact: the field's show/hide toggle is labelled "Show password", so a
+	// substring match resolves to two elements.
+	await page.getByLabel('Password', { exact: true }).fill(owner.password);
 	await page.getByRole('button', { name: 'Sign in' }).click();
 
 	// A brand-new owner has never seen the welcome screen, so `first-login.global`

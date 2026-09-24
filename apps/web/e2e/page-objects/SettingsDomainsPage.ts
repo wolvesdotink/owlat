@@ -9,11 +9,11 @@ export type DomainKind = 'sending' | 'tracking';
  * the accessible names of the row actions differ, so the kind is a parameter.
  */
 const LABELS: Record<DomainKind, { add: string; remove: string; removeConfirm: RegExp }> = {
-	sending: { add: 'Add Domain', remove: 'Remove domain', removeConfirm: /Remove Domain/ },
+	sending: { add: 'Add Domain', remove: 'Remove domain', removeConfirm: /Remove domain/i },
 	tracking: {
 		add: 'Add Tracking Domain',
 		remove: 'Remove tracking domain',
-		removeConfirm: /Remove Tracking Domain/,
+		removeConfirm: /Remove tracking domain/i,
 	},
 };
 

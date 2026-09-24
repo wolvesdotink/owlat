@@ -58,9 +58,11 @@ test.describe('Authentication', () => {
 		await loginPage.login(TEST_USER.email, TEST_USER.password);
 		await page.waitForURL('**/dashboard**', { timeout: 15_000 });
 
-		// The sidebar's user menu is a button named after the signed-in user.
+		// The sidebar footer's account menu (components/shell/SidebarFooter.vue):
+		// a button named after the signed-in user opens a role="menu" whose
+		// entries are menuitems, Sign out among them.
 		await page.getByRole('button', { name: TEST_USER.name }).click();
-		await page.getByRole('button', { name: 'Sign out' }).click();
+		await page.getByRole('menu').getByRole('menuitem', { name: 'Sign out', exact: true }).click();
 
 		await page.waitForURL('**/auth/login**', { timeout: 10_000 });
 		await expect(page).toHaveURL(/\/auth\/login/);

@@ -33,7 +33,7 @@ test.describe('Settings — Sending Domains', () => {
 		await domainsPage.waitForModal();
 
 		// Try to submit without entering a domain
-		await domainsPage.clickModalButton(/Add Domain/);
+		await domainsPage.clickModalButton(/Add domain/i);
 
 		// Validation error should appear inside the modal
 		await expect(domainsPage.modal.getByTestId('domain-error')).toHaveText('Enter your domain', {
