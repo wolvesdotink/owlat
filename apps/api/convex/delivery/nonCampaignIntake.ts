@@ -39,6 +39,7 @@ import { recordSendAssignments } from './sendAssignments';
 import { normalizeEngagementScore } from './workerEnvelope';
 import { runSendIntakeGates, type SendIntakeRejectionReason } from './sendIntakeGates';
 import { loadContactMarketingIneligibility } from '../lib/marketingEligibility';
+import { findStepRunSend } from '../automations/stepRunSend';
 
 // ============================================================
 // Public types
@@ -170,12 +171,8 @@ export const intake = internalMutation({
 		// row is already the committed answer. Whether that Send may still go out
 		// is the worker's last gate to decide, not a second intake verdict.
 		if (args.automationStepRunId !== undefined) {
-			const stepRunId = args.automationStepRunId;
-			const existing = await ctx.db
-				.query('transactionalSends')
-				.withIndex('by_automation_step_run', (q) => q.eq('automationStepRunId', stepRunId))
-				.first();
-			if (existing) return { ok: true, sendId: existing._id, queued: true };
+			const existing = await findStepRunSend(ctx, args.automationStepRunId);
+			if (existing) return { ok: true, sendId: existing, queued: true };
 		}
 
 		// The shared pre-row gate sequence: abuse → provider-ready → suppression.

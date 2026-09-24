@@ -17,7 +17,7 @@
  *
  * Stats counters (`statsEntered`, `statsActive`, `statsCompleted`) are
  * lifetime; the reducer does not touch them on any edge. Stats writes stay
- * in the Trigger fanout (`triggers.ts`) and `stepExecutorQueries.ts`.
+ * in the Trigger fanout (`triggers.ts`) and `stepRunTransitions.ts`.
  *
  * See docs/adr/0024-automation-lifecycle-module.md.
  */
@@ -368,7 +368,7 @@ const BREAKER_ACTOR = 'system:automation-breaker';
  * consecutive-failure counter and, at the threshold, trips the breaker by
  * pausing the automation through the lifecycle (so the pause is audit-logged,
  * attributed to BREAKER_ACTOR). The counter resets on any completed run
- * (`stepExecutorQueries.completeRun`). Called by the step walker's
+ * (`stepRunTransitions.completeRun`). Called by the step walker's
  * fail-and-cancel transition, in the same transaction as the step failure and
  * the run cancellation.
  */
@@ -390,3 +390,18 @@ export async function recordAutomationRunFailure(
 		await dispatch(ctx, automation, { to: 'paused', at: Date.now() }, BREAKER_ACTOR);
 	}
 }
+
+/**
+ * Remove after release N+1: v0.5.5 compatibility. v0.5.5's step walker counted
+ * a run failure through this mutation from its action, after failing the step
+ * and cancelling the run; an action in flight when this release deploys still
+ * calls it (see CONVENTIONS.md, "Old clients and workers against new functions").
+ */
+export const recordRunFailure = internalMutation({
+	args: {
+		automationId: v.id('automations'),
+	},
+	handler: async (ctx, args) => {
+		await recordAutomationRunFailure(ctx, args.automationId);
+	},
+});

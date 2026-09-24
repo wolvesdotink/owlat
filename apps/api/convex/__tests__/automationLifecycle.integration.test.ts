@@ -14,7 +14,7 @@ import {
 	recordAutomationRunFailure,
 	type AutomationStatus,
 } from '../automations/lifecycle';
-import { completeRun } from '../automations/stepExecutorQueries';
+import { completeRun } from '../automations/stepRunTransitions';
 import type { Id } from '../_generated/dataModel';
 
 const modules = import.meta.glob('../**/*.*s');

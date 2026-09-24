@@ -61,8 +61,8 @@ export const automationTables = {
 		//   yes/noBranchStepIndex are raw stepIndex positions; automations/steps.ts
 		//   remaps them on reorder/remove/insert so they follow the moved steps.
 		config: stepConfigValidator,
-		// Denormalized per-status step-run counts, maintained by the step-run
-		// step-run transitions (stepExecutorQueries.ts helpers, driven by the
+		// Denormalized per-status step-run counts, maintained by the
+		// step-run transitions (stepRunTransitions.ts helpers, driven by the
 		// walker's mutations in stepOrchestration.ts). getStepAnalytics
 		// + getAutomationStats read these off the bounded step rows instead of
 		// scanning every run × step-run on the reactive automation detail page.
@@ -102,7 +102,10 @@ export const automationTables = {
 		.index('by_automation', ['automationId'])
 		.index('by_contact', ['contactId'])
 		.index('by_automation_and_contact', ['automationId', 'contactId'])
-		.index('by_automation_and_status', ['automationId', 'status']),
+		.index('by_automation_and_status', ['automationId', 'status'])
+		// The stalled-run sweep pages through every running run
+		// (automations/stalledRuns.ts).
+		.index('by_status', ['status']),
 
 	// Automation Step Runs - tracks individual step execution within automation runs
 	automationStepRuns: defineTable({

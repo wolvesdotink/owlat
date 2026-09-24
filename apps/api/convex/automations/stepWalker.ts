@@ -91,6 +91,8 @@ export const executeStep = internalAction({
 		});
 		// Another invocation already owns (or finished) this step — drop this duplicate.
 		if (claim.kind === 'dropped') return { success: true };
+		// The claim skipped the step and moved the run on (an unsubscribed contact's email).
+		if (claim.kind === 'skipped') return { success: true };
 		if (claim.kind === 'ended') return { success: false, error: claim.reason, cancelled: true };
 
 		const outcome = await runStepSideEffect(ctx, claim, args.stepRunId);

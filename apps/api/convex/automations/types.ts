@@ -9,7 +9,8 @@ export type StepOutcome =
 	| { status: 'completed'; emailSendId?: string; nextStepIndex?: number }
 	| { status: 'failed'; error: string }
 	// The contact stopped being eligible for marketing between the claim and the
-	// send (see lib/marketingEligibility.ts). Ends the run; never retried.
+	// send (see lib/marketingEligibility.ts). The step is skipped and never
+	// retried; a deleted contact's run is cancelled, an unsubscribed one's moves on.
 	| { status: 'contact_ineligible'; reason: MarketingIneligibility };
 
 export interface StepExecuteArgs<C> {

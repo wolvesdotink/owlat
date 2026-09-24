@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import type { Id } from './_generated/dataModel';
-import { internalMutation } from './_generated/server';
+import { internalMutation, internalQuery } from './_generated/server';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission } from './lib/sessionOrganization';
 import {
@@ -385,6 +385,18 @@ export const getCountsByReason = authedQuery({
 			unengaged: unengaged.length,
 		};
 	},
+});
+
+/**
+ * Remove after release N+1: v0.5.5 compatibility. v0.5.5's worker re-checked a
+ * campaign recipient here, and a worker in flight across the deploy still does
+ * (CONVENTIONS.md, "Old clients and workers"). Now: marketingDispatchGate.
+ */
+export const isBlockedInternal = internalQuery({
+	args: {
+		email: v.string(),
+	},
+	handler: async (ctx, args) => (await findBlockedByEmail(ctx, args.email)) !== null,
 });
 
 // Internal function to add to blocklist from bounce/complaint handler

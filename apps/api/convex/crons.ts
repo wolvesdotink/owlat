@@ -80,6 +80,17 @@ crons.interval(
 	internal.automations.stepWalker.processPendingDelays
 );
 
+// Recover automation runs left `running` with no active step run (a step walker
+// action that died between two of its calls). Pages through every running run,
+// so it runs a few times a day rather than every few minutes; see
+// automations/stalledRuns.ts.
+crons.interval(
+	'recover stalled automation runs',
+	{ hours: 6 },
+	internal.automations.stalledRuns.sweepStalledRuns,
+	{}
+);
+
 // Sample "can this instance send at all?" and, on the no-transport → transport
 // edge, notify every member still waiting on their onboarding first send
 // (auth/sendReadyNotices.ts). A cron rather than a hook on the transport

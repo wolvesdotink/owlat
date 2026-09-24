@@ -18,4 +18,18 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'webhooks/deliveryQueries.ts#markDeliverySuccess': 'old delivery actions mid-run',
 	'webhooks/deliveryQueries.ts#markDeliveryRetrying': 'old delivery actions mid-run',
 	'webhooks/deliveryQueries.ts#markDeliveryFailed': 'old delivery actions mid-run',
+	'automations/lifecycle.ts#recordRunFailure': 'old step walker actions mid-run',
+	'automations/stepExecutorQueries.ts#advanceAutomationRun': 'old step walker actions mid-run',
+	'automations/stepExecutorQueries.ts#cancelAutomationRun': 'old step walker actions mid-run',
+	'automations/stepExecutorQueries.ts#completeAutomationRun': 'old step walker actions mid-run',
+	'automations/stepExecutorQueries.ts#createStepRun': 'old step walker actions mid-run',
+	'automations/stepExecutorQueries.ts#getAutomationRunWithContact':
+		'old step walker actions mid-run',
+	'automations/stepExecutorQueries.ts#getAutomationStep': 'old step walker actions mid-run',
+	'automations/stepExecutorQueries.ts#getAutomationSteps': 'old step walker actions mid-run',
+	'automations/stepExecutorQueries.ts#markStepCompleted': 'old step walker actions mid-run',
+	'automations/stepExecutorQueries.ts#markStepExecuting': 'old step walker actions mid-run',
+	'automations/stepExecutorQueries.ts#markStepFailed': 'old step walker actions mid-run',
+	'automations/stepExecutorQueries.ts#markStepsSkipped': 'old step walker actions mid-run',
+	'blockedEmails.ts#isBlockedInternal': 'old email worker actions mid-run',
 };

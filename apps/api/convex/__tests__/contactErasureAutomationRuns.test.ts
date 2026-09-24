@@ -2,7 +2,13 @@ import { describe, it, expect } from 'vitest';
 import type { TestConvex } from 'convex-test';
 import type schema from '../schema';
 import type { Id } from '../_generated/dataModel';
-import { createTestAutomation, createTestAutomationStep, createTestContact } from './factories';
+import {
+	createTestAutomation,
+	createTestAutomationStep,
+	createTestCampaign,
+	createTestContact,
+	createTestEmailSend,
+} from './factories';
 import { newHarness } from './testModules';
 import { permanentlyDeleteContactWithRelations } from '../lib/contactMutations';
 import { deleteAutomationRun } from '../automations/runDeletion';
@@ -181,6 +187,35 @@ describe('contact erasure — automation runs', () => {
 			expect(await ctx.db.query('automationStepRuns').collect()).toHaveLength(0);
 			const totals = await summarizeAutomationStats(ctx.db, automationId);
 			expect(totals).toEqual({ statsEntered: 1, statsCompleted: 0, statsCancelled: 1 });
+		});
+	});
+
+	it('inline erasure finishes a run with hundreds of step runs before removing the contact', async () => {
+		// A run with ≥255 step runs needs more than one deletion call. The inline
+		// erasure used to stop after the first, and still deleted the contact:
+		// the run and 45 step runs stayed behind, and the later phases (the
+		// send scrub among them) never ran.
+		const t = newHarness();
+		const { automationId, step0 } = await seedAutomation(t);
+		const contactId = await t.run((ctx) => ctx.db.insert('contacts', createTestContact({})));
+		const history: Array<[Id<'automationSteps'>, StepRunStatus]> = [];
+		for (let i = 0; i < 300; i++) history.push([step0, 'skipped']);
+		const runId = await seedRun(t, automationId, contactId, 'completed', history);
+		const sendId = await t.run(async (ctx) => {
+			const campaignId = await ctx.db.insert('campaigns', createTestCampaign({}) as never);
+			return ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({ campaignId, contactId, contactEmail: 'victim@example.com' }) as never
+			);
+		});
+
+		await t.run((ctx) => permanentlyDeleteContactWithRelations(ctx, contactId));
+
+		await t.run(async (ctx) => {
+			expect(await ctx.db.get(contactId)).toBeNull();
+			expect(await ctx.db.get(runId)).toBeNull();
+			expect(await ctx.db.query('automationStepRuns').collect()).toHaveLength(0);
+			expect((await ctx.db.get(sendId))?.contactEmail).toBe('[erased]');
 		});
 	});
 });

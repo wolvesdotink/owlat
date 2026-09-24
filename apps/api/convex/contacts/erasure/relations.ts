@@ -3,9 +3,12 @@
  * at a contact when that contact is permanently deleted, and of every row that
  * points at something the erasure deletes.
  *
- * Pure data. The cascade itself lives in `lib/contactMutations.ts`; this file
- * is the contract it implements, and `__tests__/contactErasureRelations.test.ts`
- * walks the schema so a new relation cannot land without a declaration here:
+ * Pure data. The cascade itself is the phases in `phases.ts` and
+ * `contentPhases.ts`; this file is the contract they implement.
+ * `__tests__/contactErasureRelationCoverage.test.ts` seeds a row for every
+ * `delete`/`unlink` relation and checks both erasure drivers clear it, and
+ * `__tests__/contactErasureRelations.test.ts` walks the schema so a new
+ * relation cannot land without a declaration here:
  *
  *   - every `v.id('contacts')` field anywhere in the schema (including nested
  *     and array fields) must appear in `CONTACT_RELATIONS`, and
@@ -393,7 +396,7 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		table: 'semanticFileContacts',
 		field: 'fileId',
 		action: 'delete',
-		why: 'A deleted capture is scoped to nobody else, so its only junction row is the erased contact’s.',
+		why: 'A deleted capture is scoped to nobody else, so its junction rows are the erased contact’s; any other one only exists through drift and goes with the file.',
 	},
 	{
 		parent: 'semanticFiles',

@@ -54,6 +54,9 @@ function deleteByIndex(
  * outlives its run.
  */
 const eraseAutomationRuns: PhaseRunner = async ({ ctx, contactId, budget }) => {
+	// A run with a long history takes several `deleteAutomationRun` calls; keep
+	// calling while the budget lasts (an unlimited inline budget drains it here)
+	// rather than giving up after the first.
 	while (!budget.isExhausted) {
 		const run = await ctx.db
 			.query('automationRuns')
@@ -62,12 +65,18 @@ const eraseAutomationRuns: PhaseRunner = async ({ ctx, contactId, budget }) => {
 		if (!run) return DONE;
 		const progress = await deleteAutomationRun(ctx, run._id, budget.chunk(256));
 		budget.chargeRows(progress.rowsTouched);
-		if (!progress.isDeleted) return NOT_DONE;
 	}
 	return NOT_DONE;
 };
 
 type SendTable = 'emailSends' | 'transactionalSends';
+
+/** The address the scrub writes; a row carrying it has been erased already. */
+const ERASED_ADDRESS = '[erased]';
+
+function isErasedSend(send: Doc<'emailSends'> | Doc<'transactionalSends'>): boolean {
+	return ('contactEmail' in send ? send.contactEmail : send.email) === ERASED_ADDRESS;
+}
 
 /**
  * Send rows are kept for statistics but soft-deleted and scrubbed of the
@@ -85,7 +94,7 @@ function scrubSends<T extends SendTable>(table: T, scrub: () => Partial<Doc<T>>)
 		if (mode === 'inline') {
 			for await (const send of query()) {
 				budget.charge(send);
-				await ctx.db.patch(send._id, scrub() as never);
+				if (!isErasedSend(send)) await ctx.db.patch(send._id, scrub() as never);
 			}
 			return DONE;
 		}
@@ -97,7 +106,7 @@ function scrubSends<T extends SendTable>(table: T, scrub: () => Partial<Doc<T>>)
 			if (head.length <= pageSize) {
 				for (const send of head) {
 					budget.charge(send);
-					await ctx.db.patch(send._id, scrub() as never);
+					if (!isErasedSend(send)) await ctx.db.patch(send._id, scrub() as never);
 				}
 				return DONE;
 			}
@@ -108,7 +117,7 @@ function scrubSends<T extends SendTable>(table: T, scrub: () => Partial<Doc<T>>)
 		});
 		for (const send of page.page) {
 			budget.charge(send);
-			await ctx.db.patch(send._id, scrub() as never);
+			if (!isErasedSend(send)) await ctx.db.patch(send._id, scrub() as never);
 		}
 		return page.isDone
 			? { isDone: true, isPaginated: true }
@@ -165,14 +174,14 @@ const PHASE_RUNNERS: Record<ContactErasurePhase, PhaseRunner> = {
 	emailSends: scrubSends('emailSends', () => ({
 		deletedAt: Date.now(),
 		deletedBy: 'system',
-		contactEmail: '[erased]',
+		contactEmail: ERASED_ADDRESS,
 		contactFirstName: undefined,
 		contactLastName: undefined,
 	})),
 	transactionalSends: scrubSends('transactionalSends', () => ({
 		deletedAt: Date.now(),
 		deletedBy: 'system',
-		email: '[erased]',
+		email: ERASED_ADDRESS,
 		// Request-supplied template variables can carry PII (name, address,
 		// order details). Erasure must drop them too, not just the address.
 		dataVariables: undefined,
@@ -195,14 +204,35 @@ export interface ErasurePosition {
 export type ErasureProgress = ErasurePosition & { isComplete: boolean };
 
 /**
+ * Whether a Send was written for the contact after its scrub phase passed (an
+ * agent reply, a transactional send). Rows written behind the walk are the
+ * newest in the contact's index range, so the newest row decides.
+ */
+async function hasLateSend(
+	{ ctx, contactId, budget }: Pick<PhaseContext, 'ctx' | 'contactId' | 'budget'>,
+	table: SendTable
+): Promise<boolean> {
+	const newest = await ctx.db
+		.query(table)
+		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+		.order('desc')
+		.first();
+	if (!newest) return false;
+	budget.charge(newest);
+	return !isErasedSend(newest);
+}
+
+/**
  * Run phases from `from` onward until the budget runs out, a paginated query
  * has used this transaction's one allowance, or every phase is done.
  *
- * Reaching the end in walker mode re-checks the phases that delete rows: the
- * walk spans many transactions, and something may have written a new child of
- * the tombstoned contact (a late delivery event, say) behind it. The re-check
- * is one empty index probe per phase when nothing did. Inline mode runs in one
- * transaction and needs no re-check.
+ * Reaching the end in walker mode re-checks what the walk may have missed: it
+ * spans many transactions, and something may have written a new child of the
+ * tombstoned contact behind it. The phases that delete rows run again (one
+ * empty index probe each when nothing did), and a Send written after its scrub
+ * phase sends the walk back to that phase, which skips the rows it already
+ * scrubbed; the contact row is only removed once none is left. Inline mode
+ * runs in one transaction and needs no re-check.
  */
 export async function advanceErasure(
 	ctx: MutationCtx,
@@ -226,7 +256,13 @@ export async function advanceErasure(
 
 	if (mode === 'walker') {
 		for (const phase of CONTACT_ERASURE_PHASES) {
-			if (phase === 'emailSends' || phase === 'transactionalSends') continue;
+			if (phase === 'emailSends' || phase === 'transactionalSends') {
+				if (budget.isExhausted) return { phase, isComplete: false };
+				if (await hasLateSend({ ctx, contactId, budget }, phase)) {
+					return { phase, isComplete: false };
+				}
+				continue;
+			}
 			if (budget.isExhausted) return { phase, isComplete: false };
 			const outcome = await PHASE_RUNNERS[phase]({
 				ctx,

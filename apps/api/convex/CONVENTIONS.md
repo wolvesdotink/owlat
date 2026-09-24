@@ -384,8 +384,9 @@ the gate never looks at them.
   step walker), so only their generated module file carries `'use node'`;
   trigger fanout (mutation) and condition evaluation (query) modules stay
   non-node.
-- The step walker owns automation step retries, idempotency (the
-  `markStepExecuting` CAS claim), cancellation, and the circuit breaker. The
+- The step walker owns automation step retries, idempotency (the fenced
+  `claimStepRun` claim in `automations/stepOrchestration.ts` and the step-run
+  key on the email intake), cancellation, and the circuit breaker. The
   hosted `pluginStep` runner owns exactly one thing: a single authorized attempt.
   Reauthorize (`authorizeExecution`) singleton scope, registration, flag,
   `automation:step` grant, and required env presence immediately before invoking
@@ -657,12 +658,32 @@ N:
   step guarantees.
 
 Removing an argument, result field or endpoint is itself a contract step for a
-later release. This covers internal functions too: an N-1 action still running
-at deploy time, or a job N-1 queued before it, calls functions by path. When N
-stops calling one, keep it for a release with its old arguments, delegating to
-the new code, and list it in `PREVIOUS_RELEASE_ENTRIES` in
-`apps/api/scripts/entryWiringPreviousRelease.ts` (the webhook fanout and delivery functions are
-the first entries).
+later release. This covers internal functions too, because a deploy does not
+drain running functions first and the scheduler keeps every job N-1 queued:
+
+- an N-1 ACTION still running when N deploys finishes on N-1's code, but each
+  `ctx.runQuery` / `ctx.runMutation` / `ctx.scheduler.runAfter` it makes
+  resolves the function path against N;
+- a JOB N-1 queued (a retry with backoff, a delay step days out, a chained
+  batch) runs N's function under the path and arguments N-1 recorded. A
+  scheduled function keeps its path and N-1's arguments for as long as N-1 can
+  have queued it; for a delay step that is the longest delay a user can
+  configure, so in practice for good;
+- rows N-1 wrote mid-protocol (a claim without the lease N added, a Send
+  without the idempotency key N added) must be recognized and finished by N,
+  not only accepted by its schema.
+
+When N stops calling a function, keep it for a release at its old path with
+its old arguments and result shape, delegating to the new code, and list it in
+`PREVIOUS_RELEASE_ENTRIES` in `apps/api/scripts/entryWiringPreviousRelease.ts`
+(the webhook fanout and delivery functions and the automation step walker's
+old transitions are there). Such a shim must be safe against N's own code
+running beside it: it must never repeat a side effect N already performed, nor
+move state N already moved. Mark each one, and each N-1-only branch in N's
+code, with a `remove after release N+1` comment; the next release deletes them.
+Where N-1 can have left work half done (an action killed between two of its
+calls), N also ships the sweep that finds it and finishes or ends it, as
+`automations/stalledRuns.ts` does for automation runs.
 
 **Migration manifest.** A release that needs data work ships a manifest listing,
 per migration: its module (`migrations/NNNN_name:run`), whether it must finish
