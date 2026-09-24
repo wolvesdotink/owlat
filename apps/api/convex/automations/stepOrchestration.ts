@@ -34,28 +34,37 @@
  * step run: the email step's intake is keyed by the step run id, condition and
  * delay steps have no side effect, and plugin steps are at-least-once. Retries
  * and recoveries share one attempt budget, so a step that keeps dying still
- * ends failed.
+ * ends failed. A recovered email step whose Send already exists is completed
+ * with that Send rather than decided again.
+ *
+ * CONTACT ELIGIBILITY. A soft-deleted or erased contact ends the run (the step
+ * is skipped, the run cancelled). A contact who unsubscribed from marketing
+ * only loses the mail: an email step is skipped and the run moves on to its
+ * next step, so conditions, delays and plugin steps still run.
  */
 
 import { v } from 'convex/values';
 import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { Doc, Id } from '../_generated/dataModel';
+import type { Doc } from '../_generated/dataModel';
 import { MAX_RETRY_ATTEMPTS, RETRY_DELAYS_MS } from '../lib/constants';
 import {
 	contactMarketingIneligibility,
 	marketingIneligibilityValidator,
 } from '../lib/marketingEligibility';
-import { computeEntryDelay } from './steps';
-import { recordAutomationRunFailure } from './lifecycle';
+import { findStepRunSend } from './stepRunSend';
 import {
 	cancelRun,
-	completeRun,
-	insertStepRun,
+	completeSentStepAndAdvance,
+	enterStep,
+	failStepAndCancelRun,
 	isTerminalStepRunStatus,
 	recordSkippedSteps,
+	skipStepAndCancelRun,
+	skipUnsubscribedStepAndAdvance,
 	transitionStepRun,
-} from './stepExecutorQueries';
+	type EnterStepResult,
+} from './stepRunTransitions';
 
 // Hard ceiling on step executions per automation run. A condition step may
 // branch to an earlier step (the editor allows any target), so without a cap a
@@ -72,82 +81,6 @@ export const STEP_LEASE_MS = 15 * 60 * 1000;
 
 /** Per-tick cap for the interrupted-attempt recovery sweep. */
 export const RECOVERY_BATCH = 200;
-
-// ============== Shared transitions ==============
-
-type EnterStepResult =
-	| { kind: 'scheduled'; stepRunId: Id<'automationStepRuns'>; delayMs: number }
-	| { kind: 'completed' };
-
-/**
- * Point the run at `stepIndex`, create its step run and schedule it — or
- * complete the run when there is no such step. Scheduling from the mutation is
- * what makes this atomic: the scheduled call commits with the step run.
- */
-async function enterStep(
-	ctx: MutationCtx,
-	run: Doc<'automationRuns'>,
-	stepIndex: number
-): Promise<EnterStepResult> {
-	const step = await ctx.db
-		.query('automationSteps')
-		.withIndex('by_automation_and_index', (q) =>
-			q.eq('automationId', run.automationId).eq('stepIndex', stepIndex)
-		)
-		.first();
-	if (!step) {
-		await completeRun(ctx, run._id);
-		return { kind: 'completed' };
-	}
-
-	const delayMs = computeEntryDelay(step);
-	const delayUntil = delayMs > 0 ? Date.now() + delayMs : undefined;
-	await ctx.db.patch(run._id, { currentStepIndex: stepIndex, nextStepAt: delayUntil });
-	const stepRunId = await insertStepRun(ctx, { automationRunId: run._id, step, delayUntil });
-	await ctx.scheduler.runAfter(delayMs, internal.automations.stepWalker.executeStep, {
-		automationRunId: run._id,
-		stepRunId,
-	});
-	return { kind: 'scheduled', stepRunId, delayMs };
-}
-
-/** Fail the step run and cancel its run, optionally counting a run failure. */
-async function failStepAndCancelRun(
-	ctx: MutationCtx,
-	stepRun: Doc<'automationStepRuns'>,
-	errorMessage: string,
-	options: { countRunFailure: boolean }
-): Promise<void> {
-	await transitionStepRun(ctx, stepRun, 'failed', {
-		completedAt: Date.now(),
-		errorMessage,
-		leaseExpiresAt: undefined,
-	});
-	await cancelRun(ctx, stepRun.automationRunId);
-	if (options.countRunFailure) {
-		const run = await ctx.db.get(stepRun.automationRunId);
-		if (run) await recordAutomationRunFailure(ctx, run.automationId);
-	}
-}
-
-/** Skip the step run (it never ran its side effect) and cancel its run. */
-async function skipStepAndCancelRun(
-	ctx: MutationCtx,
-	stepRun: Doc<'automationStepRuns'>,
-	errorMessage: string
-): Promise<void> {
-	await transitionStepRun(ctx, stepRun, 'skipped', {
-		completedAt: Date.now(),
-		errorMessage,
-		leaseExpiresAt: undefined,
-	});
-	await cancelRun(ctx, stepRun.automationRunId);
-}
-
-/** Does `attempt` still own this step run? */
-function ownsStepRun(stepRun: Doc<'automationStepRuns'>, attempt: number): boolean {
-	return stepRun.status === 'executing' && (stepRun.retryCount ?? 0) === attempt;
-}
 
 // ============== Start ==============
 
@@ -194,18 +127,84 @@ type ClaimResult =
 			automation: Doc<'automations'>;
 	  }
 	| { kind: 'dropped' }
+	| { kind: 'skipped'; reason: string }
 	| { kind: 'ended'; reason: string };
+
+/** Does `attempt` still own this step run? */
+function ownsStepRun(stepRun: Doc<'automationStepRuns'>, attempt: number): boolean {
+	return stepRun.status === 'executing' && (stepRun.retryCount ?? 0) === attempt;
+}
+
+export type StepRunGate =
+	| {
+			isOpen: true;
+			run: Doc<'automationRuns'>;
+			step: Doc<'automationSteps'>;
+			contact: Doc<'contacts'>;
+			automation: Doc<'automations'>;
+	  }
+	| { isOpen: false; isRunEnded: boolean; reason: string };
+
+/**
+ * Re-check, in the claiming transaction, that a step run may still run its
+ * side effect: the run is running, the automation active, the step present and
+ * the contact eligible. A closed gate has already written its outcome — the
+ * step run skipped or failed, and the run cancelled or moved on — so the
+ * caller only reports it. Also used by the v0.5.5 claim shim
+ * (`stepExecutorQueries.markStepExecuting`).
+ */
+export async function gateStepRun(
+	ctx: MutationCtx,
+	stepRun: Doc<'automationStepRuns'>
+): Promise<StepRunGate> {
+	const run = await ctx.db.get(stepRun.automationRunId);
+	if (!run || run.status !== 'running') {
+		await transitionStepRun(ctx, stepRun, 'skipped', {
+			completedAt: Date.now(),
+			errorMessage: 'Automation run is no longer running',
+			leaseExpiresAt: undefined,
+		});
+		return { isOpen: false, isRunEnded: true, reason: 'Run not running' };
+	}
+
+	const automation = await ctx.db.get(run.automationId);
+	if (!automation || automation.status !== 'active') {
+		await failStepAndCancelRun(ctx, stepRun, 'Automation is no longer active', {
+			countRunFailure: false,
+		});
+		return { isOpen: false, isRunEnded: true, reason: 'Automation inactive' };
+	}
+
+	const step = await ctx.db.get(stepRun.automationStepId);
+	if (!step) {
+		await failStepAndCancelRun(ctx, stepRun, 'Step not found', { countRunFailure: false });
+		return { isOpen: false, isRunEnded: true, reason: 'Step not found' };
+	}
+
+	const contact = await ctx.db.get(run.contactId);
+	const ineligibility = contactMarketingIneligibility(contact);
+	if (ineligibility === 'contact_deleted' || contact === null) {
+		await skipStepAndCancelRun(ctx, stepRun, 'Contact is no longer eligible: contact_deleted');
+		return { isOpen: false, isRunEnded: true, reason: 'Contact ineligible (contact_deleted)' };
+	}
+	if (ineligibility === 'contact_unsubscribed' && step.stepType === 'email') {
+		await skipUnsubscribedStepAndAdvance(ctx, stepRun);
+		return { isOpen: false, isRunEnded: false, reason: 'Contact unsubscribed; email skipped' };
+	}
+
+	return { isOpen: true, run, step, contact, automation };
+}
 
 /**
  * Claim `attempt` of a step run. Attempt 0 claims a `pending` row; attempt n>0
  * takes over an `executing` row owned by attempt n-1 (a scheduled retry or a
  * lease recovery). Anything else is a duplicate or stale firing and is dropped.
  *
- * Before the side effect may run, the step's context is re-checked in this same
- * transaction: the run must still be running, the automation active, the step
- * present, and the contact still eligible for marketing. A contact that
- * unsubscribed or was deleted while the run waited ends the run here, as a
- * `skipped` step and a `cancelled` run, so the run counters stay right.
+ * A takeover of an email step first looks for the Send an earlier attempt
+ * enqueued: if it exists the side effect already happened, so the step is
+ * completed with it and the run moves on, whatever changed since. Otherwise
+ * the step's context is re-checked by {@link gateStepRun} before the side
+ * effect may run.
  */
 export const claimStepRun = internalMutation({
 	args: {
@@ -230,17 +229,22 @@ export const claimStepRun = internalMutation({
 			if (!isLegacyClaim && (stepRun.retryCount ?? 0) !== args.attempt - 1) {
 				return { kind: 'dropped' };
 			}
+			if (stepRun.stepType === 'email') {
+				const emailSendId = await findStepRunSend(ctx, stepRun._id);
+				if (emailSendId !== null) {
+					await completeSentStepAndAdvance(ctx, stepRun, emailSendId);
+					return { kind: 'dropped' };
+				}
+			}
 		}
 
-		const run = await ctx.db.get(stepRun.automationRunId);
-		if (!run || run.status !== 'running') {
-			await transitionStepRun(ctx, stepRun, 'skipped', {
-				completedAt: now,
-				errorMessage: 'Automation run is no longer running',
-				leaseExpiresAt: undefined,
-			});
-			return { kind: 'ended', reason: 'Run not running' };
+		const gate = await gateStepRun(ctx, stepRun);
+		if (!gate.isOpen) {
+			return gate.isRunEnded
+				? { kind: 'ended', reason: gate.reason }
+				: { kind: 'skipped', reason: gate.reason };
 		}
+		const { run, step, contact, automation } = gate;
 
 		if (args.attempt > MAX_RETRY_ATTEMPTS) {
 			await failStepAndCancelRun(
@@ -250,27 +254,6 @@ export const claimStepRun = internalMutation({
 				{ countRunFailure: true }
 			);
 			return { kind: 'ended', reason: 'Retries exhausted' };
-		}
-
-		const automation = await ctx.db.get(run.automationId);
-		if (!automation || automation.status !== 'active') {
-			await failStepAndCancelRun(ctx, stepRun, 'Automation is no longer active', {
-				countRunFailure: false,
-			});
-			return { kind: 'ended', reason: 'Automation inactive' };
-		}
-
-		const step = await ctx.db.get(stepRun.automationStepId);
-		if (!step) {
-			await failStepAndCancelRun(ctx, stepRun, 'Step not found', { countRunFailure: false });
-			return { kind: 'ended', reason: 'Step not found' };
-		}
-
-		const contact = await ctx.db.get(run.contactId);
-		const ineligibility = contactMarketingIneligibility(contact);
-		if (ineligibility !== null || contact === null) {
-			await skipStepAndCancelRun(ctx, stepRun, `Contact is no longer eligible: ${ineligibility}`);
-			return { kind: 'ended', reason: `Contact ineligible (${ineligibility})` };
 		}
 
 		if (stepRun.status === 'pending') {
@@ -319,8 +302,9 @@ const stepOutcomeValidator = v.union(
 /**
  * Commit a successful attempt: complete the step run, record the steps a
  * forward branch skipped, then enter the next step (or complete the run). A
- * `contact_ineligible` outcome (the intake saw the contact unsubscribe or be
- * deleted after the claim) skips the step and cancels the run instead.
+ * `contact_ineligible` outcome means the intake saw the contact change after
+ * the claim: an unsubscribe skips the email step and moves the run on, a
+ * deletion skips it and cancels the run.
  */
 export const finalizeStepRun = internalMutation({
 	args: {
@@ -338,6 +322,9 @@ export const finalizeStepRun = internalMutation({
 		if (!stepRun || !ownsStepRun(stepRun, args.attempt)) return { kind: 'stale' };
 
 		if (args.outcome.kind === 'contact_ineligible') {
+			if (args.outcome.reason === 'contact_unsubscribed') {
+				return await skipUnsubscribedStepAndAdvance(ctx, stepRun);
+			}
 			await skipStepAndCancelRun(
 				ctx,
 				stepRun,
@@ -406,19 +393,32 @@ export const retryOrFailStepRun = internalMutation({
 // ============== Recovery ==============
 
 /**
- * `executing` step runs whose lease has expired: attempts interrupted between
- * two commits. Rows without a lease (claimed before leases existed) are
- * excluded by the lower bound.
+ * `executing` step runs whose attempt was interrupted between two commits:
+ *   - rows whose lease has expired, and
+ *   - rows claimed without a lease (by v0.5.5's walker, before leases existed,
+ *     or by its claim shim) that started more than a lease ago. Those rows are
+ *     only the ones in flight across the upgrade, so the post-index filter
+ *     reads a small range. Remove this half after release N+1, with the shims.
  */
 export const getInterruptedStepRuns = internalQuery({
 	args: {},
 	handler: async (ctx) => {
 		const now = Date.now();
-		return await ctx.db
+		const expired = await ctx.db
 			.query('automationStepRuns')
 			.withIndex('by_status_and_lease_expires_at', (q) =>
 				q.eq('status', 'executing').gt('leaseExpiresAt', 0).lte('leaseExpiresAt', now)
 			)
 			.take(RECOVERY_BATCH);
+		if (expired.length === RECOVERY_BATCH) return expired;
+		const legacyCutoff = now - STEP_LEASE_MS;
+		const unleased = await ctx.db
+			.query('automationStepRuns')
+			.withIndex('by_status_and_lease_expires_at', (q) =>
+				q.eq('status', 'executing').eq('leaseExpiresAt', undefined)
+			)
+			.filter((q) => q.lt(q.field('startedAt'), legacyCutoff))
+			.take(RECOVERY_BATCH - expired.length);
+		return [...expired, ...unleased];
 	},
 });

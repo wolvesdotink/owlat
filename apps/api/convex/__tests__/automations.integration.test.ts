@@ -11,7 +11,7 @@ import {
 	insertStepRun,
 	recordSkippedSteps,
 	transitionStepRun,
-} from '../automations/stepExecutorQueries';
+} from '../automations/stepRunTransitions';
 
 type StepRunStatus = 'pending' | 'executing' | 'completed' | 'failed' | 'skipped';
 

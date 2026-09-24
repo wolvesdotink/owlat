@@ -42,8 +42,8 @@ const REJECTION_STEP_OUTCOME: Record<
 > = {
 	recipient_blocked: () => ({ status: 'completed' }),
 	// The contact unsubscribed from everything or was deleted after this step
-	// was claimed. Unlike a blocklisted ADDRESS, that ends the contact's journey:
-	// the walker skips the step and cancels the run rather than advancing it.
+	// was claimed. The walker skips the step either way; a deletion also
+	// cancels the run, an unsubscribe moves it on to its next step.
 	recipient_ineligible: (detail) => ({
 		status: 'contact_ineligible',
 		reason: detail === 'contact_unsubscribed' ? 'contact_unsubscribed' : 'contact_deleted',

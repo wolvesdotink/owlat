@@ -17,7 +17,7 @@
  *
  * Stats counters (`statsEntered`, `statsActive`, `statsCompleted`) are
  * lifetime; the reducer does not touch them on any edge. Stats writes stay
- * in the Trigger fanout (`triggers.ts`) and `stepExecutorQueries.ts`.
+ * in the Trigger fanout (`triggers.ts`) and `stepRunTransitions.ts`.
  *
  * See docs/adr/0024-automation-lifecycle-module.md.
  */
@@ -368,7 +368,7 @@ const BREAKER_ACTOR = 'system:automation-breaker';
  * consecutive-failure counter and, at the threshold, trips the breaker by
  * pausing the automation through the lifecycle (so the pause is audit-logged,
  * attributed to BREAKER_ACTOR). The counter resets on any completed run
- * (`stepExecutorQueries.completeRun`). Called by the step walker's
+ * (`stepRunTransitions.completeRun`). Called by the step walker's
  * fail-and-cancel transition, in the same transaction as the step failure and
  * the run cancellation.
  */
@@ -390,3 +390,4 @@ export async function recordAutomationRunFailure(
 		await dispatch(ctx, automation, { to: 'paused', at: Date.now() }, BREAKER_ACTOR);
 	}
 }
+

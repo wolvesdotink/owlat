@@ -252,6 +252,82 @@ describe('failure after each committed boundary', () => {
 	});
 });
 
+describe('recovering an email step whose Send already exists', () => {
+	it('completes the step with that Send even if the contact unsubscribed since', async () => {
+		const t = await freshT();
+		const { automationId, stepIds } = await seedAutomation(t, [
+			{ email: 'Welcome' },
+			{ delayDays: 1 },
+		]);
+		const { runId, contactId } = await seedRun(t, automationId);
+		const stepRunId = await begin(t, runId);
+		await t.mutation(internal.automations.stepOrchestration.claimStepRun, {
+			stepRunId,
+			attempt: 0,
+		});
+		const enqueued = await t.mutation(internal.delivery.nonCampaignIntake.intake, {
+			kind: 'automation',
+			email: 'reader@example.com',
+			contactId,
+			automationId,
+			subject: 'Welcome',
+			html: '<p>Hello</p>',
+			from: 'Owlat <noreply@example.com>',
+			automationStepRunId: stepRunId,
+		});
+		if (!enqueued.ok) throw new Error('not enqueued');
+		// The action died before finalize, and the contact unsubscribed after the
+		// mail was already queued (the worker's own gate decides whether it leaves).
+		await t.run(async (ctx) => ctx.db.patch(contactId, { unsubscribedAt: Date.now() }));
+
+		vi.advanceTimersByTime(STEP_LEASE_MS + 1);
+		await t.action(internal.automations.stepWalker.processPendingDelays, {});
+		await runDueScheduled(t);
+
+		const stepRuns = await stepRunsOf(t, runId);
+		expect(stepRuns.map((r) => [r.automationStepId, r.status])).toEqual([
+			[stepIds[0], 'completed'],
+			[stepIds[1], 'pending'],
+		]);
+		expect(stepRuns[0]?.emailSendId).toBe(enqueued.sendId);
+		expect((await runOf(t, runId)).status).toBe('running');
+		const emailStep = await t.run(async (ctx) => ctx.db.get(stepIds[0]!));
+		expect(emailStep?.statCompleted).toBe(1);
+		expect(emailStep?.statSkipped ?? 0).toBe(0);
+		expect(await sends(t)).toHaveLength(1);
+	});
+});
+
+describe('executing rows claimed before leases existed', () => {
+	it('are recovered once they started more than a lease ago', async () => {
+		const t = await freshT();
+		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);
+		const { runId } = await seedRun(t, automationId);
+		const stepRunId = await begin(t, runId);
+		// The v0.5.5 claim: executing, a start time, no lease, attempt 0.
+		await t.run(async (ctx) => {
+			const stepRun = await ctx.db.get(stepRunId);
+			await ctx.db.patch(stepRunId, { status: 'executing', startedAt: Date.now() });
+			await ctx.db.patch(stepRun!.automationStepId, { statPending: 0, statExecuting: 1 });
+		});
+		// Its own scheduled firing (attempt 0) loses: the row is not pending.
+		await runDueScheduled(t);
+
+		const early = await t.action(internal.automations.stepWalker.processPendingDelays, {});
+		expect(early.recoveredCount).toBe(0);
+
+		vi.advanceTimersByTime(STEP_LEASE_MS + 1);
+		const late = await t.action(internal.automations.stepWalker.processPendingDelays, {});
+		expect(late.recoveredCount).toBe(1);
+		await runDueScheduled(t);
+
+		expect(await sends(t)).toHaveLength(1);
+		const [stepRun] = await stepRunsOf(t, runId);
+		expect(stepRun?.status).toBe('completed');
+		expect((await runOf(t, runId)).status).toBe('completed');
+	});
+});
+
 describe('side-effect retry', () => {
 	it('retries a failed side effect with backoff; a racing duplicate of the retry is dropped', async () => {
 		const t = convexTest(schema, walkerModules);

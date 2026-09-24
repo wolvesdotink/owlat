@@ -140,6 +140,29 @@ describe('plugin step kind through run creation', () => {
 		expect((await runOf(t, runId)).status).toBe('completed');
 	});
 
+	it('still runs for a contact who unsubscribed from marketing (only email steps are skipped)', async () => {
+		const t = await freshT();
+		const automationId = await t.run(async (ctx) =>
+			ctx.db.insert('automations', createTestAutomation({ status: 'draft' }))
+		);
+		await t.mutation(api.automations.steps.addStep, {
+			automationId,
+			stepType: PLUGIN_KIND,
+			config: { pluginConfig: { channel: 'crm' } },
+		});
+		await t.run(async (ctx) => ctx.db.patch(automationId, { status: 'active' }));
+		const { runId } = await seedRun(t, automationId, { unsubscribedAt: Date.now() });
+
+		await t.action(internal.automations.stepWalker.startAutomationRun, {
+			automationRunId: runId,
+		});
+		await runDueScheduled(t);
+
+		expect(pluginExecute).toHaveBeenCalledOnce();
+		expect((await stepRunsOf(t, runId)).map((r) => r.status)).toEqual(['completed']);
+		expect((await runOf(t, runId)).status).toBe('completed');
+	});
+
 	it('rejects a plugin kind that is not in the composed catalog, at the editor and in storage', async () => {
 		const t = await freshT();
 		const automationId = await t.run(async (ctx) =>

@@ -127,6 +127,8 @@ import type * as automations_runDeletion from '../automations/runDeletion.js';
 import type * as automations_statShards from '../automations/statShards.js';
 import type * as automations_stepExecutorQueries from '../automations/stepExecutorQueries.js';
 import type * as automations_stepOrchestration from '../automations/stepOrchestration.js';
+import type * as automations_stepRunSend from '../automations/stepRunSend.js';
+import type * as automations_stepRunTransitions from '../automations/stepRunTransitions.js';
 import type * as automations_stepWalker from '../automations/stepWalker.js';
 import type * as automations_steps from '../automations/steps.js';
 import type * as automations_steps_condition_index from '../automations/steps/condition/index.js';
@@ -1301,6 +1303,8 @@ declare const fullApi: ApiFromModules<{
 	'automations/statShards': typeof automations_statShards;
 	'automations/stepExecutorQueries': typeof automations_stepExecutorQueries;
 	'automations/stepOrchestration': typeof automations_stepOrchestration;
+	'automations/stepRunSend': typeof automations_stepRunSend;
+	'automations/stepRunTransitions': typeof automations_stepRunTransitions;
 	'automations/stepWalker': typeof automations_stepWalker;
 	'automations/steps': typeof automations_steps;
 	'automations/steps/condition/index': typeof automations_steps_condition_index;

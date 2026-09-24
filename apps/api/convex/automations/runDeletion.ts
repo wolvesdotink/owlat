@@ -9,7 +9,7 @@
  * counted it as active forever. This module:
  *
  *   1. terminates a running run through the walker's own cancellation
- *      (`cancelRun`), so the cancelled counter moves exactly once;
+ *      (`stepRunTransitions.cancelRun`), so the cancelled counter moves exactly once;
  *   2. deletes the step runs newest first — the in-flight ones (the only
  *      pending/executing rows a run has are its latest) go in the first batch
  *      — releasing each in-flight row from its step's pending/executing gauge;
@@ -36,7 +36,7 @@ import {
 	applyStepStatusTransition,
 	cancelRun,
 	isTerminalStepRunStatus,
-} from './stepExecutorQueries';
+} from './stepRunTransitions';
 
 /** Step runs read per query while draining one run. */
 const STEP_RUN_CHUNK = 64;
