@@ -150,6 +150,62 @@ describe('today watermark', () => {
 	});
 });
 
+describe('today inbox choice', () => {
+	it('keeps a per-member hide list that two members of one inbox set independently', async () => {
+		const t = convexTest(schema, modules);
+		const support = await seedMailbox(t, {
+			userId: 'user-A',
+			address: 'support@owlat.test',
+			scope: 'shared',
+		});
+		await t.run(async (ctx) => {
+			for (const authUserId of ['user-B', 'user-C']) {
+				await ctx.db.insert('mailboxMembers', {
+					mailboxId: support,
+					authUserId,
+					role: 'member',
+					addedBy: 'user-A',
+					createdAt: Date.now(),
+				});
+			}
+		});
+		const now = Date.now();
+
+		setSession('user-B');
+		await t.mutation(api.today.state.setMailboxShown, { mailboxId: support, shown: false });
+		await t.mutation(api.today.state.setMailboxShown, { mailboxId: support, shown: false });
+		const hidden = await t.query(api.today.state.get, { now });
+		expect(hidden.hiddenMailboxIds).toEqual([support]);
+		// Choosing inboxes before the first mark keeps the first-visit fallback.
+		expect(hidden).toMatchObject({ isFallback: true, seenAt: now - 24 * HOUR });
+
+		// The other member of the same inbox still has it on their Today.
+		setSession('user-C');
+		expect((await t.query(api.today.state.get, { now })).hiddenMailboxIds).toEqual([]);
+
+		setSession('user-B');
+		await t.mutation(api.today.state.markSeen, { at: now - HOUR });
+		expect(await t.query(api.today.state.get, {})).toMatchObject({
+			seenAt: now - HOUR,
+			previousSeenAt: null,
+			isFallback: false,
+			hiddenMailboxIds: [support],
+		});
+		await t.mutation(api.today.state.setMailboxShown, { mailboxId: support, shown: true });
+		expect((await t.query(api.today.state.get, {})).hiddenMailboxIds).toEqual([]);
+	});
+
+	it('refuses to hide an inbox the caller cannot read', async () => {
+		const t = convexTest(schema, modules);
+		const privateBox = await seedMailbox(t, { userId: 'user-A' });
+		setSession('user-B');
+		await expect(
+			t.mutation(api.today.state.setMailboxShown, { mailboxId: privateBox, shown: false })
+		).rejects.toThrow();
+		expect((await t.query(api.today.state.get, {})).hiddenMailboxIds).toEqual([]);
+	});
+});
+
 describe('today digest', () => {
 	it('sorts mail into changed, arrived and filed; needs-reply goes to the queue', async () => {
 		const t = convexTest(schema, modules);

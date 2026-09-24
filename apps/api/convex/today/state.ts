@@ -1,19 +1,29 @@
 /**
- * Today's "since you last looked" watermark.
+ * Today's per-member state: the "since you last looked" watermark and the
+ * inboxes the member left out of Today.
  *
- * The home screen reports what arrived and what moved since this point. It is
- * per user (a shared inbox has shared read flags, so those cannot say what
+ * The home screen reports what arrived and what moved since the watermark. It
+ * is per user (a shared inbox has shared read flags, so those cannot say what
  * THIS person has already seen) and it only moves on purpose: the explicit
  * "Mark all as seen", finishing the Answer queue, or a deliberate dwell on
- * Today. Nothing here reads mail; it is a single timestamp per member.
+ * Today. Nothing here reads mail.
+ *
+ * The inbox choice is per person too. Two members of the support inbox can
+ * disagree: one wants it in their Today, the other works it from the Answer
+ * queue and keeps their home screen to their own mail.
  */
 
 import { v } from 'convex/values';
+import { throwForbidden } from '../_utils/errors';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { requireMailboxAccess } from '../mail/permissions';
 
 /** With no watermark yet, Today looks back this far. */
 export const FIRST_VISIT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+
+/** Bound on the hide list; far above any real number of readable inboxes. */
+const MAX_HIDDEN_MAILBOXES = 100;
 
 async function loadState(ctx: QueryCtx | MutationCtx, userId: string, organizationId: string) {
 	return ctx.db
@@ -33,11 +43,13 @@ export const get = authedQuery({
 	args: { now: v.optional(v.number()) },
 	handler: async (ctx, args, session) => {
 		const state = await loadState(ctx, session.userId, session.activeOrganizationId);
-		if (state) {
+		const hiddenMailboxIds = state?.hiddenMailboxIds ?? [];
+		if (state?.seenAt !== undefined) {
 			return {
 				seenAt: state.seenAt,
 				previousSeenAt: state.previousSeenAt ?? null,
 				isFallback: false,
+				hiddenMailboxIds,
 			};
 		}
 		// `now` comes from the client so the query result is stable between
@@ -47,6 +59,7 @@ export const get = authedQuery({
 			seenAt: Math.max(0, now - FIRST_VISIT_LOOKBACK_MS),
 			previousSeenAt: null,
 			isFallback: true,
+			hiddenMailboxIds,
 		};
 	},
 });
@@ -72,6 +85,10 @@ export const markSeen = authedMutation({
 			});
 			return { seenAt: at, previousSeenAt: null };
 		}
+		if (state.seenAt === undefined) {
+			await ctx.db.patch(state._id, { seenAt: at, updatedAt: now });
+			return { seenAt: at, previousSeenAt: null };
+		}
 		if (at <= state.seenAt)
 			return { seenAt: state.seenAt, previousSeenAt: state.previousSeenAt ?? null };
 		await ctx.db.patch(state._id, { seenAt: at, previousSeenAt: state.seenAt, updatedAt: now });
@@ -92,5 +109,43 @@ export const undoMarkSeen = authedMutation({
 			updatedAt: Date.now(),
 		});
 		return { restored: true };
+	},
+});
+
+/**
+ * Show or hide one inbox on the caller's Today. Hiding needs read access to
+ * the inbox (so the list only ever holds ids the caller could see); showing
+ * never does, so an inbox the caller has since lost access to can still be
+ * taken off the list.
+ */
+// all-members: self-scoped by session.userId; hiding re-checks mailbox access.
+export const setMailboxShown = authedMutation({
+	args: { mailboxId: v.id('mailboxes'), shown: v.boolean() },
+	handler: async (ctx, args, session) => {
+		const state = await loadState(ctx, session.userId, session.activeOrganizationId);
+		const current = state?.hiddenMailboxIds ?? [];
+		const isHidden = current.includes(args.mailboxId);
+		// Already in the asked-for state.
+		if (args.shown !== isHidden) return { hiddenMailboxIds: current };
+		if (!args.shown) {
+			const access = await requireMailboxAccess(ctx, args.mailboxId);
+			if (!access.ok) throwForbidden('Mailbox not accessible');
+		}
+		const next = args.shown
+			? current.filter((id) => id !== args.mailboxId)
+			: [...current, args.mailboxId].slice(-MAX_HIDDEN_MAILBOXES);
+
+		const now = Date.now();
+		if (state) {
+			await ctx.db.patch(state._id, { hiddenMailboxIds: next, updatedAt: now });
+		} else {
+			await ctx.db.insert('todayStates', {
+				userId: session.userId,
+				organizationId: session.activeOrganizationId,
+				hiddenMailboxIds: next,
+				updatedAt: now,
+			});
+		}
+		return { hiddenMailboxIds: next };
 	},
 });

@@ -15,11 +15,19 @@ export const todayTables = {
 	// moved only on purpose: "Mark all as seen", finishing the Answer queue, or
 	// a deliberate dwell on Today. `previousSeenAt` keeps the watermark the page
 	// was rendered against, so a mark-as-seen can be undone.
+	//
+	// `hiddenMailboxIds` are the inboxes this person left out of their Today (a
+	// support teammate who works the team inbox from the Answer queue but does
+	// not want it in their home summary). A hide list rather than a pick list, so
+	// an inbox they join later shows up without a visit to the picker. Choosing
+	// inboxes before the first mark-as-seen writes a row with no `seenAt`, which
+	// reads exactly like no row: the first-visit fallback.
 	todayStates: defineTable({
 		userId: v.string(), // BetterAuth user id
 		organizationId: v.string(),
-		seenAt: v.number(),
+		seenAt: v.optional(v.number()),
 		previousSeenAt: v.optional(v.number()),
+		hiddenMailboxIds: v.optional(v.array(v.id('mailboxes'))),
 		updatedAt: v.number(),
 	}).index('by_user_and_organization', ['userId', 'organizationId']),
 
