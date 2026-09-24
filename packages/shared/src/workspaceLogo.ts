@@ -21,7 +21,7 @@ export const MAX_WORKSPACE_LOGO_BYTES = 512 * 1024;
  * Which logo slot a file goes in. `dark` is optional: it is drawn on dark
  * backgrounds, and without it the light logo is shown there instead.
  */
-export const WORKSPACE_LOGO_VARIANTS = ['light', 'dark'] as const;
+const WORKSPACE_LOGO_VARIANTS = ['light', 'dark'] as const;
 
 export type WorkspaceLogoVariant = (typeof WORKSPACE_LOGO_VARIANTS)[number];
 
