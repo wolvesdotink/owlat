@@ -10107,6 +10107,7 @@
 						"publish": "Veröffentlichen",
 						"saveBeforePublishHint": "Speichern Sie Ihre Änderungen vor dem Veröffentlichen",
 						"toasts": {
+							"htmlStillRendering": "Ein gespeicherter Block, den diese E-Mail verwendet, wurde geändert, und die E-Mail wird noch aktualisiert. Sie wurde deshalb nicht veröffentlicht. Versuchen Sie es gleich noch einmal. Wenn das weiterhin passiert, speichern Sie die E-Mail und veröffentlichen Sie sie dann.",
 							"published": "E-Mail veröffentlicht",
 							"saveBeforePublish": "Speichern Sie die E-Mail, bevor Sie sie veröffentlichen",
 							"unpublished": "E-Mail wurde in den Entwurf zurückgesetzt"

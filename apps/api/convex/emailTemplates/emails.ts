@@ -3,7 +3,7 @@ import { emailTemplateTypeValidator } from '../lib/convexValidators';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { paginationOptsValidator } from 'convex/server';
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { buildSearchableText } from '../lib/queryHelpers';
 import { listResources } from '../lib/listing';
@@ -187,17 +187,57 @@ export const update = authedMutation({
 	},
 });
 
+/**
+ * The HTML a publish puts live: the row's own rendered HTML, read in the same
+ * transaction as the status change.
+ *
+ * Client HTML is not trusted here. The editor sends the HTML of the row it last
+ * saw, and a saved-block rerender can replace the row's HTML without moving its
+ * content revision; publishing the client's copy after that would put the
+ * pre-propagation HTML live on a row whose render state says it is current.
+ * For the same reason a row whose HTML is still behind its content (a rerender
+ * pending or failed) is refused instead of published.
+ */
+function publishedHtml(
+	template: Doc<'emailTemplates'>,
+	args: { htmlContent?: string; htmlTranslations?: string }
+): { htmlContent: string; htmlTranslations?: string } {
+	if (template.htmlRenderState?.stale) {
+		throwInvalidState(
+			'A saved block this email uses changed and its HTML is still being updated, so it was not published. Try again in a moment.',
+			{
+				reason: 'html_render_pending',
+				messageKey: 'dashboard.send.emails.detail.edit.toasts.htmlStillRendering',
+			}
+		);
+	}
+	if (template.htmlContent !== undefined) {
+		return { htmlContent: template.htmlContent, htmlTranslations: template.htmlTranslations };
+	}
+	// Never rendered (created outside the editor): the caller's HTML is all there is.
+	if (args.htmlContent === undefined) {
+		throwInvalidState('Save the email before publishing it.', {
+			reason: 'html_missing',
+			messageKey: 'dashboard.send.emails.detail.edit.toasts.saveBeforePublish',
+		});
+	}
+	return { htmlContent: args.htmlContent, htmlTranslations: args.htmlTranslations };
+}
+
 // Mutation to publish an email template
 export const publish = authedMutation({
 	args: {
 		templateId: v.id('emailTemplates'),
-		htmlContent: v.string(),
-		// Pre-rendered HTML for each translation language
+		// Ignored when the row holds rendered HTML (see `publishedHtml`). Still
+		// accepted so older clients, which send the row's HTML back, keep working,
+		// and used for a row that was never rendered.
+		htmlContent: v.optional(v.string()),
+		// Pre-rendered HTML for each translation language, with the same rule.
 		// Structure: { "de": { "htmlContent": "...", "subject": "..." }, ... }
 		htmlTranslations: v.optional(v.string()),
-		// The `contentRevision` the HTML was rendered from. When given, a row
-		// that has moved on is refused with `conflict` instead of going live
-		// with HTML that no longer matches its content.
+		// The `contentRevision` the caller last saw. When given, a row that has
+		// moved on is refused with `conflict`, so what goes live is the version
+		// the caller was looking at.
 		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
@@ -207,19 +247,14 @@ export const publish = authedMutation({
 			'Only owners and admins can publish email templates'
 		);
 
-		if (args.expectedContentRevision !== undefined) {
-			const template = await ctx.db.get(args.templateId);
-			if (template) assertContentRevision(template, args.expectedContentRevision, 'publish');
-		}
+		const template = await ctx.db.get(args.templateId);
+		if (!template) throwNotFound('Email template');
+		assertContentRevision(template, args.expectedContentRevision, 'publish');
+		const html = publishedHtml(template, args);
 
 		const outcome = await ctx.runMutation(internal.emailTemplates.lifecycle.transition, {
 			templateId: args.templateId,
-			input: {
-				to: 'published',
-				at: Date.now(),
-				htmlContent: args.htmlContent,
-				htmlTranslations: args.htmlTranslations,
-			},
+			input: { to: 'published', at: Date.now(), ...html },
 			userId: session.userId,
 		});
 

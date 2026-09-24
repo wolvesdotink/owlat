@@ -294,12 +294,109 @@ describe('publish — content revision', () => {
 
 		await t.mutation(api.emailTemplates.emails.publish, {
 			templateId,
-			htmlContent: '<p>Rendered from revision 3</p>',
 			expectedContentRevision: 3,
 		});
+		expect((await t.run((ctx) => ctx.db.get(templateId)))?.status).toBe('published');
+	});
+
+	it('puts the HTML the row holds live, not the HTML the client sent', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t, {
+			contentRevision: 5,
+			htmlContent: '<p>Stored</p>',
+			htmlTranslations: '{"de":{"htmlContent":"<p>Gespeichert</p>","subject":"Hallo"}}',
+		});
+
+		await t.mutation(api.emailTemplates.emails.publish, {
+			templateId,
+			htmlContent: '<p>Client copy</p>',
+			htmlTranslations: '{}',
+			expectedContentRevision: 5,
+		});
+
 		const row = await t.run((ctx) => ctx.db.get(templateId));
 		expect(row?.status).toBe('published');
-		expect(row?.htmlContent).toBe('<p>Rendered from revision 3</p>');
+		expect(row?.htmlContent).toBe('<p>Stored</p>');
+		expect(row?.htmlTranslations).toContain('Gespeichert');
+	});
+
+	it('publishes the rerendered HTML when the rerender lands between the tab snapshot and the publish', async () => {
+		const t = convexTest(schema, modules);
+		// Saved-block propagation just landed: revision 5, HTML stale. The tab
+		// snapshots { htmlContent: OLD, contentRevision: 5 }.
+		const templateId = await seedTemplate(t, {
+			contentRevision: 5,
+			htmlContent: '<p>OLD pre-propagation</p>',
+			htmlRenderState: { stale: true, failureCount: 0 },
+		});
+		// The rerender lands before the publish mutation runs. It does not move
+		// the revision, so the tab's revision still matches.
+		const outcome = await t.mutation(internal.emailBlocks.renderingPool.patchTemplateHtml, {
+			templateId,
+			htmlContent: '<p>NEW rerendered</p>',
+			expectedContentRevision: 5,
+		});
+		expect(outcome).toBe('applied');
+
+		// An older client still sends the HTML of its snapshot.
+		await t.mutation(api.emailTemplates.emails.publish, {
+			templateId,
+			htmlContent: '<p>OLD pre-propagation</p>',
+			expectedContentRevision: 5,
+		});
+
+		const row = await t.run((ctx) => ctx.db.get(templateId));
+		expect(row?.status).toBe('published');
+		expect(row?.htmlContent).toBe('<p>NEW rerendered</p>');
+		expect(row?.htmlRenderState?.stale).toBe(false);
+	});
+
+	it('refuses to publish while a saved-block rerender has not caught the HTML up', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t, {
+			contentRevision: 5,
+			htmlContent: '<p>OLD pre-propagation</p>',
+			htmlRenderState: { stale: true, failureCount: 0 },
+		});
+
+		const data = await operationError(
+			t.mutation(api.emailTemplates.emails.publish, {
+				templateId,
+				htmlContent: '<p>OLD pre-propagation</p>',
+				expectedContentRevision: 5,
+			})
+		);
+
+		expect(data.category).toBe('invalid_state');
+		expect(data.data).toMatchObject({
+			reason: 'html_render_pending',
+			messageKey: 'dashboard.send.emails.detail.edit.toasts.htmlStillRendering',
+		});
+		expect((await t.run((ctx) => ctx.db.get(templateId)))?.status).toBe('draft');
+	});
+
+	it('uses the caller HTML only for a row that was never rendered, and refuses one without any', async () => {
+		const t = convexTest(schema, modules);
+		const unrendered = await seedTemplate(t, { htmlContent: undefined });
+		const missing = await seedTemplate(t, { htmlContent: undefined });
+
+		await t.mutation(api.emailTemplates.emails.publish, {
+			templateId: unrendered,
+			htmlContent: '<p>From the API caller</p>',
+		});
+		const data = await operationError(
+			t.mutation(api.emailTemplates.emails.publish, { templateId: missing })
+		);
+
+		expect((await t.run((ctx) => ctx.db.get(unrendered)))?.htmlContent).toBe(
+			'<p>From the API caller</p>'
+		);
+		expect(data.category).toBe('invalid_state');
+		expect(data.data).toMatchObject({
+			reason: 'html_missing',
+			messageKey: 'dashboard.send.emails.detail.edit.toasts.saveBeforePublish',
+		});
+		expect((await t.run((ctx) => ctx.db.get(missing)))?.status).toBe('draft');
 	});
 
 	it('keeps publishing without a revision for callers that do not send one', async () => {

@@ -10107,6 +10107,7 @@
 						"publish": "Publish",
 						"saveBeforePublishHint": "Save your changes before publishing",
 						"toasts": {
+							"htmlStillRendering": "A saved block this email uses changed, and the email is still being updated, so it was not published. Try again in a moment. If this keeps happening, save the email, then publish it.",
 							"published": "Email published",
 							"saveBeforePublish": "Save the email before publishing it",
 							"unpublished": "Email returned to draft"

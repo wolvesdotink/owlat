@@ -197,12 +197,12 @@ async function handlePublicationToggle() {
 		showToast(t('dashboard.send.emails.detail.edit.toasts.saveBeforePublish'), 'error');
 		return;
 	}
-	// The stored HTML goes live only if the row still holds the content it was
-	// rendered from; a write landing in between refuses the publish.
+	// The server publishes the row's own stored HTML, and refuses while a
+	// saved-block rerender is still bringing it up to date. The revision makes
+	// a write landing after this click refuse the publish instead of putting
+	// a version live that this tab never showed.
 	const result = await publishTemplate({
 		templateId: templateId.value,
-		htmlContent: row.htmlContent,
-		htmlTranslations: row.htmlTranslations,
 		expectedContentRevision: row.contentRevision ?? 0,
 	});
 	if (result.ok) showToast(t('dashboard.send.emails.detail.edit.toasts.published'));
