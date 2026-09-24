@@ -220,7 +220,9 @@ const subPopoverStyles = computed(() => {
 		left: `${Math.round(left)}px`,
 		width: `${popoverWidth}px`,
 		maxHeight: `${maxHeight}px`,
-		zIndex: 1001,
+		// Same layer as the bar (and later in the DOM): under any dialog the
+		// popover's fields open, e.g. the media picker.
+		zIndex: 'var(--z-float)',
 	};
 });
 
@@ -266,7 +268,7 @@ onUnmounted(() => {
 			ref="toolbarEl"
 			role="toolbar"
 			aria-label="Block formatting"
-			class="light fixed z-[1000] flex items-center gap-0.5 py-[5px] px-2 bg-bg-elevated/95 backdrop-blur-sm border border-border-subtle rounded-[10px] shadow-[0_4px_16px_rgba(0,0,0,0.12)] pointer-events-auto animate-eb-toolbar-enter"
+			class="light fixed z-(--z-float) flex items-center gap-0.5 py-[5px] px-2 bg-bg-elevated/95 backdrop-blur-sm border border-border-subtle rounded-[10px] shadow-[0_4px_16px_rgba(0,0,0,0.12)] pointer-events-auto animate-eb-toolbar-enter"
 			:style="positionStyles"
 			@mousedown.stop
 		>

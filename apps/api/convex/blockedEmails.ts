@@ -390,7 +390,7 @@ export const getCountsByReason = authedQuery({
 /**
  * Remove after release N+1: v0.5.5 compatibility. v0.5.5's worker re-checked a
  * campaign recipient here, and a worker in flight across the deploy still does
- * (CONVENTIONS.md, "In-flight work across a deploy"). Now: marketingDispatchGate.
+ * (CONVENTIONS.md, "Old clients and workers"). Now: marketingDispatchGate.
  */
 export const isBlockedInternal = internalQuery({
 	args: {

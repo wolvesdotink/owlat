@@ -2941,6 +2941,12 @@
 			}
 		},
 		"email": {
+			"editorConflictDialog": {
+				"description": "It was saved somewhere else after you opened it: in another tab, on the Translations page, or through a saved block it uses. Your edits are not saved yet. Keep your version to save it over the newer one, or load the latest version and discard your edits.",
+				"keepMine": "Keep my version",
+				"loadLatest": "Load latest",
+				"title": "This email changed while you were editing"
+			},
 			"emailBuilderViewportGate": {
 				"body": "Drag-and-drop editing doesn't fit on a phone. Open this on a tablet or desktop to make changes — everything you've saved is exactly as you left it.",
 				"title": "The editor needs a bigger screen"
@@ -5183,6 +5189,7 @@
 				"appliedTitle": "Services applied",
 				"apply": "Apply & restart",
 				"applying": "Applying…",
+				"busy": "The updater is still applying another change, such as an update. Nothing was changed; apply again once it has finished.",
 				"convergedBody": "The updater converged the services for your flag state.",
 				"fallback": "Fallback: on the host, run {featureCommand} for each change, then {restartCommand}.",
 				"pendingBody": "Your flag changes affect {services}. The running services keep their old state until you apply. Applying may briefly restart the listed services.",
@@ -5328,7 +5335,8 @@
 					"up": "Recreate containers with new versions",
 					"writeCompose": "Write pinned compose template"
 				},
-				"timedOut": "Timed out waiting for new version to appear. Check `owlat logs web` on the host."
+				"timedOut": "Timed out waiting for new version to appear. Check `owlat logs web` on the host.",
+				"verifyingNotice": "The new version is running. Waiting until every service passes its health check, which can take several minutes."
 			},
 			"versionCard": {
 				"built": "Built",
@@ -7205,6 +7213,10 @@
 					},
 					"intro": "Current Owlat version, container health, and in-app update history.",
 					"pageTitle": "System & updates — Owlat",
+					"started": {
+						"body": "v{version} is installed and running, but not every service passed the updater's health check in time. Running the update again will not change this. Check the services named below on the host, for example with {doctorCommand}.",
+						"title": "Update applied, but some services are not healthy yet"
+					},
 					"success": {
 						"body": "Now running v{version}. Reloading this page…",
 						"title": "Update complete."
@@ -7216,6 +7228,7 @@
 						"noClient": "Convex client not available."
 					},
 					"unknownError": "Unknown error",
+					"updateBusy": "The updater is still applying another change. Try again once it has finished.",
 					"updates": {
 						"availableCurrent": "available (current: v{version})",
 						"checkNow": "Check now",
@@ -14461,7 +14474,8 @@
 			"getUploadUrlOperation": "Get upload URL",
 			"saveBlockOperation": "Save block",
 			"saveMediaAssetOperation": "Save media asset",
-			"staleRevision": "This email was changed somewhere else after you opened it, so your edits were not saved. Copy anything you want to keep, then reload the page to get the latest version."
+			"stalePublish": "This email was changed somewhere else after you opened it, so it was not published. Check the latest version, then publish again.",
+			"staleRevision": "This email was changed somewhere else after you opened it, so your edits were not saved yet."
 		},
 		"useFormSettings": {
 			"errors": {

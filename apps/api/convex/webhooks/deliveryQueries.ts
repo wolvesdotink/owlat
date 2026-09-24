@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation, internalQuery } from '../_generated/server';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { WEBHOOK_RETRY_DELAYS_MS } from '../lib/constants';
@@ -195,5 +195,142 @@ export const recordDeliveryAttempt = internalMutation({
 			errorMessage: args.errorMessage || 'Max retries exceeded',
 		});
 		return { recorded: true, retrying: false };
+	},
+});
+
+// ============ PREVIOUS-RELEASE ENTRY POINTS ============
+//
+// Remove after the next release. The previous release's fanout and delivery
+// actions called these by path. An action of that release still running when
+// this one deploys keeps its old code but reaches these functions, so each
+// keeps its original arguments and hands the work to the attempt model above:
+// every row these shims open or move to `retrying` gets its attempt scheduled
+// here under sequence 1, which turns the unsequenced job the old action
+// schedules next into a stale no-op. Once the row carries a sequence, the
+// attempt model owns it and an old action's failure or retry is dropped. Its
+// success is still recorded, since the receiver did get the event.
+
+/** A row the previous release's code still owns: open and never sequenced. */
+function isLegacyOpenRow(
+	log: Doc<'webhookDeliveryLogs'> | null
+): log is Doc<'webhookDeliveryLogs'> {
+	return log !== null && isOpenDeliveryStatus(log.status) && log.attemptSeq === undefined;
+}
+
+/** Previous release: the fanout action's subscriber lookup. */
+export const getWebhooksForEvent = internalQuery({
+	args: { event: subscribableWebhookEventValidator },
+	handler: async (ctx, args) => {
+		const webhooks = await ctx.db
+			.query('webhooks')
+			.withIndex('by_active', (q) => q.eq('isActive', true))
+			.collect(); // bounded: active webhooks (org-scale config)
+		return webhooks.filter((webhook) => webhook.events.includes(args.event));
+	},
+});
+
+/** Previous release: the delivery action's webhook read. */
+export const getWebhook = internalQuery({
+	args: { webhookId: v.id('webhooks') },
+	handler: async (ctx, args) => await ctx.db.get(args.webhookId),
+});
+
+/**
+ * Previous release: the fanout action wrote the row here and scheduled the
+ * attempt in a second call. The row and its first attempt are now written
+ * together, so a crash before that second call loses nothing. The old
+ * callers always passed attempt 1 of MAX_WEBHOOK_ATTEMPTS.
+ */
+export const createDeliveryLog = internalMutation({
+	args: {
+		webhookId: v.id('webhooks'),
+		event: webhookEventValidator,
+		payload: webhookPayloadValidator,
+		attemptNumber: v.number(),
+		maxAttempts: v.number(),
+	},
+	handler: async (ctx, args) =>
+		await enqueueWebhookDelivery(ctx, {
+			webhookId: args.webhookId,
+			event: args.event,
+			payload: args.payload,
+		}),
+});
+
+/** Previous release: a delivery that got a 2xx. */
+export const markDeliverySuccess = internalMutation({
+	args: {
+		logId: v.id('webhookDeliveryLogs'),
+		httpStatusCode: v.number(),
+		responseBody: v.optional(v.string()),
+		durationMs: v.number(),
+	},
+	handler: async (ctx, args) => {
+		const log = await ctx.db.get(args.logId);
+		if (!log || !isOpenDeliveryStatus(log.status)) return;
+		await finishDelivery(ctx, log._id, {
+			status: 'success',
+			httpStatusCode: args.httpStatusCode,
+			responseBody: args.responseBody,
+			durationMs: args.durationMs,
+			errorMessage: undefined,
+		});
+	},
+});
+
+/**
+ * Previous release: a failed attempt with attempts left. The old action
+ * schedules the retry itself after this returns; the retry is scheduled here
+ * instead, in the same transaction, and the old job becomes stale.
+ */
+export const markDeliveryRetrying = internalMutation({
+	args: {
+		logId: v.id('webhookDeliveryLogs'),
+		httpStatusCode: v.optional(v.number()),
+		responseBody: v.optional(v.string()),
+		errorMessage: v.optional(v.string()),
+		durationMs: v.optional(v.number()),
+		nextRetryAt: v.number(),
+		newAttemptNumber: v.number(),
+	},
+	handler: async (ctx, args) => {
+		const log = await ctx.db.get(args.logId);
+		if (!isLegacyOpenRow(log)) return;
+		const now = Date.now();
+		await scheduleDeliveryAttempt(ctx, log, {
+			attemptNumber: args.newAttemptNumber,
+			delayMs: Math.max(0, args.nextRetryAt - now),
+			patch: {
+				status: 'retrying',
+				httpStatusCode: args.httpStatusCode,
+				responseBody: args.responseBody,
+				errorMessage: args.errorMessage,
+				durationMs: args.durationMs,
+				attemptedAt: now,
+				nextRetryAt: args.nextRetryAt,
+			},
+		});
+	},
+});
+
+/** Previous release: a final failure, or a deleted or disabled webhook. */
+export const markDeliveryFailed = internalMutation({
+	args: {
+		logId: v.id('webhookDeliveryLogs'),
+		httpStatusCode: v.optional(v.number()),
+		responseBody: v.optional(v.string()),
+		errorMessage: v.string(),
+		durationMs: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		const log = await ctx.db.get(args.logId);
+		if (!isLegacyOpenRow(log)) return;
+		await finishDelivery(ctx, log._id, {
+			status: 'failed',
+			httpStatusCode: args.httpStatusCode,
+			responseBody: args.responseBody,
+			errorMessage: args.errorMessage,
+			durationMs: args.durationMs,
+		});
 	},
 });

@@ -29,7 +29,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
-import { RELEASE_COMPAT_ENTRIES } from './entry-wiring-release-compat';
+import { PREVIOUS_RELEASE_ENTRIES } from './entryWiringPreviousRelease';
 
 const convexRoot = join(import.meta.dirname, '..', 'convex');
 const repoRoot = join(import.meta.dirname, '..', '..', '..');
@@ -391,8 +391,6 @@ function reachedEntries(entries: readonly ConvexEntry[]): ReadonlySet<string> {
  */
 const UNREACHED_ENTRIES: readonly string[] = [];
 
-const isReleaseCompat = (entry: string): boolean => entry in RELEASE_COMPAT_ENTRIES;
-
 // ─── The checks ─────────────────────────────────────────────────────────────
 
 check(CONVEX_SOURCES.size > 500, `walked only ${CONVEX_SOURCES.size} backend modules`);
@@ -451,21 +449,23 @@ for (const landmark of [
 }
 
 const reached = reachedEntries(CONVEX_ENTRIES);
-const unreached = CONVEX_ENTRIES.filter(
+const unreachedWithShims = CONVEX_ENTRIES.filter(
 	(entry) => !isHandRun(entry.module) && !reached.has(label(entry))
 ).map(label);
+const unreached = unreachedWithShims.filter((entry) => !(entry in PREVIOUS_RELEASE_ENTRIES));
 
 expectEmpty(
-	unreached.filter((entry) => !UNREACHED_ENTRIES.includes(entry) && !isReleaseCompat(entry)),
+	Object.keys(PREVIOUS_RELEASE_ENTRIES).filter((entry) => !unreachedWithShims.includes(entry)),
+	'a previous-release entry gained a caller or was deleted — take its line out of PREVIOUS_RELEASE_ENTRIES:'
+);
+
+expectEmpty(
+	unreached.filter((entry) => !UNREACHED_ENTRIES.includes(entry)),
 	'a Convex entry point has no cron registration, no production caller, no client call and no worker path — register it, call it, or delete it (UNREACHED_ENTRIES is for pre-existing debt only):'
 );
 expectEmpty(
 	UNREACHED_ENTRIES.filter((entry) => !unreached.includes(entry)),
 	'a ledger entry is now reachable, or was deleted — take its line out of UNREACHED_ENTRIES:'
-);
-expectEmpty(
-	Object.keys(RELEASE_COMPAT_ENTRIES).filter((entry) => !unreached.includes(entry)),
-	'a release-compat shim is now reachable, or was deleted — take its line out of RELEASE_COMPAT_ENTRIES:'
 );
 expectEmpty(
 	UNREACHED_ENTRIES.filter((entry) => entry.startsWith('delivery/ramp')),
@@ -485,5 +485,5 @@ if (failures.length > 0) {
 	process.exit(1);
 }
 console.log(
-	`check-entry-wiring: OK (${CONVEX_ENTRIES.length} entry points, ${UNREACHED_ENTRIES.length} on the ledger, ${Object.keys(RELEASE_COMPAT_ENTRIES).length} release-compat shims)`
+	`check-entry-wiring: OK (${CONVEX_ENTRIES.length} entry points, ${UNREACHED_ENTRIES.length} on the ledger, ${Object.keys(PREVIOUS_RELEASE_ENTRIES).length} kept for the previous release)`
 );

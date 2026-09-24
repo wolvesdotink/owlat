@@ -85,11 +85,13 @@
 	 * z-[NN] values. The UiModal backdrop sits at 50; every named layer below is
 	 * defined relative to it. Consume with the Tailwind v4 var shorthand, e.g.
 	 * `z-(--z-titlebar)`. */
+	--z-float: 40; /* in-page floating tool chrome (email builder block rail + toolbar): under every backdrop */
 	--z-modal: 50; /* UiModal / dialog backdrops */
 	--z-header: 60; /* mobile top bar */
 	--z-titlebar: 70; /* desktop window titlebar */
 	--z-menu: 80; /* dropdown / workspace menu popovers */
 	--z-overlay: 100; /* full-screen overlays: lightbox, skip-link */
+	--z-toast: 110; /* toast stack: feedback raised from inside a dialog stays readable above it */
 
 	/* === FLUID FUNCTIONALISM: WEIGHT-BASED EMPHASIS ===
 	 * Overrides Tailwind's font-weight scale so every existing font-medium /

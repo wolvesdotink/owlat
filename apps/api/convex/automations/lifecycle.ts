@@ -395,7 +395,7 @@ export async function recordAutomationRunFailure(
  * Remove after release N+1: v0.5.5 compatibility. v0.5.5's step walker counted
  * a run failure through this mutation from its action, after failing the step
  * and cancelling the run; an action in flight when this release deploys still
- * calls it (see CONVENTIONS.md, "In-flight work across a deploy").
+ * calls it (see CONVENTIONS.md, "Old clients and workers against new functions").
  */
 export const recordRunFailure = internalMutation({
 	args: {

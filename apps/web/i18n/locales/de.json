@@ -2941,6 +2941,12 @@
 			}
 		},
 		"email": {
+			"editorConflictDialog": {
+				"description": "Sie wurde an anderer Stelle gespeichert, nachdem Sie sie geöffnet haben: in einem anderen Tab, auf der Seite „Übersetzungen“ oder über einen gespeicherten Block, den sie verwendet. Ihre Änderungen sind noch nicht gespeichert. Behalten Sie Ihre Version, um sie über die neuere zu speichern, oder laden Sie die aktuelle Version und verwerfen Sie Ihre Änderungen.",
+				"keepMine": "Meine Version behalten",
+				"loadLatest": "Aktuelle Version laden",
+				"title": "Diese E-Mail wurde während Ihrer Bearbeitung geändert"
+			},
 			"emailBuilderViewportGate": {
 				"body": "Bearbeiten per Drag-and-drop passt nicht auf ein Telefon. Öffnen Sie diese Seite auf einem Tablet oder Desktop, um Änderungen vorzunehmen – alles Gespeicherte ist genau so, wie Sie es verlassen haben.",
 				"title": "Der Editor braucht einen größeren Bildschirm"
@@ -5183,6 +5189,7 @@
 				"appliedTitle": "Dienste angewendet",
 				"apply": "Anwenden & neu starten",
 				"applying": "Wird angewendet…",
+				"busy": "Der Updater wendet noch eine andere Änderung an, etwa ein Update. Es wurde nichts geändert; wenden Sie die Änderungen erneut an, sobald sie abgeschlossen ist.",
 				"convergedBody": "Der Updater hat die Dienste an Ihren Flag-Stand angeglichen.",
 				"fallback": "Ausweichweg: Führen Sie auf dem Host für jede Änderung {featureCommand} aus und danach {restartCommand}.",
 				"pendingBody": "Ihre Flag-Änderungen betreffen {services}. Die laufenden Dienste behalten ihren bisherigen Stand, bis Sie die Änderungen anwenden. Beim Anwenden werden die genannten Dienste kurz neu gestartet.",
@@ -5328,7 +5335,8 @@
 					"up": "Container mit neuen Versionen neu erstellen",
 					"writeCompose": "Fixierte Compose-Vorlage schreiben"
 				},
-				"timedOut": "Zeitüberschreitung beim Warten auf die neue Version. Prüfen Sie `owlat logs web` auf dem Host."
+				"timedOut": "Zeitüberschreitung beim Warten auf die neue Version. Prüfen Sie `owlat logs web` auf dem Host.",
+				"verifyingNotice": "Die neue Version läuft. Es wird gewartet, bis jeder Dienst seine Zustandsprüfung besteht; das kann einige Minuten dauern."
 			},
 			"versionCard": {
 				"built": "Erstellt",
@@ -7205,6 +7213,10 @@
 					},
 					"intro": "Aktuelle Owlat-Version, Container-Zustand und Update-Verlauf in der App.",
 					"pageTitle": "System & Updates — Owlat",
+					"started": {
+						"body": "v{version} ist installiert und läuft, aber nicht jeder Dienst hat die Zustandsprüfung des Updaters rechtzeitig bestanden. Ein erneutes Update ändert daran nichts. Prüfen Sie die unten genannten Dienste auf dem Host, zum Beispiel mit {doctorCommand}.",
+						"title": "Update angewendet, aber noch nicht alle Dienste sind bereit"
+					},
 					"success": {
 						"body": "Es läuft jetzt v{version}. Diese Seite wird neu geladen…",
 						"title": "Update abgeschlossen."
@@ -7216,6 +7228,7 @@
 						"noClient": "Convex-Client nicht verfügbar."
 					},
 					"unknownError": "Unbekannter Fehler",
+					"updateBusy": "Der Updater wendet noch eine andere Änderung an. Versuchen Sie es erneut, sobald sie abgeschlossen ist.",
 					"updates": {
 						"availableCurrent": "verfügbar (aktuell: v{version})",
 						"checkNow": "Jetzt prüfen",
@@ -14461,7 +14474,8 @@
 			"getUploadUrlOperation": "Upload-URL abrufen",
 			"saveBlockOperation": "Block speichern",
 			"saveMediaAssetOperation": "Medien-Asset speichern",
-			"staleRevision": "Diese E-Mail wurde an anderer Stelle geändert, nachdem du sie geöffnet hast. Deine Änderungen wurden deshalb nicht gespeichert. Kopiere, was du behalten möchtest, und lade die Seite dann neu, um die aktuelle Version zu sehen."
+			"stalePublish": "Diese E-Mail wurde an anderer Stelle geändert, nachdem Sie sie geöffnet haben, und wurde deshalb nicht veröffentlicht. Prüfen Sie die aktuelle Version und veröffentlichen Sie sie dann erneut.",
+			"staleRevision": "Diese E-Mail wurde an anderer Stelle geändert, nachdem Sie sie geöffnet haben. Ihre Änderungen wurden deshalb noch nicht gespeichert."
 		},
 		"useFormSettings": {
 			"errors": {

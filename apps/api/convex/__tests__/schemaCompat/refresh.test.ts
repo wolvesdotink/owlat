@@ -10,7 +10,9 @@ import { writeSnapshot } from './snapshot';
  * normal runs; `bun run --cwd apps/api schema-compat:refresh` sets the switch.
  * The tag defaults to the newest `vX.Y.Z` reachable from HEAD, so running it on
  * the release commit right after `release:cut` snapshots that release. Set
- * OWLAT_SCHEMA_COMPAT_REF to snapshot another ref.
+ * OWLAT_SCHEMA_COMPAT_REF to snapshot another ref, and
+ * OWLAT_SCHEMA_COMPAT_RELEASE to record it under a release name other than the
+ * ref (`release:cut` snapshots HEAD before the tag exists, as the new release).
  *
  * The tag's `convex/` tree is extracted next to this package so its imports of
  * `convex/*` and the `@owlat/*` source aliases resolve. Those aliases point at
@@ -30,6 +32,8 @@ describe.skipIf(process.env[REFRESH_SWITCH] !== '1')('schema-compat fixture refr
 		const ref =
 			process.env['OWLAT_SCHEMA_COMPAT_REF'] ||
 			git('describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*.[0-9]*.[0-9]*');
+		const release = process.env['OWLAT_SCHEMA_COMPAT_RELEASE'] || ref;
+		expect(release).toMatch(/^v\d+\.\d+\.\d+$/);
 		const commit = git('rev-parse', `${ref}^{commit}`);
 		const convexRoot = join(apiRoot, '.schema-compat', ref, 'convex');
 		rmSync(convexRoot, { recursive: true, force: true });
@@ -51,7 +55,7 @@ describe.skipIf(process.env[REFRESH_SWITCH] !== '1')('schema-compat fixture refr
 				tables[name] = table.validator.json;
 			}
 			expect(Object.keys(tables).length).toBeGreaterThan(0);
-			writeSnapshot({ release: ref, commit, tables });
+			writeSnapshot({ release, commit, tables });
 		} finally {
 			rmSync(join(apiRoot, '.schema-compat'), { recursive: true, force: true });
 		}

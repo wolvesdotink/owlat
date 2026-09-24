@@ -1,3 +1,5 @@
+import { installScheduledFailureGate } from './convex/__tests__/helpers/scheduledFailures';
+
 // Default test environment: a configured MTA delivery provider.
 //
 // The operating-modes work made "is a delivery provider configured?" an
@@ -26,3 +28,8 @@ process.env['BETTER_AUTH_SECRET'] ??= 'test-better-auth-secret-0123456789abcdef'
 // above. The handful of tests that assert the production fail-closed throw stub
 // `SITE_URL=''` (or opt into dev mode) themselves to override this default.
 process.env['SITE_URL'] ??= 'http://localhost:3000';
+
+// A scheduled function that throws inside convex-test is only logged; this gate
+// turns that log line into a failure of the test that caused it. See
+// `convex/__tests__/helpers/scheduledFailures.ts` for the opt-out.
+installScheduledFailureGate();

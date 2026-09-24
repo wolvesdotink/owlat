@@ -92,11 +92,14 @@ const {
 	updateState,
 	updateSteps,
 	updateError,
+	updateWarning,
+	updateAttempt,
 	pendingTargetVersion,
 	startUpdate,
 	cancelConfirm,
 	confirmUpdate,
 	onUpdateComplete,
+	onUpdateStarted,
 	onUpdateFailed,
 } = useSystemUpdateRun(() => latestRelease.value?.latestVersion);
 
@@ -316,7 +319,9 @@ function formatDuration(start?: number, end?: number) {
 			v-if="updateState === 'running'"
 			:target-version="pendingTargetVersion"
 			:steps="updateSteps ?? undefined"
+			:attempt="updateAttempt"
 			@complete="onUpdateComplete"
+			@started="onUpdateStarted"
 			@failed="onUpdateFailed"
 		/>
 
@@ -331,6 +336,35 @@ function formatDuration(start?: number, end?: number) {
 					<h3 class="font-semibold text-text-primary">{{ t('dashboard.admin.system.index.success.title') }}</h3>
 					<p class="mt-1 text-sm text-text-secondary">
 						{{ t('dashboard.admin.system.index.success.body', { version: pendingTargetVersion }) }}
+					</p>
+				</div>
+			</div>
+		</div>
+
+		<!-- Applied and running, but the readiness check did not pass in time: a
+		     warning, not a failure, so no retry is suggested. -->
+		<div
+			v-if="updateState === 'started'"
+			class="rounded-xl border border-warning/40 bg-warning/5 p-6"
+			role="status"
+		>
+			<div class="flex items-start gap-3">
+				<Icon name="lucide:alert-triangle" class="w-6 h-6 text-warning shrink-0" aria-hidden="true" />
+				<div class="flex-1 min-w-0">
+					<h3 class="font-semibold text-text-primary">{{ t('dashboard.admin.system.index.started.title') }}</h3>
+					<I18nT
+						keypath="dashboard.admin.system.index.started.body"
+						tag="p"
+						scope="global"
+						class="mt-1 text-sm text-text-secondary"
+					>
+						<template #version>{{ pendingTargetVersion }}</template>
+						<template #doctorCommand>
+							<code class="font-mono text-xs bg-bg-surface px-1.5 py-0.5 rounded">owlat doctor</code>
+						</template>
+					</I18nT>
+					<p v-if="updateWarning" class="mt-3 text-caption text-text-secondary break-words">
+						{{ updateWarning }}
 					</p>
 				</div>
 			</div>

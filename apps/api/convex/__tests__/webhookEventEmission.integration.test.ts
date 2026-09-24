@@ -13,9 +13,9 @@ import { createContact } from '../contacts/creation';
  *
  * Rather than spin up a subscribed endpoint + mock the delivery fetch, we assert
  * the emission boundary directly: each reducer / the create chokepoint must
- * schedule `webhooks.fanout.fanoutEvent` with the correct event literal and
- * payload. The fanout action itself (subscriber lookup + signed delivery) is
- * covered separately in webhooks.integration.test.ts.
+ * schedule `webhooks.deliveryQueries.enqueueFanoutDeliveries` with the correct
+ * event literal and payload. The fanout itself (subscriber lookup + signed
+ * delivery) is covered separately under webhooks/__tests__.
  */
 
 const modules = import.meta.glob('../**/*.*s');
@@ -29,16 +29,15 @@ async function createThroughModule(
 
 type Fanout = { event: string; data: Record<string, unknown> };
 
-/** The fanoutEvent jobs the just-run mutation scheduled, by event literal. */
+/** The fanout jobs the just-run mutation scheduled, by event literal. */
 async function scheduledFanouts(t: ReturnType<typeof convexTest>): Promise<Fanout[]> {
 	return await t.run(async (ctx) => {
 		const jobs = await ctx.db.system.query('_scheduled_functions').collect();
 		const out: Fanout[] = [];
 		for (const job of jobs) {
-			const arg = job.args[0] as { event?: unknown; data?: unknown } | undefined;
-			if (arg && typeof arg.event === 'string') {
-				out.push({ event: arg.event, data: (arg.data ?? {}) as Record<string, unknown> });
-			}
+			if (job.name !== 'webhooks/deliveryQueries:enqueueFanoutDeliveries') continue;
+			const arg = job.args[0] as { event: string; payload: { data: Record<string, unknown> } };
+			out.push({ event: arg.event, data: arg.payload.data });
 		}
 		return out;
 	});

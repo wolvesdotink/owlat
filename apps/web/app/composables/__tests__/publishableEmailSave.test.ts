@@ -56,8 +56,9 @@ async function saveAndCapture(
 	d: PublishableEmailDraft,
 	b: PublishableEmailBase
 ): Promise<PublishableEmailPayload> {
-	const commit = vi.fn().mockResolvedValue(undefined);
-	await publishableEmailSave({ draft: d, base: b, renderOptions, commit });
+	const commit = vi.fn().mockResolvedValue(6);
+	// The revision the write stored is what the editor builds its next save on.
+	await expect(publishableEmailSave({ draft: d, base: b, renderOptions, commit })).resolves.toBe(6);
 	expect(commit).toHaveBeenCalledOnce();
 	return commit.mock.calls[0]![0] as PublishableEmailPayload;
 }

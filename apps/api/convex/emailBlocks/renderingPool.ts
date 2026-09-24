@@ -16,7 +16,8 @@
 import { v } from 'convex/values';
 import { Workpool, vOnCompleteArgs } from '@convex-dev/workpool';
 import { components } from '../_generated/api';
-import { internalMutation, internalQuery } from '../_generated/server';
+import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
+import { currentContentRevision } from '../lib/contentRevision';
 import { recordAuditLog } from '../lib/auditLog';
 import type { Doc, Id } from '../_generated/dataModel';
 
@@ -75,54 +76,73 @@ export const getEmailTheme = internalQuery({
 	},
 });
 
-export const patchTemplateHtml = internalMutation({
+/**
+ * What a guarded HTML patch did with the row it was handed.
+ *
+ *   applied    — the row was still at the revision the HTML was rendered from.
+ *   superseded — the row moved on and a newer write already brought its HTML
+ *                back in line with its content (`htmlRenderState` is not stale):
+ *                nothing left to do.
+ *   moved      — the row moved on but its HTML is still stale (e.g. a second
+ *                saved-block edit, or a translation write): render again from
+ *                the current row.
+ *   gone       — the row was deleted.
+ */
+export type RerenderPatchOutcome = 'applied' | 'superseded' | 'moved' | 'gone';
+
+const rerenderPatchArgs = {
+	htmlContent: v.string(),
+	htmlTranslations: v.optional(v.string()),
+	// Regenerated text/plain body. Absent when the row carries an author
+	// override — that text is theirs and a saved-block edit must not rewrite it.
+	plainTextContent: v.optional(v.string()),
+	// The `contentRevision` of the row the action rendered. The action reads the
+	// row, renders outside any transaction, then patches; an editor save or a
+	// translation edit landing in between must not be overwritten with HTML
+	// rendered from the older content.
+	expectedContentRevision: v.number(),
+};
+
+async function patchRenderedHtml(
+	ctx: MutationCtx,
+	id: Id<'emailTemplates'> | Id<'transactionalEmails'>,
 	args: {
-		templateId: v.id('emailTemplates'),
-		htmlContent: v.string(),
-		htmlTranslations: v.optional(v.string()),
-		// Regenerated text/plain body. Absent when the row carries an author
-		// override — that text is theirs and a saved-block edit must not rewrite it.
-		plainTextContent: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		const updates: Partial<Doc<'emailTemplates'>> = {
-			htmlContent: args.htmlContent,
-			// Action succeeded — clear stale flag atomically with the HTML write.
-			htmlRenderState: { stale: false },
-		};
-		if (args.htmlTranslations !== undefined) {
-			updates.htmlTranslations = args.htmlTranslations;
-		}
-		if (args.plainTextContent !== undefined) {
-			updates.plainTextContent = args.plainTextContent;
-		}
-		await ctx.db.patch(args.templateId, updates);
-	},
+		htmlContent: string;
+		htmlTranslations?: string;
+		plainTextContent?: string;
+		expectedContentRevision: number;
+	}
+): Promise<RerenderPatchOutcome> {
+	const row = await ctx.db.get(id);
+	if (!row) return 'gone';
+	if (currentContentRevision(row) !== args.expectedContentRevision) {
+		return row.htmlRenderState?.stale ? 'moved' : 'superseded';
+	}
+	const updates: Partial<Doc<'emailTemplates'>> & Partial<Doc<'transactionalEmails'>> = {
+		htmlContent: args.htmlContent,
+		// Action succeeded — clear stale flag atomically with the HTML write.
+		htmlRenderState: { stale: false },
+	};
+	if (args.htmlTranslations !== undefined) {
+		updates.htmlTranslations = args.htmlTranslations;
+	}
+	if (args.plainTextContent !== undefined) {
+		updates.plainTextContent = args.plainTextContent;
+	}
+	await ctx.db.patch(id, updates);
+	return 'applied';
+}
+
+export const patchTemplateHtml = internalMutation({
+	args: { templateId: v.id('emailTemplates'), ...rerenderPatchArgs },
+	handler: async (ctx, { templateId, ...args }): Promise<RerenderPatchOutcome> =>
+		await patchRenderedHtml(ctx, templateId, args),
 });
 
 export const patchTransactionalHtml = internalMutation({
-	args: {
-		emailId: v.id('transactionalEmails'),
-		htmlContent: v.string(),
-		htmlTranslations: v.optional(v.string()),
-		// Regenerated text/plain body. Absent when the row carries an author
-		// override — that text is theirs and a saved-block edit must not rewrite it.
-		plainTextContent: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		const updates: Partial<Doc<'transactionalEmails'>> = {
-			htmlContent: args.htmlContent,
-			// Action succeeded — clear stale flag atomically with the HTML write.
-			htmlRenderState: { stale: false },
-		};
-		if (args.htmlTranslations !== undefined) {
-			updates.htmlTranslations = args.htmlTranslations;
-		}
-		if (args.plainTextContent !== undefined) {
-			updates.plainTextContent = args.plainTextContent;
-		}
-		await ctx.db.patch(args.emailId, updates);
-	},
+	args: { emailId: v.id('transactionalEmails'), ...rerenderPatchArgs },
+	handler: async (ctx, { emailId, ...args }): Promise<RerenderPatchOutcome> =>
+		await patchRenderedHtml(ctx, emailId, args),
 });
 
 // ─── onComplete callback ────────────────────────────────────────────────────

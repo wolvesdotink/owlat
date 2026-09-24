@@ -31,8 +31,9 @@ const {
 	refetch: refetchTemplate,
 } = useConvexQuery(api.emailTemplates.emails.get, () => ({ templateId: templateId.value }));
 
-// Mutations
-const { run: updateTemplate } = useBackendOperation(api.emailTemplates.emails.update, {
+// Mutations. The save rejects on failure (StaleDraftError for a stale
+// revision, which the bridge turns into the conflict dialog).
+const commitTemplate = useEditorSaveOperation(api.emailTemplates.emails.update, {
 	label: () => t('dashboard.send.emails.detail.edit.operations.save'),
 });
 const { run: publishTemplate, isLoading: isPublishing } = useBackendOperation(
@@ -105,7 +106,13 @@ const {
 	showTestEmailModal,
 	testEmailHtml,
 	onSendTest: handleSendTest,
-	save: handleSave,
+	requestSave,
+	builderRef,
+	conflict,
+	isResolvingConflict,
+	keepMyVersion,
+	loadLatestVersion,
+	dismissConflict,
 } = useEmailEditorBridge({
 	source: template,
 	revision: (row) => row.contentRevision ?? 0,
@@ -127,7 +134,7 @@ const {
 		// Everything is read here, before the first await; the payload is built
 		// from this snapshot and the row the draft was loaded from.
 		const id = templateId.value;
-		await publishableEmailSave({
+		return await publishableEmailSave({
 			draft: {
 				name: ctx.name.value,
 				subject: ctx.subject.value,
@@ -141,13 +148,8 @@ const {
 				revision: base.revision,
 			},
 			renderOptions: { theme: emailTheme.value, variableType: 'personalization' },
-			commit: async (payload) => {
-				// The bridge clears the dirty flag only when save() resolves. The
-				// operation module has toasted any categorized failure (including a
-				// stale revision); throw so the editor stays dirty.
-				const result = await updateTemplate({ templateId: id, ...payload });
-				if (!result.ok) throw new Error('Save failed');
-			},
+			commit: async (payload) =>
+				(await commitTemplate({ templateId: id, ...payload })).contentRevision,
 		});
 	},
 });
@@ -159,8 +161,6 @@ const {
 // it. `loadState` re-seeds the canvas and emits back into these refs, which
 // marks the editor dirty and records the restore as one more undoable step.
 // Nothing is persisted until the user saves.
-const builderRef = ref<{ loadState: (state: HistoryState) => void } | null>(null);
-
 const handleRestoreVersion = (state: HistoryState) => {
 	blocks.value = state.blocks;
 	name.value = state.name;
@@ -189,15 +189,18 @@ async function handlePublicationToggle() {
 		if (result.ok) showToast(t('dashboard.send.emails.detail.edit.toasts.unpublished'));
 		return;
 	}
-	const htmlContent = template.value?.htmlContent;
-	if (!htmlContent) {
+	const row = template.value;
+	if (!row?.htmlContent) {
 		showToast(t('dashboard.send.emails.detail.edit.toasts.saveBeforePublish'), 'error');
 		return;
 	}
+	// The stored HTML goes live only if the row still holds the content it was
+	// rendered from; a write landing in between refuses the publish.
 	const result = await publishTemplate({
 		templateId: templateId.value,
-		htmlContent,
-		htmlTranslations: template.value?.htmlTranslations,
+		htmlContent: row.htmlContent,
+		htmlTranslations: row.htmlTranslations,
+		expectedContentRevision: row.contentRevision ?? 0,
 	});
 	if (result.ok) showToast(t('dashboard.send.emails.detail.edit.toasts.published'));
 }
@@ -274,7 +277,7 @@ async function handlePublicationToggle() {
 					:plain-text-override="plainTextOverride"
 					:allow-plain-text-override="true"
 					@update:plain-text-override="plainTextOverride = $event"
-					@save="handleSave"
+					@save="requestSave"
 					@back="handleBack"
 					@settings="handleSettings"
 					@send-test="handleSendTest"
@@ -337,6 +340,14 @@ async function handlePublicationToggle() {
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="confirmSave"
+		/>
+
+		<EmailEditorConflictDialog
+			:open="conflict !== null"
+			:is-resolving="isResolvingConflict"
+			@keep="keepMyVersion"
+			@load="loadLatestVersion"
+			@close="dismissConflict"
 		/>
 
 		<!-- Send Test Email Modal -->

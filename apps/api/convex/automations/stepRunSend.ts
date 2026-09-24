@@ -16,7 +16,7 @@ const LEGACY_SEND_SCAN = 16;
  * idempotency key (`transactionalSends.automationStepRunId`).
  *
  * Release compatibility — remove the fallback after release N+1 (see
- * CONVENTIONS.md, "In-flight work across a deploy"). v0.5.5's email step
+ * CONVENTIONS.md, "Old clients and workers against new functions"). v0.5.5's email step
  * enqueued without the key, and one of its actions can still be sending when
  * this release deploys; its retry then runs this release's code. So when the
  * key finds nothing, an unkeyed automation Send to the run's contact for the

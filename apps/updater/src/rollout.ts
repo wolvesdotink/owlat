@@ -89,8 +89,10 @@ async function recoverStack(services: string[]): Promise<RolloutStep> {
 	const retry = exec('docker', [...composeArgv(), 'up', '-d', ...services], OWLAT_DIR);
 	// Not "is every container `running`": a service can be running and failing
 	// its healthcheck, or running for the second it takes to crash. Readiness is
-	// the same contract a successful rollout has to meet.
-	const readiness = await verifyReadiness(services, composeArgv());
+	// the same contract a successful rollout has to meet, on a shorter bound: the
+	// answer carries the host-side command that restarts the stack, and it has
+	// to reach the caller before the caller gives up on the request.
+	const readiness = await verifyReadiness(services, composeArgv(), { recovery: true });
 
 	if (retry.ok && readiness.ready) {
 		return {

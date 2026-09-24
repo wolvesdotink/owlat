@@ -26,6 +26,9 @@ dist/
 .env.production.local
 .owlat-provisioning.json
 .owlat-provisioning.json.*.tmp
+# The updater's record of the last in-app update (served on its /health).
+.owlat-last-rollout.json
+.owlat-last-rollout.json.tmp
 
 # Secrets / keys (must never be committed)
 *.key

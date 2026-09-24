@@ -66,8 +66,8 @@ export const getPendingDelayStepRuns = internalQuery({
 // release deploys finishes on v0.5.5's code, but each of those calls resolves
 // against the NEW deployment. So they stay for one release, at their original
 // paths with their original argument and result shapes (see CONVENTIONS.md,
-// "In-flight work across a deploy"), delegating to the transitions the walker
-// uses now (`stepRunTransitions.ts`).
+// "Old clients and workers against new functions"), delegating to the walker's
+// current transitions (`stepRunTransitions.ts`).
 //
 // None of them may fight the new orchestration, which can take a legacy
 // attempt over (the recovery sweep adopts an `executing` row without a lease):

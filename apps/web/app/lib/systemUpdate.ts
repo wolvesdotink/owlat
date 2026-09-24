@@ -65,3 +65,94 @@ export function updateFailureMessage(error: unknown, fallback: string): string {
 	if (typeof payload?.message === 'string' && payload.message.trim()) return payload.message;
 	return error instanceof Error && error.message ? error.message : fallback;
 }
+
+/**
+ * The updater's `/update` answer for a release that was applied and whose
+ * containers started, but whose stack did not pass the readiness check in
+ * time. The release is live; this is a warning to look at the host, not a
+ * failed update to retry.
+ */
+export function isStartedRollout(result: unknown): boolean {
+	return (
+		typeof result === 'object' &&
+		result !== null &&
+		(result as { rollout?: unknown }).rollout === 'started'
+	);
+}
+
+/** An update attempt id the browser mints and the updater records. */
+const ATTEMPT_ID = /^[A-Za-z0-9-]{8,64}$/;
+
+export function isUpdateAttemptId(value: unknown): value is string {
+	return typeof value === 'string' && ATTEMPT_ID.test(value);
+}
+
+/** The updater's record of the last update, as its /health reports it. */
+interface LastRollout {
+	attempt?: string;
+	targetVersion?: string | null;
+	phase?: 'applying' | 'verifying' | 'done';
+	outcome?: 'healthy' | 'started' | 'partially-applied' | 'failed' | 'interrupted';
+	summary?: string;
+}
+
+export interface UpdaterHealth {
+	status: string;
+	timestamp: number;
+	version?: string;
+	gitSha?: string;
+	buildDate?: string;
+	containers?: Array<{ service: string; state: string; imageTag?: string }> | string;
+	/** Absent from updaters that predate the record. */
+	lastRollout?: LastRollout | null;
+	rolloutInProgress?: string | null;
+}
+
+export type RolloutReading =
+	/** Nothing says the update is over yet. */
+	| { kind: 'waiting' }
+	/** The updater is still working on this attempt; `verifying` once `up` is done. */
+	| { kind: 'in-flight'; verifying: boolean }
+	| { kind: 'complete' }
+	/** Applied and started, but not every service became healthy in time. */
+	| { kind: 'started'; summary: string }
+	| { kind: 'failed'; summary: string };
+
+/**
+ * Where the update the progress card is watching stands, from one /health poll.
+ *
+ * The card used to call an update complete as soon as the web container ran the
+ * target version. That happens during `up`, before the updater has checked the
+ * rest of the stack, and the updater's answer, the only place its verdict was,
+ * normally dies with the web container it recreates. The updater now keeps the
+ * verdict and serves it on /health, tagged with the attempt id the browser
+ * sent, so a record left by an earlier attempt at the same version is never
+ * read as this one's.
+ *
+ * With no record for this attempt (an updater that predates the record, or the
+ * rollout was run by the previous updater and this one was started after it),
+ * the web container's version is still the signal.
+ */
+export function readRolloutProgress(
+	health: UpdaterHealth,
+	targetVersion: string,
+	attempt: string | undefined
+): RolloutReading {
+	const record = health.lastRollout;
+	if (record && attempt && record.attempt === attempt) {
+		if (record.phase !== 'done') {
+			return { kind: 'in-flight', verifying: record.phase === 'verifying' };
+		}
+		const summary = record.summary ?? '';
+		if (record.outcome === 'healthy') return { kind: 'complete' };
+		if (record.outcome === 'started') return { kind: 'started', summary };
+		return { kind: 'failed', summary };
+	}
+	if (health.rolloutInProgress === 'update') return { kind: 'in-flight', verifying: false };
+
+	const containers = Array.isArray(health.containers) ? health.containers : [];
+	const web = containers.find((c) => c.service === 'web');
+	return web && web.imageTag === targetVersion && web.state?.includes('running')
+		? { kind: 'complete' }
+		: { kind: 'waiting' };
+}
