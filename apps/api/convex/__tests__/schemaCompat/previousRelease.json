@@ -1,6 +1,6 @@
 {
-	"release": "v0.6.1",
-	"commit": "8920688e897fd832a85644acf7c4539a7a603fc0",
+	"release": "v0.6.2",
+	"commit": "f57d099367ad7a740e4dd23814fa2c24e9af20be",
 	"tables": {
 		"accessRequests": {"type": "object", "value": {
 			"authUserId": {"fieldType":{"type":"string"},"optional":false},
@@ -364,6 +364,7 @@
 		"campaignStatShards": {"type": "object", "value": {
 			"campaignId": {"fieldType":{"type":"id","tableName":"campaigns"},"optional":false},
 			"shardKey": {"fieldType":{"type":"number"},"optional":false},
+			"statsAutomatedOpened": {"fieldType":{"type":"number"},"optional":true},
 			"statsBounced": {"fieldType":{"type":"number"},"optional":true},
 			"statsClicked": {"fieldType":{"type":"number"},"optional":true},
 			"statsDelivered": {"fieldType":{"type":"number"},"optional":true},
@@ -393,6 +394,7 @@
 			"fromEmail": {"fieldType":{"type":"string"},"optional":true},
 			"fromName": {"fieldType":{"type":"string"},"optional":true},
 			"isABTest": {"fieldType":{"type":"boolean"},"optional":true},
+			"isAutomatedOpenFiltered": {"fieldType":{"type":"boolean"},"optional":true},
 			"name": {"fieldType":{"type":"string"},"optional":false},
 			"replyTo": {"fieldType":{"type":"string"},"optional":true},
 			"scheduledAt": {"fieldType":{"type":"number"},"optional":true},
@@ -401,6 +403,7 @@
 			"searchableText": {"fieldType":{"type":"string"},"optional":true},
 			"seedTag": {"fieldType":{"type":"string"},"optional":true},
 			"sentAt": {"fieldType":{"type":"number"},"optional":true},
+			"statsAutomatedOpened": {"fieldType":{"type":"number"},"optional":true},
 			"statsBounced": {"fieldType":{"type":"number"},"optional":true},
 			"statsClicked": {"fieldType":{"type":"number"},"optional":true},
 			"statsDelivered": {"fieldType":{"type":"number"},"optional":true},
@@ -860,6 +863,8 @@
 		}},
 		"emailSends": {"type": "object", "value": {
 			"abVariant": {"fieldType":{"type":"union","value":[{"type":"literal","value":"A"},{"type":"literal","value":"B"}]},"optional":true},
+			"automatedOpenCount": {"fieldType":{"type":"number"},"optional":true},
+			"automatedOpenedAt": {"fieldType":{"type":"number"},"optional":true},
 			"bounceType": {"fieldType":{"type":"union","value":[{"type":"literal","value":"hard"},{"type":"literal","value":"soft"}]},"optional":true},
 			"bouncedAt": {"fieldType":{"type":"number"},"optional":true},
 			"campaignId": {"fieldType":{"type":"id","tableName":"campaigns"},"optional":false},
@@ -1171,6 +1176,8 @@
 			"isInboundTlsRequired": {"fieldType":{"type":"boolean"},"optional":true},
 			"isMigrationMode": {"fieldType":{"type":"boolean"},"optional":true},
 			"isRampControllerPaused": {"fieldType":{"type":"boolean"},"optional":true},
+			"logoDarkStorageId": {"fieldType":{"type":"id","tableName":"_storage"},"optional":true},
+			"logoStorageId": {"fieldType":{"type":"id","tableName":"_storage"},"optional":true},
 			"mtaHealth": {"fieldType":{"type":"object","value":{"status":{"fieldType":{"type":"union","value":[{"type":"literal","value":"ok"},{"type":"literal","value":"degraded"},{"type":"literal","value":"unreachable"}]},"optional":false},"isRedisConnected":{"fieldType":{"type":"boolean"},"optional":true},"isWorkerAlive":{"fieldType":{"type":"boolean"},"optional":true},"isDnsReachable":{"fieldType":{"type":"boolean"},"optional":true},"isAllIpsBlocked":{"fieldType":{"type":"boolean"},"optional":true},"smtpOutbound":{"fieldType":{"type":"object","value":{"status":{"fieldType":{"type":"union","value":[{"type":"literal","value":"ok"},{"type":"literal","value":"degraded"}]},"optional":false},"checkedAt":{"fieldType":{"type":"number"},"optional":false},"ips":{"fieldType":{"type":"array","value":{"type":"object","value":{"ip":{"fieldType":{"type":"string"},"optional":false},"status":{"fieldType":{"type":"union","value":[{"type":"literal","value":"ok"},{"type":"literal","value":"failed"}]},"optional":false},"reason":{"fieldType":{"type":"string"},"optional":true}}}},"optional":false}}},"optional":true},"smtpTls":{"fieldType":{"type":"object","value":{"status":{"fieldType":{"type":"union","value":[{"type":"literal","value":"pass"},{"type":"literal","value":"warn"},{"type":"literal","value":"fail"}]},"optional":false},"hostname":{"fieldType":{"type":"string"},"optional":false},"isHostnameMatched":{"fieldType":{"type":"boolean"},"optional":false},"validFrom":{"fieldType":{"type":"number"},"optional":true},"validTo":{"fieldType":{"type":"number"},"optional":true},"reason":{"fieldType":{"type":"string"},"optional":true},"checkedAt":{"fieldType":{"type":"number"},"optional":false}}},"optional":true},"observedAt":{"fieldType":{"type":"number"},"optional":false}}},"optional":true},
 			"mtaStsMode": {"fieldType":{"type":"union","value":[{"type":"literal","value":"none"},{"type":"literal","value":"testing"},{"type":"literal","value":"enforce"}]},"optional":true},
 			"openThreads": {"fieldType":{"type":"number"},"optional":true},
@@ -1791,6 +1798,7 @@
 		"mailboxMigrations": {"type": "object", "value": {
 			"accountId": {"fieldType":{"type":"id","tableName":"externalMailAccounts"},"optional":false},
 			"completedAt": {"fieldType":{"type":"number"},"optional":true},
+			"failureCode": {"fieldType":{"type":"literal","value":"throttle_exhausted"},"optional":true},
 			"importCompletedAt": {"fieldType":{"type":"number"},"optional":true},
 			"indexCursorId": {"fieldType":{"type":"id","tableName":"mailMessages"},"optional":true},
 			"indexCursorReceivedAt": {"fieldType":{"type":"number"},"optional":true},
@@ -1802,10 +1810,12 @@
 			"messagesIndexed": {"fieldType":{"type":"number"},"optional":false},
 			"messagesTotal": {"fieldType":{"type":"number"},"optional":false},
 			"organizationId": {"fieldType":{"type":"string"},"optional":false},
+			"resumesAt": {"fieldType":{"type":"number"},"optional":true},
 			"scope": {"fieldType":{"type":"union","value":[{"type":"literal","value":"personal"},{"type":"literal","value":"shared"}]},"optional":true},
 			"source": {"fieldType":{"type":"union","value":[{"type":"literal","value":"google"},{"type":"literal","value":"imap"}]},"optional":false},
 			"startedAt": {"fieldType":{"type":"number"},"optional":false},
 			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"importing"},{"type":"literal","value":"indexing"},{"type":"literal","value":"completed"},{"type":"literal","value":"failed"},{"type":"literal","value":"cancelled"}]},"optional":false},
+			"throttlePauses": {"fieldType":{"type":"number"},"optional":true},
 			"updatedAt": {"fieldType":{"type":"number"},"optional":false},
 			"userId": {"fieldType":{"type":"string"},"optional":false}
 		}},
@@ -2376,6 +2386,8 @@
 		}},
 		"transactionalSends": {"type": "object", "value": {
 			"attachmentStorageIds": {"fieldType":{"type":"array","value":{"type":"string"}},"optional":true},
+			"automatedOpenCount": {"fieldType":{"type":"number"},"optional":true},
+			"automatedOpenedAt": {"fieldType":{"type":"number"},"optional":true},
 			"automationId": {"fieldType":{"type":"id","tableName":"automations"},"optional":true},
 			"automationStepRunId": {"fieldType":{"type":"id","tableName":"automationStepRuns"},"optional":true},
 			"bounceType": {"fieldType":{"type":"union","value":[{"type":"literal","value":"hard"},{"type":"literal","value":"soft"}]},"optional":true},
