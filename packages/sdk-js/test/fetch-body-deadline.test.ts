@@ -17,13 +17,19 @@ afterEach(() => {
 
 /** A body stream that delivers `text` after `delayMs`, or never when null. */
 function slowBody(text: string, delayMs: number | null): ReadableStream<Uint8Array> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
 	return new ReadableStream<Uint8Array>({
 		start(controller) {
 			if (delayMs === null) return;
-			setTimeout(() => {
+			timer = setTimeout(() => {
 				controller.enqueue(new TextEncoder().encode(text));
 				controller.close();
 			}, delayMs);
+		},
+		// The client cancels the stream when the deadline cuts the read off; a
+		// late enqueue into the closed controller would surface as an unhandled error.
+		cancel() {
+			clearTimeout(timer);
 		},
 	});
 }
