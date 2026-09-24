@@ -1,4 +1,4 @@
-import { v, type ValidatorJSON } from 'convex/values';
+import { v, type Validator, type ValidatorJSON } from 'convex/values';
 import { describe, expect, it } from 'vitest';
 import schema from '../../schema';
 import { rowsForTable } from './rows';
@@ -189,5 +189,58 @@ describe('the compatibility check itself', () => {
 		).toContain('sends row 1: sentAt: field is no longer in the schema');
 		expect(incompatibilities(previous, {})).toEqual(['sends: table is no longer in the schema']);
 		expect(incompatibilities(previous, {}, new Set(['sends']))).toEqual([]);
+	});
+
+	it('rejects a nested optional field made required under an optional parent', () => {
+		// An old row may hold `settings: {}`: the parent present, its optionals omitted.
+		expect(
+			incompatibilities(
+				{ t: table({ settings: v.optional(v.object({ foo: v.optional(v.string()) })) }) },
+				{ t: table({ settings: v.optional(v.object({ foo: v.string() })) }) }
+			).join('\n')
+		).toContain('settings.foo: required field missing');
+	});
+
+	it('rejects an optional field made required inside a non-first union member', () => {
+		const state = (at: Validator<number | undefined, 'required' | 'optional'>) =>
+			table({
+				state: v.union(v.object({ kind: v.literal('a') }), v.object({ kind: v.literal('b'), at })),
+			});
+		expect(
+			incompatibilities({ t: state(v.optional(v.number())) }, { t: state(v.number()) }).join('\n')
+		).toContain('state: expected one of object | object, got {"kind":"b"}');
+	});
+
+	it('rejects a narrowed union nested in a later member of a wider union', () => {
+		const y = v.union(v.literal(1), v.literal(2), v.literal(3), v.literal(4));
+		expect(
+			incompatibilities(
+				{
+					t: table({
+						x: v.union(
+							v.object({ k: v.literal('a') }),
+							v.object({ k: v.literal('b'), m: v.union(v.literal('p'), v.literal('q')) })
+						),
+						y,
+					}),
+				},
+				{
+					t: table({
+						x: v.union(
+							v.object({ k: v.literal('a') }),
+							v.object({ k: v.literal('b'), m: v.literal('q') })
+						),
+						y,
+					}),
+				}
+			).join('\n')
+		).toContain('x: expected one of object | object, got {"k":"b","m":"p"}');
+	});
+
+	it('keeps the row count per table small enough to check every release', () => {
+		const counts = Object.values(readSnapshot().tables).map(
+			(validator) => rowsForTable(validator).length
+		);
+		expect(Math.max(...counts)).toBeLessThan(2_000);
 	});
 });

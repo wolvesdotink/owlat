@@ -20,6 +20,7 @@ import { promises as dns, lookup as dnsLookup } from 'dns';
 import { isIP } from 'net';
 import type { LookupAddress, LookupAllOptions } from 'dns';
 import { Agent } from 'undici';
+import { readStreamPrefix } from '@owlat/shared';
 
 // The literal-IP classification lives in the runtime-agnostic lib/ipBlocklist so
 // the v8-runtime webhook-host check can share it. Re-exported for existing
@@ -212,88 +213,6 @@ export function fetchWithGuardedDispatcher(
 /** Thrown by {@link readCappedBytes} when a response body exceeds the cap. */
 export class CappedReadOverflow extends Error {}
 
-/** What {@link readStreamPrefix} collected before it stopped. */
-export interface StreamPrefix {
-	bytes: Uint8Array;
-	/**
-	 * True when reading stopped before the producer finished: more bytes than
-	 * `maxBytes` arrived, or the time budget ran out. The stream is cancelled
-	 * in both cases.
-	 */
-	truncated: boolean;
-}
-
-/**
- * Read at most `maxBytes` real octets from an untrusted body stream and stop:
- * the bytes past the cap are never buffered and the stream is cancelled, so a
- * huge or never-ending body costs at most `maxBytes` of memory. With
- * `timeoutMs`, a producer that stalls also ends the read (as `truncated`)
- * instead of holding the caller until the transport gives up. A stream error
- * propagates.
- *
- * This is the one bounded reader behind both the reject-if-too-big
- * {@link readCappedBytes} and the keep-the-head {@link readBodyPreview}.
- */
-export async function readStreamPrefix(
-	body: ReadableStream<Uint8Array> | null,
-	maxBytes: number,
-	opts: { timeoutMs?: number } = {}
-): Promise<StreamPrefix | null> {
-	if (!body) return null;
-	if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
-		throw new RangeError('maxBytes must be a non-negative safe integer');
-	}
-
-	const reader = body.getReader();
-	const chunks: Uint8Array[] = [];
-	let total = 0;
-	let truncated = false;
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	const expired =
-		opts.timeoutMs === undefined
-			? undefined
-			: new Promise<'expired'>((resolve) => {
-					timer = setTimeout(() => resolve('expired'), opts.timeoutMs);
-				});
-	try {
-		for (;;) {
-			const next = reader.read();
-			const step = expired ? await Promise.race([next, expired]) : await next;
-			if (step === 'expired') {
-				// The pending read settles once cancel() lands; nothing awaits it.
-				next.catch(() => undefined);
-				truncated = true;
-				break;
-			}
-			if (step.done) break;
-			const chunk = step.value;
-			if (!chunk) continue;
-			const room = maxBytes - total;
-			if (chunk.byteLength > room) {
-				if (room > 0) chunks.push(chunk.subarray(0, room));
-				total += Math.max(room, 0);
-				truncated = true;
-				break;
-			}
-			chunks.push(chunk);
-			total += chunk.byteLength;
-		}
-	} finally {
-		clearTimeout(timer);
-		// Do not wait for an untrusted producer to acknowledge cancellation.
-		if (truncated) void reader.cancel().catch(() => undefined);
-		reader.releaseLock();
-	}
-
-	const bytes = new Uint8Array(total);
-	let offset = 0;
-	for (const chunk of chunks) {
-		bytes.set(chunk, offset);
-		offset += chunk.byteLength;
-	}
-	return { bytes, truncated };
-}
-
 /**
  * Read a response body stream up to `maxBytes` real octets, returning the
  * collected bytes (or `null` when there is no body). Throws
@@ -332,7 +251,7 @@ export async function readBodyPreview(
 	body: ReadableStream<Uint8Array> | null,
 	opts: { maxBytes: number; timeoutMs: number }
 ): Promise<BodyPreview> {
-	let prefix: StreamPrefix | null;
+	let prefix: Awaited<ReturnType<typeof readStreamPrefix>>;
 	try {
 		prefix = await readStreamPrefix(body, opts.maxBytes, { timeoutMs: opts.timeoutMs });
 	} catch {

@@ -2,127 +2,39 @@
  * Outbound webhook delivery against a real database: the attempt lifecycle
  * (issue #809 finding 7) and the bounded response preview (finding 8).
  *
- * The delivery action runs by calling its handler directly, with `runMutation`
- * routed into convex-test, so the claim and outcome mutations are the real
- * ones. Timers are faked so nothing the mutations schedule runs on its own:
+ * The delivery action runs by calling its handler directly (see
+ * `deliveryHarness.ts`). Timers are faked so nothing the mutations schedule runs on its own:
  * each test decides which invocation happens, which is what makes duplicate
  * and stale invocations reproducible. Only the network edge is replaced.
  */
 
-import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { meteredStream } from '../../lib/__tests__/meteredStream';
+import type * as SsrfGuard from '../../lib/ssrfGuard';
+import { WEBHOOK_ATTEMPT_LEASE_MS } from '../deliveryAttempts';
+import {
+	currentAttempt,
+	deferredResponse,
+	enqueue,
+	fetchMock,
+	invoke,
+	job,
+	PAYLOAD,
+	reconcile,
+	row,
+	sentHeaders,
+	setup,
+	type T,
+} from './deliveryHarness';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
-import schema from '../../schema';
 import { createTestWebhook } from '../../__tests__/factories';
-import { meteredStream } from '../../lib/__tests__/meteredStream';
-import { fetchWithGuardedDispatcher } from '../../lib/ssrfGuard';
-import type * as SsrfGuard from '../../lib/ssrfGuard';
-import { deliverWebhookInternal } from '../delivery';
-import { WEBHOOK_ATTEMPT_LEASE_MS } from '../deliveryAttempts';
 
 vi.mock('../../lib/ssrfGuard', async (importOriginal) => ({
 	...(await importOriginal<typeof SsrfGuard>()),
 	validatePublicUrl: vi.fn(async (url: string) => ({ ok: true, url: new URL(url) })),
 	fetchWithGuardedDispatcher: vi.fn(),
 }));
-
-// Two globs merged, because Vite's `import.meta.glob` omits the directory chain
-// it climbed to reach the base — see the note in `adapterRegistry.test.ts`.
-const modules = {
-	...import.meta.glob('../../**/*.*s'),
-	...Object.fromEntries(
-		Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
-			path.replace(/^\.\.\//, '../../webhooks/'),
-			mod,
-		])
-	),
-};
-
-type T = ReturnType<typeof convexTest>;
-type LogId = Id<'webhookDeliveryLogs'>;
-interface AttemptArgs {
-	webhookId: Id<'webhooks'>;
-	logId: LogId;
-	attemptNumber: number;
-	attemptSeq?: number;
-	payload?: string;
-}
-interface AttemptResult {
-	success: boolean;
-	skipped?: boolean;
-	retrying?: boolean;
-	error?: string;
-}
-
-const handler = (
-	deliverWebhookInternal as unknown as {
-		_handler: (ctx: unknown, args: AttemptArgs) => Promise<AttemptResult>;
-	}
-)._handler;
-
-const fetchMock = vi.mocked(fetchWithGuardedDispatcher);
-const sentHeaders = () =>
-	fetchMock.mock.calls.map(([, init]) => (init?.headers ?? {}) as Record<string, string>);
-
-const PAYLOAD = {
-	event: 'contact.created' as const,
-	timestamp: '2026-09-23T12:00:00.000Z',
-	data: { contactId: 'c1', email: 'someone@example.com' },
-};
-
-function invoke(t: T, args: AttemptArgs): Promise<AttemptResult> {
-	const runMutation = t.mutation as (ref: unknown, mutationArgs: unknown) => Promise<unknown>;
-	return handler({ runMutation }, args);
-}
-
-async function setup(webhook: Record<string, unknown> = {}) {
-	const t = convexTest(schema, modules);
-	const webhookId = await t.run((ctx) =>
-		ctx.db.insert(
-			'webhooks',
-			createTestWebhook({
-				url: 'https://hooks.example.com/owlat',
-				isActive: true,
-				events: ['contact.created'],
-				...webhook,
-			})
-		)
-	);
-	return { t, webhookId };
-}
-
-async function enqueue(t: T, webhookId: Id<'webhooks'>): Promise<LogId> {
-	const logId = await t.mutation(internal.webhooks.deliveryQueries.enqueueDelivery, {
-		webhookId,
-		event: 'contact.created',
-		payload: PAYLOAD,
-	});
-	return logId!;
-}
-
-const row = (t: T, logId: LogId) => t.run(async (ctx) => (await ctx.db.get(logId))!);
-const job = (t: T, id: Id<'_scheduled_functions'> | undefined) =>
-	t.run(async (ctx) => (id ? await ctx.db.system.get(id) : null));
-const reconcile = (t: T) =>
-	t.mutation(internal.webhooks.deliveryReconciler.reconcileOverdueDeliveries, {});
-
-/** The attempt the row currently expects, as its scheduler job would carry it. */
-async function currentAttempt(t: T, logId: LogId): Promise<AttemptArgs> {
-	const log = await row(t, logId);
-	return {
-		webhookId: log.webhookId,
-		logId,
-		attemptNumber: log.attemptNumber,
-		attemptSeq: log.attemptSeq,
-	};
-}
-
-function deferredResponse() {
-	let resolve!: (response: Response) => void;
-	const promise = new Promise<Response>((r) => (resolve = r));
-	return { promise, resolve };
-}
 
 beforeEach(() => {
 	vi.useFakeTimers();
@@ -386,11 +298,15 @@ describe('reconcileOverdueDeliveries', () => {
 		expect(log.recoverAfter).toBeUndefined();
 	});
 
-	it('ignores rows that are not yet overdue, finished, or predate attempt tracking', async () => {
+	it('ignores rows that are not yet overdue or already finished', async () => {
 		const { t, webhookId } = await setup();
 		await insertOverdue(t, webhookId, { recoverAfter: Date.now() + 60_000 });
 		await insertOverdue(t, webhookId, { status: 'success', completedAt: Date.now() });
-		await insertOverdue(t, webhookId, { attemptSeq: undefined, recoverAfter: undefined });
+		await insertOverdue(t, webhookId, {
+			status: 'failed',
+			attemptSeq: undefined,
+			recoverAfter: undefined,
+		});
 
 		expect(await reconcile(t)).toEqual({ waiting: 0, rescheduled: 0, failed: 0 });
 	});

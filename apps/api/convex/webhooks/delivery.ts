@@ -140,8 +140,7 @@ export const deliverWebhookInternal = internalAction({
 	},
 });
 
-// Fanout entry points (formerly `fireWebhookEvent` and `deliverWebhook`)
-// have moved to `webhooks/fanout.ts`. They are no longer scheduled directly
-// — callers use the typed helpers in `webhooks/scheduleFanout.ts` which
-// resolve the per-event Webhook event module, call `module.build`, and
-// then schedule the matching fanout action.
+// Fanout entry points: `webhooks/scheduleFanout.ts` resolves the per-event
+// Webhook event module, calls `module.build`, and schedules the enqueue
+// mutations in `webhooks/deliveryQueries.ts`, which write the delivery rows and
+// schedule this action's first attempts in the same transaction.

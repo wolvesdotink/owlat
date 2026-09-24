@@ -171,15 +171,17 @@ async function setupSubscriber(
 	return webhookId!;
 }
 
+const FANOUT_JOB = 'webhooks/deliveryQueries:enqueueFanoutDeliveries';
+
 describe('email.sent customer_webhook effect', () => {
 	// We assert at the scheduler-queue level rather than the
 	// webhookDeliveryLogs row level: the fanout chain
-	// (scheduleFanout → fanoutEvent action → createDeliveryLog + scheduler →
-	// deliverWebhookInternal) involves a `'use node'` action that does not
+	// (scheduleFanout → enqueueFanoutDeliveries mutation → rows + scheduled
+	// deliverWebhookInternal) ends in a `'use node'` action that does not
 	// drain reliably under convex-test's edge runtime. Asserting that the
-	// lifecycle scheduled the fanout action with the right payload covers
-	// the lifecycle's responsibility; the fanout chain itself is exercised
-	// by `webhooks/__tests__/`.
+	// lifecycle scheduled the fanout with the right payload covers the
+	// lifecycle's responsibility; the fanout chain itself is exercised by
+	// `webhooks/__tests__/`.
 	it('queued → sent schedules an email.sent fanout for campaign sends', async () => {
 		const t = convexTest(schema, modules);
 		await setupSubscriber(t, ['email.sent']);
@@ -210,11 +212,11 @@ describe('email.sent customer_webhook effect', () => {
 
 		const fanoutJobs = await t.run(async (ctx) => {
 			const jobs = await ctx.db.system.query('_scheduled_functions').collect();
-			return jobs.filter((j) => j.name.includes('fanout') && j.args[0]?.event === 'email.sent');
+			return jobs.filter((j) => j.name === FANOUT_JOB && j.args[0]?.event === 'email.sent');
 		});
 
 		expect(fanoutJobs).toHaveLength(1);
-		expect(fanoutJobs[0]!.args[0].data).toMatchObject({
+		expect(fanoutJobs[0]!.args[0].payload.data).toMatchObject({
 			email: 'alice@example.com',
 			campaignId: expect.any(String),
 			transactionalEmailId: null,
@@ -249,18 +251,18 @@ describe('email.sent customer_webhook effect', () => {
 
 		const fanoutJobs = await t.run(async (ctx) => {
 			const jobs = await ctx.db.system.query('_scheduled_functions').collect();
-			return jobs.filter((j) => j.name.includes('fanout') && j.args[0]?.event === 'email.sent');
+			return jobs.filter((j) => j.name === FANOUT_JOB && j.args[0]?.event === 'email.sent');
 		});
 
 		expect(fanoutJobs).toHaveLength(1);
-		expect(fanoutJobs[0]!.args[0].data).toMatchObject({
+		expect(fanoutJobs[0]!.args[0].payload.data).toMatchObject({
 			email: 'bob@example.com',
 			campaignId: null,
 			transactionalEmailId: txEmailId!,
 		});
 	});
 
-	it("schedules an email.sent fanout regardless of subscribers (filtering is the fanout action's job)", async () => {
+	it("schedules an email.sent fanout regardless of subscribers (filtering is the fanout mutation's job)", async () => {
 		// The lifecycle is intentionally agnostic of who subscribes — it
 		// always emits the customer_webhook effect on `sent`, and the
 		// fanout action filters to active matching subscribers when it
@@ -289,7 +291,7 @@ describe('email.sent customer_webhook effect', () => {
 
 		const fanoutJobs = await t.run(async (ctx) => {
 			const jobs = await ctx.db.system.query('_scheduled_functions').collect();
-			return jobs.filter((j) => j.name.includes('fanout') && j.args[0]?.event === 'email.sent');
+			return jobs.filter((j) => j.name === FANOUT_JOB && j.args[0]?.event === 'email.sent');
 		});
 
 		expect(fanoutJobs).toHaveLength(1);

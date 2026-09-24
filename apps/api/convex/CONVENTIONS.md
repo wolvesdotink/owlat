@@ -657,7 +657,12 @@ N:
   step guarantees.
 
 Removing an argument, result field or endpoint is itself a contract step for a
-later release.
+later release. This covers internal functions too: an N-1 action still running
+at deploy time, or a job N-1 queued before it, calls functions by path. When N
+stops calling one, keep it for a release with its old arguments, delegating to
+the new code, and list it in `PREVIOUS_RELEASE_ENTRIES` in
+`apps/api/scripts/entryWiringPreviousRelease.ts` (the webhook fanout and delivery functions are
+the first entries).
 
 **Migration manifest.** A release that needs data work ships a manifest listing,
 per migration: its module (`migrations/NNNN_name:run`), whether it must finish
@@ -692,7 +697,7 @@ while the downgrade window is open, restore the backup after it closes.
 the previous release's table validators (`previousRelease.json`) and fails when
 the current schema rejects any of them: a field made required, a type changed, a
 union narrowed, a field or table dropped. Refresh the snapshot at each release
-(`bun run --cwd apps/api schema-compat:refresh` on the release commit, see
+(`release:cut` puts the refreshed snapshot in the release commit; see
 `docs/RELEASING.md`), never to make a failure go away. A deliberately retired
 table goes in the test's `RETIRED_TABLES` in the contract PR. The guard covers
 the schema half of the contract only. It does not check function arguments,
