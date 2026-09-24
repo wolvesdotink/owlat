@@ -390,6 +390,33 @@ function reachedEntries(entries: readonly ConvexEntry[]): ReadonlySet<string> {
  */
 const UNREACHED_ENTRIES: readonly string[] = [];
 
+/**
+ * RELEASE-COMPAT SHIMS — entries kept for one release so the PREVIOUS release's
+ * code can still reach them: an action in flight across the deploy resolves its
+ * `ctx.runMutation(internal.…)` calls against the new functions (CONVENTIONS.md,
+ * "In-flight work across a deploy"). Nothing in this release calls them, so
+ * they are orphans by design. Each line names the release whose code calls it;
+ * the shim and its line go in the release after the one that ships them.
+ * Exact in both directions, like the ledger: a listed shim that is deleted, or
+ * that gains a caller, fails until its line comes off.
+ */
+const RELEASE_COMPAT_ENTRIES: Readonly<Record<string, string>> = {
+	'automations/lifecycle.ts#recordRunFailure': 'v0.5.5 step walker',
+	'automations/stepExecutorQueries.ts#advanceAutomationRun': 'v0.5.5 step walker',
+	'automations/stepExecutorQueries.ts#cancelAutomationRun': 'v0.5.5 step walker',
+	'automations/stepExecutorQueries.ts#completeAutomationRun': 'v0.5.5 step walker',
+	'automations/stepExecutorQueries.ts#createStepRun': 'v0.5.5 step walker',
+	'automations/stepExecutorQueries.ts#getAutomationRunWithContact': 'v0.5.5 step walker',
+	'automations/stepExecutorQueries.ts#getAutomationStep': 'v0.5.5 step walker',
+	'automations/stepExecutorQueries.ts#getAutomationSteps': 'v0.5.5 step walker',
+	'automations/stepExecutorQueries.ts#markStepCompleted': 'v0.5.5 step walker',
+	'automations/stepExecutorQueries.ts#markStepExecuting': 'v0.5.5 step walker',
+	'automations/stepExecutorQueries.ts#markStepFailed': 'v0.5.5 step walker',
+	'automations/stepExecutorQueries.ts#markStepsSkipped': 'v0.5.5 step walker',
+	'blockedEmails.ts#isBlockedInternal': 'v0.5.5 email worker',
+};
+const isReleaseCompat = (entry: string): boolean => entry in RELEASE_COMPAT_ENTRIES;
+
 // ─── The checks ─────────────────────────────────────────────────────────────
 
 check(CONVEX_SOURCES.size > 500, `walked only ${CONVEX_SOURCES.size} backend modules`);
@@ -453,12 +480,16 @@ const unreached = CONVEX_ENTRIES.filter(
 ).map(label);
 
 expectEmpty(
-	unreached.filter((entry) => !UNREACHED_ENTRIES.includes(entry)),
+	unreached.filter((entry) => !UNREACHED_ENTRIES.includes(entry) && !isReleaseCompat(entry)),
 	'a Convex entry point has no cron registration, no production caller, no client call and no worker path — register it, call it, or delete it (UNREACHED_ENTRIES is for pre-existing debt only):'
 );
 expectEmpty(
 	UNREACHED_ENTRIES.filter((entry) => !unreached.includes(entry)),
 	'a ledger entry is now reachable, or was deleted — take its line out of UNREACHED_ENTRIES:'
+);
+expectEmpty(
+	Object.keys(RELEASE_COMPAT_ENTRIES).filter((entry) => !unreached.includes(entry)),
+	'a release-compat shim is now reachable, or was deleted — take its line out of RELEASE_COMPAT_ENTRIES:'
 );
 expectEmpty(
 	UNREACHED_ENTRIES.filter((entry) => entry.startsWith('delivery/ramp')),
@@ -478,5 +509,5 @@ if (failures.length > 0) {
 	process.exit(1);
 }
 console.log(
-	`check-entry-wiring: OK (${CONVEX_ENTRIES.length} entry points, ${UNREACHED_ENTRIES.length} on the ledger)`
+	`check-entry-wiring: OK (${CONVEX_ENTRIES.length} entry points, ${UNREACHED_ENTRIES.length} on the ledger, ${Object.keys(RELEASE_COMPAT_ENTRIES).length} release-compat shims)`
 );

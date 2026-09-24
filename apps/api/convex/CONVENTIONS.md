@@ -384,8 +384,9 @@ the gate never looks at them.
   step walker), so only their generated module file carries `'use node'`;
   trigger fanout (mutation) and condition evaluation (query) modules stay
   non-node.
-- The step walker owns automation step retries, idempotency (the
-  `markStepExecuting` CAS claim), cancellation, and the circuit breaker. The
+- The step walker owns automation step retries, idempotency (the fenced
+  `claimStepRun` claim in `automations/stepOrchestration.ts` and the step-run
+  key on the email intake), cancellation, and the circuit breaker. The
   hosted `pluginStep` runner owns exactly one thing: a single authorized attempt.
   Reauthorize (`authorizeExecution`) singleton scope, registration, flag,
   `automation:step` grant, and required env presence immediately before invoking
@@ -658,6 +659,36 @@ N:
 
 Removing an argument, result field or endpoint is itself a contract step for a
 later release.
+
+**In-flight work across a deploy.** Old clients are not the only N-1 code that
+calls N's functions. A deploy does not drain running functions first, and the
+scheduler keeps every job N-1 queued:
+
+- an ACTION that is running when N deploys finishes on N-1's code, but each
+  `ctx.runQuery` / `ctx.runMutation` / `ctx.scheduler.runAfter` it makes
+  resolves the function path against N. Any internal function N-1's actions
+  call is therefore part of the contract for one release, exactly like a public
+  one: same path, arguments and result shape;
+- a SCHEDULED JOB N-1 queued (a retry with backoff, a delay step days out, a
+  chained batch) runs N's function under the path and arguments N-1 recorded.
+  A scheduled function keeps its path and keeps accepting N-1's arguments for
+  as long as N-1 can have queued it — for a delay step that is the longest
+  delay a user can configure, so it is effectively permanent;
+- rows N-1 wrote mid-protocol (a claim without the lease N added, a Send
+  without the idempotency key N added) must be recognized and finished by N,
+  not only accepted by its schema.
+
+So N keeps a function it stops calling as a _release-compat shim_: at its
+original path with its original argument and result shapes, delegating to
+N's implementation, and safe against N's own orchestration running beside it
+(a shim must never repeat a side effect N already performed, nor move state N
+already moved). Mark each shim, and each N-1-only branch in N's code, with a
+comment saying `remove after release N+1`, and list the shim in
+`RELEASE_COMPAT_ENTRIES` in `apps/api/scripts/check-entry-wiring.ts`, which
+otherwise refuses an entry nothing calls. The contract step that deletes them
+ships in N+1 or later. Where N-1 can have left work half done (an action
+killed between two of its calls), N also ships the sweep that finds and
+finishes or ends it; see `automations/stalledRuns.ts` for the pattern.
 
 **Migration manifest.** A release that needs data work ships a manifest listing,
 per migration: its module (`migrations/NNNN_name:run`), whether it must finish

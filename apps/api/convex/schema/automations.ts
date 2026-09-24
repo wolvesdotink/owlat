@@ -102,7 +102,10 @@ export const automationTables = {
 		.index('by_automation', ['automationId'])
 		.index('by_contact', ['contactId'])
 		.index('by_automation_and_contact', ['automationId', 'contactId'])
-		.index('by_automation_and_status', ['automationId', 'status']),
+		.index('by_automation_and_status', ['automationId', 'status'])
+		// The stalled-run sweep pages through every running run
+		// (automations/stalledRuns.ts).
+		.index('by_status', ['status']),
 
 	// Automation Step Runs - tracks individual step execution within automation runs
 	automationStepRuns: defineTable({
