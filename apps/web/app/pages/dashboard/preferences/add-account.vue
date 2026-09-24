@@ -263,12 +263,29 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 					<NuxtLink to="/dashboard/admin/delivery/domains" class="text-brand hover:underline">
 						{{ t('dashboard.preferences.addAccount.verifyDomainFirst') }}
 					</NuxtLink>
-					<div v-if="isEnabled('mail.external')" class="mt-4 pt-4 border-t border-border-subtle">
-						<p class="mb-2">{{ t('dashboard.preferences.addAccount.noDomainHint') }}</p>
-						<UiButton variant="secondary" size="sm" to="/dashboard/postbox/migrate">
-							<Icon name="lucide:mail-plus" class="w-4 h-4 mr-1.5" />
-							{{ t('dashboard.preferences.addAccount.connectExternalMailbox') }}
-						</UiButton>
+					<!-- The fallback keeps the mode: a team inbox connects the account as a
+					     shared one right here, a personal mailbox goes to the connect page.
+					     Sending team mode there made the team's address the admin's own. -->
+					<div v-if="canConnectExternal" class="mt-4 pt-4 border-t border-border-subtle">
+						<template v-if="isTeam">
+							<p class="mb-2">{{ t('dashboard.preferences.addAccount.noDomainHintTeam') }}</p>
+							<UiButton
+								variant="secondary"
+								size="sm"
+								data-testid="add-account-connect-team-external"
+								@click="teamTransport = 'external'"
+							>
+								<Icon name="lucide:mail-plus" class="w-4 h-4 mr-1.5" />
+								{{ t('dashboard.preferences.addAccount.transportExternal') }}
+							</UiButton>
+						</template>
+						<template v-else>
+							<p class="mb-2">{{ t('dashboard.preferences.addAccount.noDomainHint') }}</p>
+							<UiButton variant="secondary" size="sm" to="/dashboard/postbox/migrate">
+								<Icon name="lucide:mail-plus" class="w-4 h-4 mr-1.5" />
+								{{ t('dashboard.preferences.addAccount.connectExternalMailbox') }}
+							</UiButton>
+						</template>
 					</div>
 				</div>
 				<div v-else class="space-y-4">
@@ -342,7 +359,11 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 						:disabled="!selectedAddress || provisioning"
 						@click="handleSubmit"
 					>
-						<Icon v-if="provisioning" name="lucide:loader-2" class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none" />
+						<Icon
+							v-if="provisioning"
+							name="lucide:loader-2"
+							class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none"
+						/>
 						{{
 							provisioning
 								? t('dashboard.preferences.addAccount.creating')
