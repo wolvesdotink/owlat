@@ -23,8 +23,11 @@ import { createFetchError } from 'ofetch';
 
 import {
 	UPDATER_REPORT_MARKER,
+	isStartedRollout,
+	readRolloutProgress,
 	updateFailureMessage,
 	updateRequestWasAnswered,
+	type UpdaterHealth,
 } from '../systemUpdate';
 
 function fetchError(status: number, body?: unknown, statusText = 'Bad Gateway') {
@@ -128,5 +131,91 @@ describe('updateFailureMessage', () => {
 	it('falls back to the caller’s text when the throw says nothing useful', () => {
 		expect(updateFailureMessage({}, 'Unknown error')).toBe('Unknown error');
 		expect(updateFailureMessage(null, 'Unknown error')).toBe('Unknown error');
+	});
+});
+
+/**
+ * THE WEB APP RUNNING THE NEW VERSION IS NOT THE VERDICT.
+ *
+ * The progress card called an update complete as soon as the web container ran
+ * the target version, which happens during `up`, before the updater has
+ * checked the rest of the stack. The updater now serves its verdict on
+ * /health, tagged with the browser's attempt id.
+ */
+describe('readRolloutProgress', () => {
+	const ATTEMPT = 'a1b2c3d4-0000-4000-8000-000000000001';
+	const webOn = (imageTag: string) => [{ service: 'web', state: 'running', imageTag }];
+	const health = (extra: Partial<UpdaterHealth>): UpdaterHealth => ({
+		status: 'ok',
+		timestamp: 0,
+		containers: webOn('0.4.17'),
+		...extra,
+	});
+
+	it('keeps waiting while the updater verifies this attempt, even with web on the target', () => {
+		const reading = readRolloutProgress(
+			health({ lastRollout: { attempt: ATTEMPT, targetVersion: '0.4.17', phase: 'verifying' } }),
+			'0.4.17',
+			ATTEMPT
+		);
+		expect(reading).toEqual({ kind: 'in-flight', verifying: true });
+	});
+
+	it.each([
+		['healthy', { kind: 'complete' }],
+		['started', { kind: 'started', summary: 'still starting: clamav' }],
+		['partially-applied', { kind: 'failed', summary: 'still starting: clamav' }],
+		['interrupted', { kind: 'failed', summary: 'still starting: clamav' }],
+	] as const)('reads a %s verdict for this attempt', (outcome, expected) => {
+		const reading = readRolloutProgress(
+			health({
+				lastRollout: {
+					attempt: ATTEMPT,
+					phase: 'done',
+					outcome,
+					summary: 'still starting: clamav',
+				},
+			}),
+			'0.4.17',
+			ATTEMPT
+		);
+		expect(reading).toEqual(expected);
+	});
+
+	it("never reads an earlier attempt's verdict as this one's", () => {
+		const reading = readRolloutProgress(
+			health({
+				containers: webOn('0.4.16'),
+				lastRollout: { attempt: 'an-earlier-attempt', phase: 'done', outcome: 'failed' },
+			}),
+			'0.4.17',
+			ATTEMPT
+		);
+		expect(reading).toEqual({ kind: 'waiting' });
+	});
+
+	it('waits while an update is in flight that has not recorded this attempt yet', () => {
+		expect(
+			readRolloutProgress(
+				health({ lastRollout: null, rolloutInProgress: 'update' }),
+				'0.4.17',
+				ATTEMPT
+			)
+		).toEqual({ kind: 'in-flight', verifying: false });
+	});
+
+	it('falls back to the web version for an updater that keeps no record', () => {
+		expect(readRolloutProgress(health({}), '0.4.17', ATTEMPT)).toEqual({ kind: 'complete' });
+		expect(readRolloutProgress(health({ containers: webOn('0.4.16') }), '0.4.17', ATTEMPT)).toEqual(
+			{ kind: 'waiting' }
+		);
+	});
+});
+
+describe('isStartedRollout', () => {
+	it("is true only for the updater's started answer", () => {
+		expect(isStartedRollout({ rollout: 'started', error: 'x' })).toBe(true);
+		expect(isStartedRollout({ rollout: 'partially-applied' })).toBe(false);
+		expect(isStartedRollout(null)).toBe(false);
 	});
 });

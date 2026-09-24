@@ -1,6 +1,7 @@
 import { isValidTargetVersion } from '@owlat/shared/releaseArtifacts';
 import { requireInstanceSecret, callUpdater } from '~~/server/utils/updater';
 import { resolveVerifiedComposeTemplate } from '~~/server/utils/composeUpdate';
+import { isStartedRollout } from '~/lib/systemUpdate';
 
 /**
  * Self-update proxy endpoint.
@@ -16,6 +17,10 @@ import { resolveVerifiedComposeTemplate } from '~~/server/utils/composeUpdate';
  * `composeTemplate` is never forwarded: an INSTANCE_SECRET holder must not be
  * able to push an arbitrary compose file (and therefore arbitrary container
  * images → RCE) to the host.
+ *
+ * A rollout the updater reports as `started` (applied and running, but not
+ * every service healthy in time) is answered 200 with the updater's note as
+ * `warning`: the release is live, and retrying it would change nothing.
  */
 export default defineEventHandler(async (event) => {
 	const instanceSecret = requireInstanceSecret(event, 'Self-update not configured');
@@ -40,11 +45,17 @@ export default defineEventHandler(async (event) => {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ composeTemplate }),
-		// Generous timeout — pull + recreate + convex-deploy can take minutes.
-		signal: AbortSignal.timeout(10 * 60 * 1000),
+		// Pull + recreate + convex-deploy, then the updater's readiness wait,
+		// which follows the healthcheck cadence services declare.
+		signal: AbortSignal.timeout(30 * 60 * 1000),
 	});
 
 	const result = await response.json();
+
+	if (!response.ok && isStartedRollout(result)) {
+		const { error, ...rest } = result as { error?: string };
+		return { ...rest, success: true, warning: error };
+	}
 
 	if (!response.ok) {
 		throw createError({
