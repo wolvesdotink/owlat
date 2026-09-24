@@ -721,6 +721,10 @@
 				"winnerOpenRate": "Öffnungsrate",
 				"winnerOpenRateHint": "Die meisten Öffnungen gewinnen"
 			},
+			"automatedOpens": {
+				"excluded": "Nicht mitgezählt: {count} automatische Öffnung durch Apple Mail Privacy Protection und Sicherheitsscanner. | Nicht mitgezählt: {count} automatische Öffnungen durch Apple Mail Privacy Protection und Sicherheitsscanner.",
+				"unfiltered": "Öffnungen, die vor dem Herausfiltern automatischer Öffnungen gezählt wurden, können Abrufe durch Apple Mail Privacy Protection und Sicherheitsscanner enthalten."
+			},
 			"campaignSendPlanLine": {
 				"atLeast": "mindestens {total}",
 				"dayOf": "Tag {day} von {totalDays}",

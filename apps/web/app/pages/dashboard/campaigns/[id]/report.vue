@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import ClickHeatmap from '~/components/dashboard/ClickHeatmap.vue';
 import CampaignSendPlanLine from '~/components/campaigns/CampaignSendPlanLine.vue';
 import CampaignAbComparison from '~/components/dashboard/CampaignAbComparison.vue';
+import CampaignAutomatedOpensNote from '~/components/campaigns/CampaignAutomatedOpensNote.vue';
 import CampaignFunnel from '~/components/campaigns/CampaignFunnel.vue';
 import CampaignReportHeadline from '~/components/campaigns/CampaignReportHeadline.vue';
 import CampaignReportComparison from '~/components/campaigns/CampaignReportComparison.vue';
@@ -440,6 +441,11 @@ const loadPrevClicked = () => {
 						:clicked="stats.uniqueClicks"
 						:unsubscribed="campaign.statsUnsubscribed ?? 0"
 						:bounced="stats.bounced"
+					/>
+					<CampaignAutomatedOpensNote
+						class="mt-3"
+						:automated-opens="stats.automatedOpens"
+						:is-automated-open-filtered="campaign.isAutomatedOpenFiltered === true"
 					/>
 					<!-- One comparison row with the previous campaign — rates only. -->
 					<CampaignReportComparison
