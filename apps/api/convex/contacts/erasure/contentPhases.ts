@@ -230,6 +230,21 @@ export const eraseSemanticFiles: PhaseRunner = (phase) => {
 			}
 			const othersRemain = (file.contactIds ?? []).some((c) => c !== contactId);
 			if (file.captureSource && !othersRemain) {
+				// Junction rows of other contacts on a file scoped to this contact
+				// alone only exist through drift; they go with the file. This
+				// contact's own row goes last, so a cut-short pass finds it again.
+				const othersGone = await drainEach(
+					budget,
+					async (n) => {
+						const rows = await ctx.db
+							.query('semanticFileContacts')
+							.withIndex('by_file', (q) => q.eq('fileId', file._id))
+							.take(n + 1);
+						return rows.filter((row) => row._id !== link._id).slice(0, n);
+					},
+					(row) => ctx.db.delete(row._id)
+				);
+				if (!othersGone) return false;
 				await ctx.db.delete(link._id);
 				// Released by the inbound retention sweep already ⇒ no blob left.
 				if (file.storageId) {
