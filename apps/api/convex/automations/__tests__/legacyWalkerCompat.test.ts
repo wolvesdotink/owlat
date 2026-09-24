@@ -18,7 +18,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
-import { createTestBlockedEmail } from '../../__tests__/factories';
+import { createTestBlockedEmail, createTestContact } from '../../__tests__/factories';
+import { MAX_RETRY_ATTEMPTS } from '../../lib/constants';
 import { STEP_LEASE_MS } from '../stepOrchestration';
 import { STALLED_RUN_GRACE_MS } from '../stalledRuns';
 import { LEGACY_ATTEMPT_WINDOW_MS } from '../stepRunSend';
@@ -321,12 +322,59 @@ describe('a v0.5.5 step walker action in flight across the deploy', () => {
 		expect(await sends(t)).toHaveLength(0);
 	});
 
-	it('keeps the lifecycle and blocklist entry points it called', async () => {
+	it('counts a run failure once, and only when its legacy cancel ended the run', async () => {
 		const t = await freshT();
 		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);
-		await t.mutation(internal.automations.lifecycle.recordRunFailure, { automationId });
-		const automation = await t.run(async (ctx) => ctx.db.get(automationId));
-		expect(automation?.consecutiveRunFailures).toBe(1);
+		const failures = async () =>
+			(await t.run(async (ctx) => ctx.db.get(automationId)))?.consecutiveRunFailures ?? 0;
+		/** v0.5.5's catch block after its last retry. */
+		const legacyExhausted = async (
+			runId: Id<'automationRuns'>,
+			stepRunId: Id<'automationStepRuns'>
+		) => {
+			await t.mutation(legacy.markStepFailed, {
+				stepRunId,
+				errorMessage: 'SMTP 451',
+				retryCount: MAX_RETRY_ATTEMPTS,
+			});
+			await t.mutation(legacy.cancelAutomationRun, { automationRunId: runId });
+			await t.mutation(internal.automations.lifecycle.recordRunFailure, { automationId });
+		};
+
+		const failed = await seedRun(t, automationId);
+		const failedStepRunId = await legacyStart(t, failed.runId);
+		await t.mutation(legacy.markStepExecuting, { stepRunId: failedStepRunId });
+		await legacyExhausted(failed.runId, failedStepRunId);
+		expect((await runOf(t, failed.runId)).status).toBe('cancelled');
+		expect(await failures()).toBe(1);
+
+		// The recovery took this step over (it carries a lease now), so the
+		// legacy failure and cancel change nothing, and neither may the count.
+		const recovered = await t.run(async (ctx) =>
+			ctx.db.insert('contacts', createTestContact({ email: 'second@example.com' }))
+		);
+		const runId = await t.run(async (ctx) =>
+			ctx.db.insert('automationRuns', {
+				automationId,
+				contactId: recovered,
+				currentStepIndex: 0,
+				status: 'running',
+				startedAt: Date.now(),
+				triggeredBy: 'contact_created',
+			})
+		);
+		const stepRunId = await legacyStart(t, runId);
+		await t.mutation(legacy.markStepExecuting, { stepRunId });
+		await t.run(async (ctx) =>
+			ctx.db.patch(stepRunId, { retryCount: 1, leaseExpiresAt: Date.now() + STEP_LEASE_MS })
+		);
+		await legacyExhausted(runId, stepRunId);
+		expect((await runOf(t, runId)).status).toBe('running');
+		expect(await failures()).toBe(1);
+	});
+
+	it('keeps the blocklist entry point it called', async () => {
+		const t = await freshT();
 
 		await t.run(async (ctx) =>
 			ctx.db.insert('blockedEmails', createTestBlockedEmail({ email: 'gone@example.com' }))

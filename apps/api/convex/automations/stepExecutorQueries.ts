@@ -2,6 +2,8 @@ import { v } from 'convex/values';
 import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { stepKindValidator } from './steps/catalog';
+import { MAX_RETRY_ATTEMPTS } from '../lib/constants';
+import { recordAutomationRunFailure } from './lifecycle';
 import { gateStepRun } from './stepOrchestration';
 import {
 	activeStepRunOf,
@@ -302,13 +304,37 @@ export const completeAutomationRun = internalMutation({
 	},
 });
 
-/** Remove after release N+1: v0.5.5 compatibility (see the section comment above). */
+/**
+ * Remove after release N+1: v0.5.5 compatibility (see the section comment
+ * above). When the run's step ran out of retries, v0.5.5 counted a run
+ * failure through `lifecycle.recordRunFailure` right after this call. That
+ * shim only receives the automation, so it cannot tell whether this cancel
+ * did anything; the failure is counted here instead, in the same transaction
+ * as the cancel, as the new walker's `failStepAndCancelRun` does. A cancel
+ * that is a no-op (the new walker owns the run) counts nothing.
+ */
 export const cancelAutomationRun = internalMutation({
 	args: {
 		automationRunId: v.id('automationRuns'),
 	},
 	handler: async (ctx, args) => {
 		if (!(await isLegacyAdvanceAllowed(ctx, args.automationRunId))) return;
+		const [newest] = await recentStepRunsOf(ctx, args.automationRunId);
 		await cancelRun(ctx, args.automationRunId);
+		if (!newest || !isLegacyExhaustedFailure(newest)) return;
+		const run = await ctx.db.get(args.automationRunId);
+		const automation = run ? await ctx.db.get(run.automationId) : null;
+		// v0.5.5 also failed and cancelled a step whose automation was no longer
+		// active, without counting it.
+		if (automation?.status === 'active') await recordAutomationRunFailure(ctx, automation._id);
 	},
 });
+
+/** A step run v0.5.5 failed after its last retry (`markStepFailed` at the retry cap). */
+function isLegacyExhaustedFailure(stepRun: Doc<'automationStepRuns'>): boolean {
+	return (
+		stepRun.status === 'failed' &&
+		stepRun.leaseExpiresAt === undefined &&
+		(stepRun.retryCount ?? 0) >= MAX_RETRY_ATTEMPTS
+	);
+}
