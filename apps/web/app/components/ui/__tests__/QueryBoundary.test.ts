@@ -17,6 +17,7 @@
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { ConvexError } from 'convex/values';
 
 import QueryBoundary from '../QueryBoundary.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
@@ -74,15 +75,40 @@ describe('UiQueryBoundary', () => {
 		expect(onRetry).toHaveBeenCalledTimes(1);
 	});
 
-	it('surfaces the error message so the user learns what went wrong', () => {
-		const wrapper = mount(QueryBoundary, {
-			props: { loading: false, error: new Error('Convex query subscription timed out') },
+	function alertText(error: Error): string {
+		return mount(QueryBoundary, {
+			props: { loading: false, error },
 			slots,
 			global: { stubs, plugins: [createTestI18n()] },
-		});
-		expect(wrapper.find('[data-testid="error-alert"]').text()).toContain(
-			'Convex query subscription timed out'
+		})
+			.find('[data-testid="error-alert"]')
+			.text();
+	}
+
+	it('says a timed-out read was slow, not the raw Convex message (#721)', () => {
+		const text = alertText(
+			new Error(
+				'[CONVEX Q(topics/topics:list)] [Request ID: 1] Server Error\nUncaught Error: Function execution timed out (maximum duration: 1s)'
+			)
 		);
+		expect(text).toContain('The server took too long to answer. Try again in a moment.');
+		expect(text).not.toContain('CONVEX');
+	});
+
+	it('shows the backend message of a categorized refusal', () => {
+		expect(
+			alertText(
+				new ConvexError({ category: 'forbidden', message: 'Only admins can view senders.' })
+			)
+		).toContain('Only admins can view senders.');
+	});
+
+	it('falls back to the generic load failure for an uncategorized server error', () => {
+		const text = alertText(
+			new Error('[CONVEX Q(topics/topics:list)] [Request ID: 1] Server Error')
+		);
+		expect(text).toContain('Something went wrong while loading this view.');
+		expect(text).not.toContain('Request ID');
 	});
 
 	it('renders the empty / not-found slot for a genuine settled-empty (no error)', () => {

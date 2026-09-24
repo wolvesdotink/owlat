@@ -12809,7 +12809,8 @@
 			},
 			"generic": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
 			"network": "Verbindungsproblem. Prüfen Sie Ihr Netzwerk und versuchen Sie es erneut.",
-			"sessionExpired": "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an."
+			"sessionExpired": "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.",
+			"slowRead": "Der Server hat zu lange für die Antwort gebraucht. Versuchen Sie es gleich noch einmal."
 		},
 		"operatorConsole": {
 			"auditAction": {

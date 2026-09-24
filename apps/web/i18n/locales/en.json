@@ -12809,7 +12809,8 @@
 			},
 			"generic": "Something went wrong. Please try again.",
 			"network": "Connection problem. Check your network and try again.",
-			"sessionExpired": "Your session has expired. Please sign in again."
+			"sessionExpired": "Your session has expired. Please sign in again.",
+			"slowRead": "The server took too long to answer. Try again in a moment."
 		},
 		"operatorConsole": {
 			"auditAction": {

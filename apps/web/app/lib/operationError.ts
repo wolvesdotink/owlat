@@ -184,3 +184,30 @@ export function operationToastCopy(
 	if (fallbackKey && 'key' in copy && copy.key === GENERIC_COPY_KEY) return { key: fallbackKey };
 	return copy;
 }
+
+/** A read that took too long: the server's function timeout or our own subscription timeout. */
+const SLOW_READ = /timed out|timeout/i;
+
+/**
+ * The copy for a failed READ (the read half of ADR-0036, #721).
+ *
+ * A query failure reaches the page as whatever the Convex client threw, and its
+ * raw message is not something to show a user ("[CONVEX Q(topics/topics:list)]
+ * [Request ID: …] Server Error …"). A categorized refusal gets the same copy a
+ * failed write would. A read that timed out says so, because "check your
+ * network" is wrong when the server was simply too slow. Any other transport
+ * failure is a connection problem, and everything else falls back to the
+ * surface's own "could not load" line.
+ */
+export function queryErrorCopy(
+	e: unknown,
+	fallbackKey: string,
+	options: OperationCopyOptions = {}
+): OperationCopy {
+	const op = extractOperationError(e);
+	if (op) return operationCopy(op, options);
+	const message = e instanceof Error ? e.message : String(e);
+	if (SLOW_READ.test(message)) return { key: 'shared.operationError.slowRead' };
+	if (isTransportFailure(e)) return { key: 'shared.operationError.network' };
+	return { key: fallbackKey };
+}
