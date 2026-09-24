@@ -12,6 +12,16 @@ import { newHarness } from './testModules';
  * error. Without a provider it now stores everything that needs no model.
  */
 
+// Spied, not replaced: a summary attempt without a provider would throw inside
+// processFile's try and fall back to the same stored metadata, so only the
+// spy shows whether a model was asked for at all.
+const { resolveLanguageModelSpy } = vi.hoisted(() => ({ resolveLanguageModelSpy: vi.fn() }));
+vi.mock('../lib/llmProvider', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../lib/llmProvider')>();
+	resolveLanguageModelSpy.mockImplementation(actual.resolveLanguageModel);
+	return { ...actual, resolveLanguageModel: resolveLanguageModelSpy };
+});
+
 const LLM_ENV_KEYS = ['LLM_PROVIDER', 'LLM_API_KEY', 'OPENROUTER_API_KEY', 'OPENAI_API_KEY'];
 
 const BODY =
@@ -42,6 +52,7 @@ async function insertTextFile(
 }
 
 beforeEach(() => {
+	resolveLanguageModelSpy.mockClear();
 	for (const key of LLM_ENV_KEYS) vi.stubEnv(key, undefined);
 	__resetAiConfigCacheForTests();
 });
@@ -68,7 +79,8 @@ describe('processFile without an AI provider', () => {
 		expect(file?.embeddingModel).toBeUndefined();
 		expect(file?.searchableText).toContain('Hosting spend rose eleven percent');
 		expect(file?.searchableText).toContain('finance');
-		// No knowledge extraction without a model to extract with.
+		// No summary and no knowledge extraction without a model to ask.
+		expect(resolveLanguageModelSpy).not.toHaveBeenCalled();
 		const entries = await t.run((ctx) => ctx.db.query('knowledgeEntries').collect());
 		expect(entries).toEqual([]);
 	});

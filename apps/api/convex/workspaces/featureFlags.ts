@@ -54,6 +54,7 @@ import {
 } from '@owlat/shared/featureFlags';
 import { getStoredFlags } from '../lib/featureFlags';
 import { recordAuditLog } from '../lib/auditLog';
+import { hasStoredAiProviderConfig } from '../lib/aiNotConfigured';
 import { throwInvalidInput } from '../_utils/errors';
 import {
 	FEATURE_FLAG_REGISTRY,
@@ -110,7 +111,7 @@ export const getFlagsConfigStatus = authedQuery({
 		// keyless local provider) satisfies the `ai` flag's LLM_* requirement the
 		// same way `LLM_PROVIDER`/`LLM_API_KEY` in env do — env stays the fallback,
 		// a stored config also counts. Org-singleton ⇒ `first()` is bounded (≤1 row).
-		const aiConfigStored = (await ctx.db.query('aiProviderConfig').first()) !== null;
+		const aiConfigStored = await hasStoredAiProviderConfig(ctx.db);
 		const settings = await ctx.db.query('instanceSettings').first();
 		const pluginCapabilityGrants = settings?.pluginCapabilityGrants ?? {};
 		const status: Record<string, string[]> = {};
