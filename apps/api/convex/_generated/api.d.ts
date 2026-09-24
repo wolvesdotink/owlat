@@ -1178,6 +1178,7 @@ import type * as workspaces_deletion_steps_accountExportArtifacts from '../works
 import type * as workspaces_deletion_steps_contacts from '../workspaces/deletion/steps/contacts.js';
 import type * as workspaces_deletion_steps_domains from '../workspaces/deletion/steps/domains.js';
 import type * as workspaces_deletion_steps_inboundMessages from '../workspaces/deletion/steps/inboundMessages.js';
+import type * as workspaces_deletion_steps_instanceSettings from '../workspaces/deletion/steps/instanceSettings.js';
 import type * as workspaces_deletion_steps_mailArchiveImports from '../workspaces/deletion/steps/mailArchiveImports.js';
 import type * as workspaces_deletion_steps_mailAttachmentShares from '../workspaces/deletion/steps/mailAttachmentShares.js';
 import type * as workspaces_deletion_steps_mailDrafts from '../workspaces/deletion/steps/mailDrafts.js';
@@ -2364,6 +2365,7 @@ declare const fullApi: ApiFromModules<{
 	'workspaces/deletion/steps/contacts': typeof workspaces_deletion_steps_contacts;
 	'workspaces/deletion/steps/domains': typeof workspaces_deletion_steps_domains;
 	'workspaces/deletion/steps/inboundMessages': typeof workspaces_deletion_steps_inboundMessages;
+	'workspaces/deletion/steps/instanceSettings': typeof workspaces_deletion_steps_instanceSettings;
 	'workspaces/deletion/steps/mailArchiveImports': typeof workspaces_deletion_steps_mailArchiveImports;
 	'workspaces/deletion/steps/mailAttachmentShares': typeof workspaces_deletion_steps_mailAttachmentShares;
 	'workspaces/deletion/steps/mailDrafts': typeof workspaces_deletion_steps_mailDrafts;

@@ -306,6 +306,33 @@ describe('Organization deletion step modules — storage purge', () => {
 		});
 	});
 
+	it('instanceSettings step purges both workspace logo files with the row', async () => {
+		const t = convexTest(schema, modules);
+		const { light, dark } = await t.run(async (ctx) => {
+			const light = await ctx.storage.store(new Blob(['light'], { type: 'image/png' }));
+			const dark = await ctx.storage.store(new Blob(['dark'], { type: 'image/png' }));
+			await ctx.db.insert('instanceSettings', {
+				logoStorageId: light,
+				logoDarkStorageId: dark,
+				createdAt: Date.now(),
+			});
+			return { light, dark };
+		});
+
+		// `storageUploads` ran first and left the bound logo blobs to this
+		// step; the row is the only thing that still names them.
+		await t.mutation(internal.workspaces.deletion.walker.runStep, {
+			table: 'instanceSettings',
+		});
+		await drainAndCancel(t);
+
+		await t.run(async (ctx) => {
+			expect(await ctx.storage.getUrl(light)).toBeNull();
+			expect(await ctx.storage.getUrl(dark)).toBeNull();
+			expect(await ctx.db.query('instanceSettings').collect()).toHaveLength(0);
+		});
+	});
+
 	it('semanticFiles step purges blob before row delete', async () => {
 		const t = convexTest(schema, modules);
 		let storageId: Id<'_storage'>;
