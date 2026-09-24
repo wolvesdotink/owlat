@@ -158,8 +158,6 @@ function loadState(state: HistoryState) {
 	formSubject.value = state.subject;
 }
 
-defineExpose({ loadState });
-
 watch(
 	() => props.subject,
 	(v) => {
@@ -395,6 +393,11 @@ const {
 	onUpdate: handleBlockPropertyUpdate,
 	onDeleteBlock: handleDeleteBlock,
 });
+
+// `isInlineEditing` tells a host that text may be typed which the blocks do not
+// hold yet (the inline editor commits when it closes), so replacing the canvas
+// now would leave that text to be committed on top of whatever replaced it.
+defineExpose({ loadState, isInlineEditing });
 
 // Saved block picker
 const {

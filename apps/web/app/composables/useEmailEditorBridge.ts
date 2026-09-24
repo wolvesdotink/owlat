@@ -164,9 +164,12 @@ export interface EmailEditorBridgeOptions<S> {
 	revision?: (source: NonNullable<S>) => number;
 }
 
-/** The builder's explicit load path (EmailBuilder's exposed `loadState`). */
+/** What the bridge uses of the mounted EmailBuilder (its exposed API). */
 export interface EmailBuilderHandle {
+	/** The explicit load path for a hydrated state. */
 	loadState: (state: HistoryState) => void;
+	/** Text is being typed that the blocks do not hold until the editor closes. */
+	readonly isInlineEditing?: boolean;
 }
 
 /** A save the backend refused because the email moved on after the draft loaded. */
@@ -260,6 +263,12 @@ export function useEmailEditorBridge<S>(
 		source: opts.source,
 		revision: opts.revision,
 		initialize: (source) => opts.initialize(source, ctx),
+		// Text typed into the inline editor reaches the blocks only when it
+		// closes. Replacing the canvas before that would let it be committed on
+		// top of the newer copy and saved under the newer revision, silently
+		// dropping the other write; held back, it saves against the revision it
+		// started from and the other write comes up as a conflict.
+		holdHydration: () => builderRef.value?.isInlineEditing === true,
 		onHydrate: () => {
 			builderRef.value?.loadState({
 				blocks: blocks.value,

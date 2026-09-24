@@ -370,4 +370,59 @@ describe('useEditorDirtyTracking', () => {
 		expect(editor.hasChanges.value).toBe(false);
 		expect(editor.beginSubmit().revision).toBe(5);
 	});
+
+	it('holds hydration while work is outside the draft, then catches up if none was committed', async () => {
+		const source = ref<Row | null>({ _id: 't1', name: 'Loaded', contentRevision: 1 });
+		const name = ref('');
+		const inlineOpen = ref(false);
+		const tracker = useEditorDirtyTracking({
+			source,
+			initialize: (row) => {
+				name.value = row.name;
+			},
+			watchSources: [() => name.value],
+			revision: (row) => row.contentRevision ?? 0,
+			holdHydration: () => inlineOpen.value,
+		});
+		await settle();
+
+		inlineOpen.value = true;
+		source.value = { _id: 't1', name: 'Theirs', contentRevision: 2 };
+		await settle();
+		expect(name.value).toBe('Loaded');
+		expect(tracker.beginSubmit().revision).toBe(1);
+
+		inlineOpen.value = false;
+		await settle();
+		expect(name.value).toBe('Theirs');
+		expect(tracker.hasChanges.value).toBe(false);
+		expect(tracker.beginSubmit().revision).toBe(2);
+	});
+
+	it('keeps the old base when work held outside the draft is committed on release', async () => {
+		const source = ref<Row | null>({ _id: 't1', name: 'Loaded', contentRevision: 1 });
+		const name = ref('');
+		const inlineOpen = ref(true);
+		const tracker = useEditorDirtyTracking({
+			source,
+			initialize: (row) => {
+				name.value = row.name;
+			},
+			watchSources: [() => name.value],
+			revision: (row) => row.contentRevision ?? 0,
+			holdHydration: () => inlineOpen.value,
+		});
+		await settle();
+		source.value = { _id: 't1', name: 'Theirs', contentRevision: 2 };
+		await settle();
+
+		// Closing commits the typed text in the same tick.
+		name.value = 'Loaded + typed';
+		inlineOpen.value = false;
+		await settle();
+
+		expect(name.value).toBe('Loaded + typed');
+		expect(tracker.hasChanges.value).toBe(true);
+		expect(tracker.beginSubmit().revision).toBe(1);
+	});
 });

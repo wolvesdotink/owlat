@@ -43,6 +43,7 @@ interface Row {
 	subject: string;
 	content: string;
 	contentRevision: number;
+	defaultLanguage?: string;
 }
 
 function text(id: string, html: string): EditorBlock {
@@ -62,7 +63,11 @@ function row(contentRevision: number, blocks: EditorBlock[]): Row {
 	};
 }
 
-type SurfaceSave = (blocks: EditorBlock[], revision: number | undefined) => Promise<number | void>;
+type SurfaceSave = (
+	blocks: EditorBlock[],
+	revision: number | undefined,
+	fields: { name: string; subject: string }
+) => Promise<number | void>;
 
 const showToast = vi.fn();
 
@@ -98,7 +103,14 @@ function mountEditor(source: Ref<Row | null>, surfaceSave: SurfaceSave) {
 					ctx.blocks.value = JSON.parse(r.content) as EditorBlock[];
 				},
 				save: (ctx, base) =>
-					surfaceSave(JSON.parse(JSON.stringify(ctx.blocks.value)) as EditorBlock[], base.revision),
+					surfaceSave(
+						JSON.parse(JSON.stringify(ctx.blocks.value)) as EditorBlock[],
+						base.revision,
+						{
+							name: ctx.name.value,
+							subject: ctx.subject.value,
+						}
+					),
 			});
 			return () =>
 				h(Boundary, null, () =>
@@ -352,6 +364,103 @@ describe('stale-revision conflict', () => {
 		expect(bridge().hasChanges.value).toBe(false);
 		expect(builder().text()).toContain('Theirs');
 		expect(builder().text()).not.toContain('Mine');
+	});
+});
+
+describe('text typed into the inline editor while a collaborator writes', () => {
+	// The inline editor commits its HTML only when it closes, so while the user
+	// types, the draft looks clean. A collaborator's write must not be followed
+	// then: the canvas would be replaced under the open editor, and closing it
+	// would commit the typed text (based on the old copy) on top of the new one
+	// and save it under the new revision.
+	const openInlineEditor = async (blockId: string) => {
+		const canvas = wrapper!.findComponent({ name: 'DocumentCanvas' });
+		canvas.vm.$emit('select', blockId);
+		await flushPromises();
+		canvas.vm.$emit('double-click-block', blockId);
+		await flushPromises();
+		const el = wrapper!.find('[data-inline-text]');
+		expect(el.exists()).toBe(true);
+		return {
+			type: (html: string) => ((el.element as HTMLElement).innerHTML = html),
+			close: async () => {
+				canvas.vm.$emit('exit-inline-edit');
+				await flushPromises();
+			},
+		};
+	};
+
+	/** A backend that refuses a save built on anything but the current row. */
+	function guardedBackend(source: Ref<Row | null>) {
+		const accepted: { blocks: EditorBlock[]; revision: number | undefined }[] = [];
+		const save: SurfaceSave = async (blocks, revision) => {
+			const current = source.value!.contentRevision;
+			if (revision !== current) throw new StaleDraftError(current);
+			accepted.push({ blocks, revision });
+			return current + 1;
+		};
+		return { accepted, save };
+	}
+
+	it('turns the collaborator write into a conflict instead of saving over it', async () => {
+		const source = ref<Row | null>(
+			row(0, [text('b-1', '<p>Loaded</p>'), text('b-2', '<p>Other</p>')])
+		);
+		const backend = guardedBackend(source);
+		const { bridge } = mountEditor(source, backend.save);
+		await flushPromises();
+
+		const inline = await openInlineEditor('b-1');
+		inline.type('<p>Loaded + my typing</p>');
+		source.value = row(1, [
+			text('b-1', '<p>Collaborator rewrite</p>'),
+			text('b-2', '<p>Other</p>'),
+		]);
+		await flushPromises();
+		await inline.close();
+
+		expect(bridge().hasChanges.value).toBe(true);
+		await bridge().requestSave();
+
+		expect(backend.accepted).toEqual([]);
+		expect(bridge().conflict.value).toEqual({ currentRevision: 1 });
+
+		// "Load latest" shows the collaborator's text.
+		await bridge().loadLatestVersion();
+		await flushPromises();
+		expect(builder().text()).toContain('Collaborator rewrite');
+		expect(bridge().hasChanges.value).toBe(false);
+	});
+
+	it('follows the collaborator write once the inline editor closes with nothing typed', async () => {
+		const source = ref<Row | null>(
+			row(0, [text('b-1', '<p>Loaded</p>'), text('b-2', '<p>Other</p>')])
+		);
+		const backend = guardedBackend(source);
+		const { bridge } = mountEditor(source, backend.save);
+		await flushPromises();
+
+		const inline = await openInlineEditor('b-1');
+		source.value = row(1, [
+			text('b-1', '<p>Collaborator rewrite</p>'),
+			text('b-2', '<p>Other</p>'),
+		]);
+		await flushPromises();
+		// Still open: the canvas is not replaced under it.
+		expect((wrapper!.find('[data-inline-text]').element as HTMLElement).innerHTML).toBe(
+			'<p>Loaded</p>'
+		);
+		await inline.close();
+
+		expect(bridge().hasChanges.value).toBe(false);
+		expect(builder().text()).toContain('Collaborator rewrite');
+
+		// The next edit builds on the collaborator's copy and revision.
+		canvasEdit([text('b-1', '<p>Collaborator rewrite</p>'), text('b-2', '<p>Other v2</p>')]);
+		await flushPromises();
+		await bridge().requestSave();
+		expect(backend.accepted.map((s) => s.revision)).toEqual([1]);
+		expect(htmlOf(backend.accepted[0]!.blocks)).toBe('<p>Collaborator rewrite</p> <p>Other v2</p>');
 	});
 });
 

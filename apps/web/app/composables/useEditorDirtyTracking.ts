@@ -40,6 +40,15 @@ export interface UseEditorDirtyTrackingOptions<S> {
 	 * (the email builder's canvas) pushes the hydrated state through here.
 	 */
 	onHydrate?: (source: NonNullable<S>) => void;
+	/**
+	 * Unsaved work the tracked refs cannot see yet (an open inline text editor
+	 * commits only when it closes). While this returns true, an emission is
+	 * treated as if the draft were dirty: the draft and its base revision are
+	 * kept, so work committed later is saved against the revision it started
+	 * from and a write that landed meanwhile surfaces as a conflict. Once it
+	 * turns false with nothing committed, the editor catches up.
+	 */
+	holdHydration?: () => boolean;
 }
 
 /** A save in flight: the draft as submitted and the server state it was built on. */
@@ -107,6 +116,7 @@ export function useEditorDirtyTracking<S>(
 	};
 
 	const serializeDraft = () => JSON.stringify(opts.watchSources.map((read) => read()));
+	const held = () => opts.holdHydration?.() === true;
 
 	const hydrate = (row: NonNullable<S>) => {
 		hydrating = true;
@@ -133,12 +143,12 @@ export function useEditorDirtyTracking<S>(
 				hydrate(row);
 				return;
 			}
-			if (!hasChanges.value) {
+			if (!hasChanges.value && !held()) {
 				// Nothing unsaved: follow the server.
 				hydrate(row);
 				return;
 			}
-			// Unsaved draft: keep it. A row at the draft's revision (a send
+			// Unsaved draft (or work not committed to it yet): keep it. A row at the draft's revision (a send
 			// counter, a schema tweak) is still a valid base for it; anything
 			// newer is a write the next save has to be checked against.
 			if (opts.revision === undefined || opts.revision(row) === baseRevision) base = row;
@@ -173,8 +183,10 @@ export function useEditorDirtyTracking<S>(
 		// An emission skipped while the draft was dirty (e.g. a settings save
 		// that re-keys the row) is applied now that nothing is unsaved. One that
 		// predates the write just acknowledged is not: it would put the content
-		// from before that write back on screen until the echo arrived.
+		// from before that write back on screen until the echo arrived. Nor is
+		// anything while work is held outside the draft; the release catches up.
 		if (
+			!held() &&
 			latest !== null &&
 			latest !== hydratedFrom &&
 			identityOf(latest) === hydratedIdentity &&
@@ -206,6 +218,18 @@ export function useEditorDirtyTracking<S>(
 		base = latest;
 		baseRevision = opts.revision?.(latest);
 	};
+
+	// Work held outside the draft was let go. If none of it was committed (the
+	// draft is still clean), follow the emissions it held back. Waiting a tick
+	// lets a commit made on release reach the tracked refs first.
+	if (opts.holdHydration) {
+		watch(opts.holdHydration, (isHeld) => {
+			if (isHeld) return;
+			void nextTick(() => {
+				if (!held() && !hasChanges.value && isInitialized.value) catchUp();
+			});
+		});
+	}
 
 	const reload = () => {
 		if (latest !== null) hydrate(latest);
