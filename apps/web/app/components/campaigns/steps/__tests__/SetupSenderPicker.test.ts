@@ -33,6 +33,8 @@ interface PickerData {
 }
 
 let pickerData: Ref<PickerData>;
+let pickerError: Ref<Error | null>;
+let refetchPicker: ReturnType<typeof vi.fn>;
 let domainStatus: Ref<unknown>;
 let members: Ref<unknown[]>;
 let fetchMembers: ReturnType<typeof vi.fn>;
@@ -50,6 +52,8 @@ const SENDER = {
 
 beforeEach(() => {
 	pickerData = ref({ senders: [], isCustomAllowed: false, canManage: true });
+	pickerError = ref(null);
+	refetchPicker = vi.fn();
 	domainStatus = ref(undefined);
 	members = ref([]);
 	fetchMembers = vi.fn(async () => {});
@@ -59,7 +63,12 @@ beforeEach(() => {
 		useOrganizationQuery: (reference: FunctionReference<'query'>) => {
 			const name = getFunctionName(reference);
 			if (name === 'campaigns/senders:listForPicker') {
-				return { ...queryResult(undefined), data: pickerData };
+				return {
+					...queryResult(undefined),
+					data: pickerData,
+					error: pickerError,
+					refetch: refetchPicker,
+				};
 			}
 			if (name === 'domains/domains:getEmailDomainVerificationStatus') {
 				return { ...queryResult(undefined), data: domainStatus };
@@ -132,6 +141,20 @@ describe('SetupSenderPicker with no senders', () => {
 		expect(wrapper.find('[data-testid="sender-ask-admin"]').text()).toBe(
 			'Ask an admin of this workspace to add one. Only admins can add senders.'
 		);
+	});
+});
+
+describe('SetupSenderPicker when the sender list fails to load (#818)', () => {
+	it('offers a Try again control that refetches the list', async () => {
+		pickerError.value = new Error('Function execution timed out');
+		const wrapper = mountPicker();
+
+		const alert = wrapper.find('[data-testid="sender-picker-load-failed"]');
+		expect(alert.exists()).toBe(true);
+		expect(alert.attributes('action-label')).toBe('Try again');
+
+		wrapper.findComponent({ name: 'UiErrorAlert' }).vm.$emit('action');
+		expect(refetchPicker).toHaveBeenCalledTimes(1);
 	});
 });
 

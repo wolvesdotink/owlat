@@ -6,6 +6,7 @@ import {
 } from 'convex/server';
 import { convexToJson } from 'convex/values';
 import { logWarn } from '~/lib/runtimeLog';
+import { createTransientRetry } from '~/lib/queryRetry';
 import type { Ref } from 'vue';
 
 export type ArgsOrFactory<Args> = Args | (() => Args | 'skip');
@@ -78,6 +79,7 @@ export interface ConvexQueryResult<T> {
 	 * prior data visible in the background. Needed when the query's result derives
 	 * from state Convex can't invalidate reactively (e.g. `delivery.status`, which
 	 * reads deployment env — an env change won't self-invalidate the subscription).
+	 * Also the handler behind a "Try again" control once `error` is set.
 	 */
 	refetch: () => void;
 }
@@ -85,6 +87,11 @@ export interface ConvexQueryResult<T> {
 /**
  * Composable for subscribing to a Convex query.
  * Automatically updates when the data changes.
+ *
+ * A transient server failure (a function timeout, an uncaught error) is retried
+ * a few times with backoff before it reaches `error`; until then the query stays
+ * in its loading (or background-refetching) state. Refusals the backend makes
+ * on purpose (`ConvexError`) surface at once. See `~/lib/queryRetry`.
  *
  * Return "skip" from the args factory function to skip the query subscription.
  * This is useful when required arguments are not yet available.
@@ -108,6 +115,7 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 	let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
 	const timeoutMs = options?.timeout ?? DEFAULT_TIMEOUT;
+	const retry = createTransientRetry();
 
 	const clearSubscriptionTimeout = () => {
 		if (timeoutId !== null) {
@@ -119,17 +127,26 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 	const resolvedArgs = computed(() => resolveArgs(args));
 	const argsKey = computed(() => argsIdentity(resolvedArgs.value));
 
-	const subscribe = (opts?: { background?: boolean }) => {
+	const releaseSubscription = () => {
+		if (unsubscribe) {
+			unsubscribe();
+			unsubscribe = null;
+		}
+	};
+
+	const subscribe = (opts?: { background?: boolean; isRetry?: boolean }) => {
+		// A retry spends the budget; anything else (new args, a manual refetch)
+		// starts it over.
+		retry.cancel();
+		if (!opts?.isRetry) retry.reset();
+
 		// Clean up previous subscription and timeout. MUST null the handle after
 		// calling it: the Convex client's unsubscribe throws on a second call
 		// (removeSubscriber reads a deleted query token). Leaving it set meant a
 		// valid → skip → valid args sequence (e.g. typing through an invalid
 		// email) called the dead unsubscribe again, the throw aborted this
 		// re-subscribe, and the UI silently kept the PREVIOUS args' data forever.
-		if (unsubscribe) {
-			unsubscribe();
-			unsubscribe = null;
-		}
+		releaseSubscription();
 		clearSubscriptionTimeout();
 
 		// Skip if args indicate we should skip. There is no pending request, so
@@ -165,6 +182,7 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 			resolvedArgs.value,
 			(newData) => {
 				clearSubscriptionTimeout();
+				retry.reset();
 				data.value = newData;
 				isLoading.value = false;
 				isRefetching.value = false;
@@ -172,6 +190,16 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 			},
 			(e) => {
 				clearSubscriptionTimeout();
+				// Release the failed subscription BEFORE waiting, not at the retry:
+				// the Convex client shares one server query between identical
+				// subscriptions and re-runs it only once its last subscriber has
+				// gone. Components that failed together unsubscribe together, so
+				// the first one back re-executes the query instead of inheriting
+				// the cached failure.
+				if (retry.schedule(e, () => subscribe({ background: true, isRetry: true }))) {
+					releaseSubscription();
+					return;
+				}
 				error.value = e instanceof Error ? e : new Error(String(e));
 				isLoading.value = false;
 				isRefetching.value = false;
@@ -199,9 +227,8 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 	if (getCurrentScope()) {
 		onScopeDispose(() => {
 			clearSubscriptionTimeout();
-			if (unsubscribe) {
-				unsubscribe();
-			}
+			retry.cancel();
+			releaseSubscription();
 		});
 	} else if (import.meta.dev) {
 		// No scope means nothing will ever call the unsubscribe: the socket

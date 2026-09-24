@@ -16,6 +16,8 @@ const {
 	selectedType,
 	entries,
 	isLoading,
+	error: entriesError,
+	refetch: refetchEntries,
 	ENTRY_TYPES,
 	TYPE_CONFIG,
 	typeVariant,
@@ -134,8 +136,16 @@ const handleCancelled = () => {
 		<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 			<!-- Main Content -->
 			<div class="lg:col-span-2 space-y-3">
+				<!-- A failed read is not an empty knowledge base (#721). -->
+				<UiQueryBoundary
+					v-if="entriesError"
+					:error="entriesError"
+					:error-title="t('dashboard.knowledge.index.loadError')"
+					@retry="refetchEntries"
+				/>
+
 				<!-- Loading -->
-				<div v-if="isLoading" class="flex items-center justify-center py-16">
+				<div v-else-if="isLoading" class="flex items-center justify-center py-16">
 					<UiSpinner />
 				</div>
 

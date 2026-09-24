@@ -8,7 +8,7 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-const { files, status, isLoading, error, searchQuery, sourceFilter, viewMode, loadMore } =
+const { files, status, isLoading, error, refetch, searchQuery, sourceFilter, viewMode, loadMore } =
 	useSemanticFiles();
 
 // Uploading and deleting files is admin-only on the backend
@@ -145,6 +145,7 @@ const formatCreatedAt = (createdAt: number) =>
 		<UiQueryBoundary
 			:loading="isLoading"
 			:error="error"
+			@retry="refetch"
 			:error-title="t('dashboard.files.index.errorTitle')"
 			:loading-label="t('dashboard.files.index.loadingLabel')"
 		>

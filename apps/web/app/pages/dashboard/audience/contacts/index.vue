@@ -66,6 +66,7 @@ const {
 	loadMore,
 	isLoading: contactsLoading,
 	error: contactsError,
+	refetch: refetchContacts,
 } = usePaginatedQuery(
 	api.contacts.contacts.list,
 	() => ({
@@ -648,7 +649,7 @@ onUnmounted(() => {
 
 		<!-- Content -->
 		<div class="card p-0 overflow-hidden">
-			<UiQueryBoundary :error="contactsError">
+			<UiQueryBoundary :error="contactsError" @retry="refetchContacts">
 				<!-- Loading State -->
 				<DashboardListSkeleton
 					v-if="isLoading && contacts.length === 0"

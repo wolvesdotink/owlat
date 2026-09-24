@@ -19,6 +19,8 @@ export function useMediaLibrary() {
 		status,
 		loadMore,
 		isLoading,
+		error,
+		refetch,
 	} = usePaginatedQuery(
 		api.mediaAssets.list,
 		() => ({
@@ -152,6 +154,8 @@ export function useMediaLibrary() {
 		tags,
 		status,
 		isLoading,
+		error,
+		refetch,
 		isUploading,
 		// Filters
 		searchQuery,

@@ -40,6 +40,7 @@ const {
 	data: senderPicker,
 	isLoading: senderPickerLoading,
 	error: senderPickerError,
+	refetch: refetchSenderPicker,
 } = useOrganizationQuery(api.campaigns.senders.listForPicker);
 
 const senders = computed(() => senderPicker.value?.senders ?? []);
@@ -252,6 +253,10 @@ defineExpose({ validate, isReady });
 			v-else-if="senderPickerError"
 			class="mt-1.5"
 			:message="t('components.campaigns.steps.setupSenderPicker.loadFailed')"
+			:action-label="t('common.tryAgain')"
+			action-icon="lucide:refresh-cw"
+			data-testid="sender-picker-load-failed"
+			@action="refetchSenderPicker"
 		/>
 
 		<!-- Empty: no curated senders and custom addresses aren't allowed -->

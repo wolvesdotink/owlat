@@ -14,6 +14,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { defineComponent, h, ref } from 'vue';
+import { ConvexError } from 'convex/values';
 import { mount, flushPromises } from '@vue/test-utils';
 import {
 	createRouter,
@@ -32,6 +33,8 @@ type Campaign = { _id: string; name?: string; emailTemplateId?: string } | undef
 
 /** The persisted draft `?id=` resolves to; `undefined` stands for "still loading". */
 const campaign = ref<Campaign>(undefined);
+/** The campaign read's error: set after mount, the way a live subscription fails. */
+let campaignError = ref<Error | null>(null);
 
 const Blank = defineComponent({ render: () => h('div') });
 
@@ -62,6 +65,8 @@ const stepStubs = {
 
 beforeEach(() => {
 	campaign.value = undefined;
+	// A fresh ref per test: an earlier test's wizard must not see this one's failure.
+	campaignError = ref<Error | null>(null);
 	installNuxtStubs({
 		...i18nStubs,
 		// The page's own router, not a spy: the assertions are about the URL.
@@ -75,7 +80,8 @@ beforeEach(() => {
 			const resolved = typeof args === 'function' ? (args as () => unknown)() : args;
 			const wantsCampaign =
 				typeof resolved === 'object' && resolved !== null && 'campaignId' in resolved;
-			return wantsCampaign ? queryResult(campaign.value) : queryResult(undefined);
+			if (!wantsCampaign) return queryResult(undefined);
+			return { ...queryResult(campaign.value), error: campaignError };
 		},
 		useOrganizationQuery: () => queryResult(undefined),
 		usePaginatedQuery: () => paginatedResult([]),
@@ -189,6 +195,43 @@ describe('campaign wizard URL state', () => {
 
 			expect(wrapper.find('.leave-dialog').exists()).toBe(false);
 			expect(router.currentRoute.value.path).toBe('/dashboard/campaigns');
+		});
+	});
+
+	describe('when the draft read fails', () => {
+		async function failRead(error: Error) {
+			campaign.value = { _id: 'cmp1', name: 'Weekly digest' };
+			// Setup, so dropping the id does not also move the step under test.
+			const { router } = await mountWizard('/dashboard/campaigns/new?id=cmp1&step=setup');
+			campaignError.value = error;
+			await flushPromises();
+			return router.currentRoute.value.query;
+		}
+
+		it.each([
+			[
+				'a function timeout',
+				new Error('[CONVEX Q(campaigns/campaigns:getWithRelations)] Function execution timed out'),
+			],
+			['a subscription timeout', new Error('Convex query subscription timed out')],
+			['a redacted server error', new Error('[Request ID: 1] Server Error')],
+		])('keeps the draft id after %s (#818)', async (_label, error) => {
+			const query = await failRead(error);
+
+			expect(query['id']).toBe('cmp1');
+		});
+
+		it.each([
+			['not found', new ConvexError({ code: 'not_found', message: 'Campaign not found' })],
+			['forbidden', new ConvexError({ code: 'forbidden', message: 'Not your campaign' })],
+			[
+				'an argument validation failure',
+				new Error('ArgumentValidationError: Value does not match validator. Path: .campaignId'),
+			],
+		])('drops a draft id the backend answered with %s', async (_label, error) => {
+			const query = await failRead(error);
+
+			expect(query['id']).toBeUndefined();
 		});
 	});
 });

@@ -23,6 +23,7 @@ const {
 	status: segmentsStatus,
 	loadMore: loadMoreSegments,
 	error: segmentsError,
+	refetch: refetchSegments,
 } = usePaginatedQuery(api.segments.list, () => ({}), { initialNumItems: 100 });
 // The list filters/sorts client-side with no pager, so an org with >100
 // segments was silently capped at the first 100. Eagerly pull every page.
@@ -189,6 +190,7 @@ onMounted(() => {
 			<UiQueryBoundary
 				:loading="isLoading && segments.length === 0"
 				:error="segmentsError"
+				@retry="refetchSegments"
 				:error-title="t('dashboard.audience.segments.index.errorTitle')"
 			>
 				<!-- Loading State: content-shaped skeleton on first load only -->

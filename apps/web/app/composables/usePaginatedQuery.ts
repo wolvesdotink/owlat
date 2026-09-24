@@ -5,6 +5,7 @@ import type {
 	PaginationResult,
 } from 'convex/server';
 import type { PaginationStatus } from 'convex/browser';
+import { createTransientRetry } from '~/lib/queryRetry';
 
 type PaginatedQueryArgs<Query extends FunctionReference<'query'>> = Omit<
 	FunctionArgs<Query>,
@@ -36,6 +37,10 @@ function resolveArgs<Args>(args: Args | ArgsFactory<Args>): Args | 'skip' {
  *
  * Return "skip" from the args factory function to skip the query subscription.
  *
+ * Transient server failures are retried with backoff before they reach `error`,
+ * as in `useConvexQuery`. `refetch` reopens the subscription on demand (the
+ * handler behind a "Try again" control); it starts over from the first page.
+ *
  * Note: Results are typed as `unknown[]` because Convex's onPaginatedUpdate_experimental
  * has mismatched declared vs runtime types, preventing proper generic inference.
  */
@@ -58,6 +63,7 @@ export function usePaginatedQuery<Query extends FunctionReference<'query'>>(
 	const _loadMore = ref<((numItems: number) => boolean) | null>(null);
 
 	const timeoutMs = options.timeout ?? DEFAULT_TIMEOUT;
+	const retry = createTransientRetry();
 
 	const clearSubscriptionTimeout = () => {
 		if (timeoutId !== null) {
@@ -68,11 +74,19 @@ export function usePaginatedQuery<Query extends FunctionReference<'query'>>(
 
 	const resolvedArgs = computed(() => resolveArgs(args));
 
-	const subscribe = () => {
+	const releaseSubscription = () => {
 		if (unsubscribe) {
 			unsubscribe();
 			unsubscribe = null;
 		}
+	};
+
+	const subscribe = (opts?: { background?: boolean; isRetry?: boolean }) => {
+		// A retry spends the budget; anything else (new args, a manual refetch)
+		// starts it over.
+		retry.cancel();
+		if (!opts?.isRetry) retry.reset();
+		releaseSubscription();
 		clearSubscriptionTimeout();
 
 		if (resolvedArgs.value === 'skip') {
@@ -99,7 +113,7 @@ export function usePaginatedQuery<Query extends FunctionReference<'query'>>(
 		// rows (e.g. a search/filter change resubscribes), keep the current rows on
 		// screen and flag a background refetch instead of blanking to the full-pane
 		// skeleton. Preserve status/loadMore until the new first page lands.
-		if (options.keepPreviousData && results.value.length > 0) {
+		if ((options.keepPreviousData || opts?.background) && results.value.length > 0) {
 			isRefetching.value = true;
 		} else {
 			isLoading.value = true;
@@ -115,6 +129,7 @@ export function usePaginatedQuery<Query extends FunctionReference<'query'>>(
 			{ initialNumItems: options.initialNumItems },
 			(result: unknown) => {
 				clearSubscriptionTimeout();
+				retry.reset();
 				const typed = result as PaginatedUpdateResult<PaginatedItem<Query>>;
 				results.value = typed.results ?? [];
 				status.value = typed.status ?? 'Exhausted';
@@ -125,6 +140,14 @@ export function usePaginatedQuery<Query extends FunctionReference<'query'>>(
 			},
 			(e: Error) => {
 				clearSubscriptionTimeout();
+				// Released before the wait for the same reason as in useConvexQuery:
+				// a shared server query only re-runs once every subscriber has gone.
+				if (retry.schedule(e, () => subscribe({ background: true, isRetry: true }))) {
+					releaseSubscription();
+					// Its loadMore belongs to the subscription just released.
+					_loadMore.value = null;
+					return;
+				}
 				error.value = e;
 				isLoading.value = false;
 				isRefetching.value = false;
@@ -144,7 +167,7 @@ export function usePaginatedQuery<Query extends FunctionReference<'query'>>(
 		}, timeoutMs);
 	};
 
-	watch(resolvedArgs, subscribe, { immediate: true, deep: true });
+	watch(resolvedArgs, () => subscribe(), { immediate: true, deep: true });
 
 	// Clean up via onScopeDispose (like useConvexQuery) rather than onUnmounted,
 	// so the subscription is also torn down for non-component callers and inside
@@ -152,9 +175,8 @@ export function usePaginatedQuery<Query extends FunctionReference<'query'>>(
 	if (getCurrentScope()) {
 		onScopeDispose(() => {
 			clearSubscriptionTimeout();
-			if (unsubscribe) {
-				unsubscribe();
-			}
+			retry.cancel();
+			releaseSubscription();
 		});
 	}
 
@@ -164,6 +186,8 @@ export function usePaginatedQuery<Query extends FunctionReference<'query'>>(
 		isLoading: readonly(isLoading),
 		isRefetching: readonly(isRefetching),
 		error: readonly(error),
+		/** Reopen the subscription, keeping the current rows on screen until the first page lands. */
+		refetch: () => subscribe({ background: true }),
 		loadMore: (numItems: number) => {
 			// During a keepPreviousData refetch, `_loadMore` still points at the
 			// closure of the subscription disposed at the top of subscribe(), so

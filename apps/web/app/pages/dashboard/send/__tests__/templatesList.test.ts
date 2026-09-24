@@ -27,7 +27,12 @@ beforeEach(() => {
 	listArgs = [];
 	replace = vi.fn();
 	query = {};
+	listError = null;
+	refetchList = vi.fn();
 });
+
+let listError: Error | null;
+let refetchList: ReturnType<typeof vi.fn>;
 
 function render(templates = TEMPLATES): VueWrapper {
 	installNuxtStubs({
@@ -44,7 +49,9 @@ function render(templates = TEMPLATES): VueWrapper {
 		},
 		usePaginatedQuery: (_reference: unknown, args: () => unknown) => {
 			listArgs.push(args());
-			return paginatedResult(templates);
+			const result = paginatedResult(templates);
+			result.error.value = listError as never;
+			return { ...result, refetch: refetchList };
 		},
 	});
 	return mount(SendIndex, {
@@ -63,6 +70,10 @@ function render(templates = TEMPLATES): VueWrapper {
 				UiCard: { template: '<div><slot /></div>' },
 				LazyMailTemplateLibraryModal: true,
 				DashboardListSkeleton: true,
+				UiButton: {
+					emits: ['click'],
+					template: '<button data-stub="button" @click="$emit(\'click\')"><slot /></button>',
+				},
 			},
 		},
 	}) as VueWrapper;
@@ -115,5 +126,16 @@ describe('templates list', () => {
 		query = { type: 'marketing' };
 		const wrapper = render([]);
 		expect(wrapper.find('[data-stub="empty"]').text()).toBe('No marketing templates yet');
+	});
+
+	it('shows a failed read with Try again instead of an empty list (#721)', async () => {
+		listError = new Error('[CONVEX Q(emailTemplates/emails:list)] [Request ID: 1] Server Error');
+		const wrapper = render([]);
+
+		expect(wrapper.find('[data-stub="empty"]').exists()).toBe(false);
+		const retry = wrapper.findAll('[data-stub="button"]').find((b) => b.text() === 'Try again');
+		expect(retry).toBeDefined();
+		await retry!.trigger('click');
+		expect(refetchList).toHaveBeenCalledTimes(1);
 	});
 });

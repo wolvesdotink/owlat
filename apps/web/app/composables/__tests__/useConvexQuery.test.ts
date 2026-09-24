@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ConvexError } from 'convex/values';
 import { useConvexQuery } from '../useConvexQuery';
 
 describe('useConvexQuery', () => {
@@ -73,12 +74,12 @@ describe('useConvexQuery', () => {
 			expect(error.value).toBeNull();
 		});
 
-		it('sets error and isLoading=false when onError fires', () => {
+		it('sets error and isLoading=false when onError fires with a backend refusal', () => {
 			const { error, isLoading, data } = useConvexQuery(fakeQuery, { teamId: '123' });
 
 			expect(isLoading.value).toBe(true);
 
-			mockOnErrorCallback!(new Error('Query failed'));
+			mockOnErrorCallback!(new ConvexError('Query failed'));
 
 			expect(error.value).toBeInstanceOf(Error);
 			expect(error.value!.message).toBe('Query failed');
@@ -89,10 +90,11 @@ describe('useConvexQuery', () => {
 		it('wraps non-Error values in Error when onError fires', () => {
 			const { error, isLoading } = useConvexQuery(fakeQuery, { teamId: '123' });
 
-			mockOnErrorCallback!('string error');
+			// A validation failure is final, so it surfaces without a retry.
+			mockOnErrorCallback!('ArgumentValidationError: string error');
 
 			expect(error.value).toBeInstanceOf(Error);
-			expect(error.value!.message).toBe('string error');
+			expect(error.value!.message).toBe('ArgumentValidationError: string error');
 			expect(isLoading.value).toBe(false);
 		});
 	});
@@ -379,7 +381,7 @@ describe('useConvexQuery', () => {
 		it('clears timeout when error arrives before timeout', () => {
 			const { isLoading, error } = useConvexQuery(fakeQuery, { teamId: '123' });
 
-			mockOnErrorCallback!(new Error('Query failed'));
+			mockOnErrorCallback!(new ConvexError('Query failed'));
 			expect(isLoading.value).toBe(false);
 
 			vi.advanceTimersByTime(10_000);
@@ -422,6 +424,129 @@ describe('useConvexQuery', () => {
 			expect(data.value).toEqual([{ id: '1' }]);
 			expect(isLoading.value).toBe(false);
 			expect(error.value).toBeNull();
+		});
+	});
+
+	describe('transient failure recovery (#818)', () => {
+		const TIMEOUT_ERROR =
+			'[CONVEX Q(topics/topics:list)] [Request ID: 1] Server Error\nUncaught Error: Function execution timed out (maximum duration: 1s)';
+
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it('keeps loading and resubscribes after a function timeout instead of surfacing it', () => {
+			const { data, isLoading, error } = useConvexQuery(fakeQuery, { teamId: '123' });
+
+			mockOnErrorCallback!(new Error(TIMEOUT_ERROR));
+
+			// Not an error yet: the page keeps its loading state while it retries.
+			expect(error.value).toBeNull();
+			expect(isLoading.value).toBe(true);
+			// The failed subscription is released straight away, so a query shared
+			// with another component re-runs on the server when it comes back.
+			expect(mockUnsubscribe).toHaveBeenCalledOnce();
+			expect(mockClient.onUpdate).toHaveBeenCalledOnce();
+
+			vi.advanceTimersByTime(1_200);
+			expect(mockClient.onUpdate).toHaveBeenCalledTimes(2);
+
+			mockOnUpdateCallback!([{ id: '1' }]);
+			expect(data.value).toEqual([{ id: '1' }]);
+			expect(isLoading.value).toBe(false);
+			expect(error.value).toBeNull();
+		});
+
+		it('surfaces the error once the retry budget is spent, with growing delays', () => {
+			const { isLoading, error } = useConvexQuery(fakeQuery, { teamId: '123' });
+
+			mockOnErrorCallback!(new Error(TIMEOUT_ERROR));
+			vi.advanceTimersByTime(1_200);
+			mockOnErrorCallback!(new Error(TIMEOUT_ERROR));
+			// The second wait is longer than the first.
+			vi.advanceTimersByTime(1_200);
+			expect(mockClient.onUpdate).toHaveBeenCalledTimes(2);
+			vi.advanceTimersByTime(1_200);
+			mockOnErrorCallback!(new Error(TIMEOUT_ERROR));
+			vi.advanceTimersByTime(4_800);
+			expect(mockClient.onUpdate).toHaveBeenCalledTimes(4);
+			expect(error.value).toBeNull();
+
+			mockOnErrorCallback!(new Error(TIMEOUT_ERROR));
+
+			expect(error.value!.message).toBe(TIMEOUT_ERROR);
+			expect(isLoading.value).toBe(false);
+			vi.advanceTimersByTime(60_000);
+			expect(mockClient.onUpdate).toHaveBeenCalledTimes(4);
+		});
+
+		it('surfaces a backend refusal at once, without retrying', () => {
+			const { error } = useConvexQuery(fakeQuery, { teamId: '123' });
+
+			mockOnErrorCallback!(
+				new ConvexError({ category: 'forbidden', message: 'You do not have access.' })
+			);
+
+			expect(error.value).not.toBeNull();
+			vi.advanceTimersByTime(60_000);
+			expect(mockClient.onUpdate).toHaveBeenCalledOnce();
+		});
+
+		it('restores the full budget after a successful result', () => {
+			const { error } = useConvexQuery(fakeQuery, { teamId: '123' });
+
+			for (let i = 0; i < 3; i++) {
+				mockOnErrorCallback!(new Error(TIMEOUT_ERROR));
+				vi.advanceTimersByTime(4_800);
+			}
+			mockOnUpdateCallback!([{ id: '1' }]);
+
+			// A later failure gets a fresh set of retries.
+			mockOnErrorCallback!(new Error(TIMEOUT_ERROR));
+			expect(error.value).toBeNull();
+			vi.advanceTimersByTime(1_200);
+			expect(mockClient.onUpdate).toHaveBeenCalledTimes(5);
+		});
+
+		it('keeps loaded data on screen while a later failure is retried', () => {
+			const { data, isLoading, isRefetching, error } = useConvexQuery(fakeQuery, {
+				teamId: '123',
+			});
+			mockOnUpdateCallback!([{ id: '1' }]);
+
+			mockOnErrorCallback!(new Error(TIMEOUT_ERROR));
+			vi.advanceTimersByTime(1_200);
+
+			expect(data.value).toEqual([{ id: '1' }]);
+			expect(isLoading.value).toBe(false);
+			expect(isRefetching.value).toBe(true);
+			expect(error.value).toBeNull();
+		});
+
+		it('refetch after a surfaced error clears it and resubscribes with a fresh budget', () => {
+			const { error, isLoading, refetch } = useConvexQuery(fakeQuery, { teamId: '123' });
+			mockOnErrorCallback!(new ConvexError('boom'));
+			expect(error.value).not.toBeNull();
+
+			refetch();
+
+			expect(error.value).toBeNull();
+			expect(isLoading.value).toBe(true);
+			expect(mockClient.onUpdate).toHaveBeenCalledTimes(2);
+		});
+
+		it('drops a pending retry when the scope is disposed', () => {
+			useConvexQuery(fakeQuery, { teamId: '123' });
+			mockOnErrorCallback!(new Error(TIMEOUT_ERROR));
+
+			onScopeDisposeCallback!();
+			vi.advanceTimersByTime(10_000);
+
+			expect(mockClient.onUpdate).toHaveBeenCalledOnce();
 		});
 	});
 });

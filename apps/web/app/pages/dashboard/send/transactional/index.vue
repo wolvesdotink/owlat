@@ -34,6 +34,7 @@ const {
 	sendCounts,
 	isLoading: listLoading,
 	error: emailsError,
+	refetch: refetchEmails,
 	dropdownOpenStates,
 	formatDate,
 	getStatusBadge,
@@ -229,6 +230,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 			<UiQueryBoundary
 				:loading="isLoading && !transactionalEmails"
 				:error="emailsError"
+				@retry="refetchEmails"
 				:error-title="t('dashboard.send.transactional.index.loadError')"
 				:loading-label="t('dashboard.send.transactional.index.loadingEmails')"
 			>

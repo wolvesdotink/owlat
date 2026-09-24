@@ -69,6 +69,7 @@ const {
 	results: automations,
 	isLoading: automationsLoading,
 	error: automationsError,
+	refetch: refetchAutomations,
 } = usePaginatedQuery(
 	api.automations.automations.list,
 	() => ({
@@ -304,6 +305,7 @@ const openFromName = (automation: {
 			<UiQueryBoundary
 				:loading="isLoading && automations.length === 0"
 				:error="automationsError"
+				@retry="refetchAutomations"
 				:error-title="t('dashboard.automations.index.errorTitle')"
 			>
 				<!-- Loading State: content-shaped skeleton on first load only -->

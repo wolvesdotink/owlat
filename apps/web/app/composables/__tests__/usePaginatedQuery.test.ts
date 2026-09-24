@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { nextTick } from 'vue';
+import { ConvexError } from 'convex/values';
 import { usePaginatedQuery } from '../usePaginatedQuery';
 
 const fakeQuery = 'api.test.list' as unknown as Parameters<typeof usePaginatedQuery>[0];
@@ -221,7 +222,7 @@ describe('usePaginatedQuery', () => {
 				{ initialNumItems: 20 }
 			);
 
-			const testError = new Error('Something went wrong');
+			const testError = new ConvexError('Something went wrong');
 			mockErrorCallback!(testError);
 
 			expect(error.value).toBe(testError);
@@ -388,7 +389,7 @@ describe('usePaginatedQuery', () => {
 			await nextTick();
 			expect(isRefetching.value).toBe(true);
 
-			const testError = new Error('refetch failed');
+			const testError = new ConvexError('refetch failed');
 			mockErrorCallback!(testError);
 
 			expect(isRefetching.value).toBe(false);
@@ -420,6 +421,101 @@ describe('usePaginatedQuery', () => {
 			} finally {
 				vi.useRealTimers();
 			}
+		});
+	});
+
+	describe('transient failure recovery (#818)', () => {
+		const TIMEOUT_ERROR = 'Uncaught Error: Function execution timed out (maximum duration: 1s)';
+
+		it('resubscribes after a function timeout instead of surfacing it', () => {
+			vi.useFakeTimers();
+			try {
+				const { results, isLoading, error } = usePaginatedQuery(
+					fakeQuery,
+					{ teamId: '123' },
+					{ initialNumItems: 20 }
+				);
+
+				mockErrorCallback!(new Error(TIMEOUT_ERROR));
+				expect(error.value).toBeNull();
+				expect(isLoading.value).toBe(true);
+				expect(mockSubDispose).toHaveBeenCalledOnce();
+
+				vi.advanceTimersByTime(1_200);
+				expect(mockClient.onPaginatedUpdate_experimental).toHaveBeenCalledTimes(2);
+
+				mockSuccessCallback!({ results: [{ id: '1' }], status: 'Exhausted' });
+				expect(results.value).toEqual([{ id: '1' }]);
+				expect(isLoading.value).toBe(false);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it('surfaces the error once the retry budget is spent', () => {
+			vi.useFakeTimers();
+			try {
+				const { isLoading, error } = usePaginatedQuery(
+					fakeQuery,
+					{ teamId: '123' },
+					{ initialNumItems: 20 }
+				);
+
+				for (let i = 0; i < 3; i++) {
+					mockErrorCallback!(new Error(TIMEOUT_ERROR));
+					vi.advanceTimersByTime(4_800);
+				}
+				expect(error.value).toBeNull();
+
+				mockErrorCallback!(new Error(TIMEOUT_ERROR));
+				expect(error.value!.message).toBe(TIMEOUT_ERROR);
+				expect(isLoading.value).toBe(false);
+				expect(mockClient.onPaginatedUpdate_experimental).toHaveBeenCalledTimes(4);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it('surfaces a backend refusal at once, without retrying', () => {
+			const { error } = usePaginatedQuery(fakeQuery, { teamId: '123' }, { initialNumItems: 20 });
+
+			mockErrorCallback!(new ConvexError('forbidden'));
+
+			expect(error.value).not.toBeNull();
+			expect(mockSubDispose).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('refetch', () => {
+		it('reopens the subscription and clears a surfaced error', () => {
+			const { error, isLoading, refetch } = usePaginatedQuery(
+				fakeQuery,
+				{ teamId: '123' },
+				{ initialNumItems: 20 }
+			);
+			mockErrorCallback!(new ConvexError('boom'));
+			expect(error.value).not.toBeNull();
+
+			refetch();
+
+			expect(mockSubDispose).toHaveBeenCalledOnce();
+			expect(mockClient.onPaginatedUpdate_experimental).toHaveBeenCalledTimes(2);
+			expect(error.value).toBeNull();
+			expect(isLoading.value).toBe(true);
+		});
+
+		it('keeps the current rows on screen while the first page reloads', () => {
+			const { results, isRefetching, refetch } = usePaginatedQuery(
+				fakeQuery,
+				{ teamId: '123' },
+				{ initialNumItems: 20 }
+			);
+			mockSuccessCallback!({ results: [{ id: '1' }], status: 'CanLoadMore' });
+
+			refetch();
+
+			expect(results.value).toEqual([{ id: '1' }]);
+			expect(isRefetching.value).toBe(true);
 		});
 	});
 });

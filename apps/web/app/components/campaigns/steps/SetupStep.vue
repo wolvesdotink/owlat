@@ -81,10 +81,19 @@ const audience = computed(() => {
 	return null;
 });
 
-const { results: topics } = useTopicsList();
-const { results: segments } = usePaginatedQuery(api.segments.list, () => ({}), {
+const { results: topics, error: topicsError, refetch: refetchTopics } = useTopicsList();
+const {
+	results: segments,
+	error: segmentsError,
+	refetch: refetchSegments,
+} = usePaginatedQuery(api.segments.list, () => ({}), {
 	initialNumItems: 100,
 });
+const audienceLoadFailed = computed(() => !!topicsError.value || !!segmentsError.value);
+function retryAudienceLists() {
+	if (topicsError.value) refetchTopics();
+	if (segmentsError.value) refetchSegments();
+}
 
 const { data: audienceCount } = useOrganizationQuery(
 	api.campaigns.audienceResolution.countRecipients,
@@ -105,7 +114,11 @@ const selectedSegment = computed(() => {
 const abTest = useCampaignABTest();
 const abTestExpanded = ref(false);
 
-const { results: emailTemplates } = usePaginatedQuery(
+const {
+	results: emailTemplates,
+	error: emailTemplatesError,
+	refetch: refetchEmailTemplates,
+} = usePaginatedQuery(
 	api.emailTemplates.emails.list,
 	() => {
 		if (authPending.value || !isAuthenticated.value) return 'skip';
@@ -367,6 +380,8 @@ defineExpose({
 			:segments="segments ?? null"
 			:audience-count="audienceCount ?? null"
 			:error="audienceError"
+			:load-failed="audienceLoadFailed"
+			@retry="retryAudienceLists"
 		/>
 
 		<!-- Optional A/B test expander -->
@@ -395,7 +410,9 @@ defineExpose({
 				:campaign-subject="variantASubject"
 				:selected-template-name="variantATemplateName"
 				:email-templates="emailTemplates"
+				:templates-load-failed="!!emailTemplatesError"
 				:selected-template-id="selectedTemplateId"
+				@retry-templates="refetchEmailTemplates"
 			/>
 			<button
 				type="button"

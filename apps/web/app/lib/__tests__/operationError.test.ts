@@ -8,6 +8,7 @@ import {
 	resolveOperationCopy,
 	isTransportFailure,
 	operationToastCopy,
+	queryErrorCopy,
 	isSurfacedOperationError,
 	SurfacedOperationError,
 } from '../operationError';
@@ -232,5 +233,41 @@ describe('localized operation copy', () => {
 				{ locale: 'de', hasMessage: () => true }
 			)
 		).toEqual({ key: 'shared.operationError.generic' });
+	});
+});
+
+describe('queryErrorCopy (#721)', () => {
+	const FALLBACK = 'components.ui.queryBoundary.errorMessage';
+
+	it('gives a categorized refusal the same copy a failed write gets', () => {
+		expect(
+			queryErrorCopy(new ConvexError({ category: 'forbidden', message: 'No access.' }), FALLBACK)
+		).toEqual({ text: 'No access.' });
+	});
+
+	it('calls a server-side function timeout slow rather than a network problem', () => {
+		expect(
+			queryErrorCopy(
+				new Error(
+					'Server Error\nUncaught Error: Function execution timed out (maximum duration: 1s)'
+				),
+				FALLBACK
+			)
+		).toEqual({ key: 'shared.operationError.slowRead' });
+		expect(queryErrorCopy(new Error('Convex query subscription timed out'), FALLBACK)).toEqual({
+			key: 'shared.operationError.slowRead',
+		});
+	});
+
+	it('keeps a dropped connection a network problem', () => {
+		expect(queryErrorCopy(new Error('WebSocket closed'), FALLBACK)).toEqual({
+			key: 'shared.operationError.network',
+		});
+	});
+
+	it("falls back to the surface's own line for anything else, never the raw message", () => {
+		expect(
+			queryErrorCopy(new Error('[CONVEX Q(topics:list)] [Request ID: 1] Server Error'), FALLBACK)
+		).toEqual({ key: FALLBACK });
 	});
 });

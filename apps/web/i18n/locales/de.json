@@ -178,6 +178,7 @@
 		"skip": "Überspringen",
 		"status": "Status",
 		"today": "Heute",
+		"tryAgain": "Erneut versuchen",
 		"undo": "Rückgängig",
 		"unknown": "Unbekannt",
 		"upload": "Hochladen",
@@ -709,6 +710,7 @@
 				"subjectOptionDescription": "Verschiedene Betreffzeilen testen",
 				"templateBLabel": "E-Mail-Vorlage B",
 				"templateBPlaceholder": "Vorlage auswählen ...",
+				"templatesLoadFailed": "Vorlagen konnten nicht geladen werden.",
 				"testTypeLabel": "Was möchten Sie testen?",
 				"title": "A/B-Test",
 				"variantAHeading": "Variante A (Original)",
@@ -865,6 +867,7 @@
 					"splitSummary": "je {split} % für den Test, die Gewinnerversion geht an die übrigen {remaining} %",
 					"subtitle": "Prüfen Sie die Einstellungen Ihrer Kampagne vor dem Versand.",
 					"template": "Vorlage:",
+					"templatesLoadFailed": "Die Vorlagen konnten nicht geladen werden, daher fehlt der Name der Vorlage für Variante B.",
 					"testEmailDescription": "Senden Sie sich selbst einen Test, um zu sehen, wie Ihre E-Mail aussieht.",
 					"testEmailTitle": "Test-E-Mail senden",
 					"testingSubjects": "Betreffzeilen im Test",
@@ -900,6 +903,7 @@
 					"createTopic": "Thema erstellen",
 					"empty": "Es gibt noch keine Themen oder Segmente.",
 					"estimatedRecipients": "Geschätzte Empfänger",
+					"loadFailed": "Themen und Segmente konnten nicht geladen werden.",
 					"noSelection": "Wählen Sie Empfänger aus, um zu sehen, wie viele Kontakte diese Kampagne erhalten.",
 					"nonEligible": "{nonEligible} von {total} Kontakten in diesem Thema sind nicht zulässig (keine E-Mail-Adresse, abgemeldet/gesperrt oder Double-Opt-in nicht abgeschlossen) und werden ausgeschlossen.",
 					"placeholder": "Empfänger auswählen",
@@ -8739,7 +8743,7 @@
 				},
 				"deleteOperation": "Kampagne löschen",
 				"duplicateOperation": "Kampagne duplizieren",
-				"errorMessage": "Beim Laden Ihrer Kampagnen ist ein Fehler aufgetreten. Laden Sie die Seite neu, um es erneut zu versuchen.",
+				"errorMessage": "Beim Laden Ihrer Kampagnen ist ein Fehler aufgetreten.",
 				"errorTitle": "Kampagnen konnten nicht geladen werden",
 				"listEmpty": {
 					"description": "Erstellen Sie Ihre erste Kampagne, um Ihre Zielgruppe zu erreichen.",
@@ -9424,6 +9428,7 @@
 				"howItWorksStep1": "Wissen wird vom KI-Agenten automatisch aus E-Mails, Chats und Dateien gewonnen.",
 				"howItWorksStep2": "Jeder Eintrag hat einen Konfidenzwert, der mit der Zeit sinkt — häufige Nutzung verlangsamt das.",
 				"howItWorksStep3": "Einträge sind mit Kontakten und untereinander verknüpft und bilden so einen navigierbaren Wissensgraphen.",
+				"loadError": "Die Wissensdatenbank konnte nicht geladen werden",
 				"noResultsBody": "Keine Wissenseinträge passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff.",
 				"noResultsTitle": "Keine Ergebnisse gefunden",
 				"pageTitle": "Wissen — Owlat",
@@ -10316,6 +10321,7 @@
 				"emptyDescriptionAdmin": "Laden Sie Bilder hoch, um sie in Ihren E-Mail-Vorlagen zu verwenden.",
 				"emptyDescriptionMember": "Medien erscheinen hier, sobald eine Administratorin oder ein Administrator sie hochlädt.",
 				"emptyTitle": "Noch keine Medien",
+				"loadError": "Medien konnten nicht geladen werden",
 				"loadMore": "Mehr laden",
 				"noResults": "Keine Medien gefunden, die zu Ihrer Suche passen.",
 				"pageTitle": "Medienbibliothek — Owlat",
@@ -12809,7 +12815,8 @@
 			},
 			"generic": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
 			"network": "Verbindungsproblem. Prüfen Sie Ihr Netzwerk und versuchen Sie es erneut.",
-			"sessionExpired": "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an."
+			"sessionExpired": "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.",
+			"slowRead": "Der Server hat zu lange für die Antwort gebraucht. Versuchen Sie es gleich noch einmal."
 		},
 		"operatorConsole": {
 			"auditAction": {

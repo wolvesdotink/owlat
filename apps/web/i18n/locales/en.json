@@ -178,6 +178,7 @@
 		"skip": "Skip",
 		"status": "Status",
 		"today": "Today",
+		"tryAgain": "Try again",
 		"undo": "Undo",
 		"unknown": "Unknown",
 		"upload": "Upload",
@@ -709,6 +710,7 @@
 				"subjectOptionDescription": "Test different subject lines",
 				"templateBLabel": "Email template B",
 				"templateBPlaceholder": "Select a template...",
+				"templatesLoadFailed": "Could not load your templates.",
 				"testTypeLabel": "What do you want to test?",
 				"title": "A/B testing",
 				"variantAHeading": "Variant A (original)",
@@ -865,6 +867,7 @@
 					"splitSummary": "{split}% each for test, winner sent to remaining {remaining}%",
 					"subtitle": "Review your campaign settings before sending.",
 					"template": "Template:",
+					"templatesLoadFailed": "Could not load your templates, so the variant B template name is missing.",
 					"testEmailDescription": "Preview how your email will look by sending a test to yourself.",
 					"testEmailTitle": "Send test email",
 					"testingSubjects": "Testing subject lines",
@@ -900,6 +903,7 @@
 					"createTopic": "Create a topic",
 					"empty": "There are no topics or segments yet.",
 					"estimatedRecipients": "Estimated recipients",
+					"loadFailed": "Could not load your topics and segments.",
 					"noSelection": "Pick recipients to see how many contacts will get this campaign.",
 					"nonEligible": "{nonEligible} of {total} contacts in this topic are not eligible (no email address, unsubscribed/suppressed, or double opt-in not completed) and will be excluded.",
 					"placeholder": "Choose recipients",
@@ -8739,7 +8743,7 @@
 				},
 				"deleteOperation": "Delete campaign",
 				"duplicateOperation": "Duplicate campaign",
-				"errorMessage": "We hit an error loading your campaigns. Reload the page to try again.",
+				"errorMessage": "We hit an error loading your campaigns.",
 				"errorTitle": "Couldn't load campaigns",
 				"listEmpty": {
 					"description": "Create your first campaign to start reaching your audience.",
@@ -9424,6 +9428,7 @@
 				"howItWorksStep1": "Knowledge is automatically extracted from emails, chats, and files by the AI agent.",
 				"howItWorksStep2": "Each entry has a confidence score that decays over time, with recent use slowing the decay.",
 				"howItWorksStep3": "Entries are linked to contacts and related to each other, forming a navigable knowledge graph.",
+				"loadError": "Couldn't load the knowledge base",
 				"noResultsBody": "No knowledge entries match \"{query}\". Try a different search term.",
 				"noResultsTitle": "No results found",
 				"pageTitle": "Knowledge — Owlat",
@@ -10316,6 +10321,7 @@
 				"emptyDescriptionAdmin": "Upload images to use across your email templates.",
 				"emptyDescriptionMember": "Media will appear here once an admin uploads it.",
 				"emptyTitle": "No media yet",
+				"loadError": "Couldn't load media",
 				"loadMore": "Load more",
 				"noResults": "No media found matching your search.",
 				"pageTitle": "Media library — Owlat",
@@ -12809,7 +12815,8 @@
 			},
 			"generic": "Something went wrong. Please try again.",
 			"network": "Connection problem. Check your network and try again.",
-			"sessionExpired": "Your session has expired. Please sign in again."
+			"sessionExpired": "Your session has expired. Please sign in again.",
+			"slowRead": "The server took too long to answer. Try again in a moment."
 		},
 		"operatorConsole": {
 			"auditAction": {

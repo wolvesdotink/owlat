@@ -53,6 +53,7 @@ const {
 	status,
 	isLoading,
 	error,
+	refetch,
 	loadMore,
 } = usePaginatedQuery(
 	api.emailTemplates.emails.list,
@@ -167,6 +168,7 @@ function handleCreated(templateId: Id<'emailTemplates'>) {
 			<UiQueryBoundary
 				:loading="isLoading && templates.length === 0"
 				:error="error"
+				@retry="refetch"
 				:error-title="t('dashboard.send.index.loadError')"
 			>
 				<template #loading>

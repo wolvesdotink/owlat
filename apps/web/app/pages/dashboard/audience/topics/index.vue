@@ -31,6 +31,7 @@ const {
 	loadMore,
 	isLoading: topicsLoading,
 	error: topicsError,
+	refetch: refetchTopics,
 } = usePaginatedQuery(api.topics.topics.list, () => ({}), { initialNumItems: 50 });
 
 watch(
@@ -318,6 +319,7 @@ onMounted(() => {
 			<UiQueryBoundary
 				:loading="isLoading && topics.length === 0"
 				:error="topicsError"
+				@retry="refetchTopics"
 				:error-title="t('dashboard.audience.topics.index.errorTitle')"
 			>
 				<!-- Loading State: content-shaped skeleton on first load only -->

@@ -23,6 +23,7 @@ const {
 	data: blockedEmailsData,
 	isLoading: blockedEmailsLoading,
 	error: blockedEmailsError,
+	refetch: refetchBlockedEmails,
 } = useOrganizationQuery(api.blockedEmails.listByTeam, () => ({
 	reason: reasonFilter.value === 'all' ? undefined : reasonFilter.value,
 }));
@@ -203,6 +204,7 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 		<UiQueryBoundary
 			:loading="isLoading && !blockedEmailsData"
 			:error="blockedEmailsError"
+			@retry="refetchBlockedEmails"
 			:error-title="t('dashboard.audience.suppressions.errorTitle')"
 			:loading-label="t('dashboard.audience.suppressions.loading')"
 		>

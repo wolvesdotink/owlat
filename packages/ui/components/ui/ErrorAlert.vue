@@ -7,14 +7,32 @@ interface Props {
 	message: string;
 	title?: string;
 	variant?: AlertVariant;
+	/**
+	 * Label for an optional action button under the message, e.g. "Try again"
+	 * wired to a query's refetch. Copy that tells the user to try again needs a
+	 * control to do it with.
+	 */
+	actionLabel?: string;
+	/** Icon for the action button. */
+	actionIcon?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
 	title: undefined,
 	variant: 'error',
+	actionLabel: undefined,
+	actionIcon: undefined,
 });
 
-const variantConfig: Record<AlertVariant, { icon: string; containerClass: string; iconClass: string }> = {
+defineEmits<{
+	/** The action button was clicked. */
+	action: [];
+}>();
+
+const variantConfig: Record<
+	AlertVariant,
+	{ icon: string; containerClass: string; iconClass: string }
+> = {
 	error: {
 		icon: 'lucide:alert-circle',
 		containerClass: 'bg-error/10 border-error/20',
@@ -59,6 +77,19 @@ const displayTitle = computed(() => props.title ?? t(defaultTitleKeys[props.vari
 		<div>
 			<p :class="['text-sm font-medium', config.iconClass]">{{ displayTitle }}</p>
 			<p :class="['text-sm', `${config.iconClass}/80`]">{{ message }}</p>
+			<UiButton
+				v-if="actionLabel"
+				variant="secondary"
+				size="sm"
+				class="mt-3"
+				data-testid="error-alert-action"
+				@click="$emit('action')"
+			>
+				<template v-if="actionIcon" #iconLeft>
+					<Icon :name="actionIcon" class="w-4 h-4" />
+				</template>
+				{{ actionLabel }}
+			</UiButton>
 		</div>
 	</div>
 </template>

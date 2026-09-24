@@ -12,8 +12,9 @@
  *
  * Pass the destructured `isLoading` / `error` straight through, plus an `empty`
  * predicate for the no-data case. The `error` branch renders `UiErrorAlert` with
- * a retry control; wire `@retry` to a refetch, or leave it unwired and the
- * boundary falls back to reloading the page.
+ * a retry control; wire `@retry` to the composable's `refetch`, or leave it
+ * unwired and the boundary falls back to reloading the page. The alert's copy
+ * comes from the error's category (`queryErrorCopy`), never the raw message.
  *
  * Usage:
  *   <UiQueryBoundary :loading="isLoading" :error="error" :empty="(data ?? []).length === 0">
@@ -23,6 +24,7 @@
  *   </UiQueryBoundary>
  */
 import { computed, getCurrentInstance } from 'vue';
+import { queryErrorCopy, resolveOperationCopy } from '~/lib/operationError';
 
 interface Props {
 	/** Truthy while the underlying query has not delivered its first result. */
@@ -51,7 +53,7 @@ const props = withDefaults(defineProps<Props>(), {
 	hideRetry: false,
 });
 
-const { t } = useI18n();
+const { t, te, locale } = useI18n();
 
 const emit = defineEmits<{
 	/** Fired when the user clicks retry. Unwired → falls back to a page reload. */
@@ -70,9 +72,16 @@ const displayTitle = computed(
 const displayLoadingLabel = computed(
 	() => props.loadingLabel ?? t('components.ui.queryBoundary.loadingLabel')
 );
-const displayMessage = computed(
-	() => props.errorMessage ?? props.error?.message ?? t('components.ui.queryBoundary.errorMessage')
-);
+// The raw Convex message ("[CONVEX Q(…)] [Request ID: …] Server Error …") is
+// not user copy: map the failure onto the ADR-0036 vocabulary instead.
+const displayMessage = computed(() => {
+	if (props.errorMessage) return props.errorMessage;
+	const copy = queryErrorCopy(props.error, 'components.ui.queryBoundary.errorMessage', {
+		locale: locale.value,
+		hasMessage: (key) => te(key),
+	});
+	return resolveOperationCopy(copy, t);
+});
 
 function handleRetry() {
 	if (hasRetryListener.value) {
