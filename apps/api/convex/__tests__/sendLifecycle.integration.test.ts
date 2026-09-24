@@ -259,6 +259,57 @@ describe('sendLifecycle.transition — opened/clicked', () => {
 		});
 	});
 
+	it('an automated open is counted apart and does not use up the first reader open', async () => {
+		const t = convexTest(schema, modules);
+		let campaignId: Id<'campaigns'>;
+		let sendId: Id<'emailSends'>;
+		await t.run(async (ctx) => {
+			campaignId = await ctx.db.insert('campaigns', createTestCampaign({ statsOpened: 0 }));
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			sendId = await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({ campaignId, contactId, status: 'delivered' })
+			);
+		});
+
+		const proxy = await t.mutation(internal.delivery.sendLifecycle.transition, {
+			send: { kind: 'campaign', id: sendId! },
+			transition: { to: 'opened', at: 1000, agent: 'apple_proxy' },
+		});
+		const proxyAgain = await t.mutation(internal.delivery.sendLifecycle.transition, {
+			send: { kind: 'campaign', id: sendId! },
+			transition: { to: 'opened', at: 1500, agent: 'apple_proxy' },
+		});
+		expect(proxy.ok && proxy.applied).toBe('recorded');
+		expect(proxyAgain.ok && proxyAgain.applied).toBe('recorded');
+
+		await t.run(async (ctx) => {
+			const send = await ctx.db.get(sendId!);
+			expect(send?.status).toBe('delivered');
+			expect(send?.openedAt).toBeUndefined();
+			expect(send?.automatedOpenedAt).toBe(1000);
+			expect(send?.automatedOpenCount).toBe(2);
+			const campaign = await readCampaignWithStats(ctx, campaignId!);
+			expect(campaign?.statsOpened ?? 0).toBe(0);
+			expect(campaign?.statsAutomatedOpened).toBe(1);
+		});
+
+		const reader = await t.mutation(internal.delivery.sendLifecycle.transition, {
+			send: { kind: 'campaign', id: sendId! },
+			transition: { to: 'opened', at: 90_000, agent: 'client' },
+		});
+		expect(reader.ok && reader.applied).toBe('transitioned');
+
+		await t.run(async (ctx) => {
+			const send = await ctx.db.get(sendId!);
+			expect(send?.status).toBe('opened');
+			expect(send?.openedAt).toBe(90_000);
+			const campaign = await readCampaignWithStats(ctx, campaignId!);
+			expect(campaign?.statsOpened).toBe(1);
+			expect(campaign?.statsAutomatedOpened).toBe(1);
+		});
+	});
+
 	it('first click transitions status, bumps campaigns.statsClicked; subsequent clicks append clickedLinks', async () => {
 		const t = convexTest(schema, modules);
 		let campaignId: Id<'campaigns'>;

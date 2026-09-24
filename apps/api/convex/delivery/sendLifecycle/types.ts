@@ -1,5 +1,6 @@
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { LifecycleReason } from '../../lib/lifecycle';
+import type { OpenAgent } from '../automatedOpens';
 import type { Effect } from './effects';
 
 // ============================================================================
@@ -32,7 +33,9 @@ export type TransitionInput =
 	| { to: 'sent'; at: number; providerMessageId: string; providerType?: string }
 	| { to: 'failed'; at: number; errorMessage: string; errorCode: string }
 	| { to: 'delivered'; at: number }
-	| { to: 'opened'; at: number }
+	// `agent` is the coarse client class of a pixel fetch (see
+	// `delivery/automatedOpens.ts`); absent for provider-reported opens.
+	| { to: 'opened'; at: number; agent?: OpenAgent }
 	| { to: 'clicked'; at: number; url: string }
 	| {
 			to: 'bounced';

@@ -272,6 +272,7 @@ import type * as decision_gate from '../decision/gate.js';
 import type * as delivery_contactToken from '../delivery/contactToken.js';
 import type * as delivery_alignmentPreflight from '../delivery/alignmentPreflight.js';
 import type * as delivery_alignmentPreflightGather from '../delivery/alignmentPreflightGather.js';
+import type * as delivery_automatedOpens from '../delivery/automatedOpens.js';
 import type * as delivery_cronRegistration from '../delivery/cronRegistration.js';
 import type * as delivery_checklist from '../delivery/checklist.js';
 import type * as delivery_checklistAlertManagement from '../delivery/checklistAlertManagement.js';
@@ -1463,6 +1464,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/checklistAlertState': typeof delivery_checklistAlertState;
 	'delivery/alignmentPreflight': typeof delivery_alignmentPreflight;
 	'delivery/alignmentPreflightGather': typeof delivery_alignmentPreflightGather;
+	'delivery/automatedOpens': typeof delivery_automatedOpens;
 	'delivery/cronRegistration': typeof delivery_cronRegistration;
 	'delivery/checklistAlerts': typeof delivery_checklistAlerts;
 	'delivery/checklistCenterView': typeof delivery_checklistCenterView;

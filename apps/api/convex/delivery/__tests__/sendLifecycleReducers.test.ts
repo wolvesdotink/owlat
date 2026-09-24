@@ -278,3 +278,82 @@ describe('reduceBounced', () => {
 		);
 	});
 });
+
+describe('reduceOpened — automated opens', () => {
+	const SENT_AT = 1_000_000;
+
+	it('counts an Apple proxy fetch apart: no status move, no open effects', () => {
+		const send = campaignSend({ status: 'delivered', sentAt: SENT_AT });
+		const result = reduceOpened(
+			send,
+			{ to: 'opened', at: SENT_AT + 60_000, agent: 'apple_proxy' },
+			campaignRef
+		);
+
+		expect(result.applied).toBe('recorded');
+		expect(result.patch).toEqual({
+			automatedOpenCount: 1,
+			automatedOpenedAt: SENT_AT + 60_000,
+		});
+		expect(result.effects).toEqual([
+			{ kind: 'campaign_stats_automated_opened', campaignId: CAMPAIGN_ID },
+		]);
+	});
+
+	it('bumps the campaign counter only on the first automated open', () => {
+		const send = campaignSend({
+			status: 'delivered',
+			sentAt: SENT_AT,
+			automatedOpenedAt: SENT_AT + 60_000,
+			automatedOpenCount: 1,
+		});
+		const result = reduceOpened(
+			send,
+			{ to: 'opened', at: SENT_AT + 120_000, agent: 'scanner' },
+			campaignRef
+		);
+
+		expect(result.patch).toEqual({ automatedOpenCount: 2 });
+		expect(result.effects).toEqual([]);
+	});
+
+	it('treats a client fetch inside the prefetch window as automated', () => {
+		const send = campaignSend({ status: 'delivered', sentAt: SENT_AT });
+		const result = reduceOpened(
+			send,
+			{ to: 'opened', at: SENT_AT + 1_000, agent: 'client' },
+			campaignRef
+		);
+
+		expect(result.patch['openedAt']).toBeUndefined();
+		expect(result.patch['automatedOpenedAt']).toBe(SENT_AT + 1_000);
+	});
+
+	it('still records the first reader open after an automated one', () => {
+		const send = campaignSend({
+			status: 'delivered',
+			sentAt: SENT_AT,
+			automatedOpenedAt: SENT_AT + 60_000,
+			automatedOpenCount: 1,
+		});
+		const at = SENT_AT + 3_600_000;
+		const result = reduceOpened(send, { to: 'opened', at, agent: 'client' }, campaignRef);
+
+		expect(result.applied).toBe('transitioned');
+		expect(result.patch).toEqual({ openCount: 1, status: 'opened', openedAt: at });
+		expect(result.effects.map((e) => e.kind)).toEqual([
+			'campaign_stats_opened',
+			'daily_stats_bump',
+			'transport_outcome',
+			'customer_webhook',
+		]);
+	});
+
+	it('keeps counting a provider-reported open (no agent) as a reader open', () => {
+		const send = campaignSend({ status: 'delivered', sentAt: SENT_AT });
+		const result = reduceOpened(send, { to: 'opened', at: SENT_AT + 1 }, campaignRef);
+
+		expect(result.patch['openedAt']).toBe(SENT_AT + 1);
+		expect(result.patch['automatedOpenedAt']).toBeUndefined();
+	});
+});

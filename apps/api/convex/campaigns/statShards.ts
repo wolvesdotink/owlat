@@ -30,6 +30,7 @@ type CampaignStatField =
 	| 'statsFailed'
 	| 'statsDelivered'
 	| 'statsOpened'
+	| 'statsAutomatedOpened'
 	| 'statsClicked'
 	| 'statsBounced'
 	| 'statsHardBounced'
@@ -40,6 +41,7 @@ const FIELDS: readonly CampaignStatField[] = [
 	'statsFailed',
 	'statsDelivered',
 	'statsOpened',
+	'statsAutomatedOpened',
 	'statsClicked',
 	'statsBounced',
 	'statsHardBounced',

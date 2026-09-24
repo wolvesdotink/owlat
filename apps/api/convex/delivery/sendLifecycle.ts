@@ -41,6 +41,7 @@ import { refuse } from '../lib/lifecycle';
 import { finalizeSendSource } from './sendLifecycle/sourceFinalization';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { bounceTypeValidator } from '../lib/convexValidators';
+import { openAgentValidator } from './automatedOpens';
 
 // ============================================================================
 // Send lifecycle — the single writer of `emailSends.status` and
@@ -103,7 +104,7 @@ const transitionInputValidator = v.union(
 		errorCode: v.string(),
 	}),
 	v.object({ to: v.literal('delivered'), at: v.number() }),
-	v.object({ to: v.literal('opened'), at: v.number() }),
+	v.object({ to: v.literal('opened'), at: v.number(), agent: v.optional(openAgentValidator) }),
 	v.object({ to: v.literal('clicked'), at: v.number(), url: v.string() }),
 	v.object({
 		to: v.literal('bounced'),

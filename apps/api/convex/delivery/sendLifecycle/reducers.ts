@@ -1,4 +1,5 @@
 import { defineLifecycle, type LifecycleEdgeSpec, type LifecycleGraph } from '../../lib/lifecycle';
+import { automatedOpenReason } from '../automatedOpens';
 import { transportOutcomeEffect, type Effect } from './effects';
 import { contactEmailOf, nonCampaignActivityProvenance } from './lookups';
 import type {
@@ -300,6 +301,15 @@ export function reduceOpened(
 	ref: SendRef
 ): ReducerResult {
 	const from = send.status as SendStatus;
+
+	// An automated fetch (Apple MPP proxy, security scanner, arrival prefetch)
+	// is kept apart from reader opens: it bumps its own counter, never moves the
+	// status and emits none of the open effects below. It is still delivery
+	// evidence, which the dispatcher records before this reducer runs.
+	if (automatedOpenReason({ agent: args.agent, at: args.at, sentAt: send.sentAt }) !== null) {
+		return reduceAutomatedOpen(send, args, ref, from);
+	}
+
 	const openCount = (send.openCount ?? 0) + 1;
 	const isFirstOpen = !send.openedAt;
 
@@ -349,6 +359,35 @@ export function reduceOpened(
 		from,
 		to: 'opened',
 	};
+}
+
+/**
+ * An automated open. Counted per send (`automatedOpenCount`), and once per send
+ * (`automatedOpenedAt` is the uniqueness gate) into the campaign's
+ * `statsAutomatedOpened`, so the report can show how many opens it left out.
+ * A reader who opens after an automated fetch still counts as a first open.
+ */
+function reduceAutomatedOpen(
+	send: EmailSendDoc | TransactionalSendDoc,
+	args: Extract<TransitionInput, { to: 'opened' }>,
+	ref: SendRef,
+	from: SendStatus
+): ReducerResult {
+	const isFirstAutomatedOpen = !send.automatedOpenedAt;
+	const patch: Record<string, unknown> = {
+		automatedOpenCount: (send.automatedOpenCount ?? 0) + 1,
+	};
+	const effects: Effect[] = [];
+	if (isFirstAutomatedOpen) {
+		patch['automatedOpenedAt'] = args.at;
+		if (ref.kind === 'campaign') {
+			effects.push({
+				kind: 'campaign_stats_automated_opened',
+				campaignId: (send as EmailSendDoc).campaignId,
+			});
+		}
+	}
+	return { patch, effects, applied: 'recorded', from, to: 'opened' };
 }
 
 export function reduceClicked(
