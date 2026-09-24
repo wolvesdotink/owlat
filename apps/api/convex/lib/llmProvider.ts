@@ -47,7 +47,7 @@ import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { getOptional } from './env';
-import { AiNotConfiguredError } from './aiNotConfigured';
+import { AiNotConfiguredError, envLlmApiKey, isEnvAiProviderConfigured } from './aiNotConfigured';
 import {
 	isTrivialUserText,
 	isTrivialClassifiedMessage,
@@ -119,12 +119,6 @@ function taskTier(task: LLMTask): LLMTier {
 	return task === 'draft' || task === 'plan' ? 'capable' : 'fast';
 }
 
-function resolveApiKey(): string | undefined {
-	return (
-		getOptional('LLM_API_KEY') || getOptional('OPENROUTER_API_KEY') || getOptional('OPENAI_API_KEY')
-	);
-}
-
 function resolveBaseURL(): string | undefined {
 	const explicit = getOptional('LLM_BASE_URL');
 	if (explicit) return explicit;
@@ -152,11 +146,8 @@ const ENV_EMBEDDING_KIND = 'openai' as const;
  * only ever used for that keyless case (matching prior behavior).
  */
 function resolveEnvClientConfig(): ProviderClientConfig {
-	const apiKey = resolveApiKey();
-	const isOllama = getOptional('LLM_PROVIDER') === 'ollama';
-	if (!apiKey && !isOllama) {
-		throw new AiNotConfiguredError();
-	}
+	if (!isEnvAiProviderConfigured()) throw new AiNotConfiguredError();
+	const apiKey = envLlmApiKey();
 	return { apiKey: apiKey ?? 'ollama', baseUrl: resolveBaseURL() };
 }
 
@@ -494,6 +485,6 @@ export function getLLMConfig() {
 		modelCapable: modelIdForTier('capable'),
 		embeddingModel: getOptional('LLM_EMBEDDING_MODEL') ?? DEFAULT_EMBEDDING_MODEL,
 		baseURL: resolveBaseURL(),
-		hasApiKey: !!resolveApiKey(),
+		hasApiKey: !!envLlmApiKey(),
 	};
 }

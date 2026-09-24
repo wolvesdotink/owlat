@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { __resetAiConfigCacheForTests } from '../lib/llmProvider';
+import type * as LlmProvider from '../lib/llmProvider';
 import { newHarness } from './testModules';
 
 /**
@@ -11,6 +12,16 @@ import { newHarness } from './testModules';
  * its extracted text or search text, and the backfill re-ran it into the same
  * error. Without a provider it now stores everything that needs no model.
  */
+
+// Spied, not replaced: a summary attempt without a provider would throw inside
+// processFile's try and fall back to the same stored metadata, so only the
+// spy shows whether a model was asked for at all.
+const { resolveLanguageModelSpy } = vi.hoisted(() => ({ resolveLanguageModelSpy: vi.fn() }));
+vi.mock('../lib/llmProvider', async (importOriginal) => {
+	const actual = await importOriginal<typeof LlmProvider>();
+	resolveLanguageModelSpy.mockImplementation(actual.resolveLanguageModel);
+	return { ...actual, resolveLanguageModel: resolveLanguageModelSpy };
+});
 
 const LLM_ENV_KEYS = ['LLM_PROVIDER', 'LLM_API_KEY', 'OPENROUTER_API_KEY', 'OPENAI_API_KEY'];
 
@@ -42,6 +53,7 @@ async function insertTextFile(
 }
 
 beforeEach(() => {
+	resolveLanguageModelSpy.mockClear();
 	for (const key of LLM_ENV_KEYS) vi.stubEnv(key, undefined);
 	__resetAiConfigCacheForTests();
 });
@@ -68,7 +80,8 @@ describe('processFile without an AI provider', () => {
 		expect(file?.embeddingModel).toBeUndefined();
 		expect(file?.searchableText).toContain('Hosting spend rose eleven percent');
 		expect(file?.searchableText).toContain('finance');
-		// No knowledge extraction without a model to extract with.
+		// No summary and no knowledge extraction without a model to ask.
+		expect(resolveLanguageModelSpy).not.toHaveBeenCalled();
 		const entries = await t.run((ctx) => ctx.db.query('knowledgeEntries').collect());
 		expect(entries).toEqual([]);
 	});

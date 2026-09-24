@@ -18,12 +18,22 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { createTestInboundMessage } from './factories';
+import { expectScheduledFailure } from './helpers/scheduledFailures';
+
+// The flow under test schedules the functions below, which this suite's
+// module map leaves out (or which need a setup it does not make). Their jobs
+// fail when they fire, often after the test that scheduled them. These tests
+// are not about them.
+beforeEach(() => {
+	expectScheduledFailure('agent/walker:resumeDraft');
+	expectScheduledFailure('agent/walker:start');
+});
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -76,8 +86,8 @@ const modules = Object.fromEntries(
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 const testIdentity = {
@@ -114,20 +124,22 @@ describe('inbox.answerClarification', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				processingStatus: 'awaiting_clarification',
-				classification,
-				pendingClarification: pending(1000),
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					processingStatus: 'awaiting_clarification',
+					classification,
+					pendingClarification: pending(1000),
+				})
+			);
 		});
 
-		const result = await t.withIdentity(testIdentity).mutation(
-			api.inbox.clarification.answerClarification,
-			{
+		const result = await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.clarification.answerClarification, {
 				inboundMessageId: messageId,
 				answers: [{ questionId: 'q1', value: 'A-123' }],
-			},
-		);
+			});
 		expect(result.success).toBe(true);
 
 		await t.run(async (ctx) => {
@@ -146,9 +158,9 @@ describe('inbox.answerClarification', () => {
 		const scheduled = await t.run(async (ctx) => {
 			return await ctx.db.system.query('_scheduled_functions').collect();
 		});
-		expect(
-			scheduled.some((s) => s.name.includes('walker') && s.name.includes('resumeDraft')),
-		).toBe(true);
+		expect(scheduled.some((s) => s.name.includes('walker') && s.name.includes('resumeDraft'))).toBe(
+			true
+		);
 
 		// Audit trail.
 		await t.run(async (ctx) => {
@@ -165,17 +177,20 @@ describe('inbox.answerClarification', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				processingStatus: 'draft_ready',
-				draftResponse: 'hi',
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					processingStatus: 'draft_ready',
+					draftResponse: 'hi',
+				})
+			);
 		});
 
 		await expect(
 			t.withIdentity(testIdentity).mutation(api.inbox.clarification.answerClarification, {
 				inboundMessageId: messageId,
 				answers: [{ questionId: 'q1', value: 'x' }],
-			}),
+			})
 		).rejects.toThrow(/not awaiting clarification/i);
 	});
 
@@ -183,16 +198,19 @@ describe('inbox.answerClarification', () => {
 		const t = convexTest(schema, modules);
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				processingStatus: 'awaiting_clarification',
-				pendingClarification: pending(1000),
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					processingStatus: 'awaiting_clarification',
+					pendingClarification: pending(1000),
+				})
+			);
 		});
 		await expect(
 			t.mutation(api.inbox.clarification.answerClarification, {
 				inboundMessageId: messageId,
 				answers: [],
-			}),
+			})
 		).rejects.toThrow('Not authenticated');
 	});
 });
@@ -204,16 +222,19 @@ describe('processingLifecycle.reconcileAbandonedClarifications', () => {
 		const longAgo = Date.now() - 48 * 60 * 60 * 1000; // 48h ago (> default 24h)
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				processingStatus: 'awaiting_clarification',
-				classification,
-				pendingClarification: pending(longAgo),
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					processingStatus: 'awaiting_clarification',
+					classification,
+					pendingClarification: pending(longAgo),
+				})
+			);
 		});
 
 		const { resumed } = await t.mutation(
 			internal.inbox.processingLifecycle.reconcileAbandonedClarifications,
-			{},
+			{}
 		);
 		expect(resumed).toBe(1);
 
@@ -227,9 +248,9 @@ describe('processingLifecycle.reconcileAbandonedClarifications', () => {
 		const scheduled = await t.run(async (ctx) => {
 			return await ctx.db.system.query('_scheduled_functions').collect();
 		});
-		expect(
-			scheduled.some((s) => s.name.includes('walker') && s.name.includes('resumeDraft')),
-		).toBe(true);
+		expect(scheduled.some((s) => s.name.includes('walker') && s.name.includes('resumeDraft'))).toBe(
+			true
+		);
 	});
 
 	it('leaves a still-fresh await untouched', async () => {
@@ -237,16 +258,19 @@ describe('processingLifecycle.reconcileAbandonedClarifications', () => {
 
 		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				processingStatus: 'awaiting_clarification',
-				classification,
-				pendingClarification: pending(Date.now()), // just asked
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					processingStatus: 'awaiting_clarification',
+					classification,
+					pendingClarification: pending(Date.now()), // just asked
+				})
+			);
 		});
 
 		const { resumed } = await t.mutation(
 			internal.inbox.processingLifecycle.reconcileAbandonedClarifications,
-			{},
+			{}
 		);
 		expect(resumed).toBe(0);
 
@@ -270,16 +294,19 @@ describe('processingLifecycle.reconcileAbandonedClarifications', () => {
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
 			});
-			messageId = await ctx.db.insert('inboundMessages', msgData({
-				processingStatus: 'awaiting_clarification',
-				classification,
-				pendingClarification: pending(twoMinAgo),
-			}));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					processingStatus: 'awaiting_clarification',
+					classification,
+					pendingClarification: pending(twoMinAgo),
+				})
+			);
 		});
 
 		const { resumed } = await t.mutation(
 			internal.inbox.processingLifecycle.reconcileAbandonedClarifications,
-			{},
+			{}
 		);
 		expect(resumed).toBe(1);
 

@@ -32,6 +32,8 @@ import { v } from 'convex/values';
 import { internalMutation, internalQuery } from './_generated/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
+import { internal } from './_generated/api';
+import { isEnvAiProviderConfigured } from './lib/aiNotConfigured';
 import { authedQuery } from './lib/authedFunctions';
 import { requireOrgPermission } from './lib/sessionOrganization';
 import { recordAuditLog } from './lib/auditLog';
@@ -399,6 +401,11 @@ export const _persistConfig = internalMutation({
 			configId = existing._id;
 		} else {
 			configId = await ctx.db.insert('aiProviderConfig', fields);
+			// The instance's first provider: files processed until now got no AI
+			// metadata, and nothing else would ever run them again.
+			if (!isEnvAiProviderConfigured()) {
+				await ctx.scheduler.runAfter(0, internal.semanticFiles.reprocessAfterAiConfigured, {});
+			}
 		}
 
 		await recordAuditLog(ctx, {

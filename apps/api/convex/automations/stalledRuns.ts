@@ -14,7 +14,10 @@
  *   - a run with no step run at all never started: its first step is entered,
  *     exactly as `beginAutomationRun` would (or it is cancelled if the
  *     automation is no longer active). Nothing can have executed, so this can
- *     never repeat a side effect.
+ *     never repeat a side effect. A run that started more than
+ *     `PRE_UPGRADE_ABANDON_AFTER_MS` ago is cancelled instead: v0.5.5 never
+ *     recovered a lost start, so such a run can be months old, and entering
+ *     its first step would send a welcome mail that late.
  *   - a run whose step runs are all terminal is CANCELLED through the run
  *     lifecycle (`cancelRun`: status, completedAt, the cancelled counter). The
  *     sweep cannot tell where it should continue: the crash may have come
@@ -33,6 +36,7 @@ import {
 	cancelRun,
 	enterStep,
 	isTerminalStepRunStatus,
+	PRE_UPGRADE_ABANDON_AFTER_MS,
 	recentStepRunsOf,
 } from './stepRunTransitions';
 
@@ -60,7 +64,9 @@ async function recoverIfStalled(
 	const quietSince = newest ? (newest.completedAt ?? newest._creationTime) : run.startedAt;
 	if (now - quietSince < STALLED_RUN_GRACE_MS) return 'live';
 
-	if (!newest) {
+	// A run that never started and is older than the cutoff was lost before
+	// the upgrade; starting it now would send its first mail that late.
+	if (!newest && now - run.startedAt <= PRE_UPGRADE_ABANDON_AFTER_MS) {
 		const automation = await ctx.db.get(run.automationId);
 		if (automation?.status === 'active') {
 			await enterStep(ctx, run, 0);

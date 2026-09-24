@@ -325,3 +325,50 @@ export async function skipStepAndCancelRun(
 	});
 	await cancelRun(ctx, stepRun.automationRunId);
 }
+
+// ============== Work the previous release left stuck ==============
+
+/**
+ * How long work the previous release left stuck may have been waiting before
+ * recovery gives up on it instead of resuming it. v0.5.5 never recovered a run
+ * whose start was lost or a step run whose action died, so such rows can be
+ * months old when this release first sees them. A healthy step finishes within
+ * minutes (one action, retried after 1, 5 and 30 seconds), so a run that has
+ * made no progress for a day was lost, not delayed. Resuming it would send the
+ * next drip email that late and out of step with the automation's own delays,
+ * which is worse than ending the run visibly. The same day the webhook
+ * reconciler allows a delivery the previous release left open
+ * (`LEGACY_DELIVERY_ABANDON_AFTER_MS`). Remove after release N+1, with the
+ * other v0.5.5 compatibility paths.
+ */
+export const PRE_UPGRADE_ABANDON_AFTER_MS = 24 * 60 * 60 * 1000;
+
+export const PRE_UPGRADE_ABANDONED_ERROR =
+	'Abandoned: stuck before the automation-recovery upgrade';
+
+/**
+ * End a step run v0.5.5 claimed and never finished, older than
+ * {@link PRE_UPGRADE_ABANDON_AFTER_MS}, without running anything. An email step
+ * whose Send exists is recorded as completed with it, because the mail did go
+ * out; any other step is recorded as skipped. Either way the run is cancelled
+ * rather than moved on, so no later step fires that late.
+ */
+export async function abandonPreUpgradeStepRun(
+	ctx: MutationCtx,
+	stepRun: Doc<'automationStepRuns'>,
+	emailSendId: Id<'transactionalSends'> | null
+): Promise<void> {
+	await transitionStepRun(
+		ctx,
+		stepRun,
+		emailSendId === null ? 'skipped' : 'completed',
+		emailSendId === null
+			? {
+					completedAt: Date.now(),
+					errorMessage: PRE_UPGRADE_ABANDONED_ERROR,
+					leaseExpiresAt: undefined,
+				}
+			: { completedAt: Date.now(), emailSendId, leaseExpiresAt: undefined }
+	);
+	await cancelRun(ctx, stepRun.automationRunId);
+}

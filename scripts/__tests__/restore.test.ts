@@ -144,7 +144,7 @@ type Payload = string | Buffer | { files: Record<string, string> };
  */
 async function makeInstall(
 	payloads: Record<string, Payload> = {},
-	options: { manifestExtra?: string; freshHost?: boolean } = {}
+	options: { manifestExtra?: string; freshHost?: boolean; archivedEnv?: string } = {}
 ): Promise<Install> {
 	const root = await mkdtemp(join(tmpdir(), 'owlat-restore-'));
 	roots.push(root);
@@ -190,7 +190,7 @@ async function makeInstall(
 		}
 		listed += `  ${suffix}/volume.tar\n`;
 	}
-	await writeFile(join(staging, 'env'), 'RESTORED=1\n');
+	await writeFile(join(staging, 'env'), options.archivedEnv ?? 'RESTORED=1\n');
 	await writeFile(
 		join(staging, 'MANIFEST.txt'),
 		`Owlat backup\n============\n\nProject name: ${PROJECT}\nIncludes:\n${listed}${options.manifestExtra ?? ''}  env                      — .env file\n`
@@ -514,8 +514,12 @@ describe('restore.sh on a fresh host (disaster recovery: no .env yet)', () => {
 		expect((await install.volumeNames()).filter((n) => n.includes('pre-restore'))).toEqual([]);
 	});
 
-	it('uses the manifest project name and goes on when Compose cannot read the archived env', async () => {
-		// An older backup whose .env lacks a variable the compose file now requires.
+	it('restores into the volumes docker compose up will mount when Compose cannot read the archived env', async () => {
+		// An older backup whose .env lacks a variable the compose file now
+		// requires. The backup came from project "owlat"; this clone lives in a
+		// directory called "install", so `docker compose up` here will mount
+		// install_* volumes. Restoring into owlat_* would leave the data where
+		// nothing reads it.
 		const install = await makeInstall({}, { freshHost: true });
 		const result = await install.run({
 			FAKE_DOCKER_FAIL: '^compose (--env-file \\S+ )?(config|down)',
@@ -524,10 +528,32 @@ describe('restore.sh on a fresh host (disaster recovery: no .env yet)', () => {
 		expect(result.code).toBe(0);
 		expect(result.out).toContain('docker compose config failed');
 		expect(result.out).toContain('fake docker: injected failure');
-		expect(result.out).toContain(`project name recorded in the backup: '${PROJECT}'`);
+		expect(result.out).toContain("using 'install', the name docker compose up derives here");
+		expect(result.out).toContain(
+			`The backup was taken from project '${PROJECT}'; this checkout is project 'install'`
+		);
 		expect(result.out).toContain('docker compose down failed, but no container');
-		// The directory is called "install": the manifest name, not the
-		// directory fallback, decided the volume names.
+		await expect(
+			readFile(join(install.dir, '..', 'volumes', 'install_convex-data', 'db.sqlite'), 'utf8')
+		).resolves.toBe('new convex\n');
+		expect(result.calls).toContain(
+			'volume create --label com.docker.compose.project=install --label com.docker.compose.volume=convex-data install_convex-data'
+		);
+		expect((await install.volumeNames()).some((n) => n.startsWith(`${PROJECT}_`))).toBe(false);
+	});
+
+	it('takes the project name from the restored .env like Compose, normalized the same way', async () => {
+		const install = await makeInstall(
+			{},
+			{ freshHost: true, archivedEnv: 'RESTORED=1\nCOMPOSE_PROJECT_NAME="Owlat"\n' }
+		);
+		const result = await install.run({
+			FAKE_DOCKER_FAIL: '^compose (--env-file \\S+ )?(config|down)',
+		});
+
+		expect(result.code).toBe(0);
+		expect(result.out).toContain(`using '${PROJECT}', the name docker compose up derives here`);
+		expect(result.out).not.toContain('The backup was taken from project');
 		await expect(readFile(join(install.volume('convex-data'), 'db.sqlite'), 'utf8')).resolves.toBe(
 			'new convex\n'
 		);

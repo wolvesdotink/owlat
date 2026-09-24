@@ -20,7 +20,7 @@
  * backups.integration.test.ts, so `requirePlatformAdmin` is the gate under test.
  */
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -424,5 +424,81 @@ describe('one update run at a time', () => {
 		const retired = await t.run(async (ctx) => ctx.db.get(orphaned));
 		expect(retired?.status).toBe('superseded');
 		expect(retired?.steps).toBeUndefined();
+	});
+});
+
+/**
+ * An update the updater refused to start (another rollout held it: 409, or its
+ * rate limit: 429) changed nothing. It was recorded as a failed update, and
+ * opening its row had retired the rollout that was really running.
+ */
+describe('systemUpdates.withdrawUpdateStart', () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	async function start(t: ReturnType<typeof convexTest>, versionFrom: string, versionTo: string) {
+		vi.advanceTimersByTime(60_000);
+		return await t.mutation(api.systemUpdates.recordUpdateStart, { versionFrom, versionTo });
+	}
+
+	it('removes the refused run and puts back the rollout it retired', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+		const live = await start(t, '0.5.3', '0.5.4');
+		const refused = await start(t, '0.5.3', '0.5.4');
+
+		await t.mutation(api.systemUpdates.withdrawUpdateStart, { runId: refused });
+
+		const history = await t.query(api.systemUpdates.listUpdateHistory, {});
+		expect(history.map((row) => [row._id, row.status, row.error])).toEqual([
+			[live, 'running', undefined],
+		]);
+		// The live rollout's own verdict still lands.
+		await t.mutation(api.systemUpdates.recordUpdateFinish, { runId: live, status: 'success' });
+		expect((await t.run(async (ctx) => ctx.db.get(live)))?.status).toBe('success');
+	});
+
+	it('does not revive a run an earlier update retired', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+		const orphaned = await start(t, '0.5.2', '0.5.4');
+		const failed = await start(t, '0.5.2', '0.5.4');
+		await t.mutation(api.systemUpdates.recordUpdateFinish, { runId: failed, status: 'failed' });
+		const refused = await start(t, '0.5.2', '0.5.4');
+
+		await t.mutation(api.systemUpdates.withdrawUpdateStart, { runId: refused });
+
+		const history = await t.query(api.systemUpdates.listUpdateHistory, {});
+		expect(history.map((row) => [row._id, row.status])).toEqual([
+			[failed, 'failed'],
+			[orphaned, 'superseded'],
+		]);
+	});
+
+	it('leaves a run that already has a verdict alone', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+		const run = await start(t, '0.5.3', '0.5.4');
+		await t.mutation(api.systemUpdates.recordUpdateFinish, { runId: run, status: 'success' });
+
+		await t.mutation(api.systemUpdates.withdrawUpdateStart, { runId: run });
+
+		expect((await t.run(async (ctx) => ctx.db.get(run)))?.status).toBe('success');
+	});
+
+	it('rejects a caller with no platformAdmins row', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t);
+		const run = await start(t, '0.5.3', '0.5.4');
+		setCaller('org-owner-not-admin');
+
+		await expect(t.mutation(api.systemUpdates.withdrawUpdateStart, { runId: run })).rejects.toThrow(
+			/Platform admin access required/
+		);
+		expect((await t.run(async (ctx) => ctx.db.get(run)))?.status).toBe('running');
 	});
 });

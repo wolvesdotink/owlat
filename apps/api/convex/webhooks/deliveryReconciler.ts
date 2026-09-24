@@ -46,7 +46,7 @@ async function attemptStillLive(
  * overdue scan below never reaches them, and a row whose attempt was lost
  * stayed open forever. Give each one the deadline the attempt model would
  * have given it: its next retry (or, for a first attempt, when it was
- * scheduled) plus one lease. Nothing is re-issued here; a row still overdue
+ * scheduled) plus one lease, and never less than one lease from now. Nothing is re-issued here; a row still overdue
  * after that goes through `reconcileOne` like any other, whose re-issue under
  * sequence 1 makes a late unsequenced invocation of the old attempt a no-op.
  * A row whose attempt was due more than `LEGACY_DELIVERY_ABANDON_AFTER_MS`
@@ -81,7 +81,12 @@ async function adoptUntrackedRows(
 			abandoned++;
 			continue;
 		}
-		await ctx.db.patch(log._id, { recoverAfter: dueAt + WEBHOOK_ATTEMPT_LEASE_MS });
+		// A lease from now at the earliest: a row whose attempt fell due a while
+		// ago may still have that attempt queued or running (legacy rows carry
+		// no job id to check), so it must not be re-issued in this same pass.
+		await ctx.db.patch(log._id, {
+			recoverAfter: Math.max(dueAt, now) + WEBHOOK_ATTEMPT_LEASE_MS,
+		});
 	}
 	return { scanned: untracked.length, abandoned };
 }

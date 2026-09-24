@@ -10,11 +10,19 @@
 
 import { convexTest } from 'convex-test';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { DOI_TOKEN_TTL_MS } from '../contacts/doiLifecycle';
+import { expectScheduledFailure } from './helpers/scheduledFailures';
+
+// No MTA runs under test, so the confirmation email's send fails when its
+// job fires, often after the test that scheduled it. These tests are not about
+// the email itself.
+beforeEach(() => {
+	expectScheduledFailure('confirmationEmail:sendConfirmationEmail');
+});
 
 vi.mock('../lib/contactCountHelpers', async () => {
 	const actual = await vi.importActual('../lib/contactCountHelpers');
@@ -29,22 +37,23 @@ vi.mock('../lib/contactCountHelpers', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -302,9 +311,7 @@ describe('doiLifecycle.transition — to: confirmed', () => {
 				.query('contactActivities')
 				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
 				.collect();
-			const confirmedActivities = activities.filter(
-				(a) => a.activityType === 'topic_confirmed'
-			);
+			const confirmedActivities = activities.filter((a) => a.activityType === 'topic_confirmed');
 			expect(confirmedActivities).toHaveLength(1);
 			expect(confirmedActivities[0]!.metadata?.topicId).toBe(String(doiTopic));
 			expect(confirmedActivities[0]!.metadata?.topicName).toBe('Newsletter');
@@ -407,9 +414,7 @@ describe('doiLifecycle.transition — to: confirmed', () => {
 				.query('contactActivities')
 				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
 				.collect();
-			const confirmed = activities.filter(
-				(a) => a.activityType === 'topic_confirmed'
-			);
+			const confirmed = activities.filter((a) => a.activityType === 'topic_confirmed');
 			// Only one activity row total — the recorded outcome did not re-fire.
 			expect(confirmed).toHaveLength(1);
 		});
@@ -459,13 +464,10 @@ describe('doiLifecycle.transitionByConfirmationToken', () => {
 			},
 		});
 
-		const outcome = await t.mutation(
-			internal.contacts.doiLifecycle.transitionByConfirmationToken,
-			{
-				token: 'lookup-token',
-				input: { to: 'confirmed', at: Date.now() },
-			}
-		);
+		const outcome = await t.mutation(internal.contacts.doiLifecycle.transitionByConfirmationToken, {
+			token: 'lookup-token',
+			input: { to: 'confirmed', at: Date.now() },
+		});
 
 		expect(outcome.ok).toBe(true);
 		if (outcome.ok) {
@@ -478,13 +480,10 @@ describe('doiLifecycle.transitionByConfirmationToken', () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
 
-		const outcome = await t.mutation(
-			internal.contacts.doiLifecycle.transitionByConfirmationToken,
-			{
-				token: 'nonexistent',
-				input: { to: 'confirmed', at: Date.now() },
-			}
-		);
+		const outcome = await t.mutation(internal.contacts.doiLifecycle.transitionByConfirmationToken, {
+			token: 'nonexistent',
+			input: { to: 'confirmed', at: Date.now() },
+		});
 
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) expect(outcome.reason).toBe('token_not_found');
@@ -505,13 +504,10 @@ describe('doiLifecycle.transitionByConfirmationToken', () => {
 			});
 		});
 
-		const outcome = await t.mutation(
-			internal.contacts.doiLifecycle.transitionByConfirmationToken,
-			{
-				token: 'expired-tok',
-				input: { to: 'confirmed', at: Date.now() },
-			}
-		);
+		const outcome = await t.mutation(internal.contacts.doiLifecycle.transitionByConfirmationToken, {
+			token: 'expired-tok',
+			input: { to: 'confirmed', at: Date.now() },
+		});
 
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) expect(outcome.reason).toBe('token_expired');
@@ -548,16 +544,13 @@ describe('doiLifecycle.refreshPendingToken', () => {
 		});
 
 		const now = Date.now();
-		const outcome = await t.mutation(
-			internal.contacts.doiLifecycle.refreshPendingToken,
-			{
-				contactId,
-				at: now,
-				token: 'new-tok',
-				ttlMs: DOI_TOKEN_TTL_MS,
-				siteUrl: 'https://example.com',
-			}
-		);
+		const outcome = await t.mutation(internal.contacts.doiLifecycle.refreshPendingToken, {
+			contactId,
+			at: now,
+			token: 'new-tok',
+			ttlMs: DOI_TOKEN_TTL_MS,
+			siteUrl: 'https://example.com',
+		});
 
 		expect(outcome.ok).toBe(true);
 
@@ -574,16 +567,13 @@ describe('doiLifecycle.refreshPendingToken', () => {
 		rateLimiterTest.register(t);
 		const contactId = await createContact(t);
 
-		const outcome = await t.mutation(
-			internal.contacts.doiLifecycle.refreshPendingToken,
-			{
-				contactId,
-				at: Date.now(),
-				token: 'tok',
-				ttlMs: DOI_TOKEN_TTL_MS,
-				siteUrl: 'https://example.com',
-			}
-		);
+		const outcome = await t.mutation(internal.contacts.doiLifecycle.refreshPendingToken, {
+			contactId,
+			at: Date.now(),
+			token: 'tok',
+			ttlMs: DOI_TOKEN_TTL_MS,
+			siteUrl: 'https://example.com',
+		});
 
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) expect(outcome.reason).toBe('not_pending');
@@ -597,16 +587,13 @@ describe('doiLifecycle.refreshPendingToken', () => {
 			doiConfirmedAt: Date.now(),
 		});
 
-		const outcome = await t.mutation(
-			internal.contacts.doiLifecycle.refreshPendingToken,
-			{
-				contactId,
-				at: Date.now(),
-				token: 'tok',
-				ttlMs: DOI_TOKEN_TTL_MS,
-				siteUrl: 'https://example.com',
-			}
-		);
+		const outcome = await t.mutation(internal.contacts.doiLifecycle.refreshPendingToken, {
+			contactId,
+			at: Date.now(),
+			token: 'tok',
+			ttlMs: DOI_TOKEN_TTL_MS,
+			siteUrl: 'https://example.com',
+		});
 
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) expect(outcome.reason).toBe('not_pending');
@@ -698,9 +685,7 @@ describe('forms.endpoints.confirmSubmission — end-to-end', () => {
 				.query('contactActivities')
 				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
 				.collect();
-			const confirmedActivity = activities.find(
-				(a) => a.activityType === 'topic_confirmed'
-			);
+			const confirmedActivity = activities.find((a) => a.activityType === 'topic_confirmed');
 			expect(confirmedActivity).toBeDefined();
 			expect(confirmedActivity?.metadata?.topicId).toBe(String(topicId));
 
@@ -852,27 +837,25 @@ describe('doiLifecycle.transition — admin_attest', () => {
 			},
 		});
 
-		const auditLogs = await t.run(async (ctx) =>
-			ctx.db.query('auditLogs').collect(),
-		);
+		const auditLogs = await t.run(async (ctx) => ctx.db.query('auditLogs').collect());
 		const attestAudit = auditLogs.find((l) => l.action === 'doi.admin_attested');
 		expect(attestAudit).toBeTruthy();
 		expect(attestAudit?.userId).toBe('user_123');
-		expect(
-			(attestAudit?.details as { attestSource?: string } | undefined)?.attestSource,
-		).toBe('klaviyo');
+		expect((attestAudit?.details as { attestSource?: string } | undefined)?.attestSource).toBe(
+			'klaviyo'
+		);
 
 		const activities = await t.run(async (ctx) =>
 			ctx.db
 				.query('contactActivities')
 				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-				.collect(),
+				.collect()
 		);
 		const attested = activities.find((a) => a.activityType === 'doi_attested');
 		expect(attested).toBeTruthy();
-		expect(
-			(attested?.metadata as { attestSource?: string } | undefined)?.attestSource,
-		).toBe('klaviyo');
+		expect((attested?.metadata as { attestSource?: string } | undefined)?.attestSource).toBe(
+			'klaviyo'
+		);
 	});
 
 	it('not_required → confirmed without source: refuses as illegal_edge', async () => {
@@ -930,7 +913,7 @@ describe('doiLifecycle.transition — admin_attest', () => {
 				.query('contactActivities')
 				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
 				.filter((q) => q.eq(q.field('activityType'), 'doi_attested'))
-				.collect(),
+				.collect()
 		);
 		expect(activities).toHaveLength(1);
 	});
@@ -966,11 +949,9 @@ describe('doiLifecycle.transition — admin_attest', () => {
 			ctx.db
 				.query('contactActivities')
 				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-				.collect(),
+				.collect()
 		);
-		const topicConfirmed = activities.filter(
-			(a) => a.activityType === 'topic_confirmed',
-		);
+		const topicConfirmed = activities.filter((a) => a.activityType === 'topic_confirmed');
 		expect(topicConfirmed).toHaveLength(1);
 	});
 
@@ -994,14 +975,10 @@ describe('doiLifecycle.transition — admin_attest', () => {
 			ctx.db
 				.query('contactActivities')
 				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-				.collect(),
+				.collect()
 		);
-		const topicConfirmed = activities.filter(
-			(a) => a.activityType === 'topic_confirmed',
-		);
-		const doiAttested = activities.filter(
-			(a) => a.activityType === 'doi_attested',
-		);
+		const topicConfirmed = activities.filter((a) => a.activityType === 'topic_confirmed');
+		const doiAttested = activities.filter((a) => a.activityType === 'doi_attested');
 		expect(topicConfirmed).toHaveLength(0);
 		expect(doiAttested).toHaveLength(1);
 	});
@@ -1043,9 +1020,7 @@ describe('doiLifecycle.transition — admin_attest', () => {
 			},
 		});
 
-		const auditLogs = await t.run(async (ctx) =>
-			ctx.db.query('auditLogs').collect(),
-		);
+		const auditLogs = await t.run(async (ctx) => ctx.db.query('auditLogs').collect());
 		const attestAudit = auditLogs.find((l) => l.action === 'doi.admin_attested');
 		expect(attestAudit?.userId).toBe('system');
 	});

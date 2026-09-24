@@ -2,6 +2,7 @@ import { api } from '@owlat/api';
 import { apiFetch } from '~/lib/csrfFetch';
 import {
 	isStartedRollout,
+	isUpdaterRefusal,
 	updateFailureMessage,
 	updateRequestWasAnswered,
 } from '~/lib/systemUpdate';
@@ -133,12 +134,15 @@ export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 			// recreated by the update's last step — the progress card keeps the
 			// verdict and resolves it from updater health.
 			if (!updateRequestWasAnswered(err)) return;
+			const statusCode = (err as { statusCode?: unknown }).statusCode;
 			updateState.value = 'failed';
 			updateError.value =
-				(err as { statusCode?: unknown }).statusCode === 409
+				statusCode === 409
 					? t('dashboard.admin.system.index.updateBusy')
 					: updateFailureMessage(err, t('dashboard.admin.system.index.unknownError'));
-			void closeOpenRun('failed', updateError.value);
+			// A refused update never ran, and the route took its row back. The
+			// open run, if any, is the rollout that refused it, not this one.
+			if (!isUpdaterRefusal(statusCode)) void closeOpenRun('failed', updateError.value);
 		}
 	}
 

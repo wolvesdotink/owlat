@@ -53,7 +53,9 @@ import {
 	marketingIneligibilityValidator,
 } from '../lib/marketingEligibility';
 import { findStepRunSend } from './stepRunSend';
+import { logWarn } from '../lib/runtimeLog';
 import {
+	abandonPreUpgradeStepRun,
 	cancelRun,
 	completeSentStepAndAdvance,
 	enterStep,
@@ -63,6 +65,8 @@ import {
 	skipStepAndCancelRun,
 	skipUnsubscribedStepAndAdvance,
 	transitionStepRun,
+	PRE_UPGRADE_ABANDON_AFTER_MS,
+	PRE_UPGRADE_ABANDONED_ERROR,
 	type EnterStepResult,
 } from './stepRunTransitions';
 
@@ -200,6 +204,10 @@ export async function gateStepRun(
  * takes over an `executing` row owned by attempt n-1 (a scheduled retry or a
  * lease recovery). Anything else is a duplicate or stale firing and is dropped.
  *
+ * A takeover of a row v0.5.5 claimed (no lease) more than
+ * `PRE_UPGRADE_ABANDON_AFTER_MS` ago ends it and cancels the run without
+ * running anything: that row was lost before the upgrade, not delayed.
+ *
  * A takeover of an email step first looks for the Send an earlier attempt
  * enqueued: if it exists the side effect already happened, so the step is
  * completed with it and the run moves on, whatever changed since. Otherwise
@@ -229,8 +237,20 @@ export const claimStepRun = internalMutation({
 			if (!isLegacyClaim && (stepRun.retryCount ?? 0) !== args.attempt - 1) {
 				return { kind: 'dropped' };
 			}
+			const emailSendId =
+				stepRun.stepType === 'email' ? await findStepRunSend(ctx, stepRun._id) : null;
+			if (
+				isLegacyClaim &&
+				now - (stepRun.startedAt ?? stepRun.scheduledAt) > PRE_UPGRADE_ABANDON_AFTER_MS
+			) {
+				await abandonPreUpgradeStepRun(ctx, stepRun, emailSendId);
+				logWarn('[automations] abandoned a step run stuck since before the upgrade', {
+					automationRunId: stepRun.automationRunId,
+					stepRunId: stepRun._id,
+				});
+				return { kind: 'ended', reason: PRE_UPGRADE_ABANDONED_ERROR };
+			}
 			if (stepRun.stepType === 'email') {
-				const emailSendId = await findStepRunSend(ctx, stepRun._id);
 				if (emailSendId !== null) {
 					await completeSentStepAndAdvance(ctx, stepRun, emailSendId);
 					return { kind: 'dropped' };
@@ -398,7 +418,10 @@ export const retryOrFailStepRun = internalMutation({
  *   - rows claimed without a lease (by v0.5.5's walker, before leases existed,
  *     or by its claim shim) that started more than a lease ago. Those rows are
  *     only the ones in flight across the upgrade, so the post-index filter
- *     reads a small range. Remove this half after release N+1, with the shims.
+ *     reads a small range. A row that started more than
+ *     `PRE_UPGRADE_ABANDON_AFTER_MS` ago is dispatched too, but its claim ends
+ *     it without running the step (`abandonPreUpgradeStepRun`). Remove this
+ *     half after release N+1, with the shims.
  */
 export const getInterruptedStepRuns = internalQuery({
 	args: {},

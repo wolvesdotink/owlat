@@ -164,9 +164,32 @@ compose() {
 # ── Detect project name (volume prefix) ───────────────────────────────────────
 # The name Compose resolves here is the one `docker compose up` will use for
 # the volumes afterwards, so it wins. When Compose cannot resolve it (the
-# archive's .env predates a variable the compose file now requires), use the
-# name backup.sh recorded, then the same fallback backup.sh uses.
+# archive's .env predates a variable the compose file now requires), work the
+# name out the way Compose will once the restore is done, so the data lands in
+# the volumes `up` mounts. The name backup.sh recorded only feeds a warning:
+# restoring into it when this checkout derives another name would leave the
+# data where nothing reads it.
+# Compose's own normalization: lowercase, only [a-z0-9_-], no leading _ or -.
 normalize_project() { tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]//g;s/^[_-]*//'; }
+unquote() { sed "s/^[[:space:]]*[\"']//;s/[\"'][[:space:]]*\$//"; }
+# Compose's precedence without -p: COMPOSE_PROJECT_NAME from the environment,
+# then from the .env it reads (the restored one, unless --keep-env), then a
+# top-level `name:` in the compose files, then this directory's name.
+compose_derived_project() {
+	local env_file=.env name="${COMPOSE_PROJECT_NAME:-}" file
+	[[ $KEEP_ENV -eq 0 && -f "$STAGING/env" ]] && env_file="$STAGING/env"
+	if [[ -z "$name" && -f "$env_file" ]]; then
+		name=$(sed -n 's/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}COMPOSE_PROJECT_NAME=//p' "$env_file" | tail -1 | unquote)
+	fi
+	for file in docker-compose.override.yml docker-compose.yml; do
+		[[ -z "$name" && -f "$file" ]] || continue
+		name=$(sed -n 's/^name:[[:space:]]*//p' "$file" | head -1 | unquote)
+		# An interpolated name needs Compose itself, which just failed.
+		[[ "$name" == *'$'* ]] && name=""
+	done
+	[[ -n "$name" ]] || name=$(basename "$PWD")
+	printf '%s\n' "$name" | normalize_project
+}
 MANIFEST_PROJECT=$(sed -n 's/^Project name:[[:space:]]*//p' "$STAGING/MANIFEST.txt" | head -1 | normalize_project)
 COMPOSE_ERR="$STAGING/compose-config.err"
 PROJECT=""
@@ -176,14 +199,11 @@ else
 	warn "docker compose config failed:"
 	sed 's/^/    /' "$COMPOSE_ERR" >&2
 fi
-if [[ -z "$PROJECT" && -n "$MANIFEST_PROJECT" ]]; then
-	PROJECT="$MANIFEST_PROJECT"
-	warn "Using the project name recorded in the backup: '$PROJECT'"
-elif [[ -z "$PROJECT" ]]; then
-	PROJECT="${COMPOSE_PROJECT_NAME:-$(basename "$PWD")}"
-	PROJECT=$(echo "$PROJECT" | normalize_project)
-	warn "Could not resolve project name from compose — falling back to '$PROJECT'"
-elif [[ -n "$MANIFEST_PROJECT" && "$MANIFEST_PROJECT" != "$PROJECT" ]]; then
+if [[ -z "$PROJECT" ]]; then
+	PROJECT=$(compose_derived_project)
+	warn "Could not resolve the project name from Compose; using '$PROJECT', the name docker compose up derives here."
+fi
+if [[ -n "$MANIFEST_PROJECT" && "$MANIFEST_PROJECT" != "$PROJECT" ]]; then
 	warn "The backup was taken from project '$MANIFEST_PROJECT'; this checkout is project '$PROJECT'. Restoring into ${PROJECT}_* volumes, which is what docker compose up uses here."
 fi
 [[ -n "$PROJECT" ]] || die "Could not determine the Compose project name. Set COMPOSE_PROJECT_NAME and run the restore again."

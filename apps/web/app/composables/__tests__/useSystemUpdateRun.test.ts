@@ -82,6 +82,45 @@ describe('useSystemUpdateRun', () => {
 
 		expect(run.updateState.value).toBe('failed');
 		expect(run.updateError.value).toBe('dashboard.admin.system.index.updateBusy');
+		// The route took the refused run back; the open run belongs to the
+		// rollout that refused it and must not be closed as failed.
+		expect(queryMock).not.toHaveBeenCalled();
+		expect(mutationMock).not.toHaveBeenCalled();
+	});
+
+	it('leaves the open run alone when the updater rate-limits the update', async () => {
+		apiFetchMock.mockRejectedValue(
+			createFetchError({
+				request: '/api/system/update',
+				response: new Response(null, { status: 429, statusText: 'Too Many Requests' }),
+				options: { method: 'POST' },
+			} as Parameters<typeof createFetchError>[0])
+		);
+		const run = startedRun();
+
+		await run.confirmUpdate();
+
+		expect(run.updateState.value).toBe('failed');
+		expect(mutationMock).not.toHaveBeenCalled();
+	});
+
+	it('still closes the open run as failed when the update itself failed', async () => {
+		apiFetchMock.mockRejectedValue(
+			createFetchError({
+				request: '/api/system/update',
+				response: new Response(null, { status: 400, statusText: 'Bad Request' }),
+				options: { method: 'POST' },
+			} as Parameters<typeof createFetchError>[0])
+		);
+		const run = startedRun();
+
+		await run.confirmUpdate();
+		await vi.waitFor(() => expect(mutationMock).toHaveBeenCalled());
+
+		expect((mutationMock.mock.calls[0] as unknown[])[1]).toMatchObject({
+			runId: 'run-1',
+			status: 'failed',
+		});
 	});
 
 	it('holds Update now while a run is in flight, and releases it on a verdict', async () => {
