@@ -1,6 +1,10 @@
 import { api } from '@owlat/api';
 import { apiFetch } from '~/lib/csrfFetch';
-import { updateFailureMessage, updateRequestWasAnswered } from '~/lib/systemUpdate';
+import {
+	isStartedRollout,
+	updateFailureMessage,
+	updateRequestWasAnswered,
+} from '~/lib/systemUpdate';
 
 /**
  * The in-app update run, from "Update now" to a verdict.
@@ -21,7 +25,28 @@ interface UpdateStep {
 	stderr?: string;
 }
 
-type UpdateState = 'idle' | 'confirming' | 'running' | 'success' | 'failed';
+/**
+ * `started`: the release is applied and running, but not every service passed
+ * the updater's readiness check in time. A warning, not a failure: running the
+ * update again would change nothing.
+ */
+type UpdateState = 'idle' | 'confirming' | 'running' | 'success' | 'started' | 'failed';
+
+/**
+ * The route waits for the updater, and the updater waits for readiness after
+ * the recreate, following each service's declared healthcheck cadence.
+ */
+const UPDATE_REQUEST_TIMEOUT_MS = 30 * 60 * 1000;
+
+/**
+ * 128 random bits as hex. Not `crypto.randomUUID`, which only exists in a
+ * secure context, and an instance may be reached over plain HTTP before its
+ * TLS is set up.
+ */
+function newAttemptId(): string {
+	const bytes = crypto.getRandomValues(new Uint8Array(16));
+	return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
 
 export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 	const { t } = useI18n();
@@ -30,7 +55,11 @@ export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 	const updateState = ref<UpdateState>('idle');
 	const updateSteps = ref<UpdateStep[] | null>(null);
 	const updateError = ref<string>('');
+	const updateWarning = ref<string>('');
 	const pendingTargetVersion = ref<string>('');
+	// This attempt's id: the updater echoes it on /health with its verdict, so
+	// the progress card never reads an earlier attempt's verdict as this one's.
+	const updateAttempt = ref<string>('');
 
 	/**
 	 * Close the `updateRun` row the update left open.
@@ -72,25 +101,37 @@ export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 	async function confirmUpdate() {
 		updateState.value = 'running';
 		updateError.value = '';
+		updateWarning.value = '';
 		updateSteps.value = null;
+		updateAttempt.value = newAttemptId();
 
 		try {
-			const resp = await apiFetch<{ steps?: UpdateStep[] }>('/api/system/update', {
-				method: 'POST',
-				body: { targetVersion: pendingTargetVersion.value },
-				retry: 0,
-				// Long timeout for pull+up+convex-deploy
-				timeout: 10 * 60 * 1000,
-			});
+			const resp = await apiFetch<{ steps?: UpdateStep[]; rollout?: string; warning?: string }>(
+				'/api/system/update',
+				{
+					method: 'POST',
+					body: { targetVersion: pendingTargetVersion.value, attempt: updateAttempt.value },
+					retry: 0,
+					timeout: UPDATE_REQUEST_TIMEOUT_MS,
+				}
+			);
 			updateSteps.value = resp.steps ?? null;
-			// Don't set success yet — wait for UpdateProgress to confirm new version is live.
+			// The route closed the run already; nothing is left for the card to wait for.
+			if (isStartedRollout(resp)) {
+				updateState.value = 'started';
+				updateWarning.value = resp.warning ?? '';
+			}
+			// Otherwise don't set success yet — UpdateProgress confirms it from updater health.
 		} catch (err) {
 			// A throw the server did not put there is the web container being
 			// recreated by the update's last step — the progress card keeps the
 			// verdict and resolves it from updater health.
 			if (!updateRequestWasAnswered(err)) return;
 			updateState.value = 'failed';
-			updateError.value = updateFailureMessage(err, t('dashboard.admin.system.index.unknownError'));
+			updateError.value =
+				(err as { statusCode?: unknown }).statusCode === 409
+					? t('dashboard.admin.system.index.updateBusy')
+					: updateFailureMessage(err, t('dashboard.admin.system.index.unknownError'));
 			void closeOpenRun('failed', updateError.value);
 		}
 	}
@@ -106,6 +147,17 @@ export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 		}, 2_000);
 	}
 
+	/**
+	 * The updater applied the release but not every service became healthy in
+	 * time. Recorded as a success carrying the note: the release is live.
+	 * No reload — it would take the explanation off the screen.
+	 */
+	function onUpdateStarted(summary: string) {
+		updateState.value = 'started';
+		updateWarning.value = summary;
+		void closeOpenRun('success', summary);
+	}
+
 	function onUpdateFailed(error: string) {
 		updateState.value = 'failed';
 		updateError.value = error;
@@ -116,11 +168,14 @@ export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 		updateState,
 		updateSteps,
 		updateError,
+		updateWarning,
+		updateAttempt,
 		pendingTargetVersion,
 		startUpdate,
 		cancelConfirm,
 		confirmUpdate,
 		onUpdateComplete,
+		onUpdateStarted,
 		onUpdateFailed,
 	};
 }

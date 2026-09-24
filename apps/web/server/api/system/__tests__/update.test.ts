@@ -66,8 +66,8 @@ async function callRoute(): Promise<RouteResult> {
 	return handler({});
 }
 
-function updaterResponse(ok: boolean, payload: unknown) {
-	return { ok, json: async () => payload };
+function updaterResponse(ok: boolean, payload: unknown, status = ok ? 200 : 500) {
+	return { ok, status, json: async () => payload };
 }
 
 /** The (functionName, args) pairs the route sent to Convex, in order. */
@@ -177,6 +177,50 @@ describe('POST /api/system/update — audit trail', () => {
 			name: 'systemUpdates:recordUpdateFinish',
 			args: { runId: 'run-id-1', status: 'failed' },
 		});
+	});
+});
+
+describe('POST /api/system/update — rollouts that are not plain successes', () => {
+	const STARTED = {
+		error:
+			'The release was applied and its containers started, but the stack did not pass the readiness check. Not ready after 665s: still starting: clamav.',
+		rollout: 'started',
+		steps: SIDECAR_STEPS,
+	};
+
+	it('answers a started-but-not-healthy rollout as a success with a warning', async () => {
+		callUpdaterMock.mockResolvedValue(updaterResponse(false, STARTED));
+
+		const result = (await callRoute()) as RouteResult & { rollout?: string; warning?: string };
+
+		expect(result).toMatchObject({ success: true, rollout: 'started', runId: 'run-id-1' });
+		expect(result.warning).toContain('still starting: clamav');
+		// The release is live: the audit row must not invite a retry as a failure.
+		expect(convexCalls()[1]).toMatchObject({
+			name: 'systemUpdates:recordUpdateFinish',
+			args: { status: 'success', error: STARTED.error },
+		});
+	});
+
+	it('passes a 409 from a busy updater on as 409', async () => {
+		callUpdaterMock.mockResolvedValue(
+			updaterResponse(false, { error: 'The updater is still applying an update' }, 409)
+		);
+
+		await expect(callRoute()).rejects.toMatchObject({ statusCode: 409 });
+	});
+
+	it("forwards the browser's attempt id, and only a plain token", async () => {
+		body = { targetVersion: '0.4.17', attempt: 'a1b2c3d4-0000-4000-8000-000000000001' };
+		await callRoute();
+		body = { targetVersion: '0.4.17', attempt: 'x"; rm -rf /' };
+		await callRoute();
+
+		const sent = callUpdaterMock.mock.calls.map(
+			(call) => JSON.parse((call[2] as { body: string }).body) as Record<string, unknown>
+		);
+		expect(sent[0]).toMatchObject({ attempt: 'a1b2c3d4-0000-4000-8000-000000000001' });
+		expect(sent[1]).not.toHaveProperty('attempt');
 	});
 });
 

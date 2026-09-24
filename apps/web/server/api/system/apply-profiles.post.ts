@@ -39,6 +39,7 @@ export default defineEventHandler(async (event) => {
 		services?: unknown;
 	} = {};
 	let updaterOk = false;
+	let updaterStatus = 0;
 
 	try {
 		const updaterResp = await callUpdater('/apply-profiles', instanceSecret, {
@@ -46,14 +47,26 @@ export default defineEventHandler(async (event) => {
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ flags }),
 			// `compose up -d` recreates only changed services, but a cold image
-			// pull can still take minutes.
-			signal: AbortSignal.timeout(5 * 60 * 1000),
+			// pull can still take minutes, and a failed `up` is followed by a
+			// recovery and its readiness check before the updater answers.
+			signal: AbortSignal.timeout(10 * 60 * 1000),
 		});
 		result = (await updaterResp.json()) as typeof result;
 		updaterOk = updaterResp.ok;
+		updaterStatus = updaterResp.status;
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : 'Unknown updater error';
 		result = { success: false, error: msg };
+	}
+
+	if (updaterStatus === 409) {
+		// Another rollout (an update, say) holds the updater. Nothing was
+		// changed, and the updater is reachable: not the CLI-fallback case.
+		throw createError({
+			statusCode: 409,
+			message: result.error || 'Another change is still being applied',
+			data: result,
+		});
 	}
 
 	if (!updaterOk) {

@@ -17,6 +17,7 @@ import { handleApplyProfiles } from './applyProfiles.js';
 import { critical } from './lifecycle.js';
 import { handlePortChecks } from './portChecks.js';
 import { handleProfileState } from './profileState.js';
+import { exclusively, readLastRollout, rolloutInProgress } from './rolloutState.js';
 
 const PORT = parseInt(process.env['PORT'] || '3200', 10);
 
@@ -65,6 +66,11 @@ function handleHealth(req: IncomingMessage, res: ServerResponse) {
 		gitSha: process.env['OWLAT_GIT_SHA'] || 'unknown',
 		buildDate: process.env['OWLAT_BUILD_DATE'] || 'unknown',
 		containers: containers.length > 0 ? containers : raw,
+		// The update verdict outlives the web container that asked for it (and
+		// this container, which the rollout replaces last): the browser reads it
+		// here once the new web app answers.
+		lastRollout: readLastRollout(),
+		rolloutInProgress: rolloutInProgress(),
 	});
 }
 
@@ -311,6 +317,17 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 	json(res, 200, { success: true, step: 'rotate-env', selfUpdate });
 }
 
+type RolloutHandler = (req: IncomingMessage, res: ServerResponse) => Promise<void>;
+
+const ROLLOUTS = new Map<
+	string,
+	{ kind: 'update' | 'apply-profiles' | 'rotate-env'; handle: RolloutHandler }
+>([
+	['/update', { kind: 'update', handle: handleUpdate }],
+	['/apply-profiles', { kind: 'apply-profiles', handle: handleApplyProfiles }],
+	['/rotate-env', { kind: 'rotate-env', handle: handleRotateEnv }],
+]);
+
 /**
  * The HTTP routing listener, exported separately from the listening socket so
  * tests can mount it on an ephemeral server (index.ts owns the real listen).
@@ -323,14 +340,16 @@ export function buildRequestListener() {
 		// host files and only then reconciles the running containers, so a
 		// SIGTERM landing between those two halves is what leaves the host's
 		// configuration and its running state describing different deployments.
-		if (req.method === 'POST' && url.pathname === '/update') {
-			await critical(() => handleUpdate(req, res));
+		// The three that recreate the stack also take the rollout lock, so one
+		// cannot run `up` while another is still waiting for readiness.
+		const rollout = req.method === 'POST' ? ROLLOUTS.get(url.pathname) : undefined;
+		if (rollout) {
+			// Authenticated before the lock, so a 409 tells nobody anonymous
+			// that a rollout is in flight.
+			if (!requireAuth(req, res)) return;
+			await critical(() => exclusively(rollout.kind, res, () => rollout.handle(req, res)));
 		} else if (req.method === 'POST' && url.pathname === '/configure-ip') {
 			await critical(() => handleConfigureIp(req, res));
-		} else if (req.method === 'POST' && url.pathname === '/rotate-env') {
-			await critical(() => handleRotateEnv(req, res));
-		} else if (req.method === 'POST' && url.pathname === '/apply-profiles') {
-			await critical(() => handleApplyProfiles(req, res));
 		} else if (req.method === 'POST' && url.pathname === '/port-checks') {
 			await handlePortChecks(req, res);
 		} else if (req.method === 'GET' && url.pathname === '/profile-state') {

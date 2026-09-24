@@ -18,6 +18,7 @@ const {
 	isApplying,
 	serviceResults,
 	applyError,
+	applyBusy,
 	apply,
 	dismissResults,
 	hydrateFromProbe,
@@ -61,8 +62,16 @@ function serviceStateLabel(result: ProfileServiceResult): string {
 						}}</span>
 					</template>
 				</I18nT>
+				<p
+					v-if="applyBusy"
+					data-testid="profile-sync-busy"
+					role="status"
+					class="mt-3 rounded-lg bg-bg-surface px-3 py-2.5 text-sm text-text-secondary"
+				>
+					{{ t('components.settings.profileSyncBanner.busy') }}
+				</p>
 				<div
-					v-if="applyError"
+					v-else-if="applyError"
 					data-testid="profile-sync-fallback"
 					class="mt-3 rounded-lg bg-bg-surface px-3 py-2.5 text-sm text-text-secondary"
 				>
