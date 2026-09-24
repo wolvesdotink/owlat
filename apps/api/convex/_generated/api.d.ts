@@ -914,6 +914,7 @@ import type * as mail_signatures from '../mail/signatures.js';
 import type * as mail_snippets from '../mail/snippets.js';
 import type * as mail_snooze from '../mail/snooze.js';
 import type * as mail_subscriptions from '../mail/subscriptions.js';
+import type * as mail_teamInboxConversion from '../mail/teamInboxConversion.js';
 import type * as mail_threadAggregates from '../mail/threadAggregates.js';
 import type * as mail_threadVisits from '../mail/threadVisits.js';
 import type * as mail_threadAlerts from '../mail/threadAlerts.js';
@@ -2098,6 +2099,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/snippets': typeof mail_snippets;
 	'mail/snooze': typeof mail_snooze;
 	'mail/subscriptions': typeof mail_subscriptions;
+	'mail/teamInboxConversion': typeof mail_teamInboxConversion;
 	'mail/threadAggregates': typeof mail_threadAggregates;
 	'mail/threadVisits': typeof mail_threadVisits;
 	'mail/threadAlerts': typeof mail_threadAlerts;

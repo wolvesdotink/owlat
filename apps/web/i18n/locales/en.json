@@ -4585,6 +4585,15 @@
 				"undoReservationOperation": "Undo team-inbox reservation",
 				"you": "(you)"
 			},
+			"teamInboxConvertDialog": {
+				"confirm": "Make it a team inbox",
+				"description": "The mailbox keeps its mail, folders, drafts, signatures and sending connection. The teammates you add can read it and send from it, and you stay its owner. You can't turn it back into a personal mailbox later.",
+				"mailboxLabel": "Mailbox",
+				"mailboxPlaceholder": "Choose one of your mailboxes",
+				"operation": "Turn mailbox into a team inbox",
+				"title": "Share a mailbox as a team inbox",
+				"visibilityWarning": "Everyone you add will see the mail already in {address}."
+			},
 			"postboxTriageFilterChips": {
 				"groupLabel": "Filter messages",
 				"all": "All",
@@ -7522,6 +7531,10 @@
 						"needsAttention": "Needs attention",
 						"suspended": "Suspended"
 					},
+					"convert": {
+						"action": "Share existing mailbox",
+						"done": "{address} is now a team inbox."
+					},
 					"createdOn": "Created {date}",
 					"deleteDialog": {
 						"confirm": "Delete permanently",
@@ -9719,6 +9732,7 @@
 				"modeTeam": "Team inbox",
 				"needVerifiedDomain": "You need at least one verified domain before creating a hosted mailbox.",
 				"noDomainHint": "No domain to verify? Connect your existing email account instead.",
+				"noDomainHintTeam": "No domain to verify? Connect an existing mailbox as the team inbox instead.",
 				"openInbox": "Open inbox",
 				"pageTitle": "Add mail account — Owlat",
 				"personalTitle": "Choose your email address",

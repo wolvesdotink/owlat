@@ -322,6 +322,8 @@ export const provisionFromRequest = authedMutation({
 			.withIndex('by_user', (q) => q.eq('userId', row.authUserId))
 			.filter((q) => q.eq(q.field('status'), 'active'))
 			.filter((q) => q.neq(q.field('kind'), 'external'))
+			// A team inbox they own is not the personal mailbox this request asks for.
+			.filter((q) => q.neq(q.field('scope'), 'shared'))
 			.first();
 		if (existingHosted) {
 			return fulfil(existingHosted._id);

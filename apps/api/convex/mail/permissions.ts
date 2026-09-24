@@ -38,6 +38,7 @@ import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { batchGet } from '../_utils/batchLoader';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { POSTBOX_FEATURE_FLAGS } from './_helpers';
+import { mailboxScope } from './mailbox/shared';
 
 /**
  * Membership role on a mailbox. `owner` is a superset of `member`. Derived
@@ -175,10 +176,11 @@ export async function loadReadableMailbox(
 	return owned.ok ? owned.mailbox : null;
 }
 
-/** Personal-mailbox gate for internal self-scoped GDPR jobs whose caller
- * identity was already verified before crossing a query/action boundary.
- * Inactive mailboxes remain readable here because retained personal data is
- * still part of a subject-access export. */
+/** The user's own PERSONAL mailbox, in any status, or null. Used by the
+ * self-scoped GDPR jobs (whose caller identity was verified before crossing a
+ * query/action boundary; retained personal data in an inactive mailbox is still
+ * part of a subject-access export) and by `teamInboxConversion.ts`, which may
+ * only re-scope a mailbox that is the caller's own. */
 export async function loadPersonalMailboxForUser(
 	ctx: Pick<QueryCtx, 'db'>,
 	mailboxId: Id<'mailboxes'>,
@@ -186,7 +188,7 @@ export async function loadPersonalMailboxForUser(
 ): Promise<Doc<'mailboxes'> | null> {
 	const mailbox = await ctx.db.get(mailboxId);
 	// 'shared' and 'seed' are both org infrastructure, never personal data.
-	return mailbox?.scope !== 'shared' && mailbox?.scope !== 'seed' && mailbox?.userId === userId
+	return mailbox && mailboxScope(mailbox) === 'personal' && mailbox.userId === userId
 		? mailbox
 		: null;
 }

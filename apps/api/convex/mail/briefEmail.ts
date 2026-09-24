@@ -39,6 +39,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { mailMessageAttachmentValidator } from '../lib/mailContentValidators';
 import { insertDeliveredMessage } from './deliveryPipeline/insert';
 import { batchGet } from '../_utils/batchLoader';
+import { getActiveMailboxForUser } from './mailbox/identity';
 
 /**
  * How often the delivery cron runs. A brief is due when the user's local
@@ -136,11 +137,8 @@ export const listDue = internalQuery({
 			if (!isBriefDue(row.dailyBriefEmail, row.lastDailyBriefEmailAt, now)) continue;
 			// The brief is per MAILBOX; the preference is per person. Deliver to the
 			// person's own active mailbox — a member with none simply gets nothing.
-			const mailbox = await ctx.db
-				.query('mailboxes')
-				.withIndex('by_user', (q) => q.eq('userId', row.userId))
-				.filter((q) => q.eq(q.field('status'), 'active'))
-				.first();
+			// A team inbox they own is not theirs to be briefed on privately.
+			const mailbox = await getActiveMailboxForUser(ctx, row.userId);
 			if (!mailbox) continue;
 
 			const brief = await ctx.db

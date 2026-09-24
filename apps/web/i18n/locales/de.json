@@ -4585,6 +4585,15 @@
 				"undoReservationOperation": "Team-Postfach-Reservierung rückgängig machen",
 				"you": "(Sie)"
 			},
+			"teamInboxConvertDialog": {
+				"confirm": "Zum Team-Postfach machen",
+				"description": "Das Postfach behält seine E-Mails, Ordner, Entwürfe, Signaturen und Versandverbindung. Die Teammitglieder, die Sie hinzufügen, können es lesen und daraus senden, und Sie bleiben Inhaberin oder Inhaber. Später lässt es sich nicht wieder in ein persönliches Postfach umwandeln.",
+				"mailboxLabel": "Postfach",
+				"mailboxPlaceholder": "Wählen Sie eines Ihrer Postfächer",
+				"operation": "Postfach in ein Team-Postfach umwandeln",
+				"title": "Postfach als Team-Postfach teilen",
+				"visibilityWarning": "Alle, die Sie hinzufügen, sehen die E-Mails, die bereits in {address} liegen."
+			},
 			"postboxTriageFilterChips": {
 				"groupLabel": "Nachrichten filtern",
 				"all": "Alle",
@@ -7522,6 +7531,10 @@
 						"needsAttention": "Braucht Aufmerksamkeit",
 						"suspended": "Gesperrt"
 					},
+					"convert": {
+						"action": "Bestehendes Postfach teilen",
+						"done": "{address} ist jetzt ein Team-Postfach."
+					},
 					"createdOn": "Erstellt am {date}",
 					"deleteDialog": {
 						"confirm": "Dauerhaft löschen",
@@ -9719,6 +9732,7 @@
 				"modeTeam": "Team-Postfach",
 				"needVerifiedDomain": "Sie benötigen mindestens eine verifizierte Domain, bevor Sie ein gehostetes Postfach erstellen können.",
 				"noDomainHint": "Keine Domain zum Verifizieren? Verbinden Sie stattdessen Ihr bestehendes E-Mail-Konto.",
+				"noDomainHintTeam": "Keine Domain zum Verifizieren? Verbinden Sie stattdessen ein bestehendes Postfach als Team-Postfach.",
 				"openInbox": "Posteingang öffnen",
 				"pageTitle": "E-Mail-Konto hinzufügen — Owlat",
 				"personalTitle": "Wählen Sie Ihre E-Mail-Adresse",
