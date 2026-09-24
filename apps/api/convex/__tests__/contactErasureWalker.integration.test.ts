@@ -302,6 +302,82 @@ describe('erasure walker', () => {
 		});
 	});
 
+	it('scrubs a Send written after the walk passed the send phases before removing the contact', async () => {
+		const t = newHarness();
+		const contactId = await t.run(async (ctx) => {
+			const now = Date.now();
+			const contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'late@example.com', deletedAt: now - 40 * DAY })
+			);
+			const threadId = await ctx.db.insert('conversationThreads', {
+				subject: 'S',
+				normalizedSubject: 's',
+				contactIdentifier: 'late@example.com',
+				status: 'open' as const,
+				messageCount: 450,
+				lastMessageAt: now,
+				firstMessageAt: now,
+				createdAt: now,
+			});
+			// Enough messages that the walk is still in a later phase after one tick.
+			for (let i = 0; i < 450; i++) {
+				await ctx.db.insert('unifiedMessages', {
+					threadId,
+					contactId,
+					channel: 'email' as const,
+					direction: 'inbound' as const,
+					content: '{}',
+					status: 'received' as const,
+					createdAt: now,
+				});
+			}
+			return contactId;
+		});
+		await t.mutation(internal.contacts.contacts.cleanupSoftDeletedContacts, {});
+		await killScheduledWork(t);
+		const job = await jobFor(t, contactId);
+		expect(await t.mutation(internal.contacts.erasure.walker.tick, { jobId: job!._id })).toBe(
+			'more'
+		);
+		expect((await t.run((ctx) => ctx.db.get(job!._id)))?.phase).toBe('unifiedMessages');
+
+		// An agent reply (transactional scope, which the contact gate does not stop)
+		// lands behind the walk.
+		const sendId = await t.run(async (ctx) => {
+			const transactionalEmailId = await ctx.db.insert('transactionalEmails', {
+				name: 'TX',
+				slug: 'tx',
+				subject: 'Hi',
+				content: '[]',
+				status: 'published' as const,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			return ctx.db.insert('transactionalSends', {
+				kind: 'transactional' as const,
+				transactionalEmailId,
+				contactId,
+				email: 'late@example.com',
+				status: 'sent' as const,
+				dataVariables: { firstName: 'Late' },
+			});
+		});
+
+		let outcome = 'more';
+		for (let i = 0; i < 20 && outcome === 'more'; i++) {
+			outcome = await t.mutation(internal.contacts.erasure.walker.tick, { jobId: job!._id });
+		}
+		expect(outcome).toBe('done');
+		await t.run(async (ctx) => {
+			expect(await ctx.db.get(contactId)).toBeNull();
+			const send = await ctx.db.get(sendId);
+			expect(send?.email).toBe('[erased]');
+			expect(send?.dataVariables).toBeUndefined();
+			expect(send?.deletedAt).toBeDefined();
+		});
+	});
+
 	it('records a failing transaction on the job, retries, gives up visibly and is re-armed', async () => {
 		const t = newHarness();
 		const { contactId } = await seedHighHistoryContact(t);
