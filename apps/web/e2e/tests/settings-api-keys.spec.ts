@@ -10,7 +10,9 @@ test.describe('Settings — API Keys', () => {
 	});
 
 	test('navigate to API keys settings', async ({ page }) => {
-		await expect(page.getByRole('heading', { name: 'API Keys' })).toBeVisible({
+		// The Settings split (#788, #800) renamed the page to "API"; it is still
+		// where keys are managed.
+		await expect(page.getByRole('heading', { level: 1, name: 'API', exact: true })).toBeVisible({
 			timeout: 15_000,
 		});
 
