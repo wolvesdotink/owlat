@@ -79,12 +79,14 @@ export const eraseMemberData = internalMutation({
 		// A `scope='shared'` team inbox is ORG INFRASTRUCTURE, not the member's
 		// personal data — even one they canonically own (`mailboxes.userId`) as the
 		// connecting custodian. Erasing the member must never hard-delete a team
-		// inbox and all its team mail; those are reassigned via `transferOwnership`,
-		// out-of-band from this job. A `scope='seed'` deliverability seed is the
-		// same: the admin who connected it is only its custodian, and the
+		// inbox and all its team mail; an admin reassigns it via `transferOwnership`,
+		// out-of-band from this job. A `scope='seed'` deliverability seed is also
+		// kept: the admin who connected it is only its custodian, and the
 		// placement measurements that named it (`seedPlacementProbes`) must keep
-		// resolving, which is why `disconnectSeed` retires a seed softly instead of
-		// deleting it. Drain only personal mailboxes.
+		// resolving. `transferOwnership` is gated to `scope='shared'`, so a seed
+		// is not reassigned: it stays org-owned and is retired via `disconnectSeed`,
+		// which retires it softly instead of deleting it. Drain only personal
+		// mailboxes.
 		const ownedMailboxes = await ctx.db
 			.query('mailboxes')
 			.withIndex('by_user', (q) => q.eq('userId', args.authUserId))
@@ -297,7 +299,9 @@ export const eraseMemberData = internalMutation({
 		// keep the `owner` row on a team inbox or seed they still canonically own —
 		// that mailbox is org infrastructure we deliberately preserved (phase 1/2), and
 		// dropping its owner row would orphan it (no owner in `listShared`, no
-		// reassignment anchor). An admin reassigns it via `transferOwnership`.
+		// reassignment anchor). An admin reassigns a team inbox via
+		// `transferOwnership`; a seed stays org-owned and is retired via
+		// `disconnectSeed` (`transferOwnership` is gated to `scope='shared'`).
 		const sharedMemberships = await ctx.db
 			.query('mailboxMembers')
 			.withIndex('by_user', (q) => q.eq('authUserId', args.authUserId))
