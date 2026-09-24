@@ -11,9 +11,13 @@
  * waiting on a question the person would rather not answer, or a teammate
  * rejected the draft or it was archived — is first taken over
  * (`manualReply.takeOverReply` → `draft_ready`), so a person can always write
- * the reply themselves. States where the agent is still working, or where the
- * reply already went out, get a plain reason instead of a box that would fail
- * on submit.
+ * the reply themselves. So is a message the agent is still drafting: the
+ * takeover wins, and the agent's late draft is dropped.
+ *
+ * A message whose reply already went out (`sent`) takes a follow-up instead
+ * (`followUps.sendFollowUp`), a second message with its own send and undo
+ * window. States where Owlat is still reading the message, or the reply is on
+ * its way, get a plain reason instead of a box that would fail on submit.
  *
  * Module scope never calls `useI18n`: reasons are catalog keys.
  */
@@ -25,6 +29,8 @@ export interface ReplyTargetMessage {
 	draftResponse?: string | null;
 	draftSubject?: string | null;
 	subject?: string | null;
+	/** The channel literal (`sms`, `whatsapp`, …) for non-email messages. */
+	to?: string;
 	_creationTime: number;
 }
 
@@ -33,19 +39,12 @@ export interface ReplyTargetMessage {
  * `draft_ready` covers both an agent draft awaiting review and a draftless
  * escalation the agent handed to a person.
  */
-export type ReplyBlocker =
-	| 'processing'
-	| 'drafting'
-	| 'update'
-	| 'sending'
-	| 'answered'
-	| 'quarantined';
+export type ReplyBlocker = 'processing' | 'update' | 'sending' | 'answered' | 'quarantined';
 
 const BLOCKERS: Record<string, ReplyBlocker> = {
 	received: 'processing',
 	security_check: 'processing',
 	classifying: 'processing',
-	drafting: 'drafting',
 	informational: 'update',
 	approved: 'sending',
 	sent: 'answered',
@@ -55,7 +54,6 @@ const BLOCKERS: Record<string, ReplyBlocker> = {
 /** Catalog key per blocker, rendered under the collapsed composer. */
 export const REPLY_BLOCKER_KEYS: Record<ReplyBlocker, string> = {
 	processing: 'dashboard.inbox.detail.composer.blocked.processing',
-	drafting: 'dashboard.inbox.detail.composer.blocked.drafting',
 	update: 'dashboard.inbox.detail.composer.blocked.update',
 	sending: 'dashboard.inbox.detail.composer.blocked.sending',
 	answered: 'dashboard.inbox.detail.composer.blocked.answered',
@@ -82,6 +80,8 @@ export interface ReplyContext {
 	receivedAt?: number;
 	/** The current time. */
 	now?: number;
+	/** The message came in on a non-email channel, which takes no follow-up. */
+	isChannel?: boolean;
 }
 
 /**
@@ -94,8 +94,10 @@ export function replyBlocker(
 ): ReplyBlocker | null {
 	if (status === 'draft_ready' || status === 'failed') return null;
 	if (status === 'rejected' || status === 'archived') return null;
-	// Writing the reply instead of answering the agent's questions.
-	if (status === 'awaiting_clarification') return null;
+	// Writing the reply instead of answering the agent's questions, or instead
+	// of waiting for its draft.
+	if (status === 'awaiting_clarification' || status === 'drafting') return null;
+	if (status === 'sent' && !context.isChannel) return null;
 	if (status === 'security_check' && !context.agentEnabled && context.scanFinished === true) {
 		return null;
 	}
@@ -115,10 +117,40 @@ export function replyBlocker(
 /**
  * Does sending first have to take the message over from the agent? True for
  * every sendable state except `draft_ready`, which is already waiting on a
- * person.
+ * person, and `sent`, which takes a follow-up instead.
  */
 export function needsTakeOver(status: string): boolean {
-	return status !== 'draft_ready';
+	return status !== 'draft_ready' && !isFollowUp(status);
+}
+
+const OUTBOUND_CHANNELS: ReadonlySet<string> = new Set(['sms', 'whatsapp', 'generic']);
+
+/** Did the message come in on a non-email channel (its `to` is the channel literal)? */
+export function isChannelMessage(message: Pick<ReplyTargetMessage, 'to'>): boolean {
+	return message.to !== undefined && OUTBOUND_CHANNELS.has(message.to);
+}
+
+/** Is a reply to this message a follow-up, because its own reply already went out? */
+export function isFollowUp(status: string): boolean {
+	return status === 'sent';
+}
+
+/**
+ * What the open composer says about where the text goes, when that is not the
+ * plain answer to a waiting message: over the agent's unfinished draft, or as
+ * a second message after the answer.
+ */
+export type ReplyNotice = 'takesOverDraft' | 'followUp';
+
+export const REPLY_NOTICE_KEYS: Record<ReplyNotice, string> = {
+	takesOverDraft: 'dashboard.inbox.detail.composer.notice.takesOverDraft',
+	followUp: 'dashboard.inbox.detail.composer.notice.followUp',
+};
+
+export function replyNotice(status: string): ReplyNotice | null {
+	if (status === 'drafting') return 'takesOverDraft';
+	if (isFollowUp(status)) return 'followUp';
+	return null;
 }
 
 /**

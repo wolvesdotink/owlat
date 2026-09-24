@@ -156,7 +156,9 @@ export const recordStepFail = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		const action = await ctx.db.get(args.actionId);
-		if (!action) return;
+		// `abandoned` is final: retries are exhausted, or the lifecycle closed the
+		// step because a person took the reply over. Don't reopen it as `failed`.
+		if (!action || action.status === 'abandoned') return;
 		const retryCount = action.retryCount + 1;
 		await ctx.db.patch(args.actionId, {
 			// Once retries are exhausted the row becomes terminally `abandoned`

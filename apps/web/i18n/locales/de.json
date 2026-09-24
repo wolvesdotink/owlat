@@ -8966,7 +8966,6 @@
 					"agentDraft": "Vom Agenten entworfen",
 					"blocked": {
 						"answered": "Diese Nachricht wurde beantwortet. Sie können wieder antworten, sobald eine neue Nachricht eintrifft.",
-						"drafting": "Der Agent entwirft gerade eine Antwort. Sie erscheint hier, sobald sie fertig ist.",
 						"processing": "Owlat liest diese Nachricht noch. Sie können gleich antworten.",
 						"quarantined": "Diese Nachricht liegt in der Quarantäne.",
 						"sending": "Ihre Antwort ist unterwegs.",
@@ -8975,6 +8974,10 @@
 					"bodyLabel": "Ihre Antwort",
 					"editedDraft": "Bearbeiteter Entwurf",
 					"label": "Antworten",
+					"notice": {
+						"followUp": "Bereits beantwortet. Dies geht als Nachfassnachricht raus.",
+						"takesOverDraft": "Der Agent entwirft noch. Wenn Sie selbst antworten, wird sein Entwurf verworfen."
+					},
 					"originalDraft": "Ursprünglicher Entwurf",
 					"placeholder": "Antwort schreiben…",
 					"rejectDraft": "Entwurf ablehnen",
@@ -8998,6 +9001,8 @@
 				"discussInChannel": "In Kanal besprechen",
 				"discussInChannelTitle": "In {channel} besprechen",
 				"draftRejectedToast": "Entwurf abgelehnt",
+				"followUpSentToast": "Nachfassnachricht wird gesendet",
+				"followUpUndoneToast": "Nachfassnachricht abgebrochen. Ihr Text steht wieder im Antwortfeld.",
 				"lastMessage": "Letzte Nachricht",
 				"loading": "Konversation wird geladen …",
 				"markSeenOperation": "Konversation als gelesen markieren",
@@ -9014,6 +9019,16 @@
 				"noSubject": "Kein Betreff",
 				"noTextContent": "(Kein Textinhalt)",
 				"notFound": "Konversation nicht gefunden",
+				"outbound": {
+					"agent": "Der Agent",
+					"failed": "Nicht gesendet",
+					"failedFallback": "Diese Nachricht konnte nicht gesendet werden.",
+					"label": "Gesendet von {name}",
+					"sending": "Wird gesendet",
+					"sendsIn": "Versand in {seconds} s",
+					"sent": "Gesendet",
+					"yourTeam": "Ihr Team"
+				},
 				"pageTitle": "Konversation — Owlat",
 				"priorities": {
 					"low": "niedrig",
@@ -14648,10 +14663,12 @@
 		"useThreadDetail": {
 			"approveDraft": "Entwurf freigeben",
 			"assignThread": "Konversation zuweisen",
+			"cancelFollowUp": "Nachfassnachricht zurücknehmen",
 			"rejectDraft": "Entwurf ablehnen",
 			"retryMessage": "Nachricht erneut versuchen",
 			"saveDraft": "Entwurf speichern",
 			"saveDraftRevision": "Entwurf speichern",
+			"sendFollowUp": "Nachfassnachricht senden",
 			"snoozeThread": "Konversation zurückstellen",
 			"unsnoozeThread": "Zurückstellung aufheben",
 			"updateThreadStatus": "Konversationsstatus aktualisieren"

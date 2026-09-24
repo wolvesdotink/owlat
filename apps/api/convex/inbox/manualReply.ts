@@ -18,10 +18,15 @@
  * - `awaiting_clarification`: the agent asked a question, and the person
  *   would rather write the reply than answer it. The open questions are
  *   dropped.
+ * - `drafting`: the agent is still writing, and the person would rather not
+ *   wait. The takeover wins: the transition stamps `manualTakeoverAt`, the
+ *   walker stops before its next step, and a step already in flight has its
+ *   late draft, auto-send or failure refused by the lifecycle
+ *   (`processingLifecycle/effects.ts`).
  *
- * It never overrides the agent while it is still working — the scan-finished
- * check alone is not enough, the `ai.agent` flag is read here too — and it
- * never answers a message whose security scan is still running.
+ * It never answers a message whose security scan is still running or whose
+ * classification is still in progress — the scan-finished check alone is not
+ * enough, the `ai.agent` flag is read here too.
  */
 
 import { v } from 'convex/values';
@@ -62,6 +67,7 @@ export function takeOverRefusal(
 		case 'rejected':
 		case 'archived':
 		case 'awaiting_clarification':
+		case 'drafting':
 			return null;
 		case 'security_check':
 			if (!facts.scanFinished) return 'The security check has not finished yet';

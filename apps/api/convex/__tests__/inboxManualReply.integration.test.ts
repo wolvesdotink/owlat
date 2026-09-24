@@ -126,8 +126,14 @@ describe('takeOverRefusal', () => {
 		receivedLongEnough: true,
 	};
 
-	it('allows failed, clarification, rejected and archived messages', () => {
-		for (const status of ['failed', 'awaiting_clarification', 'rejected', 'archived'] as const) {
+	it('allows failed, clarification, drafting, rejected and archived messages', () => {
+		for (const status of [
+			'failed',
+			'awaiting_clarification',
+			'drafting',
+			'rejected',
+			'archived',
+		] as const) {
 			expect(takeOverRefusal(status, facts), status).toBeNull();
 		}
 	});
@@ -146,8 +152,8 @@ describe('takeOverRefusal', () => {
 		expect(takeOverRefusal('received', { ...facts, receivedLongEnough: false })).not.toBeNull();
 	});
 
-	it('refuses while the agent works and once the reply is out', () => {
-		for (const status of ['classifying', 'drafting', 'approved', 'sent', 'quarantined'] as const) {
+	it('refuses while the message is being read and once the reply is out', () => {
+		for (const status of ['classifying', 'approved', 'sent', 'quarantined'] as const) {
 			expect(takeOverRefusal(status, facts), status).not.toBeNull();
 		}
 	});
@@ -219,16 +225,117 @@ describe('manualReply.takeOverReply', () => {
 		).rejects.toThrow(/security check/);
 	});
 
-	it('leaves the agent alone while it is drafting', async () => {
-		const t = convexTest(schema, modules);
-		const messageId = await seed(t, 'drafting');
-		await expect(
-			t
+	// #807: taking over mid-draft wins. The agent's in-flight step must not
+	// overwrite, auto-send over, or fail the person's reply.
+	describe('taking over while the agent is drafting', () => {
+		async function seedDrafting(t: ReturnType<typeof convexTest>) {
+			const messageId = await seed(t, 'drafting');
+			const actionId = await t.run((ctx) =>
+				ctx.db.insert(
+					'agentActions',
+					createTestAgentAction({
+						inboundMessageId: messageId,
+						actionType: 'draft',
+						status: 'running',
+					})
+				)
+			);
+			await t
 				.withIdentity(testIdentity)
-				.mutation(api.inbox.manualReply.takeOverReply, { inboundMessageId: messageId })
-		).rejects.toThrow();
-		const message = await t.run((ctx) => ctx.db.get(messageId));
-		expect(message?.processingStatus).toBe('drafting');
+				.mutation(api.inbox.manualReply.takeOverReply, { inboundMessageId: messageId });
+			return { messageId, actionId };
+		}
+
+		it('moves the message to the person and stamps the takeover', async () => {
+			const t = convexTest(schema, modules);
+			const { messageId } = await seedDrafting(t);
+			const message = await t.run((ctx) => ctx.db.get(messageId));
+			expect(message?.processingStatus).toBe('draft_ready');
+			expect(message?.manualTakeoverAt).toBeTypeOf('number');
+		});
+
+		it('drops the late agent draft and decision', async () => {
+			const t = convexTest(schema, modules);
+			const { messageId } = await seedDrafting(t);
+			await t.mutation(internal.inbox.stepOutputs.recordDraftOutput, {
+				inboundMessageId: messageId,
+				draftResponse: 'Late agent draft',
+				draftSubject: 'Re: late',
+				confidenceScore: 0.9,
+			});
+			await t.mutation(internal.inbox.stepOutputs.recordAgentDecision, {
+				inboundMessageId: messageId,
+				decision: 'auto_approve',
+				reason: 'confident',
+				confidence: 0.9,
+			});
+			const message = await t.run((ctx) => ctx.db.get(messageId));
+			expect(message?.draftResponse).toBeUndefined();
+			expect(message?.agentDecision).toBeUndefined();
+		});
+
+		it('refuses the late auto-send and failure, and closes the step as abandoned', async () => {
+			const t = convexTest(schema, modules);
+			const { messageId, actionId } = await seedDrafting(t);
+
+			const autoSend = await t.mutation(internal.inbox.processingLifecycle.transition, {
+				inboundMessageId: messageId,
+				input: { to: 'approved', at: Date.now(), source: 'auto', completedActionId: actionId },
+			});
+			expect(autoSend).toMatchObject({ ok: false, reason: 'taken_over' });
+			const failed = await t.mutation(internal.inbox.processingLifecycle.transition, {
+				inboundMessageId: messageId,
+				input: {
+					to: 'failed',
+					at: Date.now(),
+					errorMessage: 'LLM timeout',
+					failingActionId: actionId,
+				},
+			});
+			expect(failed).toMatchObject({ ok: false, reason: 'taken_over' });
+			// The walker's refusal branch then fails the step; it stays abandoned.
+			await t.mutation(internal.inbox.processingLifecycle.recordStepFail, {
+				actionId,
+				errorMessage: 'transition to approved rejected: taken_over',
+			});
+
+			const [message, action] = await t.run(async (ctx) => [
+				await ctx.db.get(messageId),
+				await ctx.db.get(actionId),
+			]);
+			expect(message?.processingStatus).toBe('draft_ready');
+			expect(action).toMatchObject({ status: 'abandoned', retryCount: 0 });
+		});
+
+		it('still sends the person’s own reply', async () => {
+			const t = convexTest(schema, modules);
+			const { messageId } = await seedDrafting(t);
+			const asUser = t.withIdentity(testIdentity);
+			await asUser.mutation(api.inbox.mutations.editDraft, {
+				inboundMessageId: messageId,
+				draftResponse: 'Here is the answer, from a person.',
+			});
+			const approved = await asUser.mutation(api.inbox.mutations.approveDraft, {
+				inboundMessageId: messageId,
+			});
+			expect(approved.success).toBe(true);
+			const message = await t.run((ctx) => ctx.db.get(messageId));
+			expect(message?.processingStatus).toBe('approved');
+			expect(message?.draftResponse).toBe('Here is the answer, from a person.');
+		});
+
+		it('hands the message back to the pipeline on a retry', async () => {
+			const t = convexTest(schema, modules);
+			const messageId = await seed(t, 'failed');
+			await t.run((ctx) => ctx.db.patch(messageId, { manualTakeoverAt: Date.now() }));
+			const outcome = await t.mutation(internal.inbox.processingLifecycle.transition, {
+				inboundMessageId: messageId,
+				input: { to: 'received', at: Date.now(), source: 'cron_retry' },
+			});
+			expect(outcome.ok).toBe(true);
+			const message = await t.run((ctx) => ctx.db.get(messageId));
+			expect(message?.manualTakeoverAt).toBeUndefined();
+		});
 	});
 
 	it('refuses a finished scan while the agent is on', async () => {

@@ -254,21 +254,23 @@ export const templateTables = {
 
 	// Transactional Sends - tracks individual non-campaign email sends and their
 	// status. Generalized beyond strictly transactional sends: `kind`
-	// discriminates the three non-campaign sources (transactional API, automation
-	// step, agent approved-reply) so all of them flow through the same Send
+	// discriminates the non-campaign sources (transactional API, automation
+	// step, agent approved-reply, team follow-up) so all of them flow through the same Send
 	// lifecycle (blocklist on hard bounce, sendingReputation denominator, etc.).
 	// SendRef stays two-armed (campaign | transactional); this row's `kind`
 	// distinguishes the non-campaign sources downstream.
 	transactionalSends: defineTable({
 		// Which non-campaign source produced this Send. `transactional` is the
 		// public transactional API; `automation` is an automation email step;
-		// `agent_reply` is an approved agent-drafted inbox reply; `test` is a
+		// `agent_reply` is an approved agent-drafted inbox reply; `team_reply` is
+		// a person's follow-up on an already-answered Team inbox thread; `test` is a
 		// member-only preview that needs a durable Send for governed MTA re-entry
 		// but is excluded from customer analytics and suppression effects.
 		kind: v.union(
 			v.literal('transactional'),
 			v.literal('automation'),
 			v.literal('agent_reply'),
+			v.literal('team_reply'),
 			v.literal('test')
 		),
 		// Set for `kind: 'transactional'` (the template-backed API send). Optional
@@ -281,6 +283,9 @@ export const templateTables = {
 		// to. The Send completion module drives that inbound message to
 		// `sent`/`failed` once the worker outcome lands.
 		inboundMessageId: v.optional(v.id('inboundMessages')),
+		// Provenance for `kind: 'team_reply'` — the follow-up it carries. The Send
+		// lifecycle drives that follow-up to `sent`/`failed` (inbox/followUps.ts).
+		followUpId: v.optional(v.id('inboxFollowUps')),
 		// Pre-rendered subject for automation/agent sends (which have no template
 		// id to read it from). Surfaces in the email_sent contact-activity row.
 		subject: v.optional(v.string()),

@@ -15,11 +15,14 @@ import { capitalize, formatRelativeTime } from '~/utils/formatters';
 import {
 	classificationSummary,
 	hasAgentDraft,
+	isChannelMessage,
+	isFollowUp,
 	latestClassification,
 	needsTakeOver,
 	otherWaitingDrafts,
 	pickReplyTarget,
 	replyBlocker,
+	replyNotice,
 	replySubject,
 } from '~/utils/teamThreadReply';
 import { isApproveAlreadyHandled } from '~/composables/useReviewApproveUndo';
@@ -59,12 +62,15 @@ const {
 	messages,
 	contact,
 	takeOver,
+	followUps,
 	threadLoading,
 	handleApprove,
 	handleReject,
 	handleRetry,
 	saveEditedDraft,
 	saveDraftOnly,
+	sendFollowUp,
+	cancelFollowUp,
 	handleStatusChange,
 	handleSnooze,
 	handleUnsnooze,
@@ -389,8 +395,12 @@ const replyTargetBlocker = computed(() => {
 		receivedWaitMs: takeOver.value?.receivedWaitMs,
 		receivedAt: target._creationTime,
 		now: now.value,
+		isChannel: isChannelMessage(target),
 	});
 });
+const replyTargetNotice = computed(() =>
+	replyTarget.value ? replyNotice(replyTarget.value.processingStatus) : null
+);
 // A message no agent will answer (failed, agent off, never picked up, rejected
 // or archived) is taken over first, so the normal edit → approve path can send
 // a person's reply.
@@ -398,9 +408,11 @@ const { run: takeOverReply } = useBackendOperation(api.inbox.manualReply.takeOve
 	label: () => t('dashboard.inbox.detail.takeOverOperation'),
 });
 // A rejected draft was thrown out on purpose: the person starts from an empty box.
+// So does a follow-up: the message's draft is the reply that already went out.
 const replyDraft = computed(() =>
 	replyTarget.value &&
 	replyTarget.value.processingStatus !== 'rejected' &&
+	!isFollowUp(replyTarget.value.processingStatus) &&
 	hasAgentDraft(replyTarget.value)
 		? (replyTarget.value.draftResponse ?? null)
 		: null
@@ -419,7 +431,11 @@ const replySenderLabel = computed(() => {
 	return replyTarget.value?.from ?? '';
 });
 const composerOpen = ref(false);
-const composerRef = ref<{ focus: () => void; reset: () => void } | null>(null);
+const composerRef = ref<{
+	focus: () => void;
+	reset: () => void;
+	fill: (body: string, subject: string) => void;
+} | null>(null);
 const isSending = ref(false);
 
 function openReply() {
@@ -454,6 +470,16 @@ const onComposerSend = async (body: string, fromDraft: boolean, subject: string)
 	if (!target || isHeld.value || isSending.value) return;
 	isSending.value = true;
 	try {
+		// Already answered: this is a second message, with its own send and undo
+		// window (the countdown shows on its card in the thread).
+		if (isFollowUp(target.processingStatus)) {
+			const sent = await sendFollowUp({ body, subject });
+			if (!sent.ok || refusedSend(sent.result)) return;
+			composerRef.value?.reset();
+			composerOpen.value = false;
+			showToast(t('dashboard.inbox.detail.followUpSentToast'));
+			return;
+		}
 		if (needsTakeOver(target.processingStatus)) {
 			const takenOver = await takeOverReply({ inboundMessageId: target._id });
 			if (!takenOver.ok) return;
@@ -500,6 +526,36 @@ async function onRequestReply() {
 	if (!target || !isAdmin.value) return;
 	const result = await requestReply({ inboundMessageId: target._id });
 	if (result.ok) showToast(t('dashboard.inbox.detail.replyRequestedToast'));
+}
+
+// ── What the team sent ──
+// The reply that answered each message, and the follow-ups written after it,
+// shown under the message they answer.
+function memberName(userId: string): string {
+	const m = members.value.find((x) => x.userId === userId);
+	return m ? m.user.name || m.user.email : t('dashboard.inbox.detail.outbound.yourTeam');
+}
+function sentReplyAuthor(message: NonNullable<typeof messages.value>[number]): string {
+	return message.approvalSource === 'auto'
+		? t('dashboard.inbox.detail.outbound.agent')
+		: t('dashboard.inbox.detail.outbound.yourTeam');
+}
+function followUpsFor(messageId: Id<'inboundMessages'>) {
+	return followUps.value.filter((f) => f.inReplyToMessageId === messageId);
+}
+const undoingFollowUpId = ref<Id<'inboxFollowUps'> | null>(null);
+async function undoFollowUp(followUpId: Id<'inboxFollowUps'>) {
+	if (undoingFollowUpId.value) return;
+	undoingFollowUpId.value = followUpId;
+	try {
+		const result = await cancelFollowUp(followUpId);
+		if (!result.ok || !result.result.cancelled) return;
+		// Hand the text back so nothing typed is lost.
+		composerRef.value?.fill(result.result.body, result.result.subject);
+		showToast(t('dashboard.inbox.detail.followUpUndoneToast'));
+	} finally {
+		undoingFollowUpId.value = null;
+	}
 }
 
 const openRejectModal = (messageId: Id<'inboundMessages'>) => {
@@ -699,217 +755,243 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 			<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 				<!-- Messages Timeline -->
 				<div class="lg:col-span-2 space-y-4">
-					<div v-for="message in messages" :key="message._id" class="card">
-						<!-- Message Header -->
-						<div class="flex items-center gap-3 mb-4">
-							<UiIconBox icon="lucide:mail" size="sm" variant="surface" rounded="full" />
-							<div class="min-w-0">
-								<p class="text-text-primary font-medium text-sm truncate">{{ message.from }}</p>
-								<time
-									class="text-xs text-text-tertiary"
-									:datetime="new Date(message._creationTime).toISOString()"
-									:title="absoluteTime(message._creationTime)"
-								>
-									{{ formatRelativeTime(message._creationTime) }}
-								</time>
+					<template v-for="message in messages" :key="message._id">
+						<div class="card">
+							<!-- Message Header -->
+							<div class="flex items-center gap-3 mb-4">
+								<UiIconBox icon="lucide:mail" size="sm" variant="surface" rounded="full" />
+								<div class="min-w-0">
+									<p class="text-text-primary font-medium text-sm truncate">{{ message.from }}</p>
+									<time
+										class="text-xs text-text-tertiary"
+										:datetime="new Date(message._creationTime).toISOString()"
+										:title="absoluteTime(message._creationTime)"
+									>
+										{{ formatRelativeTime(message._creationTime) }}
+									</time>
+								</div>
 							</div>
-						</div>
 
-						<!-- The mirror of the Postbox reader's strip (idea 31): this
+							<!-- The mirror of the Postbox reader's strip (idea 31): this
 						     message also sits in someone's personal mailbox, and it may
 						     already have been answered there. Read-only; renders nothing
 						     unless the viewer is permitted on both surfaces. -->
-						<InboxCrossSurfaceStrip :inbound-message-id="message._id" class="mb-3" />
+							<InboxCrossSurfaceStrip :inbound-message-id="message._id" class="mb-3" />
 
-						<!-- Message Body -->
-						<div class="text-text-secondary text-sm whitespace-pre-wrap">
-							{{ message.textBody || t('dashboard.inbox.detail.noTextContent') }}
-						</div>
-
-						<!-- Attachments. getThread returns the row unprojected, so the
-						     list needs no extra query; the component owns the download. -->
-						<InboxMessageAttachments :message="message" />
-
-						<!-- Another message in this thread also has a draft waiting: say so,
-						     and let the person answer or reject it here, in order. -->
-						<div
-							v-if="isAdmin && waitingDraftIds.has(message._id)"
-							class="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-warning/10 p-3"
-							data-testid="thread-waiting-draft"
-						>
-							<p class="flex-1 text-xs text-text-secondary">
-								{{ t('dashboard.inbox.detail.waitingDraft.notice') }}
-							</p>
-							<UiButton variant="secondary" size="sm" @click="answerMessage(message._id)">
-								<Icon name="lucide:reply" class="w-3.5 h-3.5" />
-								{{ t('dashboard.inbox.detail.waitingDraft.answer') }}
-							</UiButton>
-							<UiButton variant="ghost" size="sm" @click="openRejectModal(message._id)">
-								{{ t('dashboard.inbox.detail.composer.rejectDraft') }}
-							</UiButton>
-						</div>
-
-						<!-- Failure reason + manual retry (terminal 'failed' state) -->
-						<div
-							v-if="message.processingStatus === 'failed'"
-							class="mt-4 p-3 bg-error-subtle rounded-lg"
-						>
-							<p class="text-xs text-error font-medium mb-2">
-								{{ t('dashboard.inbox.detail.processingFailed') }}
-							</p>
-							<p v-if="message.errorMessage" class="text-sm text-text-primary break-words mb-3">
-								{{ message.errorMessage }}
-							</p>
-							<p v-else class="text-sm text-text-secondary mb-3">
-								{{ t('dashboard.inbox.detail.noErrorDetail') }}
-							</p>
-							<UiButton
-								variant="secondary"
-								size="sm"
-								class="gap-1"
-								:disabled="isRetrying"
-								@click="onRetry(message._id)"
-							>
-								<Icon name="lucide:refresh-cw" class="w-3 h-3" />
-								{{ t('dashboard.inbox.detail.retryProcessing') }}
-							</UiButton>
-						</div>
-
-						<div
-							v-if="
-								isAdmin &&
-								message.processingStatus === 'awaiting_clarification' &&
-								message.pendingClarification
-							"
-							class="mt-4 surface-2 rounded-(--radius-card) border-l-2 border-l-brand/60 p-5"
-							data-testid="thread-clarification"
-						>
-							<div class="flex items-start justify-between gap-4">
-								<div>
-									<span class="lp-eyebrow">{{
-										t('dashboard.inbox.detail.agentNeedsInputEyebrow')
-									}}</span>
-									<p class="mt-1 text-md font-semibold text-text-primary">
-										{{ t('dashboard.inbox.detail.agentNeedsInput') }}
-									</p>
-									<p class="mt-1 text-sm text-text-secondary max-w-[540px]">
-										{{ t('dashboard.inbox.detail.clarificationLead') }}
-										<template v-if="replyLanguageName(message.classification?.language)">
-											{{
-												t('dashboard.inbox.detail.replyLanguageNote', {
-													language: replyLanguageName(message.classification?.language),
-												})
-											}}
-										</template>
-									</p>
-								</div>
-								<span
-									class="shrink-0 inline-flex items-center gap-1.5 rounded-full surface-1 px-2.5 py-1 text-2xs font-medium text-text-secondary"
-									data-testid="thread-clarification-progress"
-								>
-									<Icon name="lucide:message-circle-question" class="h-3 w-3 text-brand" />
-									{{
-										t('dashboard.inbox.detail.clarificationProgress', {
-											answered: answeredCount(message),
-											total: message.pendingClarification.questions.length,
-										})
-									}}
-								</span>
+							<!-- Message Body -->
+							<div class="text-text-secondary text-sm whitespace-pre-wrap">
+								{{ message.textBody || t('dashboard.inbox.detail.noTextContent') }}
 							</div>
-							<div class="mt-5 space-y-5">
-								<div
-									v-for="(question, questionIndex) in message.pendingClarification.questions"
-									:key="question.id"
-									data-testid="thread-clarification-question"
-									class="border-t border-border-subtle pt-4"
+
+							<!-- Attachments. getThread returns the row unprojected, so the
+						     list needs no extra query; the component owns the download. -->
+							<InboxMessageAttachments :message="message" />
+
+							<!-- Another message in this thread also has a draft waiting: say so,
+						     and let the person answer or reject it here, in order. -->
+							<div
+								v-if="isAdmin && waitingDraftIds.has(message._id)"
+								class="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-warning/10 p-3"
+								data-testid="thread-waiting-draft"
+							>
+								<p class="flex-1 text-xs text-text-secondary">
+									{{ t('dashboard.inbox.detail.waitingDraft.notice') }}
+								</p>
+								<UiButton variant="secondary" size="sm" @click="answerMessage(message._id)">
+									<Icon name="lucide:reply" class="w-3.5 h-3.5" />
+									{{ t('dashboard.inbox.detail.waitingDraft.answer') }}
+								</UiButton>
+								<UiButton variant="ghost" size="sm" @click="openRejectModal(message._id)">
+									{{ t('dashboard.inbox.detail.composer.rejectDraft') }}
+								</UiButton>
+							</div>
+
+							<!-- Failure reason + manual retry (terminal 'failed' state) -->
+							<div
+								v-if="message.processingStatus === 'failed'"
+								class="mt-4 p-3 bg-error-subtle rounded-lg"
+							>
+								<p class="text-xs text-error font-medium mb-2">
+									{{ t('dashboard.inbox.detail.processingFailed') }}
+								</p>
+								<p v-if="message.errorMessage" class="text-sm text-text-primary break-words mb-3">
+									{{ message.errorMessage }}
+								</p>
+								<p v-else class="text-sm text-text-secondary mb-3">
+									{{ t('dashboard.inbox.detail.noErrorDetail') }}
+								</p>
+								<UiButton
+									variant="secondary"
+									size="sm"
+									class="gap-1"
+									:disabled="isRetrying"
+									@click="onRetry(message._id)"
 								>
-									<p class="lp-eyebrow mb-1.5">
+									<Icon name="lucide:refresh-cw" class="w-3 h-3" />
+									{{ t('dashboard.inbox.detail.retryProcessing') }}
+								</UiButton>
+							</div>
+
+							<div
+								v-if="
+									isAdmin &&
+									message.processingStatus === 'awaiting_clarification' &&
+									message.pendingClarification
+								"
+								class="mt-4 surface-2 rounded-(--radius-card) border-l-2 border-l-brand/60 p-5"
+								data-testid="thread-clarification"
+							>
+								<div class="flex items-start justify-between gap-4">
+									<div>
+										<span class="lp-eyebrow">{{
+											t('dashboard.inbox.detail.agentNeedsInputEyebrow')
+										}}</span>
+										<p class="mt-1 text-md font-semibold text-text-primary">
+											{{ t('dashboard.inbox.detail.agentNeedsInput') }}
+										</p>
+										<p class="mt-1 text-sm text-text-secondary max-w-[540px]">
+											{{ t('dashboard.inbox.detail.clarificationLead') }}
+											<template v-if="replyLanguageName(message.classification?.language)">
+												{{
+													t('dashboard.inbox.detail.replyLanguageNote', {
+														language: replyLanguageName(message.classification?.language),
+													})
+												}}
+											</template>
+										</p>
+									</div>
+									<span
+										class="shrink-0 inline-flex items-center gap-1.5 rounded-full surface-1 px-2.5 py-1 text-2xs font-medium text-text-secondary"
+										data-testid="thread-clarification-progress"
+									>
+										<Icon name="lucide:message-circle-question" class="h-3 w-3 text-brand" />
 										{{
-											t('dashboard.inbox.detail.questionCounter', {
-												index: questionIndex + 1,
+											t('dashboard.inbox.detail.clarificationProgress', {
+												answered: answeredCount(message),
 												total: message.pendingClarification.questions.length,
 											})
 										}}
-									</p>
-									<TaskAsk :ask="questionCopy(question).text" />
-									<TaskOptions
-										class="mt-1.5"
-										:model-value="clarificationAnswers[message._id]?.[question.id] ?? ''"
-										:options="questionCopy(question).options"
-										:remembered="rememberedAnswer(question)"
-										:placeholder="t('dashboard.inbox.detail.answerPlaceholder')"
-										chip-test-id="thread-clarification-chip"
-										input-test-id="thread-clarification-input"
-										@update:model-value="
-											(value: string) => setClarificationAnswer(message._id, question.id, value)
-										"
-										@submit="hasEveryClarificationAnswer(message) && submitClarification(message)"
-									/>
+									</span>
 								</div>
-								<div class="flex items-center gap-3 pt-1">
-									<UiButton
-										size="sm"
-										:loading="isAnsweringClarification"
-										:disabled="!hasEveryClarificationAnswer(message)"
-										@click="submitClarification(message)"
+								<div class="mt-5 space-y-5">
+									<div
+										v-for="(question, questionIndex) in message.pendingClarification.questions"
+										:key="question.id"
+										data-testid="thread-clarification-question"
+										class="border-t border-border-subtle pt-4"
 									>
-										<Icon name="lucide:sparkles" class="w-3.5 h-3.5" />
-										{{ t('dashboard.inbox.detail.answerAndResume') }}
-									</UiButton>
-									<p
-										v-if="!hasEveryClarificationAnswer(message)"
-										class="text-xs text-text-tertiary"
-										data-testid="thread-clarification-remaining"
-									>
-										{{
-											t(
-												'dashboard.inbox.detail.answerRemaining',
-												{
-													count:
-														message.pendingClarification.questions.length - answeredCount(message),
-												},
-												message.pendingClarification.questions.length - answeredCount(message)
-											)
-										}}
-									</p>
+										<p class="lp-eyebrow mb-1.5">
+											{{
+												t('dashboard.inbox.detail.questionCounter', {
+													index: questionIndex + 1,
+													total: message.pendingClarification.questions.length,
+												})
+											}}
+										</p>
+										<TaskAsk :ask="questionCopy(question).text" />
+										<TaskOptions
+											class="mt-1.5"
+											:model-value="clarificationAnswers[message._id]?.[question.id] ?? ''"
+											:options="questionCopy(question).options"
+											:remembered="rememberedAnswer(question)"
+											:placeholder="t('dashboard.inbox.detail.answerPlaceholder')"
+											chip-test-id="thread-clarification-chip"
+											input-test-id="thread-clarification-input"
+											@update:model-value="
+												(value: string) => setClarificationAnswer(message._id, question.id, value)
+											"
+											@submit="hasEveryClarificationAnswer(message) && submitClarification(message)"
+										/>
+									</div>
+									<div class="flex items-center gap-3 pt-1">
+										<UiButton
+											size="sm"
+											:loading="isAnsweringClarification"
+											:disabled="!hasEveryClarificationAnswer(message)"
+											@click="submitClarification(message)"
+										>
+											<Icon name="lucide:sparkles" class="w-3.5 h-3.5" />
+											{{ t('dashboard.inbox.detail.answerAndResume') }}
+										</UiButton>
+										<p
+											v-if="!hasEveryClarificationAnswer(message)"
+											class="text-xs text-text-tertiary"
+											data-testid="thread-clarification-remaining"
+										>
+											{{
+												t(
+													'dashboard.inbox.detail.answerRemaining',
+													{
+														count:
+															message.pendingClarification.questions.length -
+															answeredCount(message),
+													},
+													message.pendingClarification.questions.length - answeredCount(message)
+												)
+											}}
+										</p>
+									</div>
 								</div>
 							</div>
-						</div>
 
-						<div
-							v-if="
-								isAdmin &&
-								message.pendingAutoSend &&
-								remainingAutoSendSeconds(message.pendingAutoSend.sendAt) > 0
-							"
-							class="mt-4 flex items-center justify-between gap-3 rounded-lg border border-brand/20 bg-brand-subtle/30 p-3"
-						>
-							<div class="flex items-center gap-2 text-sm text-text-primary">
-								<Icon name="lucide:send" class="h-4 w-4 text-brand" />
-								{{
-									t('dashboard.inbox.detail.sendingAutomatically', {
-										seconds: remainingAutoSendSeconds(message.pendingAutoSend.sendAt),
-									})
-								}}
-							</div>
-							<UiButton
-								variant="secondary"
-								size="sm"
-								:loading="isUndoingAutoSend"
-								@click="cancelAutoSend(message._id)"
+							<div
+								v-if="
+									isAdmin &&
+									message.pendingAutoSend &&
+									remainingAutoSendSeconds(message.pendingAutoSend.sendAt) > 0
+								"
+								class="mt-4 flex items-center justify-between gap-3 rounded-lg border border-brand/20 bg-brand-subtle/30 p-3"
 							>
-								{{ t('dashboard.inbox.detail.undo') }}
-							</UiButton>
+								<div class="flex items-center gap-2 text-sm text-text-primary">
+									<Icon name="lucide:send" class="h-4 w-4 text-brand" />
+									{{
+										t('dashboard.inbox.detail.sendingAutomatically', {
+											seconds: remainingAutoSendSeconds(message.pendingAutoSend.sendAt),
+										})
+									}}
+								</div>
+								<UiButton
+									variant="secondary"
+									size="sm"
+									:loading="isUndoingAutoSend"
+									@click="cancelAutoSend(message._id)"
+								>
+									{{ t('dashboard.inbox.detail.undo') }}
+								</UiButton>
+							</div>
+
+							<!-- The agent's working, for admins, behind one disclosure. -->
+							<InboxAgentInsight
+								v-if="
+									isAdmin && (message.classification || message.processingStatus !== 'received')
+								"
+								:inbound-message-id="message._id"
+								:classification="message.classification ?? null"
+								:decision-reason="message.agentDecision?.reason ?? null"
+							/>
 						</div>
 
-						<!-- The agent's working, for admins, behind one disclosure. -->
-						<InboxAgentInsight
-							v-if="isAdmin && (message.classification || message.processingStatus !== 'received')"
-							:inbound-message-id="message._id"
-							:classification="message.classification ?? null"
-							:decision-reason="message.agentDecision?.reason ?? null"
+						<!-- What the team sent: the reply that answered it, then any follow-ups. -->
+						<InboxThreadOutbound
+							v-if="message.processingStatus === 'sent' && message.draftResponse"
+							:author-label="sentReplyAuthor(message)"
+							:body="message.draftResponse"
+							:at="message.processedAt ?? message._creationTime"
+							status="sent"
 						/>
-					</div>
+						<InboxThreadOutbound
+							v-for="followUp in followUpsFor(message._id)"
+							:key="followUp._id"
+							:author-label="memberName(followUp.createdBy)"
+							:body="followUp.body"
+							:at="followUp.sentAt ?? followUp.createdAt"
+							:status="followUp.status"
+							:seconds-left="remainingAutoSendSeconds(followUp.sendAt)"
+							:error-message="followUp.errorMessage ?? null"
+							:undoing="undoingFollowUpId === followUp._id"
+							@undo="undoFollowUp(followUp._id)"
+						/>
+					</template>
 
 					<!-- Empty messages -->
 					<UiEmptyState
@@ -964,6 +1046,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						v-model:open="composerOpen"
 						:sender-label="replySenderLabel"
 						:blocker="replyTargetBlocker"
+						:notice="replyTargetNotice"
 						:draft="replyDraft"
 						:original-draft="replyOriginalDraft"
 						:subject="replyDefaultSubject"

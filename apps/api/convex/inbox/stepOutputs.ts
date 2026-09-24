@@ -73,6 +73,9 @@ export const recordAgentDecision = internalMutation({
 		confidence: v.number(),
 	},
 	handler: async (ctx, args) => {
+		// Taken over mid-route: no agent decision was acted on, so none is shown.
+		const message = await ctx.db.get(args.inboundMessageId);
+		if (!message || message.manualTakeoverAt !== undefined) return;
 		await ctx.db.patch(args.inboundMessageId, {
 			agentDecision: {
 				decision: args.decision,
@@ -109,6 +112,10 @@ export const recordDraftOutput = internalMutation({
 		attachmentSuggestions: v.optional(attachmentSuggestionsValidator),
 	},
 	handler: async (ctx, args) => {
+		// A person took the reply over while this draft was being written: their
+		// text is the reply now, so the late agent draft is dropped.
+		const message = await ctx.db.get(args.inboundMessageId);
+		if (!message || message.manualTakeoverAt !== undefined) return;
 		await ctx.db.patch(args.inboundMessageId, {
 			draftResponse: args.draftResponse,
 			draftSubject: args.draftSubject,

@@ -368,6 +368,14 @@ export const runStep = internalAction({
 		}
 		const module = stepModuleFor(args.kind);
 
+		// A person took the reply over (inbox/manualReply.ts): the pipeline stops
+		// here rather than draft or route a message someone is already answering.
+		// A step already in flight is stopped by the lifecycle instead.
+		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
+			inboundMessageId: args.inboundMessageId,
+		});
+		if (message?.manualTakeoverAt !== undefined) return;
+
 		// Begin the agentAction row up front so a crash inside `execute`
 		// still has an actionId to fail.
 		const { actionId } = await ctx.runMutation(internal.inbox.processingLifecycle.recordStepBegin, {

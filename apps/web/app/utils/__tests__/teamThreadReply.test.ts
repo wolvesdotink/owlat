@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
 	REPLY_BLOCKER_KEYS,
+	REPLY_NOTICE_KEYS,
 	classificationSummary,
 	hasAgentDraft,
+	isChannelMessage,
+	isFollowUp,
 	latestClassification,
 	needsTakeOver,
+	replyNotice,
 	otherWaitingDrafts,
 	replySubject,
 	pickReplyTarget,
@@ -77,14 +81,42 @@ describe('replyBlocker', () => {
 		expect(needsTakeOver('security_check')).toBe(true);
 	});
 
+	// #807: the takeover wins over the agent's unfinished draft.
+	it('lets a person reply while the agent is still drafting, by taking it over', () => {
+		expect(replyBlocker('drafting')).toBeNull();
+		expect(needsTakeOver('drafting')).toBe(true);
+		expect(replyNotice('drafting')).toBe('takesOverDraft');
+	});
+
+	// #807: an answered message takes a second message, not a takeover.
+	it('sends a follow-up on an answered email message', () => {
+		expect(replyBlocker('sent')).toBeNull();
+		expect(isFollowUp('sent')).toBe(true);
+		expect(needsTakeOver('sent')).toBe(false);
+		expect(replyNotice('sent')).toBe('followUp');
+		// A channel thread has no follow-up path yet.
+		expect(replyBlocker('sent', { agentEnabled: true, isChannel: true })).toBe('answered');
+	});
+
+	it('tells channel messages from email ones by their `to`', () => {
+		expect(isChannelMessage({ to: 'whatsapp' })).toBe(true);
+		expect(isChannelMessage({ to: 'support@example.com' })).toBe(false);
+		expect(isChannelMessage({})).toBe(false);
+	});
+
+	it('has no notice for a plain answer to a waiting message', () => {
+		expect(replyNotice('draft_ready')).toBeNull();
+		expect(replyNotice('failed')).toBeNull();
+		for (const key of Object.values(REPLY_NOTICE_KEYS)) {
+			expect(key).toMatch(/^dashboard\.inbox\.detail\.composer\.notice\./);
+		}
+	});
+
 	it('names a reason for every other state, never an empty box that fails on send', () => {
 		expect(replyBlocker('received')).toBe('processing');
 		expect(replyBlocker('classifying')).toBe('processing');
-		// Approving mid-draft would race the agent's own draft_ready.
-		expect(replyBlocker('drafting')).toBe('drafting');
 		expect(replyBlocker('informational')).toBe('update');
 		expect(replyBlocker('approved')).toBe('sending');
-		expect(replyBlocker('sent')).toBe('answered');
 		expect(replyBlocker('quarantined')).toBe('quarantined');
 		// An unknown future state reads as "still processing", not as sendable.
 		expect(replyBlocker('something_new')).toBe('processing');
