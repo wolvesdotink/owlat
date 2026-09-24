@@ -112,9 +112,10 @@ const SMOKE_TIMEOUT_MS = 5_000;
 /**
  * The recovery after a failed `up` answers a request that is already
  * reporting a failure: web's /apply-profiles route gives the whole exchange
- * five minutes, and the host-side remediation in the answer is lost if the
- * wait outlasts it. So recovery checks briefly and never stretches for a
- * declared cadence; a slow service is then reported as warming up.
+ * ten minutes, a cold image pull and the failed `up` included, and the
+ * host-side remediation in the answer is lost if the wait outlasts it. So
+ * recovery checks briefly and never stretches for a declared cadence; a slow
+ * service is then reported as warming up.
  */
 const RECOVERY_BOUND = { timeoutMs: 60_000, maxTimeoutMs: 60_000 };
 
