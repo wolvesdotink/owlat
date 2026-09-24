@@ -39,6 +39,8 @@ const {
 	indexPercent,
 	isAiIndexing,
 	isDiscovering,
+	isPaused,
+	resumesAtLabel,
 	start,
 	cancel,
 	startBusy,
@@ -139,7 +141,20 @@ const errorPreview = computed(() => {
 
 		<!-- ── Importing ────────────────────────────────────────────────────── -->
 		<div v-else-if="step === 'importing'" data-testid="team-inbox-import-running" class="space-y-3">
-			<p class="text-sm text-text-secondary">
+			<!-- Paused for the provider's daily download budget: a wait with a known
+			     end, which the worker resumes by itself — not an error to act on. -->
+			<div v-if="isPaused" data-testid="team-inbox-import-paused" class="flex items-start gap-2">
+				<Icon name="lucide:clock" class="w-4 h-4 mt-0.5 text-text-tertiary shrink-0" />
+				<div>
+					<p class="text-sm text-text-primary">
+						{{ t('dashboard.admin.team.inboxes.import.paused', { when: resumesAtLabel }) }}
+					</p>
+					<p class="text-xs text-text-tertiary mt-0.5">
+						{{ t('dashboard.admin.team.inboxes.import.pausedBody') }}
+					</p>
+				</div>
+			</div>
+			<p v-else class="text-sm text-text-secondary">
 				{{
 					isDiscovering
 						? t('dashboard.admin.team.inboxes.import.discovering')

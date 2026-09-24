@@ -7575,10 +7575,13 @@
 							"discovering": "History import starting…",
 							"failed": "The history import stopped before it finished.",
 							"importing": "History import in progress · {imported} of {total}",
-							"indexing": "Learning from the imported mail…"
+							"indexing": "Learning from the imported mail…",
+							"paused": "History import paused until {when} · provider's daily limit"
 						},
 						"knowledgeDescription": "Builds the shared knowledge profile for each contact from this team's history. Off by default, because it reads the whole archive.",
 						"knowledgeLabel": "Also learn from the imported mail",
+						"paused": "Paused until {when}",
+						"pausedBody": "The provider's daily download limit is used up. The import picks up again on its own — there is nothing to do.",
 						"progressLabel": "Import progress",
 						"reconnectFirst": "Reconnect this inbox before importing its history.",
 						"retry": "Try again",
@@ -9576,7 +9579,9 @@
 				"toastImportStarted": "Importing your mail history now.",
 				"toastSignatureSaved": "Saved as your default signature.",
 				"tryAgain": "Try again",
-				"useThisSignature": "Use this signature"
+				"useThisSignature": "Use this signature",
+				"pausedTitle": "Import paused until {when}",
+				"pausedBody": "Your mail provider limits how much mail can be downloaded each day, and today's share is used up. The import picks up again on its own — there is nothing you need to do."
 			},
 			"replyQueue": {
 				"addMailAccount": "Add mail account",

@@ -3,7 +3,12 @@ import { ref } from 'vue';
 import { api } from '@owlat/api';
 import { getFunctionName, type FunctionReturnType } from 'convex/server';
 import type { Id } from '@owlat/api/dataModel';
-import { deriveMigrationStep, useSharedMailMigration } from '../postbox/useMailMigration';
+import {
+	deriveMigrationStep,
+	formatResumeTime,
+	pausedUntil,
+	useSharedMailMigration,
+} from '../postbox/useMailMigration';
 import { createTestI18n } from '~/__tests__/i18n';
 
 describe('deriveMigrationStep', () => {
@@ -51,6 +56,46 @@ describe('deriveMigrationStep', () => {
 		expect(deriveMigrationStep(null, false, 'auth_error')).toBe('connect');
 		// A live migration's status still wins over the account status.
 		expect(deriveMigrationStep('importing', true, 'auth_error')).toBe('importing');
+	});
+});
+
+/**
+ * #760: an import whose provider spent its daily download budget is held at
+ * `importing` with a resume time, and must read as a wait with an end rather
+ * than as a stalled or failed import.
+ */
+describe('pausedUntil', () => {
+	const NOW = Date.UTC(2026, 8, 24, 14, 5);
+
+	it('is the resume time while an importing migration is waiting', () => {
+		expect(pausedUntil('importing', NOW + 60_000, NOW)).toBe(NOW + 60_000);
+	});
+
+	it('lifts once the resume time has passed, before the first batch lands', () => {
+		expect(pausedUntil('importing', NOW, NOW)).toBeNull();
+		expect(pausedUntil('importing', NOW - 1, NOW)).toBeNull();
+	});
+
+	it('is never paused without a resume time, or past the importing phase', () => {
+		expect(pausedUntil('importing', undefined, NOW)).toBeNull();
+		expect(pausedUntil('importing', null, NOW)).toBeNull();
+		expect(pausedUntil('failed', NOW + 60_000, NOW)).toBeNull();
+		expect(pausedUntil('cancelled', NOW + 60_000, NOW)).toBeNull();
+		expect(pausedUntil(null, NOW + 60_000, NOW)).toBeNull();
+	});
+});
+
+describe('formatResumeTime', () => {
+	it('names the day as well as the time, since the window often reopens tomorrow', () => {
+		const at = new Date(2026, 8, 25, 8, 30).getTime();
+		const expected = new Intl.DateTimeFormat('en', {
+			weekday: 'short',
+			hour: 'numeric',
+			minute: '2-digit',
+		}).format(at);
+		expect(formatResumeTime(at, 'en')).toBe(expected);
+		expect(formatResumeTime(at, 'en')).toContain('Fri');
+		expect(formatResumeTime(at, 'de')).toContain('Fr');
 	});
 });
 

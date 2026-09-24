@@ -7575,10 +7575,13 @@
 							"discovering": "Verlaufsimport startet…",
 							"failed": "Der Verlaufsimport wurde vor dem Ende abgebrochen.",
 							"importing": "Verlaufsimport läuft · {imported} von {total}",
-							"indexing": "Aus der importierten Mail wird gelernt…"
+							"indexing": "Aus der importierten Mail wird gelernt…",
+							"paused": "Verlaufsimport pausiert bis {when} · Tageslimit des Anbieters"
 						},
 						"knowledgeDescription": "Erstellt aus dem Verlauf dieses Teams das gemeinsame Wissensprofil je Kontakt. Standardmäßig aus, weil dafür das gesamte Archiv gelesen wird.",
 						"knowledgeLabel": "Auch aus der importierten Mail lernen",
+						"paused": "Pausiert bis {when}",
+						"pausedBody": "Das tägliche Download-Limit des Anbieters ist aufgebraucht. Der Import geht von selbst weiter — es ist nichts zu tun.",
 						"progressLabel": "Import-Fortschritt",
 						"reconnectFirst": "Verbinden Sie dieses Postfach neu, bevor Sie seinen Verlauf importieren.",
 						"retry": "Erneut versuchen",
@@ -9576,7 +9579,9 @@
 				"toastImportStarted": "Ihr E-Mail-Verlauf wird jetzt importiert.",
 				"toastSignatureSaved": "Als Ihre Standardsignatur gespeichert.",
 				"tryAgain": "Erneut versuchen",
-				"useThisSignature": "Diese Signatur verwenden"
+				"useThisSignature": "Diese Signatur verwenden",
+				"pausedTitle": "Import pausiert bis {when}",
+				"pausedBody": "Ihr Mail-Anbieter begrenzt, wie viel Mail pro Tag heruntergeladen werden kann, und das heutige Kontingent ist aufgebraucht. Der Import geht von selbst weiter — Sie müssen nichts tun."
 			},
 			"replyQueue": {
 				"addMailAccount": "E-Mail-Konto hinzufügen",

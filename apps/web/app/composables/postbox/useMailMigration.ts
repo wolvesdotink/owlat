@@ -1,6 +1,6 @@
 import { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
-import type { MaybeRefOrGetter } from 'vue';
+import type { ComputedRef, MaybeRefOrGetter } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 
 /**
@@ -57,6 +57,63 @@ export function deriveMigrationStep(
 	}
 }
 
+/**
+ * When a throttle-paused import picks up again, or `null` when it is not
+ * paused. The backend holds an import whose provider ran out of its daily
+ * download budget at `importing` with a `resumesAt` (#760) — a wait, not a
+ * failure — and clears it once the resumed walk records a batch. A resume time
+ * already behind `now` means the walk is due to start again, so it no longer
+ * reads as paused even before that first batch lands.
+ */
+export function pausedUntil(
+	status: MigrationStatus | null | undefined,
+	resumesAt: number | null | undefined,
+	now: number
+): number | null {
+	if (status !== 'importing' || resumesAt === undefined || resumesAt === null) return null;
+	return resumesAt > now ? resumesAt : null;
+}
+
+/**
+ * The resume time as the pause copy shows it: a weekday and a clock time,
+ * because a daily window reopens as often tomorrow as today.
+ */
+export function formatResumeTime(resumesAt: number, locale: string): string {
+	return new Intl.DateTimeFormat(locale, {
+		weekday: 'short',
+		hour: 'numeric',
+		minute: '2-digit',
+	}).format(new Date(resumesAt));
+}
+
+/** How often the pause state re-checks the clock, so it lifts on time. */
+const PAUSE_CLOCK_TICK_MS = 30_000;
+
+/**
+ * The pause half of a migration's progress, shared by the personal wizard and
+ * the team-inbox card so the two can never disagree about it.
+ */
+export function useImportPause(
+	migration: ComputedRef<{ status: MigrationStatus; resumesAt?: number } | null>
+) {
+	const { locale } = useI18n();
+	const now = ref(Date.now());
+	if (import.meta.client) {
+		const timer = setInterval(() => {
+			now.value = Date.now();
+		}, PAUSE_CLOCK_TICK_MS);
+		onScopeDispose(() => clearInterval(timer));
+	}
+	const resumesAt = computed(() =>
+		pausedUntil(migration.value?.status, migration.value?.resumesAt, now.value)
+	);
+	const isPaused = computed(() => resumesAt.value !== null);
+	const resumesAtLabel = computed(() =>
+		resumesAt.value === null ? '' : formatResumeTime(resumesAt.value, locale.value)
+	);
+	return { isPaused, resumesAtLabel };
+}
+
 export function useMailMigration() {
 	const { t } = useI18n();
 	const { data: statusData } = useConvexQuery(api.mail.migration.getStatus, () => ({}));
@@ -91,6 +148,7 @@ export function useMailMigration() {
 	const isDiscovering = computed(
 		() => step.value === 'importing' && (migration.value?.messagesTotal ?? 0) === 0
 	);
+	const { isPaused, resumesAtLabel } = useImportPause(migration);
 
 	async function start(source: 'google' | 'imap' = 'google') {
 		return await startOp.run({ source });
@@ -108,6 +166,8 @@ export function useMailMigration() {
 		indexPercent,
 		isAiIndexing,
 		isDiscovering,
+		isPaused,
+		resumesAtLabel,
 		start,
 		cancel,
 		startBusy: startOp.isLoading,
@@ -181,6 +241,7 @@ export function useSharedMailMigration(mailboxId: MaybeRefOrGetter<Id<'mailboxes
 	const isDiscovering = computed(
 		() => step.value === 'importing' && (migration.value?.messagesTotal ?? 0) === 0
 	);
+	const { isPaused, resumesAtLabel } = useImportPause(migration);
 
 	async function start(options?: { indexKnowledge?: boolean }) {
 		return await startOp.run({
@@ -203,6 +264,8 @@ export function useSharedMailMigration(mailboxId: MaybeRefOrGetter<Id<'mailboxes
 		indexPercent,
 		isAiIndexing,
 		isDiscovering,
+		isPaused,
+		resumesAtLabel,
 		start,
 		cancel,
 		startBusy: startOp.isLoading,

@@ -14,6 +14,7 @@ import type { FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
 import { providerForImapHost } from '~/utils/mailAutodiscover';
 import { formatNumber } from '~/utils/formatters';
+import { useImportPause } from '~/composables/postbox/useMailMigration';
 
 type SharedInbox = FunctionReturnType<typeof api.mail.mailboxMembers.listShared>[number];
 
@@ -98,9 +99,18 @@ const canImport = computed(
 	() => props.inbox.kind === 'external' && props.inbox.status === 'active'
 );
 
+const { isPaused: importPaused, resumesAtLabel: importResumesAt } = useImportPause(
+	computed(() => importStatus.value ?? null)
+);
+
 const importSummary = computed(() => {
 	const status = importStatus.value;
 	if (!status) return null;
+	if (importPaused.value) {
+		return t('dashboard.admin.team.inboxes.import.inline.paused', {
+			when: importResumesAt.value,
+		});
+	}
 	if (status.status === 'importing') {
 		// Before the worker has counted the folders there is no total to show —
 		// a "0 of 0" line reads as a stalled import rather than a starting one.
