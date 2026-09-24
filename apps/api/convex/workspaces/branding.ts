@@ -12,7 +12,8 @@
  *   - `get`         — the logo URLs, for the settings page (auth-gated, live).
  *   - `setLogo`     — bind an uploaded file as the light or dark logo;
  *                     requires `settings:manage` (owner/admin).
- *   - `removeLogo`  — clear one variant and delete its file.
+ *   - `removeLogo`  — clear one variant and delete its file; removing the
+ *                     main logo takes the dark one with it.
  *   - `verifyLogoBytes` / `rejectLogo` — the byte check that runs after
  *                     `setLogo`, because a mutation cannot read a blob.
  *
@@ -34,7 +35,7 @@ import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { throwInvalidInput } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
-import { consumeUpload, deleteOwnedUpload, storedFileSize } from '../storage/uploads';
+import { consumeUpload, deleteOwnedUpload } from '../storage/uploads';
 
 const variantValidator = v.union(v.literal('light'), v.literal('dark'));
 
@@ -80,30 +81,39 @@ export const setLogo = authedMutation({
 	args: {
 		storageId: v.id('_storage'),
 		variant: variantValidator,
-		// The browser's declared type. Trusted only to pick the signature the
-		// stored bytes must carry; `verifyLogoBytes` checks them.
-		mimeType: v.string(),
 	},
 	handler: async (ctx, args, session) => {
 		requirePermission(
 			hasPermission(session.role, 'settings:manage'),
 			'Only owners and admins can change the workspace logo'
 		);
-		if (!isWorkspaceLogoMimeType(args.mimeType)) {
+		// The type is the one storage recorded from the upload request, because
+		// that is the Content-Type the public URL serves the file with. A type
+		// named separately in these args could say PNG over a blob stored as
+		// `text/html`, and the byte check would pass while the URL served HTML.
+		const stored = await ctx.db.system.get(args.storageId);
+		if (!stored) throwInvalidInput('Uploaded blob is missing or expired');
+		const mimeType = stored.contentType ?? '';
+		if (!isWorkspaceLogoMimeType(mimeType)) {
 			throwInvalidInput('A logo must be a PNG, JPEG or SVG file');
 		}
-		const size = await storedFileSize(ctx, args.storageId);
-		if (size <= 0) throwInvalidInput('The logo file is empty');
-		if (size > MAX_WORKSPACE_LOGO_BYTES) {
+		if (stored.size <= 0) throwInvalidInput('The logo file is empty');
+		if (stored.size > MAX_WORKSPACE_LOGO_BYTES) {
 			throwInvalidInput(`A logo can be at most ${MAX_WORKSPACE_LOGO_BYTES / 1024} KB`);
+		}
+
+		const column = COLUMN[args.variant];
+		const existing = await ctx.db.query('instanceSettings').first();
+		// A dark logo alone is never shown, and nothing could remove it: the
+		// settings card only offers the dark slot once a main logo is set.
+		if (args.variant === 'dark' && !existing?.logoStorageId) {
+			throwInvalidInput('Set the main logo before a dark-mode version');
 		}
 
 		const key = resourceKey(args.variant);
 		await consumeUpload(ctx, args.storageId, session, key);
 
-		const column = COLUMN[args.variant];
 		const now = Date.now();
-		const existing = await ctx.db.query('instanceSettings').first();
 		const previous = existing?.[column];
 		let settingsId: Id<'instanceSettings'>;
 		if (existing) {
@@ -132,7 +142,7 @@ export const setLogo = authedMutation({
 		await ctx.scheduler.runAfter(0, internal.workspaces.branding.verifyLogoBytes, {
 			storageId: args.storageId,
 			variant: args.variant,
-			mimeType: args.mimeType,
+			mimeType,
 		});
 		return null;
 	},
@@ -145,19 +155,35 @@ export const removeLogo = authedMutation({
 			hasPermission(session.role, 'settings:manage'),
 			'Only owners and admins can change the workspace logo'
 		);
-		const column = COLUMN[args.variant];
 		const existing = await ctx.db.query('instanceSettings').first();
-		const previous = existing?.[column];
-		if (!existing || !previous) return null;
+		if (!existing) return null;
+		// Removing the main logo takes the dark one with it. Left behind, the
+		// dark file would be unreachable (it is never served without a main
+		// logo, so the card cannot offer to remove it) and would come back
+		// unasked the next time a main logo is set.
+		const variants: WorkspaceLogoVariant[] =
+			args.variant === 'light' ? ['light', 'dark'] : ['dark'];
+		const cleared = variants.filter((variant) => existing[COLUMN[variant]]);
+		if (cleared.length === 0) return null;
 
-		await ctx.db.patch(existing._id, { [column]: undefined, updatedAt: Date.now() });
-		await deleteOwnedUpload(ctx, previous, resourceKey(args.variant));
+		await ctx.db.patch(existing._id, {
+			...Object.fromEntries(cleared.map((variant) => [COLUMN[variant], undefined])),
+			updatedAt: Date.now(),
+		});
+		for (const variant of cleared) {
+			const storageId = existing[COLUMN[variant]];
+			if (storageId) await deleteOwnedUpload(ctx, storageId, resourceKey(variant));
+		}
 		await recordAuditLog(ctx, {
 			userId: session.userId,
 			action: 'settings.updated',
 			resource: 'settings',
 			resourceId: existing._id,
-			detailsBlob: JSON.stringify({ changes: { [column]: { from: 'set', to: null } } }),
+			detailsBlob: JSON.stringify({
+				changes: Object.fromEntries(
+					cleared.map((variant) => [COLUMN[variant], { from: 'set', to: null }])
+				),
+			}),
 		});
 		return null;
 	},

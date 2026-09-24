@@ -95,7 +95,8 @@ async function onFileChosen(variant: WorkspaceLogoVariant, event: Event) {
 			}
 			return;
 		}
-		const saved = await setLogo({ storageId: upload.storageId, variant, mimeType: file.type });
+		// The upload's Content-Type is the file type the server checks.
+		const saved = await setLogo({ storageId: upload.storageId, variant });
 		if (saved.ok) showToast(t('components.settings.workspaceLogoCard.savedToast'));
 	} finally {
 		busy[variant] = false;

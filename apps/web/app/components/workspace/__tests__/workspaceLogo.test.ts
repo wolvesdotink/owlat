@@ -158,7 +158,6 @@ describe('WorkspaceLogoCard', () => {
 		expect(calls[1]!.args).toEqual({
 			storageId: 'kg_logo',
 			variant: 'dark',
-			mimeType: 'image/svg+xml',
 		});
 		expect(toasts).toEqual([{ message: 'Logo updated', type: undefined }]);
 	});
