@@ -63,4 +63,47 @@ describe('workspaceLogoBytesProblem', () => {
 			expect(workspaceLogoBytesProblem('image/svg+xml', encode(svg))).toBe('unsafe-svg');
 		}
 	});
+
+	it('refuses script hidden behind a namespace prefix or a character reference', () => {
+		const svgs = [
+			'<svg><x:script xmlns:x="http://www.w3.org/2000/svg">alert(1)</x:script></svg>',
+			'<svg><svg:foreignObject><div/></svg:foreignObject></svg>',
+			'<svg><a href="javascript&#x3a;alert(1)"><rect/></a></svg>',
+			'<svg><a href="javascript&#58;alert(1)"><rect/></a></svg>',
+			'<svg><a href="&#106;avascript:alert(1)"><rect/></a></svg>',
+			'<svg><a href="java\tscript:alert(1)"><rect/></a></svg>',
+			'<svg><a href="java&#x09;script:alert(1)"><rect/></a></svg>',
+			'<svg><rect x:onload="alert(1)"/></svg>',
+		];
+		for (const svg of svgs) {
+			expect(workspaceLogoBytesProblem('image/svg+xml', encode(svg)), svg).toBe('unsafe-svg');
+		}
+	});
+
+	it('refuses data: URIs and animations that rewrite a link', () => {
+		const svgs = [
+			'<svg><a href="data:text/html,<script>alert(1)</script>"><rect/></a></svg>',
+			'<svg><image href="DATA:image/svg+xml;base64,PHN2Zz4="/></svg>',
+			'<svg><a href="d&#97;ta:text/html,x"><rect/></a></svg>',
+			'<svg><a><set attributeName="href" to="javascript&#x3a;alert(1)"/><rect/></a></svg>',
+			'<svg><a><animate attributeName="xlink:href" values="https://example.com"/></a></svg>',
+		];
+		for (const svg of svgs) {
+			expect(workspaceLogoBytesProblem('image/svg+xml', encode(svg)), svg).toBe('unsafe-svg');
+		}
+	});
+
+	it('keeps an ordinary editor-exported SVG', () => {
+		const svg = [
+			'<?xml version="1.0" encoding="UTF-8"?>',
+			'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 10 10">',
+			'<metadata><rdf:RDF><dc:format>image/svg+xml</dc:format></rdf:RDF></metadata>',
+			'<title>Northwind &amp; Co</title>',
+			'<defs><linearGradient id="g"><stop offset="0" stop-color="#000"/></linearGradient></defs>',
+			'<g opacity="0.5"><path d="M0 0h10v10z" fill="url(#g)"/><use xlink:href="#g"/></g>',
+			'<animateTransform attributeName="transform" type="rotate" dur="2s"/>',
+			'</svg>',
+		].join('\n');
+		expect(workspaceLogoBytesProblem('image/svg+xml', encode(svg))).toBeNull();
+	});
 });

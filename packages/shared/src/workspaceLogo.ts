@@ -58,14 +58,74 @@ function startsWith(bytes: Uint8Array, signature: readonly number[]): boolean {
  * under its own content type, so opening its URL directly renders it as a
  * document, where scripts and event handlers would run. An `<img>` never runs
  * them, but the URL is public.
+ *
+ * Element names may carry any namespace prefix (`<x:script xmlns:x="…svg">`
+ * is a script element), and every pattern is also tried on the text with
+ * character references decoded and whitespace removed, because the XML
+ * parser decodes `javascript&#x3a;` back into a scheme a click will run.
+ * Anything a denylist cannot judge safely is refused outright: `data:` URIs,
+ * `<set>`/`<animate>` that rewrite a link, and entity declarations.
  */
 const UNSAFE_SVG_PATTERNS: readonly RegExp[] = [
-	/<script[\s>/]/i,
-	/<foreignObject[\s>/]/i,
-	/\son[a-z]+\s*=/i,
-	/javascript:/i,
+	/<(?:[\w.-]+:)?(?:script|foreignObject|iframe|embed|object|handler|listener)[\s>/]/i,
+	/[\s"'/](?:[\w.-]+:)?on[a-z]+\s*=/i,
+	/(?:java|vb)script:/i,
+	// A scheme, not the tail of a word: `<metadata>` is ordinary SVG.
+	/(?:^|[^\w.+-])data:/i,
+	/<(?:[\w.-]+:)?(?:set|animate)[^>]*href/i,
 	/<!ENTITY/i,
 ];
+
+const NAMED_REFERENCES: Record<string, string> = {
+	amp: '&',
+	lt: '<',
+	gt: '>',
+	quot: '"',
+	apos: "'",
+	colon: ':',
+	tab: '\t',
+	newline: '\n',
+};
+
+/** One pass of character-reference decoding; unknown names stay as they are. */
+function decodeReferences(text: string): string {
+	return text
+		.replace(/&#(x[0-9a-f]+|\d+);?/gi, (match, ref: string) => {
+			const code =
+				ref[0] === 'x' || ref[0] === 'X' ? Number.parseInt(ref.slice(1), 16) : Number(ref);
+			return Number.isInteger(code) && code >= 0 && code <= 0x10ffff
+				? String.fromCodePoint(code)
+				: match;
+		})
+		.replace(
+			/&([a-z]+);/gi,
+			(match, name: string) => NAMED_REFERENCES[name.toLowerCase()] ?? match
+		);
+}
+
+/**
+ * The forms of an SVG's text the patterns are tried on: as stored, and with
+ * references decoded (repeatedly, so `&amp;#x3a;` cannot hide a colon behind a
+ * second layer) and whitespace and control characters dropped, the way a
+ * browser reads `java\tscript:` in a URL.
+ */
+function svgTextForms(text: string): string[] {
+	let decoded = text;
+	for (let i = 0; i < 4; i++) {
+		const next = decodeReferences(decoded);
+		if (next === decoded) break;
+		decoded = next;
+	}
+	// eslint-disable-next-line no-control-regex
+	const compact = decoded.replace(/[\s\u0000-\u001f\u007f]+/g, '');
+	return [text, decoded, compact];
+}
+
+function isUnsafeSvg(text: string): boolean {
+	return svgTextForms(text).some((form) =>
+		UNSAFE_SVG_PATTERNS.some((pattern) => pattern.test(form))
+	);
+}
 
 /**
  * Why stored bytes do not match the declared logo type, or `null` when they
@@ -87,7 +147,7 @@ export function workspaceLogoBytesProblem(
 			// a doctype may come first; the document still has to be an <svg> one.
 			const head = text.trimStart();
 			if (!head.startsWith('<') || !/<svg[\s>]/i.test(text)) return 'signature';
-			return UNSAFE_SVG_PATTERNS.some((pattern) => pattern.test(text)) ? 'unsafe-svg' : null;
+			return isUnsafeSvg(text) ? 'unsafe-svg' : null;
 		}
 		default:
 			return 'signature';
