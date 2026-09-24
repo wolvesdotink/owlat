@@ -10,6 +10,17 @@
 export const UPDATER_REPORT_MARKER = 'updaterReport';
 
 /**
+ * Statuses with which the updater refuses to start an update and changes
+ * nothing: another rollout holds it (409), or its rate limit does (429).
+ */
+const UPDATER_REFUSAL_STATUSES = new Set([409, 429]);
+
+/** Did the updater refuse to start this update, leaving everything as it was? */
+export function isUpdaterRefusal(statusCode: unknown): boolean {
+	return typeof statusCode === 'number' && UPDATER_REFUSAL_STATUSES.has(statusCode);
+}
+
+/**
  * Statuses Caddy synthesises when it cannot reach `web`, or when the answer
  * never arrives: exactly the shape of the update's last step recreating the
  * container that is serving the request.

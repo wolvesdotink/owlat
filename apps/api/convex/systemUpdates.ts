@@ -36,6 +36,11 @@ import { successOrFailedValidator } from './lib/literalValidators';
 
 // ── Update-run recording (platform-admin; called by /api/system/update) ──────
 
+/** The note on a run `recordUpdateStart` retired for the update to `versionTo`. */
+function supersededNote(versionTo: string | undefined): string {
+	return `Superseded by the update to ${versionTo}`;
+}
+
 /**
  * Open the `updateRun` row for an update the admin has just triggered.
  *
@@ -85,7 +90,7 @@ export const recordUpdateStart = authedMutation({
 				status: 'superseded',
 				// Not `failed`, and the message says why: this run's rollout may
 				// have worked. What is true is that nobody is left to report it.
-				error: `Superseded by the update to ${args.versionTo}`,
+				error: supersededNote(args.versionTo),
 			});
 			// eslint-disable-next-line no-console
 			console.info(
@@ -188,6 +193,49 @@ export const recordUpdateFinish = authedMutation({
 				timestamp: new Date(finishedAt).toISOString(),
 			})
 		);
+	},
+});
+
+/**
+ * Take back the `updateRun` row of an update the updater refused to start:
+ * another rollout held it (409) or its rate limit did (429). Nothing was
+ * changed, so there is no run to record, and a `failed` row would report an
+ * update that never ran as broken.
+ *
+ * Opening the row retired the run that was still open (`recordUpdateStart`),
+ * which is typically the very rollout the refusal was about. If the run just
+ * before this one was retired by it, it goes back to `running`, so its own
+ * verdict can still close it.
+ *
+ * Platform-admin only, and public on purpose — see the module header.
+ */
+export const withdrawUpdateStart = authedMutation({
+	args: {
+		runId: v.id('systemUpdates'),
+	},
+	handler: async (ctx, args) => {
+		await requirePlatformAdmin(ctx);
+
+		const run = await ctx.db.get(args.runId);
+		if (!run || run.kind !== 'updateRun') {
+			throwNotFound('update run');
+		}
+		// A run with a verdict, or one a later update already retired, is history.
+		if (run.status !== 'running') return;
+		await ctx.db.delete(run._id);
+
+		const startedAt = run.startedAt;
+		if (startedAt === undefined) return;
+		const previous = await ctx.db
+			.query('systemUpdates')
+			.withIndex('by_kind_and_startedAt', (q) =>
+				q.eq('kind', 'updateRun').lt('startedAt', startedAt)
+			)
+			.order('desc')
+			.first();
+		if (previous?.status === 'superseded' && previous.error === supersededNote(run.versionTo)) {
+			await ctx.db.patch(previous._id, { status: 'running', error: undefined });
+		}
 	},
 });
 

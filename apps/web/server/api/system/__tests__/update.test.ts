@@ -202,13 +202,23 @@ describe('POST /api/system/update — rollouts that are not plain successes', ()
 		});
 	});
 
-	it('passes a 409 from a busy updater on as 409', async () => {
-		callUpdaterMock.mockResolvedValue(
-			updaterResponse(false, { error: 'The updater is still applying an update' }, 409)
-		);
+	it.each([
+		[409, 'The updater is still applying an update'],
+		[429, 'Too many update requests. Try again later.'],
+	])(
+		'passes a %i refusal on and takes the run back instead of recording a failure',
+		async (status, error) => {
+			callUpdaterMock.mockResolvedValue(updaterResponse(false, { error }, status));
 
-		await expect(callRoute()).rejects.toMatchObject({ statusCode: 409 });
-	});
+			await expect(callRoute()).rejects.toMatchObject({ statusCode: status, message: error });
+			// The update never started: no `failed` row in the history.
+			expect(convexCalls().map((call) => call.name)).toEqual([
+				'systemUpdates:recordUpdateStart',
+				'systemUpdates:withdrawUpdateStart',
+			]);
+			expect(convexCalls()[1]?.args).toEqual({ runId: 'run-id-1' });
+		}
+	);
 
 	it("forwards the browser's attempt id, and only a plain token", async () => {
 		body = { targetVersion: '0.4.17', attempt: 'a1b2c3d4-0000-4000-8000-000000000001' };
