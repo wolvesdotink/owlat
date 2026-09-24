@@ -10319,6 +10319,7 @@
 						"publish": "Publish",
 						"publishHint": {
 							"publish": "Publish this email to make it sendable via the API",
+							"saveFirst": "Save your changes before publishing",
 							"unpublish": "Return this email to draft (stops new sends)"
 						},
 						"reviewBanner": {

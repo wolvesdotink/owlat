@@ -215,6 +215,10 @@ const handleTogglePublish = async () => {
 	// Awaiting review is a terminal, author-side dead-end: only an admin can move
 	// it forward, so there is no publish/unpublish action to take here.
 	if (isPendingReview.value) return;
+	// The HTML below is rendered from the canvas, so publishing with unsaved
+	// edits would put content live that the saved email does not hold. The
+	// toolbar disables the button; this covers any other caller.
+	if (hasChanges.value) return;
 
 	isPublishing.value = true;
 	try {

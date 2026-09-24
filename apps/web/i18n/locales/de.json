@@ -10319,6 +10319,7 @@
 						"publish": "Veröffentlichen",
 						"publishHint": {
 							"publish": "Diese E-Mail veröffentlichen, um sie über die API versendbar zu machen",
+							"saveFirst": "Speichern Sie Ihre Änderungen vor dem Veröffentlichen",
 							"unpublish": "Diese E-Mail in den Entwurf zurücksetzen (stoppt neue Sendungen)"
 						},
 						"reviewBanner": {
