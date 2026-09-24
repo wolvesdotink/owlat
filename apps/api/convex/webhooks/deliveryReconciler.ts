@@ -3,12 +3,28 @@ import type { MutationCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import {
+	finishDelivery,
 	MAX_WEBHOOK_ATTEMPT_RECOVERIES,
 	scheduleDeliveryAttempt,
 	WEBHOOK_ATTEMPT_LEASE_MS,
 } from './deliveryAttempts';
 
 const RECONCILE_BATCH_SIZE = 50;
+
+/**
+ * How long a row the previous release left open may have been waiting before
+ * adoption gives up on it instead of sending it. A healthy delivery finishes
+ * within minutes: three attempts spaced 0, 1 and 5 minutes apart, each with a
+ * five-minute lease. A day is far past any scheduler backlog a deploy can
+ * leave, so a row that old was lost, not delayed, and its event describes
+ * state that has long moved on. Sending it now would hand the receiver a
+ * day-old event out of order, which is worse than recording that it was
+ * never delivered.
+ */
+export const LEGACY_DELIVERY_ABANDON_AFTER_MS = 24 * 60 * 60_000;
+
+export const LEGACY_DELIVERY_ABANDONED_ERROR =
+	'Abandoned: stuck before the delivery-recovery upgrade';
 
 /**
  * Whether the scheduler job carrying a row's current attempt can still run or
@@ -33,25 +49,41 @@ async function attemptStillLive(
  * scheduled) plus one lease. Nothing is re-issued here; a row still overdue
  * after that goes through `reconcileOne` like any other, whose re-issue under
  * sequence 1 makes a late unsequenced invocation of the old attempt a no-op.
+ * A row whose attempt was due more than `LEGACY_DELIVERY_ABANDON_AFTER_MS`
+ * ago is failed instead, through the same path as any final failure; an old
+ * invocation that still surfaces then finds the row closed and does nothing.
  * Rows only ever leave this range, so the scan shrinks to nothing once the
  * previous release's open rows are gone.
+ *
+ * Remove after release N+1, together with the previous-release shims in
+ * `deliveryQueries.ts`.
  */
 async function adoptUntrackedRows(
 	ctx: MutationCtx,
-	status: 'pending' | 'retrying'
-): Promise<number> {
+	status: 'pending' | 'retrying',
+	now: number
+): Promise<{ scanned: number; abandoned: number }> {
 	const untracked = await ctx.db
 		.query('webhookDeliveryLogs')
 		.withIndex('by_status_and_recover_after', (q) =>
 			q.eq('status', status).eq('recoverAfter', undefined)
 		)
 		.take(RECONCILE_BATCH_SIZE);
+	let abandoned = 0;
 	for (const log of untracked) {
-		await ctx.db.patch(log._id, {
-			recoverAfter: (log.nextRetryAt ?? log.scheduledAt) + WEBHOOK_ATTEMPT_LEASE_MS,
-		});
+		const dueAt = log.nextRetryAt ?? log.scheduledAt;
+		if (now - dueAt > LEGACY_DELIVERY_ABANDON_AFTER_MS) {
+			await finishDelivery(ctx, log._id, {
+				status: 'failed',
+				errorMessage: LEGACY_DELIVERY_ABANDONED_ERROR,
+				attemptedAt: log.attemptedAt,
+			});
+			abandoned++;
+			continue;
+		}
+		await ctx.db.patch(log._id, { recoverAfter: dueAt + WEBHOOK_ATTEMPT_LEASE_MS });
 	}
-	return untracked.length;
+	return { scanned: untracked.length, abandoned };
 }
 
 async function reconcileOne(
@@ -67,12 +99,11 @@ async function reconcileOne(
 
 	const recoveryCount = (log.recoveryCount ?? 0) + 1;
 	if (recoveryCount > MAX_WEBHOOK_ATTEMPT_RECOVERIES) {
-		await ctx.db.patch(log._id, {
+		// Nothing was sent by this path, so the row keeps its own attempt time.
+		await finishDelivery(ctx, log._id, {
 			status: 'failed',
 			errorMessage: 'Delivery attempt never completed',
-			completedAt: now,
-			nextRetryAt: undefined,
-			recoverAfter: undefined,
+			attemptedAt: log.attemptedAt,
 		});
 		return 'failed';
 	}
@@ -93,7 +124,8 @@ async function reconcileOne(
  * `pending`/`retrying` past its `recoverAfter` with no queued or running
  * scheduler job gets its attempt re-issued. Bounded per run; a full batch
  * schedules a continuation. Rows written before attempts were tracked are
- * first given a deadline (`adoptUntrackedRows`), in the same run.
+ * first given a deadline, or failed when they have waited too long
+ * (`adoptUntrackedRows`), in the same run.
  */
 export const reconcileOverdueDeliveries = internalMutation({
 	args: {},
@@ -103,7 +135,9 @@ export const reconcileOverdueDeliveries = internalMutation({
 		let batchFull = false;
 
 		for (const status of ['pending', 'retrying'] as const) {
-			if ((await adoptUntrackedRows(ctx, status)) === RECONCILE_BATCH_SIZE) batchFull = true;
+			const adopted = await adoptUntrackedRows(ctx, status, now);
+			counts.failed += adopted.abandoned;
+			if (adopted.scanned === RECONCILE_BATCH_SIZE) batchFull = true;
 			const overdue = await ctx.db
 				.query('webhookDeliveryLogs')
 				.withIndex('by_status_and_recover_after', (q) =>

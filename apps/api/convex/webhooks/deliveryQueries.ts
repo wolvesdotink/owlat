@@ -1,12 +1,12 @@
 import { v } from 'convex/values';
 import { internalMutation, internalQuery } from '../_generated/server';
-import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { WEBHOOK_RETRY_DELAYS_MS } from '../lib/constants';
 import { webhookPayloadValidator } from '../lib/convexValidators';
 import { subscribableWebhookEventValidator, webhookEventValidator } from './events';
 import {
 	enqueueWebhookDelivery,
+	finishDelivery,
 	isOpenDeliveryStatus,
 	scheduleDeliveryAttempt,
 	WEBHOOK_ATTEMPT_LEASE_MS,
@@ -87,21 +87,6 @@ function isCurrentAttempt(
 		log.attemptSeq === ref.attemptSeq &&
 		log.attemptNumber === ref.attemptNumber
 	);
-}
-
-async function finishDelivery(
-	ctx: MutationCtx,
-	logId: Id<'webhookDeliveryLogs'>,
-	fields: Partial<Doc<'webhookDeliveryLogs'>> & { status: 'success' | 'failed' }
-): Promise<void> {
-	const now = Date.now();
-	await ctx.db.patch(logId, {
-		...fields,
-		attemptedAt: now,
-		completedAt: now,
-		nextRetryAt: undefined,
-		recoverAfter: undefined,
-	});
 }
 
 /**

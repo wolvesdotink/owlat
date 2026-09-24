@@ -9,7 +9,9 @@
  *   they call by path and end up in the attempt model with exactly one live
  *   attempt per row.
  * - Rows the previous release left open carry no `recoverAfter`; the
- *   reconciler gives them one and recovers them like any other lost attempt.
+ *   reconciler gives them one and recovers them like any other lost attempt,
+ *   unless they have waited past the abandon cutoff, in which case they are
+ *   failed without being sent.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,6 +20,10 @@ import type { Id } from '../../_generated/dataModel';
 import type * as SsrfGuard from '../../lib/ssrfGuard';
 import { MAX_WEBHOOK_ATTEMPTS, WEBHOOK_RETRY_DELAYS_MS } from '../../lib/constants';
 import { WEBHOOK_ATTEMPT_LEASE_MS } from '../deliveryAttempts';
+import {
+	LEGACY_DELIVERY_ABANDON_AFTER_MS,
+	LEGACY_DELIVERY_ABANDONED_ERROR,
+} from '../deliveryReconciler';
 import { deliverEvent, fanoutEvent } from '../fanout';
 import { scheduleDeliver, scheduleFanout } from '../scheduleFanout';
 import {
@@ -348,6 +354,61 @@ describe('rows the previous release left open', () => {
 		vi.setSystemTime(nextRetryAt);
 		expect((await invoke(t, legacyInvocation(webhookId, logId, 2))).success).toBe(true);
 		expect((await row(t, logId)).status).toBe('success');
+	});
+
+	it('fails a row stuck past the cutoff instead of sending it', async () => {
+		const { t, webhookId } = await setup();
+		const logId = await insertLegacyRow(t, webhookId, {
+			scheduledAt: Date.now() - LEGACY_DELIVERY_ABANDON_AFTER_MS - 60_000,
+		});
+
+		expect(await reconcile(t)).toEqual({ waiting: 0, rescheduled: 0, failed: 1 });
+
+		const log = await row(t, logId);
+		expect(log).toMatchObject({
+			status: 'failed',
+			errorMessage: LEGACY_DELIVERY_ABANDONED_ERROR,
+			completedAt: Date.now(),
+		});
+		expect(log.attemptedAt).toBeUndefined();
+		expect(log.recoverAfter).toBeUndefined();
+		expect(log.attemptSeq).toBeUndefined();
+		expect(await scheduledJobs(t)).toHaveLength(0);
+		expect((await invoke(t, legacyInvocation(webhookId, logId, 1))).skipped).toBe(true);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("measures a retrying row's wait from its retry time and keeps its last attempt", async () => {
+		const { t, webhookId } = await setup();
+		const attemptedAt = Date.now() - 3 * LEGACY_DELIVERY_ABANDON_AFTER_MS;
+		const stale = await insertLegacyRow(t, webhookId, {
+			status: 'retrying',
+			attemptNumber: 2,
+			scheduledAt: attemptedAt,
+			attemptedAt,
+			nextRetryAt: Date.now() - LEGACY_DELIVERY_ABANDON_AFTER_MS - 1,
+			errorMessage: 'HTTP 503',
+		});
+		// Opened long ago, but its retry fell due within the cutoff.
+		const recent = await insertLegacyRow(t, webhookId, {
+			status: 'retrying',
+			attemptNumber: 2,
+			scheduledAt: attemptedAt,
+			attemptedAt,
+			nextRetryAt: Date.now() - LEGACY_DELIVERY_ABANDON_AFTER_MS + 60 * 60_000,
+		});
+
+		expect(await reconcile(t)).toEqual({ waiting: 0, rescheduled: 1, failed: 1 });
+		expect(await row(t, stale)).toMatchObject({
+			status: 'failed',
+			errorMessage: LEGACY_DELIVERY_ABANDONED_ERROR,
+			attemptedAt,
+		});
+		expect(await row(t, recent)).toMatchObject({
+			status: 'retrying',
+			attemptNumber: 2,
+			attemptSeq: 1,
+		});
 	});
 
 	it('gives untracked rows their deadline in bounded batches', async () => {

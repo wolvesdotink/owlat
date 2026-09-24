@@ -72,6 +72,27 @@ export async function scheduleDeliveryAttempt(
 }
 
 /**
+ * End a delivery. Every terminal outcome goes through here, so a success, a
+ * final failure and a delivery the reconciler gives up on leave the row in the
+ * same shape for the delivery log. `attemptedAt` defaults to now; a caller that
+ * ends a row without sending passes the row's own value to keep it.
+ */
+export async function finishDelivery(
+	ctx: MutationCtx,
+	logId: Id<'webhookDeliveryLogs'>,
+	fields: Partial<DeliveryLog> & { status: 'success' | 'failed' }
+): Promise<void> {
+	const now = Date.now();
+	await ctx.db.patch(logId, {
+		attemptedAt: now,
+		...fields,
+		completedAt: now,
+		nextRetryAt: undefined,
+		recoverAfter: undefined,
+	});
+}
+
+/**
  * Create a delivery row for one webhook and schedule its first attempt. The
  * row id doubles as the receiver-facing delivery id (`X-Webhook-Delivery-Id`),
  * which stays the same across every retry of this delivery.
