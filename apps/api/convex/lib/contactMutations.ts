@@ -208,6 +208,9 @@ export async function softDeleteContact(
 	await decrementContactCount(ctx, 1);
 }
 
+/** Passes of the inline erasure before it gives up (see its loop). */
+const MAX_INLINE_ERASURE_PASSES = 8;
+
 /**
  * Hard-delete a contact and cascade to its dependents, all inside the caller's
  * transaction. After this runs there is no live row anywhere whose `contactId`
@@ -235,12 +238,22 @@ export async function permanentlyDeleteContactWithRelations(
 	contactId: Id<'contacts'>,
 	options?: { decrementCount?: boolean }
 ): Promise<void> {
-	await advanceErasure(
+	// Inline, one pass has an unlimited budget and should finish; the loop only
+	// guards a phase that stops early. The contact row must never go while a
+	// phase is unfinished: its remaining rows would dangle for good, and the
+	// later phases would never run.
+	let progress = await advanceErasure(
 		ctx,
 		contactId,
 		{ phase: FIRST_ERASURE_PHASE },
 		ErasureBudget.unlimited(),
 		'inline'
 	);
+	for (let pass = 1; !progress.isComplete && pass < MAX_INLINE_ERASURE_PASSES; pass++) {
+		progress = await advanceErasure(ctx, contactId, progress, ErasureBudget.unlimited(), 'inline');
+	}
+	if (!progress.isComplete) {
+		throw new Error(`Contact erasure stopped in phase ${progress.phase}; the contact was kept`);
+	}
 	await finishErasure(ctx, contactId, { decrementCount: options?.decrementCount !== false });
 }

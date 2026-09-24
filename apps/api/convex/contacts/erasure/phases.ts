@@ -54,6 +54,9 @@ function deleteByIndex(
  * outlives its run.
  */
 const eraseAutomationRuns: PhaseRunner = async ({ ctx, contactId, budget }) => {
+	// A run with a long history takes several `deleteAutomationRun` calls; keep
+	// calling while the budget lasts (an unlimited inline budget drains it here)
+	// rather than giving up after the first.
 	while (!budget.isExhausted) {
 		const run = await ctx.db
 			.query('automationRuns')
@@ -62,7 +65,6 @@ const eraseAutomationRuns: PhaseRunner = async ({ ctx, contactId, budget }) => {
 		if (!run) return DONE;
 		const progress = await deleteAutomationRun(ctx, run._id, budget.chunk(256));
 		budget.chargeRows(progress.rowsTouched);
-		if (!progress.isDeleted) return NOT_DONE;
 	}
 	return NOT_DONE;
 };
