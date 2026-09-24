@@ -37,6 +37,16 @@ const props = defineProps<{
 	segments: readonly SegmentOption[] | null;
 	audienceCount: RecipientCount | null;
 	error: string | null;
+	/**
+	 * The topics or segments list failed to load. Without it a failed read
+	 * looks like a workspace with no topics or segments (#818).
+	 */
+	loadFailed?: boolean;
+}>();
+
+defineEmits<{
+	/** Try loading the topics and segments again. */
+	retry: [];
 }>();
 
 const audienceType = defineModel<AudienceType>('audienceType', { required: true });
@@ -161,7 +171,16 @@ const nonEligibleRecipients = computed(() => {
 				</option>
 			</optgroup>
 		</select>
-		<p v-if="error" class="mt-1.5 text-sm text-error">{{ error }}</p>
+		<UiErrorAlert
+			v-if="loadFailed"
+			class="mt-1.5"
+			:message="t(`${prefix}.loadFailed`)"
+			:action-label="t('common.tryAgain')"
+			action-icon="lucide:refresh-cw"
+			data-testid="audience-load-failed"
+			@action="$emit('retry')"
+		/>
+		<p v-else-if="error" class="mt-1.5 text-sm text-error">{{ error }}</p>
 		<p
 			v-else-if="topics && segments && !hasAnyOption"
 			class="mt-1.5 text-sm text-text-tertiary"

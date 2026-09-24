@@ -18,7 +18,9 @@ export function paginatedResult<T>(results: T[]) {
 		results: ref(results),
 		status: ref('Exhausted'),
 		isLoading: ref(false),
+		isRefetching: ref(false),
 		error: ref(null),
+		refetch: vi.fn(),
 		loadMore: vi.fn(),
 		reset: vi.fn(),
 	};

@@ -25,7 +25,7 @@ Object.assign(globalThis, i18nStubs);
  */
 type RecipientCount = FunctionReturnType<typeof api.campaigns.audienceResolution.countRecipients>;
 
-const stubs = { Icon: { template: '<i />' } };
+const stubs = { Icon: { template: '<i />' }, UiErrorAlert: true };
 
 function renderCount(audienceCount: RecipientCount | null): string {
 	const wrapper = mount(SetupAudiencePicker, {
@@ -138,5 +138,48 @@ describe('SetupAudiencePicker — one recipients control (#785)', () => {
 		expect(wrapper.find('[data-testid="audience-empty"]').text()).toContain(
 			'There are no topics or segments yet.'
 		);
+	});
+});
+
+describe('SetupAudiencePicker — a failed topics or segments read (#818)', () => {
+	const alertStub = {
+		UiErrorAlert: {
+			props: ['message', 'actionLabel'],
+			emits: ['action'],
+			template:
+				'<div data-testid="audience-load-failed">{{ message }}<button @click="$emit(\'action\')">{{ actionLabel }}</button></div>',
+		},
+	};
+
+	function mountFailed() {
+		return mount(SetupAudiencePicker, {
+			props: {
+				topics: [],
+				segments: [],
+				audienceCount: null,
+				error: null,
+				loadFailed: true,
+				audienceType: 'topic' as const,
+				selectedTopicId: null,
+				selectedSegmentId: null,
+			},
+			global: { plugins: [createTestI18n()], stubs: { ...stubs, ...alertStub } },
+		});
+	}
+
+	it('says the lists failed to load instead of claiming there are none', () => {
+		const wrapper = mountFailed();
+		expect(wrapper.find('[data-testid="audience-load-failed"]').text()).toContain(
+			'Could not load your topics and segments.'
+		);
+		expect(wrapper.find('[data-testid="audience-empty"]').exists()).toBe(false);
+	});
+
+	it('asks the parent to retry from its Try again control', async () => {
+		const wrapper = mountFailed();
+		const button = wrapper.find('[data-testid="audience-load-failed"] button');
+		expect(button.text()).toBe('Try again');
+		await button.trigger('click');
+		expect(wrapper.emitted('retry')).toHaveLength(1);
 	});
 });

@@ -11,6 +11,13 @@ const props = defineProps<{
 	emailTemplates?: Array<{ _id: Id<'emailTemplates'>; name: string }> | null;
 	/** The currently selected template ID (to exclude from Variant B options) */
 	selectedTemplateId: Id<'emailTemplates'> | null;
+	/** The template list failed to load, so the Variant B select would be empty. */
+	templatesLoadFailed?: boolean;
+}>();
+
+defineEmits<{
+	/** Try loading the template list again. */
+	retryTemplates: [];
 }>();
 
 // A/B test state is passed via v-model bindings
@@ -206,6 +213,15 @@ const durationOptions = computed(() =>
 								{{ template.name }}
 							</option>
 						</select>
+						<UiErrorAlert
+							v-if="templatesLoadFailed"
+							class="mt-1.5"
+							:message="t('components.campaigns.abTestConfig.templatesLoadFailed')"
+							:action-label="t('common.tryAgain')"
+							action-icon="lucide:refresh-cw"
+							data-testid="ab-templates-load-failed"
+							@action="$emit('retryTemplates')"
+						/>
 					</div>
 				</div>
 

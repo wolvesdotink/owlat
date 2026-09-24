@@ -2,6 +2,7 @@
 import type { Id } from '@owlat/api/dataModel';
 import type { Audience } from '@owlat/shared';
 import { api } from '@owlat/api';
+import { isTransientQueryError } from '~/lib/queryRetry';
 
 const { t } = useI18n();
 
@@ -99,9 +100,10 @@ const { data: campaignDetails, error: campaignError } = useConvexQuery(
 
 // An `?id=` that does not resolve (deleted draft, hand-edited link, another
 // org's campaign) leaves the wizard pointing at nothing: drop it and let the
-// step validation below fall back to Setup.
+// step validation below fall back to Setup. A read that merely timed out says
+// nothing about the draft, so it keeps the pointer.
 watch(campaignError, (error) => {
-	if (error) void rememberCampaign(null);
+	if (error && !isTransientQueryError(error)) void rememberCampaign(null);
 });
 const { data: recipientCount } = useConvexQuery(
 	api.campaigns.audienceResolution.countRecipients,
@@ -110,7 +112,11 @@ const { data: recipientCount } = useConvexQuery(
 const persistedTemplate = computed(() => campaignDetails.value?.emailTemplate ?? null);
 
 // Templates power the review step's A/B variant-B name lookup.
-const { results: emailTemplates } = usePaginatedQuery(
+const {
+	results: emailTemplates,
+	error: emailTemplatesError,
+	refetch: refetchEmailTemplates,
+} = usePaginatedQuery(
 	api.emailTemplates.emails.list,
 	() => {
 		if (authPending.value || !isAuthenticated.value) return 'skip';
@@ -173,9 +179,9 @@ const hasSetupInput = computed(() => {
 	if (!form) return false;
 	return Boolean(
 		form.campaignName?.trim() ||
-			form.fromName?.trim() ||
-			form.fromEmail?.trim() ||
-			form.replyTo?.trim()
+		form.fromName?.trim() ||
+		form.fromEmail?.trim() ||
+		form.replyTo?.trim()
 	);
 });
 
@@ -237,6 +243,7 @@ const reviewData = computed(() => {
 		abWinnerCriteria: setup?.abWinnerCriteria ?? cfg?.winnerCriteria ?? 'open_rate',
 		abTestDuration: setup?.abTestDuration ?? cfg?.testDuration ?? 4,
 		templates: emailTemplates.value ?? [],
+		templatesLoadFailed: emailTemplatesError.value !== null,
 	};
 });
 </script>
@@ -304,6 +311,7 @@ const reviewData = computed(() => {
 					@back="goToPrevious"
 					@edit-step="handleEditStep"
 					@complete="handleComplete"
+					@retry-templates="refetchEmailTemplates"
 				/>
 			</KeepAlive>
 		</div>

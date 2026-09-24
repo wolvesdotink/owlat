@@ -31,6 +31,8 @@ interface CampaignData {
 	abWinnerCriteria: 'open_rate' | 'click_rate' | 'manual';
 	abTestDuration: number;
 	templates: readonly EmailTemplate[];
+	/** The template list failed to load, so Variant B's template name is missing. */
+	templatesLoadFailed?: boolean;
 }
 
 interface Props {
@@ -43,6 +45,7 @@ const emit = defineEmits<{
 	back: [];
 	editStep: [step: string];
 	complete: [];
+	retryTemplates: [];
 }>();
 
 const router = useRouter();
@@ -460,6 +463,15 @@ const variantBTemplateName = computed(() => {
 									}}
 								</p>
 								<p class="text-sm text-text-tertiary">{{ winnerByLine }}</p>
+								<UiErrorAlert
+									v-if="data.abTestType === 'content' && data.templatesLoadFailed"
+									class="mt-3"
+									:message="t('components.campaigns.steps.reviewStep.templatesLoadFailed')"
+									:action-label="t('common.tryAgain')"
+									action-icon="lucide:refresh-cw"
+									data-testid="review-templates-load-failed"
+									@action="emit('retryTemplates')"
+								/>
 							</div>
 						</div>
 					</div>
