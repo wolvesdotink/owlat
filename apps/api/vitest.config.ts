@@ -1,9 +1,13 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
+import { scheduledFailureSeam } from './convex/__tests__/helpers/scheduledFailureSeam.ts';
 
 const integrationTestPattern = 'convex/**/__tests__/**/*.integration.test.ts';
 
 export default defineConfig({
+	// Lets the scheduled-failure gate (vitest.setup.ts) see a throwing scheduled
+	// function even while a test has console.error mocked.
+	plugins: [scheduledFailureSeam()],
 	test: {
 		setupFiles: ['./vitest.setup.ts'],
 		server: { deps: { inline: ['convex-test'] } },

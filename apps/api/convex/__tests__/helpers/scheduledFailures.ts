@@ -5,8 +5,10 @@
  * logged as `Error when running scheduled function <name>` and the job is
  * marked `failed`, and nothing reaches the test. So a scheduled effect that
  * broke (a bad argument, a missing row, a validator that no longer matches)
- * left a passing suite. `vitest.setup.ts` installs this gate, which watches for
- * that log line and fails the test it was logged in.
+ * left a passing suite. `vitest.setup.ts` installs this gate, and the Vite
+ * plugin in `scheduledFailureSeam.ts` (wired in `vitest.config.ts`) makes
+ * convex-test hand each such failure to it before logging, so the gate fails
+ * the test the failure happened in whether or not `console.error` is mocked.
  *
  * A test that deliberately makes a scheduled function throw names it with
  * `expectScheduledFailure(...)`. The excuse is per test and per function name,
@@ -16,12 +18,10 @@
  * fired later) is checked against the opt-outs of the test that ran last and,
  * if not excused, fails the file in `afterAll`. Drain scheduled work with
  * `t.finishAllScheduledFunctions(...)` so failures land in the test that caused
- * them. A test that replaces `console.error` with a silent mock also hides
- * this line from the gate while the mock is installed.
+ * them.
  */
 import { afterAll, afterEach, beforeEach } from 'vitest';
-
-const CONVEX_TEST_MARKER = 'Error when running scheduled function ';
+import { SCHEDULED_FAILURE_SINK } from './scheduledFailureSeam';
 
 export interface ScheduledFailure {
 	/** The scheduled function, as convex-test names it (`module/path:export`). */
@@ -67,11 +67,8 @@ export function expectScheduledFailure(name: string | RegExp): void {
 	gate().expected.push(name);
 }
 
-/** Record a convex-test scheduled-function failure line, if that is what this is. */
-export function recordConsoleError(args: readonly unknown[]): void {
-	const [message, error] = args;
-	if (typeof message !== 'string' || !message.startsWith(CONVEX_TEST_MARKER)) return;
-	const name = message.slice(CONVEX_TEST_MARKER.length);
+/** Record a scheduled function that threw, unless the running test expects it. */
+function recordScheduledFailure(name: string, error: unknown): void {
 	if (isExpected(name)) return;
 	const state = gate();
 	(state.inTest ? state.failed : state.orphaned).push({ name, error });
@@ -106,20 +103,11 @@ function throwIfAny(failures: readonly ScheduledFailure[], where: string): void 
 	);
 }
 
-const WRAPPED = Symbol.for('owlat.test.scheduledFailureGate.wrapped');
-
-/** Wrap console.error (once per console object) and register the per-test hooks. */
+/** Connect the sink convex-test reports to, and register the per-test hooks. */
 export function installScheduledFailureGate(): void {
 	const state = gate();
-	const current = console.error as typeof console.error & { [WRAPPED]?: true };
-	if (!current[WRAPPED]) {
-		const original = current.bind(console);
-		const wrapped = (...args: unknown[]) => {
-			recordConsoleError(args);
-			original(...args);
-		};
-		console.error = Object.assign(wrapped, { [WRAPPED]: true as const });
-	}
+	(globalThis as Record<symbol, unknown>)[Symbol.for(SCHEDULED_FAILURE_SINK)] =
+		recordScheduledFailure;
 
 	beforeEach(() => {
 		state.inTest = true;
