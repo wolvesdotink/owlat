@@ -24,7 +24,7 @@ import { assertFeatureEnabled } from '../lib/featureFlags';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { checkEmailDomainVerification } from '../domains/domains';
 import { getMtaConfig } from './mtaClient';
-import { getLivePersonalExternalAccountForUser } from './external/accounts';
+import { getLivePersonalExternalAccountForUser } from './external/personalAccount';
 import { throwInvalidInput, throwInvalidState, throwNotFound } from '../_utils/errors';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
@@ -39,8 +39,8 @@ type SessionWithRole = NonNullable<Awaited<ReturnType<typeof getBetterAuthSessio
  * returns `{ configured: false }`, the mutation throws not-found).
  *
  * Resolves via `getLivePersonalExternalAccountForUser`, NOT a bare `by_user` +
- * `.first()`: sending is a PERSONAL surface, so a `scope='shared'` team-inbox
- * account the caller connected must never be resolved here (it would render the
+ * `.first()`: sending is a PERSONAL surface, so the account behind a team inbox
+ * the caller connected or converted must never be resolved here (it would render the
  * team inbox in the personal Postbox → Sending section and let the caller flip
  * the team inbox's outbound transport), and a post-move `disconnected` archive
  * must never mask the caller's live personal mailbox.

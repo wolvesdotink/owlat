@@ -837,6 +837,7 @@ import type * as mail_external_externalFeature from '../mail/external/externalFe
 import type * as mail_external_googleOAuth from '../mail/external/googleOAuth.js';
 import type * as mail_external_googleOAuthActions from '../mail/external/googleOAuthActions.js';
 import type * as mail_external_googleOAuthTokens from '../mail/external/googleOAuthTokens.js';
+import type * as mail_external_personalAccount from '../mail/external/personalAccount.js';
 import type * as mail_external_sharedInbox from '../mail/external/sharedInbox.js';
 import type * as mail_filterRun from '../mail/filterRun.js';
 import type * as mail_filters from '../mail/filters.js';
@@ -913,6 +914,7 @@ import type * as mail_signatures from '../mail/signatures.js';
 import type * as mail_snippets from '../mail/snippets.js';
 import type * as mail_snooze from '../mail/snooze.js';
 import type * as mail_subscriptions from '../mail/subscriptions.js';
+import type * as mail_teamInboxConversion from '../mail/teamInboxConversion.js';
 import type * as mail_threadAggregates from '../mail/threadAggregates.js';
 import type * as mail_threadVisits from '../mail/threadVisits.js';
 import type * as mail_threadAlerts from '../mail/threadAlerts.js';
@@ -2020,6 +2022,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/external/googleOAuth': typeof mail_external_googleOAuth;
 	'mail/external/googleOAuthActions': typeof mail_external_googleOAuthActions;
 	'mail/external/googleOAuthTokens': typeof mail_external_googleOAuthTokens;
+	'mail/external/personalAccount': typeof mail_external_personalAccount;
 	'mail/external/sharedInbox': typeof mail_external_sharedInbox;
 	'mail/filterRun': typeof mail_filterRun;
 	'mail/filters': typeof mail_filters;
@@ -2096,6 +2099,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/snippets': typeof mail_snippets;
 	'mail/snooze': typeof mail_snooze;
 	'mail/subscriptions': typeof mail_subscriptions;
+	'mail/teamInboxConversion': typeof mail_teamInboxConversion;
 	'mail/threadAggregates': typeof mail_threadAggregates;
 	'mail/threadVisits': typeof mail_threadVisits;
 	'mail/threadAlerts': typeof mail_threadAlerts;

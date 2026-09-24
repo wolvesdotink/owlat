@@ -3,8 +3,8 @@
  *
  * Covers the backend path added on top of PR #232: `_connectSharedInternal`
  * provisions a `kind='external', scope='shared'` mailbox with the connecting
- * admin as owner + the initial roster, records a `scope='shared'`
- * `externalMailAccounts` row, and reuses the membership model so teammates read
+ * admin as owner + the initial roster, records its `externalMailAccounts` row,
+ * and reuses the membership model so teammates read
  * it via `requireMailboxAccess`. Also pins the ownership/credential-model
  * decision: a shared external account is org infrastructure and is invisible to
  * every PERSONAL-external surface (it never masks or blocks the caller's own
@@ -172,6 +172,7 @@ describe('_connectSharedInternal — external account as a shared team inbox', (
 		expect(mailbox?.externalAccountId).toBe(externalAccountId);
 
 		const account = await t.run((ctx) => ctx.db.get(externalAccountId));
+		// Only the previous release reads this mirror; the mailbox's scope decides.
 		expect(account?.scope).toBe('shared');
 		expect(account?.userId).toBe('admin-user');
 		expect(account?.mailboxId).toBe(mailboxId);
@@ -898,9 +899,7 @@ describe('member erasure preserves a shared team inbox (org infrastructure)', ()
 			// The team inbox, its credential row, and the custodian's owner membership
 			// all survive the erasure — they are org infrastructure, not personal data.
 			expect(await ctx.db.get(mailboxId)).not.toBeNull();
-			const account = await ctx.db.get(externalAccountId);
-			expect(account).not.toBeNull();
-			expect(account?.scope).toBe('shared');
+			expect(await ctx.db.get(externalAccountId)).not.toBeNull();
 			const owner = await ctx.db
 				.query('mailboxMembers')
 				.withIndex('by_mailbox_user', (q) =>

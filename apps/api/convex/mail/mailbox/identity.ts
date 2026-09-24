@@ -41,12 +41,12 @@ import { stopExternalAccountSync } from '../external/accountTeardown';
  * row, never a suspended/deleted one. A member whose only mailbox is suspended
  * still reaches the honest "ask an admin" escape hatch.
  *
- * A `scope='seed'` mailbox is skipped: a deliverability seed carries the
- * connecting ADMIN's `userId` (it has no other owner), but it is org
- * infrastructure, not their inbox. Counting one would tell
- * `mailboxRequest.freshStartStatus` / `userOnboarding.completeFreshStart` that
- * an admin who connected a seed already has a mailbox — a silent change to a
- * shipped flow.
+ * Only a PERSONAL mailbox counts. A deliverability seed or a team inbox carries
+ * the connecting or owning member's `userId`, but it is org infrastructure, not
+ * their inbox. Counting one would tell `mailboxRequest.freshStartStatus` /
+ * `userOnboarding.completeFreshStart` that an admin who connected a seed, or
+ * whose own mailbox became a team inbox (`mail/teamInboxConversion.ts`), still
+ * has a mailbox of their own.
  */
 export async function getActiveMailboxForUser(
 	ctx: QueryCtx | MutationCtx,
@@ -55,7 +55,13 @@ export async function getActiveMailboxForUser(
 	return await ctx.db
 		.query('mailboxes')
 		.withIndex('by_user', (q) => q.eq('userId', userId))
-		.filter((q) => q.and(q.eq(q.field('status'), 'active'), q.neq(q.field('scope'), 'seed')))
+		.filter((q) =>
+			q.and(
+				q.eq(q.field('status'), 'active'),
+				q.neq(q.field('scope'), 'seed'),
+				q.neq(q.field('scope'), 'shared')
+			)
+		)
 		.first();
 }
 

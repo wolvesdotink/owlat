@@ -30,6 +30,21 @@ const {
 
 type SharedInbox = NonNullable<typeof inboxes.value>[number];
 
+// The admin's own personal mailboxes that can become a team inbox, e.g. an
+// `info@` first connected as a personal account. The action only shows when
+// there is one to offer.
+const { data: convertible } = useConvexQuery(
+	api.mail.teamInboxConversion.convertibleMailboxes,
+	() => (isAdmin.value ? {} : 'skip')
+);
+const convertibleMailboxes = computed(() => convertible.value ?? []);
+const isConvertOpen = ref(false);
+// Open the new team inbox's roster so the admin lands where they manage it.
+function handleConverted(converted: { mailboxId: Id<'mailboxes'>; address: string }) {
+	showToast(t('dashboard.admin.team.inboxes.convert.done', { address: converted.address }));
+	expandedId.value = converted.mailboxId;
+}
+
 // "Open inbox" makes the selected team inbox the active Postbox mailbox and
 // lands on its inbox — the same switch the sidebar switcher and Cmd-K perform.
 const { switchToMailbox } = usePostboxMailbox();
@@ -150,6 +165,15 @@ async function confirmPurge() {
 					<Icon name="lucide:key-round" class="w-4 h-4 mr-1.5" />
 					{{ t('dashboard.admin.team.inboxes.publishKeys') }}
 				</UiButton>
+				<UiButton
+					v-if="convertibleMailboxes.length > 0"
+					variant="secondary"
+					data-testid="team-inbox-convert-open"
+					@click="isConvertOpen = true"
+				>
+					<Icon name="lucide:users" class="w-4 h-4 mr-1.5" />
+					{{ t('dashboard.admin.team.inboxes.convert.action') }}
+				</UiButton>
 				<UiButton to="/dashboard/preferences/add-account?mode=team">
 					<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
 					{{ t('dashboard.admin.team.inboxes.newInbox') }}
@@ -239,6 +263,12 @@ async function confirmPurge() {
 				@reconnected="reconnectId = null"
 			/>
 		</div>
+
+		<PostboxTeamInboxConvertDialog
+			v-model:open="isConvertOpen"
+			:mailboxes="convertibleMailboxes"
+			@converted="handleConverted"
+		/>
 
 		<UiConfirmationDialog
 			:open="!!revokeKeyTarget"

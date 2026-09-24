@@ -9,17 +9,18 @@
  * connect action hands over) and the shared provisioning helpers, so the two
  * connect paths never drift on address normalization or credential storage.
  *
- * Ownership / credential model (see the `scope` field on `externalMailAccounts`):
+ * Ownership / credential model (the mailbox's `scope`; see `personalAccount.ts`):
  *   - The connecting admin becomes the mailbox's canonical owner
  *     (`provisionMailbox` inserts the owner `mailboxMembers` row); initial
  *     `memberUserIds` are seeded as members. Access is transport-agnostic —
  *     `requireMailboxAccess` never inspects `kind`.
  *   - The credentials live on ONE `externalMailAccounts` row (encrypted at rest,
- *     decrypted only by the mail-sync worker) 1:1 with the mailbox, carrying
- *     `scope='shared'`. That discriminator excludes the account from the per-user
- *     "one live personal external account" limit and from the personal-external
- *     surfaces (getForCurrentUser / disconnect / purge / the move flow). `userId`
- *     records the connecting admin (credential custodian + audit); the org owns it.
+ *     decrypted only by the mail-sync worker) 1:1 with the mailbox. The mailbox's
+ *     `scope='shared'` is what excludes the account from the per-user "one live
+ *     personal external account" limit and from the personal-external surfaces
+ *     (getForCurrentUser / disconnect / purge / the move flow; see
+ *     `personalAccount.ts`). `userId` records the connecting admin (credential
+ *     custodian + audit); the org owns it.
  *
  * Credential rotation / repair + hard purge for a shared inbox (issue #234):
  *   - The personal `updateCredentials` / `purge` in `accounts.ts` resolve
@@ -171,7 +172,7 @@ export const _connectSharedInternal = internalMutation({
 			organizationId: s.activeOrganizationId,
 			mailboxId,
 			address,
-			scope: 'shared',
+			legacyScope: 'shared',
 			auditPrefix: 'shared ',
 			fields: args,
 			now,

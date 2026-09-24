@@ -25,6 +25,7 @@ import { checkFromAlignment, emailDomain, normalizeEmail } from '@owlat/shared';
 import type { OutboundAlignmentState } from '@owlat/shared';
 import { outboundTransportFacts } from '../lib/outboundAlignment';
 import { memoizedEmailDomainVerification } from '../domains/domains';
+import { resolveMailboxTransport } from './outboundTransport';
 
 /**
  * Shared helper for v8 mutations/queries: read the allowed-from set
@@ -125,6 +126,9 @@ export interface SendAsIdentity {
  *  - `alignment`      — whether the ACTIVE transport signs/bounces this From-domain
  *    in a DMARC-aligned way (`aligned` / `misaligned` / `unknown`).
  *  - `alignmentReason`— plain-language guidance when not cleanly aligned.
+ * An identity whose mailbox sends through its own external provider is judged by
+ * that provider instead (`providerVerdict`): this instance neither signs nor
+ * bounces that mail, so its own domains and signing identities do not apply.
  */
 interface AnnotatedSendAsIdentity extends SendAsIdentity {
 	domainVerified: boolean;
@@ -235,8 +239,17 @@ export const listSendAsIdentities = publicQuery({
 		// so it's memoized per domain (the common case: many identities, one domain).
 		const facts = outboundTransportFacts();
 		const verifyDomain = memoizedEmailDomainVerification(ctx);
+		const ownProviderOf = memoizedOwnProvider(ctx);
 		return Promise.all(
 			identities.map(async (identity) => {
+				// An external mailbox ships through its own provider's SMTP
+				// (`outboundTransport.ts`). That provider authenticated the account,
+				// signs the message and takes its bounces, so this instance's verified
+				// domains and signing identities say nothing about it. Judged by them,
+				// every connected Gmail or Workspace address read "domain not verified,
+				// sending is turned off", when the send in fact goes through.
+				const provider = await ownProviderOf(identity.mailboxId);
+				if (provider) return { ...identity, ...providerVerdict(provider, identity.address) };
 				const verification = await verifyDomain(identity.address);
 				const alignment = checkFromAlignment(emailDomain(identity.address), facts);
 				return {
@@ -249,3 +262,69 @@ export const listSendAsIdentities = publicQuery({
 		);
 	},
 });
+
+/** A mailbox whose mail leaves through its own external provider. */
+interface OwnProvider {
+	/** The address the provider account signs in as. */
+	address: string;
+	/** Still connected: the worker has credentials to send with. */
+	isLive: boolean;
+}
+
+/**
+ * The provider behind a mailbox that sends through its own external SMTP, or
+ * null when this instance's transport carries its mail. Memoized per mailbox: a
+ * composer's identities usually share one or two.
+ */
+function memoizedOwnProvider(
+	ctx: QueryCtx
+): (mailboxId: Id<'mailboxes'>) => Promise<OwnProvider | null> {
+	const byMailbox = new Map<Id<'mailboxes'>, Promise<OwnProvider | null>>();
+	const resolve = async (mailboxId: Id<'mailboxes'>): Promise<OwnProvider | null> => {
+		const mailbox = await ctx.db.get(mailboxId);
+		if (!mailbox) return null;
+		const transport = await resolveMailboxTransport(ctx, mailbox);
+		if (transport.kind !== 'external') return null;
+		const account = await ctx.db.get(transport.externalAccountId);
+		const isLive =
+			!!account && account.status !== 'disconnected' && account.purgeStartedAt === undefined;
+		return { address: mailbox.address, isLive };
+	};
+	return (mailboxId) => {
+		let pending = byMailbox.get(mailboxId);
+		if (!pending) {
+			pending = resolve(mailboxId);
+			byMailbox.set(mailboxId, pending);
+		}
+		return pending;
+	};
+}
+
+/**
+ * How an identity sent through its mailbox's own provider reads in the picker.
+ * The account's own address on a live connection is the provider's to sign, so
+ * it reads clean. An alias may be refused or rewritten by a provider that does
+ * not know it, and a connection that is gone cannot send at all: both say so,
+ * without claiming a domain problem this instance never checked.
+ */
+function providerVerdict(
+	provider: OwnProvider,
+	address: string
+): { domainVerified: true; alignment: OutboundAlignmentState; alignmentReason: string | null } {
+	if (!provider.isLive) {
+		return {
+			domainVerified: true,
+			alignment: 'unknown',
+			alignmentReason:
+				'This mailbox is no longer connected, so mail from it can’t be sent until it is reconnected.',
+		};
+	}
+	if (address !== provider.address) {
+		return {
+			domainVerified: true,
+			alignment: 'unknown',
+			alignmentReason: `This address is sent through the provider of ${provider.address}, which may refuse or rewrite an address it doesn’t manage.`,
+		};
+	}
+	return { domainVerified: true, alignment: 'aligned', alignmentReason: null };
+}
