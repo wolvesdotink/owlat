@@ -24,6 +24,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
 import TeamInboxCard from '../TeamInboxCard.vue';
+import { formatResumeTime } from '~/composables/postbox/useMailMigration';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 
 type SharedInbox = FunctionReturnType<typeof api.mail.mailboxMembers.listShared>[number];
@@ -138,6 +139,24 @@ describe('TeamInboxCard', () => {
 		const summary = wrapper.find('[data-testid="team-inbox-import-summary"]');
 		expect(summary.exists()).toBe(true);
 		expect(summary.text()).toContain('History import in progress · 1,204 of 8,300');
+		expectFullyLocalized(wrapper);
+	});
+
+	it('tells the roster a paused import is waiting on the provider, and until when', () => {
+		const resumesAt = Date.now() + 6 * 60 * 60_000;
+		importStatus.value = {
+			status: 'importing',
+			messagesTotal: 8300,
+			messagesImported: 1204,
+			messagesIndexed: 0,
+			resumesAt,
+		} as NonNullable<Status>;
+		const wrapper = mountCard();
+
+		const summary = wrapper.find('[data-testid="team-inbox-import-summary"]');
+		expect(summary.text()).toContain(
+			`History import paused until ${formatResumeTime(resumesAt, 'en')} · provider's daily limit`
+		);
 		expectFullyLocalized(wrapper);
 	});
 

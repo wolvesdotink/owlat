@@ -21,7 +21,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
 import TeamInboxImportCard from '../TeamInboxImportCard.vue';
-import { useSharedMailMigration } from '~/composables/postbox/useMailMigration';
+import { formatResumeTime, useSharedMailMigration } from '~/composables/postbox/useMailMigration';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 
 type Status = FunctionReturnType<typeof api.mail.migrationShared.getStatusShared>;
@@ -178,6 +178,32 @@ describe('TeamInboxImportCard', () => {
 		expect(runs).toEqual([]);
 	});
 
+	it("waits out the provider's daily limit as a pause, not a failure", () => {
+		// #760: an import that spent its provider's daily budget stays importing
+		// with a resume time. It must read as a wait the worker ends by itself —
+		// no error, no retry button — with the bar and count still there.
+		const resumesAt = Date.now() + 6 * 60 * 60_000;
+		status.value = migrationRow({ resumesAt });
+		const wrapper = mountCard();
+
+		const paused = wrapper.find('[data-testid="team-inbox-import-paused"]');
+		expect(paused.exists()).toBe(true);
+		expect(paused.text()).toContain(`Paused until ${formatResumeTime(resumesAt, 'en')}`);
+		expect(wrapper.text()).toContain('1,204 of 8,300 messages imported');
+		expect(wrapper.text()).not.toContain('Bringing the existing mail in');
+		expect(wrapper.find('[data-testid="team-inbox-import-failed"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="team-inbox-import-retry"]').exists()).toBe(false);
+		expectFullyLocalized(wrapper);
+	});
+
+	it('reads as running again once the resume time has passed', () => {
+		status.value = migrationRow({ resumesAt: Date.now() - 60_000 });
+		const wrapper = mountCard();
+
+		expect(wrapper.find('[data-testid="team-inbox-import-paused"]').exists()).toBe(false);
+		expect(wrapper.text()).toContain('Bringing the existing mail in');
+	});
+
 	it('says nothing is counted yet rather than showing a stuck zero', () => {
 		status.value = migrationRow({ messagesTotal: 0, messagesImported: 0, importPercent: 0 });
 		const wrapper = mountCard();
@@ -271,6 +297,23 @@ describe('TeamInboxImportCard', () => {
 				args: { mailboxId: MAILBOX_ID, source: 'google', indexKnowledge: false },
 			},
 		]);
+	});
+
+	it("says in the reader's language why a throttled import gave up", () => {
+		status.value = migrationRow({
+			status: 'failed',
+			failureCode: 'throttle_exhausted',
+			failedAfterDays: 3,
+			lastError: 'Account exceeded command or bandwidth limits.',
+			messagesImported: 40,
+		});
+		const wrapper = mountCard();
+
+		const failed = wrapper.find('[data-testid="team-inbox-import-failed"]');
+		expect(failed.text()).toContain(
+			'The provider refused every download for 3 days in a row, so the import stopped where it got to. (Account exceeded command or bandwidth limits.)'
+		);
+		expectFullyLocalized(wrapper);
 	});
 
 	it('shows a failure with its reason, truncated, and a way to retry', async () => {

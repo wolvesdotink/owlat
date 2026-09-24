@@ -1,9 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ref } from 'vue';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { effectScope, nextTick, ref } from 'vue';
 import { api } from '@owlat/api';
 import { getFunctionName, type FunctionReturnType } from 'convex/server';
 import type { Id } from '@owlat/api/dataModel';
-import { deriveMigrationStep, useSharedMailMigration } from '../postbox/useMailMigration';
+import {
+	deriveMigrationStep,
+	describeMigrationFailure,
+	formatResumeTime,
+	pausedUntil,
+	trackPauseDeadline,
+	useSharedMailMigration,
+} from '../postbox/useMailMigration';
 import { createTestI18n } from '~/__tests__/i18n';
 
 describe('deriveMigrationStep', () => {
@@ -51,6 +58,122 @@ describe('deriveMigrationStep', () => {
 		expect(deriveMigrationStep(null, false, 'auth_error')).toBe('connect');
 		// A live migration's status still wins over the account status.
 		expect(deriveMigrationStep('importing', true, 'auth_error')).toBe('importing');
+	});
+});
+
+/**
+ * #760: an import whose provider spent its daily download budget is held at
+ * `importing` with a resume time, and must read as a wait with an end rather
+ * than as a stalled or failed import.
+ */
+describe('pausedUntil', () => {
+	const NOW = Date.UTC(2026, 8, 24, 14, 5);
+
+	it('is the resume time while an importing migration is waiting', () => {
+		expect(pausedUntil('importing', NOW + 60_000, NOW)).toBe(NOW + 60_000);
+	});
+
+	it('lifts once the resume time has passed, before the first batch lands', () => {
+		expect(pausedUntil('importing', NOW, NOW)).toBeNull();
+		expect(pausedUntil('importing', NOW - 1, NOW)).toBeNull();
+	});
+
+	it('is never paused without a resume time, or past the importing phase', () => {
+		expect(pausedUntil('importing', undefined, NOW)).toBeNull();
+		expect(pausedUntil('importing', null, NOW)).toBeNull();
+		expect(pausedUntil('failed', NOW + 60_000, NOW)).toBeNull();
+		expect(pausedUntil('cancelled', NOW + 60_000, NOW)).toBeNull();
+		expect(pausedUntil(null, NOW + 60_000, NOW)).toBeNull();
+	});
+});
+
+describe('formatResumeTime', () => {
+	it('names the day as well as the time, since the window often reopens tomorrow', () => {
+		const at = new Date(2026, 8, 25, 8, 30).getTime();
+		const expected = new Intl.DateTimeFormat('en', {
+			weekday: 'short',
+			hour: 'numeric',
+			minute: '2-digit',
+		}).format(at);
+		expect(formatResumeTime(at, 'en')).toBe(expected);
+		expect(formatResumeTime(at, 'en')).toContain('Fri');
+		expect(formatResumeTime(at, 'de')).toContain('Fr');
+	});
+});
+
+describe('trackPauseDeadline', () => {
+	const START = Date.UTC(2026, 8, 24, 14, 0);
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.setSystemTime(START);
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('runs no timer while nothing is paused', () => {
+		const scope = effectScope();
+		scope.run(() => trackPauseDeadline(() => null, ref(0)));
+		expect(vi.getTimerCount()).toBe(0);
+		scope.stop();
+	});
+
+	it('wakes once, when the pause lapses, and then stops', async () => {
+		const deadline = ref<number | null>(START + 6 * 60 * 60_000);
+		const now = ref(0);
+		const scope = effectScope();
+		scope.run(() => trackPauseDeadline(() => deadline.value, now));
+		expect(now.value).toBe(START);
+		expect(vi.getTimerCount()).toBe(1);
+
+		vi.advanceTimersByTime(6 * 60 * 60_000 - 1);
+		expect(now.value).toBe(START);
+		vi.advanceTimersByTime(1);
+		expect(now.value).toBe(START + 6 * 60 * 60_000);
+		expect(vi.getTimerCount()).toBe(0);
+
+		// A new pause arms a fresh timer; clearing it disarms.
+		deadline.value = Date.now() + 60_000;
+		await nextTick();
+		expect(vi.getTimerCount()).toBe(1);
+		deadline.value = null;
+		await nextTick();
+		expect(vi.getTimerCount()).toBe(0);
+		scope.stop();
+	});
+
+	it('drops its timer with the scope', () => {
+		const scope = effectScope();
+		scope.run(() => trackPauseDeadline(() => START + 60_000, ref(0)));
+		expect(vi.getTimerCount()).toBe(1);
+		scope.stop();
+		expect(vi.getTimerCount()).toBe(0);
+	});
+});
+
+describe('describeMigrationFailure', () => {
+	const sentence = (days: number) => `refused for ${days} days`;
+
+	it('phrases a throttle-exhausted failure itself, with the provider reason after it', () => {
+		expect(
+			describeMigrationFailure(
+				{ failureCode: 'throttle_exhausted', failedAfterDays: 3, lastError: 'OVERQUOTA' },
+				sentence
+			)
+		).toBe('refused for 3 days (OVERQUOTA)');
+		expect(
+			describeMigrationFailure({ failureCode: 'throttle_exhausted', failedAfterDays: 3 }, sentence)
+		).toBe('refused for 3 days');
+	});
+
+	it('shows any other failure as the backend reported it', () => {
+		expect(describeMigrationFailure({ lastError: 'Invalid messageset' }, sentence)).toBe(
+			'Invalid messageset'
+		);
+		expect(describeMigrationFailure({}, sentence)).toBeNull();
+		expect(describeMigrationFailure(null, sentence)).toBeNull();
 	});
 });
 

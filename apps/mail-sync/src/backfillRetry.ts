@@ -34,6 +34,15 @@
  * duration, not a defect, and hammering a throttled account with fresh FETCHes
  * is what keeps the throttle alive.
  *
+ * And a throttled walk that exhausts that ladder is not failed either. The
+ * ladder spans a few hours; a provider's bandwidth cap is measured over a
+ * rolling day. A mailbox larger than one day's budget used to exhaust the
+ * ladder every single day and land on a red "import stopped" card the user had
+ * to notice and restart, once per day of mail. A throttled give-up is now a
+ * PAUSE: the decision carries a `resumeAt` a full window after the throttle
+ * began, the caller records it on the migration, and the walk picks itself up
+ * when it passes. `failed` stays for the walks that will not heal by waiting.
+ *
  * Pure (no ImapFlow / Convex imports) so the policy is unit-testable on its own;
  * `connection.ts` holds the state and applies the decisions.
  */
@@ -61,6 +70,14 @@ const THROTTLED_LADDER_MS = [
 	2 * 60 * 60_000,
 	2 * 60 * 60_000,
 ];
+
+/**
+ * How long a throttled import waits once the ladder above is spent. Gmail's
+ * IMAP bandwidth cap is a rolling 24-hour window and reports no reset time, so
+ * a full window measured from the first throttled run is the soonest the
+ * budget is certain to be back.
+ */
+export const THROTTLE_PAUSE_MS = 24 * 60 * 60_000;
 
 /**
  * After a run that DID advance the walk. Long enough that a provider dropping
@@ -110,10 +127,14 @@ export interface BackfillRetryState {
 	strikes: number;
 	/** Epoch ms before which no new run may start. */
 	retryNotBefore: number;
+	/** When the provider first throttled the current streak (null when it has
+	 * not). A pause is measured from here, because that is when the budget ran
+	 * out — not from the end of the ladder, hours later. */
+	throttledSince: number | null;
 }
 
 export function initialBackfillRetryState(): BackfillRetryState {
-	return { migrationId: null, strikes: 0, retryNotBefore: 0 };
+	return { migrationId: null, strikes: 0, retryNotBefore: 0, throttledSince: null };
 }
 
 /**
@@ -124,7 +145,7 @@ export function initialBackfillRetryState(): BackfillRetryState {
  */
 export function forMigration(state: BackfillRetryState, migrationId: string): BackfillRetryState {
 	if (state.migrationId === migrationId) return state;
-	return { migrationId, strikes: 0, retryNotBefore: 0 };
+	return { migrationId, strikes: 0, retryNotBefore: 0, throttledSince: null };
 }
 
 /** Whether a run may start now. */
@@ -146,10 +167,11 @@ export interface BackfillRetryDecision {
 	state: BackfillRetryState;
 	/** Give up: transition the migration to `failed`. */
 	shouldMarkFailed: boolean;
-	/** The reason to record when giving up — provider throttling explains itself
-	 * far better than the `Connection not available` the IMAP client throws when
-	 * the server hangs up on it. */
-	failureMessage?: string;
+	/** The provider's budget is spent: hold the migration until `resumeAt` rather
+	 * than failing it. Never set together with `shouldMarkFailed`. */
+	shouldPause: boolean;
+	/** Epoch ms the paused walk picks up again (set when `shouldPause`). */
+	resumeAt?: number;
 }
 
 export function nextBackfillRetryState(
@@ -159,8 +181,9 @@ export function nextBackfillRetryState(
 ): BackfillRetryDecision {
 	if (outcome.kind === 'success') {
 		return {
-			state: { ...state, strikes: 0, retryNotBefore: 0 },
+			state: { ...state, strikes: 0, retryNotBefore: 0, throttledSince: null },
 			shouldMarkFailed: false,
+			shouldPause: false,
 		};
 	}
 
@@ -169,7 +192,29 @@ export function nextBackfillRetryState(
 	// resumes further along and the import is converging, however many times the
 	// connection drops on the way.
 	const strikes = outcome.madeProgress ? 0 : state.strikes + 1;
-	const shouldMarkFailed = strikes >= MAX_BACKFILL_STRIKES;
+	// A pause is measured from when the budget ran out. A run that moved the
+	// walk and was then cut off is that moment, so it restarts the clock; a
+	// zero-progress throttle keeps the clock its streak already started.
+	let throttledSince = outcome.madeProgress ? null : state.throttledSince;
+	if (throttled) throttledSince ??= now;
+	const exhausted = strikes >= MAX_BACKFILL_STRIKES;
+
+	if (exhausted && throttled) {
+		// The ladder is spent against a provider that is still saying "later".
+		// Waiting out its window is the fix, so wait — with a fresh ladder for the
+		// run that follows.
+		const resumeAt = Math.max(
+			(throttledSince ?? now) + THROTTLE_PAUSE_MS,
+			now + ladderDelay(THROTTLED_LADDER_MS, THROTTLED_LADDER_MS.length)
+		);
+		return {
+			state: { ...state, strikes: 0, retryNotBefore: resumeAt, throttledSince: null },
+			shouldMarkFailed: false,
+			shouldPause: true,
+			resumeAt,
+		};
+	}
+
 	const delay = throttled
 		? ladderDelay(THROTTLED_LADDER_MS, Math.max(strikes, 1))
 		: outcome.madeProgress
@@ -177,14 +222,16 @@ export function nextBackfillRetryState(
 			: ladderDelay(RETRY_LADDER_MS, strikes);
 
 	return {
-		state: { ...state, strikes, retryNotBefore: now + delay },
-		shouldMarkFailed,
-		...(shouldMarkFailed ? { failureMessage: describeFailure(outcome.error, throttled) } : {}),
+		state: { ...state, strikes, retryNotBefore: now + delay, throttledSince },
+		shouldMarkFailed: exhausted,
+		shouldPause: false,
 	};
 }
 
-function describeFailure(error: unknown, throttled: boolean): string {
+/** The reason recorded alongside a pause — the provider's own words, for the
+ * audit log. */
+export function describeThrottle(error: unknown): string {
 	const message = error instanceof Error ? error.message : String(error);
-	if (!throttled) return message;
-	return `Your mail provider is rate-limiting this mailbox (${message}). The import stopped where it got to — start it again later and it resumes from there.`;
+	const reason = (error as { reason?: unknown } | null)?.reason;
+	return typeof reason === 'string' && reason !== message ? `${message}: ${reason}` : message;
 }

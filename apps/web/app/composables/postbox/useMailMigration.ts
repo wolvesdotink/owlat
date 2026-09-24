@@ -1,6 +1,6 @@
 import { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
-import type { MaybeRefOrGetter } from 'vue';
+import type { ComputedRef, MaybeRefOrGetter, Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 
 /**
@@ -57,6 +57,114 @@ export function deriveMigrationStep(
 	}
 }
 
+/**
+ * When a throttle-paused import picks up again, or `null` when it is not
+ * paused. The backend holds an import whose provider ran out of its daily
+ * download budget at `importing` with a `resumesAt` (#760) — a wait, not a
+ * failure — and clears it once the resumed walk records a batch. A resume time
+ * already behind `now` means the walk is due to start again, so it no longer
+ * reads as paused even before that first batch lands.
+ */
+export function pausedUntil(
+	status: MigrationStatus | null | undefined,
+	resumesAt: number | null | undefined,
+	now: number
+): number | null {
+	if (status !== 'importing' || resumesAt === undefined || resumesAt === null) return null;
+	return resumesAt > now ? resumesAt : null;
+}
+
+/**
+ * The resume time as the pause copy shows it: a weekday and a clock time,
+ * because a daily window reopens as often tomorrow as today.
+ */
+export function formatResumeTime(resumesAt: number, locale: string): string {
+	return new Intl.DateTimeFormat(locale, {
+		weekday: 'short',
+		hour: 'numeric',
+		minute: '2-digit',
+	}).format(new Date(resumesAt));
+}
+
+/**
+ * What a failed import's card says went wrong. A failure the backend marks
+ * with a code is phrased here, in the user's language, with the provider's own
+ * words (`lastError`) after it; any other failure shows `lastError` as-is.
+ */
+export function describeMigrationFailure(
+	migration: {
+		failureCode?: 'throttle_exhausted';
+		failedAfterDays?: number;
+		lastError?: string;
+	} | null,
+	throttleExhausted: (days: number) => string
+): string | null {
+	if (!migration) return null;
+	if (migration.failureCode === 'throttle_exhausted' && migration.failedAfterDays !== undefined) {
+		const sentence = throttleExhausted(migration.failedAfterDays);
+		return migration.lastError ? `${sentence} (${migration.lastError})` : sentence;
+	}
+	return migration.lastError ?? null;
+}
+
+/**
+ * Keeps `now` fresh for exactly as long as a pause is pending: one timer, armed
+ * for the moment the pause lapses, and none at all otherwise — a roster of team
+ * inboxes, almost none of them paused, keeps no timers running. Must run inside
+ * an effect scope; the timer goes with it.
+ */
+export function trackPauseDeadline(deadline: () => number | null, now: Ref<number>): void {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	function disarm() {
+		if (timer !== undefined) clearTimeout(timer);
+		timer = undefined;
+	}
+	function arm(target: number) {
+		timer = setTimeout(() => {
+			now.value = Date.now();
+			// A timer can fire a little early; re-arm rather than let the pause
+			// lift while the label still says it is pending.
+			if (now.value < target) arm(target);
+			else timer = undefined;
+		}, target - Date.now());
+	}
+	watch(
+		deadline,
+		(target) => {
+			disarm();
+			now.value = Date.now();
+			if (target !== null && target > now.value) arm(target);
+		},
+		{ immediate: true }
+	);
+	onScopeDispose(disarm);
+}
+
+/**
+ * The pause half of a migration's progress, shared by the personal wizard and
+ * the team-inbox card so the two can never disagree about it.
+ */
+export function useImportPause(
+	migration: ComputedRef<{ status: MigrationStatus; resumesAt?: number } | null>
+) {
+	const { locale } = useI18n();
+	const now = ref(Date.now());
+	if (import.meta.client) {
+		trackPauseDeadline(
+			() => (migration.value?.status === 'importing' ? (migration.value.resumesAt ?? null) : null),
+			now
+		);
+	}
+	const resumesAt = computed(() =>
+		pausedUntil(migration.value?.status, migration.value?.resumesAt, now.value)
+	);
+	const isPaused = computed(() => resumesAt.value !== null);
+	const resumesAtLabel = computed(() =>
+		resumesAt.value === null ? '' : formatResumeTime(resumesAt.value, locale.value)
+	);
+	return { isPaused, resumesAtLabel };
+}
+
 export function useMailMigration() {
 	const { t } = useI18n();
 	const { data: statusData } = useConvexQuery(api.mail.migration.getStatus, () => ({}));
@@ -91,6 +199,12 @@ export function useMailMigration() {
 	const isDiscovering = computed(
 		() => step.value === 'importing' && (migration.value?.messagesTotal ?? 0) === 0
 	);
+	const { isPaused, resumesAtLabel } = useImportPause(migration);
+	const failureMessage = computed(() =>
+		describeMigrationFailure(migration.value, (days) =>
+			t('dashboard.postbox.migrate.throttleExhausted', { days })
+		)
+	);
 
 	async function start(source: 'google' | 'imap' = 'google') {
 		return await startOp.run({ source });
@@ -108,6 +222,9 @@ export function useMailMigration() {
 		indexPercent,
 		isAiIndexing,
 		isDiscovering,
+		isPaused,
+		resumesAtLabel,
+		failureMessage,
 		start,
 		cancel,
 		startBusy: startOp.isLoading,
@@ -181,6 +298,12 @@ export function useSharedMailMigration(mailboxId: MaybeRefOrGetter<Id<'mailboxes
 	const isDiscovering = computed(
 		() => step.value === 'importing' && (migration.value?.messagesTotal ?? 0) === 0
 	);
+	const { isPaused, resumesAtLabel } = useImportPause(migration);
+	const failureMessage = computed(() =>
+		describeMigrationFailure(migration.value, (days) =>
+			t('dashboard.admin.team.inboxes.import.throttleExhausted', { days })
+		)
+	);
 
 	async function start(options?: { indexKnowledge?: boolean }) {
 		return await startOp.run({
@@ -203,6 +326,9 @@ export function useSharedMailMigration(mailboxId: MaybeRefOrGetter<Id<'mailboxes
 		indexPercent,
 		isAiIndexing,
 		isDiscovering,
+		isPaused,
+		resumesAtLabel,
+		failureMessage,
 		start,
 		cancel,
 		startBusy: startOp.isLoading,

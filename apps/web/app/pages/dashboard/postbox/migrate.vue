@@ -39,6 +39,9 @@ const {
 	indexPercent,
 	isAiIndexing,
 	isDiscovering,
+	isPaused,
+	resumesAtLabel,
+	failureMessage,
 	start,
 	cancel,
 	startBusy,
@@ -408,7 +411,21 @@ const steps = computed(() =>
 			<!-- ───────────────────────── Importing ───────────────────────── -->
 			<section v-else-if="step === 'importing'" class="space-y-5">
 				<UiCard padding="lg">
-					<div class="flex items-center gap-3">
+					<!-- Paused for the provider's daily download budget (#760): the same
+					     card and bar, but saying when it picks up again — the worker
+					     resumes it unaided, so there is nothing to press. -->
+					<div v-if="isPaused" data-testid="migrate-paused" class="flex items-center gap-3">
+						<UiIconBox icon="lucide:clock" size="md" variant="brand" rounded="xl" />
+						<div>
+							<h2 class="font-semibold">
+								{{ t('dashboard.postbox.migrate.pausedTitle', { when: resumesAtLabel }) }}
+							</h2>
+							<p class="text-sm text-text-secondary">
+								{{ t('dashboard.postbox.migrate.pausedBody') }}
+							</p>
+						</div>
+					</div>
+					<div v-else class="flex items-center gap-3">
 						<UiIconBox icon="lucide:download-cloud" size="md" variant="brand" rounded="xl" />
 						<div>
 							<h2 class="font-semibold">
@@ -638,7 +655,7 @@ const steps = computed(() =>
 						<div>
 							<h2 class="font-semibold">{{ t('dashboard.postbox.migrate.failedTitle') }}</h2>
 							<p class="text-sm text-text-secondary mt-0.5">
-								{{ migration?.lastError ?? t('dashboard.postbox.migrate.failedFallbackError') }}
+								{{ failureMessage ?? t('dashboard.postbox.migrate.failedFallbackError') }}
 							</p>
 							<p class="text-sm text-text-secondary mt-1">
 								{{ t('dashboard.postbox.migrate.failedBody') }}

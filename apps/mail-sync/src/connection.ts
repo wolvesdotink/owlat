@@ -31,6 +31,7 @@ import {
 } from './backfill.js';
 import {
 	canStartBackfill,
+	describeThrottle,
 	forMigration,
 	initialBackfillRetryState,
 	nextBackfillRetryState,
@@ -499,6 +500,9 @@ export class AccountConnection {
 		// provider that drops us repeatedly burns the whole strike budget in
 		// seconds and fails an import that was minutes from finishing.
 		if (!canStartBackfill(this.backfillRetry, Date.now())) return;
+		// A pause the provider's daily budget forced. It lives on the migration,
+		// not only in this process, so a restarted worker waits it out too.
+		if (work.resumesAt !== undefined && Date.now() < work.resumesAt) return;
 
 		this.backfillRunning = true;
 		this.backfillBatchesThisRun = 0;
@@ -556,12 +560,14 @@ export class AccountConnection {
 					},
 					'backfill failed'
 				);
+				if (decision.shouldPause && decision.resumeAt !== undefined) {
+					await this.pauseThrottledImport(migrationId, decision.resumeAt, err);
+				}
 				// Only a run that stored nothing accrues a strike, and the retries
 				// are paced, so this is reached after a sustained failure rather
 				// than after a handful of reconnects.
 				if (decision.shouldMarkFailed) {
-					const message =
-						decision.failureMessage ?? (err instanceof Error ? err.message : String(err));
+					const message = err instanceof Error ? err.message : String(err);
 					try {
 						await this.convex.mutation(
 							fn.markImportFailed as never,
@@ -585,6 +591,47 @@ export class AccountConnection {
 		} finally {
 			this.backfillRunning = false;
 			await this.resumeInboxIdle();
+		}
+	}
+
+	/**
+	 * The provider's budget is spent and the throttled ladder with it: record a
+	 * pause on the migration so the user sees "resuming at …" instead of a
+	 * failure, and the walk picks itself up once the window has reset. This
+	 * process already holds off until `resumeAt` (the retry state), so a failed
+	 * write only loses the label, never the wait.
+	 */
+	private async pauseThrottledImport(
+		migrationId: string,
+		resumeAt: number,
+		err: unknown
+	): Promise<void> {
+		try {
+			const result = (await this.convex.mutation(
+				fn.pauseImportForThrottle as never,
+				{
+					migrationId,
+					resumeAt,
+					reason: describeThrottle(err).slice(0, 500),
+				} as never
+			)) as { outcome: 'paused' | 'failed' | 'ignored' } | null;
+			const outcome = result?.outcome;
+			const context = { accountId: this.account.accountId, migrationId, outcome };
+			if (outcome === 'paused') {
+				logger.warn(
+					{ ...context, resumeAt: new Date(resumeAt).toISOString() },
+					'provider budget spent; backfill paused until it resets'
+				);
+			} else if (outcome === 'failed') {
+				logger.warn(context, 'throttle pause cap reached; migration failed');
+			} else {
+				logger.info(context, 'throttle pause ignored; migration no longer importing');
+			}
+		} catch (pauseErr) {
+			logger.warn(
+				{ accountId: this.account.accountId, err: pauseErr },
+				'pauseImportForThrottle failed'
+			);
 		}
 	}
 

@@ -107,6 +107,16 @@ export async function latestMigrationForAccount(
 		importCompletedAt: migration.importCompletedAt,
 		completedAt: migration.completedAt,
 		lastError: migration.lastError,
+		// A known failure the web phrases itself; `lastError` is then only the
+		// provider's reason. `failedAfterDays` feeds the throttle sentence.
+		failureCode: migration.status === 'failed' ? migration.failureCode : undefined,
+		failedAfterDays:
+			migration.status === 'failed' && migration.failureCode === 'throttle_exhausted'
+				? migration.throttlePauses
+				: undefined,
+		// Set while an import is waiting out its provider's daily budget; the
+		// wizard renders a wait, not a failure. Meaningless past `importing`.
+		resumesAt: migration.status === 'importing' ? migration.resumesAt : undefined,
 	};
 }
 
