@@ -74,7 +74,10 @@ async function eraseInboundMessageDescendants(
 
 /**
  * Threads with the contact go with every message in them, including
- * organization replies that quote the person.
+ * organization replies that quote the person, and with the team's follow-ups
+ * written to them. A follow-up still inside its undo window has its dispatch
+ * cancelled; one already handed to a Send finds no row when that Send lands
+ * (`inbox/followUps.ts completeSend` returns on a missing follow-up).
  */
 export const eraseConversationThreads: PhaseRunner = (phase) => {
 	const { ctx, contactId, budget } = phase;
@@ -96,6 +99,21 @@ export const eraseConversationThreads: PhaseRunner = (phase) => {
 				(message) => deleteMessageRow(phase, message)
 			);
 			if (!messagesGone) return false;
+			const followUpsGone = await drainEach(
+				budget,
+				(n) =>
+					ctx.db
+						.query('inboxFollowUps')
+						.withIndex('by_thread', (q) => q.eq('threadId', thread._id))
+						.take(n),
+				async (followUp) => {
+					if (followUp.status === 'scheduled' && followUp.scheduledFnId) {
+						await ctx.scheduler.cancel(followUp.scheduledFnId);
+					}
+					await ctx.db.delete(followUp._id);
+				}
+			);
+			if (!followUpsGone) return false;
 			await ctx.db.delete(thread._id);
 			return true;
 		}

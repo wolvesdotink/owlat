@@ -247,6 +247,13 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	},
 	{
 		parent: 'conversationThreads',
+		table: 'inboxFollowUps',
+		field: 'threadId',
+		action: 'delete',
+		why: 'A follow-up is the team writing to the person on their thread; it goes with the thread like the replies in it. A pending one has its dispatch cancelled.',
+	},
+	{
+		parent: 'conversationThreads',
 		table: 'knowledgeEntries',
 		field: 'threadId',
 		action: 'retain',
@@ -326,10 +333,26 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	},
 	{
 		parent: 'inboundMessages',
+		table: 'inboxFollowUps',
+		field: 'inReplyToMessageId',
+		action: 'retain',
+		why: 'Governed by the follow-up’s threadId: the erased person’s threads take their follow-ups with them. A pending follow-up whose message is gone fails at dispatch instead of sending.',
+	},
+	{
+		parent: 'inboundMessages',
 		table: 'codeWorkTasks',
 		field: 'inboundMessageId',
 		action: 'retain',
 		why: 'An organization work item written by the team; the optional source pointer is not the person’s data.',
+	},
+
+	// ── inboxFollowUps ──
+	{
+		parent: 'inboxFollowUps',
+		table: 'transactionalSends',
+		field: 'followUpId',
+		action: 'retain',
+		why: 'Governed by the send’s own contactId (scrubbed above). When the send lands, the follow-up lifecycle finds no row and does nothing.',
 	},
 
 	// ── knowledgeEntries (deleted when the contact was the only subject) ──
