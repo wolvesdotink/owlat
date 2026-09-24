@@ -163,3 +163,41 @@ describe('body deadline keeps the no-replay rule for POST', () => {
 		expect(spy).toHaveBeenCalledTimes(2);
 	});
 });
+
+describe('body deadline releases the connection', () => {
+	it('cancels the body stream when the deadline cuts the read off', async () => {
+		const cancel = vi.fn();
+		vi.spyOn(globalThis, 'fetch').mockImplementation(
+			async () =>
+				new Response(new ReadableStream<Uint8Array>({ cancel }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				})
+		);
+
+		await expect(client().get('/test')).rejects.toMatchObject({ code: 'timeout' });
+		// A runtime that does not tear the stream down on abort would otherwise
+		// keep the connection open for a body nobody reads.
+		await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+	});
+
+	it('does not cancel a body that arrived in time', async () => {
+		const cancel = vi.fn();
+		vi.spyOn(globalThis, 'fetch').mockImplementation(
+			async () =>
+				new Response(
+					new ReadableStream<Uint8Array>({
+						start(controller) {
+							controller.enqueue(new TextEncoder().encode(OK_BODY));
+							controller.close();
+						},
+						cancel,
+					}),
+					{ status: 200, headers: { 'Content-Type': 'application/json' } }
+				)
+		);
+
+		await expect(client().get('/test')).resolves.toMatchObject({ data: { id: 'x' } });
+		expect(cancel).not.toHaveBeenCalled();
+	});
+});

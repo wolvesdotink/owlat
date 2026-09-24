@@ -118,8 +118,54 @@ function isRetryable(method: HttpMethod, status: number): boolean {
  * implementations error the body stream when the request signal aborts, but
  * not every runtime (or polyfill, or mocked stream) does, so the race is made
  * explicit rather than trusted.
+ *
+ * The body is read through a reader this function owns, so a read cut off by
+ * the deadline can also cancel the stream. Rejecting alone would leave a
+ * runtime that ignores the abort holding the connection open for a body
+ * nobody will read. (`response.text()` locks the stream, and a locked stream
+ * cannot be cancelled from outside.)
  */
 function readBodyBeforeDeadline(response: Response, signal: AbortSignal): Promise<string> {
+	const body = response.body;
+	if (!body) return raceText(response, signal);
+	if (signal.aborted) {
+		void body.cancel().catch(() => {});
+		return Promise.reject(new BodyDeadlineError());
+	}
+
+	const reader = body.getReader();
+	const decoder = new TextDecoder();
+	let text = '';
+	return new Promise<string>((resolve, reject) => {
+		const onAbort = () => {
+			reject(new BodyDeadlineError());
+			void reader.cancel().catch(() => {});
+		};
+		signal.addEventListener('abort', onAbort, { once: true });
+		const done = () => signal.removeEventListener('abort', onAbort);
+		const pump = (): void => {
+			reader.read().then(
+				({ done: finished, value }) => {
+					if (finished) {
+						done();
+						resolve(text + decoder.decode());
+						return;
+					}
+					text += decoder.decode(value, { stream: true });
+					pump();
+				},
+				(error: unknown) => {
+					done();
+					reject(error);
+				}
+			);
+		};
+		pump();
+	});
+}
+
+/** For a response object without a body stream: race `text()` against the deadline. */
+function raceText(response: Response, signal: AbortSignal): Promise<string> {
 	return new Promise<string>((resolve, reject) => {
 		const onAbort = () => reject(new BodyDeadlineError());
 		if (signal.aborted) {
@@ -234,6 +280,12 @@ export function createHttpClient(
 				// methods. A POST that timed out may have been processed
 				// server-side (a stalled body means it certainly reached the
 				// server); replaying it would duplicate the send.
+				//
+				// The status is not consulted here, on purpose: a GET whose
+				// headers said 4xx but whose body then stalled is retried as a
+				// timeout, although a 4xx with a body would not be. Without the
+				// body there is no error envelope to act on, and repeating an
+				// idempotent GET is harmless.
 				if (attempt < maxRetries && IDEMPOTENT_METHODS.has(options.method)) {
 					await sleep(initialDelayMs * Math.pow(backoffMultiplier, attempt));
 					continue;
