@@ -38,6 +38,10 @@
 			"types": "./src/inboundRetention.ts",
 			"import": "./src/inboundRetention.ts"
 		},
+		"./workspaceLogo": {
+			"types": "./src/workspaceLogo.ts",
+			"import": "./src/workspaceLogo.ts"
+		},
 		"./featureFlags": {
 			"types": "./src/featureFlags.ts",
 			"import": "./src/featureFlags.ts"

@@ -31,6 +31,7 @@ import { contactsStep } from './contacts';
 import { domainsStep } from './domains';
 import { makeSweepStep } from './sweep';
 import { storageUploadsStep } from './storageUploads';
+import { instanceSettingsStep } from './instanceSettings';
 
 /**
  * Ordered cascade: children before parents, storage-bearing tables
@@ -383,7 +384,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	onboardingProgress: makeSweepStep('onboardingProgress'),
 	invitationResends: makeSweepStep('invitationResends'),
 	auditLogs: makeSweepStep('auditLogs'),
-	instanceSettings: makeSweepStep('instanceSettings'),
+	instanceSettings: instanceSettingsStep,
 	threadPresence: makeSweepStep('threadPresence'),
 	threadReads: makeSweepStep('threadReads'),
 	inboxFollowUps: makeSweepStep('inboxFollowUps'),

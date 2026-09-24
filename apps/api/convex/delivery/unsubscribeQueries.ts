@@ -5,6 +5,7 @@ import { publicQuery } from '../lib/authedFunctions';
 import type { Id } from '../_generated/dataModel';
 import { normalizeEmail } from '../lib/inputGuards';
 import type { UnsubscribeOutcome } from '../topics/subscription';
+import { resolveWorkspaceLogo, type WorkspaceLogo } from '../workspaces/branding';
 
 type ProcessUnsubscribeResult =
 	| { success: false; reason: 'not_found' }
@@ -19,18 +20,25 @@ type ProcessUnsubscribeResult =
  *
  * Token-independent on purpose: the error states are exactly the ones where no
  * token resolves. It returns only what every campaign already carries in its
- * From header — the instance's default sender name and address.
+ * From header — the instance's default sender name and address — plus the
+ * workspace logo, which exists to be shown on exactly these pages (#810).
+ *
+ * The sign-in and invitation pages read it too: they are the same kind of
+ * page, reached without an account.
  */
 // public: recipient pages name the sender before (or without) a valid token; returns only the public From identity
-// authz: no session on recipient pages; the From name and address are public by construction.
-// token-safe: projects instanceSettings to the sender name and address only.
+// authz: no session on recipient pages; the From name and address and the logo are public by construction.
+// token-safe: projects instanceSettings to the sender name, address and logo URLs only.
 export const getRecipientSender = publicQuery({
 	args: {},
-	handler: async (ctx): Promise<{ name: string | null; contactEmail: string | null }> => {
+	handler: async (
+		ctx
+	): Promise<{ name: string | null; contactEmail: string | null } & WorkspaceLogo> => {
 		const settings = await ctx.db.query('instanceSettings').first();
 		return {
 			name: settings?.defaultFromName?.trim() || null,
 			contactEmail: settings?.defaultFromEmail?.trim() || null,
+			...(await resolveWorkspaceLogo(ctx, settings)),
 		};
 	},
 });

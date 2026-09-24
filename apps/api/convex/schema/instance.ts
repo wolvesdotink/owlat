@@ -52,6 +52,13 @@ export const instanceTables = {
 				baseWidth: v.optional(v.number()), // Base content width in px (default: 600)
 			})
 		),
+		// Workspace logo, shown on the public pages (sign-in, unsubscribe,
+		// preferences, invitations) instead of the Owlat mark. Written only by
+		// `workspaces/branding.ts`. The dark variant is optional: without it the
+		// light logo is drawn on a light plate in dark mode, so a logo made for
+		// white backgrounds never disappears.
+		logoStorageId: v.optional(v.id('_storage')),
+		logoDarkStorageId: v.optional(v.id('_storage')),
 		// Durable one-shot latch for `POST /seed/admin`. Set the moment the admin
 		// seed succeeds and checked (in addition to the "any user exists?" probe)
 		// before seeding is allowed again. The user-existence check alone re-arms

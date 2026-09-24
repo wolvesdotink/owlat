@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import WorkspaceLogo from '~/components/workspace/WorkspaceLogo.vue';
+
 /**
  * Shared hero shell for the auth screens: the marketing site's background
  * field (hairline grid + grain + aurora) behind a hairline card, with the
@@ -10,6 +12,10 @@ defineProps<{
 	/** Optional line under the heading. */
 	subtitle?: string;
 }>();
+
+// The workspace's own logo takes the Owlat mark's place when an admin has
+// uploaded one (#810): these pages are the workspace's door, not Owlat's.
+const { logo } = useRecipientSender();
 </script>
 
 <template>
@@ -21,7 +27,8 @@ defineProps<{
 
 		<div class="relative w-full max-w-md">
 			<div class="lp-hero-in mb-8 text-center" style="--i: 0">
-				<img src="/owlat.svg" alt="" class="mx-auto mb-5 size-12 dark:invert" />
+				<WorkspaceLogo v-if="logo" :url="logo.url" :dark-url="logo.darkUrl" class="mb-5" />
+				<img v-else src="/owlat.svg" alt="" class="mx-auto mb-5 size-12 dark:invert" />
 				<h1 class="text-3xl font-medium tracking-[-0.02em] text-text-primary">
 					<slot name="title" />
 				</h1>

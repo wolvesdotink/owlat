@@ -4,7 +4,8 @@
  * `defaultFromName`, `defaultFromEmail`, `isMigrationMode`,
  * `isInboundTlsRequired`, `updatedAt`). Sibling of
  * **Feature flags (module)** (which owns the `featureFlags` map),
- * **Abuse status (module)** (which owns the abuse-status columns), and
+ * **Abuse status (module)** (which owns the abuse-status columns),
+ * **Workspace branding (module)** (`branding.ts`, which owns the logo columns), and
  * the **Organization deletion (module)** walker scheduled by `remove`.
  *
  * Four entry points:

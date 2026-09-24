@@ -3,7 +3,8 @@
  * unsubscribing from a newsletter has never heard of Owlat, so the page names
  * the sender, and when the link is broken it offers the sender's address as
  * the other way to opt out. Token-independent, so it answers without a session
- * and without a valid token — and it returns nothing beyond the From identity.
+ * and without a valid token — and it returns nothing beyond the From identity
+ * and the workspace logo (#810).
  */
 import { convexTest } from 'convex-test';
 import { describe, expect, it } from 'vitest';
@@ -24,13 +25,18 @@ describe('delivery.unsubscribeQueries.getRecipientSender', () => {
 		});
 
 		const sender = await t.query(api.delivery.unsubscribeQueries.getRecipientSender, {});
-		expect(sender).toEqual({ name: 'Northwind Studio', contactEmail: 'hello@northwind.example' });
+		expect(sender).toEqual({
+			name: 'Northwind Studio',
+			contactEmail: 'hello@northwind.example',
+			logoUrl: null,
+			logoDarkUrl: null,
+		});
 	});
 
 	it('answers nulls rather than a placeholder when nothing is configured', async () => {
 		const t = convexTest(schema, modules);
 		const sender = await t.query(api.delivery.unsubscribeQueries.getRecipientSender, {});
-		expect(sender).toEqual({ name: null, contactEmail: null });
+		expect(sender).toEqual({ name: null, contactEmail: null, logoUrl: null, logoDarkUrl: null });
 	});
 
 	it('treats a blank name or address as unset', async () => {
@@ -43,6 +49,6 @@ describe('delivery.unsubscribeQueries.getRecipientSender', () => {
 			});
 		});
 		const sender = await t.query(api.delivery.unsubscribeQueries.getRecipientSender, {});
-		expect(sender).toEqual({ name: null, contactEmail: null });
+		expect(sender).toEqual({ name: null, contactEmail: null, logoUrl: null, logoDarkUrl: null });
 	});
 });

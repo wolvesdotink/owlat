@@ -13,7 +13,7 @@ definePageMeta({
 });
 
 const route = useRoute();
-const { senderName, contactEmail } = useRecipientSender();
+const { senderName, contactEmail, logo } = useRecipientSender();
 const config = useRuntimeConfig();
 
 // Types
@@ -200,7 +200,11 @@ async function savePreferences() {
 		class="flex min-h-dvh flex-col items-center justify-center gap-8 bg-bg-deep px-5 pt-[max(2.5rem,env(safe-area-inset-top))] pb-[max(2.5rem,env(safe-area-inset-bottom))] text-text-primary"
 	>
 		<!-- The sender, not Owlat: the recipient knows who emailed them. -->
-		<RecipientHeader :name="senderName" :purpose="t('recipient.shared.emailPreferences')" />
+		<RecipientHeader
+			:name="senderName"
+			:logo="logo"
+			:purpose="t('recipient.shared.emailPreferences')"
+		/>
 
 		<!-- Loading State -->
 		<div v-if="isLoading" class="card w-full max-w-lg py-8 text-center">
