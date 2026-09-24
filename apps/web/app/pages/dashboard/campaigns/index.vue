@@ -100,6 +100,7 @@ const {
 	loadMore,
 	isLoading,
 	error: listError,
+	refetch: refetchList,
 } = usePaginatedQuery(
 	api.campaigns.campaigns.list,
 	() => ({ status: serverStatus.value, search: debouncedSearch.value || undefined }),
@@ -118,6 +119,7 @@ const {
 	data: attentionCandidates,
 	isLoading: attentionLoading,
 	error: attentionError,
+	refetch: refetchAttention,
 } = useOrganizationQuery(api.campaigns.organization.listAttentionCandidates);
 
 const canLoadMore = computed(() => paginationStatus.value === 'CanLoadMore');
@@ -160,6 +162,10 @@ const activeError = computed(() =>
 const activeLoading = computed(() =>
 	selectedPill.value === 'attention' ? attentionLoading.value : isLoading.value
 );
+function retryActive() {
+	if (selectedPill.value === 'attention') refetchAttention();
+	else refetchList();
+}
 
 interface Pill {
 	key: PillKey;
@@ -328,7 +334,10 @@ const showEmptyState = computed(
 			v-else-if="activeError"
 			:title="t('dashboard.campaigns.index.errorTitle')"
 			:message="t('dashboard.campaigns.index.errorMessage')"
+			:action-label="t('common.tryAgain')"
+			action-icon="lucide:refresh-cw"
 			class="my-8"
+			@action="retryActive"
 		/>
 
 		<!-- The shared empty state, not a hand-rolled one: this sits one click

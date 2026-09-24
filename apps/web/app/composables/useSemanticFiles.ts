@@ -44,6 +44,7 @@ export function useSemanticFiles() {
 	const status = computed(() => active.value.status.value);
 	const isLoading = computed(() => active.value.isLoading.value);
 	const error = computed(() => active.value.error.value);
+	const refetch = () => active.value.refetch();
 	const loadMore = () => active.value.loadMore(PAGE_SIZE);
 
 	// `sourceType` is applied as a POST-pagination filter by the backend, so a
@@ -158,6 +159,7 @@ export function useSemanticFiles() {
 		status,
 		isLoading,
 		error,
+		refetch,
 		isUploading,
 		// Filters
 		searchQuery,

@@ -101,6 +101,7 @@ const {
 	results: rawTemplates,
 	isLoading: templatesLoading,
 	error: templatesError,
+	refetch: refetchTemplates,
 } = usePaginatedQuery(
 	api.emailTemplates.emails.list,
 	() => {
@@ -411,6 +412,7 @@ onUnmounted(() => {
 			<UiQueryBoundary
 				:loading="isLoading && !templates"
 				:error="templatesError"
+				@retry="refetchTemplates"
 				:error-title="t('dashboard.send.marketing.index.loadError')"
 				:loading-label="t('dashboard.send.marketing.index.loadingTemplates')"
 			>

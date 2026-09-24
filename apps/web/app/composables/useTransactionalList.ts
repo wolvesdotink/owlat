@@ -114,6 +114,7 @@ export function useTransactionalList() {
 		data: transactionalEmails,
 		isLoading: emailsLoading,
 		error: emailsError,
+		refetch: refetchEmails,
 	} = useOrganizationQuery(api.transactional.emails.list, () => ({
 		status: selectedStatus.value === 'all' ? undefined : selectedStatus.value,
 		search: debouncedSearch.value || undefined,
@@ -411,6 +412,7 @@ result = response.json()`;
 		sendCounts,
 		isLoading,
 		error: emailsError,
+		refetch: refetchEmails,
 
 		// Dropdown state
 		dropdownOpenStates,

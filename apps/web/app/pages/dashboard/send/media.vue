@@ -17,6 +17,8 @@ const {
 	tags,
 	status,
 	isLoading,
+	error: assetsError,
+	refetch: refetchAssets,
 	isUploading,
 	searchQuery,
 	selectedTag,
@@ -239,8 +241,19 @@ const copyUrl = async (url: string) => {
 			</div>
 		</Transition>
 
+		<!-- A failed read is not an empty library (#721). -->
+		<UiQueryBoundary
+			v-if="assetsError"
+			:error="assetsError"
+			:error-title="t('dashboard.send.media.loadError')"
+			@retry="refetchAssets"
+		/>
+
 		<!-- Loading -->
-		<div v-if="isLoading && assets.length === 0" class="flex items-center justify-center py-20">
+		<div
+			v-else-if="isLoading && assets.length === 0"
+			class="flex items-center justify-center py-20"
+		>
 			<UiSpinner />
 		</div>
 

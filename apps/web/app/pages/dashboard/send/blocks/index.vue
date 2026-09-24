@@ -50,6 +50,7 @@ const {
 	data: blocks,
 	isLoading: blocksLoading,
 	error: blocksError,
+	refetch: refetchBlocks,
 } = useConvexQuery(api.emailBlocks.blocks.list, () => ({
 	search: debouncedSearch.value || undefined,
 	sortBy: selectedSort.value,
@@ -297,7 +298,7 @@ const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
 
 		<!-- Content -->
 		<div>
-			<UiQueryBoundary :loading="isLoading && !blocks" :error="blocksError">
+			<UiQueryBoundary :loading="isLoading && !blocks" :error="blocksError" @retry="refetchBlocks">
 				<template #loading>
 					<div class="flex items-center justify-center py-16">
 						<div class="flex flex-col items-center gap-3">
