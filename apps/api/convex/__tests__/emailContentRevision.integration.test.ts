@@ -17,6 +17,7 @@
 import { convexTest, type TestConvex } from 'convex-test';
 import { ConvexError, type Value } from 'convex/values';
 import { describe, it, expect, vi } from 'vitest';
+import type { WorkId } from '@convex-dev/workpool';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -515,7 +516,7 @@ describe('saved-block rerender job failure — bookkeeping', () => {
 		});
 
 		await t.mutation(internal.emailBlocks.renderingPool.onRerenderComplete, {
-			workId: 'work_1',
+			workId: 'work_1' as WorkId,
 			context: { templateIds: [stillStale, rendered], transactionalIds: [resaved] },
 			result: { kind: 'failed', error: 'Consumer row kept changing' },
 		});
