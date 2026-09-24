@@ -364,7 +364,8 @@ export function reduceOpened(
 /**
  * An automated open. Counted per send (`automatedOpenCount`), and once per send
  * (`automatedOpenedAt` is the uniqueness gate) into the campaign's
- * `statsAutomatedOpened`, so the report can show how many opens it left out.
+ * `statsAutomatedOpened`, so the report can show how many emails were fetched
+ * automatically.
  * A reader who opens after an automated fetch still counts as a first open.
  */
 function reduceAutomatedOpen(

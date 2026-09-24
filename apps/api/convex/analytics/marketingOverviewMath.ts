@@ -92,7 +92,7 @@ export function periodTotals(campaigns: readonly CampaignCounts[]): PeriodTotals
 	};
 }
 
-/** What one campaign says about the automated opens left out of its opens. */
+/** What one campaign says about the automated pixel fetches kept out of its opens. */
 export interface AutomatedOpenCounts {
 	automatedOpened: number;
 	/** False for campaigns counted before automated opens were filtered. */
@@ -100,14 +100,17 @@ export interface AutomatedOpenCounts {
 }
 
 export interface AutomatedOpenSummary {
-	/** Automated opens left out of the open rate, summed over the campaigns. */
+	/**
+	 * Sends whose pixel was fetched automatically, summed over the campaigns.
+	 * A send can also have a reader open, so this is not what the open rate lost.
+	 */
 	excluded: number;
 	/** Whether any campaign's opens were counted before the filter existed. */
 	includesUnfiltered: boolean;
 }
 
 /**
- * The note beside an open rate: how many automated opens it leaves out, and
+ * The note beside an open rate: how many sends were fetched automatically, and
  * whether some of its campaigns predate the filter and may still carry them.
  */
 export function automatedOpenSummary(

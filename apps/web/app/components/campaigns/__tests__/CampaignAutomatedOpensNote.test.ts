@@ -20,15 +20,16 @@ function render(props: { automatedOpens: number; isAutomatedOpenFiltered: boolea
 }
 
 describe('CampaignAutomatedOpensNote', () => {
-	it('names how many automated opens the count leaves out', () => {
+	it('names how many emails were fetched automatically', () => {
 		const wrapper = render({ automatedOpens: 1204, isAutomatedOpenFiltered: true });
-		expect(wrapper.text()).toContain('Opens leave out 1,204 automated opens');
+		expect(wrapper.text()).toContain('1,204 emails were fetched automatically');
+		expect(wrapper.text()).toContain('not counted as opens');
 		expect(wrapper.text()).toContain('Apple Mail Privacy Protection');
 	});
 
-	it('uses the singular for one automated open', () => {
+	it('uses the singular for one email', () => {
 		const wrapper = render({ automatedOpens: 1, isAutomatedOpenFiltered: true });
-		expect(wrapper.text()).toContain('Opens leave out 1 automated open from');
+		expect(wrapper.text()).toContain('1 email was fetched automatically by');
 	});
 
 	it('renders nothing when there is nothing to explain', () => {

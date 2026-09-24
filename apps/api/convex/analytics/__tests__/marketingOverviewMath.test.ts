@@ -75,7 +75,7 @@ describe('periodTotals', () => {
 });
 
 describe('automatedOpenSummary', () => {
-	it('sums the automated opens left out of the open rate', () => {
+	it('sums the automatically fetched sends over the campaigns', () => {
 		expect(
 			automatedOpenSummary([
 				{ automatedOpened: 120, isAutomatedOpenFiltered: true },

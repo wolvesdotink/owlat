@@ -164,8 +164,9 @@ export const campaignTables = {
 		statsFailed: v.optional(v.number()),
 		statsDelivered: v.optional(v.number()),
 		statsOpened: v.optional(v.number()),
-		// Sends whose pixel was fetched by an automated client. Not in
-		// statsOpened; shown next to it. See `delivery/automatedOpens.ts`.
+		// Sends whose pixel was fetched by an automated client. The fetch never
+		// counts into statsOpened; a later reader open of the same send still
+		// does, so the two can overlap. Shown next to the opens. See `delivery/automatedOpens.ts`.
 		statsAutomatedOpened: v.optional(v.number()),
 		statsClicked: v.optional(v.number()),
 		statsBounced: v.optional(v.number()),

@@ -722,7 +722,7 @@
 				"winnerOpenRateHint": "Most opens wins"
 			},
 			"automatedOpens": {
-				"excluded": "Opens leave out {count} automated open from Apple Mail Privacy Protection and security scanners. | Opens leave out {count} automated opens from Apple Mail Privacy Protection and security scanners.",
+				"excluded": "{count} email was fetched automatically by Apple Mail Privacy Protection or a security scanner. Those fetches are not counted as opens. | {count} emails were fetched automatically by Apple Mail Privacy Protection or security scanners. Those fetches are not counted as opens.",
 				"unfiltered": "Opens counted before automated opens were filtered out may include Apple Mail Privacy Protection and security scanners."
 			},
 			"campaignSendPlanLine": {

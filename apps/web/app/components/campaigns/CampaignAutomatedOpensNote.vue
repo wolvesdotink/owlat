@@ -1,15 +1,17 @@
 <script setup lang="ts">
 /**
- * What an open count leaves out. Apple Mail Privacy Protection and security
+ * What an open count does not count. Apple Mail Privacy Protection and security
  * scanners fetch the tracking pixel without anyone reading the email; those
- * fetches are counted apart and named here, so the open count reads as people.
+ * fetches are counted apart, per email, and named here, so the open count reads
+ * as people. An email fetched automatically may still have been opened by its
+ * reader later, so the number is not what the open count lost.
  * Opens counted before that split existed get a caveat instead: they may still
  * include those fetches. Used by the campaign report and the Marketing overview.
  */
 import { formatNumber } from '~/utils/formatters';
 
 const props = defineProps<{
-	/** Automated opens left out of the open count. */
+	/** Emails whose tracking pixel was fetched automatically at least once. */
 	automatedOpens: number;
 	/** False when some of the opens were counted before automated opens were split out. */
 	isAutomatedOpenFiltered: boolean;

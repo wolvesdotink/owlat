@@ -62,7 +62,8 @@ export const getStatsByCampaign = authedQuery({
 			uniqueClicks: 0,
 			totalOpens: 0,
 			// Sends whose pixel an automated client fetched (Apple MPP, a
-			// scanner). Not part of `opened`; shown next to it.
+			// scanner). The fetch is not an open, but a reader may still have
+			// opened the same send, so it can also be in `opened`.
 			automatedOpens: 0,
 			totalClicks: 0,
 			hardBounced: 0,
