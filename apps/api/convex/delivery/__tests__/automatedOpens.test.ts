@@ -62,6 +62,8 @@ describe('classifyOpenRequest', () => {
 		'Barracuda Sentinel (EE)',
 		'Mozilla/5.0 (compatible; Proofpoint URL Defense)',
 		'Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)',
+		'Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)',
+		'Mozilla/5.0 (compatible; link preview bot)',
 		'python-requests/2.31.0',
 		'curl/8.4.0',
 		'Go-http-client/1.1',
@@ -76,6 +78,12 @@ describe('classifyOpenRequest', () => {
 			expect(classifyOpenRequest({ userAgent, clientIp: '203.0.113.5' })).toBe('client');
 		}
 	);
+
+	it('does not read a device name that contains "bot" as a bot', () => {
+		const cubotPhone =
+			'Mozilla/5.0 (Linux; Android 11; CUBOT X50) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
+		expect(classifyOpenRequest({ userAgent: cubotPhone, clientIp: '203.0.113.5' })).toBe('client');
+	});
 });
 
 describe('automatedOpenReason', () => {

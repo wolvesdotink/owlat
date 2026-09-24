@@ -52,11 +52,18 @@ export const PREFETCH_WINDOW_MS = 5_000;
 const APPLE_PROXY_USER_AGENT = 'mozilla/5.0';
 
 /**
+ * A bot's self-identifying token: `bot` as a word of its own, or a name ending
+ * in `bot` followed by a version or suffix (`googlebot/2.1`, `Slackbot-LinkExpanding`).
+ * A bare substring match would also catch device names that merely contain the
+ * letters, such as the Android model token `CUBOT X50`, and drop real opens.
+ */
+const BOT_USER_AGENT_TOKEN = /(^|[^a-z])bot([^a-z]|$)|bot[/-]/;
+
+/**
  * User-Agent fragments of security gateways, link scanners, previewers and
  * HTTP libraries. Matched case-insensitively as substrings.
  */
 const SCANNER_USER_AGENT_FRAGMENTS: readonly string[] = [
-	'bot',
 	'crawler',
 	'spider',
 	'scanner',
@@ -144,7 +151,10 @@ export function classifyOpenRequest(request: {
 		return 'apple_proxy';
 	}
 	if (userAgent === '') return 'scanner';
-	if (SCANNER_USER_AGENT_FRAGMENTS.some((fragment) => userAgent.includes(fragment))) {
+	if (
+		BOT_USER_AGENT_TOKEN.test(userAgent) ||
+		SCANNER_USER_AGENT_FRAGMENTS.some((fragment) => userAgent.includes(fragment))
+	) {
 		return 'scanner';
 	}
 	return 'client';
