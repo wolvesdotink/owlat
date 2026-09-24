@@ -174,12 +174,13 @@ type ExternalConnectFields = {
 /**
  * Insert one `externalMailAccounts` row from the encrypted-envelope connect
  * fields, link it back onto the mailbox (`externalAccountId`), and emit the
- * `external_account.connected` audit event. Shared by BOTH connect paths — the
- * personal `_connectInternal` and the shared-team-inbox `_connectSharedInternal`
- * — so the twin paths can never drift on the row shape, the mailbox back-link, or
- * the audit trail. `scope` is `undefined` for a personal 1:1 account and
- * `'shared'` for a team inbox (the discriminator that keeps a team inbox out of
- * every personal-external surface); `auditPrefix` tags the audit detail line.
+ * `external_account.connected` audit event. Shared by every connect path — the
+ * personal `_connectInternal`, the shared-team-inbox `_connectSharedInternal` and
+ * the seed connect — so they can never drift on the row shape, the mailbox
+ * back-link, or the audit trail. Whether the account is someone's own or a team
+ * inbox's is the MAILBOX's `scope`, set by the caller's `provisionMailbox`;
+ * `legacyScope` only writes the deprecated mirror the previous release still
+ * reads (see `schema/mailAccounts.ts`). `auditPrefix` tags the audit detail line.
  */
 export async function insertExternalAccountRow(
 	ctx: MutationCtx,
@@ -188,7 +189,8 @@ export async function insertExternalAccountRow(
 		organizationId: string;
 		mailboxId: Id<'mailboxes'>;
 		address: string;
-		scope?: 'shared';
+		/** Remove after the next release: nothing in this release reads it. */
+		legacyScope?: 'shared';
 		/** Deliverability SEED mailbox (not a user inbox). Tagged at connect time. */
 		seed?: { seedProvider: DestinationProviderKey };
 		auditPrefix?: string;
@@ -201,7 +203,7 @@ export async function insertExternalAccountRow(
 		userId: params.userId,
 		organizationId: params.organizationId,
 		mailboxId: params.mailboxId,
-		...(params.scope ? { scope: params.scope } : {}),
+		...(params.legacyScope ? { scope: params.legacyScope } : {}),
 		...(params.seed ? { purpose: 'seed' as const, seedProvider: params.seed.seedProvider } : {}),
 		imapHost: fields.imapHost,
 		imapPort: fields.imapPort,

@@ -9,6 +9,7 @@ import { toDeliverabilityAlertRecipientState } from '../delivery/checklistAlertR
 import { hasPermission, loadOwnUserProfile, requireSelf } from '../lib/sessionOrganization';
 import type { OrganizationRole } from '../lib/sessionOrganization';
 import { loadPersonalMailboxForUser } from '../mail/permissions';
+import { isTeamInboxAccount } from '../mail/external/personalAccount';
 import { throwNotFound } from '../_utils/errors';
 import { batchGet } from '../_utils/batchLoader';
 import { isChatAttachment } from '../chat/attachmentAccess';
@@ -242,10 +243,13 @@ export const listPersonalExternalAccounts = internalQuery({
 			.query('externalMailAccounts')
 			.withIndex('by_user', (q) => q.eq('userId', args.userId))
 			.paginate(args.paginationOpts);
+		const teamInbox = await Promise.all(
+			result.page.map((account) => isTeamInboxAccount(ctx, account))
+		);
 		return {
 			...result,
 			page: result.page
-				.filter((account) => account.scope !== 'shared')
+				.filter((_, i) => !teamInbox[i])
 				.map(
 					({ secretCiphertext: _ct, secretIv: _iv, secretAuthTag: _tag, ...account }) => account
 				),

@@ -41,6 +41,7 @@ import {
 } from '../delivery/checklistAlertRecipients';
 import { removeMessageAttachments } from '../mail/attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../mail/messagePurge';
+import { isTeamInboxAccount } from '../mail/external/personalAccount';
 
 const MESSAGE_BATCH = 100;
 const CHAT_PAGE = 200;
@@ -200,7 +201,7 @@ export const eraseMemberData = internalMutation({
 		}
 
 		// ── Phase 2: external account credentials + user-keyed leftovers ──
-		// A `scope='shared'` external account holds the TEAM inbox's IMAP/SMTP
+		// The external account behind a team inbox holds the TEAM's IMAP/SMTP
 		// credentials (the member is only its custodian on `userId`); deleting it
 		// would silently brick the org's team inbox — `mailboxes.externalAccountId`
 		// dangles and sync stops with no signal. Erase only PERSONAL accounts; the
@@ -210,7 +211,7 @@ export const eraseMemberData = internalMutation({
 			.withIndex('by_user', (q) => q.eq('userId', args.authUserId))
 			.collect(); // bounded: a user connects a handful of accounts
 		for (const account of externalAccounts) {
-			if (account.scope === 'shared') continue; // org infrastructure — not personal data
+			if (await isTeamInboxAccount(ctx, account)) continue; // org infrastructure — not personal data
 			const syncRows = await ctx.db
 				.query('externalMailFolderSync')
 				.withIndex('by_account', (q) => q.eq('accountId', account._id))

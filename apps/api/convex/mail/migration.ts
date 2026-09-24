@@ -33,7 +33,7 @@ import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { markOnboardingStep } from '../auth/userOnboarding';
-import { getLivePersonalExternalAccountForUser } from './external/accounts';
+import { getLivePersonalExternalAccountForUser } from './external/personalAccount';
 import { isActiveMigrationStatus, cancelActiveMigrationForAccount } from './external/accountShared';
 
 /** Provider label on a migration row — shared with the team-inbox twins. */
@@ -258,8 +258,8 @@ export const getStatus = publicQuery({
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.role) return null;
 		// The caller's LIVE PERSONAL account, not their oldest row: a migration is a
-		// personal full-history import, so a `scope='shared'` team-inbox account the
-		// caller connected must never be resolved here, and a post-move disconnected
+		// personal full-history import, so the account behind a team inbox the
+		// caller connected or converted must never be resolved here, and a post-move disconnected
 		// archive must never mask their live personal account.
 		const account = await getLivePersonalExternalAccountForUser(ctx, s.userId);
 		if (!account) return null;

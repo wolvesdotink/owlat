@@ -46,17 +46,17 @@ export const mailAccountsTables = {
 		organizationId: v.string(),
 		mailboxId: v.id('mailboxes'), // the reused inbox identity
 
-		// Sharing model, mirroring `mailboxes.scope`. undefined ⇒ 'personal' (a
-		// single user's BYO mailbox; back-compat for every pre-shared-inbox row).
-		// 'shared' ⇒ the credentials back a TEAM inbox (its mailbox is
-		// kind='external', scope='shared') whose access is governed by
-		// `mailboxMembers`, not the connecting `userId`. A shared account is org
-		// infrastructure: it is EXCLUDED from the per-user "one live personal
-		// external account" limit and from the personal-external surfaces
-		// (getForCurrentUser / disconnect / purge / the move flow), which all
-		// resolve the caller's PERSONAL account only. `userId` on a shared row is
-		// the admin who connected it (credential custodian + audit); ownership of
-		// the inbox itself follows `mailboxes.userId` via mailboxMembers.
+		// DEPRECATED — nothing reads it any more. It mirrored `mailboxes.scope`,
+		// and two copies of one fact let a mailbox be a team inbox on one table and
+		// someone's private account on the other. Whether an account is personal is
+		// now read off its mailbox (`mail/external/personalAccount.ts`); a team
+		// inbox's `userId` here is the admin who connected it (credential custodian
+		// + audit), and ownership of the inbox follows `mailboxes.userId` via
+		// mailboxMembers. It is still WRITTEN for one release, on connect-as-team
+		// and on conversion, so rolling back to the previous release (which reads
+		// it) keeps treating team inboxes as team inboxes. Contract after that: stop
+		// writing, clear it with a migration, then drop it (CONVENTIONS.md §
+		// Schema evolution).
 		scope: v.optional(v.union(v.literal('personal'), v.literal('shared'))),
 
 		// What the connection is FOR. undefined ⇒ 'mail' (every pre-seed row): an

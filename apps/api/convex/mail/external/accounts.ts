@@ -13,11 +13,11 @@
  * The same machinery also backs a SHARED team inbox — connecting an external
  * account provisions a `kind='external', scope='shared'` mailbox (access
  * governed by `mailboxMembers`) instead of a personal 1:1 account. That path
- * lives in the sibling `mail/external/sharedInbox.ts` (it reuses this file's
- * shared `connectFieldsValidator` + `getLivePersonalExternalAccountForUser`);
- * see the `scope` field on `externalMailAccounts` for the ownership/credential
- * model. The `scope='shared'` discriminator is what keeps a team inbox out of
- * the personal-external surfaces below.
+ * lives in the sibling `mail/external/sharedInbox.ts` (it reuses the shared
+ * `connectFieldsValidator` from `accountShared.ts`). Whether an account is personal is decided
+ * by its MAILBOX's `scope`, never by the account row (see `personalAccount.ts`),
+ * so a personal mailbox that becomes a team inbox (`mail/teamInboxConversion.ts`)
+ * leaves the personal-external surfaces below in the same write.
  *
  * A third path — the DELIVERABILITY SEED mailbox — lives in the sibling
  * `mail/external/accountsSeed.ts`. It reuses the shared `connectFieldsValidator`
@@ -50,6 +50,11 @@ import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../../lib/featureFlags';
 import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from '../mailbox/identity';
 import {
+	personalAccounts,
+	getLivePersonalExternalAccountForUser,
+	findRetainedPersonalAccount,
+} from './personalAccount';
+import {
 	connectFieldsValidator,
 	insertExternalAccountRow,
 	applyCredentialRotation,
@@ -63,102 +68,6 @@ import {
 	throwAlreadyExists,
 	throwNotFound,
 } from '../../_utils/errors';
-import type { QueryCtx, MutationCtx } from '../../_generated/server';
-import type { Doc } from '../../_generated/dataModel';
-
-/** A shared account backs a team inbox; it is never the caller's PERSONAL account. */
-function isPersonalAccount(a: Doc<'externalMailAccounts'>): boolean {
-	// A deliverability SEED mailbox is org infrastructure the operator connects
-	// so Owlat can mail itself: it is never the caller's personal inbox, so it
-	// must not mask one, block a connect, or appear on a personal surface.
-	return a.scope !== 'shared' && a.purpose !== 'seed';
-}
-
-/**
- * The user's single LIVE *personal* external account — the one still
- * connected/syncing that they own 1:1.
- *
- * A user has at most one non-`disconnected` personal account (the connect guard
- * enforces it), but a completed "move my mailbox here" leaves a `disconnected`
- * archive row behind that COEXISTS with a freshly-connected account. `by_user` +
- * `.first()` returns the OLDEST row, so after a move it hands back the archive
- * and the live account is missed. Resolve by state instead: skip `disconnected`
- * rows and return the (unique) live one, or `null` when none is live.
- *
- * SHARED accounts (those backing a team inbox — kind='external', scope='shared')
- * are excluded: their `userId` records the connecting admin, but they are org
- * infrastructure governed by `mailboxMembers`, not a personal 1:1 account. This
- * is the single choke point behind every personal-external surface
- * (getForCurrentUser / disconnect / purge / updateCredentials / the move flow),
- * so a team inbox can never mask, block, or be mistaken for a user's own mailbox.
- */
-export async function getLivePersonalExternalAccountForUser(
-	ctx: QueryCtx | MutationCtx,
-	userId: string
-): Promise<Doc<'externalMailAccounts'> | null> {
-	const accounts = await ctx.db
-		.query('externalMailAccounts')
-		.withIndex('by_user', (q) => q.eq('userId', userId))
-		.collect(); // bounded: ≤ 1 live personal + a handful of archived/shared rows per user
-	return accounts.find((a) => isPersonalAccount(a) && a.status !== 'disconnected') ?? null;
-}
-
-/**
- * The mailbox this caller DISCONNECTED on `address`, if there is one — the row a
- * reconnect re-attaches to instead of provisioning a second mailbox on the same
- * address.
- *
- * Soft-disconnect keeps the synced mail; without this lookup that promise is
- * empty, because the dup-check below only sees ACTIVE mailboxes, so reconnecting
- * would mint a fresh empty mailbox and strand every retained message in a row no
- * screen can reach. Deliberately narrow: the caller's own PERSONAL account, the
- * same canonical address, and a mailbox that is soft-deleted. A completed move's
- * archive keeps its mailbox ACTIVE, so it can never be resurrected here, and a
- * shared team inbox or a seed is not a personal account at all.
- */
-async function findRetainedPersonalAccount(
-	ctx: QueryCtx | MutationCtx,
-	userId: string,
-	options: { address?: string; forDeletion?: boolean } = {}
-): Promise<{ account: Doc<'externalMailAccounts'>; mailbox: Doc<'mailboxes'> } | null> {
-	const { address, forDeletion = false } = options;
-	const rows = await ctx.db
-		.query('externalMailAccounts')
-		.withIndex('by_user', (q) => q.eq('userId', userId))
-		.collect(); // bounded: a handful of the caller's own account rows
-	const candidates = rows
-		.filter(
-			(a) =>
-				isPersonalAccount(a) &&
-				a.status === 'disconnected' &&
-				// A purge is already deleting this one: it has no mail to hand back,
-				// and re-attaching it would hand the owner a mailbox the cascade is
-				// about to delete underneath them.
-				a.purgeStartedAt === undefined &&
-				// An admin retired this mailbox. Reconnecting must not undo that
-				// silently — but DELETING it must stay possible, or an admin removal
-				// would strand the owner's mail somewhere neither of them can reach:
-				// the admin has no purge for a personal mailbox, and the owner would
-				// have no surface for it.
-				(forDeletion || a.adminRetiredAt === undefined)
-		)
-		.sort((a, b) => b.updatedAt - a.updatedAt);
-	for (const account of candidates) {
-		const mailbox = await ctx.db.get(account.mailboxId);
-		// Ownership follows the ACCOUNT (read through `by_user` on the caller, and
-		// personal by `isPersonalAccount`), which is 1:1 with its mailbox — so there
-		// is no second ownership question to ask here. The one write that can move a
-		// mailbox's `userId` out from under its account row,
-		// `mailboxMembers.transferOwnership`, refuses anything that is not
-		// `scope === 'shared'`, and a shared account is not personal. What is asked
-		// is the state: only a soft-deleted external mailbox is one a disconnect
-		// left behind.
-		if (!mailbox || mailbox.status !== 'deleted' || mailbox.kind !== 'external') continue;
-		if (address !== undefined && mailbox.address !== address) continue;
-		return { account, mailbox };
-	}
-	return null;
-}
 
 const accountStatusValidator = v.union(
 	v.literal('pending'),
@@ -260,7 +169,9 @@ export const disconnect = authedMutation({
 				.query('externalMailAccounts')
 				.withIndex('by_user', (q) => q.eq('userId', s.userId))
 				.collect(); // bounded: a handful of the caller's own account rows
-			if (rows.some(isPersonalAccount)) return { ok: true, cancelledMigration: false };
+			if ((await personalAccounts(ctx, rows)).length > 0) {
+				return { ok: true, cancelledMigration: false };
+			}
 			throwNotFound('External mail account');
 		}
 		const { cancelledMigration } = await stopExternalAccountSync(ctx, account, {
