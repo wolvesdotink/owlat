@@ -126,11 +126,51 @@ describe('InboxThreadComposer', () => {
 	});
 
 	it('explains why no reply can go out instead of offering a box', () => {
-		const wrapper = mountComposer({ blocker: 'drafting', draft: 'ignored' });
+		const wrapper = mountComposer({ blocker: 'processing', draft: 'ignored' });
 		expect(wrapper.find('[data-testid="thread-composer-body"]').exists()).toBe(false);
 		expect(wrapper.get('[data-testid="thread-composer-blocked"]').text()).toContain(
-			'The agent is drafting a reply.'
+			'Owlat is still reading this message.'
 		);
+		wrapper.unmount();
+	});
+
+	// #807 — the agent still drafting, or the message already answered, no longer
+	// block the box: it opens, and says where the text goes.
+	it('says a reply sent mid-draft replaces the agent draft, collapsed and open', async () => {
+		const wrapper = mountComposer({ notice: 'takesOverDraft' });
+		expect(wrapper.get('[data-testid="thread-composer-notice"]').text()).toContain(
+			'The agent is still drafting.'
+		);
+		await wrapper.setProps({ open: true });
+		await wrapper.get('[data-testid="thread-composer-body"]').setValue('Here is the answer.');
+		await wrapper.get('[data-testid="thread-composer-send"]').trigger('click');
+		expect(wrapper.get('[data-testid="thread-composer-notice"]').text()).toContain(
+			'its draft is dropped'
+		);
+		expect(wrapper.emitted('send')?.[0]).toEqual(['Here is the answer.', false, '']);
+		wrapper.unmount();
+	});
+
+	it('marks a reply to an answered message as a follow-up', async () => {
+		const wrapper = mountComposer({ notice: 'followUp', open: true });
+		expect(wrapper.find('[data-testid="thread-composer-blocked"]').exists()).toBe(false);
+		expect(wrapper.get('[data-testid="thread-composer-notice"]').text()).toBe(
+			'Already answered. This goes out as a follow-up.'
+		);
+		wrapper.unmount();
+	});
+
+	it('reopens with text handed back, such as an undone follow-up', async () => {
+		const wrapper = mountComposer({ subject: 'Re: Invoice' });
+		(wrapper.vm as unknown as { fill: (b: string, s: string) => void }).fill(
+			'The CSV has both variants.',
+			'Re: Invoice'
+		);
+		await nextTick();
+		expect(wrapper.emitted('update:open')?.[0]).toEqual([true]);
+		await wrapper.setProps({ open: true });
+		const body = wrapper.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]');
+		expect(body.element.value).toBe('The CSV has both variants.');
 		wrapper.unmount();
 	});
 

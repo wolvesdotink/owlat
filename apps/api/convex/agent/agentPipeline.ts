@@ -13,12 +13,11 @@ import { isValidEmail } from '../lib/inputGuards';
 import { getOptional } from '../lib/env';
 import { buildReplySubject } from '../lib/emailAddress';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
-import { escapeHtmlWithBreaks } from '@owlat/shared/html';
-import { parseAddress } from '@owlat/shared';
 import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { isOutboundChannel } from '../lib/convexValidators';
 import { runReferenceMonitor } from './referenceMonitor';
+import { buildThreadingHeaders, extractRecipient, replyBodyToHtml } from './replyEnvelope';
 import type {
 	NonCampaignIntakeOutcome,
 	NonCampaignIntakeRejectionReason,
@@ -118,37 +117,6 @@ export const getAgentConfig = internalQuery({
 // updateContextTier / updateThreadDraftStatus / createAction /
 // completeAction / failAction / incrementAutoReplyCount /
 // retryFailedActions) have all moved to the lifecycle module.
-
-/**
- * Escape a plain-text draft body into a minimal HTML fragment. The agent's
- * `draftResponse` is final, non-templated text (the signature is already
- * folded in by the `draft` step), so we escape it and convert newlines to
- * `<br>` rather than running it through the block renderer.
- */
-function draftToHtml(text: string): string {
-	// escapeHtmlWithBreaks escapes all five HTML metacharacters (the old inline
-	// version omitted the apostrophe) and converts newlines to <br>.
-	return `<div>${escapeHtmlWithBreaks(text.replace(/\r\n/g, '\n'))}</div>`;
-}
-
-/**
- * Build the RFC 5322 threading headers for a reply. `In-Reply-To` points at
- * the inbound message's own `Message-ID`; `References` appends it to the
- * original chain so clients thread the reply under the customer's message.
- * Message-IDs are wrapped in angle brackets if the provider stored them bare.
- */
-function buildThreadingHeaders(inbound: {
-	messageId?: string;
-	references?: string;
-}): Record<string, string> {
-	const headers: Record<string, string> = {};
-	if (!inbound.messageId) return headers;
-	const wrapped = inbound.messageId.startsWith('<') ? inbound.messageId : `<${inbound.messageId}>`;
-	headers['In-Reply-To'] = wrapped;
-	const prior = (inbound.references ?? '').trim();
-	headers['References'] = prior ? `${prior} ${wrapped}` : wrapped;
-	return headers;
-}
 
 /**
  * How each typed refusal from the Non-campaign send intake (module) terminates
@@ -333,7 +301,7 @@ export const sendApprovedReply = internalAction({
 			references: message.references,
 		});
 
-		let html = draftToHtml(message.draftResponse);
+		let html = replyBodyToHtml(message.draftResponse);
 
 		// Deterministic pre-send reference monitor — AUTONOMOUS path only. This is
 		// the non-LLM data-isolation backstop that runs immediately before an
@@ -418,16 +386,6 @@ export const sendApprovedReply = internalAction({
 		await recordHumanApprovalFeedback();
 	},
 });
-
-/**
- * Extract the reply recipient address from an inbound `from` field. Handles
- * the "Name <email>" form and a bare address; returns undefined when nothing
- * address-shaped is present. Routed through the shared `parseAddress` so the
- * reply target agrees with inbound sender resolution / thread matching.
- */
-function extractRecipient(fromField: string): string | undefined {
-	return parseAddress(fromField)?.address;
-}
 
 // Cron-driven retry of failed agentActions — moved to
 // `inbox/processingLifecycle.ts:retryFailedActions` per ADR-0010.

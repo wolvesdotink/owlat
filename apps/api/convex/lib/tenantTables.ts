@@ -138,6 +138,7 @@ export const TENANT_TABLES = [
 	'inboxAssignmentNotices',
 	'threadPresence',
 	'threadReads',
+	'inboxFollowUps',
 	'inboundMessages',
 	'conversationThreads',
 	'coalesceBatches',

@@ -8980,7 +8980,6 @@
 					"agentDraft": "Drafted by the agent",
 					"blocked": {
 						"answered": "This message has been answered. You can reply again when they write back.",
-						"drafting": "The agent is drafting a reply. It opens here when it is ready.",
 						"processing": "Owlat is still reading this message. You can reply in a moment.",
 						"quarantined": "This message is in quarantine.",
 						"sending": "Your reply is on its way.",
@@ -8989,6 +8988,10 @@
 					"bodyLabel": "Your reply",
 					"editedDraft": "Edited draft",
 					"label": "Reply",
+					"notice": {
+						"followUp": "Already answered. This goes out as a follow-up.",
+						"takesOverDraft": "The agent is still drafting. If you send your own reply, its draft is dropped."
+					},
 					"originalDraft": "Original draft",
 					"placeholder": "Write your reply…",
 					"rejectDraft": "Reject draft",
@@ -9012,6 +9015,8 @@
 				"discussInChannel": "Discuss in channel",
 				"discussInChannelTitle": "Discuss in {channel}",
 				"draftRejectedToast": "Draft rejected",
+				"followUpSentToast": "Follow-up queued for sending",
+				"followUpUndoneToast": "Follow-up cancelled. Your text is back in the reply box.",
 				"lastMessage": "Last message",
 				"loading": "Loading thread...",
 				"markSeenOperation": "Mark thread seen",
@@ -9028,6 +9033,16 @@
 				"noSubject": "No subject",
 				"noTextContent": "(No text content)",
 				"notFound": "Thread not found",
+				"outbound": {
+					"agent": "The agent",
+					"failed": "Not sent",
+					"failedFallback": "This message could not be sent.",
+					"label": "Sent by {name}",
+					"sending": "Sending",
+					"sendsIn": "Sending in {seconds}s",
+					"sent": "Sent",
+					"yourTeam": "Your team"
+				},
 				"pageTitle": "Thread — Owlat",
 				"priorities": {
 					"low": "low",
@@ -14666,10 +14681,12 @@
 		"useThreadDetail": {
 			"approveDraft": "Approve draft",
 			"assignThread": "Assign thread",
+			"cancelFollowUp": "Undo follow-up",
 			"rejectDraft": "Reject draft",
 			"retryMessage": "Retry message",
 			"saveDraft": "Save draft",
 			"saveDraftRevision": "Save draft",
+			"sendFollowUp": "Send follow-up",
 			"snoozeThread": "Snooze thread",
 			"unsnoozeThread": "Unsnooze thread",
 			"updateThreadStatus": "Update thread status"

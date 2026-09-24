@@ -304,9 +304,8 @@ export const inboxTables = {
 		// (agentConfig.humanApproveUndoDelayMs). `scheduledFnId` is the handle
 		// the cancel path (`cancelAutoSend`) passes to `ctx.scheduler.cancel` to
 		// abort an in-flight delayed send; `sendAt` powers the UI countdown
-		// ("Sending in 0:59 — Undo" / "Approved — Undo (14s)"). Cleared on any
-		// transition out of `approved`. Absent for delay=0 (legacy immediate
-		// send).
+		// ("Sending in 0:59 — Undo"). Cleared on any transition out of
+		// `approved`. Absent for delay=0 (legacy immediate send).
 		pendingAutoSend: v.optional(
 			v.object({
 				scheduledFnId: v.id('_scheduled_functions'),
@@ -336,6 +335,9 @@ export const inboxTables = {
 		// a best-guess reply always goes to human review. Never cleared by the
 		// pipeline; a human reviews and sends (or discards) the draft.
 		isAutoSendBlocked: v.optional(v.boolean()),
+		// When a person last took the reply over from the agent (manualReply.ts).
+		// While set, late pipeline writes are refused; cleared on `→ received`.
+		manualTakeoverAt: v.optional(v.number()),
 		// True while the working draft differs from the agent original (kept in
 		// sync by every revision-appending save — see inbox/draftRevisions.ts).
 		// Used to tell an UNEDITED owner-send of an answered-clarification draft
@@ -491,10 +493,8 @@ export const inboxTables = {
 		jobId: v.id('_scheduled_functions'),
 		leaderMessageId: v.id('inboundMessages'),
 		createdAt: v.number(),
-		// When the FIRST message of the current burst arrived. Carried forward
-		// across debounce restarts (unlike `createdAt`, which is per row) so the
-		// hard-cap flush is measured from the start of the burst. Optional for
-		// rows written before the field existed; readers fall back to createdAt.
+		// When the burst's FIRST message arrived, carried across debounce restarts
+		// so the hard-cap flush counts from there. Absent on old rows → createdAt.
 		firstReceivedAt: v.optional(v.number()),
 	}).index('by_thread', ['threadId']),
 };

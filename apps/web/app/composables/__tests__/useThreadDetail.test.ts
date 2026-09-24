@@ -17,7 +17,8 @@ describe('useThreadDetail', () => {
 	// One mock run() per useBackendOperation call, in declaration order:
 	// 0 = approveDraft, 1 = rejectDraft, 2 = editDraft, 3 = assignThread,
 	// 4 = updateThreadStatus, 5 = retryFailedMessage, 6 = snoozeThread,
-	// 7 = unsnoozeThread, 8 = saveDraftRevision.
+	// 7 = unsnoozeThread, 8 = saveDraftRevision, 9 = sendFollowUp,
+	// 10 = cancelFollowUp.
 	let runs: Array<ReturnType<typeof vi.fn>>;
 
 	beforeEach(() => {
@@ -34,6 +35,8 @@ describe('useThreadDetail', () => {
 	const approveRun = () => runs[0]!;
 	const editRun = () => runs[2]!;
 	const saveRevisionRun = () => runs[8]!;
+	const sendFollowUpRun = () => runs[9]!;
+	const cancelFollowUpRun = () => runs[10]!;
 
 	const threadId = ref('thread_1' as never);
 	const messageId = 'msg_1' as never;
@@ -106,6 +109,32 @@ describe('useThreadDetail', () => {
 			});
 			expect(approveRun()).not.toHaveBeenCalled();
 			expect(result).toEqual({ ok: true, result: { success: true } });
+		});
+	});
+
+	// #807 — an answered thread takes a follow-up: its own send, keyed to the
+	// thread, never the edit → approve path of the answered message.
+	describe('follow-ups', () => {
+		it('sends a follow-up on the thread without touching the draft path', async () => {
+			const detail = useThreadDetail(threadId);
+
+			await detail.sendFollowUp({ body: 'One more thing', subject: 'Re: question' });
+
+			expect(sendFollowUpRun()).toHaveBeenCalledWith({
+				threadId: 'thread_1',
+				body: 'One more thing',
+				subject: 'Re: question',
+			});
+			expect(editRun()).not.toHaveBeenCalled();
+			expect(approveRun()).not.toHaveBeenCalled();
+		});
+
+		it('undoes a follow-up by id', async () => {
+			const detail = useThreadDetail(threadId);
+
+			await detail.cancelFollowUp('followUp_1' as never);
+
+			expect(cancelFollowUpRun()).toHaveBeenCalledWith({ followUpId: 'followUp_1' });
 		});
 	});
 });

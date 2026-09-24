@@ -38,7 +38,7 @@ import {
 } from './sendLifecycle/lookups';
 import { withoutTestSendEffects } from './sendLifecycle/types';
 import { refuse } from '../lib/lifecycle';
-import { mirrorEmailSendWrite } from '../unifiedMessages';
+import { finalizeSendSource } from './sendLifecycle/sourceFinalization';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { bounceTypeValidator } from '../lib/convexValidators';
 
@@ -269,57 +269,9 @@ async function dispatch(
 	if (result.applied !== 'duplicate') {
 		await applyEffects(ctx, result.effects);
 
-		// Agent-reply source finalization belongs to the Send terminal edge, not
-		// to one transport callback. Direct/relay completion and authenticated MTA
-		// remote acceptance both pass here, while duplicate transitions remain a
-		// no-op. This closes the approved-message state before the stale reconciler
-		// can enqueue a second reply.
-		if (
-			ref.kind === 'transactional' &&
-			(send as TransactionalSendDoc).kind === 'agent_reply' &&
-			(send as TransactionalSendDoc).inboundMessageId &&
-			(input.to === 'sent' ||
-				input.to === 'failed' ||
-				input.to === 'bounced' ||
-				input.to === 'complained')
-		) {
-			const agentSend = send as TransactionalSendDoc;
-			const succeeded = input.to === 'sent';
-			await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
-				inboundMessageId: agentSend.inboundMessageId!,
-				input: succeeded
-					? { to: 'sent', at: input.at }
-					: {
-							to: 'failed',
-							at: input.at,
-							errorMessage:
-								input.to === 'failed'
-									? input.errorMessage
-									: input.to === 'bounced'
-										? (input.bounceMessage ?? 'Delivery bounced')
-										: 'Recipient complained about delivery',
-						},
-			});
-
-			if (succeeded) {
-				try {
-					const inbound = await ctx.db.get(agentSend.inboundMessageId!);
-					if (inbound?.threadId && agentSend.contactId) {
-						await mirrorEmailSendWrite(ctx, {
-							threadId: inbound.threadId,
-							contactId: agentSend.contactId,
-							subject: agentSend.subject,
-							textBody: inbound.draftResponse,
-							externalMessageId: input.providerMessageId,
-							status: 'sent',
-						});
-					}
-				} catch {
-					// The timeline is a denormalized, idempotent read model. It must
-					// never roll back the authoritative Send/source lifecycle edge.
-				}
-			}
-		}
+		// Close the record the Send was carrying: the inbound message an agent
+		// reply answers, or a team follow-up (./sendLifecycle/sourceFinalization).
+		await finalizeSendSource(ctx, ref, send, input);
 
 		// ── Post-send OUTCOME signal (graduated-autonomy learning) ──
 		// A bounce or complaint on any agent reply (auto-sent OR human-approved)

@@ -209,7 +209,8 @@ export type TransitionOutcome =
 	  }
 	| {
 			ok: false;
-			reason: 'message_not_found' | 'illegal_edge' | 'terminal';
+			/** `taken_over`: a person took the reply over, so a late pipeline write stands down. */
+			reason: 'message_not_found' | 'illegal_edge' | 'terminal' | 'taken_over';
 			from?: ProcessingStatus;
 			to?: ProcessingStatus;
 	  };

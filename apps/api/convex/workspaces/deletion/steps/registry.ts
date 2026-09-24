@@ -87,6 +87,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'unifiedMessages',
 	'threadPresence', // ephemeral viewer/replier signals — clear before their threads
 	'threadReads', // per-user read markers — clear before their threads
+	'inboxFollowUps', // team follow-up bodies — clear before their threads
 	'inboxAssignmentNotices', // per-assignee notice denormalized subjects/assigner names
 	'inboundMessages',
 	'conversationThreads',
@@ -385,6 +386,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	instanceSettings: makeSweepStep('instanceSettings'),
 	threadPresence: makeSweepStep('threadPresence'),
 	threadReads: makeSweepStep('threadReads'),
+	inboxFollowUps: makeSweepStep('inboxFollowUps'),
 	inboxAssignmentNotices: makeSweepStep('inboxAssignmentNotices'),
 	unifiedMessages: makeSweepStep('unifiedMessages'),
 	channelConfigs: makeSweepStep('channelConfigs'),

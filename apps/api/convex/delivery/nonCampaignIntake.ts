@@ -1,6 +1,7 @@
 /**
  * Non-campaign send intake (module) — the ONE intake path for every 1:1,
- * non-template-API Send: automation email steps and agent approved-replies.
+ * non-template-API Send: automation email steps, agent approved-replies and
+ * team follow-ups.
  *
  * Sibling of the Template API intake (`transactional/dispatch.ts`) and modelled
  * on it deliberately: the same pre-row gate sequence (via the shared
@@ -76,7 +77,11 @@ export type NonCampaignIntakeOutcome =
 	  };
 
 /** The kinds of mail this intake writes. */
-const nonCampaignSendKindValidator = v.union(v.literal('automation'), v.literal('agent_reply'));
+const nonCampaignSendKindValidator = v.union(
+	v.literal('automation'),
+	v.literal('agent_reply'),
+	v.literal('team_reply')
+);
 
 /** @see nonCampaignSendKindValidator */
 export type NonCampaignSendKind = Infer<typeof nonCampaignSendKindValidator>;
@@ -111,6 +116,9 @@ export type NonCampaignSendKind = Infer<typeof nonCampaignSendKindValidator>;
 const SUPPRESSION_SCOPE_BY_KIND = {
 	automation: 'marketing',
 	agent_reply: 'transactional',
+	// A person writing again on the same 1:1 conversation: the agent_reply
+	// reading, for the same reason.
+	team_reply: 'transactional',
 } as const satisfies Record<NonCampaignSendKind, SuppressionScope>;
 
 /**
@@ -123,6 +131,7 @@ const SUPPRESSION_SCOPE_BY_KIND = {
 const MESSAGE_TYPE_BY_KIND = {
 	automation: 'automation',
 	agent_reply: 'transactional',
+	team_reply: 'transactional',
 } as const satisfies Record<NonCampaignSendKind, MessageType>;
 
 const NO_DELIVERY_PROVIDER_DETAIL =
@@ -139,6 +148,7 @@ export const intake = internalMutation({
 		contactId: v.optional(v.id('contacts')),
 		automationId: v.optional(v.id('automations')),
 		inboundMessageId: v.optional(v.id('inboundMessages')),
+		followUpId: v.optional(v.id('inboxFollowUps')),
 		transactionalEmailId: v.optional(v.id('transactionalEmails')),
 		subject: v.string(),
 		html: v.string(),
@@ -215,6 +225,7 @@ export const intake = internalMutation({
 			...(args.automationId ? { automationId: args.automationId } : {}),
 			...(args.automationStepRunId ? { automationStepRunId: args.automationStepRunId } : {}),
 			...(args.inboundMessageId ? { inboundMessageId: args.inboundMessageId } : {}),
+			...(args.followUpId ? { followUpId: args.followUpId } : {}),
 			...(args.transactionalEmailId ? { transactionalEmailId: args.transactionalEmailId } : {}),
 			...(resolvedRoute ? { providerType: resolvedRoute.providerType } : {}),
 		});
@@ -292,7 +303,12 @@ export const intake = internalMutation({
 					// reply to a message → they keep the composer's default
 					// `auto-generated`. Both values are `!= no`, so isAutomatedMail
 					// classifies either as automated and the message stays loop-safe.
-					...(args.kind === 'agent_reply' ? { autoSubmittedType: 'auto-replied' as const } : {}),
+					// A team follow-up answers the same thread from the same
+					// sending identity as a human-approved agent_reply, so it keeps
+					// that reading rather than invite a vacation-responder loop.
+					...(args.kind === 'agent_reply' || args.kind === 'team_reply'
+						? { autoSubmittedType: 'auto-replied' as const }
+						: {}),
 					...(organizationId ? { organizationId } : {}),
 					...(args.headers ? { headers: args.headers } : {}),
 					...(args.contactId ? { contactId: args.contactId } : {}),

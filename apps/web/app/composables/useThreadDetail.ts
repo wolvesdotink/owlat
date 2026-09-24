@@ -15,6 +15,12 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	const contact = computed(() => threadData.value?.contact ?? null);
 	const takeOver = computed(() => threadData.value?.takeOver ?? null);
 
+	// What the team wrote after a message was already answered (inbox/followUps).
+	const { data: followUpData } = useConvexQuery(api.inbox.followUps.listForThread, () => ({
+		threadId: threadId.value,
+	}));
+	const followUps = computed(() => followUpData.value ?? []);
+
 	// Mutations
 	const { run: approveDraft } = useBackendOperation(api.inbox.mutations.approveDraft, {
 		label: () => t('shared.useThreadDetail.approveDraft'),
@@ -46,6 +52,12 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		api.inbox.draftRevisions.saveDraftRevision,
 		{ label: () => t('shared.useThreadDetail.saveDraftRevision') }
 	);
+	const { run: sendFollowUpOperation } = useBackendOperation(api.inbox.followUps.sendFollowUp, {
+		label: () => t('shared.useThreadDetail.sendFollowUp'),
+	});
+	const { run: cancelFollowUpOperation } = useBackendOperation(api.inbox.followUps.cancelFollowUp, {
+		label: () => t('shared.useThreadDetail.cancelFollowUp'),
+	});
 
 	// Actions
 	// Return the run result so callers can show a success toast only on a real
@@ -96,6 +108,20 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		});
 	};
 
+	// Write again after the thread's latest message was answered. It waits out
+	// the same undo window an approved reply does before it leaves.
+	const sendFollowUp = async (reply: ReplyText) => {
+		return await sendFollowUpOperation({
+			threadId: threadId.value,
+			body: reply.body,
+			subject: reply.subject,
+		});
+	};
+
+	const cancelFollowUp = async (followUpId: Id<'inboxFollowUps'>) => {
+		return await cancelFollowUpOperation({ followUpId });
+	};
+
 	const handleAssign = async (assignedTo?: string) => {
 		await assignThread({ threadId: threadId.value, assignedTo });
 	};
@@ -120,6 +146,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		messages,
 		contact,
 		takeOver,
+		followUps,
 		threadLoading,
 		// Actions
 		handleApprove,
@@ -127,6 +154,8 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		handleRetry,
 		saveEditedDraft,
 		saveDraftOnly,
+		sendFollowUp,
+		cancelFollowUp,
 		handleAssign,
 		handleStatusChange,
 		handleSnooze,
