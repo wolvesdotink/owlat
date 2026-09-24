@@ -158,21 +158,38 @@ export interface EmailEditorBridgeOptions<S> {
 	 * save is in flight.
 	 */
 	save: (ctx: EmailEditorBridgeContext, base: EmailEditorSaveBase<S>) => Promise<number | void>;
-	/** Surface-specific dirty-tracked refs (e.g. attachments, description). */
-	extraWatch?: (() => unknown)[];
+	/**
+	 * Surface-specific dirty-tracked refs (e.g. attachments, description).
+	 * Refs rather than getters: "keep my version" writes them back when it
+	 * merges the draft onto the latest row.
+	 */
+	extraWatch?: Ref<unknown>[];
 	/** The row's editor-content revision; enables the stale-draft check. */
 	revision?: (source: NonNullable<S>) => number;
+	/**
+	 * Whether a draft built on `base` can be saved over `latest` ("keep my
+	 * version"). When it cannot, the conflict only offers loading the latest.
+	 */
+	canKeepDraft?: (base: NonNullable<S>, latest: NonNullable<S>) => boolean;
 }
 
-/** The builder's explicit load path (EmailBuilder's exposed `loadState`). */
+/** What the bridge uses of the mounted EmailBuilder (its exposed API). */
 export interface EmailBuilderHandle {
+	/** The explicit load path for a hydrated state. */
 	loadState: (state: HistoryState) => void;
+	/** Text is being typed that the blocks do not hold until the editor closes. */
+	readonly isInlineEditing?: boolean;
 }
 
 /** A save the backend refused because the email moved on after the draft loaded. */
 export interface EmailEditorConflict {
 	/** The revision the server was at when it refused the save. */
 	currentRevision: number;
+	/**
+	 * Set once "keep my version" found the draft cannot be saved over the
+	 * latest row (`canKeepDraft`); loading the latest is the only way on.
+	 */
+	mustReload?: true;
 }
 
 export interface EmailEditorBridgeReturn {
@@ -260,6 +277,13 @@ export function useEmailEditorBridge<S>(
 		source: opts.source,
 		revision: opts.revision,
 		initialize: (source) => opts.initialize(source, ctx),
+		// Text typed into the inline editor reaches the blocks only when it
+		// closes. Replacing the canvas before that would let it be committed on
+		// top of the newer copy and saved under the newer revision, silently
+		// dropping the other write; held back, it saves against the revision it
+		// started from and the other write comes up as a conflict.
+		holdHydration: () => builderRef.value?.isInlineEditing === true,
+		canRebase: opts.canKeepDraft,
 		onHydrate: () => {
 			builderRef.value?.loadState({
 				blocks: blocks.value,
@@ -267,12 +291,7 @@ export function useEmailEditorBridge<S>(
 				subject: subject.value,
 			});
 		},
-		watchSources: [
-			() => blocks.value,
-			() => subject.value,
-			() => name.value,
-			...(opts.extraWatch ?? []),
-		],
+		watchSources: [blocks, subject, name, ...(opts.extraWatch ?? [])],
 		onDirtyChange: setHasChanges,
 	});
 
@@ -386,26 +405,30 @@ export function useEmailEditorBridge<S>(
 			};
 		});
 
-	const resolveConflict = async (resolve: () => Promise<void> | void) => {
+	const resolveConflict = async (
+		resolve: (pending: EmailEditorConflict) => Promise<void> | void
+	) => {
 		const pending = conflict.value;
 		if (!pending || isResolvingConflict.value) return;
 		isResolvingConflict.value = true;
 		try {
 			await untilRevision(pending.currentRevision);
 			conflict.value = null;
-			await resolve();
+			await resolve(pending);
 		} finally {
 			isResolvingConflict.value = false;
 		}
 	};
 
-	// "Keep my version": build the same draft on the latest row (its
-	// translations, its revision) and save again. Another writer in between
-	// just brings the choice back.
+	// "Keep my version": merge the draft onto the latest row (what the user
+	// changed wins, everything else is the latest row's) and save it with that
+	// row's revision. Another writer in between just brings the choice back. A
+	// draft that no longer fits the latest row keeps the dialog open, now only
+	// offering to load the latest.
 	const keepMyVersion = () =>
-		resolveConflict(() => {
-			rebase();
-			return requestSave();
+		resolveConflict((pending) => {
+			if (!pending.mustReload && rebase()) return requestSave();
+			conflict.value = { ...pending, mustReload: true };
 		});
 
 	// "Load latest": discard the draft and show the server's version.

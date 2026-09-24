@@ -2944,6 +2944,7 @@
 			"editorConflictDialog": {
 				"description": "Sie wurde an anderer Stelle gespeichert, nachdem Sie sie geöffnet haben: in einem anderen Tab, auf der Seite „Übersetzungen“ oder über einen gespeicherten Block, den sie verwendet. Ihre Änderungen sind noch nicht gespeichert. Behalten Sie Ihre Version, um sie über die neuere zu speichern, oder laden Sie die aktuelle Version und verwerfen Sie Ihre Änderungen.",
 				"keepMine": "Meine Version behalten",
+				"languageChanged": "Die Standardsprache dieser E-Mail wurde geändert, nachdem Sie sie geöffnet haben. Ihre Änderungen gehören deshalb zu einer anderen Sprache und können nicht darüber gespeichert werden. Laden Sie die aktuelle Version und nehmen Sie Ihre Änderungen dann erneut vor.",
 				"loadLatest": "Aktuelle Version laden",
 				"title": "Diese E-Mail wurde während Ihrer Bearbeitung geändert"
 			},
@@ -10107,6 +10108,7 @@
 						"publish": "Veröffentlichen",
 						"saveBeforePublishHint": "Speichern Sie Ihre Änderungen vor dem Veröffentlichen",
 						"toasts": {
+							"htmlStillRendering": "Ein gespeicherter Block, den diese E-Mail verwendet, wurde geändert, und die E-Mail wird noch aktualisiert. Sie wurde deshalb nicht veröffentlicht. Versuchen Sie es gleich noch einmal. Wenn das weiterhin passiert, speichern Sie die E-Mail und veröffentlichen Sie sie dann.",
 							"published": "E-Mail veröffentlicht",
 							"saveBeforePublish": "Speichern Sie die E-Mail, bevor Sie sie veröffentlichen",
 							"unpublished": "E-Mail wurde in den Entwurf zurückgesetzt"

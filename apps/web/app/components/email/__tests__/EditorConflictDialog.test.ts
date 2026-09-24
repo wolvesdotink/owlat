@@ -26,9 +26,9 @@ beforeEach(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 });
 
-function mountDialog(isResolving = false) {
+function mountDialog(isResolving = false, mustReload = false) {
 	return mount(EditorConflictDialog, {
-		props: { open: true, isResolving },
+		props: { open: true, isResolving, mustReload },
 		global: {
 			plugins: [createTestI18n()],
 			stubs: { UiModal: modalStub, UiButton: buttonStub },
@@ -67,5 +67,15 @@ describe('EditorConflictDialog', () => {
 		expect(button(wrapper, 'Keep my version').attributes('disabled')).toBeDefined();
 		expect(button(wrapper, 'Load latest').attributes('disabled')).toBeDefined();
 		expect(wrapper.find('[data-persistent="true"]').exists()).toBe(true);
+	});
+
+	it('only offers loading the latest when the draft cannot be kept', async () => {
+		const wrapper = mountDialog(false, true);
+
+		expect(wrapper.text()).toContain('Its default language was changed after you opened it');
+		expect(button(wrapper, 'Keep my version')).toBeUndefined();
+		await button(wrapper, 'Load latest').trigger('click');
+		expect(wrapper.emitted('load')).toHaveLength(1);
+		expectFullyLocalized(wrapper);
 	});
 });

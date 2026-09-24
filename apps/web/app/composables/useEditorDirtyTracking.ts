@@ -1,4 +1,4 @@
-import { ref, watch, nextTick, type Ref } from 'vue';
+import { isRef, ref, watch, nextTick, type Ref } from 'vue';
 
 /**
  * Editor dirty tracking — the load → dirty → save loop shared by the Email
@@ -13,13 +13,19 @@ import { ref, watch, nextTick, type Ref } from 'vue';
  * emission may replace the draft only when it holds nothing unsaved.
  */
 
+/**
+ * A dirty-tracked value. A ref can also be written back, which lets `rebase`
+ * merge the draft onto a newer row field by field; a getter only marks dirty.
+ */
+export type TrackedSource = Ref<unknown> | (() => unknown);
+
 export interface UseEditorDirtyTrackingOptions<S> {
 	/** The loaded row; hydrates the draft per entity (see `identity`). */
 	source: Ref<S>;
 	/** Per-surface parse of the loaded row into the tracked refs. */
 	initialize: (source: NonNullable<S>) => void;
-	/** Getters for the refs whose deep changes mark the editor dirty. */
-	watchSources: (() => unknown)[];
+	/** The values whose deep changes mark the editor dirty. */
+	watchSources: TrackedSource[];
 	/** Notified whenever the dirty flag flips (bridges to `setHasChanges`). */
 	onDirtyChange?: (dirty: boolean) => void;
 	/**
@@ -40,12 +46,29 @@ export interface UseEditorDirtyTrackingOptions<S> {
 	 * (the email builder's canvas) pushes the hydrated state through here.
 	 */
 	onHydrate?: (source: NonNullable<S>) => void;
+	/**
+	 * Unsaved work the tracked refs cannot see yet (an open inline text editor
+	 * commits only when it closes). While this returns true, an emission is
+	 * treated as if the draft were dirty: the draft and its base revision are
+	 * kept, so work committed later is saved against the revision it started
+	 * from and a write that landed meanwhile surfaces as a conflict. Once it
+	 * turns false with nothing committed, the editor catches up.
+	 */
+	holdHydration?: () => boolean;
+	/**
+	 * Whether a draft built on `base` still means the same thing on `latest`.
+	 * `rebase` refuses when it does not (e.g. the default language changed, so
+	 * the draft's text belongs to another language on the latest row).
+	 */
+	canRebase?: (base: NonNullable<S>, latest: NonNullable<S>) => boolean;
 }
 
 /** A save in flight: the draft as submitted and the server state it was built on. */
 export interface EditorSubmission<S> {
 	/** Serialized tracked refs at submit time. */
 	readonly draft: string;
+	/** The same, per tracked source. */
+	readonly fields: readonly string[];
 	/** The row the draft was hydrated from (or acknowledged against). */
 	readonly base: NonNullable<S> | null;
 	/** `revision(base)` — the revision the save must still find on the server. */
@@ -71,8 +94,11 @@ export interface UseEditorDirtyTrackingReturn<S> {
 	/**
 	 * Keep the draft but build it on the latest server row, so the next save
 	 * names that row's revision (the "keep my version" answer to a conflict).
+	 * A three-way merge per tracked source: a value the user left as it was on
+	 * the base takes the latest row's value, one they changed keeps theirs.
+	 * Returns false, changing nothing, when `canRebase` refuses the pair.
 	 */
-	rebase: () => void;
+	rebase: () => boolean;
 	/** Throw the draft away and hydrate the latest server row. */
 	reload: () => void;
 }
@@ -96,6 +122,9 @@ export function useEditorDirtyTracking<S>(
 	let base: NonNullable<S> | null = null;
 	let baseRevision: number | undefined;
 	let hydratedIdentity: unknown;
+	// What the server holds for each tracked source of the draft's base: set
+	// when a row is hydrated and when a save of the draft lands.
+	let baseFields: readonly string[] | null = null;
 	let generation = 0;
 	// Hydration writes the tracked refs; suppress the change watcher until the
 	// flush those writes queue has run.
@@ -106,7 +135,10 @@ export function useEditorDirtyTracking<S>(
 		opts.onDirtyChange?.(dirty);
 	};
 
-	const serializeDraft = () => JSON.stringify(opts.watchSources.map((read) => read()));
+	const read = (source: TrackedSource) => (isRef(source) ? source.value : source());
+	const serializeFields = () => opts.watchSources.map((source) => JSON.stringify(read(source)));
+	const serializeDraft = () => JSON.stringify(serializeFields());
+	const held = () => opts.holdHydration?.() === true;
 
 	const hydrate = (row: NonNullable<S>) => {
 		hydrating = true;
@@ -117,6 +149,7 @@ export function useEditorDirtyTracking<S>(
 		hydratedIdentity = identityOf(row);
 		opts.initialize(row);
 		opts.onHydrate?.(row);
+		baseFields = serializeFields();
 		setDirty(false);
 		void nextTick(() => {
 			hydrating = false;
@@ -133,12 +166,12 @@ export function useEditorDirtyTracking<S>(
 				hydrate(row);
 				return;
 			}
-			if (!hasChanges.value) {
+			if (!hasChanges.value && !held()) {
 				// Nothing unsaved: follow the server.
 				hydrate(row);
 				return;
 			}
-			// Unsaved draft: keep it. A row at the draft's revision (a send
+			// Unsaved draft (or work not committed to it yet): keep it. A row at the draft's revision (a send
 			// counter, a schema tweak) is still a valid base for it; anything
 			// newer is a write the next save has to be checked against.
 			if (opts.revision === undefined || opts.revision(row) === baseRevision) base = row;
@@ -157,12 +190,10 @@ export function useEditorDirtyTracking<S>(
 		{ deep: true }
 	);
 
-	const beginSubmit = (): EditorSubmission<S> => ({
-		draft: serializeDraft(),
-		base,
-		revision: baseRevision,
-		generation,
-	});
+	const beginSubmit = (): EditorSubmission<S> => {
+		const fields = serializeFields();
+		return { draft: JSON.stringify(fields), fields, base, revision: baseRevision, generation };
+	};
 
 	// A row older than the revision the draft is built on — an emission from
 	// before our own write, which the echo of that write will replace.
@@ -173,8 +204,10 @@ export function useEditorDirtyTracking<S>(
 		// An emission skipped while the draft was dirty (e.g. a settings save
 		// that re-keys the row) is applied now that nothing is unsaved. One that
 		// predates the write just acknowledged is not: it would put the content
-		// from before that write back on screen until the echo arrived.
+		// from before that write back on screen until the echo arrived. Nor is
+		// anything while work is held outside the draft; the release catches up.
 		if (
+			!held() &&
 			latest !== null &&
 			latest !== hydratedFrom &&
 			identityOf(latest) === hydratedIdentity &&
@@ -190,6 +223,7 @@ export function useEditorDirtyTracking<S>(
 		// Re-hydrated while the save was in flight (clean draft followed the
 		// server, or the editor moved to another entity): that state wins.
 		if (submission.generation !== generation) return;
+		baseFields = submission.fields;
 		if (landedRevision !== undefined || submission.revision !== undefined) {
 			// The draft now builds on our write. Prefer the revision the server
 			// says it stored over assuming the next one.
@@ -201,11 +235,45 @@ export function useEditorDirtyTracking<S>(
 		if (serializeDraft() === submission.draft) catchUp();
 	};
 
-	const rebase = () => {
-		if (latest === null) return;
+	// The three-way merge behind `rebase`. Needs every source writable; with a
+	// getter among them the whole draft is kept, as before the merge existed.
+	const mergeOnto = (row: NonNullable<S>) => {
+		const sources = opts.watchSources;
+		const from = baseFields;
+		if (from === null || !sources.every(isRef)) return;
+		const draft = sources.map(read);
+		const touched = draft.map((value, i) => JSON.stringify(value) !== from[i]);
+		if (touched.every(Boolean)) return;
+		opts.initialize(row);
+		const latestFields = serializeFields();
+		for (const [i, source] of sources.entries()) {
+			if (touched[i]) (source as Ref<unknown>).value = draft[i];
+		}
+		baseFields = latestFields;
+		// The canvas holds its own copy; show it what the merge took from `row`.
+		opts.onHydrate?.(row);
+	};
+
+	const rebase = (): boolean => {
+		if (latest === null) return true;
+		if (base !== null && opts.canRebase?.(base, latest) === false) return false;
+		mergeOnto(latest);
 		base = latest;
 		baseRevision = opts.revision?.(latest);
+		return true;
 	};
+
+	// Work held outside the draft was let go. If none of it was committed (the
+	// draft is still clean), follow the emissions it held back. Waiting a tick
+	// lets a commit made on release reach the tracked refs first.
+	if (opts.holdHydration) {
+		watch(opts.holdHydration, (isHeld) => {
+			if (isHeld) return;
+			void nextTick(() => {
+				if (!held() && !hasChanges.value && isInitialized.value) catchUp();
+			});
+		});
+	}
 
 	const reload = () => {
 		if (latest !== null) hydrate(latest);

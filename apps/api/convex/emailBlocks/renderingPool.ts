@@ -153,9 +153,11 @@ export const patchTransactionalHtml = internalMutation({
  *
  * On terminal failure: bumps `htmlRenderState.failureCount`, sets
  * `lastFailureAt`, leaves `stale: true`, and writes an
- * `email_block.rerender_failed` audit log per consumer. On success: no
- * row writes here — the action's own mutations already cleared the
- * stale flag and persisted the new HTML.
+ * `email_block.rerender_failed` audit log per consumer whose HTML is still
+ * stale. A job fails as a whole, but by then some of its rows may be current:
+ * rendered by an earlier attempt, or re-saved from the editor with fresh HTML.
+ * Those are left alone. On success: no row writes here — the action's own
+ * mutations already cleared the stale flag and persisted the new HTML.
  *
  * `vOnCompleteArgs` supplies the workpool's `{ workId, context, result }`
  * arg shape; `result` is the typed `RunResult` success/failed/canceled union.
@@ -188,8 +190,8 @@ export const onRerenderComplete = internalMutation({
 		for (const { consumerKind, ids } of consumers) {
 			for (const id of ids) {
 				const row = await ctx.db.get(id);
-				if (!row) continue;
-				const previous = row.htmlRenderState ?? { stale: true };
+				if (!row?.htmlRenderState?.stale) continue;
+				const previous = row.htmlRenderState;
 				await ctx.db.patch(id, {
 					htmlRenderState: {
 						stale: true,

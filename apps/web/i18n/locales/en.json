@@ -2944,6 +2944,7 @@
 			"editorConflictDialog": {
 				"description": "It was saved somewhere else after you opened it: in another tab, on the Translations page, or through a saved block it uses. Your edits are not saved yet. Keep your version to save it over the newer one, or load the latest version and discard your edits.",
 				"keepMine": "Keep my version",
+				"languageChanged": "Its default language was changed after you opened it, so your edits belong to a different language now and cannot be saved over it. Load the latest version, then make your changes again.",
 				"loadLatest": "Load latest",
 				"title": "This email changed while you were editing"
 			},
@@ -10107,6 +10108,7 @@
 						"publish": "Publish",
 						"saveBeforePublishHint": "Save your changes before publishing",
 						"toasts": {
+							"htmlStillRendering": "A saved block this email uses changed, and the email is still being updated, so it was not published. Try again in a moment. If this keeps happening, save the email, then publish it.",
 							"published": "Email published",
 							"saveBeforePublish": "Save the email before publishing it",
 							"unpublished": "Email returned to draft"

@@ -137,6 +137,19 @@ function buildPublishableEmailPayload(
 	};
 }
 
+/**
+ * Whether a draft built on `base` can be saved over `latest` (the editor
+ * bridge's `canKeepDraft`). Changing the default language swaps the row's
+ * blocks and subject for another language's text, so a draft of the old
+ * default saved over it would put one language's text under another's name.
+ */
+export function sameDefaultLanguage(
+	base: { defaultLanguage?: string },
+	latest: { defaultLanguage?: string }
+): boolean {
+	return (base.defaultLanguage ?? 'en') === (latest.defaultLanguage ?? 'en');
+}
+
 /** Build the payload and commit it; resolves with the revision the write stored. */
 export async function publishableEmailSave(args: PublishableEmailSaveArgs): Promise<number> {
 	return await args.commit(buildPublishableEmailPayload(args.draft, args.base, args.renderOptions));

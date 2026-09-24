@@ -23,9 +23,10 @@ defineProps<{
 	isPublishing: boolean;
 	/**
 	 * Unsaved editor changes. Share links warn before handing out a URL, and
-	 * publish/unpublish wait for a save, as in the template editor: publishing
-	 * renders the canvas, so it would put unsaved content live while the saved
-	 * email stayed behind.
+	 * Publish waits for a save: publishing renders the canvas, so it would put
+	 * unsaved content live while the saved email stayed behind. Unpublish stays
+	 * available: it renders nothing, and a published email refuses saves until
+	 * it is unpublished, so holding it too would leave the edits unsaveable.
 	 */
 	hasChanges: boolean;
 }>();
@@ -108,12 +109,12 @@ const { t } = useI18n();
 		:variant="isPublished ? 'secondary' : 'primary'"
 		size="sm"
 		:loading="isPublishing"
-		:disabled="hasChanges"
+		:disabled="hasChanges && !isPublished"
 		:title="
-			hasChanges
-				? t('dashboard.send.transactional.detail.edit.publishHint.saveFirst')
-				: isPublished
-					? t('dashboard.send.transactional.detail.edit.publishHint.unpublish')
+			isPublished
+				? t('dashboard.send.transactional.detail.edit.publishHint.unpublish')
+				: hasChanges
+					? t('dashboard.send.transactional.detail.edit.publishHint.saveFirst')
 					: t('dashboard.send.transactional.detail.edit.publishHint.publish')
 		"
 		@click="emit('toggle-publish')"

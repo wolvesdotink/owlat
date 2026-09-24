@@ -150,7 +150,8 @@ const {
 } = useEmailEditorBridge({
 	source: email,
 	revision: (row) => row.contentRevision ?? 0,
-	extraWatch: [() => attachments.value, () => showUnsubscribe.value, () => plainTextOverride.value],
+	extraWatch: [attachments, showUnsubscribe, plainTextOverride],
+	canKeepDraft: sameDefaultLanguage,
 	initialize: (e, ctx) => {
 		ctx.name.value = e.name;
 		ctx.subject.value = e.subject;
@@ -215,10 +216,12 @@ const handleTogglePublish = async () => {
 	// Awaiting review is a terminal, author-side dead-end: only an admin can move
 	// it forward, so there is no publish/unpublish action to take here.
 	if (isPendingReview.value) return;
-	// The HTML below is rendered from the canvas, so publishing with unsaved
-	// edits would put content live that the saved email does not hold. The
-	// toolbar disables the button; this covers any other caller.
-	if (hasChanges.value) return;
+	// The publish HTML below is rendered from the canvas, so publishing with
+	// unsaved edits would put content live that the saved email does not hold.
+	// The toolbar disables Publish; this covers any other caller. Unpublish
+	// stays allowed: a published email refuses saves, so unpublishing is how
+	// those edits get saved at all.
+	if (hasChanges.value && email.value.status !== 'published') return;
 
 	isPublishing.value = true;
 	try {
@@ -441,6 +444,7 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 		<EmailEditorConflictDialog
 			:open="conflict !== null"
 			:is-resolving="isResolvingConflict"
+			:must-reload="conflict?.mustReload === true"
 			@keep="keepMyVersion"
 			@load="loadLatestVersion"
 			@close="dismissConflict"

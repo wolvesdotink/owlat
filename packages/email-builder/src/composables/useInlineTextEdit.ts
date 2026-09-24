@@ -67,7 +67,15 @@ export function useInlineTextEdit(options: UseInlineTextEditOptions): UseInlineT
 			// Belt-and-suspenders: scrub contenteditable output before it is
 			// persisted, so a pasted `<img onerror=…>`/`<script>` never reaches
 			// storage. The renderer sanitises again at the email boundary.
-			onUpdate(inlineEditBlockId.value, 'html', sanitizeRawHtml(html));
+			const committed = sanitizeRawHtml(html);
+			// Closing without a change commits nothing: rewriting the block would
+			// count as an edit, and a host that held a newer server copy back
+			// while the editor was open could no longer follow it.
+			const block = activeBlock.value;
+			const unchanged =
+				block?.id === inlineEditBlockId.value &&
+				(block.content as { html?: unknown }).html === committed;
+			if (!unchanged) onUpdate(inlineEditBlockId.value, 'html', committed);
 		}
 
 		inlineEditBlockId.value = null;

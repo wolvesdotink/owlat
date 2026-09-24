@@ -370,4 +370,154 @@ describe('useEditorDirtyTracking', () => {
 		expect(editor.hasChanges.value).toBe(false);
 		expect(editor.beginSubmit().revision).toBe(5);
 	});
+
+	it('holds hydration while work is outside the draft, then catches up if none was committed', async () => {
+		const source = ref<Row | null>({ _id: 't1', name: 'Loaded', contentRevision: 1 });
+		const name = ref('');
+		const inlineOpen = ref(false);
+		const tracker = useEditorDirtyTracking({
+			source,
+			initialize: (row) => {
+				name.value = row.name;
+			},
+			watchSources: [() => name.value],
+			revision: (row) => row.contentRevision ?? 0,
+			holdHydration: () => inlineOpen.value,
+		});
+		await settle();
+
+		inlineOpen.value = true;
+		source.value = { _id: 't1', name: 'Theirs', contentRevision: 2 };
+		await settle();
+		expect(name.value).toBe('Loaded');
+		expect(tracker.beginSubmit().revision).toBe(1);
+
+		inlineOpen.value = false;
+		await settle();
+		expect(name.value).toBe('Theirs');
+		expect(tracker.hasChanges.value).toBe(false);
+		expect(tracker.beginSubmit().revision).toBe(2);
+	});
+
+	it('keeps the old base when work held outside the draft is committed on release', async () => {
+		const source = ref<Row | null>({ _id: 't1', name: 'Loaded', contentRevision: 1 });
+		const name = ref('');
+		const inlineOpen = ref(true);
+		const tracker = useEditorDirtyTracking({
+			source,
+			initialize: (row) => {
+				name.value = row.name;
+			},
+			watchSources: [() => name.value],
+			revision: (row) => row.contentRevision ?? 0,
+			holdHydration: () => inlineOpen.value,
+		});
+		await settle();
+		source.value = { _id: 't1', name: 'Theirs', contentRevision: 2 };
+		await settle();
+
+		// Closing commits the typed text in the same tick.
+		name.value = 'Loaded + typed';
+		inlineOpen.value = false;
+		await settle();
+
+		expect(name.value).toBe('Loaded + typed');
+		expect(tracker.hasChanges.value).toBe(true);
+		expect(tracker.beginSubmit().revision).toBe(1);
+	});
+
+	describe('rebase merges field by field', () => {
+		function mergeEditor() {
+			const source = ref<Row & { subject: string }>({
+				_id: 't1',
+				name: 'Launch',
+				subject: 'Hello',
+				contentRevision: 3,
+			});
+			const name = ref('');
+			const subject = ref('');
+			const onHydrate = vi.fn();
+			const tracker = useEditorDirtyTracking({
+				source,
+				initialize: (row) => {
+					name.value = row.name;
+					subject.value = row.subject;
+				},
+				watchSources: [name, subject],
+				revision: (row) => row.contentRevision ?? 0,
+				onHydrate,
+				canRebase: (base, latest) =>
+					latest.name !== 'Renamed elsewhere' || base.name === latest.name,
+			});
+			return { source, name, subject, onHydrate, ...tracker };
+		}
+
+		it('takes the latest value for a field the user left alone and keeps the one they changed', async () => {
+			const editor = mergeEditor();
+			await settle();
+			editor.subject.value = 'My subject';
+			await nextTick();
+			editor.source.value = {
+				_id: 't1',
+				name: 'Their name',
+				subject: 'Their subject',
+				contentRevision: 4,
+			};
+			await settle();
+
+			expect(editor.rebase()).toBe(true);
+
+			expect(editor.name.value).toBe('Their name');
+			expect(editor.subject.value).toBe('My subject');
+			expect(editor.hasChanges.value).toBe(true);
+			expect(editor.beginSubmit().revision).toBe(4);
+			// The canvas-holding host is told about the merged state.
+			expect(editor.onHydrate).toHaveBeenCalledTimes(2);
+		});
+
+		it('compares against what the last landed save stored, not the first load', async () => {
+			const editor = mergeEditor();
+			await settle();
+			editor.name.value = 'Saved name';
+			await nextTick();
+			const submission = editor.beginSubmit();
+			// An edit made while the save is in flight keeps the draft dirty.
+			editor.subject.value = 'My subject';
+			await nextTick();
+			editor.acknowledge(submission, 4);
+			editor.source.value = {
+				_id: 't1',
+				name: 'Their name',
+				subject: 'Hello',
+				contentRevision: 5,
+			};
+			await settle();
+
+			editor.rebase();
+
+			// `name` equals what the save stored, so the newer value wins.
+			expect(editor.name.value).toBe('Their name');
+			expect(editor.subject.value).toBe('My subject');
+		});
+
+		it('refuses, changing nothing, when canRebase rejects the latest row', async () => {
+			const editor = mergeEditor();
+			await settle();
+			editor.subject.value = 'My subject';
+			await nextTick();
+			editor.source.value = {
+				_id: 't1',
+				name: 'Renamed elsewhere',
+				subject: 'Hello',
+				contentRevision: 4,
+			};
+			await settle();
+
+			expect(editor.rebase()).toBe(false);
+
+			expect(editor.name.value).toBe('Launch');
+			expect(editor.subject.value).toBe('My subject');
+			expect(editor.beginSubmit().revision).toBe(3);
+		});
+	});
 });

@@ -344,9 +344,11 @@ describe('emailTemplates.changeType — audit + behavior', () => {
 // ============================================================================
 
 describe('emailTemplates publish/unpublish/duplicate/remove — public wrappers', () => {
-	it('publish promotes draft → published and stamps htmlContent', async () => {
+	it('publish promotes draft → published and stamps htmlContent on a never-rendered row', async () => {
 		const t = convexTest(schema, modules);
-		const templateId = await seedTemplate(t, { status: 'draft' });
+		// A row with rendered HTML publishes that HTML; the caller's copy is
+		// only used for one without (emailContentRevision.integration.test.ts).
+		const templateId = await seedTemplate(t, { status: 'draft', htmlContent: undefined });
 
 		setUser('user-olive', 'owner');
 		await t.mutation(api.emailTemplates.emails.publish, {

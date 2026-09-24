@@ -116,7 +116,8 @@ const {
 } = useEmailEditorBridge({
 	source: template,
 	revision: (row) => row.contentRevision ?? 0,
-	extraWatch: [() => plainTextOverride.value],
+	extraWatch: [plainTextOverride],
+	canKeepDraft: sameDefaultLanguage,
 	initialize: (t, ctx) => {
 		ctx.name.value = t.name;
 		ctx.subject.value = t.subject;
@@ -189,17 +190,20 @@ async function handlePublicationToggle() {
 		if (result.ok) showToast(t('dashboard.send.emails.detail.edit.toasts.unpublished'));
 		return;
 	}
+	// Publish puts the stored HTML live, which unsaved edits are not part of.
+	// The button holds Publish while dirty; this covers any other caller.
+	if (hasChanges.value) return;
 	const row = template.value;
 	if (!row?.htmlContent) {
 		showToast(t('dashboard.send.emails.detail.edit.toasts.saveBeforePublish'), 'error');
 		return;
 	}
-	// The stored HTML goes live only if the row still holds the content it was
-	// rendered from; a write landing in between refuses the publish.
+	// The server publishes the row's own stored HTML, and refuses while a
+	// saved-block rerender is still bringing it up to date. The revision makes
+	// a write landing after this click refuse the publish instead of putting
+	// a version live that this tab never showed.
 	const result = await publishTemplate({
 		templateId: templateId.value,
-		htmlContent: row.htmlContent,
-		htmlTranslations: row.htmlTranslations,
 		expectedContentRevision: row.contentRevision ?? 0,
 	});
 	if (result.ok) showToast(t('dashboard.send.emails.detail.edit.toasts.published'));
@@ -284,27 +288,13 @@ async function handlePublicationToggle() {
 				>
 					<!-- Toolbar actions -->
 					<template #toolbar-actions>
-						<UiButton
-							variant="secondary"
-							size="sm"
+						<EmailTemplatePublishButton
+							:is-published="isPublished"
+							:has-changes="hasChanges"
+							:has-stored-html="Boolean(template?.htmlContent)"
 							:loading="isChangingPublication"
-							:disabled="hasChanges || (!isPublished && !template?.htmlContent)"
-							:title="
-								hasChanges
-									? t('dashboard.send.emails.detail.edit.saveBeforePublishHint')
-									: undefined
-							"
-							@click="handlePublicationToggle"
-						>
-							<template #iconLeft>
-								<Icon :name="isPublished ? 'lucide:undo-2' : 'lucide:send'" class="w-4 h-4" />
-							</template>
-							{{
-								isPublished
-									? t('dashboard.send.emails.detail.edit.unpublish')
-									: t('dashboard.send.emails.detail.edit.publish')
-							}}
-						</UiButton>
+							@toggle="handlePublicationToggle"
+						/>
 						<EmailTemplateHistoryPanel
 							:template-id="templateId"
 							:has-unsaved-changes="hasChanges"
@@ -345,6 +335,7 @@ async function handlePublicationToggle() {
 		<EmailEditorConflictDialog
 			:open="conflict !== null"
 			:is-resolving="isResolvingConflict"
+			:must-reload="conflict?.mustReload === true"
 			@keep="keepMyVersion"
 			@load="loadLatestVersion"
 			@close="dismissConflict"
