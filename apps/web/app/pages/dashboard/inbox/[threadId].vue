@@ -1010,6 +1010,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						:draft="replyDraft"
 						:original-draft="replyOriginalDraft"
 						:subject="replyDefaultSubject"
+						:target="replyComposerTarget"
 						:busy="isSending"
 						:held="isHeld"
 						:held-reason="holdReason"

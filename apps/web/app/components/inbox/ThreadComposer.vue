@@ -16,12 +16,18 @@
  *  - The message is in a state no reply can go to (still being read, filed as
  *    an update, the reply on its way): the box stays collapsed and says why.
  *
- * Presentation only: the page owns the mutations and receives `send` (with
- * whether the text differs from the agent draft, and the subject), `save` and
- * `reject`.
+ * The composer answers a `teamThread` composer target (`utils/composerTarget`),
+ * so the checks the Postbox composer runs before a send apply here too, as far
+ * as that target allows: the same advisory preflight chip beside Send.
+ *
+ * Presentation only: the page owns the mutations (`useTeamThreadComposer`) and
+ * receives `send` (with whether the text differs from the agent draft, and the
+ * subject), `save` and `reject`.
  * The send colour and label match the Answer queue (TaskActions' primary).
  */
 import TaskActions from '~/components/agent-tasks/TaskActions.vue';
+import PostboxComposerPreflightChip from '~/components/postbox/PostboxComposerPreflightChip.vue';
+import { composerPreflight, type TeamThreadComposerTarget } from '~/utils/composerTarget';
 import {
 	REPLY_BLOCKER_KEYS,
 	REPLY_NOTICE_KEYS,
@@ -31,6 +37,8 @@ import {
 
 const props = withDefaults(
 	defineProps<{
+		/** The message the reply answers. */
+		target: TeamThreadComposerTarget;
 		/** Who a reply goes to, for the collapsed line ("Reply to Ana…"). */
 		senderLabel: string;
 		/** Why nothing can be sent right now; `null` = the composer can send. */
@@ -123,6 +131,12 @@ const showDiff = computed(
 	() => hasDraft.value && body.value.trim() !== '' && body.value.trim() !== diffBase.value.trim()
 );
 const canSend = computed(() => body.value.trim().length > 0 && !props.busy);
+// A `[TODO]` or `{{name}}` the agent (or the person) left in the reply.
+const preflight = computed(() =>
+	body.value.trim()
+		? composerPreflight(props.target, { subject: subject.value, body: body.value })
+		: []
+);
 
 watch(
 	[isOpen, edited, () => body.value.trim().length > 0],
@@ -320,6 +334,8 @@ const secondaryButton =
 					{{ diffBase }}
 				</p>
 			</div>
+
+			<PostboxComposerPreflightChip :findings="preflight" />
 
 			<TaskActions
 				:primary-label="
