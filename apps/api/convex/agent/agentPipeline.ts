@@ -17,7 +17,8 @@ import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { isOutboundChannel } from '../lib/convexValidators';
 import { runReferenceMonitor } from './referenceMonitor';
-import { buildThreadingHeaders, extractRecipient, replyBodyToHtml } from './replyEnvelope';
+import { buildThreadingHeaders, extractRecipient } from './replyEnvelope';
+import { replyBodyToHtml } from '@owlat/shared/html';
 import type {
 	NonCampaignIntakeOutcome,
 	NonCampaignIntakeRejectionReason,

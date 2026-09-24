@@ -1,7 +1,7 @@
 /**
- * The envelope of a reply to an inbound message: who it goes to, the RFC 5322
- * threading headers that land it under the customer's message, and the HTML
- * the plain-text body ships as.
+ * The envelope of a reply to an inbound message: who it goes to and the RFC 5322
+ * threading headers that land it under the customer's message. The HTML the
+ * plain-text body ships as is `replyBodyToHtml` in `@owlat/shared/html`.
  *
  * Shared by the two paths that answer an inbound message: the approved reply
  * (`agent/agentPipeline.sendApprovedReply`) and a person's follow-up on a
@@ -9,20 +9,7 @@
  * action and the mutation runtime can import it.
  */
 
-import { escapeHtmlWithBreaks } from '@owlat/shared/html';
 import { parseAddress } from '@owlat/shared';
-
-/**
- * Escape a plain-text reply body into a minimal HTML fragment. The body is
- * final, non-templated text (the agent's signature is already folded in by the
- * `draft` step), so we escape it and convert newlines to `<br>` rather than
- * running it through the block renderer.
- */
-export function replyBodyToHtml(text: string): string {
-	// escapeHtmlWithBreaks escapes all five HTML metacharacters (the old inline
-	// version omitted the apostrophe) and converts newlines to <br>.
-	return `<div>${escapeHtmlWithBreaks(text.replace(/\r\n/g, '\n'))}</div>`;
-}
 
 /**
  * Build the RFC 5322 threading headers for a reply. `In-Reply-To` points at

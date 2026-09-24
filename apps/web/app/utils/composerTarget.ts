@@ -17,7 +17,7 @@
  */
 
 import type { Id } from '@owlat/api/dataModel';
-import { escapeHtmlWithBreaks } from '@owlat/shared/html';
+import { replyBodyToHtml } from '@owlat/shared/html';
 import { preflightDraft, type PreflightFinding } from '~/utils/postboxPreflight';
 
 export type ComposerTarget =
@@ -38,11 +38,18 @@ export interface TeamThreadComposerTarget {
 	inboundMessageId: Id<'inboundMessages'>;
 }
 
-/** What a target supports. Every flag reads "the composer may offer this". */
+/**
+ * What a target supports. Every flag reads "the composer may offer this".
+ *
+ * Only `body`, `preflight` and `subjectFallback` have a reader today
+ * ({@link composerPreflight}). The rest are declarative: they record what
+ * each target allows, and nothing enforces them until the PostboxComposer
+ * slice of #812 reads them to hide the controls a target cannot use.
+ */
 export interface ComposerTargetCapabilities {
 	/**
 	 * The body the target stores and sends. `text` is escaped into HTML on the
-	 * way out (the server's `replyBodyToHtml`), so formatting would be lost.
+	 * way out (`replyBodyToHtml` in `@owlat/shared/html`), so formatting would be lost.
 	 */
 	body: 'html' | 'text';
 	/**
@@ -112,13 +119,11 @@ export function composerTargetCapabilities(target: ComposerTarget): ComposerTarg
 
 /**
  * The body as the HTML the checks written for the Postbox composer read. A
- * plain-text body is escaped the way the server escapes it for sending
- * (`agent/replyEnvelope.replyBodyToHtml`), so a check sees what the recipient
- * will get.
+ * plain-text body goes through the same `replyBodyToHtml` the server sends it
+ * with, so a check sees what the recipient will get.
  */
 function bodyHtml(body: string, format: ComposerTargetCapabilities['body']): string {
-	if (format === 'html') return body;
-	return `<div>${escapeHtmlWithBreaks(body.replace(/\r\n/g, '\n'))}</div>`;
+	return format === 'html' ? body : replyBodyToHtml(body);
 }
 
 /**

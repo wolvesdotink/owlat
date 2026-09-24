@@ -28,13 +28,7 @@ import {
 	isReplyCollision,
 	replyCollisionToast,
 } from '~/utils/replyCollision';
-import { isFollowUp, needsTakeOver } from '~/utils/teamThreadReply';
-
-/** A person's reply: its body, and the subject (blank = keep the default). */
-interface TeamThreadReply {
-	body: string;
-	subject: string;
-}
+import { isFollowUp, needsTakeOver, type TeamThreadReply } from '~/utils/teamThreadReply';
 
 type OperationResult = BackendOperationResult<unknown>;
 

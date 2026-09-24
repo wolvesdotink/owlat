@@ -36,7 +36,8 @@ import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { isOutboundChannel } from '../lib/convexValidators';
 import { getOrThrow, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import { mirrorEmailSendWrite } from '../unifiedMessages';
-import { buildThreadingHeaders, extractRecipient, replyBodyToHtml } from '../agent/replyEnvelope';
+import { buildThreadingHeaders, extractRecipient } from '../agent/replyEnvelope';
+import { replyBodyToHtml } from '@owlat/shared/html';
 import type {
 	NonCampaignIntakeOutcome,
 	NonCampaignIntakeRejectionReason,

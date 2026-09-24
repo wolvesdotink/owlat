@@ -18,3 +18,16 @@ export function escapeHtml(s: string): string {
 export function escapeHtmlWithBreaks(s: string): string {
 	return escapeHtml(s).replace(/\n/g, '<br>');
 }
+
+/**
+ * Escape a plain-text reply body into the minimal HTML fragment it is sent as.
+ * The body is final, non-templated text, so it is escaped and its newlines
+ * become `<br>` rather than going through the block renderer.
+ *
+ * The one definition: the server sends a Team inbox reply with it
+ * (`agent/agentPipeline`, `inbox/followUps`), and the web composer runs its
+ * pre-send checks on its output, so the checks see what the recipient gets.
+ */
+export function replyBodyToHtml(text: string): string {
+	return `<div>${escapeHtmlWithBreaks(text.replace(/\r\n/g, '\n'))}</div>`;
+}
