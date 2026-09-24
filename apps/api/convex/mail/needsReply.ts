@@ -39,7 +39,7 @@ import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './ai/priorityScore';
 import { scoreAndScreenResult } from './ai/needsReplyScoring';
 import { isFeatureEnabled } from '../lib/featureFlags';
-import type { NeedsReplyHeaders } from './needsReplyHeuristic';
+import { isFromMailboxOwner, type NeedsReplyHeaders } from './needsReplyHeuristic';
 
 /** True when an attachment is a calendar invite (.ics / text/calendar). */
 export function isCalendarAttachment(att: { filename: string; contentType: string }): boolean {
@@ -94,6 +94,28 @@ export async function clearThreadNeedsReply(
 	});
 }
 
+/**
+ * Settle the flag when the owner answers OUTSIDE Owlat (the provider's web
+ * client, a phone). That reply syncs in through the Sent folder and never
+ * passes draftLifecycle's sent-effects, so without this the flag — and the
+ * draft pre-generated for it — outlives the reply that settled it, and the
+ * queue offers to answer a conversation whose last word is our own. A Sent copy
+ * older than the flagged message (out-of-order sync) settles nothing.
+ */
+export async function clearNeedsReplyOnOwnerReply(
+	ctx: MutationCtx,
+	messageId: Id<'mailMessages'>
+): Promise<void> {
+	const message = await ctx.db.get(messageId);
+	if (!message) return;
+	const thread = await ctx.db.get(message.threadId);
+	const mailbox = await ctx.db.get(message.mailboxId);
+	if (!thread?.needsReply || !mailbox || !isFromMailboxOwner(message, mailbox.address)) return;
+	const trigger = await ctx.db.get(thread.needsReply.messageId);
+	if (trigger && trigger.receivedAt > message.receivedAt) return;
+	await clearThreadNeedsReply(ctx, thread._id);
+}
+
 // ─── Convex functions ────────────────────────────────────────────────────────
 
 /**
@@ -131,7 +153,7 @@ export const getThreadContext = internalQuery({
 					// A real calendar invite (.ics) is handled by PostboxInviteCard —
 					// the scheduling chip must never double up on it.
 					hasCalendarInvite: (m.attachments ?? []).some(isCalendarAttachment),
-					isFromOwner: m.outbound !== undefined || m.fromAddress.toLowerCase() === ownerAddress,
+					isFromOwner: isFromMailboxOwner(m, ownerAddress),
 					receivedAt: m.receivedAt,
 					subject: m.subject,
 					// Short bounded body excerpt — the refinement prompt does not need

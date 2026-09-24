@@ -83,7 +83,9 @@ export async function generateDraftOnArrival(
 		const result = await runSharedDraft(ctx, {
 			surface: 'personal',
 			resolveModel: () => resolveLanguageModel(ctx, 'draft'), // capable tier, lazy for custom strategies
-			audience: 'the mailbox owner',
+			// Name the owner's address so the model knows which side of the
+			// labelled transcript it writes for (loadForDraft marks both sides).
+			audience: `the mailbox owner (${loaded.ownerAddress}), answering the last message in the thread, which the other party sent`,
 			styleReference: "the owner's",
 			context: loaded.context,
 			confirmedContext: confirmedContext.length > 0 ? confirmedContext : undefined,

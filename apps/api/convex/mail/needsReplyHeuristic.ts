@@ -200,6 +200,21 @@ export function isBulkOrNoReplySender(msg: {
 
 // ─── The candidate screen ────────────────────────────────────────────────────
 
+/**
+ * True when a stored message was written by the mailbox owner: sent through
+ * Owlat (`outbound`) or synced in from the provider's Sent folder, which
+ * carries no `outbound` marker and is only recognisable by its From address.
+ */
+export function isFromMailboxOwner(
+	message: { outbound?: unknown; fromAddress: string },
+	ownerAddress: string
+): boolean {
+	return (
+		message.outbound !== undefined ||
+		message.fromAddress.toLowerCase() === ownerAddress.toLowerCase()
+	);
+}
+
 export interface NeedsReplyMessageInput {
 	fromAddress: string;
 	toAddresses: string[];
