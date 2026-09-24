@@ -5690,6 +5690,13 @@
 				"done": "Erledigt",
 				"openThread": "Unterhaltung öffnen",
 				"markReadOperation": "Als gelesen markieren"
+			},
+			"inboxPicker": {
+				"label": "Postfächer für Heute auswählen",
+				"all": "Alle Postfächer",
+				"some": "{shown} von {total} Postfächern",
+				"heading": "In Heute zeigen",
+				"note": "Ausgeblendete Postfächer bleiben in der Seitenleiste und in der Antwortliste."
 			}
 		},
 		"answer": {
@@ -10481,7 +10488,8 @@
 			"operations": {
 				"done": "Als erledigt markieren",
 				"replyAnyway": "Antwort anfordern",
-				"markSeen": "Als gesehen markieren"
+				"markSeen": "Als gesehen markieren",
+				"chooseInboxes": "Postfächer für Heute ändern"
 			}
 		},
 		"answer": {

@@ -70,7 +70,8 @@ const handleClickOutside = (event: MouseEvent) => {
 	}
 };
 
-const MENU_ITEM_SELECTOR = '[role="menuitem"]:not([disabled])';
+const MENU_ITEM_SELECTOR =
+	'[role="menuitem"]:not([disabled]), [role="menuitemcheckbox"]:not([disabled])';
 
 // Handle keyboard navigation within the dropdown
 const handleKeydown = (event: KeyboardEvent) => {

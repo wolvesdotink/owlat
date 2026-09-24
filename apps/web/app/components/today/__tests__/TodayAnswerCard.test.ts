@@ -90,6 +90,29 @@ describe('TodayAnswerCard', () => {
 		expect(text).toContain('1 draft ready · about 3 minutes');
 		expect(text).not.toMatch(/\bone\b/);
 	});
+
+	it('links to the whole queue when inboxes left out of Today hold more', () => {
+		const w = mount(TodayAnswerCard, {
+			props: {
+				items: [item('a')],
+				counts: { mail: 0, team: 0, mention: 1, drafts: 0 },
+				isLoading: false,
+				queueTotal: 6,
+			},
+			global: {
+				plugins: [createTestI18n()],
+				stubs: {
+					UiButton: { template: '<a><slot /></a>' },
+					UiSkeleton: true,
+					Icon: true,
+					InboxChip: true,
+					NuxtLink: { template: '<a><slot /></a>' },
+				},
+			},
+		});
+		expect(w.text()).toContain('1 needs an answer from you');
+		expect(w.text()).toContain('All 6 in the queue');
+	});
 });
 
 describe('TodaySourceLink', () => {

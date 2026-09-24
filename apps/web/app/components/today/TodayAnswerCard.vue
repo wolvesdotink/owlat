@@ -18,6 +18,11 @@ const props = defineProps<{
 	items: readonly AnswerItem[];
 	counts: AnswerCounts;
 	isLoading: boolean;
+	/**
+	 * Everything in the Answer queue, when that is more than `items` (inboxes
+	 * left out of Today still sit in the queue the link opens).
+	 */
+	queueTotal?: number;
 }>();
 
 const { t } = useI18n();
@@ -120,7 +125,9 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.item
 				<NuxtLink
 					to="/dashboard/answer"
 					class="ml-auto normal-case tracking-normal text-brand hover:underline"
-					>{{ t('components.today.answer.allInQueue', { count: items.length }) }}</NuxtLink
+					>{{
+						t('components.today.answer.allInQueue', { count: queueTotal ?? items.length })
+					}}</NuxtLink
 				>
 			</h3>
 			<ul

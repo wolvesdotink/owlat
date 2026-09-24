@@ -28,7 +28,11 @@ const userId = computed(() => user.value?.id ?? null);
 const firstName = computed(() => user.value?.name?.split(' ')[0] ?? '');
 
 const today = useToday();
-const answer = useAnswerQueue();
+// Inboxes left out of Today drop out of its answer card too; the Answer queue
+// itself still lists them.
+const answer = useAnswerQueue({ hiddenMailboxIds: today.hiddenMailboxIds });
+const { count: answerQueueTotal } = useAnswerQueue();
+const { inboxes } = useInboxes();
 const { level: deliveryLevel, reason: deliveryReason } = useDeliveryHealth();
 const { showToast } = useToast();
 
@@ -242,10 +246,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 				</p>
 				<UiSkeleton v-else class="mt-2 h-4 w-80" />
 			</div>
-			<UiButton v-if="hasAnything" variant="secondary" size="sm" @click="markAllSeen">
-				<template #iconLeft><Icon name="lucide:check-check" class="size-4" /></template>
-				{{ t('dashboard.today.markAllSeen') }}
-			</UiButton>
+			<div class="flex flex-wrap items-center gap-2">
+				<TodayInboxPicker
+					v-if="inboxes.length > 1"
+					:inboxes="inboxes"
+					:hidden="today.hiddenMailboxIds.value"
+					@toggle="today.setInboxShown"
+				/>
+				<UiButton v-if="hasAnything" variant="secondary" size="sm" @click="markAllSeen">
+					<template #iconLeft><Icon name="lucide:check-check" class="size-4" /></template>
+					{{ t('dashboard.today.markAllSeen') }}
+				</UiButton>
+			</div>
 		</header>
 
 		<!-- Only when something is actually broken, and only for admins. -->
@@ -274,6 +286,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 				:items="answer.items.value"
 				:counts="answer.counts.value"
 				:is-loading="answer.isLoading.value"
+				:queue-total="answerQueueTotal"
 			/>
 		</div>
 
