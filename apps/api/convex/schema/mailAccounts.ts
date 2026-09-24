@@ -310,6 +310,18 @@ export const mailAccountsTables = {
 		indexCursorId: v.optional(v.id('mailMessages')),
 
 		lastError: v.optional(v.string()),
+
+		// Throttle PAUSE — a sub-state of `importing`, not a status of its own.
+		// The provider's daily bandwidth budget ran out, so the worker holds the
+		// walk until `resumesAt` and then picks it up unaided; the wizard reads it
+		// as "resuming at …" rather than as an error. Cleared by the first batch
+		// the resumed walk records. `throttlePauses` counts consecutive pauses
+		// with no batch between them — past a small cap the provider is not
+		// coming back on its own and the import fails after all
+		// (`mail/migrationBackfill.ts`, pauseImportForThrottle).
+		resumesAt: v.optional(v.number()),
+		throttlePauses: v.optional(v.number()),
+
 		startedAt: v.number(),
 		importCompletedAt: v.optional(v.number()),
 		completedAt: v.optional(v.number()),

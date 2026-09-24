@@ -6,8 +6,10 @@
  * worker discovers the remote folders itself and calls these to learn whether an
  * import is live (`getBackfillWork`), to snapshot a folder's cursor
  * (`initFolderBackfill`), to persist each descending batch
- * (`recordBackfillProgress`), and to end the phase — `completeBackfillImport`
- * on a clean walk, `markImportFailed` when the walk itself will not self-heal.
+ * (`recordBackfillProgress`), to hold the walk while the provider's budget
+ * resets (`pauseImportForThrottle`), and to end the phase —
+ * `completeBackfillImport` on a clean walk, `markImportFailed` when the walk
+ * itself will not self-heal.
  *
  * The user-facing half (start / getStatus / cancel) and the scope-agnostic core
  * both live in `mail/migration.ts`; the phase AFTER this one — the knowledge
@@ -35,6 +37,21 @@ const INDEX_CHUNK_SIZE = 25;
 const MAX_KNOWN_MESSAGE_ID_LOOKUP = 500;
 
 /**
+ * Consecutive throttle pauses, with not one batch recorded between them, after
+ * which the import is failed after all. Each pause waits out a full daily
+ * window, so this is three days of a provider refusing every fetch — no longer
+ * a budget that resets, and not something more waiting will fix.
+ */
+export const MAX_THROTTLE_PAUSES = 3;
+
+/**
+ * The furthest ahead a pause may be set. The worker asks for one daily window;
+ * this only stops a skewed clock or a bad caller from parking an import for a
+ * week.
+ */
+const MAX_THROTTLE_PAUSE_MS = 48 * 60 * 60_000;
+
+/**
  * Move a still-importing migration to `failed` with the reason, and record it.
  * Shared by the worker's explicit "the import threw" signal and by the
  * completion path's refusal to call a walk that stored nothing an import.
@@ -50,6 +67,7 @@ async function failMigration(
 		completedAt: now,
 		updatedAt: now,
 		lastError: message ?? migration.lastError,
+		resumesAt: undefined,
 	});
 	await ctx.db.insert('mailAuditLog', {
 		mailboxId: migration.mailboxId,
@@ -74,7 +92,12 @@ export const getBackfillWork = internalQuery({
 		if (!migration || migration.status !== 'importing') {
 			return { isActive: false as const, migrationId: null };
 		}
-		return { isActive: true as const, migrationId: migration._id };
+		return {
+			isActive: true as const,
+			migrationId: migration._id,
+			// A throttle pause survives a worker restart only if the worker is told.
+			...(migration.resumesAt !== undefined ? { resumesAt: migration.resumesAt } : {}),
+		};
 	},
 });
 
@@ -225,6 +248,10 @@ export const recordBackfillProgress = internalMutation({
 		await ctx.db.patch(migration._id, {
 			messagesImported: migration.messagesImported + args.importedDelta,
 			messagesFailed: (migration.messagesFailed ?? 0) + failedDelta,
+			// The walk is moving again, so any throttle pause is over and its
+			// no-progress streak with it.
+			resumesAt: undefined,
+			throttlePauses: undefined,
 			updatedAt: Date.now(),
 		});
 		return { stillImporting: true };
@@ -249,6 +276,60 @@ export const markImportFailed = internalMutation({
 		const migration = await ctx.db.get(args.migrationId);
 		if (!migration || migration.status !== 'importing') return;
 		await failMigration(ctx, migration, args.errorMessage?.slice(0, 500));
+	},
+});
+
+/**
+ * Worker signals "the provider's budget is spent" — its throttled retry ladder
+ * ran out against a provider still answering `[OVERQUOTA]` / "exceeded command
+ * or bandwidth limits". That is a schedule, not a failure: a mailbox larger
+ * than one day's budget used to end every day on a red "import stopped" card
+ * the user had to restart by hand. Instead the migration stays `importing`
+ * with `resumesAt` set, the wizard says when it picks up again, and the worker
+ * resumes it on its own.
+ *
+ * Only a provider that lets NOTHING through for {@link MAX_THROTTLE_PAUSES}
+ * windows in a row fails the import — `recordBackfillProgress` clears the count
+ * the moment a batch lands, so a large import that inches forward a day at a
+ * time is never failed by this.
+ */
+export const pauseImportForThrottle = internalMutation({
+	args: {
+		migrationId: v.id('mailboxMigrations'),
+		/** Epoch ms the worker will run the walk again. */
+		resumeAt: v.number(),
+		/** The provider's own words, for the audit log. */
+		reason: v.optional(v.string()),
+	},
+	handler: async (ctx, args): Promise<{ outcome: 'paused' | 'failed' | 'ignored' }> => {
+		const migration = await ctx.db.get(args.migrationId);
+		if (!migration || migration.status !== 'importing') return { outcome: 'ignored' };
+
+		const now = Date.now();
+		const reason = args.reason?.slice(0, 500);
+		const pauses = (migration.throttlePauses ?? 0) + 1;
+		if (pauses > MAX_THROTTLE_PAUSES) {
+			await failMigration(
+				ctx,
+				migration,
+				`Your mail provider has refused every download for ${MAX_THROTTLE_PAUSES} days in a row, so the import stopped where it got to.${reason ? ` (${reason})` : ''}`
+			);
+			return { outcome: 'failed' };
+		}
+
+		const resumesAt = Math.min(Math.max(args.resumeAt, now), now + MAX_THROTTLE_PAUSE_MS);
+		await ctx.db.patch(migration._id, {
+			resumesAt,
+			throttlePauses: pauses,
+			updatedAt: now,
+		});
+		await ctx.db.insert('mailAuditLog', {
+			mailboxId: migration.mailboxId,
+			event: 'migration.import_paused',
+			details: `resumesAt=${new Date(resumesAt).toISOString()} pause=${pauses}${reason ? ` reason=${reason}` : ''}`,
+			occurredAt: now,
+		});
+		return { outcome: 'paused' };
 	},
 });
 
