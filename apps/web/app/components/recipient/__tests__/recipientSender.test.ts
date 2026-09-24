@@ -13,13 +13,15 @@ import ConfirmPage from '~/pages/confirm.vue';
 import RecipientHeader from '../RecipientHeader.vue';
 import RecipientFooter from '../RecipientFooter.vue';
 import RecipientContactHint from '../RecipientContactHint.vue';
+import WorkspaceLogo from '~/components/workspace/WorkspaceLogo.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useRecipientSender } from '~/composables/useRecipientSender';
 
-let sender: { name: string | null; contactEmail: string | null } | Error = {
-	name: 'Northwind Studio',
-	contactEmail: 'hello@northwind.example',
-};
+let sender: { name: string | null; contactEmail: string | null; logoUrl?: string | null } | Error =
+	{
+		name: 'Northwind Studio',
+		contactEmail: 'hello@northwind.example',
+	};
 const query = vi.fn(async () => {
 	if (sender instanceof Error) throw sender;
 	return sender;
@@ -45,7 +47,7 @@ function mountPage(page: object) {
 	return mount(page, {
 		global: {
 			plugins: [createTestI18n()],
-			components: { RecipientHeader, RecipientFooter, RecipientContactHint },
+			components: { RecipientHeader, RecipientFooter, RecipientContactHint, WorkspaceLogo },
 			stubs: { UiSpinner: true, UiButton: true, UiSwitch: true, Icon: true },
 		},
 	});
@@ -65,6 +67,29 @@ describe('recipient pages lead with the sender', () => {
 		// Owlat is only the small footer credit.
 		expect(w.find('h1').text()).not.toContain('Owlat');
 		expect(w.text()).toContain('Powered by Owlat');
+	});
+
+	it.each([
+		['unsubscribe', UnsubscribePage],
+		['preferences', PreferencesPage],
+		['confirm', ConfirmPage],
+	])('%s shows the workspace logo above the sender name (#810)', async (_name, page) => {
+		sender = {
+			name: 'Northwind Studio',
+			contactEmail: null,
+			logoUrl: 'https://files.owlat.test/logo.png',
+		};
+		const w = mountPage(page);
+		await flushPromises();
+		const img = w.find('header [data-testid="workspace-logo"] img');
+		expect(img.attributes('src')).toBe('https://files.owlat.test/logo.png');
+		expect(w.find('h1').text()).toBe('Northwind Studio');
+	});
+
+	it('shows no logo when none is set', async () => {
+		const w = mountPage(UnsubscribePage);
+		await flushPromises();
+		expect(w.find('[data-testid="workspace-logo"]').exists()).toBe(false);
 	});
 
 	it('falls back to what the page is for, never to "Owlat"', async () => {

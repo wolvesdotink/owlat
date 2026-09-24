@@ -5252,6 +5252,31 @@
 				"assignRole": "Rolle zuweisen",
 				"changeRole": "Rolle ändern",
 				"changeRoleFor": "Rolle für {member} ändern (aktuell {role})"
+			},
+			"workspaceLogoCard": {
+				"adminOnly": "Nur Inhaber und Administratoren können das ändern.",
+				"darkHelp": "Optional. Eine Version für dunkle Hintergründe. Ohne sie wird das Logo oben im dunklen Modus auf einer hellen Fläche gezeigt.",
+				"darkLabel": "Version für den dunklen Modus",
+				"darkNeedsLight": "Lade zuerst das Hauptlogo hoch.",
+				"description": "Erscheint statt des Owlat-Logos auf den Seiten für Anmeldung, Einladungen und E-Mail-Einstellungen. PNG, JPEG oder SVG, bis {size} KB.",
+				"empty": "Kein Logo",
+				"errors": {
+					"empty": "Diese Datei ist leer.",
+					"size": "Ein Logo darf höchstens {size} KB groß sein.",
+					"type": "Wähle eine PNG-, JPEG- oder SVG-Datei.",
+					"uploadFailed": "Das Logo konnte nicht hochgeladen werden. Versuche es erneut."
+				},
+				"lightHelp": "Für helle Hintergründe gestaltet.",
+				"lightLabel": "Logo",
+				"remove": "Entfernen",
+				"removeOperation": "Workspace-Logo entfernen",
+				"removedToast": "Logo entfernt",
+				"replace": "Ersetzen",
+				"savedToast": "Logo aktualisiert",
+				"setOperation": "Workspace-Logo speichern",
+				"title": "Logo",
+				"upload": "Hochladen",
+				"uploadUrlOperation": "Logo-Upload vorbereiten"
 			}
 		},
 		"shareLinksPopover": {

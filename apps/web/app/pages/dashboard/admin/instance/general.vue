@@ -419,6 +419,10 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 						</div>
 					</form>
 				</UiCard>
+
+				<!-- The workspace logo on the public pages (#810). Its own card
+				     because picking a file applies it, outside the Save button. -->
+				<SettingsWorkspaceLogoCard />
 			</div>
 		</UiQueryBoundary>
 

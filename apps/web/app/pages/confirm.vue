@@ -12,7 +12,7 @@ definePageMeta({
 
 const route = useRoute();
 const convex = useConvex();
-const { senderName, contactEmail } = useRecipientSender();
+const { senderName, contactEmail, logo } = useRecipientSender();
 
 // State
 const isLoading = ref(true);
@@ -118,7 +118,7 @@ async function handleConfirm() {
 		class="flex min-h-dvh flex-col items-center justify-center gap-8 bg-bg-deep px-5 pt-[max(2.5rem,env(safe-area-inset-top))] pb-[max(2.5rem,env(safe-area-inset-bottom))] text-text-primary"
 	>
 		<!-- The sender, not Owlat: the recipient knows who they signed up with. -->
-		<RecipientHeader :name="senderName" :purpose="t('recipient.confirm.header')" />
+		<RecipientHeader :name="senderName" :logo="logo" :purpose="t('recipient.confirm.header')" />
 
 		<!-- Loading State -->
 		<div v-if="isLoading" class="card w-full max-w-md py-8 text-center">

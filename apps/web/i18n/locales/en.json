@@ -5252,6 +5252,31 @@
 				"assignRole": "Assign role",
 				"changeRole": "Change role",
 				"changeRoleFor": "Change role for {member} (currently {role})"
+			},
+			"workspaceLogoCard": {
+				"adminOnly": "Only owners and admins can change this.",
+				"darkHelp": "Optional. A version drawn for dark backgrounds. Without it, the logo above is shown on a light plate in dark mode.",
+				"darkLabel": "Dark mode version",
+				"darkNeedsLight": "Upload the main logo first.",
+				"description": "Shown instead of the Owlat logo on the sign-in, invitation and email preference pages. PNG, JPEG or SVG, up to {size} KB.",
+				"empty": "No logo",
+				"errors": {
+					"empty": "That file is empty.",
+					"size": "A logo can be at most {size} KB.",
+					"type": "Choose a PNG, JPEG or SVG file.",
+					"uploadFailed": "The logo could not be uploaded. Try again."
+				},
+				"lightHelp": "Drawn for light backgrounds.",
+				"lightLabel": "Logo",
+				"remove": "Remove",
+				"removeOperation": "Remove workspace logo",
+				"removedToast": "Logo removed",
+				"replace": "Replace",
+				"savedToast": "Logo updated",
+				"setOperation": "Save workspace logo",
+				"title": "Logo",
+				"upload": "Upload",
+				"uploadUrlOperation": "Prepare logo upload"
 			}
 		},
 		"shareLinksPopover": {

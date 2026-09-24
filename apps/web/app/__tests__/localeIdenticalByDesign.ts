@@ -150,6 +150,8 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'components.settings.connectedApps.connectedAppSecretReveal.appLabel',
 	'components.settings.team.inviteModal.displayNamePlaceholder',
 	'components.settings.team.inviteModal.localpartPlaceholder',
+	'components.settings.workspaceLogoCard.lightLabel',
+	'components.settings.workspaceLogoCard.title',
 	'components.translation.cell.htmlBadge',
 	'components.translation.manager.buttonBlock',
 	'components.translation.manager.containerPrefix',

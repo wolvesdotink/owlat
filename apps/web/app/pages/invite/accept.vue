@@ -8,11 +8,14 @@ useHead({ title: () => t('invite.accept.pageTitle') });
 
 definePageMeta({
 	// No layout - standalone page
-
 });
 
 const route = useRoute();
 const router = useRouter();
+
+// The workspace's logo above the card (#810): someone opening an invitation
+// knows the company that invited them, not the product it runs on.
+const { logo } = useRecipientSender();
 
 // Get invitation ID from query params
 const invitationId = computed(() => (route.query['id'] as string) || '');
@@ -128,6 +131,7 @@ function redirectToRegister() {
 <template>
 	<div class="min-h-screen bg-bg-deep flex items-center justify-center p-6">
 		<div class="w-full max-w-md">
+			<WorkspaceLogo v-if="logo" :url="logo.url" :dark-url="logo.darkUrl" class="mb-6" />
 			<!-- Card -->
 			<div class="card text-center">
 				<!-- Loading State -->
@@ -135,7 +139,10 @@ function redirectToRegister() {
 					<div
 						class="p-4 rounded-2xl bg-bg-surface mx-auto w-fit mb-6 flex items-center justify-center"
 					>
-						<Icon name="lucide:loader-2" class="w-8 h-8 text-brand animate-spin motion-reduce:animate-none" />
+						<Icon
+							name="lucide:loader-2"
+							class="w-8 h-8 text-brand animate-spin motion-reduce:animate-none"
+						/>
 					</div>
 					<h1 class="text-xl font-semibold text-text-primary mb-2">
 						{{

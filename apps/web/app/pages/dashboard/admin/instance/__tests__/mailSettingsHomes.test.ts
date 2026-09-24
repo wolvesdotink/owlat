@@ -66,6 +66,7 @@ const globalOptions = {
 		UiErrorAlert: true,
 		NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 		SettingsInboundRetentionCard: true,
+		SettingsWorkspaceLogoCard: true,
 		SettingsBodySearchIndexCard: true,
 		SettingsConnectedWorkspaces: true,
 		// Workspace settings sections that share the General page.
