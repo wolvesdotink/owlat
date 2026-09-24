@@ -12,10 +12,11 @@
 
 import { convexTest } from 'convex-test';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { DatabaseWriter } from '../../_generated/server';
+import { expectScheduledFailure } from '../../__tests__/helpers/scheduledFailures';
 
 // See delivery.test.ts: the `../../**` glob omits the `inbox/` dir it climbed
 // through, so merge a second glob rooted at `inbox/` and re-prefix its keys.
@@ -47,6 +48,11 @@ const modules = Object.fromEntries(
 			!path.includes('llmProvider')
 	)
 );
+
+// `receiveMessage` schedules the agent walker, which the module map above
+// leaves out; the job fails to resolve when it fires after each test. These
+// tests are about the stored verdicts, not the walker.
+beforeEach(() => expectScheduledFailure('agent/walker:start'));
 
 async function getRow(t: ReturnType<typeof convexTest>, messageId: string) {
 	return await t.run(async (ctx: { db: DatabaseWriter }) => {

@@ -19,6 +19,9 @@ export default defineConfig({
 		// enough headroom for that environmental cost.
 		testTimeout: 10000,
 		hookTimeout: 10000,
+		// A retry that passes cannot hide a scheduled function that threw in the
+		// attempt before it: the scheduled-failure gate reports it again in
+		// `afterAll`, which is not retried (convex/__tests__/helpers/scheduledFailures.ts).
 		retry: 1,
 		projects: [
 			{
