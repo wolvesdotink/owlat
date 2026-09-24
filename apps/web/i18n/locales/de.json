@@ -7587,6 +7587,7 @@
 						"retry": "Erneut versuchen",
 						"start": "Vorhandene Mail importieren",
 						"startAgain": "Import erneut starten",
+						"throttleExhausted": "Der Anbieter hat {days} Tage in Folge jeden Download abgelehnt, deshalb wurde der Import an dieser Stelle beendet.",
 						"title": "Vorhandene Mail importieren",
 						"toastCancelled": "Import gestoppt",
 						"toastStarted": "Import gestartet"
@@ -9548,6 +9549,8 @@
 				"indexingTitle": "Ihr KI-Assistent wird angelernt",
 				"openInbox": "Posteingang öffnen",
 				"pageTitle": "E-Mails importieren — Owlat",
+				"pausedBody": "Ihr Mail-Anbieter begrenzt, wie viel Mail pro Tag heruntergeladen werden kann, und das heutige Kontingent ist aufgebraucht. Der Import geht von selbst weiter — Sie müssen nichts tun.",
+				"pausedTitle": "Import pausiert bis {when}",
 				"providerPickTitle": "Wo liegen Ihre E-Mails derzeit?",
 				"readyBody": "Wir importieren Ihren gesamten E-Mail-Verlauf — Posteingang, Gesendet und Ihr komplettes Archiv.",
 				"readyBulletAiOff": "Aktivieren Sie zuerst die KI-Wissensfunktion, damit der Assistent aus Ihren E-Mails lernen kann.",
@@ -9574,14 +9577,13 @@
 					"skipped": "Übersprungen"
 				},
 				"subheading": "Holen Sie Ihr bestehendes Postfach zu Owlat — und lassen Sie Ihren KI-Assistenten daraus lernen.",
+				"throttleExhausted": "Ihr Mail-Anbieter hat {days} Tage in Folge jeden Download abgelehnt, deshalb wurde der Import an dieser Stelle beendet.",
 				"toastCancelled": "Migration abgebrochen. Importierte E-Mails wurden behalten.",
 				"toastCredentialsUpdated": "Zugangsdaten aktualisiert.",
 				"toastImportStarted": "Ihr E-Mail-Verlauf wird jetzt importiert.",
 				"toastSignatureSaved": "Als Ihre Standardsignatur gespeichert.",
 				"tryAgain": "Erneut versuchen",
-				"useThisSignature": "Diese Signatur verwenden",
-				"pausedTitle": "Import pausiert bis {when}",
-				"pausedBody": "Ihr Mail-Anbieter begrenzt, wie viel Mail pro Tag heruntergeladen werden kann, und das heutige Kontingent ist aufgebraucht. Der Import geht von selbst weiter — Sie müssen nichts tun."
+				"useThisSignature": "Diese Signatur verwenden"
 			},
 			"replyQueue": {
 				"addMailAccount": "E-Mail-Konto hinzufügen",

@@ -615,15 +615,18 @@ export class AccountConnection {
 					reason: describeThrottle(err).slice(0, 500),
 				} as never
 			)) as { outcome: 'paused' | 'failed' | 'ignored' } | null;
-			logger.warn(
-				{
-					accountId: this.account.accountId,
-					migrationId,
-					resumeAt: new Date(resumeAt).toISOString(),
-					outcome: result?.outcome,
-				},
-				'provider budget spent; backfill paused until it resets'
-			);
+			const outcome = result?.outcome;
+			const context = { accountId: this.account.accountId, migrationId, outcome };
+			if (outcome === 'paused') {
+				logger.warn(
+					{ ...context, resumeAt: new Date(resumeAt).toISOString() },
+					'provider budget spent; backfill paused until it resets'
+				);
+			} else if (outcome === 'failed') {
+				logger.warn(context, 'throttle pause cap reached; migration failed');
+			} else {
+				logger.info(context, 'throttle pause ignored; migration no longer importing');
+			}
 		} catch (pauseErr) {
 			logger.warn(
 				{ accountId: this.account.accountId, err: pauseErr },

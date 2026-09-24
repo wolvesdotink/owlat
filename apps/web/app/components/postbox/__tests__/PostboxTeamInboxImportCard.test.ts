@@ -299,6 +299,23 @@ describe('TeamInboxImportCard', () => {
 		]);
 	});
 
+	it("says in the reader's language why a throttled import gave up", () => {
+		status.value = migrationRow({
+			status: 'failed',
+			failureCode: 'throttle_exhausted',
+			failedAfterDays: 3,
+			lastError: 'Account exceeded command or bandwidth limits.',
+			messagesImported: 40,
+		});
+		const wrapper = mountCard();
+
+		const failed = wrapper.find('[data-testid="team-inbox-import-failed"]');
+		expect(failed.text()).toContain(
+			'The provider refused every download for 3 days in a row, so the import stopped where it got to. (Account exceeded command or bandwidth limits.)'
+		);
+		expectFullyLocalized(wrapper);
+	});
+
 	it('shows a failure with its reason, truncated, and a way to retry', async () => {
 		status.value = migrationRow({
 			status: 'failed',

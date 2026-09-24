@@ -59,7 +59,8 @@ const MAX_THROTTLE_PAUSE_MS = 48 * 60 * 60_000;
 async function failMigration(
 	ctx: MutationCtx,
 	migration: Doc<'mailboxMigrations'>,
-	message: string | undefined
+	message: string | undefined,
+	failureCode?: 'throttle_exhausted'
 ): Promise<void> {
 	const now = Date.now();
 	await ctx.db.patch(migration._id, {
@@ -68,11 +69,15 @@ async function failMigration(
 		updatedAt: now,
 		lastError: message ?? migration.lastError,
 		resumesAt: undefined,
+		...(failureCode ? { failureCode } : {}),
 	});
+	const details = [failureCode ? `code=${failureCode}` : null, message ? `error=${message}` : null]
+		.filter(Boolean)
+		.join(' ');
 	await ctx.db.insert('mailAuditLog', {
 		mailboxId: migration.mailboxId,
 		event: 'migration.import_failed',
-		details: message ? `error=${message}` : undefined,
+		details: details || undefined,
 		occurredAt: now,
 	});
 }
@@ -309,11 +314,10 @@ export const pauseImportForThrottle = internalMutation({
 		const reason = args.reason?.slice(0, 500);
 		const pauses = (migration.throttlePauses ?? 0) + 1;
 		if (pauses > MAX_THROTTLE_PAUSES) {
-			await failMigration(
-				ctx,
-				migration,
-				`Your mail provider has refused every download for ${MAX_THROTTLE_PAUSES} days in a row, so the import stopped where it got to.${reason ? ` (${reason})` : ''}`
-			);
+			// The user-facing sentence is the web's to write, in the user's
+			// language: store a stable code, and only the provider's own words
+			// as `lastError`.
+			await failMigration(ctx, migration, reason, 'throttle_exhausted');
 			return { outcome: 'failed' };
 		}
 

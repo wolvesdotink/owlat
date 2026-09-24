@@ -7587,6 +7587,7 @@
 						"retry": "Try again",
 						"start": "Import existing mail",
 						"startAgain": "Start the import again",
+						"throttleExhausted": "The provider refused every download for {days} days in a row, so the import stopped where it got to.",
 						"title": "Import existing mail",
 						"toastCancelled": "Import stopped",
 						"toastStarted": "Import started"
@@ -9548,6 +9549,8 @@
 				"indexingTitle": "Teaching your AI assistant",
 				"openInbox": "Open your inbox",
 				"pageTitle": "Import your mail — Owlat",
+				"pausedBody": "Your mail provider limits how much mail can be downloaded each day, and today's share is used up. The import picks up again on its own — there is nothing you need to do.",
+				"pausedTitle": "Import paused until {when}",
 				"providerPickTitle": "Where does your mail live now?",
 				"readyBody": "We'll import your entire mail history — Inbox, Sent, and all your archived mail.",
 				"readyBulletAiOff": "Enable the AI knowledge feature first to let the assistant learn from your mail.",
@@ -9574,14 +9577,13 @@
 					"skipped": "Skipped"
 				},
 				"subheading": "Bring your existing mailbox into Owlat — and let your AI assistant learn from it.",
+				"throttleExhausted": "Your mail provider refused every download for {days} days in a row, so the import stopped where it got to.",
 				"toastCancelled": "Migration cancelled. Imported mail was kept.",
 				"toastCredentialsUpdated": "Credentials updated.",
 				"toastImportStarted": "Importing your mail history now.",
 				"toastSignatureSaved": "Saved as your default signature.",
 				"tryAgain": "Try again",
-				"useThisSignature": "Use this signature",
-				"pausedTitle": "Import paused until {when}",
-				"pausedBody": "Your mail provider limits how much mail can be downloaded each day, and today's share is used up. The import picks up again on its own — there is nothing you need to do."
+				"useThisSignature": "Use this signature"
 			},
 			"replyQueue": {
 				"addMailAccount": "Add mail account",

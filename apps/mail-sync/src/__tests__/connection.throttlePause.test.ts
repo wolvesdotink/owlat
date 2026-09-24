@@ -16,6 +16,9 @@ vi.mock('../ingest.js', () => ({
 	isMessageLanded: vi.fn(() => true),
 }));
 
+const log = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }));
+vi.mock('../logger.js', () => ({ logger: log }));
+
 const backfill = vi.hoisted(() => ({ backfillFolder: vi.fn(async () => {}) }));
 vi.mock('../backfill.js', () => ({ backfillFolder: backfill.backfillFolder }));
 
@@ -52,9 +55,12 @@ function overQuota(): Error {
 	});
 }
 
-function connection(work: Record<string, unknown>) {
+function connection(
+	work: Record<string, unknown>,
+	pauseOutcome: 'paused' | 'failed' | 'ignored' = 'paused'
+) {
 	const mutation = vi.fn(async (ref: string) =>
-		ref.includes('pauseImportForThrottle') ? { outcome: 'paused' } : {}
+		ref.includes('pauseImportForThrottle') ? { outcome: pauseOutcome } : {}
 	);
 	const convex = {
 		query: vi.fn(async (ref: string) => (ref.includes('getBackfillWork') ? work : ([] as unknown))),
@@ -78,6 +84,8 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(START);
 	backfill.backfillFolder.mockReset();
+	log.warn.mockClear();
+	log.info.mockClear();
 });
 
 afterEach(() => {
@@ -122,6 +130,32 @@ describe('a throttled import that spends its retry ladder', () => {
 		vi.setSystemTime(START + THROTTLE_PAUSE_MS);
 		await conn.maybeRunBackfill();
 		expect(backfill.backfillFolder).toHaveBeenCalledTimes(1);
+	});
+
+	it('logs a pause only when the server actually recorded one', async () => {
+		async function runLadder(outcome: 'paused' | 'failed' | 'ignored') {
+			log.warn.mockClear();
+			log.info.mockClear();
+			backfill.backfillFolder.mockRejectedValue(overQuota());
+			const { conn } = connection({ isActive: true, migrationId: 'mig_1' }, outcome);
+			for (let i = 0; i < MAX_BACKFILL_STRIKES; i++) {
+				await conn.maybeRunBackfill();
+				await vi.advanceTimersByTimeAsync(3 * 60 * 60_000);
+			}
+			return [...log.warn.mock.calls, ...log.info.mock.calls].map(([, msg]) => msg);
+		}
+
+		expect(await runLadder('paused')).toContain(
+			'provider budget spent; backfill paused until it resets'
+		);
+
+		const failed = await runLadder('failed');
+		expect(failed).toContain('throttle pause cap reached; migration failed');
+		expect(failed).not.toContain('provider budget spent; backfill paused until it resets');
+
+		const ignored = await runLadder('ignored');
+		expect(ignored).toContain('throttle pause ignored; migration no longer importing');
+		expect(ignored).not.toContain('provider budget spent; backfill paused until it resets');
 	});
 
 	it('still fails an import whose failures are not the provider throttling it', async () => {

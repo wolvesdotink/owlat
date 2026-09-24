@@ -41,6 +41,7 @@ const {
 	isDiscovering,
 	isPaused,
 	resumesAtLabel,
+	failureMessage,
 	start,
 	cancel,
 	startBusy,
@@ -654,7 +655,7 @@ const steps = computed(() =>
 						<div>
 							<h2 class="font-semibold">{{ t('dashboard.postbox.migrate.failedTitle') }}</h2>
 							<p class="text-sm text-text-secondary mt-0.5">
-								{{ migration?.lastError ?? t('dashboard.postbox.migrate.failedFallbackError') }}
+								{{ failureMessage ?? t('dashboard.postbox.migrate.failedFallbackError') }}
 							</p>
 							<p class="text-sm text-text-secondary mt-1">
 								{{ t('dashboard.postbox.migrate.failedBody') }}

@@ -170,7 +170,7 @@ describe('pauseImportForThrottle', () => {
 	});
 
 	it('fails the import once the provider lets nothing through for window after window', async () => {
-		const { t, migrationId } = await setup();
+		const { t, accountId, migrationId } = await setup();
 		for (let i = 0; i < MAX_THROTTLE_PAUSES; i++) {
 			expect(await pause(t, migrationId)).toEqual({ outcome: 'paused' });
 		}
@@ -181,8 +181,18 @@ describe('pauseImportForThrottle', () => {
 			const m = await ctx.db.get(migrationId);
 			expect(m!.status).toBe('failed');
 			expect(m!.resumesAt).toBeUndefined();
-			expect(m!.lastError).toContain(`${MAX_THROTTLE_PAUSES} days`);
+			// A code the web phrases in the user's language; lastError keeps only
+			// the provider's own words.
+			expect(m!.failureCode).toBe('throttle_exhausted');
+			expect(m!.lastError).toBe(
+				'Connection not available: Account exceeded command or bandwidth limits.'
+			);
+			expect(m!.throttlePauses).toBe(MAX_THROTTLE_PAUSES);
 		});
+
+		const status = await t.run(async (ctx) => await latestMigrationForAccount(ctx, accountId));
+		expect(status!.failureCode).toBe('throttle_exhausted');
+		expect(status!.failedAfterDays).toBe(MAX_THROTTLE_PAUSES);
 	});
 
 	it('caps a resume time too far out, and never sets one in the past', async () => {

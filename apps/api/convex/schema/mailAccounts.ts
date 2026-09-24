@@ -321,6 +321,11 @@ export const mailAccountsTables = {
 		// (`mail/migrationBackfill.ts`, pauseImportForThrottle).
 		resumesAt: v.optional(v.number()),
 		throttlePauses: v.optional(v.number()),
+		// Why a `failed` import failed, when the web should say it in the user's
+		// language instead of showing `lastError` (the provider's raw words) as
+		// the reason. `throttle_exhausted`: the provider refused every download
+		// for `throttlePauses` daily windows in a row.
+		failureCode: v.optional(v.literal('throttle_exhausted')),
 
 		startedAt: v.number(),
 		importCompletedAt: v.optional(v.number()),

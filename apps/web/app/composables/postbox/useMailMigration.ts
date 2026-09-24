@@ -1,6 +1,6 @@
 import { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
-import type { ComputedRef, MaybeRefOrGetter } from 'vue';
+import type { ComputedRef, MaybeRefOrGetter, Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 
 /**
@@ -86,8 +86,59 @@ export function formatResumeTime(resumesAt: number, locale: string): string {
 	}).format(new Date(resumesAt));
 }
 
-/** How often the pause state re-checks the clock, so it lifts on time. */
-const PAUSE_CLOCK_TICK_MS = 30_000;
+/**
+ * What a failed import's card says went wrong. A failure the backend marks
+ * with a code is phrased here, in the user's language, with the provider's own
+ * words (`lastError`) after it; any other failure shows `lastError` as-is.
+ */
+export function describeMigrationFailure(
+	migration: {
+		failureCode?: 'throttle_exhausted';
+		failedAfterDays?: number;
+		lastError?: string;
+	} | null,
+	throttleExhausted: (days: number) => string
+): string | null {
+	if (!migration) return null;
+	if (migration.failureCode === 'throttle_exhausted' && migration.failedAfterDays !== undefined) {
+		const sentence = throttleExhausted(migration.failedAfterDays);
+		return migration.lastError ? `${sentence} (${migration.lastError})` : sentence;
+	}
+	return migration.lastError ?? null;
+}
+
+/**
+ * Keeps `now` fresh for exactly as long as a pause is pending: one timer, armed
+ * for the moment the pause lapses, and none at all otherwise — a roster of team
+ * inboxes, almost none of them paused, keeps no timers running. Must run inside
+ * an effect scope; the timer goes with it.
+ */
+export function trackPauseDeadline(deadline: () => number | null, now: Ref<number>): void {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	function disarm() {
+		if (timer !== undefined) clearTimeout(timer);
+		timer = undefined;
+	}
+	function arm(target: number) {
+		timer = setTimeout(() => {
+			now.value = Date.now();
+			// A timer can fire a little early; re-arm rather than let the pause
+			// lift while the label still says it is pending.
+			if (now.value < target) arm(target);
+			else timer = undefined;
+		}, target - Date.now());
+	}
+	watch(
+		deadline,
+		(target) => {
+			disarm();
+			now.value = Date.now();
+			if (target !== null && target > now.value) arm(target);
+		},
+		{ immediate: true }
+	);
+	onScopeDispose(disarm);
+}
 
 /**
  * The pause half of a migration's progress, shared by the personal wizard and
@@ -99,10 +150,10 @@ export function useImportPause(
 	const { locale } = useI18n();
 	const now = ref(Date.now());
 	if (import.meta.client) {
-		const timer = setInterval(() => {
-			now.value = Date.now();
-		}, PAUSE_CLOCK_TICK_MS);
-		onScopeDispose(() => clearInterval(timer));
+		trackPauseDeadline(
+			() => (migration.value?.status === 'importing' ? (migration.value.resumesAt ?? null) : null),
+			now
+		);
 	}
 	const resumesAt = computed(() =>
 		pausedUntil(migration.value?.status, migration.value?.resumesAt, now.value)
@@ -149,6 +200,11 @@ export function useMailMigration() {
 		() => step.value === 'importing' && (migration.value?.messagesTotal ?? 0) === 0
 	);
 	const { isPaused, resumesAtLabel } = useImportPause(migration);
+	const failureMessage = computed(() =>
+		describeMigrationFailure(migration.value, (days) =>
+			t('dashboard.postbox.migrate.throttleExhausted', { days })
+		)
+	);
 
 	async function start(source: 'google' | 'imap' = 'google') {
 		return await startOp.run({ source });
@@ -168,6 +224,7 @@ export function useMailMigration() {
 		isDiscovering,
 		isPaused,
 		resumesAtLabel,
+		failureMessage,
 		start,
 		cancel,
 		startBusy: startOp.isLoading,
@@ -242,6 +299,11 @@ export function useSharedMailMigration(mailboxId: MaybeRefOrGetter<Id<'mailboxes
 		() => step.value === 'importing' && (migration.value?.messagesTotal ?? 0) === 0
 	);
 	const { isPaused, resumesAtLabel } = useImportPause(migration);
+	const failureMessage = computed(() =>
+		describeMigrationFailure(migration.value, (days) =>
+			t('dashboard.admin.team.inboxes.import.throttleExhausted', { days })
+		)
+	);
 
 	async function start(options?: { indexKnowledge?: boolean }) {
 		return await startOp.run({
@@ -266,6 +328,7 @@ export function useSharedMailMigration(mailboxId: MaybeRefOrGetter<Id<'mailboxes
 		isDiscovering,
 		isPaused,
 		resumesAtLabel,
+		failureMessage,
 		start,
 		cancel,
 		startBusy: startOp.isLoading,

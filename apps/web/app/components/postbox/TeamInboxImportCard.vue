@@ -41,6 +41,7 @@ const {
 	isDiscovering,
 	isPaused,
 	resumesAtLabel,
+	failureMessage,
 	start,
 	cancel,
 	startBusy,
@@ -76,7 +77,7 @@ const ERROR_PREVIEW_LENGTH = 200;
 const skippedCount = computed(() => migration.value?.messagesFailed ?? 0);
 
 const errorPreview = computed(() => {
-	const message = migration.value?.lastError;
+	const message = failureMessage.value;
 	if (!message) return null;
 	return message.length > ERROR_PREVIEW_LENGTH
 		? `${message.slice(0, ERROR_PREVIEW_LENGTH)}…`
