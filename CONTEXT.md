@@ -4809,8 +4809,8 @@ through later pause/resume cycles, same pattern as `verifiedAt` on
 The four stats counters (`statsEntered`, `statsActive`,
 `statsCompleted`) are lifetime — they persist through revert-to-draft
 cycles. Stats _increments_ live in the **Trigger fanout** and in
-`stepExecutorQueries.ts:completeAutomationRun` /
-`cancelAutomationRun`; the lifecycle owns _no_ stats writes — same
+`stepRunTransitions.ts:completeRun` /
+`cancelRun`; the lifecycle owns _no_ stats writes — same
 split as Campaign lifecycle (which zeroes stats on `→ sending`) vs
 Send lifecycle (which bumps the per-recipient counters).
 _Avoid_: Automation state (vague — collides with the per-run
