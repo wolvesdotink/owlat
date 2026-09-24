@@ -47,6 +47,7 @@ import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { getOptional } from './env';
+import { AiNotConfiguredError } from './aiNotConfigured';
 import {
 	isTrivialUserText,
 	isTrivialClassifiedMessage,
@@ -154,9 +155,7 @@ function resolveEnvClientConfig(): ProviderClientConfig {
 	const apiKey = resolveApiKey();
 	const isOllama = getOptional('LLM_PROVIDER') === 'ollama';
 	if (!apiKey && !isOllama) {
-		throw new Error(
-			'LLM API not configured. Set LLM_API_KEY, OPENROUTER_API_KEY, or OPENAI_API_KEY in Convex environment variables.'
-		);
+		throw new AiNotConfiguredError();
 	}
 	return { apiKey: apiKey ?? 'ollama', baseUrl: resolveBaseURL() };
 }
