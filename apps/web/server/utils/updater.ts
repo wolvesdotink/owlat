@@ -127,11 +127,15 @@ export function requestUpdater(
 					const hasBody = method !== 'HEAD' && !NULL_BODY_STATUSES.has(status);
 					if (!hasBody) res.resume();
 					resolve(
-						new Response(hasBody ? (Readable.toWeb(res) as ReadableStream<Uint8Array>) : null, {
-							status,
-							statusText: res.statusMessage,
-							headers: toHeaders(res.headers),
-						})
+						new Response(
+							// node:stream's web-stream type, not the DOM one `Response` names.
+							hasBody ? (Readable.toWeb(res) as unknown as ReadableStream<Uint8Array>) : null,
+							{
+								status,
+								statusText: res.statusMessage,
+								headers: toHeaders(res.headers),
+							}
+						)
 					);
 				} catch (err) {
 					res.destroy();
