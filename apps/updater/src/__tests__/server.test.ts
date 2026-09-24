@@ -77,6 +77,14 @@ function dockerFixture(file: unknown, args: unknown): string {
 	}
 	if (cmd.startsWith('docker image prune'))
 		return 'Deleted Images:\n…\nTotal reclaimed space: 15.91GB\n';
+	if (cmd.startsWith('docker image ls')) return IMAGE_LIST;
+	// `docker image rm` refuses an image a container still uses.
+	if (cmd.startsWith('docker image rm') && IMAGES_IN_USE.some((ref) => cmd.endsWith(` ${ref}`))) {
+		const err = new Error('boom') as Error & { stdout: string; stderr: string };
+		err.stdout = '';
+		err.stderr = 'conflict: unable to remove repository reference (must force)';
+		throw err;
+	}
 	if (cmd.startsWith('docker inspect')) {
 		return [
 			'ghcr.io/wolvesdotink/updater:0.5.0',
@@ -89,6 +97,22 @@ function dockerFixture(file: unknown, args: unknown): string {
 	if (cmd.includes(' ps --all --format json')) return composePs(RUNNING);
 	return '';
 }
+
+/**
+ * What `docker image ls` lists on a host one Ollama bump in: the stack's
+ * running images, the superseded Ollama tag, Owlat's digest-pinned images and
+ * an operator's own image.
+ */
+const IMAGE_LIST = [
+	'ollama/ollama:0.34.3',
+	'ollama/ollama:0.34.4',
+	'redis:7.4-alpine',
+	'ghcr.io/wolvesdotink/web:<none>',
+	'owlat-code-worker:0.5.5',
+	'my-own-app:latest',
+	'',
+].join('\n');
+const IMAGES_IN_USE = ['ollama/ollama:0.34.4', 'redis:7.4-alpine'];
 
 /** The OCI source label every published Owlat image carries. */
 const OWLAT_SOURCE = 'https://github.com/wolvesdotink/owlat';
@@ -409,7 +433,7 @@ describe('POST /update', () => {
 	 * `no space left on device`.
 	 */
 	describe('disk space', () => {
-		it('removes unused Owlat images — and only those — before it pulls', async () => {
+		it('removes unused Owlat images before it pulls', async () => {
 			const res = await post('/update');
 			expect(res.status).toBe(200);
 			const cmds = commandLines();
@@ -423,7 +447,34 @@ describe('POST /update', () => {
 			expect(json.steps.find((s) => s.step === 'reclaim-images')?.stdout).toContain('15.91GB');
 		});
 
-		it('prunes nothing when its own image carries no source label (a dev build)', async () => {
+		it('removes superseded third-party images, and no image outside the stack, before it pulls', async () => {
+			const res = await post('/update');
+			expect(res.status).toBe(200);
+			const cmds = commandLines();
+			const pull = cmds.findIndex((c) => c.endsWith(' pull'));
+			// A floating tag `compose pull` moved leaves the old image untagged.
+			const dangling = cmds.indexOf('docker image prune --force');
+			expect(dangling).toBeGreaterThan(-1);
+			expect(dangling).toBeLessThan(pull);
+			// Tagged ones only from the stack's own third-party repositories;
+			// Owlat's images, the host-built sidecars and the operator's are left.
+			expect(cmds.filter((c) => c.startsWith('docker image rm'))).toEqual([
+				'docker image rm ollama/ollama:0.34.3',
+				'docker image rm ollama/ollama:0.34.4',
+				'docker image rm redis:7.4-alpine',
+			]);
+			const json = (await res.json()) as {
+				steps: { step: string; ok?: boolean; stdout: string }[];
+			};
+			const reclaim = json.steps.find((s) => s.step === 'reclaim-images');
+			// The images still in use refusing removal is not a failure.
+			expect(reclaim?.ok).toBe(true);
+			expect(reclaim?.stdout).toMatch(
+				/^Removed unused third-party images: ollama\/ollama:0\.34\.3$/m
+			);
+		});
+
+		it('prunes no release images when its own image carries no source label (a dev build)', async () => {
 			execFileSyncMock.mockImplementation((file: unknown, args: unknown) => {
 				const cmd = [String(file), ...((args as string[]) ?? [])].join(' ');
 				if (cmd.includes('org.opencontainers.image.source')) return '\n';
@@ -431,7 +482,7 @@ describe('POST /update', () => {
 			});
 			const res = await post('/update');
 			expect(res.status).toBe(200);
-			expect(commandLines().some((c) => c.startsWith('docker image prune'))).toBe(false);
+			expect(commandLines().some((c) => c.includes('--filter label='))).toBe(false);
 		});
 
 		it('still updates when the prune fails — the free-space check decides', async () => {

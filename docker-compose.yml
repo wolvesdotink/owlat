@@ -733,9 +733,14 @@ services:
   # No published port: reachable only via the internal Docker network as
   # ollama:11434 — the host must never expose 11434. Gated under --profile dev
   # alongside the other optional AI sidecar.
+  #
+  # Pinned, never `latest`: Ollama republishes a ~7 GB `latest` every few days,
+  # so a floating tag made every Owlat update download it again and left the
+  # superseded copy on disk — the host filled up and the next pull failed with
+  # `no space left on device`. Bump the default with the release.
   ollama:
     logging: *default-logging
-    image: ollama/ollama:${OLLAMA_VERSION:-latest}
+    image: ollama/ollama:${OLLAMA_VERSION:-0.34.4}
     volumes:
       - ollama-data:/root/.ollama
     environment:
