@@ -21,6 +21,7 @@ import type { Id } from '../../_generated/dataModel';
 import { createTestBlockedEmail } from '../../__tests__/factories';
 import { STEP_LEASE_MS } from '../stepOrchestration';
 import { STALLED_RUN_GRACE_MS } from '../stalledRuns';
+import { LEGACY_ATTEMPT_WINDOW_MS } from '../stepRunSend';
 import {
 	DAY_MS,
 	advanceAndRun,
@@ -179,6 +180,69 @@ describe('a v0.5.5 step walker action in flight across the deploy', () => {
 		const [stepRun] = await stepRunsOf(t, runId);
 		expect(stepRun).toMatchObject({ status: 'completed', emailSendId: legacySendId });
 		expect((await runOf(t, runId)).status).toBe('completed');
+	});
+
+	it("does not adopt a Send the contact's previous run of the automation wrote late", async () => {
+		const t = await freshT();
+		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);
+		const { runId: firstRunId, contactId } = await seedRun(t, automationId);
+		const firstStepRunId = await legacyStart(t, firstRunId);
+		await t.mutation(legacy.markStepExecuting, { stepRunId: firstStepRunId });
+		// The first run ends while its v0.5.5 action is still sending, and the
+		// contact enters the automation again.
+		await t.run(async (ctx) =>
+			ctx.db.patch(firstRunId, { status: 'cancelled', completedAt: Date.now() })
+		);
+		vi.advanceTimersByTime(60_000);
+		const secondRunId = await t.run(async (ctx) =>
+			ctx.db.insert('automationRuns', {
+				automationId,
+				contactId,
+				currentStepIndex: 0,
+				status: 'running',
+				startedAt: Date.now(),
+				triggeredBy: 'contact_created',
+			})
+		);
+		const secondStepRunId = await legacyStart(t, secondRunId);
+		await t.mutation(legacy.markStepExecuting, { stepRunId: secondStepRunId });
+		vi.advanceTimersByTime(60_000);
+		// The first run's action finally enqueues its (unkeyed) Send.
+		const lateSendId = await legacyEnqueue(t, { automationId, contactId, subject: 'Welcome' });
+
+		await t.action(internal.automations.stepWalker.executeStep, {
+			automationRunId: secondRunId,
+			stepRunId: secondStepRunId,
+			retryCount: 1,
+		});
+		await runDueScheduled(t);
+
+		const rows = await sends(t);
+		expect(rows).toHaveLength(2);
+		expect(rows.find((s) => s._id === lateSendId)?.automationStepRunId).toBeUndefined();
+		const [stepRun] = await stepRunsOf(t, secondRunId);
+		expect(stepRun?.status).toBe('completed');
+		expect(stepRun?.emailSendId).not.toBe(lateSendId);
+	});
+
+	it('does not adopt an unkeyed Send written after a legacy attempt could still run', async () => {
+		const t = await freshT();
+		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);
+		const { runId, contactId } = await seedRun(t, automationId);
+		const stepRunId = await legacyStart(t, runId);
+		await t.mutation(legacy.markStepExecuting, { stepRunId });
+		vi.advanceTimersByTime(LEGACY_ATTEMPT_WINDOW_MS);
+		const strayId = await legacyEnqueue(t, { automationId, contactId, subject: 'Welcome' });
+
+		await t.action(internal.automations.stepWalker.executeStep, {
+			automationRunId: runId,
+			stepRunId,
+			retryCount: 1,
+		});
+		await runDueScheduled(t);
+
+		expect(await sends(t)).toHaveLength(2);
+		expect((await stepRunsOf(t, runId))[0]?.emailSendId).not.toBe(strayId);
 	});
 
 	it('cannot move a run the new walker already recovered and advanced', async () => {
