@@ -626,9 +626,11 @@ services:
   # on your own hardware: set the Convex function env vars LLM_PROVIDER=ollama and
   # LLM_BASE_URL=http://ollama:11434/v1. No published port — reachable only via the
   # internal Docker network as ollama:11434; the host must never expose 11434.
+  # Pinned, never `latest`: a floating ~7 GB tag re-downloaded on every update
+  # and filled the disk (see the root docker-compose.yml).
   ollama:
     logging: *default-logging
-    image: ollama/ollama:${OLLAMA_VERSION:-latest}
+    image: ollama/ollama:${OLLAMA_VERSION:-0.34.4}
     volumes:
       - ollama-data:/root/.ollama
     environment:

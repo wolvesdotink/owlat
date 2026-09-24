@@ -13,13 +13,19 @@
  * promoted, but it also comes back on every retry until someone gets a shell
  * on the host.
  *
- * So every rollout now starts by dropping the Owlat images no container uses,
- * then checks there is room for the new release, and says in as many words when
- * there is not.
+ * The third-party images went the same way. A floating tag that `compose
+ * pull` moved (Ollama publishes a new ~7 GB `latest` every few days) left the
+ * old image behind untagged, and once Owlat's own images were pruned those
+ * filled the same disk.
+ *
+ * So every rollout now starts by dropping the images no container uses, Owlat's
+ * and the stack's third-party ones, then checks there is room for the new
+ * release, and says in as many words when there is not.
  */
 import { statfsSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { exec, OWLAT_DIR } from './http.js';
+import { ALLOWED_IMAGE_PREFIXES } from './security.js';
 
 interface StorageStep {
 	step: string;
@@ -41,9 +47,8 @@ const MIN_FREE_BYTES_FOR_UPDATE = 4 * 1024 ** 3;
 /**
  * The label that marks an image as one of ours. Every image the release
  * workflow publishes carries it (OCI `image.source`, set from the repository
- * that built it), so the prune below cannot reach an operator's own images, the
- * third-party ones the stack runs (convex-backend, redis, caddy, ollama), or
- * anything else sharing the Docker host.
+ * that built it), so the release-image prune below cannot reach an operator's
+ * own images or anything else sharing the Docker host.
  */
 const SOURCE_LABEL = 'org.opencontainers.image.source';
 
@@ -73,7 +78,20 @@ function ownImageSource(): string | null {
 }
 
 /**
- * Remove every Owlat image that no container, running or stopped, references.
+ * The third-party images the stack runs: every allowlisted image prefix except
+ * our own published images and the two sidecars built on the host (removing
+ * those would force a rebuild, not a pull).
+ */
+const THIRD_PARTY_IMAGE_PREFIXES = ALLOWED_IMAGE_PREFIXES.filter(
+	(prefix) => !prefix.startsWith('ghcr.io/wolvesdotink/') && !prefix.startsWith('owlat-')
+);
+
+const reclaimedSpace = (stdout: string) =>
+	stdout.match(/Total reclaimed space:\s*(.+)/)?.[1]?.trim() ?? '0B';
+
+/**
+ * Remove the images no container, running or stopped, references: Owlat's own
+ * superseded releases and the third-party images a release left behind.
  *
  * Runs before the pull. By then the running stack pins exactly the images it
  * needs, so what goes is the releases before it, plus the current release's
@@ -82,14 +100,29 @@ function ownImageSource(): string | null {
  * that follows is what decides whether the rollout can go on.
  */
 export function reclaimUnusedImages(): StorageStep {
-	const step = 'reclaim-images';
+	const results = [reclaimReleaseImages(), reclaimThirdPartyImages()];
+	return {
+		step: 'reclaim-images',
+		ok: results.every((r) => r.ok),
+		stdout: results
+			.map((r) => r.stdout)
+			.filter(Boolean)
+			.join('\n'),
+		stderr: results
+			.map((r) => r.stderr)
+			.filter(Boolean)
+			.join('\n'),
+	};
+}
+
+/** Every unused image carrying this updater's own source label. */
+function reclaimReleaseImages(): Omit<StorageStep, 'step'> {
 	const source = ownImageSource();
 	if (!source) {
 		return {
-			step,
 			ok: true,
 			stdout:
-				'Skipped: this updater image carries no source label, so there is no set of images it owns',
+				'Skipped release images: this updater image carries no source label, so there is no set of images it owns',
 			stderr: '',
 		};
 	}
@@ -99,12 +132,55 @@ export function reclaimUnusedImages(): StorageStep {
 		['image', 'prune', '--all', '--force', '--filter', `label=${SOURCE_LABEL}=${source}`],
 		OWLAT_DIR
 	);
-	const reclaimed = pruned.stdout.match(/Total reclaimed space:\s*(.+)/)?.[1]?.trim();
 	return {
-		step,
 		ok: pruned.ok,
-		stdout: pruned.ok ? `Removed unused release images (reclaimed ${reclaimed ?? '0B'})` : '',
+		stdout: pruned.ok
+			? `Removed unused release images (reclaimed ${reclaimedSpace(pruned.stdout)})`
+			: '',
 		stderr: pruned.stderr,
+	};
+}
+
+/**
+ * The third-party images a release left behind, which the label prune above
+ * cannot reach.
+ *
+ * Two shapes. A floating tag (`convex-backend:latest`, and `ollama:latest`
+ * before it was pinned) that `compose pull` moved leaves the old image with no
+ * name at all, so it is only reachable as a dangling image; one instance held
+ * two superseded 7 GB Ollama images and three Convex backends that way, which
+ * is what filled its disk. A pinned tag the release bumped leaves the old tag
+ * behind, unused.
+ *
+ * Dangling images cannot be traced back to a repository, so that prune is not
+ * scoped to the stack: it also takes an operator's own dangling images, which
+ * nothing can start by name anyway. Tagged images are scoped to the stack's own
+ * repositories, and `docker image rm` without `--force` refuses any image a
+ * container still uses, so a refusal here is the expected answer for every
+ * image the stack is running, not a failure.
+ */
+function reclaimThirdPartyImages(): Omit<StorageStep, 'step'> {
+	const dangling = exec('docker', ['image', 'prune', '--force'], OWLAT_DIR);
+
+	const listed = exec('docker', ['image', 'ls', '--format', '{{.Repository}}:{{.Tag}}'], OWLAT_DIR);
+	const removed = (listed.ok ? listed.stdout.split('\n') : [])
+		.map((ref) => ref.trim())
+		.filter(
+			(ref) =>
+				ref &&
+				!ref.endsWith(':<none>') &&
+				THIRD_PARTY_IMAGE_PREFIXES.some((prefix) => ref.startsWith(prefix))
+		)
+		.filter((ref) => exec('docker', ['image', 'rm', ref], OWLAT_DIR).ok);
+
+	const stdout = [
+		dangling.ok ? `Removed superseded images (reclaimed ${reclaimedSpace(dangling.stdout)})` : '',
+		removed.length ? `Removed unused third-party images: ${removed.join(', ')}` : '',
+	];
+	return {
+		ok: dangling.ok && listed.ok,
+		stdout: stdout.filter(Boolean).join('\n'),
+		stderr: [dangling.stderr, listed.stderr].filter(Boolean).join('\n'),
 	};
 }
 
