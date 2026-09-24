@@ -16,6 +16,7 @@
 
 import type { Doc, Id } from '../../_generated/dataModel';
 import { defineLifecycle } from '../../lib/lifecycle';
+import { CLEARS_DRAFT_ON_TAKEOVER } from './takeover';
 import type {
 	Effect,
 	InputFor,
@@ -75,6 +76,9 @@ export const PROCESSING_LIFECYCLE = defineLifecycle<ProcessingStatus>(
 		// themselves instead of answering the agent's questions
 		// (inbox/manualReply.ts); only a takeover may take it.
 		awaiting_clarification: ['drafting', 'archived', 'draft_ready'],
+		// `draft_ready` is also a person taking over mid-draft
+		// (inbox/manualReply.ts); the walker's late writes then stand down (see
+		// `isPipelineInput`).
 		drafting: ['draft_ready', 'approved'],
 		draft_ready: ['approved', 'rejected', 'archived'],
 		// `draft_ready` is the fail-soft degrade for a cancelled delayed auto-send
@@ -105,25 +109,9 @@ export function isClosedStatus(status: ProcessingStatus): boolean {
 	return CLOSED_STATES.has(status) || PROCESSING_LIFECYCLE.isTerminal(status);
 }
 
-/**
- * States only a person may move to `draft_ready` (with `manualTakeover`): the
- * closed ones, `received`, which the pipeline would otherwise leave through
- * `security_check`, and `awaiting_clarification`, which the agent leaves
- * through `drafting`.
- */
-const TAKEOVER_ONLY_SOURCES: ReadonlySet<ProcessingStatus> = new Set([
-	'received',
-	'awaiting_clarification',
-	'rejected',
-	'archived',
-]);
-
-/** Closed states whose leftover draft a manual takeover discards. */
-const CLEARS_DRAFT_ON_TAKEOVER: ReadonlySet<ProcessingStatus> = new Set(['rejected', 'archived']);
-
-export function requiresManualTakeover(from: ProcessingStatus, to: ProcessingStatus): boolean {
-	return to === 'draft_ready' && TAKEOVER_ONLY_SOURCES.has(from);
-}
+// The takeover predicates live in `./takeover.ts`; re-exported so the
+// dispatcher and tests keep one import surface.
+export { isPipelineInput, requiresManualTakeover } from './takeover';
 
 // `to: 'failed'` can come from any open source; checked separately.
 export function canFail(from: ProcessingStatus): boolean {
@@ -243,6 +231,7 @@ function reduceDraftReady(
 	if (input.manualTakeover === true && message.processingStatus === 'awaiting_clarification') {
 		patch['pendingClarification'] = undefined;
 	}
+	if (input.manualTakeover === true) patch['manualTakeoverAt'] = input.at;
 	// Complaint / urgent messages skip the drafter (classifying → draft_ready),
 	// so they'd otherwise miss extraction. Fire it here only on that direct edge
 	// — the normal drafting → draft_ready transition already extracted at
@@ -407,7 +396,9 @@ function reduceReceived(
 	// schedule_pipeline_start effect closes the latent bug (ADR-0014 drift bug
 	// #6) where the release-from-quarantine and cron-retry paths reset state but
 	// no caller re-scheduled the pipeline.
-	const patch: Record<string, unknown> = { errorMessage: undefined };
+	// A fresh pipeline run owns the message again, so a past takeover no longer
+	// holds its writes back.
+	const patch: Record<string, unknown> = { errorMessage: undefined, manualTakeoverAt: undefined };
 	const effects: Effect[] = [];
 	if (input.source === 'release_quarantine') {
 		patch['securityFlags'] = undefined;

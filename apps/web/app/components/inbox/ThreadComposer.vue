@@ -10,8 +10,11 @@
  *    still the one-click fast path; editing shows what changed against the
  *    agent's original, "Write my own" clears it, "Reject draft" declines it.
  *  - No draft: a collapsed "Reply to …" line that expands into an empty box.
- *  - The message is in a state no reply can go to (still being read, parked for
- *    an answer, already answered): the box stays collapsed and says why.
+ *  - The agent is still drafting, or the message was already answered: the box
+ *    opens as usual and a notice says where the text goes (over the agent's
+ *    unfinished draft, or out as a follow-up).
+ *  - The message is in a state no reply can go to (still being read, filed as
+ *    an update, the reply on its way): the box stays collapsed and says why.
  *
  * Presentation only: the page owns the mutations and receives `send` (with
  * whether the text differs from the agent draft, and the subject), `save` and
@@ -19,7 +22,12 @@
  * The send colour and label match the Answer queue (TaskActions' primary).
  */
 import TaskActions from '~/components/agent-tasks/TaskActions.vue';
-import { REPLY_BLOCKER_KEYS, type ReplyBlocker } from '~/utils/teamThreadReply';
+import {
+	REPLY_BLOCKER_KEYS,
+	REPLY_NOTICE_KEYS,
+	type ReplyBlocker,
+	type ReplyNotice,
+} from '~/utils/teamThreadReply';
 
 const props = withDefaults(
 	defineProps<{
@@ -27,6 +35,8 @@ const props = withDefaults(
 		senderLabel: string;
 		/** Why nothing can be sent right now; `null` = the composer can send. */
 		blocker?: ReplyBlocker | null;
+		/** Where the text goes, when not the plain answer to a waiting message. */
+		notice?: ReplyNotice | null;
 		/** The working draft to pre-fill with (agent's or a saved edit). */
 		draft?: string | null;
 		/** The agent's original draft — the "before" of the edit diff. */
@@ -42,6 +52,7 @@ const props = withDefaults(
 	}>(),
 	{
 		blocker: null,
+		notice: null,
 		draft: null,
 		originalDraft: null,
 		subject: null,
@@ -105,8 +116,7 @@ watch(isOpen, (open, wasOpen) => {
 
 const subjectEdited = computed(() => subject.value.trim() !== (props.subject ?? '').trim());
 const edited = computed(
-	() =>
-		hasDraft.value && (body.value.trim() !== (props.draft ?? '').trim() || subjectEdited.value)
+	() => hasDraft.value && (body.value.trim() !== (props.draft ?? '').trim() || subjectEdited.value)
 );
 const diffBase = computed(() => props.originalDraft ?? props.draft ?? '');
 const showDiff = computed(
@@ -179,7 +189,15 @@ function reset() {
 	subject.value = props.subject ?? '';
 }
 
-defineExpose({ focus, reset });
+/** Reopen with text handed back to the person (an undone follow-up). */
+function fill(text: string, nextSubject: string) {
+	touched.value = true;
+	body.value = text;
+	subject.value = nextSubject;
+	focus();
+}
+
+defineExpose({ focus, reset, fill });
 
 const secondaryButton =
 	'inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) disabled:opacity-50';
@@ -216,8 +234,17 @@ const secondaryButton =
 			@click="focus"
 		>
 			<Icon name="lucide:reply" class="w-4 h-4 shrink-0" />
-			<span class="flex-1 truncate">
-				{{ t('dashboard.inbox.detail.composer.replyTo', { name: senderLabel }) }}
+			<span class="flex-1 min-w-0">
+				<span class="block truncate">
+					{{ t('dashboard.inbox.detail.composer.replyTo', { name: senderLabel }) }}
+				</span>
+				<span
+					v-if="notice"
+					class="mt-0.5 block truncate text-xs text-text-tertiary"
+					data-testid="thread-composer-notice"
+				>
+					{{ t(REPLY_NOTICE_KEYS[notice]) }}
+				</span>
 			</span>
 			<kbd
 				class="hidden sm:inline px-1 py-px rounded border border-border-subtle bg-bg-surface font-mono text-[10px] text-text-secondary"
@@ -245,6 +272,15 @@ const secondaryButton =
 					}}
 				</span>
 			</div>
+
+			<p
+				v-if="notice"
+				class="flex items-start gap-1.5 text-xs text-text-secondary"
+				data-testid="thread-composer-notice"
+			>
+				<Icon name="lucide:info" class="mt-px w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+				{{ t(REPLY_NOTICE_KEYS[notice]) }}
+			</p>
 
 			<input
 				:value="subject"

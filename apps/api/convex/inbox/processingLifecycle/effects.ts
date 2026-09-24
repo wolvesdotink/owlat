@@ -28,6 +28,7 @@ import {
 import {
 	canFail,
 	isClosedStatus,
+	isPipelineInput,
 	PROCESSING_LIFECYCLE,
 	reduce,
 	requiresManualTakeover,
@@ -292,6 +293,23 @@ export async function dispatch(
 	input: TransitionInput
 ): Promise<TransitionOutcome> {
 	const from = message.processingStatus as ProcessingStatus;
+
+	// A person took the reply over while the agent was still at work. The
+	// walker's late step stands down, and its action closes as `abandoned` so it
+	// neither dangles `running` nor sits in the retry cron's `failed` scan.
+	if (message.manualTakeoverAt !== undefined && isPipelineInput(input)) {
+		const actionId =
+			('completedActionId' in input ? input.completedActionId : undefined) ??
+			('failingActionId' in input ? input.failingActionId : undefined);
+		if (actionId && (await ctx.db.get(actionId))) {
+			await ctx.db.patch(actionId, {
+				status: 'abandoned' as ActionStatus,
+				errorMessage: 'A person took over the reply',
+				completedAt: Date.now(),
+			});
+		}
+		return { ok: false, reason: 'taken_over', from, to: input.to };
+	}
 
 	// Failure can happen from any open state — star-source.
 	if (input.to === 'failed') {

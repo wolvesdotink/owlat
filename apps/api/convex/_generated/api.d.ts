@@ -1,4 +1,7 @@
+import type * as agent_replyEnvelope from '../agent/replyEnvelope.js';
 import type * as chat_attachmentAccess from '../chat/attachmentAccess.js';
+import type * as delivery_sendLifecycle_sourceFinalization from '../delivery/sendLifecycle/sourceFinalization.js';
+import type * as inbox_followUps from '../inbox/followUps.js';
 import type * as workspaces_deletion_steps_storageUploads from '../workspaces/deletion/steps/storageUploads.js';
 import type * as storage_uploadsHttp from '../storage/uploadsHttp.js';
 import type * as storage_uploads from '../storage/uploads.js';
@@ -545,6 +548,7 @@ import type * as inbox_processingLifecycle from '../inbox/processingLifecycle.js
 import type * as inbox_processingLifecycle_autoSendCancel from '../inbox/processingLifecycle/autoSendCancel.js';
 import type * as inbox_processingLifecycle_effects from '../inbox/processingLifecycle/effects.js';
 import type * as inbox_processingLifecycle_reducers from '../inbox/processingLifecycle/reducers.js';
+import type * as inbox_processingLifecycle_takeover from '../inbox/processingLifecycle/takeover.js';
 import type * as inbox_processingLifecycle_types from '../inbox/processingLifecycle/types.js';
 import type * as inbox_queries from '../inbox/queries.js';
 import type * as inbox_rawMessage from '../inbox/rawMessage.js';
@@ -1012,6 +1016,7 @@ import type * as schema_e2ee from '../schema/e2ee.js';
 import type * as schema_forms from '../schema/forms.js';
 import type * as schema_inbox from '../schema/inbox.js';
 import type * as schema_inboxCollaboration from '../schema/inboxCollaboration.js';
+import type * as schema_inboxFollowUps from '../schema/inboxFollowUps.js';
 import type * as schema_instance from '../schema/instance.js';
 import type * as schema_integrations from '../schema/integrations.js';
 import type * as schema_knowledge from '../schema/knowledge.js';
@@ -1168,7 +1173,10 @@ import type * as workspaces_settings from '../workspaces/settings.js';
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
 declare const fullApi: ApiFromModules<{
+	'agent/replyEnvelope': typeof agent_replyEnvelope;
 	'chat/attachmentAccess': typeof chat_attachmentAccess;
+	'delivery/sendLifecycle/sourceFinalization': typeof delivery_sendLifecycle_sourceFinalization;
+	'inbox/followUps': typeof inbox_followUps;
 	'workspaces/deletion/steps/storageUploads': typeof workspaces_deletion_steps_storageUploads;
 	'storage/uploadsHttp': typeof storage_uploadsHttp;
 	'storage/uploads': typeof storage_uploads;
@@ -1705,6 +1713,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/processingLifecycle/autoSendCancel': typeof inbox_processingLifecycle_autoSendCancel;
 	'inbox/processingLifecycle/effects': typeof inbox_processingLifecycle_effects;
 	'inbox/processingLifecycle/reducers': typeof inbox_processingLifecycle_reducers;
+	'inbox/processingLifecycle/takeover': typeof inbox_processingLifecycle_takeover;
 	'inbox/processingLifecycle/types': typeof inbox_processingLifecycle_types;
 	'inbox/queries': typeof inbox_queries;
 	'inbox/rawMessage': typeof inbox_rawMessage;
@@ -2172,6 +2181,7 @@ declare const fullApi: ApiFromModules<{
 	'schema/forms': typeof schema_forms;
 	'schema/inbox': typeof schema_inbox;
 	'schema/inboxCollaboration': typeof schema_inboxCollaboration;
+	'schema/inboxFollowUps': typeof schema_inboxFollowUps;
 	'schema/instance': typeof schema_instance;
 	'schema/integrations': typeof schema_integrations;
 	'schema/knowledge': typeof schema_knowledge;
