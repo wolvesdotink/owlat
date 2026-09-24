@@ -207,3 +207,63 @@ describe('body deadline releases the connection', () => {
 		expect(cancel).not.toHaveBeenCalled();
 	});
 });
+
+describe('body deadline edge cases', () => {
+	it('cancels the body without reading when the deadline passed before the headers landed', async () => {
+		const cancel = vi.fn();
+		// A runtime that ignores the abort and hands back headers after the deadline.
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+			await new Promise((resolve) => setTimeout(resolve, TIMEOUT_MS * 3));
+			return new Response(new ReadableStream<Uint8Array>({ cancel }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		});
+
+		await expect(client().get('/test')).rejects.toMatchObject({ code: 'timeout' });
+		await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+	});
+
+	/** A response object with no body stream, as some polyfills produce. */
+	function streamlessResponse(text: () => Promise<string>): Response {
+		return {
+			ok: true,
+			status: 200,
+			headers: new Headers({ 'Content-Type': 'application/json' }),
+			body: null,
+			text,
+		} as unknown as Response;
+	}
+
+	it('times out a stream-less response whose text() is late', async () => {
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+			streamlessResponse(() => new Promise((resolve) => setTimeout(() => resolve(OK_BODY), 120)))
+		);
+		await expect(client().get('/test')).rejects.toMatchObject({ code: 'timeout' });
+	});
+
+	it('times out a stream-less response that arrives after the deadline', async () => {
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+			await new Promise((resolve) => setTimeout(resolve, TIMEOUT_MS * 3));
+			return streamlessResponse(async () => OK_BODY);
+		});
+		await expect(client().get('/test')).rejects.toMatchObject({ code: 'timeout' });
+	});
+
+	it('reads a stream-less response that answers in time', async () => {
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+			streamlessResponse(async () => OK_BODY)
+		);
+		await expect(client().get('/test')).resolves.toMatchObject({ data: { id: 'x' } });
+	});
+
+	it('falls back to a generic error for a non-JSON error body', async () => {
+		vi.spyOn(globalThis, 'fetch').mockImplementation(
+			async () => new Response('<html>Bad Gateway</html>', { status: 400 })
+		);
+		await expect(client().get('/test')).rejects.toMatchObject({
+			message: 'Unknown error',
+			statusCode: 400,
+		});
+	});
+});

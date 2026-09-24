@@ -343,6 +343,7 @@ function verdictsLine(verdicts: ServiceVerdict[]): string {
 
 async function smokeWeb(): Promise<SmokeResult> {
 	try {
+		// nosemgrep -- plain HTTP to the web container's compose-internal hostname; this request never leaves the Docker network, which has no TLS terminator.
 		const response = await fetch(WEB_SMOKE_URL, { signal: AbortSignal.timeout(SMOKE_TIMEOUT_MS) });
 		// Drain the body so the connection is released.
 		await response.arrayBuffer();
