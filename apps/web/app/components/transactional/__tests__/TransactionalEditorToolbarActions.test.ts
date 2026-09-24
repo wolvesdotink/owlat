@@ -2,8 +2,9 @@
 /**
  * Publishing a transactional email renders its HTML from the canvas, so with
  * unsaved edits it would put content live that the saved email does not hold.
- * Like the template editor, the toolbar holds Publish (and Unpublish) until the
- * edits are saved, and says why.
+ * Like the template editor, the toolbar holds Publish until the edits are
+ * saved, and says why. Unpublish stays available: a published email refuses
+ * saves, so holding Unpublish too would leave the edits with no way out.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -54,12 +55,14 @@ describe('TransactionalEditorToolbarActions — publish while dirty', () => {
 		expectFullyLocalized(wrapper);
 	});
 
-	it('disables Unpublish too, as the template editor does', () => {
+	it('keeps Unpublish enabled with unsaved changes, so the edits can be saved after it', async () => {
 		const wrapper = mountToolbar({ hasChanges: true, isPublished: true });
 		const button = publishButton(wrapper, 'Unpublish');
 
-		expect(button.attributes('disabled')).toBeDefined();
-		expect(button.attributes('title')).toBe('Save your changes before publishing');
+		expect(button.attributes('disabled')).toBeUndefined();
+		expect(button.attributes('title')).toBe('Return this email to draft (stops new sends)');
+		await button.trigger('click');
+		expect(wrapper.emitted('toggle-publish')).toHaveLength(1);
 	});
 
 	it('enables Publish once the edits are saved', async () => {

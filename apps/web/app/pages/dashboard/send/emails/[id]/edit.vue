@@ -189,6 +189,9 @@ async function handlePublicationToggle() {
 		if (result.ok) showToast(t('dashboard.send.emails.detail.edit.toasts.unpublished'));
 		return;
 	}
+	// Publish puts the stored HTML live, which unsaved edits are not part of.
+	// The button holds Publish while dirty; this covers any other caller.
+	if (hasChanges.value) return;
 	const row = template.value;
 	if (!row?.htmlContent) {
 		showToast(t('dashboard.send.emails.detail.edit.toasts.saveBeforePublish'), 'error');
@@ -284,27 +287,13 @@ async function handlePublicationToggle() {
 				>
 					<!-- Toolbar actions -->
 					<template #toolbar-actions>
-						<UiButton
-							variant="secondary"
-							size="sm"
+						<EmailTemplatePublishButton
+							:is-published="isPublished"
+							:has-changes="hasChanges"
+							:has-stored-html="Boolean(template?.htmlContent)"
 							:loading="isChangingPublication"
-							:disabled="hasChanges || (!isPublished && !template?.htmlContent)"
-							:title="
-								hasChanges
-									? t('dashboard.send.emails.detail.edit.saveBeforePublishHint')
-									: undefined
-							"
-							@click="handlePublicationToggle"
-						>
-							<template #iconLeft>
-								<Icon :name="isPublished ? 'lucide:undo-2' : 'lucide:send'" class="w-4 h-4" />
-							</template>
-							{{
-								isPublished
-									? t('dashboard.send.emails.detail.edit.unpublish')
-									: t('dashboard.send.emails.detail.edit.publish')
-							}}
-						</UiButton>
+							@toggle="handlePublicationToggle"
+						/>
 						<EmailTemplateHistoryPanel
 							:template-id="templateId"
 							:has-unsaved-changes="hasChanges"
