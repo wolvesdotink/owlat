@@ -1,6 +1,6 @@
 {
-	"release": "v0.6.0",
-	"commit": "ee5e9aa3721455a8a2d295678b9da52ec25f3cb1",
+	"release": "v0.6.1",
+	"commit": "8920688e897fd832a85644acf7c4539a7a603fc0",
 	"tables": {
 		"accessRequests": {"type": "object", "value": {
 			"authUserId": {"fieldType":{"type":"string"},"optional":false},
@@ -2310,9 +2310,10 @@
 			"successCount": {"fieldType":{"type":"number"},"optional":false}
 		}},
 		"todayStates": {"type": "object", "value": {
+			"hiddenMailboxIds": {"fieldType":{"type":"array","value":{"type":"id","tableName":"mailboxes"}},"optional":true},
 			"organizationId": {"fieldType":{"type":"string"},"optional":false},
 			"previousSeenAt": {"fieldType":{"type":"number"},"optional":true},
-			"seenAt": {"fieldType":{"type":"number"},"optional":false},
+			"seenAt": {"fieldType":{"type":"number"},"optional":true},
 			"updatedAt": {"fieldType":{"type":"number"},"optional":false},
 			"userId": {"fieldType":{"type":"string"},"optional":false}
 		}},
