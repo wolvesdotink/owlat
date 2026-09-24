@@ -33,11 +33,7 @@ interface CampaignFixture {
 	};
 }
 
-async function load(
-	ctx: MutationCtx,
-	rawRecords: unknown[],
-	refs: SeedRefs,
-): Promise<LoadResult> {
+async function load(ctx: MutationCtx, rawRecords: unknown[], refs: SeedRefs): Promise<LoadResult> {
 	const records = rawRecords as CampaignFixture[];
 	let inserted = 0;
 	let skipped = 0;
@@ -62,9 +58,8 @@ async function load(
 			continue;
 		}
 
-		const sentAt = rec.sentDaysAgo !== undefined
-			? now - rec.sentDaysAgo * 24 * 60 * 60 * 1000
-			: undefined;
+		const sentAt =
+			rec.sentDaysAgo !== undefined ? now - rec.sentDaysAgo * 24 * 60 * 60 * 1000 : undefined;
 
 		const campaignId = await ctx.db.insert('campaigns', {
 			name: rec.name,
@@ -80,6 +75,9 @@ async function load(
 			statsOpened: rec.stats?.opened,
 			statsClicked: rec.stats?.clicked,
 			statsBounced: rec.stats?.bounced,
+			// Demo opens are generated, not fetched: label them as filtered so
+			// the report does not warn about pre-cutover automated opens.
+			...(rec.stats ? { statsAutomatedOpened: 0, isAutomatedOpenFiltered: true } : {}),
 			statsUpdatedAt: rec.stats ? now : undefined,
 			searchableText: `${rec.name} ${rec.subject}`,
 			seedTag: SEED_TAG,
@@ -102,7 +100,7 @@ async function seedEmailSends(
 	campaignId: Id<'campaigns'>,
 	topicId: Id<'topics'>,
 	stats: NonNullable<CampaignFixture['stats']>,
-	sentAt: number,
+	sentAt: number
 ): Promise<void> {
 	// The status assignment below relies on `clicked ⊆ opened ⊆ delivered ⊆ sent`
 	// — surface fixture mistakes loudly rather than silently producing rows
@@ -113,7 +111,7 @@ async function seedEmailSends(
 		stats.delivered > stats.sent
 	) {
 		throw new Error(
-			`Invalid campaign fixture stats (campaign=${campaignId}): expected clicked ≤ opened ≤ delivered ≤ sent; got ${JSON.stringify(stats)}`,
+			`Invalid campaign fixture stats (campaign=${campaignId}): expected clicked ≤ opened ≤ delivered ≤ sent; got ${JSON.stringify(stats)}`
 		);
 	}
 

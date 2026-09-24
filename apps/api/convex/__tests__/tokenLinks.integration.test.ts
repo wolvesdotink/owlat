@@ -274,6 +274,59 @@ describe('trackOpen (GET /t/o/...)', () => {
 		expect(Array.from(body.slice(0, 6))).toEqual([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
 	});
 
+	it('records a reader open for a mail-client User-Agent', async () => {
+		const t = setupTest();
+		const emailSendId = await seedEmailSend(t);
+
+		const res = await t.fetch(`/t/o/${emailSendId}`, {
+			method: 'GET',
+			headers: {
+				'User-Agent':
+					'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Thunderbird/128.3.0',
+			},
+		});
+		expect(res.status).toBe(200);
+
+		const send = await t.run(async (ctx) => ctx.db.get(emailSendId));
+		expect(send?.status).toBe('opened');
+		expect(send?.openedAt).toBeDefined();
+		expect(send?.automatedOpenedAt).toBeUndefined();
+	});
+
+	it('keeps an Apple Mail Privacy Protection fetch out of the opens', async () => {
+		const t = setupTest();
+		const emailSendId = await seedEmailSend(t);
+
+		const res = await t.fetch(`/t/o/${emailSendId}`, {
+			method: 'GET',
+			headers: { 'User-Agent': 'Mozilla/5.0' },
+		});
+		// The client still gets its pixel.
+		expect(res.status).toBe(200);
+		expect(res.headers.get('Content-Type')).toBe('image/gif');
+
+		const send = await t.run(async (ctx) => ctx.db.get(emailSendId));
+		expect(send?.status).toBe('delivered');
+		expect(send?.openedAt).toBeUndefined();
+		expect(send?.openCount).toBe(0);
+		expect(send?.automatedOpenCount).toBe(1);
+		expect(send?.automatedOpenedAt).toBeDefined();
+	});
+
+	it('keeps a security scanner fetch out of the opens', async () => {
+		const t = setupTest();
+		const emailSendId = await seedEmailSend(t);
+
+		await t.fetch(`/t/o/${emailSendId}`, {
+			method: 'GET',
+			headers: { 'User-Agent': 'Mimecast-URL-Scanner/1.0' },
+		});
+
+		const send = await t.run(async (ctx) => ctx.db.get(emailSendId));
+		expect(send?.openedAt).toBeUndefined();
+		expect(send?.automatedOpenCount).toBe(1);
+	});
+
 	it('still returns a 200 pixel (benign) for a bogus emailSendId', async () => {
 		const t = setupTest();
 		const res = await t.fetch('/t/o/not-a-valid-id', { method: 'GET' });

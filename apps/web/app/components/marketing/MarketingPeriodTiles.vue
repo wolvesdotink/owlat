@@ -7,6 +7,7 @@
  * inverted while the arrow keeps pointing the way the number moved.
  */
 import type { MarketingPeriod } from '~/utils/marketingOverviewTypes';
+import CampaignAutomatedOpensNote from '~/components/campaigns/CampaignAutomatedOpensNote.vue';
 import { pointsDelta } from '~/utils/marketingHeadline';
 import { formatNumber, formatPercentage } from '~/utils/formatters';
 
@@ -86,5 +87,10 @@ const tiles = computed(() =>
 		<p class="mt-4 text-xs text-text-tertiary">
 			{{ t('components.marketing.period.comparisonNote') }}
 		</p>
+		<CampaignAutomatedOpensNote
+			class="mt-2"
+			:automated-opens="period.automatedOpens.excluded"
+			:is-automated-open-filtered="!period.automatedOpens.includesUnfiltered"
+		/>
 	</div>
 </template>

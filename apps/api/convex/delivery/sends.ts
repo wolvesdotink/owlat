@@ -61,6 +61,10 @@ export const getStatsByCampaign = authedQuery({
 			uniqueOpens: 0,
 			uniqueClicks: 0,
 			totalOpens: 0,
+			// Sends whose pixel an automated client fetched (Apple MPP, a
+			// scanner). The fetch is not an open, but a reader may still have
+			// opened the same send, so it can also be in `opened`.
+			automatedOpens: 0,
 			totalClicks: 0,
 			hardBounced: 0,
 			softBounced: 0,
@@ -106,6 +110,8 @@ export const getStatsByCampaign = authedQuery({
 				stats.uniqueOpens++;
 				stats.totalOpens += send.openCount || 1;
 			}
+
+			if (send.automatedOpenedAt) stats.automatedOpens++;
 
 			// Count unique clicks
 			if (send.clickedAt || (send.clickedLinks && send.clickedLinks.length > 0)) {

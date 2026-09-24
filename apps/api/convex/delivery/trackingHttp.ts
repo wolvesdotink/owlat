@@ -7,6 +7,7 @@ import { getOptional } from '../lib/env';
 import { logError } from '../lib/runtimeLog';
 import { isSeedProbeId } from '@owlat/shared/seedPlacement';
 import { bytesToBase64Url } from '../lib/bytes';
+import { classifyOpenRequest } from './automatedOpens';
 
 // Constant-time string compare for the tracking signature.
 function timingSafeStrEqual(a: string, b: string): boolean {
@@ -126,13 +127,19 @@ export const trackOpen = httpAction(async (ctx, request) => {
 	// Only record if not rate limited
 	if (ok) {
 		try {
-			// Record the open event (fire and forget - we return pixel regardless)
+			// Record the open event (fire and forget - we return pixel regardless).
+			// Only the coarse client class leaves this handler; the User-Agent and
+			// IP it was judged on are not stored (see `automatedOpens.ts`).
+			const agent = classifyOpenRequest({
+				userAgent: request.headers.get('User-Agent'),
+				clientIp: ip,
+			});
 			await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
 				send: {
 					kind: 'campaign',
 					id: emailSendId as Id<'emailSends'>,
 				},
-				transition: { to: 'opened', at: Date.now() },
+				transition: { to: 'opened', at: Date.now(), agent },
 			});
 		} catch {
 			// Log error but still return pixel to avoid broken images

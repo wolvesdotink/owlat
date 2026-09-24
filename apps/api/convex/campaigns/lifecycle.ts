@@ -390,6 +390,8 @@ function buildPatch(
 				statsFailed: 0,
 				statsDelivered: 0,
 				statsOpened: 0,
+				statsAutomatedOpened: 0,
+				isAutomatedOpenFiltered: true,
 				statsClicked: 0,
 				statsBounced: 0,
 				statsHardBounced: 0,

@@ -164,11 +164,19 @@ export const campaignTables = {
 		statsFailed: v.optional(v.number()),
 		statsDelivered: v.optional(v.number()),
 		statsOpened: v.optional(v.number()),
+		// Sends whose pixel was fetched by an automated client. The fetch never
+		// counts into statsOpened; a later reader open of the same send still
+		// does, so the two can overlap. Shown next to the opens. See `delivery/automatedOpens.ts`.
+		statsAutomatedOpened: v.optional(v.number()),
 		statsClicked: v.optional(v.number()),
 		statsBounced: v.optional(v.number()),
 		statsHardBounced: v.optional(v.number()),
 		statsSoftBounced: v.optional(v.number()),
 		statsUnsubscribed: v.optional(v.number()),
+		// Set when a send starts on a build that leaves automated opens out
+		// of statsOpened. Campaigns without it were counted before that
+		// cutover, so their opens may include Apple MPP and scanner fetches.
+		isAutomatedOpenFiltered: v.optional(v.boolean()),
 		// A/B Testing fields
 		isABTest: v.optional(v.boolean()), // Whether this campaign is an A/B test
 		// A/B test configuration (JSON string):
@@ -284,6 +292,12 @@ export const campaignTables = {
 		clickedLinks: v.optional(v.array(linkClickValidator)),
 		// Open tracking count (may open multiple times)
 		openCount: v.optional(v.number()),
+		// Automated pixel fetches (Apple Mail Privacy Protection, security
+		// scanners, arrival prefetch), kept apart from the reader opens above.
+		// Only the count and the first one's time are kept, never the
+		// User-Agent or IP they were judged on. See `delivery/automatedOpens.ts`.
+		automatedOpenedAt: v.optional(v.number()),
+		automatedOpenCount: v.optional(v.number()),
 		// Error information for failures
 		errorMessage: v.optional(v.string()),
 		errorCode: v.optional(v.string()),
@@ -333,6 +347,7 @@ export const campaignTables = {
 		statsFailed: v.optional(v.number()),
 		statsDelivered: v.optional(v.number()),
 		statsOpened: v.optional(v.number()),
+		statsAutomatedOpened: v.optional(v.number()),
 		statsClicked: v.optional(v.number()),
 		statsBounced: v.optional(v.number()),
 		statsHardBounced: v.optional(v.number()),

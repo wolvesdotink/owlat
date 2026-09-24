@@ -92,6 +92,39 @@ export function periodTotals(campaigns: readonly CampaignCounts[]): PeriodTotals
 	};
 }
 
+/** What one campaign says about the automated pixel fetches kept out of its opens. */
+export interface AutomatedOpenCounts {
+	automatedOpened: number;
+	/** False for campaigns counted before automated opens were filtered. */
+	isAutomatedOpenFiltered: boolean;
+}
+
+export interface AutomatedOpenSummary {
+	/**
+	 * Sends whose pixel was fetched automatically, summed over the campaigns.
+	 * A send can also have a reader open, so this is not what the open rate lost.
+	 */
+	excluded: number;
+	/** Whether any campaign's opens were counted before the filter existed. */
+	includesUnfiltered: boolean;
+}
+
+/**
+ * The note beside an open rate: how many sends were fetched automatically, and
+ * whether some of its campaigns predate the filter and may still carry them.
+ */
+export function automatedOpenSummary(
+	campaigns: readonly AutomatedOpenCounts[]
+): AutomatedOpenSummary {
+	let excluded = 0;
+	let includesUnfiltered = false;
+	for (const c of campaigns) {
+		excluded += c.automatedOpened;
+		if (!c.isAutomatedOpenFiltered) includesUnfiltered = true;
+	}
+	return { excluded, includesUnfiltered };
+}
+
 /**
  * Campaigns whose `sentAt` falls in `[from, to)`. Half-open so a campaign on a
  * boundary is counted in exactly one window.

@@ -352,6 +352,12 @@ export const templateTables = {
 		clickedLinks: v.optional(v.array(linkClickValidator)),
 		// Open tracking count (may open multiple times)
 		openCount: v.optional(v.number()),
+		// Automated pixel fetches (Apple Mail Privacy Protection, security
+		// scanners, arrival prefetch), kept apart from the reader opens above.
+		// Only the count and the first one's time are kept, never the
+		// User-Agent or IP they were judged on. See `delivery/automatedOpens.ts`.
+		automatedOpenedAt: v.optional(v.number()),
+		automatedOpenCount: v.optional(v.number()),
 		// Error information for failures (e.g., from provider error responses)
 		errorMessage: v.optional(v.string()),
 		errorCode: v.optional(v.string()),
