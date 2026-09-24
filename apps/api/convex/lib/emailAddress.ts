@@ -13,16 +13,34 @@
 
 import { normalizeEmail, parseAddress } from '@owlat/shared';
 
+// One leading reply/forward marker: the English `Re:` / `Fwd:` / `Fw:` plus the
+// common localized forms (German AW/WG, Scandinavian SV, Finnish VS, Dutch
+// Antw, Polish Odp), optionally counted as Outlook does (`Re[2]:`, `AW(3):`).
+const SUBJECT_PREFIX = /^\s*(re|fwd|fw|aw|wg|sv|vs|antw|odp)\s*(?:\[\d+\]|\(\d+\))?\s*:\s*/i;
+
+// The subset of those markers that mean "this is a reply" (forwards are not).
+const REPLY_PREFIXES = new Set(['re', 'aw', 'sv', 'vs', 'antw', 'odp']);
+
 /**
  * Normalize an email subject for thread matching.
- * Strips Re:/Fwd:/FW: prefixes and normalizes whitespace.
+ * Strips any depth of reply/forward prefixes (including localized ones) and
+ * normalizes whitespace + case.
  */
 export function normalizeSubject(subject: string): string {
-	return subject
-		.replace(/^(re|fwd|fw)\s*:\s*/gi, '')
-		.replace(/^(re|fwd|fw)\s*:\s*/gi, '') // Handle nested prefixes
-		.trim()
-		.toLowerCase();
+	let rest = subject;
+	for (let match = SUBJECT_PREFIX.exec(rest); match; match = SUBJECT_PREFIX.exec(rest)) {
+		rest = rest.slice(match[0].length);
+	}
+	return rest.trim().toLowerCase();
+}
+
+/**
+ * True when the subject opens with a reply marker (`Re:`, `AW:`, `SV:` …).
+ * A forward marker alone does not count: a forward starts a new conversation.
+ */
+export function hasReplyPrefix(subject: string): boolean {
+	const match = SUBJECT_PREFIX.exec(subject);
+	return match !== null && REPLY_PREFIXES.has(match[1]!.toLowerCase());
 }
 
 /**

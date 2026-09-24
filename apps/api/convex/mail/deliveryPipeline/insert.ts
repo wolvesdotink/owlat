@@ -1,11 +1,11 @@
 /**
  * Personal-mail delivery pipeline — the shared row-insert step.
  *
- * RFC 5322 threading, per-folder UID + modseq allocation, the `mailMessages`
- * insert, and the folder/thread/usedBytes aggregates + audit, plus the header
- * parsing helpers that shape the row. This is the one place a delivered
- * message becomes a row, shared by the hosted MX inbound path
- * (`mail/delivery.ts::deliverToMailbox`) and external IMAP sync
+ * RFC 5322 threading (resolved in `./threading`), per-folder UID + modseq
+ * allocation, the `mailMessages` insert, and the folder/thread/usedBytes
+ * aggregates + audit, plus the header parsing helpers that shape the row. This
+ * is the one place a delivered message becomes a row, shared by the hosted MX
+ * inbound path (`mail/delivery.ts::deliverToMailbox`) and external IMAP sync
  * (`mail/external/delivery.ts::ingestExternalMessage`).
  */
 
@@ -17,6 +17,8 @@ import { extractEmail, normalizeSubject } from '../../lib/emailAddress';
 import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
 import { redirectMutedDelivery } from '../mute';
 import { indexMessageAttachments } from '../attachmentIndex';
+import { resolveDeliveryThread } from './threading';
+import { mergeThreadParticipants } from '../threadAggregates';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import type { SenderHeuristics } from '../senderHeuristics';
 import type { InboundEncryptionInfo } from '../../e2ee/inboundSeal';
@@ -164,37 +166,25 @@ export async function insertDeliveredMessage(
 	// agreement (a pre-marked-read message bumps neither).
 	const unreadDelta = flagSeen ? 0 : 1;
 
-	// Threading: In-Reply-To / References → existing message; else subject window.
-	let threadId: Id<'mailThreads'> | null = null;
-	const candidates = inReplyTo ? [inReplyTo, ...refs] : refs;
-	for (const candidate of candidates) {
-		const referenced = await ctx.db
-			.query('mailMessages')
-			.withIndex('by_rfc822_message_id', (q) => q.eq('rfc822MessageId', candidate))
-			.filter((q) => q.eq(q.field('mailboxId'), mailbox._id))
-			.first();
-		if (referenced) {
-			threadId = referenced.threadId;
-			break;
-		}
-	}
-	if (!threadId && normalizedSubject) {
-		const window = 24 * 60 * 60 * 1000;
-		const recent = await ctx.db
-			.query('mailThreads')
-			.withIndex('by_mailbox_and_subject', (q) =>
-				q.eq('mailboxId', mailbox._id).eq('normalizedSubject', normalizedSubject)
-			)
-			.first();
-		if (recent && Math.abs(params.receivedAt - recent.lastMessageAt) <= window) {
-			threadId = recent._id;
-		}
-	}
+	// Every address on the message: the thread's participant list, and the
+	// correspondent check the subject fallback uses (mail/deliveryPipeline/threading.ts).
+	const toAddresses = params.to.map(extractEmail);
+	const ccAddresses = params.cc.map(extractEmail);
+	const messageParties = [fromAddress, ...toAddresses, ...ccAddresses];
+
+	let threadId = await resolveDeliveryThread(ctx, {
+		mailbox,
+		references: inReplyTo ? [inReplyTo, ...refs] : refs,
+		subject: params.subject,
+		normalizedSubject,
+		receivedAt: params.receivedAt,
+		parties: messageParties,
+	});
 	if (!threadId) {
 		threadId = await ctx.db.insert('mailThreads', {
 			mailboxId: mailbox._id,
 			normalizedSubject,
-			participants: [fromAddress, recipient],
+			participants: mergeThreadParticipants(messageParties, recipient),
 			messageCount: 0,
 			unreadCount: 0,
 			hasFlagged: false,
@@ -230,8 +220,8 @@ export async function insertDeliveredMessage(
 		threadId,
 		fromAddress,
 		fromName,
-		toAddresses: params.to.map(extractEmail),
-		ccAddresses: params.cc.map(extractEmail),
+		toAddresses,
+		ccAddresses,
 		bccAddresses: params.bcc.map(extractEmail),
 		replyToAddress: params.replyTo ? extractEmail(params.replyTo) : undefined,
 		subject: params.subject,
@@ -297,7 +287,10 @@ export async function insertDeliveredMessage(
 
 	const thread = await ctx.db.get(threadId);
 	if (thread) {
-		const participants = new Set([...thread.participants, fromAddress, recipient]);
+		const participants = mergeThreadParticipants(
+			[...thread.participants, ...messageParties],
+			recipient
+		);
 		const folderRoles = new Set(thread.folderRoles);
 		if (folder.role) folderRoles.add(folder.role);
 		// Only advance the "latest" pointers when this message is actually the
@@ -305,7 +298,7 @@ export async function insertDeliveredMessage(
 		// latestMessageId now drives the conversation-list routing.
 		const isNewest = params.receivedAt >= thread.lastMessageAt;
 		await ctx.db.patch(threadId, {
-			participants: Array.from(participants),
+			participants,
 			messageCount: thread.messageCount + 1,
 			unreadCount: thread.unreadCount + unreadDelta,
 			hasAttachments: thread.hasAttachments || hasAttachments,

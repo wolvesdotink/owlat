@@ -37,14 +37,26 @@ export async function resolveAllowedFromAddressesForCtx(
 ): Promise<string[]> {
 	const mailbox = await ctx.db.get(mailboxId);
 	if (!mailbox || mailbox.status !== 'active') return [];
+	return Array.from(await mailboxOwnAddresses(ctx, mailbox));
+}
+
+/**
+ * Every address the mailbox itself sends and receives as: its canonical address
+ * plus each alias that targets it, normalized. Unlike the From allow-set above it
+ * ignores the mailbox's status, so delivery threading (which runs for any
+ * mailbox that still receives mail) sees the same identities the composer does.
+ */
+export async function mailboxOwnAddresses(
+	ctx: QueryCtx,
+	mailbox: Doc<'mailboxes'>
+): Promise<Set<string>> {
 	const aliases = await ctx.db
 		.query('mailAliases')
-		.withIndex('by_target', (q) => q.eq('targetMailboxId', mailboxId))
+		.withIndex('by_target', (q) => q.eq('targetMailboxId', mailbox._id))
 		.collect(); // bounded: aliases pointing at one target
-	const set = new Set<string>();
-	set.add(normalizeEmail(mailbox.address));
+	const set = new Set<string>([normalizeEmail(mailbox.address)]);
 	for (const a of aliases) set.add(normalizeEmail(a.alias));
-	return Array.from(set);
+	return set;
 }
 
 /** Internal query for `'use node'` actions / out-of-isolate callers. */

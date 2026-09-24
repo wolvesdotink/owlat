@@ -233,8 +233,9 @@ describe('external IMAP ingest → Reply Queue enqueue', () => {
 	it('a MUTED thread whose delivery is re-routed to Archive schedules nothing', async () => {
 		const t = convexTest(schema, modules);
 		const seeded = await seedExternalAccount(t);
-		// The insert threads by subject window, then mail/mute.ts re-routes the
-		// delivery into Archive — so the row's ACTUAL folder is not the inbox.
+		// The insert threads the reply by subject window (same correspondent, Re:
+		// prefix), then mail/mute.ts re-routes the delivery into Archive — so the
+		// row's ACTUAL folder is not the inbox.
 		await t.run(async (ctx) => {
 			const now = Date.now();
 			await ctx.db.insert('mailThreads', {
@@ -259,7 +260,7 @@ describe('external IMAP ingest → Reply Queue enqueue', () => {
 		});
 
 		await withHeldScheduler(async () => {
-			await ingest(t, seeded, { origin: 'sync' });
+			await ingest(t, seeded, { origin: 'sync', subject: 'Re: Friday plans?' });
 
 			// Landed in Archive, not the inbox it was addressed to.
 			const folderId = await t.run(async (ctx) => {

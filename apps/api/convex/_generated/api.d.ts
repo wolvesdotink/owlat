@@ -817,6 +817,7 @@ import type * as mail_deliveryPipeline_ingest from '../mail/deliveryPipeline/ing
 import type * as mail_deliveryPipeline_insert from '../mail/deliveryPipeline/insert.js';
 import type * as mail_deliveryPipeline_routing from '../mail/deliveryPipeline/routing.js';
 import type * as mail_deliveryPipeline_scan from '../mail/deliveryPipeline/scan.js';
+import type * as mail_deliveryPipeline_threading from '../mail/deliveryPipeline/threading.js';
 import type * as mail_deliveryHooks from '../mail/deliveryHooks.js';
 import type * as mail_draftLifecycle from '../mail/draftLifecycle.js';
 import type * as mail_draftLifecycle_effects from '../mail/draftLifecycle/effects.js';
@@ -2002,6 +2003,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/deliveryPipeline/insert': typeof mail_deliveryPipeline_insert;
 	'mail/deliveryPipeline/routing': typeof mail_deliveryPipeline_routing;
 	'mail/deliveryPipeline/scan': typeof mail_deliveryPipeline_scan;
+	'mail/deliveryPipeline/threading': typeof mail_deliveryPipeline_threading;
 	'mail/deliveryHooks': typeof mail_deliveryHooks;
 	'mail/draftLifecycle': typeof mail_draftLifecycle;
 	'mail/draftLifecycle/effects': typeof mail_draftLifecycle_effects;

@@ -16,6 +16,7 @@ import { normalizeSubject } from '../../lib/emailAddress';
 import { normalizeEmail } from '@owlat/shared';
 import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
 import { isImapSystemFlag } from './flags';
+import { mergeThreadParticipants } from '../threadAggregates';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 
 /**
@@ -92,7 +93,11 @@ export const appendMessage = internalMutation({
 		const threadId = await ctx.db.insert('mailThreads', {
 			mailboxId: folder.mailboxId,
 			normalizedSubject,
-			participants: [args.fromAddress, ...args.toAddresses],
+			participants: mergeThreadParticipants([
+				args.fromAddress,
+				...args.toAddresses,
+				...args.ccAddresses,
+			]),
 			messageCount: 1,
 			unreadCount: flagSet.has('\\seen') ? 0 : 1,
 			hasFlagged: flagSet.has('\\flagged'),
