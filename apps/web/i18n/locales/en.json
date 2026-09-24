@@ -5690,6 +5690,13 @@
 				"done": "Done",
 				"openThread": "Open conversation",
 				"markReadOperation": "Mark as read"
+			},
+			"inboxPicker": {
+				"label": "Choose the inboxes in Today",
+				"all": "All inboxes",
+				"some": "{shown} of {total} inboxes",
+				"heading": "Show in Today",
+				"note": "Hidden inboxes stay in the sidebar and the Answer queue."
 			}
 		},
 		"answer": {
@@ -10481,7 +10488,8 @@
 			"operations": {
 				"done": "Mark as done",
 				"replyAnyway": "Ask for a reply",
-				"markSeen": "Mark as seen"
+				"markSeen": "Mark as seen",
+				"chooseInboxes": "Change the inboxes in Today"
 			}
 		},
 		"answer": {

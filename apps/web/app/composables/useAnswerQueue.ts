@@ -1,6 +1,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
+import type { Ref } from 'vue';
 import type { InboxIdentity } from '~/utils/inboxIdentity';
 import { compareAnswerItems } from '~/utils/answerQueue';
 import type { ReplyQueueItem } from '~/utils/postboxReplyQueue';
@@ -26,8 +27,14 @@ export type AnswerItem =
  * (owners/admins with the team inbox on) and unread chat mentions (where chat
  * is available to them). Each source keeps its own permission check — this
  * only merges what the viewer could already open.
+ *
+ * `hiddenMailboxIds` drops the reply-queue rows of those inboxes: Today passes
+ * the inboxes the viewer left out of it, while the Answer queue itself and the
+ * sidebar count keep every inbox.
  */
-export function useAnswerQueue() {
+export function useAnswerQueue(
+	options: { hiddenMailboxIds?: Ref<readonly Id<'mailboxes'>[]> } = {}
+) {
 	const { isEnabled } = useFeatureFlag();
 	const { isAdmin } = usePermissions();
 	const { ids, byId, isLoading: inboxesLoading } = useInboxes();
@@ -50,7 +57,9 @@ export function useAnswerQueue() {
 
 	const items = computed<AnswerItem[]>(() => {
 		const out: AnswerItem[] = [];
+		const hidden = new Set(options.hiddenMailboxIds?.value ?? []);
 		for (const [mailboxId, result] of mailResults) {
+			if (hidden.has(mailboxId)) continue;
 			for (const row of result.data.value?.items ?? []) {
 				out.push({
 					id: `mail:${row.threadId}`,

@@ -10,8 +10,9 @@ import {
 
 /**
  * Everything Today shows, live: the viewer's "since you last looked"
- * watermark, one digest subscription per inbox they read, and the team
- * inbox's informational updates (owners/admins with the team inbox on).
+ * watermark, one digest subscription per inbox they read and have not left
+ * out of Today, and the team inbox's informational updates (owners/admins
+ * with the team inbox on).
  *
  * The watermark only moves on purpose (`markSeen`), so opening Today by
  * accident never erases what changed.
@@ -30,7 +31,22 @@ export function useToday() {
 	});
 	const since = computed(() => state.value?.seenAt);
 
-	const digests = useConvexQueryMap(api.today.mailbox.digest, ids, (mailboxId) =>
+	// Inboxes left out of Today. A toggle shows at once; the live read confirms.
+	const pendingShown = ref(new Map<Id<'mailboxes'>, boolean>());
+	const hiddenMailboxIds = computed<Id<'mailboxes'>[]>(() => {
+		const hidden = new Set(state.value?.hiddenMailboxIds ?? []);
+		for (const [mailboxId, shown] of pendingShown.value) {
+			if (shown) hidden.delete(mailboxId);
+			else hidden.add(mailboxId);
+		}
+		return [...hidden];
+	});
+	const shownIds = computed(() => {
+		const hidden = new Set(hiddenMailboxIds.value);
+		return ids.value.filter((id) => !hidden.has(id));
+	});
+
+	const digests = useConvexQueryMap(api.today.mailbox.digest, shownIds, (mailboxId) =>
 		since.value === undefined ? 'skip' : { mailboxId, since: since.value, locale: locale.value }
 	);
 
@@ -98,6 +114,16 @@ export function useToday() {
 	const { run: undoMarkSeenRun } = useBackendOperation(api.today.state.undoMarkSeen, {
 		label: () => t('dashboard.today.operations.markSeen'),
 	});
+	const { run: setShownRun } = useBackendOperation(api.today.state.setMailboxShown, {
+		label: () => t('dashboard.today.operations.chooseInboxes'),
+	});
+	async function setInboxShown(mailboxId: Id<'mailboxes'>, shown: boolean) {
+		pendingShown.value = new Map(pendingShown.value).set(mailboxId, shown);
+		await setShownRun({ mailboxId, shown });
+		const next = new Map(pendingShown.value);
+		next.delete(mailboxId);
+		pendingShown.value = next;
+	}
 
 	return {
 		since,
@@ -106,6 +132,8 @@ export function useToday() {
 		model,
 		isLoading,
 		teamOn,
+		hiddenMailboxIds,
+		setInboxShown,
 		markSeen: () => markSeenRun({}),
 		undoMarkSeen: () => undoMarkSeenRun({}),
 	};
