@@ -5,8 +5,7 @@
  * allocation, the `mailMessages` insert, and the folder/thread/usedBytes
  * aggregates + audit, plus the header parsing helpers that shape the row. This
  * is the one place a delivered message becomes a row, shared by the hosted MX
- * inbound path
- * (`mail/delivery.ts::deliverToMailbox`) and external IMAP sync
+ * inbound path (`mail/delivery.ts::deliverToMailbox`) and external IMAP sync
  * (`mail/external/delivery.ts::ingestExternalMessage`).
  */
 
@@ -19,6 +18,7 @@ import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
 import { redirectMutedDelivery } from '../mute';
 import { indexMessageAttachments } from '../attachmentIndex';
 import { resolveDeliveryThread } from './threading';
+import { mergeThreadParticipants } from '../threadAggregates';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import type { SenderHeuristics } from '../senderHeuristics';
 import type { InboundEncryptionInfo } from '../../e2ee/inboundSeal';
@@ -184,7 +184,7 @@ export async function insertDeliveredMessage(
 		threadId = await ctx.db.insert('mailThreads', {
 			mailboxId: mailbox._id,
 			normalizedSubject,
-			participants: Array.from(new Set([...messageParties, recipient])),
+			participants: mergeThreadParticipants(messageParties, recipient),
 			messageCount: 0,
 			unreadCount: 0,
 			hasFlagged: false,
@@ -287,7 +287,10 @@ export async function insertDeliveredMessage(
 
 	const thread = await ctx.db.get(threadId);
 	if (thread) {
-		const participants = new Set([...thread.participants, ...messageParties, recipient]);
+		const participants = mergeThreadParticipants(
+			[...thread.participants, ...messageParties],
+			recipient
+		);
 		const folderRoles = new Set(thread.folderRoles);
 		if (folder.role) folderRoles.add(folder.role);
 		// Only advance the "latest" pointers when this message is actually the
@@ -295,7 +298,7 @@ export async function insertDeliveredMessage(
 		// latestMessageId now drives the conversation-list routing.
 		const isNewest = params.receivedAt >= thread.lastMessageAt;
 		await ctx.db.patch(threadId, {
-			participants: Array.from(participants),
+			participants,
 			messageCount: thread.messageCount + 1,
 			unreadCount: thread.unreadCount + unreadDelta,
 			hasAttachments: thread.hasAttachments || hasAttachments,

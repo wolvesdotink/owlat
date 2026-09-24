@@ -23,6 +23,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import { recordAuditLog } from '../../lib/auditLog';
 import { isSanctionedSendAsForUser } from '../identities';
 import { followUpWaitingOn } from '../followUps';
+import { mergeThreadParticipants } from '../threadAggregates';
 import { normalizeSubject } from '../../lib/emailAddress';
 import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
 import { indexMessageAttachments } from '../attachmentIndex';
@@ -95,7 +96,11 @@ async function runSentEffects(
 		threadId = await ctx.db.insert('mailThreads', {
 			mailboxId: sendingMailboxId,
 			normalizedSubject,
-			participants: [draft.fromAddress, ...draft.toAddresses],
+			participants: mergeThreadParticipants([
+				draft.fromAddress,
+				...draft.toAddresses,
+				...draft.ccAddresses,
+			]),
 			messageCount: 0,
 			unreadCount: 0,
 			hasFlagged: false,

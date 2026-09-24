@@ -12,6 +12,33 @@ import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { batchGet } from '../_utils/batchLoader';
 
+/**
+ * Most addresses a thread's `participants` array holds. Every message adds its
+ * From, To and Cc, so a long thread on a large distribution list would otherwise
+ * grow toward Convex's 8192-element array limit, and the delivery mutation would
+ * throw instead of inserting the message.
+ */
+export const THREAD_PARTICIPANT_CAP = 500;
+
+/**
+ * Merge addresses into a thread participant list: first-seen order, duplicates
+ * and empty entries dropped, at most `THREAD_PARTICIPANT_CAP` entries. `pinned`
+ * (the mailbox's own address) is always kept, even when the cap is reached.
+ */
+export function mergeThreadParticipants(addresses: Iterable<string>, pinned?: string): string[] {
+	const out = new Set<string>();
+	for (const address of addresses) {
+		if (!address || out.has(address)) continue;
+		const room =
+			pinned === undefined || address === pinned || out.has(pinned)
+				? THREAD_PARTICIPANT_CAP
+				: THREAD_PARTICIPANT_CAP - 1;
+		if (out.size < room) out.add(address);
+	}
+	if (pinned) out.add(pinned);
+	return Array.from(out);
+}
+
 /** Re-derive a thread's aggregate counters from its current messages. */
 export async function rebuildThreadAggregates(
 	ctx: MutationCtx,
@@ -50,12 +77,9 @@ export async function rebuildThreadAggregates(
 	for (const m of messages) {
 		for (const l of m.labelIds) labelIds.add(l);
 	}
-	const participants = new Set<string>();
-	for (const m of messages) {
-		participants.add(m.fromAddress);
-		for (const a of m.toAddresses) participants.add(a);
-		for (const a of m.ccAddresses) participants.add(a);
-	}
+	const participants = mergeThreadParticipants(
+		messages.flatMap((m) => [m.fromAddress, ...m.toAddresses, ...m.ccAddresses])
+	);
 
 	await ctx.db.patch(threadId, {
 		messageCount: messages.length,
@@ -70,7 +94,7 @@ export async function rebuildThreadAggregates(
 		latestMessageId: latest._id,
 		folderRoles: Array.from(folderRoles),
 		labelIds: Array.from(labelIds),
-		participants: Array.from(participants),
+		participants,
 		updatedAt: Date.now(),
 	});
 }

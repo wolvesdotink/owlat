@@ -20,6 +20,7 @@ import { describe, it, expect } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { insertDeliveredMessage } from '../deliveryPipeline/insert';
+import { THREAD_PARTICIPANT_CAP, mergeThreadParticipants } from '../threadAggregates';
 import { modules, seedMailbox, seedFolder } from './helpers.testlib';
 
 const TEAM = 'team@owlat.test';
@@ -302,5 +303,55 @@ describe('insertDeliveredMessage threading', () => {
 			receivedAt: now,
 		});
 		expect(reply).toBe(recent);
+	});
+
+	it('does not treat a placeholder recipient like undisclosed-recipients as a shared correspondent', async () => {
+		const { t, mailboxId } = await setup();
+		const t0 = Date.now() - 3 * HOUR;
+		const first = await deliver(t, mailboxId, {
+			from: ALICE,
+			to: ['undisclosed-recipients:;'],
+			subject: 'Newsletter',
+			messageId: '<news-alice@example.com>',
+			receivedAt: t0,
+		});
+		const other = await deliver(t, mailboxId, {
+			from: BOB,
+			to: ['undisclosed-recipients:;'],
+			subject: 'Re: Newsletter',
+			messageId: '<news-bob@example.com>',
+			receivedAt: t0 + HOUR,
+		});
+		expect(other).not.toBe(first);
+	});
+
+	it('caps the participant list and keeps the mailbox address', async () => {
+		const { t, mailboxId } = await setup();
+		const cc = Array.from({ length: THREAD_PARTICIPANT_CAP + 100 }, (_, i) => `m${i}@list.example`);
+		const threadId = await deliver(t, mailboxId, {
+			from: ALICE,
+			to: ['team-list@list.example'],
+			cc,
+			subject: 'All hands',
+			messageId: '<all-hands@example.com>',
+			receivedAt: Date.now(),
+		});
+		const thread = await threadOf(t, threadId);
+		expect(thread?.participants).toHaveLength(THREAD_PARTICIPANT_CAP);
+		expect(thread?.participants).toContain(TEAM);
+		expect(thread?.participants[0]).toBe(ALICE);
+	});
+});
+
+describe('mergeThreadParticipants', () => {
+	it('dedupes in first-seen order and drops empty entries', () => {
+		expect(mergeThreadParticipants([ALICE, '', BOB, ALICE])).toEqual([ALICE, BOB]);
+	});
+
+	it('keeps the pinned address when the cap is already reached', () => {
+		const many = Array.from({ length: THREAD_PARTICIPANT_CAP + 5 }, (_, i) => `p${i}@example.com`);
+		const merged = mergeThreadParticipants(many, TEAM);
+		expect(merged).toHaveLength(THREAD_PARTICIPANT_CAP);
+		expect(merged[merged.length - 1]).toBe(TEAM);
 	});
 });

@@ -21,7 +21,9 @@
 
 import type { MutationCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
+import { normalizeEmail } from '@owlat/shared';
 import { hasReplyPrefix } from '../../lib/emailAddress';
+import { mailboxOwnAddresses } from '../identities';
 
 /** How close to a thread's latest message a reply may land and still join it. */
 const SUBJECT_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -34,26 +36,15 @@ const SUBJECT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const SUBJECT_CANDIDATE_LIMIT = 20;
 
 /**
- * The addresses the mailbox itself sends and receives as: its canonical address
- * plus every alias that delivers into it, lowercased. These are never a
- * "correspondent" — every message in the mailbox has one of them on it.
+ * `addresses` minus the mailbox's own, as a set. Entries without an `@` are
+ * dropped: `extractEmail` passes unparseable headers through as-is, and a
+ * placeholder like `undisclosed-recipients:;` is nobody's correspondent.
  */
-async function loadOwnAddresses(ctx: MutationCtx, mailbox: Doc<'mailboxes'>): Promise<Set<string>> {
-	const aliases = await ctx.db
-		.query('mailAliases')
-		.withIndex('by_target', (q) => q.eq('targetMailboxId', mailbox._id))
-		.collect(); // bounded: aliases pointing at one mailbox
-	const own = new Set<string>([mailbox.address.toLowerCase()]);
-	for (const a of aliases) own.add(a.alias.toLowerCase());
-	return own;
-}
-
-/** `addresses` minus the mailbox's own, as a set. */
 function externalOf(addresses: Iterable<string>, own: Set<string>): Set<string> {
 	const external = new Set<string>();
 	for (const address of addresses) {
-		const normalized = address.toLowerCase();
-		if (normalized && !own.has(normalized)) external.add(normalized);
+		const normalized = normalizeEmail(address);
+		if (normalized.includes('@') && !own.has(normalized)) external.add(normalized);
 	}
 	return external;
 }
@@ -90,7 +81,7 @@ export async function resolveDeliveryThread(
 	const looksLikeReply = params.references.length > 0 || hasReplyPrefix(params.subject);
 	if (!looksLikeReply || !params.normalizedSubject) return null;
 
-	const own = await loadOwnAddresses(ctx, mailbox);
+	const own = await mailboxOwnAddresses(ctx, mailbox);
 	const correspondents = externalOf(params.parties, own);
 	if (correspondents.size === 0) return null;
 
