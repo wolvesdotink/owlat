@@ -54,6 +54,7 @@ export async function rebuildThreadAggregates(
 	for (const m of messages) {
 		participants.add(m.fromAddress);
 		for (const a of m.toAddresses) participants.add(a);
+		for (const a of m.ccAddresses) participants.add(a);
 	}
 
 	await ctx.db.patch(threadId, {
