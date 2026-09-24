@@ -591,6 +591,7 @@ import type * as knowledge_maintenance from '../knowledge/maintenance.js';
 import type * as knowledge_relationDecay from '../knowledge/relationDecay.js';
 import type * as knowledge_retrieval from '../knowledge/retrieval.js';
 import type * as lib_readBody from '../lib/readBody.js';
+import type * as lib_aiNotConfigured from '../lib/aiNotConfigured.js';
 import type * as lib_aiProviderConfigValidators from '../lib/aiProviderConfigValidators.js';
 import type * as lib_appLocales from '../lib/appLocales.js';
 import type * as lib_atRestBodies from '../lib/atRestBodies.js';
@@ -1768,6 +1769,7 @@ declare const fullApi: ApiFromModules<{
 	'knowledge/relationDecay': typeof knowledge_relationDecay;
 	'knowledge/retrieval': typeof knowledge_retrieval;
 	'lib/readBody': typeof lib_readBody;
+	'lib/aiNotConfigured': typeof lib_aiNotConfigured;
 	'lib/aiProviderConfigValidators': typeof lib_aiProviderConfigValidators;
 	'lib/appLocales': typeof lib_appLocales;
 	'lib/atRestBodies': typeof lib_atRestBodies;
