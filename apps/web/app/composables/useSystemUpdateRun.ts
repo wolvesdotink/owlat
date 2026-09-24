@@ -86,7 +86,13 @@ export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 		}
 	}
 
+	// A run is in flight until the progress card or the route reaches a verdict.
+	const updateInProgress = computed(() => updateState.value === 'running');
+
 	function startUpdate() {
+		// Starting over mid-run would swap the progress card for a confirm, and
+		// the updater answers a second run with 409 anyway.
+		if (updateInProgress.value) return;
 		const target = latestVersion();
 		if (!target) return;
 		pendingTargetVersion.value = target;
@@ -170,6 +176,7 @@ export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 		updateError,
 		updateWarning,
 		updateAttempt,
+		updateInProgress,
 		pendingTargetVersion,
 		startUpdate,
 		cancelConfirm,

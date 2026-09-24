@@ -344,6 +344,29 @@ describe('UpdateProgress — the updater verdict', () => {
 		wrapper.unmount();
 	});
 
+	it('shows every step done while the updater checks the stack', async () => {
+		health = withRecord({ phase: 'verifying' });
+		const wrapper = mountAttempt();
+		expect(rowIcons(wrapper)).toEqual([SPINNER, PENDING, PENDING, PENDING]);
+
+		await vi.advanceTimersByTimeAsync(5_000);
+
+		// Only the health-check line under the list is still working.
+		expect(rowIcons(wrapper)).toEqual([SUCCESS, SUCCESS, SUCCESS, SUCCESS]);
+		expect(wrapper.find('[role="status"]').text()).toContain('The new version is running');
+		wrapper.unmount();
+	});
+
+	it('moves the spinner to the recreate once web runs the new version', async () => {
+		health = withRecord({ phase: 'applying' });
+		const wrapper = mountAttempt();
+
+		await vi.advanceTimersByTimeAsync(5_000);
+
+		expect(rowIcons(wrapper)).toEqual([SUCCESS, SUCCESS, SUCCESS, SPINNER]);
+		wrapper.unmount();
+	});
+
 	it('reports a release that started but did not become healthy as started, not failed', async () => {
 		health = withRecord({
 			phase: 'done',

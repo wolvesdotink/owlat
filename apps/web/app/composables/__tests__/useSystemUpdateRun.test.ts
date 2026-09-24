@@ -84,6 +84,29 @@ describe('useSystemUpdateRun', () => {
 		expect(run.updateError.value).toBe('dashboard.admin.system.index.updateBusy');
 	});
 
+	it('holds Update now while a run is in flight, and releases it on a verdict', async () => {
+		let answer!: (value: unknown) => void;
+		apiFetchMock.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+		const run = startedRun();
+		expect(run.updateInProgress.value).toBe(false);
+
+		const request = run.confirmUpdate();
+		expect(run.updateInProgress.value).toBe(true);
+
+		// A second click neither swaps the progress card for a confirm nor
+		// starts another attempt.
+		run.startUpdate();
+		expect(run.updateState.value).toBe('running');
+		expect(apiFetchMock).toHaveBeenCalledTimes(1);
+
+		answer({ steps: [] });
+		await request;
+		run.onUpdateFailed('Timed out');
+		expect(run.updateInProgress.value).toBe(false);
+		run.startUpdate();
+		expect(run.updateState.value).toBe('confirming');
+	});
+
 	it('closes the open run as a success carrying the note when the card reports started', async () => {
 		const run = startedRun();
 

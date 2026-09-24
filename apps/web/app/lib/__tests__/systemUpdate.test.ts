@@ -158,7 +158,22 @@ describe('readRolloutProgress', () => {
 			'0.4.17',
 			ATTEMPT
 		);
-		expect(reading).toEqual({ kind: 'in-flight', verifying: true });
+		expect(reading).toEqual({ kind: 'in-flight', stage: 'verifying' });
+	});
+
+	it('says the recreate is under way once web runs the target while the updater applies', () => {
+		const applying = { attempt: ATTEMPT, targetVersion: '0.4.17', phase: 'applying' as const };
+		expect(readRolloutProgress(health({ lastRollout: applying }), '0.4.17', ATTEMPT)).toEqual({
+			kind: 'in-flight',
+			stage: 'recreating',
+		});
+		expect(
+			readRolloutProgress(
+				health({ containers: webOn('0.4.16'), lastRollout: applying }),
+				'0.4.17',
+				ATTEMPT
+			)
+		).toEqual({ kind: 'in-flight', stage: 'applying' });
 	});
 
 	it.each([
@@ -197,11 +212,18 @@ describe('readRolloutProgress', () => {
 	it('waits while an update is in flight that has not recorded this attempt yet', () => {
 		expect(
 			readRolloutProgress(
+				health({ containers: webOn('0.4.16'), lastRollout: null, rolloutInProgress: 'update' }),
+				'0.4.17',
+				ATTEMPT
+			)
+		).toEqual({ kind: 'in-flight', stage: 'applying' });
+		expect(
+			readRolloutProgress(
 				health({ lastRollout: null, rolloutInProgress: 'update' }),
 				'0.4.17',
 				ATTEMPT
 			)
-		).toEqual({ kind: 'in-flight', verifying: false });
+		).toEqual({ kind: 'in-flight', stage: 'recreating' });
 	});
 
 	it('falls back to the web version for an updater that keeps no record', () => {

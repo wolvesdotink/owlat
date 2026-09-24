@@ -10,7 +10,7 @@
  * the readiness check, and 'failed' on a failed rollout or when the poller
  * times out.
  */
-import { readRolloutProgress, type UpdaterHealth } from '~/lib/systemUpdate';
+import { readRolloutProgress, type RolloutStage, type UpdaterHealth } from '~/lib/systemUpdate';
 
 interface Step {
 	step: string;
@@ -47,8 +47,8 @@ const emit = defineEmits<{
 const stepOrder = ['pull', 'convex-deploy', 'write-compose', 'up'];
 const stepLabelKeys: Record<string, string> = {
 	'write-compose': 'components.system.updateProgress.steps.writeCompose',
-	'pull': 'components.system.updateProgress.steps.pull',
-	'up': 'components.system.updateProgress.steps.up',
+	pull: 'components.system.updateProgress.steps.pull',
+	up: 'components.system.updateProgress.steps.up',
 	'convex-deploy': 'components.system.updateProgress.steps.convexDeploy',
 };
 
@@ -97,8 +97,22 @@ const TIMEOUT_MS = 5 * 60 * 1000;
 const IN_FLIGHT_TIMEOUT_MS = 30 * 60 * 1000;
 // Seen the updater working on this attempt; lifts the timeout above.
 const updaterWorking = ref(false);
+// How far /health says the update has got (see `RolloutStage`).
+const stage = ref<RolloutStage>('applying');
 // The recreate is done and the updater is checking the stack's health.
-const verifying = ref(false);
+const verifying = computed(() => stage.value === 'verifying');
+
+/**
+ * The displayed steps /health shows are behind the update, though the updater
+ * has not answered with its step log yet (it answers once, at the very end).
+ * Without this the card kept its spinner on "Pull new container images" while
+ * the note under it said the new version was already running.
+ */
+const STEPS_BEHIND_STAGE: Record<RolloutStage, readonly string[]> = {
+	applying: [],
+	recreating: ['pull', 'convex-deploy', 'write-compose'],
+	verifying: stepOrder,
+};
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -124,12 +138,15 @@ const stepStatuses = computed<Record<string, StepStatus>>(() => {
 	const reported = reportedStatuses.value;
 	const aborted = Object.values(reported).includes('failed');
 	let inFlightTaken = aborted || !polling.value;
+	const behind = STEPS_BEHIND_STAGE[stage.value];
 
 	const statuses: Record<string, StepStatus> = {};
 	for (const step of stepOrder) {
 		const status = reported[step];
 		if (status) {
 			statuses[step] = status;
+		} else if (behind.includes(step)) {
+			statuses[step] = 'success';
 		} else if (inFlightTaken) {
 			statuses[step] = 'pending';
 		} else {
@@ -171,7 +188,7 @@ async function pollHealth() {
 		const reading = readRolloutProgress(resp, props.targetVersion, props.attempt);
 		if (reading.kind === 'in-flight') {
 			updaterWorking.value = true;
-			verifying.value = reading.verifying;
+			stage.value = reading.stage;
 		} else if (reading.kind === 'complete') {
 			stopPolling();
 			emit('complete', resp);
@@ -227,7 +244,9 @@ function colorForStatus(s: StepStatus): string {
 
 const totalElapsedDisplay = computed(() => {
 	const sec = Math.floor(elapsedMs.value / 1000);
-	const mm = Math.floor(sec / 60).toString().padStart(2, '0');
+	const mm = Math.floor(sec / 60)
+		.toString()
+		.padStart(2, '0');
 	const ss = (sec % 60).toString().padStart(2, '0');
 	return `${mm}:${ss}`;
 });
@@ -243,11 +262,7 @@ const totalElapsedDisplay = computed(() => {
 		</div>
 
 		<ol class="space-y-3">
-			<li
-				v-for="(step, idx) in stepOrder"
-				:key="step"
-				class="flex items-start gap-3"
-			>
+			<li v-for="(step, idx) in stepOrder" :key="step" class="flex items-start gap-3">
 				<Icon
 					:name="iconForStatus(stepStatuses[step] ?? 'pending')"
 					class="w-5 h-5 shrink-0 mt-0.5"
@@ -262,11 +277,11 @@ const totalElapsedDisplay = computed(() => {
 						<span class="text-text-tertiary mr-2">{{ idx + 1 }}.</span>
 						{{ stepLabel(step) }}
 					</p>
-					<p
-						v-if="stepStatuses[step] === 'failed'"
-						class="text-[0.75rem] text-error mt-1"
-					>
-						{{ props.steps?.find((s) => s.step === step)?.stderr ?? t('components.system.updateProgress.stepFailed') }}
+					<p v-if="stepStatuses[step] === 'failed'" class="text-[0.75rem] text-error mt-1">
+						{{
+							props.steps?.find((s) => s.step === step)?.stderr ??
+							t('components.system.updateProgress.stepFailed')
+						}}
 					</p>
 				</div>
 			</li>

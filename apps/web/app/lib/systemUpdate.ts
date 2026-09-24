@@ -108,11 +108,20 @@ export interface UpdaterHealth {
 	rolloutInProgress?: string | null;
 }
 
+/**
+ * How far an in-flight update has got, as far as /health can tell.
+ * - `applying`: nothing shows which step is running.
+ * - `recreating`: the web container already runs the target version, so the
+ *   pull, deploy and compose steps are behind it and `up` is under way.
+ * - `verifying`: the updater reports `up` done and is checking the stack.
+ */
+export type RolloutStage = 'applying' | 'recreating' | 'verifying';
+
 export type RolloutReading =
 	/** Nothing says the update is over yet. */
 	| { kind: 'waiting' }
-	/** The updater is still working on this attempt; `verifying` once `up` is done. */
-	| { kind: 'in-flight'; verifying: boolean }
+	/** The updater is still working on this attempt. */
+	| { kind: 'in-flight'; stage: RolloutStage }
 	| { kind: 'complete' }
 	/** Applied and started, but not every service became healthy in time. */
 	| { kind: 'started'; summary: string }
@@ -138,21 +147,25 @@ export function readRolloutProgress(
 	targetVersion: string,
 	attempt: string | undefined
 ): RolloutReading {
+	const containers = Array.isArray(health.containers) ? health.containers : [];
+	const web = containers.find((c) => c.service === 'web');
+	const webOnTarget = Boolean(
+		web && web.imageTag === targetVersion && web.state?.includes('running')
+	);
+	const inFlight = (verifying: boolean): RolloutReading => ({
+		kind: 'in-flight',
+		stage: verifying ? 'verifying' : webOnTarget ? 'recreating' : 'applying',
+	});
+
 	const record = health.lastRollout;
 	if (record && attempt && record.attempt === attempt) {
-		if (record.phase !== 'done') {
-			return { kind: 'in-flight', verifying: record.phase === 'verifying' };
-		}
+		if (record.phase !== 'done') return inFlight(record.phase === 'verifying');
 		const summary = record.summary ?? '';
 		if (record.outcome === 'healthy') return { kind: 'complete' };
 		if (record.outcome === 'started') return { kind: 'started', summary };
 		return { kind: 'failed', summary };
 	}
-	if (health.rolloutInProgress === 'update') return { kind: 'in-flight', verifying: false };
+	if (health.rolloutInProgress === 'update') return inFlight(false);
 
-	const containers = Array.isArray(health.containers) ? health.containers : [];
-	const web = containers.find((c) => c.service === 'web');
-	return web && web.imageTag === targetVersion && web.state?.includes('running')
-		? { kind: 'complete' }
-		: { kind: 'waiting' };
+	return webOnTarget ? { kind: 'complete' } : { kind: 'waiting' };
 }
