@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { __resetAiConfigCacheForTests } from '../lib/llmProvider';
+import type * as LlmProvider from '../lib/llmProvider';
 import { newHarness } from './testModules';
 
 /**
@@ -17,7 +18,7 @@ import { newHarness } from './testModules';
 // spy shows whether a model was asked for at all.
 const { resolveLanguageModelSpy } = vi.hoisted(() => ({ resolveLanguageModelSpy: vi.fn() }));
 vi.mock('../lib/llmProvider', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../lib/llmProvider')>();
+	const actual = await importOriginal<typeof LlmProvider>();
 	resolveLanguageModelSpy.mockImplementation(actual.resolveLanguageModel);
 	return { ...actual, resolveLanguageModel: resolveLanguageModelSpy };
 });
