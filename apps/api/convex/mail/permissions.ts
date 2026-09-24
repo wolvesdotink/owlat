@@ -176,6 +176,17 @@ export async function loadReadableMailbox(
 	return owned.ok ? owned.mailbox : null;
 }
 
+/**
+ * Is this mailbox someone's own inbox, i.e. personal data? A team inbox
+ * (`scope: 'shared'`) and a deliverability seed (`scope: 'seed'`) both carry
+ * the connecting member's `userId` because they need an owner, but they are org
+ * infrastructure. The GDPR export and erasure jobs use this one predicate to
+ * decide which of a member's mailboxes are theirs.
+ */
+export function isPersonalMailbox(mailbox: Pick<Doc<'mailboxes'>, 'scope'>): boolean {
+	return mailboxScope(mailbox) === 'personal';
+}
+
 /** The user's own PERSONAL mailbox, in any status, or null. Used by the
  * self-scoped GDPR jobs (whose caller identity was verified before crossing a
  * query/action boundary; retained personal data in an inactive mailbox is still
@@ -187,10 +198,7 @@ export async function loadPersonalMailboxForUser(
 	userId: string
 ): Promise<Doc<'mailboxes'> | null> {
 	const mailbox = await ctx.db.get(mailboxId);
-	// 'shared' and 'seed' are both org infrastructure, never personal data.
-	return mailbox && mailboxScope(mailbox) === 'personal' && mailbox.userId === userId
-		? mailbox
-		: null;
+	return mailbox && isPersonalMailbox(mailbox) && mailbox.userId === userId ? mailbox : null;
 }
 
 type MessageAccessOutcome =

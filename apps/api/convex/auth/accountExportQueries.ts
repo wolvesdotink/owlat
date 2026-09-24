@@ -8,8 +8,8 @@ import { redactContactCapabilityFields } from '../contacts/listing';
 import { toDeliverabilityAlertRecipientState } from '../delivery/checklistAlertRecipients';
 import { hasPermission, loadOwnUserProfile, requireSelf } from '../lib/sessionOrganization';
 import type { OrganizationRole } from '../lib/sessionOrganization';
-import { loadPersonalMailboxForUser } from '../mail/permissions';
-import { isTeamInboxAccount } from '../mail/external/personalAccount';
+import { isPersonalMailbox, loadPersonalMailboxForUser } from '../mail/permissions';
+import { isOrgInfrastructureAccount } from '../mail/external/personalAccount';
 import { throwNotFound } from '../_utils/errors';
 import { batchGet } from '../_utils/batchLoader';
 import { isChatAttachment } from '../chat/attachmentAccess';
@@ -188,7 +188,7 @@ export const listPersonalMailboxes = internalQuery({
 			.query('mailboxes')
 			.withIndex('by_user', (q) => q.eq('userId', args.userId))
 			.paginate(args.paginationOpts);
-		return { ...result, page: result.page.filter((mailbox) => mailbox.scope !== 'shared') };
+		return { ...result, page: result.page.filter(isPersonalMailbox) };
 	},
 });
 
@@ -243,13 +243,13 @@ export const listPersonalExternalAccounts = internalQuery({
 			.query('externalMailAccounts')
 			.withIndex('by_user', (q) => q.eq('userId', args.userId))
 			.paginate(args.paginationOpts);
-		const teamInbox = await Promise.all(
-			result.page.map((account) => isTeamInboxAccount(ctx, account))
+		const orgOwned = await Promise.all(
+			result.page.map((account) => isOrgInfrastructureAccount(ctx, account))
 		);
 		return {
 			...result,
 			page: result.page
-				.filter((_, i) => !teamInbox[i])
+				.filter((_, i) => !orgOwned[i])
 				.map(
 					({ secretCiphertext: _ct, secretIv: _iv, secretAuthTag: _tag, ...account }) => account
 				),
@@ -361,7 +361,7 @@ export const getPersonalExportCounts = internalQuery({
 				.query('mailboxes')
 				.withIndex('by_user', (q) => q.eq('userId', args.userId))
 				.take(EXPORT_COUNT_CAP + 1)
-		).filter((mailbox) => mailbox.scope !== 'shared');
+		).filter(isPersonalMailbox);
 
 		let mailMessages = 0;
 		let mailDrafts = 0;
@@ -379,9 +379,21 @@ export const getPersonalExportCounts = internalQuery({
 			isDraftCountCapped ||= drafts.isCapped;
 		}
 
-		const externalMailAccounts = await boundedCount(
-			ctx.db.query('externalMailAccounts').withIndex('by_user', (q) => q.eq('userId', args.userId))
+		// Counts exactly the rows `listPersonalExternalAccounts` exports: the
+		// credential rows behind a team inbox or a deliverability seed name this
+		// user as their custodian, but they are org infrastructure and stay out.
+		const accountRows = await ctx.db
+			.query('externalMailAccounts')
+			.withIndex('by_user', (q) => q.eq('userId', args.userId))
+			.take(EXPORT_COUNT_CAP + 1);
+		const orgOwned = await Promise.all(
+			accountRows.map((account) => isOrgInfrastructureAccount(ctx, account))
 		);
+		const personalAccountCount = orgOwned.filter((isOrgOwned) => !isOrgOwned).length;
+		const externalMailAccounts = {
+			count: Math.min(personalAccountCount, EXPORT_COUNT_CAP),
+			isCapped: accountRows.length > EXPORT_COUNT_CAP,
+		};
 		const chatMessages = await boundedCount(
 			ctx.db.query('chatMessages').withIndex('by_author', (q) => q.eq('authorId', args.userId))
 		);
