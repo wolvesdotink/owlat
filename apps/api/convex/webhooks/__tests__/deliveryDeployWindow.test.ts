@@ -308,6 +308,16 @@ describe('rows the previous release left open', () => {
 		const { t, webhookId } = await setup();
 		const logId = await insertLegacyRow(t, webhookId, { scheduledAt: Date.now() - 60 * 60_000 });
 
+		// Adoption gives the row a lease from now, not from when it fell due:
+		// its old attempt may still be queued or running, and the row carries no
+		// job id to check, so the same pass must not re-issue it.
+		expect(await reconcile(t)).toEqual({ waiting: 0, rescheduled: 0, failed: 0 });
+		const adopted = await row(t, logId);
+		expect(adopted.recoverAfter).toBe(Date.now() + WEBHOOK_ATTEMPT_LEASE_MS);
+		expect(adopted.attemptSeq).toBeUndefined();
+		expect(await scheduledJobs(t)).toHaveLength(0);
+
+		vi.setSystemTime(Date.now() + WEBHOOK_ATTEMPT_LEASE_MS + 1);
 		expect(await reconcile(t)).toEqual({ waiting: 0, rescheduled: 1, failed: 0 });
 
 		const log = await row(t, logId);
@@ -398,12 +408,14 @@ describe('rows the previous release left open', () => {
 			nextRetryAt: Date.now() - LEGACY_DELIVERY_ABANDON_AFTER_MS + 60 * 60_000,
 		});
 
-		expect(await reconcile(t)).toEqual({ waiting: 0, rescheduled: 1, failed: 1 });
+		expect(await reconcile(t)).toEqual({ waiting: 0, rescheduled: 0, failed: 1 });
 		expect(await row(t, stale)).toMatchObject({
 			status: 'failed',
 			errorMessage: LEGACY_DELIVERY_ABANDONED_ERROR,
 			attemptedAt,
 		});
+		vi.setSystemTime(Date.now() + WEBHOOK_ATTEMPT_LEASE_MS + 1);
+		expect(await reconcile(t)).toEqual({ waiting: 0, rescheduled: 1, failed: 0 });
 		expect(await row(t, recent)).toMatchObject({
 			status: 'retrying',
 			attemptNumber: 2,
