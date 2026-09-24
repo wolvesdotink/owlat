@@ -166,3 +166,30 @@ describe('contacts.dataExport — sealed bodies decrypt on export (c)', () => {
 		expect(bundle.unifiedMessages.rows[0]!.content).toBe('');
 	});
 });
+
+describe('contacts.dataExport — capability fields', () => {
+	it('strips the pending DOI token from the exported contact', async () => {
+		const t = convexTest(schema, allModules);
+		const DOI_TOKEN = 'export-bundle-doi-token';
+		const contactId = await t.run(async (ctx): Promise<Id<'contacts'>> => {
+			const now = Date.now();
+			return await ctx.db.insert('contacts', {
+				email: 'person@example.com',
+				source: 'api',
+				doiStatus: 'pending',
+				doiConfirmationToken: DOI_TOKEN,
+				doiTokenExpiresAt: now + 60_000,
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+
+		const bundle = await t.query(api.contacts.dataExport.exportContactData, { contactId });
+
+		expect(bundle.contact.email).toBe('person@example.com');
+		expect(bundle.contact.doiStatus).toBe('pending');
+		expect(bundle.contact).not.toHaveProperty('doiConfirmationToken');
+		expect(bundle.contact).not.toHaveProperty('doiTokenExpiresAt');
+		expect(JSON.stringify(bundle)).not.toContain(DOI_TOKEN);
+	});
+});

@@ -16,6 +16,7 @@ import { assertFeatureEnabled } from '../lib/featureFlags';
 import { dataVariablesSchemaValidator } from '../lib/convexValidators';
 import { assertEditableForPublishableChange } from './lifecycle';
 import { applyUsageCountDelta } from '../emailBlocks/module';
+import { assertContentRevision, nextContentRevision } from '../lib/contentRevision';
 
 // Data variable type for schema definition
 export type DataVariableType = 'string' | 'number' | 'boolean' | 'date';
@@ -172,6 +173,9 @@ export const update = authedMutation({
 		attachments: v.optional(v.string()),
 		// Allow editing publishable content on a `published` row; default `false`.
 		forceWhilePublished: v.optional(v.boolean()),
+		// The `contentRevision` the caller's payload was built on. When given, the
+		// write is refused with `conflict` if the row has moved on since.
+		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'transactional');
@@ -183,6 +187,7 @@ export const update = authedMutation({
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
 		assertEditableForPublishableChange(email, args.forceWhilePublished);
+		assertContentRevision(email, args.expectedContentRevision);
 
 		// If updating slug, check for uniqueness
 		if (args.slug && args.slug !== email.slug) {
@@ -204,6 +209,7 @@ export const update = authedMutation({
 			}
 		}
 
+		const contentRevision = nextContentRevision(email);
 		const updates: Partial<{
 			name: string;
 			slug: string;
@@ -221,8 +227,11 @@ export const update = authedMutation({
 			linkedBlockIds: string[];
 			attachments: string;
 			searchableText: string;
+			htmlRenderState: { stale: boolean };
+			contentRevision: number;
 			updatedAt: number;
 		}> = {
+			contentRevision,
 			updatedAt: Date.now(),
 		};
 
@@ -231,6 +240,12 @@ export const update = authedMutation({
 		if (args.subject !== undefined) updates.subject = args.subject;
 		if (args.content !== undefined) updates.content = args.content;
 		if (args.htmlContent !== undefined) updates.htmlContent = args.htmlContent;
+		// Blocks and the HTML rendered from them, in one write: the HTML matches
+		// the content again, so a saved-block rerender still pending for the
+		// previous revision has nothing left to fix (it no-ops on the moved row).
+		if (args.content !== undefined && args.htmlContent !== undefined && email.htmlRenderState) {
+			updates.htmlRenderState = { stale: false };
+		}
 		if (args.plainTextContent !== undefined) updates.plainTextContent = args.plainTextContent;
 		if (args.plainTextOverride !== undefined) {
 			// Patching to `undefined` REMOVES the column — that is what "the author
@@ -266,7 +281,8 @@ export const update = authedMutation({
 		}
 
 		await ctx.db.patch(args.id, updates);
-		return args.id;
+		// The revision this write stored; the editor builds its next save on it.
+		return { id: args.id, contentRevision };
 	},
 });
 
@@ -279,6 +295,10 @@ export const publish = authedMutation({
 		htmlContent: v.string(), // Required to ensure HTML is generated
 		// Pre-rendered HTML for each translation language
 		htmlTranslations: v.optional(v.string()),
+		// The `contentRevision` the HTML was rendered from. When given, a row
+		// that has moved on is refused with `conflict` instead of going live
+		// with HTML that no longer matches its content.
+		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'transactional');
@@ -292,6 +312,7 @@ export const publish = authedMutation({
 		if (email.status === 'published') {
 			throwInvalidState('Transactional email is already published');
 		}
+		assertContentRevision(email, args.expectedContentRevision, 'publish');
 
 		const outcome = await ctx.runMutation(internal.transactional.lifecycle.transition, {
 			emailId: args.id,

@@ -33,8 +33,9 @@ const {
 	refetch: refetchEmail,
 } = useConvexQuery(api.transactional.emails.get, () => ({ id: emailId.value }));
 
-// Mutations
-const { run: updateEmail } = useBackendOperation(api.transactional.emails.update, {
+// Mutations. The save rejects on failure (StaleDraftError for a stale
+// revision, which the bridge turns into the conflict dialog).
+const commitEmail = useEditorSaveOperation(api.transactional.emails.update, {
 	label: () => t('dashboard.send.transactional.detail.edit.operations.save'),
 });
 const { run: publishEmail } = useBackendOperation(api.transactional.emails.publish, {
@@ -139,10 +140,18 @@ const {
 	showTestEmailModal,
 	testEmailHtml,
 	onSendTest: handleSendTest,
-	save: handleSave,
+	requestSave,
+	builderRef,
+	conflict,
+	isResolvingConflict,
+	keepMyVersion,
+	loadLatestVersion,
+	dismissConflict,
 } = useEmailEditorBridge({
 	source: email,
-	extraWatch: [() => attachments.value, () => showUnsubscribe.value, () => plainTextOverride.value],
+	revision: (row) => row.contentRevision ?? 0,
+	extraWatch: [attachments, showUnsubscribe, plainTextOverride],
+	canKeepDraft: sameDefaultLanguage,
 	initialize: (e, ctx) => {
 		ctx.name.value = e.name;
 		ctx.subject.value = e.subject;
@@ -166,33 +175,30 @@ const {
 			attachments.value = [];
 		}
 	},
-	save: async (ctx) => {
-		await publishableEmailSave({
-			identifier: { emailType: 'transactional', emailId: emailId.value },
-			blocks: ctx.blocks.value,
-			renderOptions: { theme: emailTheme.value, variableType: 'data' },
-			supportedLanguages: email.value?.supportedLanguages ?? [],
-			defaultLanguage: email.value?.defaultLanguage ?? 'en',
-			plainTextOverride: plainTextOverride.value,
-			update: async (payload) => {
-				// The bridge clears the dirty flag only when save() resolves. The
-				// operation module has toasted any categorized failure; throw so the
-				// editor stays dirty instead of being marked clean on a failed save.
-				const result = await updateEmail({
-					id: emailId.value,
-					name: ctx.name.value,
-					subject: ctx.subject.value,
-					content: JSON.stringify(ctx.blocks.value),
-					htmlContent: payload.htmlContent,
-					htmlTranslations: payload.htmlTranslations,
-					linkedBlockIds: payload.linkedBlockIds,
-					plainTextContent: payload.plainTextContent,
-					plainTextOverride: payload.plainTextOverride,
-					attachments: JSON.stringify(attachments.value),
-					showUnsubscribe: showUnsubscribe.value,
-				});
-				if (!result.ok) throw new Error('Save failed');
+	save: async (ctx, base) => {
+		// Everything is read here, before the first await; the payload is built
+		// from this snapshot and the row the draft was loaded from.
+		const id = emailId.value;
+		const surfaceFields = {
+			attachments: JSON.stringify(attachments.value),
+			showUnsubscribe: showUnsubscribe.value,
+		};
+		return await publishableEmailSave({
+			draft: {
+				name: ctx.name.value,
+				subject: ctx.subject.value,
+				blocks: ctx.blocks.value,
+				plainTextOverride: plainTextOverride.value,
 			},
+			base: {
+				supportedLanguages: base.source?.supportedLanguages ?? [],
+				defaultLanguage: base.source?.defaultLanguage ?? 'en',
+				translations: base.source?.translations,
+				revision: base.revision,
+			},
+			renderOptions: { theme: emailTheme.value, variableType: 'data' },
+			commit: async (payload) =>
+				(await commitEmail({ id, ...payload, ...surfaceFields })).contentRevision,
 		});
 	},
 });
@@ -210,12 +216,21 @@ const handleTogglePublish = async () => {
 	// Awaiting review is a terminal, author-side dead-end: only an admin can move
 	// it forward, so there is no publish/unpublish action to take here.
 	if (isPendingReview.value) return;
+	// The publish HTML below is rendered from the canvas, so publishing with
+	// unsaved edits would put content live that the saved email does not hold.
+	// The toolbar disables Publish; this covers any other caller. Unpublish
+	// stays allowed: a published email refuses saves, so unpublishing is how
+	// those edits get saved at all.
+	if (hasChanges.value && email.value.status !== 'published') return;
 
 	isPublishing.value = true;
 	try {
 		if (email.value.status === 'published') {
 			await unpublishEmail({ id: emailId.value });
 		} else {
+			// The revision the HTML below is rendered from, read before any await:
+			// a write landing while it renders refuses the publish.
+			const expectedContentRevision = email.value.contentRevision ?? 0;
 			// Generate HTML content before publishing
 			const htmlContent = await generateHtml();
 			const supported = email.value.supportedLanguages ?? [];
@@ -228,7 +243,12 @@ const handleTogglePublish = async () => {
 			);
 			const htmlTranslations = JSON.stringify(translationsObject);
 
-			await publishEmail({ id: emailId.value, htmlContent, htmlTranslations });
+			await publishEmail({
+				id: emailId.value,
+				htmlContent,
+				htmlTranslations,
+				expectedContentRevision,
+			});
 		}
 	} finally {
 		isPublishing.value = false;
@@ -327,6 +347,7 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 			<!-- Email Builder + Attachments -->
 			<EmailBuilder
 				v-else
+				ref="builderRef"
 				v-model:blocks="blocks"
 				v-model:subject="subject"
 				v-model:name="name"
@@ -340,7 +361,7 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 				:plain-text-override="plainTextOverride"
 				:allow-plain-text-override="true"
 				@update:plain-text-override="plainTextOverride = $event"
-				@save="handleSave"
+				@save="requestSave"
 				@back="handleBack"
 				@send-test="handleSendTest"
 				@create-variable="handleCreateVariable"
@@ -418,6 +439,15 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="confirmSave"
+		/>
+
+		<EmailEditorConflictDialog
+			:open="conflict !== null"
+			:is-resolving="isResolvingConflict"
+			:must-reload="conflict?.mustReload === true"
+			@keep="keepMyVersion"
+			@load="loadLatestVersion"
+			@close="dismissConflict"
 		/>
 
 		<!-- Send Test Email Modal -->

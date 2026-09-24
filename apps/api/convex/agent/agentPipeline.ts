@@ -151,6 +151,9 @@ const REPLY_REFUSAL_BY_REASON: Record<
 	| { terminal: 'failed'; message: (detail: string | undefined) => string }
 > = {
 	recipient_blocked: { terminal: 'archived', archiveReason: 'sender_blocked' },
+	// Contact-level marketing eligibility gates marketing-scope kinds only, so an
+	// agent reply never receives it; mapped like a block for totality.
+	recipient_ineligible: { terminal: 'archived', archiveReason: 'sender_blocked' },
 	no_delivery_provider: {
 		terminal: 'failed',
 		message: (detail) => detail ?? 'No delivery provider configured',

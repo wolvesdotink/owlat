@@ -83,6 +83,10 @@ export const templateTables = {
 		searchableText: v.optional(v.string()),
 		// Schema version for `content` (EditorBlock[]). Bump on block shape change.
 		contentBlockVersion: v.optional(v.number()),
+		// Editor-content revision: advanced by every write to the fields an
+		// editor save derives its payload from, so a save built on an older
+		// revision is refused (lib/contentRevision.ts). Absent = 0.
+		contentRevision: v.optional(v.number()),
 		// Renderer engine version that produced `htmlContent`. Bump when rendering output changes materially.
 		rendererVersion: v.optional(v.number()),
 		// Saved-block rerender state. `stale: true` means `htmlContent` no
@@ -219,6 +223,10 @@ export const templateTables = {
 		searchableText: v.optional(v.string()),
 		// Schema version for `content` (EditorBlock[]). Bump on block shape change.
 		contentBlockVersion: v.optional(v.number()),
+		// Editor-content revision: advanced by every write to the fields an
+		// editor save derives its payload from, so a save built on an older
+		// revision is refused (lib/contentRevision.ts). Absent = 0.
+		contentRevision: v.optional(v.number()),
 		// Renderer engine version that produced `htmlContent`. Bump when rendering output changes materially.
 		rendererVersion: v.optional(v.number()),
 		// Schema version for `attachments` JSON. Bump on shape change.
@@ -279,6 +287,12 @@ export const templateTables = {
 		transactionalEmailId: v.optional(v.id('transactionalEmails')),
 		// Provenance for `kind: 'automation'` — the owning automation.
 		automationId: v.optional(v.id('automations')),
+		// Intake idempotency key for `kind: 'automation'`: the step run that
+		// produced this Send. A retried or recovered email step re-enters the
+		// intake with the same step run, and the intake returns the existing row
+		// instead of inserting a second Send. Absent on rows written before the
+		// key existed.
+		automationStepRunId: v.optional(v.id('automationStepRuns')),
 		// Provenance for `kind: 'agent_reply'` — the inbound message being replied
 		// to. The Send completion module drives that inbound message to
 		// `sent`/`failed` once the worker outcome lands.
@@ -365,5 +379,7 @@ export const templateTables = {
 		// Answers "does this inbound message already have a send?" as a point
 		// lookup. The stuck-approved reconciler used to infer that from a bounded
 		// scan of all queued sends, which unrelated volume could starve.
-		.index('by_inbound_message_status', ['inboundMessageId', 'status']),
+		.index('by_inbound_message_status', ['inboundMessageId', 'status'])
+		// Point lookup for the automation intake's step-run idempotency key.
+		.index('by_automation_step_run', ['automationStepRunId']),
 };

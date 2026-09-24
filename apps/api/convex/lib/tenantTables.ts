@@ -41,6 +41,8 @@ export const TENANT_TABLES = [
 	// but it is tenant-owned and must not survive an org wipe.
 	'sunsetPolicies',
 	'emailSends',
+	// Per-contact erasure progress; references the contact rows below.
+	'contactErasureJobs',
 	'contacts',
 	'contactProperties',
 

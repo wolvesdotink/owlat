@@ -26,6 +26,7 @@ import {
 } from '@owlat/email-scanner';
 import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attachments';
 import { buildFileSearchableText } from './lib/fileSearchText';
+import { isAiProviderConfigured } from './lib/aiNotConfigured';
 import type { Id, Doc } from './_generated/dataModel';
 import {
 	captureSourceValidator,
@@ -478,15 +479,26 @@ async function insertSemanticFile(
 	return fileId;
 }
 
+/** Processing never produced an embedding for this file. */
+function lacksEmbedding(file: Doc<'semanticFiles'>): boolean {
+	return file.embeddingGeneratedAt === undefined && (file.embedding?.length ?? 0) === 0;
+}
+
 /**
  * Safety-net backfill: re-schedule processing for recently-created files that
  * never got an embedding (e.g. the original scheduler call was lost to a
  * deploy gap). Bounded to a recent window so permanently text-less files
  * (whose embedding legitimately stays empty) aren't reprocessed forever.
+ *
+ * Without an AI provider no run can produce an embedding, so this would
+ * re-extract every new file on each tick for the whole window. It schedules
+ * nothing then; saving a provider later reprocesses those files once
+ * (`reprocessAfterAiConfigured`).
  */
 export const backfillUnprocessed = internalMutation({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args) => {
+		if (!(await isAiProviderConfigured(ctx.db))) return { scheduled: 0 };
 		const cutoff = Date.now() - 2 * 60 * 60 * 1000; // last 2 hours
 		const files = await ctx.db
 			.query('semanticFiles')
@@ -497,12 +509,49 @@ export const backfillUnprocessed = internalMutation({
 		let scheduled = 0;
 		for (const file of files) {
 			if (file.createdAt < cutoff) break; // ordered desc — older files follow
-			if (file.embeddingGeneratedAt === undefined && (file.embedding?.length ?? 0) === 0) {
+			if (lacksEmbedding(file)) {
 				await ctx.scheduler.runAfter(0, internal.semanticFileProcessing.processFile, {
 					fileId: file._id,
 				});
 				scheduled++;
 			}
+		}
+		return { scheduled };
+	},
+});
+
+/** Newest files `reprocessAfterAiConfigured` reads, and at most how many it reprocesses. */
+const AI_CONFIGURED_SCAN = 500;
+const AI_CONFIGURED_REPROCESS_LIMIT = 200;
+/** Spacing between those runs, so saving a provider does not fire them all at once. */
+const AI_CONFIGURED_REPROCESS_SPACING_MS = 2_000;
+
+/**
+ * One pass, scheduled when the instance's first AI provider is saved: files
+ * processed while no provider existed got their text but no summary,
+ * embedding or knowledge entries, and nothing else would ever run them again.
+ * Bounded to the newest files, each at most once, spaced out; a file whose
+ * bytes the retention sweep released has nothing left to process.
+ */
+export const reprocessAfterAiConfigured = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		const files = await ctx.db
+			.query('semanticFiles')
+			.withIndex('by_created_at')
+			.order('desc')
+			.take(AI_CONFIGURED_SCAN);
+
+		let scheduled = 0;
+		for (const file of files) {
+			if (scheduled >= AI_CONFIGURED_REPROCESS_LIMIT) break;
+			if (!file.storageId || !lacksEmbedding(file)) continue;
+			await ctx.scheduler.runAfter(
+				scheduled * AI_CONFIGURED_REPROCESS_SPACING_MS,
+				internal.semanticFileProcessing.processFile,
+				{ fileId: file._id }
+			);
+			scheduled++;
 		}
 		return { scheduled };
 	},

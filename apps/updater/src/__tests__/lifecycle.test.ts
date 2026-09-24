@@ -22,20 +22,26 @@ process.env['PORT'] = '0';
 
 const { buildRequestListener } = await import('../server.js');
 const { critical, setShutdownHandle } = await import('../lifecycle.js');
+const { fastReadiness } = await import('./readinessStubs.js');
 
 const AUTH = { 'x-instance-secret': 'test-instance-secret-0123456789' };
 
 let server: Server;
 let base: string;
+let readiness: ReturnType<typeof fastReadiness>;
 
 beforeAll(async () => {
+	readiness = fastReadiness();
 	server = createServer(buildRequestListener());
 	await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
 	const addr = server.address();
 	if (typeof addr === 'object' && addr) base = `http://127.0.0.1:${addr.port}`;
 });
 
-afterAll(() => server.close());
+afterAll(() => {
+	server.close();
+	readiness.restore();
+});
 
 beforeEach(() => {
 	rateLimitedMock.mockReturnValue(false);
@@ -54,6 +60,10 @@ beforeEach(() => {
 			].join('\n');
 		}
 		if (cmd.startsWith('docker run')) return 'helper-container-id\n';
+		// The rollout's readiness check: the one service it started is up.
+		if (cmd.includes(' ps --all --format json')) {
+			return JSON.stringify({ Service: 'web', State: 'running', Image: '', Health: '' });
+		}
 		return '';
 	});
 	writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nCOMPOSE_PROFILES=\n');

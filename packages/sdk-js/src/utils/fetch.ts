@@ -113,6 +113,98 @@ function isRetryable(method: HttpMethod, status: number): boolean {
 	return IDEMPOTENT_METHODS.has(method);
 }
 
+/**
+ * Read the response body, rejecting once `signal` aborts. Real fetch
+ * implementations error the body stream when the request signal aborts, but
+ * not every runtime (or polyfill, or mocked stream) does, so the race is made
+ * explicit rather than trusted.
+ *
+ * The body is read through a reader this function owns, so a read cut off by
+ * the deadline can also cancel the stream. Rejecting alone would leave a
+ * runtime that ignores the abort holding the connection open for a body
+ * nobody will read. (`response.text()` locks the stream, and a locked stream
+ * cannot be cancelled from outside.)
+ */
+function readBodyBeforeDeadline(response: Response, signal: AbortSignal): Promise<string> {
+	const body = response.body;
+	if (!body) return raceText(response, signal);
+	if (signal.aborted) {
+		void body.cancel().catch(() => {});
+		return Promise.reject(new BodyDeadlineError());
+	}
+
+	const reader = body.getReader();
+	const decoder = new TextDecoder();
+	let text = '';
+	return new Promise<string>((resolve, reject) => {
+		const onAbort = () => {
+			reject(new BodyDeadlineError());
+			void reader.cancel().catch(() => {});
+		};
+		signal.addEventListener('abort', onAbort, { once: true });
+		const done = () => signal.removeEventListener('abort', onAbort);
+		const pump = (): void => {
+			reader.read().then(
+				({ done: finished, value }) => {
+					if (finished) {
+						done();
+						resolve(text + decoder.decode());
+						return;
+					}
+					text += decoder.decode(value, { stream: true });
+					pump();
+				},
+				(error: unknown) => {
+					done();
+					reject(error);
+				}
+			);
+		};
+		pump();
+	});
+}
+
+/** For a response object without a body stream: race `text()` against the deadline. */
+function raceText(response: Response, signal: AbortSignal): Promise<string> {
+	return new Promise<string>((resolve, reject) => {
+		const onAbort = () => reject(new BodyDeadlineError());
+		if (signal.aborted) {
+			onAbort();
+			return;
+		}
+		signal.addEventListener('abort', onAbort, { once: true });
+		response
+			.text()
+			.then(resolve, reject)
+			.finally(() => signal.removeEventListener('abort', onAbort));
+	});
+}
+
+/** Marker for a body read cut short by the request deadline. */
+class BodyDeadlineError extends Error {
+	constructor() {
+		super('Response body not received before the deadline');
+		this.name = 'AbortError';
+	}
+}
+
+/**
+ * Normalize a failure anywhere in the exchange (connect, headers or body) into
+ * the SDK's `timeout` / `network_error` categories. The signal is the source of
+ * truth for a timeout: a body stream torn down by the abort may surface as a
+ * generic TypeError depending on the runtime.
+ */
+function transportError(error: unknown, signal: AbortSignal, timeout: number): OwlatError {
+	if (signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+		return new OwlatError(`Request timed out after ${timeout}ms`, 'timeout', 0);
+	}
+	return new OwlatError(
+		`Network error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+		'network_error',
+		0
+	);
+}
+
 /** Configuration for automatic retry behavior */
 export interface RetryConfig {
 	/** Maximum number of retry attempts (default: 2, meaning 3 total attempts) */
@@ -146,10 +238,7 @@ export function createHttpClient(
 	/**
 	 * Make an HTTP request to the Owlat API with automatic retries.
 	 */
-	async function request<T>(
-		path: string,
-		options: FetchOptions
-	): Promise<FetchResponse<T>> {
+	async function request<T>(path: string, options: FetchOptions): Promise<FetchResponse<T>> {
 		const url = `${baseUrl}${path}`;
 		const timeout = options.timeout ?? defaultTimeout;
 
@@ -160,7 +249,7 @@ export function createHttpClient(
 			const timeoutId = setTimeout(() => controller.abort(), timeout);
 
 			const headers: Record<string, string> = {
-				'Authorization': `Bearer ${apiKey}`,
+				Authorization: `Bearer ${apiKey}`,
 				'Content-Type': 'application/json',
 			};
 
@@ -174,27 +263,29 @@ export function createHttpClient(
 				fetchOptions.body = JSON.stringify(options.body);
 			}
 
+			// The deadline covers the whole exchange: headers AND body. `fetch()`
+			// resolves as soon as the headers arrive, so clearing the timer there
+			// left a stalled body (slow proxy, half-dead connection) pending with no
+			// bound at all. The body is read here, under the same timer, as text;
+			// JSON parsing happens afterwards so a malformed body is still a
+			// `parse_error` rather than a transport fault.
 			let response: Response;
+			let rawBody: string;
 			try {
 				response = await fetch(url, fetchOptions);
+				rawBody = await readBodyBeforeDeadline(response, controller.signal);
 			} catch (error) {
-				clearTimeout(timeoutId);
-				if (error instanceof Error && error.name === 'AbortError') {
-					lastError = new OwlatError(
-						`Request timed out after ${timeout}ms`,
-						'timeout',
-						0
-					);
-				} else {
-					lastError = new OwlatError(
-						`Network error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-						'network_error',
-						0
-					);
-				}
+				lastError = transportError(error, controller.signal, timeout);
 				// Retry on network errors and timeouts — but only for idempotent
 				// methods. A POST that timed out may have been processed
-				// server-side; replaying it would duplicate the send.
+				// server-side (a stalled body means it certainly reached the
+				// server); replaying it would duplicate the send.
+				//
+				// The status is not consulted here, on purpose: a GET whose
+				// headers said 4xx but whose body then stalled is retried as a
+				// timeout, although a 4xx with a body would not be. Without the
+				// body there is no error envelope to act on, and repeating an
+				// idempotent GET is harmless.
 				if (attempt < maxRetries && IDEMPOTENT_METHODS.has(options.method)) {
 					await sleep(initialDelayMs * Math.pow(backoffMultiplier, attempt));
 					continue;
@@ -215,11 +306,10 @@ export function createHttpClient(
 			// the error envelope defensively: an empty or non-JSON body falls
 			// back to the generic category/message rather than throwing.
 			if (!response.ok) {
-				const rawErrorBody = await response.text();
 				let errorBody: ApiErrorResponse | undefined;
-				if (rawErrorBody) {
+				if (rawBody) {
 					try {
-						errorBody = JSON.parse(rawErrorBody) as ApiErrorResponse;
+						errorBody = JSON.parse(rawBody) as ApiErrorResponse;
 					} catch {
 						errorBody = undefined;
 					}
@@ -231,25 +321,18 @@ export function createHttpClient(
 				const retryAfterData =
 					typeof data?.['retryAfter'] === 'number' ? data['retryAfter'] : undefined;
 				const retryAfter =
-					retryAfterData ??
-					(retryAfterHeader ? parseInt(retryAfterHeader, 10) : undefined);
+					retryAfterData ?? (retryAfterHeader ? parseInt(retryAfterHeader, 10) : undefined);
 
-				lastError = createError(
-					message,
-					category,
-					response.status,
-					rateLimit,
-					retryAfter,
-					data
-				);
+				lastError = createError(message, category, response.status, rateLimit, retryAfter, data);
 
 				// Retry on transient errors (429 respects Retry-After, 5xx) — but
 				// 5xx only for idempotent methods, so a non-idempotent POST the
 				// server may have already applied is never replayed.
 				if (isRetryable(options.method, response.status) && attempt < maxRetries) {
-					const delay = response.status === 429 && retryAfter
-						? Math.min(retryAfter * 1000, MAX_RETRY_AFTER_MS)
-						: initialDelayMs * Math.pow(backoffMultiplier, attempt);
+					const delay =
+						response.status === 429 && retryAfter
+							? Math.min(retryAfter * 1000, MAX_RETRY_AFTER_MS)
+							: initialDelayMs * Math.pow(backoffMultiplier, attempt);
 					await sleep(delay);
 					continue;
 				}
@@ -269,7 +352,7 @@ export function createHttpClient(
 
 			let body: unknown;
 			try {
-				body = await response.json();
+				body = JSON.parse(rawBody);
 			} catch {
 				throw new OwlatError(
 					'Failed to parse response body',
@@ -303,8 +386,7 @@ export function createHttpClient(
 	}
 
 	return {
-		get: <T>(path: string, timeout?: number) =>
-			request<T>(path, { method: 'GET', timeout }),
+		get: <T>(path: string, timeout?: number) => request<T>(path, { method: 'GET', timeout }),
 
 		post: <T>(path: string, body?: unknown, timeout?: number) =>
 			request<T>(path, { method: 'POST', body, timeout }),
@@ -312,8 +394,7 @@ export function createHttpClient(
 		put: <T>(path: string, body?: unknown, timeout?: number) =>
 			request<T>(path, { method: 'PUT', body, timeout }),
 
-		delete: <T>(path: string, timeout?: number) =>
-			request<T>(path, { method: 'DELETE', timeout }),
+		delete: <T>(path: string, timeout?: number) => request<T>(path, { method: 'DELETE', timeout }),
 	};
 }
 

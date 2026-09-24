@@ -88,6 +88,7 @@ export type OrganizationDeletionTable =
 	| 'emailTemplates'
 	| 'transactionalEmails'
 	| 'emailBlocks'
+	| 'contactErasureJobs'
 	| 'contacts'
 	| 'contactProperties'
 	| 'topics'
@@ -278,6 +279,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('emailTemplates'),
 	v.literal('transactionalEmails'),
 	v.literal('emailBlocks'),
+	v.literal('contactErasureJobs'),
 	v.literal('contacts'),
 	v.literal('contactProperties'),
 	v.literal('topics'),

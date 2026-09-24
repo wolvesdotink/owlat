@@ -9,6 +9,7 @@ import { campaignTables } from './schema/campaigns';
 import { domainTables } from './schema/domains';
 import { relayIdentitiesTables } from './schema/relayIdentities';
 import { contactTables } from './schema/contacts';
+import { contactErasureTables } from './schema/contactErasure';
 import { authTables } from './schema/auth';
 import { instanceTables } from './schema/instance';
 import { templateTables } from './schema/templates';
@@ -50,6 +51,7 @@ export default defineSchema({
 	...domainTables,
 	...relayIdentitiesTables,
 	...contactTables,
+	...contactErasureTables,
 	...authTables,
 	...instanceTables,
 	...templateTables,

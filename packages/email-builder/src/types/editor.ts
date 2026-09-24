@@ -58,6 +58,11 @@ export interface EmailBuilderHandlers {
 	/** Saved blocks integration (optional) */
 	savedBlocks?: {
 		fetch: (params?: { search?: string }) => Promise<SavedBlock[]>;
+		/**
+		 * Persist a block as a saved block. Resolve only once it is stored; reject
+		 * on any failure (after surfacing it to the user) so the builder keeps its
+		 * save dialog open with the entered name.
+		 */
 		save: (block: { name: string; content: EditorBlock[] }) => Promise<void>;
 	};
 	/** Error callback for surfacing upload failures and other errors to the host app (optional) */

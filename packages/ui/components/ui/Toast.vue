@@ -13,7 +13,7 @@ const politeToasts = computed(() => toasts.value.filter((t) => t.type !== 'error
 
 <template>
 	<Teleport to="body">
-		<div class="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
+		<div class="fixed bottom-6 right-6 z-(--z-toast) flex flex-col gap-3">
 			<!-- Assertive region: failures interrupt so the user reacts immediately. -->
 			<div class="flex flex-col gap-3" role="alert" aria-live="assertive">
 				<TransitionGroup name="toast">

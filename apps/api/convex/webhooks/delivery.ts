@@ -1,168 +1,146 @@
 'use node';
 
 import { v } from 'convex/values';
-import { MAX_WEBHOOK_ATTEMPTS, WEBHOOK_RETRY_DELAYS_MS } from '../lib/constants';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { hmacSha256Hex } from './security';
-import { fetchWithGuardedDispatcher, validatePublicUrl } from '../lib/ssrfGuard';
+import { fetchWithGuardedDispatcher, readBodyPreview, validatePublicUrl } from '../lib/ssrfGuard';
 
 // Result type for the retry-aware delivery action.
 interface DeliverWebhookResult {
 	success: boolean;
 	error?: string;
 	retrying?: boolean;
+	/** The invocation did not own the current attempt and sent nothing. */
+	skipped?: boolean;
 }
 
-// Retry configuration lives in lib/constants (shared with fanout.ts).
-// HMAC-SHA256 signing comes from the shared ./security primitive (hmacSha256Hex)
-// so this can't diverge from the inbound-adapter / channel-webhook copies.
+/** Characters of the receiver's response kept on the delivery log. */
+const RESPONSE_PREVIEW_CHARS = 1000;
+/**
+ * Bytes read to build that preview: enough for RESPONSE_PREVIEW_CHARS of any
+ * UTF-8 text (at most 4 bytes per character), and never more.
+ */
+const RESPONSE_PREVIEW_MAX_BYTES = RESPONSE_PREVIEW_CHARS * 4;
+/** How long a receiver may dribble its response body before we stop reading. */
+const RESPONSE_PREVIEW_TIMEOUT_MS = 5_000;
+const REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bounded excerpt of the receiver's response for the delivery log. The body is
+ * diagnostic only: a failed or oversized read never changes the outcome, which
+ * the status code alone decides, so a receiver that answered 2xx is never
+ * redelivered because its body was huge or broken.
+ */
+async function previewResponseBody(response: Response): Promise<string> {
+	const preview = await readBodyPreview(response.body, {
+		maxBytes: RESPONSE_PREVIEW_MAX_BYTES,
+		timeoutMs: RESPONSE_PREVIEW_TIMEOUT_MS,
+	});
+	let text = preview.text;
+	let truncated = preview.truncated;
+	if (text.length > RESPONSE_PREVIEW_CHARS) {
+		// Do not leave half of a surrogate pair at the cut.
+		const end = /[\uD800-\uDBFF]/.test(text[RESPONSE_PREVIEW_CHARS - 1] ?? '')
+			? RESPONSE_PREVIEW_CHARS - 1
+			: RESPONSE_PREVIEW_CHARS;
+		text = text.slice(0, end);
+		truncated = true;
+	}
+	return truncated ? `${text}...` : text;
+}
+
+// Retry configuration lives in lib/constants; the retry decision is made in
+// deliveryQueries.recordDeliveryAttempt, in the same transaction that schedules
+// the next attempt. HMAC-SHA256 signing comes from the shared ./security
+// primitive (hmacSha256Hex) so this can't diverge from the inbound-adapter /
+// channel-webhook copies.
 
 // ============ INTERNAL ACTIONS ============
 
 /**
- * Internal action to deliver a webhook
- * This is called by the scheduler for retries
+ * Perform one delivery attempt. Scheduled only by the mutations in
+ * `deliveryAttempts.ts` (first attempt, retries, reconciler re-issues), always
+ * with the attempt's sequence number; an invocation that does not own the
+ * row's current attempt returns without sending.
  */
 export const deliverWebhookInternal = internalAction({
 	args: {
 		webhookId: v.id('webhooks'),
 		logId: v.id('webhookDeliveryLogs'),
-		payload: v.string(),
+		// Legacy: invocations scheduled before the row became the source of the
+		// body still carry it. The body is now always rebuilt from the row.
+		payload: v.optional(v.string()),
 		attemptNumber: v.number(),
+		attemptSeq: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<DeliverWebhookResult> => {
-		const { webhookId, logId, payload, attemptNumber } = args;
+		const { webhookId, logId, attemptNumber, attemptSeq } = args;
+		const attemptRef = { logId, attemptNumber, attemptSeq };
 
-		// Get webhook details
-		const webhook = await ctx.runQuery(internal.webhooks.deliveryQueries.getWebhook, {
-			webhookId,
-		});
+		const claim = await ctx.runMutation(
+			internal.webhooks.deliveryQueries.claimDeliveryAttempt,
+			attemptRef
+		);
+		if (claim.kind === 'skip') return { success: false, skipped: true, error: claim.reason };
 
-		if (!webhook) {
-			await ctx.runMutation(internal.webhooks.deliveryQueries.markDeliveryFailed, {
-				logId,
-				errorMessage: 'Webhook not found',
-			});
-			return { success: false, error: 'Webhook not found' };
-		}
-
-		if (!webhook.isActive) {
-			await ctx.runMutation(internal.webhooks.deliveryQueries.markDeliveryFailed, {
-				logId,
-				errorMessage: 'Webhook is disabled',
-			});
-			return { success: false, error: 'Webhook is disabled' };
-		}
-
-		// Generate HMAC signature
-		const signature = await hmacSha256Hex(webhook.secret, payload);
+		const signature = await hmacSha256Hex(claim.secret, claim.payload);
 		const timestamp = Math.floor(Date.now() / 1000).toString();
 
-		// Deliver the webhook
 		const startTime = Date.now();
 		let httpStatusCode: number | undefined;
 		let responseBody: string | undefined;
 		let errorMessage: string | undefined;
+		let ok = false;
 
 		try {
-			const destinationValidation = await validatePublicUrl(webhook.url);
-			if (!destinationValidation.ok) {
-				errorMessage = destinationValidation.error;
-				throw new Error(destinationValidation.error);
-			}
+			const destinationValidation = await validatePublicUrl(claim.url);
+			if (!destinationValidation.ok) throw new Error(destinationValidation.error);
 
 			// The guarded dispatcher re-validates the resolved IP at connect time,
 			// closing the DNS-rebinding window left open by the up-front
 			// validatePublicUrl check (which resolves independently of the socket).
-			const response = await fetchWithGuardedDispatcher(webhook.url, {
+			const response = await fetchWithGuardedDispatcher(claim.url, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
 					'X-Signature': signature,
 					'X-Timestamp': timestamp,
 					'X-Webhook-Id': webhookId,
+					// Same value on every retry of this delivery, so a receiver can
+					// drop a redelivery it already processed.
+					'X-Webhook-Delivery-Id': logId,
+					'X-Webhook-Attempt': String(attemptNumber),
 					'User-Agent': 'Owlat-Webhooks/1.0',
 				},
-				body: payload,
+				body: claim.payload,
 				redirect: 'manual',
-				signal: AbortSignal.timeout(30000), // 30 second timeout
+				signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 			});
 
 			httpStatusCode = response.status;
-
-			// Read response body (truncate if too long)
-			const text = await response.text();
-			responseBody = text.length > 1000 ? text.substring(0, 1000) + '...' : text;
-
-			const durationMs = Date.now() - startTime;
-
-			// Success: 2xx status codes
-			if (response.ok) {
-				await ctx.runMutation(internal.webhooks.deliveryQueries.markDeliverySuccess, {
-					logId,
-					httpStatusCode,
-					responseBody,
-					durationMs,
-				});
-				return { success: true };
-			}
-
-			// Failed: non-2xx status
-			errorMessage = `HTTP ${httpStatusCode}: ${responseBody}`;
+			ok = response.ok;
+			responseBody = await previewResponseBody(response);
+			if (!ok) errorMessage = `HTTP ${httpStatusCode}: ${responseBody}`;
 		} catch (error) {
 			errorMessage = error instanceof Error ? error.message : 'Unknown error';
 		}
 
-		const durationMs = Date.now() - startTime;
-
-		// Check if we should retry
-		if (attemptNumber < MAX_WEBHOOK_ATTEMPTS) {
-			const nextAttemptNumber = attemptNumber + 1;
-			const retryDelayMs = WEBHOOK_RETRY_DELAYS_MS[attemptNumber] || 5 * 60 * 1000; // Default 5 min
-			const nextRetryAt = Date.now() + retryDelayMs;
-
-			// Mark as retrying
-			await ctx.runMutation(internal.webhooks.deliveryQueries.markDeliveryRetrying, {
-				logId,
-				httpStatusCode,
-				responseBody,
-				errorMessage,
-				durationMs,
-				nextRetryAt,
-				newAttemptNumber: nextAttemptNumber,
-			});
-
-			// Schedule retry with exponential backoff
-			await ctx.scheduler.runAfter(
-				retryDelayMs,
-				internal.webhooks.delivery.deliverWebhookInternal,
-				{
-					webhookId,
-					logId,
-					payload,
-					attemptNumber: nextAttemptNumber,
-				}
-			);
-
-			return { success: false, retrying: true, error: errorMessage };
-		}
-
-		// Final failure after all retries
-		await ctx.runMutation(internal.webhooks.deliveryQueries.markDeliveryFailed, {
-			logId,
+		const outcome = await ctx.runMutation(internal.webhooks.deliveryQueries.recordDeliveryAttempt, {
+			...attemptRef,
+			ok,
 			httpStatusCode,
 			responseBody,
-			errorMessage: errorMessage || 'Max retries exceeded',
-			durationMs,
+			errorMessage,
+			durationMs: Date.now() - startTime,
 		});
 
-		return { success: false, error: errorMessage };
+		if (ok) return { success: true };
+		return { success: false, retrying: outcome.retrying, error: errorMessage };
 	},
 });
 
-// Fanout entry points (formerly `fireWebhookEvent` and `deliverWebhook`)
-// have moved to `webhooks/fanout.ts`. They are no longer scheduled directly
-// — callers use the typed helpers in `webhooks/scheduleFanout.ts` which
-// resolve the per-event Webhook event module, call `module.build`, and
-// then schedule the matching fanout action.
+// Fanout entry points: `webhooks/scheduleFanout.ts` resolves the per-event
+// Webhook event module, calls `module.build`, and schedules the enqueue
+// mutations in `webhooks/deliveryQueries.ts`, which write the delivery rows and
+// schedule this action's first attempts in the same transaction.

@@ -180,6 +180,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// Contact cascade — delegates; sweeps 5 child tables that aren't
 	// standalone steps (contactTopics, contactPropertyValues,
 	// contactActivities, contactIdentities, contactRelationships)
+	'contactErasureJobs', // erasure progress rows point at the contacts below
 	'contacts',
 
 	// Orphan sweeps: the contacts step delegates these per contact, but rows
@@ -347,6 +348,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	emailTemplates: makeSweepStep('emailTemplates'),
 	transactionalEmails: makeSweepStep('transactionalEmails'),
 	emailBlocks: makeSweepStep('emailBlocks'),
+	contactErasureJobs: makeSweepStep('contactErasureJobs'),
 	contacts: contactsStep,
 	contactProperties: makeSweepStep('contactProperties'),
 	topics: makeSweepStep('topics'),

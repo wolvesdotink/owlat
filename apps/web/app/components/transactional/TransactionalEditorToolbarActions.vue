@@ -21,7 +21,13 @@ defineProps<{
 	isPendingReview: boolean;
 	/** A publish/unpublish round-trip is in flight. */
 	isPublishing: boolean;
-	/** Unsaved editor changes, so share links can warn before handing out a URL. */
+	/**
+	 * Unsaved editor changes. Share links warn before handing out a URL, and
+	 * Publish waits for a save: publishing renders the canvas, so it would put
+	 * unsaved content live while the saved email stayed behind. Unpublish stays
+	 * available: it renders nothing, and a published email refuses saves until
+	 * it is unpublished, so holding it too would leave the edits unsaveable.
+	 */
 	hasChanges: boolean;
 }>();
 
@@ -103,10 +109,13 @@ const { t } = useI18n();
 		:variant="isPublished ? 'secondary' : 'primary'"
 		size="sm"
 		:loading="isPublishing"
+		:disabled="hasChanges && !isPublished"
 		:title="
 			isPublished
 				? t('dashboard.send.transactional.detail.edit.publishHint.unpublish')
-				: t('dashboard.send.transactional.detail.edit.publishHint.publish')
+				: hasChanges
+					? t('dashboard.send.transactional.detail.edit.publishHint.saveFirst')
+					: t('dashboard.send.transactional.detail.edit.publishHint.publish')
 		"
 		@click="emit('toggle-publish')"
 	>

@@ -6,6 +6,37 @@ import { createTestAutomation, createTestAutomationStep, createTestContact } fro
 import type { Id } from '../_generated/dataModel';
 import type { DelayStepConfig } from '../automations/automations';
 import { bumpAutomationStats, rollupAutomationStatsRow } from '../automations/statShards';
+import {
+	cancelRun,
+	insertStepRun,
+	recordSkippedSteps,
+	transitionStepRun,
+} from '../automations/stepRunTransitions';
+
+type StepRunStatus = 'pending' | 'executing' | 'completed' | 'failed' | 'skipped';
+
+async function createStepRun(
+	t: ReturnType<typeof convexTest>,
+	automationRunId: Id<'automationRuns'>,
+	automationStepId: Id<'automationSteps'>
+): Promise<Id<'automationStepRuns'>> {
+	return await t.run(async (ctx) => {
+		const step = await ctx.db.get(automationStepId);
+		return insertStepRun(ctx, { automationRunId, step: step!, delayUntil: undefined });
+	});
+}
+
+async function transition(
+	t: ReturnType<typeof convexTest>,
+	stepRunId: Id<'automationStepRuns'>,
+	to: StepRunStatus,
+	fields: { errorMessage?: string } = {}
+): Promise<boolean> {
+	return await t.run(async (ctx) => {
+		const stepRun = await ctx.db.get(stepRunId);
+		return transitionStepRun(ctx, stepRun!, to, fields);
+	});
+}
 
 const modules = import.meta.glob('../**/*.*s');
 
@@ -21,9 +52,7 @@ describe('automations - status counting pattern', () => {
 			await ctx.db.insert('automations', createTestAutomation({ status: 'active' }));
 			await ctx.db.insert('automations', createTestAutomation({ status: 'paused' }));
 
-			const all = await ctx.db
-				.query('automations')
-				.collect();
+			const all = await ctx.db.query('automations').collect();
 
 			expect(all).toHaveLength(4);
 
@@ -209,7 +238,6 @@ describe('automation runs', () => {
 			expect(run?.triggeredBy).toBe('contact_created');
 		});
 	});
-
 });
 
 // ============ Automation Step Runs ============
@@ -303,7 +331,7 @@ describe('automation step runs', () => {
 		});
 	});
 
-	it('markStepExecuting claims a pending step exactly once (dedupe) and bumps stepsExecuted', async () => {
+	it('claimStepRun claims a pending step exactly once (dedupe) and bumps stepsExecuted', async () => {
 		const t = convexTest(schema, modules);
 		let runId: Id<'automationRuns'>;
 		let stepRunId: Id<'automationStepRuns'>;
@@ -343,19 +371,16 @@ describe('automation step runs', () => {
 
 		// Two schedulers (original runAfter + the processPendingDelays cron) can
 		// target the same pending step. Only the first claim must win.
-		const first = await t.mutation(
-			internal.automations.stepExecutorQueries.markStepExecuting,
-			{ stepRunId: stepRunId! }
-		);
-		const second = await t.mutation(
-			internal.automations.stepExecutorQueries.markStepExecuting,
-			{ stepRunId: stepRunId! }
-		);
+		const claim = () =>
+			t.mutation(internal.automations.stepOrchestration.claimStepRun, {
+				stepRunId: stepRunId!,
+				attempt: 0,
+			});
+		const first = await claim();
+		const second = await claim();
 
-		expect(first.claimed).toBe(true);
-		expect(first.stepsExecuted).toBe(1);
-		expect(second.claimed).toBe(false); // already executing — duplicate dropped
-		expect(second.stepsExecuted).toBe(1); // counter not double-bumped
+		expect(first.kind).toBe('claimed');
+		expect(second.kind).toBe('dropped'); // already executing — duplicate dropped
 
 		await t.run(async (ctx) => {
 			const run = await ctx.db.get(runId!);
@@ -367,7 +392,7 @@ describe('automation step runs', () => {
 });
 
 describe('denormalized step-run status counters (getStepAnalytics source)', () => {
-	it('createStepRun → markStepExecuting → markStepCompleted maintains the step counters', async () => {
+	it('step-run creation → executing → completed maintains the step counters', async () => {
 		const t = convexTest(schema, modules);
 		const ids = await t.run(async (ctx) => {
 			const automationId = await ctx.db.insert('automations', createTestAutomation());
@@ -378,7 +403,7 @@ describe('denormalized step-run status counters (getStepAnalytics source)', () =
 					stepIndex: 0,
 					stepType: 'email',
 					config: { emailTemplateId: 'tmpl1' },
-				}),
+				})
 			);
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 			const runId = await ctx.db.insert('automationRuns', {
@@ -392,26 +417,21 @@ describe('denormalized step-run status counters (getStepAnalytics source)', () =
 			return { stepId, runId };
 		});
 
-		const stepRunId = await t.mutation(internal.automations.stepExecutorQueries.createStepRun, {
-			automationRunId: ids.runId,
-			automationStepId: ids.stepId,
-			stepIndex: 0,
-			stepType: 'email',
-		});
+		const stepRunId = await createStepRun(t, ids.runId, ids.stepId);
 		expect((await t.run(async (ctx) => ctx.db.get(ids.stepId)))?.statPending).toBe(1);
 
-		await t.mutation(internal.automations.stepExecutorQueries.markStepExecuting, { stepRunId });
+		await transition(t, stepRunId, 'executing');
 		let step = await t.run(async (ctx) => ctx.db.get(ids.stepId));
 		expect(step?.statPending).toBe(0);
 		expect(step?.statExecuting).toBe(1);
 
-		await t.mutation(internal.automations.stepExecutorQueries.markStepCompleted, { stepRunId });
+		await transition(t, stepRunId, 'completed');
 		step = await t.run(async (ctx) => ctx.db.get(ids.stepId));
 		expect(step?.statExecuting).toBe(0);
 		expect(step?.statCompleted).toBe(1);
 
 		// Idempotent: a duplicate completion does not double-count.
-		await t.mutation(internal.automations.stepExecutorQueries.markStepCompleted, { stepRunId });
+		await transition(t, stepRunId, 'completed');
 		expect((await t.run(async (ctx) => ctx.db.get(ids.stepId)))?.statCompleted).toBe(1);
 	});
 
@@ -426,7 +446,7 @@ describe('denormalized step-run status counters (getStepAnalytics source)', () =
 					stepIndex: 0,
 					stepType: 'email',
 					config: { emailTemplateId: 'tmpl1' },
-				}),
+				})
 			);
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 			const runId = await ctx.db.insert('automationRuns', {
@@ -440,21 +460,12 @@ describe('denormalized step-run status counters (getStepAnalytics source)', () =
 			return { stepId, runId };
 		});
 
-		const stepRunId = await t.mutation(internal.automations.stepExecutorQueries.createStepRun, {
-			automationRunId: ids.runId,
-			automationStepId: ids.stepId,
-			stepIndex: 0,
-			stepType: 'email',
-		});
-		await t.mutation(internal.automations.stepExecutorQueries.markStepExecuting, { stepRunId });
-		await t.mutation(internal.automations.stepExecutorQueries.markStepCompleted, { stepRunId });
+		const stepRunId = await createStepRun(t, ids.runId, ids.stepId);
+		await transition(t, stepRunId, 'executing');
+		await transition(t, stepRunId, 'completed');
 
 		// Duplicate firing tries to fail the already-completed step run — must be a no-op.
-		await t.mutation(internal.automations.stepExecutorQueries.markStepFailed, {
-			stepRunId,
-			errorMessage: 'late failure',
-			retryCount: 0,
-		});
+		await transition(t, stepRunId, 'failed', { errorMessage: 'late failure' });
 
 		const step = await t.run(async (ctx) => ctx.db.get(ids.stepId));
 		expect(step?.statCompleted).toBe(1);
@@ -480,13 +491,9 @@ describe('denormalized step-run status counters (getStepAnalytics source)', () =
 			return { automationId, runId };
 		});
 
-		await t.mutation(internal.automations.stepExecutorQueries.cancelAutomationRun, {
-			automationRunId: ids.runId,
-		});
+		await t.run(async (ctx) => cancelRun(ctx, ids.runId));
 		// Duplicate firing — the run is already cancelled, so stats must not move again.
-		await t.mutation(internal.automations.stepExecutorQueries.cancelAutomationRun, {
-			automationRunId: ids.runId,
-		});
+		await t.run(async (ctx) => cancelRun(ctx, ids.runId));
 
 		// Roll the shards into stats* (deriving statsActive = entered − completed −
 		// cancelled). Only ONE cancel counted ⇒ 2 − 1 = 1, not 2 − 2 = 0.
@@ -498,26 +505,26 @@ describe('denormalized step-run status counters (getStepAnalytics source)', () =
 		expect(automation?.statsActive).toBe(1); // 2 → 1, not 2 → 0
 	});
 
-	it('markStepsSkipped writes skipped step runs and bumps statSkipped for bypassed steps', async () => {
+	it('recordSkippedSteps writes skipped step runs and bumps statSkipped for bypassed steps', async () => {
 		const t = convexTest(schema, modules);
 		const ids = await t.run(async (ctx) => {
 			const automationId = await ctx.db.insert('automations', createTestAutomation());
 			// 4 steps: a condition at 0 branching forward to step 3 skips 1 and 2.
 			const step0 = await ctx.db.insert(
 				'automationSteps',
-				createTestAutomationStep({ automationId, stepIndex: 0, stepType: 'condition' }),
+				createTestAutomationStep({ automationId, stepIndex: 0, stepType: 'condition' })
 			);
 			const step1 = await ctx.db.insert(
 				'automationSteps',
-				createTestAutomationStep({ automationId, stepIndex: 1, stepType: 'email' }),
+				createTestAutomationStep({ automationId, stepIndex: 1, stepType: 'email' })
 			);
 			const step2 = await ctx.db.insert(
 				'automationSteps',
-				createTestAutomationStep({ automationId, stepIndex: 2, stepType: 'delay' }),
+				createTestAutomationStep({ automationId, stepIndex: 2, stepType: 'delay' })
 			);
 			const step3 = await ctx.db.insert(
 				'automationSteps',
-				createTestAutomationStep({ automationId, stepIndex: 3, stepType: 'email' }),
+				createTestAutomationStep({ automationId, stepIndex: 3, stepType: 'email' })
 			);
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 			const runId = await ctx.db.insert('automationRuns', {
@@ -532,10 +539,9 @@ describe('denormalized step-run status counters (getStepAnalytics source)', () =
 		});
 
 		// Condition at index 0 branches forward to index 3 — steps 1 and 2 skipped.
-		await t.mutation(internal.automations.stepExecutorQueries.markStepsSkipped, {
-			automationRunId: ids.runId,
-			fromStepIndex: 1,
-			toStepIndex: 3,
+		await t.run(async (ctx) => {
+			const run = await ctx.db.get(ids.runId);
+			await recordSkippedSteps(ctx, run!, 1, 3);
 		});
 
 		const [s1, s2, s3] = await t.run(async (ctx) => [
@@ -552,20 +558,20 @@ describe('denormalized step-run status counters (getStepAnalytics source)', () =
 			ctx.db
 				.query('automationStepRuns')
 				.withIndex('by_automation_run', (q) => q.eq('automationRunId', ids.runId))
-				.collect(),
+				.collect()
 		);
 		expect(skippedRuns).toHaveLength(2);
 		expect(skippedRuns.every((r) => r.status === 'skipped')).toBe(true);
 		expect(skippedRuns.map((r) => r.stepIndex).sort()).toEqual([1, 2]);
 	});
 
-	it('markStepsSkipped is a no-op for a sequential or backward advance', async () => {
+	it('recordSkippedSteps is a no-op for a sequential or backward advance', async () => {
 		const t = convexTest(schema, modules);
 		const ids = await t.run(async (ctx) => {
 			const automationId = await ctx.db.insert('automations', createTestAutomation());
 			const step1 = await ctx.db.insert(
 				'automationSteps',
-				createTestAutomationStep({ automationId, stepIndex: 1, stepType: 'email' }),
+				createTestAutomationStep({ automationId, stepIndex: 1, stepType: 'email' })
 			);
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 			const runId = await ctx.db.insert('automationRuns', {
@@ -580,10 +586,9 @@ describe('denormalized step-run status counters (getStepAnalytics source)', () =
 		});
 
 		// Sequential advance (from 1, to 1) skips nothing.
-		await t.mutation(internal.automations.stepExecutorQueries.markStepsSkipped, {
-			automationRunId: ids.runId,
-			fromStepIndex: 1,
-			toStepIndex: 1,
+		await t.run(async (ctx) => {
+			const run = await ctx.db.get(ids.runId);
+			await recordSkippedSteps(ctx, run!, 1, 1);
 		});
 
 		const step1 = await t.run(async (ctx) => ctx.db.get(ids.step1));
@@ -592,7 +597,7 @@ describe('denormalized step-run status counters (getStepAnalytics source)', () =
 			ctx.db
 				.query('automationStepRuns')
 				.withIndex('by_automation_run', (q) => q.eq('automationRunId', ids.runId))
-				.collect(),
+				.collect()
 		);
 		expect(runs).toHaveLength(0);
 	});

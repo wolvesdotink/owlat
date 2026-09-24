@@ -1,7 +1,8 @@
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { recordUploadedBlob } from './uploadFixtures.testlib';
+import { expectScheduledFailure } from './helpers/scheduledFailures';
 import { api } from '../_generated/api';
 import { MAX_LIBRARY_FILE_BYTES } from '@owlat/shared/attachments';
 vi.mock('@owlat/shared/attachments', async () => ({
@@ -39,6 +40,10 @@ const modules = Object.fromEntries(
 			!path.includes('llmProvider')
 	)
 );
+
+// File processing is excluded above (it needs the LLM stack); deleting a file
+// still schedules it, and it fails to resolve when it runs.
+beforeEach(() => expectScheduledFailure('semanticFileProcessing:processFile'));
 
 const testUser = { subject: 'admin-user', issuer: 'test', tokenIdentifier: 'test|admin-user' };
 

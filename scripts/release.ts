@@ -22,6 +22,10 @@
  *   - apps/desktop/src-tauri/Cargo.toml + Cargo.lock (Tauri reads the app
  *     version from Cargo.toml — the desktop build breaks off the tag if stale)
  *   - any source line carrying an `x-release-version` marker comment
+ *
+ * The release commit also carries the schema-compat snapshot of the release's
+ * own schema (apps/api/convex/__tests__/schemaCompat/previousRelease.json), so
+ * every later PR is checked against the rows this release can store.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -231,7 +235,29 @@ changes.push({
 
 // --- apply -------------------------------------------------------------------
 
-const changed: string[] = [];
+// The version bump does not touch convex/, so HEAD's schema is the release's
+// schema. The compat guard's snapshot moves forward in the release commit
+// itself rather than in a follow-up commit someone has to remember. It runs
+// before any file is rewritten, and writes the snapshot only on success.
+const schemaSnapshot = 'apps/api/convex/__tests__/schemaCompat/previousRelease.json';
+if (!dryRun) {
+	try {
+		execFileSync('bun', ['run', '--cwd', 'apps/api', 'schema-compat:refresh'], {
+			cwd: ROOT,
+			stdio: 'ignore',
+			env: { ...process.env, OWLAT_SCHEMA_COMPAT_REF: 'HEAD', OWLAT_SCHEMA_COMPAT_RELEASE: tag },
+		});
+	} catch {
+		fail(
+			'the schema-compat refresh failed — run `bun run --cwd apps/api schema-compat:refresh` to see why'
+		);
+	}
+	if (git('status', '--porcelain', '--', schemaSnapshot) === '') {
+		fail(`${schemaSnapshot} did not change — the schema-compat refresh wrote nothing`);
+	}
+}
+
+const changed: string[] = dryRun ? [] : [schemaSnapshot];
 for (const { file, apply } of changes) {
 	const before = readFileSync(join(ROOT, file), 'utf8');
 	const after = apply(before);
@@ -249,6 +275,7 @@ if (!dryRun) {
 
 console.info(`${dryRun ? '[dry-run] Would update' : 'Updated'} ${changed.length} files:`);
 for (const file of changed) console.info(`  ${file}`);
+if (dryRun) console.info(`  ${schemaSnapshot} (schema-compat refresh from HEAD as ${tag})`);
 const bucketSummary = Object.entries(buckets)
 	.filter(([, entries]) => entries.length > 0)
 	.map(([bucket, entries]) => `${entries.length} ${bucket.toLowerCase()}`)

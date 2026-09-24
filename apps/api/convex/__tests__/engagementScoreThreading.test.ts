@@ -20,7 +20,7 @@
  */
 
 import { convexTest } from 'convex-test';
-import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
@@ -81,7 +81,18 @@ function mtaFetchSpy(id: string, lease: string): ReturnType<typeof vi.fn> {
 	return spy;
 }
 
+// The first `sendSingleEmail` call loads the send worker's whole import graph
+// through the lazy module map above: about a second alone, and past the 10 s
+// test timeout on a loaded machine. That timeout then left the abandoned first
+// attempt running into the retry's fetch stub. Load the graph once up front,
+// under a hook budget sized for it, so each test times only its own send.
+const WORKER_MODULE_LOAD_TIMEOUT_MS = 60_000;
+
 describe('engagementScore threading — envelope → MtaExtras → MTA intake', () => {
+	beforeAll(async () => {
+		await modules['../delivery/worker.ts']!();
+	}, WORKER_MODULE_LOAD_TIMEOUT_MS);
+
 	beforeEach(() => {
 		vi.stubEnv('MTA_API_URL', 'https://mta.test');
 		vi.stubEnv('MTA_API_KEY', 'test-key');

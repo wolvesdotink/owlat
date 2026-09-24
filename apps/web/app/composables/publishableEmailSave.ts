@@ -1,9 +1,10 @@
 import type { EditorBlock } from '@owlat/email-builder';
 import {
-	useEmailHtmlRendering,
-	type EmailIdentifier,
-	type RenderOptions,
-} from './useEmailHtmlRendering';
+	mergeTranslationIntoItem,
+	type BlockLikeItem,
+	type TranslatableBlockContent,
+} from '@owlat/api/translationMerge';
+import { useEmailHtmlRendering, type RenderOptions } from './useEmailHtmlRendering';
 
 /**
  * Publishable-email save — the app-side helper shared by the Email template and
@@ -12,32 +13,65 @@ import {
  * lifecycle). Kept out of the Email editor bridge so the bridge stays
  * envelope-agnostic — the Saved block editor renders nothing. See
  * docs/adr/0035-email-editor-bridge-module.md.
+ *
+ * Every persisted representation — the block JSON, the default HTML, each
+ * language's HTML and the text/plain body — is derived from ONE frozen copy of
+ * the draft plus the translation overlays of the row the draft was built on, and
+ * written in ONE mutation that names that row's revision. Translations used to
+ * be rendered from the persisted (previous) content and patched in by a second
+ * write, so a failure between the two left new blocks beside stale translated
+ * HTML, and edits typed while translations loaded leaked into the payload.
  */
-export interface PublishableEmailSaveArgs {
-	/** Which publishable email this is ({ emailType, emailId }). */
-	identifier: EmailIdentifier;
-	/** The current canvas blocks to render and scan for linked blocks. */
+
+/** The editable fields, read from the editor refs when the save starts. */
+export interface PublishableEmailDraft {
+	name: string;
+	subject: string;
 	blocks: EditorBlock[];
-	/** Theme + variableType used for both the default render and translations. */
-	renderOptions: RenderOptions;
+	/** The author's manual text/plain body, or '' to ship the generated one. */
+	plainTextOverride: string;
+}
+
+/** The server row the draft was built on. */
+export interface PublishableEmailBase {
 	/** The email's supported languages (translations are built for all but the default). */
 	supportedLanguages: string[];
 	/** The default language, excluded from the translation set. */
 	defaultLanguage: string;
+	/** The row's `translations` blob: per-language text overlays keyed by block id. */
+	translations: string | undefined;
+	/** The row's editor-content revision; the backend rejects the write if it moved. */
+	revision: number | undefined;
+}
+
+/** The single write: everything the surface's update mutation needs. */
+export interface PublishableEmailPayload {
+	name: string;
+	subject: string;
+	content: string;
+	htmlContent: string;
+	htmlTranslations: string;
+	linkedBlockIds: string[];
+	plainTextContent: string;
+	plainTextOverride: string;
+	expectedContentRevision: number | undefined;
+}
+
+export interface PublishableEmailSaveArgs {
+	draft: PublishableEmailDraft;
+	base: PublishableEmailBase;
+	/** Theme + variableType used for both the default render and translations. */
+	renderOptions: RenderOptions;
 	/**
-	 * The author's manual text/plain body, or '' when they never wrote one. It is
-	 * persisted verbatim AND resolved into `plainTextContent` (the body the send
-	 * path actually ships).
+	 * Persist the payload. Throw on failure so the editor stays dirty; resolve
+	 * with the revision the write stored.
 	 */
-	plainTextOverride?: string;
-	/** Persist the rendered fields. The surface adds name/subject/content/id. */
-	update: (payload: {
-		htmlContent: string;
-		htmlTranslations: string;
-		linkedBlockIds: string[];
-		plainTextContent: string;
-		plainTextOverride: string;
-	}) => Promise<void>;
+	commit: (payload: PublishableEmailPayload) => Promise<number>;
+}
+
+interface TranslationOverlay {
+	subject?: string;
+	blocks?: Record<string, TranslatableBlockContent>;
 }
 
 /** Derive the deduplicated saved-block ids referenced by the canvas blocks. */
@@ -49,54 +83,74 @@ function deriveLinkedBlockIds(blocks: EditorBlock[]): string[] {
 	];
 }
 
-export async function publishableEmailSave(args: PublishableEmailSaveArgs): Promise<void> {
-	const { renderBlocksToHtml, renderBlocksToPlainText, buildHtmlTranslationsForEmail } =
-		useEmailHtmlRendering();
+function parseOverlays(blob: string | undefined): Record<string, TranslationOverlay> {
+	return blob ? (JSON.parse(blob) as Record<string, TranslationOverlay>) : {};
+}
 
-	const htmlContent = renderBlocksToHtml(args.blocks, args.renderOptions);
-	const plainTextOverride = args.plainTextOverride ?? '';
-	const plainTextContent = renderBlocksToPlainText(args.blocks, plainTextOverride);
-	const linkedBlockIds = deriveLinkedBlockIds(args.blocks);
+/**
+ * Build the whole payload synchronously from the draft. Nothing here awaits, so
+ * the payload cannot pick up an edit made after the save started.
+ */
+function buildPublishableEmailPayload(
+	draft: PublishableEmailDraft,
+	base: PublishableEmailBase,
+	renderOptions: RenderOptions
+): PublishableEmailPayload {
+	const { renderBlocksToHtml, renderBlocksToPlainText } = useEmailHtmlRendering();
 
-	// `buildHtmlTranslationsForEmail` merges each language's text overlay onto the
-	// template's PERSISTED content (via api.*.i18n.getForLanguage). Built before
-	// this save, a structural block change (add/remove/reorder) would render the
-	// translated languages against the OLD structure — one save stale.
-	const translationsObject = await buildHtmlTranslationsForEmail(
-		args.identifier,
-		args.supportedLanguages,
-		args.defaultLanguage,
-		args.renderOptions
-	);
-	await args.update({
-		htmlContent,
-		htmlTranslations: JSON.stringify(translationsObject),
-		linkedBlockIds,
-		plainTextContent,
-		plainTextOverride,
-	});
+	// The editor refs are shared with the live canvas, which mutates them in
+	// place; the serialized copy is the one immutable snapshot everything below
+	// is rendered from.
+	const content = JSON.stringify(draft.blocks);
+	const blocks = JSON.parse(content) as EditorBlock[];
+	const plainTextOverride = draft.plainTextOverride;
 
-	// Now that the new content is persisted, rebuild the translations so each
-	// overlay merges onto the new block structure, and persist the corrected set.
-	// Skipped when there are no translated languages or nothing actually changed,
-	// so the common single-language / no-structural-change save stays one write.
-	const otherLanguages = args.supportedLanguages.filter((l) => l !== args.defaultLanguage);
-	if (otherLanguages.length === 0) return;
-
-	const freshTranslations = await buildHtmlTranslationsForEmail(
-		args.identifier,
-		args.supportedLanguages,
-		args.defaultLanguage,
-		args.renderOptions
-	);
-	const freshJson = JSON.stringify(freshTranslations);
-	if (freshJson !== JSON.stringify(translationsObject)) {
-		await args.update({
-			htmlContent,
-			htmlTranslations: freshJson,
-			linkedBlockIds,
-			plainTextContent,
-			plainTextOverride,
-		});
+	// Each language overlays its text onto THIS draft's structure, the same
+	// merge the backend's getForLanguage applies. A language without an overlay
+	// falls back to the default content and subject, as it does there.
+	const overlays = parseOverlays(base.translations);
+	const htmlTranslations: Record<string, { htmlContent: string; subject: string }> = {};
+	for (const language of base.supportedLanguages) {
+		if (language === base.defaultLanguage) continue;
+		const overlay = overlays[language];
+		const languageBlocks = overlay
+			? (blocks as unknown as BlockLikeItem[]).map((block) =>
+					mergeTranslationIntoItem(block, overlay.blocks ?? {})
+				)
+			: blocks;
+		htmlTranslations[language] = {
+			htmlContent: renderBlocksToHtml(languageBlocks as unknown as EditorBlock[], renderOptions),
+			subject: overlay?.subject ?? draft.subject,
+		};
 	}
+
+	return {
+		name: draft.name,
+		subject: draft.subject,
+		content,
+		htmlContent: renderBlocksToHtml(blocks, renderOptions),
+		htmlTranslations: JSON.stringify(htmlTranslations),
+		linkedBlockIds: deriveLinkedBlockIds(blocks),
+		plainTextContent: renderBlocksToPlainText(blocks, plainTextOverride),
+		plainTextOverride,
+		expectedContentRevision: base.revision,
+	};
+}
+
+/**
+ * Whether a draft built on `base` can be saved over `latest` (the editor
+ * bridge's `canKeepDraft`). Changing the default language swaps the row's
+ * blocks and subject for another language's text, so a draft of the old
+ * default saved over it would put one language's text under another's name.
+ */
+export function sameDefaultLanguage(
+	base: { defaultLanguage?: string },
+	latest: { defaultLanguage?: string }
+): boolean {
+	return (base.defaultLanguage ?? 'en') === (latest.defaultLanguage ?? 'en');
+}
+
+/** Build the payload and commit it; resolves with the revision the write stored. */
+export async function publishableEmailSave(args: PublishableEmailSaveArgs): Promise<number> {
+	return await args.commit(buildPublishableEmailPayload(args.draft, args.base, args.renderOptions));
 }

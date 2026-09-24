@@ -299,3 +299,112 @@ describe('UpdateProgress — the clock', () => {
 		expect(fetchMock.mock.calls.length).toBe(callsWhileMounted);
 	});
 });
+
+/**
+ * The web container runs the new version during `up`, before the updater has
+ * checked the rest of the stack, so that alone ended the card with a success.
+ * The updater now serves its verdict for this attempt on /health.
+ */
+describe('UpdateProgress — the updater verdict', () => {
+	const ATTEMPT = 'a1b2c3d4-0000-4000-8000-000000000001';
+	const withRecord = (lastRollout: Record<string, unknown>) => async () => ({
+		...(await healthAfterUpdate()),
+		lastRollout: { attempt: ATTEMPT, targetVersion: TARGET, ...lastRollout },
+		rolloutInProgress: null,
+	});
+
+	function mountAttempt() {
+		return mount(UpdateProgress, {
+			props: { targetVersion: TARGET, attempt: ATTEMPT },
+			global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		});
+	}
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('does not call the update complete while the updater still checks the stack', async () => {
+		health = withRecord({ phase: 'verifying' });
+		const wrapper = mountAttempt();
+		await vi.advanceTimersByTimeAsync(5_000);
+
+		expect(wrapper.emitted('complete')).toBeUndefined();
+		expect(wrapper.find('[role="status"]').text()).toContain(
+			'Waiting until every service passes its health check'
+		);
+
+		health = withRecord({ phase: 'done', outcome: 'healthy' });
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(wrapper.emitted('complete')).toHaveLength(1);
+		wrapper.unmount();
+	});
+
+	it('shows every step done while the updater checks the stack', async () => {
+		health = withRecord({ phase: 'verifying' });
+		const wrapper = mountAttempt();
+		expect(rowIcons(wrapper)).toEqual([SPINNER, PENDING, PENDING, PENDING]);
+
+		await vi.advanceTimersByTimeAsync(5_000);
+
+		// Only the health-check line under the list is still working.
+		expect(rowIcons(wrapper)).toEqual([SUCCESS, SUCCESS, SUCCESS, SUCCESS]);
+		expect(wrapper.find('[role="status"]').text()).toContain('The new version is running');
+		wrapper.unmount();
+	});
+
+	it('moves the spinner to the recreate once web runs the new version', async () => {
+		health = withRecord({ phase: 'applying' });
+		const wrapper = mountAttempt();
+
+		await vi.advanceTimersByTimeAsync(5_000);
+
+		expect(rowIcons(wrapper)).toEqual([SUCCESS, SUCCESS, SUCCESS, SPINNER]);
+		wrapper.unmount();
+	});
+
+	it('reports a release that started but did not become healthy as started, not failed', async () => {
+		health = withRecord({
+			phase: 'done',
+			outcome: 'started',
+			summary: 'Not ready after 665s: still starting: clamav.',
+		});
+		const wrapper = mountAttempt();
+		await vi.advanceTimersByTimeAsync(5_000);
+
+		expect(wrapper.emitted('started')?.[0]).toEqual([
+			'Not ready after 665s: still starting: clamav.',
+		]);
+		expect(wrapper.emitted('failed')).toBeUndefined();
+		expect(wrapper.emitted('complete')).toBeUndefined();
+		wrapper.unmount();
+	});
+
+	it('reports a partially applied rollout as failed, with the updater summary', async () => {
+		health = withRecord({
+			phase: 'done',
+			outcome: 'partially-applied',
+			summary: 'docker compose up failed',
+		});
+		const wrapper = mountAttempt();
+		await vi.advanceTimersByTimeAsync(5_000);
+
+		expect(wrapper.emitted('failed')?.[0]).toEqual(['docker compose up failed']);
+		wrapper.unmount();
+	});
+
+	it('keeps waiting past five minutes while the updater works on this attempt', async () => {
+		health = withRecord({ phase: 'verifying' });
+		const wrapper = mountAttempt();
+
+		await vi.advanceTimersByTimeAsync(11 * 60 * 1000);
+
+		expect(wrapper.emitted('failed')).toBeUndefined();
+		expect(wrapper.find('[role="status"]').exists()).toBe(true);
+		wrapper.unmount();
+	});
+});

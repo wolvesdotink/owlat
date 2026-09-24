@@ -1,12 +1,17 @@
 import type { ActionCtx, QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { CoreStepKind } from './steps/catalog';
+import type { MarketingIneligibility } from '../lib/marketingEligibility';
 
 export type { CoreStepKind, StepKind } from './steps/catalog';
 
 export type StepOutcome =
 	| { status: 'completed'; emailSendId?: string; nextStepIndex?: number }
-	| { status: 'failed'; error: string };
+	| { status: 'failed'; error: string }
+	// The contact stopped being eligible for marketing between the claim and the
+	// send (see lib/marketingEligibility.ts). The step is skipped and never
+	// retried; a deleted contact's run is cancelled, an unsubscribed one's moves on.
+	| { status: 'contact_ineligible'; reason: MarketingIneligibility };
 
 export interface StepExecuteArgs<C> {
 	config: C;

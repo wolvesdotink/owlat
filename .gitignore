@@ -26,6 +26,9 @@ dist/
 .env.production.local
 .owlat-provisioning.json
 .owlat-provisioning.json.*.tmp
+# The updater's record of the last in-app update (served on its /health).
+.owlat-last-rollout.json
+.owlat-last-rollout.json.tmp
 
 # Secrets / keys (must never be committed)
 *.key
@@ -54,6 +57,9 @@ coverage/
 # and runs its own suite the way an author's would. The suite removes it; this
 # keeps an interrupted run from dirtying the tree.
 /examples/conformance/.scaffolded/
+# `schema-compat:refresh` extracts a release's convex/ tree here so its imports
+# resolve against this package, and removes it when done.
+/apps/api/.schema-compat/
 .auth/
 playwright-report/
 test-results/

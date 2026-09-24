@@ -1,12 +1,17 @@
 <script setup lang="ts">
 /**
  * Shown during an in-flight update. Displays the 4 known steps and
- * polls /api/internal/updater-health every 5 s to detect completion
- * (new version showing on the web container).
+ * polls /api/internal/updater-health every 5 s for the updater's verdict on
+ * this attempt (see `readRolloutProgress`).
  *
- * Emits 'complete' once the target version is seen in updater health,
- * 'failed' if the poller times out after 5 minutes.
+ * Emits 'complete' once the updater reports the rollout healthy (or, from an
+ * updater that keeps no record, once the web container runs the target
+ * version), 'started' when the release is live but not every service passed
+ * the readiness check, and 'failed' on a failed rollout or when the poller
+ * times out.
  */
+import { readRolloutProgress, type RolloutStage, type UpdaterHealth } from '~/lib/systemUpdate';
+
 interface Step {
 	step: string;
 	/** The sidecar's own verdict for this step: did its docker command exit 0? */
@@ -15,30 +20,18 @@ interface Step {
 	stderr?: string;
 }
 
-interface UpdaterContainer {
-	service: string;
-	state: string;
-	imageTag?: string;
-}
-
-interface UpdaterHealth {
-	status: string;
-	timestamp: number;
-	version?: string;
-	gitSha?: string;
-	buildDate?: string;
-	containers?: UpdaterContainer[] | string;
-}
-
 const { t } = useI18n();
 
 const props = defineProps<{
 	targetVersion: string;
 	steps?: Step[];
+	/** This attempt's id, which the updater echoes with its verdict. */
+	attempt?: string;
 }>();
 
 const emit = defineEmits<{
 	complete: [health: UpdaterHealth];
+	started: [summary: string];
 	failed: [error: string];
 }>();
 
@@ -54,8 +47,8 @@ const emit = defineEmits<{
 const stepOrder = ['pull', 'convex-deploy', 'write-compose', 'up'];
 const stepLabelKeys: Record<string, string> = {
 	'write-compose': 'components.system.updateProgress.steps.writeCompose',
-	'pull': 'components.system.updateProgress.steps.pull',
-	'up': 'components.system.updateProgress.steps.up',
+	pull: 'components.system.updateProgress.steps.pull',
+	up: 'components.system.updateProgress.steps.up',
 	'convex-deploy': 'components.system.updateProgress.steps.convexDeploy',
 };
 
@@ -98,6 +91,28 @@ const elapsedMs = ref(0);
 const TICK_INTERVAL_MS = 1_000;
 const POLL_INTERVAL_MS = 5_000;
 const TIMEOUT_MS = 5 * 60 * 1000;
+// Once the updater reports it is working on this attempt, the wait follows it:
+// pull and deploy, then a readiness check that may take ~11 minutes for a
+// service with a long declared start period (ClamAV).
+const IN_FLIGHT_TIMEOUT_MS = 30 * 60 * 1000;
+// Seen the updater working on this attempt; lifts the timeout above.
+const updaterWorking = ref(false);
+// How far /health says the update has got (see `RolloutStage`).
+const stage = ref<RolloutStage>('applying');
+// The recreate is done and the updater is checking the stack's health.
+const verifying = computed(() => stage.value === 'verifying');
+
+/**
+ * The displayed steps /health shows are behind the update, though the updater
+ * has not answered with its step log yet (it answers once, at the very end).
+ * Without this the card kept its spinner on "Pull new container images" while
+ * the note under it said the new version was already running.
+ */
+const STEPS_BEHIND_STAGE: Record<RolloutStage, readonly string[]> = {
+	applying: [],
+	recreating: ['pull', 'convex-deploy', 'write-compose'],
+	verifying: stepOrder,
+};
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -123,12 +138,15 @@ const stepStatuses = computed<Record<string, StepStatus>>(() => {
 	const reported = reportedStatuses.value;
 	const aborted = Object.values(reported).includes('failed');
 	let inFlightTaken = aborted || !polling.value;
+	const behind = STEPS_BEHIND_STAGE[stage.value];
 
 	const statuses: Record<string, StepStatus> = {};
 	for (const step of stepOrder) {
 		const status = reported[step];
 		if (status) {
 			statuses[step] = status;
+		} else if (behind.includes(step)) {
+			statuses[step] = 'success';
 		} else if (inFlightTaken) {
 			statuses[step] = 'pending';
 		} else {
@@ -151,7 +169,7 @@ function tick() {
 	if (!polling.value) return;
 
 	elapsedMs.value = Date.now() - startedAt;
-	if (elapsedMs.value >= TIMEOUT_MS) {
+	if (elapsedMs.value >= (updaterWorking.value ? IN_FLIGHT_TIMEOUT_MS : TIMEOUT_MS)) {
 		stopPolling();
 		emit('failed', t('components.system.updateProgress.timedOut'));
 	}
@@ -167,12 +185,19 @@ async function pollHealth() {
 			timeout: 8_000,
 		});
 
-		// Detect completion: updater reports web container's imageTag matches targetVersion
-		const containers = Array.isArray(resp.containers) ? resp.containers : [];
-		const web = containers.find((c) => c.service === 'web');
-		if (web && web.imageTag === props.targetVersion && web.state?.includes('running')) {
+		const reading = readRolloutProgress(resp, props.targetVersion, props.attempt);
+		if (reading.kind === 'in-flight') {
+			updaterWorking.value = true;
+			stage.value = reading.stage;
+		} else if (reading.kind === 'complete') {
 			stopPolling();
 			emit('complete', resp);
+		} else if (reading.kind === 'started') {
+			stopPolling();
+			emit('started', reading.summary);
+		} else if (reading.kind === 'failed') {
+			stopPolling();
+			emit('failed', reading.summary || t('components.system.updateProgress.stepFailed'));
 		}
 	} catch {
 		// Likely the web container is restarting — harmless. Next tick retries.
@@ -219,7 +244,9 @@ function colorForStatus(s: StepStatus): string {
 
 const totalElapsedDisplay = computed(() => {
 	const sec = Math.floor(elapsedMs.value / 1000);
-	const mm = Math.floor(sec / 60).toString().padStart(2, '0');
+	const mm = Math.floor(sec / 60)
+		.toString()
+		.padStart(2, '0');
 	const ss = (sec % 60).toString().padStart(2, '0');
 	return `${mm}:${ss}`;
 });
@@ -235,11 +262,7 @@ const totalElapsedDisplay = computed(() => {
 		</div>
 
 		<ol class="space-y-3">
-			<li
-				v-for="(step, idx) in stepOrder"
-				:key="step"
-				class="flex items-start gap-3"
-			>
+			<li v-for="(step, idx) in stepOrder" :key="step" class="flex items-start gap-3">
 				<Icon
 					:name="iconForStatus(stepStatuses[step] ?? 'pending')"
 					class="w-5 h-5 shrink-0 mt-0.5"
@@ -254,11 +277,11 @@ const totalElapsedDisplay = computed(() => {
 						<span class="text-text-tertiary mr-2">{{ idx + 1 }}.</span>
 						{{ stepLabel(step) }}
 					</p>
-					<p
-						v-if="stepStatuses[step] === 'failed'"
-						class="text-[0.75rem] text-error mt-1"
-					>
-						{{ props.steps?.find((s) => s.step === step)?.stderr ?? t('components.system.updateProgress.stepFailed') }}
+					<p v-if="stepStatuses[step] === 'failed'" class="text-[0.75rem] text-error mt-1">
+						{{
+							props.steps?.find((s) => s.step === step)?.stderr ??
+							t('components.system.updateProgress.stepFailed')
+						}}
 					</p>
 				</div>
 			</li>
@@ -274,7 +297,11 @@ const totalElapsedDisplay = computed(() => {
 				class="w-3.5 h-3.5 shrink-0 mt-px animate-spin motion-reduce:animate-none"
 				aria-hidden="true"
 			/>
-			<span>{{ t('components.system.updateProgress.restartNotice') }}</span>
+			<span>{{
+				verifying
+					? t('components.system.updateProgress.verifyingNotice')
+					: t('components.system.updateProgress.restartNotice')
+			}}</span>
 		</div>
 	</div>
 </template>

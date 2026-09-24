@@ -18,6 +18,7 @@ import { segmentFiltersValidator } from '../lib/convexValidators';
 import { logWarn } from '../lib/runtimeLog';
 import { normalizeEmail } from '../lib/inputGuards';
 import { loadSuppressionSet, loadSuppressionSetBounded } from '../lib/suppression';
+import { contactMarketingIneligibility } from '../lib/marketingEligibility';
 import {
 	conditionsLookupReadsPerBatch,
 	conditionsLookupReadsPerContact,
@@ -66,8 +67,8 @@ function projectRecipient(contact: Doc<'contacts'>): CampaignRecipient {
 /**
  * The eligibility decision for one loaded Contact — the ONLY definition of
  * "eligible recipient". `null` = excluded. Ordered predicate:
- * live-contact → email-present → not-suppressed → not-globally-unsubscribed →
- * DOI (topic only) → form-forced-DOI still pending (topic membership only).
+ * live-contact and not-globally-unsubscribed (`lib/marketingEligibility.ts`) →
+ * email-present → not-suppressed → DOI (topic only) → form-forced-DOI still pending (topic membership only).
  *
  * The global-unsubscribe gate applies to BOTH paths (topic and segment): a
  * Contact who used the public unsubscribe link / preference-center "unsubscribe
@@ -95,10 +96,11 @@ export function selectRecipient(
 	gate: { requiresDoi: boolean; blockedEmails: ReadonlySet<string> },
 	membershipPendingDoi?: boolean
 ): CampaignRecipient | null {
-	if (contact.deletedAt !== undefined) return null; // live-contact
+	// live-contact + global marketing opt-out, through the shared helper the
+	// automation and worker gates use, so the three cannot drift apart.
+	if (contactMarketingIneligibility(contact) !== null) return null;
 	if (!contact.email) return null; // email-present
 	if (gate.blockedEmails.has(normalizeEmail(contact.email))) return null; // suppression
-	if (contact.unsubscribedAt !== undefined) return null; // global marketing opt-out
 	if (
 		gate.requiresDoi &&
 		contact.doiStatus !== 'confirmed' &&

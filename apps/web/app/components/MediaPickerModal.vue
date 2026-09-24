@@ -176,13 +176,7 @@ const getFileIcon = (mimeType: string) => {
 </script>
 
 <template>
-	<UiModal
-		:open="open"
-		:title="resolvedTitle"
-		size="xl"
-		:z-index="10001"
-		@update:open="emit('update:open', $event)"
-	>
+	<UiModal :open="open" :title="resolvedTitle" size="xl" @update:open="emit('update:open', $event)">
 		<!-- Tabs -->
 		<div class="flex border-b border-border-subtle mb-4">
 			<button

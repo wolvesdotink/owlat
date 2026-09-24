@@ -1,5 +1,5 @@
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import {
@@ -9,6 +9,14 @@ import {
 	createTestEmailSend,
 } from './factories';
 import type { Id } from '../_generated/dataModel';
+import { expectScheduledFailure } from './helpers/scheduledFailures';
+
+// No MTA runs under test, so the confirmation email's send fails when its
+// job fires, often after the test that scheduled it. These tests are not about
+// the email itself.
+beforeEach(() => {
+	expectScheduledFailure('confirmationEmail:sendConfirmationEmail');
+});
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');

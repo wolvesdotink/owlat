@@ -41,8 +41,8 @@
 #                                      `contactScopesCanLink` (rule a, write path).
 #   - convex/knowledge/maintenance.ts  decay/dedup cron deletes the edges of
 #                                      expired/merged nodes (rule a, system).
-#   - convex/lib/contactMutations.ts   contact merge/delete cascade prunes
-#                                      orphaned edges (rule a, member mutation).
+#   - convex/contacts/erasure/contentPhases.ts  contact erasure deletes the
+#                                      edges of a torn-down entry (rule a, system).
 #   - convex/workspaces/deletion/   org-deletion sweep of the table (rule a).
 #
 # Pre-allowlisted future seams (files do not exist yet; grep -v on a missing
@@ -78,7 +78,7 @@ filter() {
 		| grep -v "convex/knowledge/graph.ts" \
 		| grep -v "convex/knowledge/edges.ts" \
 		| grep -v "convex/knowledge/maintenance.ts" \
-		| grep -v "convex/lib/contactMutations.ts" \
+		| grep -v "convex/contacts/erasure/contentPhases.ts" \
 		| grep -v "convex/workspaces/deletion/" \
 		| grep -v "convex/knowledge/graphTraversal.ts" \
 		| grep -v "convex/knowledge/graphAnalytics.ts" \

@@ -109,10 +109,28 @@ export async function detachContactJunction(
 ): Promise<void> {
 	const links = await junctionLinksForContact(ctx, spec.junctionTable, contactId);
 	for (const link of links) {
-		const parentId = link[spec.parentIdField] as Id<JunctionParentTable>;
-		await ctx.db.delete(link._id);
-		await rewriteMirrorArray(ctx, spec, parentId, (ids) => ids?.filter((c) => c !== contactId));
+		await detachContactJunctionLink(ctx, spec, link, contactId);
 	}
+}
+
+/**
+ * Detach ONE junction row of `contactId` and strip the id from its parent's
+ * mirror array — the per-row step of `detachContactJunction`, for callers
+ * that walk the junction in bounded batches.
+ */
+export async function detachContactJunctionLink(
+	ctx: MutationCtx,
+	spec: ContactJunctionSpec,
+	link: {
+		_id: Id<JunctionTableName>;
+		entryId?: Id<'knowledgeEntries'>;
+		fileId?: Id<'semanticFiles'>;
+	},
+	contactId: Id<'contacts'>
+): Promise<void> {
+	const parentId = link[spec.parentIdField] as Id<JunctionParentTable>;
+	await ctx.db.delete(link._id);
+	await rewriteMirrorArray(ctx, spec, parentId, (ids) => ids?.filter((c) => c !== contactId));
 }
 
 export const KNOWLEDGE_ENTRY_JUNCTION: ContactJunctionSpec = {

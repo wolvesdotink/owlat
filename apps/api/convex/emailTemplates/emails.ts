@@ -3,7 +3,7 @@ import { emailTemplateTypeValidator } from '../lib/convexValidators';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { paginationOptsValidator } from 'convex/server';
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { buildSearchableText } from '../lib/queryHelpers';
 import { listResources } from '../lib/listing';
@@ -13,6 +13,7 @@ import { recordAuditLog } from '../lib/auditLog';
 import { assertEditableForPublishableChange } from './lifecycle';
 import { applyUsageCountDelta } from '../emailBlocks/module';
 import { captureTemplateVersion } from './versions';
+import { assertContentRevision, nextContentRevision } from '../lib/contentRevision';
 
 // Query to get a single email template by ID
 export const get = authedQuery({
@@ -50,6 +51,9 @@ export const update = authedMutation({
 		linkedBlockIds: v.optional(v.array(v.string())),
 		// Allow editing publishable content on a `published` row; default `false`.
 		forceWhilePublished: v.optional(v.boolean()),
+		// The `contentRevision` the caller's payload was built on. When given, the
+		// write is refused with `conflict` if the row has moved on since.
+		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const session = await requireOrgPermission(
@@ -61,6 +65,7 @@ export const update = authedMutation({
 		const template = await getOrThrow(ctx, args.templateId, 'Email template');
 
 		assertEditableForPublishableChange(template, args.forceWhilePublished);
+		assertContentRevision(template, args.expectedContentRevision);
 
 		const updates: {
 			name?: string;
@@ -76,8 +81,10 @@ export const update = authedMutation({
 			htmlTranslations?: string;
 			linkedBlockIds?: string[];
 			searchableText?: string;
+			htmlRenderState?: { stale: boolean };
+			contentRevision: number;
 			updatedAt: number;
-		} = { updatedAt: Date.now() };
+		} = { contentRevision: nextContentRevision(template), updatedAt: Date.now() };
 
 		if (args.name !== undefined) {
 			updates.name = args.name.trim();
@@ -97,6 +104,13 @@ export const update = authedMutation({
 
 		if (args.htmlContent !== undefined) {
 			updates.htmlContent = args.htmlContent;
+		}
+
+		// Blocks and the HTML rendered from them, in one write: the HTML matches
+		// the content again, so a saved-block rerender still pending for the
+		// previous revision has nothing left to fix (it no-ops on the moved row).
+		if (args.content !== undefined && args.htmlContent !== undefined && template.htmlRenderState) {
+			updates.htmlRenderState = { stale: false };
 		}
 
 		if (args.plainTextContent !== undefined) {
@@ -157,7 +171,9 @@ export const update = authedMutation({
 
 		// Audit the content/metadata edit — the documented email_template.updated
 		// action was never emitted from this handler.
-		const changedFields = Object.keys(updates).filter((k) => k !== 'updatedAt');
+		const changedFields = Object.keys(updates).filter(
+			(k) => k !== 'updatedAt' && k !== 'contentRevision'
+		);
 		await recordAuditLog(ctx, {
 			userId: session.userId,
 			action: 'email_template.updated',
@@ -166,18 +182,63 @@ export const update = authedMutation({
 			details: { changedFields: changedFields.join(', ') },
 		});
 
-		return args.templateId;
+		// The revision this write stored; the editor builds its next save on it.
+		return { templateId: args.templateId, contentRevision: updates.contentRevision };
 	},
 });
+
+/**
+ * The HTML a publish puts live: the row's own rendered HTML, read in the same
+ * transaction as the status change.
+ *
+ * Client HTML is not trusted here. The editor sends the HTML of the row it last
+ * saw, and a saved-block rerender can replace the row's HTML without moving its
+ * content revision; publishing the client's copy after that would put the
+ * pre-propagation HTML live on a row whose render state says it is current.
+ * For the same reason a row whose HTML is still behind its content (a rerender
+ * pending or failed) is refused instead of published.
+ */
+function publishedHtml(
+	template: Doc<'emailTemplates'>,
+	args: { htmlContent?: string; htmlTranslations?: string }
+): { htmlContent: string; htmlTranslations?: string } {
+	if (template.htmlRenderState?.stale) {
+		throwInvalidState(
+			'A saved block this email uses changed and its HTML is still being updated, so it was not published. Try again in a moment.',
+			{
+				reason: 'html_render_pending',
+				messageKey: 'dashboard.send.emails.detail.edit.toasts.htmlStillRendering',
+			}
+		);
+	}
+	if (template.htmlContent !== undefined) {
+		return { htmlContent: template.htmlContent, htmlTranslations: template.htmlTranslations };
+	}
+	// Never rendered (created outside the editor): the caller's HTML is all there is.
+	if (args.htmlContent === undefined) {
+		throwInvalidState('Save the email before publishing it.', {
+			reason: 'html_missing',
+			messageKey: 'dashboard.send.emails.detail.edit.toasts.saveBeforePublish',
+		});
+	}
+	return { htmlContent: args.htmlContent, htmlTranslations: args.htmlTranslations };
+}
 
 // Mutation to publish an email template
 export const publish = authedMutation({
 	args: {
 		templateId: v.id('emailTemplates'),
-		htmlContent: v.string(),
-		// Pre-rendered HTML for each translation language
+		// Ignored when the row holds rendered HTML (see `publishedHtml`). Still
+		// accepted so older clients, which send the row's HTML back, keep working,
+		// and used for a row that was never rendered.
+		htmlContent: v.optional(v.string()),
+		// Pre-rendered HTML for each translation language, with the same rule.
 		// Structure: { "de": { "htmlContent": "...", "subject": "..." }, ... }
 		htmlTranslations: v.optional(v.string()),
+		// The `contentRevision` the caller last saw. When given, a row that has
+		// moved on is refused with `conflict`, so what goes live is the version
+		// the caller was looking at.
+		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const session = await requireOrgPermission(
@@ -186,14 +247,14 @@ export const publish = authedMutation({
 			'Only owners and admins can publish email templates'
 		);
 
+		const template = await ctx.db.get(args.templateId);
+		if (!template) throwNotFound('Email template');
+		assertContentRevision(template, args.expectedContentRevision, 'publish');
+		const html = publishedHtml(template, args);
+
 		const outcome = await ctx.runMutation(internal.emailTemplates.lifecycle.transition, {
 			templateId: args.templateId,
-			input: {
-				to: 'published',
-				at: Date.now(),
-				htmlContent: args.htmlContent,
-				htmlTranslations: args.htmlTranslations,
-			},
+			input: { to: 'published', at: Date.now(), ...html },
 			userId: session.userId,
 		});
 

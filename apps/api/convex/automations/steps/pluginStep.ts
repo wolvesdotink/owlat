@@ -3,7 +3,7 @@
 /**
  * Hosted execution of a bundled automation step (plugin kind).
  *
- * The step walker owns retries, idempotency (the `markStepExecuting` CAS claim),
+ * The step walker owns retries, idempotency (the `claimStepRun` CAS claim),
  * cancellation, and the circuit breaker. This module owns only the one thing the
  * walker cannot: turning one plugin step kind into a single authorized attempt.
  *

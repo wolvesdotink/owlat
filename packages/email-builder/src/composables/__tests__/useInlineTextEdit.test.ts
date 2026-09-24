@@ -59,7 +59,7 @@ describe('useInlineTextEdit.exitInlineEdit — sanitizes before save', () => {
 	it('preserves benign formatting and {{variable}} placeholders', () => {
 		const { edit, onUpdate } = setup(
 			'<p>x</p>',
-			'<p><strong>Hi</strong> <span class="variable-tag" data-variable="firstName">{{firstName}}</span></p>',
+			'<p><strong>Hi</strong> <span class="variable-tag" data-variable="firstName">{{firstName}}</span></p>'
 		);
 		edit.exitInlineEdit();
 
@@ -75,5 +75,39 @@ describe('useInlineTextEdit.exitInlineEdit — sanitizes before save', () => {
 
 		expect(onDeleteBlock).toHaveBeenCalledWith('b1');
 		expect(onUpdate).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * Closing the inline editor without typing commits nothing. Rewriting the
+ * block with its own HTML used to count as an edit, so a host holding a newer
+ * server copy back while the editor was open saw unsaved work and could not
+ * follow it.
+ */
+describe('useInlineTextEdit.exitInlineEdit — no change, no commit', () => {
+	function setup(blockHtml: string, editorHtml: string) {
+		const activeBlock = computed<EditorBlock | null>(() => textBlock('b1', blockHtml));
+		const onUpdate = vi.fn();
+		const edit = useInlineTextEdit({ activeBlock, onUpdate });
+		edit.enterInlineEdit('b1');
+		const el = document.createElement('div');
+		el.innerHTML = editorHtml;
+		edit.inlineEditorRef.value = { el };
+		return { edit, onUpdate };
+	}
+
+	it('does not rewrite the block when the text is what it already holds', () => {
+		const { edit, onUpdate } = setup('<p>Loaded</p>', '<p>Loaded</p>');
+		edit.exitInlineEdit();
+
+		expect(onUpdate).not.toHaveBeenCalled();
+		expect(edit.isInlineEditing.value).toBe(false);
+	});
+
+	it('commits typed text', () => {
+		const { edit, onUpdate } = setup('<p>Loaded</p>', '<p>Loaded and typed</p>');
+		edit.exitInlineEdit();
+
+		expect(onUpdate).toHaveBeenCalledWith('b1', 'html', '<p>Loaded and typed</p>');
 	});
 });

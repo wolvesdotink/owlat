@@ -137,22 +137,26 @@ watch(
 
 /**
  * Replace the whole editing state at once — the explicit load path for a host
- * that restores a version snapshot.
+ * that restores a version snapshot or follows a newer server copy.
  *
  * The `props.blocks` watcher above deliberately ignores an incoming array whose
  * block ids match what we last emitted: the host's live query echoes the saved
  * document back while the user keeps typing, and re-seeding the canvas from it
- * would drop those in-flight edits. A restore usually keeps the same block ids
- * and changes only their content, so it looks exactly like that echo — hence
- * this second, unambiguous door.
+ * would drop those in-flight edits. A restore or a collaborator's edit usually
+ * keeps the same block ids and changes only their content, so it looks exactly
+ * like that echo — hence this second, unambiguous door.
+ *
+ * Blocks equal to the canvas are left alone, so a host may push every server
+ * copy through here: its own save echoing back does not replace the block
+ * objects under an open inline editor or add an undo step.
  */
 function loadState(state: HistoryState) {
-	canvasBlocks.value = [...state.blocks];
+	if (JSON.stringify(state.blocks) !== JSON.stringify(canvasBlocks.value)) {
+		canvasBlocks.value = [...state.blocks];
+	}
 	formName.value = state.name;
 	formSubject.value = state.subject;
 }
-
-defineExpose({ loadState });
 
 watch(
 	() => props.subject,
@@ -389,6 +393,11 @@ const {
 	onUpdate: handleBlockPropertyUpdate,
 	onDeleteBlock: handleDeleteBlock,
 });
+
+// `isInlineEditing` tells a host that text may be typed which the blocks do not
+// hold yet (the inline editor commits when it closes), so replacing the canvas
+// now would leave that text to be committed on top of whatever replaced it.
+defineExpose({ loadState, isInlineEditing });
 
 // Saved block picker
 const {

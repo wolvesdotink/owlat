@@ -112,9 +112,10 @@ queries/mutations: move the route into the `*Http.ts` sibling rather than
 renaming the whole module, so the generated paths its callers already use
 (`internal.<domain>.<feature>.*`) do not move. `webhooks/channels.ts` +
 `channelsHttp.ts`, `auth/apiAuth.ts` + `apiAuthHttp.ts`, `devShortcuts/reset.ts`
-+ `resetHttp.ts` and `seedDemo/index.ts` + `indexHttp.ts` are that split; a file
-that is ONLY routes is simply named `*Http.ts` (`mail/webhookHttp.ts`,
-`seedAdminHttp.ts`).
+
+- `resetHttp.ts` and `seedDemo/index.ts` + `indexHttp.ts` are that split; a file
+  that is ONLY routes is simply named `*Http.ts` (`mail/webhookHttp.ts`,
+  `seedAdminHttp.ts`).
 
 ---
 
@@ -241,12 +242,12 @@ the browser, so a read that returns a raw `Doc` from a **token-bearing** table
 ships a live bearer secret to every reader — the H4/M8 class. Four tables carry
 such a secret:
 
-| table        | secret field(s)                          | bearer for                          |
-| ------------ | ---------------------------------------- | ----------------------------------- |
+| table        | secret field(s)                              | bearer for                          |
+| ------------ | -------------------------------------------- | ----------------------------------- |
 | `contacts`   | `doiConfirmationToken` / `doiTokenExpiresAt` | unauthenticated `POST /confirm/doi` |
-| `shareLinks` | `token`                                  | unauthenticated `/share` route      |
-| `apiKeys`    | `keyHash`                                | the API-key verifier                |
-| `webhooks`   | `secret`                                 | the HMAC signing secret             |
+| `shareLinks` | `token`                                      | unauthenticated `/share` route      |
+| `apiKeys`    | `keyHash`                                    | the API-key verifier                |
+| `webhooks`   | `secret`                                     | the HMAC signing secret             |
 
 `scripts/check-token-redaction.sh` (wired into `bun run lint`) is the read-side
 sibling of `check-permissions.sh`: a **ratchet** that fails CI on any _new_
@@ -383,8 +384,9 @@ the gate never looks at them.
   step walker), so only their generated module file carries `'use node'`;
   trigger fanout (mutation) and condition evaluation (query) modules stay
   non-node.
-- The step walker owns automation step retries, idempotency (the
-  `markStepExecuting` CAS claim), cancellation, and the circuit breaker. The
+- The step walker owns automation step retries, idempotency (the fenced
+  `claimStepRun` claim in `automations/stepOrchestration.ts` and the step-run
+  key on the email intake), cancellation, and the circuit breaker. The
   hosted `pluginStep` runner owns exactly one thing: a single authorized attempt.
   Reauthorize (`authorizeExecution`) singleton scope, registration, flag,
   `automation:step` grant, and required env presence immediately before invoking
@@ -412,7 +414,7 @@ the gate never looks at them.
   env and clamp/scrub emit-time payload data before delivery.
 - A bundled send transport may declare a FEEDBACK webhook on the same
   contribution; all of them arrive on one route, `POST
-  /webhooks/plugin/<pluginId>`, keyed by plugin id (so at most one webhook per
+/webhooks/plugin/<pluginId>`, keyed by plugin id (so at most one webhook per
   plugin, enforced at manifest time). The host owns authenticity end to end: it
   recomputes the declared HMAC over `<timestamp>.<rawBody>` in constant time,
   refuses a timestamp outside the declared tolerance, and refuses a delivery
@@ -489,6 +491,7 @@ the gate never looks at them.
   short-circuits with no network call and no secret opened.
 - Scrub and clamp every app-returned string through the host untrusted-text
   policy bound to the app's plugin before any consumer sees it.
+
 ## Plugin worker jobs (Tier 3)
 
 - `worker:enqueue` is a reserved capability; no Convex enqueue or operator entry
@@ -590,9 +593,138 @@ Postbox table in the sibling that owns its feature, not in `schema/mail.ts`.
 
 ## Schema evolution (post-launch immutability)
 
-Pre-launch we move freely. Post-launch, any change to data on disk is a
-migration: existing rows already use the old shape, and external consumers
-(SDKs, webhook receivers) depend on the wire contract.
+Self-hosted deployments update in place. The updater runs `convex deploy`
+against the live backend and only then recreates the web, MTA and worker
+containers (`apps/updater/src/update.ts`, step 5 before step 8). Every row the
+previous release wrote is still there, and for a while the previous release's
+clients and workers call the new functions. So any change to data on disk is a
+migration, and external consumers (SDKs, webhook receivers) depend on the wire
+contract. The operator-facing side of this policy is the "Migrations" section
+of `apps/docs/content/en/3.developer/20.platform-operations.md`.
+
+> **Open decision (Marcel): when reset-based development ends.** Owlat is
+> pre-1.0, and the maintenance docs still allow a release to "reset specific
+> tables" if its release notes say so. No release has been named after which a
+> reset stops being an acceptable upgrade path. Until that decision is recorded
+> here, treat every release as carrying data that must survive: follow the
+> contract below, and reset only where a release's notes say so explicitly.
+
+### Release data compatibility
+
+**Upgrade window.**
+
+- Release N must upgrade a deployment running N-1 (any patch of it) with no
+  step beyond what N's migration manifest lists.
+- Skipping releases works across additive releases. The update check offers
+  only the latest release, so a deployment several releases behind jumps
+  straight to it. A release whose migration a later contract step depends on is
+  a _stepping stone_: the contract release's notes name it, and a deployment
+  that has not completed the stepping stone's migrations installs it first. A
+  contract the schema can see fails safe when skipped (the deploy rejects the
+  leftover rows and the updater leaves the old stack running). A contract the
+  schema cannot see (a JSON blob's shape, a value's meaning) has to check the
+  migration record and refuse to run.
+- Downgrades: redeploying N-1's functions works only while N has written
+  nothing N-1's schema rejects, which in practice ends with the first row that
+  carries a field N added. After that, going back means restoring the
+  pre-update backup.
+
+**Expand, migrate, contract.** An incompatible change (renaming a field,
+changing its type, narrowing a union, making a field required, dropping a field
+or table, a new shape for a JSON blob) ships in three steps over at least two
+releases:
+
+1. **Expand** (release N). Add the new shape next to the old one: a new optional
+   field, a widened union, a bumped `<field>Version`. Readers accept both shapes;
+   writers write the new one or both.
+2. **Migrate** (release N, after deploy). A migration listed in N's manifest
+   rewrites old rows into the new shape, bounded and resumable (below).
+3. **Contract** (N+1 or later, once the migration has completed). Stop reading
+   and writing the old shape, then remove it from the schema. A field or table
+   leaves the schema only after the migration has emptied it.
+
+Expand and contract for the same field never ship in one release.
+
+**Old clients and workers against new functions.** Between `convex-deploy` and
+`docker compose up -d`, and for as long as a browser tab or desktop client stays
+open, N-1's web app, MTA, workers and desktop clients call N's functions. So in
+N:
+
+- public functions, HTTP routes and the internal functions the MTA and workers
+  call keep accepting N-1's arguments: new arguments are optional, and no
+  argument is removed or narrowed;
+- no result field that N-1 reads is removed or changes meaning;
+- rows N-1 code keeps writing in the old shape still validate, which the expand
+  step guarantees.
+
+Removing an argument, result field or endpoint is itself a contract step for a
+later release. This covers internal functions too, because a deploy does not
+drain running functions first and the scheduler keeps every job N-1 queued:
+
+- an N-1 ACTION still running when N deploys finishes on N-1's code, but each
+  `ctx.runQuery` / `ctx.runMutation` / `ctx.scheduler.runAfter` it makes
+  resolves the function path against N;
+- a JOB N-1 queued (a retry with backoff, a delay step days out, a chained
+  batch) runs N's function under the path and arguments N-1 recorded. A
+  scheduled function keeps its path and N-1's arguments for as long as N-1 can
+  have queued it; for a delay step that is the longest delay a user can
+  configure, so in practice for good;
+- rows N-1 wrote mid-protocol (a claim without the lease N added, a Send
+  without the idempotency key N added) must be recognized and finished by N,
+  not only accepted by its schema.
+
+When N stops calling a function, keep it for a release at its old path with
+its old arguments and result shape, delegating to the new code, and list it in
+`PREVIOUS_RELEASE_ENTRIES` in `apps/api/scripts/entryWiringPreviousRelease.ts`
+(the webhook fanout and delivery functions and the automation step walker's
+old transitions are there). Such a shim must be safe against N's own code
+running beside it: it must never repeat a side effect N already performed, nor
+move state N already moved. Mark each one, and each N-1-only branch in N's
+code, with a `remove after release N+1` comment; the next release deletes them.
+Where N-1 can have left work half done (an action killed between two of its
+calls), N also ships the sweep that finds it and finishes or ends it, as
+`automations/stalledRuns.ts` does for automation runs.
+
+**Migration manifest.** A release that needs data work ships a manifest listing,
+per migration: its module (`migrations/NNNN_name:run`), whether it must finish
+before users are let back in or may run in the background, whether a later
+contract depends on it (stepping stone), and a rough cost. Nothing reads a
+machine-readable manifest yet and the updater does not run migrations, so for
+now the manifest lives in the release notes, in the form the maintenance docs
+use for the 0044 chat-media migration.
+
+**Durable progress and completion.** A migration records its progress in the
+deployment's database, not only in its return value: the cursor of each pass,
+counts, when it started and completed, and the release that introduced it. A
+contract step and a stepping-stone check read that record. No migration ledger
+table exists yet; the first migration that a contract step depends on adds it.
+
+**Bounded, resumable backfills.** A migration pages through its table
+(`.paginate()` with a cursor, a fixed page size well under the transaction
+limits) and does one bounded mutation per page. It never `.collect()`s a table
+that grows with customer data. Every page is idempotent, so a re-run after a
+crash, timeout or redeploy either continues from the stored cursor or redoes a
+page harmlessly. A row the migration cannot map fails loudly with its id rather
+than being dropped.
+
+**Recovery.** Operators take a backup before every update (the maintenance docs
+require it; the in-app flow does not enforce it yet). A migration is safe to
+re-run after an interruption. A migration that fails leaves the deployment on the
+expanded schema, which both the old and the new code accept. The release notes
+of any release with a manifest say how to roll back: redeploy the old functions
+while the downgrade window is open, restore the backup after it closes.
+
+**The guard.** `convex/__tests__/schemaCompat/compat.test.ts` builds rows from
+the previous release's table validators (`previousRelease.json`) and fails when
+the current schema rejects any of them: a field made required, a type changed, a
+union narrowed, a field or table dropped. Refresh the snapshot at each release
+(`release:cut` puts the refreshed snapshot in the release commit; see
+`docs/RELEASING.md`), never to make a failure go away. A deliberately retired
+table goes in the test's `RETIRED_TABLES` in the contract PR. The guard covers
+the schema half of the contract only. It does not check function arguments,
+JSON stored in strings or what values mean, and it is no substitute for
+upgrading a real previous-release dataset. The release E2E does not do that
+either: its seeded leg carries over Redis and ClamAV volumes, not Convex data.
 
 ### Never do these without a version bump
 
@@ -643,9 +775,18 @@ Rules:
   (use `notSoftDeleted` from `lib/queryHelpers.ts` or the indexed
   `.filter((q) => q.eq(q.field('deletedAt'), undefined))`). Repository
   helpers like `getContactOrThrow` already filter; prefer them at read sites.
-- A daily cron (`cleanupSoftDeletedContacts`) permanently deletes rows
-  whose `deletedAt < now - 30 days`. The hard-delete cascade list lives
-  in `lib/contactMutations.ts:permanentlyDeleteContactWithRelations`.
+- A daily cron (`cleanupSoftDeletedContacts`) selects rows whose
+  `deletedAt < now - 30 days` through an index range and hands each to the
+  contact erasure walker (`contacts/erasure/walker.ts`): a persisted
+  `contactErasureJobs` row, bounded transactions (row and byte budget) that
+  save their phase and cursor, retries with backoff, and `status` /
+  `lastError` on the job when it fails. The same sweep restarts stalled and
+  failed jobs. The per-table policy lives in `contacts/erasure/relations.ts`,
+  the steps in `contacts/erasure/phases.ts`;
+  `lib/contactMutations.ts:permanentlyDeleteContactWithRelations` runs those
+  steps inline for callers that already batch (organization wipe, sample
+  data). Never `.collect()` a contact's children in one transaction on a new
+  erasure path — add a phase.
 
 ### Polymorphic foreign keys
 
@@ -675,6 +816,17 @@ Parent tables document their cascade-on-delete contract in the schema header
 comment (see `schema/contacts.ts`). Permanent-delete helpers in
 `lib/contactMutations.ts` are the only place that performs the cascade —
 mutation code calls the helper rather than handling children inline.
+
+For contacts the contract is data: `contacts/erasure/relations.ts` declares
+`delete`, `unlink` or `retain` (with the reason) for every field that
+references a contact, and for every field that references a row the erasure
+deletes (an automation run's step runs, a thread's messages, …). A new
+`v.id('contacts')` field, or a new reference to one of those tables, fails
+`__tests__/contactErasureRelations.test.ts` until it declares a policy. Never
+null a `contactId` whose absence carries meaning — on `clarificationMemory` an
+absent contact is the org-wide scope, so a contact-scoped answer is deleted,
+not unlinked. Organization-wide knowledge that an admin promoted before the
+erasure no longer references the contact and is retained.
 
 ### Audit logging
 

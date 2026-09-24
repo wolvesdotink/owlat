@@ -20,7 +20,7 @@ import { promises as dns, lookup as dnsLookup } from 'dns';
 import { isIP } from 'net';
 import type { LookupAddress, LookupAllOptions } from 'dns';
 import { Agent } from 'undici';
-import { readStreamBytes, StreamByteLimitExceeded } from '@owlat/shared';
+import { readStreamPrefix } from '@owlat/shared';
 
 // The literal-IP classification lives in the runtime-agnostic lib/ipBlocklist so
 // the v8-runtime webhook-host check can share it. Re-exported for existing
@@ -191,7 +191,6 @@ function guardedDispatcher(): Agent {
 	});
 }
 
-/** Thrown by {@link readCappedBytes} when a response body exceeds the cap. */
 /**
  * `fetch` bound to {@link guardedDispatcher}, so the socket-level DNS lookup
  * is re-validated against the SSRF blocklist at CONNECT time. This closes the
@@ -211,6 +210,7 @@ export function fetchWithGuardedDispatcher(
 	});
 }
 
+/** Thrown by {@link readCappedBytes} when a response body exceeds the cap. */
 export class CappedReadOverflow extends Error {}
 
 /**
@@ -226,14 +226,43 @@ export async function readCappedBytes(
 	body: ReadableStream<Uint8Array> | null,
 	maxBytes: number
 ): Promise<Uint8Array | null> {
+	const prefix = await readStreamPrefix(body, maxBytes);
+	if (prefix === null) return null;
+	if (prefix.truncated) throw new CappedReadOverflow(`response exceeds ${maxBytes} bytes`);
+	return prefix.bytes;
+}
+
+/** A display-only excerpt of a response body; see {@link readBodyPreview}. */
+export interface BodyPreview {
+	text: string;
+	/** The body went on past the excerpt, stalled, or failed mid-read. */
+	truncated: boolean;
+}
+
+/**
+ * Read a short, human-readable excerpt of an untrusted response body for logs
+ * and delivery history. Never throws: the excerpt is diagnostic, and callers
+ * must be able to treat the HTTP status as the outcome regardless of whether
+ * the body was huge, slow, or broke off (a 2xx whose body could not be read is
+ * still a 2xx). A multibyte character split by the byte cap is dropped rather
+ * than rendered as a replacement character.
+ */
+export async function readBodyPreview(
+	body: ReadableStream<Uint8Array> | null,
+	opts: { maxBytes: number; timeoutMs: number }
+): Promise<BodyPreview> {
+	let prefix: Awaited<ReturnType<typeof readStreamPrefix>>;
 	try {
-		return await readStreamBytes(body, maxBytes);
-	} catch (error) {
-		if (error instanceof StreamByteLimitExceeded) {
-			throw new CappedReadOverflow(error.message);
-		}
-		throw error;
+		prefix = await readStreamPrefix(body, opts.maxBytes, { timeoutMs: opts.timeoutMs });
+	} catch {
+		// The producer errored mid-body; there is no trustworthy excerpt.
+		return { text: '', truncated: true };
 	}
+	if (prefix === null) return { text: '', truncated: false };
+	// `stream: true` holds back a trailing incomplete UTF-8 sequence instead of
+	// decoding it to U+FFFD, which is exactly the cut the byte cap can make.
+	const text = new TextDecoder('utf-8').decode(prefix.bytes, { stream: prefix.truncated });
+	return { text, truncated: prefix.truncated };
 }
 
 /**

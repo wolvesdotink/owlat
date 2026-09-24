@@ -22,6 +22,16 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
+import { expectScheduledFailure } from '../../__tests__/helpers/scheduledFailures';
+
+// The flow under test schedules the functions below, which this suite's
+// module map leaves out (or which need a setup it does not make). Their jobs
+// fail when they fire, often after the test that scheduled them. These tests
+// are not about them.
+beforeEach(() => {
+	expectScheduledFailure('domains/providers/registerAction:run');
+	expectScheduledFailure('domains/providers/registerAction:deleteDomainAction');
+});
 
 // Mutable role each authz test selects.
 let mockRole: OrganizationRole = 'admin';

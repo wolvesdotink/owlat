@@ -104,9 +104,10 @@ const {
 	testEmailHtml,
 	onSendTest: handleSendTest,
 	save,
+	builderRef,
 } = useEmailEditorBridge({
 	source: block,
-	extraWatch: [() => description.value],
+	extraWatch: [description],
 	initialize: (b, ctx) => {
 		ctx.name.value = b.name;
 		description.value = b.description || '';
@@ -225,6 +226,7 @@ const handleSettings = () => {
 		<!-- Email Builder (Full TipTap Editor with Slash Commands) -->
 		<EmailBuilder
 			v-else
+			ref="builderRef"
 			v-model:blocks="blocks"
 			v-model:subject="subject"
 			v-model:name="name"

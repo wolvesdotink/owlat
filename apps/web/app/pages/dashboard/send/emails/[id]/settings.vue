@@ -3,7 +3,7 @@ import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 import { languageOptions } from '~/data/languageOptions';
 import { emailSettingsSave } from '~/composables/emailSettingsSave';
-import { useEditorDirtyTracking } from '~/composables/useEmailEditorBridge';
+import { useEditorDirtyTracking } from '~/composables/useEditorDirtyTracking';
 
 const { t } = useI18n();
 

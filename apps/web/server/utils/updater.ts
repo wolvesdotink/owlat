@@ -1,4 +1,6 @@
 import { timingSafeEqual, createHash } from 'node:crypto';
+import { Agent, request, type IncomingHttpHeaders } from 'node:http';
+import { Readable } from 'node:stream';
 import type { H3Event } from 'h3';
 
 /**
@@ -59,17 +61,104 @@ export function requireInstanceSecret(event: H3Event, notConfiguredMessage: stri
 	return instanceSecret;
 }
 
+/** What the updater routes send: a method, JSON headers, a string body and a deadline. */
+export interface UpdaterRequestInit {
+	method?: string;
+	headers?: Record<string, string>;
+	body?: string;
+	/** The call's only deadline; every caller sets one. */
+	signal?: AbortSignal;
+}
+
 /**
- * Fetch a path on the updater sidecar, injecting the `X-Instance-Secret`
- * header. Thin passthrough over `fetch` — the caller owns method, body,
- * timeout, and response handling. The path must include a leading slash.
+ * No keep-alive and no socket timeout: nothing but the caller's AbortSignal
+ * may end an updater call.
+ */
+const updaterAgent = new Agent({ keepAlive: false });
+
+// Statuses whose response may not carry a body (`new Response` rejects one).
+const NULL_BODY_STATUSES = new Set([204, 205, 304]);
+
+function toHeaders(raw: IncomingHttpHeaders): Headers {
+	const headers = new Headers();
+	for (const [name, value] of Object.entries(raw)) {
+		if (value === undefined) continue;
+		for (const one of Array.isArray(value) ? value : [value]) headers.append(name, one);
+	}
+	return headers;
+}
+
+/**
+ * Send one request to the updater over `node:http` and hand back a standard
+ * `Response` whose body streams from the socket.
+ *
+ * Not `fetch`: Node's fetch (undici) fails any response whose headers take
+ * longer than its `headersTimeout`, five minutes, whatever AbortSignal the
+ * caller passes. The updater answers `/update` (in-app and self-update) and
+ * `/apply-profiles` only once the rollout and its readiness wait are over,
+ * which the routes allow 30 and 10 minutes for, so a slow but healthy update
+ * was reported as failed at the five-minute mark. `node:http` has no such
+ * deadline, and the caller's signal bounds the whole call instead.
+ */
+export function requestUpdater(
+	url: URL,
+	instanceSecret: string,
+	init: UpdaterRequestInit = {}
+): Promise<Response> {
+	const method = init.method ?? 'GET';
+	return new Promise<Response>((resolve, reject) => {
+		const req = request(
+			url,
+			{
+				method,
+				headers: {
+					...init.headers,
+					'X-Instance-Secret': instanceSecret,
+					...(init.body === undefined
+						? {}
+						: { 'Content-Length': String(Buffer.byteLength(init.body)) }),
+				},
+				agent: updaterAgent,
+				signal: init.signal,
+			},
+			(res) => {
+				try {
+					const status = res.statusCode ?? 502;
+					const hasBody = method !== 'HEAD' && !NULL_BODY_STATUSES.has(status);
+					if (!hasBody) res.resume();
+					resolve(
+						new Response(
+							// node:stream's web-stream type, not the DOM one `Response` names.
+							hasBody ? (Readable.toWeb(res) as unknown as ReadableStream<Uint8Array>) : null,
+							{
+								status,
+								statusText: res.statusMessage,
+								headers: toHeaders(res.headers),
+							}
+						)
+					);
+				} catch (err) {
+					res.destroy();
+					reject(err);
+				}
+			}
+		);
+		// Like fetch, reject with the signal's reason (a TimeoutError for
+		// `AbortSignal.timeout`), so callers see the same error as before.
+		req.on('error', (err) => reject(init.signal?.aborted ? init.signal.reason : err));
+		req.end(init.body);
+	});
+}
+
+/**
+ * Call a path on the updater sidecar, injecting the `X-Instance-Secret`
+ * header. The caller owns method, body, deadline and response handling. The
+ * path must include a leading slash.
  */
 export function callUpdater(
 	path: string,
 	instanceSecret: string,
-	init: RequestInit = {},
+	init: UpdaterRequestInit = {}
 ): Promise<Response> {
-	const headers = new Headers(init.headers);
-	headers.set('X-Instance-Secret', instanceSecret);
-	return fetch(`${UPDATER_BASE_URL}${path}`, { ...init, headers });
+	return requestUpdater(new URL(path, UPDATER_BASE_URL), instanceSecret, init);
 }

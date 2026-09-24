@@ -16,13 +16,16 @@
 
 import { v } from 'convex/values';
 import { internalAction } from './_generated/server';
+import type { ActionCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import {
+	resolveAiConfig,
 	resolveLanguageModel,
 	resolveEmbeddingModel,
 	assertEmbeddingDimension,
 } from './lib/llmProvider';
+import { AiNotConfiguredError } from './lib/aiNotConfigured';
 import { CURRENT_EMBEDDING_MODEL } from './lib/constants';
 import { embed } from 'ai';
 import { z } from 'zod';
@@ -36,6 +39,22 @@ import { reciprocalRankFusion } from './lib/rrf';
 import { injectionRisk } from './knowledge/extraction';
 import { detectInjection } from './agent/steps/security_scan/patterns';
 import { classifyExtraction, extractionPlaceholder } from './lib/fileExtraction';
+
+/**
+ * Whether any AI provider is set up. AI is optional: without one a file still
+ * gets its extracted text, tags and search text, only no summary, embedding or
+ * knowledge entries. A provider that is set up but unusable still throws, so a
+ * misconfiguration stays visible instead of silently producing no vectors.
+ */
+async function aiProviderConfigured(ctx: ActionCtx): Promise<boolean> {
+	try {
+		await resolveAiConfig(ctx);
+		return true;
+	} catch (error) {
+		if (error instanceof AiNotConfiguredError) return false;
+		throw error;
+	}
+}
 
 /**
  * Process a newly uploaded file: extract text, generate summary,
@@ -107,6 +126,16 @@ export const processFile = internalAction({
 			});
 		}
 
+		// Without a provider this action used to throw at the embedding step, so
+		// the file never got its extracted text stored, and the backfill re-ran it
+		// into the same error for two hours.
+		const aiConfigured = await aiProviderConfigured(ctx);
+		if (!aiConfigured) {
+			logInfo('[semantic_file] no AI provider configured; storing text without AI metadata', {
+				fileId: args.fileId,
+			});
+		}
+
 		// 2. Generate summary and tags via LLM
 		const textForAI = truncateForLLM(extractedText, 8000);
 		let summary = '';
@@ -116,6 +145,9 @@ export const processFile = internalAction({
 		if (injectionReason) {
 			// Poisoned extracted text: don't hand it to the model. Keep filename-only
 			// metadata so the file is still searchable without an AI round-trip.
+			title = title || file.filename;
+		} else if (textForAI.length > 50 && !aiConfigured) {
+			// No model to ask: the same fallback as a failed call below.
 			title = title || file.filename;
 		} else if (textForAI.length > 50) {
 			try {
@@ -158,7 +190,7 @@ ${textForAI}`,
 		let embedding: number[] = [];
 		const embeddingText = [title, summary, extractedText.slice(0, 2000)].filter(Boolean).join(' ');
 
-		if (embeddingText.length > 10) {
+		if (aiConfigured && embeddingText.length > 10) {
 			// Resolve OUTSIDE the try so a misconfigured embedder surfaces an
 			// actionable error instead of being swallowed into a silent empty vector;
 			// only a transient embed() failure fails soft (metadata without search).
@@ -231,8 +263,13 @@ ${textForAI}`,
 
 		// 6. Feed the file into the knowledge graph (files → knowledge, the
 		// "intelligence flows up" path). Skip when there's no real extracted
-		// text (binary stubs like "[PDF file: …]").
-		if (extractedText && !extractedText.startsWith('[') && extractedText.length > 80) {
+		// text (binary stubs like "[PDF file: …]"), or no model to extract with.
+		if (
+			aiConfigured &&
+			extractedText &&
+			!extractedText.startsWith('[') &&
+			extractedText.length > 80
+		) {
 			await ctx.runAction(internal.knowledge.extraction.extractFromFile, {
 				fileId: args.fileId,
 			});

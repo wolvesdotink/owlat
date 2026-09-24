@@ -1,167 +1,234 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock the renderer composable. `vi.hoisted` makes the spies exist before the
-// hoisted `vi.mock` factory references them.
-const { renderBlocksToHtml, renderBlocksToPlainText, buildHtmlTranslationsForEmail } = vi.hoisted(
-	() => ({
-		renderBlocksToHtml: vi.fn(),
-		renderBlocksToPlainText: vi.fn(),
-		buildHtmlTranslationsForEmail: vi.fn(),
-	})
-);
-
-vi.mock('../useEmailHtmlRendering', () => ({
-	useEmailHtmlRendering: () => ({
-		renderBlocksToHtml,
-		renderBlocksToPlainText,
-		buildHtmlTranslationsForEmail,
-	}),
+// hoisted `vi.mock` factory references them. The HTML stand-in spells out each
+// block's text so a test can see which structure and which language text a
+// rendered document came from.
+const { renderBlocksToHtml, renderBlocksToPlainText } = vi.hoisted(() => ({
+	renderBlocksToHtml: vi.fn(),
+	renderBlocksToPlainText: vi.fn(),
 }));
 
-import { publishableEmailSave } from '../publishableEmailSave';
-import type { EditorBlock } from '@owlat/email-builder';
-import type { EmailIdentifier, RenderOptions } from '../useEmailHtmlRendering';
+vi.mock('../useEmailHtmlRendering', () => ({
+	useEmailHtmlRendering: () => ({ renderBlocksToHtml, renderBlocksToPlainText }),
+}));
 
-const block = (id: string, savedBlockId?: string): EditorBlock =>
+import {
+	publishableEmailSave,
+	sameDefaultLanguage,
+	type PublishableEmailBase,
+	type PublishableEmailDraft,
+	type PublishableEmailPayload,
+} from '../publishableEmailSave';
+import type { EditorBlock } from '@owlat/email-builder';
+import type { RenderOptions } from '../useEmailHtmlRendering';
+
+const text = (id: string, html: string, savedBlockId?: string): EditorBlock =>
 	({
 		id,
 		type: 'text',
-		content: {},
+		content: { html },
 		...(savedBlockId ? { savedBlockRef: { blockId: savedBlockId } } : {}),
 	}) as unknown as EditorBlock;
 
+const renderOptions: RenderOptions = {
+	variableType: 'personalization',
+	theme: { primaryColor: '#000', fontFamily: 'Arial', backgroundColor: '#fff' },
+};
+
+const draft = (overrides: Partial<PublishableEmailDraft> = {}): PublishableEmailDraft => ({
+	name: 'Welcome',
+	subject: 'Hello',
+	blocks: [text('b1', 'Hi there')],
+	plainTextOverride: '',
+	...overrides,
+});
+
+const base = (overrides: Partial<PublishableEmailBase> = {}): PublishableEmailBase => ({
+	supportedLanguages: [],
+	defaultLanguage: 'en',
+	translations: undefined,
+	revision: 5,
+	...overrides,
+});
+
+/** Run a save and return the one payload it committed. */
+async function saveAndCapture(
+	d: PublishableEmailDraft,
+	b: PublishableEmailBase
+): Promise<PublishableEmailPayload> {
+	const commit = vi.fn().mockResolvedValue(6);
+	// The revision the write stored is what the editor builds its next save on.
+	await expect(publishableEmailSave({ draft: d, base: b, renderOptions, commit })).resolves.toBe(6);
+	expect(commit).toHaveBeenCalledOnce();
+	return commit.mock.calls[0]![0] as PublishableEmailPayload;
+}
+
 describe('publishableEmailSave', () => {
 	beforeEach(() => {
-		renderBlocksToHtml.mockReset().mockReturnValue('<html>rendered</html>');
-		renderBlocksToPlainText.mockReset().mockReturnValue('rendered text');
-		buildHtmlTranslationsForEmail
+		renderBlocksToHtml
 			.mockReset()
-			.mockResolvedValue({ de: { htmlContent: '<de>', subject: 'Betreff' } });
+			.mockImplementation((blocks: EditorBlock[]) =>
+				blocks.map((b) => (b.content as { html?: string }).html ?? b.id).join('|')
+			);
+		renderBlocksToPlainText.mockReset().mockReturnValue('rendered text');
 	});
 
-	it('derives de-duplicated linkedBlockIds and hands rendered fields to update', async () => {
+	it('commits every representation in one payload, with the base revision', async () => {
 		const blocks = [
-			block('1', 'b1'),
-			block('2', 'b1'), // duplicate saved-block reference
-			block('3', 'b2'),
-			block('4'), // no saved-block reference
+			text('1', 'A', 'b1'),
+			text('2', 'B', 'b1'), // duplicate saved-block reference
+			text('3', 'C', 'b2'),
+			text('4', 'D'), // no saved-block reference
 		];
-		const update = vi.fn().mockResolvedValue(undefined);
-		const identifier: EmailIdentifier = {
-			emailType: 'marketing',
-			emailId: 'tmpl_1' as EmailIdentifier['emailId'],
-		};
-		const renderOptions: RenderOptions = {
-			variableType: 'personalization',
-			theme: { primaryColor: '#000', fontFamily: 'Arial', backgroundColor: '#fff' },
-		};
 
-		await publishableEmailSave({
-			identifier,
-			blocks,
-			renderOptions,
-			supportedLanguages: ['en', 'de'],
-			defaultLanguage: 'en',
-			update,
-		});
+		const payload = await saveAndCapture(draft({ blocks }), base());
 
-		// Renders with the supplied options and builds translations for the email.
 		expect(renderBlocksToHtml).toHaveBeenCalledWith(blocks, renderOptions);
-		expect(buildHtmlTranslationsForEmail).toHaveBeenCalledWith(
-			identifier,
-			['en', 'de'],
-			'en',
-			renderOptions
-		);
-
-		// Update receives the rendered HTML, serialized translations, and deduped ids.
-		expect(update).toHaveBeenCalledWith({
-			htmlContent: '<html>rendered</html>',
-			htmlTranslations: JSON.stringify({ de: { htmlContent: '<de>', subject: 'Betreff' } }),
+		expect(payload).toEqual({
+			name: 'Welcome',
+			subject: 'Hello',
+			content: JSON.stringify(blocks),
+			htmlContent: 'A|B|C|D',
+			htmlTranslations: '{}',
 			linkedBlockIds: ['b1', 'b2'],
 			plainTextContent: 'rendered text',
 			plainTextOverride: '',
+			expectedContentRevision: 5,
 		});
 	});
 
-	it('emits empty linkedBlockIds and {} translations when there are none', async () => {
-		buildHtmlTranslationsForEmail.mockResolvedValue({});
-		const update = vi.fn().mockResolvedValue(undefined);
+	it('renders each language by overlaying its text onto the draft structure, not the persisted one', async () => {
+		// The draft adds block b2 and reorders; the German overlay was written
+		// against the old single-block content and knows only b1.
+		const blocks = [text('b2', 'New paragraph'), text('b1', 'Hi there')];
+		const translations = JSON.stringify({
+			de: { subject: 'Hallo', blocks: { b1: { html: 'Hallo zusammen' } } },
+		});
 
-		await publishableEmailSave({
-			identifier: {
-				emailType: 'transactional',
-				emailId: 'e_1' as EmailIdentifier['emailId'],
+		const payload = await saveAndCapture(
+			draft({ blocks }),
+			base({ supportedLanguages: ['en', 'de', 'fr'], translations })
+		);
+
+		expect(JSON.parse(payload.htmlTranslations)).toEqual({
+			de: { htmlContent: 'New paragraph|Hallo zusammen', subject: 'Hallo' },
+			// No overlay yet: the default content and subject, as getForLanguage does.
+			fr: { htmlContent: 'New paragraph|Hi there', subject: 'Hello' },
+		});
+		expect(payload.htmlContent).toBe('New paragraph|Hi there');
+	});
+
+	it('overlays text nested in columns and containers', async () => {
+		const blocks = [
+			{
+				id: 'cols',
+				type: 'columns',
+				content: { columns: [[text('c1', 'Left')], [text('c2', 'Right')]] },
 			},
-			blocks: [block('1')],
-			renderOptions: { variableType: 'data' },
-			supportedLanguages: [],
-			defaultLanguage: 'en',
-			update,
+		] as unknown as EditorBlock[];
+		renderBlocksToHtml.mockImplementation((rendered: EditorBlock[]) => JSON.stringify(rendered));
+		const translations = JSON.stringify({
+			de: { subject: 'Hallo', blocks: { c2: { html: 'Rechts' } } },
 		});
 
-		expect(update).toHaveBeenCalledWith({
-			htmlContent: '<html>rendered</html>',
-			htmlTranslations: '{}',
-			linkedBlockIds: [],
-			plainTextContent: 'rendered text',
-			plainTextOverride: '',
-		});
+		const payload = await saveAndCapture(
+			draft({ blocks }),
+			base({ supportedLanguages: ['en', 'de'], translations })
+		);
+
+		const de = JSON.parse(JSON.parse(payload.htmlTranslations).de.htmlContent);
+		expect(de[0].content.columns[0][0].content.html).toBe('Left');
+		expect(de[0].content.columns[1][0].content.html).toBe('Rechts');
 	});
 
-	it('rebuilds translations from the now-current content after persisting (structural edit)', async () => {
-		// First build merges onto the OLD persisted content; after the content is
-		// saved the second build reflects the new structure — the corrected set
-		// must be the final write.
-		buildHtmlTranslationsForEmail
-			.mockReset()
-			.mockResolvedValueOnce({ de: { htmlContent: '<de-old>', subject: 'Betreff' } })
-			.mockResolvedValueOnce({ de: { htmlContent: '<de-new>', subject: 'Betreff' } });
-		const update = vi.fn().mockResolvedValue(undefined);
+	it('writes exactly once, so a failed commit leaves nothing half-written', async () => {
+		// The old save wrote twice (new blocks + stale translations, then fixed
+		// translations); a failure of the second write left them mismatched.
+		const commit = vi.fn().mockRejectedValue(new Error('Save failed'));
+		const translations = JSON.stringify({ de: { subject: 'Hallo', blocks: {} } });
 
-		await publishableEmailSave({
-			identifier: { emailType: 'marketing', emailId: 'tmpl_1' as EmailIdentifier['emailId'] },
-			blocks: [block('1')],
-			renderOptions: { variableType: 'personalization' },
-			supportedLanguages: ['en', 'de'],
-			defaultLanguage: 'en',
-			update,
+		await expect(
+			publishableEmailSave({
+				draft: draft(),
+				base: base({ supportedLanguages: ['en', 'de'], translations }),
+				renderOptions,
+				commit,
+			})
+		).rejects.toThrow('Save failed');
+
+		expect(commit).toHaveBeenCalledOnce();
+		const payload = commit.mock.calls[0]![0] as PublishableEmailPayload;
+		// Blocks, default HTML and translated HTML all come from the same draft.
+		expect(payload.content).toBe(JSON.stringify([text('b1', 'Hi there')]));
+		expect(payload.htmlContent).toBe('Hi there');
+		expect(JSON.parse(payload.htmlTranslations).de.htmlContent).toBe('Hi there');
+	});
+
+	it('does not let edits made while the write is in flight leak into the payload', async () => {
+		const blocks = [text('b1', 'Hi there')];
+		const liveDraft = draft({ blocks });
+		let finish: () => void = () => {};
+		const commit = vi.fn(
+			() =>
+				new Promise<void>((resolve) => {
+					finish = resolve;
+				})
+		);
+
+		const pending = publishableEmailSave({
+			draft: liveDraft,
+			base: base({
+				supportedLanguages: ['en', 'de'],
+				translations: JSON.stringify({ de: { subject: 'Hallo', blocks: {} } }),
+			}),
+			renderOptions,
+			commit,
 		});
 
-		// Two passes: persist content, then persist the corrected translations.
-		expect(buildHtmlTranslationsForEmail).toHaveBeenCalledTimes(2);
-		expect(update).toHaveBeenCalledTimes(2);
-		expect(update).toHaveBeenLastCalledWith({
-			htmlContent: '<html>rendered</html>',
-			htmlTranslations: JSON.stringify({ de: { htmlContent: '<de-new>', subject: 'Betreff' } }),
-			linkedBlockIds: [],
-			plainTextContent: 'rendered text',
-			plainTextOverride: '',
-		});
+		// The payload is built before anything is awaited...
+		expect(commit).toHaveBeenCalledOnce();
+		// ...so the canvas mutating the shared block array in place afterwards
+		// cannot reach it.
+		(blocks[0]!.content as { html: string }).html = 'Typed during the save';
+		blocks.push(text('b2', 'Added during the save'));
+		liveDraft.subject = 'Changed subject';
+		finish();
+		await pending;
+
+		const payload = commit.mock.calls[0]![0] as PublishableEmailPayload;
+		expect(payload.subject).toBe('Hello');
+		expect(payload.content).toBe(JSON.stringify([text('b1', 'Hi there')]));
+		expect(payload.htmlContent).toBe('Hi there');
+		expect(JSON.parse(payload.htmlTranslations).de.htmlContent).toBe('Hi there');
 	});
 
 	it('passes the author override to the plain-text renderer and persists it', async () => {
-		buildHtmlTranslationsForEmail.mockResolvedValue({});
 		renderBlocksToPlainText.mockReturnValue('My own words');
-		const update = vi.fn().mockResolvedValue(undefined);
-		const blocks = [block('1')];
+		const blocks = [text('1', 'A')];
 
-		await publishableEmailSave({
-			identifier: { emailType: 'marketing', emailId: 'tmpl_1' as EmailIdentifier['emailId'] },
-			blocks,
-			renderOptions: { variableType: 'personalization' },
-			supportedLanguages: [],
-			defaultLanguage: 'en',
-			plainTextOverride: 'My own words',
-			update,
-		});
+		const payload = await saveAndCapture(
+			draft({ blocks, plainTextOverride: 'My own words' }),
+			base()
+		);
 
 		expect(renderBlocksToPlainText).toHaveBeenCalledWith(blocks, 'My own words');
-		expect(update).toHaveBeenCalledWith(
-			expect.objectContaining({
-				plainTextContent: 'My own words',
-				plainTextOverride: 'My own words',
-			})
-		);
+		expect(payload).toMatchObject({
+			plainTextContent: 'My own words',
+			plainTextOverride: 'My own words',
+		});
+	});
+
+	it('omits the revision check when the base carries no revision', async () => {
+		const payload = await saveAndCapture(draft(), base({ revision: undefined }));
+		expect(payload.expectedContentRevision).toBeUndefined();
+	});
+});
+
+describe('sameDefaultLanguage', () => {
+	it('keeps a draft only while the default language is unchanged', () => {
+		expect(sameDefaultLanguage({ defaultLanguage: 'en' }, { defaultLanguage: 'en' })).toBe(true);
+		expect(sameDefaultLanguage({}, { defaultLanguage: 'en' })).toBe(true);
+		expect(sameDefaultLanguage({ defaultLanguage: 'en' }, { defaultLanguage: 'de' })).toBe(false);
 	});
 });

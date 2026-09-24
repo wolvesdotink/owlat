@@ -35,6 +35,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { rerenderBlocksPool } from './renderingPool';
+import { nextContentRevision } from '../lib/contentRevision';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -168,6 +169,8 @@ async function walkConsumers(
 
 		const patch: Record<string, unknown> = {
 			content: serializeContentBlocks(updated),
+			// The content changed under any open editor: its draft is now stale.
+			contentRevision: nextContentRevision(template),
 			updatedAt: now,
 			...extraPatch?.(template),
 		};
@@ -188,6 +191,8 @@ async function walkConsumers(
 
 		const patch: Record<string, unknown> = {
 			content: serializeContentBlocks(updated),
+			// The content changed under any open editor: its draft is now stale.
+			contentRevision: nextContentRevision(email),
 			updatedAt: now,
 			...extraPatch?.(email),
 		};

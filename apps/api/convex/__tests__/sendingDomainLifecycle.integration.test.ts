@@ -15,10 +15,20 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { expectScheduledFailure } from './helpers/scheduledFailures';
+
+// The flow under test schedules the functions below, which this suite's
+// module map leaves out (or which need a setup it does not make). Their jobs
+// fail when they fire, often after the test that scheduled them. These tests
+// are not about them.
+beforeEach(() => {
+	expectScheduledFailure('domains/providers/registerAction:run');
+	expectScheduledFailure('domains/providers/registerAction:deleteDomainAction');
+});
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');

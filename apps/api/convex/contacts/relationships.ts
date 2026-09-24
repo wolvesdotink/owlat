@@ -10,17 +10,30 @@ import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireContactsManage } from './guards';
 import { throwInvalidInput } from '../_utils/errors';
 import { batchGet } from '../_utils/batchLoader';
+import { redactContactCapabilityFields, type PublicContact } from './listing';
+import type { Id } from '../_generated/dataModel';
 
 // ============================================================
 // Queries
 // ============================================================
 
 /**
- * Get all relationships for a contact (both directions)
+ * Get all relationships for a contact (both directions).
+ *
+ * The related contacts ride the same capability-field redaction as every other
+ * member-readable contact read (`redactContactCapabilityFields`): a joined row
+ * is still a contact row, and a raw one would hand its pending DOI confirmation
+ * token to the browser. Soft-deleted contacts stay invisible on both ends — an
+ * erased parent lists nothing, and a relationship whose other side is erased
+ * (or already gone) is dropped rather than rendered as an anonymous row, so it
+ * reappears only if that contact is restored.
  */
 export const listByContact = authedQuery({
 	args: { contactId: v.id('contacts') },
 	handler: async (ctx, args) => {
+		const contact = await ctx.db.get(args.contactId);
+		if (!contact || contact.deletedAt !== undefined) return [];
+
 		const outgoing = await ctx.db
 			.query('contactRelationships')
 			.withIndex('by_from', (q) => q.eq('fromContactId', args.contactId))
@@ -38,20 +51,30 @@ export const listByContact = authedQuery({
 			...outgoing.map((rel) => rel.toContactId),
 			...incoming.map((rel) => rel.fromContactId),
 		]);
+		const visibleContact = (contactId: Id<'contacts'>): PublicContact | null => {
+			const related = relatedContacts.get(contactId);
+			if (!related || related.deletedAt !== undefined) return null;
+			return redactContactCapabilityFields(related);
+		};
 
 		const relationships = [
-			...outgoing.map((rel) => ({
-				...rel,
-				direction: 'outgoing' as const,
-				relatedContact: relatedContacts.get(rel.toContactId) ?? null,
-			})),
-			...incoming.map((rel) => ({
-				...rel,
-				direction: 'incoming' as const,
-				relatedContact: relatedContacts.get(rel.fromContactId) ?? null,
-				// Invert the relationship label for display
-				displayRelationship: invertRelationship(rel.relationship),
-			})),
+			...outgoing.flatMap((rel) => {
+				const relatedContact = visibleContact(rel.toContactId);
+				return relatedContact ? [{ ...rel, direction: 'outgoing' as const, relatedContact }] : [];
+			}),
+			...incoming.flatMap((rel) => {
+				const relatedContact = visibleContact(rel.fromContactId);
+				if (!relatedContact) return [];
+				return [
+					{
+						...rel,
+						direction: 'incoming' as const,
+						relatedContact,
+						// Invert the relationship label for display
+						displayRelationship: invertRelationship(rel.relationship),
+					},
+				];
+			}),
 		];
 
 		return relationships;

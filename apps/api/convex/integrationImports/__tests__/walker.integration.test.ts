@@ -25,11 +25,19 @@
 
 import { convexTest } from 'convex-test';
 import { enableFeatures } from '../../__tests__/factories';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { isSealedImportCredential } from '../credentialSeal';
+import { expectScheduledFailure } from '../../__tests__/helpers/scheduledFailures';
+
+// The functions below need configuration this suite only stubs inside its
+// tests (or not at all), and their jobs fire after that is gone. These tests
+// are not about them.
+beforeEach(() => {
+	expectScheduledFailure('integrationImports/walker:processIntegrationPage');
+});
 
 // `ctx.db.get(importId)` widens across all docs in convex-test's generic ctx;
 // callsite cast keeps assertions readable.

@@ -51,6 +51,9 @@ const pendingServices = ref<string[]>([]);
 const isApplying = ref(false);
 const serviceResults = ref<ProfileServiceResult[] | null>(null);
 const applyError = ref<string | null>(null);
+// The updater answered 409: another rollout holds it. Distinct from an
+// unreachable updater, whose fallback is the host CLI.
+const applyBusy = ref(false);
 // Whether the server-side probe already ran for this page load. Both admin
 // surfaces mount the banner, so the flag is what keeps them to one request.
 const driftProbed = ref(false);
@@ -122,22 +125,30 @@ export function useProfileSync() {
 		if (isApplying.value) return;
 		isApplying.value = true;
 		applyError.value = null;
+		applyBusy.value = false;
 		try {
 			const resp = await apiFetch<ApplyProfilesResponse>('/api/system/apply-profiles', {
 				method: 'POST',
 				body: { flags },
 				retry: 0,
 				// `compose up -d` recreates only changed services, but a cold image
-				// pull can still take minutes.
-				timeout: 5 * 60 * 1000,
+				// pull can still take minutes, and a failed `up` is followed by a
+				// recovery and its readiness check (the route allows ten minutes).
+				timeout: 10 * 60 * 1000,
 			});
 			serviceResults.value = Array.isArray(resp.services) ? resp.services : [];
 			// The apply converged the host, so BOTH sources are settled: the
 			// optimistic set and whatever the probe had contributed to it.
 			pendingServices.value = [];
 		} catch (err) {
-			applyError.value =
-				err instanceof Error ? err.message : t('shared.useProfileSync.updaterUnreachable');
+			// 409: an update (or another apply) holds the updater. Nothing was
+			// changed; the flag edits stay pending for a later apply.
+			if ((err as { statusCode?: unknown } | null)?.statusCode === 409) {
+				applyBusy.value = true;
+			} else {
+				applyError.value =
+					err instanceof Error ? err.message : t('shared.useProfileSync.updaterUnreachable');
+			}
 		} finally {
 			isApplying.value = false;
 		}
@@ -152,6 +163,7 @@ export function useProfileSync() {
 		isApplying,
 		serviceResults,
 		applyError,
+		applyBusy,
 		driftProbed,
 		trackFlagChange,
 		hydrateFromProbe,

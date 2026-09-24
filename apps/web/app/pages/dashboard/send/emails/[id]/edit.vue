@@ -31,8 +31,9 @@ const {
 	refetch: refetchTemplate,
 } = useConvexQuery(api.emailTemplates.emails.get, () => ({ templateId: templateId.value }));
 
-// Mutations
-const { run: updateTemplate } = useBackendOperation(api.emailTemplates.emails.update, {
+// Mutations. The save rejects on failure (StaleDraftError for a stale
+// revision, which the bridge turns into the conflict dialog).
+const commitTemplate = useEditorSaveOperation(api.emailTemplates.emails.update, {
 	label: () => t('dashboard.send.emails.detail.edit.operations.save'),
 });
 const { run: publishTemplate, isLoading: isPublishing } = useBackendOperation(
@@ -105,10 +106,18 @@ const {
 	showTestEmailModal,
 	testEmailHtml,
 	onSendTest: handleSendTest,
-	save: handleSave,
+	requestSave,
+	builderRef,
+	conflict,
+	isResolvingConflict,
+	keepMyVersion,
+	loadLatestVersion,
+	dismissConflict,
 } = useEmailEditorBridge({
 	source: template,
-	extraWatch: [() => plainTextOverride.value],
+	revision: (row) => row.contentRevision ?? 0,
+	extraWatch: [plainTextOverride],
+	canKeepDraft: sameDefaultLanguage,
 	initialize: (t, ctx) => {
 		ctx.name.value = t.name;
 		ctx.subject.value = t.subject;
@@ -122,31 +131,26 @@ const {
 			ctx.blocks.value = [];
 		}
 	},
-	save: async (ctx) => {
-		await publishableEmailSave({
-			identifier: { emailType: 'marketing', emailId: templateId.value },
-			blocks: ctx.blocks.value,
-			renderOptions: { theme: emailTheme.value, variableType: 'personalization' },
-			supportedLanguages: template.value?.supportedLanguages ?? [],
-			defaultLanguage: template.value?.defaultLanguage ?? 'en',
-			plainTextOverride: plainTextOverride.value,
-			update: async (payload) => {
-				// The bridge clears the dirty flag only when save() resolves. The
-				// operation module has toasted any categorized failure; throw so the
-				// editor stays dirty instead of being marked clean on a failed save.
-				const result = await updateTemplate({
-					templateId: templateId.value,
-					name: ctx.name.value,
-					subject: ctx.subject.value,
-					content: JSON.stringify(ctx.blocks.value),
-					htmlContent: payload.htmlContent,
-					htmlTranslations: payload.htmlTranslations,
-					linkedBlockIds: payload.linkedBlockIds,
-					plainTextContent: payload.plainTextContent,
-					plainTextOverride: payload.plainTextOverride,
-				});
-				if (!result.ok) throw new Error('Save failed');
+	save: async (ctx, base) => {
+		// Everything is read here, before the first await; the payload is built
+		// from this snapshot and the row the draft was loaded from.
+		const id = templateId.value;
+		return await publishableEmailSave({
+			draft: {
+				name: ctx.name.value,
+				subject: ctx.subject.value,
+				blocks: ctx.blocks.value,
+				plainTextOverride: plainTextOverride.value,
 			},
+			base: {
+				supportedLanguages: base.source?.supportedLanguages ?? [],
+				defaultLanguage: base.source?.defaultLanguage ?? 'en',
+				translations: base.source?.translations,
+				revision: base.revision,
+			},
+			renderOptions: { theme: emailTheme.value, variableType: 'personalization' },
+			commit: async (payload) =>
+				(await commitTemplate({ templateId: id, ...payload })).contentRevision,
 		});
 	},
 });
@@ -158,8 +162,6 @@ const {
 // it. `loadState` re-seeds the canvas and emits back into these refs, which
 // marks the editor dirty and records the restore as one more undoable step.
 // Nothing is persisted until the user saves.
-const builderRef = ref<{ loadState: (state: HistoryState) => void } | null>(null);
-
 const handleRestoreVersion = (state: HistoryState) => {
 	blocks.value = state.blocks;
 	name.value = state.name;
@@ -188,15 +190,21 @@ async function handlePublicationToggle() {
 		if (result.ok) showToast(t('dashboard.send.emails.detail.edit.toasts.unpublished'));
 		return;
 	}
-	const htmlContent = template.value?.htmlContent;
-	if (!htmlContent) {
+	// Publish puts the stored HTML live, which unsaved edits are not part of.
+	// The button holds Publish while dirty; this covers any other caller.
+	if (hasChanges.value) return;
+	const row = template.value;
+	if (!row?.htmlContent) {
 		showToast(t('dashboard.send.emails.detail.edit.toasts.saveBeforePublish'), 'error');
 		return;
 	}
+	// The server publishes the row's own stored HTML, and refuses while a
+	// saved-block rerender is still bringing it up to date. The revision makes
+	// a write landing after this click refuse the publish instead of putting
+	// a version live that this tab never showed.
 	const result = await publishTemplate({
 		templateId: templateId.value,
-		htmlContent,
-		htmlTranslations: template.value?.htmlTranslations,
+		expectedContentRevision: row.contentRevision ?? 0,
 	});
 	if (result.ok) showToast(t('dashboard.send.emails.detail.edit.toasts.published'));
 }
@@ -273,34 +281,20 @@ async function handlePublicationToggle() {
 					:plain-text-override="plainTextOverride"
 					:allow-plain-text-override="true"
 					@update:plain-text-override="plainTextOverride = $event"
-					@save="handleSave"
+					@save="requestSave"
 					@back="handleBack"
 					@settings="handleSettings"
 					@send-test="handleSendTest"
 				>
 					<!-- Toolbar actions -->
 					<template #toolbar-actions>
-						<UiButton
-							variant="secondary"
-							size="sm"
+						<EmailTemplatePublishButton
+							:is-published="isPublished"
+							:has-changes="hasChanges"
+							:has-stored-html="Boolean(template?.htmlContent)"
 							:loading="isChangingPublication"
-							:disabled="hasChanges || (!isPublished && !template?.htmlContent)"
-							:title="
-								hasChanges
-									? t('dashboard.send.emails.detail.edit.saveBeforePublishHint')
-									: undefined
-							"
-							@click="handlePublicationToggle"
-						>
-							<template #iconLeft>
-								<Icon :name="isPublished ? 'lucide:undo-2' : 'lucide:send'" class="w-4 h-4" />
-							</template>
-							{{
-								isPublished
-									? t('dashboard.send.emails.detail.edit.unpublish')
-									: t('dashboard.send.emails.detail.edit.publish')
-							}}
-						</UiButton>
+							@toggle="handlePublicationToggle"
+						/>
 						<EmailTemplateHistoryPanel
 							:template-id="templateId"
 							:has-unsaved-changes="hasChanges"
@@ -336,6 +330,15 @@ async function handlePublicationToggle() {
 			@close="cancelNavigation"
 			@discard="confirmDiscard"
 			@save="confirmSave"
+		/>
+
+		<EmailEditorConflictDialog
+			:open="conflict !== null"
+			:is-resolving="isResolvingConflict"
+			:must-reload="conflict?.mustReload === true"
+			@keep="keepMyVersion"
+			@load="loadLatestVersion"
+			@close="dismissConflict"
 		/>
 
 		<!-- Send Test Email Modal -->

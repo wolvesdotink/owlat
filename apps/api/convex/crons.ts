@@ -80,6 +80,17 @@ crons.interval(
 	internal.automations.stepWalker.processPendingDelays
 );
 
+// Recover automation runs left `running` with no active step run (a step walker
+// action that died between two of its calls). Pages through every running run,
+// so it runs a few times a day rather than every few minutes; see
+// automations/stalledRuns.ts.
+crons.interval(
+	'recover stalled automation runs',
+	{ hours: 6 },
+	internal.automations.stalledRuns.sweepStalledRuns,
+	{}
+);
+
 // Sample "can this instance send at all?" and, on the no-transport → transport
 // edge, notify every member still waiting on their onboarding first send
 // (auth/sendReadyNotices.ts). A cron rather than a hook on the transport
@@ -103,6 +114,16 @@ crons.interval(
 // Clean up old webhook delivery logs weekly
 // Removes logs older than 30 days to prevent unbounded growth
 crons.interval('cleanup webhook logs', { hours: 168 }, internal.webhooks.cleanup.cleanupOldLogs);
+
+// Re-issue outbound webhook attempts that were lost (the scheduler job failed or
+// vanished before recording an outcome), so no delivery sits in pending/retrying
+// forever. Bounded batches; see webhooks/deliveryReconciler.ts.
+crons.interval(
+	'reconcile overdue webhook deliveries',
+	{ minutes: 5 },
+	internal.webhooks.deliveryReconciler.reconcileOverdueDeliveries,
+	{}
+);
 // Seed-placement probe ledger housekeeping, registered from the analytics
 // domain sibling next to the functions it schedules.
 registerSeedPlacementCrons(crons);

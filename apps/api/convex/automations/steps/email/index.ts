@@ -24,7 +24,8 @@ export interface EmailStepConfig {
  * constant exported from the enqueue module, where an unrecognised refusal
  * silently fell through to the generic failure branch.
  *
- * The split is per-recipient vs deployment-wide:
+ * The split is per-recipient vs deployment-wide (`recipient_ineligible` is
+ * per-contact and documented at its entry):
  *   - `recipient_blocked` is about THIS contact and will never clear by
  *     retrying, so the step COMPLETES as a no-op skip: no Send row was
  *     written, the run advances, and nothing is retried.
@@ -40,6 +41,13 @@ const REJECTION_STEP_OUTCOME: Record<
 	(detail: string | undefined) => StepOutcome
 > = {
 	recipient_blocked: () => ({ status: 'completed' }),
+	// The contact unsubscribed from everything or was deleted after this step
+	// was claimed. The walker skips the step either way; a deletion also
+	// cancels the run, an unsubscribe moves it on to its next step.
+	recipient_ineligible: (detail) => ({
+		status: 'contact_ineligible',
+		reason: detail === 'contact_unsubscribed' ? 'contact_unsubscribed' : 'contact_deleted',
+	}),
 	no_delivery_provider: (detail) => ({
 		status: 'failed',
 		error: detail ?? 'No delivery provider configured',
@@ -174,6 +182,9 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 				html: personalizedHtml,
 				from,
 				...(convexSiteUrl ? { listUnsubscribe: true, convexSiteUrl } : {}),
+				// The step run is the intake's idempotency key: a retried or
+				// recovered attempt of this step gets its first Send back.
+				automationStepRunId: args.stepRunId,
 			});
 		} catch (error) {
 			// Every REFUSAL is now a typed `{ ok: false }` return, so anything that

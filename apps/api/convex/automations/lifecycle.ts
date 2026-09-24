@@ -17,7 +17,7 @@
  *
  * Stats counters (`statsEntered`, `statsActive`, `statsCompleted`) are
  * lifetime; the reducer does not touch them on any edge. Stats writes stay
- * in the Trigger fanout (`triggers.ts`) and `stepExecutorQueries.ts`.
+ * in the Trigger fanout (`triggers.ts`) and `stepRunTransitions.ts`.
  *
  * See docs/adr/0024-automation-lifecycle-module.md.
  */
@@ -368,25 +368,41 @@ const BREAKER_ACTOR = 'system:automation-breaker';
  * consecutive-failure counter and, at the threshold, trips the breaker by
  * pausing the automation through the lifecycle (so the pause is audit-logged,
  * attributed to BREAKER_ACTOR). The counter resets on any completed run
- * (`stepExecutorQueries.completeAutomationRun`).
+ * (`stepRunTransitions.completeRun`). Called by the step walker's
+ * fail-and-cancel transition, in the same transaction as the step failure and
+ * the run cancellation.
+ */
+export async function recordAutomationRunFailure(
+	ctx: MutationCtx,
+	automationId: Id<'automations'>
+): Promise<void> {
+	const automation = await ctx.db.get(automationId);
+	if (!automation) return;
+	const failures = (automation.consecutiveRunFailures ?? 0) + 1;
+	await ctx.db.patch(automationId, { consecutiveRunFailures: failures });
+	if (failures >= AUTOMATION_FAILURE_BREAKER_THRESHOLD && automation.status === 'active') {
+		logWarn('[automation breaker] pausing automation after consecutive run failures', {
+			automationId,
+			consecutiveRunFailures: failures,
+		});
+		// `automation.status` is still 'active' (the counter patch above doesn't
+		// touch it), so dispatch sees the correct from-state.
+		await dispatch(ctx, automation, { to: 'paused', at: Date.now() }, BREAKER_ACTOR);
+	}
+}
+
+/**
+ * Remove after release N+1: v0.5.5 compatibility. v0.5.5's step walker called
+ * this from its action after failing the step and cancelling the run; an
+ * action in flight when this release deploys still does (see CONVENTIONS.md,
+ * "Old clients and workers against new functions"). It counts nothing: given
+ * only the automation, it cannot tell whether that cancel did anything, so
+ * the legacy cancel shim (`stepExecutorQueries.cancelAutomationRun`) counts
+ * the failure together with the cancel it belongs to.
  */
 export const recordRunFailure = internalMutation({
 	args: {
 		automationId: v.id('automations'),
 	},
-	handler: async (ctx, args) => {
-		const automation = await ctx.db.get(args.automationId);
-		if (!automation) return;
-		const failures = (automation.consecutiveRunFailures ?? 0) + 1;
-		await ctx.db.patch(args.automationId, { consecutiveRunFailures: failures });
-		if (failures >= AUTOMATION_FAILURE_BREAKER_THRESHOLD && automation.status === 'active') {
-			logWarn('[automation breaker] pausing automation after consecutive run failures', {
-				automationId: args.automationId,
-				consecutiveRunFailures: failures,
-			});
-			// `automation.status` is still 'active' (the counter patch above doesn't
-			// touch it), so dispatch sees the correct from-state.
-			await dispatch(ctx, automation, { to: 'paused', at: Date.now() }, BREAKER_ACTOR);
-		}
-	},
+	handler: async () => {},
 });

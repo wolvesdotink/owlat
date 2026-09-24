@@ -1,8 +1,9 @@
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import { createTestDomain, flushScheduled } from './factories';
+import { expectScheduledFailure } from './helpers/scheduledFailures';
 import type { Id } from '../_generated/dataModel';
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -30,6 +31,10 @@ const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
 	Object.entries(allModules).filter(([path]) => !path.includes('providers/registerAction'))
 );
+
+// The excluded register action is still scheduled by the lifecycle, and fails
+// to resolve when it runs; that is the point of the exclusion.
+beforeEach(() => expectScheduledFailure('domains/providers/registerAction:run'));
 
 // ============ domains.create (integration) ============
 

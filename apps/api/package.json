@@ -18,7 +18,8 @@
 			"default": "./convex/_generated/server.js"
 		},
 		"./automations": "./convex/automations/automations.ts",
-		"./auditActions": "./convex/auditActions/catalog.ts"
+		"./auditActions": "./convex/auditActions/catalog.ts",
+		"./translationMerge": "./convex/emailTemplates/translationMerge.ts"
 	},
 	"scripts": {
 		"dev": "convex dev",
@@ -43,7 +44,8 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage",
-		"test:ramp": "bash scripts/test-ramp.sh"
+		"test:ramp": "bash scripts/test-ramp.sh",
+		"schema-compat:refresh": "OWLAT_SCHEMA_COMPAT_REFRESH=1 vitest run --project unit convex/__tests__/schemaCompat/refresh.test.ts"
 	},
 	"dependencies": {
 		"@ai-sdk/anthropic": "catalog:ai",

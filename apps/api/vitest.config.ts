@@ -1,9 +1,13 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
+import { scheduledFailureSeam } from './convex/__tests__/helpers/scheduledFailureSeam.ts';
 
 const integrationTestPattern = 'convex/**/__tests__/**/*.integration.test.ts';
 
 export default defineConfig({
+	// Lets the scheduled-failure gate (vitest.setup.ts) see a throwing scheduled
+	// function even while a test has console.error mocked.
+	plugins: [scheduledFailureSeam()],
 	test: {
 		setupFiles: ['./vitest.setup.ts'],
 		server: { deps: { inline: ['convex-test'] } },
@@ -15,6 +19,9 @@ export default defineConfig({
 		// enough headroom for that environmental cost.
 		testTimeout: 10000,
 		hookTimeout: 10000,
+		// A retry that passes cannot hide a scheduled function that threw in the
+		// attempt before it: the scheduled-failure gate reports it again in
+		// `afterAll`, which is not retried (convex/__tests__/helpers/scheduledFailures.ts).
 		retry: 1,
 		projects: [
 			{
@@ -40,9 +47,16 @@ export default defineConfig({
 				},
 			},
 		],
-		// convex-test produces "Write outside of transaction" unhandled rejections
-		// when mutations call ctx.scheduler.runAfter() — this is a known limitation
-		dangerouslyIgnoreUnhandledErrors: true,
+		// Unhandled errors fail the run; nothing is filtered. The suite used to set
+		// `dangerouslyIgnoreUnhandledErrors` for convex-test's "Write outside of
+		// transaction" rejections from `ctx.scheduler.runAfter()`. convex-test now
+		// runs each scheduled function in its own transaction, so that message now
+		// means a write landed with no transaction open, such as an un-awaited
+		// `ctx.db` call finishing after its mutation returned: a real bug. A test
+		// whose scheduled work outlives it should drain that work with
+		// `t.finishAllScheduledFunctions(...)` before returning, rather than be
+		// excused here. `convex/__tests__/unhandledErrorGate.test.ts` checks that
+		// a leaked rejection still fails the run.
 		coverage: {
 			provider: 'v8',
 			reporter: ['text', 'json-summary', 'html'],

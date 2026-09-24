@@ -387,15 +387,16 @@ export const getCountsByReason = authedQuery({
 	},
 });
 
-// Internal query to check if an email is blocked (for use by other Convex functions)
-// Unlike the public `isBlocked` query, this does not require access validation
+/**
+ * Remove after release N+1: v0.5.5 compatibility. v0.5.5's worker re-checked a
+ * campaign recipient here, and a worker in flight across the deploy still does
+ * (CONVENTIONS.md, "Old clients and workers"). Now: marketingDispatchGate.
+ */
 export const isBlockedInternal = internalQuery({
 	args: {
 		email: v.string(),
 	},
-	handler: async (ctx, args) => {
-		return (await findBlockedByEmail(ctx, args.email)) !== null;
-	},
+	handler: async (ctx, args) => (await findBlockedByEmail(ctx, args.email)) !== null,
 });
 
 // Internal function to add to blocklist from bounce/complaint handler

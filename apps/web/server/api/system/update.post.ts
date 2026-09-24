@@ -4,7 +4,18 @@ import { isValidTargetVersion } from '@owlat/shared/releaseArtifacts';
 import { requirePlatformAdmin } from '~~/server/utils/requireAdmin';
 import { resolveVerifiedComposeTemplate } from '~~/server/utils/composeUpdate';
 import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
-import { UPDATER_REPORT_MARKER } from '~/lib/systemUpdate';
+import {
+	UPDATER_REPORT_MARKER,
+	isStartedRollout,
+	isUpdateAttemptId,
+	isUpdaterRefusal,
+} from '~/lib/systemUpdate';
+
+/**
+ * Pull + convex-deploy + recreate, then the updater's readiness wait, which
+ * follows the healthcheck cadence services declare (ClamAV: up to ~11 min).
+ */
+const UPDATER_TIMEOUT_MS = 30 * 60 * 1000;
 
 /**
  * Self-hosted in-app update entry point.
@@ -20,6 +31,14 @@ import { UPDATER_REPORT_MARKER } from '~/lib/systemUpdate';
  *   4. POST to http://updater:3200/update with the downloaded compose template.
  *   5. Record result via api.systemUpdates.recordUpdateFinish.
  *   6. Return the updater's response to the client.
+ *
+ * A rollout the updater reports as `started` (applied, containers started,
+ * but not every service healthy in time) is not a failed update: the release
+ * is live and re-running it changes nothing. It is recorded as a success
+ * carrying the updater's note, and answered 200 with the note as `warning`.
+ * A 409 (another rollout holds the updater) or 429 (its rate limit) means the
+ * update never started: it is passed on as such, and its history row is taken
+ * back instead of being recorded as a failed update.
  *
  * Both record calls address the PUBLIC function surface, because that is the
  * only one a `ConvexHttpClient` can reach — an `internal*` reference forwarded
@@ -38,8 +57,12 @@ export default defineEventHandler(async (event) => {
 		'In-app updates not configured (INSTANCE_SECRET missing)'
 	);
 
-	const body = await readBody<{ targetVersion?: string }>(event);
+	const body = await readBody<{ targetVersion?: string; attempt?: unknown }>(event);
 	const targetVersion = body?.targetVersion?.trim() || '';
+	// The browser's id for this attempt; the updater echoes it on /health so the
+	// progress card can find this update's verdict after the restart.
+	const rawAttempt = body?.attempt;
+	const attempt = isUpdateAttemptId(rawAttempt) ? rawAttempt : undefined;
 
 	if (!isValidTargetVersion(targetVersion)) {
 		throw createError({
@@ -79,42 +102,65 @@ export default defineEventHandler(async (event) => {
 	let updaterResult: {
 		success?: boolean;
 		error?: string;
+		rollout?: string;
 		steps?: { step: string; ok?: boolean; stdout: string; stderr: string }[];
 	} = {};
 	let updaterOk = false;
+	let updaterStatus = 0;
 
 	try {
 		const updaterResp = await callUpdater('/update', instanceSecret, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ composeTemplate }),
-			// Generous timeout — pull + recreate + convex-deploy can take minutes
-			signal: AbortSignal.timeout(10 * 60 * 1000),
+			body: JSON.stringify({ composeTemplate, ...(attempt ? { attempt } : {}) }),
+			signal: AbortSignal.timeout(UPDATER_TIMEOUT_MS),
 		});
 
 		updaterResult = (await updaterResp.json()) as typeof updaterResult;
 		updaterOk = updaterResp.ok;
+		updaterStatus = updaterResp.status;
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : 'Unknown updater error';
 		updaterResult = { success: false, error: msg };
 		updaterOk = false;
 	}
 
+	const started = !updaterOk && isStartedRollout(updaterResult);
+	const refused = !updaterOk && isUpdaterRefusal(updaterStatus);
+
 	// 4. Record the result. (Uses `client` which we created in requirePlatformAdmin;
 	// its auth JWT may have expired mid-update if the web container restarted —
-	// this call is purely best-effort audit.)
+	// this call is purely best-effort audit.) An update the updater refused to
+	// start never ran: its row is taken back rather than recorded as failed.
 	if (runId) {
 		try {
-			await client.mutation(api.systemUpdates.recordUpdateFinish, {
-				runId,
-				status: updaterOk ? 'success' : 'failed',
-				steps: updaterResult.steps,
-				error: updaterResult.error,
-			});
+			if (refused) {
+				await client.mutation(api.systemUpdates.withdrawUpdateStart, { runId });
+			} else {
+				await client.mutation(api.systemUpdates.recordUpdateFinish, {
+					runId,
+					status: updaterOk || started ? 'success' : 'failed',
+					steps: updaterResult.steps,
+					error: updaterResult.error,
+				});
+			}
 		} catch {
 			// Convex may have dropped auth during the update. Ignore — the UI will
 			// reconcile on the next page load by reading the history.
 		}
+	}
+
+	if (started) {
+		console.warn('[system/update] update applied, not yet healthy:', updaterResult.error);
+		return {
+			success: true,
+			rollout: 'started',
+			warning: updaterResult.error,
+			runId,
+			versionFrom: currentVersion,
+			versionTo: targetVersion,
+			steps: updaterResult.steps,
+		};
 	}
 
 	if (!updaterOk) {
@@ -135,7 +181,9 @@ export default defineEventHandler(async (event) => {
 		// in a 502 when everything went right — Caddy's, for an upstream that
 		// went away mid-answer. Only one of the two carries a report.
 		throw createError({
-			statusCode: 502,
+			// 409/429: the updater refused to start (another rollout holds it, or
+			// its rate limit does); nothing was changed.
+			statusCode: refused ? updaterStatus : 502,
 			message: updaterResult.error || 'Update failed',
 			data: { [UPDATER_REPORT_MARKER]: true, ...updaterResult },
 		});
