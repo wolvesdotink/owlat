@@ -150,7 +150,8 @@ const {
 } = useEmailEditorBridge({
 	source: email,
 	revision: (row) => row.contentRevision ?? 0,
-	extraWatch: [() => attachments.value, () => showUnsubscribe.value, () => plainTextOverride.value],
+	extraWatch: [attachments, showUnsubscribe, plainTextOverride],
+	canKeepDraft: sameDefaultLanguage,
 	initialize: (e, ctx) => {
 		ctx.name.value = e.name;
 		ctx.subject.value = e.subject;
@@ -443,6 +444,7 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 		<EmailEditorConflictDialog
 			:open="conflict !== null"
 			:is-resolving="isResolvingConflict"
+			:must-reload="conflict?.mustReload === true"
 			@keep="keepMyVersion"
 			@load="loadLatestVersion"
 			@close="dismissConflict"

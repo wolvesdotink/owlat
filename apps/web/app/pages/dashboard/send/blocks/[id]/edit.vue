@@ -107,7 +107,7 @@ const {
 	builderRef,
 } = useEmailEditorBridge({
 	source: block,
-	extraWatch: [() => description.value],
+	extraWatch: [description],
 	initialize: (b, ctx) => {
 		ctx.name.value = b.name;
 		description.value = b.description || '';

@@ -15,6 +15,7 @@ vi.mock('../useEmailHtmlRendering', () => ({
 
 import {
 	publishableEmailSave,
+	sameDefaultLanguage,
 	type PublishableEmailBase,
 	type PublishableEmailDraft,
 	type PublishableEmailPayload,
@@ -221,5 +222,13 @@ describe('publishableEmailSave', () => {
 	it('omits the revision check when the base carries no revision', async () => {
 		const payload = await saveAndCapture(draft(), base({ revision: undefined }));
 		expect(payload.expectedContentRevision).toBeUndefined();
+	});
+});
+
+describe('sameDefaultLanguage', () => {
+	it('keeps a draft only while the default language is unchanged', () => {
+		expect(sameDefaultLanguage({ defaultLanguage: 'en' }, { defaultLanguage: 'en' })).toBe(true);
+		expect(sameDefaultLanguage({}, { defaultLanguage: 'en' })).toBe(true);
+		expect(sameDefaultLanguage({ defaultLanguage: 'en' }, { defaultLanguage: 'de' })).toBe(false);
 	});
 });

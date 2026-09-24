@@ -116,7 +116,8 @@ const {
 } = useEmailEditorBridge({
 	source: template,
 	revision: (row) => row.contentRevision ?? 0,
-	extraWatch: [() => plainTextOverride.value],
+	extraWatch: [plainTextOverride],
+	canKeepDraft: sameDefaultLanguage,
 	initialize: (t, ctx) => {
 		ctx.name.value = t.name;
 		ctx.subject.value = t.subject;
@@ -334,6 +335,7 @@ async function handlePublicationToggle() {
 		<EmailEditorConflictDialog
 			:open="conflict !== null"
 			:is-resolving="isResolvingConflict"
+			:must-reload="conflict?.mustReload === true"
 			@keep="keepMyVersion"
 			@load="loadLatestVersion"
 			@close="dismissConflict"

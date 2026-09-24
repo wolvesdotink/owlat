@@ -73,7 +73,11 @@ const showToast = vi.fn();
 
 let wrapper: VueWrapper | null = null;
 
-function mountEditor(source: Ref<Row | null>, surfaceSave: SurfaceSave) {
+function mountEditor(
+	source: Ref<Row | null>,
+	surfaceSave: SurfaceSave,
+	options: { canKeepDraft?: (base: Row, latest: Row) => boolean } = {}
+) {
 	let bridge!: EmailEditorBridgeReturn;
 	const boundaryError = ref<unknown>(null);
 
@@ -111,6 +115,7 @@ function mountEditor(source: Ref<Row | null>, surfaceSave: SurfaceSave) {
 							subject: ctx.subject.value,
 						}
 					),
+				canKeepDraft: options.canKeepDraft,
 			});
 			return () =>
 				h(Boundary, null, () =>
@@ -464,6 +469,98 @@ describe('text typed into the inline editor while a collaborator writes', () => 
 	});
 });
 
+describe('keep my version merges field by field', () => {
+	/** Save refused once as stale (revision 0), accepted on the rebased revision. */
+	function refusingOnce() {
+		const sent: { revision: number | undefined; subject: string; html: string }[] = [];
+		const save: SurfaceSave = async (blocks, revision, fields) => {
+			sent.push({ revision, subject: fields.subject, html: htmlOf(blocks) });
+			if (revision === 0) throw new StaleDraftError(1);
+			return (revision ?? 0) + 1;
+		};
+		return { sent, save };
+	}
+
+	it('takes the collaborator subject when only the blocks were edited', async () => {
+		const source = ref<Row | null>(row(0, [text('b-1', '<p>Loaded</p>')]));
+		const backend = refusingOnce();
+		const { bridge } = mountEditor(source, backend.save);
+		await flushPromises();
+		canvasEdit([text('b-1', '<p>Mine</p>')]);
+		await flushPromises();
+		// A collaborator changes only the subject (settings page).
+		source.value = { ...row(1, [text('b-1', '<p>Loaded</p>')]), subject: 'Colleague subject' };
+		await flushPromises();
+
+		await bridge().requestSave();
+		await bridge().keepMyVersion();
+		await flushPromises();
+
+		expect(backend.sent.at(-1)).toEqual({
+			revision: 1,
+			subject: 'Colleague subject',
+			html: '<p>Mine</p>',
+		});
+		expect(bridge().conflict.value).toBeNull();
+	});
+
+	it('takes the collaborator blocks when only the subject was edited, and shows them', async () => {
+		const source = ref<Row | null>(row(0, [text('b-1', '<p>Loaded</p>')]));
+		const backend = refusingOnce();
+		const { bridge } = mountEditor(source, backend.save);
+		await flushPromises();
+		bridge().subject.value = 'My subject';
+		await flushPromises();
+		source.value = row(1, [text('b-1', '<p>Collaborator</p>')]);
+		await flushPromises();
+
+		await bridge().requestSave();
+		await bridge().keepMyVersion();
+		await flushPromises();
+
+		expect(backend.sent.at(-1)).toEqual({
+			revision: 1,
+			subject: 'My subject',
+			html: '<p>Collaborator</p>',
+		});
+		expect(builder().text()).toContain('Collaborator');
+		expect(bridge().hasChanges.value).toBe(false);
+	});
+
+	it('does not keep a draft whose default language was changed underneath it', async () => {
+		const source = ref<Row | null>({
+			...row(0, [text('b-1', '<p>Hello</p>')]),
+			defaultLanguage: 'en',
+		});
+		const backend = refusingOnce();
+		const { bridge } = mountEditor(source, backend.save, {
+			canKeepDraft: (base, latest) => base.defaultLanguage === latest.defaultLanguage,
+		});
+		await flushPromises();
+		canvasEdit([text('b-1', '<p>Hello there</p>')]);
+		await flushPromises();
+		// Someone makes German the default: the blocks now hold the German text.
+		source.value = { ...row(1, [text('b-1', '<p>Hallo</p>')]), defaultLanguage: 'de' };
+		await flushPromises();
+
+		await bridge().requestSave();
+		await bridge().keepMyVersion();
+		await flushPromises();
+
+		expect(backend.sent.map((s) => s.revision)).toEqual([0]);
+		expect(bridge().conflict.value).toEqual({ currentRevision: 1, mustReload: true });
+		expect(bridge().hasChanges.value).toBe(true);
+
+		// Asking again does not save either; loading the latest does resolve it.
+		await bridge().keepMyVersion();
+		expect(backend.sent).toHaveLength(1);
+		await bridge().loadLatestVersion();
+		await flushPromises();
+		expect(bridge().conflict.value).toBeNull();
+		expect(builder().text()).toContain('Hallo');
+	});
+});
+
 describe('the email editor pages', () => {
 	// The pages are too heavy to mount here; pin the wiring the tests above
 	// exercise. `@save="save"` (a rejecting handler) is what swapped the editor
@@ -478,5 +575,8 @@ describe('the email editor pages', () => {
 		expect(builderTag).toContain('@save="requestSave"');
 		expect(builderTag).toContain('ref="builderRef"');
 		expect(source).toContain('<EmailEditorConflictDialog');
+		expect(source).toContain(':must-reload="conflict?.mustReload === true"');
+		// "Keep my version" must not save one language's draft under another.
+		expect(source).toContain('canKeepDraft: sameDefaultLanguage');
 	});
 });
