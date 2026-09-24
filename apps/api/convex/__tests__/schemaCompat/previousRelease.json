@@ -1,6 +1,6 @@
 {
-	"release": "v0.5.5",
-	"commit": "6eca81d7950df3e5c2d143203d91fe9c3cdef73a",
+	"release": "v0.6.0",
+	"commit": "ee5e9aa3721455a8a2d295678b9da52ec25f3cb1",
 	"tables": {
 		"accessRequests": {"type": "object", "value": {
 			"authUserId": {"fieldType":{"type":"string"},"optional":false},
@@ -202,7 +202,7 @@
 			"updatedAt": {"fieldType":{"type":"number"},"optional":false}
 		}},
 		"auditLogs": {"type": "object", "value": {
-			"action": {"fieldType":{"type":"union","value":[{"type":"literal","value":"campaign.created"},{"type":"literal","value":"campaign.updated"},{"type":"literal","value":"campaign.deleted"},{"type":"literal","value":"campaign.sent"},{"type":"literal","value":"campaign.scheduled"},{"type":"literal","value":"campaign.unscheduled"},{"type":"literal","value":"campaign.cancelled"},{"type":"literal","value":"campaign.send_started"},{"type":"literal","value":"campaign.content_blocked"},{"type":"literal","value":"campaign.flagged_for_review"},{"type":"literal","value":"campaign.review_approved"},{"type":"literal","value":"campaign.review_rejected"},{"type":"literal","value":"ab_test.enabled"},{"type":"literal","value":"ab_test.testing_started"},{"type":"literal","value":"ab_test.winner_declared"},{"type":"literal","value":"ab_test.disabled"},{"type":"literal","value":"contact.created"},{"type":"literal","value":"contact.updated"},{"type":"literal","value":"contact.deleted"},{"type":"literal","value":"contact.imported"},{"type":"literal","value":"contact.merged"},{"type":"literal","value":"contact.sunset_reengagement"},{"type":"literal","value":"contact.sunset_suppressed"},{"type":"literal","value":"contact.sunset_resumed"},{"type":"literal","value":"contact.sunset_restored"},{"type":"literal","value":"contact.sunset_exemption_changed"},{"type":"literal","value":"contact.sunset_policy_updated"},{"type":"literal","value":"contact.sunset_sweep_summary"},{"type":"literal","value":"contact.sunset_clock_confirmed"},{"type":"literal","value":"doi.admin_attested"},{"type":"literal","value":"topic.created"},{"type":"literal","value":"topic.updated"},{"type":"literal","value":"topic.deleted"},{"type":"literal","value":"email_template.created"},{"type":"literal","value":"email_template.updated"},{"type":"literal","value":"email_template.deleted"},{"type":"literal","value":"email_template.published"},{"type":"literal","value":"email_template.unpublished"},{"type":"literal","value":"email_template.duplicated"},{"type":"literal","value":"transactional_email.created"},{"type":"literal","value":"transactional_email.updated"},{"type":"literal","value":"transactional_email.published"},{"type":"literal","value":"transactional_email.unpublished"},{"type":"literal","value":"transactional_email.flagged_for_review"},{"type":"literal","value":"transactional_email.approved"},{"type":"literal","value":"transactional_email.rejected"},{"type":"literal","value":"transactional_email.duplicated"},{"type":"literal","value":"transactional_email.deleted"},{"type":"literal","value":"email_block.created"},{"type":"literal","value":"email_block.updated"},{"type":"literal","value":"email_block.duplicated"},{"type":"literal","value":"email_block.deleted"},{"type":"literal","value":"email_block.rerender_failed"},{"type":"literal","value":"automation.created"},{"type":"literal","value":"automation.updated"},{"type":"literal","value":"automation.deleted"},{"type":"literal","value":"automation.activated"},{"type":"literal","value":"automation.paused"},{"type":"literal","value":"automation.resumed"},{"type":"literal","value":"automation.reverted_to_draft"},{"type":"literal","value":"settings.updated"},{"type":"literal","value":"ai_provider_config.updated"},{"type":"literal","value":"team_member.invited"},{"type":"literal","value":"team_member.removed"},{"type":"literal","value":"team_member.role_changed"},{"type":"literal","value":"team_member.email_verified"},{"type":"literal","value":"team_member.verification_resent"},{"type":"literal","value":"api_key.created"},{"type":"literal","value":"api_key.revoked"},{"type":"literal","value":"webhook.created"},{"type":"literal","value":"webhook.updated"},{"type":"literal","value":"webhook.secret_rotated"},{"type":"literal","value":"webhook.deleted"},{"type":"literal","value":"sending_domain.created"},{"type":"literal","value":"sending_domain.registered"},{"type":"literal","value":"sending_domain.registration_failed"},{"type":"literal","value":"sending_domain.verified"},{"type":"literal","value":"sending_domain.verification_failed"},{"type":"literal","value":"sending_domain.regenerated"},{"type":"literal","value":"sending_domain.dmarc_policy_changed"},{"type":"literal","value":"sending_domain.receiving_mode_changed"},{"type":"literal","value":"sending_domain.return_path_changed"},{"type":"literal","value":"sending_domain.dkim_rotated"},{"type":"literal","value":"sending_domain.deleted"},{"type":"literal","value":"seed_mailbox.rotation_reminder"},{"type":"literal","value":"seed_mailbox.rotation_acknowledged"},{"type":"literal","value":"seed_mailbox.disconnected"},{"type":"literal","value":"sending_domain.yahoo_cfl_changed"},{"type":"literal","value":"blocklist.added"},{"type":"literal","value":"blocklist.removed"},{"type":"literal","value":"blocklist.provider_suppressed"},{"type":"literal","value":"blocklist.provider_import_summary"},{"type":"literal","value":"segment.created"},{"type":"literal","value":"segment.updated"},{"type":"literal","value":"segment.deleted"},{"type":"literal","value":"abuse_status_changed"},{"type":"literal","value":"deliverability_ramp.decision_applied"},{"type":"literal","value":"deliverability_ramp.cell_evaluation_failed"},{"type":"literal","value":"deliverability_ramp.cell_paused"},{"type":"literal","value":"deliverability_ramp.cell_resumed"},{"type":"literal","value":"deliverability_ramp.cell_pinned"},{"type":"literal","value":"deliverability_ramp.cell_unpinned"},{"type":"literal","value":"deliverability_ramp.force_advanced"},{"type":"literal","value":"deliverability_ramp.phase_reset"},{"type":"literal","value":"deliverability_ramp.preset_changed"},{"type":"literal","value":"deliverability_ramp.cell_enrolled"},{"type":"literal","value":"deliverability_ramp.phase_promoted"},{"type":"literal","value":"postbox_outbound_transition"},{"type":"literal","value":"postbox_draft.send_initiated"},{"type":"literal","value":"postbox_draft.sent"},{"type":"literal","value":"postbox_draft.cancelled"},{"type":"literal","value":"postbox_draft.from_revoked"},{"type":"literal","value":"postbox_draft.scan_blocked"},{"type":"literal","value":"postbox_draft.seal_consent_required"},{"type":"literal","value":"platform_admin.org_status_changed"},{"type":"literal","value":"platform_admin.tier_override"},{"type":"literal","value":"platform_admin.content_approved"},{"type":"literal","value":"platform_admin.content_rejected"},{"type":"literal","value":"platform_admin.waitlist_approved"},{"type":"literal","value":"platform_admin.waitlist_rejected"},{"type":"literal","value":"platform_admin.admin_added"},{"type":"literal","value":"platform_admin.admin_removed"},{"type":"literal","value":"platform_admin.bootstrap_granted"},{"type":"literal","value":"thread.reopened_by_inbound"},{"type":"literal","value":"thread.status_changed"},{"type":"literal","value":"thread.assigned"},{"type":"literal","value":"thread.unassigned"},{"type":"literal","value":"thread.draft_status_changed"},{"type":"literal","value":"thread.snoozed"},{"type":"literal","value":"thread.unsnoozed"},{"type":"literal","value":"inbound.received"},{"type":"literal","value":"inbound.quarantined"},{"type":"literal","value":"inbound.released"},{"type":"literal","value":"inbound.retried"},{"type":"literal","value":"inbound.draft_approved"},{"type":"literal","value":"inbound.draft_rejected"},{"type":"literal","value":"inbound.draft_edited"},{"type":"literal","value":"inbound.draft_saved"},{"type":"literal","value":"inbound.reply_sent"},{"type":"literal","value":"inbound.auto_send_cancelled"},{"type":"literal","value":"inbound.clarification_answered"},{"type":"literal","value":"inbound.update_dismissed"},{"type":"literal","value":"inbound.reply_requested"},{"type":"literal","value":"inbound.sender_blocked"},{"type":"literal","value":"agent.config_updated"},{"type":"literal","value":"agent.backfill_started"},{"type":"literal","value":"agent.backfill_cancelled"},{"type":"literal","value":"agent.kill_switch"},{"type":"literal","value":"agent.demotion_acknowledged"},{"type":"literal","value":"knowledge.edge_backfill_started"},{"type":"literal","value":"knowledge.edge_backfill_cancelled"},{"type":"literal","value":"plugin.action_completed"},{"type":"literal","value":"plugin.action_failed"},{"type":"literal","value":"plugin.action_denied"},{"type":"literal","value":"connected_app.registered"},{"type":"literal","value":"connected_app.enabled"},{"type":"literal","value":"connected_app.disabled"},{"type":"literal","value":"connected_app.revoked"},{"type":"literal","value":"connected_app.deleted"},{"type":"literal","value":"connected_app.secret_rotated"}]},"optional":false},
+			"action": {"fieldType":{"type":"union","value":[{"type":"literal","value":"campaign.created"},{"type":"literal","value":"campaign.updated"},{"type":"literal","value":"campaign.deleted"},{"type":"literal","value":"campaign.sent"},{"type":"literal","value":"campaign.scheduled"},{"type":"literal","value":"campaign.unscheduled"},{"type":"literal","value":"campaign.cancelled"},{"type":"literal","value":"campaign.send_started"},{"type":"literal","value":"campaign.content_blocked"},{"type":"literal","value":"campaign.flagged_for_review"},{"type":"literal","value":"campaign.review_approved"},{"type":"literal","value":"campaign.review_rejected"},{"type":"literal","value":"ab_test.enabled"},{"type":"literal","value":"ab_test.testing_started"},{"type":"literal","value":"ab_test.winner_declared"},{"type":"literal","value":"ab_test.disabled"},{"type":"literal","value":"contact.created"},{"type":"literal","value":"contact.updated"},{"type":"literal","value":"contact.deleted"},{"type":"literal","value":"contact.imported"},{"type":"literal","value":"contact.merged"},{"type":"literal","value":"contact.sunset_reengagement"},{"type":"literal","value":"contact.sunset_suppressed"},{"type":"literal","value":"contact.sunset_resumed"},{"type":"literal","value":"contact.sunset_restored"},{"type":"literal","value":"contact.sunset_exemption_changed"},{"type":"literal","value":"contact.sunset_policy_updated"},{"type":"literal","value":"contact.sunset_sweep_summary"},{"type":"literal","value":"contact.sunset_clock_confirmed"},{"type":"literal","value":"doi.admin_attested"},{"type":"literal","value":"topic.created"},{"type":"literal","value":"topic.updated"},{"type":"literal","value":"topic.deleted"},{"type":"literal","value":"email_template.created"},{"type":"literal","value":"email_template.updated"},{"type":"literal","value":"email_template.deleted"},{"type":"literal","value":"email_template.published"},{"type":"literal","value":"email_template.unpublished"},{"type":"literal","value":"email_template.duplicated"},{"type":"literal","value":"transactional_email.created"},{"type":"literal","value":"transactional_email.updated"},{"type":"literal","value":"transactional_email.published"},{"type":"literal","value":"transactional_email.unpublished"},{"type":"literal","value":"transactional_email.flagged_for_review"},{"type":"literal","value":"transactional_email.approved"},{"type":"literal","value":"transactional_email.rejected"},{"type":"literal","value":"transactional_email.duplicated"},{"type":"literal","value":"transactional_email.deleted"},{"type":"literal","value":"email_block.created"},{"type":"literal","value":"email_block.updated"},{"type":"literal","value":"email_block.duplicated"},{"type":"literal","value":"email_block.deleted"},{"type":"literal","value":"email_block.rerender_failed"},{"type":"literal","value":"automation.created"},{"type":"literal","value":"automation.updated"},{"type":"literal","value":"automation.deleted"},{"type":"literal","value":"automation.activated"},{"type":"literal","value":"automation.paused"},{"type":"literal","value":"automation.resumed"},{"type":"literal","value":"automation.reverted_to_draft"},{"type":"literal","value":"settings.updated"},{"type":"literal","value":"ai_provider_config.updated"},{"type":"literal","value":"team_member.invited"},{"type":"literal","value":"team_member.removed"},{"type":"literal","value":"team_member.role_changed"},{"type":"literal","value":"team_member.email_verified"},{"type":"literal","value":"team_member.verification_resent"},{"type":"literal","value":"api_key.created"},{"type":"literal","value":"api_key.revoked"},{"type":"literal","value":"webhook.created"},{"type":"literal","value":"webhook.updated"},{"type":"literal","value":"webhook.secret_rotated"},{"type":"literal","value":"webhook.deleted"},{"type":"literal","value":"sending_domain.created"},{"type":"literal","value":"sending_domain.registered"},{"type":"literal","value":"sending_domain.registration_failed"},{"type":"literal","value":"sending_domain.verified"},{"type":"literal","value":"sending_domain.verification_failed"},{"type":"literal","value":"sending_domain.regenerated"},{"type":"literal","value":"sending_domain.dmarc_policy_changed"},{"type":"literal","value":"sending_domain.receiving_mode_changed"},{"type":"literal","value":"sending_domain.return_path_changed"},{"type":"literal","value":"sending_domain.dkim_rotated"},{"type":"literal","value":"sending_domain.deleted"},{"type":"literal","value":"seed_mailbox.rotation_reminder"},{"type":"literal","value":"seed_mailbox.rotation_acknowledged"},{"type":"literal","value":"seed_mailbox.disconnected"},{"type":"literal","value":"sending_domain.yahoo_cfl_changed"},{"type":"literal","value":"blocklist.added"},{"type":"literal","value":"blocklist.removed"},{"type":"literal","value":"blocklist.provider_suppressed"},{"type":"literal","value":"blocklist.provider_import_summary"},{"type":"literal","value":"segment.created"},{"type":"literal","value":"segment.updated"},{"type":"literal","value":"segment.deleted"},{"type":"literal","value":"abuse_status_changed"},{"type":"literal","value":"deliverability_ramp.decision_applied"},{"type":"literal","value":"deliverability_ramp.cell_evaluation_failed"},{"type":"literal","value":"deliverability_ramp.cell_paused"},{"type":"literal","value":"deliverability_ramp.cell_resumed"},{"type":"literal","value":"deliverability_ramp.cell_pinned"},{"type":"literal","value":"deliverability_ramp.cell_unpinned"},{"type":"literal","value":"deliverability_ramp.force_advanced"},{"type":"literal","value":"deliverability_ramp.phase_reset"},{"type":"literal","value":"deliverability_ramp.preset_changed"},{"type":"literal","value":"deliverability_ramp.cell_enrolled"},{"type":"literal","value":"deliverability_ramp.phase_promoted"},{"type":"literal","value":"postbox_outbound_transition"},{"type":"literal","value":"postbox_draft.send_initiated"},{"type":"literal","value":"postbox_draft.sent"},{"type":"literal","value":"postbox_draft.cancelled"},{"type":"literal","value":"postbox_draft.from_revoked"},{"type":"literal","value":"postbox_draft.scan_blocked"},{"type":"literal","value":"postbox_draft.seal_consent_required"},{"type":"literal","value":"platform_admin.org_status_changed"},{"type":"literal","value":"platform_admin.tier_override"},{"type":"literal","value":"platform_admin.content_approved"},{"type":"literal","value":"platform_admin.content_rejected"},{"type":"literal","value":"platform_admin.waitlist_approved"},{"type":"literal","value":"platform_admin.waitlist_rejected"},{"type":"literal","value":"platform_admin.admin_added"},{"type":"literal","value":"platform_admin.admin_removed"},{"type":"literal","value":"platform_admin.bootstrap_granted"},{"type":"literal","value":"thread.reopened_by_inbound"},{"type":"literal","value":"thread.status_changed"},{"type":"literal","value":"thread.assigned"},{"type":"literal","value":"thread.unassigned"},{"type":"literal","value":"thread.draft_status_changed"},{"type":"literal","value":"thread.snoozed"},{"type":"literal","value":"thread.unsnoozed"},{"type":"literal","value":"inbound.received"},{"type":"literal","value":"inbound.quarantined"},{"type":"literal","value":"inbound.released"},{"type":"literal","value":"inbound.retried"},{"type":"literal","value":"inbound.draft_approved"},{"type":"literal","value":"inbound.draft_rejected"},{"type":"literal","value":"inbound.draft_edited"},{"type":"literal","value":"inbound.draft_saved"},{"type":"literal","value":"inbound.reply_sent"},{"type":"literal","value":"inbound.auto_send_cancelled"},{"type":"literal","value":"inbound.clarification_answered"},{"type":"literal","value":"inbound.update_dismissed"},{"type":"literal","value":"inbound.reply_requested"},{"type":"literal","value":"inbound.reply_taken_over"},{"type":"literal","value":"inbound.follow_up_sent"},{"type":"literal","value":"inbound.follow_up_cancelled"},{"type":"literal","value":"inbound.sender_blocked"},{"type":"literal","value":"agent.config_updated"},{"type":"literal","value":"agent.backfill_started"},{"type":"literal","value":"agent.backfill_cancelled"},{"type":"literal","value":"agent.kill_switch"},{"type":"literal","value":"agent.demotion_acknowledged"},{"type":"literal","value":"knowledge.edge_backfill_started"},{"type":"literal","value":"knowledge.edge_backfill_cancelled"},{"type":"literal","value":"plugin.action_completed"},{"type":"literal","value":"plugin.action_failed"},{"type":"literal","value":"plugin.action_denied"},{"type":"literal","value":"connected_app.registered"},{"type":"literal","value":"connected_app.enabled"},{"type":"literal","value":"connected_app.disabled"},{"type":"literal","value":"connected_app.revoked"},{"type":"literal","value":"connected_app.deleted"},{"type":"literal","value":"connected_app.secret_rotated"}]},"optional":false},
 			"createdAt": {"fieldType":{"type":"number"},"optional":false},
 			"details": {"fieldType":{"type":"record","keys":{"type":"string"},"values":{"fieldType":{"type":"union","value":[{"type":"string"},{"type":"number"},{"type":"boolean"},{"type":"null"}]},"optional":false}},"optional":true},
 			"detailsBlob": {"fieldType":{"type":"string"},"optional":true},
@@ -240,6 +240,7 @@
 			"delayUntil": {"fieldType":{"type":"number"},"optional":true},
 			"emailSendId": {"fieldType":{"type":"string"},"optional":true},
 			"errorMessage": {"fieldType":{"type":"string"},"optional":true},
+			"leaseExpiresAt": {"fieldType":{"type":"number"},"optional":true},
 			"retryCount": {"fieldType":{"type":"number"},"optional":true},
 			"scheduledAt": {"fieldType":{"type":"number"},"optional":false},
 			"startedAt": {"fieldType":{"type":"number"},"optional":true},
@@ -467,9 +468,11 @@
 			"kind": {"fieldType":{"type":"union","value":[{"type":"literal","value":"channel"},{"type":"literal","value":"dm"}]},"optional":false},
 			"lastMessageAt": {"fieldType":{"type":"number"},"optional":false},
 			"linkedInboxThreadId": {"fieldType":{"type":"id","tableName":"conversationThreads"},"optional":true},
+			"linkedMailThreadId": {"fieldType":{"type":"id","tableName":"mailThreads"},"optional":true},
 			"messageCount": {"fieldType":{"type":"number"},"optional":false},
 			"name": {"fieldType":{"type":"string"},"optional":false},
 			"normalizedName": {"fieldType":{"type":"string"},"optional":false},
+			"purpose": {"fieldType":{"type":"literal","value":"mail_thread_discussion"},"optional":true},
 			"updatedAt": {"fieldType":{"type":"number"},"optional":false},
 			"visibility": {"fieldType":{"type":"union","value":[{"type":"literal","value":"public"},{"type":"literal","value":"private"}]},"optional":false}
 		}},
@@ -541,6 +544,20 @@
 			"contactId": {"fieldType":{"type":"id","tableName":"contacts"},"optional":false},
 			"metadata": {"fieldType":{"type":"object","value":{"campaignId":{"fieldType":{"type":"string"},"optional":true},"transactionalEmailId":{"fieldType":{"type":"string"},"optional":true},"emailSubject":{"fieldType":{"type":"string"},"optional":true},"emailType":{"fieldType":{"type":"string"},"optional":true},"linkUrl":{"fieldType":{"type":"string"},"optional":true},"bounceType":{"fieldType":{"type":"string"},"optional":true},"errorMessage":{"fieldType":{"type":"string"},"optional":true},"topicId":{"fieldType":{"type":"string"},"optional":true},"topicName":{"fieldType":{"type":"string"},"optional":true},"reason":{"fieldType":{"type":"string"},"optional":true},"propertyKey":{"fieldType":{"type":"string"},"optional":true},"oldValue":{"fieldType":{"type":"string"},"optional":true},"newValue":{"fieldType":{"type":"string"},"optional":true},"source":{"fieldType":{"type":"string"},"optional":true},"attestSource":{"fieldType":{"type":"string"},"optional":true}}},"optional":true},
 			"occurredAt": {"fieldType":{"type":"number"},"optional":false}
+		}},
+		"contactErasureJobs": {"type": "object", "value": {
+			"attempts": {"fieldType":{"type":"number"},"optional":false},
+			"contactId": {"fieldType":{"type":"id","tableName":"contacts"},"optional":false},
+			"createdAt": {"fieldType":{"type":"number"},"optional":false},
+			"cursor": {"fieldType":{"type":"string"},"optional":true},
+			"lastError": {"fieldType":{"type":"string"},"optional":true},
+			"lastErrorAt": {"fieldType":{"type":"number"},"optional":true},
+			"phase": {"fieldType":{"type":"union","value":[{"type":"literal","value":"clarificationMemory"},{"type":"literal","value":"contactTopics"},{"type":"literal","value":"contactPropertyValues"},{"type":"literal","value":"contactActivities"},{"type":"literal","value":"contactIdentities"},{"type":"literal","value":"relationshipsFrom"},{"type":"literal","value":"relationshipsTo"},{"type":"literal","value":"automationRuns"},{"type":"literal","value":"emailSends"},{"type":"literal","value":"transactionalSends"},{"type":"literal","value":"conversationThreads"},{"type":"literal","value":"unifiedMessages"},{"type":"literal","value":"inboundMessages"},{"type":"literal","value":"formSubmissions"},{"type":"literal","value":"knowledge"},{"type":"literal","value":"semanticFiles"}]},"optional":false},
+			"reason": {"fieldType":{"type":"union","value":[{"type":"literal","value":"retention"},{"type":"literal","value":"api_delete"}]},"optional":false},
+			"rowsProcessed": {"fieldType":{"type":"number"},"optional":false},
+			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"running"},{"type":"literal","value":"retrying"},{"type":"literal","value":"failed"}]},"optional":false},
+			"transactions": {"fieldType":{"type":"number"},"optional":false},
+			"updatedAt": {"fieldType":{"type":"number"},"optional":false}
 		}},
 		"contactIdentities": {"type": "object", "value": {
 			"channel": {"fieldType":{"type":"string"},"optional":false},
@@ -889,6 +906,7 @@
 		"emailTemplates": {"type": "object", "value": {
 			"content": {"fieldType":{"type":"string"},"optional":false},
 			"contentBlockVersion": {"fieldType":{"type":"number"},"optional":true},
+			"contentRevision": {"fieldType":{"type":"number"},"optional":true},
 			"createdAt": {"fieldType":{"type":"number"},"optional":false},
 			"defaultLanguage": {"fieldType":{"type":"string"},"optional":true},
 			"htmlContent": {"fieldType":{"type":"string"},"optional":true},
@@ -1086,6 +1104,7 @@
 			"isRawRetained": {"fieldType":{"type":"literal","value":true},"optional":true},
 			"isSealed": {"fieldType":{"type":"boolean"},"optional":true},
 			"isSignatureValid": {"fieldType":{"type":"boolean"},"optional":true},
+			"manualTakeoverAt": {"fieldType":{"type":"number"},"optional":true},
 			"messageId": {"fieldType":{"type":"string"},"optional":false},
 			"pendingAutoSend": {"fieldType":{"type":"object","value":{"scheduledFnId":{"fieldType":{"type":"id","tableName":"_scheduled_functions"},"optional":false},"sendAt":{"fieldType":{"type":"number"},"optional":false},"scheduledAt":{"fieldType":{"type":"number"},"optional":false}}},"optional":true},
 			"pendingClarification": {"fieldType":{"type":"object","value":{"questions":{"fieldType":{"type":"array","value":{"type":"object","value":{"id":{"fieldType":{"type":"string"},"optional":false},"slotType":{"fieldType":{"type":"string"},"optional":false},"text":{"fieldType":{"type":"string"},"optional":false},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true},"translations":{"fieldType":{"type":"array","value":{"type":"object","value":{"locale":{"fieldType":{"type":"string"},"optional":false},"text":{"fieldType":{"type":"string"},"optional":false},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true}}}},"optional":true},"answer":{"fieldType":{"type":"object","value":{"value":{"fieldType":{"type":"string"},"optional":false},"source":{"fieldType":{"type":"union","value":[{"type":"literal","value":"user"},{"type":"literal","value":"memory"}]},"optional":false},"at":{"fieldType":{"type":"number"},"optional":false}}},"optional":true}}}},"optional":false},"askedAt":{"fieldType":{"type":"number"},"optional":false},"answeredAt":{"fieldType":{"type":"number"},"optional":true}}},"optional":true},
@@ -1114,6 +1133,20 @@
 			"subject": {"fieldType":{"type":"string"},"optional":false},
 			"threadId": {"fieldType":{"type":"id","tableName":"conversationThreads"},"optional":false},
 			"userId": {"fieldType":{"type":"string"},"optional":false}
+		}},
+		"inboxFollowUps": {"type": "object", "value": {
+			"body": {"fieldType":{"type":"string"},"optional":false},
+			"createdAt": {"fieldType":{"type":"number"},"optional":false},
+			"createdBy": {"fieldType":{"type":"string"},"optional":false},
+			"errorMessage": {"fieldType":{"type":"string"},"optional":true},
+			"inReplyToMessageId": {"fieldType":{"type":"id","tableName":"inboundMessages"},"optional":false},
+			"scheduledFnId": {"fieldType":{"type":"id","tableName":"_scheduled_functions"},"optional":true},
+			"sendAt": {"fieldType":{"type":"number"},"optional":false},
+			"sendId": {"fieldType":{"type":"id","tableName":"transactionalSends"},"optional":true},
+			"sentAt": {"fieldType":{"type":"number"},"optional":true},
+			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"scheduled"},{"type":"literal","value":"sending"},{"type":"literal","value":"sent"},{"type":"literal","value":"failed"},{"type":"literal","value":"cancelled"}]},"optional":false},
+			"subject": {"fieldType":{"type":"string"},"optional":false},
+			"threadId": {"fieldType":{"type":"id","tableName":"conversationThreads"},"optional":false}
 		}},
 		"instanceSettings": {"type": "object", "value": {
 			"abuseStatus": {"fieldType":{"type":"union","value":[{"type":"literal","value":"clean"},{"type":"literal","value":"warned"},{"type":"literal","value":"suspended"},{"type":"literal","value":"banned"}]},"optional":true},
@@ -1634,6 +1667,13 @@
 			"updatedAt": {"fieldType":{"type":"number"},"optional":false},
 			"variables": {"fieldType":{"type":"array","value":{"type":"object","value":{"token":{"fieldType":{"type":"string"},"optional":false},"source":{"fieldType":{"type":"union","value":[{"type":"literal","value":"recipientFirstName"},{"type":"literal","value":"recipientFullName"},{"type":"literal","value":"recipientCompany"},{"type":"literal","value":"senderName"},{"type":"literal","value":"senderEmail"},{"type":"literal","value":"date"},{"type":"literal","value":"prompt"}]},"optional":false},"label":{"fieldType":{"type":"string"},"optional":true}}}},"optional":true}
 		}},
+		"mailThreadVisits": {"type": "object", "value": {
+			"mailboxId": {"fieldType":{"type":"id","tableName":"mailboxes"},"optional":false},
+			"messageCount": {"fieldType":{"type":"number"},"optional":false},
+			"threadId": {"fieldType":{"type":"id","tableName":"mailThreads"},"optional":false},
+			"userId": {"fieldType":{"type":"string"},"optional":false},
+			"visitedAt": {"fieldType":{"type":"number"},"optional":false}
+		}},
 		"mailThreads": {"type": "object", "value": {
 			"category": {"fieldType":{"type":"object","value":{"label":{"fieldType":{"type":"union","value":[{"type":"literal","value":"person"},{"type":"literal","value":"newsletter"},{"type":"literal","value":"notification"},{"type":"literal","value":"receipt"},{"type":"literal","value":"promotion"},{"type":"literal","value":"spam"},{"type":"literal","value":"other"}]},"optional":false},"source":{"fieldType":{"type":"union","value":[{"type":"literal","value":"heuristic"},{"type":"literal","value":"llm"},{"type":"literal","value":"user"}]},"optional":false},"classifiedAt":{"fieldType":{"type":"number"},"optional":false}}},"optional":true},
 			"createdAt": {"fieldType":{"type":"number"},"optional":false},
@@ -1798,6 +1838,7 @@
 		}},
 		"mailboxes": {"type": "object", "value": {
 			"address": {"fieldType":{"type":"string"},"optional":false},
+			"colorSlot": {"fieldType":{"type":"number"},"optional":true},
 			"createdAt": {"fieldType":{"type":"number"},"optional":false},
 			"displayName": {"fieldType":{"type":"string"},"optional":true},
 			"domain": {"fieldType":{"type":"string"},"optional":false},
@@ -2268,6 +2309,21 @@
 			"reportId": {"fieldType":{"type":"string"},"optional":false},
 			"successCount": {"fieldType":{"type":"number"},"optional":false}
 		}},
+		"todayStates": {"type": "object", "value": {
+			"organizationId": {"fieldType":{"type":"string"},"optional":false},
+			"previousSeenAt": {"fieldType":{"type":"number"},"optional":true},
+			"seenAt": {"fieldType":{"type":"number"},"optional":false},
+			"updatedAt": {"fieldType":{"type":"number"},"optional":false},
+			"userId": {"fieldType":{"type":"string"},"optional":false}
+		}},
+		"todayThreadSummaries": {"type": "object", "value": {
+			"generatedAt": {"fieldType":{"type":"number"},"optional":false},
+			"locale": {"fieldType":{"type":"string"},"optional":false},
+			"messageCount": {"fieldType":{"type":"number"},"optional":false},
+			"sentence": {"fieldType":{"type":"string"},"optional":false},
+			"sinceCount": {"fieldType":{"type":"number"},"optional":false},
+			"threadId": {"fieldType":{"type":"id","tableName":"mailThreads"},"optional":false}
+		}},
 		"topics": {"type": "object", "value": {
 			"cachedCountUpdatedAt": {"fieldType":{"type":"number"},"optional":true},
 			"cachedMemberCount": {"fieldType":{"type":"number"},"optional":true},
@@ -2292,6 +2348,7 @@
 			"attachmentsVersion": {"fieldType":{"type":"number"},"optional":true},
 			"content": {"fieldType":{"type":"string"},"optional":false},
 			"contentBlockVersion": {"fieldType":{"type":"number"},"optional":true},
+			"contentRevision": {"fieldType":{"type":"number"},"optional":true},
 			"createdAt": {"fieldType":{"type":"number"},"optional":false},
 			"dataVariablesSchema": {"fieldType":{"type":"record","keys":{"type":"string"},"values":{"fieldType":{"type":"union","value":[{"type":"literal","value":"string"},{"type":"literal","value":"number"},{"type":"literal","value":"boolean"},{"type":"literal","value":"date"}]},"optional":false}},"optional":true},
 			"defaultLanguage": {"fieldType":{"type":"string"},"optional":true},
@@ -2319,6 +2376,7 @@
 		"transactionalSends": {"type": "object", "value": {
 			"attachmentStorageIds": {"fieldType":{"type":"array","value":{"type":"string"}},"optional":true},
 			"automationId": {"fieldType":{"type":"id","tableName":"automations"},"optional":true},
+			"automationStepRunId": {"fieldType":{"type":"id","tableName":"automationStepRuns"},"optional":true},
 			"bounceType": {"fieldType":{"type":"union","value":[{"type":"literal","value":"hard"},{"type":"literal","value":"soft"}]},"optional":true},
 			"bouncedAt": {"fieldType":{"type":"number"},"optional":true},
 			"clickedAt": {"fieldType":{"type":"number"},"optional":true},
@@ -2335,8 +2393,9 @@
 			"errorCode": {"fieldType":{"type":"string"},"optional":true},
 			"errorMessage": {"fieldType":{"type":"string"},"optional":true},
 			"failedAt": {"fieldType":{"type":"number"},"optional":true},
+			"followUpId": {"fieldType":{"type":"id","tableName":"inboxFollowUps"},"optional":true},
 			"inboundMessageId": {"fieldType":{"type":"id","tableName":"inboundMessages"},"optional":true},
-			"kind": {"fieldType":{"type":"union","value":[{"type":"literal","value":"transactional"},{"type":"literal","value":"automation"},{"type":"literal","value":"agent_reply"},{"type":"literal","value":"test"}]},"optional":false},
+			"kind": {"fieldType":{"type":"union","value":[{"type":"literal","value":"transactional"},{"type":"literal","value":"automation"},{"type":"literal","value":"agent_reply"},{"type":"literal","value":"team_reply"},{"type":"literal","value":"test"}]},"optional":false},
 			"language": {"fieldType":{"type":"string"},"optional":true},
 			"mtaRoutingReentryAttempt": {"fieldType":{"type":"number"},"optional":true},
 			"openCount": {"fieldType":{"type":"number"},"optional":true},
@@ -2442,7 +2501,9 @@
 			"totalSentToday": {"fieldType":{"type":"number"},"optional":false}
 		}},
 		"webhookDeliveryLogs": {"type": "object", "value": {
+			"attemptClaimedAt": {"fieldType":{"type":"number"},"optional":true},
 			"attemptNumber": {"fieldType":{"type":"number"},"optional":false},
+			"attemptSeq": {"fieldType":{"type":"number"},"optional":true},
 			"attemptedAt": {"fieldType":{"type":"number"},"optional":true},
 			"completedAt": {"fieldType":{"type":"number"},"optional":true},
 			"durationMs": {"fieldType":{"type":"number"},"optional":true},
@@ -2453,8 +2514,11 @@
 			"nextRetryAt": {"fieldType":{"type":"number"},"optional":true},
 			"payload": {"fieldType":{"type":"object","value":{"event":{"fieldType":{"type":"union","value":[{"type":"literal","value":"email.sent"},{"type":"literal","value":"email.delivered"},{"type":"literal","value":"email.opened"},{"type":"literal","value":"email.clicked"},{"type":"literal","value":"email.bounced"},{"type":"literal","value":"email.complained"},{"type":"literal","value":"contact.created"},{"type":"literal","value":"topic.unsubscribed"},{"type":"literal","value":"test"}]},"optional":false},"timestamp":{"fieldType":{"type":"string"},"optional":false},"data":{"fieldType":{"type":"record","keys":{"type":"string"},"values":{"fieldType":{"type":"union","value":[{"type":"string"},{"type":"number"},{"type":"boolean"},{"type":"null"}]},"optional":false}},"optional":false}}},"optional":false},
 			"payloadVersion": {"fieldType":{"type":"number"},"optional":true},
+			"recoverAfter": {"fieldType":{"type":"number"},"optional":true},
+			"recoveryCount": {"fieldType":{"type":"number"},"optional":true},
 			"responseBody": {"fieldType":{"type":"string"},"optional":true},
 			"scheduledAt": {"fieldType":{"type":"number"},"optional":false},
+			"scheduledFunctionId": {"fieldType":{"type":"id","tableName":"_scheduled_functions"},"optional":true},
 			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"pending"},{"type":"literal","value":"success"},{"type":"literal","value":"failed"},{"type":"literal","value":"retrying"}]},"optional":false},
 			"webhookId": {"fieldType":{"type":"id","tableName":"webhooks"},"optional":false}
 		}},
