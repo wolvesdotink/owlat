@@ -33,17 +33,24 @@ async function isPersonalAccount(
 }
 
 /**
- * Does this account hold a TEAM inbox's credentials? The GDPR paths ask this
- * rather than {@link isPersonalAccount}: they keep a team inbox's credential row
- * when its connecting member is erased or exported, and otherwise treat every
- * account the member connected as theirs, exactly as they treat mailboxes.
+ * Does this account belong to the ORG rather than to the member who connected
+ * it? True for a deliverability seed (`purpose: 'seed'`) and for any account
+ * whose mailbox is a team inbox or a seed.
+ *
+ * The GDPR paths ask this rather than {@link isPersonalAccount}, because they
+ * must keep treating an account as the member's own after its mailbox row is
+ * gone: member erasure deletes the personal mailbox before it reaches the
+ * credential rows, and a subject-access export still owes the member an
+ * account whose mailbox was purged. So only positive evidence of org ownership
+ * keeps a row out, and every other account the member connected is theirs.
  */
-export async function isTeamInboxAccount(
+export async function isOrgInfrastructureAccount(
 	ctx: QueryCtx | MutationCtx,
 	account: Doc<'externalMailAccounts'>
 ): Promise<boolean> {
+	if (account.purpose === 'seed') return true;
 	const mailbox = await ctx.db.get(account.mailboxId);
-	return mailbox !== null && mailboxScope(mailbox) === 'shared';
+	return mailbox !== null && mailboxScope(mailbox) !== 'personal';
 }
 
 /** The subset of `accounts` that are personal, in their original order. */

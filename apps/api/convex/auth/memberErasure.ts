@@ -13,7 +13,7 @@
  * single mutation's limits.
  *
  * Phases per hop:
- *   1. While the user has a mailbox: drain one batch of its mailMessages
+ *   1. While the user has a personal mailbox: drain one batch of its mailMessages
  *      (its `mailAttachments` index rows, then the up-to-three storage blobs
  *      per row, freed with the LAST row referencing them); once drained, delete
  *      the mailbox's children (folders/labels/filters/signatures/drafts incl.
@@ -41,7 +41,8 @@ import {
 } from '../delivery/checklistAlertRecipients';
 import { removeMessageAttachments } from '../mail/attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../mail/messagePurge';
-import { isTeamInboxAccount } from '../mail/external/personalAccount';
+import { isOrgInfrastructureAccount } from '../mail/external/personalAccount';
+import { isPersonalMailbox } from '../mail/permissions';
 
 const MESSAGE_BATCH = 100;
 const CHAT_PAGE = 200;
@@ -78,13 +79,19 @@ export const eraseMemberData = internalMutation({
 		// A `scope='shared'` team inbox is ORG INFRASTRUCTURE, not the member's
 		// personal data — even one they canonically own (`mailboxes.userId`) as the
 		// connecting custodian. Erasing the member must never hard-delete a team
-		// inbox and all its team mail; those are reassigned via `transferOwnership`,
-		// out-of-band from this job. Skip shared rows and drain only personal ones.
+		// inbox and all its team mail; an admin reassigns it via `transferOwnership`,
+		// out-of-band from this job. A `scope='seed'` deliverability seed is also
+		// kept: the admin who connected it is only its custodian, and the
+		// placement measurements that named it (`seedPlacementProbes`) must keep
+		// resolving. `transferOwnership` is gated to `scope='shared'`, so a seed
+		// is not reassigned: it stays org-owned and is retired via `disconnectSeed`,
+		// which retires it softly instead of deleting it. Drain only personal
+		// mailboxes.
 		const ownedMailboxes = await ctx.db
 			.query('mailboxes')
 			.withIndex('by_user', (q) => q.eq('userId', args.authUserId))
-			.collect(); // bounded: a user's own mailboxes (personal + any team inboxes they created)
-		const mailbox = ownedMailboxes.find((m) => m.scope !== 'shared') ?? null;
+			.collect(); // bounded: a user's own mailboxes (personal + any team inboxes or seeds they connected)
+		const mailbox = ownedMailboxes.find(isPersonalMailbox) ?? null;
 		if (mailbox) {
 			const messages = await ctx.db
 				.query('mailMessages')
@@ -204,14 +211,16 @@ export const eraseMemberData = internalMutation({
 		// The external account behind a team inbox holds the TEAM's IMAP/SMTP
 		// credentials (the member is only its custodian on `userId`); deleting it
 		// would silently brick the org's team inbox — `mailboxes.externalAccountId`
-		// dangles and sync stops with no signal. Erase only PERSONAL accounts; the
-		// shared credential row survives with its preserved mailbox for reassignment.
+		// dangles and sync stops with no signal. A seed account is org
+		// infrastructure too: the org's placement probes point at it. Erase only
+		// PERSONAL accounts; team-inbox and seed credential rows survive with their
+		// preserved mailboxes.
 		const externalAccounts = await ctx.db
 			.query('externalMailAccounts')
 			.withIndex('by_user', (q) => q.eq('userId', args.authUserId))
 			.collect(); // bounded: a user connects a handful of accounts
 		for (const account of externalAccounts) {
-			if (await isTeamInboxAccount(ctx, account)) continue; // org infrastructure — not personal data
+			if (await isOrgInfrastructureAccount(ctx, account)) continue; // org infrastructure — not personal data
 			const syncRows = await ctx.db
 				.query('externalMailFolderSync')
 				.withIndex('by_account', (q) => q.eq('accountId', account._id))
@@ -287,10 +296,12 @@ export const eraseMemberData = internalMutation({
 
 		// Drop this user's memberships on OTHER users' shared mailboxes (their own
 		// personal mailbox's rows went in phase 1 alongside the mailbox). EXCEPTION:
-		// keep the `owner` row on a team inbox they still canonically own — that
-		// inbox is org infrastructure we deliberately preserved (phase 1/2), and
+		// keep the `owner` row on a team inbox or seed they still canonically own —
+		// that mailbox is org infrastructure we deliberately preserved (phase 1/2), and
 		// dropping its owner row would orphan it (no owner in `listShared`, no
-		// reassignment anchor). An admin reassigns it via `transferOwnership`.
+		// reassignment anchor). An admin reassigns a team inbox via
+		// `transferOwnership`; a seed stays org-owned and is retired via
+		// `disconnectSeed` (`transferOwnership` is gated to `scope='shared'`).
 		const sharedMemberships = await ctx.db
 			.query('mailboxMembers')
 			.withIndex('by_user', (q) => q.eq('authUserId', args.authUserId))
@@ -298,7 +309,7 @@ export const eraseMemberData = internalMutation({
 		for (const row of sharedMemberships) {
 			if (row.role === 'owner') {
 				const owned = await ctx.db.get(row.mailboxId);
-				if (owned && owned.scope === 'shared' && owned.userId === args.authUserId) continue;
+				if (owned && !isPersonalMailbox(owned) && owned.userId === args.authUserId) continue;
 			}
 			await ctx.db.delete(row._id);
 		}

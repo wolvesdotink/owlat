@@ -325,3 +325,95 @@ describe('the seed set is bounded at connect time, never silently truncated', ()
 		expect(measured.every((view) => view.address.includes('live.'))).toBe(true);
 	});
 });
+
+// REGRESSION (#821). Member erasure used to read `scope !== 'shared'` as
+// "personal", so erasing a non-owner admin hard-deleted every seed they had
+// connected: the seed mailbox in phase 1 and its credential row in phase 2,
+// leaving the org's placement probes pointing at a deleted account.
+describe('member erasure keeps the seeds an admin connected', () => {
+	it('keeps the seed mailboxes, accounts and owner rows, and still erases personal mail', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		setSession('admin');
+		await connectSeed(t, 'owlat.seed.01@gmail.example');
+		await connectSeed(t, 'owlat.seed.02@gmail.example');
+
+		const { personalMailboxId, personalAccountId, requestId } = await t.run(async (ctx) => {
+			const now = Date.now();
+			const personalMailboxId = await ctx.db.insert('mailboxes', {
+				userId: 'admin-user',
+				organizationId: 'org-1',
+				address: 'admin@owlat.example',
+				domain: 'owlat.example',
+				kind: 'external' as const,
+				status: 'active' as const,
+				usedBytes: 0,
+				uidValidity: 1,
+				createdAt: now,
+				updatedAt: now,
+			});
+			const personalAccountId = await ctx.db.insert('externalMailAccounts', {
+				userId: 'admin-user',
+				organizationId: 'org-1',
+				mailboxId: personalMailboxId,
+				...CREDS,
+				status: 'connected' as const,
+				createdAt: now,
+				updatedAt: now,
+			});
+			const userProfileId = await ctx.db.insert('userProfiles', {
+				authUserId: 'admin-user',
+				email: 'admin@owlat.example',
+				createdAt: now,
+				updatedAt: now,
+			});
+			const requestId = await ctx.db.insert('accountDeletionRequests', {
+				userProfileId,
+				email: 'admin@owlat.example',
+				requestedAt: now,
+				scheduledForDeletion: now,
+				cancellationToken: 'tok',
+				status: 'pending',
+				createdAt: now,
+			});
+			return { personalMailboxId, personalAccountId, requestId };
+		});
+
+		vi.useFakeTimers();
+		try {
+			await t.mutation(internal.auth.memberErasure.eraseMemberData, {
+				authUserId: 'admin-user',
+				requestId,
+			});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
+
+		await t.run(async (ctx) => {
+			// The member's own mailbox and credentials are gone...
+			expect(await ctx.db.get(personalMailboxId)).toBeNull();
+			expect(await ctx.db.get(personalAccountId)).toBeNull();
+			// ...and both seeds survive intact, owner rows included: they are the
+			// org's measuring instruments, not the member's data.
+			const seedMailboxes = await ctx.db.query('mailboxes').collect();
+			expect(seedMailboxes.map((m) => m.scope)).toEqual(['seed', 'seed']);
+			const seedAccounts = await ctx.db.query('externalMailAccounts').collect();
+			expect(seedAccounts).toHaveLength(2);
+			expect(seedAccounts.every((a) => a.purpose === 'seed')).toBe(true);
+			expect(seedAccounts.map((a) => a.mailboxId).sort()).toEqual(
+				seedMailboxes.map((m) => m._id).sort()
+			);
+			for (const mailbox of seedMailboxes) {
+				const owner = await ctx.db
+					.query('mailboxMembers')
+					.withIndex('by_mailbox_user', (q) =>
+						q.eq('mailboxId', mailbox._id).eq('authUserId', 'admin-user')
+					)
+					.unique();
+				expect(owner?.role).toBe('owner');
+			}
+			expect((await ctx.db.get(requestId))?.status).toBe('completed');
+		});
+	});
+});

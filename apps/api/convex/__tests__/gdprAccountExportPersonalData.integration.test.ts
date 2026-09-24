@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { isSealedBytesAtRest } from '../lib/atRestBodies';
 import { sealBodyAtWrite } from '../lib/messageBody';
@@ -385,5 +386,86 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 		const res = await exportAllUserData(t, 'auth-user-1');
 
 		expect(res.personalData.deliverabilityAlertRecipientStates).toHaveLength(101);
+	});
+
+	// REGRESSION (#821). A deliverability seed and a team inbox both name the
+	// admin who connected them as `userId`, but both are org infrastructure. The
+	// export used to list the seed mailbox as personal and then fail on its
+	// messages page (the per-mailbox reads refuse a seed), and the manifest
+	// counted account rows the export never wrote.
+	it('leaves seed and team-inbox rows out, and the manifest counts match the export', async () => {
+		const t = newHarness();
+		await seedProfile(t, 'auth-user-1', 'me@owlat.example');
+
+		const personalMailboxId = await t.run(async (ctx) => {
+			const now = Date.now();
+			const account = {
+				userId: 'auth-user-1',
+				organizationId: 'org-x',
+				imapHost: 'imap.owlat.example',
+				imapPort: 993,
+				isImapSecure: true,
+				smtpHost: 'smtp.owlat.example',
+				smtpPort: 465,
+				isSmtpSecure: true,
+				authMethod: 'password' as const,
+				secretCiphertext: 'ct',
+				secretIv: 'iv',
+				secretAuthTag: 'tag',
+				secretEnvelopeVersion: 1,
+				status: 'connected' as const,
+				createdAt: now,
+				updatedAt: now,
+			};
+			const insertMailbox = async (address: string, scope?: 'shared' | 'seed') =>
+				await ctx.db.insert('mailboxes', {
+					userId: 'auth-user-1',
+					organizationId: 'org-x',
+					address,
+					domain: address.split('@')[1]!,
+					kind: 'external' as const,
+					...(scope ? { scope } : {}),
+					status: 'active' as const,
+					usedBytes: 0,
+					uidValidity: now,
+					createdAt: now,
+					updatedAt: now,
+				});
+
+			const personalMailboxId = await insertMailbox('me@owlat.example');
+			await ctx.db.insert('externalMailAccounts', {
+				...account,
+				mailboxId: personalMailboxId,
+				imapUsername: 'me@owlat.example',
+			});
+			const teamMailboxId = await insertMailbox('team@owlat.example', 'shared');
+			await ctx.db.insert('externalMailAccounts', {
+				...account,
+				mailboxId: teamMailboxId,
+				imapUsername: 'team@owlat.example',
+			});
+			const seedMailboxId = await insertMailbox('owlat.seed.01@gmail.example', 'seed');
+			await ctx.db.insert('externalMailAccounts', {
+				...account,
+				mailboxId: seedMailboxId,
+				imapUsername: 'owlat.seed.01@gmail.example',
+				purpose: 'seed' as const,
+				seedProvider: 'gmail' as const,
+			});
+			return personalMailboxId;
+		});
+
+		const res = await exportAllUserData(t, 'auth-user-1');
+
+		expect(res.personalData.mailboxes.map((m) => m._id)).toEqual([personalMailboxId]);
+		expect(res.personalData.externalMailAccounts.map((a) => a['imapUsername'])).toEqual([
+			'me@owlat.example',
+		]);
+
+		const plan = await t.action(api.auth.accountExport.getExportPlan, { userId: 'auth-user-1' });
+		const count = (resource: string) =>
+			plan.personal.find((entry) => entry.resource === resource)?.count;
+		expect(count('mailboxes')).toBe(res.personalData.mailboxes.length);
+		expect(count('externalMailAccounts')).toBe(res.personalData.externalMailAccounts.length);
 	});
 });
