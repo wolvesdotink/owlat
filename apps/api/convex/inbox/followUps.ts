@@ -91,6 +91,10 @@ const REFUSAL_MESSAGE: Record<
 	(detail: string | undefined) => string
 > = {
 	recipient_blocked: () => 'The recipient is on the blocklist',
+	// Only marketing-scope kinds are gated on contact eligibility, and a
+	// follow-up is a transactional `team_reply`, so this stays unreachable
+	// unless that scope changes.
+	recipient_ineligible: () => 'The recipient can no longer receive email from this workspace',
 	no_delivery_provider: (detail) => detail ?? 'No delivery provider configured',
 	abuse_blocked: () => 'Sending is disabled while this instance is suspended.',
 };
