@@ -38,8 +38,8 @@ async function callRoute(): Promise<RouteResult> {
 	return handler({});
 }
 
-function updaterResponse(ok: boolean, payload: unknown) {
-	return { ok, json: async () => payload };
+function updaterResponse(ok: boolean, payload: unknown, status = ok ? 200 : 500) {
+	return { ok, status, json: async () => payload };
 }
 
 beforeEach(() => {
@@ -128,6 +128,25 @@ describe('POST /api/system/apply-profiles — updater proxying', () => {
 		await expect(callRoute()).rejects.toMatchObject({
 			statusCode: 502,
 			message: 'docker compose up failed',
+		});
+	});
+
+	it('passes on a 409 while another rollout holds the updater, not as unreachable', async () => {
+		callUpdaterMock.mockResolvedValue(
+			updaterResponse(
+				false,
+				{
+					error:
+						'The updater is still applying an update (started 40s ago). Try again once it has finished.',
+					inProgress: 'update',
+				},
+				409
+			)
+		);
+
+		await expect(callRoute()).rejects.toMatchObject({
+			statusCode: 409,
+			message: expect.stringContaining('still applying an update'),
 		});
 	});
 

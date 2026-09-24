@@ -2251,6 +2251,7 @@
 				"apply": "Migrationsvoreinstellung anwenden",
 				"applyRouteOperation": "Migrationsroute anwenden",
 				"applying": "Wird angewendet…",
+				"busy": "Der Updater wendet noch eine andere Änderung an, etwa ein Update. Es wurde nichts geändert; wenden Sie die Änderungen erneut an, sobald sie abgeschlossen ist.",
 				"bulletFallback": "Mailchimp Transactional wird für jeden davon das Zustellbarkeits-Fallback-Relay.",
 				"bulletPace": "Jeder Stream rampt im Tempo {pace} — kleinere Schritte, mehr saubere Zeitfenster pro Schritt. Sie können das später auf dem Bildschirm für die Ramp-Steuerung ändern.",
 				"bulletPaceName": "konservativ",

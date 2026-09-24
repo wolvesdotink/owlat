@@ -113,6 +113,7 @@ beforeEach(() => {
 	sync.isApplying.value = false;
 	sync.serviceResults.value = null;
 	sync.applyError.value = null;
+	sync.applyBusy.value = false;
 	sync.driftProbed.value = false;
 	liveFlags.value = {};
 	configStatus.value = {};
@@ -283,6 +284,27 @@ describe('Features page — banner apply and resolve', () => {
 		expect(fallbackEl.text()).toContain('updater sidecar unreachable');
 		expect(fallbackEl.text()).toContain('owlat feature');
 		expect(fallbackEl.text()).toContain('owlat restart');
+	});
+
+	it('says the updater is busy, without the CLI fallback, while another rollout holds it', async () => {
+		stubApplyFailure(
+			Object.assign(new Error('[POST] "/api/system/apply-profiles": 409 Conflict'), {
+				statusCode: 409,
+			})
+		);
+		const wrapper = mountFeatures();
+		await wrapper.find('[data-testid="feature-switch-mail.external"]').trigger('click');
+		await flushPromises();
+
+		await wrapper.find(applyButton).trigger('click');
+		await flushPromises();
+
+		// Still out of sync: nothing was applied.
+		expect(wrapper.find(banner).exists()).toBe(true);
+		expect(wrapper.find('[data-testid="profile-sync-busy"]').text()).toContain(
+			'still applying another change'
+		);
+		expect(wrapper.find(fallback).exists()).toBe(false);
 	});
 
 	it('a fresh profile-changing toggle invalidates stale apply results', async () => {
