@@ -2,10 +2,9 @@
 /**
  * TemplateHistoryPanel — restoring a snapshot from the preview.
  *
- * The preview modal deliberately renders above the email builder's own popovers
- * (z 10001), while the confirmation dialog only reaches the shared modal layer.
- * Opening the confirmation UNDER an open preview therefore reads as a dead
- * button, so the preview has to close as the confirmation opens — that ordering
+ * The preview and the confirmation dialog share the modal layer. Opening the
+ * confirmation over an open preview would stack two backdrops and two focus
+ * traps, so the preview has to close as the confirmation opens — that ordering
  * is what these tests pin.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';

@@ -16,8 +16,8 @@
  * a background re-render of the HTML) do not advance it, so they never make a
  * draft stale. A row that predates the field reads as revision 0.
  *
- * Contract relied on by the web editor (`useEditorDirtyTracking`): a guarded
- * write that lands stores exactly `expected + 1`.
+ * The editor `update` mutations return the revision they stored, so a client
+ * never has to infer where its own write landed.
  */
 
 import { throwConflict } from '../_utils/errors';
@@ -36,22 +36,40 @@ export function nextContentRevision(row: Revisioned): number {
 	return currentContentRevision(row) + 1;
 }
 
+/** Which write a stale revision refused; picks the copy the editor shows. */
+export type ContentRevisionGuardedWrite = 'save' | 'publish';
+
+const STALE_COPY: Record<ContentRevisionGuardedWrite, { message: string; messageKey: string }> = {
+	save: {
+		message:
+			'This email was changed somewhere else after you opened it, so your edits were not saved yet.',
+		messageKey: 'shared.useEmailEditorBridge.staleRevision',
+	},
+	publish: {
+		message:
+			'This email was changed somewhere else after you opened it, so it was not published. Check the latest version, then publish again.',
+		messageKey: 'shared.useEmailEditorBridge.stalePublish',
+	},
+};
+
 /**
  * Refuse a write built on an older revision. `expected` is optional so callers
  * that do not track revisions (API scripts, older clients) keep writing
  * unconditionally.
  */
-export function assertContentRevision(row: Revisioned, expected: number | undefined): void {
+export function assertContentRevision(
+	row: Revisioned,
+	expected: number | undefined,
+	write: ContentRevisionGuardedWrite = 'save'
+): void {
 	if (expected === undefined) return;
 	const current = currentContentRevision(row);
 	if (current === expected) return;
-	throwConflict(
-		'This email was changed somewhere else after you opened it, so your edits were not saved. Copy anything you want to keep, then reload the page to get the latest version.',
-		{
-			reason: 'stale_content_revision',
-			expectedRevision: expected,
-			currentRevision: current,
-			messageKey: 'shared.useEmailEditorBridge.staleRevision',
-		}
-	);
+	const copy = STALE_COPY[write];
+	throwConflict(copy.message, {
+		reason: 'stale_content_revision',
+		expectedRevision: expected,
+		currentRevision: current,
+		messageKey: copy.messageKey,
+	});
 }

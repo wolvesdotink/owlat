@@ -165,7 +165,12 @@ describe('useEmailEditorBridge save', () => {
 	}
 
 	beforeEach(() => {
-		vi.stubGlobal('useI18n', () => ({ t: (key: string) => key }));
+		vi.stubGlobal('useI18n', () => ({
+			t: (key: string) => key,
+			locale: ref('en'),
+			te: () => true,
+		}));
+		vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
 		vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn() }));
 		vi.stubGlobal('useUnsavedChanges', () => ({
 			showDialog: ref(false),

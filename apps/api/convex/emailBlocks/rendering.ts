@@ -18,10 +18,11 @@
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
 import { renderEmailHtml, renderPlainText } from '@owlat/email-renderer';
 import type { EmailTheme } from '@owlat/shared';
 import { parseContentBlocks } from './module';
+import type { RerenderPatchOutcome } from './renderingPool';
+import { currentContentRevision } from '../lib/contentRevision';
 import {
 	mergeTranslationIntoItem,
 	type BlockLikeItem,
@@ -128,6 +129,36 @@ export function rerenderRow(
 	return { html, htmlTranslations, plainTextContent };
 }
 
+/**
+ * How many times one job re-reads and re-renders a row that keeps moving under
+ * it before giving up and letting the workpool retry the whole job.
+ */
+export const MAX_RERENDER_ATTEMPTS = 3;
+
+/**
+ * Render one consumer row and patch it, guarded by the revision it was
+ * rendered from. The render happens outside any transaction, so a write can
+ * land between the read and the patch; the patch refuses to overwrite it. When
+ * the row moved but is still stale, render again from the current row. Throws
+ * once the row has moved on every attempt, so the workpool retries the job and,
+ * when its retries run out, records the failure on the row.
+ */
+export async function rerenderConsumerRow<Row extends RerenderableRow>(deps: {
+	load: () => Promise<Row | null>;
+	render: (row: Row) => ReturnType<typeof rerenderRow>;
+	patch: (row: Row, rendered: ReturnType<typeof rerenderRow>) => Promise<RerenderPatchOutcome>;
+}): Promise<RerenderPatchOutcome> {
+	for (let attempt = 0; attempt < MAX_RERENDER_ATTEMPTS; attempt++) {
+		const row = await deps.load();
+		if (!row) return 'gone';
+		const outcome = await deps.patch(row, deps.render(row));
+		if (outcome !== 'moved') return outcome;
+	}
+	throw new Error(
+		`Consumer row kept changing during the saved-block rerender (${MAX_RERENDER_ATTEMPTS} attempts)`
+	);
+}
+
 export const reRenderEmails = internalAction({
 	args: {
 		templateIds: v.array(v.id('emailTemplates')),
@@ -142,38 +173,33 @@ export const reRenderEmails = internalAction({
 			(await ctx.runQuery(internal.emailBlocks.renderingPool.getEmailTheme, {})) ?? undefined;
 
 		for (const templateId of args.templateIds) {
-			const template = await ctx.runQuery(internal.emailBlocks.renderingPool.getTemplate, {
-				templateId: templateId as Id<'emailTemplates'>,
-			});
-			if (!template) continue;
-
-			const { html, htmlTranslations, plainTextContent } = rerenderRow(
-				template,
-				'personalization',
-				theme
-			);
-
-			await ctx.runMutation(internal.emailBlocks.renderingPool.patchTemplateHtml, {
-				templateId: templateId as Id<'emailTemplates'>,
-				htmlContent: html,
-				htmlTranslations,
-				plainTextContent,
+			await rerenderConsumerRow({
+				load: () => ctx.runQuery(internal.emailBlocks.renderingPool.getTemplate, { templateId }),
+				render: (template) => rerenderRow(template, 'personalization', theme),
+				patch: (template, { html, htmlTranslations, plainTextContent }) =>
+					ctx.runMutation(internal.emailBlocks.renderingPool.patchTemplateHtml, {
+						templateId,
+						htmlContent: html,
+						htmlTranslations,
+						plainTextContent,
+						expectedContentRevision: currentContentRevision(template),
+					}),
 			});
 		}
 
 		for (const emailId of args.transactionalIds) {
-			const email = await ctx.runQuery(internal.emailBlocks.renderingPool.getTransactionalEmail, {
-				emailId: emailId as Id<'transactionalEmails'>,
-			});
-			if (!email) continue;
-
-			const { html, htmlTranslations, plainTextContent } = rerenderRow(email, 'data', theme);
-
-			await ctx.runMutation(internal.emailBlocks.renderingPool.patchTransactionalHtml, {
-				emailId: emailId as Id<'transactionalEmails'>,
-				htmlContent: html,
-				htmlTranslations,
-				plainTextContent,
+			await rerenderConsumerRow({
+				load: () =>
+					ctx.runQuery(internal.emailBlocks.renderingPool.getTransactionalEmail, { emailId }),
+				render: (email) => rerenderRow(email, 'data', theme),
+				patch: (email, { html, htmlTranslations, plainTextContent }) =>
+					ctx.runMutation(internal.emailBlocks.renderingPool.patchTransactionalHtml, {
+						emailId,
+						htmlContent: html,
+						htmlTranslations,
+						plainTextContent,
+						expectedContentRevision: currentContentRevision(email),
+					}),
 			});
 		}
 	},

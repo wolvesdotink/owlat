@@ -2941,6 +2941,12 @@
 			}
 		},
 		"email": {
+			"editorConflictDialog": {
+				"description": "It was saved somewhere else after you opened it: in another tab, on the Translations page, or through a saved block it uses. Your edits are not saved yet. Keep your version to save it over the newer one, or load the latest version and discard your edits.",
+				"keepMine": "Keep my version",
+				"loadLatest": "Load latest",
+				"title": "This email changed while you were editing"
+			},
 			"emailBuilderViewportGate": {
 				"body": "Drag-and-drop editing doesn't fit on a phone. Open this on a tablet or desktop to make changes — everything you've saved is exactly as you left it.",
 				"title": "The editor needs a bigger screen"
@@ -14461,7 +14467,8 @@
 			"getUploadUrlOperation": "Get upload URL",
 			"saveBlockOperation": "Save block",
 			"saveMediaAssetOperation": "Save media asset",
-			"staleRevision": "This email was changed somewhere else after you opened it, so your edits were not saved. Copy anything you want to keep, then reload the page to get the latest version."
+			"stalePublish": "This email was changed somewhere else after you opened it, so it was not published. Check the latest version, then publish again.",
+			"staleRevision": "This email was changed somewhere else after you opened it, so your edits were not saved yet."
 		},
 		"useFormSettings": {
 			"errors": {

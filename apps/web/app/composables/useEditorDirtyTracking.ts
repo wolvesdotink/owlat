@@ -29,11 +29,17 @@ export interface UseEditorDirtyTrackingOptions<S> {
 	 */
 	identity?: (source: NonNullable<S>) => unknown;
 	/**
-	 * The server's revision of the fields this editor owns. When given, a save
-	 * that lands is taken to advance it by exactly one (the backend's guarded
-	 * write contract), so the next save names the revision it was built on.
+	 * The server's revision of the fields this editor owns. When given, the
+	 * next save names the revision its draft was built on: the one the write
+	 * that landed reported (see `acknowledge`), or a hydrated row's.
 	 */
 	revision?: (source: NonNullable<S>) => number;
+	/**
+	 * Called after every hydration, once `initialize` has written the tracked
+	 * refs. A host whose refs feed a component with its own copy of the state
+	 * (the email builder's canvas) pushes the hydrated state through here.
+	 */
+	onHydrate?: (source: NonNullable<S>) => void;
 }
 
 /** A save in flight: the draft as submitted and the server state it was built on. */
@@ -54,13 +60,21 @@ export interface UseEditorDirtyTrackingReturn<S> {
 	/** Freeze the draft at the start of a save. */
 	beginSubmit: () => EditorSubmission<S>;
 	/**
-	 * The save of `submission` landed. Clears dirty only when the draft still
-	 * equals what was submitted; an edit made while the save was in flight keeps
-	 * the editor dirty.
+	 * The save of `submission` landed, as `landedRevision` when the write
+	 * reported one (otherwise the revision after the submitted one). Clears
+	 * dirty only when the draft still equals what was submitted; an edit made
+	 * while the save was in flight keeps the editor dirty.
 	 */
-	acknowledge: (submission: EditorSubmission<S>) => void;
+	acknowledge: (submission: EditorSubmission<S>, landedRevision?: number) => void;
 	/** Unconditionally clean, catching the draft up to the latest server row. */
 	markClean: () => void;
+	/**
+	 * Keep the draft but build it on the latest server row, so the next save
+	 * names that row's revision (the "keep my version" answer to a conflict).
+	 */
+	rebase: () => void;
+	/** Throw the draft away and hydrate the latest server row. */
+	reload: () => void;
 }
 
 const defaultIdentity = (source: unknown): unknown =>
@@ -102,6 +116,7 @@ export function useEditorDirtyTracking<S>(
 		baseRevision = opts.revision?.(row);
 		hydratedIdentity = identityOf(row);
 		opts.initialize(row);
+		opts.onHydrate?.(row);
 		setDirty(false);
 		void nextTick(() => {
 			hydrating = false;
@@ -149,28 +164,51 @@ export function useEditorDirtyTracking<S>(
 		generation,
 	});
 
+	// A row older than the revision the draft is built on — an emission from
+	// before our own write, which the echo of that write will replace.
+	const predatesBase = (row: NonNullable<S>) =>
+		opts.revision !== undefined && baseRevision !== undefined && opts.revision(row) < baseRevision;
+
 	const catchUp = () => {
 		// An emission skipped while the draft was dirty (e.g. a settings save
-		// that re-keys the row) is applied now that nothing is unsaved.
-		if (latest !== null && latest !== hydratedFrom && identityOf(latest) === hydratedIdentity) {
+		// that re-keys the row) is applied now that nothing is unsaved. One that
+		// predates the write just acknowledged is not: it would put the content
+		// from before that write back on screen until the echo arrived.
+		if (
+			latest !== null &&
+			latest !== hydratedFrom &&
+			identityOf(latest) === hydratedIdentity &&
+			!predatesBase(latest)
+		) {
 			hydrate(latest);
 		} else {
 			setDirty(false);
 		}
 	};
 
-	const acknowledge = (submission: EditorSubmission<S>) => {
+	const acknowledge = (submission: EditorSubmission<S>, landedRevision?: number) => {
 		// Re-hydrated while the save was in flight (clean draft followed the
 		// server, or the editor moved to another entity): that state wins.
 		if (submission.generation !== generation) return;
-		if (submission.revision !== undefined) {
-			// Our write landed as the next revision; the draft now builds on it.
-			baseRevision = submission.revision + 1;
+		if (landedRevision !== undefined || submission.revision !== undefined) {
+			// The draft now builds on our write. Prefer the revision the server
+			// says it stored over assuming the next one.
+			baseRevision = landedRevision ?? (submission.revision as number) + 1;
 			if (latest !== null && opts.revision?.(latest) === baseRevision) base = latest;
 		} else if (opts.revision === undefined && latest !== null) {
 			base = latest;
 		}
 		if (serializeDraft() === submission.draft) catchUp();
+	};
+
+	const rebase = () => {
+		if (latest === null) return;
+		base = latest;
+		baseRevision = opts.revision?.(latest);
+	};
+
+	const reload = () => {
+		if (latest !== null) hydrate(latest);
 	};
 
 	return {
@@ -179,5 +217,7 @@ export function useEditorDirtyTracking<S>(
 		beginSubmit,
 		acknowledge,
 		markClean: catchUp,
+		rebase,
+		reload,
 	};
 }
