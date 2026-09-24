@@ -495,3 +495,46 @@ describe('saved-block rerender patch — content revision', () => {
 		expect((await t.run((ctx) => ctx.db.get(id)))?.htmlContent).toBe('<p>Before</p>');
 	});
 });
+
+describe('saved-block rerender job failure — bookkeeping', () => {
+	it('records the failure only on rows whose HTML is still stale', async () => {
+		const t = convexTest(schema, modules);
+		// One row the job never brought up to date, one it rendered before a
+		// later row made it give up, and one re-saved from the editor meanwhile.
+		const stillStale = await seedTemplate(t, {
+			contentRevision: 3,
+			htmlRenderState: { stale: true, failureCount: 1 },
+		});
+		const rendered = await seedTemplate(t, {
+			contentRevision: 3,
+			htmlRenderState: { stale: false },
+		});
+		const resaved = await seedTransactional(t, {
+			contentRevision: 4,
+			htmlRenderState: { stale: false },
+		});
+
+		await t.mutation(internal.emailBlocks.renderingPool.onRerenderComplete, {
+			workId: 'work_1',
+			context: { templateIds: [stillStale, rendered], transactionalIds: [resaved] },
+			result: { kind: 'failed', error: 'Consumer row kept changing' },
+		});
+
+		const [stale, current, editorSave] = await t.run(async (ctx) => [
+			await ctx.db.get(stillStale),
+			await ctx.db.get(rendered),
+			await ctx.db.get(resaved),
+		]);
+		expect(stale?.htmlRenderState).toMatchObject({ stale: true, failureCount: 2 });
+		expect(stale?.htmlRenderState?.lastFailureAt).toBeTypeOf('number');
+		expect(current?.htmlRenderState).toEqual({ stale: false });
+		expect(editorSave?.htmlRenderState).toEqual({ stale: false });
+		const failures = await t.run((ctx) =>
+			ctx.db
+				.query('auditLogs')
+				.filter((q) => q.eq(q.field('action'), 'email_block.rerender_failed'))
+				.collect()
+		);
+		expect(failures.map((row) => row.resourceId)).toEqual([stillStale]);
+	});
+});
