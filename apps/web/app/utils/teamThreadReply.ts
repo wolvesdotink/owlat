@@ -22,6 +22,16 @@
  * Module scope never calls `useI18n`: reasons are catalog keys.
  */
 
+/**
+ * A person's reply: its body, and the subject (blank = keep the default). The
+ * page's mutation wrappers (`useThreadDetail`) take it, and the composer
+ * (`useTeamThreadComposer`) hands it to them.
+ */
+export interface TeamThreadReply {
+	body: string;
+	subject: string;
+}
+
 /** The slice of an inbound message this module reads. */
 export interface ReplyTargetMessage {
 	_id: string;

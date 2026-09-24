@@ -18,7 +18,11 @@ beforeAll(() => {
  */
 function mountComposer(props: Record<string, unknown> = {}) {
 	return mount(ThreadComposer, {
-		props: { senderLabel: 'Ana Ruiz', ...props },
+		props: {
+			target: { kind: 'teamThread', threadId: 'th_1', inboundMessageId: 'in_1' },
+			senderLabel: 'Ana Ruiz',
+			...props,
+		},
 		attachTo: document.body,
 		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
 	});
@@ -203,6 +207,31 @@ describe('InboxThreadComposer', () => {
 		const wrapper = mountComposer({ open: true });
 		await wrapper.get('[data-testid="thread-composer-body"]').setValue('Hel');
 		expect(wrapper.emitted('typing')?.at(-1)).toEqual([true]);
+		wrapper.unmount();
+	});
+
+	// #812 — the team reply is a composer target, so the Postbox composer's
+	// advisory pre-send checks run on it too.
+	it('flags a placeholder the agent left in its draft, and clears once fixed', async () => {
+		const wrapper = mountComposer({
+			draft: 'The refund is queued [TODO: add settlement date].',
+			subject: 'Re: Invoice',
+		});
+		expect(wrapper.get('[data-testid="postbox-preflight-chip"]').text()).toContain(
+			'[TODO: add settlement date]'
+		);
+
+		await wrapper
+			.get('[data-testid="thread-composer-body"]')
+			.setValue('The refund settles on Friday.');
+		expect(wrapper.find('[data-testid="postbox-preflight-chip"]').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
+	it('does not ask for a subject a team reply is given anyway', async () => {
+		const wrapper = mountComposer({ open: true });
+		await wrapper.get('[data-testid="thread-composer-body"]').setValue('All sorted.');
+		expect(wrapper.find('[data-testid="postbox-preflight-chip"]').exists()).toBe(false);
 		wrapper.unmount();
 	});
 });

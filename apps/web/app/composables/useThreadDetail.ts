@@ -1,5 +1,6 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { TeamThreadReply } from '~/utils/teamThreadReply';
 
 export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	const { t } = useI18n();
@@ -75,19 +76,13 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		return await retryFailedMessage({ inboundMessageId: messageId });
 	};
 
-	/** The reply a person wrote: its body, and the subject (blank = keep the default). */
-	interface ReplyText {
-		body: string;
-		subject: string;
-	}
-
 	// Send a person's reply: persist it as the working draft, then approve it so
 	// the message transitions to `approved` and is queued for sending. `editDraft`
 	// only patches the draft text (leaving the message in `draft_ready`), so the
 	// follow-up `approveDraft` reads the just-saved text and fires the transition.
 	// Each step toasts its own categorized failure and resolves to `ok: false`,
 	// so a failed save short-circuits before approval.
-	const saveEditedDraft = async (messageId: Id<'inboundMessages'>, reply: ReplyText) => {
+	const saveEditedDraft = async (messageId: Id<'inboundMessages'>, reply: TeamThreadReply) => {
 		const saved = await editDraft({
 			inboundMessageId: messageId,
 			draftResponse: reply.body,
@@ -100,7 +95,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	// Save WITHOUT sending: persist the edit as a draft revision — the message
 	// stays in `draft_ready`, the agent original is preserved as revision 0, and
 	// no autonomy feedback is recorded.
-	const saveDraftOnly = async (messageId: Id<'inboundMessages'>, reply: ReplyText) => {
+	const saveDraftOnly = async (messageId: Id<'inboundMessages'>, reply: TeamThreadReply) => {
 		return await saveDraftRevision({
 			inboundMessageId: messageId,
 			draftResponse: reply.body,
@@ -110,7 +105,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 
 	// Write again after the thread's latest message was answered. It waits out
 	// the same undo window an approved reply does before it leaves.
-	const sendFollowUp = async (reply: ReplyText) => {
+	const sendFollowUp = async (reply: TeamThreadReply) => {
 		return await sendFollowUpOperation({
 			threadId: threadId.value,
 			body: reply.body,

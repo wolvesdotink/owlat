@@ -5,12 +5,7 @@ import { canonicalOption, localizedQuestionCopy } from '~/utils/clarificationLoc
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { useOrganization } from '~/composables/useOrganization';
-import {
-	GENERIC_TEAMMATE_NAME,
-	isReplyCollision,
-	replyCollisionToast,
-	sendHoldReason,
-} from '~/utils/replyCollision';
+import { sendHoldReason } from '~/utils/replyCollision';
 import { capitalize, formatRelativeTime } from '~/utils/formatters';
 import {
 	classificationSummary,
@@ -18,14 +13,13 @@ import {
 	isChannelMessage,
 	isFollowUp,
 	latestClassification,
-	needsTakeOver,
 	otherWaitingDrafts,
 	pickReplyTarget,
 	replyBlocker,
 	replyNotice,
 	replySubject,
 } from '~/utils/teamThreadReply';
-import { isApproveAlreadyHandled } from '~/composables/useReviewApproveUndo';
+import type { TeamThreadComposerTarget } from '~/utils/composerTarget';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 
 const { t, te, locale } = useI18n();
@@ -436,84 +430,50 @@ const composerRef = ref<{
 	reset: () => void;
 	fill: (body: string, subject: string) => void;
 } | null>(null);
-const isSending = ref(false);
-
 function openReply() {
 	composerRef.value?.focus();
 }
 // "Compose email" (top bar, palette, shortcut) on a thread answers the thread.
 watch(useThreadReplyRequest(), () => openReply());
 
-/** A refused send: a teammate just replied, or someone handled it first. */
-function refusedSend(result: unknown): boolean {
-	if (isReplyCollision(result)) {
-		showToast(
-			collisionText(replyCollisionToast(result.heldByName ?? t(GENERIC_TEAMMATE_NAME))),
-			'error'
-		);
-		return true;
+// The thread as a composer target: the reply's save and send paths, and the
+// refusals a send can come back with, live in useTeamThreadComposer.
+const replyComposerTarget = computed<TeamThreadComposerTarget | null>(() =>
+	replyTarget.value
+		? { kind: 'teamThread', threadId: threadId.value, inboundMessageId: replyTarget.value._id }
+		: null
+);
+const {
+	busy: isSending,
+	send: sendReply,
+	save: saveReply,
+} = useTeamThreadComposer(
+	{
+		target: () => replyComposerTarget.value,
+		processingStatus: () => replyTarget.value?.processingStatus,
+		held: () => isHeld.value,
+	},
+	{
+		approve: handleApprove,
+		saveAndApprove: saveEditedDraft,
+		saveRevision: saveDraftOnly,
+		sendFollowUp,
+		takeOver: (inboundMessageId) => takeOverReply({ inboundMessageId }),
 	}
-	if (isApproveAlreadyHandled(result)) {
-		showToast(t('shared.reviewApprove.alreadyHandled'), 'info');
-		return true;
-	}
-	return false;
-}
+);
 
-/**
- * Send from the composer. An unchanged agent draft is a plain approve (the fast
- * path); anything typed is saved as the working draft first and then approved —
- * the same edit → approve path the Answer queue's "Write my own" takes.
- */
 const onComposerSend = async (body: string, fromDraft: boolean, subject: string) => {
-	const target = replyTarget.value;
-	if (!target || isHeld.value || isSending.value) return;
-	isSending.value = true;
-	try {
-		// Already answered: this is a second message, with its own send and undo
-		// window (the countdown shows on its card in the thread).
-		if (isFollowUp(target.processingStatus)) {
-			const sent = await sendFollowUp({ body, subject });
-			if (!sent.ok || refusedSend(sent.result)) return;
-			composerRef.value?.reset();
-			composerOpen.value = false;
-			showToast(t('dashboard.inbox.detail.followUpSentToast'));
-			return;
-		}
-		if (needsTakeOver(target.processingStatus)) {
-			const takenOver = await takeOverReply({ inboundMessageId: target._id });
-			if (!takenOver.ok) return;
-		}
-		let result;
-		if (fromDraft) {
-			result = await handleApprove(target._id);
-		} else {
-			result = await saveEditedDraft(target._id, { body, subject });
-		}
-		if (!result.ok || refusedSend(result.result)) return;
-		composerRef.value?.reset();
-		composerOpen.value = false;
-		chosenTargetId.value = null;
-		showToast(t('dashboard.inbox.detail.replySentToast'));
-	} finally {
-		isSending.value = false;
-	}
+	const sent = await sendReply({ body, subject }, fromDraft);
+	if (!sent) return;
+	composerRef.value?.reset();
+	composerOpen.value = false;
+	// A follow-up keeps answering the same message; a reply moves the composer on.
+	if (sent === 'reply') chosenTargetId.value = null;
 };
 
-// Save WITHOUT sending: persist the edit as a draft revision. The message stays
-// waiting for review ("Saved · edited by you"); no collision hold applies
-// because nothing is sent.
-const onComposerSave = async (body: string, subject: string) => {
-	const target = replyTarget.value;
-	if (!target) return;
-	isSending.value = true;
-	try {
-		const result = await saveDraftOnly(target._id, { body, subject });
-		if (result.ok) showToast(t('dashboard.inbox.detail.toasts.draftSavedNotApproved'));
-	} finally {
-		isSending.value = false;
-	}
-};
+// Save WITHOUT sending: the message stays waiting for review ("Saved · edited
+// by you"); no collision hold applies because nothing is sent.
+const onComposerSave = (body: string, subject: string) => saveReply({ body, subject });
 
 // An update the classifier filed as needing no reply can be sent to drafting
 // after all; the draft then opens in the composer.
@@ -1041,7 +1001,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 					<!-- Reply composer: on every thread, pre-filled with the agent's
 					     draft when there is one. -->
 					<InboxThreadComposer
-						v-if="isAdmin && replyTarget"
+						v-if="isAdmin && replyComposerTarget"
 						ref="composerRef"
 						v-model:open="composerOpen"
 						:sender-label="replySenderLabel"
@@ -1050,12 +1010,13 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						:draft="replyDraft"
 						:original-draft="replyOriginalDraft"
 						:subject="replyDefaultSubject"
+						:target="replyComposerTarget"
 						:busy="isSending"
 						:held="isHeld"
 						:held-reason="holdReason"
 						@send="onComposerSend"
 						@save="onComposerSave"
-						@reject="openRejectModal(replyTarget._id)"
+						@reject="openRejectModal(replyComposerTarget.inboundMessageId)"
 						@typing="composerTyping = $event"
 					>
 						<template v-if="replyTargetBlocker === 'update'" #blocked-action>
