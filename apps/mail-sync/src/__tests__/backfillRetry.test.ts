@@ -13,7 +13,9 @@
 import { describe, it, expect } from 'vitest';
 import {
 	MAX_BACKFILL_STRIKES,
+	THROTTLE_PAUSE_MS,
 	canStartBackfill,
+	describeThrottle,
 	forMigration,
 	initialBackfillRetryState,
 	isProviderThrottleError,
@@ -203,33 +205,122 @@ describe('strikes', () => {
 		// Last drop was Gmail's limit notice, so the next look is hours out.
 		expect(state.retryNotBefore - drops[drops.length - 1]!.at).toBeGreaterThanOrEqual(15 * 60_000);
 	});
+});
 
-	it('explains a throttled give-up instead of quoting the socket error', () => {
+/**
+ * #760: a mailbox larger than the provider's daily bandwidth budget. The
+ * throttled ladder spans a few hours and the budget is a rolling day, so
+ * such an import used to exhaust the ladder every day and end `failed` — a red
+ * card and a manual "Try again" per day of mail. It is a schedule now.
+ */
+describe('a throttled import that spends the ladder', () => {
+	const overQuota = () => noConnectionError('Account exceeded command or bandwidth limits.');
+
+	/** Run the ladder to exhaustion, each retry as soon as it is allowed. */
+	function exhaust(state: BackfillRetryState, from: number, firstMadeProgress = false) {
+		let now = from;
+		let decision = nextBackfillRetryState(
+			state,
+			{ kind: 'failure', error: overQuota(), madeProgress: firstMadeProgress },
+			now
+		);
+		for (let i = 0; i < MAX_BACKFILL_STRIKES; i++) {
+			if (decision.shouldPause || decision.shouldMarkFailed) break;
+			now = decision.state.retryNotBefore;
+			decision = nextBackfillRetryState(
+				decision.state,
+				{ kind: 'failure', error: overQuota(), madeProgress: false },
+				now
+			);
+		}
+		return { decision, endedAt: now };
+	}
+
+	it('pauses instead of failing', () => {
+		const { decision } = exhaust(stateFor('mig_1'), NOW);
+		expect(decision.shouldMarkFailed).toBe(false);
+		expect(decision.shouldPause).toBe(true);
+	});
+
+	it('waits a full window from when the budget ran out, not from the end of the ladder', () => {
+		const { decision, endedAt } = exhaust(stateFor('mig_1'), NOW);
+		// The ladder itself took hours; the pause is measured from the first
+		// throttled run, when the provider cut the walk off.
+		expect(endedAt - NOW).toBeGreaterThan(3 * 60 * 60_000);
+		expect(decision.resumeAt).toBe(NOW + THROTTLE_PAUSE_MS);
+		expect(canStartBackfill(decision.state, NOW + THROTTLE_PAUSE_MS - 1)).toBe(false);
+		expect(canStartBackfill(decision.state, NOW + THROTTLE_PAUSE_MS)).toBe(true);
+	});
+
+	it('starts the clock at the run that moved the walk and was then cut off', () => {
+		// Hours of progress earlier in the day must not shorten today's pause.
+		const earlier = nextBackfillRetryState(
+			stateFor('mig_1'),
+			{ kind: 'failure', error: overQuota(), madeProgress: false },
+			NOW - 10 * 60 * 60_000
+		).state;
+		const { decision } = exhaust(earlier, NOW, true);
+		expect(decision.resumeAt).toBe(NOW + THROTTLE_PAUSE_MS);
+	});
+
+	it('gives the resumed walk a fresh ladder', () => {
+		const { decision } = exhaust(stateFor('mig_1'), NOW);
+		expect(decision.state.strikes).toBe(0);
+		expect(decision.state.throttledSince).toBeNull();
+
+		// The window reopened but the provider still refuses: the ladder runs
+		// again from its first rung rather than failing on the first retry.
+		const next = nextBackfillRetryState(
+			decision.state,
+			{ kind: 'failure', error: overQuota(), madeProgress: false },
+			decision.resumeAt!
+		);
+		expect(next.shouldPause).toBe(false);
+		expect(next.shouldMarkFailed).toBe(false);
+		expect(next.state.strikes).toBe(1);
+	});
+
+	it('an import that inches forward every day is paused daily and never failed', () => {
+		let state = stateFor('mig_1');
+		let now = NOW;
+		for (let day = 0; day < 5; day++) {
+			const { decision } = exhaust(state, now, true);
+			expect(decision.shouldPause).toBe(true);
+			expect(decision.shouldMarkFailed).toBe(false);
+			state = decision.state;
+			now = decision.resumeAt!;
+		}
+	});
+
+	it('still fails a walk whose last word was not the provider throttling it', () => {
 		let state = stateFor('mig_1');
 		let decision = nextBackfillRetryState(
 			state,
-			{
-				kind: 'failure',
-				error: noConnectionError('Account exceeded command or bandwidth limits.'),
-				madeProgress: false,
-			},
+			{ kind: 'failure', error: overQuota(), madeProgress: false },
 			NOW
 		);
 		for (let i = 1; i < MAX_BACKFILL_STRIKES; i++) {
 			state = decision.state;
 			decision = nextBackfillRetryState(
 				state,
-				{
-					kind: 'failure',
-					error: noConnectionError('Account exceeded command or bandwidth limits.'),
-					madeProgress: false,
-				},
+				{ kind: 'failure', error: new Error('Invalid messageset'), madeProgress: false },
 				state.retryNotBefore
 			);
 		}
+		expect(decision.shouldPause).toBe(false);
 		expect(decision.shouldMarkFailed).toBe(true);
-		// 'Connection not available' told the user nothing about what to do.
-		expect(decision.failureMessage).toContain('rate-limiting');
-		expect(decision.failureMessage).toContain('resumes');
 	});
+});
+
+describe('describeThrottle', () => {
+	it("keeps the provider's own words, not just the socket error", () => {
+		expect(describeThrottle(overQuotaError())).toBe(
+			'Connection not available: Account exceeded command or bandwidth limits.'
+		);
+		expect(describeThrottle(new Error('[THROTTLED] slow down'))).toBe('[THROTTLED] slow down');
+	});
+
+	function overQuotaError() {
+		return noConnectionError('Account exceeded command or bandwidth limits.');
+	}
 });

@@ -54,6 +54,9 @@ export const fn = {
 	completeBackfillImport: 'mail/migrationBackfill:completeBackfillImport' as FnRef,
 	// Signal "backfill threw and won't self-heal" → migration → failed (internalMutation).
 	markImportFailed: 'mail/migrationBackfill:markImportFailed' as FnRef,
+	// Signal "the provider's budget is spent" → hold the migration until it
+	// resets instead of failing it (internalMutation).
+	pauseImportForThrottle: 'mail/migrationBackfill:pauseImportForThrottle' as FnRef,
 };
 
 /** Plaintext credential bundle returned by getCredentialsForWorker. */
@@ -175,4 +178,7 @@ export interface BackfillWork {
 	isActive: boolean;
 	/** The importing migration this run's progress must be attributed to (null when inactive). */
 	migrationId: string | null;
+	/** Epoch ms a throttle-paused import may run again. Persisted, so a worker
+	 * restart honours a pause it did not itself decide. Absent when not paused. */
+	resumesAt?: number;
 }
