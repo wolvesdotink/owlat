@@ -1,9 +1,19 @@
 import { convexTest } from 'convex-test';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { COALESCE_MAX_WAIT_MULTIPLIER } from '../agent/coalescing';
+import { expectScheduledFailure } from './helpers/scheduledFailures';
+
+// The flow under test schedules the functions below, which this suite's
+// module map leaves out (or which need a setup it does not make). Their jobs
+// fail when they fire, often after the test that scheduled them. These tests
+// are not about them.
+beforeEach(() => {
+	expectScheduledFailure('agent/walker:start');
+	expectScheduledFailure('agent/walker:resumeDraft');
+});
 
 /**
  * Message coalescing (agent/coalescing.ts): the per-thread debounce that
@@ -14,14 +24,24 @@ import { COALESCE_MAX_WAIT_MULTIPLIER } from '../agent/coalescing';
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') && !path.includes('agentSecurity') && !path.includes('agentContext') &&
-		!path.includes('agentClassifier') && !path.includes('agentDrafter') && !path.includes('agentRouter') &&
-		!path.includes('agent/walker') && !path.includes('agent/steps/index') && !path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') && !path.includes('agent/steps/draft') &&
-		!path.includes('knowledge/extraction') && !path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') && !path.includes('llmProvider'),
-	),
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledge/extraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
+	)
 );
 
 async function makeThread(t: ReturnType<typeof convexTest>): Promise<Id<'conversationThreads'>> {
@@ -35,14 +55,14 @@ async function makeThread(t: ReturnType<typeof convexTest>): Promise<Id<'convers
 			firstMessageAt: Date.now(),
 			lastMessageAt: Date.now(),
 			createdAt: Date.now(),
-		}),
+		})
 	);
 }
 
 async function makeMessage(
 	t: ReturnType<typeof convexTest>,
 	threadId: Id<'conversationThreads'>,
-	receivedAt: number,
+	receivedAt: number
 ): Promise<Id<'inboundMessages'>> {
 	return await t.run(async (ctx) =>
 		ctx.db.insert('inboundMessages', {
@@ -54,7 +74,7 @@ async function makeMessage(
 			threadId,
 			processingStatus: 'received',
 			receivedAt,
-		}),
+		})
 	);
 }
 
@@ -87,8 +107,16 @@ describe('coalescing.shouldCoalesce', () => {
 		const m1 = await makeMessage(t, threadId, Date.now());
 		const m2 = await makeMessage(t, threadId, Date.now() + 1);
 
-		await t.mutation(internal.agent.coalescing.shouldCoalesce, { threadId, messageId: m1, coalesceWindowMs: 30_000 });
-		await t.mutation(internal.agent.coalescing.shouldCoalesce, { threadId, messageId: m2, coalesceWindowMs: 30_000 });
+		await t.mutation(internal.agent.coalescing.shouldCoalesce, {
+			threadId,
+			messageId: m1,
+			coalesceWindowMs: 30_000,
+		});
+		await t.mutation(internal.agent.coalescing.shouldCoalesce, {
+			threadId,
+			messageId: m2,
+			coalesceWindowMs: 30_000,
+		});
 
 		await t.run(async (ctx) => {
 			const batches = await ctx.db
@@ -107,7 +135,11 @@ describe('coalescing.shouldCoalesce', () => {
 		const m1 = await makeMessage(t, threadId, Date.now());
 		const m2 = await makeMessage(t, threadId, Date.now() + 1);
 
-		await t.mutation(internal.agent.coalescing.shouldCoalesce, { threadId, messageId: m1, coalesceWindowMs: 30_000 });
+		await t.mutation(internal.agent.coalescing.shouldCoalesce, {
+			threadId,
+			messageId: m1,
+			coalesceWindowMs: 30_000,
+		});
 		const first = await t.run(async (ctx) => {
 			const b = await ctx.db
 				.query('coalesceBatches')
@@ -117,7 +149,11 @@ describe('coalescing.shouldCoalesce', () => {
 		});
 		expect(first).toBeTypeOf('number');
 
-		await t.mutation(internal.agent.coalescing.shouldCoalesce, { threadId, messageId: m2, coalesceWindowMs: 30_000 });
+		await t.mutation(internal.agent.coalescing.shouldCoalesce, {
+			threadId,
+			messageId: m2,
+			coalesceWindowMs: 30_000,
+		});
 		await t.run(async (ctx) => {
 			const b = await ctx.db
 				.query('coalesceBatches')
@@ -134,7 +170,11 @@ describe('coalescing.shouldCoalesce', () => {
 		const windowMs = 30_000;
 		const m1 = await makeMessage(t, threadId, Date.now());
 
-		await t.mutation(internal.agent.coalescing.shouldCoalesce, { threadId, messageId: m1, coalesceWindowMs: windowMs });
+		await t.mutation(internal.agent.coalescing.shouldCoalesce, {
+			threadId,
+			messageId: m1,
+			coalesceWindowMs: windowMs,
+		});
 
 		// Age the batch so its first message is older than the hard cap, as if the
 		// thread had been chattering for the whole maxWait window.
@@ -150,7 +190,11 @@ describe('coalescing.shouldCoalesce', () => {
 
 		const m2 = await makeMessage(t, threadId, Date.now());
 		const before = Date.now();
-		await t.mutation(internal.agent.coalescing.shouldCoalesce, { threadId, messageId: m2, coalesceWindowMs: windowMs });
+		await t.mutation(internal.agent.coalescing.shouldCoalesce, {
+			threadId,
+			messageId: m2,
+			coalesceWindowMs: windowMs,
+		});
 
 		await t.run(async (ctx) => {
 			const b = await ctx.db
@@ -175,7 +219,11 @@ describe('coalescing.processCoalescedBatch', () => {
 
 		// Register all three into the batch window.
 		for (const m of [older, middle, latest]) {
-			await t.mutation(internal.agent.coalescing.shouldCoalesce, { threadId, messageId: m, coalesceWindowMs: 30_000 });
+			await t.mutation(internal.agent.coalescing.shouldCoalesce, {
+				threadId,
+				messageId: m,
+				coalesceWindowMs: 30_000,
+			});
 		}
 
 		await t.mutation(internal.agent.coalescing.processCoalescedBatch, { threadId });

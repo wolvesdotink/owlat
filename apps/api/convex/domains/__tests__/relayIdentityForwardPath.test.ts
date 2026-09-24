@@ -24,6 +24,15 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { modules } from '../../__tests__/testModules';
+import { expectScheduledFailure } from '../../__tests__/helpers/scheduledFailures';
+
+// The functions below need configuration this suite only stubs inside its
+// tests (or not at all), and their jobs fire after that is gone. These tests
+// are not about them.
+beforeEach(() => {
+	expectScheduledFailure('domains/sesRelay:provision');
+	expectScheduledFailure('domains/mandrillRelay:provision');
+});
 
 /**
  * The singleton-organization read the Mandrill adapter's `ensureRelayIdentity`

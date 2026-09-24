@@ -18,7 +18,7 @@
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
-import { describe, it, expect, vi, type Mock } from 'vitest';
+import { describe, it, expect, vi, type Mock, beforeEach } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import {
@@ -30,6 +30,14 @@ import {
 	createTestCampaignSender,
 } from './factories';
 import type { Id } from '../_generated/dataModel';
+import { expectScheduledFailure } from './helpers/scheduledFailures';
+
+// The functions below need configuration this suite only stubs inside its
+// tests (or not at all), and their jobs fire after that is gone. These tests
+// are not about them.
+beforeEach(() => {
+	expectScheduledFailure('delivery/enqueue:enqueueCampaignEmails');
+});
 
 // Pre-flight loads the domain verification status through an authed query;
 // stub the session helpers so the internal orchestrator action can run it.

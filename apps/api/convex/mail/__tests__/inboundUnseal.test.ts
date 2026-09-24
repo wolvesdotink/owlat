@@ -34,6 +34,15 @@ import { modules } from '../../__tests__/testModulesWithoutNodeActions';
 import { openMailMessageInlineBody } from '../../lib/messageBody';
 import { isSealedAtRest, isSealedBytesAtRest } from '../../lib/atRestBodies';
 import { readSealedBlobBytes } from '../../lib/sealedBlob';
+import { expectScheduledFailure } from '../../__tests__/helpers/scheduledFailures';
+
+// The functions below need configuration this suite only stubs inside its
+// tests (or not at all), and their jobs fire after that is gone. These tests
+// are not about them.
+beforeEach(() => {
+	expectScheduledFailure('mail/ai/categoryClassify:classifyThread');
+	expectScheduledFailure('mail/ai/needsReplyClassify:classifyThread');
+});
 
 const INSTANCE_SECRET = 'unit-test-instance-secret-value';
 const RECIPIENT = 'me@example.com';

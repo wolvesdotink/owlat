@@ -12,13 +12,22 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
 import { requireMailboxAccess } from '../permissions';
 import { provisionMailbox } from '../mailbox/identity';
 import { modules, seedMailbox } from './helpers.testlib';
+import { expectScheduledFailure } from '../../__tests__/helpers/scheduledFailures';
+
+// The flow under test schedules the functions below, which this suite's
+// module map leaves out (or which need a setup it does not make). Their jobs
+// fail when they fire, often after the test that scheduled them. These tests
+// are not about them.
+beforeEach(() => {
+	expectScheduledFailure('mail/aliasesActions:pushAliasToCache');
+});
 
 // One mutable hoisted session drives BOTH the `authedMutation`/`authedQuery`
 // wrapper floors (`getMutationContext` / `requireOrgMember`) AND the in-handler

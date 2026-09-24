@@ -19,6 +19,15 @@ import type { WorkId } from '@convex-dev/workpool';
 import { rollupCampaignStatsRow } from '../campaigns/statShards';
 import type { StoredAudience } from '../campaigns/audience';
 import type { CampaignRecipient } from '../campaigns/audienceCandidates';
+import { expectScheduledFailure } from './helpers/scheduledFailures';
+
+// The flow under test schedules the functions below, which this suite's
+// module map leaves out (or which need a setup it does not make). Their jobs
+// fail when they fire, often after the test that scheduled them. These tests
+// are not about them.
+beforeEach(() => {
+	expectScheduledFailure('campaigns/send:startCampaignSend');
+});
 
 const testWorkId = 'test-work-id' as WorkId;
 
