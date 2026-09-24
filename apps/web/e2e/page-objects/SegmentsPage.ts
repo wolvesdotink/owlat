@@ -35,7 +35,7 @@ export class SegmentsPage extends BasePage {
 		// Drive the kind explicitly. It defaults to "Topic Membership", whose
 		// second select lists TOPICS — so which control sits at which index
 		// depends on the instance's data. Contact Property needs nothing seeded.
-		await modal.getByRole('combobox').first().selectOption({ label: 'Contact Property' });
+		await modal.getByRole('combobox').first().selectOption({ label: 'Contact property' });
 		await modal.getByRole('combobox').nth(1).selectOption({ label: 'Email' });
 		await modal.getByPlaceholder('Enter value...').fill('e2e@example.com');
 

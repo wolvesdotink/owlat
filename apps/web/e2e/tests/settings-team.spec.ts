@@ -32,7 +32,7 @@ test.describe('Settings — Team Members', () => {
 		await teamPage.waitForModal();
 
 		// Try to submit without entering an email
-		await teamPage.clickModalButton(/Send Invitation/);
+		await teamPage.clickModalButton(/Send invitation/i);
 
 		// Validation error should appear
 		await expect(teamPage.modal.getByText('Email is required')).toBeVisible({
@@ -48,7 +48,7 @@ test.describe('Settings — Team Members', () => {
 		await teamPage.modal.getByLabel(/Email Address/i).fill('not-an-email');
 
 		// Submit
-		await teamPage.clickModalButton(/Send Invitation/);
+		await teamPage.clickModalButton(/Send invitation/i);
 
 		// Validation error for invalid email format
 		await expect(teamPage.modal.getByText('Please enter a valid email address')).toBeVisible({

@@ -40,7 +40,7 @@ test.describe('Settings — API Keys', () => {
 		const modal = await apiKeysPage.waitForModal();
 
 		// Try to submit without filling in a name
-		await modal.getByRole('button', { name: /Create Key/ }).click();
+		await modal.getByRole('button', { name: /Create key/i }).click();
 
 		// Validation error should appear
 		await expect(modal.getByText('Name is required')).toBeVisible({ timeout: 10_000 });

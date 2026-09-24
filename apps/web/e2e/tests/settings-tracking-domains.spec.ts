@@ -10,7 +10,9 @@ test.describe('Settings — Tracking Domains', () => {
 	});
 
 	test('tracking domains section is present on the domains page', async ({ page }) => {
-		await expect(page.getByRole('heading', { name: 'Tracking Domains' })).toBeVisible({
+		// Exact: the empty list's own heading ("No tracking domains configured")
+		// contains the section title too.
+		await expect(page.getByRole('heading', { name: 'Tracking domains', exact: true })).toBeVisible({
 			timeout: 15_000,
 		});
 		await expect(trackingPage.addButton).toBeVisible();
@@ -29,7 +31,7 @@ test.describe('Settings — Tracking Domains', () => {
 		await trackingPage.addButton.click();
 		await trackingPage.waitForModal();
 
-		await trackingPage.clickModalButton(/Add Tracking Domain/);
+		await trackingPage.clickModalButton(/Add tracking domain/i);
 
 		await expect(trackingPage.modal.getByTestId('domain-error')).toHaveText('Enter your domain', {
 			timeout: 10_000,

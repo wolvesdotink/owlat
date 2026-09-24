@@ -28,7 +28,7 @@ export class SettingsApiKeysPage extends BasePage {
 		// modal simply never advances, which is what this spec used to sit and
 		// time out on.
 		await this.modal.getByRole('checkbox').first().check();
-		await this.clickModalButton(/Create Key/);
+		await this.clickModalButton(/Create key/i);
 		// The create modal gives way to the one-time "API Key Created" display.
 		// By heading, inside the dialog: the same words also appear in the success
 		// toast, so a bare getByText matches two nodes.
