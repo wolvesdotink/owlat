@@ -32,7 +32,7 @@ import {
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { insertDeliveredMessage, buildSnippet } from '../deliveryPipeline/insert';
-import { enqueueNeedsReplyCheck } from '../needsReply';
+import { clearNeedsReplyOnOwnerReply, enqueueNeedsReplyCheck } from '../needsReply';
 import { enqueueCategoryCheck } from '../category';
 import { extractAntiLoopHeaders } from '../../lib/inboundClassification';
 import { buildSearchBody } from '../searchBody';
@@ -200,6 +200,8 @@ export const ingestExternalMessage = internalMutation({
 			}
 		}
 
+		// Our own reply sent from the provider's client settles the Reply Queue row.
+		await clearNeedsReplyOnOwnerReply(ctx, messageId);
 		await advanceCursor(ctx, args, mailbox._id);
 		await ctx.db.patch(args.accountId, { lastSyncAt: Date.now(), updatedAt: Date.now() });
 		return { messageId };

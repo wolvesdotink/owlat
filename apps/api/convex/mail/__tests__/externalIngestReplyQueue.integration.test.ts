@@ -111,6 +111,9 @@ async function ingest(
 		folderRole?: 'inbox' | 'sent';
 		subject?: string;
 		uid?: number;
+		from?: string;
+		to?: string;
+		receivedAt?: number;
 		antiLoopHeaders?: Record<string, string>;
 	} = {}
 ): Promise<void> {
@@ -123,14 +126,14 @@ async function ingest(
 		remoteUidValidity: 7,
 		rawStorageId,
 		rawSize: 3,
-		from: `Sam <${SENDER}>`,
-		to: [OWNER_ADDRESS],
+		from: opts.from ?? `Sam <${SENDER}>`,
+		to: [opts.to ?? OWNER_ADDRESS],
 		cc: [],
 		bcc: [],
 		subject: opts.subject ?? 'Friday plans?',
 		textBodyInline: 'Can you confirm Friday works?',
 		messageId: `<m${opts.uid ?? 42}@acme.test>`,
-		receivedAt: Date.now(),
+		receivedAt: opts.receivedAt ?? Date.now(),
 		attachments: [],
 		...(opts.origin ? { origin: opts.origin } : {}),
 		...(opts.antiLoopHeaders ? { antiLoopHeaders: opts.antiLoopHeaders } : {}),
@@ -287,6 +290,85 @@ describe('external IMAP ingest → Reply Queue enqueue', () => {
 			for (const job of jobs) {
 				expect(job.args['precedence']).toBe('bulk');
 			}
+		});
+	});
+});
+
+describe('external IMAP ingest → owner reply settles the Reply Queue', () => {
+	/** Flag the only thread as needing a reply to its first inbound message. */
+	async function flagThread(t: TestConvex<typeof schema>, mailboxId: Id<'mailboxes'>) {
+		await t.run(async (ctx) => {
+			const message = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', mailboxId))
+				.first();
+			if (!message) throw new Error('no message');
+			await ctx.db.patch(message.threadId, {
+				needsReply: {
+					messageId: message._id,
+					source: 'heuristic',
+					urgency: 'normal',
+					detectedAt: Date.now(),
+					draftSlot: { draft: 'Sure, Friday works.', confidence: 0.7, generatedAt: Date.now() },
+				},
+			});
+		});
+	}
+
+	async function flagOf(t: TestConvex<typeof schema>, mailboxId: Id<'mailboxes'>) {
+		return await t.run(async (ctx) => {
+			const threads = await ctx.db
+				.query('mailThreads')
+				.withIndex('by_mailbox_and_last_message', (q) => q.eq('mailboxId', mailboxId))
+				.collect();
+			expect(threads).toHaveLength(1);
+			return threads[0]?.needsReply ?? null;
+		});
+	}
+
+	it('a reply the owner sent from the provider client clears the flag and its draft', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seedExternalAccount(t);
+		const now = Date.now();
+
+		await withHeldScheduler(async () => {
+			await ingest(t, seeded, { origin: 'sync', receivedAt: now - 60_000 });
+			await flagThread(t, seeded.mailboxId);
+
+			await ingest(t, seeded, {
+				origin: 'sync',
+				folderRole: 'sent',
+				uid: 43,
+				from: OWNER_ADDRESS,
+				to: SENDER,
+				subject: 'Re: Friday plans?',
+				receivedAt: now,
+			});
+
+			expect(await flagOf(t, seeded.mailboxId)).toBeNull();
+		});
+	});
+
+	it('an OLDER Sent copy arriving out of order leaves the flag alone', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seedExternalAccount(t);
+		const now = Date.now();
+
+		await withHeldScheduler(async () => {
+			await ingest(t, seeded, { origin: 'sync', receivedAt: now });
+			await flagThread(t, seeded.mailboxId);
+
+			await ingest(t, seeded, {
+				origin: 'sync',
+				folderRole: 'sent',
+				uid: 43,
+				from: OWNER_ADDRESS,
+				to: SENDER,
+				subject: 'Re: Friday plans?',
+				receivedAt: now - 60_000,
+			});
+
+			expect(await flagOf(t, seeded.mailboxId)).toMatchObject({ source: 'heuristic' });
 		});
 	});
 });
