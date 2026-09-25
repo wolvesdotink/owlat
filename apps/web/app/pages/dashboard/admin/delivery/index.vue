@@ -4,6 +4,7 @@ import type { ChartDatum } from '@owlat/ui/utils/chart';
 import { deliveryVerdict, warmupSentence, deliveryStatTiles } from '~/utils/deliveryHub';
 import { healthChipClass, levelTone } from '~/utils/healthTone';
 import { formatDate } from '~/utils/formatters';
+import type { ReadinessLevel } from '~/utils/deliveryReadiness';
 
 const { t, locale } = useI18n();
 
@@ -26,13 +27,19 @@ definePageMeta({
 
 const { isLoading: teamLoading } = useOrganizationContext();
 
-// The SAME roll-up query that feeds the sidebar Delivery dot — so the header
-// verdict chip and the nav dot can never disagree.
+// The SAME roll-up query that feeds the sidebar Delivery dot.
 // `level` stays null until the roll-up answers, and the chip is a claim about
 // whether this instance can send — so there is no verdict to show yet, not a
 // default "Healthy" one.
 const { level, reason } = useDeliveryHealth();
-const verdict = computed(() => (level.value ? deliveryVerdict(level.value) : null));
+// The roll-up has no opinion on a missing verified domain, but the readiness
+// panel below does ("Not ready to send"). Not ready wins, so the chip can't say
+// "Healthy" above it.
+const readinessLevel = ref<ReadinessLevel | null>(null);
+const verdict = computed(() => {
+	if (readinessLevel.value === 'blocked') return deliveryVerdict('error');
+	return level.value ? deliveryVerdict(level.value) : null;
+});
 
 // Sending overview: warm-up state, today's volume/budget, rolling reputation.
 const {
@@ -251,7 +258,7 @@ const sendingDetail = computed(() => {
 			 state, so the two halves of go-live (a transport, a verified/authenticated
 			 domain) meet in ONE place. The self-host onboarding banner defers its
 			 pre-send steps here rather than re-listing them. -->
-		<DeliveryReadinessPanel class="mb-6" />
+		<DeliveryReadinessPanel class="mb-6" @level="readinessLevel = $event" />
 
 		<!-- Transport detail below the readiness summary: which transport is live,
 			 its recent runtime health, and the single "Change transport" action that

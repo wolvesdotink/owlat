@@ -69,17 +69,6 @@ const handleCreate = async () => {
 				{{ t('components.visualizations.visualizationPrompt.title') }}
 			</h3>
 		</div>
-		<I18nT
-			keypath="components.visualizations.visualizationPrompt.intro"
-			tag="p"
-			scope="global"
-			class="text-sm text-text-secondary mb-4"
-		>
-			<template #sampleData>
-				<strong>{{ t('components.visualizations.visualizationPrompt.sampleDataName') }}</strong>
-			</template>
-		</I18nT>
-
 		<div class="space-y-3">
 			<textarea
 				v-model="prompt"

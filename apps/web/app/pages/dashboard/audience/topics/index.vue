@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { formatNumber } from '~/utils/formatters';
 import type { Id } from '@owlat/api/dataModel';
 
 const { t } = useI18n();
@@ -387,7 +388,7 @@ onMounted(() => {
 								</span>
 								<span class="flex items-center gap-1.5 text-xs text-text-tertiary mt-0.5">
 									<Icon name="lucide:users" class="w-3.5 h-3.5" />
-									{{ topic.contactCount }}
+									{{ formatNumber(topic.contactCount) }}
 									<span aria-hidden="true">·</span>
 									{{ formatDate(topic.createdAt) }}
 								</span>
@@ -484,11 +485,13 @@ onMounted(() => {
 									<td class="px-6 py-4">
 										<div class="flex items-center gap-2">
 											<Icon name="lucide:users" class="w-4 h-4 text-text-tertiary" />
-											<span class="text-text-secondary">{{ topic.contactCount }}</span>
+											<span class="text-text-secondary tabular-nums">{{
+												formatNumber(topic.contactCount)
+											}}</span>
 										</div>
 									</td>
 									<td class="px-6 py-4">
-										<span class="text-text-tertiary text-sm">{{
+										<span class="text-text-tertiary text-sm whitespace-nowrap">{{
 											formatDate(topic.createdAt)
 										}}</span>
 									</td>
@@ -498,6 +501,7 @@ onMounted(() => {
 												v-if="canManage"
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 												:title="t('dashboard.audience.topics.index.actions.edit')"
+												:aria-label="t('dashboard.audience.topics.index.actions.edit')"
 												@click.stop="openEditModal(topic)"
 											>
 												<Icon name="lucide:pencil" class="w-4 h-4" />
@@ -506,6 +510,7 @@ onMounted(() => {
 												v-if="canManage"
 												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
 												:title="t('dashboard.audience.topics.index.actions.delete')"
+												:aria-label="t('dashboard.audience.topics.index.actions.delete')"
 												@click.stop="openDeleteModal(topic)"
 											>
 												<Icon name="lucide:trash-2" class="w-4 h-4" />

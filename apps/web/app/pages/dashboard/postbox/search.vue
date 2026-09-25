@@ -360,7 +360,9 @@ async function confirmSave() {
 						</button>
 					</div>
 					<PostboxThreadReader v-if="activeMessage" :message="activeMessage" />
-					<div v-else class="h-full flex items-center justify-center">
+					<!-- Only invite a pick when there is something to pick; with no
+					     results the list pane already says why, so this stays blank. -->
+					<div v-else-if="results.length > 0" class="h-full flex items-center justify-center">
 						<div class="text-center">
 							<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
 							<p class="mt-4 text-text-secondary">

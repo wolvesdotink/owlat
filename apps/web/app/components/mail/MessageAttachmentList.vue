@@ -2,7 +2,7 @@
 import { useId } from 'vue';
 import { formatCompactFileSize } from '~/utils/formatters';
 import { isPreviewableFile } from '~/utils/postboxFileFacets';
-import type { AttachmentMeta } from '~/utils/attachmentMeta';
+import { attachmentTypeLabel, type AttachmentMeta } from '~/utils/attachmentMeta';
 
 /**
  * The attachment rows under one received message: name, size, type, an
@@ -71,6 +71,13 @@ const emit = defineEmits<{
 	(e: 'download', att: AttachmentMeta): void;
 }>();
 
+/** "82.1 KB · PDF" — one short line; the full MIME type sits in the title. */
+function metaLine(att: AttachmentMeta): string {
+	const size = formatCompactFileSize(att.size);
+	const type = attachmentTypeLabel(att);
+	return type ? `${size} · ${type}` : size;
+}
+
 function isDownloading(att: AttachmentMeta): boolean {
 	return props.downloadingKey === `${props.messageId}:${att.partIndex ?? att.filename}`;
 }
@@ -129,8 +136,8 @@ function onDownload(att: AttachmentMeta): void {
 				<Icon name="lucide:paperclip" class="w-4 h-4 text-text-tertiary flex-shrink-0" />
 				<div class="min-w-0 flex-1">
 					<p class="truncate text-sm">{{ att.filename }}</p>
-					<p class="text-xs text-text-tertiary">
-						{{ formatCompactFileSize(att.size) }} · {{ att.contentType }}
+					<p class="truncate text-xs text-text-tertiary" :title="att.contentType">
+						{{ metaLine(att) }}
 					</p>
 				</div>
 				<button

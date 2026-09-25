@@ -297,32 +297,13 @@ const shownCapacityPlan = computed(() => {
 				</UiButton>
 			</div>
 
-			<!-- Cannot Edit State -->
-			<div
+			<!-- Cannot Edit State: sending, sent or stopped -->
+			<CampaignsCampaignEditLocked
 				v-else-if="!canEdit && campaignData.status !== 'pending_review'"
-				class="max-w-4xl mx-auto px-6 py-16 text-center"
-			>
-				<UiIconBox
-					icon="lucide:alert-circle"
-					size="xl"
-					variant="surface"
-					rounded="full"
-					class="mb-4 mx-auto"
-				/>
-				<p class="text-text-primary font-medium">
-					{{ t('dashboard.campaigns.detail.edit.cannotEditTitle') }}
-				</p>
-				<p class="text-sm text-text-secondary mt-1">
-					{{
-						t('dashboard.campaigns.detail.edit.cannotEditDescription', {
-							status: campaignData.status,
-						})
-					}}
-				</p>
-				<UiButton variant="secondary" class="mt-6" @click="handleBack">
-					{{ t('dashboard.campaigns.detail.edit.backToCampaigns') }}
-				</UiButton>
-			</div>
+				:campaign-id="campaignId"
+				:status="campaignData.status"
+				@back="handleBack"
+			/>
 
 			<!-- Pending Review State -->
 			<div v-else-if="campaignData.status === 'pending_review'" class="max-w-4xl mx-auto px-6 py-8">

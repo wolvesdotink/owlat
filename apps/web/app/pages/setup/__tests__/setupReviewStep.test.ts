@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 /**
  * #773 — the review step names features by label under their pack, says in
- * one sentence what happens to secrets, and lists every launch blocker next to
- * the Launch button, each linked to its step.
+ * one sentence what happens to secrets, and names every launch blocker next to
+ * the Launch button, each linked to its step; missing values also show inline.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref, type Ref } from 'vue';
@@ -90,9 +90,14 @@ describe('setup review step', () => {
 		const wrapper = mountStep();
 		expect(wrapper.get('[data-testid="launch-button"]').attributes('disabled')).toBeDefined();
 		const list = wrapper.get('[data-testid="launch-blockers"]');
-		expect(list.text()).toContain('Choose a delivery provider to continue');
-		expect(list.text()).toContain('Create the admin account to continue');
-		expect(list.text()).toContain('Enter the setup token to continue');
+		expect(list.text()).toContain('3 things left before launch:');
+		expect(list.text()).toContain('email provider');
+		expect(list.text()).toContain('admin account');
+		expect(list.text()).toContain('setup token');
+		// The missing values also show inline, in their own summary rows.
+		expect(wrapper.get('[data-testid="review-provider-missing"]').text()).toBe('Not set');
+		expect(wrapper.get('[data-testid="review-admin"]').text()).toContain('Not set');
+		expect(wrapper.get('[data-testid="review-edit-admin"]').text()).toBe('Add');
 
 		await wrapper.get('[data-testid="launch-blocker-admin"]').trigger('click');
 		expect(push).toHaveBeenCalledWith('/setup/admin');

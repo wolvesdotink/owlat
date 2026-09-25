@@ -222,7 +222,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 	<div class="mx-auto w-full max-w-4xl px-6 pb-16 pt-8 lg:px-10">
 		<!-- Greeting + what happened since the viewer last looked -->
 		<header class="flex flex-wrap items-start gap-4">
-			<div class="min-w-0 flex-1">
+			<div class="min-w-0 grow basis-80">
 				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 					<I18nT
 						v-if="firstName"

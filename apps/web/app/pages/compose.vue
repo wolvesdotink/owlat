@@ -46,9 +46,10 @@ async function closeWindow() {
 </script>
 
 <template>
-	<div class="ui-window-enter mx-auto max-w-3xl p-4">
+	<div class="ui-window-enter mx-auto flex h-dvh max-w-3xl flex-col p-4">
 		<PostboxComposer
 			v-if="currentMailbox"
+			class="min-h-0 flex-1"
 			:mailbox-id="currentMailbox._id"
 			:prefill-to="prefillTo"
 			:prefill-cc="prefillCc"

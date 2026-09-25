@@ -58,7 +58,7 @@ const VARIANT_CLASS: Record<TrustLabel['variant'], string> = {
 		<button
 			type="button"
 			data-testid="trust-chip"
-			class="inline-flex items-center text-[10px] font-medium uppercase tracking-wide px-1.5 py-px rounded-full transition-colors duration-(--motion-fast) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/60"
+			class="inline-flex items-center text-xs px-2 py-0.5 rounded-full transition-colors duration-(--motion-fast) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/60"
 			:class="VARIANT_CLASS[props.trust.variant]"
 			:aria-expanded="open"
 			:aria-label="t('components.inbox.trustChip.seeWhy', { label: trustText })"

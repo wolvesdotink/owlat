@@ -35,7 +35,7 @@ onMounted(fetchContainerHealth);
 <template>
 	<div class="card">
 		<div class="flex items-center justify-between mb-4">
-			<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider">
+			<h3 class="font-semibold text-text-primary">
 				{{ t('dashboard.admin.system.index.containers.title') }}
 			</h3>
 			<button

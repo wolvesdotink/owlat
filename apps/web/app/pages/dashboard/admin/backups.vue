@@ -120,7 +120,7 @@ const recordedAtLabel = computed(() =>
 			<div class="space-y-6">
 				<!-- Current recorded status -->
 				<section class="rounded-xl border border-border-default bg-bg-elevated p-6">
-					<h2 class="text-sm font-medium uppercase tracking-wider text-text-tertiary">
+					<h2 class="font-semibold text-text-primary">
 						{{ t('dashboard.admin.backups.currentStatus') }}
 					</h2>
 
@@ -193,7 +193,7 @@ const recordedAtLabel = computed(() =>
 				<section class="rounded-xl border border-border-default bg-bg-elevated p-6 space-y-4">
 					<div class="flex flex-wrap items-start justify-between gap-4">
 						<div class="min-w-0">
-							<h2 class="text-sm font-medium uppercase tracking-wider text-text-tertiary">
+							<h2 class="font-semibold text-text-primary">
 								{{ t('dashboard.admin.backups.dailySchedule') }}
 							</h2>
 							<p class="mt-1 text-sm text-text-secondary">
@@ -216,7 +216,7 @@ const recordedAtLabel = computed(() =>
 				<!-- Run now -->
 				<section class="rounded-xl border border-border-default bg-bg-elevated p-6 space-y-4">
 					<div>
-						<h2 class="text-sm font-medium uppercase tracking-wider text-text-tertiary">
+						<h2 class="font-semibold text-text-primary">
 							{{ t('dashboard.admin.backups.backUpNow') }}
 						</h2>
 						<p class="mt-1 text-sm text-text-secondary">
@@ -244,7 +244,7 @@ const recordedAtLabel = computed(() =>
 				<!-- Restore -->
 				<section class="rounded-xl border border-border-default bg-bg-elevated p-6 space-y-4">
 					<div>
-						<h2 class="text-sm font-medium uppercase tracking-wider text-text-tertiary">
+						<h2 class="font-semibold text-text-primary">
 							{{ t('dashboard.admin.backups.restore') }}
 						</h2>
 						<I18nT
