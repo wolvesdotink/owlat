@@ -756,13 +756,10 @@
 				"clickRate": "Klicks",
 				"meta": {
 					"abInProgress": "A/B-Test läuft",
-					"awaitingReview": "Wartet auf Prüfung · aktualisiert {updated}",
-					"draft": "Entwurf · aktualisiert {updated}",
 					"scheduled": "Geplant",
 					"scheduledFor": "Geplant für {at}",
-					"sendStopped": "Versand wurde gestoppt",
-					"sendingNow": "Wird gerade gesendet",
 					"sent": "Gesendet {at} · {count} Empfänger",
+					"updated": "Aktualisiert {updated}",
 					"variantLeads": "Variante {variant} führt mit {points} Punkten",
 					"variantsEven": "Die Varianten liegen gleichauf"
 				},
@@ -4950,7 +4947,6 @@
 		},
 		"preferences": {
 			"preferencesAppearance": {
-				"accountAndData": "Konto & Daten",
 				"dark": {
 					"description": "Schonend für die Augen",
 					"label": "Dunkel"
@@ -5322,10 +5318,10 @@
 				"ceilingReached": "Obergrenze erreicht — automatischer Versand pausiert",
 				"dailyRemaining": "Täglich verbleibend",
 				"monthlyRemaining": "Monatlich verbleibend",
-				"noUsage": "In den letzten 7 Tagen wurde keine LLM-Nutzung erfasst.",
+				"noUsage": "In den letzten 7 Tagen wurde keine KI-Nutzung erfasst.",
 				"ofLimit": "von {amount}",
 				"spendBudget": "Ausgabenbudget",
-				"title": "LLM-Ausgaben · letzte 7 Tage"
+				"title": "KI-Nutzung · letzte 7 Tage"
 			},
 			"portChecksCard": {
 				"title": "Netzwerk-Ports",
@@ -5498,11 +5494,9 @@
 				},
 				"generate": "Erzeugen",
 				"generating": "Wird erzeugt...",
-				"intro": "Beschreiben Sie ein Diagramm in natürlicher Sprache, und der KI-Agent erzeugt daraus eine interaktive Komponente. Belassen Sie die Datenquelle auf {sampleData} für einen Layout-Entwurf, oder wählen Sie unten einen der Live-Datensätze, um die echten Zahlen Ihres Kontos darzustellen.",
 				"liveDataNote": "Dieses Diagramm verwendet die echten Zahlen Ihres Kontos für den gewählten Datensatz.",
 				"pinToDashboard": "An Dashboard anheften",
 				"promptPlaceholder": "z. B. Ein Balkendiagramm des E-Mail-Zustellstatus",
-				"sampleDataName": "Beispieldaten zur Veranschaulichung",
 				"sampleDataOption": "Beispieldaten zur Veranschaulichung (keine Kontodaten)",
 				"title": "Visualisierung erstellen"
 			}
@@ -5758,10 +5752,9 @@
 				"chatDetail": "intern, wird nicht per E-Mail verschickt",
 				"followUp": "Nachfassen",
 				"draftReady": "Entwurf bereit",
-				"question": "braucht deine Angabe",
-				"needsReply": "braucht eine Antwort",
-				"agentDraft": "Agent-Entwurf · prüfen",
-				"escalation": "an dich eskaliert",
+				"question": "Braucht deine Angabe",
+				"needsReply": "Braucht eine Antwort",
+				"escalation": "An dich eskaliert",
 				"mention": "Erwähnung"
 			},
 			"mention": {
@@ -6247,7 +6240,8 @@
 					"success": "Betriebswerkzeuge aktiviert. Systemaktualisierungen und Backups finden Sie jetzt unter „System“.",
 					"title": "Betriebswerkzeuge sind noch nicht aktiviert"
 				},
-				"attention": "{count} eingehende Nachricht wartet auf Sie | {count} eingehende Nachrichten warten auf Sie",
+				"attentionFailed": "{count} eingehende Nachricht konnte nicht verarbeitet werden | {count} eingehende Nachrichten konnten nicht verarbeitet werden",
+				"attentionQuarantined": "{count} Nachricht ist in Quarantäne | {count} Nachrichten sind in Quarantäne",
 				"deliveryVerdict": "Zustellungsbewertung",
 				"eyebrow": "Workspace",
 				"groups": {
@@ -6258,7 +6252,7 @@
 					"team": "Mitglieder, Einladungen, Team-Postfächer, Kampagnenabsender, die API und das Audit-Protokoll."
 				},
 				"learnMore": "Mehr erfahren →",
-				"lede": "Beginnen Sie hier mit den Bewertungen. Alles Weitere steckt in den fünf Gruppen unten, denselben wie in der Seitenleiste der Einstellungen.",
+				"lede": "Zuerst die Zustandsprüfungen, dann alle Arbeitsbereich-Einstellungen nach Gruppe.",
 				"pageTitle": "Übersicht — Owlat",
 				"platform": "Betriebswerkzeuge",
 				"platformAdminOnly": "Systemaktualisierungen und Backups liegen beim Plattformadministrator dieser Installation und werden hier nicht angezeigt.",
@@ -7682,6 +7676,7 @@
 					"expiresInHours": "Läuft in {hours} Std ab",
 					"expiresSoon": "Läuft bald ab",
 					"resend": "Einladungs-E-Mail erneut senden",
+					"resendShort": "Erneut senden",
 					"revoke": "Einladung widerrufen",
 					"title": "Ausstehende Einladungen"
 				},
@@ -7929,7 +7924,6 @@
 				"index": {
 					"addContact": "Kontakt hinzufügen",
 					"addedOn": "Hinzugefügt {date}",
-					"allLoaded": "Alle Kontakte geladen",
 					"bulk": {
 						"addToTopic": "Zu Thema hinzufügen",
 						"deleteSelected": "Auswahl löschen",
@@ -7995,6 +7989,7 @@
 					"selectAllMatching": "Alle {count} auswählen",
 					"selectContact": "{email} auswählen",
 					"showing": {
+						"all": "{count} Kontakt | {count} Kontakte",
 						"empty": "0 Kontakte",
 						"loaded": "{count} Kontakt geladen | {count} Kontakte geladen"
 					},
@@ -8603,7 +8598,6 @@
 						"scheduled": "Geplant",
 						"underReview": "In Prüfung"
 					},
-					"cannotEditDescription": "Diese Kampagne ist {status} und kann nicht bearbeitet werden.",
 					"cannotEditTitle": "Diese Kampagne kann nicht bearbeitet werden",
 					"content": {
 						"editEmail": "E-Mail bearbeiten",
@@ -8634,6 +8628,12 @@
 					"errorTitle": "Diese Kampagne konnte nicht geladen werden",
 					"loadingLabel": "Kampagne wird geladen …",
 					"loadingName": "Wird geladen …",
+					"locked": {
+						"cancelled": "Der Versand wurde gestoppt. Im Bericht siehst du, was verschickt wurde, oder du duplizierst die Kampagne und startest neu.",
+						"sending": "Sie wird gerade versendet. Im Bericht kannst du den Versand verfolgen.",
+						"sent": "Sie wurde bereits versendet. Im Bericht siehst du, wie sie gelaufen ist, oder du duplizierst sie für eine neue Version.",
+						"viewReport": "Bericht ansehen"
+					},
 					"notFoundDescription": "Die gesuchte Kampagne existiert nicht oder Sie haben keinen Zugriff darauf.",
 					"notFoundTitle": "Kampagne nicht gefunden",
 					"pageTitle": "Kampagne bearbeiten — Owlat",
@@ -11217,7 +11217,7 @@
 					"title": "Administrator-Konto"
 				},
 				"email": {
-					"desc": "Owlat-MTA, Resend, Amazon SES oder keiner.",
+					"desc": "Ihr eigener Mailserver oder ein Anbieter, den Sie bereits nutzen.",
 					"title": "E-Mail-Anbieter"
 				},
 				"features": {
@@ -11280,10 +11280,11 @@
 			"appliedTitle": "Einrichtung angewendet",
 			"applying": "Wird angewendet…",
 			"blockers": {
-				"admin": "Legen Sie das Administratorkonto an, um fortzufahren",
-				"provider": "Wählen Sie einen Zustellungsanbieter, um fortzufahren",
-				"token": "Geben Sie das Einrichtungs-Token ein, um fortzufahren"
+				"admin": "Administratorkonto",
+				"provider": "E-Mail-Anbieter",
+				"token": "Einrichtungs-Token"
 			},
+			"blockersLeft": "Vor dem Start fehlt noch {count} Angabe: | Vor dem Start fehlen noch {count} Angaben:",
 			"complete": {
 				"eyebrow": "Owlat-Einrichtung",
 				"intro": "Ihre Instanz ist konfiguriert und läuft. Melden Sie sich einmal am neu gestarteten Prozess an und machen Sie weiter, wo Sie möchten.",
@@ -11323,7 +11324,7 @@
 			"mailboxImport": "Postfach-Import",
 			"mailboxImportEnabled": "Aktiviert — neue Nutzer können beim ersten Login E-Mails von Ihrer alten Plattform importieren.",
 			"noneEnabled": "Keine aktiviert",
-			"notSet": "(nicht gesetzt)",
+			"notSet": "Nicht gesetzt",
 			"otherFeatures": "Weitere",
 			"pageTitle": "Owlat-Einrichtung — Überprüfung",
 			"restartTimeout": "Bei einer verwalteten Installation schließt sich das von selbst ab. Wenn Sie einen manuellen {command}-Stack betreiben, starten Sie den Web-Container neu — wir fahren automatisch fort, sobald er wieder erreichbar ist.",

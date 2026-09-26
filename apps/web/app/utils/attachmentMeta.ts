@@ -24,3 +24,16 @@ export type AttachmentMeta = {
 	 */
 	partIndex?: string;
 };
+
+/**
+ * A short, human type for an attachment row — "PDF", "PNG", "DOCX" — instead
+ * of the raw MIME type. The filename's extension wins because it is what people
+ * recognise; a short MIME subtype ("application/pdf" → "PDF") is the fallback;
+ * anything longer ("vnd.openxmlformats-…") says nothing useful and yields ''.
+ */
+export function attachmentTypeLabel(att: Pick<AttachmentMeta, 'filename' | 'contentType'>): string {
+	const ext = /\.([a-z0-9]{1,5})$/i.exec(att.filename)?.[1];
+	if (ext) return ext.toUpperCase();
+	const subtype = (att.contentType.split(';')[0] ?? '').split('/')[1]?.trim().replace(/^x-/, '');
+	return subtype && /^[a-z0-9]{1,5}$/i.test(subtype) ? subtype.toUpperCase() : '';
+}

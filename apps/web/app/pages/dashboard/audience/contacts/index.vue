@@ -110,6 +110,10 @@ const isAllPageSelected = computed(() => bulkSelection.isAllPageSelected(contact
 const showingText = computed(() => {
 	const count = contacts.value?.length ?? 0;
 	if (count === 0) return t('dashboard.audience.contacts.index.showing.empty');
+	// Once every page is in, the count is the whole list — one line says so.
+	if (paginationStatus.value === 'Exhausted') {
+		return t('dashboard.audience.contacts.index.showing.all', { count }, count);
+	}
 	return t('dashboard.audience.contacts.index.showing.loaded', { count }, count);
 });
 
@@ -919,9 +923,6 @@ onUnmounted(() => {
 									: t('dashboard.audience.contacts.index.loadMore')
 							}}
 						</UiButton>
-						<span v-else-if="paginationStatus === 'Exhausted'" class="text-sm text-text-tertiary">
-							{{ t('dashboard.audience.contacts.index.allLoaded') }}
-						</span>
 					</div>
 				</div>
 			</UiQueryBoundary>

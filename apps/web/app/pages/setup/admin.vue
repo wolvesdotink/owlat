@@ -54,7 +54,7 @@ function next() {
 	<div class="relative isolate min-h-screen overflow-hidden bg-bg-base text-text-primary">
 		<UiHeroField />
 
-		<div class="relative mx-auto max-w-xl px-6 py-12">
+		<div class="relative mx-auto max-w-3xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
 				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
 				<span class="lp-eyebrow">{{ t('setup.admin.eyebrow') }}</span>

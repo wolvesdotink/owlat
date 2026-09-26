@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { formatNumber } from '~/utils/formatters';
 
 const { t } = useI18n();
 
@@ -130,6 +131,10 @@ const { showToast: showNotification } = useToast();
 
 // Toggle active/paused status
 const toggleingId = ref<Id<'automations'> | null>(null);
+const toggleLabel = (status: string) =>
+	status === 'active'
+		? t('dashboard.automations.index.actions.pause')
+		: t('dashboard.automations.index.actions.activate');
 
 const handleToggleStatus = async (automation: {
 	_id: Id<'automations'>;
@@ -366,19 +371,29 @@ const openFromName = (automation: {
 						<table class="w-full">
 							<thead>
 								<tr class="border-b border-border-subtle">
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									<th
+										class="text-left px-6 py-4 text-sm font-medium text-text-secondary whitespace-nowrap"
+									>
 										{{ t('common.name') }}
 									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									<th
+										class="text-left px-6 py-4 text-sm font-medium text-text-secondary whitespace-nowrap"
+									>
 										{{ t('dashboard.automations.index.table.trigger') }}
 									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									<th
+										class="text-left px-6 py-4 text-sm font-medium text-text-secondary whitespace-nowrap"
+									>
 										{{ t('common.status') }}
 									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									<th
+										class="text-left px-6 py-4 text-sm font-medium text-text-secondary whitespace-nowrap"
+									>
 										{{ t('dashboard.automations.index.table.contactsInFlow') }}
 									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									<th
+										class="text-left px-6 py-4 text-sm font-medium text-text-secondary whitespace-nowrap"
+									>
 										{{ t('dashboard.automations.index.table.created') }}
 									</th>
 									<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
@@ -425,7 +440,7 @@ const openFromName = (automation: {
 									<td class="px-6 py-4">
 										<span
 											:class="[
-												'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
+												'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap',
 												getStatusBadge(automation.status).color,
 											]"
 										>
@@ -436,13 +451,13 @@ const openFromName = (automation: {
 									<td class="px-6 py-4">
 										<div class="flex items-center gap-1.5">
 											<Icon name="lucide:users" class="w-4 h-4 text-text-tertiary" />
-											<span class="text-text-secondary text-sm">
-												{{ automation.statsActive || 0 }}
+											<span class="text-text-secondary text-sm tabular-nums">
+												{{ formatNumber(automation.statsActive ?? 0) }}
 											</span>
 										</div>
 									</td>
 									<td class="px-6 py-4">
-										<span class="text-text-secondary text-sm">
+										<span class="text-text-secondary text-sm whitespace-nowrap">
 											{{ formatDate(automation.createdAt) }}
 										</span>
 									</td>
@@ -457,11 +472,8 @@ const openFromName = (automation: {
 														? 'text-warning hover:text-warning hover:bg-warning/10'
 														: 'text-success hover:text-success hover:bg-success/10',
 												]"
-												:title="
-													automation.status === 'active'
-														? t('dashboard.automations.index.actions.pause')
-														: t('dashboard.automations.index.actions.activate')
-												"
+												:title="toggleLabel(automation.status)"
+												:aria-label="toggleLabel(automation.status)"
 												:disabled="toggleingId === automation._id"
 												@click="handleToggleStatus(automation)"
 											>
@@ -482,6 +494,7 @@ const openFromName = (automation: {
 												v-if="canManage"
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												:title="t('common.edit')"
+												:aria-label="t('common.edit')"
 												@click="handleEdit(automation._id)"
 											>
 												<Icon name="lucide:pencil" class="w-4 h-4" />
@@ -497,6 +510,7 @@ const openFromName = (automation: {
 												<button
 													class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 													@click="toggleDropdown(automation._id)"
+													:title="t('dashboard.automations.index.actions.more')"
 													:aria-label="t('dashboard.automations.index.actions.more')"
 												>
 													<Icon name="lucide:more-vertical" class="w-4 h-4" />

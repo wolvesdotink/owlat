@@ -424,6 +424,30 @@ const replySenderLabel = computed(() => {
 	}
 	return replyTarget.value?.from ?? '';
 });
+// A message header names its sender when that sender is the thread's contact;
+// the address stays beside it, muted. Anyone else keeps the bare address.
+function senderName(message: { from: string; contactId?: string }): string | null {
+	const c = contact.value;
+	if (!c) return null;
+	const isContact =
+		message.contactId === c._id || message.from.toLowerCase() === (c.email ?? '').toLowerCase();
+	if (!isContact) return null;
+	return `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || null;
+}
+// The agent's working is only worth a disclosure when there is some: a
+// classification, a recorded decision, or a pipeline stop (failed/quarantined).
+function hasAgentInsight(message: {
+	classification?: unknown;
+	agentDecision?: unknown;
+	processingStatus: string;
+}): boolean {
+	return Boolean(
+		message.classification ||
+		message.agentDecision ||
+		message.processingStatus === 'failed' ||
+		message.processingStatus === 'quarantined'
+	);
+}
 const composerOpen = ref(false);
 const composerRef = ref<{
 	focus: () => void;
@@ -721,7 +745,13 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							<div class="flex items-center gap-3 mb-4">
 								<UiIconBox icon="lucide:mail" size="sm" variant="surface" rounded="full" />
 								<div class="min-w-0">
-									<p class="text-text-primary font-medium text-sm truncate">{{ message.from }}</p>
+									<p class="truncate text-sm">
+										<template v-if="senderName(message)">
+											<span class="font-medium text-text-primary">{{ senderName(message) }}</span>
+											<span class="ml-1.5 text-xs text-text-tertiary">{{ message.from }}</span>
+										</template>
+										<span v-else class="font-medium text-text-primary">{{ message.from }}</span>
+									</p>
 									<time
 										class="text-xs text-text-tertiary"
 										:datetime="new Date(message._creationTime).toISOString()"
@@ -922,9 +952,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 
 							<!-- The agent's working, for admins, behind one disclosure. -->
 							<InboxAgentInsight
-								v-if="
-									isAdmin && (message.classification || message.processingStatus !== 'received')
-								"
+								v-if="isAdmin && hasAgentInsight(message)"
 								:inbound-message-id="message._id"
 								:classification="message.classification ?? null"
 								:decision-reason="message.agentDecision?.reason ?? null"

@@ -71,13 +71,14 @@ function countFor(filter: TemplateTypeFilter): number | null {
 	return counts[filter] ?? 0;
 }
 
+// Same pill tabs as the Campaigns and Transactional lists: label + count.
 const filterOptions = computed(() =>
 	TEMPLATE_TYPE_FILTERS.map((filter) => {
 		const count = countFor(filter);
-		const label = t(`dashboard.send.index.filters.${filter}`);
 		return {
 			value: filter,
-			label: count === null ? label : `${label} (${count.toLocaleString(locale.value)})`,
+			label: t(`dashboard.send.index.filters.${filter}`),
+			count: count === null ? null : count.toLocaleString(locale.value),
 		};
 	})
 );
@@ -87,10 +88,6 @@ const blockCount = computed(() => blocksStats.value?.total ?? null);
 // Every template type opens in the same email editor.
 function editPath(id: Id<'emailTemplates'>): string {
 	return `/dashboard/send/emails/${id}/edit`;
-}
-
-function typeBadgeClass(type: string): string {
-	return type === 'marketing' ? 'bg-brand-subtle text-brand' : 'bg-info-subtle text-info';
 }
 
 // --- New template (the same library modal the marketing list uses) ---------
@@ -156,13 +153,31 @@ function handleCreated(templateId: Id<'emailTemplates'>) {
 			</template>
 		</UiPageHeader>
 
-		<UiSegmentedControl
-			v-model="typeFilter"
-			:options="filterOptions"
-			size="sm"
-			class="mb-4"
-			data-testid="template-type-filter"
-		/>
+		<div class="flex mb-6">
+			<div
+				class="flex items-center gap-1 p-1 bg-bg-surface rounded-lg overflow-x-auto"
+				data-testid="template-type-filter"
+			>
+				<button
+					v-for="option in filterOptions"
+					:key="option.value"
+					type="button"
+					:aria-pressed="typeFilter === option.value"
+					:class="[
+						'px-3 py-1.5 rounded-md text-sm flex items-center gap-1.5 whitespace-nowrap transition-colors duration-(--motion-fast) ease-spring',
+						typeFilter === option.value
+							? 'bg-bg-elevated text-text-primary font-semibold shadow-sm'
+							: 'text-text-secondary hover:text-text-primary font-medium',
+					]"
+					@click="typeFilter = option.value"
+				>
+					{{ option.label }}
+					<span v-if="option.count !== null" class="text-xs tabular-nums text-text-tertiary">
+						{{ option.count }}
+					</span>
+				</button>
+			</div>
+		</div>
 
 		<UiCard padding="none" overflow="hidden">
 			<UiQueryBoundary
@@ -199,8 +214,10 @@ function handleCreated(templateId: Id<'emailTemplates'>) {
 									{{ template.subject }}
 								</p>
 							</div>
+							<!-- Marketing is the default type; only the exception gets a badge -->
 							<span
-								:class="['text-xs px-1.5 py-0.5 rounded shrink-0', typeBadgeClass(template.type)]"
+								v-if="template.type !== 'marketing'"
+								class="text-xs px-1.5 py-0.5 rounded shrink-0 bg-info-subtle text-info"
 							>
 								{{ t(`dashboard.send.index.templateTypes.${template.type}`) }}
 							</span>

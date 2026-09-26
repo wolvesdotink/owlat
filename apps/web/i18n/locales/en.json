@@ -756,13 +756,10 @@
 				"clickRate": "Click",
 				"meta": {
 					"abInProgress": "A/B test in progress",
-					"awaitingReview": "Awaiting review · updated {updated}",
-					"draft": "Draft · updated {updated}",
 					"scheduled": "Scheduled",
 					"scheduledFor": "Scheduled for {at}",
-					"sendStopped": "Send was stopped",
-					"sendingNow": "Sending now",
 					"sent": "Sent {at} · {count} recipients",
+					"updated": "Updated {updated}",
 					"variantLeads": "Variant {variant} leads by {points} pts",
 					"variantsEven": "Variants are running even"
 				},
@@ -4950,7 +4947,6 @@
 		},
 		"preferences": {
 			"preferencesAppearance": {
-				"accountAndData": "Account & data",
 				"dark": {
 					"description": "Easy on the eyes",
 					"label": "Dark"
@@ -5322,10 +5318,10 @@
 				"ceilingReached": "Ceiling reached — auto-send paused",
 				"dailyRemaining": "Daily remaining",
 				"monthlyRemaining": "Monthly remaining",
-				"noUsage": "No LLM usage recorded in the last 7 days.",
+				"noUsage": "No AI usage recorded in the last 7 days.",
 				"ofLimit": "of {amount}",
 				"spendBudget": "Spend budget",
-				"title": "LLM spend · last 7 days"
+				"title": "AI usage · last 7 days"
 			},
 			"portChecksCard": {
 				"title": "Network ports",
@@ -5498,11 +5494,9 @@
 				},
 				"generate": "Generate",
 				"generating": "Generating...",
-				"intro": "Describe a chart in natural language and the AI agent will generate an interactive component. Leave the data source on {sampleData} for a layout mockup, or pick one of the live datasets below to chart your account's real numbers.",
 				"liveDataNote": "This chart will use your account's real numbers for the selected dataset.",
 				"pinToDashboard": "Pin to dashboard",
 				"promptPlaceholder": "e.g., A bar chart of email delivery status",
-				"sampleDataName": "Illustrative sample data",
 				"sampleDataOption": "Illustrative sample data (no account data)",
 				"title": "Create visualization"
 			}
@@ -5756,13 +5750,12 @@
 				"replyingIn": "Replying in #{room}",
 				"teamDetail": "replies go out from the team inbox address",
 				"chatDetail": "internal, not sent by email",
-				"followUp": "follow-up",
-				"draftReady": "draft ready",
-				"question": "needs your input",
-				"needsReply": "needs a reply",
-				"agentDraft": "agent draft · review",
-				"escalation": "escalated to you",
-				"mention": "mention"
+				"followUp": "Follow-up",
+				"draftReady": "Draft ready",
+				"question": "Needs your input",
+				"needsReply": "Needs a reply",
+				"escalation": "Escalated to you",
+				"mention": "Mention"
 			},
 			"mention": {
 				"reply": "Reply in chat",
@@ -6247,7 +6240,8 @@
 					"success": "Operator tools enabled. System updates and backups are now under System.",
 					"title": "Operator tools are not enabled yet"
 				},
-				"attention": "{count} incoming message needs a look | {count} incoming messages need a look",
+				"attentionFailed": "{count} incoming message failed to process | {count} incoming messages failed to process",
+				"attentionQuarantined": "{count} message is held in quarantine | {count} messages are held in quarantine",
 				"deliveryVerdict": "Delivery verdict",
 				"eyebrow": "Workspace",
 				"groups": {
@@ -6258,7 +6252,7 @@
 					"team": "Members, invites, team inboxes, campaign senders, the API and the audit log."
 				},
 				"learnMore": "Learn more →",
-				"lede": "Start with the verdicts here. Everything else sits in the five groups below, the same ones the Settings sidebar lists.",
+				"lede": "Health checks first, then every workspace setting by group.",
 				"pageTitle": "Overview — Owlat",
 				"platform": "Operator tools",
 				"platformAdminOnly": "System updates and backups are held by this deployment's platform admin and aren't shown here.",
@@ -7682,6 +7676,7 @@
 					"expiresInHours": "Expires in {hours}h",
 					"expiresSoon": "Expires soon",
 					"resend": "Resend invitation email",
+					"resendShort": "Resend",
 					"revoke": "Revoke invitation",
 					"title": "Pending invites"
 				},
@@ -7929,7 +7924,6 @@
 				"index": {
 					"addContact": "Add contact",
 					"addedOn": "Added {date}",
-					"allLoaded": "All contacts loaded",
 					"bulk": {
 						"addToTopic": "Add to topic",
 						"deleteSelected": "Delete selected",
@@ -7995,6 +7989,7 @@
 					"selectAllMatching": "Select all {count}",
 					"selectContact": "Select {email}",
 					"showing": {
+						"all": "{count} contact | {count} contacts",
 						"empty": "0 contacts",
 						"loaded": "{count} contact loaded | {count} contacts loaded"
 					},
@@ -8603,7 +8598,6 @@
 						"scheduled": "Scheduled",
 						"underReview": "Under review"
 					},
-					"cannotEditDescription": "This campaign is {status} and cannot be edited.",
 					"cannotEditTitle": "Cannot edit this campaign",
 					"content": {
 						"editEmail": "Edit email",
@@ -8634,6 +8628,12 @@
 					"errorTitle": "Couldn't load this campaign",
 					"loadingLabel": "Loading campaign...",
 					"loadingName": "Loading...",
+					"locked": {
+						"cancelled": "Its send was stopped. Open the report to see what went out, or duplicate it to start again.",
+						"sending": "It is sending right now. Open the report to follow the send.",
+						"sent": "It has already been sent. Open the report to see how it did, or duplicate it to send a new version.",
+						"viewReport": "View report"
+					},
 					"notFoundDescription": "The campaign you're looking for doesn't exist or you don't have access to it.",
 					"notFoundTitle": "Campaign not found",
 					"pageTitle": "Edit campaign — Owlat",
@@ -11217,7 +11217,7 @@
 					"title": "Admin account"
 				},
 				"email": {
-					"desc": "Owlat MTA, Resend, Amazon SES, or none.",
+					"desc": "Your own mail server or a provider you already use.",
 					"title": "Email provider"
 				},
 				"features": {
@@ -11280,10 +11280,11 @@
 			"appliedTitle": "Setup applied",
 			"applying": "Applying…",
 			"blockers": {
-				"admin": "Create the admin account to continue",
-				"provider": "Choose a delivery provider to continue",
-				"token": "Enter the setup token to continue"
+				"admin": "admin account",
+				"provider": "email provider",
+				"token": "setup token"
 			},
+			"blockersLeft": "{count} thing left before launch: | {count} things left before launch:",
 			"complete": {
 				"eyebrow": "Owlat setup",
 				"intro": "Your instance is configured and running. Sign in once against the restarted process and pick up wherever you like.",
@@ -11323,7 +11324,7 @@
 			"mailboxImport": "Mailbox import",
 			"mailboxImportEnabled": "Enabled — new users can import mail from your old platform at first login.",
 			"noneEnabled": "None enabled",
-			"notSet": "(not set)",
+			"notSet": "Not set",
 			"otherFeatures": "Other",
 			"pageTitle": "Owlat setup — Review",
 			"restartTimeout": "On a managed install this finishes on its own. If you're running a manual {command} stack, restart the web container — we'll continue automatically the moment it's back.",

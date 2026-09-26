@@ -38,6 +38,7 @@ import { isThreadMuted } from '../lib/mailMute';
 import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './ai/priorityScore';
 import { scoreAndScreenResult } from './ai/needsReplyScoring';
+import { resolveCounterpartName } from './followUps';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { isFromMailboxOwner, type NeedsReplyHeaders } from './needsReplyHeuristic';
 
@@ -359,6 +360,7 @@ export const listQueue = publicQuery({
 			const message = await ctx.db.get(flag.messageId);
 			if (!message) continue;
 			if (isMessageSnoozed(message, now)) continue;
+			const counterpart = flag.waitingOn ?? message.toAddresses[0] ?? message.fromAddress;
 			items.push({
 				kind: 'followup' as const,
 				threadId: thread._id,
@@ -375,8 +377,8 @@ export const listQueue = publicQuery({
 				clarification: undefined as Infer<typeof clarificationFlagValidator> | undefined,
 				draftSlot: undefined,
 				// The counterpart shown on the card is who we're waiting ON.
-				fromAddress: flag.waitingOn ?? message.toAddresses[0] ?? message.fromAddress,
-				fromName: undefined,
+				fromAddress: counterpart,
+				fromName: await resolveCounterpartName(ctx, args.mailboxId, thread._id, counterpart),
 				subject: message.subject,
 				snippet: thread.latestSnippet,
 				receivedAt: message.receivedAt,

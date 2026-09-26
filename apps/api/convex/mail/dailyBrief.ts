@@ -27,6 +27,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { urgencyFallbackScore } from './ai/priorityScore';
+import { resolveCounterpartName } from './followUps';
 
 // ─── Pure ranking + bundling (unit-tested, framework-free) ───────────────────
 
@@ -183,14 +184,15 @@ async function buildBriefForMailbox(ctx: MutationCtx, mailboxId: Id<'mailboxes'>
 
 		// Due follow-up (sent mail whose reminder passed).
 		if (thread.followUp?.dueAt !== undefined) {
+			const waitingOn = thread.followUp.waitingOn;
+			const who =
+				(await resolveCounterpartName(ctx, mailboxId, thread._id, waitingOn)) ?? waitingOn;
 			items.push({
 				kind: 'followup',
 				threadId: thread._id,
 				priorityScore: urgencyFallbackScore('normal'),
 				title: thread.latestSubject || '(no subject)',
-				subtitle: thread.followUp.waitingOn
-					? `Waiting on ${thread.followUp.waitingOn}`
-					: 'Awaiting reply',
+				subtitle: who ? `Waiting on ${who}` : 'Awaiting reply',
 				dueAt: thread.followUp.dueAt,
 			});
 		}

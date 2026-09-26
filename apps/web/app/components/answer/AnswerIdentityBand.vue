@@ -36,7 +36,7 @@ const band = computed(() => {
 			label: t('components.answer.band.answeringAs', { name: t('components.shell.teamInbox') }),
 			detail: t('components.answer.band.teamDetail'),
 			kind: item.entry.message.draftResponse?.trim()
-				? t('components.answer.band.agentDraft')
+				? t('components.answer.band.draftReady')
 				: t('components.answer.band.escalation'),
 			swatch: null,
 			icon: 'lucide:bot',
@@ -66,9 +66,8 @@ const band = computed(() => {
 		<Icon v-else-if="band.icon" :name="band.icon" class="size-3.5 shrink-0 text-text-tertiary" />
 		<span class="font-medium text-text-primary">{{ band.label }}</span>
 		<span v-if="band.detail" class="truncate text-text-tertiary">{{ band.detail }}</span>
-		<span
-			class="ml-auto rounded-full bg-bg-surface px-2 py-0.5 font-mono text-2xs text-text-secondary"
-			>{{ band.kind }}</span
-		>
+		<span class="ml-auto rounded-full bg-bg-surface px-2 py-0.5 text-text-secondary">{{
+			band.kind
+		}}</span>
 	</div>
 </template>

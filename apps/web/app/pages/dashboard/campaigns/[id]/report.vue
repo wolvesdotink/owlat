@@ -566,7 +566,7 @@ const loadPrevClicked = () => {
 							<Icon name="lucide:eye" class="w-4 h-4" />
 							{{
 								t('dashboard.campaigns.detail.report.tabs.opened', {
-									count: openedContacts?.total || 0,
+									count: formatNumber(openedContacts?.total ?? 0),
 								})
 							}}
 						</button>
@@ -582,7 +582,7 @@ const loadPrevClicked = () => {
 							<Icon name="lucide:mouse-pointer-click" class="w-4 h-4" />
 							{{
 								t('dashboard.campaigns.detail.report.tabs.clicked', {
-									count: clickedContacts?.total || 0,
+									count: formatNumber(clickedContacts?.total ?? 0),
 								})
 							}}
 						</button>

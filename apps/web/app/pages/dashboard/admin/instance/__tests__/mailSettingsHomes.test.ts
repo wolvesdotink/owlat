@@ -95,7 +95,7 @@ describe('General page mail search section', () => {
 		const wrapper = mount(GeneralPage, { global: globalOptions });
 		const section = wrapper.find('#mail-search');
 		expect(section.exists()).toBe(true);
-		expect(section.find('h2').text()).toBe('Mail search');
+		// The "Mail search" title lives in the card's own header, like its neighbours.
 		expect(section.find('settings-body-search-index-card-stub').exists()).toBe(true);
 		wrapper.unmount();
 	});

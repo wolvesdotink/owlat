@@ -86,9 +86,10 @@ const steps = computed(() => {
 
 <template>
 	<!-- One grid shared by every row (subgrid), so the bars, counts and rates
-	     line up in columns instead of each row sizing its own. -->
+	     line up in columns instead of each row sizing its own. On phones the
+	     label keeps its full width and the bar column gives way instead. -->
 	<ol
-		class="grid grid-cols-[minmax(0,5rem)_1fr_auto_auto] sm:grid-cols-[7rem_1fr_auto_auto] gap-x-3 gap-y-2.5"
+		class="grid grid-cols-[max-content_minmax(0.75rem,1fr)_auto_auto] sm:grid-cols-[7rem_1fr_auto_auto] gap-x-2 sm:gap-x-3 gap-y-2.5"
 		:aria-label="t('components.campaigns.funnel.ariaLabel')"
 	>
 		<li
@@ -98,7 +99,7 @@ const steps = computed(() => {
 			:title="step.title"
 			:data-step="step.key"
 		>
-			<span class="text-text-secondary truncate">{{ step.label }}</span>
+			<span class="text-text-secondary whitespace-nowrap sm:truncate">{{ step.label }}</span>
 			<div class="h-2 bg-bg-surface rounded-full overflow-hidden" aria-hidden="true">
 				<div
 					class="h-full bg-brand rounded-full"

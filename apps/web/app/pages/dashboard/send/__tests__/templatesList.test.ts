@@ -6,7 +6,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { getFunctionName, type FunctionReference } from 'convex/server';
-import SegmentedControl from '@owlat/ui/components/ui/SegmentedControl.vue';
 import PageHeader from '@owlat/ui/components/ui/PageHeader.vue';
 
 import SendIndex from '../index.vue';
@@ -58,7 +57,6 @@ function render(templates = TEMPLATES): VueWrapper {
 		global: {
 			plugins: [createTestI18n()],
 			components: {
-				UiSegmentedControl: SegmentedControl,
 				UiPageHeader: PageHeader,
 				UiQueryBoundary: QueryBoundary,
 			},
@@ -88,6 +86,8 @@ describe('templates list', () => {
 			'/dashboard/send/emails/t2/edit',
 		]);
 		expect(rows[1]!.text()).toContain('Transactional');
+		// Marketing is the default, so only the transactional row carries a badge.
+		expect(rows[0]!.text()).not.toContain('Marketing');
 		expect(wrapper.findAll('[data-testid="new-template"]')).toHaveLength(1);
 		expect(wrapper.text()).not.toContain('Quick actions');
 		expect(wrapper.text()).not.toContain('Media');
@@ -96,10 +96,10 @@ describe('templates list', () => {
 	it('offers a type filter with counts and links saved blocks', () => {
 		const wrapper = render();
 		const filter = wrapper.find('[data-testid="template-type-filter"]');
-		expect(filter.findAll('button').map((b) => b.text())).toEqual([
-			'All (2)',
-			'Marketing (1)',
-			'Transactional (1)',
+		expect(filter.findAll('button').map((b) => b.text().replace(/\s+/g, ' '))).toEqual([
+			'All 2',
+			'Marketing 1',
+			'Transactional 1',
 		]);
 		expect(wrapper.text()).toContain('Saved blocks (4)');
 	});

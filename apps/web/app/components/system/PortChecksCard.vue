@@ -155,7 +155,7 @@ function statusIcon(row: PortCheckRow): string {
 	<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
 		<div class="flex items-start justify-between gap-4 flex-wrap">
 			<div class="min-w-0">
-				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider">
+				<h3 class="font-semibold text-text-primary">
 					{{ t('components.system.portChecksCard.title') }}
 				</h3>
 				<p class="mt-2 text-caption text-text-secondary max-w-2xl">
