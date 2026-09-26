@@ -1,6 +1,7 @@
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { LifecycleReason } from '../../lib/lifecycle';
 import type { OpenAgent } from '../automatedOpens';
+import type { ClickAgent } from '../automatedClicks';
 import type { Effect } from './effects';
 
 // ============================================================================
@@ -36,7 +37,9 @@ export type TransitionInput =
 	// `agent` is the coarse client class of a pixel fetch (see
 	// `delivery/automatedOpens.ts`); absent for provider-reported opens.
 	| { to: 'opened'; at: number; agent?: OpenAgent }
-	| { to: 'clicked'; at: number; url: string }
+	// `agent` is the coarse client class of a tracked-link request (see
+	// `delivery/automatedClicks.ts`); absent for provider-reported clicks.
+	| { to: 'clicked'; at: number; url: string; agent?: ClickAgent }
 	| {
 			to: 'bounced';
 			at: number;

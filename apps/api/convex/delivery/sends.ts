@@ -65,6 +65,10 @@ export const getStatsByCampaign = authedQuery({
 			// scanner). The fetch is not an open, but a reader may still have
 			// opened the same send, so it can also be in `opened`.
 			automatedOpens: 0,
+			// Sends whose tracked links an automated client followed (a
+			// security gateway, a link scanner). Like `automatedOpens`, the
+			// same send may also be in `clicked` from a reader click.
+			automatedClicks: 0,
 			totalClicks: 0,
 			hardBounced: 0,
 			softBounced: 0,
@@ -112,6 +116,7 @@ export const getStatsByCampaign = authedQuery({
 			}
 
 			if (send.automatedOpenedAt) stats.automatedOpens++;
+			if (send.automatedClickedAt) stats.automatedClicks++;
 
 			// Count unique clicks
 			if (send.clickedAt || (send.clickedLinks && send.clickedLinks.length > 0)) {

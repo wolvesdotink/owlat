@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	WEEK_MS,
-	automatedOpenSummary,
+	automatedSummary,
 	denseDailyOpens,
 	engagementRates,
 	inWindow,
@@ -74,27 +74,27 @@ describe('periodTotals', () => {
 	});
 });
 
-describe('automatedOpenSummary', () => {
+describe('automatedSummary', () => {
 	it('sums the automatically fetched sends over the campaigns', () => {
 		expect(
-			automatedOpenSummary([
-				{ automatedOpened: 120, isAutomatedOpenFiltered: true },
-				{ automatedOpened: 30, isAutomatedOpenFiltered: true },
+			automatedSummary([
+				{ automated: 120, isFiltered: true },
+				{ automated: 30, isFiltered: true },
 			])
 		).toEqual({ excluded: 150, includesUnfiltered: false });
 	});
 
 	it('flags a period holding a campaign counted before the filter', () => {
 		expect(
-			automatedOpenSummary([
-				{ automatedOpened: 120, isAutomatedOpenFiltered: true },
-				{ automatedOpened: 0, isAutomatedOpenFiltered: false },
+			automatedSummary([
+				{ automated: 120, isFiltered: true },
+				{ automated: 0, isFiltered: false },
 			])
 		).toEqual({ excluded: 120, includesUnfiltered: true });
 	});
 
 	it('is empty for no campaigns', () => {
-		expect(automatedOpenSummary([])).toEqual({ excluded: 0, includesUnfiltered: false });
+		expect(automatedSummary([])).toEqual({ excluded: 0, includesUnfiltered: false });
 	});
 });
 

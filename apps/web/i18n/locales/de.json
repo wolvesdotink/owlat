@@ -727,6 +727,11 @@
 				"excluded": "{count} E-Mail wurde automatisch von Apple Mail Privacy Protection oder einem Sicherheitsscanner abgerufen. Diese Abrufe zählen nicht als Öffnungen. | {count} E-Mails wurden automatisch von Apple Mail Privacy Protection oder Sicherheitsscannern abgerufen. Diese Abrufe zählen nicht als Öffnungen.",
 				"unfiltered": "Öffnungen, die vor dem Herausfiltern automatischer Öffnungen gezählt wurden, können Abrufe durch Apple Mail Privacy Protection und Sicherheitsscanner enthalten."
 			},
+			"automatedClicks": {
+				"excluded": "Bei {count} E-Mail wurden die Links automatisch von einem Sicherheitsscanner aufgerufen. Diese Aufrufe zählen nicht als Klicks. | Bei {count} E-Mails wurden die Links automatisch von Sicherheitsscannern aufgerufen. Diese Aufrufe zählen nicht als Klicks.",
+				"unfiltered": "Klicks, die vor dem Herausfiltern automatischer Klicks gezählt wurden, können Aufrufe durch Sicherheitsscanner enthalten.",
+				"unfilteredWithOpens": "Öffnungen und Klicks, die vor dem Herausfiltern automatischer Zugriffe gezählt wurden, können Abrufe durch Apple Mail Privacy Protection und Sicherheitsscanner enthalten."
+			},
 			"campaignSendPlanLine": {
 				"atLeast": "mindestens {total}",
 				"dayOf": "Tag {day} von {totalDays}",
