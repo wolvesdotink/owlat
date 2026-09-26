@@ -56,7 +56,7 @@ Fired when the receiving MTA accepts delivery.
 ```
 
 ### `email.opened`
-Fired on first open (tracked via 1x1 pixel beacon).
+Fired on first open (tracked via 1x1 pixel beacon). Automated pixel fetches (Apple MPP, security scanners) do not fire it; see `delivery/automatedOpens.ts`.
 ```json
 {
   "email": "recipient@example.com",
@@ -65,7 +65,7 @@ Fired on first open (tracked via 1x1 pixel beacon).
 ```
 
 ### `email.clicked`
-Fired on each link click (via tracked URL redirect).
+Fired on each link click (via tracked URL redirect). Links followed by security gateways and link scanners do not fire it; see `delivery/automatedClicks.ts`.
 ```json
 {
   "email": "recipient@example.com",

@@ -8,6 +8,7 @@ import { logError } from '../lib/runtimeLog';
 import { isSeedProbeId } from '@owlat/shared/seedPlacement';
 import { bytesToBase64Url } from '../lib/bytes';
 import { classifyOpenRequest } from './automatedOpens';
+import { classifyClickRequest } from './automatedClicks';
 
 // Constant-time string compare for the tracking signature.
 function timingSafeStrEqual(a: string, b: string): boolean {
@@ -245,7 +246,10 @@ export const trackClick = httpAction(async (ctx, request) => {
 	// Only record if not rate limited
 	if (ok && hasValidTarget && emailSendId && encodedUrl) {
 		try {
-			// Record the click event
+			// Record the click event. As with opens, only the coarse client class
+			// leaves this handler (see `automatedClicks.ts`); the redirect below
+			// is the same whatever it is.
+			const agent = classifyClickRequest({ userAgent: request.headers.get('User-Agent') });
 			await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
 				send: {
 					kind: 'campaign',
@@ -255,6 +259,7 @@ export const trackClick = httpAction(async (ctx, request) => {
 					to: 'clicked',
 					at: Date.now(),
 					url: redirectUrl,
+					agent,
 				},
 			});
 		} catch {

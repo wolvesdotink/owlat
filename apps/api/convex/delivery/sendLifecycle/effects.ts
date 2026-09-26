@@ -82,6 +82,10 @@ export type Effect =
 			campaignId: Id<'campaigns'>;
 	  }
 	| {
+			kind: 'campaign_stats_automated_clicked';
+			campaignId: Id<'campaigns'>;
+	  }
+	| {
 			kind: 'campaign_stats_clicked';
 			campaignId: Id<'campaigns'>;
 			at: number;
@@ -278,6 +282,10 @@ export async function applyEffects(
 			}
 			case 'campaign_stats_automated_opened': {
 				await bumpCampaignStats(ctx, effect.campaignId, { statsAutomatedOpened: 1 });
+				break;
+			}
+			case 'campaign_stats_automated_clicked': {
+				await bumpCampaignStats(ctx, effect.campaignId, { statsAutomatedClicked: 1 });
 				break;
 			}
 			case 'campaign_stats_clicked': {

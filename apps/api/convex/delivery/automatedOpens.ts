@@ -39,8 +39,8 @@ export type OpenAgent = Infer<typeof openAgentValidator>;
 export type AutomatedOpenReason = 'apple_mpp' | 'scanner' | 'prefetch';
 
 /**
- * An open this soon after the send was handed off is a gateway fetching the
- * message on arrival, not a reader. Five seconds is short enough that no
+ * An open (or click, see `automatedClicks.ts`) this soon after the send was
+ * handed off is a gateway fetching the message on arrival, not a reader. Five seconds is short enough that no
  * person could have received, noticed and opened the email in that window.
  */
 export const PREFETCH_WINDOW_MS = 5_000;
@@ -49,7 +49,7 @@ export const PREFETCH_WINDOW_MS = 5_000;
  * The User-Agent Apple's MPP proxy sends: exactly `Mozilla/5.0`, with none of
  * the platform or engine tokens a real browser or mail client adds.
  */
-const APPLE_PROXY_USER_AGENT = 'mozilla/5.0';
+export const APPLE_PROXY_USER_AGENT = 'mozilla/5.0';
 
 /**
  * A bot's self-identifying token: `bot` as a word of its own, or a name ending
@@ -150,14 +150,21 @@ export function classifyOpenRequest(request: {
 	if (userAgent === APPLE_PROXY_USER_AGENT || isAppleNetworkIp(request.clientIp)) {
 		return 'apple_proxy';
 	}
-	if (userAgent === '') return 'scanner';
-	if (
+	return isScannerUserAgent(userAgent) ? 'scanner' : 'client';
+}
+
+/**
+ * Whether a lowercased, trimmed User-Agent belongs to a bot, security gateway,
+ * link scanner or HTTP library. A missing User-Agent counts: every mail client,
+ * browser and image proxy sends one. Shared with click classification
+ * (`automatedClicks.ts`).
+ */
+export function isScannerUserAgent(userAgent: string): boolean {
+	return (
+		userAgent === '' ||
 		BOT_USER_AGENT_TOKEN.test(userAgent) ||
 		SCANNER_USER_AGENT_FRAGMENTS.some((fragment) => userAgent.includes(fragment))
-	) {
-		return 'scanner';
-	}
-	return 'client';
+	);
 }
 
 /**
