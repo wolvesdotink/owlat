@@ -52,14 +52,24 @@ describe('rollUpDeliveryHealth', () => {
 		expect(r.reason).toMatch(/verified yet/i);
 	});
 
-	it('warns on a registering domain', () => {
-		expect(rollUpDeliveryHealth({ ...HEALTHY, domainStatuses: ['registering'] }).level).toBe(
-			'warn'
-		);
+	it('warns on a registering domain next to a verified one', () => {
+		expect(
+			rollUpDeliveryHealth({ ...HEALTHY, domainStatuses: ['verified', 'registering'] }).level
+		).toBe('warn');
 	});
 
-	it('is ok with zero configured domains', () => {
-		expect(rollUpDeliveryHealth({ ...HEALTHY, domainStatuses: [] }).level).toBe('ok');
+	// Going live needs a verified domain, as the Delivery page's readiness panel
+	// says, so the dot can't be green while that panel reads "Not ready to send".
+	it('errors with zero configured domains', () => {
+		const r = rollUpDeliveryHealth({ ...HEALTHY, domainStatuses: [] });
+		expect(r.level).toBe('error');
+		expect(r.reason).toMatch(/no sending domain is set up/i);
+	});
+
+	it('errors when no domain is verified yet', () => {
+		const r = rollUpDeliveryHealth({ ...HEALTHY, domainStatuses: ['pending', 'registering'] });
+		expect(r.level).toBe('error');
+		expect(r.reason).toMatch(/no sending domain is verified/i);
 	});
 
 	// --- reputation dimension ---
@@ -92,7 +102,7 @@ describe('rollUpDeliveryHealth', () => {
 	it('surfaces a warn when the only issue is a pending domain', () => {
 		const r = rollUpDeliveryHealth({
 			reputationRisk: 'low',
-			domainStatuses: ['pending'],
+			domainStatuses: ['verified', 'pending'],
 			canSend: true,
 			mtaInfrastructure: null,
 		});

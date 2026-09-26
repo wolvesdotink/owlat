@@ -20,16 +20,11 @@ import {
 	readinessInputFromSources,
 	type ReadinessAlignmentSource,
 	type ReadinessGateStatus,
-	type ReadinessLevel,
 	type ReadinessMtaStsSource,
 } from '~/utils/deliveryReadiness';
 import { healthChipClass, healthTextClass } from '~/utils/healthTone';
 
 const { canManageOrganization } = usePermissions();
-
-// The hub's header chip reads the readiness level too, so a "Not ready to send"
-// panel never sits under a "Healthy" chip.
-const emit = defineEmits<{ level: [level: ReadinessLevel | null] }>();
 
 const { t } = useI18n();
 
@@ -132,12 +127,6 @@ const readiness = computed(() => {
 	);
 });
 
-watch(
-	() => readiness.value?.level ?? null,
-	(level) => emit('level', level),
-	{ immediate: true }
-);
-
 // Per-gate glyph; the text colour reuses the shared tone → class map so it can't
 // drift from the dot/chip renderings (never the brand terracotta for state).
 const GATE_ICON: Record<ReadinessGateStatus, string> = {
@@ -158,11 +147,7 @@ const GATE_ICON: Record<ReadinessGateStatus, string> = {
 					<div class="h-3 w-64 rounded bg-bg-surface animate-pulse motion-reduce:animate-none" />
 				</div>
 			</div>
-			<div
-				v-for="n in 3"
-				:key="n"
-				class="h-12 rounded-lg bg-bg-surface animate-pulse motion-reduce:animate-none"
-			/>
+			<div v-for="n in 3" :key="n" class="h-12 rounded-lg bg-bg-surface animate-pulse motion-reduce:animate-none" />
 		</div>
 
 		<!-- Error -->

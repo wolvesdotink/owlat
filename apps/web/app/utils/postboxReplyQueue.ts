@@ -160,11 +160,12 @@ export function compareReplyQueueItems(
  */
 export function replyQueueHeadline(
 	item: Pick<ReplyQueueItem, 'askSummary' | 'subject' | 'kind' | 'waitingOn'> &
-		Partial<Pick<ReplyQueueItem, 'fromAddress'>>
+		Partial<Pick<ReplyQueueItem, 'fromAddress' | 'fromName'>>
 ): ReplyQueueText {
-	// Follow-up items invert the framing: WE are waiting on THEM.
+	// Follow-up items invert the framing: WE are waiting on THEM. The server
+	// resolves the counterpart's name when it knows one; the address is the fallback.
 	if (item.kind === 'followup') {
-		const who = item.waitingOn?.trim() || item.fromAddress?.trim();
+		const who = item.fromName?.trim() || item.waitingOn?.trim() || item.fromAddress?.trim();
 		return who
 			? { key: 'shared.postboxReplyQueue.waitingOn', params: { who } }
 			: 'shared.postboxReplyQueue.waitingOnReply';

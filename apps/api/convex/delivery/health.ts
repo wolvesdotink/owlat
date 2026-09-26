@@ -5,7 +5,8 @@
  * It composes the existing read surfaces into one cheap query so the nav can
  * subscribe once (no N+1):
  *  - org sending reputation risk (`summarize` → `riskLevel`)
- *  - sending-domain verification states (`domains` table)
+ *  - sending-domain verification states (`domains` table); going live needs
+ *    at least one verified domain, matching the Delivery page's readiness panel
  *  - whether a delivery provider is actually configured (`isDeliveryConfigured`)
  *
  * The worst-of logic lives in the pure `rollUpDeliveryHealth` so it is unit
@@ -70,10 +71,21 @@ function mtaHealth(status: DeliveryHealthInputs['mtaInfrastructure']): DeliveryH
 	}
 }
 
-/** Domain dimension: a failed verification is an error; anything mid-flight warns. */
+/**
+ * Domain dimension. Going live needs at least one verified sending domain (the
+ * Delivery page's readiness panel says "Not ready to send" without one), so no
+ * verified domain is an error. A failed verification is an error too; with a
+ * verified domain in place, anything still mid-flight only warns.
+ */
 function domainHealth(statuses: DomainStatus[]): DeliveryHealthRollup {
 	if (statuses.some((s) => s === 'failed')) {
 		return { level: 'error', reason: 'A sending domain failed verification' };
+	}
+	if (statuses.length === 0) {
+		return { level: 'error', reason: 'No sending domain is set up yet' };
+	}
+	if (!statuses.some((s) => s === 'verified')) {
+		return { level: 'error', reason: 'No sending domain is verified yet' };
 	}
 	if (statuses.some((s) => s === 'pending' || s === 'registering')) {
 		return { level: 'warn', reason: "A sending domain isn't verified yet" };
