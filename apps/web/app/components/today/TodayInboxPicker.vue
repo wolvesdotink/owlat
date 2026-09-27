@@ -3,11 +3,11 @@ import type { Id } from '@owlat/api/dataModel';
 import type { InboxIdentity } from '~/utils/inboxIdentity';
 
 /**
- * Which inboxes feed Today. Each row is a checkbox that toggles without
- * closing the menu, so several inboxes can be switched in one go. Leaving an
- * inbox out only changes this person's Today: the inbox keeps its place in the
- * sidebar and its questions in the Answer queue, and teammates who read the
- * same inbox keep it on their own Today.
+ * Which inboxes get a Workbench tab. Each row is a checkbox that toggles
+ * without closing the menu, so several inboxes can be switched in one go.
+ * Leaving an inbox out only changes this person's Workbench: the inbox keeps
+ * its place in the sidebar and its questions in the Answer queue, and
+ * teammates who read the same inbox keep its tab.
  */
 const props = defineProps<{
 	inboxes: readonly InboxIdentity<Id<'mailboxes'>>[];
@@ -40,7 +40,7 @@ const triggerLabel = computed(() =>
 				size="sm"
 				:aria-label="`${t('components.today.inboxPicker.label')}: ${triggerLabel}`"
 			>
-				<template #iconLeft><Icon name="lucide:inbox" class="size-4" /></template>
+				<template #iconLeft><Icon name="lucide:sliders-horizontal" class="size-4" /></template>
 				{{ triggerLabel }}
 			</UiButton>
 		</template>

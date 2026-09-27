@@ -169,6 +169,10 @@ export const campaignTables = {
 		// does, so the two can overlap. Shown next to the opens. See `delivery/automatedOpens.ts`.
 		statsAutomatedOpened: v.optional(v.number()),
 		statsClicked: v.optional(v.number()),
+		// Sends whose tracked links an automated client followed. Those
+		// requests never count into statsClicked; a later reader click of the
+		// same send still does, so the two can overlap. See `delivery/automatedClicks.ts`.
+		statsAutomatedClicked: v.optional(v.number()),
 		statsBounced: v.optional(v.number()),
 		statsHardBounced: v.optional(v.number()),
 		statsSoftBounced: v.optional(v.number()),
@@ -177,6 +181,9 @@ export const campaignTables = {
 		// of statsOpened. Campaigns without it were counted before that
 		// cutover, so their opens may include Apple MPP and scanner fetches.
 		isAutomatedOpenFiltered: v.optional(v.boolean()),
+		// The same cutover marker for clicks: set when a send starts on a
+		// build that leaves scanner clicks out of statsClicked.
+		isAutomatedClickFiltered: v.optional(v.boolean()),
 		// A/B Testing fields
 		isABTest: v.optional(v.boolean()), // Whether this campaign is an A/B test
 		// A/B test configuration (JSON string):
@@ -298,6 +305,11 @@ export const campaignTables = {
 		// User-Agent or IP they were judged on. See `delivery/automatedOpens.ts`.
 		automatedOpenedAt: v.optional(v.number()),
 		automatedOpenCount: v.optional(v.number()),
+		// Tracked links followed by a security gateway or link scanner, kept
+		// apart from clickedAt / clickedLinks. Only the count and the first
+		// one's time are kept, never the User-Agent. See `delivery/automatedClicks.ts`.
+		automatedClickedAt: v.optional(v.number()),
+		automatedClickCount: v.optional(v.number()),
 		// Error information for failures
 		errorMessage: v.optional(v.string()),
 		errorCode: v.optional(v.string()),
@@ -349,6 +361,7 @@ export const campaignTables = {
 		statsOpened: v.optional(v.number()),
 		statsAutomatedOpened: v.optional(v.number()),
 		statsClicked: v.optional(v.number()),
+		statsAutomatedClicked: v.optional(v.number()),
 		statsBounced: v.optional(v.number()),
 		statsHardBounced: v.optional(v.number()),
 		statsSoftBounced: v.optional(v.number()),

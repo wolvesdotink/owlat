@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { Id } from '@owlat/api/dataModel';
 import type { TodayChange } from '~/utils/todayDigest';
 
 /**
@@ -7,14 +6,12 @@ import type { TodayChange } from '~/utils/todayDigest';
  * answered them) that moved since they last looked. Each row says what is
  * new, and the new messages are linked, quietly, as its sources.
  */
-const props = defineProps<{ changes: readonly TodayChange[]; hidden: number }>();
+const props = withDefaults(
+	defineProps<{ changes: readonly TodayChange[]; hidden: number; moreHref?: string }>(),
+	{ moreHref: '/dashboard/inboxes' }
+);
 const emit = defineEmits<{ done: [change: TodayChange] }>();
 const { t } = useI18n();
-const { byId } = useInboxes();
-
-function inboxOf(change: TodayChange) {
-	return byId.value.get(change.inboxId as Id<'mailboxes'>) ?? null;
-}
 function latestName(change: TodayChange): string {
 	const s = change.latest;
 	return s ? s.fromName || s.fromAddress : '';
@@ -22,7 +19,7 @@ function latestName(change: TodayChange): string {
 </script>
 
 <template>
-	<section v-if="props.changes.length > 0" aria-labelledby="today-changed">
+	<section v-if="props.changes.length > 0" id="workbench-changed" aria-labelledby="today-changed">
 		<h3
 			id="today-changed"
 			class="mb-2 mt-8 flex items-baseline gap-2 text-2xs font-medium uppercase tracking-wider text-text-tertiary"
@@ -62,19 +59,12 @@ function latestName(change: TodayChange): string {
 						</template>
 					</p>
 				</div>
-				<div class="flex shrink-0 flex-col items-end gap-1">
-					<InboxChip
-						v-if="inboxOf(change)"
-						:name="inboxOf(change)!.name"
-						:slot="inboxOf(change)!.slot"
-					/>
-					<span class="text-2xs text-text-tertiary">{{
-						formatCompactRelativeTime(change.at)
-					}}</span>
-				</div>
+				<span class="shrink-0 pt-0.5 text-2xs text-text-tertiary">{{
+					formatCompactRelativeTime(change.at)
+				}}</span>
 				<button
 					type="button"
-					class="absolute right-24 top-3 rounded-md border border-border-subtle bg-bg-elevated px-2 py-0.5 text-2xs text-text-secondary opacity-0 transition-opacity hover:text-text-primary focus-visible:opacity-100 group-hover:opacity-100 max-md:static max-md:opacity-100"
+					class="absolute right-14 top-3 rounded-md border border-border-subtle bg-bg-elevated px-2 py-0.5 text-2xs text-text-secondary opacity-0 transition-opacity hover:text-text-primary focus-visible:opacity-100 group-hover:opacity-100 max-md:static max-md:opacity-100"
 					@click="emit('done', change)"
 				>
 					{{ t('components.today.line.done') }}
@@ -83,8 +73,8 @@ function latestName(change: TodayChange): string {
 		</ul>
 		<p v-if="props.hidden > 0" class="mt-2 text-xs text-text-tertiary">
 			{{ t('components.today.changed.more', { count: props.hidden }, props.hidden) }}
-			<NuxtLink to="/dashboard/inboxes" class="text-brand hover:underline">{{
-				t('components.today.openInboxes')
+			<NuxtLink :to="props.moreHref" class="text-brand hover:underline">{{
+				t('components.today.openInbox')
 			}}</NuxtLink>
 		</p>
 	</section>

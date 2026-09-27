@@ -310,6 +310,59 @@ describe('sendLifecycle.transition — opened/clicked', () => {
 		});
 	});
 
+	it('an automated click is counted apart and does not use up the first reader click', async () => {
+		const t = convexTest(schema, modules);
+		let campaignId: Id<'campaigns'>;
+		let sendId: Id<'emailSends'>;
+		await t.run(async (ctx) => {
+			campaignId = await ctx.db.insert('campaigns', createTestCampaign({ statsClicked: 0 }));
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			sendId = await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({ campaignId, contactId, status: 'delivered' })
+			);
+		});
+
+		const scan = await t.mutation(internal.delivery.sendLifecycle.transition, {
+			send: { kind: 'campaign', id: sendId! },
+			transition: { to: 'clicked', at: 1000, url: 'https://example.com/a', agent: 'scanner' },
+		});
+		const scanAgain = await t.mutation(internal.delivery.sendLifecycle.transition, {
+			send: { kind: 'campaign', id: sendId! },
+			transition: { to: 'clicked', at: 1100, url: 'https://example.com/b', agent: 'scanner' },
+		});
+		expect(scan.ok && scan.applied).toBe('recorded');
+		expect(scanAgain.ok && scanAgain.applied).toBe('recorded');
+
+		await t.run(async (ctx) => {
+			const send = await ctx.db.get(sendId!);
+			expect(send?.status).toBe('delivered');
+			expect(send?.clickedAt).toBeUndefined();
+			expect(send?.clickedLinks).toBeUndefined();
+			expect(send?.automatedClickedAt).toBe(1000);
+			expect(send?.automatedClickCount).toBe(2);
+			const campaign = await readCampaignWithStats(ctx, campaignId!);
+			expect(campaign?.statsClicked ?? 0).toBe(0);
+			expect(campaign?.statsAutomatedClicked).toBe(1);
+		});
+
+		const reader = await t.mutation(internal.delivery.sendLifecycle.transition, {
+			send: { kind: 'campaign', id: sendId! },
+			transition: { to: 'clicked', at: 90_000, url: 'https://example.com/a', agent: 'client' },
+		});
+		expect(reader.ok && reader.applied).toBe('transitioned');
+
+		await t.run(async (ctx) => {
+			const send = await ctx.db.get(sendId!);
+			expect(send?.status).toBe('clicked');
+			expect(send?.clickedAt).toBe(90_000);
+			expect(send?.clickedLinks).toHaveLength(1);
+			const campaign = await readCampaignWithStats(ctx, campaignId!);
+			expect(campaign?.statsClicked).toBe(1);
+			expect(campaign?.statsAutomatedClicked).toBe(1);
+		});
+	});
+
 	it('first click transitions status, bumps campaigns.statsClicked; subsequent clicks append clickedLinks', async () => {
 		const t = convexTest(schema, modules);
 		let campaignId: Id<'campaigns'>;

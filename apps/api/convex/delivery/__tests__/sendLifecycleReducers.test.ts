@@ -357,3 +357,108 @@ describe('reduceOpened — automated opens', () => {
 		expect(result.patch['automatedOpenedAt']).toBeUndefined();
 	});
 });
+
+describe('reduceClicked — automated clicks', () => {
+	const SENT_AT = 1_000_000;
+	const URL_A = 'https://example.com/a';
+	const URL_B = 'https://example.com/b';
+
+	it('counts a scanner click apart: no status move, no link entry, no webhook', () => {
+		const send = campaignSend({ status: 'delivered', sentAt: SENT_AT });
+		const at = SENT_AT + 60_000;
+		const result = reduceClicked(
+			send,
+			{ to: 'clicked', at, url: URL_A, agent: 'scanner' },
+			campaignRef
+		);
+
+		expect(result.applied).toBe('recorded');
+		expect(result.patch).toEqual({ automatedClickCount: 1, automatedClickedAt: at });
+		expect(result.effects).toEqual([
+			{ kind: 'campaign_stats_automated_clicked', campaignId: CAMPAIGN_ID },
+		]);
+	});
+
+	it('bumps the campaign counter only on the first automated click', () => {
+		const send = campaignSend({
+			status: 'delivered',
+			sentAt: SENT_AT,
+			automatedClickedAt: SENT_AT + 60_000,
+			automatedClickCount: 1,
+		});
+		const result = reduceClicked(
+			send,
+			{ to: 'clicked', at: SENT_AT + 61_000, url: URL_B, agent: 'scanner' },
+			campaignRef
+		);
+
+		expect(result.patch).toEqual({ automatedClickCount: 2 });
+		expect(result.effects).toEqual([]);
+	});
+
+	it('treats a browser click inside the prefetch window as automated', () => {
+		const send = campaignSend({ status: 'delivered', sentAt: SENT_AT });
+		const result = reduceClicked(
+			send,
+			{ to: 'clicked', at: SENT_AT + 1_000, url: URL_A, agent: 'client' },
+			campaignRef
+		);
+
+		expect(result.patch['clickedAt']).toBeUndefined();
+		expect(result.patch['clickedLinks']).toBeUndefined();
+		expect(result.patch['automatedClickedAt']).toBe(SENT_AT + 1_000);
+	});
+
+	it('treats a second link in the same second as automated', () => {
+		const first = SENT_AT + 3_600_000;
+		const send = campaignSend({
+			status: 'clicked',
+			sentAt: SENT_AT,
+			clickedAt: first,
+			clickedLinks: [{ url: URL_A, clickedAt: first }],
+		});
+		const result = reduceClicked(
+			send,
+			{ to: 'clicked', at: first + 300, url: URL_B, agent: 'client' },
+			campaignRef
+		);
+
+		expect(result.patch).toEqual({ automatedClickCount: 1, automatedClickedAt: first + 300 });
+	});
+
+	it('still records the first reader click after an automated one', () => {
+		const send = campaignSend({
+			status: 'delivered',
+			sentAt: SENT_AT,
+			automatedClickedAt: SENT_AT + 1_000,
+			automatedClickCount: 3,
+		});
+		const at = SENT_AT + 3_600_000;
+		const result = reduceClicked(
+			send,
+			{ to: 'clicked', at, url: URL_A, agent: 'client' },
+			campaignRef
+		);
+
+		expect(result.applied).toBe('transitioned');
+		expect(result.patch).toEqual({
+			clickedLinks: [{ url: URL_A, clickedAt: at }],
+			status: 'clicked',
+			clickedAt: at,
+		});
+		expect(result.effects.map((e) => e.kind)).toEqual([
+			'campaign_stats_clicked',
+			'daily_stats_bump',
+			'transport_outcome',
+			'customer_webhook',
+		]);
+	});
+
+	it('keeps counting a provider-reported click (no agent) as a reader click', () => {
+		const send = campaignSend({ status: 'delivered', sentAt: SENT_AT });
+		const result = reduceClicked(send, { to: 'clicked', at: SENT_AT + 1, url: URL_A }, campaignRef);
+
+		expect(result.patch['clickedAt']).toBe(SENT_AT + 1);
+		expect(result.patch['automatedClickedAt']).toBeUndefined();
+	});
+});

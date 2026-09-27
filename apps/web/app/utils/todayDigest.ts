@@ -1,11 +1,17 @@
 /**
- * Today's model — pure assembly of the per-inbox digests (Postbox) and the
- * team inbox's informational updates into the three bands the page shows:
+ * A Workbench's model — pure assembly of one mailbox's digest (Postbox), or of
+ * the team inbox's informational updates, into the bands the page shows:
  *
  *   - What changed  threads the viewer already knew that moved since they looked
- *   - Worth knowing what people told them (no reply needed), most important first
+ *   - Important     what people told them and alerts that want action (no reply
+ *                   needed), one summarised sentence each
  *   - Also arrived  routine but real mail, one line each
- *   + the "Filed away" counts (newsletters, notifications, promotions, spam…)
+ *   + "Filed away": newsletters, notifications, receipts, promotions and spam as
+ *     counts with a few sender names — never as lines
+ *
+ * Which of these a conversation lands in is decided on the server
+ * (`today/triage.ts`); this module only honours it. It still takes a list of
+ * digests, so a combined view stays possible.
  *
  * Every line carries the email(s) it summarises as `sources`, so the page can
  * link each phrase back to its origin. Pure — no Vue, no Convex — so the
@@ -39,6 +45,8 @@ export interface TodayLine {
 	sources: TodaySource[];
 	/** The inbox it arrived in; `team` for the team inbox. */
 	inboxId: string | 'team';
+	/** Why an important line is important, when that is not just "a person wrote". */
+	reason: ImportantReason | null;
 	at: number;
 	/** Team-inbox updates can be dismissed / sent to the Answer queue. */
 	inboundMessageId: string | null;
@@ -57,6 +65,7 @@ export interface TodayChange {
 }
 
 export type FiledKey = 'newsletter' | 'notification' | 'receipt' | 'promotion' | 'spam';
+export type ImportantReason = 'person' | 'new_sender' | 'alert';
 
 export interface TodayModel {
 	newMail: number;
@@ -69,6 +78,8 @@ export interface TodayModel {
 	/** Updates that did not fit (never dropped silently). */
 	alsoHidden: number;
 	filed: Record<FiledKey, number>;
+	/** A few sender names per filed category, newest first. */
+	filedSenders: Record<FiledKey, string[]>;
 	filedTotal: number;
 }
 
@@ -95,11 +106,15 @@ export interface MailboxDigest {
 		snippet: string;
 		summary: string | null;
 		category: string | null;
+		/** Server triage; absent on digests from before it existed. */
+		bucket?: 'important' | 'routine';
+		reason?: ImportantReason | null;
 		lastMessageAt: number;
 		summaryRequest?: SummaryRequest;
 		sources: DigestSource[];
 	}>;
 	filed: Record<FiledKey, number>;
+	filedSenders?: Partial<Record<FiledKey, string[]>>;
 }
 
 /** What to ask the summarizer for when a line has no sentence yet. */
@@ -164,8 +179,10 @@ export interface TeamUpdateCounts {
 /** Team updates at or above this importance are "worth knowing". */
 export const WORTH_KNOWING_IMPORTANCE = 0.5;
 const MAX_CHANGED = 8;
-const MAX_WORTH = 6;
+const MAX_WORTH = 8;
 const MAX_ALSO = 8;
+/** Sender names kept per filed category after merging digests. */
+const FILED_SENDER_LIMIT = 3;
 
 function senderName(fromName: string | null, fromAddress: string): string {
 	const name = fromName?.trim();
@@ -210,6 +227,13 @@ export function buildTodayModel(input: {
 		promotion: 0,
 		spam: 0,
 	};
+	const filedSenders: Record<FiledKey, string[]> = {
+		newsletter: [],
+		notification: [],
+		receipt: [],
+		promotion: [],
+		spam: [],
+	};
 	let newMail = 0;
 	let isNewMailCapped = false;
 	const changed: TodayChange[] = [];
@@ -220,7 +244,13 @@ export function buildTodayModel(input: {
 		if (!digest) continue;
 		newMail += digest.newMail;
 		isNewMailCapped ||= digest.isNewMailCapped;
-		for (const key of Object.keys(filed) as FiledKey[]) filed[key] += digest.filed[key] ?? 0;
+		for (const key of Object.keys(filed) as FiledKey[]) {
+			filed[key] += digest.filed[key] ?? 0;
+			for (const name of digest.filedSenders?.[key] ?? []) {
+				const list = filedSenders[key];
+				if (list.length < FILED_SENDER_LIMIT && !list.includes(name)) list.push(name);
+			}
+		}
 		for (const c of digest.changed) {
 			const sources = c.sources.map((s) => mailSource(c.mailboxId, c.threadId, s));
 			changed.push({
@@ -244,12 +274,14 @@ export function buildTodayModel(input: {
 				isSummary: a.summary !== null,
 				sources,
 				inboxId: a.mailboxId,
+				reason: a.reason ?? null,
 				at: a.lastMessageAt,
 				inboundMessageId: null,
 			};
-			// Mail from a person (or not yet classified) is what someone told you;
-			// everything else is routine.
-			if (a.category === null || a.category === 'person') worth.push(line);
+			const important = a.bucket
+				? a.bucket === 'important'
+				: a.category === null || a.category === 'person';
+			if (important) worth.push(line);
 			else also.push(line);
 		}
 	}
@@ -278,6 +310,7 @@ export function buildTodayModel(input: {
 				},
 			],
 			inboxId: 'team',
+			reason: null,
 			at: m.receivedAt,
 			inboundMessageId: m._id,
 		};
@@ -309,6 +342,7 @@ export function buildTodayModel(input: {
 		also: alsoAll.slice(0, MAX_ALSO),
 		alsoHidden: Math.max(0, alsoAll.length - MAX_ALSO),
 		filed,
+		filedSenders,
 		filedTotal: Object.values(filed).reduce((sum, n) => sum + n, 0),
 	};
 }

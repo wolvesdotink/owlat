@@ -196,6 +196,48 @@ describe('trackClick (GET /t/c/...)', () => {
 		expect(res.headers.get('Location')).toBe(new URL(TARGET).toString());
 	});
 
+	it('records a reader click for a browser User-Agent', async () => {
+		const t = setupTest();
+		const emailSendId = await seedEmailSend(t);
+		const path = await makeClickPath(emailSendId, TARGET);
+
+		await t.fetch(path, {
+			method: 'GET',
+			redirect: 'manual',
+			headers: {
+				'User-Agent':
+					'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+			},
+		});
+
+		const send = await t.run(async (ctx) => ctx.db.get(emailSendId));
+		expect(send?.status).toBe('clicked');
+		expect(send?.clickedAt).toBeDefined();
+		expect(send?.automatedClickedAt).toBeUndefined();
+	});
+
+	it('redirects a link scanner but keeps its request out of the clicks', async () => {
+		const t = setupTest();
+		const emailSendId = await seedEmailSend(t);
+		const path = await makeClickPath(emailSendId, TARGET);
+
+		const res = await t.fetch(path, {
+			method: 'GET',
+			redirect: 'manual',
+			headers: { 'User-Agent': 'Mimecast-URL-Scanner/1.0' },
+		});
+		// The scanner still gets the same redirect a reader gets.
+		expect(res.status).toBe(302);
+		expect(res.headers.get('Location')).toBe(new URL(TARGET).toString());
+
+		const send = await t.run(async (ctx) => ctx.db.get(emailSendId));
+		expect(send?.status).toBe('delivered');
+		expect(send?.clickedAt).toBeUndefined();
+		expect(send?.clickedLinks).toBeUndefined();
+		expect(send?.automatedClickCount).toBe(1);
+		expect(send?.automatedClickedAt).toBeDefined();
+	});
+
 	it('does NOT redirect to the attacker URL when the signature is tampered', async () => {
 		const t = setupTest();
 		const emailSendId = await seedEmailSend(t);

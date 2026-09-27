@@ -75,9 +75,16 @@ async function load(ctx: MutationCtx, rawRecords: unknown[], refs: SeedRefs): Pr
 			statsOpened: rec.stats?.opened,
 			statsClicked: rec.stats?.clicked,
 			statsBounced: rec.stats?.bounced,
-			// Demo opens are generated, not fetched: label them as filtered so
-			// the report does not warn about pre-cutover automated opens.
-			...(rec.stats ? { statsAutomatedOpened: 0, isAutomatedOpenFiltered: true } : {}),
+			// Demo opens and clicks are generated, not fetched: label them as
+			// filtered so the report does not warn about pre-cutover automated ones.
+			...(rec.stats
+				? {
+						statsAutomatedOpened: 0,
+						isAutomatedOpenFiltered: true,
+						statsAutomatedClicked: 0,
+						isAutomatedClickFiltered: true,
+					}
+				: {}),
 			statsUpdatedAt: rec.stats ? now : undefined,
 			searchableText: `${rec.name} ${rec.subject}`,
 			seedTag: SEED_TAG,

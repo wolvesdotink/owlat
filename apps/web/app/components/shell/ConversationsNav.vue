@@ -3,8 +3,8 @@ import type { NavigationItem } from '~/lib/dashboardNavigationCore';
 
 /**
  * The Conversations workspace's sidebar (idea borrowed from T3 Code: the
- * sidebar lists the work, not pages). Three pinned destinations — Today, the
- * Answer queue, All inboxes — then every inbox the viewer reads with its
+ * sidebar lists the work, not pages). Three pinned destinations — the
+ * Workbench (one tab per inbox), the Answer queue, All inboxes — then every inbox the viewer reads with its
  * latest conversations and one status each, the team inbox for owners/admins,
  * chat, and Knowledge for every member while it is on. Collapsed (the icon rail) it keeps the pinned icons and one swatch
  * per inbox.
@@ -34,7 +34,7 @@ const KNOWLEDGE_HREF = '/dashboard/knowledge';
 const pinned = computed(() => [
 	{
 		to: '/dashboard',
-		icon: 'lucide:sun',
+		icon: 'lucide:layout-dashboard',
 		label: t('components.shell.nav.today'),
 		exact: true,
 		count: 0,

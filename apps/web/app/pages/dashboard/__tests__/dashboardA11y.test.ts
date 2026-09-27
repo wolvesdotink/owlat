@@ -182,7 +182,7 @@ interface AuditedPage {
 }
 
 const pages: readonly AuditedPage[] = [
-	{ name: 'dashboard home', component: DashboardHome, loaded: 'In the last 24 hours' },
+	{ name: 'dashboard home', component: DashboardHome, loaded: 'One workbench per inbox' },
 	{ name: 'campaigns list', component: CampaignsIndex, loaded: 'New campaign' },
 	{ name: 'new campaign wizard', component: CampaignsNew, loaded: 'Create campaign' },
 	{ name: 'contacts list', component: ContactsIndex, loaded: 'No contacts yet' },

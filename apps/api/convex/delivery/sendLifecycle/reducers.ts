@@ -1,5 +1,6 @@
 import { defineLifecycle, type LifecycleEdgeSpec, type LifecycleGraph } from '../../lib/lifecycle';
 import { automatedOpenReason } from '../automatedOpens';
+import { automatedClickReason } from '../automatedClicks';
 import { transportOutcomeEffect, type Effect } from './effects';
 import { contactEmailOf, nonCampaignActivityProvenance } from './lookups';
 import type {
@@ -397,6 +398,25 @@ export function reduceClicked(
 	ref: SendRef
 ): ReducerResult {
 	const from = send.status as SendStatus;
+
+	// A link followed by a security gateway or link scanner is kept apart from
+	// reader clicks, as automated opens are: its own counter, no status move,
+	// no `clickedLinks` entry (the heatmap and A/B stats read those) and no
+	// `email.clicked` webhook. It is still delivery evidence, which the
+	// dispatcher records before this reducer runs.
+	const previousClick = send.clickedLinks?.[send.clickedLinks.length - 1];
+	if (
+		automatedClickReason({
+			agent: args.agent,
+			at: args.at,
+			url: args.url,
+			sentAt: send.sentAt,
+			previousClick,
+		}) !== null
+	) {
+		return reduceAutomatedClick(send, args, ref, from);
+	}
+
 	const clickedLinks = [...(send.clickedLinks ?? []), { url: args.url, clickedAt: args.at }];
 	const isFirstClick = !send.clickedAt;
 
@@ -440,4 +460,33 @@ export function reduceClicked(
 		from,
 		to: 'clicked',
 	};
+}
+
+/**
+ * An automated click. Counted per send (`automatedClickCount`), and once per
+ * send (`automatedClickedAt` is the uniqueness gate) into the campaign's
+ * `statsAutomatedClicked`, so the report can show how many emails had their
+ * links followed automatically.
+ * A reader who clicks after a scanner still counts as a first click.
+ */
+function reduceAutomatedClick(
+	send: EmailSendDoc | TransactionalSendDoc,
+	args: Extract<TransitionInput, { to: 'clicked' }>,
+	ref: SendRef,
+	from: SendStatus
+): ReducerResult {
+	const patch: Record<string, unknown> = {
+		automatedClickCount: (send.automatedClickCount ?? 0) + 1,
+	};
+	const effects: Effect[] = [];
+	if (!send.automatedClickedAt) {
+		patch['automatedClickedAt'] = args.at;
+		if (ref.kind === 'campaign') {
+			effects.push({
+				kind: 'campaign_stats_automated_clicked',
+				campaignId: (send as EmailSendDoc).campaignId,
+			});
+		}
+	}
+	return { patch, effects, applied: 'recorded', from, to: 'clicked' };
 }

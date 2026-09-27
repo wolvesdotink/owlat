@@ -727,6 +727,11 @@
 				"excluded": "{count} email was fetched automatically by Apple Mail Privacy Protection or a security scanner. Those fetches are not counted as opens. | {count} emails were fetched automatically by Apple Mail Privacy Protection or security scanners. Those fetches are not counted as opens.",
 				"unfiltered": "Opens counted before automated opens were filtered out may include Apple Mail Privacy Protection and security scanners."
 			},
+			"automatedClicks": {
+				"excluded": "{count} email had its links followed automatically by a security scanner. Those requests are not counted as clicks. | {count} emails had their links followed automatically by security scanners. Those requests are not counted as clicks.",
+				"unfiltered": "Clicks counted before automated clicks were filtered out may include security scanners.",
+				"unfilteredWithOpens": "Opens and clicks counted before automated ones were filtered out may include Apple Mail Privacy Protection and security scanners."
+			},
 			"campaignSendPlanLine": {
 				"atLeast": "at least {total}",
 				"dayOf": "day {day} of {totalDays}",
@@ -1966,7 +1971,7 @@
 				"mail": "Mail",
 				"more": "More",
 				"people": "People",
-				"today": "Today",
+				"today": "Workbench",
 				"answer": "Answer",
 				"inbox": "Inbox"
 			},
@@ -4177,7 +4182,7 @@
 			"postboxReplyFlow": {
 				"done": {
 					"backToInbox": "Back to inbox",
-					"backToToday": "Back to Today",
+					"backToToday": "Back to the Workbench",
 					"body": "New replies will appear here as they arrive.",
 					"summary": "{summary} this session.",
 					"title": "All caught up"
@@ -5624,7 +5629,7 @@
 				"sortPriority": "Most urgent first"
 			},
 			"nav": {
-				"today": "Today",
+				"today": "Workbench",
 				"answer": "Answer queue",
 				"allInboxes": "All inboxes",
 				"inboxes": "Inboxes",
@@ -5679,7 +5684,8 @@
 				"allInQueue": "All {count} in the queue",
 				"draftReady": "draft ready",
 				"mention": "mention",
-				"mentionTitle": "#{room}: {preview}"
+				"mentionTitle": "#{room}: {preview}",
+				"clearTitleIn": "Nothing in {inbox} needs an answer"
 			},
 			"changed": {
 				"title": "What changed",
@@ -5692,19 +5698,24 @@
 				"title": "Updates",
 				"subtitle": "no reply needed",
 				"keysMove": "move",
-				"worth": "Worth knowing",
+				"worth": "Important",
 				"also": "Also arrived",
-				"empty": "Nothing new that needs no reply. Updates from people and services show up here.",
+				"empty": "Nothing new here that needs no reply. What people tell you and alerts that need action show up here.",
 				"more": "{count} more update is waiting. | {count} more updates are waiting."
 			},
 			"filed": {
-				"title": "Filed away:",
-				"newsletter": "{count} newsletter | {count} newsletters",
-				"notification": "{count} notification | {count} notifications",
-				"receipt": "{count} receipt | {count} receipts",
-				"promotion": "{count} promotion | {count} promotions",
-				"spam": "{count} spam caught | {count} spam caught",
-				"reassure": "None of these need a reply."
+				"title": "Filed away",
+				"reassure": "None of these need a reply.",
+				"kind": {
+					"newsletter": "newsletter | newsletters",
+					"notification": "notification | notifications",
+					"promotion": "promotion | promotions",
+					"receipt": "receipt | receipts",
+					"spam": "spam caught | spam caught"
+				},
+				"from": "From {names}",
+				"fromMore": "From {names} and others",
+				"empty": "Nothing filed away since you last looked."
 			},
 			"line": {
 				"done": "Done",
@@ -5718,7 +5729,7 @@
 			},
 			"peek": {
 				"label": "Email preview",
-				"back": "Back to Today",
+				"back": "Back to the Workbench",
 				"position": "Email {index} of {total}",
 				"previous": "Previous email",
 				"next": "Next email",
@@ -5728,11 +5739,38 @@
 				"markReadOperation": "Mark as read"
 			},
 			"inboxPicker": {
-				"label": "Choose the inboxes in Today",
-				"all": "All inboxes",
+				"label": "Choose the inboxes on the Workbench",
+				"all": "Edit tabs",
 				"some": "{shown} of {total} inboxes",
-				"heading": "Show in Today",
+				"heading": "Show as a tab",
 				"note": "Hidden inboxes stay in the sidebar and the Answer queue."
+			},
+			"openInbox": "Open the inbox",
+			"reason": {
+				"alert": "Needs action",
+				"newSender": "New sender"
+			},
+			"tabs": {
+				"label": "Inboxes on the Workbench",
+				"answer": "{count} needs an answer | {count} need an answer",
+				"unread": "{count} unread | {count} unread"
+			},
+			"scope": {
+				"kind": {
+					"personal": "Personal",
+					"shared": "Shared inbox",
+					"team": "Handled by the agent"
+				},
+				"openInbox": "Open inbox",
+				"write": "Write",
+				"stats": {
+					"new": "new email | new emails",
+					"important": "important | important",
+					"moved": "conversation moved | conversations moved",
+					"filed": "filed away | filed away"
+				},
+				"since": "Since you last looked, {when}",
+				"sinceFallback": "In the last 24 hours"
 			}
 		},
 		"answer": {
@@ -5763,11 +5801,11 @@
 				"body": "New questions show up here as they arrive, from every inbox you read.",
 				"showAll": "Show all"
 			},
-			"backToToday": "Back to Today",
+			"backToToday": "Back to the Workbench",
 			"done": {
 				"title": "All caught up",
 				"summary": "{summary} this session.",
-				"body": "Today now starts fresh from here."
+				"body": "Your Workbench now starts fresh from here."
 			},
 			"mail": {
 				"writeOwn": "Write my own"
@@ -9902,7 +9940,7 @@
 				"colour": "Colour",
 				"colourAutomatic": "Automatic",
 				"colourSlot": "Colour {n}",
-				"colourHelp": "The chip this inbox wears in the sidebar, on Today, in the Answer queue and next to Send — always together with its name."
+				"colourHelp": "The chip this inbox wears in the sidebar, on the Workbench, in the Answer queue and next to Send — always together with its name."
 			},
 			"members": {
 				"detail": {
@@ -10518,7 +10556,7 @@
 			"title": "Visualizations"
 		},
 		"today": {
-			"pageTitle": "Today",
+			"pageTitle": "Workbench",
 			"greeting": {
 				"morning": "Good morning",
 				"morningNamed": "Good morning, {name}",
@@ -10528,15 +10566,10 @@
 				"eveningNamed": "Good evening, {name}"
 			},
 			"since": {
-				"label": "Since you last looked ({when}):",
-				"fallback": "In the last 24 hours:",
-				"newMail": "no new email | {count} new email | {count} new emails",
-				"newMailCapped": "more than {count} new emails",
-				"moved": "{count} conversation you follow moved | {count} conversations you follow moved",
 				"mentions": "{count} chat mention | {count} chat mentions"
 			},
 			"markAllSeen": "Mark all as seen",
-			"markedSeen": "Marked as seen. Today starts fresh from here.",
+			"markedSeen": "Marked as seen. {inbox} starts fresh from here.",
 			"replyRequested": "The agent is drafting a reply. It will wait in the Answer queue.",
 			"openQueue": "Open queue",
 			"deliveryAlert": "Mail delivery needs attention.",
@@ -10545,7 +10578,13 @@
 				"done": "Mark as done",
 				"replyAnyway": "Ask for a reply",
 				"markSeen": "Mark as seen",
-				"chooseInboxes": "Change the inboxes in Today"
+				"chooseInboxes": "Change the inboxes on the Workbench"
+			},
+			"intro": "One workbench per inbox: what needs you, what moved and what arrived since you last looked.",
+			"noInbox": {
+				"title": "No inbox to work from yet",
+				"body": "Each inbox you read gets its own workbench here, with what needs you, what moved and what arrived. Connect a mailbox to get started.",
+				"cta": "Connect a mailbox"
 			}
 		},
 		"answer": {
@@ -11661,7 +11700,7 @@
 			},
 			"sections": {
 				"audience": "Audience",
-				"dashboard": "Today",
+				"dashboard": "Workbench",
 				"marketing": "Marketing",
 				"preferences": "My settings",
 				"workspace": "Workspace",
@@ -15680,7 +15719,7 @@
 	"welcome": {
 		"fresh": {
 			"body": "Skip the import and begin with a clean inbox.",
-			"cta": "Go to Today",
+			"cta": "Go to the Workbench",
 			"title": "Start fresh"
 		},
 		"freshStart": {
@@ -15689,7 +15728,7 @@
 			"checkingTransport": "Checking whether sending is ready…",
 			"defaultSignatureName": "Default",
 			"emailMyself": "Email myself",
-			"finish": "Go to Today",
+			"finish": "Go to the Workbench",
 			"nameHint": "This is the name people see on your mail.",
 			"nameLabel": "Your name",
 			"namePlaceholder": "e.g. Marcel Pfeifer",

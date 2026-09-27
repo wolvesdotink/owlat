@@ -1,15 +1,17 @@
 /**
- * Per-mailbox reads behind Today and the Conversations sidebar.
+ * Per-mailbox reads behind the Workbench and the Conversations sidebar.
  *
  * Both are soft-auth `publicQuery` reads that return `null` for a mailbox the
  * caller cannot open, exactly like the Postbox list reads they sit next to
- * (`mail/mailbox/queries.ts`). The web subscribes once per accessible mailbox
- * and merges client-side, so every mailbox keeps its own permission check.
+ * (`mail/mailbox/queries.ts`). Each Workbench shows one mailbox, so the web
+ * subscribes to one digest at a time; the sidebar reads one per inbox.
  *
  *   - `digest`: what happened in one mailbox since the viewer's watermark —
  *     a new-mail count, threads the viewer already knew that moved ("What
- *     changed"), new conversations ("Updates"), and the counts of low-signal
- *     mail filed away. Threads that need a reply are left to the Answer queue.
+ *     changed"), new conversations sorted into important and routine
+ *     (`triage.ts`), and the mail filed away (newsletters, notifications…)
+ *     as counts plus the first few senders. Threads that need a reply are
+ *     left to the Answer queue.
  *   - `sidebarThreads`: the latest inbox conversations with one status each,
  *     plus the most urgent status among the ones that did not fit.
  */
@@ -22,17 +24,18 @@ import { isMessageSnoozed } from '../lib/mailSnooze';
 import { isThreadMuted } from '../lib/mailMute';
 import { requireMailboxAccess } from '../mail/permissions';
 import { loadThreadVisit, visitDelta } from '../mail/threadVisits';
+import { classifyMailCategory } from '../mail/category';
 import { loadTodaySummary } from './summaryCache';
+import { type ImportantReason, isFiledBucket, triageThread } from './triage';
 import {
 	FILED_CATEGORIES,
 	type FiledCategory,
 	type ThreadStatus,
 	deriveThreadStatus,
-	isFiledCategory,
 	mostUrgentStatus,
 } from './threadStatus';
 
-/** Newest threads scanned for the digest (bounded; Today is about recent mail). */
+/** Newest threads scanned for the digest (bounded; a Workbench is about recent mail). */
 const DIGEST_THREAD_SCAN = 150;
 /** New-mail counts stop here and render as "150+". */
 const NEW_MAIL_COUNT_CAP = 150;
@@ -41,6 +44,8 @@ const ARRIVED_LIMIT = 20;
 /** Source messages linked per changed thread. */
 const SOURCE_LIMIT = 5;
 const SIDEBAR_MAX = 10;
+/** Senders named per filed category ("The Verge, Stratechery and 4 more"). */
+const FILED_SENDER_LIMIT = 3;
 /** Needs-reply threads scanned to find urgency hidden behind "Show more". */
 const HIDDEN_NEEDS_SCAN = 25;
 
@@ -61,6 +66,42 @@ function toSource(message: Doc<'mailMessages'>): SourceMessage {
 		subject: message.subject,
 		snippet: message.snippet,
 		receivedAt: message.receivedAt,
+	};
+}
+
+/** "The Verge", else the sender's domain ("substack.com"), else the address. */
+function senderLabel(message: Doc<'mailMessages'>): string {
+	const name = message.fromName?.trim();
+	if (name) return name;
+	return message.fromAddress.split('@')[1] || message.fromAddress;
+}
+
+/**
+ * The stored category, or — for a thread the classifier has not reached yet —
+ * the same deterministic heuristic ingest runs on the latest message.
+ */
+async function categoryOf(
+	ctx: QueryCtx,
+	thread: Doc<'mailThreads'>,
+	latest: Doc<'mailMessages'>
+): Promise<{ stored: { label: string; source: string } | null; heuristic: string | null }> {
+	if (thread.category) return { stored: thread.category, heuristic: null };
+	// A reply from the mailbox itself says nothing about what kind of mail this is.
+	if (latest.outbound !== undefined) return { stored: null, heuristic: null };
+	const contact = await ctx.db
+		.query('mailContacts')
+		.withIndex('by_mailbox_and_email', (q) =>
+			q.eq('mailboxId', thread.mailboxId).eq('email', latest.fromAddress.toLowerCase())
+		)
+		.first();
+	return {
+		stored: null,
+		heuristic: classifyMailCategory({
+			fromAddress: latest.fromAddress,
+			subject: latest.subject,
+			hasListUnsubscribe: latest.unsubscribe !== undefined,
+			isKnownCorrespondent: contact !== null,
+		}),
 	};
 }
 
@@ -117,6 +158,9 @@ export const digest = publicQuery({
 		const filed: Record<FiledCategory, number> = Object.fromEntries(
 			FILED_CATEGORIES.map((c) => [c, 0])
 		) as Record<FiledCategory, number>;
+		const filedSenders: Record<FiledCategory, string[]> = Object.fromEntries(
+			FILED_CATEGORIES.map((c) => [c, []])
+		) as unknown as Record<FiledCategory, string[]>;
 
 		for (const thread of threads) {
 			if (thread.isSelfDeliveredBrief || isThreadMuted(thread)) continue;
@@ -130,6 +174,22 @@ export const digest = publicQuery({
 
 			const visit = await loadThreadVisit(ctx, userId, thread._id);
 			if (visit && visit.visitedAt >= thread.lastMessageAt) continue; // already seen
+
+			const { stored, heuristic } = await categoryOf(ctx, thread, latest);
+			const triage = triageThread({ category: stored, heuristic, subject: latest.subject });
+			// Newsletters, notifications and the like are counted, never listed —
+			// not even when the viewer once opened an earlier issue of the thread.
+			if (isFiledBucket(triage.bucket)) {
+				// The spam count includes what the classifier already moved to Spam.
+				const roles = thread.folderRoles;
+				if (!roles.includes('inbox') && !roles.includes('spam')) continue;
+				filed[triage.bucket] += 1;
+				const senders = filedSenders[triage.bucket];
+				const name = senderLabel(latest);
+				if (senders.length < FILED_SENDER_LIMIT && !senders.includes(name)) senders.push(name);
+				continue;
+			}
+
 			const participated =
 				thread.latestReply?.byUserId === userId && thread.latestReply.at <= args.since;
 
@@ -159,13 +219,9 @@ export const digest = publicQuery({
 			}
 
 			if (!thread.folderRoles.includes('inbox')) continue;
-			const category = thread.category?.label;
-			if (isFiledCategory(category)) {
-				filed[category] += 1;
-				continue;
-			}
 			arrivedTotal += 1;
 			if (arrived.length >= ARRIVED_LIMIT) continue;
+			const important = triage.bucket === 'important';
 			arrived.push({
 				threadId: thread._id,
 				mailboxId: thread.mailboxId,
@@ -178,7 +234,9 @@ export const digest = publicQuery({
 					sinceCount: 0,
 				}),
 				summaryRequest: { messageId: thread.latestMessageId, sinceCount: 0 },
-				category: category ?? null,
+				category: stored?.label ?? heuristic ?? null,
+				bucket: important ? ('important' as const) : ('routine' as const),
+				reason: triage.reason as ImportantReason | null,
 				lastMessageAt: thread.lastMessageAt,
 				hasAttachments: thread.hasAttachments,
 				sources: [toSource(latest)],
@@ -193,6 +251,7 @@ export const digest = publicQuery({
 			arrived,
 			arrivedTotal,
 			filed,
+			filedSenders,
 		};
 	},
 });

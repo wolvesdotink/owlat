@@ -17,7 +17,7 @@ import { readDailyStats } from '../lib/sendDailyStats';
 import { readOrgReputation } from './reputationQueries';
 import {
 	WEEK_MS,
-	automatedOpenSummary,
+	automatedSummary,
 	denseDailyOpens,
 	engagementRates,
 	inWindow,
@@ -147,10 +147,16 @@ export const get = authedQuery({
 		const currentRows = inWindow(windowRows, now - periodMs, now + 1);
 		const period = {
 			current: periodTotals(inWindow(windowCounts, now - periodMs, now + 1)),
-			automatedOpens: automatedOpenSummary(
+			automatedOpens: automatedSummary(
 				currentRows.map((c) => ({
-					automatedOpened: c.statsAutomatedOpened ?? 0,
-					isAutomatedOpenFiltered: c.isAutomatedOpenFiltered === true,
+					automated: c.statsAutomatedOpened ?? 0,
+					isFiltered: c.isAutomatedOpenFiltered === true,
+				}))
+			),
+			automatedClicks: automatedSummary(
+				currentRows.map((c) => ({
+					automated: c.statsAutomatedClicked ?? 0,
+					isFiltered: c.isAutomatedClickFiltered === true,
 				}))
 			),
 			previous: periodTotals(inWindow(windowCounts, now - 2 * periodMs, now - periodMs)),

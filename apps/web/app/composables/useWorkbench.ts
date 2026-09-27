@@ -1,6 +1,8 @@
 import { api } from '@owlat/api';
 import { localizedSummary } from '~/utils/clarificationLocale';
 import type { Id } from '@owlat/api/dataModel';
+import type { Ref } from 'vue';
+import { TEAM_SCOPE, type WorkbenchScope } from '~/utils/workbench';
 import {
 	buildTodayModel,
 	missingSummaries,
@@ -9,44 +11,34 @@ import {
 } from '~/utils/todayDigest';
 
 /**
- * Everything Today shows, live: the viewer's "since you last looked"
- * watermark, one digest subscription per inbox they read and have not left
- * out of Today, and the team inbox's informational updates (owners/admins
- * with the team inbox on).
+ * Everything one Workbench tab shows, live: the viewer's "since you last
+ * looked" watermark for that tab, and either that mailbox's digest or — on the
+ * team inbox tab (owners/admins with the team inbox on) — its informational
+ * updates. Only the open tab subscribes, so a viewer with many inboxes pays
+ * for one digest at a time.
  *
- * The watermark only moves on purpose (`markSeen`), so opening Today by
+ * The watermark only moves on purpose (`markSeen`), so opening a tab by
  * accident never erases what changed.
  */
-export function useToday() {
+export function useWorkbench(scope: Ref<WorkbenchScope | null>) {
 	const { t, locale } = useI18n();
 	const { isEnabled } = useFeatureFlag();
 	const { isAdmin } = usePermissions();
-	const { ids } = useInboxes();
 
 	// Frozen at mount: the first-visit fallback ("the last 24 hours") must not
 	// re-key the subscription on every render.
 	const mountedAt = Date.now();
-	const { data: state, isLoading: stateLoading } = useConvexQuery(api.today.state.get, {
+	const { data: state, isLoading: stateLoading } = useConvexQuery(api.today.state.get, () => ({
 		now: mountedAt,
-	});
+		...(scope.value ? { scope: scope.value as Id<'mailboxes'> | 'team' } : {}),
+	}));
 	const since = computed(() => state.value?.seenAt);
 
-	// Inboxes left out of Today. A toggle shows at once; the live read confirms.
-	const pendingShown = ref(new Map<Id<'mailboxes'>, boolean>());
-	const hiddenMailboxIds = computed<Id<'mailboxes'>[]>(() => {
-		const hidden = new Set(state.value?.hiddenMailboxIds ?? []);
-		for (const [mailboxId, shown] of pendingShown.value) {
-			if (shown) hidden.delete(mailboxId);
-			else hidden.add(mailboxId);
-		}
-		return [...hidden];
-	});
-	const shownIds = computed(() => {
-		const hidden = new Set(hiddenMailboxIds.value);
-		return ids.value.filter((id) => !hidden.has(id));
-	});
-
-	const digests = useConvexQueryMap(api.today.mailbox.digest, shownIds, (mailboxId) =>
+	const isTeam = computed(() => scope.value === TEAM_SCOPE);
+	const mailboxIds = computed<Id<'mailboxes'>[]>(() =>
+		scope.value && !isTeam.value ? [scope.value as Id<'mailboxes'>] : []
+	);
+	const digests = useConvexQueryMap(api.today.mailbox.digest, mailboxIds, (mailboxId) =>
 		since.value === undefined ? 'skip' : { mailboxId, since: since.value, locale: locale.value }
 	);
 
@@ -85,18 +77,20 @@ export function useToday() {
 	);
 
 	const teamOn = computed(() => isAdmin.value && isEnabled('inbox'));
-	const { data: teamUpdates } = useConvexQuery(api.inbox.updates.listUpdates, () =>
-		teamOn.value ? { view: 'updates' as const, limit: 40 } : 'skip'
+	const teamTab = computed(() => teamOn.value && isTeam.value);
+	const { data: teamUpdates, isLoading: teamLoading } = useConvexQuery(
+		api.inbox.updates.listUpdates,
+		() => (teamTab.value ? { view: 'updates' as const, limit: 40 } : 'skip')
 	);
 	const { data: teamCounts } = useConvexQuery(api.inbox.updates.getUpdateCounts, () =>
-		teamOn.value ? {} : 'skip'
+		teamTab.value ? {} : 'skip'
 	);
 
 	const model = computed<TodayModel>(() =>
 		buildTodayModel({
 			digests: [...digests.values()].map((r) => (r.data.value ?? null) as MailboxDigest | null),
-			teamUpdates: teamUpdates.value ?? [],
-			teamCounts: teamCounts.value ?? null,
+			teamUpdates: teamTab.value ? (teamUpdates.value ?? []) : [],
+			teamCounts: teamTab.value ? (teamCounts.value ?? null) : null,
 			since: since.value ?? mountedAt,
 			pickSummary: (summary) => (summary ? localizedSummary(summary, locale.value) || null : null),
 		})
@@ -104,6 +98,7 @@ export function useToday() {
 
 	const isLoading = computed(() => {
 		if (stateLoading.value) return true;
+		if (teamTab.value && teamLoading.value) return true;
 		for (const r of digests.values()) if (r.isLoading.value) return true;
 		return false;
 	});
@@ -114,6 +109,40 @@ export function useToday() {
 	const { run: undoMarkSeenRun } = useBackendOperation(api.today.state.undoMarkSeen, {
 		label: () => t('dashboard.today.operations.markSeen'),
 	});
+	return {
+		since,
+		isFallback: computed(() => state.value?.isFallback ?? false),
+		previousSeenAt: computed(() => state.value?.previousSeenAt ?? null),
+		model,
+		isLoading,
+		teamOn,
+		/** Mark a tab as seen; the open one unless told otherwise (leaving a tab). */
+		markSeen: (target: WorkbenchScope | null = scope.value) =>
+			markSeenRun(target ? { scope: target as Id<'mailboxes'> | 'team' } : {}),
+		undoMarkSeen: (target: WorkbenchScope | null = scope.value) =>
+			undoMarkSeenRun(target ? { scope: target as Id<'mailboxes'> | 'team' } : {}),
+	};
+}
+
+/**
+ * Which inboxes get a Workbench tab: a per-person hide list, so an inbox the
+ * viewer joins later gets its tab without a visit to the picker. Read apart
+ * from the tab's own watermark because choosing the open tab depends on it.
+ * A toggle shows at once; the live read confirms.
+ */
+export function useWorkbenchInboxChoice() {
+	const { t } = useI18n();
+	const { data: state } = useConvexQuery(api.today.state.get, {});
+	const pendingShown = ref(new Map<Id<'mailboxes'>, boolean>());
+	const hiddenMailboxIds = computed<Id<'mailboxes'>[]>(() => {
+		const hidden = new Set(state.value?.hiddenMailboxIds ?? []);
+		for (const [mailboxId, shown] of pendingShown.value) {
+			if (shown) hidden.delete(mailboxId);
+			else hidden.add(mailboxId);
+		}
+		return [...hidden];
+	});
+
 	const { run: setShownRun } = useBackendOperation(api.today.state.setMailboxShown, {
 		label: () => t('dashboard.today.operations.chooseInboxes'),
 	});
@@ -125,16 +154,5 @@ export function useToday() {
 		pendingShown.value = next;
 	}
 
-	return {
-		since,
-		isFallback: computed(() => state.value?.isFallback ?? false),
-		previousSeenAt: computed(() => state.value?.previousSeenAt ?? null),
-		model,
-		isLoading,
-		teamOn,
-		hiddenMailboxIds,
-		setInboxShown,
-		markSeen: () => markSeenRun({}),
-		undoMarkSeen: () => undoMarkSeenRun({}),
-	};
+	return { hiddenMailboxIds, setInboxShown };
 }

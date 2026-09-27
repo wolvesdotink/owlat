@@ -92,35 +92,38 @@ export function periodTotals(campaigns: readonly CampaignCounts[]): PeriodTotals
 	};
 }
 
-/** What one campaign says about the automated pixel fetches kept out of its opens. */
-export interface AutomatedOpenCounts {
-	automatedOpened: number;
-	/** False for campaigns counted before automated opens were filtered. */
-	isAutomatedOpenFiltered: boolean;
+/**
+ * What one campaign says about the automated opens or clicks (Apple MPP,
+ * security scanners) kept out of its reader counts.
+ */
+export interface AutomatedCounts {
+	/** Sends with at least one automated open (or click). */
+	automated: number;
+	/** False for campaigns counted before automated ones were filtered. */
+	isFiltered: boolean;
 }
 
-export interface AutomatedOpenSummary {
+export interface AutomatedSummary {
 	/**
-	 * Sends whose pixel was fetched automatically, summed over the campaigns.
-	 * A send can also have a reader open, so this is not what the open rate lost.
+	 * Sends with automated opens (or clicks), summed over the campaigns. A send
+	 * can also have a reader open or click, so this is not what the rate lost.
 	 */
 	excluded: number;
-	/** Whether any campaign's opens were counted before the filter existed. */
+	/** Whether any campaign was counted before the filter existed. */
 	includesUnfiltered: boolean;
 }
 
 /**
- * The note beside an open rate: how many sends were fetched automatically, and
- * whether some of its campaigns predate the filter and may still carry them.
+ * The note beside an open or click rate: how many sends had automated
+ * traffic, and whether some of its campaigns predate the filter and may still
+ * carry it.
  */
-export function automatedOpenSummary(
-	campaigns: readonly AutomatedOpenCounts[]
-): AutomatedOpenSummary {
+export function automatedSummary(campaigns: readonly AutomatedCounts[]): AutomatedSummary {
 	let excluded = 0;
 	let includesUnfiltered = false;
 	for (const c of campaigns) {
-		excluded += c.automatedOpened;
-		if (!c.isAutomatedOpenFiltered) includesUnfiltered = true;
+		excluded += c.automated;
+		if (!c.isFiltered) includesUnfiltered = true;
 	}
 	return { excluded, includesUnfiltered };
 }
