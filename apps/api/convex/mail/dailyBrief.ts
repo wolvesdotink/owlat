@@ -27,7 +27,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { urgencyFallbackScore } from './ai/priorityScore';
-import { resolveCounterpartName } from './followUps';
+import { resolveCounterpartName } from './counterpartName';
 
 // ─── Pure ranking + bundling (unit-tested, framework-free) ───────────────────
 

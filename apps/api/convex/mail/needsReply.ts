@@ -38,7 +38,7 @@ import { isThreadMuted } from '../lib/mailMute';
 import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './ai/priorityScore';
 import { scoreAndScreenResult } from './ai/needsReplyScoring';
-import { resolveCounterpartName } from './followUps';
+import { resolveCounterpartName } from './counterpartName';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { isFromMailboxOwner, type NeedsReplyHeaders } from './needsReplyHeuristic';
 
