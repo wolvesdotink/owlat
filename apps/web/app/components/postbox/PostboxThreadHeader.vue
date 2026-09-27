@@ -54,6 +54,17 @@ const isMuted = computed(() => props.thread?.mutedAt != null);
 const isAlerted = computed(() => props.thread?.notifyOnReplyAt != null);
 const cameBackFromSnooze = computed(() => props.thread?.snoozeReturnedAt != null);
 
+// The "(2)" count must not wrap onto a line of its own, so the subject's last
+// word and the count render as one unbreakable unit.
+const subjectText = computed(
+	() => props.subject || t('components.postbox.postboxThreadHeader.noSubject')
+);
+const subjectParts = computed(() => {
+	const text = subjectText.value.trimEnd();
+	const cut = text.search(/\S+$/);
+	return { head: text.slice(0, Math.max(cut, 0)), tail: text.slice(Math.max(cut, 0)) };
+});
+
 /** Shared item shape — one string rather than four copies drifting apart. */
 const ITEM_CLASS =
 	'w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left whitespace-nowrap text-text-primary hover:bg-bg-surface disabled:opacity-60';
@@ -63,13 +74,16 @@ const ITEM_CLASS =
 	<header class="pbx-reader-header mb-4">
 		<div class="flex items-start gap-2">
 			<h1 class="flex-1 min-w-0 text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ subject || t('components.postbox.postboxThreadHeader.noSubject') }}
-				<span
-					v-if="messageCount > 1"
-					class="ml-1 text-base font-normal text-text-tertiary align-middle"
+				<template v-if="messageCount > 1"
+					>{{ subjectParts.head
+					}}<span class="whitespace-nowrap"
+						>{{ subjectParts.tail
+						}}<span class="ml-1.5 text-base font-normal text-text-tertiary align-middle"
+							>({{ messageCount }})</span
+						></span
+					></template
 				>
-					({{ messageCount }})
-				</span>
+				<template v-else>{{ subjectText }}</template>
 			</h1>
 			<!-- Host-owned thread actions (the reader's "Discuss" toggle). -->
 			<slot name="actions" />

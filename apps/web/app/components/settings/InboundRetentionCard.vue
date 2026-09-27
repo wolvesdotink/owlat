@@ -69,7 +69,7 @@ async function onSelect(next: InboundRawRetentionDays | null) {
 	     a settings card is not the place to re-decide what a card looks like. -->
 	<UiCard>
 		<template #header>
-			<div class="flex items-center gap-3">
+			<div class="flex items-center gap-3 pb-4">
 				<UiIconBox icon="lucide:archive" size="sm" variant="surface" rounded="lg" />
 				<div class="min-w-0">
 					<h2 class="text-lg font-medium text-text-primary">
@@ -82,7 +82,7 @@ async function onSelect(next: InboundRawRetentionDays | null) {
 			</div>
 		</template>
 
-		<div class="flex items-start justify-between gap-4">
+		<div class="mt-4 flex items-start justify-between gap-4">
 			<p v-if="!canManageOrganization" class="text-xs text-text-tertiary">
 				{{ t('components.settings.inboundRetentionCard.adminOnly') }}
 			</p>

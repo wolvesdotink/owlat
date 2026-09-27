@@ -6,7 +6,7 @@ import type {
 	OrganizationInvitation,
 } from '~/composables/useOrganization';
 import { ROLE_DEFINITIONS, roleDefinition } from '~/utils/teamRoles';
-import { formatShortDate } from '~/utils/formatters';
+import { formatDate } from '~/utils/formatters';
 
 const { t, locale } = useI18n();
 
@@ -256,6 +256,9 @@ type LocalizedText = string | { key: string; params?: Record<string, unknown> };
 function localized(value: LocalizedText): string {
 	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
 }
+
+const isInviteExpired = (invite: OrganizationInvitation) =>
+	new Date(invite.expiresAt).getTime() < Date.now();
 
 // Format relative time for invite expiry
 const formatExpiryTime = (expiresAt: Date) => {
@@ -517,9 +520,9 @@ const formatExpiryTime = (expiresAt: Date) => {
 									</span>
 								</td>
 
-								<!-- Joined date -->
+								<!-- Joined date, always with the year so the column reads as one format -->
 								<td class="px-4 py-4 text-text-secondary whitespace-nowrap">
-									{{ formatShortDate(member.createdAt, locale) }}
+									{{ formatDate(member.createdAt, 'medium', locale) }}
 								</td>
 
 								<!-- Overflow menu: verification recovery + ownership/destructive
@@ -656,14 +659,32 @@ const formatExpiryTime = (expiresAt: Date) => {
 								variant="ghost"
 								size="sm"
 								:title="t('dashboard.admin.team.invites.copyLink')"
+								:aria-label="t('dashboard.admin.team.invites.copyLink')"
 								@click="copyInviteLink(invite.id)"
 							>
 								<Icon name="lucide:link" class="w-4 h-4 text-text-secondary" />
 							</UiButton>
+							<!-- An expired invite's obvious next step is a fresh email, so it
+							     gets a labelled button instead of a bare icon. -->
 							<UiButton
+								v-if="isInviteExpired(invite)"
+								variant="outline"
+								size="sm"
+								:title="t('dashboard.admin.team.invites.resend')"
+								:loading="resendingId === invite.id"
+								:disabled="resendingId === invite.id"
+								data-testid="invite-resend-labelled"
+								@click="handleResend(invite)"
+							>
+								<Icon v-if="resendingId !== invite.id" name="lucide:send" class="w-4 h-4 mr-2" />
+								{{ t('dashboard.admin.team.invites.resendShort') }}
+							</UiButton>
+							<UiButton
+								v-else
 								variant="ghost"
 								size="sm"
 								:title="t('dashboard.admin.team.invites.resend')"
+								:aria-label="t('dashboard.admin.team.invites.resend')"
 								:loading="resendingId === invite.id"
 								:disabled="resendingId === invite.id"
 								@click="handleResend(invite)"
@@ -678,6 +699,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 								variant="ghost"
 								size="sm"
 								:title="t('dashboard.admin.team.invites.revoke')"
+								:aria-label="t('dashboard.admin.team.invites.revoke')"
 								@click="inviteToCancel = invite"
 							>
 								<Icon name="lucide:x" class="w-4 h-4 text-text-secondary hover:text-error" />

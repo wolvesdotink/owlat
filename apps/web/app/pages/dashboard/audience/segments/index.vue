@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { formatNumber } from '~/utils/formatters';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 import type { Condition } from '~/composables/conditions';
 
@@ -257,7 +258,7 @@ onMounted(() => {
 								</span>
 								<span class="flex items-center gap-1.5 text-xs text-text-tertiary mt-0.5">
 									<Icon name="lucide:users" class="w-3.5 h-3.5" />
-									{{ segment.cachedCount ?? '—' }}
+									{{ segment.cachedCount != null ? formatNumber(segment.cachedCount) : '—' }}
 									<span aria-hidden="true">·</span>
 									{{ formatDate(segment.createdAt) }}
 								</span>
@@ -359,18 +360,20 @@ onMounted(() => {
 										</NuxtLink>
 									</td>
 									<td class="px-6 py-4">
-										<span class="text-text-secondary text-sm">{{
+										<span class="text-text-secondary text-sm whitespace-nowrap">{{
 											describeFilters(segment.filters)
 										}}</span>
 									</td>
 									<td class="px-6 py-4">
 										<div class="flex items-center gap-2">
 											<Icon name="lucide:users" class="w-4 h-4 text-text-tertiary" />
-											<span class="text-text-secondary">{{ segment.cachedCount ?? '—' }}</span>
+											<span class="text-text-secondary tabular-nums">{{
+												segment.cachedCount != null ? formatNumber(segment.cachedCount) : '—'
+											}}</span>
 										</div>
 									</td>
 									<td class="px-6 py-4">
-										<span class="text-text-tertiary text-sm">{{
+										<span class="text-text-tertiary text-sm whitespace-nowrap">{{
 											formatDate(segment.createdAt)
 										}}</span>
 									</td>
@@ -380,6 +383,7 @@ onMounted(() => {
 												:to="`/dashboard/audience/segments/${segment._id}`"
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												:title="t('dashboard.audience.segments.index.actions.viewContacts')"
+												:aria-label="t('dashboard.audience.segments.index.actions.viewContacts')"
 											>
 												<Icon name="lucide:users" class="w-4 h-4" />
 											</NuxtLink>
@@ -387,6 +391,7 @@ onMounted(() => {
 												v-if="canManage"
 												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												:title="t('dashboard.audience.segments.index.actions.edit')"
+												:aria-label="t('dashboard.audience.segments.index.actions.edit')"
 												@click="openEditModal(segment)"
 											>
 												<Icon name="lucide:pencil" class="w-4 h-4" />
@@ -395,6 +400,7 @@ onMounted(() => {
 												v-if="canManage"
 												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 												:title="t('dashboard.audience.segments.index.actions.delete')"
+												:aria-label="t('dashboard.audience.segments.index.actions.delete')"
 												@click="openDeleteModal(segment)"
 											>
 												<Icon name="lucide:trash-2" class="w-4 h-4" />

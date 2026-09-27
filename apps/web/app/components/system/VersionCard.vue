@@ -45,7 +45,9 @@ const isDevBuild = computed(() => version.value === 'dev' || version.value === '
 	<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
 		<div class="flex items-start justify-between gap-6 flex-wrap">
 			<div class="min-w-0">
-				<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-2">{{ t('components.system.versionCard.currentVersion') }}</h3>
+				<h3 class="font-semibold text-text-primary mb-2">
+					{{ t('components.system.versionCard.currentVersion') }}
+				</h3>
 				<div class="flex items-baseline gap-3 flex-wrap">
 					<span class="font-display text-3xl font-semibold text-text-primary tracking-tight">
 						{{ version }}

@@ -119,7 +119,7 @@ function formatDuration(start?: number, end?: number) {
 		<div class="card">
 			<div class="flex items-start justify-between gap-4 flex-wrap">
 				<div class="min-w-0">
-					<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-2">
+					<h3 class="font-semibold text-text-primary mb-2">
 						{{ t('dashboard.admin.system.index.updates.title') }}
 					</h3>
 
@@ -343,7 +343,7 @@ function formatDuration(start?: number, end?: number) {
 
 		<!-- Update history -->
 		<div class="card">
-			<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider mb-4">
+			<h3 class="font-semibold text-text-primary mb-4">
 				{{ t('dashboard.admin.system.index.history.title') }}
 			</h3>
 

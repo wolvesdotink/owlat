@@ -10,10 +10,12 @@ import {
 	SETUP_TOKEN_FIELD_ID,
 	groupActiveFeatures,
 	launchBlockers,
+	type LaunchBlockerId,
 } from '~/composables/setupWizardReview';
 import { useFeatureCopy } from '~/composables/useFeatureCopy';
 import { isCsrfRejection } from '~/lib/csrf';
 import { apiFetch } from '~/lib/csrfFetch';
+import SetupReviewRow from '~/components/setup/ReviewRow.vue';
 
 definePageMeta({ layout: false });
 
@@ -37,8 +39,8 @@ const displaySteps = computed(() =>
 // The privileged apply endpoint authenticates with the one-time setup token.
 const trimmedToken = computed(() => setupToken.value.trim());
 
-// Every reason Launch is disabled, listed next to the button and linked to the
-// step (or field) that fixes it — a disabled button alone explains nothing.
+// Every reason Launch is disabled, named in one line next to the button and
+// linked to the step (or field) that fixes it — a disabled button alone explains nothing.
 const blockers = computed(() =>
 	launchBlockers({
 		missingProvider: summary.value.missingProvider,
@@ -47,6 +49,10 @@ const blockers = computed(() =>
 	})
 );
 const canLaunch = computed(() => blockers.value.length === 0);
+// A summary row whose value blocks launch shows it inline, in warning colour.
+function isBlocked(id: LaunchBlockerId): boolean {
+	return blockers.value.some((blocker) => blocker.id === id);
+}
 
 // Active features by their names, under the pack they belong to.
 const featureGroups = computed(() => groupActiveFeatures(summary.value.activeFeatures));
@@ -259,7 +265,7 @@ onUnmounted(stopPolling);
 			</div>
 		</div>
 
-		<div v-else class="relative mx-auto max-w-2xl px-6 py-12">
+		<div v-else class="relative mx-auto max-w-3xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
 				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
 				<span class="lp-eyebrow">{{ t('setup.review.eyebrow') }}</span>
@@ -291,10 +297,11 @@ onUnmounted(stopPolling);
 
 			<UiCard padding="lg">
 				<dl class="divide-y divide-border-subtle">
-					<div class="grid grid-cols-[10rem_1fr] gap-4 py-3 first:pt-0">
-						<dt class="text-sm font-medium text-text-secondary">
-							{{ t('setup.review.activeFeatures') }}
-						</dt>
+					<SetupReviewRow
+						:label="t('setup.review.activeFeatures')"
+						to="/setup/features"
+						link-testid="review-edit-features"
+					>
 						<dd>
 							<div v-if="featureGroups.length" class="space-y-3" data-testid="review-features">
 								<div v-for="group in featureGroups" :key="group.pack">
@@ -308,53 +315,66 @@ onUnmounted(stopPolling);
 								t('setup.review.noneEnabled')
 							}}</span>
 						</dd>
-					</div>
+					</SetupReviewRow>
 
 					<!-- When "moving from another platform" is chosen the server enables the
 					     external-mailbox import before persisting, so reflect it here — the
 					     operator confirms exactly what gets applied. -->
-					<div v-if="isMigrationMode" class="grid grid-cols-[10rem_1fr] gap-4 py-3">
-						<dt class="text-sm font-medium text-text-secondary">
-							{{ t('setup.review.mailboxImport') }}
-						</dt>
-						<dd class="text-sm text-text-primary">
-							{{ t('setup.review.mailboxImportEnabled') }}
+					<SetupReviewRow
+						v-if="isMigrationMode"
+						:label="t('setup.review.mailboxImport')"
+						to="/setup/mode"
+					>
+						<dd class="text-sm text-text-primary">{{ t('setup.review.mailboxImportEnabled') }}</dd>
+					</SetupReviewRow>
+
+					<!-- A value that blocks launch shows inline, in warning colour, and its
+					     link reads "Add". The summary is built by a pure module, so its
+					     label is a message key; a translated label passes `t` unchanged. -->
+					<SetupReviewRow
+						:label="t('setup.review.emailProvider')"
+						to="/setup/email"
+						:action="isBlocked('provider') ? t('common.add') : undefined"
+						link-testid="review-edit-provider"
+					>
+						<dd
+							v-if="isBlocked('provider')"
+							class="text-sm text-warning"
+							data-testid="review-provider-missing"
+						>
+							{{ t('setup.review.notSet') }}
 						</dd>
-					</div>
+						<dd v-else class="text-sm text-text-primary">{{ t(summary.providerLabel) }}</dd>
+					</SetupReviewRow>
 
-					<div class="grid grid-cols-[10rem_1fr] gap-4 py-3">
-						<dt class="text-sm font-medium text-text-secondary">
-							{{ t('setup.review.emailProvider') }}
-						</dt>
-						<!-- The summary is built by a pure module, so its label is a message
-						     key; an already-translated label passes through `t` unchanged. -->
-						<dd class="text-sm text-text-primary">{{ t(summary.providerLabel) }}</dd>
-					</div>
-
-					<div v-if="summary.fromIdentity" class="grid grid-cols-[10rem_1fr] gap-4 py-3">
-						<dt class="text-sm font-medium text-text-secondary">
-							{{ t('setup.review.fromIdentity') }}
-						</dt>
+					<SetupReviewRow
+						v-if="summary.fromIdentity"
+						:label="t('setup.review.fromIdentity')"
+						to="/setup/email"
+					>
 						<dd class="text-sm text-text-primary font-mono">{{ summary.fromIdentity }}</dd>
-					</div>
+					</SetupReviewRow>
 
-					<div class="grid grid-cols-[10rem_1fr] gap-4 py-3">
-						<dt class="text-sm font-medium text-text-secondary">
-							{{ t('setup.review.adminAccount') }}
-						</dt>
-						<dd class="text-sm text-text-primary">
+					<SetupReviewRow
+						:label="t('setup.review.adminAccount')"
+						to="/setup/admin"
+						:action="summary.adminEmail ? undefined : t('common.add')"
+						link-testid="review-edit-admin"
+					>
+						<dd
+							class="text-sm"
+							:class="isBlocked('admin') ? 'text-warning' : 'text-text-primary'"
+							data-testid="review-admin"
+						>
 							{{ summary.adminEmail || t('setup.review.notSet') }}
 							<span v-if="summary.adminName" class="text-text-tertiary">{{
 								t('setup.review.adminName', { name: summary.adminName })
 							}}</span>
 						</dd>
-					</div>
+					</SetupReviewRow>
 
-					<div class="grid grid-cols-[10rem_1fr] gap-4 py-3 last:pb-0">
-						<dt class="text-sm font-medium text-text-secondary">
-							{{ t('setup.review.generatedSecrets') }}
-						</dt>
-						<dd class="text-sm text-text-secondary">
+					<SetupReviewRow :label="t('setup.review.generatedSecrets')">
+						<dd class="col-span-2 text-sm text-text-secondary">
 							<I18nT keypath="setup.review.generatedSecretsNote" tag="p" scope="global">
 								<template #file><code class="font-mono">.env</code></template>
 							</I18nT>
@@ -367,7 +387,7 @@ onUnmounted(stopPolling);
 								</ul>
 							</details>
 						</dd>
-					</div>
+					</SetupReviewRow>
 				</dl>
 			</UiCard>
 
@@ -418,22 +438,24 @@ onUnmounted(stopPolling);
 					{{ t('common.back') }}
 				</UiButton>
 				<div class="flex flex-col items-end gap-3">
-					<ul
+					<p
 						v-if="phase === 'idle' && blockers.length"
 						id="launch-blockers"
-						class="space-y-1 text-right text-sm text-text-secondary"
+						class="text-right text-sm text-text-secondary"
 						data-testid="launch-blockers"
 					>
-						<li v-for="blocker in blockers" :key="blocker.id">
-							<a
+						{{ t('setup.review.blockersLeft', blockers.length) }}
+						<template v-for="(blocker, i) in blockers" :key="blocker.id"
+							><template v-if="i > 0">, </template
+							><a
 								:href="blocker.to"
 								class="link"
 								:data-testid="`launch-blocker-${blocker.id}`"
 								@click.prevent="goToBlocker(blocker.to)"
 								>{{ t(blocker.message) }}</a
-							>
-						</li>
-					</ul>
+							></template
+						>
+					</p>
 					<UiButton
 						:loading="phase === 'applying'"
 						:disabled="phase !== 'idle' || !canLaunch"

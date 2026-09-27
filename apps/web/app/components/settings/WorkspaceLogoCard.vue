@@ -118,7 +118,7 @@ async function onRemove(variant: WorkspaceLogoVariant) {
 <template>
 	<UiCard>
 		<template #header>
-			<div class="flex items-center gap-3">
+			<div class="flex items-center gap-3 pb-4">
 				<UiIconBox icon="lucide:image" size="sm" variant="surface" rounded="lg" />
 				<div class="min-w-0">
 					<h2 class="text-lg font-medium text-text-primary">
@@ -131,11 +131,11 @@ async function onRemove(variant: WorkspaceLogoVariant) {
 			</div>
 		</template>
 
-		<div v-if="isLoading" class="flex justify-center py-4">
+		<div v-if="isLoading" class="mt-4 flex justify-center py-4">
 			<UiSpinner size="sm" />
 		</div>
 
-		<ul v-else class="divide-y divide-border-subtle">
+		<ul v-else class="mt-4 divide-y divide-border-subtle">
 			<li
 				v-for="slot in slots"
 				:key="slot.variant"

@@ -67,10 +67,15 @@ withDefaults(
 	>
 		<Icon :name="icon" class="w-4 h-4 flex-shrink-0" />
 		<template v-if="!collapsed">
-			<span class="flex-1 truncate">{{ label }}</span>
+			<!-- With a worded count the label keeps its full width and the count
+			     truncates instead (the full phrase is in the title). -->
+			<span class="min-w-0 truncate" :class="count > 0 && countText ? 'shrink-0' : 'flex-1'">{{
+				label
+			}}</span>
 			<span
 				v-if="count > 0"
-				class="text-xs font-medium text-text-secondary truncate max-w-[50%] flex-shrink-0"
+				class="ml-auto min-w-0 truncate text-xs font-medium text-text-secondary"
+				:class="countText ? '' : 'shrink-0'"
 				>{{ countText ?? count }}</span
 			>
 		</template>

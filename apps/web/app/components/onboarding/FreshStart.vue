@@ -30,6 +30,8 @@ const { user } = useAuth();
 // workspace next to Contacts, and only when the instance has it turned on.
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const showKnowledgeTip = computed(() => isFeatureEnabled('ai.knowledge'));
+// Keyboard-shortcut tips: hidden where there is no keyboard to press them on.
+const KEYBOARD_ONLY = 'max-sm:hidden pointer-coarse:hidden';
 const userId = computed(() => user.value?.id ?? null);
 
 const { currentMailbox, isLoading: mailboxLoading } = usePostboxMailbox();
@@ -348,11 +350,16 @@ function skipToToday() {
 				</div>
 			</div>
 
-			<!-- Teach-the-product: a few things worth knowing on day one. -->
-			<div class="rounded-xl border border-border-subtle bg-bg-surface/50 p-5">
+			<!-- Teach-the-product: a few things worth knowing on day one. The
+			     keyboard tips are meaningless on a phone or tablet, so they (and the
+			     card, when they are all it holds) hide on touch and small screens. -->
+			<div
+				class="rounded-xl border border-border-subtle bg-bg-surface/50 p-5"
+				:class="showKnowledgeTip ? '' : KEYBOARD_ONLY"
+			>
 				<h2 class="mb-3 text-sm font-semibold">{{ t('welcome.freshStart.tipsHeading') }}</h2>
 				<ul class="space-y-3 text-sm text-text-secondary">
-					<li class="flex items-start gap-3">
+					<li class="flex items-start gap-3" :class="KEYBOARD_ONLY">
 						<Icon name="lucide:pen-line" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
 						<I18nT keypath="welcome.freshStart.tips.compose" tag="span" scope="global">
 							<template #key>
@@ -363,7 +370,7 @@ function skipToToday() {
 							</template>
 						</I18nT>
 					</li>
-					<li class="flex items-start gap-3">
+					<li class="flex items-start gap-3" :class="KEYBOARD_ONLY">
 						<Icon name="lucide:command" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
 						<I18nT keypath="welcome.freshStart.tips.command" tag="span" scope="global">
 							<template #keys>

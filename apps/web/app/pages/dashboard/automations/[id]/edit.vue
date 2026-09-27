@@ -504,7 +504,9 @@ onUnmounted(() => {
 		</div>
 
 		<!-- Main Content - Two Panel Layout -->
-		<div v-else class="flex-1 flex overflow-hidden">
+		<!-- overflow-clip, not -hidden: a scroll container here would pin the step
+		     panel's sticky content to this box instead of the viewport. -->
+		<div v-else class="flex-1 flex overflow-clip">
 			<!-- Workflow Canvas (Left Panel) -->
 			<div class="flex-1 overflow-y-auto p-6">
 				<div class="max-w-xl mx-auto">

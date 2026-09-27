@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import type { AdminAreaKey } from '~/lib/adminSettingsRegistry';
+import {
+	adminEntryFor,
+	type AdminAreaKey,
+	type AdminAttentionKey,
+} from '~/lib/adminSettingsRegistry';
 import { useWorkspaceSettingsNav } from '~/composables/useWorkspaceSettingsNav';
 
 const { t } = useI18n();
@@ -46,12 +50,18 @@ const groups = computed(() =>
 );
 
 // Held or failed incoming mail: the one thing on the Workspace side that waits
-// on a person. Links to the first list that has something in it.
-const attention = computed(() => {
-	const entries = Object.entries(badges.value);
-	const count = entries.reduce((sum, [, n]) => sum + n, 0);
-	return count > 0 ? { count, href: entries[0]![0] } : null;
-});
+// on a person. One line per list that has something in it, saying which list.
+const ATTENTION_COPY: Record<AdminAttentionKey, string> = {
+	quarantined: 'dashboard.admin.index.attentionQuarantined',
+	failed: 'dashboard.admin.index.attentionFailed',
+};
+const attention = computed(() =>
+	Object.entries(badges.value).flatMap(([href, count]) => {
+		const entry = adminEntryFor(href);
+		if (!entry?.attention) return [];
+		return [{ href, count, icon: entry.icon, message: ATTENTION_COPY[entry.attention] }];
+	})
+);
 
 // Operator tooling and deployment maintenance are scoped to this deployment's
 // platform admin (each destination also carries the `platform-admin` route
@@ -121,14 +131,15 @@ async function onClaimPlatformAdmin() {
 		</NuxtLink>
 
 		<NuxtLink
-			v-if="attention"
-			:to="attention.href"
+			v-for="item in attention"
+			:key="item.href"
+			:to="item.href"
 			class="card mb-6 flex items-center justify-between gap-4 border-error/20 hover:bg-bg-surface transition-colors"
 		>
 			<span class="flex items-center gap-3">
-				<UiIconBox icon="lucide:shield-alert" size="sm" variant="error" rounded="lg" />
+				<UiIconBox :icon="item.icon" size="sm" variant="error" rounded="lg" />
 				<span class="font-medium text-text-primary">
-					{{ t('dashboard.admin.index.attention', { count: attention.count }, attention.count) }}
+					{{ t(item.message, { count: item.count }, item.count) }}
 				</span>
 			</span>
 			<Icon name="lucide:arrow-right" class="w-5 h-5 text-text-tertiary" />

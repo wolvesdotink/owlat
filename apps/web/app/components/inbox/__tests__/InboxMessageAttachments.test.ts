@@ -132,7 +132,10 @@ describe('InboxMessageAttachments', () => {
 		expect(rows[0]!.text()).toContain(formatCompactFileSize(2048));
 		expect(rows[1]!.text()).toContain('report.pdf');
 		expect(rows[1]!.text()).toContain(formatCompactFileSize(5_242_880));
-		expect(rows[1]!.text()).toContain('application/pdf');
+		// A short type, not the raw MIME type; the MIME type stays in the title.
+		expect(rows[1]!.text()).toContain('· PDF');
+		expect(rows[1]!.text()).not.toContain('application/pdf');
+		expect(rows[1]!.find('[title="application/pdf"]').exists()).toBe(true);
 	});
 
 	it('renders nothing at all when the message has no attachments', () => {

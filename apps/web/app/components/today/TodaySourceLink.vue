@@ -5,8 +5,9 @@ import { TODAY_PEEK, type TodayPeekControls } from '~/utils/todayPeek';
 /**
  * A summarised phrase that quietly links to the email(s) it came from.
  *
- * At rest it reads as text with a faint dotted underline — that alone says
- * "link". There is deliberately no marker after it: sender initials or a bare
+ * At rest it reads as plain text: nearly every line on Today is one of these,
+ * and a dotted underline on all of them was noise. Hover and keyboard focus
+ * underline it and tint it. There is deliberately no marker after it: sender initials or a bare
  * count next to a sentence read as debug output. Who and how many are in the
  * accessible name and in the preview. Hover or keyboard focus shows that
  * preview after a short delay; click / Enter opens the email in Today's side
@@ -61,7 +62,7 @@ function when(at: number): string {
 	<span class="relative" @mouseleave="hidePreview">
 		<a
 			href="#"
-			class="cursor-pointer rounded-sm underline decoration-dotted decoration-text-tertiary/50 underline-offset-[3px] transition-colors hover:bg-brand-subtle hover:decoration-solid hover:decoration-brand focus-visible:bg-brand-subtle focus-visible:decoration-solid focus-visible:decoration-brand focus-visible:outline-none"
+			class="cursor-pointer rounded-sm decoration-brand underline-offset-[3px] transition-colors hover:bg-brand-subtle hover:underline focus-visible:bg-brand-subtle focus-visible:underline focus-visible:outline-none"
 			:aria-label="`${text} — ${accessibleLabel}`"
 			@click.prevent="open($event)"
 			@keydown.enter.prevent="open($event)"

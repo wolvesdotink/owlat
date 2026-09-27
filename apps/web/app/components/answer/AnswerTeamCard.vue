@@ -32,7 +32,15 @@ type ReviewEntry = FunctionReturnType<typeof api.inbox.queries.getReviewQueue>[n
  */
 const props = defineProps<{ entry: ReviewEntry; controls: AnswerCardControls }>();
 
-const { t } = useI18n();
+const { t, te } = useI18n();
+
+// "Billing", not the stored enum "billing"; an unknown value renders as stored.
+const categoryLabel = computed(() => {
+	const category = props.entry.message.classification?.category;
+	if (!category) return '';
+	const key = `dashboard.inbox.detail.categories.${category}`;
+	return capitalize(te(key) ? t(key) : category);
+});
 
 type CollisionMessage = string | { key: string; params?: Record<string, unknown> };
 function collisionText(message: CollisionMessage): string {
@@ -203,7 +211,7 @@ const secondaryButton =
 				<div v-if="message.classification" class="flex items-center gap-2">
 					<InboxTrustChip :trust="trust" />
 					<span class="text-xs px-2 py-0.5 rounded-full bg-brand-subtle text-brand">
-						{{ message.classification.category }}
+						{{ categoryLabel }}
 					</span>
 				</div>
 			</template>

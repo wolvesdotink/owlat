@@ -50,7 +50,13 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 				<h1
 					class="text-2xl font-medium tracking-[-0.02em] text-text-primary flex items-center gap-3"
 				>
-					<Icon name="lucide:alert-triangle" class="w-7 h-7 text-error" />
+					<!-- Red only while something waits on the operator; an all-clear page
+					     keeps a neutral icon. -->
+					<Icon
+						name="lucide:alert-triangle"
+						class="w-7 h-7"
+						:class="failedMessages?.length ? 'text-error' : 'text-text-tertiary'"
+					/>
 					{{ t('dashboard.inbox.failed.title') }}
 				</h1>
 				<p class="text-text-secondary mt-1">

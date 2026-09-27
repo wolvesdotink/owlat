@@ -35,18 +35,13 @@ const themeOptions = computed<
 
 <template>
 	<section class="card mb-6">
-		<div class="flex items-center justify-between gap-4 mb-4">
-			<div>
-				<h2 class="font-semibold text-text-primary">
-					{{ t('components.preferences.preferencesAppearance.title') }}
-				</h2>
-				<p class="text-sm text-text-secondary">
-					{{ t('components.preferences.preferencesAppearance.subtitle') }}
-				</p>
-			</div>
-			<NuxtLink to="/dashboard/preferences/account" class="text-sm text-brand hover:underline">
-				{{ t('components.preferences.preferencesAppearance.accountAndData') }}
-			</NuxtLink>
+		<div class="mb-4">
+			<h2 class="font-semibold text-text-primary">
+				{{ t('components.preferences.preferencesAppearance.title') }}
+			</h2>
+			<p class="text-sm text-text-secondary">
+				{{ t('components.preferences.preferencesAppearance.subtitle') }}
+			</p>
 		</div>
 		<!--
 			Toggle buttons in a labelled group, exactly like LanguagePicker one card

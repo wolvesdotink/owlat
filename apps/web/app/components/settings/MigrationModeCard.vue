@@ -96,7 +96,7 @@ async function confirmAndEnable() {
 <template>
 	<UiCard>
 		<template #header>
-			<div class="flex items-center gap-3">
+			<div class="flex items-center gap-3 pb-4">
 				<UiIconBox icon="lucide:import" size="sm" variant="surface" rounded="lg" />
 				<div>
 					<h2 class="text-lg font-medium text-text-primary">
@@ -110,14 +110,14 @@ async function confirmAndEnable() {
 		</template>
 
 		<!-- Loading -->
-		<div v-if="isLoadingSettings" class="flex items-center gap-3 py-2">
+		<div v-if="isLoadingSettings" class="mt-4 flex items-center gap-3 py-2">
 			<UiSpinner size="sm" />
 			<span class="text-sm text-text-secondary">
 				{{ t('components.settings.migrationModeCard.loading') }}
 			</span>
 		</div>
 
-		<div v-else class="flex items-start justify-between gap-4">
+		<div v-else class="mt-4 flex items-start justify-between gap-4">
 			<div class="min-w-0">
 				<p class="text-sm text-text-primary">
 					{{ t('components.settings.migrationModeCard.body') }}

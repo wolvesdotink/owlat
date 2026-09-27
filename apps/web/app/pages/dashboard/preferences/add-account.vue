@@ -136,7 +136,7 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 </script>
 
 <template>
-	<div>
+	<div class="mt-6">
 		<!-- Step 1: choose address -->
 		<section v-if="step === 1" class="card p-6">
 			<!-- Personal vs team inbox. Only admins can create a shared team inbox. -->

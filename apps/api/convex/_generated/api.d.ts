@@ -810,6 +810,7 @@ import type * as mail_briefEmailActions from '../mail/briefEmailActions.js';
 import type * as mail_category from '../mail/category.js';
 import type * as mail_commitments from '../mail/commitments.js';
 import type * as mail_contacts from '../mail/contacts.js';
+import type * as mail_counterpartName from '../mail/counterpartName.js';
 import type * as mail_crossSurface from '../mail/crossSurface.js';
 import type * as mail_dailyBrief from '../mail/dailyBrief.js';
 import type * as mail_delivery from '../mail/delivery.js';
@@ -2001,6 +2002,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/category': typeof mail_category;
 	'mail/commitments': typeof mail_commitments;
 	'mail/contacts': typeof mail_contacts;
+	'mail/counterpartName': typeof mail_counterpartName;
 	'mail/crossSurface': typeof mail_crossSurface;
 	'mail/dailyBrief': typeof mail_dailyBrief;
 	'mail/delivery': typeof mail_delivery;

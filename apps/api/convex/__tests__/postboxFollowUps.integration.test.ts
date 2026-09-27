@@ -279,6 +279,101 @@ describe('postbox follow-up reminders', () => {
 		expect((await t.run((ctx) => ctx.db.get(seeded.inboxId)))?.unseenCount).toBe(1);
 	});
 
+	it('names the counterpart on a due follow-up: address book first, then their own mail', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const seeded = await seed(t);
+		const { messageId, threadId } = await seedSentMessage(t, seeded, { subject: 'contract' });
+		await t.mutation(api.mail.followUps.arm, {
+			messageId,
+			remindAt: Date.now() + 60 * 60 * 1000,
+		});
+		await t.run(async (ctx) => {
+			const thread = await ctx.db.get(threadId);
+			const past = Date.now() - 1000;
+			await ctx.db.patch(threadId, {
+				followUp: { ...thread!.followUp!, remindAt: past },
+				followUpRemindAt: past,
+			});
+		});
+		await t.mutation(internal.mail.followUps.internalSweep, {});
+
+		const followUpRow = async () =>
+			(await t.query(api.mail.needsReply.listQueue, { mailboxId: seeded.mailboxId })).items.find(
+				(i) => i.kind === 'followup'
+			);
+
+		// Nothing known about Alice yet: the address is all the queue can show.
+		expect((await followUpRow())?.fromName).toBeUndefined();
+
+		// Copies the sent message as inbound mail from Alice, in the given thread.
+		// Inserted directly, so the due watch stays in place.
+		const seedMailFromAlice = (opts: {
+			thread: 'same' | 'other';
+			fromAddress: string;
+			fromName: string;
+			uid: number;
+		}) =>
+			t.run(async (ctx) => {
+				const sent = await ctx.db.get(messageId);
+				const { _id: _omitId, _creationTime: _omitTime, ...fields } = sent!;
+				let target = threadId;
+				if (opts.thread === 'other') {
+					const thread = await ctx.db.get(threadId);
+					const { _id: _tid, _creationTime: _tct, ...threadFields } = thread!;
+					target = await ctx.db.insert('mailThreads', {
+						...threadFields,
+						normalizedSubject: 'intro',
+						followUp: undefined,
+						followUpRemindAt: undefined,
+					});
+				}
+				await ctx.db.insert('mailMessages', {
+					...fields,
+					threadId: target,
+					folderId: seeded.inboxId,
+					uid: opts.uid,
+					rfc822MessageId: `<alice-${opts.uid}@example.com>`,
+					fromAddress: opts.fromAddress,
+					fromName: opts.fromName,
+					toAddresses: ['me@example.com'],
+					outbound: undefined,
+					receivedAt: opts.uid,
+				});
+			});
+
+		// Her mail elsewhere in the mailbox names her.
+		await seedMailFromAlice({
+			thread: 'other',
+			fromAddress: 'alice@example.com',
+			fromName: 'Alice M.',
+			uid: 2,
+		});
+		expect((await followUpRow())?.fromName).toBe('Alice M.');
+
+		// The name she used in this thread wins, even with different casing.
+		await seedMailFromAlice({
+			thread: 'same',
+			fromAddress: 'Alice@Example.com',
+			fromName: 'Alice Moreau',
+			uid: 3,
+		});
+		expect((await followUpRow())?.fromName).toBe('Alice Moreau');
+
+		// The owner's own address-book name wins over what Alice sends under.
+		await t.run((ctx) =>
+			ctx.db.insert('mailContacts', {
+				mailboxId: seeded.mailboxId,
+				email: 'alice@example.com',
+				displayName: 'Alice (Acme legal)',
+				useCount: 1,
+				lastUsedAt: Date.now(),
+				createdAt: Date.now(),
+			})
+		);
+		expect((await followUpRow())?.fromName).toBe('Alice (Acme legal)');
+	});
+
 	it('cancel() clears an armed watch, and dismisses a due one from the queue', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['mail.external']);

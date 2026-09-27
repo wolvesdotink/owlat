@@ -91,6 +91,20 @@ describe('replyQueueHeadline', () => {
 		).toBe("You're waiting on Dana");
 	});
 
+	it('prefers the resolved counterpart name over the waitingOn address', () => {
+		expect(
+			text(
+				replyQueueHeadline({
+					kind: 'followup',
+					subject: 'Re: proposal',
+					waitingOn: 'dana@acme.test',
+					fromAddress: 'dana@acme.test',
+					fromName: 'Dana Reyes',
+				})
+			)
+		).toBe("You're waiting on Dana Reyes");
+	});
+
 	it('falls back to fromAddress when a follow-up has no waitingOn', () => {
 		expect(
 			text(

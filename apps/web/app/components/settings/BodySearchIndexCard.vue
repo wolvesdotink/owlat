@@ -84,12 +84,28 @@ async function stopBackfill() {
 </script>
 
 <template>
-	<section class="space-y-4 card p-5">
-		<div class="flex items-start justify-between gap-4">
+	<!-- The card pattern its neighbours on General use: an icon header with the
+	     section title, then the switch row. -->
+	<UiCard>
+		<template #header>
+			<div class="flex items-center gap-3 pb-4">
+				<UiIconBox icon="lucide:search" size="sm" variant="surface" rounded="lg" />
+				<div class="min-w-0">
+					<h2 class="text-lg font-medium text-text-primary">
+						{{ t('dashboard.admin.instance.general.mailSearch.title') }}
+					</h2>
+					<p class="text-sm text-text-secondary">
+						{{ t('dashboard.admin.instance.general.mailSearch.subtitle') }}
+					</p>
+				</div>
+			</div>
+		</template>
+
+		<div class="mt-4 flex items-start justify-between gap-4">
 			<div class="min-w-0">
-				<h2 class="text-base font-semibold text-text-primary">
+				<p class="text-sm font-medium text-text-primary">
 					{{ t('components.settings.bodySearchIndexCard.title') }}
-				</h2>
+				</p>
 				<p class="mt-1 text-sm text-text-secondary">
 					{{ t('components.settings.bodySearchIndexCard.description') }}
 				</p>
@@ -115,7 +131,7 @@ async function stopBackfill() {
 		<!-- Existing mail. The switch only covers mail delivered from now on, and
 		     search deliberately keeps reading the snippet until this walk finishes,
 		     so the state is worth naming rather than leaving to be inferred. -->
-		<div v-if="isEnabled && mailboxId" class="border-t border-border-subtle pt-4">
+		<div v-if="isEnabled && mailboxId" class="mt-4 border-t border-border-subtle pt-4">
 			<p class="text-sm text-text-secondary">
 				{{ t('components.settings.bodySearchIndexCard.backfillDescription') }}
 			</p>
@@ -176,5 +192,5 @@ async function stopBackfill() {
 			@confirm="confirmDisable"
 			@cancel="isConfirmingDisable = false"
 		/>
-	</section>
+	</UiCard>
 </template>

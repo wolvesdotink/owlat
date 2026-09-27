@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import { languageOptions, formatLanguageLabel } from '~/data/languageOptions';
+import { formatNumber } from '~/utils/formatters';
 
 const { t } = useI18n();
 
@@ -425,7 +426,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 								<span class="text-text-tertiary text-xs">
 									{{
 										t('dashboard.send.transactional.index.sendCount', {
-											count: sendCounts?.[email._id] ?? 0,
+											count: formatNumber(sendCounts?.[email._id] ?? 0),
 										})
 									}}
 								</span>
@@ -448,19 +449,29 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 						<table class="w-full">
 							<thead>
 								<tr class="border-b border-border-subtle">
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									<th
+										class="text-left px-6 py-4 text-sm font-medium text-text-secondary whitespace-nowrap"
+									>
 										{{ t('common.name') }}
 									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									<th
+										class="text-left px-6 py-4 text-sm font-medium text-text-secondary whitespace-nowrap"
+									>
 										{{ t('dashboard.send.transactional.index.columns.slug') }}
 									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									<th
+										class="text-left px-6 py-4 text-sm font-medium text-text-secondary whitespace-nowrap"
+									>
 										{{ t('common.status') }}
 									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									<th
+										class="text-left px-6 py-4 text-sm font-medium text-text-secondary whitespace-nowrap"
+									>
 										{{ t('dashboard.send.transactional.index.columns.sends') }}
 									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
+									<th
+										class="text-left px-6 py-4 text-sm font-medium text-text-secondary whitespace-nowrap"
+									>
 										{{ t('dashboard.send.transactional.index.columns.updated') }}
 									</th>
 									<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
@@ -492,7 +503,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 									</td>
 									<td class="px-6 py-4">
 										<code
-											class="px-2 py-1 rounded bg-bg-surface text-text-secondary text-sm font-mono"
+											class="px-2 py-1 rounded bg-bg-surface text-text-secondary text-sm font-mono whitespace-nowrap"
 										>
 											{{ email.slug }}
 										</code>
@@ -500,7 +511,7 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 									<td class="px-6 py-4">
 										<span
 											:class="[
-												'inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium',
+												'inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium whitespace-nowrap',
 												getStatusBadge(email.status).color,
 											]"
 										>
@@ -509,12 +520,12 @@ const isLoading = computed(() => teamLoading.value || listLoading.value);
 										</span>
 									</td>
 									<td class="px-6 py-4">
-										<span class="text-text-secondary text-sm">
-											{{ sendCounts?.[email._id] ?? 0 }}
+										<span class="text-text-secondary text-sm tabular-nums">
+											{{ formatNumber(sendCounts?.[email._id] ?? 0) }}
 										</span>
 									</td>
 									<td class="px-6 py-4">
-										<span class="text-text-tertiary text-sm">{{
+										<span class="text-text-tertiary text-sm whitespace-nowrap">{{
 											formatDate(email.updatedAt)
 										}}</span>
 									</td>
