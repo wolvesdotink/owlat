@@ -1,6 +1,6 @@
 {
-	"release": "v0.6.2",
-	"commit": "f57d099367ad7a740e4dd23814fa2c24e9af20be",
+	"release": "v0.6.3",
+	"commit": "6158933cf1667dfedb5a902f5460898c0fa17dec",
 	"tables": {
 		"accessRequests": {"type": "object", "value": {
 			"authUserId": {"fieldType":{"type":"string"},"optional":false},
@@ -364,6 +364,7 @@
 		"campaignStatShards": {"type": "object", "value": {
 			"campaignId": {"fieldType":{"type":"id","tableName":"campaigns"},"optional":false},
 			"shardKey": {"fieldType":{"type":"number"},"optional":false},
+			"statsAutomatedClicked": {"fieldType":{"type":"number"},"optional":true},
 			"statsAutomatedOpened": {"fieldType":{"type":"number"},"optional":true},
 			"statsBounced": {"fieldType":{"type":"number"},"optional":true},
 			"statsClicked": {"fieldType":{"type":"number"},"optional":true},
@@ -394,6 +395,7 @@
 			"fromEmail": {"fieldType":{"type":"string"},"optional":true},
 			"fromName": {"fieldType":{"type":"string"},"optional":true},
 			"isABTest": {"fieldType":{"type":"boolean"},"optional":true},
+			"isAutomatedClickFiltered": {"fieldType":{"type":"boolean"},"optional":true},
 			"isAutomatedOpenFiltered": {"fieldType":{"type":"boolean"},"optional":true},
 			"name": {"fieldType":{"type":"string"},"optional":false},
 			"replyTo": {"fieldType":{"type":"string"},"optional":true},
@@ -403,6 +405,7 @@
 			"searchableText": {"fieldType":{"type":"string"},"optional":true},
 			"seedTag": {"fieldType":{"type":"string"},"optional":true},
 			"sentAt": {"fieldType":{"type":"number"},"optional":true},
+			"statsAutomatedClicked": {"fieldType":{"type":"number"},"optional":true},
 			"statsAutomatedOpened": {"fieldType":{"type":"number"},"optional":true},
 			"statsBounced": {"fieldType":{"type":"number"},"optional":true},
 			"statsClicked": {"fieldType":{"type":"number"},"optional":true},
@@ -863,6 +866,8 @@
 		}},
 		"emailSends": {"type": "object", "value": {
 			"abVariant": {"fieldType":{"type":"union","value":[{"type":"literal","value":"A"},{"type":"literal","value":"B"}]},"optional":true},
+			"automatedClickCount": {"fieldType":{"type":"number"},"optional":true},
+			"automatedClickedAt": {"fieldType":{"type":"number"},"optional":true},
 			"automatedOpenCount": {"fieldType":{"type":"number"},"optional":true},
 			"automatedOpenedAt": {"fieldType":{"type":"number"},"optional":true},
 			"bounceType": {"fieldType":{"type":"union","value":[{"type":"literal","value":"hard"},{"type":"literal","value":"soft"}]},"optional":true},
@@ -1630,6 +1635,7 @@
 			"textBodyInline": {"fieldType":{"type":"string"},"optional":true},
 			"textBodyStorageId": {"fieldType":{"type":"id","tableName":"_storage"},"optional":true},
 			"threadId": {"fieldType":{"type":"id","tableName":"mailThreads"},"optional":false},
+			"threadRootId": {"fieldType":{"type":"string"},"optional":true},
 			"toAddresses": {"fieldType":{"type":"array","value":{"type":"string"}},"optional":false},
 			"trashedAt": {"fieldType":{"type":"number"},"optional":true},
 			"uid": {"fieldType":{"type":"number"},"optional":false},
@@ -2321,6 +2327,7 @@
 		}},
 		"todayStates": {"type": "object", "value": {
 			"hiddenMailboxIds": {"fieldType":{"type":"array","value":{"type":"id","tableName":"mailboxes"}},"optional":true},
+			"marks": {"fieldType":{"type":"array","value":{"type":"object","value":{"key":{"fieldType":{"type":"union","value":[{"type":"id","tableName":"mailboxes"},{"type":"literal","value":"team"}]},"optional":false},"seenAt":{"fieldType":{"type":"number"},"optional":false},"previousSeenAt":{"fieldType":{"type":"number"},"optional":true}}}},"optional":true},
 			"organizationId": {"fieldType":{"type":"string"},"optional":false},
 			"previousSeenAt": {"fieldType":{"type":"number"},"optional":true},
 			"seenAt": {"fieldType":{"type":"number"},"optional":true},
@@ -2386,6 +2393,8 @@
 		}},
 		"transactionalSends": {"type": "object", "value": {
 			"attachmentStorageIds": {"fieldType":{"type":"array","value":{"type":"string"}},"optional":true},
+			"automatedClickCount": {"fieldType":{"type":"number"},"optional":true},
+			"automatedClickedAt": {"fieldType":{"type":"number"},"optional":true},
 			"automatedOpenCount": {"fieldType":{"type":"number"},"optional":true},
 			"automatedOpenedAt": {"fieldType":{"type":"number"},"optional":true},
 			"automationId": {"fieldType":{"type":"id","tableName":"automations"},"optional":true},
