@@ -22,12 +22,27 @@ export const todayTables = {
 	// an inbox they join later shows up without a visit to the picker. Choosing
 	// inboxes before the first mark-as-seen writes a row with no `seenAt`, which
 	// reads exactly like no row: the first-visit fallback.
+	//
+	// `marks` are the per-Workbench watermarks: each mailbox (and the team
+	// inbox, key `team`) has its own Workbench and its own "Mark as seen". A
+	// Workbench reads the later of its mark and `seenAt`, so the global mark
+	// (finishing the Answer queue) still catches every Workbench up, and a row
+	// written before per-mailbox marks existed keeps working unchanged.
 	todayStates: defineTable({
 		userId: v.string(), // BetterAuth user id
 		organizationId: v.string(),
 		seenAt: v.optional(v.number()),
 		previousSeenAt: v.optional(v.number()),
 		hiddenMailboxIds: v.optional(v.array(v.id('mailboxes'))),
+		marks: v.optional(
+			v.array(
+				v.object({
+					key: v.union(v.id('mailboxes'), v.literal('team')),
+					seenAt: v.number(),
+					previousSeenAt: v.optional(v.number()),
+				})
+			)
+		),
 		updatedAt: v.number(),
 	}).index('by_user_and_organization', ['userId', 'organizationId']),
 

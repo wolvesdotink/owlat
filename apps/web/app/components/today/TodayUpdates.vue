@@ -1,61 +1,42 @@
 <script setup lang="ts">
-import type { Id } from '@owlat/api/dataModel';
-import type { FiledKey, TodayLine, TodayModel } from '~/utils/todayDigest';
+import type { ImportantReason, TodayLine, TodayModel } from '~/utils/todayDigest';
 
 /**
- * "Updates": everything that needs no reply, as a short digest instead of a
- * separate page. What people told the viewer comes first ("Worth knowing"),
- * routine mail after ("Also arrived"), and the last line counts what was
- * filed away — each count opens that exact list, so nothing hides silently.
+ * "Updates": everything in this inbox that needs no reply, as a short digest.
+ * What people told the viewer and alerts that want action come first
+ * ("Important"), routine mail after ("Also arrived"). Newsletters and the
+ * like never show up here; `TodayFiledAway` counts them below.
  *
  * Keyboard (as on the old Updates page): j/k move between lines, Enter opens
  * the first source, d marks a line done, r asks for a reply after all
  * (team-inbox lines, which then go to the Answer queue).
  */
-const props = defineProps<{ model: TodayModel; teamOn: boolean }>();
+const props = withDefaults(defineProps<{ model: TodayModel; moreHref?: string }>(), {
+	moreHref: '/dashboard/inboxes',
+});
 const emit = defineEmits<{ done: [line: TodayLine]; replyAnyway: [line: TodayLine] }>();
 const { t } = useI18n();
-const { byId } = useInboxes();
 
-function inboxOf(line: TodayLine) {
-	return line.inboxId === 'team' ? null : (byId.value.get(line.inboxId as Id<'mailboxes'>) ?? null);
-}
+/** A small label says why a line is important when "a person wrote" is not the reason. */
+const REASON_LABEL: Partial<Record<ImportantReason, { key: string; icon: string; tone: string }>> =
+	{
+		alert: {
+			key: 'components.today.reason.alert',
+			icon: 'lucide:triangle-alert',
+			tone: 'bg-warning-subtle text-warning',
+		},
+		new_sender: {
+			key: 'components.today.reason.newSender',
+			icon: 'lucide:user-plus',
+			tone: 'bg-bg-surface text-text-secondary',
+		},
+	};
 
-const FILED_ORDER: readonly FiledKey[] = [
-	'newsletter',
-	'notification',
-	'receipt',
-	'promotion',
-	'spam',
-];
-function filedHref(key: FiledKey): string {
-	// Team-only counts (promotions / spam live in the team inbox's views) open
-	// its list; the rest open the matching category across all inboxes.
-	if (props.teamOn && (key === 'promotion' || key === 'spam')) {
-		return `/dashboard/inbox/updates?view=${key === 'promotion' ? 'promotions' : 'spam'}`;
-	}
-	return `/dashboard/inboxes?category=${key}`;
-}
-const filedParts = computed(() =>
-	FILED_ORDER.filter((key) => props.model.filed[key] > 0).map((key) => ({
-		key,
-		label: t(
-			`components.today.filed.${key}`,
-			{ count: props.model.filed[key] },
-			props.model.filed[key]
-		),
-		href: filedHref(key),
-	}))
-);
-
-const isEmpty = computed(
-	() =>
-		props.model.worth.length === 0 && props.model.also.length === 0 && props.model.filedTotal === 0
-);
+const isEmpty = computed(() => props.model.worth.length === 0 && props.model.also.length === 0);
 </script>
 
 <template>
-	<section aria-labelledby="today-updates">
+	<section id="workbench-updates" aria-labelledby="today-updates">
 		<h3
 			id="today-updates"
 			class="mb-2 mt-8 flex items-baseline gap-2 text-2xs font-medium uppercase tracking-wider text-text-tertiary"
@@ -77,7 +58,7 @@ const isEmpty = computed(
 			{{ t('components.today.updates.empty') }}
 		</div>
 
-		<div v-else class="rounded-xl border border-border-subtle bg-bg-elevated">
+		<div v-else class="rounded-xl border border-border-subtle bg-bg-elevated pb-2">
 			<template
 				v-for="group in [
 					{ id: 'worth', title: t('components.today.updates.worth'), lines: model.worth },
@@ -103,6 +84,14 @@ const isEmpty = computed(
 						:data-today-key="line.key"
 					>
 						<p class="min-w-0 flex-1 leading-relaxed">
+							<span
+								v-if="line.reason && REASON_LABEL[line.reason]"
+								class="mr-1.5 inline-flex translate-y-[-1px] items-center gap-1 rounded-full px-1.5 py-px align-middle text-2xs font-medium"
+								:class="REASON_LABEL[line.reason]!.tone"
+								><Icon :name="REASON_LABEL[line.reason]!.icon" class="size-3" />{{
+									t(REASON_LABEL[line.reason]!.key)
+								}}</span
+							>
 							<!-- A summary already says who it is from; a bare subject needs the sender. -->
 							<template v-if="!line.isSummary">
 								<span
@@ -134,43 +123,19 @@ const isEmpty = computed(
 									{{ t('components.today.line.done') }}
 								</button>
 							</span>
-							<InboxChip
-								v-if="inboxOf(line)"
-								:name="inboxOf(line)!.name"
-								:slot="inboxOf(line)!.slot"
-							/>
-							<span
-								v-else
-								class="inline-flex items-center gap-1 rounded-full bg-bg-surface px-2 py-px text-2xs font-medium text-text-secondary"
-								><Icon name="lucide:bot" class="size-3" />{{
-									t('components.shell.teamInbox')
-								}}</span
-							>
+							<span class="text-2xs tabular-nums text-text-tertiary">{{
+								formatCompactRelativeTime(line.at)
+							}}</span>
 						</span>
 					</div>
 				</template>
 			</template>
 			<p v-if="model.alsoHidden > 0" class="px-4 pt-1 text-xs text-text-tertiary">
 				{{ t('components.today.updates.more', { count: model.alsoHidden }, model.alsoHidden) }}
-				<NuxtLink to="/dashboard/inboxes" class="text-brand hover:underline">{{
-					t('components.today.openInboxes')
+				<NuxtLink :to="props.moreHref" class="text-brand hover:underline">{{
+					t('components.today.openInbox')
 				}}</NuxtLink>
 			</p>
-			<div
-				v-if="filedParts.length > 0"
-				class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border-subtle px-4 py-2.5 text-xs text-text-tertiary"
-			>
-				<span>{{ t('components.today.filed.title') }}</span>
-				<NuxtLink
-					v-for="part in filedParts"
-					:key="part.key"
-					:to="part.href"
-					class="text-text-secondary underline decoration-dotted decoration-text-tertiary/50 underline-offset-[3px] hover:text-text-primary hover:decoration-solid"
-					>{{ part.label }}</NuxtLink
-				>
-				<span class="ml-auto max-md:hidden">{{ t('components.today.filed.reassure') }}</span>
-			</div>
-			<div v-else class="h-2" />
 		</div>
 	</section>
 </template>

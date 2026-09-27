@@ -1,7 +1,6 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
-import type { Ref } from 'vue';
 import type { InboxIdentity } from '~/utils/inboxIdentity';
 import { compareAnswerItems } from '~/utils/answerQueue';
 import type { ReplyQueueItem } from '~/utils/postboxReplyQueue';
@@ -26,15 +25,10 @@ export type AnswerItem =
  * reply-queue rows from every inbox they read, the team inbox's agent drafts
  * (owners/admins with the team inbox on) and unread chat mentions (where chat
  * is available to them). Each source keeps its own permission check — this
- * only merges what the viewer could already open.
- *
- * `hiddenMailboxIds` drops the reply-queue rows of those inboxes: Today passes
- * the inboxes the viewer left out of it, while the Answer queue itself and the
- * sidebar count keep every inbox.
+ * only merges what the viewer could already open. A Workbench tab narrows the
+ * list itself (`answerItemMatches`) and tallies its share with `answerCounts`.
  */
-export function useAnswerQueue(
-	options: { hiddenMailboxIds?: Ref<readonly Id<'mailboxes'>[]> } = {}
-) {
+export function useAnswerQueue() {
 	const { isEnabled } = useFeatureFlag();
 	const { isAdmin } = usePermissions();
 	const { ids, byId, isLoading: inboxesLoading } = useInboxes();
@@ -57,9 +51,7 @@ export function useAnswerQueue(
 
 	const items = computed<AnswerItem[]>(() => {
 		const out: AnswerItem[] = [];
-		const hidden = new Set(options.hiddenMailboxIds?.value ?? []);
 		for (const [mailboxId, result] of mailResults) {
-			if (hidden.has(mailboxId)) continue;
 			for (const row of result.data.value?.items ?? []) {
 				out.push({
 					id: `mail:${row.threadId}`,
@@ -107,15 +99,7 @@ export function useAnswerQueue(
 		);
 	});
 
-	const counts = computed(() => {
-		const tally = { mail: 0, team: 0, mention: 0, drafts: 0 };
-		for (const item of items.value) {
-			tally[item.source] += 1;
-			if (item.source === 'team' && item.entry.message.draftResponse?.trim()) tally.drafts += 1;
-			if (item.source === 'mail' && item.row.draftSlot) tally.drafts += 1;
-		}
-		return tally;
-	});
+	const counts = computed(() => answerCounts(items.value));
 
 	return {
 		items,
@@ -125,4 +109,15 @@ export function useAnswerQueue(
 		teamEnabled,
 		chatEnabled,
 	};
+}
+
+/** How many items come from each source, and how many already have a draft. */
+export function answerCounts(items: readonly AnswerItem[]) {
+	const tally = { mail: 0, team: 0, mention: 0, drafts: 0 };
+	for (const item of items) {
+		tally[item.source] += 1;
+		if (item.source === 'team' && item.entry.message.draftResponse?.trim()) tally.drafts += 1;
+		if (item.source === 'mail' && item.row.draftSlot) tally.drafts += 1;
+	}
+	return tally;
 }

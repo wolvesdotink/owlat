@@ -99,7 +99,7 @@ describe('FreshStart copy', () => {
 		expect(w.text()).toContain('Notify me about');
 		expect(w.text()).toContain("A few things you'll love");
 		expect(w.text()).toContain('Skip for now');
-		expect(w.text()).toContain('Go to Today');
+		expect(w.text()).toContain('Go to the Workbench');
 		expect(w.text()).toContain('You can change this later in your settings.');
 		expect(w.text()).not.toContain('Postbox');
 		expect(w.get('#fresh-display-name').attributes('placeholder')).toBe('e.g. Marcel Pfeifer');
@@ -129,12 +129,12 @@ describe('FreshStart copy', () => {
 		expect(off.text()).not.toContain('Knowledge');
 	});
 
-	it('lands on Today, which is what the button says', async () => {
+	it('lands on the Workbench, which is what the button says', async () => {
 		await settleTransport(true);
 		const w = mountFreshStart();
 		await w
 			.findAll('button')
-			.find((b) => b.text() === 'Go to Today')!
+			.find((b) => b.text() === 'Go to the Workbench')!
 			.trigger('click');
 		await flushPromises();
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard');

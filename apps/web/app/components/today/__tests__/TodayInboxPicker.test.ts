@@ -41,8 +41,8 @@ function mountPicker(hidden: string[]) {
 }
 
 describe('TodayInboxPicker', () => {
-	it('says "All inboxes" until one is left out, then counts', () => {
-		expect(mountPicker([]).text()).toContain('All inboxes');
+	it('says "Edit tabs" until one is left out, then counts', () => {
+		expect(mountPicker([]).text()).toContain('Edit tabs');
 		expect(mountPicker(['mb_support']).text()).toContain('1 of 2 inboxes');
 	});
 
