@@ -239,8 +239,15 @@ export const applyResult = internalMutation({
 		}
 
 		let resolved = args.needsReply;
+		const message = resolved === null ? null : await ctx.db.get(resolved.messageId);
+		// Answered while the classifier ran. A normal reply moves latestMessageId
+		// (caught above), but a teammate replying from their personal address
+		// only stamps `latestReply` on the team thread, so check it too — or the
+		// flag comes back for every member after the conversation was answered.
+		if (message && thread.latestReply && thread.latestReply.at >= message.receivedAt) {
+			resolved = null;
+		}
 		if (resolved !== null) {
-			const message = await ctx.db.get(resolved.messageId);
 			const mailbox = await ctx.db.get(thread.mailboxId);
 			if (message && mailbox) {
 				// Single write point for the unified priority score + the HEY-style
