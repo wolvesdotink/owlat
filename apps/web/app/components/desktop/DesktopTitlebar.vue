@@ -20,7 +20,9 @@
  *     to its right.
  *
  * macOS: the native traffic lights sit over the left gutter (see
- * tauri.conf.json titleBarStyle/trafficLightPosition). Windows/Linux: the native
+ * tauri.conf.json titleBarStyle and window.rs setup_traffic_lights). The gutter
+ * divides the page zoom back out (`--native-zoom`, View → Zoom In/Out) because
+ * the lights are native and do not scale with the page. Windows/Linux: the native
  * frame is removed in main.rs, so we render our own controls via the window.ts
  * bridge.
  *
@@ -95,7 +97,7 @@ function openForYou(): void {
 		v-if="isDesktop"
 		data-tauri-drag-region
 		class="desktop-titlebar fixed top-0 inset-x-0 z-(--z-titlebar) flex items-center h-[var(--titlebar-h,44px)] border-b border-border-subtle bg-bg-elevated select-none"
-		:class="isMac ? 'pl-[88px] pr-2.5' : 'pl-2.5'"
+		:class="isMac ? 'pl-[calc(88px/var(--native-zoom,1))] pr-2.5' : 'pl-2.5'"
 	>
 		<!-- LEFT — workspace chip / switcher (draggable gaps around it). -->
 		<div class="relative flex items-center gap-2 min-w-0" data-tauri-drag-region>

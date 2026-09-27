@@ -3,8 +3,9 @@
  * Regression: the body iframe must be measurable so it auto-sizes to its
  * content instead of staying clipped at the 200px min-height.
  *
- * The frame is rendered with `sandbox="allow-same-origin"` (deliberately WITHOUT
- * allow-scripts). Under the old empty `sandbox=""` the frame ran in an opaque
+ * The frame is rendered with `sandbox="allow-same-origin allow-popups
+ * allow-popups-to-escape-sandbox"` (deliberately WITHOUT allow-scripts; the
+ * popup flags let its target=_blank links open). Under the old empty `sandbox=""` the frame ran in an opaque
  * origin, `contentDocument` was null, and `resizeIframe()` short-circuited on
  * every load — so every HTML email was stuck at 200px with an inner scrollbar
  * and the #89 pre-size cache never recorded a height. These tests pin the
@@ -68,11 +69,11 @@ function mountBody(msg = message) {
 }
 
 describe('PostboxMessageBody iframe sizing', () => {
-	it('renders the iframe with sandbox="allow-same-origin" (measurable, no scripts)', async () => {
+	it('renders the iframe measurable, with openable links and no scripts', async () => {
 		const w = mountBody();
 		await nextTick();
 		const sandbox = w.find('iframe').attributes('sandbox');
-		expect(sandbox).toBe('allow-same-origin');
+		expect(sandbox).toBe('allow-same-origin allow-popups allow-popups-to-escape-sandbox');
 		// allow-scripts must NOT be granted — content stays inert.
 		expect(sandbox).not.toContain('allow-scripts');
 	});

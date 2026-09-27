@@ -83,7 +83,9 @@ describe('PostboxMessageBody lazy-fetch settling', () => {
 		expect(w.findComponent(PostboxReaderSkeleton).exists()).toBe(false);
 		const iframe = w.find('iframe');
 		expect(iframe.exists()).toBe(true);
-		expect(iframe.attributes('sandbox')).toBe('allow-same-origin');
+		expect(iframe.attributes('sandbox')).toBe(
+			'allow-same-origin allow-popups allow-popups-to-escape-sandbox'
+		);
 		expect(iframe.attributes('sandbox')).not.toContain('allow-scripts');
 	});
 

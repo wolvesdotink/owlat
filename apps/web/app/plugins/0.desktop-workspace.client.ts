@@ -21,6 +21,7 @@ import {
 import { PLATFORM_ROOT_CLASS, readDesktopPlatform } from '~/lib/desktop/platform';
 import { setupDeepLinks } from '~/lib/desktop/deepLink.client';
 import { setupUpdateChecks } from '~/lib/desktop/updater.client';
+import { installNativeFeel } from '~/lib/desktop/nativeFeel.client';
 import type { Router } from 'vue-router';
 
 declare global {
@@ -69,6 +70,25 @@ export default defineNuxtPlugin({
 		root.classList.add('is-desktop');
 		root.classList.add(PLATFORM_ROOT_CLASS[readDesktopPlatform()]);
 
+		// Native-window behaviour: no browser context menu on app chrome, the
+		// macOS title-bar double-click setting, the zoom factor for the chrome.
+		// Dev builds keep the context menu for Inspect Element.
+		installNativeFeel({
+			isMac: readDesktopPlatform() === 'mac',
+			keepContextMenu: import.meta.dev,
+		});
+
+		// The native window bridge, loaded once for the reveal and the
+		// fullscreen watcher below.
+		const windowBridge = import('@owlat/desktop/src/window');
+
+		// Every window is built hidden (src-tauri window::arm_reveal) so launch
+		// never flashes an empty, see-through frame; show it once the app has
+		// painted. Later calls (a workspace switch reloads the webview) no-op.
+		nuxtApp.hook('app:mounted', () => {
+			void windowBridge.then(({ windowReady }) => windowReady()).catch(() => {});
+		});
+
 		// "Open at startup" workspace pin (from /desktop/settings). Applied only on
 		// a COLD launch of the MAIN window: workspace switches reload this webview
 		// (re-applying the pin there would bounce every switch back to it), and
@@ -107,7 +127,7 @@ export default defineNuxtPlugin({
 		// (win/linux, via the class) and the native macOS ring (out of CSS reach,
 		// via the bridge). Best-effort: if the window bridge is unavailable the
 		// frame simply stays painted.
-		void import('@owlat/desktop/src/window')
+		void windowBridge
 			.then(({ watchFullscreen, setAccentFrameVisible }) =>
 				watchFullscreen((fullscreen) => {
 					root.classList.toggle('ws-fullscreen', fullscreen);

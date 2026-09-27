@@ -21,12 +21,15 @@ vi.mock('@tauri-apps/api/window', () => ({
 }));
 
 import {
+	readZoomLevel,
 	setAccentFrame,
 	setAccentFrameVisible,
 	setTrafficLightsVisible,
 	setWindowTheme,
 	setWindowTitle,
+	titlebarDoubleClick,
 	trafficLightsVisibleFor,
+	windowReady,
 	windowTitleFor,
 } from '../window';
 
@@ -129,5 +132,27 @@ describe('trafficLightsVisibleFor mapping', () => {
 
 	it('shows the lights when the rail is hidden but the peek overlay is open', () => {
 		expect(trafficLightsVisibleFor(true, true)).toBe(true);
+	});
+});
+
+describe('native window lifecycle bridge', () => {
+	it('reports first paint with window_ready', async () => {
+		await windowReady();
+		expect(invokeMock).toHaveBeenCalledWith('window_ready');
+	});
+
+	it('routes a title-bar double-click to titlebar_double_click', async () => {
+		await titlebarDoubleClick();
+		expect(invokeMock).toHaveBeenCalledWith('titlebar_double_click');
+	});
+
+	it('reads the zoom level, falling back to 100% for anything unusable', async () => {
+		invokeMock.mockResolvedValueOnce(1.25);
+		expect(await readZoomLevel()).toBe(1.25);
+		expect(invokeMock).toHaveBeenCalledWith('zoom_level');
+		invokeMock.mockResolvedValueOnce(null);
+		expect(await readZoomLevel()).toBe(1);
+		invokeMock.mockResolvedValueOnce(0);
+		expect(await readZoomLevel()).toBe(1);
 	});
 });

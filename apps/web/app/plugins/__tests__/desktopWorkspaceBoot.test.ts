@@ -43,9 +43,16 @@ vi.mock('~/lib/desktop/updater.client', () => ({
 	setupUpdateChecks: (...args: unknown[]) => setupUpdateChecks(...args),
 }));
 
+const installNativeFeel = vi.fn();
+vi.mock('~/lib/desktop/nativeFeel.client', () => ({
+	installNativeFeel: (...args: unknown[]) => installNativeFeel(...args),
+}));
+
+const windowReady = vi.fn(async () => {});
 vi.mock('@owlat/desktop/src/window', () => ({
 	watchFullscreen: vi.fn(),
 	setAccentFrameVisible: vi.fn(async () => {}),
+	windowReady: () => windowReady(),
 }));
 
 type BootPlugin = { setup: (nuxtApp: unknown) => Promise<void> };
@@ -89,5 +96,25 @@ describe('desktop boot plugin — SPA router exposure', () => {
 		// The workspace/keychain/singleton re-seed must run on desktop boot — the
 		// router exposure must not have displaced it.
 		expect(loadWorkspaces).toHaveBeenCalledTimes(1);
+	});
+
+	it('installs the native-window behaviour and reveals the window once the app has mounted', async () => {
+		const hooks = new Map<string, () => void>();
+		const nuxtApp = {
+			$router: { push: vi.fn() },
+			hook: vi.fn((name: string, fn: () => void) => hooks.set(name, fn)),
+		};
+		installNativeFeel.mockClear();
+		windowReady.mockClear();
+
+		const plugin = await loadBootPlugin();
+		await plugin.setup(nuxtApp);
+
+		expect(installNativeFeel).toHaveBeenCalledTimes(1);
+		// The window is built hidden; nothing shows it before first paint…
+		expect(windowReady).not.toHaveBeenCalled();
+		// …and mounting does.
+		hooks.get('app:mounted')?.();
+		await vi.waitFor(() => expect(windowReady).toHaveBeenCalledTimes(1));
 	});
 });

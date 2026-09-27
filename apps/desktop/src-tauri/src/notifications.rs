@@ -7,8 +7,55 @@ use tauri::{command, AppHandle, Manager};
 #[command]
 pub fn update_unread_badge(app: AppHandle, count: u32) {
     if let Some(window) = app.get_webview_window("main") {
+        // Windows has no badge count (Tauri: "Unsupported, use set_overlay_icon"),
+        // so the call used to be a silent no-op there. The taskbar overlay is the
+        // native equivalent: a small dot over the icon, like Outlook and Teams.
+        #[cfg(windows)]
+        {
+            let icon = (count > 0).then(|| {
+                tauri::image::Image::new_owned(
+                    badge_dot_rgba(BADGE_DOT_SIZE),
+                    BADGE_DOT_SIZE,
+                    BADGE_DOT_SIZE,
+                )
+            });
+            let _ = window.set_overlay_icon(icon);
+        }
+        #[cfg(not(windows))]
         let _ = window.set_badge_count(if count > 0 { Some(count as i64) } else { None });
     }
+}
+
+/// Overlay icon edge, in pixels. Windows draws taskbar overlays at 16×16 (it
+/// scales larger sources down), so a 32px source stays crisp on HiDPI.
+#[cfg(windows)]
+const BADGE_DOT_SIZE: u32 = 32;
+
+/// RGBA pixels of the taskbar overlay: an anti-aliased terracotta dot (the app
+/// icon's owl colour, #c4785a) with a thin white ring, so it reads on light and
+/// dark taskbars alike.
+#[cfg(any(windows, test))]
+fn badge_dot_rgba(size: u32) -> Vec<u8> {
+    const FILL: [f64; 3] = [196.0, 120.0, 90.0];
+    let center = size as f64 / 2.0;
+    let outer = center - 0.5;
+    let ring = (size as f64 / 10.0).max(1.5);
+    let mut rgba = Vec::with_capacity((size * size * 4) as usize);
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f64 + 0.5 - center;
+            let dy = y as f64 + 0.5 - center;
+            let d = (dx * dx + dy * dy).sqrt();
+            // Coverage of this pixel by the disc / by the inner fill (1px AA edge).
+            let alpha = (outer - d + 0.5).clamp(0.0, 1.0);
+            let fill = (outer - ring - d + 0.5).clamp(0.0, 1.0);
+            for c in FILL {
+                rgba.push((255.0 * (1.0 - fill) + c * fill).round() as u8);
+            }
+            rgba.push((255.0 * alpha).round() as u8);
+        }
+    }
+    rgba
 }
 
 /// Tauri command: Send a native OS notification.
@@ -187,4 +234,28 @@ pub fn send_actionable_notification(
 ) -> Result<(), String> {
     notify_with_actions(&app, title, body, message_id, folder_role);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::badge_dot_rgba;
+
+    fn pixel(rgba: &[u8], size: u32, x: u32, y: u32) -> [u8; 4] {
+        let i = ((y * size + x) * 4) as usize;
+        [rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]]
+    }
+
+    #[test]
+    fn badge_dot_is_an_opaque_brand_disc_with_a_white_ring_on_transparency() {
+        let size = 32;
+        let rgba = badge_dot_rgba(size);
+        assert_eq!(rgba.len(), (size * size * 4) as usize);
+        // Center: solid brand fill.
+        assert_eq!(pixel(&rgba, size, 16, 16), [196, 120, 90, 255]);
+        // Just inside the edge: the white ring.
+        assert_eq!(pixel(&rgba, size, 16, 1), [255, 255, 255, 255]);
+        // Corners: fully transparent.
+        assert_eq!(pixel(&rgba, size, 0, 0)[3], 0);
+        assert_eq!(pixel(&rgba, size, 31, 31)[3], 0);
+    }
 }
