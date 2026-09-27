@@ -6,13 +6,19 @@
  * archive import, the brief email):
  *
  *   1. In-Reply-To / References → the thread of a message we already hold.
- *   2. Otherwise, ONLY for a message that looks like a reply (it carries
+ *   2. Otherwise, the thread of a message that shares this one's conversation
+ *      root (see {@link conversationRootId}), or whose root IS this message.
+ *      That is what keeps a conversation together when its messages arrive out
+ *      of order: a history import walks each folder newest-first, so a reply
+ *      lands before the message it answers, and step 1 cannot see a parent it
+ *      does not hold yet.
+ *   3. Otherwise, ONLY for a message that looks like a reply (it carries
  *      threading headers, or its subject opens with a reply marker): the newest
  *      same-subject thread active within the window that shares an external
  *      correspondent with it.
- *   3. Anything else starts a new thread.
+ *   4. Anything else starts a new thread.
  *
- * Step 2 used to attach any message to the oldest same-subject thread seen in
+ * Step 3 used to attach any message to the oldest same-subject thread seen in
  * the last 24h, whoever it was from or to. Two identical outreach mails to two
  * customers became one thread, their replies followed, and the Reply Queue and
  * draft-on-arrival then read one customer's mail as context for the other
@@ -50,14 +56,32 @@ function externalOf(addresses: Iterable<string>, own: Set<string>): Set<string> 
 }
 
 /**
+ * The Message-ID a conversation started from, as far as this message can tell:
+ * the first References entry (RFC 5322 §3.6.4 keeps the thread's first message
+ * there even when a client trims the middle of the chain), else In-Reply-To for
+ * clients that send no References, else the message's own id — it starts the
+ * conversation. All ids are bare, without angle brackets.
+ */
+export function conversationRootId(
+	messageId: string,
+	inReplyTo: string | undefined,
+	references: string[]
+): string {
+	return references[0] ?? inReplyTo ?? messageId;
+}
+
+/**
  * Resolve the thread a delivered message belongs to, or `null` when it starts a
  * new one. `parties` are the bare addresses on the message (from, to, cc);
- * `references` is In-Reply-To first, then the References chain.
+ * `references` is In-Reply-To first, then the References chain. `messageId` is
+ * the message's own bare Message-ID and `rootId` its {@link conversationRootId}.
  */
 export async function resolveDeliveryThread(
 	ctx: MutationCtx,
 	params: {
 		mailbox: Doc<'mailboxes'>;
+		messageId: string;
+		rootId: string;
 		references: string[];
 		subject: string;
 		normalizedSubject: string;
@@ -74,6 +98,19 @@ export async function resolveDeliveryThread(
 			.filter((q) => q.eq(q.field('mailboxId'), mailbox._id))
 			.first();
 		if (referenced) return referenced.threadId;
+	}
+
+	// Same conversation root, or this message is the root a held message points
+	// at. The second key matters for a client that sends only In-Reply-To: its
+	// reply's root is the parent's own id, not the parent's root.
+	for (const root of new Set([params.rootId, params.messageId])) {
+		const relative = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_mailbox_and_thread_root', (q) =>
+				q.eq('mailboxId', mailbox._id).eq('threadRootId', root)
+			)
+			.first();
+		if (relative) return relative.threadId;
 	}
 
 	// A message with no threading headers and no reply marker is a new

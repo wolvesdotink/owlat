@@ -15,6 +15,10 @@ import { decodeEncodedWords as decodeMime } from '@owlat/shared/mailMime';
 
 export interface ParsedAppendHeaders {
 	messageId: string;
+	/** Bare Message-ID from In-Reply-To, when present. */
+	inReplyTo?: string;
+	/** Bare Message-IDs from References, oldest first. */
+	references: string[];
 	subject: string;
 	from: ParsedAddress;
 	to: ParsedAddress[];
@@ -37,6 +41,18 @@ function splitHeadersAndBody(raw: string): { headers: string; body: string } {
 
 function stripBrackets(s: string): string {
 	return s.replace(/[<>]/g, '').trim();
+}
+
+/**
+ * The bracketed msg-ids in an In-Reply-To / References value, bare. Some
+ * clients add a comment or a phrase next to the ids, so only `<…>` tokens
+ * count.
+ */
+function messageIdList(value: string | undefined): string[] {
+	if (!value) return [];
+	const ids: string[] = [];
+	for (const match of value.matchAll(/<([^<>\s]+)>/g)) ids.push(match[1]!);
+	return ids;
 }
 
 export function parseAppendHeaders(rawBytes: Buffer): ParsedAppendHeaders {
@@ -67,6 +83,8 @@ export function parseAppendHeaders(rawBytes: Buffer): ParsedAppendHeaders {
 
 	return {
 		messageId,
+		inReplyTo: messageIdList(headers.get('In-Reply-To'))[0],
+		references: messageIdList(headers.get('References')),
 		subject,
 		from: fromList[0] ?? { address: 'unknown@unknown' },
 		to: toList,

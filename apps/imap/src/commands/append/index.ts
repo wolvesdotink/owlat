@@ -2,10 +2,7 @@ import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 import { parseList } from '../../parser.js';
 import { buildSnippet, parseAppendHeaders } from '../../mime.js';
-import type {
-	CommandSession,
-	ImapCommandModule,
-} from '../types.js';
+import type { CommandSession, ImapCommandModule } from '../types.js';
 import { syncSession } from '../helpers/session.js';
 import { requireAuth } from '../helpers/auth.js';
 import { resolveFolderByName } from '../helpers/folders.js';
@@ -127,7 +124,7 @@ export const appendModule: ImapCommandModule<AppendArgs> = {
 				const folder = await resolveFolderByName(
 					deps.convex,
 					state.auth!.mailboxId,
-					args.folderName,
+					args.folderName
 				);
 				if (!folder) {
 					finalize(`${tag} NO [TRYCREATE] Mailbox not found`);
@@ -136,7 +133,7 @@ export const appendModule: ImapCommandModule<AppendArgs> = {
 
 				const uploadUrl = (await deps.convex.mutation(
 					fn.generateUploadUrl as never,
-					{} as never,
+					{} as never
 				)) as string;
 				const uploadRes = await fetch(uploadUrl, {
 					method: 'POST',
@@ -152,26 +149,29 @@ export const appendModule: ImapCommandModule<AppendArgs> = {
 				const headers = parseAppendHeaders(rawBuffer);
 				const snippet = buildSnippet(headers.textBody);
 
-				const result = (await deps.convex.mutation(fn.appendMessage as never, {
-					folderId: folder._id,
-					rawStorageId: storageId,
-					rawSize: rawBuffer.length,
-					rfc822MessageId: headers.messageId,
-					fromAddress: headers.from.address,
-					fromName: headers.from.name,
-					toAddresses: headers.to.map((a) => a.address),
-					ccAddresses: headers.cc.map((a) => a.address),
-					bccAddresses: headers.bcc.map((a) => a.address),
-					subject: headers.subject,
-					snippet,
-					textBodyInline: headers.textBody?.slice(0, 65536),
-					internalDate: args.internalDate ?? headers.internalDate,
-					flags: args.flags,
-				} as never)) as AppendResult;
+				const result = (await deps.convex.mutation(
+					fn.appendMessage as never,
+					{
+						folderId: folder._id,
+						rawStorageId: storageId,
+						rawSize: rawBuffer.length,
+						rfc822MessageId: headers.messageId,
+						inReplyTo: headers.inReplyTo,
+						references: headers.references,
+						fromAddress: headers.from.address,
+						fromName: headers.from.name,
+						toAddresses: headers.to.map((a) => a.address),
+						ccAddresses: headers.cc.map((a) => a.address),
+						bccAddresses: headers.bcc.map((a) => a.address),
+						subject: headers.subject,
+						snippet,
+						textBodyInline: headers.textBody?.slice(0, 65536),
+						internalDate: args.internalDate ?? headers.internalDate,
+						flags: args.flags,
+					} as never
+				)) as AppendResult;
 
-				finalize(
-					`${tag} OK [APPENDUID ${result.uidValidity} ${result.uid}] APPEND completed`,
-				);
+				finalize(`${tag} OK [APPENDUID ${result.uidValidity} ${result.uid}] APPEND completed`);
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
 				if (msg.includes('From address not authorized')) {
@@ -181,11 +181,9 @@ export const appendModule: ImapCommandModule<AppendArgs> = {
 							address: state.auth?.address,
 							folder: args.folderName,
 						},
-						'APPEND rejected — From address not authorized',
+						'APPEND rejected — From address not authorized'
 					);
-					finalize(
-						`${tag} NO [NO-PERM] From address not authorized for this mailbox`,
-					);
+					finalize(`${tag} NO [NO-PERM] From address not authorized for this mailbox`);
 					return;
 				}
 				logger.error({ err }, 'APPEND processing failed');
