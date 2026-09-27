@@ -3,8 +3,9 @@
  *   - every inbox gets a stable colour slot (explicit first, then in order);
  *   - one status per row, the most urgent wins;
  *   - the Answer queue interleaves mail, team drafts and mentions on one scale;
- *   - Today sorts digests into changed / worth knowing / also arrived / filed,
- *     never drops a line silently, and asks the summarizer only for bare lines;
+ *   - a Workbench sorts digests into changed / important / also arrived /
+ *     filed as the server triaged them, never drops a line silently, and asks
+ *     the summarizer only for bare lines;
  *   - a peek link names its email and survives a round trip through the URL.
  */
 import { describe, expect, it } from 'vitest';
@@ -163,6 +164,40 @@ describe('today model', () => {
 		]);
 		expect(model.also.map((l) => [l.lead, l.text])).toEqual([['Harbor Design', 'Payout']]);
 		expect(model.filed).toMatchObject({ newsletter: 2, promotion: 2, notification: 1 });
+	});
+
+	it('follows the server triage and keeps a few senders per filed kind', () => {
+		const line = (id: string, bucket: 'important' | 'routine', reason: 'alert' | null) => ({
+			threadId: id,
+			mailboxId: 'mb',
+			subject: id,
+			snippet: '',
+			summary: null,
+			// The category alone would say "routine"; the bucket wins.
+			category: 'notification',
+			bucket,
+			reason,
+			lastMessageAt: 1,
+			sources: [source(`m-${id}`, 1)],
+		});
+		const model = buildTodayModel({
+			digests: [
+				digest({
+					arrived: [line('alert', 'important', 'alert'), line('ci', 'routine', null)],
+					filed: { newsletter: 4, notification: 0, receipt: 0, promotion: 0, spam: 0 },
+					filedSenders: { newsletter: ['The Verge', 'Stratechery'] },
+				}),
+				digest({ filedSenders: { newsletter: ['Stratechery', 'Platformer', 'Import AI'] } }),
+			],
+			teamUpdates: [],
+			teamCounts: null,
+			since: 0,
+			pickSummary: () => null,
+		});
+		expect(model.worth.map((l) => [l.key, l.reason])).toEqual([['mail:alert', 'alert']]);
+		expect(model.also.map((l) => l.key)).toEqual(['mail:ci']);
+		expect(model.filedSenders.newsletter).toEqual(['The Verge', 'Stratechery', 'Platformer']);
+		expect(model.filedTotal).toBe(5);
 	});
 
 	it('keeps important team updates in "worth knowing" and skips old ones', () => {

@@ -506,8 +506,8 @@ export function dashboardShellStubs(): Record<string, unknown> {
 			toggleGroup: vi.fn(),
 		}),
 		useSidebarJumpHints: vi.fn(),
-		// Today's live model, empty: an instance with nothing new yet.
-		useToday: () => ({
+		// The Workbench's live model, empty: an instance with nothing new yet.
+		useWorkbench: () => ({
 			since: ref(0),
 			isFallback: ref(true),
 			previousSeenAt: ref(null),
@@ -520,6 +520,7 @@ export function dashboardShellStubs(): Record<string, unknown> {
 				also: [],
 				alsoHidden: 0,
 				filed: { newsletter: 0, notification: 0, receipt: 0, promotion: 0, spam: 0 },
+				filedSenders: { newsletter: [], notification: [], receipt: [], promotion: [], spam: [] },
 				filedTotal: 0,
 			}),
 			isLoading: ref(false),
@@ -527,6 +528,7 @@ export function dashboardShellStubs(): Record<string, unknown> {
 			markSeen: vi.fn(),
 			undoMarkSeen: vi.fn(),
 		}),
+		useWorkbenchInboxChoice: () => ({ hiddenMailboxIds: ref([]), setInboxShown: vi.fn() }),
 		useChatRooms: () => ({
 			channels: ref([]),
 			archivedChannels: ref([]),

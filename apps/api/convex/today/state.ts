@@ -1,29 +1,56 @@
 /**
- * Today's per-member state: the "since you last looked" watermark and the
- * inboxes the member left out of Today.
+ * The Workbench's per-member state: the "since you last looked" watermarks
+ * (one global, one per Workbench) and the inboxes the member left out.
  *
- * The home screen reports what arrived and what moved since the watermark. It
- * is per user (a shared inbox has shared read flags, so those cannot say what
- * THIS person has already seen) and it only moves on purpose: the explicit
- * "Mark all as seen", finishing the Answer queue, or a deliberate dwell on
- * Today. Nothing here reads mail.
+ * Each Workbench reports what arrived and what moved in one mailbox since
+ * its watermark. It is per user (a shared inbox has shared read flags, so
+ * those cannot say what THIS person has already seen) and it only moves on
+ * purpose: the explicit "Mark as seen", finishing the Answer queue, or a
+ * deliberate dwell on that Workbench. Nothing here reads mail.
  *
  * The inbox choice is per person too. Two members of the support inbox can
- * disagree: one wants it in their Today, the other works it from the Answer
- * queue and keeps their home screen to their own mail.
+ * disagree: one wants its Workbench, the other works it from the Answer queue
+ * and keeps their Workbench tabs to their own mail.
  */
 
 import { v } from 'convex/values';
 import { throwForbidden } from '../_utils/errors';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
+import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { requireMailboxAccess } from '../mail/permissions';
 
-/** With no watermark yet, Today looks back this far. */
+/** With no watermark yet, a Workbench looks back this far. */
 export const FIRST_VISIT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
 /** Bound on the hide list; far above any real number of readable inboxes. */
 const MAX_HIDDEN_MAILBOXES = 100;
+/** Bound on per-Workbench marks, for the same reason. */
+const MAX_MARKS = 100;
+
+/** One Workbench: a mailbox, or the team inbox. Absent = the global watermark. */
+const scopeValidator = v.optional(v.union(v.id('mailboxes'), v.literal('team')));
+type Scope = Id<'mailboxes'> | 'team';
+type Mark = NonNullable<Doc<'todayStates'>['marks']>[number];
+
+/**
+ * `previousSeenAt: 0` on a mark means "there was no mark before this one", so
+ * Undo removes the mark instead of setting it to the epoch.
+ */
+const NO_EARLIER_MARK = 0;
+
+/** The later of the global watermark and this Workbench's own mark. */
+function effectiveSeenAt(state: Doc<'todayStates'> | null, scope: Scope | undefined) {
+	const mark = scope ? state?.marks?.find((m) => m.key === scope) : undefined;
+	const candidates = [state?.seenAt, mark?.seenAt].filter((n): n is number => n !== undefined);
+	return candidates.length > 0 ? Math.max(...candidates) : undefined;
+}
+
+async function assertScopeReadable(ctx: MutationCtx, scope: Scope | undefined) {
+	if (scope === undefined || scope === 'team') return;
+	const access = await requireMailboxAccess(ctx, scope);
+	if (!access.ok) throwForbidden('Mailbox not accessible');
+}
 
 async function loadState(ctx: QueryCtx | MutationCtx, userId: string, organizationId: string) {
 	return ctx.db
@@ -35,19 +62,24 @@ async function loadState(ctx: QueryCtx | MutationCtx, userId: string, organizati
 }
 
 /**
- * The caller's watermark. `isFallback` marks the first-visit case, where the
- * page shows the last 24 hours instead of "since you last looked".
+ * The caller's watermark, for one Workbench when `scope` is given (the later
+ * of that Workbench's mark and the global one). `isFallback` marks the
+ * first-visit case, where the page shows the last 24 hours instead of "since
+ * you last looked".
  */
 // all-members: every member reads only their own watermark (keyed by session.userId).
 export const get = authedQuery({
-	args: { now: v.optional(v.number()) },
+	args: { now: v.optional(v.number()), scope: scopeValidator },
 	handler: async (ctx, args, session) => {
 		const state = await loadState(ctx, session.userId, session.activeOrganizationId);
 		const hiddenMailboxIds = state?.hiddenMailboxIds ?? [];
-		if (state?.seenAt !== undefined) {
+		const seenAt = effectiveSeenAt(state, args.scope);
+		if (seenAt !== undefined) {
+			const mark = args.scope ? state?.marks?.find((m) => m.key === args.scope) : undefined;
+			const previous = args.scope ? mark?.previousSeenAt : state?.previousSeenAt;
 			return {
-				seenAt: state.seenAt,
-				previousSeenAt: state.previousSeenAt ?? null,
+				seenAt,
+				previousSeenAt: previous === undefined || previous === NO_EARLIER_MARK ? null : previous,
 				isFallback: false,
 				hiddenMailboxIds,
 			};
@@ -65,17 +97,42 @@ export const get = authedQuery({
 });
 
 /**
- * Move the watermark to `at` (clamped to the server clock, never backwards
- * past the previous mark by accident). Keeps the old value in
- * `previousSeenAt` so the page can offer Undo.
+ * Move a watermark to `at` (clamped to the server clock, never backwards).
+ * Without `scope` it is the global one, which catches every Workbench up
+ * (finishing the Answer queue); with one, only that Workbench moves. The old
+ * value is kept so the page can offer Undo.
  */
 // all-members: a member moves only their own watermark (self-scoped by session.userId).
 export const markSeen = authedMutation({
-	args: { at: v.optional(v.number()) },
+	args: { at: v.optional(v.number()), scope: scopeValidator },
 	handler: async (ctx, args, session) => {
 		const now = Date.now();
 		const at = Math.min(args.at ?? now, now);
+		await assertScopeReadable(ctx, args.scope);
 		const state = await loadState(ctx, session.userId, session.activeOrganizationId);
+
+		if (args.scope !== undefined) {
+			const marks = state?.marks ?? [];
+			const mark = marks.find((m) => m.key === args.scope);
+			if (mark && at <= mark.seenAt) return { seenAt: mark.seenAt };
+			const next: Mark = {
+				key: args.scope,
+				seenAt: at,
+				previousSeenAt: mark?.seenAt ?? NO_EARLIER_MARK,
+			};
+			const nextMarks = [...marks.filter((m) => m.key !== args.scope), next].slice(-MAX_MARKS);
+			if (state) await ctx.db.patch(state._id, { marks: nextMarks, updatedAt: now });
+			else {
+				await ctx.db.insert('todayStates', {
+					userId: session.userId,
+					organizationId: session.activeOrganizationId,
+					marks: nextMarks,
+					updatedAt: now,
+				});
+			}
+			return { seenAt: at };
+		}
+
 		if (!state) {
 			await ctx.db.insert('todayStates', {
 				userId: session.userId,
@@ -83,26 +140,38 @@ export const markSeen = authedMutation({
 				seenAt: at,
 				updatedAt: now,
 			});
-			return { seenAt: at, previousSeenAt: null };
+			return { seenAt: at };
 		}
 		if (state.seenAt === undefined) {
 			await ctx.db.patch(state._id, { seenAt: at, updatedAt: now });
-			return { seenAt: at, previousSeenAt: null };
+			return { seenAt: at };
 		}
-		if (at <= state.seenAt)
-			return { seenAt: state.seenAt, previousSeenAt: state.previousSeenAt ?? null };
+		if (at <= state.seenAt) return { seenAt: state.seenAt };
 		await ctx.db.patch(state._id, { seenAt: at, previousSeenAt: state.seenAt, updatedAt: now });
-		return { seenAt: at, previousSeenAt: state.seenAt };
+		return { seenAt: at };
 	},
 });
 
-/** Put the watermark back where it was before the last `markSeen`. */
+/** Put a watermark back where it was before its last `markSeen`. */
 // all-members: self-scoped by session.userId, like markSeen.
 export const undoMarkSeen = authedMutation({
-	args: {},
-	handler: async (ctx, _args, session) => {
+	args: { scope: scopeValidator },
+	handler: async (ctx, args, session) => {
 		const state = await loadState(ctx, session.userId, session.activeOrganizationId);
-		if (!state || state.previousSeenAt === undefined) return { restored: false };
+		if (!state) return { restored: false };
+		if (args.scope !== undefined) {
+			const marks = state.marks ?? [];
+			const mark = marks.find((m) => m.key === args.scope);
+			if (!mark || mark.previousSeenAt === undefined) return { restored: false };
+			const others = marks.filter((m) => m.key !== args.scope);
+			const restored =
+				mark.previousSeenAt === NO_EARLIER_MARK
+					? others
+					: [...others, { key: mark.key, seenAt: mark.previousSeenAt }];
+			await ctx.db.patch(state._id, { marks: restored, updatedAt: Date.now() });
+			return { restored: true };
+		}
+		if (state.previousSeenAt === undefined) return { restored: false };
 		await ctx.db.patch(state._id, {
 			seenAt: state.previousSeenAt,
 			previousSeenAt: undefined,

@@ -43,6 +43,7 @@ const PROPER_NOUNS = new Set([
 	'Inbox', // Postbox folder names
 	'Spam',
 	'Today', // page names
+	'Workbench', // the home screen (one tab per inbox)
 	'Features',
 	// Mail headers
 	'From',

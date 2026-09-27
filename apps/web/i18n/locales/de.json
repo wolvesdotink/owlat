@@ -1974,7 +1974,7 @@
 				"mail": "E-Mail",
 				"more": "Mehr",
 				"people": "Kontakte",
-				"today": "Heute",
+				"today": "Werkbank",
 				"answer": "Antworten",
 				"inbox": "Posteingang"
 			},
@@ -4185,7 +4185,7 @@
 			"postboxReplyFlow": {
 				"done": {
 					"backToInbox": "Zurück zum Posteingang",
-					"backToToday": "Zurück zu Heute",
+					"backToToday": "Zurück zur Werkbank",
 					"body": "Neue Antworten erscheinen hier, sobald sie eintreffen.",
 					"summary": "{summary} in dieser Sitzung.",
 					"title": "Alles erledigt"
@@ -5635,7 +5635,7 @@
 				"sortPriority": "Dringendste zuerst"
 			},
 			"nav": {
-				"today": "Heute",
+				"today": "Werkbank",
 				"answer": "Antwortliste",
 				"allInboxes": "Alle Postfächer",
 				"inboxes": "Postfächer",
@@ -5690,7 +5690,8 @@
 				"allInQueue": "Alle {count} in der Liste",
 				"draftReady": "Entwurf bereit",
 				"mention": "Erwähnung",
-				"mentionTitle": "#{room}: „{preview}“"
+				"mentionTitle": "#{room}: „{preview}“",
+				"clearTitleIn": "In {inbox} wartet nichts auf eine Antwort"
 			},
 			"changed": {
 				"title": "Was sich getan hat",
@@ -5703,19 +5704,24 @@
 				"title": "Neuigkeiten",
 				"subtitle": "keine Antwort nötig",
 				"keysMove": "bewegen",
-				"worth": "Gut zu wissen",
+				"worth": "Wichtig",
 				"also": "Außerdem angekommen",
-				"empty": "Nichts Neues ohne Antwortbedarf. Neuigkeiten von Menschen und Diensten erscheinen hier.",
+				"empty": "Hier gibt es nichts Neues ohne Antwortbedarf. Was Menschen Ihnen mitteilen und Hinweise mit Handlungsbedarf erscheinen hier.",
 				"more": "{count} weitere Neuigkeit wartet. | {count} weitere Neuigkeiten warten."
 			},
 			"filed": {
-				"title": "Abgelegt:",
-				"newsletter": "{count} Newsletter | {count} Newsletter",
-				"notification": "{count} Benachrichtigung | {count} Benachrichtigungen",
-				"receipt": "{count} Quittung | {count} Quittungen",
-				"promotion": "{count} Werbung | {count} Werbungen",
-				"spam": "{count} Spam abgefangen | {count} Spam abgefangen",
-				"reassure": "Nichts davon braucht eine Antwort."
+				"title": "Abgelegt",
+				"reassure": "Nichts davon braucht eine Antwort.",
+				"kind": {
+					"newsletter": "Newsletter | Newsletter",
+					"notification": "Benachrichtigung | Benachrichtigungen",
+					"promotion": "Werbung | Werbungen",
+					"receipt": "Quittung | Quittungen",
+					"spam": "Spam abgefangen | Spam abgefangen"
+				},
+				"from": "Von {names}",
+				"fromMore": "Von {names} und weiteren",
+				"empty": "Seit Ihrem letzten Besuch wurde nichts abgelegt."
 			},
 			"line": {
 				"done": "Erledigt",
@@ -5729,7 +5735,7 @@
 			},
 			"peek": {
 				"label": "E-Mail-Vorschau",
-				"back": "Zurück zu Heute",
+				"back": "Zurück zur Werkbank",
 				"position": "E-Mail {index} von {total}",
 				"previous": "Vorherige E-Mail",
 				"next": "Nächste E-Mail",
@@ -5739,11 +5745,38 @@
 				"markReadOperation": "Als gelesen markieren"
 			},
 			"inboxPicker": {
-				"label": "Postfächer für Heute auswählen",
-				"all": "Alle Postfächer",
+				"label": "Postfächer für die Werkbank auswählen",
+				"all": "Tabs bearbeiten",
 				"some": "{shown} von {total} Postfächern",
-				"heading": "In Heute zeigen",
+				"heading": "Als Tab zeigen",
 				"note": "Ausgeblendete Postfächer bleiben in der Seitenleiste und in der Antwortliste."
+			},
+			"openInbox": "Postfach öffnen",
+			"reason": {
+				"alert": "Handlungsbedarf",
+				"newSender": "Neuer Absender"
+			},
+			"tabs": {
+				"label": "Postfächer auf der Werkbank",
+				"answer": "{count} wartet auf Antwort | {count} warten auf Antwort",
+				"unread": "{count} ungelesen | {count} ungelesen"
+			},
+			"scope": {
+				"kind": {
+					"personal": "Persönlich",
+					"shared": "Geteiltes Postfach",
+					"team": "Vom Agenten betreut"
+				},
+				"openInbox": "Postfach öffnen",
+				"write": "Schreiben",
+				"stats": {
+					"new": "neue E-Mail | neue E-Mails",
+					"important": "wichtig | wichtig",
+					"moved": "Unterhaltung bewegt | Unterhaltungen bewegt",
+					"filed": "abgelegt | abgelegt"
+				},
+				"since": "Seit Ihrem letzten Besuch, {when}",
+				"sinceFallback": "In den letzten 24 Stunden"
 			}
 		},
 		"answer": {
@@ -5775,11 +5808,11 @@
 				"body": "Neue Fragen erscheinen hier, sobald sie ankommen – aus jedem Postfach, das du liest.",
 				"showAll": "Alle anzeigen"
 			},
-			"backToToday": "Zurück zu Heute",
+			"backToToday": "Zurück zur Werkbank",
 			"done": {
 				"title": "Alles erledigt",
 				"summary": "{summary} in dieser Sitzung.",
-				"body": "Heute beginnt ab hier neu."
+				"body": "Ihre Werkbank beginnt ab hier neu."
 			},
 			"mail": {
 				"writeOwn": "Selbst schreiben"
@@ -9907,7 +9940,7 @@
 				"colour": "Farbe",
 				"colourAutomatic": "Automatisch",
 				"colourSlot": "Farbe {n}",
-				"colourHelp": "Die Markierung dieses Postfachs in der Seitenleiste, auf Heute, in der Antwortliste und neben „Senden“ – immer zusammen mit seinem Namen."
+				"colourHelp": "Die Markierung dieses Postfachs in der Seitenleiste, auf der Werkbank, in der Antwortliste und neben „Senden“ – immer zusammen mit seinem Namen."
 			},
 			"members": {
 				"detail": {
@@ -10523,7 +10556,7 @@
 			"title": "Visualisierungen"
 		},
 		"today": {
-			"pageTitle": "Heute",
+			"pageTitle": "Werkbank",
 			"greeting": {
 				"morning": "Guten Morgen",
 				"morningNamed": "Guten Morgen, {name}",
@@ -10533,15 +10566,10 @@
 				"eveningNamed": "Guten Abend, {name}"
 			},
 			"since": {
-				"label": "Seit Ihrem letzten Besuch ({when}):",
-				"fallback": "In den letzten 24 Stunden:",
-				"newMail": "keine neue E-Mail | {count} neue E-Mail | {count} neue E-Mails",
-				"newMailCapped": "mehr als {count} neue E-Mails",
-				"moved": "{count} Unterhaltung, die Sie verfolgen, hat sich bewegt | {count} Unterhaltungen, die Sie verfolgen, haben sich bewegt",
 				"mentions": "{count} Erwähnung im Chat | {count} Erwähnungen im Chat"
 			},
 			"markAllSeen": "Alles als gesehen markieren",
-			"markedSeen": "Als gesehen markiert. Heute beginnt ab hier neu.",
+			"markedSeen": "Als gesehen markiert. {inbox} beginnt ab hier neu.",
 			"replyRequested": "Der Agent schreibt eine Antwort. Sie wartet in der Antwortliste.",
 			"openQueue": "Liste öffnen",
 			"deliveryAlert": "Die Zustellung braucht Aufmerksamkeit.",
@@ -10550,7 +10578,13 @@
 				"done": "Als erledigt markieren",
 				"replyAnyway": "Antwort anfordern",
 				"markSeen": "Als gesehen markieren",
-				"chooseInboxes": "Postfächer für Heute ändern"
+				"chooseInboxes": "Postfächer auf der Werkbank ändern"
+			},
+			"intro": "Eine Werkbank pro Postfach: was Sie braucht, was sich getan hat und was seit Ihrem letzten Besuch angekommen ist.",
+			"noInbox": {
+				"title": "Noch kein Postfach zum Arbeiten",
+				"body": "Jedes Postfach, das Sie lesen, bekommt hier seine eigene Werkbank: was Sie braucht, was sich getan hat und was angekommen ist. Verbinden Sie ein Postfach, um loszulegen.",
+				"cta": "Postfach verbinden"
 			}
 		},
 		"answer": {
@@ -11665,7 +11699,7 @@
 			},
 			"sections": {
 				"audience": "Zielgruppe",
-				"dashboard": "Heute",
+				"dashboard": "Werkbank",
 				"marketing": "Marketing",
 				"preferences": "Meine Einstellungen",
 				"workspace": "Workspace",
@@ -15684,7 +15718,7 @@
 	"welcome": {
 		"fresh": {
 			"body": "Den Import überspringen und mit einem leeren Posteingang starten.",
-			"cta": "Weiter zu Heute",
+			"cta": "Weiter zur Werkbank",
 			"title": "Neu anfangen"
 		},
 		"freshStart": {
@@ -15693,7 +15727,7 @@
 			"checkingTransport": "Es wird geprüft, ob der Versand bereit ist…",
 			"defaultSignatureName": "Standard",
 			"emailMyself": "An mich senden",
-			"finish": "Weiter zu Heute",
+			"finish": "Weiter zur Werkbank",
 			"nameHint": "Diesen Namen sehen die Empfänger Ihrer Mail.",
 			"nameLabel": "Ihr Name",
 			"namePlaceholder": "z. B. Marcel Pfeifer",

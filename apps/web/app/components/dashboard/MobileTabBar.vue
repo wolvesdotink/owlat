@@ -2,7 +2,7 @@
 import { mobileMoreDestinations } from '~/lib/mobileMoreDestinations';
 
 /**
- * The phone's bottom bar: Today, Answer, create, Inbox, More.
+ * The phone's bottom bar: Workbench, Answer, create, Inbox, More.
  *
  * Before this, the entire mobile chrome was a hamburger, a logo and a search
  * icon — every destination and every create started by opening the drawer and
@@ -79,12 +79,12 @@ const inboxTab = computed<TabItem | null>(() => {
 	};
 });
 
-/** Today and the Answer queue — the two places a day starts from. */
+/** The Workbench and the Answer queue — the two places a day starts from. */
 const leadingTabs = computed<TabItem[]>(() => [
 	{
 		id: 'today',
 		href: '/dashboard',
-		icon: 'lucide:sun',
+		icon: 'lucide:layout-dashboard',
 		label: t('components.dashboard.mobileTabBar.today'),
 	},
 	{

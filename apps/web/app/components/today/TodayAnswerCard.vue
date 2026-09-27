@@ -10,20 +10,25 @@ import {
 } from '~/utils/todayAnswerSummary';
 
 /**
- * Today's first band: how many things wait on the viewer's answer, one button
- * into the Answer queue, and the top three as sentences. A row opens the queue
- * at that card, not the raw thread — answering happens in one place.
+ * A Workbench tab's first band: how many things in this inbox wait on the
+ * viewer's answer, one button into the Answer queue (already narrowed to this
+ * inbox), and the top three as sentences. A row opens the queue at that card,
+ * not the raw thread — answering happens in one place.
  */
-const props = defineProps<{
-	items: readonly AnswerItem[];
-	counts: AnswerCounts;
-	isLoading: boolean;
-	/**
-	 * Everything in the Answer queue, when that is more than `items` (inboxes
-	 * left out of Today still sit in the queue the link opens).
-	 */
-	queueTotal?: number;
-}>();
+const props = withDefaults(
+	defineProps<{
+		items: readonly AnswerItem[];
+		counts: AnswerCounts;
+		isLoading: boolean;
+		/** Everything the queue link opens, when that is more than `items`. */
+		queueTotal?: number;
+		/** The Answer queue, narrowed to this tab (`?in=`). */
+		queueHref?: string;
+		/** The tab's inbox name, for the all-clear sentence. */
+		inboxName?: string;
+	}>(),
+	{ queueTotal: undefined, queueHref: '/dashboard/answer', inboxName: undefined }
+);
 
 const { t } = useI18n();
 const TOP = 3;
@@ -42,7 +47,11 @@ function rowTitle(item: AnswerItem): string {
 	});
 }
 function rowDetail(item: AnswerItem): string {
-	if (item.source === 'mail') return item.row.fromName || item.row.fromAddress;
+	if (item.source === 'mail') {
+		// A follow-up headline already names who ("You're waiting on …").
+		const who = item.row.fromName || item.row.fromAddress;
+		return rowTitle(item).includes(who) ? '' : who;
+	}
 	if (item.source === 'team') {
 		const from = parseFromHeader(item.entry.message.from);
 		return from.name ?? from.address;
@@ -62,8 +71,18 @@ function rowMeta(item: AnswerItem): string {
 
 const say = (parts: SummaryPart[]) =>
 	parts.map((part) => t(part.key, { count: part.count }, part.count)).join(' · ');
-/** Parts that add up to the big number, by where each item came from. */
-const sourceLine = computed(() => say(answerSourceParts(props.counts)));
+/**
+ * Parts that add up to the big number, by where each item came from. One part
+ * only repeats the number, so it is left out.
+ */
+const sourceLine = computed(() => {
+	const parts = answerSourceParts(props.counts);
+	return parts.length > 1 ? say(parts) : '';
+});
+function focusHref(item: AnswerItem): string {
+	const joiner = props.queueHref.includes('?') ? '&' : '?';
+	return `${props.queueHref}${joiner}focus=${encodeURIComponent(item.id)}`;
+}
 /** Drafts ready and the time estimate — true across sources, so on their own line. */
 const effortLine = computed(() => say(answerEffortParts(props.counts, props.items.length)));
 </script>
@@ -98,7 +117,7 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.item
 					<p class="mt-0.5 text-xs text-text-tertiary">{{ effortLine }}</p>
 				</div>
 			</div>
-			<UiButton to="/dashboard/answer" class="shrink-0 justify-center">
+			<UiButton :to="queueHref" class="shrink-0 justify-center">
 				{{ t('components.today.answer.cta') }}
 				<Icon name="lucide:arrow-right" class="size-4" />
 			</UiButton>
@@ -111,7 +130,11 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.item
 			<Icon name="lucide:check-circle-2" class="size-5 text-success" />
 			<div>
 				<h2 id="today-answer" class="text-sm font-medium text-text-primary">
-					{{ t('components.today.answer.clearTitle') }}
+					{{
+						inboxName
+							? t('components.today.answer.clearTitleIn', { inbox: inboxName })
+							: t('components.today.answer.clearTitle')
+					}}
 				</h2>
 				<p class="text-xs text-text-secondary">{{ t('components.today.answer.clearBody') }}</p>
 			</div>
@@ -123,7 +146,7 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.item
 			>
 				{{ t('components.today.answer.needsTitle') }}
 				<NuxtLink
-					to="/dashboard/answer"
+					:to="queueHref"
 					class="ml-auto normal-case tracking-normal text-brand hover:underline"
 					>{{
 						t('components.today.answer.allInQueue', { count: queueTotal ?? items.length })
@@ -135,7 +158,7 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.item
 			>
 				<li v-for="item in top" :key="item.id">
 					<NuxtLink
-						:to="`/dashboard/answer?focus=${encodeURIComponent(item.id)}`"
+						:to="focusHref(item)"
 						class="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-bg-surface"
 						data-today-line
 					>
@@ -148,25 +171,6 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.item
 							}}</span>
 						</span>
 						<span class="flex shrink-0 flex-col items-end gap-1">
-							<InboxChip
-								v-if="item.source === 'mail' && item.inbox"
-								:name="item.inbox.name"
-								:slot="item.inbox.slot"
-							/>
-							<span
-								v-else-if="item.source === 'team'"
-								class="inline-flex items-center gap-1 rounded-full bg-bg-surface px-2 py-px text-2xs font-medium text-text-secondary"
-								><Icon name="lucide:bot" class="size-3" />{{
-									t('components.shell.teamInbox')
-								}}</span
-							>
-							<span
-								v-else
-								class="inline-flex items-center gap-1 rounded-full bg-bg-surface px-2 py-px text-2xs font-medium text-text-secondary"
-								><Icon name="lucide:message-circle" class="size-3" />{{
-									t('components.shell.chat.title')
-								}}</span
-							>
 							<span class="text-2xs text-text-tertiary">{{ rowMeta(item) }}</span>
 						</span>
 					</NuxtLink>
