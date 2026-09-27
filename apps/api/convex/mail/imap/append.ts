@@ -16,7 +16,9 @@ import { normalizeSubject } from '../../lib/emailAddress';
 import { normalizeEmail } from '@owlat/shared';
 import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
 import { isImapSystemFlag } from './flags';
-import { mergeThreadParticipants } from '../threadAggregates';
+import { mergeThreadParticipants, rebuildThreadAggregates } from '../threadAggregates';
+import { conversationRootId, resolveDeliveryThread } from '../deliveryPipeline/threading';
+import { clearNeedsReplyOnOwnerReply } from '../needsReply';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 
 /**
@@ -45,6 +47,9 @@ export const appendMessage = internalMutation({
 		rawStorageId: v.id('_storage'),
 		rawSize: v.number(),
 		rfc822MessageId: v.string(),
+		/** Bare Message-IDs from the In-Reply-To / References headers. */
+		inReplyTo: v.optional(v.string()),
+		references: v.optional(v.array(v.string())),
 		fromAddress: v.string(),
 		fromName: v.optional(v.string()),
 		toAddresses: v.array(v.string()),
@@ -86,32 +91,52 @@ export const appendMessage = internalMutation({
 			if (!isImapSystemFlag(f.toLowerCase())) customFlags.push(f);
 		}
 
-		// Create or reuse a thread for the appended message. APPEND is most
-		// commonly used for client-side draft saves, so default to a fresh
-		// thread when there's no inReplyTo.
+		// A client-sent reply's Sent copy (Thunderbird, Apple Mail, …) joins the
+		// conversation it answers, through the same threading every delivered
+		// message goes through; before, every APPEND opened its own thread, so the
+		// user's reply never showed in the conversation and the correspondent's
+		// next message (which references the reply) split off with it. Drafts
+		// keep a thread of their own: clients re-APPEND them on every autosave.
 		const normalizedSubject = normalizeSubject(args.subject);
-		const threadId = await ctx.db.insert('mailThreads', {
-			mailboxId: folder.mailboxId,
-			normalizedSubject,
-			participants: mergeThreadParticipants([
-				args.fromAddress,
-				...args.toAddresses,
-				...args.ccAddresses,
-			]),
-			messageCount: 1,
-			unreadCount: flagSet.has('\\seen') ? 0 : 1,
-			hasFlagged: flagSet.has('\\flagged'),
-			hasAttachments: false,
-			lastMessageAt: internalDate,
-			firstMessageAt: internalDate,
-			latestSnippet: args.snippet,
-			latestFromAddress: args.fromAddress,
-			latestSubject: args.subject,
-			folderRoles: folder.role ? [folder.role] : [],
-			labelIds: [],
-			createdAt: now,
-			updatedAt: now,
-		});
+		const references = args.references ?? [];
+		const threadRootId = conversationRootId(args.rfc822MessageId, args.inReplyTo, references);
+		const existingThreadId =
+			folder.role === 'drafts'
+				? null
+				: await resolveDeliveryThread(ctx, {
+						mailbox,
+						messageId: args.rfc822MessageId,
+						rootId: threadRootId,
+						references: args.inReplyTo ? [args.inReplyTo, ...references] : references,
+						subject: args.subject,
+						normalizedSubject,
+						receivedAt: internalDate,
+						parties: [args.fromAddress, ...args.toAddresses, ...args.ccAddresses],
+					});
+		const threadId =
+			existingThreadId ??
+			(await ctx.db.insert('mailThreads', {
+				mailboxId: folder.mailboxId,
+				normalizedSubject,
+				participants: mergeThreadParticipants([
+					args.fromAddress,
+					...args.toAddresses,
+					...args.ccAddresses,
+				]),
+				messageCount: 1,
+				unreadCount: flagSet.has('\\seen') ? 0 : 1,
+				hasFlagged: flagSet.has('\\flagged'),
+				hasAttachments: false,
+				lastMessageAt: internalDate,
+				firstMessageAt: internalDate,
+				latestSnippet: args.snippet,
+				latestFromAddress: args.fromAddress,
+				latestSubject: args.subject,
+				folderRoles: folder.role ? [folder.role] : [],
+				labelIds: [],
+				createdAt: now,
+				updatedAt: now,
+			}));
 
 		const messageId = await ctx.db.insert('mailMessages', {
 			mailboxId: folder.mailboxId,
@@ -119,6 +144,11 @@ export const appendMessage = internalMutation({
 			uid,
 			modseq,
 			rfc822MessageId: args.rfc822MessageId,
+			inReplyTo: args.inReplyTo,
+			references: references.length > 0 ? references : undefined,
+			// A draft sits outside the conversation, so it must not be the row a
+			// later delivery finds by root.
+			threadRootId: folder.role === 'drafts' ? undefined : threadRootId,
 			threadId,
 			fromAddress: args.fromAddress,
 			fromName: args.fromName,
@@ -155,9 +185,18 @@ export const appendMessage = internalMutation({
 			updatedAt: now,
 		});
 
-		// The conversation list links to latestMessageId; set it now that the
-		// appended message exists.
-		await ctx.db.patch(threadId, { latestMessageId: messageId });
+		if (existingThreadId) {
+			// Counters, participants, folder roles and the latest pointers all move
+			// with the new message; re-deriving them is simpler than patching each.
+			await rebuildThreadAggregates(ctx, threadId);
+			// Our reply sent from a desktop client settles the Reply Queue row, as
+			// the same reply synced from a provider's Sent folder does.
+			await clearNeedsReplyOnOwnerReply(ctx, messageId);
+		} else {
+			// The conversation list links to latestMessageId; set it now that the
+			// appended message exists.
+			await ctx.db.patch(threadId, { latestMessageId: messageId });
+		}
 
 		// E8b: the IMAP server uploads the raw `.eml` straight to storage
 		// (plaintext), so seal it at rest out-of-band — a mutation can't read/re-store

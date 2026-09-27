@@ -48,6 +48,12 @@ export const mailMessagesTables = {
 		rfc822MessageId: v.string(),
 		inReplyTo: v.optional(v.string()),
 		references: v.optional(v.array(v.string())),
+		// The Message-ID the conversation started from: the first References
+		// entry, else In-Reply-To, else the message's own id. Lets a message that
+		// arrives BEFORE its parent still be found by that parent (history imports
+		// walk newest-first). See mail/deliveryPipeline/threading.ts. Absent on
+		// rows written before the field existed.
+		threadRootId: v.optional(v.string()),
 		threadId: v.id('mailThreads'),
 
 		fromAddress: v.string(),
@@ -285,6 +291,7 @@ export const mailMessagesTables = {
 		.index('by_mailbox_and_snoozed', ['mailboxId', 'snoozedUntil'])
 		.index('by_thread', ['threadId'])
 		.index('by_rfc822_message_id', ['rfc822MessageId'])
+		.index('by_mailbox_and_thread_root', ['mailboxId', 'threadRootId'])
 		.index('by_mailbox_and_from', ['mailboxId', 'fromAddress'])
 		.index('by_mailbox_and_unseen', ['mailboxId', 'flagSeen'])
 		// Backs the 1-minute snooze sweep cron — range scan on snoozedUntil <= now.

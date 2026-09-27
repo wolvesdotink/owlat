@@ -15,7 +15,7 @@ describe('parseAppendHeaders', () => {
 				'To: bob@example.com, carol@example.com',
 				'Cc: dave@example.com',
 				'Date: Tue, 09 Jun 2026 10:00:00 +0000',
-			]),
+			])
 		);
 		expect(parsed.messageId).toBe('abc-123@mail.example');
 		expect(parsed.subject).toBe('Quarterly report');
@@ -25,20 +25,44 @@ describe('parseAppendHeaders', () => {
 		expect(parsed.internalDate).toBe(Date.parse('Tue, 09 Jun 2026 10:00:00 +0000'));
 	});
 
+	it('extracts In-Reply-To and a folded References chain as bare ids', () => {
+		const parsed = parseAppendHeaders(
+			eml([
+				'Message-ID: <reply@mail.example>',
+				"In-Reply-To: <parent@example.com> (Jane Doe's message)",
+				'References: <root@example.com>',
+				' <parent@example.com>',
+				'Subject: Re: Quarterly report',
+				'From: a@b.com',
+				'To: c@d.com',
+			])
+		);
+		expect(parsed.inReplyTo).toBe('parent@example.com');
+		expect(parsed.references).toEqual(['root@example.com', 'parent@example.com']);
+	});
+
+	it('reports no threading headers on a fresh message', () => {
+		const parsed = parseAppendHeaders(eml(['Subject: Hi', 'From: a@b.com', 'To: c@d.com']));
+		expect(parsed.inReplyTo).toBeUndefined();
+		expect(parsed.references).toEqual([]);
+	});
+
 	it('unfolds RFC 5322 continuation lines', () => {
 		const parsed = parseAppendHeaders(
-			eml(['Subject: part one', ' part two', 'From: a@b.com', 'To: c@d.com']),
+			eml(['Subject: part one', ' part two', 'From: a@b.com', 'To: c@d.com'])
 		);
 		expect(parsed.subject).toBe('part one part two');
 	});
 
 	it('decodes B- and Q-encoded MIME words in Subject', () => {
 		const b64 = Buffer.from('Grüße aus Köln', 'utf-8').toString('base64');
-		const b = parseAppendHeaders(eml([`Subject: =?utf-8?B?${b64}?=`, 'From: a@b.com', 'To: c@d.com']));
+		const b = parseAppendHeaders(
+			eml([`Subject: =?utf-8?B?${b64}?=`, 'From: a@b.com', 'To: c@d.com'])
+		);
 		expect(b.subject).toBe('Grüße aus Köln');
 
 		const q = parseAppendHeaders(
-			eml(['Subject: =?utf-8?Q?Caf=C3=A9_menu?=', 'From: a@b.com', 'To: c@d.com']),
+			eml(['Subject: =?utf-8?Q?Caf=C3=A9_menu?=', 'From: a@b.com', 'To: c@d.com'])
 		);
 		expect(q.subject).toBe('Café menu');
 	});
@@ -57,7 +81,7 @@ describe('parseAppendHeaders', () => {
 
 	it('drops an unparseable Date instead of emitting NaN', () => {
 		const parsed = parseAppendHeaders(
-			eml(['Subject: x', 'From: a@b.com', 'To: c@d.com', 'Date: not a date']),
+			eml(['Subject: x', 'From: a@b.com', 'To: c@d.com', 'Date: not a date'])
 		);
 		expect(parsed.internalDate).toBeUndefined();
 	});

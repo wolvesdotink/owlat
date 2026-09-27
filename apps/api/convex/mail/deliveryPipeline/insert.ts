@@ -17,7 +17,7 @@ import { extractEmail, normalizeSubject } from '../../lib/emailAddress';
 import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
 import { redirectMutedDelivery } from '../mute';
 import { indexMessageAttachments } from '../attachmentIndex';
-import { resolveDeliveryThread } from './threading';
+import { conversationRootId, resolveDeliveryThread } from './threading';
 import { mergeThreadParticipants } from '../threadAggregates';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import type { SenderHeuristics } from '../senderHeuristics';
@@ -172,8 +172,11 @@ export async function insertDeliveredMessage(
 	const ccAddresses = params.cc.map(extractEmail);
 	const messageParties = [fromAddress, ...toAddresses, ...ccAddresses];
 
+	const threadRootId = conversationRootId(rfc822MessageId, inReplyTo, refs);
 	let threadId = await resolveDeliveryThread(ctx, {
 		mailbox,
+		messageId: rfc822MessageId,
+		rootId: threadRootId,
 		references: inReplyTo ? [inReplyTo, ...refs] : refs,
 		subject: params.subject,
 		normalizedSubject,
@@ -217,6 +220,7 @@ export async function insertDeliveredMessage(
 		rfc822MessageId,
 		inReplyTo,
 		references: refs.length > 0 ? refs : undefined,
+		threadRootId,
 		threadId,
 		fromAddress,
 		fromName,
@@ -303,6 +307,9 @@ export async function insertDeliveredMessage(
 			unreadCount: thread.unreadCount + unreadDelta,
 			hasAttachments: thread.hasAttachments || hasAttachments,
 			folderRoles: Array.from(folderRoles),
+			// An out-of-order ingest can also land an OLDER message than any the
+			// thread holds — the parent a history import reaches last.
+			firstMessageAt: Math.min(thread.firstMessageAt, params.receivedAt),
 			updatedAt: now,
 			...(isNewest
 				? {
