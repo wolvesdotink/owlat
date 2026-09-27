@@ -25,6 +25,7 @@ import { isThreadMuted } from '../lib/mailMute';
 import { requireMailboxAccess } from '../mail/permissions';
 import { loadThreadVisit, visitDelta } from '../mail/threadVisits';
 import { classifyMailCategory } from '../mail/category';
+import { isFromMailboxOwner } from '../mail/needsReplyHeuristic';
 import { loadTodaySummary } from './summaryCache';
 import { type ImportantReason, isFiledBucket, triageThread } from './triage';
 import {
@@ -105,6 +106,20 @@ async function categoryOf(
 	};
 }
 
+/**
+ * The mailbox has had the last word: the newest message went out from it, or
+ * a teammate answered from their personal address (which only stamps
+ * `latestReply` on the team thread). Either way nothing is waiting here.
+ */
+function isAnswered(
+	thread: Doc<'mailThreads'>,
+	latest: Doc<'mailMessages'>,
+	mailboxAddress: string
+): boolean {
+	if (thread.latestReply && thread.latestReply.at >= latest.receivedAt) return true;
+	return isFromMailboxOwner(latest, mailboxAddress);
+}
+
 /** Inbound messages of a thread newer than `after`, newest first. */
 async function messagesAfter(
 	ctx: QueryCtx,
@@ -126,7 +141,7 @@ export const digest = publicQuery({
 		const locale = args.locale ?? 'en';
 		const access = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!access.ok) return null;
-		const { userId } = access;
+		const { userId, mailbox } = access;
 		const now = Date.now();
 
 		const inbox = await ctx.db
@@ -171,6 +186,8 @@ export const digest = publicQuery({
 			if (!latest || latest.flagDraft || isMessageSnoozed(latest, now)) continue;
 			// The viewer's own send is not news to them.
 			if (latest.sentByUserId === userId) continue;
+			const answered = isAnswered(thread, latest, mailbox.address);
+			if (answered && thread.latestReply?.byUserId === userId) continue;
 
 			const visit = await loadThreadVisit(ctx, userId, thread._id);
 			if (visit && visit.visitedAt >= thread.lastMessageAt) continue; // already seen
@@ -218,7 +235,8 @@ export const digest = publicQuery({
 				continue;
 			}
 
-			if (!thread.folderRoles.includes('inbox')) continue;
+			// A teammate already answered it: not a new arrival for anyone else.
+			if (answered || !thread.folderRoles.includes('inbox')) continue;
 			arrivedTotal += 1;
 			if (arrived.length >= ARRIVED_LIMIT) continue;
 			const important = triage.bucket === 'important';
