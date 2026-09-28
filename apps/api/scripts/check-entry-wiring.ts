@@ -174,6 +174,9 @@ const EXPECTED_BUILDERS: readonly string[] = [
 	'internalQuery',
 	'mutation',
 	'ownerMutation',
+	'platformAdminMutation',
+	'platformAdminQuery',
+	'platformSuperadminMutation',
 	'postboxMutation',
 	'postboxQuery',
 	'providerFeedbackWebhook',
@@ -198,6 +201,7 @@ const NOT_ENTRY_BUILDERS: Readonly<Record<string, string>> = {
 	getBundledPluginFeatureFlagDefinitions: 'reads the generated flag definitions',
 	literalUnion: 'builds a Convex validator from a literal tuple',
 	urgencyFallbackScore: 'maps an urgency label to its numeric score',
+	withPlatformGate: 'RETURNS a builder; its exported products are collected as builders above',
 };
 
 // A `migrations/` module is a one-shot backfill an operator runs by hand
