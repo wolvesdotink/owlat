@@ -1,5 +1,3 @@
-import { summarizeDomainReadiness } from '~/utils/domainReadiness';
-
 /** DMARC enforcement policy. */
 export type DmarcPolicy = 'none' | 'quarantine' | 'reject';
 
@@ -96,15 +94,4 @@ export function hasDnsRecords(
 	return Boolean(
 		dnsRecords.spf || dnsRecords.dkim?.length || dnsRecords.dmarc || dnsRecords.mailFrom?.length
 	);
-}
-
-// One-line readiness summary for the expanded DNS panel — pure composition of
-// the verification data already on the domain (no extra query / lookup).
-export type DomainWithVerification = {
-	dnsRecords?: DomainDnsRecords | null;
-	verificationResults?: Parameters<typeof summarizeDomainReadiness>[0];
-};
-
-export function readinessSummary(domain: DomainWithVerification) {
-	return summarizeDomainReadiness(domain.verificationResults, domain.dnsRecords);
 }

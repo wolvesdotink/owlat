@@ -1,9 +1,10 @@
 <script setup lang="ts">
 /**
  * The SENDING side of an expanded domain row: what the domain is for, the
- * records the operator has to publish for it (SPF, DKIM, DMARC, MAIL FROM), the
- * readiness summary derived from the verification data, the DMARC enforcement
- * selector and the return-path editor.
+ * records the operator has to publish for it as one checklist — a summary that
+ * names each record still missing, then the records grouped into sender
+ * authentication (SPF, DKIM, DMARC) and bounce handling (MAIL FROM) — plus the
+ * DMARC enforcement selector and the return-path editor.
  *
  * Extracted from `RecordRow.vue`, which carries the collapsed header, the
  * registering/failed states and the receiving (inbound MX) section and was over
@@ -17,9 +18,17 @@
 import { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
 import { trySplitZone } from '@owlat/shared';
-import { domainReadinessMessage } from '~/utils/domainReadiness';
+import {
+	buildSendingChecklist,
+	summarizeChecklist,
+	type ChecklistEntry,
+} from '~/utils/dnsRecordChecklist';
 import type { SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
-import { normalizeDnsRecord, readinessSummary, type DmarcPolicy } from '~/utils/domainStatus';
+import type { DmarcPolicy } from '~/utils/domainStatus';
+// Explicit imports (rather than Nuxt auto-imports) so the section renders its
+// groups in the row's component tests, which stub only the leaf panels.
+import DnsChecklistSummary from './DnsChecklistSummary.vue';
+import DnsRecordGroup from './DnsRecordGroup.vue';
 
 type DomainRow = FunctionReturnType<typeof api.domains.domains.listByOrganization>[number];
 
@@ -45,23 +54,25 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
-// Derive once per render rather than re-running on each of the several template
-// reads — rows re-render on the open-panel auto-recheck poll.
-const readiness = computed(() => readinessSummary(props.domain));
+// Every record as one checklist — rows, group counts and the summary's links
+// all read this list. Derived once per render: rows re-render on the open-panel
+// auto-recheck poll.
+const checklist = computed(() => buildSendingChecklist(props.domain));
+const authentication = computed(() =>
+	checklist.value.filter((entry) => entry.group === 'authentication')
+);
+const returnPath = computed(() => checklist.value.filter((entry) => entry.group === 'returnPath'));
+const authSummary = computed(() => summarizeChecklist(authentication.value));
+const returnPathSummary = computed(() => summarizeChecklist(returnPath.value));
+const hasDmarc = computed(() => checklist.value.some((entry) => entry.id === 'dmarc'));
 
-/**
- * The readiness tail sentence, translated. The helper that composes it lives in
- * `~/utils/domainReadiness`; per the registry convention it hands back a message
- * key (with params when it interpolates), so the component is what resolves it.
- */
-const readinessMessage = computed(() => {
-	const message = domainReadinessMessage(readiness.value) as
-		| string
-		| { key: string; params?: Record<string, unknown> };
-	return typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
-});
+const anchorFor = (entry: ChecklistEntry) => `dns-${props.domain._id}-${entry.id}`;
 
-const dmarcRecord = computed(() => normalizeDnsRecord(props.domain.dnsRecords.dmarc, 'TXT'));
+// When the domain already publishes a foreign SPF record, the merged record is
+// what to publish — so it is also what "copy missing records" hands over.
+const valueOverrides = computed<Partial<Record<string, string>>>(() =>
+	props.isExpanded && props.spfCoexistence ? { spf: props.spfCoexistence.merged } : {}
+);
 
 // The registrable zone the records actually go in — the DNS provider that
 // manages this name (A1 PSL split; fail-soft to the raw domain in self-host dev
@@ -129,123 +140,109 @@ const returnPathHost = computed(() => props.domain.returnPathHost ?? props.mailF
 		</span>
 	</div>
 
-	<!-- One-line domain readiness summary derived purely from the
-	     verification data already on the domain. -->
-	<div v-if="readiness.total > 0" class="flex flex-wrap items-center gap-x-3 gap-y-2 mb-4 text-sm">
-		<div class="flex flex-wrap items-center gap-1.5">
-			<span
-				v-for="chip in readiness.chips"
-				:key="chip.label"
-				class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium"
-				:class="
-					chip.verified
-						? 'bg-success/20 text-success border-success/30'
-						: 'bg-error/20 text-error border-error/30'
-				"
+	<!-- How far along the setup is, a link to each record still outstanding, and
+	     one copy for exactly those records. -->
+	<DnsChecklistSummary
+		:entries="checklist"
+		:domain="domain.domain"
+		:anchor-for="anchorFor"
+		:value-overrides="valueOverrides"
+	/>
+
+	<div class="space-y-6">
+		<!-- Sender authentication: who may send as this domain (SPF, DKIM) and
+		     what receivers do when a message fails (DMARC). -->
+		<div v-if="authentication.length > 0">
+			<DnsRecordGroup
+				:title="t('components.domains.sendingDnsSection.authentication.title')"
+				:description="t('components.domains.sendingDnsSection.authentication.description')"
+				:verified="authSummary.verified"
+				:total="authSummary.total"
+				:checked="authSummary.checked"
 			>
-				<Icon :name="chip.verified ? 'lucide:check-circle-2' : 'lucide:x-circle'" class="w-3 h-3" />
-				{{ t(chip.label) }}
-			</span>
-		</div>
-		<span :class="readiness.allVerified ? 'text-success' : 'text-text-secondary'">
-			{{ readinessMessage }}
-		</span>
-	</div>
+				<DomainsDNSRecordPanel
+					v-for="entry in authentication"
+					:key="entry.id"
+					:anchor-id="anchorFor(entry)"
+					:record="entry.record"
+					:label="entry.label"
+					:domain="domain.domain"
+					:verification="entry.verification"
+					:coexistence="
+						entry.id === 'spf' && isExpanded ? (spfCoexistence ?? undefined) : undefined
+					"
+				/>
+			</DnsRecordGroup>
 
-	<div class="space-y-4">
-		<DomainsDNSRecordPanel
-			v-if="normalizeDnsRecord(domain.dnsRecords.spf, 'TXT')"
-			:record="normalizeDnsRecord(domain.dnsRecords.spf, 'TXT')!"
-			label="SPF"
-			:domain="domain.domain"
-			:verification="domain.verificationResults?.spf"
-			:coexistence="isExpanded ? (spfCoexistence ?? undefined) : undefined"
-		/>
-
-		<DomainsDNSRecordPanel
-			v-for="(dkimRecord, i) in domain.dnsRecords.dkim"
-			:key="`dkim-${i}`"
-			:record="normalizeDnsRecord(dkimRecord, 'CNAME')!"
-			:label="`DKIM ${i + 1}`"
-			:domain="domain.domain"
-			:verification="domain.verificationResults?.dkim?.[i]"
-		/>
-
-		<DomainsDNSRecordPanel
-			v-if="dmarcRecord"
-			:record="dmarcRecord"
-			label="DMARC"
-			:domain="domain.domain"
-			:verification="domain.verificationResults?.dmarc"
-		/>
-
-		<!-- DMARC enforcement policy selector -->
-		<div v-if="dmarcRecord" class="p-4 bg-bg-surface rounded-xl border border-border-subtle">
-			<label
-				:for="`dmarc-policy-${domain._id}`"
-				class="block text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2"
-			>
-				{{ t('components.domains.recordRow.dmarcPolicyLabel') }}
-			</label>
-			<div class="flex items-center gap-3">
-				<select
-					:id="`dmarc-policy-${domain._id}`"
-					class="input flex-1"
-					:value="domain.dmarcPolicy ?? 'none'"
-					:disabled="!canManageDomains || isUpdatingDmarc"
-					@change="emit('dmarcChange', ($event.target as HTMLSelectElement).value as DmarcPolicy)"
+			<!-- DMARC enforcement policy selector -->
+			<div v-if="hasDmarc" class="mt-3 p-4 bg-bg-surface rounded-xl border border-border-subtle">
+				<label
+					:for="`dmarc-policy-${domain._id}`"
+					class="block text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2"
 				>
-					<option v-for="opt in dmarcPolicyOptions" :key="opt.value" :value="opt.value">
-						{{ opt.label }}
-					</option>
-				</select>
-				<Icon
-					v-if="isUpdatingDmarc"
-					name="lucide:loader-2"
-					class="w-4 h-4 animate-spin motion-reduce:animate-none text-text-tertiary"
+					{{ t('components.domains.recordRow.dmarcPolicyLabel') }}
+				</label>
+				<div class="flex items-center gap-3">
+					<select
+						:id="`dmarc-policy-${domain._id}`"
+						class="input flex-1"
+						:value="domain.dmarcPolicy ?? 'none'"
+						:disabled="!canManageDomains || isUpdatingDmarc"
+						@change="emit('dmarcChange', ($event.target as HTMLSelectElement).value as DmarcPolicy)"
+					>
+						<option v-for="opt in dmarcPolicyOptions" :key="opt.value" :value="opt.value">
+							{{ opt.label }}
+						</option>
+					</select>
+					<Icon
+						v-if="isUpdatingDmarc"
+						name="lucide:loader-2"
+						class="w-4 h-4 animate-spin motion-reduce:animate-none text-text-tertiary"
+					/>
+				</div>
+				<p class="mt-2 text-xs text-text-secondary">
+					{{ dmarcPolicyOptions.find((o) => o.value === (domain.dmarcPolicy ?? 'none'))?.hint }}
+					{{ t('components.domains.recordRow.dmarcPolicyHelp') }}
+				</p>
+			</div>
+		</div>
+
+		<!-- Bounce handling: the MAIL FROM (return-path) records. -->
+		<div v-if="returnPath.length > 0">
+			<DnsRecordGroup
+				:description="t('components.domains.sendingDnsSection.returnPath.description')"
+				:verified="returnPathSummary.verified"
+				:total="returnPathSummary.total"
+				:checked="returnPathSummary.checked"
+			>
+				<template #title>
+					<span data-testid="mailfrom-heading"
+						>{{ t('components.domains.recordRow.mailFromHeading')
+						}}<template v-if="mailFromHost"> ({{ mailFromHost }})</template></span
+					>
+				</template>
+				<DomainsDNSRecordPanel
+					v-for="entry in returnPath"
+					:key="entry.id"
+					:anchor-id="anchorFor(entry)"
+					:record="entry.record"
+					:label="entry.label"
+					:domain="domain.domain"
+					:verification="entry.verification"
+				/>
+			</DnsRecordGroup>
+
+			<!-- Change the per-domain return-path (bounce) host. Re-verifies
+			     the domain; surfaces the MTA-sync-failure marker. -->
+			<div class="mt-4">
+				<DomainsReturnPathEditor
+					:domain-id="domain._id"
+					:current-host="returnPathHost"
+					:zone="registrableZone"
+					:sync-error="domain.returnPathHostSyncError ?? null"
+					:can-manage="canManageDomains"
 				/>
 			</div>
-			<p class="mt-2 text-xs text-text-secondary">
-				{{ dmarcPolicyOptions.find((o) => o.value === (domain.dmarcPolicy ?? 'none'))?.hint }}
-				{{ t('components.domains.recordRow.dmarcPolicyHelp') }}
-			</p>
 		</div>
-
-		<!-- MAIL FROM records -->
-		<template v-if="domain.dnsRecords.mailFrom && domain.dnsRecords.mailFrom.length > 0">
-			<div class="pt-2">
-				<p
-					class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-3"
-					data-testid="mailfrom-heading"
-				>
-					{{ t('components.domains.recordRow.mailFromHeading')
-					}}<template v-if="mailFromHost"> ({{ mailFromHost }})</template>
-				</p>
-				<div class="space-y-4">
-					<DomainsDNSRecordPanel
-						v-for="(mailFromRecord, i) in domain.dnsRecords.mailFrom"
-						:key="`mailfrom-${i}`"
-						:record="
-							normalizeDnsRecord(mailFromRecord, mailFromRecord.type === 'MX' ? 'MX' : 'TXT')!
-						"
-						:label="mailFromRecord.type === 'MX' ? 'MAIL FROM MX' : 'MAIL FROM SPF'"
-						:domain="domain.domain"
-						:verification="domain.verificationResults?.mailFrom?.[i]"
-					/>
-				</div>
-
-				<!-- Change the per-domain return-path (bounce) host. Re-verifies
-				     the domain; surfaces the MTA-sync-failure marker. -->
-				<div class="mt-4">
-					<DomainsReturnPathEditor
-						:domain-id="domain._id"
-						:current-host="returnPathHost"
-						:zone="registrableZone"
-						:sync-error="domain.returnPathHostSyncError ?? null"
-						:can-manage="canManageDomains"
-					/>
-				</div>
-			</div>
-		</template>
 	</div>
 </template>

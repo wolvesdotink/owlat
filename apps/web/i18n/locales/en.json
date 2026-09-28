@@ -2653,28 +2653,43 @@
 				"trackingPreviewExample": "For example, your tracking links will use {host}",
 				"useApex": "none (use apex)"
 			},
+			"dnsChecklistSummary": {
+				"allFound": "All {total} records found — this domain is set up.",
+				"copyAll": "Copy all records",
+				"copyOutstanding": "Copy the missing record | Copy the {count} missing records",
+				"copyTitle": "Copies the records as zone-file lines — paste them into your DNS host's import, or send them to whoever manages your DNS.",
+				"jumpTo": "Go to the {label} record",
+				"progress": "{verified} of {total} records found",
+				"progressLabel": "Records found",
+				"stillMissing": "Still to add or fix:",
+				"unchecked": "Add this record at your DNS host — we check for it automatically while this panel is open. | Add these {total} records at your DNS host — we check for them automatically while this panel is open."
+			},
 			"dnsPropagationNote": {
 				"body": "{note} DNS changes can take up to 48 hours to propagate. After adding these records, click \"Verify domain\" to check the configuration.",
 				"noteLabel": "Note:"
+			},
+			"dnsRecordGroup": {
+				"count": "{verified} of {total} found"
 			},
 			"dnsRecordPanel": {
 				"coexistenceWarning": "This domain already publishes an SPF record for another mail provider. Only one {record} record is allowed per host (RFC 7208 §3.2) — a second one breaks SPF for all your mail. Publish the merged record below instead of the value above. SPF allows at most 10 DNS lookups — double-check the merged record stays within that limit.",
 				"copyFoundValue": "Copy found value",
 				"copyFullName": "Copy full name",
 				"copyHost": "Copy host",
+				"copyHostOf": "Copy the {label} name",
 				"copyMergedValue": "Copy merged value",
 				"copyValue": "Copy value",
+				"copyValueOf": "Copy the {label} value",
 				"existingRecord": "Existing record",
 				"found": "Found",
 				"fullName": "Full name",
 				"hostName": "Host / name",
 				"hostNotYetKnown": "Name not known yet — it is {name}, and the selector comes with the value below.",
 				"mergedRecord": "Merged record to publish",
-				"notVerified": "Not verified",
 				"outOfZone": "This record belongs to a different domain, not {domain}. Add it in that domain's DNS zone using the full name shown above.",
 				"outOfZoneNamed": "This record belongs to a different domain ({zone}), not {domain}. Add it in that domain's DNS zone using the full name shown above.",
 				"pendingValueDefault": "Value supplied once this subdomain is added — create the name first, then come back and copy the key.",
-				"providerHint": "Some providers want the full name — use whichever your DNS host expects.",
+				"providerHint": "Use this if your DNS host asks for the full name.",
 				"recordHeading": "{label} record",
 				"rfc": {
 					"dkim": "RFC 6376 (DKIM)",
@@ -2684,8 +2699,12 @@
 				},
 				"standardPill": "Fixed by standard",
 				"standardPillTitle": "This name is set by {rfc} and can't be changed.",
-				"value": "Value",
-				"verified": "Verified"
+				"status": {
+					"mismatch": "Different value found",
+					"missing": "Not found yet",
+					"verified": "Verified"
+				},
+				"value": "Value"
 			},
 			"externalReceiving": {
 				"providers": {
@@ -2845,6 +2864,15 @@
 				"reverifyWarning": "Changing this re-verifies the domain — its status drops to pending until the new records are confirmed.",
 				"saveOperation": "Set return-path host",
 				"syncError": "Couldn't update the bounce host on the mail server — edit and retry."
+			},
+			"sendingDnsSection": {
+				"authentication": {
+					"description": "SPF and DKIM prove Owlat may send as this domain; DMARC tells receivers what to do when a message fails those checks.",
+					"title": "Sender authentication"
+				},
+				"returnPath": {
+					"description": "Bounces come back to this name, and its SPF record lets the bounce address pass SPF checks."
+				}
 			},
 			"streamSubdomainPlanPanel": {
 				"alreadyAdded": "Already added",
@@ -12663,12 +12691,6 @@
 					"title": "Update ready"
 				}
 			}
-		},
-		"domainReadiness": {
-			"addRecords": "Add the {leading} and {last} records to finish setup",
-			"allVerified": "All records verified",
-			"almostReady": "Almost ready — just add the {record} record",
-			"noRecords": "No DNS records to verify yet"
 		},
 		"dualArmAlignment": {
 			"actionLabel": "Review records",
