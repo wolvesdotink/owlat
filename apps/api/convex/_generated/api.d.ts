@@ -289,6 +289,7 @@ import type * as delivery_checklistDnsObservations from '../delivery/checklistDn
 import type * as delivery_checklistDomainValidators from '../delivery/checklistDomainValidators.js';
 import type * as delivery_checklistEvidence from '../delivery/checklistEvidence.js';
 import type * as delivery_checklistGuidance from '../delivery/checklistGuidance.js';
+import type * as delivery_checklistIpv6 from '../delivery/checklistIpv6.js';
 import type * as delivery_checklistLoopback from '../delivery/checklistLoopback.js';
 import type * as delivery_checklistLoopbackState from '../delivery/checklistLoopbackState.js';
 import type * as delivery_checklistProviderDetection from '../delivery/checklistProviderDetection.js';
@@ -311,6 +312,8 @@ import type * as delivery_enqueueTestSend from '../delivery/enqueueTestSend.js';
 import type * as delivery_governedDispatch from '../delivery/governedDispatch.js';
 import type * as delivery_health from '../delivery/health.js';
 import type * as delivery_ipReadinessAlerts from '../delivery/ipReadinessAlerts.js';
+import type * as delivery_ipv6Setup from '../delivery/ipv6Setup.js';
+import type * as delivery_ipv6SetupCheck from '../delivery/ipv6SetupCheck.js';
 import type * as delivery_lastMileRouting from '../delivery/lastMileRouting.js';
 import type * as delivery_marketingCompliance from '../delivery/marketingCompliance.js';
 import type * as delivery_marketingDispatchGate from '../delivery/marketingDispatchGate.js';
@@ -1481,6 +1484,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/checklistDomainValidators': typeof delivery_checklistDomainValidators;
 	'delivery/checklistEvidence': typeof delivery_checklistEvidence;
 	'delivery/checklistGuidance': typeof delivery_checklistGuidance;
+	'delivery/checklistIpv6': typeof delivery_checklistIpv6;
 	'delivery/checklistLoopback': typeof delivery_checklistLoopback;
 	'delivery/checklistLoopbackState': typeof delivery_checklistLoopbackState;
 	'delivery/checklistProviderDetection': typeof delivery_checklistProviderDetection;
@@ -1503,6 +1507,8 @@ declare const fullApi: ApiFromModules<{
 	'delivery/governedDispatch': typeof delivery_governedDispatch;
 	'delivery/health': typeof delivery_health;
 	'delivery/ipReadinessAlerts': typeof delivery_ipReadinessAlerts;
+	'delivery/ipv6Setup': typeof delivery_ipv6Setup;
+	'delivery/ipv6SetupCheck': typeof delivery_ipv6SetupCheck;
 	'delivery/lastMileRouting': typeof delivery_lastMileRouting;
 	'delivery/marketingCompliance': typeof delivery_marketingCompliance;
 	'delivery/marketingDispatchGate': typeof delivery_marketingDispatchGate;

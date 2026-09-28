@@ -49,6 +49,27 @@ function domainRow(index: number) {
 	};
 }
 
+function warmingRow(ips: string[]) {
+	return {
+		phase: 'ramp',
+		totalDailyCap: 50,
+		totalSentToday: 0,
+		ipCount: ips.length,
+		ips: ips.map((ip) => ({
+			ip,
+			phase: 'ramp',
+			currentDay: 1,
+			dailyCap: 50,
+			sentToday: 0,
+			bounceRate: 0,
+			deferralRate: 0,
+			pool: 'campaign',
+			active: true,
+		})),
+		syncedAt: Date.now(),
+	};
+}
+
 describe('Deliverability Center complete materialization', () => {
 	it('explicitly refuses an over-limit collection instead of returning a partial result', () => {
 		expect(() =>
@@ -187,6 +208,48 @@ describe('Deliverability Center complete materialization', () => {
 			'current-value',
 		]);
 		expect(items.find((item) => item.id === 'deployment.port25')?.observed).toEqual([]);
+	});
+
+	it('leaves the IPv6 checks out of the Center while the MTA reports no IPv6 address', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('warmingState', warmingRow(['203.0.113.25']));
+		});
+
+		const center = await t.query(api.delivery.checklist.getCenter, {});
+		const ids = center.groups.flatMap((group) => group.items).map((item) => item.id);
+		expect(center.ipv6).toEqual({ enabled: false, addresses: [] });
+		expect(center.groups.map((group) => group.key)).toEqual([
+			'blocking',
+			'reputation',
+			'recommended',
+		]);
+		expect(ids.filter((id) => id.startsWith('deployment.ipv6_'))).toEqual([]);
+		expect(center.nextItem?.id.startsWith('deployment.ipv6_')).toBe(false);
+	});
+
+	it('groups the IPv6 checks together once the MTA reports an IPv6 address', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('warmingState', warmingRow(['203.0.113.25', '2a01:4f8:c0c:1::25']));
+		});
+
+		const center = await t.query(api.delivery.checklist.getCenter, {});
+		expect(center.ipv6).toEqual({ enabled: true, addresses: ['2a01:4f8:c0c:1::25'] });
+		const ipv6Group = center.groups.find((group) => group.key === 'ipv6');
+		expect(ipv6Group?.items.map((item) => item.id)).toEqual([
+			'deployment.ipv6_address',
+			'deployment.ipv6_source',
+			'deployment.ipv6_ptr',
+			'deployment.ipv6_aaaa',
+			'deployment.ipv6_spf',
+			'deployment.ipv6_pool',
+		]);
+		const elsewhere = center.groups
+			.filter((group) => group.key !== 'ipv6')
+			.flatMap((group) => group.items)
+			.filter((item) => item.id.startsWith('deployment.ipv6_'));
+		expect(elsewhere).toEqual([]);
 	});
 
 	it('refuses more domains than can be safely materialized instead of grading a prefix', async () => {
