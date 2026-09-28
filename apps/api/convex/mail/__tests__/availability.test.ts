@@ -8,7 +8,6 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import {
-	parseIcsInstant,
 	parseIcsBusyIntervals,
 	computeOpenSlots,
 	formatOpenSlots,
@@ -20,30 +19,6 @@ import {
 const HOUR = 60 * 60 * 1000;
 // A fixed instant to anchor the horizon deterministically.
 const NOW = Date.UTC(2026, 6, 6, 12, 0, 0); // 2026-07-06 12:00 UTC
-
-describe('parseIcsInstant', () => {
-	it('parses a UTC date-time', () => {
-		expect(parseIcsInstant('20260708T140000Z')).toEqual({
-			ms: Date.UTC(2026, 6, 8, 14, 0, 0),
-			allDay: false,
-		});
-	});
-	it('parses a floating date-time as UTC', () => {
-		expect(parseIcsInstant('20260708T140000')).toEqual({
-			ms: Date.UTC(2026, 6, 8, 14, 0, 0),
-			allDay: false,
-		});
-	});
-	it('parses a date-only value as all-day', () => {
-		expect(parseIcsInstant('20260708')).toEqual({
-			ms: Date.UTC(2026, 6, 8),
-			allDay: true,
-		});
-	});
-	it('returns null for junk', () => {
-		expect(parseIcsInstant('not-a-date')).toBeNull();
-	});
-});
 
 describe('parseIcsBusyIntervals', () => {
 	it('extracts DTSTART/DTEND busy ranges and ignores event content', () => {
@@ -73,6 +48,78 @@ describe('parseIcsBusyIntervals', () => {
 		expect(parseIcsBusyIntervals(ics)).toEqual([
 			{ start: Date.UTC(2026, 6, 8), end: Date.UTC(2026, 6, 9) },
 		]);
+	});
+
+	it('reads floating times in UTC by default', () => {
+		const ics = 'BEGIN:VEVENT\nDTSTART:20260708T140000\nDTEND:20260708T150000\nEND:VEVENT';
+		expect(parseIcsBusyIntervals(ics)).toEqual([
+			{ start: Date.UTC(2026, 6, 8, 14), end: Date.UTC(2026, 6, 8, 15) },
+		]);
+	});
+
+	it('reads floating and all-day times in the given calendar zone', () => {
+		const ics = [
+			'BEGIN:VEVENT',
+			'DTSTART:20260708T140000',
+			'DTEND:20260708T150000',
+			'END:VEVENT',
+			'BEGIN:VEVENT',
+			'DTSTART;VALUE=DATE:20260709',
+			'END:VEVENT',
+		].join('\r\n');
+		// Berlin is UTC+2 in July.
+		expect(parseIcsBusyIntervals(ics, 'Europe/Berlin')).toEqual([
+			{ start: Date.UTC(2026, 6, 8, 12), end: Date.UTC(2026, 6, 8, 13) },
+			{ start: Date.UTC(2026, 6, 8, 22), end: Date.UTC(2026, 6, 9, 22) },
+		]);
+	});
+
+	it('converts a TZID event from its own zone to the right UTC interval', () => {
+		const ics = [
+			'BEGIN:VCALENDAR',
+			'BEGIN:VEVENT',
+			'DTSTART;TZID=Europe/Berlin:20260708T140000',
+			'DTEND;TZID=Europe/Berlin:20260708T153000',
+			'END:VEVENT',
+			'END:VCALENDAR',
+		].join('\r\n');
+		// 14:00 CEST is 12:00 UTC, whatever the calendar zone is.
+		const expected = [{ start: Date.UTC(2026, 6, 8, 12), end: Date.UTC(2026, 6, 8, 13, 30) }];
+		expect(parseIcsBusyIntervals(ics)).toEqual(expected);
+		expect(parseIcsBusyIntervals(ics, 'America/New_York')).toEqual(expected);
+	});
+
+	it('accepts a lowercase feed', () => {
+		const ics = [
+			'begin:vcalendar',
+			'begin:vevent',
+			'dtstart:20260708T140000Z',
+			'dtend:20260708T150000Z',
+			'end:vevent',
+			'end:vcalendar',
+		].join('\r\n');
+		expect(parseIcsBusyIntervals(ics)).toEqual([
+			{ start: Date.UTC(2026, 6, 8, 14), end: Date.UTC(2026, 6, 8, 15) },
+		]);
+	});
+
+	it('drops events whose end is not after their start, and unparseable starts', () => {
+		const ics = [
+			'BEGIN:VEVENT',
+			'DTSTART:20260708T150000Z',
+			'DTEND:20260708T140000Z',
+			'END:VEVENT',
+			'BEGIN:VEVENT',
+			'DTSTART:not-a-date',
+			'END:VEVENT',
+		].join('\n');
+		expect(parseIcsBusyIntervals(ics)).toEqual([]);
+	});
+
+	it('caps the number of busy intervals', () => {
+		const event = 'BEGIN:VEVENT\nDTSTART:20260708T140000Z\nEND:VEVENT';
+		const ics = Array.from({ length: 2100 }, () => event).join('\n');
+		expect(parseIcsBusyIntervals(ics)).toHaveLength(2000);
 	});
 
 	it('unfolds RFC 5545 folded lines', () => {
@@ -152,6 +199,31 @@ describe('fetchOpenSlots (fail-soft, in-deployment)', () => {
 		expect(fetchImpl).toHaveBeenCalledTimes(1);
 		expect((fetchImpl.mock.calls[0]! as unknown[])[0]).toBe('https://cal.example.test/private.ics');
 		expect(slots.length).toBeGreaterThan(0);
+	});
+
+	it('masks a lowercase feed with TZID events in the owner zone', async () => {
+		// Monday 2026-07-06 12:00 UTC is 14:00 in Berlin; the next slot is 15:00.
+		const blockRestOfMonday = [
+			'begin:vcalendar',
+			'begin:vevent',
+			'dtstart;tzid=Europe/Berlin:20260706T150000',
+			'dtend;tzid=Europe/Berlin:20260706T170000',
+			'end:vevent',
+			'end:vcalendar',
+		].join('\r\n');
+		const fetchImpl = vi.fn(
+			async () => ({ ok: true, text: async () => blockRestOfMonday }) as unknown as Response
+		);
+		const slots = await fetchOpenSlots({
+			icsUrl: 'https://cal.example.test/private.ics',
+			timeZone: 'Europe/Berlin',
+			now: NOW,
+			fetchImpl,
+		});
+		expect(slots).toHaveLength(3);
+		for (const label of slots) expect(label).not.toContain('Jul 6');
+		expect(slots[0]).toContain('Jul 7');
+		expect(slots[0]).toContain('9:00');
 	});
 
 	it('returns [] and never fetches when no source is configured', async () => {
