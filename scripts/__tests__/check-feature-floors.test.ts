@@ -4,8 +4,10 @@
  *
  * The cases run the REAL script's `--generate` half against throwaway
  * `apps/api` trees and pin what it reports: an inline
- * `assertFeatureEnabled(ctx, '<flag>')` inside that flag's gated family, and a
- * bare `authedQuery` / `authedMutation` export under `convex/mail/`. A handler
+ * `assertFeatureEnabled(ctx, '<flag>')` inside that flag's gated family (the
+ * mail.external family and the transactional, campaigns, automations and forms
+ * folders), and a bare `authedQuery` / `authedMutation` export under
+ * `convex/mail/`. A handler
  * on the gated builder, another flag's assert, or a file outside the family is
  * not reported.
  */
@@ -89,6 +91,30 @@ describe('convex feature-floor ratchet', () => {
 		).toEqual(['convex/mail/external/accounts.ts:requireExternal']);
 	});
 
+	it.each([
+		['transactional', 'convex/transactional/translations.ts'],
+		['campaigns', 'convex/campaigns/campaigns.ts'],
+		['automations', 'convex/automations/steps.ts'],
+		['forms', 'convex/forms/endpoints.ts'],
+	])('reports an inline %s assert inside its own folder', async (flag, path) => {
+		expect(
+			await violations({
+				[path]: handler('authedMutation', `\t\tawait assertFeatureEnabled(ctx, '${flag}');`),
+			})
+		).toEqual([`${path}:start`]);
+	});
+
+	it('ignores a sub-flag asserted inside the parent flag folder', async () => {
+		expect(
+			await violations({
+				'convex/campaigns/archiveQueries.ts': handler(
+					'campaignsQuery',
+					"\t\tawait assertFeatureEnabled(ctx, 'campaigns.archive');"
+				),
+			})
+		).toEqual([]);
+	});
+
 	it.each(['authedQuery', 'authedMutation'])(
 		'reports a bare %s export under convex/mail/',
 		async (builder) => {
@@ -104,6 +130,10 @@ describe('convex feature-floor ratchet', () => {
 		'externalMailQuery',
 		'externalMailMutation',
 		'externalMailAdminMutation',
+		'transactionalQuery',
+		'campaignsMutation',
+		'automationsQuery',
+		'formsMutation',
 		'adminQuery',
 		'internalMutation',
 	])('says nothing about a handler on %s', async (builder) => {

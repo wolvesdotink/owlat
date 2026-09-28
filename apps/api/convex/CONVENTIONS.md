@@ -217,9 +217,21 @@ Gated families and their builders:
 | `ai.assistant`               | `assistantQuery`, `assistantMutation`                                    | `assistant/conversations.ts`       |
 | `postbox` or `mail.external` | `postboxQuery`, `postboxMutation` (`featureGatedAny`)                    | `mail/_helpers.ts`                 |
 | `mail.external`              | `externalMailQuery`, `externalMailMutation`, `externalMailAdminMutation` | `mail/external/externalFeature.ts` |
+| `transactional`              | `transactionalQuery`, `transactionalMutation`                            | `transactional/_helpers.ts`        |
+| `campaigns`                  | `campaignsQuery`, `campaignsMutation`                                    | `campaigns/_helpers.ts`            |
+| `automations`                | `automationsQuery`, `automationsMutation`                                | `automations/_helpers.ts`          |
+| `forms`                      | `formsQuery`, `formsMutation`                                            | `forms/_helpers.ts`                |
 
 Actions in the `mail.external` family call `assertExternalEnabled(ctx)` from
-the same module.
+the same module; campaign actions call `assertCampaignsEnabledInAction(ctx)`
+from `campaigns/_helpers.ts`.
+
+A public function in a gated folder whose web caller renders outside the flag's
+route (the campaign sender directory on the team admin page, the sending
+readiness the dashboard's getting-started card reads, the template test send)
+keeps its plain builder and says why in a `// flag-exempt: <reason>` comment
+directly above the export. Gate a function only when every web and desktop
+caller sits behind the flag.
 
 A soft-auth `publicQuery` keeps its inline `assertFeatureEnabled` — a gated
 `publicQuery` would slip past `check-public-functions.sh` and its `// public:`
@@ -235,8 +247,9 @@ reason. A new entry means a handler skipped its gated builder: use the builder.
 When you give another folder gated builders, add its `<flag> <path prefix>` pair
 to `FAMILIES`, and add the builder names to the builder lists in
 `check-permissions.sh`, `check-query-authz.sh`, `check-session-threading.sh`,
-`check-token-redaction.sh` and `check-errors.sh` — a handler on a builder those
-scanners do not know silently leaves their gates.
+`check-token-redaction.sh` and `check-errors.sh` (and to `EXPECTED_BUILDERS` in
+`check-entry-wiring.ts`) — a handler on a builder those scanners do not know
+silently leaves their gates.
 
 ## Permissions
 

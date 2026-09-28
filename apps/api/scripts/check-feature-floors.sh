@@ -8,7 +8,8 @@
 #
 # The generator prints `path:exportName` for
 #   (a) every `assertFeatureEnabled(ctx, '<flag>')` inside a file that belongs
-#       to that flag's gated family (FAMILIES below), and
+#       to that flag's gated family (FAMILIES below: mail.external, and the
+#       transactional, campaigns, automations and forms folders), and
 #   (b) every `export const X = authedQuery(` / `= authedMutation(` under
 #       convex/mail/ — Postbox handlers use `postboxQuery`/`postboxMutation`
 #       (mail/_helpers.ts), the external-mailbox family the `externalMail*`
@@ -33,6 +34,10 @@ cd "$(dirname "$0")/.."
 # that flag inline.
 FAMILIES='
 mail.external convex/mail/
+transactional convex/transactional/
+campaigns convex/campaigns/
+automations convex/automations/
+forms convex/forms/
 '
 
 generate() {
@@ -90,6 +95,11 @@ bare authedQuery/authedMutation (CONVENTIONS.md → Feature-flag floors):
   mail/**                        postboxQuery / postboxMutation (mail/_helpers.ts)
   mail.external family           externalMailQuery / externalMailMutation /
                                  externalMailAdminMutation (mail/external/externalFeature.ts)
+  transactional/**               transactionalQuery / transactionalMutation (transactional/_helpers.ts)
+  campaigns/**                   campaignsQuery / campaignsMutation (campaigns/_helpers.ts);
+                                 actions call assertCampaignsEnabledInAction
+  automations/**                 automationsQuery / automationsMutation (automations/_helpers.ts)
+  forms/**                       formsQuery / formsMutation (forms/_helpers.ts)
 Only a soft-auth publicQuery (marked '// flag-inline:') or a module that
 serves another surface (see mail/_helpers.ts) may be listed in {baseline},
 with its reason." \
