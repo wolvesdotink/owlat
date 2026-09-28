@@ -591,6 +591,7 @@ import type * as integrationImports_providers_stripe_index from '../integrationI
 import type * as integrationImports_suppressions from '../integrationImports/suppressions.js';
 import type * as integrationImports_walker from '../integrationImports/walker.js';
 import type * as knowledge_attachmentIngestBudget from '../knowledge/attachmentIngestBudget.js';
+import type * as knowledge_backfillJobs from '../knowledge/backfillJobs.js';
 import type * as knowledge_edgeBackfill from '../knowledge/edgeBackfill.js';
 import type * as knowledge_edgeInference from '../knowledge/edgeInference.js';
 import type * as knowledge_edges from '../knowledge/edges.js';
@@ -600,6 +601,7 @@ import type * as knowledge_graphAnalytics from '../knowledge/graphAnalytics.js';
 import type * as knowledge_graphAnalyticsRecompute from '../knowledge/graphAnalyticsRecompute.js';
 import type * as knowledge_graphTraversal from '../knowledge/graphTraversal.js';
 import type * as knowledge_maintenance from '../knowledge/maintenance.js';
+import type * as knowledge_messageBackfill from '../knowledge/messageBackfill.js';
 import type * as knowledge_relationDecay from '../knowledge/relationDecay.js';
 import type * as knowledge_retrieval from '../knowledge/retrieval.js';
 import type * as lib_readBody from '../lib/readBody.js';
@@ -1797,6 +1799,7 @@ declare const fullApi: ApiFromModules<{
 	'integrationImports/suppressions': typeof integrationImports_suppressions;
 	'integrationImports/walker': typeof integrationImports_walker;
 	'knowledge/attachmentIngestBudget': typeof knowledge_attachmentIngestBudget;
+	'knowledge/backfillJobs': typeof knowledge_backfillJobs;
 	'knowledge/edgeBackfill': typeof knowledge_edgeBackfill;
 	'knowledge/edgeInference': typeof knowledge_edgeInference;
 	'knowledge/edges': typeof knowledge_edges;
@@ -1806,6 +1809,7 @@ declare const fullApi: ApiFromModules<{
 	'knowledge/graphAnalyticsRecompute': typeof knowledge_graphAnalyticsRecompute;
 	'knowledge/graphTraversal': typeof knowledge_graphTraversal;
 	'knowledge/maintenance': typeof knowledge_maintenance;
+	'knowledge/messageBackfill': typeof knowledge_messageBackfill;
 	'knowledge/relationDecay': typeof knowledge_relationDecay;
 	'knowledge/retrieval': typeof knowledge_retrieval;
 	'lib/readBody': typeof lib_readBody;

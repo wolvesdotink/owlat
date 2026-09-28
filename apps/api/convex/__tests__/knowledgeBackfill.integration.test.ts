@@ -265,7 +265,7 @@ describe('knowledgeBackfill.runChunk — idempotency', () => {
 			});
 		});
 
-		await t.action(internal.agent.knowledgeBackfill.runChunk, {
+		await t.action(internal.knowledge.messageBackfill.runChunk, {
 			jobId,
 			chunkSize: 30,
 		});
@@ -312,7 +312,7 @@ describe('knowledgeBackfill.runChunk — mid-scan disable', () => {
 			});
 		});
 
-		await t.action(internal.agent.knowledgeBackfill.runChunk, {
+		await t.action(internal.knowledge.messageBackfill.runChunk, {
 			jobId,
 			chunkSize: 30,
 		});
@@ -363,7 +363,7 @@ describe('knowledgeBackfill.runChunk — cursor pagination', () => {
 
 		// Run chunk 1 — processes 30 messages, advances cursor to the 30th
 		// message's (receivedAt, _id), schedules chunk 2 (which we don't drain).
-		await t.action(internal.agent.knowledgeBackfill.runChunk, {
+		await t.action(internal.knowledge.messageBackfill.runChunk, {
 			jobId,
 			chunkSize: 30,
 			interChunkDelayMs: 0,
@@ -412,7 +412,7 @@ describe('knowledgeBackfill.runChunk — cursor pagination', () => {
 			});
 		});
 
-		await t.action(internal.agent.knowledgeBackfill.runChunk, {
+		await t.action(internal.knowledge.messageBackfill.runChunk, {
 			jobId,
 			chunkSize: 30,
 			interChunkDelayMs: 0,
@@ -444,7 +444,7 @@ describe('knowledgeBackfill.runChunk — cursor pagination', () => {
 		let cursorReceivedAt: number | undefined;
 		let cursorId: Id<'inboundMessages'> | undefined;
 		for (let guard = 0; guard < 20; guard++) {
-			const page = await t.query(internal.agent.knowledgeBackfill.nextChunk, {
+			const page = await t.query(internal.knowledge.messageBackfill.nextChunk, {
 				cursorReceivedAt,
 				cursorId,
 				limit: 2,
@@ -486,7 +486,7 @@ describe('knowledgeBackfill.cancel', () => {
 
 		const result = await t
 			.withIdentity(testIdentity)
-			.mutation(api.agent.knowledgeBackfill.cancel, {});
+			.mutation(api.knowledge.messageBackfill.cancel, {});
 
 		expect(result).toBe(true);
 
@@ -514,7 +514,7 @@ describe('knowledgeBackfill.cancel', () => {
 			});
 		});
 
-		await t.withIdentity(testIdentity).mutation(api.agent.knowledgeBackfill.cancel, {});
+		await t.withIdentity(testIdentity).mutation(api.knowledge.messageBackfill.cancel, {});
 
 		await t.run(async (ctx) => {
 			const logs = await ctx.db
@@ -530,7 +530,7 @@ describe('knowledgeBackfill.cancel', () => {
 
 		const result = await t
 			.withIdentity(testIdentity)
-			.mutation(api.agent.knowledgeBackfill.cancel, {});
+			.mutation(api.knowledge.messageBackfill.cancel, {});
 		expect(result).toBe(false);
 	});
 
@@ -557,7 +557,7 @@ describe('knowledgeBackfill.cancel', () => {
 		});
 
 		// Calling runChunk on a non-running job should return immediately.
-		await t.action(internal.agent.knowledgeBackfill.runChunk, {
+		await t.action(internal.knowledge.messageBackfill.runChunk, {
 			jobId,
 			chunkSize: 30,
 		});
@@ -576,7 +576,7 @@ describe('knowledgeBackfill.cancel', () => {
 		try {
 			const t = convexTest(schema, modules);
 
-			await expect(t.mutation(api.agent.knowledgeBackfill.cancel, {})).rejects.toThrow(
+			await expect(t.mutation(api.knowledge.messageBackfill.cancel, {})).rejects.toThrow(
 				'Not authenticated'
 			);
 		} finally {
@@ -624,7 +624,7 @@ describe('knowledgeBackfill.getStatus', () => {
 
 		const status = await t
 			.withIdentity(testIdentity)
-			.query(api.agent.knowledgeBackfill.getStatus, {});
+			.query(api.knowledge.messageBackfill.getStatus, {});
 
 		expect(status).toBeDefined();
 		expect(status!.triggeredBy).toBe('new');
@@ -650,7 +650,7 @@ describe('knowledgeBackfill.getStatus', () => {
 			});
 		});
 
-		const status = await t.query(api.agent.knowledgeBackfill.getStatus, {});
+		const status = await t.query(api.knowledge.messageBackfill.getStatus, {});
 		expect(status).toBeNull();
 	});
 
@@ -659,7 +659,54 @@ describe('knowledgeBackfill.getStatus', () => {
 
 		const status = await t
 			.withIdentity(testIdentity)
-			.query(api.agent.knowledgeBackfill.getStatus, {});
+			.query(api.knowledge.messageBackfill.getStatus, {});
 		expect(status).toBeNull();
+	});
+});
+
+// =====================================================================
+// Old-path shim — chunks scheduled before the move still run
+// =====================================================================
+
+describe('agent/knowledgeBackfill shim', () => {
+	it('runs a chunk under the old path and schedules the next one on the new path', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.agent']);
+
+		let jobId!: Id<'knowledgeBackfillJobs'>;
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 3; i++) {
+				const msgId = await ctx.db.insert('inboundMessages', msgData({ receivedAt: 1000 + i }));
+				await ctx.db.insert('knowledgeEntries', preExtractedEntry(msgId));
+			}
+			jobId = await ctx.db.insert('knowledgeBackfillJobs', {
+				status: 'running',
+				triggeredBy: 'test',
+				totalCount: 3,
+				scannedCount: 0,
+				extractedCount: 0,
+				skippedCount: 0,
+				errorCount: 0,
+				startedAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		await t.action(internal.agent.knowledgeBackfill.runChunk, {
+			jobId,
+			chunkSize: 2,
+			interChunkDelayMs: 0,
+		});
+
+		await t.run(async (ctx) => {
+			const job = await ctx.db.get(jobId);
+			expect(job!.status).toBe('running');
+			expect(job!.scannedCount).toBe(2);
+			expect(job!.skippedCount).toBe(2);
+
+			const scheduled = await ctx.db.system.query('_scheduled_functions').collect();
+			const next = scheduled.filter((job) => job.name.includes('runChunk'));
+			expect(next.map((job) => job.name)).toEqual(['knowledge/messageBackfill:runChunk']);
+		});
 	});
 });

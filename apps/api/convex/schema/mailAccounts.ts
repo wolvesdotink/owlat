@@ -305,7 +305,7 @@ export const mailAccountsTables = {
 		messagesFailed: v.optional(v.number()),
 		messagesIndexed: v.number(), // messages swept into the knowledge graph
 
-		// Index-sweep cursor over mailMessages (mirrors knowledgeBackfill).
+		// Index-sweep cursor over mailMessages (mirrors knowledge/messageBackfill).
 		indexCursorReceivedAt: v.optional(v.number()),
 		indexCursorId: v.optional(v.id('mailMessages')),
 
