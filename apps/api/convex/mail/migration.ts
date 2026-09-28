@@ -28,9 +28,10 @@
 import { v } from 'convex/values';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
+import { externalMailMutation } from './external/externalFeature';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { getLivePersonalExternalAccountForUser } from './external/personalAccount';
@@ -264,6 +265,7 @@ export async function cancelMigrationForAccount(
 export const getStatus = publicQuery({
 	args: {},
 	handler: async (ctx) => {
+		// flag-inline: soft-auth publicQuery — a gated builder would bypass check-public-functions.
 		await assertFeatureEnabled(ctx, 'mail.external');
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.role) return null;
@@ -285,10 +287,9 @@ export const getStatus = publicQuery({
  * indexing is enabled only when the `ai.knowledge` feature is on.
  */
 // authz: self — operates only on the caller's own connected external mailbox (by_user on the session userId)
-export const start = authedMutation({
+export const start = externalMailMutation({
 	args: { source: v.optional(migrationSourceValidator) },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'mail.external');
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.activeOrganizationId || !s.role) throwForbidden('Not authenticated');
 
@@ -321,10 +322,9 @@ export const start = authedMutation({
  * status and exits. Already-imported mail + extracted knowledge are kept.
  */
 // authz: self — cancels only the caller's own migration (resolved via by_user on the session userId)
-export const cancel = authedMutation({
+export const cancel = externalMailMutation({
 	args: {},
 	handler: async (ctx) => {
-		await assertFeatureEnabled(ctx, 'mail.external');
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.role) throwForbidden('Not authenticated');
 		// The caller's LIVE PERSONAL account only — cancelling must never reach a

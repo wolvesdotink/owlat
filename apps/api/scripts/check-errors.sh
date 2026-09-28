@@ -74,7 +74,10 @@ fi
 #   chat/_helpers.ts        chatQuery chatMutation          (featureGated 'chat')
 #   assistant/conversations.ts
 #                           assistantQuery assistantMutation (featureGated 'ai')
-PUBLIC_BUILDERS='query|mutation|action|authedQuery|authedMutation|authedAction|authedIdentityMutation|adminQuery|adminMutation|ownerMutation|publicQuery|publicMutation|publicAction|chatQuery|chatMutation|assistantQuery|assistantMutation'
+#   mail/external/externalFeature.ts
+#                           externalMailQuery externalMailMutation
+#                           externalMailAdminMutation (featureGated 'mail.external')
+PUBLIC_BUILDERS='query|mutation|action|authedQuery|authedMutation|authedAction|authedIdentityMutation|adminQuery|adminMutation|ownerMutation|publicQuery|publicMutation|publicAction|chatQuery|chatMutation|assistantQuery|assistantMutation|externalMailQuery|externalMailMutation|externalMailAdminMutation'
 
 bare_throws=$(find convex -name "*.ts" \
 	-not -path "*/_generated/*" \

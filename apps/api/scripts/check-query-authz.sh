@@ -90,7 +90,7 @@ generate() {
 			{
 				is_comment = ($0 ~ /^[[:space:]]*\/\//)
 				is_optout  = ($0 ~ /\/\/[[:space:]]*(authz|all-members):/)
-				is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedQuery|chatQuery|assistantQuery|postboxQuery|publicQuery|publicAction)\(/)
+				is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedQuery|chatQuery|assistantQuery|postboxQuery|externalMailQuery|publicQuery|publicAction)\(/)
 			}
 			is_comment && is_optout { block_optout = 1 }
 			is_export {

@@ -247,6 +247,22 @@ describe('setSendingPreference — round-trips and gating', () => {
 		).rejects.toThrow();
 	});
 
+	it('refuses either preference with mail.external off (externalMailMutation floor)', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': false });
+		const mailboxId = await connectMailbox(t);
+		await seedVerifiedDomain(t, 'example.com');
+
+		for (const preference of ['instance', 'external'] as const) {
+			await expect(
+				t.mutation(api.mail.sendingSwitch.setSendingPreference, { preference })
+			).rejects.toThrow(/"category":"forbidden".*"feature":"mail\.external"/);
+		}
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(mailboxId))?.outboundPreference).toBeUndefined();
+		});
+	});
+
 	it('refuses the instance switch when no transport is configured', async () => {
 		const t = convexTest(schema, modules);
 		mtaMocks.configured = false;

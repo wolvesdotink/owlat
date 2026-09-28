@@ -188,6 +188,30 @@ describe('mail.migration.start', () => {
 		});
 	});
 
+	it('refuses start and cancel, personal and shared, with mail.external off', async () => {
+		const t = convexTest(schema, modules);
+		await enableFlags(t, { 'mail.external': false });
+		await connect(t);
+		const { mailboxId } = await connectTeamInbox(t);
+		const disabled = /"category":"forbidden".*"feature":"mail\.external"/;
+
+		setSession('user-A', 'owner');
+		await expect(t.mutation(api.mail.migration.start, {})).rejects.toThrow(disabled);
+		await expect(t.mutation(api.mail.migration.cancel, {})).rejects.toThrow(disabled);
+		setSession('admin-user', 'admin');
+		await expect(t.mutation(api.mail.migrationShared.startShared, { mailboxId })).rejects.toThrow(
+			disabled
+		);
+		await expect(t.mutation(api.mail.migrationShared.cancelShared, { mailboxId })).rejects.toThrow(
+			disabled
+		);
+		// The soft-failing read stays null rather than throwing.
+		expect(await t.query(api.mail.migrationShared.getStatusShared, { mailboxId })).toBeNull();
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('mailboxMigrations').collect()).toHaveLength(0);
+		});
+	});
+
 	it('rejects when no mailbox is connected', async () => {
 		const t = convexTest(schema, modules);
 		await enableFlags(t, { 'mail.external': true });

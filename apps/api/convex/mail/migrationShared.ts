@@ -31,8 +31,9 @@
  */
 
 import { v } from 'convex/values';
-import { authedMutation, authedQuery } from '../lib/authedFunctions';
-import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
+import { authedQuery } from '../lib/authedFunctions';
+import { isFeatureEnabled } from '../lib/featureFlags';
+import { externalMailMutation } from './external/externalFeature';
 import {
 	migrationSourceValidator,
 	startMigrationForAccount,
@@ -51,14 +52,13 @@ import { requireSharedExternalAccount, resolveSharedExternalAccount } from './ex
  * is honoured only when the `ai.knowledge` feature is on — the default is off.
  */
 // authz: requireSharedExternalAccount → requireMailboxAccess(owner) + shared-external gate.
-export const startShared = authedMutation({
+export const startShared = externalMailMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		source: v.optional(migrationSourceValidator),
 		indexKnowledge: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args, session) => {
-		await assertFeatureEnabled(ctx, 'mail.external');
 		const { mailbox, account } = await requireSharedExternalAccount(ctx, args.mailboxId);
 		const isAiIndexingEnabled =
 			args.indexKnowledge === true && (await isFeatureEnabled(ctx, 'ai.knowledge'));
@@ -104,10 +104,9 @@ export const getStatusShared = authedQuery({
  * Returns whether there was something to cancel.
  */
 // authz: requireSharedExternalAccount → requireMailboxAccess(owner) + shared-external gate.
-export const cancelShared = authedMutation({
+export const cancelShared = externalMailMutation({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'mail.external');
 		const { account } = await requireSharedExternalAccount(ctx, args.mailboxId);
 		return await cancelMigrationForAccount(ctx, account);
 	},

@@ -17,9 +17,10 @@
  * rather than the route guard being the only check.
  *
  * NOT for every file under `mail/`:
- *   - modules that already assert the stricter `mail.external` on their own
- *     (mailbox move, external accounts, the migration family) keep that gate —
- *     any-of would widen it.
+ *   - modules behind the stricter `mail.external` alone (mailbox move,
+ *     external accounts, the migration family, the sending switch) use the
+ *     `externalMail*` builders from `external/externalFeature.ts` instead —
+ *     any-of would widen their gate.
  *   - modules that serve another surface keep theirs: the shared team inbox
  *     (`inbox`), the AI handling rules (`ai.autonomy`), invitation acceptance
  *     and the team roster (reachable before any mail flag is on).

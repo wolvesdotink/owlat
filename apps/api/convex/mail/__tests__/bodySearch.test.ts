@@ -177,6 +177,30 @@ describe('mail.bodySearchBackfill', () => {
 		await expect(t.mutation(api.mail.bodySearchBackfill.start, { mailboxId })).rejects.toThrow();
 	});
 
+	// The Postbox floor (`postboxMutation`): with neither mailbox source enabled
+	// the surface does not exist, even for the owner with indexing switched on.
+	it('refuses start and cancel when neither postbox nor mail.external is on', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t);
+		await seedFolder(t, mailboxId);
+		await setIndexing(t, true);
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').first();
+			if (!settings) throw new Error('instance settings missing');
+			await ctx.db.patch(settings._id, {
+				featureFlags: { ...settings.featureFlags, postbox: false, 'mail.external': false },
+			});
+		});
+
+		await expect(t.mutation(api.mail.bodySearchBackfill.start, { mailboxId })).rejects.toThrow(
+			/"category":"forbidden".*"features":\["postbox","mail\.external"\]/
+		);
+		await expect(t.mutation(api.mail.bodySearchBackfill.cancel, { mailboxId })).rejects.toThrow(
+			/"category":"forbidden".*"features":\["postbox","mail\.external"\]/
+		);
+		expect(await t.query(api.mail.bodySearchBackfill.status, { mailboxId })).toBeNull();
+	});
+
 	it('refuses a non-owner', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox(t, { userId: 'user-A' });

@@ -34,9 +34,10 @@
 
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
-import { authedMutation, adminMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole, hasPermission } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
+import { externalMailMutation, externalMailAdminMutation } from './external/externalFeature';
 import { provisionMailbox } from './mailbox/identity';
 import { stopExternalAccountSync } from './external/accountTeardown';
 import { getOptional } from '../lib/env';
@@ -81,6 +82,7 @@ function inboundMailHost(): string | null {
 export const moveStatus = publicQuery({
 	args: {},
 	handler: async (ctx) => {
+		// flag-inline: soft-auth publicQuery — a gated builder would bypass check-public-functions.
 		await assertFeatureEnabled(ctx, 'mail.external');
 		const mailHost = inboundMailHost();
 
@@ -152,10 +154,9 @@ export const moveStatus = publicQuery({
  * fully live throughout — nothing about the connected account changes here.
  */
 // authz: self — operates on the caller's own external mailbox (by_user).
-export const start = authedMutation({
+export const start = externalMailMutation({
 	args: {},
 	handler: async (ctx) => {
-		await assertFeatureEnabled(ctx, 'mail.external');
 		const resolved = await getCallerExternalMailbox(ctx);
 		if (!resolved) throwNotFound('External mail account');
 		const { session, account, mailbox } = resolved;
@@ -219,11 +220,10 @@ export const start = authedMutation({
  * then it sits empty and the external account keeps delivering, so provisioning
  * is safe to do early.
  */
-// authz: admin — the adminMutation wrapper gates hosted-mailbox creation.
-export const provisionHosted = adminMutation({
+// authz: admin — the externalMailAdminMutation wrapper (adminMutation + mail.external) gates hosted-mailbox creation.
+export const provisionHosted = externalMailAdminMutation({
 	args: { moveId: v.id('mailboxMoves') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'mail.external');
 		// The wrapper already enforced the admin floor; we still need the session
 		// for the acting user + org scope.
 		const session = await getBetterAuthSessionWithRole(ctx);
@@ -295,10 +295,9 @@ export const provisionHosted = adminMutation({
  * first). Self — the mover archives their own move.
  */
 // authz: self — archives only the caller's own move.
-export const archive = authedMutation({
+export const archive = externalMailMutation({
 	args: {},
 	handler: async (ctx) => {
-		await assertFeatureEnabled(ctx, 'mail.external');
 		const { move } = await requireCallerMove(ctx);
 
 		// Idempotent terminal state.
@@ -338,10 +337,9 @@ export const archive = authedMutation({
 
 /** Pause the move (fail-soft resume point). No-op once archived. Self. */
 // authz: self — pauses only the caller's own move.
-export const pause = authedMutation({
+export const pause = externalMailMutation({
 	args: {},
 	handler: async (ctx) => {
-		await assertFeatureEnabled(ctx, 'mail.external');
 		const { move } = await requireCallerMove(ctx);
 		if (move.stage === 'archived' || move.isPaused) {
 			return { isPaused: move.isPaused };
@@ -353,10 +351,9 @@ export const pause = authedMutation({
 
 /** Resume a paused move. Idempotent. Self. */
 // authz: self — resumes only the caller's own move.
-export const resume = authedMutation({
+export const resume = externalMailMutation({
 	args: {},
 	handler: async (ctx) => {
-		await assertFeatureEnabled(ctx, 'mail.external');
 		const { move } = await requireCallerMove(ctx);
 		if (!move.isPaused) {
 			return { isPaused: false };
@@ -381,10 +378,9 @@ export const resume = authedMutation({
  * back (or archive) first — honoring the in-flow "nothing is lost" promise.
  */
 // authz: self — cancels only the caller's own move.
-export const cancel = authedMutation({
+export const cancel = externalMailMutation({
 	args: {},
 	handler: async (ctx) => {
-		await assertFeatureEnabled(ctx, 'mail.external');
 		const { session, move } = await requireCallerMove(ctx);
 		if (move.stage === 'archived') {
 			throwInvalidState("This move is already complete and can't be cancelled");

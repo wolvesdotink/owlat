@@ -18,9 +18,10 @@
  */
 
 import { v } from 'convex/values';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
+import { externalMailMutation } from './external/externalFeature';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { checkEmailDomainVerification } from '../domains/domains';
 import { getMtaConfig } from './mtaClient';
@@ -72,6 +73,7 @@ async function getCallerActiveExternalMailbox(ctx: QueryCtx | MutationCtx): Prom
 export const sendingSwitchStatus = publicQuery({
 	args: {},
 	handler: async (ctx) => {
+		// flag-inline: soft-auth publicQuery — a gated builder would bypass check-public-functions.
 		await assertFeatureEnabled(ctx, 'mail.external');
 		const resolved = await getCallerActiveExternalMailbox(ctx);
 		if (!resolved) return { configured: false as const };
@@ -121,10 +123,9 @@ export const sendingSwitchStatus = publicQuery({
  * decision was made).
  */
 // authz: self — operates on the caller's own external mailbox (by_user on s.userId).
-export const setSendingPreference = authedMutation({
+export const setSendingPreference = externalMailMutation({
 	args: { preference: v.union(v.literal('external'), v.literal('instance')) },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'mail.external');
 		const resolved = await getCallerActiveExternalMailbox(ctx);
 		if (!resolved) throwNotFound('External mail account');
 		const { session, mailbox } = resolved;
