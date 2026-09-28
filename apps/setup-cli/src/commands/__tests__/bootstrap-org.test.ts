@@ -31,7 +31,7 @@ vi.mock('../../lib/backend', () => ({
 	loadBackendContext: vi.fn(async () => {
 		throw new Error('loadBackendContext must not be reached for a placeholder password');
 	}),
-	postJson: vi.fn(),
+	postWithSpinner: vi.fn(),
 }));
 
 import * as clack from '@clack/prompts';

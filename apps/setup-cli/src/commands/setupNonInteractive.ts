@@ -8,20 +8,18 @@
  *      forever. A complete config is assembled from sensible defaults (plus
  *      environment overrides) instead.
  *
- * Both apply through `buildSetupFromConfig` — the SAME mapper — so the
- * interactive wizard, the config file, and the headless defaults can never
- * drift. Split out of `commands/setup.ts` (which keeps the interactive TUI) so
+ * Both resolve through `buildSetupFromConfig` — the SAME mapper — and write
+ * through `persistResolvedSetup`, which the interactive wizard uses too, so
+ * the config file and the headless defaults cannot drift. Split out of `commands/setup.ts` (which keeps the interactive TUI) so
  * each file stays under the file-size cap; `runSetup` delegates here.
  */
 
 import { log } from '@clack/prompts';
 import pc from 'picocolors';
 import { readFile } from 'node:fs/promises';
-import { readEnv, writeEnv, type EnvMap } from '../lib/env';
-import { sealRelayPasswordForBackup } from '@owlat/shared/envBackupBox';
+import { readEnv, type EnvMap } from '../lib/env';
 import { generateSecret } from '@owlat/shared/setupSecrets';
-import { writeComposeOverride } from '../lib/override';
-import { saveFlagState } from '../lib/flagState';
+import { persistResolvedSetup } from '../lib/persistSetup';
 import { createReporter, SetupStep } from '../lib/progress';
 import {
 	parseSetupConfig,
@@ -75,16 +73,14 @@ export async function applyConfigFile({
 		return 1;
 	}
 
-	// Seal the SMTP relay password in the `.env` BACKUP copy so it is never
-	// persisted in plaintext (the deploy reseed unseals it before the live push).
-	const envBackup = sealRelayPasswordForBackup(resolved.env);
-	await writeEnv(envPath, envBackup);
-	const profiles = await writeComposeOverride(overridePath, resolved.flags, {
+	const profiles = await persistResolvedSetup({
+		owlatDir,
+		envPath,
+		overridePath,
+		env: resolved.env,
+		flags: resolved.flags,
 		hosted: resolved.hosted,
 	});
-	// Canonicalize COMPOSE_PROFILES in .env (updater + bare docker compose read it).
-	await writeEnv(envPath, { ...envBackup, COMPOSE_PROFILES: profiles.join(',') });
-	await saveFlagState(owlatDir, resolved.flags);
 
 	reporter.ok(`profiles: ${profiles.join(', ') || 'none'}`);
 	if (!reporter.isJson) {
@@ -105,9 +101,10 @@ interface ApplyArgs {
 /**
  * Apply the headless `--assume-yes` configuration: produces the exact same
  * `.env` + compose override + flag-state the terminal wizard would, but from
- * defaults/environment instead of prompts. Routes through
- * `buildSetupFromConfig` (shared with the `--config` path) so the
- * non-interactive routes cannot diverge.
+ * defaults/environment instead of prompts. Resolves through
+ * `buildSetupFromConfig` (shared with the `--config` path) and writes through
+ * `persistResolvedSetup` (shared with every setup route), so neither half of
+ * the non-interactive routes can diverge.
  */
 export async function applyAssumeYes({
 	owlatDir,
@@ -124,16 +121,14 @@ export async function applyAssumeYes({
 		return 1;
 	}
 
-	// Seal the SMTP relay password in the `.env` BACKUP copy so it is never
-	// persisted in plaintext (the deploy reseed unseals it before the live push).
-	const envBackup = sealRelayPasswordForBackup(resolved.env);
-	await writeEnv(envPath, envBackup);
-	const profiles = await writeComposeOverride(overridePath, resolved.flags, {
+	const profiles = await persistResolvedSetup({
+		owlatDir,
+		envPath,
+		overridePath,
+		env: resolved.env,
+		flags: resolved.flags,
 		hosted: resolved.hosted,
 	});
-	// Canonicalize COMPOSE_PROFILES in .env (updater + bare docker compose read it).
-	await writeEnv(envPath, { ...envBackup, COMPOSE_PROFILES: profiles.join(',') });
-	await saveFlagState(owlatDir, resolved.flags);
 
 	log.success(
 		`Wrote ${pc.cyan(envPath)} and ${pc.cyan(overridePath)} from assume-yes defaults ` +

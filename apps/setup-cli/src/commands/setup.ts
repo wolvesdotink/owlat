@@ -40,10 +40,8 @@ import {
 import { isOwnSendProviderKind } from '@owlat/shared/sendProviderCatalog';
 import { readEnv, writeEnv, mergeEnv, type EnvMap } from '../lib/env';
 import { ensureSecrets } from '@owlat/shared/setupSecrets';
-import { sealRelayPasswordForBackup } from '@owlat/shared/envBackupBox';
 import { generateSetupToken } from '@owlat/shared/setupToken';
-import { writeComposeOverride } from '../lib/override';
-import { saveFlagState } from '../lib/flagState';
+import { persistResolvedSetup } from '../lib/persistSetup';
 import type { DeploymentMode } from '../lib/setupConfig';
 import { applySetupDefaults } from '../lib/setupEnvDefaults';
 import { assertFblDedupCutoverConfigured } from '../lib/fblDedupSetup';
@@ -205,19 +203,14 @@ export async function runSetup(opts: RunOptions): Promise<number> {
 	// path (lib/setupEnvDefaults.applySetupDefaults) so the two can't diverge.
 	applySetupDefaults(withSecrets, deploymentMode as DeploymentMode, flags, !hasPriorInstall);
 
-	// Seal the SMTP relay password in the `.env` BACKUP copy so it is never
-	// persisted in plaintext. The deploy step reseeds from `.env` through
-	// `selectRuntimeEnvVars`, which unseals sealed tokens before the live push,
-	// so the working credential still reaches the deployment env store.
-	const envBackup = sealRelayPasswordForBackup(withSecrets);
-	await writeEnv(envPath, envBackup);
-	const profiles = await writeComposeOverride(overridePath, flags, { hosted });
-	// Canonicalize COMPOSE_PROFILES in .env (updater + bare docker compose read it; MTA is opt-in now).
-	await writeEnv(envPath, { ...envBackup, COMPOSE_PROFILES: profiles.join(',') });
-	// Mirror the resolved flag state to .owlat-flags.json so `doctor`,
-	// `feature`, and `pack` operate on the same baseline the wizard chose
-	// (without it they recompute from defaults and silently drop selections).
-	await saveFlagState(opts.owlatDir, flags);
+	const profiles = await persistResolvedSetup({
+		owlatDir: opts.owlatDir,
+		envPath,
+		overridePath,
+		env: withSecrets,
+		flags,
+		hosted,
+	});
 
 	s.stop(
 		`Wrote ${pc.cyan(envPath)} and ${pc.cyan(overridePath)} (profiles: ${profiles.join(', ') || 'none'})`
