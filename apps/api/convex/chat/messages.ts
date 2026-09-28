@@ -20,11 +20,10 @@ import {
 	getMembership,
 	getRoomOrThrow,
 	isMailThreadDiscussion,
-	loadProfileSummary,
 	requireMessageText,
 	ASSISTANT_AUTHOR_ID,
-	type ProfileSummary,
 } from './_helpers';
+import { loadProfileSummary, type ProfileSummary } from '../lib/userProfiles';
 import { insertRoomMessage } from './messageInsert';
 import { isChatAttachment } from './attachmentAccess';
 import {

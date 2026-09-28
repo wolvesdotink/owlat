@@ -10,6 +10,7 @@ import { adminMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { getMutationContext } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
+import { isLiveOrgMember, loadProfileSummary } from '../lib/userProfiles';
 import { transition as threadTransition } from './threads/module';
 import type { CancelAutoSendOutcome, TransitionOutcome } from './processingLifecycle';
 import { resolveHumanApproveUndoDelayMs } from './processingLifecycle/effects';
@@ -224,18 +225,12 @@ export const assignThread = adminMutation({
 	handler: async (ctx, args) => {
 		const { userId: actorId } = await getMutationContext(ctx);
 
-		// Validate the assignee is a real instance user — assignedTo is a
-		// free-form string, so without this an admin could assign a thread to a
-		// bogus or foreign id that no member-facing UI could ever surface or
-		// clear. Resolve against userProfiles.by_auth_user_id.
-		if (args.assignedTo !== undefined) {
-			const profile = await ctx.db
-				.query('userProfiles')
-				.withIndex('by_auth_user_id', (q) => q.eq('authUserId', args.assignedTo!))
-				.first();
-			if (!profile) {
-				throwInvalidState('Cannot assign a thread to a non-member');
-			}
+		// Validate the assignee is a live org member — assignedTo is a free-form
+		// string, so without this an admin could assign a thread to a bogus,
+		// foreign or soft-deleted id that no member-facing UI could ever surface
+		// or clear.
+		if (args.assignedTo !== undefined && !(await isLiveOrgMember(ctx, args.assignedTo))) {
+			throwInvalidState('Cannot assign a thread to a non-member');
 		}
 
 		const outcome = await threadTransition(ctx, {
@@ -251,11 +246,8 @@ export const assignThread = adminMutation({
 		// missing thread/profile just skips the notice, it never fails the assign.
 		if (args.assignedTo !== undefined && args.assignedTo !== actorId) {
 			const thread = await ctx.db.get(args.threadId);
-			const actorProfile = await ctx.db
-				.query('userProfiles')
-				.withIndex('by_auth_user_id', (q) => q.eq('authUserId', actorId))
-				.first();
-			const assignedByName = actorProfile?.name?.trim() || actorProfile?.email || 'A teammate';
+			const actorProfile = await loadProfileSummary(ctx, actorId);
+			const assignedByName = actorProfile.name?.trim() || actorProfile.email || 'A teammate';
 			await ctx.db.insert('inboxAssignmentNotices', {
 				userId: args.assignedTo,
 				threadId: args.threadId,

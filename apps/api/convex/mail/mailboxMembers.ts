@@ -35,41 +35,21 @@ import { requireAdminContext, getBetterAuthSessionWithRole } from '../lib/sessio
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { requireMailboxAccess } from './permissions';
 import { createProvisionedMailbox, canonicalAddress } from './mailbox/identity';
-
-/** Resolve a member's display fields from their `userProfiles` row. */
-async function loadMemberProfile(
-	ctx: Parameters<typeof getBetterAuthSessionWithRole>[0],
-	authUserId: string
-): Promise<{ name: string | null; email: string | null; image: string | null }> {
-	const row = await ctx.db
-		.query('userProfiles')
-		.withIndex('by_auth_user_id', (q) => q.eq('authUserId', authUserId))
-		.first();
-	return {
-		name: row?.name ?? null,
-		email: row?.email ?? null,
-		image: row?.image ?? null,
-	};
-}
+import { assertLiveOrgMembers, loadProfileSummary } from '../lib/userProfiles';
 
 /**
- * Assert `authUserId` is a live member of this deployment's organization — a
- * non-deleted `userProfiles` row exists for them (single-org-per-deployment, so
- * a profile row IS org membership; see project memory "Single Org Per
- * Deployment"). The write-side floor under the members picker: without it,
+ * Assert `authUserId` is a live member of this deployment's organization (the
+ * rule lives in `lib/userProfiles.ts`). The write-side floor under the members
+ * picker: without it,
  * `createShared` / `addMember` / `transferOwnership` would accept an arbitrary
  * user-id string, and `transferOwnership` would point canonical ownership at a
  * nonexistent id — bricking the inbox for its owner. `requireMailboxAccess`
  * already blocks cross-org READS; this blocks bogus WRITES.
  */
 export async function assertOrgMemberUser(ctx: MutationCtx, authUserId: string): Promise<void> {
-	const profile = await ctx.db
-		.query('userProfiles')
-		.withIndex('by_auth_user_id', (q) => q.eq('authUserId', authUserId))
-		.first();
-	if (!profile || profile.deletedAt !== undefined) {
-		throwInvalidInput('That person is not a member of your organization.');
-	}
+	await assertLiveOrgMembers(ctx, [authUserId], {
+		message: 'That person is not a member of your organization.',
+	});
 }
 
 /**
@@ -201,7 +181,7 @@ export const listShared = adminQuery({
 				);
 				const members = await Promise.all(
 					rows.map(async (row) => {
-						const profile = await loadMemberProfile(ctx, row.authUserId);
+						const profile = await loadProfileSummary(ctx, row.authUserId);
 						return {
 							authUserId: row.authUserId,
 							role: row.role,
@@ -259,7 +239,7 @@ export const members = postboxQuery({
 		rows.sort((a, b) => b.createdAt - a.createdAt);
 		return await Promise.all(
 			rows.map(async (row) => {
-				const profile = await loadMemberProfile(ctx, row.authUserId);
+				const profile = await loadProfileSummary(ctx, row.authUserId);
 				return {
 					_id: row._id,
 					authUserId: row.authUserId,
