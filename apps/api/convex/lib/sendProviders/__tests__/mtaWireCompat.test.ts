@@ -432,6 +432,7 @@ describe('MTA -> Convex ip-reputation snapshot bytes', () => {
 			phase: 'ramp',
 			ipCount: 1,
 			totalSentToday: 400,
+			pools: { transactional: [], campaign: ['192.0.2.10'] },
 		});
 		expect(normalized?.ips[0]).toMatchObject({ ip: '192.0.2.10', dailyCap: expect.any(Number) });
 	});

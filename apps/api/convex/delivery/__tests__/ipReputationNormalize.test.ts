@@ -27,6 +27,28 @@ describe('normalizeIpReputationPayload', () => {
 		expect(result?.ips[0]).not.toHaveProperty('dnsbl');
 	});
 
+	it('carries the configured pools verbatim, since a row names only its first pool', () => {
+		const result = normalizeIpReputationPayload({
+			date: '2026-07-21',
+			ips: [{ ...legacyIp, pool: 'transactional' }],
+			pools: { transactional: ['203.0.113.10'], campaign: ['203.0.113.10'] },
+		});
+		expect(result?.pools).toEqual({
+			transactional: ['203.0.113.10'],
+			campaign: ['203.0.113.10'],
+		});
+	});
+
+	it('drops a malformed pools field instead of the whole snapshot', () => {
+		const result = normalizeIpReputationPayload({
+			date: '2026-07-21',
+			ips: [legacyIp],
+			pools: { transactional: '203.0.113.10' },
+		});
+		expect(result).toMatchObject({ ipCount: 1 });
+		expect(result).not.toHaveProperty('pools');
+	});
+
 	it('normalizes the nested runtime checklist into Convex-compatible optional fields', () => {
 		const result = normalizeIpReputationPayload({
 			date: '2026-07-21',
