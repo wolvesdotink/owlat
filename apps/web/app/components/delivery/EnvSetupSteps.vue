@@ -39,12 +39,15 @@ const props = withDefaults(
 		 * the blocks show but nothing polls or claims to be waiting.
 		 */
 		awaitConnection?: boolean;
+		/** What loads the change after `owlat env`; defaults to `owlat restart`. */
+		applyCommands?: readonly string[];
 	}>(),
 	{
 		connectedLabel: undefined,
 		pollIntervalMs: ENV_CONNECTION_POLL_MS,
 		values: undefined,
 		awaitConnection: true,
+		applyCommands: undefined,
 	}
 );
 
@@ -54,7 +57,9 @@ const { t } = useI18n();
 const { copy, isCopied } = useCopyToClipboard();
 
 const envSnippet = computed(() => buildDeliveryEnvSnippet(props.variables, props.values));
-const cliCommands = computed(() => buildEnvCliCommands(props.variables, props.values));
+const cliCommands = computed(() =>
+	buildEnvCliCommands(props.variables, props.values, props.applyCommands)
+);
 const showBlocks = computed(() => !props.connected && envSnippet.value !== '');
 const isWaiting = computed(() => showBlocks.value && props.awaitConnection);
 

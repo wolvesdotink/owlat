@@ -48,12 +48,18 @@ const groupIcon = {
 	blocking: 'lucide:shield-alert',
 	reputation: 'lucide:trending-up',
 	recommended: 'lucide:sparkles',
+	ipv6: 'lucide:globe',
 } as const;
 </script>
 
 <template>
 	<div id="deliverability-checklist" class="space-y-5">
-		<section v-for="group in groups" :key="group.key" :aria-labelledby="`${group.key}-heading`">
+		<section
+			v-for="group in groups"
+			:key="group.key"
+			:aria-labelledby="`${group.key}-heading`"
+			:data-testid="`checklist-group-${group.key}`"
+		>
 			<div class="mb-2 flex items-start gap-3 px-1">
 				<Icon :name="groupIcon[group.key]" class="mt-0.5 h-5 w-5 shrink-0 text-text-tertiary" />
 				<div>

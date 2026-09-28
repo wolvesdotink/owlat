@@ -339,6 +339,9 @@ async function copyReport() {
 					@verify="verify"
 				/>
 
+				<!-- Once IPv6 is on, its checks arrive as their own group above. -->
+				<DeliveryDeliverabilityIpv6Setup v-if="!center.ipv6.enabled" :groups="center.groups" />
+
 				<DeliveryDeliverabilityLoopbackCard
 					:domains="center.loopback.domains"
 					:is-starting="isStartingLoopback"

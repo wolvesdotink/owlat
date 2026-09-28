@@ -12,6 +12,12 @@ import {
 import { literalUnion } from '../lib/convexValidators';
 
 /** Readiness fields shared by the warming-state table and its sync mutation. */
+/** The MTA's configured IP pools, as reported with its warming snapshot. */
+export const warmingPoolsValidator = v.object({
+	transactional: v.array(v.string()),
+	campaign: v.array(v.string()),
+});
+
 export const ipReadinessFieldValidators = {
 	blockReasons: v.optional(v.array(literalUnion(IP_READINESS_BLOCK_REASONS))),
 	dnsblListings: v.optional(v.array(literalUnion(DNSBL_LIST_IDS))),

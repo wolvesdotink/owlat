@@ -8,7 +8,7 @@ import {
 	deliverabilityStatusValidator,
 	messageTypeValidator,
 } from '../lib/convexValidators';
-import { ipReadinessFieldValidators } from '../delivery/readinessValidators';
+import { ipReadinessFieldValidators, warmingPoolsValidator } from '../delivery/readinessValidators';
 import { deliverabilityRoutingTables } from './deliverabilityRouting';
 import {
 	deliverabilityAlertRecipientStatusValidator,
@@ -270,6 +270,9 @@ export const deliveryTables = {
 
 	// IP warming state — cached from MTA's /ip-reputation endpoint every 5 minutes
 	warmingState: defineTable({
+		// The MTA's configured IP_POOLS_* lists, verbatim. Optional: rows synced
+		// from an MTA that predates the field carry only the per-IP `pool`.
+		pools: v.optional(warmingPoolsValidator),
 		phase: v.string(), // overall: 'ramp' | 'plateau' | 'graduated'
 		totalDailyCap: v.number(), // sum across campaign IPs
 		totalSentToday: v.number(),

@@ -5,7 +5,7 @@ import { getOptional } from '../lib/env';
 import { normalizeIpReputationPayload } from '@owlat/mta-protocol/ipReputation';
 import { normalizeDeliverabilityRoutingSnapshot } from '@owlat/shared/deliverabilityRouting';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from './deliverabilityRouting';
-import { ipReadinessFieldValidators } from './readinessValidators';
+import { ipReadinessFieldValidators, warmingPoolsValidator } from './readinessValidators';
 import { logError, logWarn } from '../lib/runtimeLog';
 
 /**
@@ -141,6 +141,7 @@ export const syncWarmingState = internalAction({
  */
 export const upsertWarmingState = internalMutation({
 	args: {
+		pools: v.optional(warmingPoolsValidator),
 		phase: v.string(),
 		totalDailyCap: v.number(),
 		totalSentToday: v.number(),
