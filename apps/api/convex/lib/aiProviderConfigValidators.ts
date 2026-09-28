@@ -12,31 +12,24 @@
  * registry's `index.ts`, which reaches its Node-only adapter files.
  */
 
-import { v, type Validator } from 'convex/values';
+import { literalUnion } from './literalUnion';
 import {
 	EMBEDDING_PROVIDER_KINDS,
 	LANGUAGE_ENDPOINT_PROVENANCES,
 	LANGUAGE_PROVIDER_KINDS,
 	type EmbeddingProviderKind,
-	type LanguageEndpointProvenance,
-	type LanguageProviderKind,
 } from './llmProviders/types';
-import { DECISION_PROVIDER_KINDS, type DecisionProviderKind } from './decisionProviders/types';
+import { DECISION_PROVIDER_KINDS } from './decisionProviders/types';
 
 /** Secret-free endpoint identity used by hard-budget admission accounting. */
-export const languageEndpointProvenanceValidator = v.union(
-	...LANGUAGE_ENDPOINT_PROVENANCES.map((provenance) => v.literal(provenance))
-) as unknown as Validator<LanguageEndpointProvenance>;
+export const languageEndpointProvenanceValidator = literalUnion(LANGUAGE_ENDPOINT_PROVENANCES);
 
 /**
  * Stored language-provider kind — every registered language adapter (hosted
  * OpenAI / Anthropic / Google / OpenRouter, plus the local OpenAI-compatible
- * adapter). The variadic spread loses literal narrowing, so we cast back to the
- * registry's `LanguageProviderKind` once here (mirrors `auditActions/catalog`).
+ * adapter). Infers the registry's `LanguageProviderKind`.
  */
-export const languageProviderKindValidator = v.union(
-	...LANGUAGE_PROVIDER_KINDS.map((kind) => v.literal(kind))
-) as unknown as Validator<LanguageProviderKind>;
+export const languageProviderKindValidator = literalUnion(LANGUAGE_PROVIDER_KINDS);
 
 /**
  * Stored embedding-provider kind — every registered embedding adapter. The
@@ -49,9 +42,7 @@ export const languageProviderKindValidator = v.union(
  * read as "the kind as stored on `aiProviderConfig`".
  */
 export type StoredEmbeddingProviderKind = EmbeddingProviderKind;
-export const embeddingProviderKindValidator = v.union(
-	...EMBEDDING_PROVIDER_KINDS.map((kind) => v.literal(kind))
-) as unknown as Validator<StoredEmbeddingProviderKind>;
+export const embeddingProviderKindValidator = literalUnion(EMBEDDING_PROVIDER_KINDS);
 
 /**
  * Stored decision-provider kind — the THIRD plane (typed questions in, typed
@@ -61,6 +52,4 @@ export const embeddingProviderKindValidator = v.union(
  * before the plane existed. Derived from the registry's kind tuple, like its two
  * neighbours above.
  */
-export const decisionProviderKindValidator = v.union(
-	...DECISION_PROVIDER_KINDS.map((kind) => v.literal(kind))
-) as unknown as Validator<DecisionProviderKind>;
+export const decisionProviderKindValidator = literalUnion(DECISION_PROVIDER_KINDS);

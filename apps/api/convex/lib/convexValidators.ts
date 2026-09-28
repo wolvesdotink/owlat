@@ -1,4 +1,5 @@
-import { v, type Infer, type VLiteral, type VUnion } from 'convex/values';
+import { v, type Infer } from 'convex/values';
+import { literalUnion } from './literalUnion';
 import { DELIVERABILITY_CHECKLIST_STATUSES, GOVERNED_MESSAGE_TYPES } from '@owlat/shared';
 import {
 	DOMAIN_RECEIVING_MODES,
@@ -6,21 +7,6 @@ import {
 } from '@owlat/shared/externalReceiving';
 import { MTA_STS_MODES } from '@owlat/shared/mtaStsPolicy';
 import { YAHOO_CFL_STORED_STATES } from '@owlat/shared/yahooCfl';
-
-/**
- * A closed string union derived from an `as const` array, so a vocabulary owned
- * by `@owlat/shared` is never re-spelled here. The inferred type is
- * `T[number]`, the same closed union a hand-written `v.union(v.literal(...))`
- * gives, and `.members` stays available for parity tests. The cast is needed
- * because destructuring a generic tuple widens the rest to `string[]`.
- */
-export function literalUnion<const T extends readonly [string, ...string[]]>(values: T) {
-	const [first, ...rest] = values;
-	return v.union(v.literal(first), ...rest.map((value) => v.literal(value))) as VUnion<
-		T[number],
-		VLiteral<T[number]>[]
-	>;
-}
 
 export const mtaStsModeValidator = literalUnion(MTA_STS_MODES);
 export const yahooCflStoredStateValidator = literalUnion(YAHOO_CFL_STORED_STATES);

@@ -32,7 +32,7 @@ import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { throwAlreadyExists } from '../_utils/errors';
 import { buildSearchableText } from '../lib/queryHelpers';
-import { literalUnion } from '../lib/convexValidators';
+import { literalUnion } from '../lib/literalUnion';
 
 // ============================================================
 // Types

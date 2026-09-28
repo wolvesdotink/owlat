@@ -7,6 +7,7 @@
  */
 
 import { v } from 'convex/values';
+import { literalUnion } from './literalUnion';
 import type { Infer } from 'convex/values';
 import { INBOUND_RAW_RETENTION_DAY_CHOICES } from '@owlat/shared/inboundRetention';
 
@@ -151,9 +152,7 @@ export type CaptureSource = Infer<typeof captureSourceValidator>;
  * stored set and the offered set cannot drift apart and no test has to stand
  * guard over a duplicate.
  */
-export const inboundRawRetentionDaysValidator = v.union(
-	...INBOUND_RAW_RETENTION_DAY_CHOICES.map((days) => v.literal(days))
-);
+export const inboundRawRetentionDaysValidator = literalUnion(INBOUND_RAW_RETENTION_DAY_CHOICES);
 
 /** Lifecycle of a resumable mailbox job (import, semantic index, filter backfill). */
 export const mailJobStatusValidator = v.union(

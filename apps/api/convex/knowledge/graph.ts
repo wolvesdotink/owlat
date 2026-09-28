@@ -7,6 +7,7 @@
  */
 
 import { v } from 'convex/values';
+import { literalUnion } from '../lib/literalUnion';
 import { internalMutation, internalQuery } from '../_generated/server';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -593,7 +594,7 @@ export const removeRelation = authedMutation({
 // ============================================================
 
 /** Validator for the curated entry types (policy / faq). */
-const policyEntryTypeValidator = v.union(...POLICY_ENTRY_TYPES.map((t) => v.literal(t)));
+const policyEntryTypeValidator = literalUnion(POLICY_ENTRY_TYPES);
 
 /**
  * Author (or edit) a curated canonical answer — the minimal FAQ surface.

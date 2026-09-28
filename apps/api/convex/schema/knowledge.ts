@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { literalUnion } from '../lib/literalUnion';
 import { captureSourceValidator, semanticFileSourceTypeValidator } from '../lib/literalValidators';
 
 /**
@@ -54,7 +55,7 @@ const COMMITMENT_STATUSES = ['open', 'fulfilled', 'cancelled'] as const;
  * Validator for `knowledgeEntries.commitmentStatus`, derived from
  * `COMMITMENT_STATUSES`.
  */
-export const commitmentStatusValidator = v.union(...COMMITMENT_STATUSES.map((s) => v.literal(s)));
+export const commitmentStatusValidator = literalUnion(COMMITMENT_STATUSES);
 
 /**
  * Whether a commitment is still open (undefined ⇒ open — see COMMITMENT_STATUSES).
@@ -70,7 +71,7 @@ export function isCommitmentOpen(
  * The nine knowledge entry types. Exported so retrieval/extraction code can
  * validate `entryType` args against the same source of truth as the table.
  */
-export const entryTypeValidator = v.union(...ENTRY_TYPES.map((t) => v.literal(t)));
+export const entryTypeValidator = literalUnion(ENTRY_TYPES);
 
 /**
  * The five knowledge source types (knowledgeEntries.sourceType). Exported so
@@ -107,7 +108,7 @@ export const RELATION_TYPES = [
 /**
  * Validator for `knowledgeRelations.relationType`, derived from `RELATION_TYPES`.
  */
-export const relationTypeValidator = v.union(...RELATION_TYPES.map((t) => v.literal(t)));
+export const relationTypeValidator = literalUnion(RELATION_TYPES);
 
 /**
  * How sure we are an edge is real, as a literal tuple. Single source of truth for
@@ -124,7 +125,7 @@ export const EDGE_CONFIDENCE_TAGS = ['extracted', 'inferred', 'ambiguous'] as co
  * Validator for `knowledgeRelations.confidenceTag`, derived from
  * `EDGE_CONFIDENCE_TAGS`.
  */
-export const edgeConfidenceTagValidator = v.union(...EDGE_CONFIDENCE_TAGS.map((t) => v.literal(t)));
+export const edgeConfidenceTagValidator = literalUnion(EDGE_CONFIDENCE_TAGS);
 
 /**
  * Where an edge came from, as a literal tuple. Single source of truth for the
@@ -138,7 +139,7 @@ export const EDGE_PROVENANCES = ['deterministic', 'llm', 'manual'] as const;
 /**
  * Validator for `knowledgeRelations.provenance`, derived from `EDGE_PROVENANCES`.
  */
-const edgeProvenanceValidator = v.union(...EDGE_PROVENANCES.map((p) => v.literal(p)));
+const edgeProvenanceValidator = literalUnion(EDGE_PROVENANCES);
 
 /**
  * Knowledge graph + semantic file tables — typed knowledge extracted from communications,

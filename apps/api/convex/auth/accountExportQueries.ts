@@ -1,5 +1,6 @@
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
+import { literalUnion } from '../lib/literalUnion';
 import { ACCOUNT_EXPORT_ORGANIZATION_RESOURCES, serializeAccountExportPage } from '@owlat/shared';
 import { components } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
@@ -14,9 +15,7 @@ import { throwNotFound } from '../_utils/errors';
 import { batchGet } from '../_utils/batchLoader';
 import { isChatAttachment } from '../chat/attachmentAccess';
 
-const organizationExportTableValidator = v.union(
-	...ACCOUNT_EXPORT_ORGANIZATION_RESOURCES.map((resource) => v.literal(resource))
-);
+const organizationExportTableValidator = literalUnion(ACCOUNT_EXPORT_ORGANIZATION_RESOURCES);
 async function hasOrganizationExportAccess(
 	ctx: Parameters<typeof requireSelf>[0],
 	userId: string,

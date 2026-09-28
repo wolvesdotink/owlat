@@ -11,7 +11,8 @@ import {
 import { internal } from '../_generated/api';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
-import { deliverabilityStatusValidator, literalUnion } from '../lib/convexValidators';
+import { deliverabilityStatusValidator } from '../lib/convexValidators';
+import { literalUnion } from '../lib/literalUnion';
 import { CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION } from '../lib/constants';
 import { checklistTraits } from './checklistTraits';
 import { resolveDeliverabilityAlert } from './checklistAlertResolution';
@@ -38,10 +39,7 @@ export function nextDnsRetry(
 }
 
 export const deliverabilityCheckIdValidator = literalUnion(
-	DELIVERABILITY_CHECKLIST.map((item) => item.id) as [
-		DeliverabilityCheckId,
-		...DeliverabilityCheckId[],
-	]
+	DELIVERABILITY_CHECKLIST.map((item) => item.id)
 );
 
 export function deliverabilityTargetKey(organizationId: string, domainId?: Id<'domains'>): string {

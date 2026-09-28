@@ -54,6 +54,7 @@
  */
 
 import { v } from 'convex/values';
+import { literalUnion } from '../lib/literalUnion';
 import { internalMutation, type DatabaseReader, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import {
@@ -324,9 +325,7 @@ export async function recordTransportOutcomeForSend(
 }
 
 /** Derived from the vocabulary, never re-spelled: one list, one wire contract. */
-const transportOutcomeEventValidator = v.union(
-	...TRANSPORT_OUTCOME_EVENTS.map((event) => v.literal(event))
-);
+const transportOutcomeEventValidator = literalUnion(TRANSPORT_OUTCOME_EVENTS);
 
 /**
  * The Send lifecycle's `transport_outcome` effect, SCHEDULED off the transition

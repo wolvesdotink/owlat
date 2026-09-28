@@ -9,7 +9,7 @@ import {
 	SOURCE_ADDRESS_FAILURE_REASONS,
 	SOURCE_ADDRESS_VERDICTS,
 } from '@owlat/shared/ipReadiness';
-import { literalUnion } from '../lib/convexValidators';
+import { literalUnion } from '../lib/literalUnion';
 
 /** Readiness fields shared by the warming-state table and its sync mutation. */
 /** The MTA's configured IP pools, as reported with its warming snapshot. */

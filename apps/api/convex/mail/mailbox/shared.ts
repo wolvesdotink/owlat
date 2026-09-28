@@ -11,7 +11,7 @@
  */
 
 import type { Doc } from '../../_generated/dataModel';
-import { literalUnion } from '../../lib/convexValidators';
+import { literalUnion } from '../../lib/literalUnion';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
 
 /** A mailbox's sharing model; see `mailboxes.scope` in schema/mailboxes.ts. */

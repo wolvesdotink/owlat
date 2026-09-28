@@ -28,6 +28,7 @@
  */
 
 import { v } from 'convex/values';
+import { literalUnion } from '../lib/literalUnion';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -71,8 +72,7 @@ export type ImportOutcome = {
 
 // ─── Validators ─────────────────────────────────────────────────────────────
 
-const importSourceValidator = v.union(...IMPORT_SOURCE_LITERALS.map((l) => v.literal(l)));
-
+const importSourceValidator = literalUnion(IMPORT_SOURCE_LITERALS);
 const importRowValidator = v.object({
 	email: v.string(),
 	firstName: v.optional(v.string()),

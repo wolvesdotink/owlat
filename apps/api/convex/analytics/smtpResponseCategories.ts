@@ -43,6 +43,7 @@
  */
 
 import { v } from 'convex/values';
+import { literalUnion } from '../lib/literalUnion';
 import { internalMutation, type DatabaseReader, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import {
@@ -386,9 +387,7 @@ async function recordSmtpResponseForSend(
 }
 
 /** Derived from the vocabulary, never re-spelled: one list, one wire contract. */
-const smtpFailureCategoryValidator = v.union(
-	...[...SMTP_FAILURE_CATEGORIES].map((category) => v.literal(category))
-);
+const smtpFailureCategoryValidator = literalUnion(SMTP_FAILURE_CATEGORIES);
 
 /**
  * The `smtp.classified` webhook's landing point.

@@ -1,4 +1,4 @@
-import { v } from 'convex/values';
+import { literalUnion } from '../../lib/literalUnion';
 
 /**
  * The ordered steps of one contact's erasure. Persisted on the erasure job as
@@ -27,6 +27,4 @@ export const CONTACT_ERASURE_PHASES = [
 
 export type ContactErasurePhase = (typeof CONTACT_ERASURE_PHASES)[number];
 
-export const contactErasurePhaseValidator = v.union(
-	...CONTACT_ERASURE_PHASES.map((phase) => v.literal(phase))
-);
+export const contactErasurePhaseValidator = literalUnion(CONTACT_ERASURE_PHASES);
