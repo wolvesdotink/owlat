@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import { resolve } from 'path';
+import { packageCoverage } from '../../vitest.shared';
 
 export default defineConfig({
 	test: {
@@ -10,25 +10,16 @@ export default defineConfig({
 		// apps/api's retry so a rare infra flake cannot kill a release gate;
 		// real failures reproduce on retry and still fail.
 		retry: 1,
-		coverage: {
-			provider: 'v8',
-			reporter: ['text', 'json-summary', 'html'],
-			reportsDirectory: './coverage',
-			include: ['src/**/*.ts'],
-			exclude: ['src/**/__tests__/**', 'src/index.ts'],
+		coverage: packageCoverage({
+			lines: 90,
 			thresholds: {
-				lines: 90,
 				// Branch coverage is enforced (plan doctrine) — the DKIM verify core,
 				// canon, and key-record parsing all carry security-relevant branches
 				// (l= cap, x= expiry, key/alg mismatch, hash restriction, PERMFAIL
 				// paths) that must each be exercised, not just line-covered.
 				branches: 85,
 			},
-		},
-	},
-	resolve: {
-		alias: {
-			'@': resolve(__dirname, 'src'),
-		},
+			exclude: ['src/index.ts'],
+		}),
 	},
 });

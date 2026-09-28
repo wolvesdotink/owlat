@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config';
 import vue from '@vitejs/plugin-vue';
 import { resolve } from 'path';
 import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
+import { packageCoverage } from '../../vitest.shared';
 
 export default defineConfig({
 	plugins: [vue()],
@@ -17,20 +18,10 @@ export default defineConfig({
 		// machine. Asserted by src/__tests__/vitestTimeout.test.ts.
 		testTimeout: PARALLEL_GATE_TIMEOUT_MS,
 		hookTimeout: PARALLEL_GATE_TIMEOUT_MS,
-		coverage: {
-			provider: 'v8',
-			reporter: ['text', 'json-summary', 'html'],
-			reportsDirectory: './coverage',
-			include: ['src/**/*.ts'],
-			exclude: ['src/**/__tests__/**'],
-			thresholds: {
-				lines: 76,
-			},
-		},
+		coverage: packageCoverage({ lines: 76 }),
 	},
 	resolve: {
 		alias: {
-			'@': resolve(__dirname, 'src'),
 			// Both contract packages ship built `dist` entries; resolve the pair to
 			// source so plugin-kit's provider-kit re-exports need no prior build.
 			'@owlat/plugin-kit': resolve(__dirname, '../plugin-kit/src/index.ts'),

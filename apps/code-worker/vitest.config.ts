@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
+import { packageCoverage } from '../../vitest.shared';
 
 export default defineConfig({
 	// The worker consumes plugin-kit's packaged dist in production; tests run from
@@ -14,18 +15,12 @@ export default defineConfig({
 	test: {
 		include: ['src/**/__tests__/**/*.test.ts'],
 		environment: 'node',
-		coverage: {
-			provider: 'v8',
-			reporter: ['text', 'json-summary', 'html'],
-			reportsDirectory: './coverage',
-			include: ['src/**/*.ts'],
+		coverage: packageCoverage({
+			lines: 75,
 			// index.ts is the poll-loop entry-point; convexClient.ts / github.ts are
 			// thin SDK adapters. The shell-injection-safe argv builders in
 			// taskRunner.ts are the security-critical logic under test.
-			exclude: ['src/**/__tests__/**', 'src/index.ts'],
-			thresholds: {
-				lines: 75,
-			},
-		},
+			exclude: ['src/index.ts'],
+		}),
 	},
 });
