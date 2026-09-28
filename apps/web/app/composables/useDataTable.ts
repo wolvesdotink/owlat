@@ -48,8 +48,9 @@ export function useDataTable<TSortField extends string = string>(
 	// Pagination state
 	const currentPage = ref(1);
 
-	// Reset to page 1 when search changes
-	watch(debouncedSearch, () => {
+	// Back to page 1 whenever the row order or the row set changes: a new search
+	// or a new sort makes "page 4" point at unrelated rows.
+	watch([debouncedSearch, sortBy, sortOrder], () => {
 		currentPage.value = 1;
 	});
 
