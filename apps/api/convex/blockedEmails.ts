@@ -14,9 +14,16 @@ import * as sm from './delivery/suppressionMirrorScheduler';
 import { recordAuditLog } from './lib/auditLog';
 import { restoreSunsetSuppression } from './contacts/sunsetRestore';
 import { bounceTypeValidator } from './lib/convexValidators';
-import { blockReasonValidator } from './lib/literalValidators';
+import {
+	blockedEmailReasonValidator,
+	manualOrEventBlockReasonValidator,
+} from './lib/literalValidators';
 
-import { findBlockedByEmail } from './blockedEmails/lookup';
+import {
+	BLOCKLIST_VIEW_LIMIT,
+	countBlockedByReason,
+	findBlockedByEmail,
+} from './blockedEmails/lookup';
 export { findBlockedByEmail } from './blockedEmails/lookup';
 
 // Derive the polymorphic block `sourceType` from whichever source-send id was
@@ -32,32 +39,14 @@ function deriveBlockSourceType(source: {
 			: undefined;
 }
 
-// Hard cap on the blocklist view. blockedEmails grows unboundedly with bounces
-// and complaints, and an unbounded `.collect()` would eventually trip Convex's
-// per-query document read limit. Return the most recent N (ordered by creation
-// time via the implicit by_creation_time index / the by_reason index) instead
-// of every row; the UI filters by reason for anything older.
-//
-// Exported because it is the cap every count of this table saturates at — the
-// operator counter below and the platform-admin org detail
-// (`platformAdmin/queries.ts`) must not disagree about the same number.
-export const BLOCKLIST_VIEW_LIMIT = 1000;
-
 // List the most recent blocked emails (most-recent-first) with optional reason filter.
 export const listByTeam = authedQuery({
 	args: {
-		reason: v.optional(
-			v.union(
-				v.literal('bounced'),
-				v.literal('complained'),
-				v.literal('manual'),
-				// The sunset engine's own reason. Filterable like the rest:
-				// an operator looking at the blocklist has to be able to separate
-				// "we stopped mailing this address because it never engaged" from a
-				// bounce, a complaint, or a human decision.
-				v.literal('unengaged')
-			)
-		),
+		// Every stored reason is filterable, the sunset engine's `unengaged`
+		// included: an operator has to be able to separate "we stopped mailing
+		// this address because it never engaged" from a bounce, a complaint, or
+		// a human decision.
+		reason: v.optional(blockedEmailReasonValidator),
 	},
 	handler: async (ctx, args) => {
 		const reason = args.reason;
@@ -141,7 +130,7 @@ export const getByEmail = authedQuery({
 export const add = authedMutation({
 	args: {
 		email: v.string(),
-		reason: blockReasonValidator,
+		reason: manualOrEventBlockReasonValidator,
 		notes: v.optional(v.string()),
 		sourceEmailSendId: v.optional(v.id('emailSends')),
 		sourceTransactionalSendId: v.optional(v.id('transactionalSends')),
@@ -271,7 +260,7 @@ export const bulkAdd = authedMutation({
 		emails: v.array(
 			v.object({
 				email: v.string(),
-				reason: blockReasonValidator,
+				reason: manualOrEventBlockReasonValidator,
 				notes: v.optional(v.string()),
 			})
 		),
@@ -350,41 +339,11 @@ export const bulkAdd = authedMutation({
 	},
 });
 
-// Get count of blocked emails by reason
+// Get count of blocked emails by reason. Each count saturates at
+// BLOCKLIST_VIEW_LIMIT, matching the capped list view (see countBlockedByReason).
 export const getCountsByReason = authedQuery({
 	args: {},
-	handler: async (ctx) => {
-		// Capped per reason (matching listByTeam's BLOCKLIST_VIEW_LIMIT): blockedEmails
-		// is append-only with no expiry, so bounced/complained reach tens of
-		// thousands and three uncapped collects would trip the per-query read limit
-		// before the (already-capped) list view does. Counts saturate at the cap.
-		const [bounced, complained, manual, unengaged] = await Promise.all([
-			ctx.db
-				.query('blockedEmails')
-				.withIndex('by_reason', (q) => q.eq('reason', 'bounced'))
-				.take(BLOCKLIST_VIEW_LIMIT),
-			ctx.db
-				.query('blockedEmails')
-				.withIndex('by_reason', (q) => q.eq('reason', 'complained'))
-				.take(BLOCKLIST_VIEW_LIMIT),
-			ctx.db
-				.query('blockedEmails')
-				.withIndex('by_reason', (q) => q.eq('reason', 'manual'))
-				.take(BLOCKLIST_VIEW_LIMIT),
-			ctx.db
-				.query('blockedEmails')
-				.withIndex('by_reason', (q) => q.eq('reason', 'unengaged'))
-				.take(BLOCKLIST_VIEW_LIMIT),
-		]);
-
-		return {
-			total: bounced.length + complained.length + manual.length + unengaged.length,
-			bounced: bounced.length,
-			complained: complained.length,
-			manual: manual.length,
-			unengaged: unengaged.length,
-		};
-	},
+	handler: async (ctx) => await countBlockedByReason(ctx),
 });
 
 /**
@@ -426,7 +385,7 @@ export const isBlockedInternal = internalQuery({
 export const addFromEvent = internalMutation({
 	args: {
 		email: v.string(),
-		reason: blockReasonValidator,
+		reason: manualOrEventBlockReasonValidator,
 		bounceType: v.optional(bounceTypeValidator),
 		sourceEmailSendId: v.optional(v.id('emailSends')),
 		sourceTransactionalSendId: v.optional(v.id('transactionalSends')),

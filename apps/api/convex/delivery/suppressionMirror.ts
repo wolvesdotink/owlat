@@ -27,9 +27,7 @@ import { logError, logInfo } from '../lib/runtimeLog';
 import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { getMtaConfig } from '../mail/mtaClient';
 import { bounceTypeValidator } from '../lib/convexValidators';
-
-// blockedEmails.reason — the Convex-side suppression vocabulary.
-export type BlockReason = 'bounced' | 'complained' | 'manual' | 'unengaged';
+import type { BlockReason } from '../lib/literalValidators';
 
 /**
  * The reasons that are a MARKETING-HYGIENE decision about bulk mail, not

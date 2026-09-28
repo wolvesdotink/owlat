@@ -9,7 +9,8 @@
 
 import { internal } from '../_generated/api';
 import type { MutationCtx } from '../_generated/server';
-import type { BlockReason, MirroredBlockReason } from './suppressionMirror';
+import type { BlockReason } from '../lib/literalValidators';
+import type { MirroredBlockReason } from './suppressionMirror';
 
 export async function scheduleSuppressionMirror(
 	ctx: MutationCtx,

@@ -15,7 +15,7 @@ import {
 	deliverabilityAlertRecipientUnavailableReasonValidator,
 	deliverabilityCheckIdSchemaValidator,
 } from './deliveryChecklistValidators';
-import { healthStatusValidator } from '../lib/literalValidators';
+import { blockedEmailReasonValidator, healthStatusValidator } from '../lib/literalValidators';
 
 /**
  * Delivery + sending-infrastructure tables — blocklist, reputation tracking, content scanning,
@@ -30,12 +30,14 @@ export const deliveryTables = {
 	// complaint, a manual block or a sunset decision cannot cost us reputation.
 	blockedEmails: defineTable({
 		email: v.string(), // The blocked email address (normalized to lowercase)
-		reason: v.union(
-			v.literal('bounced'), // Hard bounce - email address doesn't exist
-			v.literal('complained'), // Recipient marked email as spam
-			v.literal('manual'), // Manually added to blocklist
-			v.literal('unengaged') // Sunset policy — see contacts/sunsetPolicy.ts
-		),
+		/**
+		 * Why the address is blocked — `BLOCK_REASONS` in lib/literalValidators.ts:
+		 *   · `bounced` — hard bounce, the address does not exist;
+		 *   · `complained` — the recipient marked a message as spam;
+		 *   · `manual` — added to the blocklist by hand;
+		 *   · `unengaged` — sunset policy, see contacts/sunsetPolicy.ts.
+		 */
+		reason: blockedEmailReasonValidator,
 		// Bounce type classification (hard = permanent, soft = temporary)
 		bounceType: v.optional(bounceTypeValidator),
 		// Optional notes for manual blocks

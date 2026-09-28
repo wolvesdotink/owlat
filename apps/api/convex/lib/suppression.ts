@@ -42,7 +42,8 @@
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { normalizeEmail } from './inputGuards';
-import { isMarketingOnlyBlockReason, type BlockReason } from '../delivery/suppressionMirror';
+import { isMarketingOnlyBlockReason } from '../delivery/suppressionMirror';
+import type { BlockReason } from './literalValidators';
 import { scheduleSuppressionMirror } from '../delivery/suppressionMirrorScheduler';
 
 /**

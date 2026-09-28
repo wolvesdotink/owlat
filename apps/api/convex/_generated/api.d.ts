@@ -667,6 +667,7 @@ import type * as lib_knowledgeEdges from '../lib/knowledgeEdges.js';
 import type * as lib_knowledgePrecedence from '../lib/knowledgePrecedence.js';
 import type * as lib_lifecycle from '../lib/lifecycle.js';
 import type * as lib_listing from '../lib/listing.js';
+import type * as lib_literalUnion from '../lib/literalUnion.js';
 import type * as lib_literalValidators from '../lib/literalValidators.js';
 import type * as lib_llm_complexity from '../lib/llm/complexity.js';
 import type * as lib_llm_dispatch from '../lib/llm/dispatch.js';
@@ -1869,6 +1870,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/knowledgePrecedence': typeof lib_knowledgePrecedence;
 	'lib/lifecycle': typeof lib_lifecycle;
 	'lib/listing': typeof lib_listing;
+	'lib/literalUnion': typeof lib_literalUnion;
 	'lib/literalValidators': typeof lib_literalValidators;
 	'lib/llm/complexity': typeof lib_llm_complexity;
 	'lib/llm/dispatch': typeof lib_llm_dispatch;

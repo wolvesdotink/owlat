@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { BLOCKLIST_VIEW_LIMIT } from '../blockedEmails';
+import { countBlockedByReason } from '../blockedEmails/lookup';
 import { authedQuery } from '../lib/authedFunctions';
 import { requirePlatformAdmin } from './platformAdmin';
 import { summarize } from '../analytics/sendingReputation';
@@ -76,40 +76,9 @@ export const getOrganizationDetail = authedQuery({
 		// Get recent content scan results
 		const scanResults = await ctx.db.query('contentScanResults').order('desc').take(20);
 
-		// Blocked-email counts via the `by_reason` index, each CAPPED at
-		// BLOCKLIST_VIEW_LIMIT. The index narrows the scan to one reason class but
-		// does not bound it: blockedEmails is append-only with no expiry, and
-		// `unengaged` is written by the sunset cron rather than by an operator or a
-		// recipient, so any class can outgrow Convex's per-query read limit and take
-		// this whole page down. Counts saturate at the cap — the same way
-		// `blockedEmails.getCountsByReason` saturates, so the two counters of the
-		// same thing agree at scale.
-		const [bouncedRows, complainedRows, manualRows, unengagedRows] = await Promise.all([
-			ctx.db
-				.query('blockedEmails')
-				.withIndex('by_reason', (q) => q.eq('reason', 'bounced'))
-				.take(BLOCKLIST_VIEW_LIMIT),
-			ctx.db
-				.query('blockedEmails')
-				.withIndex('by_reason', (q) => q.eq('reason', 'complained'))
-				.take(BLOCKLIST_VIEW_LIMIT),
-			ctx.db
-				.query('blockedEmails')
-				.withIndex('by_reason', (q) => q.eq('reason', 'manual'))
-				.take(BLOCKLIST_VIEW_LIMIT),
-			ctx.db
-				.query('blockedEmails')
-				.withIndex('by_reason', (q) => q.eq('reason', 'unengaged'))
-				.take(BLOCKLIST_VIEW_LIMIT),
-		]);
-
-		const blockedCounts = {
-			total: bouncedRows.length + complainedRows.length + manualRows.length + unengagedRows.length,
-			bounced: bouncedRows.length,
-			complained: complainedRows.length,
-			manual: manualRows.length,
-			unengaged: unengagedRows.length,
-		};
+		// Blocked-email counts, capped per reason: the same helper the operator
+		// counter (`blockedEmails.getCountsByReason`) reads.
+		const blockedCounts = await countBlockedByReason(ctx);
 
 		// Get recent campaigns
 		const recentCampaigns = await ctx.db.query('campaigns').order('desc').take(10);
