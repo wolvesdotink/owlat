@@ -10445,7 +10445,6 @@
 			"marketing": {
 				"index": {
 					"adminsOnly": "Nur Inhaber und Administratoren können Vorlagen erstellen oder löschen.",
-					"clearSearch": "Suche zurücksetzen",
 					"columns": {
 						"subject": "Betreff",
 						"updated": "Aktualisiert"
@@ -10455,11 +10454,9 @@
 					"delete": {
 						"confirm": "Möchten Sie {name} wirklich löschen?",
 						"confirmButton": "Vorlage löschen",
-						"deleting": "Wird gelöscht...",
 						"description": "Diese Aktion kann nicht rückgängig gemacht werden. Die Vorlage wird endgültig gelöscht.",
 						"title": "Vorlage löschen"
 					},
-					"editAriaLabel": "{name} bearbeiten",
 					"empty": {
 						"action": "Marketing-Vorlage erstellen",
 						"description": "Erstellen Sie Ihre erste Marketing-Vorlage, um Kampagnen und Newsletter zu versenden.",
@@ -10469,8 +10466,6 @@
 						"description": "Erstellen oder wählen Sie ein Team, um E-Mail-Vorlagen anzulegen.",
 						"title": "Kein Team ausgewählt"
 					},
-					"gridView": "Kachelansicht",
-					"listView": "Listenansicht",
 					"loadError": "Vorlagen konnten nicht geladen werden",
 					"loadingTemplates": "Vorlagen werden geladen...",
 					"newTemplate": "Neue Marketing-Vorlage",
@@ -10478,36 +10473,21 @@
 						"description": "Keine Vorlagen passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff.",
 						"title": "Keine Ergebnisse gefunden"
 					},
-					"noSubject": "Kein Betreff",
 					"operations": {
 						"create": "Vorlage erstellen",
 						"delete": "Vorlage löschen",
 						"duplicate": "Vorlage duplizieren"
 					},
 					"pageTitle": "Marketing-E-Mails — Owlat",
-					"rowActions": "Vorlagenaktionen",
 					"searchPlaceholder": "Vorlagen suchen...",
-					"sort": {
-						"createdAsc": "Zuerst erstellt",
-						"createdDesc": "Zuletzt erstellt",
-						"nameAsc": "Name (A-Z)",
-						"nameDesc": "Name (Z-A)",
-						"updatedAsc": "Am längsten nicht geändert",
-						"updatedDesc": "Zuletzt geändert"
-					},
 					"sortLabel": "Vorlagen sortieren",
-					"status": {
-						"draft": "Entwurf",
-						"published": "Veröffentlicht"
-					},
 					"subtitle": "Erstellen und verwalten Sie Marketing-E-Mail-Vorlagen für Kampagnen und Newsletter",
 					"templateCount": "{count} Marketing-Vorlage | {count} Marketing-Vorlagen",
 					"title": "Marketing-Vorlagen",
 					"toasts": {
 						"deleted": "Vorlage erfolgreich gelöscht",
 						"duplicated": "Vorlage erfolgreich dupliziert"
-					},
-					"updatedAt": "Aktualisiert {date}"
+					}
 				}
 			},
 			"media": {
@@ -10618,7 +10598,6 @@
 						"subtitle": "„{name}“ über die API senden",
 						"title": "API-Nutzung"
 					},
-					"clearSearch": "Suche zurücksetzen",
 					"columns": {
 						"sends": "Sendungen",
 						"slug": "Slug",
@@ -10628,19 +10607,21 @@
 						"creating": "Wird erstellt...",
 						"defaultLanguage": "Standardsprache",
 						"namePlaceholder": "z. B. Willkommens-E-Mail, Bestellbestätigung",
+						"nameRequired": "Name ist erforderlich",
+						"operation": "Transaktions-E-Mail erstellen",
 						"slugHelp": "Dient zur Identifikation dieser E-Mail in API-Aufrufen. Verwenden Sie Kleinbuchstaben, Ziffern und Bindestriche.",
+						"slugInvalid": "Der Slug muss aus Kleinbuchstaben, Ziffern und Bindestrichen bestehen (z. B. 'welcome-email')",
 						"slugLabel": "Slug",
 						"slugPlaceholder": "z. B. welcome-email, order-confirmation",
+						"slugRequired": "Slug ist erforderlich",
 						"submit": "Erstellen & bearbeiten",
 						"title": "Transaktions-E-Mail erstellen"
 					},
 					"delete": {
 						"confirm": "Möchten Sie {name} wirklich löschen?",
-						"deleting": "Wird gelöscht...",
 						"description": "Diese Aktion kann nicht rückgängig gemacht werden. Alle API-Aufrufe, die auf diese E-Mail verweisen, schlagen danach fehl.",
 						"title": "Transaktions-E-Mail löschen"
 					},
-					"editAriaLabel": "{name} bearbeiten",
 					"empty": {
 						"action": "Transaktions-E-Mail erstellen",
 						"description": "Transaktions-E-Mails werden von Ihrer Anwendung über die API ausgelöst. Erstellen Sie Ihre erste, um loszulegen.",
@@ -10650,24 +10631,28 @@
 						"description": "Erstellen oder wählen Sie einen Workspace, um Transaktions-E-Mails anzulegen.",
 						"title": "Kein Workspace ausgewählt"
 					},
-					"gridView": "Kachelansicht",
-					"listView": "Listenansicht",
 					"loadError": "Transaktions-E-Mails konnten nicht geladen werden",
 					"loadingEmails": "Transaktions-E-Mails werden geladen...",
-					"moreActions": "Weitere Aktionen",
 					"newEmail": "Neue Transaktions-E-Mail",
 					"noResults": {
 						"description": "Keine Transaktions-E-Mails passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff.",
 						"title": "Keine Ergebnisse gefunden"
 					},
-					"noSubject": "Kein Betreff",
+					"operations": {
+						"delete": "Transaktions-E-Mail löschen",
+						"duplicate": "Transaktions-E-Mail duplizieren"
+					},
 					"pageTitle": "Transaktions-E-Mails — Owlat",
 					"searchPlaceholder": "Nach Name oder Slug suchen...",
 					"sendCount": "{count} Sendungen",
 					"sortLabel": "E-Mails sortieren",
+					"statusFilterLabel": "Nach Status filtern",
 					"subtitle": "Per API ausgelöste E-Mails für Ihre Anwendung",
 					"title": "Transaktions-E-Mails",
-					"updatedAt": "Aktualisiert {date}",
+					"toasts": {
+						"deleted": "Transaktions-E-Mail erfolgreich gelöscht",
+						"duplicated": "Transaktions-E-Mail erfolgreich dupliziert"
+					},
 					"viewApiCode": "API-Code anzeigen",
 					"viewSends": "Sendungen anzeigen"
 				}
@@ -12907,6 +12892,12 @@
 				"label": "Wartend"
 			}
 		},
+		"listPage": {
+			"clearSearch": "Suche zurücksetzen",
+			"gridView": "Kachelansicht",
+			"listView": "Listenansicht",
+			"viewMode": "Ansicht"
+		},
 		"mailAutodiscover": {
 			"appPassword": {
 				"fastmail": "Erstellen Sie unter Einstellungen → Datenschutz & Sicherheit → App-Passwörter ein App-Passwort und fügen Sie es hier ein.",
@@ -14167,6 +14158,25 @@
 				"summary": "Volle Kontrolle über den Workspace."
 			}
 		},
+		"templateList": {
+			"editAriaLabel": "{name} bearbeiten",
+			"moreActions": "Weitere Aktionen",
+			"noSubject": "Kein Betreff",
+			"sort": {
+				"createdAsc": "Zuerst erstellt",
+				"createdDesc": "Zuletzt erstellt",
+				"nameAsc": "Name (A-Z)",
+				"nameDesc": "Name (Z-A)",
+				"updatedAsc": "Am längsten nicht geändert",
+				"updatedDesc": "Zuletzt geändert"
+			},
+			"status": {
+				"draft": "Entwurf",
+				"pendingReview": "Prüfung ausstehend",
+				"published": "Veröffentlicht"
+			},
+			"updatedAt": "Aktualisiert {date}"
+		},
 		"threadStatusChip": {
 			"draftReady": "Entwurf bereit",
 			"open": "Offen",
@@ -14936,29 +14946,6 @@
 			"snoozeThread": "Konversation zurückstellen",
 			"unsnoozeThread": "Zurückstellung aufheben",
 			"updateThreadStatus": "Konversationsstatus aktualisieren"
-		},
-		"useTransactionalList": {
-			"createOperation": "Transaktions-E-Mail erstellen",
-			"deleteOperation": "Transaktions-E-Mail löschen",
-			"deleted": "Transaktions-E-Mail erfolgreich gelöscht",
-			"duplicateOperation": "Transaktions-E-Mail duplizieren",
-			"duplicated": "Transaktions-E-Mail erfolgreich dupliziert",
-			"nameRequired": "Name ist erforderlich",
-			"slugInvalid": "Der Slug muss aus Kleinbuchstaben, Ziffern und Bindestrichen bestehen (z. B. 'welcome-email')",
-			"slugRequired": "Slug ist erforderlich",
-			"sort": {
-				"lastModified": "Zuletzt geändert",
-				"nameAsc": "Name (A-Z)",
-				"nameDesc": "Name (Z-A)",
-				"newestCreated": "Zuletzt erstellt",
-				"oldestCreated": "Zuerst erstellt",
-				"oldestModified": "Am längsten nicht geändert"
-			},
-			"status": {
-				"draft": "Entwurf",
-				"pendingReview": "Prüfung ausstehend",
-				"published": "Veröffentlicht"
-			}
 		},
 		"useWebhookActions": {
 			"copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen",

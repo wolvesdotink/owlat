@@ -33,7 +33,10 @@ const ALLOWED = new Map<string, string>([
 	['utils/storageUpload.ts', 'upload to a minted Convex storage URL'],
 	['pages/preferences.vue', 'token-authed POST to the Convex site URL (/prefs/update)'],
 	['pages/unsubscribe.vue', 'token-authed POST to the Convex site URL (/unsub)'],
-	['composables/useTransactionalList.ts', 'a code sample rendered for the reader, not a request'],
+	[
+		'composables/useTransactionalSnippets.ts',
+		'a code sample rendered for the reader, not a request',
+	],
 ]);
 
 /** `fetch(`, `$fetch(`, `$fetch.raw(` — but not `apiFetch(` or `refetch(`. */

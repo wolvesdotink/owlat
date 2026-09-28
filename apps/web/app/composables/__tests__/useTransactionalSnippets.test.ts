@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
-import { createTestI18n } from '~/__tests__/i18n';
-import { useTransactionalList } from '../useTransactionalList';
+import { useTransactionalSnippets } from '../useTransactionalSnippets';
 
 /**
  * The copy-paste curl/JS/Python snippets in the transactional code modal.
@@ -11,14 +10,10 @@ import { useTransactionalList } from '../useTransactionalList';
  * somebody else's server. The snippet must name the deployment the user is
  * actually looking at.
  */
-const i18n = createTestI18n();
-
 let siteUrl: string;
 let cloudUrl: string;
 
 function stubEnvironment() {
-	vi.stubGlobal('useI18n', () => i18n.global);
-	vi.stubGlobal('useRouter', () => ({ push: vi.fn() }));
 	vi.stubGlobal('useRuntimeConfig', () => ({
 		public: { convexSiteUrl: siteUrl, convexUrl: cloudUrl },
 	}));
@@ -27,26 +22,12 @@ function stubEnvironment() {
 		copiedKey: ref(null),
 		reset: vi.fn(),
 	}));
-	vi.stubGlobal('useDebouncedSearch', () => ({ searchQuery: ref(''), debouncedSearch: ref('') }));
-	vi.stubGlobal('useOrganizationQuery', () => ({
-		data: ref([]),
-		isLoading: ref(false),
-		error: ref(null),
-	}));
-	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
-	vi.stubGlobal('formatDate', (ts: number) => String(ts));
-	vi.stubGlobal('useBackendOperation', () => ({
-		run: vi.fn().mockResolvedValue({ ok: true }),
-		isLoading: ref(false),
-		inlineError: ref(null),
-	}));
 }
 
-/** Open the modal on one email and read back all three snippets. */
+/** Read back all three snippets for one email. */
 function snippetsFor(slug: string): string[] {
-	const list = useTransactionalList();
-	list.openCodeSnippetModal('email-1' as never, 'Welcome', slug);
-	return (['curl', 'javascript', 'python'] as const).map((l) => list.getCodeSnippet(l));
+	const { getCodeSnippet } = useTransactionalSnippets(slug);
+	return (['curl', 'javascript', 'python'] as const).map((l) => getCodeSnippet(l));
 }
 
 beforeEach(() => {
@@ -93,5 +74,9 @@ describe('transactional code snippets', () => {
 
 	it('still carries the selected email slug', () => {
 		expect(snippetsFor('order-shipped')[0]).toContain('"slug": "order-shipped"');
+	});
+
+	it('renders nothing while no email is selected', () => {
+		expect(useTransactionalSnippets(null).getCodeSnippet('curl')).toBe('');
 	});
 });

@@ -10445,7 +10445,6 @@
 			"marketing": {
 				"index": {
 					"adminsOnly": "Only owners and admins can create or delete templates.",
-					"clearSearch": "Clear search",
 					"columns": {
 						"subject": "Subject",
 						"updated": "Updated"
@@ -10455,11 +10454,9 @@
 					"delete": {
 						"confirm": "Are you sure you want to delete {name}?",
 						"confirmButton": "Delete template",
-						"deleting": "Deleting...",
 						"description": "This action cannot be undone. The template will be permanently deleted.",
 						"title": "Delete template"
 					},
-					"editAriaLabel": "Edit {name}",
 					"empty": {
 						"action": "Create marketing template",
 						"description": "Create your first marketing template to start sending campaigns and newsletters.",
@@ -10469,8 +10466,6 @@
 						"description": "Create or select a team to start creating email templates.",
 						"title": "No team selected"
 					},
-					"gridView": "Grid view",
-					"listView": "List view",
 					"loadError": "Couldn't load templates",
 					"loadingTemplates": "Loading templates...",
 					"newTemplate": "New marketing template",
@@ -10478,36 +10473,21 @@
 						"description": "No templates match “{query}”. Try a different search term.",
 						"title": "No results found"
 					},
-					"noSubject": "No subject",
 					"operations": {
 						"create": "Create template",
 						"delete": "Delete template",
 						"duplicate": "Duplicate template"
 					},
 					"pageTitle": "Marketing emails — Owlat",
-					"rowActions": "Template actions",
 					"searchPlaceholder": "Search templates...",
-					"sort": {
-						"createdAsc": "Oldest created",
-						"createdDesc": "Newest created",
-						"nameAsc": "Name (A-Z)",
-						"nameDesc": "Name (Z-A)",
-						"updatedAsc": "Oldest modified",
-						"updatedDesc": "Last modified"
-					},
 					"sortLabel": "Sort templates",
-					"status": {
-						"draft": "Draft",
-						"published": "Published"
-					},
 					"subtitle": "Create and manage marketing email templates for campaigns and newsletters",
 					"templateCount": "{count} marketing template | {count} marketing templates",
 					"title": "Marketing templates",
 					"toasts": {
 						"deleted": "Template deleted successfully",
 						"duplicated": "Template duplicated successfully"
-					},
-					"updatedAt": "Updated {date}"
+					}
 				}
 			},
 			"media": {
@@ -10618,7 +10598,6 @@
 						"subtitle": "Send “{name}” via API",
 						"title": "API usage"
 					},
-					"clearSearch": "Clear search",
 					"columns": {
 						"sends": "Sends",
 						"slug": "Slug",
@@ -10628,19 +10607,21 @@
 						"creating": "Creating...",
 						"defaultLanguage": "Default language",
 						"namePlaceholder": "e.g., Welcome Email, Order Confirmation",
+						"nameRequired": "Name is required",
+						"operation": "Create transactional email",
 						"slugHelp": "Used to identify this email in API calls. Use lowercase letters, numbers, and hyphens.",
+						"slugInvalid": "Slug must be lowercase alphanumeric with hyphens (e.g., 'welcome-email')",
 						"slugLabel": "Slug",
 						"slugPlaceholder": "e.g., welcome-email, order-confirmation",
+						"slugRequired": "Slug is required",
 						"submit": "Create & edit",
 						"title": "Create transactional email"
 					},
 					"delete": {
 						"confirm": "Are you sure you want to delete {name}?",
-						"deleting": "Deleting...",
 						"description": "This action cannot be undone. Any API calls referencing this email will fail.",
 						"title": "Delete transactional email"
 					},
-					"editAriaLabel": "Edit {name}",
 					"empty": {
 						"action": "Create transactional email",
 						"description": "Transactional emails are triggered by your application via API. Create your first one to get started.",
@@ -10650,24 +10631,28 @@
 						"description": "Create or select a workspace to start creating transactional emails.",
 						"title": "No workspace selected"
 					},
-					"gridView": "Grid view",
-					"listView": "List view",
 					"loadError": "Couldn't load transactional emails",
 					"loadingEmails": "Loading transactional emails...",
-					"moreActions": "More actions",
 					"newEmail": "New transactional email",
 					"noResults": {
 						"description": "No transactional emails match “{query}”. Try a different search term.",
 						"title": "No results found"
 					},
-					"noSubject": "No subject",
+					"operations": {
+						"delete": "Delete transactional email",
+						"duplicate": "Duplicate transactional email"
+					},
 					"pageTitle": "Transactional emails — Owlat",
 					"searchPlaceholder": "Search by name or slug...",
 					"sendCount": "{count} sends",
 					"sortLabel": "Sort emails",
+					"statusFilterLabel": "Filter by status",
 					"subtitle": "API-triggered emails for your application",
 					"title": "Transactional emails",
-					"updatedAt": "Updated {date}",
+					"toasts": {
+						"deleted": "Transactional email deleted successfully",
+						"duplicated": "Transactional email duplicated successfully"
+					},
 					"viewApiCode": "View API code",
 					"viewSends": "View sends"
 				}
@@ -12907,6 +12892,12 @@
 				"label": "Waiting"
 			}
 		},
+		"listPage": {
+			"clearSearch": "Clear search",
+			"gridView": "Grid view",
+			"listView": "List view",
+			"viewMode": "View mode"
+		},
 		"mailAutodiscover": {
 			"appPassword": {
 				"fastmail": "Create an app password under Settings → Privacy & Security → App Passwords and paste it here.",
@@ -14167,6 +14158,25 @@
 				"summary": "Full control of the workspace."
 			}
 		},
+		"templateList": {
+			"editAriaLabel": "Edit {name}",
+			"moreActions": "More actions",
+			"noSubject": "No subject",
+			"sort": {
+				"createdAsc": "Oldest created",
+				"createdDesc": "Newest created",
+				"nameAsc": "Name (A-Z)",
+				"nameDesc": "Name (Z-A)",
+				"updatedAsc": "Oldest modified",
+				"updatedDesc": "Last modified"
+			},
+			"status": {
+				"draft": "Draft",
+				"pendingReview": "Pending review",
+				"published": "Published"
+			},
+			"updatedAt": "Updated {date}"
+		},
 		"threadStatusChip": {
 			"draftReady": "Draft ready",
 			"open": "Open",
@@ -14936,29 +14946,6 @@
 			"snoozeThread": "Snooze thread",
 			"unsnoozeThread": "Unsnooze thread",
 			"updateThreadStatus": "Update thread status"
-		},
-		"useTransactionalList": {
-			"createOperation": "Create transactional email",
-			"deleteOperation": "Delete transactional email",
-			"deleted": "Transactional email deleted successfully",
-			"duplicateOperation": "Duplicate transactional email",
-			"duplicated": "Transactional email duplicated successfully",
-			"nameRequired": "Name is required",
-			"slugInvalid": "Slug must be lowercase alphanumeric with hyphens (e.g., 'welcome-email')",
-			"slugRequired": "Slug is required",
-			"sort": {
-				"lastModified": "Last modified",
-				"nameAsc": "Name (A-Z)",
-				"nameDesc": "Name (Z-A)",
-				"newestCreated": "Newest created",
-				"oldestCreated": "Oldest created",
-				"oldestModified": "Oldest modified"
-			},
-			"status": {
-				"draft": "Draft",
-				"pendingReview": "Pending review",
-				"published": "Published"
-			}
 		},
 		"useWebhookActions": {
 			"copyFailed": "Failed to copy to clipboard",

@@ -59,8 +59,6 @@ apps/web/app/pages/dashboard/knowledge/[id].vue
 apps/web/app/pages/dashboard/postbox/migrate.vue
 apps/web/app/pages/dashboard/preferences/account.vue
 apps/web/app/pages/dashboard/send/blocks/index.vue
-apps/web/app/pages/dashboard/send/marketing/index.vue
-apps/web/app/pages/dashboard/send/transactional/index.vue
 apps/web/app/pages/desktop/setup.vue
 packages/email-builder/src/components/EmailBuilder.vue
 packages/email-builder/src/components/canvas/InlineTextEditor.vue
