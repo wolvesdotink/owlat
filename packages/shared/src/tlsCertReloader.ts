@@ -21,6 +21,11 @@
  * (new cert, old key) or a garbage PEM logs one warning and the current context
  * stays in service; a pair that failed is not retried or re-logged until the
  * files change again. There is no path from here to "no TLS".
+ *
+ * A caller may also start with nothing in service (no `initial`): on a fresh
+ * install the certificate is published some minutes after the process boots.
+ * The reloader then polls on the shorter `pendingIntervalMs` until the files
+ * appear, logs the missing files once, and hands over the first valid pair.
  */
 
 import { createHash, X509Certificate } from 'node:crypto';
@@ -29,6 +34,9 @@ import { createSecureContext } from 'node:tls';
 
 /** How often the pair is re-read when the caller does not say otherwise. */
 const DEFAULT_TLS_CERT_RELOAD_INTERVAL_MS = 5 * 60 * 1_000;
+
+/** How often the files are looked for while no pair is in service yet. */
+const DEFAULT_TLS_CERT_PENDING_INTERVAL_MS = 30 * 1_000;
 
 /** A PEM certificate (chain) and its private key. */
 export interface TlsCertMaterial {
@@ -45,8 +53,11 @@ export type TlsCertReloadLog = (message: string, detail: Record<string, unknown>
 export interface TlsCertReloaderOptions {
 	certPath: string;
 	keyPath: string;
-	/** The pair the caller is serving right now (read at boot). */
-	initial: TlsCertMaterial;
+	/**
+	 * The pair the caller is serving right now (read at boot). Omit it when the
+	 * files did not exist yet: the first valid pair that appears is applied.
+	 */
+	initial?: TlsCertMaterial;
 	/**
 	 * Install a validated pair. Throwing rejects it: the reloader keeps the
 	 * current pair and logs a warning, exactly as for an invalid pair.
@@ -55,13 +66,18 @@ export interface TlsCertReloaderOptions {
 	log: { info: TlsCertReloadLog; warn: TlsCertReloadLog };
 	/** Poll interval. Default {@link DEFAULT_TLS_CERT_RELOAD_INTERVAL_MS}. */
 	intervalMs?: number;
+	/**
+	 * Poll interval while no pair is in service, capped at `intervalMs`.
+	 * Default {@link DEFAULT_TLS_CERT_PENDING_INTERVAL_MS}.
+	 */
+	pendingIntervalMs?: number;
 	/** Test seam. Defaults to a UTF-8 `fs.promises.readFile`. */
 	readFile?: (path: string) => Promise<string>;
 }
 
 export interface TlsCertReloader {
-	/** The pair currently in service. */
-	current(): TlsCertMaterial;
+	/** The pair currently in service, `undefined` until one has been applied. */
+	current(): TlsCertMaterial | undefined;
 	/**
 	 * Re-read the files now. Resolves `true` when a new pair was installed.
 	 * Never rejects; concurrent calls share one in-flight check.
@@ -96,7 +112,14 @@ function errorMessage(err: unknown): string {
 export function startTlsCertReloader(options: TlsCertReloaderOptions): TlsCertReloader {
 	const read = options.readFile ?? ((path: string) => readFile(path, 'utf8'));
 	const { certPath, keyPath, log } = options;
-	let current: TlsCertMaterial = options.initial;
+	let current: TlsCertMaterial | undefined = options.initial;
+	const intervalMs = options.intervalMs ?? DEFAULT_TLS_CERT_RELOAD_INTERVAL_MS;
+	const pendingIntervalMs = Math.min(
+		options.pendingIntervalMs ?? DEFAULT_TLS_CERT_PENDING_INTERVAL_MS,
+		intervalMs
+	);
+	let timer: ReturnType<typeof setInterval> | undefined;
+	let stopped = false;
 	// The last failure, so a persistent problem is reported once per distinct
 	// cause instead of once per tick.
 	let lastFailure: string | undefined;
@@ -119,11 +142,13 @@ export function startTlsCertReloader(options: TlsCertReloaderOptions): TlsCertRe
 			const code = (err as NodeJS.ErrnoException).code ?? errorMessage(err);
 			return fail(
 				`read:${code}`,
-				'TLS certificate reload failed: cannot read the files; keeping the current certificate',
+				current
+					? 'TLS certificate reload failed: cannot read the files; keeping the current certificate'
+					: 'TLS certificate not available yet: cannot read the files; TLS stays off until they appear',
 				{ error: errorMessage(err) }
 			);
 		}
-		if (next.cert === current.cert && next.key === current.key) {
+		if (current && next.cert === current.cert && next.key === current.key) {
 			lastFailure = undefined;
 			return false;
 		}
@@ -135,18 +160,38 @@ export function startTlsCertReloader(options: TlsCertReloaderOptions): TlsCertRe
 			createSecureContext({ cert: next.cert, key: next.key });
 			const summary = describeCertificate(next.cert);
 			options.apply(next);
+			const wasPending = current === undefined;
 			current = next;
 			lastFailure = undefined;
-			log.info('TLS certificate reloaded', { certPath, ...summary });
+			log.info(wasPending ? 'TLS certificate loaded' : 'TLS certificate reloaded', {
+				certPath,
+				...summary,
+			});
+			// Something is in service now: drop back to the renewal cadence.
+			if (wasPending) schedule();
 			return true;
 		} catch (err) {
 			return fail(
 				`pair:${nextFingerprint}`,
-				'TLS certificate reload failed: the new pair is invalid; keeping the current certificate',
+				current
+					? 'TLS certificate reload failed: the new pair is invalid; keeping the current certificate'
+					: 'TLS certificate not available yet: the pair is invalid; TLS stays off until it is replaced',
 				{ error: errorMessage(err) }
 			);
 		}
 	};
+
+	function schedule(): void {
+		if (timer) clearInterval(timer);
+		if (stopped) return;
+		timer = setInterval(
+			() => {
+				void check();
+			},
+			current ? intervalMs : pendingIntervalMs
+		);
+		timer.unref();
+	}
 
 	const check = (): Promise<boolean> => {
 		if (!inFlight) {
@@ -157,14 +202,14 @@ export function startTlsCertReloader(options: TlsCertReloaderOptions): TlsCertRe
 		return inFlight;
 	};
 
-	const timer = setInterval(() => {
-		void check();
-	}, options.intervalMs ?? DEFAULT_TLS_CERT_RELOAD_INTERVAL_MS);
-	timer.unref();
+	schedule();
 
 	return {
 		current: () => current,
 		check,
-		stop: () => clearInterval(timer),
+		stop: () => {
+			stopped = true;
+			if (timer) clearInterval(timer);
+		},
 	};
 }

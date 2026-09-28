@@ -954,12 +954,12 @@ describe('the last rollout, on /health', () => {
 
 describe('one rollout at a time', () => {
 	/**
-	 * Holds an /update inside the rollout lock: its handler waits for a request
-	 * body that only arrives when `release` is called.
+	 * Holds a rollout inside the rollout lock: its handler waits for the rest
+	 * of a request body that only arrives when `release` is called.
 	 */
-	async function updateInFlight() {
+	async function rolloutInFlight(path: string, head: string, tail: string) {
 		const { request } = await import('node:http');
-		const req = request(`${base}/update`, {
+		const req = request(`${base}${path}`, {
 			method: 'POST',
 			headers: { ...AUTH, 'content-type': 'application/json' },
 		});
@@ -970,7 +970,7 @@ describe('one rollout at a time', () => {
 			})
 		);
 		req.flushHeaders();
-		req.write('{"compose');
+		req.write(head);
 		// Until the server is inside the handler, the lock is not taken yet.
 		for (let i = 0; i < 50; i++) {
 			const res = await fetch(`${base}/health`, { headers: AUTH });
@@ -979,13 +979,15 @@ describe('one rollout at a time', () => {
 		}
 		return {
 			release: () => {
-				req.end('Template":null}');
+				req.end(tail);
 				return answered;
 			},
 		};
 	}
 
-	it.each(['/update', '/apply-profiles', '/rotate-env'])(
+	const updateInFlight = () => rolloutInFlight('/update', '{"compose', 'Template":null}');
+
+	it.each(['/update', '/apply-profiles', '/rotate-env', '/configure-ip'])(
 		'answers 409 to %s while an update is in flight, and runs nothing',
 		async (path) => {
 			const inFlight = await updateInFlight();
@@ -1015,6 +1017,34 @@ describe('one rollout at a time', () => {
 
 		expect(res.status).toBe(401);
 		await inFlight.release();
+	});
+
+	it('does not tell an unauthenticated /configure-ip caller that a rollout is in flight', async () => {
+		const inFlight = await updateInFlight();
+
+		const res = await post('/configure-ip', { ip: '2.2.2.2', action: 'add' }, {});
+
+		expect(res.status).toBe(401);
+		await inFlight.release();
+	});
+
+	it('holds the lock through a /configure-ip, so an update waits for the MTA recreate', async () => {
+		// configure-ip rewrites `.env` and runs `up -d mta`; an /update landing
+		// meanwhile would race that recreate and could lose the pool edit.
+		const inFlight = await rolloutInFlight('/configure-ip', '{"ip":"2.2.2.2",', '"action":"add"}');
+		execFileSyncMock.mockClear();
+
+		const res = await post('/update', {});
+
+		expect(res.status).toBe(409);
+		const body = (await res.json()) as { error: string; inProgress: string };
+		expect(body.error).toContain('still applying an IP pool change');
+		expect(body.inProgress).toBe('configure-ip');
+		expect(execFileSyncMock).not.toHaveBeenCalled();
+		expect(await inFlight.release()).toBe(200);
+		expect(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')).toContain(
+			'IP_POOLS_CAMPAIGN=1.1.1.1,2.2.2.2'
+		);
 	});
 });
 
