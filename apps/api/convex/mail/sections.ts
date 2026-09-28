@@ -50,10 +50,10 @@
 import { v } from 'convex/values';
 import type { QueryCtx } from '../_generated/server';
 import { publicQuery } from '../lib/authedFunctions';
-import { openMailMessageRows } from '../lib/messageBody';
 import type { Doc, Id } from '../_generated/dataModel';
 import { loadReadableMailbox } from './permissions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
+import { attachThreadState, type RowThreadState } from './mailbox/rowThreadState';
 
 /**
  * How many named sections one inbox can render. Each section costs its own
@@ -89,7 +89,8 @@ export const REMAINDER_MAX_SCAN = 500;
 interface InboxSection {
 	/** The section name, or `null` for the trailing "Everything else". */
 	name: string | null;
-	messages: Doc<'mailMessages'>[];
+	/** Unsealed rows carrying their thread's chip state (follow-up, mute, category). */
+	messages: Array<Doc<'mailMessages'> & RowThreadState>;
 	/** More mail exists in THIS section past its own limit. */
 	hasMore: boolean;
 	unreadCount: number;
@@ -239,9 +240,10 @@ async function readSection(
 	const unreadRows = unread.filter((m) => !isMessageSnoozed(m, now));
 	return {
 		name,
-		// E8b: a section row is rendered by the same reader as a flat-list row, so
-		// its inline bodies leave this boundary unsealed.
-		messages: await openMailMessageRows(messages),
+		// A section row is rendered by the same row body as a flat-list row, so it
+		// leaves through the same boundary: inline bodies unsealed (E8b) and the
+		// thread's chip state attached.
+		messages: await attachThreadState(ctx, messages),
 		hasMore,
 		unreadCount: Math.min(unreadRows.length, UNREAD_COUNT_CAP),
 		isUnreadCapped: unreadRows.length > UNREAD_COUNT_CAP,
@@ -311,7 +313,7 @@ async function readRemainder(
 
 	return {
 		name: null,
-		messages: await openMailMessageRows(messages),
+		messages: await attachThreadState(ctx, messages),
 		hasMore,
 		unreadCount,
 		isUnreadCapped,

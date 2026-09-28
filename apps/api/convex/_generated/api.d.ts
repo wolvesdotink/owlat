@@ -874,6 +874,7 @@ import type * as mail_mailbox_identity from '../mail/mailbox/identity.js';
 import type * as mail_mailbox_messages from '../mail/mailbox/messages.js';
 import type * as mail_mailbox_queries from '../mail/mailbox/queries.js';
 import type * as mail_mailbox_rawExport from '../mail/mailbox/rawExport.js';
+import type * as mail_mailbox_rowThreadState from '../mail/mailbox/rowThreadState.js';
 import type * as mail_mailbox_search from '../mail/mailbox/search.js';
 import type * as mail_mailbox_searchClause from '../mail/mailbox/searchClause.js';
 import type * as mail_mailbox_searchCursor from '../mail/mailbox/searchCursor.js';
@@ -2071,6 +2072,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/mailbox/messages': typeof mail_mailbox_messages;
 	'mail/mailbox/queries': typeof mail_mailbox_queries;
 	'mail/mailbox/rawExport': typeof mail_mailbox_rawExport;
+	'mail/mailbox/rowThreadState': typeof mail_mailbox_rowThreadState;
 	'mail/mailbox/search': typeof mail_mailbox_search;
 	'mail/mailbox/searchClause': typeof mail_mailbox_searchClause;
 	'mail/mailbox/searchCursor': typeof mail_mailbox_searchCursor;
