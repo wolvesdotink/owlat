@@ -72,6 +72,90 @@ export class RetryableProviderError extends Error {
 	}
 }
 
+// ─── Provider page fetch ────────────────────────────────────────────────────
+
+/**
+ * Gateway statuses that say "the provider's edge could not reach its backend
+ * right now". Retried like a 429. A plain 500 is NOT in this set: Mandrill
+ * reports account-level failures (`Invalid_Key`, `PaymentRequired`) as HTTP 500,
+ * and retrying those only delays the same answer.
+ */
+const RETRYABLE_GATEWAY_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
+
+export type FetchProviderPageOptions<ErrorBody extends object> = {
+	/** Provider name as it appears in error messages, e.g. `'Stripe'`. */
+	label: string;
+	/** Where the walk was, e.g. `'at offset 200'`. Appended to retry messages. */
+	where: string;
+	/** The provider's own message from a parsed JSON error body, if it has one. */
+	extractMessage: (body: ErrorBody) => string | undefined;
+	/**
+	 * Applied to every message this helper throws. An adapter passes one that
+	 * strips its API key, because a provider that echoes the request inside an
+	 * error body would otherwise put the credential into
+	 * `integrationImports.errors`, which the import UI renders.
+	 */
+	redact?: (text: string) => string;
+};
+
+/**
+ * One provider page request with the walker's error classification applied.
+ *
+ *  - The fetch itself throwing (DNS, reset, timeout) → `RetryableProviderError`.
+ *  - 429 and 502/503/504 → `RetryableProviderError`.
+ *  - Any other non-OK status → plain `Error` carrying the provider's own message
+ *    (via `extractMessage`) or `<label> API error: <status>`. The walker fails
+ *    the import with it.
+ *
+ * Returns the OK `Response`; the adapter parses the body and maps rows.
+ */
+export async function fetchProviderPage<ErrorBody extends object>(
+	url: string,
+	init: RequestInit,
+	options: FetchProviderPageOptions<ErrorBody>
+): Promise<Response> {
+	const { label, where, extractMessage } = options;
+	const redact = options.redact ?? ((text: string) => text);
+
+	let response: Response;
+	try {
+		response = await fetch(url, init);
+	} catch (err) {
+		throw new RetryableProviderError(
+			redact(
+				`Network error fetching ${label} page ${where}: ${err instanceof Error ? err.message : 'unknown'}`
+			)
+		);
+	}
+
+	if (response.status === 429) {
+		throw new RetryableProviderError(redact(`${label} rate limit (429) ${where}`));
+	}
+	if (RETRYABLE_GATEWAY_STATUSES.has(response.status)) {
+		throw new RetryableProviderError(
+			redact(`${label} temporarily unavailable (${response.status}) ${where}`)
+		);
+	}
+	if (!response.ok) {
+		const fallback = `${label} API error: ${response.status}`;
+		const body = parseJsonObject(await response.text().catch(() => ''));
+		const extracted = body ? extractMessage(body as ErrorBody) : undefined;
+		throw new Error(redact(typeof extracted === 'string' && extracted ? extracted : fallback));
+	}
+
+	return response;
+}
+
+function parseJsonObject(text: string): object | null {
+	try {
+		const parsed: unknown = JSON.parse(text);
+		return typeof parsed === 'object' && parsed !== null ? parsed : null;
+	} catch {
+		// Non-JSON error body — the caller falls back to the status-only message.
+		return null;
+	}
+}
+
 // ─── Suppression carry-over ───────────────────────────────────────
 
 /**
@@ -241,8 +325,9 @@ export interface IntegrationImportProviderModule<K extends IntegrationProviderKi
 	 * Provider API call. Cursor is opaque; the adapter interprets it
 	 * internally (`''` = first-page sentinel).
 	 *
-	 * Throws `RetryableProviderError` on 429 / network blip — walker
-	 * retries with backoff up to `MAX_RETRIES`.
+	 * Throws `RetryableProviderError` on 429 / 502-504 / network blip —
+	 * walker retries with backoff up to `MAX_RETRIES`. `fetchProviderPage`
+	 * applies that classification to the HTTP call.
 	 * Throws any other `Error` on fatal — walker marks the import
 	 * `failed` immediately with the thrown message.
 	 */

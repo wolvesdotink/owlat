@@ -631,9 +631,13 @@ Exports an `IntegrationImportProviderModule<K>` with:
 totalEstimate? }` — provider API call. Cursor is opaque
   (`''` = first page); adapter interprets internally (Mailchimp
   parses to numeric offset; Stripe uses as `starting_after`).
-  Throws `RetryableProviderError` on 429 / network blip (walker
-  retries with backoff up to N); throws regular `Error` on fatal
-  (walker marks the import `failed` immediately). Returns
+  Throws `RetryableProviderError` on 429 / 502-504 / network blip
+  (walker retries with backoff up to N); throws regular `Error` on
+  fatal, 500 included (walker marks the import `failed`
+  immediately). Every adapter makes its HTTP call through
+  `fetchProviderPage` in `_common.ts`, which owns that
+  classification and runs each thrown message through the
+  adapter's key redactor. Returns
   normalized `ImportRow[]` matching the **Contact import
   (module)**'s row shape.
 

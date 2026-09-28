@@ -13,7 +13,7 @@
  */
 
 import {
-	RetryableProviderError,
+	fetchProviderPage,
 	type FetchPageResult,
 	type IntegrationImportProviderModule,
 } from '../../_common';
@@ -31,6 +31,10 @@ interface StripeCustomer {
 interface StripeCustomerListResponse {
 	data: StripeCustomer[];
 	has_more: boolean;
+}
+
+interface StripeErrorBody {
+	error?: { message?: string } | null;
 }
 
 export const stripeProvider: IntegrationImportProviderModule<'stripe'> = {
@@ -56,36 +60,22 @@ export const stripeProvider: IntegrationImportProviderModule<'stripe'> = {
 			url += `&starting_after=${cursor}`;
 		}
 
-		let response: Response;
-		try {
-			response = await fetch(url, {
+		const response = await fetchProviderPage<StripeErrorBody>(
+			url,
+			{
 				method: 'GET',
 				headers: {
 					Authorization: `Bearer ${config.apiKey}`,
 					'Content-Type': 'application/x-www-form-urlencoded',
 				},
-			});
-		} catch (err) {
-			throw new RetryableProviderError(
-				`Network error fetching Stripe page after "${cursor || 'start'}": ${err instanceof Error ? err.message : 'unknown'}`
-			);
-		}
-
-		if (response.status === 429) {
-			throw new RetryableProviderError(`Stripe rate limit (429) after "${cursor || 'start'}"`);
-		}
-		if (!response.ok) {
-			let errorMessage = `Stripe API error: ${response.status}`;
-			try {
-				const errorData = (await response.json()) as { error?: { message?: string } };
-				if (errorData?.error?.message) {
-					errorMessage = errorData.error.message;
-				}
-			} catch {
-				// Non-JSON error response — fall through with status-only message.
+			},
+			{
+				label: 'Stripe',
+				where: `after "${cursor || 'start'}"`,
+				extractMessage: (body) => body.error?.message,
+				redact: (text) => withoutApiKey(text, config.apiKey),
 			}
-			throw new Error(errorMessage);
-		}
+		);
 
 		const data = (await response.json()) as StripeCustomerListResponse;
 
@@ -149,3 +139,8 @@ export const stripeProvider: IntegrationImportProviderModule<'stripe'> = {
 		return { rows, nextCursor };
 	},
 };
+
+/** Strip the pasted API key out of any error text before it is stored or shown. */
+function withoutApiKey(text: string, apiKey: string): string {
+	return apiKey.length > 0 ? text.split(apiKey).join('[redacted]') : text;
+}

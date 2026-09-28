@@ -40,7 +40,7 @@
  */
 
 import {
-	RetryableProviderError,
+	fetchProviderPage,
 	type FetchPageResult,
 	type IntegrationImportProviderModule,
 	type SuppressionRow,
@@ -70,6 +70,11 @@ interface MandrillRejectEntry {
 	email?: string;
 	reason?: string;
 	expired?: boolean;
+}
+
+interface MandrillErrorBody {
+	message?: string;
+	name?: string;
 }
 
 export const mandrillProvider: IntegrationImportProviderModule<'mandrill'> = {
@@ -105,9 +110,15 @@ export const mandrillProvider: IntegrationImportProviderModule<'mandrill'> = {
 		}
 		const subaccount = getOptional('MANDRILL_SUBACCOUNT');
 
-		let response: Response;
-		try {
-			response = await fetch(MANDRILL_REJECTS_LIST_URL, {
+		// Mandrill answers API-level failures (`Invalid_Key`, `PaymentRequired`,
+		// `ServiceUnavailable`) with HTTP 500 and a JSON body, so a non-OK status
+		// is surfaced with the provider's own message where there is one. Every
+		// thrown message is key-redacted: an echoed request body would otherwise
+		// put the sending credential into `integrationImports.errors`, which the
+		// import UI renders.
+		const response = await fetchProviderPage<MandrillErrorBody>(
+			MANDRILL_REJECTS_LIST_URL,
+			{
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				// Mandrill convention: the key travels in the JSON body, never in the
@@ -124,35 +135,14 @@ export const mandrillProvider: IntegrationImportProviderModule<'mandrill'> = {
 					include_expired: false,
 					...(subaccount ? { subaccount } : {}),
 				}),
-			});
-		} catch (err) {
-			throw new RetryableProviderError(
-				`Network error fetching Mandrill rejects at offset ${offset}: ${
-					err instanceof Error ? withoutApiKey(err.message, apiKey) : 'unknown'
-				}`
-			);
-		}
-
-		if (response.status === 429) {
-			throw new RetryableProviderError(`Mandrill rate limit (429) at offset ${offset}`);
-		}
-		if (!response.ok) {
-			// Mandrill answers API-level failures (`Invalid_Key`, `PaymentRequired`,
-			// `ServiceUnavailable`) with HTTP 500 and a JSON body, so a non-OK status
-			// is surfaced with the provider's own message where there is one. Every
-			// path is key-redacted: an echoed request body would otherwise put the
-			// sending credential into `integrationImports.errors`, which the import
-			// UI renders.
-			const errorText = await response.text().catch(() => '');
-			let errorMessage = `Mandrill API error: ${response.status}`;
-			try {
-				const errorJson = JSON.parse(errorText) as { message?: string; name?: string };
-				errorMessage = errorJson.message || errorJson.name || errorMessage;
-			} catch {
-				// Non-JSON error response — fall through with status-only message.
+			},
+			{
+				label: 'Mandrill',
+				where: `at offset ${offset}`,
+				extractMessage: (body) => body.message || body.name,
+				redact: (text) => withoutApiKey(text, apiKey),
 			}
-			throw new Error(withoutApiKey(errorMessage, apiKey));
-		}
+		);
 
 		const parsed: unknown = await response.json();
 		if (!Array.isArray(parsed)) {
