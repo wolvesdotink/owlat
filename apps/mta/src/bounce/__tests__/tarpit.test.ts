@@ -12,12 +12,6 @@ vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-vi.mock('../inboundSecurity.js', () => ({
-	checkConnectionRateLimit: vi.fn(async () => true),
-	releaseConnection: vi.fn(async () => undefined),
-}));
-
-import type Redis from 'ioredis';
 import { buildOnConnect } from '../server.js';
 import type { MtaConfig } from '../../config.js';
 
@@ -26,17 +20,11 @@ const TARPIT_MS = 60_000;
 const config = {
 	bounceTarpitEnabled: true,
 	bounceTarpitDelayMs: TARPIT_MS,
-	bounceMaxConnectionsPerIp: 10,
 } as unknown as MtaConfig;
 
 /** Resolves true when onConnect finished without the tarpit delay elapsing. */
 async function admittedWithoutDelay(remoteAddress: string): Promise<boolean> {
-	const onConnect = buildOnConnect(
-		config,
-		{} as Redis,
-		() => undefined,
-		() => false
-	);
+	const onConnect = buildOnConnect(config);
 	let settled = false;
 	const pending = onConnect({ remoteAddress } as Parameters<typeof onConnect>[0]).then(() => {
 		settled = true;

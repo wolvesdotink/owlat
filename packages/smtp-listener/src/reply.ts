@@ -12,7 +12,7 @@
  * text: 'mailbox full' }` serializes to exactly `552 5.2.2 mailbox full\r\n`.
  */
 
-import type { SmtpReply } from './types.js';
+import type { SmtpHandlerResult, SmtpReply, SmtpSession } from './types.js';
 
 const CRLF = '\r\n';
 
@@ -156,3 +156,24 @@ export const Reply = {
 		text: `${hostname} timeout, closing connection`,
 	}),
 } as const;
+
+/** Invoke a handler, normalizing its accept/reject outcome. */
+export async function invokeHandler<S, T, A>(
+	handler:
+		| ((arg: A, session: SmtpSession<S, T>) => Promise<SmtpHandlerResult> | SmtpHandlerResult)
+		| undefined,
+	arg: A,
+	session: SmtpSession<S, T>,
+	onError: ((err: Error) => void) | undefined
+): Promise<{ accept: boolean; reply?: SmtpReply }> {
+	if (!handler) return { accept: true };
+	try {
+		const result = (await handler(arg, session)) as SmtpReply | undefined;
+		if (result && result.code >= 400) return { accept: false, reply: result };
+		return { accept: true, reply: result ?? undefined };
+	} catch (err) {
+		if (err instanceof SmtpReplyError) return { accept: false, reply: err.reply };
+		onError?.(err instanceof Error ? err : new Error(String(err)));
+		return { accept: false, reply: Reply.localError() };
+	}
+}

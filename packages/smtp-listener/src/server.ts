@@ -15,6 +15,7 @@ import {
 	type TLSSocket,
 	type TlsOptions,
 } from 'node:tls';
+import { admitBeforeHandshake, createAdmissionGate } from './admission.js';
 import { handleConnection, resolveConfig } from './session.js';
 import { resolveTlsConfig, type SmtpTlsMaterial } from './tls.js';
 import type { SmtpListenerOptions } from './types.js';
@@ -136,10 +137,17 @@ export function createSmtpListener<S = unknown, T = unknown>(
 	// instead of blocking on in-flight sessions (a stalled peer must not hold the
 	// listener — or a test's `afterEach` — open indefinitely).
 	const sockets = new Set<Socket>();
-	const accept = (socket: Socket, initialSecure: boolean): void => {
+	const track = (socket: Socket): void => {
 		sockets.add(socket);
 		socket.once('close', () => sockets.delete(socket));
-		handleConnection(socket, config, initialSecure);
+	};
+	const gate = opts.admission ? createAdmissionGate(opts.admission, opts.onError) : undefined;
+	const accept = (socket: Socket, initialSecure: boolean): void => {
+		track(socket);
+		// An implicit-TLS socket was admitted before its handshake; a plaintext one
+		// is counted here, at accept, and its verdict awaited after the greeting.
+		const admission = initialSecure ? undefined : gate?.admit(socket);
+		handleConnection(socket, config, initialSecure, admission);
 	};
 	// Implicit TLS (port 465): the whole connection is wrapped in TLS before the
 	// banner, so the accepted socket is already a handshaken `tls.TLSSocket` and
@@ -149,6 +157,7 @@ export function createSmtpListener<S = unknown, T = unknown>(
 		config.implicitTls && config.tls
 			? createImplicitTlsServer(config.tls.options, accept, opts.onError)
 			: undefined;
+	if (implicitServer && gate) admitBeforeHandshake(implicitServer, gate, track);
 	const server: Server =
 		implicitServer ??
 		createServer({ pauseOnConnect: false }, (socket: Socket) => {
