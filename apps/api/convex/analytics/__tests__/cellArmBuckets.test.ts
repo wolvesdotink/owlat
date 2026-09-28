@@ -14,6 +14,7 @@ import { internal } from '../../_generated/api';
 import { newHarness } from '../../__tests__/testModules';
 import { startOfDayUtc } from '../../lib/clock';
 import { getSingletonOrganizationId } from '../../lib/sessionOrganization';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import { cellArmPeriodRange, resolveCellArmForSend } from '../cellArmBuckets';
 import { recordTransportOutcomeForSend } from '../transportOutcomes';
 import {
@@ -25,7 +26,7 @@ import {
 } from './transportOutcomesFixtures';
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return { ...actual, getSingletonOrganizationId: vi.fn().mockResolvedValue('org_outcomes') };
 });
 
