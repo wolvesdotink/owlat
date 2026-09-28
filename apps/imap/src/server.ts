@@ -14,23 +14,44 @@ import { ImapConnection } from './connection.js';
 import type { AuthRateLimiter } from './rateLimit.js';
 import { logger } from './logger.js';
 import { startImapTlsReload } from './tlsReload.js';
+import { installShutdown, pinoShutdownLog, type ShutdownHandle } from '@owlat/shared/nodeShutdown';
 
 /** The IMAPS cipher policy, shared with the SMTP listeners. */
 const TLS_POLICY: TlsOptions = HARDENED_SERVER_TLS_OPTIONS;
+
+/**
+ * Hard-exit deadline for a shutdown, under the compose stop_grace_period of
+ * 30s so the watchdog, not Docker's SIGKILL, ends a wedged drain.
+ */
+const SHUTDOWN_TIMEOUT_MS = 25_000;
 
 interface ConnectionAccounting {
 	totalActive: number;
 	perIp: Map<string, number>;
 }
 
+export interface ImapServerHandle {
+	server: TcpServer | TlsServer;
+	stopTlsReload: () => void;
+	/** Send `* BYE <reason>` to every open connection and close it. */
+	closeAllConnections: (reason: string) => void;
+}
+
 export function startImapServer(
 	config: ImapConfig,
 	convex: ConvexClient,
 	rateLimiter: AuthRateLimiter
-): { server: TcpServer | TlsServer; stopTlsReload: () => void } {
+): ImapServerHandle {
 	const accounting: ConnectionAccounting = {
 		totalActive: 0,
 		perIp: new Map(),
+	};
+	// Every accepted session, so a shutdown can say BYE to each one. The
+	// listener's close() waits for all of them, and an IDLE client never hangs
+	// up on its own.
+	const connections = new Set<ImapConnection>();
+	const closeAllConnections = (reason: string) => {
+		for (const connection of connections) connection.shutdown(reason);
 	};
 
 	const makeHandler = (tls: boolean) => (socket: import('net').Socket) => {
@@ -57,7 +78,9 @@ export function startImapServer(
 			else accounting.perIp.set(ip, remaining);
 		});
 
-		new ImapConnection(socket, config, convex, rateLimiter, ip, tls);
+		const connection = new ImapConnection(socket, config, convex, rateLimiter, ip, tls);
+		connections.add(connection);
+		socket.on('close', () => connections.delete(connection));
 	};
 
 	if (config.tls) {
@@ -72,7 +95,7 @@ export function startImapServer(
 			logger.info({ port: config.port, listen: config.listenAddress }, 'IMAPS listening (TLS)');
 		});
 		server.on('error', (err) => logger.error({ err }, 'TLS server error'));
-		return { server, stopTlsReload: () => reloader?.stop() };
+		return { server, stopTlsReload: () => reloader?.stop(), closeAllConnections };
 	}
 
 	// Dev fallback — bind a plain TCP server. NOT for production.
@@ -91,5 +114,43 @@ export function startImapServer(
 		);
 	});
 	server.on('error', (err) => logger.error({ err }, 'TCP server error'));
-	return { server, stopTlsReload: () => {} };
+	return { server, stopTlsReload: () => {}, closeAllConnections };
+}
+
+export interface ImapShutdownOptions {
+	/** Runs last, after every connection has closed (the Redis client). */
+	disconnect?: () => void;
+	/** Seams for tests; default to `process.exit` and SIGTERM + SIGINT. */
+	exit?: (code: number) => void;
+	signals?: NodeJS.Signals[];
+}
+
+/**
+ * Stop the listener, BYE every session, then release the rest, bounded by
+ * {@link SHUTDOWN_TIMEOUT_MS}; a clean drain exits 0.
+ *
+ * `installShutdown` waits for `close()`'s callback before it drains, and that
+ * callback only fires once every socket has ended. So the BYEs go out from the
+ * adapter's `closeIdleConnections`, which it calls right after `close()`;
+ * sending them from `drain` would wait on `close()` until the watchdog fired.
+ */
+export function installImapShutdown(
+	imap: ImapServerHandle,
+	options: ImapShutdownOptions = {}
+): ShutdownHandle {
+	const { server, stopTlsReload, closeAllConnections } = imap;
+	return installShutdown({
+		server: {
+			close: (callback) => server.close(callback),
+			closeIdleConnections: () => closeAllConnections('Server shutting down'),
+		},
+		drain: async () => {
+			stopTlsReload();
+			options.disconnect?.();
+		},
+		timeoutMs: SHUTDOWN_TIMEOUT_MS,
+		log: pinoShutdownLog(logger),
+		...(options.exit ? { exit: options.exit } : {}),
+		...(options.signals ? { signals: options.signals } : {}),
+	});
 }

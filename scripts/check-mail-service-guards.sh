@@ -9,6 +9,10 @@
 #     `@owlat/shared/nodeEnv`. `parseInt(process.env.X ?? 'd', 10)` reads ''
 #     as NaN (which turns a connection cap off) and '1e3' as 1, with no boot
 #     error. Matched across line breaks, because the formatter wraps long calls.
+#  2. SIGTERM and SIGINT go through `installShutdown` from
+#     `@owlat/shared/nodeShutdown`, which ignores a duplicate signal, stops the
+#     listener before draining, and holds a watchdog that is not unref'd. Each
+#     hand-rolled copy got at least one of those wrong.
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -37,6 +41,9 @@ forbid() {
 
 forbid "parse numeric env vars with readIntEnv from @owlat/shared/nodeEnv, not parseInt:" \
 	'parseInt\(\s*(?:process\.env|optionalEnv\()'
+
+forbid "handle SIGTERM/SIGINT with installShutdown from @owlat/shared/nodeShutdown, not process.on:" \
+	'process\.on\(\s*[\x27"]SIG(?:TERM|INT)[\x27"]'
 
 if [ "$failed" -ne 0 ]; then
 	exit 1
