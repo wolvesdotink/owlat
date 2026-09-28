@@ -354,7 +354,8 @@ else bad "IMAP_RUNTIME_USER defaults (${pinned_users:-none}) must all equal the 
 # re-publishes default.key on every renewal, so without a chown the EACCES comes
 # back every time the certificate rolls over — even after a manual fix.
 acme_sh=infra/templates/acme-entrypoint.sh
-acme_key_modes=$(grep -oE 'install -m [0-7]+ "\$key"' "$acme_sh" | awk '{print $3}' | sort -u | tr '\n' ' ')
+# Every key is staged (install + chown) beside its destination, then renamed.
+acme_key_modes=$(grep -oE 'stage_file "\$key" [^)]* [0-7]+\)' "$acme_sh" | grep -oE '[0-7]+\)$' | tr -d ')' | sort -u | tr '\n' ' ')
 if grep -qF 'chown "$IMAP_RUNTIME_USER"' "$acme_sh" && [ "$acme_key_modes" = "0600 " ]; then
 	ok "$acme_sh publishes the key 0600 and hands ownership to IMAP_RUNTIME_USER on every renewal"
 else bad "$acme_sh must install the key with mode 0600 (found: ${acme_key_modes:-none}) and chown it to \$IMAP_RUNTIME_USER, or IMAP EACCESes again at the next renewal"; fi

@@ -28,6 +28,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
+import { getFlagOwnedProfiles } from '@owlat/shared/featureFlags';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const run = promisify(execFile);
@@ -40,6 +41,9 @@ afterAll(async () => {
 
 // Answers, in order of specificity:
 //   compose config --services  → $STUB_ACTIVE (the enabled services)
+//   compose --profile … config --services
+//                              → $STUB_FLAG_SERVICES (what the flag-owned
+//                                profiles declare, plus unprofiled services)
 //   compose config             → a rendered config naming the project
 //   ps … --format …            → $STUB_RUNNING (services with a container)
 //   ps -aq … service=<name>    → a fake container id
@@ -50,6 +54,7 @@ const STUB_DOCKER = `#!/bin/sh
 printf '%s | profiles=%s project=%s\\n' "$*" "\${COMPOSE_PROFILES-<unset>}" "\${COMPOSE_PROJECT_NAME-<unset>}" >> "$STUB_LOG"
 case "$*" in
 	"compose config --services") printf '%s\\n' $STUB_ACTIVE ;;
+	compose\\ --profile*config\\ --services) printf '%s\\n' $STUB_FLAG_SERVICES; exit "\${STUB_FLAG_QUERY_EXIT:-0}" ;;
 	"compose config") printf 'name: owlat-test\\nservices: {}\\n' ;;
 	ps\\ --filter*--format*) printf '%s\\n' $STUB_RUNNING ;;
 	ps\\ -aq*) printf 'id-%s\\n' "\${*##*service=}" ;;
@@ -105,6 +110,7 @@ async function makeInstall(files: { env?: string; override?: string } = {}): Pro
 						OWLAT_SETUP_IMAGE: 'setup-image:test',
 						STUB_LOG: log,
 						STUB_ACTIVE: '',
+						STUB_FLAG_SERVICES: '',
 						STUB_RUNNING: '',
 						...env,
 					},
@@ -168,6 +174,7 @@ describe('owlat apply', () => {
 
 		await install.invoke(['apply'], {
 			STUB_ACTIVE: 'web convex mta',
+			STUB_FLAG_SERVICES: 'web convex mta clamav',
 			STUB_RUNNING: 'web convex mta clamav',
 		});
 
@@ -181,6 +188,51 @@ describe('owlat apply', () => {
 		expect(calls.some((line) => line.includes('label=com.docker.compose.project=owlat-test'))).toBe(
 			true
 		);
+	});
+
+	it('leaves a service started under a manual profile running', async () => {
+		// docker-compose.yml tells operators to start the Convex dashboard by
+		// hand; no flag says it should run, so it is never in the active set.
+		const install = await makeInstall({ env: 'COMPOSE_PROFILES=mta\n' });
+
+		await install.invoke(['apply'], {
+			STUB_ACTIVE: 'web convex mta',
+			STUB_FLAG_SERVICES: 'web convex mta clamav',
+			STUB_RUNNING: 'web convex mta clamav convex-dashboard',
+		});
+
+		const calls = await install.calls();
+		expect(calls.filter((line) => /^(stop|rm) /.test(line))).toEqual([
+			expect.stringMatching(/^stop id-clamav /),
+			expect.stringMatching(/^rm id-clamav /),
+		]);
+		// The flag-owned set is asked for with every flag-owned profile named,
+		// which replaces COMPOSE_PROFILES for that one call.
+		const flagQuery = calls.find((line) => line.startsWith('compose --profile'));
+		for (const profile of getFlagOwnedProfiles()) {
+			expect(flagQuery).toContain(`--profile ${profile} `);
+		}
+	});
+
+	it('prunes nothing when compose cannot say which services the flags own', async () => {
+		const install = await makeInstall({ env: 'COMPOSE_PROFILES=mta\n' });
+
+		const result = await install.invoke(['apply'], {
+			STUB_ACTIVE: 'web convex mta',
+			STUB_FLAG_SERVICES: '',
+			STUB_RUNNING: 'web convex mta clamav convex-dashboard',
+			STUB_FLAG_QUERY_EXIT: '1',
+		});
+
+		expect(result.code).toBe(0);
+		expect((await install.calls()).some((line) => /^(stop|rm) /.test(line))).toBe(false);
+	});
+
+	it('names exactly the profiles the flag registry owns', async () => {
+		const script = await readFile(join(REPOSITORY_ROOT, 'scripts/owlat'), 'utf8');
+		const declared = /^FLAG_OWNED_PROFILES=\(([^)]*)\)$/m.exec(script)?.[1];
+
+		expect(declared?.trim().split(/\s+/).sort()).toEqual([...getFlagOwnedProfiles()].sort());
 	});
 
 	it('pushes the Convex runtime keys through the setup image, in this project', async () => {
