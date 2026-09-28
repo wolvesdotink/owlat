@@ -13,45 +13,29 @@
  *
  * Run by `bun run lint` (apps/api): `bun scripts/check-transport-outcome-wiring.ts`.
  */
-import { readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { join } from 'node:path';
 import {
 	transportOutcomeEventForTransition,
 	TRANSPORT_OUTCOME_EVENTS,
 } from '../convex/analytics/transportOutcomeSummary';
+import {
+	boundNames,
+	createChecker,
+	IMPORT_DECLARATION,
+	productionModules,
+	resolveRelative,
+	sourceMap,
+	valueExports,
+} from './lib/sourceGraph';
 
 const convexRoot = join(import.meta.dirname, '..', 'convex');
-const EFFECT_DECLARATION = join(convexRoot, 'delivery', 'sendLifecycle', 'effects.ts');
-const MAPPER_DECLARATION = join(convexRoot, 'analytics', 'transportOutcomeSummary.ts');
+const EFFECT_DECLARATION = 'delivery/sendLifecycle/effects.ts';
+const MAPPER_DECLARATION = 'analytics/transportOutcomeSummary.ts';
 
-const failures: string[] = [];
-function check(condition: boolean, message: string): void {
-	if (!condition) failures.push(message);
-}
+const { check, report } = createChecker();
 
-function productionModules(dir: string): string[] {
-	const found: string[] = [];
-	for (const entry of readdirSync(dir, { withFileTypes: true })) {
-		const full = join(dir, entry.name);
-		if (entry.isDirectory()) {
-			if (entry.name === '__tests__' || entry.name === '_generated') continue;
-			found.push(...productionModules(full));
-			continue;
-		}
-		if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts')) found.push(full);
-	}
-	return found.sort();
-}
-
-function sourceWithoutComments(file: string): string {
-	return readFileSync(file, 'utf8')
-		.replace(/\/\*[\s\S]*?\*\//g, '')
-		.replace(/^\s*\/\/.*$/gm, '');
-}
-
-const MODULES = productionModules(convexRoot);
-const SOURCES = new Map(MODULES.map((file) => [file, sourceWithoutComments(file)]));
-const named = (file: string): string => relative(convexRoot, file);
+/** Every production module under convex/, comments stripped, keyed by its relative path. */
+const SOURCES = sourceMap(convexRoot, productionModules(convexRoot));
 
 const LITERAL_EMISSION = /transportOutcomeEffect\(\s*[^,)]+,\s*'([a-z_]+)'/g;
 const COMPUTED_EMISSION = /transportOutcomeEffect\(\s*[^,)]+,\s*([A-Za-z_$][\w$]*)\s*,/g;
@@ -62,18 +46,18 @@ for (const [file, source] of SOURCES) {
 	for (const match of source.matchAll(LITERAL_EMISSION)) {
 		const event = match[1];
 		if (event === undefined) continue;
-		LITERAL_WRITERS.set(event, [...(LITERAL_WRITERS.get(event) ?? []), named(file)]);
+		LITERAL_WRITERS.set(event, [...(LITERAL_WRITERS.get(event) ?? []), file]);
 	}
 	const computed = [...source.matchAll(COMPUTED_EMISSION)];
 	if (computed.length > 0 && source.includes('transportOutcomeEventForTransition(')) {
-		MAPPER_WRITERS.push(named(file));
+		MAPPER_WRITERS.push(file);
 	}
 }
 
 // The mapper's domain, read off its own signature rather than hand-listed.
 function transitionDomain(): string[] {
 	const signature = /transportOutcomeEventForTransition\(\s*to:\s*([^,]+),/.exec(
-		sourceWithoutComments(MAPPER_DECLARATION)
+		SOURCES.get(MAPPER_DECLARATION) ?? ''
 	);
 	return (signature?.[1] ?? '')
 		.split('|')
@@ -100,57 +84,26 @@ const writersFor = (event: string): string[] => [
 
 // ─── One hop further: the emitter itself must be reached ────────────────────
 
-const RELATIVE_SOURCES: ReadonlyMap<string, string> = new Map(
-	[...SOURCES].map(([file, source]) => [named(file), source])
-);
-
-const EMITTERS = [...RELATIVE_SOURCES]
+const EMITTERS = [...SOURCES]
 	.filter(
-		([file, source]) =>
-			file !== named(EFFECT_DECLARATION) && source.includes('transportOutcomeEffect(')
+		([file, source]) => file !== EFFECT_DECLARATION && source.includes('transportOutcomeEffect(')
 	)
 	.map(([file]) => file)
 	.sort();
 
-const IMPORT_DECLARATION = /^import\s+(?!type\b)([\s\S]*?)\s*from\s*'([^']+)';/gm;
-
-function boundNames(clause: string): string[] {
-	return clause
-		.replace(/[{}]/g, ' ')
-		.split(',')
-		.map((entry) => entry.trim())
-		.filter((entry) => entry.length > 0 && !/^type\s/.test(entry))
-		.flatMap((entry) => entry.split(/\s+as\s+/).map((part) => part.trim()))
-		.filter((entry) => entry.length > 0);
-}
-
-function valueExports(source: string): Set<string> {
-	const names = new Set<string>();
-	const declared = /export\s+(?:async\s+)?(?:function|const|class)\s+([A-Za-z_$][\w$]*)/g;
-	for (const match of source.matchAll(declared)) {
-		if (match[1] !== undefined) names.add(match[1]);
-	}
-	for (const match of source.matchAll(/export\s*\{([^}]*)\}/g)) {
-		for (const name of boundNames(match[1] ?? '')) names.add(name);
-	}
-	return names;
-}
-
-const resolveRelative = (from: string, specifier: string): string | null =>
-	specifier.startsWith('.') ? `${join(dirname(from), specifier)}.ts` : null;
-
 // Production modules that name one of `emitter`'s value exports — by importing
-// it, or by addressing `internal.<module path>.<export>`.
+// it (directly or through a folder `index.ts`), or by addressing
+// `internal.<module path>.<export>`.
 function productionReferrers(emitter: string): string[] {
-	const exported = valueExports(RELATIVE_SOURCES.get(emitter) ?? '');
+	const exported = valueExports(SOURCES.get(emitter) ?? '');
 	const dotted = emitter.replace(/\.ts$/, '').split('/').join('\\.');
 	const generatedCall = new RegExp(`\\b(?:internal|api)\\.${dotted}\\.([A-Za-z_$][\\w$]*)`, 'g');
 	const referrers: string[] = [];
-	for (const [file, source] of RELATIVE_SOURCES) {
+	for (const [file, source] of SOURCES) {
 		if (file === emitter) continue;
 		const mentioned: string[] = [];
 		for (const match of source.matchAll(IMPORT_DECLARATION)) {
-			if (resolveRelative(file, match[2] ?? '') !== emitter) continue;
+			if (!resolveRelative(file, match[2] ?? '').includes(emitter)) continue;
 			mentioned.push(...boundNames(match[1] ?? ''));
 		}
 		for (const match of source.matchAll(generatedCall)) {
@@ -163,7 +116,7 @@ function productionReferrers(emitter: string): string[] {
 
 // ─── The checks ─────────────────────────────────────────────────────────────
 
-check(MODULES.length > 100, `walked only ${MODULES.length} modules`);
+check(SOURCES.size > 100, `walked only ${SOURCES.size} modules`);
 check(SOURCES.has(EFFECT_DECLARATION), 'the effect declaration module dropped out of the walk');
 check(
 	TRANSITIONS.includes('bounced') && TRANSITIONS.length >= 7,
@@ -195,10 +148,11 @@ check(
 	`the mapper range changed: ${[...MAPPER_RANGE].sort().join(', ')}`
 );
 
-const spellers = MODULES.filter(
-	(file) =>
-		file !== EFFECT_DECLARATION && /kind:\s*'transport_outcome'/.test(SOURCES.get(file) ?? '')
-).map(named);
+const spellers = [...SOURCES]
+	.filter(
+		([file, source]) => file !== EFFECT_DECLARATION && /kind:\s*'transport_outcome'/.test(source)
+	)
+	.map(([file]) => file);
 check(
 	spellers.length === 0,
 	`only the effect union may spell the transport_outcome tag; also spelled by ${spellers.join(', ')}`
@@ -218,10 +172,7 @@ for (const emitter of EMITTERS) {
 	);
 }
 
-if (failures.length > 0) {
-	for (const failure of failures) console.error(`FAIL: ${failure}`);
-	process.exit(1);
-}
-console.log(
-	`check-transport-outcome-wiring: OK (${TRANSPORT_OUTCOME_EVENTS.length} events, ${EMITTERS.length} emitters)`
+report(
+	'check-transport-outcome-wiring',
+	`${TRANSPORT_OUTCOME_EVENTS.length} events, ${EMITTERS.length} emitters`
 );

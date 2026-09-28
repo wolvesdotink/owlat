@@ -27,79 +27,37 @@
  *
  * Run by `bun run lint` (apps/api): `bun scripts/check-entry-wiring.ts`.
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { PREVIOUS_RELEASE_ENTRIES } from './entryWiringPreviousRelease';
+import {
+	boundNames,
+	createChecker,
+	IMPORT_DECLARATION,
+	isTestFile,
+	productionModules,
+	resolveRelative,
+	sourceMap,
+} from './lib/sourceGraph';
 
 const convexRoot = join(import.meta.dirname, '..', 'convex');
 const repoRoot = join(import.meta.dirname, '..', '..', '..');
 
-const failures: string[] = [];
-function check(condition: boolean, message: string): void {
-	if (!condition) failures.push(message);
-}
-function expectEmpty(items: readonly string[], message: string): void {
-	if (items.length > 0) failures.push(`${message}\n  ${items.join('\n  ')}`);
-}
+const { check, expectEmpty, report } = createChecker();
 
-// Production only: tests are the fabricated callers this walk exists to see
-// past, `_generated` names every function without calling one, build outputs
-// are copies. `.well-known` is a live Nuxt route directory, so only these names
-// are skipped, never every dot-prefixed directory.
-const SKIPPED_DIRECTORIES = new Set([
-	'__tests__',
-	'_generated',
-	'node_modules',
-	'dist',
-	'.nuxt',
-	'.output',
-	'build',
-	'coverage',
-]);
-
-function productionModules(dir: string, extensions: readonly string[]): string[] {
-	if (!existsSync(dir)) return [];
-	const found: string[] = [];
-	for (const entry of readdirSync(dir, { withFileTypes: true })) {
-		const full = join(dir, entry.name);
-		if (entry.isDirectory()) {
-			if (SKIPPED_DIRECTORIES.has(entry.name)) continue;
-			found.push(...productionModules(full, extensions));
-			continue;
-		}
-		if (entry.name.endsWith('.test.ts')) continue;
-		if (extensions.some((extension) => entry.name.endsWith(extension))) found.push(full);
-	}
-	return found.sort();
-}
-
-// `<!-- -->` first so a full HTML comment is gone before `//` can eat its
-// terminator; `//` cut wherever it appears, because over-stripping fails loud
-// here while under-stripping credits an orphan with a mention.
-function stripComments(source: string): string {
-	return source
-		.replace(/<!--[\s\S]*?-->/g, '')
-		.replace(/\/\*[\s\S]*?\*\//g, '')
-		.replace(/\/\/.*$/gm, '');
-}
-
-function sourceMap(files: readonly string[], root: string): Map<string, string> {
-	return new Map(
-		files.map((file) => [
-			relative(root, file).split('\\').join('/'),
-			stripComments(readFileSync(file, 'utf8')),
-		])
-	);
-}
-
-const CONVEX_SOURCES = sourceMap(productionModules(convexRoot, ['.ts']), convexRoot);
+// Production only, comments stripped (lib/sourceGraph.ts owns both policies):
+// tests are the fabricated callers this walk exists to see past, and a
+// mention in prose is no caller.
+const CONVEX_SOURCES = sourceMap(convexRoot, productionModules(convexRoot));
 // Every client of this backend, not just the web app: apps/** and packages/**
 // minus convex/ itself.
 const CLIENT_SOURCES = sourceMap(
+	repoRoot,
 	['apps', 'packages']
-		.flatMap((workspace) => productionModules(join(repoRoot, workspace), ['.ts', '.vue']))
-		.filter((file) => !file.startsWith(`${convexRoot}/`)),
-	repoRoot
+		.flatMap((workspace) =>
+			productionModules(join(repoRoot, workspace), { extensions: ['.ts', '.vue'] })
+		)
+		.filter((file) => !file.startsWith(`${convexRoot}/`))
 );
 
 const AUTHED_FUNCTIONS = 'lib/authedFunctions.ts';
@@ -263,7 +221,6 @@ const CONVEX_ENTRIES: ConvexEntry[] = [...CONVEX_SOURCES.keys()]
 
 // ─── Reachability ───────────────────────────────────────────────────────────
 
-const IMPORT_DECLARATION = /^import\s+(?!type\b)([\s\S]*?)\s*from\s*'([^']+)';/gm;
 const ANY_IMPORT = /^import\s+[\s\S]*?\s*from\s*'[^']+';/gm;
 // `internal.a.b.name` / `api.a.b.name`, with a `typeof` in front refused: that
 // is the type-borrowing shape, and the entry it names may have no caller.
@@ -271,23 +228,6 @@ const GENERATED_REFERENCE =
 	/(?<!typeof\s+)\b(?:internal|api)\.([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+)/g;
 // `'mail/imap/fetch:fetchEnvelopes'` — the ConvexHttpClient string path.
 const WORKER_REFERENCE = /'([\w/.-]+):([A-Za-z_$][\w$]*)'/g;
-
-function boundNames(clause: string): string[] {
-	return clause
-		.replace(/[{}]/g, ' ')
-		.split(',')
-		.map((entry) => entry.trim())
-		.filter((entry) => entry.length > 0 && !/^type\s/.test(entry))
-		.flatMap((entry) => entry.split(/\s+as\s+/).map((part) => part.trim()))
-		.filter((entry) => entry.length > 0);
-}
-
-// Both resolutions of a relative specifier: `./seedDemo` is `seedDemo/index.ts`.
-function resolveRelative(from: string, specifier: string): string[] {
-	if (!specifier.startsWith('.')) return [];
-	const base = join(dirname(from), specifier.replace(/\.js$/, '')).split('\\').join('/');
-	return [`${base}.ts`, `${base}/index.ts`];
-}
 
 /** Everything one module names, indexed once so the walk is a set lookup per entry. */
 interface References {
@@ -401,7 +341,7 @@ check(CONVEX_SOURCES.size > 500, `walked only ${CONVEX_SOURCES.size} backend mod
 check(CLIENT_SOURCES.size > 500, `walked only ${CLIENT_SOURCES.size} client modules`);
 expectEmpty(
 	[...CONVEX_SOURCES.keys(), ...CLIENT_SOURCES.keys()].filter(
-		(file) => file.includes('__tests__') || file.endsWith('.test.ts')
+		(file) => file.includes('__tests__') || isTestFile(file)
 	),
 	'the walk includes test files'
 );
@@ -484,10 +424,7 @@ check(
 	'runRampController must be reached through its cron registration and nothing else'
 );
 
-if (failures.length > 0) {
-	for (const failure of failures) console.error(`FAIL: ${failure}`);
-	process.exit(1);
-}
-console.log(
-	`check-entry-wiring: OK (${CONVEX_ENTRIES.length} entry points, ${UNREACHED_ENTRIES.length} on the ledger, ${Object.keys(PREVIOUS_RELEASE_ENTRIES).length} kept for the previous release)`
+report(
+	'check-entry-wiring',
+	`${CONVEX_ENTRIES.length} entry points, ${UNREACHED_ENTRIES.length} on the ledger, ${Object.keys(PREVIOUS_RELEASE_ENTRIES).length} kept for the previous release`
 );

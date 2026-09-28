@@ -13,25 +13,22 @@
  *
  * Run by `bun run lint` (apps/api): `bun scripts/check-kind-literal-custody.ts`.
  */
-import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join } from 'node:path';
 import { OWN_SEND_PROVIDER_KIND, SEND_TRANSPORT_KINDS } from '@owlat/shared';
+import { createChecker, productionModules, sourceMap } from './lib/sourceGraph';
 
 const convexRoot = join(import.meta.dirname, '..', 'convex');
 
-const failures: string[] = [];
-function check(condition: boolean, message: string): void {
-	if (!condition) failures.push(message);
-}
+const { check, report } = createChecker();
 
-// The adapter folders own their kind; codegen, migrations and the two adapter
+// The adapter folders own their kind; migrations and the two adapter
 // registries (index.ts files the ratchet reads) write their own names.
+// Codegen and tests never enter the walk (lib/sourceGraph.ts).
 const EXEMPT_PREFIXES = [
 	...SEND_TRANSPORT_KINDS.map((kind) => `lib/sendProviders/${kind}/`),
 	'domains/providers/',
 	'webhooks/adapters/',
 	'migrations/',
-	'_generated/',
 ];
 
 /**
@@ -50,35 +47,16 @@ const SURVIVING_KIND_LITERALS: Record<string, { family: string; owner: string }>
 // Files whose own-arm comparison is the sanctioned D3 exception.
 const OWN_ARM_COMPARISON_EXEMPT = new Set(['domains/lifecycle.ts', 'delivery/lastMileRouting.ts']);
 
-function sourceFiles(dir: string, acc: string[] = []): string[] {
-	for (const entry of readdirSync(dir, { withFileTypes: true })) {
-		const full = join(dir, entry.name);
-		if (entry.isDirectory()) {
-			if (entry.name === 'node_modules' || entry.name === '__tests__') continue;
-			sourceFiles(full, acc);
-			continue;
-		}
-		if (entry.name.endsWith('.ts')) acc.push(full);
-	}
-	return acc;
-}
-
-// The line-comment pass requires the `//` not to follow a `:`, so a
-// `scheme://host` inside a string survives it.
-function strippedOfComments(source: string): string {
-	return source.replaceAll(/\/\*[\s\S]*?\*\//g, '').replaceAll(/(^|[^:])\/\/[^\n]*/g, '$1');
-}
-
 // `= 'ses'` that is not part of `==`, `!=`, `<=`, `>=`.
 const declarationPattern = (kind: string): RegExp => new RegExp(`(^|[^=!<>])=\\s*'${kind}'`, 'gm');
 
-const scanned = sourceFiles(convexRoot).map((file) => ({
-	path: relative(convexRoot, file).replaceAll('\\', '/'),
-	source: strippedOfComments(readFileSync(file, 'utf8')),
+const scanned = [...sourceMap(convexRoot, productionModules(convexRoot))].map(([path, source]) => ({
+	path,
+	source,
 }));
-const inScope = scanned
-	.filter((file) => !EXEMPT_PREFIXES.some((prefix) => file.path.startsWith(prefix)))
-	.filter((file) => !file.path.endsWith('.test.ts'));
+const inScope = scanned.filter(
+	(file) => !EXEMPT_PREFIXES.some((prefix) => file.path.startsWith(prefix))
+);
 
 const declarationOffenders = inScope
 	.map((file) => ({
@@ -127,10 +105,7 @@ for (const [path, entry] of Object.entries(SURVIVING_KIND_LITERALS)) {
 	check(entry.family === 'frozen-sibling-read', `${path} names an unknown family ${entry.family}`);
 }
 
-if (failures.length > 0) {
-	for (const failure of failures) console.error(`FAIL: ${failure}`);
-	process.exit(1);
-}
-console.log(
-	`check-kind-literal-custody: OK (${Object.keys(SURVIVING_KIND_LITERALS).length} surviving declaration(s))`
+report(
+	'check-kind-literal-custody',
+	`${Object.keys(SURVIVING_KIND_LITERALS).length} surviving declaration(s)`
 );
