@@ -150,9 +150,9 @@ export const mailThreadsTables = {
 		needsReplyPendingAt: v.optional(v.number()),
 		// "Remind me if no reply" follow-up watch on a sent message (Boomerang
 		// parity, mail/followUps.ts). Armed at send time (from the draft's
-		// followUpRemindAt) or after the fact from the reader/sent list. ANY
-		// inbound delivery into the thread clears it silently; otherwise the
-		// sweep cron resurfaces the thread at the deadline (sets dueAt exactly
+		// followUpRemindAt) or after the fact from the reader/sent list. An
+		// inbound reply from someone else clears it silently (rules in
+		// mail/deliveryPipeline/afterInsert.ts); otherwise the sweep cron resurfaces the thread at the deadline (sets dueAt exactly
 		// once — the "No reply yet" chip + Reply Queue follow-up item key off it).
 		followUp: v.optional(
 			v.object({
