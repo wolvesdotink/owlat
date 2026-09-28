@@ -57,7 +57,6 @@ import { loadSeedAccounts } from '../analytics/seedAccounts';
 import { checkEmailDomainVerification } from '../domains/domains';
 import { getOptional } from '../lib/env';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
-import { toPaginationCursor } from '../lib/paginationCursor';
 import { resolveSendRouteFromDb } from '../lib/sendProviders/route';
 import { SEED_PROBE_RETENTION_MS } from '../schema/seedPlacement';
 import { newSeedProbeId } from './seedShadowCopy';
@@ -261,7 +260,7 @@ export const sweepScheduledSeedProbes = internalMutation({
 			.query('externalMailAccounts')
 			.withIndex('by_purpose', (q) => q.eq('purpose', 'seed'))
 			.paginate({
-				cursor: toPaginationCursor(args.cursor),
+				cursor: args.cursor ?? null,
 				numItems: SEED_ACCOUNT_PAGE_SIZE,
 			});
 

@@ -15,7 +15,6 @@ import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { countLiveMatchesForSegments, evaluateSegmentCount } from '../conditions';
 import type { Doc } from '../_generated/dataModel';
-import { toPaginationCursor } from '../lib/paginationCursor';
 
 /** Segments whose counts share one live-Contact walk. */
 const BATCH_SIZE = 10;
@@ -64,7 +63,7 @@ export const refreshAllSegmentCounts = internalMutation({
 		// The execution's single `.paginate()` goes to `segments`; the Contact walk
 		// continues through an explicit index range instead (see liveContactScan).
 		const paginationResult = await ctx.db.query('segments').paginate({
-			cursor: toPaginationCursor(args.cursor),
+			cursor: args.cursor ?? null,
 			numItems: BATCH_SIZE,
 		});
 		const batch = paginationResult.page;

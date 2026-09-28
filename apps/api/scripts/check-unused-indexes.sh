@@ -24,7 +24,7 @@
 #   * `index:` / `filterIndexes:` / `sortIndexes:` inside the ADR-0037 listing
 #     descriptors, which lib/listing.ts forwards to `.withIndex()` as a
 #     variable (see `browsePage`).
-#   * `countWithPagination(db, table, 'name', …)` in lib/pagination.ts, whose
+#   * `countIndexRange(db, table, 'name', …)` in lib/pagination.ts, whose
 #     index argument is likewise a caller-supplied literal.
 #   * local helper parameters — knowledge/graph.ts `drainDirection(index, …)`
 #     is called with `'by_from'` / `'by_to'` literals.

@@ -16,7 +16,6 @@ import { v } from 'convex/values';
 import { internalMutation, type MutationCtx, type DatabaseReader } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
-import { toPaginationCursor } from '../lib/paginationCursor';
 import { bumpStatShard, sumStatShards } from '../lib/statShards';
 import { CAMPAIGN_SHARDED_STAT_FIELDS, type CampaignStatField } from '../lib/validators/campaigns';
 
@@ -103,7 +102,7 @@ export const rollupSentCampaignStats = internalMutation({
 		const page = await ctx.db
 			.query('campaigns')
 			.withIndex('by_status_sent_at', (q) => q.eq('status', 'sent').gte('sentAt', cutoff))
-			.paginate({ cursor: toPaginationCursor(args.cursor), numItems: ROLLUP_PAGE_SIZE });
+			.paginate({ cursor: args.cursor ?? null, numItems: ROLLUP_PAGE_SIZE });
 
 		for (const campaign of page.page) {
 			await rollupCampaignStatsRow(ctx, campaign);

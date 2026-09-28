@@ -5257,7 +5257,7 @@ becomes genuinely multi-page) and the stringified-offset cursor in
 `paginateArray`.
 _Avoid_: Listing walker (it dispatches but walks no tree), query builder /
 list helper (names the mechanism, hides that it owns the index + cursor
-policy), pagination util (`paginateArray` / `countWithPagination` are the
+policy), pagination util (`paginateArray` / `countIndexRange` are the
 primitives it subsumes at call sites).
 
 **Listing descriptor**:

@@ -1,6 +1,6 @@
 import type { DatabaseReader, MutationCtx, QueryCtx } from '../_generated/server';
 import type { Value } from 'convex/values';
-import { countWithPagination } from './pagination';
+import { countIndexRange } from './pagination';
 import { getInstanceSettings, upsertInstanceSettings } from './instanceSettings';
 
 /**
@@ -52,7 +52,7 @@ export async function getCachedContactCount(ctx: QueryCtx | MutationCtx): Promis
  * increment/decrement semantics: softDeleteContact decrements the cached count.
  */
 export async function countLiveContacts(db: DatabaseReader): Promise<number> {
-	return await countWithPagination(
+	return await countIndexRange(
 		db,
 		'contacts',
 		'by_deleted_at_and_created_at',
