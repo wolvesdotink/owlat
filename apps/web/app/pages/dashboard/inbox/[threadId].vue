@@ -5,6 +5,7 @@ import { canonicalOption, localizedQuestionCopy } from '~/utils/clarificationLoc
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { useOrganization } from '~/composables/useOrganization';
+import { useNow } from '~/composables/useNow';
 import { sendHoldReason } from '~/utils/replyCollision';
 import { capitalize, formatRelativeTime } from '~/utils/formatters';
 import {
@@ -208,17 +209,8 @@ const rejectReason = ref('');
 const showRejectModal = ref(false);
 const actionMessageId = ref<Id<'inboundMessages'> | null>(null);
 const clarificationAnswers = reactive<Record<string, Record<string, string>>>({});
-const now = ref(Date.now());
-let countdownTimer: ReturnType<typeof setInterval> | null = null;
-
-onMounted(() => {
-	countdownTimer = setInterval(() => {
-		now.value = Date.now();
-	}, 250);
-});
-onBeforeUnmount(() => {
-	if (countdownTimer) clearInterval(countdownTimer);
-});
+// Drives the auto-send countdown on held drafts.
+const now = useNow({ intervalMs: 250 });
 
 const { run: answerClarification, isLoading: isAnsweringClarification } = useBackendOperation(
 	api.inbox.clarification.answerClarification,

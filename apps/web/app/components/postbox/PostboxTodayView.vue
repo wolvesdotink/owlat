@@ -27,6 +27,7 @@
 import { api } from '@owlat/api';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import type { Id } from '@owlat/api/dataModel';
+import { useNow } from '~/composables/useNow';
 import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
 import { partitionTodayMessages, formatAutoFiledLine } from '~/utils/postboxTodayPartition';
 import {
@@ -77,16 +78,7 @@ const { messages, isLoading, hasMore, loadMore } = usePostboxThreads({
 
 // Re-partition as time passes so the local-midnight boundary rolls over
 // without a reload (a minute of drift is invisible; the rows are live).
-const now = ref(new Date());
-let clock: number | undefined;
-onMounted(() => {
-	clock = window.setInterval(() => {
-		now.value = new Date();
-	}, 60_000);
-});
-onUnmounted(() => {
-	if (clock !== undefined) window.clearInterval(clock);
-});
+const now = useNow({ intervalMs: 60_000, as: 'date' });
 
 const partition = computed(() =>
 	// Each row carries its thread's advisory category (attached server-side), so
