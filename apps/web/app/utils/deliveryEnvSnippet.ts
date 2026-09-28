@@ -83,8 +83,8 @@ export function orderProviderEnvNames(
 
 /**
  * The same remedy as shell commands for the `owlat` host CLI: one
- * `owlat env NAME <value>` line per variable, then `owlat restart` so the
- * running containers load it. `owlat env` writes the same `.env` the snippet
+ * `owlat env NAME <value>` line per variable, then the command(s) that load it
+ * (`owlat restart` unless the caller needs more, e.g. a network change). `owlat env` writes the same `.env` the snippet
  * above goes into, so the two are alternatives, not two steps.
  *
  * Names only by default, like the snippet — the value is the `<value>`
@@ -94,7 +94,8 @@ export function orderProviderEnvNames(
  */
 export function buildEnvCliCommands(
 	varNames: readonly string[],
-	values?: Readonly<Record<string, string>>
+	values?: Readonly<Record<string, string>>,
+	applyCommands: readonly string[] = ['owlat restart']
 ): string {
 	const names = uniqueNames(varNames);
 	if (names.length === 0) return '';
@@ -102,7 +103,7 @@ export function buildEnvCliCommands(
 		const value = values?.[name];
 		return `owlat env ${name} ${value === undefined ? '<value>' : shellQuote(value)}`;
 	});
-	return [...set, 'owlat restart'].join('\n');
+	return [...set, ...applyCommands].join('\n');
 }
 
 /** How often a page waiting on an env change asks the server again. */

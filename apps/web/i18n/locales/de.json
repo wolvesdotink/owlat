@@ -2051,6 +2051,55 @@
 				"detectionUnavailable": "Provider-Erkennung nicht verfügbar.",
 				"openConsole": "{provider} öffnen"
 			},
+			"deliverabilityIpv6Setup": {
+				"title": "IPv6-Versand",
+				"subtitle": "Optional. Owlat versendet über IPv4, bis Sie IPv6 einschalten.",
+				"offTitle": "IPv6 ist aus",
+				"offBody": "Nur über IPv4 zu senden ist eine sichere Voreinstellung. IPv6 erweitert die Versandkapazität, sobald IPv4 einwandfrei läuft, verbessert die Zustellung in den Posteingang aber nicht von selbst.",
+				"openSetup": "IPv6 einrichten",
+				"closeSetup": "Einrichtung ausblenden",
+				"ipv4Blocked": "Schließen Sie zuerst diese IPv4-Prüfungen ab: {checks}. Vorher nutzt der MTA kein IPv6.",
+				"step1Title": "Adresse beim Hosting-Anbieter anlegen",
+				"step1Body": "Legen Sie eine feste, öffentlich geroutete IPv6-Adresse für diesen Server an und leiten Sie sie zum MTA-Container. Das IPv6-Netz von Docker vergibt von sich aus keine öffentliche Adresse.",
+				"docsLink": "So funktioniert ausgehendes IPv6",
+				"step2Title": "DNS prüfen",
+				"addressLabel": "IPv6-Versandadresse",
+				"addressInvalid": "Geben Sie eine reine IPv6-Adresse ein, ohne Klammern, Port oder Präfixlänge.",
+				"check": "DNS prüfen",
+				"recheck": "Erneut prüfen",
+				"operation": "IPv6-Adresse prüfen",
+				"checks": {
+					"ptr": {
+						"pass": "Der Reverse-DNS-Eintrag von {address} zeigt auf {hostname}.",
+						"missing": "{address} hat keinen Reverse-DNS-Eintrag (PTR). Setzen Sie ihn im Kundenbereich Ihres Hosting-Anbieters auf {hostname}.",
+						"mismatch": "Der Reverse-DNS-Eintrag von {address} zeigt auf {found}. Ändern Sie ihn im Kundenbereich Ihres Hosting-Anbieters auf {hostname}."
+					},
+					"aaaa": {
+						"pass": "{hostname} hat einen AAAA-Eintrag für {address}.",
+						"missing": "{hostname} hat keinen AAAA-Eintrag. Legen Sie einen an, der auf {address} zeigt.",
+						"mismatch": "{hostname} zeigt auf {found}. Legen Sie einen AAAA-Eintrag für {address} an."
+					},
+					"spf": {
+						"pass": "Der SPF-Eintrag von {domain} erlaubt {address}.",
+						"noRecord": "{domain} hat keinen SPF-Eintrag. Veröffentlichen Sie einen, der ip6:{address} enthält.",
+						"multipleRecords": "{domain} hat mehr als einen SPF-Eintrag. Führen Sie sie zu einem zusammen, der ip6:{address} enthält.",
+						"missingMechanism": "Ergänzen Sie ip6:{address} im SPF-Eintrag von {domain}."
+					},
+					"lookupError": "Die DNS-Abfrage ist fehlgeschlagen. Prüfen Sie in einer Minute erneut."
+				},
+				"refusals": {
+					"invalidAddress": "Das ist keine gültige IPv6-Adresse.",
+					"notPublic": "Verwenden Sie eine öffentliche IPv6-Adresse. Lokale, private und Dokumentationsbereiche können keine E-Mails versenden.",
+					"noEhloHostname": "Auf dem Server ist kein EHLO-Hostname (EHLO_HOSTNAME) gesetzt, daher gibt es keinen Namen, gegen den die Adresse geprüft werden kann.",
+					"noReturnPathDomain": "Auf dem Server ist keine Return-Path-Domain (RETURN_PATH_DOMAIN) gesetzt, daher gibt es keinen SPF-Eintrag zum Prüfen.",
+					"noIpv4InPool": "Beide IP-Pools brauchen eine IPv4-Adresse, bevor eine IPv6-Adresse hinzukommen kann."
+				},
+				"step3Title": "Einschalten",
+				"step3Locked": "Die Servereinstellungen erscheinen hier, sobald alle drei DNS-Prüfungen bestanden sind.",
+				"step3Body": "Übernehmen Sie diese Einstellungen auf dem Server. Das Einschalten von IPv6 ändert das Docker-Netz, deshalb startet der gesamte Stack neu. Rechnen Sie mit etwa einer Minute Ausfallzeit.",
+				"poolsUnknown": "Owlat kennt Ihre aktuellen IP-Pool-Zeilen noch nicht. Hängen Sie ,{address} an das Ende beider IP_POOLS_-Zeilen an, statt sie zu ersetzen.",
+				"afterApply": "Nach dem Neustart prüft der MTA die Adresse selbst. Innerhalb von etwa fünf Minuten zeigt dieser Abschnitt die IPv6-Prüfungen."
+			},
 			"deliverabilityLoopbackCard": {
 				"intro": "Dies sendet über den echten ausgehenden Weg an das Testpostfach von Owlat. Berichtet werden Autorisierung, Signatur, Ausrichtung, TLS und die bei der Ankunft beobachtete Serveradresse.",
 				"lockedDefaultReason": "Der Loopback-Nachweis wird freigeschaltet, sobald die Serveridentität und die erforderlichen Domain-Prüfungen bestanden sind.",
@@ -15161,6 +15210,10 @@
 				"blocking": {
 					"description": "Diese Prüfungen können Mail stoppen oder zur Ablehnung führen.",
 					"label": "Blockiert die Zustellung"
+				},
+				"ipv6": {
+					"description": "Prüfungen für die IPv6-Adresse, von der der Server sendet.",
+					"label": "IPv6-Versand"
 				},
 				"recommended": {
 					"description": "Sinnvolle Härtung, nachdem der blockierende Pfad verifiziert ist.",

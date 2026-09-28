@@ -163,6 +163,11 @@ const GROUP_HEADINGS = {
 		label: 'Recommended',
 		description: 'Useful hardening after the blocking path is verified.',
 	},
+	// Not a severity: the IPv6 checks get their own group once IPv6 is on.
+	ipv6: {
+		label: 'IPv6 sending',
+		description: 'Checks for the IPv6 address the server sends from.',
+	},
 } as const;
 
 describe('sharedPkg.deliverabilityChecklist — the catalog mirrors the checklist taxonomy', () => {
@@ -180,13 +185,18 @@ describe('sharedPkg.deliverabilityChecklist — the catalog mirrors the checklis
 		}
 	});
 
-	it.each(DELIVERABILITY_SEVERITIES)('the %s group heading is mirrored and translated', (key) => {
-		expect(rendered('en', checklistGroupLabelKey(key))).toBe(GROUP_HEADINGS[key].label);
-		expect(rendered('en', checklistGroupDescriptionKey(key))).toBe(GROUP_HEADINGS[key].description);
-		for (const groupKey of [checklistGroupLabelKey(key), checklistGroupDescriptionKey(key)]) {
-			expect(rendered('de', groupKey)).not.toBe(groupKey);
+	it.each([...DELIVERABILITY_SEVERITIES, 'ipv6' as const])(
+		'the %s group heading is mirrored and translated',
+		(key) => {
+			expect(rendered('en', checklistGroupLabelKey(key))).toBe(GROUP_HEADINGS[key].label);
+			expect(rendered('en', checklistGroupDescriptionKey(key))).toBe(
+				GROUP_HEADINGS[key].description
+			);
+			for (const groupKey of [checklistGroupLabelKey(key), checklistGroupDescriptionKey(key)]) {
+				expect(rendered('de', groupKey)).not.toBe(groupKey);
+			}
 		}
-	});
+	);
 });
 
 /**
