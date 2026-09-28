@@ -4520,17 +4520,13 @@
 				"allClear": "All clear",
 				"listLabel": "Categorized conversations",
 				"loadMore": "Load more",
-				"noSubject": "(no subject)",
 				"recategorize": "Recategorize as…",
 				"recategorizeHint": "Remembered for this sender — future mail from them lands here too."
 			},
 			"postboxThreadGroupList": {
 				"allClear": "All clear",
 				"listLabel": "Conversations",
-				"loadMore": "Load more",
-				"noSubject": "(no subject)",
-				"noSubjectLabel": "No subject",
-				"rowLabel": "{subject}, {count} unread"
+				"loadMore": "Load more"
 			},
 			"postboxThreadHeader": {
 				"alertOnReply": "Alert on reply",
@@ -5054,6 +5050,11 @@
 				"toastDeleting": "Deleting this mailbox and its mail.",
 				"toastDisconnected": "Mailbox disconnected.",
 				"updateCredentials": "Update password"
+			},
+			"postboxConversationRow": {
+				"noSubject": "(no subject)",
+				"noSubjectLabel": "No subject",
+				"rowLabel": "{subject}, {count} unread"
 			},
 			"threadDiscussion": {
 				"close": "Hide discussion",

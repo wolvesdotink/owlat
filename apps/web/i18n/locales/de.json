@@ -4520,17 +4520,13 @@
 				"allClear": "Alles erledigt",
 				"listLabel": "Kategorisierte Unterhaltungen",
 				"loadMore": "Mehr laden",
-				"noSubject": "(kein Betreff)",
 				"recategorize": "Neu kategorisieren als…",
 				"recategorizeHint": "Für diesen Absender gemerkt — künftige Post von ihm landet ebenfalls hier."
 			},
 			"postboxThreadGroupList": {
 				"allClear": "Alles erledigt",
 				"listLabel": "Unterhaltungen",
-				"loadMore": "Mehr laden",
-				"noSubject": "(kein Betreff)",
-				"noSubjectLabel": "Kein Betreff",
-				"rowLabel": "{subject}, {count} ungelesen"
+				"loadMore": "Mehr laden"
 			},
 			"postboxThreadHeader": {
 				"alertOnReply": "Bei Antwort benachrichtigen",
@@ -5054,6 +5050,11 @@
 				"toastDeleting": "Postfach und Mails werden gelöscht.",
 				"toastDisconnected": "Postfach getrennt.",
 				"updateCredentials": "Passwort aktualisieren"
+			},
+			"postboxConversationRow": {
+				"noSubject": "(kein Betreff)",
+				"noSubjectLabel": "Kein Betreff",
+				"rowLabel": "{subject}, {count} ungelesen"
 			},
 			"threadDiscussion": {
 				"close": "Diskussion ausblenden",

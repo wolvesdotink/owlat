@@ -21,6 +21,8 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxThreadGroupList from '../PostboxThreadGroupList.vue';
 import PostboxThreadCategoryList from '../PostboxThreadCategoryList.vue';
+import PostboxSectionedThreadList from '../PostboxSectionedThreadList.vue';
+import PostboxConversationRow from '../PostboxConversationRow.vue';
 import PostboxThreadListSkeleton from '../PostboxThreadListSkeleton.vue';
 import PostboxEmptyState from '../PostboxEmptyState.vue';
 
@@ -56,7 +58,12 @@ function makeThread(i: number) {
 
 const globalOptions = {
 	plugins: [createTestI18n()],
-	components: { PostboxThreadListSkeleton, PostboxEmptyState },
+	components: {
+		PostboxThreadListSkeleton,
+		PostboxEmptyState,
+		PostboxSectionedThreadList,
+		PostboxConversationRow,
+	},
 	// Auto-imports the TEMPLATES call resolve through the component context, not
 	// globalThis, so a vi.stubGlobal would never be seen by the row markup.
 	mocks: { formatThreadTimestamp: () => '10:24' },

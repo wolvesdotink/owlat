@@ -22,6 +22,7 @@ import { POSTBOX_VIEW_MODE_OPTIONS, type PostboxViewMode } from '~/utils/postbox
 
 import PostboxThreadList from '../PostboxThreadList.vue';
 import PostboxThreadSectionList from '../PostboxThreadSectionList.vue';
+import PostboxSectionedThreadList from '../PostboxSectionedThreadList.vue';
 import PostboxThreadBundleList from '../PostboxThreadBundleList.vue';
 import PostboxThreadRow from '../PostboxThreadRow.vue';
 import PostboxThreadRowBody from '../PostboxThreadRowBody.vue';
@@ -86,6 +87,7 @@ const globalOptions = {
 	components: {
 		PostboxThreadRow,
 		PostboxThreadRowBody,
+		PostboxSectionedThreadList,
 		PostboxRowCore,
 		PostboxThreadListSkeleton,
 		PostboxEmptyState,

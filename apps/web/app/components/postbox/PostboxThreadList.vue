@@ -3,7 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { PostboxComposeMode, PostboxPendingCompose } from '~/utils/postboxShortcuts';
 import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
-import { POSTBOX_ROW_HEIGHT } from '~/utils/postboxDensity';
+import { POSTBOX_ROW_HEIGHT, POSTBOX_VIRTUAL_THRESHOLD } from '~/utils/postboxDensity';
 import type { PostboxThreadRowMessage } from './PostboxThreadRow.vue';
 import {
 	usePostboxVirtualList,
@@ -305,16 +305,15 @@ watch([focusedIndex, () => props.activeMessageId], () => {
 });
 
 // --- Windowed rendering + infinite scroll (large folders) --------------------
-// Only large folders pay the windowing cost; small folders keep the simple
-// content-visibility path unchanged (and group/category modes use their own
-// non-virtual list components entirely). Row height is a known per-density
-// constant, so this is fixed-height windowing with no dynamic measurement.
-const VIRTUAL_THRESHOLD = 100;
+// Only folders above POSTBOX_VIRTUAL_THRESHOLD pay the windowing cost; small
+// folders keep the simple content-visibility path. Row height is a known
+// per-density constant, so this is fixed-height windowing with no dynamic
+// measurement.
 const scrollEl = ref<HTMLElement | null>(null);
 const { density, swipeLeftAction, swipeRightAction } = usePostboxSettings();
 const rowHeight = computed(() => POSTBOX_ROW_HEIGHT[density.value]);
 const itemCount = computed(() => visibleMessages.value.length);
-const virtualize = computed(() => itemCount.value > VIRTUAL_THRESHOLD);
+const virtualize = computed(() => itemCount.value > POSTBOX_VIRTUAL_THRESHOLD);
 
 const { range, syncScroll, scrollToIndex } = usePostboxVirtualList({
 	scrollEl,
