@@ -316,6 +316,7 @@ function defaultStubs(): Record<string, unknown> {
 		useConvexQuery: () => queryResult(undefined),
 		useOrganizationQuery: () => queryResult(undefined),
 		usePaginatedQuery: () => paginatedResult([]),
+		useOrganizationPaginatedQuery: () => paginatedResult([]),
 		// Every flag on: the audit should see the fullest surface a page can
 		// render, not the subset a stripped instance shows.
 		useFeatureFlag: () => ({

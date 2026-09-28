@@ -21,7 +21,6 @@ definePageMeta({
 const { can, showGateFor } = usePermissions();
 const canManage = computed(() => can('templates:manage'));
 const showManageGate = computed(() => showGateFor('templates:manage'));
-const { isPending: authPending, isAuthenticated } = useAuth();
 const router = useRouter();
 const { showToast } = useToast();
 
@@ -65,12 +64,9 @@ const list = reactive(
 		// (ADR-0037); the sort is applied client-side over the loaded page, and a
 		// search keeps the engine's relevance order.
 		query: ({ search, sort }) => {
-			const { results, isLoading, error, refetch } = usePaginatedQuery(
+			const { results, isLoading, error, refetch } = useOrganizationPaginatedQuery(
 				api.emailTemplates.emails.list,
-				() => {
-					if (authPending.value || !isAuthenticated.value) return 'skip';
-					return { type: 'marketing' as const, search: search.value || undefined };
-				},
+				() => ({ type: 'marketing' as const, search: search.value || undefined }),
 				{ initialNumItems: 100 }
 			);
 			const rows = computed(() =>

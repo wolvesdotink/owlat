@@ -46,7 +46,7 @@ function render(templates = TEMPLATES): VueWrapper {
 			if (name === 'emailBlocks/blocks:getStatsByTeam') return queryResult({ total: 4 });
 			return queryResult(undefined);
 		},
-		usePaginatedQuery: (_reference: unknown, args: () => unknown) => {
+		useOrganizationPaginatedQuery: (_reference: unknown, args: () => unknown) => {
 			listArgs.push(args());
 			const result = paginatedResult(templates);
 			result.error.value = listError as never;

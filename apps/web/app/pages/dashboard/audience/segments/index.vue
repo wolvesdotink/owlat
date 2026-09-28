@@ -25,7 +25,7 @@ const {
 	error: segmentsError,
 	refetch: refetchSegments,
 } = useLoadAllPages(
-	usePaginatedQuery(api.segments.list, () => ({}), { initialNumItems: 100 }),
+	useOrganizationPaginatedQuery(api.segments.list, undefined, { initialNumItems: 100 }),
 	100
 );
 const { results: topics } = useTopicsList();

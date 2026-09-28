@@ -29,7 +29,7 @@ const {
 	error: topicsError,
 	refetch: refetchTopics,
 } = useLoadAllPages(
-	usePaginatedQuery(api.topics.topics.list, () => ({}), { initialNumItems: 50 }),
+	useOrganizationPaginatedQuery(api.topics.topics.list, undefined, { initialNumItems: 50 }),
 	50
 );
 

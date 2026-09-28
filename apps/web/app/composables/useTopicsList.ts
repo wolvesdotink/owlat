@@ -14,7 +14,7 @@ import { useLoadAllPages } from './useLoadAllPages';
  */
 export function useTopicsList() {
 	return useLoadAllPages(
-		usePaginatedQuery(api.topics.topics.list, () => ({}), { initialNumItems: 100 }),
+		useOrganizationPaginatedQuery(api.topics.topics.list, undefined, { initialNumItems: 100 }),
 		100
 	);
 }

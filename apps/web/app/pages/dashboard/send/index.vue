@@ -32,7 +32,6 @@ const router = useRouter();
 const { can, showGateFor } = usePermissions();
 const canManage = computed(() => can('templates:manage'));
 const showManageGate = computed(() => showGateFor('templates:manage'));
-const { isPending: authPending, isAuthenticated } = useAuth();
 
 // The filter lives in the URL (`?type=marketing`), so a filtered list can be
 // linked to and survives a reload.
@@ -55,12 +54,9 @@ const {
 	error,
 	refetch,
 	loadMore,
-} = usePaginatedQuery(
+} = useOrganizationPaginatedQuery(
 	api.emailTemplates.emails.list,
-	() => {
-		if (authPending.value || !isAuthenticated.value) return 'skip';
-		return typeFilter.value === 'all' ? {} : { type: typeFilter.value };
-	},
+	() => (typeFilter.value === 'all' ? {} : { type: typeFilter.value }),
 	{ initialNumItems: 50 }
 );
 

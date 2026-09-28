@@ -169,7 +169,7 @@ beforeEach(() => {
 
 describe('segments list', () => {
 	beforeEach(() => {
-		vi.stubGlobal('usePaginatedQuery', () => paginatedResult(SEGMENTS));
+		vi.stubGlobal('useOrganizationPaginatedQuery', () => paginatedResult(SEGMENTS));
 		vi.stubGlobal('useSegmentFilters', () => ({
 			describeFilters: () => 'All contacts',
 			conditions: ref([]),
@@ -242,7 +242,7 @@ describe('segments list', () => {
 
 describe('topics list', () => {
 	beforeEach(() => {
-		vi.stubGlobal('usePaginatedQuery', () => paginatedResult(TOPICS));
+		vi.stubGlobal('useOrganizationPaginatedQuery', () => paginatedResult(TOPICS));
 		vi.stubGlobal('useTopicForm', () => ({
 			isTopicModalOpen: ref(false),
 			isEditMode: ref(false),

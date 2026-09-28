@@ -25,7 +25,6 @@ export interface CampaignFormErrors {
  */
 export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest) {
 	const { t, locale } = useI18n();
-	const { isPending: authPending, isAuthenticated } = useAuth();
 
 	// ─── Data Fetching ──────────────────────────────────────────────────
 
@@ -39,21 +38,13 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 
 	const { results: topics } = useTopicsList();
 
-	const { results: segments } = usePaginatedQuery(
-		api.segments.list,
-		() => {
-			if (authPending.value || !isAuthenticated.value) return 'skip';
-			return {};
-		},
-		{ initialNumItems: 100 }
-	);
+	const { results: segments } = useOrganizationPaginatedQuery(api.segments.list, undefined, {
+		initialNumItems: 100,
+	});
 
-	const { results: emailTemplates } = usePaginatedQuery(
+	const { results: emailTemplates } = useOrganizationPaginatedQuery(
 		api.emailTemplates.emails.list,
-		() => {
-			if (authPending.value || !isAuthenticated.value) return 'skip';
-			return { type: 'marketing' as const };
-		},
+		{ type: 'marketing' as const },
 		{ initialNumItems: 100 }
 	);
 

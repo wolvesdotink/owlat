@@ -27,8 +27,6 @@ const emit = defineEmits<{
 	cancel: [];
 }>();
 
-const { isPending: authPending, isAuthenticated } = useAuth();
-
 // --- Basics -----------------------------------------------------------------
 const form = reactive({
 	campaignName: '',
@@ -86,7 +84,7 @@ const {
 	results: segments,
 	error: segmentsError,
 	refetch: refetchSegments,
-} = usePaginatedQuery(api.segments.list, () => ({}), {
+} = useOrganizationPaginatedQuery(api.segments.list, undefined, {
 	initialNumItems: 100,
 });
 const audienceLoadFailed = computed(() => !!topicsError.value || !!segmentsError.value);
@@ -118,12 +116,9 @@ const {
 	results: emailTemplates,
 	error: emailTemplatesError,
 	refetch: refetchEmailTemplates,
-} = usePaginatedQuery(
+} = useOrganizationPaginatedQuery(
 	api.emailTemplates.emails.list,
-	() => {
-		if (authPending.value || !isAuthenticated.value) return 'skip';
-		return { type: 'marketing' as const };
-	},
+	{ type: 'marketing' as const },
 	{ initialNumItems: 100 }
 );
 
