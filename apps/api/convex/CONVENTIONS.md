@@ -560,9 +560,15 @@ This codebase tracks the official Convex AI/cursor rules
   structurally typed on `db.get`, so both `QueryCtx` and `MutationCtx` satisfy
   it. Keep hand-rolling `throwNotFound` only where the guard is not a plain
   `get(id)` null check (e.g. `query().unique()` or outcome-based results).
+- **Build a union from a literal list with `literalUnion`.** When a vocabulary
+  already exists as a list (an `as const` tuple of strings or numbers, a
+  `.filter` subset, a plugin-composed catalog, a `Set`), pass it to
+  `literalUnion` from `lib/literalUnion.ts`. It infers the closed union with no
+  cast and throws at load on an empty list. Never write
+  `v.union(...LIST.map((x) => v.literal(x)))` by hand; the check fails on it.
 
 The `bun run lint:patterns` script (also wired into `bun run lint`) tracks
-all four of these against a checked-in baseline.
+these against a checked-in baseline.
 
 ## Schema
 

@@ -155,6 +155,38 @@ if [ "$instance_settings_insert_count" -gt 0 ]; then
 	echo "$instance_settings_inserts" | sed 's/^/  raw instanceSettings insert: /'
 fi
 
+# ── Pattern 6: hand-rolled literal union instead of `literalUnion` ───────────
+# `lib/literalUnion.ts` `literalUnion(LIST)` is the one way to turn a literal
+# list into a Convex union: it keeps the inferred type closed without a cast and
+# refuses an empty list. The hand-rolled `v.union(...LIST.map((x) => v.literal(x)))`
+# loses that narrowing, so every copy grew an `as unknown as Validator<…>`. This
+# flags a `.map(` whose callback is `v.literal`, whether `v.union(` sits on the
+# same line or the formatter moved the spread onto the next one, and whether the
+# arrow body wrapped onto the following line. The point-free `.map(v.literal)`
+# counts too. Comment-only lines do not count; only the helper itself may do it.
+LITERAL_MAP_BASELINE=0
+# The regex travels through ENVIRON so awk applies no escape processing to it.
+export LITERAL_MAP='\.map\([[:space:]]*(\([^()]*\)|[A-Za-z_$][A-Za-z0-9_$]*)?[[:space:]]*(=>)?[[:space:]]*v\.literal[[:space:]]*[(),]'
+literal_map_sites=$(find convex -name "*.ts" -not -path "*/_generated/*" \
+	-not -path "convex/lib/literalUnion.ts" -print0 \
+	| xargs -0 -r awk '
+		BEGIN { re = ENVIRON["LITERAL_MAP"] }
+		FNR == 1 { prev = "" }
+		{
+			t = $0; sub(/^[[:space:]]+/, "", t)
+			comment = (t ~ /^(\/\/|\*|\/\*)/)
+			# the map opened on the previous line and its callback continues here
+			if (prev != "" && !comment && (prev " " t) ~ re) print FILENAME ":" (FNR - 1) ": " prev
+			prev = ""
+			if (comment || $0 !~ /\.map\(/) next
+			if ($0 ~ re) { print FILENAME ":" FNR ": " t; next }
+			if ($0 ~ /(\.map\(|=>)[[:space:]]*$/) prev = t
+		}')
+literal_map_count=$(printf '%s' "$literal_map_sites" | grep -c . || true)
+if [ "$literal_map_count" -gt 0 ]; then
+	echo "$literal_map_sites" | sed 's/^/  hand-rolled literal union: /'
+fi
+
 fail=0
 report() {
 	local name="$1"
@@ -173,6 +205,7 @@ report ".collect() unbounded      " "$collect_count"     "$COLLECT_BASELINE"
 report "missing args: validators  " "$args_count"        "$ARGS_BASELINE"
 report "console.log debug calls   " "$console_log_count" "$CONSOLE_LOG_BASELINE"
 report "instanceSettings insert   " "$instance_settings_insert_count" "$INSTANCE_SETTINGS_INSERT_BASELINE"
+report "hand-rolled literal union " "$literal_map_count" "$LITERAL_MAP_BASELINE"
 
 if [ "$fail" -ne 0 ]; then
 	echo ""
@@ -181,5 +214,6 @@ if [ "$fail" -ne 0 ]; then
 	echo "in apps/api/scripts/check-convex-patterns.sh and explain why in the PR description."
 	echo "For .collect(): prefer .take()/paginate, or trail the call with a '// bounded: reason' comment."
 	echo "For instanceSettings: never raise that baseline; write through upsertInstanceSettings (lib/instanceSettings.ts)."
+	echo "For a literal union: never raise that baseline; build it with literalUnion (lib/literalUnion.ts)."
 	exit 1
 fi
