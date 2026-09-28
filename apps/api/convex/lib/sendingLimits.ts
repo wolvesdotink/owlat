@@ -1,4 +1,5 @@
 import type { Doc } from '../_generated/dataModel';
+import { utcDayStart } from './clock';
 
 /**
  * Compute the next `dailySendCount` + reset timestamp for an instanceSettings
@@ -11,9 +12,9 @@ import type { Doc } from '../_generated/dataModel';
 export function nextDailySendCount(
 	settings: Pick<Doc<'instanceSettings'>, 'dailySendCount' | 'dailySendCountResetAt'>,
 	count: number,
-	now: number,
+	now: number
 ): { dailySendCount: number; dailySendCountResetAt: number } {
-	const startOfDay = new Date(now).setUTCHours(0, 0, 0, 0);
+	const startOfDay = utcDayStart(now);
 	let currentCount = settings.dailySendCount || 0;
 	if (!settings.dailySendCountResetAt || settings.dailySendCountResetAt < startOfDay) {
 		currentCount = 0;
@@ -27,10 +28,10 @@ export function nextDailySendCount(
  */
 export function getDailySendVolume(
 	dailySendCount: number,
-	dailySendCountResetAt: number | null | undefined,
+	dailySendCountResetAt: number | null | undefined
 ): { dailySendCount: number } {
 	const now = Date.now();
-	const startOfDay = new Date(now).setUTCHours(0, 0, 0, 0);
+	const startOfDay = utcDayStart(now);
 
 	let currentCount = dailySendCount || 0;
 	if (!dailySendCountResetAt || dailySendCountResetAt < startOfDay) {

@@ -4,7 +4,7 @@ import { v } from 'convex/values';
 import type { DatabaseReader, MutationCtx } from '../_generated/server';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { startOfDayUtc } from '../lib/clock';
+import { utcDayStart } from '../lib/clock';
 import { UNSUBSCRIBE_HONOR_WINDOW_MS } from '@owlat/shared/deliverabilityPolicy';
 import { DAY_MS, HOUR_MS } from '../lib/constants';
 
@@ -220,7 +220,7 @@ export const refreshGmailDomainVolume = internalMutation({
 export const recordUnsubscribeLatency = internalMutation({
 	args: { durationMs: v.number(), recordedAt: v.number() },
 	handler: async (ctx, args) => {
-		const periodStart = startOfDayUtc(args.recordedAt);
+		const periodStart = utcDayStart(args.recordedAt);
 		const bucket = await ctx.db
 			.query('unsubscribeLatencyBuckets')
 			.withIndex('by_period', (q) => q.eq('periodStart', periodStart))
@@ -284,7 +284,7 @@ export async function readUnsubscribeLatency(db: DatabaseReader, now: number) {
 	const cutoff = now - UNSUBSCRIBE_RETENTION_MS;
 	const rows = await db
 		.query('unsubscribeLatencyBuckets')
-		.withIndex('by_period', (q) => q.gte('periodStart', startOfDayUtc(cutoff)))
+		.withIndex('by_period', (q) => q.gte('periodStart', utcDayStart(cutoff)))
 		.collect(); // bounded: one row per UTC day, retained for 30 days
 	const counts = Array(UNSUBSCRIBE_LATENCY_BOUNDS_MS.length).fill(0) as number[];
 	let sampleCount = 0;
@@ -375,7 +375,7 @@ export const cleanupComplianceTelemetry = internalMutation({
 				});
 			}
 		}
-		const unsubscribeCutoff = startOfDayUtc(now - UNSUBSCRIBE_RETENTION_MS);
+		const unsubscribeCutoff = utcDayStart(now - UNSUBSCRIBE_RETENTION_MS);
 		const latencyRows = await ctx.db
 			.query('unsubscribeLatencyBuckets')
 			.withIndex('by_period', (q) => q.lt('periodStart', unsubscribeCutoff))

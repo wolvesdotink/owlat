@@ -28,7 +28,7 @@ import {
 	hasUsableDeferralTelemetry,
 	summarizeTransportOutcomeBuckets,
 } from '../transportOutcomeSummary';
-import { startOfDayUtc } from '../../lib/clock';
+import { utcDayStart } from '../../lib/clock';
 import { modules } from '../../__tests__/testModules';
 import {
 	bucketRow,
@@ -38,7 +38,7 @@ import {
 	OUTCOME_ORG,
 } from './transportOutcomesFixtures';
 
-const DAY = startOfDayUtc(Date.UTC(2026, 6, 20, 13, 45));
+const DAY = utcDayStart(Date.UTC(2026, 6, 20, 13, 45));
 
 function asBucket(row: ReturnType<typeof bucketRow>): TransportOutcomeBucket {
 	// The pure summarizer only reads counters + periodStart; the system fields
@@ -388,7 +388,7 @@ describe('summarizeTransportOutcomes (reader-typed, over real rows)', () => {
 			await ctx.db.insert(
 				'transportOutcomes',
 				bucketRow({
-					periodStart: startOfDayUtc(Date.now()),
+					periodStart: utcDayStart(Date.now()),
 					shardKey: 1,
 					sent: 200,
 					delivered: 180,
@@ -397,7 +397,7 @@ describe('summarizeTransportOutcomes (reader-typed, over real rows)', () => {
 			await ctx.db.insert(
 				'transportOutcomes',
 				bucketRow({
-					periodStart: startOfDayUtc(Date.now()),
+					periodStart: utcDayStart(Date.now()),
 					shardKey: 6,
 					sent: 300,
 					delivered: 240,
@@ -427,7 +427,7 @@ describe('summarizeTransportOutcomes (reader-typed, over real rows)', () => {
 
 	it('never mixes arms or cells', async () => {
 		const t = convexTest(schema, modules);
-		const day = startOfDayUtc(Date.now());
+		const day = utcDayStart(Date.now());
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'transportOutcomes',
@@ -460,7 +460,7 @@ describe('summarizeTransportOutcomes (reader-typed, over real rows)', () => {
 
 	it('applies the window at the index and in the summarizer alike', async () => {
 		const t = convexTest(schema, modules);
-		const day = startOfDayUtc(Date.now());
+		const day = utcDayStart(Date.now());
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'transportOutcomes',

@@ -18,7 +18,7 @@ import {
 	type SendPlanState,
 } from '../multiDaySendPlan';
 import { MAX_PLAN_DAYS } from '../capacityPlan';
-import { utcDayKey } from '../../lib/utcDay';
+import { utcDayKey } from '../../lib/clock';
 
 const DAY = 24 * 60 * 60 * 1000;
 const DAY_START = Math.floor(1_800_000_000_000 / DAY) * DAY;

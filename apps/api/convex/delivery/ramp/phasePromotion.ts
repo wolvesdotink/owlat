@@ -22,7 +22,7 @@
  */
 
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
-import { startOfDayUtc } from '../../lib/clock';
+import { utcDayStart } from '../../lib/clock';
 import { DAY_MS } from '../../lib/constants';
 
 /** External evidence older than this is not evidence — seven days. */
@@ -153,7 +153,7 @@ export function isDnsblObservationCurrent(
 		newest = newest === null ? day.dayStart : Math.max(newest, day.dayStart);
 	}
 	if (newest === null) return false;
-	return startOfDayUtc(now) - newest <= PROMOTION_DNSBL_MAX_STALENESS_MS;
+	return utcDayStart(now) - newest <= PROMOTION_DNSBL_MAX_STALENESS_MS;
 }
 
 export function dnsblCleanStreakDays(days: readonly DnsblDayObservation[]): number {

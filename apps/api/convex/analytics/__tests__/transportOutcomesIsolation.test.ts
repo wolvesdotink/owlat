@@ -17,7 +17,7 @@ import {
 	summarizeTransportOutcomeArms,
 	summarizeTransportOutcomes,
 } from '../transportOutcomes';
-import { startOfDayUtc } from '../../lib/clock';
+import { utcDayStart } from '../../lib/clock';
 import { modules } from '../../__tests__/testModules';
 import {
 	bucketRow,
@@ -38,7 +38,7 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 describe('tenant isolation', () => {
 	it('never sums the buckets of another organization into a cell summary', async () => {
 		const t = convexTest(schema, modules);
-		const day = startOfDayUtc(Date.now());
+		const day = utcDayStart(Date.now());
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'transportOutcomes',
@@ -77,7 +77,7 @@ describe('tenant isolation', () => {
 
 	it('the arm pair is org-scoped too', async () => {
 		const t = convexTest(schema, modules);
-		const day = startOfDayUtc(Date.now());
+		const day = utcDayStart(Date.now());
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'transportOutcomes',

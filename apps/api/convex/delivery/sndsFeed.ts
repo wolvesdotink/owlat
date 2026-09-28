@@ -17,7 +17,7 @@
  */
 
 import { normalizeIpAddress } from '@owlat/shared/ipAddress';
-import { startOfDayUtc } from '../lib/clock';
+import { utcDayStart } from '../lib/clock';
 
 /**
  * Complaint-rate bands, ordered. `unknown` is first and is NOT a severity: it
@@ -438,7 +438,7 @@ export function foldedSndsDays(fold: SndsDayFold): SndsDayObservation[] {
 export function foldSndsDays(fold: SndsDayFold, rows: readonly SndsFeedRow[]): void {
 	const byCell = fold.byCell;
 	for (const row of rows) {
-		const periodStart = startOfDayUtc(row.activityStart);
+		const periodStart = utcDayStart(row.activityStart);
 		const key = sndsCellKey(row.ip, periodStart);
 		const existing = byCell.get(key);
 		if (existing === undefined) {

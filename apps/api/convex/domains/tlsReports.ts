@@ -30,6 +30,7 @@ import {
 	TLS_RPT_MAX_REPORT_ID_LENGTH,
 	TLS_RPT_MAX_SESSION_COUNT,
 } from '@owlat/shared';
+import { utcDayKey } from '../lib/clock';
 import { DAY_MS } from '../lib/constants';
 
 /** Window the dashboard summarises. */
@@ -175,7 +176,7 @@ export const getTlsReportSummary = adminQuery({
 				failureTypes.set(f.type, (failureTypes.get(f.type) ?? 0) + f.count);
 			}
 
-			const dayKey = new Date(r.rangeStartMs).toISOString().slice(0, 10);
+			const dayKey = utcDayKey(r.rangeStartMs);
 			const point = trend.get(dayKey) ?? { date: dayKey, successCount: 0, failureCount: 0 };
 			point.successCount += r.successCount;
 			point.failureCount += r.failureCount;

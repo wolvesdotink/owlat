@@ -16,7 +16,7 @@ import {
 	TRANSPORT_OUTCOME_CLEANUP_BATCH_SIZE,
 	TRANSPORT_OUTCOME_RETENTION_MS,
 } from '../transportOutcomes';
-import { startOfDayUtc } from '../../lib/clock';
+import { utcDayStart } from '../../lib/clock';
 import { modules } from '../../__tests__/testModules';
 import { bucketRow, DAY_MS, readBuckets } from './transportOutcomesFixtures';
 
@@ -28,7 +28,7 @@ afterEach(() => {
 describe('aging sweep', () => {
 	it('drops buckets past the retention horizon and keeps everything inside it', async () => {
 		const t = convexTest(schema, modules);
-		const now = startOfDayUtc(Date.now());
+		const now = utcDayStart(Date.now());
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'transportOutcomes',
@@ -66,7 +66,7 @@ describe('aging sweep', () => {
 		// first mutation so the scheduler sees the fake clock.
 		vi.useFakeTimers();
 		const t = convexTest(schema, modules);
-		const now = startOfDayUtc(Date.now());
+		const now = utcDayStart(Date.now());
 		const expired = TRANSPORT_OUTCOME_CLEANUP_BATCH_SIZE + 25;
 		await t.run(async (ctx) => {
 			for (let index = 0; index < expired; index += 1) {
@@ -109,7 +109,7 @@ describe('aging sweep', () => {
 
 	it('does not reschedule when the tick comes back short', async () => {
 		const t = convexTest(schema, modules);
-		const now = startOfDayUtc(Date.now());
+		const now = utcDayStart(Date.now());
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'transportOutcomes',

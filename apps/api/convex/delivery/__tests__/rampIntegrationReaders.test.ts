@@ -23,7 +23,7 @@ import {
 import schema from '../../schema';
 import { modules } from '../../__tests__/testModules';
 import { DAY_MS } from '../../lib/constants';
-import { startOfDayUtc } from '../../lib/clock';
+import { utcDayStart } from '../../lib/clock';
 import {
 	loadRampDeploymentPresence,
 	loadReferenceArmPresence,
@@ -39,7 +39,7 @@ import { seedArmOutcomes, type Harness } from './rampCronFixtures';
 
 const ORG = 'org_ramp_readers';
 /**
- * THE REAL CLOCK, on purpose: the outcome fixtures bucket by `startOfDayUtc` of
+ * THE REAL CLOCK, on purpose: the outcome fixtures bucket by `utcDayStart` of
  * the wall clock, so a suite pinned to an invented instant would seed its
  * traffic into a day the readers do not look at.
  */
@@ -330,7 +330,7 @@ describe('the promotion-evidence reader', () => {
 	it('scores a day dirty from the recorded signal even when another rung won', async () => {
 		const t = convexTest(schema, modules);
 		await seedCellRow(t, NOW - 30 * DAY_MS);
-		const day = startOfDayUtc(NOW - DAY_MS);
+		const day = utcDayStart(NOW - DAY_MS);
 		await seedDecision(t, { at: day + 1000, reason: 'frozen', isPoolBlocklisted: true });
 		const loaded = await evidence(t);
 		expect(loaded.dnsblDays).toEqual([{ dayStart: day, clean: false }]);
@@ -339,7 +339,7 @@ describe('the promotion-evidence reader', () => {
 	it('scores a day clean only when every decision that day saw a clean pool', async () => {
 		const t = convexTest(schema, modules);
 		await seedCellRow(t, NOW - 30 * DAY_MS);
-		const day = startOfDayUtc(NOW - DAY_MS);
+		const day = utcDayStart(NOW - DAY_MS);
 		await seedDecision(t, { at: day + 1000, reason: 'holding', isPoolBlocklisted: false });
 		await seedDecision(t, { at: day + 2000, reason: 'holding', isPoolBlocklisted: false });
 		expect((await evidence(t)).dnsblDays).toEqual([{ dayStart: day, clean: true }]);
@@ -356,7 +356,7 @@ describe('the promotion-evidence reader', () => {
 	it('keeps the newest days when the decision scan is truncated', async () => {
 		const t = convexTest(schema, modules);
 		await seedCellRow(t, NOW - 30 * DAY_MS);
-		const today = startOfDayUtc(NOW);
+		const today = utcDayStart(NOW);
 		// Far more rows than the reader's bounded page, spread over the window — in
 		// ONE transaction, because 700 round trips is a fixture, not a test.
 		await t.run(async (ctx) => {

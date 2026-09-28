@@ -13,7 +13,7 @@
 import { describe, expect, it } from 'vitest';
 import { nextPaceMultiplier } from '../paceActuator';
 import { PACE_AIMD } from '../paceConfig';
-import { utcDayKey } from '../../../lib/utcDay';
+import { utcDayKey } from '../../../lib/clock';
 import { cleanEvaluation, EXERCISED, NOW, paceInput, paceState } from './controllerFixtures';
 import type { PaceState } from '../paceTypes';
 

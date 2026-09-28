@@ -11,7 +11,7 @@
  */
 
 import { parsePoolIpsLenient } from '../domains/spf';
-import { startOfDayUtc } from '../lib/clock';
+import { utcDayStart } from '../lib/clock';
 import { DAY_MS } from '../lib/constants';
 
 /**
@@ -36,7 +36,7 @@ export const SNDS_MAX_FEEDS = 8;
  * is exactly how a day gets dispatched and then rejected for no visible reason.
  */
 export function oldestStorableDay(now: number): number {
-	return startOfDayUtc(now) - SNDS_INGEST_MAX_AGE_MS;
+	return utcDayStart(now) - SNDS_INGEST_MAX_AGE_MS;
 }
 
 /**

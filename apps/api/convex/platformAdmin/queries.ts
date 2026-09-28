@@ -1,6 +1,7 @@
 import { v } from 'convex/values';
 import { countBlockedByReason } from '../blockedEmails/lookup';
 import { authedQuery } from '../lib/authedFunctions';
+import { utcDayKey } from '../lib/clock';
 import { requirePlatformAdmin } from './platformAdmin';
 import { summarize } from '../analytics/sendingReputation';
 
@@ -205,7 +206,7 @@ export const getPlatformStats = authedQuery({
 
 		const signupsByDay: Record<string, number> = {};
 		for (const p of recentProfiles) {
-			const day = new Date(p.createdAt).toISOString().split('T')[0]!;
+			const day = utcDayKey(p.createdAt);
 			signupsByDay[day] = (signupsByDay[day] || 0) + 1;
 		}
 

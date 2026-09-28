@@ -10,6 +10,8 @@
  * a bounced message is by definition not in the delivered count.
  */
 
+import { denseDailySeries } from '../lib/clock';
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const WEEK_MS = 7 * DAY_MS;
 
@@ -158,19 +160,14 @@ export function weeklyTotals(
 	return buckets;
 }
 
-/** UTC `YYYY-MM-DD` — the same bucket key `sendDailyStats` rows are written under. */
-export function utcDateKey(at: number): string {
-	const d = new Date(at);
-	const yyyy = d.getUTCFullYear();
-	const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-	const dd = String(d.getUTCDate()).padStart(2, '0');
-	return `${yyyy}-${mm}-${dd}`;
-}
-
 /**
- * A dense `days`-long daily series ending today (UTC), oldest first. The daily
- * roll-up only has rows for days something happened; a chart needs the quiet
- * days as explicit zeros or it silently compresses the time axis.
+ * A dense `days`-long daily opens series ending today (UTC), oldest first. The
+ * daily roll-up only has rows for days something happened; a chart needs the
+ * quiet days as explicit zeros or it silently compresses the time axis.
+ *
+ * `rows[].date` is the `sendDailyStats` key, written by `utcDayKey`
+ * (`lib/clock.ts`); `denseDailySeries` walks the window with the same function,
+ * so a row lands on the day it was written under.
  */
 export function denseDailyOpens(
 	rows: readonly { date: string; opened: number }[],
@@ -178,12 +175,7 @@ export function denseDailyOpens(
 	now: number
 ): { date: string; opened: number }[] {
 	const byDate = new Map(rows.map((r) => [r.date, r.opened]));
-	const series: { date: string; opened: number }[] = [];
-	for (let i = days - 1; i >= 0; i--) {
-		const date = utcDateKey(now - i * DAY_MS);
-		series.push({ date, opened: byDate.get(date) ?? 0 });
-	}
-	return series;
+	return denseDailySeries(byDate, days, now).map(({ date, count }) => ({ date, opened: count }));
 }
 
 /** The send walk fields a progress fraction can be derived from. */

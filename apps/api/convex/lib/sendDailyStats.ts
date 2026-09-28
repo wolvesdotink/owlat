@@ -1,5 +1,9 @@
 import type { MutationCtx, DatabaseReader } from '../_generated/server';
 import { DAY_MS } from './constants';
+// Rows are keyed by `utcDayKey` ('YYYY-MM-DD', UTC). Readers
+// (`analytics/marketingOverviewMath.ts`) bucket with the same function, so the
+// writer and the reader cannot disagree about which day an event fell on.
+import { utcDayKey } from './clock';
 
 type Field = 'sent' | 'delivered' | 'opened' | 'clicked';
 
@@ -15,19 +19,6 @@ type Field = 'sent' | 'delivered' | 'opened' | 'clicked';
 const SHARD_COUNT = 16;
 
 /**
- * Format a UTC timestamp as 'YYYY-MM-DD'. Every row must use the same UTC bucket
- * regardless of the writer's locale; ISO date strings also sort chronologically,
- * so the by_date index supports a `gte(cutoff)` window read.
- */
-function utcDate(at: number): string {
-	const d = new Date(at);
-	const yyyy = d.getUTCFullYear();
-	const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-	const dd = String(d.getUTCDate()).padStart(2, '0');
-	return `${yyyy}-${mm}-${dd}`;
-}
-
-/**
  * Bump one counter on a random shard of today's `sendDailyStats`, inserting the
  * shard row on its first event. Called from the Send lifecycle `daily_stats_bump`
  * effect; both campaign and transactional kinds funnel through here. The random
@@ -39,7 +30,7 @@ function utcDate(at: number): string {
  * forbids it.)
  */
 export async function bumpSendDailyStat(ctx: MutationCtx, field: Field, at: number): Promise<void> {
-	const date = utcDate(at);
+	const date = utcDayKey(at);
 	const shardKey = Math.floor(Math.random() * SHARD_COUNT);
 	const existing = await ctx.db
 		.query('sendDailyStats')
@@ -83,7 +74,7 @@ export async function readDailyStats(
 ): Promise<DailyStatRow[]> {
 	// `days - 1`: the inclusive `gte(cutoff)` date-string range spans the cutoff
 	// day through today, so subtracting `days` would cover `days + 1` calendar days.
-	const cutoff = utcDate(now - (days - 1) * DAY_MS);
+	const cutoff = utcDayKey(now - (days - 1) * DAY_MS);
 	// bounded: `days` × SHARD_COUNT shard rows within the window.
 	const rows = await db
 		.query('sendDailyStats')

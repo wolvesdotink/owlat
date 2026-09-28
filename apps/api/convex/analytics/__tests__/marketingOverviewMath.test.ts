@@ -8,11 +8,11 @@ import {
 	periodTotals,
 	safeRate,
 	sendingProgress,
-	utcDateKey,
 	weeklyTotals,
 	weightedAverageRates,
 	type DatedCampaignCounts,
 } from '../marketingOverviewMath';
+import { utcDayKey } from '../../lib/clock';
 
 function counts(overrides: Partial<DatedCampaignCounts> = {}): DatedCampaignCounts {
 	return {
@@ -127,8 +127,8 @@ describe('weeklyTotals', () => {
 
 describe('denseDailyOpens', () => {
 	it('fills quiet days with zeros and ends today (UTC)', () => {
-		const today = utcDateKey(NOW);
-		const threeDaysAgo = utcDateKey(NOW - 3 * 24 * 60 * 60 * 1000);
+		const today = utcDayKey(NOW);
+		const threeDaysAgo = utcDayKey(NOW - 3 * 24 * 60 * 60 * 1000);
 		const series = denseDailyOpens(
 			[
 				{ date: threeDaysAgo, opened: 7 },
@@ -144,7 +144,7 @@ describe('denseDailyOpens', () => {
 	});
 
 	it('formats keys as zero-padded UTC dates', () => {
-		expect(utcDateKey(Date.UTC(2026, 0, 5, 23, 59))).toBe('2026-01-05');
+		expect(utcDayKey(Date.UTC(2026, 0, 5, 23, 59))).toBe('2026-01-05');
 	});
 });
 

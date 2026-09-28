@@ -17,7 +17,7 @@
  */
 
 import type { Doc } from '../_generated/dataModel';
-import { startOfDayUtc } from '../lib/clock';
+import { utcDayStart } from '../lib/clock';
 import { DAY_MS } from '../lib/constants';
 
 export type TransportOutcomeBucket = Doc<'transportOutcomes'>;
@@ -318,7 +318,7 @@ export const DEFERRAL_TELEMETRY_MIN_OBSERVED_MS = 14 * DAY_MS;
  * this module exists to prevent.
  */
 function telemetrySpanStartDay(now: number): number {
-	return startOfDayUtc(now) - DEFERRAL_TELEMETRY_SPAN_MS + DAY_MS;
+	return utcDayStart(now) - DEFERRAL_TELEMETRY_SPAN_MS + DAY_MS;
 }
 
 /**
@@ -380,7 +380,7 @@ export function hasUsableDeferralTelemetry(
 	const spanStartDay = telemetrySpanStartDay(now);
 	// Exclusive: a future-dated row is a clock fault, and letting one manufacture
 	// the spread in (2) would unlock the gate off a day that has not happened.
-	const spanUntil = startOfDayUtc(now) + DAY_MS;
+	const spanUntil = utcDayStart(now) + DAY_MS;
 	let oldestSendingDay: number | null = null;
 	let newestSendingDay: number | null = null;
 	for (const row of rows) {
@@ -421,7 +421,7 @@ export function transportOutcomeWindowBounds(window: TransportOutcomeWindow | un
 	const since = window?.since;
 	const until = window?.until;
 	return {
-		sinceDay: since !== undefined && Number.isFinite(since) ? startOfDayUtc(since) : -Infinity,
+		sinceDay: since !== undefined && Number.isFinite(since) ? utcDayStart(since) : -Infinity,
 		until: until !== undefined && Number.isFinite(until) ? until : Infinity,
 	};
 }

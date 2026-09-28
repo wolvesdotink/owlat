@@ -33,7 +33,7 @@ import { internalMutation, type DatabaseReader, type MutationCtx } from '../_gen
 import type { Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { REPUTATION_THRESHOLDS, REPUTATION_MIN_SAMPLE_SIZE } from '@owlat/shared/reputation';
-import { startOfDayUtc } from '../lib/clock';
+import { utcDayStart } from '../lib/clock';
 import { DAY_MS } from '../lib/constants';
 
 // ============ RISK LEVEL THRESHOLDS ============
@@ -332,7 +332,7 @@ async function bumpBucket(
 ): Promise<void> {
 	const now = Date.now();
 	const shardKey = Math.floor(Math.random() * SHARD_COUNT);
-	const bucket = await todayShardBucket(ctx, scope, startOfDayUtc(now), shardKey, now);
+	const bucket = await todayShardBucket(ctx, scope, utcDayStart(now), shardKey, now);
 	await ctx.db.patch(bucket._id, {
 		...countersFor(bucket, eventType),
 		lastCalculatedAt: now,

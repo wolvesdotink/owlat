@@ -63,7 +63,7 @@ import {
 } from '@owlat/shared/deliverabilityRouting';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { logWarn } from '../lib/runtimeLog';
-import { resolveNow, startOfDayUtc } from '../lib/clock';
+import { resolveNow, utcDayStart } from '../lib/clock';
 import { readAssignmentForSend } from '../delivery/sendAssignments';
 import {
 	safeOutcomeCount,
@@ -262,7 +262,7 @@ export async function recordTransportOutcomeForCell(
 			organizationId: input.organizationId,
 			cell: input.cell,
 			arm: input.arm,
-			periodStart: startOfDayUtc(now),
+			periodStart: utcDayStart(now),
 			shardKey: Math.floor(Math.random() * TRANSPORT_OUTCOME_SHARD_COUNT),
 		},
 		now

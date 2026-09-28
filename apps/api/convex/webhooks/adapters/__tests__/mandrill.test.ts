@@ -35,7 +35,7 @@ import {
 	createTestEmailSend,
 	createTestTopic,
 } from '../../../__tests__/factories';
-import { startOfDayUtc } from '../../../lib/clock';
+import { utcDayStart } from '../../../lib/clock';
 import {
 	classifyMandrillBounce,
 	mandrillSignedUrlCandidates,
@@ -429,7 +429,7 @@ describe('Mandrill event mapping (D10 table)', () => {
 		const send = await readSend(t, sendId);
 		// The send is UNMOVED: the relay still owns the message and its terminal edge.
 		expect(send?.status).toBe('sent');
-		expect(send?.deferralCountedDay).toBe(startOfDayUtc(at));
+		expect(send?.deferralCountedDay).toBe(utcDayStart(at));
 
 		const scheduled = await t.run(
 			async (ctx: { db: DatabaseWriter }) =>

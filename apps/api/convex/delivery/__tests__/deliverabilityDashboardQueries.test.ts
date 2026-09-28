@@ -23,7 +23,7 @@ import { api } from '../../_generated/api';
 import type { Doc } from '../../_generated/dataModel';
 import type { DatabaseWriter } from '../../_generated/server';
 import { deliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
-import { startOfDayUtc } from '../../lib/clock';
+import { utcDayStart } from '../../lib/clock';
 import { RAMP_AIMD } from '../ramp/controllerConfig';
 import { ENGAGEMENT_GATE_THRESHOLDS } from '../ramp/engagementConfig';
 import { RAMP_GATE_SAMPLE_FLOORS } from '../ramp/gateConfig';
@@ -122,7 +122,7 @@ function gmailCell(dashboard: DeliverabilityDashboard): DeliverabilityDashboard[
 describe('getDeliverabilityDashboard — derived rates', () => {
 	it('derives both arms from the stored buckets', async () => {
 		const t = convexTest(schema, modules);
-		const day = startOfDayUtc(Date.now()) - 24 * 60 * 60 * 1000;
+		const day = utcDayStart(Date.now()) - 24 * 60 * 60 * 1000;
 		const ownRows = [
 			bucket({ periodStart: day, shardKey: 0, sent: 600, delivered: 580, hardBounced: 6 }),
 			bucket({
@@ -166,7 +166,7 @@ describe('getDeliverabilityDashboard — derived rates', () => {
 	it('emits one trend point per day of the window, each from its own day’s buckets', async () => {
 		const t = convexTest(schema, modules);
 		const dayMs = 24 * 60 * 60 * 1000;
-		const yesterday = startOfDayUtc(Date.now()) - dayMs;
+		const yesterday = utcDayStart(Date.now()) - dayMs;
 		const row = bucket({ periodStart: yesterday, shardKey: 0, sent: 40, delivered: 39 });
 		await t.run(async (ctx) => {
 			await ctx.db.insert('transportOutcomes', row);
@@ -201,7 +201,7 @@ describe('getDeliverabilityDashboard — the reported window and the deciding sp
 
 	it('reports the week, decides over the controller’s window, and names both', async () => {
 		const t = convexTest(schema, modules);
-		const today = startOfDayUtc(Date.now());
+		const today = utcDayStart(Date.now());
 		const clean = bucket({ periodStart: today, sent: 5000, delivered: 5000 });
 		const spike = bucket({
 			periodStart: today - 4 * DAY,
@@ -250,7 +250,7 @@ describe('getDeliverabilityDashboard — the reported window and the deciding sp
 	 */
 	it('fails on a spike inside the deciding span that the week dilutes', async () => {
 		const t = convexTest(schema, modules);
-		const today = startOfDayUtc(Date.now());
+		const today = utcDayStart(Date.now());
 		await t.run(async (ctx) => {
 			// 4%, twice the absolute hard-bounce ceiling.
 			await ctx.db.insert(
@@ -287,7 +287,7 @@ describe('getDeliverabilityDashboard — the reported window and the deciding sp
 describe('getDeliverabilityDashboard — tenant isolation', () => {
 	it('never sums another organization’s buckets into a cell', async () => {
 		const t = convexTest(schema, modules);
-		const day = startOfDayUtc(Date.now()) - 24 * 60 * 60 * 1000;
+		const day = utcDayStart(Date.now()) - 24 * 60 * 60 * 1000;
 		await t.run(async (ctx) => {
 			await ctx.db.insert('transportOutcomes', bucket({ periodStart: day, sent: 10 }));
 			await ctx.db.insert(
@@ -371,7 +371,7 @@ describe('getDeliverabilityDashboard — window composition', () => {
 	 */
 	async function dashboardWithEngagedSliceAt(baselineDayOffset: number) {
 		const t = convexTest(schema, modules);
-		const tomorrow = startOfDayUtc(Date.now()) + DAY;
+		const tomorrow = utcDayStart(Date.now()) + DAY;
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'transportOutcomes',
@@ -429,7 +429,7 @@ describe('getDeliverabilityDashboard — window composition', () => {
 describe('getDeliverabilityDashboard — states are the feature', () => {
 	it('renders a standalone deployment cleanly: no reference arm, no failure', async () => {
 		const t = convexTest(schema, modules);
-		const day = startOfDayUtc(Date.now()) - 24 * 60 * 60 * 1000;
+		const day = utcDayStart(Date.now()) - 24 * 60 * 60 * 1000;
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'transportOutcomes',
@@ -472,7 +472,7 @@ describe('getDeliverabilityDashboard — states are the feature', () => {
 	 */
 	it('never renders HIGH confidence for a cell with no reference arm', async () => {
 		const t = convexTest(schema, modules);
-		const day = startOfDayUtc(Date.now()) - 24 * 60 * 60 * 1000;
+		const day = utcDayStart(Date.now()) - 24 * 60 * 60 * 1000;
 		await t.run(async (ctx) => {
 			// Ample volume, nothing wrong with it: the deferral gate DECIDES, and it
 			// decides at `high`. That is the input that used to reach the wire as a
@@ -522,7 +522,7 @@ describe('getDeliverabilityDashboard — states are the feature', () => {
 	 */
 	it('counts a seed MAILBOX as coverage, before any probe has been classified', async () => {
 		const t = convexTest(schema, modules);
-		const day = startOfDayUtc(Date.now()) - 24 * 60 * 60 * 1000;
+		const day = utcDayStart(Date.now()) - 24 * 60 * 60 * 1000;
 		await t.run(async (ctx) => {
 			// Deferrals counted, so gate 2 decides: this case is about SEED
 			// COVERAGE, and a cell whose only decidable gate is holding would fold
@@ -578,7 +578,7 @@ describe('getDeliverabilityDashboard — states are the feature', () => {
 
 	it('holds on thin data instead of failing, and says how thin', async () => {
 		const t = convexTest(schema, modules);
-		const day = startOfDayUtc(Date.now()) - 24 * 60 * 60 * 1000;
+		const day = utcDayStart(Date.now()) - 24 * 60 * 60 * 1000;
 		await t.run(async (ctx) => {
 			await seedRelayRoute(ctx);
 			await ctx.db.insert(
@@ -608,7 +608,7 @@ describe('getDeliverabilityDashboard — states are the feature', () => {
 	 */
 	it('renders gate 2 as unmeasured while nothing records deferrals, and decided once something does', async () => {
 		const t = convexTest(schema, modules);
-		const day = startOfDayUtc(Date.now()) - 24 * 60 * 60 * 1000;
+		const day = utcDayStart(Date.now()) - 24 * 60 * 60 * 1000;
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'transportOutcomes',
@@ -654,7 +654,7 @@ describe('getDeliverabilityDashboard — states are the feature', () => {
 	it('renders a never-deferring cell as decided on the same day the controller does', async () => {
 		const t = convexTest(schema, modules);
 		const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-		const day = startOfDayUtc(Date.now());
+		const day = utcDayStart(Date.now());
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'transportOutcomes',

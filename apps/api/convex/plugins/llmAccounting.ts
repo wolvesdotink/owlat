@@ -5,6 +5,7 @@ import { internalMutation, internalQuery, type MutationCtx } from '../_generated
 import { insertLlmUsage } from '../analytics/llmUsage';
 import type { TokenUsage } from '../agent/steps/types';
 import { languageEndpointProvenanceValidator } from '../lib/aiProviderConfigValidators';
+import { utcDayKey } from '../lib/clock';
 import { tokenUsageValidator } from '../lib/convexValidators';
 import { MAX_LLM_ATTEMPTS } from '../lib/llm/retryPolicy';
 import { estimateKnownCostMicrousd } from '../lib/llm/pricing';
@@ -104,7 +105,7 @@ export const reserve = internalMutation({
 		if (!scope) throw new Error('Plugin LLM denied');
 		const dailyBudgetMicrousd = manifestBudgetMicrousd(scope.manifest.llmBudget?.dailyUsd);
 		if (args.reservedMicrousd > dailyBudgetMicrousd) throw new Error('Plugin LLM denied');
-		const utcDay = utcDayAt(Date.now());
+		const utcDay = utcDayKey(Date.now());
 		const duplicate = await reservationById(ctx, args.reservationId);
 		if (duplicate) {
 			if (
@@ -369,10 +370,6 @@ function validTokenUsage(value: TokenUsage | undefined): value is TokenUsage {
 		isMoney(value.totalTokens) &&
 		value.totalTokens >= value.promptTokens + value.completionTokens
 	);
-}
-
-function utcDayAt(timestamp: number): string {
-	return new Date(timestamp).toISOString().slice(0, 10);
 }
 
 function reservationById(ctx: MutationCtx, reservationId: string) {

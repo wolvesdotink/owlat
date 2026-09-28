@@ -27,7 +27,7 @@ import { loadPacedWarmingCapacity } from '../delivery/pacedWarmingCapacity';
 import type { WarmingCapacityProjection } from '../delivery/warmingCapacity';
 import { campaignWarmingCapBinds } from '../lib/sendProviders/warmingCapGate';
 import { DAY_MS } from '../lib/constants';
-import { utcDayStart } from '../lib/utcDay';
+import { utcDayStart } from '../lib/clock';
 import { logWarn } from '../lib/runtimeLog';
 import type { CapacityUnknownReason } from './capacityPreflight';
 

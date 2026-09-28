@@ -25,7 +25,7 @@ import type { Id } from '../../_generated/dataModel';
 import type { DeliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
 import { modules } from '../../__tests__/testModules';
 import { createTestContact, createTestTopic } from '../../__tests__/factories';
-import { startOfDayUtc } from '../../lib/clock';
+import { utcDayStart } from '../../lib/clock';
 import { summarizeTransportOutcomes } from '../../analytics/transportOutcomes';
 import { ZERO_TRANSPORT_OUTCOME_TOTALS } from '../../analytics/transportOutcomeSummary';
 import {
@@ -955,7 +955,7 @@ describe('standalone gate 3 can reach a verdict once the counter has a writer', 
 	): Promise<void> {
 		await ctx.db.insert(
 			'transportOutcomes',
-			bucketRow({ cell, periodStart: startOfDayUtc(at), shardKey: 0, sent: 1000, delivered: 1000 })
+			bucketRow({ cell, periodStart: utcDayStart(at), shardKey: 0, sent: 1000, delivered: 1000 })
 		);
 	}
 

@@ -42,7 +42,7 @@
  */
 
 import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
-import { startOfDayUtc } from '../lib/clock';
+import { utcDayStart } from '../lib/clock';
 import {
 	summarizeTransportOutcomeBuckets,
 	type TransportOutcomeBucketCounts,
@@ -108,7 +108,7 @@ export interface DashboardWindow {
  * than true at the default and false everywhere else.
  */
 export function dashboardWindow(now: number): DashboardWindow {
-	const untilDay = startOfDayUtc(now) + DAY_MS;
+	const untilDay = utcDayStart(now) + DAY_MS;
 	const sinceDay = untilDay - DASHBOARD_WINDOW_DAYS * DAY_MS;
 	const baselineSinceDay = sinceDay - BASELINE_WIDTH_DAYS * DAY_MS;
 	return {

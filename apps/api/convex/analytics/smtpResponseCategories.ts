@@ -58,7 +58,7 @@ import {
 import type { Doc } from '../_generated/dataModel';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { logWarn } from '../lib/runtimeLog';
-import { resolveNow, startOfDayUtc } from '../lib/clock';
+import { resolveNow, utcDayStart } from '../lib/clock';
 import { readAssignmentForSend } from '../delivery/sendAssignments';
 import { resolveProviderMessageId } from '../delivery/sendLifecycle/lookups';
 import type { SmtpBlockObservation } from '../delivery/ramp/gateTypes';
@@ -304,7 +304,7 @@ export async function recordSmtpResponseForCell(
 			organizationId: input.organizationId,
 			cell: input.cell,
 			arm: input.arm,
-			periodStart: startOfDayUtc(now),
+			periodStart: utcDayStart(now),
 			shardKey: Math.floor(Math.random() * SMTP_RESPONSE_CATEGORY_SHARD_COUNT),
 		},
 		now

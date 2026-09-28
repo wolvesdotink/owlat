@@ -21,6 +21,7 @@ import { assertFeatureEnabled, isFeatureEnabled } from './lib/featureFlags';
 import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
 import { getCachedContactCount } from './lib/contactCountHelpers';
 import { readDailyStats } from './lib/sendDailyStats';
+import { utcDayKey } from './lib/clock';
 
 // ============================================================
 // Live-data allowlist
@@ -324,7 +325,7 @@ export const dataContactGrowth = internalQuery({
 		for (const c of recent) {
 			// Exclude soft-deleted contacts from the growth curve.
 			if (c.deletedAt !== undefined) continue;
-			const day = new Date(c.createdAt).toISOString().slice(0, 10); // YYYY-MM-DD
+			const day = utcDayKey(c.createdAt);
 			perDay[day] = (perDay[day] ?? 0) + 1;
 		}
 

@@ -25,7 +25,7 @@ import type { MutationCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import type { DeliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
 import { modules } from '../../__tests__/testModules';
-import { startOfDayUtc } from '../../lib/clock';
+import { utcDayStart } from '../../lib/clock';
 import { summarizeTransportOutcomes } from '../../analytics/transportOutcomes';
 import { ZERO_TRANSPORT_OUTCOME_TOTALS } from '../../analytics/transportOutcomeSummary';
 import {
@@ -192,7 +192,7 @@ describe('a last-mile deferral reaches the counter through the real writer', () 
 			// terminalize it, and the retry is still armed.
 			const send = await ctx.db.get(sendId);
 			expect(send?.status).toBe('queued');
-			expect(send?.deferralCountedDay).toBe(startOfDayUtc(Date.now()));
+			expect(send?.deferralCountedDay).toBe(utcDayStart(Date.now()));
 			// NAMED, not counted: the outcome bump is scheduled out of the transition
 			// now, so it rides beside the re-entry — and any pending job would satisfy
 			// a bare count.
@@ -278,9 +278,7 @@ describe('one deferral per send per UTC day', () => {
 		// UTC day: the numerator is denominated on `sent`, and a send that could
 		// contribute a dozen events would push it past its own denominator.
 		expect(await recordAt(t, sendId, NOW + 60 * 60 * 1000)).toBe('already_observed_today');
-		expect(await recordAt(t, sendId, startOfDayUtc(NOW) + DAY_MS - 1)).toBe(
-			'already_observed_today'
-		);
+		expect(await recordAt(t, sendId, utcDayStart(NOW) + DAY_MS - 1)).toBe('already_observed_today');
 
 		await t.run(async (ctx) => {
 			expect(sumCounters(await readBuckets(ctx)).deferred).toBe(1);
@@ -300,7 +298,7 @@ describe('one deferral per send per UTC day', () => {
 			// Two DAYS, not two events in one bucket: the rate is derived per window
 			// and the day the outcome was recorded is the bucket it belongs to.
 			expect(uniqueBucketKeys(buckets)).toHaveLength(2);
-			expect((await ctx.db.get(sendId))?.deferralCountedDay).toBe(startOfDayUtc(NOW + DAY_MS));
+			expect((await ctx.db.get(sendId))?.deferralCountedDay).toBe(utcDayStart(NOW + DAY_MS));
 		});
 	});
 
@@ -332,7 +330,7 @@ describe('what is excluded records nothing, and says so', () => {
 			expect(await readBuckets(ctx)).toHaveLength(0);
 			// The observation WAS processed for this send and day, so the next
 			// re-entry cannot go looking for a second one.
-			expect((await ctx.db.get(sendId))?.deferralCountedDay).toBe(startOfDayUtc(NOW));
+			expect((await ctx.db.get(sendId))?.deferralCountedDay).toBe(utcDayStart(NOW));
 		});
 	});
 
@@ -354,7 +352,7 @@ describe('what is excluded records nothing, and says so', () => {
 		await drainOutcomeWrites(t);
 		await t.run(async (ctx) => {
 			expect(await readBuckets(ctx)).toHaveLength(0);
-			expect((await ctx.db.get(previewId))?.deferralCountedDay).toBe(startOfDayUtc(NOW));
+			expect((await ctx.db.get(previewId))?.deferralCountedDay).toBe(utcDayStart(NOW));
 		});
 	});
 
@@ -523,7 +521,7 @@ describe('gate 2 can finally fail, halt, and hold', () => {
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'transportOutcomes',
-				bucketRow({ cell, periodStart: startOfDayUtc(NOW), shardKey: 0, sent: SENT })
+				bucketRow({ cell, periodStart: utcDayStart(NOW), shardKey: 0, sent: SENT })
 			);
 		});
 	}
