@@ -15370,6 +15370,10 @@
 						"impact": "A verified relay keeps important mail moving during an IP reputation incident.",
 						"title": "Keep a safe delivery fallback"
 					},
+					"source_ip": {
+						"impact": "Behind NAT, several sending IPs leave from one address, so warm-up and reputation are credited to IPs that never sent the mail.",
+						"title": "Send each address from its own IP"
+					},
 					"tls": {
 						"impact": "Valid TLS avoids receiver throttling and protects messages in transit.",
 						"title": "Protect mail while it travels"

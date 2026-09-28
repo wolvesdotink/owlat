@@ -295,6 +295,7 @@ import type * as delivery_checklistLoopbackState from '../delivery/checklistLoop
 import type * as delivery_checklistProviderDetection from '../delivery/checklistProviderDetection.js';
 import type * as delivery_checklistRecords from '../delivery/checklistRecords.js';
 import type * as delivery_checklistRetention from '../delivery/checklistRetention.js';
+import type * as delivery_checklistSmtpProbe from '../delivery/checklistSmtpProbe.js';
 import type * as delivery_checklistSweep from '../delivery/checklistSweep.js';
 import type * as delivery_checklistSweepState from '../delivery/checklistSweepState.js';
 import type * as delivery_checklistTraits from '../delivery/checklistTraits.js';
@@ -1491,6 +1492,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/checklistProviderDetection': typeof delivery_checklistProviderDetection;
 	'delivery/checklistRecords': typeof delivery_checklistRecords;
 	'delivery/checklistRetention': typeof delivery_checklistRetention;
+	'delivery/checklistSmtpProbe': typeof delivery_checklistSmtpProbe;
 	'delivery/checklistSweep': typeof delivery_checklistSweep;
 	'delivery/checklistSweepState': typeof delivery_checklistSweepState;
 	'delivery/checklistTraits': typeof delivery_checklistTraits;

@@ -47,6 +47,7 @@ describe('Deliverability Center provider guidance', () => {
 		'deployment.relay',
 		'deployment.warmup',
 		'deployment.tls',
+		'deployment.source_ip',
 		'deployment.ipv6_source',
 		'deployment.ipv6_pool',
 		'domain.unsubscribe',
