@@ -24,8 +24,10 @@
  *    ramp gate is comparing two different rulers.
  *  - **A timeout is TERMINAL.** Mandrill's API has no idempotency key, so a
  *    timed-out request may or may not have been accepted. Retrying would
- *    double-deliver, which is why this returns `AMBIGUOUS_TIMEOUT` +
- *    `acceptanceUnknown` — the SES posture, never the Resend one.
+ *    double-deliver. The adapter only reports `AMBIGUOUS_TIMEOUT`; the catalog
+ *    (`deduplicatesOnIdempotencyKey: false`, `unknown-on-timeout`) is what makes
+ *    `sendProviderDispatch` return it terminal with `acceptanceUnknown`, the
+ *    same outcome SES and Emailit get from the same declaration.
  *
  * This module runs on the `'use node'` delivery worker: `@owlat/mail-message`
  * composes into a Node `Buffer`.
@@ -44,9 +46,9 @@ import {
 import { sendProviderCatalogEntry } from '../catalog';
 import { transportEnvOptional, transportEnvRequired } from '../transportEnv';
 import type { SendTransportRecord } from '../transports';
+import { isAmbiguousPostDispatchTimeout } from '../errors';
 import {
 	categorizeMandrillError,
-	isAmbiguousMandrillTimeout,
 	parseRetryAfterMs,
 	MANDRILL_SEND_TIMEOUT_MESSAGE,
 	MANDRILL_SEND_TIMEOUT_MS,
@@ -54,7 +56,6 @@ import {
 
 export {
 	categorizeMandrillError,
-	isAmbiguousMandrillTimeout,
 	parseRetryAfterMs,
 	MANDRILL_SEND_TIMEOUT_MESSAGE,
 	MANDRILL_SEND_TIMEOUT_MS,
@@ -364,9 +365,10 @@ export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 
 			// NEVER blind-retry a timeout. Mandrill has no idempotency surface,
 			// so a lost response may sit on top of an accepted (and delivered)
-			// message. `AMBIGUOUS_TIMEOUT` is not retryable, and `acceptanceUnknown`
-			// tells the governed boundary the outcome is genuinely undecided rather
-			// than a definite failure.
+			// message. Report `AMBIGUOUS_TIMEOUT`; `sendProviderDispatch` reads the
+			// catalog, returns it terminal and adds `acceptanceUnknown`, which tells
+			// the governed boundary the outcome is undecided rather than a definite
+			// failure.
 			//
 			// WHAT UNDECIDED COSTS, stated here because this is where it is created:
 			// the response we lost is the one that carried the `_id`, and `_id` is
@@ -377,12 +379,11 @@ export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 			// later evidence — and `delivery/sendCompletion.ts` ages it out at the
 			// delivery deadline as `PROVIDER_ACCEPTANCE_UNCONFIRMED` rather than
 			// claiming a delivery failure it cannot know about.
-			if (isAmbiguousMandrillTimeout(errorName, errorMessage)) {
+			if (isAmbiguousPostDispatchTimeout(errorName, errorMessage, MANDRILL_SEND_TIMEOUT_MESSAGE)) {
 				return {
 					success: false,
 					errorMessage,
 					errorCode: EmailErrorCode.AMBIGUOUS_TIMEOUT,
-					acceptanceUnknown: true,
 				};
 			}
 

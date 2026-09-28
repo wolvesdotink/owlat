@@ -3080,6 +3080,12 @@ inside one helper, all "post-attempt" in scope:
 - Retry loop driven by the module's `retryDelays` and
   `categorizeError(message, httpStatus?) → EmailErrorCode`. The
   schedule is the only thing each module declares; the loop is shared.
+  A retry waits the longer of the schedule step and the result's
+  `retryAfterMs`, never more in total than the schedule's sum. The
+  loop also owns the ambiguous-timeout policy: an adapter only reports
+  `AMBIGUOUS_TIMEOUT`, and the catalog decides whether it is retried
+  (`deduplicatesOnIdempotencyKey` plus a key in the extras) or returned
+  terminal with `acceptanceUnknown` (`'unknown-on-timeout'`).
 - Health recording — writes to `providerHealth` via the **Send provider
   health (module)**'s `recordSendResult({ providerType, success,
 latencyMs })`. Runs after every terminal outcome (success or

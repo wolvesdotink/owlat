@@ -23,6 +23,7 @@ import {
 	type SendProviderModule,
 	type SesExtras,
 } from '../types';
+import { isAmbiguousPostDispatchTimeout } from '../errors';
 import { sendProviderCatalogEntry } from '../catalog';
 import { transportEnvOptional, transportEnvRequired } from '../transportEnv';
 import type { SendTransportRecord } from '../transports';
@@ -30,32 +31,13 @@ import { bytesToBase64, utf8ToBase64 } from '../../bytes';
 
 /**
  * Upper bound on a single SES send call. Once the request is on the wire, a
- * timeout is AMBIGUOUS — AWS may already have accepted (and delivered) it, but
- * the response was lost. SES has no idempotency surface (no dedup header, no
- * dedup on Configuration-Set tags), so we CANNOT let the dispatch helper retry
- * such a timeout without risking a second delivery. See `sendEmail`.
+ * timeout is AMBIGUOUS: AWS may already have accepted (and delivered) it, but
+ * the response was lost. The adapter only reports that as `AMBIGUOUS_TIMEOUT`;
+ * `sendProviderDispatch` reads the catalog (no dedup, `unknown-on-timeout`) and
+ * returns it terminal with `acceptanceUnknown`. See `sendEmail`.
  */
 const SES_SEND_TIMEOUT_MS = 30_000;
 const SES_SEND_TIMEOUT_MESSAGE = 'SES send timed out';
-
-/**
- * Was this send failure an ambiguous post-dispatch timeout (request may have
- * been accepted)? Covers our own `withTimeout` sentinel plus the AWS SDK's
- * native timeout/abort signals. These are TERMINAL for SES because a retry
- * cannot be de-duped and would double-deliver.
- */
-function isAmbiguousSesTimeout(name: string | undefined, message: string): boolean {
-	if (message === SES_SEND_TIMEOUT_MESSAGE) return true;
-	const lowerName = (name ?? '').toLowerCase();
-	if (lowerName === 'timeouterror' || lowerName === 'aborterror') return true;
-	const lower = message.toLowerCase();
-	return (
-		lower.includes('timed out') ||
-		lower.includes('timeout') ||
-		lower.includes('etimedout') ||
-		lower.includes('socket hang up')
-	);
-}
 
 // One client per CONFIGURED TRANSPORT, not one per deployment: two `ses`
 // transports carry different credential triples, so caching by kind would leak
@@ -194,8 +176,9 @@ export const sesSendProvider: SendProviderModule<'ses'> = {
 	 * comes from the verified identity's configured custom MAIL FROM domain, not
 	 * from a per-send address (hence the catalog's `supportsCustomReturnPath:
 	 * 'no'`), and SES has no idempotency surface at all — no dedup header, no
-	 * dedup on Configuration-Set tags — which is exactly why `sendEmail` treats a
-	 * post-dispatch timeout as terminal instead of retryable.
+	 * dedup on Configuration-Set tags. That is why the catalog declares
+	 * `deduplicatesOnIdempotencyKey: false`, and so why `sendProviderDispatch`
+	 * never retries an SES post-dispatch timeout.
 	 */
 	buildDispatchExtras(): SesExtras {
 		return {};
@@ -227,10 +210,10 @@ export const sesSendProvider: SendProviderModule<'ses'> = {
 			// path. See PR-17.
 			const hasHeaders = !!(params.headers && Object.keys(params.headers).length > 0);
 
-			// Bound the send so a stuck socket becomes a deterministic timeout we
-			// can classify TERMINAL below (SES cannot dedup a retry). The send is
-			// kept inside each branch so the AWS SDK `send` overload narrows to the
-			// concrete command type. Both outputs expose `MessageId`.
+			// Bound the send so a stuck socket becomes a deterministic timeout the
+			// catch below reports as AMBIGUOUS_TIMEOUT (SES cannot dedup a retry).
+			// The send is kept inside each branch so the AWS SDK `send` overload
+			// narrows to the concrete command type. Both outputs expose `MessageId`.
 			// Tag every send with the Configuration Set (when configured) so SES
 			// event-publishing attributes the resulting bounce/complaint/delivery
 			// feedback back to this send. Undefined ⇒ the field is omitted.
@@ -294,13 +277,12 @@ export const sesSendProvider: SendProviderModule<'ses'> = {
 			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 			const errorName = error instanceof Error ? error.name : undefined;
 			// A post-dispatch timeout is AMBIGUOUS: SES may already have accepted
-			// and delivered the message, but the response was lost. SES has no
-			// idempotency surface, so retrying would double-deliver. Classify it
-			// TERMINAL (AMBIGUOUS_TIMEOUT is not retryable) so the dispatch helper
-			// does NOT re-send. Explicit AWS 5xx responses (ServiceUnavailable /
-			// InternalFailure) still map to the retryable SERVER_ERROR via
-			// `categorizeError` because AWS did not accept those.
-			if (isAmbiguousSesTimeout(errorName, errorMessage)) {
+			// and delivered the message, but the response was lost. Report the fact;
+			// `sendProviderDispatch` decides from the catalog that it is terminal and
+			// stamps `acceptanceUnknown`. Explicit AWS 5xx responses
+			// (ServiceUnavailable / InternalFailure) still map to the retryable
+			// SERVER_ERROR via `categorizeError` because AWS did not accept those.
+			if (isAmbiguousPostDispatchTimeout(errorName, errorMessage, SES_SEND_TIMEOUT_MESSAGE)) {
 				return {
 					success: false,
 					errorMessage,

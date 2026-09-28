@@ -501,6 +501,9 @@ describe('sesSendProvider', () => {
 			expect(dispatched.result.success).toBe(false);
 			if (!dispatched.result.success) {
 				expect(dispatched.result.errorCode).toBe(EmailErrorCode.AMBIGUOUS_TIMEOUT);
+				// SES has a feedback channel: the governed boundary parks this Send
+				// on SNS feedback instead of failing it outright.
+				expect(dispatched.result.acceptanceUnknown).toBe(true);
 			}
 		});
 

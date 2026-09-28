@@ -8,6 +8,7 @@ import {
 import { internal } from '../_generated/api';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { logError } from '../lib/runtimeLog';
+import { clampRetryAfterMs, LOCAL_DEFER_MS, RETRY_AFTER_MIN_MS } from '../lib/sendProviders/errors';
 import { campaignEmailPool, transactionalEmailPool } from './workpool';
 import { recordDeferralOutcome } from './deferralOutcome';
 import { envelopeInputValidator, retryStateValidator } from './workerEnvelope';
@@ -87,11 +88,6 @@ function deadlineAdmits(verdict: GovernedDeadlineVerdict): boolean {
 const WORKER_RESULT_MALFORMED_CODE = 'WORKER_RESULT_MALFORMED';
 const WORKER_RESULT_MALFORMED_MESSAGE =
 	'The send worker answered with a result this deployment cannot read; the message may or may not have been delivered';
-
-/** Retry delays are clamped to [1s, 1h] — a worker answer becomes a schedule. */
-function clampRetryDelayMs(retryAfterMs: number | undefined, fallbackMs: number): number {
-	return Math.min(Math.max(retryAfterMs ?? fallbackMs, 1_000), 3_600_000);
-}
 
 /**
  * A PII-FREE description of a value this module refused.
@@ -224,7 +220,7 @@ export const completeSend = internalMutation({
 				// never bounded it — the cumulative deadline does, alone.
 				if (deadlineAdmits(admitGovernedRetry(outcome.retryState, now).deadline)) {
 					await ctx.scheduler.runAfter(
-						clampRetryDelayMs(outcome.retryAfterMs, 1_000),
+						clampRetryAfterMs(outcome.retryAfterMs, RETRY_AFTER_MIN_MS),
 						internal.delivery.sendCompletion.retrySend,
 						{
 							sendRef,
@@ -273,7 +269,7 @@ export const completeSend = internalMutation({
 				const budget = admitGovernedRetry(outcome.retryState, now);
 				if (budget.attempts === 'ok' && deadlineAdmits(budget.deadline)) {
 					await ctx.scheduler.runAfter(
-						clampRetryDelayMs(outcome.retryAfterMs, 60_000),
+						clampRetryAfterMs(outcome.retryAfterMs, LOCAL_DEFER_MS),
 						internal.delivery.sendCompletion.retrySend,
 						{
 							sendRef,
