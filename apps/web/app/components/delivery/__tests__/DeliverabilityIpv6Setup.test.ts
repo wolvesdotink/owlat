@@ -151,7 +151,7 @@ describe('DeliverabilityIpv6Setup', () => {
 			].join('\n')
 		);
 		expect(wrapper.get('[data-testid="env-setup-cli"]').text()).toMatch(
-			/owlat env MTA_IPV6_ENABLED 'true'[\s\S]*\nowlat down\nowlat up$/
+			/owlat env MTA_IPV6_ENABLED 'true'[\s\S]*\nowlat down\nowlat apply$/
 		);
 		expect(wrapper.find('[data-testid="ipv6-pools-unknown"]').exists()).toBe(false);
 		expectFullyLocalized(wrapper);

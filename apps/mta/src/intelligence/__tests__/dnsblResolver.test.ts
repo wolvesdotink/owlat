@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createDnsblTransport, getDnsblTransport, parseDnsblResolver } from '../dnsblResolver.js';
+import {
+	createDnsblTransport,
+	getDnsblTransport,
+	lookupResolverAddress,
+	parseDnsblResolver,
+} from '../dnsblResolver.js';
 import { dnsError } from './dnsblFixtures.js';
 
 describe('parseDnsblResolver', () => {
@@ -101,6 +106,41 @@ describe('createDnsblTransport', () => {
 
 		await transport.resolve4('2.0.0.127.zen.spamhaus.org');
 		expect(deps.createResolver).toHaveBeenCalledWith('[2001:db8::53]:5335');
+	});
+});
+
+describe('lookupResolverAddress', () => {
+	it('asks for the IPv4 address, which is all the bundled resolver listens on', async () => {
+		const lookupFn = vi.fn(async (_host: string, options: { family?: 4 }) => ({
+			address: options.family === 4 ? '172.18.0.9' : 'fd00::9',
+		}));
+		expect(await lookupResolverAddress('dns-resolver', lookupFn)).toBe('172.18.0.9');
+		expect(lookupFn).toHaveBeenCalledOnce();
+		expect(lookupFn).toHaveBeenCalledWith('dns-resolver', { family: 4 });
+	});
+
+	it('still finds a resolver whose name has only an IPv6 address', async () => {
+		const lookupFn = vi.fn(async (_host: string, options: { family?: 4 }) => {
+			if (options.family === 4) throw dnsError('ENOTFOUND');
+			return { address: '2001:db8::53' };
+		});
+		expect(await lookupResolverAddress('resolver.example', lookupFn)).toBe('2001:db8::53');
+	});
+
+	it('uses an address literal as is', async () => {
+		const lookupFn = vi.fn();
+		expect(await lookupResolverAddress('10.0.0.53', lookupFn)).toBe('10.0.0.53');
+		expect(await lookupResolverAddress('2001:db8::53', lookupFn)).toBe('2001:db8::53');
+		expect(lookupFn).not.toHaveBeenCalled();
+	});
+
+	it('fails when the name does not resolve at all, so the transport falls back', async () => {
+		const lookupFn = vi.fn(async () => {
+			throw dnsError('ENOTFOUND');
+		});
+		await expect(lookupResolverAddress('dns-resolver', lookupFn)).rejects.toMatchObject({
+			code: 'ENOTFOUND',
+		});
 	});
 });
 

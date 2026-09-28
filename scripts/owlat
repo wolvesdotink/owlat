@@ -360,20 +360,40 @@ setup_image_has_push_env() {
 	[[ "$help_text" == *push-env* ]]
 }
 
-# Stop and remove containers of services that are no longer part of the active
-# model — the services of a profile that was just disabled. `up -d` never
-# touches those, and whether `--remove-orphans` does depends on the compose
-# version, so this asks compose for the active services and removes the rest.
-# One-off `docker compose run` containers (convex-deploy) are left alone.
+# The compose profiles feature flags turn on and off, the only ones `owlat
+# apply` prunes. Every other profile (dashboard, dev, tls, deploy,
+# plugin-tasks, ...) is started by the install or by hand (docker-compose.yml
+# tells operators to `docker compose --profile dashboard up -d
+# convex-dashboard`), and no flag says whether it should be running. Keep in
+# step with getFlagOwnedProfiles() in packages/shared/src/featureFlags.ts
+# (scripts/__tests__/owlat-apply.test.ts fails when they drift).
+FLAG_OWNED_PROFILES=(ai clamav external-mail inbox-codetasks mta personal-mail)
+
+# Stop and remove containers of services a feature flag just disabled. `up -d`
+# never touches those, and whether `--remove-orphans` does depends on the
+# compose version, so this asks compose for the active services and removes a
+# running one that is not among them, but only when a flag-owned profile
+# declares it. A service only a manual profile starts (convex-dashboard under
+# `dashboard`, the `dev` tools) is not in the active set either, and removing
+# it would undo what the operator started on purpose. One-off `docker compose
+# run` containers (convex-deploy) are left alone.
 stop_inactive_profile_services() {
-	local project active stale=() svc ids
+	local project active flag_services stale=() svc ids profile
+	local profile_args=()
 	project="$(compose_project_name)"
 	[[ -n "$project" ]] || return 0
 	active="$(docker compose config --services 2>/dev/null)" || return 0
 	[[ -n "$active" ]] || return 0
+	for profile in "${FLAG_OWNED_PROFILES[@]}"; do profile_args+=(--profile "$profile"); done
+	# `--profile` replaces COMPOSE_PROFILES (shell and .env) for this one call,
+	# so the answer is every service a flag-owned profile declares, plus the
+	# unprofiled ones (always active, so never stale).
+	flag_services="$(docker compose "${profile_args[@]}" config --services 2>/dev/null)" || return 0
 	while IFS= read -r svc; do
 		[[ -n "$svc" ]] || continue
-		grep -qxF -- "$svc" <<<"$active" || stale+=("$svc")
+		grep -qxF -- "$svc" <<<"$active" && continue
+		grep -qxF -- "$svc" <<<"$flag_services" || continue
+		stale+=("$svc")
 	done < <(docker ps --filter "label=com.docker.compose.project=$project" \
 		--filter "label=com.docker.compose.oneoff=False" \
 		--format '{{.Label "com.docker.compose.service"}}' 2>/dev/null | sort -u)

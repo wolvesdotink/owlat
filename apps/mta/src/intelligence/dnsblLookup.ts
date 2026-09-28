@@ -160,7 +160,10 @@ export async function lookupDnsblZone(
 			resolver(lookup),
 			new Promise<never>(
 				(_, reject) =>
-					(timeout = setTimeout(() => reject(new Error('DNSBL lookup timeout')), timeoutMs))
+					(timeout = setTimeout(
+						() => reject(Object.assign(new Error('DNSBL lookup timeout'), { code: 'ETIMEOUT' })),
+						timeoutMs
+					))
 			),
 		]);
 		// 127.255.255.x is the reserved return-code block: resolver policy refusal,

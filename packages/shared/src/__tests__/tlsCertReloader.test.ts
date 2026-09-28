@@ -172,6 +172,94 @@ describe('startTlsCertReloader', () => {
 		expect(r.current()).toEqual(oldPair);
 	});
 
+	describe('with nothing in service yet', () => {
+		function startPending(overrides: Partial<TlsCertReloaderOptions> = {}): TlsCertReloader {
+			reloader = startTlsCertReloader({
+				certPath,
+				keyPath,
+				apply,
+				log: { info, warn },
+				...overrides,
+			});
+			return reloader;
+		}
+
+		it('waits for missing files, warns once, then applies the first valid pair', async () => {
+			rmSync(certPath);
+			rmSync(keyPath);
+			const r = startPending();
+			expect(r.current()).toBeUndefined();
+
+			expect(await r.check()).toBe(false);
+			expect(await r.check()).toBe(false);
+			expect(apply).not.toHaveBeenCalled();
+			expect(warn).toHaveBeenCalledOnce();
+			expect(warn.mock.calls[0]![0]).toMatch(/not available yet/);
+
+			write(newPair);
+			expect(await r.check()).toBe(true);
+			expect(apply).toHaveBeenCalledWith(newPair);
+			expect(r.current()).toEqual(newPair);
+			expect(info).toHaveBeenCalledWith(
+				'TLS certificate loaded',
+				expect.objectContaining({ subject: 'CN=new.mail.example.com' })
+			);
+		});
+
+		it('does not install a half-published pair', async () => {
+			write({ cert: newPair.cert, key: oldPair.key });
+			const r = startPending();
+
+			expect(await r.check()).toBe(false);
+			expect(apply).not.toHaveBeenCalled();
+			expect(r.current()).toBeUndefined();
+			expect(warn.mock.calls[0]![0]).toMatch(/pair is invalid/);
+		});
+
+		it('polls on the pending interval, then drops back to the renewal interval', async () => {
+			vi.useFakeTimers();
+			const files = new Map<string, string>();
+			const readFile = vi.fn(async (path: string) => {
+				const content = files.get(path);
+				if (content === undefined) {
+					throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' });
+				}
+				return content;
+			});
+			startPending({ intervalMs: 10_000, pendingIntervalMs: 1_000, readFile });
+
+			await vi.advanceTimersByTimeAsync(1_000);
+			expect(readFile).toHaveBeenCalledTimes(2);
+
+			files.set(certPath, oldPair.cert);
+			files.set(keyPath, oldPair.key);
+			await vi.advanceTimersByTimeAsync(1_000);
+			expect(apply).toHaveBeenCalledWith(oldPair);
+
+			// Installed: the next read waits for the full renewal interval.
+			const reads = readFile.mock.calls.length;
+			await vi.advanceTimersByTimeAsync(9_999);
+			expect(readFile.mock.calls.length).toBe(reads);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(readFile.mock.calls.length).toBe(reads + 2);
+		});
+
+		it('stays stopped when stop() races the first install', async () => {
+			vi.useFakeTimers();
+			const readFile = vi.fn(async (path: string) =>
+				path === certPath ? oldPair.cert : oldPair.key
+			);
+			const r = startPending({ intervalMs: 10_000, pendingIntervalMs: 1_000, readFile });
+			const first = r.check();
+			r.stop();
+			expect(await first).toBe(true);
+
+			const reads = readFile.mock.calls.length;
+			await vi.advanceTimersByTimeAsync(60_000);
+			expect(readFile.mock.calls.length).toBe(reads);
+		});
+	});
+
 	it('polls on the interval and stops polling after stop()', async () => {
 		vi.useFakeTimers();
 		const files = new Map<string, string>([
