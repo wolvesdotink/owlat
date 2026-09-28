@@ -40,7 +40,7 @@ export async function runPack(opts: PackOptions): Promise<number> {
 	const { cascaded, profiles } = await applyPackAndPersist(
 		opts.owlatDir,
 		key as FeaturePackKey,
-		value,
+		value
 	);
 
 	const pack = FEATURE_PACKS[key as FeaturePackKey];
@@ -50,6 +50,6 @@ export async function runPack(opts: PackOptions): Promise<number> {
 		console.log(`${pc.yellow('  Cascaded:')} ${cascaded.join(', ')}`);
 	}
 	console.log(`${pc.cyan('  Active profiles:')} ${profiles.join(', ') || '(none)'}`);
-	console.log(`\nRun ${pc.cyan('owlat restart')} to apply.`);
+	console.log(`\nRun ${pc.cyan('owlat apply')} to apply.`);
 	return 0;
 }

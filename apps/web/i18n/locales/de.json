@@ -2243,9 +2243,9 @@
 				"connected": "Verbunden",
 				"copyCommands": "Befehle kopieren",
 				"copyEnv": ".env-Zeilen kopieren",
-				"envTitle": "Fügen Sie diese Zeilen in die .env-Datei auf Ihrem Server ein und starten Sie dann neu",
+				"envTitle": "Fügen Sie diese Zeilen in die .env-Datei auf Ihrem Server ein und führen Sie dann owlat apply aus",
 				"guideLink": "Leitfaden zu Umgebungsvariablen",
-				"waiting": "Warten, bis der Server die neuen Werte sieht. Das aktualisiert sich nach dem Neustart von selbst."
+				"waiting": "Warten, bis der Server die neuen Werte sieht. Das aktualisiert sich nach owlat apply von selbst."
 			},
 			"independenceTrendChart": {
 				"day": "Tag",
@@ -2476,7 +2476,7 @@
 				"eventsGeneric": "Aktivieren Sie die Ereignisse für Zustellung, Unzustellbarkeit, Beschwerde, Abmeldung und Abweisung, die {provider} anbietet. Owlat erfasst die, die es versteht — und unterdrückt die Adressen hinter Unzustellbarkeiten und Beschwerden —, den Rest ignoriert es.",
 				"keyIssuanceGeneric": "{provider} stellt diesen Schlüssel aus, wenn der Webhook erstellt wird",
 				"keyMissing": "fehlt",
-				"keyNote": "{issuance} — kopieren Sie ihn in Ihre Umgebung und starten Sie neu. Solange er nicht gesetzt ist, weist Owlat jede eingehende Sendung zurück, statt einer unsignierten zu vertrauen.",
+				"keyNote": "{issuance} — kopieren Sie ihn in Ihre .env und führen Sie owlat apply aus. Solange er nicht gesetzt ist, weist Owlat jede eingehende Sendung zurück, statt einer unsignierten zu vertrauen.",
 				"keyPresent": "vorhanden",
 				"lastEvent": "Letztes Ereignis empfangen: {at}",
 				"mandrill": {
@@ -5338,7 +5338,7 @@
 				"applying": "Wird angewendet…",
 				"busy": "Der Updater wendet noch eine andere Änderung an, etwa ein Update. Es wurde nichts geändert; wenden Sie die Änderungen erneut an, sobald sie abgeschlossen ist.",
 				"convergedBody": "Der Updater hat die Dienste an Ihren Flag-Stand angeglichen.",
-				"fallback": "Ausweichweg: Führen Sie auf dem Host für jede Änderung {featureCommand} aus und danach {restartCommand}.",
+				"fallback": "Ausweichweg: Führen Sie auf dem Host für jede Änderung {featureCommand} aus und danach {applyCommand}.",
 				"pendingBody": "Ihre Flag-Änderungen betreffen {services}. Die laufenden Dienste behalten ihren bisherigen Stand, bis Sie die Änderungen anwenden. Beim Anwenden werden die genannten Dienste kurz neu gestartet.",
 				"title": "Dienste nicht synchron — anwenden & neu starten",
 				"updaterUnreachable": "Der Updater war nicht erreichbar: {error}"
@@ -12985,7 +12985,7 @@
 			},
 			"transportIssue": {
 				"own": "Die eigene MTA von Owlat ist nicht konfiguriert, es gibt also nichts, wohin der Verkehr migriert werden könnte.",
-				"relay": "Mailchimp Transactional ist noch nicht verbunden — setzen Sie MANDRILL_API_KEY und starten Sie das Deployment neu."
+				"relay": "Mailchimp Transactional ist noch nicht verbunden — setzen Sie MANDRILL_API_KEY und führen Sie owlat apply aus."
 			}
 		},
 		"mandrillRelayStatus": {

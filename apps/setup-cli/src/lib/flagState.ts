@@ -13,6 +13,7 @@
  * scripted / pre-boot flows can flip flags without a running stack.
  */
 
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
 	applyToggle,
@@ -26,6 +27,7 @@ import { writeComposeOverride } from './override';
 
 const STATE_FILE = '.owlat-flags.json';
 const OVERRIDE_FILE = 'docker-compose.override.yml';
+const ENV_FILE = '.env';
 
 /** Load the current flag state from `<owlatDir>/.owlat-flags.json`. */
 export async function loadFlagState(owlatDir: string): Promise<FeatureFlagState> {
@@ -70,7 +72,7 @@ export async function applyAndPersist(
 	const { next, cascaded } = applyToggle(current, key, value, FEATURE_FLAGS);
 	const preserved = preservePluginOverrides(current, next);
 	await saveFlagState(owlatDir, preserved);
-	const profiles = await writeComposeOverride(join(owlatDir, OVERRIDE_FILE), preserved);
+	const profiles = await persistProfiles(owlatDir, preserved);
 	return { state: preserved, cascaded, profiles };
 }
 
@@ -87,8 +89,40 @@ export async function applyPackAndPersist(
 	const { next, cascaded } = applyPackToggle(current, key, value, FEATURE_FLAGS);
 	const preserved = preservePluginOverrides(current, next);
 	await saveFlagState(owlatDir, preserved);
-	const profiles = await writeComposeOverride(join(owlatDir, OVERRIDE_FILE), preserved);
+	const profiles = await persistProfiles(owlatDir, preserved);
 	return { state: preserved, cascaded, profiles };
+}
+
+/**
+ * Write the compose override AND `.env`'s COMPOSE_PROFILES for a flag state,
+ * so both records of the active profiles agree — the setup wizard and the
+ * updater's Apply already write both. With only the override rewritten, a
+ * profile disabled here stayed listed in `.env` and `owlat apply` (which reads
+ * both) kept its service running.
+ */
+async function persistProfiles(owlatDir: string, flags: FeatureFlagState): Promise<string[]> {
+	const profiles = await writeComposeOverride(join(owlatDir, OVERRIDE_FILE), flags);
+	await writeEnvComposeProfiles(join(owlatDir, ENV_FILE), profiles);
+	return profiles;
+}
+
+/**
+ * Set COMPOSE_PROFILES in an existing `.env`, editing that one line (or
+ * appending it) and leaving every other line and comment as it was. No `.env`
+ * yet means no install to converge, so nothing is created.
+ */
+export async function writeEnvComposeProfiles(envPath: string, profiles: string[]): Promise<void> {
+	let text: string;
+	try {
+		text = await readFile(envPath, 'utf-8');
+	} catch {
+		return;
+	}
+	const line = `COMPOSE_PROFILES=${profiles.join(',')}`;
+	const next = /^[ \t]*COMPOSE_PROFILES[ \t]*=/m.test(text)
+		? text.replace(/^[ \t]*COMPOSE_PROFILES[ \t]*=.*$/gm, line)
+		: `${text}${text === '' || text.endsWith('\n') ? '' : '\n'}${line}\n`;
+	if (next !== text) await writeFile(envPath, next, 'utf-8');
 }
 
 /**

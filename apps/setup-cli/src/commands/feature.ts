@@ -41,6 +41,6 @@ export async function runFeature(opts: FeatureOptions): Promise<number> {
 		console.log(`${pc.yellow('  Cascaded:')} ${cascaded.join(', ')}`);
 	}
 	console.log(`${pc.cyan('  Active profiles:')} ${profiles.join(', ') || '(none)'}`);
-	console.log(`\nRun ${pc.cyan('owlat restart')} to apply.`);
+	console.log(`\nRun ${pc.cyan('owlat apply')} to apply.`);
 	return 0;
 }

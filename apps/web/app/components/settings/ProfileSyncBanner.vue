@@ -93,8 +93,8 @@ function serviceStateLabel(result: ProfileServiceResult): string {
 								>owlat feature &lt;flag&gt; on&nbsp;|&nbsp;off</code
 							>
 						</template>
-						<template #restartCommand>
-							<code class="bg-bg-base px-1.5 py-0.5 rounded">owlat restart</code>
+						<template #applyCommand>
+							<code class="bg-bg-base px-1.5 py-0.5 rounded">owlat apply</code>
 						</template>
 					</I18nT>
 				</div>

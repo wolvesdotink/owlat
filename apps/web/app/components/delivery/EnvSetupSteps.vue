@@ -6,7 +6,7 @@
  * cannot set it. What it can do is hand over exactly what to paste, the exact
  * `owlat` command that does the same, and then notice on its own when the
  * server sees the value — so the operator is not left refreshing a page that
- * still says "missing" after the restart.
+ * still says "missing" after the apply.
  *
  * The page owns the question "is it connected?" (it already reads a query that
  * answers it); this component only asks it to look again, by emitting
@@ -39,7 +39,7 @@ const props = withDefaults(
 		 * the blocks show but nothing polls or claims to be waiting.
 		 */
 		awaitConnection?: boolean;
-		/** What loads the change after `owlat env`; defaults to `owlat restart`. */
+		/** What loads the change after `owlat env`; defaults to `owlat apply`. */
 		applyCommands?: readonly string[];
 	}>(),
 	{

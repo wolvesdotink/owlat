@@ -81,11 +81,20 @@ export function orderProviderEnvNames(
 	return [...ordered, ...undeclared];
 }
 
+/** The host command that makes a `.env` change live, for every kind of key. */
+const ENV_APPLY_COMMAND = 'owlat apply';
+
 /**
  * The same remedy as shell commands for the `owlat` host CLI: one
  * `owlat env NAME <value>` line per variable, then the command(s) that load it
- * (`owlat restart` unless the caller needs more, e.g. a network change). `owlat env` writes the same `.env` the snippet
+ * (`owlat apply` unless the caller needs more, e.g. a network change). `owlat env` writes the same `.env` the snippet
  * above goes into, so the two are alternatives, not two steps.
+ *
+ * `owlat apply`, not `owlat restart`: a restart keeps each container's old
+ * environment and pushes nothing to the Convex deployment, so neither an
+ * interpolated MTA setting (EHLO_HOSTNAMES) nor a provider credential read by
+ * Convex functions would take effect (#839). `apply` recreates the containers
+ * whose config changed and pushes the function-runtime keys.
  *
  * Names only by default, like the snippet — the value is the `<value>`
  * placeholder. A caller that holds a NON-SECRET value (the EHLO overrides the
@@ -95,7 +104,7 @@ export function orderProviderEnvNames(
 export function buildEnvCliCommands(
 	varNames: readonly string[],
 	values?: Readonly<Record<string, string>>,
-	applyCommands: readonly string[] = ['owlat restart']
+	applyCommands: readonly string[] = [ENV_APPLY_COMMAND]
 ): string {
 	const names = uniqueNames(varNames);
 	if (names.length === 0) return '';

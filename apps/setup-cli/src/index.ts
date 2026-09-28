@@ -10,6 +10,8 @@
  *   env      Set a single env var (e.g., `owlat-setup env LLM_API_KEY sk-...`),
  *            or `owlat-setup env --show` to list the vars the current flags need.
  *   doctor   Diagnose a broken install (port checks, .env sanity, container health).
+ *   push-env Push the Convex function-runtime keys from .env to the deployment
+ *            (the second half of `owlat apply`).
  */
 
 import { existsSync } from 'node:fs';
@@ -18,6 +20,7 @@ import { runSetup } from './commands/setup';
 import { runFeature } from './commands/feature';
 import { runPack } from './commands/pack';
 import { runEnv } from './commands/env';
+import { runPushEnv } from './commands/pushEnv';
 import { runDoctor } from './commands/doctor';
 import { runQuickstart } from './commands/quickstart';
 import { runBootstrapOrg } from './commands/bootstrap-org';
@@ -51,6 +54,8 @@ Commands:
                      (emailClient | marketing | ai).
   env <KEY> <VALUE>  Set a single environment variable.
   env --show         List the env vars the current flag state needs (secrets masked).
+  push-env           Push the Convex function-runtime keys from .env to the
+                     deployment (run by \`owlat apply\`; needs the Docker socket).
   doctor             Diagnose a broken install.
 
 Options:
@@ -133,6 +138,8 @@ async function main(): Promise<number> {
 				return await runPack({ ...opts, positional });
 			case 'env':
 				return await runEnv({ ...opts, positional });
+			case 'push-env':
+				return await runPushEnv(opts);
 			case 'doctor':
 				return await runDoctor({ ...opts, positional });
 			default:
