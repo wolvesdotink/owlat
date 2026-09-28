@@ -21,10 +21,10 @@
  * when a contact's address is edited (`changeContactEmail`), `searchableText`
  * computation, soft-delete filter on lookup. It does *not* own: activity
  * logging, automation trigger fanout, contact-count maintenance — those stay
- * with callers based on the returned `action`. For `merge`, the result also carries the
- * `changedProperties` diff so callers can fire the `contact_updated` trigger
- * with the correct watched-property list (the module computes the diff but
- * never fires the trigger itself).
+ * with callers based on the returned `action`. For `merge`, the result also
+ * carries the `changedProperties` diff so callers can fire the
+ * `contact_updated` trigger with the correct watched-property list (the module
+ * computes the diff but never fires the trigger itself).
  *
  * See docs/adr/0008-contact-resolution-module.md.
  */
