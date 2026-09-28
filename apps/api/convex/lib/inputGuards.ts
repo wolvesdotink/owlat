@@ -36,6 +36,26 @@ export function isValidEmail(email: string): boolean {
 	return sharedIsValidEmail(email);
 }
 
+/** A JSON primitive: the value type `jsonPrimitiveRecord` accepts. */
+export type JsonPrimitiveValue = string | number | boolean | null;
+
+/**
+ * Whether an untrusted JSON value is a flat object of primitives, the shape the
+ * `jsonPrimitiveRecord` validator accepts. HTTP handlers check this before
+ * passing request data to a mutation, so a nested value is a 400 at the
+ * boundary instead of an argument-validation failure inside the call.
+ */
+export function isJsonPrimitiveRecord(value: unknown): value is Record<string, JsonPrimitiveValue> {
+	if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+	return Object.values(value).every(
+		(entry) =>
+			entry === null ||
+			typeof entry === 'string' ||
+			typeof entry === 'number' ||
+			typeof entry === 'boolean'
+	);
+}
+
 /**
  * Validate that a string looks like a valid Convex document ID.
  * Convex IDs are URL-safe base64 strings, typically 10+ characters.
