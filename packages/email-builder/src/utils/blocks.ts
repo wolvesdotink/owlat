@@ -21,11 +21,6 @@ import {
 	defaultTheme,
 } from '../defaults';
 import { getBlock } from '../registry';
-
-/** Access common styling properties shared across all block content types. */
-function getCommonProps(block: EditorBlock): CommonBlockProperties & Record<string, unknown> {
-	return block.content as unknown as CommonBlockProperties & Record<string, unknown>;
-}
 import { generateId } from './id';
 
 /**
@@ -101,7 +96,8 @@ export const createColumnItem = (type: ColumnItem['type'], theme?: EmailTheme): 
 };
 
 /**
- * Get block padding with defaults for legacy blocks
+ * Get block padding with defaults for legacy blocks. `paddingLinked` is
+ * carried through for stored documents; no editor control reads or writes it.
  */
 export const getBlockPadding = (block: EditorBlock): UniversalPadding => {
 	const content = block.content as CommonBlockProperties;
@@ -115,45 +111,6 @@ export const getBlockPadding = (block: EditorBlock): UniversalPadding => {
 };
 
 /**
- * Update block padding
- */
-export const updateBlockPadding = (
-	block: EditorBlock,
-	side: keyof UniversalPadding,
-	value: number | boolean
-): void => {
-	const content = getCommonProps(block);
-	if (side === 'paddingLinked') {
-		content.paddingLinked = value as boolean;
-	} else {
-		content[side] = value as number;
-		if (content.paddingLinked) {
-			content.paddingTop = value as number;
-			content.paddingRight = value as number;
-			content.paddingBottom = value as number;
-			content.paddingLeft = value as number;
-		}
-	}
-};
-
-/**
- * Toggle linked padding
- */
-export const toggleLinkedPadding = (block: EditorBlock): void => {
-	const content = block.content as CommonBlockProperties;
-	const currentLinked = (content.paddingLinked as boolean | undefined) ?? false;
-	content.paddingLinked = !currentLinked;
-
-	if (!currentLinked) {
-		const topValue = (content.paddingTop as number | undefined) ?? defaultPadding.paddingTop;
-		content.paddingTop = topValue;
-		content.paddingRight = topValue;
-		content.paddingBottom = topValue;
-		content.paddingLeft = topValue;
-	}
-};
-
-/**
  * Get block margin with defaults
  */
 export const getBlockMargin = (block: EditorBlock): UniversalMargin => {
@@ -164,18 +121,6 @@ export const getBlockMargin = (block: EditorBlock): UniversalMargin => {
 		marginBottom: (content.marginBottom as number | undefined) ?? defaultMargin.marginBottom,
 		marginLeft: (content.marginLeft as number | undefined) ?? defaultMargin.marginLeft,
 	};
-};
-
-/**
- * Update block margin
- */
-export const updateBlockMargin = (
-	block: EditorBlock,
-	side: keyof UniversalMargin,
-	value: number
-): void => {
-	const content = getCommonProps(block);
-	content[side] = value;
 };
 
 /**

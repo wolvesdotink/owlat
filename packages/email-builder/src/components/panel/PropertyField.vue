@@ -23,8 +23,7 @@ import AltTextField from './fields/AltTextField.vue';
 // Complex editors
 import RichTextEditor from './RichTextEditor.vue';
 import ArrayEditor from './ArrayEditor.vue';
-import SpacingEditor from './SpacingEditor.vue';
-import MarginEditor from './MarginEditor.vue';
+import BoxSidesEditor from './BoxSidesEditor.vue';
 import BorderEditor from './BorderEditor.vue';
 import GradientEditor from './GradientEditor.vue';
 
@@ -278,17 +277,21 @@ const fontFamilyOptions = [
 			@update="(val) => emit('update', val)"
 		/>
 
-		<!-- Spacing editor -->
-		<SpacingEditor
+		<!-- Padding editor -->
+		<BoxSidesEditor
 			v-else-if="field.type === 'spacing'"
 			:block="block"
+			prefix="padding"
+			:modes="['uniform', 'axis', 'individual']"
 			@update="(key, val) => $emit('update-keyed', key, val)"
 		/>
 
 		<!-- Margin editor -->
-		<MarginEditor
+		<BoxSidesEditor
 			v-else-if="field.type === 'margin'"
 			:block="block"
+			prefix="margin"
+			:modes="['axis', 'individual']"
 			@update="(key, val) => $emit('update-keyed', key, val)"
 		/>
 

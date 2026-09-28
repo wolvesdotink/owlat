@@ -282,17 +282,6 @@
 			],
 		},
 		"packages/channels": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
-		// Known knip false positives that live in the baseline:
-		// packages/shared/src/types/blocks.ts UniversalPadding + UniversalMargin.
-		// src/types/controls.ts here re-exports them under aliases (`as Padding`,
-		// `as Margin`) and src/types/index.ts re-exports both spellings; knip's
-		// reference walk (graph-explorer/operations/is-referenced.js) keys its
-		// visited set by file path only, so the alias branch marks types/index.ts
-		// seen and the direct branch — where defaults/index.ts and
-		// utils/blocks.ts really import them — is never checked. Verified with
-		// `knip --trace-export UniversalPadding --trace-file
-		// packages/shared/src/types/blocks.ts` (2026-09-11). UniversalBorder is
-		// aliased the same way but has no terminal importer, so it is real debt.
 		"packages/email-builder": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-renderer": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-scanner": {

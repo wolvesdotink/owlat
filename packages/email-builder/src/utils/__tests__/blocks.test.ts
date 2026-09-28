@@ -3,7 +3,7 @@ import {
 	createDefaultContent,
 	createBlock,
 	getBlockPadding,
-	updateBlockPadding,
+	getBlockMargin,
 	getBlockBackgroundColor,
 	blockSupportsBorderRadius,
 	getColumnWidths,
@@ -208,8 +208,8 @@ describe('getBlockPadding', () => {
 	});
 });
 
-describe('updateBlockPadding', () => {
-	it('updates a single padding side', () => {
+describe('getBlockMargin', () => {
+	it('returns margin from block content', () => {
 		const block: EditorBlock = {
 			id: 'test',
 			type: 'text',
@@ -218,19 +218,21 @@ describe('updateBlockPadding', () => {
 				blockType: 'paragraph',
 				fontSize: 16,
 				textColor: '#000',
-				paddingTop: 10,
-				paddingRight: 10,
-				paddingBottom: 10,
-				paddingLeft: 10,
-				paddingLinked: false,
+				marginTop: 4,
+				marginRight: 8,
+				marginBottom: 12,
+				marginLeft: 16,
 			} as TextBlockContent,
 		};
-		updateBlockPadding(block, 'paddingTop', 50);
-		expect((block.content as TextBlockContent).paddingTop).toBe(50);
-		expect((block.content as TextBlockContent).paddingRight).toBe(10); // unchanged
+		expect(getBlockMargin(block)).toEqual({
+			marginTop: 4,
+			marginRight: 8,
+			marginBottom: 12,
+			marginLeft: 16,
+		});
 	});
 
-	it('syncs all sides when paddingLinked is true', () => {
+	it('returns zero for missing margin values', () => {
 		const block: EditorBlock = {
 			id: 'test',
 			type: 'text',
@@ -239,35 +241,14 @@ describe('updateBlockPadding', () => {
 				blockType: 'paragraph',
 				fontSize: 16,
 				textColor: '#000',
-				paddingTop: 10,
-				paddingRight: 10,
-				paddingBottom: 10,
-				paddingLeft: 10,
-				paddingLinked: true,
 			} as TextBlockContent,
 		};
-		updateBlockPadding(block, 'paddingTop', 50);
-		const content = block.content as TextBlockContent;
-		expect(content.paddingTop).toBe(50);
-		expect(content.paddingRight).toBe(50);
-		expect(content.paddingBottom).toBe(50);
-		expect(content.paddingLeft).toBe(50);
-	});
-
-	it('updates paddingLinked flag', () => {
-		const block: EditorBlock = {
-			id: 'test',
-			type: 'text',
-			content: {
-				html: 'test',
-				blockType: 'paragraph',
-				fontSize: 16,
-				textColor: '#000',
-				paddingLinked: false,
-			} as TextBlockContent,
-		};
-		updateBlockPadding(block, 'paddingLinked', true);
-		expect((block.content as TextBlockContent).paddingLinked).toBe(true);
+		expect(getBlockMargin(block)).toEqual({
+			marginTop: 0,
+			marginRight: 0,
+			marginBottom: 0,
+			marginLeft: 0,
+		});
 	});
 });
 
