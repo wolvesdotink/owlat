@@ -14,6 +14,11 @@ vi.mock('../../monitoring/collector.js', () => ({
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
+// Pin the NAT decision per test instead of reading the runner's interfaces.
+const natIps = vi.hoisted(() => new Set<string>());
+vi.mock('../sourceAddress.js', () => ({
+	resolveSourceAddress: (ip: string) => (natIps.has(ip) ? undefined : ip),
+}));
 
 import type Redis from 'ioredis';
 import type { SmtpConnection } from '@owlat/smtp-client';
@@ -187,6 +192,21 @@ describe('SmtpConnectionPool', () => {
 		expect(pool.size).toBe(1);
 		const reacquired = await pool.acquire('mx1.example.com', '10.0.0.2', { port: 25 });
 		expect(reacquired.config).toBe(other.config);
+	});
+
+	it('binds nothing behind NAT but still invalidates by the configured bind IP', async () => {
+		natIps.add('8.8.4.4');
+		try {
+			const natted = await pool.acquire('mx1.example.com', '8.8.4.4', { port: 25 });
+			pool.release(natted.key);
+			expect(natted.config).not.toHaveProperty('localAddress');
+			expect(natted.config.ehloName).toBe('[8.8.4.4]');
+
+			pool.invalidateBindIp('8.8.4.4');
+			expect(pool.size).toBe(0);
+		} finally {
+			natIps.clear();
+		}
 	});
 
 	it('TLS strictness participates in pool identity (PR-22: MTA-STS-enforce downgrade)', async () => {

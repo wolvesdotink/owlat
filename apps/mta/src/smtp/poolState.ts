@@ -21,6 +21,11 @@ export interface IdleConnection {
 
 export interface PoolEntry {
 	baseKey: string;
+	/**
+	 * Configured sending IP this lineage speaks for. Not `config.localAddress`:
+	 * behind Docker NAT the socket binds nothing (see sourceAddress.ts).
+	 */
+	bindIp: string;
 	config: SmtpConnectOptions;
 	connectionScope: string;
 	globalLease: GlobalConnectionLease;

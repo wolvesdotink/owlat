@@ -177,13 +177,12 @@ export class SmtpConnectionPool {
 				? undefined
 				: options.connectionLimits?.maxConnections
 		);
-		if (!globalLease) {
-			throw new PoolOverCapError(connectionScope);
-		}
+		if (!globalLease) throw new PoolOverCapError(connectionScope);
 
 		const key = this.pool.has(baseKey) ? `${baseKey}#${++this.entrySequence}` : baseKey;
 		const entry: PoolEntry = {
 			baseKey,
+			bindIp,
 			config,
 			connectionScope,
 			globalLease,
@@ -355,7 +354,7 @@ export class SmtpConnectionPool {
 	invalidateBindIp(bindIp: string): void {
 		let changed = false;
 		for (const [key, entry] of this.pool.entries()) {
-			if (entry.config.localAddress !== bindIp) continue;
+			if (entry.bindIp !== bindIp) continue;
 			entry.active?.close();
 			entry.idle?.conn.close();
 			this.pool.delete(key);

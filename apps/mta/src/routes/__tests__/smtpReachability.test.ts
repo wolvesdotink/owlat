@@ -52,6 +52,33 @@ describe('probeSmtpReachability', () => {
 		]);
 	});
 
+	it('connects without binding when the pool IP sits behind NAT', async () => {
+		const d = deps({ sourceAddressFor: () => undefined });
+		const result = await probeSmtpReachability(['8.8.4.4'], d);
+
+		expect(result.status).toBe('ok');
+		expect(d.connect).toHaveBeenCalledWith({
+			host: 'mx10.example.net',
+			port: 25,
+			timeoutMs: 5_000,
+		});
+	});
+
+	it('fails same-family pool IPs that NAT onto one shared egress address', async () => {
+		const d = deps({
+			sourceAddressFor: (ip) => (ip === '8.8.4.4' || ip === '8.8.8.8' ? undefined : ip),
+		});
+		const result = await probeSmtpReachability(['8.8.4.4', '8.8.8.8', '203.0.113.10'], d);
+
+		expect(result.status).toBe('degraded');
+		expect(result.ips).toEqual([
+			expect.objectContaining({ ip: '8.8.4.4', status: 'failed', reason: 'shared_nat_egress' }),
+			expect.objectContaining({ ip: '8.8.8.8', status: 'failed', reason: 'shared_nat_egress' }),
+			expect.objectContaining({ ip: '203.0.113.10', status: 'ok' }),
+		]);
+		expect(d.connect).toHaveBeenCalledTimes(1);
+	});
+
 	it('resolves an AAAA target and binds IPv6 to an IPv6 destination', async () => {
 		const d = deps({
 			resolve6: vi.fn().mockResolvedValue(['2001:4860:4860::25']),
