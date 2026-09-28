@@ -18,7 +18,7 @@ import {
 	stripComments,
 	valueExports,
 	valueImportSpecifiers,
-} from '../../apps/api/scripts/lib/sourceGraph';
+} from '../../../scripts/lib/sourceGraph';
 
 const roots: string[] = [];
 afterAll(() => {
