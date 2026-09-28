@@ -243,6 +243,9 @@
 				"undo": "Rückgängig",
 				"undoTitle": "Letzte Aktion rückgängig machen (⌘Z)"
 			},
+			"clarificationQuestions": {
+				"questionCounter": "Frage {index} von {total}"
+			},
 			"reviewApproveUndoToast": {
 				"approved": "Genehmigt",
 				"sendingIn": "{what} — wird in {seconds} s gesendet",
@@ -9273,7 +9276,6 @@
 					"urgent": "dringend"
 				},
 				"processingFailed": "Verarbeitung fehlgeschlagen",
-				"questionCounter": "Frage {index} von {total}",
 				"rejectDraft": "Entwurf ablehnen",
 				"rejectModalBody": "Geben Sie optional eine Begründung an. Dieses Feedback verbessert künftige Entwürfe.",
 				"rejectReasonPlaceholder": "Begründung der Ablehnung (optional)",

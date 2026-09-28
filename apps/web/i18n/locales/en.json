@@ -243,6 +243,9 @@
 				"undo": "Undo",
 				"undoTitle": "Undo last (⌘Z)"
 			},
+			"clarificationQuestions": {
+				"questionCounter": "Question {index} of {total}"
+			},
 			"reviewApproveUndoToast": {
 				"approved": "Approved",
 				"sendingIn": "{what} — sending in {seconds}s",
@@ -9273,7 +9276,6 @@
 					"urgent": "urgent"
 				},
 				"processingFailed": "Processing failed",
-				"questionCounter": "Question {index} of {total}",
 				"rejectDraft": "Reject draft",
 				"rejectModalBody": "Optionally provide a reason. This feedback helps improve future drafts.",
 				"rejectReasonPlaceholder": "Reason for rejection (optional)",
