@@ -9,8 +9,11 @@
 # query that motivated it, and survives the query's removal.
 #
 # This gate fails when a schema declares an index no code reads, and fails
-# equally when the allowlist below holds an entry that is no longer unused. It
-# is a ratchet in both directions, like check-body-access.sh.
+# equally when the allowlist (scripts/unused-index-allowlist.txt) holds an
+# entry that is no longer unused. It is a ratchet in both directions: this
+# script only prints the unused `table.index` pairs (`--generate`), and
+# scripts/ratchet.sh owns the comparison with the allowlist, like
+# check-query-authz.sh.
 #
 # HOW A REFERENCE IS RECOGNISED
 #
@@ -43,135 +46,110 @@
 # Tests count as references. An index no production code reads but a test names
 # is a narrower problem than a fully forgotten one, and outside this gate's job.
 #
-# Args (for the self-test): $1 overrides the scan root (default `convex`), $2
-# the allowlist path.
+# Usage: `bash scripts/check-unused-indexes.sh` compares; `--generate` prints
+# the unused pairs; `--write-baseline` re-seeds the allowlist (keeping its `#`
+# header).
 #
 set -uo pipefail
+repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
+self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$(dirname "$0")/.." || exit 2
 
-root="${1:-convex}"
-allowlist="${2:-scripts/unused-index-allowlist.txt}"
+root="convex"
 schema_root="$root/schema"
 
-if [ ! -d "$schema_root" ]; then
-	echo "FAIL: no schema directory at $schema_root" >&2
-	exit 2
-fi
+generate() {
+	if [ ! -d "$schema_root" ]; then
+		echo "FAIL: no schema directory at $schema_root" >&2
+		exit 2
+	fi
 
-# ── Declared indexes ─────────────────────────────────────────────────────────
-# `table<TAB>name<TAB>kind<TAB>file:line`, attributing each `.index()` to the
-# nearest preceding `foo: defineTable(` / `const foo = defineTable(`.
-schema_files=$(find "$schema_root" -name '*.ts' -not -path '*/__tests__/*' 2>/dev/null | sort)
-if [ -z "$schema_files" ]; then
-	echo "FAIL: no schema files under $schema_root" >&2
-	exit 2
-fi
+	# ── Declared indexes ─────────────────────────────────────────────────────
+	# `table<TAB>name`, attributing each `.index()` to the nearest preceding
+	# `foo: defineTable(` / `const foo = defineTable(`.
+	local schema_files declared referenced calls declared_count
+	schema_files=$(find "$schema_root" -name '*.ts' -not -path '*/__tests__/*' 2>/dev/null | sort)
+	if [ -z "$schema_files" ]; then
+		echo "FAIL: no schema files under $schema_root" >&2
+		exit 2
+	fi
 
-declared=$(
-	printf '%s\n' "$schema_files" | xargs awk -v q="'" '
-		{
-			# Table in scope: the enclosing defineTable() binding.
-			if ($0 ~ /defineTable\(/) {
-				line = $0
-				sub(/^[ \t]*/, "", line)
-				sub(/^const[ \t]+/, "", line)
-				if (line ~ /^[A-Za-z0-9_]+[ \t]*[:=][ \t]*defineTable\(/) {
-					name = line
-					sub(/[ \t]*[:=].*$/, "", name)
-					table = name
+	declared=$(
+		printf '%s\n' "$schema_files" | xargs awk -v q="'" '
+			{
+				# Table in scope: the enclosing defineTable() binding.
+				if ($0 ~ /defineTable\(/) {
+					line = $0
+					sub(/^[ \t]*/, "", line)
+					sub(/^const[ \t]+/, "", line)
+					if (line ~ /^[A-Za-z0-9_]+[ \t]*[:=][ \t]*defineTable\(/) {
+						name = line
+						sub(/[ \t]*[:=].*$/, "", name)
+						table = name
+					}
+				}
+				qc = "[\"" q "]"
+				pat = "\\.(index|searchIndex|vectorIndex)\\([ \t]*" qc "[A-Za-z0-9_]+" qc
+				s = $0
+				while (match(s, pat)) {
+					hit = substr(s, RSTART, RLENGTH)
+					nm = hit; sub("^[^\"" q "]*" qc, "", nm); sub(qc "$", "", nm)
+					printf "%s\t%s\n", table, nm
+					s = substr(s, RSTART + RLENGTH)
 				}
 			}
-			qc = "[\"" q "]"
-			pat = "\\.(index|searchIndex|vectorIndex)\\([ \t]*" qc "[A-Za-z0-9_]+" qc
-			s = $0
-			while (match(s, pat)) {
-				hit = substr(s, RSTART, RLENGTH)
-				kind = hit; sub(/^\./, "", kind); sub(/\(.*$/, "", kind)
-				nm = hit; sub("^[^\"" q "]*" qc, "", nm); sub(qc "$", "", nm)
-				printf "%s\t%s\t%s\t%s:%d\n", table, nm, kind, FILENAME, FNR
-				s = substr(s, RSTART + RLENGTH)
-			}
-		}
-	'
-)
+		'
+	)
 
-declared_count=$(printf '%s' "$declared" | grep -c . || true)
-
-# Guard against a silently broken extractor on the real tree: the schema has
-# hundreds of indexes, so a near-empty result means the parse stopped matching,
-# not that the indexes went away.
-if [ "$root" = "convex" ] && [ "$declared_count" -lt 100 ]; then
-	echo "FAIL: only $declared_count index declarations parsed out of $schema_root — the schema shape changed; update this check" >&2
-	exit 2
-fi
-
-# ── Referenced names ─────────────────────────────────────────────────────────
-referenced=$(
-	find "$root" -name '*.ts' \
-		-not -path "$schema_root/*" \
-		-not -path '*/_generated/*' \
-		-print0 2>/dev/null |
-		xargs -0 grep -hoE "['\"][A-Za-z0-9_]+['\"]" 2>/dev/null |
-		tr -d "'\"" | sort -u
-)
-
-# ── Allowlist ────────────────────────────────────────────────────────────────
-# `table.index_name` per line; `#` comments and blank lines ignored.
-allowed=""
-if [ -f "$allowlist" ]; then
-	allowed=$(sed -e 's/#.*//' -e 's/[[:space:]]//g' "$allowlist" | grep -v '^$' | sort -u)
-fi
-
-# ── Compare ──────────────────────────────────────────────────────────────────
-unused=""
-while IFS=$'\t' read -r table name kind loc; do
-	[ -n "${name:-}" ] || continue
-	if ! grep -qxF "$name" <<<"$referenced"; then
-		unused="${unused}${table}.${name}"$'\t'"${kind}"$'\t'"${loc}"$'\n'
+	# Guard against a silently broken extractor: every `.index(` call in the
+	# schema must have parsed into a named declaration on a table. A shape the
+	# parse stops matching (a name wrapped onto the next line, a table binding
+	# spelled differently) fails here instead of reading as "no unused index".
+	calls=$(
+		printf '%s\n' "$schema_files" | xargs cat |
+			grep -oE '\.(index|searchIndex|vectorIndex)\(' | grep -c . || true
+	)
+	declared_count=$(
+		printf '%s\n' "$declared" | awk -F'\t' '$1 != "" && $2 != ""' | grep -c . || true
+	)
+	if [ "$declared_count" -ne "$calls" ]; then
+		echo "FAIL: $calls index calls under $schema_root but only $declared_count parsed into a table and a name — the schema shape changed; update this check" >&2
+		exit 2
 	fi
-done < <(printf '%s\n' "$declared")
 
-fail=0
+	# ── Referenced names ─────────────────────────────────────────────────────
+	referenced=$(
+		find "$root" -name '*.ts' \
+			-not -path "$schema_root/*" \
+			-not -path '*/_generated/*' \
+			-print0 2>/dev/null |
+			xargs -0 -r grep -hoE "['\"][A-Za-z0-9_]+['\"]" 2>/dev/null |
+			tr -d "'\"" | sort -u
+	)
 
-unexpected=""
-while IFS=$'\t' read -r pair kind loc; do
-	[ -n "${pair:-}" ] || continue
-	if ! grep -qxF "$pair" <<<"$allowed"; then
-		unexpected="${unexpected}  ${pair} [${kind}] ${loc}"$'\n'
-	fi
-done < <(printf '%s' "$unused")
+	# ── Unused: declared, and named nowhere outside schema/ ─────────────────
+	awk -F'\t' '
+		NR == FNR { referenced[$0] = 1; next }
+		$2 != "" && !($2 in referenced) { print $1 "." $2 }
+	' <(printf '%s\n' "$referenced") <(printf '%s\n' "$declared") |
+		LC_ALL=C sort -u
+}
 
-if [ -n "$unexpected" ]; then
-	count=$(printf '%s' "$unexpected" | grep -c .)
-	echo "FAIL: $count Convex index(es) declared but never queried:" >&2
-	printf '%s' "$unexpected" >&2
-	echo "" >&2
-	echo "Every index costs a write on each insert and patch of its table. Delete the" >&2
-	echo "index, or — if a landing change will query it — add '<table>.<index>' to" >&2
-	echo "$allowlist with a comment saying which change needs it." >&2
-	fail=1
+if [ "${1:-}" = "--generate" ]; then
+	generate
+	exit 0
 fi
 
-# Stale allowlist entries: the entry is now queried, or its index is gone.
-unused_pairs=$(printf '%s' "$unused" | cut -f1 | sort -u)
-stale=""
-while IFS= read -r pair; do
-	[ -n "$pair" ] || continue
-	if ! grep -qxF "$pair" <<<"$unused_pairs"; then
-		stale="${stale}  ${pair}"$'\n'
-	fi
-done < <(printf '%s\n' "$allowed")
-
-if [ -n "$stale" ]; then
-	count=$(printf '%s' "$stale" | grep -c .)
-	echo "FAIL: $count stale entry(ies) in $allowlist:" >&2
-	printf '%s' "$stale" >&2
-	echo "" >&2
-	echo "Each of these is now queried, or no longer declared. Delete the line." >&2
-	fail=1
-fi
-
-[ "$fail" -eq 1 ] && exit 1
-
-allowed_count=$(printf '%s' "$allowed" | grep -c . || true)
-echo "check-unused-indexes: OK ($declared_count indexes declared, $allowed_count allowlisted)"
+exec "$repo_root/scripts/ratchet.sh" \
+	--baseline scripts/unused-index-allowlist.txt \
+	--seed "bash apps/api/scripts/check-unused-indexes.sh --write-baseline" \
+	--stderr \
+	--ok "no Convex index declared but never queried" \
+	--new-header "FAIL: {n} Convex index(es) declared but never queried:" \
+	--new-advice "Every index costs a write on each insert and patch of its table. Delete the
+index, or — if a landing change will query it — add '<table>.<index>' to
+{baseline} with a comment saying which change needs it." \
+	--stale-header "FAIL: {n} stale entr(y/ies) in {baseline}:" \
+	--stale-advice "Each of these is now queried, or no longer declared. Delete the line." \
+	"$@" \
+	-- bash "$self" --generate
