@@ -1,10 +1,11 @@
 /**
  * `@owlat/mta-protocol` — the Convex <-> MTA wire contract (D7).
  *
- * Four conversations, each declared exactly once here and imported by BOTH
+ * Five conversations, each declared exactly once here and imported by BOTH
  * ends: the send intake (`send.ts`), the last-mile routing decision
- * (`routingDecision.ts`), the IP-reputation snapshot (`ipReputation.ts`) and
- * the webhook events the MTA reports outcomes with (`webhookEvent.ts`).
+ * (`routingDecision.ts`), the IP-reputation snapshot (`ipReputation.ts`), the
+ * webhook events the MTA reports outcomes with (`webhookEvent.ts`) and the
+ * blocklist-access setting (`dnsblAccess.ts`, subpath only).
  *
  * Types and pure validators only — no I/O, no third-party dependencies, and no
  * app imports in either direction. This package does NOT merge the two routing

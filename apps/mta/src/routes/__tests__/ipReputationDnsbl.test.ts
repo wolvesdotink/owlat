@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MtaConfig } from '../../config.js';
-import { dnsblCheckedAt } from '../ipReputation.js';
+import { dnsblCheckedAt, dnsblUnknownReason } from '../ipReputation.js';
 
 const config = { abusixDnsblApiKey: 'key' } as MtaConfig;
 
@@ -33,5 +33,19 @@ describe('IP reputation DNSBL observation timestamp', () => {
 				abusixAt: 'not-a-number',
 			})
 		).toBeUndefined();
+	});
+});
+
+describe('IP reputation DNSBL unknown reason', () => {
+	it('carries the recorded reason only while the address is unmeasured', () => {
+		const row = { overallStatus: 'unknown', unknownReason: 'resolver_refused' };
+		expect(dnsblUnknownReason(row, true)).toEqual({ dnsblUnknownReason: 'resolver_refused' });
+		expect(dnsblUnknownReason(row, false)).toEqual({});
+	});
+
+	it('adds nothing for an empty, unrecognized, or missing reason', () => {
+		expect(dnsblUnknownReason({ unknownReason: '' }, true)).toEqual({});
+		expect(dnsblUnknownReason({ unknownReason: 'resolver_policy' }, true)).toEqual({});
+		expect(dnsblUnknownReason(null, true)).toEqual({});
 	});
 });

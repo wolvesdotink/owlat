@@ -99,7 +99,7 @@ export function createIpAuditRoutes(redis: Redis, config: MtaConfig) {
 			stored.every((record) => Date.now() - record.checkedAt < RUN_COALESCE_WINDOW_MS);
 		if (fresh) return stored;
 		if (inFlightSweep) return inFlightSweep;
-		inFlightSweep = runIpAuditSweep(redis, config, defaultIpAuditDeps());
+		inFlightSweep = runIpAuditSweep(redis, config, defaultIpAuditDeps(config));
 		try {
 			return await inFlightSweep;
 		} finally {

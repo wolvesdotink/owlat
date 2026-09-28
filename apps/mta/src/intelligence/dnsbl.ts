@@ -12,14 +12,17 @@ import {
 	DNSBL_LISTS,
 	dnsblZoneHost,
 	type DnsblListDefinition,
+	type DnsblUnknownReason,
 } from '@owlat/shared/dnsbl';
 import { ipAddressFamily, type IpAddressFamily } from '@owlat/shared/ipAddress';
 import {
-	checkDnsbl,
+	checkDnsblDetailed,
 	defaultLookupDeps,
 	type DnsblLookupDeps,
 	type DnsblStatus,
 } from './dnsblLookup.js';
+import { prepareSpamhausAccess, recordSpamhausAccess, type SpamhausAccess } from './dnsblAccess.js';
+import { getDnsblTransport } from './dnsblResolver.js';
 import { ALERT_MESSAGE_MAX_LENGTH, boundedListingDetail, type DnsblListing } from './dnsblAlert.js';
 import { notifyConvex } from '../webhooks/convexNotifier.js';
 import { logger } from '../monitoring/logger.js';
@@ -63,6 +66,7 @@ export const SWEEP_ADDRESS_CONCURRENCY = 4;
 
 interface DnsblResult extends Pick<DnsblListDefinition, 'id' | 'name' | 'severity'> {
 	status: DnsblStatus;
+	reason?: DnsblUnknownReason;
 }
 
 interface DnsblZone extends DnsblListDefinition {
@@ -72,15 +76,21 @@ interface DnsblZone extends DnsblListDefinition {
 /** Only Spamhaus is allowed to eject; every added feed stays advisory. */
 export function configuredDnsblZones(
 	config: Pick<MtaConfig, 'abusixDnsblApiKey'>,
-	addressFamily?: IpAddressFamily
+	addressFamily?: IpAddressFamily,
+	spamhausDqsKey?: string
 ): DnsblZone[] {
 	// Zone hostnames live on DNSBL_LISTS so the routing sweep and the pre-flight
 	// IP audit can never drift apart. A keyed feed without its credential is
-	// simply absent here, exactly as before.
+	// simply absent here, exactly as before; Spamhaus moves to its keyed zone
+	// when the operator has set a DQS key.
+	const credentials: Partial<Record<DnsblListDefinition['id'], string>> = {
+		abusix: config.abusixDnsblApiKey,
+		spamhaus: spamhausDqsKey,
+	};
 	const zones: DnsblZone[] = [];
 	for (const id of DNSBL_LIST_IDS) {
 		const list = DNSBL_LISTS[id];
-		const zone = dnsblZoneHost(list, config.abusixDnsblApiKey);
+		const zone = dnsblZoneHost(list, credentials[id]);
 		if (zone) zones.push({ ...list, zone });
 	}
 	return addressFamily
@@ -94,19 +104,35 @@ export function configuredDnsblZones(
 async function checkAllZones(
 	ip: string,
 	config: MtaConfig,
-	deps: DnsblLookupDeps
+	deps: DnsblLookupDeps,
+	spamhaus: SpamhausAccess
 ): Promise<DnsblResult[]> {
 	const family = ipAddressFamily(ip);
 	if (!family) throw new Error(`Configured DNSBL address is invalid: ${ip}`);
 	const results = await Promise.all(
-		configuredDnsblZones(config, family).map(async (zone) => ({
-			id: zone.id,
-			name: zone.name,
-			severity: zone.severity,
-			status: await checkDnsbl(ip, zone.id, zone.zone, deps),
-		}))
+		configuredDnsblZones(config, family, spamhaus.dqsKey).map(async (zone) => {
+			const base = { id: zone.id, name: zone.name, severity: zone.severity };
+			// A keyed zone that failed its test query this sweep answers nothing we
+			// could trust, so it is not asked at all.
+			if (zone.id === 'spamhaus' && spamhaus.unavailable) {
+				return { ...base, status: 'unknown' as const, reason: spamhaus.unavailable };
+			}
+			const result = await checkDnsblDetailed(ip, zone.id, zone.zone, deps);
+			return {
+				...base,
+				status: result.status,
+				...(result.status === 'unknown' && result.reason ? { reason: result.reason } : {}),
+			};
+		})
 	);
 	return results;
+}
+
+/** The reason shown for an address: Spamhaus's when it is unmeasured, else the first one. */
+function unknownReasonFor(results: readonly DnsblResult[]): DnsblUnknownReason | undefined {
+	const spamhaus = results.find((result) => result.id === 'spamhaus');
+	if (spamhaus?.status === 'unknown') return spamhaus.reason ?? 'resolver_unreachable';
+	return results.find((result) => result.status === 'unknown')?.reason;
 }
 
 /**
@@ -115,12 +141,16 @@ async function checkAllZones(
 export async function runDnsblCheck(
 	redis: Redis,
 	config: MtaConfig,
-	deps: DnsblLookupDeps = defaultLookupDeps
+	deps: DnsblLookupDeps = {
+		...defaultLookupDeps,
+		resolve4: getDnsblTransport(config).resolve4,
+	}
 ): Promise<void> {
 	const allIps = [...config.ipPools.transactional, ...config.ipPools.campaign];
 	const uniqueIps = [...new Set(allIps)];
 
 	logger.info({ ips: uniqueIps }, 'Running DNSBL check');
+	const spamhausAccess = await prepareSpamhausAccess(redis, deps);
 
 	// A FIXED NUMBER OF ADDRESSES AT A TIME, zones in parallel within an address.
 	// Every address x every zone at once is a burst of hundreds of queries at the
@@ -137,7 +167,11 @@ export async function runDnsblCheck(
 				cursor += 1;
 				const ip = uniqueIps[index]!;
 				const generation = await nextIpPoolObservationGeneration(redis, ip, 'dnsbl');
-				observations[index] = { ip, generation, results: await checkAllZones(ip, config, deps) };
+				observations[index] = {
+					ip,
+					generation,
+					results: await checkAllZones(ip, config, deps, spamhausAccess),
+				};
 			}
 		})
 	);
@@ -174,6 +208,7 @@ export async function runDnsblCheck(
 		// Unmeasured zones are recorded explicitly so no reader has to infer
 		// "unknown" from the absence of a listing.
 		updates.push('unknownOn', unknownOn.join(','));
+		updates.push('unknownReason', unknownReasonFor(results) ?? '');
 		updates.push('listedOn', listedOn.join(','));
 		// Both prior fields live in one hash: one round trip, and both are read at
 		// the same instant, so the two transition gates below cannot disagree
@@ -287,6 +322,20 @@ export async function runDnsblCheck(
 				'dnsbl_delisted_notify'
 			);
 		}
+	}
+
+	// What the admin card reports: did Spamhaus answer this sweep, and if not, why.
+	const spamhausUnknown = observations
+		.map(({ results }) => results.find((result) => result.id === 'spamhaus'))
+		.find((result) => result?.status === 'unknown');
+	if (observations.length > 0 || spamhausAccess.dqsKey) {
+		await recordSpamhausAccess(redis, {
+			reason:
+				spamhausAccess.unavailable ??
+				(spamhausUnknown ? (spamhausUnknown.reason ?? 'resolver_unreachable') : undefined),
+			path: getDnsblTransport(config).lastPath(),
+			checkedAt: Date.now(),
+		});
 	}
 
 	// The pool transition owns the configured-only emergency aggregate; this

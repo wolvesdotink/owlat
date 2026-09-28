@@ -21,6 +21,7 @@ import { createDkimRoutes } from './routes/dkim.js';
 import { createOutboundTlsRoutes } from './routes/outboundTls.js';
 import { createPoolRulesRoutes } from './routes/poolRules.js';
 import { createIpAuditRoutes } from './routes/ipAudit.js';
+import { createDnsblAccessRoutes } from './routes/dnsblAccess.js';
 import { createOutboundIdentityRoutes } from './routes/outboundIdentity.js';
 import { createInboundRoutes } from './routes/inboundRoutes.js';
 import { createMailboxRoutes } from './routes/mailboxes.js';
@@ -108,6 +109,9 @@ export function createApp(queue: Queue<EmailJob>, redis: Redis, config: MtaConfi
 
 	// Pre-flight sending-IP audit and delisting assistant (master-key protected)
 	app.route('/ip-audit', createIpAuditRoutes(redis, config));
+
+	// Blocklist resolver + Spamhaus DQS key for the admin card (master-key protected)
+	app.route('/dnsbl-access', createDnsblAccessRoutes(redis, config));
 
 	// Outbound identity status + on-demand FCrDNS re-check (master-key protected)
 	app.route('/identity', createOutboundIdentityRoutes(redis, config));

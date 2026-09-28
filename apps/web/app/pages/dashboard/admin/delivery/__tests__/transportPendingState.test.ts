@@ -96,6 +96,7 @@ const globalOptions = {
 		DeliveryTrustedForwardersCard: true,
 		DeliveryTestSendCard: true,
 		DeliveryEhloOverridesCard: true,
+		DeliveryBlocklistLookupsCard: true,
 		DeliverySignedWebhookCard: true,
 		DeliverySnsTopicCard: true,
 		DeliveryTlsReportCard: true,

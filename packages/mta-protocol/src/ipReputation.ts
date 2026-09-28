@@ -15,7 +15,12 @@ import {
 	type FcrdnsFailureReason,
 	type FcrdnsVerdict,
 } from '@owlat/shared/fcrdns';
-import { isDnsblListId, type DnsblListId } from '@owlat/shared/dnsbl';
+import {
+	isDnsblListId,
+	isDnsblUnknownReason,
+	type DnsblListId,
+	type DnsblUnknownReason,
+} from '@owlat/shared/dnsbl';
 import {
 	isDnsblStatus,
 	isIpReadinessBlockReason,
@@ -55,6 +60,12 @@ export interface MtaIpReputationPayload {
 		dnsbl?: DnsblStatus;
 		dnsblListings?: DnsblListId[];
 		dnsblCheckedAt?: number;
+		/**
+		 * Why the last sweep could not measure this address, when it could not.
+		 * Deliberately NOT part of the row guard: a reason a newer MTA invents is
+		 * dropped by the normalizer, never allowed to reject the whole snapshot.
+		 */
+		dnsblUnknownReason?: DnsblUnknownReason;
 		fcrdns?: {
 			ehlo: string;
 			ptrNames: string[];
@@ -229,6 +240,9 @@ export function normalizeIpReputationPayload(value: unknown) {
 			...(typeof ip.dnsbl === 'string' ? { dnsbl: ip.dnsbl } : {}),
 			...(Array.isArray(ip.dnsblListings) ? { dnsblListings: ip.dnsblListings } : {}),
 			...(typeof ip.dnsblCheckedAt === 'number' ? { dnsblCheckedAt: ip.dnsblCheckedAt } : {}),
+			...(isDnsblUnknownReason(ip.dnsblUnknownReason)
+				? { dnsblUnknownReason: ip.dnsblUnknownReason }
+				: {}),
 			...(ip.fcrdns
 				? {
 						fcrdns: {

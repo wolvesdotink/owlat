@@ -18,6 +18,7 @@ import {
 import type { PoolCoordinationProtocol } from './smtp/poolGlobalCap.js';
 import { loadOutboundIpConfig } from './outboundIpConfig.js';
 import { loadBounceTlsMaterial } from './bounceTlsConfig.js';
+import { parseDnsblResolver, type DnsblResolverTarget } from './intelligence/dnsblResolver.js';
 
 // EHLO hostname validation + per-IP resolution live in ehloConfig.ts (to keep
 // this module under the file-size gate); re-exported so existing importers are
@@ -154,6 +155,12 @@ export interface MtaConfig extends GovernedDeliveryConfig {
 	 * it never blocks a send and never surfaces as a setup warning.
 	 */
 	invaluementDnsblZone?: string;
+	/**
+	 * Resolver for blocklist lookups only (`DNSBL_RESOLVER`). The shipped compose
+	 * points it at the bundled `dns-resolver` service; unset means the system
+	 * resolver. See intelligence/dnsblResolver.ts.
+	 */
+	dnsblResolver?: DnsblResolverTarget;
 	/** Global max SMTP connections per MX host across all instances */
 	smtpPoolGlobalMaxPerHost: number;
 	/** Rolling-upgrade gate for the distributed pool accounting protocol. */
@@ -428,6 +435,7 @@ export function loadConfig(): MtaConfig {
 			: undefined,
 		abusixDnsblApiKey,
 		invaluementDnsblZone,
+		dnsblResolver: parseDnsblResolver(process.env['DNSBL_RESOLVER']),
 		smtpPoolGlobalMaxPerHost: parseInt(optionalEnv('SMTP_POOL_GLOBAL_MAX_PER_HOST', '10'), 10),
 		smtpPoolCoordinationProtocol: poolCoordinationProtocol,
 		outboundTlsMode,

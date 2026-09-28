@@ -369,6 +369,11 @@ const inboundHeadingId = useId();
 				     the per-IP EHLO table, handed over as EHLO_HOSTNAMES. -->
 				<DeliveryEhloOverridesCard v-if="hasOwnProvider" />
 
+				<!-- Our own MTA checks its sending IPs against Spamhaus: which resolver
+				     those lookups use, and the optional DQS key that makes them work
+				     from shared hosting networks. -->
+				<DeliveryBlocklistLookupsCard v-if="hasOwnProvider" />
+
 				<!-- Send test email -->
 				<DeliveryTestSendCard
 					:can-send="canSend"

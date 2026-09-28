@@ -72,6 +72,7 @@ const PROPER_NOUNS = new Set([
 	'Outlook',
 	'Postmaster',
 	'Resend',
+	'Spamhaus',
 	'Stripe',
 	'Thunderbird',
 	'Twilio',

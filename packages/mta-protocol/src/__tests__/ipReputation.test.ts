@@ -23,6 +23,23 @@ describe('IP readiness DNSBL detail', () => {
 		).toMatchObject({ dnsbl: 'degraded', dnsblListings: ['barracuda', 'abusix'] });
 	});
 
+	it('carries why an address is unmeasured, and drops a reason it does not know', () => {
+		const normalize = (dnsblUnknownReason: unknown) =>
+			normalizeIpReputationPayload({
+				date: '2026-07-21',
+				ips: [{ ...baseIp, dnsbl: 'unknown', dnsblUnknownReason }],
+			})?.ips[0];
+
+		expect(normalize('resolver_refused')).toMatchObject({
+			dnsbl: 'unknown',
+			dnsblUnknownReason: 'resolver_refused',
+		});
+		// A newer MTA's reason must not reject the whole snapshot.
+		const future = normalize('some_future_reason');
+		expect(future).toMatchObject({ dnsbl: 'unknown' });
+		expect(future).not.toHaveProperty('dnsblUnknownReason');
+	});
+
 	it('rejects unknown provider names instead of generating an unsafe docs link', () => {
 		expect(
 			normalizeIpReputationPayload({
