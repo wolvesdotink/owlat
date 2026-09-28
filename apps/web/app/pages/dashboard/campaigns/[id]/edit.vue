@@ -89,10 +89,12 @@ const scheduledAtDisplay = computed(() => {
 	return at ? new Date(at).toLocaleString(locale.value) : '';
 });
 
-// Guard the "Edit Email" link. It opens the linked email editor in a NEW tab,
-// so the SPA route guard never fires — intercept the click and, when the
-// campaign form has unsaved edits, prompt to save them first (so the campaign
-// and its linked email stay consistent) before opening the editor.
+// Guard the "Edit Email" link. In a browser it opens the linked email editor in
+// a NEW tab, so the SPA route guard never fires — intercept the click and, when
+// the campaign form has unsaved edits, prompt to save them first (so the
+// campaign and its linked email stay consistent) before opening the editor. On
+// desktop the link navigates this window instead (the route guard does fire),
+// so the prompt's actions clear the dirty state before navigating.
 const showEditEmailPrompt = ref(false);
 const pendingEmailUrl = ref('');
 const onEditEmailClick = (event: MouseEvent, url: string) => {
@@ -1125,7 +1127,7 @@ const shownCapacityPlan = computed(() => {
 			@save="confirmSave"
 		/>
 
-		<!-- Unsaved Changes Dialog — opening the linked email in a new tab -->
+		<!-- Unsaved Changes Dialog — opening the linked email (new tab; same window on desktop) -->
 		<UnsavedChangesDialog
 			:show="showEditEmailPrompt"
 			@close="showEditEmailPrompt = false"
