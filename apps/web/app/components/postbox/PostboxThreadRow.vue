@@ -1,6 +1,6 @@
 <script lang="ts">
 import { NuxtLink } from '#components';
-import type { Id } from '@owlat/api/dataModel';
+import type { Doc, Id } from '@owlat/api/dataModel';
 import type { SenderAuthMessage } from '~/utils/senderAuth';
 
 /**
@@ -37,6 +37,9 @@ export type PostboxThreadRowMessage = SenderAuthMessage & {
 	// The row's thread just came BACK from snooze (mail/snooze.ts sweep).
 	// Transient: the reader clears it the first time the thread is opened.
 	snoozeReturnedAt?: number;
+	// The thread's advisory smart-inbox category (mail/category.ts), attached
+	// server-side so the Today and Bundled views group every page alike.
+	category?: NonNullable<Doc<'mailThreads'>['category']>['label'];
 	// Parsed List-Unsubscribe target; `oneClick` is what lets a bundle offer one.
 	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
 };
@@ -48,13 +51,18 @@ export type PostboxThreadRowMessage = SenderAuthMessage & {
  * mutations; this component is a pure presentational row that maps DOM events to
  * semantic emits (its `<li>` is the v-for element root). Splitting the row out
  * keeps PostboxThreadList.vue under the file-size ratchet.
+ *
+ * What the row SAYS (sender, trust marker, chips, subject, snippet) lives in
+ * PostboxThreadRowBody, shared with the section and bundle renderers; this
+ * shell adds what only the flat list wires: selection, avatar, hover triage,
+ * the context menu and swipe.
  */
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
-import { deriveSenderRowMarker, senderRiskInputOf, type SenderAuthText } from '~/utils/senderAuth';
 import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
 import { usePostboxRowGestures } from '~/composables/postbox/usePostboxRowGestures';
+import { senderRowMarkerOf } from '~/utils/senderAuth';
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 
 const props = defineProps<{
 	msg: PostboxThreadRowMessage;
@@ -101,35 +109,8 @@ const emit = defineEmits<{
 
 const rowId = computed(() => `postbox-row-${props.msg._id}`);
 
-/**
- * Danger-only sender-trust marker (UX plan idea 51). Triage is where phishing
- * gets clicked, and the five-state verdict used to render only inside an opened
- * thread. `deriveSenderRowMarker` stays silent for verified, unauthenticated and
- * legacy rows — the list must not become a wall of shields — so this is null on
- * the overwhelming majority of rows.
- */
-const trustMarker = computed(() =>
-	props.trustMarkers ? deriveSenderRowMarker(senderRiskInputOf(props.msg)) : null
-);
-
-/**
- * The marker's full sentence, resolved here: the derivation is module scope and
- * hands back catalog keys (`{ key, params }` when it names a domain).
- */
-function markerText(text: SenderAuthText): string {
-	return typeof text === 'string' ? t(text) : t(text.key, text.params ?? {});
-}
-
-/**
- * The chip's accessible name. The compact density hides the visible label to
- * keep a one-line row one line, so the name has to carry BOTH halves — the
- * short summary and why — or a screen reader would hear a bare warning icon.
- */
-const trustMarkerLabel = computed(() => {
-	const marker = trustMarker.value;
-	if (!marker) return '';
-	return `${t(marker.label)} — ${markerText(marker.title)}`;
-});
+/** The row accent for a danger-only sender marker; the body renders the chip. */
+const isDanger = computed(() => senderRowMarkerOf(props.msg, props.trustMarkers) !== null);
 
 /**
  * Checkbox toggles selection without following the row's NuxtLink. Shift means
@@ -220,13 +201,6 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 	},
 ]);
 
-/** Absolute wake time of a snoozed row, formatted against the active locale. */
-function snoozedTitle(until: number): string {
-	return t('components.postbox.postboxThreadRow.snoozedUntil', {
-		when: new Date(until).toLocaleString(locale.value),
-	});
-}
-
 // ── Touch entry points: long-press for the menu, swipe to triage ──
 // On touch devices the hover-reveal actions stay visible at rest
 // (postbox-density.css), but the triage verbs' other entry points — the
@@ -286,7 +260,7 @@ function onCapturedClick(event: MouseEvent) {
 				class="group relative pbx-row-li"
 				:class="{
 					'pbx-virtual-row': virtualize,
-					'pbx-row-danger': !!trustMarker,
+					'pbx-row-danger': isDanger,
 					'pbx-row-swiping': !!gestures.track.value,
 				}"
 				style="
@@ -349,73 +323,12 @@ function onCapturedClick(event: MouseEvent) {
 							class="flex-shrink-0"
 							aria-hidden="true"
 						/>
-						<PostboxRowCore :unread="!msg.flagSeen">
-							<template #identifier>{{ msg.fromName || msg.fromAddress }}</template>
-							<template #meta>{{ formatThreadTimestamp(msg.receivedAt) }}</template>
-							<div class="flex items-center gap-1.5 mt-0.5">
-								<!-- Danger-only sender marker: failed / misaligned / look-alike of a
-								     known contact's domain. Silent for every other verdict. -->
-								<span
-									v-if="trustMarker"
-									class="pbx-row-trust inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border border-error/40 text-error whitespace-nowrap flex-shrink-0"
-									data-testid="row-trust-marker"
-									:title="trustMarkerLabel"
-									:aria-label="trustMarkerLabel"
-								>
-									<Icon :name="trustMarker.icon" class="w-3 h-3" />
-									<span class="pbx-row-trust-label">{{ t(trustMarker.label) }}</span>
-								</span>
-								<Icon v-if="msg.flagFlagged" name="lucide:star" class="w-3.5 h-3.5 text-warning" />
-								<Icon
-									v-if="msg.snoozedUntil"
-									name="lucide:clock"
-									class="w-3.5 h-3.5 text-brand"
-									:title="snoozedTitle(msg.snoozedUntil)"
-								/>
-								<!-- Muted conversation: the reason this thread is quiet, said
-								     out loud rather than left as a mystery. -->
-								<Icon
-									v-if="msg.mutedAt"
-									name="lucide:bell-off"
-									class="w-3.5 h-3.5 text-text-tertiary"
-									:title="t('components.postbox.postboxThreadRow.mutedChip')"
-									:aria-label="t('components.postbox.postboxThreadRow.mutedChip')"
-								/>
-								<!-- Transient "you asked for this back" cue, cleared on open. -->
-								<span
-									v-if="msg.snoozeReturnedAt && !msg.snoozedUntil"
-									class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border border-border-subtle text-text-tertiary whitespace-nowrap"
-								>
-									<Icon name="lucide:undo-2" class="w-3 h-3" />
-									{{ t('components.postbox.postboxThreadRow.backFromSnooze') }}
-								</span>
-								<Icon
-									v-if="msg.hasAttachments"
-									name="lucide:paperclip"
-									class="w-3.5 h-3.5 text-text-tertiary"
-								/>
-								<PostboxThreadRowFollowUp
-									v-if="msg.followUp?.watched"
-									:follow-up="msg.followUp"
-									@cancel="
-										(e: MouseEvent) => {
-											e.stopPropagation();
-											e.preventDefault();
-											emit('cancel-follow-up');
-										}
-									"
-								/>
-								<p
-									class="truncate text-sm flex-1"
-									:class="msg.flagSeen ? 'text-text-secondary' : 'font-medium text-text-primary'"
-								>
-									{{ msg.subject || t('components.postbox.postboxThreadRow.noSubject') }}
-								</p>
-							</div>
-							<p class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">
-								{{ msg.snippet }}
-							</p>
-						</PostboxRowCore>
+						<PostboxThreadRowBody
+							:msg="msg"
+							:trust-markers="trustMarkers"
+							follow-up-cancelable
+							@cancel-follow-up="emit('cancel-follow-up')"
+						/>
 					</div>
 				</component>
 				<!-- Hover quick-actions (single-message triage without a round-trip

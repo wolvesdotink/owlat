@@ -2,11 +2,10 @@
  * The bundled inbox feed: the flat list's own rows, folded by
  * `utils/postboxBundles`, plus the two verbs a bundle offers.
  *
- * The fold needs a category per row, and the advisory smart-inbox category
- * lives on the THREAD, not the message — so this reuses the same
- * `listThreads` feed the Categories view already subscribes to (the Convex
- * client dedupes the subscription) and indexes it by thread id. Exactly the
- * join PostboxTodayView does, for the same reason.
+ * The fold needs a category per row. The advisory smart-inbox category lives
+ * on the THREAD, and the server attaches it to every message row it returns
+ * (`mail/mailbox/rowThreadState`), so the fold reads it straight off the row:
+ * a message on the third page bundles exactly like one on the first.
  *
  * The verbs act on a bundle's ids DIRECTLY rather than through the shared
  * bulk-selection bucket: "archive these twelve" is one gesture on one row, and
@@ -22,29 +21,11 @@ import { bundlePostboxFeed } from '~/utils/postboxBundles';
 export function usePostboxThreadBundles<T extends PostboxBundleMessage>(args: {
 	mailboxId: Ref<Id<'mailboxes'> | null>;
 	messages: Ref<T[]>;
-	enabled: Ref<boolean>;
 }) {
 	const { t } = useI18n();
 
-	const { data: threadData } = useConvexQuery(api.mail.mailbox.queries.listThreads, () =>
-		args.enabled.value && args.mailboxId.value
-			? { mailboxId: args.mailboxId.value, folderRole: 'inbox' }
-			: 'skip'
-	);
-	const categoryByThread = computed(() => {
-		const map = new Map<string, string>();
-		for (const thread of threadData.value?.threads ?? []) {
-			if (thread.category?.label) map.set(thread._id, thread.category.label);
-		}
-		return map;
-	});
-
-	const entries = computed(() =>
-		bundlePostboxFeed(args.messages.value, {
-			categoryOf: (message) =>
-				message.threadId ? categoryByThread.value.get(message.threadId) : undefined,
-		})
-	);
+	// Lazy: nothing folds until the bundled renderer actually reads `entries`.
+	const entries = computed(() => bundlePostboxFeed(args.messages.value));
 
 	// Which bundles the user has opened, remembered across navigations for the
 	// session (the same shape the category sections use). Collapsed is the

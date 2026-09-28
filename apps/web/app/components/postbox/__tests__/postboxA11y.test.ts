@@ -39,6 +39,7 @@ import PostboxThreadList from '../PostboxThreadList.vue';
 import PostboxEmptyState from '../PostboxEmptyState.vue';
 import PostboxOverflowMenu from '../PostboxOverflowMenu.vue';
 import PostboxRowCore from '../PostboxRowCore.vue';
+import PostboxThreadRowBody from '../PostboxThreadRowBody.vue';
 import PostboxThreadRow, { type PostboxThreadRowMessage } from '../PostboxThreadRow.vue';
 import PostboxThreadReader, { type PostboxReaderMessage } from '../PostboxThreadReader.vue';
 import PostboxReaderMessageCard from '../PostboxReaderMessage.vue';
@@ -225,7 +226,12 @@ describe('postbox thread list — accessibility', () => {
 	// The rows are the point of the list audit — `listbox`/`option` semantics,
 	// the `<li>` parenting and the row's icon-only affordances all live there —
 	// so the row components are registered rather than left unresolved.
-	const rowComponents = { PostboxThreadRow, PostboxRowCore, PostboxEmptyState };
+	const rowComponents = {
+		PostboxThreadRow,
+		PostboxThreadRowBody,
+		PostboxRowCore,
+		PostboxEmptyState,
+	};
 
 	it('has no axe violations with rows', async () => {
 		const violations = await auditA11y(PostboxThreadList, {

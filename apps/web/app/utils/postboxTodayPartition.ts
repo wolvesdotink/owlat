@@ -49,6 +49,11 @@ export interface PostboxTodayPartitionMessage {
 	receivedAt: number;
 	flagSeen: boolean;
 	threadId?: string;
+	/**
+	 * The thread's advisory smart-inbox category label, attached to the row
+	 * server-side (`mail/mailbox/rowThreadState`), so every page carries it.
+	 */
+	category?: string;
 }
 
 export interface PostboxTodayPartition<T> {
@@ -60,14 +65,13 @@ export interface PostboxTodayPartition<T> {
 }
 
 /**
- * Partition the (newest-first) inbox feed for the Today view. `categoryOf`
- * supplies the advisory smart-inbox category for a row (usually via its
- * thread); rows without a category are never auto-filed — fail-open, so
+ * Partition the (newest-first) inbox feed for the Today view by each row's
+ * `category`; rows without a category are never auto-filed — fail-open, so
  * nothing disappears before the classifier has run.
  */
 export function partitionTodayMessages<T extends PostboxTodayPartitionMessage>(
 	messages: readonly T[],
-	opts: { now: Date; categoryOf?: (message: T) => string | undefined }
+	opts: { now: Date }
 ): PostboxTodayPartition<T> {
 	const todayStart = startOfLocalDay(opts.now);
 	const yesterdayStart = startOfPreviousLocalDay(opts.now);
@@ -84,7 +88,7 @@ export function partitionTodayMessages<T extends PostboxTodayPartitionMessage>(
 			older.push(message);
 			continue;
 		}
-		const category = opts.categoryOf?.(message);
+		const category = message.category;
 		if (category !== undefined && POSTBOX_AUTO_FILED_CATEGORIES.has(category)) {
 			autoFiled.push(message);
 			const key = category as PostboxAutoFiledCategory;

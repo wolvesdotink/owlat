@@ -14,9 +14,9 @@ import {
 	type PostboxBundleMessage,
 } from '../postboxBundles';
 
-interface Row extends PostboxBundleMessage {
-	category?: string;
-}
+// The category rides on the row itself: the server attaches the thread's
+// label to every message it returns (mail/mailbox/rowThreadState).
+type Row = PostboxBundleMessage;
 
 function row(id: string, category?: string, overrides: Partial<Row> = {}): Row {
 	return {
@@ -28,7 +28,7 @@ function row(id: string, category?: string, overrides: Partial<Row> = {}): Row {
 	};
 }
 
-const fold = (rows: Row[]) => bundlePostboxFeed(rows, { categoryOf: (r) => r.category });
+const fold = (rows: Row[]) => bundlePostboxFeed(rows);
 
 /** The feed as a flat list of ids, in render order, bundles expanded again. */
 function idsOf(rows: Row[]): string[] {
@@ -117,9 +117,20 @@ describe('bundlePostboxFeed', () => {
 		expect(fold(rows).every((e) => e.kind === 'message')).toBe(true);
 	});
 
-	it('does not fold when no category is supplied at all', () => {
-		const rows = [row('n1', 'newsletter'), row('n2', 'newsletter')];
-		expect(bundlePostboxFeed(rows).every((e) => e.kind === 'message')).toBe(true);
+	it('bundles a page-3 run whose threads are outside the newest 50', () => {
+		// Regression: the category used to be joined client-side from a
+		// `listThreads` subscription capped at the newest 50 threads, so a row
+		// further down the feed lost its label and stopped folding. Three pages of
+		// fifty rows, each on its own thread; the run sits on the third page.
+		const rows: Row[] = Array.from({ length: 148 }, (_, i) =>
+			row(`p${i}`, 'person', { threadId: `t-${i}` })
+		);
+		rows.push(
+			row('n1', 'newsletter', { threadId: 't-148' }),
+			row('n2', 'newsletter', { threadId: 't-149' })
+		);
+		const last = fold(rows).at(-1);
+		expect(last).toMatchObject({ kind: 'bundle', category: 'newsletter', count: 2 });
 	});
 
 	it('names the newest sender and counts the unread rows inside', () => {
@@ -147,7 +158,7 @@ describe('bundlePostboxFeed', () => {
 
 	it('honours a caller-supplied minimum', () => {
 		const rows = [row('n1', 'newsletter'), row('n2', 'newsletter')];
-		const entries = bundlePostboxFeed(rows, { categoryOf: (r) => r.category, minSize: 3 });
+		const entries = bundlePostboxFeed(rows, { minSize: 3 });
 		expect(entries.every((e) => e.kind === 'message')).toBe(true);
 	});
 });

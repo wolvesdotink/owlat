@@ -55,7 +55,6 @@ export function usePostboxListSources(args: {
 	const bundles = usePostboxThreadBundles({
 		mailboxId: args.mailboxId,
 		messages: args.listMessages,
-		enabled: bundlesEnabled,
 	});
 
 	// Split inbox — the ordered, collapsible sections a user's `pinToSection`

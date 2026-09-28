@@ -13,6 +13,7 @@
 import { POSTBOX_ROW_HEIGHT, POSTBOX_SECTION_HEADER_HEIGHT } from '~/utils/postboxDensity';
 import { usePostboxSectionedVirtualList } from '~/composables/postbox/usePostboxVirtualList';
 import type { PostboxInboxSection } from '~/composables/postbox/usePostboxThreadSections';
+import { senderRowMarkerOf } from '~/utils/senderAuth';
 
 const props = defineProps<{
 	sections: PostboxInboxSection[];
@@ -28,6 +29,10 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+// The sender-trust marker gate, resolved once for the list (not per row).
+const { isEnabled } = useFeatureFlag();
+const trustMarkers = computed(() => isEnabled('senderAuthBadges'));
 
 function messageTo(id: string) {
 	return `/dashboard/postbox/${props.folderRole}/${id}`;
@@ -153,7 +158,10 @@ watch(focusedIndex, (idx) => {
 						)"
 						:key="msg._id"
 						class="group relative border-b border-border-subtle"
-						:class="{ 'pbx-virtual-row': virtualize }"
+						:class="{
+							'pbx-virtual-row': virtualize,
+							'pbx-row-danger': senderRowMarkerOf(msg, trustMarkers) !== null,
+						}"
 						style="
 							content-visibility: auto;
 							contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px);
@@ -167,34 +175,7 @@ watch(focusedIndex, (idx) => {
 							class="pbx-row-link block px-4 py-3 hover:bg-bg-elevated"
 							:class="{ 'bg-bg-elevated': activeMessageId === msg._id }"
 						>
-							<div class="flex items-baseline justify-between gap-3">
-								<span
-									class="truncate text-sm"
-									:class="msg.flagSeen ? 'text-text-secondary' : 'font-semibold text-text-primary'"
-								>
-									{{ msg.fromName || msg.fromAddress }}
-								</span>
-								<span class="text-xs text-text-tertiary flex-shrink-0">
-									{{ formatThreadTimestamp(msg.receivedAt) }}
-								</span>
-							</div>
-							<div class="flex items-center gap-1.5 mt-0.5">
-								<Icon v-if="msg.flagFlagged" name="lucide:star" class="w-3.5 h-3.5 text-warning" />
-								<Icon
-									v-if="msg.hasAttachments"
-									name="lucide:paperclip"
-									class="w-3.5 h-3.5 text-text-tertiary"
-								/>
-								<p
-									class="truncate text-sm flex-1"
-									:class="msg.flagSeen ? 'text-text-secondary' : 'font-medium text-text-primary'"
-								>
-									{{ msg.subject || t('components.postbox.postboxThreadSectionList.noSubject') }}
-								</p>
-							</div>
-							<p class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">
-								{{ msg.snippet }}
-							</p>
+							<PostboxThreadRowBody :msg="msg" :trust-markers="trustMarkers" />
 						</NuxtLink>
 					</li>
 					<li

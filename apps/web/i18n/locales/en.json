@@ -4622,6 +4622,7 @@
 				"dueLabel": "No reply yet — dismiss reminder",
 				"dueTitle": "No reply yet — click to dismiss the reminder",
 				"noReplyYet": "No reply yet",
+				"reminderSetTitle": "Reply reminder {when}",
 				"reminderTitle": "Reply reminder {when} — click to cancel"
 			},
 			"postboxTodayReaderOverlay": {
@@ -4827,7 +4828,6 @@
 				"allClear": "All clear",
 				"listLabel": "Bundled messages",
 				"loadMore": "Load more",
-				"noSubject": "(no subject)",
 				"latestFrom": "latest from {sender}",
 				"archiveAll": "Archive all",
 				"archiveAllLabel": "Archive all {count} messages in this bundle",
@@ -4838,7 +4838,6 @@
 				"allClear": "All clear",
 				"listLabel": "Inbox sections",
 				"everythingElse": "Everything else",
-				"noSubject": "(no subject)",
 				"unreadCapped": "{count}+",
 				"loadMoreIn": "Load more in {section}"
 			},

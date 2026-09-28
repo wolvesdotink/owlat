@@ -14,6 +14,7 @@ import {
 	deriveSenderRowMarker,
 	senderAuthInputOf,
 	senderRiskInputOf,
+	senderRowMarkerOf,
 	type SenderAuthInput,
 } from '../senderAuth';
 import { createTestI18n, localizedWith } from '~/__tests__/i18n';
@@ -380,5 +381,18 @@ describe('senderRiskInputOf', () => {
 
 	it('leaves the domain empty when the header carries no address', () => {
 		expect(senderAuthInputOf({ fromAddress: 'undisclosed-recipients' }).fromDomain).toBe('');
+	});
+});
+
+describe('senderRowMarkerOf', () => {
+	const failed = { fromAddress: 'billing@brightpath-finance.co', dmarcResult: 'fail' };
+
+	it('reads the marker straight off a message row when the flag is on', () => {
+		expect(senderRowMarkerOf(failed, true)?.reason).toBe('failed');
+	});
+
+	it('stays silent when the flag is off or unresolved', () => {
+		expect(senderRowMarkerOf(failed, false)).toBeNull();
+		expect(senderRowMarkerOf(failed, undefined)).toBeNull();
 	});
 });

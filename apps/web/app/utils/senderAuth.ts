@@ -462,6 +462,19 @@ export function senderRiskInputOf(msg: SenderAuthMessage): SenderRiskInput {
 }
 
 /**
+ * The row marker straight off a message row, behind the `senderAuthBadges`
+ * flag the list resolved: null when the flag is off. Every message renderer
+ * (the row body and the lists that put the matching `pbx-row-danger` accent
+ * on their own row element) reads the marker through here.
+ */
+export function senderRowMarkerOf(
+	msg: SenderAuthMessage,
+	enabled: boolean | undefined
+): SenderRowMarker | null {
+	return enabled ? deriveSenderRowMarker(senderRiskInputOf(msg)) : null;
+}
+
+/**
  * The domain of a `From:` header value ("Name <a@b.com>" → "b.com"). Empty when
  * the header carries no address at all, which the derivation renders as its own
  * unknown-sender copy rather than splicing a placeholder noun into a message.
