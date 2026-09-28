@@ -2,7 +2,12 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect } from 'vitest';
 import schema from '../../schema';
 import type { MutationCtx } from '../../_generated/server';
-import { reconcileContactCount } from '../contactCountHelpers';
+import {
+	decrementContactCount,
+	getContactCount,
+	incrementContactCount,
+	reconcileContactCount,
+} from '../contactCountHelpers';
 import { createTestContact } from '../../__tests__/factories';
 
 const modules = import.meta.glob('../../**/*.*s');
@@ -57,5 +62,52 @@ describe('reconcileContactCount — paginated count (ADR-0033)', () => {
 		expect(result.previous).toBe(4);
 		expect(result.actual).toBe(4);
 		expect(result.corrected).toBe(false);
+	});
+});
+
+describe('getContactCount — cached count, else the live count', () => {
+	it('counts only live contacts when no count is cached', async () => {
+		// A new or restored instance before the daily reconcile has no cached
+		// count; the fallback must not include soft-deleted rows.
+		const t = convexTest(schema, modules);
+		const count = await t.run(async (ctx) => {
+			await seedContacts(ctx, 1);
+			await seedContacts(ctx, 1, { deletedAt: Date.now() });
+			return await getContactCount(ctx);
+		});
+		expect(count).toBe(1);
+	});
+
+	it('returns the cached count when one exists', async () => {
+		const t = convexTest(schema, modules);
+		const count = await t.run(async (ctx) => {
+			await seedContacts(ctx, 2);
+			await ctx.db.insert('instanceSettings', { contactCount: 7, createdAt: Date.now() });
+			return await getContactCount(ctx);
+		});
+		expect(count).toBe(7);
+	});
+});
+
+describe('increment/decrementContactCount', () => {
+	it('creates the singleton on the first increment without seed columns', async () => {
+		const t = convexTest(schema, modules);
+		const row = await t.run(async (ctx) => {
+			await incrementContactCount(ctx, 2);
+			await incrementContactCount(ctx);
+			return await ctx.db.query('instanceSettings').first();
+		});
+		expect(row?.contactCount).toBe(3);
+		expect(row?.timezone).toBeUndefined();
+		expect(row?.isMigrationMode).toBeUndefined();
+	});
+
+	it('does not create the singleton on a decrement', async () => {
+		const t = convexTest(schema, modules);
+		const row = await t.run(async (ctx) => {
+			await decrementContactCount(ctx);
+			return await ctx.db.query('instanceSettings').first();
+		});
+		expect(row).toBeNull();
 	});
 });

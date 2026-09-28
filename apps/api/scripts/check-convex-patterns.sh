@@ -137,6 +137,24 @@ console_log_count=$(grep -rn "console\.log(" convex --include="*.ts" 2>/dev/null
 	| grep -v "/__tests__/" \
 	| wc -l | tr -d ' ')
 
+# ── Pattern 5: `instanceSettings` singleton created outside its one helper ───
+# `lib/instanceSettings.ts` `upsertInstanceSettings` is the only place allowed to
+# insert the singleton row. A hand-rolled "patch if present, else insert" lets a
+# cron or counter create the row with whatever columns it happens to carry, and
+# the admin seed then mistook that row for a seeded one. Comment-only lines do
+# not count; tests may seed the row directly.
+INSTANCE_SETTINGS_INSERT_BASELINE=0
+instance_settings_inserts=$(grep -rnE "insert\(['\"]instanceSettings['\"]" convex --include="*.ts" 2>/dev/null \
+	| grep -v "/_generated/" \
+	| grep -v "/__tests__/" \
+	| grep -v "\.test\.ts:" \
+	| grep -v "^convex/lib/instanceSettings\.ts:" \
+	| grep -vE "^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)" || true)
+instance_settings_insert_count=$(printf '%s' "$instance_settings_inserts" | grep -c . || true)
+if [ "$instance_settings_insert_count" -gt 0 ]; then
+	echo "$instance_settings_inserts" | sed 's/^/  raw instanceSettings insert: /'
+fi
+
 fail=0
 report() {
 	local name="$1"
@@ -154,6 +172,7 @@ report "query().filter() full-scans" "$filter_count"      "$FILTER_BASELINE"
 report ".collect() unbounded      " "$collect_count"     "$COLLECT_BASELINE"
 report "missing args: validators  " "$args_count"        "$ARGS_BASELINE"
 report "console.log debug calls   " "$console_log_count" "$CONSOLE_LOG_BASELINE"
+report "instanceSettings insert   " "$instance_settings_insert_count" "$INSTANCE_SETTINGS_INSERT_BASELINE"
 
 if [ "$fail" -ne 0 ]; then
 	echo ""
@@ -161,5 +180,6 @@ if [ "$fail" -ne 0 ]; then
 	echo "If the regression is justified (e.g. an intrinsically small table), raise the baseline"
 	echo "in apps/api/scripts/check-convex-patterns.sh and explain why in the PR description."
 	echo "For .collect(): prefer .take()/paginate, or trail the call with a '// bounded: reason' comment."
+	echo "For instanceSettings: never raise that baseline; write through upsertInstanceSettings (lib/instanceSettings.ts)."
 	exit 1
 fi

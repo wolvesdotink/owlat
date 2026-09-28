@@ -412,9 +412,66 @@ describe('organizations.settings.createInternal', () => {
 
 		expect(id).toBe(existingId!);
 		await t.run(async (ctx) => {
-			// Existing row untouched.
+			// A seed column the row already holds is kept; only the absent ones
+			// are filled while the latch is unset.
 			const row = await ctx.db.get(id);
 			expect(row?.timezone).toBe('Europe/Berlin');
+			expect(row?.defaultFromName).toBe('second');
+			expect(row?.isMigrationMode).toBe(false);
+		});
+	});
+
+	it('fills isMigrationMode onto an existing unlatched row that lacks it', async () => {
+		const t = convexTest(schema, modules);
+
+		let existingId: Id<'instanceSettings'>;
+		await t.run(async (ctx) => {
+			existingId = await ctx.db.insert('instanceSettings', {
+				timezone: 'UTC',
+				defaultFromName: 'Wizard',
+				contactCount: 3,
+				createdAt: Date.now(),
+			});
+		});
+
+		await t.mutation(internal.workspaces.settings.createInternal, {
+			timezone: 'UTC',
+			defaultFromName: 'Seed',
+			isMigrationMode: true,
+		});
+
+		await t.run(async (ctx) => {
+			const row = await ctx.db.get(existingId);
+			expect(row?.isMigrationMode).toBe(true);
+			expect(row?.defaultFromName).toBe('Wizard');
+			expect(row?.contactCount).toBe(3);
+		});
+	});
+
+	it('never touches a latched row', async () => {
+		const t = convexTest(schema, modules);
+
+		let existingId: Id<'instanceSettings'>;
+		await t.run(async (ctx) => {
+			existingId = await ctx.db.insert('instanceSettings', {
+				adminSeedCompletedAt: 1,
+				createdAt: Date.now(),
+			});
+		});
+
+		await t.mutation(internal.workspaces.settings.createInternal, {
+			timezone: 'UTC',
+			defaultFromName: 'Late',
+			isMigrationMode: true,
+			markAdminSeeded: true,
+		});
+
+		await t.run(async (ctx) => {
+			const row = await ctx.db.get(existingId);
+			expect(row?.adminSeedCompletedAt).toBe(1);
+			expect(row?.timezone).toBeUndefined();
+			expect(row?.defaultFromName).toBeUndefined();
+			expect(row?.isMigrationMode).toBeUndefined();
 		});
 	});
 
@@ -536,9 +593,42 @@ describe('organizations.settings.claimAdminSeedInternal', () => {
 		expect(result).toEqual({ claimed: true });
 		await t.run(async (ctx) => {
 			const row = await ctx.db.get(existingId);
-			// Only the latch is stamped; pre-existing settings columns are preserved.
+			// The latch is stamped and the absent seed column is filled; the seed
+			// columns the row already held are preserved.
 			expect(row?.timezone).toBe('Europe/Berlin');
 			expect(row?.defaultFromName).toBe('Wizard');
+			expect(row?.isMigrationMode).toBe(false);
+			expect(typeof row?.adminSeedCompletedAt).toBe('number');
+		});
+	});
+
+	it('fills the seed columns when a cron created the singleton first (the /seed/admin sequence)', async () => {
+		const t = convexTest(schema, modules);
+
+		// The MTA health cron runs every 2 minutes from first deploy and records a
+		// snapshot even when the MTA is unreachable, so it usually creates the
+		// singleton before the operator finishes the setup wizard.
+		await t.mutation(internal.delivery.mtaHealth.record, {
+			snapshot: { status: 'unreachable', observedAt: Date.now() },
+		});
+
+		// Same two calls, same arguments, as seedAdminHttp.ts.
+		await t.mutation(internal.workspaces.settings.createInternal, {
+			timezone: 'UTC',
+			defaultFromName: "Admin's Team",
+			isMigrationMode: true,
+		});
+		const result = await t.mutation(internal.workspaces.settings.claimAdminSeedInternal, {});
+
+		expect(result).toEqual({ claimed: true });
+		await t.run(async (ctx) => {
+			const rows = await ctx.db.query('instanceSettings').take(5);
+			expect(rows).toHaveLength(1);
+			const row = rows[0];
+			expect(row?.mtaHealth?.status).toBe('unreachable');
+			expect(row?.isMigrationMode).toBe(true);
+			expect(row?.defaultFromName).toBe("Admin's Team");
+			expect(row?.timezone).toBe('UTC');
 			expect(typeof row?.adminSeedCompletedAt).toBe('number');
 		});
 	});

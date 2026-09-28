@@ -35,6 +35,7 @@ import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { throwInvalidInput } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
+import { getInstanceSettings, upsertInstanceSettings } from '../lib/instanceSettings';
 import { consumeUpload, deleteOwnedUpload } from '../storage/uploads';
 
 const variantValidator = v.union(v.literal('light'), v.literal('dark'));
@@ -74,7 +75,7 @@ export async function resolveWorkspaceLogo(
 export const get = authedQuery({
 	args: {},
 	handler: async (ctx): Promise<WorkspaceLogo> =>
-		resolveWorkspaceLogo(ctx, await ctx.db.query('instanceSettings').first()),
+		resolveWorkspaceLogo(ctx, await getInstanceSettings(ctx.db)),
 });
 
 export const setLogo = authedMutation({
@@ -103,7 +104,7 @@ export const setLogo = authedMutation({
 		}
 
 		const column = COLUMN[args.variant];
-		const existing = await ctx.db.query('instanceSettings').first();
+		const existing = await getInstanceSettings(ctx.db);
 		// A dark logo alone is never shown, and nothing could remove it: the
 		// settings card only offers the dark slot once a main logo is set.
 		if (args.variant === 'dark' && !existing?.logoStorageId) {
@@ -113,19 +114,8 @@ export const setLogo = authedMutation({
 		const key = resourceKey(args.variant);
 		await consumeUpload(ctx, args.storageId, session, key);
 
-		const now = Date.now();
 		const previous = existing?.[column];
-		let settingsId: Id<'instanceSettings'>;
-		if (existing) {
-			await ctx.db.patch(existing._id, { [column]: args.storageId, updatedAt: now });
-			settingsId = existing._id;
-		} else {
-			settingsId = await ctx.db.insert('instanceSettings', {
-				[column]: args.storageId,
-				createdAt: now,
-				updatedAt: now,
-			});
-		}
+		const settingsId = await upsertInstanceSettings(ctx, { [column]: args.storageId });
 		if (previous && previous !== args.storageId) {
 			await deleteOwnedUpload(ctx, previous, key);
 		}
@@ -155,7 +145,7 @@ export const removeLogo = authedMutation({
 			hasPermission(session.role, 'settings:manage'),
 			'Only owners and admins can change the workspace logo'
 		);
-		const existing = await ctx.db.query('instanceSettings').first();
+		const existing = await getInstanceSettings(ctx.db);
 		if (!existing) return null;
 		// Removing the main logo takes the dark one with it. Left behind, the
 		// dark file would be unreachable (it is never served without a main
@@ -220,7 +210,7 @@ export const rejectLogo = internalMutation({
 	args: { storageId: v.id('_storage'), variant: variantValidator, reason: v.string() },
 	handler: async (ctx, args) => {
 		const column = COLUMN[args.variant];
-		const existing = await ctx.db.query('instanceSettings').first();
+		const existing = await getInstanceSettings(ctx.db);
 		// Only take down the file this check was for; a newer upload may have
 		// replaced it already, and that one has its own check scheduled.
 		if (existing && existing[column] === args.storageId) {

@@ -33,7 +33,6 @@
 
 import { v } from 'convex/values';
 import { internalQuery, internalMutation, type MutationCtx } from '../_generated/server';
-import type { Id } from '../_generated/dataModel';
 import { publicQuery, authedQuery, authedMutation } from '../lib/authedFunctions';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { isEnvPresent } from '../lib/env';
@@ -54,6 +53,7 @@ import {
 } from '@owlat/shared/featureFlags';
 import { getStoredFlags } from '../lib/featureFlags';
 import { recordAuditLog } from '../lib/auditLog';
+import { getInstanceSettings, upsertInstanceSettings } from '../lib/instanceSettings';
 import { hasStoredAiProviderConfig } from '../lib/aiNotConfigured';
 import { throwInvalidInput } from '../_utils/errors';
 import {
@@ -112,7 +112,7 @@ export const getFlagsConfigStatus = authedQuery({
 		// same way `LLM_PROVIDER`/`LLM_API_KEY` in env do — env stays the fallback,
 		// a stored config also counts. Org-singleton ⇒ `first()` is bounded (≤1 row).
 		const aiConfigStored = await hasStoredAiProviderConfig(ctx.db);
-		const settings = await ctx.db.query('instanceSettings').first();
+		const settings = await getInstanceSettings(ctx.db);
 		const pluginCapabilityGrants = settings?.pluginCapabilityGrants ?? {};
 		const status: Record<string, string[]> = {};
 		for (const def of Object.values(FEATURE_FLAG_REGISTRY)) {
@@ -191,8 +191,7 @@ export const setFeatureFlag = authedMutation({
 		const stored = await getStoredFlags(ctx);
 		const { next, cascaded } = applyToggle(stored, flag, args.value, FEATURE_FLAG_REGISTRY);
 
-		const now = Date.now();
-		const existing = await ctx.db.query('instanceSettings').first();
+		const existing = await getInstanceSettings(ctx.db);
 		const patch = pluginFlag
 			? {
 					featureFlags: next,
@@ -201,20 +200,9 @@ export const setFeatureFlag = authedMutation({
 						flag,
 						approvedPluginGrants
 					),
-					updatedAt: now,
 				}
-			: { featureFlags: next, updatedAt: now };
-
-		let settingsId: Id<'instanceSettings'>;
-		if (existing) {
-			await ctx.db.patch(existing._id, patch);
-			settingsId = existing._id;
-		} else {
-			settingsId = await ctx.db.insert('instanceSettings', {
-				...patch,
-				createdAt: now,
-			});
-		}
+			: { featureFlags: next };
+		const settingsId = await upsertInstanceSettings(ctx, patch);
 		if (pluginFlag) {
 			await recordAuditLog(ctx, {
 				userId: session.userId,
@@ -302,18 +290,7 @@ export const setFeaturePack = authedMutation({
 		const stored = await getStoredFlags(ctx);
 		const { next, cascaded } = applyPackToggle(stored, packKey, args.value, FEATURE_FLAG_REGISTRY);
 
-		const now = Date.now();
-		const existing = await ctx.db.query('instanceSettings').first();
-		const patch = { featureFlags: next, updatedAt: now };
-
-		if (existing) {
-			await ctx.db.patch(existing._id, patch);
-		} else {
-			await ctx.db.insert('instanceSettings', {
-				...patch,
-				createdAt: now,
-			});
-		}
+		await upsertInstanceSettings(ctx, { featureFlags: next });
 
 		return { flags: next, cascaded };
 	},
@@ -333,8 +310,7 @@ async function writeAllFlags(ctx: MutationCtx, flags: FeatureFlagState) {
 		}
 	}
 
-	const now = Date.now();
-	const existing = await ctx.db.query('instanceSettings').first();
+	const existing = await getInstanceSettings(ctx.db);
 	const currentOverrides = registeredFeatureFlagOverrides(
 		(existing?.featureFlags ?? {}) as FeatureFlagState,
 		FEATURE_FLAG_REGISTRY
@@ -355,14 +331,8 @@ async function writeAllFlags(ctx: MutationCtx, flags: FeatureFlagState) {
 			existing?.pluginCapabilityGrants ?? {},
 			pluginOverrides
 		),
-		updatedAt: now,
 	};
-
-	if (existing) {
-		await ctx.db.patch(existing._id, patch);
-		return existing._id;
-	}
-	return await ctx.db.insert('instanceSettings', { ...patch, createdAt: now });
+	return await upsertInstanceSettings(ctx, patch);
 }
 
 export const setAllFeatureFlags = authedMutation({

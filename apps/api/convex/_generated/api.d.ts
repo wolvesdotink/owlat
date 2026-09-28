@@ -657,6 +657,7 @@ import type * as lib_hostedCatalog from '../lib/hostedCatalog.js';
 import type * as lib_inboundClassification from '../lib/inboundClassification.js';
 import type * as lib_inboxStats from '../lib/inboxStats.js';
 import type * as lib_inputGuards from '../lib/inputGuards.js';
+import type * as lib_instanceSettings from '../lib/instanceSettings.js';
 import type * as lib_ipBlocklist from '../lib/ipBlocklist.js';
 import type * as lib_knowledgeDedup from '../lib/knowledgeDedup.js';
 import type * as lib_knowledgeEdges from '../lib/knowledgeEdges.js';
@@ -1854,6 +1855,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/inboundClassification': typeof lib_inboundClassification;
 	'lib/inboxStats': typeof lib_inboxStats;
 	'lib/inputGuards': typeof lib_inputGuards;
+	'lib/instanceSettings': typeof lib_instanceSettings;
 	'lib/ipBlocklist': typeof lib_ipBlocklist;
 	'lib/knowledgeDedup': typeof lib_knowledgeDedup;
 	'lib/knowledgeEdges': typeof lib_knowledgeEdges;
