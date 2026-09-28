@@ -11,6 +11,7 @@ import {
 	formatCompactNumber,
 	formatPercentage,
 	formatFileSize,
+	formatUtcDayKey,
 } from '../formatters';
 
 const NOW = new Date(2024, 5, 15, 12, 0, 0); // June 15, 2024 12:00:00
@@ -89,6 +90,31 @@ describe('formatShortDate', () => {
 	it('omits the year for a current-year date and appends it for a prior year', () => {
 		expect(formatShortDate(new Date(2025, 2, 3))).toBe('Mar 3');
 		expect(formatShortDate(new Date(2024, 2, 3))).toBe('Mar 3, 2024');
+	});
+});
+
+describe('formatUtcDayKey', () => {
+	// A reader west of UTC: midnight UTC on the 3rd is still the 2nd locally.
+	const originalTz = process.env.TZ;
+	beforeEach(() => {
+		process.env.TZ = 'America/Los_Angeles';
+	});
+	afterEach(() => {
+		process.env.TZ = originalTz;
+	});
+
+	it('labels the UTC day the key names, not the local day before it', () => {
+		expect(formatUtcDayKey('2026-09-03', 'en-US')).toBe('Sep 3');
+		expect(formatUtcDayKey('2026-01-01', 'en-US')).toBe('Jan 1');
+	});
+
+	it('speaks the requested locale', () => {
+		expect(formatUtcDayKey('2026-09-03', 'de')).toBe('3. Sept.');
+	});
+
+	it('says so for a key that is not a date', () => {
+		expect(formatUtcDayKey('')).toBe('Invalid date');
+		expect(formatUtcDayKey('not-a-day')).toBe('Invalid date');
 	});
 });
 

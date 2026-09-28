@@ -127,6 +127,24 @@ export function formatShortDate(
 }
 
 /**
+ * A server day key (`YYYY-MM-DD`, the UTC day a daily series is bucketed by) as
+ * the short month-and-day label: "Sep 3" in English, "3. Sept." in German.
+ *
+ * Formatted IN UTC. The key names a UTC day, parsed as midnight UTC; a
+ * local-time formatter would show that instant as the previous day to every
+ * reader west of UTC, so each bar would carry its neighbour's date.
+ * @param dayKey - `YYYY-MM-DD`
+ * @param locale - Locale string (defaults to the app's active locale)
+ */
+export function formatUtcDayKey(dayKey: string, locale = appLocale): string {
+	const d = new Date(`${dayKey}T00:00:00Z`);
+
+	if (isNaN(d.getTime())) return appLabels.invalidDate;
+
+	return new Intl.DateTimeFormat(locale, { ...dateFormatOptions.short, timeZone: 'UTC' }).format(d);
+}
+
+/**
  * Format a date with time
  * @param date - Date object, timestamp, or ISO string
  * @param locale - Locale string (defaults to 'en-US')
