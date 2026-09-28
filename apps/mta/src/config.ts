@@ -17,6 +17,7 @@ import {
 } from './governedDeliveryConfig.js';
 import type { PoolCoordinationProtocol } from './smtp/poolGlobalCap.js';
 import { loadOutboundIpConfig } from './outboundIpConfig.js';
+import { loadBounceTlsMaterial } from './bounceTlsConfig.js';
 
 // EHLO hostname validation + per-IP resolution live in ehloConfig.ts (to keep
 // this module under the file-size gate); re-exported so existing importers are
@@ -113,7 +114,7 @@ export interface MtaConfig extends GovernedDeliveryConfig {
 	deliveryLogMaxLen: number;
 	/** TTL in hours for delivery log streams */
 	deliveryLogTtlHours: number;
-	/** TLS cert for bounce SMTP server (PEM string, enables STARTTLS) */
+	/** TLS cert for bounce SMTP server (PEM string, enables STARTTLS; see bounceTlsConfig.ts) */
 	bounceServerTlsCert?: string;
 	/** TLS key for bounce SMTP server (PEM string) */
 	bounceServerTlsKey?: string;
@@ -268,6 +269,7 @@ export function loadConfig(): MtaConfig {
 	}
 
 	const outboundIp = loadOutboundIpConfig(requiredEnv);
+	const bounceTls = loadBounceTlsMaterial();
 
 	// MTA_SECRET seals DKIM keys + relay credentials at rest. Fail the boot fast
 	// if it is absent or too weak rather than sealing under a guessable key.
@@ -404,8 +406,8 @@ export function loadConfig(): MtaConfig {
 		contentMaxSizeKb: parseInt(optionalEnv('CONTENT_MAX_SIZE_KB', '500'), 10),
 		deliveryLogMaxLen: parseInt(optionalEnv('DELIVERY_LOG_MAX_LEN', '100000'), 10),
 		deliveryLogTtlHours: parseInt(optionalEnv('DELIVERY_LOG_TTL_HOURS', '72'), 10),
-		bounceServerTlsCert: process.env['BOUNCE_TLS_CERT'],
-		bounceServerTlsKey: process.env['BOUNCE_TLS_KEY'],
+		...(bounceTls.cert ? { bounceServerTlsCert: bounceTls.cert } : {}),
+		...(bounceTls.key ? { bounceServerTlsKey: bounceTls.key } : {}),
 		bounceMaxConnectionsPerIp: parseInt(optionalEnv('BOUNCE_MAX_CONNECTIONS_PER_IP', '10'), 10),
 		bounceMaxClients: parseInt(optionalEnv('BOUNCE_MAX_CLIENTS', '200'), 10),
 		bounceTarpitEnabled: optionalEnv('BOUNCE_TARPIT_ENABLED', 'true') === 'true',
