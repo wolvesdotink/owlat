@@ -769,6 +769,7 @@ import type * as lib_systemEmails from '../lib/systemEmails.js';
 import type * as lib_systemMailOutcome from '../lib/systemMailOutcome.js';
 import type * as lib_tenantTables from '../lib/tenantTables.js';
 import type * as lib_textPreview from '../lib/textPreview.js';
+import type * as lib_typeAssert from '../lib/typeAssert.js';
 import type * as lib_utcDay from '../lib/utcDay.js';
 import type * as lib_vectorMath from '../lib/vectorMath.js';
 import type * as lib_webSecretBox from '../lib/webSecretBox.js';
@@ -1968,6 +1969,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/systemMailOutcome': typeof lib_systemMailOutcome;
 	'lib/tenantTables': typeof lib_tenantTables;
 	'lib/textPreview': typeof lib_textPreview;
+	'lib/typeAssert': typeof lib_typeAssert;
 	'lib/utcDay': typeof lib_utcDay;
 	'lib/vectorMath': typeof lib_vectorMath;
 	'lib/webSecretBox': typeof lib_webSecretBox;
