@@ -21,7 +21,7 @@
  * `POSTBOX_SANITIZE_CONFIG` (an <a title> and a <span style="color/font-size">).
  */
 
-import { escapeHtml } from './html';
+import { escapeHtml, htmlToPlainText } from './html';
 import { isTrackingParamName } from './postboxLinkTrackingParams';
 
 const ANCHOR_RE = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
@@ -133,9 +133,12 @@ export function textClaimedHost(visibleText: string): string | null {
 	return normalizeHost(m[1]);
 }
 
-/** Visible text of an anchor's inner HTML (tags removed, entities decoded). */
+/**
+ * Visible text of an anchor's inner HTML (tags removed, named and numeric
+ * entities decoded, so `paypal&#46;com` is read as the domain it displays).
+ */
 function visibleTextOf(innerHtml: string): string {
-	return decodeBasicEntities(innerHtml.replace(/<[^>]*>/g, ' ')).trim();
+	return htmlToPlainText(innerHtml);
 }
 
 /** Muted inline marker exposing the real destination host of a deceptive link. */
@@ -177,8 +180,7 @@ export function applyLinkTransparency(sanitizedHtml: string): string {
 
 				// Phish pattern: visible text says one host, href goes to another.
 				const claimed = textClaimedHost(visibleTextOf(inner));
-				const marker =
-					claimed && claimed !== normalizeHost(host) ? mismatchMarker(host) : '';
+				const marker = claimed && claimed !== normalizeHost(host) ? mismatchMarker(host) : '';
 
 				return `<a ${serializeAttrs(kept)}>${inner}${marker}</a>`;
 			} catch {

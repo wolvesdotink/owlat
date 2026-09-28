@@ -15,6 +15,7 @@ import { encodeAddressHeader, encodeHeaderValue, escapeHeader, foldMsgIdList } f
 import { randomBoundary } from './encoding';
 import { buildMessageId } from './messageId';
 import { assembleBody, type ComposeAttachment, type MimeEntity } from './mime';
+import { htmlToPlainText } from '../text/htmlToPlainText';
 
 export type { ComposeAttachment } from './mime';
 
@@ -457,10 +458,11 @@ function buildContentEntity(input: ComposeMessageInput, nextBoundary: () => stri
 	});
 }
 
+/**
+ * The single-line text fallback for an html-only message: the shared
+ * {@link htmlToPlainText} in its default (collapsed) layout, so the MTA and the
+ * API derive the same words from the same body.
+ */
 export function stripHtml(html: string): string {
-	return html
-		.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-		.replace(/<[^>]+>/g, ' ')
-		.replace(/\s+/g, ' ')
-		.trim();
+	return htmlToPlainText(html);
 }

@@ -1,6 +1,6 @@
 /**
  * Heuristic split of an email body into "fresh" content vs. the quoted reply
- * chain. Pure string logic (no DOM, no dependencies) so it runs unchanged in
+ * chain. Pure string logic (no DOM) so it runs unchanged in
  * the browser (Postbox composer) AND on the Convex server (voice-profile
  * sampling, which must strip quoted originals out of the user's SENT bodies
  * before learning their writing voice).
@@ -16,6 +16,8 @@
  *   4. "On <date>, <name> wrote:" attribution lines (EN / DE / FR)
  *   5. Plain-text `> ` quote lines (text mode only)
  */
+
+import { htmlToPlainText } from './html';
 
 export interface QuotedSplitResult {
 	fresh: string;
@@ -33,16 +35,13 @@ const QUOTE_ATTRIBUTION_PATTERNS = [
 const OUTLOOK_REPLY_HEADER =
 	/(?:<hr[^>]*>\s*)?<div[^>]*id=["']?divRplyFwdMsg\b|<div[^>]*style=["'][^"']*border-top:\s*solid\s+#(?:e1e1e1|b5c4df)\b/i;
 
-/** True when an HTML fragment holds any visible text (not just tags / nbsp). */
+/**
+ * True when an HTML fragment holds any visible text (not just tags / nbsp).
+ * Head content (Outlook's <style> block) is not visible text; the collapsed
+ * layout already trims whitespace, a decoded `&nbsp;` and a raw U+00A0.
+ */
 function hasReadableText(html: string): boolean {
-	return (
-		html
-			// Head content (Outlook's <style> block) is not visible text.
-			.replace(/<(style|head)\b[\s\S]*?<\/\1>/gi, '')
-			.replace(/<[^>]+>/g, '')
-			.replace(/&nbsp;|\u00a0/g, '')
-			.trim().length > 0
-	);
+	return htmlToPlainText(html).length > 0;
 }
 
 export function splitQuotedHtml(html: string): QuotedSplitResult {
