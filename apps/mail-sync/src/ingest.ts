@@ -12,7 +12,12 @@
  */
 
 import { MAIL_SYNC_MAX_RAW_MESSAGE_BYTES } from '@owlat/shared/mailSyncLimits';
-import { parseMessage, type AddressObject } from '@owlat/mail-message';
+import {
+	addressFieldList,
+	parseMessage,
+	primaryMailbox,
+	type AddressObject,
+} from '@owlat/mail-message';
 import type { ConvexClient } from './convex.js';
 import { fn } from './convex.js';
 import type { FolderRole } from './folders.js';
@@ -43,29 +48,15 @@ function capBody(body: string | undefined): string | undefined {
 }
 
 function addrList(field: AddressObject | AddressObject[] | undefined): string[] {
-	if (!field) return [];
-	const objs = Array.isArray(field) ? field : [field];
-	const out: string[] = [];
-	for (const o of objs) {
-		for (const v of o.value ?? []) {
-			if (v.address) out.push(v.address.toWellFormed());
-		}
-	}
-	return out;
+	return addressFieldList(field).map((a) => a.address.toWellFormed());
 }
 
 /**
- * The single address of a `From:`-shaped field — the first parsed mailbox, or
- * `''` when the header is absent/address-less. `parseMessage` collapses a
- * repeated `From:` to the LAST instance (mailparser `singleKeys` parity), so it
- * hands us a single {@link AddressObject}; the array arm is a defensive fallback
- * that reads the LAST object, which stays consistent with that collapse and with
- * the old `parsed.from?.value?.[0]?.address` extraction (mailparser also kept the
- * last `From:`).
+ * The single address of a `From:`-shaped field (see {@link primaryMailbox}), or
+ * `''` when the header is absent/address-less.
  */
 function primaryAddress(field: AddressObject | AddressObject[] | undefined): string {
-	const obj = Array.isArray(field) ? field[field.length - 1] : field;
-	return obj?.value[0]?.address?.toWellFormed() ?? '';
+	return primaryMailbox(field)?.address.toWellFormed() ?? '';
 }
 
 /**

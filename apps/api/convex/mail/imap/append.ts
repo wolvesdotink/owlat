@@ -20,6 +20,7 @@ import { mergeThreadParticipants, rebuildThreadAggregates } from '../threadAggre
 import { conversationRootId, resolveDeliveryThread } from '../deliveryPipeline/threading';
 import { clearNeedsReplyOnOwnerReply } from '../needsReply';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
+import { buildSnippet } from '../deliveryPipeline/insert';
 
 /**
  * Error string used by APPEND to signal a from-address violation. The
@@ -56,7 +57,11 @@ export const appendMessage = internalMutation({
 		ccAddresses: v.array(v.string()),
 		bccAddresses: v.array(v.string()),
 		subject: v.string(),
-		snippet: v.string(),
+		/**
+		 * Ignored: the snippet is derived here from the bodies. Accepted for one
+		 * release so an older IMAP server still validates; drop it after that.
+		 */
+		snippet: v.optional(v.string()),
 		htmlBodyInline: v.optional(v.string()),
 		textBodyInline: v.optional(v.string()),
 		internalDate: v.optional(v.number()),
@@ -82,6 +87,7 @@ export const appendMessage = internalMutation({
 
 		const now = Date.now();
 		const internalDate = args.internalDate ?? now;
+		const snippet = buildSnippet(args.textBodyInline, args.htmlBodyInline);
 		const uid = folder.uidNext;
 		const modseq = folder.highestModseq + 1;
 
@@ -129,7 +135,7 @@ export const appendMessage = internalMutation({
 				hasAttachments: false,
 				lastMessageAt: internalDate,
 				firstMessageAt: internalDate,
-				latestSnippet: args.snippet,
+				latestSnippet: snippet,
 				latestFromAddress: args.fromAddress,
 				latestSubject: args.subject,
 				folderRoles: folder.role ? [folder.role] : [],
@@ -157,7 +163,7 @@ export const appendMessage = internalMutation({
 			bccAddresses: args.bccAddresses,
 			subject: args.subject,
 			normalizedSubject,
-			snippet: args.snippet,
+			snippet,
 			// Deep body search (idea 32): an APPENDed message is a delivered message
 			// as far as search is concerned, so it carries the same excerpt under the
 			// same instance opt-in. Skipping it here would leave a hole the body index

@@ -836,6 +836,8 @@ describe('ImapConnection — literal octet framing (RFC 3501 §4.3)', () => {
 			// The stored blob is exactly 6 bytes (octet-framed), not 3.
 			expect(appendArgs).toBeDefined();
 			expect(appendArgs!['rawSize']).toBe(6);
+			// The backend derives the snippet from the bodies.
+			expect(appendArgs).not.toHaveProperty('snippet');
 
 			// The body sent to storage is the 6-octet buffer, not a 3-char string.
 			const sentBody = fetchMock.mock.calls[0]![1]!.body as Buffer;
