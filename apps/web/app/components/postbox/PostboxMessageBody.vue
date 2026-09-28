@@ -3,11 +3,16 @@
  * Sandboxed iframe renderer for arbitrary HTML email bodies.
  *
  * Defense in depth:
- *   1. sandbox="allow-same-origin" — NO scripts (allow-scripts is deliberately
- *      omitted, so content stays inert), but same-origin is granted so the host
- *      can read contentDocument to auto-size the frame to its content. Without
- *      it the frame runs in an opaque origin, contentDocument is null, and every
- *      HTML body is clipped to the 200px min-height with an inner scrollbar.
+ *   1. sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+ *      — NO scripts (allow-scripts is deliberately omitted, so content stays
+ *      inert), but same-origin is granted so the host can read contentDocument
+ *      to auto-size the frame to its content. Without it the frame runs in an
+ *      opaque origin, contentDocument is null, and every HTML body is clipped to
+ *      the 200px min-height with an inner scrollbar. The popup flags are what
+ *      let a link open at all: every link is target=_blank (5. below), and a
+ *      sandbox without allow-popups silently swallows those clicks. Escaping
+ *      the sandbox means the opened page is an ordinary tab (or, in the desktop
+ *      app, the default browser), not one that inherits these restrictions.
  *   2. Inline meta-CSP that blocks everything except styles + (gated) images
  *   3. Parser-based sanitize-html allowlist (drops <script>/<style>/<base>/
  *      <meta refresh>/etc.; whitelisted CSS properties; blocks javascript: in
@@ -445,7 +450,7 @@ watch([showQuoted, showImages, loadEverything], () => {
 		<iframe
 			ref="iframeRef"
 			:srcdoc="displaySrcdoc"
-			sandbox="allow-same-origin"
+			sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
 			class="w-full rounded border border-border-subtle"
 			:class="renderScheme === 'dark' ? '' : 'bg-white'"
 			:style="{

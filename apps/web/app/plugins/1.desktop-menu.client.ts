@@ -14,19 +14,21 @@
  * plugin (filename order); registration is non-blocking. No-op on web.
  */
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
+import { handleDeepLink } from '~/lib/desktop/deepLink.client';
 
 export default defineNuxtPlugin({
 	name: 'owlat:desktop-menu',
 	setup() {
 		if (!isDesktopRuntime()) return;
 		const router = useRouter();
+		const palette = useCommandPalette();
 
 		void (async () => {
 			try {
 				const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
 				if (getCurrentWebviewWindow().label !== 'main') return;
 
-				const { onMenuAction } = await import('@owlat/desktop/src/menu');
+				const { onMenuAction, onOpenMailto } = await import('@owlat/desktop/src/menu');
 				// Device settings live in Preferences; /desktop/settings only redirects here.
 				await onMenuAction('preferences', () => void router.push('/dashboard/preferences/device'));
 				await onMenuAction('new-workspace', () => void router.push('/desktop/welcome'));
@@ -35,6 +37,14 @@ export default defineNuxtPlugin({
 				await onMenuAction('check-updates', () =>
 					window.dispatchEvent(new Event('owlat:check-updates'))
 				);
+				// Edit → Find… (⌘F) opens the app's search. Only the dashboard
+				// mounts the palette; elsewhere the event has no listener and the
+				// shortcut quietly does nothing, same as the titlebar pill.
+				await onMenuAction('find', () => palette.open());
+				// A mailto: clicked in any Owlat window (the Rust link policy keeps
+				// it from the OS) opens our compose window, through the same parser
+				// as the OS-level mailto: deep link.
+				await onOpenMailto((url) => void handleDeepLink(url));
 			} catch {
 				// Tauri APIs unavailable — nothing to bridge.
 			}

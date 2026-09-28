@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod files;
+mod links;
 mod menu;
 mod notifications;
 mod secrets;
@@ -9,6 +10,7 @@ mod shortcuts;
 mod ssh;
 mod updater;
 mod window;
+mod zoom;
 
 // `Manager` brings `get_webview_window` into scope — used by the macOS
 // traffic-light setup and the non-macOS menu wiring below.
@@ -29,7 +31,17 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::new().build())
-        .plugin(tauri_plugin_window_state::Builder::new().build())
+        // Size, position, maximized/fullscreen are restored per window — but
+        // not visibility: windows are built hidden and revealed on the SPA's
+        // first paint (window::arm_reveal), which a restore must not preempt.
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::all()
+                        - tauri_plugin_window_state::StateFlags::VISIBLE,
+                )
+                .build(),
+        )
         // Launch-at-login: opens the app un-minimized like any other launch.
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -54,6 +66,10 @@ fn main() {
         // or OS drop). See files.rs — it keeps `read_authorized_file` from being
         // an arbitrary-path read.
         .manage(files::AllowedReads::default())
+        // Which windows have had their first-paint reveal (window.rs).
+        .manage(window::Revealed::default())
+        // The app-wide page zoom (View → Zoom In/Out; zoom.rs).
+        .manage(zoom::ZoomLevel::default())
         // Register Tauri commands
         .invoke_handler(tauri::generate_handler![
             notifications::update_unread_badge,
@@ -67,6 +83,9 @@ fn main() {
             window::open_compose,
             window::set_traffic_lights_visible,
             window::set_accent_frame,
+            window::window_ready,
+            window::titlebar_double_click,
+            zoom::zoom_level,
             ssh::ssh_connect,
             ssh::ssh_accept_host_key,
             ssh::ssh_authenticate,
@@ -87,15 +106,29 @@ fn main() {
         // the read command the dropped paths are already authorized. Each drop
         // replaces the previous authorized-read generation (see files.rs), so a
         // drop where no zone reads the files doesn't leave them readable forever.
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
                 let allow = window.state::<files::AllowedReads>();
                 files::remember_dropped_paths(&allow, paths);
             }
+            #[cfg(target_os = "macos")]
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                window::hide_main_on_close(window, api);
+            }
+            _ => {}
         })
         .setup(|app| {
             // Register global keyboard shortcuts
             shortcuts::register_global_shortcuts(app.handle());
+
+            // Before any window exists: no AppKit auto-tabbing (window.rs), and
+            // the persisted zoom the main window is built at.
+            #[cfg(target_os = "macos")]
+            window::disable_automatic_tabbing();
+            zoom::load(app.handle());
+            // `create: false` in tauri.conf.json — built here so it carries the
+            // link policy (links.rs) and starts hidden until first paint.
+            window::create_main_window(app.handle())?;
 
             // Native application menu. macOS gets the app-global menu bar; on
             // Windows/Linux we drop the native frame (the branded
@@ -120,6 +153,16 @@ fn main() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // macOS: clicking the Dock icon (or re-launching from Finder /
+            // Spotlight) with the main window closed brings it back.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                window::show_main_window(app);
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
 }

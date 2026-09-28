@@ -1,4 +1,80 @@
+use std::collections::HashSet;
+use std::sync::Mutex;
+use std::time::Duration;
+
 use tauri::{command, AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+
+use crate::{links, zoom};
+
+/// How long a window may stay hidden waiting for the SPA's first paint before it
+/// is shown anyway (a boot that throws, a slow `tauri dev` compile).
+const REVEAL_FALLBACK: Duration = Duration::from_secs(3);
+
+/// Labels of the windows that have been revealed since they were built.
+///
+/// Windows are created hidden and shown on the SPA's first paint
+/// (`window_ready`), so launch shows the app instead of an empty — on macOS and
+/// Windows 11 even see-through, the window is `transparent` — frame while the
+/// bundle boots. The set makes the reveal one-shot per window: a later
+/// `window_ready` (the webview reload a workspace switch does) or the fallback
+/// timer must never re-show a window the user has since hidden.
+#[derive(Default)]
+pub struct Revealed(Mutex<HashSet<String>>);
+
+/// Show `window` the first time this is called for it since it was built.
+fn reveal(window: &WebviewWindow) {
+    let app = window.app_handle();
+    let first = app
+        .state::<Revealed>()
+        .0
+        .lock()
+        .map(|mut set| set.insert(window.label().to_string()))
+        .unwrap_or(true);
+    if first {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+/// Arm the reveal for a window that was just built hidden: forget any earlier
+/// window of the same label, and show it anyway if the SPA never reports ready.
+pub fn arm_reveal(window: &WebviewWindow) {
+    let app = window.app_handle();
+    if let Ok(mut set) = app.state::<Revealed>().0.lock() {
+        set.remove(window.label());
+    }
+    let win = window.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(REVEAL_FALLBACK);
+        reveal(&win);
+    });
+}
+
+/// Command: the SPA in this window has painted (apps/web desktop boot plugin,
+/// `app:mounted`) — show the window if this is its first paint.
+#[command]
+pub fn window_ready(window: WebviewWindow) {
+    reveal(&window);
+}
+
+/// Build the main window from its `tauri.conf.json` entry (`create: false`
+/// there, so the link policy can be attached — config windows take no
+/// handlers), hidden until first paint, at the persisted zoom.
+pub fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    let config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|w| w.label == "main")
+        .cloned()
+        .ok_or(tauri::Error::WindowNotFound)?;
+    let builder = WebviewWindowBuilder::from_config(app, &config)?.visible(false);
+    let window = links::guard(builder, app, "main").build()?;
+    zoom::apply_to(app, &window);
+    arm_reveal(&window);
+    Ok(window)
+}
 
 /// Shows the main window, bringing it to focus.
 pub fn show_main_window(app: &AppHandle) {
@@ -47,12 +123,19 @@ pub fn open_compose_window(app: &AppHandle, path: &str) {
     }
     // WebviewUrl::App paths are app-relative — drop any leading slash.
     let rel = path.trim_start_matches('/');
-    let _ = WebviewWindowBuilder::new(app, "compose", WebviewUrl::App(rel.into()))
+    let builder = WebviewWindowBuilder::new(app, "compose", WebviewUrl::App(rel.into()))
         .title("Compose — Owlat")
         .inner_size(720.0, 640.0)
         .min_inner_size(480.0, 380.0)
         .resizable(true)
-        .build();
+        // First run only (the window-state plugin restores the user's frame
+        // after that): open over the app, not wherever the OS cascades it.
+        .center()
+        .visible(false);
+    if let Ok(window) = links::guard(builder, app, "compose").build() {
+        zoom::apply_to(app, &window);
+        arm_reveal(&window);
+    }
 }
 
 /// Command: open the compose window. Invoked from the SPA (mailto handling).
@@ -65,6 +148,19 @@ pub fn open_compose(app: AppHandle, path: Option<String>) {
 /// (apps/web assets/css/desktop.css) so the native traffic lights center in it.
 #[cfg(target_os = "macos")]
 const TITLEBAR_HEIGHT: f64 = 44.0;
+
+/// The page zoom factor (zoom.rs) as f64 bits. The webview strip is 44 CSS px,
+/// which the page zoom scales, so the native strip the lights center in has to
+/// scale with it: at 125% the strip is 55pt tall on both sides.
+#[cfg(target_os = "macos")]
+static TITLEBAR_SCALE: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0x3FF0_0000_0000_0000); // 1.0
+
+/// The native strip height at the current zoom, in points.
+#[cfg(target_os = "macos")]
+fn titlebar_height() -> f64 {
+    TITLEBAR_HEIGHT * f64::from_bits(TITLEBAR_SCALE.load(std::sync::atomic::Ordering::Relaxed))
+}
 /// Leading inset of the close button (the other two follow at AppKit's own
 /// spacing).
 #[cfg(target_os = "macos")]
@@ -130,12 +226,12 @@ fn layout_traffic_lights(ns_window: &objc2_app_kit::NSWindow) {
     // Pin the container to the window's top edge at strip height (AppKit view
     // coords are bottom-up); width is left alone — AppKit tracks the window.
     let window_height = ns_window.frame().size.height;
-    let container_y = window_height - TITLEBAR_HEIGHT;
+    let strip = titlebar_height();
+    let container_y = window_height - strip;
     let mut container_rect = container.frame();
-    if !roughly(container_rect.size.height, TITLEBAR_HEIGHT)
-        || !roughly(container_rect.origin.y, container_y)
+    if !roughly(container_rect.size.height, strip) || !roughly(container_rect.origin.y, container_y)
     {
-        container_rect.size.height = TITLEBAR_HEIGHT;
+        container_rect.size.height = strip;
         container_rect.origin.y = container_y;
         container.setFrame(container_rect);
     }
@@ -148,7 +244,7 @@ fn layout_traffic_lights(ns_window: &objc2_app_kit::NSWindow) {
     let button_height = close_frame.size.height;
     let padding =
         (miniaturize.frame().origin.x - (close_frame.origin.x + button_width)).clamp(0.0, 20.0);
-    let button_y = (TITLEBAR_HEIGHT - button_height) / 2.0;
+    let button_y = (strip - button_height) / 2.0;
     let mut x = TRAFFIC_LIGHTS_X;
     for button in [&close, &miniaturize, &zoom] {
         let rect = button.frame();
@@ -538,4 +634,147 @@ pub fn set_traffic_lights_visible(window: WebviewWindow, visible: bool) -> Resul
 #[command]
 pub fn set_traffic_lights_visible(_window: WebviewWindow, _visible: bool) -> Result<(), String> {
     Ok(())
+}
+
+/// macOS: the red close button (and ⌘W) on the MAIN window hides it instead of
+/// quitting — the Mail/Messages convention. The app keeps syncing, the Dock
+/// badge and notifications keep coming, and clicking the Dock icon brings the
+/// window back (`RunEvent::Reopen` in main.rs). ⌘Q still quits.
+///
+/// A fullscreen window is taken out of fullscreen first: hiding it in place
+/// would leave its empty fullscreen Space behind. The hide waits for the exit
+/// animation, off the event loop.
+///
+/// Windows and Linux keep "closing the window quits" — without a tray icon
+/// there would be nothing left on screen to bring the app back.
+#[cfg(target_os = "macos")]
+pub fn hide_main_on_close(window: &tauri::Window, api: &tauri::CloseRequestApi) {
+    if window.label() != "main" {
+        return;
+    }
+    api.prevent_close();
+    if window.is_fullscreen().unwrap_or(false) {
+        let _ = window.set_fullscreen(false);
+        let win = window.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(700));
+            let _ = win.hide();
+        });
+    } else {
+        let _ = window.hide();
+    }
+}
+
+/// macOS: opt out of automatic window tabbing. Otherwise AppKit adds "Show Tab
+/// Bar" / "Show All Tabs" to the View menu and, for users whose "Prefer tabs"
+/// setting is "Always", merges the compose window into the main window as a tab
+/// — neither of which the app's own chrome is built for. Call before the first
+/// window is created, on the main thread (Tauri's `setup`).
+#[cfg(target_os = "macos")]
+pub fn disable_automatic_tabbing() {
+    if let Some(mtm) = objc2::MainThreadMarker::new() {
+        objc2_app_kit::NSWindow::setAllowsAutomaticWindowTabbing(false, mtm);
+    }
+}
+
+/// What a double-click on the title bar should do.
+#[derive(Debug, PartialEq, Eq)]
+enum TitlebarAction {
+    Zoom,
+    Minimize,
+    Nothing,
+}
+
+/// Map the macOS "Double-click a window's title bar to" setting
+/// (`AppleActionOnDoubleClick`: "Maximize" — shown as Zoom or Fill — /
+/// "Minimize" / "None") to an action. Older systems only had the
+/// `AppleMiniaturizeOnDoubleClick` boolean; an unset preference means Zoom.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+fn titlebar_action(action: Option<&str>, legacy_minimize: bool) -> TitlebarAction {
+    match action {
+        Some("Minimize") => TitlebarAction::Minimize,
+        Some("None") => TitlebarAction::Nothing,
+        Some(_) => TitlebarAction::Zoom,
+        None if legacy_minimize => TitlebarAction::Minimize,
+        None => TitlebarAction::Zoom,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn system_titlebar_action() -> TitlebarAction {
+    use objc2_foundation::{NSString, NSUserDefaults};
+
+    let defaults = NSUserDefaults::standardUserDefaults();
+    let action = defaults
+        .stringForKey(&NSString::from_str("AppleActionOnDoubleClick"))
+        .map(|s| s.to_string());
+    let legacy = defaults.boolForKey(&NSString::from_str("AppleMiniaturizeOnDoubleClick"));
+    titlebar_action(action.as_deref(), legacy)
+}
+
+/// Command: the user double-clicked the webview-drawn title bar. The stock drag
+/// region always toggles maximize; a native macOS title bar follows the user's
+/// system setting instead, so this does too (the web side routes the macOS
+/// double-click here — apps/web lib/desktop/nativeFeel.client.ts). Windows and
+/// Linux keep the maximize toggle, which is their native behaviour.
+#[command]
+pub fn titlebar_double_click(window: WebviewWindow) {
+    #[cfg(target_os = "macos")]
+    let action = system_titlebar_action();
+    #[cfg(not(target_os = "macos"))]
+    let action = TitlebarAction::Zoom;
+
+    match action {
+        TitlebarAction::Zoom => {
+            if window.is_maximized().unwrap_or(false) {
+                let _ = window.unmaximize();
+            } else {
+                let _ = window.maximize();
+            }
+        }
+        TitlebarAction::Minimize => {
+            let _ = window.minimize();
+        }
+        TitlebarAction::Nothing => {}
+    }
+}
+
+/// Follow a page-zoom change in the native chrome: re-center the macOS traffic
+/// lights in the (now taller or shorter) titlebar strip. No-op elsewhere — the
+/// Windows/Linux title bar is drawn entirely by the webview.
+#[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
+pub fn set_titlebar_scale(app: &AppHandle, factor: f64) {
+    #[cfg(target_os = "macos")]
+    {
+        TITLEBAR_SCALE.store(factor.to_bits(), std::sync::atomic::Ordering::Relaxed);
+        if let Some(win) = app.get_webview_window("main") {
+            let target = win.clone();
+            let _ = win.run_on_main_thread(move || relayout_traffic_lights(&target));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{titlebar_action, TitlebarAction};
+
+    #[test]
+    fn titlebar_double_click_follows_the_system_setting() {
+        assert_eq!(
+            titlebar_action(Some("Maximize"), false),
+            TitlebarAction::Zoom
+        );
+        assert_eq!(titlebar_action(Some("Fill"), false), TitlebarAction::Zoom);
+        assert_eq!(
+            titlebar_action(Some("Minimize"), false),
+            TitlebarAction::Minimize
+        );
+        assert_eq!(titlebar_action(Some("None"), true), TitlebarAction::Nothing);
+    }
+
+    #[test]
+    fn titlebar_double_click_falls_back_to_the_legacy_flag_then_zoom() {
+        assert_eq!(titlebar_action(None, true), TitlebarAction::Minimize);
+        assert_eq!(titlebar_action(None, false), TitlebarAction::Zoom);
+    }
 }

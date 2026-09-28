@@ -10,6 +10,10 @@
 //! `plugins/1.desktop-menu.client.ts`). The Edit submenu uses predefined roles so
 //! Cut/Copy/Paste/Select-All work inside the webview — essential on macOS.
 //!
+//! Shortcuts follow the platform's own apps: ⌘[ / ⌘] (Alt+←/→ elsewhere) for
+//! Back/Forward, ⌘F for Find, ⌘0 / ⌘= / ⌘− for zoom. ⌘1–⌘9 are deliberately
+//! left alone: the SPA uses them to switch workspaces (useWorkspaceHotkeys).
+//!
 //! NB: Tauri 2.10 exposes no dock-menu API — the macOS dock menu is provided
 //! only through the `NSApplicationDelegate.applicationDockMenu:` hook, which tao
 //! owns, so we can't attach one without swizzling the delegate. The quick verbs
@@ -23,7 +27,7 @@ use tauri::{
 };
 use tauri_plugin_shell::ShellExt;
 
-use crate::window;
+use crate::{window, zoom};
 
 /// Build the full application menu. Branded labels, native shape.
 pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
@@ -53,6 +57,24 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let reload = MenuItem::with_id(app, "reload", "Reload", true, Some("CmdOrCtrl+R"))?;
     let inbox = MenuItem::with_id(app, "inbox", "Inbox", true, None::<&str>)?;
     let chat = MenuItem::with_id(app, "chat", "Chat", true, None::<&str>)?;
+    // History, like Finder/Safari (⌘[ ⌘]) and Explorer/Edge (Alt+← Alt+→).
+    let (back_key, forward_key) = if cfg!(target_os = "macos") {
+        ("CmdOrCtrl+[", "CmdOrCtrl+]")
+    } else {
+        ("Alt+Left", "Alt+Right")
+    };
+    let back = MenuItem::with_id(app, "back", "Back", true, Some(back_key))?;
+    let forward = MenuItem::with_id(app, "forward", "Forward", true, Some(forward_key))?;
+    // Opens the app's search (the command palette). ⌘F is otherwise unused by
+    // the SPA, and it is where every Mac/Windows user looks for "search".
+    let find = MenuItem::with_id(app, "find", "Find…", true, Some("CmdOrCtrl+F"))?;
+    let zoom_reset =
+        MenuItem::with_id(app, "zoom_reset", "Actual Size", true, Some("CmdOrCtrl+0"))?;
+    let zoom_in = MenuItem::with_id(app, "zoom_in", "Zoom In", true, Some("CmdOrCtrl+="))?;
+    let zoom_out = MenuItem::with_id(app, "zoom_out", "Zoom Out", true, Some("CmdOrCtrl+-"))?;
+    // Brings the main window back — the only way besides the Dock once it has
+    // been closed on macOS (it hides rather than quits; see window.rs).
+    let main_window = MenuItem::with_id(app, "main_window", "Owlat", true, None::<&str>)?;
     let docs = MenuItem::with_id(app, "docs", "Owlat Documentation", true, None::<&str>)?;
     let report = MenuItem::with_id(app, "report", "Report an Issue…", true, None::<&str>)?;
     // Labeled "Settings…" per current macOS 13+ / Windows convention; the id and
@@ -69,7 +91,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         None::<&str>,
     )?;
 
-    // Edit / Window are identical on every platform.
+    // Edit / Go / Window are identical on every platform.
     let edit = SubmenuBuilder::new(app, "Edit")
         .undo()
         .redo()
@@ -78,10 +100,21 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         .copy()
         .paste()
         .select_all()
+        .separator()
+        .item(&find)
+        .build()?;
+    let go = SubmenuBuilder::new(app, "Go")
+        .item(&back)
+        .item(&forward)
+        .separator()
+        .item(&inbox)
+        .item(&chat)
         .build()?;
     let window_menu = SubmenuBuilder::new(app, "Window")
         .minimize()
         .maximize()
+        .separator()
+        .item(&main_window)
         .build()?;
 
     #[cfg(target_os = "macos")]
@@ -117,10 +150,12 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         // `fullscreen()` is a macOS-only predefined role.
         let view = SubmenuBuilder::new(app, "View")
             .item(&reload)
-            .fullscreen()
             .separator()
-            .item(&inbox)
-            .item(&chat)
+            .item(&zoom_reset)
+            .item(&zoom_in)
+            .item(&zoom_out)
+            .separator()
+            .fullscreen()
             .build()?;
         // Check-for-Updates lives in the app menu above, so Help is just links.
         let help = SubmenuBuilder::new(app, "Help")
@@ -128,7 +163,16 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             .item(&report)
             .build()?;
 
-        Menu::with_items(app, &[&app_menu, &file, &edit, &view, &window_menu, &help])
+        // Hand the two menus AppKit manages to NSApp: the Window menu then lists
+        // every open window (main + compose) like any Mac app, and Help gets
+        // the system's menu-search field.
+        window_menu.set_as_windows_menu_for_nsapp()?;
+        help.set_as_help_menu_for_nsapp()?;
+
+        Menu::with_items(
+            app,
+            &[&app_menu, &file, &edit, &view, &go, &window_menu, &help],
+        )
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -157,10 +201,12 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             .build()?;
         let view = SubmenuBuilder::new(app, "View")
             .item(&reload)
-            .item(&fullscreen)
             .separator()
-            .item(&inbox)
-            .item(&chat)
+            .item(&zoom_reset)
+            .item(&zoom_in)
+            .item(&zoom_out)
+            .separator()
+            .item(&fullscreen)
             .build()?;
         // No macOS app menu, so Check-for-Updates rides in Help (Windows/Linux
         // convention) above the doc links.
@@ -171,7 +217,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             .item(&report)
             .build()?;
 
-        Menu::with_items(app, &[&file, &edit, &view, &window_menu, &help])
+        Menu::with_items(app, &[&file, &edit, &view, &go, &window_menu, &help])
     }
 }
 
@@ -202,6 +248,22 @@ pub fn handle_menu_event(app: &AppHandle, id: &str) {
                 let _ = win.eval("window.location.reload()");
             }
         }
+        // Back/Forward act on the window in front — the compose window has
+        // its own history.
+        "back" | "forward" => {
+            let step = if id == "back" { "back" } else { "forward" };
+            if let Some(win) = focused_or_main(app) {
+                let _ = win.eval(&format!("window.history.{step}()"));
+            }
+        }
+        "find" => {
+            window::show_main_window(app);
+            let _ = app.emit("menu://find", ());
+        }
+        "zoom_in" => zoom::change(app, zoom::ZoomAction::In),
+        "zoom_out" => zoom::change(app, zoom::ZoomAction::Out),
+        "zoom_reset" => zoom::change(app, zoom::ZoomAction::Reset),
+        "main_window" => window::show_main_window(app),
         "new_workspace" => {
             window::show_main_window(app);
             let _ = app.emit("menu://new-workspace", ());
@@ -230,4 +292,12 @@ pub fn handle_menu_event(app: &AppHandle, id: &str) {
         }
         _ => {}
     }
+}
+
+/// The focused webview window, else the main window.
+fn focused_or_main(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    app.webview_windows()
+        .into_values()
+        .find(|w| w.is_focused().unwrap_or(false))
+        .or_else(|| app.get_webview_window("main"))
 }

@@ -10,6 +10,7 @@
  * Mirrors the thin try/catch bridge style of notifications.ts. No-op outside Tauri.
  */
 import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow, Effect } from '@tauri-apps/api/window';
 
 export async function startDragging(): Promise<void> {
@@ -25,8 +26,10 @@ export async function toggleMaximizeWindow(): Promise<void> {
 }
 
 export async function closeWindow(): Promise<void> {
-	// Closes the window. There is no close-to-tray handler: closing the main
-	// window quits the app (the menu-bar tray was removed).
+	// Closes the window. Only the Windows/Linux titlebar calls this, and there
+	// closing the main window quits the app (no tray to come back from). macOS
+	// uses the native close button, which hides the main window instead
+	// (src-tauri window.rs hide_main_on_close).
 	await getCurrentWindow().close();
 }
 
@@ -144,4 +147,34 @@ export async function watchFullscreen(
 		last = value;
 		onChange(value);
 	});
+}
+
+/**
+ * Tell the native side this window's UI has painted. Windows are built hidden
+ * (so launch never shows an empty, see-through frame) and the first call shows
+ * the window; later calls — the reload a workspace switch does — are no-ops.
+ * The Rust side shows the window anyway after a few seconds if this never comes.
+ */
+export async function windowReady(): Promise<void> {
+	await invoke('window_ready');
+}
+
+/**
+ * A double-click landed on the webview-drawn title bar. The native side applies
+ * the macOS "Double-click a window's title bar to" setting (zoom / minimize /
+ * nothing) the way a native title bar would.
+ */
+export async function titlebarDoubleClick(): Promise<void> {
+	await invoke('titlebar_double_click');
+}
+
+/** The app-wide page zoom factor (View → Zoom In / Zoom Out), 1 = 100%. */
+export async function readZoomLevel(): Promise<number> {
+	const factor = await invoke<number>('zoom_level');
+	return typeof factor === 'number' && Number.isFinite(factor) && factor > 0 ? factor : 1;
+}
+
+/** Subscribe to page-zoom changes made from the View menu. */
+export async function onZoomChanged(cb: (factor: number) => void): Promise<UnlistenFn> {
+	return listen<number>('view://zoom', (e) => cb(e.payload));
 }

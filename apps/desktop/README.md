@@ -19,6 +19,37 @@ duplicated components.
 - **Switching workspaces** reloads the webview so the auth + Convex singletons
   re-seed from the newly-active workspace.
 
+## Native behaviour
+
+The app should behave like a Mac / Windows / Linux application, not a web page
+in a window:
+
+- **Links leave the app.** Web links (`target="_blank"`, `window.open`, or a
+  plain navigation away from the SPA) open in the default browser, and
+  `mailto:` links open Owlat's compose window. The webview never loads a page
+  other than the bundled SPA (`src-tauri/src/links.rs`).
+- **No blank launch.** Windows are built hidden and shown once the SPA has
+  painted (`window_ready`), with a 3-second fallback (`window.rs`). The main
+  window is built in `setup` (`create: false` in `tauri.conf.json`) so it can
+  carry the link policy.
+- **macOS window lifecycle.** Closing the main window hides it; the app keeps
+  syncing and badging, and the Dock icon or Window → Owlat brings it back. ⌘Q
+  quits. Automatic window tabbing is off. Windows and Linux still quit on close
+  (there is no tray to come back from).
+- **Menus.** Go → Back / Forward (⌘[ ⌘], Alt+← Alt+→), Edit → Find… (⌘F, the
+  command palette), View → Actual Size / Zoom In / Zoom Out (⌘0 ⌘= ⌘−, one level
+  for every window, persisted in `view.json`). On macOS the Window menu lists
+  open windows and Help has the menu search field.
+- **Title bar.** A double-click on the macOS title bar follows the system
+  setting (zoom, minimize or nothing) instead of always maximizing.
+- **Unread badge on Windows.** Tauri has no badge count there, so an overlay dot
+  on the taskbar icon stands in for it.
+- **Chrome is not a page.** No browser context menu on app chrome (kept in text
+  fields, on selected text and on external links; dev builds keep it
+  everywhere), no text selection or ghost-dragging of the titlebar, sidebar and
+  controls, the arrow cursor there, and no rubber-banding of the app shell
+  (`apps/web` `lib/desktop/nativeFeel.client.ts`, `assets/css/desktop.css`).
+
 ## Set up a new server (SSH provisioning)
 
 From `/desktop/welcome` → **Set up a new server**, an admin can install Owlat on

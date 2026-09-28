@@ -12,6 +12,7 @@
 		"windows": [
 			{
 				"label": "main",
+				"create": false,
 				"title": "Owlat",
 				"width": 1200,
 				"height": 800,
@@ -23,7 +24,7 @@
 				"titleBarStyle": "Overlay",
 				"hiddenTitle": true,
 				"transparent": true,
-				"visible": true
+				"visible": false
 			}
 		],
 		"macOSPrivateApi": true,
