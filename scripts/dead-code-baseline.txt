@@ -1,6 +1,5 @@
 dep:apps/code-worker/package.json:execa
 dep:apps/desktop/package.json:@tauri-apps/plugin-window-state
-dep:apps/setup-cli/package.json:yaml
 dep:package.json:nuxt
 devdep:apps/docs/package.json:@vue/server-renderer
 devdep:apps/web/package.json:@faker-js/faker
