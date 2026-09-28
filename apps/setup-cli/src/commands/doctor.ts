@@ -207,6 +207,16 @@ export function evaluateMtaHealth(value: unknown, env: EnvMap = {}): MtaHealthFi
 			findings.push({ ok: false, message: 'MTA returned an invalid sending-IP result' });
 			continue;
 		}
+		// Not a port-25 result: the MTA skips the probe for addresses that NAT
+		// sends from one egress address, and the fix is the network mode, not the
+		// provider. Delivery continues, so this stays advisory copy on a failed row.
+		if (item['reason'] === 'shared_nat_egress') {
+			findings.push({
+				ok: false,
+				message: `${item['ip']} shares one NAT egress address with other sending IPs, so it does not send from its own address (TCP/25 not probed) — run the MTA with host networking or macvlan, or send from one IP per install`,
+			});
+			continue;
+		}
 		const detail =
 			typeof item['reason'] === 'string' ? ` (${item['reason'].replaceAll('_', ' ')})` : '';
 		const ok = item['status'] === 'ok';

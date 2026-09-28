@@ -197,6 +197,31 @@ describe('doctor — evaluateMtaHealth', () => {
 		expect(findings.filter((finding) => finding.message.includes('TCP/25'))).toHaveLength(3);
 	});
 
+	it('points a shared NAT egress at the network mode, not at the provider', () => {
+		const findings = evaluateMtaHealth(
+			{
+				...healthy,
+				status: 'degraded',
+				smtpOutbound: {
+					status: 'degraded',
+					ips: [
+						{ ip: '192.0.2.10', status: 'failed', reason: 'shared_nat_egress' },
+						{ ip: '192.0.2.11', status: 'failed', reason: 'shared_nat_egress' },
+					],
+				},
+			},
+			{ MTA_VPS_PROVIDER: 'digitalocean' }
+		);
+		const failed = findings.filter((finding) => !finding.ok);
+		expect(failed).toHaveLength(2);
+		for (const finding of failed) {
+			expect(finding.message).toContain('shares one NAT egress address');
+			expect(finding.message).toContain('host networking or macvlan');
+			expect(finding.message).not.toContain('DigitalOcean');
+			expect(finding.message).not.toContain('is reachable');
+		}
+	});
+
 	it('fails closed on an incomplete response', () => {
 		expect(evaluateMtaHealth({ status: 'ok' })).toEqual([
 			{ ok: false, message: 'MTA returned an incomplete health response' },
