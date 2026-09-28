@@ -291,7 +291,7 @@ describe('postbox composer — accessibility', () => {
 				PostboxComposerFooter,
 				PostboxOverflowMenu,
 			}),
-			props: { mailboxId: 'mbx1' },
+			props: { seed: { mailboxId: 'mbx1' } },
 			prepare: (wrapper) => expect(wrapper.find('[role="textbox"]').exists()).toBe(true),
 		});
 		expect(violations).toEqual([]);

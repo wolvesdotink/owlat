@@ -5942,7 +5942,8 @@
 	"compose": {
 		"loadingMailbox": "Postfach wird geladen…",
 		"noMailbox": "Für diesen Workspace ist kein Postfach konfiguriert.",
-		"pageTitle": "Verfassen — Owlat"
+		"pageTitle": "Verfassen — Owlat",
+		"sentNotice": "Ihre Nachricht ist unterwegs. Dieses Fenster schließt sich, sobald die Zeit zum Rückgängigmachen abgelaufen ist."
 	},
 	"dashboard": {
 		"admin": {

@@ -88,6 +88,9 @@ describe('PostboxUndoSendToast', () => {
 		releaseCancel();
 		await flushPromises();
 		expect(opened).toEqual([{ mailboxId: MAILBOX_ID, draftId: 'draft_1' }]);
+		// `undone` follows the reopen, so a host can adopt the reopened draft.
+		expect(wrapper.emitted('undone')).toHaveLength(1);
+		expect(wrapper.emitted('expired')).toBeUndefined();
 	});
 
 	it('un-queues an offline send on device instead of asking the server', async () => {
@@ -108,5 +111,8 @@ describe('PostboxUndoSendToast', () => {
 		expect(usePostboxUndoSend().state.value.visible).toBe(false);
 		expect(wrapper.find('[role="status"]').exists()).toBe(false);
 		expect(cancelRuns).toEqual([]);
+		// The desktop compose window closes on this.
+		expect(wrapper.emitted('expired')).toHaveLength(1);
+		expect(wrapper.emitted('undone')).toBeUndefined();
 	});
 });

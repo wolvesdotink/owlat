@@ -3,6 +3,13 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import UiUndoCountdownToast from '~/components/ui/UndoCountdownToast.vue';
 
+const emit = defineEmits<{
+	/** The window ran out without an undo: the message is on its way. */
+	expired: [];
+	/** Undo was pressed and its reversal has finished, whatever it found. */
+	undone: [];
+}>();
+
 const { t } = useI18n();
 
 const { state, dismiss, runUndo } = usePostboxUndoSend();
@@ -62,6 +69,16 @@ async function undoSend({ undoToken, mailboxId }: typeof state.value) {
 		stack.open({ mailboxId, draftId: result.result.draftId as Id<'mailDrafts'> });
 	}
 }
+
+async function onUndo() {
+	await runUndo(undoSend);
+	emit('undone');
+}
+
+function onExpire() {
+	dismiss();
+	emit('expired');
+}
 </script>
 
 <template>
@@ -71,7 +88,7 @@ async function undoSend({ undoToken, mailboxId }: typeof state.value) {
 		icon="lucide:send"
 		:message="message"
 		:undo-label="t('components.postbox.postboxUndoSendToast.undo')"
-		:on-undo="() => runUndo(undoSend)"
-		@expire="dismiss"
+		:on-undo="onUndo"
+		@expire="onExpire"
 	/>
 </template>

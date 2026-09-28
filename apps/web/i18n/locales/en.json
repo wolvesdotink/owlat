@@ -5942,7 +5942,8 @@
 	"compose": {
 		"loadingMailbox": "Loading mailbox…",
 		"noMailbox": "No mailbox is configured for this workspace.",
-		"pageTitle": "Compose — Owlat"
+		"pageTitle": "Compose — Owlat",
+		"sentNotice": "Your message is on its way. This window closes when the time to undo it runs out."
 	},
 	"dashboard": {
 		"admin": {
