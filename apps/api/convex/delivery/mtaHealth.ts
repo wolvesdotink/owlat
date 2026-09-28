@@ -18,6 +18,9 @@ const ipResultValidator = v.object({
 	ip: v.string(),
 	status: v.union(v.literal('ok'), v.literal('failed')),
 	reason: v.optional(v.string()),
+	// Absent from an MTA that predates it; `nat` means the host's NAT, not the
+	// MTA, picks the source address.
+	sourceBinding: v.optional(v.union(v.literal('bound'), v.literal('nat'))),
 });
 
 const snapshotValidator = v.object({
@@ -56,7 +59,12 @@ type Snapshot = {
 	smtpOutbound?: {
 		status: 'ok' | 'degraded';
 		checkedAt: number;
-		ips: Array<{ ip: string; status: 'ok' | 'failed'; reason?: string }>;
+		ips: Array<{
+			ip: string;
+			status: 'ok' | 'failed';
+			reason?: string;
+			sourceBinding?: 'bound' | 'nat';
+		}>;
 	};
 	smtpTls?: {
 		status: 'pass' | 'warn' | 'fail';
@@ -70,7 +78,7 @@ type Snapshot = {
 	observedAt: number;
 };
 
-function parseHealth(value: unknown, observedAt: number): Snapshot | null {
+export function parseHealth(value: unknown, observedAt: number): Snapshot | null {
 	if (!isRecord(value)) return null;
 	const worker = isRecord(value['worker']) ? value['worker'] : null;
 	const emergency = isRecord(value['emergency']) ? value['emergency'] : null;
@@ -108,6 +116,9 @@ function parseHealth(value: unknown, observedAt: number): Snapshot | null {
 			ip: item['ip'],
 			status: item['status'],
 			...(typeof item['reason'] === 'string' ? { reason: item['reason'] } : {}),
+			...(item['sourceBinding'] === 'bound' || item['sourceBinding'] === 'nat'
+				? { sourceBinding: item['sourceBinding'] }
+				: {}),
 		});
 	}
 

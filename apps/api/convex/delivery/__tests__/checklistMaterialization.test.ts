@@ -8,6 +8,7 @@ import {
 	completeRowsOrThrow,
 } from '../checklist';
 import { deliverabilityTargetKey } from '../checklistEvidence';
+import { DEPLOYMENT_CHECK_IDS } from '../checklistTraits';
 import { CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION } from '../../lib/constants';
 
 vi.mock('../../lib/sessionOrganization', async () => {
@@ -250,6 +251,84 @@ describe('Deliverability Center complete materialization', () => {
 			.flatMap((group) => group.items)
 			.filter((item) => item.id.startsWith('deployment.ipv6_'));
 		expect(elsewhere).toEqual([]);
+	});
+
+	describe('shared NAT egress', () => {
+		async function centerWith(port25: string[], sourceIp: 'pass' | 'fail') {
+			const t = convexTest(schema, modules);
+			const targetKey = deliverabilityTargetKey(ORGANIZATION_ID);
+			const now = Date.now();
+			const evidence = DEPLOYMENT_CHECK_IDS.filter(
+				(id) => !id.startsWith('deployment.ipv6_') && id !== 'deployment.tls'
+			).map((itemId) => ({
+				itemId,
+				status:
+					itemId === 'deployment.port25'
+						? ('warn' as const)
+						: itemId === 'deployment.source_ip'
+							? sourceIp
+							: ('pass' as const),
+				observedValues: itemId === 'deployment.port25' ? port25 : [],
+			}));
+			await t.run(async (ctx) => {
+				for (const [index, item] of evidence.entries()) {
+					const evidenceId = await ctx.db.insert('deliverabilityEvidence', {
+						organizationId: ORGANIZATION_ID,
+						itemId: item.itemId,
+						scopeKind: 'deployment',
+						targetKey,
+						attemptId: `nat-${index}`,
+						validator: 'test',
+						status: item.status,
+						observedValues: item.observedValues,
+						diagnostic: 'observed',
+						observedAt: now,
+						createdAt: now,
+					});
+					await ctx.db.insert('deliverabilityVerificationState', {
+						organizationId: ORGANIZATION_ID,
+						itemId: item.itemId,
+						targetKey,
+						attemptId: `nat-${index}`,
+						generation: 1,
+						retryIndex: 0,
+						leaseToken: `nat-lease-${index}`,
+						leaseExpiresAt: 0,
+						currentEvidenceId: evidenceId,
+						updatedAt: now,
+					});
+				}
+			});
+			const center = await t.query(api.delivery.checklist.getCenter, {});
+			return {
+				center,
+				port25: center.groups
+					.flatMap((group) => group.items)
+					.find((item) => item.id === 'deployment.port25'),
+			};
+		}
+
+		it('makes the per-IP source check the next item while port 25 was not probed', async () => {
+			const { center, port25 } = await centerWith(
+				['203.0.113.10=not-probed', '203.0.113.11=not-probed'],
+				'fail'
+			);
+			expect(center.nextItem?.id).toBe('deployment.source_ip');
+			expect(port25?.lockedReason).toBe('Verify deployment.source_ip first.');
+			expect(port25?.nextStep).toContain('Send each address from its own IP');
+			expect(port25?.nextStep).not.toContain('TCP/25 access');
+			// The expanded row's steps must not repeat the wrong fix either.
+			expect(port25?.instructions.steps.join(' ')).not.toContain('TCP/25 access');
+			expect(port25?.instructions.steps.join(' ')).toContain('host networking');
+		});
+
+		it('keeps the port-25 next step for a probe that really ran', async () => {
+			const { center, port25 } = await centerWith(['203.0.113.10=failed'], 'pass');
+			expect(center.nextItem?.id).toBe('deployment.port25');
+			expect(port25?.lockedReason).toBeUndefined();
+			expect(port25?.nextStep).toContain('TCP/25 access');
+			expect(port25?.instructions.steps.join(' ')).toContain('TCP/25 access');
+		});
 	});
 
 	it('refuses more domains than can be safely materialized instead of grading a prefix', async () => {

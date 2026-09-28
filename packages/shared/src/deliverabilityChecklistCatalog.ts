@@ -52,6 +52,7 @@ const DOCS_ORIGIN = 'https://docs.owlat.app';
 const VPS = `${DOCS_ORIGIN}/guide/sending-from-a-vps`;
 const DOMAIN = `${DOCS_ORIGIN}/guide/deliverability`;
 const FEEDBACK = `${DOCS_ORIGIN}/developer/external-reputation-feedback`;
+const MTA = `${DOCS_ORIGIN}/developer/mta-system`;
 
 export const DELIVERABILITY_CHECKLIST = [
 	check(
@@ -101,6 +102,14 @@ export const DELIVERABILITY_CHECKLIST = [
 		'Direct delivery cannot leave this server while outbound port 25 is blocked.',
 		`${VPS}#vps-provider-comparison`,
 		['deployment.fcrdns']
+	),
+	check(
+		'deployment.source_ip',
+		'Send each address from its own IP',
+		'Per-IP source address',
+		'reputation',
+		'Behind NAT, several sending IPs leave from one address, so warm-up and reputation are credited to IPs that never sent the mail.',
+		`${MTA}#sending-behind-nat`
 	),
 	check(
 		'deployment.tls',

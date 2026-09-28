@@ -15370,6 +15370,10 @@
 						"impact": "Ein verifiziertes Relay hält wichtige Mail während eines Vorfalls mit der IP-Reputation in Bewegung.",
 						"title": "Halten Sie einen sicheren Zustell-Fallback bereit"
 					},
+					"source_ip": {
+						"impact": "Hinter NAT verlassen mehrere Sende-IPs den Server über eine einzige Adresse, sodass Aufwärmphase und Reputation IPs zugerechnet werden, die die Mail nie gesendet haben.",
+						"title": "Senden Sie jede Adresse von ihrer eigenen IP"
+					},
 					"tls": {
 						"impact": "Gültiges TLS vermeidet Drosselung durch Empfänger und schützt Nachrichten während der Übertragung.",
 						"title": "Schützen Sie Mail auf dem Transportweg"

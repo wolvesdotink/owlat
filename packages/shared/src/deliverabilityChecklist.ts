@@ -15,6 +15,7 @@ export const DEPLOYMENT_CHECK_IDS = [
 	'deployment.ptr_nongeneric',
 	'deployment.ehlo_ptr',
 	'deployment.port25',
+	'deployment.source_ip',
 	'deployment.tls',
 	'deployment.dnsbl',
 	'deployment.warmup',
@@ -89,6 +90,8 @@ export const DELIVERABILITY_NEXT_ACTIONS: Record<DeliverabilityCheckId, string> 
 	'deployment.ptr_nongeneric': 'Replace the provider-default PTR with a dedicated mail hostname.',
 	'deployment.ehlo_ptr': 'Set the MTA EHLO hostname to the verified PTR hostname.',
 	'deployment.port25': 'Request outbound TCP/25 access or configure a verified relay fallback.',
+	'deployment.source_ip':
+		'Run the MTA with host networking or macvlan so it binds each IP, or send from one IP per install.',
 	'deployment.tls': 'Install a current TLS certificate covering the SMTP hostname.',
 	'deployment.dnsbl': 'Follow the named blocklist delisting runbook before sending.',
 	'deployment.warmup': 'Keep eligible campaign volume within the current warm-up cap.',

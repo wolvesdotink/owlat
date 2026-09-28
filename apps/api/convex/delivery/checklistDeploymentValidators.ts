@@ -10,6 +10,12 @@ import {
 	routeCarriesEnabledRelay,
 } from '../lib/sendProviders/fallbackEligibility';
 import { detectIpProvider } from './checklistProviderDetection';
+import {
+	isMtaHealthFresh,
+	observePort25,
+	observeSourceAddress,
+	STALE_MTA_HEALTH,
+} from './checklistSmtpProbe';
 import { checklistTraits } from './checklistTraits';
 import {
 	checklistObservation,
@@ -101,11 +107,8 @@ export async function observeDeploymentCheck(
 			(entry) =>
 				entry.fcrdns !== undefined && now - entry.fcrdns.checkedAt <= OUTBOUND_IDENTITY_MAX_AGE_MS
 		);
-	const mtaHealthFresh =
-		context.settings?.mtaHealth !== undefined &&
-		now - context.settings.mtaHealth.observedAt <= 5 * 60_000;
+	const mtaHealthFresh = isMtaHealthFresh(context, now);
 	const staleIdentity = 'The MTA identity snapshot is missing or too old to verify this check.';
-	const staleHealth = 'The MTA health snapshot is missing or too old to verify this check.';
 	const dnsblFresh =
 		warmingFresh &&
 		selectedAddresses.length > 0 &&
@@ -181,29 +184,14 @@ export async function observeDeploymentCheck(
 				identityObservations(selectedAddresses)
 			);
 		}
-		case 'deployment.port25': {
-			const probe = context.settings?.mtaHealth?.smtpOutbound;
-			const probeFresh =
-				mtaHealthFresh && probe !== undefined && now - probe.checkedAt <= 5 * 60_000;
-			const selectedIpSet = new Set(selectedAddresses.map((entry) => entry.ip));
-			const selectedProbeAddresses =
-				probe?.ips.filter((entry) => !entry.ip.includes(':') && selectedIpSet.has(entry.ip)) ?? [];
-			const pass =
-				probeFresh &&
-				selectedAddresses.length > 0 &&
-				selectedProbeAddresses.length === selectedAddresses.length &&
-				selectedProbeAddresses.every((entry) => entry.status === 'ok');
-			return checklistObservation(
-				'mta.smtp-reachability',
-				pass ? 'pass' : probeFresh ? 'fail' : 'warn',
-				pass
-					? 'Every configured source address reached a recipient MX on port 25.'
-					: probeFresh
-						? 'The live port-25 probe failed for at least one source address.'
-						: staleHealth,
-				selectedProbeAddresses.map((entry) => `${entry.ip}=${entry.status}`)
+		case 'deployment.port25':
+			return observePort25(
+				context,
+				selectedAddresses.map((entry) => entry.ip),
+				now
 			);
-		}
+		case 'deployment.source_ip':
+			return observeSourceAddress(context, now);
 		case 'deployment.tls': {
 			const tls = context.settings?.mtaHealth?.smtpTls;
 			const tlsFresh = mtaHealthFresh && tls !== undefined && now - tls.checkedAt <= 5 * 60_000;
@@ -212,7 +200,7 @@ export async function observeDeploymentCheck(
 				tlsFresh ? (tls?.status ?? 'fail') : 'warn',
 				tlsFresh && tls
 					? (tls.reason ?? 'The STARTTLS certificate is valid for the SMTP hostname.')
-					: staleHealth,
+					: STALE_MTA_HEALTH,
 				tls ? [`hostname=${tls.hostname}`, ...(tls.validTo ? [`valid-to=${tls.validTo}`] : [])] : []
 			);
 		}

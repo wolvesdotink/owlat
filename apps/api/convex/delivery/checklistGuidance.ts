@@ -76,3 +76,22 @@ export function guidanceForCheck(
 		],
 	};
 }
+
+/**
+ * Steps for `deployment.port25` while the MTA skips its probe because the
+ * sending addresses share one NAT egress address. The catalog's port-25 steps
+ * ("request outbound TCP/25 access") are the wrong fix there: port 25 cannot
+ * be judged until `deployment.source_ip` passes, so the row walks through that.
+ */
+export function guidanceForPort25AwaitingSourceIp(): ProviderGuidance {
+	return {
+		provider: 'generic',
+		providerLabel: 'Your provider',
+		summary: 'Port 25 is not probed while the sending addresses share one NAT egress address.',
+		steps: [
+			DELIVERABILITY_NEXT_ACTIONS['deployment.source_ip'],
+			'Verify "Send each address from its own IP", then return here and choose Verify now.',
+			'Owlat will mark the check complete only after its validator confirms the result.',
+		],
+	};
+}

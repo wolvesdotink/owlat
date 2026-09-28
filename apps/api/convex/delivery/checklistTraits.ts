@@ -65,6 +65,7 @@ export const CHECKLIST_ITEM_TRAITS = {
 	]),
 	'deployment.ehlo_ptr': deployment('ipv4', null, ['warming', 'outbound_identity']),
 	'deployment.port25': deployment('ipv4', 'vps_port_25', ['warming', 'mta_health']),
+	'deployment.source_ip': deployment(null, null, ['mta_health']),
 	'deployment.tls': deployment(null, null, ['mta_health']),
 	'deployment.dnsbl': deployment('ipv4', null, ['warming']),
 	'deployment.warmup': deployment(null, null, ['warming']),

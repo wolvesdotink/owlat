@@ -169,6 +169,7 @@ export const instanceTables = {
 								ip: v.string(),
 								status: v.union(v.literal('ok'), v.literal('failed')),
 								reason: v.optional(v.string()),
+								sourceBinding: v.optional(v.union(v.literal('bound'), v.literal('nat'))),
 							})
 						),
 					})
