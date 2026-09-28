@@ -15,11 +15,15 @@ ratchet. Remove a file's exception when its last cycle is fixed. Patterns are
 relative to either the repository or workspace lint directory; the baseline
 retains exact repository paths.
 
-Coverage thresholds live in each workspace's Vitest configuration. The September
+Coverage thresholds live in each workspace's Vitest configuration, built with
+`packageCoverage` (or `nodePackageConfig` for a plain node package) from the root
+`vitest.shared.ts`, so a config states only its floor and its exclusions. The September
 2026 baseline measures all configured source files, including untouched modules.
 New coverage blocks cover the plugin workspaces and UI components/composables.
 Thresholds use the lower measured whole percentage across local and CI runs
 (MTA: 88.08% locally, 87.96% on CI) (less than one point of rounding
-headroom). Raise them as coverage improves; do not lower them to make new code pass.
+headroom). The desktop and setup-cli floors, added later from a single local
+measurement with no CI figure to compare, sit two points under it (desktop never
+runs in CI). Raise them as coverage improves; do not lower them to make new code pass.
 Run `bun run ci:test:coverage` to enforce them. Coverage reports are generated
 artifacts and must not be committed.
