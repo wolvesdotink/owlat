@@ -49,3 +49,8 @@ export function parseTagList(input: string, options: TagListOptions): Map<string
 	}
 	return tags;
 }
+
+/** Strip all folding whitespace — for base64 (`b=`, `bh=`) and colon lists (`h=`). */
+export function stripWsp(value: string): string {
+	return value.replace(/[ \t\r\n]+/g, '');
+}
