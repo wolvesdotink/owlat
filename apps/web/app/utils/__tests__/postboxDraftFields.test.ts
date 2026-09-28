@@ -12,6 +12,7 @@ import { effectScope, nextTick, ref, type EffectScope } from 'vue';
 import type { EditorBlock } from '@owlat/email-builder';
 import { composeDraftFields, type DraftComposerMode } from '../postboxDraftFields';
 import { PostboxDraftMirrorStore } from '../postboxDraftMirrorStore';
+import type * as DraftMirrorStoreModule from '../postboxDraftMirrorStore';
 import type { DraftMirrorEntry } from '../postboxDraftMirror';
 import type { OfflineComposePayload, OfflineKvDriver } from '../postboxOfflineStore';
 import { usePostboxComposeAutosave } from '~/composables/postbox/usePostboxComposeAutosave';
@@ -75,7 +76,7 @@ function memoryDriver(): OfflineKvDriver {
 
 let store: PostboxDraftMirrorStore;
 vi.mock('~/utils/postboxDraftMirrorStore', async (importActual) => {
-	const actual = await importActual<typeof import('~/utils/postboxDraftMirrorStore')>();
+	const actual = await importActual<typeof DraftMirrorStoreModule>();
 	return { ...actual, getPostboxDraftMirrorStore: () => store };
 });
 
