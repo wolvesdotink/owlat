@@ -27,7 +27,7 @@ import { sndsComplaintBandValidator, sndsFilterResultValidator } from '../schema
 import { normalizeSndsIp, type SndsDayObservation } from './sndsFeed';
 import { oldestStorableDay } from './sndsConfig';
 import { observationVerdict } from './observationFreshness';
-import { type ObservationSweepResult, sweepExpiredObservations } from './observationRetention';
+import { type ObservationSweepResult, sweepExpiredObservations } from '../lib/retentionSweep';
 import { DAY_MS } from '../lib/constants';
 
 const RETENTION_MS = 90 * DAY_MS;

@@ -13,7 +13,7 @@ import { internal } from '../_generated/api';
 import { authedQuery } from '../lib/authedFunctions';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { observationVerdict } from './observationFreshness';
-import { type ObservationSweepResult, sweepExpiredObservations } from './observationRetention';
+import { type ObservationSweepResult, sweepExpiredObservations } from '../lib/retentionSweep';
 import {
 	GOOGLE_POSTMASTER_SIGNAL_SOURCE,
 	type PostmasterCard,

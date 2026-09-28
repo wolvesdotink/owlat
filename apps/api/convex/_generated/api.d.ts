@@ -61,6 +61,7 @@ import type * as agentHealth from '../agentHealth.js';
 import type * as aiProviderConfig from '../aiProviderConfig.js';
 import type * as aiProviderConfigActions from '../aiProviderConfigActions.js';
 import type * as analytics_adaptiveDashboard from '../analytics/adaptiveDashboard.js';
+import type * as analytics_cellArmBuckets from '../analytics/cellArmBuckets.js';
 import type * as analytics_complianceTelemetry from '../analytics/complianceTelemetry.js';
 import type * as analytics_cronRegistration from '../analytics/cronRegistration.js';
 import type * as analytics_dashboard from '../analytics/dashboard.js';
@@ -324,7 +325,6 @@ import type * as delivery_marketingSendAttribution from '../delivery/marketingSe
 import type * as delivery_mtaHealth from '../delivery/mtaHealth.js';
 import type * as delivery_messageIdRouting from '../delivery/messageIdRouting.js';
 import type * as delivery_observationFreshness from '../delivery/observationFreshness.js';
-import type * as delivery_observationRetention from '../delivery/observationRetention.js';
 import type * as delivery_observabilityStatus from '../delivery/observabilityStatus.js';
 import type * as delivery_preferences from '../delivery/preferences.js';
 import type * as delivery_preferencesHttp from '../delivery/preferencesHttp.js';
@@ -704,6 +704,7 @@ import type * as lib_publishableEmail from '../lib/publishableEmail.js';
 import type * as lib_queryHelpers from '../lib/queryHelpers.js';
 import type * as lib_randomToken from '../lib/randomToken.js';
 import type * as lib_receivedAtCursor from '../lib/receivedAtCursor.js';
+import type * as lib_retentionSweep from '../lib/retentionSweep.js';
 import type * as lib_rrf from '../lib/rrf.js';
 import type * as lib_runtimeLog from '../lib/runtimeLog.js';
 import type * as lib_validatorMatch from '../lib/validatorMatch.js';
@@ -1260,6 +1261,7 @@ declare const fullApi: ApiFromModules<{
 	aiProviderConfig: typeof aiProviderConfig;
 	aiProviderConfigActions: typeof aiProviderConfigActions;
 	'analytics/adaptiveDashboard': typeof analytics_adaptiveDashboard;
+	'analytics/cellArmBuckets': typeof analytics_cellArmBuckets;
 	'analytics/complianceTelemetry': typeof analytics_complianceTelemetry;
 	'analytics/cronRegistration': typeof analytics_cronRegistration;
 	'analytics/dashboard': typeof analytics_dashboard;
@@ -1523,7 +1525,6 @@ declare const fullApi: ApiFromModules<{
 	'delivery/mtaHealth': typeof delivery_mtaHealth;
 	'delivery/messageIdRouting': typeof delivery_messageIdRouting;
 	'delivery/observationFreshness': typeof delivery_observationFreshness;
-	'delivery/observationRetention': typeof delivery_observationRetention;
 	'delivery/observabilityStatus': typeof delivery_observabilityStatus;
 	'delivery/preferences': typeof delivery_preferences;
 	'delivery/preferencesHttp': typeof delivery_preferencesHttp;
@@ -1903,6 +1904,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/queryHelpers': typeof lib_queryHelpers;
 	'lib/randomToken': typeof lib_randomToken;
 	'lib/receivedAtCursor': typeof lib_receivedAtCursor;
+	'lib/retentionSweep': typeof lib_retentionSweep;
 	'lib/rrf': typeof lib_rrf;
 	'lib/runtimeLog': typeof lib_runtimeLog;
 	'lib/validatorMatch': typeof lib_validatorMatch;
