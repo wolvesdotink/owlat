@@ -1115,7 +1115,6 @@ import type * as today_state from '../today/state.js';
 import type * as today_summarize from '../today/summarize.js';
 import type * as today_summaryCache from '../today/summaryCache.js';
 import type * as today_summaryPrompt from '../today/summaryPrompt.js';
-import type * as today_threadStatus from '../today/threadStatus.js';
 import type * as today_triage from '../today/triage.js';
 import type * as transactional_api from '../transactional/api.js';
 import type * as transactional_dispatch from '../transactional/dispatch.js';
@@ -2313,7 +2312,6 @@ declare const fullApi: ApiFromModules<{
 	'today/summarize': typeof today_summarize;
 	'today/summaryCache': typeof today_summaryCache;
 	'today/summaryPrompt': typeof today_summaryPrompt;
-	'today/threadStatus': typeof today_threadStatus;
 	'today/triage': typeof today_triage;
 	'transactional/api': typeof transactional_api;
 	'transactional/dispatch': typeof transactional_dispatch;

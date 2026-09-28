@@ -7,10 +7,8 @@
  * overflow action that writes a per-sender user override.
  */
 import type { Id } from '@owlat/api/dataModel';
-import {
-	RECATEGORIZE_OPTIONS,
-	type MailCategory,
-} from '~/composables/postbox/usePostboxThreadCategories';
+import { RECATEGORIZE_OPTIONS } from '~/composables/postbox/usePostboxThreadCategories';
+import type { MailCategory } from '~/utils/mailCategory';
 import type { PostboxConversationThread } from './PostboxConversationRow.vue';
 import type { PostboxThreadListSection } from './PostboxSectionedThreadList.vue';
 

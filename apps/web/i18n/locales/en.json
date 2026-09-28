@@ -13296,15 +13296,7 @@
 					"receipt": "Receipt",
 					"spam": "Spam"
 				},
-				"recategorizeThread": "Recategorize thread",
-				"sections": {
-					"newsletter": "Newsletters",
-					"notification": "Notifications",
-					"other": "Everything else",
-					"person": "People",
-					"promotion": "Promotions",
-					"receipt": "Receipts"
-				}
+				"recategorizeThread": "Recategorize thread"
 			},
 			"usePostboxTriageUndo": {
 				"undo": "Undo"
@@ -15113,11 +15105,14 @@
 			"days": "waiting {days}d",
 			"daysHours": "waiting {days}d {hours}h"
 		},
-		"postboxBundles": {
+		"mailCategory": {
+			"person": "People",
 			"newsletter": "Newsletters",
 			"notification": "Notifications",
+			"receipt": "Receipts",
 			"promotion": "Promotions",
-			"receipt": "Receipts"
+			"spam": "Spam",
+			"other": "Everything else"
 		},
 		"accountExportResources": {
 			"apiKeys": "API keys",

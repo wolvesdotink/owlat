@@ -1,7 +1,7 @@
 /**
- * The pure rules behind Today, the Answer queue and the sidebar:
+ * The pure rules behind Today, the Answer queue and the sidebar (the status
+ * pill rules live in conversationStatus.test.ts):
  *   - every inbox gets a stable colour slot (explicit first, then in order);
- *   - one status per row, the most urgent wins;
  *   - the Answer queue interleaves mail, team drafts and mentions on one scale;
  *   - a Workbench sorts digests into changed / important / also arrived /
  *     filed as the server triaged them, never drops a line silently, and asks
@@ -10,11 +10,6 @@
  */
 import { describe, expect, it } from 'vitest';
 import { nameFromAddress, resolveInboxIdentities } from '../inboxIdentity';
-import {
-	mailThreadStatus,
-	mostUrgentConversationStatus,
-	teamThreadStatus,
-} from '../conversationStatus';
 import { compareAnswerItems } from '../answerQueue';
 import {
 	buildTodayModel,
@@ -61,22 +56,6 @@ describe('inbox identity', () => {
 			row({ label: 'help@example.com', address: 'help@example.com' }),
 		]);
 		expect(identity?.name).toBe('Help');
-	});
-});
-
-describe('conversation status', () => {
-	it('keeps the most urgent status', () => {
-		expect(mostUrgentConversationStatus(['waiting', 'updated', 'draft_ready'])).toBe('draft_ready');
-		expect(mostUrgentConversationStatus([null])).toBeNull();
-	});
-
-	it('derives mail and team statuses from the thread alone', () => {
-		expect(mailThreadStatus({ needsReply: { draftSlot: {} } })).toBe('draft_ready');
-		expect(mailThreadStatus({ followUp: { dueAt: 1 } })).toBe('needs_you');
-		expect(mailThreadStatus({ followUp: {} })).toBe('waiting');
-		expect(teamThreadStatus({ latestDraftStatus: 'pending', unread: true })).toBe('draft_ready');
-		expect(teamThreadStatus({ unread: true })).toBe('updated');
-		expect(teamThreadStatus({ status: 'waiting' })).toBe('waiting');
 	});
 });
 

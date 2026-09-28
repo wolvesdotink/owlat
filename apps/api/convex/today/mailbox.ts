@@ -34,7 +34,7 @@ import {
 	type ThreadStatus,
 	deriveThreadStatus,
 	mostUrgentStatus,
-} from './threadStatus';
+} from '@owlat/shared/threadStatus';
 
 /** Newest threads scanned for the digest (bounded; a Workbench is about recent mail). */
 const DIGEST_THREAD_SCAN = 150;

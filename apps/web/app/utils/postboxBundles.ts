@@ -26,13 +26,15 @@
  * a missed message.
  */
 
+import type { MailCategory } from './mailCategory';
+
 /** Categories that fold. `person` and anything unlabeled never do. */
 export const POSTBOX_BUNDLE_CATEGORIES = [
 	'newsletter',
 	'notification',
 	'receipt',
 	'promotion',
-] as const;
+] as const satisfies readonly MailCategory[];
 
 export type PostboxBundleCategory = (typeof POSTBOX_BUNDLE_CATEGORIES)[number];
 
@@ -42,14 +44,6 @@ export type PostboxBundleCategory = (typeof POSTBOX_BUNDLE_CATEGORIES)[number];
  * pairs people would rather just see.
  */
 export const POSTBOX_BUNDLE_MIN_SIZE = 2;
-
-/** Icon + label KEY per bundle category (module scope never calls `useI18n`). */
-export const POSTBOX_BUNDLE_META: Record<PostboxBundleCategory, { label: string; icon: string }> = {
-	newsletter: { label: 'shared.postboxBundles.newsletter', icon: 'lucide:newspaper' },
-	notification: { label: 'shared.postboxBundles.notification', icon: 'lucide:bell' },
-	receipt: { label: 'shared.postboxBundles.receipt', icon: 'lucide:receipt' },
-	promotion: { label: 'shared.postboxBundles.promotion', icon: 'lucide:megaphone' },
-};
 
 function isBundleCategory(value: string | undefined): value is PostboxBundleCategory {
 	return value !== undefined && (POSTBOX_BUNDLE_CATEGORIES as readonly string[]).includes(value);

@@ -13296,15 +13296,7 @@
 					"receipt": "Beleg",
 					"spam": "Spam"
 				},
-				"recategorizeThread": "Konversation neu einordnen",
-				"sections": {
-					"newsletter": "Newsletter",
-					"notification": "Benachrichtigungen",
-					"other": "Alles Übrige",
-					"person": "Personen",
-					"promotion": "Werbung",
-					"receipt": "Belege"
-				}
+				"recategorizeThread": "Konversation neu einordnen"
 			},
 			"usePostboxTriageUndo": {
 				"undo": "Rückgängig"
@@ -15113,11 +15105,14 @@
 			"days": "wartet {days} T.",
 			"daysHours": "wartet {days} T. {hours} Std."
 		},
-		"postboxBundles": {
+		"mailCategory": {
+			"person": "Personen",
 			"newsletter": "Newsletter",
 			"notification": "Benachrichtigungen",
+			"receipt": "Belege",
 			"promotion": "Werbung",
-			"receipt": "Belege"
+			"spam": "Spam",
+			"other": "Alles Übrige"
 		},
 		"accountExportResources": {
 			"apiKeys": "API-Schlüssel",

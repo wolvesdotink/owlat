@@ -19,14 +19,26 @@
  * fixed 24h offsets. Free of Convex/Vue so the boundaries are unit-testable.
  */
 
-export type PostboxAutoFiledCategory = 'newsletter' | 'notification' | 'receipt';
+import type { MailCategory } from './mailCategory';
 
-/** Smart-inbox categories the Today view rolls up instead of listing. */
-const POSTBOX_AUTO_FILED_CATEGORIES: ReadonlySet<string> = new Set([
+/**
+ * Smart-inbox categories the Today view rolls up instead of listing, in the
+ * roll-up line's display order. Narrower than Today's server "Filed away" set
+ * (`FILED_CATEGORIES`): promotions and spam still list here.
+ */
+const POSTBOX_AUTO_FILED_CATEGORIES = [
 	'newsletter',
 	'notification',
 	'receipt',
-] satisfies PostboxAutoFiledCategory[]);
+] as const satisfies readonly MailCategory[];
+
+export type PostboxAutoFiledCategory = (typeof POSTBOX_AUTO_FILED_CATEGORIES)[number];
+
+function isAutoFiledCategory(value: string | undefined): value is PostboxAutoFiledCategory {
+	return (
+		value !== undefined && (POSTBOX_AUTO_FILED_CATEGORIES as readonly string[]).includes(value)
+	);
+}
 
 /** Local midnight of the day containing `now`, as epoch ms. */
 export function startOfLocalDay(now: Date): number {
@@ -89,10 +101,9 @@ export function partitionTodayMessages<T extends PostboxTodayPartitionMessage>(
 			continue;
 		}
 		const category = message.category;
-		if (category !== undefined && POSTBOX_AUTO_FILED_CATEGORIES.has(category)) {
+		if (isAutoFiledCategory(category)) {
 			autoFiled.push(message);
-			const key = category as PostboxAutoFiledCategory;
-			autoFiledCounts[key] = (autoFiledCounts[key] ?? 0) + 1;
+			autoFiledCounts[category] = (autoFiledCounts[category] ?? 0) + 1;
 		} else {
 			today.push(message);
 		}
@@ -100,13 +111,6 @@ export function partitionTodayMessages<T extends PostboxTodayPartitionMessage>(
 
 	return { today, older, autoFiled, autoFiledCounts };
 }
-
-/** Fixed display order for the roll-up line. */
-const AUTO_FILED_ORDER: readonly PostboxAutoFiledCategory[] = [
-	'newsletter',
-	'notification',
-	'receipt',
-];
 
 /**
  * One message per combination of categories, in the fixed display order.
@@ -144,7 +148,7 @@ export interface AutoFiledLine {
 export function formatAutoFiledLine(
 	counts: Partial<Record<PostboxAutoFiledCategory, number>>
 ): AutoFiledLine | null {
-	const present = AUTO_FILED_ORDER.filter((category) => (counts[category] ?? 0) > 0);
+	const present = POSTBOX_AUTO_FILED_CATEGORIES.filter((category) => (counts[category] ?? 0) > 0);
 	const count = present.reduce((sum, category) => sum + (counts[category] ?? 0), 0);
 	if (count === 0) return null;
 	const combination = present.join('+');

@@ -92,7 +92,7 @@ function mountCategoryList(count: number) {
 			sections: [
 				{
 					key: 'person' as const,
-					label: 'shared.postbox.usePostboxThreadCategories.sections.person',
+					label: 'shared.mailCategory.person',
 					icon: 'lucide:user',
 					threads: Array.from({ length: count }, (_, i) => makeThread(i)),
 				},

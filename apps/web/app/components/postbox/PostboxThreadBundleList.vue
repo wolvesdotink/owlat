@@ -15,11 +15,11 @@
 import type { Id } from '@owlat/api/dataModel';
 import type { PostboxThreadRowMessage } from './PostboxThreadRow.vue';
 import {
-	POSTBOX_BUNDLE_META,
 	bundleMessageIds,
 	bundleOneClickSenders,
 	type PostboxFeedEntry,
 } from '~/utils/postboxBundles';
+import { MAIL_CATEGORY_META } from '~/utils/mailCategory';
 import { senderRowMarkerOf } from '~/utils/senderAuth';
 
 const props = defineProps<{
@@ -126,12 +126,12 @@ function focusIndexOf(messageId: string): number {
 								class="w-4 h-4 flex-shrink-0 text-text-tertiary"
 							/>
 							<Icon
-								:name="POSTBOX_BUNDLE_META[entry.category].icon"
+								:name="MAIL_CATEGORY_META[entry.category].icon"
 								class="w-4 h-4 flex-shrink-0 text-text-tertiary"
 							/>
 							<span class="truncate text-sm font-medium text-text-primary">
 								<!-- Always plural: a bundle is never fewer than two rows. -->
-								{{ t(POSTBOX_BUNDLE_META[entry.category].label) }}
+								{{ t(MAIL_CATEGORY_META[entry.category].labelKey) }}
 							</span>
 							<span class="text-xs text-text-tertiary tabular-nums flex-shrink-0">
 								{{ entry.count }}

@@ -71,13 +71,13 @@ function mountCategories() {
 			sections: [
 				{
 					key: 'person' as const,
-					label: 'shared.postbox.usePostboxThreadCategories.sections.person',
+					label: 'shared.mailCategory.person',
 					icon: 'lucide:user',
 					threads: THREADS,
 				},
 				{
 					key: 'newsletter' as const,
-					label: 'shared.postbox.usePostboxThreadCategories.sections.newsletter',
+					label: 'shared.mailCategory.newsletter',
 					icon: 'lucide:newspaper',
 					threads: [thread('t4', 0)],
 				},

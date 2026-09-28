@@ -6,7 +6,6 @@
 import { describe, it, expect } from 'vitest';
 import {
 	POSTBOX_BUNDLE_CATEGORIES,
-	POSTBOX_BUNDLE_META,
 	POSTBOX_BUNDLE_MIN_SIZE,
 	bundleMessageIds,
 	bundleOneClickSenders,
@@ -172,13 +171,6 @@ describe('bundle registries', () => {
 			'promotion',
 		]);
 		expect(POSTBOX_BUNDLE_CATEGORIES as readonly string[]).not.toContain('person');
-	});
-
-	it('carries a catalog KEY, not a sentence, for each category', () => {
-		for (const category of POSTBOX_BUNDLE_CATEGORIES) {
-			expect(POSTBOX_BUNDLE_META[category].label).toMatch(/^shared\.postboxBundles\./);
-			expect(POSTBOX_BUNDLE_META[category].icon).toMatch(/^lucide:/);
-		}
 	});
 });
 
