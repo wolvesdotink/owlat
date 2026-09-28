@@ -8,6 +8,7 @@
  * Everything shown is derived from the same `ChecklistEntry[]` the rows render,
  * so the count, the links and the rows cannot disagree.
  */
+import { trySplitZone } from '@owlat/shared';
 import {
 	summarizeChecklist,
 	toZoneFileLines,
@@ -49,11 +50,20 @@ const copyLabel = computed(() => {
 	);
 });
 
+// A record in another zone (a shared return-path host) is copied commented out;
+// the note names the zone it belongs in, as the record's row does.
+const outOfZoneNote = (fqdn: string) =>
+	t('components.domains.dnsChecklistSummary.zoneNoteOutOfZone', {
+		domain: trySplitZone(props.domain)?.registrable ?? props.domain,
+		zone: trySplitZone(fqdn)?.registrable ?? fqdn,
+	});
+
 const handleCopy = () =>
 	copy(
 		toZoneFileLines(copyTargets.value, props.domain, {
 			valueOverrides: props.valueOverrides,
 			notes: props.notes,
+			outOfZoneNote,
 		}),
 		'zone-file'
 	);

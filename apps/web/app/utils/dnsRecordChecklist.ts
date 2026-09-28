@@ -13,6 +13,7 @@
  * Pure: no network, no i18n. Labels are the protocol acronyms (SPF, DKIM 2,
  * MAIL FROM MX), which read the same in every language.
  */
+import { trySplitZone, zoneRelativeHost } from '@owlat/shared';
 import {
 	normalizeDnsRecord,
 	type DnsRecordPanelRecord,
@@ -189,7 +190,29 @@ export type ZoneFileOptions = {
 	 * mail (RFC 7208 §3.2), so the text has to say it replaces the old record.
 	 */
 	notes?: Partial<Record<string, string>>;
+	/**
+	 * The comment above a record outside the domain's zone, given its name.
+	 * Such a record is written commented out: a zone import rejects a name
+	 * that is not in the zone, but whoever the text is forwarded to still sees
+	 * what has to be published, and where.
+	 */
+	outOfZoneNote?: (fqdn: string) => string;
 };
+
+/**
+ * True when `fqdn` sits outside `domain`'s registrable zone — a shared
+ * return-path host (`bounces.<operator domain>`) is the real-world case. Same
+ * rule as the record panel; a domain with no registrable zone (dev/self-host)
+ * never counts as out of zone.
+ */
+export function isOutsideZone(fqdn: string, domain: string): boolean {
+	if (!trySplitZone(domain)) return false;
+	try {
+		return zoneRelativeHost(fqdn, domain).endsWith('.');
+	} catch {
+		return false;
+	}
+}
 
 /**
  * Standard zone-file lines (RFC 1035 master-file format) for the given records.
@@ -203,13 +226,18 @@ export function toZoneFileLines(
 ): string {
 	return entries
 		.flatMap((e) => {
+			const fqdn = recordFqdn(e.record, domain);
 			const line = [
-				absolute(recordFqdn(e.record, domain)),
+				absolute(fqdn),
 				ZONE_TTL,
 				'IN',
 				e.record.type,
 				rdata(e.record, options.valueOverrides?.[e.id]),
 			].join('\t');
+			if (isOutsideZone(fqdn, domain)) {
+				const note = options.outOfZoneNote?.(fqdn);
+				return [...(note ? [comment(note)] : []), comment(line)];
+			}
 			const note = options.notes?.[e.id];
 			return note ? [comment(note), line] : [line];
 		})
