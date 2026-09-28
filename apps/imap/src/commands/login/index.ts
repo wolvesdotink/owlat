@@ -15,13 +15,6 @@ interface LoginArgs {
  */
 const TARPIT_SLEEP_CAP_MS = 5_000;
 
-interface VerifyAppPasswordResult {
-	readonly mailboxId: string;
-	readonly appPasswordId: string;
-	readonly userId: string;
-	readonly organizationId: string;
-}
-
 export const loginModule: ImapCommandModule<LoginArgs> = {
 	verbs: ['LOGIN'],
 	parseArgs(rawArgs) {
@@ -67,14 +60,11 @@ export const loginModule: ImapCommandModule<LoginArgs> = {
 			}
 
 			try {
-				const result = (await deps.convex.action(
-					fn.verifyAppPassword as never,
-					{
-						address,
-						password: args.password,
-						scope: 'imap',
-					} as never
-				)) as VerifyAppPasswordResult | null;
+				const result = await deps.convex.action(fn.verifyAppPassword, {
+					address,
+					password: args.password,
+					scope: 'imap',
+				});
 
 				if (!result) {
 					logger.warn({ ip: deps.remoteIp, user: args.user }, 'LOGIN failed');
@@ -88,14 +78,11 @@ export const loginModule: ImapCommandModule<LoginArgs> = {
 				// client sent one); it surfaces in the app-passwords admin UI
 				// as the "Last used" device/client.
 				deps.convex
-					.mutation(
-						fn.touchAppPassword as never,
-						{
-							appPasswordId: result.appPasswordId,
-							ip: deps.remoteIp,
-							...(state.clientId ? { userAgent: state.clientId } : {}),
-						} as never
-					)
+					.mutation(fn.touchAppPassword, {
+						appPasswordId: result.appPasswordId,
+						ip: deps.remoteIp,
+						...(state.clientId ? { userAgent: state.clientId } : {}),
+					})
 					.catch(() => undefined);
 
 				deps.commit({

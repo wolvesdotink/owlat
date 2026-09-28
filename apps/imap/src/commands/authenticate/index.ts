@@ -37,13 +37,6 @@ interface AuthenticateArgs {
 /** Mirror of LOGIN's tarpit cap so a sustained attacker can't burn fds. */
 const TARPIT_SLEEP_CAP_MS = 5_000;
 
-interface VerifyAppPasswordResult {
-	readonly mailboxId: string;
-	readonly appPasswordId: string;
-	readonly userId: string;
-	readonly organizationId: string;
-}
-
 interface DecodedPlain {
 	readonly authcid: string;
 	readonly password: string;
@@ -153,14 +146,11 @@ export const authenticateModule: ImapCommandModule<AuthenticateArgs> = {
 			}
 
 			try {
-				const result = (await deps.convex.action(
-					fn.verifyAppPassword as never,
-					{
-						address,
-						password: decoded.password,
-						scope: 'imap',
-					} as never
-				)) as VerifyAppPasswordResult | null;
+				const result = await deps.convex.action(fn.verifyAppPassword, {
+					address,
+					password: decoded.password,
+					scope: 'imap',
+				});
 
 				if (!result) {
 					logger.warn({ ip: deps.remoteIp, user: decoded.authcid }, 'AUTHENTICATE failed');
@@ -172,14 +162,11 @@ export const authenticateModule: ImapCommandModule<AuthenticateArgs> = {
 
 				// Best-effort touch — mirror LOGIN; don't block the OK on it.
 				deps.convex
-					.mutation(
-						fn.touchAppPassword as never,
-						{
-							appPasswordId: result.appPasswordId,
-							ip: deps.remoteIp,
-							...(state.clientId ? { userAgent: state.clientId } : {}),
-						} as never
-					)
+					.mutation(fn.touchAppPassword, {
+						appPasswordId: result.appPasswordId,
+						ip: deps.remoteIp,
+						...(state.clientId ? { userAgent: state.clientId } : {}),
+					})
 					.catch(() => undefined);
 
 				const next: ConnectionState = {

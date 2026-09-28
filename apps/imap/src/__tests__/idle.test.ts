@@ -16,6 +16,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { getFunctionName, type AnyFunctionReference } from 'convex/server';
 import { idleModule, diffIdle } from '../commands/idle/index.js';
 import type { FetchEnvelope } from '../commands/fetch/format.js';
 import type {
@@ -138,21 +139,24 @@ describe('IDLE — pushes EXISTS + FETCH FLAGS + EXPUNGE during a single IDLE (P
 		// ticks. peekFolderModseq returns counters; listFolderUidsPage returns the
 		// live UID list as one page; fetchChangedEnvelopes returns the rows the
 		// `by_folder_and_modseq` index would yield for modseq > modseqSince.
-		convex.query.mockImplementation((ref: string, qargs: Record<string, unknown>) => {
-			if (ref === 'mail/imap/session:peekFolderModseq') return Promise.resolve(peek);
-			if (ref === 'mail/imap/fetch:listFolderUidsPage') {
-				return Promise.resolve({ uids, nextUid: null });
+		convex.query.mockImplementation(
+			(fnRef: AnyFunctionReference, qargs: Record<string, unknown>) => {
+				const ref = getFunctionName(fnRef);
+				if (ref === 'mail/imap/session:peekFolderModseq') return Promise.resolve(peek);
+				if (ref === 'mail/imap/fetch:listFolderUidsPage') {
+					return Promise.resolve({ uids, nextUid: null });
+				}
+				if (ref === 'mail/imap/fetch:fetchChangedEnvelopes') {
+					const since = (qargs.modseqSince as number) ?? 0;
+					return Promise.resolve({
+						page: rows.filter((r) => r.modseq > since),
+						isDone: true,
+						continueCursor: null,
+					});
+				}
+				return Promise.resolve(null);
 			}
-			if (ref === 'mail/imap/fetch:fetchChangedEnvelopes') {
-				const since = (qargs.modseqSince as number) ?? 0;
-				return Promise.resolve({
-					page: rows.filter((r) => r.modseq > since),
-					isDone: true,
-					continueCursor: null,
-				});
-			}
-			return Promise.resolve(null);
-		});
+		);
 
 		// Mutable folder fixtures the implementation reads each tick.
 		let peek = { highestModseq: 7, uidNext: 3, totalCount: 2, unseenCount: 2 };

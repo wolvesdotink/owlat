@@ -20,11 +20,6 @@ export interface FetchArgs {
 const SPACE = Buffer.from(' ', 'ascii');
 const CLOSE_PAREN = Buffer.from(')', 'ascii');
 
-interface StoreFlagsResult {
-	readonly updated: ReadonlyArray<{ uid: number; modseq: number; flags: string[] }>;
-	readonly unchanged: ReadonlyArray<{ uid: number }>;
-}
-
 /**
  * FETCH and UID FETCH share this module. The UID dispatcher constructs
  * args with `byUid: true`; direct FETCH defaults to false.
@@ -193,14 +188,11 @@ function formatFlagsWithSeen(m: FetchEnvelope, setsSeen: boolean): string {
  * falls back to the envelope's own flags.
  */
 async function markSeen(convex: ConvexClient, messageId: string): Promise<string | undefined> {
-	const result = (await convex.mutation(
-		fn.storeFlags as never,
-		{
-			messageIds: [messageId],
-			flags: ['\\Seen'],
-			mode: 'add',
-		} as never
-	)) as StoreFlagsResult;
+	const result = await convex.mutation(fn.storeFlags, {
+		messageIds: [messageId],
+		flags: ['\\Seen'],
+		mode: 'add',
+	});
 	const row = result.updated[0];
 	return row ? row.flags.join(' ') : undefined;
 }
@@ -217,21 +209,11 @@ async function markSeen(convex: ConvexClient, messageId: string): Promise<string
  */
 async function fetchRawBody(convex: ConvexClient, messageId: string): Promise<Buffer | null> {
 	try {
-		const meta = (await convex.query(
-			fn.fetchRawStorageId as never,
-			{
-				messageId,
-			} as never
-		)) as { storageId: string; rawSize: number } | null;
+		const meta = await convex.query(fn.fetchRawStorageId, { messageId });
 		if (!meta) return null;
-		const url = (await convex
-			.action(
-				fn.getRawStorageUrl as never,
-				{
-					storageId: meta.storageId,
-				} as never
-			)
-			.catch(() => null)) as string | null;
+		const url = await convex
+			.action(fn.getRawStorageUrl, { storageId: meta.storageId })
+			.catch(() => null);
 		if (!url) return null;
 		const res = await fetch(url);
 		if (!res.ok) return null;

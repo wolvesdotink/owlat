@@ -17,11 +17,6 @@ export interface StoreArgs {
 	readonly byUid: boolean;
 }
 
-interface StoreFlagsResult {
-	readonly updated: ReadonlyArray<{ uid: number; modseq: number; flags: string[] }>;
-	readonly unchanged: ReadonlyArray<{ uid: number }>;
-}
-
 /**
  * STORE — set / add / remove flags on a UID set. CONDSTORE
  * `UNCHANGEDSINCE` clause optional. `.SILENT` suppresses the per-row
@@ -109,15 +104,12 @@ export const storeModule: ImapCommandModule<StoreArgs> = {
 					return;
 				}
 
-				const result = (await deps.convex.mutation(
-					fn.storeFlags as never,
-					{
-						messageIds,
-						flags: flagList,
-						mode: args.mode,
-						unchangedSinceModseq: args.unchangedSince,
-					} as never
-				)) as StoreFlagsResult;
+				const result = await deps.convex.mutation(fn.storeFlags, {
+					messageIds,
+					flags: flagList,
+					mode: args.mode,
+					unchangedSinceModseq: args.unchangedSince,
+				});
 
 				if (!args.silent) {
 					for (const u of result.updated) {

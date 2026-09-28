@@ -8,17 +8,12 @@
  * divergent tail so every response string is threaded through unchanged.
  */
 
+import type { CopyMoveResult, fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 import { parseUidSet } from '../../parser.js';
 import type { CommandDeps, ConnectionState } from '../types.js';
 import { resolveFolderByName } from './folders.js';
 import { collectMessageIds } from './uidSet.js';
-
-/** Result shape returned by both `copyMessages` and `moveMessages`. */
-export interface CopyMoveResult {
-	readonly uidValidity: number;
-	readonly pairs: ReadonlyArray<{ sourceUid: number; targetUid: number }>;
-}
 
 export interface RunCopyOrMoveParams {
 	readonly deps: CommandDeps;
@@ -30,7 +25,7 @@ export interface RunCopyOrMoveParams {
 	/** Verb name, used verbatim in the log context and the BAD response. */
 	readonly verb: 'COPY' | 'MOVE';
 	/** The Convex mutation reference (`fn.copyMessages` / `fn.moveMessages`). */
-	readonly mutation: unknown;
+	readonly mutation: typeof fn.copyMessages | typeof fn.moveMessages;
 	readonly send: (line: string) => void;
 	/** Emits the success responses for this verb. */
 	readonly emit: (result: CopyMoveResult) => void;
@@ -57,14 +52,11 @@ export async function runCopyOrMove(params: RunCopyOrMoveParams): Promise<void> 
 			return;
 		}
 
-		const result = (await deps.convex.mutation(
-			mutation as never,
-			{
-				sourceFolderId: state.selected!.folderId,
-				targetFolderId: targetFolder._id,
-				messageIds,
-			} as never
-		)) as CopyMoveResult;
+		const result = await deps.convex.mutation(mutation, {
+			sourceFolderId: state.selected!.folderId,
+			targetFolderId: targetFolder._id,
+			messageIds,
+		});
 
 		emit(result);
 	} catch (err) {

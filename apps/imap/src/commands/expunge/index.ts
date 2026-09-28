@@ -10,14 +10,6 @@ export interface ExpungeArgs {
 	readonly uidSpec?: string;
 }
 
-interface ExpungeResult {
-	readonly sequenceNumbers: number[];
-	readonly modseq: number;
-	readonly done?: boolean;
-	readonly beforeUid?: number;
-	readonly nextSequenceNumber?: number;
-}
-
 /**
  * EXPUNGE removes `\Deleted` messages. UID EXPUNGE narrows the operation
  * to a UID set; bare EXPUNGE clears the whole folder.
@@ -57,15 +49,12 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 				let beforeUid: number | undefined;
 				let nextSequenceNumber: number | undefined;
 				do {
-					const result = (await deps.convex.mutation(
-						fn.expungeFolder as never,
-						{
-							folderId: state.selected!.folderId,
-							uidSet,
-							beforeUid,
-							nextSequenceNumber,
-						} as never
-					)) as ExpungeResult;
+					const result = await deps.convex.mutation(fn.expungeFolder, {
+						folderId: state.selected!.folderId,
+						uidSet,
+						beforeUid,
+						nextSequenceNumber,
+					});
 					// Each page has already committed. Publish it before requesting the
 					// next page so a later failure cannot hide permanent deletions.
 					for (const seq of [...result.sequenceNumbers].sort((a, b) => b - a)) {

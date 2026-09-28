@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { getFunctionName, type AnyFunctionReference } from 'convex/server';
 import type { ConnectableAccount, ConvexClient } from '../convex.js';
 import type { MailSyncConfig } from '../config.js';
 import { MAX_BACKFILL_STRIKES, THROTTLE_PAUSE_MS } from '../backfillRetry.js';
@@ -59,11 +60,13 @@ function connection(
 	work: Record<string, unknown>,
 	pauseOutcome: 'paused' | 'failed' | 'ignored' = 'paused'
 ) {
-	const mutation = vi.fn(async (ref: string) =>
-		ref.includes('pauseImportForThrottle') ? { outcome: pauseOutcome } : {}
+	const mutation = vi.fn(async (fnRef: AnyFunctionReference) =>
+		getFunctionName(fnRef).includes('pauseImportForThrottle') ? { outcome: pauseOutcome } : {}
 	);
 	const convex = {
-		query: vi.fn(async (ref: string) => (ref.includes('getBackfillWork') ? work : ([] as unknown))),
+		query: vi.fn(async (fnRef: AnyFunctionReference) =>
+			getFunctionName(fnRef).includes('getBackfillWork') ? work : ([] as unknown)
+		),
 		mutation,
 		action: vi.fn(async () => ({})),
 	} as unknown as ConvexClient;
@@ -77,7 +80,7 @@ function connection(
 }
 
 function calls(mutation: ReturnType<typeof vi.fn>, name: string) {
-	return mutation.mock.calls.filter(([ref]) => String(ref).includes(name));
+	return mutation.mock.calls.filter(([fnRef]) => getFunctionName(fnRef).includes(name));
 }
 
 beforeEach(() => {

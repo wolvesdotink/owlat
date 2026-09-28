@@ -13,6 +13,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
+import { getFunctionName, type AnyFunctionReference } from 'convex/server';
 import { fetchModule, type FetchArgs } from '../index.js';
 import { idleModule } from '../../idle/index.js';
 import { loadChangedEnvelopes } from '../../helpers/folderPaging.js';
@@ -60,7 +61,8 @@ interface QueryCall {
 function makePagingConvex(uids: readonly number[], calls: QueryCall[]) {
 	const rows = uids.map(envelope);
 	return {
-		query: vi.fn(async (ref: string, params: Record<string, unknown>) => {
+		query: vi.fn(async (fnRef: AnyFunctionReference, params: Record<string, unknown>) => {
+			const ref = getFunctionName(fnRef);
 			calls.push({ ref, params });
 			if (ref.endsWith(':listFolderUidsPage')) {
 				const after = (params.afterUid as number | undefined) ?? 0;
@@ -172,7 +174,8 @@ describe('a walk that never terminates fails the command', () => {
 		// folder growing faster than it is read). Truncating here would tell the
 		// client its mailbox ends where the guard fired.
 		const convex = {
-			query: vi.fn(async (ref: string, params: Record<string, unknown>) => {
+			query: vi.fn(async (fnRef: AnyFunctionReference, params: Record<string, unknown>) => {
+				const ref = getFunctionName(fnRef);
 				if (ref.endsWith(':listFolderUidsPage')) {
 					const after = (params.afterUid as number | undefined) ?? 1;
 					return { uids: [after, after + 1, after + 2], nextUid: after + 3 };
@@ -199,7 +202,8 @@ describe('a walk that never terminates fails the command', () => {
 
 	it('a resume point that does not advance fails immediately, not after 500 round trips', async () => {
 		const convex = {
-			query: vi.fn(async (ref: string) => {
+			query: vi.fn(async (fnRef: AnyFunctionReference) => {
+				const ref = getFunctionName(fnRef);
 				if (ref.endsWith(':listFolderUidsPage')) return { uids: [1, 2, 3], nextUid: 1 };
 				return null;
 			}),
@@ -232,7 +236,8 @@ describe('CHANGEDSINCE reads go through the modseq index', () => {
 		];
 		const seen: Array<Record<string, unknown>> = [];
 		const convex = {
-			query: vi.fn(async (ref: string, params: Record<string, unknown>) => {
+			query: vi.fn(async (fnRef: AnyFunctionReference, params: Record<string, unknown>) => {
+				const ref = getFunctionName(fnRef);
 				expect(ref).toMatch(/:fetchChangedEnvelopes$/);
 				seen.push(params);
 				return pages[seen.length - 1];
@@ -267,7 +272,8 @@ describe('CHANGEDSINCE reads go through the modseq index', () => {
 		try {
 			const refs: string[] = [];
 			const convex = {
-				query: vi.fn(async (ref: string) => {
+				query: vi.fn(async (fnRef: AnyFunctionReference) => {
+					const ref = getFunctionName(fnRef);
 					refs.push(ref);
 					if (ref.endsWith(':peekFolderModseq')) {
 						return { highestModseq: 9, uidNext: 4, totalCount: 3, unseenCount: 1 };

@@ -9,21 +9,6 @@ interface SelectArgs {
 	readonly mailboxName: string;
 }
 
-interface SelectFolderResult {
-	folder: {
-		_id: string;
-		name: string;
-		role?: string;
-		uidValidity: number;
-		uidNext: number;
-		highestModseq: number;
-		totalCount: number;
-		unseenCount: number;
-	};
-	firstUnseenUid?: number;
-	firstUnseenSeq?: number;
-}
-
 /**
  * SELECT and EXAMINE share one module — EXAMINE is "SELECT but read-only,"
  * so the only difference is the `readOnly` flag on the resulting
@@ -53,16 +38,14 @@ export const selectModule: ImapCommandModule<SelectArgs> = {
 				const target = await resolveFolderByName(
 					deps.convex,
 					state.auth!.mailboxId,
-					args.mailboxName,
+					args.mailboxName
 				);
 				if (!target) {
 					send(`${tag} NO Mailbox not found`);
 					return;
 				}
 
-				const result = (await deps.convex.query(fn.selectFolder as never, {
-					folderId: target._id,
-				} as never)) as SelectFolderResult | null;
+				const result = await deps.convex.query(fn.selectFolder, { folderId: target._id });
 
 				if (!result) {
 					send(`${tag} NO Mailbox not found`);
@@ -99,14 +82,10 @@ export const selectModule: ImapCommandModule<SelectArgs> = {
 					// SELECT: STORE is implemented, so advertise the writable
 					// system flags plus `\*` (the client may create new keywords).
 					// RFC 3501 §7.1.
-					send(
-						'* OK [PERMANENTFLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft \\*)] Limited',
-					);
+					send('* OK [PERMANENTFLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft \\*)] Limited');
 				}
 				deps.commit({ ...state, selected });
-				send(
-					`${tag} OK [${readOnly ? 'READ-ONLY' : 'READ-WRITE'}] ${verb} completed`,
-				);
+				send(`${tag} OK [${readOnly ? 'READ-ONLY' : 'READ-WRITE'}] ${verb} completed`);
 			} catch (err) {
 				logger.error({ err }, 'SELECT failed');
 				send(`${tag} BAD ${verb} failed`);

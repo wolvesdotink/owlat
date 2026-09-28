@@ -24,12 +24,6 @@ export interface AppendArgs {
  */
 const MAX_APPEND_LITERAL_BYTES = 50 * 1024 * 1024;
 
-interface AppendResult {
-	readonly uid: number;
-	readonly uidValidity: number;
-	readonly modseq: number;
-}
-
 /**
  * APPEND — RFC 3501 + LITERAL+ (RFC 7888). Two phases:
  *
@@ -41,7 +35,7 @@ interface AppendResult {
  *   2. The pump absorbs N raw OCTETS from the wire into `onLiteralBytes`
  *      (the pump buffers Buffers, so `{N}` frames by bytes not decoded
  *      characters — 8-bit/binary bodies round-trip). Once N have arrived
- *      the module uploads to Convex storage, calls `mailImap:appendMessage`,
+ *      the module uploads to Convex storage, calls `mail/imap/append:appendMessage`,
  *      and resolves `completion`.
  */
 export const appendModule: ImapCommandModule<AppendArgs> = {
@@ -131,10 +125,7 @@ export const appendModule: ImapCommandModule<AppendArgs> = {
 					return;
 				}
 
-				const uploadUrl = (await deps.convex.mutation(
-					fn.generateUploadUrl as never,
-					{} as never
-				)) as string;
+				const uploadUrl = await deps.convex.mutation(fn.generateUploadUrl, {});
 				const uploadRes = await fetch(uploadUrl, {
 					method: 'POST',
 					headers: { 'Content-Type': 'message/rfc822' },
@@ -150,27 +141,24 @@ export const appendModule: ImapCommandModule<AppendArgs> = {
 
 				// No snippet: the backend derives it from the bodies, like every
 				// other ingest path.
-				const result = (await deps.convex.mutation(
-					fn.appendMessage as never,
-					{
-						folderId: folder._id,
-						rawStorageId: storageId,
-						rawSize: rawBuffer.length,
-						rfc822MessageId: envelope.messageId,
-						inReplyTo: envelope.inReplyTo,
-						references: envelope.references,
-						fromAddress: envelope.from.address,
-						fromName: envelope.from.name,
-						toAddresses: envelope.to.map((a) => a.address),
-						ccAddresses: envelope.cc.map((a) => a.address),
-						bccAddresses: envelope.bcc.map((a) => a.address),
-						subject: envelope.subject,
-						textBodyInline: envelope.text,
-						htmlBodyInline: envelope.html,
-						internalDate: args.internalDate ?? envelope.internalDate,
-						flags: args.flags,
-					} as never
-				)) as AppendResult;
+				const result = await deps.convex.mutation(fn.appendMessage, {
+					folderId: folder._id,
+					rawStorageId: storageId,
+					rawSize: rawBuffer.length,
+					rfc822MessageId: envelope.messageId,
+					inReplyTo: envelope.inReplyTo,
+					references: envelope.references,
+					fromAddress: envelope.from.address,
+					fromName: envelope.from.name,
+					toAddresses: envelope.to.map((a) => a.address),
+					ccAddresses: envelope.cc.map((a) => a.address),
+					bccAddresses: envelope.bcc.map((a) => a.address),
+					subject: envelope.subject,
+					textBodyInline: envelope.text,
+					htmlBodyInline: envelope.html,
+					internalDate: args.internalDate ?? envelope.internalDate,
+					flags: args.flags,
+				});
 
 				finalize(`${tag} OK [APPENDUID ${result.uidValidity} ${result.uid}] APPEND completed`);
 			} catch (err) {

@@ -18,8 +18,7 @@ import {
 	primaryMailbox,
 	type AddressObject,
 } from '@owlat/mail-message';
-import type { ConvexClient } from './convex.js';
-import { fn } from './convex.js';
+import { fn, type ConvexClient, type IngestOutcome } from './convex.js';
 import type { FolderRole } from './folders.js';
 
 // Bodies still ride inside the action call; cap them so a pathological message
@@ -111,17 +110,6 @@ export interface IngestParams {
 	origin: 'sync' | 'backfill';
 }
 
-/**
- * What the server did with one message. Mirrors `ExternalIngestOutcome` in
- * `apps/api/convex/mail/external/delivery.ts`.
- *
- * `duplicate` means the message is ALREADY in the mailbox (Gmail's "All Mail"
- * repeats every other folder), so it counts as landed; `no_target` means the
- * account/mailbox/folder it belongs in is gone and nothing was stored. Reading
- * this is what stops a walk that stored nothing from reporting a full import.
- */
-export type IngestOutcome = { messageId: string } | { skipped: 'duplicate' | 'no_target' };
-
 /** True when the message is in the mailbox now — stored by this call, or already there. */
 export function isMessageLanded(outcome: IngestOutcome): boolean {
 	return !('skipped' in outcome) || outcome.skipped === 'duplicate';
@@ -188,33 +176,30 @@ export async function ingestMessage(
 	// call's argument budget, however large the message is.
 	const uploaded = await uploadRawMessage(config, params.raw);
 
-	return (await convex.action(
-		fn.ingestExternalRaw as never,
-		{
-			accountId: params.accountId,
-			folderRole: params.folderRole,
-			remoteName: params.remoteName.toWellFormed(),
-			remoteUid: params.remoteUid,
-			remoteUidValidity: params.remoteUidValidity,
-			rawStorageId: uploaded.storageId,
-			rawSize: uploaded.size,
-			headerBlockBase64: params.raw.subarray(0, HEADER_BLOCK_BYTES).toString('base64'),
-			from: primaryAddress(parsed.from),
-			to: addrList(parsed.to),
-			cc: addrList(parsed.cc),
-			bcc: addrList(parsed.bcc),
-			replyTo: addrText(parsed.replyTo),
-			subject: parsed.subject?.toWellFormed() ?? '',
-			textBodyInline: capBody(text),
-			htmlBodyInline: capBody(html),
-			messageId: parsed.messageId?.toWellFormed() ?? syntheticMessageId(params),
-			inReplyTo: parsed.inReplyTo?.toWellFormed(),
-			references: references?.toWellFormed(),
-			receivedAt: (parsed.date ?? new Date()).getTime(),
-			attachments,
-			flagSeen: params.flags.has('\\Seen'),
-			flagFlagged: params.flags.has('\\Flagged'),
-			origin: params.origin,
-		} as never
-	)) as IngestOutcome;
+	return await convex.action(fn.ingestExternalRaw, {
+		accountId: params.accountId,
+		folderRole: params.folderRole,
+		remoteName: params.remoteName.toWellFormed(),
+		remoteUid: params.remoteUid,
+		remoteUidValidity: params.remoteUidValidity,
+		rawStorageId: uploaded.storageId,
+		rawSize: uploaded.size,
+		headerBlockBase64: params.raw.subarray(0, HEADER_BLOCK_BYTES).toString('base64'),
+		from: primaryAddress(parsed.from),
+		to: addrList(parsed.to),
+		cc: addrList(parsed.cc),
+		bcc: addrList(parsed.bcc),
+		replyTo: addrText(parsed.replyTo),
+		subject: parsed.subject?.toWellFormed() ?? '',
+		textBodyInline: capBody(text),
+		htmlBodyInline: capBody(html),
+		messageId: parsed.messageId?.toWellFormed() ?? syntheticMessageId(params),
+		inReplyTo: parsed.inReplyTo?.toWellFormed(),
+		references: references?.toWellFormed(),
+		receivedAt: (parsed.date ?? new Date()).getTime(),
+		attachments,
+		flagSeen: params.flags.has('\\Seen'),
+		flagFlagged: params.flags.has('\\Flagged'),
+		origin: params.origin,
+	});
 }

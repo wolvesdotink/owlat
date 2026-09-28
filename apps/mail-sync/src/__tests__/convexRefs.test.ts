@@ -1,17 +1,15 @@
 /**
- * Guard: every Convex function reference the IMAP server uses must resolve to a
+ * Guard: every Convex function reference the mail-sync worker uses must resolve to a
  * live export of the right kind in the right module.
  *
  * The `fn` table in src/convex.ts declares its references with
  * `makeFunctionReference`, typed by hand because this workspace does not import
  * apps/api's generated API. Typecheck therefore catches a wrong argument at a
  * call site, but not a path or kind that has drifted from apps/api, and the
- * connection tests mock the Convex client. A prior regression pointed these at
- * the pre-refactor flat module names (`mailImap:` / `mailAppPasswords:`) that no
- * longer exist, which broke every IMAP command (including LOGIN) at runtime
- * with "function not found", undetected by the rest of the suite. This test
- * reads the actual apps/api Convex source and asserts each ref names a real
- * exported function whose builder matches the declared kind.
+ * connection tests mock the Convex client. A drifted path fails every call at
+ * runtime with "function not found"; a query declared as a mutation fails the
+ * same way. This test reads the actual apps/api Convex source and asserts each
+ * ref names a real exported function whose builder matches the declared kind.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -24,7 +22,7 @@ import { fn } from '../convex.js';
 type Kind = 'query' | 'mutation' | 'action';
 
 const here = dirname(fileURLToPath(import.meta.url));
-// apps/imap/src/__tests__ → apps/api/convex
+// apps/mail-sync/src/__tests__ → apps/api/convex
 const apiConvexDir = resolve(here, '../../../api/convex');
 
 /** The kind each path is declared with in src/convex.ts. */
@@ -54,7 +52,7 @@ function exportsOf(modulePath: string): Map<string, Kind | null> {
 	return names;
 }
 
-describe('IMAP → Convex function references', () => {
+describe('mail-sync → Convex function references', () => {
 	it('every fn ref points at a live export of the declared kind in the right module', () => {
 		const kinds = declaredKinds();
 		const cache = new Map<string, Map<string, Kind | null>>();

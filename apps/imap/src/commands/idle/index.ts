@@ -7,13 +7,6 @@ import { buildSeqMap, seqForUid } from '../helpers/seqMap.js';
 import { loadChangedEnvelopes, loadFolderUids } from '../helpers/folderPaging.js';
 import { formatFlags, type FetchEnvelope } from '../fetch/format.js';
 
-interface PeekResult {
-	readonly highestModseq: number;
-	readonly uidNext: number;
-	readonly totalCount: number;
-	readonly unseenCount: number;
-}
-
 const POLL_INTERVAL_MS = 5_000;
 
 /**
@@ -175,12 +168,9 @@ export const idleModule: ImapCommandModule<void> = {
 		const pollTimer = setInterval(async () => {
 			try {
 				await seedUids;
-				const peek = (await deps.convex.query(
-					fn.peekFolderModseq as never,
-					{
-						folderId: currentSelected.folderId,
-					} as never
-				)) as PeekResult | null;
+				const peek = await deps.convex.query(fn.peekFolderModseq, {
+					folderId: currentSelected.folderId,
+				});
 				if (!peek) return;
 				// Nothing observable changed → cheap path, no UID list fetch.
 				if (peek.totalCount === lastTotal && peek.highestModseq === lastModseq) {

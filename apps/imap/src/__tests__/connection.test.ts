@@ -17,6 +17,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { getFunctionName, type AnyFunctionReference } from 'convex/server';
 import { EventEmitter } from 'events';
 import type { Socket } from 'net';
 import { ImapConnection } from '../connection.js';
@@ -802,7 +803,8 @@ describe('ImapConnection — literal octet framing (RFC 3501 §4.3)', () => {
 		mocks.convex.query.mockResolvedValue([
 			{ _id: 'f1', name: 'INBOX', role: 'inbox', uidNext: 1, totalCount: 0 },
 		]);
-		mocks.convex.mutation.mockImplementation((ref: string, args: unknown) => {
+		mocks.convex.mutation.mockImplementation((fnRef: AnyFunctionReference, args: unknown) => {
+			const ref = getFunctionName(fnRef);
 			if (ref === 'mail/imap/append:generateRawUploadUrl') {
 				return Promise.resolve('https://upload.test/blob');
 			}
