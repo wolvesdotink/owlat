@@ -246,6 +246,10 @@ services:
       MTA_GENERIC_PTR_SUFFIXES: ${MTA_GENERIC_PTR_SUFFIXES:-}
       MTA_ALLOW_UNVERIFIED_FCRDNS: ${MTA_ALLOW_UNVERIFIED_FCRDNS:-false}
       MTA_IPV6_ENABLED: ${MTA_IPV6_ENABLED:-false}
+      # Blocklist lookups go through the bundled resolver below, so Spamhaus sees
+      # this server rather than a shared resolver it refuses. Set it to an empty
+      # value to use the host's resolver instead.
+      DNSBL_RESOLVER: ${DNSBL_RESOLVER-dns-resolver:5335}
       RETURN_PATH_DOMAIN: ${RETURN_PATH_DOMAIN:-bounces.localhost}
       BOUNCE_VERP_KEY: ${BOUNCE_VERP_KEY:?BOUNCE_VERP_KEY is required}
       CONVEX_SITE_URL: http://convex:3211
@@ -274,6 +278,11 @@ services:
         condition: service_started
       convex:
         condition: service_healthy
+      dns-resolver:
+        # required:false + service_started: blocklist lookups fall back to the
+        # host's resolver when this one is missing, so the MTA never waits on it.
+        required: false
+        condition: service_started
     cap_drop:
       - ALL
     cap_add:
@@ -286,6 +295,31 @@ services:
     # for inbound / hosted send — computed by getActiveProfiles() and surfaced via
     # COMPOSE_PROFILES. A Resend/SES, receive-only, or IMAP-only deployment does
     # not run it. Nothing in this template depends_on the MTA, so gating is safe.
+    profiles:
+      - mta
+    restart: unless-stopped
+
+  # ── DNS resolver (MTA blocklist lookups) ──
+  # Spamhaus refuses blocklist queries relayed by shared resolvers (the hosting
+  # provider's, 1.1.1.1, 8.8.8.8), which leaves a new sending IP unmeasured and
+  # out of the pool. This recursive resolver asks the authoritative servers
+  # itself, and only the MTA's blocklist lookups use it (DNSBL_RESOLVER). No
+  # published port: reachable only on the internal network, never an open
+  # resolver. First-party wrapper around Alpine's unbound (docker/unbound.Dockerfile).
+  dns-resolver:
+    logging: *default-logging
+    image: ghcr.io/wolvesdotink/unbound:${OWLAT_VERSION:?OWLAT_VERSION must be set}
+    read_only: true
+    healthcheck:
+      test: ["CMD", "unbound-control", "status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     profiles:
       - mta
     restart: unless-stopped

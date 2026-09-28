@@ -3,6 +3,7 @@ import {
 	reverseDnsGuidance,
 	type FcrdnsFailureReason,
 } from '@owlat/shared/fcrdns';
+import type { DnsblUnknownReason } from '@owlat/shared/dnsbl';
 import type { DnsblStatus, IpReadinessBlockReason } from '@owlat/shared/ipReadiness';
 import type { HealthTone } from './healthTone';
 
@@ -43,6 +44,8 @@ export interface OutboundIpIdentityInput {
 	active: boolean;
 	blockReasons?: IpReadinessBlockReason[];
 	dnsbl?: DnsblStatus;
+	/** Why the last sweep could not measure the address (absent from older MTAs). */
+	dnsblUnknownReason?: DnsblUnknownReason;
 	fcrdns?: {
 		verdict: string;
 		isGenericPtr: boolean;
@@ -60,6 +63,25 @@ export interface OutboundIpPresentation {
 	detail: string;
 	/** Catalog key for the fix-it line, or `null` when there is nothing to do. */
 	remediation: string | null;
+	/**
+	 * Catalog key for what an unmeasured blocklist means for sending right now —
+	 * held back, or still sending on the last good check — or `null`.
+	 */
+	consequence: string | null;
+	/** True when the fix lives on the Blocklist lookups card, so the row links there. */
+	linksBlocklistLookups: boolean;
+}
+
+/** An unmeasured blocklist check, worded by why it could not be measured. */
+function unavailableDetailKey(reason: DnsblUnknownReason | undefined): string {
+	return reason
+		? `shared.outboundIpStatus.blocklist.unavailableReason.${reason}`
+		: 'shared.outboundIpStatus.blocklist.unavailable';
+}
+
+/** Each reason has its own fix; an older MTA that sends none gets the general pointer. */
+function lookupRemediationKey(reason: DnsblUnknownReason | undefined): string {
+	return `shared.outboundIpStatus.remediation.blocklistLookup.${reason ?? 'unspecified'}`;
 }
 
 export function outboundIpPresentation(ip: OutboundIpIdentityInput): OutboundIpPresentation {
@@ -127,7 +149,7 @@ export function outboundIpPresentation(ip: OutboundIpIdentityInput): OutboundIpP
 			: fcrdnsReasonKey(identity.reason as FcrdnsFailureReason | undefined);
 	const blocklistDetail =
 		ip.dnsbl === 'unknown'
-			? 'shared.outboundIpStatus.blocklist.unavailable'
+			? unavailableDetailKey(ip.dnsblUnknownReason)
 			: ip.dnsbl === 'degraded'
 				? 'shared.outboundIpStatus.blocklist.degraded'
 				: 'shared.outboundIpStatus.blocklist.critical';
@@ -141,8 +163,9 @@ export function outboundIpPresentation(ip: OutboundIpIdentityInput): OutboundIpP
 				: identityBlocked && dnsblBlocked
 					? // Both halves are on screen as one line, and a line is not assembled
 						// from translated fragments (their order is a per-language decision),
-						// so each pairing is its own message.
-						`shared.outboundIpStatus.combined.${detailVariant(identityDetail)}.${detailVariant(blocklistDetail)}`
+						// so each pairing is its own message. The pairing names the blocklist
+						// state only; the reason is spelled out by the fix-it link's card.
+						`shared.outboundIpStatus.combined.${detailVariant(identityDetail)}.${ip.dnsbl === 'unknown' ? 'unavailable' : detailVariant(blocklistDetail)}`
 					: hasBlocklistConcern
 						? blocklistDetail
 						: identityDetail;
@@ -154,9 +177,25 @@ export function outboundIpPresentation(ip: OutboundIpIdentityInput): OutboundIpP
 				? 'shared.outboundIpStatus.remediation.ipv4'
 				: identityBlocked && identity
 					? `shared.outboundIpStatus.remediation.${reverseDnsGuidance(identity.ptrNames).provider}`
-					: hasBlocklistConcern
-						? 'shared.outboundIpStatus.remediation.blocklist'
-						: null;
+					: dnsblUnavailable
+						? // Nothing is listed, so "request delisting" would send the operator
+							// to fix a listing that does not exist. The lookup is what failed.
+							lookupRemediationKey(ip.dnsblUnknownReason)
+						: hasBlocklistConcern
+							? 'shared.outboundIpStatus.remediation.blocklist'
+							: null;
+	const consequence = !dnsblUnavailable
+		? null
+		: ip.blockReasons?.includes('dnsbl') === true
+			? 'shared.outboundIpStatus.blocklist.consequence.held'
+			: 'shared.outboundIpStatus.blocklist.consequence.kept';
 
-	return { tone, label, detail, remediation };
+	return {
+		tone,
+		label,
+		detail,
+		remediation,
+		consequence,
+		linksBlocklistLookups: dnsblUnavailable,
+	};
 }

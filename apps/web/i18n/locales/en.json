@@ -2411,6 +2411,7 @@
 				"ipMeta": "{pool} pool · warm-up day {day} · {sent} / {cap} today",
 				"notFound": "Not found",
 				"notReported": "Not reported",
+				"openBlocklistLookups": "Open blocklist lookups",
 				"ptrRecord": "PTR record",
 				"ptrRemediation": "Set the PTR value to {ehlo}, then wait for DNS to update.",
 				"recoverySteps": "{blocklist} recovery steps",
@@ -2584,6 +2585,56 @@
 				"removeRow": "Remove row {index}",
 				"invalidIp": "Enter a bare IPv4 or IPv6 address.",
 				"invalidHostname": "Enter a full hostname, such as mail2.example.com."
+			},
+			"blocklistLookups": {
+				"title": "Blocklist lookups",
+				"subtitle": "How Owlat checks your sending IPs against Spamhaus and other blocklists.",
+				"loadOperation": "Load blocklist lookups",
+				"saveOperation": "Save Spamhaus key",
+				"saved": "Key saved. Owlat is checking your sending IPs again.",
+				"removed": "Key removed. Owlat is checking your sending IPs again.",
+				"unavailable": "Owlat couldn't reach the MTA to read how blocklist lookups are set up.",
+				"lastCheck": "Last check",
+				"status": {
+					"pending": "Not checked yet",
+					"ok": "Working",
+					"unavailable": "Status unavailable",
+					"key_rejected": "Key rejected",
+					"rate_limited": "Rate limited",
+					"resolver_refused": "Refused by Spamhaus",
+					"resolver_unreachable": "No answer",
+					"unusable_answer": "Unusable answer"
+				},
+				"access": {
+					"label": "Spamhaus access",
+					"public": "Public mirror",
+					"dqs": "Data Query Service · key ending {hint}"
+				},
+				"resolver": {
+					"label": "DNS resolver",
+					"bundled": "Built-in resolver",
+					"system": "Server's resolver",
+					"fallback": "Server's resolver (built-in resolver didn't answer)"
+				},
+				"key": {
+					"label": "Spamhaus DQS key",
+					"placeholder": "Paste your Data Query Service key",
+					"replacePlaceholder": "Paste a new key to replace the saved one",
+					"help": "Spamhaus only answers its free public mirror for servers it can identify, which rules out most shared resolvers and hosting networks. A Data Query Service key works from any server.",
+					"getKey": "Get a free key",
+					"freeNote": "Free for non-commercial and low-volume use. Check Spamhaus's terms for yours.",
+					"save": "Save key",
+					"remove": "Remove key"
+				},
+				"errors": {
+					"invalid_key": "That doesn't look like a DQS key. It's a single string of letters and numbers.",
+					"key_rejected": "Spamhaus didn't accept this key. Check that you copied all of it and that your account is active.",
+					"rate_limited": "Spamhaus is rate-limiting the test lookup. Try again in a few minutes.",
+					"resolver_refused": "Spamhaus refused the test lookup. Try again in a few minutes.",
+					"resolver_unreachable": "Owlat couldn't reach Spamhaus to test the key. Try again in a few minutes.",
+					"unusable_answer": "The DNS resolver returned an unusable answer while testing the key.",
+					"mta_unavailable": "The MTA isn't reachable, so the key wasn't saved."
+				}
 			}
 		},
 		"desktop": {
@@ -12906,50 +12957,61 @@
 		},
 		"outboundIpStatus": {
 			"blocklist": {
+				"consequence": {
+					"held": "Owlat won't send from this IP until a check succeeds.",
+					"kept": "Until then, Owlat goes by the last successful check."
+				},
 				"critical": "A critical DNS blocklist currently excludes this IP from delivery.",
 				"degraded": "A non-critical DNS blocklist currently lists this IP.",
-				"unavailable": "The latest DNS blocklist lookup failed, so the prior safety decision is preserved."
+				"unavailable": "The last blocklist check got no answer, so it's unknown whether this IP is listed.",
+				"unavailableReason": {
+					"key_rejected": "Spamhaus didn't accept the Data Query Service key, so the blocklist check couldn't run.",
+					"rate_limited": "Spamhaus refused the blocklist check because the DNS resolver sent it too many queries.",
+					"resolver_refused": "Spamhaus refused the blocklist check. It doesn't answer lookups sent through shared DNS resolvers or from hosting networks it can't identify.",
+					"resolver_unreachable": "The blocklist check got no answer. The DNS resolver timed out or failed.",
+					"unusable_answer": "The DNS resolver answered the blocklist check with something that isn't a blocklist result. Some resolvers rewrite failed lookups this way."
+				}
 			},
 			"combined": {
 				"ehloMismatch": {
 					"critical": "The PTR hostname does not match the EHLO hostname announced by the MTA. A critical DNS blocklist currently excludes this IP from delivery.",
 					"degraded": "The PTR hostname does not match the EHLO hostname announced by the MTA. A non-critical DNS blocklist currently lists this IP.",
-					"unavailable": "The PTR hostname does not match the EHLO hostname announced by the MTA. The latest DNS blocklist lookup failed, so the prior safety decision is preserved."
+					"unavailable": "The PTR hostname does not match the EHLO hostname announced by the MTA. The last blocklist check got no answer, so it's unknown whether this IP is listed."
 				},
 				"forwardMismatch": {
 					"critical": "The PTR hostname does not resolve back to this sending IP. A critical DNS blocklist currently excludes this IP from delivery.",
 					"degraded": "The PTR hostname does not resolve back to this sending IP. A non-critical DNS blocklist currently lists this IP.",
-					"unavailable": "The PTR hostname does not resolve back to this sending IP. The latest DNS blocklist lookup failed, so the prior safety decision is preserved."
+					"unavailable": "The PTR hostname does not resolve back to this sending IP. The last blocklist check got no answer, so it's unknown whether this IP is listed."
 				},
 				"genericPtr": {
 					"critical": "Forward DNS is valid, but this provider-default PTR can hurt sending reputation. A critical DNS blocklist currently excludes this IP from delivery.",
 					"degraded": "Forward DNS is valid, but this provider-default PTR can hurt sending reputation. A non-critical DNS blocklist currently lists this IP.",
-					"unavailable": "Forward DNS is valid, but this provider-default PTR can hurt sending reputation. The latest DNS blocklist lookup failed, so the prior safety decision is preserved."
+					"unavailable": "Forward DNS is valid, but this provider-default PTR can hurt sending reputation. The last blocklist check got no answer, so it's unknown whether this IP is listed."
 				},
 				"lookupError": {
 					"critical": "DNS could not be verified right now. A critical DNS blocklist currently excludes this IP from delivery.",
 					"degraded": "DNS could not be verified right now. A non-critical DNS blocklist currently lists this IP.",
-					"unavailable": "DNS could not be verified right now. The latest DNS blocklist lookup failed, so the prior safety decision is preserved."
+					"unavailable": "DNS could not be verified right now. The last blocklist check got no answer, so it's unknown whether this IP is listed."
 				},
 				"noPtr": {
 					"critical": "No PTR record exists for this sending IP. A critical DNS blocklist currently excludes this IP from delivery.",
 					"degraded": "No PTR record exists for this sending IP. A non-critical DNS blocklist currently lists this IP.",
-					"unavailable": "No PTR record exists for this sending IP. The latest DNS blocklist lookup failed, so the prior safety decision is preserved."
+					"unavailable": "No PTR record exists for this sending IP. The last blocklist check got no answer, so it's unknown whether this IP is listed."
 				},
 				"notFqdn": {
 					"critical": "The PTR record is not a valid fully qualified hostname. A critical DNS blocklist currently excludes this IP from delivery.",
 					"degraded": "The PTR record is not a valid fully qualified hostname. A non-critical DNS blocklist currently lists this IP.",
-					"unavailable": "The PTR record is not a valid fully qualified hostname. The latest DNS blocklist lookup failed, so the prior safety decision is preserved."
+					"unavailable": "The PTR record is not a valid fully qualified hostname. The last blocklist check got no answer, so it's unknown whether this IP is listed."
 				},
 				"ready": {
 					"critical": "Forward-confirmed reverse DNS is ready. A critical DNS blocklist currently excludes this IP from delivery.",
 					"degraded": "Forward-confirmed reverse DNS is ready. A non-critical DNS blocklist currently lists this IP.",
-					"unavailable": "Forward-confirmed reverse DNS is ready. The latest DNS blocklist lookup failed, so the prior safety decision is preserved."
+					"unavailable": "Forward-confirmed reverse DNS is ready. The last blocklist check got no answer, so it's unknown whether this IP is listed."
 				},
 				"waiting": {
 					"critical": "Waiting for the first live reverse-DNS check. A critical DNS blocklist currently excludes this IP from delivery.",
 					"degraded": "Waiting for the first live reverse-DNS check. A non-critical DNS blocklist currently lists this IP.",
-					"unavailable": "Waiting for the first live reverse-DNS check. The latest DNS blocklist lookup failed, so the prior safety decision is preserved."
+					"unavailable": "Waiting for the first live reverse-DNS check. The last blocklist check got no answer, so it's unknown whether this IP is listed."
 				}
 			},
 			"detail": {
@@ -12984,6 +13046,14 @@
 			},
 			"remediation": {
 				"blocklist": "Review the MTA blocklist details, resolve the listing cause, and request delisting.",
+				"blocklistLookup": {
+					"key_rejected": "Check that the key is complete and your Spamhaus account is active, or replace the key.",
+					"rate_limited": "Add a free Spamhaus Data Query Service key, which comes with its own query allowance.",
+					"resolver_refused": "Add a free Spamhaus Data Query Service key. It works from any server.",
+					"resolver_unreachable": "Make sure this server can send DNS queries on port 53 (UDP and TCP).",
+					"unspecified": "Check how Owlat reaches the blocklists.",
+					"unusable_answer": "Use a DNS resolver that doesn't rewrite answers, or add a Spamhaus Data Query Service key."
+				},
 				"digitalocean": "In the DigitalOcean control panel, rename the Droplet to the EHLO hostname; DigitalOcean uses that name for reverse DNS.",
 				"generic": "Open your VPS provider’s reverse-DNS/PTR settings for this public IP.",
 				"hetzner": "In Hetzner Console, open Servers → your server → Networking → Primary IP → Edit reverse DNS.",

@@ -2411,6 +2411,7 @@
 				"ipMeta": "Pool {pool} · Aufwärmtag {day} · {sent} / {cap} heute",
 				"notFound": "Nicht gefunden",
 				"notReported": "Nicht gemeldet",
+				"openBlocklistLookups": "Sperrlistenabfragen öffnen",
 				"ptrRecord": "PTR-Eintrag",
 				"ptrRemediation": "Setzen Sie den PTR-Wert auf {ehlo} und warten Sie, bis das DNS aktualisiert ist.",
 				"recoverySteps": "{blocklist}: Schritte zur Wiederherstellung",
@@ -2584,6 +2585,56 @@
 				"removeRow": "Zeile {index} entfernen",
 				"invalidIp": "Geben Sie eine reine IPv4- oder IPv6-Adresse ein.",
 				"invalidHostname": "Geben Sie einen vollständigen Hostnamen ein, etwa mail2.example.com."
+			},
+			"blocklistLookups": {
+				"title": "Sperrlistenabfragen",
+				"subtitle": "Wie Owlat Ihre sendenden IPs bei Spamhaus und anderen Sperrlisten prüft.",
+				"loadOperation": "Sperrlistenabfragen laden",
+				"saveOperation": "Spamhaus-Schlüssel speichern",
+				"saved": "Schlüssel gespeichert. Owlat prüft Ihre sendenden IPs erneut.",
+				"removed": "Schlüssel entfernt. Owlat prüft Ihre sendenden IPs erneut.",
+				"unavailable": "Owlat konnte die MTA nicht erreichen, um die Einrichtung der Sperrlistenabfragen zu lesen.",
+				"lastCheck": "Letzte Prüfung",
+				"status": {
+					"pending": "Noch nicht geprüft",
+					"ok": "Funktioniert",
+					"unavailable": "Status nicht verfügbar",
+					"key_rejected": "Schlüssel abgelehnt",
+					"rate_limited": "Abfragelimit erreicht",
+					"resolver_refused": "Von Spamhaus abgelehnt",
+					"resolver_unreachable": "Keine Antwort",
+					"unusable_answer": "Unbrauchbare Antwort"
+				},
+				"access": {
+					"label": "Spamhaus-Zugang",
+					"public": "Öffentlicher Mirror",
+					"dqs": "Data Query Service · Schlüssel endet auf {hint}"
+				},
+				"resolver": {
+					"label": "DNS-Resolver",
+					"bundled": "Integrierter Resolver",
+					"system": "Resolver des Servers",
+					"fallback": "Resolver des Servers (integrierter Resolver hat nicht geantwortet)"
+				},
+				"key": {
+					"label": "Spamhaus-DQS-Schlüssel",
+					"placeholder": "Data-Query-Service-Schlüssel einfügen",
+					"replacePlaceholder": "Neuen Schlüssel einfügen, um den gespeicherten zu ersetzen",
+					"help": "Spamhaus beantwortet seinen kostenlosen öffentlichen Mirror nur für Server, die es zuordnen kann. Das schließt die meisten gemeinsam genutzten Resolver und Hosting-Netze aus. Ein Data-Query-Service-Schlüssel funktioniert von jedem Server aus.",
+					"getKey": "Kostenlosen Schlüssel holen",
+					"freeNote": "Kostenlos für nicht kommerzielle Nutzung und geringe Abfragemengen. Prüfen Sie die Bedingungen von Spamhaus für Ihren Fall.",
+					"save": "Schlüssel speichern",
+					"remove": "Schlüssel entfernen"
+				},
+				"errors": {
+					"invalid_key": "Das sieht nicht nach einem DQS-Schlüssel aus. Er besteht aus einer Folge von Buchstaben und Ziffern.",
+					"key_rejected": "Spamhaus hat diesen Schlüssel nicht akzeptiert. Prüfen Sie, ob Sie ihn vollständig kopiert haben und Ihr Konto aktiv ist.",
+					"rate_limited": "Spamhaus begrenzt die Testabfrage gerade. Versuchen Sie es in ein paar Minuten erneut.",
+					"resolver_refused": "Spamhaus hat die Testabfrage abgelehnt. Versuchen Sie es in ein paar Minuten erneut.",
+					"resolver_unreachable": "Owlat konnte Spamhaus nicht erreichen, um den Schlüssel zu testen. Versuchen Sie es in ein paar Minuten erneut.",
+					"unusable_answer": "Der DNS-Resolver hat beim Testen des Schlüssels eine unbrauchbare Antwort geliefert.",
+					"mta_unavailable": "Die MTA ist nicht erreichbar, deshalb wurde der Schlüssel nicht gespeichert."
+				}
 			}
 		},
 		"desktop": {
@@ -12906,50 +12957,61 @@
 		},
 		"outboundIpStatus": {
 			"blocklist": {
+				"consequence": {
+					"held": "Owlat sendet nicht von dieser IP, bis eine Prüfung gelingt.",
+					"kept": "Bis dahin richtet sich Owlat nach der letzten erfolgreichen Prüfung."
+				},
 				"critical": "Eine kritische DNS-Sperrliste schließt diese IP derzeit von der Zustellung aus.",
 				"degraded": "Eine nicht kritische DNS-Sperrliste führt diese IP derzeit.",
-				"unavailable": "Die letzte Abfrage der DNS-Sperrliste ist fehlgeschlagen, deshalb bleibt die vorherige Sicherheitsentscheidung bestehen."
+				"unavailable": "Die letzte Sperrlistenprüfung hat keine Antwort erhalten, deshalb ist unbekannt, ob diese IP gelistet ist.",
+				"unavailableReason": {
+					"key_rejected": "Spamhaus hat den Data-Query-Service-Schlüssel nicht akzeptiert, deshalb konnte die Sperrlistenprüfung nicht laufen.",
+					"rate_limited": "Spamhaus hat die Sperrlistenprüfung abgelehnt, weil der DNS-Resolver zu viele Anfragen gestellt hat.",
+					"resolver_refused": "Spamhaus hat die Sperrlistenprüfung abgelehnt. Spamhaus beantwortet keine Abfragen über gemeinsam genutzte DNS-Resolver oder aus Hosting-Netzen, die es nicht zuordnen kann.",
+					"resolver_unreachable": "Die Sperrlistenprüfung hat keine Antwort erhalten. Der DNS-Resolver hat nicht rechtzeitig geantwortet oder ist fehlgeschlagen.",
+					"unusable_answer": "Der DNS-Resolver hat auf die Sperrlistenprüfung mit etwas geantwortet, das kein Sperrlisten-Ergebnis ist. Manche Resolver schreiben fehlgeschlagene Abfragen so um."
+				}
 			},
 			"combined": {
 				"ehloMismatch": {
 					"critical": "Der PTR-Hostname stimmt nicht mit dem von der MTA angekündigten EHLO-Hostnamen überein. Eine kritische DNS-Sperrliste schließt diese IP derzeit von der Zustellung aus.",
 					"degraded": "Der PTR-Hostname stimmt nicht mit dem von der MTA angekündigten EHLO-Hostnamen überein. Eine nicht kritische DNS-Sperrliste führt diese IP derzeit.",
-					"unavailable": "Der PTR-Hostname stimmt nicht mit dem von der MTA angekündigten EHLO-Hostnamen überein. Die letzte Abfrage der DNS-Sperrliste ist fehlgeschlagen, deshalb bleibt die vorherige Sicherheitsentscheidung bestehen."
+					"unavailable": "Der PTR-Hostname stimmt nicht mit dem von der MTA angekündigten EHLO-Hostnamen überein. Die letzte Sperrlistenprüfung hat keine Antwort erhalten, deshalb ist unbekannt, ob diese IP gelistet ist."
 				},
 				"forwardMismatch": {
 					"critical": "Der PTR-Hostname löst nicht auf diese Versand-IP zurück auf. Eine kritische DNS-Sperrliste schließt diese IP derzeit von der Zustellung aus.",
 					"degraded": "Der PTR-Hostname löst nicht auf diese Versand-IP zurück auf. Eine nicht kritische DNS-Sperrliste führt diese IP derzeit.",
-					"unavailable": "Der PTR-Hostname löst nicht auf diese Versand-IP zurück auf. Die letzte Abfrage der DNS-Sperrliste ist fehlgeschlagen, deshalb bleibt die vorherige Sicherheitsentscheidung bestehen."
+					"unavailable": "Der PTR-Hostname löst nicht auf diese Versand-IP zurück auf. Die letzte Sperrlistenprüfung hat keine Antwort erhalten, deshalb ist unbekannt, ob diese IP gelistet ist."
 				},
 				"genericPtr": {
 					"critical": "Das Forward-DNS ist gültig, aber dieser Standard-PTR des Anbieters kann der Versandreputation schaden. Eine kritische DNS-Sperrliste schließt diese IP derzeit von der Zustellung aus.",
 					"degraded": "Das Forward-DNS ist gültig, aber dieser Standard-PTR des Anbieters kann der Versandreputation schaden. Eine nicht kritische DNS-Sperrliste führt diese IP derzeit.",
-					"unavailable": "Das Forward-DNS ist gültig, aber dieser Standard-PTR des Anbieters kann der Versandreputation schaden. Die letzte Abfrage der DNS-Sperrliste ist fehlgeschlagen, deshalb bleibt die vorherige Sicherheitsentscheidung bestehen."
+					"unavailable": "Das Forward-DNS ist gültig, aber dieser Standard-PTR des Anbieters kann der Versandreputation schaden. Die letzte Sperrlistenprüfung hat keine Antwort erhalten, deshalb ist unbekannt, ob diese IP gelistet ist."
 				},
 				"lookupError": {
 					"critical": "Das DNS konnte gerade nicht verifiziert werden. Eine kritische DNS-Sperrliste schließt diese IP derzeit von der Zustellung aus.",
 					"degraded": "Das DNS konnte gerade nicht verifiziert werden. Eine nicht kritische DNS-Sperrliste führt diese IP derzeit.",
-					"unavailable": "Das DNS konnte gerade nicht verifiziert werden. Die letzte Abfrage der DNS-Sperrliste ist fehlgeschlagen, deshalb bleibt die vorherige Sicherheitsentscheidung bestehen."
+					"unavailable": "Das DNS konnte gerade nicht verifiziert werden. Die letzte Sperrlistenprüfung hat keine Antwort erhalten, deshalb ist unbekannt, ob diese IP gelistet ist."
 				},
 				"noPtr": {
 					"critical": "Für diese Versand-IP existiert kein PTR-Eintrag. Eine kritische DNS-Sperrliste schließt diese IP derzeit von der Zustellung aus.",
 					"degraded": "Für diese Versand-IP existiert kein PTR-Eintrag. Eine nicht kritische DNS-Sperrliste führt diese IP derzeit.",
-					"unavailable": "Für diese Versand-IP existiert kein PTR-Eintrag. Die letzte Abfrage der DNS-Sperrliste ist fehlgeschlagen, deshalb bleibt die vorherige Sicherheitsentscheidung bestehen."
+					"unavailable": "Für diese Versand-IP existiert kein PTR-Eintrag. Die letzte Sperrlistenprüfung hat keine Antwort erhalten, deshalb ist unbekannt, ob diese IP gelistet ist."
 				},
 				"notFqdn": {
 					"critical": "Der PTR-Eintrag ist kein gültiger voll qualifizierter Hostname. Eine kritische DNS-Sperrliste schließt diese IP derzeit von der Zustellung aus.",
 					"degraded": "Der PTR-Eintrag ist kein gültiger voll qualifizierter Hostname. Eine nicht kritische DNS-Sperrliste führt diese IP derzeit.",
-					"unavailable": "Der PTR-Eintrag ist kein gültiger voll qualifizierter Hostname. Die letzte Abfrage der DNS-Sperrliste ist fehlgeschlagen, deshalb bleibt die vorherige Sicherheitsentscheidung bestehen."
+					"unavailable": "Der PTR-Eintrag ist kein gültiger voll qualifizierter Hostname. Die letzte Sperrlistenprüfung hat keine Antwort erhalten, deshalb ist unbekannt, ob diese IP gelistet ist."
 				},
 				"ready": {
 					"critical": "Das forward-bestätigte Reverse-DNS ist bereit. Eine kritische DNS-Sperrliste schließt diese IP derzeit von der Zustellung aus.",
 					"degraded": "Das forward-bestätigte Reverse-DNS ist bereit. Eine nicht kritische DNS-Sperrliste führt diese IP derzeit.",
-					"unavailable": "Das forward-bestätigte Reverse-DNS ist bereit. Die letzte Abfrage der DNS-Sperrliste ist fehlgeschlagen, deshalb bleibt die vorherige Sicherheitsentscheidung bestehen."
+					"unavailable": "Das forward-bestätigte Reverse-DNS ist bereit. Die letzte Sperrlistenprüfung hat keine Antwort erhalten, deshalb ist unbekannt, ob diese IP gelistet ist."
 				},
 				"waiting": {
 					"critical": "Warten auf die erste Live-Prüfung des Reverse-DNS. Eine kritische DNS-Sperrliste schließt diese IP derzeit von der Zustellung aus.",
 					"degraded": "Warten auf die erste Live-Prüfung des Reverse-DNS. Eine nicht kritische DNS-Sperrliste führt diese IP derzeit.",
-					"unavailable": "Warten auf die erste Live-Prüfung des Reverse-DNS. Die letzte Abfrage der DNS-Sperrliste ist fehlgeschlagen, deshalb bleibt die vorherige Sicherheitsentscheidung bestehen."
+					"unavailable": "Warten auf die erste Live-Prüfung des Reverse-DNS. Die letzte Sperrlistenprüfung hat keine Antwort erhalten, deshalb ist unbekannt, ob diese IP gelistet ist."
 				}
 			},
 			"detail": {
@@ -12984,6 +13046,14 @@
 			},
 			"remediation": {
 				"blocklist": "Prüfen Sie die Sperrlisten-Details der MTA, beheben Sie die Ursache des Eintrags und beantragen Sie die Streichung.",
+				"blocklistLookup": {
+					"key_rejected": "Prüfen Sie, ob der Schlüssel vollständig und Ihr Spamhaus-Konto aktiv ist, oder ersetzen Sie den Schlüssel.",
+					"rate_limited": "Hinterlegen Sie einen kostenlosen Schlüssel für den Spamhaus Data Query Service; er hat ein eigenes Abfragekontingent.",
+					"resolver_refused": "Hinterlegen Sie einen kostenlosen Schlüssel für den Spamhaus Data Query Service. Er funktioniert von jedem Server aus.",
+					"resolver_unreachable": "Stellen Sie sicher, dass dieser Server DNS-Abfragen über Port 53 (UDP und TCP) senden kann.",
+					"unspecified": "Prüfen Sie, wie Owlat die Sperrlisten erreicht.",
+					"unusable_answer": "Verwenden Sie einen DNS-Resolver, der Antworten nicht umschreibt, oder hinterlegen Sie einen Schlüssel für den Spamhaus Data Query Service."
+				},
 				"digitalocean": "Benennen Sie das Droplet im DigitalOcean-Control-Panel in den EHLO-Hostnamen um; DigitalOcean verwendet diesen Namen für das Reverse-DNS.",
 				"generic": "Öffnen Sie die Reverse-DNS-/PTR-Einstellungen Ihres VPS-Anbieters für diese öffentliche IP.",
 				"hetzner": "Öffnen Sie in der Hetzner Console: Server → Ihr Server → Netzwerk → Primäre IP → Reverse DNS bearbeiten.",

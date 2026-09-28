@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { DNSBL_LIST_IDS } from '@owlat/shared/dnsbl';
+import { DNSBL_LIST_IDS, DNSBL_UNKNOWN_REASONS } from '@owlat/shared/dnsbl';
 import { FCRDNS_FAILURE_REASONS, FCRDNS_VERDICTS } from '@owlat/shared/fcrdns';
 import {
 	DNSBL_STATUSES,
@@ -17,6 +17,8 @@ export const ipReadinessFieldValidators = {
 	dnsblListings: v.optional(v.array(literalUnion(DNSBL_LIST_IDS))),
 	dnsbl: v.optional(literalUnion(DNSBL_STATUSES)),
 	dnsblCheckedAt: v.optional(v.number()),
+	/** Why the last blocklist sweep could not measure this address. */
+	dnsblUnknownReason: v.optional(literalUnion(DNSBL_UNKNOWN_REASONS)),
 	fcrdns: v.optional(
 		v.object({
 			ehlo: v.string(),

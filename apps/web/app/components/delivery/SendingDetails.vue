@@ -155,7 +155,12 @@ const DOCS_BASE = 'https://docs.owlat.app';
 								: 'border-success/20 bg-success/10 text-success'
 					"
 				>
-					<p>{{ localized(ip.presentation.detail) }}</p>
+					<p>
+						{{ localized(ip.presentation.detail) }}
+						<template v-if="ip.presentation.consequence">
+							{{ localized(ip.presentation.consequence) }}
+						</template>
+					</p>
 					<p v-if="ip.presentation.remediation" class="mt-1">
 						{{ localized(ip.presentation.remediation) }}
 						<template v-if="ip.blockReasons?.includes('fcrdns')">
@@ -170,6 +175,15 @@ const DOCS_BASE = 'https://docs.owlat.app';
 							</I18nT>
 						</template>
 					</p>
+					<NuxtLink
+						v-if="ip.presentation.linksBlocklistLookups"
+						to="/dashboard/admin/delivery/transport#blocklist-lookups"
+						class="mt-2 inline-flex items-center gap-1 font-medium underline underline-offset-2"
+						data-testid="sending-details-blocklist-lookups"
+					>
+						{{ t('components.delivery.sendingDetails.openBlocklistLookups') }}
+						<Icon name="lucide:arrow-right" class="w-3.5 h-3.5" />
+					</NuxtLink>
 					<div v-if="ip.dnsblDefinitions.length > 0" class="mt-2 flex flex-wrap gap-2">
 						<a
 							v-for="list in ip.dnsblDefinitions"

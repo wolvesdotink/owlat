@@ -257,6 +257,17 @@ describe('loadConfig', () => {
 		expect(() => loadConfig()).toThrow('ABUSIX_DNSBL_API_KEY');
 	});
 
+	it('reads the blocklist resolver, and treats an empty value as the system resolver', () => {
+		process.env.DNSBL_RESOLVER = 'dns-resolver:5335';
+		expect(loadConfig().dnsblResolver).toEqual({ host: 'dns-resolver', port: 5335 });
+
+		process.env.DNSBL_RESOLVER = '';
+		expect(loadConfig().dnsblResolver).toBeUndefined();
+
+		process.env.DNSBL_RESOLVER = 'udp://dns-resolver';
+		expect(() => loadConfig()).toThrow('DNSBL_RESOLVER');
+	});
+
 	// ── PR-63 item 2: EHLO_HOSTNAME FQDN validation ──
 	describe('EHLO_HOSTNAME FQDN validation', () => {
 		it("rejects 'localhost'", () => {

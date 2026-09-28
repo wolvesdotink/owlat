@@ -306,6 +306,7 @@ import type * as delivery_deliverabilityDashboardHelpers from '../delivery/deliv
 import type * as delivery_deliverabilityDashboardView from '../delivery/deliverabilityDashboardView.js';
 import type * as delivery_deliverabilityRouting from '../delivery/deliverabilityRouting.js';
 import type * as delivery_deliverabilityValidators from '../delivery/deliverabilityValidators.js';
+import type * as delivery_dnsblAccess from '../delivery/dnsblAccess.js';
 import type * as delivery_enqueue from '../delivery/enqueue.js';
 import type * as delivery_enqueueTestSend from '../delivery/enqueueTestSend.js';
 import type * as delivery_governedDispatch from '../delivery/governedDispatch.js';
@@ -1498,6 +1499,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/deliverabilityDashboardView': typeof delivery_deliverabilityDashboardView;
 	'delivery/deliverabilityRouting': typeof delivery_deliverabilityRouting;
 	'delivery/deliverabilityValidators': typeof delivery_deliverabilityValidators;
+	'delivery/dnsblAccess': typeof delivery_dnsblAccess;
 	'delivery/enqueue': typeof delivery_enqueue;
 	'delivery/enqueueTestSend': typeof delivery_enqueueTestSend;
 	'delivery/governedDispatch': typeof delivery_governedDispatch;

@@ -27,6 +27,7 @@ import {
 	type DeliverabilitySignal,
 } from '@owlat/shared/deliverabilityRouting';
 import { ipAddressFamily } from '@owlat/shared/ipAddress';
+import { isDnsblUnknownReason, type DnsblUnknownReason } from '@owlat/shared/dnsbl';
 
 const PERSISTENT_DEFER_MIN = 5;
 const PERSISTENT_DEFER_RATIO = 0.5;
@@ -149,6 +150,19 @@ export function dnsblCheckedAt(
 		: undefined;
 }
 
+/**
+ * Why this address is unmeasured, when it is. Spread into the summary so a
+ * measured address carries no field at all — the pinned wire bytes of a clean
+ * snapshot stay exactly what every shipped Convex parses.
+ */
+export function dnsblUnknownReason(
+	dnsbl: Record<string, string> | null,
+	unmeasured: boolean
+): { dnsblUnknownReason?: DnsblUnknownReason } {
+	const reason = dnsbl?.['unknownReason'];
+	return unmeasured && isDnsblUnknownReason(reason) ? { dnsblUnknownReason: reason } : {};
+}
+
 export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono {
 	const app = new Hono();
 
@@ -220,6 +234,7 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 			dnsblListings: listedDnsblIds(config, dnsbl),
 			dnsblUnmeasured: hasUnmeasuredDnsblZone(config, ip, dnsbl),
 			dnsblCheckedAt: dnsblCheckedAt(config, ip, dnsbl),
+			...dnsblUnknownReason(dnsbl, hasUnmeasuredDnsblZone(config, ip, dnsbl)),
 		});
 	});
 
@@ -264,6 +279,7 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 					dnsblListings: listedDnsblIds(config, dnsbl),
 					dnsblUnmeasured: hasUnmeasuredDnsblZone(config, ip, dnsbl),
 					dnsblCheckedAt: dnsblCheckedAt(config, ip, dnsbl),
+					...dnsblUnknownReason(dnsbl, hasUnmeasuredDnsblZone(config, ip, dnsbl)),
 				};
 			})
 		);

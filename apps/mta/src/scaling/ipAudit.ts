@@ -30,7 +30,13 @@ import { ipAddressFamily, type IpAddressFamily } from '@owlat/shared/ipAddress';
 import { DNSBL_LISTS, dnsblZoneHost } from '@owlat/shared/dnsbl';
 import type { MtaConfig } from '../config.js';
 import { resolveEhloForIp } from '../config.js';
-import { lookupDnsblZone, type DnsblLookupResult } from '../intelligence/dnsblLookup.js';
+import {
+	defaultLookupDeps,
+	lookupDnsblZone,
+	type DnsblLookupResult,
+} from '../intelligence/dnsblLookup.js';
+import { prepareSpamhausAccess } from '../intelligence/dnsblAccess.js';
+import { getDnsblTransport } from '../intelligence/dnsblResolver.js';
 import { logger } from '../monitoring/logger.js';
 import { verifyFcrdns } from './fcrdns.js';
 import { probePort25Egress, type Port25ProbeResult } from './port25Probe.js';
@@ -52,10 +58,15 @@ export type IpAuditConfig = Pick<
 	MtaConfig,
 	'ipPools' | 'ehloHostname' | 'ehloHostnames' | 'abusixDnsblApiKey'
 > &
-	Partial<Pick<MtaConfig, 'genericPtrSuffixes' | 'invaluementDnsblZone'>>;
+	Partial<Pick<MtaConfig, 'genericPtrSuffixes' | 'invaluementDnsblZone' | 'dnsblResolver'>> & {
+		/** A DQS key that passed its test query this sweep; read from Redis, not env. */
+		spamhausDqsKey?: string;
+	};
 
 export interface IpAuditDnsDeps {
 	resolve4: (hostname: string) => Promise<string[]>;
+	/** Blocklist transport (the bundled resolver); defaults to `resolve4`. */
+	dnsbl?: (hostname: string) => Promise<string[]>;
 	resolve6?: (hostname: string) => Promise<string[]>;
 	reverse: (ip: string) => Promise<string[]>;
 }
@@ -74,10 +85,10 @@ export interface IpAuditRecord extends IpAuditReport {
 	port25Detail: Port25ProbeResult;
 }
 
-export function defaultIpAuditDeps(): IpAuditDeps {
+export function defaultIpAuditDeps(config: Pick<IpAuditConfig, 'dnsblResolver'> = {}): IpAuditDeps {
 	return {
 		now: Date.now,
-		dns: { resolve4, resolve6, reverse },
+		dns: { resolve4, resolve6, reverse, dnsbl: getDnsblTransport(config).resolve4 },
 		port25: (ip) => probePort25Egress(ip, { now: Date.now }),
 	};
 }
@@ -88,13 +99,16 @@ export function defaultIpAuditDeps(): IpAuditDeps {
  * verdict nor raises a warning.
  */
 export function auditZonesFor(
-	config: Pick<IpAuditConfig, 'abusixDnsblApiKey' | 'invaluementDnsblZone'>,
+	config: Pick<IpAuditConfig, 'abusixDnsblApiKey' | 'invaluementDnsblZone' | 'spamhausDqsKey'>,
 	family: IpAddressFamily
 ): { zoneId: IpAuditZoneId; zone: string | null }[] {
 	return IP_AUDIT_ZONES.filter((zone) => zone.addressFamilies.includes(family)).map((zone) => {
+		// The keyed compositions live with the zone definitions, not here.
 		if (zone.id === 'abusix') {
-			// The keyed composition lives with the zone definition, not here.
 			return { zoneId: zone.id, zone: dnsblZoneHost(DNSBL_LISTS.abusix, config.abusixDnsblApiKey) };
+		}
+		if (zone.id === 'spamhaus') {
+			return { zoneId: zone.id, zone: dnsblZoneHost(DNSBL_LISTS.spamhaus, config.spamhausDqsKey) };
 		}
 		if (zone.id === 'invaluement') {
 			return { zoneId: zone.id, zone: config.invaluementDnsblZone ?? null };
@@ -133,7 +147,7 @@ async function observeZones(
 				return { zoneId: entry.zoneId, status: 'skipped', sublists: [], answers: [] };
 			}
 			const result = await lookupDnsblZone(ip, entry.zoneId, entry.zone, {
-				resolve4: deps.dns.resolve4,
+				resolve4: deps.dns.dnsbl ?? deps.dns.resolve4,
 				timeoutMs,
 			});
 			return {
@@ -168,18 +182,19 @@ export function classifyNeighbourAnswer(
 
 async function observeNeighbourhood(
 	neighbours: readonly string[],
+	config: Pick<IpAuditConfig, 'spamhausDqsKey'>,
 	timeoutMs: number,
 	deps: IpAuditDeps
 ): Promise<{ sampled: number; listed: number }> {
 	if (neighbours.length === 0) return { sampled: 0, listed: 0 };
-	const spamhaus = IP_AUDIT_ZONES.find((zone) => zone.id === 'spamhaus');
-	if (!spamhaus) return { sampled: 0, listed: 0 };
+	const spamhausZone = dnsblZoneHost(DNSBL_LISTS.spamhaus, config.spamhausDqsKey);
+	if (!spamhausZone) return { sampled: 0, listed: 0 };
 
 	const results = await Promise.all(
 		neighbours.map(async (neighbour) => {
 			try {
-				const result = await lookupDnsblZone(neighbour, 'spamhaus', spamhaus.zone, {
-					resolve4: deps.dns.resolve4,
+				const result = await lookupDnsblZone(neighbour, 'spamhaus', spamhausZone, {
+					resolve4: deps.dns.dnsbl ?? deps.dns.resolve4,
 					timeoutMs,
 					// Advisory probe: a resolver outage must not emit one warn per
 					// neighbour on a path that gates nothing.
@@ -218,7 +233,7 @@ export async function auditIp(
 		family
 			? observeZones(ip, config, family, timeoutMs, deps)
 			: Promise.resolve<IpAuditZoneObservation[]>([]),
-		observeNeighbourhood(neighbours, timeoutMs, deps),
+		observeNeighbourhood(neighbours, config, timeoutMs, deps),
 		verifyFcrdns(
 			ip,
 			[ehlo],
@@ -292,9 +307,20 @@ export async function runIpAuditSweep(
 	deps: IpAuditDeps
 ): Promise<IpAuditRecord[]> {
 	const records: IpAuditRecord[] = [];
+	// A DQS key is only used once its test query passes; a failing key falls
+	// back to the public mirror, whose own refusal then reads as unknown.
+	const spamhaus = await prepareSpamhausAccess(redis, {
+		...defaultLookupDeps,
+		resolve4: deps.dns.dnsbl ?? deps.dns.resolve4,
+		quiet: true,
+	}).catch(() => ({}) as { dqsKey?: string; unavailable?: string });
+	const auditConfig: IpAuditConfig = {
+		...config,
+		...(spamhaus.dqsKey && !spamhaus.unavailable ? { spamhausDqsKey: spamhaus.dqsKey } : {}),
+	};
 	for (const ip of configuredAuditIps(config)) {
 		try {
-			const record = await auditIp(ip, config, deps);
+			const record = await auditIp(ip, auditConfig, deps);
 			await storeIpAuditRecord(redis, record);
 			records.push(record);
 			if (record.verdict !== 'clean') {

@@ -13,7 +13,7 @@
 
 import { resolve4 } from 'dns/promises';
 import { sleep as sharedSleep } from '@owlat/shared';
-import type { DnsblListId } from '@owlat/shared/dnsbl';
+import type { DnsblListId, DnsblUnknownReason } from '@owlat/shared/dnsbl';
 import type { IpAuditZoneId } from '@owlat/shared/ipAudit';
 import { reverseIpAddressForDns } from '@owlat/shared/ipAddress';
 import { logger } from '../monitoring/logger.js';
@@ -117,7 +117,16 @@ export interface DnsblLookupResult {
 	retryable: boolean;
 	/** Redacted resolver reason, for the single conclusion log line. */
 	errorCode?: string;
+	/** Set on `unknown`: which fix applies, for the operator. */
+	reason?: DnsblUnknownReason;
 }
+
+/**
+ * The reserved-block answer that says "too many queries". Every other
+ * 127.255.255.x code is a refusal of the querier (public resolver, generic
+ * reverse DNS, unattributable source) or a malformed zone name.
+ */
+const RATE_LIMITED_ANSWER = '127.255.255.255';
 
 /**
  * Look one IP up in one DNSBL zone and return both the verdict and the raw
@@ -166,6 +175,7 @@ export async function lookupDnsblZone(
 				answers: boundedAnswers(result),
 				retryable: false,
 				errorCode: 'resolver_policy',
+				reason: result.includes(RATE_LIMITED_ANSWER) ? 'rate_limited' : 'resolver_refused',
 			};
 		}
 		// An answer we cannot interpret is still an answer: terminal, not retried.
@@ -178,6 +188,7 @@ export async function lookupDnsblZone(
 			answers: boundedAnswers(result),
 			retryable: false,
 			errorCode: 'uninterpretable_answer',
+			reason: 'unusable_answer',
 		};
 	} catch (err: unknown) {
 		const errorCode = safeDnsErrorCode(err);
@@ -188,7 +199,13 @@ export async function lookupDnsblZone(
 		// Resolver availability is not evidence of delisting. Preserve the last
 		// confirmed decision (and fail closed for a never-observed address).
 		logUnknown(errorCode);
-		return { status: 'unknown', answers: [], retryable: true, errorCode };
+		return {
+			status: 'unknown',
+			answers: [],
+			retryable: true,
+			errorCode,
+			reason: 'resolver_unreachable',
+		};
 	} finally {
 		if (timeout) clearTimeout(timeout);
 	}
@@ -208,12 +225,27 @@ export async function checkDnsbl(
 	zone: string,
 	deps: DnsblLookupDeps = defaultLookupDeps
 ): Promise<DnsblStatus> {
+	return (await checkDnsblDetailed(ip, listId, zone, deps)).status;
+}
+
+/** {@link checkDnsbl}, keeping the concluding lookup's answers and reason. */
+export async function checkDnsblDetailed(
+	ip: string,
+	listId: DnsblListId,
+	zone: string,
+	deps: DnsblLookupDeps = defaultLookupDeps
+): Promise<DnsblLookupResult> {
 	const now = deps.now ?? Date.now;
 	const sleep = deps.sleep ?? sharedSleep;
 	// Per-attempt lines drop to debug; this function owns the conclusion line.
 	const attemptDeps: DnsblLookupDeps = { ...deps, quiet: true };
 	const startedAt = now();
-	let outcome: DnsblLookupResult = { status: 'unknown', answers: [], retryable: true };
+	let outcome: DnsblLookupResult = {
+		status: 'unknown',
+		answers: [],
+		retryable: true,
+		reason: 'resolver_unreachable',
+	};
 	let attempts = 0;
 	for (let attempt = 1; attempt <= LOOKUP_MAX_ATTEMPTS; attempt += 1) {
 		attempts = attempt;
@@ -241,5 +273,5 @@ export async function checkDnsbl(
 		if (deps.quiet) logger.debug(fields, 'DNSBL check is unknown');
 		else logger.warn(fields, 'DNSBL check is unknown');
 	}
-	return outcome.status;
+	return outcome;
 }

@@ -123,7 +123,7 @@ export async function main() {
 
 	// Advisory pre-flight IP audit: port-25 egress, blocklists, FCrDNS, and the
 	// /24 neighbourhood. It gates nothing, so it never delays or fails startup.
-	const ipAuditInterval = startIpAuditor(redis, config, isLeader, defaultIpAuditDeps());
+	const ipAuditInterval = startIpAuditor(redis, config, isLeader, defaultIpAuditDeps(config));
 
 	// ── 5. Initialize warming for all IPs ──
 	const allIps = configuredAuditIps(config);

@@ -112,7 +112,7 @@ jobs:
       matrix:
         platform: [linux/amd64, linux/arm64]
         # Keep in sync with the merge-manifests matrix and verify-anonymous-pull.
-        name: [web, mta, updater, convex-deploy, imap, mail-sync, code-worker, convex-fn-proxy, setup, clamav, tinyproxy]
+        name: [web, mta, updater, convex-deploy, imap, mail-sync, code-worker, convex-fn-proxy, setup, clamav, tinyproxy, unbound]
         include:
           - name: web
             dockerfile: apps/web/Dockerfile
@@ -152,6 +152,9 @@ jobs:
             context: docker
           - name: tinyproxy
             dockerfile: docker/tinyproxy.Dockerfile
+            context: docker
+          - name: unbound
+            dockerfile: docker/unbound.Dockerfile
             context: docker
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
@@ -242,7 +245,7 @@ jobs:
       fail-fast: false
       matrix:
         # Keep in sync with the build-and-push matrix above.
-        name: [web, mta, updater, convex-deploy, imap, mail-sync, code-worker, convex-fn-proxy, setup, clamav, tinyproxy]
+        name: [web, mta, updater, convex-deploy, imap, mail-sync, code-worker, convex-fn-proxy, setup, clamav, tinyproxy, unbound]
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
@@ -379,7 +382,7 @@ jobs:
           set -euo pipefail
           failed=0
           # Keep this list in sync with the build-and-push matrix above.
-          for name in web mta updater convex-deploy imap mail-sync code-worker convex-fn-proxy setup clamav tinyproxy; do
+          for name in web mta updater convex-deploy imap mail-sync code-worker convex-fn-proxy setup clamav tinyproxy unbound; do
             image="${IMAGE_PREFIX}/${name}:${{ inputs.version }}"
             if manifest=$(docker manifest inspect "$image" 2>/dev/null); then
               # Anonymously visible AND multi-arch: an image that lost a platform
