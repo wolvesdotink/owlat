@@ -2,7 +2,18 @@ import type { DeliverabilityCheckId } from '@owlat/shared';
 
 type ChecklistProviderGuidance = 'vps_reverse_dns' | 'vps_port_25' | 'vps_ipv6' | 'dns' | null;
 
-type ChecklistContextDependency = 'warming' | 'mta_health' | 'relay' | 'tracking' | 'postmaster';
+/**
+ * `outbound_identity` marks a check that reads the MTA's per-IP identity
+ * verdicts (PTR, FCrDNS, source address, IPv6 SPF). It rides on `warming`, the
+ * payload those verdicts arrive in, and asks the MTA to re-observe them first.
+ */
+type ChecklistContextDependency =
+	| 'warming'
+	| 'outbound_identity'
+	| 'mta_health'
+	| 'relay'
+	| 'tracking'
+	| 'postmaster';
 
 type ChecklistItemTraits = {
 	scope: 'deployment' | 'domain';
@@ -46,20 +57,23 @@ const domain = (
  * maintaining independent item-id lists and switches that can drift.
  */
 export const CHECKLIST_ITEM_TRAITS = {
-	'deployment.ptr': deployment('ipv4', 'vps_reverse_dns', ['warming']),
-	'deployment.fcrdns': deployment('ipv4', 'vps_reverse_dns', ['warming']),
-	'deployment.ptr_nongeneric': deployment('ipv4', 'vps_reverse_dns', ['warming']),
-	'deployment.ehlo_ptr': deployment('ipv4', null, ['warming']),
+	'deployment.ptr': deployment('ipv4', 'vps_reverse_dns', ['warming', 'outbound_identity']),
+	'deployment.fcrdns': deployment('ipv4', 'vps_reverse_dns', ['warming', 'outbound_identity']),
+	'deployment.ptr_nongeneric': deployment('ipv4', 'vps_reverse_dns', [
+		'warming',
+		'outbound_identity',
+	]),
+	'deployment.ehlo_ptr': deployment('ipv4', null, ['warming', 'outbound_identity']),
 	'deployment.port25': deployment('ipv4', 'vps_port_25', ['warming', 'mta_health']),
 	'deployment.tls': deployment(null, null, ['mta_health']),
 	'deployment.dnsbl': deployment('ipv4', null, ['warming']),
 	'deployment.warmup': deployment(null, null, ['warming']),
 	'deployment.relay': deployment(null, null, ['relay']),
 	'deployment.ipv6_address': deployment('ipv6', 'vps_ipv6', ['warming']),
-	'deployment.ipv6_source': deployment('ipv6', null, ['warming']),
-	'deployment.ipv6_ptr': deployment('ipv6', 'vps_reverse_dns', ['warming']),
-	'deployment.ipv6_aaaa': deployment('ipv6', 'dns', ['warming']),
-	'deployment.ipv6_spf': deployment('ipv6', 'dns', ['warming']),
+	'deployment.ipv6_source': deployment('ipv6', null, ['warming', 'outbound_identity']),
+	'deployment.ipv6_ptr': deployment('ipv6', 'vps_reverse_dns', ['warming', 'outbound_identity']),
+	'deployment.ipv6_aaaa': deployment('ipv6', 'dns', ['warming', 'outbound_identity']),
+	'deployment.ipv6_spf': deployment('ipv6', 'dns', ['warming', 'outbound_identity']),
 	'deployment.ipv6_pool': deployment('ipv6', null, ['warming']),
 	'domain.spf': domain('dns', true, true),
 	'domain.dkim': domain('dns', true, true),

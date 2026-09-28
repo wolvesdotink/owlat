@@ -22,7 +22,11 @@ describe('deliverability checklist trait registry', () => {
 	});
 
 	it('describes precise lazy context dependencies without duplicates', () => {
-		expect(checklistTraits('deployment.ptr').contextDependencies).toEqual(['warming']);
+		expect(checklistTraits('deployment.ptr').contextDependencies).toEqual([
+			'warming',
+			'outbound_identity',
+		]);
+		expect(checklistTraits('deployment.dnsbl').contextDependencies).toEqual(['warming']);
 		expect(checklistTraits('deployment.port25').contextDependencies).toEqual([
 			'warming',
 			'mta_health',
@@ -32,6 +36,10 @@ describe('deliverability checklist trait registry', () => {
 		expect(checklistTraits('domain.tracking').contextDependencies).toEqual(['tracking']);
 		expect(checklistTraits('domain.spam_rate').contextDependencies).toEqual(['postmaster']);
 		for (const traits of Object.values(CHECKLIST_ITEM_TRAITS)) {
+			// The identity verdicts arrive inside the warming payload.
+			if (traits.contextDependencies.includes('outbound_identity')) {
+				expect(traits.contextDependencies).toContain('warming');
+			}
 			expect(new Set(traits.contextDependencies).size).toBe(traits.contextDependencies.length);
 		}
 	});

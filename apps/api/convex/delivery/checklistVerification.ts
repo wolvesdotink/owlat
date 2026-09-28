@@ -60,7 +60,11 @@ async function executeVerification(
 		if (request.source !== 'sweep') {
 			await Promise.all([
 				...(traits.contextDependencies.includes('warming')
-					? [ctx.runAction(internal.delivery.warmingSync.syncWarmingState, {})]
+					? [
+							ctx.runAction(internal.delivery.warmingSync.syncWarmingState, {
+								recheckIdentity: traits.contextDependencies.includes('outbound_identity'),
+							}),
+						]
 					: []),
 				...(traits.contextDependencies.includes('mta_health')
 					? [ctx.runAction(internal.delivery.mtaHealth.sync, {})]
