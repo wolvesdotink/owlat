@@ -106,9 +106,8 @@ describe('fetchProviderPage', () => {
 		expect(err.message).toBe('Acme API error: 401');
 	});
 
-	it('runs every thrown message through redact', async () => {
-		const redact = (text: string) => text.split('sk_secret').join('[redacted]');
-		const options = { ...OPTIONS, redact };
+	it('strips the secret out of every thrown message', async () => {
+		const options = { ...OPTIONS, secret: 'sk_secret' };
 
 		stubFetch(new Error('connect failed for sk_secret'));
 		expect((await thrown(options)).message).toBe(

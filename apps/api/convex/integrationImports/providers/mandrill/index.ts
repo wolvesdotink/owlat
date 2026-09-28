@@ -140,7 +140,7 @@ export const mandrillProvider: IntegrationImportProviderModule<'mandrill'> = {
 				label: 'Mandrill',
 				where: `at offset ${offset}`,
 				extractMessage: (body) => body.message || body.name,
-				redact: (text) => withoutApiKey(text, apiKey),
+				secret: apiKey,
 			}
 		);
 
@@ -200,16 +200,3 @@ export const mandrillProvider: IntegrationImportProviderModule<'mandrill'> = {
 		};
 	},
 };
-
-/**
- * Strip the API key out of any text that is about to be persisted or shown.
- *
- * The twin of `withoutApiKey` in the Mandrill SEND adapter, kept local rather
- * than imported because that module is `'use node'` and this one runs in the
- * walker's V8 action. Both exist for the same reason: a provider that echoes a
- * request back inside an error body would otherwise walk the sending credential
- * into a stored error string.
- */
-function withoutApiKey(text: string, apiKey: string): string {
-	return apiKey.length > 0 ? text.split(apiKey).join('[redacted]') : text;
-}

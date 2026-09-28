@@ -133,7 +133,7 @@ export const mailchimpProvider: IntegrationImportProviderModule<'mailchimp'> = {
 				label: 'Mailchimp',
 				where: `at offset ${offset}`,
 				extractMessage: (body) => body.detail || body.title,
-				redact: (text) => withoutApiKey(text, config.apiKey),
+				secret: config.apiKey,
 			}
 		);
 
@@ -183,8 +183,3 @@ export const mailchimpProvider: IntegrationImportProviderModule<'mailchimp'> = {
 		};
 	},
 };
-
-/** Strip the pasted API key out of any error text before it is stored or shown. */
-function withoutApiKey(text: string, apiKey: string): string {
-	return apiKey.length > 0 ? text.split(apiKey).join('[redacted]') : text;
-}

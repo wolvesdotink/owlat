@@ -24,6 +24,7 @@
  */
 
 import { withTimeout } from '../../../lib/inputGuards';
+import { withoutApiKey } from '../../../lib/redactSecret';
 import { getOptional } from '../../../lib/env';
 import { categorizeMandrillError } from '../../../lib/sendProviders/mandrill/errors';
 import { EmailErrorCode } from '../../../lib/sendProviders/types';
@@ -140,11 +141,6 @@ function readApiError(body: string, status: number): { surfaced: string; classif
 		// Not JSON — classify from the text, surface none of it.
 	}
 	return { surfaced: `Mandrill sender-domain call failed (HTTP ${status})`, classifyText: body };
-}
-
-/** Defence in depth: never let the key leave this module inside a message. */
-function withoutApiKey(text: string, apiKey: string): string {
-	return apiKey.length > 0 ? text.split(apiKey).join('[redacted]') : text;
 }
 
 async function callSenderDomainEndpoint(

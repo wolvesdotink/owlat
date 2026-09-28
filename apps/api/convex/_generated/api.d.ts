@@ -705,6 +705,7 @@ import type * as lib_publishableEmail from '../lib/publishableEmail.js';
 import type * as lib_queryHelpers from '../lib/queryHelpers.js';
 import type * as lib_randomToken from '../lib/randomToken.js';
 import type * as lib_receivedAtCursor from '../lib/receivedAtCursor.js';
+import type * as lib_redactSecret from '../lib/redactSecret.js';
 import type * as lib_retentionSweep from '../lib/retentionSweep.js';
 import type * as lib_rrf from '../lib/rrf.js';
 import type * as lib_runtimeLog from '../lib/runtimeLog.js';
@@ -1906,6 +1907,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/queryHelpers': typeof lib_queryHelpers;
 	'lib/randomToken': typeof lib_randomToken;
 	'lib/receivedAtCursor': typeof lib_receivedAtCursor;
+	'lib/redactSecret': typeof lib_redactSecret;
 	'lib/retentionSweep': typeof lib_retentionSweep;
 	'lib/rrf': typeof lib_rrf;
 	'lib/runtimeLog': typeof lib_runtimeLog;

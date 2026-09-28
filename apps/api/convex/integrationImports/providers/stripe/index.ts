@@ -73,7 +73,7 @@ export const stripeProvider: IntegrationImportProviderModule<'stripe'> = {
 				label: 'Stripe',
 				where: `after "${cursor || 'start'}"`,
 				extractMessage: (body) => body.error?.message,
-				redact: (text) => withoutApiKey(text, config.apiKey),
+				secret: config.apiKey,
 			}
 		);
 
@@ -139,8 +139,3 @@ export const stripeProvider: IntegrationImportProviderModule<'stripe'> = {
 		return { rows, nextCursor };
 	},
 };
-
-/** Strip the pasted API key out of any error text before it is stored or shown. */
-function withoutApiKey(text: string, apiKey: string): string {
-	return apiKey.length > 0 ? text.split(apiKey).join('[redacted]') : text;
-}

@@ -33,6 +33,7 @@
 
 import { composeMessage } from '@owlat/mail-message';
 import { withTimeout } from '../../inputGuards';
+import { withoutApiKey } from '../../redactSecret';
 import {
 	EmailErrorCode,
 	type DispatchExtrasInput,
@@ -217,18 +218,6 @@ function readApiError(
 		// request. Classify from the text, surface none of it.
 	}
 	return { surfaced: `Mandrill send failed (HTTP ${status})`, classifyText: body, name: '' };
-}
-
-/**
- * Strip the API key from anything about to leave the adapter.
- *
- * Defence in depth behind {@link readApiError}: that function already refuses to
- * surface a body it could not parse, but the STRUCTURED `message` field of a
- * body that does parse is still upstream-controlled text. The adapter is holding
- * the key at this point, so proving it absent costs one `split`.
- */
-function withoutApiKey(text: string, apiKey: string): string {
-	return apiKey.length > 0 ? text.split(apiKey).join('[redacted]') : text;
 }
 
 export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
