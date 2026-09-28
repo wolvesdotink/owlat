@@ -82,6 +82,12 @@ of `bun run lint` and will fail CI, including:
   `convex/lib/clock.ts`, never a hand-rolled `setUTCHours(0, 0, 0, 0)`,
   `toISOString().slice(0, 10)` or `.split('T')[0]`
   (`apps/api/scripts/check-utc-day.sh`).
+- `lint:html-to-text` (root, in `ci:lint`) — HTML-to-text for snippets,
+  previews, prompts, search excerpts, scans and text/plain parts goes through
+  `htmlToPlainText` from `@owlat/shared/html`, never a private
+  `.replace(/<[^>]+>/g, …)` strip, across `apps/api/convex`,
+  `packages/shared/src` and `packages/mail-message/src`
+  (`scripts/check-html-to-text.sh`).
 
 ## Code Quality
 

@@ -595,6 +595,13 @@ This codebase tracks the official Convex AI/cursor rules
   the day by hand with `setUTCHours(0, 0, 0, 0)`, `toISOString().slice(0, 10)`
   or `.split('T')[0]`; `scripts/check-utc-day.sh` (in `bun run lint`) flags
   those spellings outside `lib/clock.ts` and tests.
+- **One HTML-to-text pass.** Turning an HTML body into text for a snippet,
+  preview, prompt, search excerpt, scan or text/plain part uses
+  `htmlToPlainText` from `@owlat/shared/html` (`{ preserveBreaks: true }` keeps
+  paragraphs). It drops script, style, head and comments, decodes named and
+  numeric entities, and stays linear on hostile input. The root
+  `scripts/check-html-to-text.sh` (in `ci:lint`) flags a private
+  `.replace(/<[^>]+>/g, …)` or `.replace(/<[^>]*>/g, …)` strip.
 
 The `bun run lint:patterns` script (also wired into `bun run lint`) tracks
 all four of these against a checked-in baseline.
