@@ -66,7 +66,7 @@ interface ProviderWebhookCopy {
 	readonly urlNote?: string;
 	/**
 	 * How this provider hands the key over, as a clause the generic sentence
-	 * continues with "— copy it into your environment and restart".
+	 * continues with "— copy it into your .env and run owlat apply".
 	 */
 	readonly keyIssuance?: string;
 }
@@ -164,8 +164,7 @@ const lastEventLabel = computed(() =>
 				<pre
 					class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"
 					data-testid="signed-webhook-url"
-					>{{ webhookUrl }}</pre
-				>
+					>{{ webhookUrl }}</pre>
 				<p class="text-xs text-text-tertiary mt-1.5" data-testid="signed-webhook-url-note">
 					{{
 						t('components.delivery.signedWebhookCard.createWebhook', { provider: providerLabel })
@@ -197,7 +196,9 @@ const lastEventLabel = computed(() =>
 					</ul>
 				</template>
 				<p v-else class="text-sm text-text-secondary" data-testid="signed-webhook-events-generic">
-					{{ t('components.delivery.signedWebhookCard.eventsGeneric', { provider: providerLabel }) }}
+					{{
+						t('components.delivery.signedWebhookCard.eventsGeneric', { provider: providerLabel })
+					}}
 				</p>
 				<p class="text-xs text-text-tertiary mt-3" data-testid="signed-webhook-tracking-events-off">
 					<I18nT
@@ -219,9 +220,7 @@ const lastEventLabel = computed(() =>
 							<code>{{ signingKeyEnvVar }}</code>
 						</p>
 						<p class="text-xs text-text-tertiary mt-0.5" data-testid="signed-webhook-key-note">
-							{{
-								t('components.delivery.signedWebhookCard.keyNote', { issuance: keyIssuance })
-							}}
+							{{ t('components.delivery.signedWebhookCard.keyNote', { issuance: keyIssuance }) }}
 						</p>
 					</div>
 					<span

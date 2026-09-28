@@ -79,12 +79,25 @@ describe('orderProviderEnvNames — the catalog order', () => {
 });
 
 describe('buildEnvCliCommands', () => {
-	it('sets each variable with the owlat CLI, then restarts', () => {
+	it('sets each variable with the owlat CLI, then applies', () => {
 		expect(buildEnvCliCommands(['MANDRILL_API_KEY'])).toBe(
-			'owlat env MANDRILL_API_KEY <value>\nowlat restart'
+			'owlat env MANDRILL_API_KEY <value>\nowlat apply'
 		);
 		expect(buildEnvCliCommands(['AWS_SES_REGION', 'AWS_SES_ACCESS_KEY_ID'])).toBe(
-			'owlat env AWS_SES_REGION <value>\nowlat env AWS_SES_ACCESS_KEY_ID <value>\nowlat restart'
+			'owlat env AWS_SES_REGION <value>\nowlat env AWS_SES_ACCESS_KEY_ID <value>\nowlat apply'
+		);
+	});
+
+	it('ends with `owlat apply`, never `owlat restart` (#839)', () => {
+		// A restart keeps each container's old env and pushes nothing to the
+		// Convex deployment, so the change it claims to load never takes effect.
+		// Only `owlat apply` recreates changed containers and pushes runtime keys.
+		const lines = buildEnvCliCommands(['EHLO_HOSTNAMES', 'MANDRILL_API_KEY']).split('\n');
+		expect(lines.at(-1)).toBe('owlat apply');
+		expect(lines.some((line) => line.includes('restart'))).toBe(false);
+		// A caller that needs something else (the IPv6 network change) still overrides it.
+		expect(buildEnvCliCommands(['MTA_IPV6_ENABLED'], undefined, ['owlat down', 'owlat up'])).toBe(
+			'owlat env MTA_IPV6_ENABLED <value>\nowlat down\nowlat up'
 		);
 	});
 
@@ -95,16 +108,16 @@ describe('buildEnvCliCommands', () => {
 
 	it('de-duplicates and trims like the .env snippet', () => {
 		expect(buildEnvCliCommands([' EMAIL_PROVIDER ', 'EMAIL_PROVIDER'])).toBe(
-			'owlat env EMAIL_PROVIDER <value>\nowlat restart'
+			'owlat env EMAIL_PROVIDER <value>\nowlat apply'
 		);
 	});
 
 	it('carries a non-secret value only when given one, shell-quoted', () => {
 		const value = '{"203.0.113.11":"mail2.example.com"}';
 		expect(buildEnvCliCommands(['EHLO_HOSTNAMES'], { EHLO_HOSTNAMES: value })).toBe(
-			`owlat env EHLO_HOSTNAMES '${value}'\nowlat restart`
+			`owlat env EHLO_HOSTNAMES '${value}'\nowlat apply`
 		);
-		expect(buildEnvCliCommands(['X'], { X: "it's" })).toBe("owlat env X 'it'\\''s'\nowlat restart");
+		expect(buildEnvCliCommands(['X'], { X: "it's" })).toBe("owlat env X 'it'\\''s'\nowlat apply");
 		expect(buildDeliveryEnvSnippet(['EHLO_HOSTNAMES'], { EHLO_HOSTNAMES: value })).toBe(
 			`EHLO_HOSTNAMES=${value}`
 		);

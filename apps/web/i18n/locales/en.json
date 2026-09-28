@@ -2243,9 +2243,9 @@
 				"connected": "Connected",
 				"copyCommands": "Copy the commands",
 				"copyEnv": "Copy the .env lines",
-				"envTitle": "Add these lines to the .env file on your server, then restart",
+				"envTitle": "Add these lines to the .env file on your server, then run owlat apply",
 				"guideLink": "Environment variable guide",
-				"waiting": "Waiting for the server to see the new values. This updates by itself after the restart."
+				"waiting": "Waiting for the server to see the new values. This updates by itself after owlat apply."
 			},
 			"independenceTrendChart": {
 				"day": "Day",
@@ -2475,7 +2475,7 @@
 				"eventsGeneric": "Enable the delivery, bounce, complaint, unsubscribe and rejection events {provider} offers. Owlat records the ones it understands — suppressing the addresses behind bounces and complaints — and ignores the rest.",
 				"keyIssuanceGeneric": "{provider} issues this key when the webhook is created",
 				"keyMissing": "missing",
-				"keyNote": "{issuance} — copy it into your environment and restart. Until it is set, Owlat rejects every posted batch rather than trusting an unsigned one.",
+				"keyNote": "{issuance} — copy it into your .env and run owlat apply. Until it is set, Owlat rejects every posted batch rather than trusting an unsigned one.",
 				"keyPresent": "present",
 				"lastEvent": "Last event received: {at}",
 				"mandrill": {
@@ -5287,7 +5287,7 @@
 				"applying": "Applying…",
 				"busy": "The updater is still applying another change, such as an update. Nothing was changed; apply again once it has finished.",
 				"convergedBody": "The updater converged the services for your flag state.",
-				"fallback": "Fallback: on the host, run {featureCommand} for each change, then {restartCommand}.",
+				"fallback": "Fallback: on the host, run {featureCommand} for each change, then {applyCommand}.",
 				"pendingBody": "Your flag changes affect {services}. The running services keep their old state until you apply. Applying may briefly restart the listed services.",
 				"title": "Services out of sync — Apply & restart",
 				"updaterUnreachable": "Could not reach the updater: {error}"
@@ -12934,7 +12934,7 @@
 			},
 			"transportIssue": {
 				"own": "Owlat's own MTA is not configured, so there is nothing to migrate traffic onto.",
-				"relay": "Mailchimp Transactional is not connected yet — set MANDRILL_API_KEY and restart the deployment."
+				"relay": "Mailchimp Transactional is not connected yet — set MANDRILL_API_KEY and run owlat apply."
 			}
 		},
 		"mandrillRelayStatus": {

@@ -1030,7 +1030,7 @@ describe('POST /configure-ip', () => {
 		expect(execFileSyncMock).not.toHaveBeenCalled();
 	});
 
-	it('adds the IP to IP_POOLS_CAMPAIGN and restarts the MTA', async () => {
+	it('adds the IP to IP_POOLS_CAMPAIGN and recreates the MTA on the new pool', async () => {
 		const res = await post('/configure-ip', { ip: '2.2.2.2', action: 'add' });
 		expect(res.status).toBe(200);
 		const env = readFileSync(join(OWLAT_DIR, '.env'), 'utf-8');
@@ -1045,14 +1045,34 @@ describe('POST /configure-ip', () => {
 			['addr', 'add', '2.2.2.2/32', 'dev', 'eth0'],
 			expect.objectContaining({ cwd: '/' }),
 		]);
-		expect(commandLines()).toContain('docker compose restart mta');
+		// `restart` keeps the container's old env, so the MTA never saw the new
+		// pool (#839). `up -d` recreates it because its resolved config changed.
+		expect(composeCommands()).toContain(`${COMPOSE} up -d mta`);
+		expect(commandLines().some((c) => c.includes(' restart'))).toBe(false);
 	});
 
-	it('removes the IP from IP_POOLS_CAMPAIGN', async () => {
+	it('removes the IP from IP_POOLS_CAMPAIGN and recreates the MTA', async () => {
 		const res = await post('/configure-ip', { ip: '1.1.1.1', action: 'remove' });
 		expect(res.status).toBe(200);
 		const env = readFileSync(join(OWLAT_DIR, '.env'), 'utf-8');
 		expect(env).toContain('IP_POOLS_CAMPAIGN=\n');
+		expect(composeCommands()).toContain(`${COMPOSE} up -d mta`);
+	});
+
+	it('reports a failed MTA recreate instead of success', async () => {
+		execFileSyncMock.mockImplementation(
+			dockerFailing((c) => c.endsWith(' up -d mta'), 'Cannot connect to the Docker daemon')
+		);
+
+		const res = await post('/configure-ip', { ip: '2.2.2.2', action: 'add' });
+
+		expect(res.status).toBe(500);
+		const body = (await res.json()) as {
+			error: string;
+			steps: Array<{ step: string; ok?: boolean }>;
+		};
+		expect(body.error).toContain('up -d mta failed');
+		expect(body.steps).toContainEqual(expect.objectContaining({ step: 'apply-mta', ok: false }));
 	});
 });
 

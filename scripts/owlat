@@ -17,7 +17,11 @@
 #   owlat env <KEY> <VALUE>   — set a single env var in .env
 #   owlat start               — docker compose up -d
 #   owlat stop                — docker compose down
-#   owlat restart [service]   — docker compose restart [service]
+#   owlat apply [service...]  — apply .env / feature changes: recreate changed
+#                               containers, start/stop profile services, push
+#                               Convex function-runtime keys (docker compose up -d)
+#   owlat restart [service]   — docker compose restart [service] (process restart
+#                               only; does NOT pick up .env changes — use apply)
 #   owlat status              — docker compose ps
 #   owlat logs [service]      — docker compose logs -f [service]
 #   owlat doctor              — diagnose a broken install
@@ -75,7 +79,7 @@ fi
 
 show_help() {
 	# Print the whole subcommand block from the header comment (through `--help`).
-	sed -n '4,32p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '4,/owlat --help/p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 # ── owlat on PATH ─────────────────────────────────────────────────────────────
@@ -279,6 +283,100 @@ backup_schedule() {
 	esac
 }
 
+# ── Compose profiles ──────────────────────────────────────────────────────────
+# Optional services (the MTA, Caddy, ClamAV, the mail workers, …) sit behind
+# compose profiles, and two files record which ones this install runs:
+#   - `.env`'s COMPOSE_PROFILES, written by the setup wizard, the updater's
+#     "Apply & restart" and `owlat feature`/`pack`; it also carries the
+#     install-owned profiles (`tls`, `dashboard`) no flag can derive, and
+#   - the `x-owlat-profiles` list in docker-compose.override.yml, written by
+#     the same three, alongside it.
+# Every writer keeps the two equal. The union covers an install whose override
+# was rewritten by an older `owlat feature` that did not touch `.env` yet: a
+# profile is only ever added by the union, so it can never stop a service.
+
+# The `x-owlat-profiles` list from the override, comma-joined. Handles both the
+# block form the shared renderer writes (`x-owlat-profiles:` + `  - name` lines)
+# and an inline `[a, b]` list. Exit 1 when there is no override or no such key.
+compose_profiles_from_override() {
+	local override="$OWLAT_DIR/docker-compose.override.yml"
+	[[ -f "$override" ]] || return 1
+	awk '
+		/^x-owlat-profiles:/ {
+			found = 1
+			rest = $0
+			sub(/^x-owlat-profiles:[ \t]*/, "", rest)
+			if (rest != "") { gsub(/[][ \t"\047]/, "", rest); out = rest; exit }
+			listing = 1
+			next
+		}
+		listing && /^[ \t]+-/ {
+			item = $0
+			sub(/^[ \t]+-[ \t]*/, "", item)
+			gsub(/[ \t"\047]/, "", item)
+			if (item != "") out = out (out == "" ? "" : ",") item
+			next
+		}
+		listing { exit }
+		END { if (!found) exit 1; print out }
+	' "$override"
+}
+
+# The COMPOSE_PROFILES value in .env (quotes stripped). Exit 1 when unset.
+compose_profiles_from_env() {
+	[[ -f "$OWLAT_DIR/.env" ]] || return 1
+	local line
+	line="$(grep -E '^[[:space:]]*COMPOSE_PROFILES[[:space:]]*=' "$OWLAT_DIR/.env" | tail -1)" || return 1
+	printf '%s\n' "${line#*=}" | tr -d "\"' \t"
+}
+
+# Export COMPOSE_PROFILES as the union of both sources, so `docker compose`
+# starts every enabled profile service. Leaves the environment alone when
+# neither file names any profile (compose then reads .env on its own).
+export_compose_profiles() {
+	local from_env="" from_override="" have=0
+	if from_env="$(compose_profiles_from_env)"; then have=1; fi
+	if from_override="$(compose_profiles_from_override)"; then have=1; fi
+	[[ "$have" == "1" ]] || return 0
+	COMPOSE_PROFILES="$(printf '%s,%s' "$from_env" "$from_override" | tr ',' '\n' | grep -E '^[A-Za-z0-9_-]+$' | sort -u | paste -sd, - || true)"
+	export COMPOSE_PROFILES
+}
+
+# The compose project name, as compose itself resolves it (COMPOSE_PROJECT_NAME,
+# `name:`, or the directory). Empty when the config cannot be rendered.
+compose_project_name() {
+	docker compose config 2>/dev/null | sed -n 's/^name:[[:space:]]*//p' | head -1 || true
+}
+
+# Stop and remove containers of services that are no longer part of the active
+# model — the services of a profile that was just disabled. `up -d` never
+# touches those, and whether `--remove-orphans` does depends on the compose
+# version, so this asks compose for the active services and removes the rest.
+# One-off `docker compose run` containers (convex-deploy) are left alone.
+stop_inactive_profile_services() {
+	local project active stale=() svc ids
+	project="$(compose_project_name)"
+	[[ -n "$project" ]] || return 0
+	active="$(docker compose config --services 2>/dev/null)" || return 0
+	[[ -n "$active" ]] || return 0
+	while IFS= read -r svc; do
+		[[ -n "$svc" ]] || continue
+		grep -qxF -- "$svc" <<<"$active" || stale+=("$svc")
+	done < <(docker ps --filter "label=com.docker.compose.project=$project" \
+		--filter "label=com.docker.compose.oneoff=False" \
+		--format '{{.Label "com.docker.compose.service"}}' 2>/dev/null | sort -u)
+	[[ "${#stale[@]}" -gt 0 ]] || return 0
+	printf '%b\n' "${CYAN}${BOLD}[info]${RESET} Stopping services whose profile is no longer enabled: ${stale[*]}"
+	for svc in "${stale[@]}"; do
+		ids="$(docker ps -aq --filter "label=com.docker.compose.project=$project" \
+			--filter "label=com.docker.compose.oneoff=False" \
+			--filter "label=com.docker.compose.service=$svc")"
+		[[ -n "$ids" ]] || continue
+		# shellcheck disable=SC2086 # one container id per word
+		docker stop $ids >/dev/null && docker rm $ids >/dev/null
+	done
+}
+
 # ── Subcommands ───────────────────────────────────────────────────────────────
 cmd="${1:-help}"
 shift || true
@@ -375,7 +473,7 @@ case "$cmd" in
 esac
 
 case "$cmd" in
-	setup|quickstart|config|sample-data|feature|env|doctor)
+	setup|quickstart|config|sample-data|feature|env|doctor|apply)
 		require_supported_arch
 		;;
 esac
@@ -517,17 +615,58 @@ case "$cmd" in
 		;;
 	start|up)
 		# Activate docker-compose profiles for enabled features.
-		COMPOSE_PROFILES=""
-		if [[ -f "$OWLAT_DIR/docker-compose.override.yml" ]]; then
-			COMPOSE_PROFILES=$(grep -oE 'x-owlat-profiles:.*' "$OWLAT_DIR/docker-compose.override.yml" | sed 's/.*\[//; s/\].*//; s/[[:space:]]*,[[:space:]]*/,/g; s/[[:space:]]//g' || true)
-		fi
-		export COMPOSE_PROFILES
+		export_compose_profiles
 		exec docker compose up -d "$@"
 		;;
 	stop|down)
 		exec docker compose down "$@"
 		;;
+	apply)
+		# Make the running stack match .env and the feature flags. `restart`
+		# cannot: it restarts the existing processes with the environment they
+		# were created with. Three kinds of change need three different moves:
+		#   1. container env from ${VAR} interpolation (EHLO_HOSTNAMES, IP pools,
+		#      WORKER_CONCURRENCY, …) — `up -d` recreates every container whose
+		#      resolved config changed and leaves the rest running;
+		#   2. compose profiles (`owlat feature`/`pack`) — `up -d` with the
+		#      current COMPOSE_PROFILES starts a newly enabled service, and
+		#      stop_inactive_profile_services removes one that was disabled;
+		#   3. Convex function-runtime keys (provider credentials, LLM_*, …) —
+		#      read from the Convex deployment, not from any container, so they
+		#      are pushed with `convex env set` by the setup CLI.
+		# Named services (`owlat apply mta`) scope the run to those containers:
+		# no profile clean-up and no runtime-env push.
+		export_compose_profiles
+		printf '%b\n' "${CYAN}${BOLD}[info]${RESET} Recreating containers whose configuration changed…"
+		docker compose up -d "$@"
+		if [[ $# -gt 0 ]]; then
+			printf '%b\n' "${GREEN}${BOLD}[ ok ]${RESET} Applied to: $*"
+			printf '%b\n' "${DIM}Convex function-runtime keys were not pushed; run 'owlat apply' without a service name for that.${RESET}"
+			exit 0
+		fi
+		stop_inactive_profile_services
+		printf '%b\n' "${CYAN}${BOLD}[info]${RESET} Pushing Convex function-runtime keys from .env to the deployment…"
+		# The setup CLI runs `docker compose run convex-deploy` through the host
+		# socket. Pass the host's project name so that run joins THIS stack (its
+		# network and the `convex` service it depends on), not a new project
+		# named after the in-container mount point.
+		project_name="$(compose_project_name)"
+		push_status=0
+		docker run --rm \
+			-v "$OWLAT_DIR:/opt/owlat" \
+			-v /var/run/docker.sock:/var/run/docker.sock \
+			-e "OWLAT_DIR=/opt/owlat" \
+			${project_name:+-e "COMPOSE_PROJECT_NAME=$project_name"} \
+			"$OWLAT_SETUP_IMAGE" push-env || push_status=$?
+		if [[ "$push_status" -ne 0 ]]; then
+			printf '%b\n' "${YELLOW}${BOLD}[warn]${RESET} Containers are up to date, but the Convex function-runtime keys were NOT pushed (see above)." >&2
+			exit "$push_status"
+		fi
+		printf '%b\n' "${GREEN}${BOLD}[ ok ]${RESET} Stack matches .env and the enabled features."
+		;;
 	restart)
+		# A plain process restart: the containers keep the environment they were
+		# created with. To apply a .env or feature change, use `owlat apply`.
 		exec docker compose restart "$@"
 		;;
 	status|ps)

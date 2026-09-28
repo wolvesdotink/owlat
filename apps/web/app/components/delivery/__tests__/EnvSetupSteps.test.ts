@@ -55,7 +55,7 @@ describe('EnvSetupSteps', () => {
 			'AWS_SES_REGION=\nAWS_SES_ACCESS_KEY_ID='
 		);
 		expect(wrapper.find('[data-testid="env-setup-cli"]').text()).toBe(
-			'owlat env AWS_SES_REGION <value>\nowlat env AWS_SES_ACCESS_KEY_ID <value>\nowlat restart'
+			'owlat env AWS_SES_REGION <value>\nowlat env AWS_SES_ACCESS_KEY_ID <value>\nowlat apply'
 		);
 		expect(wrapper.find('[data-testid="env-setup-waiting"]').exists()).toBe(true);
 		wrapper.unmount();
@@ -76,7 +76,7 @@ describe('EnvSetupSteps', () => {
 		});
 		expect(wrapper.find('[data-testid="env-setup-env"]').text()).toBe(`EHLO_HOSTNAMES=${value}`);
 		expect(wrapper.find('[data-testid="env-setup-cli"]').text()).toBe(
-			`owlat env EHLO_HOSTNAMES '${value}'\nowlat restart`
+			`owlat env EHLO_HOSTNAMES '${value}'\nowlat apply`
 		);
 		expect(wrapper.find('[data-testid="env-setup-waiting"]').exists()).toBe(false);
 		vi.advanceTimersByTime(60_000);
@@ -92,7 +92,7 @@ describe('EnvSetupSteps', () => {
 		expect(copy).toHaveBeenNthCalledWith(1, 'MANDRILL_API_KEY=', 'env-setup-env');
 		expect(copy).toHaveBeenNthCalledWith(
 			2,
-			'owlat env MANDRILL_API_KEY <value>\nowlat restart',
+			'owlat env MANDRILL_API_KEY <value>\nowlat apply',
 			'env-setup-cli'
 		);
 		wrapper.unmount();

@@ -157,7 +157,7 @@ describe('the flow renders the runbook in order', () => {
 		// The exact lines to paste and the owlat commands, names only.
 		expect(wrapper.find('[data-testid="env-setup-env"]').text()).toBe('MANDRILL_API_KEY=');
 		expect(wrapper.find('[data-testid="env-setup-cli"]').text()).toBe(
-			'owlat env MANDRILL_API_KEY <value>\nowlat restart'
+			'owlat env MANDRILL_API_KEY <value>\nowlat apply'
 		);
 		// Everything downstream of the key is locked, and says why.
 		expect(stepState(wrapper, 'history')).toBe('blocked');

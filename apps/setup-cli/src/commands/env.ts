@@ -174,6 +174,6 @@ export async function runEnv(opts: EnvCmdOptions): Promise<number> {
 	await writeEnv(envPath, sealRelayPasswordForBackup(existing));
 
 	console.log(`${pc.green('✓')} ${key} = ${maskSecretValue(key, value)}`);
-	console.log(`\nRun ${pc.cyan('owlat restart')} to apply.`);
+	console.log(`\nRun ${pc.cyan('owlat apply')} to apply.`);
 	return 0;
 }

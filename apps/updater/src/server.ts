@@ -103,7 +103,7 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 		return json(res, 400, { error: 'Invalid JSON body' });
 	}
 
-	const steps: { step: string; stdout: string; stderr: string }[] = [];
+	const steps: { step: string; ok?: boolean; stdout: string; stderr: string }[] = [];
 	const envFile = join(OWLAT_DIR, '.env');
 	const INTERFACES_DIR = '/etc/network/interfaces.d';
 	const persistFile = join(INTERFACES_DIR, `60-floating-${ip.replace(/\./g, '-')}.cfg`);
@@ -143,10 +143,6 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 		} catch (err) {
 			steps.push({ step: 'update-env', stdout: '', stderr: errorMessage(err) });
 		}
-
-		// Step 4: Restart MTA to pick up new IP pool
-		const restart = exec('docker', ['compose', 'restart', 'mta'], OWLAT_DIR);
-		steps.push({ step: 'restart-mta', ...restart });
 	} else {
 		// Remove action
 		// Step 1: Remove IP from network interface
@@ -181,10 +177,27 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 		} catch (err) {
 			steps.push({ step: 'update-env', stdout: '', stderr: errorMessage(err) });
 		}
+	}
 
-		// Step 4: Restart MTA
-		const restart = exec('docker', ['compose', 'restart', 'mta'], OWLAT_DIR);
-		steps.push({ step: 'restart-mta', ...restart });
+	// Step 4: recreate the MTA so it boots with the new pool. It reads
+	// IP_POOLS_CAMPAIGN once at start from its compose-interpolated env, and
+	// `docker compose restart` keeps a container's old env — the pool change
+	// was silently dropped (#839). `up -d` recreates it because its resolved
+	// config changed. Judged by `.ok`, never by stderr, like the other applies.
+	const apply = exec('docker', [...composeArgv(), 'up', '-d', 'mta'], OWLAT_DIR);
+	steps.push({ step: 'apply-mta', ...apply });
+	if (!apply.ok) {
+		const recovery = await recoverStackAfterFailedUp(['mta']);
+		steps.push(recovery);
+		console.error('[configure-ip] `up -d mta` failed:', apply.stderr);
+		return json(res, 500, {
+			error:
+				'docker compose up -d mta failed — .env has the new pool, but the MTA is not ' +
+				'running with it yet.',
+			action,
+			ip,
+			steps,
+		});
 	}
 
 	json(res, 200, { success: true, action, ip, steps });

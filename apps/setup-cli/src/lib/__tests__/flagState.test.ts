@@ -53,3 +53,44 @@ describe('setup CLI flag persistence', () => {
 		expect(result.state['plugin.policy-pack']).toBe(true);
 	});
 });
+
+describe('setup CLI flag toggles keep .env COMPOSE_PROFILES in step with the override', () => {
+	it('drops a disabled profile from .env and keeps install-owned ones and every other line', async () => {
+		const root = await temporaryOwlatDirectory();
+		await writeFile(
+			join(root, '.env'),
+			'# operator note\nSITE_URL=https://owlat.example.com\nCOMPOSE_PROFILES=clamav,tls\n'
+		);
+
+		const result = await applyAndPersist(root, 'scan.files', false);
+
+		expect(result.profiles).not.toContain('clamav');
+		expect(result.profiles).toContain('tls');
+		const env = await readFile(join(root, '.env'), 'utf8');
+		expect(env).toContain('# operator note\nSITE_URL=https://owlat.example.com\n');
+		expect(env).toContain(`COMPOSE_PROFILES=${result.profiles.join(',')}\n`);
+		expect(env).not.toMatch(/COMPOSE_PROFILES=.*clamav/);
+		const override = await readFile(join(root, 'docker-compose.override.yml'), 'utf8');
+		expect(override).not.toContain('- clamav');
+	});
+
+	it('adds an enabled profile, appending the line when .env had none', async () => {
+		const root = await temporaryOwlatDirectory();
+		await writeFile(join(root, '.env'), 'SITE_URL=https://owlat.example.com');
+
+		const result = await applyAndPersist(root, 'scan.files', true);
+
+		expect(result.profiles).toContain('clamav');
+		expect(await readFile(join(root, '.env'), 'utf8')).toBe(
+			`SITE_URL=https://owlat.example.com\nCOMPOSE_PROFILES=${result.profiles.join(',')}\n`
+		);
+	});
+
+	it('does not create a .env for a directory that has none', async () => {
+		const root = await temporaryOwlatDirectory();
+
+		await applyAndPersist(root, 'scan.files', true);
+
+		await expect(stat(join(root, '.env'))).rejects.toThrow();
+	});
+});

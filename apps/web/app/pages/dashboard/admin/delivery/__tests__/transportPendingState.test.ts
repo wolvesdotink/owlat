@@ -214,7 +214,7 @@ describe('one door to change the provider, and receiving rules in one place', ()
 		});
 		const wrapper = mount(TransportPage, { global: globalOptions });
 		expect(wrapper.find('[data-testid="env-setup-cli"]').text()).toBe(
-			'owlat env AWS_SES_REGION <value>\nowlat env AWS_SES_SECRET_ACCESS_KEY <value>\nowlat restart'
+			'owlat env AWS_SES_REGION <value>\nowlat env AWS_SES_SECRET_ACCESS_KEY <value>\nowlat apply'
 		);
 		wrapper.unmount();
 	});

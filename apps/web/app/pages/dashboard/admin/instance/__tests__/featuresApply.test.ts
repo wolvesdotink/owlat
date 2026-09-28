@@ -283,7 +283,7 @@ describe('Features page — banner apply and resolve', () => {
 		expect(fallbackEl.exists()).toBe(true);
 		expect(fallbackEl.text()).toContain('updater sidecar unreachable');
 		expect(fallbackEl.text()).toContain('owlat feature');
-		expect(fallbackEl.text()).toContain('owlat restart');
+		expect(fallbackEl.text()).toContain('owlat apply');
 	});
 
 	it('says the updater is busy, without the CLI fallback, while another rollout holds it', async () => {
@@ -458,7 +458,7 @@ describe('Durable drift — server-side probe on mount', () => {
 		const fallbackEl = wrapper.find(fallback);
 		expect(fallbackEl.exists()).toBe(true);
 		expect(fallbackEl.text()).toContain('Updater profile-state returned 502');
-		expect(fallbackEl.text()).toContain('owlat restart');
+		expect(fallbackEl.text()).toContain('owlat apply');
 	});
 
 	it('degrades to the CLI fallback when the probe request itself fails', async () => {
