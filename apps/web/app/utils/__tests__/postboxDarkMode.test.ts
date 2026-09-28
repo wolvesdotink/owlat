@@ -44,9 +44,10 @@ describe('luminance / contrast', () => {
 	});
 
 	it('black vs white is 21:1', () => {
-		expect(
-			contrastRatio({ r: 0, g: 0, b: 0, a: 1 }, { r: 255, g: 255, b: 255, a: 1 })
-		).toBeCloseTo(21, 1);
+		expect(contrastRatio({ r: 0, g: 0, b: 0, a: 1 }, { r: 255, g: 255, b: 255, a: 1 })).toBeCloseTo(
+			21,
+			1
+		);
 	});
 
 	it('near-black text is unreadable on the dark background, white is readable', () => {
@@ -59,6 +60,18 @@ describe('luminance / contrast', () => {
 		expect(isReadableOnDark(out)).toBe(true);
 		expect(out.r).toBeGreaterThan(out.g); // still reddish
 	});
+
+	it('lightenForDark lifts a hue to AA contrast, not just the 3:1 cut-off', () => {
+		const bg = parseCssColor(POSTBOX_DARK_PALETTE.background)!;
+		const out = lightenForDark(parseCssColor('#003399')!);
+		expect(contrastRatio(out, bg)).toBeGreaterThanOrEqual(4.5);
+	});
+
+	it('lightenForDark maps grays to the palette text color', () => {
+		const text = parseCssColor(POSTBOX_DARK_PALETTE.text);
+		expect(lightenForDark(parseCssColor('#000000')!)).toEqual(text);
+		expect(lightenForDark(parseCssColor('#333333')!)).toEqual(text);
+	});
 });
 
 describe('classifyEmailHtml', () => {
@@ -68,8 +81,7 @@ describe('classifyEmailHtml', () => {
 	});
 
 	it('bgcolor table mail classifies as designed', () => {
-		const html =
-			'<table bgcolor="#ffffff" width="600"><tr><td>Big sale!</td></tr></table>';
+		const html = '<table bgcolor="#ffffff" width="600"><tr><td>Big sale!</td></tr></table>';
 		expect(classifyEmailHtml(html)).toBe('designed');
 	});
 
@@ -79,8 +91,7 @@ describe('classifyEmailHtml', () => {
 	});
 
 	it('background-image on a container classifies as designed', () => {
-		const html =
-			`<td style="background-image:url('https://x.test/hero.png')">Hero</td>`;
+		const html = `<td style="background-image:url('https://x.test/hero.png')">Hero</td>`;
 		expect(classifyEmailHtml(html)).toBe('designed');
 	});
 
@@ -106,8 +117,7 @@ describe('remapInlineColorsForDark', () => {
 	});
 
 	it('leaves explicit white-on-blue button untouched', () => {
-		const html =
-			'<a style="color:#ffffff;background-color:#0a6cdd;padding:8px">Buy now</a>';
+		const html = '<a style="color:#ffffff;background-color:#0a6cdd;padding:8px">Buy now</a>';
 		expect(remapInlineColorsForDark(html)).toBe(html);
 	});
 
@@ -119,6 +129,18 @@ describe('remapInlineColorsForDark', () => {
 	it('keeps readable colored text as-is', () => {
 		const html = '<p style="color:#ff8888">warm text</p>';
 		expect(remapInlineColorsForDark(html)).toBe(html);
+	});
+
+	it('keeps a quoted font-family intact when it remaps the color', () => {
+		// sanitize-html writes font-name quotes as &quot; — the `;` inside the
+		// entity must not split the declaration (it used to drop the font and
+		// fall back to the default serif).
+		const html =
+			'<span style="font-size:10.0pt;font-family:&quot;Arial&quot;,sans-serif;color:black">sig</span>';
+		const out = remapInlineColorsForDark(html);
+		expect(out).toContain("font-family:'Arial',sans-serif");
+		expect(out).toContain('font-size:10.0pt');
+		expect(out).not.toContain('color:black');
 	});
 
 	it('does not touch unparseable color values', () => {
@@ -164,10 +186,22 @@ describe('adaptEmailHtml', () => {
 });
 
 describe('buildBaseStyle', () => {
-	it('light output is byte-identical to the historical BASE_STYLE', () => {
-		expect(buildBaseStyle('light')).toBe(
-			`<style>html,body{font-family:-apple-system,Segoe UI,sans-serif;color:#1a1a1a;font-size:14px;line-height:1.55;margin:0;padding:0;}img{max-width:100%;height:auto;}a{color:#0a6cdd;}</style>`
-		);
+	it('light output sets the base typography, image cap and link color', () => {
+		const style = buildBaseStyle('light');
+		expect(style).toContain('color:#1a1a1a');
+		expect(style).toContain('font-size:14px');
+		expect(style).toContain('img{max-width:100%;height:auto;}');
+		expect(style).toContain('a{color:#0a6cdd;}');
+	});
+
+	it("restores Outlook's paragraph reset in both schemes and kinds", () => {
+		for (const scheme of ['light', 'dark'] as const) {
+			for (const kind of ['simple', 'designed'] as const) {
+				expect(buildBaseStyle(scheme, kind)).toContain(
+					'p.MsoNormal,li.MsoNormal,div.MsoNormal{margin:0;'
+				);
+			}
+		}
 	});
 
 	it('dark output sets color-scheme, dark background, light text and link color', () => {
@@ -178,20 +212,25 @@ describe('buildBaseStyle', () => {
 		expect(style).toContain(`a{color:${POSTBOX_DARK_PALETTE.link}`);
 	});
 
-	it('simple mail gets the comfortable reading measure in both schemes', () => {
+	it('simple mail gets a left-aligned reading measure on a transparent canvas', () => {
 		for (const scheme of ['light', 'dark'] as const) {
 			const style = buildBaseStyle(scheme, 'simple');
-			expect(style).toContain('max-width:70ch');
-			expect(style).toContain('margin:0 auto');
+			expect(style).toContain('max-width:72ch');
+			// Aligned with the message header, not floated to the middle.
+			expect(style).not.toContain('margin:0 auto');
 			expect(style).toContain('line-height:1.6;');
 			expect(style).toContain('font-size:15px');
+			expect(style).toContain('html,body{background:transparent;}');
 		}
 	});
 
-	it('designed mail keeps the historical base style (no measure cap)', () => {
+	it('designed mail keeps its own canvas (no measure cap, no transparency)', () => {
 		expect(buildBaseStyle('light', 'designed')).toBe(buildBaseStyle('light'));
 		expect(buildBaseStyle('dark', 'designed')).toBe(buildBaseStyle('dark'));
-		expect(buildBaseStyle('light', 'designed')).not.toContain('70ch');
-		expect(buildBaseStyle('dark', 'designed')).not.toContain('70ch');
+		for (const scheme of ['light', 'dark'] as const) {
+			const style = buildBaseStyle(scheme, 'designed');
+			expect(style).not.toContain('72ch');
+			expect(style).not.toContain('background:transparent');
+		}
 	});
 });

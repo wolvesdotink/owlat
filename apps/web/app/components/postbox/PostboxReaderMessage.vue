@@ -137,7 +137,7 @@ const MENU_ITEM_CLASS =
 	<button
 		v-if="!expanded"
 		type="button"
-		class="w-full flex items-center gap-3 px-3 py-2 rounded border border-border-subtle bg-bg-surface text-left hover:bg-bg-elevated"
+		class="w-full flex items-center gap-3 px-4 py-2.5 rounded-md border border-border-subtle bg-bg-elevated text-left hover:bg-bg-surface"
 		@click="emit('toggle-expanded')"
 	>
 		<UiAvatar
@@ -168,7 +168,7 @@ const MENU_ITEM_CLASS =
 	<!-- Expanded message -->
 	<section
 		v-else
-		class="pbx-reader-message border border-border-subtle rounded bg-bg-surface px-4 py-3"
+		class="pbx-reader-message border border-border-subtle rounded-md bg-bg-elevated px-5 py-4"
 	>
 		<header class="flex items-start gap-3">
 			<UiAvatar

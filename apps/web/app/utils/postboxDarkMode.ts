@@ -28,6 +28,7 @@ export const POSTBOX_DARK_PALETTE = {
 	text: '#e8e8ea',
 	link: '#6cb2ff',
 	mutedBorder: '#3a3a3c',
+	mutedText: '#a1a1a6',
 } as const;
 
 /* ------------------------------------------------------------------ */
@@ -136,13 +137,29 @@ export function isReadableOnDark(color: Rgba): boolean {
 }
 
 /**
- * Lightens an unreadable text color for the dark background while keeping its
- * hue (dark red stays reddish, near-black becomes near-white).
+ * Contrast a remapped color is lifted to: WCAG AA for body text. Higher than
+ * the "is it readable at all" cut-off above, which only decides whether to
+ * touch a color — stopping at 3:1 turned Outlook's `color:black` signatures
+ * into a dim mid-gray.
+ */
+const REMAP_TARGET_CONTRAST = 4.5;
+
+/** Channel spread under which a color reads as gray rather than a hue. */
+const NEUTRAL_SPREAD = 24;
+
+/**
+ * Lightens an unreadable text color for the dark background. Grays (black,
+ * #333…) mean "the default text color" and become the palette's text color, so
+ * they match the rest of the body; a hue keeps its hue (dark red stays reddish)
+ * and is blended towards white until it clears AA contrast.
  */
 export function lightenForDark(color: Rgba): Rgba {
+	const spread = Math.max(color.r, color.g, color.b) - Math.min(color.r, color.g, color.b);
+	if (spread <= NEUTRAL_SPREAD) return parseCssColor(POSTBOX_DARK_PALETTE.text)!;
+	const bg = parseCssColor(POSTBOX_DARK_PALETTE.background)!;
 	let current = { ...color, a: 1 };
 	// Blend towards white until readable (bounded loop; pure + deterministic).
-	for (let i = 0; i < 12 && !isReadableOnDark(current); i++) {
+	for (let i = 0; i < 12 && contrastRatio(current, bg) < REMAP_TARGET_CONTRAST; i++) {
 		current = {
 			r: Math.min(255, Math.round(current.r + (255 - current.r) * 0.25)),
 			g: Math.min(255, Math.round(current.g + (255 - current.g) * 0.25)),
@@ -176,7 +193,14 @@ function isNonTransparentBackground(value: string): boolean {
 }
 
 function styleDeclarations(style: string): Array<{ prop: string; value: string }> {
+	// sanitize-html writes the quotes of a font name as `&quot;` inside the
+	// attribute (`font-family:&quot;Arial&quot;,sans-serif`). Splitting on `;`
+	// first would cut through the entity and leave `font-family:&quot`, which
+	// the browser drops, so the text fell back to the default serif. CSS takes
+	// single quotes equally well, and sanitize-html always double-quotes the
+	// attribute, so a single quote is safe to write back.
 	return style
+		.replace(/&quot;/g, "'")
 		.split(';')
 		.map((decl) => {
 			const idx = decl.indexOf(':');
@@ -256,7 +280,8 @@ export function remapInlineColorsForDark(sanitizedHtml: string): string {
 			});
 			if (!changed) return full;
 			const rebuilt = remapped.map((d) => `${d.prop}:${d.value}`).join(';');
-			return `style=${quote}${rebuilt}${quote}`;
+			const escaped = quote === "'" ? rebuilt.replace(/'/g, '&quot;') : rebuilt;
+			return `style=${quote}${escaped}${quote}`;
 		}
 	);
 }
@@ -265,37 +290,72 @@ export function remapInlineColorsForDark(sanitizedHtml: string): string {
 /* Base stylesheet per scheme                                         */
 /* ------------------------------------------------------------------ */
 
-/**
- * Reading-typography block for "simple" (mostly-text) mail: a comfortable
- * measure — the text column capped around 70ch and centered, a slightly
- * larger base size, and a roomier line-height. "Designed" mail (marketing /
- * newsletter layouts) never receives this — its own layout stays untouched.
- */
-const SIMPLE_MEASURE_STYLE = 'body{max-width:70ch;margin:0 auto;font-size:15px;line-height:1.6;}';
+/** The app's own UI font stack, so plain mail reads like the rest of Owlat. */
+const FONT_STACK = '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif';
 
 /**
- * Base <style> for the iframe head. With the default `kind` ("designed") the
- * output is byte-identical to the historical BASE_STYLE, so full-width
- * designed mail renders exactly as before; "simple" mail additionally gets
- * the comfortable-measure typography block.
+ * Outlook ships its paragraph reset (`p.MsoNormal{margin:0;font-size:11pt}`)
+ * in a <style> block, which sanitization drops. Without it every
+ * `<p>&nbsp;</p>` spacer Outlook writes between lines picks up the default 1em
+ * margins on both sides, and each line box is sized from our 15px body font
+ * rather than Outlook's 11pt, so a short reply balloons into a wall of blank
+ * space. Restoring the reset is faithful to how the sender saw it, so it
+ * applies to designed mail too. The line height stays a little looser than
+ * Outlook's own for reading comfort.
+ */
+const OUTLOOK_RESET_STYLE =
+	'p.MsoNormal,li.MsoNormal,div.MsoNormal{margin:0;font-size:11pt;line-height:1.4;}';
+
+/**
+ * Reading-typography block for "simple" (mostly-text) mail: a comfortable
+ * measure capped around 72ch and aligned with the message header (not
+ * centered, which left the text floating in the middle of a wide reader), a
+ * slightly larger base size, a roomier line-height, long URLs that wrap instead
+ * of scrolling sideways, and no stray margin above the first or below the last
+ * block. The background stays transparent so the body sits directly on the
+ * message card instead of in a second box. "Designed" mail (marketing /
+ * newsletter layouts) never receives this — its own layout stays untouched.
+ */
+function simpleMeasureStyle(quoteBorder: string, quoteText: string): string {
+	return (
+		'html,body{background:transparent;}' +
+		'body{max-width:72ch;font-size:15px;line-height:1.6;overflow-wrap:break-word;}' +
+		'body>:first-child{margin-top:0;}body>:last-child{margin-bottom:0;}' +
+		`blockquote{margin:0.5em 0 0.5em 0.25em;padding-left:0.9em;border-left:2px solid ${quoteBorder};color:${quoteText};}`
+	);
+}
+
+/**
+ * Base <style> for the iframe head. "Designed" mail (the default `kind`) keeps
+ * its own canvas on a white paper card and only gets the shared basics; "simple"
+ * mail additionally gets the reading-measure block and a transparent canvas.
  */
 export function buildBaseStyle(
 	scheme: PostboxRenderScheme,
 	kind: EmailHtmlKind = 'designed'
 ): string {
-	const measure = kind === 'simple' ? SIMPLE_MEASURE_STYLE : '';
+	const base = `font-family:${FONT_STACK};font-size:14px;line-height:1.55;margin:0;padding:0;`;
 	if (scheme === 'dark') {
 		return (
 			'<style>:root{color-scheme:dark;}' +
-			`html,body{font-family:-apple-system,Segoe UI,sans-serif;color:${POSTBOX_DARK_PALETTE.text};background:${POSTBOX_DARK_PALETTE.background};font-size:14px;line-height:1.55;margin:0;padding:0;}` +
+			`html,body{${base}color:${POSTBOX_DARK_PALETTE.text};background:${POSTBOX_DARK_PALETTE.background};}` +
 			'img{max-width:100%;height:auto;}' +
 			`a{color:${POSTBOX_DARK_PALETTE.link};}` +
 			`blockquote{border-color:${POSTBOX_DARK_PALETTE.mutedBorder};}` +
-			measure +
+			OUTLOOK_RESET_STYLE +
+			(kind === 'simple'
+				? simpleMeasureStyle(POSTBOX_DARK_PALETTE.mutedBorder, POSTBOX_DARK_PALETTE.mutedText)
+				: '') +
 			'</style>'
 		);
 	}
-	return `<style>html,body{font-family:-apple-system,Segoe UI,sans-serif;color:#1a1a1a;font-size:14px;line-height:1.55;margin:0;padding:0;}img{max-width:100%;height:auto;}a{color:#0a6cdd;}${measure}</style>`;
+	return (
+		`<style>html,body{${base}color:#1a1a1a;}` +
+		'img{max-width:100%;height:auto;}a{color:#0a6cdd;}' +
+		OUTLOOK_RESET_STYLE +
+		(kind === 'simple' ? simpleMeasureStyle('#d4d4d8', '#52525b') : '') +
+		'</style>'
+	);
 }
 
 /**
