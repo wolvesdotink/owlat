@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toReputationDto } from '../reputationQueries';
+import { domainAuthState, toReputationDto } from '../reputationQueries';
 import type { ReputationSummary } from '../sendingReputation';
 
 const ZERO: ReputationSummary = {
@@ -55,5 +55,39 @@ describe('toReputationDto', () => {
 		});
 		// The internal hard-bounce tally is not part of the card DTO.
 		expect(dto).not.toHaveProperty('totalHardBounced');
+	});
+});
+
+describe('domainAuthState', () => {
+	const dkim = [{ verified: true }];
+	const dmarc = { verified: true };
+
+	it('counts SPF as verified for an own-MTA domain via its verified MAIL FROM record', () => {
+		// Own-MTA domains publish no apex SPF; SPF passes on the bounce host.
+		const auth = domainAuthState(
+			{ mailFrom: [{ hostname: 'bounce.example.com' }] },
+			{ dkim, dmarc, mailFrom: [{ verified: true }] }
+		);
+		expect(auth).toEqual({ spf: true, dkim: true, dmarc: true });
+	});
+
+	it('reports SPF missing while the MAIL FROM record is unverified', () => {
+		const auth = domainAuthState(
+			{ mailFrom: [{ hostname: 'bounce.example.com' }] },
+			{ dkim, dmarc, mailFrom: [{ verified: false }] }
+		);
+		expect(auth.spf).toBe(false);
+	});
+
+	it('uses the apex SPF result when an apex SPF record is configured', () => {
+		const dnsRecords = { spf: { host: '@' }, mailFrom: [{ hostname: 'bounce.example.com' }] };
+		expect(
+			domainAuthState(dnsRecords, { spf: { verified: false }, mailFrom: [{ verified: true }] }).spf
+		).toBe(false);
+		expect(domainAuthState(dnsRecords, { spf: { verified: true } }).spf).toBe(true);
+	});
+
+	it('reports SPF missing when neither an apex SPF nor a MAIL FROM record exists', () => {
+		expect(domainAuthState({}, { dkim, dmarc }).spf).toBe(false);
 	});
 });
