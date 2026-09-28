@@ -15,6 +15,11 @@
  * A pair read from files also reports its `paths`, so the running listener can
  * re-read them when the certificate is renewed (bounce/tlsReload.ts). Inline
  * PEM cannot change without a restart and reports none.
+ *
+ * The shared directory reports its `paths` even when the pair is not there yet.
+ * On a fresh VPS install the `acme` sidecar publishes the certificate minutes
+ * after the MTA boots, so the listener starts without STARTTLS and the reloader
+ * installs the pair when it appears. `unavailable` says why nothing was loaded.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -23,8 +28,13 @@ import { join } from 'node:path';
 export interface BounceTlsMaterial {
 	cert?: string;
 	key?: string;
-	/** Where a file-sourced pair came from; absent for inline PEM or a half pair. */
+	/**
+	 * Where a file-sourced pair came from, or where it is expected to appear
+	 * (TLS_CERT_DIR). Absent for inline PEM or a half pair.
+	 */
 	paths?: { cert: string; key: string };
+	/** Set when `paths` are watched but held no readable pair at boot. */
+	unavailable?: string;
 }
 
 type Env = Record<string, string | undefined>;
@@ -68,12 +78,13 @@ export function loadBounceTlsMaterial(env: Env = process.env): BounceTlsMaterial
 
 	const certDir = env['TLS_CERT_DIR'];
 	if (!certDir) return {};
-	const certPath = join(certDir, 'default.crt');
-	const keyPath = join(certDir, 'default.key');
-	if (!existsSync(certPath) || !existsSync(keyPath)) return {};
+	const paths = { cert: join(certDir, 'default.crt'), key: join(certDir, 'default.key') };
+	if (!existsSync(paths.cert) || !existsSync(paths.key)) {
+		return { paths, unavailable: `${paths.cert} and ${paths.key} do not exist yet` };
+	}
 	return {
-		cert: readPem(certPath, 'TLS_CERT_DIR'),
-		key: readPem(keyPath, 'TLS_CERT_DIR'),
-		paths: { cert: certPath, key: keyPath },
+		cert: readPem(paths.cert, 'TLS_CERT_DIR'),
+		key: readPem(paths.key, 'TLS_CERT_DIR'),
+		paths,
 	};
 }

@@ -39,9 +39,20 @@ describe('loadBounceTlsMaterial', () => {
 		});
 	});
 
-	it('ignores a cert directory that does not hold a complete pair yet', () => {
+	it('watches a cert directory that does not hold a complete pair yet', () => {
 		writeFileSync(join(dir, 'default.crt'), CERT);
-		expect(loadBounceTlsMaterial({ TLS_CERT_DIR: dir })).toEqual({});
+		const loaded = loadBounceTlsMaterial({ TLS_CERT_DIR: dir });
+		expect(loaded).toEqual({
+			paths: { cert: join(dir, 'default.crt'), key: join(dir, 'default.key') },
+			unavailable: expect.stringMatching(/do not exist yet/),
+		});
+		expect(loaded.cert).toBeUndefined();
+	});
+
+	it('watches an empty cert directory so a certificate published later is picked up', () => {
+		expect(loadBounceTlsMaterial({ TLS_CERT_DIR: dir })).toMatchObject({
+			paths: { cert: join(dir, 'default.crt'), key: join(dir, 'default.key') },
+		});
 	});
 
 	it('prefers inline PEM over files and the cert directory, as a whole pair', () => {

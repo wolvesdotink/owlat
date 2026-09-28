@@ -28,4 +28,11 @@ describe('SMTP TLS certificate readiness', () => {
 			reason: 'certificate-invalid',
 		});
 	});
+
+	it('reports a watched certificate that has not been published yet as pending', () => {
+		expect(inspectSmtpTlsCertificate(undefined, 'mail.example.test', now, true)).toMatchObject({
+			status: 'fail',
+			reason: 'certificate-pending',
+		});
+	});
 });
