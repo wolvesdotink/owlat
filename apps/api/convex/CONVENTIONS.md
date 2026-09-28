@@ -209,6 +209,14 @@ data plane) still lives in the handler. Only query/mutation builders can be
 gated this way — `assertFeatureEnabled` reads `ctx.db`, which **actions** lack,
 so feature-gated actions keep the in-handler check against a query they call.
 
+A composition needs no lint edits. The definition gates (`check-permissions`,
+`check-query-authz`, `check-session-threading`, `check-token-redaction`,
+`check-errors`) read their builder families from source through
+`scripts/lib/convex-builders.sh`: every `(export )?const X = featureGated(Any)(<base>, …)`
+under `convex/` inherits its base's kind and auth floor. A new **base** builder
+exported from `lib/authedFunctions.ts` must be classified in that helper's
+`CONVEX_BASE_BUILDERS` table; until it is, every one of those gates fails.
+
 ## Permissions
 
 `authedMutation` / `authedAction` only enforce the auth _floor_ (an authenticated
@@ -225,7 +233,8 @@ three ways:
   (or `requireAdminContext` / `requireOrgPermission`, or the per-user
   `requireMailboxAccess` / `requireMessageAccess`, chat `assertCan*Room`,
   `requirePlatformAdmin`). Prefer the specific `<scope>:<verb>` permission where
-  one fits the capability.
+  one fits the capability. The accepted helpers are `CONVEX_AUTHZ_GATES` in
+  `scripts/lib/convex-builders.sh`, shared with `check-query-authz.sh`.
 - **Explicit opt-out comment** — `// authz: <reason>` when the gate genuinely
   lives elsewhere (a delegated `internal*` mutation, or a self-scope check like
   `args.userId === session.userId`), or `// all-members: <reason>` when the write
@@ -251,8 +260,9 @@ such a secret:
 
 `scripts/check-token-redaction.sh` (wired into `bun run lint`) is the read-side
 sibling of `check-permissions.sh`: a **ratchet** that fails CI on any _new_
-`authedQuery`/`publicQuery` which scans one of these tables (`ctx.db.query('…')`)
-without stripping the secret. Satisfy it one of three ways:
+query that serializes to the browser (`authedQuery`, `adminQuery`, `publicQuery`
+and their `featureGated` compositions) which scans one of these tables
+(`ctx.db.query('…')`) without stripping the secret. Satisfy it one of three ways:
 
 - **Redaction/projection helper** — `redactContactCapabilityFields` (returns the
   `PublicContact` shape, `contacts/listing.ts`) or `stripWebhookSecret`
