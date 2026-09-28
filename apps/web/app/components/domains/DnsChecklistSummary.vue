@@ -23,6 +23,8 @@ const props = defineProps<{
 	anchorFor: (entry: ChecklistEntry) => string;
 	/** Per-entry value swaps for the copied text (the merged SPF record). */
 	valueOverrides?: Partial<Record<string, string>>;
+	/** Per-entry comments the copied text carries above a record (already localized). */
+	notes?: Partial<Record<string, string>>;
 }>();
 
 const { t } = useI18n();
@@ -48,7 +50,13 @@ const copyLabel = computed(() => {
 });
 
 const handleCopy = () =>
-	copy(toZoneFileLines(copyTargets.value, props.domain, props.valueOverrides), 'zone-file');
+	copy(
+		toZoneFileLines(copyTargets.value, props.domain, {
+			valueOverrides: props.valueOverrides,
+			notes: props.notes,
+		}),
+		'zone-file'
+	);
 
 const percent = computed(() =>
 	summary.value.total === 0 ? 0 : Math.round((summary.value.verified / summary.value.total) * 100)

@@ -173,28 +173,45 @@ function rdata(record: DnsRecordPanelRecord, valueOverride?: string): string {
 /** Default TTL for the exported lines — the value most DNS hosts pre-fill. */
 const ZONE_TTL = 3600;
 
+/** A master-file comment line (RFC 1035 §5.1: `;` to the end of the line). */
+const comment = (text: string) => `; ${text.replace(/[\r\n]+/g, ' ').trim()}`;
+
+export type ZoneFileOptions = {
+	/**
+	 * Swap a record's value by entry id: the SPF row publishes the merged record
+	 * instead when the domain already has a foreign `v=spf1`.
+	 */
+	valueOverrides?: Partial<Record<string, string>>;
+	/**
+	 * A comment placed directly above an entry's line, by entry id. The merged
+	 * SPF record needs one: an import ADDS records, and a second `v=spf1` next
+	 * to the existing one is a PermError that fails SPF for all of the domain's
+	 * mail (RFC 7208 §3.2), so the text has to say it replaces the old record.
+	 */
+	notes?: Partial<Record<string, string>>;
+};
+
 /**
  * Standard zone-file lines (RFC 1035 master-file format) for the given records.
  * Absolute names, so the text is unambiguous whichever zone it is pasted into
  * or whoever it is forwarded to — many DNS hosts import it directly.
- *
- * `valueOverrides` swaps a record's value by entry id: the SPF row publishes the
- * merged record instead when the domain already has a foreign `v=spf1`.
  */
 export function toZoneFileLines(
 	entries: readonly ChecklistEntry[],
 	domain: string,
-	valueOverrides: Partial<Record<string, string>> = {}
+	options: ZoneFileOptions = {}
 ): string {
 	return entries
-		.map((e) =>
-			[
+		.flatMap((e) => {
+			const line = [
 				absolute(recordFqdn(e.record, domain)),
 				ZONE_TTL,
 				'IN',
 				e.record.type,
-				rdata(e.record, valueOverrides[e.id]),
-			].join('\t')
-		)
+				rdata(e.record, options.valueOverrides?.[e.id]),
+			].join('\t');
+			const note = options.notes?.[e.id];
+			return note ? [comment(note), line] : [line];
+		})
 		.join('\n');
 }

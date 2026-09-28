@@ -130,7 +130,7 @@ describe('toZoneFileLines', () => {
 		toZoneFileLines(
 			entries.filter((e) => e.id === id),
 			'mail.example.com',
-			overrides
+			{ valueOverrides: overrides }
 		);
 
 	it('writes absolute names, a TTL and the class', () => {
@@ -174,5 +174,30 @@ describe('toZoneFileLines', () => {
 
 	it('puts one record per line', () => {
 		expect(toZoneFileLines(entries, 'mail.example.com').split('\n')).toHaveLength(7);
+	});
+
+	it('puts a note as a comment line directly above its record', () => {
+		const merged = 'v=spf1 include:other.test include:amazonses.com ~all';
+		const text = toZoneFileLines(entries, 'mail.example.com', {
+			valueOverrides: { spf: merged },
+			notes: { spf: 'Replace the existing v=spf1 record.' },
+		});
+		const lines = text.split('\n');
+		expect(lines).toHaveLength(8);
+		expect(lines.slice(0, 2)).toEqual([
+			'; Replace the existing v=spf1 record.',
+			`mail.example.com.\t3600\tIN\tTXT\t"${merged}"`,
+		]);
+		// Only the noted record carries a comment.
+		expect(lines.filter((l) => l.startsWith(';'))).toHaveLength(1);
+	});
+
+	it('keeps a multi-line note on one comment line', () => {
+		const text = toZoneFileLines(
+			entries.filter((e) => e.id === 'spf'),
+			'mail.example.com',
+			{ notes: { spf: 'first\nsecond' } }
+		);
+		expect(text.split('\n')[0]).toBe('; first second');
 	});
 });
