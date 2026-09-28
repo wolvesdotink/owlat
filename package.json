@@ -86,6 +86,7 @@
 		"lint:convex-orphans": "bun scripts/check-convex-plugin-orphans.ts",
 		"lint:convex-globals": "bun scripts/check-convex-node-globals.ts",
 		"lint:filesize": "bash scripts/check-file-size.sh",
+		"lint:page-headers": "bash scripts/check-page-headers.sh",
 		"lint:adr": "bash scripts/check-adr-numbers.sh",
 		"lint:branding": "bash scripts/check-branding.sh",
 		"lint:format": "bash scripts/check-format.sh",

@@ -1,0 +1,64 @@
+# Pages under apps/web/app that still hand-roll their header h1
+# (class "text-2xl font-medium tracking-[-0.02em]") instead of rendering
+# <UiPageHeader>. Checked by scripts/check-page-headers.sh (bun run
+# lint:page-headers).
+#
+# This list only shrinks. A new page uses UiPageHeader; never add a line here.
+# When a page moves to UiPageHeader, delete its line: a stale entry fails the
+# gate too.
+apps/web/app/components/postbox/PostboxThreadHeader.vue
+apps/web/app/layouts/preferences.vue
+apps/web/app/pages/dashboard/admin/backups.vue
+apps/web/app/pages/dashboard/admin/delivery/activity.vue
+apps/web/app/pages/dashboard/admin/delivery/advanced/cells.vue
+apps/web/app/pages/dashboard/admin/delivery/advanced/controls.vue
+apps/web/app/pages/dashboard/admin/delivery/advanced/independence.vue
+apps/web/app/pages/dashboard/admin/delivery/advanced/measurement.vue
+apps/web/app/pages/dashboard/admin/delivery/deliverability.vue
+apps/web/app/pages/dashboard/admin/delivery/domains.vue
+apps/web/app/pages/dashboard/admin/delivery/failed.vue
+apps/web/app/pages/dashboard/admin/delivery/index.vue
+apps/web/app/pages/dashboard/admin/delivery/migrate.vue
+apps/web/app/pages/dashboard/admin/delivery/provider-routing.vue
+apps/web/app/pages/dashboard/admin/delivery/quarantine.vue
+apps/web/app/pages/dashboard/admin/delivery/transport.vue
+apps/web/app/pages/dashboard/admin/delivery/webhooks.vue
+apps/web/app/pages/dashboard/admin/index.vue
+apps/web/app/pages/dashboard/admin/instance/agent-health.vue
+apps/web/app/pages/dashboard/admin/instance/ai-provider.vue
+apps/web/app/pages/dashboard/admin/instance/channels.vue
+apps/web/app/pages/dashboard/admin/instance/features.vue
+apps/web/app/pages/dashboard/admin/instance/forms.vue
+apps/web/app/pages/dashboard/admin/instance/plugins/[id].vue
+apps/web/app/pages/dashboard/admin/instance/plugins/index.vue
+apps/web/app/pages/dashboard/admin/instance/properties.vue
+apps/web/app/pages/dashboard/admin/instance/sealed-mail.vue
+apps/web/app/pages/dashboard/admin/operator/index.vue
+apps/web/app/pages/dashboard/admin/system/index.vue
+apps/web/app/pages/dashboard/admin/team/api/docs.vue
+apps/web/app/pages/dashboard/admin/team/api/index.vue
+apps/web/app/pages/dashboard/admin/team/audit.vue
+apps/web/app/pages/dashboard/admin/team/connected-apps/index.vue
+apps/web/app/pages/dashboard/admin/team/inboxes.vue
+apps/web/app/pages/dashboard/admin/team/index.vue
+apps/web/app/pages/dashboard/admin/team/senders.vue
+apps/web/app/pages/dashboard/automations/[id]/index.vue
+apps/web/app/pages/dashboard/campaigns/[id]/edit.vue
+apps/web/app/pages/dashboard/campaigns/[id]/report.vue
+apps/web/app/pages/dashboard/campaigns/[id]/sends/[sendId].vue
+apps/web/app/pages/dashboard/files/[id].vue
+apps/web/app/pages/dashboard/files/index.vue
+apps/web/app/pages/dashboard/inbox/[threadId].vue
+apps/web/app/pages/dashboard/inbox/code-tasks.vue
+apps/web/app/pages/dashboard/inbox/index.vue
+apps/web/app/pages/dashboard/inbox/updates.vue
+apps/web/app/pages/dashboard/inboxes.vue
+apps/web/app/pages/dashboard/index.vue
+apps/web/app/pages/dashboard/knowledge/[id].vue
+apps/web/app/pages/dashboard/knowledge/index.vue
+apps/web/app/pages/dashboard/postbox/migrate.vue
+apps/web/app/pages/dashboard/preferences/members/[mailboxId].vue
+apps/web/app/pages/dashboard/send/media.vue
+apps/web/app/pages/dashboard/send/transactional/[id]/sends/[sendId].vue
+apps/web/app/pages/dashboard/visualizations.vue
+apps/web/app/pages/welcome.vue
