@@ -25,6 +25,12 @@
  * position, or any `node:*` import, in the modules it reaches. Type positions
  * are ignored: `rawBytes: Buffer` is erased at build time and cannot throw.
  *
+ * It also fails on any dynamic `import()` in those modules. The isolate has no
+ * dynamic module loading: `await import('../_generated/api')` throws
+ * "dynamic module import unsupported" at call time, and passes under
+ * `convex-test` for the same reason `Buffer` did. That shape broke trash,
+ * archive, star and mark-read in `mail/messageActions.ts`.
+ *
  * Run by `bun run lint:convex-globals`, and from `ci:lint` / `ci:verify`.
  * Exercised against throwaway trees by
  * `scripts/__tests__/check-convex-node-globals.test.ts`, run by the same gate.
@@ -376,6 +382,29 @@ function findNodeBuiltinImports(sourceFile: ts.SourceFile): { symbol: string; li
 }
 
 /**
+ * Dynamic `import()` calls, which the isolate cannot execute whatever they load.
+ * A Node builtin behind one is already reported by `findNodeBuiltinImports`
+ * under its own name, so it is skipped here.
+ */
+function findDynamicImports(sourceFile: ts.SourceFile): { symbol: string; line: number }[] {
+	const found: { symbol: string; line: number }[] = [];
+	const visit = (node: ts.Node): void => {
+		if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+			const argument = node.arguments[0];
+			const specifier =
+				argument !== undefined && ts.isStringLiteralLike(argument) ? argument.text : undefined;
+			if (specifier === undefined || !NODE_BUILTIN_SPECIFIERS.has(specifier)) {
+				const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+				found.push({ symbol: `import(${specifier ?? '…'})`, line: line + 1 });
+			}
+		}
+		ts.forEachChild(node, visit);
+	};
+	ts.forEachChild(sourceFile, visit);
+	return found;
+}
+
+/**
  * Every Node-only reference reachable from the isolate runtime, in file order.
  * An empty array means the V8 bundle touches nothing Node-specific.
  */
@@ -476,6 +505,7 @@ export async function findConvexNodeGlobalUses(
 		const hits = [
 			...findGlobalUses(sourceFile, NODE_ONLY_GLOBALS),
 			...findNodeBuiltinImports(sourceFile),
+			...findDynamicImports(sourceFile),
 		];
 		for (const hit of hits.sort((a, b) => a.line - b.line)) {
 			uses.push({
@@ -494,7 +524,7 @@ if (import.meta.main) {
 	if (uses.length > 0) {
 		console.error(
 			'Convex isolate-runtime modules reference Node-only APIs. The V8 runtime has no\n' +
-				'Buffer / node: builtins, so each of these throws a ReferenceError at call time:\n'
+				'Buffer / node: builtins and no dynamic import(), so each of these throws at call time:\n'
 		);
 		for (const use of uses) {
 			const via = use.reachedFrom === use.file ? '' : ` (reached from ${use.reachedFrom})`;
@@ -502,7 +532,8 @@ if (import.meta.main) {
 		}
 		console.error(
 			`\nUse the Web equivalents (apps/api/convex/lib/bytes.ts, TextEncoder/TextDecoder,\n` +
-				`crypto.subtle), or move the module to the Node runtime with 'use node'.`
+				`crypto.subtle), a static import in place of import(), or move the module to the\n` +
+				`Node runtime with 'use node'.`
 		);
 		process.exit(1);
 	}
