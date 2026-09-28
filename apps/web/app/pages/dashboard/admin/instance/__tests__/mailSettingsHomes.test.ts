@@ -10,7 +10,8 @@
  */
 import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ref } from 'vue';
+import { ref, useSlots } from 'vue';
+import UiPageHeader from '@owlat/ui/components/ui/PageHeader.vue';
 import SealedMailPage from '../sealed-mail.vue';
 import GeneralPage from '../general.vue';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';
@@ -22,6 +23,7 @@ beforeEach(() => {
 	enabledFlags = new Set(['sealedMail', 'postbox']);
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useHead', vi.fn());
+	vi.stubGlobal('useSlots', useSlots);
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(), isLoading: ref(false) }));
@@ -73,7 +75,7 @@ const globalOptions = {
 		SettingsMigrationModeCard: true,
 		SettingsWorkspaceDangerZone: true,
 	},
-	components: { UiQueryBoundary: QueryBoundary },
+	components: { UiQueryBoundary: QueryBoundary, UiPageHeader },
 	plugins: [createTestI18n()],
 };
 
