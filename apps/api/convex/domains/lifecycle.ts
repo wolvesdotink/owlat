@@ -69,7 +69,12 @@ import {
 	mergeExternalReceivingSpf,
 	type DomainReceivingMode,
 } from '@owlat/shared/externalReceiving';
-import { buildDmarcRecordValue, DEFAULT_DMARC_POLICY, dmarcPolicyValidator } from './dmarc';
+import {
+	buildDmarcRecordValue,
+	DEFAULT_DMARC_POLICY,
+	dmarcPolicyValidator,
+	dmarcRuaFromEnv,
+} from './dmarc';
 import {
 	buildReturnPathMailFromRecords,
 	buildSpfRecordValue,
@@ -889,7 +894,7 @@ export const setDmarcPolicy = internalMutation({
 			policy: args.policy,
 			subdomainPolicy: args.subdomainPolicy,
 			pct: args.pct,
-			rua: getOptional('MTA_DMARC_RUA'),
+			rua: dmarcRuaFromEnv(),
 		});
 		const nextDnsRecords: DnsRecords = {
 			...dnsRecords,
