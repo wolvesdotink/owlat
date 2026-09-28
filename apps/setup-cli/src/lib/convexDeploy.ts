@@ -42,15 +42,21 @@ interface RunResult {
 
 /**
  * Run a command, capturing stdout/stderr. `onLine` streams combined output so
- * the caller can surface progress for the long-running deploy step.
+ * the caller can surface progress for the long-running deploy step. `input`,
+ * when given, is written to the child's stdin before it is closed.
  */
 function run(
 	cmd: string,
 	args: string[],
-	opts: { cwd: string; onLine?: (line: string) => void }
+	opts: { cwd: string; onLine?: (line: string) => void; input?: string }
 ): Promise<RunResult> {
 	return new Promise((resolve) => {
-		const proc = spawn(cmd, args, { cwd: opts.cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+		const proc = spawn(cmd, args, { cwd: opts.cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+		// A child that exits before reading everything closes the pipe; the exit
+		// code reports that failure, so swallow the resulting EPIPE. Without
+		// `input` stdin is closed straight away, as `ignore` would.
+		proc.stdin.on('error', () => {});
+		proc.stdin.end(opts.input);
 		let stdout = '';
 		let stderr = '';
 		proc.stdout.on('data', (d: Buffer) => {
@@ -149,13 +155,64 @@ export async function deployConvexFunctions(
 }
 
 /**
+ * The loop `setConvexEnvVars` runs in the `convex-deploy` container. It reads
+ * one `KEY BASE64VALUE` line per variable from stdin, decodes the value into a
+ * private temp file and hands that file to `convex env set --from-file`, which
+ * sets the variable to the file's exact contents.
+ *
+ * - No value is ever an argument, on the host or in the container: the docker
+ *   CLI's argv and the container's `Config.Cmd` hold only this script, and
+ *   `convex env set` gets a file path. Base64 carries any byte (spaces, quotes,
+ *   `=`, `#`, newlines) through the line-based `read`.
+ * - `umask 077` + `mktemp` keep the file owner-only; the trap removes it on
+ *   any exit, and `--rm` discards the container's filesystem afterwards.
+ * - No --url/--admin-key flags: `convex env set` doesn't support them — the
+ *   CLI's self-hosted mode reads CONVEX_SELF_HOSTED_URL/_ADMIN_KEY from the
+ *   environment, which the convex-deploy compose service already injects.
+ * - `--` before the name stays as a guard. The old argv form needed it for
+ *   values starting with `-`; names are fixed identifiers.
+ * - `convex` gets `/dev/null` as stdin, so it cannot swallow the rest of the
+ *   payload.
+ * - The key (never the value) is echoed so a failure names the culprit.
+ */
+const ENV_SET_SCRIPT = [
+	'umask 077',
+	'f=$(mktemp) || exit 1',
+	'trap \'rm -f "$f"\' EXIT',
+	'while read -r k v; do',
+	'  echo "env set $k"',
+	'  printf "%s" "$v" | base64 -d > "$f" || exit 1',
+	'  convex env set --from-file "$f" -- "$k" < /dev/null || exit 1',
+	'done',
+].join('\n');
+
+/**
+ * The stdin payload for {@link ENV_SET_SCRIPT}: one `KEY BASE64VALUE` line per
+ * variable. Throws on a key that is not a plain identifier, since the key is
+ * the one field the script reads verbatim.
+ */
+export function encodeEnvSetPayload(vars: Array<[string, string]>): string {
+	return vars
+		.map(([key, value]) => {
+			if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+				throw new Error(
+					`Refusing to set Convex env var with an invalid name: ${JSON.stringify(key)}`
+				);
+			}
+			return `${key} ${Buffer.from(value, 'utf-8').toString('base64')}\n`;
+		})
+		.join('');
+}
+
+/**
  * Push function-runtime env vars into the backend via `convex env set`, run
  * through the `convex-deploy` container (which has the pinned CLI and the
  * self-hosted URL/admin-key in its environment).
  *
- * Keys and values are passed as argv to the container's `sh` and consumed via
- * positional parameters — so secret values are never interpolated by a host
- * shell and need no escaping. A single container invocation sets every var.
+ * The values travel on the container's stdin (see {@link ENV_SET_SCRIPT}), so
+ * they never show up in the host's process table (`ps`, `/proc/<pid>/cmdline`)
+ * or in the container's `Config.Cmd`. A single container invocation sets every
+ * var.
  */
 export async function setConvexEnvVars(
 	owlatDir: string,
@@ -163,19 +220,9 @@ export async function setConvexEnvVars(
 	onLine?: (line: string) => void
 ): Promise<void> {
 	if (vars.length === 0) return;
-	// Loop in the container: consume argv two at a time (key, value).
-	// - No --url/--admin-key flags: `convex env set` doesn't support them — the
-	//   CLI's self-hosted mode reads CONVEX_SELF_HOSTED_URL/_ADMIN_KEY from the
-	//   environment, which the convex-deploy compose service already injects.
-	// - `--` ends option parsing: minted secrets are url-safe base64 and can
-	//   START WITH `-`, which commander would otherwise parse as an option.
-	// - The key (never the value) is echoed so a failure names the culprit.
-	const loop =
-		'while [ "$#" -ge 2 ]; do ' +
-		'echo "env set $1"; ' +
-		'convex env set -- "$1" "$2" || exit 1; ' +
-		'shift 2; done';
-	const flat = vars.flatMap(([k, v]) => [k, v]);
+	const input = encodeEnvSetPayload(vars);
+	// `-T`: no TTY, so the payload reaches the script byte for byte (compose run
+	// keeps stdin open by default).
 	const { code, stdout, stderr } = await run(
 		'docker',
 		[
@@ -184,14 +231,13 @@ export async function setConvexEnvVars(
 			'deploy',
 			'run',
 			'--rm',
+			'-T',
 			'convex-deploy',
 			'sh',
 			'-c',
-			loop,
-			'_',
-			...flat,
+			ENV_SET_SCRIPT,
 		],
-		{ cwd: owlatDir, onLine }
+		{ cwd: owlatDir, onLine, input }
 	);
 	if (code !== 0) {
 		throw new Error(
