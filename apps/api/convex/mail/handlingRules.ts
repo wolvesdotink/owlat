@@ -13,6 +13,7 @@
  */
 
 import { v } from 'convex/values';
+import { htmlToPlainText } from '@owlat/shared/html';
 import { openInboundMessageBody } from '../lib/messageBody';
 import { internalQuery } from '../_generated/server';
 import { adminQuery, authedMutation } from '../lib/authedFunctions';
@@ -189,7 +190,8 @@ export const evaluateForMessage = internalQuery({
 		if (rules.length === 0) return inert;
 
 		const { text: bodyText, html: bodyHtml } = await openInboundMessageBody(message);
-		const body = bodyText ?? (bodyHtml ? stripTags(bodyHtml) : '');
+		// Bounded so a huge HTML body can't blow up matching.
+		const body = bodyText ?? (bodyHtml ? htmlToPlainText(bodyHtml.slice(0, 100_000)) : '');
 		return evaluateHandlingRules(rules as HandlingRuleLike[], {
 			from: message.from ?? '',
 			subject: message.subject ?? '',
@@ -198,22 +200,6 @@ export const evaluateForMessage = internalQuery({
 		});
 	},
 });
-
-// ── Helpers ───────────────────────────────────────────────────────
-
-/**
- * Minimal HTML→text for matching only (this module is a query, so it can't
- * import the 'use node' rfc822.stripHtml). Drops tags and collapses whitespace;
- * substring matching does not need faithful rendering. Bounded so a huge HTML
- * body can't blow up matching.
- */
-function stripTags(html: string): string {
-	return html
-		.slice(0, 100_000)
-		.replace(/<[^>]*>/g, ' ')
-		.replace(/\s+/g, ' ')
-		.trim();
-}
 
 // ── Guards ────────────────────────────────────────────────────────
 

@@ -18,6 +18,7 @@
  */
 
 import { z } from 'zod';
+import { htmlToPlainText } from '@owlat/shared/html';
 import type { Infer } from 'convex/values';
 import { openInboundMessageBody } from '../../../lib/messageBody';
 import {
@@ -77,23 +78,6 @@ export function chunkForGuard(
 		chunks.push(trimmed.slice(i, i + chunkChars));
 	}
 	return chunks;
-}
-
-/**
- * Strip HTML tags down to human-visible text for the guard sample. The guard
- * LLM must see at least as much content as the draft LLM downstream
- * (context_retrieval feeds it `textBody ?? htmlBody`), so for HTML-only mail we
- * feed the guard the stripped HTML rather than letting it inspect only the
- * subject. Raw HTML is still scanned for hidden/smuggled instructions by
- * `detectSmuggling`; this only governs what the visible-text guard tier sees.
- */
-function stripHtmlTags(html: string): string {
-	return html
-		.replace(/<script[\s\S]*?<\/script>/gi, ' ')
-		.replace(/<style[\s\S]*?<\/style>/gi, ' ')
-		.replace(/<[^>]+>/g, ' ')
-		.replace(/\s+/g, ' ')
-		.trim();
 }
 
 const injectionGuardSchema = z.object({
@@ -324,7 +308,7 @@ export const securityScanStep: AgentStepModule<
 		const guardSample = [
 			message.subject ? stripHiddenContent(message.subject) : undefined,
 			bodyText ? stripHiddenContent(bodyText) : undefined,
-			bodyHtml ? stripHtmlTags(stripHiddenContent(bodyHtml)) : undefined,
+			bodyHtml ? htmlToPlainText(stripHiddenContent(bodyHtml)) : undefined,
 		]
 			.filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
 			.join('\n\n');

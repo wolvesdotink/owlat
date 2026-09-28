@@ -28,6 +28,7 @@
  * `filename:` uses for the attachment index.
  */
 
+import { htmlToPlainText } from '@owlat/shared/html';
 import { truncateCodePoints } from '@owlat/shared/unicode';
 
 import type { QueryCtx, MutationCtx } from '../_generated/server';
@@ -40,27 +41,6 @@ import type { Id } from '../_generated/dataModel';
  * names 4-16KB; 8KB is the middle of that band.
  */
 export const SEARCH_BODY_MAX_CHARS = 8000;
-
-/** Minimal entities an HTML→text pass has to resolve for the tokens to be right
- * (`AT&amp;T` must index as `AT&T`, not as `AT`, `amp` and `T`). Deliberately
- * short: this is a search excerpt, not a renderer. */
-const ENTITIES: Record<string, string> = {
-	'&amp;': '&',
-	'&lt;': '<',
-	'&gt;': '>',
-	'&quot;': '"',
-	'&#39;': "'",
-	'&apos;': "'",
-	'&nbsp;': ' ',
-};
-
-function htmlToSearchText(html: string): string {
-	return html
-		.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
-		.replace(/<!--[\s\S]*?-->/g, ' ')
-		.replace(/<[^>]+>/g, ' ')
-		.replace(/&(?:amp|lt|gt|quot|#39|apos|nbsp);/gi, (m) => ENTITIES[m.toLowerCase()] ?? m);
-}
 
 /**
  * Build the indexable excerpt for one message.
@@ -82,7 +62,9 @@ function htmlToSearchText(html: string): string {
  */
 export function buildSearchBody(text: string | undefined, html: string | undefined): string {
 	const fromText = text?.replace(/\s+/g, ' ').trim() ?? '';
-	const source = fromText || (html ? htmlToSearchText(html).replace(/\s+/g, ' ').trim() : '');
+	// The shared HTML→text pass decodes entities, so `AT&amp;T` indexes as
+	// `AT&T` rather than as `AT`, `amp` and `T`.
+	const source = fromText || (html ? htmlToPlainText(html) : '');
 	const cut = truncateCodePoints(source, SEARCH_BODY_MAX_CHARS);
 	if (cut.length === source.length) return source;
 	const lastSpace = cut.lastIndexOf(' ');

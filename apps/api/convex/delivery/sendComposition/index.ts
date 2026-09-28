@@ -10,13 +10,14 @@
  * adding a registry entry is a compile error.
  */
 
+import { htmlToPlainText } from '@owlat/shared/html';
+
 import { composeArchiveSnapshot } from './archive_snapshot';
 import { composeAutomation } from './automation';
 import { composeCampaign } from './campaign';
 import { composeTest } from './test';
 import { composeTransactional } from './transactional';
 import { personalize } from './personalization';
-import { htmlToPlainText } from './plainText';
 import type {
 	ComposeInput,
 	ComposeInputForKind,
@@ -77,11 +78,14 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 	//     `plain` escape policy (a text part must NOT be HTML-escaped).
 	//  2. a strip of the UNTRACKED html the composer returns (the tracking pixel
 	//     + link rewriting happen later, in the Node `transformHtml` half), so
-	//     the text part carries no pixel/redirect URL either way.
+	//     the text part carries no pixel/redirect URL either way. This is why the
+	//     text part is built here and not by the MTA's `stripHtml` fallback,
+	//     which only ever sees the tracked html. `preserveBreaks` keeps the
+	//     paragraph layout a reader expects from an RFC 2046 alternative.
 	const stored = input.template.plainTextContent?.trim();
 	const text = stored
 		? personalize(stored, variablesFor(input), { escape: 'plain' })
-		: htmlToPlainText(composed.html);
+		: htmlToPlainText(composed.html, { preserveBreaks: true });
 	return { ...composed, text };
 }
 

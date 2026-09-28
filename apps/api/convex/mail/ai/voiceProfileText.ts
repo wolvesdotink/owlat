@@ -11,6 +11,7 @@
 
 import { v } from 'convex/values';
 import { mailMessageInlineBody } from '../../lib/messageBody';
+import { htmlToPlainText } from '@owlat/shared/html';
 import { splitQuotedHtml, splitQuotedText } from '@owlat/shared/quotedText';
 
 // ── Tuning ────────────────────────────────────────────────────────────────
@@ -71,24 +72,6 @@ export function isVoiceProfileStale(
 	return false;
 }
 
-/** Minimal, dependency-free HTML→text for sampling (not for rendering). */
-function htmlToPlainText(html: string): string {
-	return html
-		.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
-		.replace(/<br\s*\/?>/gi, '\n')
-		.replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n')
-		.replace(/<[^>]+>/g, ' ')
-		.replace(/&nbsp;/gi, ' ')
-		.replace(/&amp;/gi, '&')
-		.replace(/&lt;/gi, '<')
-		.replace(/&gt;/gi, '>')
-		.replace(/&#39;|&apos;/gi, "'")
-		.replace(/&quot;/gi, '"')
-		.replace(/[ \t]+/g, ' ')
-		.replace(/\n{3,}/g, '\n\n')
-		.trim();
-}
-
 export interface RawSentBody {
 	textBodyInline?: string;
 	htmlBodyInline?: string;
@@ -112,7 +95,12 @@ export function extractSampleText(raw: RawSentBody): string {
 	if (inlineText && inlineText.trim()) {
 		text = splitQuotedText(inlineText).fresh;
 	} else if (inlineHtml && inlineHtml.trim()) {
-		text = htmlToPlainText(splitQuotedHtml(inlineHtml).fresh);
+		// Keep the paragraph breaks (they are part of a writing voice) but not the
+		// source indentation of pretty-printed HTML.
+		text = htmlToPlainText(splitQuotedHtml(inlineHtml).fresh, { preserveBreaks: true }).replace(
+			/[ \t]+/g,
+			' '
+		);
 	} else {
 		text = raw.snippet ?? '';
 	}

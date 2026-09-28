@@ -105,6 +105,10 @@ describe('buildSearchBody', () => {
 			'AT&T invoice'
 		);
 		expect(buildSearchBody(undefined, '<script>var x = "secret"</script><p>hi</p>')).toBe('hi');
+		// Numeric references and the <head> title index as the reader sees them.
+		expect(
+			buildSearchBody(undefined, '<head><title>Draft</title></head><p>Caf&#233; &#x20AC;5</p>')
+		).toBe('Caf\u00e9 \u20ac5');
 	});
 
 	it('caps the excerpt and backs up to a word boundary', () => {

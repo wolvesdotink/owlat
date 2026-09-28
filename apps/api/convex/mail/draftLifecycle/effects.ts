@@ -28,6 +28,7 @@ import { normalizeSubject } from '../../lib/emailAddress';
 import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
 import { indexMessageAttachments } from '../attachmentIndex';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
+import { buildSnippet } from '../deliveryPipeline/insert';
 import { refuse } from '../../lib/lifecycle';
 import {
 	DRAFT_LIFECYCLE,
@@ -78,10 +79,7 @@ async function runSentEffects(
 
 	const now = Date.now();
 	const normalizedSubject = normalizeSubject(draft.subject || '(no subject)');
-	const snippet = (context.bodyText ?? context.bodyHtml.replace(/<[^>]+>/g, ' '))
-		.replace(/\s+/g, ' ')
-		.trim()
-		.slice(0, 200);
+	const snippet = buildSnippet(context.bodyText, context.bodyHtml);
 
 	// insert_mail_message effect — runs first so we have the new messageId
 	// for both the recipients[] patch and the audit-log details.

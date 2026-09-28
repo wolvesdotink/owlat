@@ -34,6 +34,7 @@
  */
 
 import { v } from 'convex/values';
+import { htmlToPlainText } from '@owlat/shared/html';
 import { internalMutation } from '../../_generated/server';
 import { extractEmail } from '../../lib/emailAddress';
 import { logError } from '../../lib/runtimeLog';
@@ -98,22 +99,12 @@ export function isVoiceLevelKind(kind: EditDeltaKind): boolean {
 
 // ── Text helpers ────────────────────────────────────────────────────────────
 
-function stripHtml(input: string): string {
-	return input
-		.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
-		.replace(/<br\s*\/?>/gi, '\n')
-		.replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n')
-		.replace(/<[^>]+>/g, ' ')
-		.replace(/&nbsp;/gi, ' ')
-		.replace(/&amp;/gi, '&')
-		.replace(/[ \t]+/g, ' ')
-		.replace(/\n{3,}/g, '\n\n');
-}
-
 /** Normalize either HTML or plain text into comparable plain text. */
 function normalizeBody(input: string): string {
 	const looksHtml = /<[a-z!/][\s\S]*>/i.test(input);
-	const text = looksHtml ? stripHtml(input) : input;
+	const text = looksHtml
+		? htmlToPlainText(input, { preserveBreaks: true }).replace(/[ \t]+/g, ' ')
+		: input;
 	return text.replace(/\r\n?/g, '\n').trim();
 }
 
