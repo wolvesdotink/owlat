@@ -64,14 +64,7 @@ import { claimExternalAddress, provisionExternalMailbox } from './connectMailbox
 import { stopExternalAccountSync, prepareAccountPurge } from './accountTeardown';
 import { markOnboardingStep } from '../../auth/userOnboarding';
 import { throwForbidden, throwAlreadyExists, throwNotFound } from '../../_utils/errors';
-
-const accountStatusValidator = v.union(
-	v.literal('pending'),
-	v.literal('connected'),
-	v.literal('auth_error'),
-	v.literal('error'),
-	v.literal('disconnected')
-);
+import { externalAccountStatusValidator } from '../../schema/mailAccounts';
 
 // ── Public: the connecting user's own account ─────────────────────────────
 
@@ -352,7 +345,7 @@ export const listConnectableAccounts = internalQuery({
 export const setSyncStatus = internalMutation({
 	args: {
 		accountId: v.id('externalMailAccounts'),
-		status: accountStatusValidator,
+		status: externalAccountStatusValidator,
 		lastError: v.optional(v.string()),
 		markSynced: v.optional(v.boolean()),
 	},
