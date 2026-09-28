@@ -21,6 +21,7 @@ import { publicAction, publicQuery } from '../../lib/authedFunctions';
 import type { Id, Doc } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
 import { requireMessageAccess, loadReadableMailbox } from '../permissions';
+import { senderHeuristicsValidator } from '../../lib/senderHeuristicsValidator';
 
 /**
  * Load a message the caller is allowed to READ (owner/admin, or the mailbox
@@ -132,6 +133,7 @@ export const getMessageDetails = publicQuery({
 			dkimSigningDomain: v.optional(v.string()),
 			dmarcOverride: v.optional(v.string()),
 			arcSealer: v.optional(v.string()),
+			senderHeuristics: v.optional(senderHeuristicsValidator),
 		})
 	),
 	handler: async (ctx, args) => {
@@ -161,6 +163,12 @@ export const getMessageDetails = publicQuery({
 				: {}),
 			...(message.dmarcOverride !== undefined ? { dmarcOverride: message.dmarcOverride } : {}),
 			...(message.arcSealer !== undefined ? { arcSealer: message.arcSealer } : {}),
+			// The ingest heuristics carry the one Reply-To rule (registrable
+			// domains), so the panel's Reply-To row reads the stored verdict
+			// instead of re-deriving a second one on the client.
+			...(message.senderHeuristics !== undefined
+				? { senderHeuristics: message.senderHeuristics }
+				: {}),
 		};
 	},
 });
