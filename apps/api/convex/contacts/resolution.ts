@@ -17,10 +17,11 @@
  * time (lib/contactMutations.ts:softDeleteContact) guarantees no collision
  * when creating a fresh Contact for a reclaimed identifier.
  *
- * The module owns: identity row write on create, `searchableText` computation,
- * soft-delete filter on lookup. It does *not* own: activity logging, automation
- * trigger fanout, contact-count maintenance — those stay with callers based on
- * the returned `action`. For `merge`, the result also carries the
+ * The module owns: identity row write on create, the email identity re-key
+ * when a contact's address is edited (`changeContactEmail`), `searchableText`
+ * computation, soft-delete filter on lookup. It does *not* own: activity
+ * logging, automation trigger fanout, contact-count maintenance — those stay
+ * with callers based on the returned `action`. For `merge`, the result also carries the
  * `changedProperties` diff so callers can fire the `contact_updated` trigger
  * with the correct watched-property list (the module computes the diff but
  * never fires the trigger itself).
@@ -268,6 +269,96 @@ async function insertContactRow(
 	});
 
 	return contactId;
+}
+
+// ============================================================
+// Email change — called by contacts/contactEdit.ts
+// ============================================================
+
+/**
+ * Move a Contact onto a new email address and keep its identity rows in step,
+ * so resolution by the new address finds this Contact and the old address is
+ * free to be claimed by a new one.
+ *
+ * Collisions are checked against both lookups: the identity index (which also
+ * catches an address another Contact holds as a *secondary* identity, e.g.
+ * after a merge) and the denormalized `contacts.email` (legacy rows written
+ * before every Contact had an identity row). Both are live-only, so an erased
+ * gravestone never blocks reclaiming its address.
+ *
+ * Identity handling:
+ *   - the new address is already this Contact's secondary identity → promote
+ *     that row to primary and drop the old address row;
+ *   - otherwise re-key the old address row (falling back to the primary email
+ *     row), or insert a primary row when the Contact has none.
+ *
+ * Does NOT patch the contact row: the caller folds the returned `email` into
+ * its single `contacts` patch together with `searchableText`.
+ */
+export async function changeContactEmail(
+	ctx: MutationCtx,
+	contact: Doc<'contacts'>,
+	rawEmail: string
+): Promise<{ email: string; changed: boolean }> {
+	const email = normalizeIdentifier('email', rawEmail);
+	if (email === contact.email) return { email, changed: false };
+
+	const match = await findContactByIdentifier(ctx, 'email', email);
+	if (match && match.contact._id !== contact._id) {
+		throwAlreadyExists(`A contact with this email already exists: ${email}`);
+	}
+	const legacy = await ctx.db
+		.query('contacts')
+		.withIndex('by_email', (q) => q.eq('email', email))
+		.filter((q) => q.and(q.eq(q.field('deletedAt'), undefined), q.neq(q.field('_id'), contact._id)))
+		.first();
+	if (legacy) {
+		throwAlreadyExists(`A contact with this email already exists: ${email}`);
+	}
+
+	const identities = await ctx.db
+		.query('contactIdentities')
+		.withIndex('by_contact', (q) => q.eq('contactId', contact._id))
+		.collect(); // bounded: one contact's identities
+	const emailIdentities = identities.filter((identity) => identity.channel === 'email');
+	const oldRow =
+		contact.email !== undefined
+			? emailIdentities.find((identity) => identity.identifier === contact.email)
+			: undefined;
+
+	let primaryId: Id<'contactIdentities'>;
+	if (match) {
+		// The address was already one of this Contact's own (secondary)
+		// identities: promote it and retire the old address.
+		primaryId = match.identity._id;
+		await ctx.db.patch(primaryId, { isPrimary: true });
+		if (oldRow && oldRow._id !== primaryId) await ctx.db.delete(oldRow._id);
+	} else {
+		const target = oldRow ?? emailIdentities.find((identity) => identity.isPrimary);
+		if (target) {
+			// A re-keyed row names a different mailbox, so any verification of
+			// the old address no longer applies.
+			primaryId = target._id;
+			await ctx.db.patch(primaryId, { identifier: email, isPrimary: true, verifiedAt: undefined });
+		} else {
+			primaryId = await ctx.db.insert('contactIdentities', {
+				contactId: contact._id,
+				channel: 'email',
+				identifier: email,
+				isPrimary: true,
+				createdAt: Date.now(),
+			});
+		}
+	}
+
+	// Keep exactly one primary email identity.
+	for (const identity of emailIdentities) {
+		if (identity._id !== primaryId && identity._id !== oldRow?._id && identity.isPrimary) {
+			await ctx.db.patch(identity._id, { isPrimary: false });
+		}
+	}
+
+	return { email, changed: true };
 }
 
 // ============================================================

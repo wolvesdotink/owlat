@@ -238,6 +238,7 @@ import type * as contactActivities_writer from '../contactActivities/writer.js';
 import type * as contacts_activities from '../contacts/activities.js';
 import type * as contacts_analytics from '../contacts/analytics.js';
 import type * as contacts_api from '../contacts/api.js';
+import type * as contacts_contactEdit from '../contacts/contactEdit.js';
 import type * as contacts_contacts from '../contacts/contacts.js';
 import type * as contacts_creation from '../contacts/creation.js';
 import type * as contacts_crons from '../contacts/crons.js';
@@ -1435,6 +1436,7 @@ declare const fullApi: ApiFromModules<{
 	'contacts/activities': typeof contacts_activities;
 	'contacts/analytics': typeof contacts_analytics;
 	'contacts/api': typeof contacts_api;
+	'contacts/contactEdit': typeof contacts_contactEdit;
 	'contacts/contacts': typeof contacts_contacts;
 	'contacts/creation': typeof contacts_creation;
 	'contacts/crons': typeof contacts_crons;
