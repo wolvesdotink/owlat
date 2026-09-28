@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { escapeHtmlWithBreaks } from '@owlat/shared/html';
+import { splitMailtoAddressList } from '@owlat/shared/mailto';
 import type { ComposerSeed } from '~/composables/postbox/usePostboxCompose';
 
 /**
@@ -23,24 +24,17 @@ const route = useRoute();
 const { currentMailbox, isLoading } = usePostboxMailbox();
 const stack = usePostboxComposerStack();
 
-function splitAddresses(raw: string): string[] {
-	return raw
-		? raw
-				.split(',')
-				.map((s) => s.trim())
-				.filter(Boolean)
-		: [];
-}
-
 const querySeed = computed<ComposerSeed | null>(() => {
 	const mailbox = currentMailbox.value;
 	if (!mailbox) return null;
 	const body = String(route.query['body'] ?? '');
 	return {
 		mailboxId: mailbox._id,
-		prefillTo: splitAddresses(String(route.query['to'] ?? '')),
-		prefillCc: splitAddresses(String(route.query['cc'] ?? '')),
-		prefillBcc: splitAddresses(String(route.query['bcc'] ?? '')),
+		// The deep link joined parseMailto's recipients with ', ' and the router
+		// already decoded the query, so split with the same splitter, undecoded.
+		prefillTo: splitMailtoAddressList(String(route.query['to'] ?? '')),
+		prefillCc: splitMailtoAddressList(String(route.query['cc'] ?? '')),
+		prefillBcc: splitMailtoAddressList(String(route.query['bcc'] ?? '')),
 		prefillSubject: String(route.query['subject'] ?? ''),
 		// mailto bodies are plain text — escape and preserve line breaks.
 		prefillBodyHtml: body ? escapeHtmlWithBreaks(body) : '',

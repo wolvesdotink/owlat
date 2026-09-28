@@ -10,7 +10,7 @@
  * handling both the cold-start URL and links delivered while already running.
  */
 import { completeConnection, recordConnectFailure } from '~/lib/desktop/workspaceConnect';
-import { parseMailto } from '~/lib/desktop/mailto';
+import { parseMailto } from '@owlat/shared/mailto';
 
 const NAV_ROUTE_MAP: Record<string, string> = {
 	'thread/': '/dashboard/inbox/',

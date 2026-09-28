@@ -26,6 +26,7 @@
  * a missed message.
  */
 
+import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 import type { MailCategory } from './mailCategory';
 
 /** Categories that fold. `person` and anything unlabeled never do. */
@@ -58,7 +59,7 @@ export interface PostboxBundleMessage {
 	flagSeen: boolean;
 	/** The thread's advisory smart-inbox category label, attached server-side. */
 	category?: string;
-	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
+	unsubscribe?: ListUnsubscribeTarget;
 }
 
 export interface PostboxBundle<T> {

@@ -10,6 +10,7 @@
  */
 
 import { truncateCodePoints } from '@owlat/shared/unicode';
+import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 
 import type { MutationCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
@@ -130,7 +131,7 @@ export async function insertDeliveredMessage(
 		 * its presence never changes routing or delivery. */
 		inboundSignatureInfo?: InboundSignatureInfo;
 		/** Parsed List-Unsubscribe target (extracted at ingest from the raw header block). */
-		unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
+		unsubscribe?: ListUnsubscribeTarget;
 		/** Split inbox (idea 24): the named inbox section a `pinToSection` filter
 		 * claimed this message for. Absent ⇒ the message renders in the trailing
 		 * "Everything else" section, which is exactly today's flat inbox. */

@@ -1,4 +1,5 @@
 <script lang="ts">
+import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 import type { SenderHeuristics } from '~/utils/senderAuth';
 import type { InboundEncryptionInfo } from '~/utils/sealedMessage';
 import type { InboundSignatureInfo } from '~/utils/signatureBadge';
@@ -65,7 +66,7 @@ export type PostboxReaderMessage = {
 	// the badge's drivers, not here.
 	inboundSignatureInfo?: InboundSignatureInfo;
 	flagSeen?: boolean;
-	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
+	unsubscribe?: ListUnsubscribeTarget;
 };
 </script>
 

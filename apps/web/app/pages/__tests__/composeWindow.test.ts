@@ -66,6 +66,8 @@ describe('desktop compose window', () => {
 		expect(seed).toMatchObject({
 			mailboxId: 'mbx-1',
 			prefillTo: ['ada@example.com', 'bob@example.com'],
+			prefillCc: [],
+			prefillBcc: [],
 			prefillSubject: 'Hi',
 			prefillBodyHtml: 'Line 1<br>Line 2',
 		});

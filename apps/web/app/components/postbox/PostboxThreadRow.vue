@@ -1,6 +1,7 @@
 <script lang="ts">
 import { NuxtLink } from '#components';
 import type { Doc, Id } from '@owlat/api/dataModel';
+import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 import type { SenderAuthMessage } from '~/utils/senderAuth';
 
 /**
@@ -41,7 +42,7 @@ export type PostboxThreadRowMessage = SenderAuthMessage & {
 	// server-side so the Today and Bundled views group every page alike.
 	category?: NonNullable<Doc<'mailThreads'>['category']>['label'];
 	// Parsed List-Unsubscribe target; `oneClick` is what lets a bundle offer one.
-	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
+	unsubscribe?: ListUnsubscribeTarget;
 };
 </script>
 
