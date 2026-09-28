@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 import { isValidEmail } from '@owlat/shared';
+import { openAfterSave, openWithoutSaving } from '~/lib/openAfterSave';
 import { formatNumber } from '~/utils/formatters';
 
 const { t, locale } = useI18n();
@@ -88,10 +89,12 @@ const scheduledAtDisplay = computed(() => {
 	return at ? new Date(at).toLocaleString(locale.value) : '';
 });
 
-// Guard the "Edit Email" link. It opens the linked email editor in a NEW tab,
-// so the SPA route guard never fires — intercept the click and, when the
-// campaign form has unsaved edits, prompt to save them first (so the campaign
-// and its linked email stay consistent) before opening the editor.
+// Guard the "Edit Email" link. In a browser it opens the linked email editor in
+// a NEW tab, so the SPA route guard never fires — intercept the click and, when
+// the campaign form has unsaved edits, prompt to save them first (so the
+// campaign and its linked email stay consistent) before opening the editor. On
+// desktop the link navigates this window instead (the route guard does fire),
+// so the prompt's actions clear the dirty state before navigating.
 const showEditEmailPrompt = ref(false);
 const pendingEmailUrl = ref('');
 const onEditEmailClick = (event: MouseEvent, url: string) => {
@@ -104,30 +107,33 @@ const closeEditEmailPrompt = () => {
 	pendingEmailUrl.value = '';
 	showEditEmailPrompt.value = false;
 };
-const openPendingEmail = () => {
-	if (pendingEmailUrl.value) window.open(pendingEmailUrl.value, '_blank', 'noopener');
+// Desktop has no tabs: the editor opens in this window instead (lib/openAfterSave).
+const { isDesktop } = useDesktopContext();
+const discardAndOpenEmail = async () => {
+	const url = pendingEmailUrl.value;
 	closeEditEmailPrompt();
-};
-const discardAndOpenEmail = () => {
-	openPendingEmail();
+	if (!url) return;
+	await openWithoutSaving({
+		url,
+		isDesktop: isDesktop.value,
+		discard: () => {
+			hasUnsavedChanges.value = false;
+		},
+		navigate: navigateTo,
+	});
 };
 const saveAndOpenEmail = async () => {
-	// Open the new tab synchronously inside this click gesture: deferring the
-	// window.open() until after the awaited save takes it out of the user-gesture
-	// context and most popup blockers swallow it (a regression from the original
-	// synchronous target="_blank" link). Clear its opener to match noopener, then
-	// navigate it once the save resolves. On failure, discard the blank tab and
-	// keep the prompt up (with inline errors) so nothing is lost — handleSave
-	// clears the dirty flag only on success.
+	// On failure keep the prompt up (with inline errors) so nothing is lost —
+	// handleSave clears the dirty flag only on success.
 	const url = pendingEmailUrl.value;
-	const tab = url ? window.open('', '_blank') : null;
-	if (tab) tab.opener = null;
-	if (await handleSave()) {
-		if (tab && url) tab.location.href = url;
-		closeEditEmailPrompt();
-	} else {
-		tab?.close();
-	}
+	if (!url) return;
+	const opened = await openAfterSave({
+		url,
+		save: handleSave,
+		isDesktop: isDesktop.value,
+		navigate: navigateTo,
+	});
+	if (opened) closeEditEmailPrompt();
 };
 
 // Test-email modal (shared CampaignsTestEmailModal owns the send flow)
@@ -1121,7 +1127,7 @@ const shownCapacityPlan = computed(() => {
 			@save="confirmSave"
 		/>
 
-		<!-- Unsaved Changes Dialog — opening the linked email in a new tab -->
+		<!-- Unsaved Changes Dialog — opening the linked email (new tab; same window on desktop) -->
 		<UnsavedChangesDialog
 			:show="showEditEmailPrompt"
 			@close="showEditEmailPrompt = false"
