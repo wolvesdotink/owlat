@@ -171,7 +171,9 @@ export const upsertWarmingState = internalMutation({
 		const existing = await ctx.db.query('warmingState').first();
 
 		if (existing) {
-			await ctx.db.patch(existing._id, snapshot);
+			// An MTA that predates `pools` omits it; clear the stored lists instead
+			// of leaving ones that no longer describe the running pools.
+			await ctx.db.patch(existing._id, { ...snapshot, pools: snapshot.pools });
 		} else {
 			await ctx.db.insert('warmingState', snapshot);
 		}
