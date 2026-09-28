@@ -42,6 +42,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { isSharedInboxReader } from '../inbox/access';
 
 /**
  * The forms one Message-ID can be stored in.
@@ -90,7 +91,7 @@ interface PostboxCounterpart {
 async function canReadTeamInbox(ctx: QueryCtx): Promise<boolean> {
 	if (!(await isFeatureEnabled(ctx, 'inbox'))) return false;
 	const session = await getBetterAuthSessionWithRole(ctx);
-	return !!session && (session.role === 'owner' || session.role === 'admin');
+	return isSharedInboxReader(session);
 }
 
 /** The inbound row whose Message-ID matches, in either stored spelling. */
