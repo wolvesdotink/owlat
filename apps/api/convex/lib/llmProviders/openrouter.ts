@@ -42,6 +42,9 @@ export const openrouterLanguageAdapter: LanguageProviderAdapter<'openrouter'> = 
 	kind: 'openrouter',
 	label: 'OpenRouter',
 	docsUrl: 'https://openrouter.ai/docs',
+	// Published so callers that resolve `languageBaseUrl ?? defaultBaseUrl` (the
+	// model-listing action) reach the hosted endpoint when no override is saved.
+	defaultBaseUrl: OPENROUTER_BASE_URL,
 	isLocal: false,
 	// Free-text, provider-prefixed ids; these are sensible starting points a user
 	// can swap for any model the /models listing exposes.

@@ -150,7 +150,11 @@ export interface LanguageProviderAdapter<K extends LanguageProviderKind = Langua
 	readonly label: string;
 	/** Where to point a user to get / configure credentials. */
 	readonly docsUrl: string;
-	/** Default base URL for this provider (a local server's endpoint), if any. */
+	/**
+	 * Default base URL for this provider (a local server's endpoint, or a hosted
+	 * provider's fixed API root), if any. Required when `listModels` is set: the
+	 * discovery action resolves `languageBaseUrl ?? defaultBaseUrl` before calling it.
+	 */
 	readonly defaultBaseUrl?: string;
 	/** True for locally-hosted providers (keyless, base-URL driven). */
 	readonly isLocal: boolean;

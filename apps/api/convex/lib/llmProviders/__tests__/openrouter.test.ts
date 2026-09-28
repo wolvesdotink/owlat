@@ -30,6 +30,11 @@ describe('openrouterLanguageAdapter', () => {
 		});
 	});
 
+	it('publishes the hosted endpoint as its default base URL', () => {
+		// The listModels action refuses to run without `languageBaseUrl ?? defaultBaseUrl`.
+		expect(openrouterLanguageAdapter.defaultBaseUrl).toBe('https://openrouter.ai/api/v1');
+	});
+
 	it('builds a model handle against the OpenRouter endpoint by default', () => {
 		const model = openrouterLanguageAdapter.buildChatModel(
 			{ apiKey: 'k' },
