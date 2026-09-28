@@ -112,7 +112,11 @@ const handleBackdropClick = () => {
 
 			<h3 class="text-lg font-semibold text-text-primary mb-2">{{ resolvedTitle }}</h3>
 
-			<p class="text-text-secondary">{{ resolvedDescription }}</p>
+			<!-- `#description` replaces the plain lead when the copy needs markup,
+			     e.g. a delete prompt that sets the item's name in bold. -->
+			<slot name="description">
+				<p class="text-text-secondary">{{ resolvedDescription }}</p>
+			</slot>
 
 			<slot />
 		</div>

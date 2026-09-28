@@ -96,3 +96,23 @@ describe('ConfirmationDialog — confirm button', () => {
 		expect(disc.classes()).toEqual(expect.arrayContaining(['bg-error/10', 'text-error']));
 	});
 });
+
+describe('ConfirmationDialog — description', () => {
+	it('renders the description prop as the lead', () => {
+		expect(mountDialog({ description: 'Gone for good.' }).text()).toContain('Gone for good.');
+	});
+
+	it('lets #description replace the lead with markup', () => {
+		const w = mount(ConfirmationDialog, {
+			props: { open: true, description: 'Plain lead' },
+			slots: { description: '<p>Delete <strong>Welcome</strong>?</p>' },
+			global: {
+				plugins: [createUiI18n()],
+				stubs: { UiModal: ModalStub, UiButton: ButtonStub, Icon: true },
+			},
+		});
+
+		expect(w.find('strong').text()).toBe('Welcome');
+		expect(w.text()).not.toContain('Plain lead');
+	});
+});
