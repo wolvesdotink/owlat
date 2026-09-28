@@ -18,6 +18,8 @@
  * grouping rules stay unit-testable.
  */
 
+import { parseAddress } from '@owlat/shared';
+
 export type TodaySourceKind = 'mail' | 'team';
 
 export interface TodaySource {
@@ -191,11 +193,17 @@ function senderName(fromName: string | null, fromAddress: string): string {
 	return local.charAt(0).toUpperCase() + local.slice(1);
 }
 
-/** "Ines Weber <ines@x.io>" → { name: "Ines Weber", address: "ines@x.io" }. */
+/**
+ * "Ines Weber <Ines@x.io>" → { name: "Ines Weber", address: "ines@x.io" }.
+ * Goes through the shared RFC 5322 parser, so an RFC 2047 encoded name comes
+ * back decoded and the address lowercased. A value with no parseable address is
+ * kept as the address, trimmed, so the line still names something.
+ */
 export function parseFromHeader(from: string): { name: string | null; address: string } {
-	const match = /^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/.exec(from);
-	if (match) return { name: match[1]?.trim() || null, address: match[2]!.trim() };
-	return { name: null, address: from.trim() };
+	const parsed = parseAddress(from);
+	return parsed
+		? { name: parsed.name ?? null, address: parsed.address }
+		: { name: null, address: from.trim() };
 }
 
 function mailSource(mailboxId: string, threadId: string, s: DigestSource): TodaySource {

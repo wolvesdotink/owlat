@@ -381,6 +381,19 @@ describe('senderRiskInputOf', () => {
 
 	it('leaves the domain empty when the header carries no address', () => {
 		expect(senderAuthInputOf({ fromAddress: 'undisclosed-recipients' }).fromDomain).toBe('');
+		expect(senderAuthInputOf({ fromAddress: '' }).fromDomain).toBe('');
+	});
+
+	it('reads the real address past an address-shaped RFC 5322 comment', () => {
+		expect(senderAuthInputOf({ fromAddress: '(x@a.com) real@evil.com' }).fromDomain).toBe(
+			'evil.com'
+		);
+	});
+
+	it('takes the domain after the last "@" when the quoted local part holds one', () => {
+		expect(senderAuthInputOf({ fromAddress: '"ceo@bank.com"@evil.com' }).fromDomain).toBe(
+			'evil.com'
+		);
 	});
 });
 

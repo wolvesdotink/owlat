@@ -34,7 +34,7 @@
  * would never be translated.
  */
 
-import { extractEmailAddress } from './emailAddress';
+import { extractDomainOrNull } from '@owlat/shared';
 
 export type SenderAuthState =
 	| 'verified'
@@ -480,5 +480,5 @@ export function senderRowMarkerOf(
  * unknown-sender copy rather than splicing a placeholder noun into a message.
  */
 function senderDomainOf(fromAddress: string | undefined): string {
-	return extractEmailAddress(fromAddress ?? '').split('@')[1] ?? '';
+	return extractDomainOrNull(fromAddress ?? '') ?? '';
 }

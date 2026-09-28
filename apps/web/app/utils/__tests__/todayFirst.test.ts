@@ -304,6 +304,20 @@ describe('today model', () => {
 		});
 		expect(parseFromHeader('ops@example.com')).toEqual({ name: null, address: 'ops@example.com' });
 	});
+
+	it('decodes an RFC 2047 display name and lowercases the address', () => {
+		expect(parseFromHeader('=?utf-8?B?SW7DqHMgV2ViZXI=?= <Ines@Example.COM>')).toEqual({
+			name: 'Inès Weber',
+			address: 'ines@example.com',
+		});
+	});
+
+	it('keeps an unparseable From as the address, trimmed', () => {
+		expect(parseFromHeader('  undisclosed-recipients ')).toEqual({
+			name: null,
+			address: 'undisclosed-recipients',
+		});
+	});
 });
 
 describe('today peek links', () => {
