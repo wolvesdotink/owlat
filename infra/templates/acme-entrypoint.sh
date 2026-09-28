@@ -2,8 +2,9 @@
 # ──────────────────────────────────────────────────────────────────
 # ACME sidecar — issues + renews a TLS certificate for
 # `mail.<slug>.owlat.app` and writes it into the shared mail-certs
-# volume read by the IMAP server (port 993) and the MTA submission
-# server (ports 465/587).
+# volume read by the IMAP server (port 993) and the MTA's inbound SMTP
+# listener (port 25 STARTTLS), both via TLS_CERT_DIR. MTA submission
+# (465/587) takes its own SUBMISSION_TLS_* material, not this volume.
 #
 # No restart is needed after a renewal: the IMAP server and the MTA's inbound
 # SMTP listener re-read default.{crt,key} every five minutes and swap the new
@@ -58,6 +59,20 @@ if [ "${ACME_STAGING:-0}" = "1" ]; then
   SERVER_FLAG="--server=https://acme-staging-v02.api.letsencrypt.org/directory"
 fi
 
+# Stage one file next to its destination, already carrying its final mode and
+# owner, so the rename that publishes it is the only step a reader can observe.
+# $1 source, $2 destination, $3 mode. Prints the staged path (and nothing else
+# on stdout: the caller captures it).
+stage_file() {
+  staged="$(dirname "$2")/.$(basename "$2").tmp.$$"
+  if install -m "$3" "$1" "$staged" >&2 && chown "$IMAP_RUNTIME_USER" "$staged" >&2; then
+    printf '%s\n' "$staged"
+    return 0
+  fi
+  rm -f "$staged"
+  return 1
+}
+
 publish_cert() {
   local cert="$LEGO_PATH/certificates/${ACME_DOMAIN}.crt"
   local key="$LEGO_PATH/certificates/${ACME_DOMAIN}.key"
@@ -65,17 +80,38 @@ publish_cert() {
     echo "[acme] no certificate to publish yet" >&2
     return 1
   fi
-  install -m 0644 "$cert" "$CERT_DIR/default.crt"
-  install -m 0600 "$key" "$CERT_DIR/default.key"
-  # Also publish under the domain name so SNI multi-domain setups can
-  # pick a specific cert by hostname.
-  install -m 0644 "$cert" "$CERT_DIR/${ACME_DOMAIN}.crt"
-  install -m 0600 "$key" "$CERT_DIR/${ACME_DOMAIN}.key"
-  # Mode stays 0600 — only the OWNER changes, so the key is still readable by
+  # Readers (packages/shared/src/tlsCertReloader.ts) poll these files, so an
+  # in-place `install` could hand them a truncated file, a key still owned by
+  # root, or a new cert next to the old key. Instead every file is staged in
+  # the same directory with its final mode and owner, and only then renamed
+  # over the live one (rename is atomic on one filesystem).
+  #
+  # Mode stays 0600 on the key — only the OWNER changes, so it is readable by
   # exactly one uid and never by group or world.
-  chown "$IMAP_RUNTIME_USER" \
-    "$CERT_DIR/default.crt" "$CERT_DIR/default.key" \
-    "$CERT_DIR/${ACME_DOMAIN}.crt" "$CERT_DIR/${ACME_DOMAIN}.key"
+  #
+  # The domain-named pair lets SNI multi-domain setups pick a cert by hostname.
+  local key_tmp crt_tmp dkey_tmp dcrt_tmp
+  if ! key_tmp=$(stage_file "$key" "$CERT_DIR/default.key" 0600) ||
+    ! crt_tmp=$(stage_file "$cert" "$CERT_DIR/default.crt" 0644) ||
+    ! dkey_tmp=$(stage_file "$key" "$CERT_DIR/${ACME_DOMAIN}.key" 0600) ||
+    ! dcrt_tmp=$(stage_file "$cert" "$CERT_DIR/${ACME_DOMAIN}.crt" 0644); then
+    rm -f "$CERT_DIR"/.*.tmp.$$
+    echo "[acme] could not stage the certificate in $CERT_DIR; left the published pair as it was" >&2
+    return 1
+  fi
+  # Key first, then cert, back to back: anything that notices a renewal by
+  # the certificate changing finds the matching key already in place. A
+  # reader landing between the two renames gets a mismatched pair, which the
+  # reloader rejects (keeping the pair it serves) and retries once the cert
+  # changes. If a rename fails, the rest stay unpublished.
+  if ! { mv -f "$key_tmp" "$CERT_DIR/default.key" &&
+    mv -f "$crt_tmp" "$CERT_DIR/default.crt" &&
+    mv -f "$dkey_tmp" "$CERT_DIR/${ACME_DOMAIN}.key" &&
+    mv -f "$dcrt_tmp" "$CERT_DIR/${ACME_DOMAIN}.crt"; }; then
+    rm -f "$CERT_DIR"/.*.tmp.$$
+    echo "[acme] publishing into $CERT_DIR failed part-way" >&2
+    return 1
+  fi
   echo "[acme] published $CERT_DIR/default.{crt,key} owned by $IMAP_RUNTIME_USER"
 }
 

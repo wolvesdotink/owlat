@@ -2762,7 +2762,9 @@
 				"progress": "{verified} of {total} records found",
 				"progressLabel": "Records found",
 				"stillMissing": "Still to add or fix:",
-				"unchecked": "Add this record at your DNS host — we check for it automatically while this panel is open. | Add these {total} records at your DNS host — we check for them automatically while this panel is open."
+				"unchecked": "Add this record at your DNS host — we check for it automatically while this panel is open. | Add these {total} records at your DNS host — we check for them automatically while this panel is open.",
+				"zoneNoteOutOfZone": "Not part of {domain}: add the record below at the DNS host for {zone}. It is commented out so an import into {domain} skips it.",
+				"zoneNoteReplaceSpf": "Replace the existing v=spf1 record at this name with the one below. Do not add it as a second SPF record: two make SPF fail for all mail from this domain."
 			},
 			"dnsPropagationNote": {
 				"body": "{note} DNS changes can take up to 48 hours to propagate. After adding these records, click \"Verify domain\" to check the configuration.",

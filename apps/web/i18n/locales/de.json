@@ -2762,7 +2762,9 @@
 				"progress": "{verified} von {total} Einträgen gefunden",
 				"progressLabel": "Gefundene Einträge",
 				"stillMissing": "Noch hinzuzufügen oder zu korrigieren:",
-				"unchecked": "Legen Sie diesen Eintrag bei Ihrem DNS-Hoster an — wir prüfen automatisch, solange dieses Feld geöffnet ist. | Legen Sie diese {total} Einträge bei Ihrem DNS-Hoster an — wir prüfen automatisch, solange dieses Feld geöffnet ist."
+				"unchecked": "Legen Sie diesen Eintrag bei Ihrem DNS-Hoster an — wir prüfen automatisch, solange dieses Feld geöffnet ist. | Legen Sie diese {total} Einträge bei Ihrem DNS-Hoster an — wir prüfen automatisch, solange dieses Feld geöffnet ist.",
+				"zoneNoteOutOfZone": "Gehört nicht zu {domain}: Legen Sie den folgenden Eintrag beim DNS-Hoster von {zone} an. Er ist auskommentiert, damit ein Import in {domain} ihn überspringt.",
+				"zoneNoteReplaceSpf": "Ersetzen Sie den vorhandenen v=spf1-Eintrag unter diesem Namen durch den folgenden. Legen Sie ihn nicht als zweiten SPF-Eintrag an: Zwei SPF-Einträge lassen SPF für alle E-Mails dieser Domain fehlschlagen."
 			},
 			"dnsPropagationNote": {
 				"body": "{note} DNS-Änderungen können bis zu 48 Stunden brauchen, um sich zu verbreiten. Klicken Sie nach dem Hinzufügen dieser Einträge auf „Domain prüfen“, um die Konfiguration zu überprüfen.",

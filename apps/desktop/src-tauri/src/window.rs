@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -10,25 +10,67 @@ use crate::{links, zoom};
 /// is shown anyway (a boot that throws, a slow `tauri dev` compile).
 const REVEAL_FALLBACK: Duration = Duration::from_secs(3);
 
-/// Labels of the windows that have been revealed since they were built.
+/// Which windows have been revealed since they were built.
 ///
 /// Windows are created hidden and shown on the SPA's first paint
 /// (`window_ready`), so launch shows the app instead of an empty — on macOS and
 /// Windows 11 even see-through, the window is `transparent` — frame while the
-/// bundle boots. The set makes the reveal one-shot per window: a later
+/// bundle boots. The state makes the reveal one-shot per window: a later
 /// `window_ready` (the webview reload a workspace switch does) or the fallback
 /// timer must never re-show a window the user has since hidden.
+///
+/// A label is reused when a window is closed and built again (compose), so each
+/// build gets its own number. The fallback timer of a window that is already
+/// gone carries the old number and cannot use up the new window's reveal.
 #[derive(Default)]
-pub struct Revealed(Mutex<HashSet<String>>);
+pub struct Revealed(Mutex<RevealState>);
 
-/// Show `window` the first time this is called for it since it was built.
-fn reveal(window: &WebviewWindow) {
+#[derive(Default)]
+pub struct RevealState {
+    /// The number the last `arm` handed out.
+    last_build: u64,
+    /// Label → the build currently holding it, and whether it has been shown.
+    windows: HashMap<String, (u64, bool)>,
+}
+
+impl RevealState {
+    /// A window of `label` was just built hidden: it replaces any earlier
+    /// window of that label. Returns its build number.
+    fn arm(&mut self, label: &str) -> u64 {
+        self.last_build += 1;
+        self.windows
+            .insert(label.to_string(), (self.last_build, false));
+        self.last_build
+    }
+
+    /// Whether this call is the one that shows the window of `label`: the
+    /// first for its current build. `build` is the fallback timer's build
+    /// number; `None` (the SPA's own `window_ready`) is the live window asking.
+    fn claim(&mut self, label: &str, build: Option<u64>) -> bool {
+        match self.windows.get_mut(label) {
+            // A timer armed for an earlier window of this label: that window
+            // is gone, and the reveal belongs to the one built since.
+            Some((current, _)) if build.is_some_and(|b| b != *current) => false,
+            Some((_, revealed)) => !std::mem::replace(revealed, true),
+            // Never armed: reveal once, as for any other first call.
+            None => {
+                self.windows
+                    .insert(label.to_string(), (build.unwrap_or(0), true));
+                true
+            }
+        }
+    }
+}
+
+/// Show `window` the first time this is called for its current build (see
+/// `RevealState::claim`).
+fn reveal(window: &WebviewWindow, build: Option<u64>) {
     let app = window.app_handle();
     let first = app
         .state::<Revealed>()
         .0
         .lock()
-        .map(|mut set| set.insert(window.label().to_string()))
+        .map(|mut state| state.claim(window.label(), build))
         .unwrap_or(true);
     if first {
         let _ = window.show();
@@ -40,13 +82,16 @@ fn reveal(window: &WebviewWindow) {
 /// window of the same label, and show it anyway if the SPA never reports ready.
 pub fn arm_reveal(window: &WebviewWindow) {
     let app = window.app_handle();
-    if let Ok(mut set) = app.state::<Revealed>().0.lock() {
-        set.remove(window.label());
-    }
+    let build = app
+        .state::<Revealed>()
+        .0
+        .lock()
+        .ok()
+        .map(|mut state| state.arm(window.label()));
     let win = window.clone();
     std::thread::spawn(move || {
         std::thread::sleep(REVEAL_FALLBACK);
-        reveal(&win);
+        reveal(&win, build);
     });
 }
 
@@ -54,7 +99,7 @@ pub fn arm_reveal(window: &WebviewWindow) {
 /// `app:mounted`) — show the window if this is its first paint.
 #[command]
 pub fn window_ready(window: WebviewWindow) {
-    reveal(&window);
+    reveal(&window, None);
 }
 
 /// Build the main window from its `tauri.conf.json` entry (`create: false`
@@ -756,7 +801,36 @@ pub fn set_titlebar_scale(app: &AppHandle, factor: f64) {
 
 #[cfg(test)]
 mod tests {
-    use super::{titlebar_action, TitlebarAction};
+    use super::{titlebar_action, RevealState, TitlebarAction};
+
+    #[test]
+    fn reveal_is_one_shot_per_build() {
+        let mut state = RevealState::default();
+        let build = state.arm("main");
+        assert!(state.claim("main", None), "first paint shows the window");
+        assert!(!state.claim("main", None), "a reload must not re-show it");
+        assert!(!state.claim("main", Some(build)), "nor the fallback timer");
+    }
+
+    #[test]
+    fn a_closed_windows_timer_cannot_use_up_the_reopened_windows_reveal() {
+        let mut state = RevealState::default();
+        let first = state.arm("compose");
+        assert!(state.claim("compose", None));
+        // Closed and reopened before the first window's fallback timer fired.
+        let second = state.arm("compose");
+        assert!(!state.claim("compose", Some(first)), "stale timer");
+        assert!(state.claim("compose", None), "the new window still shows");
+        assert!(!state.claim("compose", Some(second)));
+    }
+
+    #[test]
+    fn the_fallback_timer_shows_a_window_that_never_painted() {
+        let mut state = RevealState::default();
+        let build = state.arm("compose");
+        assert!(state.claim("compose", Some(build)));
+        assert!(!state.claim("compose", None));
+    }
 
     #[test]
     fn titlebar_double_click_follows_the_system_setting() {

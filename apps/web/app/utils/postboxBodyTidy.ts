@@ -12,9 +12,15 @@
 /**
  * One blank block (a <p> or <div> holding only whitespace, nbsp, <br> and empty
  * spans) or a lone <br>, followed by the closing tags that end the document.
+ *
+ * The alternatives inside the block must never overlap. `\s` already matches a
+ * raw U+00A0 (which is what sanitize-html turns `&nbsp;` into), so listing the
+ * character separately let every nbsp match two ways and made a failed match
+ * backtrack exponentially: a received message ending in `<p>` plus a few dozen
+ * `&nbsp;` and one letter froze the reader for seconds, then minutes.
  */
 const TRAILING_BLANK =
-	/(?:<(p|div)\b[^>]*>(?:\s|&nbsp;| |<br\s*\/?>|<\/?span\b[^>]*>)*<\/\1>|<br\s*\/?>)\s*((?:<\/[a-z][a-z0-9]*>\s*)*)$/i;
+	/(?:<(p|div)\b[^>]*>(?:\s|&nbsp;|<br\s*\/?>|<\/?span\b[^>]*>)*<\/\1>|<br\s*\/?>)\s*((?:<\/[a-z][a-z0-9]*>\s*)*)$/i;
 
 /**
  * Only the tail is examined, so the anchored pattern never scans a large
