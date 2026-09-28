@@ -2,6 +2,7 @@
 
 import dns from 'node:dns/promises';
 import { verifyMtaStsPublication, type DeliverabilityCheckId } from '@owlat/shared';
+import { spfTrailingAllQualifier } from '@owlat/shared/spf';
 import type { ActionCtx } from '../_generated/server';
 import { api } from '../_generated/api';
 import { runDnsLookups } from '../domains/dnsVerification';
@@ -36,8 +37,7 @@ import {
 const POSTMASTER_MAX_AGE_MS = 48 * 60 * 60 * 1_000;
 const POSTMASTER_PERIOD_MAX_AGE_MS = 4 * 24 * 60 * 60 * 1_000;
 function hasStrictSpfPolicy(value: string | undefined): boolean {
-	const terms = value?.trim().split(/\s+/) ?? [];
-	return terms[terms.length - 1]?.toLowerCase() === '-all';
+	return spfTrailingAllQualifier(value ?? '') === '-all';
 }
 
 export async function observeDomainCheck(

@@ -44,7 +44,7 @@ describe('domain checklist validation', () => {
 	beforeEach(() => vi.mocked(runDnsLookups).mockReset());
 	afterEach(() => vi.unstubAllEnvs());
 
-	it.each(['~all', '?all', 'all'])(
+	it.each(['~all', '?all', 'all', 'redirect=_spf.example.com'])(
 		'retries a live non-strict SPF policy ending in %s before failing',
 		async (qualifier) => {
 			const policy = `v=spf1 include:sender.example ${qualifier}`;

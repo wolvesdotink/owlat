@@ -1,5 +1,6 @@
 import type { DeliverabilityCheckId, DeliverabilitySetupValue } from '@owlat/shared';
 import { reverseIpAddressForDns } from '@owlat/shared/ipAddress';
+import { isSpfRecord, spfTrailingAllQualifier } from '@owlat/shared/spf';
 import { buildMtaStsTxtValue, mtaStsPolicyId } from '@owlat/shared/mtaStsPolicy';
 import type { Doc } from '../_generated/dataModel';
 import { getOptional } from '../lib/env';
@@ -19,14 +20,28 @@ export function absoluteDnsRecordName(record: ChecklistDnsRecord, domain: string
 	return name.toLowerCase().replace(/\.$/, '');
 }
 
+/** An SPF `redirect=` modifier term (RFC 7208 §6.1). */
+const SPF_REDIRECT_TERM_RE = /(?:^|\s)redirect=/i;
+
 /**
  * The readiness checklist requires a terminal hard-fail policy. Domain
  * registration may retain a staged soft-fail value while addresses settle, so
- * the checklist must show the exact hardened replacement it will verify.
+ * the checklist must show the exact hardened replacement it will verify:
+ *
+ *   - a trailing `~all` / `?all` / `+all` / bare `all` becomes `-all`;
+ *   - an SPF record with no trailing `all` gets ` -all` appended;
+ *   - a record that delegates its policy with `redirect=` is returned
+ *     unchanged, because any `all` mechanism disables the redirect
+ *     (RFC 7208 §6.1) — the hard fail has to be set on the redirect target;
+ *   - a value that is not an SPF record is returned unchanged.
  */
 export function hardenedSpfRecordValue(value: string): string {
 	const trimmed = value.trim();
-	return /(?:^|\s)[+?~]?all$/i.test(trimmed) ? trimmed.replace(/[+?~]?all$/i, '-all') : trimmed;
+	const qualifier = spfTrailingAllQualifier(trimmed);
+	if (qualifier === '-all') return trimmed;
+	if (qualifier !== null) return trimmed.replace(/\S+$/, '-all');
+	if (!isSpfRecord(trimmed) || SPF_REDIRECT_TERM_RE.test(trimmed)) return trimmed;
+	return `${trimmed} -all`;
 }
 
 function dnsSetupValue(

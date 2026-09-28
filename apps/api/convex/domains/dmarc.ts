@@ -48,6 +48,17 @@ export const dmarcPolicyValidator = v.union(
 	v.literal('reject')
 );
 
+/** Matches the RFC 7489 §6.4 version tag that must open a DMARC record. */
+const DMARC_RECORD_RE = /^\s*v\s*=\s*DMARC1\s*(;|$)/i;
+
+/**
+ * True when a TXT value is a DMARC record: it opens with `v=DMARC1`, compared
+ * case-insensitively with whitespace allowed around `=` (RFC 7489 §6.4).
+ */
+export function isDmarcRecord(txt: string): boolean {
+	return DMARC_RECORD_RE.test(txt);
+}
+
 export function isDmarcPolicy(value: string | undefined | null): value is DmarcPolicy {
 	return value === 'none' || value === 'quarantine' || value === 'reject';
 }
