@@ -26,9 +26,13 @@ export const IPV6_SETUP_ENV_NAMES = [
 
 /**
  * Enabling IPv6 also flips `enable_ipv6` on the stack's Docker network, which
- * Docker applies only by recreating it — so a container restart is not enough.
+ * Docker applies only by recreating it — so a container restart is not enough,
+ * and `owlat down` has to come first. `owlat apply` (not `owlat up`) then brings
+ * the stack back AND pushes the new pools into Convex's `MTA_IP_POOLS`; with a
+ * bare `up`, Convex keeps the IPv4-only pools and new domains get a return-path
+ * SPF without the `ip6:` mechanism.
  */
-export const IPV6_APPLY_COMMANDS = ['owlat down', 'owlat up'] as const;
+export const IPV6_APPLY_COMMANDS = ['owlat down', 'owlat apply'] as const;
 
 const IPV4_PREREQUISITES: readonly string[] =
 	DELIVERABILITY_CHECKLIST.find((definition) => definition.id === 'deployment.ipv6_address')

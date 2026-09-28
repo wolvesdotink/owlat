@@ -82,6 +82,11 @@ export async function storeSpamhausDqsKey(redis: Redis, key: string | null): Pro
  * at all — so it is settled with one control query to the PUBLIC zone through
  * the same resolver. If that gets any answer, even the refusal code, the path
  * to Spamhaus works and it was the key that failed.
+ *
+ * Only a SERVFAIL gets that treatment. A timeout or any other transport error
+ * says nothing about the key: the keyed zone can time out while the public one
+ * answers from cache, and reading that as `key_rejected` would refuse a valid
+ * key at save time and show "Key rejected" for a slow network.
  */
 export async function probeSpamhausZone(
 	zone: string,
@@ -91,6 +96,7 @@ export async function probeSpamhausZone(
 	if (result.status === 'listed') return undefined;
 	if (result.status === 'clean') return 'key_rejected';
 	if (result.reason !== 'resolver_unreachable') return result.reason ?? 'resolver_unreachable';
+	if (result.errorCode !== 'ESERVFAIL') return 'resolver_unreachable';
 	const control = await lookupDnsblZone(
 		SPAMHAUS_TEST_ADDRESS,
 		'spamhaus',

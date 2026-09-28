@@ -14,8 +14,9 @@ import type { Id } from '../_generated/dataModel';
 import { deliverabilityStatusValidator } from '../lib/convexValidators';
 import { literalUnion } from '../lib/literalUnion';
 import { CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION } from '../lib/constants';
-import { checklistTraits } from './checklistTraits';
+import { DEPLOYMENT_CHECK_IDS, checklistTraits } from './checklistTraits';
 import { resolveDeliverabilityAlert } from './checklistAlertResolution';
+import { ipv6SendingAddresses, isIpv6CheckId } from './checklistIpv6';
 
 const LEASE_MS = 2 * 60_000;
 const SCHEDULED_RETRY_GRACE_MS = 60_000;
@@ -244,6 +245,31 @@ async function resolveRecoveredAlerts(
 	}
 }
 
+const IPV6_CHECK_IDS = DEPLOYMENT_CHECK_IDS.filter(isIpv6CheckId);
+
+/** The Center's reading of the opt-in: the MTA's last reported pools hold an IPv6 address. */
+async function isIpv6SendingEnabled(ctx: MutationCtx): Promise<boolean> {
+	const warming = await ctx.db.query('warmingState').first(); // bounded: singleton row
+	return ipv6SendingAddresses(warming).length > 0;
+}
+
+/**
+ * While IPv6 is off the Center hides the IPv6 checks and their alerts, and the
+ * checks keep warning ("IPv6 remains disabled") instead of ever passing again.
+ * An open IPv6 alert then can neither be seen, acknowledged, nor recovered, so
+ * turning IPv6 off closes them — and cancels any email still pending for one.
+ */
+export async function resolveIpv6RegressionAlerts(
+	ctx: MutationCtx,
+	organizationId: string,
+	resolvedAt: number
+): Promise<void> {
+	const targetKey = deliverabilityTargetKey(organizationId);
+	for (const itemId of IPV6_CHECK_IDS) {
+		await resolveRecoveredAlerts(ctx, organizationId, targetKey, itemId, resolvedAt);
+	}
+}
+
 export const recordEvidence = internalMutation({
 	args: {
 		organizationId: v.string(),
@@ -315,14 +341,18 @@ export const recordEvidence = internalMutation({
 			createdAt: args.observedAt,
 		});
 
+		// A check the Center hides (IPv6 while it is off) must not alert: nobody
+		// could see or acknowledge the alert, and admins would still be emailed.
+		const isHiddenIpv6Check = isIpv6CheckId(args.itemId) && !(await isIpv6SendingEnabled(ctx));
 		if (
+			!isHiddenIpv6Check &&
 			lastConfirmedPass &&
 			(args.status === 'fail' || args.status === 'warn') &&
 			args.validator !== 'checklist.orchestrator'
 		) {
 			await insertRegressionAlert(ctx, args, targetKey, lastConfirmedPass._id, evidenceId);
 		}
-		if (args.status === 'pass') {
+		if (args.status === 'pass' || isHiddenIpv6Check) {
 			await resolveRecoveredAlerts(
 				ctx,
 				args.organizationId,
