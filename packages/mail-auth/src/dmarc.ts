@@ -27,7 +27,12 @@
  */
 
 import { normalizeDomain } from '@owlat/shared';
-import { isSpfAligned, organizationalDomain, type AlignmentMode } from '@owlat/shared/spfAlignment';
+import {
+	isIdentifierAligned,
+	isSpfAligned,
+	organizationalDomain,
+	type AlignmentMode,
+} from '@owlat/shared/spfAlignment';
 import type { SpfVerdict } from './spf.js';
 
 /**
@@ -190,9 +195,9 @@ export async function evaluateDmarc(args: EvaluateDmarcArgs): Promise<DmarcOutco
 	//    contributes nothing, but does NOT itself fail DMARC — this is why a
 	//    forwarded message with envelope-SPF=fail still passes on aligned DKIM.
 	//
-	//    `isSpfAligned` is the shared RFC 7489 §3.1 alignment predicate (any two
-	//    domains, relaxed/strict) — reused for the DKIM `d=` side too so both
-	//    halves agree on the Organizational-Domain heuristic.
+	//    Both halves use the shared RFC 7489 §3.1 predicate (`isSpfAligned` is
+	//    a wrapper around `isIdentifierAligned`), so SPF and DKIM `d=` alignment
+	//    agree on the PSL-derived Organizational Domain.
 	const spfAligned =
 		spf.result === 'pass' &&
 		!!spf.domain &&
@@ -202,7 +207,7 @@ export async function evaluateDmarc(args: EvaluateDmarcArgs): Promise<DmarcOutco
 	const dkimAligned =
 		dkim.result === 'pass' &&
 		passingDkimDomains.some((domain) =>
-			isSpfAligned(domain, fromDomain, alignmentMode(record.adkim))
+			isIdentifierAligned(domain, fromDomain, alignmentMode(record.adkim))
 		);
 
 	if (spfAligned || dkimAligned) {
