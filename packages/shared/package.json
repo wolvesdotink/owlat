@@ -334,6 +334,10 @@
 			"types": "./src/nodeShutdown.ts",
 			"import": "./src/nodeShutdown.ts"
 		},
+		"./tlsCertReloader": {
+			"types": "./src/tlsCertReloader.ts",
+			"import": "./src/tlsCertReloader.ts"
+		},
 		"./networkPorts": {
 			"types": "./src/networkPorts.ts",
 			"import": "./src/networkPorts.ts"

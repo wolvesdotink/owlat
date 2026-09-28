@@ -38,10 +38,11 @@ export async function main() {
 	}
 
 	const rateLimiter = new AuthRateLimiter(redis, config.authRateLimit);
-	const { server } = startImapServer(config, convex, rateLimiter);
+	const { server, stopTlsReload } = startImapServer(config, convex, rateLimiter);
 
 	const shutdown = (signal: string) => {
 		logger.info({ signal }, 'shutting down');
+		stopTlsReload();
 		server.close(() => {
 			redis?.disconnect();
 			process.exit(0);

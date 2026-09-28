@@ -41,6 +41,14 @@ vi.mock('../connection.js', () => ({
 	},
 }));
 
+// The reload wiring is exercised against a real tls.Server in tlsReload.test.ts;
+// here it only has to receive the server, the material and the cipher policy.
+const startImapTlsReload = vi.fn((..._args: unknown[]) => ({ stop: reloaderStop }));
+const reloaderStop = vi.fn();
+vi.mock('../tlsReload.js', () => ({
+	startImapTlsReload: (...args: unknown[]) => startImapTlsReload(...args),
+}));
+
 /**
  * Shared capture for whichever `createServer` the bootstrap calls. The TLS
  * factory receives (options, handler); the TCP factory receives (handler).
@@ -69,14 +77,12 @@ function makeFakeServer() {
 }
 
 vi.mock('tls', () => ({
-	createServer: vi.fn(
-		(options: Record<string, unknown>, handler: (socket: Socket) => void) => {
-			capture.flavor = 'tls';
-			capture.options = options;
-			capture.handler = handler;
-			return makeFakeServer();
-		},
-	),
+	createServer: vi.fn((options: Record<string, unknown>, handler: (socket: Socket) => void) => {
+		capture.flavor = 'tls';
+		capture.options = options;
+		capture.handler = handler;
+		return makeFakeServer();
+	}),
 }));
 
 vi.mock('net', () => ({
@@ -133,10 +139,7 @@ function start(overrides: Partial<ImapConfig> = {}): {
 }
 
 /** Run a fresh socket from `ip` through the captured accounting handler. */
-function connect(
-	handler: (socket: Socket) => void,
-	ip: string | undefined,
-): FakeSocket {
+function connect(handler: (socket: Socket) => void, ip: string | undefined): FakeSocket {
 	const sock = new FakeSocket(ip);
 	handler(sock as unknown as Socket);
 	return sock;
@@ -169,6 +172,18 @@ describe('startImapServer — server flavor selection', () => {
 		expect(typeof capture.options!.ciphers).toBe('string');
 	});
 
+	it('hands the TLS server and its cipher policy to the certificate reloader', () => {
+		const tls = { cert: 'CERT-PEM', key: 'KEY-PEM', paths: { cert: '/c.crt', key: '/c.key' } };
+		const { stopTlsReload } = startImapServer({ ...baseConfig, tls }, convex, limiter);
+		expect(startImapTlsReload).toHaveBeenCalledWith(
+			expect.objectContaining({ listen: capture.listen }),
+			tls,
+			expect.objectContaining({ minVersion: 'TLSv1.2', ciphers: capture.options!.ciphers })
+		);
+		stopTlsReload();
+		expect(reloaderStop).toHaveBeenCalledOnce();
+	});
+
 	it('binds the plain TCP server outside production when tls is null', () => {
 		process.env.NODE_ENV = 'development';
 		start({ tls: null });
@@ -178,17 +193,13 @@ describe('startImapServer — server flavor selection', () => {
 	it('refuses to start in production without TLS', () => {
 		process.env.NODE_ENV = 'production';
 		expect(() => startImapServer({ ...baseConfig, tls: null }, convex, limiter)).toThrow(
-			/refusing to start in production without TLS/,
+			/refusing to start in production without TLS/
 		);
 	});
 
 	it('listens on the configured port and address', () => {
 		start({ tls: { cert: 'c', key: 'k' }, port: 9931, listenAddress: '127.0.0.1' });
-		expect(capture.listen).toHaveBeenCalledWith(
-			9931,
-			'127.0.0.1',
-			expect.any(Function),
-		);
+		expect(capture.listen).toHaveBeenCalledWith(9931, '127.0.0.1', expect.any(Function));
 	});
 });
 
@@ -301,7 +312,11 @@ describe('startImapServer — per-IP connection cap', () => {
 	});
 
 	it('counts per-IP independently across distinct IPs', () => {
-		const { handler } = start({ tls: { cert: 'c', key: 'k' }, maxConnectionsPerIp: 1, maxClients: 99 });
+		const { handler } = start({
+			tls: { cert: 'c', key: 'k' },
+			maxConnectionsPerIp: 1,
+			maxClients: 99,
+		});
 		const a = connect(handler, '10.0.0.1');
 		const b = connect(handler, '10.0.0.2');
 		expect(a.ended).toBe(false);
@@ -313,7 +328,11 @@ describe('startImapServer — per-IP connection cap', () => {
 	});
 
 	it('treats a missing remoteAddress as the "unknown" IP bucket', () => {
-		const { handler } = start({ tls: { cert: 'c', key: 'k' }, maxConnectionsPerIp: 1, maxClients: 99 });
+		const { handler } = start({
+			tls: { cert: 'c', key: 'k' },
+			maxConnectionsPerIp: 1,
+			maxClients: 99,
+		});
 		const first = connect(handler, undefined);
 		const second = connect(handler, undefined);
 		expect(first.ended).toBe(false);
@@ -344,7 +363,11 @@ describe('startImapServer — global connection cap', () => {
 
 describe('startImapServer — socket close decrements counters', () => {
 	it('frees a per-IP slot when an accepted socket closes', () => {
-		const { handler } = start({ tls: { cert: 'c', key: 'k' }, maxConnectionsPerIp: 1, maxClients: 99 });
+		const { handler } = start({
+			tls: { cert: 'c', key: 'k' },
+			maxConnectionsPerIp: 1,
+			maxClients: 99,
+		});
 		const first = connect(handler, '10.0.0.1');
 		expect(first.ended).toBe(false);
 

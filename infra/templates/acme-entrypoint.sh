@@ -5,6 +5,10 @@
 # volume read by the IMAP server (port 993) and the MTA submission
 # server (ports 465/587).
 #
+# No restart is needed after a renewal: the IMAP server and the MTA's inbound
+# SMTP listener re-read default.{crt,key} every five minutes and swap the new
+# pair in (packages/shared/src/tlsCertReloader.ts).
+#
 # Uses lego (https://go-acme.github.io/lego) with DNS-01 challenges so
 # we don't need to open port 80 on the VPS. The Hetzner DNS provider
 # expects $HETZNER_API_TOKEN; swap to another provider by adjusting

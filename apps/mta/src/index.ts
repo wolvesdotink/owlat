@@ -11,6 +11,7 @@ import { getRedis, closeRedis } from './redis.js';
 import { createApp } from './server.js';
 import { createEmailQueue, createEmailWorker } from './queue/setup.js';
 import { createBounceServer, startBounceServer } from './bounce/server.js';
+import { startBounceTlsReload } from './bounce/tlsReload.js';
 import {
 	createSubmissionServer,
 	createImplicitTlsSubmissionServer,
@@ -152,13 +153,16 @@ export async function main() {
 	}, 60_000);
 
 	// ── 7. Start HTTP server ──
-	const app = createApp(queue, redis, config);
+	// Renewed inbound certificates are swapped into the port-25 listener (created
+	// below) in place; /health reports whichever certificate is in service.
+	let bounceServer: ReturnType<typeof createBounceServer> | undefined;
+	const bounceTlsReload = startBounceTlsReload(config, () => bounceServer);
+	const app = createApp(queue, redis, config, bounceTlsReload.currentCert);
 	const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
 		logger.info({ port: info.port }, 'HTTP server listening');
 	});
 
 	// ── 8. Start bounce SMTP server ──
-	let bounceServer: ReturnType<typeof createBounceServer> | undefined;
 	try {
 		bounceServer = createBounceServer(config, redis);
 		await startBounceServer(bounceServer, config.bouncePort);
@@ -399,6 +403,7 @@ export async function main() {
 		clearInterval(dkimRotationInterval);
 		clearInterval(webhookDlqInterval);
 		clearInterval(suppressionSweepInterval);
+		bounceTlsReload.stop();
 		// Stop claiming liveness the moment we start draining.
 		stopHeartbeat();
 

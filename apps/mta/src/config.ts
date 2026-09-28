@@ -119,6 +119,8 @@ export interface MtaConfig extends GovernedDeliveryConfig {
 	bounceServerTlsCert?: string;
 	/** TLS key for bounce SMTP server (PEM string) */
 	bounceServerTlsKey?: string;
+	/** Files the bounce cert/key were read from; set only when both are file-sourced (reloaded on renewal) */
+	bounceServerTlsPaths?: { cert: string; key: string };
 	/** Maximum concurrent connections per IP to bounce server */
 	bounceMaxConnectionsPerIp: number;
 	/** Maximum total concurrent connections to bounce server */
@@ -415,6 +417,7 @@ export function loadConfig(): MtaConfig {
 		deliveryLogTtlHours: parseInt(optionalEnv('DELIVERY_LOG_TTL_HOURS', '72'), 10),
 		...(bounceTls.cert ? { bounceServerTlsCert: bounceTls.cert } : {}),
 		...(bounceTls.key ? { bounceServerTlsKey: bounceTls.key } : {}),
+		...(bounceTls.paths ? { bounceServerTlsPaths: bounceTls.paths } : {}),
 		bounceMaxConnectionsPerIp: parseInt(optionalEnv('BOUNCE_MAX_CONNECTIONS_PER_IP', '10'), 10),
 		bounceMaxClients: parseInt(optionalEnv('BOUNCE_MAX_CLIENTS', '200'), 10),
 		bounceTarpitEnabled: optionalEnv('BOUNCE_TARPIT_ENABLED', 'true') === 'true',

@@ -31,8 +31,12 @@ describe('loadBounceTlsMaterial', () => {
 	});
 
 	it('reads default.{crt,key} from the shared mail-certs directory', () => {
-		writePair();
-		expect(loadBounceTlsMaterial({ TLS_CERT_DIR: dir })).toEqual({ cert: CERT, key: KEY });
+		const files = writePair();
+		expect(loadBounceTlsMaterial({ TLS_CERT_DIR: dir })).toEqual({
+			cert: CERT,
+			key: KEY,
+			paths: files,
+		});
 	});
 
 	it('ignores a cert directory that does not hold a complete pair yet', () => {
@@ -68,7 +72,12 @@ describe('loadBounceTlsMaterial', () => {
 				BOUNCE_TLS_KEY_FILE: files.key,
 				TLS_CERT_DIR: dir,
 			})
-		).toEqual({ cert: CERT, key: KEY });
+		).toEqual({ cert: CERT, key: KEY, paths: files });
+	});
+
+	it('reports no reload paths for a half-configured file pair', () => {
+		const files = writePair('explicit');
+		expect(loadBounceTlsMaterial({ BOUNCE_TLS_CERT_FILE: files.cert })).toEqual({ cert: CERT });
 	});
 
 	it('fails loudly when an explicitly configured file is missing', () => {

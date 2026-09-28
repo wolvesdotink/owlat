@@ -45,7 +45,12 @@ export interface AuthContext {
 /**
  * Create the Hono HTTP app with all routes
  */
-export function createApp(queue: Queue<EmailJob>, redis: Redis, config: MtaConfig): Hono {
+export function createApp(
+	queue: Queue<EmailJob>,
+	redis: Redis,
+	config: MtaConfig,
+	currentSmtpTlsCert?: () => string | undefined
+): Hono {
 	const app = new Hono();
 
 	// ── Authentication middleware for /send routes ──
@@ -86,7 +91,7 @@ export function createApp(queue: Queue<EmailJob>, redis: Redis, config: MtaConfi
 	app.post('/send/system', createSendHandler(queue, redis, 'system'));
 	app.post('/send/decision', createRoutingDecisionHandler(redis, config));
 	app.get('/send/receipt/:workAttemptId', createSendReceiptHandler(redis));
-	app.get('/health', createHealthHandler(redis, config, queue));
+	app.get('/health', createHealthHandler(redis, config, queue, currentSmtpTlsCert));
 	app.get('/metrics', createMetricsHandler(queue));
 
 	// Credential management (master-key protected internally)

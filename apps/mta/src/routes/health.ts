@@ -129,9 +129,16 @@ export async function recordWorkerHeartbeat(redis: Redis, serverId: string): Pro
 }
 
 /**
- * Create the health endpoint handler
+ * Create the health endpoint handler. `currentSmtpTlsCert` returns the inbound
+ * certificate in service after any hot reload (bounce/tlsReload.ts); without it
+ * the boot certificate from `config` is inspected.
  */
-export function createHealthHandler(redis: Redis, config: MtaConfig, queue: Queue<EmailJob>) {
+export function createHealthHandler(
+	redis: Redis,
+	config: MtaConfig,
+	queue: Queue<EmailJob>,
+	currentSmtpTlsCert: () => string | undefined = () => config.bounceServerTlsCert
+) {
 	return async (c: Context) => {
 		const redisOk = await isRedisHealthy();
 
@@ -181,7 +188,7 @@ export function createHealthHandler(redis: Redis, config: MtaConfig, queue: Queu
 		// probe module so normal health polling does not hammer the remote MX.
 		const sendingIps = [...new Set([...config.ipPools.transactional, ...config.ipPools.campaign])];
 		const smtpProbe = await getSmtpReachability(sendingIps);
-		const smtpTls = inspectSmtpTlsCertificate(config.bounceServerTlsCert, config.ehloHostname);
+		const smtpTls = inspectSmtpTlsCertificate(currentSmtpTlsCert(), config.ehloHostname);
 
 		// Delay-set integrity. Deliberately NOT folded into `degraded` below: a
 		// leak in the retry ladder is not a reason to tell an operator their

@@ -182,6 +182,11 @@ export class Client {
 		return this.socket instanceof tls.TLSSocket ? this.socket.getCipher() : undefined;
 	}
 
+	/** The certificate the server presented, once the channel is TLS. */
+	get peerCertificate(): tls.PeerCertificate | undefined {
+		return this.socket instanceof tls.TLSSocket ? this.socket.getPeerCertificate() : undefined;
+	}
+
 	write(data: string): void {
 		this.socket.write(data);
 	}
