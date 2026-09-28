@@ -1,12 +1,14 @@
 /**
  * Integration tests for the platform-admin surface
- * (apps/api/convex/platformAdmin/platformAdmin.ts requirePlatformAdmin +
+ * (lib/platformAdminAccess.ts requirePlatformAdmin / requireSuperadmin, the
+ * platform-admin builders in lib/authedFunctions.ts, and
  * platformAdmin/mutations.ts).
  *
- * The management mutations (`setOrganizationStatus`, `addPlatformAdmin`,
- * `removePlatformAdmin`) are `authedMutation`s — their floor is
- * `getMutationContext` (→ `requireOrgMember`), which we mock to pass. On top
- * of that floor `requirePlatformAdmin` resolves the caller via
+ * The management mutations are `platformAdminMutation`s (`addPlatformAdmin` /
+ * `removePlatformAdmin`: `platformSuperadminMutation`) and the operator reads
+ * are `platformAdminQuery`s. Their org floor is `getMutationContext` /
+ * `requireOrgMember`, which we mock to pass. On top of that floor
+ * `requirePlatformAdmin` resolves the caller via
  * `requireAuthenticatedIdentity(ctx)` (we mock it to return a configurable
  * `subject`) and then looks the subject up in the `platformAdmins` table via
  * the `by_auth_user_id` index. So org membership alone is NOT enough — there
@@ -75,6 +77,13 @@ const setCaller = (subject: string) => {
 	sessionMock.subject = subject;
 };
 
+/** The Operation error category a rejected call carries (`error.data.category`). */
+const categoryOf = (call: Promise<unknown>) =>
+	call.then(
+		() => 'resolved',
+		(e: { data?: { category?: string } }) => e?.data?.category
+	);
+
 /** Seed a platformAdmins row for the given auth user. */
 async function seedAdmin(
 	t: ReturnType<typeof convexTest>,
@@ -123,11 +132,14 @@ async function seedInstanceSettings(
 	);
 }
 
+const roster = (t: ReturnType<typeof convexTest>) =>
+	t.run(async (ctx) => ctx.db.query('platformAdmins').collect());
+
 beforeEach(() => {
 	setCaller('caller-user');
 });
 
-// ============ requirePlatformAdmin (via setOrganizationStatus) ============
+// ============ requirePlatformAdmin (via the platform-admin builders) ============
 
 describe('requirePlatformAdmin', () => {
 	it('rejects a caller with no platformAdmins row (even an org owner)', async () => {
@@ -137,12 +149,31 @@ describe('requirePlatformAdmin', () => {
 		// platformAdmins row — platform-admin access is a strictly higher tier.
 		setCaller('not-a-platform-admin');
 
-		await expect(
-			t.mutation(api.platformAdmin.mutations.setOrganizationStatus, {
-				abuseStatus: 'suspended',
-				reason: 'spam',
-			})
-		).rejects.toThrow(/Platform admin access required/);
+		const call = t.mutation(api.platformAdmin.mutations.setOrganizationStatus, {
+			abuseStatus: 'suspended',
+			reason: 'spam',
+		});
+		await expect(call).rejects.toThrow(/Platform admin access required/);
+		expect(await categoryOf(call)).toBe('forbidden');
+	});
+
+	it('rejects a non-admin on a platformAdminQuery with forbidden', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t, 'someone-else', 'superadmin');
+		setCaller('not-a-platform-admin');
+
+		const call = t.query(api.platformAdmin.queries.listPlatformAdmins, {});
+		await expect(call).rejects.toThrow(/Platform admin access required/);
+		expect(await categoryOf(call)).toBe('forbidden');
+	});
+
+	it('lets a platform admin through a platformAdminQuery', async () => {
+		const t = convexTest(schema, modules);
+		await seedAdmin(t, 'caller-user', 'admin');
+		setCaller('caller-user');
+
+		const admins = await t.query(api.platformAdmin.queries.listPlatformAdmins, {});
+		expect(admins).toHaveLength(1);
 	});
 });
 
@@ -272,13 +303,15 @@ describe('platformAdmin.addPlatformAdmin', () => {
 		await seedProfile(t, 'target-1');
 		setCaller('admin-1');
 
-		await expect(
-			t.mutation(api.platformAdmin.mutations.addPlatformAdmin, {
-				authUserId: 'target-1',
-				email: 'target-1@example.com',
-				role: 'admin',
-			})
-		).rejects.toThrow(/Only superadmins can add/);
+		const call = t.mutation(api.platformAdmin.mutations.addPlatformAdmin, {
+			authUserId: 'target-1',
+			email: 'target-1@example.com',
+			role: 'admin',
+		});
+		await expect(call).rejects.toThrow(/Only superadmins can manage platform admins/);
+		// An authorization failure, not a form error.
+		expect(await categoryOf(call)).toBe('forbidden');
+		expect(await roster(t)).toHaveLength(1);
 	});
 
 	it('rejects an authUserId with no userProfiles row', async () => {
@@ -369,11 +402,11 @@ describe('platformAdmin.removePlatformAdmin', () => {
 		const targetId = await seedAdmin(t, 'target-1', 'admin');
 		setCaller('admin-1');
 
-		await expect(
-			t.mutation(api.platformAdmin.mutations.removePlatformAdmin, {
-				adminId: targetId,
-			})
-		).rejects.toThrow(/Only superadmins can remove/);
+		const call = t.mutation(api.platformAdmin.mutations.removePlatformAdmin, {
+			adminId: targetId,
+		});
+		await expect(call).rejects.toThrow(/Only superadmins can manage platform admins/);
+		expect(await categoryOf(call)).toBe('forbidden');
 
 		await t.run(async (ctx) => {
 			expect(await ctx.db.get(targetId)).not.toBeNull();
@@ -420,11 +453,11 @@ describe('platform-admin bootstrap migration', () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t, 'existing-admin', 'superadmin');
 
-		await expect(
-			t.mutation(internal.migrations['0036_seed_platform_admin'].run, {
-				authUserId: 'second-admin',
-				email: 'second@example.com',
-			})
-		).rejects.toThrow(/Platform admins already exist/);
+		const call = t.mutation(internal.migrations['0036_seed_platform_admin'].run, {
+			authUserId: 'second-admin',
+			email: 'second@example.com',
+		});
+		await expect(call).rejects.toThrow(/platformAdmin\/mutations:addPlatformAdmin/);
+		expect(await categoryOf(call)).toBe('invalid_state');
 	});
 });

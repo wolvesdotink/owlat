@@ -29,7 +29,8 @@
 #   kind   query | mutation | action
 #   floor  member    authenticated org member, any role (the floor alone is NOT
 #                    an authorization decision)
-#          role      owner/admin baked into the wrapper
+#          role      a role baked into the wrapper: owner/admin, or platform
+#                    admin / superadmin (lib/platformAdminAccess.ts)
 #          identity  authenticated identity, no org membership
 #          public    no floor at all
 #
@@ -46,6 +47,9 @@ authedIdentityMutation mutation identity
 adminQuery query role
 adminMutation mutation role
 ownerMutation mutation role
+platformAdminQuery query role
+platformAdminMutation mutation role
+platformSuperadminMutation mutation role
 publicQuery query public
 publicMutation mutation public
 publicAction action public'
@@ -61,8 +65,9 @@ publicAction action public'
 #                                 per-user mail access, mail/*
 #   assertCanReadRoom / assertCanWriteRoom / assertCanAdministerRoom
 #                                 team-chat membership, chat/_helpers.ts
-#   requirePlatformAdmin          platform operator, platformAdmin/platformAdmin.ts
-CONVEX_AUTHZ_GATES='requirePermission|requireAdminContext|requireOwnerContext|requireOrgPermission|requireCampaignSendersManage|requireContactsManage|requireMailboxAccess|requireMessageAccess|assertCanReadRoom|assertCanWriteRoom|assertCanAdministerRoom|requirePlatformAdmin'
+#   requirePlatformAdmin / requireSuperadmin
+#                                 platform operator, lib/platformAdminAccess.ts
+CONVEX_AUTHZ_GATES='requirePermission|requireAdminContext|requireOwnerContext|requireOrgPermission|requireCampaignSendersManage|requireContactsManage|requireMailboxAccess|requireMessageAccess|assertCanReadRoom|assertCanWriteRoom|assertCanAdministerRoom|requirePlatformAdmin|requireSuperadmin'
 
 # Soft-fail read predicates: each answers "may this caller read this?" and its
 # callers return empty on `false`. Accepted by check-query-authz only (see the

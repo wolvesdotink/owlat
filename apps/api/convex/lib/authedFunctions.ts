@@ -28,6 +28,11 @@
  *                        webhook secrets / the shared support inbox). Throws for
  *                        non-admins; soft-failing reads keep `publicQuery` + an
  *                        in-handler role check that returns empty instead.
+ *   - `platformAdminQuery` / `platformAdminMutation` — an org member who is
+ *                        also a **platform admin** (`platformAdmins` row). The
+ *                        deployment-level tier: updates, backups, the operator
+ *                        console. `platformSuperadminMutation` additionally
+ *                        requires the `superadmin` role (roster management).
  *   - `authedAction`   — requires an authenticated **organization member**,
  *                        enforced via the internal `auth.membership.assertOrgMember`
  *                        query (actions can't read the DB directly).
@@ -70,7 +75,9 @@
  * structurally identical to `typeof query` / `typeof mutation` for the `args` /
  * `returns` / return-value inference the generated `api` surface and `apps/web`
  * consumers read; only the handler gains the extra optional-to-declare
- * parameter. `authedIdentityMutation` (whose floor resolves an identity, not an
+ * parameter. The platform-admin builders pass the resolved
+ * `PlatformAdminContext` (`authUserId`, `email`, `role`) there instead of the
+ * org session. `authedIdentityMutation` (whose floor resolves an identity, not an
  * org session) and `authedAction` (whose floor runs in another function's
  * context and returns nothing) keep the raw builder types.
  *
@@ -96,6 +103,11 @@ import {
 	requireOrgPermission,
 	type MutationSessionContext,
 } from './sessionOrganization';
+import {
+	requirePlatformAdmin,
+	requireSuperadmin,
+	type PlatformAdminContext,
+} from './platformAdminAccess';
 import { assertFeatureEnabled, assertAnyFeatureEnabled } from './featureFlags';
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 
@@ -141,37 +153,34 @@ interface SessionFunctionConfig<
 	ArgsValidator extends PropertyValidators,
 	ReturnsValidator,
 	ReturnValue,
+	Floor,
 > {
 	args: ArgsValidator;
 	returns?: ReturnsValidator;
-	handler: (
-		ctx: Ctx,
-		args: ObjectType<ArgsValidator>,
-		session: MutationSessionContext
-	) => ReturnValue;
+	handler: (ctx: Ctx, args: ObjectType<ArgsValidator>, session: Floor) => ReturnValue;
 }
 
-/** `typeof query`, with the floor's session threaded to the handler. */
-interface SessionQueryBuilder {
+/** `typeof query`, with the floor's session (or other resolved `Floor`) threaded to the handler. */
+interface SessionQueryBuilder<Floor = MutationSessionContext> {
 	<
 		ArgsValidator extends PropertyValidators,
 		ReturnsValidator extends PropertyValidators | GenericValidator | void = void,
 		ReturnValue extends ReturnValueForOptionalValidator<ReturnsValidator> =
 			ReturnValueForOptionalValidator<ReturnsValidator>,
 	>(
-		fn: SessionFunctionConfig<QueryCtx, ArgsValidator, ReturnsValidator, ReturnValue>
+		fn: SessionFunctionConfig<QueryCtx, ArgsValidator, ReturnsValidator, ReturnValue, Floor>
 	): RegisteredQuery<'public', ObjectType<ArgsValidator>, ReturnValue>;
 }
 
-/** `typeof mutation`, with the floor's session threaded to the handler. */
-interface SessionMutationBuilder {
+/** `typeof mutation`, with the floor's session (or other resolved `Floor`) threaded to the handler. */
+interface SessionMutationBuilder<Floor = MutationSessionContext> {
 	<
 		ArgsValidator extends PropertyValidators,
 		ReturnsValidator extends PropertyValidators | GenericValidator | void = void,
 		ReturnValue extends ReturnValueForOptionalValidator<ReturnsValidator> =
 			ReturnValueForOptionalValidator<ReturnsValidator>,
 	>(
-		fn: SessionFunctionConfig<MutationCtx, ArgsValidator, ReturnsValidator, ReturnValue>
+		fn: SessionFunctionConfig<MutationCtx, ArgsValidator, ReturnsValidator, ReturnValue, Floor>
 	): RegisteredMutation<'public', ObjectType<ArgsValidator>, ReturnValue>;
 }
 
@@ -327,6 +336,56 @@ export const adminQuery = ((fn: FunctionConfig) =>
 			return (fn.handler as unknown as SessionThreadedHandler<QueryCtx>)(ctx, args, session);
 		},
 	} as Parameters<RawQuery>[0])) as unknown as SessionQueryBuilder;
+
+/**
+ * Wrap an org-member builder with a platform-admin gate: `gate` runs after the
+ * member floor (and, for mutations, the public-input check) and its result
+ * replaces the org session as the handler's third argument.
+ */
+function withPlatformGate<Floor>(
+	builder: SessionQueryBuilder | SessionMutationBuilder,
+	gate: (ctx: QueryCtx) => Promise<Floor>
+) {
+	return (fn: FunctionConfig) =>
+		(builder as unknown as (f: FunctionConfig) => unknown)({
+			args: fn.args,
+			...(fn.returns !== undefined ? { returns: fn.returns } : {}),
+			handler: async (ctx: QueryCtx, args: unknown) => {
+				const floor = await gate(ctx);
+				return (fn.handler as unknown as (c: QueryCtx, a: unknown, f: Floor) => unknown)(
+					ctx,
+					args,
+					floor
+				);
+			},
+		});
+}
+
+/**
+ * Platform-admin **read** (System & Updates, Backups, the operator console).
+ * Keeps the `authedQuery` org-member floor, then requires a `platformAdmins` row
+ * (`forbidden` otherwise). The handler's third argument is the
+ * `PlatformAdminContext`, not the org session.
+ */
+export const platformAdminQuery = withPlatformGate(
+	authedQuery,
+	requirePlatformAdmin
+) as unknown as SessionQueryBuilder<PlatformAdminContext>;
+
+/** The write counterpart of `platformAdminQuery`, on the `authedMutation` floor. */
+export const platformAdminMutation = withPlatformGate(
+	authedMutation,
+	requirePlatformAdmin
+) as unknown as SessionMutationBuilder<PlatformAdminContext>;
+
+/**
+ * `platformAdminMutation` restricted to the `superadmin` role, for managing the
+ * platform-admin roster. A plain platform admin gets `forbidden`.
+ */
+export const platformSuperadminMutation = withPlatformGate(
+	authedMutation,
+	requireSuperadmin
+) as unknown as SessionMutationBuilder<PlatformAdminContext>;
 
 /**
  * Compose a **feature-flag floor** onto an existing authed query/mutation

@@ -228,11 +228,15 @@ three ways:
 
 - **Role-bearing wrapper** — `adminMutation` / `ownerMutation` (and `adminQuery`
   for sensitive reads) from `lib/authedFunctions.ts` bake the role check in. Use
-  these for admin-only writes.
+  these for admin-only writes. Deployment-level operator functions use
+  `platformAdminQuery` / `platformAdminMutation` (and
+  `platformSuperadminMutation` for roster management), which pass the
+  platform-admin context `{ authUserId, email, role }` as the handler's third
+  argument.
 - **In-handler gate** — `requirePermission(hasPermission(role, '<scope>:<verb>'))`
   (or `requireAdminContext` / `requireOrgPermission`, or the per-user
   `requireMailboxAccess` / `requireMessageAccess`, chat `assertCan*Room`,
-  `requirePlatformAdmin`). Prefer the specific `<scope>:<verb>` permission where
+  `requirePlatformAdmin` / `requireSuperadmin`). Prefer the specific `<scope>:<verb>` permission where
   one fits the capability. The accepted helpers are `CONVEX_AUTHZ_GATES` in
   `scripts/lib/convex-builders.sh`, shared with `check-query-authz.sh`.
 - **Explicit opt-out comment** — `// authz: <reason>` when the gate genuinely

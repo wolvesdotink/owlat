@@ -696,6 +696,7 @@ import type * as lib_outboundAlignment from '../lib/outboundAlignment.js';
 import type * as lib_outboundUrlValidation from '../lib/outboundUrlValidation.js';
 import type * as lib_pagination from '../lib/pagination.js';
 import type * as lib_paginationCursor from '../lib/paginationCursor.js';
+import type * as lib_platformAdminAccess from '../lib/platformAdminAccess.js';
 import type * as lib_posthog from '../lib/posthog.js';
 import type * as lib_posthogHelpers from '../lib/posthogHelpers.js';
 import type * as lib_publicInput from '../lib/publicInput.js';
@@ -1894,6 +1895,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/outboundUrlValidation': typeof lib_outboundUrlValidation;
 	'lib/pagination': typeof lib_pagination;
 	'lib/paginationCursor': typeof lib_paginationCursor;
+	'lib/platformAdminAccess': typeof lib_platformAdminAccess;
 	'lib/posthog': typeof lib_posthog;
 	'lib/posthogHelpers': typeof lib_posthogHelpers;
 	'lib/publicInput': typeof lib_publicInput;

@@ -23,13 +23,13 @@
  * re-tagged as public at the call site to satisfy the client's types, so
  * nothing but a real update on a real deployment could catch it.
  *
- * Being public means the auth floor has to be real, so each one runs the same
- * `requirePlatformAdmin` gate the route applies, and `initiatedBy` is stamped
- * from the authenticated admin instead of being accepted as an argument.
+ * Being public means the auth floor has to be real, so each one is a
+ * `platformAdminMutation`, the same platform-admin gate the route applies, and
+ * `initiatedBy` is stamped from the authenticated admin instead of being
+ * accepted as an argument.
  */
 import { v } from 'convex/values';
-import { authedMutation, authedQuery } from './lib/authedFunctions';
-import { requirePlatformAdmin } from './platformAdmin/platformAdmin';
+import { platformAdminMutation, platformAdminQuery } from './lib/authedFunctions';
 import { updateStepResultValidator } from './lib/convexValidators';
 import { throwNotFound } from './_utils/errors';
 import { successOrFailedValidator } from './lib/literalValidators';
@@ -64,15 +64,14 @@ function supersededNote(versionTo: string | undefined): string {
  * it shells out with `execFileSync`, so a second `/update` cannot start until
  * the first has returned.
  */
-export const recordUpdateStart = authedMutation({
+export const recordUpdateStart = platformAdminMutation({
 	args: {
 		versionFrom: v.string(),
 		versionTo: v.string(),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, admin) => {
 		// The acting admin, not a caller-supplied id: an audit trail whose
 		// actor field is an argument records whatever the caller claims.
-		const admin = await requirePlatformAdmin(ctx);
 		const initiatedBy = admin.authUserId;
 
 		const startedAt = Date.now();
@@ -142,7 +141,7 @@ export const recordUpdateStart = authedMutation({
  * singleton `latestCheck` document, and patching THAT with a run status would
  * corrupt the update-check cache the dashboard reads.
  */
-export const recordUpdateFinish = authedMutation({
+export const recordUpdateFinish = platformAdminMutation({
 	args: {
 		runId: v.id('systemUpdates'),
 		status: successOrFailedValidator,
@@ -150,8 +149,6 @@ export const recordUpdateFinish = authedMutation({
 		error: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requirePlatformAdmin(ctx);
-
 		const existing = await ctx.db.get(args.runId);
 		if (!existing || existing.kind !== 'updateRun') {
 			throwNotFound('update run');
@@ -209,13 +206,11 @@ export const recordUpdateFinish = authedMutation({
  *
  * Platform-admin only, and public on purpose — see the module header.
  */
-export const withdrawUpdateStart = authedMutation({
+export const withdrawUpdateStart = platformAdminMutation({
 	args: {
 		runId: v.id('systemUpdates'),
 	},
 	handler: async (ctx, args) => {
-		await requirePlatformAdmin(ctx);
-
 		const run = await ctx.db.get(args.runId);
 		if (!run || run.kind !== 'updateRun') {
 			throwNotFound('update run');
@@ -241,11 +236,9 @@ export const withdrawUpdateStart = authedMutation({
 
 // ── Public queries ───────────────────────────────────────────────────────────
 
-export const getLatestRelease = authedQuery({
+export const getLatestRelease = platformAdminQuery({
 	args: {},
 	handler: async (ctx) => {
-		await requirePlatformAdmin(ctx);
-
 		const cached = await ctx.db
 			.query('systemUpdates')
 			.withIndex('by_kind_and_checkedAt', (q) => q.eq('kind', 'latestCheck'))
@@ -280,10 +273,9 @@ export const getLatestRelease = authedQuery({
  * for. Older runs cannot be `running` anyway: `recordUpdateStart` retires
  * every open row before opening its own.
  */
-export const getUnfinishedUpdate = authedQuery({
+export const getUnfinishedUpdate = platformAdminQuery({
 	args: {},
 	handler: async (ctx) => {
-		await requirePlatformAdmin(ctx);
 		const [newest] = await ctx.db
 			.query('systemUpdates')
 			.withIndex('by_kind_and_startedAt', (q) => q.eq('kind', 'updateRun'))
@@ -294,10 +286,9 @@ export const getUnfinishedUpdate = authedQuery({
 	},
 });
 
-export const listUpdateHistory = authedQuery({
+export const listUpdateHistory = platformAdminQuery({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		await requirePlatformAdmin(ctx);
 		const limit = Math.min(Math.max(args.limit ?? 50, 1), 200);
 		return await ctx.db
 			.query('systemUpdates')
