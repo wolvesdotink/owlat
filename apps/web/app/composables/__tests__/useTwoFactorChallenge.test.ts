@@ -6,7 +6,7 @@
  * whatever the user saved and goes to the server untouched. Everything else is
  * about not leaking a half-typed code across a method switch or a restart.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 import { useTwoFactorChallenge } from '../useTwoFactorChallenge';
 
@@ -88,5 +88,34 @@ describe('useTwoFactorChallenge', () => {
 		expect(c.stage.value).toBe('two-factor');
 		expect(c.method.value).toBe('totp');
 		expect(c.code.value).toBe('');
+	});
+
+	it('lets the page clean up its own side on a restart and a method switch', () => {
+		let stageSeenByHook: string | undefined;
+		const onReset = vi.fn(() => {
+			stageSeenByHook = c.stage.value;
+		});
+		const onSwitch = vi.fn();
+		const c = useTwoFactorChallenge({ onReset, onSwitch });
+		c.challenge();
+
+		c.switchMethod();
+		expect(onSwitch).toHaveBeenCalledTimes(1);
+		expect(onReset).not.toHaveBeenCalled();
+
+		c.reset();
+		expect(onReset).toHaveBeenCalledTimes(1);
+		// The hook runs once the challenge state is already back at the start.
+		expect(stageSeenByHook).toBe('credentials');
+	});
+
+	it('entering the challenge does not run either hook', () => {
+		const onReset = vi.fn();
+		const onSwitch = vi.fn();
+		const c = useTwoFactorChallenge({ onReset, onSwitch });
+		c.challenge();
+
+		expect(onReset).not.toHaveBeenCalled();
+		expect(onSwitch).not.toHaveBeenCalled();
 	});
 });

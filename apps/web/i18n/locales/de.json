@@ -10663,7 +10663,6 @@
 		"connect": {
 			"copied": "Kopiert!",
 			"errors": {
-				"credentialsRequired": "E-Mail-Adresse und Passwort sind erforderlich.",
 				"generic": "Etwas ist schiefgelaufen.",
 				"noToken": "Der Server hat kein Token zurückgegeben.",
 				"signInFailed": "Anmeldung fehlgeschlagen.",

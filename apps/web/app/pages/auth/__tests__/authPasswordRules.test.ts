@@ -20,6 +20,7 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import AuthShell from '~/components/auth/AuthShell.vue';
 import AuthPasswordInput from '~/components/auth/AuthPasswordInput.vue';
 import AuthLegalFooter from '~/components/auth/AuthLegalFooter.vue';
+import AuthTwoFactorStageForm from '~/components/auth/TwoFactorStageForm.vue';
 import UiInput from '@owlat/ui/components/ui/Input.vue';
 import UiHeroField from '@owlat/ui/components/ui/HeroField.vue';
 import LoginPage from '../login.vue';
@@ -55,7 +56,14 @@ function mountPage(component: object) {
 	return mount(component, {
 		global: {
 			plugins: [createTestI18n()],
-			components: { AuthShell, AuthPasswordInput, AuthLegalFooter, UiInput, UiHeroField },
+			components: {
+				AuthShell,
+				AuthPasswordInput,
+				AuthLegalFooter,
+				AuthTwoFactorStageForm,
+				UiInput,
+				UiHeroField,
+			},
 		},
 	});
 }
