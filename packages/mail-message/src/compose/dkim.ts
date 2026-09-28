@@ -32,11 +32,16 @@
  * by construction the same way: what we sign is exactly what a receiver (and our
  * own `verifyDkim`) recomputes. There is NO second canonicalization here.
  *
- * The header-block splitting, header-instance ordering and `DKIM-Signature`
- * line formatting below are message ASSEMBLY, not canonicalization; they mirror
- * `mailauth`'s `parseHeaders` / `formatSignatureHeaderLine` / `libmime.foldLines`
- * exactly so the emitted signature is byte-identical to the MTA signer's, pinned
- * by the bit-for-bit vector in `__tests__/dkim.test.ts`.
+ * Header-block splitting comes from the same leaf (`splitRawHeaderBlock` /
+ * `parseRawHeaderFields`), so the signer finds the same header section and the
+ * same fields as `verifyDkim`: the section ends at whichever of CRLFCRLF or LFLF
+ * comes first, and only SP/HTAB continue a field. For the CRLF messages our
+ * composer emits, that yields the same fields as `mailauth`'s `parseHeaders`.
+ * The header-instance ordering and `DKIM-Signature` line formatting below are
+ * message ASSEMBLY, not canonicalization; they mirror `mailauth`'s
+ * `formatSignatureHeaderLine` / `libmime.foldLines` exactly so the emitted
+ * signature is byte-identical to the MTA signer's, pinned by the bit-for-bit
+ * vector in `__tests__/dkim.test.ts`.
  *
  * Pure by construction: the only runtime imports are `node:crypto` and the
  * dependency-free `@owlat/mail-canon` leaf, so this module stays Convex-`'use
@@ -49,7 +54,10 @@ import { createHash, createSign } from 'node:crypto';
 import {
 	canonicalizeBodyRelaxed,
 	canonicalizeHeaderField,
+	parseRawHeaderFields,
+	splitRawHeaderBlock,
 	stripSignatureValue,
+	type RawHeaderField,
 } from '@owlat/mail-canon';
 import { SIGNED_HEADERS } from './signedHeaders';
 
@@ -108,62 +116,6 @@ const DKIM_KEY_ORDERING: readonly string[] = [
 	'bh',
 	'b',
 ];
-
-/** One parsed, unfolded header field: lowercased key, original-cased key, raw bytes. */
-interface ParsedHeaderLine {
-	readonly key: string | null;
-	readonly casedKey?: string;
-	readonly line: Buffer;
-}
-
-/**
- * Split a header block into ordered, unfolded header lines. Mirrors `mailauth`'s
- * `parseHeaders`: continuation lines (starting with WSP) are folded back onto
- * their field, the field name is taken up to the first colon, and the raw bytes
- * are preserved (binary) so canonicalization sees exactly what arrived.
- */
-function parseHeaderBlock(buf: Buffer): ParsedHeaderLine[] {
-	const rows: string[][] = buf
-		.toString('binary')
-		.replace(/[\r\n]+$/, '')
-		.split(/\r?\n/)
-		.map((row) => [row]);
-
-	for (let i = rows.length - 1; i >= 0; i--) {
-		const cur = rows[i];
-		if (i > 0 && cur && /^\s/.test(cur[0] ?? '')) {
-			const prev = rows[i - 1];
-			if (prev) rows[i - 1] = prev.concat(cur);
-			rows.splice(i, 1);
-		}
-	}
-
-	return rows.map((row) => {
-		const joined = row.join('\r\n');
-		const namePart = joined.match(/^[^:]+/)?.[0];
-		let key: string | null = null;
-		let casedKey: string | undefined;
-		if (namePart !== undefined) {
-			casedKey = namePart.trim();
-			key = casedKey.toLowerCase();
-		}
-		return { key, casedKey, line: Buffer.from(joined, 'binary') };
-	});
-}
-
-/** Split a raw RFC822 message into its header block and body (CRLFCRLF or LFLF). */
-function splitHeadersAndBody(raw: Buffer): { headerBuf: Buffer; bodyBuf: Buffer } {
-	let idx = raw.indexOf('\r\n\r\n');
-	let sepLen = 4;
-	if (idx === -1) {
-		idx = raw.indexOf('\n\n');
-		sepLen = 2;
-	}
-	if (idx === -1) {
-		return { headerBuf: raw, bodyBuf: Buffer.alloc(0) };
-	}
-	return { headerBuf: raw.subarray(0, idx), bodyBuf: raw.subarray(idx + sepLen) };
-}
 
 /**
  * Fold a header line onto 76-octet physical lines at existing whitespace.
@@ -256,27 +208,29 @@ export function buildDkimSignatureLine(
 	key: DkimSigningKey,
 	signTimeMs: number = Date.now()
 ): string {
-	const { headerBuf, bodyBuf } = splitHeadersAndBody(raw);
+	// Header section and fields via the ONE shared splitter the verifier uses.
+	const { headerBlock, bodyOffset } = splitRawHeaderBlock(raw.toString('binary'));
+	const bodyBuf = raw.subarray(bodyOffset);
 
 	// Relaxed body hash via the ONE shared canonicalizer (U4).
 	const bodyHash = createHash('sha256').update(canonicalizeBodyRelaxed(bodyBuf)).digest('base64');
 
-	const parsed = parseHeaderBlock(headerBuf);
+	const parsed = parseRawHeaderFields(headerBlock);
 
 	// Group header instances by lowercased name, BOTTOM-to-top order. RFC 6376
 	// §5.4.2: when a header appears in `h=`, the verifier consumes message
 	// instances from the bottom up; we consume in that same order.
-	const byName = new Map<string, ParsedHeaderLine[]>();
+	const byName = new Map<string, RawHeaderField[]>();
 	for (let i = parsed.length - 1; i >= 0; i--) {
 		const h = parsed[i];
-		if (!h || h.key == null) continue;
-		const arr = byName.get(h.key);
+		if (!h) continue;
+		const arr = byName.get(h.name);
 		if (arr) arr.push(h);
-		else byName.set(h.key, [h]);
+		else byName.set(h.name, [h]);
 	}
 
 	const consumed = new Map<string, number>();
-	const takeNext = (name: string): ParsedHeaderLine | undefined => {
+	const takeNext = (name: string): RawHeaderField | undefined => {
 		const arr = byName.get(name);
 		const used = consumed.get(name) ?? 0;
 		consumed.set(name, used + 1);
@@ -286,17 +240,17 @@ export function buildDkimSignatureLine(
 	const hKeys: string[] = [];
 	const canonChunks: Buffer[] = [];
 
-	// Relaxed canonicalization of a single header line, CRLF-terminated (U4).
-	const canonHeaderLine = (line: Buffer): Buffer =>
-		Buffer.from(`${canonicalizeHeaderField(line.toString('binary'), 'relaxed')}\r\n`, 'binary');
+	// Relaxed canonicalization of a single header field, CRLF-terminated (U4).
+	const canonHeaderLine = (field: RawHeaderField): Buffer =>
+		Buffer.from(`${canonicalizeHeaderField(field.raw, 'relaxed')}\r\n`, 'binary');
 
 	// First the normally-signed headers that are present.
 	for (const name of SIGNED_HEADERS) {
 		if (!byName.has(name)) continue;
 		const inst = takeNext(name);
 		if (!inst) continue;
-		hKeys.push(inst.casedKey ?? name);
-		canonChunks.push(canonHeaderLine(inst.line));
+		hKeys.push(inst.casedName);
+		canonChunks.push(canonHeaderLine(inst));
 	}
 
 	// Then the oversign slots: list the name again. If a further instance exists
@@ -305,7 +259,7 @@ export function buildDkimSignatureLine(
 	for (const name of OVERSIGNED_HEADERS) {
 		const inst = takeNext(name);
 		hKeys.push(name);
-		if (inst) canonChunks.push(canonHeaderLine(inst.line));
+		if (inst) canonChunks.push(canonHeaderLine(inst));
 	}
 
 	const tags: Record<string, string | number> = {
