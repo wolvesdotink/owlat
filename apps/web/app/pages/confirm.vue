@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import type { PublicTokenResult } from '~/lib/publicTokenClient';
+import { useRecipientTokenFlow } from '~/composables/useRecipientTokenFlow';
+import RecipientStateCard from '~/components/recipient/RecipientStateCard.vue';
 
 const { t } = useI18n();
 
@@ -10,103 +13,61 @@ definePageMeta({
 	layout: false, // No dashboard layout, standalone page
 });
 
-const route = useRoute();
 const convex = useConvex();
 const { senderName, contactEmail, logo } = useRecipientSender();
 
-// State
-const isLoading = ref(true);
-const isProcessing = ref(false);
-const error = ref<string | null>(null);
-const submissionInfo = ref<{
+interface SubmissionInfo {
 	email: string;
 	organizationName: string;
 	status: string;
 	confirmedAt?: number;
-} | null>(null);
-const confirmSuccess = ref(false);
-const alreadyConfirmed = ref(false);
+}
 
-// Get the token from the URL
-const token = computed(() => route.query['token'] as string | undefined);
-
-// Verify the token on mount
-onMounted(async () => {
-	if (!token.value) {
-		error.value = t('recipient.confirm.errors.missingToken');
-		isLoading.value = false;
-		return;
-	}
-
-	if (!convex) {
-		error.value = t('recipient.confirm.errors.noServer');
-		isLoading.value = false;
-		return;
-	}
-
-	try {
-		// Verify the token via Convex query
-		const submission = await convex.query(api.forms.endpoints.getByConfirmationToken, {
-			token: token.value,
-		});
-
-		if (!submission) {
-			error.value = t('recipient.confirm.errors.invalid');
-			isLoading.value = false;
-			return;
-		}
-
-		submissionInfo.value = {
-			email: submission.email,
-			organizationName: submission.organizationName,
-			status: submission.status,
-			confirmedAt: submission.confirmedAt,
-		};
-
-		// Check if already confirmed
-		if (submission.status === 'success' && submission.confirmedAt) {
-			alreadyConfirmed.value = true;
-		}
-	} catch (err) {
-		error.value = t('recipient.confirm.errors.verifyFailed');
-	} finally {
-		isLoading.value = false;
-	}
+// The double opt-in token is read through the Convex client, not the HTTP
+// site, so both steps adapt its answers to the flow's `{ ok, reason }` result.
+// The mutation's `error` codes are the reasons.
+const {
+	state,
+	data: submission,
+	errorKey,
+	isProcessing,
+	run,
+} = useRecipientTokenFlow({
+	verify: async (token): Promise<PublicTokenResult<SubmissionInfo>> => {
+		if (!convex) return { ok: false, reason: 'no_server' };
+		const found = await convex.query(api.forms.endpoints.getByConfirmationToken, { token });
+		return found ? { ok: true, data: found } : { ok: false, reason: 'invalid_token' };
+	},
+	missingTokenKey: 'recipient.confirm.errors.missingToken',
+	reasons: {
+		invalid_token: 'recipient.confirm.errors.invalid',
+		invalid_status: 'recipient.confirm.errors.alreadyProcessed',
+		token_expired: 'recipient.confirm.errors.expired',
+		no_server: 'recipient.confirm.errors.noServer',
+	},
+	fallbackKey: 'recipient.confirm.errors.invalid',
+	unreachableKey: 'recipient.confirm.errors.verifyFailed',
 });
 
-// Handle subscription confirmation
+const isAlreadyConfirmed = computed(
+	() => submission.value?.status === 'success' && !!submission.value.confirmedAt
+);
+
+/** The mutation found the subscription confirmed already (a second click). */
+const wasAlreadyConfirmed = ref(false);
+
 async function handleConfirm() {
-	if (!token.value || !convex) return;
-
-	isProcessing.value = true;
-	error.value = null;
-
-	try {
-		// Call the confirmation mutation
-		const result = await convex.mutation(api.forms.endpoints.confirmSubmission, {
-			token: token.value,
-		});
-
-		if (!result.success) {
-			if (result.error === 'invalid_token') {
-				error.value = t('recipient.confirm.errors.invalid');
-			} else if (result.error === 'invalid_status') {
-				error.value = t('recipient.confirm.errors.alreadyProcessed');
-			} else if (result.error === 'token_expired') {
-				error.value = t('recipient.confirm.errors.expired');
-			} else {
-				error.value = t('recipient.confirm.errors.confirmFailed');
-			}
-			return;
-		}
-
-		confirmSuccess.value = true;
-		alreadyConfirmed.value = result.alreadyConfirmed || false;
-	} catch (err) {
-		error.value = err instanceof Error ? err.message : t('recipient.confirm.errors.confirmFailed');
-	} finally {
-		isProcessing.value = false;
-	}
+	if (!convex) return;
+	const result = await run(
+		async (token): Promise<PublicTokenResult<boolean>> => {
+			const outcome = await convex.mutation(api.forms.endpoints.confirmSubmission, { token });
+			return outcome.success
+				? { ok: true, data: outcome.alreadyConfirmed }
+				: { ok: false, reason: outcome.error };
+		},
+		{ fallbackKey: 'recipient.confirm.errors.confirmFailed' }
+	);
+	if (result?.ok) wasAlreadyConfirmed.value = result.data;
 }
 </script>
 
@@ -120,197 +81,116 @@ async function handleConfirm() {
 		<!-- The sender, not Owlat: the recipient knows who they signed up with. -->
 		<RecipientHeader :name="senderName" :logo="logo" :purpose="t('recipient.confirm.header')" />
 
-		<!-- Loading State -->
-		<div v-if="isLoading" class="card w-full max-w-md py-8 text-center">
-			<div class="flex flex-col items-center gap-4">
-				<UiSpinner size="lg" />
-				<p class="text-text-secondary">{{ t('recipient.shared.verifying') }}</p>
-			</div>
-		</div>
+		<RecipientStateCard
+			v-if="state === 'loading'"
+			variant="loading"
+			:message="t('recipient.shared.verifying')"
+		/>
 
-		<!-- Error State -->
-		<div v-else-if="error" class="card w-full max-w-md">
-			<div class="py-2 text-center sm:py-4">
-				<div
-					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-error-subtle sm:h-16 sm:w-16"
-				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-7 w-7 text-error sm:h-8 sm:w-8"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-						/>
-					</svg>
-				</div>
-				<h2 class="mb-2 text-lg font-semibold text-text-primary">
-					{{ t('recipient.confirm.errorHeading') }}
-				</h2>
-				<p class="text-text-secondary">{{ error }}</p>
-				<RecipientContactHint :email="contactEmail" keypath="recipient.shared.contactSender" />
-			</div>
-		</div>
+		<RecipientStateCard
+			v-else-if="state === 'error'"
+			variant="error"
+			:heading="t('recipient.confirm.errorHeading')"
+			:message="errorKey ? t(errorKey) : undefined"
+		>
+			<RecipientContactHint :email="contactEmail" keypath="recipient.shared.contactSender" />
+		</RecipientStateCard>
 
-		<!-- Success State -->
-		<div v-else-if="confirmSuccess" class="card w-full max-w-md">
-			<div class="py-2 text-center sm:py-4">
-				<div
-					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-success-subtle sm:h-16 sm:w-16"
+		<!-- break-words: contact emails and org names are unbounded strings and
+		     these cards are read at 320px. -->
+		<RecipientStateCard
+			v-else-if="state === 'done'"
+			variant="success"
+			:heading="
+				wasAlreadyConfirmed
+					? t('recipient.confirm.alreadyHeading')
+					: t('recipient.confirm.successHeading')
+			"
+		>
+			<I18nT
+				:keypath="
+					wasAlreadyConfirmed ? 'recipient.confirm.alreadyBody' : 'recipient.confirm.successBody'
+				"
+				tag="p"
+				scope="global"
+				class="mb-6 break-words text-text-secondary"
+			>
+				<template #organization
+					><strong>{{ submission?.organizationName }}</strong></template
 				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-7 w-7 text-success sm:h-8 sm:w-8"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M5 13l4 4L19 7"
-						/>
-					</svg>
-				</div>
-				<h2 class="mb-2 text-lg font-semibold text-text-primary">
-					{{
-						alreadyConfirmed
-							? t('recipient.confirm.alreadyHeading')
-							: t('recipient.confirm.successHeading')
-					}}
-				</h2>
-				<!-- break-words: contact emails and org names are unbounded strings and
-				     these cards are read at 320px. -->
-				<I18nT
-					:keypath="
-						alreadyConfirmed ? 'recipient.confirm.alreadyBody' : 'recipient.confirm.successBody'
-					"
-					tag="p"
-					scope="global"
-					class="mb-6 break-words text-text-secondary"
+			</I18nT>
+			<I18nT
+				keypath="recipient.confirm.successNote"
+				tag="p"
+				scope="global"
+				class="text-sm break-words text-text-tertiary"
+			>
+				<template #email
+					><strong>{{ submission?.email }}</strong></template
 				>
-					<template #organization
-						><strong>{{ submissionInfo?.organizationName }}</strong></template
-					>
-				</I18nT>
-				<I18nT
-					keypath="recipient.confirm.successNote"
-					tag="p"
-					scope="global"
-					class="text-sm break-words text-text-tertiary"
-				>
-					<template #email
-						><strong>{{ submissionInfo?.email }}</strong></template
-					>
-				</I18nT>
-			</div>
-		</div>
+			</I18nT>
+		</RecipientStateCard>
 
-		<!-- Already Confirmed State (before clicking button) -->
-		<div v-else-if="alreadyConfirmed && submissionInfo" class="card w-full max-w-md">
-			<div class="py-2 text-center sm:py-4">
-				<div
-					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-brand-subtle sm:h-16 sm:w-16"
+		<!-- Confirmed already before the button was ever pressed. -->
+		<RecipientStateCard
+			v-else-if="submission && isAlreadyConfirmed"
+			variant="already"
+			:heading="t('recipient.confirm.alreadyHeading')"
+		>
+			<I18nT
+				keypath="recipient.confirm.alreadyStateBody"
+				tag="p"
+				scope="global"
+				class="break-words text-text-secondary"
+			>
+				<template #organization
+					><strong>{{ submission.organizationName }}</strong></template
 				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-7 w-7 text-brand sm:h-8 sm:w-8"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M5 13l4 4L19 7"
-						/>
-					</svg>
-				</div>
-				<h2 class="mb-2 text-lg font-semibold text-text-primary">
-					{{ t('recipient.confirm.alreadyHeading') }}
-				</h2>
-				<I18nT
-					keypath="recipient.confirm.alreadyStateBody"
-					tag="p"
-					scope="global"
-					class="break-words text-text-secondary"
+			</I18nT>
+			<I18nT
+				keypath="recipient.confirm.alreadyStateNote"
+				tag="p"
+				scope="global"
+				class="mt-4 text-sm break-words text-text-tertiary"
+			>
+				<template #email
+					><strong>{{ submission.email }}</strong></template
 				>
-					<template #organization
-						><strong>{{ submissionInfo.organizationName }}</strong></template
-					>
-				</I18nT>
-				<I18nT
-					keypath="recipient.confirm.alreadyStateNote"
-					tag="p"
-					scope="global"
-					class="mt-4 text-sm break-words text-text-tertiary"
-				>
-					<template #email
-						><strong>{{ submissionInfo.email }}</strong></template
-					>
-				</I18nT>
-			</div>
-		</div>
+			</I18nT>
+		</RecipientStateCard>
 
-		<!-- Confirmation State -->
-		<div v-else-if="submissionInfo" class="card w-full max-w-md">
-			<div class="py-2 text-center sm:py-4">
-				<div
-					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-brand-subtle sm:h-16 sm:w-16"
+		<RecipientStateCard
+			v-else-if="submission"
+			variant="prompt"
+			:heading="t('recipient.confirm.confirmHeading')"
+		>
+			<I18nT
+				keypath="recipient.confirm.confirmBody"
+				tag="p"
+				scope="global"
+				class="mb-6 break-words text-text-secondary"
+			>
+				<template #organization
+					><strong>{{ submission.organizationName }}</strong></template
 				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-7 w-7 text-brand sm:h-8 sm:w-8"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-						/>
-					</svg>
-				</div>
-				<h2 class="mb-2 text-lg font-semibold text-text-primary">
-					{{ t('recipient.confirm.confirmHeading') }}
-				</h2>
-				<I18nT
-					keypath="recipient.confirm.confirmBody"
-					tag="p"
-					scope="global"
-					class="mb-6 break-words text-text-secondary"
+				<template #email
+					><strong>{{ submission.email }}</strong></template
 				>
-					<template #organization
-						><strong>{{ submissionInfo.organizationName }}</strong></template
-					>
-					<template #email
-						><strong>{{ submissionInfo.email }}</strong></template
-					>
-				</I18nT>
+			</I18nT>
 
-				<!-- h-12: the only action on the page, sized past the 44px touch target. -->
-				<UiButton full-width class="h-12" :disabled="isProcessing" @click="handleConfirm">
-					<span v-if="isProcessing" class="flex items-center justify-center gap-2">
-						<UiSpinner size="sm" tone="inverse" />
-						{{ t('recipient.confirm.processing') }}
-					</span>
-					<span v-else>{{ t('recipient.confirm.submit') }}</span>
-				</UiButton>
+			<!-- h-12: the only action on the page, sized past the 44px touch target. -->
+			<UiButton full-width class="h-12" :disabled="isProcessing" @click="handleConfirm">
+				<span v-if="isProcessing" class="flex items-center justify-center gap-2">
+					<UiSpinner size="sm" tone="inverse" />
+					{{ t('recipient.confirm.processing') }}
+				</span>
+				<span v-else>{{ t('recipient.confirm.submit') }}</span>
+			</UiButton>
 
-				<p class="mt-6 text-xs break-words text-text-tertiary">
-					{{ t('recipient.confirm.footnote', { organization: submissionInfo.organizationName }) }}
-				</p>
-			</div>
-		</div>
+			<p class="mt-6 text-xs break-words text-text-tertiary">
+				{{ t('recipient.confirm.footnote', { organization: submission.organizationName }) }}
+			</p>
+		</RecipientStateCard>
 
 		<RecipientFooter />
 	</div>

@@ -11164,6 +11164,7 @@
 			"contactSender": "Fragen? Schreiben Sie an {email}.",
 			"contactToOptOut": "Um diese E-Mails abzubestellen, können Sie auch an {email} schreiben.",
 			"emailPreferences": "E-Mail-Einstellungen",
+			"rateLimited": "Gerade gab es zu viele Versuche. Bitte warten Sie eine Minute und versuchen Sie es erneut.",
 			"verifying": "Ihr Link wird geprüft…"
 		},
 		"unsubscribe": {

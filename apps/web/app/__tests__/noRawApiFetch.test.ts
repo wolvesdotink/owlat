@@ -39,8 +39,12 @@ const ALLOWED = new Map<string, string>([
 	],
 ]);
 
-/** `fetch(`, `$fetch(`, `$fetch.raw(` — but not `apiFetch(` or `refetch(`. */
-const CALL = /(?<![\w$.])(?:\$fetch(?:\.raw)?|fetch)\s*(?:<[^(]*?>)?\s*\(/g;
+/**
+ * `fetch(`, `$fetch(`, `$fetch.raw(` — but not `apiFetch(` or `refetch(`.
+ * `fetchPublicToken(` (`~/lib/publicTokenClient`) is a plain `fetch` with the
+ * caller's init, so a POST through it is held to the same list.
+ */
+const CALL = /(?<![\w$.])(?:\$fetch(?:\.raw)?|fetch|fetchPublicToken)\s*(?:<[^(]*?>)?\s*\(/g;
 const GUARDED_METHOD = /method:\s*['"`](POST|PUT|PATCH)/i;
 
 /**

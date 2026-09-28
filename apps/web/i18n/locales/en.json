@@ -11164,6 +11164,7 @@
 			"contactSender": "Questions? Write to {email}.",
 			"contactToOptOut": "To stop these emails, you can also write to {email}.",
 			"emailPreferences": "Email preferences",
+			"rateLimited": "Too many attempts right now. Please wait a minute and try again.",
 			"verifying": "Verifying your link…"
 		},
 		"unsubscribe": {

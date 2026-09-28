@@ -92,7 +92,12 @@ export const handleOneClickUnsubscribe = publicTokenEndpoint(
 			logWarn('[unsubscribe] failed to record processing latency:', error);
 		}
 
-		return { ok: true, data: { message, listsRemoved } };
+		// `alreadyUnsubscribed` is the flag the recipient page reads; `message`
+		// stays for API clients, and is English, so no UI should parse it.
+		return {
+			ok: true,
+			data: { message, listsRemoved, alreadyUnsubscribed: result.alreadyUnsubscribed === true },
+		};
 	}
 );
 
