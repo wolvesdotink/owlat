@@ -75,6 +75,27 @@ function isAnswer(error: unknown): boolean {
 	);
 }
 
+type AddressLookup = (host: string, options: { family?: 4 }) => Promise<{ address: string }>;
+
+/**
+ * The resolver's address, IPv4 first. The bundled Unbound listens on 0.0.0.0
+ * only (docker/unbound.conf), but with MTA_IPV6_ENABLED the compose network has
+ * an IPv6 subnet too, and a lookup in OS order can return the container's AAAA
+ * record first: every bundled query would then time out and fall back. A
+ * resolver named by an IPv6-only hostname still resolves through the second try.
+ */
+export async function lookupResolverAddress(
+	host: string,
+	lookupFn: AddressLookup = (name, options) => lookup(name, options)
+): Promise<string> {
+	if (isIP(host)) return host;
+	try {
+		return (await lookupFn(host, { family: 4 })).address;
+	} catch {
+		return (await lookupFn(host, {})).address;
+	}
+}
+
 export interface DnsblTransportDeps {
 	lookupAddress?: (host: string) => Promise<string>;
 	createResolver?: (server: string) => { resolve4: (hostname: string) => Promise<string[]> };
@@ -83,7 +104,7 @@ export interface DnsblTransportDeps {
 }
 
 const defaultTransportDeps: Required<DnsblTransportDeps> = {
-	lookupAddress: async (host) => (isIP(host) ? host : (await lookup(host)).address),
+	lookupAddress: (host) => lookupResolverAddress(host),
 	createResolver: (server) => {
 		const resolver = new Resolver({ timeout: BUNDLED_TIMEOUT_MS, tries: 1 });
 		resolver.setServers([server]);

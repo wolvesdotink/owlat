@@ -56,9 +56,48 @@ describe('updateTlsMaterial on a STARTTLS listener', () => {
 		expect(c.peerCertificate?.subject.CN).toBe('old.mx.test');
 	});
 
-	it('refuses to add TLS to a listener created without it', async () => {
-		const { listener } = await startListener({ hostname: 'mx.test' });
-		expect(() => listener.updateTlsMaterial(newPair)).toThrow(/without tls/);
+	it('adds STARTTLS to a listener created without TLS', async () => {
+		const { listener, port } = await startListener({ hostname: 'mx.test' });
+
+		const before = await Client.connect(port);
+		await before.waitCode(220);
+		before.write('EHLO client.test\r\n');
+		await before.waitCode(250);
+		expect(before.received).not.toContain('STARTTLS');
+
+		// The certificate is published after the listener started.
+		listener.updateTlsMaterial(newPair);
+
+		const after = await Client.connect(port);
+		await after.waitCode(220);
+		after.write('EHLO client.test\r\n');
+		await after.waitCode(250);
+		expect(after.received).toContain('STARTTLS');
+		after.write('STARTTLS\r\n');
+		await after.waitCode(220);
+		await after.startTls('mx.test');
+		expect(after.peerCertificate?.subject.CN).toBe('new.mx.test');
+		after.write('EHLO client.test\r\n');
+		await after.waitCode(250);
+		expect(after.received).not.toContain('STARTTLS');
+
+		// A connection that greeted before the swap can upgrade too.
+		before.write('STARTTLS\r\n');
+		await before.waitCode(220);
+		await before.startTls('mx.test');
+		expect(before.peerCertificate?.subject.CN).toBe('new.mx.test');
+	});
+
+	it('keeps a listener without TLS plaintext when the first pair is invalid', async () => {
+		const { listener, port } = await startListener({ hostname: 'mx.test' });
+
+		expect(() => listener.updateTlsMaterial({ cert: newPair.cert, key: oldPair.key })).toThrow();
+
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('EHLO client.test\r\n');
+		await c.waitCode(250);
+		expect(c.received).not.toContain('STARTTLS');
 	});
 });
 
