@@ -165,12 +165,18 @@ const EXPECTED_BUILDERS: readonly string[] = [
 	'authedIdentityMutation',
 	'authedMutation',
 	'authedQuery',
+	'automationsMutation',
+	'automationsQuery',
+	'campaignsMutation',
+	'campaignsQuery',
 	'chatMutation',
 	'chatQuery',
 	'createAuthenticatedHandler',
 	'externalMailAdminMutation',
 	'externalMailMutation',
 	'externalMailQuery',
+	'formsMutation',
+	'formsQuery',
 	'httpAction',
 	'internalAction',
 	'internalMutation',
@@ -185,6 +191,8 @@ const EXPECTED_BUILDERS: readonly string[] = [
 	'publicQuery',
 	'publicTokenEndpoint',
 	'query',
+	'transactionalMutation',
+	'transactionalQuery',
 ];
 
 // Exports wrapped in a call that is deliberately NOT an entry point — every one

@@ -1,8 +1,7 @@
 import { v } from 'convex/values';
-import { authedQuery, authedMutation } from '../lib/authedFunctions';
+import { campaignsQuery, campaignsMutation } from './_helpers';
 import { paginationOptsValidator } from 'convex/server';
 import { requireOrgPermission } from '../lib/sessionOrganization';
-import { assertFeatureEnabled } from '../lib/featureFlags';
 import { listResources } from '../lib/listing';
 import { campaignListing } from './listing';
 import { buildSearchableText } from '../lib/queryHelpers';
@@ -20,7 +19,7 @@ import {
 import { requireDraftCampaign } from './guards';
 
 // Query to get campaign with related data (template, topic, segment)
-export const getWithRelations = authedQuery({
+export const getWithRelations = campaignsQuery({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args) => {
 		const campaign = await ctx.db.get(args.campaignId);
@@ -48,7 +47,7 @@ export const getWithRelations = authedQuery({
 });
 
 // Mutation to update campaign basics (step 1 of wizard)
-export const updateBasics = authedMutation({
+export const updateBasics = campaignsMutation({
 	args: {
 		campaignId: v.id('campaigns'),
 		name: v.optional(v.string()),
@@ -122,7 +121,7 @@ export const updateBasics = authedMutation({
 // Mutation to update campaign audience (step 2 of wizard). Speaks the
 // snapshot-free `Audience` (ADR-0033); the `frozenFilters` send-time snapshot
 // is written by the orchestrator/preflight, not here.
-export const updateAudience = authedMutation({
+export const updateAudience = campaignsMutation({
 	args: {
 		campaignId: v.id('campaigns'),
 		audience: audienceValidator,
@@ -147,7 +146,7 @@ export const updateAudience = authedMutation({
 });
 
 // Mutation to update campaign content (step 3 of wizard)
-export const updateContent = authedMutation({
+export const updateContent = campaignsMutation({
 	args: {
 		campaignId: v.id('campaigns'),
 		emailTemplateId: v.id('emailTemplates'),
@@ -179,7 +178,7 @@ export const updateContent = authedMutation({
 });
 
 // Mutation to duplicate a campaign
-export const duplicate = authedMutation({
+export const duplicate = campaignsMutation({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args) => {
 		await requireOrgPermission(
@@ -213,7 +212,7 @@ export const duplicate = authedMutation({
 });
 
 // Mutation to delete a campaign
-export const remove = authedMutation({
+export const remove = campaignsMutation({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args) => {
 		const session = await requireOrgPermission(
@@ -249,14 +248,13 @@ export const remove = authedMutation({
 /**
  * List campaigns with cursor-based pagination.
  */
-export const list = authedQuery({
+export const list = campaignsQuery({
 	args: {
 		status: v.optional(campaignStatusValidator),
 		search: v.optional(v.string()),
 		paginationOpts: paginationOptsValidator,
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'campaigns');
 		return listResources(ctx.db, campaignListing, {
 			search: args.search,
 			filters: { status: args.status },
@@ -268,12 +266,11 @@ export const list = authedQuery({
 /**
  * Create a new campaign.
  */
-export const create = authedMutation({
+export const create = campaignsMutation({
 	args: {
 		name: v.string(),
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'campaigns');
 		// Validate input lengths
 		validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 

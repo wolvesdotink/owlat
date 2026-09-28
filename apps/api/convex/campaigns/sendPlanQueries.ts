@@ -15,7 +15,7 @@
 
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
-import { authedQuery } from '../lib/authedFunctions';
+import { campaignsQuery } from './_helpers';
 import { loadPacedWarmingCapacity } from '../delivery/pacedWarmingCapacity';
 import { audienceValidator } from './audience';
 import { countAudience } from './audienceCandidates';
@@ -149,7 +149,7 @@ export const getSendPlanCapacity = internalQuery({
  */
 // all-members: campaign send progress — the same member-visible surface as the
 // campaign report it renders on (see campaigns/analytics.ts).
-export const getCampaignSendPlan = authedQuery({
+export const getCampaignSendPlan = campaignsQuery({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args): Promise<CampaignSendPlanProgress | null> => {
 		const job = await ctx.db

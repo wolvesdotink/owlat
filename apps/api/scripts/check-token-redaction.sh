@@ -95,7 +95,7 @@ generate() {
 			{
 				is_comment = ($0 ~ /^[[:space:]]*\/\//)
 				is_just    = ($0 ~ /\/\/[[:space:]]*token-safe:/)
-				is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedQuery|publicQuery|postboxQuery|externalMailQuery)\(/)
+				is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedQuery|publicQuery|postboxQuery|externalMailQuery|transactionalQuery|campaignsQuery|automationsQuery|formsQuery)\(/)
 				is_read    = ($0 ~ /\.query\((\x27|")(contacts|shareLinks|apiKeys|webhooks)(\x27|")\)/)
 				is_redact  = ($0 ~ /(redactContactCapabilityFields|PublicContact|stripWebhookSecret)/)
 			}

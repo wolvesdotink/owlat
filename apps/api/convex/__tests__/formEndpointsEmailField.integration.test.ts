@@ -54,7 +54,7 @@ describe('forms.endpoints.create — email-field invariant', () => {
 			t.mutation(api.forms.endpoints.create, {
 				name: 'Signup',
 				fields: [textField],
-			}),
+			})
 		).rejects.toThrow(/email field/i);
 	});
 });
@@ -71,7 +71,7 @@ describe('forms.endpoints.update — email-field invariant', () => {
 			t.mutation(api.forms.endpoints.update, {
 				formEndpointId: id,
 				fields: [textField],
-			}),
+			})
 		).rejects.toThrow(/email field/i);
 	});
 
@@ -101,5 +101,28 @@ describe('forms.endpoints.update — email-field invariant', () => {
 			name: 'Renamed',
 		});
 		expect(result).toBe(id);
+	});
+});
+
+describe('forms.endpoints — forms feature floor', () => {
+	it('refuses an update with forms off (formsMutation floor)', async () => {
+		const t = convexTest(schema, modules);
+		const id = await t.mutation(api.forms.endpoints.create, {
+			name: 'Signup',
+			fields: [emailField],
+		});
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				featureFlags: { forms: false },
+				createdAt: Date.now(),
+			});
+		});
+
+		await expect(
+			t.mutation(api.forms.endpoints.update, { formEndpointId: id, name: 'Renamed' })
+		).rejects.toThrow(/"category":"forbidden".*"feature":"forms"/);
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(id))?.name).toBe('Signup');
+		});
 	});
 });

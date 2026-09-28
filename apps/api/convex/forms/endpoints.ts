@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
-import { authedQuery, authedMutation, publicQuery, publicMutation } from '../lib/authedFunctions';
+import { publicQuery, publicMutation } from '../lib/authedFunctions';
+import { formsQuery, formsMutation } from './_helpers';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 
@@ -10,7 +11,6 @@ import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwRateLimited, throwInvalidInput } from '../_utils/errors';
 import { rateLimiter } from '../rateLimiter';
 import { formFieldValidator } from '../lib/convexValidators';
-import { assertFeatureEnabled } from '../lib/featureFlags';
 import type { TransitionOutcome as DoiTransitionOutcome } from '../contacts/doiLifecycle';
 import { findContactByConfirmationToken } from '../contacts/doiLifecycle';
 import type { MarkConfirmedOutcome } from './submission';
@@ -39,10 +39,9 @@ function assertHasEmailField(fields: FormField[]): void {
 /**
  * List all form endpoints for an organization
  */
-export const listByTeam = authedQuery({
+export const listByTeam = formsQuery({
 	args: {},
 	handler: async (ctx) => {
-		await assertFeatureEnabled(ctx, 'forms');
 		const forms = await ctx.db.query('formEndpoints').collect(); // bounded: small per-org list
 
 		return forms.map((form) => ({
@@ -56,7 +55,7 @@ export const listByTeam = authedQuery({
 /**
  * Create a new form endpoint
  */
-export const create = authedMutation({
+export const create = formsMutation({
 	args: {
 		name: v.string(),
 		topicId: v.optional(v.id('topics')),
@@ -105,7 +104,7 @@ export const create = authedMutation({
 /**
  * Update a form endpoint
  */
-export const update = authedMutation({
+export const update = formsMutation({
 	args: {
 		formEndpointId: v.id('formEndpoints'),
 		name: v.optional(v.string()),
@@ -156,7 +155,7 @@ export const update = authedMutation({
 /**
  * Delete a form endpoint and all its submissions
  */
-export const remove = authedMutation({
+export const remove = formsMutation({
 	args: {
 		formEndpointId: v.id('formEndpoints'),
 	},
@@ -214,7 +213,7 @@ export const drainAndDeleteForm = internalMutation({
 /**
  * Get recent submissions for a form endpoint
  */
-export const getSubmissions = authedQuery({
+export const getSubmissions = formsQuery({
 	args: {
 		formEndpointId: v.id('formEndpoints'),
 		limit: v.optional(v.number()),

@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { authedMutation, authedQuery } from '../lib/authedFunctions';
+import { transactionalMutation, transactionalQuery } from './_helpers';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOrThrow, throwNotFound } from '../_utils/errors';
 import { assertEditableForPublishableChange } from './lifecycle';
@@ -18,7 +18,7 @@ import { nextContentRevision } from '../lib/contentRevision';
  * Get transactional email content for a specific language
  * Returns the content for the requested language, falling back to default language if not available
  */
-export const getForLanguage = authedQuery({
+export const getForLanguage = transactionalQuery({
 	args: {
 		id: v.id('transactionalEmails'),
 		language: v.optional(v.string()),
@@ -40,7 +40,7 @@ export const getForLanguage = authedQuery({
  * Add a new language translation to a transactional email
  * Copies translatable text from default language as a starting point
  */
-export const addTranslation = authedMutation({
+export const addTranslation = transactionalMutation({
 	args: {
 		id: v.id('transactionalEmails'),
 		language: v.string(),
@@ -72,7 +72,7 @@ export const addTranslation = authedMutation({
  * Update a specific language translation
  * For non-default languages, only updates translatable text (subject, block text)
  */
-export const updateTranslation = authedMutation({
+export const updateTranslation = transactionalMutation({
 	args: {
 		id: v.id('transactionalEmails'),
 		language: v.string(),
@@ -138,7 +138,7 @@ export const updateTranslation = authedMutation({
 /**
  * Remove a language translation from a transactional email
  */
-export const removeTranslation = authedMutation({
+export const removeTranslation = transactionalMutation({
 	args: {
 		id: v.id('transactionalEmails'),
 		language: v.string(),

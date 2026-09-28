@@ -8,6 +8,7 @@ import type { EmailSendParams } from '../lib/sendProviders';
 import { composeForSend } from '../delivery/sendComposition';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { senderNotAllowedMessage } from './senders';
+import { assertCampaignsEnabledInAction } from './_helpers';
 import { isValidEmail } from '../lib/inputGuards';
 import { normalizeEmail } from '@owlat/shared';
 import {
@@ -106,6 +107,8 @@ export const sendTestEmail = authedAction({
 		message: string;
 		language: string;
 	}> => {
+		await assertCampaignsEnabledInAction(ctx);
+
 		// Get campaign details
 		const campaign = await ctx.runQuery(internal.campaigns.sendQueries.getCampaignForSending, {
 			campaignId: args.campaignId,
@@ -212,6 +215,8 @@ export const sendTestEmail = authedAction({
 // Action to send a test email directly from the email editor (works with templates, transactional emails, and blocks)
 // all-members: sending a test email is the emails:test capability (all members);
 // the sending domain must be verified.
+// flag-exempt: the template, block and transactional editors send tests
+// through it, and none of them depends on `campaigns`.
 export const sendTestEmailFromTemplate = authedAction({
 	args: {
 		templateId: v.optional(v.id('emailTemplates')), // Optional - not required for transactional emails or blocks

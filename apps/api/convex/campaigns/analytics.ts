@@ -1,5 +1,5 @@
 import type { Doc } from '../_generated/dataModel';
-import { authedQuery } from '../lib/authedFunctions';
+import { campaignsQuery } from './_helpers';
 
 /** Safety cap on the comparable-send window (index-ordered take, no scan). */
 const COMPARABLE_SENDS_LIMIT = 100;
@@ -12,7 +12,7 @@ const COMPARABLE_SENDS_LIMIT = 100;
 // choice is unit-testable without Convex. Bounded by the index-ordered take, so
 // no `emailSends` are read here.
 // all-members: aggregated campaign send stats for the comparison UI.
-export const getComparableSentCampaigns = authedQuery({
+export const getComparableSentCampaigns = campaignsQuery({
 	args: {},
 	handler: async (ctx) => {
 		const sentCampaigns = await ctx.db

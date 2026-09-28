@@ -367,6 +367,36 @@ describe('automations mutations — automations:manage role gate', () => {
 // Step CRUD draft-gate: structure edits are draft-only.
 // ============================================================================
 
+describe('automations feature floor', () => {
+	it('refuses edits, step writes and analytics reads with automations off (automationsMutation / automationsQuery floor)', async () => {
+		const t = await freshT();
+		const id = await seedAutomation(t, { name: 'Original' });
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').first();
+			await ctx.db.patch(settings!._id, { featureFlags: { automations: false } });
+		});
+
+		setUser('user-alice', 'owner');
+		const forbidden = /"category":"forbidden".*"feature":"automations"/;
+		await expect(
+			t.mutation(api.automations.automations.update, { automationId: id, name: 'Renamed' })
+		).rejects.toThrow(forbidden);
+		await expect(
+			t.mutation(api.automations.steps.addStep, {
+				automationId: id,
+				stepType: 'delay',
+				config: { duration: 1, unit: 'hours' },
+			})
+		).rejects.toThrow(forbidden);
+		await expect(
+			t.query(api.automations.analytics.getAutomationStats, { automationId: id })
+		).rejects.toThrow(forbidden);
+
+		const unchanged = await t.run(async (ctx) => ctx.db.get(id));
+		expect(unchanged?.name).toBe('Original');
+	});
+});
+
 describe('automation steps — draft-gate (requireDraftAutomation)', () => {
 	it('addStep: allowed on a draft, rejected on an active automation', async () => {
 		const t = await freshT();

@@ -60,7 +60,7 @@ violations=$(find convex -name "*.ts" \
 		{
 			is_comment = ($0 ~ /^[[:space:]]*\/\//)
 			is_optout  = ($0 ~ /\/\/[[:space:]]*(authz|all-members):/)
-			is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedMutation|authedAction|chatMutation|assistantMutation|postboxMutation|externalMailMutation|externalMailAdminMutation)\(/)
+			is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedMutation|authedAction|chatMutation|assistantMutation|postboxMutation|externalMailMutation|externalMailAdminMutation|transactionalMutation|campaignsMutation|automationsMutation|formsMutation)\(/)
 		}
 		is_comment && is_optout { block_optout = 1 }
 		is_export {

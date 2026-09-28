@@ -77,7 +77,13 @@ fi
 #   mail/external/externalFeature.ts
 #                           externalMailQuery externalMailMutation
 #                           externalMailAdminMutation (featureGated 'mail.external')
-PUBLIC_BUILDERS='query|mutation|action|authedQuery|authedMutation|authedAction|authedIdentityMutation|adminQuery|adminMutation|ownerMutation|publicQuery|publicMutation|publicAction|chatQuery|chatMutation|assistantQuery|assistantMutation|externalMailQuery|externalMailMutation|externalMailAdminMutation'
+#   transactional/_helpers.ts transactionalQuery transactionalMutation
+#                           (featureGated 'transactional')
+#   campaigns/_helpers.ts   campaignsQuery campaignsMutation (featureGated 'campaigns')
+#   automations/_helpers.ts automationsQuery automationsMutation
+#                           (featureGated 'automations')
+#   forms/_helpers.ts       formsQuery formsMutation        (featureGated 'forms')
+PUBLIC_BUILDERS='query|mutation|action|authedQuery|authedMutation|authedAction|authedIdentityMutation|adminQuery|adminMutation|ownerMutation|publicQuery|publicMutation|publicAction|chatQuery|chatMutation|assistantQuery|assistantMutation|externalMailQuery|externalMailMutation|externalMailAdminMutation|transactionalQuery|transactionalMutation|campaignsQuery|campaignsMutation|automationsQuery|automationsMutation|formsQuery|formsMutation'
 
 bare_throws=$(find convex -name "*.ts" \
 	-not -path "*/_generated/*" \

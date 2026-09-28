@@ -23,7 +23,7 @@
 
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
-import { authedQuery } from '../lib/authedFunctions';
+import { campaignsQuery } from './_helpers';
 import type { QueryCtx } from '../_generated/server';
 import { audienceValidator, type StoredAudience } from './audience';
 import { batchGet } from '../_utils/batchLoader';
@@ -178,7 +178,7 @@ export const resolveRecipientPage = internalQuery({
 // so `eligible` equals the delivered count; `total - eligible` is the honest
 // excluded gap. Capped at COUNT_CEILING — past the cap it stops streaming and
 // reports `completeness: 'candidate_capped'` so the wizard renders `25,000+`. ──
-export const countRecipients = authedQuery({
+export const countRecipients = campaignsQuery({
 	args: { audience: v.optional(audienceValidator) },
 	handler: async (ctx, { audience }): Promise<AudienceCount> => {
 		if (!audience) return { total: 0, eligible: 0, completeness: 'exact' };

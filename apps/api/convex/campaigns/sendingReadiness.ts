@@ -167,6 +167,8 @@ export async function readSendingReadiness(
 // all-members: deployment-wide sending capacity is not per-user data — it is the
 // same warming projection the delivery pages and the campaign capacity preview
 // already render to any member, with no per-recipient or credential data in it.
+// flag-exempt: the dashboard getting-started card reads it on every instance,
+// campaigns or not.
 export const getSendingReadiness = authedQuery({
 	args: { fromEmail: v.optional(v.string()) },
 	handler: async (ctx, args): Promise<SendingReadiness> =>

@@ -22,11 +22,11 @@
  * an instance where the feature is off).
  *
  * V8-safe on purpose: both `'use node'` action files import it, and it depends
- * only on the V8 builder module and the generated API.
+ * only on the V8 builder and feature-flag modules and the generated API.
  */
 
 import { internal } from '../../_generated/api';
-import { throwForbidden } from '../../_utils/errors';
+import { throwFeatureDisabled } from '../../lib/featureFlags';
 import type { ActionCtx } from '../../_generated/server';
 import {
 	adminMutation,
@@ -47,10 +47,5 @@ export const externalMailAdminMutation = featureGated(adminMutation, 'mail.exter
 /** Refuse the call unless the instance has external mailboxes enabled. */
 export async function assertExternalEnabled(ctx: ActionCtx): Promise<void> {
 	const flags = await ctx.runQuery(internal.workspaces.featureFlags.getResolvedFlags, {});
-	if (!flags['mail.external']) {
-		throwForbidden(
-			'Feature "mail.external" is disabled on this Owlat instance. An admin can enable it from Settings → Features.',
-			{ feature: 'mail.external' }
-		);
-	}
+	if (!flags['mail.external']) throwFeatureDisabled('mail.external');
 }

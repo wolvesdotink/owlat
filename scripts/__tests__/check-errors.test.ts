@@ -109,6 +109,14 @@ describe('convex operation-error taxonomy gate', () => {
 		'externalMailQuery',
 		'externalMailMutation',
 		'externalMailAdminMutation',
+		'transactionalQuery',
+		'transactionalMutation',
+		'campaignsQuery',
+		'campaignsMutation',
+		'automationsQuery',
+		'automationsMutation',
+		'formsQuery',
+		'formsMutation',
 		'mutation',
 	])('flags a bare throw inside a %s', async (builder) => {
 		const result = await runGate({ 'convex/thing.ts': moduleWithBareThrow(builder) });

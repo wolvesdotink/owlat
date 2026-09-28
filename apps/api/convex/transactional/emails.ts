@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { authedMutation, authedQuery } from '../lib/authedFunctions';
+import { transactionalMutation, transactionalQuery } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireOrgPermission } from '../lib/sessionOrganization';
@@ -12,7 +12,6 @@ import {
 	throwInvalidState,
 	throwNotFound,
 } from '../_utils/errors';
-import { assertFeatureEnabled } from '../lib/featureFlags';
 import { dataVariablesSchemaValidator } from '../lib/convexValidators';
 import { assertEditableForPublishableChange } from './lifecycle';
 import { applyUsageCountDelta } from '../emailBlocks/module';
@@ -24,7 +23,7 @@ export type DataVariableType = 'string' | 'number' | 'boolean' | 'date';
 /**
  * List all transactional emails for an organization with optional filtering
  */
-export const list = authedQuery({
+export const list = transactionalQuery({
 	args: {
 		status: v.optional(
 			v.union(v.literal('draft'), v.literal('published'), v.literal('pending_review'))
@@ -34,7 +33,6 @@ export const list = authedQuery({
 		sortOrder: v.optional(v.union(v.literal('asc'), v.literal('desc'))),
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'transactional');
 		let transactionalEmails = await ctx.db.query('transactionalEmails').collect(); // bounded: transactional-email templates (org-scale library)
 
 		if (args.status) {
@@ -73,10 +71,9 @@ export const list = authedQuery({
 /**
  * Get a single transactional email by ID
  */
-export const get = authedQuery({
+export const get = transactionalQuery({
 	args: { id: v.id('transactionalEmails') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'transactional');
 		return await ctx.db.get(args.id);
 	},
 });
@@ -84,7 +81,7 @@ export const get = authedQuery({
 /**
  * Count transactional emails by status for an organization
  */
-export const countByStatus = authedQuery({
+export const countByStatus = transactionalQuery({
 	args: {},
 	handler: async (ctx) => {
 		const allEmails = await ctx.db.query('transactionalEmails').collect(); // bounded: transactional-email templates (org-scale library)
@@ -101,7 +98,7 @@ export const countByStatus = authedQuery({
 /**
  * Create a new transactional email
  */
-export const create = authedMutation({
+export const create = transactionalMutation({
 	args: {
 		name: v.string(),
 		slug: v.string(),
@@ -148,7 +145,7 @@ export const create = authedMutation({
 /**
  * Update a transactional email
  */
-export const update = authedMutation({
+export const update = transactionalMutation({
 	args: {
 		id: v.id('transactionalEmails'),
 		name: v.optional(v.string()),
@@ -178,7 +175,6 @@ export const update = authedMutation({
 		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'transactional');
 		await requireOrgPermission(
 			ctx,
 			'templates:manage',
@@ -289,7 +285,7 @@ export const update = authedMutation({
 /**
  * Publish a transactional email (make it available via API)
  */
-export const publish = authedMutation({
+export const publish = transactionalMutation({
 	args: {
 		id: v.id('transactionalEmails'),
 		htmlContent: v.string(), // Required to ensure HTML is generated
@@ -301,7 +297,6 @@ export const publish = authedMutation({
 		expectedContentRevision: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'transactional');
 		await requireOrgPermission(
 			ctx,
 			'templates:manage',
@@ -339,10 +334,9 @@ export const publish = authedMutation({
 /**
  * Unpublish a transactional email (return to draft status)
  */
-export const unpublish = authedMutation({
+export const unpublish = transactionalMutation({
 	args: { id: v.id('transactionalEmails') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'transactional');
 		await requireOrgPermission(
 			ctx,
 			'templates:manage',
@@ -374,10 +368,9 @@ export const unpublish = authedMutation({
 /**
  * Duplicate a transactional email
  */
-export const duplicate = authedMutation({
+export const duplicate = transactionalMutation({
 	args: { id: v.id('transactionalEmails') },
 	handler: async (ctx, args): Promise<Id<'transactionalEmails'>> => {
-		await assertFeatureEnabled(ctx, 'transactional');
 		await requireOrgPermission(
 			ctx,
 			'templates:manage',
@@ -398,10 +391,9 @@ export const duplicate = authedMutation({
 /**
  * Delete a transactional email
  */
-export const remove = authedMutation({
+export const remove = transactionalMutation({
 	args: { id: v.id('transactionalEmails') },
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'transactional');
 		await requireOrgPermission(
 			ctx,
 			'templates:manage',
@@ -422,14 +414,13 @@ export const remove = authedMutation({
 /**
  * Update data variables schema
  */
-export const updateSchema = authedMutation({
+export const updateSchema = transactionalMutation({
 	args: {
 		id: v.id('transactionalEmails'),
 		dataVariablesSchema: dataVariablesSchemaValidator,
 		forceWhilePublished: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'transactional');
 		await requireOrgPermission(
 			ctx,
 			'templates:manage',

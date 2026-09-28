@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { authedQuery } from '../lib/authedFunctions';
+import { automationsQuery } from './_helpers';
 import { PAGE_SIZE_DEFAULT } from '../lib/constants';
 
 // Get automation runs for analytics with contact details.
@@ -7,7 +7,7 @@ import { PAGE_SIZE_DEFAULT } from '../lib/constants';
 // `.collect()`-ed every matching run, JS-sorted, then sliced — which scaled
 // linearly with run count per automation. Indexed `.order('desc').take(N)`
 // reads at most `offset + limit + 1` rows.
-export const getAutomationRuns = authedQuery({
+export const getAutomationRuns = automationsQuery({
 	args: {
 		automationId: v.id('automations'),
 		status: v.optional(
@@ -63,7 +63,7 @@ export const getAutomationRuns = authedQuery({
 });
 
 // Get step-by-step analytics for funnel visualization
-export const getStepAnalytics = authedQuery({
+export const getStepAnalytics = automationsQuery({
 	args: {
 		automationId: v.id('automations'),
 	},
@@ -104,7 +104,7 @@ export const getStepAnalytics = authedQuery({
 });
 
 // Get summary statistics for automation
-export const getAutomationStats = authedQuery({
+export const getAutomationStats = automationsQuery({
 	args: {
 		automationId: v.id('automations'),
 	},

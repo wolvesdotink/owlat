@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { authedMutation } from '../lib/authedFunctions';
+import { campaignsMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOrThrow, throwInvalidState } from '../_utils/errors';
@@ -9,7 +9,7 @@ import { assertTransitioned } from './lifecycle';
 import { recordAuditLog } from '../lib/auditLog';
 
 // Mutation to cancel a scheduled campaign
-export const cancel = authedMutation({
+export const cancel = campaignsMutation({
 	args: {
 		campaignId: v.id('campaigns'),
 	},
@@ -39,7 +39,7 @@ export const cancel = authedMutation({
 });
 
 // Mutation to reschedule a campaign to a different time
-export const reschedule = authedMutation({
+export const reschedule = campaignsMutation({
 	args: {
 		campaignId: v.id('campaigns'),
 		scheduledAt: v.number(),
@@ -104,7 +104,7 @@ export const reschedule = authedMutation({
 });
 
 // Mutation to unschedule a campaign (convert back to draft for editing)
-export const unschedule = authedMutation({
+export const unschedule = campaignsMutation({
 	args: {
 		campaignId: v.id('campaigns'),
 	},
@@ -134,7 +134,7 @@ export const unschedule = authedMutation({
 });
 
 // Schedule a campaign using session-based context.
-export const schedule = authedMutation({
+export const schedule = campaignsMutation({
 	args: {
 		campaignId: v.id('campaigns'),
 		scheduledAt: v.number(),

@@ -100,6 +100,26 @@ describe('campaigns.updateBasics — role enforcement', () => {
 	});
 });
 
+describe('campaigns.updateBasics — campaigns feature floor', () => {
+	it('refuses the edit with campaigns off (campaignsMutation floor)', async () => {
+		const t = convexTest(schema, modules);
+		const campaignId = await seedCampaign(t);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				featureFlags: { campaigns: false },
+				createdAt: Date.now(),
+			});
+		});
+
+		await expect(
+			t.mutation(api.campaigns.campaigns.updateBasics, { campaignId, name: 'Edited while off' })
+		).rejects.toThrow(/"category":"forbidden".*"feature":"campaigns"/);
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(campaignId))?.name).toBe('C1');
+		});
+	});
+});
+
 describe('campaigns.updateAudience — role enforcement', () => {
 	it('allows editor role', async () => {
 		const t = convexTest(schema, modules);

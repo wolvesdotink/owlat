@@ -16,7 +16,7 @@
 import { v } from 'convex/values';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { authedQuery } from '../lib/authedFunctions';
+import { campaignsQuery } from './_helpers';
 import { loadPacedWarmingCapacity } from '../delivery/pacedWarmingCapacity';
 import {
 	campaignWarmingCapBinds,
@@ -461,7 +461,7 @@ export function toAssessment(
 // same warming projection every delivery screen already renders to any member,
 // and the caller supplies the audience it is about to preview. No row is read
 // that a member cannot already read through countRecipients / the warming pages.
-export const getCampaignCapacityPlan = authedQuery({
+export const getCampaignCapacityPlan = campaignsQuery({
 	args: {
 		audience: v.optional(audienceValidator),
 		fromEmail: v.string(),

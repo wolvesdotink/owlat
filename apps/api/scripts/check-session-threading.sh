@@ -63,7 +63,7 @@ repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
 self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$(dirname "$0")/.."
 
-builders='authedQuery|authedMutation|adminQuery|adminMutation|ownerMutation|chatQuery|chatMutation|assistantQuery|assistantMutation|postboxQuery|postboxMutation|externalMailQuery|externalMailMutation|externalMailAdminMutation'
+builders='authedQuery|authedMutation|adminQuery|adminMutation|ownerMutation|chatQuery|chatMutation|assistantQuery|assistantMutation|postboxQuery|postboxMutation|externalMailQuery|externalMailMutation|externalMailAdminMutation|transactionalQuery|transactionalMutation|campaignsQuery|campaignsMutation|automationsQuery|automationsMutation|formsQuery|formsMutation'
 helpers='getMutationContext|getUserIdFromSession|getBetterAuthSessionWithRole|getBetterAuthSession|requireOrgMember|requireOrgPermission|requireAdminContext|requireOwnerContext'
 
 generate() {

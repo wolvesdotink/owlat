@@ -486,6 +486,31 @@ describe('campaigns.testSend.sendTestEmailFromTemplate (recipient allowlist)', (
 });
 
 // ============================================================================
+// testSend.sendTestEmail — the action-side campaigns floor
+// ============================================================================
+
+describe('campaigns.testSend.sendTestEmail (campaigns feature floor)', () => {
+	it('refuses a campaign test send with campaigns off, before loading the campaign', async () => {
+		const t = setupTest();
+		let campaignId!: Id<'campaigns'>;
+		await t.run(async (ctx) => {
+			campaignId = await ctx.db.insert('campaigns', createTestCampaign({ status: 'draft' }));
+			await ctx.db.insert('instanceSettings', {
+				featureFlags: { campaigns: false },
+				createdAt: Date.now(),
+			});
+		});
+
+		await expect(
+			t.action(api.campaigns.testSend.sendTestEmail, {
+				campaignId,
+				testEmail: 'member@owlat.test',
+			})
+		).rejects.toThrow(/"category":"forbidden".*"feature":"campaigns"/);
+	});
+});
+
+// ============================================================================
 // archiveHttp — GET /archive/:token  (driven through t.fetch)
 // ============================================================================
 
