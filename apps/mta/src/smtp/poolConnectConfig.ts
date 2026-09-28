@@ -8,6 +8,7 @@
 
 import type { TLSSocket } from 'node:tls';
 import type { SmtpConnectOptions } from '@owlat/smtp-client';
+import { resolveSourceAddress } from './sourceAddress.js';
 
 export interface AcquireOptions {
 	/** Provider-aware connection and socket-reuse limits. */
@@ -103,6 +104,9 @@ export function buildConnectConfig(
 	if (options.tls?.verifyPeerCertificate !== undefined) {
 		tls.verifyPeerCertificate = options.tls.verifyPeerCertificate;
 	}
+	// Behind Docker NAT the pool IP is not assignable in the container; the
+	// kernel's source address is masqueraded to it instead (see sourceAddress.ts).
+	const localAddress = resolveSourceAddress(bindIp);
 	const config: SmtpConnectOptions = {
 		host: mxHost,
 		port: options.port ?? 25,
@@ -116,7 +120,7 @@ export function buildConnectConfig(
 		ehloName: options.name ?? (bindIp.includes(':') ? `[IPv6:${bindIp}]` : `[${bindIp}]`),
 		tlsMode: 'starttls',
 		requireTls: options.requireTLS ?? false,
-		localAddress: bindIp,
+		...(localAddress !== undefined ? { localAddress } : {}),
 		tls,
 		timeouts: {
 			connect: options.connectionTimeout ?? 30_000,
