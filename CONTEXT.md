@@ -2593,15 +2593,15 @@ Shared V8 leaves under the module:
   campaign subject → `'plain'`, etc.), not a function-identity choice
   hidden in which import each caller picked.
 - `sendComposition/trackingUrl.ts` — V8-pure
-  `getTrackingPixelUrl(base, emailSendId)` and
-  `getTrackedLinkUrl(base, emailSendId, originalUrl)` using `btoa` +
-  `TextEncoder` (works in both Convex V8 and Node). Replaces the two
-  pre-deepening implementations at `delivery/tracking.ts:41-54`
-  (V8 / `stringToBase64Url`) and `emailWorker.ts:27-38` (Node /
-  `Buffer.from(...).toString('base64url')`). One test surface locks
-  the URL format. The Node transform half imports from this leaf;
-  `delivery/trackingHttp.ts` (which decodes URLs at click-handler
-  time) does too.
+  `getTrackingPixelUrl(base, emailSendId)` and the click-tracking link
+  codec: `encodeTrackedTarget(url)` / `decodeTrackedTarget(segment)`
+  (unpadded base64url of the href's UTF-8 bytes, decoded back through
+  UTF-8), `trackedLinkSigningInput(emailSendId, encodedUrl)` and
+  `trackedLinkPath(...)`. Works in both Convex V8 and Node. The Node
+  transform half encodes and signs through it (`createHmac`), and
+  `delivery/trackingHttp.ts` verifies through the same signing input
+  (`webhooks/security.ts` `hmacSignature`) and decodes with it. One
+  test surface locks the wire format and the legacy Buffer encoding.
 
 Replaces the open-coded blocks in:
 

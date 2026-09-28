@@ -11,8 +11,10 @@ import { UNSUBSCRIBE_TOKEN_MAX_AGE_MS } from '../lib/constants';
  *
  * `prefix` namespaces the payload so a token minted for one purpose can't be
  * replayed against another — unsubscribe uses '' and preferences uses 'pref:'.
- * (The click-tracking signer uses a different secret and format and stays
- * separate, in delivery/sendComposition.)
+ * The click-tracking signer (delivery/sendComposition/trackingUrl.ts) shares
+ * UNSUBSCRIBE_SECRET and is kept apart by payload format alone: it signs
+ * `{emailSendId}.{encodedUrl}`, which never contains the `:` every contact-token
+ * payload has, so a signature minted for one cannot verify as the other.
  */
 function getContactTokenSecret(): string {
 	const secret = getOptional('UNSUBSCRIBE_SECRET');
@@ -40,7 +42,7 @@ export function makeContactToken(prefix: string, contactId: string): string {
 export function verifyContactToken(
 	prefix: string,
 	token: string,
-	maxAgeMs: number = UNSUBSCRIBE_TOKEN_MAX_AGE_MS,
+	maxAgeMs: number = UNSUBSCRIBE_TOKEN_MAX_AGE_MS
 ): ContactTokenResult {
 	try {
 		const parts = token.split(':');
@@ -59,7 +61,9 @@ export function verifyContactToken(
 		}
 
 		const data = `${prefix}${contactId}:${timestamp}`;
-		const expectedSignature = createHmac('sha256', getContactTokenSecret()).update(data).digest('base64url');
+		const expectedSignature = createHmac('sha256', getContactTokenSecret())
+			.update(data)
+			.digest('base64url');
 
 		const sigBuffer = Buffer.from(signature);
 		const expectedBuffer = Buffer.from(expectedSignature);

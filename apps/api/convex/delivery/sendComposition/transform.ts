@@ -3,6 +3,7 @@
 import * as cheerio from 'cheerio';
 import { createHmac } from 'node:crypto';
 import { getOptional } from '../../lib/env';
+import { encodeTrackedTarget, trackedLinkPath, trackedLinkSigningInput } from './trackingUrl';
 
 /**
  * Send composition (module) — transform half.
@@ -112,16 +113,15 @@ export function transformHtml(html: string, config: TransformConfig): string {
 
 			if (!trackingSecret) return; // no secret → leave the link untracked
 
-			// Replace with tracked URL — inlined to avoid importing the V8 leaf
-			// from this 'use node' module. base64url is built-in on Buffer.
-			// `/t/c/{id}/{encodedUrl}/{sig}` — the signature over `id.encodedUrl`
-			// binds the target to this send; the click handler rejects any
-			// tampered/unsigned segment (closing the open-redirect vector).
-			const encodedUrl = Buffer.from(href, 'utf-8').toString('base64url');
+			// `/t/c/{id}/{encodedUrl}/{sig}`: the signature binds the target to
+			// this send, and the click handler (`trackingHttp.ts`) rejects any
+			// tampered or unsigned segment, which closes the open-redirect vector.
+			// The codec and the signing input are shared with that handler.
+			const encodedUrl = encodeTrackedTarget(href);
 			const sig = createHmac('sha256', trackingSecret)
-				.update(`${emailSendId}.${encodedUrl}`)
+				.update(trackedLinkSigningInput(emailSendId, encodedUrl))
 				.digest('base64url');
-			$link.attr('href', `${siteUrl}/t/c/${emailSendId}/${encodedUrl}/${sig}`);
+			$link.attr('href', trackedLinkPath(siteUrl, emailSendId, encodedUrl, sig));
 		});
 	}
 
