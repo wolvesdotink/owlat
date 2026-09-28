@@ -24,7 +24,7 @@ vi.mock('convex/browser', () => ({
 }));
 
 vi.mock('@owlat/api', () => ({
-	api: { delivery: { status: { getStatus: {} } } },
+	api: { auth: { membership: { assertOrganizationManage: {} } } },
 }));
 
 let cookie: string | undefined;
