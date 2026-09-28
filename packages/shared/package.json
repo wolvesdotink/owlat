@@ -198,6 +198,10 @@
 			"types": "./src/mailto.ts",
 			"import": "./src/mailto.ts"
 		},
+		"./mailSearch": {
+			"types": "./src/mailSearch.ts",
+			"import": "./src/mailSearch.ts"
+		},
 		"./ical": {
 			"types": "./src/ical.ts",
 			"import": "./src/ical.ts"
