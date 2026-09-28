@@ -259,7 +259,7 @@ describe('lifecycle.setReturnPathHost — SES', () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedSesDomain(t);
 
-		const outcome = await t.mutation(internal.domains.lifecycle.setReturnPathHost, {
+		const outcome = await t.mutation(internal.domains.lifecycleReturnPath.setReturnPathHost, {
 			domainId,
 			returnPathHost: 'bounce.acme.com',
 			userId: 'user',
@@ -301,7 +301,7 @@ describe('lifecycle.setReturnPathHost — SES', () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedSesDomain(t);
 
-		const outcome = await t.mutation(internal.domains.lifecycle.setReturnPathHost, {
+		const outcome = await t.mutation(internal.domains.lifecycleReturnPath.setReturnPathHost, {
 			domainId,
 			returnPathHost: 'bounces.owlat.com',
 			userId: 'user',

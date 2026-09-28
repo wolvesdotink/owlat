@@ -48,7 +48,10 @@ const SURVIVING_KIND_LITERALS: Record<string, { family: string; owner: string }>
 };
 
 // Files whose own-arm comparison is the sanctioned D3 exception.
-const OWN_ARM_COMPARISON_EXEMPT = new Set(['domains/lifecycle.ts', 'delivery/lastMileRouting.ts']);
+const OWN_ARM_COMPARISON_EXEMPT = new Set([
+	'domains/returnPathProviders.ts',
+	'delivery/lastMileRouting.ts',
+]);
 
 function sourceFiles(dir: string, acc: string[] = []): string[] {
 	for (const entry of readdirSync(dir, { withFileTypes: true })) {

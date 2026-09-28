@@ -1035,6 +1035,12 @@ of `domains.status`, plus row creation and removal. Mirrors the
 discriminated by `to`, a `LEGAL_EDGES` graph, a reducer per kind
 returning `{ patch, effects, applied }`, and a `TransitionOutcome`
 reporting `ok | reason` for illegal / domain-not-found attempts.
+The pure half (types, validators, verdict, graph, reducer) lives in
+`domains/lifecycleReducer.ts` and the effect runner in
+`domains/lifecycleEffects.ts`. The feature editors live beside it
+(`lifecycleDmarc.ts`, `lifecycleReceiving.ts`,
+`lifecycleReturnPath.ts`, `lifecycleDkim.ts`) and write only
+through its `patchDomainRecords`.
 Five entry points:
 
 - `create({ domain })` — validates format, checks uniqueness,
