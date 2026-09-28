@@ -202,6 +202,10 @@
 			"types": "./src/mailSearch.ts",
 			"import": "./src/mailSearch.ts"
 		},
+		"./chatMentions": {
+			"types": "./src/chatMentions.ts",
+			"import": "./src/chatMentions.ts"
+		},
 		"./ical": {
 			"types": "./src/ical.ts",
 			"import": "./src/ical.ts"

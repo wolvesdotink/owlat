@@ -3,11 +3,12 @@
  *
  * - Membership / per-room admin checks
  * - Normalization helpers for channel names and DM identity keys
- * - Mention parsing
+ * - Assistant invocation (the `@handle` grammar lives in @owlat/shared/chatMentions)
  *
  * Not exported as Convex functions; only imported by sibling chat/*.ts.
  */
 
+import { parseMentionHandles } from '@owlat/shared/chatMentions';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
@@ -29,7 +30,6 @@ export const chatMutation = featureGated(authedMutation, 'chat');
 const CHANNEL_NAME_MAX = 80;
 export const CHANNEL_DESC_MAX = 280;
 const MESSAGE_TEXT_MAX = 8000;
-const MENTION_PATTERN = /@([a-zA-Z0-9_\-.]{1,64})/g;
 
 /**
  * Reserved author id for AI assistant replies (`@assistant`). It is NOT a valid
@@ -253,21 +253,6 @@ export async function loadProfileSummary(
 		email: row?.email ?? null,
 		image: row?.image ?? null,
 	};
-}
-
-/**
- * Parse `@handle` mentions from message text.
- *
- * Returns unique handles (no leading `@`). Resolution to memberIds happens
- * downstream in `mentions.ts::resolveMentionsToMemberIds`.
- */
-export function parseMentionHandles(text: string): string[] {
-	const found = new Set<string>();
-	for (const match of text.matchAll(MENTION_PATTERN)) {
-		const handle = match[1]?.trim();
-		if (handle) found.add(handle.toLowerCase());
-	}
-	return [...found];
 }
 
 /** Whether a message invokes the AI assistant via the reserved `@assistant` handle. */
