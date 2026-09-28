@@ -118,6 +118,34 @@ describe('startBounceTlsReload', () => {
 		expect(logger.warn).toHaveBeenCalledOnce();
 	});
 
+	it('installs the first certificate published after boot and /health follows it', async () => {
+		rmSync(paths.cert);
+		rmSync(paths.key);
+		reload = startBounceTlsReload({ bounceServerTlsPaths: paths }, () => listener);
+		expect(reload.currentCert()).toBeUndefined();
+		expect(logger.warn).toHaveBeenCalledWith(
+			expect.objectContaining({ certPath: paths.cert }),
+			expect.stringMatching(/no TLS certificate yet/)
+		);
+		expect(inspectSmtpTlsCertificate(reload.currentCert(), HOST, Date.now(), true)).toMatchObject({
+			status: 'fail',
+			reason: 'certificate-pending',
+		});
+
+		// Still missing: nothing installed.
+		expect(await reload.check()).toBe(false);
+		expect(updateTlsMaterial).not.toHaveBeenCalled();
+
+		writeFileSync(paths.cert, newPair.cert);
+		writeFileSync(paths.key, newPair.key);
+
+		expect(await reload.check()).toBe(true);
+		expect(updateTlsMaterial).toHaveBeenCalledWith(newPair);
+		expect(inspectSmtpTlsCertificate(reload.currentCert(), HOST)).toMatchObject({
+			status: 'pass',
+		});
+	});
+
 	it('does not watch inline PEM', async () => {
 		reload = startBounceTlsReload(
 			{ bounceServerTlsCert: oldPair.cert, bounceServerTlsKey: oldPair.key },

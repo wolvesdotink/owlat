@@ -8,6 +8,11 @@
  * the new certificate. `/health`'s `smtpTls` reads {@link currentCert} so it
  * reports the certificate actually in service. Inline PEM never changes and is
  * not watched.
+ *
+ * On a fresh install the files may not exist yet when the MTA boots: the
+ * `acme` sidecar publishes them minutes later. The listener then starts
+ * without STARTTLS, and the first valid pair to appear is installed into it,
+ * so the next EHLO offers STARTTLS without a restart.
  */
 
 import type { SmtpListener } from '@owlat/smtp-listener';
@@ -17,7 +22,10 @@ import { logger } from '../monitoring/logger.js';
 
 type ReloadConfig = Pick<
 	MtaConfig,
-	'bounceServerTlsCert' | 'bounceServerTlsKey' | 'bounceServerTlsPaths'
+	| 'bounceServerTlsCert'
+	| 'bounceServerTlsKey'
+	| 'bounceServerTlsPaths'
+	| 'bounceServerTlsUnavailable'
 >;
 
 export interface BounceTlsReload {
@@ -42,13 +50,24 @@ export function startBounceTlsReload(
 		bounceServerTlsKey: key,
 		bounceServerTlsPaths: paths,
 	} = config;
-	if (!cert || !key || !paths) {
-		return { currentCert: () => cert, check: async () => false, stop: () => {} };
+	if (!paths) {
+		return {
+			currentCert: () => cert,
+			check: async () => false,
+			stop: () => {},
+		};
+	}
+	const initial = cert && key ? { cert, key } : undefined;
+	if (!initial) {
+		logger.warn(
+			{ certPath: paths.cert, keyPath: paths.key, reason: config.bounceServerTlsUnavailable },
+			'Inbound SMTP: no TLS certificate yet; STARTTLS is not offered and inbound mail that requires TLS is refused until the certificate appears. Watching for it.'
+		);
 	}
 	const reloader: TlsCertReloader = startTlsCertReloader({
 		certPath: paths.cert,
 		keyPath: paths.key,
-		initial: { cert, key },
+		...(initial ? { initial } : {}),
 		apply: (material) => listener()?.updateTlsMaterial(material),
 		log: {
 			info: (message, detail) => logger.info(detail, `Inbound SMTP: ${message}`),
@@ -56,7 +75,7 @@ export function startBounceTlsReload(
 		},
 	});
 	return {
-		currentCert: () => reloader.current().cert,
+		currentCert: () => reloader.current()?.cert,
 		check: () => reloader.check(),
 		stop: () => reloader.stop(),
 	};

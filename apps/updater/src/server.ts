@@ -17,7 +17,12 @@ import { handleApplyProfiles } from './applyProfiles.js';
 import { critical } from './lifecycle.js';
 import { handlePortChecks } from './portChecks.js';
 import { handleProfileState } from './profileState.js';
-import { exclusively, readLastRollout, rolloutInProgress } from './rolloutState.js';
+import {
+	exclusively,
+	readLastRollout,
+	rolloutInProgress,
+	type RolloutKind,
+} from './rolloutState.js';
 
 const PORT = parseInt(process.env['PORT'] || '3200', 10);
 
@@ -332,13 +337,11 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 
 type RolloutHandler = (req: IncomingMessage, res: ServerResponse) => Promise<void>;
 
-const ROLLOUTS = new Map<
-	string,
-	{ kind: 'update' | 'apply-profiles' | 'rotate-env'; handle: RolloutHandler }
->([
+const ROLLOUTS = new Map<string, { kind: RolloutKind; handle: RolloutHandler }>([
 	['/update', { kind: 'update', handle: handleUpdate }],
 	['/apply-profiles', { kind: 'apply-profiles', handle: handleApplyProfiles }],
 	['/rotate-env', { kind: 'rotate-env', handle: handleRotateEnv }],
+	['/configure-ip', { kind: 'configure-ip', handle: handleConfigureIp }],
 ]);
 
 /**
@@ -353,16 +356,15 @@ export function buildRequestListener() {
 		// host files and only then reconciles the running containers, so a
 		// SIGTERM landing between those two halves is what leaves the host's
 		// configuration and its running state describing different deployments.
-		// The three that recreate the stack also take the rollout lock, so one
-		// cannot run `up` while another is still waiting for readiness.
+		// All four recreate containers and read-modify-write `.env`, so they
+		// also take the rollout lock: one cannot run `up` (or rewrite `.env`)
+		// while another is still recreating or waiting for readiness.
 		const rollout = req.method === 'POST' ? ROLLOUTS.get(url.pathname) : undefined;
 		if (rollout) {
 			// Authenticated before the lock, so a 409 tells nobody anonymous
 			// that a rollout is in flight.
 			if (!requireAuth(req, res)) return;
 			await critical(() => exclusively(rollout.kind, res, () => rollout.handle(req, res)));
-		} else if (req.method === 'POST' && url.pathname === '/configure-ip') {
-			await critical(() => handleConfigureIp(req, res));
 		} else if (req.method === 'POST' && url.pathname === '/port-checks') {
 			await handlePortChecks(req, res);
 		} else if (req.method === 'GET' && url.pathname === '/profile-state') {

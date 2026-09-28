@@ -59,18 +59,24 @@ export function classifySmtpTlsCertificate(
 	return { ...input, status: 'pass', checkedAt: now };
 }
 
-/** Parse the configured STARTTLS certificate without exposing its PEM or subject. */
+/**
+ * Parse the configured STARTTLS certificate without exposing its PEM or subject.
+ * `isAwaitingCertificate` marks a missing certificate whose files are watched
+ * (bounce/tlsReload.ts): still a failure, since inbound mail that requires TLS
+ * is refused meanwhile, but reported as pending rather than unconfigured.
+ */
 export function inspectSmtpTlsCertificate(
 	certificatePem: string | undefined,
 	hostname: string,
-	now = Date.now()
+	now = Date.now(),
+	isAwaitingCertificate = false
 ): SmtpTlsReadiness {
 	if (!certificatePem) {
 		return {
 			status: 'fail',
 			hostname,
 			isHostnameMatched: false,
-			reason: 'certificate-not-configured',
+			reason: isAwaitingCertificate ? 'certificate-pending' : 'certificate-not-configured',
 			checkedAt: now,
 		};
 	}
@@ -188,7 +194,12 @@ export function createHealthHandler(
 		// probe module so normal health polling does not hammer the remote MX.
 		const sendingIps = [...new Set([...config.ipPools.transactional, ...config.ipPools.campaign])];
 		const smtpProbe = await getSmtpReachability(sendingIps);
-		const smtpTls = inspectSmtpTlsCertificate(currentSmtpTlsCert(), config.ehloHostname);
+		const smtpTls = inspectSmtpTlsCertificate(
+			currentSmtpTlsCert(),
+			config.ehloHostname,
+			Date.now(),
+			config.bounceServerTlsPaths !== undefined
+		);
 
 		// Delay-set integrity. Deliberately NOT folded into `degraded` below: a
 		// leak in the retry ladder is not a reason to tell an operator their
