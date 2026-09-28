@@ -6,21 +6,7 @@
  * side-effect-free string/number arithmetic (no DNS, no I/O).
  */
 
-/** Strip the IPv4-mapped IPv6 prefix (`::ffff:`) so a host is keyed by its v4 form. */
-export function normalizeIp(ip: string): string {
-	if (ip.startsWith('::ffff:')) {
-		return ip.slice(7);
-	}
-	return ip;
-}
-
-/** Alias of {@link normalizeIp}: strip the IPv4-mapped IPv6 prefix. */
-export function stripIpv4Prefix(ip: string): string {
-	if (ip.startsWith('::ffff:')) {
-		return ip.slice(7);
-	}
-	return ip;
-}
+import { unmapIpv4 } from '@owlat/shared/ipAddress';
 
 export interface SpfMacroContext {
 	readonly sender?: string;
@@ -117,7 +103,7 @@ export function expandMacros(
 
 /** Macro %{i} expansion: dotted-quad for IPv4, dot-separated nibbles for IPv6. */
 function macroIp(ip: string): string {
-	const v4 = stripIpv4Prefix(ip);
+	const v4 = unmapIpv4(ip);
 	if (/^\d+\.\d+\.\d+\.\d+$/.test(v4)) {
 		return v4;
 	}
@@ -153,7 +139,7 @@ function expandIpv6(ip: string): string | null {
  * Handles both plain IPs and CIDR notation (e.g., 10.0.0.0/24)
  */
 export function ipMatchesCidr(ip: string, cidr: string): boolean {
-	const normalizedIp = stripIpv4Prefix(ip);
+	const normalizedIp = unmapIpv4(ip);
 
 	// Plain IP comparison
 	if (!cidr.includes('/')) {

@@ -7,27 +7,14 @@
  * server uses implicit TLS or STARTTLS: for any non-loopback host we force a
  * STARTTLS-before-auth upgrade (smtp-client `requireTls`, imapflow `doSTARTTLS`),
  * so the connection FAILS rather than send the mailbox password in the clear.
- * Plaintext is allowed only to a loopback host (a local Proton Bridge / relay).
- */
-
-import type { SmtpTlsMode } from '@owlat/smtp-client';
-
-/**
- * True when `host` is a loopback address — the only host for which an
- * unencrypted IMAP/SMTP connection is permitted. This worker is the only place
+ * Plaintext is allowed only to a loopback host (a local Proton Bridge / relay),
+ * as decided by the shared `isLoopbackHostname`. This worker is the only place
  * that gate lives: the backend stores the account's TLS flags as given and
  * relies on the check here at connect time.
  */
-export function isLoopbackHost(host: string): boolean {
-	let h = host.trim().toLowerCase();
-	if (h === '') return false;
-	if (h.endsWith('.')) h = h.slice(0, -1);
-	if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1);
-	if (h === 'localhost' || h === '::1' || h === '0:0:0:0:0:0:0:1') return true;
-	if (/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
-	if (/^::ffff:127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
-	return false;
-}
+
+import { isLoopbackHostname } from '@owlat/shared/ipAddress';
+import type { SmtpTlsMode } from '@owlat/smtp-client';
 
 /**
  * The lowest TLS version we are willing to negotiate with a remote mail server.
@@ -63,7 +50,7 @@ export interface SmtpClientTlsOptions {
  * a loopback host that asked for a secure port still gets implicit TLS.
  */
 export function smtpTlsOptions(host: string, secure: boolean): SmtpClientTlsOptions {
-	if (isLoopbackHost(host)) {
+	if (isLoopbackHostname(host)) {
 		return { tlsMode: secure ? 'implicit' : 'starttls', requireTls: false };
 	}
 	return {
@@ -85,7 +72,7 @@ export function imapTlsOptions(
 	host: string,
 	secure: boolean
 ): { secure: boolean; doSTARTTLS?: true; tls?: { minVersion: typeof MIN_TLS_VERSION } } {
-	if (isLoopbackHost(host)) return { secure };
+	if (isLoopbackHostname(host)) return { secure };
 	if (!secure) return { secure, doSTARTTLS: true, tls: { minVersion: MIN_TLS_VERSION } };
 	return { secure, tls: { minVersion: MIN_TLS_VERSION } };
 }

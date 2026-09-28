@@ -79,11 +79,6 @@ if redis.call('DECR', KEYS[1]) <= 0 then redis.call('DEL', KEYS[1]) end
 return 1
 `;
 
-/** Strip the IPv4-mapped IPv6 prefix so a host is keyed consistently. */
-export function normalizeSlotIp(ip: string): string {
-	return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
-}
-
 /**
  * Admit or refuse one connection from `remoteIp`.
  *

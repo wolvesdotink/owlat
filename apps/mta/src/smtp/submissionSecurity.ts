@@ -12,11 +12,8 @@
  */
 
 import type Redis from 'ioredis';
-import {
-	acquireConnectionSlot,
-	normalizeSlotIp,
-	releaseConnectionSlot,
-} from '../lib/connectionSlots.js';
+import { unmapIpv4 } from '@owlat/shared/ipAddress';
+import { acquireConnectionSlot, releaseConnectionSlot } from '../lib/connectionSlots.js';
 
 const CONNECTION_PREFIX = 'mta:submission:conn:';
 const CONNECTION_TTL = 300; // 5-minute window for tracking concurrent connections
@@ -27,7 +24,7 @@ const AUTH_FAIL_TTL = 900; // 15-minute rolling window for failed AUTH attempts
 // ─── Per-IP Connection Rate Limiting ────────────────────────────────
 
 function connectionKey(remoteIp: string): string {
-	return `${CONNECTION_PREFIX}${normalizeSlotIp(remoteIp)}`;
+	return `${CONNECTION_PREFIX}${unmapIpv4(remoteIp)}`;
 }
 
 /**
@@ -63,7 +60,7 @@ export async function checkAuthThrottle(
 	remoteIp: string,
 	maxFailuresPerIp: number
 ): Promise<boolean> {
-	const key = `${AUTH_FAIL_PREFIX}${normalizeSlotIp(remoteIp)}`;
+	const key = `${AUTH_FAIL_PREFIX}${unmapIpv4(remoteIp)}`;
 	const raw = await redis.get(key);
 	const failures = raw ? parseInt(raw, 10) : 0;
 	return failures < maxFailuresPerIp;
@@ -92,7 +89,7 @@ return count
  * @returns the failure count after recording.
  */
 export async function recordAuthFailure(redis: Redis, remoteIp: string): Promise<number> {
-	const key = `${AUTH_FAIL_PREFIX}${normalizeSlotIp(remoteIp)}`;
+	const key = `${AUTH_FAIL_PREFIX}${unmapIpv4(remoteIp)}`;
 	return Number(await redis.eval(RECORD_AUTH_FAILURE_SCRIPT, 1, key, AUTH_FAIL_TTL));
 }
 
@@ -100,6 +97,6 @@ export async function recordAuthFailure(redis: Redis, remoteIp: string): Promise
  * Clear the failed-AUTH counter for an IP after a successful authentication.
  */
 export async function clearAuthFailures(redis: Redis, remoteIp: string): Promise<void> {
-	const key = `${AUTH_FAIL_PREFIX}${normalizeSlotIp(remoteIp)}`;
+	const key = `${AUTH_FAIL_PREFIX}${unmapIpv4(remoteIp)}`;
 	await redis.del(key);
 }

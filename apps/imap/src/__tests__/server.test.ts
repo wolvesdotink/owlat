@@ -327,6 +327,19 @@ describe('startImapServer — per-IP connection cap', () => {
 		expect(aOver.ended).toBe(true);
 	});
 
+	it('counts an IPv4 peer once whether it arrives native or IPv4-mapped', () => {
+		const { handler } = start({
+			tls: { cert: 'c', key: 'k' },
+			maxConnectionsPerIp: 1,
+			maxClients: 99,
+		});
+		const native = connect(handler, '10.0.0.1');
+		const mapped = connect(handler, '::ffff:10.0.0.1');
+		expect(native.ended).toBe(false);
+		expect(mapped.ended).toBe(true);
+		expect(mapped.written.join('')).toContain('Too many connections from this IP');
+	});
+
 	it('treats a missing remoteAddress as the "unknown" IP bucket', () => {
 		const { handler } = start({
 			tls: { cert: 'c', key: 'k' },

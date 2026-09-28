@@ -11,11 +11,8 @@
  */
 
 import type Redis from 'ioredis';
-import {
-	acquireConnectionSlot,
-	normalizeSlotIp,
-	releaseConnectionSlot,
-} from '../lib/connectionSlots.js';
+import { unmapIpv4 } from '@owlat/shared/ipAddress';
+import { acquireConnectionSlot, releaseConnectionSlot } from '../lib/connectionSlots.js';
 
 const CONNECTION_PREFIX = 'mta:bounce:conn:';
 const CONNECTION_TTL = 300; // 5 minute window for tracking
@@ -23,7 +20,7 @@ const CONNECTION_TTL = 300; // 5 minute window for tracking
 // ─── Per-IP Connection Rate Limiting ────────────────────────────────
 
 function connectionKey(remoteIp: string): string {
-	return `${CONNECTION_PREFIX}${normalizeSlotIp(remoteIp)}`;
+	return `${CONNECTION_PREFIX}${unmapIpv4(remoteIp)}`;
 }
 
 /**

@@ -18,6 +18,7 @@
  * taxonomy reads `.replyCode`/`.authCause`, never a log string.
  */
 
+import { isLoopbackIp } from '@owlat/shared/ipAddress';
 import { serializeAuth, serializeAuthContinuation, type EhloCapabilities } from './commands';
 import { SmtpConnection } from './connection';
 import { SmtpError, type SmtpAuthCause } from './errors';
@@ -80,18 +81,6 @@ export interface AuthenticateOptions {
 const DEFAULT_PASSWORD_MECHANISMS: readonly SmtpAuthMechanism[] = ['PLAIN', 'LOGIN'];
 const DEFAULT_OAUTH_MECHANISMS: readonly SmtpAuthMechanism[] = ['XOAUTH2'];
 
-/**
- * RFC 5321 §4.1.1.1 loopback literals, incl. the whole IPv4-mapped-IPv6 form.
- * Mirrors mail-sync's `isLoopbackHost`, which accepts all of `127.x.x.x` and its
- * `::ffff:127.x.x.x` mapping — the invariant this client encodes.
- */
-function isLoopbackAddress(address: string | undefined): boolean {
-	if (address === undefined) {
-		return false;
-	}
-	return address === '::1' || address.startsWith('127.') || address.startsWith('::ffff:127.');
-}
-
 function base64(value: string): string {
 	return Buffer.from(value, 'utf8').toString('base64');
 }
@@ -111,7 +100,10 @@ export async function authenticate(
 	// truthy/absent flag still requires the address itself to be loopback. A call
 	// site can never assert loopback for a remote peer and leak credentials in
 	// cleartext — the address is always the ground truth.
-	const loopback = options.loopback === false ? false : isLoopbackAddress(conn.remoteAddress);
+	const loopback =
+		options.loopback !== false &&
+		conn.remoteAddress !== undefined &&
+		isLoopbackIp(conn.remoteAddress);
 	if (!conn.secured && !loopback) {
 		// Fail closed BEFORE serialization: never put credentials on the wire in
 		// cleartext to a non-loopback peer.

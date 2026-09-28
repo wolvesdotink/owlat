@@ -590,6 +590,9 @@
     "packages/smtp-client": {
       "name": "@owlat/smtp-client",
       "version": "0.6.3",
+      "dependencies": {
+        "@owlat/shared": "workspace:*",
+      },
       "devDependencies": {
         "@types/node": "catalog:",
         "@types/smtp-server": "^3.5.10",

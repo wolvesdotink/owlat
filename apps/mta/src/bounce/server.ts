@@ -29,6 +29,7 @@ import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 import { emailDomain } from '@owlat/shared/spfAlignment';
+import { isPrivateOrLoopbackIp } from '@owlat/shared/ipAddress';
 import { MAX_INBOUND_MESSAGE_BYTES } from '@owlat/shared/attachments';
 import { checkConnectionRateLimit, releaseConnection } from './inboundSecurity.js';
 import { createSlotTracker } from '../lib/connectionSlots.js';
@@ -40,7 +41,6 @@ import { mainPipeline } from './phases/index.js';
 import { dmarcFromIdentity } from '../inbound/parsedAddress.js';
 import type { SpfVerdict } from './types.js';
 import { inboundTlsRequiredReply, isInboundTlsRequired } from '../inbound/inboundTlsPolicy.js';
-import { isLocalAddress } from './serverHelpers.js';
 import { TransientFeedbackProcessingError } from './transientFeedbackError.js';
 import { processBounceAttempt } from './attemptProcessor.js';
 import { recordDeliverabilityProbeIfPresent } from './deliverabilityProbe.js';
@@ -222,8 +222,8 @@ export function buildOnConnect(
 			}
 			onSlotHeld(session); // net +1 held — release exactly this slot on close
 
-			// Tarpit: deliberately slow non-local connections down.
-			if (config.bounceTarpitEnabled && !isLocalAddress(remoteIp)) {
+			// Tarpit: deliberately slow down peers outside loopback and RFC 1918.
+			if (config.bounceTarpitEnabled && !isPrivateOrLoopbackIp(remoteIp)) {
 				await new Promise((resolve) => setTimeout(resolve, config.bounceTarpitDelayMs));
 			}
 			return;
