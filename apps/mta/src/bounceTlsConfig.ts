@@ -16,10 +16,12 @@
  * re-read them when the certificate is renewed (bounce/tlsReload.ts). Inline
  * PEM cannot change without a restart and reports none.
  *
- * The shared directory reports its `paths` even when the pair is not there yet.
- * On a fresh VPS install the `acme` sidecar publishes the certificate minutes
- * after the MTA boots, so the listener starts without STARTTLS and the reloader
+ * The shared directory reports its `paths` even when the pair is not there yet
+ * or cannot be read yet. On a fresh VPS install the `acme` sidecar publishes
+ * the certificate minutes after the MTA boots (and briefly holds it root-owned
+ * while doing so), so the listener starts without STARTTLS and the reloader
  * installs the pair when it appears. `unavailable` says why nothing was loaded.
+ * Explicit BOUNCE_TLS_*_FILE paths still fail the boot instead.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -82,9 +84,16 @@ export function loadBounceTlsMaterial(env: Env = process.env): BounceTlsMaterial
 	if (!existsSync(paths.cert) || !existsSync(paths.key)) {
 		return { paths, unavailable: `${paths.cert} and ${paths.key} do not exist yet` };
 	}
-	return {
-		cert: readPem(paths.cert, 'TLS_CERT_DIR'),
-		key: readPem(paths.key, 'TLS_CERT_DIR'),
-		paths,
-	};
+	// The implicit shared directory is waited on, not failed on: throwing here
+	// would crash-loop the whole MTA, outbound delivery included, over a cert
+	// the publisher is still in the middle of writing.
+	try {
+		return {
+			cert: readPem(paths.cert, 'TLS_CERT_DIR'),
+			key: readPem(paths.key, 'TLS_CERT_DIR'),
+			paths,
+		};
+	} catch (err) {
+		return { paths, unavailable: err instanceof Error ? err.message : String(err) };
+	}
 }
