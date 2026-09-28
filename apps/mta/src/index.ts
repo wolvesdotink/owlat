@@ -18,6 +18,7 @@ import {
 	startSubmissionServer,
 } from './smtp/submissionServer.js';
 import { initializePools } from './scaling/ipPool.js';
+import { logNatSourceAddresses } from './smtp/sourceAddress.js';
 import { refreshOutboundIdentity } from './scaling/outboundIdentityRefresh.js';
 import { flushPendingIpReadinessAlerts } from './scaling/ipReadinessAlerts.js';
 import { startDnsblChecker } from './intelligence/dnsbl.js';
@@ -66,6 +67,9 @@ export async function main() {
 		},
 		'Configuration loaded'
 	);
+	// Advisory only: a NATed install keeps sending, but the operator must learn
+	// here, not from misattributed reputation, that its pools share one address.
+	logNatSourceAddresses([...config.ipPools.transactional, ...config.ipPools.campaign], logger);
 
 	// ── 1b. Set org rate limit defaults ──
 	orgLimits.setDefaults(config.orgLimits.defaultDailyLimit, config.orgLimits.defaultHourlyLimit);

@@ -62,6 +62,13 @@ describe('probeSmtpReachability', () => {
 			port: 25,
 			timeoutMs: 5_000,
 		});
+		// The connect proves port 25, not the translated source: say so on the wire.
+		expect(result.ips[0]).toMatchObject({ ip: '8.8.4.4', status: 'ok', sourceBinding: 'nat' });
+	});
+
+	it('reports a bound source for an address the MTA binds itself', async () => {
+		const result = await probeSmtpReachability(['203.0.113.10'], deps());
+		expect(result.ips[0]).toMatchObject({ status: 'ok', sourceBinding: 'bound' });
 	});
 
 	it('fails same-family pool IPs that NAT onto one shared egress address', async () => {
@@ -72,9 +79,19 @@ describe('probeSmtpReachability', () => {
 
 		expect(result.status).toBe('degraded');
 		expect(result.ips).toEqual([
-			expect.objectContaining({ ip: '8.8.4.4', status: 'failed', reason: 'shared_nat_egress' }),
-			expect.objectContaining({ ip: '8.8.8.8', status: 'failed', reason: 'shared_nat_egress' }),
-			expect.objectContaining({ ip: '203.0.113.10', status: 'ok' }),
+			expect.objectContaining({
+				ip: '8.8.4.4',
+				status: 'failed',
+				reason: 'shared_nat_egress',
+				sourceBinding: 'nat',
+			}),
+			expect.objectContaining({
+				ip: '8.8.8.8',
+				status: 'failed',
+				reason: 'shared_nat_egress',
+				sourceBinding: 'nat',
+			}),
+			expect.objectContaining({ ip: '203.0.113.10', status: 'ok', sourceBinding: 'bound' }),
 		]);
 		expect(d.connect).toHaveBeenCalledTimes(1);
 	});

@@ -1,6 +1,11 @@
 import type { networkInterfaces } from 'node:os';
-import { describe, expect, it } from 'vitest';
-import { isGlobalAddress, resolveSourceAddress } from '../sourceAddress.js';
+import { describe, expect, it, vi } from 'vitest';
+import {
+	isGlobalAddress,
+	logNatSourceAddresses,
+	resolveSourceAddress,
+	sharedNatEgressIps,
+} from '../sourceAddress.js';
 
 type Interfaces = ReturnType<typeof networkInterfaces>;
 
@@ -62,7 +67,8 @@ describe('resolveSourceAddress', () => {
 
 	it('keeps binding (and failing loudly) when the host owns a different public address', () => {
 		// A typo or a not-yet-assigned IP on a host-networked box must not silently
-		// leave from the host's primary address instead.
+		// leave from the host's primary address instead. Behind NAT the MTA cannot
+		// tell the two apart; see the module comment.
 		expect(resolveSourceAddress('8.8.8.8', HOST_NETWORK)).toBe('8.8.8.8');
 	});
 
@@ -79,5 +85,61 @@ describe('resolveSourceAddress', () => {
 	it('always binds private and documentation addresses as configured', () => {
 		expect(resolveSourceAddress('10.0.0.1', DOCKER_BRIDGE)).toBe('10.0.0.1');
 		expect(resolveSourceAddress('203.0.113.10', DOCKER_BRIDGE)).toBe('203.0.113.10');
+	});
+});
+
+describe('sharedNatEgressIps', () => {
+	const behindNat = (ip: string) => resolveSourceAddress(ip, DOCKER_BRIDGE);
+
+	it('names every public IPv4 pool IP when two or more sit behind one NAT', () => {
+		expect(sharedNatEgressIps(['8.8.4.4', '8.8.8.8', '8.8.4.4'], behindNat)).toEqual([
+			'8.8.4.4',
+			'8.8.8.8',
+		]);
+	});
+
+	it('does not flag a single NATed IP or addresses that are bound', () => {
+		expect(sharedNatEgressIps(['8.8.4.4', '2a01:4f8::2', '10.0.0.1'], behindNat)).toEqual([]);
+		expect(
+			sharedNatEgressIps(['8.8.4.4', '8.8.8.8'], (ip) => resolveSourceAddress(ip, HOST_NETWORK))
+		).toEqual([]);
+	});
+});
+
+describe('logNatSourceAddresses', () => {
+	function capture() {
+		return { warn: vi.fn(), info: vi.fn() };
+	}
+
+	it('warns loudly at boot when pool IPs collapse onto one NAT egress address', () => {
+		const log = capture();
+		logNatSourceAddresses(['8.8.4.4', '8.8.8.8'], log, (ip) =>
+			resolveSourceAddress(ip, DOCKER_BRIDGE)
+		);
+		expect(log.warn).toHaveBeenCalledTimes(1);
+		const [details, message] = log.warn.mock.calls[0]!;
+		expect(details).toEqual({ ips: ['8.8.4.4', '8.8.8.8'] });
+		expect(message).toContain('share one NAT egress address');
+		expect(message).toContain('host networking');
+		expect(message).toContain('Delivery continues');
+		expect(log.info).not.toHaveBeenCalled();
+	});
+
+	it('notes, without warning, that a single NATed IP cannot be confirmed from inside', () => {
+		const log = capture();
+		logNatSourceAddresses(['8.8.4.4', '2a01:4f8::2'], log, (ip) =>
+			resolveSourceAddress(ip, DOCKER_BRIDGE)
+		);
+		expect(log.warn).not.toHaveBeenCalled();
+		expect(log.info).toHaveBeenCalledWith({ ips: ['8.8.4.4'] }, expect.stringContaining('NAT'));
+	});
+
+	it('stays quiet when every IP is bound', () => {
+		const log = capture();
+		logNatSourceAddresses(['8.8.4.4', '2a01:4f8::1'], log, (ip) =>
+			resolveSourceAddress(ip, HOST_NETWORK)
+		);
+		expect(log.warn).not.toHaveBeenCalled();
+		expect(log.info).not.toHaveBeenCalled();
 	});
 });
