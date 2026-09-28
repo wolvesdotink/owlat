@@ -4,11 +4,13 @@ import {
 	abTestConfigValidator,
 	linkClickValidator,
 	campaignStatusValidator,
-	abVariantValidator,
-	bounceTypeValidator,
 } from '../lib/convexValidators';
 import { audienceValidator } from '../campaigns/audience';
-import { sendStatusValidator } from '../lib/literalValidators';
+import {
+	sendStatusValidator,
+	abVariantValidator,
+	bounceTypeValidator,
+} from '../lib/literalValidators';
 
 /**
  * Campaign send job — the checkpoint row for one large-audience send walk

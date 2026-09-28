@@ -1,7 +1,7 @@
 /**
  * Pieces shared by the `mail/mailbox/*` modules — the sharing-model read
- * (`mailboxScope`), the system-folder catalog (written at provision time by
- * `identity.provisionMailbox`, read back as a `role` filter by the read views)
+ * (`mailboxScope`), the system-folder names (written at provision time by
+ * `identity.provisionMailbox`; the roles live in `lib/validators/mail.ts`)
  * and the soft-auth session read the anonymous-tolerant `publicQuery` handlers
  * use.
  *
@@ -11,7 +11,7 @@
  */
 
 import type { Doc } from '../../_generated/dataModel';
-import { literalUnion } from '../../lib/literalUnion';
+import type { FolderRole } from '../../lib/validators/mail';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
 
 /** A mailbox's sharing model; see `mailboxes.scope` in schema/mailboxes.ts. */
@@ -27,16 +27,7 @@ export function mailboxScope(mailbox: Pick<Doc<'mailboxes'>, 'scope'>): MailboxS
 	return mailbox.scope ?? 'personal';
 }
 
-/**
- * The six folders every mailbox is provisioned with. Also the accepted
- * `folderRole` values on the read views (`queries.listMessages`,
- * `queries.listThreads`, `search.search`).
- */
-export const SYSTEM_FOLDER_ROLES = ['inbox', 'sent', 'drafts', 'trash', 'spam', 'archive'] as const;
-export type FolderRole = (typeof SYSTEM_FOLDER_ROLES)[number];
-/** The same six roles as a Convex validator, for `mailFolders.role` and the folder-scoped args. */
-export const folderRoleValidator = literalUnion(SYSTEM_FOLDER_ROLES);
-
+/** The IMAP name each system folder role (`lib/validators/mail.ts`) is provisioned with. */
 export const SYSTEM_FOLDER_NAMES: Record<FolderRole, string> = {
 	inbox: 'INBOX',
 	sent: 'Sent',

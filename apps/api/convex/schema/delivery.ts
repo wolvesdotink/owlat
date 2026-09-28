@@ -2,20 +2,22 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { returnPathTables } from './returnPath';
 import {
-	authResultValidator,
-	bounceTypeValidator,
 	contentScanFlagValidator,
 	deliverabilityStatusValidator,
 	messageTypeValidator,
 } from '../lib/convexValidators';
-import { ipReadinessFieldValidators, warmingPoolsValidator } from '../delivery/readinessValidators';
+import { ipReadinessFieldValidators, warmingPoolsValidator } from '../lib/validators/readiness';
 import { deliverabilityRoutingTables } from './deliverabilityRouting';
 import {
 	deliverabilityAlertRecipientStatusValidator,
 	deliverabilityAlertRecipientUnavailableReasonValidator,
 	deliverabilityCheckIdSchemaValidator,
-} from './deliveryChecklistValidators';
-import { healthStatusValidator } from '../lib/literalValidators';
+} from '../lib/validators/deliveryChecklist';
+import {
+	healthStatusValidator,
+	authResultValidator,
+	bounceTypeValidator,
+} from '../lib/literalValidators';
 
 /**
  * Delivery + sending-infrastructure tables — blocklist, reputation tracking, content scanning,

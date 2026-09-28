@@ -1,7 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { detectionSourceValidator, messageDirectionValidator } from '../lib/convexValidators';
-import { editAdjustmentValidator } from '../mail/ai/editLearningValidators';
+import { detectionSourceValidator, messageDirectionValidator } from '../lib/literalValidators';
+import { editAdjustmentValidator } from '../lib/validators/editLearning';
 
 /**
  * AI features over the mailbox: learned voice profiles, extracted

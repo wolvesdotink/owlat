@@ -1,4 +1,4 @@
-import { literalUnion } from '../lib/literalUnion';
+import { literalUnion } from '../literalUnion';
 import {
 	DELIVERABILITY_ALERT_RECIPIENT_STATUSES,
 	DELIVERABILITY_ALERT_RECIPIENT_UNAVAILABLE_REASONS,

@@ -43,7 +43,7 @@ import {
 	decisionProviderKindValidator,
 	embeddingProviderKindValidator,
 	languageProviderKindValidator,
-} from './lib/aiProviderConfigValidators';
+} from './lib/validators/aiProviderConfig';
 
 /** Which plane a test / discovery call is about. Absent ⇒ `language`, as before. */
 const planeValidator = v.optional(v.union(v.literal('language'), v.literal('decision')));

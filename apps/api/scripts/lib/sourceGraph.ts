@@ -93,6 +93,31 @@ export function sourceMap(root: string, files: readonly string[]): Map<string, s
 export const IMPORT_DECLARATION = /^import\s+(?!type\b)([\s\S]*?)\s*from\s*'([^']+)';/gm;
 
 /**
+ * Every declaration that loads another module at runtime:
+ * `import <clause> from`, a side-effect `import '<specifier>'` and a
+ * re-export `export <clause> from`. `import type` / `export type` are
+ * erased by the compiler; so is a clause whose every specifier is an
+ * inline `type` (`import { type A } from`).
+ */
+const VALUE_EDGE = /^(import|export)\s+(?:(?!type\b)([^;'"]*?)\s*from\s*)?['"]([^'"]+)['"]\s*;?/gm;
+
+/** The specifiers `source` (comments already stripped) loads at runtime, in order. */
+export function valueImportSpecifiers(source: string): string[] {
+	const specifiers: string[] = [];
+	for (const match of source.matchAll(VALUE_EDGE)) {
+		const [, keyword, clause, specifier] = match;
+		if (specifier === undefined) continue;
+		if (clause === undefined) {
+			// `import 'x'` loads x; a bare `export 'x'` is not a declaration.
+			if (keyword === 'import') specifiers.push(specifier);
+			continue;
+		}
+		if (clause.startsWith('*') || boundNames(clause).length > 0) specifiers.push(specifier);
+	}
+	return specifiers;
+}
+
+/**
  * The names an import or export clause binds, both sides of an `as` kept
  * (`{ a as b }` yields `a` and `b`), and inline `type` specifiers dropped.
  */

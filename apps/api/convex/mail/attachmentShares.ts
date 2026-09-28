@@ -42,7 +42,7 @@ import { postboxQuery, postboxMutation } from './_helpers';
 import {
 	mailAttachmentShareScanValidator,
 	mailAttachmentShareScopeValidator,
-} from '../lib/mailContentValidators';
+} from '../lib/validators/mailContent';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { getOptional } from '../lib/env';
 import { logError } from '../lib/runtimeLog';

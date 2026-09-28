@@ -1,6 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { languageEndpointProvenanceValidator } from '../lib/aiProviderConfigValidators';
+import { languageEndpointProvenanceValidator } from '../lib/validators/aiProviderConfig';
 
 /** Host-mediated plugin data; Tier-1 component tables remain component-local. */
 export const pluginTables = {

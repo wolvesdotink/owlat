@@ -15,7 +15,8 @@ import { publicQuery } from '../../lib/authedFunctions';
 import type { QueryCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { loadAccessibleMailboxes, loadReadableMailbox } from '../permissions';
-import { readSession, type FolderRole } from './shared';
+import { readSession } from './shared';
+import type { FolderRole } from '../../lib/validators/mail';
 import { resolveBodySearchMode, textSearchQuery } from '../searchBody';
 import { openMailMessageRows } from '../../lib/messageBody';
 import {

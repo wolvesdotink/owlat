@@ -6,7 +6,7 @@ import {
 	mailAttachmentShareScopeValidator,
 	mailDraftAttachmentValidator,
 	mailSnippetVariableValidator,
-} from '../lib/mailContentValidators';
+} from '../lib/validators/mailContent';
 
 /**
  * Composing and attachments: drafts, attachment rows and their

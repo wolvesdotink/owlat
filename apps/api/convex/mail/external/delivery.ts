@@ -22,7 +22,7 @@ import { v } from 'convex/values';
 import {
 	mailMessageAttachmentValidator,
 	mailUnsubscribeValidator,
-} from '../../lib/mailContentValidators';
+} from '../../lib/validators/mailContent';
 import {
 	internalAction,
 	internalMutation,
@@ -40,7 +40,7 @@ import { splitBodyForStorage } from '../deliveryPipeline/ingest';
 import { base64ToBytes } from '../../lib/bytes';
 import { canonicalMessageId } from '../../lib/messageId';
 import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
-import { folderRoleValidator } from '../mailbox/shared';
+import { folderRoleValidator } from '../../lib/validators/mail';
 
 /**
  * What one ingest did, so the worker can tell the three apart.

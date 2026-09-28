@@ -14,13 +14,14 @@ import { mailCategoryLabelValidator } from '../../lib/literalValidators';
 import { v, type Infer } from 'convex/values';
 import type { QueryCtx } from '../../_generated/server';
 import { publicQuery } from '../../lib/authedFunctions';
-import { mailSortOrderValidator } from '../../lib/mailSettingsValidators';
+import { mailSortOrderValidator } from '../../lib/validators/mailSettings';
 import type { Id, Doc } from '../../_generated/dataModel';
 import { loadReadableMailbox, loadAccessibleMailboxes } from '../permissions';
 import { isMessageSnoozed } from '../../lib/mailSnooze';
 import { openMailMessageRow } from '../../lib/messageBody';
 import { isThreadMuted } from '../../lib/mailMute';
-import { readSession, type FolderRole } from './shared';
+import { readSession } from './shared';
+import type { FolderRole } from '../../lib/validators/mail';
 import { batchGet } from '../../_utils/batchLoader';
 
 /**

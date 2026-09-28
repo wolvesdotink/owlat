@@ -48,7 +48,7 @@ import type { RampControlRefusal } from './rampControls';
 import {
 	deliverabilityStreamValidator,
 	destinationProviderValidator,
-} from './deliverabilityValidators';
+} from '../lib/validators/deliverability';
 
 /**
  * What the promotion rule concluded. A discriminated union rather than a

@@ -12,7 +12,7 @@ import {
 	STRING_LIMITS,
 	safeDecodeURIComponent,
 } from '../lib/inputGuards';
-import type { ContactSource } from './resolution';
+import type { ContactSource } from '../lib/validators/contacts';
 
 // Type for the action context
 interface ActionContext {

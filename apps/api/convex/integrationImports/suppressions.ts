@@ -55,7 +55,7 @@ import {
 	ZERO_SUPPRESSION_COUNTS,
 	type SuppressionImportCounts,
 } from './_common';
-import { bounceTypeValidator } from '../lib/convexValidators';
+import { bounceTypeValidator } from '../lib/literalValidators';
 
 // ─── Apply one page ─────────────────────────────────────────────────────────
 

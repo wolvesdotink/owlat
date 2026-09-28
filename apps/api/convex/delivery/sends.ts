@@ -4,7 +4,7 @@ import { authedQuery } from '../lib/authedFunctions';
 import type { Id } from '../_generated/dataModel';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
-import { abVariantValidator } from '../lib/convexValidators';
+import { abVariantValidator } from '../lib/literalValidators';
 
 // Get a single email send by ID
 export const get = authedQuery({

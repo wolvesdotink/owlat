@@ -26,7 +26,7 @@ import {
 	takeLiveSeedAccounts,
 } from './accountShared';
 import { stopExternalAccountSync } from './accountTeardown';
-import { destinationProviderValidator } from '../../delivery/deliverabilityValidators';
+import { destinationProviderValidator } from '../../lib/validators/deliverability';
 import { recordAuditLog } from '../../lib/auditLog';
 import { SEED_ACCOUNTS_PER_ORG_LIMIT } from '@owlat/shared/seedPlacement';
 import { throwInvalidInput, throwAlreadyExists, throwNotFound } from '../../_utils/errors';

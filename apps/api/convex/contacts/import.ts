@@ -1,11 +1,9 @@
 /**
- * Contact import (module) — batch contact ingestion composing every
- * already-deepened sub-module: **Contact resolution (module)**,
- * **Topic subscription (module)**, contact activities, DOI lifecycle's
- * admin-attest edge, and `incrementContactCount`. The single writer for
- * `contactPropertyValues` rows produced at import time, and the single
- * place that auto-registers `contactProperties` rows from integration-
- * driven imports.
+ * Contact import (module) — batch contact ingestion composing every already-deepened
+ * sub-module: **Contact resolution (module)**, **Topic subscription (module)**, contact
+ * activities, DOI lifecycle's admin-attest edge, and `incrementContactCount`. The single
+ * writer for `contactPropertyValues` rows produced at import time, and the single place
+ * that auto-registers `contactProperties` rows from integration-driven imports.
  *
  * Two thin shells dispatch to `importBatch`:
  *   - `contacts/contacts.ts:importBatch`  — web UI CSV upload (session + contacts:manage)
@@ -37,7 +35,8 @@ import { deduplicateContactsByEmail } from '../lib/contactHelpers';
 import { incrementContactCount } from '../lib/contactCountHelpers';
 import { isValidEmail, normalizeEmail, STRING_LIMITS } from '../lib/inputGuards';
 import { recordContactActivity } from '../contactActivities/writer';
-import { jsonPrimitiveValue, duplicateHandlingValidator } from '../lib/convexValidators';
+import { jsonPrimitiveValue } from '../lib/convexValidators';
+import { duplicateHandlingValidator } from '../lib/literalValidators';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

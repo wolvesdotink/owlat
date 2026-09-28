@@ -2,15 +2,15 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import {
 	securityFlagsValidator,
-	classificationValidator,
 	contextCoverageValidator,
 	draftQualityValidator,
 	groundingSourceValidator,
 	agentDecisionValidator,
 	tokenUsageValidator,
 } from '../lib/convexValidators';
-import { pendingClarificationValidator } from '../inbox/clarificationValidators';
-import { attachmentSuggestionsValidator } from '../inbox/attachmentValidators';
+import { classificationValidator } from '../lib/validators/classification';
+import { pendingClarificationValidator } from '../lib/validators/clarification';
+import { attachmentSuggestionsValidator } from '../lib/validators/attachment';
 import { agentStepKindValidator } from '../agent/steps/catalog';
 import { llmUsageTagFields } from '../lib/llmUsageTags';
 import {

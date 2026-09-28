@@ -10,7 +10,7 @@
 import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import type { OrganizationRole } from '../lib/sessionOrganization';
-import { widgetSizeValidator } from '../lib/convexValidators';
+import { widgetSizeValidator } from '../lib/literalValidators';
 
 // ============================================================
 // Default Card Definitions

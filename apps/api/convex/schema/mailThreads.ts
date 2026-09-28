@@ -1,8 +1,12 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { clarificationTranslationValidator } from '../inbox/clarificationValidators';
-import { detectionSourceValidator, draftQualityValidator } from '../lib/convexValidators';
-import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';
+import { clarificationTranslationValidator } from '../lib/validators/clarification';
+import { draftQualityValidator } from '../lib/convexValidators';
+import {
+	mailCategoryLabelValidator,
+	mailCategorySourceValidator,
+	detectionSourceValidator,
+} from '../lib/literalValidators';
 
 /**
  * Thread rollups, labels and saved searches — the list-view surface.
@@ -115,7 +119,7 @@ export const mailThreadsTables = {
 								// choice); absent for a free-text-only slot.
 								options: v.optional(v.array(v.string())),
 								// Per-locale renderings of text + options (see
-								// inbox/clarificationValidators.ts). Absent when localization
+								// lib/validators/clarification.ts). Absent when localization
 								// failed; the card then shows the canonical English copy.
 								translations: v.optional(v.array(clarificationTranslationValidator)),
 								// The owner's answer — absent until answered.

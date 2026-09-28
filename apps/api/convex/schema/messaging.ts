@@ -1,7 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { unifiedMessageChannelValidator, messageDirectionValidator } from '../lib/convexValidators';
-import { healthStatusValidator } from '../lib/literalValidators';
+import { unifiedMessageChannelValidator } from '../lib/convexValidators';
+import { healthStatusValidator, messageDirectionValidator } from '../lib/literalValidators';
 
 /**
  * Multi-channel messaging tables — unified inbox for all channels + per-channel config.

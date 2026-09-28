@@ -5,9 +5,8 @@ import {
 	dataVariablesSchemaValidator,
 	jsonPrimitiveRecord,
 	emailTemplateTypeValidator,
-	bounceTypeValidator,
 } from '../lib/convexValidators';
-import { sendStatusValidator } from '../lib/literalValidators';
+import { sendStatusValidator, bounceTypeValidator } from '../lib/literalValidators';
 
 /**
  * Email template + send tables — media assets, marketing/transactional templates,

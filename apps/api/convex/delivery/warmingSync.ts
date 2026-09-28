@@ -5,7 +5,7 @@ import { getOptional } from '../lib/env';
 import { normalizeIpReputationPayload } from '@owlat/mta-protocol/ipReputation';
 import { normalizeDeliverabilityRoutingSnapshot } from '@owlat/shared/deliverabilityRouting';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from './deliverabilityRouting';
-import { ipReadinessFieldValidators, warmingPoolsValidator } from './readinessValidators';
+import { ipReadinessFieldValidators, warmingPoolsValidator } from '../lib/validators/readiness';
 import { logError, logWarn } from '../lib/runtimeLog';
 
 /**

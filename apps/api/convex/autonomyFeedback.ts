@@ -20,7 +20,7 @@ import type { Doc } from './_generated/dataModel';
 import { adminQuery } from './lib/authedFunctions';
 import { internal } from './_generated/api';
 import { getCategoryRule } from './lib/autonomyRules';
-import { reviewActionValidator } from './lib/convexValidators';
+import { reviewActionValidator } from './lib/literalValidators';
 
 // ============================================================
 // Feedback readers

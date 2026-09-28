@@ -10,7 +10,7 @@ import {
 	decisionProviderKindValidator,
 	embeddingProviderKindValidator,
 	languageProviderKindValidator,
-} from '../lib/aiProviderConfigValidators';
+} from '../lib/validators/aiProviderConfig';
 import {
 	desktopReleaseLineValidator,
 	desktopUpdateChannelValidator,

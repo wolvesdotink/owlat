@@ -20,31 +20,7 @@ export const deliverabilityStatusValidator = literalUnion(DELIVERABILITY_CHECKLI
 export const receivingModeValidator = literalUnion(DOMAIN_RECEIVING_MODES);
 export const externalReceivingProviderValidator = literalUnion(EXTERNAL_RECEIVING_PROVIDER_IDS);
 
-// Two-to-three literal unions that several tables and function args share.
-export const completedOrFailedValidator = v.union(v.literal('completed'), v.literal('failed'));
-export const abVariantValidator = v.union(v.literal('A'), v.literal('B'));
-export const bounceTypeValidator = v.union(v.literal('hard'), v.literal('soft'));
-/** SPF / DKIM / DMARC result on an inbound probe; `unknown` is "not evaluated". */
-export const authResultValidator = v.union(
-	v.literal('pass'),
-	v.literal('fail'),
-	v.literal('unknown')
-);
-export const transportArmValidator = v.union(v.literal('own'), v.literal('reference'));
-export const mailAppPasswordScopeValidator = v.union(v.literal('imap'), v.literal('smtp'));
-export const reviewActionValidator = v.union(
-	v.literal('approved'),
-	v.literal('rejected'),
-	v.literal('edited')
-);
-export const widgetSizeValidator = v.union(
-	v.literal('small'),
-	v.literal('medium'),
-	v.literal('large')
-);
-export const duplicateHandlingValidator = v.union(v.literal('skip'), v.literal('update'));
-export const messageDirectionValidator = v.union(v.literal('inbound'), v.literal('outbound'));
-export const detectionSourceValidator = v.union(v.literal('heuristic'), v.literal('llm'));
+// Closed unions with no composite shape live in ./literalValidators.ts.
 
 // Unified-message channel union shared by stored rows and function arguments.
 /**
@@ -331,16 +307,9 @@ export const emailTemplateTypeValidator = v.union(
 	v.literal('transactional')
 );
 
-// Mail CONTENT validators (attachment metadata, List-Unsubscribe, triage verbs,
-// snippet variables, draft attachments, share-link scope/scan) live in the
-// sibling lib/mailContentValidators.ts, alongside the mail SETTINGS validators
-// in lib/mailSettingsValidators.ts, to keep this shared module under the
-// ~500 LOC file-size ratchet.
-
-// Edit-learning flywheel validators (`editDeltaKindValidator`,
-// `editAdjustmentValidator`) live in the feature-local sibling
-// mail/ai/editLearningValidators.ts to keep this shared module under the
-// file-size cap.
+// Domain validators (mail content and settings, classification, clarification,
+// edit learning, deliverability, ...) live in lib/validators/<domain>.ts; see
+// CONVENTIONS.md, "Validators".
 
 // LLM call accounting (agentActions.tokenUsage and similar)
 export const tokenUsageValidator = v.object({
@@ -389,10 +358,6 @@ export const securityFlagsValidator = v.object({
 	scanTimestamp: v.number(),
 });
 
-// Agent classification output (inboundMessages.classification)
-// Moved to ./classificationValidator.ts (file-size ratchet); re-exported here.
-export { classificationValidator } from './classificationValidator';
-
 // Retrieval coverage / grounding signal (inboundMessages.contextCoverage).
 // Emitted by the `context_retrieval` Agent step — a CHEAP, ADVISORY summary of
 // which briefing legs were populated so the (future) clarify step and the
@@ -434,11 +399,6 @@ export const draftQualityValidator = v.object({
 	// "asserts a refund policy not in context"). Empty when clean.
 	flags: v.array(v.string()),
 });
-
-// Clarification-loop validators (clarificationQuestionValidator /
-// pendingClarificationValidator) live in `../inbox/clarificationValidators.ts`,
-// co-located with the `answerClarification` mutation — kept out of this shared
-// module so it stays under the ~500 LOC file-size ratchet.
 
 // Grounding source (inboundMessages.groundingSources array entry).
 // Emitted by the `context_retrieval` Agent step: the prior emails + knowledge

@@ -17,6 +17,7 @@ import {
 	sourceMap,
 	stripComments,
 	valueExports,
+	valueImportSpecifiers,
 } from '../../apps/api/scripts/lib/sourceGraph';
 
 const roots: string[] = [];
@@ -151,6 +152,44 @@ describe('boundNames and valueExports', () => {
 			'export type Seven = string;',
 		].join('\n');
 		expect([...valueExports(source)].sort()).toEqual(['Three', 'five', 'four', 'one', 'two']);
+	});
+});
+
+describe('valueImportSpecifiers', () => {
+	it('lists every declaration that loads a module at runtime, in order', () => {
+		const source = [
+			"import { a } from './a';",
+			"import b, { type B } from './b';",
+			"import * as c from './c';",
+			"import './d';",
+			"export { e } from './e';",
+			"export * from './f';",
+			'import {',
+			'\tg,',
+			'\th,',
+			"} from '@owlat/shared';",
+		].join('\n');
+		expect(valueImportSpecifiers(source)).toEqual([
+			'./a',
+			'./b',
+			'./c',
+			'./d',
+			'./e',
+			'./f',
+			'@owlat/shared',
+		]);
+	});
+
+	it('skips what the compiler erases', () => {
+		const source = [
+			"import type { A } from './a';",
+			"import { type B, type C as D } from './b';",
+			"export type { E } from './e';",
+			"export { type F } from './f';",
+			"export const g = 'from';",
+			"const h = 'x'; // import { i } from './i';",
+		].join('\n');
+		expect(valueImportSpecifiers(stripComments(source))).toEqual([]);
 	});
 });
 

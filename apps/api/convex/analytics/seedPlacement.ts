@@ -73,7 +73,7 @@ import {
 	seedProbeEvidence,
 	type SeedPlacementSweepIndex,
 } from './seedPlacementSweeps';
-import { transportArmValidator } from '../lib/convexValidators';
+import { transportArmValidator } from '../lib/literalValidators';
 
 /** Rolling window the roll-up reads. Short enough that a collapse shows up fast. */
 export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;

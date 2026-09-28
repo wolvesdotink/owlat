@@ -9,7 +9,7 @@ import { requireOrgPermission } from '../lib/sessionOrganization';
 import { buildSearchableText } from '../lib/queryHelpers';
 import { listResources, countFacet } from '../lib/listing';
 import { contactListing, redactContactCapabilityFields } from './listing';
-import { contactCreateSourceValidator } from './resolution';
+import { contactCreateSourceValidator } from '../lib/validators/contacts';
 import { reconcileContactCount } from '../lib/contactCountHelpers';
 import { softDeleteContact } from '../lib/contactMutations';
 import { eraseContactNow } from './erasure/walker';
@@ -19,7 +19,7 @@ import { trackEvent } from '../lib/posthogHelpers';
 import { validateStringLength, normalizeEmail, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwNotFound, throwAlreadyExists, throwInvalidInput } from '../_utils/errors';
 import { createContact } from './creation';
-import { duplicateHandlingValidator } from '../lib/convexValidators';
+import { duplicateHandlingValidator } from '../lib/literalValidators';
 import { batchGet } from '../_utils/batchLoader';
 
 // Query to get a single contact by ID (session-authenticated client callers).

@@ -2,7 +2,7 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { activityMetadataValidator, segmentFiltersValidator } from '../lib/convexValidators';
 import { contactActivityTypeValidator } from '../contactActivities/catalog';
-import { contactSourceValidator } from '../contacts/resolution';
+import { contactSourceValidator } from '../lib/validators/contacts';
 import { fieldTypeValidator } from '../lib/literalValidators';
 
 /**

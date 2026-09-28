@@ -8,7 +8,7 @@
 import { v, type Infer } from 'convex/values';
 import type { Id } from '../../../_generated/dataModel';
 import type { WebhookEventModule } from '../../types';
-import { contactSourceValidator } from '../../../contacts/resolution';
+import { contactSourceValidator } from '../../../lib/validators/contacts';
 
 const schema = v.object({
 	contactId: v.string(),

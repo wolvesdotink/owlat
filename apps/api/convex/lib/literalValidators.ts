@@ -11,6 +11,32 @@ import { literalUnion } from './literalUnion';
 import type { Infer } from 'convex/values';
 import { INBOUND_RAW_RETENTION_DAY_CHOICES } from '@owlat/shared/inboundRetention';
 
+// Two-to-three member unions that several tables and function args share.
+export const completedOrFailedValidator = v.union(v.literal('completed'), v.literal('failed'));
+export const abVariantValidator = v.union(v.literal('A'), v.literal('B'));
+export const bounceTypeValidator = v.union(v.literal('hard'), v.literal('soft'));
+/** SPF / DKIM / DMARC result on an inbound probe; `unknown` is "not evaluated". */
+export const authResultValidator = v.union(
+	v.literal('pass'),
+	v.literal('fail'),
+	v.literal('unknown')
+);
+export const transportArmValidator = v.union(v.literal('own'), v.literal('reference'));
+export const mailAppPasswordScopeValidator = v.union(v.literal('imap'), v.literal('smtp'));
+export const reviewActionValidator = v.union(
+	v.literal('approved'),
+	v.literal('rejected'),
+	v.literal('edited')
+);
+export const widgetSizeValidator = v.union(
+	v.literal('small'),
+	v.literal('medium'),
+	v.literal('large')
+);
+export const duplicateHandlingValidator = v.union(v.literal('skip'), v.literal('update'));
+export const messageDirectionValidator = v.union(v.literal('inbound'), v.literal('outbound'));
+export const detectionSourceValidator = v.union(v.literal('heuristic'), v.literal('llm'));
+
 /** Outcome of a one-shot run (backup, system update). */
 export const successOrFailedValidator = v.union(v.literal('success'), v.literal('failed'));
 

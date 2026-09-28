@@ -30,7 +30,7 @@ import { recordSendAssignments } from './sendAssignments';
 import { normalizeEngagementScore } from './workerEnvelope';
 import { enqueueSeedShadowCopies, type CampaignEnvelopeInput } from './seedShadowCopy';
 import { logError } from '../lib/runtimeLog';
-import { abVariantValidator } from '../lib/convexValidators';
+import { abVariantValidator } from '../lib/literalValidators';
 
 /**
  * One element of `enqueueCampaignEmails.emails` — the per-recipient slice of a

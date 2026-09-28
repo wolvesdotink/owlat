@@ -2,8 +2,8 @@
  * Inbound clarification-loop mutation.
  *
  * Split out of `inbox/mutations.ts` to keep that file under the ~500 LOC
- * file-size ratchet (CONVENTIONS.md — split into domain siblings). Co-located
- * with the clarification validators (`./clarificationValidators.ts`).
+ * file-size ratchet (CONVENTIONS.md — split into domain siblings). Its
+ * validators live in `lib/validators/clarification.ts`.
  */
 
 import { v } from 'convex/values';

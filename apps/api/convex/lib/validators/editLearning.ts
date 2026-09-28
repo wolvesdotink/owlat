@@ -1,9 +1,7 @@
 import { v } from 'convex/values';
 
 // Edit-learning flywheel validators — the recurring draft→sent deltas the user
-// makes to AI drafts, classified into a small fixed vocabulary. These live in a
-// feature-local sibling of mail/ai/editLearning.ts (rather than the shared
-// lib/convexValidators.ts) so the shared module stays under the file-size cap.
+// makes to AI drafts, classified into a small fixed vocabulary.
 // See mail/ai/editLearning.ts for the engine and schema/mail.ts for the tables.
 
 export const editDeltaKindValidator = v.union(

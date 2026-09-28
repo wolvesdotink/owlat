@@ -1,6 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { reviewActionValidator } from '../lib/convexValidators';
+import { reviewActionValidator } from '../lib/literalValidators';
 
 /**
  * Autonomy / graduated-trust tables — the safety + graduation machinery that

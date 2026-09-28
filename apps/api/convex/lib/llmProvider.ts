@@ -64,7 +64,7 @@ import {
 	type ProviderClientConfig,
 	type ResolvedLanguageModel,
 } from './llmProviders';
-import type { StoredEmbeddingProviderKind } from './aiProviderConfigValidators';
+import type { StoredEmbeddingProviderKind } from './validators/aiProviderConfig';
 
 /**
  * Task types map to a model tier:

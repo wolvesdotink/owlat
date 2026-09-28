@@ -32,7 +32,7 @@ import { internalMutation, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { isBulkOrNoReplySender } from './needsReplyHeuristic';
 import { armThreadFollowUp, followUpWaitingOn } from './followUps';
-import { messageDirectionValidator, detectionSourceValidator } from '../lib/convexValidators';
+import { messageDirectionValidator, detectionSourceValidator } from '../lib/literalValidators';
 
 // ─── Pure helpers ────────────────────────────────────────────────────────────
 

@@ -611,6 +611,34 @@ with the 41 table definitions living in `schema/mailboxes.ts`,
 `schema/mailMessages.ts`, `schema/mailThreads.ts` and the rest. Put a new
 Postbox table in the sibling that owns its feature, not in `schema/mail.ts`.
 
+### Validators
+
+A validator that a table shares with the functions reading or writing it has
+one home, picked by its shape, not by which file has room:
+
+- `lib/literalValidators.ts`: closed literal unions (`bounceTypeValidator`,
+  `blockReasonValidator`, ...).
+- `lib/convexValidators.ts`: the cross-domain composites (objects, records)
+  and the unions derived from a shared catalog with `literalUnion`.
+- `lib/validators/<domain>.ts`: everything owned by one domain
+  (`mailContent`, `mailSettings`, `classification`, `deliverability`,
+  `contacts`, `mail`, ...). Add a new domain file here rather than a
+  `*Validators.ts` beside a feature.
+
+All three are leaves. A `lib/validators/` module may load only
+`convex/values`, `@owlat/*`, its siblings and the few leaf modules listed in
+`scripts/check-schema-imports.ts` (`lib/literalUnion.ts` and the AI-provider
+kind tuples). Never define a validator the schema needs inside a module that
+holds functions: the schema would load that module, and through it
+`_generated/api` or the BetterAuth session read.
+
+`bun run lint:schema-imports` (part of `bun run lint`) enforces this. It
+walks the value imports (`import type` is ignored) of `schema.ts` and
+`schema/*.ts` and fails when they reach `_generated/api`,
+`_generated/server` or `lib/sessionOrganization`, and it fails when a
+`lib/validators/` module loads anything outside its leaf set. The schema may
+still import leaf catalogs such as `auditActions/catalog`.
+
 ## Schema evolution (post-launch immutability)
 
 Self-hosted deployments update in place. The updater runs `convex deploy`

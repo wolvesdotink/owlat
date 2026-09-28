@@ -1,6 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { destinationProviderValidator } from '../delivery/deliverabilityValidators';
+import { destinationProviderValidator } from '../lib/validators/deliverability';
 import { archiveFormatValidator } from '../lib/literalValidators';
 
 /**

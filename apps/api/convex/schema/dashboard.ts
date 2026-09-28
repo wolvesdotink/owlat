@@ -1,6 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { widgetSizeValidator } from '../lib/convexValidators';
+import { widgetSizeValidator } from '../lib/literalValidators';
 
 /**
  * Dashboard tables — AI-generated visualizations + per-user adaptive layouts.

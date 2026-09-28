@@ -12,14 +12,14 @@
  * registry's `index.ts`, which reaches its Node-only adapter files.
  */
 
-import { literalUnion } from './literalUnion';
+import { literalUnion } from '../literalUnion';
 import {
 	EMBEDDING_PROVIDER_KINDS,
 	LANGUAGE_ENDPOINT_PROVENANCES,
 	LANGUAGE_PROVIDER_KINDS,
 	type EmbeddingProviderKind,
-} from './llmProviders/types';
-import { DECISION_PROVIDER_KINDS } from './decisionProviders/types';
+} from '../llmProviders/types';
+import { DECISION_PROVIDER_KINDS } from '../decisionProviders/types';
 
 /** Secret-free endpoint identity used by hard-budget admission accounting. */
 export const languageEndpointProvenanceValidator = literalUnion(LANGUAGE_ENDPOINT_PROVENANCES);
