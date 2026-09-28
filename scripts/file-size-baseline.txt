@@ -46,7 +46,6 @@ apps/web/app/pages/dashboard/audience/contacts/[id].vue
 apps/web/app/pages/dashboard/audience/contacts/index.vue
 apps/web/app/pages/dashboard/automations/[id]/edit.vue
 apps/web/app/pages/dashboard/automations/[id]/index.vue
-apps/web/app/pages/dashboard/automations/index.vue
 apps/web/app/pages/dashboard/campaigns/[id]/edit.vue
 apps/web/app/pages/dashboard/campaigns/[id]/report.vue
 apps/web/app/pages/dashboard/files/[id].vue

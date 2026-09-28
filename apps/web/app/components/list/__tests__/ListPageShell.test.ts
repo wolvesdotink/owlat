@@ -10,7 +10,8 @@
  *   - a grid-only list (`layout="grid"`) always mounts `#grid` and has no
  *     view toggle;
  *   - the delete dialog names the item, takes a page's extra line under its
- *     description, and routes confirm / cancel out.
+ *     description, routes confirm / cancel out, and holds confirm back while
+ *     the page blocks the delete (`deleteBlocked`).
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -99,6 +100,7 @@ const baseProps = {
 	deleteOpen: false,
 	deleteName: '',
 	isDeleting: false,
+	deleteBlocked: false,
 };
 
 function renderGlobal() {
@@ -288,6 +290,20 @@ describe('ListPageShell', () => {
 			expect(html.indexOf('This cannot be undone.')).toBeLessThan(
 				html.indexOf('data-testid="usage"')
 			);
+		});
+
+		it('holds confirm back while the delete is blocked, and still lets the user cancel', async () => {
+			const wrapper = render({ deleteOpen: true, deleteName: 'Welcome', deleteBlocked: true });
+			const dialog = wrapper.get('[role="dialog"]');
+			const confirm = dialog.findAll('button').find((b) => b.text() === 'Delete template');
+			expect(confirm!.attributes('disabled')).toBeDefined();
+			await confirm!.trigger('click');
+			expect(wrapper.emitted('confirm-delete')).toBeUndefined();
+
+			const cancel = dialog.findAll('button').find((b) => b.text() === 'Cancel');
+			expect(cancel!.attributes('disabled')).toBeUndefined();
+			await cancel!.trigger('click');
+			expect(wrapper.emitted('cancel-delete')).toHaveLength(1);
 		});
 
 		it('emits cancel from the Cancel button and the backdrop', async () => {

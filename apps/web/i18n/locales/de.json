@@ -8578,6 +8578,7 @@
 						"noEmail": "Keine E-Mail",
 						"previous": "Zurück",
 						"range": "{from}–{to}",
+						"statusFilterLabel": "Kontakte nach Status filtern",
 						"stepAndTime": "Schritt {number} · {time}",
 						"title": "Kontakte in der Automatisierung",
 						"viewContact": "Kontakt ansehen"
@@ -8597,14 +8598,12 @@
 					"viewDetails": "Details ansehen"
 				},
 				"adminsOnly": "Nur Inhaber und Administratoren können Automationen erstellen oder bearbeiten.",
-				"clearSearch": "Suche zurücksetzen",
 				"deleteDialog": {
 					"activeWarning": "Aktive Automationen müssen vor dem Löschen pausiert werden.",
 					"body": "Möchten Sie {name} wirklich löschen?",
 					"note": "Diese Aktion kann nicht rückgängig gemacht werden. Die Automation und alle ihre Schritte werden endgültig gelöscht.",
 					"title": "Automation löschen"
 				},
-				"deleting": "Wird gelöscht...",
 				"empty": {
 					"action": "Automation erstellen",
 					"description": "Erstellen Sie Ihre erste Automation, um automatisch E-Mails zu senden, wenn sich ein Kontakt registriert, etwas abonniert oder ein Ereignis auslöst.",
@@ -8631,6 +8630,7 @@
 					"draft": "Entwurf",
 					"paused": "Pausiert"
 				},
+				"statusFilterLabel": "Automationsstatus",
 				"subtitle": "Erstellen Sie automatisierte E-Mail-Workflows, die durch Ereignisse ausgelöst werden",
 				"table": {
 					"contactsInFlow": "Kontakte im Ablauf",

@@ -23,6 +23,8 @@ import { getFunctionName, type FunctionReference } from 'convex/server';
 import ListPageShell from '~/components/list/ListPageShell.vue';
 import BlockCard from '~/components/send/BlockCard.vue';
 import AudienceListTable from '~/components/audience/AudienceListTable.vue';
+import AutomationsListTable from '~/components/automations/ListTable.vue';
+import AutomationsRowActions from '~/components/automations/RowActions.vue';
 
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
@@ -150,7 +152,8 @@ const STUBS = {
 // be clobbered by the defaults. Pass it here instead and it lands last.
 async function mountPage(
 	loader: () => Promise<{ default: unknown }>,
-	overrides: Record<string, unknown> = {}
+	overrides: Record<string, unknown> = {},
+	extraStubs: Record<string, unknown> = {}
 ) {
 	stubNuxt();
 	for (const [name, value] of Object.entries(overrides)) vi.stubGlobal(name, value);
@@ -159,7 +162,7 @@ async function mountPage(
 		shallow: true,
 		global: {
 			plugins: [createTestI18n()],
-			stubs: STUBS,
+			stubs: { ...STUBS, ...extraStubs },
 			// Auto-imported formatters the TEMPLATES call: outside the Nuxt vite
 			// plugin they resolve through the instance proxy, not module scope.
 			mocks: { formatDate: (value: number) => new Date(value).toISOString().slice(0, 10) },
@@ -323,8 +326,23 @@ describe('blocks list', () => {
 });
 
 describe('automations list', () => {
+	// The rows and their actions render for real, menu items included, so the
+	// gate is asserted on what an editor can actually reach.
+	const automationStubs = {
+		AutomationsListTable,
+		AutomationsRowActions,
+		UiDropdownMenu: { template: '<div><slot name="trigger" /><slot /></div>' },
+		UiDropdownMenuItem: { template: '<button role="menuitem"><slot /></button>' },
+	};
+	const listQuery = {
+		useOrganizationPaginatedQuery: () => paginatedResult(AUTOMATIONS),
+		// Going back to the ungated query would reach this and fail the mount.
+		usePaginatedQuery: () => {
+			throw new Error('the automations list must read through useOrganizationPaginatedQuery');
+		},
+	};
+
 	beforeEach(() => {
-		vi.stubGlobal('usePaginatedQuery', () => paginatedResult(AUTOMATIONS));
 		vi.stubGlobal('useAutomation', () => ({}));
 		vi.stubGlobal('useAutomationBadges', () => ({
 			getStatusBadge: () => ({ color: '', icon: 'lucide:play', label: 'common.active' }),
@@ -337,21 +355,35 @@ describe('automations list', () => {
 		}));
 	});
 
-	it('offers edit and the action menu to an admin', async () => {
+	it('offers edit, pause and the action menu to an admin', async () => {
 		role.value = 'admin';
-		const wrapper = await mountPage(() => import('../automations/index.vue'));
+		const wrapper = await mountPage(
+			() => import('../automations/index.vue'),
+			listQuery,
+			automationStubs
+		);
 
 		expect(wrapper.find('button[title="Edit"]').exists()).toBe(true);
-		expect(wrapper.find('[data-dropdown]').exists()).toBe(true);
+		expect(wrapper.find('button[title="Pause"]').exists()).toBe(true);
+		expect(wrapper.find('button[title="More actions"]').exists()).toBe(true);
+		const menu = wrapper.findAll('[role="menuitem"]').map((item) => item.text());
+		expect(menu).toEqual(['View details', 'Edit', 'Duplicate', 'Pause']);
 		wrapper.unmount();
 	});
 
 	it('takes the write actions off an editor', async () => {
 		role.value = 'editor';
-		const wrapper = await mountPage(() => import('../automations/index.vue'));
+		const wrapper = await mountPage(
+			() => import('../automations/index.vue'),
+			listQuery,
+			automationStubs
+		);
 
 		expect(wrapper.find('button[title="Edit"]').exists()).toBe(false);
 		expect(wrapper.find('button[title="Pause"]').exists()).toBe(false);
+		// Reading the automation is not a write: the menu keeps "View details".
+		const menu = wrapper.findAll('[role="menuitem"]').map((item) => item.text());
+		expect(menu).toEqual(['View details']);
 		expect(wrapper.text()).toContain('Only owners and admins can create or edit automations.');
 		expect(wrapper.text()).toContain('Welcome sequence');
 		wrapper.unmount();

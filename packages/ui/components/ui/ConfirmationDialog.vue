@@ -17,6 +17,12 @@ interface Props {
 	variant?: Variant;
 	isLoading?: boolean;
 	persistent?: boolean;
+	/**
+	 * The action is refused right now (an active automation cannot be deleted
+	 * until it is paused): the confirm button stays disabled and `confirm`
+	 * never fires. The page says why in the dialog body.
+	 */
+	confirmDisabled?: boolean;
 }
 
 // The copy props have no defaults: prop defaults are evaluated outside the
@@ -29,6 +35,7 @@ const props = withDefaults(defineProps<Props>(), {
 	variant: 'default',
 	isLoading: false,
 	persistent: false,
+	confirmDisabled: false,
 });
 
 const { t } = useUiI18n();
@@ -81,6 +88,7 @@ const close = () => {
 };
 
 const handleConfirm = () => {
+	if (props.confirmDisabled) return;
 	emit('confirm');
 };
 
@@ -128,6 +136,7 @@ const handleBackdropClick = () => {
 			<UiButton
 				:variant="variant === 'danger' ? 'danger' : 'primary'"
 				:loading="isLoading"
+				:disabled="confirmDisabled"
 				@click="handleConfirm"
 			>
 				<template v-if="!isLoading" #iconLeft>

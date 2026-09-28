@@ -11,7 +11,9 @@
  * `#before-header` takes a section's tab bar and `#loading` a content-shaped
  * skeleton in place of the default spinner. `#delete-extra` adds a line under
  * the delete dialog's description (the blocks list warns how many emails use
- * the block).
+ * the block). `deleteBlocked` refuses the delete outright — the confirm button
+ * stays disabled, and `#delete-extra` says why (an active automation must be
+ * paused first).
  *
  * `layout="grid"` is for a list with no table view (saved blocks): `#grid`
  * always renders and there is no grid/list toggle.
@@ -81,6 +83,8 @@ const props = withDefaults(
 		/** Name of the item the delete dialog is about. */
 		deleteName?: string;
 		isDeleting: boolean;
+		/** The item cannot be deleted as it stands: confirm stays disabled. */
+		deleteBlocked?: boolean;
 	}>(),
 	{
 		description: undefined,
@@ -93,6 +97,7 @@ const props = withDefaults(
 		viewMode: undefined,
 		layout: 'table',
 		deleteName: '',
+		deleteBlocked: false,
 	}
 );
 
@@ -238,6 +243,7 @@ const onDeleteOpenChange = (open: boolean) => {
 			:title="deleteCopy.title"
 			:confirm-text="deleteCopy.confirmText"
 			:is-loading="isDeleting"
+			:confirm-disabled="deleteBlocked"
 			@update:open="onDeleteOpenChange"
 			@confirm="emit('confirm-delete')"
 		>

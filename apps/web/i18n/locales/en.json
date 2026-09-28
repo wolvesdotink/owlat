@@ -8578,6 +8578,7 @@
 						"noEmail": "No email",
 						"previous": "Previous",
 						"range": "{from}–{to}",
+						"statusFilterLabel": "Filter contacts by status",
 						"stepAndTime": "Step {number} · {time}",
 						"title": "Contacts in automation",
 						"viewContact": "View contact"
@@ -8597,14 +8598,12 @@
 					"viewDetails": "View details"
 				},
 				"adminsOnly": "Only owners and admins can create or edit automations.",
-				"clearSearch": "Clear search",
 				"deleteDialog": {
 					"activeWarning": "Active automations must be paused before deletion.",
 					"body": "Are you sure you want to delete {name}?",
 					"note": "This action cannot be undone. The automation and all its steps will be permanently deleted.",
 					"title": "Delete automation"
 				},
-				"deleting": "Deleting...",
 				"empty": {
 					"action": "Create automation",
 					"description": "Create your first automation to send emails automatically when a contact signs up, subscribes, or triggers an event.",
@@ -8631,6 +8630,7 @@
 					"draft": "Draft",
 					"paused": "Paused"
 				},
+				"statusFilterLabel": "Automation status",
 				"subtitle": "Create automated email workflows triggered by events",
 				"table": {
 					"contactsInFlow": "Contacts in flow",

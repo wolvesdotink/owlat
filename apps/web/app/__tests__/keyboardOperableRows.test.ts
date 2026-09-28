@@ -16,9 +16,13 @@
  * Its rows are not buttons: the keyboard route to an item is the link on its
  * name. The topic table used to be a mouse-only `<tr @click>` with no route at
  * all, and its edit/delete buttons had no focus ring.
+ *
+ * The automations list (`components/automations/ListTable.vue`, with
+ * `RowActions.vue` in both layouts) follows the same rule. Its names used to be
+ * a mouse-only `<span @click>`.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { capitalize, nextTick, useSlots, type Component } from 'vue';
+import { capitalize, defineComponent, h, nextTick, useSlots, type Component } from 'vue';
 import { mount } from '@vue/test-utils';
 import RecordRow from '~/components/domains/RecordRow.vue';
 import WebhookRow from '~/components/webhooks/WebhookRow.vue';
@@ -28,6 +32,11 @@ import TemplateActionsMenu from '~/components/send/TemplateActionsMenu.vue';
 import TemplateStatusBadge from '~/components/send/TemplateStatusBadge.vue';
 import ListSortMenu from '~/components/list/ListSortMenu.vue';
 import AudienceListTable from '~/components/audience/AudienceListTable.vue';
+import AutomationsListTable, {
+	type AutomationListItem,
+} from '~/components/automations/ListTable.vue';
+import AutomationsRowActions from '~/components/automations/RowActions.vue';
+import { useAutomationBadges } from '~/composables/useAutomationBadges';
 import UiCard from '@owlat/ui/components/ui/Card.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { formatDate } from '~/utils/formatters';
@@ -37,6 +46,7 @@ Object.assign(globalThis, {
 	formatDate,
 	useClickOutsideSelector: vi.fn(),
 	useSlots,
+	useAutomationBadges,
 });
 
 const rowStubs = {
@@ -300,5 +310,88 @@ describe.each(['table', 'cards'] as const)('audience list %s', (layout) => {
 			await button.trigger('click');
 			expect(wrapper.emitted(event)).toEqual([[topic]]);
 		}
+	});
+});
+
+describe.each(['table', 'cards'] as const)('automations list %s', (layout) => {
+	const paused = {
+		_id: 'au_1',
+		name: 'Re-engagement: 90 days quiet',
+		status: 'paused',
+		triggerType: 'contact_created',
+		statsActive: 0,
+		createdAt: 0,
+	} as AutomationListItem;
+	const draft = {
+		...paused,
+		_id: 'au_2',
+		name: 'Birthday greeting',
+		status: 'draft',
+	} as AutomationListItem;
+
+	function mountList(canManage = true) {
+		const onToggle = vi.fn();
+		const onEdit = vi.fn();
+		const Harness = defineComponent({
+			setup: () => () =>
+				h(
+					AutomationsListTable,
+					{ items: [paused, draft], layout, canManage },
+					{
+						actions: (slot: { automation: AutomationListItem; touch: boolean }) =>
+							h(AutomationsRowActions, {
+								automation: slot.automation,
+								canManage,
+								toggling: false,
+								touch: slot.touch,
+								onToggle,
+								onEdit,
+							}),
+					}
+				),
+		});
+		const wrapper = mount(Harness, {
+			global: {
+				plugins: [createTestI18n()],
+				stubs: {
+					...rowStubs,
+					UiDropdownMenu: sendStubs.UiDropdownMenu,
+					UiDropdownMenuItem: sendStubs.UiDropdownMenuItem,
+					UiDropdownDivider: sendStubs.UiDropdownDivider,
+				},
+			},
+		});
+		return { wrapper, onToggle, onEdit };
+	}
+
+	it('reaches the automation through a focusable link on its name', () => {
+		const { wrapper } = mountList();
+		const link = wrapper.get('a[href="/dashboard/automations/au_1"]');
+		expect(link.text()).toBe('Re-engagement: 90 days quiet');
+		expect(link.classes()).toContain('focus-visible:ring-2');
+		// A draft has no analytics yet: its name opens the builder.
+		expect(wrapper.get('a[href="/dashboard/automations/au_2/edit"]').text()).toBe(
+			'Birthday greeting'
+		);
+	});
+
+	it("leaves a draft's name plain for a member who cannot edit it", () => {
+		const { wrapper } = mountList(false);
+		expect(wrapper.find('a[href="/dashboard/automations/au_1"]').exists()).toBe(true);
+		expect(wrapper.findAll('a').map((a) => a.text())).not.toContain('Birthday greeting');
+		expect(wrapper.text()).toContain('Birthday greeting');
+	});
+
+	it('gives the row actions a name and a focus ring', async () => {
+		const { wrapper, onToggle, onEdit } = mountList();
+		const row = wrapper.findAll(layout === 'table' ? 'tbody tr' : 'li')[0]!;
+		for (const label of ['Activate', 'Edit', 'More actions']) {
+			const button = row.get(`button[aria-label="${label}"]`);
+			expect(button.classes()).toContain('focus-visible:ring-2');
+		}
+		await row.get('button[aria-label="Activate"]').trigger('click');
+		await row.get('button[aria-label="Edit"]').trigger('click');
+		expect(onToggle).toHaveBeenCalledWith(paused);
+		expect(onEdit).toHaveBeenCalledWith(paused);
 	});
 });
