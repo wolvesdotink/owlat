@@ -61,6 +61,7 @@ import { SYSTEM_GUARD } from './promptGuards';
 import { logError } from '../../lib/runtimeLog';
 import type { needsReplyClarificationValidator } from '../../inbox/clarificationValidators';
 import { localizeQuestions } from '../../inbox/clarificationLocalize';
+import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 
 const refinementSchema = z.object({
 	// What the message IS (closed taxonomy, ai/replyIntent.ts). The queue
@@ -139,13 +140,7 @@ export const classifyThread = internalAction({
 			// rate limit. Throws when disabled/limited → deterministic flag stays.
 			await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 
-			const transcript = context.messages
-				.map(
-					(m) =>
-						`From: ${m.fromName || m.fromAddress}\nTo: ${m.toAddresses.join(', ')}\nSubject: ${m.subject}\n${m.excerpt}`
-				)
-				.join('\n\n---\n\n')
-				.slice(0, 12000);
+			const transcript = context.transcript; // side-labelled, built in getThreadContext
 
 			const { object, tokenUsage, modelUsed } = await runLlmObject({
 				// High-volume background classification → cheap "summarize" tier.
@@ -398,17 +393,11 @@ export const draftWithAnswers = internalAction({
 			);
 			if (!context || context.answers.length === 0) return;
 
-			// Personalize to the owner's learned voice when opted in; never blocks.
-			let voiceGuidance: string | null = null;
-			try {
-				const res = await ctx.runMutation(internal.mail.ai.voiceProfile.getGuidanceForMailbox, {
-					mailboxId: context.mailboxId,
-				});
-				voiceGuidance = res.guidance;
-			} catch {
-				voiceGuidance = null;
-			}
-			const voiceSection = voiceGuidance ? `\n\n${voiceGuidance}` : '';
+			// Personalize to the owner's learned voice (opt-in, fail-soft). No access
+			// check: a scheduled internal action for the flagged thread's own mailbox.
+			const voiceSection = formatVoiceSection(
+				await loadVoiceGuidance(ctx, { mailboxId: context.mailboxId, requireAccess: false })
+			);
 
 			const confirmed = context.answers.map((a) => `- ${a.question}\n  ${a.answer}`).join('\n');
 

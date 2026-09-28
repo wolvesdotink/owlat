@@ -54,7 +54,10 @@ const ENTITIES: Record<string, string> = {
 	'&nbsp;': ' ',
 };
 
-function htmlToSearchText(html: string): string {
+/** Strip an HTML body to its text: drops script/style blocks, comments and tags
+ * and resolves the minimal entity set. Runtime-neutral (no 'use node'), so the
+ * AI transcript builder (mail/ai/transcript.ts) reuses it inside queries. */
+export function htmlToSearchText(html: string): string {
 	return html
 		.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
 		.replace(/<!--[\s\S]*?-->/g, ' ')

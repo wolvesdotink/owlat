@@ -26,7 +26,6 @@
  */
 
 import { v, type Infer } from 'convex/values';
-import { openMailMessageInlineBody } from '../lib/messageBody';
 import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
 import { publicQuery } from '../lib/authedFunctions';
 import { postboxMutation } from './_helpers';
@@ -38,6 +37,7 @@ import { isThreadMuted } from '../lib/mailMute';
 import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './ai/priorityScore';
 import { scoreAndScreenResult } from './ai/needsReplyScoring';
+import { buildThreadTranscript, NEEDS_REPLY } from './ai/transcript';
 import { resolveCounterpartName } from './counterpartName';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { isFromMailboxOwner, type NeedsReplyHeaders } from './needsReplyHeuristic';
@@ -122,9 +122,9 @@ export async function clearNeedsReplyOnOwnerReply(
 // ─── Convex functions ────────────────────────────────────────────────────────
 
 /**
- * Bounded thread context for the classify action: the mailbox owner address
- * plus the newest messages (heuristic inputs + a short transcript for the
- * LLM refinement prompt).
+ * Bounded thread context for the classify action: the mailbox owner address,
+ * the newest messages (heuristic inputs) and the side-labelled transcript for
+ * the LLM refinement and clarification prompts.
  */
 export const getThreadContext = internalQuery({
 	args: { threadId: v.id('mailThreads') },
@@ -144,26 +144,25 @@ export const getThreadContext = internalQuery({
 		return {
 			ownerAddress,
 			latestMessageId: thread.latestMessageId,
-			messages: await Promise.all(
-				newest.map(async (m) => ({
-					messageId: m._id,
-					fromAddress: m.fromAddress,
-					fromName: m.fromName,
-					toAddresses: m.toAddresses,
-					ccAddresses: m.ccAddresses,
-					hasListUnsubscribe: m.unsubscribe !== undefined,
-					replyToAddress: m.replyToAddress,
-					// A real calendar invite (.ics) is handled by PostboxInviteCard —
-					// the scheduling chip must never double up on it.
-					hasCalendarInvite: (m.attachments ?? []).some(isCalendarAttachment),
-					isFromOwner: isFromMailboxOwner(m, ownerAddress),
-					receivedAt: m.receivedAt,
-					subject: m.subject,
-					// Short bounded body excerpt — the refinement prompt does not need
-					// the full message, and snippet is always present.
-					excerpt: ((await openMailMessageInlineBody(m)).text ?? m.snippet ?? '').slice(0, 2000),
-				}))
-			),
+			transcript: await buildThreadTranscript(newest, {
+				...NEEDS_REPLY,
+				ownerAddress,
+				includeTo: true,
+			}),
+			messages: newest.map((m) => ({
+				messageId: m._id,
+				fromAddress: m.fromAddress,
+				toAddresses: m.toAddresses,
+				ccAddresses: m.ccAddresses,
+				hasListUnsubscribe: m.unsubscribe !== undefined,
+				replyToAddress: m.replyToAddress,
+				// A real calendar invite (.ics) is handled by PostboxInviteCard —
+				// the scheduling chip must never double up on it.
+				hasCalendarInvite: (m.attachments ?? []).some(isCalendarAttachment),
+				isFromOwner: isFromMailboxOwner(m, ownerAddress),
+				receivedAt: m.receivedAt,
+				subject: m.subject,
+			})),
 		};
 	},
 });
