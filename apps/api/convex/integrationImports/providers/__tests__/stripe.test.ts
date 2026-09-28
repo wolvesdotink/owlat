@@ -207,16 +207,14 @@ describe('stripeProvider', () => {
 		});
 
 		it('redacts the API key from a provider message that echoes it', async () => {
-			global.fetch = vi
-				.fn()
-				.mockResolvedValue(
-					new Response(
-						JSON.stringify({
-							error: { message: `Invalid API Key provided: ${baseConfig.apiKey}` },
-						}),
-						{ status: 401 }
-					)
-				);
+			global.fetch = vi.fn().mockResolvedValue(
+				new Response(
+					JSON.stringify({
+						error: { message: `Invalid API Key provided: ${baseConfig.apiKey}` },
+					}),
+					{ status: 401 }
+				)
+			);
 
 			const err = (await stripeProvider
 				.fetchPage({ config: baseConfig, cursor: '' })
