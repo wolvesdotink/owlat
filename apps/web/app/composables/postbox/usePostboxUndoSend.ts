@@ -1,25 +1,28 @@
 /**
- * Undo-send toast state machine.
+ * Undo-send window for Postbox mail.
  *
- * Held by a singleton useState so any composer's send() can hand off
- * the undoToken and dismiss its UI; the toast component reads the
- * shared state and shows itself for the remaining window.
+ * An undo window (useUndoWindow), so any composer's send() can hand off the
+ * undoToken and dismiss its UI; PostboxUndoSendToast reads the shared state,
+ * shows the countdown and owns the reversal (cancel on the server, or un-queue
+ * an offline send).
  */
 
 import type { Id } from '@owlat/api/dataModel';
+import { useUndoWindow } from '~/composables/useUndoWindow';
 
-interface UndoSendState {
-	visible: boolean;
+interface UndoSendWindow {
 	undoToken: string | null;
-	sendAt: number;
 	mailboxId: Id<'mailboxes'> | null;
 }
 
 export function usePostboxUndoSend() {
-	const state = useState<UndoSendState>('postbox:undo-send', () => ({
-		visible: false,
+	const {
+		state,
+		arm: armWindow,
+		dismiss,
+		runUndo,
+	} = useUndoWindow<UndoSendWindow>('postbox:undo-send', () => ({
 		undoToken: null,
-		sendAt: 0,
 		mailboxId: null,
 	}));
 
@@ -32,18 +35,9 @@ export function usePostboxUndoSend() {
 	const { playSend } = useUiSound(sendSound);
 
 	function arm(args: { undoToken: string; sendAt: number; mailboxId: Id<'mailboxes'> }) {
-		state.value = {
-			visible: true,
-			undoToken: args.undoToken,
-			sendAt: args.sendAt,
-			mailboxId: args.mailboxId,
-		};
+		armWindow({ undoToken: args.undoToken, sendAt: args.sendAt, mailboxId: args.mailboxId });
 		playSend();
 	}
 
-	function dismiss() {
-		state.value = { visible: false, undoToken: null, sendAt: 0, mailboxId: null };
-	}
-
-	return { state, arm, dismiss };
+	return { state, arm, dismiss, runUndo };
 }
