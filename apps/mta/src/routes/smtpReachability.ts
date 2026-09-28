@@ -140,8 +140,20 @@ export async function probeSmtpReachability(
 	const startedAt = deps.now();
 	const ips = [...new Set(configuredIps)];
 	const sourceAddressFor = deps.sourceAddressFor ?? ((ip: string) => resolveSourceAddress(ip));
-	const sourceBinding = (ip: string): SmtpSourceBinding =>
-		sourceAddressFor(ip) === undefined ? 'nat' : 'bound';
+	// Grouped before the MX lookup so a DNS failure still reports the collapse:
+	// the Convex checklist reads `shared_nat_egress` to flag it, and a sweep that
+	// lands during a DNS hiccup must not record a pass for it.
+	const sharedNatIps = new Set(sharedNatEgressIps(ips, sourceAddressFor));
+	const unprobed = (ip: string): SmtpIpReachability =>
+		sharedNatIps.has(ip)
+			? { ip, status: 'failed', connectMs: 0, reason: 'shared_nat_egress', sourceBinding: 'nat' }
+			: {
+					ip,
+					status: 'failed',
+					connectMs: 0,
+					reason: 'connection_error',
+					sourceBinding: sourceAddressFor(ip) === undefined ? 'nat' : 'bound',
+				};
 	let records: Awaited<ReturnType<typeof resolveMx>>;
 
 	try {
@@ -152,13 +164,7 @@ export async function probeSmtpReachability(
 			checkedAt: deps.now(),
 			targetDomain,
 			mxResolutionMs: deps.now() - startedAt,
-			ips: ips.map((ip) => ({
-				ip,
-				status: 'failed',
-				connectMs: 0,
-				reason: 'connection_error',
-				sourceBinding: sourceBinding(ip),
-			})),
+			ips: ips.map(unprobed),
 		};
 	}
 
@@ -170,30 +176,14 @@ export async function probeSmtpReachability(
 			checkedAt: mxResolvedAt,
 			targetDomain,
 			mxResolutionMs: mxResolvedAt - startedAt,
-			ips: ips.map((ip) => ({
-				ip,
-				status: 'failed',
-				connectMs: 0,
-				reason: 'connection_error',
-				sourceBinding: sourceBinding(ip),
-			})),
+			ips: ips.map(unprobed),
 		};
 	}
-
-	const sharedNatIps = new Set(sharedNatEgressIps(ips, sourceAddressFor));
 
 	const results = await Promise.all(
 		ips.map(async (ip): Promise<SmtpIpReachability> => {
 			const connectStartedAt = deps.now();
-			if (sharedNatIps.has(ip)) {
-				return {
-					ip,
-					status: 'failed',
-					connectMs: 0,
-					reason: 'shared_nat_egress',
-					sourceBinding: 'nat',
-				};
-			}
+			if (sharedNatIps.has(ip)) return unprobed(ip);
 			const localAddress = sourceAddressFor(ip);
 			const binding: SmtpSourceBinding = localAddress === undefined ? 'nat' : 'bound';
 			try {

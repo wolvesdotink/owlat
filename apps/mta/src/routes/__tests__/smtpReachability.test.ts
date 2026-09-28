@@ -126,6 +126,43 @@ describe('probeSmtpReachability', () => {
 	});
 
 	it.each([
+		['fails', { resolveMx: vi.fn().mockRejectedValue(new Error('SERVFAIL')) }],
+		['returns no records', { resolveMx: vi.fn().mockResolvedValue([]) }],
+	] as const)('still reports a shared NAT egress when MX resolution %s', async (_label, patch) => {
+		const d = deps({
+			...patch,
+			sourceAddressFor: (ip) => (ip === '8.8.4.4' || ip === '8.8.8.8' ? undefined : ip),
+		});
+		const result = await probeSmtpReachability(['8.8.4.4', '8.8.8.8', '203.0.113.10'], d);
+
+		expect(result.status).toBe('degraded');
+		expect(result.ips).toEqual([
+			{
+				ip: '8.8.4.4',
+				status: 'failed',
+				connectMs: 0,
+				reason: 'shared_nat_egress',
+				sourceBinding: 'nat',
+			},
+			{
+				ip: '8.8.8.8',
+				status: 'failed',
+				connectMs: 0,
+				reason: 'shared_nat_egress',
+				sourceBinding: 'nat',
+			},
+			{
+				ip: '203.0.113.10',
+				status: 'failed',
+				connectMs: 0,
+				reason: 'connection_error',
+				sourceBinding: 'bound',
+			},
+		]);
+		expect(d.connect).not.toHaveBeenCalled();
+	});
+
+	it.each([
 		['ECONNREFUSED', 'connection_refused'],
 		['EADDRNOTAVAIL', 'source_ip_unavailable'],
 		['ENETUNREACH', 'network_unreachable'],
