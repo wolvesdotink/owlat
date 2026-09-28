@@ -2,10 +2,9 @@ import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 import { parseList } from '../../parser.js';
 import type { CommandSession, ImapCommandModule } from '../types.js';
-import { syncSession } from '../helpers/session.js';
-import { requireAuth } from '../helpers/auth.js';
 import { resolveFolderByName } from '../helpers/folders.js';
 import { appendEnvelope } from './envelope.js';
+import { serverFailure } from '../helpers/replies.js';
 
 export interface AppendArgs {
 	readonly folderName: string;
@@ -41,6 +40,7 @@ const MAX_APPEND_LITERAL_BYTES = 50 * 1024 * 1024;
 export const appendModule: ImapCommandModule<AppendArgs> = {
 	verbs: ['APPEND'],
 	capabilities: ['LITERAL+'],
+	requires: 'auth',
 	parseArgs(rawArgs) {
 		const folderName = rawArgs[0];
 		if (folderName === undefined) {
@@ -87,12 +87,6 @@ export const appendModule: ImapCommandModule<AppendArgs> = {
 		};
 	},
 	start({ deps, state, args, tag, send }) {
-		const fail = requireAuth(state, tag);
-		if (fail) {
-			send(fail);
-			return syncSession();
-		}
-
 		if (!args.isLiteralPlus) {
 			send('+ Ready for literal data');
 		}
@@ -176,7 +170,7 @@ export const appendModule: ImapCommandModule<AppendArgs> = {
 					return;
 				}
 				logger.error({ err }, 'APPEND processing failed');
-				finalize(`${tag} NO APPEND failed`);
+				finalize(serverFailure(tag, 'APPEND'));
 			}
 		};
 
@@ -191,7 +185,7 @@ export const appendModule: ImapCommandModule<AppendArgs> = {
 					// Fire and forget — completion resolves when upload finishes
 					performUpload().catch((err) => {
 						logger.error({ err }, 'APPEND upload failed');
-						finalize(`${tag} NO APPEND failed`);
+						finalize(serverFailure(tag, 'APPEND'));
 					});
 				}
 			},

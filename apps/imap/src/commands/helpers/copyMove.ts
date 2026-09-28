@@ -14,6 +14,7 @@ import { parseUidSet } from '../../parser.js';
 import type { CommandDeps, ConnectionState } from '../types.js';
 import { resolveFolderByName } from './folders.js';
 import { collectMessageIds } from './uidSet.js';
+import { serverFailure } from './replies.js';
 
 export interface RunCopyOrMoveParams {
 	readonly deps: CommandDeps;
@@ -21,8 +22,9 @@ export interface RunCopyOrMoveParams {
 	readonly set: string;
 	readonly target: string;
 	readonly tag: string;
+	/** The command as the client sent it (`COPY`, `UID MOVE`, …), used in every reply. */
 	readonly label: string;
-	/** Verb name, used verbatim in the log context and the BAD response. */
+	/** Verb name, used in the log context. */
 	readonly verb: 'COPY' | 'MOVE';
 	/** The Convex mutation reference (`fn.copyMessages` / `fn.moveMessages`). */
 	readonly mutation: typeof fn.copyMessages | typeof fn.moveMessages;
@@ -61,6 +63,6 @@ export async function runCopyOrMove(params: RunCopyOrMoveParams): Promise<void> 
 		emit(result);
 	} catch (err) {
 		logger.error({ err }, `${verb} failed`);
-		send(`${tag} BAD ${verb} failed`);
+		send(serverFailure(tag, label));
 	}
 }

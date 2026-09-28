@@ -18,6 +18,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { getFunctionName, type AnyFunctionReference } from 'convex/server';
 import { idleModule, diffIdle } from '../commands/idle/index.js';
+import { dispatch } from '../commands/walker.js';
 import type { FetchEnvelope } from '../commands/fetch/format.js';
 import type {
 	CommandDeps,
@@ -208,16 +209,23 @@ describe('IDLE — pushes EXISTS + FETCH FLAGS + EXPUNGE during a single IDLE (P
 	});
 
 	it('refuses IDLE without a SELECTed mailbox', async () => {
+		// The precondition is IDLE's declared `requires`, enforced by the
+		// walker before `start` runs.
 		const convex = mockConvex();
 		const { deps } = makeDeps(convex);
-		const { start, lines } = startArgs(deps, {
-			auth: { mailboxId: 'mb1', appPasswordId: 'ap1', address: 'a@t', userId: 'u1' },
-			selected: null,
-			clientId: null,
-		});
-		const session = idleModule.start(start);
+		const lines: string[] = [];
+		const session = dispatch(
+			deps,
+			{
+				auth: { mailboxId: 'mb1', appPasswordId: 'ap1', address: 'a@t', userId: 'u1' },
+				selected: null,
+				clientId: null,
+			},
+			{ tag: 'a1', command: 'IDLE', args: [] },
+			(l) => lines.push(l as string)
+		);
 		await session.completion;
-		expect(lines.some((l) => l.includes('a1 BAD') || l.includes('a1 NO'))).toBe(true);
+		expect(lines).toEqual(['a1 BAD No mailbox selected']);
 		expect(convex.query).not.toHaveBeenCalled();
 	});
 });

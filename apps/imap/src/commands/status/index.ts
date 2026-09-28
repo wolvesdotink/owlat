@@ -1,9 +1,9 @@
 import type { ImapCommandModule } from '../types.js';
-import { asyncSession, syncSession } from '../helpers/session.js';
-import { requireAuth } from '../helpers/auth.js';
+import { asyncSession } from '../helpers/session.js';
 import { resolveFolderByName } from '../helpers/folders.js';
 import { parseList } from '../../parser.js';
 import { logger } from '../../logger.js';
+import { serverFailure } from '../helpers/replies.js';
 
 interface StatusArgs {
 	readonly mailboxName: string;
@@ -12,6 +12,7 @@ interface StatusArgs {
 
 export const statusModule: ImapCommandModule<StatusArgs> = {
 	verbs: ['STATUS'],
+	requires: 'auth',
 	parseArgs(rawArgs) {
 		const [mailboxName, itemsToken] = rawArgs;
 		if (!mailboxName || !itemsToken) {
@@ -20,12 +21,6 @@ export const statusModule: ImapCommandModule<StatusArgs> = {
 		return { ok: true, args: { mailboxName, itemsToken } };
 	},
 	start({ deps, state, args, tag, send }) {
-		const fail = requireAuth(state, tag);
-		if (fail) {
-			send(fail);
-			return syncSession();
-		}
-
 		return asyncSession(async () => {
 			try {
 				const target = await resolveFolderByName(
@@ -73,7 +68,7 @@ export const statusModule: ImapCommandModule<StatusArgs> = {
 				send(`${tag} OK STATUS completed`);
 			} catch (err) {
 				logger.error({ err }, 'STATUS failed');
-				send(`${tag} BAD STATUS failed`);
+				send(serverFailure(tag, 'STATUS'));
 			}
 		});
 	},

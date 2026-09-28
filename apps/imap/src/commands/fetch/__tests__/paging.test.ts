@@ -169,7 +169,7 @@ describe('FETCH over a folder deeper than one page', () => {
 });
 
 describe('a walk that never terminates fails the command', () => {
-	it('FETCH answers BAD rather than a prefix of the mailbox under a tagged OK', async () => {
+	it('FETCH answers NO [UNAVAILABLE] rather than a prefix of the mailbox under a tagged OK', async () => {
 		// A backend that always reports "there is more" (a contract change, a
 		// folder growing faster than it is read). Truncating here would tell the
 		// client its mailbox ends where the guard fired.
@@ -197,7 +197,7 @@ describe('a walk that never terminates fails the command', () => {
 		} as StartArgs<FetchArgs>);
 		await session.completion;
 
-		expect(lines).toEqual(['a004 BAD FETCH failed']);
+		expect(lines).toEqual(['a004 NO [UNAVAILABLE] FETCH failed']);
 	});
 
 	it('a resume point that does not advance fails immediately, not after 500 round trips', async () => {
@@ -222,7 +222,7 @@ describe('a walk that never terminates fails the command', () => {
 		} as StartArgs<FetchArgs>);
 		await session.completion;
 
-		expect(lines).toEqual(['a005 BAD FETCH failed']);
+		expect(lines).toEqual(['a005 NO [UNAVAILABLE] FETCH failed']);
 		// Two reads: the first page, then the one whose resume point repeated it.
 		expect(convex.query).toHaveBeenCalledTimes(2);
 	});

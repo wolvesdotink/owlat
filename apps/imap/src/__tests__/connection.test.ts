@@ -332,7 +332,8 @@ describe('ImapConnection — LOGIN', () => {
 		const { socket, convex } = makeMocks();
 		socket.written.length = 0;
 		convex.action.mockResolvedValue(null);
-		await exec(socket, 'a001 LOGIN "alice@test" "wrong"');
+		// check → verify → recordFailure: several chained awaits.
+		await execMulti(socket, 'a001 LOGIN "alice@test" "wrong"');
 		const tail = socket.lines().pop()!;
 		expect(tail).toBe('a001 NO Authentication failed');
 	});
@@ -553,7 +554,7 @@ describe('ImapConnection — AUTHENTICATE PLAIN', () => {
 		convex.action.mockResolvedValue(null);
 		socket.written.length = 0;
 		await exec(socket, 'a1 AUTHENTICATE PLAIN');
-		await exec(socket, saslPlain('alice@test', 'wrong'));
+		await execMulti(socket, saslPlain('alice@test', 'wrong'));
 		expect(socket.lines().pop()).toBe('a1 NO Authentication failed');
 	});
 

@@ -2,11 +2,11 @@ import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 import { parseList } from '../../parser.js';
 import type { ImapCommandModule } from '../types.js';
-import { asyncSession, syncSession } from '../helpers/session.js';
-import { requireAuth, requireSelect, requireWritableSelect } from '../helpers/auth.js';
+import { asyncSession } from '../helpers/session.js';
 import { collectMessageIdsByUid } from '../helpers/uidSet.js';
 import { buildSeqMap, resolveSet, seqForUid } from '../helpers/seqMap.js';
 import { loadFolderUids } from '../helpers/folderPaging.js';
+import { serverFailure } from '../helpers/replies.js';
 
 export interface StoreArgs {
 	readonly set: string;
@@ -25,6 +25,7 @@ export interface StoreArgs {
 export const storeModule: ImapCommandModule<StoreArgs> = {
 	verbs: ['STORE'],
 	capabilities: ['CONDSTORE'],
+	requires: 'writable',
 	parseArgs(rawArgs) {
 		const set = rawArgs[0];
 		if (set === undefined) {
@@ -59,13 +60,6 @@ export const storeModule: ImapCommandModule<StoreArgs> = {
 		};
 	},
 	start({ deps, state, args, tag, send }) {
-		const fail =
-			requireAuth(state, tag) ?? requireSelect(state, tag) ?? requireWritableSelect(state, tag);
-		if (fail) {
-			send(fail);
-			return syncSession();
-		}
-
 		const label = args.byUid ? 'UID STORE' : 'STORE';
 		const flagList = parseList(args.flagsToken);
 
@@ -126,7 +120,7 @@ export const storeModule: ImapCommandModule<StoreArgs> = {
 				send(`${tag} OK ${label} completed`);
 			} catch (err) {
 				logger.error({ err }, 'STORE failed');
-				send(`${tag} BAD STORE failed`);
+				send(serverFailure(tag, label));
 			}
 		});
 	},

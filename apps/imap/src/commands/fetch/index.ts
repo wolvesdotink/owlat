@@ -3,12 +3,12 @@ import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 import { parseList } from '../../parser.js';
 import type { ImapCommandModule } from '../types.js';
-import { asyncSession, syncSession } from '../helpers/session.js';
-import { requireAuth, requireSelect } from '../helpers/auth.js';
+import { asyncSession } from '../helpers/session.js';
 import { buildSeqMap, resolveSet } from '../helpers/seqMap.js';
 import { loadEnvelopes, loadFolderUids } from '../helpers/folderPaging.js';
 import { type FetchEnvelope, formatEnvelope, formatFlags, formatInternalDate } from './format.js';
 import { type BodySectionRequest, formatBodySection, parseBodySectionItem } from './bodySection.js';
+import { serverFailure } from '../helpers/replies.js';
 
 export interface FetchArgs {
 	readonly set: string;
@@ -38,6 +38,7 @@ const CLOSE_PAREN = Buffer.from(')', 'ascii');
  */
 export const fetchModule: ImapCommandModule<FetchArgs> = {
 	verbs: ['FETCH'],
+	requires: 'selected',
 	parseArgs(rawArgs) {
 		const [set, itemsToken] = rawArgs;
 		if (!set || !itemsToken) {
@@ -46,12 +47,6 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 		return { ok: true, args: { set, itemsToken, byUid: false } };
 	},
 	start({ deps, state, args, tag, send }) {
-		const fail = requireAuth(state, tag) ?? requireSelect(state, tag);
-		if (fail) {
-			send(fail);
-			return syncSession();
-		}
-
 		const rawItems = parseList(args.itemsToken).map((s) => s.toUpperCase());
 		const items = new Set(rawItems);
 		// Body sections in request order; non-body items handled via the set.
@@ -164,7 +159,7 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 				send(`${tag} OK ${label} completed`);
 			} catch (err) {
 				logger.error({ err }, 'FETCH failed');
-				send(`${tag} BAD ${label} failed`);
+				send(serverFailure(tag, label));
 			}
 		});
 	},

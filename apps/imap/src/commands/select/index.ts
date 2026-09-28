@@ -1,9 +1,9 @@
 import type { ImapCommandModule, SelectedState } from '../types.js';
-import { asyncSession, syncSession } from '../helpers/session.js';
-import { requireAuth } from '../helpers/auth.js';
+import { asyncSession } from '../helpers/session.js';
 import { resolveFolderByName } from '../helpers/folders.js';
 import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
+import { serverFailure } from '../helpers/replies.js';
 
 interface SelectArgs {
 	readonly mailboxName: string;
@@ -17,6 +17,7 @@ interface SelectArgs {
  */
 export const selectModule: ImapCommandModule<SelectArgs> = {
 	verbs: ['SELECT', 'EXAMINE'],
+	requires: 'auth',
 	parseArgs(rawArgs) {
 		const name = rawArgs[0];
 		if (!name) {
@@ -25,12 +26,6 @@ export const selectModule: ImapCommandModule<SelectArgs> = {
 		return { ok: true, args: { mailboxName: name } };
 	},
 	start({ deps, state, args, tag, verb, send }) {
-		const fail = requireAuth(state, tag);
-		if (fail) {
-			send(fail);
-			return syncSession();
-		}
-
 		const readOnly = verb === 'EXAMINE';
 
 		return asyncSession(async () => {
@@ -88,7 +83,7 @@ export const selectModule: ImapCommandModule<SelectArgs> = {
 				send(`${tag} OK [${readOnly ? 'READ-ONLY' : 'READ-WRITE'}] ${verb} completed`);
 			} catch (err) {
 				logger.error({ err }, 'SELECT failed');
-				send(`${tag} BAD ${verb} failed`);
+				send(serverFailure(tag, verb));
 			}
 		});
 	},
