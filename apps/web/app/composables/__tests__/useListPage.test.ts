@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 /**
- * `useListPage` is the state half of the list-page scaffold: search, sort, the
- * delete-confirmation dialog and the `n` / Escape shortcuts.
+ * `useListPage` is the state half of the list-page scaffold: search, sort (for
+ * the lists that have a sort menu), the delete-confirmation dialog and the
+ * `n` / Escape shortcuts.
  *
  * The regression it closes: the transactional list cleared its search by
  * writing both refs from the template, and `debouncedSearch` is readonly — the
@@ -99,6 +100,27 @@ describe('sort', () => {
 		expect(result.currentSort.value).toEqual(SORTS[1]);
 		result.selectSort('bogus');
 		expect(result.currentSort.value).toEqual(SORTS[1]);
+	});
+
+	it('is left out without sort options; search, delete and shortcuts still work', async () => {
+		const onDelete = vi.fn(async (_item: Item) => true);
+		const onNew = vi.fn();
+		const { result } = withSetup(() => useListPage<Item>({ onDelete, onNew }));
+		expect('currentSort' in result).toBe(false);
+		expect('selectSort' in result).toBe(false);
+
+		result.searchQuery.value = 'launch';
+		await nextTick();
+		vi.advanceTimersByTime(300);
+		expect(result.debouncedSearch.value).toBe('launch');
+
+		registered.get('global.newItem')!();
+		expect(onNew).toHaveBeenCalledTimes(1);
+
+		result.openDelete({ id: 'c1', name: 'Spring launch' });
+		await result.confirmDelete();
+		expect(onDelete).toHaveBeenCalledWith({ id: 'c1', name: 'Spring launch' });
+		expect(result.isDeleteOpen.value).toBe(false);
 	});
 });
 

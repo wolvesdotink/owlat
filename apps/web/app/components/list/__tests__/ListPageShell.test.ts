@@ -3,7 +3,8 @@
  * `ListPageShell` is the frame the dashboard list pages share. Mounted with the
  * real UI layer (header, empty states, segmented control, confirmation dialog)
  * so the assertions are about what a user gets, not about stubs:
- *   - below `md` exactly one of `#table` / `#cards` is mounted, never both;
+ *   - below `md` exactly one of `#table` / `#cards` is mounted, never both,
+ *     and a page with no `#table` gets `#cards` at every width;
  *   - the three empty states (no organization, nothing yet, no search results)
  *     and the clear-search control on the last;
  *   - a grid-only list (`layout="grid"`) always mounts `#grid` and has no
@@ -62,8 +63,9 @@ const UiQueryBoundaryStub = defineComponent({
 	},
 });
 
-type ShellProps = Omit<typeof baseProps, 'viewMode'> & {
+type ShellProps = Omit<typeof baseProps, 'viewMode' | 'empty'> & {
 	viewMode?: 'grid' | 'list';
+	empty: { icon: string; eyebrow?: string; title: string; description: string };
 	layout?: 'table' | 'grid';
 };
 
@@ -99,6 +101,22 @@ const baseProps = {
 	isDeleting: false,
 };
 
+function renderGlobal() {
+	return {
+		plugins: [createTestI18n()],
+		components: {
+			ListSortMenu,
+			UiPageHeader,
+			UiEmptyState,
+			UiConfirmationDialog,
+			UiSegmentedControl,
+			UiCard,
+			UiInput,
+		},
+		stubs: { UiModal: UiModalStub, UiQueryBoundary: UiQueryBoundaryStub },
+	};
+}
+
 function render(props: Partial<ShellProps> = {}, extraSlots: Record<string, string> = {}) {
 	return mount(ListPageShell, {
 		props: { ...baseProps, ...props },
@@ -109,19 +127,7 @@ function render(props: Partial<ShellProps> = {}, extraSlots: Record<string, stri
 			'empty-action': '<button data-testid="create">Create</button>',
 			...extraSlots,
 		},
-		global: {
-			plugins: [createTestI18n()],
-			components: {
-				ListSortMenu,
-				UiPageHeader,
-				UiEmptyState,
-				UiConfirmationDialog,
-				UiSegmentedControl,
-				UiCard,
-				UiInput,
-			},
-			stubs: { UiModal: UiModalStub, UiQueryBoundary: UiQueryBoundaryStub },
-		},
+		global: renderGlobal(),
 	});
 }
 
@@ -141,6 +147,16 @@ describe('ListPageShell', () => {
 		const wrapper = render();
 		expect(wrapper.findAll('[data-testid="cards"]')).toHaveLength(1);
 		expect(wrapper.find('[data-testid="table"]').exists()).toBe(false);
+	});
+
+	it('mounts the card list at every width when the page has no table', () => {
+		const wrapper = mount(ListPageShell, {
+			props: { ...baseProps, viewMode: undefined },
+			slots: { cards: '<ul data-testid="cards" />' },
+			global: renderGlobal(),
+		});
+		expect(tableFits.value).toBe(true);
+		expect(wrapper.findAll('[data-testid="cards"]')).toHaveLength(1);
 	});
 
 	it('mounts the grid instead of either in grid view', () => {
@@ -206,6 +222,20 @@ describe('ListPageShell', () => {
 		const wrapper = render({ hasOrganization: false, isEmpty: true });
 		expect(wrapper.get('h2').text()).toBe('No team selected');
 		expect(wrapper.find('[data-testid="create"]').exists()).toBe(false);
+	});
+
+	it('shows an empty state eyebrow when the page passes one', () => {
+		const wrapper = render({
+			isEmpty: true,
+			empty: {
+				icon: 'lucide:check-circle',
+				eyebrow: 'All clear',
+				title: 'Nothing needs you.',
+				description: 'Done.',
+			},
+		});
+		expect(wrapper.get('h2').text()).toBe('Nothing needs you.');
+		expect(wrapper.text()).toContain('All clear');
 	});
 
 	it('offers the create action when there is nothing yet', () => {

@@ -19,7 +19,9 @@
  * Below `md` the table's columns cannot fit, so `#cards` renders instead of
  * `#table`. Exactly one of the two is mounted (`useDataTableViewport`): the app
  * runs with `ssr: false`, so the first value is already the real one, and a
- * CSS-only switch would double the row DOM and every row's overflow menu.
+ * CSS-only switch would double the row DOM and every row's overflow menu. A
+ * list whose rows fit any width (the campaigns list) passes only `#cards`, and
+ * it renders at every width.
  */
 import type { ListSortOption } from '~/composables/useListPage';
 
@@ -27,6 +29,8 @@ type ViewMode = 'grid' | 'list';
 
 interface EmptyCopy {
 	icon: string;
+	/** Optional line above the title (an all-clear state, not a missing one). */
+	eyebrow?: string;
 	title: string;
 	description: string;
 }
@@ -199,6 +203,7 @@ const onDeleteOpenChange = (open: boolean) => {
 			<UiEmptyState
 				v-else-if="showEmpty"
 				:icon="empty.icon"
+				:eyebrow="empty.eyebrow"
 				:title="empty.title"
 				:description="empty.description"
 			>
@@ -220,7 +225,7 @@ const onDeleteOpenChange = (open: boolean) => {
 			<slot v-else-if="showGrid" name="grid" />
 
 			<UiCard v-else padding="none" overflow="hidden">
-				<slot v-if="tableFits" name="table" />
+				<slot v-if="tableFits && $slots['table']" name="table" />
 				<slot v-else name="cards" />
 			</UiCard>
 		</UiQueryBoundary>

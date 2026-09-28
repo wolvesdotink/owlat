@@ -8876,13 +8876,11 @@
 				"deleteDialog": {
 					"confirm": "Kampagne löschen",
 					"confirmQuestion": "Möchten Sie {name} wirklich löschen?",
-					"deleting": "Wird gelöscht …",
 					"description": "Diese Aktion kann nicht rückgängig gemacht werden. Die Kampagne und ihre Daten werden dauerhaft gelöscht.",
 					"title": "Kampagne löschen"
 				},
 				"deleteOperation": "Kampagne löschen",
 				"duplicateOperation": "Kampagne duplizieren",
-				"errorMessage": "Beim Laden Ihrer Kampagnen ist ein Fehler aufgetreten.",
 				"errorTitle": "Kampagnen konnten nicht geladen werden",
 				"listEmpty": {
 					"description": "Erstellen Sie Ihre erste Kampagne, um Ihre Zielgruppe zu erreichen.",
@@ -8890,6 +8888,10 @@
 				},
 				"loadMore": "Mehr laden",
 				"newCampaign": "Neue Kampagne",
+				"noWorkspace": {
+					"description": "Erstellen oder wählen Sie einen Workspace, um Kampagnen zu versenden.",
+					"title": "Kein Workspace ausgewählt"
+				},
 				"pageTitle": "Kampagnen — Owlat",
 				"pills": {
 					"attention": "Braucht Aufmerksamkeit",
@@ -8898,11 +8900,11 @@
 					"sent": "Versendet"
 				},
 				"searchEmpty": {
-					"clear": "Suche zurücksetzen",
 					"description": "Keine Kampagne passt zu \"{query}\". Versuchen Sie einen anderen Suchbegriff.",
 					"title": "Keine Ergebnisse gefunden"
 				},
 				"searchPlaceholder": "Kampagnen suchen …",
+				"statusFilterLabel": "Kampagnenstatus",
 				"subtitle": "Alles, was Sie versendet haben, und alles, was auf Sie wartet – an einem Ort.",
 				"title": "Kampagnen",
 				"toasts": {

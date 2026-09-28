@@ -10,10 +10,8 @@ export interface ListSortOption {
 	label: string;
 }
 
-export interface UseListPageOptions<TSort extends ListSortOption, TItem> {
-	sortOptions: readonly TSort[];
-	/** The sort a fresh visit opens on; the first option when omitted. */
-	defaultSort?: TSort['value'];
+/** What every list page configures: the delete, the shortcuts and the search. */
+interface ListPageOptions<TItem> {
 	/**
 	 * Run the delete the confirmation dialog asked for. Resolve `false` when it
 	 * failed (the operation already surfaced why): the dialog then stays open
@@ -35,6 +33,16 @@ export interface UseListPageOptions<TSort extends ListSortOption, TItem> {
 	searchDelay?: number;
 }
 
+/** A sorted list page: `ListPageOptions` plus the sort menu's options. */
+export interface UseListPageOptions<
+	TSort extends ListSortOption,
+	TItem,
+> extends ListPageOptions<TItem> {
+	sortOptions: readonly TSort[];
+	/** The sort a fresh visit opens on; the first option when omitted. */
+	defaultSort?: TSort['value'];
+}
+
 /**
  * The state every dashboard list page repeats: a debounced search, the current
  * sort, the delete-confirmation dialog, and the `n` / Escape shortcuts.
@@ -42,29 +50,47 @@ export interface UseListPageOptions<TSort extends ListSortOption, TItem> {
  * `ListPageShell` renders it; this owns it. Search clears through the debounced
  * composable's own `clear()` — writing `debouncedSearch` from a page hits a
  * readonly ref and only lands once the debounce fires.
+ *
+ * A list with no sort menu (campaigns, filtered by status tabs instead) leaves
+ * `sortOptions` out and names only the item type: `useListPage<Row>({ ... })`.
  */
 export function useListPage<TSort extends ListSortOption, TItem>(
 	options: UseListPageOptions<TSort, TItem>
+): ListPageState<TItem> & ListSortState<TSort>;
+export function useListPage<TItem>(options: ListPageOptions<TItem>): ListPageState<TItem>;
+export function useListPage<TItem>(
+	options: ListPageOptions<TItem> & Partial<UseListPageOptions<ListSortOption, TItem>>
+): ListPageState<TItem> | (ListPageState<TItem> & ListSortState<ListSortOption>) {
+	const page = useListPageState(options);
+	if (!options.sortOptions) return page;
+	return { ...page, ...useListSort(options.sortOptions, options.defaultSort) };
+}
+
+type ListPageState<TItem> = ReturnType<typeof useListPageState<TItem>>;
+type ListSortState<TSort extends ListSortOption> = ReturnType<typeof useListSort<TSort>>;
+
+function useListSort<TSort extends ListSortOption>(
+	sortOptions: readonly TSort[],
+	defaultSort: string | undefined
 ) {
+	const initialSort = sortOptions.find((option) => option.value === defaultSort) ?? sortOptions[0];
+	if (!initialSort) throw new Error('useListPage needs at least one sort option');
+	const sortValue = ref<string>(initialSort.value);
+	const currentSort = computed<TSort>(
+		() => sortOptions.find((option) => option.value === sortValue.value) ?? initialSort
+	);
+	const selectSort = (value: string) => {
+		if (sortOptions.some((option) => option.value === value)) sortValue.value = value;
+	};
+	return { sortOptions, currentSort, selectSort };
+}
+
+function useListPageState<TItem>(options: ListPageOptions<TItem>) {
 	const {
 		searchQuery,
 		debouncedSearch,
 		clear: clearSearch,
 	} = useDebouncedSearch(options.searchDelay ?? 300);
-
-	// --- Sort ---
-
-	const initialSort =
-		options.sortOptions.find((option) => option.value === options.defaultSort) ??
-		options.sortOptions[0];
-	if (!initialSort) throw new Error('useListPage needs at least one sort option');
-	const sortValue = ref<string>(initialSort.value);
-	const currentSort = computed<TSort>(
-		() => options.sortOptions.find((option) => option.value === sortValue.value) ?? initialSort
-	);
-	const selectSort = (value: string) => {
-		if (options.sortOptions.some((option) => option.value === value)) sortValue.value = value;
-	};
 
 	// --- Delete confirmation ---
 
@@ -125,9 +151,6 @@ export function useListPage<TSort extends ListSortOption, TItem>(
 		searchQuery,
 		debouncedSearch,
 		clearSearch,
-		sortOptions: options.sortOptions,
-		currentSort,
-		selectSort,
 		deleteTarget,
 		isDeleteOpen,
 		isDeleting,

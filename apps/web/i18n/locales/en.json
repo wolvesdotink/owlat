@@ -8876,13 +8876,11 @@
 				"deleteDialog": {
 					"confirm": "Delete campaign",
 					"confirmQuestion": "Are you sure you want to delete {name}?",
-					"deleting": "Deleting…",
 					"description": "This action cannot be undone. The campaign and its data will be permanently deleted.",
 					"title": "Delete campaign"
 				},
 				"deleteOperation": "Delete campaign",
 				"duplicateOperation": "Duplicate campaign",
-				"errorMessage": "We hit an error loading your campaigns.",
 				"errorTitle": "Couldn't load campaigns",
 				"listEmpty": {
 					"description": "Create your first campaign to start reaching your audience.",
@@ -8890,6 +8888,10 @@
 				},
 				"loadMore": "Load more",
 				"newCampaign": "New campaign",
+				"noWorkspace": {
+					"description": "Create or select a workspace to start sending campaigns.",
+					"title": "No workspace selected"
+				},
 				"pageTitle": "Campaigns — Owlat",
 				"pills": {
 					"attention": "Needs attention",
@@ -8898,11 +8900,11 @@
 					"sent": "Sent"
 				},
 				"searchEmpty": {
-					"clear": "Clear search",
 					"description": "No campaigns match \"{query}\". Try a different search term.",
 					"title": "No results found"
 				},
 				"searchPlaceholder": "Search campaigns…",
+				"statusFilterLabel": "Campaign status",
 				"subtitle": "Everything you've sent and everything waiting on you, in one place.",
 				"title": "Campaigns",
 				"toasts": {
