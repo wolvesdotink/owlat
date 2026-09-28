@@ -1,18 +1,17 @@
 import { v } from 'convex/values';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
-import { requireOrgPermission } from '../lib/sessionOrganization';
-import { getOrThrow, throwNotFound } from '../_utils/errors';
+import { hasPermission, requireOrgPermission, requirePermission } from '../lib/sessionOrganization';
+import { assertFeatureEnabled } from '../lib/featureFlags';
+import { getOrThrow } from '../_utils/errors';
 import { assertEditableForPublishableChange } from '../lib/publishableEmail';
-import { type TranslatableBlockContent } from '../emailTemplates/translationMerge';
 import {
-	addLanguage,
-	parseTranslations,
-	removeLanguage,
+	addTranslationPatch,
+	removeTranslationPatch,
 	resolveForLanguage,
-	serializeTranslations,
+	setDefaultLanguagePatch,
 	TRANSACTIONAL_TRANSLATABLE_FIELDS,
+	updateTranslationPatch,
 } from '../lib/emailTranslations';
-import { nextContentRevision } from '../lib/contentRevision';
 
 /**
  * Get transactional email content for a specific language
@@ -53,17 +52,12 @@ export const addTranslation = authedMutation({
 			'Only owners and admins can manage transactional email translations'
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
-
 		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
 
-		const patch = addLanguage(email, args.language, TRANSACTIONAL_TRANSLATABLE_FIELDS);
-
-		await ctx.db.patch(args.id, {
-			...patch,
-			contentRevision: nextContentRevision(email),
-			updatedAt: Date.now(),
-		});
-
+		await ctx.db.patch(
+			args.id,
+			addTranslationPatch(email, args.language, TRANSACTIONAL_TRANSLATABLE_FIELDS)
+		);
 		return args.id;
 	},
 });
@@ -87,50 +81,12 @@ export const updateTranslation = authedMutation({
 			'Only owners and admins can manage transactional email translations'
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
-
 		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
 
-		const defaultLanguage = email.defaultLanguage ?? 'en';
-
-		// If updating the default language, update the main fields
-		if (args.language === defaultLanguage) {
-			const updates: {
-				subject?: string;
-				contentRevision: number;
-				updatedAt: number;
-			} = { contentRevision: nextContentRevision(email), updatedAt: Date.now() };
-
-			if (args.subject !== undefined) {
-				updates.subject = args.subject.trim();
-			}
-
-			await ctx.db.patch(args.id, updates);
-			return args.id;
-		}
-
-		// For non-default languages, update the translations object
-		const translations = parseTranslations(email.translations);
-
-		const translation = translations[args.language];
-		if (!translation) {
-			throwNotFound('Translation');
-		}
-
-		if (args.subject !== undefined) {
-			translation.subject = args.subject.trim();
-		}
-		if (args.blocks !== undefined) {
-			translation.blocks = JSON.parse(args.blocks) as Record<string, TranslatableBlockContent>;
-		}
-
-		translations[args.language] = translation;
-
-		await ctx.db.patch(args.id, {
-			translations: serializeTranslations(translations),
-			contentRevision: nextContentRevision(email),
-			updatedAt: Date.now(),
-		});
-
+		await ctx.db.patch(
+			args.id,
+			updateTranslationPatch(email, args, TRANSACTIONAL_TRANSLATABLE_FIELDS)
+		);
 		return args.id;
 	},
 });
@@ -151,17 +107,38 @@ export const removeTranslation = authedMutation({
 			'Only owners and admins can manage transactional email translations'
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
-
 		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
 
-		const patch = removeLanguage(email, args.language);
+		await ctx.db.patch(args.id, removeTranslationPatch(email, args.language));
+		return args.id;
+	},
+});
 
-		await ctx.db.patch(args.id, {
-			...patch,
-			contentRevision: nextContentRevision(email),
-			updatedAt: Date.now(),
-		});
+/**
+ * Change the default language of a transactional email: the chosen overlay
+ * becomes the body and the outgoing default becomes an overlay. Patching
+ * `defaultLanguage` through `update` only relabels the row, so a row with
+ * overlays has to change its default language here.
+ */
+export const setDefaultLanguage = authedMutation({
+	args: {
+		id: v.id('transactionalEmails'),
+		language: v.string(),
+		forceWhilePublished: v.optional(v.boolean()),
+	},
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
+			'Only owners and admins can manage transactional email translations'
+		);
+		await assertFeatureEnabled(ctx, 'transactional');
+		const email = await getOrThrow(ctx, args.id, 'Transactional email');
+		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
 
+		const patch = setDefaultLanguagePatch(email, args.language, TRANSACTIONAL_TRANSLATABLE_FIELDS);
+		if (patch) {
+			await ctx.db.patch(args.id, patch);
+		}
 		return args.id;
 	},
 });

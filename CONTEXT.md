@@ -1928,8 +1928,11 @@ it); silent edits to published templates' `subject` / `content` /
 on `setDefaultLanguage` / `removeTranslation` / `updateTranslation` /
 `addTranslation` / `changeType` paths.
 
-The module does _not_ own: the i18n CRUD writes themselves (those stay
-in `emailTemplates/i18n.ts` — they just gain the guard call), the
+The module does _not_ own: the i18n CRUD writes themselves (the
+`emailTemplates/i18n.ts` and `transactional/translations.ts` mutations
+are auth + load + guard shells around the table-agnostic `*Patch`
+helpers in `lib/emailTranslations.ts`, `setDefaultLanguagePatch`
+included), the
 saved-block propagation algorithm (lives in
 `lib/linkedBlockPropagation.ts`; the effect calls it), or the read
 queries (`get`, `list`, `getForLanguage`, the by-organization read
