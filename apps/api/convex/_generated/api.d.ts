@@ -413,6 +413,7 @@ import type * as delivery_sendComposition_trackingUrl from '../delivery/sendComp
 import type * as delivery_sendComposition_transactional_index from '../delivery/sendComposition/transactional/index.js';
 import type * as delivery_sendComposition_transform from '../delivery/sendComposition/transform.js';
 import type * as delivery_sendComposition_types from '../delivery/sendComposition/types.js';
+import type * as delivery_sendEngagement from '../delivery/sendEngagement.js';
 import type * as delivery_sendLifecycle from '../delivery/sendLifecycle.js';
 import type * as delivery_sendLifecycle_deliveryObservation from '../delivery/sendLifecycle/deliveryObservation.js';
 import type * as delivery_sendLifecycle_effects from '../delivery/sendLifecycle/effects.js';
@@ -1611,6 +1612,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/sendComposition/transactional/index': typeof delivery_sendComposition_transactional_index;
 	'delivery/sendComposition/transform': typeof delivery_sendComposition_transform;
 	'delivery/sendComposition/types': typeof delivery_sendComposition_types;
+	'delivery/sendEngagement': typeof delivery_sendEngagement;
 	'delivery/sendLifecycle': typeof delivery_sendLifecycle;
 	'delivery/sendLifecycle/deliveryObservation': typeof delivery_sendLifecycle_deliveryObservation;
 	'delivery/sendLifecycle/effects': typeof delivery_sendLifecycle_effects;
