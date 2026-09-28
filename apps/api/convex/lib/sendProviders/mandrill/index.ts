@@ -44,6 +44,7 @@ import {
 	type SendProviderModule,
 } from '../types';
 import { sendProviderCatalogEntry } from '../catalog';
+import { toComposeInput } from '../composeInput';
 import { transportEnvOptional, transportEnvRequired } from '../transportEnv';
 import type { SendTransportRecord } from '../transports';
 import { isAmbiguousPostDispatchTimeout } from '../errors';
@@ -274,25 +275,7 @@ export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 		// failure here is terminal and unambiguous — nothing reached Mandrill.
 		let composed: ReturnType<typeof composeMessage>;
 		try {
-			composed = composeMessage({
-				from: params.from,
-				to: [params.to],
-				subject: params.subject,
-				html: params.html,
-				text: params.text,
-				replyTo: params.replyTo,
-				headers:
-					params.headers && Object.keys(params.headers).length > 0 ? params.headers : undefined,
-				attachments: params.attachments?.map((a) => ({
-					filename: a.filename,
-					contentType: a.contentType ?? 'application/octet-stream',
-					// `EmailAttachment.content` is runtime-neutral bytes (the isolate has no
-					// Buffer); this module is `'use node'`, so the composer's Buffer is
-					// available here at the boundary.
-					isInline: false,
-					data: Buffer.from(a.content),
-				})),
-			});
+			composed = composeMessage(toComposeInput(params));
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 			return { success: false, errorMessage, errorCode: categorizeMandrillError(errorMessage) };

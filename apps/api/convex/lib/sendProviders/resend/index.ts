@@ -88,6 +88,10 @@ export const resendSendProvider: SendProviderModule<'resend'> = {
 						from: params.from,
 						subject: params.subject,
 						html: params.html,
+						// The author's plain-text version (or a strip of the UNTRACKED
+						// html). Without it Resend derives its own text part from the
+						// tracked html, redirect links included.
+						text: params.text,
 						replyTo: params.replyTo,
 						headers:
 							params.headers && Object.keys(params.headers).length > 0 ? params.headers : undefined,

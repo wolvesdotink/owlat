@@ -714,6 +714,7 @@ import type * as lib_sendProviders_capability from '../lib/sendProviders/capabil
 import type * as lib_sendProviders_catalog from '../lib/sendProviders/catalog.js';
 import type * as lib_sendProviders_catalogTypes from '../lib/sendProviders/catalogTypes.js';
 import type * as lib_sendProviders_cellRoute from '../lib/sendProviders/cellRoute.js';
+import type * as lib_sendProviders_composeInput from '../lib/sendProviders/composeInput.js';
 import type * as lib_sendProviders_destinationProvider from '../lib/sendProviders/destinationProvider.js';
 import type * as lib_sendProviders_dispatch from '../lib/sendProviders/dispatch.js';
 import type * as lib_sendProviders_emailit_index from '../lib/sendProviders/emailit/index.js';
@@ -1911,6 +1912,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/sendProviders/catalog': typeof lib_sendProviders_catalog;
 	'lib/sendProviders/catalogTypes': typeof lib_sendProviders_catalogTypes;
 	'lib/sendProviders/cellRoute': typeof lib_sendProviders_cellRoute;
+	'lib/sendProviders/composeInput': typeof lib_sendProviders_composeInput;
 	'lib/sendProviders/destinationProvider': typeof lib_sendProviders_destinationProvider;
 	'lib/sendProviders/dispatch': typeof lib_sendProviders_dispatch;
 	'lib/sendProviders/emailit/index': typeof lib_sendProviders_emailit_index;
