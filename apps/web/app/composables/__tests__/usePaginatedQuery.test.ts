@@ -3,6 +3,12 @@ import { nextTick } from 'vue';
 import { ConvexError } from 'convex/values';
 import { usePaginatedQuery } from '../usePaginatedQuery';
 
+const dev = vi.hoisted(() => ({ build: false }));
+vi.mock('~/lib/runtimeLog', async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	isDevBuild: () => dev.build,
+}));
+
 const fakeQuery = 'api.test.list' as unknown as Parameters<typeof usePaginatedQuery>[0];
 
 type PaginatedResult = {
@@ -18,6 +24,7 @@ let mockClient: { onPaginatedUpdate_experimental: ReturnType<typeof vi.fn> };
 let capturedUnmountCallback: (() => void) | null = null;
 
 beforeEach(() => {
+	dev.build = false;
 	mockSuccessCallback = null;
 	mockErrorCallback = null;
 	capturedUnmountCallback = null;
@@ -229,6 +236,21 @@ describe('usePaginatedQuery', () => {
 			expect(isLoading.value).toBe(false);
 		});
 
+		it('wraps a non-Error rejection into an Error', () => {
+			const { error, isLoading } = usePaginatedQuery(
+				fakeQuery,
+				{ teamId: '123' },
+				{ initialNumItems: 20 }
+			);
+
+			// A permanent failure, so it surfaces instead of being retried.
+			(mockErrorCallback as unknown as (e: unknown) => void)('ArgumentValidationError: bad');
+
+			expect(error.value).toBeInstanceOf(Error);
+			expect(error.value!.message).toBe('ArgumentValidationError: bad');
+			expect(isLoading.value).toBe(false);
+		});
+
 		it('sets error when client is null', () => {
 			vi.stubGlobal('useConvex', () => null);
 
@@ -251,6 +273,60 @@ describe('usePaginatedQuery', () => {
 			expect(capturedUnmountCallback).toBeTruthy();
 			capturedUnmountCallback!();
 			expect(mockSubDispose).toHaveBeenCalled();
+		});
+
+		it('warns in a dev build when created outside an effect scope', () => {
+			dev.build = true;
+			vi.stubGlobal('getCurrentScope', () => undefined);
+			const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+			try {
+				usePaginatedQuery(fakeQuery, { teamId: '123' }, { initialNumItems: 20 });
+
+				expect(warn).toHaveBeenCalledOnce();
+				expect(warn.mock.calls[0]![0]).toContain('[usePaginatedQuery]');
+				expect(warn.mock.calls[0]![0]).toContain('outside an effect scope');
+				expect(capturedUnmountCallback).toBeNull();
+			} finally {
+				warn.mockRestore();
+			}
+		});
+
+		it('does not resubscribe or drop loaded pages on a structurally identical re-evaluation', async () => {
+			// Factories return a fresh literal on every evaluation. A deep watch
+			// re-subscribed on each one, which reset `results` to the first page
+			// and threw away everything "Load more" had fetched.
+			const tags = reactive(['image/']);
+			const nonce = ref(0);
+			const loadMorePage = vi.fn();
+			const { results, status, isLoading, loadMore } = usePaginatedQuery(
+				fakeQuery,
+				() => {
+					void nonce.value;
+					return { tags, search: undefined };
+				},
+				{ initialNumItems: 20 }
+			);
+			mockSuccessCallback!({
+				results: [{ id: '1' }, { id: '2' }],
+				status: 'CanLoadMore',
+				loadMore: loadMorePage,
+			});
+
+			nonce.value += 1;
+			await nextTick();
+
+			expect(mockClient.onPaginatedUpdate_experimental).toHaveBeenCalledTimes(1);
+			expect(mockSubDispose).not.toHaveBeenCalled();
+			expect(results.value).toEqual([{ id: '1' }, { id: '2' }]);
+			expect(status.value).toBe('CanLoadMore');
+			expect(isLoading.value).toBe(false);
+			loadMore(20);
+			expect(loadMorePage).toHaveBeenCalledWith(20);
+
+			// A real change to the array still re-subscribes.
+			tags.push('video/');
+			await nextTick();
+			expect(mockClient.onPaginatedUpdate_experimental).toHaveBeenCalledTimes(2);
 		});
 
 		it('unsubscribes and resubscribes when args change', async () => {
