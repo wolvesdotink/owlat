@@ -5,6 +5,7 @@ import {
 	type ContributionBucket,
 } from './contributionRequirements';
 import { validateAutonomyGateContributions } from './autonomyGateManifest';
+import { validateModuleExportPath } from './contributionManifest';
 import { validateCronContributions } from './cronManifest';
 import { validateDraftStrategyContributions } from './draftStrategyManifest';
 import { validateAgentStepContributions } from './agentStepManifest';
@@ -29,7 +30,6 @@ import {
 } from './sendTransportManifest';
 import type { PluginSettingsSchema } from './settingsSchema';
 import { validateSettingsSchema } from './settingsSchemaManifest';
-import { isSafeStaticExportPath } from './staticExportPath';
 import {
 	isRecord,
 	readDataProperty,
@@ -258,21 +258,7 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 
 function validateComponent(value: unknown, issues: PluginManifestIssue[]): void {
 	if (value === undefined) return;
-	if (!isRecord(value)) {
-		addManifestIssue(issues, 'invalid_type', '$.component', 'must be a plain object');
-		return;
-	}
-	validateKnownFields(value, '$.component', new Set(['exportPath']), issues);
-	const exportPath = readDataProperty(value, 'exportPath', issues, true, '$.component');
-	if (exportPath.kind !== 'value') return;
-	if (typeof exportPath.value !== 'string' || !isSafeStaticExportPath(exportPath.value)) {
-		addManifestIssue(
-			issues,
-			'invalid_format',
-			'$.component.exportPath',
-			'must be a safe relative package export path'
-		);
-	}
+	validateModuleExportPath(value, '$.component', issues);
 }
 
 function validateCapabilities(

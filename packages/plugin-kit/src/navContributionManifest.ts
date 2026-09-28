@@ -1,12 +1,7 @@
-import { isPluginLocalId } from './namespacedKind';
+import { forEachContributionItem, validateContributionLocalId } from './contributionManifest';
 import { isSafeInternalNavPath } from './internalPath';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
-import {
-	isRecord,
-	readDataProperty,
-	type DataProperty,
-	validateKnownFields,
-} from './manifestValue';
+import { readDataProperty, type DataProperty } from './manifestValue';
 
 /**
  * Shared field validation for the two frontend navigation contribution buckets
@@ -19,7 +14,7 @@ import {
 
 const SECTION_KEY = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const ICON = /^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const RESERVED_LOCAL_IDS = new Set(['constructor', 'prototype', '__proto__']);
+const MAX_SECTION_KEY_LENGTH = 64;
 const MAX_NAME_LENGTH = 64;
 /**
  * Control (`Cc`) and format (`Cf`) code points the render-side `clampLabel`
@@ -55,48 +50,14 @@ function validateNavigationContributions(
 	issues: PluginManifestIssue[]
 ): void {
 	const ids = new Set<string>();
-	for (const [index, item] of items.entries()) {
-		if (item.kind !== 'value') continue;
-		const path = `$.contributes.${bucket}[${index}]`;
-		if (!isRecord(item.value)) {
-			addManifestIssue(issues, 'invalid_type', path, 'must be a plain object');
-			continue;
-		}
-		validateKnownFields(item.value, path, fields, issues);
-		validateLocalId(bucket, item.value, path, ids, issues);
-		if (requiresSection) validateSection(item.value, path, issues);
-		validateName(item.value, path, issues);
-		validateHref(item.value, path, issues);
-		validateIcon(item.value, path, issues);
-		validateOrder(item.value, path, issues);
-	}
-}
-
-function validateLocalId(
-	bucket: string,
-	entry: Record<string, unknown>,
-	path: string,
-	ids: Set<string>,
-	issues: PluginManifestIssue[]
-): void {
-	const id = readDataProperty(entry, 'id', issues, true, path);
-	if (id.kind !== 'value') return;
-	if (
-		typeof id.value !== 'string' ||
-		!isPluginLocalId(id.value) ||
-		RESERVED_LOCAL_IDS.has(id.value)
-	) {
-		addManifestIssue(
-			issues,
-			'invalid_format',
-			`${path}.id`,
-			'must be a non-reserved lowercase kebab-case id of at most 64 characters'
-		);
-	} else if (ids.has(id.value)) {
-		addManifestIssue(issues, 'duplicate', `${path}.id`, `duplicates ${bucket} entry ${id.value}`);
-	} else {
-		ids.add(id.value);
-	}
+	forEachContributionItem(items, bucket, fields, issues, (entry, path) => {
+		validateContributionLocalId(entry, path, ids, `${bucket} entry`, issues);
+		if (requiresSection) validateSection(entry, path, issues);
+		validateName(entry, path, issues);
+		validateHref(entry, path, issues);
+		validateIcon(entry, path, issues);
+		validateOrder(entry, path, issues);
+	});
 }
 
 function validateSection(
@@ -108,14 +69,14 @@ function validateSection(
 	if (section.kind !== 'value') return;
 	if (
 		typeof section.value !== 'string' ||
-		section.value.length > 64 ||
+		section.value.length > MAX_SECTION_KEY_LENGTH ||
 		!SECTION_KEY.test(section.value)
 	) {
 		addManifestIssue(
 			issues,
 			'invalid_format',
 			`${path}.section`,
-			'must be a lowercase kebab-case section key of at most 64 characters'
+			`must be a lowercase kebab-case section key of at most ${MAX_SECTION_KEY_LENGTH} characters`
 		);
 	}
 }

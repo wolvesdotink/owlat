@@ -1,5 +1,10 @@
+import {
+	forEachContributionItem,
+	validateContributionLabel,
+	validateContributionLocalId,
+	validateContributionModule,
+} from './contributionManifest';
 import { validateInboundSignatureContract } from './inboundSignatureManifest';
-import { isPluginLocalId } from './namespacedKind';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
 import {
 	isRecord,
@@ -10,13 +15,25 @@ import {
 } from './manifestValue';
 import { isPluginSendTransportEnvVar, PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS } from './sendTransport';
 import { validateCredentialFields } from './sendTransportCredentialsManifest';
-import { isSafeStaticExportPath } from './staticExportPath';
 
-const RESERVED_LOCAL_IDS = new Set(['constructor', 'prototype', '__proto__']);
 const MAX_LABEL_LENGTH = 80;
 const MAX_RETRIES = 3;
 const MAX_RETRY_DELAY_MS = 60_000;
 const MAX_TOTAL_DELAY_MS = 120_000;
+const FIELDS = new Set([
+	'id',
+	'label',
+	'module',
+	'retryDelays',
+	'requiredEnvVars',
+	'optionalEnvVars',
+	'credentialFields',
+	'supportsCustomReturnPath',
+	'messageIdSource',
+	'deduplicatesOnIdempotencyKey',
+	'webhook',
+	'domainIdentity',
+]);
 
 /** One accepted configuration variable, and the list it was declared in. */
 export interface SendTransportConfigEnvVar {
@@ -54,46 +71,21 @@ export function validateSendTransportContributions(
 	const webhookSecretEnvVars: string[] = [];
 	const configEnvVars: SendTransportConfigEnvVar[] = [];
 	let webhookDeclaredAt: number | null = null;
-	for (const [index, item] of items.entries()) {
-		if (item.kind !== 'value') continue;
-		const path = `$.contributes.sendTransports[${index}]`;
-		if (!isRecord(item.value)) {
-			addManifestIssue(issues, 'invalid_type', path, 'must be a plain object');
-			continue;
-		}
-		validateKnownFields(
-			item.value,
-			path,
-			new Set([
-				'id',
-				'label',
-				'module',
-				'retryDelays',
-				'requiredEnvVars',
-				'optionalEnvVars',
-				'credentialFields',
-				'supportsCustomReturnPath',
-				'messageIdSource',
-				'deduplicatesOnIdempotencyKey',
-				'webhook',
-				'domainIdentity',
-			]),
-			issues
-		);
-		validateId(item.value, path, seenIds, issues);
-		validateLabel(item.value, path, issues);
-		validateModule(item.value, path, issues);
-		validateRetryDelays(item.value, path, issues);
-		const declaredEnvVars = validateConfigEnvVars(item.value, path, issues);
+	forEachContributionItem(items, 'sendTransports', FIELDS, issues, (transport, path, index) => {
+		validateContributionLocalId(transport, path, seenIds, 'transport', issues);
+		validateContributionLabel(transport, path, MAX_LABEL_LENGTH, issues);
+		validateContributionModule(transport, path, issues);
+		validateRetryDelays(transport, path, issues);
+		const declaredEnvVars = validateConfigEnvVars(transport, path, issues);
 		for (const field of CONFIG_ENV_VAR_FIELDS) {
 			for (const name of declaredEnvVars[field]) {
 				configEnvVars.push({ name, path: `${path}.${field}` });
 			}
 		}
-		validateCredentialFields(item.value, path, declaredEnvVars, issues);
-		validateCapabilities(item.value, path, issues);
-		validateDomainIdentity(item.value, path, declaredEnvVars, issues);
-		if (validateWebhook(item.value, path, issues, webhookSecretEnvVars)) {
+		validateCredentialFields(transport, path, declaredEnvVars, issues);
+		validateCapabilities(transport, path, issues);
+		validateDomainIdentity(transport, path, declaredEnvVars, issues);
+		if (validateWebhook(transport, path, issues, webhookSecretEnvVars)) {
 			if (webhookDeclaredAt !== null) {
 				// The feedback route is `/webhooks/plugin/<pluginId>` (D6): a plugin id
 				// addresses exactly one inbound adapter, so a second declaration is a
@@ -109,82 +101,8 @@ export function validateSendTransportContributions(
 				webhookDeclaredAt = index;
 			}
 		}
-	}
+	});
 	return { webhookSecretEnvVars, configEnvVars };
-}
-
-function validateId(
-	transport: Record<string, unknown>,
-	path: string,
-	seenIds: Set<string>,
-	issues: PluginManifestIssue[]
-): void {
-	const id = readDataProperty(transport, 'id', issues, true, path);
-	if (id.kind !== 'value') return;
-	if (
-		typeof id.value !== 'string' ||
-		!isPluginLocalId(id.value) ||
-		RESERVED_LOCAL_IDS.has(id.value)
-	) {
-		addManifestIssue(
-			issues,
-			'invalid_format',
-			`${path}.id`,
-			'must be a non-reserved lowercase kebab-case id of at most 64 characters'
-		);
-	} else if (seenIds.has(id.value)) {
-		addManifestIssue(issues, 'duplicate', `${path}.id`, `duplicates transport ${id.value}`);
-	} else {
-		seenIds.add(id.value);
-	}
-}
-
-function validateLabel(
-	transport: Record<string, unknown>,
-	path: string,
-	issues: PluginManifestIssue[]
-): void {
-	const label = readDataProperty(transport, 'label', issues, true, path);
-	if (
-		label.kind === 'value' &&
-		(typeof label.value !== 'string' ||
-			label.value.trim() !== label.value ||
-			label.value.length < 1 ||
-			label.value.length > MAX_LABEL_LENGTH)
-	) {
-		addManifestIssue(
-			issues,
-			'invalid_format',
-			`${path}.label`,
-			`must be a trimmed label of at most ${MAX_LABEL_LENGTH} characters`
-		);
-	}
-}
-
-function validateModule(
-	transport: Record<string, unknown>,
-	path: string,
-	issues: PluginManifestIssue[]
-): void {
-	const module = readDataProperty(transport, 'module', issues, true, path);
-	if (module.kind !== 'value') return;
-	if (!isRecord(module.value)) {
-		addManifestIssue(issues, 'invalid_type', `${path}.module`, 'must be a plain object');
-		return;
-	}
-	validateKnownFields(module.value, `${path}.module`, new Set(['exportPath']), issues);
-	const exportPath = readDataProperty(module.value, 'exportPath', issues, true, `${path}.module`);
-	if (
-		exportPath.kind === 'value' &&
-		(typeof exportPath.value !== 'string' || !isSafeStaticExportPath(exportPath.value))
-	) {
-		addManifestIssue(
-			issues,
-			'invalid_format',
-			`${path}.module.exportPath`,
-			'must be a safe relative package export path'
-		);
-	}
 }
 
 /**
@@ -215,7 +133,7 @@ function validateWebhook(
 		new Set(['module', 'signature', 'storeRawPayload']),
 		issues
 	);
-	validateModule(webhook.value, webhookPath, issues);
+	validateContributionModule(webhook.value, webhookPath, issues);
 
 	// REQUIRED, and this is the piece's security floor: the route it feeds is
 	// unauthenticated and internet-facing, so a webhook whose authenticity nobody
@@ -369,7 +287,7 @@ function validateDomainIdentity(
 		return;
 	}
 	validateKnownFields(identity.value, identityPath, new Set(['module']), issues);
-	validateModule(identity.value, identityPath, issues);
+	validateContributionModule(identity.value, identityPath, issues);
 	if (declaredEnvVars.requiredEnvVars.size === 0) {
 		addManifestIssue(
 			issues,
