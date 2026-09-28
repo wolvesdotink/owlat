@@ -19,8 +19,9 @@
 #     starts, so a second replica would rip the first one's task away: pinned
 #     to one replica. Plus the Tier-3 sandbox (read-only rootfs, cap set,
 #     resource caps, isolated network membership).
-#   • Registry: every Owlat image points at ghcr.io/wolvesdotink and is pinned
-#     via ${OWLAT_VERSION:-dev}, never the mutable :latest.
+#   • Registry: every Owlat image (the list is docker/images.json) points at
+#     ghcr.io/wolvesdotink and is pinned via ${OWLAT_VERSION:-dev}, never the
+#     mutable :latest.
 #   • Docker socket: only the read-only docker-socket-proxy mounts it, and the
 #     privileged Docker API sits on an internal-only network.
 #   • Receiving profiles: external-mail and personal-mail stay bootable.
@@ -84,20 +85,43 @@ root=docker-compose.yml
 vps=infra/templates/docker-compose.vps.yml
 
 # --- registry and version pinning --------------------------------------------
-owlat_images=(web mta updater convex-deploy imap mail-sync)
+# docker/images.json lists every published image; the ones whose rootCompose is
+# "ghcr" are pulled from GHCR by the root compose file (code-worker and
+# convex-fn-proxy are built locally there, setup is not a service at all).
+manifest=docker/images.json
+if command -v jq >/dev/null 2>&1; then
+	ghcr_images=$(jq -r '.[] | select(.rootCompose == "ghcr") | .name' "$manifest")
+else
+	ghcr_images=$(bun -e '
+		const images = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+		for (const image of images) if (image.rootCompose === "ghcr") console.log(image.name);
+	' "$manifest")
+fi
 
 if grep -qE 'ghcr\.io/owlat\b' "$root"; then
 	bad "$root still references the ghcr.io/owlat placeholder org"
 else ok "$root has no ghcr.io/owlat placeholder reference"; fi
 
-missing_image=
-for svc in "${owlat_images[@]}"; do
-	grep -qE "image: *ghcr\.io/wolvesdotink/$svc:\\\$\{OWLAT_VERSION:-dev\}" \
-		<<<"$(service_block "$root" "$svc")" || missing_image="$missing_image $svc"
-done
-if [ -z "$missing_image" ]; then
-	ok "$root pins every Owlat image to ghcr.io/wolvesdotink/<svc>:\${OWLAT_VERSION:-dev}"
-else bad "$root:$missing_image must use image: ghcr.io/wolvesdotink/<svc>:\${OWLAT_VERSION:-dev}"; fi
+if [ -z "$ghcr_images" ]; then
+	bad "$manifest lists no image with rootCompose \"ghcr\" (could not read it?)"
+else
+	missing_image=
+	for name in $ghcr_images; do
+		grep -qE "^ +image: *ghcr\.io/wolvesdotink/$name:\\\$\{OWLAT_VERSION:-dev\}$" "$root" \
+			|| missing_image="$missing_image $name"
+	done
+	if [ -z "$missing_image" ]; then
+		ok "$root pins every Owlat image to ghcr.io/wolvesdotink/<name>:\${OWLAT_VERSION:-dev}"
+	else bad "$root:$missing_image must use image: ghcr.io/wolvesdotink/<name>:\${OWLAT_VERSION:-dev}"; fi
+
+	unlisted=
+	for name in $(grep -oE 'ghcr\.io/wolvesdotink/[a-z0-9-]+' "$root" | sed 's#.*/##' | sort -u); do
+		grep -qxF "$name" <<<"$ghcr_images" || unlisted="$unlisted $name"
+	done
+	if [ -z "$unlisted" ]; then
+		ok "$root pulls no Owlat image that $manifest does not list with rootCompose \"ghcr\""
+	else bad "$root:$unlisted not listed in $manifest with rootCompose \"ghcr\""; fi
+fi
 
 if grep -qE 'ghcr\.io/wolvesdotink/[a-z0-9-]+:(latest\b|\$\{OWLAT_VERSION:-latest\})|owlat-code-worker:\$\{OWLAT_VERSION:-latest\}' "$root"; then
 	bad "$root pins an image to the mutable :latest tag"

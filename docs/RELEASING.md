@@ -91,13 +91,40 @@ before the draft goes live instead. When it goes red on a new image:
 So when a release adds a new service image, expect its first run to stop at
 `verify-anonymous-pull` by design. Checklist for a new image:
 
-- add it to the `build-and-push` matrix AND the `merge-manifests` matrix in
-  `_server-build.yml` (the `clamav` and `tinyproxy` wrappers added in 0.4.10
-  are the most recent example — expect their first release to stop at
-  `verify-anonymous-pull` until both packages are flipped public);
-- add it to the image list in the `verify-anonymous-pull` job (kept in sync by
-  hand);
+- add an entry to `docker/images.json` (see below). The `build-and-push` and
+  `merge-manifests` matrices and the `verify-anonymous-pull` loop all read it,
+  so there is no list in `_server-build.yml` to edit;
+- add it to the `**Images:**` line of the release body in `release.yml` and
+  `server-release.yml` (`bun run lint:script-tests` fails until you do);
 - after the first release run pushes it: flip the package public, then re-run.
+
+## The image manifest: `docker/images.json`
+
+One entry per published image, `ghcr.io/wolvesdotink/<name>`:
+
+| Field         | Meaning                                                                             |
+| ------------- | ----------------------------------------------------------------------------------- |
+| `name`        | image name under `ghcr.io/wolvesdotink/`, also the cache scope and artifact name    |
+| `dockerfile`  | Dockerfile path from the repository root                                            |
+| `context`     | build context from the repository root                                              |
+| `title`       | `org.opencontainers.image.title` label                                              |
+| `description` | `org.opencontainers.image.description` label                                        |
+| `rootCompose` | how the root `docker-compose.yml` runs it: `ghcr` (pulled), `local` (built), `none` |
+
+- **Context.** The first-party apps build from the monorepo root (`.`): their
+  `catalog:` versions only resolve through a bun workspace install (see each
+  Dockerfile). `clamav`, `tinyproxy` and `unbound` are thin wrappers around
+  upstream images that are not multi-arch under one name; they build from
+  `docker/` and need nothing else from the tree.
+- **Labels.** The Dockerfiles carry no `LABEL` lines. The release build sets
+  `title` and `description` from the manifest through `docker/metadata-action`,
+  which also computes `source`, `licenses`, `version`, `revision` and `created`.
+  The updater's image prune relies on `source`, so local builds (no labels)
+  prune nothing. The `OWLAT_VERSION`, `OWLAT_GIT_SHA` and `OWLAT_BUILD_DATE`
+  build args stay: the runtime reads them from the environment.
+- **`rootCompose`.** `bun run lint:compose` checks that every `ghcr` entry is
+  pinned to `ghcr.io/wolvesdotink/<name>:${OWLAT_VERSION:-dev}` in the root
+  compose file, and that the file pulls no other `ghcr.io/wolvesdotink` image.
 
 ## Related
 

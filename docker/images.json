@@ -1,0 +1,98 @@
+[
+	{
+		"name": "web",
+		"dockerfile": "apps/web/Dockerfile",
+		"context": ".",
+		"title": "owlat-web",
+		"description": "Owlat web app (Nuxt)",
+		"rootCompose": "ghcr"
+	},
+	{
+		"name": "mta",
+		"dockerfile": "apps/mta/Dockerfile",
+		"context": ".",
+		"title": "owlat-mta",
+		"description": "Owlat MTA (mail transfer agent)",
+		"rootCompose": "ghcr"
+	},
+	{
+		"name": "updater",
+		"dockerfile": "apps/updater/Dockerfile",
+		"context": ".",
+		"title": "owlat-updater",
+		"description": "Owlat in-place update sidecar",
+		"rootCompose": "ghcr"
+	},
+	{
+		"name": "convex-deploy",
+		"dockerfile": "docker/convex-deploy.Dockerfile",
+		"context": ".",
+		"title": "owlat-convex-deploy",
+		"description": "Owlat tenant Convex function deployer",
+		"rootCompose": "ghcr"
+	},
+	{
+		"name": "imap",
+		"dockerfile": "apps/imap/Dockerfile",
+		"context": ".",
+		"title": "owlat-imap",
+		"description": "Owlat IMAP server",
+		"rootCompose": "ghcr"
+	},
+	{
+		"name": "mail-sync",
+		"dockerfile": "apps/mail-sync/Dockerfile",
+		"context": ".",
+		"title": "owlat-mail-sync",
+		"description": "Owlat mail-sync worker (external IMAP/SMTP accounts)",
+		"rootCompose": "ghcr"
+	},
+	{
+		"name": "code-worker",
+		"dockerfile": "apps/code-worker/Dockerfile",
+		"context": ".",
+		"title": "owlat-code-worker",
+		"description": "Owlat sandboxed code worker (coding and plugin tasks)",
+		"rootCompose": "local"
+	},
+	{
+		"name": "convex-fn-proxy",
+		"dockerfile": "apps/convex-fn-proxy/Dockerfile",
+		"context": ".",
+		"title": "owlat-convex-fn-proxy",
+		"description": "Owlat Convex function-allowlist proxy for the code-worker",
+		"rootCompose": "local"
+	},
+	{
+		"name": "setup",
+		"dockerfile": "apps/setup-cli/Dockerfile",
+		"context": ".",
+		"title": "owlat-setup",
+		"description": "Owlat setup CLI (install and configure a self-hosted server)",
+		"rootCompose": "none"
+	},
+	{
+		"name": "clamav",
+		"dockerfile": "docker/clamav.Dockerfile",
+		"context": "docker",
+		"title": "owlat-clamav",
+		"description": "Owlat ClamAV virus scanner (multi-arch wrapper)",
+		"rootCompose": "ghcr"
+	},
+	{
+		"name": "tinyproxy",
+		"dockerfile": "docker/tinyproxy.Dockerfile",
+		"context": "docker",
+		"title": "owlat-tinyproxy",
+		"description": "Owlat allowlisted egress proxy for the code-worker (tinyproxy)",
+		"rootCompose": "ghcr"
+	},
+	{
+		"name": "unbound",
+		"dockerfile": "docker/unbound.Dockerfile",
+		"context": "docker",
+		"title": "owlat-unbound",
+		"description": "Owlat recursive DNS resolver for blocklist lookups (Unbound)",
+		"rootCompose": "ghcr"
+	}
+]
