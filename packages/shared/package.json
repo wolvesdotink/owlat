@@ -342,6 +342,14 @@
 			"types": "./src/tlsCertReloader.ts",
 			"import": "./src/tlsCertReloader.ts"
 		},
+		"./tlsMaterial": {
+			"types": "./src/tlsMaterial.ts",
+			"import": "./src/tlsMaterial.ts"
+		},
+		"./tlsPolicy": {
+			"types": "./src/tlsPolicy.ts",
+			"import": "./src/tlsPolicy.ts"
+		},
 		"./networkPorts": {
 			"types": "./src/networkPorts.ts",
 			"import": "./src/networkPorts.ts"

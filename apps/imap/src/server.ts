@@ -7,6 +7,7 @@
 import { createServer as createPlainServer, type Server as TlsServer, type TlsOptions } from 'tls';
 import { createServer as createTcpServer, type Server as TcpServer } from 'net';
 import { unmapIpv4 } from '@owlat/shared/ipAddress';
+import { HARDENED_SERVER_TLS_OPTIONS } from '@owlat/shared/tlsPolicy';
 import type { ImapConfig } from './config.js';
 import type { ConvexClient } from './convex.js';
 import { ImapConnection } from './connection.js';
@@ -14,19 +15,8 @@ import type { AuthRateLimiter } from './rateLimit.js';
 import { logger } from './logger.js';
 import { startImapTlsReload } from './tlsReload.js';
 
-/** The IMAPS cipher policy: TLSv1.2 floor, AEAD-only ECDHE suites. */
-const TLS_POLICY: TlsOptions = {
-	minVersion: 'TLSv1.2',
-	ciphers: [
-		'ECDHE-ECDSA-AES128-GCM-SHA256',
-		'ECDHE-RSA-AES128-GCM-SHA256',
-		'ECDHE-ECDSA-AES256-GCM-SHA384',
-		'ECDHE-RSA-AES256-GCM-SHA384',
-		'ECDHE-ECDSA-CHACHA20-POLY1305',
-		'ECDHE-RSA-CHACHA20-POLY1305',
-	].join(':'),
-	honorCipherOrder: true,
-};
+/** The IMAPS cipher policy, shared with the SMTP listeners. */
+const TLS_POLICY: TlsOptions = HARDENED_SERVER_TLS_OPTIONS;
 
 interface ConnectionAccounting {
 	totalActive: number;

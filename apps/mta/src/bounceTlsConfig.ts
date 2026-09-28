@@ -15,65 +15,36 @@
  * A pair read from files also reports its `paths`, so the running listener can
  * re-read them when the certificate is renewed (bounce/tlsReload.ts). Inline
  * PEM cannot change without a restart and reports none.
+ *
+ * The rules live in `@owlat/shared/tlsMaterial`, shared with IMAPS: half a pair
+ * or an explicitly configured file that is missing or unreadable fails the
+ * boot, so a typo cannot quietly start a listener that rejects all inbound
+ * mail. Unlike IMAP there is no default cert directory: without
+ * `TLS_CERT_DIR` the third source is skipped.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { loadTlsMaterial } from '@owlat/shared/tlsMaterial';
 
 export interface BounceTlsMaterial {
 	cert?: string;
 	key?: string;
-	/** Where a file-sourced pair came from; absent for inline PEM or a half pair. */
+	/** Where a file-sourced pair came from; absent for inline PEM. */
 	paths?: { cert: string; key: string };
 }
 
-type Env = Record<string, string | undefined>;
-
-function readPem(path: string, envName: string): string {
-	try {
-		return readFileSync(path, 'utf-8');
-	} catch (err) {
-		const code = (err as NodeJS.ErrnoException).code;
-		const uid = typeof process.getuid === 'function' ? process.getuid() : 'unknown';
-		throw new Error(
-			code === 'EACCES'
-				? `Cannot read inbound SMTP TLS material at ${path} (${envName}): permission denied for uid ${uid}. ` +
-						'Whatever writes the cert must hand ownership to the MTA runtime user ' +
-						'(docker-compose.yml: imap-cert-init chowns to IMAP_RUNTIME_USER).'
-				: `Cannot read inbound SMTP TLS material at ${path} (${envName}): ${code ?? String(err)}.`,
-			{ cause: err }
-		);
-	}
-}
-
-export function loadBounceTlsMaterial(env: Env = process.env): BounceTlsMaterial {
-	if (env['BOUNCE_TLS_CERT'] || env['BOUNCE_TLS_KEY']) {
-		return {
-			...(env['BOUNCE_TLS_CERT'] ? { cert: env['BOUNCE_TLS_CERT'] } : {}),
-			...(env['BOUNCE_TLS_KEY'] ? { key: env['BOUNCE_TLS_KEY'] } : {}),
-		};
-	}
-
-	const certFile = env['BOUNCE_TLS_CERT_FILE'];
-	const keyFile = env['BOUNCE_TLS_KEY_FILE'];
-	if (certFile || keyFile) {
-		// Explicitly configured paths fail loudly: a typo must not quietly boot a
-		// listener that rejects all inbound mail.
-		return {
-			...(certFile ? { cert: readPem(certFile, 'BOUNCE_TLS_CERT_FILE') } : {}),
-			...(keyFile ? { key: readPem(keyFile, 'BOUNCE_TLS_KEY_FILE') } : {}),
-			...(certFile && keyFile ? { paths: { cert: certFile, key: keyFile } } : {}),
-		};
-	}
-
-	const certDir = env['TLS_CERT_DIR'];
-	if (!certDir) return {};
-	const certPath = join(certDir, 'default.crt');
-	const keyPath = join(certDir, 'default.key');
-	if (!existsSync(certPath) || !existsSync(keyPath)) return {};
-	return {
-		cert: readPem(certPath, 'TLS_CERT_DIR'),
-		key: readPem(keyPath, 'TLS_CERT_DIR'),
-		paths: { cert: certPath, key: keyPath },
-	};
+/** The pair for the port-25 listener; an empty object when none is configured. */
+export function loadBounceTlsMaterial(
+	env: Record<string, string | undefined> = process.env
+): BounceTlsMaterial {
+	return (
+		loadTlsMaterial({
+			env,
+			inlineCert: 'BOUNCE_TLS_CERT',
+			inlineKey: 'BOUNCE_TLS_KEY',
+			certFile: 'BOUNCE_TLS_CERT_FILE',
+			keyFile: 'BOUNCE_TLS_KEY_FILE',
+			certDir: env['TLS_CERT_DIR'],
+			label: 'inbound SMTP',
+		}) ?? {}
+	);
 }

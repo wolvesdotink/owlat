@@ -179,6 +179,29 @@ describe('TLS material from the shared cert volume', () => {
 		expect(loadConfig().tls?.paths).toEqual({ cert, key });
 
 		process.env['IMAP_TLS_CERT'] = 'INLINE-CERT';
-		expect(loadConfig().tls).toEqual({ cert: 'INLINE-CERT', key: 'KEY-PEM' });
+		process.env['IMAP_TLS_KEY'] = 'INLINE-KEY';
+		expect(loadConfig().tls).toEqual({ cert: 'INLINE-CERT', key: 'INLINE-KEY' });
+	});
+
+	// These used to be skipped silently, so a typo in IMAP_TLS_CERT_FILE booted
+	// on the volume's default pair (or with no TLS at all) instead of failing.
+	it('fails the boot when an explicitly configured file is missing', () => {
+		process.env['IMAP_TLS_CERT_FILE'] = join(certDir, 'typo.crt');
+		process.env['IMAP_TLS_KEY_FILE'] = join(certDir, 'default.key');
+		expect(() => loadConfig()).toThrowError(/IMAP_TLS_CERT_FILE.*ENOENT/);
+	});
+
+	it.each([
+		[{ IMAP_TLS_CERT: 'INLINE-CERT' }, /IMAP_TLS_CERT is set but IMAP_TLS_KEY is not/],
+		[{ IMAP_TLS_KEY_FILE: '/x.key' }, /IMAP_TLS_KEY_FILE is set but IMAP_TLS_CERT_FILE is not/],
+	])('fails the boot on half a pair (%j)', (vars, message) => {
+		Object.assign(process.env, vars);
+		expect(() => loadConfig()).toThrowError(message);
+	});
+
+	it('starts without TLS when the cert directory holds no pair', () => {
+		rmSync(join(certDir, 'default.key'));
+		expect(loadConfig().tls).toBeNull();
+		writeFileSync(join(certDir, 'default.key'), 'KEY-PEM');
 	});
 });
