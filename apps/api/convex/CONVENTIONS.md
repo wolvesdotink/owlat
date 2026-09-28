@@ -38,13 +38,24 @@ Convex generated function paths mirror the folder structure: a query in
 `mail/imap/session.ts` is reached via `api.mail.imap.session.<funcName>`.
 
 **Magic root files never move into domain folders.** `schema.ts`,
-`convex.config.ts`, `http.ts`, and `auth.config.ts` are filenames the Convex
-CLI resolves at the convex root, exactly. `auth.config.ts` in particular is
-the instance auth (JWT provider) configuration evaluated at push time — a past
+`convex.config.ts`, `http.ts`, `auth.config.ts` and `crons.ts` are filenames
+the Convex CLI resolves at the convex root, exactly. `env.d.ts` (ambient type
+declarations for the Convex tsconfig) stays there too. `auth.config.ts` in
+particular is the instance auth (JWT provider) configuration evaluated at push
+time — a past
 reorg moved it to `auth/config.ts` and every freshly-pushed deployment silently
 lost all auth providers: sessions kept working, but every
 `ctx.auth.getUserIdentity()` returned null and all authed queries threw
 "Not authenticated".
+
+**The root is frozen.** No new module goes at the convex root: put it in a
+domain folder or `lib/`. `scripts/check-convex-root.sh` (part of `bun run lint`)
+compares `convex/*.ts` with `scripts/convex-root-baseline.txt` and fails on a
+new root file. When you move a legacy root module out, delete its baseline line,
+or the check fails it as stale. A move changes the module's function paths
+(`api.foo.bar` becomes `api.domain.foo.bar`), so a module whose public functions
+clients call by path, or whose functions are scheduled, needs a one-release
+shim at the old path.
 
 ### One file per `<domain>/<feature>.ts`
 
