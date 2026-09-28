@@ -7,6 +7,8 @@ import { normalizeDeliverabilityRoutingSnapshot } from '@owlat/shared/deliverabi
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from './deliverabilityRouting';
 import { ipReadinessFieldValidators, warmingPoolsValidator } from './readinessValidators';
 import { logError, logWarn } from '../lib/runtimeLog';
+import { ipv6SendingAddresses } from './checklistIpv6';
+import { resolveIpv6RegressionAlerts } from './checklistEvidence';
 
 /**
  * Sync IP warming state from the MTA's /ip-reputation endpoint.
@@ -85,6 +87,7 @@ export const syncWarmingState = internalAction({
 			await ctx.runMutation(internal.delivery.warmingSync.upsertWarmingState, {
 				...normalized,
 				syncedAt: Date.now(),
+				...(organizationId ? { organizationId } : {}),
 			});
 
 			const now = Date.now();
@@ -137,10 +140,12 @@ export const syncWarmingState = internalAction({
 });
 
 /**
- * Upsert the warming state singleton row.
+ * Upsert the warming state singleton row. `organizationId` is not stored: it
+ * scopes the IPv6 alert clean-up when the new snapshot shows IPv6 off.
  */
 export const upsertWarmingState = internalMutation({
 	args: {
+		organizationId: v.optional(v.string()),
 		pools: v.optional(warmingPoolsValidator),
 		phase: v.string(),
 		totalDailyCap: v.number(),
@@ -162,13 +167,17 @@ export const upsertWarmingState = internalMutation({
 		),
 		syncedAt: v.number(),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, { organizationId, ...snapshot }) => {
 		const existing = await ctx.db.query('warmingState').first();
 
 		if (existing) {
-			await ctx.db.patch(existing._id, args);
+			await ctx.db.patch(existing._id, snapshot);
 		} else {
-			await ctx.db.insert('warmingState', args);
+			await ctx.db.insert('warmingState', snapshot);
+		}
+
+		if (organizationId && ipv6SendingAddresses(snapshot).length === 0) {
+			await resolveIpv6RegressionAlerts(ctx, organizationId, snapshot.syncedAt);
 		}
 	},
 });
