@@ -1,4 +1,9 @@
-import { type EditorBlock, type EmailTheme, type VariableType } from '@owlat/email-builder';
+import {
+	parseStoredBlocks,
+	type EditorBlock,
+	type EmailTheme,
+	type VariableType,
+} from '@owlat/email-builder';
 import { renderEmailHtml, resolvePlainText } from '@owlat/email-renderer';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
@@ -23,15 +28,6 @@ export type EmailIdentifier =
 	| { emailType: 'marketing'; emailId: Id<'emailTemplates'> }
 	| { emailType: 'transactional'; emailId: Id<'transactionalEmails'> };
 
-function parseBlocks(content: string): EditorBlock[] {
-	try {
-		const parsed = JSON.parse(content || '[]');
-		return Array.isArray(parsed) ? (parsed as EditorBlock[]) : [];
-	} catch {
-		return [];
-	}
-}
-
 export function useEmailHtmlRendering() {
 	const renderBlocksToHtml = (blocks: EditorBlock[], options: RenderOptions): string => {
 		return renderEmailHtml(blocks, {
@@ -51,7 +47,7 @@ export function useEmailHtmlRendering() {
 	};
 
 	const renderContentToHtml = (content: string, options: RenderOptions): string => {
-		const blocks = parseBlocks(content);
+		const blocks = parseStoredBlocks(content);
 		return renderBlocksToHtml(blocks, options);
 	};
 

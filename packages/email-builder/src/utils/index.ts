@@ -37,6 +37,7 @@ export {
 	snapshotMatchesState,
 	formatSnapshotSize,
 } from './versionSnapshot';
+export { parseStoredBlocks } from './storedBlocks';
 export {
 	containsVariable,
 	extractVariableName,

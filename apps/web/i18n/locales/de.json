@@ -10214,12 +10214,7 @@
 						"previewSubject": "Baustein-Vorschau",
 						"saveOperation": "Baustein speichern",
 						"savedToast": "Baustein erfolgreich gespeichert",
-						"settingsTitle": "Baustein-Einstellungen",
-						"variables": {
-							"email": "E-Mail",
-							"firstName": "Vorname",
-							"lastName": "Nachname"
-						}
+						"settingsTitle": "Baustein-Einstellungen"
 					}
 				},
 				"index": {
@@ -10297,11 +10292,7 @@
 							"unpublished": "E-Mail wurde in den Entwurf zurückgesetzt"
 						},
 						"translations": "Übersetzungen",
-						"unpublish": "Zurückziehen",
-						"variables": {
-							"firstName": "Vorname",
-							"lastName": "Nachname"
-						}
+						"unpublish": "Zurückziehen"
 					},
 					"settings": {
 						"backToEmails": "Zurück zu den E-Mails",
@@ -13084,6 +13075,11 @@
 				"sourceAddress": "Weisen Sie die IPv6-Adresse auf dem MTA-Host bzw. -Container zu und routen Sie sie, und führen Sie dann die Bereitschaftsprüfung erneut aus.",
 				"spf": "Veröffentlichen Sie den erzeugten ip6:-Mechanismus auf der Return-Path-Domain und verifizieren Sie dann erneut."
 			}
+		},
+		"personalizationVariables": {
+			"email": "E-Mail",
+			"firstName": "Vorname",
+			"lastName": "Nachname"
 		},
 		"postbox": {
 			"offlineOutbox": {

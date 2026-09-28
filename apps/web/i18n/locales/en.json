@@ -10214,12 +10214,7 @@
 						"previewSubject": "Block preview",
 						"saveOperation": "Save block",
 						"savedToast": "Block saved successfully",
-						"settingsTitle": "Block settings",
-						"variables": {
-							"email": "Email",
-							"firstName": "First name",
-							"lastName": "Last name"
-						}
+						"settingsTitle": "Block settings"
 					}
 				},
 				"index": {
@@ -10297,11 +10292,7 @@
 							"unpublished": "Email returned to draft"
 						},
 						"translations": "Translations",
-						"unpublish": "Unpublish",
-						"variables": {
-							"firstName": "First name",
-							"lastName": "Last name"
-						}
+						"unpublish": "Unpublish"
 					},
 					"settings": {
 						"backToEmails": "Back to emails",
@@ -13084,6 +13075,11 @@
 				"sourceAddress": "Assign and route the IPv6 address on the MTA host/container, then run readiness again.",
 				"spf": "Publish the generated ip6: mechanism on the return-path domain, then verify again."
 			}
+		},
+		"personalizationVariables": {
+			"email": "Email",
+			"firstName": "First name",
+			"lastName": "Last name"
 		},
 		"postbox": {
 			"offlineOutbox": {
