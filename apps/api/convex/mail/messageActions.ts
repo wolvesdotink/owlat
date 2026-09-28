@@ -68,8 +68,36 @@ async function applyFlagDelta(
 	}
 }
 
+/**
+ * Apply a flag delta to every message the caller can access, then rebuild the
+ * touched threads. Shared by `setFlags` and its single-message wrappers, which
+ * call it directly: they used to go through `ctx.runMutation` with `api`
+ * loaded by a dynamic `import()`, and the Convex isolate rejects that at call
+ * time ("dynamic module import unsupported").
+ */
+async function applyFlags(
+	ctx: MutationCtx,
+	messageIds: Id<'mailMessages'>[],
+	flagDeltas: Partial<Record<Flag, boolean>>
+): Promise<void> {
+	if (Object.keys(flagDeltas).length === 0) return;
+	const touchedThreads = new Set<Id<'mailThreads'>>();
+	for (const id of messageIds) {
+		const message = await ctx.db.get(id);
+		if (!message) continue;
+		const owned = await requireMailboxAccess(ctx, message.mailboxId);
+		if (!owned.ok) continue;
+		await applyFlagDelta(ctx, message, flagDeltas);
+		touchedThreads.add(message.threadId);
+	}
+	for (const t of touchedThreads) {
+		await rebuildThreadAggregates(ctx, t);
+	}
+}
+
 // ── Public mutations ──────────────────────────────────────────────
 
+// authz: access enforced by applyFlags (requireMailboxAccess per message).
 export const setFlags = postboxMutation({
 	args: {
 		messageIds: v.array(v.id('mailMessages')),
@@ -82,20 +110,7 @@ export const setFlags = postboxMutation({
 		if (args.seen !== undefined) flagDeltas.seen = args.seen;
 		if (args.flagged !== undefined) flagDeltas.flagged = args.flagged;
 		if (args.answered !== undefined) flagDeltas.answered = args.answered;
-		if (Object.keys(flagDeltas).length === 0) return;
-
-		const touchedThreads = new Set<Id<'mailThreads'>>();
-		for (const id of args.messageIds) {
-			const message = await ctx.db.get(id);
-			if (!message) continue;
-			const owned = await requireMailboxAccess(ctx, message.mailboxId);
-			if (!owned.ok) continue;
-			await applyFlagDelta(ctx, message, flagDeltas);
-			touchedThreads.add(message.threadId);
-		}
-		for (const t of touchedThreads) {
-			await rebuildThreadAggregates(ctx, t);
-		}
+		await applyFlags(ctx, args.messageIds, flagDeltas);
 	},
 });
 
@@ -215,23 +230,34 @@ export async function moveMessagesToFolder(
 	return { ok: true, moved };
 }
 
+/**
+ * `moveMessagesToFolder` behind the caller's mailbox-access check: the body of
+ * the public `move`, and what the folder-routing wrappers below call directly.
+ */
+async function moveWithAccess(
+	ctx: MutationCtx,
+	args: { messageIds: Id<'mailMessages'>[]; targetFolderId: Id<'mailFolders'> }
+): Promise<MoveResult> {
+	const target = await getOrThrow(ctx, args.targetFolderId, 'Target folder');
+	const owned = await requireMailboxAccess(ctx, target.mailboxId);
+	if (!owned.ok) throwForbidden('Folder not accessible');
+	return moveMessagesToFolder(ctx, args);
+}
+
 /** Move messages to a destination folder. Allocates new UID per message. */
+// authz: access enforced by moveWithAccess (requireMailboxAccess on the target
+// folder's mailbox).
 export const move = postboxMutation({
 	args: {
 		messageIds: v.array(v.id('mailMessages')),
 		targetFolderId: v.id('mailFolders'),
 	},
-	handler: async (ctx, args): Promise<MoveResult> => {
-		const target = await getOrThrow(ctx, args.targetFolderId, 'Target folder');
-		const owned = await requireMailboxAccess(ctx, target.mailboxId);
-		if (!owned.ok) throwForbidden('Folder not accessible');
-		return moveMessagesToFolder(ctx, args);
-	},
+	handler: async (ctx, args): Promise<MoveResult> => moveWithAccess(ctx, args),
 });
 
 /** Archive: move to the Archive system folder. */
-// authz: access enforced by mail.messageActions.move (requireMailboxAccess per
-// message); this is a thin folder-routing wrapper.
+// authz: access enforced by moveWithAccess (requireMailboxAccess on the target
+// folder's mailbox); this is a thin folder-routing wrapper.
 export const archive = postboxMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
 	handler: async (ctx, args): Promise<MoveResult | undefined> => {
@@ -246,10 +272,10 @@ export const archive = postboxMutation({
 			)
 			.first();
 		if (!archive) throwInvalidState('Archive folder missing');
-		const result = await ctx.runMutation(
-			(await import('../_generated/api')).api.mail.messageActions.move,
-			{ messageIds: args.messageIds, targetFolderId: archive._id }
-		);
+		const result = await moveWithAccess(ctx, {
+			messageIds: args.messageIds,
+			targetFolderId: archive._id,
+		});
 		// Idea 27: one triage SESSION observed for these senders. Recorded on the
 		// human-initiated wrapper only — the retroactive filter sweep also moves
 		// mail through `move`, and a rule's own work must never become evidence
@@ -260,8 +286,8 @@ export const archive = postboxMutation({
 });
 
 /** Soft-delete: move to Trash. */
-// authz: access enforced by mail.messageActions.move (requireMailboxAccess per
-// message); this is a thin folder-routing wrapper.
+// authz: access enforced by moveWithAccess (requireMailboxAccess on the target
+// folder's mailbox); this is a thin folder-routing wrapper.
 export const trash = postboxMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
 	handler: async (ctx, args): Promise<MoveResult | undefined> => {
@@ -276,10 +302,10 @@ export const trash = postboxMutation({
 			)
 			.first();
 		if (!trash) throwInvalidState('Trash folder missing');
-		const result = await ctx.runMutation(
-			(await import('../_generated/api')).api.mail.messageActions.move,
-			{ messageIds: args.messageIds, targetFolderId: trash._id }
-		);
+		const result = await moveWithAccess(ctx, {
+			messageIds: args.messageIds,
+			targetFolderId: trash._id,
+		});
 		await recordTriageVerb(ctx, args.messageIds, 'trash');
 		return result;
 	},
@@ -306,26 +332,20 @@ export const purge = postboxMutation({
 });
 
 /** Mark a single message read/unread (convenience wrapper). */
-// authz: access enforced by mail.messageActions.setFlags (requireMailboxAccess).
+// authz: access enforced by applyFlags (requireMailboxAccess per message).
 export const markRead = postboxMutation({
 	args: { messageId: v.id('mailMessages'), seen: v.boolean() },
 	handler: async (ctx, args): Promise<void> => {
-		await ctx.runMutation((await import('../_generated/api')).api.mail.messageActions.setFlags, {
-			messageIds: [args.messageId],
-			seen: args.seen,
-		});
+		await applyFlags(ctx, [args.messageId], { seen: args.seen });
 	},
 });
 
 /** Star/unstar a single message. */
-// authz: access enforced by mail.messageActions.setFlags (requireMailboxAccess).
+// authz: access enforced by applyFlags (requireMailboxAccess per message).
 export const setStar = postboxMutation({
 	args: { messageId: v.id('mailMessages'), starred: v.boolean() },
 	handler: async (ctx, args): Promise<void> => {
-		await ctx.runMutation((await import('../_generated/api')).api.mail.messageActions.setFlags, {
-			messageIds: [args.messageId],
-			flagged: args.starred,
-		});
+		await applyFlags(ctx, [args.messageId], { flagged: args.starred });
 	},
 });
 
@@ -354,10 +374,7 @@ async function moveToRoleWithVerdict(
 		if (!o.ok) continue;
 		await ctx.db.patch(id, { spamVerdict: verdict, updatedAt: Date.now() });
 	}
-	return await ctx.runMutation((await import('../_generated/api')).api.mail.messageActions.move, {
-		messageIds,
-		targetFolderId: folder._id,
-	});
+	return await moveWithAccess(ctx, { messageIds, targetFolderId: folder._id });
 }
 
 /** Report as spam: move to Spam and record the verdict. */
@@ -412,10 +429,7 @@ export const blockSender = postboxMutation({
 			updatedAt: now,
 		});
 		if (spam) {
-			await ctx.runMutation((await import('../_generated/api')).api.mail.messageActions.move, {
-				messageIds: [args.messageId],
-				targetFolderId: spam._id,
-			});
+			await moveWithAccess(ctx, { messageIds: [args.messageId], targetFolderId: spam._id });
 		}
 	},
 });

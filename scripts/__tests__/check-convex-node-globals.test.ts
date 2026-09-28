@@ -282,6 +282,32 @@ describe('convex isolate-runtime Node-global gate', () => {
 		expect(uses.map((use) => use.symbol).sort()).toEqual(['buffer', 'node:crypto']);
 	});
 
+	it('reports a dynamic import of a module, which the isolate cannot load', async () => {
+		const root = await fixture({
+			[`${CONVEX}/mail/actions.ts`]: [
+				'export const trash = async (ctx: any) =>',
+				"\tctx.runMutation((await import('../_generated/api')).api.mail.move, {});",
+				'',
+			].join('\n'),
+			[`${CONVEX}/mail/node.ts`]: [
+				"'use node';",
+				"export const scan = async () => (await import('./scanner')).scan();",
+				'',
+			].join('\n'),
+		});
+
+		const uses = await findConvexNodeGlobalUses({ root });
+
+		expect(uses).toEqual([
+			{
+				file: `${CONVEX}/mail/actions.ts`,
+				line: 2,
+				symbol: 'import(../_generated/api)',
+				reachedFrom: `${CONVEX}/mail/actions.ts`,
+			},
+		]);
+	});
+
 	it('allows `typeof Buffer`, the one reference that cannot throw', async () => {
 		const root = await fixture({
 			[`${CONVEX}/lib/runtime.ts`]: "export const hasBuffer = typeof Buffer !== 'undefined';\n",

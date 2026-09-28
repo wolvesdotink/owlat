@@ -17,6 +17,8 @@ import {
 	detectDoubleExtension,
 	mergePolicy,
 	DEFAULT_FILE_POLICY,
+	detectFileType,
+	isDangerousFileType,
 } from '@owlat/email-scanner';
 import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attachments';
 
@@ -309,7 +311,6 @@ export const scanAssetBytes = internalAction({
 			return; // fail open — never delete on a read error
 		}
 
-		const { isDangerousFileType, detectFileType } = await import('@owlat/email-scanner/files');
 		if (isDangerousFileType(firstBytes, isoProbe)) {
 			const detected = detectFileType(firstBytes, isoProbe);
 			await ctx.runMutation(internal.mediaAssets.quarantineAsset, {
