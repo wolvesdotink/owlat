@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOrThrow, throwNotFound } from '../_utils/errors';
-import { assertEditableForPublishableChange } from './lifecycle';
+import { assertEditableForPublishableChange } from '../lib/publishableEmail';
 import { type TranslatableBlockContent } from './translationMerge';
 import {
 	addLanguage,
@@ -54,7 +54,7 @@ export const addTranslation = authedMutation({
 		);
 		const template = await getOrThrow(ctx, args.templateId, 'Email template');
 
-		assertEditableForPublishableChange(template, args.forceWhilePublished);
+		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
 
 		const patch = addLanguage(template, args.language, TEMPLATE_TRANSLATABLE_FIELDS);
 
@@ -88,7 +88,7 @@ export const updateTranslation = authedMutation({
 		);
 		const template = await getOrThrow(ctx, args.templateId, 'Email template');
 
-		assertEditableForPublishableChange(template, args.forceWhilePublished);
+		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
 
 		const defaultLanguage = template.defaultLanguage ?? 'en';
 
@@ -158,7 +158,7 @@ export const removeTranslation = authedMutation({
 		);
 		const template = await getOrThrow(ctx, args.templateId, 'Email template');
 
-		assertEditableForPublishableChange(template, args.forceWhilePublished);
+		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
 
 		const patch = removeLanguage(template, args.language);
 
@@ -187,7 +187,7 @@ export const setDefaultLanguage = authedMutation({
 		);
 		const template = await getOrThrow(ctx, args.templateId, 'Email template');
 
-		assertEditableForPublishableChange(template, args.forceWhilePublished);
+		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
 
 		const currentDefault = template.defaultLanguage ?? 'en';
 

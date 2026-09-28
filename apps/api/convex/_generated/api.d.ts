@@ -700,6 +700,7 @@ import type * as lib_posthog from '../lib/posthog.js';
 import type * as lib_posthogHelpers from '../lib/posthogHelpers.js';
 import type * as lib_publicInput from '../lib/publicInput.js';
 import type * as lib_publicTokenEndpoint from '../lib/publicTokenEndpoint.js';
+import type * as lib_publishableEmail from '../lib/publishableEmail.js';
 import type * as lib_queryHelpers from '../lib/queryHelpers.js';
 import type * as lib_randomToken from '../lib/randomToken.js';
 import type * as lib_receivedAtCursor from '../lib/receivedAtCursor.js';
@@ -1898,6 +1899,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/posthogHelpers': typeof lib_posthogHelpers;
 	'lib/publicInput': typeof lib_publicInput;
 	'lib/publicTokenEndpoint': typeof lib_publicTokenEndpoint;
+	'lib/publishableEmail': typeof lib_publishableEmail;
 	'lib/queryHelpers': typeof lib_queryHelpers;
 	'lib/randomToken': typeof lib_randomToken;
 	'lib/receivedAtCursor': typeof lib_receivedAtCursor;
