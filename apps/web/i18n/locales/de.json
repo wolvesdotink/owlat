@@ -9695,7 +9695,6 @@
 			},
 			"detail": {
 				"detail": {
-					"noMailbox": "Kein Postfach konfiguriert",
 					"pageTitle": "E-Mail — Owlat"
 				},
 				"index": {
@@ -9821,16 +9820,10 @@
 				}
 			},
 			"subscriptions": {
-				"addMailAccount": "Mailkonto hinzufügen",
-				"noMailbox": "Noch kein Postfach",
-				"noMailboxHint": "Verbinde oder erstelle ein Mailkonto, um zu sehen, was du abonniert hast.",
 				"pageTitle": "Abonnements"
 			},
 			"files": {
-				"pageTitle": "Dateien – Owlat",
-				"noMailbox": "Noch kein Postfach",
-				"noMailboxHint": "Verbinden oder erstellen Sie ein Postfach, um dessen Anhänge zu durchsuchen.",
-				"addMailAccount": "E-Mail-Konto hinzufügen"
+				"pageTitle": "Dateien – Owlat"
 			}
 		},
 		"preferences": {
