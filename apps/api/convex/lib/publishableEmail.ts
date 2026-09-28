@@ -200,7 +200,7 @@ export async function buildEditablePatch(
 			Object.keys(parseTranslations(args.translations ?? row.translations)).length > 0
 		) {
 			throwInvalidState(
-				`This ${options.noun.toLowerCase()} has translations, so its default language cannot be changed by an update. Use setDefaultLanguage, which swaps the body with the translation.`,
+				`This ${options.noun.toLowerCase()} has translations, so its default language cannot be changed by an update: the body would stay in the old language.`,
 				{ reason: 'use_set_default_language' }
 			);
 		}

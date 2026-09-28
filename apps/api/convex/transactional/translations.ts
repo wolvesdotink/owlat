@@ -1,14 +1,12 @@
 import { v } from 'convex/values';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
-import { hasPermission, requireOrgPermission, requirePermission } from '../lib/sessionOrganization';
-import { assertFeatureEnabled } from '../lib/featureFlags';
+import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
 import { assertEditableForPublishableChange } from '../lib/publishableEmail';
 import {
 	addTranslationPatch,
 	removeTranslationPatch,
 	resolveForLanguage,
-	setDefaultLanguagePatch,
 	TRANSACTIONAL_TRANSLATABLE_FIELDS,
 	updateTranslationPatch,
 } from '../lib/emailTranslations';
@@ -110,35 +108,6 @@ export const removeTranslation = authedMutation({
 		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
 
 		await ctx.db.patch(args.id, removeTranslationPatch(email, args.language));
-		return args.id;
-	},
-});
-
-/**
- * Change the default language of a transactional email: the chosen overlay
- * becomes the body and the outgoing default becomes an overlay. Patching
- * `defaultLanguage` through `update` only relabels the row, so a row with
- * overlays has to change its default language here.
- */
-export const setDefaultLanguage = authedMutation({
-	args: {
-		id: v.id('transactionalEmails'),
-		language: v.string(),
-		forceWhilePublished: v.optional(v.boolean()),
-	},
-	handler: async (ctx, args, session) => {
-		requirePermission(
-			hasPermission(session.role, 'templates:manage'),
-			'Only owners and admins can manage transactional email translations'
-		);
-		await assertFeatureEnabled(ctx, 'transactional');
-		const email = await getOrThrow(ctx, args.id, 'Transactional email');
-		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
-
-		const patch = setDefaultLanguagePatch(email, args.language, TRANSACTIONAL_TRANSLATABLE_FIELDS);
-		if (patch) {
-			await ctx.db.patch(args.id, patch);
-		}
 		return args.id;
 	},
 });

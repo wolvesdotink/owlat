@@ -5,7 +5,8 @@
  * helpers in `lib/emailTranslations.ts`; the same scenarios run against each
  * table through a small driver so a translation fix cannot reach only one side
  * (issue #862 finding 6). Transactional emails carry no previewText, so their
- * cases assert it is never written.
+ * cases assert it is never written. Only templates expose `setDefaultLanguage`,
+ * so the swap cases run for the drivers that carry one.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -15,11 +16,7 @@ import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import type * as SessionOrganization from '../lib/sessionOrganization';
-import {
-	createTestEmailTemplate,
-	createTestInstanceSettings,
-	createTestTransactionalEmail,
-} from './factories';
+import { createTestEmailTemplate, createTestTransactionalEmail } from './factories';
 
 // Mutable acting role. The builder floor (`getMutationContext`) threads it as
 // the session; `requireOrgPermission` runs the real permission check against it.
@@ -79,7 +76,7 @@ interface Driver {
 	add: (t: T, id: RowId, language: string) => Promise<unknown>;
 	update: (t: T, id: RowId, args: UpdateArgs) => Promise<unknown>;
 	remove: (t: T, id: RowId, language: string) => Promise<unknown>;
-	setDefault: (t: T, id: RowId, language: string, force?: boolean) => Promise<unknown>;
+	setDefault?: (t: T, id: RowId, language: string, force?: boolean) => Promise<unknown>;
 }
 
 const asTemplate = (id: RowId) => id as Id<'emailTemplates'>;
@@ -166,12 +163,6 @@ const drivers: Driver[] = [
 				id: asTransactional(id),
 				language,
 			}),
-		setDefault: (t, id, language, forceWhilePublished) =>
-			t.mutation(api.transactional.translations.setDefaultLanguage, {
-				id: asTransactional(id),
-				language,
-				forceWhilePublished,
-			}),
 	},
 ];
 
@@ -203,6 +194,7 @@ describe.each(drivers)('translation mutations on $table', (driver) => {
 	const read = (t: T, id: RowId) => t.run((ctx) => ctx.db.get(id));
 	const overlays = (row: { translations?: string } | null) =>
 		JSON.parse(row?.translations ?? '{}') as Record<string, Record<string, unknown>>;
+	const setDefault = driver.setDefault;
 
 	it('addTranslation seeds the overlay from the default text and advances the revision', async () => {
 		const t = convexTest(schema, modules);
@@ -285,100 +277,90 @@ describe.each(drivers)('translation mutations on $table', (driver) => {
 		expect(row?.contentRevision).toBe(4);
 	});
 
-	it('setDefaultLanguage swaps the body with the overlay, and back', async () => {
-		const t = convexTest(schema, modules);
-		const id = await driver.seed(t, withGerman(driver.hasPreviewText));
+	if (setDefault) {
+		describe('setDefaultLanguage', () => {
+			it('setDefaultLanguage swaps the body with the overlay, and back', async () => {
+				const t = convexTest(schema, modules);
+				const id = await driver.seed(t, withGerman(driver.hasPreviewText));
 
-		await driver.setDefault(t, id, 'de');
+				await setDefault(t, id, 'de');
 
-		let row = await read(t, id);
-		expect(row?.defaultLanguage).toBe('de');
-		expect(row?.subject).toBe('Deutscher Betreff');
-		expect(row?.contentRevision).toBe(4);
-		const body = JSON.parse(row?.content ?? '[]') as Array<{
-			id: string;
-			content: Record<string, unknown>;
-		}>;
-		expect(body.map((b) => b.id)).toEqual(['b1', 'b2']);
-		expect(body[0]!.content['html']).toBe('Hallo Welt');
-		expect(body[1]!.content).toEqual({ text: 'Klick mich', url: 'https://x' });
+				let row = await read(t, id);
+				expect(row?.defaultLanguage).toBe('de');
+				expect(row?.subject).toBe('Deutscher Betreff');
+				expect(row?.contentRevision).toBe(4);
+				const body = JSON.parse(row?.content ?? '[]') as Array<{
+					id: string;
+					content: Record<string, unknown>;
+				}>;
+				expect(body.map((b) => b.id)).toEqual(['b1', 'b2']);
+				expect(body[0]!.content['html']).toBe('Hallo Welt');
+				expect(body[1]!.content).toEqual({ text: 'Klick mich', url: 'https://x' });
 
-		const en = overlays(row)['en']!;
-		expect(overlays(row)['de']).toBeUndefined();
-		expect(en['subject']).toBe('English subject');
-		expect(en['blocks']).toEqual({ b1: { html: 'Hello world' }, b2: { buttonText: 'Click me' } });
-		if (driver.hasPreviewText) {
-			expect(row).toHaveProperty('previewText', 'Deutsche Vorschau');
-			expect(en['previewText']).toBe('English preview');
-		} else {
-			expect(row).not.toHaveProperty('previewText');
-			expect(en).not.toHaveProperty('previewText');
-		}
+				const en = overlays(row)['en']!;
+				expect(overlays(row)['de']).toBeUndefined();
+				expect(en['subject']).toBe('English subject');
+				expect(en['blocks']).toEqual({
+					b1: { html: 'Hello world' },
+					b2: { buttonText: 'Click me' },
+				});
+				if (driver.hasPreviewText) {
+					expect(row).toHaveProperty('previewText', 'Deutsche Vorschau');
+					expect(en['previewText']).toBe('English preview');
+				} else {
+					expect(row).not.toHaveProperty('previewText');
+					expect(en).not.toHaveProperty('previewText');
+				}
 
-		await driver.setDefault(t, id, 'en');
+				await setDefault(t, id, 'en');
 
-		row = await read(t, id);
-		expect(row?.defaultLanguage).toBe('en');
-		expect(row?.subject).toBe('English subject');
-		expect(row?.content).toBe(CONTENT_EN);
-		expect(overlays(row)['de']?.['subject']).toBe('Deutscher Betreff');
-	});
+				row = await read(t, id);
+				expect(row?.defaultLanguage).toBe('en');
+				expect(row?.subject).toBe('English subject');
+				expect(row?.content).toBe(CONTENT_EN);
+				expect(overlays(row)['de']?.['subject']).toBe('Deutscher Betreff');
+			});
 
-	it('setDefaultLanguage to the current default writes nothing', async () => {
-		const t = convexTest(schema, modules);
-		const id = await driver.seed(t);
-		const before = await read(t, id);
+			it('setDefaultLanguage to the current default writes nothing', async () => {
+				const t = convexTest(schema, modules);
+				const id = await driver.seed(t);
+				const before = await read(t, id);
 
-		await driver.setDefault(t, id, 'en');
+				await setDefault(t, id, 'en');
 
-		expect(await read(t, id)).toEqual(before);
-	});
+				expect(await read(t, id)).toEqual(before);
+			});
 
-	it('setDefaultLanguage to a language without an overlay is not_found', async () => {
-		const t = convexTest(schema, modules);
-		const id = await driver.seed(t);
+			it('setDefaultLanguage to a language without an overlay is not_found', async () => {
+				const t = convexTest(schema, modules);
+				const id = await driver.seed(t);
 
-		const error = await operationError(driver.setDefault(t, id, 'fr'));
-		expect(error.category).toBe('not_found');
-	});
+				const error = await operationError(setDefault(t, id, 'fr'));
+				expect(error.category).toBe('not_found');
+			});
 
-	it('setDefaultLanguage on a published row needs forceWhilePublished', async () => {
-		const t = convexTest(schema, modules);
-		const id = await driver.seed(t, withGerman(driver.hasPreviewText, { status: 'published' }));
+			it('setDefaultLanguage on a published row needs forceWhilePublished', async () => {
+				const t = convexTest(schema, modules);
+				const id = await driver.seed(t, withGerman(driver.hasPreviewText, { status: 'published' }));
 
-		const error = await operationError(driver.setDefault(t, id, 'de'));
-		expect(error.category).toBe('invalid_state');
-		expect(error.data?.['action']).toBe('unpublish');
-		expect((await read(t, id))?.defaultLanguage).toBe('en');
+				const error = await operationError(setDefault(t, id, 'de'));
+				expect(error.category).toBe('invalid_state');
+				expect(error.data?.['action']).toBe('unpublish');
+				expect((await read(t, id))?.defaultLanguage).toBe('en');
 
-		await driver.setDefault(t, id, 'de', true);
-		expect((await read(t, id))?.defaultLanguage).toBe('de');
-	});
+				await setDefault(t, id, 'de', true);
+				expect((await read(t, id))?.defaultLanguage).toBe('de');
+			});
 
-	it('setDefaultLanguage refuses an editor', async () => {
-		const t = convexTest(schema, modules);
-		const id = await driver.seed(t, withGerman(driver.hasPreviewText));
+			it('setDefaultLanguage refuses an editor', async () => {
+				const t = convexTest(schema, modules);
+				const id = await driver.seed(t, withGerman(driver.hasPreviewText));
 
-		sessionMock.role = 'editor';
-		const error = await operationError(driver.setDefault(t, id, 'de'));
-		expect(error.category).toBe('forbidden');
-		expect((await read(t, id))?.defaultLanguage).toBe('en');
-	});
-});
-
-describe('transactional setDefaultLanguage feature gate', () => {
-	it('is refused while the transactional feature is off', async () => {
-		const t = convexTest(schema, modules);
-		await t.run((ctx) =>
-			ctx.db.insert(
-				'instanceSettings',
-				createTestInstanceSettings({ featureFlags: { transactional: false } })
-			)
-		);
-		const id = await drivers[1]!.seed(t, withGerman(false));
-
-		const error = await operationError(drivers[1]!.setDefault(t, id, 'de'));
-		expect(error.category).toBe('forbidden');
-		expect(error.data?.['feature']).toBe('transactional');
-	});
+				sessionMock.role = 'editor';
+				const error = await operationError(setDefault(t, id, 'de'));
+				expect(error.category).toBe('forbidden');
+				expect((await read(t, id))?.defaultLanguage).toBe('en');
+			});
+		});
+	}
 });
