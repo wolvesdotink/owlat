@@ -28,7 +28,7 @@ import {
 	summaryFor,
 } from './checklistCenterView';
 import { deliverabilityCheckIdValidator, deliverabilityTargetKey } from './checklistEvidence';
-import { guidanceForCheck } from './checklistGuidance';
+import { guidanceForCheck, guidanceForPort25AwaitingSourceIp } from './checklistGuidance';
 import { PORT25_AWAITS_SOURCE_IP_NEXT_STEP, port25AwaitsSourceAddress } from './checklistSmtpProbe';
 import type { Doc, Id } from '../_generated/dataModel';
 import { deploymentSetupValuesForItem, domainSetupValuesForItem } from './checklistRecords';
@@ -242,10 +242,12 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 				setupValues: domain
 					? domainSetupValuesForItem(definition.id, domain, trackingDomains, settings)
 					: deploymentSetupValuesForItem(definition.id, warming),
-				instructions: guidanceForCheck(
-					definition.id,
-					providerFromEvidence(evidenceView?.observedValues ?? [])
-				),
+				instructions: awaitsSourceIp
+					? guidanceForPort25AwaitingSourceIp()
+					: guidanceForCheck(
+							definition.id,
+							providerFromEvidence(evidenceView?.observedValues ?? [])
+						),
 				...(verification
 					? {
 							verification: {

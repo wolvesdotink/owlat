@@ -317,6 +317,9 @@ describe('Deliverability Center complete materialization', () => {
 			expect(port25?.lockedReason).toBe('Verify deployment.source_ip first.');
 			expect(port25?.nextStep).toContain('Send each address from its own IP');
 			expect(port25?.nextStep).not.toContain('TCP/25 access');
+			// The expanded row's steps must not repeat the wrong fix either.
+			expect(port25?.instructions.steps.join(' ')).not.toContain('TCP/25 access');
+			expect(port25?.instructions.steps.join(' ')).toContain('host networking');
 		});
 
 		it('keeps the port-25 next step for a probe that really ran', async () => {
@@ -324,6 +327,7 @@ describe('Deliverability Center complete materialization', () => {
 			expect(center.nextItem?.id).toBe('deployment.port25');
 			expect(port25?.lockedReason).toBeUndefined();
 			expect(port25?.nextStep).toContain('TCP/25 access');
+			expect(port25?.instructions.steps.join(' ')).toContain('TCP/25 access');
 		});
 	});
 
