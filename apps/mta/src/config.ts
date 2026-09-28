@@ -7,6 +7,12 @@ import { isOutboundTlsMode, OUTBOUND_TLS_MODES, type OutboundTlsMode } from '@ow
 import { parseGenericPtrSuffixes, parseUnverifiedFcrdnsOverride } from '@owlat/shared/fcrdns';
 import { isKnownPlaceholderSecret } from '@owlat/shared/setupSecrets';
 import { normalizeVerpKey } from '@owlat/shared/verp';
+import {
+	readIntEnv,
+	TCP_PORT_RANGE,
+	TIMER_DELAY_MS_RANGE,
+	type IntEnvOptions,
+} from '@owlat/shared/nodeEnv';
 import type { IpPoolConfig, DkimKeyConfig } from './types.js';
 import { assertMtaSecretStrength } from './lib/secretBox.js';
 import { loadDaneConfig, type DaneMode } from './daneConfig.js';
@@ -234,6 +240,11 @@ export { DESTINATION_PROVIDER_PROFILES } from '@owlat/shared/deliverabilityPolic
 // copies that drifted. Re-exported for existing importers (intelligence/warming).
 export { BASE_WARMING_SCHEDULE } from '@owlat/shared/warming';
 
+type IntRange = Omit<IntEnvOptions, 'default'>;
+const AT_LEAST_ONE: IntRange = { min: 1 };
+/** 0 already means "admit without delay" here, so it stays accepted. */
+const TARPIT_DELAY_MS_RANGE: IntRange = { ...TIMER_DELAY_MS_RANGE, min: 0 };
+
 /**
  * Load and validate configuration from environment variables
  */
@@ -247,6 +258,11 @@ export function loadConfig(): MtaConfig {
 	const optionalEnv = (key: string, defaultValue: string): string => {
 		return process.env[key] ?? defaultValue;
 	};
+	// Numeric limits go through readIntEnv: a typo stops the boot instead of
+	// becoming NaN, which silently disables a connection cap. Counts and caps
+	// default to a floor of 1.
+	const intEnv = (key: string, fallback: number, range: IntRange = AT_LEAST_ONE): number =>
+		readIntEnv(process.env, key, { default: fallback, ...range });
 	const googlePostmasterValues = [
 		process.env['GOOGLE_POSTMASTER_CLIENT_ID']?.trim(),
 		process.env['GOOGLE_POSTMASTER_CLIENT_SECRET']?.trim(),
@@ -361,8 +377,8 @@ export function loadConfig(): MtaConfig {
 
 	return {
 		...governedDelivery,
-		port: parseInt(optionalEnv('PORT', '3100'), 10),
-		bouncePort: parseInt(optionalEnv('BOUNCE_PORT', '25'), 10),
+		port: intEnv('PORT', 3100, TCP_PORT_RANGE),
+		bouncePort: intEnv('BOUNCE_PORT', 25, TCP_PORT_RANGE),
 		redisUrl: optionalEnv('REDIS_URL', 'redis://localhost:6379'),
 		apiKey: requiredEnv('MTA_API_KEY'),
 		mtaSecret,
@@ -381,48 +397,39 @@ export function loadConfig(): MtaConfig {
 		tlsRptRua: process.env['MTA_TLSRPT_RUA'],
 		ipPools: outboundIp.ipPools,
 		dkimKeys,
-		workerConcurrency: parseInt(optionalEnv('WORKER_CONCURRENCY', '50'), 10),
+		workerConcurrency: intEnv('WORKER_CONCURRENCY', 50),
 		serverId: optionalEnv('MTA_SERVER_ID', hostname()),
 		smtpPool: {
-			maxPerHost: parseInt(optionalEnv('SMTP_POOL_MAX_PER_HOST', '3'), 10),
-			idleTimeoutMs: parseInt(optionalEnv('SMTP_POOL_IDLE_TIMEOUT_MS', '30000'), 10),
-			maxAgeMs: parseInt(optionalEnv('SMTP_POOL_MAX_AGE_MS', '300000'), 10),
-			maxMessagesPerConnection: parseInt(
-				optionalEnv('SMTP_POOL_MAX_MESSAGES_PER_CONNECTION', '100'),
-				10
-			),
+			maxPerHost: intEnv('SMTP_POOL_MAX_PER_HOST', 3),
+			idleTimeoutMs: intEnv('SMTP_POOL_IDLE_TIMEOUT_MS', 30_000),
+			maxAgeMs: intEnv('SMTP_POOL_MAX_AGE_MS', 300_000),
+			maxMessagesPerConnection: intEnv('SMTP_POOL_MAX_MESSAGES_PER_CONNECTION', 100),
 		},
 		orgLimits: {
-			defaultDailyLimit: parseInt(optionalEnv('ORG_DEFAULT_DAILY_LIMIT', '50000'), 10),
-			defaultHourlyLimit: parseInt(optionalEnv('ORG_DEFAULT_HOURLY_LIMIT', '5000'), 10),
+			defaultDailyLimit: intEnv('ORG_DEFAULT_DAILY_LIMIT', 50_000),
+			defaultHourlyLimit: intEnv('ORG_DEFAULT_HOURLY_LIMIT', 5_000),
 		},
-		submissionPort: parseInt(optionalEnv('SUBMISSION_PORT', '587'), 10),
+		submissionPort: intEnv('SUBMISSION_PORT', 587, TCP_PORT_RANGE),
 		submissionEnabled,
-		submissionImplicitTlsPort: parseInt(optionalEnv('SUBMISSION_IMPLICIT_TLS_PORT', '465'), 10),
+		submissionImplicitTlsPort: intEnv('SUBMISSION_IMPLICIT_TLS_PORT', 465, TCP_PORT_RANGE),
 		submissionImplicitTlsEnabled,
 		submissionTlsCert,
 		submissionTlsKey,
-		submissionMaxConnectionsPerIp: parseInt(
-			optionalEnv('SUBMISSION_MAX_CONNECTIONS_PER_IP', '10'),
-			10
-		),
-		submissionMaxClients: parseInt(optionalEnv('SUBMISSION_MAX_CLIENTS', '200'), 10),
-		submissionMaxAuthFailuresPerIp: parseInt(
-			optionalEnv('SUBMISSION_MAX_AUTH_FAILURES_PER_IP', '10'),
-			10
-		),
+		submissionMaxConnectionsPerIp: intEnv('SUBMISSION_MAX_CONNECTIONS_PER_IP', 10),
+		submissionMaxClients: intEnv('SUBMISSION_MAX_CLIENTS', 200),
+		submissionMaxAuthFailuresPerIp: intEnv('SUBMISSION_MAX_AUTH_FAILURES_PER_IP', 10),
 		contentScreeningEnabled: optionalEnv('CONTENT_SCREENING_ENABLED', 'true') === 'true',
-		contentMaxSizeKb: parseInt(optionalEnv('CONTENT_MAX_SIZE_KB', '500'), 10),
-		deliveryLogMaxLen: parseInt(optionalEnv('DELIVERY_LOG_MAX_LEN', '100000'), 10),
-		deliveryLogTtlHours: parseInt(optionalEnv('DELIVERY_LOG_TTL_HOURS', '72'), 10),
+		contentMaxSizeKb: intEnv('CONTENT_MAX_SIZE_KB', 500),
+		deliveryLogMaxLen: intEnv('DELIVERY_LOG_MAX_LEN', 100_000),
+		deliveryLogTtlHours: intEnv('DELIVERY_LOG_TTL_HOURS', 72),
 		...(bounceTls.cert ? { bounceServerTlsCert: bounceTls.cert } : {}),
 		...(bounceTls.key ? { bounceServerTlsKey: bounceTls.key } : {}),
 		...(bounceTls.paths ? { bounceServerTlsPaths: bounceTls.paths } : {}),
-		bounceMaxConnectionsPerIp: parseInt(optionalEnv('BOUNCE_MAX_CONNECTIONS_PER_IP', '10'), 10),
-		bounceMaxClients: parseInt(optionalEnv('BOUNCE_MAX_CLIENTS', '200'), 10),
+		bounceMaxConnectionsPerIp: intEnv('BOUNCE_MAX_CONNECTIONS_PER_IP', 10),
+		bounceMaxClients: intEnv('BOUNCE_MAX_CLIENTS', 200),
 		bounceTarpitEnabled: optionalEnv('BOUNCE_TARPIT_ENABLED', 'true') === 'true',
-		bounceTarpitDelayMs: parseInt(optionalEnv('BOUNCE_TARPIT_DELAY_MS', '5000'), 10),
-		bounceSocketTimeoutMs: parseInt(optionalEnv('BOUNCE_SOCKET_TIMEOUT_MS', '60000'), 10),
+		bounceTarpitDelayMs: intEnv('BOUNCE_TARPIT_DELAY_MS', 5_000, TARPIT_DELAY_MS_RANGE),
+		bounceSocketTimeoutMs: intEnv('BOUNCE_SOCKET_TIMEOUT_MS', 60_000, TIMER_DELAY_MS_RANGE),
 		inboundSpfEnabled: optionalEnv('INBOUND_SPF_ENABLED', 'true') === 'true',
 		inboundDkimEnabled: optionalEnv('INBOUND_DKIM_ENABLED', 'true') === 'true',
 		inboundDmarcEnabled: optionalEnv('INBOUND_DMARC_ENABLED', 'true') === 'true',
@@ -439,7 +446,7 @@ export function loadConfig(): MtaConfig {
 		abusixDnsblApiKey,
 		invaluementDnsblZone,
 		dnsblResolver: parseDnsblResolver(process.env['DNSBL_RESOLVER']),
-		smtpPoolGlobalMaxPerHost: parseInt(optionalEnv('SMTP_POOL_GLOBAL_MAX_PER_HOST', '10'), 10),
+		smtpPoolGlobalMaxPerHost: intEnv('SMTP_POOL_GLOBAL_MAX_PER_HOST', 10),
 		smtpPoolCoordinationProtocol: poolCoordinationProtocol,
 		outboundTlsMode,
 		daneMode,

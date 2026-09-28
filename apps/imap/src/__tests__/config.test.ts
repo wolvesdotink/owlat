@@ -86,6 +86,40 @@ describe('auth rate limiter configuration', () => {
 	});
 });
 
+describe('numeric limits', () => {
+	it('applies the defaults when unset or blank', () => {
+		process.env['IMAP_MAX_CONN_PER_IP'] = '';
+		process.env['IMAP_MAX_CLIENTS'] = ' ';
+		const config = loadConfig();
+		expect(config.port).toBe(993);
+		expect(config.maxConnectionsPerIp).toBe(20);
+		expect(config.maxClients).toBe(500);
+		expect(config.idleTimeoutMs).toBe(30 * 60 * 1000);
+	});
+
+	it('reads valid overrides', () => {
+		process.env['IMAP_PORT'] = '1993';
+		process.env['IMAP_MAX_CONN_PER_IP'] = '5';
+		const config = loadConfig();
+		expect(config.port).toBe(1993);
+		expect(config.maxConnectionsPerIp).toBe(5);
+	});
+
+	// parseInt read these as NaN or a prefix. NaN made `perIp > max` and
+	// `totalActive >= max` false, which switched both connection caps off.
+	it.each([
+		['IMAP_MAX_CONN_PER_IP', 'twenty', 'IMAP_MAX_CONN_PER_IP must be an integer of at least 1'],
+		['IMAP_MAX_CLIENTS', '0', 'IMAP_MAX_CLIENTS must be an integer of at least 1'],
+		['IMAP_MAX_CLIENTS', '5e2', 'IMAP_MAX_CLIENTS must be an integer of at least 1'],
+		['IMAP_PORT', '99999', 'IMAP_PORT must be an integer between 1 and 65535'],
+		['IMAP_IDLE_TIMEOUT_MS', '3000000000', 'IMAP_IDLE_TIMEOUT_MS must be an integer between 1'],
+		['IMAP_PRE_AUTH_DEADLINE_MS', '1.5', 'IMAP_PRE_AUTH_DEADLINE_MS must be an integer'],
+	])('refuses to boot on %s=%j', (key, value, message) => {
+		process.env[key] = value;
+		expect(() => loadConfig()).toThrowError(message);
+	});
+});
+
 describe('TLS material from the shared cert volume', () => {
 	let certDir: string;
 
