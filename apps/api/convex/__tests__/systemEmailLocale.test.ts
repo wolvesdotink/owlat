@@ -13,6 +13,7 @@
  * English mail it received before the field existed.
  */
 import { describe, expect, it } from 'vitest';
+import { APP_LOCALE_BCP47, APP_LOCALES } from '@owlat/shared/appLocales';
 import { generateDeletionEmailHtml } from '../lib/systemEmails';
 import { deletionEmailCopy, systemEmailBcp47, systemEmailLocale } from '../lib/systemEmailCopy';
 
@@ -36,12 +37,25 @@ describe('systemEmailLocale', () => {
 	it('honours a supported language', () => {
 		expect(systemEmailLocale('de')).toBe('de');
 	});
+
+	it('honours every shipped language, not a hand-kept subset', () => {
+		// The list is `@owlat/shared/appLocales`; a language added there must reach
+		// system mail without a second edit here.
+		for (const locale of APP_LOCALES) expect(systemEmailLocale(locale)).toBe(locale);
+	});
 });
 
 describe('systemEmailBcp47', () => {
 	it('names the region, so Intl formats the date the reader expects', () => {
 		expect(systemEmailBcp47('en')).toBe('en-US');
 		expect(systemEmailBcp47('de')).toBe('de-DE');
+	});
+
+	it('has a tag and copy for every shipped language', () => {
+		for (const locale of APP_LOCALES) {
+			expect(systemEmailBcp47(locale)).toBe(APP_LOCALE_BCP47[locale]);
+			expect(deletionEmailCopy(locale).subject).not.toBe('');
+		}
 	});
 
 	it('produces the locale-appropriate long date', () => {

@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import type { PluginOption } from 'vite';
+import { I18N_LOCALES } from './i18n/localeOptions';
 import { uiLayerIconNames } from './scripts/uiLayerIcons';
 
 // Local default endpoints, single-sourced so the CSP connect-src and the
@@ -62,10 +63,8 @@ export default defineNuxtConfig({
 		// Message files live in i18n/locales/ (the module's `restructureDir`) and are
 		// loaded on demand — the default locale's bundle is the only one a visitor
 		// ever downloads.
-		locales: [
-			{ code: 'en', language: 'en-US', name: 'English', file: 'en.json' },
-			{ code: 'de', language: 'de-DE', name: 'Deutsch', file: 'de.json' },
-		],
+		// Built from `@owlat/shared/appLocales` (see i18n/localeOptions.ts).
+		locales: I18N_LOCALES,
 		// The whole UI is extracted, so a first-time visitor can safely be served
 		// the locale their browser asks for. The cookie is what makes the choice
 		// stick: with `no_prefix` the URL carries no locale, so without it every

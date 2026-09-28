@@ -230,6 +230,7 @@
 				"src/listUnsubscribe.ts",
 				"src/ical.ts",
 				"src/html.ts",
+				"src/appLocales.ts",
 				"src/attachments.ts",
 				"src/attachmentShares.ts",
 				"src/bounceClassification.ts",

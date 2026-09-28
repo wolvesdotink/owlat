@@ -16,6 +16,7 @@
  * have an account for, whose chosen language is on their profile
  * (`userProfiles.locale`). Those pass it; everything else keeps English.
  */
+import type { AppLocale } from '@owlat/shared/appLocales';
 import de from '~~/i18n/locales/de.json';
 import en from '~~/i18n/locales/en.json';
 
@@ -24,9 +25,7 @@ export type LocalizedText = string | { key: string; params?: Record<string, unkn
 
 type Catalog = { [key: string]: string | Catalog };
 
-/** The interface languages this app ships. Mirrors `nuxt.config` → `i18n.locales`. */
-export type AppLocale = 'en' | 'de';
-
+// One catalog per shipped language (`@owlat/shared/appLocales`).
 const CATALOGS: Record<AppLocale, Catalog> = { en: en as Catalog, de: de as Catalog };
 
 /**

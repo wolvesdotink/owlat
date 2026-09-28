@@ -51,12 +51,12 @@ export const detectionSourceValidator = v.union(v.literal('heuristic'), v.litera
 
 // Unified-message channel union shared by stored rows and function arguments.
 /**
- * The interface languages this product ships (`nuxt.config` → `i18n.locales`).
+ * The interface languages this product ships (`@owlat/shared/appLocales`, which
+ * the web's `nuxt.config` → `i18n.locales` and `i18n/formats.ts` also read).
  *
  * A closed union rather than `v.string()`: this value is read back to pick the
  * catalog a system EMAIL renders in, and an unrecognised code there is either a
  * crash or a silent fall back to English on a channel nobody is watching.
- * Keep in step with `apps/web/i18n/formats.ts` → `FORMAT_LOCALES`.
  */
 // Interface locales live in ./appLocales.ts (file-size ratchet); re-exported here.
 export { APP_LOCALES, appLocaleValidator, type AppLocale } from './appLocales';

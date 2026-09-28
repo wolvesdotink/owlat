@@ -19,6 +19,8 @@
  * something the browser never renders.
  */
 
+import { APP_LOCALES, type AppLocale } from '@owlat/shared/appLocales';
+
 /** Named date/time formats. Keys are the vocabulary the app formats in. */
 const DATE_TIME_FORMATS = {
 	/** Day and month, for a timestamp inside the current year. "Mar 3" */
@@ -55,15 +57,12 @@ const NUMBER_FORMATS = {
 	percent: { style: 'percent', maximumFractionDigits: 1 },
 } as const;
 
-/** The locales this app ships. */
-export const FORMAT_LOCALES = ['en', 'de'] as const;
-
-/** `datetimeFormats` for `createI18n`, one entry per shipped locale. */
+/** `datetimeFormats` for `createI18n`, one entry per shipped locale (`APP_LOCALES`). */
 export const datetimeFormats = Object.fromEntries(
-	FORMAT_LOCALES.map((locale) => [locale, DATE_TIME_FORMATS])
-) as Record<(typeof FORMAT_LOCALES)[number], typeof DATE_TIME_FORMATS>;
+	APP_LOCALES.map((locale) => [locale, DATE_TIME_FORMATS])
+) as Record<AppLocale, typeof DATE_TIME_FORMATS>;
 
-/** `numberFormats` for `createI18n`, one entry per shipped locale. */
+/** `numberFormats` for `createI18n`, one entry per shipped locale (`APP_LOCALES`). */
 export const numberFormats = Object.fromEntries(
-	FORMAT_LOCALES.map((locale) => [locale, NUMBER_FORMATS])
-) as Record<(typeof FORMAT_LOCALES)[number], typeof NUMBER_FORMATS>;
+	APP_LOCALES.map((locale) => [locale, NUMBER_FORMATS])
+) as Record<AppLocale, typeof NUMBER_FORMATS>;
