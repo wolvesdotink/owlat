@@ -7,30 +7,26 @@
  * mode (OWLAT_SETUP_MODE=true) AND the caller echoes the one-time setup token in
  * the X-Setup-Token header (see server/utils/setupToken.ts).
  *
- * Body (API-key provider): { provider: 'resend' | 'openai' | 'openrouter' |
- *   'posthog' | 'safebrowsing', apiKey: string, host?: string }
- * Body (SMTP relay): { provider: 'smtp', smtp: { host, port, secure, username,
+ * Body (API-key provider): { provider, apiKey: string, host?: string }
+ * Body (SMTP relay): { provider, smtp: { host, port, secure, username,
  *   password } }
  * Response: { ok: boolean, message: string }
  *
- * The actual validation logic lives in `@owlat/shared/setupValidators`, shared
- * with the `owlat-setup` CLI so the two never drift on which outcomes count as
- * valid.
+ * A send provider whose catalog entry declares a `setupProbe` goes through
+ * `server/utils/sendProviderProbe.ts`, the same parsing and dispatch the
+ * transport editor's `/api/delivery/validate-transport` uses. Every other
+ * provider (the AI, analytics and Safe Browsing keys) goes through
+ * `validateProvider` from `@owlat/shared/setupValidators`, shared with the
+ * `owlat-setup` CLI so the two never drift on which outcomes count as valid.
  */
 
+import { validateProvider, type SetupProvider } from '@owlat/shared/setupValidators';
 import {
-	validateProvider,
-	validateSmtpRelay,
-	type SetupProvider,
-	type SmtpRelayInput,
-} from '@owlat/shared/setupValidators';
-
-interface ValidateBody {
-	provider: SetupProvider | 'smtp';
-	apiKey?: string;
-	host?: string;
-	smtp?: Partial<SmtpRelayInput>;
-}
+	hasSendProviderProbe,
+	parseProbeBody,
+	requireApiKey,
+	runSendProviderProbe,
+} from '~~/server/utils/sendProviderProbe';
 
 export default defineEventHandler(async (event): Promise<{ ok: boolean; message: string }> => {
 	if (process.env['OWLAT_SETUP_MODE'] !== 'true') {
@@ -41,37 +37,11 @@ export default defineEventHandler(async (event): Promise<{ ok: boolean; message:
 	// credentials. Missing/wrong token -> 401.
 	requireSetupToken(event);
 
-	const body = await readBody<ValidateBody>(event);
-	if (!body?.provider) {
-		throw createError({ statusCode: 400, message: 'provider is required.' });
+	const input = parseProbeBody(await readBody(event));
+	if (hasSendProviderProbe(input.provider)) {
+		return runSendProviderProbe(input.provider, input);
 	}
 
-	if (body.provider === 'smtp') {
-		const smtp = body.smtp;
-		if (!smtp?.host || !smtp?.username || !smtp?.password) {
-			throw createError({
-				statusCode: 400,
-				message: 'smtp.host, smtp.username, and smtp.password are required.',
-			});
-		}
-		// A present-but-non-numeric port must fail loudly rather than being
-		// silently coerced to 587 — otherwise the endpoint could report success
-		// for a different port than the caller asked about. Absent ⇒ backend 587.
-		if (smtp.port !== undefined && typeof smtp.port !== 'number') {
-			throw createError({ statusCode: 400, message: 'smtp.port must be a number.' });
-		}
-		return validateSmtpRelay({
-			host: smtp.host,
-			port: smtp.port ?? 587,
-			secure: smtp.secure === true,
-			username: smtp.username,
-			password: smtp.password,
-		});
-	}
-
-	if (!body.apiKey) {
-		throw createError({ statusCode: 400, message: 'apiKey is required.' });
-	}
-
-	return validateProvider(body.provider, body.apiKey, body.host);
+	const apiKey = requireApiKey(input);
+	return validateProvider(input.provider as SetupProvider, apiKey, input.host);
 });

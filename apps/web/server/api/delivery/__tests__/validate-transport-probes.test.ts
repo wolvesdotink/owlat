@@ -6,8 +6,8 @@
  * that checks them. The declaration is in `packages/shared` (whose own suite
  * pins that the named validator resolves to a real export of
  * `setupValidators.ts`); the thing that keeps the promise is
- * `POST /api/delivery/validate-transport`, which still takes one hand-shaped
- * body per probe and is on `lint:providers`' allowlist for exactly that reason.
+ * `POST /api/delivery/validate-transport`, which dispatches through
+ * `server/utils/sendProviderProbe.ts` by the validator name the entry declares.
  *
  * Between the two, nothing asserted that they agreed — and both disagreements
  * are silent:
@@ -20,10 +20,10 @@
  *                                              no surface can report
  *
  * So this asks the SHIPPED endpoint, per catalog kind, and derives both sides
- * from the catalog rather than from a list of kinds kept here. It does not
- * rewrite the endpoint's per-kind switch — that rewrite has no card in this plan
- * and is recorded as such in `scripts/provider-identity-allowlist.txt`. It makes
- * the switch answerable to the declaration.
+ * from the catalog rather than from a list of kinds kept here. The dispatch
+ * helper's own suite (`server/utils/__tests__/sendProviderProbe.test.ts`) covers
+ * its 400s and messages; this one asks the shipped route with the shipped
+ * browser bodies.
  *
  * THE BROWSER'S HALF IS ONE FILE OVER, and it is not the same question. The
  * button is not drawn off `setupProbe` alone: `TransportEditor.vue` reads
@@ -195,9 +195,9 @@ describe('the live-check endpoint takes exactly the kinds the catalog says can b
 		const uncovered = PROBE_ENTRIES.filter((entry) => probeBodyFor(entry) === undefined);
 		expect(
 			uncovered.map((entry) => `${entry.kind} → ${entry.setupProbe!.validator}`),
-			'a kind declaring setupProbe must be one POST /api/delivery/validate-transport ' +
-				'accepts — teach that endpoint the kind, then give the probe a request-body ' +
-				'builder in app/composables/useRelayCredentialDraft.ts'
+			'a kind declaring setupProbe needs a runner for its validator in ' +
+				'server/utils/sendProviderProbe.ts and a request-body builder in ' +
+				'app/composables/useRelayCredentialDraft.ts'
 		).toEqual([]);
 	});
 
