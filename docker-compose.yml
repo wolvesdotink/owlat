@@ -222,7 +222,15 @@ services:
       OWLAT_VERSION: ${OWLAT_VERSION:-dev}
       OWLAT_GIT_SHA: ${OWLAT_GIT_SHA:-unknown}
       OWLAT_BUILD_DATE: ${OWLAT_BUILD_DATE:-unknown}
+      # Inbound STARTTLS cert/key: default.{crt,key} from the shared mail-certs
+      # volume (apps/mta/src/bounceTlsConfig.ts). BOUNCE_TLS_* still win.
+      TLS_CERT_DIR: /opt/owlat/certs
+    volumes:
+      - mail-certs:/opt/owlat/certs:ro
     depends_on:
+      # Self-signs the pair on first boot so STARTTLS is offered from the start.
+      imap-cert-init:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       clamav:
@@ -754,7 +762,11 @@ services:
       - dev
     restart: unless-stopped
 
-  # ── IMAP TLS bootstrap (self-signed default cert for the IMAPS listener) ──
+  # ── Mail TLS bootstrap (self-signed default cert for IMAPS + inbound SMTP) ──
+  # The MTA's inbound listener (port 25) reads the same pair to offer STARTTLS;
+  # without it the default-on "Require TLS for incoming mail" floor rejects every
+  # inbound delivery, bounces included. Hence the `mta` profile below too.
+  #
   # The IMAP server (port 993) refuses to start in production without a TLS
   # cert/key (apps/imap/src/server.ts); on a fresh install nothing populates the
   # shared mail-certs volume, so the imap container crash-loops. This one-shot
@@ -818,6 +830,7 @@ services:
       - no-new-privileges:true
     profiles:
       - personal-mail
+      - mta
     restart: "no"
 
   # ── IMAP server (Postbox personal mailboxes — port 993) ──────────────

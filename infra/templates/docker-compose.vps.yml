@@ -261,6 +261,11 @@ services:
       NODE_ENV: production
       CLAMAV_HOST: clamav
       CLAMAV_PORT: "3310"
+      # Inbound STARTTLS cert/key: default.{crt,key} published by the acme
+      # sidecar into mail-certs (apps/mta/src/bounceTlsConfig.ts). Read at boot.
+      TLS_CERT_DIR: /opt/owlat/certs
+    volumes:
+      - mail-certs:/opt/owlat/certs:ro
     depends_on:
       redis:
         condition: service_healthy

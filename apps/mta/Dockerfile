@@ -74,6 +74,15 @@ ENV OWLAT_VERSION=${OWLAT_VERSION} \
     OWLAT_GIT_SHA=${OWLAT_GIT_SHA} \
     OWLAT_BUILD_DATE=${OWLAT_BUILD_DATE}
 
+# Same published uid contract as apps/imap/Dockerfile: the MTA reads its inbound
+# STARTTLS key off the shared mail-certs volume (mounted :ro), which
+# imap-cert-init / the VPS acme sidecar chown to IMAP_RUNTIME_USER. A renumbered
+# `node` would leave the listener unable to read its 0600 key.
+RUN [ "$(id -u node):$(id -g node)" = "1000:1000" ] || { \
+	echo "node is $(id -u node):$(id -g node), not 1000:1000 — update IMAP_RUNTIME_USER in docker-compose.yml and infra/templates/docker-compose.vps.yml" >&2; \
+	exit 1; \
+	}
+
 USER node
 EXPOSE 3100 25
 
