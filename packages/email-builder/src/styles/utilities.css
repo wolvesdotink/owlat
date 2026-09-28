@@ -286,15 +286,23 @@
 	}
 }
 
-/* === Variable Tag (dynamic DOM content) === */
+/* === Variable chip (dynamic DOM content) === */
 
-@utility variable-tag {
+/*
+ * The one style for `{{key}}` chips in the canvas preview, the canvas inline
+ * editor and the panel rich-text editor. A plain rule rather than `@utility`:
+ * chips are created at runtime and come back from stored HTML, and the host
+ * loads this stylesheet as-is (nuxt `css`), outside its Tailwind root.
+ * `span[data-variable]` covers older stored chips that lack the class.
+ */
+.variable-tag,
+span[data-variable] {
 	display: inline;
-	background: color-mix(in srgb, var(--color-brand, #c4785a) 10%, transparent);
-	border: 1px solid color-mix(in srgb, var(--color-brand, #c4785a) 20%, transparent);
-	border-radius: 4px;
-	padding: 1px 4px;
-	font-size: 0.85em;
-	color: var(--color-brand);
+	background: color-mix(in srgb, var(--color-brand, #c4785a) 12%, transparent);
+	border: 1px solid color-mix(in srgb, var(--color-brand, #c4785a) 30%, transparent);
+	border-radius: 3px;
+	padding: 0 3px;
+	font-size: 0.9em;
+	color: var(--color-brand, #c4785a);
 	cursor: default;
 }
