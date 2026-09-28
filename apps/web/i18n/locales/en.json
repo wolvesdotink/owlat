@@ -10373,7 +10373,8 @@
 					"marketing": "Marketing",
 					"transactional": "Transactional"
 				},
-				"title": "Templates"
+				"title": "Templates",
+				"typeFilterLabel": "Template type"
 			},
 			"marketing": {
 				"index": {

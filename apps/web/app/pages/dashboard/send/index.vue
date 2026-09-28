@@ -67,7 +67,7 @@ function countFor(filter: TemplateTypeFilter): number | null {
 	return counts[filter] ?? 0;
 }
 
-// Same pill tabs as the Campaigns and Transactional lists: label + count.
+// The same segmented tabs as the Campaigns list: label + count.
 const filterOptions = computed(() =>
 	TEMPLATE_TYPE_FILTERS.map((filter) => {
 		const count = countFor(filter);
@@ -149,30 +149,23 @@ function handleCreated(templateId: Id<'emailTemplates'>) {
 			</template>
 		</UiPageHeader>
 
-		<div class="flex mb-6">
-			<div
-				class="flex items-center gap-1 p-1 bg-bg-surface rounded-lg overflow-x-auto"
-				data-testid="template-type-filter"
+		<!-- A wrapper that scrolls, so a narrow phone scrolls the strip sideways
+		     instead of squeezing its segments; the control keeps its natural width. -->
+		<div class="mb-6 max-w-full overflow-x-auto" data-testid="template-type-filter">
+			<UiSegmentedControl
+				:model-value="typeFilter"
+				:options="filterOptions"
+				:aria-label="t('dashboard.send.index.typeFilterLabel')"
+				class="w-max"
+				@update:model-value="typeFilter = parseTemplateTypeFilter($event)"
 			>
-				<button
-					v-for="option in filterOptions"
-					:key="option.value"
-					type="button"
-					:aria-pressed="typeFilter === option.value"
-					:class="[
-						'px-3 py-1.5 rounded-md text-sm flex items-center gap-1.5 whitespace-nowrap transition-colors duration-(--motion-fast) ease-spring',
-						typeFilter === option.value
-							? 'bg-bg-elevated text-text-primary font-semibold shadow-sm'
-							: 'text-text-secondary hover:text-text-primary font-medium',
-					]"
-					@click="typeFilter = option.value"
-				>
+				<template v-for="option in filterOptions" :key="option.value" #[`option-${option.value}`]>
 					{{ option.label }}
-					<span v-if="option.count !== null" class="text-xs tabular-nums text-text-tertiary">
+					<span v-if="option.count !== null" class="tabular-nums text-text-tertiary">
 						{{ option.count }}
 					</span>
-				</button>
-			</div>
+				</template>
+			</UiSegmentedControl>
 		</div>
 
 		<UiCard padding="none" overflow="hidden">
