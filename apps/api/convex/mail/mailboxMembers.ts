@@ -34,7 +34,8 @@ import type { Id } from '../_generated/dataModel';
 import { requireAdminContext, getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { requireMailboxAccess } from './permissions';
-import { createProvisionedMailbox, canonicalAddress } from './mailbox/identity';
+import { createProvisionedMailbox } from './mailbox/identity';
+import { extractEmail } from '../lib/emailAddress';
 import { assertLiveOrgMembers, loadProfileSummary } from '../lib/userProfiles';
 
 /**
@@ -121,7 +122,7 @@ export const createShared = postboxMutation({
 		if (!session?.activeOrganizationId) {
 			throwForbidden('No active organization');
 		}
-		const address = canonicalAddress(args.address);
+		const address = extractEmail(args.address);
 		const [, domain] = address.split('@');
 		if (!domain) {
 			throwInvalidInput('Enter a valid email address for the team inbox.');

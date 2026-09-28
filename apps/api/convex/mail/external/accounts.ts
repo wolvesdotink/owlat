@@ -48,7 +48,6 @@ import { internal } from '../../_generated/api';
 import { authedMutation, publicQuery } from '../../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../../lib/featureFlags';
-import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from '../mailbox/identity';
 import {
 	personalAccounts,
 	getLivePersonalExternalAccountForUser,
@@ -58,16 +57,13 @@ import {
 	connectFieldsValidator,
 	insertExternalAccountRow,
 	applyCredentialRotation,
+	toPublicAccountView,
 	CONNECTABLE_ACCOUNT_STATUSES,
 } from './accountShared';
+import { claimExternalAddress, provisionExternalMailbox } from './connectMailbox';
 import { stopExternalAccountSync, prepareAccountPurge } from './accountTeardown';
 import { markOnboardingStep } from '../../auth/userOnboarding';
-import {
-	throwForbidden,
-	throwInvalidInput,
-	throwAlreadyExists,
-	throwNotFound,
-} from '../../_utils/errors';
+import { throwForbidden, throwAlreadyExists, throwNotFound } from '../../_utils/errors';
 
 const accountStatusValidator = v.union(
 	v.literal('pending'),
@@ -123,22 +119,7 @@ export const getForCurrentUser = publicQuery({
 			_id: account._id,
 			mailboxId: account.mailboxId,
 			emailAddress: mailbox?.address ?? account.imapUsername,
-			imapHost: account.imapHost,
-			imapPort: account.imapPort,
-			isImapSecure: account.isImapSecure,
-			smtpHost: account.smtpHost,
-			smtpPort: account.smtpPort,
-			isSmtpSecure: account.isSmtpSecure,
-			imapUsername: account.imapUsername,
-			smtpUsername: account.smtpUsername,
-			// How the account authenticates, so the connect form can offer
-			// "Reconnect with Google" instead of a password field. Never a credential.
-			authMethod: account.authMethod,
-			oauthProvider: account.oauthProvider,
-			status: account.status,
-			lastError: account.lastError,
-			lastSyncAt: account.lastSyncAt,
-			lastConnectedAt: account.lastConnectedAt,
+			...toPublicAccountView(account),
 		};
 	},
 });
@@ -237,9 +218,6 @@ export const _connectInternal = internalMutation({
 	handler: async (ctx, args) => {
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.activeOrganizationId || !s.role) throwForbidden('Not authenticated');
-		const address = canonicalAddress(args.emailAddress);
-		const [, domain] = address.split('@');
-		if (!domain) throwInvalidInput('Invalid email address');
 
 		// One LIVE external account per user (v1). A completed move's disconnected
 		// archive row doesn't count — check for a live account by state, not the
@@ -251,13 +229,12 @@ export const _connectInternal = internalMutation({
 				'You already have a connected external mail account. Disconnect it before connecting another.'
 			);
 		}
-		// The address must not collide with any existing active mailbox (hosted or
-		// an external archive left by a completed move) — resolve deterministically
-		// rather than trusting whichever row is oldest.
-		const existingMailbox = await resolveDeliverableMailbox(ctx, address);
-		if (existingMailbox) {
-			throwAlreadyExists(`A mailbox for ${address} already exists.`);
-		}
+		// No other mailbox may claim the address: a live, suspended or removed
+		// hosted one, someone else's external one, or the archive a completed move
+		// left. A mailbox this person disconnected is soft-deleted and external, so
+		// it does not claim the address and is re-opened below instead.
+		const claim = await claimExternalAddress(ctx, args.emailAddress);
+		const { address } = claim;
 
 		const now = Date.now();
 		// Reconnecting an address this person disconnected re-opens THAT mailbox,
@@ -278,13 +255,11 @@ export const _connectInternal = internalMutation({
 			await markOnboardingStep(ctx, s.userId, 'mailboxReady');
 			return { mailboxId: retained.mailbox._id, externalAccountId: retained.account._id };
 		}
-		const mailboxId = await provisionMailbox(ctx, {
+		const mailboxId = await provisionExternalMailbox(ctx, {
 			userId: s.userId,
 			organizationId: s.activeOrganizationId,
-			address,
-			domain,
+			claim,
 			displayName: args.emailAddress,
-			kind: 'external',
 		});
 		const accountId = await insertExternalAccountRow(ctx, {
 			userId: s.userId,

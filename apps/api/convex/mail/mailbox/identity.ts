@@ -34,8 +34,9 @@ import {
 	personalMailEnabled,
 } from '../permissions';
 import { isFeatureEnabled } from '../../lib/featureFlags';
-import { normalizeEmail, parseAddress } from '@owlat/shared';
+import { extractEmail } from '../../lib/emailAddress';
 import { SYSTEM_FOLDER_NAMES, SYSTEM_FOLDER_ROLES, readSession } from './shared';
+import { findAddressClaim } from './addressResolution';
 import { stopExternalAccountSync } from '../external/accountTeardown';
 
 /**
@@ -68,41 +69,6 @@ export async function getActiveMailboxForUser(
 			)
 		)
 		.first();
-}
-
-/**
- * Resolve the single authoritative mailbox that owns an address for inbound
- * delivery and IMAP/SMTP auth. A "move" (mail/mailboxMove.ts) intentionally
- * leaves TWO active rows on one address: the old external one — now a read-only
- * archive, `kind='external'` — and the new live `kind='hosted'` mailbox. A bare
- * `by_address` + `.first()` returns the OLDEST row, i.e. the archive, which
- * would silently swallow all post-cutover inbound mail. Prefer the non-external
- * (hosted/local) row so the live mailbox always wins; fall back to the sole
- * active row otherwise. Returns `null` when no active mailbox claims the address.
- */
-export async function resolveDeliverableMailbox(
-	ctx: QueryCtx | MutationCtx,
-	address: string
-): Promise<Doc<'mailboxes'> | null> {
-	const rows = await ctx.db
-		.query('mailboxes')
-		.withIndex('by_address', (q) => q.eq('address', address))
-		.collect(); // bounded: at most an external archive + its hosted successor
-	const active = rows.filter((m) => m.status === 'active');
-	if (active.length === 0) return null;
-	// The hosted/local mailbox is authoritative on the MTA; the external row is a
-	// read-only archive that must never receive new mail.
-	return active.find((m) => m.kind !== 'external') ?? active[0] ?? null;
-}
-
-/**
- * Strip "Name <addr>" framing and lowercase, via the shared `parseAddress` so
- * mailbox keys agree with every other address derivation. Falls back to a
- * lowercased trim when no address is present (preserving the prior behavior of
- * returning the input for non-address strings).
- */
-export function canonicalAddress(raw: string): string {
-	return parseAddress(raw)?.address ?? normalizeEmail(raw);
 }
 
 /**
@@ -229,11 +195,12 @@ export async function provisionMailbox(
 }
 
 /**
- * Canonicalize + validate an address, reject a duplicate mailbox, and provision
- * the row. The shared body behind the admin `create` (personal) path and
- * `mailboxMembers.createShared` (team) path so the two never drift on address
- * normalization, the `by_address` dup-check, or the provisioning call. Callers
- * own their own auth gate and any scope-specific checks (e.g. verified-domain).
+ * Canonicalize + validate an address, reject one a mailbox already claims, and
+ * provision the row. The shared body behind the admin `create` (personal) path
+ * and `mailboxMembers.createShared` (team) path so the two never drift on
+ * address normalization, the claim check (`findAddressClaim`), or the
+ * provisioning call. Callers own their own auth gate and any scope-specific
+ * checks (e.g. verified-domain).
  */
 export async function createProvisionedMailbox(
 	ctx: MutationCtx,
@@ -246,17 +213,13 @@ export async function createProvisionedMailbox(
 		scope?: 'personal' | 'shared';
 	}
 ): Promise<Id<'mailboxes'>> {
-	const address = canonicalAddress(args.address);
+	const address = extractEmail(args.address);
 	const [, domain] = address.split('@');
 	if (!domain) {
 		throwInvalidInput('Invalid email address');
 	}
 
-	const existing = await ctx.db
-		.query('mailboxes')
-		.withIndex('by_address', (q) => q.eq('address', address))
-		.first();
-	if (existing) {
+	if (await findAddressClaim(ctx, address)) {
 		throwAlreadyExists(`Mailbox ${address} already exists`);
 	}
 

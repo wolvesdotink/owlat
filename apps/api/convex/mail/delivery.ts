@@ -40,7 +40,7 @@ import { logError } from '../lib/runtimeLog';
 import { computeSenderHeuristics } from './senderHeuristics';
 import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
 import { inboundSignatureInfoValidator } from '../e2ee/inboundSignature';
-import { resolveDeliverableMailbox } from './mailbox/identity';
+import { resolveDeliverableMailbox } from './mailbox/addressResolution';
 import { prepareInboundMessage } from './deliveryPipeline/ingest';
 import { captureAttachments } from './deliveryPipeline/capture';
 import { mailboxIndexableParts } from './deliveryPipeline/scan';
