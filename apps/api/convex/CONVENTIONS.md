@@ -588,6 +588,13 @@ This codebase tracks the official Convex AI/cursor rules
   structurally typed on `db.get`, so both `QueryCtx` and `MutationCtx` satisfy
   it. Keep hand-rolling `throwNotFound` only where the guard is not a plain
   `get(id)` null check (e.g. `query().unique()` or outcome-based results).
+- **One UTC day.** Day starts, day keys and zero-filled daily series come
+  from `lib/clock.ts` (`utcDayStart`, `nextUtcDayStart`, `utcDayKey`,
+  `denseDailySeries`, `resolveNow`), which imports nothing. A writer and a
+  reader of the same day-bucketed row must use the same key, so never spell
+  the day by hand with `setUTCHours(0, 0, 0, 0)`, `toISOString().slice(0, 10)`
+  or `.split('T')[0]`; `scripts/check-utc-day.sh` (in `bun run lint`) flags
+  those spellings outside `lib/clock.ts` and tests.
 
 The `bun run lint:patterns` script (also wired into `bun run lint`) tracks
 all four of these against a checked-in baseline.

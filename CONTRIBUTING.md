@@ -78,6 +78,10 @@ of `bun run lint` and will fail CI, including:
   `featureGated` builder instead of an inline `assertFeatureEnabled`
   (ratchet with a justified-sites baseline,
   `apps/api/scripts/check-feature-floors.sh`).
+- `lint:utc-day` — day starts and `YYYY-MM-DD` day keys come from
+  `convex/lib/clock.ts`, never a hand-rolled `setUTCHours(0, 0, 0, 0)`,
+  `toISOString().slice(0, 10)` or `.split('T')[0]`
+  (`apps/api/scripts/check-utc-day.sh`).
 
 ## Code Quality
 
