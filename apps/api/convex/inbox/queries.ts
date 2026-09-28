@@ -17,6 +17,8 @@ import { compareNeedsAttention, compareOldestWaiting } from './threadSort';
 import {
 	FILTER_COUNT_CAP,
 	buildThreadQuery,
+	openThreadCursor,
+	pinThreadCursor,
 	threadAssigneeValidator,
 	threadFilterValidator,
 	type ThreadFilter,
@@ -122,7 +124,9 @@ export const listThreads = publicQuery({
 		}
 
 		const limit = args.limit ?? 20;
-		const now = Date.now();
+		// A later page reuses the first page's `now`: see pinThreadCursor.
+		const pinned = openThreadCursor(args.cursor, Date.now());
+		const now = pinned.now;
 		const sort = args.sort ?? 'newest';
 
 		// ── Search path. Relevance cannot share a cursor across two indexes, so
@@ -159,7 +163,7 @@ export const listThreads = publicQuery({
 				: 'desc';
 		const q = built.order(order);
 
-		const result = await q.paginate({ cursor: args.cursor ?? null, numItems: limit });
+		const result = await q.paginate({ cursor: pinned.cursor, numItems: limit });
 
 		const threads = await enrichThreadRows(ctx, result.page, session.userId);
 
@@ -175,7 +179,7 @@ export const listThreads = publicQuery({
 
 		return {
 			threads,
-			nextCursor: result.isDone ? null : result.continueCursor,
+			nextCursor: result.isDone ? null : pinThreadCursor(now, result.continueCursor),
 		};
 	},
 });

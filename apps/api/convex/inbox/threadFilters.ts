@@ -187,6 +187,39 @@ function buildAssignedStatusQuery(
 }
 
 /**
+ * A `listThreads` page cursor: the Convex continue cursor plus the `now` the
+ * first page was read at.
+ *
+ * Most slices put `now` INTO the query: an index bound (`snoozed`,
+ * `waiting-24h`) or a `.filter()` (every "not snoozed" slice). Convex
+ * fingerprints the whole query, filter literals included, into the cursor and
+ * rejects a cursor whose query differs ("InvalidCursor: ... this cursor is
+ * from a different query"). With a fresh `Date.now()` per call, page 2 never
+ * matched, and "load more" failed on every tab except Resolved. Pinning the
+ * first page's `now` keeps the query identical across pages. The pages then
+ * read as one snapshot: a thread that wakes mid-scroll shows up on the next
+ * first-page refresh, not halfway down the list.
+ */
+export function pinThreadCursor(now: number, continueCursor: string): string {
+	return `${now}:${continueCursor}`;
+}
+
+/**
+ * Split a `listThreads` cursor into the pinned `now` and the Convex cursor.
+ * No cursor = a first page at `fallbackNow`. A cursor without the pin is
+ * passed through unchanged, so Convex judges it as it would have before.
+ */
+export function openThreadCursor(
+	cursor: string | undefined,
+	fallbackNow: number
+): { now: number; cursor: string | null } {
+	if (!cursor) return { now: fallbackNow, cursor: null };
+	const match = /^(\d+):(.+)$/s.exec(cursor);
+	if (!match) return { now: fallbackNow, cursor };
+	return { now: Number(match[1]), cursor: match[2]! };
+}
+
+/**
  * The same slice as {@link buildThreadQuery}, expressed as a PREDICATE over a
  * loaded row.
  *
