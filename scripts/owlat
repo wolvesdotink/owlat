@@ -348,6 +348,18 @@ compose_project_name() {
 	docker compose config 2>/dev/null | sed -n 's/^name:[[:space:]]*//p' | head -1 || true
 }
 
+# Whether the pinned setup image knows `push-env`, which arrived with `owlat
+# apply`. A host `owlat` newer than the stack runs an older image, which answers
+# `push-env` with "Unknown command" and its whole help text. `--help` exits 0 on
+# every version and lists the commands, so it answers the question without
+# running anything. A probe that fails counts as yes: the real run then reports
+# its own error.
+setup_image_has_push_env() {
+	local help_text
+	help_text="$(docker run --rm "$OWLAT_SETUP_IMAGE" --help 2>/dev/null)" || return 0
+	[[ "$help_text" == *push-env* ]]
+}
+
 # Stop and remove containers of services that are no longer part of the active
 # model — the services of a profile that was just disabled. `up -d` never
 # touches those, and whether `--remove-orphans` does depends on the compose
@@ -645,6 +657,12 @@ case "$cmd" in
 			exit 0
 		fi
 		stop_inactive_profile_services
+		if ! setup_image_has_push_env; then
+			printf '%b\n' "${YELLOW}${BOLD}[warn]${RESET} Containers are up to date, but the Convex function-runtime keys were NOT pushed:" \
+				"       this stack's setup image (${OWLAT_SETUP_IMAGE}) predates 'owlat apply'." \
+				"       Upgrade the stack with 'owlat upgrade', then run 'owlat apply' again." >&2
+			exit 1
+		fi
 		printf '%b\n' "${CYAN}${BOLD}[info]${RESET} Pushing Convex function-runtime keys from .env to the deployment…"
 		# The setup CLI runs `docker compose run convex-deploy` through the host
 		# socket. Pass the host's project name so that run joins THIS stack (its

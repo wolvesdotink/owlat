@@ -43,6 +43,8 @@ afterAll(async () => {
 //   compose config             → a rendered config naming the project
 //   ps … --format …            → $STUB_RUNNING (services with a container)
 //   ps -aq … service=<name>    → a fake container id
+//   run … --help               → $STUB_SETUP_HELP (default: a help text listing
+//                                push-env), exit $STUB_HELP_EXIT
 //   run … push-env             → exit $STUB_PUSH_EXIT
 const STUB_DOCKER = `#!/bin/sh
 printf '%s | profiles=%s project=%s\\n' "$*" "\${COMPOSE_PROFILES-<unset>}" "\${COMPOSE_PROJECT_NAME-<unset>}" >> "$STUB_LOG"
@@ -51,6 +53,9 @@ case "$*" in
 	"compose config") printf 'name: owlat-test\\nservices: {}\\n' ;;
 	ps\\ --filter*--format*) printf '%s\\n' $STUB_RUNNING ;;
 	ps\\ -aq*) printf 'id-%s\\n' "\${*##*service=}" ;;
+	run\\ *--help)
+		printf '%s\\n' "\${STUB_SETUP_HELP-  push-env           Push the Convex function-runtime keys}"
+		exit "\${STUB_HELP_EXIT:-0}" ;;
 	run\\ *push-env) exit "\${STUB_PUSH_EXIT:-0}" ;;
 esac
 exit 0
@@ -184,7 +189,9 @@ describe('owlat apply', () => {
 		const result = await install.invoke(['apply']);
 
 		expect(result.code).toBe(0);
-		const push = (await install.calls()).find((line) => line.startsWith('run '));
+		const push = (await install.calls()).find(
+			(line) => line.startsWith('run ') && line.includes('push-env')
+		);
 		expect(push).toContain('-v /var/run/docker.sock:/var/run/docker.sock');
 		expect(push).toContain('-e COMPOSE_PROJECT_NAME=owlat-test');
 		expect(push).toContain('setup-image:test push-env');
@@ -197,6 +204,34 @@ describe('owlat apply', () => {
 
 		expect(result.code).toBe(3);
 		expect(result.stderr).toContain('were NOT pushed');
+	});
+
+	it('says to upgrade, instead of running push-env, when the setup image predates it', async () => {
+		const install = await makeInstall({ env: 'COMPOSE_PROFILES=mta\n' });
+
+		// What a pre-apply setup image lists: every command but push-env.
+		const result = await install.invoke(['apply'], {
+			STUB_SETUP_HELP: '  env <KEY> <VALUE>  Set a single environment variable.\n  doctor',
+		});
+
+		expect(result.code).toBe(1);
+		const calls = await install.calls();
+		expect(calls.some((line) => line.startsWith('compose up -d'))).toBe(true);
+		expect(calls.some((line) => line.includes('push-env'))).toBe(false);
+		expect(result.stderr).toContain('were NOT pushed');
+		expect(result.stderr).toContain("setup image (setup-image:test) predates 'owlat apply'");
+		expect(result.stderr).toContain("'owlat upgrade'");
+		expect(result.stdout + result.stderr).not.toContain('Unknown command');
+	});
+
+	it('still runs push-env when the setup image cannot be probed', async () => {
+		const install = await makeInstall({ env: 'COMPOSE_PROFILES=mta\n' });
+
+		const result = await install.invoke(['apply'], { STUB_SETUP_HELP: '', STUB_HELP_EXIT: '125' });
+
+		expect(result.code).toBe(0);
+		const calls = await install.calls();
+		expect(calls.some((line) => line.includes('setup-image:test push-env'))).toBe(true);
 	});
 
 	it('scopes a named-service run: no profile clean-up, no push', async () => {
