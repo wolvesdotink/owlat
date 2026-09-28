@@ -25,7 +25,7 @@ import { internalMutation, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { adminMutation } from '../lib/authedFunctions';
 import { assertFeatureEnabled } from '../lib/featureFlags';
-import { sealedPrivateKeyValidator } from './keys';
+import { sealedPrivateKeyValidator } from '../lib/validators/e2ee';
 import { normalizeEmail } from '@owlat/shared';
 
 const MAX_KEY_ROWS_PER_ADDRESS = 128;

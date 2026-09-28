@@ -12,9 +12,9 @@
  * Pure observability — nothing here influences routing or auto-send.
  */
 
-import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
-import { clarificationSourceValidator } from '../lib/literalValidators';
+import { omit } from '../lib/validators/fields';
+import { clarificationAskLogFields } from '../schema/askEagerness';
 
 /**
  * Persist one clarification ask-outcome row. All measurement fields are optional
@@ -23,27 +23,8 @@ import { clarificationSourceValidator } from '../lib/literalValidators';
  * sampled draft-with vs draft-without divergence once the owner answers.
  */
 export const recordClarificationAsk = internalMutation({
-	args: {
-		source: clarificationSourceValidator,
-		slotTypes: v.array(v.string()),
-		questionCount: v.number(),
-		predictedValue: v.number(),
-		eagerness: v.optional(v.string()),
-		threadId: v.optional(v.id('mailThreads')),
-		isDraftChanged: v.optional(v.boolean()),
-		draftDivergence: v.optional(v.number()),
-	},
+	args: omit(clarificationAskLogFields, ['createdAt']),
 	handler: async (ctx, args) => {
-		await ctx.db.insert('clarificationAskLog', {
-			source: args.source,
-			slotTypes: args.slotTypes,
-			questionCount: args.questionCount,
-			predictedValue: args.predictedValue,
-			eagerness: args.eagerness,
-			threadId: args.threadId,
-			isDraftChanged: args.isDraftChanged,
-			draftDivergence: args.draftDivergence,
-			createdAt: Date.now(),
-		});
+		await ctx.db.insert('clarificationAskLog', { ...args, createdAt: Date.now() });
 	},
 });

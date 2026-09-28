@@ -14,6 +14,8 @@ import { publicQuery, adminMutation } from './lib/authedFunctions';
 import { recordAuditLog } from './lib/auditLog';
 import { requireAdminContext, isActiveOrgMember } from './lib/sessionOrganization';
 import { clampHumanApproveUndoDelayMs } from './inbox/processingLifecycle/effects';
+import { optionalFields, pick } from './lib/validators/fields';
+import { agentConfigFields } from './schema/autonomy';
 
 /** Clamp a minute-of-day into [0, 1439] so a bad client value can't wedge the window. */
 function clampMinuteOfDay(minute: number): number {
@@ -54,31 +56,27 @@ export const getConfig = publicQuery({
  * to owners/admins via `adminMutation`.
  */
 export const updateConfig = adminMutation({
-	// The reply mode (`isAutoReplyEnabled` + `isShadowMode`) is NOT set here:
-	// `setReplyMode` is its only writer, so the two can never disagree.
-	args: {
-		confidenceThreshold: v.optional(v.number()),
-		toneDescription: v.optional(v.string()),
-		signatureTemplate: v.optional(v.string()),
-		maxDailyAutoReplies: v.optional(v.number()),
-		coalesceWindowMs: v.optional(v.number()),
-		// Undo / send-delay window (ms) for AUTONOMOUS auto-sends. Unset keeps
-		// the configured value; 0 restores the legacy immediate send. See
-		// inbox/processingLifecycle/effects.ts.
-		autoSendDelayMs: v.optional(v.number()),
-		// Undo window (ms) after a HUMAN Approve on the review surfaces. Clamped
-		// to 0–120000; 0 restores the legacy immediate human send. See
-		// inbox/processingLifecycle/effects.ts.
-		humanApproveUndoDelayMs: v.optional(v.number()),
-		// Timezone-aware working-hours window for autonomous auto-sends. When
-		// enabled, an auto-approved reply decided OUTSIDE the window is held for
-		// human review instead of sent. See lib/workingHours.ts.
-		isWorkingHoursEnabled: v.optional(v.boolean()),
-		workingHoursTimezone: v.optional(v.string()),
-		workingHoursStart: v.optional(v.number()),
-		workingHoursEnd: v.optional(v.number()),
-		workingHoursDays: v.optional(v.array(v.number())),
-	},
+	// Every field is optional: an omitted one keeps its configured value. The
+	// reply mode (`isAutoReplyEnabled` + `isShadowMode`) is NOT set here:
+	// `setReplyMode` is its only writer, so the two can never disagree. The
+	// daily counters and `clarificationTimeoutMs` are not set here either.
+	// schema/autonomy.ts documents what each field means.
+	args: optionalFields(
+		pick(agentConfigFields, [
+			'confidenceThreshold',
+			'toneDescription',
+			'signatureTemplate',
+			'maxDailyAutoReplies',
+			'coalesceWindowMs',
+			'autoSendDelayMs',
+			'humanApproveUndoDelayMs',
+			'isWorkingHoursEnabled',
+			'workingHoursTimezone',
+			'workingHoursStart',
+			'workingHoursEnd',
+			'workingHoursDays',
+		])
+	),
 	handler: async (ctx, args) => {
 		const { userId } = await requireAdminContext(ctx);
 

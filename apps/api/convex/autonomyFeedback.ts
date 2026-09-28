@@ -20,7 +20,8 @@ import type { Doc } from './_generated/dataModel';
 import { adminQuery } from './lib/authedFunctions';
 import { internal } from './_generated/api';
 import { getCategoryRule } from './lib/autonomyRules';
-import { reviewActionValidator } from './lib/literalValidators';
+import { omit } from './lib/validators/fields';
+import { autonomyFeedbackFields } from './schema/autonomy';
 
 // ============================================================
 // Feedback readers
@@ -115,29 +116,16 @@ export const getFeedbackCountsInternal = internalQuery({
  * Record human feedback on an agent action
  */
 export const recordFeedback = internalMutation({
-	args: {
-		category: v.string(),
-		action: reviewActionValidator,
-		agentConfidence: v.number(),
-		userFeedback: v.optional(v.string()),
-		inboundMessageId: v.optional(v.id('inboundMessages')),
-		// Provenance. Defaults to 'human' (a reviewer decision) when omitted.
-		source: v.optional(v.union(v.literal('human'), v.literal('outcome'))),
-		outcomeSignal: v.optional(v.string()),
-	},
+	// The row minus what the writer derives: `ruleId` (the category rule) and
+	// `createdAt`. An omitted `source` means 'human' (a reviewer decision).
+	args: omit(autonomyFeedbackFields, ['ruleId', 'createdAt']),
 	handler: async (ctx, args) => {
 		// Attribute feedback to the CATEGORY rule (feedback is category-granular).
 		const rule = await getCategoryRule(ctx.db, args.category);
 
 		await ctx.db.insert('autonomyFeedback', {
+			...args,
 			ruleId: rule?._id,
-			category: args.category,
-			action: args.action,
-			agentConfidence: args.agentConfidence,
-			userFeedback: args.userFeedback,
-			inboundMessageId: args.inboundMessageId,
-			source: args.source,
-			outcomeSignal: args.outcomeSignal,
 			createdAt: Date.now(),
 		});
 	},

@@ -24,6 +24,9 @@ import type { Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { adminMutation, publicQuery } from '../lib/authedFunctions';
 import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
+import { pick } from '../lib/validators/fields';
+import { sealedPrivateKeyValidator } from '../lib/validators/e2ee';
+import { keyVaultFields } from '../schema/e2ee';
 import { normalizeEmail } from '@owlat/shared';
 
 const SIGNED_MANIFEST_VERSION = 1;
@@ -51,16 +54,16 @@ async function activeAddressRow(ctx: QueryCtx, address: string): Promise<Doc<'ke
 	return rows.find((r) => r.isActive) ?? null;
 }
 
-/**
- * The at-rest sealed private-key envelope shape (a `credentialCrypto` secret box).
- * The single source of truth for this validator — `e2ee/lifecycle.ts` imports it
- * rather than re-declaring it, so the two planes can't drift.
- */
-export const sealedPrivateKeyValidator = v.object({
-	ciphertext: v.string(),
-	iv: v.string(),
-	authTag: v.string(),
-});
+/** The key material a minted or imported keypair writes into its `keyVault` row. */
+const KEY_MATERIAL_FIELDS = [
+	'domain',
+	'wkdHash',
+	'fingerprint',
+	'algorithm',
+	'publicKeyArmored',
+	'publicKeyBinaryBase64',
+	'sealedPrivateKey',
+] as const;
 
 /**
  * Idempotently persist a minted keypair. Called only by the Node action plane
@@ -70,15 +73,7 @@ export const sealedPrivateKeyValidator = v.object({
  */
 export const storeKeypair = internalMutation({
 	args: {
-		kind: v.union(v.literal('instance'), v.literal('address')),
-		address: v.optional(v.string()),
-		domain: v.optional(v.string()),
-		wkdHash: v.optional(v.string()),
-		fingerprint: v.string(),
-		algorithm: v.string(),
-		publicKeyArmored: v.string(),
-		publicKeyBinaryBase64: v.string(),
-		sealedPrivateKey: sealedPrivateKeyValidator,
+		...pick(keyVaultFields, ['kind', 'address', ...KEY_MATERIAL_FIELDS]),
 		// Intentional replacement (legacy-profile migration) must name the active
 		// fingerprint it observed. Ordinary minting leaves this absent and can
 		// never overwrite a concurrently-created identity.
@@ -169,14 +164,9 @@ export const storeKeypair = internalMutation({
  */
 export const storeImportedAddressKey = internalMutation({
 	args: {
+		// Required here, unlike the column: an import always targets an address.
 		address: v.string(),
-		domain: v.optional(v.string()),
-		wkdHash: v.optional(v.string()),
-		fingerprint: v.string(),
-		algorithm: v.string(),
-		publicKeyArmored: v.string(),
-		publicKeyBinaryBase64: v.string(),
-		sealedPrivateKey: sealedPrivateKeyValidator,
+		...pick(keyVaultFields, KEY_MATERIAL_FIELDS),
 	},
 	returns: v.object({ id: v.id('keyVault'), created: v.boolean() }),
 	handler: async (ctx, args) => {

@@ -639,6 +639,27 @@ walks the value imports (`import type` is ignored) of `schema.ts` and
 `lib/validators/` module loads anything outside its leaf set. The schema may
 still import leaf catalogs such as `auditActions/catalog`.
 
+When a function's arguments are most of a table's row, do not retype the
+fields. Export the table's field record from its schema file and pass it to
+`defineTable`, then derive the arguments from it with the helpers in
+`lib/validators/fields.ts`:
+
+```ts
+// schema/askEagerness.ts
+export const clarificationAskLogFields = { source: ..., createdAt: v.number() };
+clarificationAskLog: defineTable(clarificationAskLogFields).index(...),
+
+// inbox/clarificationLog.ts
+args: omit(clarificationAskLogFields, ['createdAt']),
+```
+
+`pick` and `omit` select fields, and `optionalFields` makes every field
+optional for patch-style arguments. A field that differs from its column,
+such as an argument that is optional where the column is required, is written
+out next to the derived fields (`mail/vacation.ts:upsert`). Only export a
+record that a function uses. A nested object or union that a function reuses
+on its own gets a name in `lib/validators/<domain>.ts`.
+
 ## Schema evolution (post-launch immutability)
 
 Self-hosted deployments update in place. The updater runs `convex deploy`

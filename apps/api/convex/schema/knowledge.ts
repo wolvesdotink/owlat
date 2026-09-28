@@ -141,6 +141,62 @@ export const EDGE_PROVENANCES = ['deterministic', 'llm', 'manual'] as const;
  */
 const edgeProvenanceValidator = literalUnion(EDGE_PROVENANCES);
 
+/** Field record of `knowledgeEntries`, shared with the functions that write it. */
+export const knowledgeEntriesFields = {
+	entryType: entryTypeValidator,
+	title: v.string(),
+	content: v.string(),
+	// Source attribution
+	sourceType: sourceTypeValidator,
+	sourceId: v.optional(v.string()), // ID of the source message/file
+	// Entity links
+	contactIds: v.optional(v.array(v.id('contacts'))),
+	threadId: v.optional(v.id('conversationThreads')),
+	// Vector embedding for semantic search (1536 dimensions for text-embedding-3-small)
+	embedding: v.array(v.float64()),
+	// Model that produced `embedding` (e.g., 'text-embedding-3-small'). Re-embed when this changes.
+	embeddingModel: v.optional(v.string()),
+	// When `embedding` was generated; used to schedule re-embedding on stale entries.
+	embeddingGeneratedAt: v.optional(v.number()),
+	// Confidence and maintenance
+	confidence: v.number(), // 0-1
+	lastValidatedAt: v.number(),
+	expiresAt: v.optional(v.number()),
+	// Curated-canonical marker. Set true only on human-authored `policy` / `faq`
+	// entries (sourceType 'curated'); retrieval ranks these ahead of scraped
+	// facts in the same RRF pool (lib/knowledgePrecedence.ts) so a canonical
+	// answer can't be outranked by noise. A newer scraped fact that SUPERSEDES
+	// the policy (a `supersedes` edge → `_stale`) still wins — precedence never
+	// promotes a superseded entry. Optional/absent ⇒ an ordinary (scraped) fact.
+	// Named with the required is* prefix per the boolean-naming ratchet.
+	isAuthoritative: v.optional(v.boolean()),
+	// Commitment lifecycle for `decision` / `action_item` entries. `dueAt` is the
+	// promised-by time (if any); `commitmentStatus` drives the contact-scoped
+	// open-commitments recall (undefined ⇒ open — see isCommitmentOpen). Absent
+	// on non-commitment entries and on commitments authored before the field.
+	commitmentStatus: v.optional(commitmentStatusValidator),
+	dueAt: v.optional(v.number()),
+	// Usage signal: how often / how recently this entry has been retrieved.
+	// Bumped fire-and-forget by knowledge.retrieval on every recall hit and
+	// read by the decay cron's access boost (frequently-grounded facts decay
+	// slower, never-recalled ones fade faster). Optional — absent on entries
+	// written before the field existed; the decay falls back to createdAt.
+	accessCount: v.optional(v.number()),
+	lastAccessedAt: v.optional(v.number()),
+	// Search and categorization
+	tags: v.optional(v.array(v.string())),
+	searchableText: v.optional(v.string()),
+	// Deterministic content fingerprint (sha256 of normalizeForHash(title, content),
+	// computed by the 'use node' extraction action). Lets the deterministic linker
+	// and dedup probe find entries with byte-identical normalized content via the
+	// `by_content_hash` index instead of scanning. Optional — absent on entries
+	// written before the field existed and on manual entries that skip hashing.
+	contentHash: v.optional(v.string()),
+	// Timestamps
+	createdAt: v.number(),
+	updatedAt: v.number(),
+};
+
 /**
  * Knowledge graph + semantic file tables — typed knowledge extracted from communications,
  * relationships between knowledge entries, and embedded file storage.
@@ -149,60 +205,7 @@ const edgeProvenanceValidator = literalUnion(EDGE_PROVENANCES);
  */
 export const knowledgeTables = {
 	// Knowledge Entries - typed organizational knowledge extracted from communications
-	knowledgeEntries: defineTable({
-		entryType: entryTypeValidator,
-		title: v.string(),
-		content: v.string(),
-		// Source attribution
-		sourceType: sourceTypeValidator,
-		sourceId: v.optional(v.string()), // ID of the source message/file
-		// Entity links
-		contactIds: v.optional(v.array(v.id('contacts'))),
-		threadId: v.optional(v.id('conversationThreads')),
-		// Vector embedding for semantic search (1536 dimensions for text-embedding-3-small)
-		embedding: v.array(v.float64()),
-		// Model that produced `embedding` (e.g., 'text-embedding-3-small'). Re-embed when this changes.
-		embeddingModel: v.optional(v.string()),
-		// When `embedding` was generated; used to schedule re-embedding on stale entries.
-		embeddingGeneratedAt: v.optional(v.number()),
-		// Confidence and maintenance
-		confidence: v.number(), // 0-1
-		lastValidatedAt: v.number(),
-		expiresAt: v.optional(v.number()),
-		// Curated-canonical marker. Set true only on human-authored `policy` / `faq`
-		// entries (sourceType 'curated'); retrieval ranks these ahead of scraped
-		// facts in the same RRF pool (lib/knowledgePrecedence.ts) so a canonical
-		// answer can't be outranked by noise. A newer scraped fact that SUPERSEDES
-		// the policy (a `supersedes` edge → `_stale`) still wins — precedence never
-		// promotes a superseded entry. Optional/absent ⇒ an ordinary (scraped) fact.
-		// Named with the required is* prefix per the boolean-naming ratchet.
-		isAuthoritative: v.optional(v.boolean()),
-		// Commitment lifecycle for `decision` / `action_item` entries. `dueAt` is the
-		// promised-by time (if any); `commitmentStatus` drives the contact-scoped
-		// open-commitments recall (undefined ⇒ open — see isCommitmentOpen). Absent
-		// on non-commitment entries and on commitments authored before the field.
-		commitmentStatus: v.optional(commitmentStatusValidator),
-		dueAt: v.optional(v.number()),
-		// Usage signal: how often / how recently this entry has been retrieved.
-		// Bumped fire-and-forget by knowledge.retrieval on every recall hit and
-		// read by the decay cron's access boost (frequently-grounded facts decay
-		// slower, never-recalled ones fade faster). Optional — absent on entries
-		// written before the field existed; the decay falls back to createdAt.
-		accessCount: v.optional(v.number()),
-		lastAccessedAt: v.optional(v.number()),
-		// Search and categorization
-		tags: v.optional(v.array(v.string())),
-		searchableText: v.optional(v.string()),
-		// Deterministic content fingerprint (sha256 of normalizeForHash(title, content),
-		// computed by the 'use node' extraction action). Lets the deterministic linker
-		// and dedup probe find entries with byte-identical normalized content via the
-		// `by_content_hash` index instead of scanning. Optional — absent on entries
-		// written before the field existed and on manual entries that skip hashing.
-		contentHash: v.optional(v.string()),
-		// Timestamps
-		createdAt: v.number(),
-		updatedAt: v.number(),
-	})
+	knowledgeEntries: defineTable(knowledgeEntriesFields)
 		.index('by_entry_type', ['entryType'])
 		.index('by_created_at', ['createdAt'])
 		.index('by_thread', ['threadId'])

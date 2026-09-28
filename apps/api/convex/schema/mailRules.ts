@@ -2,6 +2,20 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { mailJobStatusValidator } from '../lib/literalValidators';
 
+/** Field record of `mailVacationResponders`, shared with the functions that write it. */
+export const mailVacationRespondersFields = {
+	mailboxId: v.id('mailboxes'),
+	isEnabled: v.boolean(),
+	subject: v.string(),
+	bodyText: v.string(),
+	bodyHtml: v.optional(v.string()),
+	startAt: v.optional(v.number()),
+	endAt: v.optional(v.number()),
+	replyIntervalDays: v.number(), // anti-loop: max once-per-N-days per sender
+	createdAt: v.number(),
+	updatedAt: v.number(),
+};
+
 /**
  * Server-side rules: filters and their run jobs, aliases, forwarding
  * and vacation responders.
@@ -131,18 +145,9 @@ export const mailRulesTables = {
 
 	// RFC 3834-compliant vacation auto-responder.
 
-	mailVacationResponders: defineTable({
-		mailboxId: v.id('mailboxes'),
-		isEnabled: v.boolean(),
-		subject: v.string(),
-		bodyText: v.string(),
-		bodyHtml: v.optional(v.string()),
-		startAt: v.optional(v.number()),
-		endAt: v.optional(v.number()),
-		replyIntervalDays: v.number(), // anti-loop: max once-per-N-days per sender
-		createdAt: v.number(),
-		updatedAt: v.number(),
-	}).index('by_mailbox', ['mailboxId']),
+	mailVacationResponders: defineTable(mailVacationRespondersFields).index('by_mailbox', [
+		'mailboxId',
+	]),
 
 	// Per-(mailbox, sender) record so the responder doesn't reply to the
 	// same person more than once within `replyIntervalDays`.
