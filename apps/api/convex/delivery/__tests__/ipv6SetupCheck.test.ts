@@ -152,4 +152,20 @@ describe('isPublicIpv6', () => {
 		expect(isPublicIpv6('::1')).toBe(false);
 		expect(isPublicIpv6('ff02::1')).toBe(false);
 	});
+
+	it.each([
+		['3fff::25', 'documentation, RFC 9637'],
+		['3fff:fff:ffff::1', 'documentation, last /20 address block'],
+		['2002:cb00:7119::1', '6to4'],
+		['2001:0:4136:e378::1', 'Teredo'],
+	])('refuses %s (%s)', (address) => {
+		expect(isPublicIpv6(address)).toBe(false);
+	});
+
+	it.each(['3fff:1000::1', '2003::1', '2001:1::1', '2001:4860::8888'])(
+		'accepts %s just outside those prefixes',
+		(address) => {
+			expect(isPublicIpv6(address)).toBe(true);
+		}
+	);
 });

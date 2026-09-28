@@ -93,7 +93,8 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SmtpListene
 	// §4.6.4 lookup budget — which counts real resolver CALLS — is unaffected.
 	const authResolvers = createInboundAuthResolvers(redis);
 
-	// STARTTLS is offered only when cert+key are configured. The listener applies
+	// STARTTLS is offered when cert+key are configured, or from the moment
+	// bounce/tlsReload.ts installs a pair published after boot. The listener applies
 	// the hardened TLS floor by default (TLSv1.2, AEAD-only ECDHE, honorCipherOrder —
 	// `@owlat/smtp-listener` DEFAULT_SMTP_CIPHERS), matching the former inline policy.
 	const tls: SmtpTlsConfig | undefined =

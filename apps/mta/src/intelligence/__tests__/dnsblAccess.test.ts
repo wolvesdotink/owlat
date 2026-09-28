@@ -91,6 +91,43 @@ describe('probeSpamhausZone', () => {
 		expect(await probeSpamhausZone(KEYED_ZONE, deps)).toBe('resolver_unreachable');
 	});
 
+	it('never blames the key for a keyed zone that timed out while the public zone answers', async () => {
+		const { queried, deps } = scriptedDeps({
+			[`2.0.0.127.${KEYED_ZONE}`]: dnsError('ETIMEOUT'),
+			'2.0.0.127.zen.spamhaus.org': ['127.255.255.254'],
+		});
+		expect(await probeSpamhausZone(KEYED_ZONE, deps)).toBe('resolver_unreachable');
+		// No control query: only a SERVFAIL is ambiguous between key and path.
+		expect(queried).not.toContain('2.0.0.127.zen.spamhaus.org');
+	});
+
+	it('treats other transport errors on the keyed zone as an unreachable resolver', async () => {
+		for (const code of ['EREFUSED', 'ECONNREFUSED', 'EAI_AGAIN']) {
+			const { deps } = scriptedDeps({
+				[`2.0.0.127.${KEYED_ZONE}`]: dnsError(code),
+				'2.0.0.127.zen.spamhaus.org': ['127.255.255.254'],
+			});
+			expect(await probeSpamhausZone(KEYED_ZONE, deps)).toBe('resolver_unreachable');
+		}
+	});
+
+	it('does not blame the key when the keyed query hits the per-attempt timeout', async () => {
+		vi.useFakeTimers();
+		try {
+			const { deps } = scriptedDeps({ '2.0.0.127.zen.spamhaus.org': ['127.255.255.254'] });
+			deps.resolve4.mockImplementation(async (hostname: string) =>
+				hostname === `2.0.0.127.${KEYED_ZONE}`
+					? new Promise<string[]>(() => {})
+					: ['127.255.255.254']
+			);
+			const pending = probeSpamhausZone(KEYED_ZONE, { ...deps, timeoutMs: 1_000 });
+			await vi.advanceTimersByTimeAsync(10_000);
+			expect(await pending).toBe('resolver_unreachable');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it('passes a refusal through as the reason', async () => {
 		const { deps } = scriptedDeps({ [`2.0.0.127.${KEYED_ZONE}`]: ['127.255.255.255'] });
 		expect(await probeSpamhausZone(KEYED_ZONE, deps)).toBe('rate_limited');

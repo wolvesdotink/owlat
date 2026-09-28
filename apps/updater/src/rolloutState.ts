@@ -2,11 +2,12 @@
  * One rollout at a time, and a record of how the last update ended.
  *
  * /update waits for readiness after `up`, which can take minutes. While it
- * does, a second /update, an /apply-profiles or a /rotate-env would run its
- * own `docker compose up` against the same stack and the same `.env`: two
- * recreates racing each other, and a readiness verdict about a stack the
- * other request just changed. So the three state-changing endpoints share one
- * lock and answer 409 while another holds it.
+ * does, a second /update, an /apply-profiles, a /rotate-env or a
+ * /configure-ip would run its own `docker compose up` against the same stack
+ * and rewrite the same `.env`: two recreates racing each other, one request's
+ * `.env` edit lost to the other's read-modify-write, and a readiness verdict
+ * about a stack the other request just changed. So the four endpoints that
+ * recreate containers share one lock and answer 409 while another holds it.
  *
  * The /update answer rarely reaches its caller: `up` recreates the web
  * container that sent the request. The verdict is therefore also written to
@@ -19,12 +20,13 @@ import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { json, OWLAT_DIR } from './http.js';
 
-type RolloutKind = 'update' | 'apply-profiles' | 'rotate-env';
+export type RolloutKind = 'update' | 'apply-profiles' | 'rotate-env' | 'configure-ip';
 
 const KIND_LABEL: Record<RolloutKind, string> = {
 	update: 'an update',
 	'apply-profiles': 'a feature change',
 	'rotate-env': 'a secret rotation',
+	'configure-ip': 'an IP pool change',
 };
 
 let inFlight: { kind: RolloutKind; since: number } | null = null;

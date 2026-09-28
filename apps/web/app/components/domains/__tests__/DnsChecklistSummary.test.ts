@@ -86,6 +86,26 @@ describe('DnsChecklistSummary', () => {
 		);
 	});
 
+	it('comments out a return-path record from another zone and says where it goes', async () => {
+		const entries = buildSendingChecklist({
+			dnsRecords: {
+				mailFrom: [
+					{ type: 'MX', hostname: 'bounces.owlat.test', value: 'mx.owlat.test', priority: 10 },
+				],
+			},
+			verificationResults: { mailFrom: [missing] },
+		});
+		const w = mount(DnsChecklistSummary, {
+			props: { entries, domain: 'mail.example.com', anchorFor: () => 'dns-d1' },
+			global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		});
+		await w.find('[data-testid="dns-copy-zone"]').trigger('click');
+		expect(String(copy.mock.calls[0]![0]).split('\n')).toEqual([
+			'; Not part of example.com: add the record below at the DNS host for owlat.test. It is commented out so an import into example.com skips it.',
+			'; bounces.owlat.test.\t3600\tIN\tMX\t10 mx.owlat.test.',
+		]);
+	});
+
 	it('asks for every record, without a count or links, before the first check', () => {
 		const w = mountSummary(undefined);
 		expect(headline(w)).toContain('Add these 4 records at your DNS host');
