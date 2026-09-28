@@ -102,7 +102,11 @@ describe('TLS material from the shared cert volume', () => {
 	});
 
 	it('loads default.crt/default.key when they are readable', () => {
-		expect(loadConfig().tls).toEqual({ cert: 'CERT-PEM', key: 'KEY-PEM' });
+		expect(loadConfig().tls).toEqual({
+			cert: 'CERT-PEM',
+			key: 'KEY-PEM',
+			paths: { cert: join(certDir, 'default.crt'), key: join(certDir, 'default.key') },
+		});
 	});
 
 	// Root ignores the permission bits entirely, so this can only be asserted as
@@ -131,5 +135,16 @@ describe('TLS material from the shared cert volume', () => {
 			caught = err;
 		}
 		expect((caught as Error).cause).toMatchObject({ code: 'EACCES' });
+	});
+
+	it('records explicit file paths for reload, but none for inline PEM', () => {
+		const cert = join(certDir, 'default.crt');
+		const key = join(certDir, 'default.key');
+		process.env['IMAP_TLS_CERT_FILE'] = cert;
+		process.env['IMAP_TLS_KEY_FILE'] = key;
+		expect(loadConfig().tls?.paths).toEqual({ cert, key });
+
+		process.env['IMAP_TLS_CERT'] = 'INLINE-CERT';
+		expect(loadConfig().tls).toEqual({ cert: 'INLINE-CERT', key: 'KEY-PEM' });
 	});
 });

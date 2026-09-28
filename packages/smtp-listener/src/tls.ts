@@ -40,14 +40,18 @@ export type SmtpSniCallback = (
 	cb: (err: Error | null, ctx?: SecureContext) => void
 ) => void;
 
+/** The key material half of {@link SmtpTlsConfig}, swappable at runtime. */
+export interface SmtpTlsMaterial {
+	cert: string | Buffer;
+	key: string | Buffer;
+}
+
 /**
  * Caller-facing TLS configuration. `cert`/`key` are required; the cipher floor,
  * suite list and `honorCipherOrder` default to today's hardened policy so a
  * caller only has to supply key material to get the exact production posture.
  */
-export interface SmtpTlsConfig {
-	cert: string | Buffer;
-	key: string | Buffer;
+export interface SmtpTlsConfig extends SmtpTlsMaterial {
 	/** TLS floor. Default `'TLSv1.2'` (RFC 8314 §4.1). */
 	minVersion?: SecureVersion;
 	/** OpenSSL cipher string. Default {@link DEFAULT_SMTP_CIPHERS}. */

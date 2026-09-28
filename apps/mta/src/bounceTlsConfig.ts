@@ -11,6 +11,10 @@
  *  3. `${TLS_CERT_DIR}/default.{crt,key}` — the shared mail-certs volume the
  *     IMAP server reads too (self-signed by `imap-cert-init` on a self-host,
  *     ACME-issued by the VPS template's `acme` sidecar).
+ *
+ * A pair read from files also reports its `paths`, so the running listener can
+ * re-read them when the certificate is renewed (bounce/tlsReload.ts). Inline
+ * PEM cannot change without a restart and reports none.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -19,6 +23,8 @@ import { join } from 'node:path';
 export interface BounceTlsMaterial {
 	cert?: string;
 	key?: string;
+	/** Where a file-sourced pair came from; absent for inline PEM or a half pair. */
+	paths?: { cert: string; key: string };
 }
 
 type Env = Record<string, string | undefined>;
@@ -56,6 +62,7 @@ export function loadBounceTlsMaterial(env: Env = process.env): BounceTlsMaterial
 		return {
 			...(certFile ? { cert: readPem(certFile, 'BOUNCE_TLS_CERT_FILE') } : {}),
 			...(keyFile ? { key: readPem(keyFile, 'BOUNCE_TLS_KEY_FILE') } : {}),
+			...(certFile && keyFile ? { paths: { cert: certFile, key: keyFile } } : {}),
 		};
 	}
 
@@ -67,5 +74,6 @@ export function loadBounceTlsMaterial(env: Env = process.env): BounceTlsMaterial
 	return {
 		cert: readPem(certPath, 'TLS_CERT_DIR'),
 		key: readPem(keyPath, 'TLS_CERT_DIR'),
+		paths: { cert: certPath, key: keyPath },
 	};
 }

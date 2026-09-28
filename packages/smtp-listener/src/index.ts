@@ -26,6 +26,7 @@ export {
 	resolveTlsConfig,
 	upgradeTls,
 	type SmtpTlsConfig,
+	type SmtpTlsMaterial,
 	type ResolvedTlsConfig,
 	type SmtpSniCallback,
 } from './tls.js';

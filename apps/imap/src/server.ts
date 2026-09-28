@@ -4,13 +4,28 @@
  * can be added later without code changes.
  */
 
-import { createServer as createPlainServer, type Server as TlsServer } from 'tls';
+import { createServer as createPlainServer, type Server as TlsServer, type TlsOptions } from 'tls';
 import { createServer as createTcpServer, type Server as TcpServer } from 'net';
 import type { ImapConfig } from './config.js';
 import type { ConvexClient } from './convex.js';
 import { ImapConnection } from './connection.js';
 import type { AuthRateLimiter } from './rateLimit.js';
 import { logger } from './logger.js';
+import { startImapTlsReload } from './tlsReload.js';
+
+/** The IMAPS cipher policy: TLSv1.2 floor, AEAD-only ECDHE suites. */
+const TLS_POLICY: TlsOptions = {
+	minVersion: 'TLSv1.2',
+	ciphers: [
+		'ECDHE-ECDSA-AES128-GCM-SHA256',
+		'ECDHE-RSA-AES128-GCM-SHA256',
+		'ECDHE-ECDSA-AES256-GCM-SHA384',
+		'ECDHE-RSA-AES256-GCM-SHA384',
+		'ECDHE-ECDSA-CHACHA20-POLY1305',
+		'ECDHE-RSA-CHACHA20-POLY1305',
+	].join(':'),
+	honorCipherOrder: true,
+};
 
 interface ConnectionAccounting {
 	totalActive: number;
@@ -21,7 +36,7 @@ export function startImapServer(
 	config: ImapConfig,
 	convex: ConvexClient,
 	rateLimiter: AuthRateLimiter
-): { server: TcpServer | TlsServer } {
+): { server: TcpServer | TlsServer; stopTlsReload: () => void } {
 	const accounting: ConnectionAccounting = {
 		totalActive: 0,
 		perIp: new Map(),
@@ -55,37 +70,23 @@ export function startImapServer(
 	if (config.tls) {
 		const handler = makeHandler(true);
 		const server = createPlainServer(
-			{
-				cert: config.tls.cert,
-				key: config.tls.key,
-				minVersion: 'TLSv1.2',
-				ciphers: [
-					'ECDHE-ECDSA-AES128-GCM-SHA256',
-					'ECDHE-RSA-AES128-GCM-SHA256',
-					'ECDHE-ECDSA-AES256-GCM-SHA384',
-					'ECDHE-RSA-AES256-GCM-SHA384',
-					'ECDHE-ECDSA-CHACHA20-POLY1305',
-					'ECDHE-RSA-CHACHA20-POLY1305',
-				].join(':'),
-				honorCipherOrder: true,
-			},
+			{ ...TLS_POLICY, cert: config.tls.cert, key: config.tls.key },
 			handler
 		);
+		// A renewed certificate on the mail-certs volume is swapped in place.
+		const reloader = startImapTlsReload(server, config.tls, TLS_POLICY);
 		server.listen(config.port, config.listenAddress, () => {
-			logger.info(
-				{ port: config.port, listen: config.listenAddress },
-				'IMAPS listening (TLS)'
-			);
+			logger.info({ port: config.port, listen: config.listenAddress }, 'IMAPS listening (TLS)');
 		});
 		server.on('error', (err) => logger.error({ err }, 'TLS server error'));
-		return { server };
+		return { server, stopTlsReload: () => reloader?.stop() };
 	}
 
 	// Dev fallback — bind a plain TCP server. NOT for production.
 	if (process.env['NODE_ENV'] === 'production') {
 		throw new Error(
 			'IMAP refusing to start in production without TLS cert/key. ' +
-			'Set IMAP_TLS_CERT/IMAP_TLS_KEY or mount certs at /opt/owlat/certs.'
+				'Set IMAP_TLS_CERT/IMAP_TLS_KEY or mount certs at /opt/owlat/certs.'
 		);
 	}
 	logger.warn('TLS cert/key not configured — starting in plaintext mode (dev only)');
@@ -97,5 +98,5 @@ export function startImapServer(
 		);
 	});
 	server.on('error', (err) => logger.error({ err }, 'TCP server error'));
-	return { server };
+	return { server, stopTlsReload: () => {} };
 }

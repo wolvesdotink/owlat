@@ -5,7 +5,11 @@ import { join } from 'path';
 export interface ImapConfig {
 	port: number;
 	listenAddress: string;
-	tls: { cert: string; key: string } | null;
+	/**
+	 * `paths` is set when both halves were read from files, so the server can
+	 * re-read them after a renewal (tlsReload.ts). Inline PEM has none.
+	 */
+	tls: { cert: string; key: string; paths?: { cert: string; key: string } } | null;
 	greetingHost: string;
 	convexUrl: string;
 	convexAdminKey: string;
@@ -120,7 +124,13 @@ export function loadConfig(): ImapConfig {
 	const cert = readPemEnv('IMAP_TLS_CERT', 'IMAP_TLS_CERT_FILE');
 	const key = readPemEnv('IMAP_TLS_KEY', 'IMAP_TLS_KEY_FILE');
 	if (cert && key) {
-		tls = { cert, key };
+		const certFile = process.env['IMAP_TLS_CERT'] ? undefined : process.env['IMAP_TLS_CERT_FILE'];
+		const keyFile = process.env['IMAP_TLS_KEY'] ? undefined : process.env['IMAP_TLS_KEY_FILE'];
+		tls = {
+			cert,
+			key,
+			...(certFile && keyFile ? { paths: { cert: certFile, key: keyFile } } : {}),
+		};
 	} else {
 		// Look for the shared mail-certs volume mounted at /opt/owlat/certs
 		const certDir = process.env['TLS_CERT_DIR'] ?? '/opt/owlat/certs';
@@ -130,6 +140,7 @@ export function loadConfig(): ImapConfig {
 			tls = {
 				cert: readCertFile(defaultCert),
 				key: readCertFile(defaultKey),
+				paths: { cert: defaultCert, key: defaultKey },
 			};
 		}
 	}

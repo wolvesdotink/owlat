@@ -9,8 +9,14 @@
  */
 
 import { createServer, type Server, type Socket } from 'node:net';
-import { createServer as createTlsServer, type TLSSocket, type TlsOptions } from 'node:tls';
+import {
+	createServer as createTlsServer,
+	type Server as TlsServer,
+	type TLSSocket,
+	type TlsOptions,
+} from 'node:tls';
 import { handleConnection, resolveConfig } from './session.js';
+import { resolveTlsConfig, type SmtpTlsMaterial } from './tls.js';
 import type { SmtpListenerOptions } from './types.js';
 
 /** A running (or listenable) SMTP listener. */
@@ -21,6 +27,16 @@ export interface SmtpListener {
 	close(): Promise<void>;
 	/** The bound address (`null` before `listen`). */
 	address(): ReturnType<Server['address']>;
+	/**
+	 * Replace the certificate/key served to connections that start TLS from now
+	 * on — new STARTTLS upgrades and new implicit-TLS handshakes. Sessions that
+	 * are already encrypted keep the context they negotiated. The cipher policy,
+	 * SNI resolver and handshake timeout stay as configured.
+	 *
+	 * Throws, leaving the current material in service, when the pair is invalid
+	 * or the listener was created without `tls`.
+	 */
+	updateTlsMaterial(material: SmtpTlsMaterial): void;
 	/** Escape hatch to the underlying `net.Server` (event wiring, tests). */
 	readonly raw: Server;
 }
@@ -96,7 +112,7 @@ function createImplicitTlsServer(
 	options: TlsOptions,
 	accept: (socket: Socket, initialSecure: boolean) => void,
 	onError: ((err: Error) => void) | undefined
-): Server {
+): TlsServer {
 	const server = createTlsServer(options, (socket: Socket) => {
 		accept(socket, true);
 	});
@@ -129,12 +145,15 @@ export function createSmtpListener<S = unknown, T = unknown>(
 	// banner, so the accepted socket is already a handshaken `tls.TLSSocket` and
 	// the session starts `secure`. Otherwise a plaintext `net` server that may
 	// upgrade later via STARTTLS.
-	const server: Server =
+	const implicitServer =
 		config.implicitTls && config.tls
 			? createImplicitTlsServer(config.tls.options, accept, opts.onError)
-			: createServer({ pauseOnConnect: false }, (socket: Socket) => {
-					accept(socket, false);
-				});
+			: undefined;
+	const server: Server =
+		implicitServer ??
+		createServer({ pauseOnConnect: false }, (socket: Socket) => {
+			accept(socket, false);
+		});
 	server.on('error', (err: Error) => {
 		opts.onError?.(err);
 	});
@@ -163,6 +182,20 @@ export function createSmtpListener<S = unknown, T = unknown>(
 		},
 		address(): ReturnType<Server['address']> {
 			return server.address();
+		},
+		updateTlsMaterial(material: SmtpTlsMaterial): void {
+			if (!opts.tls || !config.tls) {
+				throw new Error(
+					'smtp-listener: cannot update TLS material on a listener created without tls'
+				);
+			}
+			// Build (and so validate) the whole context before touching anything,
+			// so a bad pair leaves both paths on the old material.
+			const next = resolveTlsConfig({ ...opts.tls, cert: material.cert, key: material.key });
+			implicitServer?.setSecureContext(next.options);
+			// The command loop reads `config.tls` when a STARTTLS arrives, so the
+			// next upgrade picks this up.
+			config.tls = next;
 		},
 	};
 }
