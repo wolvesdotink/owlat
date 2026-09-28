@@ -7,11 +7,12 @@
  *     `snoozeReturnedAt` marker and leaves not-yet-due ones snoozed
  *   - an inbound reply on a snoozed thread clears the snooze early AND reopens a
  *     resolved thread (the shared inbound_activity reducer)
- *   - snoozeThread rejects a past timestamp.
+ *   - snoozeThread rejects a past timestamp
+ *   - a later listThreads page reads at the first page's `now`.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -110,6 +111,10 @@ beforeEach(() => {
 	setUser('user-owner', 'owner');
 });
 
+afterEach(() => {
+	vi.useRealTimers();
+});
+
 describe('inbox thread snooze', () => {
 	it('snoozeThread hides the thread from the Open filter but not from All', async () => {
 		const t = convexTest(schema, modules);
@@ -126,6 +131,34 @@ describe('inbox thread snooze', () => {
 
 		const all = await t.query(api.inbox.queries.listThreads, {});
 		expect(all.threads.map((x) => x._id)).toContain(id);
+	});
+
+	it("a later page of the Snoozed tab reads at the first page's `now`", async () => {
+		// Convex rejects a cursor whose query differs from the one that minted
+		// it, and the Snoozed range is `snoozedUntil > now`. convex-test does not
+		// check that fingerprint, so this pins the behaviour that keeps it stable:
+		// page 2 reads the same range as page 1, even after the clock moves on.
+		vi.useFakeTimers({ toFake: ['Date'] });
+		const start = Date.now();
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['inbox']);
+		const minute = 60 * 1000;
+		const first = await seedThread(t, { snoozedUntil: start + 10 * minute });
+		const second = await seedThread(t, { snoozedUntil: start + 20 * minute });
+		await seedThread(t, { snoozedUntil: start + 30 * minute });
+
+		const page1 = await t.query(api.inbox.queries.listThreads, { filter: 'snoozed', limit: 1 });
+		expect(page1.threads.map((x) => x._id)).toEqual([first]);
+		expect(page1.nextCursor).toMatch(new RegExp(`^${start}:`));
+
+		// `second` has woken by now; a fresh `now` would skip past it.
+		vi.setSystemTime(start + 25 * minute);
+		const page2 = await t.query(api.inbox.queries.listThreads, {
+			filter: 'snoozed',
+			limit: 1,
+			cursor: page1.nextCursor!,
+		});
+		expect(page2.threads.map((x) => x._id)).toEqual([second]);
 	});
 
 	it('rejects a snooze timestamp in the past', async () => {

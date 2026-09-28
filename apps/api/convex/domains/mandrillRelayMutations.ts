@@ -146,12 +146,16 @@ async function scheduleRefresh(
  * moment for it.
  */
 export const scheduleDueChecks = internalMutation({
-	args: { cursor: v.optional(v.string()) },
+	args: { cursor: v.optional(v.string()), startedAt: v.optional(v.number()) },
 	handler: async (ctx, args): Promise<number> => {
 		const now = Date.now();
+		// Pinned for the whole walk: Convex rejects a cursor whose query (index
+		// range included) differs from the one that minted it, so every
+		// continuation must read the same bound as the first batch.
+		const startedAt = args.startedAt ?? now;
 		const page = await ctx.db
 			.query('sendingDomainRelayIdentities')
-			.withIndex('by_next_check_due', (q) => q.lte('nextCheckDueAt', now))
+			.withIndex('by_next_check_due', (q) => q.lte('nextCheckDueAt', startedAt))
 			.paginate({ cursor: args.cursor ?? null, numItems: MANDRILL_SWEEP_PAGE_SIZE });
 
 		let scheduled = 0;
@@ -183,7 +187,7 @@ export const scheduleDueChecks = internalMutation({
 			await ctx.scheduler.runAfter(
 				Math.max(scheduled * MANDRILL_SWEEP_STAGGER_MS, MANDRILL_SWEEP_STAGGER_MS),
 				internal.domains.mandrillRelayMutations.scheduleDueChecks,
-				{ cursor: page.continueCursor }
+				{ cursor: page.continueCursor, startedAt }
 			);
 		}
 		return scheduled;

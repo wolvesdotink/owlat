@@ -44,7 +44,7 @@ const ATTACHMENT_SHARE_SWEEP_BATCH = 64;
  * damage and no double work.
  */
 export const sweepExpiredShares = internalMutation({
-	args: { cursor: v.optional(v.string()) },
+	args: { cursor: v.optional(v.string()), startedAt: v.optional(v.number()) },
 	handler: async (
 		ctx,
 		args
@@ -55,11 +55,15 @@ export const sweepExpiredShares = internalMutation({
 		continuationScheduled: boolean;
 	}> => {
 		const now = Date.now();
-		// Everything at or before `now` has lapsed; the index ordering means the
-		// walk stops as soon as it reaches links that are still live.
+		// Pinned for the whole walk: Convex rejects a cursor whose query (index
+		// range included) differs from the one that minted it, so every
+		// continuation must read the same bound as the first batch.
+		const startedAt = args.startedAt ?? now;
+		// Everything at or before `startedAt` has lapsed; the index ordering means
+		// the walk stops as soon as it reaches links that are still live.
 		const page = await ctx.db
 			.query('mailAttachmentShares')
-			.withIndex('by_expiry', (q) => q.lte('expiresAt', now))
+			.withIndex('by_expiry', (q) => q.lte('expiresAt', startedAt))
 			.paginate({ cursor: args.cursor ?? null, numItems: ATTACHMENT_SHARE_SWEEP_BATCH });
 
 		let released = 0;
@@ -81,6 +85,7 @@ export const sweepExpiredShares = internalMutation({
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(0, internal.mail.attachmentShareRetention.sweepExpiredShares, {
 				cursor: page.continueCursor,
+				startedAt,
 			});
 		}
 		return {
