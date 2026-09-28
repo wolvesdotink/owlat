@@ -39,9 +39,20 @@ describe('loadBounceTlsMaterial', () => {
 		});
 	});
 
-	it('ignores a cert directory that does not hold a complete pair yet', () => {
+	it('watches a cert directory that does not hold a complete pair yet', () => {
 		writeFileSync(join(dir, 'default.crt'), CERT);
-		expect(loadBounceTlsMaterial({ TLS_CERT_DIR: dir })).toEqual({});
+		const loaded = loadBounceTlsMaterial({ TLS_CERT_DIR: dir });
+		expect(loaded).toEqual({
+			paths: { cert: join(dir, 'default.crt'), key: join(dir, 'default.key') },
+			unavailable: expect.stringMatching(/do not exist yet/),
+		});
+		expect(loaded.cert).toBeUndefined();
+	});
+
+	it('watches an empty cert directory so a certificate published later is picked up', () => {
+		expect(loadBounceTlsMaterial({ TLS_CERT_DIR: dir })).toMatchObject({
+			paths: { cert: join(dir, 'default.crt'), key: join(dir, 'default.key') },
+		});
 	});
 
 	it('prefers inline PEM over files and the cert directory, as a whole pair', () => {
@@ -104,9 +115,28 @@ describe('loadBounceTlsMaterial', () => {
 		expect(loadBounceTlsMaterial({ BOUNCE_TLS_CERT_FILE: '' })).toEqual({});
 	});
 
-	it.skipIf(process.getuid?.() === 0)('names the ownership fix when the key is unreadable', () => {
-		const { key } = writePair();
-		chmodSync(key, 0o000);
-		expect(() => loadBounceTlsMaterial({ TLS_CERT_DIR: dir })).toThrow(/permission denied/);
-	});
+	it.skipIf(process.getuid?.() === 0)(
+		'waits instead of failing the boot when the shared key is not readable yet',
+		() => {
+			const files = writePair();
+			chmodSync(files.key, 0o000);
+			const loaded = loadBounceTlsMaterial({ TLS_CERT_DIR: dir });
+			expect(loaded).toEqual({
+				paths: files,
+				unavailable: expect.stringMatching(/permission denied/),
+			});
+			expect(loaded.unavailable).toMatch(/must hand ownership over to this uid/);
+		}
+	);
+
+	it.skipIf(process.getuid?.() === 0)(
+		'fails loudly when an explicitly configured file is unreadable',
+		() => {
+			const files = writePair('explicit');
+			chmodSync(files.key, 0o000);
+			expect(() =>
+				loadBounceTlsMaterial({ BOUNCE_TLS_CERT_FILE: files.cert, BOUNCE_TLS_KEY_FILE: files.key })
+			).toThrow(/BOUNCE_TLS_KEY_FILE.*permission denied/);
+		}
+	);
 });

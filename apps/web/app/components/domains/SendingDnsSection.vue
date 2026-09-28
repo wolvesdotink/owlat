@@ -73,6 +73,14 @@ const anchorFor = (entry: ChecklistEntry) => `dns-${props.domain._id}-${entry.id
 const valueOverrides = computed<Partial<Record<string, string>>>(() =>
 	props.isExpanded && props.spfCoexistence ? { spf: props.spfCoexistence.merged } : {}
 );
+// A zone import ADDS records, so the merged SPF line alone would sit next to the
+// existing `v=spf1` — two SPF records fail SPF for all of the domain's mail. The
+// copied text says, right above the line, that it replaces the old record.
+const zoneNotes = computed<Partial<Record<string, string>>>(() =>
+	props.isExpanded && props.spfCoexistence
+		? { spf: t('components.domains.dnsChecklistSummary.zoneNoteReplaceSpf') }
+		: {}
+);
 
 // The registrable zone the records actually go in — the DNS provider that
 // manages this name (A1 PSL split; fail-soft to the raw domain in self-host dev
@@ -147,6 +155,7 @@ const returnPathHost = computed(() => props.domain.returnPathHost ?? props.mailF
 		:domain="domain.domain"
 		:anchor-for="anchorFor"
 		:value-overrides="valueOverrides"
+		:notes="zoneNotes"
 	/>
 
 	<div class="space-y-6">

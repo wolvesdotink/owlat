@@ -16,35 +16,69 @@
  * re-read them when the certificate is renewed (bounce/tlsReload.ts). Inline
  * PEM cannot change without a restart and reports none.
  *
- * The rules live in `@owlat/shared/tlsMaterial`, shared with IMAPS: half a pair
- * or an explicitly configured file that is missing or unreadable fails the
- * boot, so a typo cannot quietly start a listener that rejects all inbound
- * mail. Unlike IMAP there is no default cert directory: without
- * `TLS_CERT_DIR` the third source is skipped.
+ * The rules for inline PEM and explicit files live in
+ * `@owlat/shared/tlsMaterial`, shared with IMAPS: half a pair or an explicitly
+ * configured file that is missing or unreadable fails the boot, so a typo
+ * cannot quietly start a listener that rejects all inbound mail. Unlike IMAP
+ * there is no default cert directory: without `TLS_CERT_DIR` the third source
+ * is skipped.
+ *
+ * The shared directory reports its `paths` even when the pair is not there yet
+ * or cannot be read yet. On a fresh VPS install the `acme` sidecar publishes
+ * the certificate minutes after the MTA boots (and briefly holds it root-owned
+ * while doing so), so the listener starts without STARTTLS and the reloader
+ * installs the pair when it appears. `unavailable` says why nothing was loaded.
  */
 
-import { loadTlsMaterial } from '@owlat/shared/tlsMaterial';
+import { join } from 'node:path';
+import { loadTlsMaterial, type TlsMaterialOptions } from '@owlat/shared/tlsMaterial';
 
 export interface BounceTlsMaterial {
 	cert?: string;
 	key?: string;
-	/** Where a file-sourced pair came from; absent for inline PEM. */
+	/**
+	 * Where a file-sourced pair came from, or where it is expected to appear
+	 * (TLS_CERT_DIR). Absent for inline PEM.
+	 */
 	paths?: { cert: string; key: string };
+	/** Set when `paths` are watched but held no readable pair at boot. */
+	unavailable?: string;
 }
 
-/** The pair for the port-25 listener; an empty object when none is configured. */
-export function loadBounceTlsMaterial(
-	env: Record<string, string | undefined> = process.env
-): BounceTlsMaterial {
-	return (
-		loadTlsMaterial({
-			env,
-			inlineCert: 'BOUNCE_TLS_CERT',
-			inlineKey: 'BOUNCE_TLS_KEY',
-			certFile: 'BOUNCE_TLS_CERT_FILE',
-			keyFile: 'BOUNCE_TLS_KEY_FILE',
-			certDir: env['TLS_CERT_DIR'],
-			label: 'inbound SMTP',
-		}) ?? {}
-	);
+type Env = Record<string, string | undefined>;
+
+const SOURCES = {
+	inlineCert: 'BOUNCE_TLS_CERT',
+	inlineKey: 'BOUNCE_TLS_KEY',
+	certFile: 'BOUNCE_TLS_CERT_FILE',
+	keyFile: 'BOUNCE_TLS_KEY_FILE',
+	label: 'inbound SMTP',
+} satisfies Omit<TlsMaterialOptions, 'env' | 'certDir'>;
+
+/**
+ * The pair for the port-25 listener; an empty object when none is configured,
+ * or the watched `TLS_CERT_DIR` paths plus `unavailable` when the shared pair
+ * is not readable yet.
+ */
+export function loadBounceTlsMaterial(env: Env = process.env): BounceTlsMaterial {
+	const configured = loadTlsMaterial({ ...SOURCES, env, certDir: undefined });
+	if (configured) return configured;
+
+	const certDir = env['TLS_CERT_DIR'];
+	if (!certDir) return {};
+	const paths = { cert: join(certDir, 'default.crt'), key: join(certDir, 'default.key') };
+	// The implicit shared directory is waited on, not failed on: throwing here
+	// would crash-loop the whole MTA, outbound delivery included, over a cert
+	// the publisher is still in the middle of writing. An empty env leaves the
+	// directory as the only source the shared loader consults.
+	try {
+		return (
+			loadTlsMaterial({ ...SOURCES, env: {}, certDir }) ?? {
+				paths,
+				unavailable: `${paths.cert} and ${paths.key} do not exist yet`,
+			}
+		);
+	} catch (err) {
+		return { paths, unavailable: err instanceof Error ? err.message : String(err) };
+	}
 }

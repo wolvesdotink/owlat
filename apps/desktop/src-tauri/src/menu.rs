@@ -256,9 +256,19 @@ pub fn handle_menu_event(app: &AppHandle, id: &str) {
                 let _ = win.eval(&format!("window.history.{step}()"));
             }
         }
+        // Find opens the main window's palette. On macOS the menu (and its ⌘F)
+        // is app-global, so from the compose window it would raise main over
+        // the draft; act only when main is in front, or when no Owlat window
+        // is (Find picked from the menu bar with main hidden).
         "find" => {
-            window::show_main_window(app);
-            let _ = app.emit("menu://find", ());
+            let main_in_front = match focused_window(app) {
+                Some(win) => win.label() == "main",
+                None => true,
+            };
+            if main_in_front {
+                window::show_main_window(app);
+                let _ = app.emit("menu://find", ());
+            }
         }
         "zoom_in" => zoom::change(app, zoom::ZoomAction::In),
         "zoom_out" => zoom::change(app, zoom::ZoomAction::Out),
@@ -294,10 +304,14 @@ pub fn handle_menu_event(app: &AppHandle, id: &str) {
     }
 }
 
-/// The focused webview window, else the main window.
-fn focused_or_main(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+/// The focused webview window, if an Owlat window has focus.
+fn focused_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
     app.webview_windows()
         .into_values()
         .find(|w| w.is_focused().unwrap_or(false))
-        .or_else(|| app.get_webview_window("main"))
+}
+
+/// The focused webview window, else the main window.
+fn focused_or_main(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    focused_window(app).or_else(|| app.get_webview_window("main"))
 }

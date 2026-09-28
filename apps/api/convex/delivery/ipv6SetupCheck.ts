@@ -78,7 +78,15 @@ function isMissingRecord(error: unknown): boolean {
 }
 
 /**
- * Global unicast (2000::/3) outside the documentation prefix 2001:db8::/32.
+ * Global unicast prefixes that still cannot be a stable sending identity, as
+ * leading hex nibbles: the documentation ranges 2001:db8::/32 and 3fff::/20
+ * (RFC 9637), and the tunnel ranges 6to4 2002::/16 and Teredo 2001::/32, whose
+ * addresses embed an IPv4 endpoint and have no PTR the operator controls.
+ */
+const NON_SENDING_IPV6_PREFIXES = ['20010db8', '3fff0', '2002', '20010000'] as const;
+
+/**
+ * Global unicast (2000::/3) outside the documentation and tunnel prefixes.
  * Link-local, unique-local, loopback, multicast and mapped addresses cannot be
  * a public sending identity.
  */
@@ -86,7 +94,7 @@ export function isPublicIpv6(address: string): boolean {
 	const nibbles = ipv6HexNibbles(address);
 	if (!nibbles) return false;
 	if (nibbles[0] !== '2' && nibbles[0] !== '3') return false;
-	return !nibbles.startsWith('20010db8');
+	return !NON_SENDING_IPV6_PREFIXES.some((prefix) => nibbles.startsWith(prefix));
 }
 
 /** Append the address to a pool, keeping the operator's order and spelling. */

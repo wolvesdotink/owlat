@@ -34,8 +34,11 @@ export interface SmtpListener {
 	 * are already encrypted keep the context they negotiated. The cipher policy,
 	 * SNI resolver and handshake timeout stay as configured.
 	 *
-	 * Throws, leaving the current material in service, when the pair is invalid
-	 * or the listener was created without `tls`.
+	 * A plaintext listener created without `tls` gains STARTTLS here, under the
+	 * default hardened policy: the next EHLO advertises it. A service whose
+	 * certificate is published after it starts needs no restart to offer TLS.
+	 *
+	 * Throws, leaving the current material in service, when the pair is invalid.
 	 */
 	updateTlsMaterial(material: SmtpTlsMaterial): void;
 	/** Escape hatch to the underlying `net.Server` (event wiring, tests). */
@@ -193,17 +196,13 @@ export function createSmtpListener<S = unknown, T = unknown>(
 			return server.address();
 		},
 		updateTlsMaterial(material: SmtpTlsMaterial): void {
-			if (!opts.tls || !config.tls) {
-				throw new Error(
-					'smtp-listener: cannot update TLS material on a listener created without tls'
-				);
-			}
 			// Build (and so validate) the whole context before touching anything,
-			// so a bad pair leaves both paths on the old material.
+			// so a bad pair leaves both paths on the old material. An implicit-TLS
+			// listener always has `opts.tls` (resolveConfig refuses one without).
 			const next = resolveTlsConfig({ ...opts.tls, cert: material.cert, key: material.key });
 			implicitServer?.setSecureContext(next.options);
-			// The command loop reads `config.tls` when a STARTTLS arrives, so the
-			// next upgrade picks this up.
+			// The command loop reads `config.tls` for every EHLO and STARTTLS, so the
+			// next greeting advertises it and the next upgrade uses it.
 			config.tls = next;
 		},
 	};
