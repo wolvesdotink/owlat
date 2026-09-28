@@ -47,7 +47,7 @@ interface RunResult {
 function run(
 	cmd: string,
 	args: string[],
-	opts: { cwd: string; onLine?: (line: string) => void },
+	opts: { cwd: string; onLine?: (line: string) => void }
 ): Promise<RunResult> {
 	return new Promise((resolve) => {
 		const proc = spawn(cmd, args, { cwd: opts.cwd, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -97,19 +97,19 @@ export async function generateConvexAdminKey(owlatDir: string): Promise<string> 
 	const { code, stdout, stderr } = await run(
 		'docker',
 		['compose', 'exec', '-T', 'convex', './generate_admin_key.sh'],
-		{ cwd: owlatDir },
+		{ cwd: owlatDir }
 	);
 	if (code !== 0) {
 		throw new Error(
 			`Failed to generate the Convex admin key (\`docker compose exec convex ./generate_admin_key.sh\`): ${
 				stderr.trim() || stdout.trim() || `exit ${code}`
-			}`,
+			}`
 		);
 	}
 	const key = parseAdminKey(stdout);
 	if (!key) {
 		throw new Error(
-			`Could not parse an admin key from generate_admin_key.sh output. Got:\n${stdout.trim()}`,
+			`Could not parse an admin key from generate_admin_key.sh output. Got:\n${stdout.trim()}`
 		);
 	}
 	return key;
@@ -124,18 +124,26 @@ export async function generateConvexAdminKey(owlatDir: string): Promise<string> 
 export async function deployConvexFunctions(
 	owlatDir: string,
 	onLine?: (line: string) => void,
-	build = false,
+	build = false
 ): Promise<void> {
 	const { code, stdout, stderr } = await run(
 		'docker',
-		['compose', '--profile', 'deploy', 'run', '--rm', ...(build ? ['--build'] : []), 'convex-deploy'],
-		{ cwd: owlatDir, onLine },
+		[
+			'compose',
+			'--profile',
+			'deploy',
+			'run',
+			'--rm',
+			...(build ? ['--build'] : []),
+			'convex-deploy',
+		],
+		{ cwd: owlatDir, onLine }
 	);
 	if (code !== 0) {
 		throw new Error(
 			`convex-deploy failed (exit ${code}). Retry with \`docker compose --profile deploy run --rm convex-deploy\`.\n${
 				stderr.trim() || stdout.trim()
-			}`,
+			}`
 		);
 	}
 }
@@ -152,7 +160,7 @@ export async function deployConvexFunctions(
 export async function setConvexEnvVars(
 	owlatDir: string,
 	vars: Array<[string, string]>,
-	onLine?: (line: string) => void,
+	onLine?: (line: string) => void
 ): Promise<void> {
 	if (vars.length === 0) return;
 	// Loop in the container: consume argv two at a time (key, value).
@@ -170,14 +178,26 @@ export async function setConvexEnvVars(
 	const flat = vars.flatMap(([k, v]) => [k, v]);
 	const { code, stdout, stderr } = await run(
 		'docker',
-		['compose', '--profile', 'deploy', 'run', '--rm', 'convex-deploy', 'sh', '-c', loop, '_', ...flat],
-		{ cwd: owlatDir, onLine },
+		[
+			'compose',
+			'--profile',
+			'deploy',
+			'run',
+			'--rm',
+			'convex-deploy',
+			'sh',
+			'-c',
+			loop,
+			'_',
+			...flat,
+		],
+		{ cwd: owlatDir, onLine }
 	);
 	if (code !== 0) {
 		throw new Error(
 			`Failed to set Convex function-runtime env vars (exit ${code}).\n${
 				stderr.trim() || stdout.trim()
-			}`,
+			}`
 		);
 	}
 }
