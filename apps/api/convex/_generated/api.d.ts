@@ -312,6 +312,7 @@ import type * as delivery_dnsblAccess from '../delivery/dnsblAccess.js';
 import type * as delivery_enqueue from '../delivery/enqueue.js';
 import type * as delivery_enqueueTestSend from '../delivery/enqueueTestSend.js';
 import type * as delivery_governedDispatch from '../delivery/governedDispatch.js';
+import type * as delivery_governedEnqueue from '../delivery/governedEnqueue.js';
 import type * as delivery_health from '../delivery/health.js';
 import type * as delivery_ipReadinessAlerts from '../delivery/ipReadinessAlerts.js';
 import type * as delivery_ipv6Setup from '../delivery/ipv6Setup.js';
@@ -1512,6 +1513,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/enqueue': typeof delivery_enqueue;
 	'delivery/enqueueTestSend': typeof delivery_enqueueTestSend;
 	'delivery/governedDispatch': typeof delivery_governedDispatch;
+	'delivery/governedEnqueue': typeof delivery_governedEnqueue;
 	'delivery/health': typeof delivery_health;
 	'delivery/ipReadinessAlerts': typeof delivery_ipReadinessAlerts;
 	'delivery/ipv6Setup': typeof delivery_ipv6Setup;

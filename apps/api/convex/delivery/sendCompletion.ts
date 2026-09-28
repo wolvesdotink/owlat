@@ -9,7 +9,7 @@ import { internal } from '../_generated/api';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { logError } from '../lib/runtimeLog';
 import { clampRetryAfterMs, LOCAL_DEFER_MS, RETRY_AFTER_MIN_MS } from '../lib/sendProviders/errors';
-import { campaignEmailPool, transactionalEmailPool } from './workpool';
+import { enqueueGovernedSend } from './governedEnqueue';
 import { recordDeferralOutcome } from './deferralOutcome';
 import { envelopeInputValidator, retryStateValidator } from './workerEnvelope';
 import { isSendWorkerOutcome, type SendWorkerOutcome } from './workerOutcome';
@@ -431,15 +431,9 @@ export const retrySend = internalMutation({
 		// attachments and closing the row to the real bounce that follows.
 		const send = await ctx.db.get(args.sendRef.id);
 		if (!send || send.status !== 'queued') return;
-		const pool = args.sendRef.kind === 'campaign' ? campaignEmailPool : transactionalEmailPool;
-		await pool.enqueueAction(
-			ctx,
-			internal.delivery.worker.sendSingleEmail,
-			{ envelopeInput: args.envelopeInput, retryState: args.retryState },
-			{
-				onComplete: internal.delivery.sendCompletion.completeSend,
-				context: { sendRef: args.sendRef },
-			}
-		);
+		await enqueueGovernedSend(ctx, args.sendRef, {
+			envelopeInput: args.envelopeInput,
+			retryState: args.retryState,
+		});
 	},
 });

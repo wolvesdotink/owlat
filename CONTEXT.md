@@ -2048,9 +2048,10 @@ Per-call order of operations:
     counter is incremented from the HTTP shell _after_ the enqueue;
     consolidating into the module closes the drift seam where any
     future non-HTTP shell would miss it.
-11. Enqueue `transactionalEmailPool.enqueueAction` with
-    `onComplete: emailOnComplete` and `sendRef: { kind: 'transactional',
-id: sendId }`.
+11. Enqueue through `enqueueGovernedSend(ctx, { kind: 'transactional',
+    id: sendId }, { envelopeInput })` (`delivery/governedEnqueue.ts`), which
+    picks the transactional pool and wires `onComplete: completeSend` with
+    the `sendRef` context.
 
 One shell dispatches to this entry today:
 
@@ -2490,7 +2491,11 @@ completion handler — the path from "worker finished a dispatch attempt"
 to a Send lifecycle transition. Receives `{result, error, sendRef}` from
 the workpool's `onComplete` callback (both campaign and transactional
 sends carry a typed `sendRef: SendRef` because both pre-create their row
-in `queued` — see **Send status** below). Builds the matching
+in `queued` — see **Send status** below). Producers never wire that
+callback themselves: `enqueueGovernedSend` in `delivery/governedEnqueue.ts`
+is the only module that names the worker, and it always attaches
+`completeSend` and the `sendRef`; seed probes, which have no Send row, go
+through its sibling `enqueueUntrackedProbe` with no callback. Builds the matching
 `TransitionInput` (`{to: 'sent', providerMessageId, providerType}` on
 success, `{to: 'failed', errorMessage, errorCode}` on error), calls
 `sendLifecycle.transition`. Provider health for failover routing is
