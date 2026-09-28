@@ -8697,20 +8697,6 @@
 						"switchLabel": "Public archive",
 						"title": "Public archive"
 					},
-					"audience": {
-						"eligible": "eligible recipients",
-						"eligibleForTopic": "eligible recipients for this topic",
-						"ineligibleDescription": "{excluded} of {total} contacts in this topic are not eligible (no email address, unsubscribed/suppressed, or double opt-in not completed) and will be excluded.",
-						"ineligibleTitle": "Some subscribers won't receive this campaign",
-						"segmentDescription": "Target contacts matching specific criteria.",
-						"segmentTitle": "Saved segment",
-						"selectSegment": "Select a segment...",
-						"selectTopic": "Select a topic...",
-						"title": "Audience",
-						"topicDescription": "Send to contacts subscribed to a specific topic.",
-						"topicOption": "{name} ({count} contacts)",
-						"topicTitle": "Specific topic"
-					},
 					"backToCampaigns": "Back to campaigns",
 					"badges": {
 						"draft": "Draft",
@@ -8735,10 +8721,6 @@
 					"details": {
 						"campaignName": "Campaign name",
 						"campaignNamePlaceholder": "e.g. Summer newsletter 2026",
-						"fromEmail": "From address",
-						"fromEmailPlaceholder": "e.g., hello{'@'}acme.com",
-						"fromName": "From name",
-						"fromNamePlaceholder": "e.g. John from Acme",
 						"optionalSuffix": "(optional)",
 						"replyTo": "Reply-to address",
 						"replyToPlaceholder": "e.g., support{'@'}acme.com",
@@ -14552,18 +14534,9 @@
 			}
 		},
 		"useCampaignForm": {
-			"audience": {
-				"notConfigured": "Not configured",
-				"segment": "Segment: {name}",
-				"segmentFallback": "Segment",
-				"topic": "Topic: {name}",
-				"topicFallback": "Topic"
-			},
 			"errors": {
 				"audienceRequired": "Please configure the campaign audience",
 				"campaignNameRequired": "Campaign name is required",
-				"fromEmailInvalid": "Please enter a valid email address",
-				"fromEmailRequired": "From email is required",
 				"segmentRequired": "Please select a segment",
 				"subjectRequired": "Subject line is required",
 				"templateRequired": "Please select an email template",

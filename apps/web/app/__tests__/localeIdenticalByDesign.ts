@@ -398,8 +398,6 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'shared.useAuditLogPresentation.resources.plugin',
 	'shared.useAuditLogPresentation.resources.segment',
 	'shared.useAuditLogPresentation.resources.webhook',
-	'shared.useCampaignForm.audience.segment',
-	'shared.useCampaignForm.audience.segmentFallback',
 	'shared.useCampaignForm.languages.hi',
 	'shared.useContactIdentities.channels.linkedin',
 	'shared.useContactIdentities.channels.twitter',

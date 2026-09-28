@@ -8697,20 +8697,6 @@
 						"switchLabel": "Öffentliches Archiv",
 						"title": "Öffentliches Archiv"
 					},
-					"audience": {
-						"eligible": "berechtigte Empfänger",
-						"eligibleForTopic": "berechtigte Empfänger für dieses Thema",
-						"ineligibleDescription": "{excluded} von {total} Kontakten in diesem Thema sind nicht berechtigt (keine E-Mail-Adresse, abgemeldet/gesperrt oder Double-Opt-in nicht abgeschlossen) und werden ausgeschlossen.",
-						"ineligibleTitle": "Einige Abonnenten erhalten diese Kampagne nicht",
-						"segmentDescription": "Kontakte ansprechen, die bestimmte Kriterien erfüllen.",
-						"segmentTitle": "Gespeichertes Segment",
-						"selectSegment": "Segment auswählen …",
-						"selectTopic": "Thema auswählen …",
-						"title": "Zielgruppe",
-						"topicDescription": "An Kontakte senden, die ein bestimmtes Thema abonniert haben.",
-						"topicOption": "{name} ({count} Kontakte)",
-						"topicTitle": "Bestimmtes Thema"
-					},
 					"backToCampaigns": "Zurück zu den Kampagnen",
 					"badges": {
 						"draft": "Entwurf",
@@ -8735,10 +8721,6 @@
 					"details": {
 						"campaignName": "Kampagnenname",
 						"campaignNamePlaceholder": "z. B. Sommer-Newsletter 2026",
-						"fromEmail": "Absenderadresse",
-						"fromEmailPlaceholder": "z. B. hallo{'@'}acme.com",
-						"fromName": "Absendername",
-						"fromNamePlaceholder": "z. B. Anna von Acme GmbH",
 						"optionalSuffix": "(optional)",
 						"replyTo": "Antwortadresse",
 						"replyToPlaceholder": "z. B. support{'@'}acme.com",
@@ -14552,18 +14534,9 @@
 			}
 		},
 		"useCampaignForm": {
-			"audience": {
-				"notConfigured": "Nicht konfiguriert",
-				"segment": "Segment: {name}",
-				"segmentFallback": "Segment",
-				"topic": "Thema: {name}",
-				"topicFallback": "Thema"
-			},
 			"errors": {
 				"audienceRequired": "Bitte konfigurieren Sie die Zielgruppe der Kampagne",
 				"campaignNameRequired": "Kampagnenname ist erforderlich",
-				"fromEmailInvalid": "Bitte geben Sie eine gültige E-Mail-Adresse ein",
-				"fromEmailRequired": "Absenderadresse ist erforderlich",
 				"segmentRequired": "Bitte wählen Sie ein Segment",
 				"subjectRequired": "Betreffzeile ist erforderlich",
 				"templateRequired": "Bitte wählen Sie eine E-Mail-Vorlage",

@@ -2,17 +2,9 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { rules } from '~/composables/useFormValidation';
+import { useCampaignAudience } from '~/composables/useCampaignAudience';
 import { joinList, missingSetupItems } from '~/utils/campaignSetupReadiness';
-
-type AudienceType = 'topic' | 'segment';
-
-// The exposed API of the extracted sender picker: a validate() that sets its own
-// error state and returns a human message (or null), plus a readiness flag for
-// the submit button.
-interface SenderPickerApi {
-	validate: () => string | null;
-	isReady: boolean;
-}
+import type { SenderPickerHandle } from '~/utils/campaignSenderPicker';
 
 interface Props {
 	campaignId: Id<'campaigns'> | null;
@@ -59,54 +51,25 @@ const { data: campaignDetails } = useConvexQuery(api.campaigns.campaigns.getWith
 // The curated-sender select (query, state, watchers, custom-branch fields and
 // the advisory domain check) lives in SetupSenderPicker; it v-models the from
 // name/address back into `form` and exposes validate() + isReady through here.
-const senderPickerRef = ref<SenderPickerApi | null>(null);
+const senderPickerRef = ref<SenderPickerHandle | null>(null);
 
 // --- Audience ---------------------------------------------------------------
-const audienceType = ref<AudienceType>('topic');
-const selectedTopicId = ref<Id<'topics'> | null>(null);
-const selectedSegmentId = ref<Id<'segments'> | null>(null);
-const audienceError = ref<string | null>(null);
-
-// One discriminated Audience value (ADR-0033) — the single source of truth for
-// the count query and the submit mutation. Null until a complete selection.
-const audience = computed(() => {
-	if (audienceType.value === 'topic' && selectedTopicId.value) {
-		return { kind: 'topic' as const, topicId: selectedTopicId.value };
-	}
-	if (audienceType.value === 'segment' && selectedSegmentId.value) {
-		return { kind: 'segment' as const, segmentId: selectedSegmentId.value };
-	}
-	return null;
-});
-
-const { results: topics, error: topicsError, refetch: refetchTopics } = useTopicsList();
+// The picker's three models, the derived Audience (ADR-0033), the list
+// subscriptions with their load-failure state and the recipient count.
 const {
-	results: segments,
-	error: segmentsError,
-	refetch: refetchSegments,
-} = useOrganizationPaginatedQuery(api.segments.list, undefined, {
-	initialNumItems: 100,
-});
-const audienceLoadFailed = computed(() => !!topicsError.value || !!segmentsError.value);
-function retryAudienceLists() {
-	if (topicsError.value) refetchTopics();
-	if (segmentsError.value) refetchSegments();
-}
-
-const { data: audienceCount } = useOrganizationQuery(
-	api.campaigns.audienceResolution.countRecipients,
-	() => ({ audience: audience.value ?? undefined })
-);
-
-const selectedTopicName = computed(() => {
-	if (!selectedTopicId.value || !topics.value) return null;
-	return topics.value.find((t: { _id: string }) => t._id === selectedTopicId.value)?.name ?? null;
-});
-
-const selectedSegment = computed(() => {
-	if (!selectedSegmentId.value || !segments.value) return null;
-	return segments.value.find((s: { _id: string }) => s._id === selectedSegmentId.value) ?? null;
-});
+	audienceType,
+	selectedTopicId,
+	selectedSegmentId,
+	audience,
+	topics,
+	segments,
+	audienceLoadFailed,
+	retryAudienceLists,
+	audienceCount,
+	selectedTopicName,
+	selectedSegment,
+} = useCampaignAudience();
+const audienceError = ref<string | null>(null);
 
 // --- A/B test (optional, progressive-disclosure expander) -------------------
 const abTest = useCampaignABTest();
