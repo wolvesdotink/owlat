@@ -104,7 +104,9 @@ describe('readEnvFile follows docker compose', () => {
 		['surrounding whitespace is trimmed', 'A=  spaced   value   ', 'spaced   value'],
 		['an empty value is empty', 'A=', ''],
 		['a backslash in an unquoted value is literal', 'A=val\\ue', 'val\\ue'],
-		['`$` references are kept as written', 'A=$HOME', '$HOME'],
+		['`$` references are kept as written', 'A=$HOME ${X}', '$HOME ${X}'],
+		['`$$` is a literal `$`', 'A=pa$$word', 'pa$word'],
+		['a `$` that starts no reference is literal', 'A=a$ b$$$', 'a$ b$$'],
 	])('unquoted: %s', async (_label, line, value) => {
 		expect(await parse(`${line}\n`)).toEqual({ A: value });
 	});
@@ -117,6 +119,7 @@ describe('readEnvFile follows docker compose', () => {
 		],
 		['keeps a doubled backslash', "A='a\\\\b'", 'a\\\\b'],
 		['keeps ` #` inside the quotes', "A='x # y'", 'x # y'],
+		['keeps `$$` as written', "A='pa$$word'", 'pa$$word'],
 	])('single-quoted: %s', async (_label, line, value) => {
 		expect(await parse(`${line}\n`)).toEqual({ A: value });
 	});
@@ -129,8 +132,10 @@ describe('readEnvFile follows docker compose', () => {
 		],
 		['expands the control-character escapes', 'A="\\a\\b\\f\\v\\c"', '\x07\b\f\v\\c'],
 		['reads an escaped backslash then an escaped quote', 'A="a\\\\\\"b"', 'a\\"b'],
+		['reads `$$` as a literal `$`', 'A="pa$$word"', 'pa$word'],
+		['reads `\\$$` as `$$`', 'A="\\$$"', '$$'],
 		['ignores a comment after the closing quote', 'A="quoted" # trailing', 'quoted'],
-		['ignores text after the closing quote', 'A="x"y', 'x'],
+		['skips a bare word after the closing quote', 'A="x"y', 'x'],
 		['spans lines', 'A="multi\nline"', 'multi\nline'],
 	])('double-quoted: %s', async (_label, text, value) => {
 		expect(await parse(`${text}\n`)).toEqual({ A: value });
@@ -159,8 +164,23 @@ describe('readEnvFile follows docker compose', () => {
 		});
 	});
 
+	it('reads a statement that follows the closing quote on the same line', async () => {
+		expect(await parse('A="x" B=y\nC="multi\nline" D=\'z\' # c\n')).toEqual({
+			A: 'x',
+			B: 'y',
+			C: 'multi\nline',
+			D: 'z',
+		});
+	});
+
 	it('takes an unterminated quoted value literally to the end of its line instead of failing', async () => {
 		expect(await parse('A="open\nB=2\n')).toEqual({ A: '"open', B: '2' });
+	});
+
+	it("does not let an unterminated quote swallow a later line's key", async () => {
+		// The next `"` is B's opening quote, and what follows it (`x"`) is not
+		// something compose could read on from, so A's quote is unterminated.
+		expect(await parse('A="abc\nB="x"\nC=3\n')).toEqual({ A: '"abc', B: 'x', C: '3' });
 	});
 
 	it('reads a hand-edited file the way compose does', async () => {
@@ -178,6 +198,10 @@ describe('readEnvFile follows docker compose', () => {
 
 describe('readEnvFile / writeEnvFile round trip', () => {
 	let dir: string;
+
+	async function valueLines(path: string): Promise<string[]> {
+		return (await readFile(path, 'utf-8')).split('\n').filter((l) => l && !l.startsWith('#'));
+	}
 
 	beforeEach(async () => {
 		dir = await mkdtemp(join(tmpdir(), 'owlat-env-'));
@@ -210,5 +234,51 @@ describe('readEnvFile / writeEnvFile round trip', () => {
 		};
 		await writeEnvFile(path, values);
 		expect(await readEnvFile(path)).toEqual(values);
+	});
+
+	it('keeps the text of values the rewrite did not change, so compose reads them as before', async () => {
+		// `$$` and `${VAR}` are compose's own syntax: compose gives the
+		// containers `pa$word` and the resolved reference. Re-encoding them
+		// would escape the `$` and change both; an old writer's literal `\n`
+		// would decode to a newline the writer refuses.
+		const path = join(dir, '.env');
+		const original = [
+			'G=pa$$word',
+			'V=https://${HOST_X:-dflt}/x',
+			"S='single $X'",
+			'M="line1\\nline2"',
+			'Q="multi',
+			'line"',
+			'export E=exported # comment',
+		];
+		await writeFile(path, `${original.join('\n')}\n`);
+		const before = await readEnvFile(path);
+		expect(before).toMatchObject({
+			G: 'pa$word',
+			V: 'https://${HOST_X:-dflt}/x',
+			M: 'line1\nline2',
+		});
+
+		await writeEnvFile(path, { ...before, OWLAT_VERSION: '1.2.3' });
+
+		expect(await valueLines(path)).toEqual([
+			'G=pa$$word',
+			'V=https://${HOST_X:-dflt}/x',
+			"S='single $X'",
+			'M="line1\\nline2"',
+			'Q="multi',
+			'line"',
+			'E=exported',
+			'OWLAT_VERSION=1.2.3',
+		]);
+		expect(await readEnvFile(path)).toEqual({ ...before, OWLAT_VERSION: '1.2.3' });
+	});
+
+	it('re-encodes a value the caller changed, escaping its `$`', async () => {
+		const path = join(dir, '.env');
+		await writeFile(path, 'A=${X}\nB=pa$$word\n');
+		await writeEnvFile(path, { A: '${Y}', B: 'pa$word!' });
+		expect(await valueLines(path)).toEqual(['A="\\${Y}"', 'B="pa\\$word!"']);
+		expect(await readEnvFile(path)).toEqual({ A: '${Y}', B: 'pa$word!' });
 	});
 });
