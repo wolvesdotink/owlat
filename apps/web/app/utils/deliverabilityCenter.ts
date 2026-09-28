@@ -45,8 +45,11 @@ export interface DeliverabilityChecklistItem extends Omit<CanonicalChecklistItem
 	lockedReason?: string;
 }
 
+/** One group per severity, plus `ipv6` for the IPv6 checks once IPv6 is on. */
+export type DeliverabilityGroupKey = DeliverabilitySeverity | 'ipv6';
+
 export interface DeliverabilityChecklistGroup {
-	key: DeliverabilitySeverity;
+	key: DeliverabilityGroupKey;
 	label: string;
 	description: string;
 	items: DeliverabilityChecklistItem[];
@@ -95,6 +98,15 @@ export interface DeliverabilityCenter {
 	alerts: DeliverabilityRegressionAlert[];
 	nextItem: DeliverabilityChecklistItem | null;
 	groups: DeliverabilityChecklistGroup[];
+	/**
+	 * Outbound IPv6 is on when the MTA reports an IPv6 address in its pools.
+	 * While it is off the IPv6 checks are left out of `groups`, the grade and
+	 * `nextItem`.
+	 */
+	ipv6: {
+		enabled: boolean;
+		addresses: string[];
+	};
 	loopback: {
 		domains: Array<{
 			id: Id<'domains'>;

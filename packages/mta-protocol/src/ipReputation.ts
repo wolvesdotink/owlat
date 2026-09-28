@@ -34,8 +34,19 @@ import {
 	type SourceAddressVerdict,
 } from '@owlat/shared/ipReadiness';
 
+export interface MtaIpReputationPools {
+	transactional: string[];
+	campaign: string[];
+}
+
 export interface MtaIpReputationPayload {
 	date: string;
+	/**
+	 * The configured pools, verbatim. `ips[].pool` names only the FIRST pool an
+	 * address appears in, so an address shared by both pools cannot be placed
+	 * from the rows alone. Optional: an MTA older than this field omits it.
+	 */
+	pools?: MtaIpReputationPools;
 	ips: Array<{
 		ip: string;
 		sent: number;
@@ -98,6 +109,12 @@ function isBlockReasonArray(value: unknown): value is IpReadinessBlockReason[] {
 
 function isDnsblListingArray(value: unknown): value is DnsblListId[] {
 	return isStringArray(value) && value.every(isDnsblListId);
+}
+
+function isPoolsPayload(value: unknown): value is MtaIpReputationPools {
+	return (
+		isRecord(value) && isStringArray(value['transactional']) && isStringArray(value['campaign'])
+	);
 }
 
 function isFcrdnsPayload(value: unknown): value is MtaFcrdnsPayload {
@@ -266,7 +283,11 @@ export function normalizeIpReputationPayload(value: unknown) {
 		};
 	});
 
+	const pools = value['pools'];
 	return {
+		...(isPoolsPayload(pools)
+			? { pools: { transactional: pools.transactional, campaign: pools.campaign } }
+			: {}),
 		phase: anyPlateau ? 'plateau' : anyRamp ? 'ramp' : 'graduated',
 		totalDailyCap,
 		totalSentToday,

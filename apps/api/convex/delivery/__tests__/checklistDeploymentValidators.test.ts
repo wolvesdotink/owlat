@@ -5,7 +5,10 @@ vi.mock('../checklistProviderDetection', () => ({
 }));
 
 import { detectIpProvider } from '../checklistProviderDetection';
-import { observeDeploymentCheck } from '../checklistDeploymentValidators';
+import {
+	OUTBOUND_IDENTITY_MAX_AGE_MS,
+	observeDeploymentCheck,
+} from '../checklistDeploymentValidators';
 import { boundedObservedValues } from '../checklistEvidence';
 import type { ChecklistVerificationContext } from '../checklistValidatorTypes';
 
@@ -82,6 +85,44 @@ describe('deployment checklist validator freshness', () => {
 		await expect(
 			observeDeploymentCheck('deployment.dnsbl', context(now - 29 * 60_000), false)
 		).resolves.toMatchObject({ status: 'pass' });
+		vi.useRealTimers();
+	});
+
+	it('judges identity verdicts from the last hourly MTA sweep, not only the last 15 minutes', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-09-28T09:30:00Z'));
+		const now = Date.now();
+		const withIdentityCheckedAt = (checkedAt: number) => {
+			const snapshot = context(now);
+			snapshot.warming!.ips[0]!.fcrdns = {
+				ehlo: 'mail.example.test',
+				ptrNames: ['mail.example.test'],
+				isPtrPresent: true,
+				isPtrFqdn: true,
+				isForwardConfirmed: true,
+				isEhloMatched: true,
+				verdict: 'pass',
+				isGenericPtr: false,
+				checkedAt,
+				isOverridden: false,
+			};
+			return snapshot;
+		};
+		for (const itemId of ['deployment.ptr', 'deployment.ptr_nongeneric'] as const) {
+			await expect(
+				observeDeploymentCheck(itemId, withIdentityCheckedAt(now - 30 * 60_000), false)
+			).resolves.toMatchObject({ status: 'pass' });
+			await expect(
+				observeDeploymentCheck(
+					itemId,
+					withIdentityCheckedAt(now - OUTBOUND_IDENTITY_MAX_AGE_MS - 60_000),
+					false
+				)
+			).resolves.toMatchObject({
+				status: 'warn',
+				diagnostic: expect.stringContaining('missing or too old'),
+			});
+		}
 		vi.useRealTimers();
 	});
 

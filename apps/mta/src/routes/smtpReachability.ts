@@ -5,12 +5,14 @@
  * the host to open TCP/25 from every configured sending IP, and cloud/VPS
  * providers commonly block exactly that path. This probe binds the same source
  * IP the sender uses and opens a TCP connection to a real recipient MX without
- * issuing an SMTP command or sending a message.
+ * issuing an SMTP command or sending a message. Behind Docker NAT it binds
+ * nothing, exactly like the sender (see smtp/sourceAddress.ts).
  */
 
 import { resolve4, resolve6, resolveMx } from 'node:dns/promises';
 import { createConnection } from 'node:net';
 import { ipAddressFamily } from '@owlat/shared/ipAddress';
+import { resolveSourceAddress } from '../smtp/sourceAddress.js';
 
 const PROBE_DOMAIN = 'gmail.com';
 const PROBE_PORT = 25;
@@ -23,7 +25,13 @@ export type SmtpProbeFailureReason =
 	| 'source_ip_unavailable'
 	| 'network_unreachable'
 	| 'target_resolution_error'
-	| 'connection_error';
+	| 'connection_error'
+	/**
+	 * Two or more same-family pool IPs are NATed onto one egress address, so
+	 * per-IP pools, warming and reputation cannot be honoured; the MTA needs
+	 * host networking to bind each IP.
+	 */
+	| 'shared_nat_egress';
 
 export interface SmtpIpReachability {
 	ip: string;
@@ -48,10 +56,13 @@ export interface SmtpReachabilityDeps {
 	connect: (args: {
 		host: string;
 		port: number;
-		localAddress: string;
+		/** Omitted when the kernel picks the source address (behind NAT). */
+		localAddress?: string;
 		timeoutMs: number;
 	}) => Promise<void>;
 	now: () => number;
+	/** Defaults to the sender's own rule, `resolveSourceAddress`. */
+	sourceAddressFor?: (ip: string) => string | undefined;
 }
 
 const defaultDeps: SmtpReachabilityDeps = {
@@ -61,7 +72,11 @@ const defaultDeps: SmtpReachabilityDeps = {
 	now: Date.now,
 	connect: ({ host, port, localAddress, timeoutMs }) =>
 		new Promise<void>((resolve, reject) => {
-			const socket = createConnection({ host, port, localAddress });
+			const socket = createConnection({
+				host,
+				port,
+				...(localAddress !== undefined ? { localAddress } : {}),
+			});
 			let settled = false;
 			const finish = (err?: Error & { code?: string }) => {
 				if (settled) return;
@@ -139,9 +154,24 @@ export async function probeSmtpReachability(
 		};
 	}
 
+	const sourceAddressFor = deps.sourceAddressFor ?? ((ip: string) => resolveSourceAddress(ip));
+	const natIpsByFamily = new Map<string, string[]>();
+	for (const ip of ips) {
+		if (sourceAddressFor(ip) !== undefined) continue;
+		const family = ipAddressFamily(ip) ?? 'unknown';
+		natIpsByFamily.set(family, [...(natIpsByFamily.get(family) ?? []), ip]);
+	}
+	const sharedNatIps = new Set(
+		[...natIpsByFamily.values()].filter((group) => group.length > 1).flat()
+	);
+
 	const results = await Promise.all(
 		ips.map(async (ip): Promise<SmtpIpReachability> => {
 			const connectStartedAt = deps.now();
+			if (sharedNatIps.has(ip)) {
+				return { ip, status: 'failed', connectMs: 0, reason: 'shared_nat_egress' };
+			}
+			const localAddress = sourceAddressFor(ip);
 			try {
 				const family = ipAddressFamily(ip);
 				const targetAddresses =
@@ -161,7 +191,7 @@ export async function probeSmtpReachability(
 				await deps.connect({
 					host: targetAddresses?.[0] ?? targetMx,
 					port: PROBE_PORT,
-					localAddress: ip,
+					...(localAddress !== undefined ? { localAddress } : {}),
 					timeoutMs: CONNECT_TIMEOUT_MS,
 				});
 				return { ip, status: 'ok', connectMs: deps.now() - connectStartedAt };

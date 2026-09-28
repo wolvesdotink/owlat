@@ -5,7 +5,7 @@ import { getOptional } from '../lib/env';
 import { normalizeIpReputationPayload } from '@owlat/mta-protocol/ipReputation';
 import { normalizeDeliverabilityRoutingSnapshot } from '@owlat/shared/deliverabilityRouting';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from './deliverabilityRouting';
-import { ipReadinessFieldValidators } from './readinessValidators';
+import { ipReadinessFieldValidators, warmingPoolsValidator } from './readinessValidators';
 import { logError, logWarn } from '../lib/runtimeLog';
 
 /**
@@ -15,10 +15,16 @@ import { logError, logWarn } from '../lib/runtimeLog';
  * The MTA tracks per-IP warming state (phase, daily cap, sent today,
  * bounce/deferral rates) in Redis. This action fetches that data and
  * caches it in the Convex database so queries can access it reactively.
+ *
+ * The per-IP identity verdicts (PTR, FCrDNS, source address, IPv6 SPF) inside
+ * that payload are what the MTA's hourly identity sweep last stored. A
+ * checklist "Verify now" passes `recheckIdentity` so the MTA re-observes them
+ * from live DNS first; otherwise an operator who has just fixed a PTR record
+ * would be judged against a verdict up to an hour old.
  */
 export const syncWarmingState = internalAction({
-	args: {},
-	handler: async (ctx) => {
+	args: { recheckIdentity: v.optional(v.boolean()) },
+	handler: async (ctx, args) => {
 		const mtaUrl = getOptional('MTA_INTERNAL_URL');
 		const mtaApiKey = getOptional('MTA_API_KEY');
 
@@ -32,6 +38,24 @@ export const syncWarmingState = internalAction({
 				internal.campaigns.sendQueries.getSingletonOrganizationId,
 				{}
 			);
+			if (args.recheckIdentity) {
+				// Fail soft: a failed re-check leaves the stored verdicts in place,
+				// and the validators' freshness window still applies to them.
+				try {
+					const recheck = await fetch(`${mtaUrl}/identity/recheck`, {
+						method: 'POST',
+						headers: { Authorization: `Bearer ${mtaApiKey}` },
+					});
+					if (!recheck.ok) {
+						logWarn('[WarmingSync] MTA rejected the outbound identity re-check', {
+							status: recheck.status,
+						});
+					}
+				} catch (error) {
+					logWarn('[WarmingSync] MTA outbound identity re-check failed', { error });
+				}
+			}
+
 			const url = new URL(`${mtaUrl}/ip-reputation`);
 			if (organizationId) url.searchParams.set('organizationId', organizationId);
 			const response = await fetch(url, {
@@ -117,6 +141,7 @@ export const syncWarmingState = internalAction({
  */
 export const upsertWarmingState = internalMutation({
 	args: {
+		pools: v.optional(warmingPoolsValidator),
 		phase: v.string(),
 		totalDailyCap: v.number(),
 		totalSentToday: v.number(),

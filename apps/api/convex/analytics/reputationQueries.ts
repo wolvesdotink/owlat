@@ -268,20 +268,32 @@ interface DeliveryDomainRow {
 
 /**
  * Whether a domain's SPF / DKIM / DMARC records are each verified, read from the
- * domain's `verificationResults`. DKIM is an array (one entry per selector); it
- * counts as verified only when every selector is present and verified. Pure —
- * unit-testable, and the single place the "is this record good?" rule lives.
+ * domain's `dnsRecords` and `verificationResults`. DKIM is an array (one entry
+ * per selector); it counts as verified only when every selector is present and
+ * verified.
+ *
+ * SPF follows `deriveVerificationVerdict`: an own-MTA domain publishes no apex
+ * SPF record — SPF is evaluated against the MAIL FROM (bounce) host instead —
+ * so with no apex `spf` record configured, SPF is satisfied by every
+ * `mailFrom` record being verified. Pure — unit-testable, and the single place
+ * the "is this record good?" rule lives.
  */
-function domainAuthState(
+export function domainAuthState(
+	dnsRecords: { spf?: unknown; mailFrom?: unknown[] | undefined } | undefined,
 	results:
 		| {
 				spf?: { verified: boolean } | undefined;
 				dkim?: Array<{ verified: boolean }> | undefined;
 				dmarc?: { verified: boolean } | undefined;
+				mailFrom?: Array<{ verified: boolean }> | undefined;
 		  }
 		| undefined
 ): DomainAuthState {
-	const spf = results?.spf?.verified === true;
+	const mailFromRecords = dnsRecords?.mailFrom ?? [];
+	const spf = dnsRecords?.spf
+		? results?.spf?.verified === true
+		: mailFromRecords.length > 0 &&
+			mailFromRecords.every((_, i) => results?.mailFrom?.[i]?.verified === true);
 	const dkimEntries = results?.dkim;
 	const dkim = Array.isArray(dkimEntries)
 		? dkimEntries.length > 0 && dkimEntries.every((r) => r.verified)
@@ -333,7 +345,7 @@ export const getDeliveryDomainTable = authedQuery({
 		const googleByDomain = new Map(latestGoogleStats);
 
 		const rows: DeliveryDomainRow[] = domains.map((domainRecord) => {
-			const auth = domainAuthState(domainRecord.verificationResults);
+			const auth = domainAuthState(domainRecord.dnsRecords, domainRecord.verificationResults);
 			const summary = summaryByDomain.get(domainRecord.domain);
 			const spam = spamByDomain.get(domainRecord.domain);
 			const google = googleByDomain.get(domainRecord.domain);

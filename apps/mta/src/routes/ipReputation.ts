@@ -305,7 +305,14 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 		// response text equals `IP_REPUTATION_SNAPSHOT_BYTES`, then feeds the same
 		// answer through the normalizer. Rename a field here and that fails; leave
 		// it unpinned and the warming plane goes stale in silence.
-		return c.json({ date: today, ips: summaries, routing: { generatedAt: now, signals } });
+		return c.json({
+			date: today,
+			ips: summaries,
+			// The rows name only an address's first pool; the Deliverability Center
+			// needs both lists verbatim to hand back exact IP_POOLS_* lines.
+			pools: { transactional: config.ipPools.transactional, campaign: config.ipPools.campaign },
+			routing: { generatedAt: now, signals },
+		});
 	});
 
 	return app;

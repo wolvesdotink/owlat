@@ -2051,6 +2051,55 @@
 				"detectionUnavailable": "Provider detection unavailable.",
 				"openConsole": "Open {provider}"
 			},
+			"deliverabilityIpv6Setup": {
+				"title": "IPv6 sending",
+				"subtitle": "Optional. Owlat sends over IPv4 until you turn IPv6 on.",
+				"offTitle": "IPv6 is off",
+				"offBody": "Sending over IPv4 alone is a safe default. IPv6 adds sending capacity once IPv4 is healthy, but it does not improve inbox placement on its own.",
+				"openSetup": "Set up IPv6",
+				"closeSetup": "Hide setup",
+				"ipv4Blocked": "Finish these IPv4 checks first: {checks}. The MTA will not use IPv6 until they pass.",
+				"step1Title": "Get an address from your hosting provider",
+				"step1Body": "Allocate one stable, publicly routed IPv6 address for this server and route it to the MTA container. Docker's IPv6 network does not assign a public address on its own.",
+				"docsLink": "How outbound IPv6 works",
+				"step2Title": "Check its DNS",
+				"addressLabel": "IPv6 sending address",
+				"addressInvalid": "Enter a bare IPv6 address, without brackets, a port or a prefix length.",
+				"check": "Check DNS",
+				"recheck": "Check again",
+				"operation": "Check the IPv6 address",
+				"checks": {
+					"ptr": {
+						"pass": "Reverse DNS for {address} points to {hostname}.",
+						"missing": "{address} has no reverse DNS (PTR) record. Set it to {hostname} in your hosting provider's control panel.",
+						"mismatch": "Reverse DNS for {address} points to {found}. Change it to {hostname} in your hosting provider's control panel."
+					},
+					"aaaa": {
+						"pass": "{hostname} has an AAAA record for {address}.",
+						"missing": "{hostname} has no AAAA record. Add one that points to {address}.",
+						"mismatch": "{hostname} points to {found}. Add an AAAA record for {address}."
+					},
+					"spf": {
+						"pass": "The SPF record on {domain} allows {address}.",
+						"noRecord": "{domain} has no SPF record. Publish one that includes ip6:{address}.",
+						"multipleRecords": "{domain} has more than one SPF record. Merge them into one that includes ip6:{address}.",
+						"missingMechanism": "Add ip6:{address} to the SPF record on {domain}."
+					},
+					"lookupError": "The DNS lookup failed. Check again in a minute."
+				},
+				"refusals": {
+					"invalidAddress": "That is not a valid IPv6 address.",
+					"notPublic": "Use a public IPv6 address. Local, private and documentation ranges cannot send mail.",
+					"noEhloHostname": "The server has no EHLO hostname (EHLO_HOSTNAME), so there is no name to check the address against.",
+					"noReturnPathDomain": "The server has no return-path domain (RETURN_PATH_DOMAIN), so there is no SPF record to check.",
+					"noIpv4InPool": "Both IP pools need an IPv4 address before an IPv6 address can join them."
+				},
+				"step3Title": "Turn it on",
+				"step3Locked": "The server settings appear here once all three DNS checks pass.",
+				"step3Body": "Apply these settings on the server. Turning IPv6 on changes the Docker network, so the whole stack restarts. Expect about a minute of downtime.",
+				"poolsUnknown": "Owlat does not know your current IP pool lines yet. Add ,{address} to the end of both IP_POOLS_ lines instead of replacing them.",
+				"afterApply": "After the restart the MTA verifies the address itself. This section switches to the IPv6 checks within about five minutes."
+			},
 			"deliverabilityLoopbackCard": {
 				"intro": "This sends through the real outbound route to Owlat’s probe mailbox. It reports authorization, signature, alignment, TLS, and the server address observed on arrival.",
 				"lockedDefaultReason": "The loopback proof unlocks after the server identity and required domain checks pass.",
@@ -2704,28 +2753,43 @@
 				"trackingPreviewExample": "For example, your tracking links will use {host}",
 				"useApex": "none (use apex)"
 			},
+			"dnsChecklistSummary": {
+				"allFound": "All {total} records found — this domain is set up.",
+				"copyAll": "Copy all records",
+				"copyOutstanding": "Copy the missing record | Copy the {count} missing records",
+				"copyTitle": "Copies the records as zone-file lines — paste them into your DNS host's import, or send them to whoever manages your DNS.",
+				"jumpTo": "Go to the {label} record",
+				"progress": "{verified} of {total} records found",
+				"progressLabel": "Records found",
+				"stillMissing": "Still to add or fix:",
+				"unchecked": "Add this record at your DNS host — we check for it automatically while this panel is open. | Add these {total} records at your DNS host — we check for them automatically while this panel is open."
+			},
 			"dnsPropagationNote": {
 				"body": "{note} DNS changes can take up to 48 hours to propagate. After adding these records, click \"Verify domain\" to check the configuration.",
 				"noteLabel": "Note:"
+			},
+			"dnsRecordGroup": {
+				"count": "{verified} of {total} found"
 			},
 			"dnsRecordPanel": {
 				"coexistenceWarning": "This domain already publishes an SPF record for another mail provider. Only one {record} record is allowed per host (RFC 7208 §3.2) — a second one breaks SPF for all your mail. Publish the merged record below instead of the value above. SPF allows at most 10 DNS lookups — double-check the merged record stays within that limit.",
 				"copyFoundValue": "Copy found value",
 				"copyFullName": "Copy full name",
 				"copyHost": "Copy host",
+				"copyHostOf": "Copy the {label} name",
 				"copyMergedValue": "Copy merged value",
 				"copyValue": "Copy value",
+				"copyValueOf": "Copy the {label} value",
 				"existingRecord": "Existing record",
 				"found": "Found",
 				"fullName": "Full name",
 				"hostName": "Host / name",
 				"hostNotYetKnown": "Name not known yet — it is {name}, and the selector comes with the value below.",
 				"mergedRecord": "Merged record to publish",
-				"notVerified": "Not verified",
 				"outOfZone": "This record belongs to a different domain, not {domain}. Add it in that domain's DNS zone using the full name shown above.",
 				"outOfZoneNamed": "This record belongs to a different domain ({zone}), not {domain}. Add it in that domain's DNS zone using the full name shown above.",
 				"pendingValueDefault": "Value supplied once this subdomain is added — create the name first, then come back and copy the key.",
-				"providerHint": "Some providers want the full name — use whichever your DNS host expects.",
+				"providerHint": "Use this if your DNS host asks for the full name.",
 				"recordHeading": "{label} record",
 				"rfc": {
 					"dkim": "RFC 6376 (DKIM)",
@@ -2735,8 +2799,12 @@
 				},
 				"standardPill": "Fixed by standard",
 				"standardPillTitle": "This name is set by {rfc} and can't be changed.",
-				"value": "Value",
-				"verified": "Verified"
+				"status": {
+					"mismatch": "Different value found",
+					"missing": "Not found yet",
+					"verified": "Verified"
+				},
+				"value": "Value"
 			},
 			"externalReceiving": {
 				"providers": {
@@ -2896,6 +2964,15 @@
 				"reverifyWarning": "Changing this re-verifies the domain — its status drops to pending until the new records are confirmed.",
 				"saveOperation": "Set return-path host",
 				"syncError": "Couldn't update the bounce host on the mail server — edit and retry."
+			},
+			"sendingDnsSection": {
+				"authentication": {
+					"description": "SPF and DKIM prove Owlat may send as this domain; DMARC tells receivers what to do when a message fails those checks.",
+					"title": "Sender authentication"
+				},
+				"returnPath": {
+					"description": "Bounces come back to this name, and its SPF record lets the bounce address pass SPF checks."
+				}
 			},
 			"streamSubdomainPlanPanel": {
 				"alreadyAdded": "Already added",
@@ -12715,12 +12792,6 @@
 				}
 			}
 		},
-		"domainReadiness": {
-			"addRecords": "Add the {leading} and {last} records to finish setup",
-			"allVerified": "All records verified",
-			"almostReady": "Almost ready — just add the {record} record",
-			"noRecords": "No DNS records to verify yet"
-		},
 		"dualArmAlignment": {
 			"actionLabel": "Review records",
 			"aligned": "Your own server and your relay look identical to mailboxes, so the gradual switchover can measure them fairly.",
@@ -15231,6 +15302,10 @@
 				"blocking": {
 					"description": "These checks can stop or reject mail.",
 					"label": "Blocking delivery"
+				},
+				"ipv6": {
+					"description": "Checks for the IPv6 address the server sends from.",
+					"label": "IPv6 sending"
 				},
 				"recommended": {
 					"description": "Useful hardening after the blocking path is verified.",

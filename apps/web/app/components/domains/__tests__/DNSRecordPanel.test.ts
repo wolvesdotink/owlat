@@ -145,3 +145,85 @@ describe('DNSRecordPanel MX priority (F2 finding 2)', () => {
 		expect(w.find('[data-testid="dns-value"]').text()).toBe(baseRecord.value);
 	});
 });
+
+describe('DNSRecordPanel — verified records fold to one line', () => {
+	const open = (w: ReturnType<typeof mountPanel>) =>
+		w.find('[data-testid="dns-host-primary"]').exists();
+
+	it('folds a verified record, keeping its name and value on the line', () => {
+		const w = mountPanel({ verified: true });
+		expect(open(w)).toBe(false);
+		const folded = w.find('[data-testid="dns-record-folded"]');
+		expect(folded.text()).toContain('@');
+		expect(folded.text()).toContain(baseRecord.value);
+		expect(w.find('[data-testid="dns-record-status"]').text()).toBe('Verified');
+	});
+
+	it('opens and closes a folded record from its heading', async () => {
+		const w = mountPanel({ verified: true });
+		const toggle = w.find('[data-testid="dns-record-toggle"]');
+		expect(toggle.attributes('aria-expanded')).toBe('false');
+		await toggle.trigger('click');
+		expect(open(w)).toBe(true);
+		expect(toggle.attributes('aria-expanded')).toBe('true');
+		await toggle.trigger('click');
+		expect(open(w)).toBe(false);
+	});
+
+	it('keeps a failing record open and says whether it is missing or different', () => {
+		const absent = mountPanel({ verified: false, error: 'No TXT record found' });
+		expect(open(absent)).toBe(true);
+		expect(absent.find('[data-testid="dns-record-toggle"]').attributes('aria-expanded')).toBe(
+			undefined
+		);
+		expect(absent.find('[data-testid="dns-record-status"]').text()).toBe('Not found yet');
+
+		const different = mountPanel({
+			verified: false,
+			error: 'TXT record does not match',
+			foundValue: 'v=spf1 -all',
+		});
+		expect(different.find('[data-testid="dns-record-status"]').text()).toBe(
+			'Different value found'
+		);
+	});
+
+	it('stays open with no status before any check has run', () => {
+		const w = mountPanel(undefined);
+		expect(open(w)).toBe(true);
+		expect(w.find('[data-testid="dns-record-status"]').exists()).toBe(false);
+	});
+
+	it('folds a record once a recheck finds it, even after it was opened by hand', async () => {
+		const w = mountPanel({ verified: false, error: 'No TXT record found' });
+		await w.setProps({ verification: { verified: true } });
+		expect(open(w)).toBe(false);
+		await w.find('[data-testid="dns-record-toggle"]').trigger('click');
+		expect(open(w)).toBe(true);
+		await w.setProps({ verification: { verified: false, error: 'No TXT record found' } });
+		await w.setProps({ verification: { verified: true } });
+		expect(open(w)).toBe(false);
+	});
+
+	it('never folds a record carrying an SPF merge instruction', () => {
+		const w = mount(DNSRecordPanel, {
+			props: {
+				record: baseRecord,
+				label: 'SPF',
+				domain: 'example.com',
+				verification: { verified: true },
+				coexistence: { existing: 'v=spf1 include:other.test ~all', merged: 'v=spf1 merged ~all' },
+			},
+			global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		});
+		expect(w.find('[data-testid="dns-host-primary"]').exists()).toBe(true);
+	});
+
+	it('carries the anchor id so a summary link can land on it', () => {
+		const w = mount(DNSRecordPanel, {
+			props: { record: baseRecord, label: 'SPF', domain: 'example.com', anchorId: 'dns-d1-spf' },
+			global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		});
+		expect(w.find('[data-testid="dns-record"]').attributes('id')).toBe('dns-d1-spf');
+	});
+});

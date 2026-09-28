@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { trySplitZone, zoneRelativeHost } from '@owlat/shared';
+import { recordFqdn as composeFqdn } from '~/utils/dnsRecordChecklist';
 import type { SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
+// Explicit imports so the panel's own tests render its notices.
+import DnsRecordDiagnostic from './DnsRecordDiagnostic.vue';
+import SpfMergeNotice from './SpfMergeNotice.vue';
 
 interface DNSRecord {
 	type: string;
@@ -70,6 +74,11 @@ interface Props {
 	 * a copy button for a name that cannot work.
 	 */
 	hostNotYetKnown?: boolean;
+	/**
+	 * DOM id for the card, so a summary elsewhere can link straight to it
+	 * ("DKIM 2 is missing" → jump to DKIM 2).
+	 */
+	anchorId?: string;
 }
 
 const props = defineProps<Props>();
@@ -82,10 +91,6 @@ const pendingCopy = computed<string>(
 
 const { copy, isCopied } = useCopyToClipboard();
 
-const handleCopyMerged = () => {
-	if (props.coexistence) copy(props.coexistence.merged, `${props.label}-merged`);
-};
-
 /**
  * The record's fully-qualified name. `record.host` (see `normalizeDnsRecord`) is
  * either the apex marker `@`, a name RELATIVE to `domain`, or — when
@@ -94,10 +99,42 @@ const handleCopyMerged = () => {
  * of guessing from the string is what stops the old `${host}.${domain}` rule from
  * doubling an absolute host into the classic `bounces.owlat.com.example.com`.
  */
-const recordFqdn = computed<string>(() => {
-	const host = props.record.host;
-	if (host === '@') return props.domain;
-	return props.record.hostIsFqdn ? host : `${host}.${props.domain}`;
+const recordFqdn = computed<string>(() => composeFqdn(props.record, props.domain));
+
+/**
+ * A verified record folds to one line: it needs no attention, and a stack of
+ * full-height cards is what used to bury the one record that did. Anything not
+ * verified stays open with its diagnostic. The operator can open a folded row;
+ * that choice is dropped when the verdict changes, so a record that just turned
+ * green folds away on the next recheck — the visible sign it was found.
+ */
+// An SPF merge suggestion is an instruction, not a green row — never fold it away.
+const collapsible = computed(
+	() => props.verification?.verified === true && props.coexistence === undefined
+);
+const manualOpen = ref<boolean | null>(null);
+watch(
+	() => props.verification?.verified,
+	() => {
+		manualOpen.value = null;
+	}
+);
+const isOpen = computed(() => manualOpen.value ?? !collapsible.value);
+const toggleOpen = () => {
+	manualOpen.value = !isOpen.value;
+};
+const bodyId = computed(() => `${props.anchorId ?? `dns-${props.label}`}-details`);
+
+/**
+ * What the status names. A failed check that DID find a record at the name is a
+ * different fix (edit the value) from one that found nothing (add the record),
+ * so the two get different words.
+ */
+const status = computed<'verified' | 'mismatch' | 'missing' | null>(() => {
+	const v = props.verification;
+	if (!v) return null;
+	if (v.verified) return 'verified';
+	return v.foundValue ? 'mismatch' : 'missing';
 });
 
 interface HostDisplay {
@@ -195,66 +232,121 @@ const handleCopyValue = () => {
 	const value = valueDisplay.value;
 	if (value !== null) copy(value, `${props.label}-value`);
 };
-
-const handleCopyFound = () => {
-	if (props.verification?.foundValue) {
-		copy(props.verification.foundValue, `${props.label}-found`);
-	}
-};
-
-/**
- * Show the found-vs-expected diagnostic only when we have a completed check
- * that did NOT verify and carries a reason. The happy path stays untouched.
- */
-const diagnostic = computed(() => {
-	const v = props.verification;
-	if (!v || v.verified || !v.error) return null;
-	return { error: v.error, foundValue: v.foundValue };
-});
 </script>
 
 <template>
-	<div class="bg-bg-elevated rounded-xl p-4 border border-border-subtle">
-		<div class="flex items-center justify-between mb-2">
-			<div class="flex items-center gap-2">
-				<span class="px-2 py-0.5 bg-brand/20 text-brand text-xs font-medium rounded">
-					{{ record.type }}
-				</span>
-				<span class="text-sm font-medium text-text-primary">
-					{{ t('components.domains.dnsRecordPanel.recordHeading', { label }) }}
-				</span>
-				<span
-					v-if="standardMandate"
-					class="inline-flex items-center gap-1 px-2 py-0.5 bg-bg-deep text-text-tertiary text-xs font-medium rounded"
-					:title="
-						t('components.domains.dnsRecordPanel.standardPillTitle', { rfc: standardMandate.rfc })
-					"
-					data-testid="dns-standard-pill"
-				>
-					<Icon name="lucide:lock" class="w-3 h-3" />
-					{{ t('components.domains.dnsRecordPanel.standardPill') }}
-				</span>
-			</div>
-			<div
-				v-if="verification"
+	<div
+		:id="anchorId"
+		:tabindex="anchorId ? -1 : undefined"
+		:class="[
+			'bg-bg-elevated rounded-xl border scroll-mt-24 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+			status === 'missing' || status === 'mismatch' ? 'border-error/40' : 'border-border-subtle',
+		]"
+		:data-status="status ?? 'unchecked'"
+		data-testid="dns-record"
+	>
+		<div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
+			<component
+				:is="collapsible ? 'button' : 'div'"
+				:type="collapsible ? 'button' : undefined"
+				:aria-expanded="collapsible ? isOpen : undefined"
+				:aria-controls="collapsible ? bodyId : undefined"
 				:class="[
-					'flex items-center gap-1 text-xs',
-					verification.verified ? 'text-success' : 'text-error',
+					'flex items-center gap-2 min-w-0 text-left',
+					collapsible &&
+						'rounded-md -mx-1 px-1 hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
 				]"
+				data-testid="dns-record-toggle"
+				@click="collapsible ? toggleOpen() : undefined"
 			>
 				<Icon
-					:name="verification.verified ? 'lucide:check-circle-2' : 'lucide:x-circle'"
-					class="w-3 h-3"
+					v-if="collapsible"
+					name="lucide:chevron-right"
+					:class="[
+						'w-4 h-4 shrink-0 text-text-tertiary transition-transform',
+						isOpen && 'rotate-90',
+					]"
 				/>
-				{{
-					verification.verified
-						? t('components.domains.dnsRecordPanel.verified')
-						: t('components.domains.dnsRecordPanel.notVerified')
-				}}
+				<span
+					class="shrink-0 px-2 py-0.5 bg-brand/20 text-brand text-xs font-medium rounded font-mono"
+				>
+					{{ record.type }}
+				</span>
+				<span class="text-sm font-medium text-text-primary whitespace-nowrap">
+					{{ t('components.domains.dnsRecordPanel.recordHeading', { label }) }}
+				</span>
+			</component>
+			<span
+				v-if="standardMandate && isOpen"
+				class="inline-flex items-center gap-1 px-2 py-0.5 bg-bg-deep text-text-tertiary text-xs font-medium rounded"
+				:title="
+					t('components.domains.dnsRecordPanel.standardPillTitle', { rfc: standardMandate.rfc })
+				"
+				data-testid="dns-standard-pill"
+			>
+				<Icon name="lucide:lock" class="w-3 h-3" />
+				{{ t('components.domains.dnsRecordPanel.standardPill') }}
+			</span>
+
+			<!-- Folded: the name and value on one line, both still one click from
+			     the clipboard — a verified record is often re-copied when moving
+			     DNS hosts, and that should not need an expand. -->
+			<div
+				v-if="!isOpen"
+				class="order-last basis-full sm:order-none sm:basis-auto flex min-w-0 flex-1 items-center gap-1.5 font-mono text-xs text-text-secondary"
+				data-testid="dns-record-folded"
+			>
+				<code class="min-w-0 max-w-[45%] truncate" :title="hostDisplay.primary">{{
+					hostDisplay.primary
+				}}</code>
+				<UiButton
+					variant="ghost"
+					class="p-1 shrink-0"
+					:title="t('components.domains.dnsRecordPanel.copyHost')"
+					:aria-label="t('components.domains.dnsRecordPanel.copyHostOf', { label })"
+					@click="handleCopyHost"
+				>
+					<Icon
+						:name="isCopied(`${label}-host`) ? 'lucide:check' : 'lucide:copy'"
+						:class="['w-3.5 h-3.5', isCopied(`${label}-host`) && 'text-success']"
+					/>
+				</UiButton>
+				<Icon name="lucide:arrow-right" class="w-3 h-3 shrink-0 text-text-tertiary" />
+				<code class="min-w-0 flex-1 truncate" :title="valueDisplay ?? undefined">{{
+					valueDisplay
+				}}</code>
+				<UiButton
+					v-if="valueDisplay !== null"
+					variant="ghost"
+					class="p-1 shrink-0"
+					:title="t('components.domains.dnsRecordPanel.copyValue')"
+					:aria-label="t('components.domains.dnsRecordPanel.copyValueOf', { label })"
+					@click="handleCopyValue"
+				>
+					<Icon
+						:name="isCopied(`${label}-value`) ? 'lucide:check' : 'lucide:copy'"
+						:class="['w-3.5 h-3.5', isCopied(`${label}-value`) && 'text-success']"
+					/>
+				</UiButton>
+			</div>
+
+			<div
+				v-if="status"
+				:class="[
+					'ml-auto flex shrink-0 items-center gap-1 text-xs font-medium',
+					status === 'verified' ? 'text-success' : 'text-error',
+				]"
+				data-testid="dns-record-status"
+			>
+				<Icon
+					:name="status === 'verified' ? 'lucide:check-circle-2' : 'lucide:x-circle'"
+					class="w-3.5 h-3.5"
+				/>
+				{{ t(`components.domains.dnsRecordPanel.status.${status}`) }}
 			</div>
 		</div>
 
-		<div class="space-y-2">
+		<div v-if="isOpen" :id="bodyId" class="space-y-3 px-4 pb-4">
 			<!-- Host / Name — primary paste target is the name relative to the
 			     registrable zone (§3.3); the full name is offered as a secondary
 			     copy for providers that want the FQDN. -->
@@ -300,39 +392,33 @@ const diagnostic = computed(() => {
 					</UiButton>
 				</div>
 
-				<!-- Secondary: fully-qualified name + its own copy affordance. -->
+				<!-- Secondary: fully-qualified name + its own copy affordance, on
+				     one quiet line — most providers want the short name above. -->
 				<div
 					v-if="hostDisplay.fqdn && !hostNotYetKnown"
-					class="mt-2"
+					class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-tertiary"
 					data-testid="dns-host-fqdn-row"
 				>
-					<p class="text-xs text-text-tertiary mb-1">
-						{{ t('components.domains.dnsRecordPanel.fullName') }}
-					</p>
-					<div class="flex items-center gap-2">
-						<code
-							class="flex-1 bg-bg-deep/60 px-3 py-1.5 rounded-lg text-xs text-text-tertiary font-mono break-all"
-							data-testid="dns-host-fqdn"
-						>
-							{{ hostDisplay.fqdn }}
-						</code>
-						<UiButton
-							variant="ghost"
-							class="p-1.5"
-							:title="t('components.domains.dnsRecordPanel.copyFullName')"
-							@click="handleCopyFqdn"
-						>
-							<Icon
-								v-if="isCopied(`${label}-fqdn`)"
-								name="lucide:check"
-								class="w-4 h-4 text-success"
-							/>
-							<Icon v-else name="lucide:copy" class="w-3.5 h-3.5" />
-						</UiButton>
-					</div>
-					<p class="text-xs text-text-tertiary mt-1" data-testid="dns-provider-hint">
+					<span>{{ t('components.domains.dnsRecordPanel.fullName') }}</span>
+					<code class="font-mono break-all" data-testid="dns-host-fqdn">{{
+						hostDisplay.fqdn
+					}}</code>
+					<UiButton
+						variant="ghost"
+						class="p-1"
+						:title="t('components.domains.dnsRecordPanel.copyFullName')"
+						@click="handleCopyFqdn"
+					>
+						<Icon
+							v-if="isCopied(`${label}-fqdn`)"
+							name="lucide:check"
+							class="w-3.5 h-3.5 text-success"
+						/>
+						<Icon v-else name="lucide:copy" class="w-3.5 h-3.5" />
+					</UiButton>
+					<span data-testid="dns-provider-hint">
 						{{ t('components.domains.dnsRecordPanel.providerHint') }}
-					</p>
+					</span>
 				</div>
 
 				<!-- Out-of-zone: this record's name lives in a different DNS zone (a
@@ -395,100 +481,8 @@ const diagnostic = computed(() => {
 				</div>
 			</div>
 
-			<!-- Verification diagnostic: the check ran but the record did not
-			     verify. Surface the reason (and, when available, the value we
-			     actually found) so the user can compare found-vs-expected
-			     instead of just seeing a red "Not verified" pill. -->
-			<div
-				v-if="diagnostic"
-				class="mt-3 rounded-lg border border-error/30 bg-error/10 p-3"
-				data-testid="dns-diagnostic"
-			>
-				<p class="flex items-start gap-2 text-xs font-medium text-error">
-					<Icon name="lucide:alert-circle" class="mt-0.5 w-3.5 h-3.5 shrink-0" />
-					<span data-testid="dns-diagnostic-error">{{ diagnostic.error }}</span>
-				</p>
-				<div v-if="diagnostic.foundValue" class="mt-2">
-					<p class="text-xs text-text-tertiary mb-1">
-						{{ t('components.domains.dnsRecordPanel.found') }}
-					</p>
-					<div class="flex items-center gap-2">
-						<code
-							class="flex-1 bg-bg-deep px-3 py-2 rounded-lg text-xs text-text-tertiary font-mono break-all line-clamp-2"
-							:title="diagnostic.foundValue"
-							data-testid="dns-diagnostic-found"
-						>
-							{{ diagnostic.foundValue }}
-						</code>
-						<UiButton
-							variant="ghost"
-							class="p-2"
-							:title="t('components.domains.dnsRecordPanel.copyFoundValue')"
-							@click="handleCopyFound"
-						>
-							<Icon
-								v-if="isCopied(`${label}-found`)"
-								name="lucide:check"
-								class="w-4 h-4 text-success"
-							/>
-							<Icon v-else name="lucide:copy" class="w-4 h-4" />
-						</UiButton>
-					</div>
-				</div>
-			</div>
-
-			<!-- SPF coexistence: a foreign SPF record already exists. Publishing a
-			     second v=spf1 record is a PermError (RFC 7208 §3.2) that breaks SPF
-			     for everyone, so offer a single merged record instead. -->
-			<div v-if="coexistence" class="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3">
-				<p class="flex items-start gap-2 text-xs font-medium text-warning">
-					<Icon name="lucide:alert-triangle" class="mt-0.5 w-3.5 h-3.5 shrink-0" />
-					<I18nT
-						keypath="components.domains.dnsRecordPanel.coexistenceWarning"
-						tag="span"
-						scope="global"
-					>
-						<template #record>
-							<code class="font-mono">v=spf1</code>
-						</template>
-					</I18nT>
-				</p>
-				<div class="mt-2">
-					<p class="text-xs text-text-tertiary mb-1">
-						{{ t('components.domains.dnsRecordPanel.existingRecord') }}
-					</p>
-					<code
-						class="block bg-bg-deep px-3 py-2 rounded-lg text-xs text-text-tertiary font-mono break-all"
-					>
-						{{ coexistence.existing }}
-					</code>
-				</div>
-				<div class="mt-2">
-					<p class="text-xs text-text-tertiary mb-1">
-						{{ t('components.domains.dnsRecordPanel.mergedRecord') }}
-					</p>
-					<div class="flex items-center gap-2">
-						<code
-							class="flex-1 bg-bg-deep px-3 py-2 rounded-lg text-sm text-text-secondary font-mono break-all"
-						>
-							{{ coexistence.merged }}
-						</code>
-						<UiButton
-							variant="ghost"
-							class="p-2"
-							:title="t('components.domains.dnsRecordPanel.copyMergedValue')"
-							@click="handleCopyMerged"
-						>
-							<Icon
-								v-if="isCopied(`${label}-merged`)"
-								name="lucide:check"
-								class="w-4 h-4 text-success"
-							/>
-							<Icon v-else name="lucide:copy" class="w-4 h-4" />
-						</UiButton>
-					</div>
-				</div>
-			</div>
+			<DnsRecordDiagnostic :verification="verification" :copy-key="label" />
+			<SpfMergeNotice v-if="coexistence" :coexistence="coexistence" :copy-key="label" />
 		</div>
 	</div>
 </template>

@@ -19,6 +19,15 @@ import {
 	type ChecklistVerificationContext,
 } from './checklistValidatorTypes';
 
+/**
+ * How old the MTA's stored identity verdicts (PTR, FCrDNS, source address, IPv6
+ * SPF) may be before a check refuses to judge them. The MTA re-observes them on
+ * an hourly sweep, so the window is that cadence plus a quarter-hour of slack; a
+ * tighter window left these checks unverifiable for most of every hour. "Verify
+ * now" asks the MTA for a fresh observation, so it does not wait on the sweep.
+ */
+export const OUTBOUND_IDENTITY_MAX_AGE_MS = 75 * 60_000;
+
 function boundedIdentityField(value: string, maxLength: number): string {
 	if (value.length <= maxLength) return value;
 	const marker = `…[length=${value.length}]`;
@@ -89,7 +98,8 @@ export async function observeDeploymentCheck(
 	const identityFresh =
 		warmingFresh &&
 		selectedAddresses.every(
-			(entry) => entry.fcrdns !== undefined && now - entry.fcrdns.checkedAt <= 15 * 60_000
+			(entry) =>
+				entry.fcrdns !== undefined && now - entry.fcrdns.checkedAt <= OUTBOUND_IDENTITY_MAX_AGE_MS
 		);
 	const mtaHealthFresh =
 		context.settings?.mtaHealth !== undefined &&
@@ -385,7 +395,7 @@ export async function observeDeploymentCheck(
 				ipv6.every(
 					(entry) =>
 						entry.sourceAddress?.verdict === 'pass' &&
-						now - entry.sourceAddress.checkedAt <= 15 * 60_000
+						now - entry.sourceAddress.checkedAt <= OUTBOUND_IDENTITY_MAX_AGE_MS
 				);
 			return checklistObservation(
 				'mta.ipv6-source-address',
@@ -435,7 +445,8 @@ export async function observeDeploymentCheck(
 				ipv6.length > 0 &&
 				ipv6.every(
 					(entry) =>
-						entry.ipv6Spf?.verdict === 'pass' && now - entry.ipv6Spf.checkedAt <= 15 * 60_000
+						entry.ipv6Spf?.verdict === 'pass' &&
+						now - entry.ipv6Spf.checkedAt <= OUTBOUND_IDENTITY_MAX_AGE_MS
 				);
 			return checklistObservation(
 				'mta.ipv6-spf',

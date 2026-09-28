@@ -32,6 +32,7 @@ import { guidanceForCheck } from './checklistGuidance';
 import type { Doc, Id } from '../_generated/dataModel';
 import { deploymentSetupValuesForItem, domainSetupValuesForItem } from './checklistRecords';
 import { checklistTraits, DEPLOYMENT_CHECK_IDS, DOMAIN_CHECK_IDS } from './checklistTraits';
+import { ipv6SendingAddresses, isIpv6CheckId, partitionIpv6Items } from './checklistIpv6';
 import { OWN_SENDING_DOMAIN_PROVIDER_KIND } from '../domains/providers';
 import { readyFallbackRelayKinds } from '../lib/sendProviders/fallbackRelays';
 
@@ -247,8 +248,11 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 		}
 	}
 
-	const grade = deriveDeliverabilityGrade(items);
-	for (const item of items) {
+	const ipv6Addresses = ipv6SendingAddresses(warming);
+	const ipv6Enabled = ipv6Addresses.length > 0;
+	const { graded, ipv6: ipv6Items } = partitionIpv6Items(items, ipv6Enabled);
+	const grade = deriveDeliverabilityGrade(graded);
+	for (const item of graded) {
 		if (item.status === 'pass' || dependenciesPass(item, items)) continue;
 		const unmet = item.dependencies.filter(
 			(dependency) =>
@@ -263,9 +267,9 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 		);
 		item.lockedReason = `Verify ${unmet.join(', ')} first.`;
 	}
-	const selectedNextItem = selectNextDeliverabilityItem(items);
+	const selectedNextItem = selectNextDeliverabilityItem(graded);
 	const nextItem = selectedNextItem
-		? (items.find(
+		? (graded.find(
 				(item) =>
 					item.id === selectedNextItem.id &&
 					(item.scope.kind === 'deployment'
@@ -282,25 +286,37 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 	// with these words as the fallback — so a heading reworded here needs the
 	// catalog edit too (`apps/web/app/__tests__/sharedRegistryCatalog.test.ts`
 	// pins the two copies together).
+	// The IPv6 checks form their own group, and only once IPv6 is on.
+	const ungrouped = graded.filter((item) => !isIpv6CheckId(item.id));
 	const groups = [
 		{
 			key: 'blocking' as const,
 			label: 'Blocking delivery',
 			description: 'These checks can stop or reject mail.',
-			items: items.filter((item) => item.severity === 'blocking'),
+			items: ungrouped.filter((item) => item.severity === 'blocking'),
 		},
 		{
 			key: 'reputation' as const,
 			label: 'Hurting reputation',
 			description: 'These checks affect how receivers treat future mail.',
-			items: items.filter((item) => item.severity === 'reputation'),
+			items: ungrouped.filter((item) => item.severity === 'reputation'),
 		},
 		{
 			key: 'recommended' as const,
 			label: 'Recommended',
 			description: 'Useful hardening after the blocking path is verified.',
-			items: items.filter((item) => item.severity === 'recommended'),
+			items: ungrouped.filter((item) => item.severity === 'recommended'),
 		},
+		...(ipv6Enabled
+			? [
+					{
+						key: 'ipv6' as const,
+						label: 'IPv6 sending',
+						description: 'Checks for the IPv6 address the server sends from.',
+						items: ipv6Items,
+					},
+				]
+			: []),
 	];
 	const latestLoopbacks = await Promise.all(
 		domains.map((domain) =>
@@ -314,7 +330,7 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 		)
 	);
 	const loopbackInfrastructureReady = settings?.mtaHealth !== undefined;
-	const recommended = items.filter(
+	const recommended = graded.filter(
 		(item) => item.severity === 'recommended' && item.status !== 'pass'
 	).length;
 
@@ -325,24 +341,29 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 			evidenceRows.reduce((latest, evidence) => Math.max(latest, evidence?.observedAt ?? 0), 0) ||
 			null,
 		statusRefreshedAt: now,
-		alerts: activeAlerts.map((alert) => ({
-			id: alert._id,
-			itemId: alert.itemId,
-			...(alert.domainId
-				? {
-						domainId: alert.domainId,
-						domain:
-							domains.find((domain) => domain._id === alert.domainId)?.domain ??
-							'Deleted sending domain',
-					}
-				: {}),
-			message: alert.message,
-			observedAt: alert.observedAt,
-			acknowledgedAt: alert.acknowledgedAt ?? null,
-			emailNotificationState: alert.emailNotificationState,
-		})),
+		alerts: activeAlerts
+			// An alert raised while IPv6 was on points at a check the page no
+			// longer shows once it is off.
+			.filter((alert) => ipv6Enabled || !isIpv6CheckId(alert.itemId))
+			.map((alert) => ({
+				id: alert._id,
+				itemId: alert.itemId,
+				...(alert.domainId
+					? {
+							domainId: alert.domainId,
+							domain:
+								domains.find((domain) => domain._id === alert.domainId)?.domain ??
+								'Deleted sending domain',
+						}
+					: {}),
+				message: alert.message,
+				observedAt: alert.observedAt,
+				acknowledgedAt: alert.acknowledgedAt ?? null,
+				emailNotificationState: alert.emailNotificationState,
+			})),
 		nextItem,
 		groups,
+		ipv6: { enabled: ipv6Enabled, addresses: ipv6Addresses },
 		loopback: {
 			domains: loopbackDomains(items, domains, loopbackInfrastructureReady).map(
 				(option, index) => ({

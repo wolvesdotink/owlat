@@ -110,6 +110,12 @@ describe('buildEnvCliCommands', () => {
 		);
 	});
 
+	it('ends with the caller’s apply commands when a restart is not enough', () => {
+		expect(buildEnvCliCommands(['X'], { X: 'true' }, ['owlat down', 'owlat up'])).toBe(
+			"owlat env X 'true'\nowlat down\nowlat up"
+		);
+	});
+
 	it('never carries a value, only the placeholder', () => {
 		for (const line of buildEnvCliCommands(['RESEND_API_KEY']).split('\n').slice(0, -1)) {
 			expect(line).toMatch(/^owlat env [A-Z_]+ <value>$/);

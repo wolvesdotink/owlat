@@ -30,7 +30,6 @@ export:packages/shared/src/dnsZone.ts:splitZone
 export:packages/shared/src/envBackupBox.ts:ENV_BACKUP_SEALED_PREFIX
 export:packages/shared/src/fcrdns.ts:DEFAULT_GENERIC_PTR_SUFFIXES
 export:packages/shared/src/fcrdns.ts:isGenericPtrHostname
-export:packages/shared/src/ipAddress.ts:ipv6HexNibbles
 export:packages/shared/src/ipAudit.ts:neighbourhoodStatus
 export:packages/shared/src/ipAuditDelisting.ts:delistingGuidanceFor
 export:packages/shared/src/ipAuditProviders.ts:IP_AUDIT_VPS_PROVIDERS

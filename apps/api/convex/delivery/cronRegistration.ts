@@ -18,7 +18,8 @@ export function registerDeliveryCrons(crons: Crons): void {
 	crons.interval(
 		'sync warming state',
 		{ minutes: 5 },
-		internal.delivery.warmingSync.syncWarmingState
+		internal.delivery.warmingSync.syncWarmingState,
+		{}
 	);
 	crons.interval(
 		'cleanup deliverability route state',
