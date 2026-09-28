@@ -41,6 +41,8 @@ import { scoreAndScreenResult } from './ai/needsReplyScoring';
 import { resolveCounterpartName } from './counterpartName';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { isFromMailboxOwner, type NeedsReplyHeaders } from './needsReplyHeuristic';
+import { needsReplyResultFields } from '../schema/mailThreads';
+import type { needsReplyClarificationValidator } from '../inbox/clarificationValidators';
 
 /** True when an attachment is a calendar invite (.ics / text/calendar). */
 export function isCalendarAttachment(att: { filename: string; contentType: string }): boolean {
@@ -167,48 +169,12 @@ export const getThreadContext = internalQuery({
 });
 
 /**
- * Persisted clarification shape on `needsReply.clarification` (mirrors
- * schema/mail.ts). Set by the refinement pass when a good reply needs a fact
- * only the owner can supply; the owner answers it inline in the Reply Queue.
+ * The `applyResult` argument: the stored `mailThreads.needsReply` shape minus
+ * `detectedAt` (stamped by applyResult) and `draftSlot` (written later by
+ * draft-on-arrival). Built from the schema's own field record, so the argument
+ * and the table can never drift; `null` clears the flag.
  */
-const clarificationFlagValidator = v.object({
-	isNeeded: v.boolean(),
-	questions: v.array(
-		v.object({
-			id: v.string(),
-			slotType: v.string(),
-			text: v.string(),
-			attribution: v.string(),
-			options: v.optional(v.array(v.string())),
-			answer: v.optional(v.object({ value: v.string(), at: v.number() })),
-		})
-	),
-	askedAt: v.number(),
-	answeredAt: v.optional(v.number()),
-	draft: v.optional(v.string()),
-});
-
-const needsReplyResultValidator = v.union(
-	v.null(),
-	v.object({
-		messageId: v.id('mailMessages'),
-		source: v.union(v.literal('heuristic'), v.literal('llm')),
-		urgency: v.union(v.literal('high'), v.literal('normal'), v.literal('low')),
-		// Blended sender-importance × urgency score — the ranking key. Computed in
-		// applyResult (server-side) from the address book, never sent by callers.
-		priorityScore: v.optional(v.number()),
-		askSummary: v.optional(v.string()),
-		dueHint: v.optional(v.string()),
-		meetingIntent: v.optional(
-			v.object({
-				isScheduling: v.boolean(),
-				proposedTimes: v.array(v.string()),
-				topic: v.optional(v.string()),
-			})
-		),
-		clarification: v.optional(clarificationFlagValidator),
-	})
-);
+const needsReplyResultValidator = v.union(v.null(), v.object(needsReplyResultFields));
 
 /**
  * Persist a classification result and clear the pending marker. Stale-guarded:
@@ -381,7 +347,7 @@ export const listQueue = publicQuery({
 				detectedAt: flag.dueAt,
 				source: 'heuristic' as const,
 				waitingOn: flag.waitingOn,
-				clarification: undefined as Infer<typeof clarificationFlagValidator> | undefined,
+				clarification: undefined as Infer<typeof needsReplyClarificationValidator> | undefined,
 				draftSlot: undefined,
 				// The counterpart shown on the card is who we're waiting ON.
 				fromAddress: counterpart,
