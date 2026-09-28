@@ -99,8 +99,8 @@ describe('convex builder derivation against the real tree', () => {
 		for (const path of await convexSourceFiles()) {
 			if (path === AUTHED_FUNCTIONS) continue;
 			const lines = (await readFile(join(API_ROOT, path), 'utf8')).split('\n');
-			lines.forEach((line, index) => {
-				if (!/featureGated(?:Any)?\(/.test(line) || /^\s*(?:\/\/|\*)/.test(line)) return;
+			for (const [index, line] of lines.entries()) {
+				if (!/featureGated(?:Any)?\(/.test(line) || /^\s*(?:\/\/|\*)/.test(line)) continue;
 				const match = COMPOSITION.exec(line);
 				expect(
 					match,
@@ -109,7 +109,7 @@ describe('convex builder derivation against the real tree', () => {
 				const [, name, base] = match as RegExpExecArray;
 				expect(table.get(name), `${path}:${index + 1} ${name}`).toEqual(table.get(base));
 				seen.push(name);
-			});
+			}
 		}
 
 		// The three families in use today; a new one only adds to this.

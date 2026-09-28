@@ -180,7 +180,7 @@ export function createChecker(): Checker {
 				for (const failure of failures) console.error(`FAIL: ${failure}`);
 				process.exit(1);
 			}
-			console.log(`${label}: OK${detail === undefined ? '' : ` (${detail})`}`);
+			console.info(`${label}: OK${detail === undefined ? '' : ` (${detail})`}`);
 		},
 	};
 }

@@ -212,7 +212,7 @@ describe('createChecker', () => {
 	});
 
 	it('prints the OK line when nothing failed', () => {
-		const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const log = vi.spyOn(console, 'info').mockImplementation(() => undefined);
 		createChecker().report('check-x', '3 things');
 		expect(log).toHaveBeenCalledWith('check-x: OK (3 things)');
 		log.mockRestore();
