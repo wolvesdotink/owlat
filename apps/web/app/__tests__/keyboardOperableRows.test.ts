@@ -11,6 +11,11 @@
  * fires the row's own action. The marketing and transactional lists share one
  * grid card and one table row (`components/send/TemplateGrid.vue`,
  * `TemplateTable.vue`) and one sort menu (`components/list/ListSortMenu.vue`).
+ *
+ * The segment and topic lists share `components/audience/AudienceListTable.vue`.
+ * Its rows are not buttons: the keyboard route to an item is the link on its
+ * name. The topic table used to be a mouse-only `<tr @click>` with no route at
+ * all, and its edit/delete buttons had no focus ring.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { capitalize, nextTick, useSlots, type Component } from 'vue';
@@ -22,6 +27,7 @@ import TemplateTable from '~/components/send/TemplateTable.vue';
 import TemplateActionsMenu from '~/components/send/TemplateActionsMenu.vue';
 import TemplateStatusBadge from '~/components/send/TemplateStatusBadge.vue';
 import ListSortMenu from '~/components/list/ListSortMenu.vue';
+import AudienceListTable from '~/components/audience/AudienceListTable.vue';
 import UiCard from '@owlat/ui/components/ui/Card.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { formatDate } from '~/utils/formatters';
@@ -244,5 +250,55 @@ describe('the list sort menu exposes listbox semantics linked to its trigger', (
 		await options[0]!.trigger('click');
 		expect(wrapper.emitted('update:modelValue')).toEqual([['updatedAt-desc']]);
 		expect(wrapper.find('[role="listbox"]').exists()).toBe(false);
+	});
+});
+
+describe.each(['table', 'cards'] as const)('audience list %s', (layout) => {
+	const topic = {
+		_id: 'tp_1',
+		name: 'Product updates',
+		description: 'Release notes',
+		contactCount: 12,
+		createdAt: 0,
+	};
+
+	function mountList() {
+		return mount(AudienceListTable as Component, {
+			props: {
+				items: [topic],
+				layout,
+				icon: 'lucide:list',
+				itemTo: (item: { _id: string }) => `/dashboard/audience/topics/${item._id}`,
+				countOf: (item: { contactCount: number }) => item.contactCount,
+				countField: 'contactCount',
+				countHeader: 'Contacts',
+				createdHeader: 'Created',
+				totalText: '1 topic',
+				editLabel: 'Edit topic',
+				deleteLabel: 'Delete topic',
+				canManage: true,
+				getSortIcon: () => null,
+			},
+			global: { plugins: [createTestI18n()], stubs: rowStubs },
+		});
+	}
+
+	it('reaches the item through a focusable link on its name', () => {
+		const link = mountList().get('a[href="/dashboard/audience/topics/tp_1"]');
+		expect(link.text()).toContain('Product updates');
+		expect(link.classes()).toContain('focus-visible:ring-2');
+	});
+
+	it('gives the edit and delete buttons a name and a focus ring', async () => {
+		const wrapper = mountList();
+		for (const [label, event] of [
+			['Edit topic', 'edit'],
+			['Delete topic', 'delete'],
+		] as const) {
+			const button = wrapper.get(`button[aria-label="${label}"]`);
+			expect(button.classes()).toContain('focus-visible:ring-2');
+			await button.trigger('click');
+			expect(wrapper.emitted(event)).toEqual([[topic]]);
+		}
 	});
 });

@@ -8176,7 +8176,6 @@
 							"audience": "Zielgruppe",
 							"segments": "Segmente"
 						},
-						"clearSearch": "Suche zurücksetzen",
 						"createdOn": "Erstellt {date}",
 						"empty": {
 							"action": "Segment bearbeiten",
@@ -8192,31 +8191,13 @@
 						"exportCsv": "CSV exportieren",
 						"loading": "Segment wird geladen...",
 						"matchingContacts": "{count} passender Kontakt | {count} passende Kontakte",
-						"noResults": {
-							"body": "Keine Kontakte passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff.",
-							"title": "Keine Ergebnisse gefunden"
-						},
 						"notFound": {
 							"action": "Zurück zu den Segmenten",
 							"body": "Dieses Segment wurde möglicherweise gelöscht oder existiert nicht.",
 							"title": "Segment nicht gefunden"
 						},
 						"pageTitle": "Segment — Owlat",
-						"pagination": {
-							"next": "Weiter",
-							"previous": "Zurück"
-						},
-						"searchPlaceholder": "Kontakte in diesem Segment durchsuchen...",
-						"showing": {
-							"empty": "0 Kontakte",
-							"label": "Angezeigt: {range}",
-							"range": "{start}-{end} von {total}"
-						},
-						"table": {
-							"added": "Hinzugefügt",
-							"firstName": "Vorname",
-							"lastName": "Nachname"
-						}
+						"searchPlaceholder": "Kontakte in diesem Segment durchsuchen..."
 					}
 				},
 				"index": {
@@ -8226,14 +8207,12 @@
 						"viewContacts": "Kontakte ansehen"
 					},
 					"adminsOnly": "Nur Inhaber und Administratoren können Segmente erstellen oder bearbeiten.",
-					"clearSearch": "Suche zurücksetzen",
 					"count": "{count} Segment | {count} Segmente",
 					"deleteDialog": {
-						"body": "Möchten Sie „{name}“ wirklich löschen?",
+						"body": "Möchten Sie {name} wirklich löschen?",
 						"note": "Diese Aktion kann nicht rückgängig gemacht werden. Kampagnen, die dieses Segment verwenden, müssen angepasst werden.",
 						"title": "Segment löschen"
 					},
-					"deleting": "Wird gelöscht...",
 					"empty": {
 						"description": "Erstellen Sie Ihr erstes Segment, um Kontakte nach Eigenschaften, Aktivität und mehr zu filtern.",
 						"title": "Noch keine Segmente"
@@ -8411,7 +8390,6 @@
 							"audience": "Zielgruppe",
 							"topics": "Themen"
 						},
-						"clearSearch": "Suche zurücksetzen",
 						"contactCount": "{count} Kontakt | {count} Kontakte",
 						"contactFallback": "Kontakt",
 						"createdOn": "Erstellt {date}",
@@ -8422,10 +8400,6 @@
 							"title": "Keine Kontakte in diesem Thema"
 						},
 						"loading": "Thema wird geladen...",
-						"noResults": {
-							"body": "Keine Kontakte passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff.",
-							"title": "Keine Ergebnisse gefunden"
-						},
 						"notFound": {
 							"action": "Zurück zu den Themen",
 							"body": "Dieses Thema wurde möglicherweise gelöscht oder existiert nicht.",
@@ -8435,26 +8409,12 @@
 							"removeContact": "Aus Thema entfernen"
 						},
 						"pageTitle": "Abonnement-Thema — Owlat",
-						"pagination": {
-							"next": "Weiter",
-							"previous": "Zurück"
-						},
 						"removeDialog": {
 							"description": "„{email}“ aus diesem Thema entfernen? Der Kontakt wird nicht gelöscht, sondern nur aus „{topic}“ entfernt.",
 							"title": "Aus Thema entfernen"
 						},
 						"removeFromTopic": "Aus dem Thema entfernen",
 						"searchPlaceholder": "Kontakte in diesem Thema durchsuchen...",
-						"showing": {
-							"empty": "0 Kontakte",
-							"label": "Angezeigt: {range}",
-							"range": "{start}-{end} von {total}"
-						},
-						"table": {
-							"added": "Hinzugefügt",
-							"firstName": "Vorname",
-							"lastName": "Nachname"
-						},
 						"toasts": {
 							"removed": "„{email}“ wurde aus dem Thema entfernt"
 						}
@@ -8466,19 +8426,17 @@
 						"edit": "Thema bearbeiten"
 					},
 					"adminsOnly": "Nur Inhaber und Administratoren können Themen erstellen oder bearbeiten.",
-					"clearSearch": "Suche zurücksetzen",
 					"count": "{count} Thema | {count} Themen",
 					"createModal": {
 						"title": "Thema erstellen"
 					},
 					"creating": "Wird erstellt...",
 					"deleteModal": {
-						"body": "Möchten Sie „{name}“ wirklich löschen?",
+						"body": "Möchten Sie {name} wirklich löschen?",
 						"contactsKept": "Der {count} Kontakt in diesem Thema wird nicht gelöscht, sondern nur aus dem Thema entfernt. | Die {count} Kontakte in diesem Thema werden nicht gelöscht, sondern nur aus dem Thema entfernt.",
 						"irreversible": "Diese Aktion kann nicht rückgängig gemacht werden.",
 						"title": "Thema löschen"
 					},
-					"deleting": "Wird gelöscht...",
 					"editModal": {
 						"title": "Thema bearbeiten"
 					},
@@ -12984,6 +12942,25 @@
 				"dkim": "DKIM",
 				"ownership": "Domain-Inhaberschaft",
 				"spf": "SPF"
+			}
+		},
+		"memberTable": {
+			"added": "Hinzugefügt",
+			"firstName": "Vorname",
+			"lastName": "Nachname",
+			"noResults": {
+				"body": "Keine Kontakte passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff.",
+				"title": "Keine Ergebnisse gefunden"
+			},
+			"pagination": {
+				"label": "Seiten",
+				"next": "Weiter",
+				"previous": "Zurück"
+			},
+			"showing": {
+				"empty": "0 Kontakte",
+				"label": "Angezeigt: {range}",
+				"range": "{start}-{end} von {total}"
 			}
 		},
 		"onboarding": {

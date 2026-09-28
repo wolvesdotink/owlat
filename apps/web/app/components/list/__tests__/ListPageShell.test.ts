@@ -53,7 +53,9 @@ const UiQueryBoundaryStub = defineComponent({
 	props: { loading: Boolean },
 	setup(props, { slots }) {
 		return () =>
-			props.loading ? h('div', { 'data-testid': 'loading' }) : h('div', slots.default?.());
+			props.loading
+				? h('div', { 'data-testid': 'loading' }, slots['loading']?.())
+				: h('div', slots.default?.());
 	},
 });
 
@@ -89,7 +91,7 @@ const baseProps = {
 	isDeleting: false,
 };
 
-function render(props: Partial<typeof baseProps> = {}) {
+function render(props: Partial<typeof baseProps> = {}, extraSlots: Record<string, string> = {}) {
 	return mount(ListPageShell, {
 		props: { ...baseProps, ...props },
 		slots: {
@@ -97,6 +99,7 @@ function render(props: Partial<typeof baseProps> = {}) {
 			cards: '<ul data-testid="cards" />',
 			grid: '<div data-testid="grid" />',
 			'empty-action': '<button data-testid="create">Create</button>',
+			...extraSlots,
 		},
 		global: {
 			plugins: [createTestI18n()],
@@ -151,6 +154,23 @@ describe('ListPageShell', () => {
 		const wrapper = render({ loading: true, isEmpty: true });
 		expect(wrapper.find('[data-testid="loading"]').exists()).toBe(true);
 		expect(wrapper.find('h2').exists()).toBe(false);
+	});
+
+	it('passes a page skeleton to the first-load state', () => {
+		const wrapper = render(
+			{ loading: true, isEmpty: true },
+			{ loading: '<div data-testid="skeleton" />' }
+		);
+		expect(wrapper.get('[data-testid="loading"]').find('[data-testid="skeleton"]').exists()).toBe(
+			true
+		);
+	});
+
+	it('renders a section tab bar above the heading', () => {
+		const wrapper = render({}, { 'before-header': '<nav data-testid="tabs" />' });
+		const html = wrapper.html();
+		expect(html.indexOf('data-testid="tabs"')).toBeGreaterThan(-1);
+		expect(html.indexOf('data-testid="tabs"')).toBeLessThan(html.indexOf('<h1'));
 	});
 
 	it('explains a missing organization before anything else', () => {

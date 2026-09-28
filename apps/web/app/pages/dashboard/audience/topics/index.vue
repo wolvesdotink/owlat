@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { formatNumber } from '~/utils/formatters';
-import type { Id } from '@owlat/api/dataModel';
 
 const { t } = useI18n();
 
@@ -22,38 +20,25 @@ const { can, showGateFor } = usePermissions();
 const canManage = computed(() => can('topics:manage'));
 const showManageGate = computed(() => showGateFor('topics:manage'));
 
-// Fetch topics with cursor-based pagination (uses session-based organization
-// context). The list sorts/filters client-side, so — like Segments — eagerly
-// pull every page: otherwise a client sort would only reorder the loaded rows
-// (a misleading partial-set sort) and an org with >50 topics would be capped.
+// The list sorts and filters client-side, so every page is pulled: otherwise a
+// client sort would only reorder the loaded rows and an org with more topics
+// than one page would be capped.
 const {
 	results: topics,
-	status: paginationStatus,
-	loadMore,
 	isLoading: topicsLoading,
 	error: topicsError,
 	refetch: refetchTopics,
-} = usePaginatedQuery(api.topics.topics.list, () => ({}), { initialNumItems: 50 });
-
-watch(
-	paginationStatus,
-	(s) => {
-		if (s === 'CanLoadMore') loadMore(50);
-	},
-	{ immediate: true }
+} = useLoadAllPages(
+	usePaginatedQuery(api.topics.topics.list, () => ({}), { initialNumItems: 50 }),
+	50
 );
 
 const isLoading = computed(() => organizationLoading.value || topicsLoading.value);
 
-// Below md the five columns have nowhere to go — the same rows render as a card
-// list instead (one tap opens the topic; edit and delete stay on the row,
-// because the topic detail page carries neither).
-const tableFits = useDataTableViewport();
-
 // Data table controls (search and sort) — shared contract with the other
 // audience list pages: identical debounced search + sort affordance.
 type SortField = 'name' | 'contactCount' | 'createdAt';
-const { searchQuery, debouncedSearch, sortBy, sortOrder, toggleSort, getSortIcon } =
+const { searchQuery, debouncedSearch, clearSearch, sortBy, sortOrder, toggleSort, getSortIcon } =
 	useDataTable<SortField>({
 		defaultSort: 'createdAt',
 		defaultOrder: 'desc',
@@ -62,22 +47,16 @@ const { searchQuery, debouncedSearch, sortBy, sortOrder, toggleSort, getSortIcon
 
 // Filtered and sorted topics (client-side over the fully-loaded set)
 const filteredTopics = computed(() => {
-	if (!topics.value) return [];
+	const query = debouncedSearch.value.toLowerCase();
+	const items = query
+		? topics.value.filter(
+				(topic) =>
+					topic.name.toLowerCase().includes(query) ||
+					(topic.description && topic.description.toLowerCase().includes(query))
+			)
+		: [...topics.value];
 
-	let items = [...topics.value];
-
-	// Filter by search
-	if (debouncedSearch.value) {
-		const query = debouncedSearch.value.toLowerCase();
-		items = items.filter(
-			(topic) =>
-				topic.name.toLowerCase().includes(query) ||
-				(topic.description && topic.description.toLowerCase().includes(query))
-		);
-	}
-
-	// Sort
-	items.sort((a, b) => {
+	return items.sort((a, b) => {
 		let comparison = 0;
 		if (sortBy.value === 'name') {
 			comparison = a.name.localeCompare(b.name);
@@ -88,189 +67,56 @@ const filteredTopics = computed(() => {
 		}
 		return sortOrder.value === 'asc' ? comparison : -comparison;
 	});
-
-	return items;
 });
 
-// ============================================
-// Create Modal State (using useFormModal)
-// ============================================
 const {
-	isOpen: isCreateModalOpen,
-	isSubmitting: isCreating,
-	form: createForm,
-	errors: createErrors,
-	open: openCreateModal,
-	close: closeCreateModal,
-	clearErrors: clearCreateErrors,
-} = useFormModal({
-	name: '',
-	description: '',
-	requireDoubleOptIn: false,
+	isTopicModalOpen,
+	isEditMode,
+	topicForm,
+	topicErrors,
+	isSaving,
+	openCreateModal,
+	openEditModal,
+	closeTopicModal,
+	handleSave,
+	isDeleteModalOpen,
+	deleteTarget,
+	isDeleting,
+	openDeleteModal,
+	closeDeleteModal,
+	handleDelete,
+} = useTopicForm();
+
+const deleteDescription = computed(() => {
+	const irreversible = t('dashboard.audience.topics.index.deleteModal.irreversible');
+	const count = deleteTarget.value?.contactCount ?? 0;
+	if (count === 0) return irreversible;
+	const kept = t('dashboard.audience.topics.index.deleteModal.contactsKept', { count }, count);
+	return `${irreversible} ${kept}`;
 });
 
-// Create topic mutation (uses session-based organization context)
-const { run: createTopic } = useBackendOperation(api.topics.topics.create, {
-	label: () => t('dashboard.audience.topics.index.operations.create'),
-});
-
-// Validate create form
-const validateCreateForm = (): boolean => {
-	clearCreateErrors();
-
-	if (!createForm.name.trim()) {
-		createErrors.name = t('dashboard.audience.topics.index.validation.nameRequired');
-		return false;
-	}
-
-	return true;
-};
-
-// Handle create submission
-const handleCreate = async () => {
-	if (!validateCreateForm()) return;
-
-	isCreating.value = true;
-
-	// Uses session-based organization context - no teamId needed
-	const result = await createTopic({
-		name: createForm.name.trim(),
-		description: createForm.description.trim() || undefined,
-		// Send the explicit boolean: `|| undefined` would coerce an unchecked box
-		// to undefined, which the backend defaults to `true` (DOI forced on).
-		requireDoubleOptIn: createForm.requireDoubleOptIn,
-	});
-	isCreating.value = false;
-	if (!result.ok) return;
-
-	showToast(t('dashboard.audience.topics.index.toasts.created', { name: createForm.name.trim() }));
-	closeCreateModal();
-};
-
-// ============================================
-// Edit Modal State (using useFormModal)
-// ============================================
-const {
-	isOpen: isEditModalOpen,
-	isSubmitting: isEditing,
-	form: editForm,
-	errors: editErrors,
-	close: closeEditModal,
-	clearErrors: clearEditErrors,
-	setForm: setEditForm,
-} = useFormModal({
-	id: '' as Id<'topics'> | '',
-	name: '',
-	description: '',
-	requireDoubleOptIn: false,
-});
-
-// Update topic mutation
-const { run: updateTopic } = useBackendOperation(api.topics.topics.update, {
-	label: () => t('dashboard.audience.topics.index.operations.update'),
-});
-
-// Open edit modal with topic data
-const openEditModal = (topic: {
-	_id: Id<'topics'>;
-	name: string;
-	description?: string;
-	requireDoubleOptIn?: boolean;
-}) => {
-	setEditForm({
-		id: topic._id,
-		name: topic.name,
-		description: topic.description || '',
-		requireDoubleOptIn: topic.requireDoubleOptIn || false,
-	});
-	clearEditErrors();
-	isEditModalOpen.value = true;
-};
-
-// Validate edit form
-const validateEditForm = (): boolean => {
-	clearEditErrors();
-
-	if (!editForm.name.trim()) {
-		editErrors.name = t('dashboard.audience.topics.index.validation.nameRequired');
-		return false;
-	}
-
-	return true;
-};
-
-// Handle edit submission
-const handleEdit = async () => {
-	if (!validateEditForm() || !editForm.id) return;
-
-	isEditing.value = true;
-
-	const result = await updateTopic({
-		topicId: editForm.id as Id<'topics'>,
-		name: editForm.name.trim(),
-		description: editForm.description.trim() || undefined,
-		requireDoubleOptIn: editForm.requireDoubleOptIn,
-	});
-	isEditing.value = false;
-	if (!result.ok) return;
-
-	showToast(t('dashboard.audience.topics.index.toasts.updated', { name: editForm.name.trim() }));
-	closeEditModal();
-};
-
-// ============================================
-// Delete Modal State
-// ============================================
-const isDeleteModalOpen = ref(false);
-const deleteTarget = ref<{
-	id: Id<'topics'>;
-	name: string;
-	contactCount: number;
-} | null>(null);
-const isDeleting = ref(false);
-
-// Delete topic mutation
-const { run: deleteTopic } = useBackendOperation(api.topics.topics.remove, {
-	label: () => t('dashboard.audience.topics.index.operations.delete'),
-});
-
-// Open delete modal
-const openDeleteModal = (topic: { _id: Id<'topics'>; name: string; contactCount: number }) => {
-	deleteTarget.value = {
-		id: topic._id,
-		name: topic.name,
-		contactCount: topic.contactCount,
-	};
-	isDeleteModalOpen.value = true;
-};
-
-// Close delete modal
-const closeDeleteModal = () => {
-	isDeleteModalOpen.value = false;
-	deleteTarget.value = null;
-};
-
-// Handle delete confirmation
-const handleDelete = async () => {
-	if (!deleteTarget.value) return;
-
-	isDeleting.value = true;
-
-	const result = await deleteTopic({ topicId: deleteTarget.value.id });
-	isDeleting.value = false;
-	if (!result.ok) return;
-	showToast(t('dashboard.audience.topics.index.toasts.deleted', { name: deleteTarget.value.name }));
-	closeDeleteModal();
-};
-
-// Toast notifications
-const { showToast } = useToast();
-
-// Navigate to view contacts in topic
-const router = useRouter();
-const viewTopicContacts = (topicId: Id<'topics'>) => {
-	router.push(`/dashboard/audience/topics/${topicId}`);
-};
+// Props shared by the table and the mobile card list; `ListPageShell` mounts one.
+const listTable = computed(() => ({
+	items: filteredTopics.value,
+	icon: 'lucide:list',
+	itemTo: (topic: { _id: string }) => `/dashboard/audience/topics/${topic._id}`,
+	countOf: (topic: { contactCount: number }) => topic.contactCount,
+	countField: 'contactCount' as const,
+	countHeader: t('dashboard.audience.topics.index.table.contacts'),
+	createdHeader: t('dashboard.audience.topics.index.table.created'),
+	totalText: t(
+		'dashboard.audience.topics.index.count',
+		{ count: filteredTopics.value.length },
+		filteredTopics.value.length
+	),
+	editLabel: t('dashboard.audience.topics.index.actions.edit'),
+	deleteLabel: t('dashboard.audience.topics.index.actions.delete'),
+	canManage: canManage.value,
+	getSortIcon,
+	onSort: toggleSort,
+	onEdit: openEditModal,
+	onDelete: openDeleteModal,
+}));
 
 // Auto-open the Create Topic modal when arriving via the audience overview
 // quick-action link (/dashboard/audience/topics?action=create).
@@ -286,425 +132,145 @@ onMounted(() => {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
-		<AudienceTabs />
-		<!-- Header -->
-		<UiPageHeader
-			:title="t('dashboard.audience.topics.index.title')"
-			:description="t('dashboard.audience.topics.index.subtitle')"
-			class="mb-6"
-		>
-			<template #actions>
-				<UiButton v-if="canManage" @click="openCreateModal">
-					<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-					{{ t('dashboard.audience.topics.index.newTopic') }}
-				</UiButton>
-				<p v-else-if="showManageGate" class="text-xs text-text-tertiary">
-					{{ t('dashboard.audience.topics.index.adminsOnly') }}
-				</p>
-			</template>
-		</UiPageHeader>
+	<ListPageShell
+		v-model:search="searchQuery"
+		:title="t('dashboard.audience.topics.index.title')"
+		:description="t('dashboard.audience.topics.index.subtitle')"
+		:loading="isLoading && topics.length === 0"
+		:error="topicsError"
+		:error-title="t('dashboard.audience.topics.index.errorTitle')"
+		:has-organization="hasActiveOrganization"
+		:is-empty="filteredTopics.length === 0"
+		:active-search="debouncedSearch"
+		:search-placeholder="t('dashboard.audience.topics.index.searchPlaceholder')"
+		:empty-no-org="{
+			icon: 'lucide:list',
+			title: t('dashboard.audience.topics.index.noWorkspace.title'),
+			description: t('dashboard.audience.topics.index.noWorkspace.description'),
+		}"
+		:empty="{
+			icon: 'lucide:list',
+			title: t('dashboard.audience.topics.index.empty.title'),
+			description: t('dashboard.audience.topics.index.empty.description'),
+		}"
+		:no-results="{
+			title: t('dashboard.audience.topics.index.noResults.title'),
+			description: t('dashboard.audience.topics.index.noResults.description', {
+				query: debouncedSearch,
+			}),
+		}"
+		:delete-copy="{
+			title: t('dashboard.audience.topics.index.deleteModal.title'),
+			confirmKeypath: 'dashboard.audience.topics.index.deleteModal.body',
+			description: deleteDescription,
+			confirmText: t('dashboard.audience.topics.index.deleteModal.title'),
+		}"
+		:delete-open="isDeleteModalOpen"
+		:delete-name="deleteTarget?.name"
+		:is-deleting="isDeleting"
+		@retry="refetchTopics"
+		@clear-search="clearSearch"
+		@confirm-delete="handleDelete"
+		@cancel-delete="closeDeleteModal"
+	>
+		<template #before-header>
+			<AudienceTabs />
+		</template>
 
-		<!-- Search Bar -->
-		<div class="mb-6 max-w-md">
-			<UiInput
-				v-model="searchQuery"
-				:placeholder="t('dashboard.audience.topics.index.searchPlaceholder')"
-			>
-				<template #iconLeft><Icon name="lucide:search" /></template>
-			</UiInput>
-		</div>
+		<template #actions>
+			<UiButton v-if="canManage" @click="openCreateModal">
+				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+				{{ t('dashboard.audience.topics.index.newTopic') }}
+			</UiButton>
+			<p v-else-if="showManageGate" class="text-xs text-text-tertiary">
+				{{ t('dashboard.audience.topics.index.adminsOnly') }}
+			</p>
+		</template>
 
-		<!-- Content -->
-		<UiCard padding="none" overflow="hidden">
-			<UiQueryBoundary
-				:loading="isLoading && topics.length === 0"
-				:error="topicsError"
-				@retry="refetchTopics"
-				:error-title="t('dashboard.audience.topics.index.errorTitle')"
-			>
-				<!-- Loading State: content-shaped skeleton on first load only -->
-				<template #loading>
-					<DashboardListSkeleton variant="table" :columns="6" :rows="6" />
-				</template>
+		<template #loading>
+			<DashboardListSkeleton variant="table" :columns="6" :rows="6" />
+		</template>
 
-				<!-- Empty State (no organization) -->
-				<UiEmptyState
-					v-if="!hasActiveOrganization"
-					icon="lucide:list"
-					:title="t('dashboard.audience.topics.index.noWorkspace.title')"
-					:description="t('dashboard.audience.topics.index.noWorkspace.description')"
-				/>
+		<template v-if="canManage" #empty-action>
+			<UiButton @click="openCreateModal">
+				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+				{{ t('dashboard.audience.topics.index.newTopic') }}
+			</UiButton>
+		</template>
 
-				<!-- Empty State (no lists) -->
-				<UiEmptyState
-					v-else-if="!isLoading && filteredTopics.length === 0 && !searchQuery"
-					icon="lucide:list"
-					:title="t('dashboard.audience.topics.index.empty.title')"
-					:description="t('dashboard.audience.topics.index.empty.description')"
-				>
-					<template v-if="canManage" #action>
-						<UiButton @click="openCreateModal">
-							<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-							{{ t('dashboard.audience.topics.index.newTopic') }}
-						</UiButton>
-					</template>
-				</UiEmptyState>
+		<template #table>
+			<AudienceListTable v-bind="listTable" layout="table" />
+		</template>
 
-				<!-- Empty State (no search results) -->
-				<UiEmptyState
-					v-else-if="!isLoading && filteredTopics.length === 0 && searchQuery"
-					icon="lucide:search"
-					:title="t('dashboard.audience.topics.index.noResults.title')"
-					:description="
-						t('dashboard.audience.topics.index.noResults.description', { query: searchQuery })
-					"
-				>
-					<template #action>
-						<UiButton variant="secondary" @click="searchQuery = ''">
-							{{ t('dashboard.audience.topics.index.clearSearch') }}
-						</UiButton>
-					</template>
-				</UiEmptyState>
+		<template #cards>
+			<AudienceListTable v-bind="listTable" layout="cards" />
+		</template>
 
-				<!-- Data Table -->
-				<div v-else>
-					<!-- Card list below md. The two are alternatives, not layers: a
-					     CSS-only switch would keep both copies of every row in the DOM. -->
-					<ul v-if="!tableFits" class="divide-y divide-border-subtle">
-						<li
-							v-for="topic in filteredTopics"
-							:key="topic._id"
-							class="flex items-center gap-1 px-4 py-2"
-						>
-							<button
-								type="button"
-								class="flex-1 min-w-0 text-left py-1"
-								@click="viewTopicContacts(topic._id)"
-							>
-								<span class="block text-text-primary font-medium truncate">{{ topic.name }}</span>
-								<span v-if="topic.description" class="block text-sm text-text-secondary truncate">
-									{{ topic.description }}
-								</span>
-								<span class="flex items-center gap-1.5 text-xs text-text-tertiary mt-0.5">
-									<Icon name="lucide:users" class="w-3.5 h-3.5" />
-									{{ formatNumber(topic.contactCount) }}
-									<span aria-hidden="true">·</span>
-									{{ formatDate(topic.createdAt) }}
-								</span>
-							</button>
-							<button
-								v-if="canManage"
-								class="w-11 h-11 flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-								:aria-label="t('dashboard.audience.topics.index.actions.edit')"
-								@click="openEditModal(topic)"
-							>
-								<Icon name="lucide:pencil" class="w-4 h-4" />
-							</button>
-							<button
-								v-if="canManage"
-								class="w-11 h-11 flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
-								:aria-label="t('dashboard.audience.topics.index.actions.delete')"
-								@click="openDeleteModal(topic)"
-							>
-								<Icon name="lucide:trash-2" class="w-4 h-4" />
-							</button>
-						</li>
-					</ul>
-
-					<div v-else class="overflow-x-auto">
-						<table class="w-full">
-							<thead>
-								<tr class="border-b border-border-subtle">
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										<button
-											type="button"
-											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
-											@click="toggleSort('name')"
-										>
-											{{ t('common.name') }}
-											<Icon
-												v-if="getSortIcon('name')"
-												:name="getSortIcon('name')!"
-												class="w-4 h-4"
-											/>
-										</button>
-									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										{{ t('common.description') }}
-									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										<button
-											type="button"
-											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
-											@click="toggleSort('contactCount')"
-										>
-											{{ t('dashboard.audience.topics.index.table.contacts') }}
-											<Icon
-												v-if="getSortIcon('contactCount')"
-												:name="getSortIcon('contactCount')!"
-												class="w-4 h-4"
-											/>
-										</button>
-									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										<button
-											type="button"
-											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
-											@click="toggleSort('createdAt')"
-										>
-											{{ t('dashboard.audience.topics.index.table.created') }}
-											<Icon
-												v-if="getSortIcon('createdAt')"
-												:name="getSortIcon('createdAt')!"
-												class="w-4 h-4"
-											/>
-										</button>
-									</th>
-									<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
-										{{ t('common.actions') }}
-									</th>
-								</tr>
-							</thead>
-							<tbody>
-								<tr
-									v-for="topic in filteredTopics"
-									:key="topic._id"
-									class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors cursor-pointer"
-									@click="viewTopicContacts(topic._id)"
-								>
-									<td class="px-6 py-4">
-										<div class="flex items-center gap-3">
-											<UiIconBox icon="lucide:list" size="sm" variant="surface" rounded="lg" />
-											<span class="text-text-primary font-medium">{{ topic.name }}</span>
-										</div>
-									</td>
-									<td class="px-6 py-4">
-										<span class="text-text-secondary">{{ topic.description || '—' }}</span>
-									</td>
-									<td class="px-6 py-4">
-										<div class="flex items-center gap-2">
-											<Icon name="lucide:users" class="w-4 h-4 text-text-tertiary" />
-											<span class="text-text-secondary tabular-nums">{{
-												formatNumber(topic.contactCount)
-											}}</span>
-										</div>
-									</td>
-									<td class="px-6 py-4">
-										<span class="text-text-tertiary text-sm whitespace-nowrap">{{
-											formatDate(topic.createdAt)
-										}}</span>
-									</td>
-									<td class="px-6 py-4">
-										<div class="flex items-center justify-end gap-1">
-											<button
-												v-if="canManage"
-												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-												:title="t('dashboard.audience.topics.index.actions.edit')"
-												:aria-label="t('dashboard.audience.topics.index.actions.edit')"
-												@click.stop="openEditModal(topic)"
-											>
-												<Icon name="lucide:pencil" class="w-4 h-4" />
-											</button>
-											<button
-												v-if="canManage"
-												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
-												:title="t('dashboard.audience.topics.index.actions.delete')"
-												:aria-label="t('dashboard.audience.topics.index.actions.delete')"
-												@click.stop="openDeleteModal(topic)"
-											>
-												<Icon name="lucide:trash-2" class="w-4 h-4" />
-											</button>
-										</div>
-									</td>
-								</tr>
-							</tbody>
-						</table>
-					</div>
-
-					<!-- Count footer -->
-					<div class="px-6 py-4 border-t border-border-subtle">
-						<p class="text-sm text-text-tertiary">
-							{{
-								t(
-									'dashboard.audience.topics.index.count',
-									{ count: filteredTopics.length },
-									filteredTopics.length
-								)
-							}}
-						</p>
-					</div>
-				</div>
-			</UiQueryBoundary>
-		</UiCard>
-
-		<!-- Create List Modal -->
+		<!-- Create / edit topic -->
 		<UiModal
-			v-model:open="isCreateModalOpen"
-			:title="t('dashboard.audience.topics.index.createModal.title')"
+			v-model:open="isTopicModalOpen"
+			:title="
+				isEditMode
+					? t('dashboard.audience.topics.index.editModal.title')
+					: t('dashboard.audience.topics.index.createModal.title')
+			"
 		>
-			<form @submit.prevent="handleCreate">
-				<!-- General Error -->
+			<form id="topic-form" @submit.prevent="handleSave">
 				<div
-					v-if="createErrors.general"
+					v-if="topicErrors.general"
 					class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20"
 				>
-					<p class="text-sm text-error">{{ createErrors.general }}</p>
+					<p class="text-sm text-error">{{ topicErrors.general }}</p>
 				</div>
 
-				<!-- Name Field -->
 				<div class="mb-4">
 					<UiInput
-						v-model="createForm.name"
+						v-model="topicForm.name"
 						:label="t('common.name')"
 						:required="true"
 						:placeholder="t('dashboard.audience.topics.index.form.namePlaceholder')"
-						:error="createErrors.name"
-						:disabled="isCreating"
+						:error="topicErrors.name"
+						:disabled="isSaving"
 					/>
 				</div>
 
-				<!-- Description Field -->
 				<div class="mb-4">
 					<UiTextarea
-						v-model="createForm.description"
+						v-model="topicForm.description"
 						:label="t('common.description')"
 						:rows="3"
 						:placeholder="t('dashboard.audience.topics.index.form.descriptionPlaceholder')"
-						:disabled="isCreating"
+						:disabled="isSaving"
 					/>
 				</div>
 
-				<!-- Double Opt-In Toggle -->
 				<div class="mb-6">
 					<UiCheckbox
-						v-model="createForm.requireDoubleOptIn"
+						v-model="topicForm.requireDoubleOptIn"
 						:label="t('dashboard.audience.topics.index.form.doiLabel')"
 						:description="t('dashboard.audience.topics.index.form.doiDescription')"
-						:disabled="isCreating"
+						:disabled="isSaving"
 					/>
 				</div>
 			</form>
 
 			<template #footer>
-				<UiButton variant="secondary" :disabled="isCreating" @click="closeCreateModal">
+				<UiButton variant="secondary" :disabled="isSaving" @click="closeTopicModal">
 					{{ t('common.cancel') }}
 				</UiButton>
-				<UiButton :loading="isCreating" @click="handleCreate">
-					{{
-						isCreating
-							? t('dashboard.audience.topics.index.creating')
-							: t('dashboard.audience.topics.index.createModal.title')
-					}}
-				</UiButton>
-			</template>
-		</UiModal>
-
-		<!-- Edit List Modal -->
-		<UiModal
-			v-model:open="isEditModalOpen"
-			:title="t('dashboard.audience.topics.index.editModal.title')"
-		>
-			<form @submit.prevent="handleEdit">
-				<!-- General Error -->
-				<div
-					v-if="editErrors.general"
-					class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20"
-				>
-					<p class="text-sm text-error">{{ editErrors.general }}</p>
-				</div>
-
-				<!-- Name Field -->
-				<div class="mb-4">
-					<UiInput
-						v-model="editForm.name"
-						:label="t('common.name')"
-						:required="true"
-						:placeholder="t('dashboard.audience.topics.index.form.namePlaceholder')"
-						:error="editErrors.name"
-						:disabled="isEditing"
-					/>
-				</div>
-
-				<!-- Description Field -->
-				<div class="mb-4">
-					<UiTextarea
-						v-model="editForm.description"
-						:label="t('common.description')"
-						:rows="3"
-						:placeholder="t('dashboard.audience.topics.index.form.descriptionPlaceholder')"
-						:disabled="isEditing"
-					/>
-				</div>
-
-				<!-- Double Opt-In Toggle -->
-				<div class="mb-6">
-					<UiCheckbox
-						v-model="editForm.requireDoubleOptIn"
-						:label="t('dashboard.audience.topics.index.form.doiLabel')"
-						:description="t('dashboard.audience.topics.index.form.doiDescription')"
-						:disabled="isEditing"
-					/>
-				</div>
-			</form>
-
-			<template #footer>
-				<UiButton variant="secondary" :disabled="isEditing" @click="closeEditModal">
-					{{ t('common.cancel') }}
-				</UiButton>
-				<UiButton :loading="isEditing" @click="handleEdit">
-					{{ isEditing ? t('common.saving') : t('dashboard.audience.topics.index.saveChanges') }}
-				</UiButton>
-			</template>
-		</UiModal>
-
-		<!-- Delete Confirmation Modal -->
-		<UiModal
-			v-model:open="isDeleteModalOpen"
-			:title="t('dashboard.audience.topics.index.deleteModal.title')"
-		>
-			<div class="flex items-start gap-4 mb-6">
-				<div class="p-3 rounded-full bg-error-subtle flex items-center justify-center">
-					<Icon name="lucide:alert-triangle" class="w-6 h-6 text-error" />
-				</div>
-				<div>
-					<p class="text-text-primary font-medium">
+				<UiButton type="submit" form="topic-form" :loading="isSaving">
+					<template v-if="isEditMode">
+						{{ isSaving ? t('common.saving') : t('dashboard.audience.topics.index.saveChanges') }}
+					</template>
+					<template v-else>
 						{{
-							t('dashboard.audience.topics.index.deleteModal.body', {
-								name: deleteTarget?.name ?? '',
-							})
+							isSaving
+								? t('dashboard.audience.topics.index.creating')
+								: t('dashboard.audience.topics.index.createModal.title')
 						}}
-					</p>
-					<p class="text-sm text-text-secondary mt-1">
-						{{ t('dashboard.audience.topics.index.deleteModal.irreversible') }}
-						<template v-if="deleteTarget && deleteTarget.contactCount > 0">
-							{{
-								t(
-									'dashboard.audience.topics.index.deleteModal.contactsKept',
-									{ count: deleteTarget.contactCount },
-									deleteTarget.contactCount
-								)
-							}}
-						</template>
-					</p>
-				</div>
-			</div>
-
-			<template #footer>
-				<UiButton variant="secondary" :disabled="isDeleting" @click="closeDeleteModal">
-					{{ t('common.cancel') }}
-				</UiButton>
-				<UiButton variant="danger" :loading="isDeleting" @click="handleDelete">
-					<template v-if="!isDeleting" #iconLeft
-						><Icon name="lucide:trash-2" class="w-4 h-4"
-					/></template>
-					{{
-						isDeleting
-							? t('dashboard.audience.topics.index.deleting')
-							: t('dashboard.audience.topics.index.deleteModal.title')
-					}}
+					</template>
 				</UiButton>
 			</template>
 		</UiModal>
-	</div>
+	</ListPageShell>
 </template>

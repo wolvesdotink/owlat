@@ -12,10 +12,14 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { ref, type Ref } from 'vue';
+import { ref, useSlots, type Ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { NuxtLinkStub } from '~/__tests__/nuxtComponents';
 import { queryResult, paginatedResult } from '~/__tests__/queryStubs';
 import { usePermissions } from '~/composables/usePermissions';
+import { useLoadAllPages } from '~/composables/useLoadAllPages';
+import ListPageShell from '~/components/list/ListPageShell.vue';
+import AudienceListTable from '~/components/audience/AudienceListTable.vue';
 
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
@@ -91,6 +95,10 @@ function stubNuxt() {
 	vi.stubGlobal('useClickOutsideSelector', vi.fn());
 	vi.stubGlobal('useDebouncedSearch', () => ({ searchQuery: ref(''), debouncedSearch: ref('') }));
 	vi.stubGlobal('useTopicsList', () => paginatedResult([]));
+	vi.stubGlobal('useLoadAllPages', useLoadAllPages);
+	// The audience lists share their row markup through `AudienceListTable`,
+	// mounted for real below, so the gate is asserted on the rendered buttons.
+	vi.stubGlobal('useSlots', useSlots);
 	// The role is the only thing these cases vary — `usePermissions` itself is
 	// the production composable, reading the shared permission map.
 	vi.stubGlobal('useOrganizationContext', () => ({
@@ -123,6 +131,15 @@ const STUBS = {
 	UiDropdownMenuItem: true,
 	UiDropdownDivider: true,
 	ConditionsConditionEditor: true,
+	// The list frame and the audience rows render for real: the write actions
+	// live inside them.
+	ListPageShell,
+	AudienceListTable,
+	// Row names are links; render them so the list's content can be asserted.
+	NuxtLink: NuxtLinkStub,
+	ListSortMenu: true,
+	UiSegmentedControl: true,
+	UiConfirmationDialog: true,
 };
 
 // `stubNuxt` runs at mount time, so a per-page stub set in a `beforeEach` would
@@ -158,10 +175,24 @@ describe('segments list', () => {
 			conditions: ref([]),
 		}));
 		vi.stubGlobal('useSegmentForm', () => ({
-			form: ref({ name: '', description: '', conditions: [] }),
-			isSubmitting: ref(false),
-			reset: vi.fn(),
-			submit: vi.fn(),
+			isSegmentModalOpen: ref(false),
+			isEditMode: ref(false),
+			segmentForm: { name: '', description: '', filters: { logic: 'AND', conditions: [] } },
+			segmentErrors: { name: '', conditions: '', general: '' },
+			isSaving: ref(false),
+			isSegmentFormDirty: ref(false),
+			matchingCount: ref(null),
+			countLoading: ref(false),
+			openCreateModal: vi.fn(),
+			openEditModal: vi.fn(),
+			closeSegmentModal: vi.fn(),
+			handleSave: vi.fn(),
+			isDeleteModalOpen: ref(false),
+			deleteTarget: ref(null),
+			isDeleting: ref(false),
+			openDeleteModal: vi.fn(),
+			closeDeleteModal: vi.fn(),
+			handleDelete: vi.fn(),
 		}));
 		vi.stubGlobal('useFormModal', () => ({
 			isOpen: ref(false),
@@ -191,9 +222,12 @@ describe('segments list', () => {
 		expect(wrapper.find('button[title="Edit segment"]').exists()).toBe(false);
 		expect(wrapper.find('button[title="Delete segment"]').exists()).toBe(false);
 		expect(wrapper.text()).toContain('Only owners and admins can create or edit segments.');
-		// The list itself is member-readable and stays (the name renders inside a
-		// NuxtLink, which `shallow` stubs, so the row is what we can assert on).
+		// The list itself is member-readable and stays, its name a link to the
+		// segment.
 		expect(wrapper.findAll('tbody tr')).toHaveLength(1);
+		expect(wrapper.get('a[href="/dashboard/audience/segments/sg_1"]').text()).toContain(
+			'Engaged, last 90 days'
+		);
 		wrapper.unmount();
 	});
 
@@ -209,6 +243,23 @@ describe('segments list', () => {
 describe('topics list', () => {
 	beforeEach(() => {
 		vi.stubGlobal('usePaginatedQuery', () => paginatedResult(TOPICS));
+		vi.stubGlobal('useTopicForm', () => ({
+			isTopicModalOpen: ref(false),
+			isEditMode: ref(false),
+			topicForm: { id: '', name: '', description: '', requireDoubleOptIn: false },
+			topicErrors: { name: '', general: '' },
+			isSaving: ref(false),
+			openCreateModal: vi.fn(),
+			openEditModal: vi.fn(),
+			closeTopicModal: vi.fn(),
+			handleSave: vi.fn(),
+			isDeleteModalOpen: ref(false),
+			deleteTarget: ref(null),
+			isDeleting: ref(false),
+			openDeleteModal: vi.fn(),
+			closeDeleteModal: vi.fn(),
+			handleDelete: vi.fn(),
+		}));
 	});
 
 	it('offers edit and delete to an admin', async () => {

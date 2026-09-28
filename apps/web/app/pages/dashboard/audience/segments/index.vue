@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { formatNumber } from '~/utils/formatters';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 import type { Condition } from '~/composables/conditions';
 
@@ -18,33 +17,22 @@ const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizatio
 const { can, showGateFor } = usePermissions();
 const canManage = computed(() => can('segments:manage'));
 const showManageGate = computed(() => showGateFor('segments:manage'));
+// The list filters/sorts client-side with no pager, so an org with >100
+// segments was silently capped at the first 100. Pull every page.
 const {
 	results: segments,
 	isLoading: segmentsLoading,
-	status: segmentsStatus,
-	loadMore: loadMoreSegments,
 	error: segmentsError,
 	refetch: refetchSegments,
-} = usePaginatedQuery(api.segments.list, () => ({}), { initialNumItems: 100 });
-// The list filters/sorts client-side with no pager, so an org with >100
-// segments was silently capped at the first 100. Eagerly pull every page.
-watch(
-	segmentsStatus,
-	(s) => {
-		if (s === 'CanLoadMore') loadMoreSegments(100);
-	},
-	{ immediate: true }
+} = useLoadAllPages(
+	usePaginatedQuery(api.segments.list, () => ({}), { initialNumItems: 100 }),
+	100
 );
 const { results: topics } = useTopicsList();
 const { data: contactProperties } = useOrganizationQuery(
 	api.contacts.properties.listByOrganization
 );
 const isLoading = computed(() => organizationLoading.value || segmentsLoading.value);
-
-// Below md the five columns have nowhere to go — the same rows render as a card
-// list instead (one tap opens the segment; edit and delete stay on the row,
-// because the segment detail page carries neither).
-const tableFits = useDataTableViewport();
 
 // ─── Composables ───────────────────────────────────────────────────────
 const {
@@ -78,7 +66,7 @@ const {
 // Shared contract with the other audience list pages: identical debounced
 // search + sort affordance, sortable columns declared in one place.
 type SortField = 'name' | 'cachedCount' | 'createdAt';
-const { searchQuery, debouncedSearch, sortBy, sortOrder, toggleSort, getSortIcon } =
+const { searchQuery, debouncedSearch, clearSearch, sortBy, sortOrder, toggleSort, getSortIcon } =
 	useDataTable<SortField>({
 		defaultSort: 'createdAt',
 		defaultOrder: 'desc',
@@ -86,20 +74,16 @@ const { searchQuery, debouncedSearch, sortBy, sortOrder, toggleSort, getSortIcon
 	});
 
 const filteredSegments = computed(() => {
-	if (!segments.value) return [];
+	const query = debouncedSearch.value.toLowerCase();
+	const list = query
+		? segments.value.filter(
+				(segment) =>
+					segment.name.toLowerCase().includes(query) ||
+					(segment.description && segment.description.toLowerCase().includes(query))
+			)
+		: [...segments.value];
 
-	let list = [...segments.value];
-
-	if (debouncedSearch.value) {
-		const query = debouncedSearch.value.toLowerCase();
-		list = list.filter(
-			(segment) =>
-				segment.name.toLowerCase().includes(query) ||
-				(segment.description && segment.description.toLowerCase().includes(query))
-		);
-	}
-
-	list.sort((a, b) => {
+	return list.sort((a, b) => {
 		let comparison = 0;
 		if (sortBy.value === 'name') {
 			comparison = a.name.localeCompare(b.name);
@@ -110,9 +94,37 @@ const filteredSegments = computed(() => {
 		}
 		return sortOrder.value === 'asc' ? comparison : -comparison;
 	});
-
-	return list;
 });
+
+type SegmentRow = (typeof segments.value)[number];
+const segmentPath = (segment: { _id: string }) => `/dashboard/audience/segments/${segment._id}`;
+const filterSummaryOf = (segment: SegmentRow) => describeFilters(segment.filters);
+
+// Props shared by the table and the mobile card list; `ListPageShell` mounts
+// one. The card's second line falls back to the filter summary, because the
+// card has no filter column.
+const listTable = computed(() => ({
+	items: filteredSegments.value,
+	icon: 'lucide:filter',
+	itemTo: segmentPath,
+	countOf: (segment: { cachedCount?: number | null }) => segment.cachedCount,
+	countField: 'cachedCount' as const,
+	countHeader: t('dashboard.audience.segments.index.table.contacts'),
+	createdHeader: t('dashboard.audience.segments.index.table.created'),
+	totalText: t(
+		'dashboard.audience.segments.index.count',
+		{ count: filteredSegments.value.length },
+		filteredSegments.value.length
+	),
+	editLabel: t('dashboard.audience.segments.index.actions.edit'),
+	deleteLabel: t('dashboard.audience.segments.index.actions.delete'),
+	canManage: canManage.value,
+	getSortIcon,
+	subtitleOf: (segment: SegmentRow) => segment.description || filterSummaryOf(segment),
+	onSort: toggleSort,
+	onEdit: openEditModal,
+	onDelete: openDeleteModal,
+}));
 
 // ─── Condition Helpers (bind filter operations to the form) ────────────
 const addCondition = () => addFilterCondition(segmentForm.filters);
@@ -157,276 +169,98 @@ onMounted(() => {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
-		<AudienceTabs />
-		<!-- Header -->
-		<UiPageHeader
-			:title="t('dashboard.audience.segments.index.title')"
-			:description="t('dashboard.audience.segments.index.subtitle')"
-			class="mb-6"
-		>
-			<template #actions>
-				<UiButton v-if="canManage" @click="openCreateModal">
-					<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-					{{ t('dashboard.audience.segments.index.newSegment') }}
-				</UiButton>
-				<p v-else-if="showManageGate" class="text-xs text-text-tertiary">
-					{{ t('dashboard.audience.segments.index.adminsOnly') }}
-				</p>
-			</template>
-		</UiPageHeader>
+	<ListPageShell
+		v-model:search="searchQuery"
+		:title="t('dashboard.audience.segments.index.title')"
+		:description="t('dashboard.audience.segments.index.subtitle')"
+		:loading="isLoading && segments.length === 0"
+		:error="segmentsError"
+		:error-title="t('dashboard.audience.segments.index.errorTitle')"
+		:has-organization="hasActiveOrganization"
+		:is-empty="filteredSegments.length === 0"
+		:active-search="debouncedSearch"
+		:search-placeholder="t('dashboard.audience.segments.index.searchPlaceholder')"
+		:empty-no-org="{
+			icon: 'lucide:filter',
+			title: t('dashboard.audience.segments.index.noWorkspace.title'),
+			description: t('dashboard.audience.segments.index.noWorkspace.description'),
+		}"
+		:empty="{
+			icon: 'lucide:filter',
+			title: t('dashboard.audience.segments.index.empty.title'),
+			description: t('dashboard.audience.segments.index.empty.description'),
+		}"
+		:no-results="{
+			title: t('dashboard.audience.segments.index.noResults.title'),
+			description: t('dashboard.audience.segments.index.noResults.description', {
+				query: debouncedSearch,
+			}),
+		}"
+		:delete-copy="{
+			title: t('dashboard.audience.segments.index.deleteDialog.title'),
+			confirmKeypath: 'dashboard.audience.segments.index.deleteDialog.body',
+			description: t('dashboard.audience.segments.index.deleteDialog.note'),
+			confirmText: t('dashboard.audience.segments.index.deleteDialog.title'),
+		}"
+		:delete-open="isDeleteModalOpen"
+		:delete-name="deleteTarget?.name"
+		:is-deleting="isDeleting"
+		@retry="refetchSegments"
+		@clear-search="clearSearch"
+		@confirm-delete="handleDelete"
+		@cancel-delete="closeDeleteModal"
+	>
+		<template #before-header>
+			<AudienceTabs />
+		</template>
 
-		<!-- Search Bar -->
-		<div class="mb-6 max-w-md">
-			<UiInput
-				v-model="searchQuery"
-				:placeholder="t('dashboard.audience.segments.index.searchPlaceholder')"
-			>
-				<template #iconLeft><Icon name="lucide:search" /></template>
-			</UiInput>
-		</div>
+		<template #actions>
+			<UiButton v-if="canManage" @click="openCreateModal">
+				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+				{{ t('dashboard.audience.segments.index.newSegment') }}
+			</UiButton>
+			<p v-else-if="showManageGate" class="text-xs text-text-tertiary">
+				{{ t('dashboard.audience.segments.index.adminsOnly') }}
+			</p>
+		</template>
 
-		<!-- Content -->
-		<UiCard padding="none" overflow="hidden">
-			<UiQueryBoundary
-				:loading="isLoading && segments.length === 0"
-				:error="segmentsError"
-				@retry="refetchSegments"
-				:error-title="t('dashboard.audience.segments.index.errorTitle')"
-			>
-				<!-- Loading State: content-shaped skeleton on first load only -->
-				<template #loading>
-					<DashboardListSkeleton variant="table" :columns="6" :rows="6" />
+		<template #loading>
+			<DashboardListSkeleton variant="table" :columns="6" :rows="6" />
+		</template>
+
+		<template v-if="canManage" #empty-action>
+			<UiButton @click="openCreateModal">
+				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+				{{ t('dashboard.audience.segments.index.newSegment') }}
+			</UiButton>
+		</template>
+
+		<template #table>
+			<AudienceListTable v-bind="listTable" layout="table">
+				<template #extra-header>
+					{{ t('dashboard.audience.segments.index.table.filters') }}
 				</template>
+				<template #extra-cell="{ item }">
+					<span class="text-text-secondary text-sm whitespace-nowrap">{{
+						filterSummaryOf(item as SegmentRow)
+					}}</span>
+				</template>
+				<template #actions="{ item }">
+					<NuxtLink
+						:to="segmentPath(item)"
+						class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+						:title="t('dashboard.audience.segments.index.actions.viewContacts')"
+						:aria-label="t('dashboard.audience.segments.index.actions.viewContacts')"
+					>
+						<Icon name="lucide:users" class="w-4 h-4" />
+					</NuxtLink>
+				</template>
+			</AudienceListTable>
+		</template>
 
-				<!-- Empty State (no organization) -->
-				<UiEmptyState
-					v-if="!hasActiveOrganization"
-					icon="lucide:filter"
-					:title="t('dashboard.audience.segments.index.noWorkspace.title')"
-					:description="t('dashboard.audience.segments.index.noWorkspace.description')"
-				/>
-
-				<!-- Empty State (no segments) -->
-				<UiEmptyState
-					v-else-if="!isLoading && filteredSegments.length === 0 && !searchQuery"
-					icon="lucide:filter"
-					:title="t('dashboard.audience.segments.index.empty.title')"
-					:description="t('dashboard.audience.segments.index.empty.description')"
-				>
-					<template v-if="canManage" #action>
-						<UiButton @click="openCreateModal">
-							<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-							{{ t('dashboard.audience.segments.index.newSegment') }}
-						</UiButton>
-					</template>
-				</UiEmptyState>
-
-				<!-- Empty State (no search results) -->
-				<UiEmptyState
-					v-else-if="!isLoading && filteredSegments.length === 0 && searchQuery"
-					icon="lucide:search"
-					:title="t('dashboard.audience.segments.index.noResults.title')"
-					:description="
-						t('dashboard.audience.segments.index.noResults.description', { query: searchQuery })
-					"
-				>
-					<template #action>
-						<UiButton variant="secondary" @click="searchQuery = ''">{{
-							t('dashboard.audience.segments.index.clearSearch')
-						}}</UiButton>
-					</template>
-				</UiEmptyState>
-
-				<!-- Data Table -->
-				<div v-else>
-					<!-- Card list below md. The two are alternatives, not layers: a
-					     CSS-only switch would keep both copies of every row in the DOM. -->
-					<ul v-if="!tableFits" class="divide-y divide-border-subtle">
-						<li
-							v-for="segment in filteredSegments"
-							:key="segment._id"
-							class="flex items-center gap-1 px-4 py-2"
-						>
-							<NuxtLink
-								:to="`/dashboard/audience/segments/${segment._id}`"
-								class="flex-1 min-w-0 py-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-							>
-								<span class="block text-text-primary font-medium truncate">{{ segment.name }}</span>
-								<span class="block text-sm text-text-secondary truncate">
-									{{ segment.description || describeFilters(segment.filters) }}
-								</span>
-								<span class="flex items-center gap-1.5 text-xs text-text-tertiary mt-0.5">
-									<Icon name="lucide:users" class="w-3.5 h-3.5" />
-									{{ segment.cachedCount != null ? formatNumber(segment.cachedCount) : '—' }}
-									<span aria-hidden="true">·</span>
-									{{ formatDate(segment.createdAt) }}
-								</span>
-							</NuxtLink>
-							<button
-								v-if="canManage"
-								class="w-11 h-11 flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors"
-								:aria-label="t('dashboard.audience.segments.index.actions.edit')"
-								@click="openEditModal(segment)"
-							>
-								<Icon name="lucide:pencil" class="w-4 h-4" />
-							</button>
-							<button
-								v-if="canManage"
-								class="w-11 h-11 flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
-								:aria-label="t('dashboard.audience.segments.index.actions.delete')"
-								@click="openDeleteModal(segment)"
-							>
-								<Icon name="lucide:trash-2" class="w-4 h-4" />
-							</button>
-						</li>
-					</ul>
-
-					<div v-else class="overflow-x-auto">
-						<table class="w-full">
-							<thead>
-								<tr class="border-b border-border-subtle">
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										<button
-											type="button"
-											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
-											@click="toggleSort('name')"
-										>
-											{{ t('common.name') }}
-											<Icon
-												v-if="getSortIcon('name')"
-												:name="getSortIcon('name')!"
-												class="w-4 h-4"
-											/>
-										</button>
-									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										{{ t('dashboard.audience.segments.index.table.filters') }}
-									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										<button
-											type="button"
-											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
-											@click="toggleSort('cachedCount')"
-										>
-											{{ t('dashboard.audience.segments.index.table.contacts') }}
-											<Icon
-												v-if="getSortIcon('cachedCount')"
-												:name="getSortIcon('cachedCount')!"
-												class="w-4 h-4"
-											/>
-										</button>
-									</th>
-									<th class="text-left px-6 py-4 text-sm font-medium text-text-secondary">
-										<button
-											type="button"
-											class="flex items-center gap-1 py-4 -my-4 px-1 -mx-1 rounded hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
-											@click="toggleSort('createdAt')"
-										>
-											{{ t('dashboard.audience.segments.index.table.created') }}
-											<Icon
-												v-if="getSortIcon('createdAt')"
-												:name="getSortIcon('createdAt')!"
-												class="w-4 h-4"
-											/>
-										</button>
-									</th>
-									<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
-										{{ t('common.actions') }}
-									</th>
-								</tr>
-							</thead>
-							<tbody>
-								<tr
-									v-for="segment in filteredSegments"
-									:key="segment._id"
-									class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors"
-								>
-									<td class="px-6 py-4">
-										<NuxtLink
-											:to="`/dashboard/audience/segments/${segment._id}`"
-											class="flex items-center gap-3 group"
-										>
-											<UiIconBox icon="lucide:filter" size="sm" variant="surface" rounded="lg" />
-											<div>
-												<span
-													class="text-text-primary font-medium group-hover:text-brand transition-colors"
-													>{{ segment.name }}</span
-												>
-												<p v-if="segment.description" class="text-sm text-text-tertiary">
-													{{ segment.description }}
-												</p>
-											</div>
-										</NuxtLink>
-									</td>
-									<td class="px-6 py-4">
-										<span class="text-text-secondary text-sm whitespace-nowrap">{{
-											describeFilters(segment.filters)
-										}}</span>
-									</td>
-									<td class="px-6 py-4">
-										<div class="flex items-center gap-2">
-											<Icon name="lucide:users" class="w-4 h-4 text-text-tertiary" />
-											<span class="text-text-secondary tabular-nums">{{
-												segment.cachedCount != null ? formatNumber(segment.cachedCount) : '—'
-											}}</span>
-										</div>
-									</td>
-									<td class="px-6 py-4">
-										<span class="text-text-tertiary text-sm whitespace-nowrap">{{
-											formatDate(segment.createdAt)
-										}}</span>
-									</td>
-									<td class="px-6 py-4">
-										<div class="flex items-center justify-end gap-1">
-											<NuxtLink
-												:to="`/dashboard/audience/segments/${segment._id}`"
-												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-												:title="t('dashboard.audience.segments.index.actions.viewContacts')"
-												:aria-label="t('dashboard.audience.segments.index.actions.viewContacts')"
-											>
-												<Icon name="lucide:users" class="w-4 h-4" />
-											</NuxtLink>
-											<button
-												v-if="canManage"
-												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-												:title="t('dashboard.audience.segments.index.actions.edit')"
-												:aria-label="t('dashboard.audience.segments.index.actions.edit')"
-												@click="openEditModal(segment)"
-											>
-												<Icon name="lucide:pencil" class="w-4 h-4" />
-											</button>
-											<button
-												v-if="canManage"
-												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-												:title="t('dashboard.audience.segments.index.actions.delete')"
-												:aria-label="t('dashboard.audience.segments.index.actions.delete')"
-												@click="openDeleteModal(segment)"
-											>
-												<Icon name="lucide:trash-2" class="w-4 h-4" />
-											</button>
-										</div>
-									</td>
-								</tr>
-							</tbody>
-						</table>
-					</div>
-
-					<!-- Segment count footer -->
-					<div class="px-6 py-4 border-t border-border-subtle">
-						<p class="text-sm text-text-tertiary">
-							{{
-								t(
-									'dashboard.audience.segments.index.count',
-									{ count: filteredSegments.length },
-									filteredSegments.length
-								)
-							}}
-						</p>
-					</div>
-				</div>
-			</UiQueryBoundary>
-		</UiCard>
+		<template #cards>
+			<AudienceListTable v-bind="listTable" layout="cards" />
+		</template>
 
 		<!-- Create/Edit Segment Modal -->
 		<UiModal
@@ -638,45 +472,6 @@ onMounted(() => {
 			</template>
 		</UiModal>
 
-		<!-- Delete Confirmation Modal -->
-		<UiModal
-			v-model:open="isDeleteModalOpen"
-			:title="t('dashboard.audience.segments.index.deleteDialog.title')"
-		>
-			<div class="flex items-start gap-4">
-				<div class="p-3 rounded-full bg-error-subtle flex items-center justify-center">
-					<Icon name="lucide:alert-triangle" class="w-6 h-6 text-error" />
-				</div>
-				<div>
-					<p class="text-text-primary font-medium">
-						{{
-							t('dashboard.audience.segments.index.deleteDialog.body', {
-								name: deleteTarget?.name ?? '',
-							})
-						}}
-					</p>
-					<p class="text-sm text-text-secondary mt-1">
-						{{ t('dashboard.audience.segments.index.deleteDialog.note') }}
-					</p>
-				</div>
-			</div>
-			<template #footer>
-				<UiButton variant="secondary" :disabled="isDeleting" @click="closeDeleteModal">
-					{{ t('common.cancel') }}
-				</UiButton>
-				<UiButton variant="danger" :loading="isDeleting" @click="handleDelete">
-					<template v-if="!isDeleting" #iconLeft
-						><Icon name="lucide:trash-2" class="w-4 h-4"
-					/></template>
-					{{
-						isDeleting
-							? t('dashboard.audience.segments.index.deleting')
-							: t('dashboard.audience.segments.index.deleteDialog.title')
-					}}
-				</UiButton>
-			</template>
-		</UiModal>
-
 		<!-- Unsaved Changes Dialog (builder dismissed with pending edits) -->
 		<UnsavedChangesDialog
 			:show="showSegmentDiscardDialog"
@@ -684,13 +479,5 @@ onMounted(() => {
 			@discard="discardSegmentEdits"
 			@save="saveSegmentEdits"
 		/>
-	</div>
+	</ListPageShell>
 </template>
-
-<style scoped>
-/* Button size variant */
-.btn-sm {
-	padding: 0.375rem 0.75rem;
-	font-size: 0.75rem;
-}
-</style>

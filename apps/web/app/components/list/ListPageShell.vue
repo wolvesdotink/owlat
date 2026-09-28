@@ -8,6 +8,8 @@
  * `#grid`, `#table` and `#cards` slots. Before this, each list page assembled
  * the same frame by copying its nearest neighbour, and every fix — the mobile
  * card list, the listbox semantics, the shortcuts — landed on one copy only.
+ * `#before-header` takes a section's tab bar and `#loading` a content-shaped
+ * skeleton in place of the default spinner.
  *
  * Below `md` the table's columns cannot fit, so `#cards` renders instead of
  * `#table`. Exactly one of the two is mounted (`useDataTableViewport`): the app
@@ -40,7 +42,8 @@ const props = withDefaults(
 		loading: boolean;
 		error?: Error | null;
 		errorTitle: string;
-		loadingLabel: string;
+		/** Label under the default spinner; unused when the page passes `#loading`. */
+		loadingLabel?: string;
 		hasOrganization: boolean;
 		/** The query resolved to no rows. */
 		isEmpty: boolean;
@@ -68,6 +71,7 @@ const props = withDefaults(
 	{
 		description: undefined,
 		error: null,
+		loadingLabel: undefined,
 		sortOptions: undefined,
 		sort: undefined,
 		sortLabel: undefined,
@@ -106,6 +110,7 @@ const onDeleteOpenChange = (open: boolean) => {
 
 <template>
 	<div class="p-6 lg:p-8">
+		<slot name="before-header" />
 		<UiPageHeader :title="title" :description="description" class="mb-6">
 			<template v-if="$slots['actions']" #actions>
 				<slot name="actions" />
@@ -168,6 +173,10 @@ const onDeleteOpenChange = (open: boolean) => {
 			:loading-label="loadingLabel"
 			@retry="emit('retry')"
 		>
+			<template v-if="$slots['loading']" #loading>
+				<slot name="loading" />
+			</template>
+
 			<UiEmptyState
 				v-if="!hasOrganization"
 				:icon="emptyNoOrg.icon"
