@@ -6,6 +6,7 @@ vi.mock('../checklistProviderDetection', () => ({
 
 import { observeDeploymentCheck } from '../checklistDeploymentValidators';
 import { parseHealth } from '../mtaHealth';
+import { port25AwaitsSourceAddress } from '../checklistSmtpProbe';
 import type { ChecklistVerificationContext } from '../checklistValidatorTypes';
 
 type ProbeIp = {
@@ -85,6 +86,32 @@ describe('deployment.source_ip', () => {
 		).resolves.toMatchObject({ status: 'fail' });
 	});
 
+	it('reads the collapse from the bindings when the probe carries no reason code for it', async () => {
+		// An MX lookup that fails before the MTA groups the addresses reports them
+		// as plain connection errors; two NATed IPv4 addresses still share one egress.
+		const observation = await observeDeploymentCheck(
+			'deployment.source_ip',
+			context([
+				{ ip: '203.0.113.10', status: 'failed', reason: 'connection_error', sourceBinding: 'nat' },
+				{ ip: '203.0.113.11', status: 'failed', reason: 'connection_error', sourceBinding: 'nat' },
+				{
+					ip: '198.51.100.7',
+					status: 'failed',
+					reason: 'connection_error',
+					sourceBinding: 'bound',
+				},
+			]),
+			false
+		);
+		expect(observation.status).toBe('fail');
+		expect(observation.diagnostic).toContain('203.0.113.10, 203.0.113.11 share one NAT egress');
+		expect(observation.observedValues).toEqual([
+			'203.0.113.10=shared-nat',
+			'203.0.113.11=shared-nat',
+			'198.51.100.7=bound',
+		]);
+	});
+
 	it('passes a single NATed IP but says the translated source cannot be confirmed', async () => {
 		const observation = await observeDeploymentCheck(
 			'deployment.source_ip',
@@ -149,6 +176,14 @@ describe('deployment.port25 with shared NAT egress', () => {
 			status: 'fail',
 			diagnostic: 'The live port-25 probe failed for at least one source address.',
 		});
+	});
+});
+
+describe('port25AwaitsSourceAddress', () => {
+	it('is true only when the port-25 evidence names an unprobed address', () => {
+		expect(port25AwaitsSourceAddress(['203.0.113.10=not-probed', '203.0.113.12=ok'])).toBe(true);
+		expect(port25AwaitsSourceAddress(['203.0.113.10=failed'])).toBe(false);
+		expect(port25AwaitsSourceAddress([])).toBe(false);
 	});
 });
 

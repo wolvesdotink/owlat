@@ -29,6 +29,7 @@ import {
 } from './checklistCenterView';
 import { deliverabilityCheckIdValidator, deliverabilityTargetKey } from './checklistEvidence';
 import { guidanceForCheck } from './checklistGuidance';
+import { PORT25_AWAITS_SOURCE_IP_NEXT_STEP, port25AwaitsSourceAddress } from './checklistSmtpProbe';
 import type { Doc, Id } from '../_generated/dataModel';
 import { deploymentSetupValuesForItem, domainSetupValuesForItem } from './checklistRecords';
 import { checklistTraits, DEPLOYMENT_CHECK_IDS, DOMAIN_CHECK_IDS } from './checklistTraits';
@@ -220,15 +221,24 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 				definition.severity === 'blocking' ? 'fail' : 'warn'
 			);
 			const verification = stateByItem.get(scopedItemKey(targetKey, definition.id));
+			const awaitsSourceIp =
+				definition.id === 'deployment.port25' &&
+				materialized.status !== 'pass' &&
+				port25AwaitsSourceAddress(materialized.observed);
 			items.push({
 				...materialized,
+				...(awaitsSourceIp
+					? { dependencies: [...materialized.dependencies, 'deployment.source_ip' as const] }
+					: {}),
 				scope: domain
 					? { kind: 'domain', domainId: domain._id, domain: domain.domain }
 					: { kind: 'deployment' },
 				nextStep:
 					materialized.status === 'pending-dns'
 						? 'Owlat will check again automatically; you can also verify now.'
-						: DELIVERABILITY_NEXT_ACTIONS[definition.id],
+						: awaitsSourceIp
+							? PORT25_AWAITS_SOURCE_IP_NEXT_STEP
+							: DELIVERABILITY_NEXT_ACTIONS[definition.id],
 				setupValues: domain
 					? domainSetupValuesForItem(definition.id, domain, trackingDomains, settings)
 					: deploymentSetupValuesForItem(definition.id, warming),
