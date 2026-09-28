@@ -46,7 +46,7 @@ describe('sendEngagement predicates', () => {
 		// A row whose status says `delivered` but that carries no delivery
 		// evidence: the old status-based heatmap rule counted it, the
 		// timestamp rule does not.
-		const row = { status: 'delivered' as const };
+		const row: SendEngagementFields & { status: 'delivered' } = { status: 'delivered' };
 		expect(hasReachedDelivered(row)).toBe(false);
 		expect(hasOpened(row)).toBe(false);
 		expect(hasClicked(row)).toBe(false);

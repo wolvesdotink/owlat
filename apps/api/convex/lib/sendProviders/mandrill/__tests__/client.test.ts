@@ -16,6 +16,16 @@ const OPTIONS = {
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
+/** The error a call rejects with; a call that resolves fails the test. */
+function rejectionOf(call: Promise<unknown>): Promise<Error> {
+	return call.then(
+		() => {
+			throw new Error('expected postMandrill to reject');
+		},
+		(e: unknown) => e as Error
+	);
+}
+
 beforeEach(() => {
 	fetchMock = vi.fn();
 	vi.stubGlobal('fetch', fetchMock);
@@ -105,9 +115,7 @@ describe('postMandrill thrown errors', () => {
 				new Response(`not json ${init.body as string}`, { status: 200 })
 		);
 
-		const error = await postMandrill('/messages/send-raw', { key: KEY }, OPTIONS).catch(
-			(e: unknown) => e as Error
-		);
+		const error = await rejectionOf(postMandrill('/messages/send-raw', { key: KEY }, OPTIONS));
 
 		expect(error).toBeInstanceOf(Error);
 		expect(error.message).not.toContain(KEY);
@@ -121,9 +129,7 @@ describe('postMandrill thrown errors', () => {
 			return new Promise(() => {});
 		});
 
-		const pending = postMandrill('/messages/send-raw', { key: KEY }, OPTIONS).catch(
-			(e: unknown) => e as Error
-		);
+		const pending = rejectionOf(postMandrill('/messages/send-raw', { key: KEY }, OPTIONS));
 		await vi.advanceTimersByTimeAsync(OPTIONS.timeoutMs);
 		const error = await pending;
 
@@ -140,9 +146,7 @@ describe('postMandrill thrown errors', () => {
 		timeout.name = 'TimeoutError';
 		fetchMock.mockRejectedValueOnce(timeout);
 
-		const error = await postMandrill('/messages/send-raw', { key: KEY }, OPTIONS).catch(
-			(e: unknown) => e as Error
-		);
+		const error = await rejectionOf(postMandrill('/messages/send-raw', { key: KEY }, OPTIONS));
 
 		expect(error.name).toBe('TimeoutError');
 	});
