@@ -35,7 +35,7 @@ import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { ATTACHMENT_SHARE_PATH, isAttachmentShareToken } from '@owlat/shared/attachmentShares';
-import { getClientIp, rateLimitedResponse } from '../publicRateLimit';
+import { getClientIp, rateLimitedResponse } from '../lib/publicRateLimit';
 import { logError } from '../lib/runtimeLog';
 import { errorResponse } from '../lib/httpResponse';
 
@@ -86,7 +86,7 @@ export const serveAttachmentShare = httpAction(async (ctx, request) => {
 	// The token space is 192 bits, so this is not what stops guessing — it stops
 	// a live token from being turned into a bandwidth tap, and it bounds the
 	// damage of a leaked link before its owner notices and revokes.
-	const limit = await ctx.runMutation(internal.publicRateLimit.checkPublicRateLimit, {
+	const limit = await ctx.runMutation(internal.lib.publicRateLimit.checkPublicRateLimit, {
 		limitType: 'subscriptionManagement',
 		key: `${getClientIp(request)}:${token}`,
 	});

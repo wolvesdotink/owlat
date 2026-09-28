@@ -6,7 +6,7 @@ import type { StoredAudience } from './audience';
 import { logError } from '../lib/runtimeLog';
 import { nextDailySendCount } from '../lib/sendingLimits';
 import { requireOrgMember } from '../lib/sessionOrganization';
-import { rateLimiter } from '../rateLimiter';
+import { rateLimiter } from '../lib/rateLimiter';
 
 /**
  * The set of email addresses a test/preview send may target: the org's own

@@ -1,7 +1,7 @@
 import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { getClientIp } from '../publicRateLimit';
+import { getClientIp } from '../lib/publicRateLimit';
 import { isValidConvexId, isSafeRedirectUrl } from '../lib/inputGuards';
 import { getOptional } from '../lib/env';
 import { logError } from '../lib/runtimeLog';
@@ -120,7 +120,7 @@ export const trackOpen = httpAction(async (ctx, request) => {
 
 	// Rate limit check (graceful - always return pixel, but skip recording if rate limited)
 	const ip = getClientIp(request);
-	const { ok } = await ctx.runMutation(internal.publicRateLimit.checkPublicRateLimit, {
+	const { ok } = await ctx.runMutation(internal.lib.publicRateLimit.checkPublicRateLimit, {
 		limitType: 'emailTracking',
 		key: ip,
 	});
@@ -238,7 +238,7 @@ export const trackClick = httpAction(async (ctx, request) => {
 
 	// Rate limit check (graceful - always redirect, but skip recording if rate limited)
 	const ip = getClientIp(request);
-	const { ok } = await ctx.runMutation(internal.publicRateLimit.checkPublicRateLimit, {
+	const { ok } = await ctx.runMutation(internal.lib.publicRateLimit.checkPublicRateLimit, {
 		limitType: 'emailTracking',
 		key: ip,
 	});

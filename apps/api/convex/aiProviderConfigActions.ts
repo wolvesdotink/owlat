@@ -37,7 +37,7 @@ import { decisionEnvApiKey, decisionKindNeedsKey } from './lib/decisionProvider'
 import { listDecisionModels, testDecisionPlane } from './lib/decision/settingsActions';
 import { fetchGuarded } from './lib/ssrfGuard';
 import { validateOutboundUrl } from './lib/outboundUrlValidation';
-import { rateLimiter } from './rateLimiter';
+import { rateLimiter } from './lib/rateLimiter';
 import { throwUnauthenticated } from './_utils/errors';
 import {
 	decisionProviderKindValidator,

@@ -5,7 +5,7 @@ import { internal } from './_generated/api';
 import { getOptional } from './lib/env';
 import { betterAuthAdapterArgs } from './lib/betterAuthAdapterArgs';
 import { safeCompare } from './lib/safeCompare';
-import { getClientIp, rateLimitedResponse } from './publicRateLimit';
+import { getClientIp, rateLimitedResponse } from './lib/publicRateLimit';
 import { logError } from './lib/runtimeLog';
 import { errorResponse, jsonResponse } from './lib/httpResponse';
 
@@ -41,7 +41,7 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 	// trusted proxy configured every caller shares one bucket — coarse, but it
 	// still caps total volume, and a healthy deployment calls this once.
 	const { ok: rateOk, retryAfter } = await ctx.runMutation(
-		internal.publicRateLimit.checkPublicRateLimit,
+		internal.lib.publicRateLimit.checkPublicRateLimit,
 		{ limitType: 'adminSeed', key: getClientIp(request) }
 	);
 	if (!rateOk) return rateLimitedResponse(retryAfter);

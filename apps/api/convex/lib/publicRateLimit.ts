@@ -1,9 +1,9 @@
 import { v, type Infer } from 'convex/values';
-import { internalMutation } from './_generated/server';
+import { internalMutation } from '../_generated/server';
 import { rateLimiter } from './rateLimiter';
-import { getOptional } from './lib/env';
-import { logWarn } from './lib/runtimeLog';
-import { safeCompare } from './lib/safeCompare';
+import { getOptional } from './env';
+import { logWarn } from './runtimeLog';
+import { safeCompare } from './safeCompare';
 
 /**
  * Header a trusted reverse proxy INJECTS (and strips from inbound client

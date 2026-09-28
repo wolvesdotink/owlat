@@ -1,5 +1,5 @@
 import { RateLimiter, SECOND, MINUTE, HOUR } from '@convex-dev/rate-limiter';
-import { components } from './_generated/api';
+import { components } from '../_generated/api';
 
 /**
  * Persistent rate limiter using Convex database storage
