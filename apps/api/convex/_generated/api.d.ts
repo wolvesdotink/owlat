@@ -704,6 +704,7 @@ import type * as lib_publicTokenEndpoint from '../lib/publicTokenEndpoint.js';
 import type * as lib_queryHelpers from '../lib/queryHelpers.js';
 import type * as lib_randomToken from '../lib/randomToken.js';
 import type * as lib_receivedAtCursor from '../lib/receivedAtCursor.js';
+import type * as lib_redactSecret from '../lib/redactSecret.js';
 import type * as lib_rrf from '../lib/rrf.js';
 import type * as lib_runtimeLog from '../lib/runtimeLog.js';
 import type * as lib_validatorMatch from '../lib/validatorMatch.js';
@@ -725,6 +726,7 @@ import type * as lib_sendProviders_fallbackEligibility from '../lib/sendProvider
 import type * as lib_sendProviders_fallbackRelays from '../lib/sendProviders/fallbackRelays.js';
 import type * as lib_sendProviders_health from '../lib/sendProviders/health.js';
 import type * as lib_sendProviders_index from '../lib/sendProviders/index.js';
+import type * as lib_sendProviders_mandrill_client from '../lib/sendProviders/mandrill/client.js';
 import type * as lib_sendProviders_mandrill_errors from '../lib/sendProviders/mandrill/errors.js';
 import type * as lib_sendProviders_mandrill_index from '../lib/sendProviders/mandrill/index.js';
 import type * as lib_sendProviders_mta_index from '../lib/sendProviders/mta/index.js';
@@ -1905,6 +1907,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/queryHelpers': typeof lib_queryHelpers;
 	'lib/randomToken': typeof lib_randomToken;
 	'lib/receivedAtCursor': typeof lib_receivedAtCursor;
+	'lib/redactSecret': typeof lib_redactSecret;
 	'lib/rrf': typeof lib_rrf;
 	'lib/runtimeLog': typeof lib_runtimeLog;
 	'lib/validatorMatch': typeof lib_validatorMatch;
@@ -1926,6 +1929,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/sendProviders/fallbackRelays': typeof lib_sendProviders_fallbackRelays;
 	'lib/sendProviders/health': typeof lib_sendProviders_health;
 	'lib/sendProviders/index': typeof lib_sendProviders_index;
+	'lib/sendProviders/mandrill/client': typeof lib_sendProviders_mandrill_client;
 	'lib/sendProviders/mandrill/errors': typeof lib_sendProviders_mandrill_errors;
 	'lib/sendProviders/mandrill/index': typeof lib_sendProviders_mandrill_index;
 	'lib/sendProviders/mta/index': typeof lib_sendProviders_mta_index;

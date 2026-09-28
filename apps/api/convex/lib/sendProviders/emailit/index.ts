@@ -2,6 +2,7 @@
 
 /** Emailit transport adapter. Authentication and provider tracking stay at this boundary. */
 import { withTimeout } from '../../inputGuards';
+import { redactSecret } from '../../redactSecret';
 import {
 	EmailErrorCode,
 	httpStatusToErrorCode,
@@ -36,7 +37,7 @@ function safeErrorMessage(body: string, status: number, apiKey: string): string 
 	} catch {
 		// Gateway HTML and malformed payloads are intentionally not surfaced.
 	}
-	return apiKey ? message.split(apiKey).join('[redacted]') : message;
+	return redactSecret(message, apiKey);
 }
 
 function responseId(value: unknown): string | null {
@@ -133,9 +134,10 @@ export const emailitSendProvider: SendProviderModule<'emailit'> = {
 						errorCode: EmailErrorCode.UNKNOWN,
 					};
 		} catch (error) {
-			const message = (error instanceof Error ? error.message : 'Unknown error')
-				.split(apiKey)
-				.join('[redacted]');
+			const message = redactSecret(
+				error instanceof Error ? error.message : 'Unknown error',
+				apiKey
+			);
 			const name = error instanceof Error ? error.name : undefined;
 			// A timeout after the request left may sit on top of an accepted
 			// message. Report the fact; `sendProviderDispatch` reads the catalog
