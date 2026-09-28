@@ -10,7 +10,8 @@
  *
  * Heuristics (in order):
  *   1. Gmail's `<div class="gmail_quote">` wrapper
- *   2. Outlook's `_____` separator
+ *   2. Outlook's reply header block (desktop's top-bordered "From:" div,
+ *      Outlook on the web's `divRplyFwdMsg`) and its older `_____` separator
  *   3. Generic `<blockquote>` blocks (Apple Mail, Outlook web)
  *   4. "On <date>, <name> wrote:" attribution lines (EN / DE / FR)
  *   5. Plain-text `> ` quote lines (text mode only)
@@ -29,6 +30,21 @@ const QUOTE_ATTRIBUTION_PATTERNS = [
 	/^On\s+\d{1,2}\/\d{1,2}\/\d{2,4}.*?wrote:/,
 ];
 
+const OUTLOOK_REPLY_HEADER =
+	/(?:<hr[^>]*>\s*)?<div[^>]*id=["']?divRplyFwdMsg\b|<div[^>]*style=["'][^"']*border-top:\s*solid\s+#(?:e1e1e1|b5c4df)\b/i;
+
+/** True when an HTML fragment holds any visible text (not just tags / nbsp). */
+function hasReadableText(html: string): boolean {
+	return (
+		html
+			// Head content (Outlook's <style> block) is not visible text.
+			.replace(/<(style|head)\b[\s\S]*?<\/\1>/gi, '')
+			.replace(/<[^>]+>/g, '')
+			.replace(/&nbsp;|\u00a0/g, '')
+			.trim().length > 0
+	);
+}
+
 export function splitQuotedHtml(html: string): QuotedSplitResult {
 	if (!html) return { fresh: '', quoted: '', hasQuote: false };
 
@@ -42,7 +58,21 @@ export function splitQuotedHtml(html: string): QuotedSplitResult {
 		};
 	}
 
-	// 2. Outlook _____ separator (often inside <hr> or as text)
+	// 2a. Outlook's reply header. Desktop Outlook opens the quoted original with
+	//     a div bordered on top (`border-top:solid #E1E1E1 1.0pt`, `#B5C4DF` in
+	//     older builds) holding the From / Sent / To lines; Outlook on the web
+	//     writes an <hr> and then `<div id="divRplyFwdMsg">`. Only a boundary
+	//     when something readable comes before it, so a bare forward still shows.
+	const outlookHeader = html.search(OUTLOOK_REPLY_HEADER);
+	if (outlookHeader > 0 && hasReadableText(html.slice(0, outlookHeader))) {
+		return {
+			fresh: html.slice(0, outlookHeader),
+			quoted: html.slice(outlookHeader),
+			hasQuote: true,
+		};
+	}
+
+	// 2b. Outlook _____ separator (often inside <hr> or as text)
 	const outlookSep = html.search(/<(?:hr|div)[^>]*>(?:\s|&nbsp;)*_{4,}|_{5,}/i);
 	if (outlookSep > 0) {
 		return {
@@ -58,11 +88,7 @@ export function splitQuotedHtml(html: string): QuotedSplitResult {
 	const blockquoteIdx = html.search(/<blockquote/i);
 	if (blockquoteIdx > 0) {
 		const before = html.slice(0, blockquoteIdx);
-		const stripped = before
-			.replace(/<[^>]+>/g, '')
-			.replace(/&nbsp;/g, '')
-			.trim();
-		if (stripped.length > 0) {
+		if (hasReadableText(before)) {
 			return {
 				fresh: before,
 				quoted: html.slice(blockquoteIdx),

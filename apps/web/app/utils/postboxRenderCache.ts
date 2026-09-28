@@ -22,7 +22,7 @@
  */
 
 import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
-import type { PostboxRenderScheme } from '~/utils/postboxDarkMode';
+import type { EmailHtmlKind, PostboxRenderScheme } from '~/utils/postboxDarkMode';
 
 /** Render options that change the produced srcdoc; part of the cache key. */
 export interface PostboxRenderOptions {
@@ -41,6 +41,11 @@ export interface PostboxRenderEntry {
 	 * and the wrapper background is keyed off this.
 	 */
 	renderScheme: PostboxRenderScheme;
+	/**
+	 * "simple" mail renders borderless on a transparent canvas, straight on the
+	 * message card; "designed" mail keeps its own canvas as a white paper card.
+	 */
+	kind: EmailHtmlKind;
 	/** Tracker detection computed on the sanitized output (feeds the badge). */
 	detection: TrackerDetection;
 	/** Last measured iframe content height (px); null until first load. */

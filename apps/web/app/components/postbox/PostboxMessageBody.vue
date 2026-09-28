@@ -33,12 +33,8 @@ import {
 	type TrackerDetection,
 } from '@owlat/shared/postboxTrackers';
 import { applyLinkTransparency } from '@owlat/shared/postboxLinkTransparency';
-import {
-	adaptEmailHtml,
-	buildBaseStyle,
-	POSTBOX_DARK_PALETTE,
-	type PostboxRenderScheme,
-} from '~/utils/postboxDarkMode';
+import { adaptEmailHtml, buildBaseStyle, type PostboxRenderScheme } from '~/utils/postboxDarkMode';
+import { trimTrailingBlankBlocks } from '~/utils/postboxBodyTidy';
 import {
 	getPostboxRenderCache,
 	postboxRenderKey,
@@ -268,10 +264,14 @@ const quotedSplit = computed(() => {
 // transparency — rather than only skipping the final string concat.
 function buildRender(): Omit<PostboxRenderEntry, 'height'> {
 	const split = quotedSplit.value;
-	const fresh = sanitize(split.fresh);
+	// Blank padding above a folded-away quote is all that would be left at the
+	// bottom of the body, so it goes; with the quote shown it separates the two.
+	const fresh = showQuoted.value
+		? sanitize(split.fresh)
+		: trimTrailingBlankBlocks(sanitize(split.fresh));
 	const quoted = showQuoted.value ? sanitize(split.quoted) : '';
 	const combined = quoted
-		? `${fresh}<hr style="margin:1em 0;border:0;border-top:1px solid #eee">${quoted}`
+		? `${fresh}<hr style="margin:1.25em 0;border:0;border-top:1px solid rgba(128,128,128,0.3)">${quoted}`
 		: fresh;
 	// Adaptive dark rendering runs AFTER sanitization on the sanitized string
 	// only; when the app is light (or forced light) it's a pass-through no-op.
@@ -289,7 +289,7 @@ function buildRender(): Omit<PostboxRenderEntry, 'height'> {
 	// param stripping) runs on sanitized output only and fails soft to a no-op.
 	const linked = rewriteLinks(applyLinkTransparency(gated));
 	const srcdoc = `<!doctype html><html><head>${META_CSP}${buildBaseStyle(adapted.scheme, adapted.kind)}</head><body>${linked || t('components.postbox.postboxMessageBody.emptyMessage')}</body></html>`;
-	return { srcdoc, renderScheme: adapted.scheme, detection };
+	return { srcdoc, renderScheme: adapted.scheme, kind: adapted.kind, detection };
 }
 
 // The render key includes every option that changes the output; a body is
@@ -348,6 +348,10 @@ watch(
 // Scheme the iframe actually renders with ("designed" mail stays light —
 // a paper card on the dark app background — even when the app is dark).
 const renderScheme = computed(() => render.value.renderScheme);
+// Plain mail sits straight on the message card (transparent canvas, no frame);
+// designed mail keeps its own canvas on a white paper card. The offline
+// fallback has no classification, so it keeps the paper card.
+const isPaper = computed(() => !hasLiveContent.value || render.value.kind === 'designed');
 const trackerDetection = computed<TrackerDetection>(() => render.value.detection);
 
 watch(trackerDetection, (detection) => emit('trackers', detection), { immediate: true });
@@ -409,7 +413,7 @@ watch(
 function resizeIframe() {
 	const iframe = iframeRef.value;
 	if (!iframe?.contentDocument) return;
-	const h = Math.max(120, iframe.contentDocument.documentElement.scrollHeight);
+	const h = Math.max(isPaper.value ? 120 : 24, iframe.contentDocument.documentElement.scrollHeight);
 	iframe.style.height = `${h}px`;
 	presetHeight.value = h;
 	const key = renderKey.value;
@@ -443,20 +447,21 @@ watch([showQuoted, showImages, loadEverything], () => {
 			@trust-sender="trustSender()"
 			@untrust-sender="untrustSender()"
 		/>
-		<!-- palette-ok: the wrapper background matches the IFRAME's scheme, not
-		     the app's, so dark-rendered mail never flashes a white full-bleed;
-		     "designed" mail keeps its own colors as a light paper card on the dark
-		     app background. -->
+		<!-- palette-ok: designed mail keeps its own colors on a white paper card
+		     (also on the dark app background). Plain mail paints nothing, so it
+		     reads as part of the message card; `color-scheme` is pinned to the
+		     frame's own scheme because the browser paints an opaque backdrop
+		     behind a frame whose scheme differs from its embedder's. -->
 		<iframe
 			ref="iframeRef"
 			:srcdoc="displaySrcdoc"
 			sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-			class="w-full rounded border border-border-subtle"
-			:class="renderScheme === 'dark' ? '' : 'bg-white'"
+			class="block w-full"
+			:class="isPaper ? 'rounded-md border border-border-subtle bg-white' : 'bg-transparent'"
 			:style="{
-				minHeight: '200px',
+				minHeight: isPaper ? '200px' : '48px',
 				height: presetHeight ? `${presetHeight}px` : undefined,
-				backgroundColor: renderScheme === 'dark' ? POSTBOX_DARK_PALETTE.background : undefined,
+				colorScheme: renderScheme,
 			}"
 			referrerpolicy="no-referrer"
 		/>
