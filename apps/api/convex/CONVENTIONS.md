@@ -627,8 +627,8 @@ one home, picked by its shape, not by which file has room:
 
 All three are leaves. A `lib/validators/` module may load only
 `convex/values`, `@owlat/*`, its siblings and the few leaf modules listed in
-`scripts/check-schema-imports.ts` (`lib/literalUnion.ts` and the AI-provider
-kind tuples). Never define a validator the schema needs inside a module that
+`scripts/check-schema-imports.ts` (`lib/literalUnion.ts`,
+`lib/literalValidators.ts` and the AI-provider kind tuples). Never define a validator the schema needs inside a module that
 holds functions: the schema would load that module, and through it
 `_generated/api` or the BetterAuth session read.
 

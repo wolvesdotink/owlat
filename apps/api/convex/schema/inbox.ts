@@ -16,6 +16,7 @@ import { llmUsageTagFields } from '../lib/llmUsageTags';
 import {
 	agentMetricTypeValidator,
 	attachmentIndexingValidator,
+	backfillJobStatusValidator,
 	contextTierValidator,
 	virusVerdictValidator,
 } from '../lib/literalValidators';
@@ -423,13 +424,7 @@ export const inboxTables = {
 	// inbound mail into the knowledge graph. Created when the agent master
 	// toggle flips false→true and no prior job exists.
 	knowledgeBackfillJobs: defineTable({
-		status: v.union(
-			v.literal('pending'),
-			v.literal('running'),
-			v.literal('completed'),
-			v.literal('cancelled'),
-			v.literal('failed')
-		),
+		status: backfillJobStatusValidator,
 		triggeredBy: v.string(), // identity.subject
 		totalCount: v.number(),
 		scannedCount: v.number(),

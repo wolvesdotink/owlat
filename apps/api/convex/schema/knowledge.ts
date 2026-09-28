@@ -1,7 +1,11 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { literalUnion } from '../lib/literalUnion';
-import { captureSourceValidator, semanticFileSourceTypeValidator } from '../lib/literalValidators';
+import {
+	backfillJobStatusValidator,
+	captureSourceValidator,
+	semanticFileSourceTypeValidator,
+} from '../lib/literalValidators';
 
 /**
  * The knowledge entry types, as a literal tuple. Single source of truth for both
@@ -382,13 +386,7 @@ export const knowledgeTables = {
 	// scheduling one `edgeInference.inferRelations` action per entry; the job is
 	// idempotent (re-runs merge via upsertEdge) and admin-cancellable mid-walk.
 	knowledgeEdgeBackfillJobs: defineTable({
-		status: v.union(
-			v.literal('pending'),
-			v.literal('running'),
-			v.literal('completed'),
-			v.literal('cancelled'),
-			v.literal('failed')
-		),
+		status: backfillJobStatusValidator,
 		triggeredBy: v.string(), // identity.subject of the admin who enabled the flag
 		// Capped count of existing entries at start — the progress-bar denominator.
 		totalCount: v.number(),

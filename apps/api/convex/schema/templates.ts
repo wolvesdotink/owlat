@@ -1,12 +1,13 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import {
-	linkClickValidator,
 	dataVariablesSchemaValidator,
 	jsonPrimitiveRecord,
 	emailTemplateTypeValidator,
 } from '../lib/convexValidators';
-import { sendStatusValidator, bounceTypeValidator } from '../lib/literalValidators';
+import { sendStatusValidator } from '../lib/literalValidators';
+import { sendTrackingFields } from '../lib/validators/send';
+import { htmlRenderStateValidator } from '../lib/validators/templates';
 
 /**
  * Email template + send tables — media assets, marketing/transactional templates,
@@ -88,16 +89,8 @@ export const templateTables = {
 		contentRevision: v.optional(v.number()),
 		// Renderer engine version that produced `htmlContent`. Bump when rendering output changes materially.
 		rendererVersion: v.optional(v.number()),
-		// Saved-block rerender state. `stale: true` means `htmlContent` no
-		// longer matches `content` because a linked saved block was edited;
-		// the rerender pool clears it once the action succeeds. Per ADR-0023.
-		htmlRenderState: v.optional(
-			v.object({
-				stale: v.boolean(),
-				failureCount: v.optional(v.number()),
-				lastFailureAt: v.optional(v.number()),
-			})
-		),
+		// Saved-block rerender state (ADR-0023).
+		htmlRenderState: v.optional(htmlRenderStateValidator),
 		// Marks rows inserted by /seed/demo so they can be wiped on reset.
 		seedTag: v.optional(v.string()),
 		createdAt: v.number(),
@@ -237,16 +230,8 @@ export const templateTables = {
 		// in `transactional/dispatch.ts`. The list page reads this directly
 		// instead of N+1 scanning `transactionalSends` per template.
 		sendCount: v.optional(v.number()),
-		// Saved-block rerender state. `stale: true` means `htmlContent` no
-		// longer matches `content` because a linked saved block was edited;
-		// the rerender pool clears it once the action succeeds. Per ADR-0023.
-		htmlRenderState: v.optional(
-			v.object({
-				stale: v.boolean(),
-				failureCount: v.optional(v.number()),
-				lastFailureAt: v.optional(v.number()),
-			})
-		),
+		// Saved-block rerender state (ADR-0023).
+		htmlRenderState: v.optional(htmlRenderStateValidator),
 		// Marks rows inserted by /seed/demo so they can be wiped on reset.
 		seedTag: v.optional(v.string()),
 		createdAt: v.number(),
@@ -321,65 +306,14 @@ export const templateTables = {
 		// worker-completion path goes through the Send lifecycle for both
 		// kinds; `failed` rows persist once the worker errors.
 		status: sendStatusValidator,
-		// Timestamps for status changes. `sentAt` is optional because rows
-		// start life in `queued` (ADR-0006); it is set when the worker
-		// transitions to `sent`.
+		// When the row was queued. Optional here, required on `emailSends`.
 		queuedAt: v.optional(v.number()),
-		sentAt: v.optional(v.number()),
-		deliveredAt: v.optional(v.number()),
-		failedAt: v.optional(v.number()),
-		openedAt: v.optional(v.number()),
-		clickedAt: v.optional(v.number()),
-		bouncedAt: v.optional(v.number()),
-		// Bounce classification; required-via-runtime-guard when status='bounced'.
-		// See CONTEXT.md "Send status" — canonical encoding of bounce class.
-		bounceType: v.optional(bounceTypeValidator),
-		complainedAt: v.optional(v.number()),
-		// When this send absorbed the recipient's unsubscribe — the per-send
-		// uniqueness gate for the `unsubscribed` transport outcome, exactly as on
-		// `emailSends`. Only marketing (`kind: 'automation'`) rows can ever carry
-		// it: transactional/agent/preview mail has no one-click header to answer.
-		// See `delivery/unsubscribeOutcome.ts`.
-		unsubscribedAt: v.optional(v.number()),
-		// The UTC day this send last had a last-mile deferral counted against its
-		// cell — the `deferred` outcome's per-send, per-day rate limiter, exactly as
-		// on `emailSends`. Every governed send kind can carry it: the last-mile
-		// router defers automation and transactional mail alike. See
-		// `delivery/deferralOutcome.ts`.
-		deferralCountedDay: v.optional(v.number()),
-		// Link tracking for click attribution
-		clickedLinks: v.optional(v.array(linkClickValidator)),
-		// Open tracking count (may open multiple times)
-		openCount: v.optional(v.number()),
-		// Automated pixel fetches (Apple Mail Privacy Protection, security
-		// scanners, arrival prefetch), kept apart from the reader opens above.
-		// Only the count and the first one's time are kept, never the
-		// User-Agent or IP they were judged on. See `delivery/automatedOpens.ts`.
-		automatedOpenedAt: v.optional(v.number()),
-		automatedOpenCount: v.optional(v.number()),
-		// Tracked links followed by a security gateway or link scanner, kept
-		// apart from clickedAt / clickedLinks. Only the count and the first
-		// one's time are kept, never the User-Agent. See `delivery/automatedClicks.ts`.
-		automatedClickedAt: v.optional(v.number()),
-		automatedClickCount: v.optional(v.number()),
-		// Error information for failures (e.g., from provider error responses)
-		errorMessage: v.optional(v.string()),
-		errorCode: v.optional(v.string()),
-		// Provider routing metadata (multi-tenant sending platform).
-		// Which provider sent this email: a `SendTransportKind` (`@owlat/shared`),
-		// core or `plugin.<pluginId>.<localId>`, written POST-HOC from the dispatch
-		// result — the same column, the same choice, as `emailSends.providerType`
-		// (`schema/campaigns.ts`). Stored open per ADR-0055 (D10).
-		providerType: v.optional(v.string()),
-		// Correlation ID for end-to-end traceability (API request → send → webhook)
-		correlationId: v.optional(v.string()),
+		// sentAt … deletedBy: the tracking columns shared with emailSends.
+		...sendTrackingFields,
 		// Storage IDs of attachment blobs, captured at queue time and cleaned
 		// up via the `attachment_cleanup` sendLifecycle effect on terminal
 		// worker outcomes (sent / failed). Per ADR-0006.
 		attachmentStorageIds: v.optional(v.array(v.string())),
-		// Soft-delete fields: cascade from soft-deleted contact; preserves audit trail.
-		deletedAt: v.optional(v.number()),
-		deletedBy: v.optional(v.string()),
 	})
 		.index('by_transactional_email', ['transactionalEmailId'])
 		.index('by_status', ['status'])

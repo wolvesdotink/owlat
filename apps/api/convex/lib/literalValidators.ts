@@ -181,12 +181,15 @@ export type CaptureSource = Infer<typeof captureSourceValidator>;
 export const inboundRawRetentionDaysValidator = literalUnion(INBOUND_RAW_RETENTION_DAY_CHOICES);
 
 /** Lifecycle of a resumable mailbox job (import, semantic index, filter backfill). */
-export const mailJobStatusValidator = v.union(
-	v.literal('running'),
-	v.literal('completed'),
-	v.literal('cancelled'),
-	v.literal('failed')
-);
+const MAIL_JOB_STATUSES = ['running', 'completed', 'cancelled', 'failed'] as const;
+export const mailJobStatusValidator = literalUnion(MAIL_JOB_STATUSES);
+
+/**
+ * Lifecycle of a one-shot knowledge backfill job (`knowledgeBackfillJobs`,
+ * `knowledgeEdgeBackfillJobs`): the mailbox job's states plus `pending`, for a
+ * job created before its first page runs.
+ */
+export const backfillJobStatusValidator = literalUnion(['pending', ...MAIL_JOB_STATUSES] as const);
 
 /** Delivery lifecycle of one send row (`emailSends`, `transactionalSends`). */
 export const sendStatusValidator = v.union(

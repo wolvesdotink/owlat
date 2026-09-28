@@ -765,6 +765,7 @@ import type * as lib_utcDay from '../lib/utcDay.js';
 import type * as lib_validators_aiProviderConfig from '../lib/validators/aiProviderConfig.js';
 import type * as lib_validators_attachment from '../lib/validators/attachment.js';
 import type * as lib_validators_autonomy from '../lib/validators/autonomy.js';
+import type * as lib_validators_campaigns from '../lib/validators/campaigns.js';
 import type * as lib_validators_clarification from '../lib/validators/clarification.js';
 import type * as lib_validators_classification from '../lib/validators/classification.js';
 import type * as lib_validators_contacts from '../lib/validators/contacts.js';
@@ -780,6 +781,8 @@ import type * as lib_validators_mailContent from '../lib/validators/mailContent.
 import type * as lib_validators_mailSettings from '../lib/validators/mailSettings.js';
 import type * as lib_validators_readiness from '../lib/validators/readiness.js';
 import type * as lib_validators_senderHeuristics from '../lib/validators/senderHeuristics.js';
+import type * as lib_validators_send from '../lib/validators/send.js';
+import type * as lib_validators_templates from '../lib/validators/templates.js';
 import type * as lib_vectorMath from '../lib/vectorMath.js';
 import type * as lib_webSecretBox from '../lib/webSecretBox.js';
 import type * as lib_workingHours from '../lib/workingHours.js';
@@ -1972,6 +1975,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/validators/aiProviderConfig': typeof lib_validators_aiProviderConfig;
 	'lib/validators/attachment': typeof lib_validators_attachment;
 	'lib/validators/autonomy': typeof lib_validators_autonomy;
+	'lib/validators/campaigns': typeof lib_validators_campaigns;
 	'lib/validators/clarification': typeof lib_validators_clarification;
 	'lib/validators/classification': typeof lib_validators_classification;
 	'lib/validators/contacts': typeof lib_validators_contacts;
@@ -1987,6 +1991,8 @@ declare const fullApi: ApiFromModules<{
 	'lib/validators/mailSettings': typeof lib_validators_mailSettings;
 	'lib/validators/readiness': typeof lib_validators_readiness;
 	'lib/validators/senderHeuristics': typeof lib_validators_senderHeuristics;
+	'lib/validators/send': typeof lib_validators_send;
+	'lib/validators/templates': typeof lib_validators_templates;
 	'lib/vectorMath': typeof lib_vectorMath;
 	'lib/webSecretBox': typeof lib_webSecretBox;
 	'lib/workingHours': typeof lib_workingHours;

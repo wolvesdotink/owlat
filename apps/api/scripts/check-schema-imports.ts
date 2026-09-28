@@ -37,11 +37,13 @@ const RUNTIME_MODULES = ['_generated/api', '_generated/server', 'lib/sessionOrga
 
 /**
  * Modules outside `lib/validators/` a validator may load. Each is a leaf
- * itself (rule 2 walks through it): the literal-union helper and the two
- * adapter-registry kind tuples the AI-provider validators derive from.
+ * itself (rule 2 walks through it): the literal-union helper, the shared
+ * literal unions (a send's `bounceType`) and the two adapter-registry kind
+ * tuples the AI-provider validators derive from.
  */
 const VALIDATOR_LEAF_DEPENDENCIES = [
 	'lib/literalUnion.ts',
+	'lib/literalValidators.ts',
 	'lib/llmProviders/types.ts',
 	'lib/decisionProviders/types.ts',
 ];

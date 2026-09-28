@@ -288,12 +288,6 @@ export const CAMPAIGN_STATUSES = [
 // `convex/campaigns/audience.ts` (`audienceValidator`). The flat
 // `audienceTypeValidator` was removed with the four flat columns.
 
-// Per-recipient click tracking entry (emailSends.clickedLinks, transactionalSends.clickedLinks)
-export const linkClickValidator = v.object({
-	url: v.string(),
-	clickedAt: v.number(),
-});
-
 // Spam classification verdict (mailMessages.spamVerdict and intake args)
 export const spamVerdictValidator = v.union(
 	v.literal('ham'),

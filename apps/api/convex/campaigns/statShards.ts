@@ -18,37 +18,13 @@ import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { toPaginationCursor } from '../lib/paginationCursor';
 import { bumpStatShard, sumStatShards } from '../lib/statShards';
+import { CAMPAIGN_SHARDED_STAT_FIELDS, type CampaignStatField } from '../lib/validators/campaigns';
 
 /** Window of `sent` campaigns the rollup keeps fresh — opens/clicks taper off
  * within ~2 weeks; later events still accrue in the shards, just not the cache. */
 const SENT_ROLLUP_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 
 const ROLLUP_PAGE_SIZE = 50;
-
-type CampaignStatField =
-	| 'statsSent'
-	| 'statsFailed'
-	| 'statsDelivered'
-	| 'statsOpened'
-	| 'statsAutomatedOpened'
-	| 'statsClicked'
-	| 'statsAutomatedClicked'
-	| 'statsBounced'
-	| 'statsHardBounced'
-	| 'statsSoftBounced';
-
-const FIELDS: readonly CampaignStatField[] = [
-	'statsSent',
-	'statsFailed',
-	'statsDelivered',
-	'statsOpened',
-	'statsAutomatedOpened',
-	'statsClicked',
-	'statsAutomatedClicked',
-	'statsBounced',
-	'statsHardBounced',
-	'statsSoftBounced',
-];
 
 /**
  * Increment one or more send-stat counters on a RANDOM shard of a campaign,
@@ -64,7 +40,7 @@ export async function bumpCampaignStats(
 ): Promise<void> {
 	await bumpStatShard<CampaignStatField, Doc<'campaignStatShards'>>(
 		{
-			fields: FIELDS,
+			fields: CAMPAIGN_SHARDED_STAT_FIELDS,
 			findShard: (shardKey) =>
 				ctx.db
 					.query('campaignStatShards')
@@ -93,7 +69,7 @@ export async function summarizeCampaignStats(
 		.withIndex('by_campaign_and_shard', (q) => q.eq('campaignId', campaignId))
 		.collect(); // bounded: ≤ STAT_SHARD_COUNT shard rows per campaign
 
-	return sumStatShards(FIELDS, shards);
+	return sumStatShards(CAMPAIGN_SHARDED_STAT_FIELDS, shards);
 }
 
 /**
@@ -106,7 +82,7 @@ export async function rollupCampaignStatsRow(
 	campaign: Doc<'campaigns'>
 ): Promise<void> {
 	const sum = await summarizeCampaignStats(ctx.db, campaign._id);
-	if (FIELDS.every((f) => (campaign[f] ?? 0) === sum[f])) return; // no change
+	if (CAMPAIGN_SHARDED_STAT_FIELDS.every((f) => (campaign[f] ?? 0) === sum[f])) return; // no change
 	await ctx.db.patch(campaign._id, { ...sum, statsUpdatedAt: Date.now() });
 }
 
