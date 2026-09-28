@@ -1,0 +1,39 @@
+# Justified exceptions to scripts/check-feature-floors.sh — one `path:export`
+# per line, each group with its reason. This is NOT debt to pay down: every
+# line is a site that must stay as it is. A new line needs the same kind of
+# reason; a handler that merely forgot its gated builder does not qualify.
+#
+# Soft-auth publicQuery reads in the mail.external family. They keep an inline
+# assertFeatureEnabled(ctx, 'mail.external'), marked `// flag-inline:`, because
+# a gated publicQuery would slip past check-public-functions and its
+# `// public:` rule.
+convex/mail/external/accounts.ts:getForCurrentUser
+convex/mail/mailboxMove.ts:moveStatus
+convex/mail/migration.ts:getStatus
+convex/mail/sendingSwitch.ts:sendingSwitchStatus
+#
+# Soft-fails to null (isFeatureEnabled) rather than throwing: the admin page
+# renders it beside other cards and reads null as "no team inbox import".
+convex/mail/migrationShared.ts:getStatusShared
+#
+# Reachable before any mail flag is on (mail/_helpers.ts exemptions): the
+# mailbox request / fresh-start guard a mailbox-less member sees, invitation
+# acceptance, and the team roster's mailbox column.
+convex/mail/mailboxRequest.ts:freshStartStatus
+convex/mail/mailboxRequest.ts:provisionFromRequest
+convex/mail/mailboxRequest.ts:request
+convex/mail/memberMailboxStatus.ts:byMembers
+convex/mail/pendingInboxMembership.ts:claimInboxMemberships
+convex/mail/pendingMailbox.ts:cancelForInvitation
+convex/mail/pendingMailbox.ts:claimForInvitation
+convex/mail/pendingMailbox.ts:setForInvitation
+#
+# Instance capability, not mail data: a boolean from env presence that the
+# connect form reads to pick its branch.
+convex/mail/external/googleOAuth.ts:isConfigured
+#
+# The AI handling rules serve the ai.autonomy surface, not Postbox
+# (mail/_helpers.ts exemption).
+convex/mail/handlingRules.ts:create
+convex/mail/handlingRules.ts:remove
+convex/mail/handlingRules.ts:update

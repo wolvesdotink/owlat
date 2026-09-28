@@ -209,6 +209,35 @@ data plane) still lives in the handler. Only query/mutation builders can be
 gated this way — `assertFeatureEnabled` reads `ctx.db`, which **actions** lack,
 so feature-gated actions keep the in-handler check against a query they call.
 
+Gated families and their builders:
+
+| Flag(s)                      | Builders                                                                 | Home                               |
+| ---------------------------- | ------------------------------------------------------------------------ | ---------------------------------- |
+| `chat`                       | `chatQuery`, `chatMutation`                                              | `chat/_helpers.ts`                 |
+| `ai.assistant`               | `assistantQuery`, `assistantMutation`                                    | `assistant/conversations.ts`       |
+| `postbox` or `mail.external` | `postboxQuery`, `postboxMutation` (`featureGatedAny`)                    | `mail/_helpers.ts`                 |
+| `mail.external`              | `externalMailQuery`, `externalMailMutation`, `externalMailAdminMutation` | `mail/external/externalFeature.ts` |
+
+Actions in the `mail.external` family call `assertExternalEnabled(ctx)` from
+the same module.
+
+A soft-auth `publicQuery` keeps its inline `assertFeatureEnabled` — a gated
+`publicQuery` would slip past `check-public-functions.sh` and its `// public:`
+rule — and marks it with a `// flag-inline: <reason>` comment.
+
+`scripts/check-feature-floors.sh` (wired into `bun run lint`) enforces this. It
+reports `path:export` for every inline `assertFeatureEnabled(ctx, '<flag>')`
+inside that flag's gated family (the `FAMILIES` map in the script) and for every
+bare `authedQuery` / `authedMutation` export under `convex/mail/`.
+`scripts/feature-floor-baseline.txt` lists only the justified sites (the
+soft-auth reads and the modules `mail/_helpers.ts` exempts), each group with its
+reason. A new entry means a handler skipped its gated builder: use the builder.
+When you give another folder gated builders, add its `<flag> <path prefix>` pair
+to `FAMILIES`, and add the builder names to the builder lists in
+`check-permissions.sh`, `check-query-authz.sh`, `check-session-threading.sh`,
+`check-token-redaction.sh` and `check-errors.sh` — a handler on a builder those
+scanners do not know silently leaves their gates.
+
 ## Permissions
 
 `authedMutation` / `authedAction` only enforce the auth _floor_ (an authenticated

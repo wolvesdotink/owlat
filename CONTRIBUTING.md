@@ -74,6 +74,10 @@ of `bun run lint` and will fail CI, including:
 - `lint:session-threading` — handlers on the org-scoped builders must use the
   session their auth floor already resolved instead of re-resolving it
   (frozen-baseline ratchet, `apps/api/scripts/check-session-threading.sh`).
+- `lint:feature-floors` — handlers in a feature-gated family use its
+  `featureGated` builder instead of an inline `assertFeatureEnabled`
+  (ratchet with a justified-sites baseline,
+  `apps/api/scripts/check-feature-floors.sh`).
 
 ## Code Quality
 
