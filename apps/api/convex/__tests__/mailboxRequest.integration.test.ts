@@ -43,13 +43,21 @@ vi.mock('../lib/sessionOrganization', async () => {
 });
 
 function setMemberSession(userId: string, orgId = 'test-org') {
-	sessionMocks.getMutationContext.mockResolvedValue({ userId, role: 'editor' });
+	sessionMocks.getMutationContext.mockResolvedValue({
+		userId,
+		role: 'editor',
+		activeOrganizationId: orgId,
+	});
 	sessionMocks.getBetterAuthSessionWithRole.mockResolvedValue({
 		userId,
 		role: 'editor',
 		activeOrganizationId: orgId,
 	});
-	sessionMocks.requireOrgMember.mockResolvedValue({ userId, role: 'editor' });
+	sessionMocks.requireOrgMember.mockResolvedValue({
+		userId,
+		role: 'editor',
+		activeOrganizationId: orgId,
+	});
 	sessionMocks.requireAdminContext.mockImplementation(async () => {
 		throw new Error('Only owners and admins can perform this action');
 	});
@@ -62,15 +70,31 @@ function setMemberSession(userId: string, orgId = 'test-org') {
 }
 
 function setAdminSession(userId = 'admin-user', orgId = 'test-org') {
-	sessionMocks.getMutationContext.mockResolvedValue({ userId, role: 'owner' });
+	sessionMocks.getMutationContext.mockResolvedValue({
+		userId,
+		role: 'owner',
+		activeOrganizationId: orgId,
+	});
 	sessionMocks.getBetterAuthSessionWithRole.mockResolvedValue({
 		userId,
 		role: 'owner',
 		activeOrganizationId: orgId,
 	});
-	sessionMocks.requireOrgMember.mockResolvedValue({ userId, role: 'owner' });
-	sessionMocks.requireAdminContext.mockResolvedValue({ userId, role: 'owner' });
-	sessionMocks.requireOrgPermission.mockResolvedValue({ userId, role: 'owner' });
+	sessionMocks.requireOrgMember.mockResolvedValue({
+		userId,
+		role: 'owner',
+		activeOrganizationId: orgId,
+	});
+	sessionMocks.requireAdminContext.mockResolvedValue({
+		userId,
+		role: 'owner',
+		activeOrganizationId: orgId,
+	});
+	sessionMocks.requireOrgPermission.mockResolvedValue({
+		userId,
+		role: 'owner',
+		activeOrganizationId: orgId,
+	});
 	sessionMocks.requireSelf.mockImplementation(async (_ctx: unknown, uid: string) => uid);
 }
 

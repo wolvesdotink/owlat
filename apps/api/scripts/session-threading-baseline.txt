@@ -11,8 +11,6 @@ convex/assistant/conversations.ts:listMessages
 convex/assistant/conversations.ts:renameConversation
 convex/assistant/conversations.ts:sendMessage
 convex/assistant/conversations.ts:stopGeneration
-convex/auth/accessRequest.ts:listPending
-convex/auth/accessRequest.ts:resolve
 convex/auth/accountManagement.ts:exportContactsForOrganization
 convex/auth/apiKeys.ts:create
 convex/auth/apiKeys.ts:listByTeam
@@ -188,10 +186,7 @@ convex/mail/mailbox/identity.ts:remove
 convex/mail/mailboxMembers.ts:createShared
 convex/mail/mailboxMove.ts:provisionHosted
 convex/mail/mailboxRequest.ts:freshStartStatus
-convex/mail/mailboxRequest.ts:listPending
 convex/mail/mailboxRequest.ts:provisionFromRequest
-convex/mail/mailboxRequest.ts:request
-convex/mail/mailboxRequest.ts:resolve
 convex/mail/memberMailboxStatus.ts:byMembers
 convex/mail/migration.ts:cancel
 convex/mail/migration.ts:start

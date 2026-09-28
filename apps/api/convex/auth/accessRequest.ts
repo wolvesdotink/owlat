@@ -14,8 +14,9 @@
  *     deployment org. It NEVER writes the BetterAuth member table, so it cannot
  *     add the caller to the org — an admin still invites them the normal way.
  *   - `listPending` / `resolve` — admin-only. Admins see open requests on the
- *     dashboard (reusing the mailbox-request surfacing pattern) and mark a row
- *     done once they've invited the person.
+ *     dashboard and mark a row done once they've invited the person. The queue
+ *     itself (refresh-not-stack, listing, open-only resolve) is shared with the
+ *     mailbox requests through lib/adminRequests.ts.
  *
  * Single-org-per-deployment stays intact: there is no self-serve org creation
  * here, only a message to the one org's admins.
@@ -25,14 +26,11 @@ import { v } from 'convex/values';
 import { adminMutation, adminQuery, authedIdentityMutation } from '../lib/authedFunctions';
 import {
 	getBetterAuthSession,
-	getBetterAuthSessionWithRole,
 	getSingletonOrganizationId,
 	requireAuthenticatedIdentity,
 } from '../lib/sessionOrganization';
-import { getOrThrow, throwForbidden, throwInvalidInput, throwInvalidState } from '../_utils/errors';
-
-/** Max length of the free-text note a requester can attach. */
-const MAX_NOTE_LENGTH = 500;
+import { throwInvalidState } from '../_utils/errors';
+import { listOpenRequests, resolveOpenRequest, upsertOpenRequest } from '../lib/adminRequests';
 
 /**
  * Ask an admin for access to this instance. Self-authed via the identity floor
@@ -50,7 +48,6 @@ export const request = authedIdentityMutation({
 	},
 	handler: async (ctx, args) => {
 		const identity = await requireAuthenticatedIdentity(ctx);
-		const userId = identity.subject;
 
 		// Already in the org? There is nothing to request. An orgless user's
 		// session has no active org; a member's does, so this is the honest gate.
@@ -59,49 +56,13 @@ export const request = authedIdentityMutation({
 			throwInvalidState('You already have access to this workspace');
 		}
 
-		if (args.note !== undefined && args.note.length > MAX_NOTE_LENGTH) {
-			throwInvalidInput(`Note must be ${MAX_NOTE_LENGTH} characters or fewer`);
-		}
-		const note = args.note?.trim() || undefined;
-
-		// One open request per user: refresh the note instead of stacking.
-		const open = await ctx.db
-			.query('accessRequests')
-			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', userId))
-			.filter((q) => q.eq(q.field('status'), 'open'))
-			.first();
-		if (open) {
-			await ctx.db.patch(open._id, { note });
-			return { requested: true as const, requestId: open._id };
-		}
-
-		// The admin card is only useful if it names who is asking. Prefer the
-		// profile email (written at signup), fall back to the session identity's
-		// email rather than inserting a blank row that renders as an empty card.
-		const profile = await ctx.db
-			.query('userProfiles')
-			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', userId))
-			.first();
-		let requesterEmail = profile?.email?.trim();
-		if (!requesterEmail) {
-			requesterEmail = typeof identity.email === 'string' ? identity.email.trim() : '';
-		}
-		if (!requesterEmail) {
-			throwInvalidState('Your account has no email address to share with admins');
-		}
-
-		// The one deployment org the request is addressed to. Resolved directly
-		// (not via the session) because the caller has no active org.
-		const organizationId = await getSingletonOrganizationId(ctx);
-
-		const requestId = await ctx.db.insert('accessRequests', {
-			authUserId: userId,
-			organizationId,
-			requesterEmail,
-			requesterName: profile?.name,
-			note,
-			status: 'open',
-			createdAt: Date.now(),
+		const requestId = await upsertOpenRequest(ctx, 'accessRequests', {
+			authUserId: identity.subject,
+			// The one deployment org the request is addressed to. Resolved directly
+			// (not via the session) because the caller has no active org.
+			organizationId: await getSingletonOrganizationId(ctx),
+			note: args.note,
+			identityEmail: identity.email,
 		});
 		return { requested: true as const, requestId };
 	},
@@ -111,32 +72,14 @@ export const request = authedIdentityMutation({
 // authz: admin — adminQuery gates the read on `organization:manage`.
 export const listPending = adminQuery({
 	args: {},
-	handler: async (ctx) => {
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session?.activeOrganizationId) return [];
-
-		const rows = await ctx.db
-			.query('accessRequests')
-			.withIndex('by_org_and_status', (q) =>
-				q.eq('organizationId', session.activeOrganizationId!).eq('status', 'open')
-			)
-			.collect();
-		// bounded: open requests are one row per orgless requester, refreshed not
-		// stacked, and this deployment hosts a single organization.
-
-		return rows.map((r) => ({
-			id: r._id,
-			email: r.requesterEmail,
-			name: r.requesterName ?? null,
-			note: r.note ?? null,
-			createdAt: r.createdAt,
-		}));
-	},
+	handler: async (ctx, _args, session) =>
+		listOpenRequests(ctx, 'accessRequests', session.activeOrganizationId),
 });
 
 /**
  * Admin-only: mark a request resolved (the admin has invited the person or
- * decided otherwise). Org-scoped — a request from another org is rejected.
+ * decided otherwise). Org-scoped — a request from another org is rejected — and
+ * open-only, so a second admin's late click does not rewrite who resolved it.
  * Resolving is a plain acknowledgement; it does NOT invite the user (that stays
  * an explicit action in the members flow).
  */
@@ -145,20 +88,6 @@ export const resolve = adminMutation({
 	args: {
 		requestId: v.id('accessRequests'),
 	},
-	handler: async (ctx, args) => {
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session?.activeOrganizationId) throwForbidden('No active organization');
-
-		const row = await getOrThrow(ctx, args.requestId, 'Request');
-		if (row.organizationId !== session.activeOrganizationId) {
-			throwForbidden('Request not accessible');
-		}
-
-		await ctx.db.patch(args.requestId, {
-			status: 'resolved',
-			resolvedByUserId: session.userId,
-			resolvedAt: Date.now(),
-		});
-		return { resolved: true as const };
-	},
+	handler: async (ctx, args, session) =>
+		resolveOpenRequest(ctx, 'accessRequests', args.requestId, session),
 });

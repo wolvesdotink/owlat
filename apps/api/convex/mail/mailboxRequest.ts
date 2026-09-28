@@ -16,17 +16,16 @@
  *   `fulfilled` (the requester is admitted to their inbox). Idempotent.
  * - `resolve` — admin-only. Plain acknowledge/decline for the cases where no
  *   hosted mailbox is provisioned here (external account, or handled elsewhere).
+ *
+ * The queue mechanics (refresh-not-stack, listing, open-only resolve) are shared
+ * with the access requests through lib/adminRequests.ts.
  */
 
 import { v } from 'convex/values';
-import { authedMutation, authedQuery } from '../lib/authedFunctions';
-import {
-	getBetterAuthSessionWithRole,
-	requireAdminContext,
-	requireAuthenticatedIdentity,
-	requireOrgPermission,
-} from '../lib/sessionOrganization';
-import { getOrThrow, throwForbidden, throwInvalidInput, throwInvalidState } from '../_utils/errors';
+import { adminMutation, adminQuery, authedMutation, authedQuery } from '../lib/authedFunctions';
+import { getBetterAuthSessionWithRole, requireAdminContext } from '../lib/sessionOrganization';
+import { getOrThrow, throwForbidden, throwInvalidState } from '../_utils/errors';
+import { listOpenRequests, resolveOpenRequest, upsertOpenRequest } from '../lib/adminRequests';
 import { normalizeEmail } from '@owlat/shared';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import {
@@ -37,9 +36,6 @@ import {
 } from './mailbox/identity';
 import { claimReservedMailbox } from './pendingMailbox';
 import type { Id } from '../_generated/dataModel';
-
-/** Max length of the free-text note a member can attach to a mailbox request. */
-const MAX_NOTE_LENGTH = 500;
 
 /**
  * Derive a hosted local-part from the requester's (usually external) login
@@ -63,11 +59,7 @@ export const request = authedMutation({
 	args: {
 		note: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session) throwForbidden('Not signed in');
-		if (!session.activeOrganizationId) throwForbidden('No active organization');
-
+	handler: async (ctx, args, session) => {
 		// Nothing to request if the caller already has a live mailbox. Use the same
 		// active-only predicate the dead-end guard (`freshStartStatus`) uses, so the
 		// member who most needs the escape hatch — one whose only mailbox is
@@ -77,47 +69,12 @@ export const request = authedMutation({
 			throwInvalidState('You already have a mailbox');
 		}
 
-		if (args.note !== undefined && args.note.length > MAX_NOTE_LENGTH) {
-			throwInvalidInput(`Note must be ${MAX_NOTE_LENGTH} characters or fewer`);
-		}
-		const note = args.note?.trim() || undefined;
-
-		// One open request per member: refresh the note instead of stacking.
-		const open = await ctx.db
-			.query('mailboxRequests')
-			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', session.userId))
-			.filter((q) => q.eq(q.field('status'), 'open'))
-			.first();
-		if (open) {
-			await ctx.db.patch(open._id, { note });
-			return { requested: true as const, requestId: open._id };
-		}
-
-		const profile = await ctx.db
-			.query('userProfiles')
-			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', session.userId))
-			.first();
-
-		// The admin card is only useful if it names who is asking. Prefer the
-		// profile email, but fall back to the session identity's email rather than
-		// inserting a blank identity that renders as an empty card.
-		let requesterEmail = profile?.email?.trim();
-		if (!requesterEmail) {
-			const identity = await requireAuthenticatedIdentity(ctx);
-			requesterEmail = typeof identity.email === 'string' ? identity.email.trim() : '';
-		}
-		if (!requesterEmail) {
-			throwInvalidState('Your account has no email address to share with admins');
-		}
-
-		const requestId = await ctx.db.insert('mailboxRequests', {
+		const identity = await ctx.auth.getUserIdentity();
+		const requestId = await upsertOpenRequest(ctx, 'mailboxRequests', {
 			authUserId: session.userId,
 			organizationId: session.activeOrganizationId,
-			requesterEmail,
-			requesterName: profile?.name,
-			note,
-			status: 'open',
-			createdAt: Date.now(),
+			note: args.note,
+			identityEmail: identity?.email,
 		});
 		return { requested: true as const, requestId };
 	},
@@ -203,31 +160,11 @@ export const freshStartStatus = authedQuery({
 });
 
 /** Admin-only: the open mailbox requests for the caller's organization. */
-// authz: admin — requireOrgPermission('organization:manage') gates the read.
-export const listPending = authedQuery({
+// authz: admin — adminQuery gates the read on `organization:manage`.
+export const listPending = adminQuery({
 	args: {},
-	handler: async (ctx) => {
-		await requireOrgPermission(ctx, 'organization:manage');
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session?.activeOrganizationId) return [];
-
-		const rows = await ctx.db
-			.query('mailboxRequests')
-			.withIndex('by_org_and_status', (q) =>
-				q.eq('organizationId', session.activeOrganizationId!).eq('status', 'open')
-			)
-			.collect();
-		// bounded: open requests per org are bounded by member count (one open row
-		// per member, refreshed not stacked), and the org is single-tenant.
-
-		return rows.map((r) => ({
-			id: r._id,
-			email: r.requesterEmail,
-			name: r.requesterName ?? null,
-			note: r.note ?? null,
-			createdAt: r.createdAt,
-		}));
-	},
+	handler: async (ctx, _args, session) =>
+		listOpenRequests(ctx, 'mailboxRequests', session.activeOrganizationId),
 });
 
 /**
@@ -389,35 +326,14 @@ export const provisionFromRequest = authedMutation({
  * Admin-only: mark a request resolved WITHOUT provisioning here — the plain
  * acknowledge/decline path (the requester connects an external account instead,
  * or the admin handled it some other way). Org-scoped — a request from another
- * org is rejected.
+ * org is rejected. Open-only: a stale 'Mark done' racing another admin's
+ * 'Provision now' must not turn `fulfilled` back into `resolved`.
  */
-// authz: admin — requireAdminContext gates the whole handler.
-export const resolve = authedMutation({
+// authz: admin — adminMutation gates the whole handler on `organization:manage`.
+export const resolve = adminMutation({
 	args: {
 		requestId: v.id('mailboxRequests'),
 	},
-	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session?.activeOrganizationId) throwForbidden('No active organization');
-
-		const row = await getOrThrow(ctx, args.requestId, 'Request');
-		if (row.organizationId !== session.activeOrganizationId) {
-			throwForbidden('Request not accessible');
-		}
-
-		// Idempotent, and never downgrade a decided row: a stale 'Mark done' racing
-		// another admin's 'Provision now' must not turn `fulfilled` back into
-		// `resolved` and erase the fulfilment distinction. Only open rows resolve.
-		if (row.status !== 'open') {
-			return { resolved: true as const };
-		}
-
-		await ctx.db.patch(args.requestId, {
-			status: 'resolved',
-			resolvedByUserId: session.userId,
-			resolvedAt: Date.now(),
-		});
-		return { resolved: true as const };
-	},
+	handler: async (ctx, args, session) =>
+		resolveOpenRequest(ctx, 'mailboxRequests', args.requestId, session),
 });

@@ -639,6 +639,53 @@ describe('memberErasure.eraseMemberData', () => {
 		expect(left).toEqual([]);
 	});
 
+	it("deletes the member's access and mailbox requests, which carry their email, name and note", async () => {
+		const t = newHarness();
+		const authUserId = 'auth-user-requests';
+		const profileId = await seedProfile(t, authUserId);
+		const requestId = await t.run(async (ctx) => {
+			const requestRow = {
+				authUserId,
+				organizationId: 'org-1',
+				requesterEmail: 'me@example.com',
+				requesterName: 'Me',
+				note: 'please',
+				createdAt: Date.now(),
+			};
+			await ctx.db.insert('accessRequests', { ...requestRow, status: 'resolved' });
+			await ctx.db.insert('mailboxRequests', { ...requestRow, status: 'open' });
+			// Another member's rows are not this erasure's to touch.
+			await ctx.db.insert('accessRequests', {
+				...requestRow,
+				authUserId: 'someone-else',
+				requesterEmail: 'else@example.com',
+				status: 'open',
+			});
+			return await ctx.db.insert('accountDeletionRequests', {
+				userProfileId: profileId,
+				email: 'me@example.com',
+				requestedAt: Date.now(),
+				scheduledForDeletion: Date.now(),
+				cancellationToken: 'tok-requests',
+				status: 'pending',
+				createdAt: Date.now(),
+			});
+		});
+
+		await t.mutation(internal.auth.memberErasure.eraseMemberData, {
+			authUserId,
+			requestId,
+			isAlertErasureDone: true,
+			isAlertReceiptErasureDone: true,
+		});
+
+		await t.run(async (ctx) => {
+			const accessRequests = await ctx.db.query('accessRequests').collect();
+			expect(accessRequests.map((r) => r.authUserId)).toEqual(['someone-else']);
+			expect(await ctx.db.query('mailboxRequests').collect()).toEqual([]);
+		});
+	});
+
 	it('purges staged export leases, artifacts, and blobs in bounded member-erasure hops', async () => {
 		const t = newHarness();
 		const authUserId = 'auth-user-export-staging';

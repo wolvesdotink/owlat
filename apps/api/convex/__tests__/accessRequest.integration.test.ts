@@ -19,7 +19,8 @@ const sessionMocks = vi.hoisted(() => ({
 	getBetterAuthSessionWithRole: vi.fn(),
 	getSingletonOrganizationId: vi.fn(),
 	// adminQuery gates listPending via requireOrgPermission; adminMutation gates
-	// resolve via requireAdminContext. Both are called inside the wrappers.
+	// resolve via requireAdminContext. Both are called inside the wrappers, and
+	// the session they return is threaded to the handler.
 	requireOrgPermission: vi.fn(),
 	requireAdminContext: vi.fn(),
 }));
@@ -65,8 +66,11 @@ function setAdminSession(userId = 'admin-user', orgId = 'test-org') {
 		activeOrganizationId: orgId,
 	});
 	sessionMocks.getSingletonOrganizationId.mockResolvedValue(orgId);
-	sessionMocks.requireOrgPermission.mockResolvedValue({ userId, role: 'owner' });
-	sessionMocks.requireAdminContext.mockResolvedValue({ userId, role: 'owner' });
+	// The admin floors thread this session to the handler, which reads the org
+	// off it rather than resolving the session again.
+	const session = { userId, role: 'owner', activeOrganizationId: orgId };
+	sessionMocks.requireOrgPermission.mockResolvedValue(session);
+	sessionMocks.requireAdminContext.mockResolvedValue(session);
 }
 
 async function seedUserProfile(
@@ -148,6 +152,18 @@ describe('accessRequest.request', () => {
 				.collect();
 			expect(rows).toHaveLength(1);
 			expect(rows[0]?.requesterEmail).toBe('from-identity@example.com');
+		});
+	});
+
+	it('refuses rather than insert a blank card when neither profile nor identity has an email', async () => {
+		setRequesterSession('newcomer', '  ');
+		const t = convexTest(schema, modules);
+
+		await expect(t.mutation(api.auth.accessRequest.request, {})).rejects.toThrow(
+			/no email address to share/i
+		);
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('accessRequests').collect()).toHaveLength(0);
 		});
 	});
 
@@ -258,6 +274,31 @@ describe('accessRequest.listPending / resolve', () => {
 		await expect(
 			t.mutation(api.auth.accessRequest.resolve, { requestId: created.requestId })
 		).rejects.toThrow(/not accessible/i);
+	});
+
+	it('resolving an already-resolved request keeps the first resolver and timestamp', async () => {
+		setRequesterSession('newcomer');
+		const t = convexTest(schema, modules);
+		await seedUserProfile(t, 'newcomer', 'newcomer@example.com');
+		const created = await t.mutation(api.auth.accessRequest.request, {});
+
+		setAdminSession('first-admin');
+		await t.mutation(api.auth.accessRequest.resolve, { requestId: created.requestId });
+		const firstResolution = await t.run(async (ctx) => ctx.db.get(created.requestId));
+		expect(firstResolution?.resolvedByUserId).toBe('first-admin');
+
+		// A second admin's late click is a no-op, not a rewrite of the audit stamp.
+		setAdminSession('second-admin');
+		const result = await t.mutation(api.auth.accessRequest.resolve, {
+			requestId: created.requestId,
+		});
+		expect(result.resolved).toBe(true);
+		await t.run(async (ctx) => {
+			const row = await ctx.db.get(created.requestId);
+			expect(row?.status).toBe('resolved');
+			expect(row?.resolvedByUserId).toBe('first-admin');
+			expect(row?.resolvedAt).toBe(firstResolution?.resolvedAt);
+		});
 	});
 
 	it('a non-admin caller cannot list pending requests (fails closed)', async () => {
