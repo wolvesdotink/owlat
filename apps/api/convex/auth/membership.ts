@@ -1,4 +1,6 @@
+import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
+import { adminQuery } from '../lib/authedFunctions';
 import { requireOrgMember, requireOrgPermission } from '../lib/sessionOrganization';
 
 /**
@@ -35,4 +37,21 @@ export const assertOrgAdmin = internalQuery({
 		await requireOrgPermission(ctx, 'organization:manage');
 		return null;
 	},
+});
+
+/**
+ * Public owner/admin (`organization:manage`) assertion for the Nitro gate
+ * `requireOrgAdmin`, which guards the org-owner actions of the Settings ->
+ * Delivery transport editor (validate and apply). The `adminQuery`
+ * builder enforces the floor before the handler runs, so a clean `null` IS the
+ * proof: it reads nothing and returns nothing. It exists so that gate no longer
+ * borrows the authorization of an unrelated read model, whose permission could
+ * be widened on its own.
+ *
+ * Throws `unauthenticated` (no session) / `forbidden` (not an owner or admin).
+ */
+export const assertOrganizationManage = adminQuery({
+	args: {},
+	returns: v.null(),
+	handler: async () => null,
 });

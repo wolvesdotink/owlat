@@ -1,7 +1,7 @@
 import { api } from '@owlat/api';
 import type { ConvexHttpClient } from 'convex/browser';
 import type { H3Event } from 'h3';
-import { authedConvexClient } from './authedConvexClient';
+import { authedConvexClient, mapGateError } from './authedConvexClient';
 
 /**
  * Validate that the incoming request is authenticated AND its user is a
@@ -9,7 +9,9 @@ import { authedConvexClient } from './authedConvexClient';
  * if Convex is unreachable.
  *
  * The authenticated Convex client is built by the shared `authedConvexClient`;
- * this gate adds only the platform-admin probe.
+ * this gate adds only the platform-admin probe, and maps a failed probe through
+ * the shared `mapGateError`, so an outage answers 503 here exactly as it does on
+ * `requireOrgAdmin` instead of escaping as an unmapped 500.
  *
  * Used by system & internal routes that must only be reachable by platform
  * admins in a session context (not the X-Instance-Secret pattern).
@@ -24,9 +26,15 @@ import { authedConvexClient } from './authedConvexClient';
 export async function requirePlatformAdmin(event: H3Event): Promise<ConvexHttpClient> {
 	const client = await authedConvexClient(event);
 
-	const isAdmin = await client.query(api.platformAdmin.platformAdmin.isPlatformAdmin, {});
+	const forbiddenMessage = 'Platform admin access required';
+	let isAdmin: boolean;
+	try {
+		isAdmin = await client.query(api.platformAdmin.platformAdmin.isPlatformAdmin, {});
+	} catch (e) {
+		throw mapGateError(e, { forbiddenMessage });
+	}
 	if (!isAdmin) {
-		throw createError({ statusCode: 403, message: 'Platform admin access required' });
+		throw createError({ statusCode: 403, message: forbiddenMessage });
 	}
 
 	return client;

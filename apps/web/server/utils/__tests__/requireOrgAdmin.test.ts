@@ -1,7 +1,7 @@
 /**
  * `requireOrgAdmin`: authentication through the real `authedConvexClient`
- * (token proxy stubbed at the network), then the admin-gated
- * `delivery.status.getStatus` probe whose clean return is the
+ * (token proxy stubbed at the network), then the dedicated
+ * `auth.membership.assertOrganizationManage` probe whose clean return is the
  * `organization:manage` proof. Only an Operation error of category
  * `forbidden` / `unauthenticated` is an access answer; anything else is the
  * backend being unreachable.
@@ -36,14 +36,17 @@ beforeEach(() => {
 });
 
 describe('requireOrgAdmin', () => {
-	it('returns the authenticated client once the status probe passes', async () => {
-		query.mockResolvedValue({ hasProvider: true });
+	it('returns the authenticated client once the dedicated assertion passes', async () => {
+		query.mockResolvedValue(null);
 
 		const client = await requireOrgAdmin(requestEvent({ cookie: COOKIE }));
 
 		expect(client).toBeInstanceOf(ConvexHttpClient);
+		expect(query).toHaveBeenCalledTimes(1);
 		const [probe, args] = query.mock.calls[0]!;
-		expect(getFunctionName(probe)).toBe(getFunctionName(api.delivery.status.getStatus));
+		expect(getFunctionName(probe)).toBe(
+			getFunctionName(api.auth.membership.assertOrganizationManage)
+		);
 		expect(args).toEqual({});
 	});
 
@@ -69,6 +72,7 @@ describe('requireOrgAdmin', () => {
 
 		await expect(requireOrgAdmin(requestEvent({ cookie: COOKIE }))).rejects.toMatchObject({
 			statusCode: 503,
+			message: 'Could not verify access: the backend is unreachable.',
 		});
 	});
 
