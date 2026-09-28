@@ -566,6 +566,14 @@ This codebase tracks the official Convex AI/cursor rules
   `literalUnion` from `lib/literalUnion.ts`. It infers the closed union with no
   cast and throws at load on an empty list. Never write
   `v.union(...LIST.map((x) => v.literal(x)))` by hand; the check fails on it.
+- **Resumable per-mailbox walks share one job lifecycle.** The attachment
+  backfill, the body-search backfill and the retroactive filter run keep one
+  job row per subject. Their tables spread `mailboxJobFields` from
+  `lib/validators/mail.ts`, and their `status`/`start`/`cancel` go through
+  `readJob`, `startJob` and `cancelJob` in `mail/_jobLifecycle.ts`. A new walk
+  adds its table to that module's `JobKeys` and lookup instead of copying one
+  of the three. Authorization, feature floors and what a start schedules stay
+  in the calling module.
 
 The `bun run lint:patterns` script (also wired into `bun run lint`) tracks
 these against a checked-in baseline.

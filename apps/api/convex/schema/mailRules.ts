@@ -1,6 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { mailJobStatusValidator } from '../lib/literalValidators';
+import { mailboxJobFields } from '../lib/validators/mail';
 
 /** Field record of `mailVacationResponders`, shared with the functions that write it. */
 export const mailVacationRespondersFields = {
@@ -102,19 +102,14 @@ export const mailRulesTables = {
 	//
 	// One row per filter (`by_filter`), so re-running resumes or restarts rather
 	// than forking a second walk; the row is the progress readout and the cancel
-	// switch. Same shape as `mailAttachmentBackfillJobs`.
+	// switch. Same columns as `mailAttachmentBackfillJobs` (`mailboxJobFields`),
+	// with the lifecycle in `mail/_jobLifecycle.ts`.
 
 	mailFilterRunJobs: defineTable({
 		mailboxId: v.id('mailboxes'),
 		filterId: v.id('mailFilters'),
-		status: mailJobStatusValidator,
-		cursor: v.optional(v.string()),
-		scannedCount: v.number(),
+		...mailboxJobFields,
 		matchedCount: v.number(),
-		startedAt: v.number(),
-		updatedAt: v.number(),
-		finishedAt: v.optional(v.number()),
-		errorMessage: v.optional(v.string()),
 	})
 		.index('by_filter', ['filterId'])
 		.index('by_mailbox', ['mailboxId']),
