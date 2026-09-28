@@ -117,9 +117,13 @@ export async function rollupCampaignStatsRow(
  * whole table.
  */
 export const rollupSentCampaignStats = internalMutation({
-	args: { cursor: v.optional(v.string()) },
+	args: { cursor: v.optional(v.string()), startedAt: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		const cutoff = Date.now() - SENT_ROLLUP_WINDOW_MS;
+		// Pinned for the whole walk: Convex rejects a cursor whose query (index
+		// range included) differs from the one that minted it, so every
+		// continuation must read the same bound as the first batch.
+		const startedAt = args.startedAt ?? Date.now();
+		const cutoff = startedAt - SENT_ROLLUP_WINDOW_MS;
 		const page = await ctx.db
 			.query('campaigns')
 			.withIndex('by_status_sent_at', (q) => q.eq('status', 'sent').gte('sentAt', cutoff))
@@ -132,6 +136,7 @@ export const rollupSentCampaignStats = internalMutation({
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(0, internal.campaigns.statShards.rollupSentCampaignStats, {
 				cursor: page.continueCursor as string,
+				startedAt,
 			});
 		}
 	},

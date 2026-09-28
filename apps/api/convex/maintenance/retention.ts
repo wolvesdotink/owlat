@@ -119,9 +119,13 @@ export const sweepAgentMetrics = internalMutation({
 });
 
 export const scrubFormSubmissionMeta = internalMutation({
-	args: { cursor: v.optional(v.string()) },
+	args: { cursor: v.optional(v.string()), startedAt: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		const cutoff = Date.now() - FORM_META_RETENTION_MS;
+		// Pinned for the whole walk: Convex rejects a cursor whose query (index
+		// range included) differs from the one that minted it, so every
+		// continuation must read the same bound as the first batch.
+		const startedAt = args.startedAt ?? Date.now();
+		const cutoff = startedAt - FORM_META_RETENTION_MS;
 		// Cursor-paginated walk (scrubbed rows would still match an index range
 		// probe, so a plain take() would re-read the same head forever).
 		const page = await ctx.db
@@ -136,6 +140,7 @@ export const scrubFormSubmissionMeta = internalMutation({
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(0, internal.maintenance.retention.scrubFormSubmissionMeta, {
 				cursor: page.continueCursor,
+				startedAt,
 			});
 		}
 	},
