@@ -18,7 +18,10 @@ import { NuxtLinkStub } from '~/__tests__/nuxtComponents';
 import { queryResult, paginatedResult } from '~/__tests__/queryStubs';
 import { usePermissions } from '~/composables/usePermissions';
 import { useLoadAllPages } from '~/composables/useLoadAllPages';
+import { api } from '@owlat/api';
+import { getFunctionName, type FunctionReference } from 'convex/server';
 import ListPageShell from '~/components/list/ListPageShell.vue';
+import BlockCard from '~/components/send/BlockCard.vue';
 import AudienceListTable from '~/components/audience/AudienceListTable.vue';
 
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
@@ -135,6 +138,7 @@ const STUBS = {
 	// live inside them.
 	ListPageShell,
 	AudienceListTable,
+	SendBlockCard: BlockCard,
 	// Row names are links; render them so the list's content can be asserted.
 	NuxtLink: NuxtLinkStub,
 	ListSortMenu: true,
@@ -288,7 +292,13 @@ describe('topics list', () => {
 // `blocks.update` mutation, and the first shipped ungated while the second was
 // gated — a disagreement only a case that looks at both would catch.
 describe('blocks list', () => {
-	const blocksQuery = { useConvexQuery: () => queryResult(BLOCKS) };
+	// The list goes through the organization-gated query; the stats query next
+	// to it resolves empty.
+	const BLOCKS_LIST = getFunctionName(api.emailBlocks.blocks.list);
+	const blocksQuery = {
+		useOrganizationQuery: (query: FunctionReference<'query'>) =>
+			queryResult(getFunctionName(query) === BLOCKS_LIST ? BLOCKS : null),
+	};
 
 	it('offers quick settings, duplicate and delete to an admin', async () => {
 		role.value = 'admin';

@@ -9,7 +9,12 @@
  * the same frame by copying its nearest neighbour, and every fix — the mobile
  * card list, the listbox semantics, the shortcuts — landed on one copy only.
  * `#before-header` takes a section's tab bar and `#loading` a content-shaped
- * skeleton in place of the default spinner.
+ * skeleton in place of the default spinner. `#delete-extra` adds a line under
+ * the delete dialog's description (the blocks list warns how many emails use
+ * the block).
+ *
+ * `layout="grid"` is for a list with no table view (saved blocks): `#grid`
+ * always renders and there is no grid/list toggle.
  *
  * Below `md` the table's columns cannot fit, so `#cards` renders instead of
  * `#table`. Exactly one of the two is mounted (`useDataTableViewport`): the app
@@ -59,6 +64,11 @@ const props = withDefaults(
 		sortListboxId?: string;
 		/** `v-model:viewMode`. Leave unset for a page without a grid view. */
 		viewMode?: ViewMode;
+		/**
+		 * `table` (default): `#table`, or `#cards` below `md`, with `#grid` when
+		 * `viewMode` asks for it. `grid`: `#grid` only, and no view toggle.
+		 */
+		layout?: 'table' | 'grid';
 		emptyNoOrg: EmptyCopy;
 		empty: EmptyCopy;
 		noResults: { title: string; description: string };
@@ -77,6 +87,7 @@ const props = withDefaults(
 		sortLabel: undefined,
 		sortListboxId: undefined,
 		viewMode: undefined,
+		layout: 'table',
 		deleteName: '',
 	}
 );
@@ -102,6 +113,7 @@ const viewModeOptions = computed(() => [
 
 const showEmpty = computed(() => !props.loading && props.isEmpty && !props.activeSearch);
 const showNoResults = computed(() => !props.loading && props.isEmpty && !!props.activeSearch);
+const showGrid = computed(() => props.layout === 'grid' || props.viewMode === 'grid');
 
 const onDeleteOpenChange = (open: boolean) => {
 	if (!open) emit('cancel-delete');
@@ -146,7 +158,7 @@ const onDeleteOpenChange = (open: boolean) => {
 				/>
 
 				<UiSegmentedControl
-					v-if="viewMode"
+					v-if="viewMode && layout === 'table'"
 					:options="viewModeOptions"
 					:model-value="viewMode"
 					size="sm"
@@ -205,7 +217,7 @@ const onDeleteOpenChange = (open: boolean) => {
 				@clear="emit('clear-search')"
 			/>
 
-			<slot v-else-if="viewMode === 'grid'" name="grid" />
+			<slot v-else-if="showGrid" name="grid" />
 
 			<UiCard v-else padding="none" overflow="hidden">
 				<slot v-if="tableFits" name="table" />
@@ -236,6 +248,7 @@ const onDeleteOpenChange = (open: boolean) => {
 					</template>
 				</I18nT>
 				<p class="text-sm text-text-secondary mt-2">{{ deleteCopy.description }}</p>
+				<slot name="delete-extra" />
 			</template>
 		</UiConfirmationDialog>
 	</div>

@@ -6,7 +6,10 @@
  *   - below `md` exactly one of `#table` / `#cards` is mounted, never both;
  *   - the three empty states (no organization, nothing yet, no search results)
  *     and the clear-search control on the last;
- *   - the delete dialog names the item and routes confirm / cancel out.
+ *   - a grid-only list (`layout="grid"`) always mounts `#grid` and has no
+ *     view toggle;
+ *   - the delete dialog names the item, takes a page's extra line under its
+ *     description, and routes confirm / cancel out.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -59,6 +62,11 @@ const UiQueryBoundaryStub = defineComponent({
 	},
 });
 
+type ShellProps = Omit<typeof baseProps, 'viewMode'> & {
+	viewMode?: 'grid' | 'list';
+	layout?: 'table' | 'grid';
+};
+
 const baseProps = {
 	title: 'Marketing templates',
 	loading: false,
@@ -91,7 +99,7 @@ const baseProps = {
 	isDeleting: false,
 };
 
-function render(props: Partial<typeof baseProps> = {}, extraSlots: Record<string, string> = {}) {
+function render(props: Partial<ShellProps> = {}, extraSlots: Record<string, string> = {}) {
 	return mount(ListPageShell, {
 		props: { ...baseProps, ...props },
 		slots: {
@@ -140,6 +148,27 @@ describe('ListPageShell', () => {
 		expect(wrapper.find('[data-testid="grid"]').exists()).toBe(true);
 		expect(wrapper.find('[data-testid="table"]').exists()).toBe(false);
 		expect(wrapper.find('[data-testid="cards"]').exists()).toBe(false);
+	});
+
+	it('mounts only the grid, with no view toggle, in the grid-only layout', () => {
+		const wrapper = render({ layout: 'grid', viewMode: undefined });
+		expect(wrapper.find('[data-testid="grid"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="table"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="cards"]').exists()).toBe(false);
+		expect(wrapper.find('[role="tablist"]').exists()).toBe(false);
+	});
+
+	it('keeps the grid-only layout off the table view even with a view mode set', () => {
+		const wrapper = render({ layout: 'grid', viewMode: 'list' });
+		expect(wrapper.find('[data-testid="grid"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="table"]').exists()).toBe(false);
+		expect(wrapper.find('[role="tablist"]').exists()).toBe(false);
+	});
+
+	it('still shows the empty state in the grid-only layout', () => {
+		const wrapper = render({ layout: 'grid', viewMode: undefined, isEmpty: true });
+		expect(wrapper.get('h2').text()).toBe('No templates yet');
+		expect(wrapper.find('[data-testid="grid"]').exists()).toBe(false);
 	});
 
 	it('switches view mode through labelled segments', async () => {
@@ -216,6 +245,19 @@ describe('ListPageShell', () => {
 			await confirm!.trigger('click');
 			expect(wrapper.emitted('confirm-delete')).toHaveLength(1);
 			expect(wrapper.emitted('cancel-delete')).toBeUndefined();
+		});
+
+		it('renders a page line under the description', () => {
+			const wrapper = render(
+				{ deleteOpen: true, deleteName: 'Welcome' },
+				{ 'delete-extra': '<p data-testid="usage">Used in 3 emails.</p>' }
+			);
+			const dialog = wrapper.get('[role="dialog"]');
+			expect(dialog.get('[data-testid="usage"]').text()).toBe('Used in 3 emails.');
+			const html = dialog.html();
+			expect(html.indexOf('This cannot be undone.')).toBeLessThan(
+				html.indexOf('data-testid="usage"')
+			);
 		});
 
 		it('emits cancel from the Cancel button and the backdrop', async () => {
