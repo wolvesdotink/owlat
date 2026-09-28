@@ -627,6 +627,7 @@ import type * as lib_contactScope from '../lib/contactScope.js';
 import type * as lib_convexValidators from '../lib/convexValidators.js';
 import type * as lib_cors from '../lib/cors.js';
 import type * as lib_credentialCrypto from '../lib/credentialCrypto.js';
+import type * as lib_dashboardLayoutValidators from '../lib/dashboardLayoutValidators.js';
 import type * as lib_decision_catalog from '../lib/decision/catalog.js';
 import type * as lib_decision_contract from '../lib/decision/contract.js';
 import type * as lib_decision_dispatch from '../lib/decision/dispatch.js';
@@ -1827,6 +1828,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/convexValidators': typeof lib_convexValidators;
 	'lib/cors': typeof lib_cors;
 	'lib/credentialCrypto': typeof lib_credentialCrypto;
+	'lib/dashboardLayoutValidators': typeof lib_dashboardLayoutValidators;
 	'lib/decision/catalog': typeof lib_decision_catalog;
 	'lib/decision/contract': typeof lib_decision_contract;
 	'lib/decision/dispatch': typeof lib_decision_dispatch;

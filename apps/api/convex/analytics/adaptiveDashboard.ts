@@ -10,7 +10,11 @@
 import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import type { OrganizationRole } from '../lib/sessionOrganization';
-import { widgetSizeValidator } from '../lib/convexValidators';
+import {
+	dashboardCardValidator,
+	dashboardRuleValidator,
+	type DashboardRuleCondition,
+} from '../lib/dashboardLayoutValidators';
 
 // ============================================================
 // Default Card Definitions
@@ -215,37 +219,8 @@ export const saveLayout = authedMutation({
 	args: {
 		// Optional: callers that only update pinnedCards (the pin/unpin UI) omit
 		// rules so existing adaptive rules are preserved, not wiped.
-		rules: v.optional(
-			v.array(
-				v.object({
-					condition: v.object({
-						timeRange: v.optional(
-							v.object({
-								start: v.string(),
-								end: v.string(),
-							})
-						),
-						dayOfWeek: v.optional(v.array(v.number())),
-						role: v.optional(v.string()),
-					}),
-					cards: v.array(
-						v.object({
-							type: v.string(),
-							size: widgetSizeValidator,
-						})
-					),
-					priority: v.number(),
-				})
-			)
-		),
-		pinnedCards: v.optional(
-			v.array(
-				v.object({
-					type: v.string(),
-					size: widgetSizeValidator,
-				})
-			)
-		),
+		rules: v.optional(v.array(dashboardRuleValidator)),
+		pinnedCards: v.optional(v.array(dashboardCardValidator)),
 	},
 	handler: async (ctx, args, session) => {
 		const existing = await ctx.db
@@ -295,11 +270,7 @@ function getDefaultLayout(role: OrganizationRole) {
 }
 
 function matchesCondition(
-	condition: {
-		timeRange?: { start: string; end: string };
-		dayOfWeek?: number[];
-		role?: string;
-	},
+	condition: DashboardRuleCondition,
 	currentTime: string,
 	dayOfWeek: number,
 	role: OrganizationRole
