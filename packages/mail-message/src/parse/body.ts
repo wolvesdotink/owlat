@@ -53,6 +53,33 @@ function splitHeadersAndBody(raw: string): { headerText: string; body: string } 
 }
 
 /**
+ * Classify the line `body[pos, lineEnd)` as an opening or closing delimiter,
+ * ignoring trailing spaces and tabs, or `null` when it is neither. Every
+ * delimiter starts with `open`, so any other line is rejected with one prefix
+ * comparison; the right-trim is a plain backwards scan, so a long run of
+ * blanks costs time linear in its length.
+ */
+function delimiterAt(
+	body: string,
+	pos: number,
+	lineEnd: number,
+	open: string,
+	close: string
+): 'open' | 'close' | null {
+	if (lineEnd - pos < open.length || !body.startsWith(open, pos)) return null;
+	let end = lineEnd;
+	while (end > pos) {
+		const c = body.charCodeAt(end - 1);
+		if (c !== 0x20 && c !== 0x09) break;
+		end--;
+	}
+	const len = end - pos;
+	if (len === open.length) return 'open';
+	if (len === close.length && body.startsWith(close, pos)) return 'close';
+	return null;
+}
+
+/**
  * Split a multipart body into its parts on `--boundary` delimiter lines,
  * tolerating trailing whitespace on the delimiter and stopping at the closing
  * `--boundary--`. Preamble/epilogue outside the delimiters is discarded. Order
@@ -62,8 +89,8 @@ function splitHeadersAndBody(raw: string): { headerText: string; body: string } 
  * the CRLF that precedes a delimiter is (per MIME) part of the delimiter, not the
  * part, and is excluded, but every interior line ending is kept exactly as it
  * appeared on the wire. Line-ending normalization (CRLF -> LF) is applied later,
- * per-leaf, only to the parts where the old `mailMime` extractor applied it (see
- * {@link leafRawBody}); `message/*` payloads and the top-level body are kept
+ * per-leaf, and only to nested non-`message/*` parts (see {@link leafRawBody});
+ * `message/*` payloads and the top-level body are kept
  * verbatim so DSN scraping and message re-verification see the exact original
  * bytes — byte-for-byte with mailparser.
  */
@@ -79,12 +106,12 @@ function* splitMultipart(body: string, boundary: string): Generator<string, void
 		const atEnd = nl === -1;
 		const lineEnd = atEnd ? n : nl > pos && body[nl - 1] === '\r' ? nl - 1 : nl;
 		const nextPos = atEnd ? n + 1 : nl + 1;
-		const t = body.slice(pos, lineEnd).replace(/[ \t]+$/, '');
-		if (t === open || t === close) {
+		const delimiter = delimiterAt(body, pos, lineEnd, open, close);
+		if (delimiter !== null) {
 			if (partStart !== -1) {
 				yield body.slice(partStart, prevLineEnd === -1 ? partStart : prevLineEnd);
 			}
-			if (t === close) {
+			if (delimiter === 'close') {
 				partStart = -1;
 				break;
 			}
@@ -110,8 +137,7 @@ interface MimeParseBudget {
  * The raw (pre-transfer-decode) body of a leaf. `message/*` payloads and the
  * top-level (non-`nested`) body are kept VERBATIM — mailparser preserves their
  * exact CRLF bytes, and downstream DSN scraping / message re-verification depends
- * on those bytes. Every other nested leaf is CRLF -> LF normalized, reproducing
- * the byte-for-byte behavior of the old `mailMime` per-part `split(/\r?\n/).join('\n')`.
+ * on those bytes. Every other nested leaf is CRLF -> LF normalized.
  */
 function leafRawBody(contentType: ContentType, body: string, nested: boolean): string {
 	if (nested && !contentType.value.startsWith('message/')) {
@@ -141,16 +167,13 @@ function parseMimeNode(
 
 	if (contentType.value.startsWith('multipart/') && depth < MAX_DEPTH) {
 		// Gate on the `multipart/` PREFIX, not `type === 'multipart'`: `value` is
-		// byte-identical to mailMime's `mainType` (up-to-first-`;`, trimmed,
-		// lowercased), so a slashless `Content-Type: multipart` is NOT a container
-		// (matching `mainType.startsWith('multipart/')` === false) and stays a leaf
-		// exactly as the oracle treats it.
+		// the Content-Type up to the first `;`, trimmed and lowercased, so a
+		// slashless `Content-Type: multipart` is NOT a container and stays a leaf.
 		//
 		// Read the boundary from the RAW Content-Type via the whitespace-anchored
-		// scanner, byte-for-byte as `mailMime.getBoundary` does — NOT from the
-		// semicolon-anchored `contentType.params`, so a no-semicolon
-		// `multipart/mixed boundary="B"` is a multipart with indexed parts on both
-		// sides and the stored partIndex contract is preserved.
+		// scanner, NOT from the semicolon-anchored `contentType.params`, so a
+		// no-semicolon `multipart/mixed boundary="B"` is still a multipart with
+		// indexed parts, which keeps the stored partIndex numbering stable.
 		const boundary = getRawParam(headers.last('content-type'), 'boundary');
 		if (boundary !== undefined && boundary !== '') {
 			isMultipart = true;
@@ -204,8 +227,9 @@ function rawDisposition(node: MimeNode): string {
 
 /**
  * Decoded filename of a part (Content-Disposition `filename`, else Content-Type
- * `name`), or `''`. Matches `mailMime.extractAttachments` byte-for-byte, including
- * the no-semicolon param extraction and the `decodeEncodedWords` post-step.
+ * `name`), or `''`. Params are read with the whitespace-anchored scanner, so a
+ * no-semicolon `attachment filename="x"` still yields a name, and the value is
+ * then RFC 2047-decoded.
  */
 export function partFilename(node: MimeNode): string {
 	const rawName =
@@ -216,7 +240,7 @@ export function partFilename(node: MimeNode): string {
 
 /**
  * `inline` when the disposition token starts with `inline`, otherwise
- * `attachment` (mailMime parity: `disposition.startsWith('inline')`).
+ * `attachment`.
  */
 export function partDisposition(node: MimeNode): 'attachment' | 'inline' {
 	return rawDisposition(node).startsWith('inline') ? 'inline' : 'attachment';
@@ -224,10 +248,10 @@ export function partDisposition(node: MimeNode): 'attachment' | 'inline' {
 
 /**
  * Whether a leaf is an attachment: a disposition that starts with `attachment`
- * OR the presence of a filename. `multipart/*` nodes are never attachments. This
- * is byte-for-byte the predicate `mailMime.extractAttachments` uses (a raw
- * `startsWith('attachment')`, not token equality — so `attachment filename="x"`
- * without a semicolon still counts).
+ * OR the presence of a filename. `multipart/*` nodes are never attachments. The
+ * disposition check is a raw `startsWith('attachment')`, not token equality, so
+ * `attachment filename="x"` without a semicolon still counts. This is the one
+ * attachment predicate: the writers and `@owlat/shared/mailMime` both use it.
  */
 export function isAttachmentPart(node: MimeNode): boolean {
 	if (node.contentType.value.startsWith('multipart/')) return false;

@@ -30,6 +30,21 @@ describe('extractFirstPartByType', () => {
 		const raw = ['Content-Type: text/plain', '', 'hello'].join('\r\n');
 		expect(extractFirstPartByType(raw, 'text/calendar')).toBeNull();
 	});
+
+	it('treats a part with an empty Content-Type as text/plain', () => {
+		const raw = [
+			'Content-Type: multipart/mixed; boundary="E"',
+			'',
+			'--E',
+			'Content-Type:',
+			'',
+			'untyped',
+			'--E--',
+		].join('\r\n');
+		const part = extractFirstPartByType(raw, 'text/plain');
+		expect(part?.contentType).toBe('text/plain');
+		expect(new TextDecoder().decode(part!.bytes)).toBe('untyped');
+	});
 });
 
 // multipart/mixed wrapping a multipart/alternative (text+html, NOT attachments)

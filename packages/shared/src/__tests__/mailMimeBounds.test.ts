@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractAttachments as messageExtract, MAX_MIME_PARTS } from '@owlat/mail-message';
+import { parseMessage, MAX_MIME_PARTS } from '@owlat/mail-message';
 import { extractAttachments, extractAttachmentAt, extractFirstPartByType } from '../mailMime';
 
 /**
@@ -70,14 +70,66 @@ describe('mailMime bounds', () => {
 		expect(extractAttachmentAt(raw, String(MAX_MIME_PARTS + 10))).toBeNull();
 	});
 
-	it('returns the same attachment order as mail-message past 1,000 parts', () => {
+	it('splits a part holding a very long blank-padded line in bounded time', () => {
+		// One ~1 MB line of spaces ending in a non-blank byte, nested 100 levels
+		// deep, so every level rescans the line when looking for its delimiter.
+		const longLine = `${' '.repeat(1_000_000)}x`;
+		const open: string[] = [];
+		const close: string[] = [];
+		for (let i = 0; i < 100; i++) {
+			open.push(`Content-Type: multipart/mixed; boundary="p${i}"`, '', `--p${i}`);
+			close.unshift(`--p${i}--`);
+		}
+		const raw = [
+			...open,
+			'Content-Type: text/plain',
+			'Content-Disposition: attachment; filename="pad.txt"',
+			'',
+			longLine,
+			...close,
+		].join('\r\n');
+		const { value, ms } = timed(() => extractAttachments(raw));
+		expect(ms).toBeLessThan(TIME_BUDGET_MS);
+		expect(value.map((a) => [a.filename, a.bytes.length])).toEqual([['pad.txt', longLine.length]]);
+	});
+
+	it('splits a flat part holding a very long blank-padded line in bounded time', () => {
+		const raw = [
+			'Content-Type: multipart/mixed; boundary="L"',
+			'',
+			'--L',
+			'Content-Disposition: attachment; filename="pad.txt"',
+			'',
+			`${' \t'.repeat(500_000)}x`,
+			'--L  ',
+			'Content-Disposition: attachment; filename="after.txt"',
+			'',
+			'after',
+			'--L--\t',
+			'',
+		].join('\r\n');
+		const { value, ms } = timed(() => extractAttachments(raw));
+		expect(ms).toBeLessThan(TIME_BUDGET_MS);
+		expect(value.map((a) => a.filename)).toEqual(['pad.txt', 'after.txt']);
+	});
+
+	it('returns the same attachment order as the writers past 1,000 parts', () => {
 		const raw = wide(1_500);
 		const ours = extractAttachments(raw);
-		const theirs = messageExtract(raw);
-		expect(ours.map((a) => a.filename)).toEqual(theirs.map((a) => a.filename));
+		// The writers (mail-sync ingest, MTA bounce outcome) record
+		// `partIndex = String(i)` over `parseMessage(bytes).attachments`.
+		const theirs = parseMessage(Buffer.from(raw, 'latin1')).attachments;
+		// Pinned independently of either side: the first MAX_MIME_PARTS parts,
+		// in wire order.
+		const expected = Array.from({ length: MAX_MIME_PARTS }, (_, i) => `f${i}.txt`);
+		expect(ours.map((a) => a.filename)).toEqual(expected);
+		expect(theirs.map((a) => a.filename)).toEqual(expected);
 		expect(ours.map((a) => [...a.bytes])).toEqual(theirs.map((a) => [...a.content]));
 		// Every index the writers can record resolves to the same part.
-		const last = theirs.length - 1;
-		expect(extractAttachmentAt(raw, String(last))?.filename).toBe(theirs[last]!.filename);
+		for (const i of [0, 1, 499, MAX_MIME_PARTS - 1]) {
+			const at = extractAttachmentAt(raw, String(i));
+			expect(at?.filename).toBe(theirs[i]!.filename);
+			expect(new TextDecoder().decode(at!.bytes)).toBe(`part ${i}`);
+		}
 	});
 });
