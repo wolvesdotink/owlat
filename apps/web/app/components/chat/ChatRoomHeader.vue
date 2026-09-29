@@ -16,6 +16,12 @@ interface Room {
 interface Props {
 	room: Room;
 	memberCount: number;
+	/**
+	 * Whether the viewer can read the linked Team Inbox thread. The server
+	 * returns the linked-thread view only to shared-inbox readers, so the page
+	 * passes whether it has one; the badge follows it, not the room's link.
+	 */
+	canSeeLinkedEmail: boolean;
 }
 
 defineProps<Props>();
@@ -59,7 +65,7 @@ const { t } = useI18n();
 					{{ room.name }}
 				</h2>
 				<span
-					v-if="room.linkedInboxThreadId"
+					v-if="canSeeLinkedEmail"
 					class="text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded bg-brand-subtle text-brand"
 				>
 					{{ t('components.chat.chatRoomHeader.linkedEmailBadge') }}
