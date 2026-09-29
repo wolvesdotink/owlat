@@ -6,8 +6,10 @@ import schema from '../schema';
 /**
  * The upload service routes (`/storage/upload/{begin,finish,abort}`) take the
  * instance secret as a bearer token from the web server. A failed compare is
- * charged to the caller's per-IP `instanceSecret` bucket; a matching secret is
- * never charged or checked, so the web server's upload bursts are never stalled.
+ * charged to the caller's per-IP `instanceSecret` bucket and a matching secret
+ * is never charged. For a resolved client address the bucket is read before the
+ * compare, so an exhausted address waits even with the right secret; the shared
+ * `'unknown'` bucket is never read first, so upload bursts are not stalled.
  */
 
 const modules = import.meta.glob('../**/*.*s');
@@ -65,13 +67,25 @@ describe('upload service routes: failed-secret throttle', () => {
 		expect((await post(t, ROUTES[0]!, 'wrong-secret', '198.51.100.21')).status).toBe(401);
 	});
 
-	it('never throttles the matching secret, even from an exhausted address', async () => {
+	it('answers 429 to the matching secret from an exhausted real address', async () => {
+		const t = harness();
+		for (let i = 0; i < 40; i++) {
+			if ((await post(t, ROUTES[0]!, 'wrong-secret', '198.51.100.40')).status === 429) break;
+		}
+		// The bucket is read before the compare, so the right secret waits too.
+		expect((await post(t, ROUTES[0]!, SECRET, '198.51.100.40')).status).toBe(429);
+		// Another address is unaffected.
+		expect((await post(t, ROUTES[0]!, SECRET, '198.51.100.41')).status).toBe(400);
+	});
+
+	it('lets the matching secret through the shared unknown bucket even when it is exhausted', async () => {
 		const t = harness();
 		for (let i = 0; i < 40; i++) {
 			if ((await post(t, ROUTES[0]!, 'wrong-secret')).status === 429) break;
 		}
-		// The shared 'unknown' bucket is exhausted, yet the web server still gets through.
 		expect((await post(t, ROUTES[0]!, 'wrong-secret')).status).toBe(429);
+		// Every caller without a resolvable address shares 'unknown', the web
+		// server included, so that bucket is only charged, never read first.
 		for (let i = 0; i < 30; i++) {
 			expect((await post(t, ROUTES[i % ROUTES.length]!, SECRET)).status).toBe(400);
 		}
