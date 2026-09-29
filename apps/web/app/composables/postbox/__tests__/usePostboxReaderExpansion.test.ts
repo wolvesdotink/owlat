@@ -37,6 +37,26 @@ describe('initialExpandedIds', () => {
 	it('leaves the first message collapsed in a two-message thread', () => {
 		expect([...initialExpandedIds([msg('a'), msg('b')], 'b')]).toEqual(['b']);
 	});
+
+	it('expands only the newest unread messages of a long unread thread', () => {
+		const thread = Array.from({ length: 12 }, (_, i) => msg(`m${i}`, false));
+		// The first, the last three unread (the latest among them) and the active one.
+		expect([...initialExpandedIds(thread, 'm4')].sort()).toEqual(['m0', 'm10', 'm11', 'm4', 'm9']);
+	});
+
+	it('counts the cap in unread messages, skipping read ones between them', () => {
+		const thread = [
+			msg('a', false),
+			msg('b', false),
+			msg('c', false),
+			msg('d'),
+			msg('e', false),
+			msg('f'),
+			msg('g', false),
+			msg('h'),
+		];
+		expect([...initialExpandedIds(thread, 'h')].sort()).toEqual(['a', 'c', 'e', 'g', 'h']);
+	});
 });
 
 describe('usePostboxReaderExpansion', () => {

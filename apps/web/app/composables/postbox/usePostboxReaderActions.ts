@@ -66,6 +66,11 @@ export function usePostboxReaderActions(opts: {
 	allMessages: ComputedRef<ReadonlyArray<{ _id: string }>>;
 	readerThread: ComputedRef<ReaderActionThread | null | undefined>;
 	autoAdvance: Ref<PostboxAutoAdvanceMode> | ComputedRef<PostboxAutoAdvanceMode>;
+	/**
+	 * Runs before `print`; a returned promise delays the print dialog until it
+	 * settles (the reader mounts its lazily held message bodies first).
+	 */
+	beforePrint?: () => Promise<void> | undefined;
 	advance: {
 		ids: () => string[] | undefined;
 		folderRole: () => string | undefined;
@@ -388,9 +393,13 @@ export function usePostboxReaderActions(opts: {
 			case 'blockSender':
 				blockSenderOf(getMessage()._id);
 				break;
-			case 'print':
-				if (import.meta.client) window.print();
+			case 'print': {
+				if (!import.meta.client) break;
+				const ready = opts.beforePrint?.();
+				if (ready) void ready.then(() => window.print());
+				else window.print();
 				break;
+			}
 		}
 	}
 

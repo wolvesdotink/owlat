@@ -3,8 +3,14 @@
  *
  * The default set is computed once per thread, from the first loaded message
  * list: the latest message, the first one when the thread has more than two,
- * every unread message and the active one. After that the set only grows: a
- * message that arrives later (a reply, a sync) is added, nothing is taken away.
+ * the last {@link MAX_AUTO_EXPANDED_UNREAD} unread messages and the active one.
+ * After that the set only grows: a message that arrives later (a reply, a
+ * sync) is added, nothing is taken away.
+ *
+ * The unread cap matters on long threads: every expanded message mounts an
+ * iframe and runs the sanitize pipeline, so a 40-message unread thread used to
+ * pay for 40 bodies before anything was readable. Older unread messages stay
+ * one click away as collapsed rows.
  *
  * Rebuilding the set on every query update used to undo itself: the reader
  * marks the thread read on open, the query comes back with `flagSeen` set, and
@@ -18,6 +24,9 @@ export interface ReaderExpansionMessage {
 	flagSeen?: boolean;
 }
 
+/** How many unread messages, counted from the newest, open expanded. */
+export const MAX_AUTO_EXPANDED_UNREAD = 3;
+
 /** The default expanded set for a freshly opened thread. */
 export function initialExpandedIds(
 	messages: readonly ReaderExpansionMessage[],
@@ -28,7 +37,14 @@ export function initialExpandedIds(
 	if (last) next.add(last._id);
 	const first = messages[0];
 	if (messages.length > 2 && first) next.add(first._id);
-	for (const m of messages) if (!m.flagSeen) next.add(m._id);
+	let unread = 0;
+	for (let i = messages.length - 1; i >= 0 && unread < MAX_AUTO_EXPANDED_UNREAD; i--) {
+		const m = messages[i];
+		if (m && !m.flagSeen) {
+			next.add(m._id);
+			unread++;
+		}
+	}
 	next.add(activeId);
 	return next;
 }

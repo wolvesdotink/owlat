@@ -80,6 +80,7 @@ import { formatCompactRelativeTime } from '~/utils/formatters';
 import { useNow } from '~/composables/useNow';
 import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
 import { usePostboxReaderExpansion } from '~/composables/postbox/usePostboxReaderExpansion';
+import { usePostboxMountAllBodies } from '~/composables/postbox/usePostboxLazyBody';
 import {
 	POSTBOX_MARK_READ_DWELL_MS,
 	markReadOnOpen,
@@ -422,6 +423,12 @@ const { expanded, toggleExpanded } = usePostboxReaderExpansion({
 	activeId: () => props.message._id,
 	messages: () => threadData.value?.messages,
 });
+// Expanded bodies mount as they near the viewport; printing mounts them all.
+const articleEl = ref<HTMLElement | null>(null);
+const { mountAll: mountAllBodies, preparePrint } = usePostboxMountAllBodies({
+	threadKey: () => props.message.threadId ?? props.message._id,
+	root: articleEl,
+});
 
 // Minute tick so the relative timestamps ("2h ago") stay fresh while a
 // thread sits open. Presentation-only; the absolute datetime lives in the
@@ -610,6 +617,7 @@ const {
 	allMessages,
 	readerThread,
 	autoAdvance,
+	beforePrint: preparePrint,
 	advance: {
 		ids: () => props.advanceIds,
 		folderRole: () => props.folderRole,
@@ -674,7 +682,11 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 </script>
 
 <template>
-	<article class="pbx-reader-article p-6 max-w-4xl mx-auto" :class="discussionArticleClass">
+	<article
+		ref="articleEl"
+		class="pbx-reader-article p-6 max-w-4xl mx-auto"
+		:class="discussionArticleClass"
+	>
 		<PostboxThreadHeader
 			:subject="message.subject"
 			:message-count="allMessages.length"
@@ -753,6 +765,7 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 				:has-invite="!!calendarAttachment(msg)"
 				:seal-status="sealStatusFor(msg)"
 				:downloading-attachment="downloadingAttachment"
+				:eager-body="mountAllBodies"
 				@toggle-expanded="toggleExpanded(msg._id)"
 				@open-sender-profile="openSenderProfile(msg)"
 				@toggle-forced-light="toggleForcedLight(msg._id)"

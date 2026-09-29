@@ -118,3 +118,37 @@ describe('createPostboxRenderCache', () => {
 		expect(cache.get(dark)?.srcdoc).toBe('DARK');
 	});
 });
+
+describe('heightFor', () => {
+	it('returns the height of the render under the preferred options', () => {
+		const cache = createPostboxRenderCache();
+		cache.set(postboxRenderKey('m1', baseOptions), entry('A', 320));
+		cache.set(postboxRenderKey('m1', { ...baseOptions, showImages: true }), entry('B', 900));
+		expect(cache.heightFor('m1', baseOptions)).toBe(320);
+	});
+
+	it('falls back to the most recent measured render of the same message', () => {
+		const cache = createPostboxRenderCache();
+		cache.set(postboxRenderKey('m1', { ...baseOptions, scheme: 'dark' }), entry('A', 410));
+		cache.set(postboxRenderKey('m1', { ...baseOptions, showQuoted: true }), entry('B', 700));
+		cache.set(postboxRenderKey('m1', { ...baseOptions, showImages: true }), entry('C', null));
+		cache.set(postboxRenderKey('m10', baseOptions), entry('D', 999));
+		expect(cache.heightFor('m1', baseOptions)).toBe(700);
+	});
+
+	it('returns null for a message that was never measured', () => {
+		const cache = createPostboxRenderCache();
+		cache.set(postboxRenderKey('m1', baseOptions), entry('A', null));
+		expect(cache.heightFor('m1', baseOptions)).toBeNull();
+		expect(cache.heightFor('m2', baseOptions)).toBeNull();
+	});
+
+	it('does not refresh the entry it reads', () => {
+		const cache = createPostboxRenderCache(2);
+		cache.set(postboxRenderKey('m1', baseOptions), entry('A', 100));
+		cache.set(postboxRenderKey('m2', baseOptions), entry('B', 200));
+		cache.heightFor('m1', baseOptions);
+		cache.set(postboxRenderKey('m3', baseOptions), entry('C', 300));
+		expect(cache.has(postboxRenderKey('m1', baseOptions))).toBe(false);
+	});
+});
