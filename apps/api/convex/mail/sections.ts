@@ -170,6 +170,11 @@ export function resolveSectionLimit(
 export const listSections = publicQuery({
 	args: {
 		mailboxId: v.id('mailboxes'),
+		/**
+		 * The inbox folder's id, when the client already holds it (from
+		 * `listFolders`). Optional: without it the inbox is resolved by role.
+		 */
+		folderId: v.optional(v.id('mailFolders')),
 		/** Per-section page sizes; `''` addresses the "Everything else" section. */
 		limits: v.optional(v.array(v.object({ section: v.string(), limit: v.number() }))),
 	},
@@ -177,13 +182,8 @@ export const listSections = publicQuery({
 		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
 		if (!mailbox) return { sections: [] };
 
-		const folder = await ctx.db
-			.query('mailFolders')
-			.withIndex('by_mailbox_and_role', (q) =>
-				q.eq('mailboxId', args.mailboxId).eq('role', 'inbox')
-			)
-			.first();
-		if (!folder) return { sections: [] };
+		const folderId = await resolveInboxFolderId(ctx, args.mailboxId, args.folderId);
+		if (!folderId) return { sections: [] };
 
 		const filters = await ctx.db
 			.query('mailFilters')
@@ -195,7 +195,7 @@ export const listSections = publicQuery({
 		const sections: InboxSection[] = [];
 		for (const name of names) {
 			const limit = resolveSectionLimit(args.limits, name);
-			sections.push(await readSection(ctx, folder._id, name, limit, now));
+			sections.push(await readSection(ctx, folderId, name, limit, now));
 		}
 		// The remainder goes last: it reads as the bottom of the inbox rather than
 		// competing with the named sections. It is the complement of exactly the
@@ -203,7 +203,7 @@ export const listSections = publicQuery({
 		sections.push(
 			await readRemainder(
 				ctx,
-				folder._id,
+				folderId,
 				new Set(names),
 				resolveSectionLimit(args.limits, null),
 				now
@@ -212,6 +212,36 @@ export const listSections = publicQuery({
 		return { sections };
 	},
 });
+
+/**
+ * The folder the sections are read from, or null when there is none to read.
+ *
+ * With a client-supplied id the folder DOC is never read: IMAP bookkeeping
+ * (modseq, counts) patches it on every delivery and flag change, and reading it
+ * would re-run every section's page whenever any inbox message is marked read.
+ * Ownership is checked on the folder's newest row instead, which the remainder
+ * walk reads anyway: a folder belongs to one mailbox, so its rows carry that
+ * mailbox's id. An empty folder has nothing to reveal and reads as empty.
+ */
+async function resolveInboxFolderId(
+	ctx: QueryCtx,
+	mailboxId: Id<'mailboxes'>,
+	folderId: Id<'mailFolders'> | undefined
+): Promise<Id<'mailFolders'> | null> {
+	if (folderId) {
+		const newest = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_folder_and_received', (q) => q.eq('folderId', folderId))
+			.order('desc')
+			.first();
+		return newest && newest.mailboxId !== mailboxId ? null : folderId;
+	}
+	const inbox = await ctx.db
+		.query('mailFolders')
+		.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mailboxId).eq('role', 'inbox'))
+		.first();
+	return inbox?._id ?? null;
+}
 
 /** One NAMED section's page + unread count, both bounded indexed reads. */
 async function readSection(

@@ -84,17 +84,25 @@ export const listMessages = publicQuery({
 			return { messages: await attachThreadState(ctx, messages), hasMore, nextCursor: null };
 		}
 
-		// Custom-folder view, addressed directly by id — custom IMAP folders carry
-		// no role, so the sidebar links them here (the by_folder index, like the
-		// role path below, just keyed on the folder id). Ownership re-checked.
+		// Folder addressed directly by id. Custom IMAP folders carry no role, so
+		// the sidebar links them here, and the client also sends the id of a role
+		// folder once `listFolders` has resolved it.
+		//
+		// The folder DOC is deliberately not read. IMAP bookkeeping (modseq,
+		// counts) patches it on every delivery and flag change, and reading it
+		// would make this subscription re-run page 1 whenever any message in the
+		// folder is marked read. Ownership is checked on the rows instead: a
+		// folder belongs to one mailbox, so every message filed in it carries
+		// that mailbox's id, and a page holding any other mailbox's row means
+		// the id was not this mailbox's folder.
 		if (args.folderId) {
-			const folder = await ctx.db.get(args.folderId);
-			if (!folder || folder.mailboxId !== args.mailboxId) return empty;
+			const folderId = args.folderId;
 			const page = await ctx.db
 				.query('mailMessages')
-				.withIndex('by_folder_and_received', (q) => q.eq('folderId', folder._id))
+				.withIndex('by_folder_and_received', (q) => q.eq('folderId', folderId))
 				.order(order)
 				.paginate(pagination);
+			if (page.page.some((m) => m.mailboxId !== args.mailboxId)) return empty;
 			return {
 				messages: await attachThreadState(
 					ctx,
@@ -105,7 +113,10 @@ export const listMessages = publicQuery({
 			};
 		}
 
-		// Folder-scoped view, indexed by arrival (no mailbox-wide overfetch).
+		// Folder-scoped view by role, indexed by arrival (no mailbox-wide
+		// overfetch). Resolving the role reads the folder doc, so this
+		// subscription also re-runs on the folder's IMAP bookkeeping writes;
+		// clients that already hold the folder id send `folderId` instead.
 		if (args.folderRole) {
 			const folder = await ctx.db
 				.query('mailFolders')
