@@ -3,13 +3,14 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import de from '~~/i18n/locales/de.json';
 import en from '~~/i18n/locales/en.json';
+import { leafKeys } from '~~/i18n/catalogAreas';
 import {
 	completeCatalog,
 	i18nBuildLocales,
 	type MessageCatalog,
 	USES_COMPLETE_CATALOGS,
-	writeCompleteCatalogs,
 } from '~~/i18n/completeCatalogs';
+import { areaManifestModule, writeBuildCatalogs } from '~~/i18n/writeCatalogs';
 
 /**
  * A production build registers `de` as a generated catalog completed from `en`
@@ -59,22 +60,42 @@ describe('build catalogs', () => {
 		expect(USES_COMPLETE_CATALOGS).toBe(true);
 	});
 
-	it('registers the generated de catalog and keeps en as the source file', () => {
+	it('registers each locale’s generated boot catalog', () => {
 		const locales = i18nBuildLocales();
-		expect(locales.find((l) => l.code === 'en')?.file).toBe('en.json');
+		expect(locales.find((l) => l.code === 'en')?.file).toMatch(
+			/node_modules\/\.cache\/owlat-i18n\/boot\/en\.json$/
+		);
 		expect(locales.find((l) => l.code === 'de')?.file).toMatch(
-			/node_modules\/\.cache\/owlat-i18n\/de\.json$/
+			/node_modules\/\.cache\/owlat-i18n\/boot\/de\.json$/
 		);
 	});
 
-	it('writes a de catalog with every en key and every de translation', () => {
-		writeCompleteCatalogs();
-		const file = i18nBuildLocales().find((l) => l.code === 'de')!.file;
-		const generated = JSON.parse(readFileSync(file, 'utf-8')) as MessageCatalog;
+	it('writes, across the de boot catalog and chunks, every en key and every de translation', () => {
+		const manifest = writeBuildCatalogs();
+		const read = (file: string) => JSON.parse(readFileSync(file, 'utf-8')) as MessageCatalog;
+		const bootFile = i18nBuildLocales().find((l) => l.code === 'de')!.file;
+		const catalogs = [
+			read(bootFile),
+			...Object.values(manifest.chunks).map((locales) => read(locales['de']!)),
+		];
 
-		const generatedKeys = new Set(keyPaths(generated));
+		const generatedKeys = new Set(catalogs.flatMap((catalog) => keyPaths(catalog)));
 		expect(keyPaths(en as MessageCatalog).filter((key) => !generatedKeys.has(key))).toEqual([]);
-		expect(generated).toEqual(completeCatalog(de as MessageCatalog, en as MessageCatalog));
+		const complete = completeCatalog(de as MessageCatalog, en as MessageCatalog);
+		expect(generatedKeys).toEqual(new Set(leafKeys(complete)));
+	});
+
+	it('lists every written chunk in the module the runtime loads them through', () => {
+		const manifest = writeBuildCatalogs();
+		const module = areaManifestModule(manifest);
+		expect(manifest.routes.length).toBeGreaterThan(5);
+		for (const locales of Object.values(manifest.chunks)) {
+			expect(Object.keys(locales).sort()).toEqual(['de', 'en']);
+			for (const file of Object.values(locales)) {
+				expect(module).toContain(`() => import(${JSON.stringify(file)})`);
+			}
+		}
+		expect(module).toContain(`export const areaRoutes = ${JSON.stringify(manifest.routes)};`);
 	});
 
 	it('turns the runtime en fallback off outside dev', async () => {

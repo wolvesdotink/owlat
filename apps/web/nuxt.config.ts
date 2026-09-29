@@ -1,7 +1,8 @@
 import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import type { PluginOption } from 'vite';
-import { i18nBuildLocales, writeCompleteCatalogs } from './i18n/completeCatalogs';
+import { I18N_MODULES } from './i18n/catalogModule';
+import { i18nBuildLocales } from './i18n/completeCatalogs';
 import { uiLayerIconNames } from './scripts/uiLayerIcons';
 
 // Local default endpoints, single-sourced so the CSP connect-src and the
@@ -51,8 +52,7 @@ export default defineNuxtConfig({
 		},
 	},
 
-	modules: ['nuxt-security', '@nuxtjs/color-mode', '@nuxt/fonts', '@nuxt/icon', '@nuxtjs/i18n'],
-	hooks: { 'modules:before': writeCompleteCatalogs },
+	modules: ['nuxt-security', '@nuxtjs/color-mode', '@nuxt/fonts', '@nuxt/icon', ...I18N_MODULES],
 
 	i18n: {
 		defaultLocale: 'en',
@@ -62,8 +62,9 @@ export default defineNuxtConfig({
 		// and would have to be mirrored in every `routeRules` redirect above.
 		strategy: 'no_prefix',
 		// Message files live in i18n/locales/ (the module's `restructureDir`) and are
-		// loaded on demand, one catalog per visitor: a build registers translations
-		// completed from `en` (i18n/completeCatalogs.ts, written on `modules:before`).
+		// loaded on demand, one catalog per visitor: a build registers each locale's
+		// boot catalog (translations completed from `en`, i18n/completeCatalogs.ts),
+		// and each route area's messages load with the area (i18n/catalogAreas.ts).
 		// Built from `@owlat/shared/appLocales` (see i18n/localeOptions.ts).
 		locales: i18nBuildLocales(),
 		// The whole UI is extracted, so a first-time visitor can safely be served

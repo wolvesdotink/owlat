@@ -13,20 +13,30 @@
  * reads as English rather than as its key path. English never lands in
  * `de.json` itself: the fill happens in the build output only.
  *
+ * The completed catalogs are then split into a boot catalog and route-area
+ * chunks (./catalogAreas.ts, written by ./writeCatalogs.ts); the boot catalogs
+ * are what `i18nBuildLocales` registers.
+ *
  * The dev server keeps the plain files and the runtime fallback, so editing a
  * catalog hot-reloads and a missing key still warns in the console.
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { I18N_LOCALES } from './localeOptions';
 
 export type MessageCatalog = { [key: string]: string | MessageCatalog };
 
-const SOURCE_LOCALE = 'en';
-const LOCALES_DIR = fileURLToPath(new URL('./locales/', import.meta.url));
+export const SOURCE_LOCALE = 'en';
+// Resolved from the module's own path rather than `new URL(…, import.meta.url)`,
+// which a happy-dom test environment's `URL` does not resolve to a `file:` URL.
+const I18N_DIR = dirname(fileURLToPath(import.meta.url));
+const LOCALES_DIR = join(I18N_DIR, 'locales');
 // Under node_modules so it is ignored everywhere a build artefact must be, and
 // outside `.nuxt/`, which `nuxt build` clears after the modules have run.
-const OUTPUT_DIR = fileURLToPath(new URL('../node_modules/.cache/owlat-i18n/', import.meta.url));
+export const OUTPUT_DIR = join(I18N_DIR, '../node_modules/.cache/owlat-i18n');
+/** Where a locale's boot catalog is written. */
+export const bootCatalogPath = (file: string) => join(OUTPUT_DIR, 'boot', file);
 
 /** `nuxt dev` sets NODE_ENV before it loads the config; build, generate and prepare do not. */
 export const USES_COMPLETE_CATALOGS = process.env['NODE_ENV'] !== 'development';
@@ -60,28 +70,23 @@ export function completeCatalog(
 }
 
 const readCatalog = (path: string): MessageCatalog => JSON.parse(readFileSync(path, 'utf-8'));
-const generatedPath = (file: string) => `${OUTPUT_DIR}${file}`;
 
-/** The `i18n.locales` entries to register: the plain files in dev, the generated ones otherwise. */
+/** The `i18n.locales` entries to register: the plain files in dev, the boot catalogs otherwise. */
 export function i18nBuildLocales() {
 	if (!USES_COMPLETE_CATALOGS) return I18N_LOCALES;
-	return I18N_LOCALES.map((locale) =>
-		locale.code === SOURCE_LOCALE ? locale : { ...locale, file: generatedPath(locale.file) }
-	);
+	return I18N_LOCALES.map((locale) => ({ ...locale, file: bootCatalogPath(locale.file) }));
 }
 
-/**
- * Write the generated catalogs `i18nBuildLocales` points at. Runs on
- * `modules:before`, ahead of @nuxtjs/i18n reading (and hashing) its files.
- */
-export function writeCompleteCatalogs(): void {
-	if (!USES_COMPLETE_CATALOGS) return;
+/** Every shipped locale's catalog, each translation completed from `en`. */
+export function completeCatalogs(): Map<string, MessageCatalog> {
 	const sourceFile = I18N_LOCALES.find((locale) => locale.code === SOURCE_LOCALE)!.file;
-	const source = readCatalog(`${LOCALES_DIR}${sourceFile}`);
-	mkdirSync(OUTPUT_DIR, { recursive: true });
-	for (const locale of I18N_LOCALES) {
-		if (locale.code === SOURCE_LOCALE) continue;
-		const complete = completeCatalog(readCatalog(`${LOCALES_DIR}${locale.file}`), source);
-		writeFileSync(generatedPath(locale.file), `${JSON.stringify(complete)}\n`);
-	}
+	const source = readCatalog(join(LOCALES_DIR, sourceFile));
+	return new Map(
+		I18N_LOCALES.map((locale) => [
+			locale.code,
+			locale.code === SOURCE_LOCALE
+				? source
+				: completeCatalog(readCatalog(join(LOCALES_DIR, locale.file)), source),
+		])
+	);
 }
