@@ -76,10 +76,12 @@ export { invalidateAiConfigCache } from './llmProviders/storedConfigCache';
 
 /**
  * Task types map to a model tier:
- * - fast: classification, extraction, guardrails, summarization
+ * - fast: classification, extraction, guardrails, summarization, short
+ *   suggested-reply options (a user is waiting on them, and 1–2 sentence
+ *   replies do not need the capable model)
  * - capable: drafting replies, planning multi-step actions
  */
-export type LLMTask = 'classify' | 'extract' | 'guard' | 'summarize' | 'draft' | 'plan';
+export type LLMTask = 'classify' | 'extract' | 'guard' | 'summarize' | 'suggest' | 'draft' | 'plan';
 /** Model tiers exposed to callers. */
 type LLMTier = 'fast' | 'capable';
 

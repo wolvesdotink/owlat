@@ -95,12 +95,12 @@ describe('llmProvider', () => {
 			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-5.6-sol');
 		});
 
-		it('routes classify/extract/guard/summarize to the fast tier', async () => {
+		it('routes classify/extract/guard/summarize/suggest to the fast tier', async () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
 			vi.stubEnv('LLM_MODEL_FAST', 'gpt-4o-mini-test');
 			const { resolveLanguageModel } = await import('../llmProvider');
 			const { ctx } = makeCtx(null);
-			for (const task of ['classify', 'extract', 'guard', 'summarize'] as const) {
+			for (const task of ['classify', 'extract', 'guard', 'summarize', 'suggest'] as const) {
 				mockOpenAIFactory.mockClear();
 				await resolveLanguageModel(ctx, task);
 				expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o-mini-test');

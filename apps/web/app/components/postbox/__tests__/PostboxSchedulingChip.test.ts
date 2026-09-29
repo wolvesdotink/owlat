@@ -31,6 +31,13 @@ beforeAll(() => {
 		isLoading: suggestLoading,
 	}));
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+	// The streamed-options buffer (useSuggestReplies); no buffer in these cases.
+	vi.stubGlobal('useConvexQuery', () => ({ data: ref(undefined) }));
+	vi.stubGlobal('requireConvex', () => ({
+		mutation: async () => {
+			throw new Error('no buffer');
+		},
+	}));
 });
 
 beforeEach(() => {
