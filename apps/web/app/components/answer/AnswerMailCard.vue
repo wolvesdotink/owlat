@@ -8,6 +8,11 @@ import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
 import type { ReplyQuoteTarget } from '~/composables/postbox/usePostboxQuotedText';
 import { useSuggestReplies } from '~/composables/postbox/useSuggestReplies';
+import {
+	optimisticArchive,
+	optimisticMove,
+	optimisticSnooze,
+} from '~/lib/mailOptimistic/mailUpdaters';
 import { isBuiltInTaskFlowKind } from '~/utils/taskCardRegistry';
 import { resolveReplyFocusKey } from '~/utils/taskFlowKeyboard';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
@@ -65,14 +70,19 @@ const clearOp = useBackendOperation(api.mail.needsReply.clear, {
 const cancelFollowUpOp = useBackendOperation(api.mail.followUps.cancel, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.dismissReminder'),
 });
+// Archive, its undo and snooze patch the cached Postbox views and counts
+// before the server answers (plan 2.2), like the same verbs in the Postbox.
 const archiveOp = useBackendOperation(api.mail.messageActions.archive, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.archive'),
+	optimisticUpdate: optimisticArchive,
 });
 const moveOp = useBackendOperation(api.mail.messageActions.move, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.move'),
+	optimisticUpdate: optimisticMove,
 });
 const snoozeOp = useBackendOperation(api.mail.snooze.snooze, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.snooze'),
+	optimisticUpdate: optimisticSnooze,
 });
 // Only the first option is used, so the composer opens as soon as it is final.
 const suggest = useSuggestReplies({
