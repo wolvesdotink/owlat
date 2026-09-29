@@ -14,6 +14,7 @@ import { v } from 'convex/values';
 import { internalMutation } from '../../_generated/server';
 import type { Id, Doc } from '../../_generated/dataModel';
 import { bumpFolderModseq } from '../folders';
+import { recordMessageCounters } from '../messageCounters';
 
 const IMAP_FLAG_TO_FIELD: Record<string, keyof Doc<'mailMessages'>> = {
 	'\\seen': 'flagSeen',
@@ -127,6 +128,7 @@ export const storeFlags = internalMutation({
 			patch.modseq = folderModseqValue;
 
 			await ctx.db.patch(id, patch);
+			await recordMessageCounters(ctx, message, { ...message, ...patch });
 
 			const newSeen = patch.flagSeen ?? message.flagSeen;
 			if (newSeen !== wasSeen) {

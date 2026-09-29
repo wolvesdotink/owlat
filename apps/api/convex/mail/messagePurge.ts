@@ -17,6 +17,8 @@ import type { MutationCtx } from '../_generated/server';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { removeMessageAttachments } from './attachmentIndex';
 import { applyMailboxUsageDelta } from './mailboxUsage';
+import { recordMessageCounters } from './messageCounters';
+import { deleteMessageBody } from '../lib/messageBodyStore';
 
 /** The `mailMessages` columns that hold a storage blob a SIBLING row may share. */
 type SharedBlobColumn = 'rawStorageId' | 'textBodyStorageId' | 'htmlBodyStorageId';
@@ -107,6 +109,8 @@ export async function deleteMessageRowAndBlobs(
 	if (mailbox) await applyMailboxUsageDelta(ctx, mailbox, 0);
 
 	await ctx.db.delete(message._id);
+	await deleteMessageBody(ctx.db, message._id);
+	await recordMessageCounters(ctx, message, null);
 
 	const blobs: ReadonlyArray<readonly [SharedBlobColumn, Id<'_storage'> | undefined]> = [
 		['rawStorageId', message.rawStorageId],

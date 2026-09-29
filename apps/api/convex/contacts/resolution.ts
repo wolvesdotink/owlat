@@ -34,6 +34,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { throwAlreadyExists } from '../_utils/errors';
 import { buildSearchableText } from '../lib/queryHelpers';
 import type { ContactSource } from '../lib/validators/contacts';
+import { recordContactGrowth } from './growthCounters';
 
 // ============================================================
 // Types
@@ -243,6 +244,7 @@ async function insertContactRow(
 		createdAt: now,
 		updatedAt: now,
 	});
+	await recordContactGrowth(ctx, null, { createdAt: now });
 
 	// Every Contact gets at least one `contactIdentities` row. The primary
 	// identity is the one created here; secondary identities for the same

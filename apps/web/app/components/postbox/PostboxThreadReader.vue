@@ -469,7 +469,9 @@ const {
 	collapseInline,
 	inlineSenderLabel,
 } = usePostboxReaderComposer({
-	getMessage: () => props.message,
+	// List rows carry no body (plan 2.3): quote from the thread query's copy of
+	// the open message once it has loaded, so Reply/Forward need no body fetch.
+	getMessage: () => allMessages.value.find((m) => m._id === props.message._id) ?? props.message,
 	latestMessage,
 	ownAddresses,
 	replyDefault,

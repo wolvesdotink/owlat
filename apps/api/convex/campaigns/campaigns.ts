@@ -8,6 +8,7 @@ import { buildSearchableText } from '../lib/queryHelpers';
 import { validateStringLength, STRING_LIMITS, sanitizeEmailHeaderValue } from '../lib/inputGuards';
 import { trackEvent } from '../lib/posthogHelpers';
 import { recordAuditLog } from '../lib/auditLog';
+import { recordListingCounter } from '../lib/listingCounters';
 import { getOrThrow, throwInvalidState, throwForbidden } from '../_utils/errors';
 import { campaignStatusValidator } from '../lib/convexValidators';
 import { audienceValidator } from './audience';
@@ -195,7 +196,7 @@ export const duplicate = campaignsMutation({
 		// Build searchable text for full-text search
 		const searchableText = buildSearchableText(newName, campaign.subject);
 
-		return await ctx.db.insert('campaigns', {
+		const duplicateId = await ctx.db.insert('campaigns', {
 			name: newName,
 			emailTemplateId: campaign.emailTemplateId,
 			status: 'draft', // Duplicates always start as drafts
@@ -208,6 +209,8 @@ export const duplicate = campaignsMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
+		await recordListingCounter(ctx, 'campaignStatus', null, { status: 'draft' });
+		return duplicateId;
 	},
 });
 
@@ -229,6 +232,7 @@ export const remove = campaignsMutation({
 		}
 
 		await ctx.db.delete(args.campaignId);
+		await recordListingCounter(ctx, 'campaignStatus', campaign, null);
 
 		await recordAuditLog(ctx, {
 			userId: session.userId,
@@ -294,6 +298,7 @@ export const create = campaignsMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
+		await recordListingCounter(ctx, 'campaignStatus', null, { status: 'draft' });
 
 		await recordAuditLog(ctx, {
 			userId: session.userId,

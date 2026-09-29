@@ -38,6 +38,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { isBulkOrNoReplySender } from './needsReplyHeuristic';
 import { buildThreadTranscript, CATEGORY } from './ai/transcript';
+import { withStoredInlineBodies } from '../lib/messageBodyStore';
 import { requireMailboxAccess } from './permissions';
 import { moveMessagesToFolder } from './messageActions';
 import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';
@@ -239,7 +240,7 @@ export const getThreadCategoryContext = internalQuery({
 			.first();
 
 		const transcript = await buildThreadTranscript(
-			ordered.slice(-CATEGORY_CONTEXT_MESSAGES),
+			await withStoredInlineBodies(ctx.db, ordered.slice(-CATEGORY_CONTEXT_MESSAGES)),
 			CATEGORY
 		);
 

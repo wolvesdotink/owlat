@@ -50,6 +50,10 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'accountExportArtifactLeases',
 	'accountExportArtifacts',
 	'accountExportSessions',
+	// Derived counts first: the mail and contact wipes below then find no scope
+	// to keep in step.
+	'counterScopes',
+	'counterBuckets',
 	// Storage-bearing leaves: storage hooks fire before row delete
 	'mediaAssets',
 	'semanticFileContacts', // junction mirror — clear before its parent files
@@ -59,6 +63,9 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'mailAttachments',
 	'mailAttachmentBackfillJobs',
 	'mailBodySearchBackfillJobs',
+	// Inline bodies (plan 3.2), 1:1 with mailMessages: swept before their rows
+	// like the attachment index, so no body outlives its message.
+	'mailMessageBodies',
 	'mailMessages',
 	'mailDrafts',
 	// Share links own the blobs the drafts above no longer reference, so they
@@ -307,6 +314,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailAttachments: makeSweepStep('mailAttachments'),
 	mailAttachmentBackfillJobs: makeSweepStep('mailAttachmentBackfillJobs'),
 	mailBodySearchBackfillJobs: makeSweepStep('mailBodySearchBackfillJobs'),
+	mailMessageBodies: makeSweepStep('mailMessageBodies'),
 	mailMessages: mailMessagesStep,
 	mailDrafts: mailDraftsStep,
 	transactionalSends: transactionalSendsStep,
@@ -315,6 +323,8 @@ export const ORGANIZATION_DELETION_STEPS = {
 	contentScanResults: makeSweepStep('contentScanResults'),
 	inboundMessages: inboundMessagesStep,
 	conversationThreads: makeSweepStep('conversationThreads'),
+	counterScopes: makeSweepStep('counterScopes'),
+	counterBuckets: makeSweepStep('counterBuckets'),
 	mailAliases: makeSweepStep('mailAliases'),
 	mailFolders: makeSweepStep('mailFolders'),
 	mailLabels: makeSweepStep('mailLabels'),

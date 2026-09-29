@@ -30,6 +30,10 @@ export const TENANT_TABLES = [
 	'accountExportArtifactLeases',
 	'accountExportArtifacts',
 	'accountExportSessions',
+	// Maintained counts (plan 3.1): derived from the rows below and wiped first,
+	// so the rest of the wipe does not keep moving buckets on its way out.
+	'counterScopes',
+	'counterBuckets',
 
 	// ── Contacts subtree (children first) ──
 	'contactPropertyValues',
@@ -182,6 +186,8 @@ export const TENANT_TABLES = [
 	// names this org's mailboxes, so it wipes with the mail it walked. (The
 	// excerpt itself is a COLUMN on `mailMessages` and needs no entry here.)
 	'mailBodySearchBackfillJobs',
+	// Inline bodies, 1:1 with the message rows below (plan 3.2).
+	'mailMessageBodies',
 	'mailMessages',
 	'mailThreads',
 	'mailDrafts',

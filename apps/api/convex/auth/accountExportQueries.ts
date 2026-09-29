@@ -13,6 +13,7 @@ import { isPersonalMailbox, loadPersonalMailboxForUser } from '../mail/permissio
 import { isOrgInfrastructureAccount } from '../mail/external/personalAccount';
 import { throwNotFound } from '../_utils/errors';
 import { batchGet } from '../_utils/batchLoader';
+import { withStoredInlineBodies } from '../lib/messageBodyStore';
 import { isChatAttachment } from '../chat/attachmentAccess';
 
 const organizationExportTableValidator = literalUnion(ACCOUNT_EXPORT_ORGANIZATION_RESOURCES);
@@ -212,10 +213,13 @@ export const listMailboxMessages = internalQuery({
 	},
 	handler: async (ctx, args) => {
 		await ownedPersonalMailbox(ctx, args.userId, args.mailboxId);
-		return ctx.db
+		const result = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', args.mailboxId))
 			.paginate(args.paginationOpts);
+		// The export action reads the inline bodies off each row; since plan 3.2
+		// they live in `mailMessageBodies`, so attach them (still sealed).
+		return { ...result, page: await withStoredInlineBodies(ctx.db, result.page) };
 	},
 });
 

@@ -28,6 +28,7 @@ import { loadThreadVisit, visitDelta } from '../mail/threadVisits';
 import { classifyMailCategory } from '../mail/category';
 import { isFromMailboxOwner } from '../mail/needsReplyHeuristic';
 import { loadState, resolveWatermark } from './state';
+import { countFolderArrivalsSince } from '../mail/messageCounters';
 import { loadTodaySummary } from './summaryCache';
 import { type ImportantReason, isFiledBucket, triageThread } from './triage';
 import {
@@ -136,6 +137,31 @@ async function messagesAfter(
 	return rows.filter((m) => m.receivedAt > after && !m.flagDraft).slice(0, SOURCE_LIMIT);
 }
 
+const ZERO_NEW_MAIL = { count: 0, isCapped: false };
+
+/**
+ * Inbox messages received after `since`, up to {@link NEW_MAIL_COUNT_CAP}. The
+ * inbox's hourly arrivals counter (plan 3.1, `mail/messageCounters.ts`) answers
+ * from bucket rows plus one partial hour; until it is backfilled, the old
+ * bounded scan of the messages themselves.
+ */
+async function countNewMail(
+	ctx: QueryCtx,
+	inboxId: Id<'mailFolders'>,
+	since: number
+): Promise<{ count: number; isCapped: boolean }> {
+	const counted = await countFolderArrivalsSince(ctx.db, inboxId, since, NEW_MAIL_COUNT_CAP);
+	if (counted) return counted;
+	const rows = await ctx.db
+		.query('mailMessages')
+		.withIndex('by_folder_and_received', (q) => q.eq('folderId', inboxId).gt('receivedAt', since))
+		.take(NEW_MAIL_COUNT_CAP + 1);
+	return {
+		count: Math.min(rows.length, NEW_MAIL_COUNT_CAP),
+		isCapped: rows.length > NEW_MAIL_COUNT_CAP,
+	};
+}
+
 /**
  * The digest counts from the caller's own watermark for this mailbox's
  * Workbench, read from `todayStates` like `state.get` does, so it can load in
@@ -166,14 +192,7 @@ export const digest = publicQuery({
 				q.eq('mailboxId', args.mailboxId).eq('role', 'inbox')
 			)
 			.first();
-		const newRows = inbox
-			? await ctx.db
-					.query('mailMessages')
-					.withIndex('by_folder_and_received', (q) =>
-						q.eq('folderId', inbox._id).gt('receivedAt', since)
-					)
-					.take(NEW_MAIL_COUNT_CAP + 1)
-			: [];
+		const newMail = inbox ? await countNewMail(ctx, inbox._id, since) : ZERO_NEW_MAIL;
 
 		const threads = await ctx.db
 			.query('mailThreads')
@@ -279,8 +298,8 @@ export const digest = publicQuery({
 
 		return {
 			mailboxId: args.mailboxId,
-			newMail: Math.min(newRows.length, NEW_MAIL_COUNT_CAP),
-			isNewMailCapped: newRows.length > NEW_MAIL_COUNT_CAP,
+			newMail: newMail.count,
+			isNewMailCapped: newMail.isCapped,
 			changed,
 			arrived,
 			arrivedTotal,

@@ -32,6 +32,7 @@ export type OrganizationDeletionTable =
 	| 'mailAttachments'
 	| 'mailAttachmentBackfillJobs'
 	| 'mailBodySearchBackfillJobs'
+	| 'mailMessageBodies'
 	| 'mailMessages'
 	| 'mailDrafts'
 	| 'transactionalSends'
@@ -53,6 +54,8 @@ export type OrganizationDeletionTable =
 	| 'inboxAssignmentNotices'
 	| 'inboundMessages'
 	| 'conversationThreads'
+	| 'counterScopes'
+	| 'counterBuckets'
 	| 'mailAliases'
 	| 'mailFolders'
 	| 'mailLabels'
@@ -226,6 +229,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailAttachments'),
 	v.literal('mailAttachmentBackfillJobs'),
 	v.literal('mailBodySearchBackfillJobs'),
+	v.literal('mailMessageBodies'),
 	v.literal('mailMessages'),
 	v.literal('mailDrafts'),
 	v.literal('transactionalSends'),
@@ -247,6 +251,8 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('inboxAssignmentNotices'),
 	v.literal('inboundMessages'),
 	v.literal('conversationThreads'),
+	v.literal('counterScopes'),
+	v.literal('counterBuckets'),
 	v.literal('mailAliases'),
 	v.literal('mailFolders'),
 	v.literal('mailLabels'),

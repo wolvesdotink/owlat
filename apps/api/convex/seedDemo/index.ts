@@ -17,6 +17,7 @@
 
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
+import { recordTableRowCounters } from '../lib/rowCounters';
 import { applyLoaders, isRemovableSeedRow, SEEDED_TABLES, type SeedSummary } from './pipeline';
 
 export type { SeedSummary } from './pipeline';
@@ -36,6 +37,7 @@ export const runSeedDemo = internalMutation({
 				for (const row of rows) {
 					if (isRemovableSeedRow(row)) {
 						await ctx.db.delete(row._id);
+						await recordTableRowCounters(ctx, table, row, null);
 						removed++;
 					}
 				}

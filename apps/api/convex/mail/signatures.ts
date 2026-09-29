@@ -7,7 +7,7 @@
  */
 
 import { v } from 'convex/values';
-import { openMailMessageInlineBody } from '../lib/messageBody';
+import { openStoredInlineBody } from '../lib/messageBodyStore';
 import sanitizeHtml from 'sanitize-html';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import { publicQuery } from '../lib/authedFunctions';
@@ -258,7 +258,7 @@ export const suggestFromImport = publicQuery({
 			.take(SIGNATURE_SCAN_LIMIT);
 
 		const bodies = (
-			await Promise.all(recent.map(async (m) => (await openMailMessageInlineBody(m)).text))
+			await Promise.all(recent.map(async (m) => (await openStoredInlineBody(ctx.db, m)).text))
 		).filter((b): b is string => typeof b === 'string' && b.trim().length > 0);
 		if (bodies.length === 0) return null;
 

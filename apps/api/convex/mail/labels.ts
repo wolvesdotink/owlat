@@ -20,6 +20,7 @@ import {
 } from '../_utils/errors';
 import { requireMailboxAccess } from './permissions';
 import { applyLabelToMessage, reconcileThreadLabel } from './labelsMembership';
+import { readLabelUnreadCounts, recordMessageCounters } from './messageCounters';
 import {
 	LABEL_MAX_DEPTH,
 	LABEL_PATH_SEPARATOR,
@@ -237,23 +238,17 @@ export const reorder = postboxMutation({
 });
 
 /**
- * How far back the unread-per-label tally reads.
- *
- * `labelIds` is an array, and Convex has no element-containment index for one,
- * so a per-label count means scanning messages and tallying in-query — the same
- * constraint (and the same honest bound) as `mailbox/queries.listByLabel`. The
- * scan runs over `by_mailbox_and_unseen`, so it only ever touches UNREAD rows:
- * on a mailbox that is anywhere near read, that is a handful of documents, not
- * a window into the archive.
+ * Fallback tally window, used only until the mailbox's label counter (plan 3.1,
+ * `messageCounters.ts`) is backfilled. `labelIds` is an array Convex cannot
+ * index by element, so the fallback tallies unread rows (`by_mailbox_and_unseen`)
+ * in-query, bounded like `mailbox/queries.listByLabel`.
  */
 const UNREAD_TALLY_WINDOW = 2000;
 
 /**
- * Unread count per label for the folder rail.
- *
- * Returns a sparse record — labels with no unread mail are simply absent, which
- * is what the rail renders as "no badge". `truncated` reports that the scan hit
- * its cap, so the UI can say "999+" rather than assert an undercount as fact.
+ * Unread count per label for the folder rail: a sparse record, where a label
+ * with no unread mail is simply absent ("no badge"). Read from the maintained
+ * counter, which is exact; `isTruncated` can only be true on the fallback scan.
  */
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const unreadCounts = publicQuery({
@@ -262,6 +257,9 @@ export const unreadCounts = publicQuery({
 		const empty = { counts: {}, isTruncated: false };
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return empty;
+
+		const counted = await readLabelUnreadCounts(ctx.db, args.mailboxId);
+		if (counted) return { counts: Object.fromEntries(counted), isTruncated: false };
 
 		const unread = await ctx.db
 			.query('mailMessages')
@@ -302,10 +300,10 @@ export const stripLabelReferences = internalMutation({
 				.paginate({ cursor: args.cursor, numItems: LABEL_CLEANUP_BATCH });
 			for (const m of page) {
 				if (m.labelIds.includes(args.labelId)) {
-					await ctx.db.patch(m._id, {
-						labelIds: m.labelIds.filter((id) => id !== args.labelId),
-						updatedAt: now,
-					});
+					const labelIds = m.labelIds.filter((id) => id !== args.labelId);
+					await ctx.db.patch(m._id, { labelIds, updatedAt: now });
+					// Drains the deleted label's unread bucket down to nothing.
+					await recordMessageCounters(ctx, m, { ...m, labelIds });
 				}
 			}
 			await ctx.scheduler.runAfter(0, internal.mail.labels.stripLabelReferences, {
@@ -472,6 +470,7 @@ export const toggleOnThread = postboxMutation({
 				modseq: nextModseq,
 				updatedAt: now,
 			});
+			await recordMessageCounters(ctx, m, { ...m, labelIds: newLabels });
 		}
 
 		const threadLabels = new Set(thread.labelIds);

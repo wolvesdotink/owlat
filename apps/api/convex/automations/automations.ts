@@ -16,6 +16,7 @@ import { throwInvalidState } from '../_utils/errors';
 import { trackEvent } from '../lib/posthogHelpers';
 import { triggerConfigValidator } from '../lib/convexValidators';
 import { listResources, countFacet } from '../lib/listing';
+import { recordListingCounter } from '../lib/listingCounters';
 import { automationListing } from './listing';
 import { enrichStepForQuery, loadOrderedSteps } from './steps';
 import { enrichTriggerForQuery } from './triggers';
@@ -183,6 +184,7 @@ export const create = automationsMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
+		await recordListingCounter(ctx, 'automationStatus', null, { status: 'draft' });
 
 		await trackEvent(ctx, session, 'automation_created', { automationId });
 
@@ -333,6 +335,7 @@ export const duplicate = automationsMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
+		await recordListingCounter(ctx, 'automationStatus', null, { status: 'draft' });
 
 		// Copy all steps
 		const steps = await loadOrderedSteps(ctx.db, args.automationId);
@@ -375,5 +378,6 @@ export const remove = automationsMutation({
 
 		// Delete the automation
 		await ctx.db.delete(args.automationId);
+		await recordListingCounter(ctx, 'automationStatus', automation, null);
 	},
 });

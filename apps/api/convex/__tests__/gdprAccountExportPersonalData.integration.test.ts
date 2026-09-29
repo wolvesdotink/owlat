@@ -182,6 +182,18 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 				textBodyStorageId: corruptStorageId,
 				htmlBodyInline: corruptInlineBody,
 			});
+			// Plan 3.2: a current message keeps its inline body in mailMessageBodies.
+			const movedId = await ctx.db.insert('mailMessages', {
+				...messageFields,
+				uid: 3,
+				rfc822MessageId: '<m3@example.com>',
+				subject: 'body in its own table',
+				rawStorageId,
+			});
+			await ctx.db.insert('mailMessageBodies', {
+				messageId: movedId,
+				textBodyInline: await sealBodyAtWrite('moved inline text body'),
+			});
 			const draftAttachmentStorageId = await ctx.storage.store(
 				new Blob(['draft attachment bytes'], { type: 'text/plain' })
 			);
@@ -271,7 +283,15 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 		// Personal sections are populated for the caller's own data.
 		expect(res.personalData.mailboxes).toHaveLength(1);
 		expect(res.personalData.mailboxes[0]!['status']).toBe('suspended');
-		expect(res.personalData.mailMessages).toHaveLength(2);
+		expect(res.personalData.mailMessages).toHaveLength(3);
+		const movedMessage = res.personalData.mailMessages.find(
+			(message) => message['subject'] === 'body in its own table'
+		);
+		expect(movedMessage).toMatchObject({
+			textBody: 'moved inline text body',
+			bodyAvailability: { text: 'available', html: 'missing' },
+		});
+		expect(movedMessage).not.toHaveProperty('textBodyInline');
 		const completeMessage = res.personalData.mailMessages.find(
 			(message) => message['subject'] === 'personal subject'
 		);
@@ -345,7 +365,7 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 		expect(serialized).not.toContain('super-secret-iv');
 		expect(serialized).not.toContain('super-secret-tag');
 
-		expect(stagedContentUrls).toHaveLength(4);
+		expect(stagedContentUrls).toHaveLength(5);
 		for (const contentUrl of stagedContentUrls) {
 			const storageId = new URL(contentUrl).searchParams.get('id') as Id<'_storage'> | null;
 			expect(storageId).not.toBeNull();
