@@ -15,6 +15,7 @@ import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
+import type * as FeatureFlagSettings from '../../lib/featureFlagSettings';
 import { api } from '../../_generated/api';
 import { createMailboxAccessGate, requireMailboxAccess } from '../permissions';
 import { modules, seedMailbox, seedFolder, seedMessage } from './helpers.testlib';
@@ -48,9 +49,7 @@ vi.mock('../../lib/sessionOrganization', async () => {
 const flagReads = vi.hoisted(() => ({ spy: undefined as unknown as ReturnType<typeof vi.fn> }));
 
 vi.mock('../../lib/featureFlagSettings', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/featureFlagSettings')>(
-		'../../lib/featureFlagSettings'
-	);
+	const actual = await vi.importActual<typeof FeatureFlagSettings>('../../lib/featureFlagSettings');
 	flagReads.spy = vi.fn(actual.readFeatureFlagSettings);
 	return { ...actual, readFeatureFlagSettings: flagReads.spy };
 });
