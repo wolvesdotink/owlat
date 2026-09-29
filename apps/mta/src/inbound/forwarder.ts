@@ -5,7 +5,7 @@
  */
 
 import type { ParsedMessage } from '@owlat/mail-message';
-import { createHmac } from 'crypto';
+import { signMtaRequest } from '@owlat/mta-protocol/signer';
 import type { InboundRoute } from './router.js';
 import type { InboundAuthVerdicts } from '../types.js';
 import { firstAddress } from './parsedAddress.js';
@@ -93,12 +93,7 @@ export async function forwardToEndpoint(
 	const signedHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
 	if (idempotencyIdentity) signedHeaders['Idempotency-Key'] = idempotencyIdentity;
 	if (route.systemSecret) {
-		const timestamp = String(Math.floor(Date.now() / 1000));
-		const signature = createHmac('sha256', route.systemSecret)
-			.update(`${timestamp}.${body}`)
-			.digest('hex');
-		signedHeaders['x-mta-timestamp'] = timestamp;
-		signedHeaders['x-mta-signature'] = signature;
+		Object.assign(signedHeaders, signMtaRequest(route.systemSecret, body));
 	}
 
 	for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {

@@ -11,7 +11,7 @@ import type { EmailJob } from './types.js';
 import type { MtaConfig } from './config.js';
 import type { OrgCredential } from './auth/credentials.js';
 import { lookupCredential } from './auth/credentials.js';
-import { timingSafeStringEqual } from './auth/timingSafe.js';
+import { secretMatches } from '@owlat/shared/constantTimeEqual';
 import { createSendHandler, createSendReceiptHandler } from './routes/send.js';
 import { createHealthHandler, createMetricsHandler } from './routes/health.js';
 import { createCredentialRoutes } from './routes/credentials.js';
@@ -64,7 +64,7 @@ export function createApp(
 		}
 
 		// Check master key first (constant-time to avoid timing side-channels)
-		if (timingSafeStringEqual(token, config.apiKey)) {
+		if (secretMatches(token, config.apiKey)) {
 			c.set('auth', { isMasterKey: true } satisfies AuthContext);
 			await next();
 			return;

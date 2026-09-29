@@ -46,7 +46,7 @@ import {
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { getOptional } from '../lib/env';
 import { logError } from '../lib/runtimeLog';
-import { requireMailboxAccess } from './permissions';
+import { personalMailEnabled, requireMailboxAccess } from './permissions';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 
@@ -341,13 +341,17 @@ export const createShare = internalMutation({
  * that forgets to count is a management list that quietly lies.
  *
  * Every refusal collapses to the same `null`: an expired link, a revoked link,
- * a mailbox-scoped link and a token that never existed are indistinguishable
- * from outside, so the route cannot be used to probe which tokens are real.
+ * a mailbox-scoped link, any link while personal mail is turned off and a token
+ * that never existed are indistinguishable from outside, so the route cannot
+ * be used to probe which tokens are real.
  */
 export const consumeShareToken = internalMutation({
 	args: { token: v.string() },
 	handler: async (ctx, args) => {
 		if (!isAttachmentShareToken(args.token)) return null;
+		// Links follow the personal-mail feature flags like the Postbox paths that
+		// mint them: with personal mail off, no link serves.
+		if (!(await personalMailEnabled(ctx))) return null;
 		const row = await ctx.db
 			.query('mailAttachmentShares')
 			.withIndex('by_token', (q) => q.eq('token', args.token))

@@ -1,7 +1,8 @@
 /**
  * Internal HTTP surface for Convex → worker calls. Bearer-authenticated with
- * MAIL_SYNC_API_KEY (mirrors the MTA). No public ports — reachable only over
- * the compose network.
+ * MAIL_SYNC_API_KEY, compared with `secretMatches` from
+ * `@owlat/shared/constantTimeEqual` like the MTA's API key. No public ports —
+ * reachable only over the compose network.
  *
  *   POST /send  — relay an outbound message through the account's external SMTP
  *   POST /test  — validate IMAP+SMTP credentials (persists nothing)
@@ -10,17 +11,7 @@
  */
 
 import { Hono, type Context } from 'hono';
-import { createHash, timingSafeEqual } from 'node:crypto';
-
-/**
- * Constant-time bearer comparison. Both sides are hashed first so
- * timingSafeEqual's equal-length requirement holds without leaking the key
- * length (same pattern as the MTA's auth/timingSafe.ts).
- */
-function bearerTokenMatches(presented: string, expected: string): boolean {
-	const digest = (value: string) => createHash('sha256').update(value).digest();
-	return timingSafeEqual(digest(presented), digest(expected));
-}
+import { secretMatches } from '@owlat/shared/constantTimeEqual';
 
 /** http(s) only, and the origin must be one of the configured Convex origins. */
 export function isAllowedEmlUrl(raw: string, allowedOrigins: string[]): boolean {
@@ -68,7 +59,7 @@ export function startServer(
 
 	const auth = async (c: Context, next: () => Promise<void>) => {
 		const token = c.req.header('Authorization')?.replace('Bearer ', '');
-		if (!token || !bearerTokenMatches(token, config.apiKey)) {
+		if (!secretMatches(token, config.apiKey)) {
 			return c.json({ error: 'Unauthorized' }, 401);
 		}
 		await next();

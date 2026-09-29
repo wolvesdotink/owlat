@@ -1,9 +1,9 @@
 import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
-import { parseUidSet } from '../../parser.js';
 import type { ImapCommandModule } from '../types.js';
-import { asyncSession } from '../helpers/session.js';
+import { asyncSession, syncSession } from '../helpers/session.js';
 import { serverFailure } from '../helpers/replies.js';
+import { resolveSelectedSet } from '../helpers/seqMap.js';
 
 interface ExpungeArgs {
 	/** The UID set of a UID EXPUNGE; absent for a whole-folder sweep. */
@@ -14,7 +14,9 @@ interface ExpungeArgs {
 
 /**
  * EXPUNGE removes `\Deleted` messages. UID EXPUNGE narrows the operation
- * to a UID set; bare EXPUNGE clears the whole folder.
+ * to a UID set; bare EXPUNGE clears the whole folder. The UID set is resolved
+ * against the folder first, so the mutation receives only UIDs that exist in
+ * it, never an expansion of the raw ranges.
  *
  * The pre-deepening handler mutated `this.selected.totalCount` and
  * `this.selected.highestModseq` directly; under immutable state the
@@ -25,22 +27,34 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 	requires: 'writable',
 	parseArgs(rawArgs) {
 		// Bare EXPUNGE has no args; UID dispatcher passes the rest through.
+		// Whether an argument is allowed depends on `byUid`, which the UID
+		// dispatcher sets only after parsing, so start() rejects a plain
+		// EXPUNGE that carries one.
 		return { ok: true, args: { uidSpec: rawArgs[0], byUid: false } };
 	},
 	start({ deps, state, args, tag, send }) {
 		const label = args.byUid ? 'UID EXPUNGE' : 'EXPUNGE';
 
-		let uidSet: number[] | undefined;
-		if (args.uidSpec) {
-			const ranges = parseUidSet(args.uidSpec, state.selected!.uidNext - 1);
-			uidSet = [];
-			for (const [low, high] of ranges) {
-				for (let u = low; u <= high; u++) uidSet.push(u);
-			}
+		const uidSpec = args.uidSpec;
+		// RFC 3501 EXPUNGE takes no arguments; a set here must not quietly turn
+		// it into UID EXPUNGE.
+		if (!args.byUid && uidSpec !== undefined) {
+			send(`${tag} BAD EXPUNGE takes no arguments`);
+			return syncSession();
 		}
 
 		return asyncSession(async () => {
 			try {
+				let uidSet: number[] | undefined;
+				if (uidSpec) {
+					const { resolved } = await resolveSelectedSet(deps, state, uidSpec, true);
+					if (resolved.length === 0) {
+						send(`${tag} OK ${label} completed`);
+						return;
+					}
+					uidSet = resolved.map((r) => r.uid);
+				}
+
 				let selected = state.selected!;
 				let beforeUid: number | undefined;
 				let nextSequenceNumber: number | undefined;

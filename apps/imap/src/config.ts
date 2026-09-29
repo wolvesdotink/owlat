@@ -1,6 +1,10 @@
 import { hostname } from 'os';
 import { readIntEnv, TCP_PORT_RANGE, TIMER_DELAY_MS_RANGE } from '@owlat/shared/nodeEnv';
 import { loadTlsMaterial, type TlsMaterial } from '@owlat/shared/tlsMaterial';
+import {
+	MAIL_AUTH_FAILURE_WINDOW_MS,
+	MAIL_AUTH_FAILURES_PER_ADDRESS,
+} from '@owlat/shared/mailAuthPolicy';
 
 export interface ImapConfig {
 	port: number;
@@ -123,8 +127,8 @@ export function loadConfig(): ImapConfig {
 			...TIMER_DELAY_MS_RANGE,
 		}),
 		authRateLimit: {
-			failuresPerWindow: 5,
-			windowMs: 60_000,
+			failuresPerWindow: MAIL_AUTH_FAILURES_PER_ADDRESS,
+			windowMs: MAIL_AUTH_FAILURE_WINDOW_MS,
 			tarpitMs: 15 * 60 * 1000,
 		},
 	};

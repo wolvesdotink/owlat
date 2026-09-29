@@ -9,9 +9,14 @@
 import { fullSupport, type SpacerBlockContent } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
 import { checkShape, isNumber } from '../../helpers/validation';
+import { px } from '../../helpers/padding';
 
-const renderSpacer = (content: SpacerBlockContent): string =>
-	`<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" aria-hidden="true"><tr><td style="height:${content.height}px;mso-height-rule:exactly;line-height:${content.height}px;font-size:1px">&nbsp;</td></tr></table>`;
+const DEFAULT_SPACER_HEIGHT = 20;
+
+const renderSpacer = (content: SpacerBlockContent): string => {
+	const height = px(content.height, DEFAULT_SPACER_HEIGHT);
+	return `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" aria-hidden="true"><tr><td style="height:${height}px;mso-height-rule:exactly;line-height:${height}px;font-size:1px">&nbsp;</td></tr></table>`;
+};
 
 export const spacerModule: BlockModule<'spacer'> = {
 	type: 'spacer',
@@ -32,11 +37,11 @@ export const spacerModule: BlockModule<'spacer'> = {
 	},
 
 	amp({ content }) {
-		return `<div style="height:${content.height}px"></div>`;
+		return `<div style="height:${px(content.height, DEFAULT_SPACER_HEIGHT)}px"></div>`;
 	},
 
 	createDefault() {
-		return { height: 20 };
+		return { height: DEFAULT_SPACER_HEIGHT };
 	},
 
 	compatibility: {
@@ -63,8 +68,19 @@ export const spacerModule: BlockModule<'spacer'> = {
 	},
 
 	validate({ block, content, ctx }) {
-		checkShape(content as unknown as Record<string, unknown>, [
-			{ field: 'height', check: isNumber, code: 'SPACER_HEIGHT_TYPE', message: 'height must be a number' },
-		], block.id, 'spacer', ctx.issues);
+		checkShape(
+			content as unknown as Record<string, unknown>,
+			[
+				{
+					field: 'height',
+					check: isNumber,
+					code: 'SPACER_HEIGHT_TYPE',
+					message: 'height must be a number',
+				},
+			],
+			block.id,
+			'spacer',
+			ctx.issues
+		);
 	},
 };

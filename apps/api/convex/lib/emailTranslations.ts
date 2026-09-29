@@ -20,6 +20,11 @@
 import { throwAlreadyExists, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import { nextContentRevision } from './contentRevision';
 import {
+	sanitizeOverlayBlocks,
+	sanitizeOverlayBlocksJson,
+	sanitizeStoredBlocksJson,
+} from './emailContentSanitize';
+import {
 	mergeTranslationIntoItem,
 	type TranslatableBlockContent,
 } from '../emailTemplates/translationMerge';
@@ -247,8 +252,10 @@ export function addLanguage(
 		throwAlreadyExists(`Language "${language}" is already supported`);
 	}
 
-	// Seed the overlay with a copy of the default language's translatable text.
+	// Seed the overlay with a copy of the default language's translatable text,
+	// sanitized like every other overlay write.
 	const blocks = extractTranslatableContent(entity.content);
+	sanitizeOverlayBlocks(blocks);
 	translations[language] = {
 		subject: entity.subject,
 		...(fields.hasPreviewText ? { previewText: entity.previewText } : {}),
@@ -384,7 +391,10 @@ export function updateTranslationPatch(
 		translation.previewText = previewText.trim();
 	}
 	if (update.blocks !== undefined) {
-		translation.blocks = JSON.parse(update.blocks) as Record<string, TranslatableBlockContent>;
+		translation.blocks = JSON.parse(sanitizeOverlayBlocksJson(update.blocks)) as Record<
+			string,
+			TranslatableBlockContent
+		>;
 	}
 	translations[update.language] = translation;
 
@@ -443,7 +453,7 @@ export function setDefaultLanguagePatch(
 	return {
 		subject: newDefault.subject,
 		...(fields.hasPreviewText ? { previewText: newDefault.previewText } : {}),
-		content: newDefaultContent,
+		content: sanitizeStoredBlocksJson(newDefaultContent),
 		defaultLanguage: language,
 		translations: serializeTranslations(updatedTranslations),
 		...revisionStamp(row),

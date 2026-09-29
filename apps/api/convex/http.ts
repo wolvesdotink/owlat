@@ -1,6 +1,7 @@
 import { httpRouter } from 'convex/server';
 import { beginUpload, finishUpload, abortUpload } from './storage/uploadsHttp';
 import { authComponent, createAuth } from './auth/auth';
+import { withVerifiedClientIp } from './auth/ipAddress';
 import { trackOpen, trackClick } from './delivery/trackingHttp';
 import { seedAdmin } from './seedAdminHttp';
 import { seedDemoHttp } from './seedDemo/indexHttp';
@@ -419,9 +420,16 @@ http.route({
 // sign-in cannot reach /api/auth/* at all. `cors: true` allowlists the
 // resolved trustedOrigins (SITE_URL, tauri://localhost, …) and the
 // Better-Auth-Cookie / Set-Better-Auth-Cookie header pair.
+//
+// `withVerifiedClientIp` removes a CF-Connecting-IP / X-Real-IP header whose
+// proxy secret does not verify before BetterAuth reads it, so the sign-in and
+// password-reset limiter trusts the same headers as the public limiter
+// (lib/clientIp.ts).
+const createRouteAuth = (ctx: Parameters<typeof createAuth>[0]) =>
+	withVerifiedClientIp(createAuth(ctx));
 authComponent.registerRoutes(
 	http,
-	createAuth as Parameters<typeof authComponent.registerRoutes>[1],
+	createRouteAuth as Parameters<typeof authComponent.registerRoutes>[1],
 	{
 		cors: true,
 	}

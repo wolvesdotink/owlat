@@ -630,3 +630,66 @@ describe('extractArmoredCiphertext', () => {
 		expect(extractArmoredCiphertext('Version: 1')).toBeNull();
 	});
 });
+
+describe('long blank runs stay linear', () => {
+	/** Generous wall-clock ceiling: a linear scan needs a small fraction of it. */
+	const TIME_BUDGET_MS = 2_000;
+
+	function timed<T>(run: () => T): { value: T; ms: number } {
+		const started = performance.now();
+		const value = run();
+		return { value, ms: performance.now() - started };
+	}
+
+	it('classifies a raw message with a long blank-padded dash line in bounded time', () => {
+		const raw = [
+			'From: a@example.com',
+			'Content-Type: text/plain',
+			'',
+			'hello',
+			'Content-Type: application/pgp-signature',
+			`--${' \t'.repeat(250_000)}x`,
+			'',
+		].join('\r\n');
+		const { value, ms } = timed(() => classifyRawSecureMessage(raw));
+		expect(ms).toBeLessThan(TIME_BUDGET_MS);
+		expect(value).toBe('none');
+	});
+
+	it('still ignores transport padding after a delimiter', () => {
+		const raw = [
+			'Content-Type: multipart/signed; protocol="application/pgp-signature";',
+			' micalg=pgp-sha256; boundary="sig"',
+			'',
+			'--sig \t ',
+			'Content-Type: text/plain',
+			'',
+			'Signed text',
+			'--sig',
+			'Content-Type: application/pgp-signature',
+			'',
+			'-----BEGIN PGP SIGNATURE-----',
+			'',
+			'iQEcBAEBCgAGBQJ...',
+			'-----END PGP SIGNATURE-----',
+			'--sig-- \t',
+			'',
+		].join('\r\n');
+		expect(isSignedPgpMime(raw)).toBe(true);
+	});
+
+	it('extracts clearsigned text with a long inner blank run in bounded time', () => {
+		const body = [
+			'-----BEGIN PGP SIGNED MESSAGE-----',
+			'Hash: SHA256',
+			'',
+			`Hello${' '.repeat(500_000)}world  `,
+			'-----BEGIN PGP SIGNATURE-----',
+			'sig',
+			'-----END PGP SIGNATURE-----',
+		].join('\n');
+		const { value, ms } = timed(() => extractClearsignedText(body));
+		expect(ms).toBeLessThan(TIME_BUDGET_MS);
+		expect(value).toBe(`Hello${' '.repeat(500_000)}world`);
+	});
+});

@@ -20,3 +20,41 @@ import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 export function sanitizePostboxHtml(html: string): string {
 	return sanitizeHtml(html, POSTBOX_SANITIZE_CONFIG);
 }
+
+/**
+ * The composer's variant of the shared allowlist, applied to every value the
+ * Postbox editor writes into its `contenteditable` (mount and external model
+ * writes such as draft hydration). On top of the shared policy it keeps the
+ * markup the composer itself produces: the `data-inline-cid` marker and `blob:`
+ * preview source of a pasted inline image, the `target` / `rel` pair the link
+ * command sets, the `data-postbox-signature` marker the signature picker
+ * swaps, and the quote bar and wrapping of a quoted reply.
+ */
+const sharedSchemesByTag = POSTBOX_SANITIZE_CONFIG.allowedSchemesByTag;
+const sharedStyles = POSTBOX_SANITIZE_CONFIG.allowedStyles?.['*'];
+
+const POSTBOX_COMPOSER_SANITIZE_CONFIG: sanitizeHtml.IOptions = {
+	...POSTBOX_SANITIZE_CONFIG,
+	allowedAttributes: {
+		...POSTBOX_SANITIZE_CONFIG.allowedAttributes,
+		a: ['href', 'title', 'name', 'target', 'rel'],
+		img: ['src', 'srcset', 'alt', 'width', 'height', 'loading', 'data-inline-cid'],
+		div: ['data-postbox-signature'],
+	},
+	allowedSchemesByTag: {
+		...(typeof sharedSchemesByTag === 'object' ? sharedSchemesByTag : undefined),
+		img: ['http', 'https', 'cid', 'data', 'blob'],
+	},
+	allowedStyles: {
+		'*': {
+			...sharedStyles,
+			'border-left': [/^[\d.\s\-a-z#%(),]+$/i],
+			'white-space': [/^(normal|nowrap|pre|pre-wrap|pre-line|break-spaces)$/i],
+		},
+	},
+};
+
+/** Run HTML bound for the Postbox composer's `contenteditable` through its allowlist. */
+export function sanitizePostboxComposerHtml(html: string): string {
+	return sanitizeHtml(html, POSTBOX_COMPOSER_SANITIZE_CONFIG);
+}

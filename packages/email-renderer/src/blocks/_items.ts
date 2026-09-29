@@ -7,6 +7,7 @@
 import type { ContainerItem } from '@owlat/shared';
 import { itemToBlock, type PlaintextWalk } from './_module';
 import { escapeCss } from '../sanitize';
+import { px } from '../helpers/padding';
 
 /** Walk each item, drop the ones that render nothing. */
 const walkItems = (items: readonly ContainerItem[], walk: PlaintextWalk): string[] =>
@@ -24,12 +25,6 @@ export interface AmpPaddedItemsInput {
 	padding: { top: number; right: number; bottom: number; left: number };
 }
 
-// Only a finite number reaches the style attribute; anything else renders 0.
-const px = (value: unknown): number => {
-	const n = Number(value);
-	return Number.isFinite(n) ? n : 0;
-};
-
 /**
  * AMP for an items block: a padded `<div>` around the walked children, empty
  * children skipped.
@@ -40,6 +35,6 @@ export const ampPaddedItems = (
 ): string => {
 	const bgStyle = background ? `background-color:${escapeCss(background)};` : '';
 	const { top, right, bottom, left } = padding;
-	const paddingCss = `padding:${px(top)}px ${px(right)}px ${px(bottom)}px ${px(left)}px`;
+	const paddingCss = `padding:${px(top, 0)}px ${px(right, 0)}px ${px(bottom, 0)}px ${px(left, 0)}px`;
 	return `<div style="${bgStyle}${paddingCss}">${walkItems(items, walk).join('\n')}</div>`;
 };

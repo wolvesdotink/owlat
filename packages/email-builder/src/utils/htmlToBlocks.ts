@@ -2,7 +2,7 @@ import type { EditorBlock, EmailTheme, TextBlockContent, ImageBlockContent } fro
 import { escapeHtml } from '@owlat/shared/html';
 import { createDefaultContent } from './blocks';
 import { generateId } from './id';
-import { sanitizeHtml } from './htmlSanitizer';
+import { sanitizeEditorHtml } from '@owlat/email-renderer';
 
 /**
  * Convert pasted HTML (from Notion, Google Docs, etc.) into EditorBlock[].
@@ -26,7 +26,18 @@ export function htmlToBlocks(html: string, theme?: EmailTheme): EditorBlock[] {
 
 /** Tags that represent inline formatting (kept inside text block HTML) */
 const INLINE_TAGS = new Set([
-	'b', 'strong', 'i', 'em', 'u', 'a', 's', 'strike', 'span', 'sub', 'sup', 'code',
+	'b',
+	'strong',
+	'i',
+	'em',
+	'u',
+	'a',
+	's',
+	'strike',
+	'span',
+	'sub',
+	'sup',
+	'code',
 ]);
 
 /** Wrapper elements from external apps that should be stripped */
@@ -90,7 +101,7 @@ function processNode(node: Node, blocks: EditorBlock[], theme?: EmailTheme): voi
 		const innerHtml = extractInlineHtml(el);
 		if (innerHtml.trim()) {
 			const { blockType, fontSize } = HEADING_MAP[tag]!;
-			blocks.push(makeTextBlock(sanitizeHtml(innerHtml), blockType, theme, fontSize));
+			blocks.push(makeTextBlock(sanitizeEditorHtml(innerHtml), blockType, theme, fontSize));
 		}
 		return;
 	}
@@ -99,7 +110,7 @@ function processNode(node: Node, blocks: EditorBlock[], theme?: EmailTheme): voi
 	if (tag === 'p' || (tag === 'div' && isInlineOnly(el))) {
 		const innerHtml = extractInlineHtml(el);
 		if (innerHtml.trim()) {
-			blocks.push(makeTextBlock(sanitizeHtml(innerHtml), 'paragraph', theme));
+			blocks.push(makeTextBlock(sanitizeEditorHtml(innerHtml), 'paragraph', theme));
 		}
 		return;
 	}
@@ -116,7 +127,7 @@ function processNode(node: Node, blocks: EditorBlock[], theme?: EmailTheme): voi
 			const innerHtml = extractInlineHtml(li);
 			if (innerHtml.trim()) {
 				const prefix = tag === 'ol' ? `${index}. ` : '&bull; ';
-				blocks.push(makeTextBlock(sanitizeHtml(prefix + innerHtml), 'paragraph', theme));
+				blocks.push(makeTextBlock(sanitizeEditorHtml(prefix + innerHtml), 'paragraph', theme));
 			}
 		}
 		return;
@@ -135,7 +146,7 @@ function processNode(node: Node, blocks: EditorBlock[], theme?: EmailTheme): voi
 		for (const cell of Array.from(cells)) {
 			const text = cell.textContent?.trim();
 			if (text) {
-				blocks.push(makeTextBlock(sanitizeHtml(escapeHtml(text)), 'paragraph', theme));
+				blocks.push(makeTextBlock(sanitizeEditorHtml(escapeHtml(text)), 'paragraph', theme));
 			}
 		}
 		return;
@@ -182,7 +193,7 @@ function makeTextBlock(
 	html: string,
 	blockType: 'paragraph' | 'h1' | 'h2' | 'h3',
 	theme?: EmailTheme,
-	fontSize?: number,
+	fontSize?: number
 ): EditorBlock {
 	const content = createDefaultContent('text', theme) as TextBlockContent;
 	content.html = html;
@@ -199,9 +210,17 @@ function makeImageBlock(src: string, alt: string, theme?: EmailTheme): EditorBlo
 }
 
 function makeDividerBlock(theme?: EmailTheme): EditorBlock {
-	return { id: generateId('block'), type: 'divider', content: createDefaultContent('divider', theme) } as EditorBlock;
+	return {
+		id: generateId('block'),
+		type: 'divider',
+		content: createDefaultContent('divider', theme),
+	} as EditorBlock;
 }
 
 function makeSpacerBlock(theme?: EmailTheme): EditorBlock {
-	return { id: generateId('block'), type: 'spacer', content: createDefaultContent('spacer', theme) } as EditorBlock;
+	return {
+		id: generateId('block'),
+		type: 'spacer',
+		content: createDefaultContent('spacer', theme),
+	} as EditorBlock;
 }

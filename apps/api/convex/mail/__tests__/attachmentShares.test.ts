@@ -264,6 +264,34 @@ describe('serving a token', () => {
 		).not.toBeNull();
 	});
 
+	it('refuses every link while personal mail is turned off, and serves again once it is back', async () => {
+		const t = convexTest(schema, modules);
+		const { shareId } = await seedLiveShare(t);
+		const setPersonalMail = (on: boolean) =>
+			t.run(async (ctx) => {
+				const featureFlags = { postbox: on, 'mail.external': on };
+				const settings = await ctx.db.query('instanceSettings').first();
+				if (settings) {
+					await ctx.db.patch(settings._id, {
+						featureFlags: { ...settings.featureFlags, ...featureFlags },
+					});
+				} else {
+					await ctx.db.insert('instanceSettings', { featureFlags, createdAt: Date.now() });
+				}
+			});
+
+		await setPersonalMail(false);
+		expect(
+			await t.mutation(internal.mail.attachmentShares.consumeShareToken, { token: TOKEN })
+		).toBeNull();
+		expect((await shareRow(t, shareId))?.downloadCount).toBe(0);
+
+		await setPersonalMail(true);
+		expect(
+			await t.mutation(internal.mail.attachmentShares.consumeShareToken, { token: TOKEN })
+		).not.toBeNull();
+	});
+
 	it('does not count a refused request', async () => {
 		const t = convexTest(schema, modules);
 		const { shareId } = await seedLiveShare(t);

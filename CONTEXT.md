@@ -2691,7 +2691,7 @@ at `mail/outbound.ts:287`, the HTTP response envelope at
 `lib/httpResponse.ts`, and the webhook payload envelope at
 `docs/webhook-payloads.md` — three established uses in this codebase),
 Send payload (module) (collides with `webhookDeliveryLogs.payloadVersion`
-and the X-Signature-signed payload in `docs/webhook-payloads.md`),
+and the X-Owlat-Signature-signed payload in `docs/webhook-payloads.md`),
 Send message (module) (collides with the `unifiedMessages` /
 `mailMessages` / `chatMessages` row-name family — every other
 inbound/outbound row uses "message"), Send body (module) (misleading

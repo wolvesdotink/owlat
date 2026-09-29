@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
 	ipAddressFamily,
+	ipRateLimitKey,
 	ipv6HexNibbles,
 	isLoopbackHostname,
 	isLoopbackIp,
 	isPrivateOrLoopbackIp,
 	normalizeIpAddress,
+	normalizePeerIp,
 	parseIpAddress,
 	reverseIpAddressForDns,
 	unmapIpv4,
@@ -41,6 +43,41 @@ describe('DNS address reversal', () => {
 		expect(reverseIpAddressForDns('2001:db8::1')).toBe(
 			'1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2'
 		);
+	});
+});
+
+describe('normalizePeerIp', () => {
+	it('unmaps IPv4-mapped peers and canonicalizes native IPv6', () => {
+		expect(normalizePeerIp(' 203.0.113.7 ')).toBe('203.0.113.7');
+		expect(normalizePeerIp('::ffff:203.0.113.7')).toBe('203.0.113.7');
+		expect(normalizePeerIp('::FFFF:CB00:7107')).toBe('203.0.113.7');
+		expect(normalizePeerIp('2001:0DB8:0:0::0001')).toBe('2001:db8::1');
+	});
+
+	it('rejects values that are not a bare address', () => {
+		for (const invalid of ['unknown', '', '[2001:db8::1]', '203.0.113.7:25', 'fe80::1%eth0']) {
+			expect(normalizePeerIp(invalid)).toBeNull();
+		}
+	});
+});
+
+describe('ipRateLimitKey', () => {
+	it('keys IPv4 peers, mapped or not, on the full address', () => {
+		expect(ipRateLimitKey('203.0.113.7')).toBe('203.0.113.7');
+		expect(ipRateLimitKey('::ffff:203.0.113.7')).toBe('203.0.113.7');
+	});
+
+	it('keys every address of one IPv6 /64 on the same prefix', () => {
+		const key = ipRateLimitKey('2001:db8:1:2::1');
+		expect(key).toBe('2001:db8:1:2::/64');
+		expect(ipRateLimitKey('2001:0db8:0001:0002:ffff:eeee:dddd:cccc')).toBe(key);
+		expect(ipRateLimitKey('2001:db8:1:3::1')).not.toBe(key);
+		expect(ipRateLimitKey('2001:db8::1')).toBe('2001:db8::/64');
+		expect(ipRateLimitKey('::1')).toBe('::/64');
+	});
+
+	it('passes a non-address placeholder through unchanged', () => {
+		expect(ipRateLimitKey('unknown')).toBe('unknown');
 	});
 });
 

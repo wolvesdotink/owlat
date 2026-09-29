@@ -30,7 +30,7 @@
  *     the argument budget above covers it.
  *
  * Everything the two routes share — the per-source rate limit, the
- * `verifyMtaHeaders` HMAC, the unbounded body read and the bounded audit row —
+ * `verifyMtaSignedRequest` HMAC, the unbounded body read and the bounded audit row —
  * is `webhooks/adapters/mtaRawRoute.ts`, one implementation for both. The
  * argument budget is NOT shared: it lives below, because only this route has a
  * deliver-without-the-raw branch to take when it trips.

@@ -449,6 +449,21 @@ describe('mobileFontSize', () => {
 		const html = renderEmailHtml([mobileTextBlock]);
 		expect(html).toContain('[data-block-id="mobile-text"] div{font-size:14px!important}');
 	});
+
+	it('escapes the block id inside the style rule selector', () => {
+		const block: EditorBlock = {
+			id: 'a\\',
+			type: 'text',
+			content: {
+				html: '<p>Responsive text</p>',
+				blockType: 'paragraph',
+				fontSize: 16,
+				mobileFontSize: 14,
+			},
+		};
+		const html = renderEmailHtml([block]);
+		expect(html).toContain('[data-block-id="a\\5c "] div{font-size:14px!important}');
+	});
 });
 
 describe('dark mode overrides', () => {

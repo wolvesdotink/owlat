@@ -23,8 +23,8 @@ import { expectScheduledFailure } from './helpers/scheduledFailures';
  *   github:               header `x-hub-signature-256: sha256=` + hex(HMAC-SHA256(secret, body))
  *   mta-verify-credential: headers `x-mta-signature` = hex(HMAC-SHA256(secret, `<ts>.<body>`)),
  *                          `x-mta-timestamp` = unix-seconds; staleness window ±60s
- *   mta-mailbox:          same scheme via verifyMtaHeaders, staleness window ±300s
- *   mta-inbound:          same scheme via verifyMtaHeaders, staleness window ±300s
+ *   mta-mailbox:          same scheme via verifyMtaSignedRequest, staleness window ±300s
+ *   mta-inbound:          same scheme via verifyMtaSignedRequest, staleness window ±300s
  */
 
 // Standard module glob (agent / LLM modules excluded — they need extra mocks).
@@ -62,8 +62,7 @@ function setupTest() {
 	return t;
 }
 
-// HMAC-SHA256 → lowercase hex, mirroring webhooks/security.ts:hmacSha256Hex
-// and the inline helper in mail/authHttp.ts.
+// HMAC-SHA256 → lowercase hex, mirroring lib/crypto.ts:hmacSha256Hex.
 async function hmacSha256Hex(secret: string, data: string): Promise<string> {
 	const key = await crypto.subtle.importKey(
 		'raw',

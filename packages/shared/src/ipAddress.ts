@@ -194,3 +194,32 @@ export function reverseIpAddressForDns(value: string): string | null {
 	const nibbles = ipv6HexNibbles(parsed.address);
 	return nibbles ? [...nibbles].reverse().join('.') : null;
 }
+
+/**
+ * Canonical form of a connected peer's address: IPv4-mapped IPv6 unmapped to
+ * the dotted quad, native IPv6 in RFC 5952 form. Null when the value is not a
+ * bare address (for example the `'unknown'` placeholder).
+ */
+export function normalizePeerIp(ip: string): string | null {
+	const parsed = parseIpAddress(unmapIpv4(ip.trim()));
+	return parsed ? unmapIpv4(parsed.address) : null;
+}
+
+/**
+ * The per-client key an IP-based limiter counts under. IPv4 (including the
+ * IPv4-mapped forms) keys on the full address; IPv6 keys on its /64, written
+ * `2001:db8:1:2::/64`, because a single host is routinely assigned a whole /64
+ * and can pick a fresh source address from it for every connection. A value
+ * that is not a bare address is returned unchanged, so a shared placeholder
+ * such as `'unknown'` stays one bucket.
+ */
+export function ipRateLimitKey(ip: string): string {
+	const peer = normalizePeerIp(ip);
+	if (!peer) return ip;
+	if (!peer.includes(':')) return peer;
+	const nibbles = ipv6HexNibbles(peer);
+	if (!nibbles) return peer;
+	const prefixGroups = nibbles.slice(0, 16).match(/.{4}/g) ?? [];
+	const prefix = normalizeIpAddress(`${prefixGroups.join(':')}::`);
+	return prefix ? `${prefix}/64` : peer;
+}

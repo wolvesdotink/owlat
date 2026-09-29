@@ -1,4 +1,5 @@
 import { escapeAttr } from './sanitize';
+import { px } from './helpers/padding';
 
 /**
  * Office document settings XML for Outlook.
@@ -11,7 +12,7 @@ export const getOfficeDocumentSettings = (): string => {
  * Outlook fixed-width table wrapper (opening).
  */
 export const msoTableOpen = (width: number): string => {
-	return `<!--[if mso]><table width="${width}" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td><![endif]-->`;
+	return `<!--[if mso]><table width="${px(width, 0)}" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td><![endif]-->`;
 };
 
 /**
@@ -26,11 +27,11 @@ export const msoTableClose = (): string => {
  */
 export const msoColumnsOpen = (totalWidth: number, direction?: 'ltr' | 'rtl'): string => {
 	const dir = direction === 'rtl' ? ' dir="rtl"' : '';
-	return `<!--[if mso]><table width="${totalWidth}" cellpadding="0" cellspacing="0" border="0" role="presentation"${dir}><tr><![endif]-->`;
+	return `<!--[if mso]><table width="${px(totalWidth, 0)}" cellpadding="0" cellspacing="0" border="0" role="presentation"${dir}><tr><![endif]-->`;
 };
 
 export const msoColumnCellOpen = (widthPx: number, valign: string = 'top'): string => {
-	return `<!--[if mso]><td width="${widthPx}" valign="${valign}"><![endif]-->`;
+	return `<!--[if mso]><td width="${px(widthPx, 0)}" valign="${escapeAttr(valign)}"><![endif]-->`;
 };
 
 export const msoColumnCellClose = (): string => {
@@ -51,7 +52,7 @@ export const msoVmlBackground = (
 	height: number,
 	bgColor: string = '#ffffff'
 ): string => {
-	return `<!--[if gte mso 9]><v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:${width}px;height:${height}px"><v:fill type="frame" src="${escapeAttr(imageUrl)}" color="${escapeAttr(bgColor)}" /><v:textbox inset="0,0,0,0" style="mso-fit-shape-to-text:true"><![endif]-->`;
+	return `<!--[if gte mso 9]><v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:${px(width, 0)}px;height:${px(height, 0)}px"><v:fill type="frame" src="${escapeAttr(imageUrl)}" color="${escapeAttr(bgColor)}" /><v:textbox inset="0,0,0,0" style="mso-fit-shape-to-text:true"><![endif]-->`;
 };
 
 export const msoVmlBackgroundClose = (): string => {

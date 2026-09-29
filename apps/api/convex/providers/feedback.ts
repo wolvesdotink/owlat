@@ -1,5 +1,6 @@
 /** Isolate-safe feedback contributions for every composed send provider. */
 import type { ProviderFeedbackContribution, ProviderFeedbackVerifier } from '@owlat/provider-kit';
+import { MTA_SIGNATURE_HEADER, MTA_TIMESTAMP_HEADER } from '@owlat/mta-protocol/signature';
 import {
 	isPluginSvixSignatureContract,
 	type PluginWebhookSignatureContract,
@@ -14,6 +15,7 @@ import { pluginSendTransportWebhookFor } from '../plugins/sendTransportWebhookCa
 import { emailitAdapter } from '../webhooks/adapters/emailit';
 import { mandrillAdapter } from '../webhooks/adapters/mandrill';
 import { mtaAdapter } from '../webhooks/adapters/mta';
+import { MTA_EVENT_TOLERANCE_SECONDS } from '../webhooks/mtaSignature';
 import { resendAdapter } from '../webhooks/adapters/resend';
 import { sesAdapter } from '../webhooks/adapters/ses';
 
@@ -22,7 +24,8 @@ function hmacVerifier(
 	signatureHeader: string,
 	timestampHeader: string,
 	algorithm: 'sha256' | 'sha1',
-	encoding: 'hex' | 'base64'
+	encoding: 'hex' | 'base64',
+	toleranceSeconds = 300
 ): ProviderFeedbackVerifier {
 	return {
 		scheme: 'hmac-timestamp-body',
@@ -31,7 +34,7 @@ function hmacVerifier(
 		signatureHeader,
 		timestampHeader,
 		secretEnvVar,
-		toleranceSeconds: 300,
+		toleranceSeconds,
 	};
 }
 
@@ -70,10 +73,11 @@ const CORE_FEEDBACK = {
 		webhookPath: '/webhooks/mta',
 		verifier: hmacVerifier(
 			'MTA_WEBHOOK_SECRET',
-			'x-mta-signature',
-			'x-mta-timestamp',
+			MTA_SIGNATURE_HEADER,
+			MTA_TIMESTAMP_HEADER,
 			'sha256',
-			'hex'
+			'hex',
+			MTA_EVENT_TOLERANCE_SECONDS
 		),
 		parser: mtaAdapter,
 	},

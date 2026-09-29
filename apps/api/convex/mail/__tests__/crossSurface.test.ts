@@ -132,6 +132,14 @@ describe('mail.crossSurface.teamInboxFor', () => {
 		});
 	});
 
+	it('answers an admin the same as an owner', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, inboundMessageId } = await seedBothSides(t);
+		sessionMocks.role = 'admin';
+		const strip = await t.query(api.mail.crossSurface.teamInboxFor, { messageId });
+		expect(strip).toMatchObject({ inboundMessageId });
+	});
+
 	it('reveals nothing when the viewer has no Team Inbox access', async () => {
 		const t = convexTest(schema, modules);
 		const { messageId } = await seedBothSides(t);

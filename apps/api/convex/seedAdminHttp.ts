@@ -2,10 +2,8 @@ import { readBodyText } from './lib/readBody';
 import { httpAction } from './_generated/server';
 import { components } from './_generated/api';
 import { internal } from './_generated/api';
-import { getOptional } from './lib/env';
 import { betterAuthAdapterArgs } from './lib/betterAuthAdapterArgs';
-import { safeCompare } from './lib/safeCompare';
-import { getClientIp, rateLimitedResponse } from './lib/publicRateLimit';
+import { requireInstanceSecret } from './lib/instanceSecret';
 import { logError } from './lib/runtimeLog';
 import { errorResponse, jsonResponse } from './lib/httpResponse';
 
@@ -39,20 +37,10 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 	// Per-IP rate limit BEFORE the secret check, so a caller can't brute-force
 	// the instance secret (or hammer the bootstrap) at line rate. Without a
 	// trusted proxy configured every caller shares one bucket — coarse, but it
-	// still caps total volume, and a healthy deployment calls this once.
-	const { ok: rateOk, retryAfter } = await ctx.runMutation(
-		internal.lib.publicRateLimit.checkPublicRateLimit,
-		{ limitType: 'adminSeed', key: getClientIp(request) }
-	);
-	if (!rateOk) return rateLimitedResponse(retryAfter);
-
-	// Verify instance secret (timing-safe comparison to prevent side-channel attacks)
-	const secret = request.headers.get('X-Instance-Secret');
-	const expectedSecret = getOptional('INSTANCE_SECRET');
-
-	if (!expectedSecret || !secret || !safeCompare(secret, expectedSecret)) {
-		return errorResponse('unauthenticated', 'Unauthorized');
-	}
+	// still caps total volume, and a healthy deployment calls this once. Its own
+	// strict bucket, separate from the other instance-secret routes.
+	const denied = await requireInstanceSecret(ctx, request, { limitType: 'adminSeed' });
+	if (denied) return denied;
 
 	// Parse request body
 	let body: {

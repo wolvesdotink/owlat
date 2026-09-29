@@ -630,6 +630,20 @@ describe('GET /archive/:token (archiveHttp)', () => {
 		const res = await t.fetch(`/archive/${token}`, { method: 'GET' });
 		expect(res.status).toBe(404);
 	});
+
+	it('404s while the campaigns feature is off', async () => {
+		const t = setupTest();
+		const { token } = await seedArchivedCampaign(t);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				featureFlags: { campaigns: false },
+				createdAt: Date.now(),
+			});
+		});
+
+		const res = await t.fetch(`/archive/${token}`, { method: 'GET' });
+		expect(res.status).toBe(404);
+	});
 });
 
 // ============================================================================

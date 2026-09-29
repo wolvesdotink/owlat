@@ -20,11 +20,12 @@ import { postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireAdminContext } from '../lib/sessionOrganization';
-import { requireMailboxAccess } from './permissions';
+import { personalMailEnabled, requireMailboxAccess } from './permissions';
 import { resolveDeliverableMailbox } from './mailbox/addressResolution';
 import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import { mailAppPasswordScopeValidator } from '../lib/literalValidators';
 import { bytesToHex } from '../lib/bytes';
+import { constantTimeEqual } from '../lib/crypto';
 
 const PBKDF2_ITERATIONS = 100_000;
 const SALT_BYTES = 16;
@@ -85,12 +86,7 @@ async function verifyPassword(cleartext: string, encoded: string): Promise<boole
 	const salt = hexToBytes(saltHex);
 	const expected = hexToBytes(hashHex);
 	const got = await pbkdf2(cleartext, salt);
-	if (got.length !== expected.length) return false;
-	let mismatch = 0;
-	for (let i = 0; i < got.length; i++) {
-		mismatch |= got[i]! ^ expected[i]!;
-	}
-	return mismatch === 0;
+	return constantTimeEqual(bytesToHex(got), bytesToHex(expected));
 }
 
 // ── Public mutations ──────────────────────────────────────────────
@@ -208,8 +204,8 @@ export const verify = internalAction({
 		address: v.string(),
 		password: v.string(),
 		scope: mailAppPasswordScopeValidator,
-		// Optional caller IP — used by the shared rate-limit table so the
-		// SMTP submission path can throttle (the IMAP path also uses Redis).
+		// The logging-in client's IP (the IMAP peer, or the SMTP peer the MTA
+		// forwarded), keyed per client by the shared auth-failure table.
 		ip: v.optional(v.string()),
 	},
 	handler: async (
@@ -223,9 +219,8 @@ export const verify = internalAction({
 	} | null> => {
 		const lowerAddress = args.address.toLowerCase();
 
-		// Cross-path throttle. The IMAP server has its own Redis sliding
-		// window; this is the SMTP submission's equivalent — also catches
-		// any future caller (e.g. the HMAC verify endpoint).
+		// Cross-protocol throttle, per address and per client IP, for IMAP and
+		// SMTP submission alike (the IMAP server also keeps a Redis pre-filter).
 		const throttled = await ctx.runQuery(internal.mail.authRateLimit.isThrottled, {
 			address: lowerAddress,
 			ip: args.ip,
@@ -243,6 +238,9 @@ export const verify = internalAction({
 				scope: args.scope,
 			}
 		);
+		// With personal mail turned off no credential can sign in, so a refusal
+		// says nothing about the password and is not counted as a failure.
+		if (candidates === 'feature_off') return null;
 		if (!candidates) {
 			await ctx.runMutation(internal.mail.authRateLimit.recordFailure, {
 				address: lowerAddress,
@@ -281,6 +279,10 @@ export const _candidatesByAddressAndPrefix = internalQuery({
 		scope: mailAppPasswordScopeValidator,
 	},
 	handler: async (ctx, args) => {
+		// IMAP LOGIN and submission AUTH follow the personal-mail feature flags
+		// like every Postbox UI path: with personal mail off, no app password
+		// signs in.
+		if (!(await personalMailEnabled(ctx))) return 'feature_off' as const;
 		// Bind auth to the live hosted mailbox, not an external read-only archive
 		// that a move may have left on the same address.
 		const mailbox = await resolveDeliverableMailbox(ctx, args.address);

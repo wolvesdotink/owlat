@@ -15,7 +15,8 @@
  *   - both directions are idempotent, so a re-run is never destructive.
  */
 
-import { convexTest } from 'convex-test';
+import { convexTest, type TestConvex as SchemaTestConvex } from 'convex-test';
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
@@ -37,10 +38,22 @@ afterEach(() => {
 
 type TestConvex = ReturnType<typeof convexTest>;
 
-function post(t: TestConvex, path: string, secret: string | null): Promise<Response> {
+/** Every route here is throttled per client IP, so the limiter component is registered. */
+function harness(): SchemaTestConvex<typeof schema> {
+	const t = convexTest(schema, modules);
+	rateLimiterTest.register(t);
+	return t;
+}
+
+function post(
+	t: TestConvex,
+	path: string,
+	secret: string | null,
+	extraHeaders: Record<string, string> = {}
+): Promise<Response> {
 	return t.fetch(path, {
 		method: 'POST',
-		headers: secret === null ? {} : { 'X-Instance-Secret': secret },
+		headers: { ...extraHeaders, ...(secret === null ? {} : { 'X-Instance-Secret': secret }) },
 	});
 }
 
@@ -52,7 +65,7 @@ async function install(t: TestConvex): Promise<Record<string, Record<string, num
 
 describe('sample data — authentication', () => {
 	it('refuses every endpoint without the instance secret', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		for (const path of ['/sample-data/install', '/sample-data/remove', '/sample-data/status']) {
 			expect((await post(t, path, null)).status).toBe(401);
 			expect((await post(t, path, 'wrong-secret')).status).toBe(401);
@@ -61,14 +74,39 @@ describe('sample data — authentication', () => {
 		expect(contacts).toHaveLength(0);
 	});
 
+	it('throttles repeated wrong secrets from one client IP before comparing', async () => {
+		vi.stubEnv('RATE_LIMIT_TRUSTED_PROXY', 'xforwarded');
+		const t = harness();
+		const from = (ip: string) => ({ 'X-Forwarded-For': ip });
+
+		const statuses: number[] = [];
+		for (let i = 0; i < 40; i++) {
+			const res = await post(t, '/sample-data/status', 'wrong-secret', from('198.51.100.7'));
+			statuses.push(res.status);
+			if (res.status === 429) {
+				expect(res.headers.get('Retry-After')).toMatch(/^\d+$/);
+				break;
+			}
+		}
+		expect(statuses[statuses.length - 1]).toBe(429);
+		expect(statuses.slice(0, -1).every((s) => s === 401)).toBe(true);
+
+		// The throttle runs before the comparison, so the right secret from the
+		// same address waits out the window too.
+		expect((await post(t, '/sample-data/status', SECRET, from('198.51.100.7'))).status).toBe(429);
+
+		// Another client keeps its own budget.
+		expect((await post(t, '/sample-data/status', SECRET, from('198.51.100.8'))).status).toBe(200);
+	});
+
 	it('leaves the dev-only seed endpoint fail-closed', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const res = await post(t, '/seed/demo', SECRET);
 		expect(res.status).toBe(403);
 	});
 
 	it('refuses in the shared error envelope, not a bare { error: string }', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 
 		const unauthorized = await post(t, '/sample-data/install', null);
 		expect(await unauthorized.json()).toEqual({
@@ -84,7 +122,7 @@ describe('sample data — authentication', () => {
 
 describe('sample data — install', () => {
 	it('populates the instance without dev mode and without creating sign-ins', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const summary = await install(t);
 
 		expect(summary['inserted']?.['contacts']).toBe(15);
@@ -111,7 +149,7 @@ describe('sample data — install', () => {
 	});
 
 	it('is idempotent — a second install inserts nothing new', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		await install(t);
 		const second = await install(t);
 
@@ -123,7 +161,7 @@ describe('sample data — install', () => {
 	});
 
 	it('leaves the compliance telemetry fixtures on the dev-only path', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const summary = await install(t);
 
 		// Gmail bulk-sender rollups for demo.example read as a real domain just
@@ -136,7 +174,7 @@ describe('sample data — install', () => {
 	});
 
 	it('tags every row it writes so removal can find them again', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		await install(t);
 		const untagged = await t.run(async (ctx) => {
 			const rows = [
@@ -154,7 +192,7 @@ describe('sample data — install', () => {
 
 describe('sample data — inert on a real instance', () => {
 	it('installs the automation paused, so a real signup is never mailed', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		await install(t);
 
 		const automations = await t.run(async (ctx) => await ctx.db.query('automations').collect());
@@ -184,7 +222,7 @@ describe('sample data — inert on a real instance', () => {
 	});
 
 	it('keeps the dev seed live — inert is the sample-data caller, not the loaders', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		// What `/seed/demo` runs: no options, so the throwaway dev instance still
 		// gets the live automation and webhook it has always had.
 		await t.run(async (ctx) => {
@@ -203,7 +241,7 @@ describe('sample data — inert on a real instance', () => {
 	});
 
 	it('installs the webhook disabled, so no contact details leave the instance', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		await install(t);
 
 		const webhooks = await t.run(async (ctx) => await ctx.db.query('webhooks').collect());
@@ -224,7 +262,7 @@ describe('sample data — inert on a real instance', () => {
 
 describe('sample data — status and removal', () => {
 	it('reports what is present, then removes exactly that', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		await install(t);
 
 		const statusRes = await post(t, '/sample-data/status', SECRET);
@@ -259,7 +297,7 @@ describe('sample data — status and removal', () => {
 	});
 
 	it('never touches rows the operator created', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		await install(t);
 
 		const mine = await t.run(async (ctx) => {
@@ -293,7 +331,7 @@ describe('sample data — status and removal', () => {
 	});
 
 	it('cascades, so the operator’s own rows against a demo contact never dangle', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		await install(t);
 
 		// An operator poking at the sample data leaves rows of their own behind:
@@ -373,7 +411,7 @@ describe('sample data — status and removal', () => {
 	});
 
 	it('leaves the cached contact count alone — the loaders never raised it', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		await t.run(async (ctx) => {
 			await ctx.db.insert('instanceSettings', { contactCount: 7, createdAt: Date.now() });
 		});
@@ -386,7 +424,7 @@ describe('sample data — status and removal', () => {
 	});
 
 	it('reports a scan it could not finish rather than under-counting silently', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		await install(t);
 
 		const status = (await (await post(t, '/sample-data/status', SECRET)).json()) as {
@@ -402,7 +440,7 @@ describe('sample data — status and removal', () => {
 	});
 
 	it('is a no-op on an instance that never installed sample data', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const res = await post(t, '/sample-data/remove', SECRET);
 		expect(res.status).toBe(200);
 		expect((await res.json()) as { deleted: Record<string, number>; truncated: boolean }).toEqual({

@@ -285,6 +285,32 @@ describe('submitForm (POST /forms/{formId})', () => {
 		});
 	});
 
+	it('refuses submissions (403) without writing a row while the forms feature is off', async () => {
+		const t = setupTest();
+		const formId = await seedForm(t);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				contactCount: 0,
+				createdAt: Date.now(),
+				featureFlags: { forms: false },
+			} as never);
+		});
+
+		const res = await t.fetch(`/forms/${formId}`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ email: 'flag-off@example.com' }),
+		});
+
+		expect(res.status).toBe(403);
+		await t.run(async (ctx) => {
+			const rows = await ctx.db.query('formSubmissions').collect();
+			expect(rows).toHaveLength(0);
+			const contacts = await ctx.db.query('contacts').collect();
+			expect(contacts).toHaveLength(0);
+		});
+	});
+
 	it('records an invalid submission (200 success envelope, status invalid) when the required email is missing', async () => {
 		const t = setupTest();
 		const formId = await seedForm(t);

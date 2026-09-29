@@ -8,9 +8,14 @@
  * Lifted out of `PostboxBasicEditor.vue` so that component stays under the
  * file-size ratchet; this is a non-snippet editor concern that reasons about
  * the raw DOM in isolation.
+ *
+ * Every value written into the element goes through the composer allowlist
+ * first: the bound value can come from stored drafts and other writers, not
+ * only from this editor's own emits.
  */
 import { onMounted, ref, watch, type Ref } from 'vue';
 import { EMPTY_ACTIVE_MARKS, type ActiveMarks } from '@owlat/ui/composables/useRichText';
+import { sanitizePostboxComposerHtml } from '~/utils/postboxSanitizeHtml';
 
 export function usePostboxEditorDocument(opts: {
 	editorRef: Ref<HTMLDivElement | null>;
@@ -91,7 +96,7 @@ export function usePostboxEditorDocument(opts: {
 		if (el) {
 			const value = opts.modelValue();
 			if (value && el.innerHTML !== value) {
-				el.innerHTML = value;
+				el.innerHTML = sanitizePostboxComposerHtml(value);
 			} else {
 				ensureScaffold();
 			}
@@ -110,7 +115,7 @@ export function usePostboxEditorDocument(opts: {
 		// Anything else is a genuinely external edit and has to land even while the
 		// user is typing, because nothing will re-deliver it.
 		const wasFocused = document.activeElement === el;
-		el.innerHTML = value || '';
+		el.innerHTML = value ? sanitizePostboxComposerHtml(value) : '';
 		ensureScaffold();
 		if (wasFocused) placeCaretAtEnd(el);
 		syncEmptyState();

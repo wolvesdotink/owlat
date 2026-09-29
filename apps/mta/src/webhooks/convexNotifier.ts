@@ -5,7 +5,8 @@
  * Includes shared secret authentication, retry logic, and DLQ fallback.
  */
 
-import { createHmac, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
+import { signMtaRequest } from '@owlat/mta-protocol/signer';
 import type Redis from 'ioredis';
 import { isRecord, sleep } from '@owlat/shared';
 import type { GooglePostmasterWebhookEvent, MtaWebhookEvent } from '../types.js';
@@ -103,16 +104,11 @@ async function deliverWithRetries<T>(
 			const controller = new AbortController();
 			timeout = setTimeout(() => controller.abort(), Math.min(TIMEOUT_MS, remainingMs));
 			const body = JSON.stringify(event);
-			const timestamp = String(Math.floor(Date.now() / 1000));
-			const signature = createHmac('sha256', config.webhookSecret)
-				.update(`${timestamp}.${body}`)
-				.digest('hex');
 			const response = await fetch(url, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
-					'X-MTA-Timestamp': timestamp,
-					'X-MTA-Signature': signature,
+					...signMtaRequest(config.webhookSecret, body),
 				},
 				body,
 				signal: controller.signal,

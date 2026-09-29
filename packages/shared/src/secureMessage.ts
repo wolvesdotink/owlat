@@ -286,7 +286,15 @@ function mimeDelimiter(
 	boundaries: Set<string>
 ): { boundary: string; isClose: boolean } | null {
 	if (!line.startsWith('--')) return null;
-	const rest = line.slice(2).replace(/[ \t\r]+$/, '');
+	// Backwards scan rather than a trailing-anchored regex: linear in the
+	// length of the padding.
+	let end = line.length;
+	while (end > 2) {
+		const c = line.charCodeAt(end - 1);
+		if (c !== 0x20 && c !== 0x09 && c !== 0x0d) break;
+		end--;
+	}
+	const rest = line.slice(2, end);
 	if (boundaries.has(rest)) return { boundary: rest, isClose: false };
 	if (!rest.endsWith('--')) return null;
 	const closing = rest.slice(0, -2);
@@ -382,7 +390,7 @@ export function extractClearsignedText(rawBody: string): string | null {
 		.split('\n')
 		.map((line) => (line.startsWith('- ') ? line.slice(2) : line))
 		.join('\n')
-		.replace(/\s+$/, '');
+		.trimEnd();
 }
 
 /**

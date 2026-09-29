@@ -88,6 +88,12 @@ of `bun run lint` and will fail CI, including:
   `.replace(/<[^>]+>/g, …)` strip, across `apps/api/convex`,
   `packages/shared/src` and `packages/mail-message/src`
   (`scripts/check-html-to-text.sh`).
+- `lint:crypto-primitives` (root, in `ci:lint`) — HMAC signing and
+  constant-time comparison go through `apps/api/convex/lib/crypto.ts` (Convex),
+  `@owlat/shared/constantTimeEqual` (Node services), and the MTA request
+  signature through `@owlat/mta-protocol/signer`; a Web Crypto HMAC
+  `importKey`/`sign` or a `timingSafeEqual(` anywhere else under `apps/` or
+  `packages/` fails (`scripts/check-crypto-primitives.sh`).
 
 The web app's `lint` script (`apps/web`) runs gates of its own, including:
 

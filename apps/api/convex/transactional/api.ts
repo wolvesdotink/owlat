@@ -34,6 +34,7 @@ import {
 	type JsonPrimitiveValue,
 } from '../lib/inputGuards';
 import { validateOutboundUrl } from '../lib/outboundUrlValidation';
+import { featureDisabledMessage } from '../lib/featureFlags';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import type { OperationErrorCategory } from '@owlat/shared/operationError';
 import type { AttachmentRef, DispatchRejectionReason } from './dispatch';
@@ -273,6 +274,11 @@ const REJECTION_RESPONSE_MAP: Record<
 	DispatchRejectionReason,
 	{ category: OperationErrorCategory; defaultMessage: string }
 > = {
+	feature_disabled: {
+		// The status every feature floor uses for a disabled flag.
+		category: 'forbidden',
+		defaultMessage: featureDisabledMessage('transactional'),
+	},
 	abuse_blocked: {
 		category: 'forbidden',
 		defaultMessage: 'Your account has been suspended. Please contact support for assistance.',
@@ -322,6 +328,14 @@ export const sendTransactional = createAuthenticatedHandler(
 	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
 		const denied = requireScope(auth, 'transactional:send', request.headers.get('Origin'));
 		if (denied) return denied;
+		// Refuse before any attachment is stored. `dispatch` repeats the check for
+		// its own callers.
+		const flags = await ctx.runQuery(internal.workspaces.featureFlags.getResolvedFlags, {});
+		if (!flags.transactional) {
+			return errorResponse('forbidden', featureDisabledMessage('transactional'), {
+				data: { reason: 'feature_disabled' },
+			});
+		}
 		// Parse body.
 		let body: SendTransactionalBody;
 		try {

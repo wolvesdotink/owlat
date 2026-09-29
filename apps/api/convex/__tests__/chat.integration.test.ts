@@ -29,7 +29,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
-		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		requireOrgMember: vi.fn().mockImplementation(async () => ({
+			userId: sessionMock.user.id,
+			role: sessionMock.user.role,
+			activeOrganizationId: 'test-org',
+		})),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockImplementation(async () => sessionMock.user.id),
 		getMutationContext: vi.fn().mockImplementation(async () => ({
@@ -567,50 +571,137 @@ describe('chat.mentions', () => {
 });
 
 describe('chat.emailLink', () => {
-	it('requires per-room admin to link an inbox thread', async () => {
-		const t = convexTest(schema, modules);
-		await enableFeatures(t, ['chat', 'inbox']);
-
-		// Seed an inbox thread that isn't the legacy chat scaffold.
-		const inboxThreadId = await t.run(async (ctx) => {
+	async function seedInboxThread(t: TestConvex<typeof schema>) {
+		// An inbox thread that isn't the legacy chat scaffold, with one inbound row.
+		return await t.run(async (ctx) => {
 			const now = Date.now();
-			return await ctx.db.insert('conversationThreads', {
+			const threadId = await ctx.db.insert('conversationThreads', {
 				subject: 'Customer ticket',
 				normalizedSubject: 'customer ticket',
 				contactIdentifier: 'customer@example.com',
 				status: 'open',
-				messageCount: 0,
+				messageCount: 1,
 				lastMessageAt: now,
 				firstMessageAt: now,
 				createdAt: now,
 			});
+			await ctx.db.insert('inboundMessages', {
+				threadId,
+				messageId: '<ticket-1@example.com>',
+				from: 'customer@example.com',
+				to: 'support@example.com',
+				subject: 'Customer ticket',
+				textBody: 'Order question',
+				receivedAt: now,
+				processingStatus: 'received',
+			});
+			return threadId;
 		});
+	}
 
-		setUser('user-alice', 'editor');
+	async function publicChannelWithMember(
+		t: TestConvex<typeof schema>,
+		creatorRole: 'admin' | 'editor'
+	) {
+		setUser('user-alice', creatorRole);
 		const roomId = await t.mutation(api.chat.rooms.createChannel, {
 			name: 'support',
 			visibility: 'public',
 		});
-		// Bob joins as a plain member.
+		// Bob joins as a plain room member with the plain org role.
 		setUser('user-bob', 'editor');
 		await t.mutation(api.chat.members.joinChannel, { roomId: roomId! });
+		return roomId!;
+	}
 
-		// Bob (member, not admin) cannot link.
+	it('requires per-room admin to link an inbox thread', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['chat', 'inbox']);
+		const inboxThreadId = await seedInboxThread(t);
+		const roomId = await publicChannelWithMember(t, 'admin');
+
+		// Bob (room member, not room admin) cannot link.
+		setUser('user-bob', 'editor');
 		await expect(
-			t.mutation(api.chat.emailLink.linkChannelToInboxThread, {
-				roomId: roomId!,
-				inboxThreadId,
-			})
+			t.mutation(api.chat.emailLink.linkChannelToInboxThread, { roomId, inboxThreadId })
 		).rejects.toThrow();
 
-		// Alice (per-room admin) can.
-		setUser('user-alice', 'editor');
-		await t.mutation(api.chat.emailLink.linkChannelToInboxThread, {
-			roomId: roomId!,
-			inboxThreadId,
-		});
-		const room = await t.run(async (ctx) => ctx.db.get(roomId!));
+		// Alice (per-room admin and shared-inbox reader) can.
+		setUser('user-alice', 'admin');
+		await t.mutation(api.chat.emailLink.linkChannelToInboxThread, { roomId, inboxThreadId });
+		const room = await t.run(async (ctx) => ctx.db.get(roomId));
 		expect(room?.linkedInboxThreadId).toBe(inboxThreadId);
+	});
+
+	it('refuses a room admin who is not a shared-inbox reader', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['chat', 'inbox']);
+		const inboxThreadId = await seedInboxThread(t);
+		const roomId = await publicChannelWithMember(t, 'editor');
+
+		setUser('user-alice', 'editor');
+		await expect(
+			t.mutation(api.chat.emailLink.linkChannelToInboxThread, { roomId, inboxThreadId })
+		).rejects.toThrow();
+		const room = await t.run(async (ctx) => ctx.db.get(roomId));
+		expect(room?.linkedInboxThreadId).toBeUndefined();
+	});
+
+	it('refuses linking while the inbox feature is off', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['chat']);
+		const inboxThreadId = await seedInboxThread(t);
+		const roomId = await publicChannelWithMember(t, 'admin');
+
+		setUser('user-alice', 'admin');
+		await expect(
+			t.mutation(api.chat.emailLink.linkChannelToInboxThread, { roomId, inboxThreadId })
+		).rejects.toThrow();
+	});
+
+	it('shows the linked thread to shared-inbox readers only', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['chat', 'inbox']);
+		const inboxThreadId = await seedInboxThread(t);
+		const roomId = await publicChannelWithMember(t, 'admin');
+		setUser('user-alice', 'admin');
+		await t.mutation(api.chat.emailLink.linkChannelToInboxThread, { roomId, inboxThreadId });
+
+		const readerView = await t.query(api.chat.emailLink.getLinkedThreadView, { roomId });
+		expect(readerView?.thread._id).toBe(inboxThreadId);
+		expect(readerView?.recentMessages).toHaveLength(1);
+
+		setUser('user-bob', 'editor');
+		expect(await t.query(api.chat.emailLink.getLinkedThreadView, { roomId })).toBeNull();
+	});
+
+	it('hides a link made before the reader gate from non-readers', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['chat', 'inbox']);
+		const inboxThreadId = await seedInboxThread(t);
+		const roomId = await publicChannelWithMember(t, 'editor');
+		// A link that already exists on the row, whoever made it.
+		await t.run(async (ctx) => ctx.db.patch(roomId, { linkedInboxThreadId: inboxThreadId }));
+
+		setUser('user-alice', 'editor');
+		expect(await t.query(api.chat.emailLink.getLinkedThreadView, { roomId })).toBeNull();
+	});
+
+	it('returns no linked thread once the inbox feature is off', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['chat', 'inbox']);
+		const inboxThreadId = await seedInboxThread(t);
+		const roomId = await publicChannelWithMember(t, 'admin');
+		setUser('user-alice', 'admin');
+		await t.mutation(api.chat.emailLink.linkChannelToInboxThread, { roomId, inboxThreadId });
+
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').first();
+			await ctx.db.patch(settings!._id, {
+				featureFlags: { ...settings!.featureFlags, inbox: false },
+			});
+		});
+		expect(await t.query(api.chat.emailLink.getLinkedThreadView, { roomId })).toBeNull();
 	});
 });
 

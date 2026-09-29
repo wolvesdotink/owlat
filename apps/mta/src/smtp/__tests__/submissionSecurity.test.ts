@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
-import { checkAuthThrottle, recordAuthFailure, clearAuthFailures } from '../submissionSecurity.js';
+import { checkAuthThrottle, recordAuthFailure } from '../submissionSecurity.js';
 
 describe('submissionSecurity', () => {
 	let redis: RealRedis;
@@ -30,12 +30,13 @@ describe('submissionSecurity', () => {
 			expect(await recordAuthFailure(redis, '1.2.3.4')).toBe(2);
 		});
 
-		it('clearAuthFailures resets the counter', async () => {
-			await recordAuthFailure(redis, '1.2.3.4');
-			await recordAuthFailure(redis, '1.2.3.4');
-			await clearAuthFailures(redis, '1.2.3.4');
-			expect(await checkAuthThrottle(redis, '1.2.3.4', 3)).toBe(true);
-			expect(await redis.get('mta:submission:authfail:1.2.3.4')).toBeNull();
+		it('counts every address of an IPv6 /64 against one budget', async () => {
+			await recordAuthFailure(redis, '2001:db8:1:2::a');
+			await recordAuthFailure(redis, '2001:db8:1:2:ffff::b');
+			await recordAuthFailure(redis, '2001:db8:1:2::c');
+			expect(await redis.get('mta:submission:authfail:2001:db8:1:2::/64')).toBe('3');
+			expect(await checkAuthThrottle(redis, '2001:db8:1:2::d', 3)).toBe(false);
+			expect(await checkAuthThrottle(redis, '2001:db8:1:3::a', 3)).toBe(true);
 		});
 
 		it('normalizes IPv4-mapped IPv6 addresses', async () => {

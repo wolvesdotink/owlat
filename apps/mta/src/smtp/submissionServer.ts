@@ -40,7 +40,7 @@ import {
 	transferDecode,
 	type AddressObject,
 } from '@owlat/mail-message';
-import { timingSafeStringEqual } from '../auth/timingSafe.js';
+import { secretMatches } from '@owlat/shared/constantTimeEqual';
 import type { Queue } from 'groupmq';
 import type Redis from 'ioredis';
 import type { EmailJob } from '../types.js';
@@ -51,11 +51,10 @@ import { verifyPostboxAppPassword } from '../auth/postboxAuth.js';
 import { buildGroupKey, extractDomain } from '../queue/groups.js';
 import { mapToPriority, priorityToOrderMs } from '../intelligence/engagementPriority.js';
 import { logger } from '../monitoring/logger.js';
-import { fireAndForget } from '../lib/fireAndForget.js';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { emailDomain } from '@owlat/shared/spfAlignment';
 import { enqueueReconciledIntake } from '../queue/intakeEnqueue.js';
-import { checkAuthThrottle, recordAuthFailure, clearAuthFailures } from './submissionSecurity.js';
+import { checkAuthThrottle, recordAuthFailure } from './submissionSecurity.js';
 import { createConnectionLimiter } from '../lib/connectionSlots.js';
 import {
 	bindSubmissionClientRequest,
@@ -149,9 +148,10 @@ function submissionRecipients(session: Session): string[] {
  *
  * Every path that fails records a per-IP failure and is gated by a per-IP
  * failed-attempt throttle, so the master key and per-org credentials cannot be
- * brute-forced by reconnecting (RFC 4954 §4). The listener collapses every
- * failure to one `535 5.7.8` on the wire (no auth oracle — D6), so the throttle
- * rejection is byte-identical to a wrong secret.
+ * brute-forced by reconnecting (RFC 4954 §4). A successful AUTH leaves the
+ * counter alone, so it cannot be used to refill the budget. The listener
+ * collapses every failure to one `535 5.7.8` on the wire (no auth oracle — D6),
+ * so the throttle rejection is byte-identical to a wrong secret.
  */
 export function buildAuthenticate(deps: Pick<SubmissionDeps, 'redis' | 'config'>) {
 	const { redis, config } = deps;
@@ -196,9 +196,8 @@ export function buildAuthenticate(deps: Pick<SubmissionDeps, 'redis' | 'config'>
 
 		try {
 			// Master key — constant-time compare like every other secret check.
-			if (timingSafeStringEqual(apiKey, config.apiKey)) {
+			if (secretMatches(apiKey, config.apiKey)) {
 				session.state.auth = { organizationId: '__master__', credentialName: 'master' };
-				await fireAndForget(clearAuthFailures(redis, remoteIp), logger, 'clear_auth_failures');
 				return { ok: true, user: 'master' };
 			}
 
@@ -210,20 +209,16 @@ export function buildAuthenticate(deps: Pick<SubmissionDeps, 'redis' | 'config'>
 					credentialName: credential.name,
 					...(credential.allowedDomains ? { allowedDomains: credential.allowedDomains } : {}),
 				};
-				await fireAndForget(clearAuthFailures(redis, remoteIp), logger, 'clear_auth_failures');
 				return { ok: true, user: credential.name };
 			}
 
 			// Postbox app password (per-user) — username MUST be the mailbox address.
 			// Skip the round-trip if it doesn't look like an email.
 			if (username && username.includes('@')) {
-				const result = await verifyPostboxAppPassword(
-					config,
-					username,
-					apiKey,
-					'smtp',
-					clientName(session)
-				);
+				const result = await verifyPostboxAppPassword(config, username, apiKey, 'smtp', {
+					clientName: clientName(session),
+					remoteIp,
+				});
 				if (result) {
 					session.state.auth = {
 						organizationId: result.organizationId,
@@ -235,7 +230,6 @@ export function buildAuthenticate(deps: Pick<SubmissionDeps, 'redis' | 'config'>
 							userId: result.userId,
 						},
 					};
-					await fireAndForget(clearAuthFailures(redis, remoteIp), logger, 'clear_auth_failures');
 					return { ok: true, user: username };
 				}
 			}
@@ -266,7 +260,7 @@ function firstFrom(field: AddressObject | AddressObject[] | undefined): string {
  * The first `text/x-amp-html` leaf in document order wins, decoded with the
  * package's single `transferDecode` (7bit / QP / base64 — one decoder, no second
  * copy). NOTE (sanctioned divergence, PR body): `MimeNode.rawBody` is CRLF→LF
- * normalized for nested non-`message/*` leaves (mailMime parity), so a multi-line
+ * normalized for nested non-`message/*` leaves, so a multi-line
  * AMP document's `job.amp` carries LF line endings rather than the wire's CRLF.
  * This is immaterial: the sender re-encodes the part when re-emitting it, applying
  * canonical CRLF + transfer-encoding on the way out.

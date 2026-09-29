@@ -11,6 +11,7 @@ import { fullSupport, type ImageBlockContent } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
 import { toPixelWidth } from '../../helpers/dimensions';
 import { escapeAttr, sanitizeUrl } from '../../sanitize';
+import { px } from '../../helpers/padding';
 import { transformUrl } from '../../helpers/linkTransform';
 import { checkShape, isString, isNumber, isOneOf } from '../../helpers/validation';
 
@@ -28,9 +29,11 @@ const renderImgElement = (content: ImageBlockContent, baseWidth: number): string
 		'border:0',
 		'outline:none',
 	];
-	if (content.height) imgStyles.push(`height:${content.height}px`);
+	const height = px(content.height, 0);
+	if (height) imgStyles.push(`height:${height}px`);
 	else imgStyles.push('height:auto');
-	if (content.borderRadius) imgStyles.push(`border-radius:${content.borderRadius}px`);
+	const borderRadius = px(content.borderRadius, 0);
+	if (borderRadius) imgStyles.push(`border-radius:${borderRadius}px`);
 
 	const fluidClass = content.fluidOnMobile ? ' class="owlat-fluid-img"' : '';
 	const titleAttr = content.title ? ` title="${escapeAttr(content.title)}"` : '';
@@ -120,8 +123,8 @@ export const imageModule: BlockModule<'image'> = {
 		if (!content.src) return '';
 		const src = sanitizeUrl(content.src);
 		if (!src) return '';
-		const width = content.width || 600;
-		const height = content.height || Math.round(width * 0.6);
+		const width = px(content.width, 0) || 600;
+		const height = px(content.height, 0) || Math.round(width * 0.6);
 		const alt = escapeAttr(content.alt || '');
 		const imgTag = `<amp-img src="${escapeAttr(src)}" alt="${alt}" width="${width}" height="${height}" layout="responsive"></amp-img>`;
 		if (content.linkUrl) {

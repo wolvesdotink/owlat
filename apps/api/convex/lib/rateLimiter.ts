@@ -44,6 +44,17 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		period: MINUTE,
 	},
 
+	// The other `X-Instance-Secret` routes (`/sample-data/*`, and the dev-only
+	// `/seed/demo` and `/dev/reset`), charged per IP before the secret is
+	// compared (`lib/instanceSecret.ts`). Operator tooling calls these a handful
+	// of times per run, so the burst leaves room for install + status + remove.
+	instanceSecret: {
+		kind: 'token bucket',
+		rate: 10,
+		period: MINUTE,
+		capacity: 20,
+	},
+
 	// Email tracking: high volume legitimate traffic (100 per minute per IP, burst to 150)
 	emailTracking: {
 		kind: 'token bucket',

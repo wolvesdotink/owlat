@@ -378,3 +378,41 @@ describe('response preview', () => {
 		expect(meter.cancelled).toBe(true);
 	});
 });
+
+describe('webhook delivery follows the webhooks feature flag', () => {
+	it('enqueues nothing while outbound webhooks are turned off', async () => {
+		const { t, webhookId } = await setup({}, { featureOn: false });
+
+		const fanout = await t.mutation(internal.webhooks.deliveryQueries.enqueueFanoutDeliveries, {
+			event: 'contact.created',
+			payload: PAYLOAD,
+		});
+		const single = await t.mutation(internal.webhooks.deliveryQueries.enqueueDelivery, {
+			webhookId,
+			event: 'contact.created',
+			payload: PAYLOAD,
+		});
+
+		expect(fanout).toEqual([]);
+		expect(single).toBeNull();
+		const logs = await t.run((ctx) => ctx.db.query('webhookDeliveryLogs').collect());
+		expect(logs).toEqual([]);
+	});
+
+	it('ends a queued delivery without sending once the flag is turned off', async () => {
+		const { t, webhookId } = await setup();
+		const logId = await enqueue(t, webhookId);
+		await t.run(async (ctx) => {
+			const settings = (await ctx.db.query('instanceSettings').first())!;
+			await ctx.db.patch(settings._id, { featureFlags: { webhooks: false } });
+		});
+
+		await invoke(t, await currentAttempt(t, logId));
+
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(await row(t, logId)).toMatchObject({
+			status: 'failed',
+			errorMessage: 'Outbound webhooks are turned off',
+		});
+	});
+});

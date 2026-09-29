@@ -69,6 +69,27 @@ describe('useInlineTextEdit.exitInlineEdit — sanitizes before save', () => {
 		expect(savedHtml).toContain('variable-tag');
 	});
 
+	it('strips javascript: links from saved HTML', () => {
+		const { edit, onUpdate } = setup('<p>x</p>', '<p><a href="javascript:alert(1)">x</a></p>');
+		edit.exitInlineEdit();
+
+		const savedHtml = onUpdate.mock.calls[0]![2] as string;
+		expect(savedHtml).toContain('x');
+		expect(savedHtml).not.toContain('javascript:');
+	});
+
+	it('keeps variable chip attributes on saved HTML', () => {
+		const { edit, onUpdate } = setup(
+			'<p>x</p>',
+			'<p>Hi <span class="variable-tag" contenteditable="false" data-variable="firstName">{{firstName}}</span></p>'
+		);
+		edit.exitInlineEdit();
+
+		const savedHtml = onUpdate.mock.calls[0]![2] as string;
+		expect(savedHtml).toContain('data-variable="firstName"');
+		expect(savedHtml).toContain('contenteditable="false"');
+	});
+
 	it('still auto-deletes empty blocks (sanitization does not change emptiness handling)', () => {
 		const { edit, onUpdate, onDeleteBlock } = setup('<p>x</p>', '<br>');
 		edit.exitInlineEdit();

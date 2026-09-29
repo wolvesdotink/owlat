@@ -121,7 +121,7 @@ export function parseLine(raw: string): ParsedCommand | null {
  * in a literal.
  */
 export function matchTrailingLiteral(
-	segment: string,
+	segment: string
 ): { octets: number; literalPlus: boolean } | null {
 	const m = segment.match(/\{(\d+)(\+?)\}$/);
 	if (!m) return null;
@@ -146,7 +146,7 @@ export function matchTrailingLiteral(
  */
 export function parseCommandWithLiterals(
 	segments: string[],
-	literals: string[],
+	literals: string[]
 ): ParsedCommand | null {
 	const tokens: string[] = [];
 	for (let idx = 0; idx < segments.length; idx += 1) {
@@ -177,18 +177,32 @@ export function unwrapParens(token: string): string {
 
 /** Tokenize a parenthesized list (`(FLAGS UID INTERNALDATE)` → ['FLAGS','UID','INTERNALDATE']). */
 export function parseList(token: string): string[] {
-	return unwrapParens(token)
-		.split(/\s+/)
-		.filter(Boolean);
+	return unwrapParens(token).split(/\s+/).filter(Boolean);
 }
 
-/** Parse an IMAP UID range like `1:* 5,7,10:12` into an array of [low, high] pairs. */
+/** Largest message number an IMAP set may carry (RFC 3501 `nz-number`, 32-bit unsigned). */
+const MAX_SET_NUMBER = 4294967295;
+
+/** One set member: `*`, or a plain decimal number no larger than {@link MAX_SET_NUMBER}. */
+function parseSetNumber(token: string | undefined, star: number): number {
+	if (token === '*') return star;
+	if (token === undefined || !/^\d{1,10}$/.test(token)) return NaN;
+	const n = Number(token);
+	return n > MAX_SET_NUMBER ? NaN : n;
+}
+
+/**
+ * Parse an IMAP message set like `1:*` or `5,7,10:12` into [low, high] pairs.
+ * Malformed parts, including numbers above the 32-bit `nz-number` limit, are
+ * dropped rather than failing the whole set.
+ */
 export function parseUidSet(spec: string, maxUid: number): Array<[number, number]> {
 	const ranges: Array<[number, number]> = [];
 	for (const part of spec.split(',')) {
-		const [a, b] = part.split(':');
-		const low = a === '*' ? maxUid : parseInt(a ?? '', 10);
-		const high = b === undefined ? low : b === '*' ? maxUid : parseInt(b, 10);
+		const [a, b, extra] = part.split(':');
+		if (extra !== undefined) continue;
+		const low = parseSetNumber(a, maxUid);
+		const high = b === undefined ? low : parseSetNumber(b, maxUid);
 		if (Number.isNaN(low) || Number.isNaN(high)) continue;
 		ranges.push([Math.min(low, high), Math.max(low, high)]);
 	}

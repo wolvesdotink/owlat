@@ -8,8 +8,10 @@ import {
 	getSectionBackground,
 	getSectionBorder,
 	getSectionBorderRadius,
+	px,
 } from './padding';
 import { gradientToCss } from './gradient';
+import { escapeAttr, escapeCss } from '../sanitize';
 
 // Re-exported from @owlat/shared so existing renderer call sites keep importing
 // it from here; the implementation is shared with the editor half of the
@@ -27,7 +29,7 @@ const getBlockClasses = (block: EditorBlock): string[] => {
 	if (c.darkBackgroundColor) classes.push('owlat-dark-bg');
 	if (c.darkTextColor) classes.push('owlat-dark-text');
 	if (c.cssClass && typeof c.cssClass === 'string') {
-		classes.push(c.cssClass);
+		classes.push(escapeAttr(c.cssClass));
 	}
 	return classes;
 };
@@ -38,8 +40,8 @@ const getBlockClasses = (block: EditorBlock): string[] => {
 const getDarkModeVars = (block: EditorBlock): string => {
 	const c = block.content as CommonBlockProperties;
 	const vars: string[] = [];
-	if (c.darkBackgroundColor) vars.push(`--dark-bg:${c.darkBackgroundColor}`);
-	if (c.darkTextColor) vars.push(`--dark-text:${c.darkTextColor}`);
+	if (c.darkBackgroundColor) vars.push(`--dark-bg:${escapeCss(c.darkBackgroundColor)}`);
+	if (c.darkTextColor) vars.push(`--dark-text:${escapeCss(c.darkTextColor)}`);
 	return vars.length > 0 ? vars.join(';') + ';' : '';
 };
 
@@ -72,7 +74,7 @@ export const wrapSection = (
 		(layout?.sectionMode === 'outer-only'
 			? getMarginOnlyPadding(block.content)
 			: getSectionPadding(block.content));
-	const bgColor = layout?.background ?? getSectionBackground(block.content);
+	const bgColor = escapeCss(layout?.background ?? getSectionBackground(block.content));
 	const border = getSectionBorder(block);
 	const borderRadius = layout?.borderRadius ?? getSectionBorderRadius(block);
 	const classes = getBlockClasses(block);
@@ -84,26 +86,30 @@ export const wrapSection = (
 	if (darkModeVars) tableStyles.push(darkModeVars);
 	if (bgColor) tableStyles.push(`background-color:${bgColor}`);
 	const gradient = c.backgroundGradient;
-	const gradientCss =
-		layout?.gradient ?? (gradient && gradient.stops?.length >= 2 ? gradientToCss(gradient) : '');
+	const gradientCss = escapeCss(
+		layout?.gradient ?? (gradient && gradient.stops?.length >= 2 ? gradientToCss(gradient) : '')
+	);
 	if (gradientCss) {
 		tableStyles.push(`background:${gradientCss}`);
 	}
 	if (border.width > 0 && border.style !== 'none') {
-		tableStyles.push(`border:${border.width}px ${border.style} ${border.color}`);
+		tableStyles.push(
+			`border:${border.width}px ${escapeCss(border.style)} ${escapeCss(border.color)}`
+		);
 	}
 	if (borderRadius > 0) tableStyles.push(`border-radius:${borderRadius}px`);
 
 	const tableStyleAttr = tableStyles.length > 0 ? ` style="${tableStyles.join(';')}"` : '';
 	const classAttr = classes.length > 0 ? ` class="${classes.join(' ')}"` : '';
 	const dataAttrs = getBlockDataAttrs(block);
+	const fontFamily = escapeCss(ctx.theme.fontFamily);
 
-	const sectionTable = `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${tableStyleAttr}${classAttr}${dataAttrs}><tr><td style="padding:${padding};font-family:${ctx.theme.fontFamily}">${innerHtml}</td></tr></table>`;
+	const sectionTable = `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${tableStyleAttr}${classAttr}${dataAttrs}><tr><td style="padding:${padding};font-family:${fontFamily}">${innerHtml}</td></tr></table>`;
 
 	if (isFullWidth) {
 		// Full-width: outer table at 100% width with background, inner content at baseWidth
 		const outerBg = bgColor ? ` style="background-color:${bgColor}"` : '';
-		return `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${outerBg}${classAttr}${dataAttrs}><tr><td align="center"><table width="${ctx.baseWidth}" cellpadding="0" cellspacing="0" border="0" role="presentation" class="owlat-full-width-inner"><tr><td style="padding:${padding};font-family:${ctx.theme.fontFamily}">${innerHtml}</td></tr></table></td></tr></table>`;
+		return `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${outerBg}${classAttr}${dataAttrs}><tr><td align="center"><table width="${px(ctx.baseWidth, 0)}" cellpadding="0" cellspacing="0" border="0" role="presentation" class="owlat-full-width-inner"><tr><td style="padding:${padding};font-family:${fontFamily}">${innerHtml}</td></tr></table></td></tr></table>`;
 	}
 
 	return sectionTable;

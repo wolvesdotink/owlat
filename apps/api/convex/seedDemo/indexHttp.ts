@@ -6,8 +6,8 @@
  *   Query:   ?reset=true to wipe seed-tagged rows first
  *
  * Protected by:
- *   1. `safeCompare` against `INSTANCE_SECRET`
- *   2. `assertDevDeployment()` — refuses prod-prefixed deployments
+ *   1. `assertDevDeployment()` — refuses prod-prefixed deployments
+ *   2. `requireInstanceSecret` — per-IP throttle, then `INSTANCE_SECRET`
  *
  * DEV ONLY, and it stays that way: this endpoint seeds the dummy teammate
  * sign-ins whose passwords are published fixture hashes. A real install that
@@ -21,8 +21,7 @@
 
 import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { getOptional } from '../lib/env';
-import { safeCompare } from '../lib/safeCompare';
+import { requireInstanceSecret } from '../lib/instanceSecret';
 import { logError } from '../lib/runtimeLog';
 import { devDeploymentResponseOrNull } from '../devShortcuts/_guard';
 import { errorResponse, jsonResponse } from '../lib/httpResponse';
@@ -31,11 +30,8 @@ export const seedDemoHttp = httpAction(async (ctx, request) => {
 	const devResp = devDeploymentResponseOrNull();
 	if (devResp) return devResp;
 
-	const secret = request.headers.get('X-Instance-Secret');
-	const expected = getOptional('INSTANCE_SECRET');
-	if (!expected || !secret || !safeCompare(secret, expected)) {
-		return errorResponse('unauthenticated', 'Unauthorized');
-	}
+	const denied = await requireInstanceSecret(ctx, request, { limitType: 'instanceSecret' });
+	if (denied) return denied;
 
 	const url = new URL(request.url);
 	const reset = url.searchParams.get('reset') === 'true';

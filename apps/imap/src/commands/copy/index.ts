@@ -33,6 +33,7 @@ export const copyModule: ImapCommandModule<CopyArgs> = {
 				deps,
 				state,
 				set: args.set,
+				byUid: args.byUid,
 				target: args.target,
 				tag,
 				label,

@@ -33,6 +33,7 @@ import { isValidEmail, normalizeEmail, STRING_LIMITS } from '../lib/inputGuards'
 import { jsonPrimitiveRecord } from '../lib/convexValidators';
 import { getOptional } from '../lib/env';
 import { logWarn } from '../lib/runtimeLog';
+import { isFeatureEnabled } from '../lib/featureFlags';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -60,7 +61,7 @@ export type SubmitOutcome =
 	  }
 	| {
 			ok: false;
-			reason: 'form_not_found' | 'form_inactive';
+			reason: 'form_not_found' | 'form_inactive' | 'feature_disabled';
 	  };
 
 export type MarkConfirmedOutcome =
@@ -236,6 +237,9 @@ const submitArgsValidator = {
 export const submit = internalMutation({
 	args: submitArgsValidator,
 	handler: async (ctx, args): Promise<SubmitOutcome> => {
+		// The public endpoint follows the `forms` flag like the management
+		// functions do: while it is off, nothing is written.
+		if (!(await isFeatureEnabled(ctx, 'forms'))) return { ok: false, reason: 'feature_disabled' };
 		const form = await ctx.db.get(args.formEndpointId);
 		if (!form) return { ok: false, reason: 'form_not_found' };
 		if (!form.isActive) return { ok: false, reason: 'form_inactive' };

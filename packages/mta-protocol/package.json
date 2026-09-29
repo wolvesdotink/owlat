@@ -2,7 +2,7 @@
 	"name": "@owlat/mta-protocol",
 	"version": "0.6.4",
 	"private": true,
-	"description": "The Convex<->MTA wire contract (D7): send intake, routing decisions, the IP-reputation snapshot and the MTA webhook events, each declared exactly once and imported by both apps. Types and pure validators only — no I/O, no third-party dependencies.",
+	"description": "The Convex<->MTA wire contract (D7): send intake, routing decisions, the IP-reputation snapshot and the MTA webhook events, each declared exactly once and imported by both apps. Types, pure validators and the request signature — no I/O, no third-party dependencies.",
 	"homepage": "https://owlat.app",
 	"license": "Apache-2.0",
 	"type": "module",
@@ -38,6 +38,14 @@
 		"./dnsblAccess": {
 			"types": "./src/dnsblAccess.ts",
 			"import": "./src/dnsblAccess.ts"
+		},
+		"./signature": {
+			"types": "./src/signature.ts",
+			"import": "./src/signature.ts"
+		},
+		"./signer": {
+			"types": "./src/signer.ts",
+			"import": "./src/signer.ts"
 		}
 	},
 	"scripts": {
