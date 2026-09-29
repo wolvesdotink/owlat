@@ -20,8 +20,13 @@
  *     record's terms rather than demanding a substring or exact match.
  *
  * Kept free of the `'use node'` runtime so it can be unit-tested as a pure
- * function without spinning up the Convex action graph.
+ * function without spinning up the Convex action graph. The tag-list grammar
+ * and the SPF version check come from `@owlat/shared` so the checklist and the
+ * DKIM verifier read a record the same way.
  */
+
+import { parseTagList, stripTagValueWhitespace } from '@owlat/shared/dnsTagList';
+import { isSpfRecord } from '@owlat/shared/spf';
 
 /** Collapse all runs of ASCII whitespace to a single space and trim the ends. */
 function collapseWhitespace(value: string): string {
@@ -29,39 +34,29 @@ function collapseWhitespace(value: string): string {
 }
 
 /**
- * Parse a `tag=value; tag=value` record (DKIM / DMARC) into an ordered map of
- * lower-cased tag → trimmed value. Empty segments (e.g. a trailing `;`) are
- * skipped, and a segment without `=` is recorded with an empty value so it
- * still participates in equality.
+ * Parse a `tag=value; tag=value` record (DKIM / DMARC) with the shared
+ * RFC 6376 §3.2 grammar: tag names lowercased, ALL whitespace stripped from
+ * values (a DNS panel may wrap a long `p=` key, and folded whitespace is not
+ * part of a key-record value), segments without `=` ignored, and the FIRST of
+ * two duplicate tags wins — the same reading as the DKIM verifier in
+ * `@owlat/mail-auth`.
  */
-export function parseTagValueRecord(record: string): Map<string, string> {
-	const tags = new Map<string, string>();
-	for (const rawSegment of record.split(';')) {
-		const segment = rawSegment.trim();
-		if (segment === '') continue;
-		const eq = segment.indexOf('=');
-		if (eq === -1) {
-			tags.set(segment.toLowerCase(), '');
-			continue;
-		}
-		const tag = segment.slice(0, eq).trim().toLowerCase();
-		const value = segment.slice(eq + 1).trim();
-		if (tag !== '') tags.set(tag, value);
-	}
-	return tags;
+function parseRecordTags(record: string): Map<string, string> {
+	return parseTagList(record, { lowercaseName: true, normalizeValue: stripTagValueWhitespace });
 }
 
 /**
  * True when `published` carries every tag/value the `expected` record asked
- * for, ignoring whitespace and tag ordering. The published record may carry
- * extra tags (DKIM adds `t=`, `s=`, etc.) — those don't fail the match.
+ * for, ignoring whitespace (around and inside values) and tag ordering. The
+ * published record may carry extra tags (DKIM adds `t=`, `s=`, etc.) — those
+ * don't fail the match.
  *
  * RFC 6376 §3.6.1 (DKIM) / RFC 7489 §6.3 (DMARC).
  */
 export function tagValueRecordMatches(published: string, expected: string): boolean {
-	const expectedTags = parseTagValueRecord(expected);
+	const expectedTags = parseRecordTags(expected);
 	if (expectedTags.size === 0) return false;
-	const publishedTags = parseTagValueRecord(published);
+	const publishedTags = parseRecordTags(published);
 	for (const [tag, value] of expectedTags) {
 		if (publishedTags.get(tag) !== value) return false;
 	}
@@ -71,14 +66,14 @@ export function tagValueRecordMatches(published: string, expected: string): bool
 /**
  * Split an SPF record into its lower-cased terms (the `v=spf1` version token
  * plus the space-separated mechanisms/modifiers), normalising whitespace.
- * Returns an empty array when the record is not an SPF record.
+ * Returns an empty array when the record is not an SPF record
+ * ({@link isSpfRecord}: `v=spf1:broken` is not one).
  *
  * RFC 7208 §3.2.
  */
 export function parseSpfTerms(record: string): string[] {
-	const normalized = collapseWhitespace(record).toLowerCase();
-	if (!normalized.startsWith('v=spf1')) return [];
-	return normalized.split(' ').filter((term) => term !== '');
+	if (!isSpfRecord(record)) return [];
+	return collapseWhitespace(record).toLowerCase().split(' ');
 }
 
 /**
@@ -108,12 +103,11 @@ export function spfRecordMatches(published: string, expected: string): boolean {
  * recognised record shape.
  */
 export function txtRecordMatches(published: string, expected: string): boolean {
-	const normalizedExpected = collapseWhitespace(expected);
-	if (normalizedExpected.toLowerCase().startsWith('v=spf1')) {
+	if (isSpfRecord(expected)) {
 		return spfRecordMatches(published, expected);
 	}
 	if (expected.includes('=')) {
 		return tagValueRecordMatches(published, expected);
 	}
-	return collapseWhitespace(published) === normalizedExpected;
+	return collapseWhitespace(published) === collapseWhitespace(expected);
 }

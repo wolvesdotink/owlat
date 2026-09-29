@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
 	ipAddressFamily,
 	ipv6HexNibbles,
+	isLoopbackHostname,
+	isLoopbackIp,
+	isPrivateOrLoopbackIp,
 	normalizeIpAddress,
 	parseIpAddress,
 	reverseIpAddressForDns,
+	unmapIpv4,
 } from '../ipAddress';
 
 describe('IP address parsing', () => {
@@ -37,5 +41,69 @@ describe('DNS address reversal', () => {
 		expect(reverseIpAddressForDns('2001:db8::1')).toBe(
 			'1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2'
 		);
+	});
+});
+
+describe('unmapIpv4', () => {
+	it('keeps the byte-exact output the connection-slot keys were built with', () => {
+		expect(unmapIpv4('1.2.3.4')).toBe('1.2.3.4');
+		expect(unmapIpv4('::ffff:1.2.3.4')).toBe('1.2.3.4');
+		expect(unmapIpv4('2001:db8::1')).toBe('2001:db8::1');
+		expect(unmapIpv4('unknown')).toBe('unknown');
+	});
+
+	it('unmaps the WHATWG hex spelling of a mapped address', () => {
+		expect(normalizeIpAddress('::ffff:10.0.0.1')).toBe('::ffff:a00:1');
+		expect(unmapIpv4('::ffff:a00:1')).toBe('10.0.0.1');
+		expect(unmapIpv4('::FFFF:7F00:1')).toBe('127.0.0.1');
+		expect(unmapIpv4('::ffff:0:0')).toBe('0.0.0.0');
+	});
+
+	it('leaves native IPv6 spellings alone rather than canonicalizing them', () => {
+		expect(unmapIpv4('2001:0DB8::0001')).toBe('2001:0DB8::0001');
+		expect(unmapIpv4('::1')).toBe('::1');
+		expect(unmapIpv4('::ffff:not-an-ip')).toBe('::ffff:not-an-ip');
+	});
+});
+
+describe('loopback and private classifiers', () => {
+	// [input, isLoopbackIp, isPrivateOrLoopbackIp, isLoopbackHostname]
+	const table: Array<[string, boolean, boolean, boolean]> = [
+		['127.0.0.1', true, true, true],
+		['127.0.0.2', true, true, true],
+		['::ffff:127.0.0.1', true, true, true],
+		['::ffff:7f00:2', true, true, true],
+		['::1', true, true, true],
+		['0:0:0:0:0:0:0:1', true, true, true],
+		['[::1]', false, false, true],
+		['localhost', false, false, true],
+		['localhost.', false, false, true],
+		[' LocalHost ', false, false, true],
+		['app.localhost', false, false, false],
+		['10.0.0.1', false, true, false],
+		['::ffff:10.0.0.1', false, true, false],
+		['172.16.0.1', false, true, false],
+		['172.17.0.2', false, true, false],
+		['172.20.0.1', false, true, false],
+		['172.31.255.255', false, true, false],
+		['172.32.0.1', false, false, false],
+		['172.15.0.1', false, false, false],
+		['192.168.1.1', false, true, false],
+		['::ffff:192.168.1.1', false, true, false],
+		['192.169.0.1', false, false, false],
+		['8.8.8.8', false, false, false],
+		['::ffff:8.8.8.8', false, false, false],
+		['2001:db8::1', false, false, false],
+		['fd00::1', false, false, false],
+		['127.0.0.01', false, false, false],
+		['127.1', false, false, false],
+		['not an ip', false, false, false],
+		['', false, false, false],
+	];
+
+	it.each(table)('%j', (input, loopback, privateOrLoopback, loopbackHostname) => {
+		expect(isLoopbackIp(input)).toBe(loopback);
+		expect(isPrivateOrLoopbackIp(input)).toBe(privateOrLoopback);
+		expect(isLoopbackHostname(input)).toBe(loopbackHostname);
 	});
 });

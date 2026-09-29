@@ -631,9 +631,13 @@ Exports an `IntegrationImportProviderModule<K>` with:
 totalEstimate? }` — provider API call. Cursor is opaque
   (`''` = first page); adapter interprets internally (Mailchimp
   parses to numeric offset; Stripe uses as `starting_after`).
-  Throws `RetryableProviderError` on 429 / network blip (walker
-  retries with backoff up to N); throws regular `Error` on fatal
-  (walker marks the import `failed` immediately). Returns
+  Throws `RetryableProviderError` on 429 / 502-504 / network blip
+  (walker retries with backoff up to N); throws regular `Error` on
+  fatal, 500 included (walker marks the import `failed`
+  immediately). Every adapter makes its HTTP call through
+  `fetchProviderPage` in `_common.ts`, which owns that
+  classification and runs each thrown message through the
+  adapter's key redactor. Returns
   normalized `ImportRow[]` matching the **Contact import
   (module)**'s row shape.
 
@@ -1035,6 +1039,12 @@ of `domains.status`, plus row creation and removal. Mirrors the
 discriminated by `to`, a `LEGAL_EDGES` graph, a reducer per kind
 returning `{ patch, effects, applied }`, and a `TransitionOutcome`
 reporting `ok | reason` for illegal / domain-not-found attempts.
+The pure half (types, validators, verdict, graph, reducer) lives in
+`domains/lifecycleReducer.ts` and the effect runner in
+`domains/lifecycleEffects.ts`. The feature editors live beside it
+(`lifecycleDmarc.ts`, `lifecycleReceiving.ts`,
+`lifecycleReturnPath.ts`, `lifecycleDkim.ts`) and write only
+through its `patchDomainRecords`.
 Five entry points:
 
 - `create({ domain })` — validates format, checks uniqueness,
@@ -1885,9 +1895,9 @@ Effects:
   (deleted with the saved-block deepening).
 
 Publish invariant guard:
-The module exports `assertEditableForPublishableChange(template,
-force?: boolean)` — throws when `template.status === 'published' &&
-!force`. Consumed by every mutation in `emailTemplates/` that touches
+`lib/publishableEmail.ts` exports `assertEditableForPublishableChange(row,
+noun, force?: boolean)`, shared with the transactional table — throws when
+`row.status === 'published' && !force`. Consumed by every mutation in `emailTemplates/` that touches
 publishable content (`update`, `setDefaultLanguage`,
 `removeTranslation`, both paths of `updateTranslation`,
 `addTranslation`, `changeType`). Each gains a `forceWhilePublished?:
@@ -1928,8 +1938,11 @@ it); silent edits to published templates' `subject` / `content` /
 on `setDefaultLanguage` / `removeTranslation` / `updateTranslation` /
 `addTranslation` / `changeType` paths.
 
-The module does _not_ own: the i18n CRUD writes themselves (those stay
-in `emailTemplates/i18n.ts` — they just gain the guard call), the
+The module does _not_ own: the i18n CRUD writes themselves (the
+`emailTemplates/i18n.ts` and `transactional/translations.ts` mutations
+are auth + load + guard shells around the table-agnostic `*Patch`
+helpers in `lib/emailTranslations.ts`, `setDefaultLanguagePatch`
+included), the
 saved-block propagation algorithm (lives in
 `lib/linkedBlockPropagation.ts`; the effect calls it), or the read
 queries (`get`, `list`, `getForLanguage`, the by-organization read
@@ -2048,9 +2061,10 @@ Per-call order of operations:
     counter is incremented from the HTTP shell _after_ the enqueue;
     consolidating into the module closes the drift seam where any
     future non-HTTP shell would miss it.
-11. Enqueue `transactionalEmailPool.enqueueAction` with
-    `onComplete: emailOnComplete` and `sendRef: { kind: 'transactional',
-id: sendId }`.
+11. Enqueue through `enqueueGovernedSend(ctx, { kind: 'transactional',
+    id: sendId }, { envelopeInput })` (`delivery/governedEnqueue.ts`), which
+    picks the transactional pool and wires `onComplete: completeSend` with
+    the `sendRef` context.
 
 One shell dispatches to this entry today:
 
@@ -2256,7 +2270,8 @@ defaultLanguage? })` — validates slug format and uniqueness, inserts
   at `'draft'`. Calls `create` internally for the row write +
   audit-log effect.
 - `remove({ transactionalEmailId })` — deletes the row, fires
-  `audit_log`.
+  `audit_log`, reverses `linkedBlockIds` usage counts via
+  `update_block_usage_counts`.
 
 Effects:
 
@@ -2277,11 +2292,11 @@ Effects:
   path.
 
 Publish invariant guard:
-The module exports `assertEditableForPublishableChange(email, force?:
-boolean)` — same shape as the Email template lifecycle's guard.
-Consumed by every mutation in `transactional/` that touches publishable
-content (`update` today; the i18n mutations once they split out from
-`transactional/emails.ts`).
+The same `assertEditableForPublishableChange(row, noun, force?)` from
+`lib/publishableEmail.ts` as the Email template lifecycle. Consumed by
+every mutation in `transactional/` that touches publishable content
+(`update`, `updateSchema` and the `transactional/translations.ts`
+mutations).
 
 Producers of transition calls today (post-deepening):
 
@@ -2490,7 +2505,11 @@ completion handler — the path from "worker finished a dispatch attempt"
 to a Send lifecycle transition. Receives `{result, error, sendRef}` from
 the workpool's `onComplete` callback (both campaign and transactional
 sends carry a typed `sendRef: SendRef` because both pre-create their row
-in `queued` — see **Send status** below). Builds the matching
+in `queued` — see **Send status** below). Producers never wire that
+callback themselves: `enqueueGovernedSend` in `delivery/governedEnqueue.ts`
+is the only module that names the worker, and it always attaches
+`completeSend` and the `sendRef`; seed probes, which have no Send row, go
+through its sibling `enqueueUntrackedProbe` with no callback. Builds the matching
 `TransitionInput` (`{to: 'sent', providerMessageId, providerType}` on
 success, `{to: 'failed', errorMessage, errorCode}` on error), calls
 `sendLifecycle.transition`. Provider health for failover routing is
@@ -2593,15 +2612,15 @@ Shared V8 leaves under the module:
   campaign subject → `'plain'`, etc.), not a function-identity choice
   hidden in which import each caller picked.
 - `sendComposition/trackingUrl.ts` — V8-pure
-  `getTrackingPixelUrl(base, emailSendId)` and
-  `getTrackedLinkUrl(base, emailSendId, originalUrl)` using `btoa` +
-  `TextEncoder` (works in both Convex V8 and Node). Replaces the two
-  pre-deepening implementations at `delivery/tracking.ts:41-54`
-  (V8 / `stringToBase64Url`) and `emailWorker.ts:27-38` (Node /
-  `Buffer.from(...).toString('base64url')`). One test surface locks
-  the URL format. The Node transform half imports from this leaf;
-  `delivery/trackingHttp.ts` (which decodes URLs at click-handler
-  time) does too.
+  `getTrackingPixelUrl(base, emailSendId)` and the click-tracking link
+  codec: `encodeTrackedTarget(url)` / `decodeTrackedTarget(segment)`
+  (unpadded base64url of the href's UTF-8 bytes, decoded back through
+  UTF-8), `trackedLinkSigningInput(emailSendId, encodedUrl)` and
+  `trackedLinkPath(...)`. Works in both Convex V8 and Node. The Node
+  transform half encodes and signs through it (`createHmac`), and
+  `delivery/trackingHttp.ts` verifies through the same signing input
+  (`webhooks/security.ts` `hmacSignature`) and decodes with it. One
+  test surface locks the wire format and the legacy Buffer encoding.
 
 Replaces the open-coded blocks in:
 
@@ -3080,6 +3099,12 @@ inside one helper, all "post-attempt" in scope:
 - Retry loop driven by the module's `retryDelays` and
   `categorizeError(message, httpStatus?) → EmailErrorCode`. The
   schedule is the only thing each module declares; the loop is shared.
+  A retry waits the longer of the schedule step and the result's
+  `retryAfterMs`, never more in total than the schedule's sum. The
+  loop also owns the ambiguous-timeout policy: an adapter only reports
+  `AMBIGUOUS_TIMEOUT`, and the catalog decides whether it is retried
+  (`deduplicatesOnIdempotencyKey` plus a key in the extras) or returned
+  terminal with `acceptanceUnknown` (`'unknown-on-timeout'`).
 - Health recording — writes to `providerHealth` via the **Send provider
   health (module)**'s `recordSendResult({ providerType, success,
 latencyMs })`. Runs after every terminal outcome (success or
@@ -5668,8 +5693,9 @@ scope)` is the only summarizer of the window; both the public auth-
   The suspicious-scan outcome routes to `pending_review`, mirroring
   the Campaign lifecycle's `pending_review → sending` admin surface
   (the edges land in the graph now; the surface lands as follow-up).
-  Both lifecycles export an `assertEditableForPublishableChange(row,
-force?)` guard consumed by every mutation that touches publishable
+  Both tables share one `assertEditableForPublishableChange(row, noun,
+force?)` guard (`lib/publishableEmail.ts`, beside the shared publish,
+  duplicate and editor-patch helpers) consumed by every mutation that touches publishable
   content (`subject`, `previewText`, `content`, `htmlContent`, `slug`,
   `type`, `defaultLanguage`, all translation-related fields), forcing
   callers to either pass `forceWhilePublished: true` or call

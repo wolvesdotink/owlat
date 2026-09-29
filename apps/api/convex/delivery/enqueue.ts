@@ -2,8 +2,9 @@
  * Campaign send enqueue — the bulk producer.
  *
  * Per ADR-0006, the workpool `onComplete` callback is owned by the Send
- * completion (module) at `delivery/sendCompletion.ts` — the enqueue below
- * wires it directly via `internal.delivery.sendCompletion.completeSend`. The
+ * completion (module) at `delivery/sendCompletion.ts`; the enqueue below goes
+ * through `enqueueGovernedSend` (`delivery/governedEnqueue.ts`), which wires
+ * `internal.delivery.sendCompletion.completeSend` for every producer. The
  * legacy `onEmailComplete` that previously lived in this file (per-kind
  * branching, inline `transactionalSends.createInternal` on success, inline
  * contact-activity insert, attachment-cleanup loop, provider health tracking)
@@ -24,8 +25,7 @@
 
 import { type Infer, v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
-import { internal } from '../_generated/api';
-import { campaignEmailPool } from './workpool';
+import { enqueueGovernedSend } from './governedEnqueue';
 import { recordSendAssignments } from './sendAssignments';
 import { normalizeEngagementScore } from './workerEnvelope';
 import { enqueueSeedShadowCopies, type CampaignEnvelopeInput } from './seedShadowCopy';
@@ -171,19 +171,10 @@ export const enqueueCampaignEmails = internalMutation({
 				...(engagementScore !== undefined ? { engagementScore } : {}),
 			};
 			probeBaseEnvelope ??= envelopeInput;
-			await campaignEmailPool.enqueueAction(
+			await enqueueGovernedSend(
 				ctx,
-				internal.delivery.worker.sendSingleEmail,
-				{ envelopeInput },
-				{
-					onComplete: internal.delivery.sendCompletion.completeSend,
-					context: {
-						sendRef: {
-							kind: 'campaign' as const,
-							id: recipient.emailSendId,
-						},
-					},
-				}
+				{ kind: 'campaign', id: recipient.emailSendId },
+				{ envelopeInput }
 			);
 		}
 

@@ -18,6 +18,7 @@ import type {
 	ImapCommandModule,
 	ImapVerb,
 } from './types.js';
+import { checkRequires } from './helpers/auth.js';
 import { syncSession } from './helpers/session.js';
 
 /**
@@ -36,10 +37,11 @@ interface DispatchEnv {
 
 /**
  * A module with its `TArgs` existentially closed away. `erase` binds each
- * concrete module's `parseArgs` → `start` pair inside `dispatch`, so the
- * registry can hold modules of differing arg types under one uniform
- * shape without an `any` — the type variable lives only inside the
- * closure, where parse output and start input share the same `TArgs`.
+ * concrete module's `parseArgs` → `checkRequires` → `start` chain inside
+ * `dispatch`, so the registry can hold modules of differing arg types
+ * under one uniform shape without an `any` — the type variable lives only
+ * inside the closure, where parse output and start input share the same
+ * `TArgs`.
  */
 interface ErasedCommandModule {
 	readonly verbs: readonly ImapVerb[];
@@ -55,6 +57,11 @@ function erase<TArgs>(m: ImapCommandModule<TArgs>): ErasedCommandModule {
 			const parseResult = m.parseArgs(env.rawArgs);
 			if (!parseResult.ok) {
 				env.send(`${env.tag} BAD ${parseResult.error}`);
+				return syncSession();
+			}
+			const unmet = checkRequires(m.requires, env.state, env.tag);
+			if (unmet) {
+				env.send(unmet);
 				return syncSession();
 			}
 			return m.start({
@@ -158,9 +165,11 @@ export function assembleCapabilityLine(tls: boolean): string {
 }
 
 /**
- * Look up the module for the parsed verb, run its `parseArgs`, and
- * hand off to `start`. Unknown verbs and parse failures emit a BAD
- * line and return a closed one-shot session — no module is touched.
+ * Look up the module for the parsed verb, run its `parseArgs`, check
+ * its declared `requires`, and hand off to `start`. Unknown verbs and
+ * parse failures emit a BAD line, an unmet precondition emits the
+ * `checkRequires` reply, and each returns a closed one-shot session
+ * without starting the module.
  */
 export function dispatch(
 	deps: CommandDeps,

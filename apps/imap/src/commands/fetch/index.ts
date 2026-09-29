@@ -3,12 +3,12 @@ import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 import { parseList } from '../../parser.js';
 import type { ImapCommandModule } from '../types.js';
-import { asyncSession, syncSession } from '../helpers/session.js';
-import { requireAuth, requireSelect } from '../helpers/auth.js';
+import { asyncSession } from '../helpers/session.js';
 import { buildSeqMap, resolveSet } from '../helpers/seqMap.js';
 import { loadEnvelopes, loadFolderUids } from '../helpers/folderPaging.js';
 import { type FetchEnvelope, formatEnvelope, formatFlags, formatInternalDate } from './format.js';
 import { type BodySectionRequest, formatBodySection, parseBodySectionItem } from './bodySection.js';
+import { serverFailure } from '../helpers/replies.js';
 
 export interface FetchArgs {
 	readonly set: string;
@@ -19,11 +19,6 @@ export interface FetchArgs {
 /** Octet separators for splicing body literals into a FETCH response Buffer. */
 const SPACE = Buffer.from(' ', 'ascii');
 const CLOSE_PAREN = Buffer.from(')', 'ascii');
-
-interface StoreFlagsResult {
-	readonly updated: ReadonlyArray<{ uid: number; modseq: number; flags: string[] }>;
-	readonly unchanged: ReadonlyArray<{ uid: number }>;
-}
 
 /**
  * FETCH and UID FETCH share this module. The UID dispatcher constructs
@@ -43,6 +38,7 @@ interface StoreFlagsResult {
  */
 export const fetchModule: ImapCommandModule<FetchArgs> = {
 	verbs: ['FETCH'],
+	requires: 'selected',
 	parseArgs(rawArgs) {
 		const [set, itemsToken] = rawArgs;
 		if (!set || !itemsToken) {
@@ -51,12 +47,6 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 		return { ok: true, args: { set, itemsToken, byUid: false } };
 	},
 	start({ deps, state, args, tag, send }) {
-		const fail = requireAuth(state, tag) ?? requireSelect(state, tag);
-		if (fail) {
-			send(fail);
-			return syncSession();
-		}
-
 		const rawItems = parseList(args.itemsToken).map((s) => s.toUpperCase());
 		const items = new Set(rawItems);
 		// Body sections in request order; non-body items handled via the set.
@@ -169,7 +159,7 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 				send(`${tag} OK ${label} completed`);
 			} catch (err) {
 				logger.error({ err }, 'FETCH failed');
-				send(`${tag} BAD ${label} failed`);
+				send(serverFailure(tag, label));
 			}
 		});
 	},
@@ -193,14 +183,11 @@ function formatFlagsWithSeen(m: FetchEnvelope, setsSeen: boolean): string {
  * falls back to the envelope's own flags.
  */
 async function markSeen(convex: ConvexClient, messageId: string): Promise<string | undefined> {
-	const result = (await convex.mutation(
-		fn.storeFlags as never,
-		{
-			messageIds: [messageId],
-			flags: ['\\Seen'],
-			mode: 'add',
-		} as never
-	)) as StoreFlagsResult;
+	const result = await convex.mutation(fn.storeFlags, {
+		messageIds: [messageId],
+		flags: ['\\Seen'],
+		mode: 'add',
+	});
 	const row = result.updated[0];
 	return row ? row.flags.join(' ') : undefined;
 }
@@ -217,21 +204,11 @@ async function markSeen(convex: ConvexClient, messageId: string): Promise<string
  */
 async function fetchRawBody(convex: ConvexClient, messageId: string): Promise<Buffer | null> {
 	try {
-		const meta = (await convex.query(
-			fn.fetchRawStorageId as never,
-			{
-				messageId,
-			} as never
-		)) as { storageId: string; rawSize: number } | null;
+		const meta = await convex.query(fn.fetchRawStorageId, { messageId });
 		if (!meta) return null;
-		const url = (await convex
-			.action(
-				fn.getRawStorageUrl as never,
-				{
-					storageId: meta.storageId,
-				} as never
-			)
-			.catch(() => null)) as string | null;
+		const url = await convex
+			.action(fn.getRawStorageUrl, { storageId: meta.storageId })
+			.catch(() => null);
 		if (!url) return null;
 		const res = await fetch(url);
 		if (!res.ok) return null;

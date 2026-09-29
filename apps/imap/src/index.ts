@@ -5,7 +5,7 @@
 import IORedis from 'ioredis';
 import { loadConfig } from './config.js';
 import { createConvexClient } from './convex.js';
-import { startImapServer } from './server.js';
+import { installImapShutdown, startImapServer } from './server.js';
 import { AuthRateLimiter } from './rateLimit.js';
 import { logger } from './logger.js';
 import { installCrashHandlers } from '@owlat/shared/nodeShutdown';
@@ -38,21 +38,8 @@ export async function main() {
 	}
 
 	const rateLimiter = new AuthRateLimiter(redis, config.authRateLimit);
-	const { server, stopTlsReload } = startImapServer(config, convex, rateLimiter);
-
-	const shutdown = (signal: string) => {
-		logger.info({ signal }, 'shutting down');
-		stopTlsReload();
-		server.close(() => {
-			redis?.disconnect();
-			process.exit(0);
-		});
-		// Hard kill after 10s if connections refuse to close
-		setTimeout(() => process.exit(1), 10_000).unref();
-	};
-
-	process.on('SIGTERM', () => shutdown('SIGTERM'));
-	process.on('SIGINT', () => shutdown('SIGINT'));
+	const imap = startImapServer(config, convex, rateLimiter);
+	installImapShutdown(imap, { disconnect: () => redis?.disconnect() });
 }
 
 const entryPath = process.argv[1];

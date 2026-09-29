@@ -30,7 +30,6 @@ import { getOrThrow, throwForbidden, throwInvalidInput, throwInvalidState } from
 import { normalizeEmail } from '@owlat/shared';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import {
-	canonicalAddress,
 	createProvisionedMailbox,
 	getActiveMailboxForUser,
 	isDomainVerified,
@@ -378,7 +377,7 @@ export const provisionFromRequest = authedMutation({
 		const mailboxId = await createProvisionedMailbox(ctx, {
 			userId: row.authUserId,
 			organizationId,
-			address: canonicalAddress(`${localpart}@${verifiedDomain.domain}`),
+			address: `${localpart}@${verifiedDomain.domain}`,
 		});
 
 		return fulfil(mailboxId);

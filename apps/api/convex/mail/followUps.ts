@@ -7,9 +7,11 @@
  * fact from the reader / sent list (`arm` below).
  *
  * Lifecycle:
- *   - ANY inbound delivery into the thread (except spam/trash-routed mail)
- *     clears the watch silently — the awaited reply arrived
- *     (delivery.deliverToMailbox calls clearThreadFollowUp).
+ *   - An inbound message from someone other than the mailbox owner, landing
+ *     outside Spam/Trash/Sent/Drafts, clears the watch silently — the awaited
+ *     reply arrived. Hosted MX delivery and forward IMAP sync both run this
+ *     through deliveryPipeline/afterInsert.ts::runPostInsertInboundEffects;
+ *     an IMAP history backfill does not.
  *   - Otherwise, at the deadline the 1-minute sweep cron (modeled on
  *     mail/snooze.ts internalSweep) resurfaces the thread EXACTLY once:
  *     the watched message is moved back into the Inbox, marked unread +

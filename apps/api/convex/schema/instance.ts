@@ -20,6 +20,46 @@ import {
 } from '../lib/literalValidators';
 
 /**
+ * The non-secret MTA health snapshot `delivery/mtaHealth` stores on
+ * `instanceSettings`; its `record` mutation takes exactly this shape.
+ */
+export const mtaHealthSnapshotValidator = v.object({
+	status: v.union(v.literal('ok'), v.literal('degraded'), v.literal('unreachable')),
+	isRedisConnected: v.optional(v.boolean()),
+	isWorkerAlive: v.optional(v.boolean()),
+	isDnsReachable: v.optional(v.boolean()),
+	isAllIpsBlocked: v.optional(v.boolean()),
+	smtpOutbound: v.optional(
+		v.object({
+			status: v.union(v.literal('ok'), v.literal('degraded')),
+			checkedAt: v.number(),
+			ips: v.array(
+				v.object({
+					ip: v.string(),
+					status: v.union(v.literal('ok'), v.literal('failed')),
+					reason: v.optional(v.string()),
+					// Absent from an MTA that predates it; `nat` means the host's NAT,
+					// not the MTA, picks the source address.
+					sourceBinding: v.optional(v.union(v.literal('bound'), v.literal('nat'))),
+				})
+			),
+		})
+	),
+	smtpTls: v.optional(
+		v.object({
+			status: v.union(v.literal('pass'), v.literal('warn'), v.literal('fail')),
+			hostname: v.string(),
+			isHostnameMatched: v.boolean(),
+			validFrom: v.optional(v.number()),
+			validTo: v.optional(v.number()),
+			reason: v.optional(v.string()),
+			checkedAt: v.number(),
+		})
+	),
+	observedAt: v.number(),
+});
+
+/**
  * Instance-administration tables — the deployment-wide singletons an operator
  * configures: instanceSettings, systemUpdates, backupState, aiProviderConfig.
  *
@@ -153,41 +193,7 @@ export const instanceTables = {
 		// Latest non-secret health snapshot from the built-in MTA. Refreshed by a
 		// Convex cron so reactive Delivery surfaces can report infrastructure
 		// readiness without querying an external service from a database query.
-		mtaHealth: v.optional(
-			v.object({
-				status: v.union(v.literal('ok'), v.literal('degraded'), v.literal('unreachable')),
-				isRedisConnected: v.optional(v.boolean()),
-				isWorkerAlive: v.optional(v.boolean()),
-				isDnsReachable: v.optional(v.boolean()),
-				isAllIpsBlocked: v.optional(v.boolean()),
-				smtpOutbound: v.optional(
-					v.object({
-						status: v.union(v.literal('ok'), v.literal('degraded')),
-						checkedAt: v.number(),
-						ips: v.array(
-							v.object({
-								ip: v.string(),
-								status: v.union(v.literal('ok'), v.literal('failed')),
-								reason: v.optional(v.string()),
-								sourceBinding: v.optional(v.union(v.literal('bound'), v.literal('nat'))),
-							})
-						),
-					})
-				),
-				smtpTls: v.optional(
-					v.object({
-						status: v.union(v.literal('pass'), v.literal('warn'), v.literal('fail')),
-						hostname: v.string(),
-						isHostnameMatched: v.boolean(),
-						validFrom: v.optional(v.number()),
-						validTo: v.optional(v.number()),
-						reason: v.optional(v.string()),
-						checkedAt: v.number(),
-					})
-				),
-				observedAt: v.number(),
-			})
-		),
+		mtaHealth: v.optional(mtaHealthSnapshotValidator),
 		// Cached contact count for O(1) queries (maintained on contact create/delete)
 		contactCount: v.optional(v.number()),
 		// Cached transactional send count for analytics reporting (incremented on each send)

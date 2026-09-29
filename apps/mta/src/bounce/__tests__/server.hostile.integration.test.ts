@@ -11,11 +11,11 @@
  * MX-specific policy layered on the listener (SPF/TLS/RCPT hooks, the bounce
  * intake pipeline in `onData`) does not weaken the listener's hardening.
  *
- * Per-IP connection RATE limiting is out of scope here (I8: it lives in
- * inboundSecurity.ts, unit-tested separately). This suite pins the
- * per-connection command-loop bounds, the DATA byte budget, the idle timers, the
- * global `bounceMaxClients` concurrency cap, and STARTTLS-handshake abandonment
- * against the real production factory.
+ * This suite pins the per-connection command-loop bounds, the DATA byte budget,
+ * the idle timers, the global `bounceMaxClients` concurrency cap, the per-IP
+ * connection cap's wiring (reply and Redis key; the counter itself is
+ * unit-tested in lib/__tests__/connectionSlots.test.ts), and STARTTLS-handshake
+ * abandonment against the real production factory.
  */
 
 import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest';
@@ -63,10 +63,14 @@ function makeConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 
 const listeners: SmtpListener[] = [];
 
+// ioredis-mock shares one keyspace per host:port. A distinct port per listener
+// keeps a previous case's late slot releases out of the next case's counters.
+let redisPort = 16379;
+
 async function start(
 	overrides: Partial<MtaConfig> = {}
 ): Promise<{ port: number; redis: InstanceType<typeof Redis> }> {
-	const redis = new Redis();
+	const redis = new Redis({ port: redisPort++ });
 	// Disable the dynamic inbound-TLS requirement so a clean plaintext transaction
 	// can complete in the "still serves" probe (the gate itself is unit-tested).
 	await redis.set('mta:inbound-tls-required', '0');
@@ -303,6 +307,37 @@ describe('MX listener bounds a connection flood with 421 (production config)', (
 		await over.waitClose();
 		expect(over.closed).toBe(true);
 		for (const c of held) c.end();
+	});
+});
+
+// Per-IP connection cap (`bounceMaxConnectionsPerIp`): the listener's admission
+// refuses the N+1th connection from one IP with the pre-cutover smtp-server
+// `554`, counting on the shared `mta:bounce:conn:<ip>` key.
+describe('MX listener caps connections per IP with 554 (production config)', () => {
+	it('refuses the N+1th connection from one IP and releases every slot on close', async () => {
+		const { port, redis } = await start({ bounceMaxConnectionsPerIp: 2 });
+		const key = 'mta:bounce:conn:127.0.0.1';
+		const held: Client[] = [];
+		for (let i = 0; i < 2; i++) {
+			const c = await Client.connect(port);
+			c.write('EHLO probe.test\r\n');
+			await c.waitCode(250);
+			held.push(c);
+		}
+		expect(await redis.get(key)).toBe('2');
+
+		const over = await Client.connect(port);
+		await over.waitCode(554);
+		await over.waitClose();
+		expect(over.received).toContain('554 Too many connections from your IP\r\n');
+		expect(await redis.get(key)).toBe('2');
+
+		for (const c of held) c.end();
+		const deadline = Date.now() + 3000;
+		while ((await redis.exists(key)) !== 0) {
+			if (Date.now() > deadline) throw new Error('per-IP slots were not released');
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
 	});
 });
 

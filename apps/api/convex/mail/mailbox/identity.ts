@@ -16,7 +16,7 @@
 
 import { v } from 'convex/values';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../../_generated/server';
-import { publicQuery } from '../../lib/authedFunctions';
+import { adminQuery, publicQuery } from '../../lib/authedFunctions';
 import { postboxMutation } from '../_helpers';
 import type { Id, Doc } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
@@ -27,11 +27,17 @@ import {
 	throwAlreadyExists,
 	throwNotFound,
 } from '../../_utils/errors';
-import { requireMailboxAccess, loadReadableMailbox } from '../permissions';
+import {
+	requireMailboxAccess,
+	loadReadableMailbox,
+	loadAccessibleMailboxes,
+	personalMailEnabled,
+} from '../permissions';
 import { isFeatureEnabled } from '../../lib/featureFlags';
-import { normalizeEmail, parseAddress } from '@owlat/shared';
+import { extractEmail } from '../../lib/emailAddress';
 import { SYSTEM_FOLDER_NAMES, readSession } from './shared';
 import { SYSTEM_FOLDER_ROLES } from '../../lib/validators/mail';
+import { findAddressClaim } from './addressResolution';
 import { stopExternalAccountSync } from '../external/accountTeardown';
 
 /**
@@ -64,41 +70,6 @@ export async function getActiveMailboxForUser(
 			)
 		)
 		.first();
-}
-
-/**
- * Resolve the single authoritative mailbox that owns an address for inbound
- * delivery and IMAP/SMTP auth. A "move" (mail/mailboxMove.ts) intentionally
- * leaves TWO active rows on one address: the old external one — now a read-only
- * archive, `kind='external'` — and the new live `kind='hosted'` mailbox. A bare
- * `by_address` + `.first()` returns the OLDEST row, i.e. the archive, which
- * would silently swallow all post-cutover inbound mail. Prefer the non-external
- * (hosted/local) row so the live mailbox always wins; fall back to the sole
- * active row otherwise. Returns `null` when no active mailbox claims the address.
- */
-export async function resolveDeliverableMailbox(
-	ctx: QueryCtx | MutationCtx,
-	address: string
-): Promise<Doc<'mailboxes'> | null> {
-	const rows = await ctx.db
-		.query('mailboxes')
-		.withIndex('by_address', (q) => q.eq('address', address))
-		.collect(); // bounded: at most an external archive + its hosted successor
-	const active = rows.filter((m) => m.status === 'active');
-	if (active.length === 0) return null;
-	// The hosted/local mailbox is authoritative on the MTA; the external row is a
-	// read-only archive that must never receive new mail.
-	return active.find((m) => m.kind !== 'external') ?? active[0] ?? null;
-}
-
-/**
- * Strip "Name <addr>" framing and lowercase, via the shared `parseAddress` so
- * mailbox keys agree with every other address derivation. Falls back to a
- * lowercased trim when no address is present (preserving the prior behavior of
- * returning the input for non-address strings).
- */
-export function canonicalAddress(raw: string): string {
-	return parseAddress(raw)?.address ?? normalizeEmail(raw);
 }
 
 /**
@@ -225,11 +196,12 @@ export async function provisionMailbox(
 }
 
 /**
- * Canonicalize + validate an address, reject a duplicate mailbox, and provision
- * the row. The shared body behind the admin `create` (personal) path and
- * `mailboxMembers.createShared` (team) path so the two never drift on address
- * normalization, the `by_address` dup-check, or the provisioning call. Callers
- * own their own auth gate and any scope-specific checks (e.g. verified-domain).
+ * Canonicalize + validate an address, reject one a mailbox already claims, and
+ * provision the row. The shared body behind the admin `create` (personal) path
+ * and `mailboxMembers.createShared` (team) path so the two never drift on
+ * address normalization, the claim check (`findAddressClaim`), or the
+ * provisioning call. Callers own their own auth gate and any scope-specific
+ * checks (e.g. verified-domain).
  */
 export async function createProvisionedMailbox(
 	ctx: MutationCtx,
@@ -242,17 +214,13 @@ export async function createProvisionedMailbox(
 		scope?: 'personal' | 'shared';
 	}
 ): Promise<Id<'mailboxes'>> {
-	const address = canonicalAddress(args.address);
+	const address = extractEmail(args.address);
 	const [, domain] = address.split('@');
 	if (!domain) {
 		throwInvalidInput('Invalid email address');
 	}
 
-	const existing = await ctx.db
-		.query('mailboxes')
-		.withIndex('by_address', (q) => q.eq('address', address))
-		.first();
-	if (existing) {
+	if (await findAddressClaim(ctx, address)) {
 		throwAlreadyExists(`Mailbox ${address} already exists`);
 	}
 
@@ -290,15 +258,49 @@ export const create = postboxMutation({
 	},
 });
 
-// public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
+/**
+ * The caller's own mailboxes plus the shared inboxes they are an explicit
+ * member of, in `active` or `suspended` status (never soft-deleted). Built on
+ * `loadAccessibleMailboxes`, the one enumeration of "my mailboxes", so it has
+ * the same seed exclusion, org scoping and personal-mail floor as the Postbox
+ * switcher. Owners and admins get their own set here too; the org-wide admin
+ * list is `listOrgMailboxes`.
+ */
+// public: soft-auth — returns empty for anonymous; access via loadAccessibleMailboxes (own + shared memberships)
 export const list = publicQuery({
 	args: {},
 	handler: async (ctx) => {
 		const session = await readSession(ctx);
 		if (!session) return [];
-		// Use `by_status` to skip deleted rows at the DB layer. Two index
-		// reads (active + suspended) is still cheaper than a full scan
-		// followed by an in-memory filter.
+		const mailboxes = await loadAccessibleMailboxes(
+			ctx,
+			session.userId,
+			session.activeOrganizationId
+		);
+		// Active rows first, own mailboxes ahead of team inboxes within each
+		// status: Postbox and quick-create default to `list[0]`, which should be
+		// the caller's own live inbox rather than a paused one.
+		return [
+			...mailboxes.filter((m) => m.status === 'active'),
+			...mailboxes.filter((m) => m.status === 'suspended'),
+		];
+	},
+});
+
+/**
+ * Every active or suspended mailbox in the admin's active organization, for
+ * the admin rename/delete list in Preferences. Deliverability seed mailboxes
+ * are left out: they are managed from the seed screen, and deleting one here
+ * would orphan its account row.
+ */
+// authz: adminQuery floor (organization:manage); rows scoped to the caller's active organization
+export const listOrgMailboxes = adminQuery({
+	args: {},
+	handler: async (ctx, _args, session) => {
+		// Same soft floor as `list`: no personal-mail capability, no mailboxes.
+		if (!(await personalMailEnabled(ctx))) return [];
+		// Two `by_status` index reads (active + suspended) skip deleted rows at
+		// the DB layer.
 		const [active, suspended] = await Promise.all([
 			ctx.db
 				.query('mailboxes')
@@ -309,32 +311,8 @@ export const list = publicQuery({
 				.withIndex('by_status', (q) => q.eq('status', 'suspended'))
 				.collect(), // bounded: suspended mailboxes (single-org: member roster, few)
 		]);
-		const visible = [...active, ...suspended];
-		if (session.role === 'owner' || session.role === 'admin') {
-			return visible;
-		}
-		// An editor sees their own mailboxes plus any shared mailbox they are an
-		// explicit member of (org membership alone grants nothing). Filtering the
-		// already-loaded `visible` set keeps the `by_status` (active/suspended)
-		// filtering intact; personal mailboxes carry no non-owner members, so
-		// this is bit-for-bit the old owner-only filter for them.
-		const memberIds = new Set(
-			(
-				await ctx.db
-					.query('mailboxMembers')
-					.withIndex('by_user', (q) => q.eq('authUserId', session.userId))
-					.collect()
-			) // bounded: shared mailboxes one user belongs to
-				.map((row) => row.mailboxId)
-		);
-		// `visible` comes from the org-agnostic `by_status` index, so a membership
-		// row is only allowed to surface a mailbox inside the caller's active org —
-		// mirrors the org-boundary defense-in-depth on `requireMailboxAccess` /
-		// `loadAccessibleMailboxes` so a stale/mis-seeded row can't cross an org.
-		return visible.filter(
-			(m) =>
-				m.userId === session.userId ||
-				(memberIds.has(m._id) && m.organizationId === session.activeOrganizationId)
+		return [...active, ...suspended].filter(
+			(m) => m.organizationId === session.activeOrganizationId && m.scope !== 'seed'
 		);
 	},
 });

@@ -11,11 +11,14 @@
  *
  * These helpers are pure (no Convex-runtime imports beyond the shared error
  * throwers), so each entity keeps only a thin authed-mutation shell (auth floor +
- * load-or-throw + id type) and delegates the blob logic here, passing a
- * descriptor of which translatable fields the entity carries.
+ * load-or-throw + publish guard + `ctx.db.patch`) and delegates the blob logic
+ * here, passing a descriptor of which translatable fields the entity carries.
+ * The `*Patch` helpers at the bottom return the complete row patch for each
+ * translation mutation, content revision and timestamp included.
  */
 
 import { throwAlreadyExists, throwInvalidInput, throwNotFound } from '../_utils/errors';
+import { nextContentRevision } from './contentRevision';
 import {
 	mergeTranslationIntoItem,
 	type TranslatableBlockContent,
@@ -57,6 +60,7 @@ export interface TranslatableEntity {
 	translations?: string;
 	defaultLanguage?: string;
 	supportedLanguages?: string[];
+	contentRevision?: number;
 }
 
 /** Describes which translatable fields an entity carries. */
@@ -290,5 +294,158 @@ export function removeLanguage(
 	return {
 		translations: serializeTranslations(remainingTranslations),
 		supportedLanguages,
+	};
+}
+
+// --- mutation patches ---------------------------------------------------------
+
+/**
+ * A row patch written by a translation mutation. Every one advances the
+ * content revision (translation overlays are editor content) and `updatedAt`.
+ * `previewText` is only ever set for entities whose fields carry it.
+ */
+export interface TranslationPatch {
+	subject?: string;
+	previewText?: string;
+	content?: string;
+	defaultLanguage?: string;
+	translations?: string;
+	supportedLanguages?: string[];
+	contentRevision: number;
+	updatedAt: number;
+}
+
+function revisionStamp(
+	row: TranslatableEntity
+): Pick<TranslationPatch, 'contentRevision' | 'updatedAt'> {
+	return { contentRevision: nextContentRevision(row), updatedAt: Date.now() };
+}
+
+/** Patch for adding a language overlay (see `addLanguage`). */
+export function addTranslationPatch(
+	row: TranslatableEntity,
+	language: string,
+	fields: TranslatableFields
+): TranslationPatch {
+	return { ...addLanguage(row, language, fields), ...revisionStamp(row) };
+}
+
+/** Patch for removing a language overlay (see `removeLanguage`). */
+export function removeTranslationPatch(
+	row: TranslatableEntity,
+	language: string
+): TranslationPatch {
+	return { ...removeLanguage(row, language), ...revisionStamp(row) };
+}
+
+export interface TranslationUpdate {
+	language: string;
+	subject?: string;
+	previewText?: string;
+	/** JSON string of `Record<blockId, TranslatableBlockContent>`. */
+	blocks?: string;
+}
+
+/**
+ * Patch for editing one language's translatable text.
+ *
+ * For the default language only the main `subject` / `previewText` columns are
+ * written; block content with its styling goes through the regular editor
+ * `update` mutation. For any other language the overlay's subject, previewText
+ * and per-block text are replaced. Throws not_found when that language has no
+ * overlay. `previewText` is ignored for entities without that field.
+ */
+export function updateTranslationPatch(
+	row: TranslatableEntity,
+	update: TranslationUpdate,
+	fields: TranslatableFields
+): TranslationPatch {
+	const previewText = fields.hasPreviewText ? update.previewText : undefined;
+	const defaultLanguage = row.defaultLanguage ?? DEFAULT_LANGUAGE;
+
+	if (update.language === defaultLanguage) {
+		return {
+			...(update.subject !== undefined ? { subject: update.subject.trim() } : {}),
+			...(previewText !== undefined ? { previewText: previewText.trim() } : {}),
+			...revisionStamp(row),
+		};
+	}
+
+	const translations = parseTranslations(row.translations);
+	const translation = translations[update.language];
+	if (!translation) {
+		throwNotFound('Translation');
+	}
+
+	if (update.subject !== undefined) {
+		translation.subject = update.subject.trim();
+	}
+	if (previewText !== undefined) {
+		translation.previewText = previewText.trim();
+	}
+	if (update.blocks !== undefined) {
+		translation.blocks = JSON.parse(update.blocks) as Record<string, TranslatableBlockContent>;
+	}
+	translations[update.language] = translation;
+
+	return { translations: serializeTranslations(translations), ...revisionStamp(row) };
+}
+
+/**
+ * Patch for promoting a language overlay to the default language, or `null`
+ * when `language` already is the default (nothing to write).
+ *
+ * The new default's full content is the current main content structure with
+ * the new language's translatable text merged in. The outgoing default becomes
+ * a translation overlay (its translatable text extracted from the current main
+ * content), so re-selecting it later round-trips. Throws not_found when the
+ * language has no overlay.
+ */
+export function setDefaultLanguagePatch(
+	row: TranslatableEntity,
+	language: string,
+	fields: TranslatableFields
+): TranslationPatch | null {
+	const currentDefault = row.defaultLanguage ?? DEFAULT_LANGUAGE;
+	if (language === currentDefault) {
+		return null;
+	}
+
+	// A translation entry is the per-block translatable-text overlay
+	// ({ subject, previewText?, blocks }), NOT a full content document. An
+	// earlier implementation read a nonexistent `.content` field off the
+	// translation (always undefined) and would have wiped the body on the swap.
+	const translations = parseTranslations(row.translations);
+	const newDefault = translations[language];
+	if (!newDefault) {
+		throwNotFound('Translation');
+	}
+
+	const currentContent = row.content ?? '[]';
+	// Overlays created from the Settings page carry only subject/previewText
+	// (no per-block text), so guard against a missing `blocks` map: the merge
+	// indexes into it per block id and would otherwise throw.
+	const newDefaultContent = mergeTranslationWithContent(currentContent, newDefault.blocks ?? {});
+	const outgoingDefaultOverlay: Translation = {
+		subject: row.subject,
+		...(fields.hasPreviewText ? { previewText: row.previewText } : {}),
+		blocks: extractTranslatableContent(currentContent),
+	};
+
+	// Drop the promoted language's overlay; demote the old default to one.
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	const { [language]: _, ...otherTranslations } = translations;
+	const updatedTranslations: Record<string, Translation> = {
+		...otherTranslations,
+		[currentDefault]: outgoingDefaultOverlay,
+	};
+
+	return {
+		subject: newDefault.subject,
+		...(fields.hasPreviewText ? { previewText: newDefault.previewText } : {}),
+		content: newDefaultContent,
+		defaultLanguage: language,
+		translations: serializeTranslations(updatedTranslations),
+		...revisionStamp(row),
 	};
 }

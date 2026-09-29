@@ -6,10 +6,10 @@ import type { ImportOutcome } from './import';
 import { paginationOptsValidator } from 'convex/server';
 import { internal } from '../_generated/api';
 import { requireOrgPermission } from '../lib/sessionOrganization';
-import { buildSearchableText } from '../lib/queryHelpers';
 import { listResources, countFacet } from '../lib/listing';
 import { contactListing, redactContactCapabilityFields } from './listing';
 import { contactCreateSourceValidator } from '../lib/validators/contacts';
+import { applyContactEdit, createContactStrict } from './contactEdit';
 import { reconcileContactCount } from '../lib/contactCountHelpers';
 import { softDeleteContact } from '../lib/contactMutations';
 import { eraseContactNow } from './erasure/walker';
@@ -17,8 +17,7 @@ import { sweepContactRetention } from './erasure/retention';
 import { recordAuditLog } from '../lib/auditLog';
 import { trackEvent } from '../lib/posthogHelpers';
 import { validateStringLength, normalizeEmail, STRING_LIMITS } from '../lib/inputGuards';
-import { getOrThrow, throwNotFound, throwAlreadyExists, throwInvalidInput } from '../_utils/errors';
-import { createContact } from './creation';
+import { getOrThrow, throwNotFound, throwInvalidInput } from '../_utils/errors';
 import { duplicateHandlingValidator } from '../lib/literalValidators';
 import { batchGet } from '../_utils/batchLoader';
 
@@ -124,40 +123,14 @@ export const create = authedMutation({
 		language: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		// Validate input lengths
-		validateStringLength(args.email, STRING_LIMITS.NAME, 'Email');
-		if (args.firstName) validateStringLength(args.firstName, STRING_LIMITS.NAME, 'First name');
-		if (args.lastName) validateStringLength(args.lastName, STRING_LIMITS.NAME, 'Last name');
-
 		const session = await requireOrgPermission(
 			ctx,
 			'contacts:manage',
 			'Only owners and admins can create contacts'
 		);
 
-		const email = normalizeEmail(args.email);
-		const { contactId } = await createContact(ctx, {
-			channel: 'email',
-			identifier: email,
-			source: args.source ?? 'api',
-			mode: 'strict',
-			contactFields: {
-				firstName: args.firstName,
-				lastName: args.lastName,
-				language: args.language,
-			},
-		});
-
+		const contactId = await createContactStrict(ctx, args, { actorUserId: session.userId });
 		await trackEvent(ctx, session, 'contact_created');
-
-		await recordAuditLog(ctx, {
-			userId: session.userId,
-			action: 'contact.created',
-			resource: 'contact',
-			resourceId: contactId,
-			details: { email },
-		});
-
 		return contactId;
 	},
 });
@@ -174,119 +147,14 @@ export const update = authedMutation({
 		timezone: v.optional(v.string()),
 		language: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		const contact = await ctx.db.get(args.contactId);
-
+	handler: async (ctx, { contactId, ...fields }) => {
 		const session = await requireOrgPermission(
 			ctx,
 			'contacts:manage',
 			'Only owners and admins can update contacts'
 		);
 
-		if (!contact) {
-			throwNotFound('Contact');
-		}
-
-		// Bound input lengths the same way create() does — update was skipping it.
-		if (args.email !== undefined) validateStringLength(args.email, STRING_LIMITS.NAME, 'Email');
-		if (args.firstName !== undefined)
-			validateStringLength(args.firstName, STRING_LIMITS.NAME, 'First name');
-		if (args.lastName !== undefined)
-			validateStringLength(args.lastName, STRING_LIMITS.NAME, 'Last name');
-
-		const now = Date.now();
-		const updates: {
-			email?: string;
-			firstName?: string;
-			lastName?: string;
-			timezone?: string;
-			language?: string;
-			searchableText?: string;
-			updatedAt: number;
-		} = { updatedAt: now };
-
-		// Track which properties changed for automation triggers
-		const changedProperties: string[] = [];
-
-		if (args.email !== undefined) {
-			const email = normalizeEmail(args.email);
-			// Check for duplicate email if changing
-			if (email !== contact.email) {
-				// Only a LIVE contact blocks reuse of the address. A soft-deleted
-				// (GDPR-erased) gravestone keeps its email but must not prevent
-				// reclaiming it — match resolveContact's live-only lookup.
-				const existing = await ctx.db
-					.query('contacts')
-					.withIndex('by_email', (q) => q.eq('email', email))
-					.filter((q) => q.eq(q.field('deletedAt'), undefined))
-					.first();
-				if (existing) {
-					throwAlreadyExists(`A contact with this email already exists: ${email}`);
-				}
-				changedProperties.push('email');
-			}
-			updates.email = email;
-		}
-
-		if (args.firstName !== undefined) {
-			if (args.firstName.trim() !== (contact.firstName ?? '')) {
-				changedProperties.push('firstName');
-			}
-			updates.firstName = args.firstName.trim();
-		}
-
-		if (args.lastName !== undefined) {
-			if (args.lastName.trim() !== (contact.lastName ?? '')) {
-				changedProperties.push('lastName');
-			}
-			updates.lastName = args.lastName.trim();
-		}
-
-		if (args.timezone !== undefined) {
-			if (args.timezone !== (contact.timezone ?? '')) {
-				changedProperties.push('timezone');
-			}
-			updates.timezone = args.timezone || undefined;
-		}
-
-		if (args.language !== undefined) {
-			if (args.language !== (contact.language ?? '')) {
-				changedProperties.push('language');
-			}
-			updates.language = args.language || undefined;
-		}
-
-		// Update searchableText if any searchable field changed
-		if (args.email !== undefined || args.firstName !== undefined || args.lastName !== undefined) {
-			const newEmail = updates.email ?? contact.email;
-			const newFirstName = updates.firstName ?? contact.firstName ?? '';
-			const newLastName = updates.lastName ?? contact.lastName ?? '';
-			updates.searchableText = buildSearchableText(newEmail, newFirstName, newLastName);
-		}
-
-		await ctx.db.patch(args.contactId, updates);
-
-		// Audit the edit (the documented contact.updated action was never emitted
-		// from this handler), recording which properties changed.
-		if (changedProperties.length > 0) {
-			await recordAuditLog(ctx, {
-				userId: session.userId,
-				action: 'contact.updated',
-				resource: 'contact',
-				resourceId: args.contactId,
-				details: { changedProperties: changedProperties.join(', ') },
-			});
-		}
-
-		// Fire contact_updated automation trigger if any properties changed
-		if (changedProperties.length > 0) {
-			await ctx.runMutation(internal.automations.triggers.fireContactUpdatedTrigger, {
-				contactId: args.contactId,
-				changedProperties,
-			});
-		}
-
-		return args.contactId;
+		return await applyContactEdit(ctx, contactId, fields, { actorUserId: session.userId });
 	},
 });
 
@@ -535,6 +403,9 @@ export const importBatch = authedMutation({
 // since HTTP actions run outside BetterAuth session context.
 // ==========================================
 
+/** Audit actor for writes made through an API key (no session user). */
+const API_KEY_ACTOR = 'api';
+
 /**
  * Get a contact by email (used by HTTP action handlers).
  * Internal only — callers must handle authorization.
@@ -569,26 +440,8 @@ export const createForTeam = internalMutation({
 		source: v.optional(contactCreateSourceValidator),
 		language: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		// Validate input lengths
-		validateStringLength(args.email, STRING_LIMITS.NAME, 'Email');
-		if (args.firstName) validateStringLength(args.firstName, STRING_LIMITS.NAME, 'First name');
-		if (args.lastName) validateStringLength(args.lastName, STRING_LIMITS.NAME, 'Last name');
-
-		const { contactId } = await createContact(ctx, {
-			channel: 'email',
-			identifier: args.email,
-			source: args.source ?? 'api',
-			mode: 'strict',
-			contactFields: {
-				firstName: args.firstName,
-				lastName: args.lastName,
-				language: args.language,
-			},
-		});
-
-		return contactId;
-	},
+	handler: async (ctx, args) =>
+		await createContactStrict(ctx, args, { actorUserId: API_KEY_ACTOR }),
 });
 
 /**
@@ -602,77 +455,8 @@ export const updateForTeam = internalMutation({
 		firstName: v.optional(v.string()),
 		lastName: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		const contact = await getOrThrow(ctx, args.contactId, 'Contact');
-
-		const now = Date.now();
-		const updates: {
-			email?: string;
-			firstName?: string;
-			lastName?: string;
-			searchableText?: string;
-			updatedAt: number;
-		} = { updatedAt: now };
-
-		// Track which built-in fields actually changed so the `contact_updated`
-		// automation trigger fires with the right watched-property list — the
-		// public v1 HTTP API (PUT /api/v1/contacts/{id}) must honor it the same
-		// way the dashboard edit does.
-		const changedProperties: string[] = [];
-
-		if (args.email !== undefined) {
-			const email = normalizeEmail(args.email);
-			if (email !== contact.email) {
-				// Only a LIVE contact blocks reuse of the address. A soft-deleted
-				// (GDPR-erased) gravestone keeps its email but must not prevent
-				// reclaiming it — match resolveContact's live-only lookup.
-				const existing = await ctx.db
-					.query('contacts')
-					.withIndex('by_email', (q) => q.eq('email', email))
-					.filter((q) => q.eq(q.field('deletedAt'), undefined))
-					.first();
-				if (existing) {
-					throwAlreadyExists(`A contact with this email already exists: ${email}`);
-				}
-				changedProperties.push('email');
-			}
-			updates.email = email;
-		}
-
-		if (args.firstName !== undefined) {
-			if (args.firstName.trim() !== (contact.firstName ?? '')) {
-				changedProperties.push('firstName');
-			}
-			updates.firstName = args.firstName.trim();
-		}
-
-		if (args.lastName !== undefined) {
-			if (args.lastName.trim() !== (contact.lastName ?? '')) {
-				changedProperties.push('lastName');
-			}
-			updates.lastName = args.lastName.trim();
-		}
-
-		// Update searchableText if any searchable field changed
-		if (args.email !== undefined || args.firstName !== undefined || args.lastName !== undefined) {
-			const newEmail = updates.email ?? contact.email;
-			const newFirstName = updates.firstName ?? contact.firstName ?? '';
-			const newLastName = updates.lastName ?? contact.lastName ?? '';
-			updates.searchableText = buildSearchableText(newEmail, newFirstName, newLastName);
-		}
-
-		await ctx.db.patch(args.contactId, updates);
-
-		// Fire contact_updated automation trigger if any watched property changed.
-		if (changedProperties.length > 0) {
-			await ctx.runMutation(internal.automations.triggers.fireContactUpdatedTrigger, {
-				contactId: args.contactId,
-				changedProperties,
-			});
-		}
-
-		return args.contactId;
-	},
+	handler: async (ctx, { contactId, ...fields }) =>
+		await applyContactEdit(ctx, contactId, fields, { actorUserId: API_KEY_ACTOR }),
 });
 
 /**

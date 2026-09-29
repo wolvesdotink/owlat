@@ -313,7 +313,7 @@ const DISPATCH: DispatchTable = {
 		}
 	},
 	'internal.dkim_rotated': async (ctx, e) => {
-		const outcome = await ctx.runMutation(internal.domains.lifecycle.recordDkimRotation, {
+		const outcome = await ctx.runMutation(internal.domains.lifecycleDkim.recordDkimRotation, {
 			domain: e.domain,
 			selector: e.selector,
 			dnsRecord: e.dnsRecord,

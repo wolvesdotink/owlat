@@ -16,23 +16,29 @@
  * re-read them when the certificate is renewed (bounce/tlsReload.ts). Inline
  * PEM cannot change without a restart and reports none.
  *
+ * The rules for inline PEM and explicit files live in
+ * `@owlat/shared/tlsMaterial`, shared with IMAPS: half a pair or an explicitly
+ * configured file that is missing or unreadable fails the boot, so a typo
+ * cannot quietly start a listener that rejects all inbound mail. Unlike IMAP
+ * there is no default cert directory: without `TLS_CERT_DIR` the third source
+ * is skipped.
+ *
  * The shared directory reports its `paths` even when the pair is not there yet
  * or cannot be read yet. On a fresh VPS install the `acme` sidecar publishes
  * the certificate minutes after the MTA boots (and briefly holds it root-owned
  * while doing so), so the listener starts without STARTTLS and the reloader
  * installs the pair when it appears. `unavailable` says why nothing was loaded.
- * Explicit BOUNCE_TLS_*_FILE paths still fail the boot instead.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { loadTlsMaterial, type TlsMaterialOptions } from '@owlat/shared/tlsMaterial';
 
 export interface BounceTlsMaterial {
 	cert?: string;
 	key?: string;
 	/**
 	 * Where a file-sourced pair came from, or where it is expected to appear
-	 * (TLS_CERT_DIR). Absent for inline PEM or a half pair.
+	 * (TLS_CERT_DIR). Absent for inline PEM.
 	 */
 	paths?: { cert: string; key: string };
 	/** Set when `paths` are watched but held no readable pair at boot. */
@@ -41,58 +47,37 @@ export interface BounceTlsMaterial {
 
 type Env = Record<string, string | undefined>;
 
-function readPem(path: string, envName: string): string {
-	try {
-		return readFileSync(path, 'utf-8');
-	} catch (err) {
-		const code = (err as NodeJS.ErrnoException).code;
-		const uid = typeof process.getuid === 'function' ? process.getuid() : 'unknown';
-		throw new Error(
-			code === 'EACCES'
-				? `Cannot read inbound SMTP TLS material at ${path} (${envName}): permission denied for uid ${uid}. ` +
-						'Whatever writes the cert must hand ownership to the MTA runtime user ' +
-						'(docker-compose.yml: imap-cert-init chowns to IMAP_RUNTIME_USER).'
-				: `Cannot read inbound SMTP TLS material at ${path} (${envName}): ${code ?? String(err)}.`,
-			{ cause: err }
-		);
-	}
-}
+const SOURCES = {
+	inlineCert: 'BOUNCE_TLS_CERT',
+	inlineKey: 'BOUNCE_TLS_KEY',
+	certFile: 'BOUNCE_TLS_CERT_FILE',
+	keyFile: 'BOUNCE_TLS_KEY_FILE',
+	label: 'inbound SMTP',
+} satisfies Omit<TlsMaterialOptions, 'env' | 'certDir'>;
 
+/**
+ * The pair for the port-25 listener; an empty object when none is configured,
+ * or the watched `TLS_CERT_DIR` paths plus `unavailable` when the shared pair
+ * is not readable yet.
+ */
 export function loadBounceTlsMaterial(env: Env = process.env): BounceTlsMaterial {
-	if (env['BOUNCE_TLS_CERT'] || env['BOUNCE_TLS_KEY']) {
-		return {
-			...(env['BOUNCE_TLS_CERT'] ? { cert: env['BOUNCE_TLS_CERT'] } : {}),
-			...(env['BOUNCE_TLS_KEY'] ? { key: env['BOUNCE_TLS_KEY'] } : {}),
-		};
-	}
-
-	const certFile = env['BOUNCE_TLS_CERT_FILE'];
-	const keyFile = env['BOUNCE_TLS_KEY_FILE'];
-	if (certFile || keyFile) {
-		// Explicitly configured paths fail loudly: a typo must not quietly boot a
-		// listener that rejects all inbound mail.
-		return {
-			...(certFile ? { cert: readPem(certFile, 'BOUNCE_TLS_CERT_FILE') } : {}),
-			...(keyFile ? { key: readPem(keyFile, 'BOUNCE_TLS_KEY_FILE') } : {}),
-			...(certFile && keyFile ? { paths: { cert: certFile, key: keyFile } } : {}),
-		};
-	}
+	const configured = loadTlsMaterial({ ...SOURCES, env, certDir: undefined });
+	if (configured) return configured;
 
 	const certDir = env['TLS_CERT_DIR'];
 	if (!certDir) return {};
 	const paths = { cert: join(certDir, 'default.crt'), key: join(certDir, 'default.key') };
-	if (!existsSync(paths.cert) || !existsSync(paths.key)) {
-		return { paths, unavailable: `${paths.cert} and ${paths.key} do not exist yet` };
-	}
 	// The implicit shared directory is waited on, not failed on: throwing here
 	// would crash-loop the whole MTA, outbound delivery included, over a cert
-	// the publisher is still in the middle of writing.
+	// the publisher is still in the middle of writing. An empty env leaves the
+	// directory as the only source the shared loader consults.
 	try {
-		return {
-			cert: readPem(paths.cert, 'TLS_CERT_DIR'),
-			key: readPem(paths.key, 'TLS_CERT_DIR'),
-			paths,
-		};
+		return (
+			loadTlsMaterial({ ...SOURCES, env: {}, certDir }) ?? {
+				paths,
+				unavailable: `${paths.cert} and ${paths.key} do not exist yet`,
+			}
+		);
 	} catch (err) {
 		return { paths, unavailable: err instanceof Error ? err.message : String(err) };
 	}

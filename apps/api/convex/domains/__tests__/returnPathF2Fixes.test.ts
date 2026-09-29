@@ -201,7 +201,7 @@ describe('Finding 1 (edit path) — setReturnPathHost during registration keeps 
 		// only — no `status: 'pending'` patch, no record regen, no reflection — so the
 		// pending register-completion below stays a real `registering → pending` edge
 		// (not the `pending → pending` self-loop that `reduceSelfLoop` strips).
-		const outcome = await t.mutation(internal.domains.lifecycle.setReturnPathHost, {
+		const outcome = await t.mutation(internal.domains.lifecycleReturnPath.setReturnPathHost, {
 			domainId,
 			returnPathHost: 'bounce.acme.com',
 			userId: 'user',
@@ -270,7 +270,7 @@ describe('Finding 1 (in-flight window) — an edit during registerDomain converg
 		// without the post-registration reconcile the DB would keep OLD-host records
 		// while the row stores NEW — the linearizability hole.
 		registerDomainMock.mockImplementation(async () => {
-			await t.mutation(internal.domains.lifecycle.setReturnPathHost, {
+			await t.mutation(internal.domains.lifecycleReturnPath.setReturnPathHost, {
 				domainId,
 				returnPathHost: 'bounce.new.com',
 				userId: 'user',

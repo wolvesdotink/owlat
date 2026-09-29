@@ -2,6 +2,22 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 
 /**
+ * The day's metrics as the MTA collector reports them. `googlePostmasterStats`
+ * stores them beside its keys and timestamps, and `delivery/postmaster.ingest`
+ * takes them verbatim, so a metric Google adds is declared once.
+ */
+export const googlePostmasterMetricFields = {
+	userReportedSpamRatio: v.number(),
+	/** Share of traffic passing SPF / DKIM / DMARC, as Google measured it. */
+	spfSuccessRatio: v.optional(v.number()),
+	dkimSuccessRatio: v.optional(v.number()),
+	dmarcSuccessRatio: v.optional(v.number()),
+	/** Aggregate delivery-error rate, with its per-category breakdown. */
+	deliveryErrorRatio: v.optional(v.number()),
+	deliveryErrors: v.optional(v.array(v.object({ category: v.string(), ratio: v.number() }))),
+};
+
+/**
  * Google Postmaster Tools v2 telemetry.
  *
  * The signed MTA collector is the only writer for both tables and raw OAuth
@@ -19,14 +35,7 @@ export const postmasterTables = {
 		domainId: v.id('domains'),
 		domain: v.string(),
 		periodStart: v.number(),
-		userReportedSpamRatio: v.number(),
-		/** Share of traffic passing SPF / DKIM / DMARC, as Google measured it. */
-		spfSuccessRatio: v.optional(v.number()),
-		dkimSuccessRatio: v.optional(v.number()),
-		dmarcSuccessRatio: v.optional(v.number()),
-		/** Aggregate delivery-error rate, with its per-category breakdown. */
-		deliveryErrorRatio: v.optional(v.number()),
-		deliveryErrors: v.optional(v.array(v.object({ category: v.string(), ratio: v.number() }))),
+		...googlePostmasterMetricFields,
 		fetchedAt: v.number(),
 		ingestedAt: v.number(),
 	})

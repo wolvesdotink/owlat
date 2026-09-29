@@ -7,12 +7,7 @@
 
 import { fetchWorkerCredentials, fn, type ConvexClient } from './convex.js';
 import { openSeedMailbox } from './seedMailbox.js';
-import {
-	runSeedProbeSweep,
-	type SeedProbeDeps,
-	type SeedProbeSweepOutcome,
-	type SeedProbeWorkPage,
-} from './seedProbes.js';
+import { runSeedProbeSweep, type SeedProbeDeps, type SeedProbeSweepOutcome } from './seedProbes.js';
 import { logger } from './logger.js';
 
 /** How often the worker walks the seed mailboxes. */
@@ -25,11 +20,7 @@ function buildSeedProbeDeps(convex: ConvexClient): SeedProbeDeps {
 	return {
 		now: () => Date.now(),
 		random: () => Math.random(),
-		listWork: async (now, cursor) =>
-			(await convex.query(
-				fn.listSeedProbeWork as never,
-				{ now, cursor } as never
-			)) as SeedProbeWorkPage,
+		listWork: (now, cursor) => convex.query(fn.listSeedProbeWork, { now, cursor }),
 		openMailbox: async (item) => {
 			const fetched = await fetchWorkerCredentials(convex, item.accountId);
 			if (fetched.kind !== 'credentials') {
@@ -44,10 +35,7 @@ function buildSeedProbeDeps(convex: ConvexClient): SeedProbeDeps {
 			}
 			return openSeedMailbox(fetched.credentials);
 		},
-		recordClassification: async (input) =>
-			(await convex.mutation(fn.recordSeedProbeClassification as never, input as never)) as Awaited<
-				ReturnType<SeedProbeDeps['recordClassification']>
-			>,
+		recordClassification: (input) => convex.mutation(fn.recordSeedProbeClassification, input),
 		click: async (url) => {
 			// The target has already been constrained to one of this deployment's
 			// OWN origins (`chooseHygieneClickTarget` + the work item's

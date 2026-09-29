@@ -1,7 +1,10 @@
 <script setup lang="ts">
 /**
- * My settings → Connected mailboxes → Mailboxes: every mailbox this person can
- * use, with its colour, rename and (for admins) delete. It used to sit at the
+ * My settings → Connected mailboxes → Mailboxes, with colour, rename and (for
+ * admins) delete. Members see the mailboxes they can use (their own plus the
+ * team inboxes they belong to). Admins see every mailbox in the organization
+ * from `identity.listOrgMailboxes`, so they can rename or retire a teammate's;
+ * deliverability seed mailboxes stay on the seed screen. It used to sit at the
  * bottom of General, below thirty keyboard shortcuts.
  */
 import { api } from '@owlat/api';
@@ -9,8 +12,14 @@ import type { Id } from '@owlat/api/dataModel';
 import { INBOX_COLOR_SLOTS, INBOX_SLOT_SWATCH } from '~/utils/inboxIdentity';
 
 const { t } = useI18n();
-const { mailboxes, isLoading } = usePostboxMailbox();
+const { mailboxes: ownMailboxes, isLoading: ownLoading } = usePostboxMailbox();
 const { isAdmin } = usePermissions();
+const { data: orgMailboxes, isLoading: orgLoading } = useConvexQuery(
+	api.mail.mailbox.identity.listOrgMailboxes,
+	() => (isAdmin.value ? {} : 'skip')
+);
+const mailboxes = computed(() => (isAdmin.value ? (orgMailboxes.value ?? []) : ownMailboxes.value));
+const isLoading = computed(() => (isAdmin.value ? orgLoading.value : ownLoading.value));
 
 type MailboxRow = (typeof mailboxes.value)[number];
 

@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildMtaStsTxtValue, mtaStsPolicyId } from '@owlat/shared/mtaStsPolicy';
 import type { Doc } from '../../_generated/dataModel';
-import { deploymentSetupValuesForItem, domainSetupValuesForItem } from '../checklistRecords';
+import {
+	deploymentSetupValuesForItem,
+	domainSetupValuesForItem,
+	hardenedSpfRecordValue,
+} from '../checklistRecords';
 
 describe('Deliverability Center setup values', () => {
 	afterEach(() => vi.unstubAllEnvs());
@@ -79,6 +83,27 @@ describe('Deliverability Center setup values', () => {
 			]);
 		}
 	);
+
+	it.each([
+		[
+			'a soft-fail record',
+			'v=spf1 include:sender.example ~all',
+			'v=spf1 include:sender.example -all',
+		],
+		['a bare all', 'v=spf1 mx all', 'v=spf1 mx -all'],
+		['an upper-case +ALL', 'V=SPF1 MX +ALL', 'V=SPF1 MX -all'],
+		['an already strict record', ' v=spf1 mx -all ', 'v=spf1 mx -all'],
+		['a record with no all', 'v=spf1 include:sender.example', 'v=spf1 include:sender.example -all'],
+		[
+			'a redirect= record (an all would disable the redirect)',
+			'v=spf1 redirect=_spf.example.com',
+			'v=spf1 redirect=_spf.example.com',
+		],
+		['an unknown version string', 'v=spf1:broken ~all', 'v=spf1:broken ~all'],
+		['a non-SPF value', 'v=DMARC1; p=none', 'v=DMARC1; p=none'],
+	])('hardens %s', (_label, value, hardened) => {
+		expect(hardenedSpfRecordValue(value)).toBe(hardened);
+	});
 
 	it('derives MTA-STS guidance from the deployment EHLO policy source', () => {
 		vi.stubEnv('EHLO_HOSTNAME', 'canonical.example.test');

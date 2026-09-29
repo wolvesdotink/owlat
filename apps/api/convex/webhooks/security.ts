@@ -1,4 +1,4 @@
-import { bytesToBase64, bytesToHex } from '../lib/bytes';
+import { bytesToBase64, bytesToBase64Url, bytesToHex } from '../lib/bytes';
 
 export { bytesToBase64, bytesToHex };
 
@@ -99,11 +99,12 @@ export async function hmacSignature(
 	secret: string | Uint8Array,
 	data: string,
 	algorithm: 'sha256' | 'sha1',
-	encoding: 'hex' | 'base64'
+	encoding: 'hex' | 'base64' | 'base64url'
 ): Promise<string> {
 	const key = await importHmacKey(secret, algorithm === 'sha256' ? 'SHA-256' : 'SHA-1');
 	const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
-	return encoding === 'hex' ? bytesToHex(sig) : bytesToBase64(sig);
+	if (encoding === 'hex') return bytesToHex(sig);
+	return encoding === 'base64url' ? bytesToBase64Url(sig) : bytesToBase64(sig);
 }
 
 export async function hmacSha256Hex(secret: string, data: string): Promise<string> {

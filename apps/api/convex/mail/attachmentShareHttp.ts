@@ -38,6 +38,7 @@ import { ATTACHMENT_SHARE_PATH, isAttachmentShareToken } from '@owlat/shared/att
 import { getClientIp, rateLimitedResponse } from '../lib/publicRateLimit';
 import { logError } from '../lib/runtimeLog';
 import { errorResponse } from '../lib/httpResponse';
+import { safeDecodeURIComponent } from '../lib/inputGuards';
 
 /**
  * Filename for the `Content-Disposition` header. Quotes, backslashes and
@@ -75,13 +76,9 @@ export const serveAttachmentShare = httpAction(async (ctx, request) => {
 	const raw = path.startsWith(ATTACHMENT_SHARE_PATH)
 		? path.slice(ATTACHMENT_SHARE_PATH.length)
 		: '';
-	let token: string;
-	try {
-		token = decodeURIComponent(raw);
-	} catch {
-		return notFound(); // a malformed percent-escape is not a token
-	}
-	if (!isAttachmentShareToken(token)) return notFound();
+	const token = safeDecodeURIComponent(raw);
+	// A malformed percent-escape is not a token.
+	if (token === null || !isAttachmentShareToken(token)) return notFound();
 
 	// The token space is 192 bits, so this is not what stops guessing — it stops
 	// a live token from being turned into a bandwidth tap, and it bounds the

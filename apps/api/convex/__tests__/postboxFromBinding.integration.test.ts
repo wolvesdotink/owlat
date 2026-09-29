@@ -307,7 +307,6 @@ describe('mailImap.appendMessage — From-binding', () => {
 			ccAddresses: [],
 			bccAddresses: [],
 			subject: 'Test',
-			snippet: 'Test',
 		});
 
 		expect(result.uid).toBe(1);
@@ -331,7 +330,6 @@ describe('mailImap.appendMessage — From-binding', () => {
 				ccAddresses: [],
 				bccAddresses: [],
 				subject: 'Forged',
-				snippet: 'Forged',
 			})
 		).rejects.toThrow(/From address not authorized/);
 	});
@@ -359,7 +357,6 @@ describe('mailImap.appendMessage — From-binding', () => {
 			ccAddresses: [],
 			bccAddresses: [],
 			subject: 'Alias',
-			snippet: 'Alias',
 		});
 		expect(result.uid).toBe(1);
 	});

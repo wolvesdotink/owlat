@@ -58,21 +58,17 @@ import { internalMutation } from '../../_generated/server';
 import { postboxQuery, postboxMutation } from '../_helpers';
 import { internal } from '../../_generated/api';
 import { requireAdminContext } from '../../lib/sessionOrganization';
-import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from '../mailbox/identity';
 import {
 	connectFieldsValidator,
 	insertExternalAccountRow,
 	applyCredentialRotation,
+	toPublicAccountView,
 } from './accountShared';
+import { claimExternalAddress, provisionExternalMailbox } from './connectMailbox';
 import { prepareAccountPurge } from './accountTeardown';
 import { seedSharedInboxRoster } from '../mailboxMembers';
 import { requireMailboxAccess } from '../permissions';
-import {
-	throwInvalidInput,
-	throwAlreadyExists,
-	throwForbidden,
-	throwNotFound,
-} from '../../_utils/errors';
+import { throwInvalidInput, throwForbidden, throwNotFound } from '../../_utils/errors';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
 
@@ -146,32 +142,21 @@ export const _connectSharedInternal = internalMutation({
 		// carries the connecting admin's userId + activeOrganizationId; no second
 		// session resolution needed.
 		const s = await requireAdminContext(ctx);
-		const address = canonicalAddress(args.emailAddress);
-		const [, domain] = address.split('@');
-		if (!domain) throwInvalidInput('Invalid email address');
-
-		// The address must not collide with any existing active mailbox (hosted or
-		// external) — resolve deterministically rather than trusting the oldest row.
-		const existingMailbox = await resolveDeliverableMailbox(ctx, address);
-		if (existingMailbox) {
-			throwAlreadyExists(`A mailbox for ${address} already exists.`);
-		}
+		const claim = await claimExternalAddress(ctx, args.emailAddress);
 
 		const now = Date.now();
-		const mailboxId = await provisionMailbox(ctx, {
+		const mailboxId = await provisionExternalMailbox(ctx, {
 			userId: s.userId,
 			organizationId: s.activeOrganizationId,
-			address,
-			domain,
+			claim,
 			displayName: args.displayName ?? args.emailAddress,
-			kind: 'external',
 			scope: 'shared',
 		});
 		const accountId = await insertExternalAccountRow(ctx, {
 			userId: s.userId,
 			organizationId: s.activeOrganizationId,
 			mailboxId,
-			address,
+			address: claim.address,
 			legacyScope: 'shared',
 			auditPrefix: 'shared ',
 			fields: args,
@@ -208,22 +193,7 @@ export const getSharedExternalAccount = postboxQuery({
 			configured: true as const,
 			mailboxId: mailbox._id,
 			emailAddress: mailbox.address,
-			imapHost: account.imapHost,
-			imapPort: account.imapPort,
-			isImapSecure: account.isImapSecure,
-			smtpHost: account.smtpHost,
-			smtpPort: account.smtpPort,
-			isSmtpSecure: account.isSmtpSecure,
-			imapUsername: account.imapUsername,
-			smtpUsername: account.smtpUsername,
-			// Lets the admin reconnect form render the Google branch for an
-			// oauth2-backed team inbox. Never a credential.
-			authMethod: account.authMethod,
-			oauthProvider: account.oauthProvider,
-			status: account.status,
-			lastError: account.lastError,
-			lastSyncAt: account.lastSyncAt,
-			lastConnectedAt: account.lastConnectedAt,
+			...toPublicAccountView(account),
 		};
 	},
 });

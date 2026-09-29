@@ -1,14 +1,33 @@
-import { v } from 'convex/values';
+import { type ObjectType, v } from 'convex/values';
 import { internalAction, internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { getOptional } from '../lib/env';
+import { getMtaConfig, mtaFetch } from '../mail/mtaClient';
 import { normalizeIpReputationPayload } from '@owlat/mta-protocol/ipReputation';
 import { normalizeDeliverabilityRoutingSnapshot } from '@owlat/shared/deliverabilityRouting';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from './deliverabilityRouting';
-import { ipReadinessFieldValidators, warmingPoolsValidator } from '../lib/validators/readiness';
+import { warmingStateFields } from '../schema/delivery';
 import { logError, logWarn } from '../lib/runtimeLog';
+import type { AssertTrue, Exact } from '../lib/typeAssert';
 import { ipv6SendingAddresses } from './checklistIpv6';
 import { resolveIpv6RegressionAlerts } from './checklistEvidence';
+
+/**
+ * The re-check re-observes every configured address from live DNS before it
+ * answers, so it gets more room than a plain read. It fails soft either way.
+ */
+const IDENTITY_RECHECK_TIMEOUT_MS = 30_000;
+
+/**
+ * Compile-time proof that the normalizer's DTO is exactly the stored row minus
+ * `syncedAt`: a field one side gains and the other lacks is a build error here,
+ * not a sync that Convex starts rejecting at runtime while the cron fails soft.
+ */
+export type WarmingSnapshotMatchesSchema = AssertTrue<
+	Exact<
+		NonNullable<ReturnType<typeof normalizeIpReputationPayload>> & { syncedAt: number },
+		ObjectType<typeof warmingStateFields>
+	>
+>;
 
 /**
  * Sync IP warming state from the MTA's /ip-reputation endpoint.
@@ -27,13 +46,9 @@ import { resolveIpv6RegressionAlerts } from './checklistEvidence';
 export const syncWarmingState = internalAction({
 	args: { recheckIdentity: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
-		const mtaUrl = getOptional('MTA_INTERNAL_URL');
-		const mtaApiKey = getOptional('MTA_API_KEY');
-
-		if (!mtaUrl || !mtaApiKey) {
-			// MTA not configured — skip sync silently
-			return;
-		}
+		const mta = getMtaConfig();
+		// MTA not configured — skip sync silently
+		if (!mta) return;
 
 		try {
 			const organizationId = await ctx.runQuery(
@@ -44,10 +59,12 @@ export const syncWarmingState = internalAction({
 				// Fail soft: a failed re-check leaves the stored verdicts in place,
 				// and the validators' freshness window still applies to them.
 				try {
-					const recheck = await fetch(`${mtaUrl}/identity/recheck`, {
-						method: 'POST',
-						headers: { Authorization: `Bearer ${mtaApiKey}` },
-					});
+					const recheck = await mtaFetch(
+						mta,
+						'/identity/recheck',
+						{ method: 'POST' },
+						IDENTITY_RECHECK_TIMEOUT_MS
+					);
 					if (!recheck.ok) {
 						logWarn('[WarmingSync] MTA rejected the outbound identity re-check', {
 							status: recheck.status,
@@ -58,13 +75,8 @@ export const syncWarmingState = internalAction({
 				}
 			}
 
-			const url = new URL(`${mtaUrl}/ip-reputation`);
-			if (organizationId) url.searchParams.set('organizationId', organizationId);
-			const response = await fetch(url, {
-				headers: {
-					Authorization: `Bearer ${mtaApiKey}`,
-				},
-			});
+			const query = organizationId ? `?${new URLSearchParams({ organizationId })}` : '';
+			const response = await mtaFetch(mta, `/ip-reputation${query}`);
 
 			if (!response.ok) {
 				logError('[WarmingSync] MTA rejected the IP reputation request', {
@@ -134,7 +146,7 @@ export const syncWarmingState = internalAction({
 		} catch (error) {
 			// Fail soft: the cron runs again next tick and the last good warming
 			// state stays in place rather than being clobbered with a guess.
-			logError('[WarmingSync] failed to sync warming state', { mtaUrl, error });
+			logError('[WarmingSync] failed to sync warming state', { mtaUrl: mta.baseUrl, error });
 		}
 	},
 });
@@ -144,29 +156,7 @@ export const syncWarmingState = internalAction({
  * scopes the IPv6 alert clean-up when the new snapshot shows IPv6 off.
  */
 export const upsertWarmingState = internalMutation({
-	args: {
-		organizationId: v.optional(v.string()),
-		pools: v.optional(warmingPoolsValidator),
-		phase: v.string(),
-		totalDailyCap: v.number(),
-		totalSentToday: v.number(),
-		ipCount: v.number(),
-		ips: v.array(
-			v.object({
-				ip: v.string(),
-				phase: v.string(),
-				currentDay: v.number(),
-				dailyCap: v.number(),
-				sentToday: v.number(),
-				bounceRate: v.number(),
-				deferralRate: v.number(),
-				pool: v.string(),
-				active: v.boolean(),
-				...ipReadinessFieldValidators,
-			})
-		),
-		syncedAt: v.number(),
-	},
+	args: { ...warmingStateFields, organizationId: v.optional(v.string()) },
 	handler: async (ctx, { organizationId, ...snapshot }) => {
 		const existing = await ctx.db.query('warmingState').first();
 

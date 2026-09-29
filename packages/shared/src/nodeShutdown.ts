@@ -33,6 +33,26 @@
  */
 export type ShutdownLog = (message: string, detail?: unknown) => void;
 
+/** The subset of a pino logger {@link pinoShutdownLog} writes to. */
+export interface StructuredLogger {
+	info(obj: object, msg: string): void;
+	error(obj: object, msg: string): void;
+}
+
+/**
+ * A {@link ShutdownLog} for a pino-style logger. An `Error` detail is a failure
+ * (a close or drain that threw, the watchdog firing) and goes out at error
+ * level under `err`, so pino serializes its stack; any other detail is merged
+ * into an info line.
+ */
+export function pinoShutdownLog(logger: StructuredLogger): ShutdownLog {
+	return (message, detail) => {
+		if (detail instanceof Error) logger.error({ err: detail }, message);
+		else if (detail !== null && typeof detail === 'object') logger.info(detail, message);
+		else logger.info(detail === undefined ? {} : { detail }, message);
+	};
+}
+
 /** The subset of `http.Server` / `@hono/node-server` this module needs. */
 export interface ClosableServer {
 	close(callback?: (err?: Error) => void): unknown;
@@ -109,7 +129,10 @@ export function installShutdown(options: ShutdownOptions): ShutdownHandle {
 		// never finished. Held ref'd, the wedge ends at the deadline with a log
 		// line and a non-zero code, which is the outcome an operator can see.
 		const watchdog = setTimeout(() => {
-			log('shutdown deadline exceeded — forcing exit', { timeoutMs });
+			log(
+				'shutdown deadline exceeded — forcing exit',
+				new Error(`drain did not finish within ${timeoutMs} ms`)
+			);
 			exit(1);
 		}, timeoutMs);
 

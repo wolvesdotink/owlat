@@ -17,7 +17,6 @@ import { v } from 'convex/values';
 import { internalMutation } from '../../_generated/server';
 import { adminMutation } from '../../lib/authedFunctions';
 import { requireAdminContext } from '../../lib/sessionOrganization';
-import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from '../mailbox/identity';
 import {
 	connectFieldsValidator,
 	insertExternalAccountRow,
@@ -26,10 +25,11 @@ import {
 	takeLiveSeedAccounts,
 } from './accountShared';
 import { stopExternalAccountSync } from './accountTeardown';
+import { claimExternalAddress, provisionExternalMailbox } from './connectMailbox';
 import { destinationProviderValidator } from '../../lib/validators/deliverability';
 import { recordAuditLog } from '../../lib/auditLog';
 import { SEED_ACCOUNTS_PER_ORG_LIMIT } from '@owlat/shared/seedPlacement';
-import { throwInvalidInput, throwAlreadyExists, throwNotFound } from '../../_utils/errors';
+import { throwInvalidInput, throwNotFound } from '../../_utils/errors';
 
 /**
  * Connect a DELIVERABILITY SEED mailbox — step 1 of the placement probe.
@@ -57,14 +57,7 @@ export const _connectSeedInternal = internalMutation({
 		// is org infrastructure, and connecting one makes every campaign the org
 		// sends deliver a full copy into a mailbox the connecting member controls.
 		const s = await requireAdminContext(ctx);
-		const address = canonicalAddress(args.emailAddress);
-		const [, domain] = address.split('@');
-		if (!domain) throwInvalidInput('Invalid email address');
-
-		const existingMailbox = await resolveDeliverableMailbox(ctx, address);
-		if (existingMailbox) {
-			throwAlreadyExists(`A mailbox for ${address} already exists.`);
-		}
+		const claim = await claimExternalAddress(ctx, args.emailAddress);
 
 		// Refuse the (limit+1)th seed rather than letting the roll-up's bounded
 		// read page drop it silently. An operator who connected a seed must be
@@ -86,20 +79,18 @@ export const _connectSeedInternal = internalMutation({
 		}
 
 		const now = Date.now();
-		const mailboxId = await provisionMailbox(ctx, {
+		const mailboxId = await provisionExternalMailbox(ctx, {
 			userId: s.userId,
 			organizationId: s.activeOrganizationId,
-			address,
-			domain,
+			claim,
 			displayName: args.emailAddress,
-			kind: 'external',
 			scope: 'seed',
 		});
 		const accountId = await insertExternalAccountRow(ctx, {
 			userId: s.userId,
 			organizationId: s.activeOrganizationId,
 			mailboxId,
-			address,
+			address: claim.address,
 			seed: { seedProvider: args.seedProvider },
 			auditPrefix: 'deliverability seed ',
 			fields: args,

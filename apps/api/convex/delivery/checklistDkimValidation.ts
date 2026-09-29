@@ -2,11 +2,11 @@
 
 import { createPublicKey } from 'node:crypto';
 import dns from 'node:dns/promises';
+import { parseStrictTagList, stripTagValueWhitespace } from '@owlat/shared/dnsTagList';
 
 const APPLICABLE_DKIM_SERVICES = new Set(['*', 'email']);
 const SECURE_DKIM_HASHES = new Set(['sha256']);
 const DKIM_HYPHENATED_WORD = /^[a-z](?:[a-z0-9-]*[a-z0-9])?$/;
-const DKIM_TAG_NAME = /^[A-Za-z][A-Za-z0-9_]*$/;
 
 function colonSeparatedTagIncludes(value: string, accepted: ReadonlySet<string>): boolean {
 	const items = value.split(':').map((item) => item.trim().toLowerCase());
@@ -18,9 +18,7 @@ function colonSeparatedTagIncludes(value: string, accepted: ReadonlySet<string>)
 	return items.some((item) => accepted.has(item));
 }
 
-function decodeCanonicalBase64(value: string): Buffer | null {
-	if (/(?:^|[^\r])\n|\r(?!\n)|\r\n(?![ \t])/.test(value)) return null;
-	const compact = value.replace(/[ \t]|\r\n/g, '');
+function decodeCanonicalBase64(compact: string): Buffer | null {
 	const match = /^([A-Za-z0-9+/]+)(={0,2})$/.exec(compact);
 	if (!match) return null;
 
@@ -36,22 +34,25 @@ function decodeCanonicalBase64(value: string): Buffer | null {
 	return decoded.toString('base64') === canonical ? decoded : null;
 }
 
+/**
+ * RSA modulus length of a published DKIM key record, or `null` when the record
+ * is not one a receiver would accept as a usable email-signing RSA key.
+ *
+ * The record is read with the RFC 6376 §3.2 strict tag-list grammar from
+ * `@owlat/shared/dnsTagList` (case-sensitive names, a duplicate or malformed
+ * tag invalidates the record), with whitespace removed from every value the
+ * way `@owlat/mail-auth` reads a key record — so a `p=` a DNS panel wrapped
+ * across lines gets the same verdict here as in domain verification.
+ */
 export function parsedDkimKeyBits(value: string | undefined): number | null {
 	if (!value) return null;
-	const tagSpecs = value.split(';').map((candidate) => candidate.trim());
-	if (tagSpecs[tagSpecs.length - 1] === '') tagSpecs.pop();
-	if (tagSpecs.length === 0 || tagSpecs.some((tagSpec) => tagSpec === '')) return null;
-
-	const tags = new Map<string, string>();
-	for (const tagSpec of tagSpecs) {
-		const separator = tagSpec.indexOf('=');
-		if (separator < 1) return null;
-		const name = tagSpec.slice(0, separator).trim();
-		if (!DKIM_TAG_NAME.test(name)) return null;
-		if (name === 'v' && tags.size > 0) return null;
-		if (tags.has(name)) return null;
-		tags.set(name, tagSpec.slice(separator + 1).trim());
-	}
+	const tags = parseStrictTagList(value, {
+		lowercaseName: false,
+		normalizeValue: stripTagValueWhitespace,
+	});
+	if (!tags) return null;
+	// RFC 6376 §3.6.1: when present, `v=` MUST be the first tag.
+	if (tags.has('v') && tags.keys().next().value !== 'v') return null;
 	if (tags.has('v') && tags.get('v') !== 'DKIM1') return null;
 	if ((tags.get('k') ?? 'rsa').toLowerCase() !== 'rsa') return null;
 	const services = tags.get('s');

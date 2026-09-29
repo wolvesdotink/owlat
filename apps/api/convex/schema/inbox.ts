@@ -420,9 +420,9 @@ export const inboxTables = {
 		.index('by_inbound_message', ['inboundMessageId'])
 		.index('by_status', ['status']),
 
-	// Knowledge Backfill Jobs - tracks one-time bulk extraction of historical
-	// inbound mail into the knowledge graph. Created when the agent master
-	// toggle flips false→true and no prior job exists.
+	// Knowledge Backfill Jobs - one-time extraction of historical inbound mail,
+	// created on the first ai.agent false→true toggle; walker and lifecycle in
+	// knowledge/messageBackfill.ts and knowledge/backfillJobs.ts.
 	knowledgeBackfillJobs: defineTable({
 		status: backfillJobStatusValidator,
 		triggeredBy: v.string(), // identity.subject

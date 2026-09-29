@@ -4,7 +4,7 @@ import { ConvexError } from 'convex/values';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import { createTestEmailTemplate } from './factories';
-import { assertEditableForPublishableChange } from '../emailTemplates/lifecycle';
+import { assertEditableForPublishableChange } from '../lib/publishableEmail';
 import type { Id } from '../_generated/dataModel';
 import type { Doc } from '../_generated/dataModel';
 
@@ -325,10 +325,7 @@ describe('Email template lifecycle — duplicate', () => {
 		const t = convexTest(schema, modules);
 		let templateId: Id<'emailTemplates'>;
 		await t.run(async (ctx) => {
-			templateId = await ctx.db.insert(
-				'emailTemplates',
-				createTestEmailTemplate()
-			);
+			templateId = await ctx.db.insert('emailTemplates', createTestEmailTemplate());
 			await ctx.db.delete(templateId);
 		});
 
@@ -380,12 +377,15 @@ describe('Email template lifecycle — remove', () => {
 		let templateId: Id<'emailTemplates'>;
 		await t.run(async (ctx) => {
 			blockId = await ctx.db.insert('emailBlocks', {
-				name: 'Block', content: '[]', usageCount: 1,
-				createdAt: Date.now(), updatedAt: Date.now(),
+				name: 'Block',
+				content: '[]',
+				usageCount: 1,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
 			});
 			templateId = await ctx.db.insert(
 				'emailTemplates',
-				createTestEmailTemplate({ name: 'Uses block', linkedBlockIds: [blockId] }),
+				createTestEmailTemplate({ name: 'Uses block', linkedBlockIds: [blockId] })
 			);
 		});
 
@@ -418,19 +418,21 @@ describe('assertEditableForPublishableChange — guard', () => {
 	} as unknown as Doc<'emailTemplates'>;
 
 	it('does not throw on draft templates regardless of force', () => {
-		expect(() => assertEditableForPublishableChange(baseTemplate)).not.toThrow();
-		expect(() => assertEditableForPublishableChange(baseTemplate, false)).not.toThrow();
-		expect(() => assertEditableForPublishableChange(baseTemplate, true)).not.toThrow();
+		expect(() => assertEditableForPublishableChange(baseTemplate, 'Template')).not.toThrow();
+		expect(() => assertEditableForPublishableChange(baseTemplate, 'Template', false)).not.toThrow();
+		expect(() => assertEditableForPublishableChange(baseTemplate, 'Template', true)).not.toThrow();
 	});
 
 	it('throws on published templates without force', () => {
 		const published = { ...baseTemplate, status: 'published' } as Doc<'emailTemplates'>;
-		expect(() => assertEditableForPublishableChange(published)).toThrow(ConvexError);
-		expect(() => assertEditableForPublishableChange(published, false)).toThrow(ConvexError);
+		expect(() => assertEditableForPublishableChange(published, 'Template')).toThrow(ConvexError);
+		expect(() => assertEditableForPublishableChange(published, 'Template', false)).toThrow(
+			ConvexError
+		);
 	});
 
 	it('does not throw on published templates with force: true', () => {
 		const published = { ...baseTemplate, status: 'published' } as Doc<'emailTemplates'>;
-		expect(() => assertEditableForPublishableChange(published, true)).not.toThrow();
+		expect(() => assertEditableForPublishableChange(published, 'Template', true)).not.toThrow();
 	});
 });

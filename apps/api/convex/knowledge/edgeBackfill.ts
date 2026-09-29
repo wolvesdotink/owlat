@@ -9,13 +9,19 @@
  * `knowledgeEntries` row and schedules the LLM inference pass over it, so the
  * graph is populated retroactively.
  *
- * Mirrors `agent/knowledgeBackfill.ts` (the message-extraction backfill) and the
- * `knowledge.maintenance.runKnowledgeDedup` cursor-pagination walker: page the
- * table, schedule one fire-and-forget action per entry, self-reschedule the next
- * page in its own transaction, finalize at the tail. Tracked by a one-shot
+ * Mirrors `knowledge/messageBackfill.ts` (the message-extraction backfill) and
+ * the `knowledge.maintenance.runKnowledgeDedup` cursor-pagination walker: page
+ * the table, schedule one fire-and-forget action per entry, self-reschedule the
+ * next page in its own transaction, finalize at the tail. Tracked by a one-shot
  * `knowledgeEdgeBackfillJobs` row (first-run gated by the toggle handler in
  * `workspaces/featureFlags.ts`; admin-cancellable mid-walk; idempotent —
- * re-running merges via `upsertEdge`).
+ * re-running merges via `upsertEdge`). The job lifecycle it shares with the
+ * message backfill lives in `knowledge/backfillJobs.ts`.
+ *
+ * Failure: the walker is a mutation, so a throw rolls back any 'failed' write
+ * it could make in the same transaction. A job that stops mid-walk is instead
+ * marked 'failed' by the daily stale-job sweep
+ * (`knowledge.maintenance.failStaleBackfillJobs`).
  *
  * SECURITY (leak surface #2 — edge CONSTRUCTION): each entry is scheduled as its
  * OWN single-element batch, so `inferRelations` runs its candidate vector search
@@ -28,12 +34,12 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, internalMutation } from '../_generated/server';
+import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { publicQuery, adminMutation } from '../lib/authedFunctions';
-import { isActiveOrgMember, requireAdminContext } from '../lib/sessionOrganization';
+import { isActiveOrgMember } from '../lib/sessionOrganization';
 import { isFeatureEnabled } from '../lib/featureFlags';
-import { recordAuditLog } from '../lib/auditLog';
+import { cancelLatestJob, createCappedJob, latestJob } from './backfillJobs';
 
 /**
  * Entries paged — and `inferRelations` actions scheduled — per self-rescheduled
@@ -43,54 +49,24 @@ import { recordAuditLog } from '../lib/auditLog';
  */
 const EDGE_BACKFILL_PAGE = 50;
 
-/**
- * Capped count of existing entries used purely as the progress-bar denominator.
- * The walker uses cursor pagination, so it is never limited by this number.
- */
-const TOTAL_COUNT_CAP = 10000;
-
-// ============================================================
-// First-run gate
-// ============================================================
-
-/**
- * True iff any edge-backfill job (in any status) has ever been created. The
- * toggle handler gates first-run enqueue on this, so cancelling and re-enabling
- * `ai.knowledge.autoLink` does NOT trigger a second backfill. Kept in its own
- * table so the gate is independent of the agent message-extraction backfill.
- */
-export const hasAnyJob = internalQuery({
-	args: {},
-	handler: async (ctx) => {
-		const existing = await ctx.db.query('knowledgeEdgeBackfillJobs').take(1);
-		return existing.length > 0;
-	},
-});
-
 // ============================================================
 // Job lifecycle
 // ============================================================
 
 /**
- * Insert a new running job. Counts existing knowledgeEntries (capped) for the
- * progress-bar denominator.
+ * Create the running job for the edge walk. Called directly by the
+ * `ai.knowledge.autoLink` toggle in `setFeatureFlag` (already a mutation, so
+ * no `runMutation` hop). Kept in its own table so the first-run gate is
+ * independent of the agent message-extraction backfill.
  */
-export const createJob = internalMutation({
-	args: { triggeredBy: v.string() },
-	handler: async (ctx, args) => {
-		const all = await ctx.db.query('knowledgeEntries').take(TOTAL_COUNT_CAP);
-		const now = Date.now();
-		return await ctx.db.insert('knowledgeEdgeBackfillJobs', {
-			status: 'running',
-			triggeredBy: args.triggeredBy,
-			totalCount: all.length,
-			scannedCount: 0,
-			scheduledCount: 0,
-			startedAt: now,
-			updatedAt: now,
-		});
-	},
-});
+export function createEdgeBackfillJob(ctx: MutationCtx, triggeredBy: string) {
+	return createCappedJob(ctx, {
+		table: 'knowledgeEdgeBackfillJobs',
+		countTable: 'knowledgeEntries',
+		triggeredBy,
+		extraCounters: { scheduledCount: 0 },
+	});
+}
 
 // ============================================================
 // The workhorse — paginate entries, schedule inference, self-reschedule
@@ -181,13 +157,7 @@ export const getStatus = publicQuery({
 	args: {},
 	handler: async (ctx) => {
 		if (!(await isActiveOrgMember(ctx))) return null;
-
-		const jobs = await ctx.db
-			.query('knowledgeEdgeBackfillJobs')
-			.withIndex('by_started_at')
-			.order('desc')
-			.take(1);
-		return jobs.length > 0 ? jobs[0] : null;
+		return await latestJob(ctx, 'knowledgeEdgeBackfillJobs');
 	},
 });
 
@@ -200,32 +170,12 @@ export const getStatus = publicQuery({
  */
 export const cancel = adminMutation({
 	args: {},
-	handler: async (ctx) => {
-		const { userId } = await requireAdminContext(ctx);
-
-		const jobs = await ctx.db
-			.query('knowledgeEdgeBackfillJobs')
-			.withIndex('by_started_at')
-			.order('desc')
-			.take(1);
-		const job = jobs[0];
-		if (!job) return false;
-		if (job.status !== 'pending' && job.status !== 'running') return false;
-
-		const now = Date.now();
-		await ctx.db.patch(job._id, {
-			status: 'cancelled',
-			finishedAt: now,
-			updatedAt: now,
+	handler: async (ctx, _args, session) => {
+		return await cancelLatestJob(ctx, {
+			table: 'knowledgeEdgeBackfillJobs',
+			userId: session.userId,
+			auditAction: 'knowledge.edge_backfill_cancelled',
+			auditResource: 'knowledge_config',
 		});
-
-		await recordAuditLog(ctx, {
-			userId,
-			action: 'knowledge.edge_backfill_cancelled',
-			resource: 'knowledge_config',
-			details: { jobId: job._id },
-		});
-
-		return true;
 	},
 });

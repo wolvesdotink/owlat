@@ -1,25 +1,19 @@
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
+import type { ActionCtx } from '../_generated/server';
 import {
 	createAuthenticatedHandler,
 	requireScope,
 	type AuthenticatedContext,
 } from '../auth/apiHandlers';
-import { jsonResponse, errorResponse } from '../auth/apiResponses';
 import {
-	isValidEmail,
-	isValidConvexId,
-	STRING_LIMITS,
-	safeDecodeURIComponent,
-} from '../lib/inputGuards';
+	jsonResponse,
+	errorResponse,
+	lastPathSegment,
+	type PathSegment,
+} from '../auth/apiResponses';
+import { isValidEmail, isValidConvexId, STRING_LIMITS } from '../lib/inputGuards';
 import type { ContactSource } from '../lib/validators/contacts';
-
-// Type for the action context
-interface ActionContext {
-	runQuery: <T>(query: unknown, args: unknown) => Promise<T>;
-	runMutation: <T>(mutation: unknown, args: unknown) => Promise<T>;
-	runAction: <T>(action: unknown, args: unknown) => Promise<T>;
-}
 
 // Request body types
 interface CreateContactBody {
@@ -45,41 +39,27 @@ interface ContactResponse {
 	updatedAt: string;
 }
 
-// Contact type from database (exported for testing)
-export interface Contact {
-	_id: Id<'contacts'>;
-	email: string;
-	firstName?: string;
-	lastName?: string;
-	source: ContactSource;
-	createdAt: number;
-	updatedAt: number;
-}
+/** The contact fields the v1 response exposes (exported for testing). */
+export type Contact = Pick<
+	Doc<'contacts'>,
+	'_id' | 'email' | 'firstName' | 'lastName' | 'source' | 'createdAt' | 'updatedAt'
+>;
 
 /**
- * Transform a contact from database format to API response format
+ * Transform a contact from database format to API response format. A contact
+ * that arrived through a non-email channel has no email; the v1 contract keeps
+ * `email` a string, so it is emitted as `''`.
  */
 export function formatContactResponse(contact: Contact): ContactResponse {
 	return {
 		id: contact._id,
-		email: contact.email,
+		email: contact.email ?? '',
 		firstName: contact.firstName ?? null,
 		lastName: contact.lastName ?? null,
 		source: contact.source,
 		createdAt: new Date(contact.createdAt).toISOString(),
 		updatedAt: new Date(contact.updatedAt).toISOString(),
 	};
-}
-
-/**
- * Parse a string as a contact ID or return null.
- * Delegates to the shared Convex-ID validator so this and other entry points
- * (tracking, etc.) accept the same shape — minimum 10 chars, URL-safe base64
- * with hyphens included (older copy was missing `-` and the length floor,
- * which let too-short inputs reach `v.id('contacts')` and throw a 500).
- */
-export function isValidContactId(id: string): boolean {
-	return isValidConvexId(id);
 }
 
 /**
@@ -96,26 +76,28 @@ export function isValidContactId(id: string): boolean {
  * create-on-missing behaviour stay in the caller.
  */
 export async function resolveContactRef(
-	ctx: Pick<ActionContext, 'runQuery'>,
+	ctx: Pick<ActionCtx, 'runQuery'>,
 	ref: { email?: string; id?: string },
 	options?: { notFoundMessage?: string }
-): Promise<Contact | Response> {
+): Promise<Doc<'contacts'> | Response> {
 	const email = ref.email?.trim();
 	const id = ref.id?.trim();
 
-	let contact: Contact | null = null;
+	let contact: Doc<'contacts'> | null = null;
 	if (id) {
-		if (!isValidContactId(id)) {
+		// The shared Convex-ID shape check: an under-length or foreign-alphabet
+		// value must be a 400 here, never reach `v.id('contacts')` as a 500.
+		if (!isValidConvexId(id)) {
 			return errorResponse('invalid_input', 'Invalid contact ID or email format');
 		}
-		contact = await ctx.runQuery<Contact | null>(internal.contacts.contacts.getInternal, {
+		contact = await ctx.runQuery(internal.contacts.contacts.getInternal, {
 			contactId: id as Id<'contacts'>,
 		});
 	} else if (email) {
 		if (!isValidEmail(email)) {
 			return errorResponse('invalid_input', 'Invalid contact ID or email format');
 		}
-		contact = await ctx.runQuery<Contact | null>(internal.contacts.contacts.getByEmailForTeam, {
+		contact = await ctx.runQuery(internal.contacts.contacts.getByEmailForTeam, {
 			email: email.toLowerCase(),
 		});
 	} else {
@@ -130,7 +112,7 @@ export async function resolveContactRef(
 	// (GET) already applies the same check; centralizing it here makes every
 	// id/email lookup that flows through `resolveContactRef` honor the documented
 	// "all lookups MUST filter deletedAt === undefined" contract.
-	if (!contact || (contact as { deletedAt?: number }).deletedAt !== undefined) {
+	if (!contact || contact.deletedAt !== undefined) {
 		return errorResponse('not_found', options?.notFoundMessage ?? 'Contact not found');
 	}
 
@@ -144,12 +126,45 @@ export async function resolveContactRef(
  * defers the ID-shape check to {@link resolveContactRef}.
  */
 function resolveContactFromIdOrEmail(
-	ctx: Pick<ActionContext, 'runQuery'>,
+	ctx: Pick<ActionCtx, 'runQuery'>,
 	idOrEmail: string
-): Promise<Contact | Response> {
+): Promise<Doc<'contacts'> | Response> {
 	return isValidEmail(idOrEmail)
 		? resolveContactRef(ctx, { email: idOrEmail })
 		: resolveContactRef(ctx, { id: idOrEmail });
+}
+
+/**
+ * The contact `{id}` / `{emailOrId}` path segment, or the 400 to return: a
+ * missing segment and a malformed percent-encoding each keep their own copy.
+ * Shared by the contacts `/{id}` routes and the topics removal route.
+ */
+export function contactRefFromPath(segment: PathSegment): string | Response {
+	if (segment.ok) return segment.value;
+	return segment.reason === 'missing'
+		? errorResponse('invalid_input', 'Contact ID or email is required')
+		: errorResponse('invalid_input', 'Invalid contact ID or email format');
+}
+
+/**
+ * Length caps for the optional name fields, shared by POST and PUT so both
+ * answer with the specific 400 before the mutation's own bound rejects.
+ */
+function validateNameFields(body: { firstName?: unknown; lastName?: unknown }): Response | null {
+	for (const field of ['firstName', 'lastName'] as const) {
+		const value = body[field];
+		if (value === undefined) continue;
+		if (typeof value !== 'string') {
+			return errorResponse('invalid_input', `${field} must be a string`);
+		}
+		if (value.length > STRING_LIMITS.NAME) {
+			return errorResponse(
+				'invalid_input',
+				`${field} must be at most ${STRING_LIMITS.NAME} characters`
+			);
+		}
+	}
+	return null;
 }
 
 // ============ HTTP ACTION HANDLERS ============
@@ -158,7 +173,7 @@ function resolveContactFromIdOrEmail(
  * POST /api/v1/contacts - Create a new contact
  */
 export const createContact = createAuthenticatedHandler(
-	async (ctx: ActionContext, request: Request, auth: AuthenticatedContext): Promise<Response> => {
+	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
 		const denied = requireScope(auth, 'contacts:write', request.headers.get('Origin'));
 		if (denied) return denied;
 		// Parse request body
@@ -183,42 +198,20 @@ export const createContact = createAuthenticatedHandler(
 		}
 
 		// Validate optional fields
-		if (body.firstName !== undefined && typeof body.firstName !== 'string') {
-			return errorResponse('invalid_input', 'firstName must be a string');
-		}
-
-		if (body.firstName && body.firstName.length > STRING_LIMITS.NAME) {
-			return errorResponse(
-				'invalid_input',
-				`firstName must be at most ${STRING_LIMITS.NAME} characters`
-			);
-		}
-
-		if (body.lastName !== undefined && typeof body.lastName !== 'string') {
-			return errorResponse('invalid_input', 'lastName must be a string');
-		}
-
-		if (body.lastName && body.lastName.length > STRING_LIMITS.NAME) {
-			return errorResponse(
-				'invalid_input',
-				`lastName must be at most ${STRING_LIMITS.NAME} characters`
-			);
-		}
+		const nameError = validateNameFields(body);
+		if (nameError) return nameError;
 
 		// Create the contact (mutation handles duplicate check atomically)
 		try {
-			const contactId = await ctx.runMutation<Id<'contacts'>>(
-				internal.contacts.contacts.createForTeam,
-				{
-					email: body.email,
-					firstName: body.firstName,
-					lastName: body.lastName,
-					source: 'api' as const,
-				}
-			);
+			const contactId = await ctx.runMutation(internal.contacts.contacts.createForTeam, {
+				email: body.email,
+				firstName: body.firstName,
+				lastName: body.lastName,
+				source: 'api' as const,
+			});
 
 			// Fetch the created contact
-			const contact = await ctx.runQuery<Contact | null>(internal.contacts.contacts.getInternal, {
+			const contact = await ctx.runQuery(internal.contacts.contacts.getInternal, {
 				contactId,
 			});
 
@@ -250,35 +243,16 @@ export const createContact = createAuthenticatedHandler(
  * The {id} parameter can be either a contact ID or an email address
  */
 export const getContact = createAuthenticatedHandler(
-	async (ctx: ActionContext, request: Request, auth: AuthenticatedContext): Promise<Response> => {
+	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
 		const denied = requireScope(auth, 'contacts:read', request.headers.get('Origin'));
 		if (denied) return denied;
-		// Extract ID from URL path
-		const url = new URL(request.url);
-		const pathParts = url.pathname.split('/');
-		const idOrEmail = pathParts[pathParts.length - 1];
+		// The `{id}` segment (an ID or a URL-encoded email).
+		const idOrEmail = contactRefFromPath(lastPathSegment(request));
+		if (idOrEmail instanceof Response) return idOrEmail;
 
-		if (!idOrEmail) {
-			return errorResponse('invalid_input', 'Contact ID or email is required');
-		}
-
-		// Decode URL-encoded value (for emails with special characters).
-		// Malformed percent-encoding must surface as a 400, not a generic 500.
-		const decodedIdOrEmail = safeDecodeURIComponent(idOrEmail);
-		if (decodedIdOrEmail === null) {
-			return errorResponse('invalid_input', 'Invalid contact ID or email format');
-		}
-
-		const resolved = await resolveContactFromIdOrEmail(ctx, decodedIdOrEmail);
-		if (resolved instanceof Response) return resolved;
-		const contact = resolved;
-
-		// Don't expose soft-deleted contacts via the public API — a contact in
-		// the post-erasure retention window is logically gone until the
-		// hard-delete cron removes it.
-		if ((contact as { deletedAt?: number }).deletedAt !== undefined) {
-			return errorResponse('not_found', 'Contact not found');
-		}
+		// resolveContactRef already treats soft-deleted contacts as not found.
+		const contact = await resolveContactFromIdOrEmail(ctx, idOrEmail);
+		if (contact instanceof Response) return contact;
 
 		return jsonResponse({
 			data: formatContactResponse(contact),
@@ -290,20 +264,12 @@ export const getContact = createAuthenticatedHandler(
  * PUT /api/v1/contacts/{id} - Update a contact
  */
 export const updateContact = createAuthenticatedHandler(
-	async (ctx: ActionContext, request: Request, auth: AuthenticatedContext): Promise<Response> => {
+	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
 		const denied = requireScope(auth, 'contacts:write', request.headers.get('Origin'));
 		if (denied) return denied;
-		// Extract ID from URL path
-		const url = new URL(request.url);
-		const pathParts = url.pathname.split('/');
-		const idOrEmail = pathParts[pathParts.length - 1];
-
-		if (!idOrEmail) {
-			return errorResponse('invalid_input', 'Contact ID or email is required');
-		}
-
-		// Decode URL-encoded value
-		const decodedIdOrEmail = decodeURIComponent(idOrEmail);
+		// The `{id}` segment (an ID or a URL-encoded email).
+		const idOrEmail = contactRefFromPath(lastPathSegment(request));
+		if (idOrEmail instanceof Response) return idOrEmail;
 
 		// Parse request body
 		let body: UpdateContactBody;
@@ -323,22 +289,17 @@ export const updateContact = createAuthenticatedHandler(
 			}
 		}
 
-		if (body.firstName !== undefined && typeof body.firstName !== 'string') {
-			return errorResponse('invalid_input', 'firstName must be a string');
-		}
-
-		if (body.lastName !== undefined && typeof body.lastName !== 'string') {
-			return errorResponse('invalid_input', 'lastName must be a string');
-		}
+		const nameError = validateNameFields(body);
+		if (nameError) return nameError;
 
 		// Find the contact
-		const resolved = await resolveContactFromIdOrEmail(ctx, decodedIdOrEmail);
+		const resolved = await resolveContactFromIdOrEmail(ctx, idOrEmail);
 		if (resolved instanceof Response) return resolved;
 		const contactId = resolved._id;
 
 		// Update the contact
 		try {
-			await ctx.runMutation<Id<'contacts'>>(internal.contacts.contacts.updateForTeam, {
+			await ctx.runMutation(internal.contacts.contacts.updateForTeam, {
 				contactId,
 				email: body.email,
 				firstName: body.firstName,
@@ -346,10 +307,9 @@ export const updateContact = createAuthenticatedHandler(
 			});
 
 			// Fetch the updated contact
-			const updatedContact = await ctx.runQuery<Contact | null>(
-				internal.contacts.contacts.getInternal,
-				{ contactId }
-			);
+			const updatedContact = await ctx.runQuery(internal.contacts.contacts.getInternal, {
+				contactId,
+			});
 
 			if (!updatedContact) {
 				return errorResponse('internal', 'Failed to fetch updated contact');
@@ -374,29 +334,21 @@ export const updateContact = createAuthenticatedHandler(
  * DELETE /api/v1/contacts/{id} - Delete a contact
  */
 export const deleteContact = createAuthenticatedHandler(
-	async (ctx: ActionContext, request: Request, auth: AuthenticatedContext): Promise<Response> => {
+	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
 		const denied = requireScope(auth, 'contacts:write', request.headers.get('Origin'));
 		if (denied) return denied;
-		// Extract ID from URL path
-		const url = new URL(request.url);
-		const pathParts = url.pathname.split('/');
-		const idOrEmail = pathParts[pathParts.length - 1];
-
-		if (!idOrEmail) {
-			return errorResponse('invalid_input', 'Contact ID or email is required');
-		}
-
-		// Decode URL-encoded value
-		const decodedIdOrEmail = decodeURIComponent(idOrEmail);
+		// The `{id}` segment (an ID or a URL-encoded email).
+		const idOrEmail = contactRefFromPath(lastPathSegment(request));
+		if (idOrEmail instanceof Response) return idOrEmail;
 
 		// Find the contact
-		const resolved = await resolveContactFromIdOrEmail(ctx, decodedIdOrEmail);
+		const resolved = await resolveContactFromIdOrEmail(ctx, idOrEmail);
 		if (resolved instanceof Response) return resolved;
 		const contactId = resolved._id;
 
 		// Delete the contact
 		try {
-			await ctx.runMutation<undefined>(internal.contacts.contacts.removeForTeam, { contactId });
+			await ctx.runMutation(internal.contacts.contacts.removeForTeam, { contactId });
 
 			return jsonResponse(
 				{
@@ -423,7 +375,7 @@ export const deleteContact = createAuthenticatedHandler(
  * genuinely multi-page. There is no row ceiling — every contact is reachable.
  */
 export const listContacts = createAuthenticatedHandler(
-	async (ctx: ActionContext, request: Request, auth: AuthenticatedContext): Promise<Response> => {
+	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
 		const denied = requireScope(auth, 'contacts:read', request.headers.get('Origin'));
 		if (denied) return denied;
 		// Parse query parameters
@@ -441,12 +393,7 @@ export const listContacts = createAuthenticatedHandler(
 		}
 
 		// Query contacts
-		const result = await ctx.runQuery<{
-			contacts: Contact[];
-			isDone: boolean;
-			continueCursor: string;
-			totalCount: number;
-		}>(internal.contacts.contacts.listByTeam, {
+		const result = await ctx.runQuery(internal.contacts.contacts.listByTeam, {
 			search,
 			paginationOpts: { numItems: limit, cursor: cursor ?? null },
 		});

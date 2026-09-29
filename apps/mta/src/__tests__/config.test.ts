@@ -227,6 +227,35 @@ describe('loadConfig', () => {
 		expect(config.submissionMaxAuthFailuresPerIp).toBe(10);
 	});
 
+	it('treats a blank numeric limit as unset', () => {
+		process.env.SUBMISSION_MAX_CLIENTS = '';
+		process.env.BOUNCE_MAX_CLIENTS = '   ';
+		const config = loadConfig();
+		expect(config.submissionMaxClients).toBe(200);
+		expect(config.bounceMaxClients).toBe(200);
+	});
+
+	// parseInt read these as NaN or a prefix: NaN turned the connection caps off
+	// and made every SMTP AUTH fail, and '1e3' became 1.
+	it.each([
+		['BOUNCE_MAX_CLIENTS', 'abc', 'BOUNCE_MAX_CLIENTS must be an integer of at least 1'],
+		['SUBMISSION_MAX_CLIENTS', '1e3', 'SUBMISSION_MAX_CLIENTS must be an integer of at least 1'],
+		['SUBMISSION_MAX_AUTH_FAILURES_PER_IP', '0', 'SUBMISSION_MAX_AUTH_FAILURES_PER_IP must be'],
+		['BOUNCE_MAX_CONNECTIONS_PER_IP', '10abc', 'BOUNCE_MAX_CONNECTIONS_PER_IP must be'],
+		['PORT', '70000', 'PORT must be an integer between 1 and 65535'],
+		['SUBMISSION_PORT', '0', 'SUBMISSION_PORT must be an integer between 1 and 65535'],
+		['BOUNCE_TARPIT_DELAY_MS', '-1', 'BOUNCE_TARPIT_DELAY_MS must be an integer between 0 and'],
+		['BOUNCE_SOCKET_TIMEOUT_MS', '3000000000', 'BOUNCE_SOCKET_TIMEOUT_MS must be an integer'],
+	])('refuses to boot on %s=%j', (key, value, message) => {
+		process.env[key] = value;
+		expect(() => loadConfig()).toThrow(message);
+	});
+
+	it('accepts a zero tarpit delay', () => {
+		process.env.BOUNCE_TARPIT_DELAY_MS = '0';
+		expect(loadConfig().bounceTarpitDelayMs).toBe(0);
+	});
+
 	it('enables Google Postmaster only when the complete OAuth credential set is present', () => {
 		process.env.GOOGLE_POSTMASTER_CLIENT_ID = 'client-id';
 		process.env.GOOGLE_POSTMASTER_CLIENT_SECRET = 'client-secret';

@@ -45,7 +45,10 @@ function resolverFor(record: string): DnsFn {
 	};
 }
 
-function signWith(bits: number): { message: Buffer; resolver: DnsFn } {
+function signWith(
+	bits: number,
+	opts: { extraTags?: string; recordTags?: string } = {}
+): { message: Buffer; resolver: DnsFn } {
 	const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: bits });
 	const message = mintSignature({
 		privateKey,
@@ -54,8 +57,10 @@ function signWith(bits: number): { message: Buffer; resolver: DnsFn } {
 		headers: HEADERS,
 		hTag: 'from:to:subject',
 		body: BODY,
+		...(opts.extraTags !== undefined ? { extraTags: opts.extraTags } : {}),
 	});
-	return { message, resolver: resolverFor(`v=DKIM1; k=rsa; p=${spkiBase64(publicKey)}`) };
+	const record = `v=DKIM1; k=rsa; ${opts.recordTags ?? ''}p=${spkiBase64(publicKey)}`;
+	return { message, resolver: resolverFor(record) };
 }
 
 describe('verifyDkim — RFC 8301 minimum RSA key length', () => {
@@ -64,6 +69,15 @@ describe('verifyDkim — RFC 8301 minimum RSA key length', () => {
 		const result = await verifyDkim(message, { resolver });
 		expect(result.result).not.toBe('pass');
 		expect(result.result).toBe('fail');
+	});
+
+	it('a weak key whose t=s refuses the subdomain AUID is permerror: t=s is checked first', async () => {
+		const { message, resolver } = signWith(512, {
+			extraTags: `i=@sub.${DOMAIN}; `,
+			recordTags: 't=s; ',
+		});
+		const result = await verifyDkim(message, { resolver });
+		expect(result.result).toBe('permerror');
 	});
 
 	it('a 2048-bit RSA key still passes (regression guard)', async () => {

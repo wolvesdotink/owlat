@@ -14,7 +14,11 @@
  *               attachment capture (action-only)
  *   scan.ts     the aggregate inbound malware verdict
  *   routing.ts  pure spam / filter / DMARC-ARC decisions
- *   insert.ts   threading, UID+modseq, the row insert and its aggregates
+ *   insert.ts   dedup + quota checks, threading, UID+modseq, the row insert
+ *               and its aggregates
+ *   afterInsert.ts  classifier enqueues, follow-up / snooze-until-reply and
+ *               Reply Queue clears (shared with external IMAP sync)
+ *   ingestFields.ts  the argument validators every ingest entry point shares
  *
  * (`deliveryPipeline/` rather than `delivery/` so it never reads as a sibling
  * of the top-level `convex/delivery/` campaign send domain.)
@@ -27,10 +31,7 @@
 
 import { v } from 'convex/values';
 import { spamVerdictValidator } from '../lib/convexValidators';
-import {
-	mailMessageAttachmentValidator,
-	mailUnsubscribeValidator,
-} from '../lib/validators/mailContent';
+import { mailUnsubscribeValidator } from '../lib/validators/mailContent';
 import { internalMutation, internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -39,15 +40,18 @@ import { logError } from '../lib/runtimeLog';
 import { computeSenderHeuristics } from './senderHeuristics';
 import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
 import { inboundSignatureInfoValidator } from '../e2ee/inboundSignature';
-import { enqueueNeedsReplyCheck } from './needsReply';
-import { enqueueCategoryCheck } from './category';
-import { clearThreadFollowUp } from './followUps';
-import { resolveDeliverableMailbox } from './mailbox/identity';
-import { clearSnoozeUntilReplyForThread } from './snooze';
+import { resolveDeliverableMailbox } from './mailbox/addressResolution';
 import { prepareInboundMessage } from './deliveryPipeline/ingest';
 import { captureAttachments } from './deliveryPipeline/capture';
 import { mailboxIndexableParts } from './deliveryPipeline/scan';
-import { insertDeliveredMessage, stripBrackets } from './deliveryPipeline/insert';
+import {
+	dropStagedBlobs,
+	findDuplicateInMailbox,
+	insertDeliveredMessage,
+	isOverQuota,
+} from './deliveryPipeline/insert';
+import { runPostInsertInboundEffects } from './deliveryPipeline/afterInsert';
+import { deliveredEnvelopeFields, storedBodyFields } from './deliveryPipeline/ingestFields';
 import {
 	resolveDmarcRouting,
 	type DmarcOverride,
@@ -68,23 +72,14 @@ export const ingestFromWebhook = internalAction({
 		deliveryId: v.string(),
 		rawBytesBase64: v.string(),
 		recipientAddress: v.string(),
-		from: v.string(),
-		to: v.array(v.string()),
-		cc: v.array(v.string()),
-		bcc: v.array(v.string()),
-		replyTo: v.optional(v.string()),
+		...deliveredEnvelopeFields,
 		// SMTP envelope sender (RFC 5321 MAIL FROM); `''` for a bounce/DSN null
 		// sender. Threaded to the post-delivery hook to suppress vacation
 		// auto-replies to bounces (RFC 3834 §2). Optional for older MTA builds.
 		returnPath: v.optional(v.string()),
-		subject: v.string(),
 		textBody: v.optional(v.string()),
 		htmlBody: v.optional(v.string()),
-		messageId: v.string(),
-		inReplyTo: v.optional(v.string()),
-		references: v.optional(v.string()),
 		date: v.optional(v.number()),
-		attachments: v.array(mailMessageAttachmentValidator),
 		spamScore: v.optional(v.number()),
 		spamVerdict: v.optional(spamVerdictValidator),
 		virusVerdict: v.optional(virusVerdictValidator),
@@ -150,9 +145,11 @@ export const ingestFromWebhook = internalAction({
 
 		// If delivery was skipped (no mailbox / quota / dup), drop the staged blobs.
 		if ('skipped' in result) {
-			await ctx.storage.delete(prepared.rawStorageId);
-			if (prepared.text.storageId) await ctx.storage.delete(prepared.text.storageId);
-			if (prepared.html.storageId) await ctx.storage.delete(prepared.html.storageId);
+			await dropStagedBlobs(ctx, [
+				prepared.rawStorageId,
+				prepared.text.storageId,
+				prepared.html.storageId,
+			]);
 			return result;
 		}
 
@@ -209,35 +206,16 @@ export const ingestFromWebhook = internalAction({
 
 export const deliverToMailbox = internalMutation({
 	args: {
-		rawStorageId: v.id('_storage'),
-		rawSize: v.number(),
+		...deliveredEnvelopeFields,
+		...storedBodyFields,
 		antiLoopHeaders: v.optional(v.record(v.string(), v.string())),
 		// Parsed List-Unsubscribe target (extracted at ingest by the caller).
 		unsubscribe: v.optional(mailUnsubscribeValidator),
 		recipientAddress: v.string(),
-		from: v.string(),
-		to: v.array(v.string()),
-		cc: v.array(v.string()),
-		bcc: v.array(v.string()),
-		replyTo: v.optional(v.string()),
 		// SMTP envelope sender (RFC 5321 MAIL FROM); `''` for a bounce/DSN null
 		// sender. Passed to the post-delivery hook so vacation auto-replies skip
 		// bounces (RFC 3834 §2) keyed off the envelope, not the `From:` header.
 		returnPath: v.optional(v.string()),
-		subject: v.string(),
-		textBodyInline: v.optional(v.string()),
-		textBodyStorageId: v.optional(v.id('_storage')),
-		htmlBodyInline: v.optional(v.string()),
-		htmlBodyStorageId: v.optional(v.id('_storage')),
-		snippet: v.optional(v.string()),
-		// Deep-search excerpt (idea 32). Always sent by the ingest action; the
-		// insert step drops it unless the instance opted in.
-		searchBody: v.optional(v.string()),
-		messageId: v.string(),
-		inReplyTo: v.optional(v.string()),
-		references: v.optional(v.string()),
-		receivedAt: v.number(),
-		attachments: v.array(mailMessageAttachmentValidator),
 		spamScore: v.optional(v.number()),
 		spamVerdict: v.optional(spamVerdictValidator),
 		virusVerdict: v.optional(virusVerdictValidator),
@@ -272,7 +250,6 @@ export const deliverToMailbox = internalMutation({
 	> => {
 		const recipient = extractEmail(args.recipientAddress);
 		const fromAddress = extractEmail(args.from);
-		const rfc822MessageId = stripBrackets(args.messageId) ?? args.messageId;
 
 		// 1. Resolve mailbox by address. Prefer the live hosted mailbox over an
 		// external read-only archive when a move has left both on this address —
@@ -282,18 +259,13 @@ export const deliverToMailbox = internalMutation({
 			return { skipped: true };
 		}
 
-		// 2. Quota check
-		if (mailbox.quotaBytes != null && mailbox.usedBytes + args.rawSize > mailbox.quotaBytes) {
+		// 2. Quota check: a full hosted mailbox refuses the message.
+		if (isOverQuota(mailbox, args.rawSize)) {
 			return { skipped: true };
 		}
 
 		// 3. Deduplication on Message-ID within this mailbox
-		const dup = await ctx.db
-			.query('mailMessages')
-			.withIndex('by_rfc822_message_id', (q) => q.eq('rfc822MessageId', rfc822MessageId))
-			.filter((q) => q.eq(q.field('mailboxId'), mailbox._id))
-			.first();
-		if (dup) {
+		if (await findDuplicateInMailbox(ctx, mailbox._id, args.messageId)) {
 			return { skipped: true };
 		}
 
@@ -418,41 +390,14 @@ export const deliverToMailbox = internalMutation({
 			countUsedBytes: true,
 		});
 
-		// 11b. Reply Queue: enqueue needs-reply classification for the affected
-		// thread — inbox deliveries only (spam/trash/filter-moved mail never
-		// needs a reply prompt), and only on this webhook ingest path so bulk
-		// IMAP backfill can't fan out background LLM work. The ingest-time
-		// headers ride along because they are not persisted on the message row.
-		// The row's ACTUAL folder is what counts: a MUTED thread's delivery was
-		// re-routed to Archive inside the insert (mail/mute.ts), and neither the
-		// Reply Queue nor the category classifier should spend work on it.
-		const delivered = await ctx.db.get(messageId);
-		if (delivered && folder.role === 'inbox' && delivered.folderId === folder._id) {
-			await enqueueNeedsReplyCheck(ctx, delivered.threadId, {
-				precedence: args.antiLoopHeaders?.['precedence'],
-				// RFC 3834 / list traffic: the strongest "a machine sent this" signal
-				// the Reply Queue can get, and like Precedence it lives only on the
-				// wire — extractAntiLoopHeaders already parsed both out for us.
-				autoSubmitted: args.antiLoopHeaders?.['auto-submitted'],
-				listId: args.antiLoopHeaders?.['list-id'],
-			});
-			// Smart-inbox categories: classify the thread for the split-inbox
-			// view (advisory, off by default in the UI). Same inbox-only bound as
-			// the Reply Queue so bulk IMAP backfill never fans out LLM work.
-			await enqueueCategoryCheck(ctx, delivered.threadId, {
-				precedence: args.antiLoopHeaders?.['precedence'],
-			});
-		}
-
-		// 11c. Follow-up reminders: any inbound delivery into a watched thread
-		// means the awaited reply arrived — clear the watch silently. Mail routed
-		// to Spam/Trash doesn't count as a reply.
-		if (delivered && folder.role !== 'spam' && folder.role !== 'trash') {
-			await clearThreadFollowUp(ctx, delivered.threadId);
-			// Same signal for "snooze until they reply": the awaited reply landed,
-			// so resurface the deferred message(s) now instead of at the cap.
-			await clearSnoozeUntilReplyForThread(ctx, delivered.threadId, Date.now());
-		}
+		// 11b. Classifier enqueues, follow-up / snooze-until-reply clears and the
+		// owner-reply Reply Queue settle — the tail shared with IMAP sync.
+		await runPostInsertInboundEffects(ctx, {
+			messageId,
+			folder,
+			origin: 'mx',
+			antiLoopHeaders: args.antiLoopHeaders,
+		});
 
 		// 12. Post-delivery hooks — forwarding + vacation auto-reply.
 		// Scheduled as an action so HTTP calls to the MTA happen in the

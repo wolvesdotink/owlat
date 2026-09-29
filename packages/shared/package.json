@@ -310,6 +310,10 @@
 			"types": "./src/spf.ts",
 			"import": "./src/spf.ts"
 		},
+		"./dnsTagList": {
+			"types": "./src/dnsTagList.ts",
+			"import": "./src/dnsTagList.ts"
+		},
 		"./externalReceiving": {
 			"types": "./src/externalReceiving.ts",
 			"import": "./src/externalReceiving.ts"
@@ -334,9 +338,21 @@
 			"types": "./src/nodeShutdown.ts",
 			"import": "./src/nodeShutdown.ts"
 		},
+		"./nodeEnv": {
+			"types": "./src/nodeEnv.ts",
+			"import": "./src/nodeEnv.ts"
+		},
 		"./tlsCertReloader": {
 			"types": "./src/tlsCertReloader.ts",
 			"import": "./src/tlsCertReloader.ts"
+		},
+		"./tlsMaterial": {
+			"types": "./src/tlsMaterial.ts",
+			"import": "./src/tlsMaterial.ts"
+		},
+		"./tlsPolicy": {
+			"types": "./src/tlsPolicy.ts",
+			"import": "./src/tlsPolicy.ts"
 		},
 		"./networkPorts": {
 			"types": "./src/networkPorts.ts",

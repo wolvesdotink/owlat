@@ -15,7 +15,7 @@
 import { createMtaIdentityManager } from '../../../lib/emailProviders/mtaIdentity';
 import { getOptional } from '../../../lib/env';
 import { logWarn } from '../../../lib/runtimeLog';
-import { buildDmarcRecordValue, DEFAULT_DMARC_POLICY } from '../../dmarc';
+import { defaultDmarcDnsRecord } from '../../dmarc';
 import { buildTlsRptRecordValue, TLSRPT_HOST } from '../../tlsRpt';
 import {
 	buildReturnPathMailFromRecords,
@@ -66,16 +66,7 @@ export const mtaProvider: SendingDomainProviderModule<'mta'> = {
 
 		const dnsRecords: DnsRecords = {
 			dkim: dkimRecords,
-			// New domains start in monitor-only mode (`p=none`); the customer
-			// raises the policy to quarantine/reject via `setDmarcPolicy`.
-			dmarc: {
-				type: 'TXT',
-				host: '_dmarc',
-				value: buildDmarcRecordValue(domain, {
-					policy: DEFAULT_DMARC_POLICY,
-					rua: getOptional('MTA_DMARC_RUA'),
-				}),
-			},
+			dmarc: defaultDmarcDnsRecord(domain),
 		};
 
 		// SPF trailing qualifier: soft-fail (`~all`) by default, hard-fail

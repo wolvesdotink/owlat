@@ -34,6 +34,52 @@ export const contentScanResultsFields = {
 };
 
 /**
+ * Fields the MTA reports for one confirmed IPv6 identity/SPF regression. The
+ * table adds `createdAt`; `delivery/ipReadinessAlerts.recordRegression` takes
+ * exactly these as its args, so the two cannot drift apart.
+ */
+export const mtaIpReadinessAlertFields = {
+	eventId: v.string(),
+	ip: v.string(),
+	readinessCheck: v.union(v.literal('fcrdns'), v.literal('spf')),
+	readinessReason: v.string(),
+	eligibilityGeneration: v.number(),
+	observedAt: v.number(),
+	message: v.string(),
+};
+
+/** One address in the `warmingState` snapshot. */
+export const warmingIpFields = {
+	ip: v.string(),
+	phase: v.string(),
+	currentDay: v.number(),
+	dailyCap: v.number(),
+	sentToday: v.number(),
+	bounceRate: v.number(),
+	deferralRate: v.number(),
+	pool: v.string(),
+	active: v.boolean(),
+	...ipReadinessFieldValidators,
+};
+
+/**
+ * The `warmingState` row, which is also the args of
+ * `delivery/warmingSync.upsertWarmingState`: a field the MTA starts reporting
+ * is added here once and reaches both.
+ */
+export const warmingStateFields = {
+	// The MTA's configured IP_POOLS_* lists, verbatim. Optional: rows synced
+	// from an MTA that predates the field carry only the per-IP `pool`.
+	pools: v.optional(warmingPoolsValidator),
+	phase: v.string(), // overall: 'ramp' | 'plateau' | 'graduated'
+	totalDailyCap: v.number(), // sum across campaign IPs
+	totalSentToday: v.number(),
+	ipCount: v.number(),
+	ips: v.array(v.object(warmingIpFields)),
+	syncedAt: v.number(),
+};
+
+/**
  * Delivery + sending-infrastructure tables — blocklist, reputation tracking, content scanning,
  * URL reputation cache, provider routing, provider health, IP warming state.
  *
@@ -259,43 +305,14 @@ export const deliveryTables = {
 	// Durable, idempotent operator alerts for confirmed IPv6 identity/SPF
 	// regressions. Retained for 90 days and exposed only through an admin query.
 	mtaIpReadinessAlerts: defineTable({
-		eventId: v.string(),
-		ip: v.string(),
-		readinessCheck: v.union(v.literal('fcrdns'), v.literal('spf')),
-		readinessReason: v.string(),
-		eligibilityGeneration: v.number(),
-		observedAt: v.number(),
-		message: v.string(),
+		...mtaIpReadinessAlertFields,
 		createdAt: v.number(),
 	})
 		.index('by_event_id', ['eventId'])
 		.index('by_observed_at', ['observedAt']),
 
 	// IP warming state — cached from MTA's /ip-reputation endpoint every 5 minutes
-	warmingState: defineTable({
-		// The MTA's configured IP_POOLS_* lists, verbatim. Optional: rows synced
-		// from an MTA that predates the field carry only the per-IP `pool`.
-		pools: v.optional(warmingPoolsValidator),
-		phase: v.string(), // overall: 'ramp' | 'plateau' | 'graduated'
-		totalDailyCap: v.number(), // sum across campaign IPs
-		totalSentToday: v.number(),
-		ipCount: v.number(),
-		ips: v.array(
-			v.object({
-				ip: v.string(),
-				phase: v.string(),
-				currentDay: v.number(),
-				dailyCap: v.number(),
-				sentToday: v.number(),
-				bounceRate: v.number(),
-				deferralRate: v.number(),
-				pool: v.string(),
-				active: v.boolean(),
-				...ipReadinessFieldValidators,
-			})
-		),
-		syncedAt: v.number(),
-	}),
+	warmingState: defineTable(warmingStateFields),
 
 	// Immutable observations produced by Deliverability Center validators.
 	// Checklist state is reduced from these rows; no table stores a mutable

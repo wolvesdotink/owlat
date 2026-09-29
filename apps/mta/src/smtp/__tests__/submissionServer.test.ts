@@ -7,6 +7,7 @@ import * as net from 'node:net';
 import * as tls from 'node:tls';
 import type { AddressInfo } from 'node:net';
 import type { SmtpListener, SmtpReply } from '@owlat/smtp-listener';
+import { Client } from '@owlat/smtp-listener/testClient';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
 
@@ -23,7 +24,6 @@ vi.mock('../../auth/postboxAuth.js', () => ({ verifyPostboxAppPassword: verifyAp
 import {
 	buildAuthenticate,
 	buildOnData,
-	buildOnConnect,
 	buildOnMailFrom,
 	createSubmissionServer,
 	createImplicitTlsSubmissionServer,
@@ -993,85 +993,11 @@ describe('submission listener — TLS guard + connection limiting', () => {
 	it('does NOT silently cap via net.Server.maxConnections (over-cap must get a 421, not a socket destroy)', () => {
 		// The old implementation set `raw.maxConnections`, which makes node destroy an
 		// over-cap socket with NO banner — the client sees an abrupt TCP close instead
-		// of smtp-server's `421 Too many connected clients`. The global cap now lives in
-		// onConnect (see the 421 test below), so the raw silent cap must be unset.
+		// of smtp-server's `421 Too many connected clients`. The global cap is now the
+		// listener's admission (see the wire-level 421 tests), so the raw silent cap
+		// must be unset.
 		const server = createSubmissionServer(queue, redis, tlsConfig());
 		expect(server.raw.maxConnections).not.toBe(200);
-	});
-
-	it('rejects an over-cap connection with a real 421 (global maxClients gate)', async () => {
-		const liveRedis = new Redis() as unknown as RealRedis;
-		// isOverCapacity latched true → the global gate fires before any per-IP check.
-		const onConnect = buildOnConnect(
-			{ redis: liveRedis, config: tlsConfig({ submissionMaxConnectionsPerIp: 100 }) },
-			undefined,
-			() => true
-		);
-		const reply = (await onConnect({ remoteAddress: '7.7.7.7', state: {} } as never)) as SmtpReply;
-		expect(reply?.code).toBe(421);
-		expect(String(reply?.text)).toMatch(/Too many connected clients/);
-	});
-
-	it('the global gate is checked BEFORE the per-IP limiter (no slot taken when over cap)', async () => {
-		const liveRedis = new Redis() as unknown as RealRedis;
-		const held: string[] = [];
-		const onConnect = buildOnConnect(
-			{ redis: liveRedis, config: tlsConfig({ submissionMaxConnectionsPerIp: 3 }) },
-			(session) => held.push(`${session.remoteAddress}`),
-			() => true
-		);
-		const reply = (await onConnect({ remoteAddress: '7.7.7.8', state: {} } as never)) as SmtpReply;
-		expect(reply?.code).toBe(421);
-		// The over-cap connection never reached the per-IP limiter, so it took no slot.
-		expect(held).toEqual([]);
-	});
-
-	it('the per-IP onConnect limiter rejects the N+1th connection', async () => {
-		const liveRedis = new Redis() as unknown as RealRedis;
-		const onConnect = buildOnConnect({
-			redis: liveRedis,
-			config: tlsConfig({ submissionMaxConnectionsPerIp: 3 }),
-		});
-
-		const connect = (ip: string) =>
-			onConnect({ remoteAddress: ip, state: {} } as never) as Promise<SmtpReply | undefined>;
-
-		// First 3 from the same IP are allowed…
-		expect(await connect('8.8.8.8')).toBeUndefined();
-		expect(await connect('8.8.8.8')).toBeUndefined();
-		expect(await connect('8.8.8.8')).toBeUndefined();
-		// …the 4th is rejected by the per-IP cap with a 421.
-		const fourth = await connect('8.8.8.8');
-		expect(fourth?.code).toBe(421);
-		expect(String(fourth?.text)).toMatch(/Too many connections/);
-		// A different IP is unaffected.
-		expect(await connect('8.8.4.4')).toBeUndefined();
-	});
-
-	// The slot-taken callback is the release contract: it fires for — and ONLY for —
-	// connections that actually held a slot (net +1 on the counter). A rejected
-	// (over-cap) connection is incremented-then-decremented inside the limiter
-	// (net 0) and MUST NOT be marked, else its socket close would over-decrement
-	// (the 465 cap-bypass / 587 double-decrement class of bug).
-	it('marks the slot held only for connections that took a slot (not the rejected N+1th)', async () => {
-		const liveRedis = new Redis() as unknown as RealRedis;
-		const held: string[] = [];
-		const onConnect = buildOnConnect(
-			{ redis: liveRedis, config: tlsConfig({ submissionMaxConnectionsPerIp: 2 }) },
-			(session) => held.push(`${session.remoteAddress}:${session.remotePort}`)
-		);
-		const connect = (ip: string, port: number) =>
-			onConnect({ remoteAddress: ip, remotePort: port, state: {} } as never) as Promise<
-				SmtpReply | undefined
-			>;
-
-		expect(await connect('9.9.9.9', 1001)).toBeUndefined(); // slot 1 — held
-		expect(await connect('9.9.9.9', 1002)).toBeUndefined(); // slot 2 — held
-		const third = await connect('9.9.9.9', 1003); // over cap — rejected, NOT held
-		expect(third?.code).toBe(421);
-
-		// Only the two allowed connections were marked; the refused one was not.
-		expect(held).toEqual(['9.9.9.9:1001', '9.9.9.9:1002']);
 	});
 });
 
@@ -1278,6 +1204,64 @@ describe('submission TLS gate — wire-level', () => {
 
 			secure.destroy();
 		} finally {
+			await server.close();
+		}
+	});
+
+	it('587: answers a connection over submissionMaxClients with 421 4.7.0', async () => {
+		const server = createSubmissionServer(
+			queue,
+			new Redis() as unknown as RealRedis,
+			tlsConfig({ submissionMaxClients: 1 })
+		);
+		const port = await boot(server);
+		const held = await Client.connect(port);
+		try {
+			held.write('EHLO client.test\r\n');
+			await held.waitCode(250);
+			const over = await Client.connect(port);
+			await over.waitCode(220);
+			await over.waitCode(421);
+			await over.waitClose();
+			expect(over.received).toContain(
+				'421 4.7.0 Too many connected clients, try again in a moment\r\n'
+			);
+		} finally {
+			held.end();
+			await server.close();
+		}
+	});
+
+	it('587: refuses the N+1th connection from one IP with 421 4.7.0 and releases every slot', async () => {
+		// Own keyspace (ioredis-mock shares one per host:port), so another case's
+		// late slot release cannot move this counter.
+		const liveRedis = new Redis({ port: 16479 }) as unknown as RealRedis;
+		const server = createSubmissionServer(
+			queue,
+			liveRedis,
+			tlsConfig({ submissionMaxConnectionsPerIp: 2 })
+		);
+		const port = await boot(server);
+		const key = 'mta:submission:conn:127.0.0.1';
+		const held = [await Client.connect(port), await Client.connect(port)];
+		try {
+			for (const c of held) {
+				c.write('EHLO client.test\r\n');
+				await c.waitCode(250);
+			}
+			expect(await liveRedis.get(key)).toBe('2');
+
+			const over = await Client.connect(port);
+			await over.waitCode(421);
+			await over.waitClose();
+			expect(over.received).toContain('421 4.7.0 Too many connections from your IP\r\n');
+			// The refusal took no slot, and so gives none back.
+			expect(await liveRedis.get(key)).toBe('2');
+
+			for (const c of held) c.end();
+			await waitFor(async () => (await liveRedis.exists(key)) === 0);
+		} finally {
+			for (const c of held) c.end();
 			await server.close();
 		}
 	});

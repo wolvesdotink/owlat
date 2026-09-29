@@ -42,12 +42,13 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { isSharedInboxReader } from '../inbox/access';
 
 /**
  * The forms one Message-ID can be stored in.
  *
- * The Postbox ingest strips the angle brackets (`deliveryPipeline/insert.ts`
- * ::stripBrackets); the AI-inbox path stores the header as it arrived, which
+ * The Postbox ingest strips the angle brackets (`lib/messageId.ts`
+ * ::canonicalMessageId); the AI-inbox path stores the header as it arrived, which
  * usually keeps them. Correlating on one spelling alone would silently miss
  * every message stored in the other, so the lookup tries both. Pure and
  * exported so that stays testable without a database.
@@ -90,7 +91,7 @@ interface PostboxCounterpart {
 async function canReadTeamInbox(ctx: QueryCtx): Promise<boolean> {
 	if (!(await isFeatureEnabled(ctx, 'inbox'))) return false;
 	const session = await getBetterAuthSessionWithRole(ctx);
-	return !!session && (session.role === 'owner' || session.role === 'admin');
+	return isSharedInboxReader(session);
 }
 
 /** The inbound row whose Message-ID matches, in either stored spelling. */

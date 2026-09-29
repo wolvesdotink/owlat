@@ -17,6 +17,69 @@ export const mailVacationRespondersFields = {
 };
 
 /**
+ * One condition of a mail filter. Owned here, beside the table that persists it;
+ * `mail/filters.ts` imports it for its mutation args so the two can never drift.
+ */
+export const mailFilterConditionValidator = v.object({
+	field: v.union(
+		v.literal('from'),
+		v.literal('to'),
+		v.literal('cc'),
+		v.literal('subject'),
+		v.literal('body'),
+		v.literal('header'),
+		v.literal('size'),
+		v.literal('hasAttachment')
+	),
+	headerName: v.optional(v.string()),
+	op: v.union(
+		v.literal('contains'),
+		v.literal('notContains'),
+		v.literal('equals'),
+		v.literal('matches'),
+		v.literal('greaterThan'),
+		v.literal('lessThan'),
+		v.literal('isTrue')
+	),
+	value: v.optional(v.string()),
+	valueNumber: v.optional(v.number()),
+});
+
+/** One action of a mail filter (see `mailFilterConditionValidator`). */
+export const mailFilterActionValidator = v.object({
+	type: v.union(
+		v.literal('moveToFolder'),
+		v.literal('addLabel'),
+		v.literal('markRead'),
+		v.literal('markFlagged'),
+		v.literal('forward'),
+		v.literal('delete'),
+		// Split inbox (idea 24): file the message into a NAMED SECTION of
+		// the inbox instead of moving it out of sight. The message stays in
+		// Inbox — `pinnedSection` on the row is the only thing that changes —
+		// so a section is a reading arrangement, never a hiding place.
+		v.literal('pinToSection'),
+		v.literal('discard')
+	),
+	folderId: v.optional(v.id('mailFolders')),
+	labelId: v.optional(v.id('mailLabels')),
+	forwardTo: v.optional(v.string()),
+	// For `pinToSection` — the section's display name, which IS its
+	// identity (there is no section table; the set of sections is derived
+	// from the enabled filters that name one).
+	sectionName: v.optional(v.string()),
+});
+
+/**
+ * ONE grouping level (idea 39): `all` AND-s the conditions, `any` OR-s
+ * them. Absent = `all`, which is exactly the pre-toggle behavior, so no
+ * existing filter changes meaning. There is deliberately no nesting —
+ * mixed AND/OR trees are a second grammar, and "define two filters" has
+ * always been the escape hatch.
+ */
+export const mailFilterMatchTypeValidator = v.union(v.literal('all'), v.literal('any'));
+
+/**
  * Server-side rules: filters and their run jobs, aliases, forwarding
  * and vacation responders.
  *
@@ -28,63 +91,9 @@ export const mailRulesTables = {
 		name: v.string(),
 		isEnabled: v.boolean(),
 		priority: v.number(), // lower number runs first
-		conditions: v.array(
-			v.object({
-				field: v.union(
-					v.literal('from'),
-					v.literal('to'),
-					v.literal('cc'),
-					v.literal('subject'),
-					v.literal('body'),
-					v.literal('header'),
-					v.literal('size'),
-					v.literal('hasAttachment')
-				),
-				headerName: v.optional(v.string()),
-				op: v.union(
-					v.literal('contains'),
-					v.literal('notContains'),
-					v.literal('equals'),
-					v.literal('matches'),
-					v.literal('greaterThan'),
-					v.literal('lessThan'),
-					v.literal('isTrue')
-				),
-				value: v.optional(v.string()),
-				valueNumber: v.optional(v.number()),
-			})
-		),
-		actions: v.array(
-			v.object({
-				type: v.union(
-					v.literal('moveToFolder'),
-					v.literal('addLabel'),
-					v.literal('markRead'),
-					v.literal('markFlagged'),
-					v.literal('forward'),
-					v.literal('delete'),
-					// Split inbox (idea 24): file the message into a NAMED SECTION of
-					// the inbox instead of moving it out of sight. The message stays in
-					// Inbox — `pinnedSection` on the row is the only thing that changes —
-					// so a section is a reading arrangement, never a hiding place.
-					v.literal('pinToSection'),
-					v.literal('discard')
-				),
-				folderId: v.optional(v.id('mailFolders')),
-				labelId: v.optional(v.id('mailLabels')),
-				forwardTo: v.optional(v.string()),
-				// For `pinToSection` — the section's display name, which IS its
-				// identity (there is no section table; the set of sections is derived
-				// from the enabled filters that name one).
-				sectionName: v.optional(v.string()),
-			})
-		),
-		// ONE grouping level (idea 39): `all` AND-s the conditions, `any` OR-s
-		// them. Absent = `all`, which is exactly the pre-toggle behavior, so no
-		// existing filter changes meaning. There is deliberately no nesting —
-		// mixed AND/OR trees are a second grammar, and "define two filters" has
-		// always been the escape hatch.
-		matchType: v.optional(v.union(v.literal('all'), v.literal('any'))),
+		conditions: v.array(mailFilterConditionValidator),
+		actions: v.array(mailFilterActionValidator),
+		matchType: v.optional(mailFilterMatchTypeValidator),
 		stopProcessing: v.boolean(),
 		createdAt: v.number(),
 		updatedAt: v.number(),

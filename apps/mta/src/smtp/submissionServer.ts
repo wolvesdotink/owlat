@@ -15,8 +15,9 @@
  *   - per-recipient job fan-out off the authenticated SMTP envelope, the From
  *     forgery 553 5.7.1 guard for Postbox sessions, and AMP `text/x-amp-html`
  *     recovery, all in the DATA hook;
- *   - the per-IP connection cap (onConnect) + counter release (socket close),
- *     whose Redis state stays in {@link module:submissionSecurity}.
+ *   - connection admission (the global cap and the per-IP counter in
+ *     lib/connectionSlots.ts), which the listener applies on 587 and, before
+ *     the TLS handshake, on 465.
  *
  * The old `sessionAuth` WeakMap is gone: the authenticated identity lives in the
  * listener's typed per-connection session state ({@link SubmissionSessionState}).
@@ -30,6 +31,7 @@ import {
 	type SmtpAuthOutcome,
 	type SmtpAddress,
 	type SmtpTlsConfig,
+	type SmtpAdmission,
 } from '@owlat/smtp-listener';
 import {
 	parseMessage,
@@ -53,14 +55,8 @@ import { fireAndForget } from '../lib/fireAndForget.js';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { emailDomain } from '@owlat/shared/spfAlignment';
 import { enqueueReconciledIntake } from '../queue/intakeEnqueue.js';
-import {
-	checkConnectionRateLimit,
-	releaseConnection,
-	checkAuthThrottle,
-	recordAuthFailure,
-	clearAuthFailures,
-} from './submissionSecurity.js';
-import { createSlotTracker } from '../lib/connectionSlots.js';
+import { checkAuthThrottle, recordAuthFailure, clearAuthFailures } from './submissionSecurity.js';
+import { createConnectionLimiter } from '../lib/connectionSlots.js';
 import {
 	bindSubmissionClientRequest,
 	normalizeEnvelopeAddress,
@@ -427,66 +423,43 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue' | 'redis'>) {
 	};
 }
 
+/** Per-IP connection counters for 587 and 465 (key prefix and window are deploy-stable). */
+const SUBMISSION_CONNECTION_PREFIX = 'mta:submission:conn:';
+const SUBMISSION_CONNECTION_TTL_SECONDS = 300;
+
 /**
- * Per-IP connection cap (onConnect) — mirrors the bounce server so the AUTH
- * paths can't be brute-forced by opening many parallel connections. Exported so
- * the limiter is unit-testable. Returns a `421` rejection over the cap, nothing
- * to accept; fails open on a Redis hiccup so a store fault can't lock out
- * legitimate clients.
- *
- * The GLOBAL `maxClients` cap is enforced first (smtp-server order) with a real
- * `421` retry-later reply — NOT a silent socket destroy. `net.Server.maxConnections`
- * would drop an over-cap connection with no banner, so a client sees an abrupt TCP
- * close instead of the `421 Too many connected clients` smtp-server sent (and that a
- * well-behaved client re-queues on). `isOverCapacity` reads the listener's live
- * connection count (wired in {@link buildSubmissionListener}); it is omitted in the
- * direct per-IP unit tests, where the global gate is a no-op.
- *
- * When (and ONLY when) {@link checkConnectionRateLimit} actually holds a slot for
- * this connection (net +1 on the Redis counter — i.e. the connection was allowed,
- * NOT rejected over the cap), `onSlotHeld` is invoked so the caller can release
- * exactly that slot on socket close. This is load-bearing: on 465 the raw TCP
- * `connection` event fires before the TLS handshake, so a plaintext / aborted
- * handshake never reaches this hook (no increment); a rejected connection is
- * incremented-then-decremented inside `checkConnectionRateLimit` (net 0). Neither
- * takes a slot, so neither is marked — and the close handler must not release one,
- * else an attacker could drive a victim IP's counter down (465 cap bypass) or a
- * 421-refused connect could double-decrement (587).
+ * Connection admission for both submission listeners, so the AUTH paths cannot
+ * be brute-forced over many parallel connections. The global `maxClients` cap
+ * answers a real `421 4.7.0` retry-later reply rather than node's silent
+ * `net.Server.maxConnections` destroy, and the per-IP cap answers `421 4.7.0`
+ * too. A Redis fault fails open inside the listener. On 465 the listener admits
+ * before the TLS handshake, where no reply is possible and refused sockets are
+ * destroyed; 587 and 465 share one counter per IP.
  */
-export function buildOnConnect(
-	deps: Pick<SubmissionDeps, 'redis' | 'config'>,
-	onSlotHeld?: (session: Session) => void,
-	isOverCapacity?: () => boolean
-) {
-	const { redis, config } = deps;
-	return async function onConnect(session: Session): Promise<SmtpHandlerResult> {
-		const remoteIp = sessionRemoteIp(session);
-		// Global concurrent-connection cap first (smtp-server order): a real 421 so
-		// the client retries later instead of reading an abrupt close as a failure.
-		if (isOverCapacity?.()) {
-			logger.warn({ remoteIp }, 'Submission server at max concurrent clients');
-			return {
-				code: 421,
-				enhanced: '4.7.0',
-				text: 'Too many connected clients, try again in a moment',
-			};
-		}
-		try {
-			const allowed = await checkConnectionRateLimit(
+function submissionAdmission(config: MtaConfig, redis: Redis): SmtpAdmission {
+	return {
+		maxClients: config.submissionMaxClients,
+		overCapacityReply: {
+			code: 421,
+			enhanced: '4.7.0',
+			text: 'Too many connected clients, try again in a moment',
+		},
+		perIp: {
+			...createConnectionLimiter(
 				redis,
-				remoteIp,
+				SUBMISSION_CONNECTION_PREFIX,
+				SUBMISSION_CONNECTION_TTL_SECONDS,
 				config.submissionMaxConnectionsPerIp
-			);
-			if (!allowed) {
-				logger.warn({ remoteIp }, 'Submission server connection rate limited');
-				return { code: 421, enhanced: '4.7.0', text: 'Too many connections from your IP' };
-			}
-			onSlotHeld?.(session); // net +1 held — release exactly this slot on close
-			return;
-		} catch (err) {
-			logger.error({ err, remoteIp }, 'Error in submission onConnect rate limit check');
-			return; // Fail-open so a Redis hiccup doesn't block legitimate clients.
-		}
+			),
+			rejectReply: { code: 421, enhanced: '4.7.0', text: 'Too many connections from your IP' },
+		},
+		onRefused: (peer, reason) =>
+			logger.warn(
+				{ remoteIp: peer.remoteAddress },
+				reason === 'capacity'
+					? 'Submission server at max concurrent clients'
+					: 'Submission server connection rate limited'
+			),
 	};
 }
 
@@ -571,25 +544,7 @@ function buildSubmissionListener(
 	// cannot be required before AUTH (RFC 8314 §3.3). Fail fast.
 	const tls = submissionTls(config);
 
-	// Reconciles per-IP slot increments against socket lifetime. Port 465 takes
-	// the slot at raw TCP accept, before TLS; port 587 takes it in `onConnect`.
-	// Rejected connects are never marked, preventing a double decrement, and the
-	// tracker self-heals the race
-	// where a connection RSTs while its async rate-limit check is still in flight.
-	const slots = createSlotTracker(redis, releaseConnection);
-
-	// Live concurrent-connection count for the global `maxClients` cap. Every
-	// accepted socket increments it on the raw `connection` event and decrements it
-	// on close. `createSmtpListener` registers its OWN accept handler first, and that
-	// handler synchronously runs the synchronous prefix of `onConnect` — including
-	// `isOverCapacity()` — before its first `await`. So the counting handler MUST run
-	// ahead of the accept handler (`prependListener`, below) or the increment lands
-	// after the capacity check and the connection under decision is excluded from its
-	// own count (off-by-one). Prepending makes `onConnect` see a count that includes
-	// the deciding connection — matching smtp-server's `connections.size > maxClients`.
-	const liveConnections = { count: 0 };
-
-	const listener = createSmtpListener<SubmissionSessionState>({
+	return createSmtpListener<SubmissionSessionState>({
 		// The 220 greeting + EHLO open with this name (RFC 5321 §4.2). It MUST be
 		// the FQDN that matches the IP's reverse-DNS PTR record so the announced
 		// identity stays consistent with reverse DNS.
@@ -609,91 +564,12 @@ function buildSubmissionListener(
 			authenticate: buildAuthenticate({ redis, config }),
 		},
 		createSession: () => ({}),
-		onConnect: implicitTls
-			? () => undefined // 465 is admitted before TLS in the raw-accept hook below.
-			: buildOnConnect(
-					{ redis, config },
-					(session) => {
-						// Mark this connection as holding a slot so — and only so — its socket
-						// close releases it. If the peer already left while the rate-limit check
-						// was in flight, `hold` releases the increment immediately instead.
-						slots.hold(session);
-					},
-					() => liveConnections.count > config.submissionMaxClients
-				),
+		admission: submissionAdmission(config, redis),
 		// Submission never relays unauthenticated: refuse MAIL FROM until AUTH.
 		onMailFrom: buildOnMailFrom(),
 		onData: buildOnData({ queue, redis }),
 		onError: (err) => logger.error({ err }, 'SMTP submission listener error'),
 	});
-
-	// Global concurrent-connection cap — preserves smtp-server's `maxClients`, but as
-	// a REAL `421 Too many connected clients` reply (see `buildOnConnect`), not node's
-	// silent `net.Server.maxConnections` socket destroy which drops an over-cap client
-	// with no banner. Maintain the live-connection count here and register every
-	// accepted connection with the slot tracker, which releases the per-IP counter on
-	// socket close — but ONLY for connections that actually took a slot. The limiter
-	// state lives in submissionSecurity.ts (I8); the listener exposes only the socket,
-	// so the release is wired here on the raw server's `connection` event (emitted for
-	// both the plaintext 587 and implicit-TLS 465 servers). The raw event fires on TCP
-	// accept — for 465 that is BEFORE the TLS handshake, so this hook takes the slot
-	// below and the close tracker releases it even when a failed/plaintext handshake
-	// never reaches `onConnect`. Tracking the live connection at accept also lets
-	// `hold` self-heal a connection that RSTs while its async rate-limit check is still
-	// pending. `prependListener` runs this AHEAD of the listener's internal accept
-	// handler so `count` includes the connection under decision when `onConnect` runs
-	// its synchronous `isOverCapacity()` check (see the `liveConnections` note above).
-	// Node's TLS connection handler wraps the raw socket and starts reading even
-	// if that socket was paused. Defer that handler until admission resolves.
-	const tlsAccept = implicitTls ? listener.raw.listeners('connection') : [];
-	if (implicitTls) listener.raw.removeAllListeners('connection');
-	listener.raw.prependListener('connection', (socket) => {
-		liveConnections.count += 1;
-		socket.once('close', () => {
-			liveConnections.count -= 1;
-		});
-		slots.track(socket);
-
-		if (!implicitTls) return;
-		// TLS's `onConnect` runs only after a handshake, which let silent peers on
-		// 465 bypass the per-IP cap. Pause before reading a ClientHello, acquire the
-		// same slot the plaintext listener uses, then resume only admitted peers.
-		// The global cap is also applied here because pre-handshake sockets must not
-		// be invisible to either admission policy.
-		if (liveConnections.count > config.submissionMaxClients) {
-			socket.destroy();
-			return;
-		}
-		socket.pause();
-		const admissionDeadline = setTimeout(() => socket.destroy(), 30_000);
-		socket.once('close', () => clearTimeout(admissionDeadline));
-		const acceptTls = () => {
-			clearTimeout(admissionDeadline);
-			if (socket.destroyed) return;
-			for (const accept of tlsAccept) accept.call(listener.raw, socket);
-		};
-		const peer = {
-			remoteAddress: socket.remoteAddress ?? 'unknown',
-			remotePort: socket.remotePort ?? 0,
-		};
-		void checkConnectionRateLimit(redis, peer.remoteAddress, config.submissionMaxConnectionsPerIp)
-			.then((allowed) => {
-				if (!allowed) {
-					logger.warn({ remoteIp: peer.remoteAddress }, 'Submission TLS connection rate limited');
-					socket.destroy();
-					return;
-				}
-				slots.hold(peer);
-				acceptTls();
-			})
-			.catch((err) => {
-				// Match the post-handshake limiter's fail-open posture on Redis faults.
-				logger.error({ err, remoteIp: peer.remoteAddress }, 'TLS admission rate limit failed');
-				acceptTls();
-			});
-	});
-
-	return listener;
 }
 
 /**

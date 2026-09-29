@@ -142,10 +142,11 @@ onMounted(() => {
 	startIfConnected();
 });
 
-// The existing account, for pre-filling the edit form. The connected account
-// already carries every field the form's `account` prop needs (plus a few it
-// ignores) and never includes the password — excess-property checks apply only
-// to object literals, so passing the whole object through type-checks cleanly.
+// The connected account, or null: pre-fills the edit form and names the
+// address on the ready and reconnect cards. It already carries every field the
+// form's `account` prop needs (plus a few it ignores) and never includes the
+// password — excess-property checks apply only to object literals, so passing
+// the whole object through type-checks cleanly.
 const editAccount = computed(() => (account.value?.configured ? account.value : null));
 
 // ── Re-enter credentials (the reconnect step) ───────────────────────────────
@@ -348,7 +349,9 @@ const steps = computed(() =>
 						<div>
 							<p class="font-semibold">
 								{{
-									t('dashboard.postbox.migrate.readyTitle', { email: account?.emailAddress ?? '' })
+									t('dashboard.postbox.migrate.readyTitle', {
+										email: editAccount?.emailAddress ?? '',
+									})
 								}}
 							</p>
 							<p class="text-sm text-text-secondary mt-0.5">
@@ -387,12 +390,12 @@ const steps = computed(() =>
 							<h2 class="font-semibold">
 								{{
 									t('dashboard.postbox.migrate.reconnectTitle', {
-										email: account?.emailAddress ?? '',
+										email: editAccount?.emailAddress ?? '',
 									})
 								}}
 							</h2>
 							<p class="text-sm text-text-secondary mt-0.5">
-								{{ account?.lastError ?? t('dashboard.postbox.migrate.reconnectBody') }}
+								{{ editAccount?.lastError ?? t('dashboard.postbox.migrate.reconnectBody') }}
 							</p>
 						</div>
 					</div>

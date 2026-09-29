@@ -4,6 +4,8 @@
  * Scheduled maintenance tasks for the knowledge graph:
  * - Confidence decay (per-type rates)
  * - Expiration cleanup
+ * - Dedup-merge of near-identical entries per contact
+ * - Stale backfill sweep (running backfill jobs that stopped making progress)
  *
  * Decay rates by type:
  * - Fact: slow (0.5% per day, ~90 day half-life)
@@ -27,6 +29,7 @@ import {
 	DEDUP_SIMILARITY_THRESHOLD,
 } from '../lib/knowledgeDedup';
 import { repointEdge } from './edges';
+import { failStaleRunningJobs, STALE_RUNNING_JOB_MS } from './backfillJobs';
 
 /** Decay rates per knowledge type (percentage per day) */
 const DECAY_RATES: Record<string, number> = {
@@ -73,10 +76,7 @@ export const runDecay = internalMutation({
 		const oneDayMs = 24 * 60 * 60 * 1000;
 
 		// Process in batches to avoid timeout
-		const entries = await ctx.db
-			.query('knowledgeEntries')
-			.order('asc')
-			.take(200);
+		const entries = await ctx.db.query('knowledgeEntries').order('asc').take(200);
 
 		let decayed = 0;
 		let expired = 0;
@@ -103,8 +103,7 @@ export const runDecay = internalMutation({
 					await ctx.db.delete(rel._id);
 				}
 				const drained =
-					outgoing.length < RELATION_DELETE_CAP &&
-					incoming.length < RELATION_DELETE_CAP;
+					outgoing.length < RELATION_DELETE_CAP && incoming.length < RELATION_DELETE_CAP;
 				if (drained) {
 					// Tear down the contact junction mirror before the entry so
 					// no orphan knowledgeEntryContacts rows survive it.
@@ -165,7 +164,7 @@ async function mergeEntryInto(
 	ctx: MutationCtx,
 	survivor: Doc<'knowledgeEntries'>,
 	loser: Doc<'knowledgeEntries'>,
-	now: number,
+	now: number
 ): Promise<boolean> {
 	const fromRels = await ctx.db
 		.query('knowledgeRelations')
@@ -175,7 +174,8 @@ async function mergeEntryInto(
 		.query('knowledgeRelations')
 		.withIndex('by_to', (q) => q.eq('toEntryId', loser._id))
 		.take(RELATION_REPOINT_CAP);
-	if (fromRels.length >= RELATION_REPOINT_CAP || toRels.length >= RELATION_REPOINT_CAP) return false;
+	if (fromRels.length >= RELATION_REPOINT_CAP || toRels.length >= RELATION_REPOINT_CAP)
+		return false;
 
 	// Survivor inherits the loser's content + scope + tags. Recompute
 	// `searchableText` (the FTS searchField) so folded-in content stays findable,
@@ -196,14 +196,11 @@ async function mergeEntryInto(
 	survivor.tags = mergedTags;
 
 	// Repoint the contact junction; drop a loser link the survivor already has.
-	const survivorContacts = new Set(
-		(
-			await ctx.db
-				.query('knowledgeEntryContacts')
-				.withIndex('by_entry', (q) => q.eq('entryId', survivor._id))
-				.collect() // bounded: junction rows for one entry (knowledge linked to a person)
-		).map((l) => l.contactId as string),
-	);
+	const survivorLinks = await ctx.db
+		.query('knowledgeEntryContacts')
+		.withIndex('by_entry', (q) => q.eq('entryId', survivor._id))
+		.collect(); // bounded: junction rows for one entry (knowledge linked to a person)
+	const survivorContacts = new Set(survivorLinks.map((l) => l.contactId as string));
 	const loserLinks = await ctx.db
 		.query('knowledgeEntryContacts')
 		.withIndex('by_entry', (q) => q.eq('entryId', loser._id))
@@ -260,7 +257,7 @@ export const dedupeContactEntries = internalMutation({
 		const loaded = await Promise.all(links.map((l) => ctx.db.get(l.entryId)));
 		// Only entries with a real embedding can be compared for similarity.
 		const entries = loaded.filter(
-			(e): e is Doc<'knowledgeEntries'> => e !== null && e.embedding.length > 0,
+			(e): e is Doc<'knowledgeEntries'> => e !== null && e.embedding.length > 0
 		);
 		if (entries.length < 2) return { merged: 0 };
 
@@ -307,5 +304,29 @@ export const runKnowledgeDedup = internalMutation({
 			});
 		}
 		return { scheduled: page.page.length, done: page.isDone };
+	},
+});
+
+/**
+ * Daily sweep: mark message and edge backfill jobs that are still 'running'
+ * but have not been touched for over an hour as 'failed', so the admin cards
+ * stop showing a walk that died (a thrown edge-walker mutation rolls back its
+ * own 'failed' write; a killed chunk action never reaches its catch). The
+ * first-run gate is unchanged: a failed job still counts as "ran".
+ */
+export const failStaleBackfillJobs = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		const messageJobs = await failStaleRunningJobs(
+			ctx,
+			'knowledgeBackfillJobs',
+			STALE_RUNNING_JOB_MS
+		);
+		const edgeJobs = await failStaleRunningJobs(
+			ctx,
+			'knowledgeEdgeBackfillJobs',
+			STALE_RUNNING_JOB_MS
+		);
+		return { messageJobs, edgeJobs };
 	},
 });

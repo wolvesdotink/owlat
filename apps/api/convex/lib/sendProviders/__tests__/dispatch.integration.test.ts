@@ -303,13 +303,15 @@ describe('sendProviderDispatch — per-provider retry counts', () => {
 				success: false,
 				errorMessage: 'Mandrill send timed out',
 				errorCode: EmailErrorCode.AMBIGUOUS_TIMEOUT,
-				acceptanceUnknown: true,
 			});
 
 			const out = await sendProviderDispatch(ctx as never, 'mandrill', sampleParams);
 
 			expect(sendSpy).toHaveBeenCalledTimes(1);
 			expect(out.attempts).toBe(1);
+			// The adapter only reported the timeout; dispatch marks it unknown from
+			// the catalog's `unknown-on-timeout` declaration.
+			expect(out.result).toMatchObject({ acceptanceUnknown: true });
 		} finally {
 			setRetryDelays(mandrillSendProvider, original);
 		}

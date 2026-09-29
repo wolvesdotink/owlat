@@ -44,7 +44,7 @@ import { sweepWebhookDlq } from './webhooks/dlqSweeper.js';
 import { logger } from './monitoring/logger.js';
 import { closeListenerSafely } from './lib/closeListenerSafely.js';
 import { fireAndForget } from './lib/fireAndForget.js';
-import { installCrashHandlers } from '@owlat/shared/nodeShutdown';
+import { installCrashHandlers, installShutdown, pinoShutdownLog } from '@owlat/shared/nodeShutdown';
 import { pathToFileURL } from 'node:url';
 
 export async function main() {
@@ -366,102 +366,60 @@ export async function main() {
 
 	// ── Graceful shutdown ──
 	//
-	// Matches stop_grace_period: 45s in the compose templates — we target
-	// a 40s drain so Docker's SIGKILL never fires. Idempotent: a second
-	// signal during drain is ignored.
-	//
-	// The hard-exit watchdog guarantees termination even if a subsystem
-	// (worker.close, pool.closeAll, Redis) hangs forever. The alternative
-	// — hanging past Docker's grace period — results in a SIGKILL anyway,
-	// which is strictly worse because it skips the partial cleanup that's
-	// already happened.
-	const SHUTDOWN_DEADLINE_MS = 40_000;
-	let shuttingDown = false;
+	// installShutdown stops the HTTP server, ignores a duplicate signal and holds
+	// a ref'd watchdog, so a subsystem that hangs (worker.close, pool.closeAll,
+	// Redis) ends in exit 1 at the deadline rather than in Docker's SIGKILL,
+	// which would skip the cleanup already done. 40s drain for the 45s
+	// stop_grace_period in the compose templates.
+	installShutdown({
+		server,
+		drain: async () => {
+			// Stop accepting new work
+			for (const interval of [
+				dnsblInterval,
+				ipAuditInterval,
+				fcrdnsInterval,
+				warmingInterval,
+				postmasterInterval,
+				tlsRptInterval,
+				dkimRotationInterval,
+				webhookDlqInterval,
+				suppressionSweepInterval,
+			]) {
+				clearInterval(interval);
+			}
+			bounceTlsReload.stop();
+			// Stop claiming liveness the moment we start draining.
+			stopHeartbeat();
 
-	const shutdown = async (signal: string) => {
-		if (shuttingDown) {
-			logger.warn({ signal }, 'Shutdown already in progress — ignoring duplicate signal');
-			return;
-		}
-		shuttingDown = true;
+			// SmtpListener.close() REJECTS with ERR_SERVER_NOT_RUNNING when a listener
+			// never bound, which boot tolerates (port 25 / 587 / 465 may need root).
+			// closeListenerSafely voids and logs each rejection.
+			const listeners = [
+				[bounceServer, 'Bounce server close failed'],
+				[submissionServer, 'Submission server close failed'],
+				[implicitTlsSubmissionServer, 'Implicit-TLS submission server close failed'],
+			] as const;
+			for (const [listener, message] of listeners) {
+				if (listener) closeListenerSafely(() => listener.close(), message, logger);
+			}
 
-		logger.info({ signal }, 'Shutdown signal received');
+			// Drain worker (wait for in-flight jobs)
+			try {
+				await worker.close();
+				logger.info('Worker drained');
+			} catch (err) {
+				logger.error({ err }, 'Worker drain failed');
+			}
 
-		// Last-resort hard exit if drain hangs.
-		const watchdog = setTimeout(() => {
-			logger.fatal(
-				{ deadlineMs: SHUTDOWN_DEADLINE_MS },
-				'Shutdown deadline exceeded — forcing exit'
-			);
-			process.exit(1);
-		}, SHUTDOWN_DEADLINE_MS);
-		watchdog.unref();
-
-		// Stop accepting new work
-		clearInterval(dnsblInterval);
-		clearInterval(ipAuditInterval);
-		clearInterval(fcrdnsInterval);
-		clearInterval(warmingInterval);
-		clearInterval(postmasterInterval);
-		clearInterval(tlsRptInterval);
-		clearInterval(dkimRotationInterval);
-		clearInterval(webhookDlqInterval);
-		clearInterval(suppressionSweepInterval);
-		bounceTlsReload.stop();
-		// Stop claiming liveness the moment we start draining.
-		stopHeartbeat();
-
-		// Close HTTP server
-		if (typeof server.close === 'function') {
-			server.close();
-		}
-
-		// Stop the SMTP listeners. SmtpListener.close() REJECTS with
-		// ERR_SERVER_NOT_RUNNING when a listener never bound — a state boot tolerates
-		// when startBounceServer/startSubmissionServer fails (port 25 / 587 / 465 may
-		// need root; see the warn-and-continue at boot). `closeListenerSafely` voids +
-		// logs each rejection so an un-awaited rejection can't crash the drain.
-		if (bounceServer) {
-			closeListenerSafely(() => bounceServer!.close(), 'Bounce server close failed', logger);
-		}
-		if (submissionServer) {
-			closeListenerSafely(
-				() => submissionServer!.close(),
-				'Submission server close failed',
-				logger
-			);
-		}
-		if (implicitTlsSubmissionServer) {
-			closeListenerSafely(
-				() => implicitTlsSubmissionServer!.close(),
-				'Implicit-TLS submission server close failed',
-				logger
-			);
-		}
-
-		// Drain worker (wait for in-flight jobs)
-		try {
-			await worker.close();
-			logger.info('Worker drained');
-		} catch (err) {
-			logger.error({ err }, 'Worker drain failed');
-		}
-
-		// Drain and close SMTP connection pool
-		await pool.closeAll();
-
-		// Release leadership
-		await stopLeaderElection(redis, config.serverId);
-
-		// Close Redis
-		await closeRedis();
-		logger.info('Shutdown complete');
-		clearTimeout(watchdog);
-		process.exit(0);
-	};
-
-	process.on('SIGTERM', () => shutdown('SIGTERM'));
-	process.on('SIGINT', () => shutdown('SIGINT'));
+			// Drain and close SMTP connection pool, release leadership, close Redis
+			await pool.closeAll();
+			await stopLeaderElection(redis, config.serverId);
+			await closeRedis();
+		},
+		timeoutMs: 40_000,
+		log: pinoShutdownLog(logger),
+	});
 
 	logger.info('owlat-mta fully started and ready');
 }

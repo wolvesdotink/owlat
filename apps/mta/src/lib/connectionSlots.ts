@@ -1,37 +1,18 @@
 /**
- * Per-IP connection-slot bookkeeping shared by the MX/bounce and submission
- * listeners.
+ * The per-IP connection limiter the MX/bounce and submission listeners hand to
+ * `@owlat/smtp-listener` as `admission.perIp`.
  *
- * The per-IP connection limiter (`checkConnectionRateLimit` in
- * `inboundSecurity.ts` / `submissionSecurity.ts`) increments a Redis counter for
- * every admitted connection and nets it back to zero for a rejected one, so only
- * the ADMITTED connections still hold a slot that must be released on close. This
- * tracker reconciles those held increments against socket lifetime so every kept
- * increment is released EXACTLY once. `checkConnectionRateLimit` is async, so a
- * connection can close (client RST — port scans, LB health probes do exactly
- * this) while its rate-limit round-trip is still in flight; two per-connection
- * registries handle the two possible orderings of the async check vs. the socket
- * `close` event:
- *
- *   - `live` — added on TCP accept, deleted on close. "Live" iff close hasn't run.
- *   - `held` — the connection took a slot (net +1) and still needs releasing.
- *
- * {@link SlotTracker.hold} marks `held` only if the connection is still live; if it
- * already closed, the close handler could not have released it (the key was never
- * in `held`), so it releases immediately. The close handler releases iff the slot
- * was marked. Either ordering nets exactly one release.
- *
- * The two listeners key their Redis counters under different prefixes
- * (`inboundSecurity.releaseConnection` vs `submissionSecurity.releaseConnection`),
- * so the concrete release function is injected — the reconciliation logic is the
- * only thing shared.
- *
- * The counter's own two operations — take a slot, give it back — live here too,
- * as the Lua both listeners run against their own key.
+ * The listener owns the admission flow: it counts live connections for the
+ * global cap, calls `acquire` before any hook runs, and calls `release` exactly
+ * once for every granted slot when that connection closes (including one that
+ * reset while its acquire was in flight). This module supplies only the
+ * counter: one Redis key per peer IP, shared by every MTA replica, under a
+ * listener-specific prefix (`mta:bounce:conn:` for port 25,
+ * `mta:submission:conn:` for 587 and 465).
  */
 
-import type { Socket } from 'node:net';
 import type Redis from 'ioredis';
+import { unmapIpv4 } from '@owlat/shared/ipAddress';
 
 /**
  * Take one slot on `key`, or refuse when the IP is already at its limit.
@@ -71,96 +52,55 @@ return 1
  *
  * Also one script: DECR on an already-expired key recreates it at -1 with no
  * expiry, so a DEL that faulted on the next line left exactly the untimed key
- * this pair exists to avoid — and {@link createSlotTracker} deliberately
- * swallows release failures, so nothing would have reported it.
+ * this pair exists to avoid — and the listener deliberately swallows release
+ * failures, so nothing would have reported it.
  */
 const RELEASE_SLOT_SCRIPT = `
 if redis.call('DECR', KEYS[1]) <= 0 then redis.call('DEL', KEYS[1]) end
 return 1
 `;
 
-/** Strip the IPv4-mapped IPv6 prefix so a host is keyed consistently. */
-export function normalizeSlotIp(ip: string): string {
-	return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+/** The peer identity the limiter keys on. */
+interface LimiterPeer {
+	readonly remoteAddress: string;
+}
+
+/** A per-IP connection-slot limiter over one Redis key prefix. */
+interface ConnectionLimiter {
+	/**
+	 * Take one slot for the peer's IP, or refuse (`false`) when the IP is at its
+	 * limit. Throws on a Redis fault, leaving nothing behind: the listener fails
+	 * open and owes no release, so a surviving increment would leak a slot for
+	 * the whole window.
+	 */
+	acquire(peer: LimiterPeer): Promise<boolean>;
+	/** Give back one slot taken by {@link ConnectionLimiter.acquire}. */
+	release(peer: LimiterPeer): Promise<void>;
 }
 
 /**
- * Admit or refuse one connection from `remoteIp`.
- *
- * Throws on a Redis fault, leaving nothing behind — callers fail open and
- * accept the connection WITHOUT registering a release, so a surviving
- * increment would leak a slot for the whole window.
+ * Build the limiter for one listener. Keys are `${prefix}${ip}` with an
+ * IPv4-mapped IPv6 peer unmapped, so a dual-stack socket and a v4 socket from
+ * the same host share one counter. The key names and `ttlSeconds` are part of
+ * the rolling-deploy contract: an old and a new replica must count the same
+ * keys.
  */
-export async function acquireConnectionSlot(
+export function createConnectionLimiter(
 	redis: Redis,
-	key: string,
-	maxConnectionsPerIp: number,
-	ttlSeconds: number
-): Promise<boolean> {
-	return (
-		Number(await redis.eval(ACQUIRE_SLOT_SCRIPT, 1, key, ttlSeconds, maxConnectionsPerIp)) === 1
-	);
-}
-
-/** Release one connection slot for `remoteIp`. */
-export async function releaseConnectionSlot(redis: Redis, key: string): Promise<void> {
-	await redis.eval(RELEASE_SLOT_SCRIPT, 1, key);
-}
-
-/** The minimal peer shape {@link SlotTracker.hold} reads (peer identity). */
-export interface SlotPeer {
-	remoteAddress: string;
-	remotePort: number;
-}
-
-/** Releases one slot for `remoteIp` on the listener's own Redis counter. */
-export type ReleaseSlot = (redis: Redis, remoteIp: string) => Promise<void>;
-
-/** Reconciles the per-IP connection counter's increments against socket lifetime. */
-export interface SlotTracker {
-	/** Raw-accept side: register the connection and release its slot on close. */
-	track(socket: Socket): void;
-	/** Slot-kept side: mark for release, or release now if the peer already left. */
-	hold(peer: SlotPeer): void;
-}
-
-/**
- * Per-connection key (unique while live). Both the mark side (the session, whose
- * `remoteAddress` falls back to `''`) and the release side (the raw socket, whose
- * `remoteAddress` is `string | undefined`) derive the key through this one helper
- * so they always agree for the same TCP peer.
- */
-function connectionKey(remoteAddress: string | undefined, remotePort: number | undefined): string {
-	return `${remoteAddress || 'unknown'}:${remotePort ?? 0}`;
-}
-
-export function createSlotTracker(redis: Redis, release: ReleaseSlot): SlotTracker {
-	const live = new Set<string>();
-	const held = new Set<string>();
+	prefix: string,
+	ttlSeconds: number,
+	maxPerIp: number
+): ConnectionLimiter {
+	const key = (peer: LimiterPeer): string =>
+		`${prefix}${unmapIpv4(peer.remoteAddress || 'unknown')}`;
 	return {
-		track(socket: Socket): void {
-			const remoteIp = socket.remoteAddress ?? 'unknown';
-			const key = connectionKey(socket.remoteAddress, socket.remotePort);
-			live.add(key);
-			socket.once('close', () => {
-				live.delete(key);
-				if (!held.delete(key)) return; // this connection never took a slot
-				release(redis, remoteIp).catch(() => {
-					// Non-critical: the Redis counter carries a TTL as a backstop.
-				});
-			});
+		async acquire(peer) {
+			return (
+				Number(await redis.eval(ACQUIRE_SLOT_SCRIPT, 1, key(peer), ttlSeconds, maxPerIp)) === 1
+			);
 		},
-		hold(peer: SlotPeer): void {
-			const key = connectionKey(peer.remoteAddress, peer.remotePort);
-			if (live.has(key)) {
-				held.add(key); // release on close
-				return;
-			}
-			// Closed during the in-flight rate-limit check: the increment happened but
-			// no close handler will release it (the key was never in `held`). Release now.
-			release(redis, peer.remoteAddress || 'unknown').catch(() => {
-				// Non-critical: the Redis counter carries a TTL as a backstop.
-			});
+		async release(peer) {
+			await redis.eval(RELEASE_SLOT_SCRIPT, 1, key(peer));
 		},
 	};
 }

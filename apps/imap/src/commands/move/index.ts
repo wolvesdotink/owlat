@@ -1,10 +1,9 @@
 import { fn } from '../../convex.js';
 import type { ImapCommandModule } from '../types.js';
-import { asyncSession, syncSession } from '../helpers/session.js';
-import { requireAuth, requireSelect, requireWritableSelect } from '../helpers/auth.js';
+import { asyncSession } from '../helpers/session.js';
 import { runCopyOrMove } from '../helpers/copyMove.js';
 
-export interface MoveArgs {
+interface MoveArgs {
 	readonly set: string;
 	readonly target: string;
 	readonly byUid: boolean;
@@ -19,6 +18,7 @@ export interface MoveArgs {
 export const moveModule: ImapCommandModule<MoveArgs> = {
 	verbs: ['MOVE'],
 	capabilities: ['MOVE'],
+	requires: 'writable',
 	parseArgs(rawArgs) {
 		const [set, target] = rawArgs;
 		if (!set || !target) {
@@ -27,13 +27,6 @@ export const moveModule: ImapCommandModule<MoveArgs> = {
 		return { ok: true, args: { set, target, byUid: false } };
 	},
 	start({ deps, state, args, tag, send }) {
-		const fail =
-			requireAuth(state, tag) ?? requireSelect(state, tag) ?? requireWritableSelect(state, tag);
-		if (fail) {
-			send(fail);
-			return syncSession();
-		}
-
 		const label = args.byUid ? 'UID MOVE' : 'MOVE';
 
 		return asyncSession(() =>

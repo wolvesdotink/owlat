@@ -88,6 +88,34 @@ export const autonomyFeedbackFields = {
 };
 
 /**
+ * The deterministic matcher a handling rule compiles to (see the `handlingRules`
+ * table below). Owned here, beside the table that persists it;
+ * `mail/handlingRules.ts` imports it for its mutation args.
+ */
+export const handlingRuleMatcherValidator = v.object({
+	senders: v.optional(v.array(v.string())),
+	subjectContains: v.optional(v.array(v.string())),
+	bodyContains: v.optional(v.array(v.string())),
+	categories: v.optional(v.array(v.string())),
+});
+
+/**
+ * What a matching handling rule does. Every action only RESTRICTS auto-send or
+ * forces a category (see the `handlingRules` table comment).
+ */
+export const handlingRuleActionValidator = v.object({
+	type: v.union(
+		v.literal('draft_with_stance'),
+		v.literal('categorize'),
+		v.literal('auto_archive'),
+		v.literal('always_ask'),
+		v.literal('never_auto_send')
+	),
+	stance: v.optional(v.string()),
+	category: v.optional(v.string()),
+});
+
+/**
  * Autonomy / graduated-trust tables — the safety + graduation machinery that
  * governs when the inbound agent is allowed to auto-send.
  *
@@ -250,23 +278,8 @@ export const autonomyTables = {
 	handlingRules: defineTable({
 		instruction: v.string(), // the user-authored prose (trusted)
 		isEnabled: v.boolean(),
-		matcher: v.object({
-			senders: v.optional(v.array(v.string())),
-			subjectContains: v.optional(v.array(v.string())),
-			bodyContains: v.optional(v.array(v.string())),
-			categories: v.optional(v.array(v.string())),
-		}),
-		action: v.object({
-			type: v.union(
-				v.literal('draft_with_stance'),
-				v.literal('categorize'),
-				v.literal('auto_archive'),
-				v.literal('always_ask'),
-				v.literal('never_auto_send')
-			),
-			stance: v.optional(v.string()),
-			category: v.optional(v.string()),
-		}),
+		matcher: handlingRuleMatcherValidator,
+		action: handlingRuleActionValidator,
 		// Provenance for the settings UI ("compiled by <model>").
 		compiledModel: v.optional(v.string()),
 		createdAt: v.number(),
