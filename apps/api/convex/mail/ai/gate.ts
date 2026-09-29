@@ -5,7 +5,10 @@
  * per-user rate limit, mirroring the inbound pipeline's gating.
  */
 import { v } from 'convex/values';
-import { internalMutation } from '../../_generated/server';
+import type { FunctionReturnType } from 'convex/server';
+import { api, internal } from '../../_generated/api';
+import type { Id } from '../../_generated/dataModel';
+import { internalMutation, type ActionCtx } from '../../_generated/server';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
 import { rateLimiter } from '../../lib/rateLimiter';
@@ -55,3 +58,49 @@ export const assertAiAllowed = internalMutation({
 		}
 	},
 });
+
+type ThreadMessages = FunctionReturnType<typeof api.mail.mailbox.messages.listThreadMessages>;
+
+/**
+ * Run the gate while `work` (setup the AI call needs anyway: the thread read,
+ * the model resolution, the voice profile) is already in flight, instead of one
+ * round trip after the other. The gate still decides: its verdict is awaited
+ * first, so a disabled flag, spent budget or rate limit throws its own error
+ * even when `work` failed too, and nothing `work` produced leaves the action
+ * unless the gate passed. `work` is always settled before this returns or
+ * throws, so no read is left dangling when the action ends.
+ */
+export async function gatedInParallel<T>(ctx: ActionCtx, work: Promise<T>): Promise<T> {
+	const settled = Promise.resolve(work).then(
+		(value) => ({ ok: true as const, value }),
+		(error: unknown) => ({ ok: false as const, error })
+	);
+	try {
+		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
+	} catch (gateError) {
+		await settled;
+		throw gateError;
+	}
+	const outcome = await settled;
+	if (!outcome.ok) throw outcome.error;
+	return outcome.value;
+}
+
+/**
+ * The message's thread through the same ownership-checked query the AI actions
+ * always used (null for a message the caller cannot read).
+ */
+export function readThreadMessages(
+	ctx: ActionCtx,
+	messageId: Id<'mailMessages'>
+): Promise<ThreadMessages> {
+	return ctx.runQuery(api.mail.mailbox.messages.listThreadMessages, { messageId });
+}
+
+/** {@link gatedInParallel} over {@link readThreadMessages}. */
+export function gateAndLoadThread(
+	ctx: ActionCtx,
+	messageId: Id<'mailMessages'>
+): Promise<ThreadMessages> {
+	return gatedInParallel(ctx, readThreadMessages(ctx, messageId));
+}

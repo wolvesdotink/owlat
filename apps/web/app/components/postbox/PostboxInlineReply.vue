@@ -17,13 +17,13 @@
  * .suggestReplies` action, same `use-reply` contract, and the same `ai` flag
  * gates it — with the flag off nothing renders and nothing is dispatched.
  */
-import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type {
 	ComposerPromotePayload,
 	InlineComposeKind,
 	InlineComposeSpec,
 } from '~/composables/postbox/usePostboxComposerStack';
+import { useSuggestReplies } from '~/composables/postbox/useSuggestReplies';
 
 const props = defineProps<{
 	/** Display name/address a plain Reply goes to (collapsed-line copy). */
@@ -86,15 +86,19 @@ function onPromote(payload: ComposerPromotePayload) {
 }
 
 // --- Draft reply: suggestions for the thread's latest message, revealed only
-// after you ask for them. Fail-soft — a failed dispatch just leaves the list
-// empty and the affordance in place.
-const suggestions = ref<string[]>([]);
+// after you ask for them. They stream in one by one; the option still being
+// written can't be picked yet. Fail-soft — a failed dispatch just leaves the
+// list empty and the affordance in place.
 const suggestOpen = ref(false);
-const suggestOp = useBackendOperation(api.mail.ai.assist.suggestReplies, {
+const {
+	replies: suggestions,
+	readyCount: suggestReady,
+	busy: suggestBusy,
+	run: runSuggest,
+	clear: clearSuggestions,
+} = useSuggestReplies({
 	label: () => t('components.postbox.postboxInlineReply.suggestOperation'),
-	type: 'action',
 });
-const suggestBusy = computed(() => suggestOp.isLoading.value);
 const canDraft = computed(() => props.aiEnabled === true && !!props.draftMessageId);
 
 async function toggleDraftReply() {
@@ -105,15 +109,14 @@ async function toggleDraftReply() {
 	suggestOpen.value = true;
 	const messageId = props.draftMessageId;
 	if (!messageId || suggestions.value.length > 0 || suggestBusy.value) return;
-	const res = await suggestOp.run({ messageId: messageId as Id<'mailMessages'> });
-	suggestions.value = res.ok ? res.result.replies : [];
+	await runSuggest({ messageId: messageId as Id<'mailMessages'> });
 }
 
 // A different conversation gets different suggestions, not the last one's.
 watch(
 	() => props.draftMessageId,
 	() => {
-		suggestions.value = [];
+		clearSuggestions();
 		suggestOpen.value = false;
 	}
 );
@@ -147,7 +150,8 @@ defineExpose({
 					v-for="(r, i) in suggestions"
 					:key="i"
 					type="button"
-					class="text-left text-xs px-3 py-2 rounded-lg border border-border-subtle hover:border-brand hover:bg-bg-surface max-w-xs"
+					class="text-left text-xs px-3 py-2 rounded-lg border border-border-subtle hover:border-brand hover:bg-bg-surface max-w-xs disabled:opacity-60 disabled:pointer-events-none"
+					:disabled="i >= suggestReady"
 					@click="emit('use-reply', r)"
 				>
 					{{ r }}

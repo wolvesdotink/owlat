@@ -30,7 +30,10 @@ import {
 	runLlmObject,
 	runLlmTextWithAttemptMetadata,
 	isRetriableLlmError,
+	retryAfterMs,
+	MAX_LLM_ATTEMPTS,
 } from '../dispatch';
+import { interactiveLlmPolicy } from '../retryPolicy';
 
 const fakeModel = { modelId: 'fake-model-id' } as unknown as Parameters<
 	typeof runLlmText
@@ -269,5 +272,78 @@ describe('runLlmText retry behavior', () => {
 			statusCode: 401,
 		});
 		expect(generateTextMock).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('SDK retries are off (plan 1.14)', () => {
+	it('tells the SDK not to retry: the dispatcher is the only retry loop', async () => {
+		generateTextMock.mockResolvedValueOnce({ text: 'ok', usage: undefined });
+		generateObjectMock.mockResolvedValueOnce({ object: { a: 1 }, usage: undefined });
+		await runLlmText({ model: fakeModel, prompt: 'hi' });
+		await runLlmObject({ model: fakeModel, schema: z.object({ a: z.number() }), prompt: 'x' });
+		expect(generateTextMock.mock.calls[0]?.[0]).toMatchObject({ maxRetries: 0 });
+		expect(generateObjectMock.mock.calls[0]?.[0]).toMatchObject({ maxRetries: 0 });
+	});
+
+	it('stops after `maxAttempts` (one retry on interactive paths)', async () => {
+		generateTextMock.mockRejectedValue({ statusCode: 503, message: 'overloaded' });
+		await expect(
+			runLlmText({ model: fakeModel, prompt: 'hi', maxAttempts: 2 })
+		).rejects.toMatchObject({ statusCode: 503 });
+		expect(generateTextMock).toHaveBeenCalledTimes(2);
+	}, 10_000);
+
+	it('never raises the ceiling above MAX_LLM_ATTEMPTS', async () => {
+		generateObjectMock.mockRejectedValue({ statusCode: 503, message: 'overloaded' });
+		await expect(
+			runLlmObject({ model: fakeModel, schema: z.object({}), prompt: 'x', maxAttempts: 10 })
+		).rejects.toMatchObject({ statusCode: 503 });
+		expect(generateObjectMock).toHaveBeenCalledTimes(MAX_LLM_ATTEMPTS);
+	}, 10_000);
+
+	it('a deadline cuts the backoff short and makes no further attempt', async () => {
+		generateTextMock.mockRejectedValue({
+			statusCode: 429,
+			message: 'rate limited',
+			responseHeaders: { 'retry-after': '5' },
+		});
+		const started = Date.now();
+		await expect(
+			runLlmText({ model: fakeModel, prompt: 'hi', abortSignal: AbortSignal.timeout(50) })
+		).rejects.toMatchObject({ name: 'TimeoutError' });
+		expect(Date.now() - started).toBeLessThan(2_000);
+		expect(generateTextMock).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('retryAfterMs', () => {
+	it('reads retry-after-ms, retry-after seconds and an HTTP date, capped at 10 s', () => {
+		expect(retryAfterMs({ responseHeaders: { 'retry-after-ms': '1500' } })).toBe(1500);
+		expect(retryAfterMs({ responseHeaders: { 'retry-after': '2' } })).toBe(2000);
+		expect(retryAfterMs({ responseHeaders: { 'retry-after': '600' } })).toBe(10_000);
+		const now = Date.parse('2026-09-29T10:00:00Z');
+		expect(
+			retryAfterMs({ responseHeaders: { 'retry-after': 'Tue, 29 Sep 2026 10:00:03 GMT' } }, now)
+		).toBe(3000);
+	});
+
+	it('returns undefined without a usable header', () => {
+		expect(retryAfterMs(new Error('boom'))).toBeUndefined();
+		expect(retryAfterMs({ responseHeaders: {} })).toBeUndefined();
+		expect(retryAfterMs({ responseHeaders: { 'retry-after': 'soon' } })).toBeUndefined();
+	});
+});
+
+describe('interactiveLlmPolicy', () => {
+	it('gives completions a 4 s deadline and replies a 20 s one, with one retry', () => {
+		const timeout = vi.spyOn(AbortSignal, 'timeout');
+		const completion = interactiveLlmPolicy('completion');
+		const reply = interactiveLlmPolicy('reply');
+		expect(timeout).toHaveBeenNthCalledWith(1, 4_000);
+		expect(timeout).toHaveBeenNthCalledWith(2, 20_000);
+		expect(completion.maxAttempts).toBe(2);
+		expect(reply.maxAttempts).toBe(2);
+		expect(completion.abortSignal.aborted).toBe(false);
+		timeout.mockRestore();
 	});
 });

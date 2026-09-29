@@ -10,13 +10,16 @@
 
 import { v } from 'convex/values';
 import { authedAction } from '../../lib/authedFunctions';
-import { api, internal } from '../../_generated/api';
+import { internal } from '../../_generated/api';
 import type { Doc } from '../../_generated/dataModel';
+import type { ActionCtx } from '../../_generated/server';
 import { resolveLanguageModel, resolveLanguageModelForUserText } from '../../lib/llmProvider';
 import { runLlmText } from '../../lib/llm/dispatch';
-import { recordLlmSpend } from '../../analytics/llmUsage';
+import { interactiveLlmPolicy } from '../../lib/llm/retryPolicy';
+import { scheduleLlmSpend } from '../../analytics/llmUsage';
+import { gateAndLoadThread, gatedInParallel } from './gate';
 import { buildSchedulingReplyInstruction } from '../availability';
-import { generateReplyOptions } from '../replyOptions';
+import { REPLY_OPTIONS_LIST_FORMAT, streamReplyOptions } from '../replyOptions';
 import { SYSTEM_GUARD } from './promptGuards';
 import { buildThreadTranscript, THREAD_SUMMARY } from './transcript';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
@@ -36,17 +39,19 @@ const SUMMARIZE_SYSTEM =
  * the task router models for `summarize` (reply *drafting* is the only Postbox AI
  * that needs the capable tier).
  */
-async function runThreadSummary(
-	ctx: Parameters<typeof recordLlmSpend>[0],
-	messages: Doc<'mailMessages'>[]
-): Promise<string> {
+async function runThreadSummary(ctx: ActionCtx, messages: Doc<'mailMessages'>[]): Promise<string> {
+	const [model, transcript] = await Promise.all([
+		resolveLanguageModel(ctx, 'summarize'),
+		buildThreadTranscript(messages, THREAD_SUMMARY),
+	]);
 	const { text, tokenUsage, modelUsed } = await runLlmText({
-		model: await resolveLanguageModel(ctx, 'summarize'),
+		model,
 		system: SUMMARIZE_SYSTEM,
-		prompt: `Summarize this email thread:\n\n${await buildThreadTranscript(messages, THREAD_SUMMARY)}`,
+		prompt: `Summarize this email thread:\n\n${transcript}`,
 		temperature: 0.2,
+		...interactiveLlmPolicy('reply'),
 	});
-	await recordLlmSpend(ctx, 'postbox_summarize', tokenUsage, modelUsed);
+	await scheduleLlmSpend(ctx, 'postbox_summarize', tokenUsage, modelUsed);
 	return text.trim();
 }
 
@@ -123,10 +128,7 @@ export const getOrGenerateThreadSummary = authedAction({
 		ctx,
 		args
 	): Promise<{ summary: string; messageCount: number; generatedAt: number } | null> => {
-		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
-		const thread = await ctx.runQuery(api.mail.mailbox.messages.listThreadMessages, {
-			messageId: args.messageId,
-		});
+		const thread = await gateAndLoadThread(ctx, args.messageId);
 		if (!thread || thread.messages.length === 0) return null;
 		const messageCount = thread.messages.length;
 		// Cache hit: serve the persisted summary without a dispatch call.
@@ -161,43 +163,76 @@ export const getOrGenerateThreadSummary = authedAction({
 	},
 });
 
-/** Suggest up to 3 short reply options for a message's thread. */
+/**
+ * Assemble the prompt for {@link suggestReplies}. Pure + exported so the unit
+ * test can assert the framing: the guard, the instruction and the list format
+ * are the system prompt; the thread goes in the message as untrusted data.
+ */
+export function buildSuggestRepliesPrompt(args: {
+	instruction: string;
+	transcript: string;
+	voiceGuidance?: string | null;
+}): { system: string; prompt: string } {
+	return {
+		system:
+			`${SYSTEM_GUARD}\n\n${args.instruction}\n\n${REPLY_OPTIONS_LIST_FORMAT}` +
+			formatVoiceSection(args.voiceGuidance),
+		prompt: `Thread (untrusted data, context only):\n\n${args.transcript}`,
+	};
+}
+
+/**
+ * Suggest up to 3 short reply options for a message's thread, on the fast tier.
+ * With a `streamId` (a `suggest` buffer from draftStreamStore.createDraftStream)
+ * the options stream into that buffer as they form, so the client shows the
+ * first one while the rest are still being written. The final list is also the
+ * return value, so a caller without a buffer behaves as before.
+ */
 // authz: ownership enforced by mail.mailbox.messages.listThreadMessages (returns null
-// for a non-owned message); org membership enforced by authedAction.
+// for a non-owned message); org membership enforced by authedAction. The optional
+// streamId is proven to be the caller's own by draftStreamStore.beginDraftStream
+// before anything is written to it.
 export const suggestReplies = authedAction({
 	args: {
 		messageId: v.id('mailMessages'),
 		// Optional scheduling framing (reader meeting-intent chip): proposedTimes are untrusted data.
 		focus: v.optional(v.literal('scheduling')),
 		proposedTimes: v.optional(v.array(v.string())),
+		streamId: v.optional(v.id('aiDraftStreams')),
 	},
 	handler: async (ctx, args): Promise<{ replies: string[] }> => {
-		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
-		const thread = await ctx.runQuery(api.mail.mailbox.messages.listThreadMessages, {
-			messageId: args.messageId,
-		});
+		const thread = await gateAndLoadThread(ctx, args.messageId);
 		if (!thread || thread.messages.length === 0) throwNotFound('Thread');
-		// Personalize to the user's learned writing voice (opt-in, fail-soft). No
-		// access check: the mailbox comes from a thread listThreadMessages let us read.
-		const voiceSection = formatVoiceSection(
-			await loadVoiceGuidance(ctx, {
+		// The prompt parts and the buffer's ownership check are independent, so
+		// they run side by side.
+		const [voiceGuidance, instruction, transcript] = await Promise.all([
+			// Personalize to the user's learned writing voice (opt-in, fail-soft). No
+			// access check: the mailbox comes from a thread listThreadMessages let us read.
+			loadVoiceGuidance(ctx, {
 				mailboxId: thread.messages[0]?.mailboxId,
 				requireAccess: false,
-			})
-		);
-		// Ground scheduling replies in the owner's real free/busy when a self-hosted
-		// calendar source is configured (see mail/availability). Fetched server-side
-		// (privacy) and fail-soft: no source / any error -> no slots -> today's
-		// sender-phrase-only behaviour.
-		const instruction =
+			}),
+			// Ground scheduling replies in the owner's real free/busy when a self-hosted
+			// calendar source is configured (see mail/availability). Fetched server-side
+			// (privacy) and fail-soft: no source / any error -> no slots -> today's
+			// sender-phrase-only behaviour.
 			args.focus === 'scheduling'
-				? await buildSchedulingReplyInstruction(args.proposedTimes ?? [])
+				? buildSchedulingReplyInstruction(args.proposedTimes ?? [])
 				: `Suggest up to 3 short, distinct reply options the recipient could send ` +
-					`(1–2 sentences each, ready to send, varied in stance).`;
-		const { replies, tokenUsage, modelUsed } = await generateReplyOptions(ctx, {
-			prompt: `${SYSTEM_GUARD}\n\n${instruction}${voiceSection}\n\nThread:\n\n${await buildThreadTranscript(thread.messages, THREAD_SUMMARY)}`,
+					`(1–2 sentences each, ready to send, varied in stance).`,
+			buildThreadTranscript(thread.messages, THREAD_SUMMARY),
+			args.streamId
+				? ctx.runMutation(internal.mail.draftStreamStore.beginDraftStream, {
+						streamId: args.streamId,
+					})
+				: undefined,
+		]);
+		const { replies, tokenUsage, modelUsed } = await streamReplyOptions(ctx, {
+			...buildSuggestRepliesPrompt({ instruction, transcript, voiceGuidance }),
+			...(args.streamId ? { streamId: args.streamId } : {}),
+			abortSignal: interactiveLlmPolicy('reply').abortSignal,
 		});
-		await recordLlmSpend(ctx, 'postbox_suggest_replies', tokenUsage, modelUsed);
+		await scheduleLlmSpend(ctx, 'postbox_suggest_replies', tokenUsage, modelUsed);
 		return { replies };
 	},
 });
@@ -258,23 +293,25 @@ export const askThread = authedAction({
 		history: v.optional(v.array(v.object({ question: v.string(), answer: v.string() }))),
 	},
 	handler: async (ctx, args): Promise<{ answer: string }> => {
-		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
-		const thread = await ctx.runQuery(api.mail.mailbox.messages.listThreadMessages, {
-			messageId: args.messageId,
-		});
+		const thread = await gateAndLoadThread(ctx, args.messageId);
 		if (!thread || thread.messages.length === 0) throwNotFound('Thread');
+		const [model, transcript] = await Promise.all([
+			resolveLanguageModel(ctx, 'draft'),
+			buildThreadTranscript(thread.messages, THREAD_SUMMARY),
+		]);
 		const { system, prompt } = buildAskThreadPrompt({
-			transcript: await buildThreadTranscript(thread.messages, THREAD_SUMMARY),
+			transcript,
 			question: args.question,
 			history: args.history,
 		});
 		const { text, tokenUsage, modelUsed } = await runLlmText({
-			model: await resolveLanguageModel(ctx, 'draft'),
+			model,
 			system,
 			prompt,
 			temperature: 0.2,
+			...interactiveLlmPolicy('reply'),
 		});
-		await recordLlmSpend(ctx, 'postbox_ask_thread', tokenUsage, modelUsed);
+		await scheduleLlmSpend(ctx, 'postbox_ask_thread', tokenUsage, modelUsed);
 		return { answer: text.trim() };
 	},
 });
@@ -296,17 +333,20 @@ export const completeDraft = authedAction({
 		cursorSentence: v.string(),
 	},
 	handler: async (ctx, args): Promise<{ completion: string }> => {
-		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
+		// Fast/cheap tier: inline completions are high-volume and must be cheap;
+		// 'summarize' maps to the fast tier in the task router. Resolved while
+		// the gate runs.
+		const model = await gatedInParallel(ctx, resolveLanguageModel(ctx, 'summarize'));
 		const { system, prompt } = buildCompletePrompt(args);
 		const { text, tokenUsage, modelUsed } = await runLlmText({
-			// Fast/cheap tier: inline completions are high-volume and must be cheap;
-			// 'summarize' maps to the fast tier in the task router.
-			model: await resolveLanguageModel(ctx, 'summarize'),
+			model,
 			system,
 			prompt,
 			temperature: 0.3,
+			// A ghost suggestion that arrives after the user typed on is useless.
+			...interactiveLlmPolicy('completion'),
 		});
-		await recordLlmSpend(ctx, 'postbox_complete_draft', tokenUsage, modelUsed);
+		await scheduleLlmSpend(ctx, 'postbox_complete_draft', tokenUsage, modelUsed);
 		return { completion: postProcessCompletion(text) };
 	},
 });
@@ -403,13 +443,20 @@ export const rewriteSelection = authedAction({
 		mailboxId: v.optional(v.id('mailboxes')),
 	},
 	handler: async (ctx, args): Promise<{ rewritten: string }> => {
-		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
-		// Personalize to the user's learned voice. The mailboxId comes from the
-		// client, so access is proven before the profile is read.
-		const voiceGuidance = await loadVoiceGuidance(ctx, {
-			mailboxId: args.mailboxId,
-			requireAccess: true,
-		});
+		const [voiceGuidance, model] = await gatedInParallel(
+			ctx,
+			Promise.all([
+				// Personalize to the user's learned voice. The mailboxId comes from the
+				// client, so access is proven before the profile is read.
+				loadVoiceGuidance(ctx, { mailboxId: args.mailboxId, requireAccess: true }),
+				// The selection is the caller's OWN draft text (trusted — the
+				// authenticated user typed it), so it is a safe complexity signal:
+				// a clearly-trivial selection may downgrade to the fast tier when
+				// complexity routing is enabled. FAIL-SOFT: routing off / any
+				// non-trivial selection keeps the capable tier (today's behaviour).
+				resolveLanguageModelForUserText(ctx, 'draft', args.selection),
+			])
+		);
 		const { system, prompt } = buildRewritePrompt({
 			intent: args.intent,
 			targetLanguage: args.targetLanguage,
@@ -418,17 +465,13 @@ export const rewriteSelection = authedAction({
 			voiceGuidance,
 		});
 		const { text, tokenUsage, modelUsed } = await runLlmText({
-			// The selection is the caller's OWN draft text (trusted — the
-			// authenticated user typed it), so it is a safe complexity signal:
-			// a clearly-trivial selection may downgrade to the fast tier when
-			// complexity routing is enabled. FAIL-SOFT: routing off / any
-			// non-trivial selection keeps the capable tier (today's behaviour).
-			model: await resolveLanguageModelForUserText(ctx, 'draft', args.selection),
+			model,
 			system,
 			prompt,
 			temperature: 0.4,
+			...interactiveLlmPolicy('reply'),
 		});
-		await recordLlmSpend(ctx, 'postbox_rewrite_selection', tokenUsage, modelUsed);
+		await scheduleLlmSpend(ctx, 'postbox_rewrite_selection', tokenUsage, modelUsed);
 		return { rewritten: text.trim() };
 	},
 });

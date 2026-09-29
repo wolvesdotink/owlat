@@ -7,6 +7,7 @@ import TaskCardRenderer from '~/components/agent-tasks/TaskCardRenderer.vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
 import type { ReplyQuoteTarget } from '~/composables/postbox/usePostboxQuotedText';
+import { useSuggestReplies } from '~/composables/postbox/useSuggestReplies';
 import { isBuiltInTaskFlowKind } from '~/utils/taskCardRegistry';
 import { resolveReplyFocusKey } from '~/utils/taskFlowKeyboard';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
@@ -73,9 +74,9 @@ const moveOp = useBackendOperation(api.mail.messageActions.move, {
 const snoozeOp = useBackendOperation(api.mail.snooze.snooze, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.snooze'),
 });
-const suggestOp = useBackendOperation(api.mail.ai.assist.suggestReplies, {
+// Only the first option is used, so the composer opens as soon as it is final.
+const suggest = useSuggestReplies({
 	label: () => t('components.postbox.postboxReplyFlow.operations.draftReply'),
-	type: 'action',
 });
 const answerOp = useBackendOperation(api.mail.ai.needsReplyClarify.answerClarification, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.answer'),
@@ -122,11 +123,9 @@ async function draftReply() {
 	if (busy.value) return;
 	busy.value = true;
 	try {
-		let suggestion = '';
-		if (aiEnabled.value) {
-			const res = await suggestOp.run({ messageId: props.row.messageId as Id<'mailMessages'> });
-			suggestion = res.ok ? (res.result.replies[0] ?? '') : '';
-		}
+		const suggestion = aiEnabled.value
+			? await suggest.first({ messageId: props.row.messageId as Id<'mailMessages'> })
+			: '';
 		await openReplyComposer(suggestion);
 		props.controls.complete('replied');
 	} finally {
