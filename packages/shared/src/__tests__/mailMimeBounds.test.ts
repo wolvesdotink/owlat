@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { parseMessage, MAX_MIME_PARTS } from '@owlat/mail-message';
-import { extractAttachments, extractAttachmentAt, extractFirstPartByType } from '../mailMime';
+import {
+	extractAttachments,
+	extractAttachmentsWithBounds,
+	extractAttachmentAt,
+	extractFirstPartByType,
+} from '../mailMime';
 
 /**
  * `mailMime` is a thin adapter over the bounded `@owlat/mail-message` walker
@@ -111,6 +116,16 @@ describe('mailMime bounds', () => {
 		const { value, ms } = timed(() => extractAttachments(raw));
 		expect(ms).toBeLessThan(TIME_BUDGET_MS);
 		expect(value.map((a) => a.filename)).toEqual(['pad.txt', 'after.txt']);
+	});
+
+	it('reports when the bounds left attachment leaves out', () => {
+		expect(extractAttachmentsWithBounds(wide(MAX_MIME_PARTS)).truncated).toBe(false);
+		const past = extractAttachmentsWithBounds(wide(MAX_MIME_PARTS + 1));
+		expect(past.truncated).toBe(true);
+		expect(past.attachments).toHaveLength(MAX_MIME_PARTS);
+		const deep = extractAttachmentsWithBounds(deeplyNested(101));
+		expect(deep).toEqual({ attachments: [], truncated: true });
+		expect(extractAttachmentsWithBounds(deeplyNested(100)).attachments).toHaveLength(1);
 	});
 
 	it('returns the same attachment order as the writers past 1,000 parts', () => {

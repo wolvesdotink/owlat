@@ -21,6 +21,7 @@
 import { decodeEncodedWords } from '@owlat/mail-message/parse/headers';
 import {
 	parseMimeTree,
+	parseMimeTreeWithBounds,
 	walkLeaves,
 	isAttachmentPart,
 	partFilename,
@@ -53,13 +54,34 @@ function toExtracted(leaf: MimeNode, fallbackName: string): ExtractedAttachment 
 	};
 }
 
+/** The attachment leaves of a raw message and whether the walk was cut short. */
+export interface AttachmentExtraction {
+	attachments: ExtractedAttachment[];
+	/**
+	 * The walker's depth or part bound left content out, so `attachments` may
+	 * be missing leaves that a mail client would still show. A caller that
+	 * vouches for the whole message (the inbound malware scan) must not treat
+	 * the list as complete.
+	 */
+	truncated: boolean;
+}
+
+/**
+ * {@link extractAttachments}, also reporting whether the walker's bounds cut
+ * any content off.
+ */
+export function extractAttachmentsWithBounds(rawEml: string): AttachmentExtraction {
+	const { root, truncated } = parseMimeTreeWithBounds(rawEml);
+	const attachments: ExtractedAttachment[] = [];
+	walkLeaves(root, (leaf) => {
+		if (isAttachmentPart(leaf)) attachments.push(toExtracted(leaf, 'attachment'));
+	});
+	return { attachments, truncated };
+}
+
 /** All attachment leaves of a raw message, in document order. */
 export function extractAttachments(rawEml: string): ExtractedAttachment[] {
-	const out: ExtractedAttachment[] = [];
-	walkLeaves(parseMimeTree(rawEml), (leaf) => {
-		if (isAttachmentPart(leaf)) out.push(toExtracted(leaf, 'attachment'));
-	});
-	return out;
+	return extractAttachmentsWithBounds(rawEml).attachments;
 }
 
 /**

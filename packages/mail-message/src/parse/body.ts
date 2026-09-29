@@ -131,6 +131,8 @@ function* splitMultipart(body: string, boundary: string): Generator<string, void
 /** Shared breadth budget threaded through every recursive branch. */
 interface MimeParseBudget {
 	remainingParts: number;
+	/** Set once any content was left out because a bound was reached. */
+	truncated: boolean;
 }
 
 /**
@@ -165,7 +167,7 @@ function parseMimeNode(
 	const children: MimeNode[] = [];
 	let isMultipart = false;
 
-	if (contentType.value.startsWith('multipart/') && depth < MAX_DEPTH) {
+	if (contentType.value.startsWith('multipart/')) {
 		// Gate on the `multipart/` PREFIX, not `type === 'multipart'`: `value` is
 		// the Content-Type up to the first `;`, trimmed and lowercased, so a
 		// slashless `Content-Type: multipart` is NOT a container and stays a leaf.
@@ -175,12 +177,22 @@ function parseMimeNode(
 		// no-semicolon `multipart/mixed boundary="B"` is still a multipart with
 		// indexed parts, which keeps the stored partIndex numbering stable.
 		const boundary = getRawParam(headers.last('content-type'), 'boundary');
-		if (boundary !== undefined && boundary !== '') {
+		if (boundary !== undefined && boundary !== '' && depth >= MAX_DEPTH) {
+			// A container at the depth bound stays a childless leaf. Its parts are
+			// never looked at, so record that the tree is incomplete.
+			budget.truncated = true;
+		} else if (boundary !== undefined && boundary !== '') {
 			isMultipart = true;
 			const parts = splitMultipart(body, boundary);
-			while (budget.remainingParts > 0) {
+			for (;;) {
 				// Pull lazily only while budget remains, so the unsplit remainder is never
-				// scanned or collected into an intermediate parts array.
+				// collected into an intermediate parts array. Once the budget is spent,
+				// pull at most one more segment (and only until the first one is found
+				// anywhere in the tree) to learn whether any part was left out.
+				if (budget.remainingParts <= 0) {
+					if (!budget.truncated && !parts.next().done) budget.truncated = true;
+					break;
+				}
 				const next = parts.next();
 				if (next.done) break;
 				budget.remainingParts--;
@@ -204,7 +216,29 @@ function parseMimeNode(
  * starts one fresh global part budget shared by all recursive branches.
  */
 export function parseMimeTree(raw: string, depth = 0, nested = false): MimeNode {
-	return parseMimeNode(raw, depth, nested, { remainingParts: MAX_MIME_PARTS });
+	return parseMimeTreeWithBounds(raw, depth, nested).root;
+}
+
+/** A bounded MIME tree plus whether the bounds left any content out of it. */
+export interface BoundedMimeTree {
+	root: MimeNode;
+	/**
+	 * `true` when the part budget ran out with parts still unparsed, or a
+	 * `multipart/*` container with a boundary sat at the depth bound. Leaves in
+	 * the omitted content are absent from {@link walkLeaves}, so a consumer that
+	 * vouches for the whole message (a malware scan) must treat it as incomplete.
+	 */
+	truncated: boolean;
+}
+
+/**
+ * {@link parseMimeTree}, also reporting whether {@link MAX_DEPTH} or
+ * {@link MAX_MIME_PARTS} cut any content off. The tree is identical.
+ */
+export function parseMimeTreeWithBounds(raw: string, depth = 0, nested = false): BoundedMimeTree {
+	const budget: MimeParseBudget = { remainingParts: MAX_MIME_PARTS, truncated: false };
+	const root = parseMimeNode(raw, depth, nested, budget);
+	return { root, truncated: budget.truncated };
 }
 
 /**
