@@ -39,7 +39,7 @@ import { internal } from '../_generated/api';
 import { publicQuery } from '../lib/authedFunctions';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { cancelLatestJob, createCappedJob, latestJob } from './backfillJobs';
-import { knowledgeAdminMutation, resolveKnowledgeViewer } from './graph';
+import { knowledgeAdminMutation, resolveKnowledgeViewer } from './visibility';
 
 /**
  * Entries paged — and `inferRelations` actions scheduled — per self-rescheduled

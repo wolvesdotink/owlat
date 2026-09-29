@@ -616,6 +616,7 @@ import type * as knowledge_maintenance from '../knowledge/maintenance.js';
 import type * as knowledge_messageBackfill from '../knowledge/messageBackfill.js';
 import type * as knowledge_relationDecay from '../knowledge/relationDecay.js';
 import type * as knowledge_retrieval from '../knowledge/retrieval.js';
+import type * as knowledge_visibility from '../knowledge/visibility.js';
 import type * as lib_readBody from '../lib/readBody.js';
 import type * as lib_adminRequests from '../lib/adminRequests.js';
 import type * as lib_aiNotConfigured from '../lib/aiNotConfigured.js';
@@ -1870,6 +1871,7 @@ declare const fullApi: ApiFromModules<{
 	'knowledge/messageBackfill': typeof knowledge_messageBackfill;
 	'knowledge/relationDecay': typeof knowledge_relationDecay;
 	'knowledge/retrieval': typeof knowledge_retrieval;
+	'knowledge/visibility': typeof knowledge_visibility;
 	'lib/readBody': typeof lib_readBody;
 	'lib/adminRequests': typeof lib_adminRequests;
 	'lib/aiNotConfigured': typeof lib_aiNotConfigured;

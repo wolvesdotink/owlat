@@ -37,7 +37,7 @@ import { publicQuery } from '../lib/authedFunctions';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { clamp } from '../lib/graphAnalyticsCompute';
 import { batchGet } from '../_utils/batchLoader';
-import { isKnowledgeEntryVisible, resolveKnowledgeViewer } from './graph';
+import { isKnowledgeEntryVisible, resolveKnowledgeViewer } from './visibility';
 
 /** Bounded BFS limits for the member subgraph viewer. */
 const SUBGRAPH_MAX_NODES = 60;

@@ -232,7 +232,7 @@ Gated families and their builders:
 | `campaigns`                  | `campaignsQuery`, `campaignsMutation`                                    | `campaigns/_helpers.ts`            |
 | `automations`                | `automationsQuery`, `automationsMutation`                                | `automations/_helpers.ts`          |
 | `forms`                      | `formsQuery`, `formsMutation`                                            | `forms/_helpers.ts`                |
-| `ai.knowledge`               | `knowledgeMutation`, `knowledgeAdminMutation`                            | `knowledge/graph.ts`               |
+| `ai.knowledge`               | `knowledgeMutation`, `knowledgeAdminMutation`                            | `knowledge/visibility.ts`          |
 
 The knowledge soft-auth reads apply `ai.knowledge` through
 `resolveKnowledgeViewer` (they return empty rather than throw). The one
