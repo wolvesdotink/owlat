@@ -105,6 +105,7 @@ const threadListStub = {
 		mailboxId: { type: String, default: undefined },
 		selectable: { type: Boolean, default: false },
 		activeMessageId: { type: String, default: undefined },
+		scrollParent: { type: Object, default: null },
 	},
 	emits: ['select', 'load-more'],
 	template:
@@ -253,6 +254,24 @@ describe('PostboxTodayView', () => {
 		await showPast!.trigger('click');
 		expect(w.find('.thread-list').attributes('data-count')).toBe('2');
 		expect(w.text()).toContain('Past');
+	});
+
+	it('hands both lists the column scroller, so the past list windows and auto-loads', async () => {
+		// The lists sit in auto-height boxes that never scroll; without the
+		// column's scroller they would mount every loaded row and never see the
+		// scroll that triggers the next page.
+		feed.messages.value = [
+			todayMsg('m-new'),
+			todayMsg('m-old', { receivedAt: Date.now() - 8 * 86_400_000, flagSeen: true }),
+		];
+		queue.items.value = [];
+		const w = mountView();
+		const showPast = w.findAll('button').find((b) => b.text().includes('Show past mails'));
+		await showPast!.trigger('click');
+		await nextTick();
+		const lists = w.findAllComponents(threadListStub);
+		expect(lists).toHaveLength(2);
+		for (const list of lists) expect(list.props('scrollParent')).toBe(w.element);
 	});
 
 	it('opens a selected row in the centered overlay, keeping the list mounted', async () => {

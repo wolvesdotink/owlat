@@ -181,6 +181,11 @@ function forYouAction(item: ReplyQueueItem): string {
 	return t('components.postbox.postboxTodayView.answer');
 }
 
+// The column scrolls as one: both lists sit in auto-height boxes inside it, so
+// they window and auto-load against this scroller, not their own boxes (which
+// never scroll and would mount every loaded row).
+const scrollHost = ref<HTMLElement | null>(null);
+
 // Older mail stays one interaction away: collapsed behind the centered
 // affordance, expanded inline with the same rows + pagination.
 const showPast = ref(false);
@@ -249,7 +254,7 @@ function onModeSelect(mode: PostboxInboxMode) {
 </script>
 
 <template>
-	<div class="flex-1 overflow-y-auto bg-bg-base">
+	<div ref="scrollHost" class="flex-1 overflow-y-auto bg-bg-base">
 		<div class="max-w-xl mx-auto px-4 py-8 flex flex-col gap-8">
 			<!-- Minimal header: the count + the two-way switch to the full UI. The
 			     same control the browse list header carries, so the two surfaces
@@ -338,6 +343,7 @@ function onModeSelect(mode: PostboxInboxMode) {
 						:messages="todayRows"
 						:loading="false"
 						folder-role="inbox"
+						:scroll-parent="scrollHost"
 						selectable
 						:active-message-id="openMessageId"
 						@select="openMessageId = $event"
@@ -384,6 +390,7 @@ function onModeSelect(mode: PostboxInboxMode) {
 							:messages="olderRows"
 							:loading="isLoading"
 							folder-role="inbox"
+							:scroll-parent="scrollHost"
 							:has-more="hasMore"
 							selectable
 							:active-message-id="openMessageId"

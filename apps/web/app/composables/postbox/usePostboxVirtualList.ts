@@ -12,6 +12,7 @@
  * unit-testable without a DOM.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue';
+import { measureListOffset, observeViewport } from './usePostboxScrollHost';
 
 export interface VirtualRange {
 	/** First row index to render (inclusive). */
@@ -282,55 +283,85 @@ export function useRememberedScroll(opts: {
 
 /**
  * The scroll container's live geometry: `scrollTop` synced from the element's
- * scroll events and `clientHeight` re-measured through a ResizeObserver.
- * Shared by the flat and the sectioned wrappers below — the plumbing is the
- * same, only the range math differs.
+ * scroll events and `clientHeight` re-measured through a ResizeObserver (or
+ * the window's `resize` when the document itself scrolls). Shared by the flat
+ * and the sectioned wrappers below — the plumbing is the same, only the range
+ * math differs.
+ *
+ * With a `listEl`, the scroll container is an OUTER scroller the list sits
+ * inside (the Today column, the page itself), and `listOffset` tracks where
+ * the list's first row sits in that scroller's content. It is re-read on every
+ * synced scroll frame, on resize and when the list element changes; content
+ * above the list that changes height between scrolls leaves it briefly stale,
+ * which the overscan absorbs until the next frame corrects it.
  */
-function useScrollMetrics(scrollEl: Ref<HTMLElement | null>) {
+function useScrollMetrics(scrollEl: Ref<HTMLElement | null>, listEl?: Ref<HTMLElement | null>) {
 	const scrollTop = ref(0);
 	const viewportHeight = ref(0);
+	const listOffset = ref(0);
 
+	function measureOffset() {
+		const el = scrollEl.value;
+		const list = listEl?.value;
+		listOffset.value = el && list ? measureListOffset(el, list) : 0;
+	}
 	function syncScroll() {
 		const el = scrollEl.value;
-		if (el) scrollTop.value = el.scrollTop;
+		if (!el) return;
+		scrollTop.value = el.scrollTop;
+		if (listEl) measureOffset();
 	}
 	function measure() {
 		const el = scrollEl.value;
 		if (el) viewportHeight.value = el.clientHeight;
+		if (listEl) measureOffset();
 	}
 
-	let ro: ResizeObserver | undefined;
-	onMounted(() => {
-		const el = scrollEl.value;
+	// The container can arrive after mount (an outer scroller handed down as a
+	// prop resolves one render later), so attach follows the ref, not just mount.
+	let attached: HTMLElement | null = null;
+	let detach: (() => void) | undefined;
+	function attach(el: HTMLElement | null) {
+		if (el !== attached) {
+			detach?.();
+			detach = el ? observeViewport(el, measure) : undefined;
+			attached = el;
+		}
 		if (!el) return;
 		measure();
 		scrollTop.value = el.scrollTop;
-		if (typeof ResizeObserver !== 'undefined') {
-			ro = new ResizeObserver(() => measure());
-			ro.observe(el);
-		}
-	});
-	onBeforeUnmount(() => {
-		ro?.disconnect();
-	});
+	}
+	onMounted(() => attach(scrollEl.value));
+	watch(scrollEl, (el) => attach(el), { flush: 'post' });
+	if (listEl) watch(listEl, () => measure(), { flush: 'post' });
+	onBeforeUnmount(() => detach?.());
 
-	return { scrollTop, viewportHeight, syncScroll, measure };
+	return { scrollTop, viewportHeight, listOffset, syncScroll, measure };
 }
 
 /**
  * Reactive wrapper: tracks the scroll container's scrollTop + viewport height
  * and derives the render window. When `enabled` is false (small folders) it
  * returns the full range so the caller renders every row unchanged.
+ *
+ * Pass `listEl` when `scrollEl` is an outer scroller rather than the list's
+ * own box: the window is then derived from the part of the scroller the list
+ * occupies (see useScrollMetrics). The caller wires the outer scroller's
+ * scroll event (usePostboxScrollEvent) — the list's own `@scroll` never fires.
  */
 export function usePostboxVirtualList(opts: {
 	scrollEl: Ref<HTMLElement | null>;
+	listEl?: Ref<HTMLElement | null>;
 	itemCount: Ref<number>;
 	rowHeight: Ref<number>;
 	enabled: Ref<boolean>;
 	overscan?: number;
 }) {
 	const overscan = opts.overscan ?? 10;
-	const { scrollTop, viewportHeight, syncScroll, measure } = useScrollMetrics(opts.scrollEl);
+	const { scrollTop, viewportHeight, listOffset, syncScroll, measure } = useScrollMetrics(
+		opts.scrollEl,
+		opts.listEl
+	);
 
 	const range = computed<VirtualRange>(() => {
 		if (!opts.enabled.value) {
@@ -342,7 +373,7 @@ export function usePostboxVirtualList(opts: {
 			};
 		}
 		return computeVirtualRange({
-			scrollTop: scrollTop.value,
+			scrollTop: scrollTop.value - listOffset.value,
 			viewportHeight: viewportHeight.value,
 			rowHeight: opts.rowHeight.value,
 			itemCount: opts.itemCount.value,
@@ -354,12 +385,15 @@ export function usePostboxVirtualList(opts: {
 	function scrollToIndex(index: number) {
 		const el = opts.scrollEl.value;
 		if (!el) return;
-		const next = scrollTopToRevealIndex({
-			index,
-			rowHeight: opts.rowHeight.value,
-			scrollTop: el.scrollTop,
-			viewportHeight: el.clientHeight,
-		});
+		const offset = listOffset.value;
+		const next =
+			offset +
+			scrollTopToRevealIndex({
+				index,
+				rowHeight: opts.rowHeight.value,
+				scrollTop: el.scrollTop - offset,
+				viewportHeight: el.clientHeight,
+			});
 		if (next !== el.scrollTop) {
 			el.scrollTop = next;
 			scrollTop.value = next;
