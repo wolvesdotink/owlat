@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import { internalMutation, internalQuery } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { WEBHOOK_RETRY_DELAYS_MS } from '../lib/constants';
+import { isFeatureEnabled } from '../lib/featureFlags';
 import { webhookPayloadValidator } from '../lib/convexValidators';
 import { subscribableWebhookEventValidator, webhookEventValidator } from './events';
 import {
@@ -25,6 +26,7 @@ export const enqueueFanoutDeliveries = internalMutation({
 		payload: webhookPayloadValidator,
 	},
 	handler: async (ctx, args) => {
+		if (!(await isFeatureEnabled(ctx, 'webhooks'))) return [];
 		const webhooks = await ctx.db
 			.query('webhooks')
 			.withIndex('by_active', (q) => q.eq('isActive', true))
@@ -57,6 +59,7 @@ export const enqueueDelivery = internalMutation({
 	handler: async (ctx, args) => {
 		const webhook = await ctx.db.get(args.webhookId);
 		if (!webhook) return null;
+		if (!(await isFeatureEnabled(ctx, 'webhooks'))) return null;
 		return await enqueueWebhookDelivery(ctx, args);
 	},
 });
@@ -105,8 +108,13 @@ export const claimDeliveryAttempt = internalMutation({
 			return { kind: 'skip', reason: 'Attempt already claimed' };
 
 		const webhook = await ctx.db.get(log.webhookId);
-		if (!webhook || !webhook.isActive) {
-			const errorMessage = webhook ? 'Webhook is disabled' : 'Webhook not found';
+		const featureOn = await isFeatureEnabled(ctx, 'webhooks');
+		if (!webhook || !webhook.isActive || !featureOn) {
+			const errorMessage = !webhook
+				? 'Webhook not found'
+				: !webhook.isActive
+					? 'Webhook is disabled'
+					: 'Outbound webhooks are turned off';
 			await finishDelivery(ctx, log._id, { status: 'failed', errorMessage });
 			return { kind: 'skip', reason: errorMessage };
 		}
@@ -206,6 +214,7 @@ function isLegacyOpenRow(
 export const getWebhooksForEvent = internalQuery({
 	args: { event: subscribableWebhookEventValidator },
 	handler: async (ctx, args) => {
+		if (!(await isFeatureEnabled(ctx, 'webhooks'))) return [];
 		const webhooks = await ctx.db
 			.query('webhooks')
 			.withIndex('by_active', (q) => q.eq('isActive', true))

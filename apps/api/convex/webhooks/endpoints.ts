@@ -60,12 +60,15 @@ function assertValidWebhookUrl(url: string): void {
 
 // ============ QUERIES ============
 
-// Feature-flag contract: the 'webhooks' flag is a product/UI gate, not an
-// authorization boundary. It is asserted on the list entry point below (so a
-// disabled instance shows no webhook UI) and reinforced by the web layer's
-// path-derived feature gate. The CRUD mutations in this file are gated by
-// organization:manage (admin/owner) regardless of the flag and intentionally do
-// not re-assert it — authorization, not the product flag, is the security gate.
+// Feature-flag contract: the 'webhooks' flag is not an authorization boundary.
+// It is asserted on the list entry point below (so a disabled instance shows no
+// webhook UI) and reinforced by the web layer's path-derived feature gate. The
+// CRUD mutations in this file are gated by organization:manage (admin/owner)
+// regardless of the flag and intentionally do not re-assert it: authorization,
+// not the product flag, is the security gate. Delivery DOES follow the flag
+// (`deliveryQueries.ts`): while it is off nothing is enqueued and a queued
+// attempt ends unsent, so turning the feature off stops outbound traffic even
+// though the endpoint list is no longer visible to switch rows off one by one.
 /**
  * List all webhooks
  */
