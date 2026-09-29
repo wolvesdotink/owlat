@@ -22,6 +22,7 @@
 import type { RampPreset } from '@owlat/shared/deliverabilityIndependence';
 import type { DeliverabilityStream } from '@owlat/shared/deliverabilityRouting';
 import { RAMP_PRESET_OPTIONS, streamLabel } from '~/utils/deliverabilityRamp';
+import { useLocalized } from '~/composables/useLocalized';
 
 const props = defineProps<{
 	// The closed stream union, not `string`: a typo in a caller's stream name is a
@@ -50,10 +51,7 @@ const { t } = useI18n();
  * plain string is still accepted so a value with nothing to translate reads as
  * itself.
  */
-type LocalizedText = string | { key: string; params?: Record<string, unknown> };
-function localized(value: LocalizedText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const localized = useLocalized();
 
 const defaultLabel = computed(() => {
 	const option = RAMP_PRESET_OPTIONS.find((entry) => entry.value === props.defaultPreset);

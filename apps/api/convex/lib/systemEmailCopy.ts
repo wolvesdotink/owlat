@@ -17,12 +17,14 @@
  * `docs/ux-plan/DEFERRALS.md`.
  */
 
-/** The interface languages this product ships. */
-export type SystemEmailLocale = 'en' | 'de';
+import { APP_LOCALE_BCP47, isAppLocale, type AppLocale } from '@owlat/shared/appLocales';
 
-/** `en` when the profile has no preference, which is the pre-existing behaviour. */
-export function systemEmailLocale(locale: string | undefined): SystemEmailLocale {
-	return locale === 'de' ? 'de' : 'en';
+/**
+ * `en` when the profile has no preference (the pre-existing behaviour) or a
+ * code this product does not ship; otherwise the recipient's own language.
+ */
+export function systemEmailLocale(locale: string | undefined): AppLocale {
+	return isAppLocale(locale) ? locale : 'en';
 }
 
 /** The sentences one system email is built from. */
@@ -43,7 +45,7 @@ export interface DeletionEmailCopy {
 	footer: string;
 }
 
-const DELETION_EMAIL: Record<SystemEmailLocale, DeletionEmailCopy> = {
+const DELETION_EMAIL: Record<AppLocale, DeletionEmailCopy> = {
 	en: {
 		subject: 'Your Owlat Account Deletion Request',
 		title: 'Account Deletion Request Confirmed',
@@ -101,7 +103,7 @@ const DELETION_EMAIL: Record<SystemEmailLocale, DeletionEmailCopy> = {
 	},
 };
 
-export function deletionEmailCopy(locale: SystemEmailLocale): DeletionEmailCopy {
+export function deletionEmailCopy(locale: AppLocale): DeletionEmailCopy {
 	return DELETION_EMAIL[locale];
 }
 
@@ -113,7 +115,7 @@ interface DailyBriefEmailCopy {
 	bundledLine: (total: number) => string;
 }
 
-const DAILY_BRIEF_EMAIL: Record<SystemEmailLocale, DailyBriefEmailCopy> = {
+const DAILY_BRIEF_EMAIL: Record<AppLocale, DailyBriefEmailCopy> = {
 	en: {
 		subject: (count) =>
 			count === 1
@@ -140,7 +142,7 @@ const DAILY_BRIEF_EMAIL: Record<SystemEmailLocale, DailyBriefEmailCopy> = {
 	},
 };
 
-export function dailyBriefEmailCopy(locale: SystemEmailLocale): DailyBriefEmailCopy {
+export function dailyBriefEmailCopy(locale: AppLocale): DailyBriefEmailCopy {
 	return DAILY_BRIEF_EMAIL[locale];
 }
 
@@ -149,6 +151,6 @@ export function dailyBriefEmailCopy(locale: SystemEmailLocale): DailyBriefEmailC
  * "de" alone formats a date the German way, but naming the region keeps the
  * mail consistent with what the app renders for the same person.
  */
-export function systemEmailBcp47(locale: SystemEmailLocale): string {
-	return locale === 'de' ? 'de-DE' : 'en-US';
+export function systemEmailBcp47(locale: AppLocale): string {
+	return APP_LOCALE_BCP47[locale];
 }

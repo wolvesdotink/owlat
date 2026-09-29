@@ -13,6 +13,7 @@
 import type { OutboundAlignmentState } from '@owlat/shared';
 import { senderAuthDisplay, type SenderAuthDisplay } from '~/utils/senderAlignment';
 import { healthChipClass, healthTextClass } from '~/utils/healthTone';
+import { useLocalized } from '~/composables/useLocalized';
 
 const props = defineProps<{
 	verified: boolean;
@@ -20,16 +21,12 @@ const props = defineProps<{
 	reason?: string | null;
 }>();
 
-const { t } = useI18n();
-
 /**
  * `senderAuthDisplay` is module scope and so never calls `useI18n`: its chip
  * label and reason arrive as catalog keys (or, for a transport's verbatim
  * reason, as the sentence itself), and this render boundary resolves them.
  */
-type AuthMessage = string | { key: string; params?: Record<string, unknown> };
-const message = (value: AuthMessage): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const message = useLocalized();
 
 const display = computed<SenderAuthDisplay>(() =>
 	senderAuthDisplay({

@@ -9,13 +9,13 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { startOfDayUtc } from '../../../lib/clock';
+import { utcDayStart } from '../../../lib/clock';
 import { projectCellVolume, type CellVolumeDay } from '../capacityProjection';
 import { DAY, NOW } from './controllerFixtures';
 
 /** Whole UTC day starts, oldest first, for the seven COMPLETE days before NOW. */
 function trailingDays(totals: readonly number[], owns?: readonly number[]): CellVolumeDay[] {
-	const today = startOfDayUtc(NOW);
+	const today = utcDayStart(NOW);
 	return totals.map((total, index) => ({
 		dayStartMs: today - (totals.length - index) * DAY,
 		total,
@@ -73,13 +73,13 @@ describe('projectCellVolume over trailing fixtures', () => {
 	});
 
 	it("a cell that only started yesterday projects yesterday's volume", () => {
-		const today = startOfDayUtc(NOW);
+		const today = utcDayStart(NOW);
 		const projection = projectCellVolume([{ dayStartMs: today - DAY, total: 900, own: 300 }], NOW);
 		expect(projection).toMatchObject({ kind: 'projected', dailyVolume: 900, observedDays: 1 });
 	});
 
 	it("EXCLUDES today's partial day — a half-counted morning is not a low day", () => {
-		const today = startOfDayUtc(NOW);
+		const today = utcDayStart(NOW);
 		const projection = projectCellVolume(
 			[
 				...trailingDays([1000, 1000, 1000, 1000, 1000, 1000, 1000]),
@@ -95,7 +95,7 @@ describe('projectCellVolume over trailing fixtures', () => {
 	});
 
 	it('EXCLUDES days older than the trailing window', () => {
-		const today = startOfDayUtc(NOW);
+		const today = utcDayStart(NOW);
 		const projection = projectCellVolume(
 			[
 				{ dayStartMs: today - 30 * DAY, total: 100_000, own: 100_000 },
@@ -107,7 +107,7 @@ describe('projectCellVolume over trailing fixtures', () => {
 	});
 
 	it('AGGREGATES per-shard rows for the same day instead of counting them as days', () => {
-		const today = startOfDayUtc(NOW);
+		const today = utcDayStart(NOW);
 		const shards: CellVolumeDay[] = [];
 		for (let day = 1; day <= 3; day += 1) {
 			for (let shard = 0; shard < 8; shard += 1) {

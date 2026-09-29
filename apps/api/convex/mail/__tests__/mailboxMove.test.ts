@@ -228,6 +228,60 @@ describe('start — begins a move, idempotently', () => {
 	});
 });
 
+describe('the mail.external floor — externalMail* builders', () => {
+	async function disableExternal(t: Ctx): Promise<void> {
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').first();
+			if (!settings) throw new Error('instance settings missing');
+			await ctx.db.patch(settings._id, { featureFlags: { 'mail.external': false } });
+		});
+	}
+
+	it('refuses start, pause, resume, archive and cancel with the flag off', async () => {
+		const t = convexTest(schema, modules);
+		await enableExternal(t);
+		await connectMailbox(t);
+		await disableExternal(t);
+
+		const disabled = /"category":"forbidden".*"feature":"mail\.external"/;
+		await expect(t.mutation(api.mail.mailboxMove.start, {})).rejects.toThrow(disabled);
+		await expect(t.mutation(api.mail.mailboxMove.pause, {})).rejects.toThrow(disabled);
+		await expect(t.mutation(api.mail.mailboxMove.resume, {})).rejects.toThrow(disabled);
+		await expect(t.mutation(api.mail.mailboxMove.archive, {})).rejects.toThrow(disabled);
+		await expect(t.mutation(api.mail.mailboxMove.cancel, {})).rejects.toThrow(disabled);
+		expect(await t.run(async (ctx) => await ctx.db.query('mailboxMoves').first())).toBeNull();
+		expect(await countOpenRequests(t)).toBe(0);
+	});
+
+	it('refuses the admin provisionHosted with the flag off (externalMailAdminMutation)', async () => {
+		const t = convexTest(schema, modules);
+		await enableExternal(t);
+		await connectMailbox(t);
+		const { moveId } = await t.mutation(api.mail.mailboxMove.start, {});
+		await disableExternal(t);
+
+		sessionMocks.role = 'admin';
+		await expect(t.mutation(api.mail.mailboxMove.provisionHosted, { moveId })).rejects.toThrow(
+			/"category":"forbidden".*"feature":"mail\.external"/
+		);
+		const move = await t.run(async (ctx) => await ctx.db.get(moveId));
+		expect(move?.stage).toBe('provisioning');
+		expect(move?.hostedMailboxId).toBeUndefined();
+	});
+
+	it('still runs the admin floor first: a non-admin sees the role error, not the flag', async () => {
+		const t = convexTest(schema, modules);
+		await enableExternal(t);
+		await connectMailbox(t);
+		const { moveId } = await t.mutation(api.mail.mailboxMove.start, {});
+		await disableExternal(t);
+
+		await expect(t.mutation(api.mail.mailboxMove.provisionHosted, { moveId })).rejects.toThrow(
+			/Only owners and admins/
+		);
+	});
+});
+
 describe('provisionHosted — admin-only provisioning → cutover_pending', () => {
 	it('provisions a hosted mailbox on the same address and resolves the request', async () => {
 		const t = convexTest(schema, modules);

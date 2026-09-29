@@ -20,6 +20,8 @@
  * still decides auto-send on the backend; this is REVIEW language only.
  */
 
+import type { LocalizedText } from '~/utils/localizedText';
+
 export type TrustLevel = 'ready' | 'look' | 'needs-you';
 export type TrustVariant = 'success' | 'warning' | 'error';
 
@@ -28,7 +30,7 @@ export type TrustVariant = 'success' | 'warning' | 'error';
  * so it never calls `useI18n`: every human-facing field carries an i18n KEY, and
  * a parameterized one carries `{ key, params }` (see the localization guide).
  */
-export type TrustMessage = string | { key: string; params?: Record<string, unknown> };
+export type TrustMessage = LocalizedText;
 
 export interface TrustLabel {
 	level: TrustLevel;

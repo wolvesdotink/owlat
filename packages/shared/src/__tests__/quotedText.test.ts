@@ -35,6 +35,13 @@ describe('splitQuotedHtml — Outlook reply headers', () => {
 		expect(splitQuotedHtml(html).hasQuote).toBe(false);
 	});
 
+	it('treats comments, numeric nbsp and a raw U+00A0 above the header as nothing written', () => {
+		const html =
+			'<head><title>Fwd</title></head><!--[if mso]>x<![endif]--><p>&#160;\u00a0&#xA0;</p>' +
+			'<div style="border:none;border-top:solid #E1E1E1 1.0pt"><p><b>From:</b> Ada</p></div><p>Forwarded body</p>';
+		expect(splitQuotedHtml(html).hasQuote).toBe(false);
+	});
+
 	it('still prefers the Gmail wrapper when both are present', () => {
 		const html =
 			'<div>Hi</div><div class="gmail_quote">On Mon, Ada wrote:<div style="border-top:solid #E1E1E1 1.0pt">x</div></div>';

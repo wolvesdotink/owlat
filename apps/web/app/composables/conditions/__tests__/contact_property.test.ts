@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import type { Doc } from '@owlat/api/dataModel';
 import { contactPropertyEditorModule } from '../contact_property';
 import { operatorsForField, operatorNeedsValue } from '../contact_property';
-import type { ConditionEditorContext, LocalizedText } from '../types';
+import type { ConditionEditorContext, ConditionLabelKey } from '../types';
 import { createTestI18n } from '~/__tests__/i18n';
 
 /**
@@ -12,7 +12,7 @@ import { createTestI18n } from '~/__tests__/i18n';
  * assertions on the copy a person reads.
  */
 const { t } = createTestI18n().global;
-const render = (text: LocalizedText) => t(text.key, text.params ?? {});
+const render = (text: ConditionLabelKey) => t(text.key, text.params ?? {});
 
 const makeCtx = (contactProperties: Doc<'contactProperties'>[] = []): ConditionEditorContext => ({
 	contactProperties: computed(() => contactProperties),

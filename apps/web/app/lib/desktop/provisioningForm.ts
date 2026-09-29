@@ -13,6 +13,7 @@
  */
 import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
 import { type InstanceHostnames, setupConfigPath } from './provisioning';
+import type { LocalizedText } from '~/utils/localizedText';
 
 // ---- admin password validation (live, pre-submit) --------------------------
 // The admin account is an ordinary account: the one shared minimum applies.
@@ -24,7 +25,7 @@ export type PasswordStrength = 'empty' | 'weak' | 'fair' | 'strong';
  * `useI18n`, so its copy travels as an i18n key — with its interpolation
  * parameters when it has any.
  */
-export type ProvisioningMessage = string | { key: string; params?: Record<string, unknown> };
+export type ProvisioningMessage = LocalizedText;
 
 export interface PasswordAssessment {
 	length: number;

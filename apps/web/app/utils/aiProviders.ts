@@ -22,6 +22,8 @@
  * (`__tests__/aiProviders.test.ts`) — no component mount needed.
  */
 
+import type { LocalizedText } from '~/utils/localizedText';
+
 /** Message-key root for this module; see `i18n/locales/en.json`. */
 const K = 'shared.aiProviders';
 
@@ -29,9 +31,9 @@ const K = 'shared.aiProviders';
  * Registry-owned copy carries message KEYS, never sentences: this module is a
  * module-scope catalog, so it cannot call `useI18n`. A message that interpolates
  * a value travels as its key plus those values; the component that renders it is
- * what translates (`t(value)` / `t(value.key, value.params)`).
+ * what translates (`useLocalized()`).
  */
-export type AiProviderText = string | { key: string; params?: Record<string, unknown> };
+export type AiProviderText = LocalizedText;
 
 /** Language provider kinds — mirrors `LANGUAGE_PROVIDER_KINDS` in the backend. */
 export type LanguageProviderKind =

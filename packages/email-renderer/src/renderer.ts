@@ -4,6 +4,7 @@ import type {
 	BlockRepeat,
 	CommonBlockProperties,
 } from '@owlat/shared';
+import { DEFAULT_EMAIL_BASE_WIDTH, DEFAULT_EMAIL_THEME } from '@owlat/shared/emailDefaults';
 import type { RenderOptions, RenderContext } from './types';
 import { wrapDocument } from './boilerplate';
 import { renderBlock } from './blocks';
@@ -27,15 +28,21 @@ const addWarning = (ctx: RenderContext, message: string): void => {
 	}
 };
 
-export const DEFAULT_BASE_WIDTH = 600;
+export const DEFAULT_BASE_WIDTH = DEFAULT_EMAIL_BASE_WIDTH;
 
-const DEFAULT_THEME = {
-	primaryColor: '#c4785a',
-	fontFamily: 'Arial, sans-serif',
-	backgroundColor: '#ffffff',
-	darkModeBackgroundColor: '#121212',
-	darkModeTextColor: '#e4e4e7',
-	darkModeLinkColor: '#93c5fd',
+/**
+ * The theme keys the renderer fills in when the caller leaves them unset,
+ * picked from the shared defaults. Deliberately not the whole
+ * `DEFAULT_EMAIL_THEME`: keys such as bodyTextColor, linkColor or borderRadius
+ * would then reach every block's render context and change the emitted HTML.
+ */
+export const DEFAULT_THEME = {
+	primaryColor: DEFAULT_EMAIL_THEME.primaryColor,
+	fontFamily: DEFAULT_EMAIL_THEME.fontFamily,
+	backgroundColor: DEFAULT_EMAIL_THEME.backgroundColor,
+	darkModeBackgroundColor: DEFAULT_EMAIL_THEME.darkModeBackgroundColor,
+	darkModeTextColor: DEFAULT_EMAIL_THEME.darkModeTextColor,
+	darkModeLinkColor: DEFAULT_EMAIL_THEME.darkModeLinkColor,
 };
 
 const createContext = (options: RenderOptions = {}): RenderContext => {

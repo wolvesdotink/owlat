@@ -30,7 +30,7 @@ import {
 } from '../sendPlanning';
 import { planTodaysSlice, type SendPlanState } from '../multiDaySendPlan';
 import { testFractionForSplit } from '../sendVariantSplit';
-import { nextUtcDayStart, utcDayKey } from '../../lib/utcDay';
+import { nextUtcDayStart, utcDayKey } from '../../lib/clock';
 
 const NOW = 1_800_000_000_000;
 

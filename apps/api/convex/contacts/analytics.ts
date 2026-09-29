@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
+import { denseDailySeries, utcDayKey } from '../lib/clock';
 import { getContactCount } from '../lib/contactCountHelpers';
 import { redactContactCapabilityFields } from './listing';
 
@@ -66,26 +67,19 @@ export const getSubscriberGrowth = authedQuery({
 		const truncated = scanned.length > GROWTH_SCAN_CAP;
 		const recentContacts = truncated ? scanned.slice(0, GROWTH_SCAN_CAP) : scanned;
 
-		// Initialize all 30 days with 0
-		const dailyGrowth: Record<string, number> = {};
-		for (let i = 29; i >= 0; i--) {
-			const date = new Date(now - i * 24 * 60 * 60 * 1000);
-			const dateKey = date.toISOString().split('T')[0] as string;
-			dailyGrowth[dateKey] = 0;
-		}
-
-		// Count contacts created on each day
+		// Bucket by the shared UTC day key, then zero-fill the 30 UTC days
+		// ending today.
+		const perDay = new Map<string, number>();
 		for (const contact of recentContacts) {
-			const dateKey = new Date(contact.createdAt).toISOString().split('T')[0] as string;
-			if (dailyGrowth[dateKey] !== undefined) {
-				dailyGrowth[dateKey]++;
-			}
+			const dateKey = utcDayKey(contact.createdAt);
+			perDay.set(dateKey, (perDay.get(dateKey) ?? 0) + 1);
 		}
-
-		// Convert to array format
-		const days = Object.entries(dailyGrowth).map(([date, count]) => ({
+		const days = denseDailySeries(perDay, 30, now).map(({ date, count }) => ({
 			date,
 			count,
+			// remove after release N+1: the web formats `date` in the reader's locale
+			// now; `label` stays one release for older desktop/web clients
+			// (CONVENTIONS.md → Old clients and workers).
 			label: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
 		}));
 

@@ -2,6 +2,8 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect } from 'vitest';
 import schema from '../../schema';
 import { bumpSendDailyStat, readDailyStats } from '../sendDailyStats';
+import { denseDailyOpens } from '../../analytics/marketingOverviewMath';
+import { utcDayKey } from '../clock';
 
 const modules = import.meta.glob('../../**/*.*s');
 
@@ -25,7 +27,7 @@ describe('sharded sendDailyStats', () => {
 					opened: acc.opened + r.opened,
 					clicked: acc.clicked + r.clicked,
 				}),
-				{ sent: 0, delivered: 0, opened: 0, clicked: 0 },
+				{ sent: 0, delivered: 0, opened: 0, clicked: 0 }
 			);
 			expect(total.sent).toBe(50);
 			expect(total.delivered).toBe(20);
@@ -72,6 +74,35 @@ describe('sharded sendDailyStats', () => {
 			const daily = await readDailyStats(ctx.db, 30, now + 1000);
 			expect(daily.length).toBe(2); // day 0 + day-29; day-30 excluded
 			expect(daily.reduce((acc, r) => acc + r.sent, 0)).toBe(2);
+		});
+	});
+
+	it('writes rows under the key the marketing overview reads them back by', async () => {
+		const t = convexTest(schema, modules);
+		const midnight = Date.UTC(2026, 8, 3);
+		// Either side of midnight UTC: the boundary where a writer and a reader
+		// spelling the day differently would put an event on the wrong bar.
+		const lastMsOfDay = midnight - 1;
+		const firstMsOfNextDay = midnight;
+
+		await t.run(async (ctx) => {
+			await bumpSendDailyStat(ctx, 'opened', lastMsOfDay);
+			await bumpSendDailyStat(ctx, 'opened', firstMsOfNextDay);
+			await bumpSendDailyStat(ctx, 'opened', firstMsOfNextDay);
+		});
+
+		await t.run(async (ctx) => {
+			const rows = await ctx.db.query('sendDailyStats').collect();
+			expect(new Set(rows.map((r) => r.date))).toEqual(
+				new Set([utcDayKey(lastMsOfDay), utcDayKey(firstMsOfNextDay)])
+			);
+
+			const now = firstMsOfNextDay + 60_000;
+			const series = denseDailyOpens(await readDailyStats(ctx.db, 2, now), 2, now);
+			expect(series).toEqual([
+				{ date: '2026-09-02', opened: 1 },
+				{ date: '2026-09-03', opened: 2 },
+			]);
 		});
 	});
 });

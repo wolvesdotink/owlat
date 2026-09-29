@@ -41,6 +41,10 @@
 		"./compose/dkim": {
 			"types": "./src/compose/dkim.ts",
 			"import": "./src/compose/dkim.ts"
+		},
+		"./text/htmlToPlainText": {
+			"types": "./src/text/htmlToPlainText.ts",
+			"import": "./src/text/htmlToPlainText.ts"
 		}
 	},
 	"scripts": {

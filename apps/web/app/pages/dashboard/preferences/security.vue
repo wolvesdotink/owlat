@@ -12,7 +12,7 @@
  */
 import { useAccountSessions } from '~/composables/useAccountSecurity';
 import { describeLastSeen, type ActiveSessionRow } from '~/utils/accountSessions';
-import type { LocalizedText } from '~/utils/readinessGate';
+import { useLocalized } from '~/composables/useLocalized';
 
 const { t, locale } = useI18n();
 
@@ -31,9 +31,7 @@ const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const hasMail = computed(() => isFeatureEnabled('postbox') || isFeatureEnabled('mail.external'));
 
 /** Descriptors from the pure modules are resolved here, at the render boundary. */
-function say(text: LocalizedText): string {
-	return typeof text === 'string' ? text : t(text.key, text.params ?? {});
-}
+const say = useLocalized();
 
 // ── Sessions ──────────────────────────────────────────────────────────────
 

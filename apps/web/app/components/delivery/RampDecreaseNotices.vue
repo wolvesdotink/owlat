@@ -19,6 +19,7 @@ import {
 	type RampAdminNotice,
 } from '~/utils/deliverabilityRamp';
 import { formatShortDate } from '~/utils/formatters';
+import { useLocalized } from '~/composables/useLocalized';
 
 defineProps<{
 	notices: readonly RampAdminNotice[];
@@ -33,10 +34,7 @@ const { t, locale } = useI18n();
  * a plain string is still accepted, which is what a cell key written before a
  * stream was retired falls back to.
  */
-type LocalizedText = string | { key: string; params?: Record<string, unknown> };
-function localized(value: LocalizedText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const localized = useLocalized();
 </script>
 
 <template>
@@ -60,7 +58,9 @@ function localized(value: LocalizedText): string {
 						{{ formatShortDate(notice.at, locale) }}
 					</time>
 					·
-					<span data-testid="ramp-notice-cell">{{ localized(rampCellKeyLabel(notice.cellKey)) }}</span>
+					<span data-testid="ramp-notice-cell">{{
+						localized(rampCellKeyLabel(notice.cellKey))
+					}}</span>
 					·
 					<span data-testid="ramp-notice-gate">
 						{{

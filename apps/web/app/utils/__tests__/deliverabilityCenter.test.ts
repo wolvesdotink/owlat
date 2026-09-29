@@ -1,10 +1,7 @@
 import type { Id } from '@owlat/api/dataModel';
 import { describe, expect, it, vi } from 'vitest';
-import type {
-	DeliverabilityCenter,
-	DeliverabilityChecklistItem,
-	LocalizedText,
-} from '../deliverabilityCenter';
+import type { DeliverabilityCenter, DeliverabilityChecklistItem } from '../deliverabilityCenter';
+import type { LocalizedText } from '../localizedText';
 import {
 	buildDeliverabilityReport,
 	checklistItemDomId,

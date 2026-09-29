@@ -13,7 +13,8 @@
  * wraps it, because only the flat list wires them. Pure presentational.
  */
 import type { PostboxThreadRowMessage } from './PostboxThreadRow.vue';
-import { senderRowMarkerOf, type SenderAuthText } from '~/utils/senderAuth';
+import { senderRowMarkerOf } from '~/utils/senderAuth';
+import { useLocalized } from '~/composables/useLocalized';
 
 const { t, locale } = useI18n();
 
@@ -55,9 +56,7 @@ const trustMarker = computed(() => senderRowMarkerOf(props.msg, props.trustMarke
  * The marker's full sentence, resolved here: the derivation is module scope and
  * hands back catalog keys (`{ key, params }` when it names a domain).
  */
-function markerText(text: SenderAuthText): string {
-	return typeof text === 'string' ? t(text) : t(text.key, text.params ?? {});
-}
+const markerText = useLocalized();
 
 /**
  * The chip's accessible name. The compact density hides the visible label to

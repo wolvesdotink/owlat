@@ -74,6 +74,28 @@ of `bun run lint` and will fail CI, including:
 - `lint:session-threading` — handlers on the org-scoped builders must use the
   session their auth floor already resolved instead of re-resolving it
   (frozen-baseline ratchet, `apps/api/scripts/check-session-threading.sh`).
+- `lint:feature-floors` — handlers in a feature-gated family use its
+  `featureGated` builder instead of an inline `assertFeatureEnabled`
+  (ratchet with a justified-sites baseline,
+  `apps/api/scripts/check-feature-floors.sh`).
+- `lint:utc-day` — day starts and `YYYY-MM-DD` day keys come from
+  `convex/lib/clock.ts`, never a hand-rolled `setUTCHours(0, 0, 0, 0)`,
+  `toISOString().slice(0, 10)` or `.split('T')[0]`
+  (`apps/api/scripts/check-utc-day.sh`).
+- `lint:html-to-text` (root, in `ci:lint`) — HTML-to-text for snippets,
+  previews, prompts, search excerpts, scans and text/plain parts goes through
+  `htmlToPlainText` from `@owlat/shared/html`, never a private
+  `.replace(/<[^>]+>/g, …)` strip, across `apps/api/convex`,
+  `packages/shared/src` and `packages/mail-message/src`
+  (`scripts/check-html-to-text.sh`).
+
+The web app's `lint` script (`apps/web`) runs gates of its own, including:
+
+- `lint:localized-text` — copy a pure module hands to a component is typed
+  `LocalizedText` and rendered with `useLocalized()` (or `resolveLocalized`),
+  both from `app/utils/localizedText.ts`, never a restated union or an inline
+  `typeof v === 'string' ? t(v) : t(v.key, v.params ?? {})`
+  (frozen-baseline ratchet, `apps/web/scripts/check-localized-text.sh`).
 
 ## Code Quality
 
@@ -239,7 +261,7 @@ by Actions and is not listed.
 | Secret                                                                      | Used by                                                                                                                       | When unset                                                                        |
 | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | `CONVEX_TEST_URL`, `CONVEX_TEST_SITE_URL`                                   | e2e.yml, as `NUXT_PUBLIC_CONVEX_URL` / `NUXT_PUBLIC_CONVEX_SITE_URL` of a dedicated test deployment                           | the E2E job fails with an error naming the missing secret                         |
-| `CONVEX_TEST_ADMIN_KEY`                                                     | e2e.yml, to push the commit under test's functions to that deployment before the suite runs                                  | the E2E job fails with an error naming the missing secret                         |
+| `CONVEX_TEST_ADMIN_KEY`                                                     | e2e.yml, to push the commit under test's functions to that deployment before the suite runs                                   | the E2E job fails with an error naming the missing secret                         |
 | `CONVEX_TEST_INSTANCE_SECRET`                                               | e2e.yml, to call `POST /dev/reset` on that deployment (needs `OWLAT_DEV_MODE` set on it)                                      | the E2E job fails with an error naming the missing secret                         |
 | `DEPENDABOT_LOCKFILE_PAT`                                                   | dependabot-lockfile.yml; a fine-grained PAT (Contents: read & write) stored as a **Dependabot** secret, not an Actions secret | the job warns and skips; Dependabot PRs then fail `bun install --frozen-lockfile` |
 | `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`           | _desktop-build.yml, updater bundle signing                                                                                    | unsigned artifacts with a `::warning::`                                           |

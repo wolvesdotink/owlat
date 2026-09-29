@@ -13,6 +13,10 @@
  */
 
 import type { HealthTone } from '~/utils/healthTone';
+import type { LocalizedText } from '~/utils/localizedText';
+
+/** Re-exported for the gate renderers that import it from here. */
+export type { LocalizedText };
 
 /**
  * The readiness gates, in the order the panel renders them. `mta-sts` is a
@@ -39,14 +43,6 @@ export type ReadinessGateKey =
  *                  applicable; no action the operator can take right now.
  */
 export type ReadinessGateStatus = 'ready' | 'attention' | 'pending';
-
-/**
- * A gate's words, as the catalog key that carries them (plus the values to
- * interpolate). Gate producers are module scope and never call `useI18n`, so
- * they hand back keys and the panel that renders a gate is the boundary that
- * turns them into a sentence. A plain string is a key with no parameters.
- */
-export type LocalizedText = string | { key: string; params?: Record<string, unknown> };
 
 export interface ReadinessGate {
 	key: ReadinessGateKey;

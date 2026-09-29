@@ -6,6 +6,7 @@ import { DNSBL_LISTS } from '@owlat/shared/dnsbl';
 import { formatNumber, formatCompactRelativeTime } from '~/utils/formatters';
 import { healthChipClass, healthDotClass } from '~/utils/healthTone';
 import { outboundIpPresentation } from '~/utils/outboundIpStatus';
+import { useLocalized } from '~/composables/useLocalized';
 
 type Overview = NonNullable<
 	FunctionReturnType<typeof api.analytics.reputationQueries.getSendingOverview>
@@ -24,10 +25,7 @@ const { t } = useI18n();
  * convention); a plain string is still accepted so a value with nothing to
  * translate reads as itself.
  */
-type LocalizedText = string | { key: string; params?: Record<string, unknown> };
-function localized(value: LocalizedText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const localized = useLocalized();
 
 const ips = computed(() =>
 	(props.warming?.ips ?? []).map((ip) => ({
@@ -193,9 +191,7 @@ const DOCS_BASE = 'https://docs.owlat.app';
 							rel="noopener"
 							class="inline-flex items-center gap-1 font-medium underline underline-offset-2"
 						>
-							{{
-								t('components.delivery.sendingDetails.recoverySteps', { blocklist: list.name })
-							}}
+							{{ t('components.delivery.sendingDetails.recoverySteps', { blocklist: list.name }) }}
 							<Icon name="lucide:external-link" class="w-3 h-3" />
 						</a>
 					</div>

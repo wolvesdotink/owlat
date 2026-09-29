@@ -7,6 +7,8 @@ import { computed } from 'vue';
 import { provideConditionEditorContext } from '~/composables/conditions';
 import { stepEditorModuleFor, type StepKind } from '~/composables/automations/steps';
 import { triggerEditorModuleFor, type TriggerKind } from '~/composables/automations/triggers';
+import { useLocalized } from '~/composables/useLocalized';
+import type { LocalizedText } from '~/utils/localizedText';
 
 const { t } = useI18n();
 
@@ -121,15 +123,13 @@ const topicsRef = computed(() => topics.value ?? []);
 // The trigger registry hands back translatable text rather than a finished
 // sentence: a bare key for a constant summary, `{ key, params }` for a
 // parameterized one.
-type RegistrySummary = string | { key: string; params?: Record<string, unknown> };
-const renderRegistrySummary = (summary: RegistrySummary): string =>
-	typeof summary === 'string' ? t(summary) : t(summary.key, summary.params ?? {});
+const renderRegistrySummary = useLocalized();
 
 const triggerSummary = computed(() => {
 	if (!automation.value?.triggerConfig) return '';
 	const module = triggerEditorModuleFor(automation.value.triggerType as TriggerKind);
 	return renderRegistrySummary(
-		(module.getSummary as (c: unknown, ctx: { topics: typeof topicsRef }) => RegistrySummary)(
+		(module.getSummary as (c: unknown, ctx: { topics: typeof topicsRef }) => LocalizedText)(
 			automation.value.triggerConfig,
 			{ topics: topicsRef }
 		)

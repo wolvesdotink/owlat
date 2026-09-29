@@ -20,12 +20,12 @@
  *
  * Deliberately NOT 'use node': draft-on-arrival, the clarification context,
  * category and needs-reply build their transcript inside a query. That is also
- * why the HTML fallback uses the runtime-neutral search stripper rather than
+ * why the HTML fallback uses the runtime-neutral `htmlToPlainText` rather than
  * `mail/rfc822.ts`, which is a Node module.
  */
 
+import { htmlToPlainText } from '@owlat/shared/html';
 import { openMailMessageInlineBody } from '../../lib/messageBody';
-import { htmlToSearchText } from '../searchBody';
 import { isFromMailboxOwner } from '../needsReplyHeuristic';
 import type { Doc, Id } from '../../_generated/dataModel';
 
@@ -65,7 +65,7 @@ async function messageBody(m: Doc<'mailMessages'>): Promise<string> {
 	const { text, html } = await openMailMessageInlineBody(m);
 	if (text && text.trim()) return text;
 	if (html) {
-		const stripped = htmlToSearchText(html).replace(/\s+/g, ' ').trim();
+		const stripped = htmlToPlainText(html);
 		if (stripped) return stripped;
 	}
 	return m.snippet ?? '';

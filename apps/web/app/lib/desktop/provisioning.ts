@@ -13,28 +13,19 @@
  * only be exercised against a real server.
  */
 
+import type { ConnectInfo, ExecEvent, SshAuth } from '@owlat/desktop/src/ssh';
+import type { SetupConfig } from '@owlat/shared/setupConfigTypes';
+
 // Split to stay under the file-size cap; consumers keep importing from here.
 export * from './provisioningCommands';
 export * from './provisioningTimeline';
 
 // ---- transport (implemented by the native bridge, faked in tests) ----------
 
-export interface ConnectInfo {
-	sessionId: string;
-	fingerprint: string;
-	hostKeyType: string;
-	knownHostStatus: 'new' | 'match' | 'mismatch';
-}
-
-export type SshAuth =
-	| { type: 'password'; password: string }
-	/** Pasted key material OR a path to a key file on this machine (`~` expanded natively). */
-	| { type: 'key'; privateKey?: string; privateKeyPath?: string; passphrase?: string };
-
-export type ExecEvent =
-	| { kind: 'stdout'; line: string }
-	| { kind: 'stderr'; line: string }
-	| { kind: 'exit'; code: number };
+// The bridge's own types, re-exported type-only: the native module itself is
+// only ever loaded lazily (see createTauriTransport), so this adds no runtime
+// import and the transport contract cannot drift from what the bridge returns.
+export type { ConnectInfo, ExecEvent, SshAuth };
 
 export interface ProvisionTransport {
 	connect(host: string, port: number): Promise<ConnectInfo>;
@@ -74,36 +65,14 @@ export async function createTauriTransport(): Promise<ProvisionTransport> {
 }
 
 // ---- the setup config the wizard produces (consumed by setup-cli) ----------
-// Mirrors apps/setup-cli/src/lib/setupConfig.ts `SetupConfig`; the server
-// validates it with `parseSetupConfig`, which is the source of truth.
+// One declaration shared with setup-cli, whose `parseSetupConfig` validates it
+// on the server: a renamed field or a misspelled flag / pack key fails to
+// compile here instead of failing the install over SSH.
 
-export type DeploymentMode = 'selfhost' | 'dev' | 'hosted';
+export type { SendingConfig } from '@owlat/shared/setupConfigTypes';
 
-export interface SetupConfigInput {
-	version: 1;
-	deploymentMode: DeploymentMode;
-	features: { flags?: Record<string, boolean>; packs?: Record<string, boolean> };
-	sending?:
-		| { provider: 'mta' }
-		| { provider: 'resend'; apiKey: string }
-		| { provider: 'ses'; region: string; accessKeyId: string; secretAccessKey: string };
-	ai?:
-		| { provider: 'openrouter'; apiKey: string }
-		| { provider: 'openai'; apiKey: string }
-		| { provider: 'ollama' }
-		| {
-				provider: 'custom';
-				baseUrl: string;
-				apiKey: string;
-				modelFast: string;
-				modelCapable: string;
-		  };
-	integrations?: { googleSafeBrowsingKey?: string; posthog?: { host: string; apiKey: string } };
-	admin: { email: string; name: string; password: string };
-	domain?: { ehloHostname: string; bounceDomain: string };
-	network?: { siteUrl: string; convexUrl: string; convexSiteUrl: string };
-	seedDemo?: boolean;
-}
+/** The wizard's name for the shared {@link SetupConfig}. */
+export type SetupConfigInput = SetupConfig;
 
 /**
  * The subdomain prefixes a single apex domain expands into. One source of

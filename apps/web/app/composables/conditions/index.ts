@@ -1,11 +1,7 @@
 import { contactPropertyEditorModule } from './contact_property';
 import { emailActivityEditorModule } from './email_activity';
 import { topicMembershipEditorModule } from './topic_membership';
-import type {
-	ConditionEditorModule,
-	ConditionEditorModuleMap,
-	ConditionKind,
-} from './types';
+import type { ConditionEditorModule, ConditionEditorModuleMap, ConditionKind } from './types';
 
 export const CONDITION_EDITOR_MODULES: ConditionEditorModuleMap = {
 	contact_property: contactPropertyEditorModule,
@@ -29,6 +25,7 @@ export type {
 	ConditionEditorModule,
 	ConditionEditorModuleMap,
 	ConditionKind,
+	ConditionLabelKey,
 	ConditionOfKind,
 	ConditionVariant,
 } from './types';

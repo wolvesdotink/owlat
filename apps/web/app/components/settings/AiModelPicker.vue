@@ -6,7 +6,8 @@
  * text as separate form fields — `resolveModelId(choice, custom)` collapses them
  * back to the effective id at save time.
  */
-import { CUSTOM_MODEL_VALUE, type AiProviderText, type SelectOption } from '~/utils/aiProviders';
+import { useLocalized } from '~/composables/useLocalized';
+import { CUSTOM_MODEL_VALUE, type SelectOption } from '~/utils/aiProviders';
 
 const props = defineProps<{
 	label: string;
@@ -18,7 +19,7 @@ const props = defineProps<{
 const choice = defineModel<string>('choice', { required: true });
 const custom = defineModel<string>('custom', { required: true });
 
-const { t, te } = useI18n();
+const { t } = useI18n();
 
 /**
  * `SelectOption.label` is copy as a message key (or a `{ key, params }` pair)
@@ -26,8 +27,7 @@ const { t, te } = useI18n();
  * resolution happens here: a key is translated, an id has no catalog entry and
  * passes through unchanged.
  */
-const localized = (text: AiProviderText): string =>
-	typeof text === 'string' ? (te(text) ? t(text) : text) : t(text.key, text.params ?? {});
+const localized = useLocalized();
 
 const selectOptions = computed(() =>
 	props.options.map((option) => ({ value: option.value, label: localized(option.label) }))

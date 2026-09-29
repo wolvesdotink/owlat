@@ -220,9 +220,48 @@ data plane) still lives in the handler. Only query/mutation builders can be
 gated this way — `assertFeatureEnabled` reads `ctx.db`, which **actions** lack,
 so feature-gated actions keep the in-handler check against a query they call.
 
-A composition needs no lint edits. The definition gates (`check-permissions`,
-`check-query-authz`, `check-session-threading`, `check-token-redaction`,
-`check-errors`) read their builder families from source through
+Gated families and their builders:
+
+| Flag(s)                      | Builders                                                                 | Home                               |
+| ---------------------------- | ------------------------------------------------------------------------ | ---------------------------------- |
+| `chat`                       | `chatQuery`, `chatMutation`                                              | `chat/_helpers.ts`                 |
+| `ai.assistant`               | `assistantQuery`, `assistantMutation`                                    | `assistant/conversations.ts`       |
+| `postbox` or `mail.external` | `postboxQuery`, `postboxMutation` (`featureGatedAny`)                    | `mail/_helpers.ts`                 |
+| `mail.external`              | `externalMailQuery`, `externalMailMutation`, `externalMailAdminMutation` | `mail/external/externalFeature.ts` |
+| `transactional`              | `transactionalQuery`, `transactionalMutation`                            | `transactional/_helpers.ts`        |
+| `campaigns`                  | `campaignsQuery`, `campaignsMutation`                                    | `campaigns/_helpers.ts`            |
+| `automations`                | `automationsQuery`, `automationsMutation`                                | `automations/_helpers.ts`          |
+| `forms`                      | `formsQuery`, `formsMutation`                                            | `forms/_helpers.ts`                |
+
+Actions in the `mail.external` family call `assertExternalEnabled(ctx)` from
+the same module; campaign actions call `assertCampaignsEnabledInAction(ctx)`
+from `campaigns/_helpers.ts`.
+
+A public function in a gated folder whose web caller renders outside the flag's
+route (the campaign sender directory on the team admin page, the sending
+readiness the dashboard's getting-started card reads, the template test send)
+keeps its plain builder and says why in a `// flag-exempt: <reason>` comment
+directly above the export. Gate a function only when every web and desktop
+caller sits behind the flag.
+
+A soft-auth `publicQuery` keeps its inline `assertFeatureEnabled` — a gated
+`publicQuery` would slip past `check-public-functions.sh` and its `// public:`
+rule — and marks it with a `// flag-inline: <reason>` comment.
+
+`scripts/check-feature-floors.sh` (wired into `bun run lint`) enforces this. It
+reports `path:export` for every inline `assertFeatureEnabled(ctx, '<flag>')`
+inside that flag's gated family (the `FAMILIES` map in the script) and for every
+bare `authedQuery` / `authedMutation` export under `convex/mail/`.
+`scripts/feature-floor-baseline.txt` lists only the justified sites (the
+soft-auth reads and the modules `mail/_helpers.ts` exempts), each group with its
+reason. A new entry means a handler skipped its gated builder: use the builder.
+When you give another folder gated builders, add its `<flag> <path prefix>` pair
+to `FAMILIES` and the builder names to `EXPECTED_BUILDERS` in
+`check-entry-wiring.ts`.
+
+The definition gates (`check-permissions`, `check-query-authz`,
+`check-session-threading`, `check-token-redaction`, `check-errors`) need no
+edits for a composition: they read their builder families from source through
 `scripts/lib/convex-builders.sh`: every `(export )?const X = featureGated(Any)(<base>, …)`
 under `convex/` inherits its base's kind and auth floor. A new **base** builder
 exported from `lib/authedFunctions.ts` must be classified in that helper's
@@ -571,6 +610,20 @@ This codebase tracks the official Convex AI/cursor rules
   structurally typed on `db.get`, so both `QueryCtx` and `MutationCtx` satisfy
   it. Keep hand-rolling `throwNotFound` only where the guard is not a plain
   `get(id)` null check (e.g. `query().unique()` or outcome-based results).
+- **One UTC day.** Day starts, day keys and zero-filled daily series come
+  from `lib/clock.ts` (`utcDayStart`, `nextUtcDayStart`, `utcDayKey`,
+  `denseDailySeries`, `resolveNow`), which imports nothing. A writer and a
+  reader of the same day-bucketed row must use the same key, so never spell
+  the day by hand with `setUTCHours(0, 0, 0, 0)`, `toISOString().slice(0, 10)`
+  or `.split('T')[0]`; `scripts/check-utc-day.sh` (in `bun run lint`) flags
+  those spellings outside `lib/clock.ts` and tests.
+- **One HTML-to-text pass.** Turning an HTML body into text for a snippet,
+  preview, prompt, search excerpt, scan or text/plain part uses
+  `htmlToPlainText` from `@owlat/shared/html` (`{ preserveBreaks: true }` keeps
+  paragraphs). It drops script, style, head and comments, decodes named and
+  numeric entities, and stays linear on hostile input. The root
+  `scripts/check-html-to-text.sh` (in `ci:lint`) flags a private
+  `.replace(/<[^>]+>/g, …)` or `.replace(/<[^>]*>/g, …)` strip.
 - **Build a union from a literal list with `literalUnion`.** When a vocabulary
   already exists as a list (an `as const` tuple of strings or numbers, a
   `.filter` subset, a plugin-composed catalog, a `Set`), pass it to

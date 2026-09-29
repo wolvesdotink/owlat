@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { PLUGIN_AUTOMATION_STEP_CAPABILITY } from '@owlat/plugin-kit';
 import { type DatabaseReader, type MutationCtx, type QueryCtx } from '../_generated/server';
-import { authedMutation } from '../lib/authedFunctions';
+import { automationsMutation } from './_helpers';
 import type { Doc, Id } from '../_generated/dataModel';
 import { requireDraftAutomation } from './guards';
 import { requireAuthenticatedBundledPlugin } from '../plugins/authorization';
@@ -176,7 +176,7 @@ async function remapConditionBranches(
 // per-hop `ctx.db.get` fan-out.
 const MAX_STEP_ORDER = 500;
 
-export const addStep = authedMutation({
+export const addStep = automationsMutation({
 	args: {
 		automationId: v.id('automations'),
 		stepType: stepKindValidator,
@@ -244,7 +244,7 @@ export const addStep = authedMutation({
 	},
 });
 
-export const updateStep = authedMutation({
+export const updateStep = automationsMutation({
 	args: {
 		stepId: v.id('automationSteps'),
 		stepType: v.optional(stepKindValidator),
@@ -276,7 +276,7 @@ export const updateStep = authedMutation({
 	},
 });
 
-export const reorderSteps = authedMutation({
+export const reorderSteps = automationsMutation({
 	args: {
 		automationId: v.id('automations'),
 		stepOrder: v.array(v.id('automationSteps')),
@@ -332,7 +332,7 @@ export const reorderSteps = authedMutation({
 	},
 });
 
-export const removeStep = authedMutation({
+export const removeStep = automationsMutation({
 	args: {
 		stepId: v.id('automationSteps'),
 	},

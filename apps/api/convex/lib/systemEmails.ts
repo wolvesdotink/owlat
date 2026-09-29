@@ -1,9 +1,6 @@
 import { escapeHtml } from '@owlat/shared/html';
-import {
-	deletionEmailCopy,
-	type SystemEmailLocale,
-	type DeletionEmailCopy,
-} from './systemEmailCopy';
+import type { AppLocale } from '@owlat/shared/appLocales';
+import { deletionEmailCopy, type DeletionEmailCopy } from './systemEmailCopy';
 
 /**
  * Shared HTML shell + generators for Owlat's system / auth emails (invitation,
@@ -305,7 +302,7 @@ export function generateDeletionEmailHtml(
 	email: string,
 	scheduledDate: string,
 	cancelUrl: string,
-	locale: SystemEmailLocale = 'en'
+	locale: AppLocale = 'en'
 ): string {
 	const copy: DeletionEmailCopy = deletionEmailCopy(locale);
 	const items = copy.deletedItems.map((item) => `                <li>${item}</li>`).join('\n');

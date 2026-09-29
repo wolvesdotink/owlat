@@ -67,6 +67,7 @@ import {
 } from '@owlat/shared/deliverabilityIndependence';
 import type { QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
+import { nextUtcDayStart } from '../lib/clock';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { readCellArmBuckets } from '../analytics/transportOutcomes';
 import { safeOutcomeCount } from '../analytics/transportOutcomeSummary';
@@ -76,10 +77,6 @@ import { loadWarmingCapacity } from './warmingCapacity';
 
 /** How much history the stacked chart shows. Bounded by the 90-day retention. */
 const INDEPENDENCE_WINDOW_DAYS = 30;
-
-function utcDayStart(at: number): number {
-	return Math.floor(at / DAY_MS) * DAY_MS;
-}
 
 function utcMonthStart(at: number): number {
 	const date = new Date(at);
@@ -222,7 +219,7 @@ export const getIndependenceSummary = authedQuery({
 	handler: async (ctx): Promise<IndependenceSummary> => {
 		const organizationId = await getSingletonOrganizationId(ctx);
 		const now = Date.now();
-		const untilDay = utcDayStart(now) + DAY_MS;
+		const untilDay = nextUtcDayStart(now);
 		const sinceDay = untilDay - INDEPENDENCE_WINDOW_DAYS * DAY_MS;
 		// BOTH READINGS, FROM ONE SCAN. The id NAMES the arm; the boolean decides
 		// whether there is one — see the header (#513).

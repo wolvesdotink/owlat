@@ -60,7 +60,7 @@
  */
 
 import { aimdClamp, aimdDecrease, aimdIncrease } from './aimd';
-import { utcDayKey } from '../../lib/utcDay';
+import { utcDayKey } from '../../lib/clock';
 import { isEvaluationWindowElapsed } from './controllerBounds';
 import { nextCooldownMs, RAMP_AIMD, RAMP_MAX_FREEZE_MS } from './controllerConfig';
 import {

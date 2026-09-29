@@ -3,7 +3,7 @@ import type {
 	ConditionEditorContext,
 	ConditionEditorModule,
 	ConditionOfKind,
-	LocalizedText,
+	ConditionLabelKey,
 } from '../types';
 
 type TopicMembershipCondition = ConditionOfKind<'topic_membership'>;
@@ -29,7 +29,7 @@ export const topicMembershipEditorModule: ConditionEditorModule<'topic_membershi
 		if (!condition.topicId) return `${K}.validation.topicRequired`;
 		return null;
 	},
-	getDescription(condition, ctx: ConditionEditorContext): LocalizedText {
+	getDescription(condition, ctx: ConditionEditorContext): ConditionLabelKey {
 		if (!condition.topicId) return { key: `${K}.descriptions.empty` };
 		const topic = ctx.topics.value.find((t) => t._id === condition.topicId);
 		const subscribed = condition.operator !== 'not_equals';

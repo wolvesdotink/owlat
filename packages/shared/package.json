@@ -62,6 +62,10 @@
 			"types": "./src/setupValidators.ts",
 			"import": "./src/setupValidators.ts"
 		},
+		"./setupConfigTypes": {
+			"types": "./src/setupConfigTypes.ts",
+			"import": "./src/setupConfigTypes.ts"
+		},
 		"./verp": {
 			"types": "./src/verp.ts",
 			"import": "./src/verp.ts"
@@ -213,6 +217,14 @@
 		"./html": {
 			"types": "./src/html.ts",
 			"import": "./src/html.ts"
+		},
+		"./appLocales": {
+			"types": "./src/appLocales.ts",
+			"import": "./src/appLocales.ts"
+		},
+		"./emailDefaults": {
+			"types": "./src/emailDefaults.ts",
+			"import": "./src/emailDefaults.ts"
 		},
 		"./attachments": {
 			"types": "./src/attachments.ts",

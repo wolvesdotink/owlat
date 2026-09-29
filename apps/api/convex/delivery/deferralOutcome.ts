@@ -73,7 +73,7 @@
 
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
-import { resolveNow, startOfDayUtc } from '../lib/clock';
+import { resolveNow, utcDayStart } from '../lib/clock';
 import { applyEffects, transportOutcomeEffect } from './sendLifecycle/effects';
 import { resolveProviderMessageId } from './sendLifecycle/lookups';
 import {
@@ -146,11 +146,11 @@ async function stampAndRecordDeferralDay(
 ): Promise<'observed' | 'already_observed_today'> {
 	// A NON-FINITE INSTANT IS NOT A DAY. The instant comes from `completeSend`'s
 	// own `Date.now()` in-process, so this is a belt rather than a boundary check
-	// — but a `NaN` reaching `startOfDayUtc` would bucket the write nowhere and
+	// — but a `NaN` reaching `utcDayStart` would bucket the write nowhere and
 	// defeat the per-day gate (`NaN !== NaN`, so every retry would count again),
 	// and every other outcome writer normalizes through the same helper.
 	const at = resolveNow(rawAt);
-	const day = startOfDayUtc(at);
+	const day = utcDayStart(at);
 	if (send.deferralCountedDay === day) return 'already_observed_today';
 
 	// Stamp BEFORE recording, exactly as the unsubscribe emitter does: the stamp

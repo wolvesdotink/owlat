@@ -27,7 +27,8 @@
 
 import { v } from 'convex/values';
 import { internalQuery, internalMutation, internalAction } from '../_generated/server';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { publicQuery } from '../lib/authedFunctions';
+import { postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
@@ -72,7 +73,7 @@ export const status = publicQuery({
  * Re-entrant: a job already `running` is left alone rather than forked, so a
  * double click cannot produce two walks racing over one cursor.
  */
-export const start = authedMutation({
+export const start = postboxMutation({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args): Promise<{ started: boolean }> => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
@@ -101,7 +102,7 @@ export const start = authedMutation({
  * only switches over on `completed`, a cancelled walk simply leaves search
  * exactly where it was.
  */
-export const cancel = authedMutation({
+export const cancel = postboxMutation({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args): Promise<void> => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');

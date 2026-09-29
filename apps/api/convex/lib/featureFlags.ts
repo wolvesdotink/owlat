@@ -60,15 +60,23 @@ export async function assertFeatureEnabled(
 	flag: FeatureFlagKey
 ): Promise<void> {
 	const enabled = await isFeatureEnabled(ctx, flag);
-	if (!enabled) {
-		throwForbidden(
-			`Feature "${flag}" is disabled on this Owlat instance. An admin can enable it from Settings → Features.`,
-			// `features` is the key both helpers carry, so a client can read one
-			// field whether the floor was single-flag or any-of; `feature` stays for
-			// the callers that already read it.
-			{ feature: flag, features: [flag] }
-		);
-	}
+	if (!enabled) throwFeatureDisabled(flag);
+}
+
+/**
+ * The `forbidden` error a single-flag floor throws. Shared with the action-side
+ * floors (`assertExternalEnabled`, `assertCampaignsEnabledInAction`), which
+ * resolve the flag through the internal mirror query because actions have no
+ * `ctx.db`, so every floor reports a disabled flag the same way.
+ */
+export function throwFeatureDisabled(flag: FeatureFlagKey): never {
+	throwForbidden(
+		`Feature "${flag}" is disabled on this Owlat instance. An admin can enable it from Settings → Features.`,
+		// `features` is the key both helpers carry, so a client can read one
+		// field whether the floor was single-flag or any-of; `feature` stays for
+		// the callers that already read it.
+		{ feature: flag, features: [flag] }
+	);
 }
 
 /**

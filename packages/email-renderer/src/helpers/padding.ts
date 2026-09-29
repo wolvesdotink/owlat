@@ -1,11 +1,18 @@
-import type {
-	EditorBlock,
-	BorderStyle,
-	CommonBlockProperties,
-} from '@owlat/shared';
+import type { EditorBlock, BorderStyle, CommonBlockProperties } from '@owlat/shared';
+import { DEFAULT_BLOCK_MARGIN, DEFAULT_BLOCK_PADDING } from '@owlat/shared/emailDefaults';
 
-const DEFAULT_PADDING = { top: 16, right: 24, bottom: 16, left: 24 };
-const DEFAULT_MARGIN = { top: 0, right: 0, bottom: 0, left: 0 };
+const DEFAULT_PADDING = {
+	top: DEFAULT_BLOCK_PADDING.paddingTop,
+	right: DEFAULT_BLOCK_PADDING.paddingRight,
+	bottom: DEFAULT_BLOCK_PADDING.paddingBottom,
+	left: DEFAULT_BLOCK_PADDING.paddingLeft,
+};
+const DEFAULT_MARGIN = {
+	top: DEFAULT_BLOCK_MARGIN.marginTop,
+	right: DEFAULT_BLOCK_MARGIN.marginRight,
+	bottom: DEFAULT_BLOCK_MARGIN.marginBottom,
+	left: DEFAULT_BLOCK_MARGIN.marginLeft,
+};
 const DEFAULT_BORDER = { width: 0, color: '#000000', style: 'none' as BorderStyle };
 
 export const getSectionPadding = (content: EditorBlock['content']): string => {
@@ -57,7 +64,9 @@ export const getMarginOnlyPadding = (content: EditorBlock['content']): string =>
 	return `${top}px ${right}px ${bottom}px ${left}px`;
 };
 
-export const getSectionBorder = (block: EditorBlock): { width: number; style: BorderStyle; color: string } => {
+export const getSectionBorder = (
+	block: EditorBlock
+): { width: number; style: BorderStyle; color: string } => {
 	const c = block.content as CommonBlockProperties;
 	const borderWidth = c.borderWidth ?? DEFAULT_BORDER.width;
 	const borderStyle = c.borderStyle ?? DEFAULT_BORDER.style;

@@ -1,21 +1,20 @@
 // Feature-flag contract: the 'automations' flag is a product/UI gate, not an
-// authorization boundary. It is asserted on the entry points that bring an
-// automation into use (create + the lifecycle transitions + the list/count
-// surfaces) and reinforced by the web layer's path-derived feature gate.
-// Editing/reading an already-existing automation (update, steps, analytics, get)
-// is gated by automations:manage (admin/owner) and intentionally does not
-// re-assert the flag — authorization, not the product flag, is the security gate.
+// authorization boundary. Every public function in automations/** runs on the
+// gated `automationsQuery` / `automationsMutation` builders (./_helpers.ts), so
+// with the flag off an automation can be neither listed nor read, edited,
+// duplicated or removed — the same floor the web layer's path-derived gate on
+// /dashboard/automations applies. Authorization stays in the handler:
+// automations:manage (admin/owner) is the security gate.
 import { v } from 'convex/values';
 import { requireAutomationManage, requireAutomation, requireDraftAutomation } from './guards';
 import { paginationOptsValidator } from 'convex/server';
-import { authedQuery, authedMutation } from '../lib/authedFunctions';
+import { automationsQuery, automationsMutation } from './_helpers';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { throwInvalidState } from '../_utils/errors';
 import { trackEvent } from '../lib/posthogHelpers';
 import { triggerConfigValidator } from '../lib/convexValidators';
-import { assertFeatureEnabled } from '../lib/featureFlags';
 import { listResources, countFacet } from '../lib/listing';
 import { automationListing } from './listing';
 import { enrichStepForQuery, loadOrderedSteps } from './steps';
@@ -84,13 +83,12 @@ async function loadAutomationWithSteps(
 }
 
 // List automations using session-based context.
-export const list = authedQuery({
+export const list = automationsQuery({
 	args: {
 		status: v.optional(v.union(v.literal('draft'), v.literal('active'), v.literal('paused'))),
 		paginationOpts: paginationOptsValidator,
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'automations');
 		return listResources(ctx.db, automationListing, {
 			filters: { status: args.status },
 			paginationOpts: args.paginationOpts,
@@ -99,7 +97,7 @@ export const list = authedQuery({
 });
 
 // Get a single automation by ID with its steps
-export const get = authedQuery({
+export const get = automationsQuery({
 	args: {
 		automationId: v.id('automations'),
 	},
@@ -111,7 +109,7 @@ export const get = authedQuery({
 });
 
 // Get automation with related data (email templates for email steps)
-export const getWithRelations = authedQuery({
+export const getWithRelations = automationsQuery({
 	args: {
 		automationId: v.id('automations'),
 	},
@@ -145,7 +143,7 @@ export const getWithRelations = authedQuery({
 
 // Count automations by status — the descriptor's `byStatus` facet returns
 // per-status counts plus their `total`.
-export const countByStatus = authedQuery({
+export const countByStatus = automationsQuery({
 	args: {},
 	handler: async (ctx) => {
 		const counts = await countFacet(ctx.db, automationListing, 'byStatus');
@@ -156,7 +154,7 @@ export const countByStatus = authedQuery({
 // ============== Mutations ==============
 
 // Create a new automation
-export const create = authedMutation({
+export const create = automationsMutation({
 	args: {
 		name: v.string(),
 		description: v.optional(v.string()),
@@ -169,7 +167,6 @@ export const create = authedMutation({
 		triggerConfig: v.optional(triggerConfigValidator),
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'automations');
 		// authz: requireAutomationManage enforces automations:manage
 		const session = await requireAutomationManage(ctx, 'create automations');
 
@@ -194,7 +191,7 @@ export const create = authedMutation({
 });
 
 // Update automation basics (name, description)
-export const update = authedMutation({
+export const update = automationsMutation({
 	args: {
 		automationId: v.id('automations'),
 		name: v.optional(v.string()),
@@ -216,7 +213,7 @@ export const update = authedMutation({
 });
 
 // Update trigger configuration
-export const updateTrigger = authedMutation({
+export const updateTrigger = automationsMutation({
 	args: {
 		automationId: v.id('automations'),
 		triggerType: v.union(
@@ -262,12 +259,11 @@ function reasonToMessage(
 }
 
 // Activate an automation — auth shell over `lifecycle.transition`.
-export const activate = authedMutation({
+export const activate = automationsMutation({
 	args: {
 		automationId: v.id('automations'),
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'automations');
 		// authz: requireAutomationManage enforces automations:manage
 		const session = await requireAutomationManage(ctx, 'activate automations');
 		const outcome = await ctx.runMutation(internal.automations.lifecycle.transition, {
@@ -280,12 +276,11 @@ export const activate = authedMutation({
 });
 
 // Pause an automation — auth shell over `lifecycle.transition`.
-export const pause = authedMutation({
+export const pause = automationsMutation({
 	args: {
 		automationId: v.id('automations'),
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'automations');
 		// authz: requireAutomationManage enforces automations:manage
 		const session = await requireAutomationManage(ctx, 'pause automations');
 		const outcome = await ctx.runMutation(internal.automations.lifecycle.transition, {
@@ -298,12 +293,11 @@ export const pause = authedMutation({
 });
 
 // Resume a paused automation — auth shell over `lifecycle.transition`.
-export const resume = authedMutation({
+export const resume = automationsMutation({
 	args: {
 		automationId: v.id('automations'),
 	},
 	handler: async (ctx, args) => {
-		await assertFeatureEnabled(ctx, 'automations');
 		// authz: requireAutomationManage enforces automations:manage
 		const session = await requireAutomationManage(ctx, 'resume automations');
 		const outcome = await ctx.runMutation(internal.automations.lifecycle.transition, {
@@ -316,7 +310,7 @@ export const resume = authedMutation({
 });
 
 // Duplicate an automation
-export const duplicate = authedMutation({
+export const duplicate = automationsMutation({
 	args: {
 		automationId: v.id('automations'),
 	},
@@ -359,7 +353,7 @@ export const duplicate = authedMutation({
 });
 
 // Delete an automation and its steps
-export const remove = authedMutation({
+export const remove = automationsMutation({
 	args: {
 		automationId: v.id('automations'),
 	},

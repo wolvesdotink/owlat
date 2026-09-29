@@ -1,10 +1,10 @@
 import { v } from 'convex/values';
-import { authedQuery } from '../lib/authedFunctions';
+import { transactionalQuery } from './_helpers';
 import { getOrThrow } from '../_utils/errors';
 import { sendStatusValidator } from '../lib/literalValidators';
 
 // Get all sends for a transactional email
-export const listByTransactionalEmail = authedQuery({
+export const listByTransactionalEmail = transactionalQuery({
 	args: {
 		transactionalEmailId: v.id('transactionalEmails'),
 		status: v.optional(sendStatusValidator),
@@ -71,7 +71,7 @@ export const listByTransactionalEmail = authedQuery({
 });
 
 // Get a single send by ID
-export const get = authedQuery({
+export const get = transactionalQuery({
 	args: { id: v.id('transactionalSends') },
 	handler: async (ctx, args) => {
 		const send = await ctx.db.get(args.id);
@@ -116,7 +116,7 @@ export const get = authedQuery({
 // insert. The pre-deepening shape did an N+1 `collect()` over
 // `transactionalSends` per template; for a deployment with many templates
 // and high send volume, that was a list-page hot read.
-export const getCounts = authedQuery({
+export const getCounts = transactionalQuery({
 	args: {},
 	handler: async (ctx) => {
 		const transactionalEmails = await ctx.db.query('transactionalEmails').collect(); // bounded: per-deployment template set is small

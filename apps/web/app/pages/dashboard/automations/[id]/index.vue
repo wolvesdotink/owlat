@@ -3,6 +3,8 @@ import { api } from '@owlat/api';
 import type { Doc } from '@owlat/api/dataModel';
 import { stepEditorModuleFor, type StepKind } from '~/composables/automations/steps';
 import { formatNumber } from '~/utils/formatters';
+import { useLocalized } from '~/composables/useLocalized';
+import type { LocalizedText } from '~/utils/localizedText';
 
 const { t } = useI18n();
 
@@ -12,9 +14,7 @@ useHead({ title: () => t('dashboard.automations.detail.index.pageTitle') });
  * Registry-owned copy (step modules, status/trigger badges) carries message
  * KEYS, so every rendered registry value goes through here.
  */
-type RegistryText = string | { key: string; params?: Record<string, unknown> };
-const registryText = (value: RegistryText): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const registryText = useLocalized();
 
 definePageMeta({
 	layout: 'dashboard',
@@ -111,7 +111,7 @@ const getStepLabel = (stepType: StepKind, config: string | Record<string, unknow
 				module.getDescription as (
 					c: unknown,
 					ctx: { emailTemplates: Doc<'emailTemplates'>[] }
-				) => RegistryText
+				) => LocalizedText
 			)(module.parseConfig(raw), { emailTemplates: stepEmailTemplates.value })
 		);
 	} catch {

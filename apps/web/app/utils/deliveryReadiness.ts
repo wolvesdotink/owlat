@@ -6,15 +6,11 @@ import {
 	type ReadinessDualArmRow,
 	type ReadinessDualArmSummary,
 } from '~/utils/dualArmAlignment';
-import type {
-	LocalizedText,
-	ReadinessGate,
-	ReadinessGateKey,
-	ReadinessGateStatus,
-} from '~/utils/readinessGate';
+import type { ReadinessGate, ReadinessGateKey, ReadinessGateStatus } from '~/utils/readinessGate';
+import type { LocalizedText } from '~/utils/localizedText';
 
 export type { ReadinessDualArmRow, ReadinessDualArmSummary };
-export type { LocalizedText, ReadinessGate, ReadinessGateKey, ReadinessGateStatus };
+export type { ReadinessGate, ReadinessGateKey, ReadinessGateStatus };
 
 /**
  * The single source of truth for "can this instance actually send mail, and if

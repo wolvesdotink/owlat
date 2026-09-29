@@ -23,6 +23,7 @@ import {
 	type ReadinessMtaStsSource,
 } from '~/utils/deliveryReadiness';
 import { healthChipClass, healthTextClass } from '~/utils/healthTone';
+import { useLocalized } from '~/composables/useLocalized';
 
 const { canManageOrganization } = usePermissions();
 
@@ -34,10 +35,7 @@ const { t } = useI18n();
  * convention); a plain string is still accepted so a value with nothing to
  * translate reads as itself.
  */
-type LocalizedText = string | { key: string; params?: Record<string, unknown> };
-function localized(value: LocalizedText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const localized = useLocalized();
 
 const {
 	data: transport,
@@ -147,7 +145,11 @@ const GATE_ICON: Record<ReadinessGateStatus, string> = {
 					<div class="h-3 w-64 rounded bg-bg-surface animate-pulse motion-reduce:animate-none" />
 				</div>
 			</div>
-			<div v-for="n in 3" :key="n" class="h-12 rounded-lg bg-bg-surface animate-pulse motion-reduce:animate-none" />
+			<div
+				v-for="n in 3"
+				:key="n"
+				class="h-12 rounded-lg bg-bg-surface animate-pulse motion-reduce:animate-none"
+			/>
 		</div>
 
 		<!-- Error -->

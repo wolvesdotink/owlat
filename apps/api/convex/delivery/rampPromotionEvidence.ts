@@ -22,7 +22,7 @@ import {
 import { isSeedPlacementReached } from '@owlat/shared/seedPlacement';
 import type { Doc } from '../_generated/dataModel';
 import { DAY_MS } from '../lib/constants';
-import { startOfDayUtc } from '../lib/clock';
+import { utcDayStart } from '../lib/clock';
 import { readCellArmBuckets } from '../analytics/transportOutcomes';
 import {
 	deferralTelemetryReadSince,
@@ -253,7 +253,7 @@ async function dnsblDays(
 		.take(DECISION_SCAN_LIMIT);
 	const byDay = new Map<number, boolean>();
 	for (const row of rows) {
-		const day = startOfDayUtc(row.at);
+		const day = utcDayStart(row.at);
 		const listed = snapshotPoolBlocklisted(row.snapshot);
 		const clean = listed === false && (byDay.get(day) ?? true);
 		byDay.set(day, clean);

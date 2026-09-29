@@ -2,8 +2,10 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { ChannelHealthDot } from '~/utils/channelKinds';
+import { useLocalized } from '~/composables/useLocalized';
 
 const { t, te } = useI18n();
+const localized = useLocalized();
 
 useHead({ title: () => t('dashboard.inbox.activity.pageTitle') });
 
@@ -72,9 +74,7 @@ const deliveryStatusName = (meta: { label: string }, status: string): string => 
 const healthName = (health: ChannelHealthDot): string => {
 	const key = `dashboard.inbox.activity.health.${health.variant}`;
 	if (te(key)) return t(key);
-	return typeof health.label === 'string'
-		? t(health.label)
-		: t(health.label.key, health.label.params ?? {});
+	return localized(health.label);
 };
 
 const activeFilterLabel = computed(() =>

@@ -32,6 +32,7 @@ import {
 	type ChecklistStepId,
 	type OnboardingMode,
 } from '~/utils/welcomeFlow';
+import type { LocalizedText } from '~/utils/localizedText';
 
 /** Whether the viewer can drive instance-wide setup. */
 export type ViewerRole = 'admin' | 'member';
@@ -63,7 +64,7 @@ export type InstanceFlagId =
  * and never calls `useI18n`; `GettingStarted.vue` is the render boundary that
  * words every step it is given.
  */
-export type GettingStartedMessage = string | { key: string; params?: Record<string, unknown> };
+export type GettingStartedMessage = LocalizedText;
 
 export interface GettingStartedStep {
 	id: string;

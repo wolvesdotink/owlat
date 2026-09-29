@@ -9,7 +9,7 @@
  * fixture that disagreed between them would make one of the two lie.
  *
  * NOTHING HERE RE-IMPLEMENTS A PRODUCTION RULE. The day boundary is
- * `lib/clock.startOfDayUtc` and the day length is `lib/constants.DAY_MS`,
+ * `lib/clock.utcDayStart` and the day length is `lib/constants.DAY_MS`,
  * because a fixture that recomputes `x - (x % DAY)` for itself cannot catch a
  * bug in the arithmetic the projection actually uses. The capacity snapshot type
  * is `RampCapacityInput` itself rather than a loose restatement of it, so a
@@ -26,13 +26,13 @@ import { resolveSendRouteFromDb } from '../../lib/sendProviders/route';
 import type { ResolvedRoute } from '../../lib/sendProviders/routing';
 import type { RampCapacityInput } from '../ramp/controllerTypes';
 import { createTestDomain } from '../../__tests__/factories';
-import { startOfDayUtc } from '../../lib/clock';
+import { utcDayStart } from '../../lib/clock';
 import { DAY_MS } from '../../lib/constants';
 
 export const CAPACITY_ORG = 'org_ramp_capacity';
 /** 08:00 UTC on a fixed day: two thirds of the UTC day still ahead. */
 export const CAPACITY_NOW = 1_800_000_000_000;
-export const CAPACITY_TODAY = startOfDayUtc(CAPACITY_NOW);
+export const CAPACITY_TODAY = utcDayStart(CAPACITY_NOW);
 export const CAPACITY_CELL = deliverabilityCellKey({
 	stream: 'campaign',
 	destinationProvider: 'gmail',

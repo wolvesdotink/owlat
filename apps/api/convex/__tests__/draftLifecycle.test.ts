@@ -523,6 +523,46 @@ describe('draftLifecycle.transition — to: sent', () => {
 		});
 	});
 
+	it('builds the Sent-copy snippet like a delivered one: no <style> CSS, entities decoded', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedMailboxAndSent(t);
+		const draftId = await seedDraft(t, mailboxId, {
+			state: 'pending_send',
+			undoToken: 'tok-snippet',
+			scheduledSendAt: Date.now() + 1000,
+		});
+		const rawStorageId = await storeBlob(t);
+		const { bodyText: _noText, ...htmlOnly } = makeSentContext(rawStorageId);
+
+		const outcome = await t.mutation(internal.mail.draftLifecycle.transition, {
+			draftId,
+			input: {
+				to: 'sent',
+				at: Date.now(),
+				context: {
+					...htmlOnly,
+					bodyHtml:
+						'<html><head><style>p { color: #333; margin: 0 }</style></head>' +
+						`<body><p>Tom &amp; Jerry</p><p>${'\u{1F600}'.repeat(199)}xyz</p></body></html>`,
+				},
+			},
+		});
+
+		expect(outcome.ok).toBe(true);
+		await t.run(async (ctx) => {
+			if (!outcome.ok || !outcome.messageId) throw new Error('no sent message');
+			const msg = await ctx.db.get(outcome.messageId);
+			expect(msg?.snippet).not.toContain('color');
+			expect(msg?.snippet).not.toContain('{');
+			expect(msg?.snippet?.startsWith('Tom & Jerry ')).toBe(true);
+			// Truncated by code point (like buildSnippet), never mid-surrogate.
+			expect(Array.from(msg?.snippet ?? '')).toHaveLength(200);
+			expect(msg?.snippet).not.toMatch(/[\uD800-\uDBFF]$/);
+			const thread = msg ? await ctx.db.get(msg.threadId) : null;
+			expect(thread?.latestSnippet).toBe(msg?.snippet);
+		});
+	});
+
 	it.each(['owned', 'foreign', 'legacy'] as const)(
 		'send-success deletes only owned draft attachments: %s',
 		async (ownership) => {

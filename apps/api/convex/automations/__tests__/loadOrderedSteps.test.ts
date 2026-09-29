@@ -10,7 +10,11 @@ import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
-import { createTestAutomation, createTestAutomationStep } from '../../__tests__/factories';
+import {
+	createTestAutomation,
+	createTestAutomationStep,
+	enableFeatures,
+} from '../../__tests__/factories';
 import { loadOrderedSteps } from '../steps';
 import { walkerModules, type T } from './walkerHarness';
 
@@ -67,6 +71,8 @@ describe('loadOrderedSteps', () => {
 
 	it('orders the steps of every reader that goes through it', async () => {
 		const t = convexTest(schema, walkerModules);
+		// The public readers run on `automationsQuery`, whose floor reads the flag.
+		await enableFeatures(t, ['automations']);
 		const automationId = await seedScrambled(t);
 
 		const detail = await t.query(api.automations.automations.get, { automationId });

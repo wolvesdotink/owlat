@@ -14,6 +14,7 @@
  * cleanup of staged blobs when a message is not inserted (`dropStagedBlobs`).
  */
 
+import { htmlToPlainText } from '@owlat/shared/html';
 import { truncateCodePoints } from '@owlat/shared/unicode';
 import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 
@@ -38,15 +39,14 @@ function extractName(field: string): string | undefined {
 	return match?.[1]?.trim().replace(/^"|"$/g, '') || undefined;
 }
 
+/**
+ * The stored 200-code-point preview of a message: the text part when there is
+ * one (even a blank one — the preview line relies on that), else the HTML read
+ * through the shared {@link htmlToPlainText}. Used for delivered mail and for
+ * the Sent copy, so both sides of a conversation preview the same words.
+ */
 export function buildSnippet(text: string | undefined, html: string | undefined): string {
-	const source =
-		text?.trim() ??
-		html
-			?.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-			.replace(/<[^>]+>/g, ' ')
-			.replace(/\s+/g, ' ')
-			.trim() ??
-		'';
+	const source = text?.trim() ?? (html === undefined ? '' : htmlToPlainText(html));
 	return truncateCodePoints(source, 200);
 }
 

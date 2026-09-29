@@ -13,6 +13,7 @@ import type { VueWrapper } from '@vue/test-utils';
 import { createI18n, useI18n } from 'vue-i18n';
 import en from '~~/i18n/locales/en.json';
 import { datetimeFormats, numberFormats } from '~~/i18n/formats';
+import type { LocalizedText } from '~/utils/localizedText';
 
 /**
  * A string is a message key when it is rooted in the catalog: `auth.login.submit`
@@ -65,7 +66,7 @@ export function createTestI18n() {
 export const i18nStubs = { useI18n };
 
 /** A message as the registries carry it: a bare key, or a key with its params. */
-export type LocalizedMessage = string | { key: string; params?: Record<string, unknown> };
+export type LocalizedMessage = LocalizedText;
 
 /**
  * Resolve a registry message through a real `t`, so a suite asserts the English

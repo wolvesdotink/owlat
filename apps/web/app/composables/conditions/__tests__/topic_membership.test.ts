@@ -2,12 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { computed } from 'vue';
 import type { Doc } from '@owlat/api/dataModel';
 import { topicMembershipEditorModule, TOPIC_OPERATORS } from '../topic_membership';
-import type { ConditionEditorContext, LocalizedText } from '../types';
+import type { ConditionEditorContext, ConditionLabelKey } from '../types';
 import { createTestI18n } from '~/__tests__/i18n';
 
 /** The module carries catalog keys, so assertions render them in English. */
 const { t } = createTestI18n().global;
-const render = (text: LocalizedText) => t(text.key, text.params ?? {});
+const render = (text: ConditionLabelKey) => t(text.key, text.params ?? {});
 
 const makeCtx = (topics: Doc<'topics'>[] = []): ConditionEditorContext => ({
 	contactProperties: computed(() => []),

@@ -45,9 +45,10 @@
 import { v } from 'convex/values';
 import { internalQuery, internalMutation } from '../../_generated/server';
 import { internal } from '../../_generated/api';
-import { authedMutation, publicQuery } from '../../lib/authedFunctions';
+import { publicQuery } from '../../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../../lib/featureFlags';
+import { externalMailMutation } from './externalFeature';
 import {
 	personalAccounts,
 	getLivePersonalExternalAccountForUser,
@@ -77,6 +78,7 @@ import { externalAccountStatusValidator } from '../../schema/mailAccounts';
 export const getForCurrentUser = publicQuery({
 	args: {},
 	handler: async (ctx) => {
+		// flag-inline: soft-auth publicQuery — a gated builder would bypass check-public-functions.
 		await assertFeatureEnabled(ctx, 'mail.external');
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.role) return { configured: false as const };
@@ -125,10 +127,9 @@ export const getForCurrentUser = publicQuery({
  * delete the data instead of keeping it.
  */
 // authz: self — disconnects only the caller's own external account (resolved by userId).
-export const disconnect = authedMutation({
+export const disconnect = externalMailMutation({
 	args: {},
 	handler: async (ctx) => {
-		await assertFeatureEnabled(ctx, 'mail.external');
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.role) throwForbidden('Not authenticated');
 		// Disconnect the LIVE account, not the caller's oldest row — otherwise a
@@ -164,10 +165,9 @@ export const disconnect = authedMutation({
  * limits. The cascade itself is `accountTeardown._purgeChunk`.
  */
 // authz: self — purges only the caller's own external account (resolved by userId).
-export const purge = authedMutation({
+export const purge = externalMailMutation({
 	args: {},
 	handler: async (ctx) => {
-		await assertFeatureEnabled(ctx, 'mail.external');
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.role) throwForbidden('Not authenticated');
 		// The LIVE personal account, or else the exact mailbox `getForCurrentUser`

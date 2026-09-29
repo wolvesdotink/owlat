@@ -25,13 +25,13 @@ import {
 	deliveredShareShortfall,
 	type CellVolumeDay,
 } from '../capacityProjection';
-import { startOfDayUtc } from '../../../lib/clock';
+import { utcDayStart } from '../../../lib/clock';
 import { controllerInput, mixState, DAY, NOW } from './controllerFixtures';
 
 // The SHIPPED day boundary, never a re-implementation of it: a fixture that
 // recomputes `x - (x % DAY)` itself cannot catch a bug in the function the
 // projection actually uses.
-const TODAY = startOfDayUtc(NOW);
+const TODAY = utcDayStart(NOW);
 
 function day(offset: number, total: number, own = total): CellVolumeDay {
 	return { dayStartMs: TODAY - offset * DAY, total, own };

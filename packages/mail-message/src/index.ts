@@ -88,3 +88,6 @@ export {
 	buildDkimSignatureLine,
 	type DkimSigningKey,
 } from './compose/dkim';
+
+// --- text ---
+export { htmlToPlainText, type HtmlToPlainTextOptions } from './text/htmlToPlainText';

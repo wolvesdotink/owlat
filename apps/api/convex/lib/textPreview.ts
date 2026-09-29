@@ -1,10 +1,13 @@
+import { htmlToPlainText } from '@owlat/shared/html';
+
 /**
  * Build a short, single-line plaintext preview for a message.
  *
  * Used to derive `conversationThreads.lastPreview` at intake; the thread module
  * seals the result before storage so the
  * team-inbox row can render a snippet line without joining to the newest
- * message. Prefers a plaintext body; falls back to a crude tag-strip of HTML.
+ * message. Prefers a plaintext body; falls back to the shared HTML→text pass
+ * (no `<style>` CSS, no markup, entities decoded).
  * Collapses whitespace, trims, and truncates with an ellipsis — the row already
  * clamps visually, so this only bounds the stored string.
  */
@@ -16,18 +19,7 @@ export function buildMessagePreview(input: {
 	max?: number;
 }): string | undefined {
 	const max = input.max ?? MAX_PREVIEW_CHARS;
-	const source = input.text?.trim()
-		? input.text
-		: input.html
-			? // Strip tags and decode the few entities that survive a tag-strip so a
-				// preview never shows raw `&nbsp;` / markup.
-				input.html
-					.replace(/<[^>]*>/g, ' ')
-					.replace(/&nbsp;/g, ' ')
-					.replace(/&amp;/g, '&')
-					.replace(/&lt;/g, '<')
-					.replace(/&gt;/g, '>')
-			: '';
+	const source = input.text?.trim() ? input.text : input.html ? htmlToPlainText(input.html) : '';
 	const collapsed = source.replace(/\s+/g, ' ').trim();
 	if (!collapsed) return undefined;
 	return collapsed.length > max ? `${collapsed.slice(0, max - 1).trimEnd()}…` : collapsed;

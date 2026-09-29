@@ -21,6 +21,7 @@ import type {
 } from '@owlat/shared/deliverabilityAlignment';
 import type { ReturnPathCapabilityValue } from '~/utils/transportWizard';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { resolveLocalized, type LocalizedText } from '~/utils/localizedText';
 import TransportConnectionWizard from '../TransportConnectionWizard.vue';
 
 /**
@@ -43,8 +44,7 @@ config.global.plugins = [...(config.global.plugins ?? []), i18n];
  * to resolve it the same way the component does — against the real English
  * catalog, not a restated copy of the words.
  */
-export const localized = (value: string | { key: string; params?: Record<string, unknown> }) =>
-	typeof value === 'string' ? i18n.global.t(value) : i18n.global.t(value.key, value.params ?? {});
+export const localized = (value: LocalizedText) => resolveLocalized(i18n.global, value);
 
 /**
  * A live-DNS fixture: TXT values per name, or an authoritative absence, or a

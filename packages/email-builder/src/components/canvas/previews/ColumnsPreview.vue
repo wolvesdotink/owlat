@@ -2,7 +2,7 @@
 import { computed, defineAsyncComponent } from 'vue';
 import type { EditorBlock, EmailTheme, ColumnsBlockContent, Variable, SlashCommand } from '../../../types';
 import type { ParentContext } from '../types';
-import { getColumnWidths } from '../../../utils/blocks';
+import { blockBoxStyle, getColumnWidths } from '../../../utils/blocks';
 import { VueDraggable } from 'vue-draggable-plus';
 
 // Lazy import to break circular dependency (DocumentBlock imports this component)
@@ -29,14 +29,7 @@ const emit = defineEmits<{
 const content = computed(() => props.block.content as ColumnsBlockContent);
 
 const wrapperStyles = computed(() => ({
-	paddingTop: `${content.value.paddingTop ?? 16}px`,
-	paddingRight: `${content.value.paddingRight ?? 24}px`,
-	paddingBottom: `${content.value.paddingBottom ?? 16}px`,
-	paddingLeft: `${content.value.paddingLeft ?? 24}px`,
-	marginTop: `${content.value.marginTop ?? 0}px`,
-	marginRight: `${content.value.marginRight ?? 0}px`,
-	marginBottom: `${content.value.marginBottom ?? 0}px`,
-	marginLeft: `${content.value.marginLeft ?? 0}px`,
+	...blockBoxStyle(props.block),
 }));
 
 const columnWidths = computed(() =>

@@ -21,9 +21,11 @@ export interface ConditionEditorContext {
  * These modules are module-scope singletons — they are constructed before any
  * component sets up, so they cannot call `useI18n()`. They carry the message
  * *key* (and its interpolation params) instead, and the rendering component
- * resolves it with `t(text.key, text.params)`.
+ * resolves it with `useLocalized()`. It is the object arm of
+ * `LocalizedText` (`utils/localizedText.ts`), narrowed: always a key, never an
+ * already-worded string.
  */
-export interface LocalizedText {
+export interface ConditionLabelKey {
 	readonly key: string;
 	readonly params?: Record<string, string | number>;
 }
@@ -37,7 +39,7 @@ export interface ConditionEditorModule<K extends ConditionKind> {
 	createDefault(ctx: ConditionEditorContext): ConditionOfKind<K>;
 	/** Returns an i18n message key for the failure, or `null` when valid. */
 	validateForSubmit(condition: ConditionOfKind<K>): string | null;
-	getDescription(condition: ConditionOfKind<K>, ctx: ConditionEditorContext): LocalizedText;
+	getDescription(condition: ConditionOfKind<K>, ctx: ConditionEditorContext): ConditionLabelKey;
 	readonly EditorComponent: Component;
 }
 

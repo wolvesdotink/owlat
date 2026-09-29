@@ -1271,6 +1271,47 @@ describe('transactionalEmails.updateTranslation', () => {
 	});
 });
 
+describe('transactional feature floor', () => {
+	it('refuses translation edits and send reads with transactional off (transactionalMutation / transactionalQuery floor)', async () => {
+		const t = convexTest(schema, modules);
+		let emailId: Id<'transactionalEmails'>;
+
+		await t.run(async (ctx) => {
+			emailId = await ctx.db.insert(
+				'transactionalEmails',
+				createTestTransactionalEmail({
+					slug: 'i18n-flag-off',
+					defaultLanguage: 'en',
+					supportedLanguages: ['en', 'de'],
+					translations: JSON.stringify({
+						de: { subject: 'Hallo', blocks: { b1: { html: 'Alt' } } },
+					}),
+				})
+			);
+			await ctx.db.insert('instanceSettings', {
+				featureFlags: { transactional: false },
+				createdAt: Date.now(),
+			});
+		});
+
+		await expect(
+			t.mutation(api.transactional.translations.updateTranslation, {
+				id: emailId!,
+				language: 'de',
+				subject: 'Willkommen',
+			})
+		).rejects.toThrow(/"category":"forbidden".*"feature":"transactional"/);
+		await expect(t.query(api.transactional.sends.getCounts, {})).rejects.toThrow(
+			/"category":"forbidden".*"feature":"transactional"/
+		);
+
+		await t.run(async (ctx) => {
+			const email = await ctx.db.get(emailId!);
+			expect(JSON.parse(email!.translations!).de.subject).toBe('Hallo');
+		});
+	});
+});
+
 // ============ transactionalEmails.removeTranslation ============
 
 describe('transactionalEmails.removeTranslation', () => {

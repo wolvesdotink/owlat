@@ -10,6 +10,7 @@
  * `canManage` here for affordance; the backend re-checks `contacts:manage`.
  */
 import { type BlockReason, suppressionReasonPresentation } from '~/utils/suppressionReasons';
+import { useLocalized } from '~/composables/useLocalized';
 
 const props = defineProps<{
 	reason: BlockReason;
@@ -29,9 +30,7 @@ const { t } = useI18n();
  * A presentation field owned by the shared suppression-reason table: either a
  * bare message key or a key plus the values it interpolates.
  */
-type LocalizedField = string | { key: string; params?: Record<string, unknown> };
-const localize = (value: LocalizedField): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const localize = useLocalized();
 
 // Plain language, reason-specific — no jargon, explains WHY in one line. The
 // wording comes from the SAME table the suppression list renders from, so the

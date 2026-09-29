@@ -29,9 +29,7 @@ import {
 	type RampCellDecision,
 	type RampControls,
 } from '~/utils/deliverabilityRamp';
-import type { LocalizedText } from '~/utils/deliverabilityMeasurement';
-
-export type { LocalizedText };
+import type { LocalizedText } from '~/utils/localizedText';
 
 /**
  * HOW A SENTENCE THAT NAMES A CELL GETS ITS NAME.

@@ -63,7 +63,7 @@ import { internalMutation, type DatabaseReader, type MutationCtx } from '../_gen
 import { internal } from '../_generated/api';
 import type { DeliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
 import { logWarn } from '../lib/runtimeLog';
-import { resolveNow, startOfDayUtc } from '../lib/clock';
+import { resolveNow, utcDayStart } from '../lib/clock';
 import { type ObservationSweepResult, sweepExpiredObservations } from '../lib/retentionSweep';
 import {
 	CELL_ARM_BUCKET_CLEANUP_BATCH_SIZE,
@@ -240,7 +240,7 @@ export async function recordTransportOutcomeForCell(
 			organizationId: input.organizationId,
 			cell: input.cell,
 			arm: input.arm,
-			periodStart: startOfDayUtc(now),
+			periodStart: utcDayStart(now),
 			shardKey: randomCellArmShardKey(),
 		},
 		now

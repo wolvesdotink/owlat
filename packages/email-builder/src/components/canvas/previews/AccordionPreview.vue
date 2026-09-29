@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { EditorBlock, EmailTheme, AccordionBlockContent } from '../../../types';
+import { blockBoxStyle } from '../../../utils/blocks';
 import { ChevronDown } from '@lucide/vue';
 
 const props = defineProps<{
@@ -11,14 +12,7 @@ const props = defineProps<{
 const content = computed(() => props.block.content as AccordionBlockContent);
 
 const wrapperStyles = computed(() => ({
-	paddingTop: `${content.value.paddingTop ?? 16}px`,
-	paddingRight: `${content.value.paddingRight ?? 24}px`,
-	paddingBottom: `${content.value.paddingBottom ?? 16}px`,
-	paddingLeft: `${content.value.paddingLeft ?? 24}px`,
-	marginTop: `${content.value.marginTop ?? 0}px`,
-	marginRight: `${content.value.marginRight ?? 0}px`,
-	marginBottom: `${content.value.marginBottom ?? 0}px`,
-	marginLeft: `${content.value.marginLeft ?? 0}px`,
+	...blockBoxStyle(props.block),
 }));
 </script>
 

@@ -2,7 +2,7 @@ import type { ContentFlag, ContentScanLevel } from '@owlat/email-scanner';
 import type { Doc } from '../_generated/dataModel';
 import { hashFraction, variantForHash } from './sendVariantSplit';
 import { orderByEngagement, planTodaysSlice, type SendPlanState } from './multiDaySendPlan';
-import { nextUtcDayStart } from '../lib/utcDay';
+import { nextUtcDayStart } from '../lib/clock';
 
 /**
  * PURE DECISION LAYER for the campaign send orchestrator.

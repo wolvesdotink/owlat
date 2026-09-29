@@ -26,7 +26,7 @@
  */
 
 import { DAY_MS } from '../lib/constants';
-import { utcDayStart } from '../lib/utcDay';
+import { utcDayStart } from '../lib/clock';
 
 /**
  * Hard bound on how many days a returned plan may span. A plan longer than

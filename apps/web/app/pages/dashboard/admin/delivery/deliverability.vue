@@ -17,6 +17,7 @@ import {
 	itemKey,
 } from '~/utils/deliverabilityCenter';
 import { useDeliverabilityChecklistCopy } from '~/composables/useDeliverabilityChecklistCopy';
+import { useLocalized } from '~/composables/useLocalized';
 
 const { t } = useI18n();
 
@@ -26,10 +27,7 @@ const { t } = useI18n();
  * plain string is still accepted so a value with nothing to translate reads as
  * itself.
  */
-type LocalizedText = string | { key: string; params?: Record<string, unknown> };
-function localized(value: LocalizedText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const localized = useLocalized();
 
 /**
  * A check's name is shared-registry English (Convex stores and mails it with

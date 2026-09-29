@@ -1,5 +1,5 @@
 import { defineAsyncComponent } from 'vue';
-import type { ConditionEditorModule, ConditionOfKind, LocalizedText } from '../types';
+import type { ConditionEditorModule, ConditionOfKind, ConditionLabelKey } from '../types';
 
 type EmailActivityCondition = ConditionOfKind<'email_activity'>;
 
@@ -39,7 +39,7 @@ export const emailActivityEditorModule: ConditionEditorModule<'email_activity'> 
 		}
 		return null;
 	},
-	getDescription(condition): LocalizedText {
+	getDescription(condition): ConditionLabelKey {
 		const match = ACTIVITY_OPTIONS.find(
 			(o) => o.field === condition.field && o.operator === condition.operator
 		);

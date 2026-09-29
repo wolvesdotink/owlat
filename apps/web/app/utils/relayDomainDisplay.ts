@@ -26,6 +26,7 @@
 
 import type { FunctionReturnType } from 'convex/server';
 import type { api } from '@owlat/api';
+import type { LocalizedText } from '~/utils/localizedText';
 
 /** One row of the query's page, as the backend actually types it. */
 type RelayDomainQueryRow = FunctionReturnType<
@@ -59,7 +60,7 @@ export type RelayDomainTone = 'success' | 'warning' | 'error' | 'neutral';
  * sentence interpolates when it has any. Nothing here calls `useI18n` — the
  * component runs the value through `t(key, params)`.
  */
-export type RelayDomainText = string | { key: string; params?: Record<string, unknown> };
+export type RelayDomainText = LocalizedText;
 
 export interface RelayDomainDisplay {
 	readonly tone: RelayDomainTone;

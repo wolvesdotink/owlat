@@ -30,8 +30,10 @@ import {
 	openIncrementalDownload,
 } from '~/utils/incrementalJsonDownload';
 import { mboxExportFilename, writeMailboxMboxExport } from '~/utils/mboxExport';
+import { useLocalized } from '~/composables/useLocalized';
 
 const { t, locale } = useI18n();
+const localized = useLocalized();
 const { showToast } = useToast();
 const convex = useConvex();
 const { currentMailbox } = usePostboxMailbox();
@@ -102,7 +104,7 @@ async function downloadAllMail() {
 			>
 				<dt class="text-text-secondary">{{ t(statement.labelKey) }}</dt>
 				<dd class="text-text-primary text-right">
-					{{ t(statement.valueKey, statement.params ?? {}) }}
+					{{ localized({ key: statement.valueKey, params: statement.params }) }}
 				</dd>
 			</div>
 		</dl>

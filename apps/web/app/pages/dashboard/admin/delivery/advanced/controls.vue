@@ -52,6 +52,7 @@ import { isRampInactive } from '~/utils/deliveryAdvancedEmpty';
 // a mount that resolved it to nothing would hide the one thing it says.
 import DeliveryAdvancedEmptyState from '~/components/delivery/AdvancedEmptyState.vue';
 import DeliveryRampIdleNotice from '~/components/delivery/RampIdleNotice.vue';
+import { useLocalized } from '~/composables/useLocalized';
 
 const { t } = useI18n();
 
@@ -60,10 +61,7 @@ const { t } = useI18n();
  * carry i18n keys rather than sentences (the registry convention); a plain string
  * is still accepted so a value with nothing to translate reads as itself.
  */
-type LocalizedText = string | { key: string; params?: Record<string, unknown> };
-function localized(value: LocalizedText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const localized = useLocalized();
 
 useHead({ title: () => t('dashboard.admin.delivery.advanced.controls.pageTitle') });
 

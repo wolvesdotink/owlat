@@ -268,13 +268,19 @@ export const eraseMemberData = internalMutation({
 			.collect(); // bounded: at most one row per user
 		for (const row of platformAdminRows) await ctx.db.delete(row._id);
 
-		// Open/resolved mailbox requests carry the member's email + name; drop
-		// them so no PII survives on the admin dashboard.
+		// Admin requests (mailbox and access, open or decided) carry the member's
+		// email, name and free-text note; drop both queues' rows so no PII
+		// survives on the admin dashboard or in the resolved history.
 		const mailboxRequests = await ctx.db
 			.query('mailboxRequests')
 			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', args.authUserId))
 			.collect(); // bounded: one open request per user, rarely more
 		for (const req of mailboxRequests) await ctx.db.delete(req._id);
+		const accessRequests = await ctx.db
+			.query('accessRequests')
+			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', args.authUserId))
+			.collect(); // bounded: one open request per user, rarely more
+		for (const req of accessRequests) await ctx.db.delete(req._id);
 
 		// Today's per-user memory: the seen watermark and the thread-visit log
 		// are this member's reading history. Visits can be numerous, so drain

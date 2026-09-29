@@ -15,6 +15,7 @@
  */
 
 import { v } from 'convex/values';
+import { htmlToPlainText } from '@owlat/shared/html';
 import { internalAction } from './_generated/server';
 import type { ActionCtx } from './_generated/server';
 import { internal } from './_generated/api';
@@ -433,7 +434,7 @@ export async function extractText(blob: Blob, mimeType: string, filename: string
 
 	// HTML — strip tags, including `<script>`/`<style>` BODIES, so nothing
 	// smuggled in markup reaches the LLM / knowledge-graph ingestion path.
-	if (format === 'html') return stripHtmlTags(await blob.text());
+	if (format === 'html') return htmlToPlainText(await blob.text());
 
 	// Plain text, JSON and CSV are their own bytes.
 	if (format === 'text' || format === 'csv') return await blob.text();
@@ -462,17 +463,6 @@ export async function extractText(blob: Blob, mimeType: string, filename: string
 	// external libraries or a processing service, so the file is ingested under
 	// its own name and nothing else.
 	return extractionPlaceholder(format, filename);
-}
-
-// Exported for unit tests. Drops <script>/<style> bodies before tags so file
-// content fed to the LLM/knowledge graph can't smuggle markup or scripts.
-export function stripHtmlTags(html: string): string {
-	return html
-		.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-		.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-		.replace(/<[^>]+>/g, ' ')
-		.replace(/\s+/g, ' ')
-		.trim();
 }
 
 // Exported for unit tests.

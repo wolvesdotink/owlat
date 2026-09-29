@@ -11,6 +11,7 @@ import {
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { authedQuery } from '../lib/authedFunctions';
+import { utcDayKey } from '../lib/clock';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { observationVerdict } from './observationFreshness';
 import { type ObservationSweepResult, sweepExpiredObservations } from '../lib/retentionSweep';
@@ -30,9 +31,7 @@ const FETCHED_AT_FUTURE_TOLERANCE_MS = 5 * 60 * 1_000;
 function parseGoogleStatsDate(date: string): number | null {
 	if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
 	const parsed = Date.parse(`${date}T00:00:00.000Z`);
-	return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 10) === date
-		? parsed
-		: null;
+	return Number.isFinite(parsed) && utcDayKey(parsed) === date ? parsed : null;
 }
 
 function isRatio(value: number): boolean {

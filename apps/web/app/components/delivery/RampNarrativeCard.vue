@@ -28,6 +28,7 @@ import {
 	recentRampDecisions,
 } from '~/utils/deliverabilityRampNarrative';
 import { formatShortDate } from '~/utils/formatters';
+import { useLocalized } from '~/composables/useLocalized';
 
 const {
 	data: controls,
@@ -43,10 +44,7 @@ const { t, locale } = useI18n();
  * than sentences (the registry convention for module-scope definitions); a plain
  * string is still accepted so a value with nothing to translate reads as itself.
  */
-type LocalizedText = string | { key: string; params?: Record<string, unknown> };
-function localized(value: LocalizedText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const localized = useLocalized();
 
 const phaseHeadingId = useId();
 const decisionsHeadingId = useId();

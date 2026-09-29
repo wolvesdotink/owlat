@@ -58,7 +58,7 @@ import {
 } from '@owlat/shared/smtpBlockCategories';
 import type { Doc } from '../_generated/dataModel';
 import { logWarn } from '../lib/runtimeLog';
-import { resolveNow, startOfDayUtc } from '../lib/clock';
+import { resolveNow, utcDayStart } from '../lib/clock';
 import { type ObservationSweepResult, sweepExpiredObservations } from '../lib/retentionSweep';
 import { resolveProviderMessageId } from '../delivery/sendLifecycle/lookups';
 import type { SmtpBlockObservation } from '../delivery/ramp/gateTypes';
@@ -280,7 +280,7 @@ export async function recordSmtpResponseForCell(
 			organizationId: input.organizationId,
 			cell: input.cell,
 			arm: input.arm,
-			periodStart: startOfDayUtc(now),
+			periodStart: utcDayStart(now),
 			shardKey: randomCellArmShardKey(),
 		},
 		now

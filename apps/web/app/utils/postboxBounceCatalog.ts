@@ -42,7 +42,7 @@
 import { HARD_BOUNCE_PATTERNS, SOFT_BOUNCE_PATTERNS } from '@owlat/shared/bounceClassification';
 import type { SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
 import type { HealthTone } from '~/utils/healthTone';
-import type { LocalizedText } from '~/utils/readinessGate';
+import type { LocalizedText } from '~/utils/localizedText';
 
 /**
  * Whose problem the failure is. Three values, because three is what a person can

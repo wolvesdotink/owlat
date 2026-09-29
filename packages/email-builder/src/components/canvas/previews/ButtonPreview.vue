@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { moduleFor } from '@owlat/email-renderer';
 import type { EditorBlock, EmailTheme, ButtonBlockContent } from '../../../types';
+import { blockBoxStyle } from '../../../utils/blocks';
 import { gradientCss as buildGradientCss } from '../../../utils/gradient';
 
 const props = defineProps<{
@@ -26,14 +27,7 @@ const wrapperStyles = computed(() => ({
 			: undefined,
 	textAlign:
 		(content.value.align === 'full' ? 'center' : content.value.align) || ('center' as const),
-	paddingTop: `${content.value.paddingTop ?? 16}px`,
-	paddingRight: `${content.value.paddingRight ?? 24}px`,
-	paddingBottom: `${content.value.paddingBottom ?? 16}px`,
-	paddingLeft: `${content.value.paddingLeft ?? 24}px`,
-	marginTop: `${content.value.marginTop ?? 0}px`,
-	marginRight: `${content.value.marginRight ?? 0}px`,
-	marginBottom: `${content.value.marginBottom ?? 0}px`,
-	marginLeft: `${content.value.marginLeft ?? 0}px`,
+	...blockBoxStyle({ content: content.value }),
 }));
 
 const gradientCss = computed(() => buildGradientCss(content.value.backgroundGradient));

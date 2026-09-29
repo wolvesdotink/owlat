@@ -118,6 +118,24 @@ describe('mail.external — feature gate', () => {
 		);
 	});
 
+	it('disconnect and purge refuse with the flag disabled (externalMailMutation floor)', async () => {
+		const t = convexTest(schema, modules);
+		setSession('user-A', 'owner');
+		const { externalAccountId } = await t.mutation(
+			internal.mail.external.accounts._connectInternal,
+			CREDS
+		);
+
+		await expect(t.mutation(api.mail.external.accounts.disconnect, {})).rejects.toThrow(
+			/"category":"forbidden".*"feature":"mail\.external"/
+		);
+		await expect(t.mutation(api.mail.external.accounts.purge, {})).rejects.toThrow(
+			/"category":"forbidden".*"feature":"mail\.external"/
+		);
+		const account = await t.run((ctx) => ctx.db.get(externalAccountId));
+		expect(account?.status).toBe('pending');
+	});
+
 	it('getForCurrentUser returns { configured: false } when enabled but no account', async () => {
 		const t = convexTest(schema, modules);
 		await enableExternal(t);

@@ -19,6 +19,7 @@ import { useRelayRemovalGuard } from '~/composables/useRelayRemovalGuard';
 import { credentialEnvVarFor } from '~/composables/setupWizardCredentials';
 import TransportCredentialFields from './TransportCredentialFields.vue';
 import TransportFromIdentityFields from './TransportFromIdentityFields.vue';
+import { useLocalized } from '~/composables/useLocalized';
 
 /**
  * In-app transport editor. Reuses the setup wizard's provider picker, SMTP
@@ -70,11 +71,7 @@ const { t } = useI18n();
  * paints the serialized object into the dialog an operator is reading to decide
  * whether to disconnect their relay.
  */
-type LocalizedText = string | { key: string; params?: Record<string, unknown> };
-function localized(value: LocalizedText | null): string {
-	if (value === null) return '';
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const localized = useLocalized();
 
 const { showToast } = useToast();
 

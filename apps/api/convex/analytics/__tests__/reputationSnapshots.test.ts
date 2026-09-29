@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { deriveSnapshot } from '../reputationSnapshots';
-import { startOfDayUtc } from '../../lib/clock';
+import { utcDayStart } from '../../lib/clock';
 import type { ReputationSummary } from '../sendingReputation';
 
 /**
@@ -73,7 +73,7 @@ async function seedOrgBucket(
 	await t.run(async (ctx) => {
 		await ctx.db.insert('sendingReputation', {
 			scope: 'org',
-			periodStart: startOfDayUtc(Date.now()),
+			periodStart: utcDayStart(Date.now()),
 			shardKey: 0,
 			totalSent: counters.sent,
 			totalDelivered: counters.delivered,
@@ -95,7 +95,7 @@ describe('writeDailySnapshot', () => {
 		const rows = await t.run((ctx) => ctx.db.query('deliverySnapshots').collect());
 		expect(rows).toHaveLength(1);
 		const row = rows[0]!;
-		expect(row.periodStart).toBe(startOfDayUtc(Date.now()));
+		expect(row.periodStart).toBe(utcDayStart(Date.now()));
 		expect(row.deliveryRate).toBeCloseTo(0.95, 5);
 		expect(row.bounceRate).toBeCloseTo(0.03, 5);
 		expect(row.complaintRate).toBeCloseTo(0.002, 5);
@@ -118,8 +118,8 @@ describe('writeDailySnapshot', () => {
 		await seedOrgBucket(t, { sent: 100, delivered: 100, bounced: 0, complaints: 0 });
 
 		// A stale point ~100 days old, plus a recent one that must survive.
-		const stalePeriod = startOfDayUtc(Date.now() - 100 * DAY_MS);
-		const recentPeriod = startOfDayUtc(Date.now() - 5 * DAY_MS);
+		const stalePeriod = utcDayStart(Date.now() - 100 * DAY_MS);
+		const recentPeriod = utcDayStart(Date.now() - 5 * DAY_MS);
 		await t.run(async (ctx) => {
 			for (const periodStart of [stalePeriod, recentPeriod]) {
 				await ctx.db.insert('deliverySnapshots', {
@@ -143,6 +143,6 @@ describe('writeDailySnapshot', () => {
 		);
 		expect(periods).not.toContain(stalePeriod);
 		expect(periods).toContain(recentPeriod);
-		expect(periods).toContain(startOfDayUtc(Date.now()));
+		expect(periods).toContain(utcDayStart(Date.now()));
 	});
 });

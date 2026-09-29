@@ -1,0 +1,7 @@
+# Justified exceptions to scripts/check-html-to-text.sh — one `path:<spelling>`
+# per line, each with its reason. Only a tag strip whose output is NOT text for
+# a reader, a model or an index (markup rewriting, say) may be listed; every
+# snippet, preview, prompt, search excerpt, scan sample and text/plain part goes
+# through htmlToPlainText.
+#
+# (none)

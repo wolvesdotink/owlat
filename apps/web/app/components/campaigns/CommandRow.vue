@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import type { DecoratedRow } from '~/utils/campaignCommandRow';
+import { useLocalized } from '~/composables/useLocalized';
 
 const props = defineProps<{ row: DecoratedRow }>();
 
@@ -21,9 +22,7 @@ const { t, locale } = useI18n();
  * both of which are module scope: their labels arrive as catalog keys, and this
  * is the render boundary that turns them into words.
  */
-type RowMessage = string | { key: string; params?: Record<string, unknown> };
-const message = (value: RowMessage): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const message = useLocalized();
 
 // Right-click menu — the same verbs as the row's overflow dropdown + primary
 // action (one action source, two entry points; Delete is withheld mid-send,

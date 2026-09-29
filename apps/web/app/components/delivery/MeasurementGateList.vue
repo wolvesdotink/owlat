@@ -25,6 +25,7 @@ import {
 	gateTone,
 } from '~/utils/deliverabilityGateCopy';
 import type { DeliverabilityDashboardGate } from '~/utils/deliverabilityMeasurement';
+import { useLocalized } from '~/composables/useLocalized';
 
 const props = defineProps<{
 	gates: readonly DeliverabilityDashboardGate[];
@@ -47,9 +48,7 @@ const { t } = useI18n();
  * catalog keys (with the numbers a verdict is denominated in as parameters),
  * and this list is the render boundary that turns them into words.
  */
-type GateMessage = string | { key: string; params?: Record<string, unknown> };
-const message = (value: GateMessage): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const message = useLocalized();
 
 const TONE_CLASS = {
 	ok: 'border-success/40 bg-success/5 text-success',

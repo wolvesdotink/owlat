@@ -2,6 +2,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail } from '@owlat/shared';
 import { mapSenderVerification } from '~/utils/campaignSenderVerification';
+import { useLocalized } from '~/composables/useLocalized';
 
 /**
  * Adding a campaign sender: the address and display name being typed, the
@@ -12,7 +13,7 @@ import { mapSenderVerification } from '~/utils/campaignSenderVerification';
  * copy of the query, the advisory and the mutation.
  */
 export function useAddCampaignSender(options: { operationLabel: () => string }) {
-	const { t } = useI18n();
+	const localized = useLocalized();
 
 	const email = ref('');
 	const displayName = ref('');
@@ -40,10 +41,7 @@ export function useAddCampaignSender(options: { operationLabel: () => string }) 
 
 	// The shared advisory carries message KEYS (with params when the copy names
 	// the domain), never sentences.
-	const verificationMessage = computed(() => {
-		const message = verification.value.message;
-		return typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
-	});
+	const verificationMessage = computed(() => localized(verification.value.message));
 
 	function reset() {
 		email.value = '';

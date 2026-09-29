@@ -105,6 +105,10 @@ describe('buildSearchBody', () => {
 			'AT&T invoice'
 		);
 		expect(buildSearchBody(undefined, '<script>var x = "secret"</script><p>hi</p>')).toBe('hi');
+		// Numeric references and the <head> title index as the reader sees them.
+		expect(
+			buildSearchBody(undefined, '<head><title>Draft</title></head><p>Caf&#233; &#x20AC;5</p>')
+		).toBe('Caf\u00e9 \u20ac5');
 	});
 
 	it('caps the excerpt and backs up to a word boundary', () => {
@@ -175,6 +179,30 @@ describe('mail.bodySearchBackfill', () => {
 		const mailboxId = await seedMailbox(t);
 		await seedFolder(t, mailboxId);
 		await expect(t.mutation(api.mail.bodySearchBackfill.start, { mailboxId })).rejects.toThrow();
+	});
+
+	// The Postbox floor (`postboxMutation`): with neither mailbox source enabled
+	// the surface does not exist, even for the owner with indexing switched on.
+	it('refuses start and cancel when neither postbox nor mail.external is on', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t);
+		await seedFolder(t, mailboxId);
+		await setIndexing(t, true);
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').first();
+			if (!settings) throw new Error('instance settings missing');
+			await ctx.db.patch(settings._id, {
+				featureFlags: { ...settings.featureFlags, postbox: false, 'mail.external': false },
+			});
+		});
+
+		await expect(t.mutation(api.mail.bodySearchBackfill.start, { mailboxId })).rejects.toThrow(
+			/"category":"forbidden".*"features":\["postbox","mail\.external"\]/
+		);
+		await expect(t.mutation(api.mail.bodySearchBackfill.cancel, { mailboxId })).rejects.toThrow(
+			/"category":"forbidden".*"features":\["postbox","mail\.external"\]/
+		);
+		expect(await t.query(api.mail.bodySearchBackfill.status, { mailboxId })).toBeNull();
 	});
 
 	it('refuses a non-owner', async () => {

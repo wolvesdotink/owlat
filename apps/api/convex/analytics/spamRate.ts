@@ -4,7 +4,7 @@ import { PROVIDER_SPAM_RATE_POLICY } from '@owlat/shared/reputation';
 import type { Doc } from '../_generated/dataModel';
 import type { DatabaseReader } from '../_generated/server';
 import type { DomainReputationBucketGroups, ReputationScope } from './sendingReputation';
-import { startOfDayUtc } from '../lib/clock';
+import { utcDayStart } from '../lib/clock';
 import { DAY_MS } from '../lib/constants';
 
 const WINDOW_MS = 30 * DAY_MS;
@@ -55,7 +55,7 @@ function deriveSpamRateSummary(buckets: readonly ReputationBucket[], now: number
 					: 'on_target';
 
 	let cleanInternalDaysBelowHardThreshold = 0;
-	const today = startOfDayUtc(now);
+	const today = utcDayStart(now);
 	for (let daysAgo = 1; daysAgo <= SPAM_RATE_INTERNAL_CLEAN_DAY_EVIDENCE_DAYS; daysAgo++) {
 		const day = daily.get(today - daysAgo * DAY_MS);
 		if (!day || day.delivered === 0) break;

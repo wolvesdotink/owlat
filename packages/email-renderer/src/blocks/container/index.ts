@@ -11,6 +11,7 @@
  */
 
 import { fullSupport, type ContainerBlockContent, type EditorBlock } from '@owlat/shared';
+import { DEFAULT_BLOCK_MARGIN, DEFAULT_BLOCK_PADDING } from '@owlat/shared/emailDefaults';
 import { itemToBlock, type BlockModule, type Placement } from '../_module';
 import { walkItemsPlaintext, ampPaddedItems } from '../_items';
 import { toPixelWidth } from '../../helpers/dimensions';
@@ -48,10 +49,10 @@ const renderNested = (
 	baseWidth: number,
 	walk: (child: EditorBlock, w: number, p: 'container') => string
 ): string => {
-	const paddingTop = content.paddingTop ?? 16;
-	const paddingRight = content.paddingRight ?? 24;
-	const paddingBottom = content.paddingBottom ?? 16;
-	const paddingLeft = content.paddingLeft ?? 24;
+	const paddingTop = content.paddingTop ?? DEFAULT_BLOCK_PADDING.paddingTop;
+	const paddingRight = content.paddingRight ?? DEFAULT_BLOCK_PADDING.paddingRight;
+	const paddingBottom = content.paddingBottom ?? DEFAULT_BLOCK_PADDING.paddingBottom;
+	const paddingLeft = content.paddingLeft ?? DEFAULT_BLOCK_PADDING.paddingLeft;
 	const marginTop = content.marginTop ?? 0;
 	const marginBottom = content.marginBottom ?? 0;
 
@@ -155,10 +156,10 @@ export const containerModule: BlockModule<'container'> = {
 				items: content.items,
 				background: content.backgroundColor,
 				padding: {
-					top: content.paddingTop ?? 16,
-					right: content.paddingRight ?? 24,
-					bottom: content.paddingBottom ?? 16,
-					left: content.paddingLeft ?? 24,
+					top: content.paddingTop ?? DEFAULT_BLOCK_PADDING.paddingTop,
+					right: content.paddingRight ?? DEFAULT_BLOCK_PADDING.paddingRight,
+					bottom: content.paddingBottom ?? DEFAULT_BLOCK_PADDING.paddingBottom,
+					left: content.paddingLeft ?? DEFAULT_BLOCK_PADDING.paddingLeft,
 				},
 			},
 			walk
@@ -169,15 +170,8 @@ export const containerModule: BlockModule<'container'> = {
 		return {
 			items: [],
 			maxWidth: 100,
-			paddingTop: 16,
-			paddingRight: 24,
-			paddingBottom: 16,
-			paddingLeft: 24,
-			paddingLinked: false,
-			marginTop: 0,
-			marginRight: 0,
-			marginBottom: 0,
-			marginLeft: 0,
+			...DEFAULT_BLOCK_PADDING,
+			...DEFAULT_BLOCK_MARGIN,
 			borderWidth: 0,
 			borderColor: '#e5e5e5',
 			borderStyle: 'solid',

@@ -3,12 +3,19 @@ import {
 	createDefaultContent,
 	createBlock,
 	getBlockPadding,
+	blockBoxStyle,
 	getBlockMargin,
 	getBlockBackgroundColor,
 	blockSupportsBorderRadius,
 	getColumnWidths,
 	withPrimaryStoredImage,
 } from '../blocks';
+import {
+	DEFAULT_BLOCK_MARGIN,
+	DEFAULT_BLOCK_PADDING,
+	DEFAULT_EMAIL_THEME,
+} from '@owlat/shared/emailDefaults';
+import { defaultMargin, defaultPadding, defaultTheme } from '../../defaults';
 import type {
 	TextBlockContent,
 	ImageBlockContent,
@@ -443,5 +450,66 @@ describe('getColumnWidths', () => {
 		it('defaults to equal thirds for unknown ratio', () => {
 			expect(getColumnWidths(3, 'unknown')).toEqual(['33.33%', '33.33%', '33.33%']);
 		});
+	});
+});
+
+describe('blockBoxStyle', () => {
+	const block = (content: Record<string, unknown>): EditorBlock =>
+		({ id: 'b', type: 'divider', content }) as unknown as EditorBlock;
+
+	it('fills unset sides with the shared block defaults', () => {
+		expect(blockBoxStyle(block({}))).toEqual({
+			paddingTop: `${DEFAULT_BLOCK_PADDING.paddingTop}px`,
+			paddingRight: `${DEFAULT_BLOCK_PADDING.paddingRight}px`,
+			paddingBottom: `${DEFAULT_BLOCK_PADDING.paddingBottom}px`,
+			paddingLeft: `${DEFAULT_BLOCK_PADDING.paddingLeft}px`,
+			marginTop: `${DEFAULT_BLOCK_MARGIN.marginTop}px`,
+			marginRight: `${DEFAULT_BLOCK_MARGIN.marginRight}px`,
+			marginBottom: `${DEFAULT_BLOCK_MARGIN.marginBottom}px`,
+			marginLeft: `${DEFAULT_BLOCK_MARGIN.marginLeft}px`,
+		});
+		expect(blockBoxStyle(block({}))).toMatchObject({
+			paddingTop: '16px',
+			paddingLeft: '24px',
+			marginTop: '0px',
+		});
+	});
+
+	it('keeps explicit values, including 0', () => {
+		expect(
+			blockBoxStyle(
+				block({
+					paddingTop: 0,
+					paddingRight: 5,
+					paddingBottom: 7,
+					paddingLeft: 9,
+					marginTop: 2,
+					marginRight: 0,
+					marginBottom: 4,
+					marginLeft: 6,
+				})
+			)
+		).toEqual({
+			paddingTop: '0px',
+			paddingRight: '5px',
+			paddingBottom: '7px',
+			paddingLeft: '9px',
+			marginTop: '2px',
+			marginRight: '0px',
+			marginBottom: '4px',
+			marginLeft: '6px',
+		});
+	});
+
+	it('accepts bare content, for previews that render theme-merged content', () => {
+		expect(blockBoxStyle({ content: { paddingTop: 3 } as never }).paddingTop).toBe('3px');
+	});
+});
+
+describe('builder defaults', () => {
+	it('are the shared email defaults, not copies', () => {
+		expect(defaultPadding).toBe(DEFAULT_BLOCK_PADDING);
+		expect(defaultMargin).toBe(DEFAULT_BLOCK_MARGIN);
+		expect(defaultTheme).toBe(DEFAULT_EMAIL_THEME);
 	});
 });

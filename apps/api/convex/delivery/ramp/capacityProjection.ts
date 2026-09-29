@@ -30,11 +30,11 @@
  * `no_volume` unknown, decided here, once.
  *
  * PURE: `now` is a parameter. Nothing here reads a clock, a database
- * or the environment; `startOfDayUtc` is dependency-free day arithmetic over its
+ * or the environment; `utcDayStart` is dependency-free day arithmetic over its
  * argument (`lib/clock.ts`).
  */
 
-import { startOfDayUtc } from '../../lib/clock';
+import { utcDayStart } from '../../lib/clock';
 import { DAY_MS } from '../../lib/constants';
 
 /** How many COMPLETE UTC days the projection looks back over. */
@@ -149,13 +149,13 @@ export function projectCellVolume(
 	now: number
 ): CellVolumeProjection {
 	if (!Number.isFinite(now)) return { kind: 'unknown', reason: 'clock_unusable' };
-	const today = startOfDayUtc(now);
+	const today = utcDayStart(now);
 	const windowStart = today - CAPACITY_TRAILING_DAYS * DAY_MS;
 
 	const byDay = new Map<number, { total: number; own: number }>();
 	for (const day of days) {
 		if (!Number.isFinite(day.dayStartMs)) continue;
-		const dayStart = startOfDayUtc(day.dayStartMs);
+		const dayStart = utcDayStart(day.dayStartMs);
 		if (dayStart < windowStart || dayStart >= today) continue;
 		const bucket = byDay.get(dayStart) ?? { total: 0, own: 0 };
 		bucket.total += safeVolume(day.total);
@@ -218,7 +218,7 @@ export function projectCellVolume(
 export function remainingDemandToday(dailyVolume: number, now: number): number | null {
 	if (!Number.isFinite(dailyVolume) || dailyVolume <= 0) return null;
 	if (!Number.isFinite(now)) return null;
-	const elapsed = now - startOfDayUtc(now);
+	const elapsed = now - utcDayStart(now);
 	const remainingFraction = 1 - elapsed / DAY_MS;
 	// `elapsed` is never negative for a finite `now`, so `remainingFraction` is
 	// never above 1 and there is nothing to clamp on that side.

@@ -1,12 +1,11 @@
 import type { Doc } from '../_generated/dataModel';
-import { authedQuery } from '../lib/authedFunctions';
-import { assertFeatureEnabled } from '../lib/featureFlags';
+import { campaignsQuery } from './_helpers';
 import { countFacet } from '../lib/listing';
 import { campaignListing } from './listing';
 
 // Query to count campaigns by status (API-key shell) — the descriptor's
 // `byStatus` facet returns per-status counts plus their `total`.
-export const countByStatusByOrganization = authedQuery({
+export const countByStatusByOrganization = campaignsQuery({
 	args: {},
 	handler: async (ctx) => {
 		const counts = await countFacet(ctx.db, campaignListing, 'byStatus');
@@ -79,13 +78,12 @@ function projectCandidate(c: Doc<'campaigns'>): AttentionCandidate {
 
 // Return the projected candidate set the client's attention classifier
 // (utils/campaignAttention.ts, the source of truth) then filters over.
-// all-members: org-wide, same visibility as the campaign list. Gated on the
-// `campaigns` feature for parity with the sibling `campaigns.campaigns.list`
+// all-members: org-wide, same visibility as the campaign list, and behind the
+// same `campaigns` floor (its builder) as the sibling `campaigns.campaigns.list`
 // that serves the same surface's browse pills.
-export const listAttentionCandidates = authedQuery({
+export const listAttentionCandidates = campaignsQuery({
 	args: {},
 	handler: async (ctx) => {
-		await assertFeatureEnabled(ctx, 'campaigns');
 		const out: AttentionCandidate[] = [];
 		for (const status of ATTENTION_CANDIDATE_STATUSES) {
 			// bounded: each attention state is transient/small; capped well above

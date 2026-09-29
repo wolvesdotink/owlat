@@ -31,3 +31,15 @@ export function escapeHtmlWithBreaks(s: string): string {
 export function replyBodyToHtml(text: string): string {
 	return `<div>${escapeHtmlWithBreaks(text.replace(/\r\n/g, '\n'))}</div>`;
 }
+
+/**
+ * HTML → plain text: drops script, style, head and comments, decodes named and
+ * numeric entities, and either collapses whitespace (default) or keeps block
+ * breaks (`preserveBreaks`). Implemented in `@owlat/mail-message`, the leaf both
+ * this package and the MTA already depend on (it cannot import shared back), and
+ * re-exported here so API and web code have one import path for HTML helpers.
+ */
+export {
+	htmlToPlainText,
+	type HtmlToPlainTextOptions,
+} from '@owlat/mail-message/text/htmlToPlainText';

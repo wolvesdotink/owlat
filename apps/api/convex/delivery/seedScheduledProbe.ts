@@ -55,6 +55,7 @@ import { internal } from '../_generated/api';
 import type { DeliverabilityStream } from '@owlat/shared/deliverabilityRouting';
 import { loadSeedAccounts } from '../analytics/seedAccounts';
 import { checkEmailDomainVerification } from '../domains/domains';
+import { utcDayKey } from '../lib/clock';
 import { getOptional } from '../lib/env';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { resolveSendRouteFromDb } from '../lib/sendProviders/route';
@@ -109,7 +110,7 @@ export function buildScheduledSeedProbeMessage(
 	stream: ScheduledSeedProbeStream,
 	now: number
 ): { subject: string; htmlContent: string } {
-	const day = new Date(now).toISOString().slice(0, 10);
+	const day = utcDayKey(now);
 	return {
 		subject: `Delivery check for the ${stream} stream — ${day}`,
 		htmlContent: [

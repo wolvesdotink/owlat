@@ -10,19 +10,24 @@
 import { api } from '@owlat/api';
 import { REPUTATION_THRESHOLDS } from '@owlat/shared/reputation';
 import type { MarketingDelivery } from '~/utils/marketingOverviewTypes';
-import { formatNumber, formatPercentage } from '~/utils/formatters';
+import { formatNumber, formatPercentage, formatUtcDayKey } from '~/utils/formatters';
 
 const props = defineProps<{ delivery: MarketingDelivery }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const { data: growth, isLoading: growthLoading } = useOrganizationQuery(
 	api.contacts.analytics.getSubscriberGrowth
 );
 const { level: healthLevel, reason: healthReason } = useDeliveryHealth();
 
+// The label is built here from the UTC day key, in the reader's language. The
+// server still sends an English `label` for older clients; it is not read.
 const newContactBars = computed(() =>
-	(growth.value?.days ?? []).map((d) => ({ label: d.label, value: d.count }))
+	(growth.value?.days ?? []).map((d) => ({
+		label: formatUtcDayKey(d.date, locale.value),
+		value: d.count,
+	}))
 );
 const newContactsTotal = computed(() =>
 	(growth.value?.days ?? []).reduce((sum, d) => sum + d.count, 0)

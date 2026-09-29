@@ -177,6 +177,39 @@ describe('requirePlatformAdmin', () => {
 	});
 });
 
+// ============ getOrganizationDetail ============
+
+describe('platformAdmin.getOrganizationDetail', () => {
+	it('reports the same blocked counts as the operator counter', async () => {
+		// One helper (`countBlockedByReason`) behind both screens, so the platform
+		// view cannot drop a reason the suppression screen shows.
+		const t = convexTest(schema, modules);
+		await seedInstanceSettings(t);
+		await seedAdmin(t, 'caller-user', 'admin');
+		await t.run(async (ctx) => {
+			for (const [email, reason] of [
+				['a@example.com', 'bounced'],
+				['b@example.com', 'manual'],
+				['c@example.com', 'unengaged'],
+				['d@example.com', 'unengaged'],
+			] as const) {
+				await ctx.db.insert('blockedEmails', { email, reason, createdAt: Date.now() });
+			}
+		});
+
+		const detail = await t.query(api.platformAdmin.queries.getOrganizationDetail, {});
+		const operatorCounts = await t.query(api.blockedEmails.getCountsByReason, {});
+		expect(detail?.blockedCounts).toEqual({
+			total: 4,
+			bounced: 1,
+			complained: 0,
+			manual: 1,
+			unengaged: 2,
+		});
+		expect(detail?.blockedCounts).toEqual(operatorCounts);
+	});
+});
+
 // ============ setOrganizationStatus ============
 
 describe('platformAdmin.setOrganizationStatus', () => {

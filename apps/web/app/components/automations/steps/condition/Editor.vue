@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import type { Doc } from '@owlat/api/dataModel';
-import type { Condition, ConditionEditorContext } from '~/composables/conditions';
+import type {
+	Condition,
+	ConditionEditorContext,
+	ConditionLabelKey,
+} from '~/composables/conditions';
 import { conditionEditorModuleFor } from '~/composables/conditions';
 import { useConditionEditorContext } from '~/composables/conditions';
 import type { ConditionStepConfig } from '~/composables/automations/steps';
+import { useLocalized } from '~/composables/useLocalized';
 
 const props = defineProps<{
 	modelValue: ConditionStepConfig;
@@ -40,6 +45,7 @@ const updateNoBranch = (event: Event) => {
 };
 
 const { t } = useI18n();
+const localized = useLocalized();
 
 const stepLabel = (step: Doc<'automationSteps'>) =>
 	step.stepType === 'email'
@@ -58,9 +64,9 @@ const conditionDescription = computed(() => {
 		module.getDescription as unknown as (
 			c: Condition,
 			c2: ConditionEditorContext
-		) => { key: string; params?: Record<string, unknown> }
+		) => ConditionLabelKey
 	)(props.modelValue.condition, ctx);
-	return t(described.key, described.params ?? {});
+	return localized(described);
 });
 </script>
 

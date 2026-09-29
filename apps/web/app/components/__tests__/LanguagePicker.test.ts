@@ -10,9 +10,10 @@
  * `owlat-locale` cookie, and therefore the difference between switching the
  * language and switching it until the next page load.
  *
- * The locale list is read out of the REAL `nuxt.config.ts` rather than restated
- * here: a test with its own copy of the list would keep passing on the day the
- * two disagree, which is the day the picker starts hiding a shipped language.
+ * The locale list is the REAL one `nuxt.config.ts` registers
+ * (`i18n/localeOptions.ts`) rather than restated here: a test with its own copy
+ * of the list would keep passing on the day the two disagree, which is the day
+ * the picker starts hiding a shipped language.
  */
 import { describe, expect, it, beforeAll, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -22,6 +23,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { expectFullyLocalized } from '~/__tests__/i18n';
+import { I18N_LOCALES } from '~~/i18n/localeOptions';
 import en from '~~/i18n/locales/en.json';
 import de from '~~/i18n/locales/de.json';
 import LanguagePicker from '../LanguagePicker.vue';
@@ -39,16 +41,13 @@ vi.mock('@owlat/api', () => {
 
 /** The `locales:` entries the i18n module is actually configured with. */
 function configuredLocales(): Array<{ code: string; language: string; name: string }> {
+	// The config has to register THIS list, or the picker is tested against one
+	// the app does not use.
 	const config = readFileSync(join(import.meta.dirname, '../../../nuxt.config.ts'), 'utf8');
-	const entries = [
-		...config.matchAll(
-			/\{ code: '(?<code>[^']+)', language: '(?<language>[^']+)', name: '(?<name>[^']+)'/g
-		),
-	].map((match) => match.groups as unknown as { code: string; language: string; name: string });
-	// A regex that stopped matching would turn every assertion below into a
-	// no-op over an empty list.
-	expect(entries.length).toBeGreaterThan(1);
-	return entries;
+	expect(config).toMatch(/\blocales: I18N_LOCALES,/);
+	// A list that came back empty would turn every assertion below into a no-op.
+	expect(I18N_LOCALES.length).toBeGreaterThan(1);
+	return I18N_LOCALES;
 }
 
 const locales = configuredLocales();

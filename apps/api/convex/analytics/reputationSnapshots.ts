@@ -18,7 +18,7 @@ import { internalMutation } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { summarize, type ReputationSummary } from './sendingReputation';
-import { startOfDayUtc } from '../lib/clock';
+import { utcDayStart } from '../lib/clock';
 import { DAY_MS } from '../lib/constants';
 
 /** How much snapshot history to keep. ~90 days of daily points. */
@@ -56,7 +56,7 @@ export const writeDailySnapshot = internalMutation({
 	args: {},
 	handler: async (ctx) => {
 		const now = Date.now();
-		const periodStart = startOfDayUtc(now);
+		const periodStart = utcDayStart(now);
 
 		const orgSummary = await summarize(ctx.db, { kind: 'org' });
 		const metrics = deriveSnapshot(orgSummary);

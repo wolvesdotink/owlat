@@ -12,7 +12,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { internal } from '../../_generated/api';
 import { newHarness } from '../../__tests__/testModules';
-import { startOfDayUtc } from '../../lib/clock';
+import { utcDayStart } from '../../lib/clock';
 import { getSingletonOrganizationId } from '../../lib/sessionOrganization';
 import type * as SessionOrganization from '../../lib/sessionOrganization';
 import { cellArmPeriodRange, resolveCellArmForSend } from '../cellArmBuckets';
@@ -44,7 +44,7 @@ describe('cellArmPeriodRange', () => {
 
 	it('floors the lower bound to its UTC day and keeps the upper bound exact', () => {
 		expect(cellArmPeriodRange({ since: NOW, until: NOW + 1 })).toEqual({
-			lower: startOfDayUtc(NOW),
+			lower: utcDayStart(NOW),
 			upper: NOW + 1,
 		});
 	});

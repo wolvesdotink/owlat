@@ -9,6 +9,7 @@ import {
 	itemKey,
 } from '~/utils/deliverabilityCenter';
 import { useDeliverabilityChecklistCopy } from '~/composables/useDeliverabilityChecklistCopy';
+import { useLocalized } from '~/composables/useLocalized';
 
 const props = defineProps<{
 	item: DeliverabilityChecklistItem | null;
@@ -26,10 +27,7 @@ const { t } = useI18n();
  * (the registry convention for module-scope sentences); rendered unresolved it
  * paints the serialized object at the operator instead of "3 minutes ago".
  */
-type LocalizedText = string | { key: string; params?: Record<string, unknown> };
-function localized(value: LocalizedText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const localized = useLocalized();
 
 /**
  * The check's name and impact are shared-registry English (the diagnostic dump

@@ -23,6 +23,7 @@ import {
 	type QueryCtx,
 } from '../_generated/server';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
+import { campaignsQuery } from './_helpers';
 import { hasPermission, requireOrgMember, requireOrgPermission } from '../lib/sessionOrganization';
 import { checkEmailDomainVerification, memoizedEmailDomainVerification } from '../domains/domains';
 import { isValidEmail } from '../lib/inputGuards';
@@ -139,6 +140,8 @@ async function assertVerifiedSenderDomain(ctx: MutationCtx, email: string): Prom
  * role) so it moves with the four mutations when d4 remaps that permission to
  * editors — otherwise one surface would split across two auth models.
  */
+// flag-exempt: the sender directory is curated from the team admin page
+// (admin/team/senders), which stays reachable with `campaigns` off.
 export const list = authedQuery({
 	args: {},
 	handler: async (ctx): Promise<Doc<'campaignSenders'>[]> => {
@@ -168,7 +171,7 @@ export const list = authedQuery({
  *    a send that would look spoofed.
  *  - `alignmentReason`— plain-language guidance when not cleanly aligned.
  */
-export const listForPicker = authedQuery({
+export const listForPicker = campaignsQuery({
 	args: {},
 	handler: async (ctx) => {
 		// all-members: any campaign builder needs to read the enabled sender list to
@@ -214,6 +217,8 @@ export const listForPicker = authedQuery({
  * Add a curated sender. Rejects unverified-domain addresses and duplicates. The
  * first sender added (or one explicitly flagged) becomes the default.
  */
+// flag-exempt: the sender directory is curated from the team admin page
+// (admin/team/senders), which stays reachable with `campaigns` off.
 export const create = authedMutation({
 	args: {
 		email: v.string(),
@@ -255,6 +260,8 @@ export const create = authedMutation({
  * Edit a curated sender's display name / enabled state. The address itself is
  * immutable (remove + re-add to change it, so the domain re-verifies).
  */
+// flag-exempt: the sender directory is curated from the team admin page
+// (admin/team/senders), which stays reachable with `campaigns` off.
 export const update = authedMutation({
 	args: {
 		id: v.id('campaignSenders'),
@@ -279,6 +286,8 @@ export const update = authedMutation({
 /**
  * Make one sender the default for new campaigns, clearing the previous default.
  */
+// flag-exempt: the sender directory is curated from the team admin page
+// (admin/team/senders), which stays reachable with `campaigns` off.
 export const setDefault = authedMutation({
 	args: { id: v.id('campaignSenders') },
 	handler: async (ctx, args) => {
@@ -295,6 +304,8 @@ export const setDefault = authedMutation({
  * until an admin sets a new one (a campaign then falls back to a custom sender
  * only if the toggle allows it).
  */
+// flag-exempt: the sender directory is curated from the team admin page
+// (admin/team/senders), which stays reachable with `campaigns` off.
 export const remove = authedMutation({
 	args: { id: v.id('campaignSenders') },
 	handler: async (ctx, args) => {

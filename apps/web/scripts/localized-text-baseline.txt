@@ -1,0 +1,38 @@
+# Frozen exceptions to scripts/check-localized-text.sh — one `path:<spelling>`
+# per occurrence. Every entry is a file the #864 mail-surface rewrite owned when
+# `utils/localizedText.ts` landed (components/postbox, inbox, answer, today,
+# pages/dashboard/inbox, useTeamThreadComposer, useCommandPaletteMailScope), so
+# it was left alone to avoid a conflict. Migrate each to `useLocalized()` and
+# delete its lines; never add one.
+app/components/answer/AnswerMailCard.vue:params ?? {})
+app/components/answer/AnswerQueueFlow.vue:params ?? {})
+app/components/answer/AnswerTeamCard.vue:params ?? {})
+app/components/answer/AnswerTeamCard.vue:string | { key, params } union
+app/components/inbox/QuarantineReason.vue:params ?? {})
+app/components/inbox/TrustChip.vue:params ?? {})
+app/components/inbox/TrustChip.vue:string | { key, params } union
+app/components/postbox/PostboxArchiveImportCard.vue:params ?? {})
+app/components/postbox/PostboxAuthBadge.vue:params ?? {})
+app/components/postbox/PostboxAuthBadge.vue:string | { key, params } union
+app/components/postbox/PostboxComposerPreflightChip.vue:params ?? {})
+app/components/postbox/PostboxComposerSealConfirmDialog.vue:params ?? {})
+app/components/postbox/PostboxComposerSealConfirmDialog.vue:string | { key, params } union
+app/components/postbox/PostboxComposerSealLock.vue:params ?? {})
+app/components/postbox/PostboxComposerSealLock.vue:string | { key, params } union
+app/components/postbox/PostboxDailyBrief.vue:params ?? {})
+app/components/postbox/PostboxDailyBrief.vue:string | { key, params } union
+app/components/postbox/PostboxDeliveryStrip.vue:params ?? {})
+app/components/postbox/PostboxRecipientField.vue:params ?? {})
+app/components/postbox/PostboxReplyGuard.vue:params ?? {})
+app/components/postbox/PostboxSenderProfile.vue:params ?? {})
+app/components/postbox/PostboxSenderProfile.vue:params ?? {})
+app/components/postbox/PostboxSendingHealthCard.vue:params ?? {})
+app/components/postbox/PostboxSharedLinksSettings.vue:params ?? {})
+app/components/postbox/PostboxSnoozeDialog.vue:params ?? {})
+app/components/postbox/PostboxTodayView.vue:params ?? {})
+app/components/postbox/PostboxTrustChip.vue:params ?? {})
+app/components/today/TodayAnswerCard.vue:params ?? {})
+app/composables/useCommandPaletteMailScope.ts:params ?? {})
+app/composables/useTeamThreadComposer.ts:params ?? {})
+app/pages/dashboard/inbox/[threadId].vue:params ?? {})
+app/pages/dashboard/inbox/[threadId].vue:string | { key, params } union

@@ -28,7 +28,7 @@ import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { newHarness } from '../../__tests__/testModules';
-import { startOfDayUtc } from '../../lib/clock';
+import { utcDayStart } from '../../lib/clock';
 import { TENANT_TABLES } from '../../lib/tenantTables';
 import {
 	readCellArmCategoryBuckets,
@@ -58,7 +58,7 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 });
 
 const NOW = Date.UTC(2026, 6, 15, 12, 0, 0);
-const TODAY = startOfDayUtc(NOW);
+const TODAY = utcDayStart(NOW);
 
 /** Every stored shard row, unfiltered — the writer's whole footprint. */
 async function allRows(t: ReturnType<typeof newHarness>) {

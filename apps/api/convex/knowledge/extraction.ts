@@ -9,6 +9,7 @@
 
 import { createHash } from 'node:crypto';
 import { v } from 'convex/values';
+import { htmlToPlainText } from '@owlat/shared/html';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -286,23 +287,6 @@ Extract any facts, decisions, events, preferences, goals, relationships, or acti
 });
 
 /**
- * Strip HTML to rough plain text for messages that carry only an HTML body
- * (common for newsletters/marketing mail). Good enough for the extractor —
- * the LLM tolerates whitespace noise; we just want the words, not layout.
- */
-function htmlToText(html: string): string {
-	return html
-		.replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
-		.replace(/<[^>]+>/g, ' ')
-		.replace(/&nbsp;/gi, ' ')
-		.replace(/&amp;/gi, '&')
-		.replace(/&lt;/gi, '<')
-		.replace(/&gt;/gi, '>')
-		.replace(/\s+/g, ' ')
-		.trim();
-}
-
-/**
  * Extract knowledge from an imported Postbox message (mailMessages → knowledge
  * graph). Mirrors `extractFromMessage` but reads a Postbox row's body and is
  * scoped to the sender contact resolved by the migration indexer. Entries are
@@ -330,7 +314,7 @@ export const extractFromMailMessage = internalAction({
 			textBodyInline: msg.textInline ?? undefined,
 			textBodyStorageId: msg.textStorageId ?? undefined,
 		});
-		if (!textContent && msg.htmlInline) textContent = htmlToText(msg.htmlInline);
+		if (!textContent && msg.htmlInline) textContent = htmlToPlainText(msg.htmlInline);
 		textContent = textContent.slice(0, 8000);
 		if (textContent.length < 20) return; // Skip very short messages
 

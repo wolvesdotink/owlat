@@ -22,6 +22,7 @@
  */
 
 import { CAPACITY_DAY_MS, formatCapacityDay } from '~/lib/campaignCapacityRefusal';
+import type { LocalizedText } from '~/utils/localizedText';
 
 /** The readiness answer, in the shape `getSendingReadiness` returns it. */
 export type SendingReadiness =
@@ -42,7 +43,7 @@ export type SendReadinessTone = 'ready' | 'paced' | 'waiting';
  * never calls `useI18n`; `components/campaigns/SendReadinessNote.vue` turns
  * these into words.
  */
-export type ReadinessMessage = string | { key: string; params?: Record<string, unknown> };
+export type ReadinessMessage = LocalizedText;
 
 export interface SendReadinessNote {
 	tone: SendReadinessTone;

@@ -4,7 +4,7 @@ import type {
 	ConditionEditorContext,
 	ConditionEditorModule,
 	ConditionOfKind,
-	LocalizedText,
+	ConditionLabelKey,
 } from '../types';
 
 type ContactPropertyOperator = ConditionOfKind<'contact_property'>['operator'];
@@ -127,7 +127,7 @@ export const contactPropertyEditorModule: ConditionEditorModule<'contact_propert
 		}
 		return null;
 	},
-	getDescription(condition, ctx: ConditionEditorContext): LocalizedText {
+	getDescription(condition, ctx: ConditionEditorContext): ConditionLabelKey {
 		if (!condition.field) return { key: `${K}.descriptions.empty` };
 		const valueParams: Record<string, string> = operatorNeedsValue(condition.operator)
 			? { value: String(condition.value ?? '') }

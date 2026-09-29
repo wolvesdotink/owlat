@@ -31,7 +31,7 @@ import {
 	paceState,
 	UNEXERCISED,
 } from './controllerFixtures';
-import { utcDayKey } from '../../../lib/utcDay';
+import { utcDayKey } from '../../../lib/clock';
 
 /**
  * THE SHIPPED PREDICATE, transcribed from `applyWarmingScheduleAdjustment`'s

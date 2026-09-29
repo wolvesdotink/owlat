@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { authedQuery, authedMutation } from '../lib/authedFunctions';
+import { campaignsQuery, campaignsMutation } from './_helpers';
 import { internalAction, internalQuery } from '../_generated/server';
 import type { QueryCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -88,7 +88,7 @@ async function loadAbTestStats(
 
 // Mutation to enable A/B testing on a campaign. Auth + validation shell;
 // the **AB test lifecycle (module)** owns the patch + audit-log effect.
-export const enableABTest = authedMutation({
+export const enableABTest = campaignsMutation({
 	args: {
 		campaignId: v.id('campaigns'),
 		testType: v.union(v.literal('subject'), v.literal('content')),
@@ -165,7 +165,7 @@ export const enableABTest = authedMutation({
 
 // Mutation to disable A/B testing on a campaign. Resets the full AB test
 // state via the lifecycle's `→ none` transition.
-export const disableABTest = authedMutation({
+export const disableABTest = campaignsMutation({
 	args: {
 		campaignId: v.id('campaigns'),
 	},
@@ -193,7 +193,7 @@ export const disableABTest = authedMutation({
 });
 
 // Mutation to declare A/B test winner (for manual selection or auto-triggered).
-export const declareABTestWinner = authedMutation({
+export const declareABTestWinner = campaignsMutation({
 	args: {
 		campaignId: v.id('campaigns'),
 		winner: abVariantValidator,
@@ -284,7 +284,7 @@ export const autoDeclareWinner = internalAction({
 });
 
 // Query to get A/B test stats for a campaign
-export const getABTestStats = authedQuery({
+export const getABTestStats = campaignsQuery({
 	args: {
 		campaignId: v.id('campaigns'),
 	},

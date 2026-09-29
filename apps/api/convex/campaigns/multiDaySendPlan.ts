@@ -33,7 +33,7 @@
  */
 
 import { buildCapacitySchedule, MAX_PLAN_DAYS } from './capacityPlan';
-import { nextUtcDayStart, utcDayKey } from '../lib/utcDay';
+import { nextUtcDayStart, utcDayKey } from '../lib/clock';
 import { normalizeEngagementScore } from '../delivery/workerEnvelope';
 
 /** The plan state the walker checkpoints on its `campaignSendJobs` row. */

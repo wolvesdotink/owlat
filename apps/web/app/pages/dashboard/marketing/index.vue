@@ -14,7 +14,7 @@ import MarketingLatestCampaigns from '~/components/marketing/MarketingLatestCamp
 import MarketingNextUp from '~/components/marketing/MarketingNextUp.vue';
 import MarketingPeriodTiles from '~/components/marketing/MarketingPeriodTiles.vue';
 import MarketingRateBars from '~/components/marketing/MarketingRateBars.vue';
-import { formatNumber } from '~/utils/formatters';
+import { formatNumber, formatUtcDayKey } from '~/utils/formatters';
 
 const { t, locale } = useI18n();
 
@@ -52,13 +52,9 @@ const isFirstRun = computed(
 		overview.value.recent.campaigns.length === 0
 );
 
-const dayLabel = computed(
-	() => new Intl.DateTimeFormat(locale.value, { month: 'short', day: 'numeric', timeZone: 'UTC' })
-);
-
 const opensSeries = computed(() =>
 	(overview.value?.opensPerDay ?? []).map((d) => ({
-		label: dayLabel.value.format(new Date(`${d.date}T00:00:00Z`)),
+		label: formatUtcDayKey(d.date, locale.value),
 		value: d.opened,
 	}))
 );

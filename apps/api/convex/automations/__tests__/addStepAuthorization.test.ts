@@ -55,7 +55,12 @@ function makeCtx() {
 	const patch = vi.fn(async () => undefined);
 	const ctx = {
 		db: {
-			query: () => ({ withIndex: () => ({ collect: async () => [] }) }),
+			// `addStep` runs on `automationsMutation`, whose feature floor reads
+			// the flag map from `instanceSettings` before the handler starts.
+			query: (table: string) =>
+				table === 'instanceSettings'
+					? { first: async () => ({ featureFlags: { automations: true } }) }
+					: { withIndex: () => ({ collect: async () => [] }) },
 			insert,
 			patch,
 		},

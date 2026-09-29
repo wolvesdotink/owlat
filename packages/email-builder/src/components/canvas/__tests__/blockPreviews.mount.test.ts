@@ -16,6 +16,7 @@ import DocumentCanvas from '../DocumentCanvas.vue';
 import { getRegisteredTypes } from '../../../registry';
 import { createBlock } from '../../../utils/blocks';
 import { defaultTheme } from '../../../defaults';
+import { DEFAULT_BLOCK_MARGIN, DEFAULT_BLOCK_PADDING } from '@owlat/shared/emailDefaults';
 import type { EditorBlock, EmailTheme, BlockType } from '../../../types';
 
 // table / rawHtml / video / carousel render through <IframePreview>, which
@@ -217,5 +218,72 @@ describe('DocumentCanvas renders the seeded demo template', () => {
 		expect(host.textContent).toContain('Shop the sale');
 		const buttonSpan = host.querySelector('[data-block-id="t-1c"] span');
 		expect(buttonSpan?.getAttribute('style') ?? '').toContain('background-color: #2563eb');
+	});
+});
+
+describe('canvas previews fall back to the shared block box defaults', () => {
+	const BOX_KEYS = [
+		'paddingTop',
+		'paddingRight',
+		'paddingBottom',
+		'paddingLeft',
+		'marginTop',
+		'marginRight',
+		'marginBottom',
+		'marginLeft',
+	];
+
+	// A legacy block saved before padding/margin existed: every box key unset.
+	function legacyBlock(type: BlockType): EditorBlock {
+		const block = createBlock(type, defaultTheme);
+		const content = { ...(block.content as unknown as Record<string, unknown>) };
+		for (const key of BOX_KEYS) delete content[key];
+		return { ...block, content } as unknown as EditorBlock;
+	}
+
+	function boxOf(host: HTMLElement): CSSStyleDeclaration | undefined {
+		const el = Array.from(host.querySelectorAll<HTMLElement>('[style]')).find(
+			(node) => node.style.paddingTop !== ''
+		);
+		return el?.style;
+	}
+
+	const BLOCK_BOX_TYPES: BlockType[] = [
+		'text',
+		'image',
+		'button',
+		'divider',
+		'social',
+		'menu',
+		'list',
+		'progressBar',
+		'accordion',
+		'columns',
+		'container',
+	];
+
+	for (const type of BLOCK_BOX_TYPES) {
+		it(`paints a legacy ${type} block with the shared padding and margin`, () => {
+			const { host, errors } = mountBlock(legacyBlock(type));
+			expect(errors).toEqual([]);
+			const box = boxOf(host);
+			expect(box?.paddingTop).toBe(`${DEFAULT_BLOCK_PADDING.paddingTop}px`);
+			expect(box?.paddingRight).toBe(`${DEFAULT_BLOCK_PADDING.paddingRight}px`);
+			expect(box?.paddingBottom).toBe(`${DEFAULT_BLOCK_PADDING.paddingBottom}px`);
+			expect(box?.paddingLeft).toBe(`${DEFAULT_BLOCK_PADDING.paddingLeft}px`);
+			expect(box?.marginTop).toBe(`${DEFAULT_BLOCK_MARGIN.marginTop}px`);
+			expect(box?.marginLeft).toBe(`${DEFAULT_BLOCK_MARGIN.marginLeft}px`);
+		});
+	}
+
+	it('keeps the hero block its own 40px vertical padding default, as the renderer does', () => {
+		const { host, errors } = mountBlock(legacyBlock('hero'));
+		expect(errors).toEqual([]);
+		const box = boxOf(host);
+		expect(box?.paddingTop).toBe('40px');
+		expect(box?.paddingBottom).toBe('40px');
+		expect(box?.paddingRight).toBe(`${DEFAULT_BLOCK_PADDING.paddingRight}px`);
+		expect(box?.paddingLeft).toBe(`${DEFAULT_BLOCK_PADDING.paddingLeft}px`);
+		expect(box?.marginTop).toBe(`${DEFAULT_BLOCK_MARGIN.marginTop}px`);
 	});
 });

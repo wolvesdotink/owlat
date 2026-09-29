@@ -19,8 +19,7 @@ describe('applyLinkTransparency — destination tooltip', () => {
 	});
 
 	it('keeps existing target/rel attributes intact', () => {
-		const html =
-			'<a href="https://example.com/" target="_blank" rel="noreferrer noopener">x</a>';
+		const html = '<a href="https://example.com/" target="_blank" rel="noreferrer noopener">x</a>';
 		const out = applyLinkTransparency(html);
 		expect(out).toContain('target="_blank"');
 		expect(out).toContain('rel="noreferrer noopener"');
@@ -48,6 +47,11 @@ describe('applyLinkTransparency — text-vs-href mismatch marker', () => {
 
 	it('flags bare-domain visible text pointing elsewhere', () => {
 		const html = '<a href="https://phish.example/x">paypal.com</a>';
+		expect(applyLinkTransparency(html)).toContain('→ phish.example');
+	});
+
+	it('reads numerically-encoded visible text the way the reader sees it', () => {
+		const html = '<a href="https://phish.example/x">paypal&#46;com</a>';
 		expect(applyLinkTransparency(html)).toContain('→ phish.example');
 	});
 
@@ -144,15 +148,13 @@ describe('applyLinkTransparency — fail-soft', () => {
 
 describe('stripTrackingParams', () => {
 	it('strips only tracking params', () => {
-		expect(
-			stripTrackingParams('https://example.com/a?utm_campaign=x&page=2#frag')
-		).toBe('https://example.com/a?page=2#frag');
+		expect(stripTrackingParams('https://example.com/a?utm_campaign=x&page=2#frag')).toBe(
+			'https://example.com/a?page=2#frag'
+		);
 	});
 
 	it('drops the dangling ? when all params were tracking noise', () => {
-		expect(stripTrackingParams('https://example.com/a?utm_source=x')).toBe(
-			'https://example.com/a'
-		);
+		expect(stripTrackingParams('https://example.com/a?utm_source=x')).toBe('https://example.com/a');
 	});
 
 	it('never touches host or path', () => {
@@ -164,9 +166,7 @@ describe('stripTrackingParams', () => {
 		expect(stripTrackingParams('http://example.com/?utm_source=x')).toBe(
 			'http://example.com/?utm_source=x'
 		);
-		expect(stripTrackingParams('mailto:a@b.com?utm_source=x')).toBe(
-			'mailto:a@b.com?utm_source=x'
-		);
+		expect(stripTrackingParams('mailto:a@b.com?utm_source=x')).toBe('mailto:a@b.com?utm_source=x');
 	});
 
 	it('returns a malformed URL unchanged', () => {

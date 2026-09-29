@@ -40,8 +40,26 @@ export const detectionSourceValidator = v.union(v.literal('heuristic'), v.litera
 /** Outcome of a one-shot run (backup, system update). */
 export const successOrFailedValidator = v.union(v.literal('success'), v.literal('failed'));
 
-/** Why an address is on the block list. */
-export const blockReasonValidator = v.union(
+/**
+ * Why an address is on the block list (`blockedEmails.reason`). The one list:
+ * the schema, the list filter, the per-reason counts and the suppression
+ * mirror's `BlockReason` all derive from it.
+ *   · `bounced` — the address bounced (hard, or soft past the threshold);
+ *   · `complained` — the recipient marked a message as spam;
+ *   · `manual` — an operator blocked it, or a provider blacklist was mirrored;
+ *   · `unengaged` — the sunset policy stopped marketing to it
+ *     (`contacts/sunsetPolicy.ts`).
+ */
+export const BLOCK_REASONS = ['bounced', 'complained', 'manual', 'unengaged'] as const;
+export type BlockReason = (typeof BLOCK_REASONS)[number];
+export const blockedEmailReasonValidator = literalUnion(BLOCK_REASONS);
+
+/**
+ * The NARROWER set a caller may write through `blockedEmails.add`, `bulkAdd`
+ * and `addFromEvent`: an operator or a bounce/complaint event. No `unengaged`,
+ * which only the sunset engine writes.
+ */
+export const manualOrEventBlockReasonValidator = v.union(
 	v.literal('bounced'),
 	v.literal('complained'),
 	v.literal('manual')

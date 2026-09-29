@@ -1,0 +1,6 @@
+# Justified exceptions to scripts/check-utc-day.sh — one `path:<spelling>` per
+# line, each with its reason. Only a date that is NOT a day key or day start
+# (one written for a person, for example) may be listed; every day bucket, day
+# boundary and day guard imports its day from convex/lib/clock.ts.
+#
+# (none)

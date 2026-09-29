@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
+import { utcDayKey } from '../../lib/clock';
 
 // The audience-dashboard analytics are `authedQuery`s gated on
 // `requireOrgMember`; stub it so they run as an authenticated org member
@@ -90,6 +91,25 @@ describe('contacts.analytics.getSubscriberGrowth — bounded scan', () => {
 		const total = result.days.reduce((sum, day) => sum + day.count, 0);
 		// The erased contact must not inflate the count.
 		expect(total).toBe(2);
+	});
+
+	it('keys each day with utcDayKey, today last, and keeps the label older clients read', async () => {
+		const t = convexTest(schema, modules);
+		const oneDay = 24 * 60 * 60 * 1000;
+		const createdAt = Date.now() - 3 * oneDay;
+		await insertContact(t, createdAt);
+		await insertContact(t, createdAt);
+
+		const result = await t.query(api.contacts.analytics.getSubscriberGrowth, {});
+		const now = Date.now();
+		expect(result.days[result.days.length - 1]?.date).toBe(utcDayKey(now));
+		expect(result.days[0]?.date).toBe(utcDayKey(now - 29 * oneDay));
+		expect(result.days.find((day) => day.date === utcDayKey(createdAt))?.count).toBe(2);
+		// N-1 compatibility: the web formats `date` itself now, but a desktop app
+		// bundling the previous web UI still renders `label`.
+		expect(result.days.every((day) => typeof day.label === 'string' && day.label.length > 0)).toBe(
+			true
+		);
 	});
 });
 
