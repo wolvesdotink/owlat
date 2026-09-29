@@ -340,6 +340,27 @@ describe('startImapServer — per-IP connection cap', () => {
 		expect(mapped.written.join('')).toContain('Too many connections from this IP');
 	});
 
+	it('counts every IPv6 address of one /64 as one peer', () => {
+		const { handler } = start({
+			tls: { cert: 'c', key: 'k' },
+			maxConnectionsPerIp: 1,
+			maxClients: 99,
+		});
+		const first = connect(handler, '2001:db8:1:2::1');
+		const sameNet = connect(handler, '2001:db8:1:2:aaaa:bbbb:cccc:dddd');
+		const otherNet = connect(handler, '2001:db8:1:3::1');
+		expect(first.ended).toBe(false);
+		expect(sameNet.ended).toBe(true);
+		expect(sameNet.written.join('')).toContain('Too many connections from this IP');
+		expect(otherNet.ended).toBe(false);
+
+		// Closing the first frees the /64's slot for another address in it.
+		first.close();
+		expect(connect(handler, '2001:db8:1:2::2').ended).toBe(false);
+		// The connection itself still sees the peer's full address.
+		expect(connectionCtor.mock.calls[0]![4]).toBe('2001:db8:1:2::1');
+	});
+
 	it('treats a missing remoteAddress as the "unknown" IP bucket', () => {
 		const { handler } = start({
 			tls: { cert: 'c', key: 'k' },

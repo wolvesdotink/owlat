@@ -308,7 +308,7 @@ export const securityScanStep: AgentStepModule<
 		const guardSample = [
 			message.subject ? stripHiddenContent(message.subject) : undefined,
 			bodyText ? stripHiddenContent(bodyText) : undefined,
-			bodyHtml ? htmlToPlainText(stripHiddenContent(bodyHtml)) : undefined,
+			bodyHtml ? htmlToPlainText(stripHiddenContent(bodyHtml, { html: true })) : undefined,
 		]
 			.filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
 			.join('\n\n');

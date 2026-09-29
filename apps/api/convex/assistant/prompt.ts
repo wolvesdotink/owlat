@@ -59,6 +59,9 @@ export function clampText(text: string, max: number): string {
 	return `${text.slice(0, max)}…`;
 }
 
+/** The start of an HTML document: a doctype, `<html` or `<body`, after any whitespace. */
+const HTML_DOCUMENT_START = /^\s*<(?:!doctype|html|body)(?![\w-])/i;
+
 /**
  * Defense-in-depth (decision B3): retrieved/tool content is untrusted (it is
  * extracted from emails, uploaded files, and contact records). Withhold any
@@ -74,7 +77,9 @@ export function scrubForInjection(text: string): string {
 	// element — or broken up by zero-width characters to dodge the pattern match —
 	// is now caught, and any hidden text that isn't itself a known injection
 	// phrasing is removed before the content reaches the model.
-	const stripped = stripHiddenContent(text);
+	// A tool result that is an HTML document gets its hidden elements removed
+	// too; any other text keeps quoted markup, which a reader sees as written.
+	const stripped = stripHiddenContent(text, { html: HTML_DOCUMENT_START.test(text) });
 	return detectInjection(stripped).detected
 		? '[omitted: retrieved content contained a possible prompt-injection attempt and was withheld]'
 		: stripped;

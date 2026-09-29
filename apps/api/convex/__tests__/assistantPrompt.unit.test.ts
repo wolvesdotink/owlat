@@ -39,6 +39,25 @@ describe('clampText', () => {
 });
 
 describe('scrubForInjection', () => {
+	it('removes hidden elements from a tool result that is an HTML document', () => {
+		for (const html of [
+			'<!DOCTYPE html><p>Summary</p><span style="display:none">SECRETPAYLOAD</span>',
+			'  \n<HTML><body><p>Summary</p><div hidden>SECRETPAYLOAD</div></body></html>',
+			'<body><p>Summary</p><template>SECRETPAYLOAD</template></body>',
+		]) {
+			const out = scrubForInjection(html);
+			expect(out, html).toContain('Summary');
+			expect(out, html).not.toContain('SECRETPAYLOAD');
+		}
+	});
+
+	it('keeps markup quoted in a tool result that is not an HTML document', () => {
+		const prose = 'To hide it, use <template> in Vue. The rest stays VISIBLE.';
+		expect(scrubForInjection(prose)).toBe(prose);
+		const tag = '<htmlish> is not a document, and this stays VISIBLE.';
+		expect(scrubForInjection(tag)).toBe(tag);
+	});
+
 	it('passes clean content through unchanged', () => {
 		const clean = 'The Q3 campaign had a 42% open rate.';
 		expect(scrubForInjection(clean)).toBe(clean);

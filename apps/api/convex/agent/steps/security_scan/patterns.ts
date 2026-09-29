@@ -5,6 +5,8 @@
  * import them without dragging in the action wrapper.
  */
 
+import { stripHiddenElements } from './hiddenMarkup';
+
 /**
  * Confidence floor (0–1) at or above which a detected prompt-injection match is
  * treated as a real threat — quarantining inbound and blocking outbound. Single
@@ -150,137 +152,6 @@ function stripDelimited(input: string, open: RegExp, close: RegExp): string {
 }
 
 /**
- * An inline style that hides its element: display:none, visibility:hidden,
- * font-size:0, opacity:0, or white / fully transparent text. The negative
- * lookbehind keeps `background-color: white` visible. The `rgba(` arguments
- * are length-bounded so a long unterminated value cannot backtrack.
- */
-const HIDING_STYLE =
-	/display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0(?:\.0+)?(?:px|pt|em|rem|%)?(?![.\d])|opacity\s*:\s*0(?:\.0+)?(?![.\d])|(?<![-\w])color\s*:\s*(?:white|#fff(?:fff)?|rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)|rgba\([^)]{0,64},\s*0(?:\.0+)?\s*\))/i;
-const isTagSpace = (c: string | undefined): boolean =>
-	c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
-
-/**
- * An opening tag read by {@link readOpenTag}: either it ends at `end` (its
- * closing `>`) with its first `style` value, or it never ends and scanning
- * resumes at `resume`.
- */
-type OpenTag = { end: number; style: string | null } | { end: null; resume: number };
-
-/**
- * Read the attributes of an opening tag the way an HTML tokenizer does, from
- * just after the tag name. Returns the index of the tag's closing `>` and the
- * value of its first `style` attribute. A `>` inside a quoted value does not
- * end the tag, and a quote only opens a value right after `=`, as in the
- * browser. Each character is looked at once.
- *
- * A tag that never ends reports where scanning should resume: the end of the
- * input when no `>` follows, or just past a quote that never closes. No later
- * tag can hold a value in that quote character, so a later tag may still end
- * and the caller keeps going from there.
- */
-function readOpenTag(input: string, from: number): OpenTag {
-	let style: string | null = null;
-	let i = from;
-	for (;;) {
-		while (i < input.length && (isTagSpace(input[i]) || input[i] === '/')) i++;
-		if (i >= input.length) return { end: null, resume: input.length };
-		if (input[i] === '>') return { end: i, style };
-
-		// Attribute name: a leading `=` belongs to the name.
-		const nameStart = i;
-		i++;
-		while (i < input.length) {
-			const c = input[i];
-			if (isTagSpace(c) || c === '/' || c === '>' || c === '=') break;
-			i++;
-		}
-		const name = input.slice(nameStart, i);
-		while (i < input.length && isTagSpace(input[i])) i++;
-		if (input[i] !== '=') continue;
-		i++;
-		while (i < input.length && isTagSpace(input[i])) i++;
-
-		let value: string;
-		const quote = input[i];
-		if (quote === '"' || quote === "'") {
-			const close = input.indexOf(quote, i + 1);
-			if (close === -1) return { end: null, resume: i + 1 };
-			value = input.slice(i + 1, close);
-			i = close + 1;
-		} else {
-			const valueStart = i;
-			while (i < input.length && !isTagSpace(input[i]) && input[i] !== '>') i++;
-			value = input.slice(valueStart, i);
-		}
-		if (style === null && name.toLowerCase() === 'style') style = value;
-	}
-}
-
-/**
- * Drop every element whose inline style hides it: the opening tag, its content
- * and the first matching closing tag (tag names compared case-insensitively,
- * no nesting). One forward pass:
- *   - closing tags are indexed up front, per tag name, in document order, and
- *     each name's cursor only moves forward;
- *   - an opening tag is read attribute by attribute up to its closing `>`, and
- *     scanning resumes after it (or after the dropped element), so no character
- *     is looked at twice by the tag search. A tag that never ends is skipped:
- *     with no `>` left the pass is over, and past a quote that never closes
- *     scanning carries on after that quote. A failed quote search can happen
- *     at most once per quote character, so the pass stays linear.
- * A visible styled element is kept and its content still scanned, so a hidden
- * element nested inside it is removed too.
- */
-function stripHiddenElements(input: string): string {
-	const closings = new Map<string, { starts: number[]; ends: number[]; next: number }>();
-	const closeTag = /<\/([a-zA-Z][a-zA-Z0-9]*)\s*>/g;
-	for (let m = closeTag.exec(input); m; m = closeTag.exec(input)) {
-		const name = (m[1] as string).toLowerCase();
-		let entry = closings.get(name);
-		if (!entry) {
-			entry = { starts: [], ends: [], next: 0 };
-			closings.set(name, entry);
-		}
-		entry.starts.push(m.index);
-		entry.ends.push(m.index + m[0].length);
-	}
-	if (closings.size === 0) return input;
-
-	const openTag = /<([a-zA-Z][a-zA-Z0-9]*)\b/g;
-	let out = '';
-	let copied = 0;
-	let pos = 0;
-	for (;;) {
-		openTag.lastIndex = pos;
-		const open = openTag.exec(input);
-		if (!open) break;
-		const tag = readOpenTag(input, open.index + open[0].length);
-		if (tag.end === null) {
-			if (tag.resume >= input.length) break;
-			pos = tag.resume;
-			continue;
-		}
-		pos = tag.end + 1;
-
-		if (tag.style === null || !HIDING_STYLE.test(tag.style)) continue;
-
-		const entry = closings.get((open[1] as string).toLowerCase());
-		if (!entry) continue;
-		while (entry.next < entry.starts.length && (entry.starts[entry.next] as number) < pos) {
-			entry.next++;
-		}
-		if (entry.next >= entry.starts.length) continue;
-
-		out += `${input.slice(copied, open.index)} `;
-		copied = entry.ends[entry.next] as number;
-		entry.next++;
-		pos = copied;
-	}
-	return copied === 0 ? input : out + input.slice(copied);
-}
-
-/**
  * STRIP (not just DETECT) content that is hidden from a human reader but still
  * legible to an LLM, so a smuggled instruction can never reach a model. This is
  * the strip complement to {@link detectSmuggling}: detection flags a message for
@@ -291,37 +162,40 @@ function stripHiddenElements(input: string): string {
  *
  * Pure + deterministic. Strips, in order:
  *   - HTML comments (`<!-- ... -->`) -- a classic instruction-smuggling channel.
- *   - `<script>` / `<style>` elements (never human-visible prose).
- *   - Elements whose inline style hides them: display:none, visibility:hidden,
- *     font-size:0, opacity:0, or white / near-white text (white-on-white). A
- *     negative lookbehind keeps `background-color: white` (visible dark text on
- *     a white background) from being treated as hidden.
+ *   - For HTML input only (`options.html`), hidden elements with their content
+ *     (`hiddenMarkup.ts`): `<script>`, `<style>`, `<template>` and the other
+ *     elements a browser never shows; an inline style of display:none,
+ *     visibility:hidden, font-size:0, opacity:0, or white or transparent text
+ *     (`background-color: white` stays visible), read after character
+ *     references and CSS escapes are decoded; and the `hidden` attribute.
+ *     Elements are matched the way the browser builds the page, and one that is
+ *     never closed runs to the end of its parent, or of the input.
  *   - Zero-width / invisible / bidi-control unicode used to obfuscate payloads.
  *
- * Non-HTML plain text is handled too: the element rules simply don't match, but
- * the comment strip and the zero-width strip still apply. Input past
- * {@link MAX_SCAN_INPUT_CHARS} is dropped first, and every pass is a single
- * forward scan, so the cost stays linear in the input. Never throws.
+ * Plain text (a text/plain body, a subject, a tool result) is shown as written,
+ * so markup in it hides nothing and the element step does not run: prose that
+ * mentions `<template>` keeps the text after it. The comment strip and the
+ * zero-width strip still apply. Input past {@link MAX_SCAN_INPUT_CHARS} is
+ * dropped first, and every pass is a single forward scan, so the cost stays
+ * linear in the input. Never throws.
  */
-export function stripHiddenContent(input: string | undefined | null): string {
+export function stripHiddenContent(
+	input: string | undefined | null,
+	options: { html?: boolean } = {}
+): string {
 	if (!input) return '';
 	let out = capScanInput(input);
 
-	// 1. HTML comments (first `-->` after each `<!--`).
-	out = stripDelimited(out, /<!--/g, /-->/g);
+	// 1. HTML comments: up to the first `-->` (or `--!>`, which also ends a
+	//    comment) after each `<!--`.
+	out = stripDelimited(out, /<!--/g, /--!?>/g);
 
-	// 2. <script> / <style> blocks -- content is never human-visible prose.
-	out = stripDelimited(out, /<script/gi, /<\/script>/gi);
-	out = stripDelimited(out, /<style/gi, /<\/style>/gi);
+	// 2. Hidden elements, including <script> and <style>: the start tag, its
+	//    content and the end tag go. What counts as hidden and how elements are
+	//    matched is in hiddenMarkup.ts.
+	if (options.html) out = stripHiddenElements(out);
 
-	// 3. Elements hidden via inline style: the opening tag, its content and the
-	//    matching closing tag go. Non-nesting -- good enough that a smuggled
-	//    `<span style="display:none">...</span>` payload is removed; a hidden
-	//    element that slips through is still DETECTED upstream and quarantined
-	//    by detectSmuggling.
-	out = stripHiddenElements(out);
-
-	// 4. Zero-width / invisible / bidi-control characters. The zero-width
+	// 3. Zero-width / invisible / bidi-control characters. The zero-width
 	//    joiner/non-joiner (U+200C/U+200D) are listed as standalone alternatives
 	//    rather than inside a character class -- a class containing them can form
 	//    misleading combining sequences (oxlint: no-misleading-character-class),
