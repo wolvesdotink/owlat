@@ -92,72 +92,112 @@ export function useInbox(gate?: Ref<boolean>) {
 	};
 
 	// ── Thread list (keyset pagination; the args pick the backend index) ──
-	// keepPreviousData: a filter, assignee or sort change (or the next page)
-	// keeps the current rows on screen until the new page lands, instead of
+	// Two subscriptions, the same shape as the Postbox feed
+	// (composables/postbox/usePostboxCursorFeed.ts):
+	//   - the FIRST page never carries a cursor, so it stays live however far
+	//     the list has been paged: a new thread still floats to the top;
+	//   - the TAIL is one cursor-keyed page per "Load more". Each landed tail
+	//     page is kept as a segment under the cursor that opened it, so paging
+	//     deeper never re-reads the pages above. Only the newest segment stays
+	//     live; older ones are snapshots.
+	// keepPreviousData on the first page: a filter, assignee or sort change
+	// keeps the rows on screen until the new first page lands, instead of
 	// blanking the list to its skeleton.
-	const threadCursor = ref<string | undefined>(undefined);
+	const listArgs = () => {
+		if (!subscribed()) return 'skip' as const;
+		const assigneeArg = inboxAssigneeArg(assignee.value);
+		return {
+			filter: filter.value,
+			...(assigneeArg ? { assignee: assigneeArg } : {}),
+			sort: sort.value,
+			limit: 25,
+		};
+	};
 	const {
 		data: threadsData,
 		isLoading: threadsLoading,
 		isRefetching: threadsRefetching,
-		error: threadsError,
-	} = useConvexQuery(
-		api.inbox.queries.listThreads,
-		() => {
-			if (!subscribed()) return 'skip';
-			const assigneeArg = inboxAssigneeArg(assignee.value);
-			return {
-				filter: filter.value,
-				...(assigneeArg ? { assignee: assigneeArg } : {}),
-				sort: sort.value,
-				limit: 25,
-				cursor: threadCursor.value,
-			};
-		},
-		{ keepPreviousData: true }
-	);
+		error: firstPageError,
+	} = useConvexQuery(api.inbox.queries.listThreads, listArgs, { keepPreviousData: true });
 
 	type Thread = NonNullable<typeof threadsData.value>['threads'][number];
 
-	// Accumulate pages: the first page (cursor undefined) replaces; each
-	// subsequent page appends (deduped by _id). Mirrors useActivityTimeline.
-	const accumulatedThreads = ref<Thread[]>([]);
-	watch(
-		threadsData,
-		(data) => {
-			if (!data) return;
-			if (!threadCursor.value) {
-				accumulatedThreads.value = [...data.threads];
-			} else {
-				const seen = new Set(accumulatedThreads.value.map((t) => t._id));
-				accumulatedThreads.value = [
-					...accumulatedThreads.value,
-					...data.threads.filter((t) => !seen.has(t._id)),
-				];
-			}
-		},
-		{ immediate: true }
-	);
+	/** Cursor of the tail page being read; null = no page past the first. */
+	const tailCursor = ref<string | null>(null);
+	// No keepPreviousData here: a new cursor starts from a blank page, so every
+	// landed page is a fresh delivery the segment store below sees.
+	const { data: tailData, error: tailError } = useConvexQuery(api.inbox.queries.listThreads, () => {
+		const base = listArgs();
+		if (base === 'skip' || !tailCursor.value) return 'skip';
+		return { ...base, cursor: tailCursor.value };
+	});
 
-	// A filter OR sort change selects a different backend index/order, so a
-	// keyset cursor minted for the prior view is invalid. Reset to a fresh first
-	// page synchronously — before the query re-subscribes. The rows already on
-	// screen stay until that first page replaces them (the cursor is undefined,
-	// so the accumulator above replaces rather than appends).
+	/** Landed tail pages, keyed by the cursor that opened each (in page order). */
+	const tailSegments = shallowRef(new Map<string, Thread[]>());
+	watch(tailData, (page) => {
+		const key = tailCursor.value;
+		if (!page || !key) return;
+		const next = new Map(tailSegments.value);
+		next.set(key, page.threads);
+		tailSegments.value = next;
+	});
+
+	// The rows below the first page when the view changed. They stay under the
+	// retained first page until the new first page lands, so switching a filter
+	// from deep in the list does not shrink it to one page and back.
+	const retainedTail = shallowRef<Thread[]>([]);
+	const dropSettledRetainedTail = () => {
+		if (!threadsRefetching.value && retainedTail.value.length > 0) retainedTail.value = [];
+	};
+	watch(threadsRefetching, dropSettledRetainedTail);
+	// A re-subscribe answered at once (a warm shared subscription) never raises
+	// isRefetching, so also check once the queries have re-subscribed.
+	watch(retainedTail, dropSettledRetainedTail, { flush: 'post' });
+
+	// A filter, assignee or sort change selects a different backend index or
+	// order, so every cursor minted for the prior view is invalid. Drop the tail
+	// synchronously, before the queries re-subscribe.
 	watch(
 		[filter, assignee, sort],
 		() => {
-			threadCursor.value = undefined;
+			// A second change before the first view landed keeps what is on screen.
+			const onScreen = threadsRefetching.value ? retainedTail.value : [];
+			retainedTail.value = [...onScreen, ...[...tailSegments.value.values()].flat()];
+			tailCursor.value = null;
+			tailSegments.value = new Map();
 		},
 		{ flush: 'sync' }
 	);
 
-	const threads = computed(() => accumulatedThreads.value);
-	// While a new page loads, the data on screen belongs to the previous args:
-	// its cursor would page the NEW view from an old view's position.
-	const hasMoreThreads = computed(
-		() => !threadsRefetching.value && !!threadsData.value?.nextCursor
-	);
+	// The live first page, then every tail segment, deduped by _id: the first
+	// page wins, so a row it has grown to include shows its freshest copy.
+	const threads = computed<Thread[]>(() => {
+		const out: Thread[] = [];
+		const seen = new Set<string>();
+		const push = (rows: readonly Thread[]) => {
+			for (const row of rows) {
+				if (seen.has(row._id)) continue;
+				seen.add(row._id);
+				out.push(row);
+			}
+		};
+		push(threadsData.value?.threads ?? []);
+		if (threadsRefetching.value) push(retainedTail.value);
+		for (const rows of tailSegments.value.values()) push(rows);
+		return out;
+	});
+
+	/** The deepest landed page: its cursor continues the list. */
+	const frontier = computed(() => {
+		const key = tailCursor.value;
+		if (!key) return threadsData.value;
+		return tailSegments.value.has(key) ? tailData.value : undefined;
+	});
+	// While a new view loads, the first page on screen belongs to the previous
+	// args: its cursor would page the NEW view from an old view's position. And
+	// while a tail page loads there is no frontier yet.
+	const hasMoreThreads = computed(() => !threadsRefetching.value && !!frontier.value?.nextCursor);
+	const threadsError = computed(() => firstPageError.value ?? tailError.value);
 
 	// ── Filter-pill counts (bounded reads; a slice at the cap renders "99+") ──
 	// keepPreviousData: an assignee change keeps the old counts until the new ones land.
@@ -179,9 +219,8 @@ export function useInbox(gate?: Ref<boolean>) {
 
 	// ── Actions ──
 	const loadMoreThreads = () => {
-		if (hasMoreThreads.value && threadsData.value?.nextCursor) {
-			threadCursor.value = threadsData.value.nextCursor;
-		}
+		const next = frontier.value?.nextCursor;
+		if (hasMoreThreads.value && next) tailCursor.value = next;
 	};
 
 	return {
