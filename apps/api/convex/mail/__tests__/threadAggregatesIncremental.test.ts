@@ -454,7 +454,9 @@ describe('listThreadMessages paging (plan 3.3)', () => {
 			messageId: messageIds[0]!,
 		}))!;
 		expect(result.messages).toHaveLength(THREAD_READ_CAP);
-		expect(result.messages.at(-1)!._id).toBe(messageIds.at(-1));
+		expect(result.messages[result.messages.length - 1]!._id).toBe(
+			messageIds[messageIds.length - 1]
+		);
 		expect(result.messages[0]!._id).toBe(messageIds[5]);
 		expect(result.olderCursor).not.toBeNull();
 	});
