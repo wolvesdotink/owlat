@@ -14,6 +14,8 @@ import { BodyTooLargeError, readBodyText } from '../lib/readBody';
  * secret — no audit row, no delivery claim, no retained payload:
  *
  *   1. method + path      — POST only; exactly one path segment after the prefix
+ *   1b. signature headers — for a known id, a request missing a header its
+ *                           declared scheme needs is 401 before anything is spent
  *   2. rate limit         — per plugin id; every unknown id shares one bucket, so
  *                           guessing ids cannot mint buckets. First because a
  *                           limiter that does not record cannot limit, which is
@@ -72,6 +74,8 @@ import {
 } from '../plugins/sendTransportWebhookCatalog';
 import { verifyPluginWebhookDelivery } from '../plugins/inboundSignature';
 import { getClientIp, rateLimitedResponse } from '../lib/publicRateLimit';
+import { pluginVerifier } from '../providers/feedback';
+import { missingDeclaredSignatureHeaders } from './providerVerifierRegistry';
 import { InboundBatchDispatchError, dispatchEventsInOrder, jsonResponse } from './inboundHttp';
 import type { PluginFeedbackClaimResult } from './pluginFeedbackDeliveries';
 import {
@@ -141,6 +145,21 @@ export const pluginFeedbackWebhook = httpAction(async (ctx, request) => {
 
 	const pluginId = pluginIdFromPath(request.url);
 	const webhook = pluginId === null ? undefined : pluginSendTransportWebhookFor(pluginId);
+
+	// A request to a known webhook that lacks the headers its declared scheme
+	// cannot verify without is refused before it can spend the plugin's bucket
+	// or have its body read. The check reads the same translated verifier the
+	// provider feedback registry uses, so the two cannot disagree on the headers.
+	if (webhook) {
+		const missing = missingDeclaredSignatureHeaders(
+			request,
+			pluginVerifier(webhook.definition.signature)
+		);
+		if (missing !== null) {
+			logError(`[${webhook.definition.kind} Webhook] ${missing}`);
+			return jsonResponse(401, { error: missing });
+		}
+	}
 
 	const limited = await spendRateLimitToken(ctx, request, webhook ? pluginId : null);
 	if (limited) return limited;

@@ -1,5 +1,5 @@
 import { convexTest } from 'convex-test';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import schema from '../schema';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { expectScheduledFailure } from './helpers/scheduledFailures';
@@ -109,12 +109,45 @@ describe('handleGithubWebhook (/webhooks/github)', () => {
 	it('rejects (503) when GITHUB_WEBHOOK_SECRET is unset', async () => {
 		delete process.env['GITHUB_WEBHOOK_SECRET'];
 		const t = setupTest();
+		// Signed, so the request gets past the missing-header refusal to the
+		// configuration check.
 		const res = await t.fetch(GITHUB_PATH, {
 			method: 'POST',
 			body: PING_BODY,
-			headers: { 'Content-Type': 'application/json' },
+			headers: { 'Content-Type': 'application/json', 'x-hub-signature-256': 'sha256=00' },
 		});
 		expect(res.status).toBe(503);
+	});
+
+	it('does not spend the ingestion bucket on requests without a signature header', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			const t = setupTest();
+			const unsigned = await Promise.all(
+				Array.from({ length: 150 }, () =>
+					t.fetch(GITHUB_PATH, {
+						method: 'POST',
+						body: PING_BODY,
+						headers: { 'Content-Type': 'application/json' },
+					})
+				)
+			);
+			expect(unsigned.every((res) => res.status === 401)).toBe(true);
+
+			const sig = await hmacSha256Hex('gh-test-secret', PING_BODY);
+			const signed = await t.fetch(GITHUB_PATH, {
+				method: 'POST',
+				body: PING_BODY,
+				headers: {
+					'Content-Type': 'application/json',
+					'x-github-event': 'ping',
+					'x-hub-signature-256': `sha256=${sig}`,
+				},
+			});
+			expect(signed.status).toBe(200);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('rejects (401) when the signature header is missing', async () => {
