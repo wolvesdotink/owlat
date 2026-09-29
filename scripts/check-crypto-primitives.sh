@@ -11,9 +11,8 @@
 # The MTA -> API request signature is signed by `@owlat/mta-protocol/signer`
 # and verified by `apps/api/convex/webhooks/mtaSignature.ts` through lib/crypto.
 #
-# Private copies drifted: some compares returned early on a length mismatch,
-# and each open-coded HMAC picked its own key import and encoding. This gate
-# reports, outside the modules listed in ALLOWED below:
+# One implementation per runtime keeps every compare and every HMAC behaving
+# the same way. This gate reports, outside the modules listed in ALLOWED below:
 #
 #   importKey(HMAC)   a Web Crypto `importKey(…)` call whose arguments name HMAC
 #   sign(HMAC)        a Web Crypto `sign('HMAC', …)` call

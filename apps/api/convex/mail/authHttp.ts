@@ -68,8 +68,7 @@ export const handleVerifyCredential = httpAction(async (ctx, request) => {
 	// Same ingestion bucket as the other inbound webhooks, keyed per-source like
 	// webhooks/pipeline so a flood here cannot drain the bounce/complaint
 	// buckets. Charged only after the signature check (the body is capped at
-	// 100 KB above): without RATE_LIMIT_TRUSTED_PROXY every caller shares the
-	// 'unknown' key, so unsigned requests must not spend the MTA's budget.
+	// 100 KB above), so only signed requests spend it.
 	const rateIp = getClientIp(request);
 	const { ok: rateOk, retryAfter } = await ctx.runMutation(
 		internal.lib.publicRateLimit.checkPublicRateLimit,

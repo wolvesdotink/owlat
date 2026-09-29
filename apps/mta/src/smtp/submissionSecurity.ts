@@ -9,10 +9,9 @@
  *
  * The counter is keyed on `ipRateLimitKey`: the full address for IPv4, the /64
  * for IPv6, since one host can draw a fresh source address from its /64 for
- * every connection. A successful AUTH does not reset it, so a client holding
- * one valid credential gets no fresh budget for guessing the others; it simply
- * ages out with the rolling window. Postbox app passwords are additionally
- * throttled per address and per client IP by the Convex `verify` action.
+ * every connection. A successful AUTH does not reset it; it ages out with the
+ * rolling window. Postbox app passwords are additionally throttled per address
+ * and per client IP by the Convex `verify` action.
  */
 
 import type Redis from 'ioredis';
