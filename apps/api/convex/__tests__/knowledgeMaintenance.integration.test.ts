@@ -33,22 +33,23 @@ vi.mock('../lib/contactCountHelpers', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -61,14 +62,17 @@ describe('knowledgeMaintenance.runDecay', () => {
 
 		let eventId!: Id<'knowledgeEntries'>;
 		await t.run(async (ctx) => {
-			eventId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'event',
-				title: 'Historical Event',
-				content: 'This event should not decay.',
-				sourceType: 'manual',
-				confidence: 0.9,
-				lastValidatedAt: twoDaysAgo,
-			}));
+			eventId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'event',
+					title: 'Historical Event',
+					content: 'This event should not decay.',
+					sourceType: 'manual',
+					confidence: 0.9,
+					lastValidatedAt: twoDaysAgo,
+				})
+			);
 		});
 
 		const result = await t.mutation(internal.knowledge.maintenance.runDecay, {});
@@ -87,14 +91,17 @@ describe('knowledgeMaintenance.runDecay', () => {
 
 		let factId!: Id<'knowledgeEntries'>;
 		await t.run(async (ctx) => {
-			factId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'fact',
-				title: 'Decaying Fact',
-				content: 'This fact should decay slowly.',
-				sourceType: 'manual',
-				confidence: originalConfidence,
-				lastValidatedAt: tenDaysAgo,
-			}));
+			factId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'fact',
+					title: 'Decaying Fact',
+					content: 'This fact should decay slowly.',
+					sourceType: 'manual',
+					confidence: originalConfidence,
+					lastValidatedAt: tenDaysAgo,
+				})
+			);
 		});
 
 		const result = await t.mutation(internal.knowledge.maintenance.runDecay, {});
@@ -116,14 +123,17 @@ describe('knowledgeMaintenance.runDecay', () => {
 
 		let actionId!: Id<'knowledgeEntries'>;
 		await t.run(async (ctx) => {
-			actionId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'action_item',
-				title: 'Urgent Action',
-				content: 'This should decay fast.',
-				sourceType: 'manual',
-				confidence: originalConfidence,
-				lastValidatedAt: fiveDaysAgo,
-			}));
+			actionId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'action_item',
+					title: 'Urgent Action',
+					content: 'This should decay fast.',
+					sourceType: 'manual',
+					confidence: originalConfidence,
+					lastValidatedAt: fiveDaysAgo,
+				})
+			);
 		});
 
 		await t.mutation(internal.knowledge.maintenance.runDecay, {});
@@ -144,14 +154,17 @@ describe('knowledgeMaintenance.runDecay', () => {
 
 		let actionId!: Id<'knowledgeEntries'>;
 		await t.run(async (ctx) => {
-			actionId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'action_item', // 5% per day decay rate
-				title: 'Ancient Action',
-				content: 'Should hit confidence floor.',
-				sourceType: 'manual',
-				confidence: 0.5,
-				lastValidatedAt: hundredDaysAgo,
-			}));
+			actionId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'action_item', // 5% per day decay rate
+					title: 'Ancient Action',
+					content: 'Should hit confidence floor.',
+					sourceType: 'manual',
+					confidence: 0.5,
+					lastValidatedAt: hundredDaysAgo,
+				})
+			);
 		});
 
 		await t.mutation(internal.knowledge.maintenance.runDecay, {});
@@ -168,14 +181,17 @@ describe('knowledgeMaintenance.runDecay', () => {
 
 		let factId!: Id<'knowledgeEntries'>;
 		await t.run(async (ctx) => {
-			factId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'fact',
-				title: 'Recently Validated',
-				content: 'Should not be decayed.',
-				sourceType: 'manual',
-				confidence: 0.8,
-				lastValidatedAt: Date.now(), // validated now
-			}));
+			factId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'fact',
+					title: 'Recently Validated',
+					content: 'Should not be decayed.',
+					sourceType: 'manual',
+					confidence: 0.8,
+					lastValidatedAt: Date.now(), // validated now
+				})
+			);
 		});
 
 		const result = await t.mutation(internal.knowledge.maintenance.runDecay, {});
@@ -194,21 +210,27 @@ describe('knowledgeMaintenance.runDecay', () => {
 		let expiredId!: Id<'knowledgeEntries'>;
 		let validId!: Id<'knowledgeEntries'>;
 		await t.run(async (ctx) => {
-			expiredId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'fact',
-				title: 'Expired Entry',
-				content: 'should be deleted',
-				sourceType: 'manual',
-				expiresAt: now - 1000,
-			}));
-			validId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'fact',
-				title: 'Valid Entry',
-				content: 'should remain',
-				sourceType: 'manual',
-				confidence: 0.8,
-				lastValidatedAt: now, // recent, so no decay
-			}));
+			expiredId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'fact',
+					title: 'Expired Entry',
+					content: 'should be deleted',
+					sourceType: 'manual',
+					expiresAt: now - 1000,
+				})
+			);
+			validId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'fact',
+					title: 'Valid Entry',
+					content: 'should remain',
+					sourceType: 'manual',
+					confidence: 0.8,
+					lastValidatedAt: now, // recent, so no decay
+				})
+			);
 		});
 
 		const result = await t.mutation(internal.knowledge.maintenance.runDecay, {});
@@ -230,14 +252,17 @@ describe('knowledgeMaintenance.runDecay', () => {
 		let expiredId!: Id<'knowledgeEntries'>;
 		await t.run(async (ctx) => {
 			contactId = await ctx.db.insert('contacts', createTestContact());
-			expiredId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'fact',
-				title: 'Expired With Contact',
-				content: 'expired',
-				sourceType: 'manual',
-				contactIds: [contactId],
-				expiresAt: now - 1000,
-			}));
+			expiredId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'fact',
+					title: 'Expired With Contact',
+					content: 'expired',
+					sourceType: 'manual',
+					contactIds: [contactId],
+					expiresAt: now - 1000,
+				})
+			);
 			await ctx.db.insert('knowledgeEntryContacts', { entryId: expiredId, contactId });
 		});
 
@@ -262,20 +287,26 @@ describe('knowledgeMaintenance.runDecay', () => {
 		let relationId!: Id<'knowledgeRelations'>;
 
 		await t.run(async (ctx) => {
-			expiredId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'goal',
-				title: 'Expired Goal',
-				content: 'expired',
-				sourceType: 'manual',
-				expiresAt: now - 5000,
-			}));
-			otherId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'fact',
-				title: 'Linked Fact',
-				content: 'linked',
-				sourceType: 'manual',
-				lastValidatedAt: now,
-			}));
+			expiredId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'goal',
+					title: 'Expired Goal',
+					content: 'expired',
+					sourceType: 'manual',
+					expiresAt: now - 5000,
+				})
+			);
+			otherId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'fact',
+					title: 'Linked Fact',
+					content: 'linked',
+					sourceType: 'manual',
+					lastValidatedAt: now,
+				})
+			);
 			relationId = await ctx.db.insert('knowledgeRelations', {
 				fromEntryId: expiredId,
 				toEntryId: otherId,
@@ -304,13 +335,16 @@ describe('knowledgeMaintenance.runDecay', () => {
 
 		await t.run(async (ctx) => {
 			for (let i = 0; i < 3; i++) {
-				await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-					entryType: 'event',
-					title: `Event ${i}`,
-					content: `event ${i}`,
-					sourceType: 'manual',
-					lastValidatedAt: now,
-				}));
+				await ctx.db.insert(
+					'knowledgeEntries',
+					createTestKnowledgeEntry({
+						entryType: 'event',
+						title: `Event ${i}`,
+						content: `event ${i}`,
+						sourceType: 'manual',
+						lastValidatedAt: now,
+					})
+				);
 			}
 		});
 
@@ -329,30 +363,39 @@ describe('knowledgeMaintenance.runDecay', () => {
 		let eventId!: Id<'knowledgeEntries'>;
 
 		await t.run(async (ctx) => {
-			factId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'fact',
-				title: 'Mixed Fact',
-				content: 'fact',
-				sourceType: 'manual',
-				confidence: 1.0,
-				lastValidatedAt: threeDaysAgo,
-			}));
-			preferenceId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'preference',
-				title: 'Mixed Preference',
-				content: 'pref',
-				sourceType: 'manual',
-				confidence: 1.0,
-				lastValidatedAt: threeDaysAgo,
-			}));
-			eventId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'event',
-				title: 'Mixed Event',
-				content: 'event',
-				sourceType: 'manual',
-				confidence: 1.0,
-				lastValidatedAt: threeDaysAgo,
-			}));
+			factId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'fact',
+					title: 'Mixed Fact',
+					content: 'fact',
+					sourceType: 'manual',
+					confidence: 1.0,
+					lastValidatedAt: threeDaysAgo,
+				})
+			);
+			preferenceId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'preference',
+					title: 'Mixed Preference',
+					content: 'pref',
+					sourceType: 'manual',
+					confidence: 1.0,
+					lastValidatedAt: threeDaysAgo,
+				})
+			);
+			eventId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'event',
+					title: 'Mixed Event',
+					content: 'event',
+					sourceType: 'manual',
+					confidence: 1.0,
+					lastValidatedAt: threeDaysAgo,
+				})
+			);
 		});
 
 		const result = await t.mutation(internal.knowledge.maintenance.runDecay, {});
@@ -399,24 +442,30 @@ describe('runDecay — usage-recency boost', () => {
 		let hot!: Id<'knowledgeEntries'>;
 		let cold!: Id<'knowledgeEntries'>;
 		await t.run(async (ctx) => {
-			hot = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'goal', // 3%/day, old enough to decay
-				title: 'Hot goal',
-				content: 'recently grounded',
-				sourceType: 'manual',
-				confidence: 0.9,
-				lastValidatedAt: now - 10 * DAY,
-				lastAccessedAt: now, // recalled just now
-			}));
-			cold = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'goal',
-				title: 'Cold goal',
-				content: 'long unused',
-				sourceType: 'manual',
-				confidence: 0.9,
-				lastValidatedAt: now - 10 * DAY,
-				lastAccessedAt: now - 60 * DAY, // last touched two months ago
-			}));
+			hot = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'goal', // 3%/day, old enough to decay
+					title: 'Hot goal',
+					content: 'recently grounded',
+					sourceType: 'manual',
+					confidence: 0.9,
+					lastValidatedAt: now - 10 * DAY,
+					lastAccessedAt: now, // recalled just now
+				})
+			);
+			cold = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'goal',
+					title: 'Cold goal',
+					content: 'long unused',
+					sourceType: 'manual',
+					confidence: 0.9,
+					lastValidatedAt: now - 10 * DAY,
+					lastAccessedAt: now - 60 * DAY, // last touched two months ago
+				})
+			);
 		});
 
 		await t.mutation(internal.knowledge.maintenance.runDecay, {});
@@ -440,24 +489,64 @@ function unit(at: number): number[] {
 async function insertContactEntry(
 	t: ReturnType<typeof convexTest>,
 	contactId: Id<'contacts'>,
-	opts: { title: string; content: string; embedAt: number; confidence: number },
+	opts: { title: string; content: string; embedAt: number; confidence: number }
 ): Promise<Id<'knowledgeEntries'>> {
 	return await t.run(async (ctx) => {
-		const entryId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-			entryType: 'fact',
-			title: opts.title,
-			content: opts.content,
-			sourceType: 'email',
-			confidence: opts.confidence,
-			contactIds: [contactId],
-			embedding: unit(opts.embedAt),
-		}));
+		const entryId = await ctx.db.insert(
+			'knowledgeEntries',
+			createTestKnowledgeEntry({
+				entryType: 'fact',
+				title: opts.title,
+				content: opts.content,
+				sourceType: 'email',
+				confidence: opts.confidence,
+				contactIds: [contactId],
+				embedding: unit(opts.embedAt),
+			})
+		);
 		await ctx.db.insert('knowledgeEntryContacts', { entryId, contactId });
 		return entryId;
 	});
 }
 
 describe('dedupeContactEntries', () => {
+	it('never merges a Team Inbox-derived entry with a member-visible one', async () => {
+		const t = convexTest(schema, modules);
+		let contactId!: Id<'contacts'>;
+		await t.run(async (ctx) => {
+			contactId = await ctx.db.insert('contacts', createTestContact());
+		});
+		const visible = await insertContactEntry(t, contactId, {
+			title: 'Berlin A',
+			content: 'lives in Berlin',
+			embedAt: 5,
+			confidence: 0.6,
+		});
+		const inboxDerived = await t.run(async (ctx) => {
+			const entryId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'fact',
+					title: 'Berlin B',
+					content: 'moved to Berlin last spring',
+					sourceType: 'agent_extracted',
+					confidence: 0.9,
+					contactIds: [contactId],
+					embedding: unit(5),
+				})
+			);
+			await ctx.db.insert('knowledgeEntryContacts', { entryId, contactId });
+			return entryId;
+		});
+
+		const r = await t.mutation(internal.knowledge.maintenance.dedupeContactEntries, { contactId });
+		expect(r.merged).toBe(0);
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(visible))?.content).toBe('lives in Berlin');
+			expect((await ctx.db.get(inboxDerived))?.content).toBe('moved to Berlin last spring');
+		});
+	});
+
 	it('merges near-duplicate entries into a deterministic survivor and converges', async () => {
 		const t = convexTest(schema, modules);
 		let contactId!: Id<'contacts'>;
@@ -467,13 +556,22 @@ describe('dedupeContactEntries', () => {
 
 		// Two near-identical facts (same embedding) + one distinct fact.
 		const survivor = await insertContactEntry(t, contactId, {
-			title: 'Berlin A', content: 'lives in Berlin', embedAt: 5, confidence: 0.9,
+			title: 'Berlin A',
+			content: 'lives in Berlin',
+			embedAt: 5,
+			confidence: 0.9,
 		});
 		const loser = await insertContactEntry(t, contactId, {
-			title: 'Berlin B', content: 'Berlin-based', embedAt: 5, confidence: 0.6,
+			title: 'Berlin B',
+			content: 'Berlin-based',
+			embedAt: 5,
+			confidence: 0.6,
 		});
 		const distinct = await insertContactEntry(t, contactId, {
-			title: 'Role', content: 'is the CTO', embedAt: 900, confidence: 0.8,
+			title: 'Role',
+			content: 'is the CTO',
+			embedAt: 900,
+			confidence: 0.8,
 		});
 
 		const r1 = await t.mutation(internal.knowledge.maintenance.dedupeContactEntries, { contactId });
@@ -514,26 +612,53 @@ describe('dedupeContactEntries', () => {
 
 		// Three same-embedding facts with distinct content + tags — they all cluster.
 		const survivor = await t.run(async (ctx) => {
-			const entryId = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'fact', title: 'A', content: 'fact alpha', sourceType: 'email',
-				confidence: 0.9, contactIds: [contactId], tags: ['t-alpha'], embedding: unit(5),
-				searchableText: 'A fact alpha',
-			}));
+			const entryId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'fact',
+					title: 'A',
+					content: 'fact alpha',
+					sourceType: 'email',
+					confidence: 0.9,
+					contactIds: [contactId],
+					tags: ['t-alpha'],
+					embedding: unit(5),
+					searchableText: 'A fact alpha',
+				})
+			);
 			await ctx.db.insert('knowledgeEntryContacts', { entryId, contactId });
 			return entryId;
 		});
 		await t.run(async (ctx) => {
-			const e1 = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'fact', title: 'B', content: 'fact beta', sourceType: 'email',
-				confidence: 0.6, contactIds: [contactId], tags: ['t-beta'], embedding: unit(5),
-				searchableText: 'B fact beta',
-			}));
+			const e1 = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'fact',
+					title: 'B',
+					content: 'fact beta',
+					sourceType: 'email',
+					confidence: 0.6,
+					contactIds: [contactId],
+					tags: ['t-beta'],
+					embedding: unit(5),
+					searchableText: 'B fact beta',
+				})
+			);
 			await ctx.db.insert('knowledgeEntryContacts', { entryId: e1, contactId });
-			const e2 = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'fact', title: 'C', content: 'fact gamma', sourceType: 'email',
-				confidence: 0.5, contactIds: [contactId], tags: ['t-gamma'], embedding: unit(5),
-				searchableText: 'C fact gamma',
-			}));
+			const e2 = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'fact',
+					title: 'C',
+					content: 'fact gamma',
+					sourceType: 'email',
+					confidence: 0.5,
+					contactIds: [contactId],
+					tags: ['t-gamma'],
+					embedding: unit(5),
+					searchableText: 'C fact gamma',
+				})
+			);
 			await ctx.db.insert('knowledgeEntryContacts', { entryId: e2, contactId });
 		});
 
@@ -560,7 +685,10 @@ describe('dedupeContactEntries', () => {
 			contactId = await ctx.db.insert('contacts', createTestContact());
 		});
 		await insertContactEntry(t, contactId, {
-			title: 'only', content: 'one fact', embedAt: 1, confidence: 0.9,
+			title: 'only',
+			content: 'one fact',
+			embedAt: 1,
+			confidence: 0.9,
 		});
 		const r = await t.mutation(internal.knowledge.maintenance.dedupeContactEntries, { contactId });
 		expect(r.merged).toBe(0);
@@ -576,34 +704,62 @@ describe('dedupeContactEntries', () => {
 
 		// survivor + loser cluster (same embedding); nodeX is distinct and stays.
 		const survivor = await insertContactEntry(t, contactId, {
-			title: 'Berlin A', content: 'lives in Berlin', embedAt: 5, confidence: 0.9,
+			title: 'Berlin A',
+			content: 'lives in Berlin',
+			embedAt: 5,
+			confidence: 0.9,
 		});
 		const loser = await insertContactEntry(t, contactId, {
-			title: 'Berlin B', content: 'Berlin-based', embedAt: 5, confidence: 0.6,
+			title: 'Berlin B',
+			content: 'Berlin-based',
+			embedAt: 5,
+			confidence: 0.6,
 		});
 		const nodeX = await insertContactEntry(t, contactId, {
-			title: 'Role', content: 'is the CTO', embedAt: 900, confidence: 0.8,
+			title: 'Role',
+			content: 'is the CTO',
+			embedAt: 900,
+			confidence: 0.8,
 		});
 
 		await t.run(async (ctx) => {
 			// Survivor already links to nodeX — weak, LLM-ambiguous, with a rationale.
 			await ctx.db.insert('knowledgeRelations', {
-				fromEntryId: survivor, toEntryId: nodeX, relationType: 'relates_to',
-				confidence: 0.4, confidenceTag: 'ambiguous', provenance: 'llm', weight: 0.4,
-				rationale: 'survivor-kept', createdAt: oldTs, updatedAt: oldTs,
+				fromEntryId: survivor,
+				toEntryId: nodeX,
+				relationType: 'relates_to',
+				confidence: 0.4,
+				confidenceTag: 'ambiguous',
+				provenance: 'llm',
+				weight: 0.4,
+				rationale: 'survivor-kept',
+				createdAt: oldTs,
+				updatedAt: oldTs,
 			});
 			// Loser links to nodeX with the SAME (to,type) but stronger evidence — this
 			// is the parallel edge a blind re-point would duplicate.
 			await ctx.db.insert('knowledgeRelations', {
-				fromEntryId: loser, toEntryId: nodeX, relationType: 'relates_to',
-				confidence: 0.95, confidenceTag: 'extracted', provenance: 'manual', weight: 0.95,
-				rationale: 'loser-dropped', createdAt: oldTs, updatedAt: oldTs,
+				fromEntryId: loser,
+				toEntryId: nodeX,
+				relationType: 'relates_to',
+				confidence: 0.95,
+				confidenceTag: 'extracted',
+				provenance: 'manual',
+				weight: 0.95,
+				rationale: 'loser-dropped',
+				createdAt: oldTs,
+				updatedAt: oldTs,
 			});
 			// Loser → survivor becomes a self-loop once repointed; it must be dropped.
 			await ctx.db.insert('knowledgeRelations', {
-				fromEntryId: loser, toEntryId: survivor, relationType: 'relates_to',
-				confidence: 1.0, confidenceTag: 'extracted', provenance: 'manual',
-				createdAt: oldTs, updatedAt: oldTs,
+				fromEntryId: loser,
+				toEntryId: survivor,
+				relationType: 'relates_to',
+				confidence: 1.0,
+				confidenceTag: 'extracted',
+				provenance: 'manual',
+				createdAt: oldTs,
+				updatedAt: oldTs,
 			});
 		});
 
@@ -655,12 +811,15 @@ describe('knowledge.graph.recordAccess', () => {
 		const t = convexTest(schema, modules);
 		let id!: Id<'knowledgeEntries'>;
 		await t.run(async (ctx) => {
-			id = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({
-				entryType: 'fact',
-				title: 'Tracked',
-				content: 'usage tracked',
-				sourceType: 'manual',
-			}));
+			id = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'fact',
+					title: 'Tracked',
+					content: 'usage tracked',
+					sourceType: 'manual',
+				})
+			);
 		});
 
 		await t.mutation(internal.knowledge.graph.recordAccess, { ids: [id] });
@@ -694,34 +853,65 @@ describe('reapAmbiguousEdges', () => {
 		let staleAmbiguousManual!: Id<'knowledgeRelations'>;
 
 		await t.run(async (ctx) => {
-			a = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({ sourceType: 'manual' }));
-			b = await ctx.db.insert('knowledgeEntries', createTestKnowledgeEntry({ sourceType: 'manual' }));
+			a = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({ sourceType: 'manual' })
+			);
+			b = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({ sourceType: 'manual' })
+			);
 			// Distinct relationTypes so all five coexist on the same (a,b) pair.
 			staleAmbiguousLlm = await ctx.db.insert('knowledgeRelations', {
-				fromEntryId: a, toEntryId: b, relationType: 'relates_to',
-				confidence: 0.4, confidenceTag: 'ambiguous', provenance: 'llm',
-				createdAt: old, updatedAt: old,
+				fromEntryId: a,
+				toEntryId: b,
+				relationType: 'relates_to',
+				confidence: 0.4,
+				confidenceTag: 'ambiguous',
+				provenance: 'llm',
+				createdAt: old,
+				updatedAt: old,
 			});
 			recentAmbiguousLlm = await ctx.db.insert('knowledgeRelations', {
-				fromEntryId: a, toEntryId: b, relationType: 'supports',
-				confidence: 0.4, confidenceTag: 'ambiguous', provenance: 'llm',
-				createdAt: now, updatedAt: now,
+				fromEntryId: a,
+				toEntryId: b,
+				relationType: 'supports',
+				confidence: 0.4,
+				confidenceTag: 'ambiguous',
+				provenance: 'llm',
+				createdAt: now,
+				updatedAt: now,
 			});
 			staleInferredLlm = await ctx.db.insert('knowledgeRelations', {
-				fromEntryId: a, toEntryId: b, relationType: 'causes',
-				confidence: 0.8, confidenceTag: 'inferred', provenance: 'llm',
-				createdAt: old, updatedAt: old,
+				fromEntryId: a,
+				toEntryId: b,
+				relationType: 'causes',
+				confidence: 0.8,
+				confidenceTag: 'inferred',
+				provenance: 'llm',
+				createdAt: old,
+				updatedAt: old,
 			});
 			staleExtractedManual = await ctx.db.insert('knowledgeRelations', {
-				fromEntryId: a, toEntryId: b, relationType: 'blocks',
-				confidence: 1.0, confidenceTag: 'extracted', provenance: 'manual',
-				createdAt: old, updatedAt: old,
+				fromEntryId: a,
+				toEntryId: b,
+				relationType: 'blocks',
+				confidence: 1.0,
+				confidenceTag: 'extracted',
+				provenance: 'manual',
+				createdAt: old,
+				updatedAt: old,
 			});
 			// Ambiguous but NOT llm-provenance — also retained.
 			staleAmbiguousManual = await ctx.db.insert('knowledgeRelations', {
-				fromEntryId: a, toEntryId: b, relationType: 'supersedes',
-				confidence: 0.4, confidenceTag: 'ambiguous', provenance: 'manual',
-				createdAt: old, updatedAt: old,
+				fromEntryId: a,
+				toEntryId: b,
+				relationType: 'supersedes',
+				confidence: 0.4,
+				confidenceTag: 'ambiguous',
+				provenance: 'manual',
+				createdAt: old,
+				updatedAt: old,
 			});
 		});
 
