@@ -923,6 +923,7 @@ import type * as mail_mailbox_attachments from '../mail/mailbox/attachments.js';
 import type * as mail_mailbox_appearance from '../mail/mailbox/appearance.js';
 import type * as mail_mailbox_identity from '../mail/mailbox/identity.js';
 import type * as mail_mailbox_messages from '../mail/mailbox/messages.js';
+import type * as mail_mailbox_parts from '../mail/mailbox/parts.js';
 import type * as mail_mailbox_queries from '../mail/mailbox/queries.js';
 import type * as mail_mailbox_rawExport from '../mail/mailbox/rawExport.js';
 import type * as mail_mailbox_rowThreadState from '../mail/mailbox/rowThreadState.js';
@@ -940,6 +941,7 @@ import type * as mail_mailboxMoveResolve from '../mail/mailboxMoveResolve.js';
 import type * as mail_mailboxRequest from '../mail/mailboxRequest.js';
 import type * as mail_memberMailboxStatus from '../mail/memberMailboxStatus.js';
 import type * as mail_messageActions from '../mail/messageActions.js';
+import type * as mail_messageParts from '../mail/messageParts.js';
 import type * as mail_messagePurge from '../mail/messagePurge.js';
 import type * as mail_migration from '../mail/migration.js';
 import type * as mail_migrationBackfill from '../mail/migrationBackfill.js';
@@ -1241,6 +1243,7 @@ import type * as workspaces_deletion_steps_instanceSettings from '../workspaces/
 import type * as workspaces_deletion_steps_mailArchiveImports from '../workspaces/deletion/steps/mailArchiveImports.js';
 import type * as workspaces_deletion_steps_mailAttachmentShares from '../workspaces/deletion/steps/mailAttachmentShares.js';
 import type * as workspaces_deletion_steps_mailDrafts from '../workspaces/deletion/steps/mailDrafts.js';
+import type * as workspaces_deletion_steps_mailMessageParts from '../workspaces/deletion/steps/mailMessageParts.js';
 import type * as workspaces_deletion_steps_mailMessages from '../workspaces/deletion/steps/mailMessages.js';
 import type * as workspaces_deletion_steps_mediaAssets from '../workspaces/deletion/steps/mediaAssets.js';
 import type * as workspaces_deletion_steps_registry from '../workspaces/deletion/steps/registry.js';
@@ -2169,6 +2172,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/mailbox/appearance': typeof mail_mailbox_appearance;
 	'mail/mailbox/identity': typeof mail_mailbox_identity;
 	'mail/mailbox/messages': typeof mail_mailbox_messages;
+	'mail/mailbox/parts': typeof mail_mailbox_parts;
 	'mail/mailbox/queries': typeof mail_mailbox_queries;
 	'mail/mailbox/rawExport': typeof mail_mailbox_rawExport;
 	'mail/mailbox/rowThreadState': typeof mail_mailbox_rowThreadState;
@@ -2186,6 +2190,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/mailboxRequest': typeof mail_mailboxRequest;
 	'mail/memberMailboxStatus': typeof mail_memberMailboxStatus;
 	'mail/messageActions': typeof mail_messageActions;
+	'mail/messageParts': typeof mail_messageParts;
 	'mail/messagePurge': typeof mail_messagePurge;
 	'mail/migration': typeof mail_migration;
 	'mail/migrationBackfill': typeof mail_migrationBackfill;
@@ -2487,6 +2492,7 @@ declare const fullApi: ApiFromModules<{
 	'workspaces/deletion/steps/mailArchiveImports': typeof workspaces_deletion_steps_mailArchiveImports;
 	'workspaces/deletion/steps/mailAttachmentShares': typeof workspaces_deletion_steps_mailAttachmentShares;
 	'workspaces/deletion/steps/mailDrafts': typeof workspaces_deletion_steps_mailDrafts;
+	'workspaces/deletion/steps/mailMessageParts': typeof workspaces_deletion_steps_mailMessageParts;
 	'workspaces/deletion/steps/mailMessages': typeof workspaces_deletion_steps_mailMessages;
 	'workspaces/deletion/steps/mediaAssets': typeof workspaces_deletion_steps_mediaAssets;
 	'workspaces/deletion/steps/registry': typeof workspaces_deletion_steps_registry;

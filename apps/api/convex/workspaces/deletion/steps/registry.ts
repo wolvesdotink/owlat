@@ -22,6 +22,7 @@ import { mediaAssetsStep } from './mediaAssets';
 import { accountExportArtifactsStep } from './accountExportArtifacts';
 import { semanticFilesStep } from './semanticFiles';
 import { mailMessagesStep } from './mailMessages';
+import { mailMessagePartsStep } from './mailMessageParts';
 import { inboundMessagesStep } from './inboundMessages';
 import { mailDraftsStep } from './mailDrafts';
 import { mailAttachmentSharesStep } from './mailAttachmentShares';
@@ -60,6 +61,9 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'mailAttachmentBackfillJobs',
 	'mailBodySearchBackfillJobs',
 	'mailMessages',
+	// Parts cut out of a raw `.eml`: the step above frees them with their raw
+	// blob, so this only ever finds orphans, and it purges their blobs too.
+	'mailMessageParts',
 	'mailDrafts',
 	// Share links own the blobs the drafts above no longer reference, so they
 	// have to purge their own storage rather than ride a generic sweep.
@@ -305,6 +309,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailAttachmentBackfillJobs: makeSweepStep('mailAttachmentBackfillJobs'),
 	mailBodySearchBackfillJobs: makeSweepStep('mailBodySearchBackfillJobs'),
 	mailMessages: mailMessagesStep,
+	mailMessageParts: mailMessagePartsStep,
 	mailDrafts: mailDraftsStep,
 	transactionalSends: transactionalSendsStep,
 	emailSends: makeSweepStep('emailSends'),

@@ -1,4 +1,5 @@
 import { loadRawEml } from '~/composables/postbox/loadRawEml';
+import { loadMessagePart } from '~/composables/postbox/loadMessagePart';
 import { useMimePartDownload } from '~/composables/useMimePartDownload';
 import { previewSliceFor } from '~/utils/postboxFileFacets';
 import type { AttachmentMeta } from '~/utils/attachmentMeta';
@@ -7,13 +8,14 @@ import type { AttachmentMeta } from '~/utils/attachmentMeta';
  * Attachment handling for the thread reader: the per-part download and the
  * Quick Look overlay for image/PDF parts.
  *
- * The download half — fetch the raw `.eml`, extract the part, hand the browser
- * a Blob, toast what failed — is `useMimePartDownload`, shared with the
- * team-inbox reader. What stays here is the lightbox, which only Postbox has.
+ * The download half — fetch the stored part (or the raw `.eml` and extract it),
+ * hand the browser a Blob, toast what failed — is `useMimePartDownload`, shared
+ * with the team-inbox reader. What stays here is the lightbox, which only Postbox has.
  */
 export function usePostboxReaderAttachments() {
 	const { downloadingAttachment, extractPartBlob, handleAttachmentDownload } = useMimePartDownload({
 		loadRaw: loadRawEml,
+		loadPart: loadMessagePart,
 		failureKey: 'components.postbox.postboxThreadReader.attachmentDownloadFailed',
 	});
 

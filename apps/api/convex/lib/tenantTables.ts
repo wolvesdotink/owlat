@@ -183,6 +183,9 @@ export const TENANT_TABLES = [
 	// excerpt itself is a COLUMN on `mailMessages` and needs no entry here.)
 	'mailBodySearchBackfillJobs',
 	'mailMessages',
+	// Attachment parts stored out of a raw `.eml` (plan 3.5). Freed with the raw
+	// blob by `deleteMessageRowAndBlobs`; listed so an orphan still wipes.
+	'mailMessageParts',
 	'mailThreads',
 	'mailDrafts',
 	'mailLabels',

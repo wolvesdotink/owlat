@@ -1,7 +1,7 @@
 /**
  * Permanent deletion of one message row, and everything that has to move with
- * it: the folder counters, the mailbox's `usedBytes`, the raw/body blobs and the
- * attachment index.
+ * it: the folder counters, the mailbox's `usedBytes`, the raw/body blobs, the
+ * attachment parts stored out of the raw blob and the attachment index.
  *
  * Extracted from `messageActions.purge` (the bulk-bar's "Delete forever") so the
  * unattended trash auto-purge sweep (`mail/trashRetention.ts`) destroys mail
@@ -16,6 +16,7 @@ import type { Id, Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { removeMessageAttachments } from './attachmentIndex';
+import { deleteMessagePartsForRaw } from './messageParts';
 
 /** The `mailMessages` columns that hold a storage blob a SIBLING row may share. */
 type SharedBlobColumn = 'rawStorageId' | 'textBodyStorageId' | 'htmlBodyStorageId';
@@ -119,6 +120,9 @@ export async function deleteMessageRowAndBlobs(
 		} catch {
 			// Storage may already be gone — the row is what had to disappear.
 		}
+		// The attachment parts cut out of the raw `.eml` share its lifetime: every
+		// row that shares the raw blob shares them, so they go with the last one.
+		if (column === 'rawStorageId') await deleteMessagePartsForRaw(ctx, storageId);
 	}
 }
 

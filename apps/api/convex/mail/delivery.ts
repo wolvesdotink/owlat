@@ -56,6 +56,8 @@ import {
 	isOverQuota,
 } from './deliveryPipeline/insert';
 import { runPostInsertInboundEffects } from './deliveryPipeline/afterInsert';
+import { partBlobIds, recordStoredParts, stageMessageParts } from './messageParts';
+import { mailMessageStoredPartsValidator } from '../schema/mailComposition';
 import { deliveredEnvelopeFields, storedBodyFields } from './deliveryPipeline/ingestFields';
 import {
 	resolveDmarcRouting,
@@ -105,6 +107,14 @@ export const ingestFromWebhook = internalAction({
 	},
 	handler: async (ctx, args): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> => {
 		const prepared = await prepareInboundMessage(ctx, args);
+		// Each attachment leaf as its own sealed blob, cut out while the bytes are
+		// in hand and the scan's walk is fresh (plan 3.5). Only mail that lists
+		// attachments: the reader's downloads and the invite card hang off that
+		// list, so a message without one has nothing to serve.
+		const storedParts =
+			args.attachments.length > 0
+				? await stageMessageParts(ctx, prepared.rawBinary, prepared.scan.leaves ?? [])
+				: undefined;
 
 		const result:
 			| { messageId: Id<'mailMessages'>; dmarcOverride?: DmarcOverride }
@@ -146,6 +156,7 @@ export const ingestFromWebhook = internalAction({
 			dkimSigningDomain: args.dkimSigningDomain,
 			inboundEncryptionInfo: prepared.inboundEncryptionInfo,
 			inboundSignatureInfo: prepared.inboundSignatureInfo,
+			storedParts,
 		});
 
 		// If delivery was skipped (no mailbox / quota / dup), drop the staged blobs.
@@ -154,6 +165,7 @@ export const ingestFromWebhook = internalAction({
 				prepared.rawStorageId,
 				prepared.text.storageId,
 				prepared.html.storageId,
+				...(storedParts ? partBlobIds(storedParts) : []),
 			]);
 			return result;
 		}
@@ -260,6 +272,10 @@ export const deliverToMailbox = internalMutation({
 		// Inbound signature verdict (F1, D9), computed by the ingest action for a
 		// SIGNED-but-not-encrypted message. Data only — never affects routing.
 		inboundSignatureInfo: v.optional(inboundSignatureInfoValidator),
+		// Plan 3.5: the attachment leaves the ingest action stored one blob each,
+		// recorded against the raw blob once the row is in. Absent from an older
+		// action (and when staging failed): the reader then uses the raw `.eml`.
+		storedParts: v.optional(mailMessageStoredPartsValidator),
 	},
 	handler: async (
 		ctx,
@@ -417,6 +433,10 @@ export const deliverToMailbox = internalMutation({
 			origin: 'mx',
 			antiLoopHeaders: args.antiLoopHeaders,
 		});
+
+		// 11c. The attachment parts the ingest action stored on their own, so the
+		// reader downloads one part instead of the whole raw message (plan 3.5).
+		if (args.storedParts) await recordStoredParts(ctx, args.rawStorageId, args.storedParts);
 
 		// 12. Post-delivery hooks — forwarding + vacation auto-reply.
 		// Scheduled as an action so HTTP calls to the MTA happen in the
