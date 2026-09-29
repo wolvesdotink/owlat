@@ -41,6 +41,7 @@ import {
 	type PostboxRenderEntry,
 } from '~/utils/postboxRenderCache';
 import { consumeResolvedPostboxMessageBody } from '~/composables/postbox/postboxBodyResolver';
+import { usePostboxFrameAutosize } from '~/composables/postbox/usePostboxFrameAutosize';
 import {
 	postboxSenderKey,
 	postboxSenderTrustLabel,
@@ -396,39 +397,34 @@ function untrustSender() {
 
 // Pre-size the iframe from the last measured height for this exact render so
 // re-opening a thread doesn't flash the 200px min-height and jump to full size.
-// Reconciled against the real content height on load. Kept as an explicit ref
-// (rather than reading the non-reactive cache in the template) so the height
-// updates when the render key changes.
+// Kept as an explicit ref (rather than reading the non-reactive cache in the
+// template) so the height updates when the render key changes. A new render of
+// the SAME message with no cached height yet (show images, show quoted text)
+// keeps the current height until the new document is measured, instead of
+// dropping back to the min-height for a frame or two.
 const presetHeight = ref<number | null>(null);
 watch(
-	renderKey,
-	(key) => {
-		presetHeight.value = key ? (getPostboxRenderCache().get(key)?.height ?? null) : null;
+	[renderKey, () => props.message._id],
+	([key, messageId], previous) => {
+		const cached = key ? (getPostboxRenderCache().get(key)?.height ?? null) : null;
+		const sameMessage = previous !== undefined && previous[1] === messageId;
+		presetHeight.value = cached ?? (sameMessage ? presetHeight.value : null);
 	},
 	{ immediate: true }
 );
 
-// Auto-resize iframe to content height, and remember it so the next render of
-// this message can pre-size instead of jumping.
-function resizeIframe() {
-	const iframe = iframeRef.value;
-	if (!iframe?.contentDocument) return;
-	const h = Math.max(isPaper.value ? 120 : 24, iframe.contentDocument.documentElement.scrollHeight);
-	iframe.style.height = `${h}px`;
-	presetHeight.value = h;
-	const key = renderKey.value;
-	if (key) getPostboxRenderCache().update(key, { height: h });
-}
-
-// The iframe mounts late when the body-loading skeleton renders first, so
-// attach the resize listener whenever the template ref binds (not onMounted).
-watch(iframeRef, (iframe) => {
-	iframe?.addEventListener('load', resizeIframe);
-});
-
-// Re-fit when the user toggles "Show quoted text" or shows images.
-watch([showQuoted, showImages, loadEverything], () => {
-	nextTick(resizeIframe);
+// Fit the frame to its document from the moment it is parsed, then follow it
+// (late images, fonts, pane resizes), and remember the height so the next
+// render of this message can pre-size instead of jumping.
+usePostboxFrameAutosize({
+	iframeRef,
+	srcdoc: displaySrcdoc,
+	minHeight: () => (isPaper.value ? 120 : 24),
+	onHeight: (height) => {
+		presetHeight.value = height;
+		const key = renderKey.value;
+		if (key) getPostboxRenderCache().update(key, { height });
+	},
 });
 </script>
 
