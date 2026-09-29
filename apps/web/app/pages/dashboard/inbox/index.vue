@@ -81,6 +81,9 @@ const ACTIVE_WORK_FILTERS = new Set<InboxFilter>(['open', 'waiting']);
 // row and a successful one is undoable for ~8s.
 const { visible: visibleThreads, run: runTriage } = useInboxTriage(threads as Ref<TeamThread[]>);
 
+// The assignee-avatar presence ring, read for the shown rows only.
+const isAssigneePresent = useInboxAssigneePresence(visibleThreads);
+
 // Org members for the row hover assignee picker (Me / members / Unassign).
 const { members, fetchMembers } = useOrganization();
 // Cmd/Ctrl+Z undoes the last triage while focus is outside any text field —
@@ -356,6 +359,7 @@ const showOldestFirst = () => setSort('oldest-waiting');
 							:current-user-id="user?.id ?? null"
 							:can-manage="isAdmin"
 							:now="now"
+							:assignee-present="isAssigneePresent(thread._id)"
 							@assign="assignTo(thread, $event)"
 							@resolve="resolveThread(thread)"
 							@snooze="openSnooze(thread)"

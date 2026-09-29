@@ -13,7 +13,6 @@ import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { isSharedInboxReader } from './access';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { readInstanceCounter } from '../lib/instanceCounters';
-import { PRESENCE_ACTIVE_WINDOW_MS } from './presence';
 import { compareNeedsAttention, compareOldestWaiting } from './threadSort';
 import {
 	FILTER_COUNT_CAP,
@@ -43,8 +42,10 @@ import {
  *  - `assignee`: the assigned member's display name/email/image so the row can
  *    render a deterministic-colour avatar without the client joining to the
  *    member directory. Cached per call so repeat assignees cost one read.
- *  - `assigneePresent`: does the assignee have this thread open right now
- *    (the pulsing presence ring)? One point-read, and only for assigned rows.
+ *
+ * Presence is deliberately NOT read here: a heartbeat would re-run every
+ * admin's list, including the shell sidebar's. The Team Inbox page asks
+ * `inbox/presence.ts` `presentAssignees` for its visible rows instead.
  */
 async function enrichThreadRows(
 	ctx: QueryCtx,
@@ -65,7 +66,6 @@ async function enrichThreadRows(
 		return resolved;
 	};
 
-	const presenceCutoff = Date.now() - PRESENCE_ACTIVE_WINDOW_MS;
 	return Promise.all(
 		rows.map(async (thread) => {
 			const read = await ctx.db
@@ -74,21 +74,10 @@ async function enrichThreadRows(
 				.unique();
 			const unread = thread.lastMessageAt > (read?.lastSeenAt ?? 0);
 			const assignee = thread.assignedTo ? await resolveAssignee(thread.assignedTo) : null;
-			let assigneePresent = false;
-			if (thread.assignedTo) {
-				const presence = await ctx.db
-					.query('threadPresence')
-					.withIndex('by_user_thread', (idx) =>
-						idx.eq('userId', thread.assignedTo!).eq('threadId', thread._id)
-					)
-					.unique();
-				assigneePresent = !!presence && presence.heartbeatAt > presenceCutoff;
-			}
 			return {
 				...(await openConversationThreadPreview(thread)),
 				unread,
 				assignee,
-				assigneePresent,
 			};
 		})
 	);

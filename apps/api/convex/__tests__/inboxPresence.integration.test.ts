@@ -5,6 +5,7 @@
  *   - a same-mode beat inside PRESENCE_REFRESH_MS does not rewrite the row
  *   - list applies the active window (boundary: 1s in, 1s out)
  *   - the internalSweep cron deletes expired rows and keeps active ones
+ *   - presentAssignees answers the team-inbox ring per (thread, assignee) pair
  *   - access control: a non-admin member cannot read presence (list → []) and
  *     cannot heartbeat (adminMutation floor throws).
  */
@@ -14,7 +15,11 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { PRESENCE_ACTIVE_WINDOW_MS, PRESENCE_REFRESH_MS } from '../inbox/presence';
+import {
+	MAX_ASSIGNEE_PRESENCE_PAIRS,
+	PRESENCE_ACTIVE_WINDOW_MS,
+	PRESENCE_REFRESH_MS,
+} from '../inbox/presence';
 
 const sessionMock = vi.hoisted(() => ({
 	user: { id: 'user-owner', role: 'owner' as 'owner' | 'admin' | 'editor' },
@@ -187,6 +192,60 @@ describe('inbox.presence.list active window', () => {
 		const list = await t.query(api.inbox.presence.list, { threadId });
 		expect(list).toHaveLength(1);
 		expect(list[0]!.userId).toBe('fresh');
+	});
+});
+
+describe('inbox.presence.presentAssignees', () => {
+	it('returns the threads whose named assignee is active there, and no others', async () => {
+		const t = convexTest(schema, modules);
+		setUser('user-owner', 'owner');
+		const here = await seedThread(t);
+		const gone = await seedThread(t);
+		const elsewhere = await seedThread(t);
+		const now = Date.now();
+
+		// Assignee active on `here`; stale on `gone`; on `elsewhere` only a
+		// different member is present, which must not light the assignee's ring.
+		await seedPresence(t, here, 'assignee-a', 'viewing', now - 1000);
+		await seedPresence(t, gone, 'assignee-b', 'viewing', now - (PRESENCE_ACTIVE_WINDOW_MS + 1000));
+		await seedPresence(t, elsewhere, 'someone-else', 'replying', now - 1000);
+
+		const present = await t.query(api.inbox.presence.presentAssignees, {
+			rows: [
+				{ threadId: here, assigneeId: 'assignee-a' },
+				{ threadId: gone, assigneeId: 'assignee-b' },
+				{ threadId: elsewhere, assigneeId: 'assignee-c' },
+			],
+		});
+		expect(present).toEqual([here]);
+	});
+
+	it('checks at most MAX_ASSIGNEE_PRESENCE_PAIRS pairs', async () => {
+		const t = convexTest(schema, modules);
+		setUser('user-owner', 'owner');
+		const threadId = await seedThread(t);
+		await seedPresence(t, threadId, 'late-assignee', 'viewing', Date.now());
+
+		const filler = Array.from({ length: MAX_ASSIGNEE_PRESENCE_PAIRS }, (_, i) => ({
+			threadId,
+			assigneeId: `absent-${i}`,
+		}));
+		const present = await t.query(api.inbox.presence.presentAssignees, {
+			rows: [...filler, { threadId, assigneeId: 'late-assignee' }],
+		});
+		expect(present).toEqual([]);
+	});
+
+	it('returns [] for a non-admin member', async () => {
+		const t = convexTest(schema, modules);
+		const threadId = await seedThread(t);
+		await seedPresence(t, threadId, 'assignee-a', 'viewing', Date.now());
+
+		setUser('user-editor', 'editor');
+		const present = await t.query(api.inbox.presence.presentAssignees, {
+			rows: [{ threadId, assigneeId: 'assignee-a' }],
+		});
+		expect(present).toEqual([]);
 	});
 });
 

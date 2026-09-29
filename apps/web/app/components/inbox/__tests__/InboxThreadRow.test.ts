@@ -42,7 +42,7 @@ const AssignPopoverStub = {
 		'<div><slot name="trigger" /><button class="assign-pick" @click="$emit(\'assign\', \'picked-user\')" /></div>',
 };
 
-function mountRow(thread: Partial<InboxThreadRowThread>) {
+function mountRow(thread: Partial<InboxThreadRowThread>, assigneePresent?: boolean) {
 	const full: InboxThreadRowThread = {
 		_id: 't1',
 		_creationTime: 1000,
@@ -53,7 +53,12 @@ function mountRow(thread: Partial<InboxThreadRowThread>) {
 		...thread,
 	};
 	return mount(InboxThreadRow, {
-		props: { thread: full, focused: false, formatCompactRelativeTime: () => '5m' },
+		props: {
+			thread: full,
+			focused: false,
+			formatCompactRelativeTime: () => '5m',
+			...(assigneePresent === undefined ? {} : { assigneePresent }),
+		},
 		global: {
 			plugins: [createTestI18n()],
 			components: { PostboxRowCore, InboxStatusChip: StatusChip },
@@ -69,14 +74,16 @@ function mountRow(thread: Partial<InboxThreadRowThread>) {
 
 describe('InboxThreadRow', () => {
 	it('renders an unread thread with weight-based emphasis, the status chip, assignee, and snippet', () => {
-		const w = mountRow({
-			unread: true,
-			latestDraftStatus: 'pending',
-			lastPreview: 'Hi, I would like a refund on order 123.',
-			channel: 'email',
-			assignee: { name: 'Jordan Lee', email: 'jordan@team.com' },
-			assigneePresent: true,
-		});
+		const w = mountRow(
+			{
+				unread: true,
+				latestDraftStatus: 'pending',
+				lastPreview: 'Hi, I would like a refund on order 123.',
+				channel: 'email',
+				assignee: { name: 'Jordan Lee', email: 'jordan@team.com' },
+			},
+			true
+		);
 
 		// Subject + snippet.
 		expect(w.text()).toContain('Refund request');
@@ -114,6 +121,12 @@ describe('InboxThreadRow', () => {
 
 		// Unassigned → no avatar, no presence ring.
 		expect(w.find('.ui-avatar-stub').exists()).toBe(false);
+		expect(w.find('.ui-presence-ring').exists()).toBe(false);
+	});
+
+	it('shows the assignee without a ring when the assignee is not there', () => {
+		const w = mountRow({ assignee: { name: 'Jordan Lee', email: 'jordan@team.com' } }, false);
+		expect(w.text()).toContain('Jordan Lee');
 		expect(w.find('.ui-presence-ring').exists()).toBe(false);
 	});
 

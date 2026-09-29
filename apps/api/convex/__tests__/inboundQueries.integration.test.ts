@@ -358,6 +358,31 @@ describe('inboundQueries.listThreads', () => {
 		expect(result.threads).toHaveLength(1);
 		expect(result.threads[0]!.assignedTo).toBe('test-user-123');
 	});
+
+	it('leaves assignee presence out of the rows (served by inbox.presence.presentAssignees)', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['inbox']);
+
+		const threadId = await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			const id = await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, assignedTo: 'other-user' })
+			);
+			await ctx.db.insert('threadPresence', {
+				threadId: id,
+				userId: 'other-user',
+				mode: 'viewing',
+				heartbeatAt: Date.now(),
+			});
+			return id;
+		});
+
+		const result = await t.withIdentity(testIdentity).query(api.inbox.queries.listThreads, {});
+
+		expect(result.threads.map((row) => row._id)).toEqual([threadId]);
+		expect(result.threads[0]).not.toHaveProperty('assigneePresent');
+	});
 });
 
 // ============ getThreadFilterCounts ============

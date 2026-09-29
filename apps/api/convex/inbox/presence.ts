@@ -6,8 +6,8 @@
  * (`mode: 'replying'`). The client heartbeats every ~20s while the thread is
  * open (see apps/web app/composables/useThreadPresence.ts), but a beat only
  * rewrites the row when its mode changed or its `heartbeatAt` is at least
- * PRESENCE_REFRESH_MS old: every write re-runs each admin's thread list, which
- * reads presence per row. A row is treated as ACTIVE only while its
+ * PRESENCE_REFRESH_MS old: every write re-runs the presence reads that name
+ * the row (`list`, `presentAssignees`). A row is treated as ACTIVE only while its
  * `heartbeatAt` is within PRESENCE_ACTIVE_WINDOW_MS.
  * The `internalSweep` cron deletes rows past that window so the table can't grow
  * unbounded when a tab is closed without a clean "leave".
@@ -144,6 +144,57 @@ export const list = publicQuery({
 			.collect(); // bounded: one row per (thread, present team member), capped by team size
 
 		return rows.map((r) => ({ userId: r.userId, mode: r.mode, heartbeatAt: r.heartbeatAt }));
+	},
+});
+
+/**
+ * Upper bound on (thread, assignee) pairs one `presentAssignees` call checks.
+ * The team inbox pages 25 rows at a time; past this many loaded rows the
+ * extra ones simply show no ring.
+ */
+export const MAX_ASSIGNEE_PRESENCE_PAIRS = 200;
+
+/**
+ * Which of the given threads have their assignee there right now: the
+ * pulsing ring on a team-inbox row's assignee avatar. Returns the thread ids
+ * whose (thread, assignee) presence row is inside the active window.
+ *
+ * This used to be read inside `inbox/queries.ts` `listThreads`, so every
+ * presence write re-ran every admin's thread list, including the one the
+ * shell sidebar keeps mounted. Only the Team Inbox list page shows the ring,
+ * so it asks here with its visible assigned rows and nothing else subscribes.
+ * Each pair is one point-read on `by_user_thread`, so a heartbeat only
+ * re-runs the calls that name that exact (user, thread).
+ *
+ * The caller names the assignee: the list row already carries it, and an
+ * admin can read any thread's presence through `list` anyway. Soft-auth like
+ * `list`: `[]` for anonymous / non-admin callers.
+ */
+// public: soft-auth — admin-only shared inbox; returns empty for non-admins
+export const presentAssignees = publicQuery({
+	args: {
+		rows: v.array(
+			v.object({
+				threadId: v.id('conversationThreads'),
+				assigneeId: v.string(),
+			})
+		),
+	},
+	handler: async (ctx, args) => {
+		const session = await getBetterAuthSessionWithRole(ctx);
+		if (!isSharedInboxReader(session)) return [];
+
+		const cutoff = Date.now() - PRESENCE_ACTIVE_WINDOW_MS;
+		const checked = await Promise.all(
+			args.rows.slice(0, MAX_ASSIGNEE_PRESENCE_PAIRS).map(async ({ threadId, assigneeId }) => {
+				const row = await ctx.db
+					.query('threadPresence')
+					.withIndex('by_user_thread', (q) => q.eq('userId', assigneeId).eq('threadId', threadId))
+					.unique();
+				return row && row.heartbeatAt > cutoff ? threadId : null;
+			})
+		);
+		return checked.filter((id): id is Id<'conversationThreads'> => id !== null);
 	},
 });
 
