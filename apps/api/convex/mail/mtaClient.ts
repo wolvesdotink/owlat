@@ -11,6 +11,7 @@
  */
 
 import { getOptional } from '../lib/env';
+import { FETCH_TIMEOUTS, fetchWithTimeout } from '../lib/fetchWithTimeout';
 import { logError } from '../lib/runtimeLog';
 import { warnScanSkipped } from '../lib/scannerHealth';
 
@@ -226,15 +227,19 @@ export async function scanAttachmentBytes(
 	if (!mta) return { kind: 'skipped' }; // scanner not configured → fail-open, silent
 
 	try {
-		const res = await fetch(`${mta.baseUrl}/scan/attachment`, {
-			method: 'POST',
-			headers: {
-				Authorization: `Bearer ${mta.apiKey}`,
-				'Content-Type': 'application/octet-stream',
-				'X-Filename': encodeFilenameHeader(filename),
+		const res = await fetchWithTimeout(
+			`${mta.baseUrl}/scan/attachment`,
+			{
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${mta.apiKey}`,
+					'Content-Type': 'application/octet-stream',
+					'X-Filename': encodeFilenameHeader(filename),
+				},
+				body: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer,
 			},
-			body: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer,
-		});
+			FETCH_TIMEOUTS.attachmentScan
+		);
 
 		if (!res.ok) {
 			// Scanner reachable but errored (e.g. 503) → fail open, surfaced.

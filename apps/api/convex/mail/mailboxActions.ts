@@ -13,6 +13,7 @@ import { internal } from '../_generated/api';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { getMtaConfig } from './mtaClient';
+import { FETCH_TIMEOUTS, fetchWithTimeout } from '../lib/fetchWithTimeout';
 import { isDevDeployment } from '../devShortcuts/_guard';
 
 export const pushMailboxToCache = internalAction({
@@ -40,20 +41,24 @@ export const pushMailboxToCache = internalAction({
 
 		const url = `${config.baseUrl}/mailboxes/cache/${encodeURIComponent(mailbox.address)}`;
 		try {
-			const res = await fetch(url, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${config.apiKey}`,
+			const res = await fetchWithTimeout(
+				url,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${config.apiKey}`,
+					},
+					body: JSON.stringify({
+						mailboxId: mailbox._id,
+						organizationId: mailbox.organizationId,
+						quotaBytes: mailbox.quotaBytes,
+						usedBytes: mailbox.usedBytes,
+						isInboundTlsRequired,
+					}),
 				},
-				body: JSON.stringify({
-					mailboxId: mailbox._id,
-					organizationId: mailbox.organizationId,
-					quotaBytes: mailbox.quotaBytes,
-					usedBytes: mailbox.usedBytes,
-					isInboundTlsRequired,
-				}),
-			});
+				FETCH_TIMEOUTS.internalPush
+			);
 			if (!res.ok) {
 				const body = await res.text().catch(() => '');
 				logError(`[Mailbox cache] Push failed (${res.status}): ${body}`);
@@ -74,14 +79,18 @@ export const pushInboundTlsPolicy = internalAction({
 		if (!config) return;
 		const isRequired = await ctx.runQuery(internal.workspaces.settings.getInboundTlsPolicy, {});
 		try {
-			const res = await fetch(`${config.baseUrl}/mailboxes/inbound-tls-policy`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${config.apiKey}`,
+			const res = await fetchWithTimeout(
+				`${config.baseUrl}/mailboxes/inbound-tls-policy`,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${config.apiKey}`,
+					},
+					body: JSON.stringify({ isRequired }),
 				},
-				body: JSON.stringify({ isRequired }),
-			});
+				FETCH_TIMEOUTS.internalPush
+			);
 			if (!res.ok) {
 				const body = await res.text().catch(() => '');
 				logError(`[Inbound TLS policy] Push failed (${res.status}): ${body}`);
@@ -102,10 +111,14 @@ export const removeFromCache = internalAction({
 
 		const url = `${config.baseUrl}/mailboxes/cache/${encodeURIComponent(args.address)}`;
 		try {
-			await fetch(url, {
-				method: 'DELETE',
-				headers: { Authorization: `Bearer ${config.apiKey}` },
-			});
+			await fetchWithTimeout(
+				url,
+				{
+					method: 'DELETE',
+					headers: { Authorization: `Bearer ${config.apiKey}` },
+				},
+				FETCH_TIMEOUTS.internalPush
+			);
 			logInfo(`[Mailbox cache] Removed ${redactEmailAddress(args.address)}`);
 		} catch (err) {
 			logError('[Mailbox cache] Removal error:', err);

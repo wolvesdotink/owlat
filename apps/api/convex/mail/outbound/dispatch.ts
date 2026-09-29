@@ -23,9 +23,19 @@ import { logError } from '../../lib/runtimeLog';
 import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { sealedBlobUrl } from '../../lib/sealedBlob';
 import { getMailSyncConfig } from '../mtaClient';
+import { FETCH_TIMEOUTS, fetchWithTimeout } from '../../lib/fetchWithTimeout';
+import { mapWithConcurrency } from '../../lib/mapWithConcurrency';
 import { stripHtml, type DraftRow } from '../rfc822';
 import type { MtaSendRequest } from '@owlat/mta-protocol/send';
 import type { SealedMime } from '../../e2ee/seal';
+
+/**
+ * How many MTA intake POSTs one send keeps in flight. Each carries its own copy
+ * of the message body (attachments included, up to ~14 MB of base64), so an
+ * unbounded fan-out over a long recipient list could exhaust the action's
+ * memory; six covers the usual To/Cc/Bcc list in a single round.
+ */
+const POSTBOX_SEND_CONCURRENCY = 6;
 
 interface ExternalSendResult {
 	recipients?: Array<{ address: string; status: 'sent' | 'bounced'; error?: string }>;
@@ -100,17 +110,21 @@ export async function dispatchViaExternalWorker(
 
 	let result: ExternalSendResult;
 	try {
-		const res = await fetch(`${mailSync.baseUrl}/send`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${mailSync.apiKey}` },
-			body: JSON.stringify({
-				externalAccountId: params.externalAccountId,
-				messageId: params.rfc822MessageId,
-				from: params.fromAddress,
-				recipients: params.recipients,
-				rawEmlUrl,
-			}),
-		});
+		const res = await fetchWithTimeout(
+			`${mailSync.baseUrl}/send`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${mailSync.apiKey}` },
+				body: JSON.stringify({
+					externalAccountId: params.externalAccountId,
+					messageId: params.rfc822MessageId,
+					from: params.fromAddress,
+					recipients: params.recipients,
+					rawEmlUrl,
+				}),
+			},
+			FETCH_TIMEOUTS.externalSend
+		);
 		if (!res.ok) {
 			const body = await res.text().catch(() => '');
 			logError(`[Outbound] mail-sync /send failed: ${res.status} ${body}`);
@@ -210,8 +224,11 @@ export async function dispatchViaMta(
 		return;
 	}
 
-	for (let i = 0; i < params.recipients.length; i++) {
-		const to = params.recipients[i]!;
+	// Every recipient is POSTed concurrently (up to POSTBOX_SEND_CONCURRENCY at
+	// once) instead of one after another: each POST is an independent intake
+	// with its own `pb-<id>-<idx>` job id, and each keeps its own outcome — a
+	// refusal or a network error still lands on that recipient's index alone.
+	await mapWithConcurrency(params.recipients, POSTBOX_SEND_CONCURRENCY, async (to, i) => {
 		// Prefix lets the `pb-` branch of webhooks/dispatcher.ts parse the
 		// Convex mailMessages id out of the `payload.messageId` that
 		// webhooks/adapters/mta.ts reports on sent/bounced events. Matches the
@@ -219,35 +236,41 @@ export async function dispatchViaMta(
 		// insert_mail_message effect.
 		const mtaMessageId = `pb-${mailMessageId}-${i}`;
 		try {
-			const res = await fetch(`${mta.baseUrl}/send/postbox`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${mta.apiKey}`,
-				},
-				// The postbox intake wire, typed against its one declaration (D7).
-				// `sealedMimeBase64`, `amp` and `allowedFromAddresses` exist on
-				// `MtaSendRequest` for THIS producer and the two in
-				// `deliveryHooks.ts` only, so without the annotation they had no
-				// compile-time producer at all: renaming one on the MTA side would
-				// leave this literal emitting the old key, and the MTA silently
-				// dropping the ciphertext / the AMP part / the From allow-list.
-				body: JSON.stringify({
-					messageId: mtaMessageId,
-					from: draft.fromAddress,
-					to,
-					...wireContent,
+			const res = await fetchWithTimeout(
+				`${mta.baseUrl}/send/postbox`,
+				{
+					method: 'POST',
 					headers: {
-						'Message-ID': params.rfc822MessageId,
-						...(params.inReplyToHeaderValue ? { 'In-Reply-To': params.inReplyToHeaderValue } : {}),
-						...(params.referencesHeaderValue ? { References: params.referencesHeaderValue } : {}),
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${mta.apiKey}`,
 					},
-					ipPool: 'transactional',
-					organizationId: 'postbox',
-					dkimDomain,
-					allowedFromAddresses: params.allowedFromAddresses,
-				} satisfies MtaSendRequest),
-			});
+					// The postbox intake wire, typed against its one declaration (D7).
+					// `sealedMimeBase64`, `amp` and `allowedFromAddresses` exist on
+					// `MtaSendRequest` for THIS producer and the two in
+					// `deliveryHooks.ts` only, so without the annotation they had no
+					// compile-time producer at all: renaming one on the MTA side would
+					// leave this literal emitting the old key, and the MTA silently
+					// dropping the ciphertext / the AMP part / the From allow-list.
+					body: JSON.stringify({
+						messageId: mtaMessageId,
+						from: draft.fromAddress,
+						to,
+						...wireContent,
+						headers: {
+							'Message-ID': params.rfc822MessageId,
+							...(params.inReplyToHeaderValue
+								? { 'In-Reply-To': params.inReplyToHeaderValue }
+								: {}),
+							...(params.referencesHeaderValue ? { References: params.referencesHeaderValue } : {}),
+						},
+						ipPool: 'transactional',
+						organizationId: 'postbox',
+						dkimDomain,
+						allowedFromAddresses: params.allowedFromAddresses,
+					} satisfies MtaSendRequest),
+				},
+				FETCH_TIMEOUTS.mtaIntake
+			);
 			if (!res.ok) {
 				const body = await res.text().catch(() => '');
 				logError(
@@ -280,5 +303,5 @@ export async function dispatchViaMta(
 				},
 			});
 		}
-	}
+	});
 }

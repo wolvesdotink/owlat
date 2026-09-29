@@ -658,6 +658,7 @@ import type * as lib_emailProviders_sesIdentity from '../lib/emailProviders/sesI
 import type * as lib_emailTranslations from '../lib/emailTranslations.js';
 import type * as lib_env from '../lib/env.js';
 import type * as lib_featureFlags from '../lib/featureFlags.js';
+import type * as lib_fetchWithTimeout from '../lib/fetchWithTimeout.js';
 import type * as lib_fileExtraction from '../lib/fileExtraction.js';
 import type * as lib_fileSearchText from '../lib/fileSearchText.js';
 import type * as lib_graphAnalyticsCompute from '../lib/graphAnalyticsCompute.js';
@@ -697,6 +698,7 @@ import type * as lib_llmProviders_types from '../lib/llmProviders/types.js';
 import type * as lib_llmUsageTags from '../lib/llmUsageTags.js';
 import type * as lib_mailMute from '../lib/mailMute.js';
 import type * as lib_mailSnooze from '../lib/mailSnooze.js';
+import type * as lib_mapWithConcurrency from '../lib/mapWithConcurrency.js';
 import type * as lib_marketingEligibility from '../lib/marketingEligibility.js';
 import type * as lib_accountExportTemplates from '../lib/accountExportTemplates.js';
 import type * as lib_messageBody from '../lib/messageBody.js';
@@ -1899,6 +1901,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/emailTranslations': typeof lib_emailTranslations;
 	'lib/env': typeof lib_env;
 	'lib/featureFlags': typeof lib_featureFlags;
+	'lib/fetchWithTimeout': typeof lib_fetchWithTimeout;
 	'lib/fileExtraction': typeof lib_fileExtraction;
 	'lib/fileSearchText': typeof lib_fileSearchText;
 	'lib/graphAnalyticsCompute': typeof lib_graphAnalyticsCompute;
@@ -1938,6 +1941,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/llmUsageTags': typeof lib_llmUsageTags;
 	'lib/mailMute': typeof lib_mailMute;
 	'lib/mailSnooze': typeof lib_mailSnooze;
+	'lib/mapWithConcurrency': typeof lib_mapWithConcurrency;
 	'lib/marketingEligibility': typeof lib_marketingEligibility;
 	'lib/accountExportTemplates': typeof lib_accountExportTemplates;
 	'lib/messageBody': typeof lib_messageBody;

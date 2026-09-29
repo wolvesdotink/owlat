@@ -18,6 +18,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { internal } from '../../_generated/api';
 import { getOptional } from '../../lib/env';
+import { FETCH_TIMEOUTS, fetchWithTimeout } from '../../lib/fetchWithTimeout';
 import { throwInvalidInput } from '../../_utils/errors';
 import type { ActionCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
@@ -134,11 +135,15 @@ interface GoogleTokenResponse {
 }
 
 async function postToken(body: URLSearchParams): Promise<GoogleTokenResponse> {
-	const res = await fetch(TOKEN_ENDPOINT, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-		body: body.toString(),
-	});
+	const res = await fetchWithTimeout(
+		TOKEN_ENDPOINT,
+		{
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: body.toString(),
+		},
+		FETCH_TIMEOUTS.thirdPartyApi
+	);
 	let parsed: GoogleTokenResponse;
 	try {
 		parsed = (await res.json()) as GoogleTokenResponse;

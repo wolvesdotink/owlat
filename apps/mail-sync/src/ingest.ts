@@ -116,6 +116,14 @@ export function isMessageLanded(outcome: IngestOutcome): boolean {
 }
 
 /**
+ * Deadline for one raw `.eml` upload, response included. A message is at most
+ * 8 MiB, so a minute is room for a slow link; past it the upload is treated as
+ * hung and throws like any other failed upload, so the caller counts the
+ * message as failed instead of the folder's ingest stalling behind it.
+ */
+export const RAW_UPLOAD_TIMEOUT_MS = 60_000;
+
+/**
  * Upload the raw `.eml` and return its Convex storage id.
  *
  * A plain byte body to an HTTP action, which has no 16 MiB function-call cap —
@@ -134,6 +142,7 @@ async function uploadRawMessage(
 			'Content-Type': 'message/rfc822',
 		},
 		body: new Uint8Array(raw),
+		signal: AbortSignal.timeout(RAW_UPLOAD_TIMEOUT_MS),
 	});
 	if (!response.ok) {
 		const detail = await response.text().catch(() => '');

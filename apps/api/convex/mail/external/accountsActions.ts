@@ -26,6 +26,7 @@ import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { encryptSecret, decryptSecret } from '../../lib/credentialCrypto';
 import { getMailSyncConfig } from '../mtaClient';
+import { FETCH_TIMEOUTS, fetchWithTimeout } from '../../lib/fetchWithTimeout';
 import { throwInvalidInput } from '../../_utils/errors';
 import { assertExternalEnabled } from './externalFeature';
 import { refreshGoogleAccessToken } from './googleOAuthTokens';
@@ -291,26 +292,33 @@ export const testConnection = authedAction({
 			return { imap: { ok: false, error }, smtp: { ok: false, error } };
 		}
 		try {
-			const res = await fetch(`${mailSync.baseUrl}/test`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${mailSync.apiKey}` },
-				body: JSON.stringify({
-					imap: {
-						host: args.imapHost,
-						port: args.imapPort,
-						secure: args.isImapSecure,
-						username: args.username,
-						password: args.password,
+			const res = await fetchWithTimeout(
+				`${mailSync.baseUrl}/test`,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${mailSync.apiKey}`,
 					},
-					smtp: {
-						host: args.smtpHost,
-						port: args.smtpPort,
-						secure: args.isSmtpSecure,
-						username: args.smtpUsername ?? args.username,
-						password: args.smtpPassword ?? args.password,
-					},
-				}),
-			});
+					body: JSON.stringify({
+						imap: {
+							host: args.imapHost,
+							port: args.imapPort,
+							secure: args.isImapSecure,
+							username: args.username,
+							password: args.password,
+						},
+						smtp: {
+							host: args.smtpHost,
+							port: args.smtpPort,
+							secure: args.isSmtpSecure,
+							username: args.smtpUsername ?? args.username,
+							password: args.smtpPassword ?? args.password,
+						},
+					}),
+				},
+				FETCH_TIMEOUTS.externalProbe
+			);
 			if (!res.ok) {
 				const text = await res.text().catch(() => '');
 				const error = text || `Mail sync service returned HTTP ${res.status}`;

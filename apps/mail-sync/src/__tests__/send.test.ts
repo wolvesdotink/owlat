@@ -49,7 +49,7 @@ vi.mock('../logger.js', () => ({
 // Imported after mocks so the module picks up the mocked deps.
 import { sendMessage as clientSendMessage, verify as clientVerify } from '@owlat/smtp-client';
 import { ImapFlow } from 'imapflow';
-import { sendViaExternal, testConnection } from '../send.js';
+import { fileSentCopy, sendViaExternal, testConnection } from '../send.js';
 
 const CREDS: WorkerCredentials = {
 	imapHost: 'imap.example.com',
@@ -193,12 +193,22 @@ describe('sendViaExternal', () => {
 		expect(recipients).toEqual([{ address: 'only@example.com', status: 'sent' }]);
 	});
 
-	it('appends the raw bytes to the resolved Sent folder', async () => {
-		await sendViaExternal(CREDS, {
+	it('answers without opening IMAP: the Sent copy is filed separately, after the route responds', async () => {
+		const { recipients } = await sendViaExternal(CREDS, {
 			from: 'me@example.com',
 			recipients: ['x@example.com'],
 			raw: RAW,
 		});
+
+		expect(recipients).toEqual([{ address: 'x@example.com', status: 'sent' }]);
+		expect(ImapFlow).not.toHaveBeenCalled();
+		expect(imapAppend).not.toHaveBeenCalled();
+	});
+});
+
+describe('fileSentCopy', () => {
+	it('appends the raw bytes to the resolved Sent folder', async () => {
+		await fileSentCopy(CREDS, RAW);
 
 		// IMAP client built from the IMAP creds, not the SMTP ones.
 		expect(ImapFlow).toHaveBeenCalledWith(
@@ -215,32 +225,18 @@ describe('sendViaExternal', () => {
 
 	it('skips the append when no Sent folder is found, without throwing', async () => {
 		imapList.mockResolvedValue([{ path: 'INBOX', specialUse: '\\Inbox' }]);
-		sendMessage.mockResolvedValue(sendResult(['x@example.com'], []));
 
-		const { recipients } = await sendViaExternal(CREDS, {
-			from: 'me@example.com',
-			recipients: ['x@example.com'],
-			raw: RAW,
-		});
+		await expect(fileSentCopy(CREDS, RAW)).resolves.toBeUndefined();
 
 		expect(imapAppend).not.toHaveBeenCalled();
-		// Send still succeeds.
-		expect(recipients).toEqual([{ address: 'x@example.com', status: 'sent' }]);
 	});
 
-	it('treats a Sent-append failure as non-fatal and still reports the send result', async () => {
+	it('treats a Sent-append failure as non-fatal: it resolves and logs', async () => {
 		const boom = new Error('IMAP append failed');
 		imapAppend.mockRejectedValue(boom);
-		sendMessage.mockResolvedValue(sendResult(['x@example.com'], []));
 
-		const { recipients } = await sendViaExternal(CREDS, {
-			from: 'me@example.com',
-			recipients: ['x@example.com'],
-			raw: RAW,
-		});
-
-		// The SMTP send result is returned unchanged.
-		expect(recipients).toEqual([{ address: 'x@example.com', status: 'sent' }]);
+		// Never rejects — the route fires it without awaiting.
+		await expect(fileSentCopy(CREDS, RAW)).resolves.toBeUndefined();
 		// And the failure is logged at warn level rather than thrown.
 		expect(warn).toHaveBeenCalledWith({ err: boom }, expect.stringContaining('append-to-Sent'));
 	});
@@ -423,14 +419,9 @@ describe('XOAUTH2 access-token plumbing', () => {
 				imapPassword: '',
 				imapAccessToken: 'ya29.IMAP',
 			};
-			sendMessage.mockResolvedValue(sendResult(['x@example.com'], []));
 			imapList.mockResolvedValue([{ path: 'INBOX', specialUse: '\\Inbox' }]);
 
-			await sendViaExternal(oauthCreds, {
-				from: 'me@example.com',
-				recipients: ['x@example.com'],
-				raw: RAW,
-			});
+			await fileSentCopy(oauthCreds, RAW);
 
 			const options = (ImapFlow as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
 			// No `pass` at all — an empty password beside a token is how an OAuth
@@ -440,14 +431,9 @@ describe('XOAUTH2 access-token plumbing', () => {
 		});
 
 		it('opens the Sent append with the password when there is no token', async () => {
-			sendMessage.mockResolvedValue(sendResult(['x@example.com'], []));
 			imapList.mockResolvedValue([{ path: 'INBOX', specialUse: '\\Inbox' }]);
 
-			await sendViaExternal(CREDS, {
-				from: 'me@example.com',
-				recipients: ['x@example.com'],
-				raw: RAW,
-			});
+			await fileSentCopy(CREDS, RAW);
 
 			const options = (ImapFlow as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
 			expect(options.auth).toEqual({ user: 'imap-user', pass: 'imap-pass' });
@@ -546,7 +532,7 @@ describe('outbound TLS posture is locked (no rejectUnauthorized:false anywhere)'
 		expect(JSON.stringify(opts)).not.toMatch(/"rejectUnauthorized"\s*:\s*false/);
 	}
 
-	it('sendViaExternal: smtp-client connect + appendToSent ImapFlow keep verification on', async () => {
+	it('sendViaExternal: smtp-client connect + fileSentCopy ImapFlow keep verification on', async () => {
 		sendMessage.mockResolvedValue(sendResult(['x@example.com'], []));
 		imapList.mockResolvedValue([{ path: 'INBOX', specialUse: '\\Inbox' }]);
 		await sendViaExternal(REMOTE, {
@@ -554,6 +540,7 @@ describe('outbound TLS posture is locked (no rejectUnauthorized:false anywhere)'
 			recipients: ['x@example.com'],
 			raw: RAW,
 		});
+		await fileSentCopy(REMOTE, RAW);
 		// Construction 1: the smtp-client connect options (the actual send).
 		expect(clientSendMessage).toHaveBeenCalledTimes(1);
 		assertNoVerifyDisable(sendMessage.mock.calls[0][0].connect);
@@ -596,6 +583,7 @@ describe('outbound TLS posture is locked (no rejectUnauthorized:false anywhere)'
 			recipients: ['x@example.com'],
 			raw: RAW,
 		});
+		await fileSentCopy(REMOTE, RAW);
 		const liveSmtp = sendMessage.mock.calls[0][0].connect;
 		const liveImap = (ImapFlow as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
 
