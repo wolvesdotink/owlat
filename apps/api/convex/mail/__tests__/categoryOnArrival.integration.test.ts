@@ -18,6 +18,11 @@ import schema from '../../schema';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
 import { modules } from './helpers.testlib';
+import {
+	ARRIVAL_INBOUND_SCAN,
+	ARRIVAL_SPAM_MOVE_MAX_MESSAGES,
+	enqueueCategoryCheck,
+} from '../categoryArrival';
 
 const OWNER = 'me@gmail.example';
 const SENDER = 'sam@acme.test';
@@ -305,5 +310,172 @@ describe('categoryClassify.classifyThread baseline', () => {
 
 		const category = await t.run(async (ctx) => (await ctx.db.get(threadId))?.category);
 		expect(category).toMatchObject({ label: 'other', source: 'heuristic' });
+	});
+});
+
+describe('category on arrival stays off the rest of the thread', () => {
+	/** Copies of the thread's one message, `count` of them, older than it and sent by `from`. */
+	async function padThread(
+		t: T,
+		threadId: Id<'mailThreads'>,
+		count: number,
+		opts: { from: string; newer?: boolean }
+	): Promise<void> {
+		await t.run(async (ctx) => {
+			const [first] = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_thread', (q) => q.eq('threadId', threadId))
+				.collect();
+			const { _id, _creationTime, ...copy } = first!;
+			for (let i = 1; i <= count; i++) {
+				const offset = opts.newer ? i : -i;
+				await ctx.db.insert('mailMessages', {
+					...copy,
+					fromAddress: opts.from,
+					receivedAt: first!.receivedAt + offset * 1000,
+				});
+			}
+			const thread = await ctx.db.get(threadId);
+			await ctx.db.patch(threadId, { messageCount: thread!.messageCount + count });
+		});
+	}
+
+	/** `db` whose `mailMessages` queries count every row they hand back. */
+	function countingDb<Db extends object>(db: Db, counter: { rows: number }): Db {
+		const wrapQuery = (query: object): object =>
+			new Proxy(query, {
+				get(target, prop) {
+					const value = Reflect.get(target, prop) as unknown;
+					if (typeof value !== 'function') return value;
+					if (prop === Symbol.asyncIterator) {
+						return () => {
+							const it = (value as () => AsyncIterator<unknown>).call(target);
+							return {
+								async next() {
+									const step = await it.next();
+									if (!step.done) counter.rows += 1;
+									return step;
+								},
+							};
+						};
+					}
+					return (...args: unknown[]) => {
+						const result = (value as (...a: unknown[]) => unknown).apply(target, args);
+						if (result instanceof Promise) {
+							return result.then((rows: unknown) => {
+								counter.rows += Array.isArray(rows) ? rows.length : rows ? 1 : 0;
+								return rows;
+							});
+						}
+						return typeof result === 'object' && result !== null ? wrapQuery(result) : result;
+					};
+				},
+			});
+		return new Proxy(db, {
+			get(target, prop) {
+				const value = Reflect.get(target, prop) as unknown;
+				if (typeof value !== 'function') return value;
+				if (prop !== 'query') return (value as (...a: unknown[]) => unknown).bind(target);
+				return (table: string) => {
+					const query = (value as (t: string) => object).call(target, table);
+					return table === 'mailMessages' ? wrapQuery(query) : query;
+				};
+			},
+		});
+	}
+
+	it('reads only the newest message of a long thread', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t);
+		await withHeldScheduler(async () => {
+			await ingest(t, seeded, { uid: 1, subject: 'Your order confirmation' });
+		});
+		const thread = await onlyThread(t, seeded.mailboxId);
+		await padThread(t, thread._id, 60, { from: SENDER });
+
+		const counter = { rows: 0 };
+		await withHeldScheduler(async () => {
+			await t.run(async (ctx) => {
+				await enqueueCategoryCheck({ ...ctx, db: countingDb(ctx.db, counter) }, thread._id);
+			});
+		});
+
+		expect(counter.rows).toBe(1);
+		const after = await onlyThread(t, seeded.mailboxId);
+		expect(after.category).toMatchObject({ label: 'receipt', source: 'heuristic' });
+	});
+
+	it('hands the thread to the LLM job when the newest rows are all the owner’s', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t);
+		await withHeldScheduler(async () => {
+			await ingest(t, seeded, { uid: 1, subject: 'Your order confirmation' });
+		});
+		const thread = await onlyThread(t, seeded.mailboxId);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(thread._id, { category: undefined });
+		});
+		await padThread(t, thread._id, ARRIVAL_INBOUND_SCAN, { from: OWNER, newer: true });
+
+		const counter = { rows: 0 };
+		await withHeldScheduler(async () => {
+			await t.run(async (ctx) => {
+				await enqueueCategoryCheck({ ...ctx, db: countingDb(ctx.db, counter) }, thread._id);
+			});
+
+			expect(counter.rows).toBe(ARRIVAL_INBOUND_SCAN);
+			const after = await onlyThread(t, seeded.mailboxId);
+			expect(after.category).toBeUndefined();
+			const jobs = await categoryJobs(t);
+			expect(jobs).toContainEqual({ threadId: thread._id });
+		});
+	});
+
+	it('files a long thread as spam from a scheduled job, not inside the delivery', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t);
+		await withHeldScheduler(async () => {
+			await ingest(t, seeded, { uid: 1, subject: 'Your order confirmation' });
+		});
+		const thread = await onlyThread(t, seeded.mailboxId);
+		await padThread(t, thread._id, ARRIVAL_SPAM_MOVE_MAX_MESSAGES, { from: SENDER });
+		await t.run(async (ctx) => {
+			await ctx.db.insert('mailSenderCategoryOverrides', {
+				mailboxId: seeded.mailboxId,
+				senderEmail: SENDER,
+				label: 'spam',
+				updatedAt: Date.now(),
+			});
+		});
+		const folders = async () =>
+			await t.run(async (ctx) =>
+				(
+					await ctx.db
+						.query('mailMessages')
+						.withIndex('by_thread', (q) => q.eq('threadId', thread._id))
+						.collect()
+				).map((m) => m.folderId)
+			);
+
+		await withHeldScheduler(async () => {
+			await t.mutation(internal.mail.categoryArrival.enqueue, { threadId: thread._id });
+
+			expect(new Set(await folders())).toEqual(new Set([seeded.inboxId]));
+			const jobs = await t.run(async (ctx) =>
+				(await ctx.db.system.query('_scheduled_functions').collect()).filter((job) =>
+					job.name.includes('applyCategory')
+				)
+			);
+			expect(jobs.map((job) => job.args[0])).toEqual([
+				{ threadId: thread._id, label: 'spam', source: 'user' },
+			]);
+		});
+
+		await t.mutation(internal.mail.category.applyCategory, {
+			threadId: thread._id,
+			label: 'spam',
+			source: 'user',
+		});
+		expect(new Set(await folders())).toEqual(new Set([seeded.spamId]));
 	});
 });

@@ -3,10 +3,11 @@
 /**
  * Smart-inbox category classification action (see mail/category.ts for the
  * module overview). Runs per-thread. Ingest and the one-shot backfill run the
- * override and heuristic steps in their own mutation (`enqueueCategoryCheck`)
- * and schedule this action only for mail the heuristic left ambiguous; the
- * action repeats those steps anyway, because an override or a new contact may
- * have landed in between:
+ * override and heuristic steps in their own mutation (`enqueueCategoryCheck`
+ * in mail/categoryArrival.ts) and schedule this action only for mail the
+ * heuristic left ambiguous (or whose latest inbound message lies too deep for
+ * that mutation to look for); the action repeats those steps anyway, because
+ * an override or a new contact may have landed in between:
  *
  *   1. A remembered user override wins outright → persist (source `user`), done.
  *   2. Deterministic heuristic (mail/category.classifyMailCategory). A concrete

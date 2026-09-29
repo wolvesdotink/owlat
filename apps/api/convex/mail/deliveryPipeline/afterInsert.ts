@@ -17,7 +17,7 @@ import type { MutationCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { clearNeedsReplyOnOwnerReply, scheduleNeedsReplyClassify } from '../needsReply';
 import { isFromMailboxOwner } from '../needsReplyHeuristic';
-import { enqueueCategoryCheck } from '../category';
+import { enqueueCategoryCheck } from '../categoryArrival';
 import { clearThreadFollowUp } from '../followUps';
 import { clearSnoozeUntilReplyForThread } from '../snooze';
 import { queuesNeedsReplyCheck, type InboundOrigin } from './insert';
