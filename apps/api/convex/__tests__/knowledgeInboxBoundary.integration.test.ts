@@ -198,6 +198,24 @@ describe('knowledge reads follow the shared-inbox reader rule', () => {
 		expect(titles(await t.query(api.knowledge.graph.listAll, { limit: 2 }))).toEqual(['open fact']);
 	});
 
+	it('clamps a client page size to the maximum', async () => {
+		const t = await makeT();
+		sess.role = 'owner';
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 105; i++) {
+				await ctx.db.insert(
+					'knowledgeEntries',
+					createTestKnowledgeEntry({ sourceType: 'manual', embedding: [] })
+				);
+			}
+		});
+		expect(await t.query(api.knowledge.graph.listAll, { limit: 10_000 })).toHaveLength(100);
+		expect(
+			await t.query(api.knowledge.graph.listByType, { entryType: 'fact', limit: 10_000 })
+		).toHaveLength(100);
+		expect(await t.query(api.knowledge.graph.listAll, { limit: -5 })).toHaveLength(1);
+	});
+
 	it('returns null for an inbox-derived entry and drops it from relations', async () => {
 		const t = await makeT();
 		const { inbox, threaded, open } = await seed(t);
@@ -319,6 +337,74 @@ describe('knowledge writes follow the shared-inbox reader rule', () => {
 			threadId,
 		});
 		expect(id).toBeDefined();
+	});
+});
+
+describe('knowledge sources a client may set', () => {
+	it('accepts only manual entries by hand, for a reader too', async () => {
+		const t = await makeT();
+		sess.role = 'owner';
+		for (const sourceType of ['agent_extracted', 'email', 'file', 'chat', 'curated'] as const) {
+			await expect(
+				t.mutation(api.knowledge.graph.createEntry, {
+					entryType: 'fact',
+					title: 'x',
+					content: 'x',
+					sourceType,
+				})
+			).rejects.toThrow(/Manual/);
+		}
+		const id = await t.mutation(api.knowledge.graph.createEntry, {
+			entryType: 'fact',
+			title: 'x',
+			content: 'x',
+			sourceType: 'manual',
+		});
+		expect((await t.run((ctx) => ctx.db.get(id)))?.sourceType).toBe('manual');
+	});
+
+	it('refuses an edit that changes the source, in either direction', async () => {
+		const t = await makeT();
+		const { inbox, open } = await seed(t);
+
+		await expect(
+			t.mutation(api.knowledge.graph.updateEntry, { entryId: open, sourceType: 'agent_extracted' })
+		).rejects.toThrow(/source/);
+		sess.role = 'admin';
+		await expect(
+			t.mutation(api.knowledge.graph.updateEntry, { entryId: inbox, sourceType: 'manual' })
+		).rejects.toThrow(/source/);
+		// Resending the unchanged source, as the edit form does, is fine.
+		expect(
+			await t.mutation(api.knowledge.graph.updateEntry, {
+				entryId: inbox,
+				sourceType: 'agent_extracted',
+				content: 'edited',
+			})
+		).toBe(inbox);
+	});
+
+	it('does not fold an extracted write into a member-visible entry with the same content', async () => {
+		const t = await makeT();
+		const base = {
+			entryType: 'fact' as const,
+			title: 'Same',
+			content: 'same',
+			embedding: unit(9),
+			confidence: 0.8,
+			contentHash: 'hash-1',
+		};
+		const visible = await t.mutation(internal.knowledge.graph.saveEntry, {
+			...base,
+			sourceType: 'file',
+			sourceId: 'file-1',
+		});
+		const extracted = await t.mutation(internal.knowledge.graph.saveEntry, {
+			...base,
+			sourceType: 'agent_extracted',
+			sourceId: 'inbound-1',
+		});
+		expect(extracted).not.toBe(visible);
 	});
 });
 

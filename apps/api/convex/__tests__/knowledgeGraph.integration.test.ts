@@ -100,7 +100,7 @@ describe('knowledgeGraph.createEntry', () => {
 			entryType: 'decision',
 			title: 'Default Confidence',
 			content: 'Entry without explicit confidence.',
-			sourceType: 'email',
+			sourceType: 'manual',
 		});
 
 		await t.run(async (ctx) => {
@@ -118,7 +118,7 @@ describe('knowledgeGraph.createEntry', () => {
 			entryType: 'preference',
 			title: 'Custom Confidence',
 			content: 'Entry with explicit confidence.',
-			sourceType: 'chat',
+			sourceType: 'manual',
 			confidence: 0.95,
 		});
 
@@ -143,7 +143,7 @@ describe('knowledgeGraph.createEntry', () => {
 			entryType: 'event',
 			title: 'Tagged Event',
 			content: 'An event with all optional fields.',
-			sourceType: 'agent_extracted',
+			sourceType: 'manual',
 			sourceId: 'msg-123',
 			contactIds: [contactId],
 			tags: ['important', 'project-x'],

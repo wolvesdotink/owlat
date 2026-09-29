@@ -77,6 +77,19 @@ export function isKnowledgeEntryVisible(
 }
 
 /**
+ * Largest page a knowledge read returns, whatever the client asks for. Every
+ * entry carries a 1536-float embedding, so an unclamped `limit` could read
+ * the whole table in one query.
+ */
+const MAX_KNOWLEDGE_PAGE = 100;
+
+/** A client `limit`, defaulted and clamped into [1, MAX_KNOWLEDGE_PAGE]. */
+function pageLimit(limit: number | undefined, fallback: number): number {
+	const requested = Number.isFinite(limit) ? Math.floor(limit as number) : fallback;
+	return Math.min(Math.max(requested, 1), MAX_KNOWLEDGE_PAGE);
+}
+
+/**
  * Largest number of rows a list read scans to fill a page for a caller who
  * cannot see Team Inbox-derived entries. Entries carry a 1536-float embedding,
  * so an unbounded skip-and-continue scan over an inbox-heavy graph would hit
@@ -181,7 +194,7 @@ export const search = publicQuery({
 		const viewer = await resolveKnowledgeViewer(ctx);
 		if (!viewer) return [];
 
-		const limit = args.limit ?? 25;
+		const limit = pageLimit(args.limit, 25);
 
 		const searchQuery = ctx.db
 			.query('knowledgeEntries')
@@ -214,7 +227,7 @@ export const listByType = publicQuery({
 			.query('knowledgeEntries')
 			.withIndex('by_entry_type', (q) => q.eq('entryType', args.entryType))
 			.order('desc');
-		return await takeVisibleEntries(rows, viewer.canReadInbox, args.limit ?? 50);
+		return await takeVisibleEntries(rows, viewer.canReadInbox, pageLimit(args.limit, 50));
 	},
 });
 
@@ -234,7 +247,7 @@ export const listAll = publicQuery({
 		if (!viewer) return [];
 
 		const rows = ctx.db.query('knowledgeEntries').withIndex('by_created_at').order('desc');
-		return await takeVisibleEntries(rows, viewer.canReadInbox, args.limit ?? 50);
+		return await takeVisibleEntries(rows, viewer.canReadInbox, pageLimit(args.limit, 50));
 	},
 });
 
@@ -305,7 +318,7 @@ export const getByContact = publicQuery({
 		const viewer = await resolveKnowledgeViewer(ctx);
 		if (!viewer) return [];
 
-		const limit = args.limit ?? 20;
+		const limit = pageLimit(args.limit, 20);
 		const now = Date.now();
 
 		// Query the index-able `knowledgeEntryContacts` mirror by contact, then
@@ -380,6 +393,14 @@ export const createEntry = knowledgeMutation({
 		confidence: v.optional(knowledgeEntriesFields.confidence),
 	},
 	handler: async (ctx, args, session) => {
+		// A hand-authored entry is `manual`. The other sources name a pipeline
+		// (extraction, files, chat, imported mail), and `agent_extracted` in
+		// particular marks an entry as Team Inbox-derived (inbox/access.ts), so a
+		// client does not get to claim one. Curated answers have their own
+		// admin path (createPolicyEntry).
+		if (args.sourceType !== 'manual') {
+			throwInvalidInput('Knowledge entries created by hand have the source Manual.');
+		}
 		// A thread link makes the entry Team Inbox-derived (inbox/access.ts), so
 		// only a reader may set one.
 		if (args.threadId !== undefined && !isSharedInboxReader(session)) {
@@ -444,6 +465,11 @@ export const updateEntry = knowledgeMutation({
 		const entry = await loadWritableEntry(ctx, session, args.entryId);
 		if (!entry) return null;
 		requireCuratedWriter(session, entry);
+		// The source records where an entry came from, and decides whether it is
+		// Team Inbox-derived (inbox/access.ts); an edit cannot rewrite it.
+		if (args.sourceType !== undefined && args.sourceType !== entry.sourceType) {
+			throwInvalidInput('The source of a knowledge entry cannot be changed.');
+		}
 
 		const now = Date.now();
 		const patch: Partial<Doc<'knowledgeEntries'>> = {
@@ -453,7 +479,6 @@ export const updateEntry = knowledgeMutation({
 		if (args.entryType !== undefined) patch.entryType = args.entryType;
 		if (args.title !== undefined) patch.title = args.title;
 		if (args.content !== undefined) patch.content = args.content;
-		if (args.sourceType !== undefined) patch.sourceType = args.sourceType;
 		if (args.contactIds !== undefined) patch.contactIds = args.contactIds;
 		if (args.confidence !== undefined) patch.confidence = args.confidence;
 		if (args.tags !== undefined) patch.tags = args.tags;
@@ -591,13 +616,20 @@ export const saveEntry = internalMutation({
 		// same fact restated in a different message/file. The scope match
 		// (sameContactScope) is mandatory: folding an org-general write into a
 		// contact-A row (or vice versa) would silently widen/narrow the fact's
-		// contact visibility, so cross-scope hashes are kept as distinct rows.
+		// contact visibility, so cross-scope hashes are kept as distinct rows. For
+		// the same reason a Team Inbox-derived write never folds into a
+		// member-visible row or the reverse (inbox/access.ts).
 		if (args.contentHash) {
 			const byHash = await ctx.db
 				.query('knowledgeEntries')
 				.withIndex('by_content_hash', (q) => q.eq('contentHash', args.contentHash))
 				.collect(); // bounded: entries sharing one content hash (this dedup keeps it ~1)
-			const dup = byHash.find((e) => sameContactScope(e.contactIds, args.contactIds));
+			const inboxDerived = isInboxDerivedKnowledge(args);
+			const dup = byHash.find(
+				(e) =>
+					sameContactScope(e.contactIds, args.contactIds) &&
+					isInboxDerivedKnowledge(e) === inboxDerived
+			);
 			if (dup) return dup._id;
 		}
 		const entryId = await ctx.db.insert('knowledgeEntries', {
@@ -787,7 +819,7 @@ export const listPolicies = publicQuery({
 		const viewer = await resolveKnowledgeViewer(ctx);
 		if (!viewer) return [];
 
-		const limit = args.limit ?? 100;
+		const limit = pageLimit(args.limit, 100);
 		const out: Doc<'knowledgeEntries'>[] = [];
 		for (const entryType of POLICY_ENTRY_TYPES) {
 			const rows = await ctx.db
