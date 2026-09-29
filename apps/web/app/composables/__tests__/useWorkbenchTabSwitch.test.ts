@@ -1,12 +1,14 @@
 /**
  * A Workbench tab switch keeps the last loaded tab on screen, flagged stale,
- * until the new tab's watermark and digest have both landed (plan 1.6). The
- * new tab's digest must still wait for ITS OWN watermark.
+ * until the new tab's digest has landed (plan 1.6). The watermark comes from
+ * one unscoped state read shared with the inbox choice, and the digest reads
+ * its own watermark on the server, so a tab costs one round trip after the
+ * tab is known, not two (plan 2.10).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { effectScope, nextTick, ref, shallowReactive, type Ref } from 'vue';
 import { useConvexQueryMap } from '~/composables/useConvexQueryMap';
-import { useWorkbench } from '../useWorkbench';
+import { useWorkbench, useWorkbenchInboxChoice } from '../useWorkbench';
 
 interface QueryHandle {
 	args: () => unknown;
@@ -90,16 +92,38 @@ afterEach(() => {
 	scope.stop();
 });
 
+/** The unscoped state read: hide list plus every tab's watermark. */
+const state = (marks: Array<{ scope: string; seenAt: number }>, unmarked = 50) => ({
+	seenAt: unmarked,
+	previousSeenAt: null,
+	isFallback: false,
+	hiddenMailboxIds: [],
+	watermarks: {
+		unmarked: { seenAt: unmarked, previousSeenAt: null, isFallback: false },
+		marks: marks.map((m) => ({ ...m, previousSeenAt: null, isFallback: false })),
+	},
+});
+
+const isStateRead = (a: unknown) =>
+	typeof a === 'object' && a !== null && !('mailboxId' in a) && !('view' in a);
+
 describe('useWorkbench tab switch', () => {
 	it('holds the previous tab, stale, until the new one has loaded', async () => {
 		const tab = ref<string | null>('mailbox-a');
 		const workbench = scope.run(() => useWorkbench(tab as Ref<never>))!;
 
-		// First load: nothing to hold yet.
+		// First load: nothing to hold yet. The digest does not wait for the watermark.
 		expect(workbench.isStale.value).toBe(false);
+		expect(handleFor((a) => a['mailboxId'] === 'mailbox-a').args()).toEqual({
+			mailboxId: 'mailbox-a',
+			locale: 'en',
+		});
 		deliver(
-			handleFor((a) => a['scope'] === 'mailbox-a'),
-			{ seenAt: 100, previousSeenAt: null, isFallback: false }
+			handleFor(isStateRead),
+			state([
+				{ scope: 'mailbox-a', seenAt: 100 },
+				{ scope: 'mailbox-b', seenAt: 200 },
+			])
 		);
 		await nextTick();
 		deliver(
@@ -110,25 +134,16 @@ describe('useWorkbench tab switch', () => {
 		expect(workbench.model.value.newMail).toBe(3);
 		expect(workbench.since.value).toBe(100);
 
-		// Switch: A stays on screen while B's watermark loads.
+		// Switch: B's digest subscribes at once; A stays on screen until it lands.
 		tab.value = 'mailbox-b';
 		await nextTick();
 		expect(workbench.isStale.value).toBe(true);
 		expect(workbench.model.value.newMail).toBe(3);
 		expect(workbench.since.value).toBe(100);
-		// B's digest waits for B's own watermark, never A's.
-		expect(() => handleFor((a) => a['mailboxId'] === 'mailbox-b')).toThrow();
-
-		deliver(
-			handleFor((a) => a['scope'] === 'mailbox-b'),
-			{ seenAt: 200, previousSeenAt: null, isFallback: false }
-		);
-		await nextTick();
-		expect(handleFor((a) => a['mailboxId'] === 'mailbox-b').args()).toMatchObject({
-			since: 200,
+		expect(handleFor((a) => a['mailboxId'] === 'mailbox-b').args()).toEqual({
+			mailboxId: 'mailbox-b',
+			locale: 'en',
 		});
-		expect(workbench.isStale.value).toBe(true);
-		expect(workbench.model.value.newMail).toBe(3);
 
 		deliver(
 			handleFor((a) => a['mailboxId'] === 'mailbox-b'),
@@ -138,5 +153,42 @@ describe('useWorkbench tab switch', () => {
 		expect(workbench.isStale.value).toBe(false);
 		expect(workbench.model.value.newMail).toBe(7);
 		expect(workbench.since.value).toBe(200);
+	});
+
+	it('uses the unmarked watermark for a tab without a mark of its own', async () => {
+		const tab = ref<string | null>('mailbox-c');
+		const workbench = scope.run(() => useWorkbench(tab as Ref<never>))!;
+		deliver(handleFor(isStateRead), state([{ scope: 'mailbox-a', seenAt: 100 }], 70));
+		deliver(
+			handleFor((a) => a['mailboxId'] === 'mailbox-c'),
+			digest('mailbox-c', 1)
+		);
+		await nextTick();
+		expect(workbench.since.value).toBe(70);
+		expect(workbench.previousSeenAt.value).toBeNull();
+	});
+});
+
+describe('useWorkbench queries', () => {
+	it('skips the digest until the tab is known', async () => {
+		const tab = ref<string | null>(null);
+		scope.run(() => useWorkbench(tab as Ref<never>));
+		expect(() => handleFor((a) => 'mailboxId' in a)).toThrow();
+
+		tab.value = 'mailbox-a';
+		await nextTick();
+		expect(handleFor((a) => a['mailboxId'] === 'mailbox-a')).toBeDefined();
+	});
+
+	it('reads the state once, unscoped, for the tab and the inbox choice alike', () => {
+		const tab = ref<string | null>('mailbox-a');
+		scope.run(() => {
+			useWorkbenchInboxChoice();
+			useWorkbench(tab as Ref<never>);
+		});
+		const stateArgs = queries.map((q) => q.args()).filter(isStateRead);
+		// Identical args, so the subscription registry shares one subscription;
+		// no per-mount `now` and no scope that would key a second one.
+		expect(stateArgs).toEqual([{}, {}]);
 	});
 });
