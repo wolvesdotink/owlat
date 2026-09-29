@@ -197,6 +197,59 @@ describe('convex query authorization ratchet', () => {
 			expect(await violations({ 'convex/autonomy.ts': settings })).toEqual([]);
 		});
 
+		const loadThread = [
+			'export const loadThread = internalQuery({',
+			"\targs: { threadId: v.id('conversationThreads') },",
+			'\thandler: async (ctx, args) => await ctx.db.get(args.threadId),',
+			'});',
+		].join('\n');
+
+		it('reports a public action beside an internal read of the tables', async () => {
+			const action = [
+				loadThread,
+				'// authz: members only',
+				'export const fetchThread = authedAction({',
+				'\targs: {},',
+				'\thandler: async (ctx) => {',
+				'\t\trequirePermission(true);',
+				'\t},',
+				'});',
+				'',
+			].join('\n');
+			expect(await violations({ 'convex/chat/bridge.ts': action })).toEqual([
+				'convex/chat/bridge.ts:#inbox-tables',
+			]);
+		});
+
+		it('reports a public function that calls an internal function of its own module', async () => {
+			const caller = [
+				loadThread,
+				read(
+					'authedQuery',
+					'\t\trequirePermission(true);\n\t\tawait ctx.runQuery(internal.chat.bridge.loadThread, {});'
+				),
+			].join('\n');
+			expect(await violations({ 'convex/chat/bridge.ts': caller })).toEqual([
+				'convex/chat/bridge.ts:#inbox-tables',
+			]);
+		});
+
+		it('ends an internal span at the next export, so an unclosed one hides nothing', async () => {
+			const unclosed = [
+				'export const sweep = internalMutation({',
+				'\targs: {},',
+				'\thandler: async () => {},',
+				'  });',
+				read(
+					'authedQuery',
+					"\t\trequirePermission(true);\n\t\tawait ctx.db.query('conversationThreads');"
+				),
+			].join('\n');
+			expect(await violations({ 'convex/chat/bridge.ts': unclosed })).toEqual([
+				'convex/chat/bridge.ts:#inbox-tables',
+			]);
+		});
+
 		it('reports a module-level helper that reads the tables beside a public function', async () => {
 			const helper = [
 				'async function loadThread(ctx) {',

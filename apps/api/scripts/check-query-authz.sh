@@ -91,11 +91,12 @@
 # gate: import inbox/access, or (an action) call
 # `internal.inbox.access.assertSharedInboxReader`. Touches inside an
 # `internalQuery` / `internalMutation` / `internalAction` do not count, since no
-# client can reach them; a module-level helper does, since a public function
-# may call it. Such a file is reported as `<file>:#inbox-tables`, and rides the
-# same ratchet and baseline. This is a presence check, like the gate tokens
-# above: a reviewer still confirms the gate is actually used on the path that
-# reads the rows.
+# client can reach them — unless the file defines a public action or a public
+# function calls `internal.<this module>.…` (see touches_inbox_from_public). A
+# module-level helper always counts, since a public function may call it. Such
+# a file is reported as `<file>:#inbox-tables`, and rides the same ratchet and
+# baseline. This is a presence check, like the gate tokens above: a reviewer
+# still confirms the gate is actually used on the path that reads the rows.
 
 set -uo pipefail
 repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -133,8 +134,9 @@ generate() {
 # shared-inbox reader gate (an import of inbox/access, or an action's call to
 # its internal assert through `internal.inbox.access`).
 inbox_table_files() {
-	local public_builders candidates file
+	local public_builders public_actions candidates file
 	public_builders=$(convex_builder_regex 'query|mutation|action' 'member|identity|public') || return 1
+	public_actions=$(convex_builder_regex 'action' 'member|identity|public') || return 1
 	# grep exits 1 on no match; an empty candidate list is a clean result.
 	candidates=$(grep -rlE --include='*.ts' \
 		"\.query\(\s*['\"](inboundMessages|conversationThreads)['\"]|v\.id\(\s*['\"](inboundMessages|conversationThreads)['\"]" \
@@ -144,28 +146,42 @@ inbox_table_files() {
 		[ -n "$file" ] || continue
 		grep -qE "^export const [A-Za-z0-9_]+ = ($public_builders)\(" "$file" || continue
 		grep -qE "from '(\./|(\.\./)+)inbox/access'|internal\.inbox\.access\." "$file" && continue
-		touches_inbox_outside_internal "$file" || continue
+		touches_inbox_from_public "$file" "$public_builders" "$public_actions" || continue
 		printf '%s:#inbox-tables\n' "$file"
 	done <<<"$candidates" | sort
 }
 
-# True when `file` touches a Team Inbox table anywhere except inside an
-# `internalQuery` / `internalMutation` / `internalAction` span (opened by its
-# `export const`, closed by the column-0 `})`, as in convex-defs.awk). No
-# client can call an internal function, so a module whose only inbox reads
-# live there has no public read to gate. A module-level helper still counts:
-# a public function may call it.
-touches_inbox_outside_internal() {
-	awk -v q="'" '
+# True when a client can reach `file`'s Team Inbox table touches. Touches
+# inside an `internalQuery` / `internalMutation` / `internalAction` span do not
+# count on their own, since no client can call one — with two exceptions that
+# put the whole file back in scope:
+#   * the file defines a public action, which reaches its internal functions
+#     through `ctx.runQuery` / `ctx.runMutation` by construction;
+#   * a public function in the file calls `internal.<this module>.…`.
+# A module-level helper always counts: a public function may call it. A span
+# opens on its `export const` line and closes on the column-0 `})` or on the
+# next `export const`, so an internal function whose closing brace is not at
+# column 0 cannot hide the public function after it.
+touches_inbox_from_public() {
+	local file="$1" public_builders="$2" public_actions="$3" module
+	grep -qE "^export const [A-Za-z0-9_]+ = ($public_actions)\(" "$file" && return 0
+	module="${file#convex/}"
+	module="internal.${module%.ts}."
+	module="${module//\//.}"
+	awk -v q="'" -v pub="^export const [A-Za-z0-9_]+ = (${public_builders})\\(" -v self="$module" '
 		BEGIN {
 			tables = "(inboundMessages|conversationThreads)"
 			touch = "\\.query\\([[:space:]]*[" q "\"]" tables "[" q "\"]|v\\.id\\([[:space:]]*[" q "\"]" tables "[" q "\"]"
 		}
-		/^export const [A-Za-z0-9_]+ = internal(Query|Mutation|Action)\(/ { inside = 1 }
-		!inside && $0 ~ touch { found = 1 }
-		inside && /^}\)/ { inside = 0 }
+		/^export const [A-Za-z0-9_]+ = / {
+			internal = ($0 ~ /^export const [A-Za-z0-9_]+ = internal(Query|Mutation|Action)\(/)
+			public = ($0 ~ pub)
+		}
+		!internal && $0 ~ touch { found = 1 }
+		public && index($0, self) { found = 1 }
+		/^}\)/ { internal = 0; public = 0 }
 		END { exit found ? 0 : 1 }
-	' "$1"
+	' "$file"
 }
 
 if [ "${1:-}" = "--generate" ]; then
