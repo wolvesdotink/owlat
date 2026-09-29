@@ -51,6 +51,16 @@ describe('openrouterLanguageAdapter', () => {
 		expect(model).toMatchObject({ modelId: 'anthropic/claude-opus-4-8' });
 	});
 
+	it('enables structured outputs so generateObject sends the schema', () => {
+		// Without this the openai-compatible provider downgrades every
+		// `runLlmObject` call to a schema-less `json_object` request and the
+		// model's reply fails to parse (NoObjectGeneratedError).
+		openrouterLanguageAdapter.buildChatModel({ apiKey: 'structured' }, 'anthropic/claude-opus-5.5');
+		expect(mockCreateCompatible).toHaveBeenCalledWith(
+			expect.objectContaining({ supportsStructuredOutputs: true })
+		);
+	});
+
 	it('memoizes one client per (baseUrl, key-fingerprint)', () => {
 		openrouterLanguageAdapter.buildChatModel({ apiKey: 'same' }, 'openai/gpt-4o');
 		openrouterLanguageAdapter.buildChatModel({ apiKey: 'same' }, 'openai/gpt-4o-mini');
