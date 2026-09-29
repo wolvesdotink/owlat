@@ -34,6 +34,7 @@ import { useEmailBuilderHandlers } from '../composables/useEmailBuilderHandlers'
 import { useFocusMode } from '../composables/useFocusMode';
 import { useBlockState } from '../composables/useBlockState';
 import { useBlockManagement } from '../composables/useBlockManagement';
+import { useBlockTreeVersion } from '../composables/useBlockTreeVersion';
 import { useRecentColors } from '../composables/useRecentColors';
 import { useHistory, type HistoryState } from '../composables/useHistory';
 import { useInlineTextEdit } from '../composables/useInlineTextEdit';
@@ -187,14 +188,18 @@ watch(
 	{ immediate: true }
 );
 
+// One counter for every change to the block tree; everything below that
+// follows the canvas watches it instead of deep-watching the blocks.
+const { version: blocksVersion, bump: bumpBlocks } = useBlockTreeVersion(canvasBlocks);
+
 // Emit local → props
 watch(
-	canvasBlocks,
-	(v) => {
-		lastEmittedBlocks = v;
-		emit('update:blocks', v);
+	blocksVersion,
+	() => {
+		lastEmittedBlocks = canvasBlocks.value;
+		emit('update:blocks', canvasBlocks.value);
 	},
-	{ deep: true, flush: 'post' }
+	{ flush: 'post' }
 );
 watch(formSubject, (v) => emit('update:subject', v));
 watch(formName, (v) => emit('update:name', v));
@@ -249,7 +254,7 @@ const handlers = useEmailBuilderHandlers();
 
 // Linked blocks
 const { isLinkedBlock, detachBlock, getLinkedGroupByBlockId, isFirstInGroup, isLastInGroup } =
-	useLinkedBlocks({ canvasBlocks });
+	useLinkedBlocks({ canvasBlocks, onTreeMutated: bumpBlocks });
 
 // Provide linked block helpers so CanvasBlock can access them without prop drilling
 provide('isLinkedBlock', isLinkedBlock);
@@ -349,10 +354,13 @@ const {
 	canvasBlocks,
 	selectedBlockId,
 	theme,
+	onTreeMutated: bumpBlocks,
 });
 
 // History
-const { canUndo, canRedo, undo, redo } = useHistory(canvasBlocks, formName, formSubject);
+const { canUndo, canRedo, undo, redo } = useHistory(canvasBlocks, formName, formSubject, {
+	blocksVersion,
+});
 
 // Focus mode
 const { isFocusMode, toggleFocusMode, exitFocusMode, setupKeyboardShortcut } = useFocusMode();
@@ -543,13 +551,9 @@ const previewSubject = computed(() =>
 
 // Keep the live editing reactivity the canvas had before: while a non-edit
 // preview is open, re-render the moment the blocks change.
-watch(
-	canvasBlocks,
-	() => {
-		if (previewMode.value !== 'edit') regeneratePreview();
-	},
-	{ deep: true }
-);
+watch(blocksVersion, () => {
+	if (previewMode.value !== 'edit') regeneratePreview();
+});
 
 // Dark-mode toggle from the previewer re-renders against the new mode.
 function handlePreviewDarkMode(value: boolean) {

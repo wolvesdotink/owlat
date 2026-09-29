@@ -15,9 +15,10 @@
  *
  * The Ui* globals and Icon are auto-imported app-wide, so they are stubbed here.
  */
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ConvexError } from 'convex/values';
+import { nextTick } from 'vue';
 
 import QueryBoundary from '../QueryBoundary.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
@@ -133,5 +134,84 @@ describe('UiQueryBoundary', () => {
 		expect(wrapper.find('[data-testid="content"]').exists()).toBe(true);
 		expect(wrapper.find('[data-testid="empty-slot"]').exists()).toBe(false);
 		expect(wrapper.find('[data-testid="retry"]').exists()).toBe(false);
+	});
+});
+
+/**
+ * The loading branch is debounced (plan 2.8): a query that answers inside the
+ * 150 ms grace window must never flash the loader, and a loader that did appear
+ * stays up for 300 ms so it does not blink off one frame later.
+ */
+describe('UiQueryBoundary loading delay', () => {
+	const loadingSlots = { ...slots, loading: '<div data-testid="loading-slot">skeleton</div>' };
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	function mountLoading() {
+		return mount(QueryBoundary, {
+			props: { loading: true, error: null, empty: false },
+			slots: loadingSlots,
+			global: { stubs, plugins: [createTestI18n()] },
+		});
+	}
+
+	async function advance(ms: number) {
+		vi.advanceTimersByTime(ms);
+		await nextTick();
+	}
+
+	it('renders nothing while a load is inside the grace window', async () => {
+		vi.useFakeTimers();
+		const wrapper = mountLoading();
+		await advance(149);
+		expect(wrapper.find('[data-testid="loading-slot"]').exists()).toBe(false);
+		// Not the empty state or half-loaded content either.
+		expect(wrapper.find('[data-testid="empty-slot"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="content"]').exists()).toBe(false);
+	});
+
+	it('goes straight to content when the query answers inside the window', async () => {
+		vi.useFakeTimers();
+		const wrapper = mountLoading();
+		await advance(100);
+		await wrapper.setProps({ loading: false });
+		expect(wrapper.find('[data-testid="content"]').exists()).toBe(true);
+		await advance(1000);
+		expect(wrapper.find('[data-testid="loading-slot"]').exists()).toBe(false);
+	});
+
+	it('shows the loader after 150 ms and holds it for at least 300 ms', async () => {
+		vi.useFakeTimers();
+		const wrapper = mountLoading();
+		await advance(150);
+		expect(wrapper.find('[data-testid="loading-slot"]').exists()).toBe(true);
+
+		await wrapper.setProps({ loading: false });
+		expect(wrapper.find('[data-testid="loading-slot"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="content"]').exists()).toBe(false);
+
+		await advance(300);
+		expect(wrapper.find('[data-testid="loading-slot"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="content"]').exists()).toBe(true);
+	});
+
+	it('shows the default spinner and label once the window passes', async () => {
+		vi.useFakeTimers();
+		const wrapper = mount(QueryBoundary, {
+			props: { loading: true },
+			global: { stubs, plugins: [createTestI18n()] },
+		});
+		expect(wrapper.text()).not.toContain('Loading');
+		await advance(150);
+		expect(wrapper.text()).toContain('Loading');
+	});
+
+	it('lets an error through at once, even inside the window', async () => {
+		vi.useFakeTimers();
+		const wrapper = mountLoading();
+		await wrapper.setProps({ error: new Error('boom') });
+		expect(wrapper.find('[data-testid="error-alert"]').exists()).toBe(true);
 	});
 });

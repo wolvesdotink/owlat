@@ -13,6 +13,7 @@ import {
 	type InboxFilter,
 	type InboxSort,
 } from '~/utils/inboxFilters';
+import { rememberTeamThreadPreviews } from '~/utils/teamThreadPreviews';
 
 const SORT_STORAGE_KEY = 'inbox-thread-sort';
 
@@ -122,6 +123,16 @@ export function useInbox(gate?: Ref<boolean>) {
 
 	type Thread = NonNullable<typeof threadsData.value>['threads'][number];
 
+	// Lets the thread page head its loading state with the list row: every
+	// landed first page is recorded here, every tail page in the segment store.
+	watch(
+		threadsData,
+		(data) => {
+			if (data) rememberTeamThreadPreviews(data.threads);
+		},
+		{ immediate: true }
+	);
+
 	/** Cursor of the tail page being read; null = no page past the first. */
 	const tailCursor = ref<string | null>(null);
 	// No keepPreviousData here: a new cursor starts from a blank page, so every
@@ -137,6 +148,7 @@ export function useInbox(gate?: Ref<boolean>) {
 	watch(tailData, (page) => {
 		const key = tailCursor.value;
 		if (!page || !key) return;
+		rememberTeamThreadPreviews(page.threads);
 		const next = new Map(tailSegments.value);
 		next.set(key, page.threads);
 		tailSegments.value = next;

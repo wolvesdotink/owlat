@@ -218,14 +218,12 @@ const timezones = computed(() => instanceTimezoneSelectOptions(t));
 			:error="organizationSettingsError"
 		>
 			<template #loading>
-				<div class="flex items-center justify-center py-16">
-					<div class="flex flex-col items-center gap-3">
-						<UiSpinner />
-						<p class="text-text-secondary text-sm">
-							{{ t('dashboard.admin.instance.general.loading') }}
-						</p>
-					</div>
-				</div>
+				<DashboardDetailSkeleton
+					:label="t('dashboard.admin.instance.general.loading')"
+					:header="false"
+					body="cards"
+					:delay="false"
+				/>
 			</template>
 
 			<!-- No Workspace State -->

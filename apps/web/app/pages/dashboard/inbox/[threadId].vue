@@ -8,6 +8,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { useOrganization } from '~/composables/useOrganization';
 import { useNow } from '~/composables/useNow';
+import { teamThreadPreview } from '~/utils/teamThreadPreviews';
 import { sendHoldReason } from '~/utils/replyCollision';
 import { capitalize, formatRelativeTime } from '~/utils/formatters';
 import {
@@ -53,6 +54,8 @@ definePageMeta({
 });
 
 const threadId = useRouteId<'conversationThreads'>('threadId');
+// The Team Inbox row this thread was opened from, if the list loaded it.
+const threadPreview = computed(() => teamThreadPreview(threadId.value));
 
 const {
 	thread,
@@ -210,8 +213,10 @@ const isRetrying = ref(false);
 const rejectReason = ref('');
 const showRejectModal = ref(false);
 const actionMessageId = ref<Id<'inboundMessages'> | null>(null);
-// Drives the follow-up countdowns and the reply blocker's received-wait.
-const now = useNow({ intervalMs: 250 });
+// Drives the reply blocker's received-wait (minutes long, so a second is
+// plenty). Undo countdowns keep their own clocks (InboxAutoSendCountdown), so
+// nothing here ticks the whole page.
+const now = useNow({ intervalMs: 1_000 });
 
 const { run: answerClarification, isLoading: isAnsweringClarification } = useBackendOperation(
 	api.inbox.clarification.answerClarification,
@@ -252,8 +257,6 @@ async function cancelAutoSend(messageId: Id<'inboundMessages'>) {
 	if (result.ok && result.result.cancelled)
 		showToast(t('dashboard.inbox.detail.autoSendCancelledToast'));
 }
-
-const followUpSecondsLeft = (sendAt: number) => Math.max(0, Math.ceil((sendAt - now.value) / 1000));
 
 // Use the shared global toast. The underlying actions go through
 // useBackendOperation, which already toasts any categorized failure — so we
@@ -553,13 +556,8 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 			{{ t('dashboard.inbox.detail.backToInbox') }}
 		</NuxtLink>
 
-		<!-- Loading -->
-		<div v-if="threadLoading && !thread" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">{{ t('dashboard.inbox.detail.loading') }}</p>
-			</div>
-		</div>
+		<!-- Loading: the page's own shape, headed by the list row when we have it. -->
+		<InboxThreadDetailSkeleton v-if="threadLoading && !thread" :preview="threadPreview" />
 
 		<!-- Not Found -->
 		<div v-else-if="!thread" class="flex flex-col items-center justify-center py-16 text-center">
@@ -789,7 +787,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							:body="followUp.body"
 							:at="followUp.sentAt ?? followUp.createdAt"
 							:status="followUp.status"
-							:seconds-left="followUpSecondsLeft(followUp.sendAt)"
+							:send-at="followUp.sendAt"
 							:error-message="followUp.errorMessage ?? null"
 							:undoing="undoingFollowUpId === followUp._id"
 							@undo="undoFollowUp(followUp._id)"

@@ -52,7 +52,7 @@ const handleOpen = (channelId: Id<'chatRooms'>) => {
 
 		<div class="flex-1 overflow-y-auto p-3">
 			<div v-if="isLoading" class="flex items-center justify-center py-8">
-				<UiSpinner size="md" />
+				<UiSpinner size="md" delay />
 			</div>
 			<div v-else-if="filtered.length === 0" class="text-center py-8 text-text-tertiary text-sm">
 				{{ t('components.chat.chatChannelBrowser.empty') }}

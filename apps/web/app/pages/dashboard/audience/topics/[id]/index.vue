@@ -140,14 +140,14 @@ const { showToast } = useToast();
 <template>
 	<div class="p-6 lg:p-8">
 		<!-- Loading State -->
-		<div v-if="isLoading && !topic" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">
-					{{ t('dashboard.audience.topics.detail.index.loading') }}
-				</p>
-			</div>
-		</div>
+		<DashboardDetailSkeleton
+			v-if="isLoading && !topic"
+			:label="t('dashboard.audience.topics.detail.index.loading')"
+			back="button"
+			lead="tile"
+			meta
+			body="table"
+		/>
 
 		<!-- Not Found State -->
 		<div

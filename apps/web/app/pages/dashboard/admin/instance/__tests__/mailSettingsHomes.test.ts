@@ -63,6 +63,7 @@ const globalOptions = {
 		UiSelect: true,
 		UiSwitch: true,
 		UiSpinner: true,
+		DashboardDetailSkeleton: true,
 		UiEmptyState: true,
 		UnsavedChangesDialog: true,
 		UiErrorAlert: true,

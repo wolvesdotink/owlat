@@ -31,7 +31,7 @@ function channelName(channel: string): string {
 
 		<!-- Loading -->
 		<div v-if="statsLoading" class="flex items-center justify-center py-4">
-			<UiSpinner size="sm" />
+			<UiSpinner size="sm" delay />
 		</div>
 
 		<template v-else-if="stats">

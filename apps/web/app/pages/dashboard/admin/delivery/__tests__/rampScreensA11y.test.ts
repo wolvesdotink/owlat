@@ -16,8 +16,8 @@
  * silently match nothing and every query would answer `undefined`.
  */
 import { mount, type VueWrapper } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ref, type Ref } from 'vue';
+import { beforeEach, describe, expect, it, vi, onTestFinished } from 'vitest';
+import { nextTick, ref, type Ref } from 'vue';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import { api } from '@owlat/api';
 import IndependencePage from '../advanced/independence.vue';
@@ -139,9 +139,14 @@ describe('independence screen accessibility', () => {
 		wrapper.unmount();
 	});
 
-	it('announces its loading state instead of labelling a bare div', () => {
+	it('announces its loading state instead of labelling a bare div', async () => {
+		vi.useFakeTimers();
+		onTestFinished(() => vi.useRealTimers());
 		isLoading.value = true;
 		const wrapper = mount(IndependencePage, { global: globalOptions });
+		// The boundary holds its loader back for 150 ms (useDelayedLoading).
+		vi.advanceTimersByTime(150);
+		await nextTick();
 		const status = wrapper.find('[role="status"]');
 		expect(status.exists()).toBe(true);
 		expect(status.attributes('aria-live')).toBe('polite');

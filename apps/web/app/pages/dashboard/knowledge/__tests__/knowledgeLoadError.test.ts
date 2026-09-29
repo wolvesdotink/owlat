@@ -54,6 +54,7 @@ function render(): VueWrapper {
 				UiInput: true,
 				UiTextarea: true,
 				UiSpinner: true,
+				KnowledgeEntryListSkeleton: true,
 				UiEmptyState: true,
 				KnowledgeEntryCard: true,
 				KnowledgeEntryForm: true,

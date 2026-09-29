@@ -1,4 +1,4 @@
-import { isRef, ref, watch, nextTick, type Ref } from 'vue';
+import { isRef, ref, watch, nextTick, type Ref, type WatchSource } from 'vue';
 
 /**
  * Editor dirty tracking — the load → dirty → save loop shared by the Email
@@ -26,6 +26,13 @@ export interface UseEditorDirtyTrackingOptions<S> {
 	initialize: (source: NonNullable<S>) => void;
 	/** The values whose deep changes mark the editor dirty. */
 	watchSources: TrackedSource[];
+	/**
+	 * A cheaper stand-in for deep-watching some of `watchSources`: per source,
+	 * a value that changes on every write to it (the email canvas's block
+	 * counter). A source listed here is watched through its signal alone, so
+	 * the signal must not miss a write; the others are deep-watched.
+	 */
+	changeSignals?: ReadonlyMap<TrackedSource, WatchSource<unknown>>;
 	/** Notified whenever the dirty flag flips (bridges to `setHasChanges`). */
 	onDirtyChange?: (dirty: boolean) => void;
 	/**
@@ -179,16 +186,18 @@ export function useEditorDirtyTracking<S>(
 		{ immediate: true }
 	);
 
-	watch(
-		opts.watchSources,
-		() => {
-			// Only track changes after the initial data has been loaded, and not
-			// the writes a hydration makes.
-			if (!isInitialized.value || hydrating) return;
-			setDirty(true);
-		},
-		{ deep: true }
-	);
+	const onDraftChange = () => {
+		// Only track changes after the initial data has been loaded, and not
+		// the writes a hydration makes.
+		if (!isInitialized.value || hydrating) return;
+		setDirty(true);
+	};
+	const signals = opts.changeSignals;
+	const deepSources = signals
+		? opts.watchSources.filter((source) => !signals.has(source))
+		: opts.watchSources;
+	if (deepSources.length > 0) watch(deepSources, onDraftChange, { deep: true });
+	if (signals && signals.size > 0) watch([...signals.values()], onDraftChange);
 
 	const beginSubmit = (): EditorSubmission<S> => {
 		const fields = serializeFields();

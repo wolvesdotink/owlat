@@ -219,12 +219,13 @@ const sourceLabel = computed(() => {
 		</NuxtLink>
 
 		<!-- Loading -->
-		<div v-if="isLoading" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">{{ t('dashboard.files.detail.loading') }}</p>
-			</div>
-		</div>
+		<DashboardDetailSkeleton
+			v-if="isLoading"
+			:label="t('dashboard.files.detail.loading')"
+			lead="tile-lg"
+			meta
+			:actions="3"
+		/>
 
 		<!-- Not found -->
 		<div v-else-if="!file" class="flex flex-col items-center justify-center py-16 text-center">

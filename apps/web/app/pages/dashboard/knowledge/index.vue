@@ -145,9 +145,7 @@ const handleCancelled = () => {
 				/>
 
 				<!-- Loading -->
-				<div v-else-if="isLoading" class="flex items-center justify-center py-16">
-					<UiSpinner />
-				</div>
+				<KnowledgeEntryListSkeleton v-else-if="isLoading" />
 
 				<!-- Empty State -->
 				<div

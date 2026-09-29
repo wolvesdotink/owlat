@@ -83,3 +83,14 @@ describe('InboxAutoSendCountdown', () => {
 		expect(vi.getTimerCount()).toBe(0);
 	});
 });
+
+describe('InboxAutoSendCountdown label', () => {
+	it('reads the line from labelKey when the parent names one', () => {
+		wrapper = mount(AutoSendCountdown, {
+			props: { sendAt: Date.now() + 5_000, labelKey: 'dashboard.inbox.detail.outbound.sendsIn' },
+			global: { plugins: [createTestI18n()], stubs: { Icon: true, UiButton: true } },
+		});
+		expect(banner().text()).toContain('Sending in 5s');
+		expect(banner().text()).not.toContain('automatically');
+	});
+});

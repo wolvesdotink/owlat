@@ -123,7 +123,7 @@ const typeFilters = computed(() => [
 					v-if="isLoading && graph.nodes.length === 0"
 					class="flex items-center justify-center py-24"
 				>
-					<UiSpinner />
+					<UiSpinner delay />
 				</div>
 				<KnowledgeGraphCanvas
 					v-else
