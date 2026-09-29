@@ -292,6 +292,11 @@ const showCard = computed(
 					@cancel="editing = false"
 				/>
 			</div>
+
+			<PostboxSyncModeToggle
+				:mode="account.syncMode"
+				class="mt-5 pt-4 border-t border-border-subtle"
+			/>
 		</div>
 
 		<!-- Disconnected, mail kept. Two honest ways forward. -->

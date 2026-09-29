@@ -892,6 +892,10 @@ import type * as mail_external_googleOAuth from '../mail/external/googleOAuth.js
 import type * as mail_external_googleOAuthActions from '../mail/external/googleOAuthActions.js';
 import type * as mail_external_googleOAuthTokens from '../mail/external/googleOAuthTokens.js';
 import type * as mail_external_personalAccount from '../mail/external/personalAccount.js';
+import type * as mail_external_mirroredFolders from '../mail/external/mirroredFolders.js';
+import type * as mail_external_remoteOps from '../mail/external/remoteOps.js';
+import type * as mail_external_remoteState from '../mail/external/remoteState.js';
+import type * as mail_external_syncMode from '../mail/external/syncMode.js';
 import type * as mail_external_sharedInbox from '../mail/external/sharedInbox.js';
 import type * as mail_filterRun from '../mail/filterRun.js';
 import type * as mail_filters from '../mail/filters.js';
@@ -2133,6 +2137,10 @@ declare const fullApi: ApiFromModules<{
 	'mail/external/googleOAuthActions': typeof mail_external_googleOAuthActions;
 	'mail/external/googleOAuthTokens': typeof mail_external_googleOAuthTokens;
 	'mail/external/personalAccount': typeof mail_external_personalAccount;
+	'mail/external/mirroredFolders': typeof mail_external_mirroredFolders;
+	'mail/external/remoteOps': typeof mail_external_remoteOps;
+	'mail/external/remoteState': typeof mail_external_remoteState;
+	'mail/external/syncMode': typeof mail_external_syncMode;
 	'mail/external/sharedInbox': typeof mail_external_sharedInbox;
 	'mail/filterRun': typeof mail_filterRun;
 	'mail/filters': typeof mail_filters;

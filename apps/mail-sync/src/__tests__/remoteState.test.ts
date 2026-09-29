@@ -1,0 +1,384 @@
+/**
+ * Remote → local change sync (remoteState.ts), against an in-memory IMAP server.
+ * What matters, in order:
+ *   - a change on the provider is noticed: a message leaving or entering a
+ *     folder, and a flag flipped (by CHANGEDSINCE, or by re-reading the newest
+ *     messages on a server without CONDSTORE);
+ *   - a move is reported with where the message is now, and a deletion only
+ *     when the message left a folder AND is nowhere else — Gmail's All Mail is
+ *     searched before anything is called deleted;
+ *   - mail Owlat wrote itself (Sent, Drafts) is never called deleted;
+ *   - a full reconcile compares every local message and marks the account
+ *     aligned once it completes.
+ */
+
+import { describe, expect, it } from 'vitest';
+import {
+	decide,
+	FolderView,
+	parseMessageIdHeader,
+	reconcile,
+	refreshFolder,
+	type LocalMessageRow,
+	type RemoteObservation,
+	type RemoteStateClient,
+	type ReconcileDeps,
+} from '../remoteState.js';
+import { mirroredFolderPath } from '../folders.js';
+
+interface FakeMessage {
+	uid: number;
+	messageId: string;
+	flags: Set<string>;
+	modseq: bigint;
+}
+
+interface FakeBox {
+	uidValidity: bigint;
+	messages: FakeMessage[];
+}
+
+class FakeImap implements RemoteStateClient {
+	readonly boxes = new Map<string, FakeBox>();
+	private selected: string | null = null;
+	private nextUid = 100;
+	private modseq = 10n;
+	constructor(
+		boxes: Record<string, string[]>,
+		private readonly condstore = true
+	) {
+		for (const [path, ids] of Object.entries(boxes)) {
+			this.boxes.set(path, { uidValidity: 1n, messages: [] });
+			for (const id of ids) this.add(path, id);
+		}
+	}
+
+	get mailbox() {
+		const box = this.selected ? this.boxes.get(this.selected) : undefined;
+		if (!box) return false as const;
+		const highest = box.messages.reduce((m, msg) => (msg.modseq > m ? msg.modseq : m), 1n);
+		return this.condstore
+			? { uidValidity: box.uidValidity, highestModseq: highest }
+			: { uidValidity: box.uidValidity };
+	}
+
+	private box(): FakeBox {
+		const box = this.selected ? this.boxes.get(this.selected) : undefined;
+		if (!box) throw new Error('nothing selected');
+		return box;
+	}
+
+	add(path: string, messageId: string, flags: string[] = []): void {
+		this.boxes.get(path)!.messages.push({
+			uid: this.nextUid++,
+			messageId,
+			flags: new Set(flags),
+			modseq: ++this.modseq,
+		});
+	}
+
+	remove(path: string, messageId: string): void {
+		const box = this.boxes.get(path)!;
+		box.messages = box.messages.filter((m) => m.messageId !== messageId);
+	}
+
+	move(from: string, to: string, messageId: string): void {
+		this.remove(from, messageId);
+		this.add(to, messageId);
+	}
+
+	setFlag(path: string, messageId: string, flag: string, on: boolean): void {
+		const msg = this.boxes.get(path)!.messages.find((m) => m.messageId === messageId)!;
+		if (on) msg.flags.add(flag);
+		else msg.flags.delete(flag);
+		msg.modseq = ++this.modseq;
+	}
+
+	async getMailboxLock(path: string) {
+		if (!this.boxes.has(path)) throw new Error(`NO [NONEXISTENT] ${path}`);
+		this.selected = path;
+		return { release: () => undefined };
+	}
+
+	async search(query: object) {
+		const matches = (q: Record<string, unknown>, m: FakeMessage): boolean => {
+			if (q['all']) return true;
+			if (Array.isArray(q['or'])) return q['or'].some((sub) => matches(sub, m));
+			const header = q['header'] as Record<string, string> | undefined;
+			return !!header && m.messageId.includes(header['message-id'] ?? '');
+		};
+		return this.box()
+			.messages.filter((m) => matches(query as Record<string, unknown>, m))
+			.map((m) => m.uid);
+	}
+
+	async *fetch(range: string, _query: object, options: { changedSince?: bigint }) {
+		const uids = range === '1:*' ? null : new Set(range.split(',').map(Number));
+		for (const m of this.box().messages) {
+			if (uids && !uids.has(m.uid)) continue;
+			if (options.changedSince !== undefined && m.modseq <= options.changedSince) continue;
+			yield {
+				uid: m.uid,
+				flags: new Set(m.flags),
+				headers: Buffer.from(`Message-ID: <${m.messageId}>\r\n\r\n`),
+				modseq: m.modseq,
+			};
+		}
+	}
+}
+
+const NO_FLAGS = { seen: false, flagged: false, answered: false };
+
+function row(messageId: string, remoteName: string | null, extra: Partial<LocalMessageRow> = {}) {
+	return {
+		messageId,
+		remoteName,
+		role: extra.role ?? (remoteName === 'INBOX' ? 'inbox' : null),
+		flags: extra.flags ?? NO_FLAGS,
+	} satisfies LocalMessageRow;
+}
+
+describe('parseMessageIdHeader', () => {
+	it('reads a folded header and strips the brackets', () => {
+		expect(parseMessageIdHeader(Buffer.from('Message-ID:\r\n <a@x.example>\r\n\r\n'))).toBe(
+			'a@x.example'
+		);
+		expect(parseMessageIdHeader(Buffer.from('\r\n'))).toBeNull();
+	});
+});
+
+describe('refreshFolder', () => {
+	it('reports what left and what arrived since the last refresh', async () => {
+		const imap = new FakeImap({ INBOX: ['a@x', 'b@x'] });
+		const view = new FolderView();
+		const first = await refreshFolder(imap, 'INBOX', view);
+		expect(first.rebuilt).toBe(true);
+		expect(first.changed.size).toBe(0);
+
+		imap.remove('INBOX', 'a@x');
+		imap.add('INBOX', 'c@x');
+		const next = await refreshFolder(imap, 'INBOX', view);
+
+		expect(next.rebuilt).toBe(false);
+		expect([...next.vanished]).toEqual(['a@x']);
+		expect([...next.changed].sort()).toEqual(['a@x', 'c@x']);
+	});
+
+	it('picks up a flag change by CHANGEDSINCE', async () => {
+		const imap = new FakeImap({ INBOX: ['a@x', 'b@x'] });
+		const view = new FolderView();
+		await refreshFolder(imap, 'INBOX', view);
+
+		imap.setFlag('INBOX', 'b@x', '\\Seen', true);
+		const next = await refreshFolder(imap, 'INBOX', view);
+
+		expect([...next.changed]).toEqual(['b@x']);
+	});
+
+	it('re-reads the newest messages on a server without CONDSTORE', async () => {
+		const imap = new FakeImap({ INBOX: ['a@x'] }, false);
+		const view = new FolderView();
+		await refreshFolder(imap, 'INBOX', view);
+
+		imap.setFlag('INBOX', 'a@x', '\\Flagged', true);
+		const next = await refreshFolder(imap, 'INBOX', view);
+
+		expect([...next.changed]).toEqual(['a@x']);
+	});
+
+	it('starts over after a UIDVALIDITY change', async () => {
+		const imap = new FakeImap({ INBOX: ['a@x'] });
+		const view = new FolderView();
+		await refreshFolder(imap, 'INBOX', view);
+		imap.boxes.get('INBOX')!.uidValidity = 2n;
+
+		expect((await refreshFolder(imap, 'INBOX', view)).rebuilt).toBe(true);
+	});
+});
+
+describe('decide', () => {
+	const input = (index: Record<string, string[]>, untracked: string[] = []) => ({
+		index: new Map(
+			Object.entries(index).map(([id, names]) => [
+				id,
+				names.map((remoteName) => ({ remoteName, flags: NO_FLAGS })),
+			])
+		),
+		order: ['INBOX', 'Work', 'Archive', 'Sent', 'Trash'],
+		untracked: new Set(untracked),
+		untrackedFlags: new Map(),
+	});
+
+	it('reports a message found somewhere other than its local folder', () => {
+		const { observations } = decide([row('a@x', 'INBOX')], input({ 'a@x': ['Work'] }));
+		expect(observations).toEqual([{ messageId: 'a@x', remoteFolders: ['Work'] }]);
+	});
+
+	it('leaves a message alone while its local folder still holds it', () => {
+		const { observations, unplaced } = decide(
+			[row('a@x', 'INBOX')],
+			input({ 'a@x': ['Work', 'INBOX'] })
+		);
+		expect(observations).toEqual([]);
+		expect(unplaced).toEqual([]);
+	});
+
+	it('never questions Sent or Drafts, or a message in an untracked All Mail', () => {
+		const { unplaced } = decide(
+			[
+				row('s@x', 'Sent', { role: 'sent' }),
+				row('g@x', '[Gmail]/All Mail', { role: 'archive' }),
+				row('i@x', 'INBOX'),
+			],
+			input({}, ['[Gmail]/All Mail'])
+		);
+		expect(unplaced.map((r) => r.messageId)).toEqual(['i@x']);
+	});
+
+	it('reports provider flags that differ', () => {
+		const rows = [row('a@x', 'INBOX')];
+		const withSeen = input({ 'a@x': ['INBOX'] });
+		withSeen.index.get('a@x')![0]!.flags = { seen: true, flagged: false, answered: false };
+		expect(decide(rows, withSeen).observations).toEqual([
+			{ messageId: 'a@x', flags: { seen: true, flagged: false, answered: false } },
+		]);
+	});
+});
+
+describe('reconcile', () => {
+	function harness(imap: FakeImap, local: LocalMessageRow[], opts: Partial<ReconcileDeps> = {}) {
+		const applied: RemoteObservation[] = [];
+		const lookups: string[][] = [];
+		let aligned = 0;
+		const deps: ReconcileDeps = {
+			client: imap,
+			tracked: ['INBOX', 'Archive', 'Trash', 'Sent'],
+			allMail: null,
+			views: new Map(),
+			allMailCursor: { uidValidity: null, highestModseq: null },
+			isAligned: true,
+			forceFull: false,
+			listLocal: async () => ({ page: local, isDone: true, continueCursor: '' }),
+			lookupLocal: async (ids) => {
+				lookups.push(ids);
+				return local.filter((r) => ids.includes(r.messageId));
+			},
+			apply: async (obs) => void applied.push(...obs),
+			markAligned: async () => void (aligned += 1),
+			isStopped: () => false,
+			...opts,
+		};
+		return {
+			deps,
+			applied,
+			lookups,
+			get aligned() {
+				return aligned;
+			},
+		};
+	}
+
+	it('mirrors a move made on the provider', async () => {
+		const imap = new FakeImap({ INBOX: ['a@x', 'b@x'], Archive: [], Trash: [], Sent: [] });
+		const h = harness(imap, [row('a@x', 'INBOX'), row('b@x', 'INBOX')]);
+		await reconcile(h.deps); // first pass builds the views
+
+		imap.move('INBOX', 'Archive', 'a@x');
+		h.applied.length = 0;
+		const { full } = await reconcile(h.deps);
+
+		expect(full).toBe(false);
+		expect(h.lookups.at(-1)).toEqual(['a@x']);
+		expect(h.applied).toEqual([{ messageId: 'a@x', remoteFolders: ['Archive'] }]);
+	});
+
+	it('reports a message deleted on the provider as gone', async () => {
+		const imap = new FakeImap({ INBOX: ['a@x'], Archive: [], Trash: ['t@x'], Sent: [] });
+		const h = harness(imap, [row('a@x', 'INBOX'), row('t@x', 'Trash', { role: 'trash' })]);
+		await reconcile(h.deps);
+
+		imap.remove('Trash', 't@x');
+		h.applied.length = 0;
+		await reconcile(h.deps);
+
+		expect(h.applied).toEqual([{ messageId: 't@x', isGone: true }]);
+	});
+
+	it('calls Gmail archiving a move to All Mail, not a deletion', async () => {
+		const gmail = new FakeImap({
+			INBOX: ['g@x'],
+			'[Gmail]/All Mail': ['g@x'],
+			'[Gmail]/Trash': [],
+		});
+		const h = harness(gmail, [row('g@x', 'INBOX')], {
+			tracked: ['INBOX', '[Gmail]/Trash'],
+			allMail: '[Gmail]/All Mail',
+		});
+		await reconcile(h.deps);
+
+		gmail.remove('INBOX', 'g@x');
+		h.applied.length = 0;
+		await reconcile(h.deps);
+
+		expect(h.applied).toEqual([{ messageId: 'g@x', remoteFolders: ['[Gmail]/All Mail'] }]);
+	});
+
+	it('reads flag changes of archived Gmail mail from All Mail', async () => {
+		const gmail = new FakeImap({ INBOX: [], '[Gmail]/All Mail': ['g@x'] });
+		const archived = row('g@x', '[Gmail]/All Mail', { role: 'archive' });
+		const h = harness(gmail, [archived], { tracked: ['INBOX'], allMail: '[Gmail]/All Mail' });
+		await reconcile(h.deps);
+
+		gmail.setFlag('[Gmail]/All Mail', 'g@x', '\\Flagged', true);
+		h.applied.length = 0;
+		await reconcile(h.deps);
+
+		expect(h.applied).toEqual([
+			{ messageId: 'g@x', flags: { seen: false, flagged: true, answered: false } },
+		]);
+	});
+
+	it('does not call mail Owlat never saw on the provider deleted, even on a full pass', async () => {
+		const imap = new FakeImap({ INBOX: [], Archive: [], Trash: [], Sent: [] });
+		const h = harness(imap, [row('local-only@x', 'INBOX')], { forceFull: true });
+
+		await reconcile(h.deps);
+
+		expect(h.applied).toEqual([]);
+	});
+
+	it('compares everything and marks the account aligned when it was not', async () => {
+		const imap = new FakeImap({ INBOX: [], Archive: ['a@x'], Trash: [], Sent: [] });
+		const h = harness(imap, [row('a@x', 'INBOX')], { isAligned: false });
+
+		const { full } = await reconcile(h.deps);
+
+		expect(full).toBe(true);
+		expect(h.applied).toEqual([{ messageId: 'a@x', remoteFolders: ['Archive'] }]);
+		expect(h.aligned).toBe(1);
+	});
+});
+
+describe('mirroredFolderPath', () => {
+	it('mirrors a user folder under its own name, without the namespace prefix', () => {
+		expect(
+			mirroredFolderPath(
+				{ path: 'INBOX.Projects.Owlat', delimiter: '.', flags: new Set() },
+				'INBOX.'
+			)
+		).toEqual(['Projects', 'Owlat']);
+		expect(
+			mirroredFolderPath({ path: 'INBOX/Receipts', delimiter: '/', flags: new Set() }, '')
+		).toEqual(['Receipts']);
+	});
+
+	it('skips INBOX, unselectable folders and Gmail views', () => {
+		expect(mirroredFolderPath({ path: 'INBOX', delimiter: '/' }, '')).toBeNull();
+		expect(
+			mirroredFolderPath({ path: '[Gmail]', delimiter: '/', flags: new Set(['\\Noselect']) }, '')
+		).toBeNull();
+		expect(
+			mirroredFolderPath({ path: '[Gmail]/Starred', delimiter: '/', specialUse: '\\Flagged' }, '')
+		).toBeNull();
+	});
+});

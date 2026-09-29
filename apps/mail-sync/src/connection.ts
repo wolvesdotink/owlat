@@ -20,7 +20,7 @@ import { sleep } from '@owlat/shared';
 import type { BackfillWork, ConnectableAccount, ConvexClient } from './convex.js';
 import { CredentialsUnavailableError, fetchWorkerCredentials, fn } from './convex.js';
 import type { MailSyncConfig } from './config.js';
-import { mapFolderRole, type FolderRole } from './folders.js';
+import { mapFolderRole, mirroredFolderPath, type FolderRole } from './folders.js';
 import { imapAuth } from './auth.js';
 import { imapTlsOptions } from './tls.js';
 import { ingestMessage, isMessageLanded, type RawUploadConfig } from './ingest.js';
@@ -37,6 +37,8 @@ import {
 	nextBackfillRetryState,
 	type BackfillRetryState,
 } from './backfillRetry.js';
+import { drainRemoteOps, isAllMailFolder, RemoteOpReplayer } from './remoteOps.js';
+import { LOCAL_PAGE, reconcile, type FolderView, type ModseqCursor } from './remoteState.js';
 import { logger } from './logger.js';
 
 interface Cursor {
@@ -44,6 +46,31 @@ interface Cursor {
 	lastSeenUid: number;
 	forwardIngestFailures?: Array<{ uid: number; attempts: number }>;
 }
+
+/** A synced remote folder: a system role, or (full sync) a mirrored user folder by path. */
+interface SyncedFolder {
+	remoteName: string;
+	role?: FolderRole;
+	path?: string[];
+}
+
+/** Best-first order in which a moved message's new home is picked; user folders sit after the inbox. */
+const ROLE_ORDER: ReadonlyArray<FolderRole | undefined> = [
+	'inbox',
+	undefined,
+	'archive',
+	'sent',
+	'drafts',
+	'spam',
+	'trash',
+];
+
+/** A full reconcile at least this often, as a safety net for missed changes. */
+const FULL_RECONCILE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+/** Quiet period before an IDLE notification (flags, expunge, new mail) starts a cycle. */
+const EVENT_CYCLE_DEBOUNCE_MS = 2000;
+
+type CycleKind = 'drain' | 'full';
 
 const INITIAL_BACKOFF_MS = 5000;
 const MAX_BACKOFF_MS = 5 * 60 * 1000;
@@ -90,7 +117,18 @@ export class AccountConnection {
 	private stopped = false;
 	private backoffMs = INITIAL_BACKOFF_MS;
 	private folderTimer: ReturnType<typeof setInterval> | null = null;
-	private folders: Array<{ remoteName: string; role: FolderRole }> = [];
+	private folders: SyncedFolder[] = [];
+	// Gmail-style "All Mail" paths: the write-back copies out of them instead of moving.
+	private allMailPaths = new Set<string>();
+	// ── Sync cycles (write-back + remote change sync) — one at a time ──
+	private cycleRunning = false;
+	private cycleRequested: CycleKind | null = null;
+	private eventCycleTimer: ReturnType<typeof setTimeout> | null = null;
+	private lastFullReconcileAt = 0;
+	// Per-folder views of the provider (remoteState.ts). Kept across reconnects,
+	// so a change made while the connection was down still shows up as a change.
+	private readonly views = new Map<string, FolderView>();
+	private readonly allMailCursor: ModseqCursor = { uidValidity: null, highestModseq: null };
 	private cursors = new Map<string, Cursor>();
 	private polling = false;
 	private backfillRunning = false;
@@ -123,6 +161,10 @@ export class AccountConnection {
 		if (this.folderTimer) {
 			clearInterval(this.folderTimer);
 			this.folderTimer = null;
+		}
+		if (this.eventCycleTimer) {
+			clearTimeout(this.eventCycleTimer);
+			this.eventCycleTimer = null;
 		}
 		const client = this.client;
 		this.client = null;
@@ -221,7 +263,7 @@ export class AccountConnection {
 		this.backoffMs = INITIAL_BACKOFF_MS;
 
 		await this.loadCursors();
-		await this.discoverFolders(client);
+		await this.discoverFolders(client, (await this.syncMode())?.mode ?? 'incoming');
 
 		// Real-time INBOX: open it so imapflow IDLEs and emits 'exists'.
 		await client.mailboxOpen('INBOX');
@@ -229,22 +271,129 @@ export class AccountConnection {
 			void this.pollFolder('INBOX', 'inbox').catch((err) =>
 				logger.warn({ accountId: this.account.accountId, err }, 'inbox poll (exists) failed')
 			);
+			this.scheduleEventCycle();
 		});
+		// Read, starred or removed on the provider while INBOX is open.
+		client.on('flags', () => this.scheduleEventCycle());
+		client.on('expunge', () => this.scheduleEventCycle());
 
 		await this.setStatus('connected');
 
 		await this.pollAll();
-		// A migration may be queued already; run its historical backfill in the
-		// background so it never blocks IDLE / forward polling.
-		void this.maybeRunBackfill();
+		// Changes made on either side while the connection was down, then a
+		// migration's historical backfill if one is queued — in the background, so
+		// it never blocks IDLE / forward polling.
+		void this.runCycle('full').then(() => this.maybeRunBackfill());
 		this.folderTimer = setInterval(() => {
-			void this.pollAll()
+			void this.runCycle('full')
 				// Re-check for a migration started after connect.
 				.then(() => this.maybeRunBackfill())
 				.catch((err) =>
 					logger.warn({ accountId: this.account.accountId, err }, 'periodic poll failed')
 				);
 		}, this.config.folderPollIntervalMs);
+	}
+
+	/** The account's sync mode, read fresh each cycle; null when it cannot be read. */
+	private async syncMode(): Promise<{ mode: 'full' | 'incoming'; isAligned: boolean } | null> {
+		try {
+			return await this.convex.query(fn.getSyncSettings, { accountId: this.account.accountId });
+		} catch (err) {
+			logger.warn({ accountId: this.account.accountId, err }, 'getSyncSettings failed');
+			return null;
+		}
+	}
+
+	/** Debounced cycle after an IDLE notification, so a burst of them runs one cycle. */
+	private scheduleEventCycle(): void {
+		if (this.stopped || this.eventCycleTimer) return;
+		this.eventCycleTimer = setTimeout(() => {
+			this.eventCycleTimer = null;
+			void this.runCycle('full');
+		}, EVENT_CYCLE_DEBOUNCE_MS);
+	}
+
+	/**
+	 * The backend queued write-backs (server.ts `/remote-ops`) or changed the
+	 * sync mode: replay the queue now.
+	 */
+	requestRemoteOps(): void {
+		void this.runCycle('drain');
+	}
+
+	/**
+	 * One sync cycle, never two at once — a reconcile working from views read
+	 * before a write-back landed would undo it. A request that arrives mid-cycle
+	 * runs another afterwards ('full' wins over 'drain').
+	 *
+	 *   drain — replay the write-back queue (remoteOps.ts).
+	 *   full  — that, then rediscover folders, forward-poll new mail and, with
+	 *           full sync, mirror the provider's changes (remoteState.ts).
+	 */
+	private async runCycle(kind: CycleKind): Promise<void> {
+		if (this.cycleRunning) {
+			if (this.cycleRequested !== 'full') this.cycleRequested = kind;
+			return;
+		}
+		this.cycleRunning = true;
+		let next: CycleKind | null = kind;
+		try {
+			while (next && !this.stopped && this.client) {
+				this.cycleRequested = null;
+				await this.cycleOnce(next);
+				next = this.cycleRequested;
+			}
+		} catch (err) {
+			logger.warn({ accountId: this.account.accountId, err }, 'sync cycle failed');
+		} finally {
+			this.cycleRunning = false;
+			await this.resumeInboxIdle();
+		}
+	}
+
+	private async cycleOnce(kind: CycleKind): Promise<void> {
+		const client = this.client;
+		if (!client) return;
+		await this.drainQueue(client);
+		if (kind === 'drain') return;
+		const settings = await this.syncMode();
+		if (!settings) return;
+		await this.discoverFolders(client, settings.mode);
+		await this.pollAll();
+		if (settings.mode !== 'full') {
+			this.views.clear();
+			return;
+		}
+		const accountId = this.account.accountId;
+		const tracked = [...this.folders]
+			.filter((f) => !this.allMailPaths.has(f.remoteName))
+			.sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role))
+			.map((f) => f.remoteName);
+		const allMail = this.folders.find((f) => this.allMailPaths.has(f.remoteName))?.remoteName;
+		const { full } = await reconcile({
+			client,
+			tracked,
+			allMail: allMail ?? null,
+			views: this.views,
+			allMailCursor: this.allMailCursor,
+			isAligned: settings.isAligned,
+			forceFull: Date.now() - this.lastFullReconcileAt > FULL_RECONCILE_INTERVAL_MS,
+			listLocal: (cursor) =>
+				this.convex.query(fn.listLocalMessages, {
+					accountId,
+					paginationOpts: { numItems: LOCAL_PAGE, cursor },
+				}),
+			lookupLocal: (messageIds) =>
+				this.convex.query(fn.lookupLocalMessages, { accountId, messageIds }),
+			apply: async (observations) => {
+				await this.convex.mutation(fn.applyRemoteObservations, { accountId, observations });
+			},
+			markAligned: async () => {
+				await this.convex.mutation(fn.markFullSyncAligned, { accountId });
+			},
+			isStopped: () => this.stopped || this.client !== client,
+		});
+		if (full) this.lastFullReconcileAt = Date.now();
 	}
 
 	private async loadCursors(): Promise<void> {
@@ -261,20 +410,35 @@ export class AccountConnection {
 		}
 	}
 
-	private async discoverFolders(client: ImapFlow): Promise<void> {
+	/**
+	 * Map the provider's folders: the six system roles always, and with full sync
+	 * every other selectable folder too, mirrored as a user folder. Runs on every
+	 * full cycle, so a folder created on the provider is picked up without a
+	 * reconnect (a message moved into an unknown folder would look deleted).
+	 */
+	private async discoverFolders(client: ImapFlow, mode: 'full' | 'incoming'): Promise<void> {
 		const list = await client.list();
 		const seen = new Set<FolderRole>();
-		const mapped: Array<{ remoteName: string; role: FolderRole }> = [];
+		const mapped: SyncedFolder[] = [];
+		this.allMailPaths = new Set(
+			list.filter((e) => isAllMailFolder(e.specialUse, e.path)).map((e) => e.path)
+		);
+		const user: SyncedFolder[] = [];
 		for (const entry of list) {
 			const role = mapFolderRole(entry.specialUse, entry.path);
-			if (!role || seen.has(role)) continue;
-			seen.add(role);
-			mapped.push({ remoteName: entry.path, role });
+			if (role && !seen.has(role)) {
+				seen.add(role);
+				mapped.push({ remoteName: entry.path, role });
+				continue;
+			}
+			if (mode !== 'full') continue;
+			const path = mirroredFolderPath(entry, client.namespace?.prefix);
+			if (path) user.push({ remoteName: entry.path, path });
 		}
 		if (!mapped.some((m) => m.role === 'inbox')) {
 			mapped.unshift({ remoteName: 'INBOX', role: 'inbox' });
 		}
-		this.folders = mapped;
+		this.folders = [...mapped, ...user];
 	}
 
 	private async pollAll(): Promise<void> {
@@ -283,7 +447,7 @@ export class AccountConnection {
 		try {
 			for (const f of this.folders) {
 				if (this.stopped) break;
-				await this.pollFolder(f.remoteName, f.role);
+				await this.pollFolder(f.remoteName, f.role, f.path);
 			}
 			await this.setStatus('connected', undefined, true);
 		} finally {
@@ -303,7 +467,11 @@ export class AccountConnection {
 		}
 	}
 
-	private async pollFolder(remoteName: string, role: FolderRole): Promise<void> {
+	private async pollFolder(
+		remoteName: string,
+		role: FolderRole | undefined,
+		path?: string[]
+	): Promise<void> {
 		const client = this.client;
 		if (!client) return;
 		const lock = await client.getMailboxLock(remoteName);
@@ -321,6 +489,7 @@ export class AccountConnection {
 				await this.convex.mutation(fn.recordFolderMapping, {
 					accountId: this.account.accountId,
 					folderRole: role,
+					folderPath: role ? undefined : path,
 					remoteName,
 					remoteUidValidity: uidValidity,
 					initialLastSeenUid: initial,
@@ -454,6 +623,32 @@ export class AccountConnection {
 			}
 		} finally {
 			lock.release();
+		}
+	}
+
+	/**
+	 * Replay on the provider the moves, flag changes and deletes members made in
+	 * Owlat (remoteOps.ts). Only ever called inside a cycle; failures are logged
+	 * and left for the next one.
+	 */
+	private async drainQueue(client: ImapFlow): Promise<void> {
+		const accountId = this.account.accountId;
+		const byRole = new Map<FolderRole, string>();
+		for (const f of this.folders) if (f.role) byRole.set(f.role, f.remoteName);
+		try {
+			await drainRemoteOps({
+				listDue: () => this.convex.query(fn.listDueRemoteOps, { accountId }),
+				settle: async (results) => {
+					await this.convex.mutation(fn.settleRemoteOps, { results });
+				},
+				replayer: new RemoteOpReplayer(client, { byRole, allMail: this.allMailPaths }),
+				client,
+				isStopped: () => this.stopped || this.client !== client,
+				onError: (op, err) =>
+					logger.warn({ accountId, opId: op.opId, kind: op.kind, err }, 'remote write-back failed'),
+			});
+		} catch (err) {
+			logger.warn({ accountId, err }, 'remote write-back drain failed');
 		}
 	}
 

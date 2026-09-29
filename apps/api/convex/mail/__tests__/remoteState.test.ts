@@ -1,0 +1,359 @@
+/**
+ * Remote → local change sync (mail/external/remoteState.ts) and the sync-mode
+ * switch (mail/external/syncMode.ts).
+ *
+ * Pinned here:
+ *   - once aligned, the provider's moves, deletions and flags are mirrored
+ *     locally WITHOUT being queued back to the provider;
+ *   - a message with a write-back in flight is left alone;
+ *   - before alignment the two sides are merged: inbox mail follows the
+ *     provider, mail filed in Owlat is pushed, flags are combined, nothing is
+ *     deleted;
+ *   - "new mail only" stops both directions and drops the queue;
+ *   - provider folders are mirrored as local folders, and mail lands in them.
+ */
+
+import { convexTest, type TestConvex } from 'convex-test';
+import { describe, expect, it, vi } from 'vitest';
+import schema from '../../schema';
+import type { Id } from '../../_generated/dataModel';
+import { api, internal } from '../../_generated/api';
+import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
+
+vi.mock('../../lib/sessionOrganization', async () => {
+	const actual = await vi.importActual('../../lib/sessionOrganization');
+	const session = { userId: 'user-A', role: 'owner' as const, activeOrganizationId: 'org-1' };
+	return {
+		...actual,
+		requireOrgMember: vi.fn(async () => session),
+		isActiveOrgMember: vi.fn().mockResolvedValue(true),
+		getMutationContext: vi.fn(async () => session),
+		getBetterAuthSessionWithRole: vi.fn(async () => session),
+	};
+});
+
+type Roles = 'inbox' | 'archive' | 'trash' | 'sent';
+const REMOTE: Record<Roles, string> = {
+	inbox: 'INBOX',
+	archive: 'Archive',
+	trash: 'Trash',
+	sent: 'Sent',
+};
+
+async function fullSyncMailbox(opts: { aligned?: boolean; syncMode?: 'full' | 'incoming' } = {}) {
+	const t = convexTest(schema, modules);
+	const mailboxId = await seedMailbox(t, { kind: 'external' });
+	const folders = {} as Record<Roles, Id<'mailFolders'>>;
+	for (const role of Object.keys(REMOTE) as Roles[]) {
+		folders[role] = await seedFolder(t, mailboxId, role);
+	}
+	const accountId = await t.run(async (ctx) => {
+		const now = Date.now();
+		const id = await ctx.db.insert('externalMailAccounts', {
+			userId: 'user-A',
+			organizationId: 'org-1',
+			mailboxId,
+			imapHost: 'imap.example',
+			imapPort: 993,
+			isImapSecure: true,
+			smtpHost: 'smtp.example',
+			smtpPort: 465,
+			isSmtpSecure: true,
+			authMethod: 'password',
+			imapUsername: 'a@owlat.test',
+			status: 'connected',
+			...(opts.syncMode ? { syncMode: opts.syncMode } : {}),
+			...(opts.aligned === false ? {} : { fullSyncAlignedAt: now }),
+			createdAt: now,
+			updatedAt: now,
+		});
+		await ctx.db.patch(mailboxId, { externalAccountId: id });
+		for (const role of Object.keys(REMOTE) as Roles[]) {
+			await ctx.db.insert('externalMailFolderSync', {
+				accountId: id,
+				mailboxId,
+				folderId: folders[role],
+				remoteName: REMOTE[role],
+				remoteUidValidity: 1,
+				lastSeenUid: 0,
+				lastSyncedAt: now,
+			});
+		}
+		return id;
+	});
+	return { t, mailboxId, accountId, folders };
+}
+
+async function folderOf(t: TestConvex<typeof schema>, id: Id<'mailMessages'>) {
+	return await t.run(async (ctx) => (await ctx.db.get(id))?.folderId ?? null);
+}
+
+async function queuedOps(t: TestConvex<typeof schema>) {
+	const rows = await t.run(async (ctx) => ctx.db.query('externalMailRemoteOps').collect());
+	return rows.map(({ kind, source, target, flags }) => ({
+		kind,
+		source,
+		...(target ? { target } : {}),
+		...(flags ? { flags } : {}),
+	}));
+}
+
+const observe = (
+	t: TestConvex<typeof schema>,
+	accountId: Id<'externalMailAccounts'>,
+	observations: Array<{
+		messageId: string;
+		remoteFolders?: string[];
+		isGone?: boolean;
+		flags?: { seen: boolean; flagged: boolean; answered: boolean };
+	}>
+) =>
+	t.mutation(internal.mail.external.remoteState.applyRemoteObservations, {
+		accountId,
+		observations,
+	});
+
+describe('mirroring provider changes once aligned', () => {
+	it('moves a message the provider moved, without queueing it back', async () => {
+		const { t, mailboxId, accountId, folders } = await fullSyncMailbox();
+		const id = await seedMessage(t, mailboxId, { rfc822MessageId: 'a@x.example' });
+
+		await observe(t, accountId, [{ messageId: 'a@x.example', remoteFolders: ['Archive'] }]);
+
+		expect(await folderOf(t, id)).toBe(folders.archive);
+		expect(await queuedOps(t)).toEqual([]);
+	});
+
+	it('prefers the inbox when the provider files a message in several folders', async () => {
+		const { t, mailboxId, accountId, folders } = await fullSyncMailbox();
+		const id = await seedMessage(t, mailboxId, {
+			rfc822MessageId: 'a@x.example',
+			role: 'archive',
+		});
+
+		await observe(t, accountId, [{ messageId: 'a@x.example', remoteFolders: ['Trash', 'INBOX'] }]);
+
+		expect(await folderOf(t, id)).toBe(folders.inbox);
+	});
+
+	it('moves a message deleted on the provider to Trash, and deletes one gone from Trash', async () => {
+		const { t, mailboxId, accountId, folders } = await fullSyncMailbox();
+		const inInbox = await seedMessage(t, mailboxId, { rfc822MessageId: 'a@x.example' });
+		const inTrash = await seedMessage(t, mailboxId, {
+			rfc822MessageId: 't@x.example',
+			role: 'trash',
+		});
+
+		await observe(t, accountId, [
+			{ messageId: 'a@x.example', isGone: true },
+			{ messageId: 't@x.example', isGone: true },
+		]);
+
+		expect(await folderOf(t, inInbox)).toBe(folders.trash);
+		expect(await folderOf(t, inTrash)).toBeNull();
+		expect(await queuedOps(t)).toEqual([]);
+	});
+
+	it('never deletes Sent mail the provider does not have', async () => {
+		const { t, mailboxId, accountId, folders } = await fullSyncMailbox();
+		const sent = await seedMessage(t, mailboxId, { rfc822MessageId: 's@x.example', role: 'sent' });
+
+		await observe(t, accountId, [{ messageId: 's@x.example', isGone: true }]);
+
+		expect(await folderOf(t, sent)).toBe(folders.sent);
+	});
+
+	it('takes the provider flags', async () => {
+		const { t, mailboxId, accountId } = await fullSyncMailbox();
+		const id = await seedMessage(t, mailboxId, {
+			rfc822MessageId: 'a@x.example',
+			flagSeen: true,
+		});
+
+		await observe(t, accountId, [
+			{ messageId: 'a@x.example', flags: { seen: false, flagged: true, answered: false } },
+		]);
+
+		const row = await t.run(async (ctx) => ctx.db.get(id));
+		expect(row).toMatchObject({ flagSeen: false, flagFlagged: true });
+		expect(await queuedOps(t)).toEqual([]);
+	});
+
+	it('leaves a message alone while its own write-back is in flight', async () => {
+		const { t, mailboxId, accountId, folders } = await fullSyncMailbox();
+		const id = await seedMessage(t, mailboxId, { rfc822MessageId: 'a@x.example' });
+		await t.mutation(api.mail.messageActions.archive, { messageIds: [id] });
+
+		// The provider has not been told yet, so it still shows the inbox.
+		await observe(t, accountId, [{ messageId: 'a@x.example', remoteFolders: ['INBOX'] }]);
+
+		expect(await folderOf(t, id)).toBe(folders.archive);
+	});
+});
+
+describe('merging on the first full sync', () => {
+	it('lets inbox mail follow the provider but pushes mail filed in Owlat', async () => {
+		const { t, mailboxId, accountId, folders } = await fullSyncMailbox({ aligned: false });
+		const stillInbox = await seedMessage(t, mailboxId, { rfc822MessageId: 'i@x.example' });
+		const filed = await seedMessage(t, mailboxId, {
+			rfc822MessageId: 'f@x.example',
+			role: 'archive',
+		});
+
+		await observe(t, accountId, [
+			{ messageId: 'i@x.example', remoteFolders: ['Archive'] },
+			{ messageId: 'f@x.example', remoteFolders: ['INBOX'] },
+		]);
+
+		expect(await folderOf(t, stillInbox)).toBe(folders.archive);
+		expect(await folderOf(t, filed)).toBe(folders.archive);
+		expect(await queuedOps(t)).toEqual([
+			{ kind: 'move', source: { remote: 'INBOX' }, target: { remote: 'Archive' } },
+		]);
+	});
+
+	it('combines flags and deletes nothing', async () => {
+		const { t, mailboxId, accountId, folders } = await fullSyncMailbox({ aligned: false });
+		const id = await seedMessage(t, mailboxId, {
+			rfc822MessageId: 'a@x.example',
+			flagSeen: true,
+		});
+		const gone = await seedMessage(t, mailboxId, { rfc822MessageId: 'g@x.example' });
+
+		await observe(t, accountId, [
+			{ messageId: 'a@x.example', flags: { seen: false, flagged: true, answered: false } },
+			{ messageId: 'g@x.example', isGone: true },
+		]);
+
+		const row = await t.run(async (ctx) => ctx.db.get(id));
+		expect(row).toMatchObject({ flagSeen: true, flagFlagged: true });
+		expect(await queuedOps(t)).toEqual([
+			{ kind: 'flags', source: { remote: 'INBOX' }, flags: { seen: true } },
+		]);
+		expect(await folderOf(t, gone)).toBe(folders.inbox);
+	});
+
+	it('marks the account aligned', async () => {
+		const { t, accountId } = await fullSyncMailbox({ aligned: false });
+		await t.mutation(internal.mail.external.remoteState.markFullSyncAligned, { accountId });
+		expect(
+			await t.query(internal.mail.external.remoteState.getSyncSettings, { accountId })
+		).toEqual({ mode: 'full', isAligned: true });
+	});
+});
+
+describe('new mail only', () => {
+	it('writes nothing back and applies nothing from the provider', async () => {
+		const { t, mailboxId, accountId, folders } = await fullSyncMailbox({ syncMode: 'incoming' });
+		const id = await seedMessage(t, mailboxId, { rfc822MessageId: 'a@x.example' });
+
+		await t.mutation(api.mail.messageActions.trash, { messageIds: [id] });
+		await observe(t, accountId, [{ messageId: 'a@x.example', remoteFolders: ['Archive'] }]);
+
+		expect(await queuedOps(t)).toEqual([]);
+		expect(await folderOf(t, id)).toBe(folders.trash);
+	});
+
+	it('is chosen by the member, drops the queue, and starts over with a merge when undone', async () => {
+		const { t, mailboxId, accountId } = await fullSyncMailbox();
+		const id = await seedMessage(t, mailboxId, { rfc822MessageId: 'a@x.example' });
+		await t.mutation(api.mail.messageActions.archive, { messageIds: [id] });
+		expect(await queuedOps(t)).toHaveLength(1);
+
+		await t.mutation(api.mail.external.syncMode.setSyncMode, { mode: 'incoming' });
+		await t.mutation(internal.mail.external.syncMode.discardRemoteOps, { accountId });
+
+		expect(await queuedOps(t)).toEqual([]);
+		const view = await t.query(api.mail.external.accounts.getForCurrentUser, {});
+		expect(view).toMatchObject({ configured: true, syncMode: 'incoming' });
+
+		await t.mutation(api.mail.external.syncMode.setSyncMode, { mode: 'full' });
+		expect(
+			await t.query(internal.mail.external.remoteState.getSyncSettings, { accountId })
+		).toEqual({ mode: 'full', isAligned: false });
+	});
+});
+
+describe('mirrored provider folders', () => {
+	it('creates the local folder tree and lands mail in it', async () => {
+		const { t, mailboxId, accountId } = await fullSyncMailbox();
+
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
+			accountId,
+			folderPath: ['Projects', 'Owlat'],
+			remoteName: 'Projects/Owlat',
+			remoteUidValidity: 7,
+			initialLastSeenUid: 0,
+		});
+		// A provider folder called Archive next to the system Archive gets its own name.
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
+			accountId,
+			folderPath: ['Archive'],
+			remoteName: 'Labels/Archive',
+			remoteUidValidity: 7,
+			initialLastSeenUid: 0,
+		});
+
+		const folders = await t.run(async (ctx) =>
+			ctx.db
+				.query('mailFolders')
+				.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
+				.collect()
+		);
+		const projects = folders.find((f) => f.name === 'Projects');
+		const owlat = folders.find((f) => f.name === 'Owlat');
+		expect(owlat?.parentId).toBe(projects?._id);
+		expect(folders.find((f) => f.name === 'Archive (2)')?.role).toBeUndefined();
+
+		const blob = await t.run(async (ctx) => ctx.storage.store(new Blob(['raw'])));
+		const outcome = await t.mutation(internal.mail.external.delivery.ingestExternalMessage, {
+			accountId,
+			remoteName: 'Projects/Owlat',
+			remoteUid: 1,
+			remoteUidValidity: 7,
+			rawStorageId: blob,
+			rawSize: 3,
+			from: 'someone@example.com',
+			to: ['a@owlat.test'],
+			cc: [],
+			bcc: [],
+			subject: 'Filed on the provider',
+			messageId: '<p@x.example>',
+			receivedAt: Date.now(),
+			attachments: [],
+			origin: 'sync',
+		});
+		expect('messageId' in outcome).toBe(true);
+		if (!('messageId' in outcome)) return;
+		expect(await folderOf(t, outcome.messageId)).toBe(owlat?._id);
+	});
+
+	it('names a mirrored folder by its remote name when writing back', async () => {
+		const { t, mailboxId, accountId } = await fullSyncMailbox();
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
+			accountId,
+			folderPath: ['Receipts'],
+			remoteName: 'INBOX.Receipts',
+			remoteUidValidity: 7,
+			initialLastSeenUid: 0,
+		});
+		const receipts = await t.run(async (ctx) =>
+			ctx.db
+				.query('mailFolders')
+				.withIndex('by_mailbox_and_name', (q) =>
+					q.eq('mailboxId', mailboxId).eq('name', 'Receipts')
+				)
+				.first()
+		);
+		const id = await seedMessage(t, mailboxId, { rfc822MessageId: 'a@x.example' });
+
+		await t.mutation(api.mail.messageActions.move, {
+			messageIds: [id],
+			targetFolderId: receipts!._id,
+		});
+
+		expect(await queuedOps(t)).toEqual([
+			{ kind: 'move', source: { remote: 'INBOX' }, target: { remote: 'INBOX.Receipts' } },
+		]);
+	});
+});

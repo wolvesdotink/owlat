@@ -226,6 +226,16 @@ export const eraseMemberData = internalMutation({
 				.withIndex('by_account', (q) => q.eq('accountId', account._id))
 				.collect(); // bounded: folders of one account
 			for (const row of syncRows) await ctx.db.delete(row._id);
+			// Queued write-backs name the account and carry the member's Message-IDs.
+			const remoteOps = await ctx.db
+				.query('externalMailRemoteOps')
+				.withIndex('by_account_and_next_attempt', (q) => q.eq('accountId', account._id))
+				.take(MESSAGE_BATCH);
+			for (const op of remoteOps) await ctx.db.delete(op._id);
+			if (remoteOps.length === MESSAGE_BATCH) {
+				await reschedule();
+				return;
+			}
 			// The import records name the account row deleted below, and carry the
 			// erased member's `userId` themselves.
 			const migrations = await ctx.db

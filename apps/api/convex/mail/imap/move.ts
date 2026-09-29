@@ -14,6 +14,7 @@ import { rebuildThreadAggregates } from '../messageActions';
 import { bumpFolderModseq } from '../folders';
 import { indexMessageAttachments, removeMessageAttachments } from '../attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../messagePurge';
+import { recordRemoteChanges, type RemoteChange } from '../external/remoteOps';
 
 /**
  * COPY — clones a message into another folder of the SAME mailbox.
@@ -152,6 +153,7 @@ export const moveMessages = internalMutation({
 		let unseenDelta = 0;
 		let sourceTotalDelta = 0;
 		let sourceUnseenDelta = 0;
+		const remote: RemoteChange[] = [];
 
 		for (const id of args.messageIds) {
 			const m = await ctx.db.get(id);
@@ -173,6 +175,12 @@ export const moveMessages = internalMutation({
 				updatedAt: now,
 			});
 			pairs.push({ sourceUid: m.uid, targetUid: newUid });
+			remote.push({
+				kind: 'move',
+				message: m,
+				sourceFolderId: source._id,
+				targetFolderId: target._id,
+			});
 		}
 
 		if (pairs.length > 0) {
@@ -190,6 +198,7 @@ export const moveMessages = internalMutation({
 				updatedAt: now,
 			});
 		}
+		await recordRemoteChanges(ctx, remote);
 
 		return {
 			uidValidity: target.uidValidity,
@@ -236,6 +245,7 @@ export const expungeFolder = internalMutation({
 		const uidFilter = args.uidSet ? new Set(args.uidSet) : null;
 		const expungedSequences: number[] = [];
 		const touchedThreads = new Set<Id<'mailThreads'>>();
+		const remote: RemoteChange[] = [];
 		let totalRemoved = 0;
 		let unseenRemoved = 0;
 		let bytesRemoved = 0;
@@ -256,7 +266,9 @@ export const expungeFolder = internalMutation({
 			// still point at the same blobs (see mail/messagePurge.ts). This also
 			// frees the body blobs, which the hand-rolled delete here never did.
 			await deleteMessageRowAndBlobs(ctx, m);
+			remote.push({ kind: 'delete', message: m });
 		}
+		await recordRemoteChanges(ctx, remote);
 
 		// Re-derive thread aggregates (incl. latestMessageId) for any thread that
 		// lost a message — otherwise an expunged latest leaves a dangling pointer.

@@ -213,6 +213,8 @@ export function toPublicAccountView(account: Doc<'externalMailAccounts'>) {
 		lastError: account.lastError,
 		lastSyncAt: account.lastSyncAt,
 		lastConnectedAt: account.lastConnectedAt,
+		// Two-way ('full', the default) or new mail only ('incoming').
+		syncMode: account.syncMode ?? 'full',
 	};
 }
 
