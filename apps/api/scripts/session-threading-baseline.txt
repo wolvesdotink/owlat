@@ -8,7 +8,6 @@ convex/assistant/conversations.ts:deleteConversation
 convex/assistant/conversations.ts:listConversations
 convex/assistant/conversations.ts:listMessages
 convex/assistant/conversations.ts:renameConversation
-convex/assistant/conversations.ts:sendMessage
 convex/assistant/conversations.ts:stopGeneration
 convex/auth/accountManagement.ts:exportContactsForOrganization
 convex/auth/apiKeys.ts:create
@@ -155,12 +154,6 @@ convex/inbox/snooze.ts:snoozeThread
 convex/inbox/snooze.ts:unsnoozeThread
 convex/integrationImports/walker.ts:cancelImport
 convex/integrationImports/walker.ts:startIntegrationImport
-convex/knowledge/graph.ts:addRelation
-convex/knowledge/graph.ts:createEntry
-convex/knowledge/graph.ts:deleteEntry
-convex/knowledge/graph.ts:removeRelation
-convex/knowledge/graph.ts:setCommitmentStatus
-convex/knowledge/graph.ts:updateEntry
 convex/mail/appPasswords.ts:revokeAll
 convex/mail/draftStreamStore.ts:createDraftStream
 convex/mail/draftStreamStore.ts:deleteDraftStream

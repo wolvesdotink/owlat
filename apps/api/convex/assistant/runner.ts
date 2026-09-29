@@ -28,6 +28,7 @@ import { resolveLanguageModelForUserText } from '../lib/llmProvider';
 import { recordLlmSpend } from '../analytics/llmUsage';
 import { createThrottledStreamFlusher } from '../lib/llm/streamFlusher';
 import { buildAssistantTools } from './tools';
+import type { AssistantAudience } from './toolRegistry';
 import { buildAssistantSystemPrompt, clampText, type AssistantSurface } from './prompt';
 import { assistantToolCallValidator } from '../lib/convexValidators';
 
@@ -79,6 +80,7 @@ async function streamAssistantTurn(
 	ctx: ActionCtx,
 	opts: {
 		surface: AssistantSurface;
+		audience: AssistantAudience;
 		system: string;
 		messages: ModelMessage[];
 		lastUserText: string;
@@ -87,7 +89,7 @@ async function streamAssistantTurn(
 		finalize: (args: FinalizeArgs) => Promise<void>;
 	}
 ): Promise<void> {
-	const tools = await buildAssistantTools(ctx);
+	const tools = await buildAssistantTools(ctx, opts.audience);
 	const toolCalls: ToolCall[] = [];
 	// Every write carries the tool cards too; a tool event flushes at once.
 	const stream = createThrottledStreamFlusher({
@@ -156,6 +158,10 @@ export const run = internalAction({
 		conversationId: v.id('aiConversations'),
 		assistantMessageId: v.id('aiMessages'),
 		ownerId: v.string(),
+		// Whether the owner could read the Team Inbox when they sent the turn.
+		// Optional so a turn scheduled before this field existed still runs;
+		// absent counts as not a reader.
+		includeInboxDerived: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const runCtx = await ctx.runQuery(internal.assistant.conversations.getRunContext, {
@@ -174,6 +180,7 @@ export const run = internalAction({
 		const lastUser = [...runCtx.messages].reverse().find((m) => m.role === 'user');
 		await streamAssistantTurn(ctx, {
 			surface: 'personal',
+			audience: { canReadInbox: args.includeInboxDerived === true },
 			system: buildAssistantSystemPrompt({ surface: 'personal', userName: runCtx.userName }),
 			messages: runCtx.messages.map(toModelMessage),
 			lastUserText: lastUser?.text ?? '',
@@ -217,6 +224,8 @@ export const runForChat = internalAction({
 		const lastUser = [...runCtx.messages].reverse().find((m) => m.role === 'user');
 		await streamAssistantTurn(ctx, {
 			surface: 'chat',
+			// The reply is visible to the whole room.
+			audience: { canReadInbox: false },
 			system: buildAssistantSystemPrompt({ surface: 'chat', roomName: runCtx.roomName }),
 			messages: runCtx.messages.map(toModelMessage),
 			lastUserText: lastUser?.text ?? '',

@@ -25,6 +25,7 @@ import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { isContactScopeVisible } from '../lib/contactScope';
+import { isInboxDerivedKnowledge } from '../inbox/access';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { RELATION_WEIGHTS, type RelationType } from '../lib/graphRank';
 import { entryTypeValidator } from '../schema/knowledge';
@@ -88,6 +89,9 @@ export const expandNeighbors = internalQuery({
 		// Same scope contract as semanticSearch: 'org-wide' is the only value that
 		// skips the per-hop visibility re-check.
 		scope: v.union(v.id('contacts'), v.literal('org-general-only'), v.literal('org-wide')),
+		// Same contract as semanticSearch: Team Inbox-derived neighbours are
+		// reached only when the caller passes `true`.
+		includeInboxDerived: v.boolean(),
 		hops: v.number(),
 		neighborBudget: v.number(),
 		entryType: v.optional(entryTypeValidator),
@@ -152,7 +156,8 @@ export const expandNeighbors = internalQuery({
 					if (entry.expiresAt !== undefined && entry.expiresAt <= now) continue;
 					if (entryType && entry.entryType !== entryType) continue;
 					const visible =
-						scope === 'org-wide' ? true : isContactScopeVisible(entry.contactIds, scope);
+						(args.includeInboxDerived || !isInboxDerivedKnowledge(entry)) &&
+						(scope === 'org-wide' || isContactScopeVisible(entry.contactIds, scope));
 					// A dropped node leaks neither content nor existence: no edge is
 					// emitted and it never becomes a frontier (2-hop containment).
 					if (!visible) continue;

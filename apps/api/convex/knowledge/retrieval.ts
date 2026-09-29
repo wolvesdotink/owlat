@@ -26,6 +26,7 @@ import { resolveEmbeddingModel } from '../lib/llmProvider';
 import { entryTypeValidator } from '../schema/knowledge';
 import { logInfo } from '../lib/runtimeLog';
 import { isContactScopeVisible } from '../lib/contactScope';
+import { isInboxDerivedKnowledge } from '../inbox/access';
 import { reciprocalRankFusion } from '../lib/rrf';
 import { applyAuthorityPrecedence } from '../lib/knowledgePrecedence';
 import {
@@ -84,6 +85,12 @@ export type ScoredKnowledgeEntry = Doc<'knowledgeEntries'> & {
  *   - 'org-general-only' → keep only org-general entries (used when the inbound
  *                          message has no resolved contact, so we can't scope to
  *                          one — fail closed rather than leak everything).
+ *
+ * Team Inbox scoping (`includeInboxDerived`, REQUIRED) — entries derived from
+ * Team Inbox mail (inbox/access.ts `isInboxDerivedKnowledge`) are returned only
+ * when the caller passes `true`: the agent pipeline, which drafts Team Inbox
+ * replies for readers, and a caller that has checked the shared-inbox reader
+ * rule for the person the result is for. Every other caller passes `false`.
  */
 export const semanticSearch = internalAction({
 	args: {
@@ -94,6 +101,9 @@ export const semanticSearch = internalAction({
 		// Required: 'org-wide' is the explicit member-path opt-out; any
 		// contact-scoped caller passes a contactId or 'org-general-only'.
 		scopeToContact: v.union(v.id('contacts'), v.literal('org-general-only'), v.literal('org-wide')),
+		// Required, like the contact scope: whether Team Inbox-derived entries
+		// may be returned (see above).
+		includeInboxDerived: v.boolean(),
 		// Graph-augmented retrieval (seed-then-expand). Default/omitted ⇒ today's
 		// flat behaviour. When true, the top visible seeds are expanded along the
 		// knowledge-graph edges (per-hop scope-re-checked in graphTraversal.ts),
@@ -124,6 +134,7 @@ export const semanticSearch = internalAction({
 		const limit = args.limit ?? 10;
 		const entryType = args.entryType;
 		const scope = args.scopeToContact;
+		const includeInboxDerived = args.includeInboxDerived;
 		// Over-fetch both legs so (a) the post-fusion contact filter still has
 		// enough survivors to return `limit`, and (b) RRF ranks over a real
 		// candidate pool, not an already-thinned one. Convex caps vectorSearch at
@@ -177,10 +188,11 @@ export const semanticSearch = internalAction({
 
 		// Contact scoping AFTER fusion (over-fetched above so this doesn't starve
 		// the result set).
-		const visible =
-			scope === 'org-wide'
-				? scored
-				: scored.filter((entry) => isContactScopeVisible(entry.contactIds, scope));
+		const visible = scored.filter(
+			(entry) =>
+				(includeInboxDerived || !isInboxDerivedKnowledge(entry)) &&
+				(scope === 'org-wide' || isContactScopeVisible(entry.contactIds, scope))
+		);
 
 		// Graph-augmented retrieval (seed-then-expand). KILL SWITCH: when
 		// `expandGraph` is not set we take exactly the flat path below — byte for
@@ -194,6 +206,7 @@ export const semanticSearch = internalAction({
 					vectorRanked,
 					ftsRanked,
 					scope,
+					includeInboxDerived,
 					entryType,
 					limit,
 					hops: args.hops,
@@ -254,19 +267,21 @@ async function expandAndRank(
 		vectorRanked: Id<'knowledgeEntries'>[];
 		ftsRanked: Id<'knowledgeEntries'>[];
 		scope: Id<'contacts'> | 'org-general-only' | 'org-wide';
+		includeInboxDerived: boolean;
 		entryType: Doc<'knowledgeEntries'>['entryType'] | undefined;
 		limit: number;
 		hops: number | undefined;
 		neighborBudget: number | undefined;
 	}
 ): Promise<ScoredKnowledgeEntry[]> {
-	const { visible, vectorRanked, ftsRanked, scope, entryType, limit } = params;
+	const { visible, vectorRanked, ftsRanked, scope, includeInboxDerived, entryType, limit } = params;
 
 	const seedIds = visible.slice(0, SEED_LIMIT).map((e) => e._id);
 
 	const expansion = await ctx.runQuery(internal.knowledge.graphTraversal.expandNeighbors, {
 		seedIds,
 		scope,
+		includeInboxDerived,
 		hops: params.hops ?? DEFAULT_HOPS,
 		neighborBudget: params.neighborBudget ?? DEFAULT_NEIGHBOR_BUDGET,
 		entryType,
@@ -313,6 +328,7 @@ async function expandAndRank(
 		const key = doc._id as string;
 		if (docById.has(key)) continue;
 		if (scope !== 'org-wide' && !isContactScopeVisible(doc.contactIds, scope)) continue;
+		if (!includeInboxDerived && isInboxDerivedKnowledge(doc)) continue;
 		docById.set(key, { ...doc, _score: 0 });
 	}
 

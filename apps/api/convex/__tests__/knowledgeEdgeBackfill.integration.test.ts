@@ -319,6 +319,8 @@ describe('knowledgeEdgeBackfill.runEdgeBackfill — pagination', () => {
 describe('knowledgeEdgeBackfill.cancel', () => {
 	it('flips a running job to cancelled and writes an audit log', async () => {
 		const t = convexTest(schema, modules);
+		// The cancel lever follows the knowledge graph's feature floor.
+		await enableFeatures(t, ['ai.knowledge']);
 
 		let jobId!: Id<'knowledgeEdgeBackfillJobs'>;
 		await t.run(async (ctx) => {
@@ -353,6 +355,8 @@ describe('knowledgeEdgeBackfill.cancel', () => {
 
 	it('returns false when there is no active job', async () => {
 		const t = convexTest(schema, modules);
+		// The cancel lever follows the knowledge graph's feature floor.
+		await enableFeatures(t, ['ai.knowledge']);
 		const result = await t
 			.withIdentity(testIdentity)
 			.mutation(api.knowledge.edgeBackfill.cancel, {});

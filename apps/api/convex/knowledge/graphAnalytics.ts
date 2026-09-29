@@ -35,9 +35,9 @@ import { internalQuery } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { publicQuery } from '../lib/authedFunctions';
 import { isFeatureEnabled } from '../lib/featureFlags';
-import { isActiveOrgMember } from '../lib/sessionOrganization';
 import { clamp } from '../lib/graphAnalyticsCompute';
 import { batchGet } from '../_utils/batchLoader';
+import { isKnowledgeEntryVisible, resolveKnowledgeViewer } from './graph';
 
 /** Bounded BFS limits for the member subgraph viewer. */
 const SUBGRAPH_MAX_NODES = 60;
@@ -174,7 +174,8 @@ export const getGraphStats = publicQuery({
 	args: {},
 	handler: async (ctx) => {
 		if (!(await isFeatureEnabled(ctx, 'ai.knowledge.analytics'))) return null;
-		if (!(await isActiveOrgMember(ctx))) return null;
+		const viewer = await resolveKnowledgeViewer(ctx);
+		if (!viewer) return null;
 		const row = await ctx.db
 			.query('knowledgeGraphStats')
 			.withIndex('by_kind', (q) => q.eq('kind', 'graph'))
@@ -183,7 +184,24 @@ export const getGraphStats = publicQuery({
 		// REDACTION: drop the admin-only cross-contact edge detail; members see only
 		// the aggregate crossContactLinkCount.
 		const { crossContactLinks: _redacted, ...memberVisible } = row;
-		return memberVisible;
+		if (viewer.canReadInbox) return memberVisible;
+		// The snapshot names entries by title. A caller outside the Team Inbox
+		// gets the aggregates, minus the named entries derived from inbox mail.
+		const named = await batchGet(ctx, [
+			...row.godNodes.map((n) => n.entryId),
+			...row.surprisingConnections.flatMap((c) => [c.fromEntryId, c.toEntryId]),
+		]);
+		const visible = (id: Id<'knowledgeEntries'>): boolean => {
+			const entry = named.get(id) as Doc<'knowledgeEntries'> | null | undefined;
+			return !entry || isKnowledgeEntryVisible(false, entry);
+		};
+		return {
+			...memberVisible,
+			godNodes: row.godNodes.filter((n) => visible(n.entryId)),
+			surprisingConnections: row.surprisingConnections.filter(
+				(c) => visible(c.fromEntryId) && visible(c.toEntryId)
+			),
+		};
 	},
 });
 
@@ -220,10 +238,11 @@ export const getSubgraph = publicQuery({
 			}[];
 		} = { nodes: [], edges: [] };
 		if (!(await isFeatureEnabled(ctx, 'ai.knowledge.analytics'))) return empty;
-		if (!(await isActiveOrgMember(ctx))) return empty;
+		const viewer = await resolveKnowledgeViewer(ctx);
+		if (!viewer) return empty;
 
 		const root = await ctx.db.get(args.entryId);
-		if (!root) return empty;
+		if (!root || !isKnowledgeEntryVisible(viewer.canReadInbox, root)) return empty;
 
 		const depth = clamp(args.depth ?? 1, 1, 2);
 		const nodeLimit = clamp(args.nodeLimit ?? SUBGRAPH_MAX_NODES, 1, SUBGRAPH_MAX_NODES);
@@ -258,7 +277,8 @@ export const getSubgraph = publicQuery({
 					if (!nodes.has(neighbourId)) {
 						if (nodes.size >= nodeLimit) continue; // can't add neighbour → skip its edge too
 						const neighbour = await ctx.db.get(neighbourId);
-						if (!neighbour) continue;
+						// A neighbour the caller may not see is left out with its edge.
+						if (!neighbour || !isKnowledgeEntryVisible(viewer.canReadInbox, neighbour)) continue;
 						addNode(neighbour);
 						next.push(neighbourId);
 					}

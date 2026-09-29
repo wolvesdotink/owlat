@@ -8,7 +8,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
-import { createTestKnowledgeEntry } from './factories';
+import { createTestKnowledgeEntry, enableFeatures } from './factories';
 import type { Id } from '../_generated/dataModel';
 import type * as SessionOrganization from '../lib/sessionOrganization';
 
@@ -25,6 +25,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 		...actual,
 		requireOrgMember: vi.fn().mockImplementation(async () => session()),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
+		getBetterAuthSessionWithRole: vi.fn().mockImplementation(async () => session()),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockImplementation(async () => session()),
 		requireAdminContext: vi.fn().mockImplementation(async () => {
@@ -62,6 +63,7 @@ describe('curated knowledge answers are admin-only', () => {
 
 	it('lets an admin author a curated answer', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		sessionMock.role = 'admin';
 		const id = await t.mutation(api.knowledge.graph.createPolicyEntry, {
 			title: 'Refund window?',
@@ -73,6 +75,7 @@ describe('curated knowledge answers are admin-only', () => {
 
 	it('refuses a member authoring or rewriting a curated answer', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const extracted = await seedEntry(t, {});
 		sessionMock.role = 'editor';
 
@@ -96,6 +99,7 @@ describe('curated knowledge answers are admin-only', () => {
 
 	it('refuses a member editing or deleting a curated answer', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const curated = await seedEntry(t, {
 			sourceType: 'curated',
 			isAuthoritative: true,
@@ -117,7 +121,10 @@ describe('curated knowledge answers are admin-only', () => {
 
 	it('still lets a member correct an extracted fact', async () => {
 		const t = convexTest(schema, modules);
-		const extracted = await seedEntry(t, { content: 'old' });
+		await enableFeatures(t, ['ai.knowledge']);
+		// Extracted from a file: Team Inbox-derived entries are for readers only
+		// (knowledgeInboxBoundary.integration.test.ts).
+		const extracted = await seedEntry(t, { content: 'old', sourceType: 'file' });
 		sessionMock.role = 'editor';
 
 		await t.mutation(api.knowledge.graph.updateEntry, { entryId: extracted, content: 'new' });

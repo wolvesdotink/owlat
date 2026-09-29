@@ -2,7 +2,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
-import { createTestContact, createTestKnowledgeEntry } from './factories';
+import { createTestContact, createTestKnowledgeEntry, enableFeatures } from './factories';
 import type { Id } from '../_generated/dataModel';
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -11,6 +11,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 		...actual,
 		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
+		getBetterAuthSessionWithRole: vi.fn().mockResolvedValue({
+			userId: 'test-user',
+			role: 'owner',
+			activeOrganizationId: 'test-org',
+		}),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 	};
@@ -59,6 +64,7 @@ const testUser = { subject: 'test-user', issuer: 'test', tokenIdentifier: 'test|
 describe('knowledgeGraph.createEntry', () => {
 	it('should create an entry with correct fields', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 
 		const entryId = await asUser.mutation(api.knowledge.graph.createEntry, {
@@ -87,6 +93,7 @@ describe('knowledgeGraph.createEntry', () => {
 
 	it('should default confidence to 0.8', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 
 		const entryId = await asUser.mutation(api.knowledge.graph.createEntry, {
@@ -104,6 +111,7 @@ describe('knowledgeGraph.createEntry', () => {
 
 	it('should use provided confidence when specified', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 
 		const entryId = await asUser.mutation(api.knowledge.graph.createEntry, {
@@ -122,6 +130,7 @@ describe('knowledgeGraph.createEntry', () => {
 
 	it('should store optional fields (tags, expiresAt, contactIds, sourceId)', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 
 		let contactId!: Id<'contacts'>;
@@ -156,6 +165,7 @@ describe('knowledgeGraph.createEntry', () => {
 describe('knowledgeGraph.updateEntry', () => {
 	it('edits user-authored fields and recomputes searchableText', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 
 		const entryId = await asUser.mutation(api.knowledge.graph.createEntry, {
@@ -194,6 +204,7 @@ describe('knowledgeGraph.updateEntry', () => {
 
 	it('leaves untouched fields and reconciles the contact junction', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 
 		let contactA!: Id<'contacts'>;
@@ -243,6 +254,7 @@ describe('knowledgeGraph.updateEntry', () => {
 
 	it('is a no-op for a missing entry id', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 
 		let missingId!: Id<'knowledgeEntries'>;
@@ -270,6 +282,7 @@ describe('knowledgeGraph.updateEntry', () => {
 describe('knowledgeGraph.deleteEntry', () => {
 	it('deletes the entry and tears down junction + relations', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 
 		let contactId!: Id<'contacts'>;
@@ -350,6 +363,7 @@ describe('knowledgeGraph.deleteEntry', () => {
 
 	it('is a no-op for a missing entry id', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 
 		let missingId!: Id<'knowledgeEntries'>;
@@ -372,6 +386,7 @@ describe('knowledgeGraph.deleteEntry', () => {
 
 	it('drains relations past the per-page cap before deleting (no dangling rows)', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 
 		const entryId = await asUser.mutation(api.knowledge.graph.createEntry, {
@@ -428,6 +443,7 @@ describe('knowledgeGraph.deleteEntry', () => {
 describe('knowledgeGraph.getEntry', () => {
 	it('should return entry with its relations', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		let entryId1!: Id<'knowledgeEntries'>;
 		let entryId2!: Id<'knowledgeEntries'>;
 
@@ -478,6 +494,7 @@ describe('knowledgeGraph.getEntry', () => {
 
 	it('should return null for missing entry ID via raw DB check', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 
 		await t.run(async (ctx) => {
 			// Insert then delete to get a valid but missing ID
@@ -501,6 +518,7 @@ describe('knowledgeGraph.getEntry', () => {
 describe('knowledgeGraph.listByType', () => {
 	it('should filter entries by type', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
@@ -555,6 +573,7 @@ describe('knowledgeGraph.listByType', () => {
 describe('knowledgeGraph.listAll', () => {
 	it('returns entries of every type, newest first (not just facts)', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 
 		const base = Date.now();
@@ -600,6 +619,7 @@ describe('knowledgeGraph.listAll', () => {
 
 	it('respects the limit', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 
 		const base = Date.now();
@@ -623,9 +643,10 @@ describe('knowledgeGraph.listAll', () => {
 	});
 
 	it('returns empty for non-members (and anonymous)', async () => {
-		const { isActiveOrgMember } = await import('../lib/sessionOrganization');
-		vi.mocked(isActiveOrgMember).mockResolvedValueOnce(false);
+		const { getBetterAuthSessionWithRole } = await import('../lib/sessionOrganization');
+		vi.mocked(getBetterAuthSessionWithRole).mockResolvedValueOnce(null);
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'knowledgeEntries',
@@ -648,6 +669,7 @@ describe('knowledgeGraph.listAll', () => {
 describe('knowledgeGraph.getByContact', () => {
 	it('returns entries linked to a contact via the junction (createEntry path)', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 
 		let contactId!: Id<'contacts'>;
@@ -685,6 +707,7 @@ describe('knowledgeGraph.getByContact', () => {
 
 	it('returns entries linked via the saveEntry (agent pipeline) path', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 
 		let contactId!: Id<'contacts'>;
@@ -709,6 +732,7 @@ describe('knowledgeGraph.getByContact', () => {
 
 	it('is complete past the old 500-row truncation (returns the oldest match)', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 
 		let contactId!: Id<'contacts'>;
@@ -755,6 +779,7 @@ describe('knowledgeGraph.getByContact', () => {
 
 	it('orders matches by createdAt desc and respects the limit', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 
 		let contactId!: Id<'contacts'>;
@@ -788,6 +813,7 @@ describe('knowledgeGraph.getByContact', () => {
 
 	it('drops expired entries even if their junction row lingers', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 
 		let contactId!: Id<'contacts'>;
@@ -816,6 +842,7 @@ describe('knowledgeGraph.getByContact', () => {
 describe('knowledgeGraph.saveEntry', () => {
 	it('should store entry with embedding from agent pipeline', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const embedding = Array.from({ length: 10 }, (_, i) => i * 0.1);
 
 		const entryId = await t.mutation(internal.knowledge.graph.saveEntry, {
@@ -845,6 +872,7 @@ describe('knowledgeGraph.saveEntry', () => {
 
 	it('should store entry with contactIds and threadId', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		let contactId!: Id<'contacts'>;
 		let threadId!: Id<'conversationThreads'>;
 
@@ -911,6 +939,7 @@ describe('knowledgeGraph.addRelation', () => {
 
 	it('creates a relation visible via getEntry', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 		const { entryId1, entryId2 } = await seedTwoEntries(t);
 
@@ -934,6 +963,7 @@ describe('knowledgeGraph.addRelation', () => {
 
 	it('de-dupes an identical edge', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 		const { entryId1, entryId2 } = await seedTwoEntries(t);
 
@@ -960,6 +990,7 @@ describe('knowledgeGraph.addRelation', () => {
 
 	it('rejects a self-relation', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 		const { entryId1 } = await seedTwoEntries(t);
 
@@ -974,6 +1005,7 @@ describe('knowledgeGraph.addRelation', () => {
 
 	it('rejects a relation to a missing entry', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 		const { entryId1, entryId2 } = await seedTwoEntries(t);
 
@@ -994,6 +1026,7 @@ describe('knowledgeGraph.addRelation', () => {
 describe('knowledgeGraph.removeRelation', () => {
 	it('removes an existing relation', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 		let entryId1!: Id<'knowledgeEntries'>;
 		let entryId2!: Id<'knowledgeEntries'>;
@@ -1033,6 +1066,7 @@ describe('knowledgeGraph.removeRelation', () => {
 
 	it('is a no-op for an already-deleted relation', async () => {
 		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
 		const asUser = t.withIdentity(testUser);
 		let entryId1!: Id<'knowledgeEntries'>;
 		let entryId2!: Id<'knowledgeEntries'>;

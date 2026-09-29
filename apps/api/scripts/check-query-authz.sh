@@ -48,6 +48,8 @@
 #
 #   isActiveOrgMember      lib/sessionOrganization.ts — authenticated ACTIVE member
 #   isSharedInboxReader    inbox/access.ts — owner/admin, the shared-inbox reader rule
+#   resolveKnowledgeViewer knowledge/graph.ts — `ai.knowledge` on and an active
+#                          member; carries the reader rule for inbox-derived entries
 #   loadReadableMailbox    mail/permissions.ts — requireMailboxAccess collapsed to a doc|null
 #   loadReadableMessage    mail/mailbox/messages.ts — the same, keyed by message id
 #   loadAccessibleMailboxes mail/permissions.ts — the caller's own + shared-member mailboxes

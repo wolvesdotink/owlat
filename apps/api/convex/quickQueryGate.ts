@@ -11,6 +11,7 @@
 import { internalQuery } from './_generated/server';
 import { assertFeatureEnabled } from './lib/featureFlags';
 import { requireOrgPermission } from './lib/sessionOrganization';
+import { isSharedInboxReader } from './inbox/access';
 
 /**
  * Assert the caller may read the knowledge graph via Quick Query:
@@ -18,11 +19,15 @@ import { requireOrgPermission } from './lib/sessionOrganization';
  *      fails the same way regardless of who is asking), then
  *   2. org membership with `knowledge:read` (granted to every member role).
  * Throws (forbidden) when either gate fails; the action aborts before retrieval.
+ *
+ * Returns whether the caller is a shared-inbox reader, which decides whether
+ * knowledge derived from Team Inbox mail may be retrieved for them.
  */
 export const assertKnowledgeReadAccess = internalQuery({
 	args: {},
-	handler: async (ctx) => {
+	handler: async (ctx): Promise<{ canReadInbox: boolean }> => {
 		await assertFeatureEnabled(ctx, 'ai.knowledge');
-		await requireOrgPermission(ctx, 'knowledge:read');
+		const session = await requireOrgPermission(ctx, 'knowledge:read');
+		return { canReadInbox: isSharedInboxReader(session) };
 	},
 });

@@ -232,6 +232,7 @@ Gated families and their builders:
 | `campaigns`                  | `campaignsQuery`, `campaignsMutation`                                    | `campaigns/_helpers.ts`            |
 | `automations`                | `automationsQuery`, `automationsMutation`                                | `automations/_helpers.ts`          |
 | `forms`                      | `formsQuery`, `formsMutation`                                            | `forms/_helpers.ts`                |
+| `ai.knowledge`               | `knowledgeMutation`, `knowledgeAdminMutation`                            | `knowledge/graph.ts`               |
 
 Actions in the `mail.external` family call `assertExternalEnabled(ctx)` from
 the same module; campaign actions call `assertCampaignsEnabledInAction(ctx)`

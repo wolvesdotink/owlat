@@ -250,6 +250,9 @@ export const contextRetrievalStep: AgentStepModule<
 				queryText,
 				limit: CONTEXT_BUDGET.knowledgeEntryLimit,
 				scopeToContact,
+				// The pipeline drafts a Team Inbox reply that a reader reviews, so
+				// knowledge learned from earlier inbox mail is in scope here.
+				includeInboxDerived: true,
 				expandGraph: graphRetrieval,
 			});
 			if (knowledge.length > 0) {

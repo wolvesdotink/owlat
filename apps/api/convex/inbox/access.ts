@@ -14,7 +14,9 @@
  * its surface (an empty list, `null`, a throw). This only answers the question.
  */
 
+import type { Expression, FilterBuilder, NamedTableInfo } from 'convex/server';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
+import type { DataModel, Doc } from '../_generated/dataModel';
 import { components } from '../_generated/api';
 import {
 	getSingletonOrganizationId,
@@ -60,4 +62,38 @@ export async function listSharedInboxReaderIds(ctx: QueryCtx | MutationCtx): Pro
 		}
 	}
 	return ids;
+}
+
+/**
+ * Whether a knowledge entry was derived from Team Inbox mail, and so follows
+ * the reader rule above: shown only to shared-inbox readers.
+ *
+ * Either marker is enough:
+ *   - `sourceType: 'agent_extracted'` is what `extractFromMessage` stores for
+ *     facts mined from an inbound Team Inbox message;
+ *   - `threadId` points at a Team Inbox conversation (message extraction, and
+ *     files linked to a thread). `updateEntry` cannot change it, and only a
+ *     reader may set it on `createEntry`.
+ * Entries from files, chat, imported Postbox mail and manual authoring carry
+ * neither and keep their member-wide visibility. Only someone who can already
+ * see an entry can edit its `sourceType`.
+ */
+export function isInboxDerivedKnowledge(
+	entry: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'threadId'>
+): boolean {
+	return entry.sourceType === 'agent_extracted' || entry.threadId !== undefined;
+}
+
+/**
+ * The database-side form of `!isInboxDerivedKnowledge(entry)`, for a
+ * `.filter()` on a `knowledgeEntries` query. Filtering in the query rather
+ * than after `.take(n)` keeps a non-reader's page full instead of short.
+ */
+export function notInboxDerivedKnowledge(
+	q: FilterBuilder<NamedTableInfo<DataModel, 'knowledgeEntries'>>
+): Expression<boolean> {
+	return q.and(
+		q.neq(q.field('sourceType'), 'agent_extracted'),
+		q.eq(q.field('threadId'), undefined)
+	);
 }
