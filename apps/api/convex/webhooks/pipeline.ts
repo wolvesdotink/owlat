@@ -18,7 +18,7 @@ import { BodyTooLargeError, readBodyText } from '../lib/readBody';
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import { getClientIp, rateLimitedResponse } from '../lib/publicRateLimit';
-import { logError } from '../lib/runtimeLog';
+import { logError, logWarn } from '../lib/runtimeLog';
 import { InboundBatchDispatchError, dispatchEventsInOrder, jsonResponse } from './inboundHttp';
 import { declaresBodyAtMost, FREE_VERIFY_BODY_BYTES } from './security';
 import type { InboundEvent } from './types';
@@ -190,7 +190,7 @@ export async function runInboundPipeline(
 	// refused before the body is read or any bucket is charged.
 	const missingHeaders = adapter.missingSignatureHeaders?.(request) ?? null;
 	if (missingHeaders !== null) {
-		logError(`[${adapter.source} Webhook] ${missingHeaders}`);
+		logWarn(`[${adapter.source} Webhook] ${missingHeaders}`);
 		return jsonResponse(401, { error: missingHeaders });
 	}
 

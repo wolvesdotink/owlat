@@ -67,7 +67,7 @@ import { BodyTooLargeError, readBodyText } from '../lib/readBody';
 import { PLUGIN_WEBHOOK_MAX_BODY_BYTES } from '@owlat/plugin-kit';
 import { internal } from '../_generated/api';
 import { httpAction, type ActionCtx } from '../_generated/server';
-import { logError } from '../lib/runtimeLog';
+import { logError, logWarn } from '../lib/runtimeLog';
 import {
 	pluginSendTransportWebhookFor,
 	type HostedSendTransportWebhook,
@@ -156,7 +156,7 @@ export const pluginFeedbackWebhook = httpAction(async (ctx, request) => {
 			pluginVerifier(webhook.definition.signature)
 		);
 		if (missing !== null) {
-			logError(`[${webhook.definition.kind} Webhook] ${missing}`);
+			logWarn(`[${webhook.definition.kind} Webhook] ${missing}`);
 			return jsonResponse(401, { error: missing });
 		}
 	}
