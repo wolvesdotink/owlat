@@ -48,11 +48,20 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 	// `/seed/demo` and `/dev/reset`), charged per IP before the secret is
 	// compared (`lib/instanceSecret.ts`). Operator tooling calls these a handful
 	// of times per run, so the burst leaves room for install + status + remove.
-	// The upload service routes (`/storage/upload/*`) charge the same bucket, but
-	// only on a failed compare, so their legitimate bursts never spend it. They
-	// read it before the compare only for a resolved client address, never for
-	// the shared 'unknown' key (`requireInstanceSecretBearer`).
 	instanceSecret: {
+		kind: 'token bucket',
+		rate: 10,
+		period: MINUTE,
+		capacity: 20,
+	},
+
+	// Failed instance-secret compares on the upload service routes
+	// (`/storage/upload/*`, `requireInstanceSecretBearer`). A bucket of its own,
+	// so calls to the operator routes above never spend the upload budget. Only
+	// a failed compare spends a token, so the web server's legitimate upload
+	// bursts never do. The bucket is read before the compare only for a resolved
+	// client address, never for the shared 'unknown' key.
+	uploadServiceSecret: {
 		kind: 'token bucket',
 		rate: 10,
 		period: MINUTE,

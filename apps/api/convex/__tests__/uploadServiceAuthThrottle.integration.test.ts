@@ -6,8 +6,9 @@ import schema from '../schema';
 /**
  * The upload service routes (`/storage/upload/{begin,finish,abort}`) take the
  * instance secret as a bearer token from the web server. A failed compare is
- * charged to the caller's per-IP `instanceSecret` bucket and a matching secret
- * is never charged. For a resolved client address the bucket is read before the
+ * charged to the caller's per-IP `uploadServiceSecret` bucket and a matching
+ * secret is never charged. The operator routes (`/sample-data/*`) charge their
+ * own `instanceSecret` bucket, so they never spend the upload budget. For a resolved client address the bucket is read before the
  * compare, so an exhausted address waits even with the right secret; the shared
  * `'unknown'` bucket is never read first, so upload bursts are not stalled.
  */
@@ -97,5 +98,35 @@ describe('upload service routes: failed-secret throttle', () => {
 			expect((await post(t, ROUTES[i % ROUTES.length]!, SECRET, '198.51.100.30')).status).toBe(400);
 		}
 		expect((await post(t, ROUTES[0]!, 'wrong-secret', '198.51.100.30')).status).toBe(401);
+	});
+
+	it('keeps the upload budget apart from the operator routes', async () => {
+		const t = harness();
+		const operatorStatus = (secret: string) =>
+			t.fetch('/sample-data/status', {
+				method: 'POST',
+				headers: { 'X-Instance-Secret': secret, 'X-Forwarded-For': '198.51.100.50' },
+			});
+		// Use up the operator bucket for one address.
+		let operator = 0;
+		for (let i = 0; i < 40; i++) {
+			operator = (await operatorStatus('wrong-secret')).status;
+			if (operator === 429) break;
+		}
+		expect(operator).toBe(429);
+		// The same address can still reach the upload routes.
+		expect((await post(t, ROUTES[0]!, SECRET, '198.51.100.50')).status).toBe(400);
+		expect((await post(t, ROUTES[0]!, 'wrong-secret', '198.51.100.50')).status).toBe(401);
+
+		// Using up the upload budget leaves that address's operator bucket alone.
+		for (let i = 0; i < 40; i++) {
+			if ((await post(t, ROUTES[0]!, 'wrong-secret', '198.51.100.51')).status === 429) break;
+		}
+		expect((await post(t, ROUTES[0]!, SECRET, '198.51.100.51')).status).toBe(429);
+		const fresh = await t.fetch('/sample-data/status', {
+			method: 'POST',
+			headers: { 'X-Instance-Secret': 'wrong-secret', 'X-Forwarded-For': '198.51.100.51' },
+		});
+		expect(fresh.status).toBe(401);
 	});
 });

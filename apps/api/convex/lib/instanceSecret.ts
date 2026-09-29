@@ -25,8 +25,8 @@ type InstanceSecretLimitType = Extract<PublicRateLimitType, 'adminSeed' | 'insta
  * the at-rest sealing keys, so every route that reads it from this header goes
  * through here. The upload service routes (`storage/uploadsHttp.ts`) take it as
  * a bearer token from the web server and go through `requireInstanceSecretBearer`
- * below, which charges only failures and reads the bucket first only for a
- * resolved client address. The web app's own
+ * below, which uses its own `uploadServiceSecret` bucket, charges only failures
+ * and reads the bucket first only for a resolved client address. The web app's own
  * `X-Instance-Secret` routes (self-update, configure-ip, the aggregated health
  * check) compare it in `apps/web/server/utils/updater.ts` without a throttle;
  * that file records why.
@@ -68,8 +68,10 @@ function bearerMatchesInstanceSecret(request: Request): boolean {
  * (the upload service routes). `INSTANCE_SECRET_PREVIOUS` is accepted during a
  * rotation.
  *
- * Only a FAILED compare charges the caller's per-IP `instanceSecret` bucket, so
- * a matching secret never spends it. When the client address resolves (see
+ * Only a FAILED compare charges the caller's per-IP `uploadServiceSecret` bucket,
+ * so a matching secret never spends it. The bucket is separate from the
+ * `instanceSecret` one the operator routes charge on every call, so those calls
+ * never use up the upload budget. When the client address resolves (see
  * `lib/clientIp.ts`), the bucket is also read, without spending, before the
  * compare: an address that has used up its failures gets 429 even with the
  * right secret, which bounds how fast one address can try values.
@@ -89,13 +91,13 @@ export async function requireInstanceSecretBearer(
 ): Promise<Response | null> {
 	const key = getClientIp(request);
 	if (key !== UNRESOLVED_CLIENT_KEY) {
-		const { ok, retryAfter } = await rateLimiter.check(ctx, 'instanceSecret', { key });
+		const { ok, retryAfter } = await rateLimiter.check(ctx, 'uploadServiceSecret', { key });
 		if (!ok) return rateLimitedResponse(retryAfter ?? 0);
 	}
 	if (bearerMatchesInstanceSecret(request)) return null;
 	const { ok, retryAfter } = await ctx.runMutation(
 		internal.lib.publicRateLimit.checkPublicRateLimit,
-		{ limitType: 'instanceSecret', key }
+		{ limitType: 'uploadServiceSecret', key }
 	);
 	return ok ? errorResponse('unauthenticated', 'Unauthorized') : rateLimitedResponse(retryAfter);
 }
