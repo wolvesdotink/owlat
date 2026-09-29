@@ -15,8 +15,11 @@
 import type { PostboxThreadRowMessage } from './PostboxThreadRow.vue';
 import { senderRowMarkerOf } from '~/utils/senderAuth';
 import { useLocalized } from '~/composables/useLocalized';
+import { usePostboxThreadTimestamp } from '~/composables/postbox/usePostboxListClock';
 
 const { t, locale } = useI18n();
+// Ticks with the list's shared minute clock (usePostboxListClock).
+const formatTimestamp = usePostboxThreadTimestamp();
 
 const props = defineProps<{
 	msg: PostboxThreadRowMessage;
@@ -87,7 +90,7 @@ function onCancelFollowUp(event: MouseEvent) {
 <template>
 	<PostboxRowCore :unread="!msg.flagSeen">
 		<template #identifier>{{ sender }}</template>
-		<template #meta>{{ formatThreadTimestamp(msg.receivedAt) }}</template>
+		<template #meta>{{ formatTimestamp(msg.receivedAt) }}</template>
 		<div class="flex items-center gap-1.5 mt-0.5">
 			<!-- Danger-only sender marker: failed / misaligned / look-alike of a
 			     known contact's domain. Silent for every other verdict. -->

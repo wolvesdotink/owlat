@@ -284,6 +284,10 @@ export const authTables = {
 		.index('by_action', ['action'])
 		.index('by_resource', ['resource'])
 		.index('by_created_at', ['createdAt'])
+		// The audit page's actor and action filters seek these with the date
+		// window in the range (auditLogs.ts::auditLogListQuery, plan C10).
+		.index('by_user_and_created_at', ['userId', 'createdAt'])
+		.index('by_action_and_created_at', ['action', 'createdAt'])
 		.index('by_organization_id_and_created_at', ['organizationId', 'createdAt'])
 		.index('by_organization_id_and_plugin_id_and_created_at', [
 			'organizationId',

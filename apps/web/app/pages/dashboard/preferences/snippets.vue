@@ -20,6 +20,12 @@ const firstNamePlaceholder = '{{firstName}}';
 
 const { snippets, isLoading, create, update, remove } = usePostboxSnippets(mailboxId);
 
+// Sanitized once per list change. In the template it ran for every snippet on
+// every render, and the editor below re-renders the page on each keystroke.
+const safeHtmlById = computed(
+	() => new Map(snippets.value.map((s) => [s._id, sanitizePostboxHtml(s.bodyHtml)]))
+);
+
 interface Editor {
 	id: Id<'mailSnippets'> | null;
 	name: string;
@@ -160,7 +166,7 @@ async function confirmRemove() {
 						<!-- rendered outside the reader iframe → sanitize the stored HTML -->
 						<div
 							class="text-xs text-text-tertiary mt-1 line-clamp-2"
-							v-html="sanitizePostboxHtml(s.bodyHtml)"
+							v-html="safeHtmlById.get(s._id)"
 						/>
 					</div>
 					<UiButton variant="ghost" type="button" @click="startEdit(s)">

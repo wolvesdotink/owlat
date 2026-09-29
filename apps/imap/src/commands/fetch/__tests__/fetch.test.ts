@@ -82,14 +82,15 @@ function run(
 				return { uids: [1, 2, 3, 4, 5, 6, 7], nextUid: null };
 			}
 			if (ref.endsWith(':fetchEnvelopes')) return { rows: [msg], nextUid: null };
-			if (ref.endsWith(':fetchRawStorageId')) return { storageId: 's1', rawSize: raw.byteLength };
 			return null;
 		}),
-		action: vi.fn(async (fnRef: AnyFunctionReference) =>
-			getFunctionName(fnRef).endsWith(':getRawStorageUrl') ? 'https://storage.test/raw' : null
+		action: vi.fn(async (fnRef: AnyFunctionReference, params: { messageIds: string[] }) =>
+			getFunctionName(fnRef).endsWith(':getRawStorageUrls')
+				? params.messageIds.map((messageId) => ({ messageId, url: 'https://storage.test/raw' }))
+				: null
 		),
 		mutation: vi.fn(async () => ({
-			updated: [{ uid: msg.uid, modseq: msg.modseq + 1, flags: ['\\Seen'] }],
+			updated: [{ messageId: msg._id, uid: msg.uid, modseq: msg.modseq + 1, flags: ['\\Seen'] }],
 			unchanged: [],
 		})),
 	};

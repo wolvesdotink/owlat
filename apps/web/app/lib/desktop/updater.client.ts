@@ -28,6 +28,7 @@
  */
 import { getActiveWorkspace } from '~/lib/desktop/activeWorkspace';
 import { useDesktopUpdateState } from '~/composables/useDesktopUpdateState';
+import { scheduleIdle } from '~/lib/scheduleIdle';
 import type {
 	DesktopUpdateErrorKind,
 	DesktopUpdatePolicySummary,
@@ -35,6 +36,16 @@ import type {
 
 /** Re-check every six hours while the app stays open (it can stay open for days). */
 export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * The automatic check on launch waits this long, then for an idle moment: the
+ * policy probe, the manifest fetch and a possible download would otherwise
+ * compete with the first Postbox load for the network and the main thread.
+ */
+export const FIRST_CHECK_DELAY_MS = 30_000;
+
+/** How long the delayed first check may then wait for idle time. */
+const FIRST_CHECK_IDLE_TIMEOUT_MS = 10_000;
 
 /** The policy probe is a capability check, not a critical path — fail it fast. */
 const POLICY_TIMEOUT_MS = 5_000;
@@ -261,9 +272,10 @@ async function scheduledCheck(): Promise<void> {
 }
 
 /**
- * Register update handling: a check on boot, a re-check every six hours while
- * the app stays open, and the manual `owlat:check-updates` trigger (native menu
- * / palette / device page).
+ * Register update handling: a check shortly after boot (`FIRST_CHECK_DELAY_MS`,
+ * then idle time), a re-check every six hours while the app stays open, and
+ * the manual `owlat:check-updates` trigger (native menu / palette / device
+ * page).
  *
  * The device setting gates the automatic side only — the boot check and every
  * tick of the timer, each of which reads the setting afresh — so "check for new
@@ -273,7 +285,7 @@ async function scheduledCheck(): Promise<void> {
  *
  * Idempotent: a second call stacks neither a listener nor a timer.
  */
-export function setupUpdateChecks(): void {
+export function setupUpdateChecks(options?: { firstCheckDelayMs?: number }): void {
 	if (wired) return;
 	wired = true;
 
@@ -286,9 +298,20 @@ export function setupUpdateChecks(): void {
 		});
 	}
 
+	// The boot check leaves the launch alone: first the fixed delay, then an
+	// idle moment. A manual check in the meantime runs at once, and the guards
+	// in `runUpdateCheck` keep the two from overlapping.
+	const firstCheckDelayMs = options?.firstCheckDelayMs ?? FIRST_CHECK_DELAY_MS;
+	setTimeout(() => {
+		scheduleIdle(() => {
+			void main.then(async (ok) => {
+				if (ok && (await autoChecksEnabled())) void runUpdateCheck();
+			});
+		}, FIRST_CHECK_IDLE_TIMEOUT_MS);
+	}, firstCheckDelayMs);
+
 	void (async () => {
 		if (!(await main)) return;
-		if (await autoChecksEnabled()) void runUpdateCheck();
 		// A workspace switch reloads the webview, so the timer re-binds to
 		// whatever workspace is active then; there is nothing to re-arm here.
 		timerId ??= setInterval(() => {

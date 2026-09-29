@@ -56,7 +56,6 @@ function mountRow(msg: Partial<PostboxThreadRowMessage>, trustMarkers = true) {
 				PostboxSwipeTrack: { template: '<div><slot /></div>' },
 			},
 			mocks: {
-				formatThreadTimestamp: () => '2h',
 				resolveComponent: () => 'a',
 			},
 		},

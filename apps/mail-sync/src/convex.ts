@@ -47,8 +47,9 @@ export interface WorkerCredentials {
 	 * The IMAP twin of {@link WorkerCredentials.smtpAccessToken}. Present (with
 	 * both password fields empty) on an `authMethod: 'oauth2'` account, where
 	 * ImapFlow authenticates with `AUTHENTICATE XOAUTH2` instead of LOGIN. Minted
-	 * per credential fetch by the backend from the stored refresh token, so it is
-	 * already live and this worker never refreshes or persists it.
+	 * by the backend from the stored refresh token (and reused there until a
+	 * minute before it expires), so it is already live and this worker never
+	 * refreshes or persists it.
 	 */
 	imapAccessToken?: string;
 }
@@ -247,6 +248,10 @@ export const fn = {
 	// Raw-bytes inbound ingestion (stores blob + inserts).
 	ingestExternalRaw: makeFunctionReference<'action', IngestExternalRawArgs, IngestOutcome>(
 		'mail/external/delivery:ingestExternalRaw'
+	),
+	// Free the raw upload of a staged message the pipeline will never commit.
+	discardStagedRaw: makeFunctionReference<'mutation', { rawStorageId: string }, null>(
+		'mail/external/delivery:discardStagedRaw'
 	),
 	// Resume cursors per folder.
 	getSyncState: makeFunctionReference<'query', { accountId: string }, FolderCursor[]>(

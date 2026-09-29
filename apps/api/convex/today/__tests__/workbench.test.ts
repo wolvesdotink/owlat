@@ -63,6 +63,16 @@ function setSession(userId: string, role: 'owner' | 'admin' | 'editor' | null = 
 
 const HOUR = 60 * 60 * 1000;
 
+/** The digest counts from the tab's own watermark; set it, then read. */
+async function digestSince(
+	t: TestConvex<typeof schema>,
+	mailboxId: Id<'mailboxes'>,
+	since: number
+) {
+	await t.mutation(api.today.state.markSeen, { at: since, scope: mailboxId });
+	return t.query(api.today.mailbox.digest, { mailboxId });
+}
+
 async function threadOf(t: TestConvex<typeof schema>, messageId: Id<'mailMessages'>) {
 	return t.run(async (ctx) => {
 		const message = await ctx.db.get(messageId);
@@ -126,23 +136,19 @@ describe('workbench marks', () => {
 		const now = Date.now();
 
 		await t.mutation(api.today.state.markSeen, { at: now - 2 * HOUR, scope: personal });
-		const personalState = await t.query(api.today.state.get, { now, scope: personal });
+		const personalState = await t.query(api.today.state.get, { scope: personal });
 		expect(personalState).toMatchObject({ seenAt: now - 2 * HOUR, isFallback: false });
 		// Another tab has not been marked: still the first-visit fallback.
-		expect(await t.query(api.today.state.get, { now, scope: sales })).toMatchObject({
-			isFallback: true,
-			seenAt: now - 24 * HOUR,
-		});
+		const salesState = await t.query(api.today.state.get, { scope: sales });
+		expect(salesState.isFallback).toBe(true);
+		expect(salesState.seenAt).toBeGreaterThanOrEqual(now - 24 * HOUR);
+		expect(salesState.seenAt).toBeLessThanOrEqual(Date.now() - 24 * HOUR);
 
 		// The global mark moves every tab that is behind it, but never one ahead.
 		await t.mutation(api.today.state.markSeen, { at: now - 3 * HOUR });
-		expect((await t.query(api.today.state.get, { now, scope: sales })).seenAt).toBe(now - 3 * HOUR);
-		expect((await t.query(api.today.state.get, { now, scope: personal })).seenAt).toBe(
-			now - 2 * HOUR
-		);
-		expect((await t.query(api.today.state.get, { now, scope: 'team' })).seenAt).toBe(
-			now - 3 * HOUR
-		);
+		expect((await t.query(api.today.state.get, { scope: sales })).seenAt).toBe(now - 3 * HOUR);
+		expect((await t.query(api.today.state.get, { scope: personal })).seenAt).toBe(now - 2 * HOUR);
+		expect((await t.query(api.today.state.get, { scope: 'team' })).seenAt).toBe(now - 3 * HOUR);
 	});
 
 	it('undoes a tab mark, and a first mark undoes back to no mark', async () => {
@@ -152,16 +158,14 @@ describe('workbench marks', () => {
 		const now = Date.now();
 
 		await t.mutation(api.today.state.markSeen, { at: now - HOUR, scope: mailboxId });
-		expect(
-			(await t.query(api.today.state.get, { now, scope: mailboxId })).previousSeenAt
-		).toBeNull();
+		expect((await t.query(api.today.state.get, { scope: mailboxId })).previousSeenAt).toBeNull();
 		await t.mutation(api.today.state.markSeen, { at: now, scope: mailboxId });
-		expect((await t.query(api.today.state.get, { now, scope: mailboxId })).previousSeenAt).toBe(
+		expect((await t.query(api.today.state.get, { scope: mailboxId })).previousSeenAt).toBe(
 			now - HOUR
 		);
 
 		await t.mutation(api.today.state.undoMarkSeen, { scope: mailboxId });
-		expect((await t.query(api.today.state.get, { now, scope: mailboxId })).seenAt).toBe(now - HOUR);
+		expect((await t.query(api.today.state.get, { scope: mailboxId })).seenAt).toBe(now - HOUR);
 		// Undo is one step; the restored mark has nothing left to undo.
 		expect((await t.mutation(api.today.state.undoMarkSeen, { scope: mailboxId })).restored).toBe(
 			false
@@ -170,7 +174,38 @@ describe('workbench marks', () => {
 		const other = await seedMailbox(t, { address: 'b@owlat.test' });
 		await t.mutation(api.today.state.markSeen, { at: now, scope: other });
 		await t.mutation(api.today.state.undoMarkSeen, { scope: other });
-		expect((await t.query(api.today.state.get, { now, scope: other })).isFallback).toBe(true);
+		expect((await t.query(api.today.state.get, { scope: other })).isFallback).toBe(true);
+	});
+
+	it('answers every tab from one unscoped read, the same as the scoped one', async () => {
+		const t = convexTest(schema, modules);
+		setSession('user-A');
+		const personal = await seedMailbox(t, { address: 'a@owlat.test' });
+		const sales = await seedMailbox(t, { address: 'sales@owlat.test' });
+		const now = Date.now();
+
+		const before = await t.query(api.today.state.get, {});
+		expect(before.watermarks.marks).toEqual([]);
+		expect(before.watermarks.unmarked.isFallback).toBe(true);
+
+		await t.mutation(api.today.state.markSeen, { at: now - 2 * HOUR, scope: personal });
+		await t.mutation(api.today.state.markSeen, { at: now - HOUR, scope: personal });
+		await t.mutation(api.today.state.markSeen, { at: now - 3 * HOUR });
+		await t.mutation(api.today.state.markSeen, { at: now - 5 * HOUR, scope: 'team' });
+
+		const { watermarks } = await t.query(api.today.state.get, {});
+		const pick = (scope: typeof personal | 'team') =>
+			watermarks.marks.find((m) => m.scope === scope) ?? watermarks.unmarked;
+		for (const scope of [personal, sales, 'team'] as const) {
+			const { seenAt, previousSeenAt, isFallback } = await t.query(api.today.state.get, {
+				scope,
+			});
+			expect(pick(scope)).toMatchObject({ seenAt, previousSeenAt, isFallback });
+		}
+		expect(pick(personal)).toMatchObject({ seenAt: now - HOUR, previousSeenAt: now - 2 * HOUR });
+		// Behind the global mark: the global one wins, with nothing of its own to undo.
+		expect(pick('team')).toMatchObject({ seenAt: now - 3 * HOUR, previousSeenAt: null });
+		expect(pick(sales)).toMatchObject({ seenAt: now - 3 * HOUR, previousSeenAt: null });
 	});
 
 	it('refuses to mark a mailbox the caller cannot read', async () => {
@@ -249,7 +284,7 @@ describe('workbench digest triage', () => {
 			await ctx.db.patch(known, { lastMessageAt: now - 30 * 60 * 1000 });
 		});
 
-		const digest = await t.query(api.today.mailbox.digest, { mailboxId, since });
+		const digest = await digestSince(t, mailboxId, since);
 		expect(digest).not.toBeNull();
 		expect(digest!.changed).toEqual([]);
 		const bySubject = Object.fromEntries(digest!.arrived.map((a) => [a.subject, a]));
@@ -311,7 +346,7 @@ describe('workbench digest triage', () => {
 			})
 		);
 
-		const digest = await t.query(api.today.mailbox.digest, { mailboxId, since: now - 3 * HOUR });
+		const digest = await digestSince(t, mailboxId, now - 3 * HOUR);
 		expect(digest!.arrived.map((a) => [a.subject, a.bucket])).toEqual([
 			['Quick question', 'important'],
 		]);

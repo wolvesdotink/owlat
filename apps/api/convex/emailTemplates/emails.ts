@@ -9,6 +9,7 @@ import { listResources } from '../lib/listing';
 import { emailTemplateListing } from './listing';
 import { getOrThrow, throwNotFound, throwInvalidState } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
+import { recordListingCounter } from '../lib/listingCounters';
 import {
 	assertEditableForPublishableChange,
 	buildEditablePatch,
@@ -257,6 +258,7 @@ export const changeType = authedMutation({
 			type: args.type,
 			updatedAt: Date.now(),
 		});
+		await recordListingCounter(ctx, 'templateType', template, { ...template, type: args.type });
 
 		await recordAuditLog(ctx, {
 			userId: session.userId,

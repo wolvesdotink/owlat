@@ -30,6 +30,7 @@ export const emailTemplateListing: ListingDescriptor<'emailTemplates'> = {
 			field: 'type',
 			buckets: ['marketing', 'transactional'],
 			index: 'by_type',
+			counter: 'templateType',
 		},
 	},
 };

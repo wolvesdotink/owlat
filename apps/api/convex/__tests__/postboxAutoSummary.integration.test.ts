@@ -260,6 +260,76 @@ describe('mail.ai.getOrGenerateThreadSummary', () => {
 		expect(runLlmTextMock).toHaveBeenCalledTimes(1);
 	});
 
+	it('dispatches under the interactive deadline and schedules the spend write (plan 1.14)', async () => {
+		vi.useFakeTimers();
+		try {
+			const t = convexTest(schema, modules);
+			await enableFeatures(t, ['mail.external']);
+			rateLimiterTest.register(t);
+			await enableFeatures(t, ['ai']);
+			const mailboxId = await seedMailbox(t);
+			const { latestMessageId } = await seedThread(t, mailboxId, 5);
+			const timeout = vi.spyOn(AbortSignal, 'timeout');
+			runLlmTextMock.mockResolvedValue({
+				text: '- Point',
+				tokenUsage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+				modelUsed: 'test-model',
+			});
+
+			await t.action(api.mail.ai.assist.getOrGenerateThreadSummary, {
+				messageId: latestMessageId,
+			});
+
+			const dispatched = runLlmTextMock.mock.calls[0]?.[0];
+			expect(dispatched?.maxAttempts).toBe(2);
+			expect(dispatched?.abortSignal).toBeInstanceOf(AbortSignal);
+			expect(timeout).toHaveBeenCalledWith(20_000);
+			timeout.mockRestore();
+			// The ledger row is written by a scheduled mutation, not inline.
+			const rowsBefore = await t.run((ctx) => ctx.db.query('llmUsageEvents').collect());
+			expect(rowsBefore).toHaveLength(0);
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+			const rows = await t.run((ctx) => ctx.db.query('llmUsageEvents').collect());
+			expect(rows.map((row) => row.feature)).toEqual(['postbox_summarize']);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('gives the inline completion the short 4 s deadline (plan 1.14)', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai']);
+		const timeout = vi.spyOn(AbortSignal, 'timeout');
+		runLlmTextMock.mockResolvedValue({ text: ' will do.', tokenUsage: undefined, modelUsed: 'm' });
+		try {
+			const res = await t.action(api.mail.ai.assist.completeDraft, {
+				threadContext: '',
+				draftSoFar: 'Thanks, I',
+				cursorSentence: 'Thanks, I',
+			});
+			expect(res.completion).toBe(' will do.');
+			expect(timeout).toHaveBeenCalledWith(4_000);
+			expect(runLlmTextMock.mock.calls[0]?.[0]?.maxAttempts).toBe(2);
+		} finally {
+			timeout.mockRestore();
+		}
+	});
+
+	it('the gate still decides when it runs beside the thread read', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		rateLimiterTest.register(t);
+		// `ai` stays off: the gate must reject even though the thread read succeeds.
+		const mailboxId = await seedMailbox(t);
+		const { latestMessageId } = await seedThread(t, mailboxId, 5);
+
+		await expect(
+			t.action(api.mail.ai.assist.getOrGenerateThreadSummary, { messageId: latestMessageId })
+		).rejects.toThrow(/disabled/i);
+		expect(runLlmTextMock).not.toHaveBeenCalled();
+	});
+
 	it('returns null and caches nothing when the dispatch throws (fail-soft)', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['mail.external']);

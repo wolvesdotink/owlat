@@ -133,6 +133,27 @@ export async function recordLlmSpend(
 }
 
 /**
+ * {@link recordLlmSpend} for interactive surfaces: schedules the ledger write
+ * instead of running it, so the user's answer is not held for a mutation round
+ * trip. The row lands moments later. The advisory budget gate
+ * (mail/ai/gate.ts) is the only reader on these paths, and it only needs the
+ * row before the next call, not before this one returns.
+ */
+export async function scheduleLlmSpend(
+	ctx: ActionCtx,
+	feature: string,
+	tokenUsage: TokenUsage | undefined,
+	modelUsed: string | undefined
+): Promise<void> {
+	if (!tokenUsage) return;
+	await ctx.scheduler.runAfter(0, internal.analytics.llmUsage.record, {
+		feature,
+		modelUsed,
+		tokenUsage,
+	});
+}
+
+/**
  * The decision plane's writer. Separate from {@link recordLlmSpend} only so no
  * call site has to remember the plane tag or the three flags: the dispatch hands
  * over one attempt record, this turns it into one row, and the row lands BEFORE

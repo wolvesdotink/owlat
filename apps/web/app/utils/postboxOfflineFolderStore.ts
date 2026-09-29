@@ -11,7 +11,7 @@
  * IndexedDB connection per page) and repeats its contract exactly:
  *   - FAIL-SOFT. A missing/blocked IndexedDB or a quota rejection degrades to
  *     the live-only rail; nothing here is ever the only copy of anything.
- *   - NAMESPACED by the active mailboxId, so one account's folder names and
+ *   - NAMESPACED by the signed-in user + mailbox, so one account's folder names and
  *     unread counts are never shown inside another on a shared device.
  *   - PURE DATA LAYER. No Vue, no DOM, no network — the reactive bridge is
  *     `usePostboxOfflineFolders.ts`.

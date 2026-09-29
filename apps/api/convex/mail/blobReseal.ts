@@ -33,6 +33,7 @@ import {
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { resealStoredBlob } from '../lib/sealedBlob';
+import { deleteMessagePartsForRaw } from './messageParts';
 
 /**
  * Repoint EVERY row that references an old plaintext blob at its sealed copy,
@@ -80,6 +81,9 @@ export const repointResealedBlobs = internalMutation({
 			used.raw = rows.length > 0;
 			for (const r of rows) await ctx.db.patch(r._id, { rawStorageId: newId });
 			await ctx.storage.delete(oldId).catch(() => undefined);
+			// Parts cut out of the plaintext blob were stored unsealed too; drop
+			// them rather than repoint them, and the reader falls back to the raw.
+			await deleteMessagePartsForRaw(ctx, oldId);
 		}
 		if (args.textBodyStorageId && args.oldTextBodyStorageId) {
 			const newId = args.textBodyStorageId;

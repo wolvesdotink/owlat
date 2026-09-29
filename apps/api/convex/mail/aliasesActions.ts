@@ -11,6 +11,7 @@ import { internal } from '../_generated/api';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { getMtaConfig } from './mtaClient';
+import { FETCH_TIMEOUTS, fetchWithTimeout } from '../lib/fetchWithTimeout';
 
 export const pushAliasToCache = internalAction({
 	args: {
@@ -32,20 +33,24 @@ export const pushAliasToCache = internalAction({
 
 		const url = `${config.baseUrl}/mailboxes/cache/${encodeURIComponent(args.alias)}`;
 		try {
-			await fetch(url, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${config.apiKey}`,
+			await fetchWithTimeout(
+				url,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${config.apiKey}`,
+					},
+					body: JSON.stringify({
+						mailboxId: mailbox._id,
+						organizationId: mailbox.organizationId,
+						quotaBytes: mailbox.quotaBytes,
+						usedBytes: mailbox.usedBytes,
+						isInboundTlsRequired,
+					}),
 				},
-				body: JSON.stringify({
-					mailboxId: mailbox._id,
-					organizationId: mailbox.organizationId,
-					quotaBytes: mailbox.quotaBytes,
-					usedBytes: mailbox.usedBytes,
-					isInboundTlsRequired,
-				}),
-			});
+				FETCH_TIMEOUTS.internalPush
+			);
 			logInfo(
 				`[Alias cache] Pushed ${redactEmailAddress(args.alias)} -> ${redactEmailAddress(mailbox.address)}`
 			);
@@ -62,10 +67,14 @@ export const removeAliasFromCache = internalAction({
 		if (!config) return;
 		const url = `${config.baseUrl}/mailboxes/cache/${encodeURIComponent(args.alias)}`;
 		try {
-			await fetch(url, {
-				method: 'DELETE',
-				headers: { Authorization: `Bearer ${config.apiKey}` },
-			});
+			await fetchWithTimeout(
+				url,
+				{
+					method: 'DELETE',
+					headers: { Authorization: `Bearer ${config.apiKey}` },
+				},
+				FETCH_TIMEOUTS.internalPush
+			);
 		} catch (err) {
 			logError('[Alias cache] Removal error:', err);
 		}

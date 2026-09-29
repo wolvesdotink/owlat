@@ -18,6 +18,7 @@ import { logError, logInfo } from '../lib/runtimeLog';
 import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { isAutomatedMail } from '../lib/inboundClassification';
 import { getMtaConfig } from './mtaClient';
+import { FETCH_TIMEOUTS, fetchWithTimeout } from '../lib/fetchWithTimeout';
 
 /**
  * Sanitize inbound HTML before re-emitting it through our outbound MTA.
@@ -52,42 +53,49 @@ export async function forwardToTarget(
 	target: string
 ): Promise<void> {
 	const selfLower = args.mailboxAddress.toLowerCase();
-	await fetch(`${mta.baseUrl}/send/postbox`, {
-		method: 'POST',
-		headers: {
-			'Content-Type': 'application/json',
-			Authorization: `Bearer ${mta.apiKey}`,
-		},
-		// Typed against the wire's one declaration (D7): this is the same
-		// `/send/postbox` body `mail/outbound.ts` posts, and `allowedFromAddresses`
-		// is the field the MTA enforces From ownership with — a rename that left
-		// this literal behind would refuse every forward with a 403.
-		body: JSON.stringify({
-			messageId: `pb-fwd-${args.mailboxId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-			from: args.mailboxAddress,
-			// Re-originating under the mailbox's domain (so DKIM/SPF pass on the
-			// outbound hop) drops the original sender from the From line. Point
-			// Reply-To at the original sender so a reply reaches them, not the
-			// forwarder. A non-ARC remail: legitimate, but it must preserve the
-			// original sender's reply context (RFC 7960).
-			replyTo: args.fromAddress,
-			to: target,
-			subject: `Fwd: ${args.subject}`,
-			html: args.bodyHtml
-				? sanitizeForwardedHtml(args.bodyHtml)
-				: `<pre>${(args.bodyText ?? '').replace(/</g, '&lt;')}</pre>`,
-			text: args.bodyText,
+	// Same intake budget as a Postbox send: a hung MTA would otherwise hold the
+	// hook action, and every later forwarding target behind it, until the runtime
+	// kills it.
+	await fetchWithTimeout(
+		`${mta.baseUrl}/send/postbox`,
+		{
+			method: 'POST',
 			headers: {
-				'X-Owlat-Forwarded': args.mailboxAddress,
-				'X-Owlat-Forwarded-From': args.fromAddress,
-				'Auto-Submitted': 'auto-forwarded',
+				'Content-Type': 'application/json',
+				Authorization: `Bearer ${mta.apiKey}`,
 			},
-			ipPool: 'transactional',
-			organizationId: 'postbox',
-			dkimDomain: selfLower.split('@')[1] ?? 'localhost',
-			allowedFromAddresses: [args.mailboxAddress.toLowerCase()],
-		} satisfies MtaSendRequest),
-	});
+			// Typed against the wire's one declaration (D7): this is the same
+			// `/send/postbox` body `mail/outbound.ts` posts, and `allowedFromAddresses`
+			// is the field the MTA enforces From ownership with — a rename that left
+			// this literal behind would refuse every forward with a 403.
+			body: JSON.stringify({
+				messageId: `pb-fwd-${args.mailboxId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+				from: args.mailboxAddress,
+				// Re-originating under the mailbox's domain (so DKIM/SPF pass on the
+				// outbound hop) drops the original sender from the From line. Point
+				// Reply-To at the original sender so a reply reaches them, not the
+				// forwarder. A non-ARC remail: legitimate, but it must preserve the
+				// original sender's reply context (RFC 7960).
+				replyTo: args.fromAddress,
+				to: target,
+				subject: `Fwd: ${args.subject}`,
+				html: args.bodyHtml
+					? sanitizeForwardedHtml(args.bodyHtml)
+					: `<pre>${(args.bodyText ?? '').replace(/</g, '&lt;')}</pre>`,
+				text: args.bodyText,
+				headers: {
+					'X-Owlat-Forwarded': args.mailboxAddress,
+					'X-Owlat-Forwarded-From': args.fromAddress,
+					'Auto-Submitted': 'auto-forwarded',
+				},
+				ipPool: 'transactional',
+				organizationId: 'postbox',
+				dkimDomain: selfLower.split('@')[1] ?? 'localhost',
+				allowedFromAddresses: [args.mailboxAddress.toLowerCase()],
+			} satisfies MtaSendRequest),
+		},
+		FETCH_TIMEOUTS.mtaIntake
+	);
 }
 
 /**
@@ -298,37 +306,41 @@ export const runPostDelivery = internalAction({
 		});
 
 		try {
-			await fetch(`${mta.baseUrl}/send/postbox`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${mta.apiKey}`,
-				},
-				// The third `/send/postbox` producer, bound to the same declaration
-				// (D7) as the forward above and `mail/outbound.ts`.
-				body: JSON.stringify({
-					messageId: `pb-vac-${args.mailboxId}-${now}-${Math.random().toString(36).slice(2, 8)}`,
-					from: args.mailboxAddress,
-					to: replyTo,
-					subject: responder.subject,
-					html: responder.bodyHtml ?? `<p>${responder.bodyText.replace(/\n/g, '<br>')}</p>`,
-					text: responder.bodyText,
+			await fetchWithTimeout(
+				`${mta.baseUrl}/send/postbox`,
+				{
+					method: 'POST',
 					headers: {
-						// RFC 3834 §5: marks this as an automatic reply so other
-						// responders won't reply back to it (loop prevention). This,
-						// not the non-standard `Precedence: auto_reply`, is the
-						// recognized signal — `Precedence` is dropped.
-						'Auto-Submitted': 'auto-replied',
-						'X-Auto-Response-Suppress': 'All',
-						// RFC 3834 §3.1.5 / §3.1.6: thread onto the triggering message.
-						...threadingHeaders,
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${mta.apiKey}`,
 					},
-					ipPool: 'transactional',
-					organizationId: 'postbox',
-					dkimDomain: selfLower.split('@')[1] ?? 'localhost',
-					allowedFromAddresses: [args.mailboxAddress.toLowerCase()],
-				} satisfies MtaSendRequest),
-			});
+					// The third `/send/postbox` producer, bound to the same declaration
+					// (D7) as the forward above and `mail/outbound.ts`.
+					body: JSON.stringify({
+						messageId: `pb-vac-${args.mailboxId}-${now}-${Math.random().toString(36).slice(2, 8)}`,
+						from: args.mailboxAddress,
+						to: replyTo,
+						subject: responder.subject,
+						html: responder.bodyHtml ?? `<p>${responder.bodyText.replace(/\n/g, '<br>')}</p>`,
+						text: responder.bodyText,
+						headers: {
+							// RFC 3834 §5: marks this as an automatic reply so other
+							// responders won't reply back to it (loop prevention). This,
+							// not the non-standard `Precedence: auto_reply`, is the
+							// recognized signal — `Precedence` is dropped.
+							'Auto-Submitted': 'auto-replied',
+							'X-Auto-Response-Suppress': 'All',
+							// RFC 3834 §3.1.5 / §3.1.6: thread onto the triggering message.
+							...threadingHeaders,
+						},
+						ipPool: 'transactional',
+						organizationId: 'postbox',
+						dkimDomain: selfLower.split('@')[1] ?? 'localhost',
+						allowedFromAddresses: [args.mailboxAddress.toLowerCase()],
+					} satisfies MtaSendRequest),
+				},
+				FETCH_TIMEOUTS.mtaIntake
+			);
 			await ctx.runMutation(internal.mail.vacation.internalRecordReply, {
 				mailboxId: args.mailboxId,
 				senderEmail: fromLower,

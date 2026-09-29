@@ -111,10 +111,12 @@ export const handleInboundWebhook = httpAction(async (ctx, request) => {
 		payload = null;
 	}
 
-	// Audit FIRST, including a body we could not parse — an MTA sending us
-	// garbage is precisely what the audit trail is for.
+	// Audit EVERY body, including one we could not parse — an MTA sending us
+	// garbage is precisely what the audit trail is for. The write runs beside
+	// the ingest rather than ahead of it (it never rejects), and every response
+	// below waits for it, so no request is answered unaudited.
 	const ip = payload?.inboundPayload;
-	await storeRawRouteAudit(ctx, {
+	const audited = storeRawRouteAudit(ctx, {
 		source: 'mta-inbound',
 		logTag: '[Inbound Webhook]',
 		bodyText,
@@ -131,10 +133,12 @@ export const handleInboundWebhook = httpAction(async (ctx, request) => {
 	});
 
 	if (!payload) {
+		await audited;
 		return jsonResponse(400, { error: 'Invalid JSON' });
 	}
 
 	if (payload.event !== 'inbound.received' || !payload.inboundPayload) {
+		await audited;
 		return jsonResponse(400, { error: `Unsupported event: ${payload.event}` });
 	}
 
@@ -163,10 +167,13 @@ export const handleInboundWebhook = httpAction(async (ctx, request) => {
 	}
 
 	try {
-		const result = await ctx.runAction(internal.inbox.inboundIngest.ingestFromWebhook, {
-			mail: input,
-			rawBytesBase64,
-		});
+		const [result] = await Promise.all([
+			ctx.runAction(internal.inbox.inboundIngest.ingestFromWebhook, {
+				mail: input,
+				rawBytesBase64,
+			}),
+			audited,
+		]);
 		// `duplicate` is a SUCCESS: the MTA retried a delivery we already
 		// completed (a slow scan tripped its 10 s fetch timeout, say). Answering
 		// 200 is what stops the retry loop; the field is there so an operator
@@ -174,6 +181,7 @@ export const handleInboundWebhook = httpAction(async (ctx, request) => {
 		return jsonResponse(200, { success: true, duplicate: result.isDuplicate });
 	} catch (err) {
 		logError('[Inbound Webhook] Ingest failed:', err);
+		await audited;
 		return jsonResponse(500, { error: 'Ingest failed' });
 	}
 });

@@ -15,6 +15,7 @@ import type {
 	ChannelHealth,
 } from './types';
 import { utf8ToBase64 } from '../../lib/bytes';
+import { FETCH_TIMEOUTS, fetchWithTimeout } from '../../lib/fetchWithTimeout';
 
 interface TwilioConfig {
 	accountSid: string;
@@ -67,14 +68,18 @@ export class SmsAdapter implements ChannelAdapter {
 				body.append('MediaUrl', message.content.mediaUrl);
 			}
 
-			const response = await fetch(url, {
-				method: 'POST',
-				headers: {
-					Authorization: this.authHeader(this.config),
-					'Content-Type': 'application/x-www-form-urlencoded',
+			const response = await fetchWithTimeout(
+				url,
+				{
+					method: 'POST',
+					headers: {
+						Authorization: this.authHeader(this.config),
+						'Content-Type': 'application/x-www-form-urlencoded',
+					},
+					body: body.toString(),
 				},
-				body: body.toString(),
-			});
+				FETCH_TIMEOUTS.thirdPartyApi
+			);
 
 			if (response.ok) {
 				const data = (await response.json()) as TwilioSendResponse;
@@ -101,9 +106,13 @@ export class SmsAdapter implements ChannelAdapter {
 		try {
 			const url = this.accountUrl(this.config, `/Messages/${externalId}.json`);
 
-			const response = await fetch(url, {
-				headers: { Authorization: this.authHeader(this.config) },
-			});
+			const response = await fetchWithTimeout(
+				url,
+				{
+					headers: { Authorization: this.authHeader(this.config) },
+				},
+				FETCH_TIMEOUTS.thirdPartyApi
+			);
 
 			if (response.ok) {
 				const data = (await response.json()) as TwilioStatusResponse;
@@ -133,9 +142,13 @@ export class SmsAdapter implements ChannelAdapter {
 		try {
 			const url = this.accountUrl(this.config, '.json');
 
-			const response = await fetch(url, {
-				headers: { Authorization: this.authHeader(this.config) },
-			});
+			const response = await fetchWithTimeout(
+				url,
+				{
+					headers: { Authorization: this.authHeader(this.config) },
+				},
+				FETCH_TIMEOUTS.thirdPartyApi
+			);
 
 			if (response.ok) {
 				return { status: 'healthy' };

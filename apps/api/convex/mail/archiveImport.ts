@@ -38,6 +38,7 @@ import {
 } from './deliveryPipeline/insert';
 import { deliveredEnvelopeFields, storedBodyFields } from './deliveryPipeline/ingestFields';
 import { resolveLabelPath } from './labelsTree';
+import { withMailboxUsage } from './mailboxUsage';
 import { archiveFormatValidator, completedOrFailedValidator } from '../lib/literalValidators';
 import { consumeUpload, deleteOwnedUpload } from '../storage/uploads';
 import { folderRoleValidator } from '../lib/validators/mail';
@@ -331,7 +332,7 @@ export const ingestArchiveMessage = internalMutation({
 		if (!mailbox || mailbox.status !== 'active') return await skip();
 
 		if (await findDuplicateInMailbox(ctx, mailbox._id, args.messageId)) return await skip();
-		if (isOverQuota(mailbox, args.rawSize)) {
+		if (isOverQuota(await withMailboxUsage(ctx.db, mailbox), args.rawSize)) {
 			await dropBlobs();
 			return { imported: false, skipped: false, labelsCreated: 0, overQuota: true };
 		}

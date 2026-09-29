@@ -39,7 +39,7 @@ import {
 /**
  * Default undo / send-delay window for AUTONOMOUS auto-sends when
  * `agentConfig.autoSendDelayMs` is unset. Mirrors the manual Postbox undo
- * (mail/draftLifecycle.ts `DEFAULT_UNDO_SEND_DELAY_MS`, 30s) but leans longer
+ * (mail/draftLifecycle.ts `DEFAULT_UNDO_SEND_DELAY_MS`, 10s) but leans longer
  * for unattended sends so a landing customer reply or a human "Undo" has room
  * to abort a now-stale reply before it goes out. `0` preserves the legacy
  * immediate-send behaviour (`runAfter(0)`, no cancellable marker).

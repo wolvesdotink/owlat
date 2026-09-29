@@ -7,6 +7,10 @@ import { logError } from '~/lib/runtimeLog';
  * Redirects unauthenticated users to the login page.
  * Redirects authenticated users without an organization to the access-request page.
  *
+ * It decides on the session alone (signed in, and which organization is
+ * active). It never waits for the member's role: only the `admin` guard needs
+ * that, so every other page renders as soon as the session is known.
+ *
  * Usage: Add `definePageMeta({ middleware: 'auth' })` to protected pages
  */
 
@@ -59,33 +63,31 @@ export default defineNuxtRouteMiddleware(async (to) => {
 			return;
 		}
 
-		// Built only once the visitor is known to be signed in and to have a user
-		// id: it opens better-auth's organization requests, which a signed-out
-		// visitor would only answer with 401s on the way to the login redirect.
-		// Its subscriptions are app-lifetime singletons, so building it here —
-		// after an `await`, where the guard's effect scope is gone — leaks nothing.
-		const { isLoading: organizationLoading, organization, setActive } = useOrganizationContext();
+		// The session is the whole answer here: it names the active organization.
+		// Nothing waits for the member role, the member list or the invitation
+		// list; only the `admin` guard needs the role, and the page renders
+		// skeletons for its role-gated parts meanwhile. Start the role lookup now
+		// (one small request) so it is in flight while the page loads.
+		useActiveMemberRole();
+		if (activeOrganizationId.value) return;
 
-		// Wait for organization data to load
-		await waitForLoaded(organizationLoading);
-
-		// If user has no active organization, try to auto-activate one they belong to.
-		// But if activeOrganizationId is already set, the org data is just loading from
-		// the Better Auth hook — don't trigger the expensive list+set+refetch cascade.
-		if (!organization.value && !activeOrganizationId.value) {
-			try {
-				const orgsResult = await listOrganizations();
-				const firstOrg = orgsResult.data?.[0];
-				if (firstOrg) {
-					await setActive(firstOrg.id);
-					return;
-				}
-			} catch (e) {
-				if (import.meta.dev) logError('Failed to auto-activate organization:', e);
+		// No active organization: try to auto-activate one the user belongs to.
+		// `useOrganization` is built only on this path — it opens better-auth's
+		// organization requests. Its subscriptions are app-lifetime singletons,
+		// so building it after an `await` leaks nothing.
+		const { setActive } = useOrganization();
+		try {
+			const orgsResult = await listOrganizations();
+			const firstOrg = orgsResult.data?.[0];
+			if (firstOrg) {
+				await setActive(firstOrg.id);
+				return;
 			}
-
-			// User truly has no organizations - offer them a way to ask for access
-			return navigateTo(ACCESS_REQUEST_PATH);
+		} catch (e) {
+			if (import.meta.dev) logError('Failed to auto-activate organization:', e);
 		}
+
+		// User truly has no organizations - offer them a way to ask for access
+		return navigateTo(ACCESS_REQUEST_PATH);
 	}
 });

@@ -1,4 +1,4 @@
-import { ref, watch, type Ref } from 'vue';
+import { ref, watch, type Ref, type WatchSource } from 'vue';
 import { applyPatch } from 'fast-json-patch';
 import type { EditorBlock } from '../types';
 import {
@@ -15,6 +15,7 @@ import {
 	shouldCreateCheckpoint,
 	reconstructState,
 } from '../utils/deltaHistory';
+import { plainClone } from '../utils/plainClone';
 
 export interface HistoryState {
 	blocks: EditorBlock[];
@@ -26,6 +27,11 @@ export interface UseHistoryOptions {
 	maxHistory?: number;
 	debounceMs?: number;
 	checkpointInterval?: number;
+	/**
+	 * A counter that goes up whenever `blocks` changes (useBlockTreeVersion).
+	 * Given one, history watches it instead of deep-watching the block tree.
+	 */
+	blocksVersion?: WatchSource<number>;
 }
 
 export interface UseHistoryReturn {
@@ -53,6 +59,7 @@ export function useHistory(
 		maxHistory = MAX_HISTORY_ENTRIES,
 		debounceMs = HISTORY_DEBOUNCE_MS,
 		checkpointInterval = HISTORY_CHECKPOINT_INTERVAL,
+		blocksVersion,
 	} = options;
 
 	// History entries (checkpoints + deltas)
@@ -67,17 +74,10 @@ export function useHistory(
 	const stateCache = new Map<number, HistoryState>();
 	const MAX_CACHE_SIZE = MAX_HISTORY_CACHE_SIZE;
 
-	// structuredClone throws DataCloneError on Vue reactive proxies, and the
-	// canvas blocks ref is deeply reactive — so cloning `blocks.value` directly
-	// crashes the editor at mount. Blocks are plain JSON data, so fall back to a
-	// JSON round-trip, which reads *through* proxies and yields plain objects.
-	const deepClone = <T>(value: T): T => {
-		try {
-			return structuredClone(value);
-		} catch {
-			return JSON.parse(JSON.stringify(value)) as T;
-		}
-	};
+	// The canvas blocks ref is deeply reactive, and `structuredClone` throws on
+	// every proxy in it (even under `toRaw`, which unwraps only the top one).
+	// plainClone reads through them with the JSON round trip's result.
+	const deepClone = plainClone;
 
 	const getCachedState = (index: number): HistoryState | undefined => {
 		return stateCache.get(index);
@@ -288,16 +288,14 @@ export function useHistory(
 	};
 
 	// Watch for changes and push to history
-	watch(
-		[blocks, name, subject],
-		() => {
-			if (!isNavigating.value) {
-				debouncedPushState();
-			}
-			updateComputedStates();
-		},
-		{ deep: true }
-	);
+	const onChange = () => {
+		if (!isNavigating.value) {
+			debouncedPushState();
+		}
+		updateComputedStates();
+	};
+	if (blocksVersion) watch([blocksVersion, name, subject], onChange);
+	else watch([blocks, name, subject], onChange, { deep: true });
 
 	// Initialize with current state
 	pushState();

@@ -383,13 +383,14 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue' | 'redis'>) {
 					text: parsed.text,
 					...(amp ? { amp } : {}),
 					ipPool: 'transactional',
+					...(authData.postbox ? { queueLane: 'postbox' as const } : {}),
 					organizationId: authData.organizationId,
 					dkimDomain: fromDomain,
 					firstEnqueuedAt: Date.now(),
 				};
 
 				const domain = extractDomain(to);
-				const groupId = buildGroupKey(job.ipPool, domain);
+				const groupId = buildGroupKey(job.ipPool, domain, job.queueLane);
 				const priority = mapToPriority(undefined);
 
 				await enqueueReconciledIntake(queue, redis, {

@@ -1,8 +1,11 @@
 import type { MutationCtx } from '../_generated/server';
+import { readInstanceCounter, writeInstanceCounter } from './instanceCounters';
+import { getInstanceSettings } from './instanceSettings';
 
 /**
  * Inbox processing-status bucket. Maps the wider `processingStatus`
- * literal union into the 9 counter fields on `instanceSettings.inboxStats`;
+ * literal union into the counter fields of `inboxStats` on the `inbox` row of
+ * `instanceCounters` (plan 2.4; formerly on `instanceSettings`);
  * `security_check`, `classifying`, `drafting`, and `awaiting_clarification`
  * collapse to the single `processing` bucket because that's what the dashboard
  * surfaces (the pipeline sub-stages aren't separately interesting to the
@@ -70,13 +73,17 @@ const EMPTY_STATS = {
 	total: 0,
 } as const;
 
-async function loadSettings(ctx: MutationCtx) {
-	return ctx.db.query('instanceSettings').first();
+/**
+ * The counters are maintained only once the instance exists (as they were when
+ * they lived on the `instanceSettings` row, which the first delta needed).
+ */
+async function loadInboxCounters(ctx: MutationCtx) {
+	if (!(await getInstanceSettings(ctx.db))) return null;
+	return await readInstanceCounter(ctx.db, 'inbox');
 }
 
 /**
- * Apply a delta to the inbox status counters on the singleton
- * `instanceSettings` doc. `from === null` is the insert path (no
+ * Apply a delta to the inbox status counters on the `inbox` counter row. `from === null` is the insert path (no
  * predecessor bucket); `to === null` is the delete path (no successor).
  * `total` is bumped only on insert and decremented only on delete —
  * status transitions move between buckets without changing the lifetime
@@ -88,20 +95,20 @@ export async function applyInboxStatsDelta(
 	to: InboxBucket | null
 ): Promise<void> {
 	if (from === to) return; // no-op self-transition
-	const settings = await loadSettings(ctx);
-	if (!settings) return;
-	const current = { ...EMPTY_STATS, ...settings.inboxStats };
+	const counters = await loadInboxCounters(ctx);
+	if (!counters) return;
+	const current = { ...EMPTY_STATS, ...counters.inboxStats };
 	const next = { ...current };
 	if (from !== null) next[from] = Math.max(0, next[from] - 1);
 	if (to !== null) next[to] = next[to] + 1;
 	if (from === null && to !== null) next.total = next.total + 1;
 	if (from !== null && to === null) next.total = Math.max(0, next.total - 1);
-	await ctx.db.patch(settings._id, { inboxStats: next });
+	await writeInstanceCounter(ctx, 'inbox', { inboxStats: next });
 }
 
 /**
- * Apply a signed delta to the denormalized open-thread counter on the
- * singleton `instanceSettings` doc. `+1` when a thread enters the 'open'
+ * Apply a signed delta to the denormalized open-thread counter on the `inbox`
+ * counter row. `+1` when a thread enters the 'open'
  * status (create-as-open or non-open → open), `-1` when it leaves
  * ('open' → non-open). Clamped at 0. Called by every create-as-open /
  * status-transition path (the Conversation thread module plus the manual
@@ -110,10 +117,9 @@ export async function applyInboxStatsDelta(
  * open-thread set per subscriber.
  */
 export async function applyOpenThreadDelta(ctx: MutationCtx, delta: 1 | -1): Promise<void> {
-	const settings = await loadSettings(ctx);
-	if (!settings) return;
-	const current = settings.openThreads ?? 0;
-	await ctx.db.patch(settings._id, {
-		openThreads: Math.max(0, current + delta),
+	const counters = await loadInboxCounters(ctx);
+	if (!counters) return;
+	await writeInstanceCounter(ctx, 'inbox', {
+		openThreads: Math.max(0, (counters.openThreads ?? 0) + delta),
 	});
 }

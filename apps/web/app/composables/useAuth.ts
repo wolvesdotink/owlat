@@ -2,6 +2,7 @@ import type { BetterFetchError } from '@better-fetch/fetch';
 import { effectScope, type EffectScope } from 'vue';
 import { authClient, type AuthSessionData } from '~/lib/auth-client';
 import { resetConvexAuthTokenCache } from '~/lib/convex-auth';
+import { clearCachedFeatureFlags } from '~/lib/featureFlagCache';
 import { requiresTwoFactor } from '~/utils/accountTwoFactor';
 
 type SessionData = AuthSessionData | null;
@@ -108,6 +109,17 @@ function sessionStore(): SessionStore {
 		}
 	}
 	return sharedSession;
+}
+
+/**
+ * Build the shared session store now, which starts its `/get-session` fetch,
+ * instead of waiting for the first `useAuth()` in route middleware. Called by the
+ * boot warm-up plugin (plugins/0.auth-warmup.client.ts) so the request overlaps
+ * the i18n catalog load; every later `useAuth()` reuses the same store and its
+ * in-flight request.
+ */
+export function warmAuthSession(): void {
+	sessionStore();
 }
 
 export function useAuth() {
@@ -293,6 +305,15 @@ export function useAuth() {
 		if (result.error) {
 			throw new Error(result.error.message || t('shared.useAuth.signOutFailed'));
 		}
+
+		// The next boot in this browser may be someone else's: drop the
+		// last-known feature flags so it starts from the shipped defaults, and
+		// the Postbox rows and bodies cached on this device. Loaded on demand so
+		// the IndexedDB store stays out of the boot bundle.
+		clearCachedFeatureFlags();
+		const { wipePostboxOfflineReadCache } =
+			await import('~/composables/postbox/usePostboxOfflineCache');
+		await wipePostboxOfflineReadCache();
 
 		await refetch({ force: true, expected: 'unauthenticated' });
 		await waitUntilSignedOut();

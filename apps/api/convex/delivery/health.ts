@@ -20,6 +20,8 @@ import { summarize } from '../analytics/sendingReputation';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { getOptional } from '../lib/env';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
+import { MTA_HEALTH_MAX_AGE_MS } from './mtaHealthFreshness';
+import { readInstanceCounter } from '../lib/instanceCounters';
 
 /** Traffic-light level for the Delivery status dot. */
 export type DeliveryHealthLevel = 'ok' | 'warn' | 'error';
@@ -162,12 +164,12 @@ export const getDeliveryHealth = authedQuery({
 					(provider) => provider.isEnabled && provider.providerType === OWN_ARM_TRANSPORT_KIND
 				)
 			);
-		const settings = await ctx.db.query('instanceSettings').first(); // bounded: singleton row
-		const snapshot = settings?.mtaHealth;
+		const { mtaHealth: snapshot } = await readInstanceCounter(ctx.db, 'mtaHealth');
 		let mtaInfrastructure: DeliveryHealthInputs['mtaInfrastructure'] = null;
 		if (usesMta) {
 			if (!snapshot) mtaInfrastructure = 'unchecked';
-			else if (Date.now() - snapshot.observedAt > 5 * 60_000) mtaInfrastructure = 'stale';
+			else if (Date.now() - snapshot.observedAt > MTA_HEALTH_MAX_AGE_MS)
+				mtaInfrastructure = 'stale';
 			else if (snapshot.status === 'ok') mtaInfrastructure = 'healthy';
 			else mtaInfrastructure = snapshot.status;
 		}

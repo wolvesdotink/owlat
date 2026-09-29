@@ -23,6 +23,7 @@ import {
 } from '~/utils/postboxDensity';
 import { usePostboxSectionedVirtualList } from '~/composables/postbox/usePostboxVirtualList';
 import { usePostboxListAutoLoad } from '~/composables/postbox/usePostboxListAutoLoad';
+import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
 
 /** One section of the list. `label` is display text, already localized. */
 export interface PostboxThreadListSection<Item> {
@@ -72,6 +73,9 @@ defineSlots<{
 	row(props: { item: T; focused: boolean }): unknown;
 	'section-footer'?(props: { section: PostboxThreadListSection<T> }): unknown;
 }>();
+
+// One minute clock for every slotted row's timestamp (they inject it).
+usePostboxListNow();
 
 // Flatten the currently-visible rows (expanded sections only) into one list so
 // arrow-key navigation flows across sections like the flat list does.

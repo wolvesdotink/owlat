@@ -1,7 +1,15 @@
 import type PostHog from 'posthog-js';
 import { shallowRef, watch } from 'vue';
 import type { PostHogHandle } from '~/composables/usePostHog';
+import {
+	armPerfReporting,
+	landingRoute,
+	noteViewSettled,
+	reportPerf,
+	setPerfSender,
+} from '~/lib/perfTelemetry';
 import { logWarn } from '~/lib/runtimeLog';
+import { observeWebVitals } from '~/lib/webVitals';
 
 /**
  * PostHog boots only when the instance has `analytics.posthog` ON.
@@ -25,6 +33,12 @@ import { logWarn } from '~/lib/runtimeLog';
  * flag too and a legitimately-on instance still measures its login page. When
  * the query is slow, failing, or the backend is unreachable, the resolved value
  * is the shipped default — off — and the safe outcome is the one that happens.
+ *
+ * Performance samples (web vitals and the `usePerfMark` timings) ride the same
+ * gate: collected only when a key is configured, sent only through the running
+ * client. Their own properties are route names, never URLs; PostHog's default
+ * properties (`$current_url`, `$pathname`) still ride along, as on every
+ * capture. See `lib/perfTelemetry`.
  */
 export default defineNuxtPlugin(() => {
 	const config = useRuntimeConfig();
@@ -45,6 +59,8 @@ export default defineNuxtPlugin(() => {
 	// Resolved before the first `await` — a composable is only callable while the
 	// Nuxt instance is the current one.
 	const router = useRouter();
+
+	startPerfReporting(router, handle);
 
 	let client: typeof PostHog | null = null;
 	let starting = false;
@@ -120,3 +136,23 @@ export default defineNuxtPlugin(() => {
 
 	return { provide };
 });
+
+/** Route name of a location, never its path: names carry no ids or addresses. */
+function routeLabel(name: unknown): string {
+	return typeof name === 'string' && name ? name : 'unknown';
+}
+
+function startPerfReporting(router: ReturnType<typeof useRouter>, handle: PostHogHandle) {
+	armPerfReporting({ currentRoute: () => routeLabel(router.currentRoute.value.name) });
+	router.afterEach((to, _from, failure) => {
+		if (!failure) noteViewSettled(routeLabel(to.name));
+	});
+	observeWebVitals((vitals) =>
+		reportPerf('owlat_web_vitals', { ...vitals, landing_route: landingRoute() })
+	);
+	// The box fills when the client is running and the flag is on, and empties
+	// when the flag flips off; the samples follow it.
+	watch(handle, (client) => {
+		setPerfSender(client ? (event, properties) => client.capture(event, properties) : null);
+	});
+}

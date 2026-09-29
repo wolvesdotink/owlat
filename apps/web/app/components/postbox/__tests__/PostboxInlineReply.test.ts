@@ -45,6 +45,11 @@ vi.stubGlobal('usePostboxUndoSend', () => ({ arm: undoArm }));
 const suggestRun = vi.fn(async (_a: unknown): Promise<unknown> => ({ ok: false }));
 const suggestLoading = ref(false);
 vi.stubGlobal('useBackendOperation', () => ({ run: suggestRun, isLoading: suggestLoading }));
+// Streamed suggestions: the buffer the options arrive through, and its create/delete.
+const streamData = ref<{ status: string; text: string } | undefined>(undefined);
+vi.stubGlobal('useConvexQuery', () => ({ data: streamData }));
+const convexMutation = vi.fn(async (_ref: unknown, _args: unknown): Promise<unknown> => 'stream-1');
+vi.stubGlobal('requireConvex', () => ({ mutation: convexMutation }));
 // The box renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
 vi.stubGlobal('useI18n', i18nStubs.useI18n);
 
@@ -89,6 +94,8 @@ beforeEach(() => {
 	suggestRun.mockClear();
 	suggestLoading.value = false;
 	suggestRun.mockResolvedValue({ ok: false });
+	streamData.value = undefined;
+	convexMutation.mockClear();
 });
 
 afterEach(() => {
@@ -244,6 +251,43 @@ describe('PostboxInlineReply', () => {
 		await w.get('[aria-label="Draft a reply"]').trigger('click');
 		expect(w.find('[data-testid="inline-reply-suggestions"]').exists()).toBe(false);
 		expect(suggestRun).toHaveBeenCalledTimes(1);
+	});
+
+	it('shows suggestions as they stream, with the one still being written not pickable', async () => {
+		let finish!: (v: unknown) => void;
+		suggestRun.mockImplementation(
+			() =>
+				new Promise((res) => {
+					finish = res;
+				})
+		);
+		const w = mountInline(null, true, { aiEnabled: true, draftMessageId: 'msg-1' });
+		await w.get('[aria-label="Draft a reply"]').trigger('click');
+		await flushPromises();
+		expect(suggestRun.mock.calls[0]![0]).toEqual({ messageId: 'msg-1', streamId: 'stream-1' });
+
+		streamData.value = {
+			status: 'streaming',
+			text: JSON.stringify(['On it — will send today.', 'Can this wait until']),
+		};
+		await nextTick();
+		const cards = w.findAll('[aria-label="Suggested replies"] button');
+		expect(cards.map((c) => c.text())).toEqual(['On it — will send today.', 'Can this wait until']);
+		expect(cards[0]!.attributes('disabled')).toBeUndefined();
+		expect(cards[1]!.attributes('disabled')).toBeDefined();
+		await cards[0]!.trigger('click');
+		expect(w.emitted('use-reply')![0]).toEqual(['On it — will send today.']);
+
+		finish({
+			ok: true,
+			result: { replies: ['On it — will send today.', 'Can this wait until Monday?'] },
+		});
+		await flushPromises();
+		const final = w.findAll('[aria-label="Suggested replies"] button');
+		expect(final[1]!.text()).toBe('Can this wait until Monday?');
+		expect(final[1]!.attributes('disabled')).toBeUndefined();
+		// The buffer is deleted once the run is over.
+		expect(convexMutation).toHaveBeenLastCalledWith(expect.anything(), { streamId: 'stream-1' });
 	});
 
 	it('collapsing back (spec -> null) restores the affordance', async () => {

@@ -93,10 +93,22 @@ function hmac(secret: string, message: string): Promise<string> {
  * an HMAC minted for any other purpose (tracking, MTA-webhook verify, …).
  */
 const TOKEN_CONTEXT = 'owlat:sealed-blob:token:v1:';
+/**
+ * A separate label for a CACHEABLE token (plan 3.5), so a token minted for the
+ * no-store path can never be replayed with the cache flag bolted on: the flag
+ * is part of what the signature covers, through the domain label itself.
+ */
+const CACHEABLE_TOKEN_CONTEXT = 'owlat:sealed-blob:token:v1:cacheable:';
 
 /** The signed message that binds a token to its blob, content-type, and expiry. */
-function tokenMessage(storageId: string, contentType: string, exp: number): string {
-	return `${TOKEN_CONTEXT}${storageId}.${contentType}.${exp}`;
+function tokenMessage(
+	storageId: string,
+	contentType: string,
+	exp: number,
+	cacheable = false
+): string {
+	const context = cacheable ? CACHEABLE_TOKEN_CONTEXT : TOKEN_CONTEXT;
+	return `${context}${storageId}.${contentType}.${exp}`;
 }
 
 /**
@@ -216,11 +228,17 @@ export async function readSealedBlobBytesForExport(
  * inspect the stored envelope before returning a direct signed URL: legacy
  * plaintext is safe, while sealed bytes fail closed. With a key but no proxy
  * origin, return `null`: a direct URL could expose sealed ciphertext.
+ *
+ * `cacheable` marks a URL whose bytes never change for its whole lifetime (one
+ * stored attachment part): the proxy then lets the browser keep the response
+ * privately until the token expires instead of answering `no-store`. The flag
+ * is signed, so it cannot be added to a URL minted without it.
  */
 export async function sealedBlobUrl(
 	storage: BlobGetUrl,
 	storageId: Id<'_storage'>,
-	contentType: string
+	contentType: string,
+	options: { cacheable?: boolean } = {}
 ): Promise<string | null> {
 	const secret = getOptional('INSTANCE_SECRET');
 	const siteUrl = getOptional('CONVEX_SITE_URL');
@@ -237,13 +255,15 @@ export async function sealedBlobUrl(
 	}
 	if (!siteUrl) return null;
 	const exp = Date.now() + TOKEN_TTL_MS;
-	const sig = await hmac(secret, tokenMessage(storageId, contentType, exp));
+	const cacheable = options.cacheable === true;
+	const sig = await hmac(secret, tokenMessage(storageId, contentType, exp, cacheable));
 	const params = new URLSearchParams({
 		id: storageId,
 		ct: contentType,
 		exp: String(exp),
 		sig,
 	});
+	if (cacheable) params.set('c', '1');
 	return `${siteUrl.replace(/\/$/, '')}${SEALED_BLOB_PATH}?${params.toString()}`;
 }
 
@@ -311,25 +331,48 @@ export async function resealStoredBlob(
 interface VerifiedBlobRequest {
 	storageId: string;
 	contentType: string;
+	/** When the token stops being valid (epoch ms). */
+	expiresAt: number;
+	/** The token was minted cacheable — see {@link sealedBlobUrl}. */
+	cacheable: boolean;
 }
 
 /**
  * Verify a proxy request's capability token: the signature must match under
  * `INSTANCE_SECRET` and the expiry must be in the future. Returns the trusted
  * fields on success, `null` on any failure (bad/absent secret, forged or
- * expired token, missing params).
+ * expired token, missing params). `cacheableFlag` is the `c` query parameter;
+ * it only counts when the signature was made over it.
  */
 export async function verifyBlobToken(
 	id: string | null,
 	contentType: string | null,
 	exp: string | null,
-	sig: string | null
+	sig: string | null,
+	cacheableFlag: string | null = null
 ): Promise<VerifiedBlobRequest | null> {
 	const secret = getOptional('INSTANCE_SECRET');
 	if (secret === undefined || !id || !contentType || !exp || !sig) return null;
 	const expMs = Number(exp);
 	if (!Number.isFinite(expMs) || expMs < Date.now()) return null;
-	const expected = await hmac(secret, tokenMessage(id, contentType, expMs));
+	const cacheable = cacheableFlag === '1';
+	const expected = await hmac(secret, tokenMessage(id, contentType, expMs, cacheable));
 	if (!constantTimeEqual(expected, sig)) return null;
-	return { storageId: id, contentType };
+	return { storageId: id, contentType, expiresAt: expMs, cacheable };
+}
+
+/**
+ * `no-store` for everything except a token minted CACHEABLE (one stored
+ * attachment part, plan 3.5). Those bytes never change under their URL, so the
+ * browser may keep them privately — never in a shared cache — for as long as
+ * the token itself is still valid, and not a second longer: a cached answer
+ * must not outlive the capability that authorized it.
+ */
+export function cacheControlFor(
+	verified: { cacheable: boolean; expiresAt: number },
+	now: number = Date.now()
+): string {
+	if (!verified.cacheable) return 'no-store';
+	const remaining = Math.min(TOKEN_TTL_MS / 1000, Math.floor((verified.expiresAt - now) / 1000));
+	return remaining > 0 ? `private, max-age=${remaining}, immutable` : 'no-store';
 }

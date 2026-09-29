@@ -306,7 +306,7 @@ crons.interval(
 );
 
 // Thread-presence sweep — delete shared-inbox presence rows whose heartbeat has
-// aged past the 60s active window (tab closed without a clean leave, laptop
+// aged past the 90s active window (tab closed without a clean leave, laptop
 // slept). Keeps threadPresence bounded; presence is read-side only.
 crons.interval(
 	'sweep expired thread presence',

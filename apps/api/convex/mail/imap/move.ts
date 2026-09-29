@@ -14,6 +14,9 @@ import { rebuildThreadAggregates } from '../messageActions';
 import { bumpFolderModseq } from '../folders';
 import { indexMessageAttachments, removeMessageAttachments } from '../attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../messagePurge';
+import { applyMailboxUsageDelta } from '../mailboxUsage';
+import { recordMessageCounters } from '../messageCounters';
+import { copyMessageBody } from '../../lib/messageBodyStore';
 import { recordRemoteChanges, type RemoteChange } from '../external/remoteOps';
 
 /**
@@ -80,6 +83,8 @@ export const copyMessages = internalMutation({
 				createdAt: now,
 				updatedAt: now,
 			});
+			await copyMessageBody(ctx.db, m._id, copyId);
+			await recordMessageCounters(ctx, null, { ...rest, folderId: target._id });
 			// The copy is its own message row, so it gets its own junction rows —
 			// otherwise a COPY into a folder would silently drop the copy's files
 			// out of the Files view and out of `filename:`.
@@ -112,11 +117,7 @@ export const copyMessages = internalMutation({
 			// hold", which is what the MTA's over-quota recipient gate asks.
 			const mailbox = await ctx.db.get(target.mailboxId);
 			if (mailbox) {
-				await ctx.db.patch(mailbox._id, {
-					usedBytes: mailbox.usedBytes + bytesAdded,
-					usageRevision: (mailbox.usageRevision ?? 0) + 1,
-					updatedAt: now,
-				});
+				await applyMailboxUsageDelta(ctx, mailbox, bytesAdded, now);
 			}
 		}
 
@@ -174,6 +175,7 @@ export const moveMessages = internalMutation({
 				modseq: newModseq,
 				updatedAt: now,
 			});
+			await recordMessageCounters(ctx, m, { ...m, folderId: target._id });
 			pairs.push({ sourceUid: m.uid, targetUid: newUid });
 			remote.push({
 				kind: 'move',
@@ -286,10 +288,7 @@ export const expungeFolder = internalMutation({
 			});
 			const mailbox = await ctx.db.get(folder.mailboxId);
 			if (mailbox) {
-				await ctx.db.patch(mailbox._id, {
-					usedBytes: Math.max(0, mailbox.usedBytes - bytesRemoved),
-					updatedAt: Date.now(),
-				});
+				await applyMailboxUsageDelta(ctx, mailbox, -bytesRemoved);
 			}
 		}
 

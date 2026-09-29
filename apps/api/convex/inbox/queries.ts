@@ -12,7 +12,7 @@ import { publicQuery } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { isSharedInboxReader } from './access';
 import { assertFeatureEnabled } from '../lib/featureFlags';
-import { PRESENCE_ACTIVE_WINDOW_MS } from './presence';
+import { readInstanceCounter } from '../lib/instanceCounters';
 import { compareNeedsAttention, compareOldestWaiting } from './threadSort';
 import {
 	FILTER_COUNT_CAP,
@@ -42,8 +42,10 @@ import {
  *  - `assignee`: the assigned member's display name/email/image so the row can
  *    render a deterministic-colour avatar without the client joining to the
  *    member directory. Cached per call so repeat assignees cost one read.
- *  - `assigneePresent`: does the assignee have this thread open right now
- *    (the pulsing presence ring)? One point-read, and only for assigned rows.
+ *
+ * Presence is deliberately NOT read here: a heartbeat would re-run every
+ * admin's list, including the shell sidebar's. The Team Inbox page asks
+ * `inbox/presence.ts` `presentAssignees` for its visible rows instead.
  */
 async function enrichThreadRows(
 	ctx: QueryCtx,
@@ -64,7 +66,6 @@ async function enrichThreadRows(
 		return resolved;
 	};
 
-	const presenceCutoff = Date.now() - PRESENCE_ACTIVE_WINDOW_MS;
 	return Promise.all(
 		rows.map(async (thread) => {
 			const read = await ctx.db
@@ -73,21 +74,10 @@ async function enrichThreadRows(
 				.unique();
 			const unread = thread.lastMessageAt > (read?.lastSeenAt ?? 0);
 			const assignee = thread.assignedTo ? await resolveAssignee(thread.assignedTo) : null;
-			let assigneePresent = false;
-			if (thread.assignedTo) {
-				const presence = await ctx.db
-					.query('threadPresence')
-					.withIndex('by_user_thread', (idx) =>
-						idx.eq('userId', thread.assignedTo!).eq('threadId', thread._id)
-					)
-					.unique();
-				assigneePresent = !!presence && presence.heartbeatAt > presenceCutoff;
-			}
 			return {
 				...(await openConversationThreadPreview(thread)),
 				unread,
 				assignee,
-				assigneePresent,
 			};
 		})
 	);
@@ -290,14 +280,7 @@ export const getReviewQueue = publicQuery({
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!isSharedInboxReader(session)) return [];
 
-		const limit = args.limit ?? 50;
-
-		// Get messages that are draft_ready
-		const pendingMessages = await ctx.db
-			.query('inboundMessages')
-			.withIndex('by_processing_status', (q) => q.eq('processingStatus', 'draft_ready'))
-			.order('desc')
-			.take(limit);
+		const pendingMessages = await readPendingReview(ctx, args.limit ?? 50);
 
 		// Enrich with thread and contact data
 		const enriched = await Promise.all(
@@ -315,6 +298,31 @@ export const getReviewQueue = publicQuery({
 		return enriched;
 	},
 });
+
+/**
+ * How many rows `getReviewQueue` returns for the same `limit` (at most 200),
+ * without the
+ * thread and contact joins (plan 2.11). Feeds the shell's Answer badge; the
+ * Answer and Today pages read the list itself.
+ */
+// public: soft-auth — admin-only shared inbox; returns 0 for non-admins
+export const countReviewQueue = publicQuery({
+	args: { limit: v.optional(v.number()) },
+	handler: async (ctx, args): Promise<number> => {
+		const session = await getBetterAuthSessionWithRole(ctx);
+		if (!isSharedInboxReader(session)) return 0;
+		return (await readPendingReview(ctx, Math.min(args.limit ?? 50, 200))).length;
+	},
+});
+
+/** The newest `draft_ready` messages, the review queue's rows. */
+async function readPendingReview(ctx: QueryCtx, limit: number) {
+	return await ctx.db
+		.query('inboundMessages')
+		.withIndex('by_processing_status', (q) => q.eq('processingStatus', 'draft_ready'))
+		.order('desc')
+		.take(limit);
+}
 
 /**
  * Get quarantined messages for admin review
@@ -373,11 +381,11 @@ export const getFailed = publicQuery({
 /**
  * Get inbound email statistics for the dashboard.
  *
- * Reads the denormalized `instanceSettings.inboxStats` counters
- * maintained by `inbox/messages.ts` (insert) and
- * `inbox/processingLifecycle.ts` (status transitions), plus the
- * `instanceSettings.openThreads` counter maintained by the Conversation
- * thread module (`inbox/threads/module.ts`). The pre-deepening shape did
+ * Reads the denormalized `inboxStats` counters maintained by
+ * `inbox/messages.ts` (insert) and `inbox/processingLifecycle.ts` (status
+ * transitions), plus the `openThreads` counter maintained by the Conversation
+ * thread module (`inbox/threads/module.ts`), from the `inbox` row of
+ * `instanceCounters` (plan 2.4). The pre-deepening shape did
  * `inboundMessages.collect()` AND a `conversationThreads` open-status
  * collect on every subscriber — and this query is subscribed by the inbox
  * view, the workspace badge, the desktop notifier, and three dashboard
@@ -391,8 +399,8 @@ export const getInboundStats = publicQuery({
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!isSharedInboxReader(session)) return null;
 
-		const settings = await ctx.db.query('instanceSettings').first();
-		const counters = settings?.inboxStats ?? {
+		const stored = await readInstanceCounter(ctx.db, 'inbox');
+		const counters = stored.inboxStats ?? {
 			received: 0,
 			processing: 0,
 			draftReady: 0,
@@ -415,7 +423,7 @@ export const getInboundStats = publicQuery({
 			quarantined: counters.quarantined,
 			failed: counters.failed,
 			informational: counters.informational ?? 0,
-			openThreads: settings?.openThreads ?? 0,
+			openThreads: stored.openThreads ?? 0,
 		};
 	},
 });

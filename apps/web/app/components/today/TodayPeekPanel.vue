@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { TodaySource } from '~/utils/todayDigest';
 import { parsePeekKey, threadHref } from '~/utils/todayPeek';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
+import { optimisticSetFlags } from '~/lib/mailOptimistic/mailUpdaters';
 
 /**
  * The email behind a Today phrase, in a panel over the page. Today stays put
@@ -101,6 +102,7 @@ const inbox = computed(() =>
 // Reading it here counts as reading it: mark a Postbox email read on open.
 const { run: markRead } = useBackendOperation(api.mail.messageActions.setFlags, {
 	label: () => t('components.today.peek.markReadOperation'),
+	optimisticUpdate: optimisticSetFlags,
 });
 watch(
 	() => mailMessage.value?._id,

@@ -7,7 +7,7 @@
  * start instant and to keep already-read mail readable without a connection:
  *   - the newest ~500 inbox thread rows (the exact projection the list renders),
  *   - the sanitized bodies of the ~200 most-recently-READ messages.
- * Everything is namespaced by the active mailboxId (see the key helpers) so one
+ * Everything is namespaced by the signed-in user + mailbox (see the key helpers) so one
  * account's cache is never served to another on a shared device. The folder
  * list is cached alongside these, in `postboxOfflineFolderStore.ts` (same DB,
  * same driver, its own module for the file-size ratchet).
@@ -60,11 +60,12 @@ const STORE_NAME = 'kv';
 // upgrade is purely a version bump; see {@link upgradeOfflineDb}.
 export const DB_VERSION = 2;
 
-// Every cache key is namespaced by the active mailbox so one account's cached
-// inbox rows and message bodies can NEVER be served to a different mailbox on a
-// shared device (desktop multi-workspace rail, or a shared browser profile).
-// The namespace is the mailboxId; callers thread it through from the signed-in
-// mailbox. Without a namespace nothing is read or written.
+// Every cache key is namespaced so one account's cached inbox rows and message
+// bodies can NEVER be served to a different identity on a shared device
+// (desktop multi-workspace rail, or a shared browser profile). For the read
+// cache the namespace is user + mailbox (see postboxOfflineCacheScope.ts); the
+// outbox and draft mirrors use the mailboxId. Without a namespace nothing is
+// read or written.
 const threadsKey = (ns: string, folderRole: string) => `threads:${ns}:${folderRole}`;
 /** Key for when a folder's rows were last persisted (dated offline banner). */
 type OfflineThreadsMeta = { savedAt: number };
@@ -224,7 +225,7 @@ export class PostboxOfflineStore {
 	/**
 	 * Persist the newest rows for a folder in `ns`. Capped at
 	 * {@link OFFLINE_THREADS_CAP} — callers pass the list as rendered; we keep
-	 * only the head. `ns` is the active mailboxId so a different mailbox's cold
+	 * only the head. `ns` is the user + mailbox namespace so another identity's cold
 	 * start never reads these rows.
 	 */
 	async saveThreads<T>(ns: string, folderRole: string, rows: readonly T[]): Promise<void> {
@@ -244,7 +245,7 @@ export class PostboxOfflineStore {
 	}
 
 	/**
-	 * Cache one message's post-sanitize body under `ns` (the active mailboxId),
+	 * Cache one message's post-sanitize body under `ns` (the user + mailbox namespace),
 	 * LRU-capped per-namespace at {@link OFFLINE_BODIES_CAP}. Re-reading a message
 	 * moves it to the most-recent end; overflow evicts the least-recently-read
 	 * body (and its index entry). Bodies over {@link OFFLINE_BODY_MAX_BYTES} are
@@ -353,6 +354,12 @@ export class PostboxOfflineStore {
 		else next.lastError = lastError;
 		await this.mustSet(outboxKey(ns, id), next);
 		return next;
+	}
+
+	/** Lift the writes-disabled latch once space was freed (the sign-out wipe). */
+	reenableWrites(): void {
+		this.disabled = false;
+		this.disabledReason = null;
 	}
 
 	/**

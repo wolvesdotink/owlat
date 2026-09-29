@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ref, nextTick } from 'vue';
 import { useEditorDirtyTracking } from '../useEditorDirtyTracking';
+import { versionedRef } from '~/lib/versionedRef';
 
 /** Flush the source watcher, then the deferred end-of-hydration tick. */
 async function settle() {
@@ -519,5 +520,62 @@ describe('useEditorDirtyTracking', () => {
 			expect(editor.subject.value).toBe('My subject');
 			expect(editor.beginSubmit().revision).toBe(3);
 		});
+	});
+});
+
+describe('useEditorDirtyTracking change signals', () => {
+	/** An editor whose block tree is watched through a write counter. */
+	function setupSignalled() {
+		const source = ref<{ _id: string; name: string } | null>(null);
+		const { ref: blocks, version } = versionedRef<{ id: string; html: string }[]>([]);
+		const name = ref('');
+		const tracker = useEditorDirtyTracking({
+			source,
+			initialize: (row) => {
+				name.value = row.name;
+				blocks.value = [{ id: 'b-1', html: 'Loaded' }];
+			},
+			watchSources: [blocks, name],
+			changeSignals: new Map([[blocks, version]]),
+		});
+		return { source, blocks, name, ...tracker };
+	}
+
+	it('marks dirty on a write of the same, edited array (the canvas emit)', async () => {
+		const editor = setupSignalled();
+		editor.source.value = { _id: 'e1', name: 'Loaded' };
+		await settle();
+		expect(editor.hasChanges.value).toBe(false);
+
+		const same = editor.blocks.value;
+		same[0]!.html = 'Edited';
+		editor.blocks.value = same;
+		await nextTick();
+		expect(editor.hasChanges.value).toBe(true);
+	});
+
+	it('no longer walks the signalled tree: an edit nobody wrote back is not seen', async () => {
+		const editor = setupSignalled();
+		editor.source.value = { _id: 'e1', name: 'Loaded' };
+		await settle();
+
+		editor.blocks.value[0]!.html = 'Edited in place only';
+		await nextTick();
+		expect(editor.hasChanges.value).toBe(false);
+
+		// Unsignalled sources are still deep-watched.
+		editor.name.value = 'Renamed';
+		await nextTick();
+		expect(editor.hasChanges.value).toBe(true);
+	});
+
+	it('does not count the writes a hydration makes', async () => {
+		const editor = setupSignalled();
+		editor.source.value = { _id: 'e1', name: 'Loaded' };
+		await settle();
+		editor.source.value = { _id: 'e1', name: 'Server update' };
+		await settle();
+		expect(editor.name.value).toBe('Server update');
+		expect(editor.hasChanges.value).toBe(false);
 	});
 });

@@ -23,7 +23,7 @@ import { v } from 'convex/values';
 import { adminQuery, authedQuery } from '../lib/authedFunctions';
 import { internalMutation, type QueryCtx } from '../_generated/server';
 import { getOptional, isEnvPresent } from '../lib/env';
-import { getInstanceSettings, upsertInstanceSettings } from '../lib/instanceSettings';
+import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounters';
 import { isSendProviderKind } from '../lib/sendProviders/types';
 import { isDeliveryConfigured, isSendProviderReady } from '../lib/sendProviders/capability';
 import {
@@ -74,7 +74,10 @@ export const getStatus = adminQuery({
 		const providerConfigured = isKnownProvider && (await isSendProviderReady(ctx, provider));
 		const canSend = await isDeliveryConfigured(ctx);
 
-		const settings = await getInstanceSettings(ctx.db);
+		const [{ deliveryTestLastSucceededAt }, { mtaHealth }] = await Promise.all([
+			readInstanceCounter(ctx.db, 'deliveryTest'),
+			readInstanceCounter(ctx.db, 'mtaHealth'),
+		]);
 		return {
 			provider,
 			providerLabel: providerEntry?.label ?? null,
@@ -86,8 +89,8 @@ export const getStatus = adminQuery({
 			// transport editor can seed its selector and a re-apply never silently
 			// resets a previously-chosen floor to `opportunistic`. Unset ⇒ null.
 			outboundTlsMode: getOptional('OUTBOUND_TLS_MODE') ?? null,
-			lastTestSucceededAt: settings?.deliveryTestLastSucceededAt ?? null,
-			mtaHealth: provider === OWN_ARM_TRANSPORT_KIND ? (settings?.mtaHealth ?? null) : null,
+			lastTestSucceededAt: deliveryTestLastSucceededAt ?? null,
+			mtaHealth: provider === OWN_ARM_TRANSPORT_KIND ? (mtaHealth ?? null) : null,
 		};
 	},
 });
@@ -213,7 +216,7 @@ export const getTransportSummary = authedQuery({
 		// sender-alignment gate: the transport's normalized kind plus the effective
 		// DKIM `d=` / return-path domains (DNS-facing values, never credentials).
 		const facts = outboundTransportFacts();
-		const settings = await getInstanceSettings(ctx.db);
+		const { mtaHealth } = await readInstanceCounter(ctx.db, 'mtaHealth');
 
 		return {
 			provider,
@@ -221,7 +224,7 @@ export const getTransportSummary = authedQuery({
 			canSend,
 			advancedRoutingActive,
 			health,
-			infrastructure: provider === OWN_ARM_TRANSPORT_KIND ? (settings?.mtaHealth ?? null) : null,
+			infrastructure: provider === OWN_ARM_TRANSPORT_KIND ? (mtaHealth ?? null) : null,
 			alignment: {
 				kind: facts.kind,
 				returnPathDomain: facts.returnPathDomain,
@@ -232,14 +235,19 @@ export const getTransportSummary = authedQuery({
 });
 
 /**
- * Record a successful delivery test on the singleton instanceSettings row.
+ * Record a successful delivery test on its `instanceCounters` row (plan 2.4).
  * Internal: only `statusActions.sendTest` (after a real send succeeds) writes
  * this.
  */
 export const recordTestResult = internalMutation({
 	args: { at: v.number() },
 	handler: async (ctx, args): Promise<null> => {
-		await upsertInstanceSettings(ctx, { deliveryTestLastSucceededAt: args.at }, { now: args.at });
+		await writeInstanceCounter(
+			ctx,
+			'deliveryTest',
+			{ deliveryTestLastSucceededAt: args.at },
+			args.at
+		);
 		return null;
 	},
 });

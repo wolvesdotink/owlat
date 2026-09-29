@@ -41,7 +41,10 @@ import {
 } from '../delivery/checklistAlertRecipients';
 import { removeMessageAttachments } from '../mail/attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../mail/messagePurge';
+import { deleteMailboxUsage } from '../mail/mailboxUsage';
+import { deleteFolderCounters, deleteMailboxCounters } from '../mail/messageCounters';
 import { isOrgInfrastructureAccount } from '../mail/external/personalAccount';
+import { deleteStoredAccessToken } from '../mail/external/accessTokenStore';
 import { isPersonalMailbox } from '../mail/permissions';
 
 const MESSAGE_BATCH = 100;
@@ -118,6 +121,7 @@ export const eraseMemberData = internalMutation({
 				.query('mailFolders')
 				.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailbox._id))
 				.collect()) {
+				await deleteFolderCounters(ctx, row._id);
 				await ctx.db.delete(row._id); // bounded: per-mailbox configuration rows
 			}
 			for (const row of await ctx.db
@@ -202,6 +206,8 @@ export const eraseMemberData = internalMutation({
 				await ctx.db.delete(row._id); // bounded: members of one mailbox
 			}
 
+			await deleteMailboxUsage(ctx, mailbox._id);
+			await deleteMailboxCounters(ctx, mailbox._id);
 			await ctx.db.delete(mailbox._id);
 			await reschedule();
 			return;
@@ -226,6 +232,7 @@ export const eraseMemberData = internalMutation({
 				.withIndex('by_account', (q) => q.eq('accountId', account._id))
 				.collect(); // bounded: folders of one account
 			for (const row of syncRows) await ctx.db.delete(row._id);
+			await deleteStoredAccessToken(ctx, account._id);
 			// Queued write-backs name the account and carry the member's Message-IDs.
 			const remoteOps = await ctx.db
 				.query('externalMailRemoteOps')

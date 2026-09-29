@@ -1,9 +1,20 @@
-import type { ComputedRef, Ref } from 'vue';
+import { hasInjectionContext, inject, type ComputedRef, type InjectionKey, type Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { BackendOperationResult } from '~/composables/useBackendOperation';
 import { pickAdjacentMessageId, type PostboxAutoAdvanceMode } from '~/utils/postboxAutoAdvance';
 import type { PostboxSnoozeScope } from '~/utils/postboxSnoozeScope';
+import { hidePostboxRowEverywhere, unhidePostboxRowEverywhere } from './usePostboxOptimisticHide';
+import {
+	optimisticArchive,
+	optimisticMarkRead,
+	optimisticMove,
+	optimisticSetStar,
+	optimisticSnooze,
+	optimisticSnoozeThread,
+	optimisticSnoozeUntilReply,
+	optimisticTrash,
+} from '~/lib/mailOptimistic/mailUpdaters';
 
 /** The live thread fields the reader's thread-level actions branch on. */
 export type ReaderActionThread = {
@@ -19,6 +30,22 @@ type ReaderActionMessage = {
 	snippet?: string;
 	flagSeen?: boolean;
 };
+
+/**
+ * What an in-place host (the Today reader overlay) lends its readers so a
+ * triage that failed after advancing can reopen the message it left. Provided
+ * by the host, not passed through the reader's `advance` emit: the reader that
+ * started the triage has been swapped out by then, and an unmounted component
+ * cannot emit.
+ */
+export interface PostboxReaderHost {
+	/** The message the host shows now (null = the overlay is closed). */
+	openId: () => string | null;
+	/** Show this message again. */
+	open: (messageId: string) => void;
+}
+export const POSTBOX_READER_HOST_KEY: InjectionKey<PostboxReaderHost> =
+	Symbol('postbox-reader-host');
 
 type MovedRows = {
 	moved: Array<{ messageId: Id<'mailMessages'>; sourceFolderId: Id<'mailFolders'> }>;
@@ -49,6 +76,11 @@ export function usePostboxReaderActions(opts: {
 	allMessages: ComputedRef<ReadonlyArray<{ _id: string }>>;
 	readerThread: ComputedRef<ReaderActionThread | null | undefined>;
 	autoAdvance: Ref<PostboxAutoAdvanceMode> | ComputedRef<PostboxAutoAdvanceMode>;
+	/**
+	 * Runs before `print`; a returned promise delays the print dialog until it
+	 * settles (the reader mounts its lazily held message bodies first).
+	 */
+	beforePrint?: () => Promise<void> | undefined;
 	advance: {
 		ids: () => string[] | undefined;
 		folderRole: () => string | undefined;
@@ -64,6 +96,8 @@ export function usePostboxReaderActions(opts: {
 	const { getMessage, messageId, mailboxId, allMessages, readerThread, autoAdvance, advance } =
 		opts;
 	const { t } = useI18n();
+	const router = useRouter();
+	const readerHost = hasInjectionContext() ? inject(POSTBOX_READER_HOST_KEY, null) : null;
 
 	const bulk = usePostboxBulkActions(mailboxId);
 	const { labels, setOnMessage: setLabelOnMessage } = usePostboxLabels(mailboxId);
@@ -72,26 +106,35 @@ export function usePostboxReaderActions(opts: {
 		folders.value.filter((f) => f.role !== 'sent' && f.role !== 'drafts')
 	);
 
+	// The native optimistic updates repaint the list, the open conversation and
+	// the rail's counts the moment a verb is sent (plan 2.2).
 	const archiveOp = useBackendOperation(api.mail.messageActions.archive, {
 		label: () => t('common.archive'),
+		optimisticUpdate: optimisticArchive,
 	});
 	const trashOp = useBackendOperation(api.mail.messageActions.trash, {
 		label: () => t('components.postbox.postboxThreadReader.moveToTrashOperation'),
+		optimisticUpdate: optimisticTrash,
 	});
 	const setStarOp = useBackendOperation(api.mail.messageActions.setStar, {
 		label: () => t('components.postbox.postboxThreadReader.star'),
+		optimisticUpdate: optimisticSetStar,
 	});
 	const markReadOp = useBackendOperation(api.mail.messageActions.markRead, {
 		label: () => t('components.postbox.postboxThreadReader.markReadOperation'),
+		optimisticUpdate: optimisticMarkRead,
 	});
 	const snoozeOp = useBackendOperation(api.mail.snooze.snooze, {
 		label: () => t('components.postbox.postboxThreadReader.snoozeOperation'),
+		optimisticUpdate: optimisticSnooze,
 	});
 	const snoozeUntilReplyOp = useBackendOperation(api.mail.snooze.snoozeUntilReply, {
 		label: () => t('components.postbox.postboxThreadReader.snoozeUntilReplyOperation'),
+		optimisticUpdate: optimisticSnoozeUntilReply,
 	});
 	const snoozeThreadOp = useBackendOperation(api.mail.snooze.snoozeThread, {
 		label: () => t('components.postbox.postboxThreadReader.snoozeOperation'),
+		optimisticUpdate: optimisticSnoozeThread,
 	});
 	const setMutedOp = useBackendOperation(api.mail.mute.setMutedForMessage, {
 		label: () => t('components.postbox.postboxThreadReader.muteOperation'),
@@ -101,6 +144,7 @@ export function usePostboxReaderActions(opts: {
 	});
 	const moveOp = useBackendOperation(api.mail.messageActions.move, {
 		label: () => t('components.postbox.postboxThreadReader.moveOperation'),
+		optimisticUpdate: optimisticMove,
 	});
 	const reportSpamOp = useBackendOperation(api.mail.messageActions.reportSpam, {
 		label: () => t('components.postbox.postboxThreadReader.reportSpam'),
@@ -121,38 +165,74 @@ export function usePostboxReaderActions(opts: {
 		before?: () => Promise<unknown>
 	) {
 		if (!outcome.ok || !outcome.result || outcome.result.moved.length === 0) return;
+		const moved = outcome.result.moved;
 		triageUndo.registerMoveBack({
 			label,
-			moved: outcome.result.moved,
+			moved,
 			runMove: (a) => moveOp.run(a),
 			...(before ? { before } : {}),
+			// Rows the reader hid on its way out come back with the undo.
+			after: () => {
+				for (const entry of moved) unhidePostboxRowEverywhere(entry.messageId);
+			},
 		});
 	}
 
-	async function runAndAdvance(run: () => Promise<BackendOperationResult<unknown>>) {
-		// Capture the target before the mutation — the live list drops the
-		// triaged row once the server confirms, shifting the indices.
+	/**
+	 * Triage the open message and move on WITHOUT waiting for the server: pick
+	 * the next target, hide the row in the list, advance, and only then let the
+	 * mutation run in the background. A THROWN failure (useBackendOperation maps
+	 * it to `ok: false` and has already shown its error toast) restores the row
+	 * and returns to the message, unless the user has moved on since. Anything
+	 * the server returns (incl. a handler `return undefined`, which Convex
+	 * serializes to `null` — archive/trash's row-already-gone soft-fail, or
+	 * snooze's void success) counts as done: the row is gone either way.
+	 *
+	 * The reader that started the action is usually unmounted by the time the
+	 * mutation settles (it is keyed by message), so everything the failure path
+	 * needs is captured here, before the advance.
+	 */
+	async function runAndAdvance(
+		run: (id: Id<'mailMessages'>) => Promise<BackendOperationResult<unknown>>
+	) {
+		const id = messageId.value;
 		const folderRole = advance.folderRole();
+		const inPlace = advance.inPlace() === true;
+		// Capture the target before hiding — the hidden row leaves the list's
+		// visual order, shifting the indices.
 		const target = folderRole
-			? pickAdjacentMessageId(advance.ids() ?? [], getMessage()._id, autoAdvance.value)
+			? pickAdjacentMessageId(advance.ids() ?? [], id, autoAdvance.value)
 			: null;
-		const outcome = await run();
-		// Stay put only on THROWN errors — useBackendOperation's catch path maps
-		// those to `ok: false`. Anything the server returns (incl. a handler
-		// `return undefined`, which Convex serializes to `null` on the client —
-		// e.g. archive/trash's row-already-gone soft-fail, or snooze's void
-		// success) still advances; that's fine because the row is gone either way.
-		if (!outcome.ok) return;
+		// The search preview (no folder, not in place) stays put and keeps its
+		// result row; only a host that advances hides the row it leaves.
+		const advances = inPlace || Boolean(folderRole);
+		if (advances) hidePostboxRowEverywhere(id);
+
+		let navigation: Promise<unknown> | null = null;
+		let targetPath: string | null = null;
 		// Overlay host: swap the reader in place (or close it at the list's ends)
 		// instead of leaving the Today surface for the three-pane route.
-		if (advance.inPlace()) {
-			advance.emit(target);
+		if (inPlace) advance.emit(target);
+		else if (folderRole) {
+			targetPath = target
+				? `/dashboard/postbox/${folderRole}/${target}`
+				: `/dashboard/postbox/${folderRole}`;
+			navigation = Promise.resolve(navigateTo(targetPath));
+		}
+
+		const outcome = await run(id);
+		if (outcome.ok || !advances) return;
+
+		unhidePostboxRowEverywhere(id);
+		// Go back only if the user is still where the triage sent them; a
+		// failure arriving after they opened something else must not yank them.
+		if (inPlace) {
+			if (readerHost && readerHost.openId() === target) readerHost.open(id);
 			return;
 		}
-		if (!folderRole) return;
-		void navigateTo(
-			target ? `/dashboard/postbox/${folderRole}/${target}` : `/dashboard/postbox/${folderRole}`
-		);
+		await navigation;
+		if (router.currentRoute.value.path !== targetPath) return;
+		void navigateTo(`/dashboard/postbox/${folderRole}/${id}`, { replace: true });
 	}
 
 	// Live flags of the open message (the prop can be a stale list row).
@@ -181,7 +261,7 @@ export function usePostboxReaderActions(opts: {
 			);
 			return;
 		}
-		void runAndAdvance(() => snoozeOp.run({ messageId: messageId.value, until }));
+		void runAndAdvance((id) => snoozeOp.run({ messageId: id, until }));
 	}
 
 	/**
@@ -193,7 +273,7 @@ export function usePostboxReaderActions(opts: {
 	function toggleOpenThreadMute() {
 		const muted = !isThreadMuted.value;
 		if (muted) {
-			void runAndAdvance(() => setMutedOp.run({ messageId: messageId.value, muted: true }));
+			void runAndAdvance((id) => setMutedOp.run({ messageId: id, muted: true }));
 			return;
 		}
 		void setMutedOp.run({ messageId: messageId.value, muted: false });
@@ -213,7 +293,7 @@ export function usePostboxReaderActions(opts: {
 	}
 
 	function snoozeOpenMessageUntilReply(capUntil: number) {
-		void runAndAdvance(() => snoozeUntilReplyOp.run({ messageId: messageId.value, capUntil }));
+		void runAndAdvance((id) => snoozeUntilReplyOp.run({ messageId: id, capUntil }));
 	}
 
 	// Subject + snippet feed the deterministic wake-time suggestion in the dialog.
@@ -278,15 +358,15 @@ export function usePostboxReaderActions(opts: {
 	function runReaderAction(action: string) {
 		switch (action) {
 			case 'archive':
-				void runAndAdvance(async () => {
-					const result = await archiveOp.run({ messageIds: [messageId.value] });
+				void runAndAdvance(async (id) => {
+					const result = await archiveOp.run({ messageIds: [id] });
 					registerTriageUndo(t('components.postbox.postboxThreadReader.undoArchived'), result);
 					return result;
 				});
 				break;
 			case 'trash':
-				void runAndAdvance(async () => {
-					const result = await trashOp.run({ messageIds: [messageId.value] });
+				void runAndAdvance(async (id) => {
+					const result = await trashOp.run({ messageIds: [id] });
 					registerTriageUndo(t('components.postbox.postboxThreadReader.undoTrashed'), result);
 					return result;
 				});
@@ -333,9 +413,13 @@ export function usePostboxReaderActions(opts: {
 			case 'blockSender':
 				blockSenderOf(getMessage()._id);
 				break;
-			case 'print':
-				if (import.meta.client) window.print();
+			case 'print': {
+				if (!import.meta.client) break;
+				const ready = opts.beforePrint?.();
+				if (ready) void ready.then(() => window.print());
+				else window.print();
 				break;
+			}
 		}
 	}
 

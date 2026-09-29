@@ -33,7 +33,8 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
-import { readMailMessageText, openMailMessageInlineBody } from '../lib/messageBody';
+import { readMailMessageText } from '../lib/messageBody';
+import { openStoredInlineBody } from '../lib/messageBodyStore';
 import { buildSearchBody, isBodySearchIndexingEnabled } from './searchBody';
 import { cancelJob, readJob, startJob } from './_jobLifecycle';
 
@@ -132,7 +133,7 @@ export const loadBatch = internalQuery({
 
 		const rows = [];
 		for (const m of page) {
-			const { text, html } = await openMailMessageInlineBody(m);
+			const { text, html } = await openStoredInlineBody(ctx.db, m);
 			rows.push({
 				messageId: m._id,
 				textInline: text,

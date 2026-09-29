@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
+// The --ep-* fallbacks load with the previewer, not with every host page.
+import '../styles/variables.css';
 import {
 	Code,
 	Eye,

@@ -8,6 +8,7 @@
 
 import type { MutationCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
+import { recordListingCounter } from '../../lib/listingCounters';
 import { SEED_TAG, type LoadResult, type Loader } from './types';
 
 type TemplateType = 'marketing' | 'transactional';
@@ -24,10 +25,7 @@ interface TemplateFixture {
 	htmlContent?: string;
 }
 
-async function load(
-	ctx: MutationCtx,
-	rawRecords: unknown[],
-): Promise<LoadResult> {
+async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult> {
 	const records = rawRecords as TemplateFixture[];
 	let inserted = 0;
 	let skipped = 0;
@@ -58,6 +56,7 @@ async function load(
 			createdAt: now,
 			updatedAt: now,
 		});
+		await recordListingCounter(ctx, 'templateType', null, { type: rec.type });
 		ids[rec.slug] = id;
 		inserted++;
 	}

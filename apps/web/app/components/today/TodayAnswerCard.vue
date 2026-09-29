@@ -60,7 +60,7 @@ function rowDetail(item: AnswerItem): string {
 }
 function rowMeta(item: AnswerItem): string {
 	const when = formatCompactRelativeTime(item.at);
-	if (item.source === 'mail' && item.row.draftSlot)
+	if (item.source === 'mail' && item.row.hasDraftSlot)
 		return `${when} · ${t('components.today.answer.draftReady')}`;
 	if (item.source === 'team' && item.entry.message.draftResponse?.trim()) {
 		return `${when} · ${t('components.today.answer.draftReady')}`;

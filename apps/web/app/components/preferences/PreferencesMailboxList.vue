@@ -23,6 +23,18 @@ const isLoading = computed(() => (isAdmin.value ? orgLoading.value : ownLoading.
 
 type MailboxRow = (typeof mailboxes.value)[number];
 
+// Members' byte counts come from their own query so the mailbox list does not
+// change on every delivery; the admin list already carries live counts.
+const { data: ownUsage } = useConvexQuery(api.mail.mailbox.identity.listUsage, () =>
+	isAdmin.value ? 'skip' : {}
+);
+const usedBytesById = computed(
+	() => new Map((ownUsage.value ?? []).map((row) => [row.mailboxId, row.usedBytes]))
+);
+function usedMegabytes(mb: MailboxRow): number {
+	return Math.round((usedBytesById.value.get(mb._id) ?? mb.usedBytes ?? 0) / 1024 / 1024);
+}
+
 // ── Rename (display name) ──────────────────────────────────────────────
 const renameTarget = ref<MailboxRow | null>(null);
 const renameValue = ref('');
@@ -111,7 +123,7 @@ async function handleDelete() {
 							{{
 								t('dashboard.preferences.index.mailboxMeta', {
 									displayName: mb.displayName ?? t('dashboard.preferences.index.noDisplayName'),
-									megabytes: Math.round((mb.usedBytes ?? 0) / 1024 / 1024),
+									megabytes: usedMegabytes(mb),
 								})
 							}}
 						</p>

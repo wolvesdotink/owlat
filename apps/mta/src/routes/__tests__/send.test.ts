@@ -708,6 +708,46 @@ describe('POST /send — job construction and routing', () => {
 		expect(typeof arg.orderMs).toBe('number');
 	});
 
+	it('puts Postbox intake on its own per-domain lane (plan 2.13)', async () => {
+		const queue = fakeQueue();
+		const res = await post(
+			buildApp(queue, fakeRedis(), { isMasterKey: true }, 'postbox'),
+			validBody({
+				to: 'bob@Gmail.com',
+				organizationId: 'postbox',
+				messageType: undefined,
+				allowedFromAddresses: ['alice@example.com'],
+				routingLease: undefined,
+				routingReentry: undefined,
+				routingReentryToken: undefined,
+				workAttemptId: undefined,
+			})
+		);
+
+		expect(res.status).toBe(200);
+		const arg = queue.add.mock.calls[0]![0] as {
+			groupId: string;
+			data: { ipPool: string; queueLane?: string };
+		};
+		// Same IP pool, different FIFO: only the queue group changes.
+		expect(arg.data.ipPool).toBe('transactional');
+		expect(arg.data.queueLane).toBe('postbox');
+		expect(arg.groupId).toBe('postbox:transactional:gmail.com');
+	});
+
+	it('ignores a queueLane a governed caller puts in the request body', async () => {
+		const queue = fakeQueue();
+		const res = await post(buildApp(queue, fakeRedis()), validBody({ queueLane: 'postbox' }));
+
+		expect(res.status).toBe(200);
+		const arg = queue.add.mock.calls[0]![0] as {
+			groupId: string;
+			data: { queueLane?: string };
+		};
+		expect(arg.data.queueLane).toBeUndefined();
+		expect(arg.groupId).toBe('transactional:example.com');
+	});
+
 	it('accepts an authorized Postbox PGP/MIME message without rewriting it', async () => {
 		const queue = fakeQueue();
 		const sealedMime = [

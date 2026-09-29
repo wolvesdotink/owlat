@@ -27,7 +27,7 @@
  */
 
 import { v } from 'convex/values';
-import { openMailMessageInlineBody } from '../lib/messageBody';
+import { openStoredInlineBody } from '../lib/messageBodyStore';
 import { internalMutation, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { isBulkOrNoReplySender } from './needsReplyHeuristic';
@@ -120,10 +120,11 @@ export const getMessageContext = internalQuery({
 		if (!message) return null;
 		const mailbox = await ctx.db.get(message.mailboxId);
 		if (!mailbox || mailbox.status !== 'active') return null;
-		const body = ((await openMailMessageInlineBody(message)).text ?? message.snippet ?? '').slice(
-			0,
-			8000
-		);
+		const body = (
+			(await openStoredInlineBody(ctx.db, message)).text ??
+			message.snippet ??
+			''
+		).slice(0, 8000);
 		return {
 			mailboxId: message.mailboxId,
 			threadId: message.threadId,
@@ -236,7 +237,7 @@ export const sweep = internalMutation({
 			for (const msg of recent) {
 				if (scheduled >= GLOBAL_EXTRACT_CAP || perMailbox >= EXTRACT_PER_MAILBOX) break;
 				if (msg.outbound === undefined) continue;
-				const body = (await openMailMessageInlineBody(msg)).text ?? msg.snippet ?? '';
+				const body = (await openStoredInlineBody(ctx.db, msg)).text ?? msg.snippet ?? '';
 				if (
 					!shouldExtractOutboundCommitment({
 						fromAddress: msg.fromAddress,

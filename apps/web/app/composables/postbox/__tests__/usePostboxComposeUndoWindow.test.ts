@@ -2,15 +2,17 @@
  * Undo-send window reaching the wire (plan idea 8).
  *
  * The backend has accepted `undoSendDelayMs` on `mail.drafts.send` all along;
- * the composer never passed it, so everyone lived with the server's 30s. These
- * tests pin the three things that make the preference safe to add:
+ * without it the server applies its own default (10s since plan Q1). These
+ * tests pin the things that make the preference safe:
  *
  *   - an UNSET preference sends no `undoSendDelayMs` at all — a user who never
  *     opens the setting produces the exact mutation args the composer produced
  *     before it existed, and the server keeps owning the default;
  *   - a chosen window (10 / 60) travels in milliseconds, and 'Off' travels as an
  *     explicit `0` rather than being omitted (omitting it would silently mean
- *     30s — the opposite of what the sender asked for); and
+ *     the 10s default — the opposite of what the sender asked for);
+ *   - a stored 30s (the default before plan Q1) travels explicitly too, so the
+ *     lower default only moves users who never picked a window; and
  *   - the OFFLINE payload's `sendOptions` never gains the window: the reconnect
  *     drain replays those options verbatim and deliberately dispatches a drained
  *     item immediately, so baking the hold in there would re-arm it after
@@ -69,7 +71,7 @@ const isOffline = ref(false);
 vi.mock('../usePostboxOfflineOutbox', () => ({
 	usePostboxOfflineOutbox: () => ({ isOffline, queueSend }),
 	isQueuedSendToken: (token: string) => token.startsWith('outbox:'),
-	OFFLINE_QUEUE_UNDO_WINDOW_MS: 30_000,
+	OFFLINE_QUEUE_UNDO_WINDOW_MS: 10_000,
 }));
 
 /** The saved `mailUserSettings` row the settings query answers with. */
@@ -123,11 +125,18 @@ describe('usePostboxCompose — undo-send window on the wire', () => {
 		expect(sentDelay()).toBeUndefined();
 	});
 
-	it('sends no undoSendDelayMs when the user picked the 30s default explicitly', async () => {
-		settingsData.value = { undoSendSeconds: 30 };
+	it('sends no undoSendDelayMs when the user picked the 10s default explicitly', async () => {
+		settingsData.value = { undoSendSeconds: 10 };
 		const composer = await makeComposer();
 		await composer.send();
 		expect(sentDelay()).toBeUndefined();
+	});
+
+	it('keeps a stored 30s choice (the old default) on the wire (plan Q1)', async () => {
+		settingsData.value = { undoSendSeconds: 30 };
+		const composer = await makeComposer();
+		await composer.send();
+		expect(sentDelay()).toBe(30_000);
 	});
 
 	it('sends the chosen window in milliseconds', async () => {

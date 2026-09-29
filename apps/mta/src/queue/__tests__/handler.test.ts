@@ -1107,6 +1107,26 @@ describe('handleEmailJob', () => {
 		expect(opts.delay).toBeLessThan(7_200_000);
 	});
 
+	it('re-enqueues a deferred Postbox job back onto the Postbox lane (plan 2.13)', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+
+		vi.mocked(sendToMx).mockResolvedValue({
+			success: false,
+			bounceType: 'deferred',
+			smtpCode: 451,
+			error: '451 4.7.1 greylisted, please try again in 300 seconds',
+		});
+
+		await run(createJob({ queueLane: 'postbox' }), {
+			groupId: 'postbox:transactional:example.com',
+		});
+
+		expect(queue.add).toHaveBeenCalledTimes(1);
+		const opts = queue.add.mock.calls[0]![0];
+		expect(opts.groupId).toBe('postbox:transactional:example.com');
+		expect(opts.data.queueLane).toBe('postbox');
+	});
+
 	it('PR-04 (a): greylist "try again in 300 seconds" re-enqueues at ~300000ms', async () => {
 		const { sendToMx } = await import('../../smtp/sender.js');
 

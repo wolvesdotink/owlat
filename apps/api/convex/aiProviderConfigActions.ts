@@ -32,6 +32,7 @@ import type { Doc, Id } from './_generated/dataModel';
 import { authedAction } from './lib/authedFunctions';
 import { decryptSecret, encryptSecret } from './lib/credentialCrypto';
 import { embeddingProviderFor, languageProviderFor } from './lib/llmProviders';
+import { invalidateAiConfigCache } from './lib/llmProviders/storedConfigCache';
 import { decisionProviderFor } from './lib/decisionProviders';
 import { decisionEnvApiKey, decisionKindNeedsKey } from './lib/decisionProvider';
 import { listDecisionModels, testDecisionPlane } from './lib/decision/settingsActions';
@@ -165,7 +166,7 @@ export const saveConfig = authedAction({
 			});
 		}
 
-		return await ctx.runMutation(internal.aiProviderConfig._persistConfig, {
+		const configId = await ctx.runMutation(internal.aiProviderConfig._persistConfig, {
 			languageProviderKind: args.languageProviderKind,
 			languageBaseUrl,
 			modelFast,
@@ -186,6 +187,10 @@ export const saveConfig = authedAction({
 				decisionKind !== undefined ? decisionEnvApiKey(decisionKind) !== undefined : undefined,
 			decisionEnvelope: args.decisionApiKey ? envelopeFor(args.decisionApiKey) : undefined,
 		});
+		// This isolate resolves the new settings on its next call; the others see
+		// the row's new `updatedAt` on their next recheck (lib/llmProvider.ts).
+		invalidateAiConfigCache();
+		return configId;
 	},
 });
 

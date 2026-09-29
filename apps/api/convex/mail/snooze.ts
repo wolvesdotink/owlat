@@ -18,6 +18,8 @@ import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors'
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { requireMailboxAccess, requireMessageAccess } from './permissions';
 import { adjustFolderUnseen } from './folders';
+import { syncThreadLatestSnooze } from './threadLatestSnooze';
+import { recordMessageCounters } from './messageCounters';
 
 export const snooze = postboxMutation({
 	args: {
@@ -37,10 +39,12 @@ export const snooze = postboxMutation({
 			snoozedFromFolderId: message.snoozedFromFolderId ?? message.folderId,
 			updatedAt: Date.now(),
 		});
+		await recordMessageCounters(ctx, message, { ...message, snoozedUntil: args.until });
 		// A snoozed message leaves the unread count (it's hidden from its folder).
 		if (!message.flagSeen && !alreadySnoozed) {
 			await adjustFolderUnseen(ctx, message.folderId, -1);
 		}
+		await syncThreadLatestSnooze(ctx, message.threadId);
 	},
 });
 
@@ -76,9 +80,11 @@ export const snoozeUntilReply = postboxMutation({
 			isSnoozeUntilReply: true,
 			updatedAt: Date.now(),
 		});
+		await recordMessageCounters(ctx, message, { ...message, snoozedUntil: args.capUntil });
 		if (!message.flagSeen && !alreadySnoozed) {
 			await adjustFolderUnseen(ctx, message.folderId, -1);
 		}
+		await syncThreadLatestSnooze(ctx, message.threadId);
 	},
 });
 
@@ -98,20 +104,24 @@ export async function clearSnoozeUntilReplyForThread(
 		.query('mailMessages')
 		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
 		.collect(); // bounded: one thread's messages
+	let woke = false;
 	for (const m of messages) {
 		if (m.isSnoozeUntilReply !== true) continue;
 		if (!isMessageSnoozed(m, now)) continue;
+		woke = true;
 		await ctx.db.patch(m._id, {
 			snoozedUntil: undefined,
 			snoozedFromFolderId: undefined,
 			isSnoozeUntilReply: undefined,
 			updatedAt: now,
 		});
+		await recordMessageCounters(ctx, m, { ...m, snoozedUntil: undefined });
 		// Returning to its folder re-enters the unread count (see unsnooze).
 		if (!m.flagSeen) {
 			await adjustFolderUnseen(ctx, m.folderId, 1);
 		}
 	}
+	if (woke) await syncThreadLatestSnooze(ctx, threadId);
 }
 
 /**
@@ -131,6 +141,7 @@ async function clearMessageSnooze(
 		isSnoozeUntilReply: undefined,
 		updatedAt: now,
 	});
+	await recordMessageCounters(ctx, message, { ...message, snoozedUntil: undefined });
 	// Returning to its folder re-enters the unread count. The decrement happened
 	// when `snoozedUntil` was SET, and nothing re-adds it when the wake time
 	// merely passes — so the presence of the column, not `isMessageSnoozed`, is
@@ -138,6 +149,7 @@ async function clearMessageSnooze(
 	if (!message.flagSeen) {
 		await adjustFolderUnseen(ctx, message.folderId, 1);
 	}
+	await syncThreadLatestSnooze(ctx, message.threadId);
 }
 
 /**
@@ -183,11 +195,13 @@ export const snoozeThread = postboxMutation({
 				snoozedFromFolderId: m.snoozedFromFolderId ?? m.folderId,
 				updatedAt: now,
 			});
+			await recordMessageCounters(ctx, m, { ...m, snoozedUntil: args.until });
 			if (!m.flagSeen && !alreadySnoozed) {
 				await adjustFolderUnseen(ctx, m.folderId, -1);
 			}
 			snoozed += 1;
 		}
+		await syncThreadLatestSnooze(ctx, args.threadId);
 		// Deferring the conversation supersedes any "you came back from snooze"
 		// marker still on it from a previous round trip.
 		if (thread.snoozeReturnedAt !== undefined) {
@@ -250,6 +264,7 @@ export const snoozeMany = postboxMutation({
 		if (args.until <= now) throwInvalidInput('Snooze time must be in the future');
 
 		let snoozed = 0;
+		const threads = new Set<Id<'mailThreads'>>();
 		for (const messageId of args.messageIds) {
 			const owned = await requireMessageAccess(ctx, messageId);
 			if (!owned.ok) continue;
@@ -260,11 +275,14 @@ export const snoozeMany = postboxMutation({
 				snoozedFromFolderId: message.snoozedFromFolderId ?? message.folderId,
 				updatedAt: now,
 			});
+			await recordMessageCounters(ctx, message, { ...message, snoozedUntil: args.until });
 			if (!message.flagSeen && !alreadySnoozed) {
 				await adjustFolderUnseen(ctx, message.folderId, -1);
 			}
+			threads.add(message.threadId);
 			snoozed += 1;
 		}
+		for (const threadId of threads) await syncThreadLatestSnooze(ctx, threadId);
 		return { snoozed };
 	},
 });

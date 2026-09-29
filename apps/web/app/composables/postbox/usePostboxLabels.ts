@@ -10,6 +10,12 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { buildLabelTree } from '~/utils/postboxLabelTree';
+import { optimisticReorderLabels, optimisticUpdateLabel } from '~/lib/mailOptimistic/labelUpdaters';
+import {
+	optimisticSetLabelOnMessages,
+	optimisticToggleLabelOnMessage,
+	optimisticToggleLabelOnThread,
+} from '~/lib/mailOptimistic/mailUpdaters';
 
 export function usePostboxLabels(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	const { t } = useI18n();
@@ -28,24 +34,31 @@ export function usePostboxLabels(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	const createLabel = useBackendOperation(api.mail.labels.create, {
 		label: () => t('shared.postbox.usePostboxLabels.createLabel'),
 	});
+	// Rename, colour, pin, re-parent and reorder settle in place, and a label
+	// applied to mail shows on its rows at once (plan 2.2).
 	const updateLabel = useBackendOperation(api.mail.labels.update, {
 		label: () => t('shared.postbox.usePostboxLabels.updateLabel'),
+		optimisticUpdate: optimisticUpdateLabel,
 	});
 	const removeLabel = useBackendOperation(api.mail.labels.remove, {
 		label: () => t('shared.postbox.usePostboxLabels.deleteLabel'),
 	});
 	const toggleOnMessage = useBackendOperation(api.mail.labels.toggleOnMessage, {
 		label: () => t('shared.postbox.usePostboxLabels.updateMessageLabels'),
+		optimisticUpdate: optimisticToggleLabelOnMessage,
 	});
 	const addToMessages = useBackendOperation(api.mail.labels.setOnMessages, {
 		label: () => t('shared.postbox.usePostboxLabels.updateMessageLabels'),
+		optimisticUpdate: optimisticSetLabelOnMessages,
 	});
 	const toggleOnThread = useBackendOperation(api.mail.labels.toggleOnThread, {
 		label: () => t('shared.postbox.usePostboxLabels.updateThreadLabels'),
+		optimisticUpdate: optimisticToggleLabelOnThread,
 	});
 
 	const reorderLabels = useBackendOperation(api.mail.labels.reorder, {
 		label: () => t('shared.postbox.usePostboxLabels.reorderLabels'),
+		optimisticUpdate: optimisticReorderLabels,
 	});
 
 	/**

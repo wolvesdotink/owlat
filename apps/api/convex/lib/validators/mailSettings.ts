@@ -85,8 +85,7 @@ export const mailSortOrderValidator = v.union(v.literal('newest'), v.literal('ol
 // values rather than a free number: the composer renders it as four radio
 // choices, and an arbitrary window (7 hours) is a footgun, not a preference.
 // `0` is "Off" — dispatch immediately, no undo toast at all. Unset ⇒ the
-// server's DEFAULT_UNDO_SEND_DELAY_MS (30s), which is exactly the behaviour
-// every user had before this control existed. Single source so schema and args
+// server's DEFAULT_UNDO_SEND_DELAY_MS (10s). Single source so schema and args
 // can't drift.
 export const mailUndoSendSecondsValidator = v.union(
 	v.literal(0),

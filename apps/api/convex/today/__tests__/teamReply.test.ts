@@ -149,10 +149,11 @@ async function sendReply(
 
 async function viewAs(t: TestConvex<typeof schema>, mailboxId: Id<'mailboxes'>) {
 	sessionMock.userId = 'user-C';
-	const since = Date.now() - 6 * HOUR;
+	// The digest counts from the viewer's own mark for this tab.
+	await t.mutation(api.today.state.markSeen, { at: Date.now() - 6 * HOUR, scope: mailboxId });
 	return {
 		queue: await t.query(api.mail.needsReply.listQueue, { mailboxId }),
-		digest: await t.query(api.today.mailbox.digest, { mailboxId, since }),
+		digest: await t.query(api.today.mailbox.digest, { mailboxId }),
 		sidebar: await t.query(api.today.mailbox.sidebarThreads, { mailboxId, limit: 5 }),
 	};
 }

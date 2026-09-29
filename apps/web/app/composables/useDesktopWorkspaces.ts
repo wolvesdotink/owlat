@@ -23,6 +23,7 @@ import {
 	workspaceTokenRef,
 } from '~/lib/desktop/workspaceTypes';
 import { applyWorkspaceAccent } from '~/lib/desktop/workspaceAccent';
+import { clearCachedFeatureFlags } from '~/lib/featureFlagCache';
 import {
 	hideSwitchSkeleton,
 	showSwitchSkeleton,
@@ -137,17 +138,25 @@ async function seedLocalDevWorkspace(): Promise<void> {
  * plugin only on a cold launch of the main window — never on the webview
  * reloads a workspace switch performs) overrides the persisted last-active
  * workspace when it still exists. Persisted when applied, so secondary windows
- * (compose) reading the store agree on the active workspace.
+ * (compose) reading the store agree on the active workspace. It may be passed
+ * as a promise: the pin lives in the device settings, and reading those runs
+ * alongside the workspace store read instead of before it.
  */
 export async function loadWorkspaces(options?: {
 	seedLocalDev?: boolean;
-	preferredActiveId?: string | null;
+	preferredActiveId?: string | null | Promise<string | null>;
 }): Promise<void> {
 	if (!isDesktopRuntime() || loaded) return;
 	loaded = true;
 
-	const { loadWorkspaceStore } = await store();
-	const state = (await loadWorkspaceStore()) as unknown as WorkspaceStoreShape;
+	// The keychain bridge is only needed once the active workspace is known;
+	// fetch its module now so that step does not wait on the import too.
+	void keychain().catch(() => {});
+	const [rawState, preferredActiveId] = await Promise.all([
+		store().then(({ loadWorkspaceStore }) => loadWorkspaceStore()),
+		options?.preferredActiveId ?? null,
+	]);
+	const state = rawState as unknown as WorkspaceStoreShape;
 	workspaces.value = Array.isArray(state.workspaces) ? state.workspaces : [];
 	activeId.value = state.activeWorkspaceId ?? workspaces.value[0]?.id ?? null;
 
@@ -165,11 +174,11 @@ export async function loadWorkspaces(options?: {
 	if (options?.seedLocalDev) await seedLocalDevWorkspace();
 
 	if (
-		options?.preferredActiveId &&
-		options.preferredActiveId !== activeId.value &&
-		workspaces.value.some((w) => w.id === options.preferredActiveId)
+		preferredActiveId &&
+		preferredActiveId !== activeId.value &&
+		workspaces.value.some((w) => w.id === preferredActiveId)
 	) {
-		activeId.value = options.preferredActiveId;
+		activeId.value = preferredActiveId;
 		await persistStore();
 	}
 
@@ -252,6 +261,13 @@ async function removeWorkspace(id: string): Promise<void> {
 		}
 		clearKeychainStorage();
 	}
+	// Removing a workspace signs out of it without going through useAuth, so
+	// forget the last-known feature flags and the Postbox offline rows here too
+	// (see useAuth.signOut).
+	clearCachedFeatureFlags();
+	const { wipePostboxOfflineReadCache } =
+		await import('~/composables/postbox/usePostboxOfflineCache');
+	await wipePostboxOfflineReadCache();
 	const { secretDelete } = await keychain();
 	await secretDelete(workspaceTokenRef(id));
 

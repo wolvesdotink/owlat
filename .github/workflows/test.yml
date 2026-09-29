@@ -291,6 +291,29 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
+      # The entry chunk and its static imports are what every page, sign-in
+      # included, loads before Vue mounts. The image above is the only place CI
+      # runs `nuxt build`, so the budget reads that build: the renderer (which
+      # names the entry) and the client chunks are copied out of the loaded
+      # image (web sets cspShellSmoke, so `load` is on).
+      - name: Set up bun for the bundle budget
+        if: matrix.name == 'web'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+
+      - name: Check the web entry bundle budget
+        if: matrix.name == 'web'
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/web-output"
+          mkdir -p "$out/server/chunks/routes" "$out/public"
+          cid=$(docker create "owlat-ci-${{ matrix.name }}:${{ github.sha }}")
+          trap 'docker rm "$cid" >/dev/null' EXIT
+          docker cp "$cid:/app/server/chunks/routes/renderer.mjs" "$out/server/chunks/routes/"
+          docker cp "$cid:/app/public/_nuxt" "$out/public/"
+          bun scripts/check-bundle-budget.ts "$out"
+
       - name: Smoke-test packaged Node runtime
         if: matrix.runtimeSmoke == true
         run: |

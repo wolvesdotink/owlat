@@ -100,10 +100,13 @@ export const handleMailWebhook = httpAction(async (ctx, request) => {
 		payload = null;
 	}
 
-	// Audit FIRST, including a body we could not parse — an MTA sending us
-	// garbage is precisely the thing the audit trail is for.
+	// Audit EVERY body, including one we could not parse — an MTA sending us
+	// garbage is precisely the thing the audit trail is for. The write starts
+	// first but runs beside the delivery rather than ahead of it (it never
+	// rejects: a failed audit write is logged, not thrown), and every response
+	// below waits for it, so no request is answered unaudited.
 	const mpAudit = payload?.mailboxPayload;
-	await storeRawRouteAudit(ctx, {
+	const audited = storeRawRouteAudit(ctx, {
 		source: 'mta-mailbox',
 		logTag: '[Mail Webhook]',
 		bodyText,
@@ -119,51 +122,57 @@ export const handleMailWebhook = httpAction(async (ctx, request) => {
 	});
 
 	if (!payload) {
+		await audited;
 		return jsonResponse(400, { error: 'Invalid JSON' });
 	}
 
 	if (payload.event !== 'inbound.mailbox.received' || !payload.mailboxPayload) {
+		await audited;
 		return jsonResponse(400, { error: `Unsupported event: ${payload.event}` });
 	}
 
 	const mp = payload.mailboxPayload;
 
 	try {
-		const result = await ctx.runAction(internal.mail.delivery.ingestFromWebhook, {
-			deliveryId: mp.deliveryId,
-			rawBytesBase64: mp.rawBytesBase64,
-			recipientAddress: mp.recipientAddress,
-			from: mp.from,
-			to: mp.to,
-			cc: mp.cc ?? [],
-			bcc: mp.bcc ?? [],
-			replyTo: mp.replyTo,
-			returnPath: mp.returnPath,
-			subject: mp.subject || '(no subject)',
-			textBody: mp.textBody,
-			htmlBody: mp.htmlBody,
-			messageId: mp.messageId,
-			inReplyTo: mp.inReplyTo,
-			references: mp.references,
-			date: mp.date,
-			attachments: mp.attachments ?? [],
-			spamScore: mp.spamScore,
-			spamVerdict: mp.spamVerdict,
-			virusVerdict: mp.virusVerdict,
-			spfResult: mp.spfResult,
-			dkimResult: mp.dkimResult,
-			dmarcResult: mp.dmarcResult,
-			dmarcPolicy: mp.dmarcPolicy,
-			arcCv: mp.arcCv,
-			arcSealerDomain: mp.arcSealerDomain,
-			arcAttestsOriginalPass: mp.arcAttestsOriginalPass,
-			envelopeFromDomain: mp.envelopeFromDomain,
-			dkimSigningDomain: mp.dkimSigningDomain,
-		});
+		const [result] = await Promise.all([
+			ctx.runAction(internal.mail.delivery.ingestFromWebhook, {
+				deliveryId: mp.deliveryId,
+				rawBytesBase64: mp.rawBytesBase64,
+				recipientAddress: mp.recipientAddress,
+				from: mp.from,
+				to: mp.to,
+				cc: mp.cc ?? [],
+				bcc: mp.bcc ?? [],
+				replyTo: mp.replyTo,
+				returnPath: mp.returnPath,
+				subject: mp.subject || '(no subject)',
+				textBody: mp.textBody,
+				htmlBody: mp.htmlBody,
+				messageId: mp.messageId,
+				inReplyTo: mp.inReplyTo,
+				references: mp.references,
+				date: mp.date,
+				attachments: mp.attachments ?? [],
+				spamScore: mp.spamScore,
+				spamVerdict: mp.spamVerdict,
+				virusVerdict: mp.virusVerdict,
+				spfResult: mp.spfResult,
+				dkimResult: mp.dkimResult,
+				dmarcResult: mp.dmarcResult,
+				dmarcPolicy: mp.dmarcPolicy,
+				arcCv: mp.arcCv,
+				arcSealerDomain: mp.arcSealerDomain,
+				arcAttestsOriginalPass: mp.arcAttestsOriginalPass,
+				envelopeFromDomain: mp.envelopeFromDomain,
+				dkimSigningDomain: mp.dkimSigningDomain,
+			}),
+			audited,
+		]);
 
 		return jsonResponse(200, { success: true, result });
 	} catch (err) {
 		logError('[Mail Webhook] Delivery failed:', err);
+		await audited;
 		return jsonResponse(500, { error: 'Delivery failed' });
 	}
 });

@@ -87,7 +87,7 @@ export const mailSettingsTables = {
 		// `pending_send` before it dispatches (0 = Off, dispatch immediately and
 		// show no undo toast). Optional so existing rows read as undefined; the
 		// composer then sends no `undoSendDelayMs` at all and the server's
-		// DEFAULT_UNDO_SEND_DELAY_MS (30s) applies — exactly today's behaviour.
+		// DEFAULT_UNDO_SEND_DELAY_MS (10s) applies.
 		undoSendSeconds: v.optional(mailUndoSendSecondsValidator),
 		// When an opened conversation loses its unread flags: 'immediate' (mark on
 		// render), 'after-dwell' (mark after a short visible dwell, cancelled by

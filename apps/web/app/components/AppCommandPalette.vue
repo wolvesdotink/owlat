@@ -13,7 +13,10 @@ import {
 } from '~/lib/commandPalette';
 import { resolvePaletteGroups, routePrefixMatcher } from '~/lib/commandPaletteRegistry';
 import { PALETTE_SCOPE_LABEL_KEYS, groupsForScope } from '~/lib/commandPaletteScope';
-import type { CommandPaletteOpenDetail } from '~/composables/useCommandPalette';
+import {
+	type CommandPaletteOpenDetail,
+	listenForCommandPaletteTriggers,
+} from '~/composables/useCommandPalette';
 import {
 	SEARCH_MIN_QUERY,
 	type SearchResults,
@@ -21,8 +24,9 @@ import {
 } from '~/lib/commandPaletteCore';
 
 /**
- * The app's ONE search overlay, mounted once in the dashboard layout so it works
- * on EVERY dashboard page. It is assembled from an ordered, deduplicated provider
+ * The app's ONE search overlay, mounted by the dashboard layout the first time
+ * it is asked for (`useCommandPaletteHost` listens until then) and kept for the
+ * rest of the session, so it works on EVERY dashboard page. It is assembled from an ordered, deduplicated provider
  * registry (`~/lib/commandPaletteRegistry`): core providers built here are
  * consulted first, then the surface/plugin providers registered while mounted.
  *
@@ -42,6 +46,19 @@ import {
  * (`~/lib/commandPalette`); this component holds the state and the keyboard, and
  * `AppCommandPaletteResults` renders it.
  */
+
+const props = defineProps<{
+	/**
+	 * The request that got this palette mounted (see `useCommandPaletteHost`):
+	 * it opens with it as soon as it is mounted. Absent when mounted eagerly.
+	 */
+	initialOpen?: CommandPaletteOpenDetail;
+}>();
+
+const emit = defineEmits<{
+	/** Mounted with its own open triggers attached; the host can stand down. */
+	ready: [];
+}>();
 
 const { t } = useI18n();
 const { verbItems, contextItems, navItems, settingsItems } = useCommandPaletteProviders();
@@ -83,11 +100,21 @@ const { recentSearches, loadRecent, saveRecent, clearRecent } = useCommandPalett
 // ── Object search (contacts / templates / campaigns / mail) via the shared index.
 // Skipped outside the Everything-style palette: Mail and Ask have their own
 // backends, and this component is mounted on every dashboard page.
-const { data: searchData } = useOrganizationQuery(api.globalSearch.search, () =>
-	// undefined → the wrapper skips the subscription (no empty / <2-char query).
-	prompt.value === 'palette' && debouncedTerm.value.trim().length >= SEARCH_MIN_QUERY
-		? { query: debouncedTerm.value, limit: 5 }
-		: undefined
+// keepPreviousData: the last results stay listed while the next term runs,
+// instead of the groups vanishing on every pause in typing. `openPalette` resets
+// it, so a new session never opens on the previous one's results.
+const {
+	data: searchData,
+	isRefetching: isGlobalSearchRefetching,
+	reset: resetGlobalSearch,
+} = useOrganizationQuery(
+	api.globalSearch.search,
+	() =>
+		// undefined → the wrapper skips the subscription (no empty / <2-char query).
+		prompt.value === 'palette' && debouncedTerm.value.trim().length >= SEARCH_MIN_QUERY
+			? { query: debouncedTerm.value, limit: 5 }
+			: undefined,
+	{ keepPreviousData: true }
 );
 const searchResults = computed(() => searchData.value as SearchResults | undefined);
 
@@ -131,7 +158,12 @@ const inboxScope = useCommandPaletteInboxScope({
 const isSearching = computed(() => {
 	if (prompt.value === 'mailSearch') return mailScope.isSearching.value;
 	if (prompt.value !== 'palette' || searchTerm.value.trim().length < SEARCH_MIN_QUERY) return false;
-	return searchResults.value === undefined || inboxScope.isSearching.value;
+	return (
+		searchResults.value === undefined ||
+		isGlobalSearchRefetching.value ||
+		searchTerm.value !== debouncedTerm.value ||
+		inboxScope.isSearching.value
+	);
 });
 
 // ── Core providers, consulted before any surface/plugin provider. Their
@@ -190,7 +222,10 @@ const groups = computed<PaletteGroup[]>(() => {
 // everything else on the prefix-stripped term.
 const matchTerm = computed(() => (pendingArgument.value ? searchQuery.value : searchTerm.value));
 
-const flatItems = computed(() => flattenGroups(groups.value));
+// Only while open: the palette is mounted on every dashboard page, and the
+// watcher below would otherwise rebuild every provider's groups on each route,
+// flag or recents change while nobody can see them.
+const flatItems = computed(() => (open.value ? flattenGroups(groups.value) : []));
 const flatIndexById = computed(() => {
 	const map = new Map<string, number>();
 	flatItems.value.forEach((item, index) => map.set(item.id, index));
@@ -231,6 +266,7 @@ async function openPalette(detail?: CommandPaletteOpenDetail) {
 	caret.value = initialQuery.length;
 	pendingArgument.value = null;
 	resetScope(detail?.scope);
+	resetGlobalSearch();
 	mailScope.resetQuery(initialQuery);
 	inboxScope.resetQuery();
 	askScope.reset();
@@ -328,44 +364,30 @@ function onInputKeydown(event: KeyboardEvent) {
 // ── Global open triggers. This palette owns plain Cmd/Ctrl+K everywhere, and
 // Cmd/Ctrl+Shift+K is now an ALIAS that opens it pre-switched to Ask — the
 // knowledge Quick Query's own shortcut, unchanged, gated on the same
-// `ai.knowledge` flag the panel it replaced was gated on.
-function onGlobalKey(event: KeyboardEvent) {
-	if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') return;
-	if (event.shiftKey) {
-		if (!isAskAvailable.value) return;
-		event.preventDefault();
-		void openPalette({ scope: 'ask' });
-		return;
-	}
-	event.preventDefault();
-	if (open.value) close();
-	else void openPalette();
-}
-
-// Header/mobile search buttons, the desktop titlebar pill and the Postbox `/`
-// shortcut all open us; the detail names a scope when the caller has one.
-function onExternalOpen(event: Event) {
-	if (open.value) return;
-	void openPalette((event as CustomEvent<CommandPaletteOpenDetail>).detail ?? undefined);
-}
-
-// The palette's own "Ask knowledge…" verb keeps its event seam; it now switches
-// this overlay instead of opening a second modal.
-function onOpenAsk() {
-	if (isAskAvailable.value) void openPalette({ scope: 'ask' });
-}
-
+// `ai.knowledge` flag the panel it replaced was gated on. Header/mobile search
+// buttons, the desktop titlebar pill and the Postbox `/` shortcut send the open
+// event (the detail names a scope when the caller has one), and the palette's
+// own "Ask knowledge…" verb switches this overlay instead of opening a modal.
+let detachTriggers: (() => void) | null = null;
 onMounted(() => {
 	loadRecent();
-	window.addEventListener('keydown', onGlobalKey);
-	window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, onExternalOpen);
-	window.addEventListener('owlat:open-knowledge-query', onOpenAsk);
+	detachTriggers = listenForCommandPaletteTriggers(
+		{
+			toggle: () => {
+				if (open.value) close();
+				else void openPalette();
+			},
+			ask: () => void openPalette({ scope: 'ask' }),
+			open: (detail) => {
+				if (!open.value) void openPalette(detail);
+			},
+		},
+		() => isAskAvailable.value
+	);
+	emit('ready');
+	if (props.initialOpen) void openPalette(props.initialOpen);
 });
-onBeforeUnmount(() => {
-	window.removeEventListener('keydown', onGlobalKey);
-	window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, onExternalOpen);
-	window.removeEventListener('owlat:open-knowledge-query', onOpenAsk);
-});
+onBeforeUnmount(() => detachTriggers?.());
 </script>
 
 <template>

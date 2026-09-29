@@ -25,6 +25,13 @@ export interface UseBlockManagementOptions {
 	onBlockDeleted?: (blockId: string) => void;
 	onColumnItemDeleted?: (itemId: string) => void;
 	onContainerItemDeleted?: (itemId: string) => void;
+	/**
+	 * Called after an edit made in place inside a block (a column or container
+	 * item added, removed or duplicated, the column count changed), which a
+	 * watcher on the root array cannot see. EmailBuilder bumps its block-tree
+	 * version here (see useBlockTreeVersion).
+	 */
+	onTreeMutated?: () => void;
 }
 
 export interface UseBlockManagementReturn {
@@ -59,7 +66,15 @@ export interface UseBlockManagementReturn {
  * Composable for managing block CRUD operations
  */
 export function useBlockManagement(options: UseBlockManagementOptions): UseBlockManagementReturn {
-	const { canvasBlocks, selectedBlockId, theme, onBlockDeleted, onColumnItemDeleted, onContainerItemDeleted } = options;
+	const {
+		canvasBlocks,
+		selectedBlockId,
+		theme,
+		onBlockDeleted,
+		onColumnItemDeleted,
+		onContainerItemDeleted,
+		onTreeMutated,
+	} = options;
 
 	// Insert a block after a specific block, or append to end
 	function insertBlock(newBlock: EditorBlock, afterBlockId?: string) {
@@ -170,6 +185,7 @@ export function useBlockManagement(options: UseBlockManagementOptions): UseBlock
 		};
 
 		column.push(newItem);
+		onTreeMutated?.();
 		return newItem;
 	};
 
@@ -186,6 +202,7 @@ export function useBlockManagement(options: UseBlockManagementOptions): UseBlock
 		if (itemIndex !== -1) {
 			column.splice(itemIndex, 1);
 			onColumnItemDeleted?.(itemId);
+			onTreeMutated?.();
 		}
 	};
 
@@ -216,6 +233,7 @@ export function useBlockManagement(options: UseBlockManagementOptions): UseBlock
 
 		// Insert after the current item
 		column.splice(itemIndex + 1, 0, newItem);
+		onTreeMutated?.();
 		return newItem;
 	};
 
@@ -255,13 +273,11 @@ export function useBlockManagement(options: UseBlockManagementOptions): UseBlock
 				}
 			}
 		}
+		onTreeMutated?.();
 	};
 
 	// Helper to recursively find and delete container item
-	const findAndDeleteContainerItem = (
-		items: ContainerItem[],
-		itemId: string
-	): boolean => {
+	const findAndDeleteContainerItem = (items: ContainerItem[], itemId: string): boolean => {
 		const itemIndex = items.findIndex((item) => item.id === itemId);
 		if (itemIndex !== -1) {
 			items.splice(itemIndex, 1);
@@ -294,7 +310,7 @@ export function useBlockManagement(options: UseBlockManagementOptions): UseBlock
 			return;
 		}
 
-		findAndDeleteContainerItem(items, itemId);
+		if (findAndDeleteContainerItem(items, itemId)) onTreeMutated?.();
 	};
 
 	// Helper to recursively find and duplicate container item
@@ -348,7 +364,9 @@ export function useBlockManagement(options: UseBlockManagementOptions): UseBlock
 			return null;
 		}
 
-		return findAndDuplicateContainerItem(items, itemId);
+		const duplicated = findAndDuplicateContainerItem(items, itemId);
+		if (duplicated) onTreeMutated?.();
+		return duplicated;
 	};
 
 	return {

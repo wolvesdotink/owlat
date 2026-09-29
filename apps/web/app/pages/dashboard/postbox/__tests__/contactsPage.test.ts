@@ -112,15 +112,80 @@ describe('postbox contacts page', () => {
 	});
 
 	it('filters on name, address and organization', async () => {
+		vi.useFakeTimers();
+		try {
+			const w = mountPage();
+			const search = w.get('input[placeholder="Search contacts"]');
+
+			await search.setValue('grace');
+			await vi.advanceTimersByTimeAsync(100);
+			expect(w.text()).not.toContain('Ada Lovelace');
+
+			await search.setValue('analytical');
+			await vi.advanceTimersByTimeAsync(100);
+			expect(w.text()).toContain('Ada Lovelace');
+			expect(w.text()).not.toContain('Grace Hopper');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('waits for a ~100ms pause in typing before re-filtering the list', async () => {
+		vi.useFakeTimers();
+		try {
+			const w = mountPage();
+			const search = w.get('input[placeholder="Search contacts"]');
+
+			await search.setValue('gr');
+			await vi.advanceTimersByTimeAsync(60);
+			await search.setValue('grace');
+			await vi.advanceTimersByTimeAsync(60);
+			// Still mid-typing: the book is unfiltered.
+			expect(w.text()).toContain('Ada Lovelace');
+
+			await vi.advanceTimersByTimeAsync(40);
+			expect(w.text()).not.toContain('Ada Lovelace');
+			expect(w.text()).toContain('Grace Hopper');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('mounts only a window of a large address book, sized for the full list', () => {
+		contacts.value = Array.from({ length: 500 }, (_, i) => ({
+			_id: `c${i}`,
+			email: `person${i}@example.com`,
+			displayName: `Person ${i}`,
+		}));
 		const w = mountPage();
-		const search = w.get('input[placeholder="Search contacts"]');
+		const rows = w.findAll('li');
+		expect(rows.length).toBeGreaterThan(0);
+		expect(rows.length).toBeLessThan(60);
+		expect(w.text()).toContain('Person 0');
+		expect(w.text()).not.toContain('Person 499');
+		// Spacers stand in for every unmounted 64px row, so the page keeps its
+		// full scroll height.
+		const list = w.get('ul').element as HTMLElement;
+		expect(list.style.paddingTop).toBe('0px');
+		expect(list.style.paddingBottom).toBe(`${(500 - rows.length) * 64}px`);
+	});
 
-		await search.setValue('grace');
-		expect(w.text()).not.toContain('Ada Lovelace');
-
-		await search.setValue('analytical');
-		expect(w.text()).toContain('Ada Lovelace');
-		expect(w.text()).not.toContain('Grace Hopper');
+	it('follows the page scroll to mount the rows in view', async () => {
+		contacts.value = Array.from({ length: 500 }, (_, i) => ({
+			_id: `c${i}`,
+			email: `person${i}@example.com`,
+			displayName: `Person ${i}`,
+		}));
+		const w = mountPage();
+		const doc = document.scrollingElement as HTMLElement;
+		const list = w.get('ul').element as HTMLElement;
+		list.getBoundingClientRect = () => ({ top: 150 - doc.scrollTop }) as DOMRect;
+		doc.scrollTop = 150 + 300 * 64;
+		window.dispatchEvent(new Event('scroll'));
+		await vi.waitFor(() => expect(w.text()).toContain('Person 300'));
+		expect(w.text()).not.toContain('Person 0 ');
+		expect(w.findAll('li').length).toBeLessThan(60);
+		doc.scrollTop = 0;
 	});
 
 	it('creates a contact through the personal data layer', async () => {

@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // updater bridges — none relevant to the router exposure — so stub them all so
 // the module imports cleanly and its `setup` runs without a real Tauri runtime.
 
-const loadWorkspaces = vi.fn(async () => {});
+const loadWorkspaces = vi.fn(async (..._args: unknown[]) => {});
 vi.mock('~/composables/useDesktopWorkspaces', () => ({
 	loadWorkspaces: (...args: unknown[]) => loadWorkspaces(...args),
 }));
@@ -55,6 +55,17 @@ vi.mock('@owlat/desktop/src/window', () => ({
 	windowReady: () => windowReady(),
 }));
 
+const loadDesktopAppSettings = vi.fn(async () => ({ global: { startupWorkspaceId: 'ws-pinned' } }));
+vi.mock('~/composables/useDesktopAppSettings', () => ({
+	loadDesktopAppSettings: () => loadDesktopAppSettings(),
+}));
+
+vi.mock('@tauri-apps/api/webviewWindow', () => ({
+	getCurrentWebviewWindow: () => ({ label: 'main' }),
+}));
+
+import { SPLASH_PAINT_FALLBACK_MS } from '~/lib/desktop/splashPaint';
+
 type BootPlugin = { setup: (nuxtApp: unknown) => Promise<void> };
 
 async function loadBootPlugin(): Promise<BootPlugin> {
@@ -98,7 +109,10 @@ describe('desktop boot plugin — SPA router exposure', () => {
 		expect(loadWorkspaces).toHaveBeenCalledTimes(1);
 	});
 
-	it('installs the native-window behaviour and reveals the window once the app has mounted', async () => {
+	it('installs the native-window behaviour and reveals the window on the splash, not on mount', async () => {
+		// Let the reveals the earlier cases started land before counting.
+		await new Promise((resolve) => setTimeout(resolve, SPLASH_PAINT_FALLBACK_MS + 50));
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame'] });
 		const hooks = new Map<string, () => void>();
 		const nuxtApp = {
 			$router: { push: vi.fn() },
@@ -106,15 +120,61 @@ describe('desktop boot plugin — SPA router exposure', () => {
 		};
 		installNativeFeel.mockClear();
 		windowReady.mockClear();
+		// The boot chain (workspace store, keychain) has not finished yet.
+		let finishBoot!: () => void;
+		loadWorkspaces.mockImplementationOnce(
+			() =>
+				new Promise<void>((resolve) => {
+					finishBoot = resolve;
+				})
+		);
+
+		try {
+			const plugin = await loadBootPlugin();
+			const setup = plugin.setup(nuxtApp);
+
+			expect(installNativeFeel).toHaveBeenCalledTimes(1);
+			// The window is built hidden; nothing shows it before the splash paints…
+			expect(windowReady).not.toHaveBeenCalled();
+			// …and one frame later it does, while the boot is still running.
+			await vi.advanceTimersByTimeAsync(SPLASH_PAINT_FALLBACK_MS);
+			await vi.waitFor(() => expect(windowReady).toHaveBeenCalledTimes(1));
+
+			finishBoot();
+			await setup;
+		} finally {
+			vi.useRealTimers();
+		}
+		// Mounting asks again as a backstop; the native side shows a window once.
+		hooks.get('app:mounted')?.();
+		await vi.waitFor(() => expect(windowReady).toHaveBeenCalledTimes(2));
+	});
+
+	it('hands the startup pin over unresolved, so settings and the store load side by side', async () => {
+		sessionStorage.clear();
+		loadWorkspaces.mockClear();
+		const nuxtApp = { $router: { push: vi.fn() }, hook: vi.fn() };
 
 		const plugin = await loadBootPlugin();
 		await plugin.setup(nuxtApp);
 
-		expect(installNativeFeel).toHaveBeenCalledTimes(1);
-		// The window is built hidden; nothing shows it before first paint…
-		expect(windowReady).not.toHaveBeenCalled();
-		// …and mounting does.
-		hooks.get('app:mounted')?.();
-		await vi.waitFor(() => expect(windowReady).toHaveBeenCalledTimes(1));
+		const options = loadWorkspaces.mock.calls[0]?.[0] as {
+			preferredActiveId: Promise<string | null> | null;
+		};
+		expect(options.preferredActiveId).toBeInstanceOf(Promise);
+		await expect(options.preferredActiveId).resolves.toBe('ws-pinned');
+	});
+
+	it('does not re-apply the startup pin on a reload (workspace switch)', async () => {
+		sessionStorage.setItem('owlat:booted', '1');
+		loadWorkspaces.mockClear();
+		const nuxtApp = { $router: { push: vi.fn() }, hook: vi.fn() };
+
+		const plugin = await loadBootPlugin();
+		await plugin.setup(nuxtApp);
+
+		expect(loadWorkspaces).toHaveBeenCalledWith(
+			expect.objectContaining({ preferredActiveId: null })
+		);
 	});
 });

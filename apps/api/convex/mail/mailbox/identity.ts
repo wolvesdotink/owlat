@@ -39,6 +39,8 @@ import { SYSTEM_FOLDER_NAMES, readSession } from './shared';
 import { SYSTEM_FOLDER_ROLES } from '../../lib/validators/mail';
 import { findAddressClaim } from './addressResolution';
 import { stopExternalAccountSync } from '../external/accountTeardown';
+import { readMailboxUsage, withMailboxUsage } from '../mailboxUsage';
+import { startEmptyMailboxCounters } from '../messageCounters';
 
 /**
  * The caller-visible personal mailbox for a member: their single `active`
@@ -167,7 +169,7 @@ export async function provisionMailbox(
 	}
 
 	for (const role of SYSTEM_FOLDER_ROLES) {
-		await ctx.db.insert('mailFolders', {
+		const folderId = await ctx.db.insert('mailFolders', {
 			mailboxId,
 			name: SYSTEM_FOLDER_NAMES[role],
 			role,
@@ -180,6 +182,8 @@ export async function provisionMailbox(
 			createdAt: now,
 			updatedAt: now,
 		});
+		// A new mailbox holds no mail: its counters (plan 3.1) start out exact.
+		if (role === 'inbox') await startEmptyMailboxCounters(ctx, mailboxId, folderId);
 	}
 
 	// External mailboxes are NOT authoritative on the local MTA — mail for an
@@ -288,6 +292,31 @@ export const list = publicQuery({
 });
 
 /**
+ * Live byte counts for the mailboxes `list` returns. Kept out of `list` so the
+ * mailbox switcher does not re-run on every delivery (plan 2.4: usage lives on
+ * `mailboxUsage`, and `mailboxes.usedBytes` is a deprecated snapshot).
+ */
+// public: soft-auth — returns empty for anonymous; access via loadAccessibleMailboxes (own + shared memberships)
+export const listUsage = publicQuery({
+	args: {},
+	handler: async (ctx) => {
+		const session = await readSession(ctx);
+		if (!session) return [];
+		const mailboxes = await loadAccessibleMailboxes(
+			ctx,
+			session.userId,
+			session.activeOrganizationId
+		);
+		return await Promise.all(
+			mailboxes.map(async (mailbox) => ({
+				mailboxId: mailbox._id,
+				usedBytes: (await readMailboxUsage(ctx.db, mailbox)).usedBytes,
+			}))
+		);
+	},
+});
+
+/**
  * Every active or suspended mailbox in the admin's active organization, for
  * the admin rename/delete list in Preferences. Deliverability seed mailboxes
  * are left out: they are managed from the seed screen, and deleting one here
@@ -311,9 +340,11 @@ export const listOrgMailboxes = adminQuery({
 				.withIndex('by_status', (q) => q.eq('status', 'suspended'))
 				.collect(), // bounded: suspended mailboxes (single-org: member roster, few)
 		]);
-		return [...active, ...suspended].filter(
+		const rows = [...active, ...suspended].filter(
 			(m) => m.organizationId === session.activeOrganizationId && m.scope !== 'seed'
 		);
+		// Live byte counts from `mailboxUsage` (plan 2.4).
+		return await Promise.all(rows.map((mailbox) => withMailboxUsage(ctx.db, mailbox)));
 	},
 });
 
@@ -332,7 +363,11 @@ export const get = publicQuery({
  */
 export const getById = internalQuery({
 	args: { mailboxId: v.id('mailboxes') },
-	handler: async (ctx, args) => ctx.db.get(args.mailboxId),
+	handler: async (ctx, args) => {
+		const mailbox = await ctx.db.get(args.mailboxId);
+		// The MTA cache push reads `usedBytes`; serve the live count (plan 2.4).
+		return mailbox ? await withMailboxUsage(ctx.db, mailbox) : null;
+	},
 });
 
 export const remove = postboxMutation({

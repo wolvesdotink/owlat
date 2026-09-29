@@ -2,6 +2,8 @@ import type { PaginationOptions, PaginationResult } from 'convex/server';
 import type { DatabaseReader } from '../_generated/server';
 import type { Doc, TableNames } from '../_generated/dataModel';
 import { countIndexRange } from './pagination';
+import { counterScopeKey, readCounterScope } from './counters';
+import type { ListingCounterKind } from './listingCounters';
 
 /**
  * Resource listing — one engine, per-entity descriptors (ADR-0037).
@@ -77,8 +79,14 @@ export type Facet<T extends TableNames> =
 			buckets: readonly string[];
 			/** Index keyed on `field`, used to count each bucket without a scan. */
 			index: string;
+			/**
+			 * Maintained per-bucket counter (plan 3.1, `lib/listingCounters.ts`).
+			 * Read instead of the per-bucket index walk once it is backfilled.
+			 */
+			counter?: ListingCounterKind;
 	  }
-	| { kind: 'cachedCounter'; table: TableNames; field: string };
+	/** A denormalized count (`null` when not cached yet, which falls back to a scan). */
+	| { kind: 'cachedCounter'; read: (db: DatabaseReader) => Promise<number | null> };
 
 export interface ListingDescriptor<
 	T extends TableNames,
@@ -330,9 +338,8 @@ export async function countFacet<
 	}
 
 	if (facet.kind === 'cachedCounter') {
-		const row = (await db.query(facet.table as never).first()) as Record<string, unknown> | null;
-		const value = row?.[facet.field];
-		if (typeof value === 'number') return value;
+		const value = await facet.read(db);
+		if (value !== null) return value;
 		// No denormalized counter yet — fall back to a bounded scan, the same
 		// hint-with-fallback contract the contacts cached count already uses.
 		return countIndexRange(db, descriptor.table);
@@ -342,9 +349,20 @@ export async function countFacet<
 		return countIndexRange(db, descriptor.table, facet.index ?? 'by_creation_time');
 	}
 
+	const counts: GroupedCount = { total: 0 } as GroupedCount;
+	// A maintained counter answers with one small row per bucket.
+	const counted = facet.counter ? await readCounterScope(db, counterScopeKey(facet.counter)) : null;
+	if (counted) {
+		for (const bucket of facet.buckets) {
+			const c = counted.get(bucket) ?? 0;
+			counts[bucket] = c;
+			counts.total += c;
+		}
+		return counts;
+	}
+
 	// groupBy: one bounded index count per bucket, summed — never a whole-table
 	// `.collect()` then group in memory.
-	const counts: GroupedCount = { total: 0 } as GroupedCount;
 	for (const bucket of facet.buckets) {
 		const c = await countIndexRange(
 			db,

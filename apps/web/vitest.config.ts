@@ -69,6 +69,11 @@ export default defineConfig({
 				find: '#components',
 				replacement: resolve(__dirname, 'app/__tests__/shims/nuxtComponents.ts'),
 			},
+			// The build's area-catalog manifest — see app/__tests__/shims/i18nAreas.ts.
+			{
+				find: '#build/owlat-i18n-areas.mjs',
+				replacement: resolve(__dirname, 'app/__tests__/shims/i18nAreas.ts'),
+			},
 			{
 				// Subpath exports are a mix of `src/<name>.ts` and `src/<name>/index.ts`
 				// (e.g. `@owlat/shared/registry`), so the replacement stops at the

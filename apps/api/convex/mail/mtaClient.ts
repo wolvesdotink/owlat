@@ -11,7 +11,8 @@
  */
 
 import { getOptional } from '../lib/env';
-import { logError } from '../lib/runtimeLog';
+import { FETCH_TIMEOUTS, fetchWithTimeout } from '../lib/fetchWithTimeout';
+import { logError, logWarn } from '../lib/runtimeLog';
 import { warnScanSkipped } from '../lib/scannerHealth';
 
 export interface MtaConfig {
@@ -83,6 +84,33 @@ export function getMailSyncConfig(): MailSyncConfig | null {
 	const apiKey = getOptional('MAIL_SYNC_API_KEY');
 	if (!baseUrl || !apiKey) return null;
 	return { baseUrl: baseUrl.replace(/\/+$/, ''), apiKey };
+}
+
+/**
+ * Ask the mail-sync worker to re-read its connectable accounts now (its
+ * `POST /reconcile`), so a mailbox that was just connected, or whose
+ * credentials were just replaced, starts syncing at once instead of on the
+ * worker's next reconcile tick — up to 30 s later by default.
+ *
+ * Best effort and never throws: the tick still picks the account up if the
+ * worker is down, unconfigured, or an older build without the route (404).
+ * Returns whether the worker acknowledged the poke.
+ */
+export async function pokeMailSyncReconcile(): Promise<boolean> {
+	const mailSync = getMailSyncConfig();
+	if (!mailSync) return false;
+	try {
+		const res = await fetchWithTimeout(
+			`${mailSync.baseUrl}/reconcile`,
+			{ method: 'POST', headers: { Authorization: `Bearer ${mailSync.apiKey}` } },
+			FETCH_TIMEOUTS.internalPush
+		);
+		if (res.ok) return true;
+		logWarn(`[mail-sync] reconcile poke answered HTTP ${res.status}; waiting for the next tick`);
+	} catch (err) {
+		logWarn('[mail-sync] reconcile poke failed; waiting for the next tick:', err);
+	}
+	return false;
 }
 
 /** Raw `/scan/attachment` response body shape. */
@@ -226,15 +254,19 @@ export async function scanAttachmentBytes(
 	if (!mta) return { kind: 'skipped' }; // scanner not configured → fail-open, silent
 
 	try {
-		const res = await fetch(`${mta.baseUrl}/scan/attachment`, {
-			method: 'POST',
-			headers: {
-				Authorization: `Bearer ${mta.apiKey}`,
-				'Content-Type': 'application/octet-stream',
-				'X-Filename': encodeFilenameHeader(filename),
+		const res = await fetchWithTimeout(
+			`${mta.baseUrl}/scan/attachment`,
+			{
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${mta.apiKey}`,
+					'Content-Type': 'application/octet-stream',
+					'X-Filename': encodeFilenameHeader(filename),
+				},
+				body: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer,
 			},
-			body: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer,
-		});
+			FETCH_TIMEOUTS.attachmentScan
+		);
 
 		if (!res.ok) {
 			// Scanner reachable but errored (e.g. 503) → fail open, surfaced.

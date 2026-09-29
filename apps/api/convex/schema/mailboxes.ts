@@ -94,8 +94,12 @@ export const mailboxesTables = {
 		outboundPreference: v.optional(v.union(v.literal('external'), v.literal('instance'))),
 		status: v.union(v.literal('active'), v.literal('suspended'), v.literal('deleted')),
 		quotaBytes: v.optional(v.number()), // null = unlimited (always unset for external)
+		// DEPRECATED (plan 2.4): the live byte count and its CAS revision moved to
+		// the 1:1 `mailboxUsage` row (`mail/mailboxUsage.ts`), so a delivery no
+		// longer patches this document and re-runs every query that authorizes
+		// against it. No longer written after the row exists; read only as the
+		// pre-backfill fallback. Narrow in a later release.
 		usedBytes: v.number(),
-		// Monotonic CAS guard for paginated quota repairs, including same-ms writes.
 		usageRevision: v.optional(v.number()),
 		uidValidity: v.number(), // initialized to Date.now()
 		createdAt: v.number(),
@@ -109,6 +113,22 @@ export const mailboxesTables = {
 		// surface (mail/mailboxMembers.ts::listShared). Personal mailboxes keep
 		// `scope` unset, so the 'shared' range stays small by construction.
 		.index('by_scope', ['scope']),
+
+	// Live storage accounting for one mailbox, 1:1 with `mailboxes` (plan 2.4).
+	// Every size-changing write (delivery, sent copy, IMAP APPEND/COPY/EXPUNGE,
+	// purge) lands here instead of on the mailbox document, which becomes
+	// near-immutable. Written only through `mail/mailboxUsage.ts`; a missing row
+	// is seeded from the deprecated `mailboxes.usedBytes`/`usageRevision`.
+	// Wiped with its mailbox (lib/tenantTables.ts lists it before `mailboxes`).
+	mailboxUsage: defineTable({
+		mailboxId: v.id('mailboxes'),
+		// Bytes of mail the mailbox holds, counted per message row (RFC 2087).
+		usedBytes: v.number(),
+		// Monotonic CAS guard for paginated quota repairs, including same-ms
+		// writes; every write increments it.
+		usageRevision: v.number(),
+		updatedAt: v.number(),
+	}).index('by_mailbox', ['mailboxId']),
 
 	// Explicit membership on a mailbox — the access-control source of truth for
 	// shared (team) inboxes. A personal mailbox carries exactly one row: an

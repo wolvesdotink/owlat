@@ -166,6 +166,45 @@ describe('createConvexSubscription', () => {
 		expect(sub.isRefetching.value).toBe(false);
 	});
 
+	it('reset() on a skipped query makes the next args a first load, not a stale bridge', async () => {
+		const term = ref<string | null>('alice');
+		const sub = scope.run(() =>
+			subscribeTo(() => (term.value ? { term: term.value } : 'skip'), { keepPreviousData: true })
+		)!;
+		sub.deliver('alice-hits');
+
+		// The overlay closes (skip) and reopens: without reset the next query
+		// would open on the previous session's hits.
+		term.value = null;
+		await nextTick();
+		sub.reset();
+		expect(sub.data.value).toBeUndefined();
+		expect(sub.isLoading.value).toBe(true);
+		expect(sub.isRefetching.value).toBe(false);
+
+		term.value = 'bob';
+		await nextTick();
+		expect(sub.data.value).toBeUndefined();
+		expect(sub.isLoading.value).toBe(true);
+		expect(sub.isRefetching.value).toBe(false);
+		sub.deliver('bob-hits');
+		expect(sub.data.value).toBe('bob-hits');
+		expect(sub.isLoading.value).toBe(false);
+	});
+
+	it('reset() on a live query blanks it and re-subscribes with the current args', () => {
+		const sub = scope.run(() => subscribeTo({ id: 1 }, { keepPreviousData: true }))!;
+		sub.deliver('one');
+
+		sub.reset();
+		expect(sub.data.value).toBeUndefined();
+		expect(sub.isLoading.value).toBe(true);
+		expect(sub.unsubscribe).toHaveBeenCalledOnce();
+		expect(sub.open).toHaveBeenCalledTimes(2);
+		sub.deliver('one again');
+		expect(sub.data.value).toBe('one again');
+	});
+
 	it('blanks the value on a new-args load without keepPreviousData', async () => {
 		const id = ref(1);
 		const sub = scope.run(() => subscribeTo(() => ({ id: id.value })))!;

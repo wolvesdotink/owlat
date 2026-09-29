@@ -19,6 +19,10 @@
 
 import type { Component } from 'vue';
 import { moduleFor } from '@owlat/email-renderer';
+import {
+	enrolEmailBlockRegistry,
+	latchEmailBlockRegistriesOnRead,
+} from '@owlat/email-renderer/registry-latch';
 import type { BlockType, BlockContent, EmailTheme } from '../types';
 import type { SlashCommand } from '../types';
 import type { BlockAttributeSchema } from '../schema/types';
@@ -152,12 +156,20 @@ export function isBlockDefinitionRegistryFrozen(): boolean {
 	return latch.isFrozen();
 }
 
+enrolEmailBlockRegistry(finalizeBlockDefinitionRegistry);
+
+/** Freeze-on-first-read: a no-op unless the host armed the latch. */
+function latchOnRead(): void {
+	if (!latch.isFrozen()) latchEmailBlockRegistriesOnRead();
+}
+
 /**
  * The block types already claimed by third-party definitions registered through
  * `registerBlock()`. The composition front door reads this to refuse a plugin
  * that would overwrite a definition a host app registered before boot.
  */
 export function getRegisteredDefinitionTypes(): BlockType[] {
+	latchOnRead();
 	return [...thirdPartyRegistry.keys()];
 }
 
@@ -166,6 +178,7 @@ export function getRegisteredDefinitionTypes(): BlockType[] {
 // ---------------------------------------------------------------------------
 
 export function getBlock(type: BlockType): BlockDefinition | undefined {
+	latchOnRead();
 	// Third-party overrides built-ins (lets callers replace a built-in
 	// definition in tests or custom builds).
 	const thirdParty = thirdPartyRegistry.get(type);
@@ -180,6 +193,7 @@ export function getBlock(type: BlockType): BlockDefinition | undefined {
  * allowlist (`EmailBuilderConfig.blockTypes`); omit it for the default (all).
  */
 export function getAllBlocks(allowed?: readonly BlockType[]): BlockDefinition[] {
+	latchOnRead();
 	const builtIns = getAllEditorModules()
 		.filter((m) => !thirdPartyRegistry.has(m.type))
 		.map((m) => bridgeToDefinition(m));

@@ -10,8 +10,9 @@
  * component is not.
  *
  * The bytes are NOT here. Both readers store metadata on the message row and
- * keep the content in the sealed raw MIME, so a download means fetching the
- * raw `.eml` and extracting `partIndex` out of it — see `useMimePartDownload`.
+ * keep the content in the sealed raw MIME; Postbox mail delivered since plan
+ * 3.5 also has each part stored on its own. A download fetches that part, or
+ * the raw `.eml` with `partIndex` extracted out of it — see `useMimePartDownload`.
  */
 export type AttachmentMeta = {
 	filename: string;

@@ -4,6 +4,7 @@ import {
 	AVATAR_COLOR_STYLES,
 	AVATAR_COLOR_TOKENS,
 	AVATAR_SIZE_CLASSES,
+	AVATAR_SIZE_PX,
 	avatarInitials,
 	initialsAndColorForAddress,
 	personInitials,
@@ -155,6 +156,15 @@ describe('AVATAR_COLOR_STYLES', () => {
 		for (const token of AVATAR_COLOR_TOKENS) {
 			const { background, color } = AVATAR_COLOR_STYLES[token];
 			expect(contrast(background, color), `token ${token}`).toBeGreaterThanOrEqual(4.5);
+		}
+	});
+});
+
+describe('AVATAR_SIZE_PX', () => {
+	it('matches the diameter the size classes draw (Tailwind: 1 unit = 4px)', () => {
+		for (const [size, px] of Object.entries(AVATAR_SIZE_PX)) {
+			const classes = AVATAR_SIZE_CLASSES[size as keyof typeof AVATAR_SIZE_CLASSES];
+			expect(classes).toContain(`w-${px / 4} h-${px / 4}`);
 		}
 	});
 });

@@ -12,12 +12,13 @@
  * asserted in isolation.
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { ref, computed, nextTick, type Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxThreadList from '../PostboxThreadList.vue';
+import { recallScroll, rememberScroll } from '../../../composables/postbox/usePostboxVirtualList';
 import { usePostboxRowTriage } from '../../../composables/postbox/usePostboxRowTriage';
 import { usePostboxOptimisticFlags } from '../../../composables/postbox/usePostboxOptimisticFlags';
 import { usePostboxRowPickers } from '../../../composables/postbox/usePostboxRowPickers';
@@ -49,6 +50,8 @@ const selectedIds = ref<string[]>([]);
 const clearSelection = vi.fn(() => {
 	selectedIds.value = [];
 });
+/** The key the list hands its keyboard focus to reset on. */
+let focusResetKey: Ref<unknown> | undefined;
 /** Every triage mutation the list runs; resolves like a landed useBackendOperation. */
 const runSpy = vi.fn(async (_args: unknown): Promise<unknown> => ({ ok: true, result: null }));
 
@@ -91,11 +94,10 @@ beforeAll(() => {
 	vi.stubGlobal('usePostboxSettings', () => ({ density: ref('comfortable') }));
 	// The list resolves the sender-trust-marker flag once and passes it down.
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => true }));
-	vi.stubGlobal('usePostboxListKeyboard', () => ({
-		focusedIndex: ref(-1),
-		activeId: ref(undefined),
-		onKeydown: vi.fn(),
-	}));
+	vi.stubGlobal('usePostboxListKeyboard', (opts: { resetKey: Ref<unknown> }) => {
+		focusResetKey = opts.resetKey;
+		return { focusedIndex: ref(-1), activeId: ref(undefined), onKeydown: vi.fn() };
+	});
 	vi.stubGlobal('navigateTo', vi.fn());
 	vi.stubGlobal('resolvePostboxShortcut', () => undefined);
 	// The list's empty-state copy and operation labels flow through vue-i18n now;
@@ -130,7 +132,9 @@ function mountList(opts: {
 	loading: boolean;
 	messages?: ReturnType<typeof makeMessage>[];
 	folderRole?: string;
+	folderId?: string;
 	emptyContext?: 'label';
+	hasMore?: boolean;
 }) {
 	return mount(PostboxThreadList, {
 		props: {
@@ -138,7 +142,9 @@ function mountList(opts: {
 			messages: opts.messages ?? [],
 			loading: opts.loading,
 			folderRole: opts.folderRole ?? 'inbox',
+			folderId: opts.folderId,
 			emptyContext: opts.emptyContext,
+			hasMore: opts.hasMore,
 		},
 		global: {
 			plugins: [createTestI18n()],
@@ -160,7 +166,6 @@ function mountList(opts: {
 				UiAvatar: { template: '<span />' },
 			},
 			mocks: {
-				formatThreadTimestamp: () => '5m',
 				resolveComponent: () => 'div',
 			},
 		},
@@ -391,5 +396,78 @@ describe('PostboxThreadList drag to a folder', () => {
 		expect(session.value).not.toBeNull();
 		await w.find('li.pbx-row-li').trigger('dragend');
 		expect(session.value).toBeNull();
+	});
+});
+
+describe('PostboxThreadList inside an outer scroller (the Today column)', () => {
+	const ROW = 76; // comfortable density
+	const LIST_TOP = 200; // the sections stacked above the list
+
+	/** The column: a scroller whose geometry the test drives (no layout in happy-dom). */
+	function column() {
+		const el = document.createElement('div');
+		let top = 0;
+		Object.defineProperty(el, 'scrollTop', {
+			configurable: true,
+			get: () => top,
+			set: (v: number) => {
+				top = v;
+			},
+		});
+		Object.defineProperty(el, 'clientHeight', { configurable: true, value: 600 });
+		Object.defineProperty(el, 'scrollHeight', {
+			configurable: true,
+			value: LIST_TOP + 1000 * ROW + 100,
+		});
+		el.getBoundingClientRect = () => ({ top: 0 }) as DOMRect;
+		return el;
+	}
+
+	it('windows and auto-loads off the column scroll, leaving the folder scroll memory alone', async () => {
+		const remembered = recallScroll('postbox:scroll:inbox');
+		const many = Array.from({ length: 1000 }, (_, i) => makeMessage(i));
+		const w = mountList({ loading: false, messages: many, hasMore: true });
+		// The host's template ref resolves one render after the list mounts.
+		const host = column();
+		await w.setProps({ scrollParent: host });
+		const list = w.get('[role="listbox"]').element as HTMLElement;
+		list.getBoundingClientRect = () => ({ top: LIST_TOP - host.scrollTop }) as DOMRect;
+
+		host.scrollTop = LIST_TOP + 500 * ROW;
+		host.dispatchEvent(new Event('scroll'));
+		await vi.waitFor(() => expect(w.text()).toContain('Sender 500'));
+		expect(w.find('#postbox-row-msg-0').exists()).toBe(false);
+		expect(w.findAll('[role="option"]').length).toBeLessThan(60);
+		expect(w.emitted('load-more')).toBeUndefined();
+
+		host.scrollTop = host.scrollHeight - host.clientHeight - 50;
+		host.dispatchEvent(new Event('scroll'));
+		await vi.waitFor(() => expect(w.emitted('load-more')).toHaveLength(1));
+		expect(recallScroll('postbox:scroll:inbox')).toBe(remembered);
+		w.unmount();
+	});
+});
+
+// The page stays mounted across folder switches, so the list is handed the
+// next folder instead of being rebuilt. Custom folders all have an empty role.
+describe('PostboxThreadList across folder switches', () => {
+	it('moves focus and scroll to the next custom folder without a remount', async () => {
+		rememberScroll('postbox:scroll:folder-b', 320);
+		const rows = [makeMessage(1), makeMessage(2)];
+		const w = mountList({ loading: false, messages: rows, folderRole: '', folderId: 'folder-a' });
+		const scroller = w.get('.postbox-thread-list').element as HTMLElement;
+		expect(focusResetKey?.value).toBe('folder-a');
+		scroller.scrollTop = 500;
+
+		await w.setProps({ folderId: 'folder-b' });
+		await flushPromises();
+		expect(focusResetKey?.value).toBe('folder-b');
+		expect(scroller.scrollTop).toBe(320);
+
+		// A folder not opened yet this session starts at the top.
+		await w.setProps({ folderId: 'folder-c' });
+		await flushPromises();
+		expect(scroller.scrollTop).toBe(0);
+		w.unmount();
 	});
 });

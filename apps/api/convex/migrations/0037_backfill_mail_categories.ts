@@ -18,7 +18,7 @@ export const run = internalAction({
 			mailboxId: args.mailboxId,
 		});
 		for (const threadId of threadIds) {
-			await ctx.runMutation(internal.mail.category.enqueue, { threadId });
+			await ctx.runMutation(internal.mail.categoryArrival.enqueue, { threadId });
 		}
 		return { scheduled: threadIds.length };
 	},

@@ -22,6 +22,7 @@ import { mediaAssetsStep } from './mediaAssets';
 import { accountExportArtifactsStep } from './accountExportArtifacts';
 import { semanticFilesStep } from './semanticFiles';
 import { mailMessagesStep } from './mailMessages';
+import { mailMessagePartsStep } from './mailMessageParts';
 import { inboundMessagesStep } from './inboundMessages';
 import { mailDraftsStep } from './mailDrafts';
 import { mailAttachmentSharesStep } from './mailAttachmentShares';
@@ -50,6 +51,10 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'accountExportArtifactLeases',
 	'accountExportArtifacts',
 	'accountExportSessions',
+	// Derived counts first: the mail and contact wipes below then find no scope
+	// to keep in step.
+	'counterScopes',
+	'counterBuckets',
 	// Storage-bearing leaves: storage hooks fire before row delete
 	'mediaAssets',
 	'semanticFileContacts', // junction mirror — clear before its parent files
@@ -59,7 +64,13 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'mailAttachments',
 	'mailAttachmentBackfillJobs',
 	'mailBodySearchBackfillJobs',
+	// Inline bodies (plan 3.2), 1:1 with mailMessages: swept before their rows
+	// like the attachment index, so no body outlives its message.
+	'mailMessageBodies',
 	'mailMessages',
+	// Parts cut out of a raw `.eml`: the step above frees them with their raw
+	// blob, so this only ever finds orphans, and it purges their blobs too.
+	'mailMessageParts',
 	'mailDrafts',
 	// Share links own the blobs the drafts above no longer reference, so they
 	// have to purge their own storage rather than ride a generic sweep.
@@ -112,6 +123,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'mailAuditLog',
 	'mailAuthFailures',
 	'externalMailFolderSync',
+	'externalMailAccessTokens',
 	'externalMailRemoteOps',
 	'externalMailAccounts',
 	'externalMailOAuthStates',
@@ -137,6 +149,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'mailAppPasswords',
 	'mailboxMembers',
 	'pendingMailboxMembers',
+	'mailboxUsage',
 	'mailboxes',
 
 	// Delivery reputation history — standalone daily snapshots, no dependents
@@ -274,7 +287,10 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// Audit logs LAST (accumulates from delegated lifecycle calls above)
 	'auditLogs',
 
-	// Terminal — the singleton row that owned the org's existence
+	// The rows split off instanceSettings (plan 2.4), then the terminal
+	// singleton row that owned the org's existence
+	'featureFlagSettings',
+	'instanceCounters',
 	'instanceSettings',
 ] as const;
 
@@ -304,7 +320,9 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailAttachments: makeSweepStep('mailAttachments'),
 	mailAttachmentBackfillJobs: makeSweepStep('mailAttachmentBackfillJobs'),
 	mailBodySearchBackfillJobs: makeSweepStep('mailBodySearchBackfillJobs'),
+	mailMessageBodies: makeSweepStep('mailMessageBodies'),
 	mailMessages: mailMessagesStep,
+	mailMessageParts: mailMessagePartsStep,
 	mailDrafts: mailDraftsStep,
 	transactionalSends: transactionalSendsStep,
 	emailSends: makeSweepStep('emailSends'),
@@ -312,6 +330,8 @@ export const ORGANIZATION_DELETION_STEPS = {
 	contentScanResults: makeSweepStep('contentScanResults'),
 	inboundMessages: inboundMessagesStep,
 	conversationThreads: makeSweepStep('conversationThreads'),
+	counterScopes: makeSweepStep('counterScopes'),
+	counterBuckets: makeSweepStep('counterBuckets'),
 	mailAliases: makeSweepStep('mailAliases'),
 	mailFolders: makeSweepStep('mailFolders'),
 	mailLabels: makeSweepStep('mailLabels'),
@@ -326,6 +346,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailAppPasswords: makeSweepStep('mailAppPasswords'),
 	mailboxMembers: makeSweepStep('mailboxMembers'),
 	pendingMailboxMembers: makeSweepStep('pendingMailboxMembers'),
+	mailboxUsage: makeSweepStep('mailboxUsage'),
 	mailboxes: makeSweepStep('mailboxes'),
 	deliverySnapshots: makeSweepStep('deliverySnapshots'),
 	seedPlacementProbes: makeSweepStep('seedPlacementProbes'),
@@ -385,6 +406,8 @@ export const ORGANIZATION_DELETION_STEPS = {
 	onboardingProgress: makeSweepStep('onboardingProgress'),
 	invitationResends: makeSweepStep('invitationResends'),
 	auditLogs: makeSweepStep('auditLogs'),
+	featureFlagSettings: makeSweepStep('featureFlagSettings'),
+	instanceCounters: makeSweepStep('instanceCounters'),
 	instanceSettings: instanceSettingsStep,
 	threadPresence: makeSweepStep('threadPresence'),
 	threadReads: makeSweepStep('threadReads'),
@@ -426,6 +449,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailArchiveImports: mailArchiveImportsStep,
 	mailboxMoves: makeSweepStep('mailboxMoves'),
 	externalMailFolderSync: makeSweepStep('externalMailFolderSync'),
+	externalMailAccessTokens: makeSweepStep('externalMailAccessTokens'),
 	externalMailRemoteOps: makeSweepStep('externalMailRemoteOps'),
 	externalMailAccounts: makeSweepStep('externalMailAccounts'),
 	externalMailOAuthStates: makeSweepStep('externalMailOAuthStates'),

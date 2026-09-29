@@ -83,6 +83,7 @@ async function mountPage(file: FileRow) {
 			// reaches for are named here.
 			stubs: {
 				UiSpinner: true,
+				DashboardDetailSkeleton: true,
 				UiIconBox: true,
 				UiCard: true,
 				UiModal: true,

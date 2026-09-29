@@ -28,9 +28,11 @@ export interface LocalizedTextI18n {
  *
  * - `null` / `undefined` is the empty string, so an optional field renders as nothing.
  * - A string that is a catalog key, in the active locale or in English, is
- *   translated. The English check matters: a key a translation has not caught
- *   up with still resolves, through vue-i18n's `fallbackLocale: 'en'`, to its
- *   English text rather than to the key path.
+ *   translated. The English check matters on the dev server: a key a
+ *   translation has not caught up with still resolves, through vue-i18n's
+ *   `fallbackLocale: 'en'`, to its English text rather than to the key path.
+ *   (A build fills those gaps into the catalog itself; see
+ *   i18n/completeCatalogs.ts.)
  * - Any other string is already words (a model id, a vendor name, a sentence
  *   the backend composed) and is returned unchanged, without the missing-key
  *   warning `t()` would log for it.

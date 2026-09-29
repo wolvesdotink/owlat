@@ -38,6 +38,7 @@ import {
 	SEEDED_TABLES,
 } from '../seedDemo/pipeline';
 import { permanentlyDeleteContactWithRelations } from '../lib/contactMutations';
+import { recordTableRowCounters } from '../lib/rowCounters';
 
 /** Rows scanned per page. Well under the per-transaction read budget. */
 export const SCAN_PAGE_SIZE = 512;
@@ -117,7 +118,7 @@ export const deleteTaggedRows = internalMutation({
  * topic cascade mirrors `topics.remove`: memberships, then the topic.
  *
  * `decrementCount: false` because the seed loaders never incremented
- * `instanceSettings.contactCount` in the first place; decrementing here would
+ * the cached contact count in the first place; decrementing here would
  * push the operator's own contact count below the truth.
  */
 async function deleteSeededRow(
@@ -144,5 +145,7 @@ async function deleteSeededRow(
 		}
 	}
 
+	const row = await ctx.db.get(id);
 	await ctx.db.delete(id);
+	await recordTableRowCounters(ctx, table, row, null);
 }

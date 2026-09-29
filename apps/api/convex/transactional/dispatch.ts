@@ -27,6 +27,7 @@ import { checkEmailDomainVerification } from '../domains/domains';
 import { resolveSendRouteFromDb } from '../lib/sendProviders/route';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { nextDailySendCount } from '../lib/sendingLimits';
+import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounters';
 import { enqueueGovernedSend } from '../delivery/governedEnqueue';
 import { recordSendAssignments } from '../delivery/sendAssignments';
 import { runSendIntakeGates, type SendIntakeRejectionReason } from '../delivery/sendIntakeGates';
@@ -325,14 +326,14 @@ export const dispatch = internalMutation({
 		//     `dispatch` closes the drift seam. The per-template `sendCount`
 		//     denormalization replaces the N+1 scan that `transactional.sends.getCounts`
 		//     used to do over `transactionalSends` per template.
-		// Single instanceSettings patch — transactional + daily counters together
-		// — so the latency-sensitive transactional send RMWs the config singleton
-		// once instead of twice (the daily counter used to re-fetch + patch it
-		// separately, doubling the OCC pressure on one row).
+		// One write for the transactional + daily counters together, on the
+		// `sends` counter row rather than the config singleton every feature gate
+		// reads (plan 2.4), so a send no longer re-runs gated queries.
 		if (settings) {
-			await ctx.db.patch(settings._id, {
-				transactionalSendCount: (settings.transactionalSendCount ?? 0) + 1,
-				...nextDailySendCount(settings, 1, Date.now()),
+			const sends = await readInstanceCounter(ctx.db, 'sends');
+			await writeInstanceCounter(ctx, 'sends', {
+				transactionalSendCount: (sends.transactionalSendCount ?? 0) + 1,
+				...nextDailySendCount(sends, 1, Date.now()),
 			});
 		}
 		await ctx.db.patch(template._id, {

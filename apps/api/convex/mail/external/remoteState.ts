@@ -26,7 +26,8 @@ import { v } from 'convex/values';
 import { internalMutation, internalQuery, type QueryCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { paginationOptsValidator } from 'convex/server';
-import { applyFlagDelta, moveMessagesToFolder } from '../messageActions';
+import { moveMessagesToFolder } from '../messageActions';
+import { applyFlagDelta } from '../flagWrites';
 import { purgeMessageRow } from '../messagePurge';
 import { rebuildThreadAggregates } from '../threadAggregates';
 import {

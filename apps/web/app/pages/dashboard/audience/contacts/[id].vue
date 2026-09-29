@@ -246,14 +246,14 @@ async function handleRemoveSuppression() {
 		</NuxtLink>
 
 		<!-- Loading State -->
-		<div v-if="contactLoading && !contact" class="flex items-center justify-center py-16">
-			<div class="flex flex-col items-center gap-3">
-				<UiSpinner />
-				<p class="text-text-secondary text-sm">
-					{{ t('dashboard.audience.contacts.detail.loading') }}
-				</p>
-			</div>
-		</div>
+		<DashboardDetailSkeleton
+			v-if="contactLoading && !contact"
+			:label="t('dashboard.audience.contacts.detail.loading')"
+			lead="avatar"
+			meta
+			:actions="2"
+			tabs
+		/>
 
 		<!-- Not Found State -->
 		<div

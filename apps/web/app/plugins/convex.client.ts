@@ -3,8 +3,27 @@ import { authClient } from '~/lib/auth-client';
 import { getConvexAuthToken, resetConvexAuthTokenCache } from '~/lib/convex-auth';
 import { isDesktopRuntime, getActiveWorkspace } from '~/lib/desktop/activeWorkspace';
 import { logWarn } from '~/lib/runtimeLog';
+import { clearCachedFeatureFlags } from '~/lib/featureFlagCache';
+import { resetSharedConvexSubscriptions } from '~/lib/sharedConvexSubscriptions';
 
 let authListenerRegistered = false;
+
+/**
+ * What `useAuth().signOut` forgets on this device, for a session that ended
+ * without one: the last-known feature flags and the Postbox rows and bodies
+ * cached for offline reading. Loaded on demand so the IndexedDB store stays out
+ * of the boot bundle.
+ */
+async function forgetSignedOutDevice(): Promise<void> {
+	clearCachedFeatureFlags();
+	try {
+		const { wipePostboxOfflineReadCache } =
+			await import('~/composables/postbox/usePostboxOfflineCache');
+		await wipePostboxOfflineReadCache();
+	} catch {
+		// The chunk failed to load: the redirect to sign-in must still happen.
+	}
+}
 
 export default defineNuxtPlugin(() => {
 	const config = useRuntimeConfig();
@@ -51,7 +70,7 @@ export default defineNuxtPlugin(() => {
 			if (recovering) return;
 			recovering = true;
 			try {
-				const { data } = await authClient.getSession({
+				const { data, error } = await authClient.getSession({
 					query: { disableCookieCache: true },
 				});
 				if (data) {
@@ -61,6 +80,11 @@ export default defineNuxtPlugin(() => {
 					logWarn('Convex auth failed while the session is still valid — check auth config.');
 					return;
 				}
+				// The server says there is no session: it expired or was revoked, and
+				// nobody signed out. Forget what sign-out forgets, or the cached mail of
+				// the person who was here stays on this device. Not on a failed request
+				// (offline), where the session may be fine and the cache is the point.
+				if (!error) await forgetSignedOutDevice();
 
 				// The stored session is dead. Flip the client-side session state so
 				// gated queries unsubscribe and the app reflects signed-out. Only
@@ -102,13 +126,17 @@ export default defineNuxtPlugin(() => {
 				staleSessionNotifies = 0;
 				return;
 			}
+			resetSharedConvexSubscriptions();
 			void handleAuthLoss();
 		};
 		client.setAuth(authCallback, onAuthChange);
 
 		if (!authListenerRegistered) {
 			authListenerRegistered = true;
+			// Fires on sign-in, sign-out and an organization switch. Queries kept
+			// warm for the previous identity must not render for the next one.
 			authClient.$store.listen('$sessionSignal', () => {
+				resetSharedConvexSubscriptions();
 				resetConvexAuthTokenCache();
 				client.setAuth(authCallback, onAuthChange);
 			});

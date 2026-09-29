@@ -28,6 +28,7 @@ import { evalMessageFromRow, filterConditionsMatch } from './filters';
 import { moveMessagesToFolder, rebuildThreadAggregates } from './messageActions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { cancelJob, readJob, startJob } from './_jobLifecycle';
+import { recordMessageCounters } from './messageCounters';
 import { changedRemoteFlags, recordRemoteChanges } from './external/remoteOps';
 
 /**
@@ -174,6 +175,7 @@ async function applyActions(
 			});
 		}
 		await ctx.db.patch(message._id, { ...flagPatch, labelIds, modseq, updatedAt: now });
+		await recordMessageCounters(ctx, message, { ...message, ...flagPatch, labelIds });
 		await rebuildThreadAggregates(ctx, message.threadId);
 		const flags = changedRemoteFlags(message, {
 			seen: flagPatch.flagSeen,
@@ -222,7 +224,8 @@ export const runBatch = internalMutation({
 
 		let matched = 0;
 		for (const message of page) {
-			if (!filterConditionsMatch(filter, await evalMessageFromRow(message))) continue;
+			if (!filterConditionsMatch(filter, await evalMessageFromRow(ctx.db, message, filter)))
+				continue;
 			matched += 1;
 			await applyActions(ctx, filter, message);
 		}

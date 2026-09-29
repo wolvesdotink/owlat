@@ -63,6 +63,8 @@ const props = defineProps<{
 	sealStatus?: RecipientKeyStatus | null;
 	/** `${messageId}:${part}` of the attachment currently being fetched, if any. */
 	downloadingAttachment?: string | null;
+	/** Mount the body now instead of when it nears the viewport (printing). */
+	eagerBody?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -314,15 +316,24 @@ const MENU_ITEM_CLASS =
 			:sealed="sealedEnabled ? msg.inboundEncryptionInfo : undefined"
 			:signature="msg.inboundSignatureInfo"
 		/>
-		<PostboxMessageBody
+		<!-- Off-screen bodies of a long thread wait as a sized placeholder
+		     until they scroll near the viewport (plan D8). -->
+		<PostboxLazyBody
 			v-else
-			:message="msg"
+			:message-id="msg._id"
 			:force-light="forcedLight"
-			:sender-images-allowed="imagesAllowed"
-			@trackers="emit('trackers', $event)"
-			@trust-sender="emit('trust-sender', $event)"
-			@untrust-sender="emit('untrust-sender', $event)"
-		/>
+			:images-allowed="imagesAllowed"
+			:eager="eagerBody"
+		>
+			<PostboxMessageBody
+				:message="msg"
+				:force-light="forcedLight"
+				:sender-images-allowed="imagesAllowed"
+				@trackers="emit('trackers', $event)"
+				@trust-sender="emit('trust-sender', $event)"
+				@untrust-sender="emit('untrust-sender', $event)"
+			/>
+		</PostboxLazyBody>
 
 		<PostboxInviteCard
 			v-if="hasInvite"

@@ -1,9 +1,13 @@
 // @vitest-environment happy-dom
 /**
  * The lazy body-fetch skeleton in PostboxMessageBody must SETTLE for every
- * action outcome — including `getMessageBody` resolving to `null` (message
- * deleted/unreadable). A resolved-null must degrade to the normal
+ * action outcome — including `getMessageBodyBlobUrls` resolving to `null`
+ * (message deleted/unreadable). A resolved-null must degrade to the normal
  * "(empty message)" sandboxed iframe, never shimmer forever.
+ *
+ * It must also wait, without memoising anything, while the reader's inline
+ * body query is still on its way (plan 2.5: the reader renders a list row
+ * before its thread loads).
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
@@ -55,7 +59,9 @@ beforeEach(() => {
 
 const iconStub = { props: ['name'], template: '<span />' };
 
-function mountBody(message = { _id: 'msg-1', htmlBodyStorageId: 'blob-1' }) {
+function mountBody(
+	message: Record<string, unknown> = { _id: 'msg-1', htmlBodyStorageId: 'blob-1' }
+) {
 	return mount(PostboxMessageBody, {
 		props: { message },
 		global: {
@@ -67,7 +73,7 @@ function mountBody(message = { _id: 'msg-1', htmlBodyStorageId: 'blob-1' }) {
 }
 
 describe('PostboxMessageBody lazy-fetch settling', () => {
-	it('settles to the "(empty message)" iframe when getMessageBody resolves null', async () => {
+	it('settles to the "(empty message)" iframe when the blob URL action resolves null', async () => {
 		action.mockResolvedValue(null);
 		const w = mountBody();
 
@@ -110,21 +116,17 @@ describe('PostboxMessageBody lazy-fetch settling', () => {
 		await w.setProps({
 			message: { _id: 'msg-2', htmlBodyStorageId: 'blob-2' },
 		});
-		resolveSecond?.({
-			htmlInline: '<p>new body</p>',
-			textInline: null,
-			htmlUrl: null,
-			textUrl: null,
-		});
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string) => ({
+				text: async () => (url.endsWith('/new') ? '<p>new body</p>' : '<p>stale body</p>'),
+			}))
+		);
+		resolveSecond?.({ htmlUrl: 'https://storage.example/new', textUrl: null });
 		await flushPromises();
 		expect(w.find('iframe').attributes('srcdoc')).toContain('new body');
 
-		resolveFirst?.({
-			htmlInline: '<p>stale body</p>',
-			textInline: null,
-			htmlUrl: null,
-			textUrl: null,
-		});
+		resolveFirst?.({ htmlUrl: 'https://storage.example/old', textUrl: null });
 		await flushPromises();
 		expect(w.find('iframe').attributes('srcdoc')).toContain('new body');
 		expect(w.find('iframe').attributes('srcdoc')).not.toContain('stale body');
@@ -132,26 +134,20 @@ describe('PostboxMessageBody lazy-fetch settling', () => {
 
 	it('ignores a stale blob download after switching messages', async () => {
 		let resolveOldBody: ((value: string) => void) | undefined;
-		const fetchMock = vi.fn(async () => ({
-			text: () =>
-				new Promise<string>((resolve) => {
-					resolveOldBody = resolve;
-				}),
-		}));
+		const fetchMock = vi.fn(async (url: string) =>
+			url.endsWith('/old')
+				? {
+						text: () =>
+							new Promise<string>((resolve) => {
+								resolveOldBody = resolve;
+							}),
+					}
+				: { text: async () => '<p>new body</p>' }
+		);
 		vi.stubGlobal('fetch', fetchMock);
 		action
-			.mockResolvedValueOnce({
-				htmlInline: null,
-				textInline: null,
-				htmlUrl: 'https://storage.example/old',
-				textUrl: null,
-			})
-			.mockResolvedValueOnce({
-				htmlInline: '<p>new body</p>',
-				textInline: null,
-				htmlUrl: null,
-				textUrl: null,
-			});
+			.mockResolvedValueOnce({ htmlUrl: 'https://storage.example/old', textUrl: null })
+			.mockResolvedValueOnce({ htmlUrl: 'https://storage.example/new', textUrl: null });
 
 		const w = mountBody();
 		await flushPromises();
@@ -195,5 +191,36 @@ describe('PostboxMessageBody lazy-fetch settling', () => {
 		expect(loadBody).toHaveBeenNthCalledWith(1, 'offline-msg-1');
 		expect(loadBody).toHaveBeenNthCalledWith(2, 'offline-msg-2');
 		expect(srcdoc).not.toContain('stale offline body');
+	});
+
+	it('holds the skeleton while the inline body is pending, and renders it when it lands', async () => {
+		const w = mountBody({ _id: 'pending-msg', bodyPending: true });
+		await flushPromises();
+
+		// Nothing to fetch: the reader's inline body query answers this one.
+		expect(action).not.toHaveBeenCalled();
+		expect(w.findComponent(PostboxReaderSkeleton).exists()).toBe(true);
+		expect(w.find('iframe').exists()).toBe(false);
+
+		await w.setProps({ message: { _id: 'pending-msg', htmlBodyInline: '<p>inline body</p>' } });
+		await flushPromises();
+
+		expect(w.findComponent(PostboxReaderSkeleton).exists()).toBe(false);
+		// The empty render from the pending state was never cached under the
+		// message's key, so the real body is what shows.
+		expect(w.find('iframe').attributes('srcdoc')).toContain('inline body');
+	});
+
+	it('downloads a body the inline query reported as a blob', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => ({ text: async () => '<p>blob body</p>' }))
+		);
+		action.mockResolvedValue({ htmlUrl: 'https://storage.example/blob', textUrl: null });
+		const w = mountBody({ _id: 'blob-flag-msg', hasBodyBlob: true });
+		await flushPromises();
+
+		expect(action).toHaveBeenCalledTimes(1);
+		expect(w.find('iframe').attributes('srcdoc')).toContain('blob body');
 	});
 });

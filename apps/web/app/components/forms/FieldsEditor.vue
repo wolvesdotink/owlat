@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { FormFieldDraft } from '~/composables/useFormSettings';
+import { stableRowKey } from '~/utils/stableRowKey';
 
 // Editor for a form endpoint's ordered field list (key/label/type/required).
 // The parent owns the reactive `fields` array and an `editor` of add/remove/move
@@ -59,7 +60,7 @@ const fieldTypes: Array<{ value: FormFieldDraft['type']; labelKey: string }> = [
 		<div class="space-y-3">
 			<div
 				v-for="(field, index) in fields"
-				:key="index"
+				:key="stableRowKey(field)"
 				class="rounded-lg border border-border-subtle bg-bg-surface/40 p-3"
 			>
 				<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">

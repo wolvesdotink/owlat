@@ -24,16 +24,15 @@ import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
-	const session = { userId: 'user-A', role: 'owner' as const };
+	// The auth floor hands this session to the mailbox gate (plan 1.13), so it
+	// carries the active organization the gate scopes by.
+	const session = { userId: 'user-A', role: 'owner' as const, activeOrganizationId: 'org-1' };
 	return {
 		...actual,
 		requireOrgMember: vi.fn(async () => session),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getMutationContext: vi.fn(async () => session),
-		getBetterAuthSessionWithRole: vi.fn(async () => ({
-			...session,
-			activeOrganizationId: 'org-1',
-		})),
+		getBetterAuthSessionWithRole: vi.fn(async () => session),
 	};
 });
 

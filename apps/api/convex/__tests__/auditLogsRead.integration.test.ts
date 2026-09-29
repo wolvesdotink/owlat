@@ -3,6 +3,8 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import { requireOrgPermission } from '../lib/sessionOrganization';
+import { auditLogListQuery } from '../auditLogs';
+import { recordingDb, type IndexSeek } from './indexRecorder.testlib';
 
 /**
  * Read-path coverage for the audit-log operator surface
@@ -154,6 +156,43 @@ describe('auditLogs.list', () => {
 		await expect(t.query(api.auditLogs.list, { pluginId: '../secret' })).rejects.toThrow();
 	});
 
+	it('combines a userId or action filter with the date window and the other filters', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t);
+
+		const byUserInWindow = await t.query(api.auditLogs.list, {
+			userId: 'admin-1',
+			startDate: BASE + 1500,
+		});
+		expect(byUserInWindow.logs.map((l) => l.action)).toEqual(['campaign.sent']);
+
+		const byActionInWindow = await t.query(api.auditLogs.list, {
+			action: 'campaign.created',
+			endDate: BASE + 500,
+		});
+		expect(byActionInWindow.logs).toEqual([]);
+
+		const byBoth = await t.query(api.auditLogs.list, {
+			userId: 'admin-1',
+			action: 'campaign.created',
+			resource: 'campaign',
+		});
+		expect(byBoth.logs.map((l) => l.createdAt)).toEqual([BASE + 1000]);
+
+		// A row another tenant attributed stays out of the unfiltered-by-plugin paths.
+		await t.run(async (ctx) => {
+			await ctx.db.insert('auditLogs', {
+				userId: 'admin-1',
+				organizationId: 'tenant-b',
+				action: 'campaign.sent',
+				resource: 'campaign',
+				createdAt: BASE + 2100,
+			});
+		});
+		const tenantScoped = await t.query(api.auditLogs.list, { userId: 'admin-1' });
+		expect(tenantScoped.logs.map((l) => l.createdAt)).toEqual([BASE + 2000, BASE + 1000]);
+	});
+
 	it('rejects a caller without organization:manage', async () => {
 		const t = convexTest(schema, modules);
 		await seed(t);
@@ -237,5 +276,78 @@ describe('auditLogs.getActiveUsers', () => {
 		expect(users).toHaveLength(1);
 		expect(users[0]!.authUserId).toBe('admin-1');
 		expect(users[0]!.email).toBe('admin@example.com');
+	});
+});
+
+describe('auditLogListQuery index seeks (plan C10)', () => {
+	async function seeksFor(
+		args: Parameters<typeof auditLogListQuery>[1],
+		pluginId?: string
+	): Promise<{ seeks: IndexSeek[]; createdAts: number[] }> {
+		const t = convexTest(schema, modules);
+		await seed(t);
+		return await t.run(async (ctx) => {
+			const seeks: IndexSeek[] = [];
+			const rows = await auditLogListQuery(
+				{ db: recordingDb(ctx.db, seeks) },
+				args,
+				'tenant-a',
+				pluginId
+			).collect();
+			return { seeks, createdAts: rows.map((row) => row.createdAt) };
+		});
+	}
+
+	it('puts the date window in the createdAt range when nothing else is filtered', async () => {
+		const { seeks, createdAts } = await seeksFor({ startDate: BASE + 1500, endDate: BASE + 2500 });
+		expect(seeks).toEqual([
+			{
+				table: 'auditLogs',
+				index: 'by_created_at',
+				range: [
+					['gte', 'createdAt', BASE + 1500],
+					['lte', 'createdAt', BASE + 2500],
+				],
+			},
+		]);
+		expect(createdAts).toEqual([BASE + 2000]);
+	});
+
+	it('seeks the actor index for a userId filter, even alongside an action', async () => {
+		const { seeks, createdAts } = await seeksFor({
+			userId: 'admin-1',
+			action: 'campaign.sent',
+			startDate: BASE,
+		});
+		expect(seeks.map((s) => s.index)).toEqual(['by_user_and_created_at']);
+		expect(seeks[0]!.range).toEqual([
+			['eq', 'userId', 'admin-1'],
+			['gte', 'createdAt', BASE],
+			['lte', 'createdAt', Number.MAX_SAFE_INTEGER],
+		]);
+		expect(createdAts).toEqual([BASE + 2000]);
+	});
+
+	it('seeks the action index for an action filter', async () => {
+		const { seeks, createdAts } = await seeksFor({ action: 'settings.updated' });
+		expect(seeks.map((s) => s.index)).toEqual(['by_action_and_created_at']);
+		expect(seeks[0]!.range[0]).toEqual(['eq', 'action', 'settings.updated']);
+		expect(createdAts).toEqual([BASE + 3000]);
+	});
+
+	it('keeps the date window in the plugin index range', async () => {
+		const { seeks } = await seeksFor({ endDate: BASE + 10 }, 'alpha');
+		expect(seeks).toEqual([
+			{
+				table: 'auditLogs',
+				index: 'by_organization_id_and_plugin_id_and_created_at',
+				range: [
+					['eq', 'organizationId', 'tenant-a'],
+					['eq', 'pluginId', 'alpha'],
+					['gte', 'createdAt', Number.MIN_SAFE_INTEGER],
+					['lte', 'createdAt', BASE + 10],
+				],
+			},
+		]);
 	});
 });

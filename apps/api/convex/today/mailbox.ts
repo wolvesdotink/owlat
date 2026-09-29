@@ -6,7 +6,8 @@
  * (`mail/mailbox/queries.ts`). Each Workbench shows one mailbox, so the web
  * subscribes to one digest at a time; the sidebar reads one per inbox.
  *
- *   - `digest`: what happened in one mailbox since the viewer's watermark —
+ *   - `digest`: what happened in one mailbox since the viewer's watermark for
+ *     that Workbench (read here from `todayStates`, never passed in) —
  *     a new-mail count, threads the viewer already knew that moved ("What
  *     changed"), new conversations sorted into important and routine
  *     (`triage.ts`), and the mail filed away (newsletters, notifications…)
@@ -26,6 +27,8 @@ import { requireMailboxAccess } from '../mail/permissions';
 import { loadThreadVisit, visitDelta } from '../mail/threadVisits';
 import { classifyMailCategory } from '../mail/category';
 import { isFromMailboxOwner } from '../mail/needsReplyHeuristic';
+import { loadState, resolveWatermark } from './state';
+import { countFolderArrivalsSince } from '../mail/messageCounters';
 import { loadTodaySummary } from './summaryCache';
 import { type ImportantReason, isFiledBucket, triageThread } from './triage';
 import {
@@ -134,15 +137,54 @@ async function messagesAfter(
 	return rows.filter((m) => m.receivedAt > after && !m.flagDraft).slice(0, SOURCE_LIMIT);
 }
 
+const ZERO_NEW_MAIL = { count: 0, isCapped: false };
+
+/**
+ * Inbox messages received after `since`, up to {@link NEW_MAIL_COUNT_CAP}. The
+ * inbox's hourly arrivals counter (plan 3.1, `mail/messageCounters.ts`) answers
+ * from bucket rows plus one partial hour; until it is backfilled, the old
+ * bounded scan of the messages themselves.
+ */
+async function countNewMail(
+	ctx: QueryCtx,
+	inboxId: Id<'mailFolders'>,
+	since: number
+): Promise<{ count: number; isCapped: boolean }> {
+	const counted = await countFolderArrivalsSince(ctx.db, inboxId, since, NEW_MAIL_COUNT_CAP);
+	if (counted) return counted;
+	const rows = await ctx.db
+		.query('mailMessages')
+		.withIndex('by_folder_and_received', (q) => q.eq('folderId', inboxId).gt('receivedAt', since))
+		.take(NEW_MAIL_COUNT_CAP + 1);
+	return {
+		count: Math.min(rows.length, NEW_MAIL_COUNT_CAP),
+		isCapped: rows.length > NEW_MAIL_COUNT_CAP,
+	};
+}
+
+/**
+ * The digest counts from the caller's own watermark for this mailbox's
+ * Workbench, read from `todayStates` like `state.get` does, so it can load in
+ * parallel with the watermark instead of after it and re-runs by itself when
+ * the watermark moves. `since` is still accepted from clients of the previous
+ * release and ignored; drop it after one release.
+ */
 // public: soft-auth — returns null for anonymous/non-members; mailbox access is enforced in-handler
 export const digest = publicQuery({
-	args: { mailboxId: v.id('mailboxes'), since: v.number(), locale: v.optional(v.string()) },
+	args: {
+		mailboxId: v.id('mailboxes'),
+		since: v.optional(v.number()),
+		locale: v.optional(v.string()),
+	},
 	handler: async (ctx, args) => {
 		const locale = args.locale ?? 'en';
 		const access = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!access.ok) return null;
 		const { userId, mailbox } = access;
 		const now = Date.now();
+		// `requireMailboxAccess` already pinned the mailbox to the active organization.
+		const state = await loadState(ctx, userId, mailbox.organizationId);
+		const since = resolveWatermark(state, args.mailboxId, now).seenAt;
 
 		const inbox = await ctx.db
 			.query('mailFolders')
@@ -150,19 +192,12 @@ export const digest = publicQuery({
 				q.eq('mailboxId', args.mailboxId).eq('role', 'inbox')
 			)
 			.first();
-		const newRows = inbox
-			? await ctx.db
-					.query('mailMessages')
-					.withIndex('by_folder_and_received', (q) =>
-						q.eq('folderId', inbox._id).gt('receivedAt', args.since)
-					)
-					.take(NEW_MAIL_COUNT_CAP + 1)
-			: [];
+		const newMail = inbox ? await countNewMail(ctx, inbox._id, since) : ZERO_NEW_MAIL;
 
 		const threads = await ctx.db
 			.query('mailThreads')
 			.withIndex('by_mailbox_and_last_message', (q) =>
-				q.eq('mailboxId', args.mailboxId).gt('lastMessageAt', args.since)
+				q.eq('mailboxId', args.mailboxId).gt('lastMessageAt', since)
 			)
 			.order('desc')
 			.take(DIGEST_THREAD_SCAN);
@@ -208,11 +243,11 @@ export const digest = publicQuery({
 			}
 
 			const participated =
-				thread.latestReply?.byUserId === userId && thread.latestReply.at <= args.since;
+				thread.latestReply?.byUserId === userId && thread.latestReply.at <= since;
 
 			if (visit || participated) {
 				if (changed.length >= CHANGED_LIMIT) continue;
-				const after = Math.max(visit?.visitedAt ?? 0, args.since);
+				const after = Math.max(visit?.visitedAt ?? 0, since);
 				const sources = await messagesAfter(ctx, thread._id, after);
 				const newMessages = visit ? visitDelta(thread, visit).newSinceVisit : sources.length;
 				const sinceCount = Math.max(0, thread.messageCount - Math.max(newMessages, 1));
@@ -263,8 +298,8 @@ export const digest = publicQuery({
 
 		return {
 			mailboxId: args.mailboxId,
-			newMail: Math.min(newRows.length, NEW_MAIL_COUNT_CAP),
-			isNewMailCapped: newRows.length > NEW_MAIL_COUNT_CAP,
+			newMail: newMail.count,
+			isNewMailCapped: newMail.isCapped,
 			changed,
 			arrived,
 			arrivedTotal,

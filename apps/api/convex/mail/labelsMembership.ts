@@ -14,6 +14,7 @@
 
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
+import { recordMessageCounters } from './messageCounters';
 
 /**
  * Write one message's label membership. Returns false when the message already
@@ -36,13 +37,11 @@ export async function applyLabelToMessage(
 	const modseq = folder.highestModseq + 1;
 	await ctx.db.patch(folder._id, { highestModseq: modseq, updatedAt: now });
 
-	await ctx.db.patch(message._id, {
-		labelIds: add
-			? [...message.labelIds, labelId]
-			: message.labelIds.filter((id) => id !== labelId),
-		modseq,
-		updatedAt: now,
-	});
+	const labelIds = add
+		? [...message.labelIds, labelId]
+		: message.labelIds.filter((id) => id !== labelId);
+	await ctx.db.patch(message._id, { labelIds, modseq, updatedAt: now });
+	await recordMessageCounters(ctx, message, { ...message, labelIds });
 	return true;
 }
 

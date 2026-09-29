@@ -57,14 +57,17 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireOrgMember: vi.fn().mockImplementation(async () => ({
 			userId: sessionMock.user.id,
 			role: sessionMock.user.role,
+			activeOrganizationId: sessionMock.user.orgId,
 		})),
 		getMutationContext: vi.fn().mockImplementation(async () => ({
 			userId: sessionMock.user.id,
 			role: sessionMock.user.role,
+			activeOrganizationId: sessionMock.user.orgId,
 		})),
 		requireOrgPermission: vi.fn().mockImplementation(async () => ({
 			userId: sessionMock.user.id,
 			role: sessionMock.user.role,
+			activeOrganizationId: sessionMock.user.orgId,
 		})),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 	};

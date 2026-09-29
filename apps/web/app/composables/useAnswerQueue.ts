@@ -2,7 +2,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
 import type { InboxIdentity } from '~/utils/inboxIdentity';
-import { compareAnswerItems } from '~/utils/answerQueue';
+import { ANSWER_MENTION_LIMIT, ANSWER_REVIEW_LIMIT, compareAnswerItems } from '~/utils/answerQueue';
 import type { ReplyQueueItem } from '~/utils/postboxReplyQueue';
 
 type ReviewEntry = FunctionReturnType<typeof api.inbox.queries.getReviewQueue>[number];
@@ -27,6 +27,10 @@ export type AnswerItem =
  * is available to them). Each source keeps its own permission check — this
  * only merges what the viewer could already open. A Workbench tab narrows the
  * list itself (`answerItemMatches`) and tallies its share with `answerCounts`.
+ *
+ * Only the pages that show the list (Answer, Today) call this; the shell's
+ * badges need a number and use `useAnswerQueueCount`, which reads the same
+ * sources as counts (plan 2.11).
  */
 export function useAnswerQueue() {
 	const { isEnabled } = useFeatureFlag();
@@ -40,13 +44,13 @@ export function useAnswerQueue() {
 	const teamEnabled = computed(() => isAdmin.value && isEnabled('inbox'));
 	const { data: reviewData, isLoading: reviewLoading } = useConvexQuery(
 		api.inbox.queries.getReviewQueue,
-		() => (teamEnabled.value ? { limit: 50 } : 'skip')
+		() => (teamEnabled.value ? { limit: ANSWER_REVIEW_LIMIT } : 'skip')
 	);
 
 	const chatEnabled = computed(() => isAdmin.value && isEnabled('chat'));
 	const { data: mentionData, isLoading: mentionLoading } = useConvexQuery(
 		api.chat.mentions.listMyUnreadMentions,
-		() => (chatEnabled.value ? { limit: 25 } : 'skip')
+		() => (chatEnabled.value ? { limit: ANSWER_MENTION_LIMIT } : 'skip')
 	);
 
 	const items = computed<AnswerItem[]>(() => {
@@ -117,7 +121,7 @@ export function answerCounts(items: readonly AnswerItem[]) {
 	for (const item of items) {
 		tally[item.source] += 1;
 		if (item.source === 'team' && item.entry.message.draftResponse?.trim()) tally.drafts += 1;
-		if (item.source === 'mail' && item.row.draftSlot) tally.drafts += 1;
+		if (item.source === 'mail' && item.row.hasDraftSlot) tally.drafts += 1;
 	}
 	return tally;
 }

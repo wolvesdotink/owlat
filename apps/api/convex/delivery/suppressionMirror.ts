@@ -27,6 +27,7 @@ import { internal } from '../_generated/api';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { getMtaConfig } from '../mail/mtaClient';
+import { FETCH_TIMEOUTS, fetchWithTimeout } from '../lib/fetchWithTimeout';
 import { bounceTypeValidator, type BlockReason } from '../lib/literalValidators';
 
 /**
@@ -127,19 +128,23 @@ export const mirror = internalAction({
 		const mtaReason = toMtaSuppressionReason(args.reason, args.bounceType);
 
 		try {
-			const res = await fetch(`${mta.baseUrl}/suppression`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Authorization: `Bearer ${mta.apiKey}`,
+			const res = await fetchWithTimeout(
+				`${mta.baseUrl}/suppression`,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${mta.apiKey}`,
+					},
+					body: JSON.stringify({
+						emails: [args.email],
+						reason: mtaReason,
+						source: 'convex-blocklist',
+						...(args.expiresAt !== undefined ? { expiresAt: args.expiresAt } : {}),
+					}),
 				},
-				body: JSON.stringify({
-					emails: [args.email],
-					reason: mtaReason,
-					source: 'convex-blocklist',
-					...(args.expiresAt !== undefined ? { expiresAt: args.expiresAt } : {}),
-				}),
-			});
+				FETCH_TIMEOUTS.internalPush
+			);
 			if (!res.ok) {
 				logError(
 					`[suppressionMirror] MTA /suppression returned ${res.status} for ${redactEmailAddress(args.email)}`
@@ -162,10 +167,14 @@ export const unmirror = internalAction({
 		const mta = getMtaConfig();
 		if (!mta) return;
 		try {
-			const res = await fetch(`${mta.baseUrl}/suppression/${encodeURIComponent(email)}`, {
-				method: 'DELETE',
-				headers: { Authorization: `Bearer ${mta.apiKey}` },
-			});
+			const res = await fetchWithTimeout(
+				`${mta.baseUrl}/suppression/${encodeURIComponent(email)}`,
+				{
+					method: 'DELETE',
+					headers: { Authorization: `Bearer ${mta.apiKey}` },
+				},
+				FETCH_TIMEOUTS.internalPush
+			);
 			if (!res.ok) {
 				logError(
 					`[suppressionMirror] MTA unmirror returned ${res.status} for ${redactEmailAddress(email)}`
@@ -269,14 +278,18 @@ export const reconcile = internalAction({
 		);
 		for (let index = 0; index < entries.length; index += 1000) {
 			await requireMtaResponse(
-				await fetch(`${mta.baseUrl}/suppression/bulk`, {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						Authorization: `Bearer ${mta.apiKey}`,
+				await fetchWithTimeout(
+					`${mta.baseUrl}/suppression/bulk`,
+					{
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							Authorization: `Bearer ${mta.apiKey}`,
+						},
+						body: JSON.stringify({ entries: entries.slice(index, index + 1000) }),
 					},
-					body: JSON.stringify({ entries: entries.slice(index, index + 1000) }),
-				}),
+					FETCH_TIMEOUTS.bulkSync
+				),
 				'MTA suppression bulk reconcile'
 			);
 		}
@@ -287,9 +300,13 @@ export const reconcile = internalAction({
 			const url = new URL(`${mta.baseUrl}/suppression/export`);
 			url.searchParams.set('limit', '10000');
 			if (exportCursor) url.searchParams.set('cursor', exportCursor);
-			const response = await fetch(url, {
-				headers: { Authorization: `Bearer ${mta.apiKey}` },
-			});
+			const response = await fetchWithTimeout(
+				url,
+				{
+					headers: { Authorization: `Bearer ${mta.apiKey}` },
+				},
+				FETCH_TIMEOUTS.bulkSync
+			);
 			await requireMtaResponse(response, 'MTA suppression export');
 			const page = (await response.json()) as {
 				entries: Array<{ email: string; source?: string; suppressedAt?: number }>;
@@ -319,10 +336,14 @@ export const reconcile = internalAction({
 		for (const { email, source, suppressedAt } of removals) {
 			const params = new URLSearchParams({ source, suppressedAt: String(suppressedAt) });
 			await requireMtaResponse(
-				await fetch(`${mta.baseUrl}/suppression/${encodeURIComponent(email)}?${params}`, {
-					method: 'DELETE',
-					headers: { Authorization: `Bearer ${mta.apiKey}` },
-				}),
+				await fetchWithTimeout(
+					`${mta.baseUrl}/suppression/${encodeURIComponent(email)}?${params}`,
+					{
+						method: 'DELETE',
+						headers: { Authorization: `Bearer ${mta.apiKey}` },
+					},
+					FETCH_TIMEOUTS.internalPush
+				),
 				`MTA suppression delete ${email}`
 			);
 		}

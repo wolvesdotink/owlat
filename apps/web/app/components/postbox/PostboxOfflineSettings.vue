@@ -12,8 +12,6 @@ import { describeShellStatus } from '~/utils/offlineShell';
 
 const { t } = useI18n();
 
-const { isDesktop } = useDesktopContext();
-
 // Offline START (the service worker) is a different thing from the offline mail
 // cache below it: it decides whether the app PAINTS without a connection, and
 // it is instance-wide rather than a per-device choice, so it reports rather
@@ -66,11 +64,7 @@ async function onClearOfflineCache() {
 				</label>
 				<p class="text-xs text-text-tertiary mt-0.5">
 					{{ t('components.postbox.postboxOfflineSettings.store.hint') }}
-					{{
-						isDesktop
-							? t('components.postbox.postboxOfflineSettings.store.defaultDesktop')
-							: t('components.postbox.postboxOfflineSettings.store.defaultBrowser')
-					}}
+					{{ t('components.postbox.postboxOfflineSettings.store.default') }}
 				</p>
 				<p v-if="offlineWritesDisabled" class="text-xs text-warning mt-1">
 					{{ t('components.postbox.postboxOfflineSettings.writesDisabled') }}

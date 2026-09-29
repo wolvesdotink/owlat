@@ -21,7 +21,7 @@ export interface ContextMenuItem {
 </script>
 
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { useModalFocus } from '../../composables/useModalFocus';
 
 /**
@@ -45,14 +45,35 @@ import { useModalFocus } from '../../composables/useModalFocus';
  *
  * Degrades gracefully: with no (enabled) items it never opens, so the native
  * browser menu shows through instead of an empty popover.
+ *
+ * `items` may also be a getter. A long list (one menu per table row) should
+ * pass one: the array is then built only when the user actually opens a menu,
+ * instead of once per row on every parent render, and the row keeps a stable
+ * prop so it does not re-render when unrelated state changes. The getter runs
+ * outside any reactive effect, and its result is a snapshot for that opening.
  */
-const props = defineProps<{ items: ContextMenuItem[] }>();
+const props = defineProps<{ items: ContextMenuItem[] | (() => ContextMenuItem[]) }>();
 
 const open = ref(false);
 const position = ref({ x: 0, y: 0 });
 const menuRef = ref<HTMLElement | null>(null);
 
-const hasEnabledItems = computed(() => props.items.some((item) => !item.disabled));
+// Items a getter produced for the current opening (unused for a plain array,
+// which stays live so a reactive `computed` list keeps updating while open).
+const snapshot = shallowRef<ContextMenuItem[]>([]);
+const shownItems = computed(() =>
+	typeof props.items === 'function' ? snapshot.value : props.items
+);
+
+/**
+ * Resolve the items for an opening attempt: call the getter once (lazy lists)
+ * and keep the result for the template. Returns whether anything is enabled.
+ */
+function prepareItems(): boolean {
+	const items = typeof props.items === 'function' ? props.items() : props.items;
+	if (typeof props.items === 'function') snapshot.value = items;
+	return items.some((item) => !item.disabled);
+}
 
 const MENU_ITEM_SELECTOR = '[role="menuitem"]:not([disabled])';
 
@@ -64,7 +85,6 @@ function close() {
 useModalFocus(menuRef, () => open.value, close);
 
 function openAt(x: number, y: number) {
-	if (!hasEnabledItems.value) return;
 	position.value = { x, y };
 	open.value = true;
 	// Clamp within the viewport once the menu has a measured size.
@@ -87,7 +107,7 @@ function openAt(x: number, y: number) {
 
 /** Right-click, or the keyboard menu key delivered as a `contextmenu` event. */
 function onContextmenu(event: MouseEvent) {
-	if (!hasEnabledItems.value) return; // let the native menu through
+	if (!prepareItems()) return; // let the native menu through
 	event.preventDefault();
 	// The keyboard menu key reports (0,0) in most engines — anchor to the
 	// element's box instead of the top-left corner.
@@ -103,7 +123,7 @@ function onContextmenu(event: MouseEvent) {
 function onKeydown(event: KeyboardEvent) {
 	const isMenuKey = event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10');
 	if (!isMenuKey) return;
-	if (!hasEnabledItems.value) return;
+	if (!prepareItems()) return;
 	event.preventDefault();
 	const rect = (event.currentTarget as HTMLElement | null)?.getBoundingClientRect();
 	openAt(rect ? rect.left + 12 : 0, rect ? rect.bottom - 4 : 0);
@@ -194,7 +214,7 @@ onUnmounted(() => {
 				@keydown="onMenuKeydown"
 				@contextmenu.prevent
 			>
-				<template v-for="item in items" :key="item.id">
+				<template v-for="item in shownItems" :key="item.id">
 					<div v-if="item.separatorBefore" class="my-1 h-px bg-border-subtle" role="separator" />
 					<button
 						type="button"

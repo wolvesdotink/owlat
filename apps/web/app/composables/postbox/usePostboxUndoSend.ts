@@ -16,16 +16,26 @@ interface UndoSendWindow {
 	mailboxId: Id<'mailboxes'> | null;
 }
 
+const UNDO_SEND_KEY = 'postbox:undo-send';
+const emptyUndoSend = (): UndoSendWindow => ({ undoToken: null, mailboxId: null });
+
+/**
+ * Whether an undo-send window is open. For the shell's composer host, which
+ * mounts the stack (and with it the toast) while one is, without pulling in
+ * the send-sound wiring below.
+ */
+export function usePostboxUndoSendVisible() {
+	const { state } = useUndoWindow<UndoSendWindow>(UNDO_SEND_KEY, emptyUndoSend);
+	return computed(() => state.value.visible);
+}
+
 export function usePostboxUndoSend() {
 	const {
 		state,
 		arm: armWindow,
 		dismiss,
 		runUndo,
-	} = useUndoWindow<UndoSendWindow>('postbox:undo-send', () => ({
-		undoToken: null,
-		mailboxId: null,
-	}));
+	} = useUndoWindow<UndoSendWindow>(UNDO_SEND_KEY, emptyUndoSend);
 
 	// Optional send-confirmation sound. Gated on the (default-off) preference;
 	// `playSend` no-ops entirely when it's disabled, so this is inert unless the

@@ -17,6 +17,7 @@
 import type { MutationCtx } from '../../_generated/server';
 import type { Doc, Id, TableNames } from '../../_generated/dataModel';
 import { decrementContactCount } from '../../lib/contactCountHelpers';
+import { recordContactGrowth } from '../growthCounters';
 import { deleteAutomationRun } from '../../automations/runDeletion';
 import type { ErasureBudget } from './budget';
 import { CONTACT_ERASURE_PHASES, type ContactErasurePhase } from './phaseCatalog';
@@ -294,6 +295,9 @@ export async function finishErasure(
 	for (const job of jobs) await ctx.db.delete(job._id);
 
 	const contact = await ctx.db.get(contactId);
-	if (contact) await ctx.db.delete(contactId);
+	if (contact) {
+		await ctx.db.delete(contactId);
+		await recordContactGrowth(ctx, contact, null);
+	}
 	if (contact && options.decrementCount) await decrementContactCount(ctx, 1);
 }

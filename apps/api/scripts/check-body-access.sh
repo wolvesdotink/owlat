@@ -31,7 +31,8 @@
 #      `=` and never match; only `{ … } =` (a binding target) does.
 #
 # Excluded paths: _generated, __tests__, *.test.ts, schema/ (type declarations,
-# not reads), lib/messageBody*.ts (the accessor family), and webhooks/dispatcher.ts
+# not reads), lib/messageBody*.ts (the accessor family, incl. messageBodyStore.ts
+# which resolves the `mailMessageBodies` row), and webhooks/dispatcher.ts
 # (the webhook-event dispatcher — its `e.mail` payload is wire input translated
 # straight into a mutation call, never a stored DB row).
 #
@@ -56,6 +57,7 @@ files=$(
 		-not -path '*/schema/*' \
 		-not -path '*/lib/messageBody.ts' \
 		-not -path '*/lib/messageBodyExport.ts' \
+		-not -path '*/lib/messageBodyStore.ts' \
 		-not -path '*/webhooks/dispatcher.ts' \
 		2>/dev/null | sort
 )

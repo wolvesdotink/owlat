@@ -23,6 +23,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { expectFullyLocalized } from '~/__tests__/i18n';
+import { i18nBuildLocales } from '~~/i18n/completeCatalogs';
 import { I18N_LOCALES } from '~~/i18n/localeOptions';
 import en from '~~/i18n/locales/en.json';
 import de from '~~/i18n/locales/de.json';
@@ -42,9 +43,17 @@ vi.mock('@owlat/api', () => {
 /** The `locales:` entries the i18n module is actually configured with. */
 function configuredLocales(): Array<{ code: string; language: string; name: string }> {
 	// The config has to register THIS list, or the picker is tested against one
-	// the app does not use.
-	const config = readFileSync(join(import.meta.dirname, '../../../nuxt.config.ts'), 'utf8');
-	expect(config).toMatch(/\blocales: I18N_LOCALES,/);
+	// the app does not use. nuxt.config passes the i18n options kept in
+	// i18n/catalogModule.ts. A build registers the list with generated catalog
+	// files (i18n/completeCatalogs.ts), so only the `file` may differ.
+	const webRoot = join(import.meta.dirname, '../../..');
+	const config = readFileSync(join(webRoot, 'nuxt.config.ts'), 'utf8');
+	expect(config).toMatch(/\bi18n: I18N_OPTIONS,/);
+	const options = readFileSync(join(webRoot, 'i18n/catalogModule.ts'), 'utf8');
+	expect(options).toMatch(/\blocales: i18nBuildLocales\(\),/);
+	expect(i18nBuildLocales().map(({ file: _file, ...locale }) => locale)).toEqual(
+		I18N_LOCALES.map(({ file: _file, ...locale }) => locale)
+	);
 	// A list that came back empty would turn every assertion below into a no-op.
 	expect(I18N_LOCALES.length).toBeGreaterThan(1);
 	return I18N_LOCALES;

@@ -9,6 +9,7 @@
 
 import type { MutationCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
+import { recordContactGrowth } from '../../contacts/growthCounters';
 import { SEED_TAG, type LoadResult, type Loader } from './types';
 
 type Source = 'api' | 'import' | 'form' | 'transactional' | 'inbound';
@@ -23,10 +24,7 @@ interface ContactFixture {
 	doiStatus: DoiStatus;
 }
 
-async function load(
-	ctx: MutationCtx,
-	rawRecords: unknown[],
-): Promise<LoadResult> {
+async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult> {
 	const records = rawRecords as ContactFixture[];
 	let inserted = 0;
 	let skipped = 0;
@@ -58,6 +56,7 @@ async function load(
 			createdAt: now,
 			updatedAt: now,
 		});
+		await recordContactGrowth(ctx, null, { createdAt: now });
 
 		await ctx.db.insert('contactIdentities', {
 			contactId: id,

@@ -12,6 +12,7 @@ import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
+import { recordMessageCounters } from './messageCounters';
 import {
 	recordRemoteChanges,
 	recordRemoteFolderChange,
@@ -199,6 +200,7 @@ export const relocateAndDeleteFolder = internalMutation({
 					modseq,
 					updatedAt: now,
 				});
+				await recordMessageCounters(ctx, m, { ...m, folderId: args.inboxId });
 				uidNext += 1;
 				totalDelta += 1;
 				unseenDelta += m.flagSeen ? 0 : 1;

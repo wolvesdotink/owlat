@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { ref, defineComponent, h, nextTick, type Ref } from 'vue';
+import { ref, shallowRef, watch, defineComponent, h, nextTick, type Ref } from 'vue';
 
 import { usePostboxCursorFeed } from '../../../composables/postbox/usePostboxCursorFeed';
 
@@ -218,9 +218,10 @@ describe('usePostboxCursorFeed', () => {
 	});
 
 	it('stays loading-more until the asked-for page lands, even with the previous one kept', async () => {
-		// The tail subscription keeps its previous page while the next loads, so
-		// its own loading flag can read false with the new page still pending.
-		// "Search older mail" walks pages on this flag (#777).
+		// The tail's own loading flag can read false while the previous page is
+		// still in hand and the new one is pending (this stub keeps it), so the
+		// feed waits for a segment under the asked-for cursor. "Search older
+		// mail" walks pages on this flag (#777).
 		stubConvexQuery();
 		const resetKey = ref('inbox');
 		const { feed } = mountFeed(resetKey);
@@ -239,6 +240,72 @@ describe('usePostboxCursorFeed', () => {
 		emitTail!([{ _id: 'c', subject: 'C' }], null);
 		await nextTick();
 		expect(feed.isLoadingMore.value).toBe(false);
+	});
+
+	it('lands a tail page a warm subscription replays as the same object', async () => {
+		// The real query: a re-subscribe with a value on screen keeps it only
+		// with keepPreviousData, and a shared subscription that is still warm
+		// (plan 2.1) answers at once with the very object it delivered before
+		// (plan 2.9 keeps unchanged results identical). Load more in a folder,
+		// switch away and back, Load more again: the same cursor, the same page.
+		const pages = new Map<string, { messages: Row[]; hasMore: boolean; nextCursor: null }>();
+		vi.stubGlobal(
+			'useConvexQuery',
+			(_query: unknown, argsFactory: () => unknown, options?: { keepPreviousData?: boolean }) => {
+				const data = shallowRef<unknown>(undefined);
+				const isLoading = ref(true);
+				watch(
+					() => JSON.stringify(argsFactory()),
+					(key) => {
+						if (key === JSON.stringify('skip')) return;
+						if (!options?.keepPreviousData) data.value = undefined;
+						const cursor = (JSON.parse(key) as { cursor?: string }).cursor;
+						if (!cursor) {
+							data.value = {
+								messages: [{ _id: 'a', subject: 'A' }],
+								hasMore: true,
+								nextCursor: 'cursor-1',
+							};
+						} else {
+							if (!pages.has(cursor)) {
+								pages.set(cursor, {
+									messages: [{ _id: 'b', subject: 'B' }],
+									hasMore: false,
+									nextCursor: null,
+								});
+							}
+							data.value = pages.get(cursor);
+						}
+						isLoading.value = false;
+					},
+					{ immediate: true }
+				);
+				return { data, isLoading, isRefetching: ref(false), error: ref(null), refetch: () => {} };
+			}
+		);
+		const resetKey = ref('inbox');
+		const { wrapper, feed } = mountFeed(resetKey);
+		const subjects = () => wrapper.findAll('li').map((li) => li.text());
+		await nextTick();
+
+		feed.loadMore();
+		await nextTick();
+		await nextTick();
+		expect(subjects()).toEqual(['A', 'B']);
+
+		resetKey.value = 'archive';
+		await nextTick();
+		resetKey.value = 'inbox';
+		await nextTick();
+		await nextTick();
+		expect(subjects()).toEqual(['A']);
+
+		feed.loadMore();
+		await nextTick();
+		await nextTick();
+		expect(subjects()).toEqual(['A', 'B']);
+		expect(feed.isLoadingMore.value).toBe(false);
+		expect(feed.hasMore.value).toBe(false);
 	});
 
 	it('reports hasMore from the active frontier', async () => {

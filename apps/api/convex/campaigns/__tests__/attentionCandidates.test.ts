@@ -5,6 +5,8 @@
  * cancelled / pending_review) and never the high-volume browse states
  * (draft / sent), and it must project each row down to the light field set the
  * client classifier reads (no archived HTML over the live subscription).
+ * The cancelled bucket is time-bounded: `cancelled` is terminal, so only the
+ * stops touched inside the last 30 days are candidates (plan C10).
  */
 
 import { convexTest } from 'convex-test';
@@ -12,6 +14,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
 import { createTestCampaign, enableFeatures } from '../../__tests__/factories';
+import { CANCELLED_ATTENTION_WINDOW_MS } from '../organization';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
@@ -122,6 +125,37 @@ describe('campaigns.organization.listAttentionCandidates', () => {
 			'abVariantBOpened',
 		];
 		expect(Object.keys(row).sort()).toEqual([...expectedProjectedFields].sort());
+	});
+
+	it('only returns cancelled campaigns touched inside the 30-day window', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['campaigns']);
+		const DAY = 24 * 60 * 60 * 1000;
+		const now = Date.now();
+
+		await t.run(async (ctx) => {
+			for (const [name, status, ageDays] of [
+				['recent stop', 'cancelled', 2],
+				['old stop', 'cancelled', 45],
+				// The window is the cancelled bucket's alone: an old review hold or
+				// a long-scheduled send still needs a human.
+				['old review', 'pending_review', 45],
+				['old schedule', 'scheduled', 45],
+			] as const) {
+				await ctx.db.insert(
+					'campaigns',
+					createTestCampaign({ name, status, updatedAt: now - ageDays * DAY })
+				);
+			}
+		});
+
+		const candidates = await t.query(api.campaigns.organization.listAttentionCandidates, {});
+		expect(candidates.map((c) => c.name).sort()).toEqual([
+			'old review',
+			'old schedule',
+			'recent stop',
+		]);
+		expect(CANCELLED_ATTENTION_WINDOW_MS).toBe(30 * DAY);
 	});
 
 	it('returns an empty list when nothing sits in a candidate status', async () => {

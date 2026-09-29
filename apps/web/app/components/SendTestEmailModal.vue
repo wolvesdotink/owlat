@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail } from '@owlat/shared';
+import { stableRowKey } from '~/utils/stableRowKey';
 
 interface Props {
 	open: boolean;
@@ -25,8 +26,12 @@ const { t } = useI18n();
 const { showToast } = useToast();
 const convex = useConvex();
 
-// Form state
-const testEmails = ref<string[]>(['']);
+// Form state. Each address is a row object so the list can be keyed by row,
+// not by index (removing a row must not hand its input to the next one).
+interface TestEmailRow {
+	address: string;
+}
+const testEmails = ref<TestEmailRow[]>([{ address: '' }]);
 const sampleData = ref<Record<string, string>>({
 	firstName: 'Test',
 	lastName: 'User',
@@ -63,7 +68,7 @@ const fromName = computed(() => orgSettings.value?.defaultFromName || '');
 // Computed: check if we can send (have a verified domain)
 const canSend = computed(() => {
 	const hasVerifiedDomain = domains.value?.some((d) => d.status === 'verified');
-	const hasValidEmails = testEmails.value.some((e) => isValidEmail(e));
+	const hasValidEmails = testEmails.value.some((row) => isValidEmail(row.address));
 	return hasVerifiedDomain && hasValidEmails && fromEmail.value;
 });
 
@@ -72,7 +77,7 @@ const noVerifiedDomain = computed(() => !domains.value?.some((d) => d.status ===
 // Add email field
 const addEmailField = () => {
 	if (testEmails.value.length < 5) {
-		testEmails.value.push('');
+		testEmails.value.push({ address: '' });
 	}
 };
 
@@ -87,7 +92,10 @@ const removeEmailField = (index: number) => {
 const handleSend = async () => {
 	if (!canSend.value || isSending.value || !convex) return;
 
-	const validEmails = testEmails.value.filter((e) => isValidEmail(e)).map((e) => e.trim());
+	const validEmails = testEmails.value
+		.map((row) => row.address)
+		.filter((address) => isValidEmail(address))
+		.map((address) => address.trim());
 	if (validEmails.length === 0) {
 		showToast(t('components.sendTestEmailModal.noValidEmail'), 'error');
 		return;
@@ -158,7 +166,7 @@ watch(
 	() => props.open,
 	(isOpen) => {
 		if (isOpen) {
-			testEmails.value = [''];
+			testEmails.value = [{ address: '' }];
 			sampleData.value = {
 				firstName: 'Test',
 				lastName: 'User',
@@ -239,15 +247,19 @@ watch(
 					{{ t('components.sendTestEmailModal.sendToLabel') }}
 				</label>
 				<div class="space-y-2">
-					<div v-for="(_, index) in testEmails" :key="index" class="flex items-center gap-2">
+					<div
+						v-for="(row, index) in testEmails"
+						:key="stableRowKey(row)"
+						class="flex items-center gap-2"
+					>
 						<div class="relative flex-1">
 							<input
-								v-model="testEmails[index]"
+								v-model="row.address"
 								type="email"
 								:placeholder="t('components.sendTestEmailModal.emailPlaceholder')"
 								class="input pl-10"
 								:class="{
-									'input-error': testEmails[index] && !isValidEmail(testEmails[index]),
+									'input-error': row.address && !isValidEmail(row.address),
 								}"
 							/>
 							<Icon

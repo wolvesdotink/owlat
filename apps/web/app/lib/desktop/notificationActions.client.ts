@@ -16,6 +16,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { escapeHtmlWithBreaks } from '@owlat/shared/html';
 import type { ConvexClient } from 'convex/browser';
 import type { FunctionReturnType } from 'convex/server';
+import { optimisticArchive, optimisticMarkRead } from '~/lib/mailOptimistic/mailUpdaters';
 
 type NotifMessage = FunctionReturnType<typeof api.mail.mailbox.messages.getMessage>;
 
@@ -144,9 +145,12 @@ export async function runEffect(
 	if (effect.type === 'archive') {
 		await focusMainWindow();
 		try {
-			await convex.mutation(api.mail.messageActions.archive, {
-				messageIds: [effect.messageId as Id<'mailMessages'>],
-			});
+			// The open window's lists and badges move at once (plan 2.2).
+			await convex.mutation(
+				api.mail.messageActions.archive,
+				{ messageIds: [effect.messageId as Id<'mailMessages'>] },
+				{ optimisticUpdate: optimisticArchive }
+			);
 		} catch (e) {
 			console.warn('[desktop] archive from notification failed', e);
 		}
@@ -154,10 +158,11 @@ export async function runEffect(
 	}
 	if (effect.type === 'read') {
 		try {
-			await convex.mutation(api.mail.messageActions.markRead, {
-				messageId: effect.messageId as Id<'mailMessages'>,
-				seen: true,
-			});
+			await convex.mutation(
+				api.mail.messageActions.markRead,
+				{ messageId: effect.messageId as Id<'mailMessages'>, seen: true },
+				{ optimisticUpdate: optimisticMarkRead }
+			);
 		} catch (e) {
 			console.warn('[desktop] mark-read from notification failed', e);
 		}

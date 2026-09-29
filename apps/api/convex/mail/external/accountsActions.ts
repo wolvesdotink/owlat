@@ -12,7 +12,8 @@
  *   Public:   connect, connectShared, updateCredentials, updateCredentialsShared,
  *             testConnection
  *   Internal: getCredentialsForWorker (the ONLY function that returns plaintext
- *             credentials — internal/admin-key only, never exposed publicly)
+ *             credentials — internal/admin-key only, never exposed publicly),
+ *             pokeWorkerReconcile
  *
  * Live IMAP/SMTP validation is delegated to the apps/mail-sync worker's /test
  * endpoint, so the heavy protocol libraries stay out of the Convex bundle.
@@ -25,7 +26,8 @@ import { destinationProviderValidator } from '../../lib/validators/deliverabilit
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { encryptSecret, decryptSecret } from '../../lib/credentialCrypto';
-import { getMailSyncConfig } from '../mtaClient';
+import { getMailSyncConfig, pokeMailSyncReconcile } from '../mtaClient';
+import { FETCH_TIMEOUTS, fetchWithTimeout } from '../../lib/fetchWithTimeout';
 import { throwInvalidInput } from '../../_utils/errors';
 import { assertExternalEnabled } from './externalFeature';
 import { refreshGoogleAccessToken } from './googleOAuthTokens';
@@ -291,26 +293,33 @@ export const testConnection = authedAction({
 			return { imap: { ok: false, error }, smtp: { ok: false, error } };
 		}
 		try {
-			const res = await fetch(`${mailSync.baseUrl}/test`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${mailSync.apiKey}` },
-				body: JSON.stringify({
-					imap: {
-						host: args.imapHost,
-						port: args.imapPort,
-						secure: args.isImapSecure,
-						username: args.username,
-						password: args.password,
+			const res = await fetchWithTimeout(
+				`${mailSync.baseUrl}/test`,
+				{
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${mailSync.apiKey}`,
 					},
-					smtp: {
-						host: args.smtpHost,
-						port: args.smtpPort,
-						secure: args.isSmtpSecure,
-						username: args.smtpUsername ?? args.username,
-						password: args.smtpPassword ?? args.password,
-					},
-				}),
-			});
+					body: JSON.stringify({
+						imap: {
+							host: args.imapHost,
+							port: args.imapPort,
+							secure: args.isImapSecure,
+							username: args.username,
+							password: args.password,
+						},
+						smtp: {
+							host: args.smtpHost,
+							port: args.smtpPort,
+							secure: args.isSmtpSecure,
+							username: args.smtpUsername ?? args.username,
+							password: args.smtpPassword ?? args.password,
+						},
+					}),
+				},
+				FETCH_TIMEOUTS.externalProbe
+			);
 			if (!res.ok) {
 				const text = await res.text().catch(() => '');
 				const error = text || `Mail sync service returned HTTP ${res.status}`;
@@ -430,5 +439,20 @@ export const getCredentialsForWorker = internalAction({
 				smtpPassword: creds.smtpPassword ?? creds.imapPassword,
 			},
 		};
+	},
+});
+
+/**
+ * Tell the mail-sync worker an account just became connectable. Scheduled by
+ * `insertExternalAccountRow` and `applyCredentialRotation` (accountShared.ts)
+ * with `runAfter(0)`, so it only runs once the connect or credential change has
+ * committed and the worker's `listConnectableAccounts` can see it. Without it a
+ * new mailbox waited for the worker's next reconcile tick (up to 30 s) before
+ * its first sync even started.
+ */
+export const pokeWorkerReconcile = internalAction({
+	args: {},
+	handler: async (): Promise<void> => {
+		await pokeMailSyncReconcile();
 	},
 });

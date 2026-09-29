@@ -22,6 +22,7 @@ import {
 	createTestInstanceSettings,
 	createTestTransactionalEmail,
 } from './factories';
+import { readInstanceCounter } from '../lib/instanceCounters';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -163,10 +164,14 @@ describe('transactional.dispatch.dispatch — happy path', () => {
 		expect(send?.email).toBe('recipient@example.com');
 		expect(send?.contactId).toBe(outcome.contactId);
 
-		// Both counters incremented atomically.
+		// Both counters incremented atomically, on the `sends` counter row; the
+		// settings singleton every feature gate reads is left alone (plan 2.4).
+		const sends = await t.run(async (ctx) => await readInstanceCounter(ctx.db, 'sends'));
+		expect(sends.transactionalSendCount).toBe(1);
+		expect(sends.dailySendCount).toBe(1);
 		const settings = await t.run(async (ctx) => await ctx.db.get(settingsId));
-		expect(settings?.transactionalSendCount).toBe(1);
-		expect(settings?.dailySendCount).toBe(1);
+		expect(settings?.transactionalSendCount).toBe(0);
+		expect(settings?.dailySendCount).toBe(0);
 	});
 
 	it('resolves an existing contact via Contact resolution (upsert mode)', async () => {

@@ -348,3 +348,119 @@ describe('backfillFolder', () => {
 		expect(rec.progress.reduce((n, p) => n + p.failedDelta, 0)).toBe(3);
 	});
 });
+
+describe('backfillFolder — the betweenBatches hook', () => {
+	const target = { remoteName: 'INBOX', role: 'inbox' as const, ceilingUid: 6, messageCount: 6 };
+
+	/** Wraps fakeDeps so the trace shows where the hook ran relative to batches. */
+	function traced(opts: Parameters<typeof fakeDeps>[0]) {
+		const { deps, rec } = fakeDeps(opts);
+		const trace: string[] = [];
+		const fetchBatch = deps.fetchBatch;
+		const recordProgress = deps.recordProgress;
+		deps.fetchBatch = async (remoteName, start, end) => {
+			trace.push(`fetch:${start}-${end}`);
+			return await fetchBatch(remoteName, start, end);
+		};
+		deps.recordProgress = async (remoteName, newCursor, imported, failed) => {
+			trace.push(`progress:${newCursor}`);
+			return await recordProgress(remoteName, newCursor, imported, failed);
+		};
+		deps.betweenBatches = async () => {
+			trace.push('between');
+		};
+		return { deps, rec, trace };
+	}
+
+	it('runs after each persisted batch that has a successor, never after the last', async () => {
+		const { deps, trace } = traced({ uids: [1, 2, 3, 4, 5, 6], batchSize: 2, startCursor: 6 });
+		expect(await backfillFolder(deps, target)).toBe(true);
+		expect(trace).toEqual([
+			'fetch:5-6',
+			'progress:4',
+			'between',
+			'fetch:3-4',
+			'progress:2',
+			'between',
+			'fetch:1-2',
+			'progress:0',
+		]);
+	});
+
+	it('does not run once the migration is cancelled or the worker stops', async () => {
+		const cancelled = traced({
+			uids: [1, 2, 3, 4, 5, 6],
+			batchSize: 2,
+			startCursor: 6,
+			cancelAfterBatches: 1,
+		});
+		await backfillFolder(cancelled.deps, target);
+		expect(cancelled.trace).not.toContain('between');
+
+		const stopped = traced({
+			uids: [1, 2, 3, 4, 5, 6],
+			batchSize: 2,
+			startCursor: 6,
+			stopAfterBatches: 1,
+		});
+		await backfillFolder(stopped.deps, target);
+		expect(stopped.trace).not.toContain('between');
+	});
+});
+
+describe('backfillFolder with a staged ingest (plan 3.6)', () => {
+	it('uploads ahead, commits in fetch order and counts the same', async () => {
+		const { deps, rec } = fakeDeps({
+			uids: [1, 2, 3, 4, 5, 6],
+			batchSize: 10,
+			startCursor: 6,
+			alreadyPresent: [4],
+		});
+		const events: string[] = [];
+		const uploads: Array<() => void> = [];
+		deps.ingestConcurrency = 3;
+		deps.stageIngest = async (_remoteName, _role, uid) => {
+			events.push(`stage:${uid}`);
+			// Uploads finish in reverse: the commits must not follow them.
+			await new Promise<void>((resolve) => uploads.unshift(resolve));
+			return {
+				commit: async () => {
+					events.push(`commit:${uid}`);
+					if (uid === 5) throw new Error('ingest failed');
+					return uid !== 2; // 2 is a server-side skip
+				},
+				discard: async () => {
+					events.push(`discard:${uid}`);
+				},
+			};
+		};
+		const run = backfillFolder(deps, {
+			remoteName: 'INBOX',
+			role: 'inbox',
+			ceilingUid: 6,
+			messageCount: 6,
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		// Three uploads started before any commit.
+		expect(events).toEqual(['stage:1', 'stage:2', 'stage:3']);
+		// Release uploads as they queue up, newest first, until the walk ends.
+		while (!rec.progress.length) {
+			for (const release of uploads.splice(0)) release();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+		await run;
+
+		expect(events.filter((e) => e.startsWith('commit:'))).toEqual([
+			'commit:1',
+			'commit:2',
+			'commit:3',
+			'commit:5',
+			'commit:6',
+		]);
+		// 1, 3, 6 landed; 4 was already present; 2 was skipped and 5 threw.
+		expect(rec.progress).toEqual([{ newCursor: 0, importedDelta: 4, failedDelta: 2 }]);
+		expect(rec.failures.map((f) => f.uid)).toEqual([5]);
+		// The plain `ingest` dep is not used when a staged one is given.
+		expect(rec.ingested).toEqual([]);
+	});
+});

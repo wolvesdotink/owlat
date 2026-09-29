@@ -30,6 +30,10 @@ export const TENANT_TABLES = [
 	'accountExportArtifactLeases',
 	'accountExportArtifacts',
 	'accountExportSessions',
+	// Maintained counts (plan 3.1): derived from the rows below and wiped first,
+	// so the rest of the wipe does not keep moving buckets on its way out.
+	'counterScopes',
+	'counterBuckets',
 
 	// ── Contacts subtree (children first) ──
 	'contactPropertyValues',
@@ -182,7 +186,12 @@ export const TENANT_TABLES = [
 	// names this org's mailboxes, so it wipes with the mail it walked. (The
 	// excerpt itself is a COLUMN on `mailMessages` and needs no entry here.)
 	'mailBodySearchBackfillJobs',
+	// Inline bodies, 1:1 with the message rows below (plan 3.2).
+	'mailMessageBodies',
 	'mailMessages',
+	// Attachment parts stored out of a raw `.eml` (plan 3.5). Freed with the raw
+	// blob by `deleteMessageRowAndBlobs`; listed so an orphan still wipes.
+	'mailMessageParts',
 	'mailThreads',
 	'mailDrafts',
 	'mailLabels',
@@ -223,6 +232,8 @@ export const TENANT_TABLES = [
 	'mailArchiveImports',
 	'mailboxMoves',
 	'externalMailFolderSync',
+	// Sealed OAuth access-token cache, one row per oauth2 account.
+	'externalMailAccessTokens',
 	// Pending local → remote write-backs (moves, flags, deletes) for an account.
 	'externalMailRemoteOps',
 	'externalMailAccounts',
@@ -236,6 +247,8 @@ export const TENANT_TABLES = [
 	'seedPlacementProbes',
 	'mailboxMembers',
 	'pendingMailboxMembers',
+	// 1:1 storage accounting row of a mailbox (plan 2.4).
+	'mailboxUsage',
 	'mailboxes',
 	'pendingMailboxes',
 	'mailboxRequests',
@@ -308,8 +321,11 @@ export const NON_TENANT_TABLES = [
 	// row to `completed`, so it must survive the wipe.
 	'accountDeletionRequests',
 	// Instance configuration singleton — recreated by setup; reset clears it in a
-	// dedicated step.
+	// dedicated step. The flag singleton and counter rows split off it (plan 2.4)
+	// go with it, in the same reset step and the walker's terminal steps.
 	'instanceSettings',
+	'featureFlagSettings',
+	'instanceCounters',
 	// Per-org AI provider selection + encrypted key envelope — an admin-recreated
 	// config singleton like instanceSettings, not org business data.
 	'aiProviderConfig',

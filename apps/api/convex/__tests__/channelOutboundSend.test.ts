@@ -10,6 +10,7 @@ import {
 	createTestUnifiedMessage,
 } from './factories';
 import type { Id } from '../_generated/dataModel';
+import { readInstanceCounter } from '../lib/instanceCounters';
 
 /**
  * Covers the user-initiated outbound path added so SMS/WhatsApp/generic channel
@@ -255,10 +256,9 @@ describe('unifiedMessages.resolveOutboundThread', () => {
 			channel: 'generic',
 		});
 
-		const openThreads = await t.run(async (ctx) => {
-			const settings = await ctx.db.query('instanceSettings').first();
-			return settings!.openThreads;
-		});
+		const openThreads = await t.run(
+			async (ctx) => (await readInstanceCounter(ctx.db, 'inbox')).openThreads
+		);
 		expect(openThreads).toBe(1);
 	});
 
@@ -302,10 +302,9 @@ describe('unifiedMessages.resolveOutboundThread', () => {
 			channel: 'sms',
 		});
 
-		const openThreads = await t.run(async (ctx) => {
-			const settings = await ctx.db.query('instanceSettings').first();
-			return settings!.openThreads;
-		});
+		const openThreads = await t.run(
+			async (ctx) => (await readInstanceCounter(ctx.db, 'inbox')).openThreads
+		);
 		expect(openThreads).toBe(1);
 	});
 });

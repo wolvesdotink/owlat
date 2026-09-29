@@ -32,9 +32,17 @@ vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
-		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		requireOrgMember: vi.fn().mockResolvedValue({
+			userId: 'test-user',
+			role: 'owner',
+			activeOrganizationId: 'test-org',
+		}),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
-		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		getMutationContext: vi.fn().mockResolvedValue({
+			userId: 'test-user',
+			role: 'owner',
+			activeOrganizationId: 'test-org',
+		}),
 		getBetterAuthSessionWithRole: vi.fn().mockResolvedValue({
 			userId: 'test-user',
 			role: 'owner',
@@ -612,6 +620,82 @@ describe('mail.needsReply.listQueue', () => {
 		});
 
 		expect(items).toEqual([]);
+	});
+});
+
+// ─── Reply Queue count (plan 2.11) ──────────────────────────────────────────
+
+describe('mail.needsReply.countQueue', () => {
+	it('counts exactly the rows listQueue returns, follow-ups included', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const seeded = await seedMailbox(t);
+		const visible = await seedThreadWithMessage(t, seeded);
+		const snoozed = await seedThreadWithMessage(t, seeded);
+		const orphan = await seedThreadWithMessage(t, seeded);
+		const muted = await seedThreadWithMessage(t, seeded);
+		const followUp = await seedThreadWithMessage(t, seeded, { fromAddress: OWNER });
+		for (const row of [visible, snoozed, orphan, muted]) {
+			await setNeedsReply(t, row.threadId, row.messageId);
+		}
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.patch(snoozed.messageId, { snoozedUntil: now + 60 * 60 * 1000 });
+			await ctx.db.delete(orphan.messageId);
+			await ctx.db.patch(muted.threadId, { mutedAt: now });
+			await ctx.db.patch(followUp.threadId, {
+				followUp: {
+					messageId: followUp.messageId,
+					remindAt: now - 1000,
+					armedAt: now - 5000,
+					dueAt: now - 1000,
+					waitingOn: 'alice@example.com',
+				},
+			});
+		});
+
+		const { items } = await t.query(api.mail.needsReply.listQueue, {
+			mailboxId: seeded.mailboxId,
+		});
+		const count = await t.query(api.mail.needsReply.countQueue, {
+			mailboxId: seeded.mailboxId,
+		});
+
+		expect(items.map((i) => i.threadId).sort()).toEqual(
+			[visible.threadId, followUp.threadId].sort()
+		);
+		expect(count).toBe(items.length);
+	});
+
+	it('follows the list as rows are cleared', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const seeded = await seedMailbox(t);
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);
+		await setNeedsReply(t, threadId, messageId);
+		expect(await t.query(api.mail.needsReply.countQueue, { mailboxId: seeded.mailboxId })).toBe(1);
+
+		await t.mutation(api.mail.needsReply.clear, { threadId });
+
+		expect(await t.query(api.mail.needsReply.countQueue, { mailboxId: seeded.mailboxId })).toBe(0);
+	});
+
+	it('returns 0 for an anonymous caller and for an editor who does not own the mailbox', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const seeded = await seedMailbox(t);
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);
+		await setNeedsReply(t, threadId, messageId);
+
+		vi.mocked(getBetterAuthSessionWithRole).mockResolvedValueOnce(null);
+		expect(await t.query(api.mail.needsReply.countQueue, { mailboxId: seeded.mailboxId })).toBe(0);
+
+		vi.mocked(getBetterAuthSessionWithRole).mockResolvedValueOnce({
+			userId: 'other-user',
+			role: 'editor',
+			activeOrganizationId: 'test-org',
+		});
+		expect(await t.query(api.mail.needsReply.countQueue, { mailboxId: seeded.mailboxId })).toBe(0);
 	});
 });
 

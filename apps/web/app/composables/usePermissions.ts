@@ -20,9 +20,16 @@ import { hasPermission, type Permission } from '@owlat/shared/organizationPermis
  *   organization, settings, contacts, or curate campaign senders
  */
 export function usePermissions() {
-	const { role: orgRole } = useOrganizationContext();
+	const { role: orgRole, isLoading: orgLoading } = useOrganizationContext();
 
 	const role = computed(() => orgRole.value ?? null);
+
+	/**
+	 * The role is still being looked up. Pages render before it arrives (only
+	 * the `admin` guard waits for it), so role-gated parts of the shell show a
+	 * skeleton while this is true instead of popping in afterwards.
+	 */
+	const isRoleLoading = computed(() => orgLoading.value);
 
 	/**
 	 * Check if the user is the organization owner
@@ -96,6 +103,7 @@ export function usePermissions() {
 	return {
 		// Role checks
 		role,
+		isRoleLoading,
 		isOwner,
 		isAdmin,
 

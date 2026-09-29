@@ -14,13 +14,15 @@ import { internal } from '../../_generated/api';
 import { resolveAllowedFromAddressesForCtx } from '../identities';
 import { normalizeSubject } from '../../lib/emailAddress';
 import { normalizeEmail } from '@owlat/shared';
-import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
+import { insertMessageBody } from '../../lib/messageBodyStore';
 import { isImapSystemFlag } from './flags';
 import { mergeThreadParticipants, rebuildThreadAggregates } from '../threadAggregates';
 import { conversationRootId, resolveDeliveryThread } from '../deliveryPipeline/threading';
 import { clearNeedsReplyOnOwnerReply } from '../needsReply';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import { buildSnippet } from '../deliveryPipeline/insert';
+import { applyMailboxUsageDelta } from '../mailboxUsage';
+import { recordMessageCounters } from '../messageCounters';
 
 /**
  * Error string used by APPEND to signal a from-address violation. The
@@ -174,8 +176,6 @@ export const appendMessage = internalMutation({
 				: undefined,
 			rawStorageId: args.rawStorageId,
 			rawSize: args.rawSize,
-			textBodyInline: await sealBodyAtWriteMaybe(args.textBodyInline),
-			htmlBodyInline: await sealBodyAtWriteMaybe(args.htmlBodyInline),
 			attachments: [],
 			hasAttachments: false,
 			flagSeen: flagSet.has('\\seen'),
@@ -190,6 +190,17 @@ export const appendMessage = internalMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
+		await insertMessageBody(ctx.db, messageId, {
+			text: args.textBodyInline,
+			html: args.htmlBodyInline,
+		});
+		await recordMessageCounters(ctx, null, {
+			mailboxId: folder.mailboxId,
+			folderId: folder._id,
+			flagSeen: flagSet.has('\\seen'),
+			labelIds: [],
+			receivedAt: internalDate,
+		});
 
 		if (existingThreadId) {
 			// Counters, participants, folder roles and the latest pointers all move
@@ -201,7 +212,8 @@ export const appendMessage = internalMutation({
 		} else {
 			// The conversation list links to latestMessageId; set it now that the
 			// appended message exists.
-			await ctx.db.patch(threadId, { latestMessageId: messageId });
+			// A just-appended message is never snoozed (plan C8).
+			await ctx.db.patch(threadId, { latestMessageId: messageId, latestSnoozedUntil: null });
 		}
 
 		// E8b: the IMAP server uploads the raw `.eml` straight to storage
@@ -217,11 +229,7 @@ export const appendMessage = internalMutation({
 			unseenCount: folder.unseenCount + (flagSet.has('\\seen') ? 0 : 1),
 			updatedAt: now,
 		});
-		await ctx.db.patch(mailbox._id, {
-			usedBytes: mailbox.usedBytes + args.rawSize,
-			usageRevision: (mailbox.usageRevision ?? 0) + 1,
-			updatedAt: now,
-		});
+		await applyMailboxUsageDelta(ctx, mailbox, args.rawSize, now);
 
 		return {
 			messageId,

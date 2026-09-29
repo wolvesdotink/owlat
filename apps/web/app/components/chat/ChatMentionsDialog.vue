@@ -48,7 +48,7 @@ const handleOpen = async (mention: {
 	>
 		<div class="flex-1 overflow-y-auto p-3">
 			<div v-if="mentionsLoading" class="flex items-center justify-center py-8">
-				<UiSpinner size="md" />
+				<UiSpinner size="md" delay />
 			</div>
 			<div
 				v-else-if="mentions.length === 0"

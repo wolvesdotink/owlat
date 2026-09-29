@@ -18,7 +18,7 @@
 import { httpAction } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { isValidConvexId } from '../lib/inputGuards';
-import { readSealedBlobBytes, verifyBlobToken } from '../lib/sealedBlob';
+import { cacheControlFor, readSealedBlobBytes, verifyBlobToken } from '../lib/sealedBlob';
 import { logError } from '../lib/runtimeLog';
 import { errorResponse } from '../lib/httpResponse';
 import { corsHeaders } from '../lib/cors';
@@ -74,7 +74,8 @@ export const serveSealedBlob = httpAction(async (ctx, request) => {
 		url.searchParams.get('id'),
 		url.searchParams.get('ct'),
 		url.searchParams.get('exp'),
-		url.searchParams.get('sig')
+		url.searchParams.get('sig'),
+		url.searchParams.get('c')
 	);
 	if (!verified || !isValidConvexId(verified.storageId)) {
 		return errorResponse('forbidden', 'Forbidden', undefined, cors);
@@ -90,7 +91,7 @@ export const serveSealedBlob = httpAction(async (ctx, request) => {
 			status: 200,
 			headers: {
 				'Content-Type': verified.contentType,
-				'Cache-Control': 'no-store',
+				'Cache-Control': cacheControlFor(verified),
 				// The content-type is attacker-influenceable, so never let the browser
 				// sniff a different one, and only render the two kinds the reader shows
 				// inline (image/*, application/pdf). Anything else downloads.

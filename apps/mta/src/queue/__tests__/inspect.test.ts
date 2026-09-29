@@ -37,16 +37,17 @@ beforeEach(async () => {
 });
 
 describe('scanWaitingByDomain', () => {
-	it('spans every ip pool sending to the domain', async () => {
+	it('spans every ip pool and lane sending to the domain', async () => {
 		await add('t-1', 'transactional:acme.test');
 		await add('c-1', 'campaign:acme.test');
+		await add('pb-1', 'postbox:transactional:acme.test');
 		await add('elsewhere', 'transactional:other.test');
 
 		const scan = await scanWaitingByDomain(redis as unknown as Redis, 'acme.test', 50);
 
-		expect(scan.jobIds.sort()).toEqual(['c-1', 't-1']);
-		expect(scan.waiting).toBe(2);
-		expect(scan.groups).toBe(2);
+		expect(scan.jobIds.sort()).toEqual(['c-1', 'pb-1', 't-1']);
+		expect(scan.waiting).toBe(3);
+		expect(scan.groups).toBe(3);
 	});
 
 	it('counts the whole backlog while listing only `limit` of it', async () => {

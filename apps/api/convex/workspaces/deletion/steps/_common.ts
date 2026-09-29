@@ -32,7 +32,9 @@ export type OrganizationDeletionTable =
 	| 'mailAttachments'
 	| 'mailAttachmentBackfillJobs'
 	| 'mailBodySearchBackfillJobs'
+	| 'mailMessageBodies'
 	| 'mailMessages'
+	| 'mailMessageParts'
 	| 'mailDrafts'
 	| 'transactionalSends'
 	| 'emailSends'
@@ -53,6 +55,8 @@ export type OrganizationDeletionTable =
 	| 'inboxAssignmentNotices'
 	| 'inboundMessages'
 	| 'conversationThreads'
+	| 'counterScopes'
+	| 'counterBuckets'
 	| 'mailAliases'
 	| 'mailFolders'
 	| 'mailLabels'
@@ -73,6 +77,7 @@ export type OrganizationDeletionTable =
 	| 'mailThreadVisits'
 	| 'todayStates'
 	| 'todayThreadSummaries'
+	| 'mailboxUsage'
 	| 'mailboxes'
 	| 'webhookDeliveryLogs'
 	| 'mtaCampaignAlertReceipts'
@@ -123,6 +128,8 @@ export type OrganizationDeletionTable =
 	| 'onboardingProgress'
 	| 'auditLogs'
 	| 'invitationResends'
+	| 'featureFlagSettings'
+	| 'instanceCounters'
 	| 'instanceSettings'
 	| 'unifiedMessages'
 	| 'channelConfigs'
@@ -154,6 +161,7 @@ export type OrganizationDeletionTable =
 	| 'mailArchiveImports'
 	| 'mailboxMoves'
 	| 'externalMailFolderSync'
+	| 'externalMailAccessTokens'
 	| 'externalMailRemoteOps'
 	| 'externalMailAccounts'
 	| 'externalMailOAuthStates'
@@ -224,7 +232,9 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailAttachments'),
 	v.literal('mailAttachmentBackfillJobs'),
 	v.literal('mailBodySearchBackfillJobs'),
+	v.literal('mailMessageBodies'),
 	v.literal('mailMessages'),
+	v.literal('mailMessageParts'),
 	v.literal('mailDrafts'),
 	v.literal('transactionalSends'),
 	v.literal('emailSends'),
@@ -245,6 +255,8 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('inboxAssignmentNotices'),
 	v.literal('inboundMessages'),
 	v.literal('conversationThreads'),
+	v.literal('counterScopes'),
+	v.literal('counterBuckets'),
 	v.literal('mailAliases'),
 	v.literal('mailFolders'),
 	v.literal('mailLabels'),
@@ -265,6 +277,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailThreadVisits'),
 	v.literal('todayStates'),
 	v.literal('todayThreadSummaries'),
+	v.literal('mailboxUsage'),
 	v.literal('mailboxes'),
 	v.literal('webhookDeliveryLogs'),
 	v.literal('mtaCampaignAlertReceipts'),
@@ -315,6 +328,8 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('onboardingProgress'),
 	v.literal('auditLogs'),
 	v.literal('invitationResends'),
+	v.literal('featureFlagSettings'),
+	v.literal('instanceCounters'),
 	v.literal('instanceSettings'),
 	v.literal('unifiedMessages'),
 	v.literal('channelConfigs'),
@@ -346,6 +361,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailArchiveImports'),
 	v.literal('mailboxMoves'),
 	v.literal('externalMailFolderSync'),
+	v.literal('externalMailAccessTokens'),
 	v.literal('externalMailRemoteOps'),
 	v.literal('externalMailAccounts'),
 	v.literal('externalMailOAuthStates'),

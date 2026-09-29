@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { postboxPageTransition } from '~/utils/postboxPageTransition';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
@@ -8,7 +9,7 @@ useHead({ title: () => t('dashboard.postbox.search.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
-	middleware: 'auth',
+	middleware: ['auth', postboxPageTransition],
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 

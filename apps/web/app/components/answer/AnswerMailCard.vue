@@ -7,6 +7,12 @@ import TaskCardRenderer from '~/components/agent-tasks/TaskCardRenderer.vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
 import type { ReplyQuoteTarget } from '~/composables/postbox/usePostboxQuotedText';
+import { useSuggestReplies } from '~/composables/postbox/useSuggestReplies';
+import {
+	optimisticArchive,
+	optimisticMove,
+	optimisticSnooze,
+} from '~/lib/mailOptimistic/mailUpdaters';
 import { isBuiltInTaskFlowKind } from '~/utils/taskCardRegistry';
 import { resolveReplyFocusKey } from '~/utils/taskFlowKeyboard';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
@@ -46,6 +52,14 @@ const dueLabel = computed(() => {
 });
 const kind = computed(() => mailAnswerKind(props.row));
 
+// The prepared draft is read for the card on screen only; the queue rows just
+// say one exists (plan C8).
+const { data: draftSlot } = useConvexQuery(api.mail.needsReply.getDraftSlot, () =>
+	props.row.kind !== 'followup' && props.row.hasDraftSlot
+		? { threadId: props.row.threadId as Id<'mailThreads'> }
+		: 'skip'
+);
+
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const aiEnabled = computed(() => isFeatureEnabled('ai'));
 const stack = usePostboxComposerStack();
@@ -56,18 +70,23 @@ const clearOp = useBackendOperation(api.mail.needsReply.clear, {
 const cancelFollowUpOp = useBackendOperation(api.mail.followUps.cancel, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.dismissReminder'),
 });
+// Archive, its undo and snooze patch the cached Postbox views and counts
+// before the server answers (plan 2.2), like the same verbs in the Postbox.
 const archiveOp = useBackendOperation(api.mail.messageActions.archive, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.archive'),
+	optimisticUpdate: optimisticArchive,
 });
 const moveOp = useBackendOperation(api.mail.messageActions.move, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.move'),
+	optimisticUpdate: optimisticMove,
 });
 const snoozeOp = useBackendOperation(api.mail.snooze.snooze, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.snooze'),
+	optimisticUpdate: optimisticSnooze,
 });
-const suggestOp = useBackendOperation(api.mail.ai.assist.suggestReplies, {
+// Only the first option is used, so the composer opens as soon as it is final.
+const suggest = useSuggestReplies({
 	label: () => t('components.postbox.postboxReplyFlow.operations.draftReply'),
-	type: 'action',
 });
 const answerOp = useBackendOperation(api.mail.ai.needsReplyClarify.answerClarification, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.answer'),
@@ -114,11 +133,9 @@ async function draftReply() {
 	if (busy.value) return;
 	busy.value = true;
 	try {
-		let suggestion = '';
-		if (aiEnabled.value) {
-			const res = await suggestOp.run({ messageId: props.row.messageId as Id<'mailMessages'> });
-			suggestion = res.ok ? (res.result.replies[0] ?? '') : '';
-		}
+		const suggestion = aiEnabled.value
+			? await suggest.first({ messageId: props.row.messageId as Id<'mailMessages'> })
+			: '';
 		await openReplyComposer(suggestion);
 		props.controls.complete('replied');
 	} finally {
@@ -233,9 +250,9 @@ const secondaryButton =
 
 		<!-- Draft-on-arrival review slot (human review only). -->
 		<PostboxReviewSlot
-			v-if="row.kind !== 'followup' && row.draftSlot"
+			v-if="row.kind !== 'followup' && draftSlot"
 			class="mb-4"
-			:draft-slot="row.draftSlot"
+			:draft-slot="draftSlot"
 			@review="reviewSlot"
 			@dismiss="markDone"
 		/>
@@ -243,13 +260,13 @@ const secondaryButton =
 		<TaskActions
 			v-if="row.kind !== 'followup'"
 			:primary-label="
-				row.draftSlot
+				row.hasDraftSlot
 					? t('components.answer.mail.writeOwn')
 					: aiEnabled
 						? t('components.postbox.postboxReplyFlow.draftReply')
 						: t('components.postbox.postboxReplyFlow.reply')
 			"
-			:quiet="!!row.draftSlot"
+			:quiet="!!row.hasDraftSlot"
 			primary-icon="lucide:reply"
 			:primary-disabled="busy"
 			:primary-loading="busy"

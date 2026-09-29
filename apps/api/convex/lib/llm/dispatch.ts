@@ -26,9 +26,18 @@ import {
 } from 'ai';
 import type { z } from 'zod';
 import type { TokenUsage } from '../../agent/steps/types';
-import { MAX_LLM_ATTEMPTS } from './retryPolicy';
+import { withLlmRetry } from './retryPolicy';
 
-export { MAX_LLM_ATTEMPTS } from './retryPolicy';
+export { MAX_LLM_ATTEMPTS, errorStatus, isRetriableLlmError, retryAfterMs } from './retryPolicy';
+
+/**
+ * The AI SDK retries every call twice on its own by default. This module is
+ * the one retry choke point, so each SDK call is told not to: otherwise one
+ * dispatch attempt hides up to three HTTP requests (nine per call in total),
+ * which breaks both deadlines and the per-attempt budget arithmetic. Streams
+ * are the exception (see {@link runLlmStream}).
+ */
+const SDK_MAX_RETRIES = 0;
 
 type RawUsage =
 	| {
@@ -106,106 +115,19 @@ function captureProviderModelIdentity(model: LanguageModel): ProviderModelIdenti
 	};
 }
 
-const LLM_BACKOFF_BASE_MS = 500;
-
-/**
- * Best-effort HTTP status off an AI-SDK / fetch error shape. Exported because
- * the DECISION plane's dispatch classifies the same three fields: one reader for
- * one shape, so a fourth field learned here is learned there too (a copy that
- * fell behind would quietly stop recognising the 401/403/422 that must never
- * produce a fallback hop).
- */
-export function errorStatus(error: unknown): number | undefined {
-	const e = error as {
-		statusCode?: number;
-		status?: number;
-		response?: { status?: number };
-	} | null;
-	return e?.statusCode ?? e?.status ?? e?.response?.status;
-}
-
-/**
- * Whether an LLM call error is worth retrying. Transient — rate limits (429),
- * server/overload (5xx, "overloaded"), timeouts, network resets — retry with
- * backoff. Hard client errors — bad/expired API key (401/403), malformed
- * request (400/404/422) — are NOT retriable: bail immediately so a misconfigured
- * key doesn't burn the whole attempt budget (and, upstream, a whole pipeline
- * retry) the way a transient overload would. Ambiguous errors default to
- * retriable (treated as a transient network blip).
- */
-export function isRetriableLlmError(error: unknown): boolean {
-	const status = errorStatus(error);
-	if (status !== undefined) {
-		if (status === 408 || status === 409 || status === 429) return true;
-		if (status >= 500) return true;
-		if (status >= 400) return false; // 401/403/400/404/422 → don't retry
-	}
-	const message = String((error as { message?: unknown } | null)?.message ?? error).toLowerCase();
-	if (
-		/\b(400|401|403|404|422)\b|invalid.?api.?key|unauthor|forbidden|authentication|invalid request|bad request|not found/.test(
-			message
-		)
-	) {
-		return false;
-	}
-	return true;
-}
-
-function sleep(ms: number, abortSignal?: AbortSignal): Promise<void> {
-	if (!abortSignal) return new Promise((resolve) => setTimeout(resolve, ms));
-	assertNotAborted(abortSignal);
-	return new Promise((resolve, reject) => {
-		const timer = setTimeout(() => {
-			abortSignal.removeEventListener('abort', onAbort);
-			resolve();
-		}, ms);
-		function onAbort() {
-			clearTimeout(timer);
-			reject(abortSignal?.reason ?? new Error('LLM dispatch aborted'));
-		}
-		abortSignal.addEventListener('abort', onAbort, { once: true });
-	});
-}
-
-/**
- * Run an LLM call with bounded exponential backoff, retrying only transient
- * failures. The single retry choke point for every dispatch helper.
- */
-interface LlmRetryResult<T> {
-	readonly value: T;
-	readonly attempts: number;
-}
-
-async function withLlmRetry<T>(
-	run: () => Promise<T>,
-	abortSignal?: AbortSignal
-): Promise<LlmRetryResult<T>> {
-	let lastError: unknown;
-	for (let attempt = 0; attempt < MAX_LLM_ATTEMPTS; attempt++) {
-		assertNotAborted(abortSignal);
-		try {
-			return { value: await run(), attempts: attempt + 1 };
-		} catch (error) {
-			assertNotAborted(abortSignal);
-			lastError = error;
-			if (!isRetriableLlmError(error) || attempt === MAX_LLM_ATTEMPTS - 1) throw error;
-			await sleep(LLM_BACKOFF_BASE_MS * 2 ** attempt, abortSignal);
-		}
-	}
-	throw lastError;
-}
-
-function assertNotAborted(abortSignal: AbortSignal | undefined): void {
-	if (abortSignal?.aborted) throw abortSignal.reason ?? new Error('LLM dispatch aborted');
-}
-
 export type LlmTextInput = { messages: ModelMessage[] } | { prompt: string; system?: string };
 
 export type LlmTextOptions = LlmTextInput & {
 	model: LanguageModel;
 	temperature?: number;
 	maxOutputTokens?: number;
+	/** Cancels the call and the backoff between attempts (a deadline, a user stop). */
 	abortSignal?: AbortSignal;
+	/**
+	 * Lower the attempt ceiling below {@link MAX_LLM_ATTEMPTS}. Interactive
+	 * surfaces pass `INTERACTIVE_LLM_ATTEMPTS` (one retry at most).
+	 */
+	maxAttempts?: number;
 };
 
 export interface LlmTextResult {
@@ -238,11 +160,13 @@ export async function runLlmTextWithAttemptMetadata(
 			generateText({
 				model: providerModelIdentity.model,
 				temperature: opts.temperature,
+				maxRetries: SDK_MAX_RETRIES,
 				...(opts.maxOutputTokens === undefined ? {} : { maxOutputTokens: opts.maxOutputTokens }),
 				...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
 				...sdkArgs,
 			}),
-		opts.abortSignal
+		opts.abortSignal,
+		opts.maxAttempts
 	);
 	const { text, usage } = dispatched.value;
 	const providerModelUsed = providerModelIdentity.read();
@@ -287,6 +211,7 @@ export async function runLlmTextWithTools(opts: LlmTextWithToolsOptions): Promis
 			tools: opts.tools,
 			stopWhen: stepCountIs(opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS),
 			temperature: opts.temperature,
+			maxRetries: SDK_MAX_RETRIES,
 		})
 	);
 	const { text, usage } = dispatched.value;
@@ -309,6 +234,8 @@ export interface LlmObjectOptions<S extends z.ZodTypeAny> {
 	 * decision plane's language-backed adapter — uncancellable once dispatched.
 	 */
 	abortSignal?: AbortSignal;
+	/** Lower the attempt ceiling below {@link MAX_LLM_ATTEMPTS} (see {@link LlmTextOptions}). */
+	maxAttempts?: number;
 }
 
 export interface LlmObjectResult<S extends z.ZodTypeAny> {
@@ -327,9 +254,11 @@ export async function runLlmObject<S extends z.ZodTypeAny>(
 				schema: opts.schema,
 				prompt: opts.prompt,
 				temperature: opts.temperature,
+				maxRetries: SDK_MAX_RETRIES,
 				...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
 			}),
-		opts.abortSignal
+		opts.abortSignal,
+		opts.maxAttempts
 	);
 	const { object, usage } = dispatched.value;
 	return {
@@ -401,6 +330,8 @@ interface LlmStreamResult {
  *
  * Not retried: unlike the one-shot helpers, a stream may already have emitted
  * tokens to the user, so a silent retry would duplicate output and double-charge.
+ * The SDK's default retry is kept here on purpose: it only re-sends the opening
+ * request, before any token exists, and it is the stream's only retry.
  * Stream errors surface as a thrown error (after any prior text deltas were
  * delivered) for the caller to persist as a `error`/`stopped` message.
  */

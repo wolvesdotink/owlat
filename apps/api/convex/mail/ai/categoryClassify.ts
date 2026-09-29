@@ -2,8 +2,12 @@
 
 /**
  * Smart-inbox category classification action (see mail/category.ts for the
- * module overview). Runs per-thread, scheduled by inbound ingest or the
- * one-shot backfill:
+ * module overview). Runs per-thread. Ingest and the one-shot backfill run the
+ * override and heuristic steps in their own mutation (`enqueueCategoryCheck`
+ * in mail/categoryArrival.ts) and schedule this action only for mail the
+ * heuristic left ambiguous (or whose latest inbound message lies too deep for
+ * that mutation to look for); the action repeats those steps anyway, because
+ * an override or a new contact may have landed in between:
  *
  *   1. A remembered user override wins outright → persist (source `user`), done.
  *   2. Deterministic heuristic (mail/category.classifyMailCategory). A concrete
@@ -47,6 +51,9 @@ export const classifyThread = internalAction({
 		// Raw Precedence header of the triggering message — only available on the
 		// ingest-time trigger (the header is not persisted on the row).
 		precedence: v.optional(v.string()),
+		// The scheduling mutation already wrote the fail-soft baseline, so step 3
+		// goes straight to the LLM. Absent on jobs scheduled before that change.
+		baselineApplied: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const context = await ctx.runQuery(internal.mail.category.getThreadCategoryContext, {
@@ -85,13 +92,16 @@ export const classifyThread = internalAction({
 			return;
 		}
 
-		// 3. Ambiguous — persist the `other` baseline first, then try the LLM.
-		await ctx.runMutation(internal.mail.category.applyCategory, {
-			threadId: args.threadId,
-			expectedLatestMessageId: context.latestMessageId,
-			label: 'other',
-			source: 'heuristic',
-		});
+		// 3. Ambiguous — persist the `other` baseline first (unless the scheduling
+		// mutation already did), then try the LLM.
+		if (args.baselineApplied !== true) {
+			await ctx.runMutation(internal.mail.category.applyCategory, {
+				threadId: args.threadId,
+				expectedLatestMessageId: context.latestMessageId,
+				label: 'other',
+				source: 'heuristic',
+			});
+		}
 
 		try {
 			// Same gate as the user-triggered Postbox AI: `ai` feature flag +

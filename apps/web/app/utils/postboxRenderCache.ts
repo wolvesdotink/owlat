@@ -71,6 +71,13 @@ export interface PostboxRenderCache {
 	set(key: string, entry: PostboxRenderEntry): void;
 	/** Patches an existing entry in place (e.g. the measured height); no-op on miss. */
 	update(key: string, patch: Partial<PostboxRenderEntry>): void;
+	/**
+	 * The last measured height of a message's body: the render under `preferred`
+	 * options if it has one, else the most recent measured render of the same
+	 * message under any options. Does not change the LRU order, since a lookup
+	 * for a placeholder is not a use of the render.
+	 */
+	heightFor(messageId: string, preferred: PostboxRenderOptions): number | null;
 	/** Test/introspection helpers. */
 	has(key: string): boolean;
 	readonly size: number;
@@ -115,6 +122,17 @@ export function createPostboxRenderCache(cap: number = DEFAULT_CAP): PostboxRend
 			const entry = map.get(key);
 			if (!entry) return;
 			touch(key, { ...entry, ...patch });
+		},
+		heightFor(messageId, preferred) {
+			const exact = map.get(postboxRenderKey(messageId, preferred))?.height;
+			if (exact != null) return exact;
+			const prefix = `${messageId}|`;
+			let found: number | null = null;
+			// Insertion order is LRU order, so the last match is the most recent.
+			for (const [key, entry] of map) {
+				if (entry.height != null && key.startsWith(prefix)) found = entry.height;
+			}
+			return found;
 		},
 		has(key) {
 			return map.has(key);

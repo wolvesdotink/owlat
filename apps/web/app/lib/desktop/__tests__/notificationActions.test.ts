@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { ConvexClient } from 'convex/browser';
+import * as mailUpdaters from '~/lib/mailOptimistic/mailUpdaters';
 import {
 	replyFromNotification,
 	resolveNotificationEffect,
@@ -88,6 +89,19 @@ describe('runEffect open → SPA router (no full document reload)', () => {
 		await runEffect({ type: 'read', messageId: 'm1' }, convex, navigate);
 
 		expect(navigate).not.toHaveBeenCalled();
+	});
+
+	it('patches the local store for archive and mark-read before the server answers', async () => {
+		const mutation = vi.fn(async () => ({}));
+		const convex = { query: vi.fn(), mutation } as unknown as ConvexClient;
+
+		await runEffect({ type: 'archive', messageId: 'm1' }, convex, vi.fn());
+		await runEffect({ type: 'read', messageId: 'm1' }, convex, vi.fn());
+
+		expect(mutation.mock.calls.map((call) => (call as unknown[])[2])).toEqual([
+			{ optimisticUpdate: mailUpdaters.optimisticArchive },
+			{ optimisticUpdate: mailUpdaters.optimisticMarkRead },
+		]);
 	});
 });
 

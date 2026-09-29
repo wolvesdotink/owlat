@@ -26,6 +26,9 @@ describe('composition rendering', () => {
 			'{ packageName: "@acme/alpha-plugin", manifest: bundledPluginManifest0 }'
 		);
 		expect(rendered.nuxt).toContain("name: 'owlat:bundled-plugin-composition'");
+		expect(rendered.nuxt).toContain(
+			'export const bundledPluginComposition = composeBundledPlugins([\n'
+		);
 		const parsed = ts.createSourceFile(
 			'plugins.generated.ts',
 			rendered.convex,
@@ -63,6 +66,14 @@ describe('composition rendering', () => {
 		expect(rendered.convex).toContain('composeBundledPlugins([]);');
 		expect(rendered.convex).not.toContain('bundledPluginManifest0');
 		expect(rendered.nuxt).toContain('void bundledPluginComposition;');
+		// The web boot bundle must not carry the plugin host's runtime when there
+		// is nothing to compose: the Nuxt artifact imports the host for types only.
+		expect(rendered.nuxt).toContain(
+			'export const bundledPluginComposition: readonly BundledPlugin[] = Object.freeze([]);'
+		);
+		expect(rendered.nuxt).toContain("import type { BundledPlugin } from '@owlat/plugin-host';");
+		expect(rendered.nuxt).not.toMatch(/^import \{[^}]*\} from '@owlat\/plugin-host';$/m);
+		expect(rendered.nuxt).not.toContain('composeBundledPlugins');
 		expect(rendered.components).toContain('void app;');
 		expect(rendered.sendTransportCatalog).toContain('Object.freeze([])');
 		expect(rendered.sendTransportWebCatalog).toBe(rendered.sendTransportCatalog);

@@ -1,5 +1,6 @@
 import { mailboxesTables } from './mailboxes';
 import { mailAccountsTables } from './mailAccounts';
+import { mailboxJobsTables } from './mailboxJobs';
 import { mailMessagesTables } from './mailMessages';
 import { mailThreadsTables } from './mailThreads';
 import { mailCompositionTables } from './mailComposition';
@@ -22,6 +23,7 @@ import { mailAiTables } from './mailAi';
 export const mailTables = {
 	...mailboxesTables,
 	...mailAccountsTables,
+	...mailboxJobsTables,
 	...mailMessagesTables,
 	...mailThreadsTables,
 	...mailCompositionTables,

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { WorkspaceConfig } from '../workspaceTypes';
+import { IDLE_FALLBACK_DELAY_MS } from '~/lib/scheduleIdle';
 
 // The module under test talks to three seams: the active workspace (which
 // instance to ask), the desktop bridge (the Rust updater commands) and the
@@ -370,8 +371,10 @@ describe('setupUpdateChecks', () => {
 		const setInterval_ = vi.spyOn(globalThis, 'setInterval');
 		const { setupUpdateChecks } = await load();
 
-		setupUpdateChecks();
+		setupUpdateChecks({ firstCheckDelayMs: 0 });
 		await vi.waitFor(() => expect(setInterval_).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(loadDesktopAppSettings).toHaveBeenCalledTimes(1));
+		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		expect(checkForUpdate).not.toHaveBeenCalled();
 		clearInterval(setInterval_.mock.results[0]?.value as ReturnType<typeof setInterval>);
@@ -387,7 +390,7 @@ describe('setupUpdateChecks', () => {
 	it('re-reads the setting at every tick, so switching it off mid-session stops the timer runs', async () => {
 		const setInterval_ = vi.spyOn(globalThis, 'setInterval');
 		const { setupUpdateChecks } = await load();
-		setupUpdateChecks();
+		setupUpdateChecks({ firstCheckDelayMs: 0 });
 		const tick = await armedTick(setInterval_);
 		await vi.waitFor(() => expect(checkForUpdate).toHaveBeenCalledTimes(1));
 
@@ -424,7 +427,7 @@ describe('setupUpdateChecks', () => {
 		const clearInterval_ = vi.spyOn(globalThis, 'clearInterval');
 		const { setupUpdateChecks, state } = await load();
 
-		setupUpdateChecks();
+		setupUpdateChecks({ firstCheckDelayMs: 0 });
 		await vi.waitFor(() => expect(setInterval_).toHaveBeenCalledTimes(1));
 		await vi.waitFor(() => expect(state.phase.value).toBe('ready'));
 
@@ -441,13 +444,14 @@ describe('setupUpdateChecks', () => {
 		const addEventListener_ = vi.spyOn(window, 'addEventListener');
 		const { setupUpdateChecks } = await load();
 
-		setupUpdateChecks();
+		setupUpdateChecks({ firstCheckDelayMs: 0 });
 		const handler = addEventListener_.mock.calls.find(
 			([name]) => name === 'owlat:check-updates'
 		)?.[1];
 		expect(handler).toBeTypeOf('function');
 		(handler as EventListener)(new Event('owlat:check-updates'));
-		await new Promise((resolve) => setTimeout(resolve, 10));
+		// Past the delayed boot check's idle fallback too.
+		await new Promise((resolve) => setTimeout(resolve, IDLE_FALLBACK_DELAY_MS + 50));
 
 		// No boot check, no timer, and the shared menu event is left to main.
 		expect(checkForUpdate).not.toHaveBeenCalled();
@@ -455,6 +459,29 @@ describe('setupUpdateChecks', () => {
 		expect(setInterval_).not.toHaveBeenCalled();
 		addEventListener_.mockRestore();
 		setInterval_.mockRestore();
+	});
+
+	it('waits FIRST_CHECK_DELAY_MS and then an idle moment before the boot check', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		try {
+			const { setupUpdateChecks, FIRST_CHECK_DELAY_MS } = await load();
+			expect(FIRST_CHECK_DELAY_MS).toBe(30_000);
+			setupUpdateChecks();
+
+			// The launch is left alone: no probe, no settings read, no check.
+			await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS - 1);
+			expect(loadDesktopAppSettings).not.toHaveBeenCalled();
+			expect(checkForUpdate).not.toHaveBeenCalled();
+
+			// The delay is over; the check still waits for idle time.
+			await vi.advanceTimersByTimeAsync(1);
+			expect(checkForUpdate).not.toHaveBeenCalled();
+
+			await vi.advanceTimersByTimeAsync(IDLE_FALLBACK_DELAY_MS);
+		} finally {
+			vi.useRealTimers();
+		}
+		await vi.waitFor(() => expect(checkForUpdate).toHaveBeenCalledTimes(1));
 	});
 
 	it('still runs a manual check when auto-checks are off', async () => {

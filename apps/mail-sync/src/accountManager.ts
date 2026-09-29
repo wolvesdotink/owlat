@@ -15,6 +15,11 @@ import { logger } from './logger.js';
 export class AccountManager {
 	private readonly connections = new Map<string, AccountConnection>();
 	private timer: ReturnType<typeof setInterval> | null = null;
+	/** The pass in progress, if any; overlapping requests join it. */
+	private running: Promise<void> | null = null;
+	/** Another pass was asked for while one was running. */
+	private rerun = false;
+	private stopped = false;
 
 	constructor(
 		private readonly convex: ConvexClient,
@@ -22,11 +27,44 @@ export class AccountManager {
 	) {}
 
 	async start(): Promise<void> {
-		await this.reconcile();
-		this.timer = setInterval(() => void this.reconcile(), this.config.reconcileIntervalMs);
+		await this.requestReconcile();
+		this.timer = setInterval(() => void this.requestReconcile(), this.config.reconcileIntervalMs);
+	}
+
+	/**
+	 * Run a reconcile pass now instead of on the next tick. Convex calls this
+	 * (POST /reconcile) right after a mailbox is connected or its credentials
+	 * change, so a new account does not sit idle for up to a full
+	 * `reconcileIntervalMs`.
+	 *
+	 * Passes never overlap: a request that arrives mid-pass schedules exactly one
+	 * more pass after it, because the running one may have read the account list
+	 * before the change being announced. Two overlapping passes could also race
+	 * each other — the older list tearing down a connection the newer one just
+	 * opened.
+	 */
+	requestReconcile(): Promise<void> {
+		if (this.stopped) return Promise.resolve();
+		if (this.running) {
+			this.rerun = true;
+			return this.running;
+		}
+		const run = async (): Promise<void> => {
+			try {
+				do {
+					this.rerun = false;
+					await this.reconcile();
+				} while (this.rerun && !this.stopped);
+			} finally {
+				this.running = null;
+			}
+		};
+		this.running = run();
+		return this.running;
 	}
 
 	async stop(): Promise<void> {
+		this.stopped = true;
 		if (this.timer) {
 			clearInterval(this.timer);
 			this.timer = null;
@@ -58,7 +96,16 @@ export class AccountManager {
 		const live = new Set(accounts.map((a) => a.accountId));
 
 		for (const account of accounts) {
-			if (this.connections.has(account.accountId)) continue;
+			const existing = this.connections.get(account.accountId);
+			// A connection that gave up on its own (bad credentials, a revoked
+			// grant) stays stopped for good. If its account is connectable again —
+			// the user re-entered the password before any pass saw the `auth_error`
+			// — it needs a fresh connection, or it would never sync again.
+			if (existing && !existing.isStopped) continue;
+			if (existing) {
+				logger.info({ accountId: account.accountId }, 'replacing a stopped connection');
+				void existing.stop();
+			}
 			const conn = new AccountConnection(account, this.convex, this.config);
 			this.connections.set(account.accountId, conn);
 			logger.info({ accountId: account.accountId }, 'starting connection');

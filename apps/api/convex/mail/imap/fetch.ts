@@ -14,9 +14,11 @@
 
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
-import type { Doc } from '../../_generated/dataModel';
+import type { Doc, Id } from '../../_generated/dataModel';
+import { internal } from '../../_generated/api';
 import { internalAction, internalQuery } from '../../_generated/server';
 import { sealedBlobUrl } from '../../lib/sealedBlob';
+import { throwInvalidInput } from '../../_utils/errors';
 
 /**
  * Rows per page.
@@ -175,7 +177,8 @@ export const listFolderUidsPage = internalQuery({
 });
 
 /** For `FETCH RFC822` / `BODY[]` — IMAP server uses the storage id to
- *  stream the raw .eml from Convex storage. */
+ *  stream the raw .eml from Convex storage. Superseded by the batched
+ *  {@link getRawStorageUrls}; kept one release for the previous IMAP server. */
 export const fetchRawStorageId = internalQuery({
 	args: { messageId: v.id('mailMessages') },
 	handler: async (ctx, args) => {
@@ -194,13 +197,63 @@ export const fetchRawStorageId = internalQuery({
 /** Resolve a time-limited download URL for a stored raw RFC822 message.
  *  Consumed by the IMAP server's FETCH (apps/imap) to stream message bodies —
  *  storage URLs can only be minted inside a Convex function (there is no
- *  client-addressable `_storage` module to call from ConvexHttpClient). */
+ *  client-addressable `_storage` module to call from ConvexHttpClient).
+ *  Superseded by the batched {@link getRawStorageUrls}; kept one release for
+ *  the previous IMAP server. */
 export const getRawStorageUrl = internalAction({
 	args: { storageId: v.id('_storage') },
 	// E8b: the raw `.eml` is sealed at rest, so hand the IMAP server a
 	// decrypt-serving proxy URL — its `FETCH RFC822` stream then receives the
 	// plaintext RFC822 bytes, unchanged from the bare storage URL it used before.
 	handler: async (ctx, args) => sealedBlobUrl(ctx.storage, args.storageId, 'message/rfc822'),
+});
+
+/**
+ * Most messages one {@link getRawStorageUrls} call resolves. The IMAP server
+ * asks in chunks of this size (apps/imap `RAW_URL_BATCH`), so a `FETCH 1:*
+ * BODY[]` is one call per chunk instead of two per message.
+ */
+export const MAX_RAW_URL_BATCH = 100;
+
+/** Batch form of {@link fetchRawStorageId}: where each message's raw bytes live. */
+export const fetchRawStorageIds = internalQuery({
+	args: { messageIds: v.array(v.id('mailMessages')) },
+	handler: async (ctx, args) => {
+		// bounded: getRawStorageUrls, the only caller, caps the batch at MAX_RAW_URL_BATCH.
+		const rows = await Promise.all(args.messageIds.map((id) => ctx.db.get(id)));
+		return args.messageIds.map((messageId, i) => ({
+			messageId,
+			storageId: rows[i]?.rawStorageId ?? null,
+		}));
+	},
+});
+
+/**
+ * Download URLs for many messages' raw RFC822 bytes in one call — what the IMAP
+ * server's `FETCH … BODY[]` asks for per chunk of messages. `url` is null for
+ * a message that is gone or whose blob cannot be served; FETCH then drops that
+ * message's body fields, as it does for any failed download.
+ */
+export const getRawStorageUrls = internalAction({
+	args: { messageIds: v.array(v.id('mailMessages')) },
+	handler: async (
+		ctx,
+		args
+	): Promise<Array<{ messageId: Id<'mailMessages'>; url: string | null }>> => {
+		if (args.messageIds.length > MAX_RAW_URL_BATCH) {
+			throwInvalidInput(`At most ${MAX_RAW_URL_BATCH} messages per call.`);
+		}
+		const rows: Array<{ messageId: Id<'mailMessages'>; storageId: Id<'_storage'> | null }> =
+			await ctx.runQuery(internal.mail.imap.fetch.fetchRawStorageIds, {
+				messageIds: args.messageIds,
+			});
+		return await Promise.all(
+			rows.map(async ({ messageId, storageId }) => ({
+				messageId,
+				url: storageId ? await sealedBlobUrl(ctx.storage, storageId, 'message/rfc822') : null,
+			}))
+		);
+	},
 });
 
 /**

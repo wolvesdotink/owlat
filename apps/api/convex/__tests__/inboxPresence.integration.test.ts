@@ -2,8 +2,10 @@
  * Thread-presence coverage (inbox/presence.ts):
  *   - heartbeat upserts one row per (thread, user) and refreshes mode + timestamp
  *   - two users on one thread both appear in the active list
- *   - list applies the 60s active window (boundary: 59s in, 61s out)
+ *   - a same-mode beat inside PRESENCE_REFRESH_MS does not rewrite the row
+ *   - list applies the active window (boundary: 1s in, 1s out)
  *   - the internalSweep cron deletes expired rows and keeps active ones
+ *   - presentAssignees answers the team-inbox ring per (thread, assignee) pair
  *   - access control: a non-admin member cannot read presence (list → []) and
  *     cannot heartbeat (adminMutation floor throws).
  */
@@ -13,7 +15,11 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { PRESENCE_ACTIVE_WINDOW_MS } from '../inbox/presence';
+import {
+	MAX_ASSIGNEE_PRESENCE_PAIRS,
+	PRESENCE_ACTIVE_WINDOW_MS,
+	PRESENCE_REFRESH_MS,
+} from '../inbox/presence';
 
 const sessionMock = vi.hoisted(() => ({
 	user: { id: 'user-owner', role: 'owner' as 'owner' | 'admin' | 'editor' },
@@ -119,6 +125,43 @@ describe('inbox.presence.heartbeat', () => {
 		expect(rows[0]!.userId).toBe('user-owner');
 	});
 
+	it('skips the write for a same-mode beat until the row is PRESENCE_REFRESH_MS old', async () => {
+		const t = convexTest(schema, modules);
+		setUser('user-owner', 'owner');
+		const threadId = await seedThread(t);
+		const readRow = () =>
+			t.run(async (ctx) =>
+				ctx.db
+					.query('threadPresence')
+					.withIndex('by_thread', (q) => q.eq('threadId', threadId))
+					.unique()
+			);
+
+		// A row written 20s ago (one client beat): the next same-mode beat is a no-op.
+		const recent = Date.now() - 20_000;
+		await seedPresence(t, threadId, 'user-owner', 'viewing', recent);
+		await t.mutation(api.inbox.presence.heartbeat, { threadId, mode: 'viewing' });
+		expect((await readRow())!.heartbeatAt).toBe(recent);
+
+		// A mode flip is written straight away.
+		await t.mutation(api.inbox.presence.heartbeat, { threadId, mode: 'replying' });
+		const flipped = (await readRow())!;
+		expect(flipped.mode).toBe('replying');
+		expect(flipped.heartbeatAt).toBeGreaterThan(recent);
+
+		// Once the stored beat is PRESENCE_REFRESH_MS old, a same-mode beat re-stamps it.
+		const old = Date.now() - PRESENCE_REFRESH_MS;
+		await t.run(async (ctx) => ctx.db.patch(flipped._id, { heartbeatAt: old }));
+		await t.mutation(api.inbox.presence.heartbeat, { threadId, mode: 'replying' });
+		expect((await readRow())!.heartbeatAt).toBeGreaterThan(old);
+	});
+
+	it('keeps a row active between its re-stamps, with one missed beat to spare', () => {
+		// The re-stamp lands on the first beat at or past PRESENCE_REFRESH_MS, so
+		// a row can be one 20s beat older than that; one more beat may be lost.
+		expect(PRESENCE_ACTIVE_WINDOW_MS).toBeGreaterThan(PRESENCE_REFRESH_MS + 2 * 20_000);
+	});
+
 	it('keeps distinct rows for distinct users on the same thread', async () => {
 		const t = convexTest(schema, modules);
 		const threadId = await seedThread(t);
@@ -141,7 +184,7 @@ describe('inbox.presence.list active window', () => {
 		const threadId = await seedThread(t);
 		const now = Date.now();
 
-		// 1s inside the 60s window → active.
+		// 1s inside the window → active.
 		await seedPresence(t, threadId, 'fresh', 'viewing', now - (PRESENCE_ACTIVE_WINDOW_MS - 1000));
 		// 1s past the window → expired.
 		await seedPresence(t, threadId, 'stale', 'viewing', now - (PRESENCE_ACTIVE_WINDOW_MS + 1000));
@@ -149,6 +192,60 @@ describe('inbox.presence.list active window', () => {
 		const list = await t.query(api.inbox.presence.list, { threadId });
 		expect(list).toHaveLength(1);
 		expect(list[0]!.userId).toBe('fresh');
+	});
+});
+
+describe('inbox.presence.presentAssignees', () => {
+	it('returns the threads whose named assignee is active there, and no others', async () => {
+		const t = convexTest(schema, modules);
+		setUser('user-owner', 'owner');
+		const here = await seedThread(t);
+		const gone = await seedThread(t);
+		const elsewhere = await seedThread(t);
+		const now = Date.now();
+
+		// Assignee active on `here`; stale on `gone`; on `elsewhere` only a
+		// different member is present, which must not light the assignee's ring.
+		await seedPresence(t, here, 'assignee-a', 'viewing', now - 1000);
+		await seedPresence(t, gone, 'assignee-b', 'viewing', now - (PRESENCE_ACTIVE_WINDOW_MS + 1000));
+		await seedPresence(t, elsewhere, 'someone-else', 'replying', now - 1000);
+
+		const present = await t.query(api.inbox.presence.presentAssignees, {
+			rows: [
+				{ threadId: here, assigneeId: 'assignee-a' },
+				{ threadId: gone, assigneeId: 'assignee-b' },
+				{ threadId: elsewhere, assigneeId: 'assignee-c' },
+			],
+		});
+		expect(present).toEqual([here]);
+	});
+
+	it('checks at most MAX_ASSIGNEE_PRESENCE_PAIRS pairs', async () => {
+		const t = convexTest(schema, modules);
+		setUser('user-owner', 'owner');
+		const threadId = await seedThread(t);
+		await seedPresence(t, threadId, 'late-assignee', 'viewing', Date.now());
+
+		const filler = Array.from({ length: MAX_ASSIGNEE_PRESENCE_PAIRS }, (_, i) => ({
+			threadId,
+			assigneeId: `absent-${i}`,
+		}));
+		const present = await t.query(api.inbox.presence.presentAssignees, {
+			rows: [...filler, { threadId, assigneeId: 'late-assignee' }],
+		});
+		expect(present).toEqual([]);
+	});
+
+	it('returns [] for a non-admin member', async () => {
+		const t = convexTest(schema, modules);
+		const threadId = await seedThread(t);
+		await seedPresence(t, threadId, 'assignee-a', 'viewing', Date.now());
+
+		setUser('user-editor', 'editor');
+		const present = await t.query(api.inbox.presence.presentAssignees, {
+			rows: [{ threadId, assigneeId: 'assignee-a' }],
+		});
+		expect(present).toEqual([]);
 	});
 });
 

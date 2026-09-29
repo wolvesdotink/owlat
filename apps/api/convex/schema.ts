@@ -12,6 +12,7 @@ import { contactTables } from './schema/contacts';
 import { contactErasureTables } from './schema/contactErasure';
 import { authTables } from './schema/auth';
 import { instanceTables } from './schema/instance';
+import { instanceHotRowTables } from './schema/instanceHotRows';
 import { templateTables } from './schema/templates';
 import { alignmentTables } from './schema/alignment';
 import { sendAssignmentTables } from './schema/sendAssignments';
@@ -37,6 +38,7 @@ import { pluginTables } from './schema/plugins';
 import { postmasterTables } from './schema/postmaster';
 import { sndsTables } from './schema/snds';
 import { todayTables } from './schema/today';
+import { counterTables } from './schema/counters';
 
 // Note: Team invites are now handled by BetterAuth organization plugin's invitation table
 
@@ -54,6 +56,7 @@ export default defineSchema({
 	...contactErasureTables,
 	...authTables,
 	...instanceTables,
+	...instanceHotRowTables,
 	...templateTables,
 	...deliveryTables,
 	...seedPlacementTables,
@@ -79,4 +82,5 @@ export default defineSchema({
 	...postmasterTables,
 	...sndsTables,
 	...todayTables,
+	...counterTables,
 });

@@ -13,6 +13,8 @@ import { v, type ObjectType } from 'convex/values';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { DatabaseReader, MutationCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
+import { internal } from '../../_generated/api';
+import { deleteStoredAccessToken } from './accessTokenStore';
 
 /**
  * The account statuses a worker should hold (or retry) a connection for.
@@ -264,7 +266,18 @@ export async function insertExternalAccountRow(
 		details: `${params.auditPrefix ?? ''}${params.address} (imap ${fields.imapHost}:${fields.imapPort}, smtp ${fields.smtpHost}:${fields.smtpPort})`,
 		occurredAt: now,
 	});
+	await scheduleWorkerReconcile(ctx);
 	return accountId;
+}
+
+/**
+ * Wake the mail-sync worker once this mutation commits, so the account it just
+ * made connectable opens its IMAP connection now rather than on the worker's
+ * next reconcile tick. A seed row is excluded from the worker's list, which
+ * makes the poke a harmless no-op for it.
+ */
+async function scheduleWorkerReconcile(ctx: MutationCtx): Promise<void> {
+	await ctx.scheduler.runAfter(0, internal.mail.external.accountsActions.pokeWorkerReconcile, {});
 }
 
 /**
@@ -295,6 +308,12 @@ export async function applyCredentialRotation(
 		lastError: undefined,
 		updatedAt: now,
 	});
+	// The access token minted from the replaced grant goes with it: forgetting a
+	// grant means forgetting its token (the reader would already refuse it, as
+	// the fresh `secretIv` no longer matches, but it should not stay sealed here).
+	await deleteStoredAccessToken(ctx, accountId);
+	// An `auth_error` row just became connectable again; tell the worker now.
+	await scheduleWorkerReconcile(ctx);
 }
 
 /**
