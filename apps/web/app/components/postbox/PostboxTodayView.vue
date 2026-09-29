@@ -27,11 +27,15 @@
 import { api } from '@owlat/api';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import type { Id } from '@owlat/api/dataModel';
-import { useNow } from '~/composables/useNow';
+import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
 import { provide } from 'vue';
 import { POSTBOX_READER_HOST_KEY } from '~/composables/postbox/usePostboxReaderActions';
 import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
-import { partitionTodayMessages, formatAutoFiledLine } from '~/utils/postboxTodayPartition';
+import {
+	partitionTodayMessages,
+	formatAutoFiledLine,
+	startOfLocalDay,
+} from '~/utils/postboxTodayPartition';
 import {
 	answerQueueHrefFor,
 	replyQueueHeadline,
@@ -78,15 +82,20 @@ const { messages, isLoading, hasMore, loadMore } = usePostboxThreads({
 	folderRole: folderRef,
 });
 
-// Re-partition as time passes so the local-midnight boundary rolls over
-// without a reload (a minute of drift is invisible; the rows are live).
-const now = useNow({ intervalMs: 60_000, as: 'date' });
+// The list clock both thread lists below share for their row timestamps
+// (provided here, so the two lists and the partition run off one timer).
+const now = usePostboxListNow();
+// The partition only depends on which local day it is. The clock ticks every
+// minute; this number changes once, at midnight, and a computed that returns
+// the same number does not wake its readers, so the rows are re-split then and
+// not 1,440 times a day.
+const todayStart = computed(() => startOfLocalDay(new Date(now.value)));
 
 const partition = computed(() =>
 	// Each row carries its thread's advisory category (attached server-side), so
 	// a row on a later page is auto-filed exactly like one on the first.
 	// Fail-open: an unclassified row is never auto-filed.
-	partitionTodayMessages(messages.value, { now: now.value })
+	partitionTodayMessages(messages.value, { now: new Date(todayStart.value) })
 );
 const todayRows = computed(() => partition.value.today);
 const olderRows = computed(() => partition.value.older);

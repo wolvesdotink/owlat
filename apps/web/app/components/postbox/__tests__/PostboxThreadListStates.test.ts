@@ -160,7 +160,6 @@ function mountList(opts: {
 				UiAvatar: { template: '<span />' },
 			},
 			mocks: {
-				formatThreadTimestamp: () => '5m',
 				resolveComponent: () => 'div',
 			},
 		},

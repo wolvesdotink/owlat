@@ -54,7 +54,6 @@ const globalOptions = {
 		PostboxThreadListSkeleton,
 		PostboxEmptyState,
 	},
-	mocks: { formatThreadTimestamp: () => '10:24' },
 	stubs: {
 		Icon: { props: ['name'], template: '<span />' },
 		NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },

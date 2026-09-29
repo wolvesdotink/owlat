@@ -21,6 +21,7 @@ import {
 } from '~/utils/postboxBundles';
 import { MAIL_CATEGORY_META } from '~/utils/mailCategory';
 import { senderRowMarkerOf } from '~/utils/senderAuth';
+import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
 
 const props = defineProps<{
 	entries: Array<PostboxFeedEntry<PostboxThreadRowMessage>>;
@@ -42,6 +43,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+usePostboxListNow(); // one minute clock for every row's timestamp
 
 // The sender-trust marker gate, resolved once for the list (not per row).
 const { isEnabled } = useFeatureFlag();
@@ -70,9 +72,18 @@ const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard({
 	onActivate: (message) => void navigateTo(messageTo(message)),
 });
 
+/**
+ * Flat index of every navigable message, built once per list change. Each row
+ * asks for its own index on every render (the focus ring), and a findIndex
+ * there made one render of the list quadratic in its length.
+ */
+const focusIndexById = computed(
+	() => new Map(navigableMessages.value.map((message, index) => [String(message._id), index]))
+);
+
 /** Flat index of a message among the navigable ones, for the focus ring. */
 function focusIndexOf(messageId: string): number {
-	return navigableMessages.value.findIndex((message) => String(message._id) === messageId);
+	return focusIndexById.value.get(messageId) ?? -1;
 }
 </script>
 

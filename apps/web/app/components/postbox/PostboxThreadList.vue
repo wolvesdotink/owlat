@@ -11,6 +11,7 @@ import {
 	useRememberedScroll,
 } from '~/composables/postbox/usePostboxVirtualList';
 import { usePostboxListAutoLoad } from '~/composables/postbox/usePostboxListAutoLoad';
+import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
 import { postboxListEmptyState } from '~/utils/postboxListEmptyState';
 
 const props = defineProps<{
@@ -50,6 +51,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+usePostboxListNow(); // one minute clock for every row's timestamp
 
 // Row trust markers (idea 51) ride the badge's flag, resolved once for the list.
 const { isEnabled: isFlagEnabled } = useFeatureFlag();

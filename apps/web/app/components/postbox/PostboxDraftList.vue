@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import {
+	usePostboxListNow,
+	usePostboxThreadTimestamp,
+} from '~/composables/postbox/usePostboxListClock';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
 }>();
 
 const { t } = useI18n();
+// The list is its own row renderer: one minute clock for every draft's age.
+const formatTimestamp = usePostboxThreadTimestamp(usePostboxListNow());
 
 const stack = usePostboxComposerStack();
 
@@ -31,7 +37,10 @@ function preview(bodyHtml: string | undefined): string {
 
 <template>
 	<div v-if="isLoading" class="p-6 flex justify-center">
-		<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
+		<Icon
+			name="lucide:loader-2"
+			class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
+		/>
 	</div>
 	<div v-else-if="drafts.length === 0" class="p-12 text-center">
 		<Icon name="lucide:file-edit" class="w-10 h-10 mx-auto text-text-tertiary" />
@@ -55,7 +64,7 @@ function preview(bodyHtml: string | undefined): string {
 						}}
 					</span>
 					<span class="text-xs text-text-tertiary flex-shrink-0">
-						{{ formatThreadTimestamp(d.lastEditedAt) }}
+						{{ formatTimestamp(d.lastEditedAt) }}
 					</span>
 				</div>
 				<p
