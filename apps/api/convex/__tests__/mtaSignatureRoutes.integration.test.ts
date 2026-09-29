@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { convexTest } from 'convex-test';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
 import { expectScheduledFailure } from './helpers/scheduledFailures';
@@ -53,6 +53,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	vi.useRealTimers();
 	process.env = { ...SAVED_ENV };
 });
 
@@ -154,6 +155,50 @@ describe('MTA-signed routes check the signature before spending the ingestion bu
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
+					'X-MTA-Timestamp': timestamp,
+					'X-MTA-Signature': signature,
+				},
+				body,
+			});
+			expect([401, 429]).not.toContain(signed.status);
+		});
+	}
+});
+
+describe('MTA raw routes keep a separate bucket for bodies read before verification', () => {
+	for (const path of ['/webhooks/mta-inbound', '/webhooks/mta-mailbox'] as const) {
+		it(`${path} answers a small signed request after a burst of undeclared-length requests`, async () => {
+			// Hold the clock still so the bucket cannot refill between the burst and
+			// the signed request.
+			vi.useFakeTimers({ toFake: ['Date'] });
+			const t = convexTest(schema, modules);
+			rateLimiterTest.register(t);
+			const body = JSON.stringify({ event: 'unsupported.kind' });
+			const timestamp = String(Math.floor(Date.now() / 1000));
+
+			// Signature headers present but wrong, and no Content-Length: these are
+			// charged before their body is read.
+			const unverified = await Promise.all(
+				Array.from({ length: 150 }, () =>
+					t.fetch(path, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'X-MTA-Timestamp': timestamp,
+							'X-MTA-Signature': '0'.repeat(64),
+						},
+						body,
+					})
+				)
+			);
+			expect(unverified.some((res) => res.status === 429)).toBe(true);
+
+			const signature = createHmac('sha256', SECRET).update(`${timestamp}.${body}`).digest('hex');
+			const signed = await t.fetch(path, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Content-Length': String(Buffer.byteLength(body)),
 					'X-MTA-Timestamp': timestamp,
 					'X-MTA-Signature': signature,
 				},

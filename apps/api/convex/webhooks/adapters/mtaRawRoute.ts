@@ -168,7 +168,7 @@ export async function storeRawRouteAudit(
  * that accepts a 13 MiB base64 message that read is the cost an unauthenticated
  * caller must not be able to impose at will. So the free verification is
  * offered only to a caller whose own `Content-Length` says the body is small;
- * anything bigger pays the bucket first, exactly as before. A caller that lies
+ * anything bigger pays first, on a key of its own (see `readVerifiedMtaBody`). A caller that lies
  * about its length is reading a body no bigger than the route already accepts
  * from a signed one, and it pays the bucket on the very next request.
  *
@@ -204,8 +204,9 @@ function declaresBodyUnder(request: Request, limit: number): boolean {
  * genuine delivery, which the MTA reads as retryable: six attempts, then the
  * DLQ. Refusing a request without both signature headers costs one header
  * lookup and charges nothing; refusing a SMALL request whose signature does not
- * verify costs one read and one HMAC and also charges nothing. Only a body too
- * big to verify for free, and every verified request, reaches the bucket.
+ * verify costs one read and one HMAC and also charges nothing. A body too big
+ * to verify for free pays before it is read, from a separate
+ * `<route>:unverified:<ip>` key; every verified request pays `<route>:<ip>`.
  *
  * Returns the verified body, or the exact `Response` to answer with. The body
  * budget is larger than the feedback pipeline's because these routes carry
@@ -258,34 +259,38 @@ export async function readVerifiedMtaBody(
 		return { ok: true, bodyText };
 	};
 
-	// A caller whose own Content-Length says the body is small is verified for
-	// free, so junk that merely CARRIES the two headers cannot spend the bucket
-	// either. The headers being present was never evidence of anything.
-	//
-	// NO LENGTH IS NOT A SMALL LENGTH. A chunked request declares none, and
-	// `Number(null)` is 0 — which would have handed any caller who simply omits
-	// the header an unbounded free read, a bigger hole than the one this closes.
-	// Absent, empty or unparseable: pay the bucket first.
-	const verified = declaresBodyUnder(request, FREE_VERIFY_BYTES) ? await readAndVerify() : null;
-	if (verified && !verified.ok) return verified;
-
-	// Per-source rate-limit key (`<route>:<ip>`) so a flood on one raw route
+	// Per-source rate-limit keys (`<route>:<ip>`) so a flood on one raw route
 	// cannot drain the shared 'webhookIngestion' bucket and 429 the provider
 	// bounce/complaint webhooks. Coarse by design: `getClientIp` returns
-	// 'unknown' for every caller unless RATE_LIMIT_TRUSTED_PROXY is set, so on a
-	// default deployment this is one shared bucket. The real spend control is
-	// the per-sender attachment budget charged at the capture site, not this.
+	// 'unknown' for every caller unless RATE_LIMIT_TRUSTED_PROXY is set. The
+	// real spend control is the per-sender attachment budget charged at the
+	// capture site, not this.
 	const ip = getClientIp(request);
-	const { ok, retryAfter } = await ctx.runMutation(
-		internal.lib.publicRateLimit.checkPublicRateLimit,
-		{
-			limitType: 'webhookIngestion',
-			key: `${opts.rateLimitKeyPrefix}:${ip}`,
-		}
-	);
-	if (!ok) {
-		return { ok: false, response: rateLimitedResponse(retryAfter) };
+	const charge = async (key: string): Promise<VerifiedMtaBody | null> => {
+		const { ok, retryAfter } = await ctx.runMutation(
+			internal.lib.publicRateLimit.checkPublicRateLimit,
+			{ limitType: 'webhookIngestion', key }
+		);
+		return ok ? null : { ok: false, response: rateLimitedResponse(retryAfter) };
+	};
+	const verifiedKey = `${opts.rateLimitKeyPrefix}:${ip}`;
+
+	// A caller whose own Content-Length says the body is small is verified for
+	// free, and only a verified request is charged.
+	//
+	// NO LENGTH IS NOT A SMALL LENGTH. A chunked request declares none, and
+	// `Number(null)` is 0. Absent, empty, unparseable or large: the read is paid
+	// for first, from a key of its own, so it never spends the budget of
+	// requests that verify for free; once verified it is charged like them.
+	if (declaresBodyUnder(request, FREE_VERIFY_BYTES)) {
+		const verified = await readAndVerify();
+		if (!verified.ok) return verified;
+		return (await charge(verifiedKey)) ?? verified;
 	}
 
-	return verified ?? (await readAndVerify());
+	const limited = await charge(`${opts.rateLimitKeyPrefix}:unverified:${ip}`);
+	if (limited) return limited;
+	const verified = await readAndVerify();
+	if (!verified.ok) return verified;
+	return (await charge(verifiedKey)) ?? verified;
 }
