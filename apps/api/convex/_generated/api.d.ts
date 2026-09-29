@@ -883,6 +883,7 @@ import type * as mail_draftQueries from '../mail/draftQueries.js';
 import type * as mail_draftSend from '../mail/draftSend.js';
 import type * as mail_draftStreamStore from '../mail/draftStreamStore.js';
 import type * as mail_drafts from '../mail/drafts.js';
+import type * as mail_external_accessTokenStore from '../mail/external/accessTokenStore.js';
 import type * as mail_external_accountShared from '../mail/external/accountShared.js';
 import type * as mail_external_accounts from '../mail/external/accounts.js';
 import type * as mail_external_accountsActions from '../mail/external/accountsActions.js';
@@ -2128,6 +2129,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/draftSend': typeof mail_draftSend;
 	'mail/draftStreamStore': typeof mail_draftStreamStore;
 	'mail/drafts': typeof mail_drafts;
+	'mail/external/accessTokenStore': typeof mail_external_accessTokenStore;
 	'mail/external/accountShared': typeof mail_external_accountShared;
 	'mail/external/accounts': typeof mail_external_accounts;
 	'mail/external/accountsActions': typeof mail_external_accountsActions;

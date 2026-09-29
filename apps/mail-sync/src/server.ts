@@ -37,7 +37,7 @@ import { isSmtpError } from '@owlat/smtp-client';
 import type { ConvexClient } from './convex.js';
 import { fetchWorkerCredentials } from './convex.js';
 import type { MailSyncConfig } from './config.js';
-import { fileSentCopy, sendViaExternal, testConnection } from './send.js';
+import { fileSentCopyInBackground, sendViaExternal, testConnection } from './send.js';
 import type { ProtocolCreds, RecipientResult } from './send.js';
 import { logger } from './logger.js';
 
@@ -59,7 +59,8 @@ interface SendBody {
  */
 const RAW_EML_FETCH_TIMEOUT_MS = 30_000;
 
-export function startServer(config: MailSyncConfig, convex: ConvexClient): ServerType {
+/** The worker's routes, without a listener (tests drive it through `app.request`). */
+export function createApp(config: MailSyncConfig, convex: ConvexClient): Hono {
 	const app = new Hono();
 
 	const auth = async (c: Context, next: () => Promise<void>) => {
@@ -138,8 +139,9 @@ export function startServer(config: MailSyncConfig, convex: ConvexClient): Serve
 				raw,
 			});
 			// Filed AFTER the answer: the caller is waiting on SMTP's verdict, not
-			// on a second login to the IMAP server. `fileSentCopy` never rejects.
-			void fileSentCopy(creds, raw);
+			// on a second login to the IMAP server. The copy never rejects (a
+			// failure is logged at warn, as before), and shutdown waits for it.
+			fileSentCopyInBackground(creds, raw);
 			return c.json(result);
 		} catch (err) {
 			// A client-side SMTPUTF8 refusal (the external server does not advertise
@@ -167,6 +169,11 @@ export function startServer(config: MailSyncConfig, convex: ConvexClient): Serve
 		}
 	});
 
+	return app;
+}
+
+export function startServer(config: MailSyncConfig, convex: ConvexClient): ServerType {
+	const app = createApp(config, convex);
 	const server = serve({ fetch: app.fetch, hostname: config.listenAddress, port: config.port });
 	logger.info({ port: config.port }, 'mail-sync HTTP server listening');
 	return server;

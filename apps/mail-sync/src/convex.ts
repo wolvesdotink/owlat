@@ -45,8 +45,9 @@ export interface WorkerCredentials {
 	 * The IMAP twin of {@link WorkerCredentials.smtpAccessToken}. Present (with
 	 * both password fields empty) on an `authMethod: 'oauth2'` account, where
 	 * ImapFlow authenticates with `AUTHENTICATE XOAUTH2` instead of LOGIN. Minted
-	 * per credential fetch by the backend from the stored refresh token, so it is
-	 * already live and this worker never refreshes or persists it.
+	 * by the backend from the stored refresh token (and reused there until a
+	 * minute before it expires), so it is already live and this worker never
+	 * refreshes or persists it.
 	 */
 	imapAccessToken?: string;
 }

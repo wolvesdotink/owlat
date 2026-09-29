@@ -117,6 +117,27 @@ export async function fileSentCopy(creds: WorkerCredentials, raw: Buffer): Promi
 	);
 }
 
+/** Sent copies filed after their /send answered and not yet finished. */
+const pendingSentCopies = new Set<Promise<void>>();
+
+/**
+ * Start {@link fileSentCopy} without waiting for it, and remember it so a
+ * shutdown can let it finish. Before the route answered first, a SIGTERM could
+ * not strand a copy: the APPEND ran inside the request, and the server drains
+ * open requests. {@link drainSentCopies} keeps that true.
+ */
+export function fileSentCopyInBackground(creds: WorkerCredentials, raw: Buffer): void {
+	const pending: Promise<void> = fileSentCopy(creds, raw).finally(() => {
+		pendingSentCopies.delete(pending);
+	});
+	pendingSentCopies.add(pending);
+}
+
+/** Resolve once every background Sent copy started so far has settled. */
+export async function drainSentCopies(): Promise<void> {
+	await Promise.all(pendingSentCopies);
+}
+
 async function appendToSent(creds: WorkerCredentials, raw: Buffer): Promise<void> {
 	const client = new ImapFlow({
 		host: creds.imapHost,

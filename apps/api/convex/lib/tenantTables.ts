@@ -223,6 +223,8 @@ export const TENANT_TABLES = [
 	'mailArchiveImports',
 	'mailboxMoves',
 	'externalMailFolderSync',
+	// Sealed OAuth access-token cache, one row per oauth2 account.
+	'externalMailAccessTokens',
 	'externalMailAccounts',
 	// In-flight Google sign-in handshakes for connecting an external mailbox.
 	// User- and org-attributed, short-lived, and meaningless once the org is gone
