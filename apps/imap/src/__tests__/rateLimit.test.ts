@@ -97,6 +97,16 @@ describe('AuthRateLimiter', () => {
 		// No throw is enough.
 	});
 
+	it('counts IPv6 clients per /64', async () => {
+		for (let i = 0; i < cfg.failuresPerWindow; i++) {
+			await limiter.recordFailure(`2001:db8:1:2::${i + 1}`, 'alice@example.com');
+		}
+		const sameNetwork = await limiter.check('2001:db8:1:2:ffff::9', 'alice@example.com');
+		expect(sameNetwork.throttled).toBe(true);
+		const otherNetwork = await limiter.check('2001:db8:1:3::1', 'alice@example.com');
+		expect(otherNetwork.throttled).toBe(false);
+	});
+
 	it('trips the global per-IP cap independent of per-credential count', async () => {
 		// 50 distinct addresses from one IP, one failure each
 		for (let i = 0; i < 50; i++) {

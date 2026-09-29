@@ -2,7 +2,8 @@
  * Authentication rate limiter for the IMAP LOGIN path.
  *
  * Two sliding-window counters (sorted-set under Redis), co-located in one
- * Redis slot by the `{<ip>}` hash tag so a single script may touch both:
+ * Redis slot by the `{<ip>}` hash tag so a single script may touch both
+ * (`<ip>` is the IPv4 address or the IPv6 /64, see `ipRateLimitKey`):
  *   - `imap:lim:{<ip>}:ip` — bound on global noise from one IP.
  *   - `imap:lim:{<ip>}:auth:<sha256(addr)>` — bound on per-credential
  *     brute-force: an IP working through many mailboxes stays under the global
@@ -45,6 +46,7 @@
 
 import { createHash } from 'crypto';
 import type Redis from 'ioredis';
+import { ipRateLimitKey } from '@owlat/shared/ipAddress';
 import { MAIL_AUTH_FAILURES_PER_IP } from '@owlat/shared/mailAuthPolicy';
 import { logger } from './logger.js';
 
@@ -102,13 +104,14 @@ export class AuthRateLimiter {
 		private config: RateLimitConfig
 	) {}
 
+	// Keyed with `ipRateLimitKey` (IPv6 per /64), like the Convex failure table.
 	private ipKey(ip: string): string {
-		return `imap:lim:{${ip}}:ip`;
+		return `imap:lim:{${ipRateLimitKey(ip)}}:ip`;
 	}
 
 	private authKey(ip: string, address: string): string {
 		const digest = createHash('sha256').update(address.toLowerCase()).digest('hex');
-		return `imap:lim:{${ip}}:auth:${digest}`;
+		return `imap:lim:{${ipRateLimitKey(ip)}}:auth:${digest}`;
 	}
 
 	/**
