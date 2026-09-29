@@ -22,6 +22,11 @@ import {
 } from '../intelligence/warmingProviderPolicy.js';
 import { applyDeliveryDomainPolicy } from './outcomeDeliveryDomain.js';
 import { classifiedResponseEffect } from './outcomeClassifiedResponse.js';
+import {
+	circuitBreakerEffect,
+	metricsEffect,
+	terminalBounceEffects,
+} from './outcomeTerminalBounce.js';
 
 export { classifyResult } from './outcomeClassification.js';
 export type { DispatchOutcome } from './outcomeClassification.js';
@@ -68,7 +73,7 @@ function reduceDelivered(
 	outcome: Extract<DispatchOutcome, { kind: 'delivered' }>,
 	ctx: AttemptCtx
 ): OutcomeReduction {
-	const { job, ip, domain, durationMs } = ctx;
+	const { job, ip, domain } = ctx;
 	const { throttleKey, providerKey } = ctx.destination;
 	const sendingPrimaryDomain = primarySendingDomain(job.dkimDomain);
 	// Per-campaign complaint rate needs a denominator: bump the campaign's
@@ -77,13 +82,7 @@ function reduceDelivered(
 	return {
 		effects: [
 			{ kind: 'domain_throttle_success', ip, throttleKey, providerKey },
-			{
-				kind: 'circuit_breaker_outcome',
-				orgId: job.organizationId,
-				outcome: 'delivered',
-				providerKey,
-				...probeReceipt(job),
-			},
+			circuitBreakerEffect(ctx, 'delivered'),
 			...(campaignId
 				? [{ kind: 'campaign_delivery_record', campaignId } as const satisfies DispatchEffect]
 				: []),
@@ -102,15 +101,7 @@ function reduceDelivered(
 				pool: ctx.pool,
 				utcDate: ctx.utcDate,
 			},
-			{
-				kind: 'metrics_record',
-				domain,
-				ip,
-				pool: job.ipPool,
-				outcome: 'delivered',
-				durationMs,
-				providerKey,
-			},
+			metricsEffect(ctx, 'delivered'),
 			{ kind: 'domain_failure_clear', domain },
 			{
 				kind: 'log_delivery_event',
@@ -139,63 +130,18 @@ function reduceDelivered(
 	};
 }
 
+/**
+ * A 5xx the receiver answered with, or a synthetic permanent refusal (no MX, a
+ * Null MX, no SMTPUTF8). Terminal: no defer, and the recipient is suppressed.
+ * The `bounced` event carries the receiver's text verbatim, and the classified
+ * category goes out beside it on `smtp.classified`, so a `550 5.7.1` block
+ * counts toward the ramp's block clause.
+ */
 function reduceHardBounce(
 	outcome: Extract<DispatchOutcome, { kind: 'hard_bounce' }>,
 	ctx: AttemptCtx
 ): OutcomeReduction {
-	const { job, ip, domain, durationMs } = ctx;
-	const { throttleKey, providerKey } = ctx.destination;
-	return {
-		effects: [
-			{
-				kind: 'circuit_breaker_outcome',
-				orgId: job.organizationId,
-				outcome: 'bounced',
-				providerKey,
-				...probeReceipt(job),
-			},
-			{
-				kind: 'smtp_response',
-				domain,
-				smtpCode: outcome.smtpCode,
-				enhancedCode: outcome.enhancedCode,
-			},
-			{ kind: 'domain_throttle_reject', ip, throttleKey },
-			{ kind: 'warming_record', ip, result: 'bounce', providerKey, utcDate: ctx.utcDate },
-			{
-				kind: 'metrics_record',
-				domain,
-				ip,
-				pool: job.ipPool,
-				outcome: 'bounced',
-				durationMs,
-				providerKey,
-			},
-			{
-				kind: 'log_delivery_event',
-				event: {
-					...outcomeEventBase(ctx),
-					status: 'bounced',
-					bounceType: 'hard',
-					smtpCode: outcome.smtpCode,
-					smtpResponse: outcome.error,
-				},
-			},
-			{
-				kind: 'notify_convex',
-				event: {
-					event: 'bounced',
-					messageId: job.messageId,
-					organizationId: job.organizationId,
-					bounceType: 'hard',
-					message: outcome.error,
-					timestamp: Date.now(),
-				},
-			},
-			{ kind: 'suppress_recipient', address: job.to, reason: 'hard_bounce' },
-		],
-		defer: undefined,
-	};
+	return { effects: terminalBounceEffects(ctx, outcome, outcome.error), defer: undefined };
 }
 
 function reduceDeferred(
@@ -213,7 +159,7 @@ function reduceDeferred(
 	if (!outcome.classification.retryable) {
 		return reduceNonRetryableDeferral(outcome, ctx);
 	}
-	const { job, ip, domain, durationMs } = ctx;
+	const { ip, domain } = ctx;
 	const { throttleKey, providerKey } = ctx.destination;
 	// Deferral-aware retry: while this destination provider is signalling volume
 	// pressure on this IP, the classifier's suggested backoff is lengthened and
@@ -243,15 +189,7 @@ function reduceDeferred(
 						} as const satisfies DispatchEffect,
 					]
 				: []),
-			{
-				kind: 'metrics_record',
-				domain,
-				ip,
-				pool: job.ipPool,
-				outcome: 'deferred',
-				durationMs,
-				providerKey,
-			},
+			metricsEffect(ctx, 'deferred'),
 			{
 				kind: 'log_delivery_event',
 				event: {
@@ -277,95 +215,24 @@ function reduceDeferred(
 /**
  * Terminal handling for a 4xx that the classifier marked non-retryable
  * (`policy_rejected` / `content_rejected`, or an unrecognised 5xx that surfaced
- * via the deferred path). Mirrors the hard-bounce reducer: no defer, suppress
- * the recipient, and report the failure as a hard bounce so the message stops
- * cycling toward the dead-letter queue (RFC 5321 §4.2.1 — a 4xx is "transient"
- * by code class, but the classifier knows this particular response will never
- * succeed for this message).
+ * via the deferred path). It emits the hard bounce's effect list
+ * (`terminalBounceEffects`): no defer, suppress the recipient, and report the
+ * failure as a hard bounce so the message stops cycling toward the dead-letter
+ * queue (RFC 5321 §4.2.1 — a 4xx is "transient" by code class, but the
+ * classifier knows this particular response will never succeed for this
+ * message). Only the `bounced` message text differs.
  */
 function reduceNonRetryableDeferral(
 	outcome: Extract<DispatchOutcome, { kind: 'deferred' }>,
 	ctx: AttemptCtx
 ): OutcomeReduction {
-	const { job, ip, domain, durationMs } = ctx;
-	const { throttleKey, providerKey } = ctx.destination;
 	return {
-		effects: [
-			{
-				kind: 'circuit_breaker_outcome',
-				orgId: job.organizationId,
-				outcome: 'bounced',
-				providerKey,
-				...probeReceipt(job),
-			},
-			{
-				kind: 'smtp_response',
-				domain,
-				smtpCode: outcome.smtpCode,
-				enhancedCode: outcome.enhancedCode,
-			},
-			{ kind: 'domain_throttle_reject', ip, throttleKey },
-			{ kind: 'warming_record', ip, result: 'bounce', providerKey, utcDate: ctx.utcDate },
-			{
-				kind: 'metrics_record',
-				domain,
-				ip,
-				pool: job.ipPool,
-				outcome: 'bounced',
-				durationMs,
-				providerKey,
-			},
-			{
-				kind: 'log_delivery_event',
-				event: {
-					...outcomeEventBase(ctx),
-					status: 'bounced',
-					bounceType: 'hard',
-					smtpCode: outcome.smtpCode,
-					smtpResponse: outcome.error,
-					category: outcome.classification.category,
-					annotation: outcome.classification.annotation,
-				},
-			},
-			{
-				kind: 'notify_convex',
-				event: {
-					event: 'bounced',
-					messageId: job.messageId,
-					organizationId: job.organizationId,
-					bounceType: 'hard',
-					message: `Non-retryable SMTP deferral (${outcome.classification.category}): ${outcome.error}`,
-					timestamp: Date.now(),
-				},
-			},
-			// THE NUMERATOR, beside the bounce rather than inside it: the bounce moves
-			// the send to a terminal status, this one moves a counter.
-			classifiedResponseEffect(outcome, ctx),
-			{ kind: 'suppress_recipient', address: job.to, reason: 'hard_bounce' },
-		],
+		effects: terminalBounceEffects(
+			ctx,
+			outcome,
+			`Non-retryable SMTP deferral (${outcome.classification.category}): ${outcome.error}`
+		),
 		defer: undefined,
-	};
-}
-
-function probeReceipt(job: AttemptCtx['job']): {
-	probeReceipt?: {
-		messageId: string;
-		globalGeneration?: number;
-		providerGeneration?: number;
-	};
-} {
-	const lease = job.routingLease;
-	if (!lease?.probe && !lease?.globalProbe) return {};
-	return {
-		probeReceipt: {
-			messageId: job.messageId,
-			...(lease.globalProbe && lease.globalBreakerGeneration !== undefined
-				? { globalGeneration: lease.globalBreakerGeneration }
-				: {}),
-			...(lease.probe && lease.providerBreakerGeneration !== undefined
-				? { providerGeneration: lease.providerBreakerGeneration }
-				: {}),
-		},
 	};
 }
 
@@ -373,28 +240,14 @@ function reduceSoftBounce(
 	outcome: Extract<DispatchOutcome, { kind: 'soft_bounce' }>,
 	ctx: AttemptCtx
 ): OutcomeReduction {
-	const { job, ip, domain, durationMs } = ctx;
+	const { ip, domain } = ctx;
 	const { providerKey } = ctx.destination;
 	return {
 		effects: [
-			{
-				kind: 'circuit_breaker_outcome',
-				orgId: job.organizationId,
-				outcome: 'bounced',
-				providerKey,
-				...probeReceipt(job),
-			},
+			circuitBreakerEffect(ctx, 'bounced'),
 			{ kind: 'warming_record', ip, result: 'bounce', providerKey, utcDate: ctx.utcDate },
 			{ kind: 'domain_failure_record', domain },
-			{
-				kind: 'metrics_record',
-				domain,
-				ip,
-				pool: job.ipPool,
-				outcome: 'error',
-				durationMs,
-				providerKey,
-			},
+			metricsEffect(ctx, 'error'),
 			{
 				kind: 'log_delivery_event',
 				event: {
@@ -439,19 +292,10 @@ function reduceAmbiguous(
 	outcome: Extract<DispatchOutcome, { kind: 'ambiguous' }>,
 	ctx: AttemptCtx
 ): OutcomeReduction {
-	const { job, ip, domain, durationMs } = ctx;
-	const { providerKey } = ctx.destination;
+	const { job } = ctx;
 	return {
 		effects: [
-			{
-				kind: 'metrics_record',
-				domain,
-				ip,
-				pool: job.ipPool,
-				outcome: 'error',
-				durationMs,
-				providerKey,
-			},
+			metricsEffect(ctx, 'error'),
 			{
 				kind: 'log_delivery_event',
 				event: {

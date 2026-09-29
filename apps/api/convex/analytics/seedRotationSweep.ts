@@ -23,7 +23,6 @@
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { toPaginationCursor } from '../lib/paginationCursor';
 import { emitSeedRotationReminderFor } from './seedAccounts';
 
 /**
@@ -53,7 +52,7 @@ export const sweepSeedRotationReminders = internalMutation({
 			.query('externalMailAccounts')
 			.withIndex('by_purpose', (q) => q.eq('purpose', 'seed'))
 			.paginate({
-				cursor: toPaginationCursor(args.cursor),
+				cursor: args.cursor ?? null,
 				numItems: SEED_ROTATION_PAGE_SIZE,
 			});
 

@@ -5,7 +5,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isSpfAligned, emailDomain, organizationalDomain } from '../spfAlignment';
+import {
+	isIdentifierAligned,
+	isSpfAligned,
+	emailDomain,
+	organizationalDomain,
+} from '../spfAlignment';
 
 describe('isSpfAligned', () => {
 	it('is false for the shared bounce domain vs a customer From-domain', () => {
@@ -31,6 +36,42 @@ describe('isSpfAligned', () => {
 		expect(isSpfAligned('ACME.COM.', 'acme.com', 'strict')).toBe(true);
 		expect(isSpfAligned('', 'acme.com')).toBe(false);
 		expect(isSpfAligned('acme.com', '')).toBe(false);
+	});
+});
+
+describe('isIdentifierAligned', () => {
+	it('aligns sibling DKIM subdomains under relaxed mode', () => {
+		expect(isIdentifierAligned('mail.acme.com', 'news.acme.com')).toBe(true);
+	});
+
+	it('does not align tenants under a private PSL suffix with the suffix', () => {
+		expect(isIdentifierAligned('github.io', 'tenant.github.io')).toBe(false);
+	});
+
+	it('agrees with isSpfAligned on every pair and mode', () => {
+		const domains = [
+			'acme.com',
+			'ACME.COM.',
+			'bounce.acme.com',
+			'news.acme.com',
+			'bounces.owlat.com',
+			'github.io',
+			'tenant.github.io',
+			'other.github.io',
+			'example.co.uk',
+			'other.co.uk',
+			'localhost',
+			'',
+		];
+		for (const identity of domains) {
+			for (const from of domains) {
+				for (const mode of ['strict', 'relaxed', undefined] as const) {
+					expect(isIdentifierAligned(identity, from, mode)).toBe(
+						isSpfAligned(identity, from, mode)
+					);
+				}
+			}
+		}
 	});
 });
 

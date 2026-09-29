@@ -12,7 +12,7 @@
  * until `limit + 1` (the +1 probes `hasMore`).
  *
  * This bug was found and fixed twice — once in mail/migrationIndexing and
- * again in agent/knowledgeBackfill — because the walker was copy-pasted.
+ * again in knowledge/messageBackfill — because the walker was copy-pasted.
  * Both call sites now share this implementation; they only provide the three
  * index reads for their own table.
  */

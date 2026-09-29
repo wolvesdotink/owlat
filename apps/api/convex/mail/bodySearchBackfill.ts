@@ -34,6 +34,7 @@ import { requireMailboxAccess } from './permissions';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { readMailMessageText, openMailMessageInlineBody } from '../lib/messageBody';
 import { buildSearchBody, isBodySearchIndexingEnabled } from './searchBody';
+import { cancelJob, readJob, startJob } from './_jobLifecycle';
 
 /**
  * Messages read per page. Smaller than the attachment backfill's 128: every row
@@ -56,10 +57,7 @@ export const status = publicQuery({
 	handler: async (ctx, args) => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return null;
-		return ctx.db
-			.query('mailBodySearchBackfillJobs')
-			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.first();
+		return readJob(ctx, { table: 'mailBodySearchBackfillJobs', key: args.mailboxId });
 	},
 });
 
@@ -83,40 +81,17 @@ export const start = authedMutation({
 			throwInvalidInput('Body search indexing is turned off for this instance');
 		}
 
-		const existing = await ctx.db
-			.query('mailBodySearchBackfillJobs')
-			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.first();
-		if (existing?.status === 'running') return { started: false };
-
-		const now = Date.now();
-		if (existing) {
-			await ctx.db.patch(existing._id, {
-				mode: 'index' as const,
-				status: 'running' as const,
-				cursor: undefined,
-				scannedCount: 0,
-				indexedCount: 0,
-				startedAt: now,
-				updatedAt: now,
-				finishedAt: undefined,
-				errorMessage: undefined,
-			});
-		} else {
-			await ctx.db.insert('mailBodySearchBackfillJobs', {
-				mailboxId: args.mailboxId,
-				mode: 'index',
-				status: 'running',
-				scannedCount: 0,
-				indexedCount: 0,
-				startedAt: now,
-				updatedAt: now,
-			});
-		}
-		await ctx.scheduler.runAfter(0, internal.mail.bodySearchBackfill.runBatch, {
-			mailboxId: args.mailboxId,
+		return startJob(ctx, {
+			table: 'mailBodySearchBackfillJobs',
+			key: args.mailboxId,
+			insertFields: { mailboxId: args.mailboxId, mode: 'index', indexedCount: 0 },
+			// A restart after a purge turns the row back into an index walk.
+			resetFields: { mode: 'index', indexedCount: 0 },
+			schedule: () =>
+				ctx.scheduler.runAfter(0, internal.mail.bodySearchBackfill.runBatch, {
+					mailboxId: args.mailboxId,
+				}),
 		});
-		return { started: true };
 	},
 });
 
@@ -131,13 +106,7 @@ export const cancel = authedMutation({
 	handler: async (ctx, args): Promise<void> => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
-		const job = await ctx.db
-			.query('mailBodySearchBackfillJobs')
-			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.first();
-		if (!job || job.status !== 'running') return;
-		const now = Date.now();
-		await ctx.db.patch(job._id, { status: 'cancelled', updatedAt: now, finishedAt: now });
+		await cancelJob(ctx, { table: 'mailBodySearchBackfillJobs', key: args.mailboxId });
 	},
 });
 
@@ -152,10 +121,7 @@ export const cancel = authedMutation({
 export const loadBatch = internalQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
-		const job = await ctx.db
-			.query('mailBodySearchBackfillJobs')
-			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.first();
+		const job = await readJob(ctx, { table: 'mailBodySearchBackfillJobs', key: args.mailboxId });
 		if (!job || job.status !== 'running' || job.mode !== 'index') return null;
 
 		const { page, isDone, continueCursor } = await ctx.db
@@ -188,10 +154,7 @@ export const commitBatch = internalMutation({
 		cursor: v.union(v.string(), v.null()),
 	},
 	handler: async (ctx, args): Promise<void> => {
-		const job = await ctx.db
-			.query('mailBodySearchBackfillJobs')
-			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.first();
+		const job = await readJob(ctx, { table: 'mailBodySearchBackfillJobs', key: args.mailboxId });
 		if (!job || job.status !== 'running' || job.mode !== 'index') return;
 
 		const now = Date.now();

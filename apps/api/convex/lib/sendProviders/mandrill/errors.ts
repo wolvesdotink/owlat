@@ -167,25 +167,4 @@ export function categorizeMandrillError(message: string, httpStatus?: number): E
 	return EmailErrorCode.UNKNOWN;
 }
 
-/**
- * Was this failure an ambiguous post-dispatch timeout?
- *
- * Mandrill's API has NO idempotency key — unlike Resend, which is why the Resend
- * adapter can let a timeout stay retryable. A timed-out `send-raw` may already
- * have been accepted and delivered, so a retry would double-deliver. Covers our
- * own `withTimeout` sentinel plus the runtime's native abort/timeout signals.
- */
-export function isAmbiguousMandrillTimeout(name: string | undefined, message: string): boolean {
-	if (message === MANDRILL_SEND_TIMEOUT_MESSAGE) return true;
-	const lowerName = (name ?? '').toLowerCase();
-	if (lowerName === 'timeouterror' || lowerName === 'aborterror') return true;
-	const lower = message.toLowerCase();
-	return (
-		lower.includes('timed out') ||
-		lower.includes('timeout') ||
-		lower.includes('etimedout') ||
-		lower.includes('socket hang up')
-	);
-}
-
 export { parseRetryAfterDeltaMs as parseRetryAfterMs } from '../errors';

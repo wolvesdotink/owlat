@@ -42,6 +42,7 @@ import {
 	type DraftMirrorFields,
 } from '~/utils/postboxDraftMirror';
 import { getPostboxDraftMirrorStore } from '~/utils/postboxDraftMirrorStore';
+import { composeDraftFields } from '~/utils/postboxDraftFields';
 import type { ComposerMode } from './usePostboxCompose';
 
 /**
@@ -89,22 +90,11 @@ export function usePostboxComposeMirror(sources: ComposeMirrorSources) {
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let reconciled = false;
 
+	// The canonical draft snapshot (`composeDraftFields`), the same fields and
+	// serialisation autosave persists, so the restore offer compares like with
+	// like. It deliberately has no `followUpRemindAt` (see postboxDraftFields).
 	function snapshot(): DraftMirrorFields {
-		return {
-			toAddresses: [...sources.toAddresses.value],
-			ccAddresses: [...sources.ccAddresses.value],
-			bccAddresses: [...sources.bccAddresses.value],
-			subject: sources.subject.value,
-			bodyHtml: sources.bodyHtml.value,
-			// Only in 'full' mode, matching what autosave persists — otherwise a
-			// simple-mode mirror would carry blocks the server row never has and
-			// read as different from it forever.
-			bodyBlocks:
-				sources.composerMode.value === 'full'
-					? JSON.stringify(sources.bodyBlocks.value)
-					: undefined,
-			composerMode: sources.composerMode.value,
-		};
+		return composeDraftFields(sources);
 	}
 
 	function cancelPending() {

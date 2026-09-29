@@ -159,10 +159,12 @@
 # `SendingDomainProviderModule` yet; domains/providers/index.ts states the gap in
 # full. No wave-0 or wave-1 piece clears this one — whichever piece finally grows
 # that capability, D1's field reaching the module contract, deletes all three
-# lines.
+# lines. The lifecycle split (#860) gathered every lifecycle-side branch of this
+# family (create's up-front check, the edit, the reconcile, the reflection) into
+# domains/returnPathProviders.ts.
 
-apps/api/convex/domains/lifecycle.ts:mta  # the record-set derivation: which kinds publish a MAIL FROM at all
-apps/api/convex/domains/lifecycle.ts:ses  # …and the one that resolves a custom return-path host
+apps/api/convex/domains/returnPathProviders.ts:mta  # the record-set derivation: which kinds publish a MAIL FROM at all
+apps/api/convex/domains/returnPathProviders.ts:ses  # …and the one that resolves a custom return-path host
 apps/api/convex/delivery/checklistDomainValidators.ts:ses  # restates the same question as a checklist item
 
 

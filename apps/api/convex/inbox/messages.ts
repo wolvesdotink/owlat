@@ -25,7 +25,7 @@ import { isFeatureEnabled } from '../lib/featureFlags';
 import { recordInboundMirror } from '../unifiedMessages';
 import { logError, logInfo, logWarn } from '../lib/runtimeLog';
 import { redactEmailAddress, redactSubject } from '@owlat/shared/logRedaction';
-import { rateLimiter } from '../rateLimiter';
+import { rateLimiter } from '../lib/rateLimiter';
 import { extractEmail, normalizeSubject } from '../lib/emailAddress';
 import { isAutomatedMail } from '../lib/inboundClassification';
 import { isSuppressed } from '../lib/suppression';

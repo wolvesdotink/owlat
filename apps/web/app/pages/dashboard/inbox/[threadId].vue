@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
-import TaskOptions from '~/components/agent-tasks/TaskOptions.vue';
-import { canonicalOption, localizedQuestionCopy } from '~/utils/clarificationLocale';
+import {
+	localizedQuestionCopy,
+	type LocalizableClarificationQuestion,
+} from '~/utils/clarificationLocale';
+import type { ClarificationAnswer } from '~/utils/clarificationAnswers';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { useOrganization } from '~/composables/useOrganization';
+import { useNow } from '~/composables/useNow';
 import { sendHoldReason } from '~/utils/replyCollision';
 import { capitalize, formatRelativeTime } from '~/utils/formatters';
 import {
@@ -207,18 +210,8 @@ const isRetrying = ref(false);
 const rejectReason = ref('');
 const showRejectModal = ref(false);
 const actionMessageId = ref<Id<'inboundMessages'> | null>(null);
-const clarificationAnswers = reactive<Record<string, Record<string, string>>>({});
-const now = ref(Date.now());
-let countdownTimer: ReturnType<typeof setInterval> | null = null;
-
-onMounted(() => {
-	countdownTimer = setInterval(() => {
-		now.value = Date.now();
-	}, 250);
-});
-onBeforeUnmount(() => {
-	if (countdownTimer) clearInterval(countdownTimer);
-});
+// Drives the follow-up countdowns and the reply blocker's received-wait.
+const now = useNow({ intervalMs: 250 });
 
 const { run: answerClarification, isLoading: isAnsweringClarification } = useBackendOperation(
 	api.inbox.clarification.answerClarification,
@@ -229,67 +222,10 @@ const { run: undoAutoSend, isLoading: isUndoingAutoSend } = useBackendOperation(
 	{ label: () => t('dashboard.inbox.detail.undoAutoSendOperation') }
 );
 
-function setClarificationAnswer(messageId: string, questionId: string, value: string) {
-	const answers = (clarificationAnswers[messageId] ??= {});
-	answers[questionId] = value;
-}
-
 // The question in the reader's own language (canonical English when no
-// translation landed); chip picks are mapped back to the canonical option on
-// submit so the persisted answer matches what answer-memory expects.
-type ThreadClarificationQuestion = NonNullable<
-	NonNullable<typeof messages.value>[number]['pendingClarification']
->['questions'][number];
-function questionCopy(question: ThreadClarificationQuestion) {
+// translation landed).
+function questionCopy(question: LocalizableClarificationQuestion) {
 	return localizedQuestionCopy(question, locale.value);
-}
-
-/**
- * The answer Owlat pre-picked from the person's earlier answer to the same
- * question (answer-memory, source 'memory'), shown in the reader's locale so it
- * matches the chip it highlights. The person stays in charge: it is only a
- * pre-selection, and picking anything else replaces it.
- */
-function rememberedAnswer(question: ThreadClarificationQuestion): string | undefined {
-	if (question.answer?.source !== 'memory') return undefined;
-	const index = question.options?.indexOf(question.answer.value) ?? -1;
-	return index >= 0 ? questionCopy(question).options[index] : question.answer.value;
-}
-
-// Seed the working answers with the remembered ones once per message, so the
-// "Answer and resume" button is live for a card whose questions memory already
-// answered and the person only has to confirm (or change) them.
-watch(
-	messages,
-	(list) => {
-		for (const message of list ?? []) {
-			if (message.processingStatus !== 'awaiting_clarification') continue;
-			for (const question of message.pendingClarification?.questions ?? []) {
-				const remembered = rememberedAnswer(question);
-				if (remembered === undefined) continue;
-				const answers = (clarificationAnswers[message._id] ??= {});
-				if (answers[question.id] === undefined) answers[question.id] = remembered;
-			}
-		}
-	},
-	{ immediate: true }
-);
-
-/** How many of a parked message's questions currently carry an answer. */
-function answeredCount(message: NonNullable<typeof messages.value>[number]): number {
-	const answers = clarificationAnswers[message._id] ?? {};
-	return (message.pendingClarification?.questions ?? []).filter((q) => answers[q.id]?.trim())
-		.length;
-}
-
-/** The sender's language as a readable name in the reader's locale ("German"). */
-function replyLanguageName(code: string | undefined): string | undefined {
-	if (!code) return undefined;
-	try {
-		return new Intl.DisplayNames([locale.value], { type: 'language' }).of(code) ?? code;
-	} catch {
-		return code;
-	}
 }
 
 /** Questions answered from memory on a message that already has its draft. */
@@ -299,25 +235,14 @@ function reusedAnswers(message: NonNullable<typeof messages.value>[number]) {
 	);
 }
 
-function hasEveryClarificationAnswer(message: NonNullable<typeof messages.value>[number]) {
-	const answers = clarificationAnswers[message._id] ?? {};
-	return (
-		(message.pendingClarification?.questions.length ?? 0) > 0 &&
-		message.pendingClarification?.questions.every((question) => answers[question.id]?.trim())
-	);
-}
-
-async function submitClarification(message: NonNullable<typeof messages.value>[number]) {
+// The answers come from InboxThreadClarification, canonical and with their
+// source, so a remembered value confirmed untouched is not re-captured.
+async function submitClarification(
+	messageId: Id<'inboundMessages'>,
+	answers: ClarificationAnswer[]
+) {
 	if (!isAdmin.value) return;
-	const questions = message.pendingClarification?.questions ?? [];
-	const values = clarificationAnswers[message._id] ?? {};
-	const result = await answerClarification({
-		inboundMessageId: message._id,
-		answers: questions.map((question) => ({
-			questionId: question.id,
-			value: canonicalOption(question, locale.value, values[question.id]?.trim() ?? ''),
-		})),
-	});
+	const result = await answerClarification({ inboundMessageId: messageId, answers });
 	if (result.ok) showToast(t('dashboard.inbox.detail.clarificationSavedToast'));
 }
 
@@ -328,8 +253,7 @@ async function cancelAutoSend(messageId: Id<'inboundMessages'>) {
 		showToast(t('dashboard.inbox.detail.autoSendCancelledToast'));
 }
 
-const remainingAutoSendSeconds = (sendAt: number) =>
-	Math.max(0, Math.ceil((sendAt - now.value) / 1000));
+const followUpSecondsLeft = (sendAt: number) => Math.max(0, Math.ceil((sendAt - now.value) / 1000));
 
 // Use the shared global toast. The underlying actions go through
 // useBackendOperation, which already toasts any categorized failure — so we
@@ -822,133 +746,24 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								</UiButton>
 							</div>
 
-							<div
+							<InboxThreadClarification
 								v-if="
 									isAdmin &&
 									message.processingStatus === 'awaiting_clarification' &&
 									message.pendingClarification
 								"
-								class="mt-4 surface-2 rounded-(--radius-card) border-l-2 border-l-brand/60 p-5"
-								data-testid="thread-clarification"
-							>
-								<div class="flex items-start justify-between gap-4">
-									<div>
-										<span class="lp-eyebrow">{{
-											t('dashboard.inbox.detail.agentNeedsInputEyebrow')
-										}}</span>
-										<p class="mt-1 text-md font-semibold text-text-primary">
-											{{ t('dashboard.inbox.detail.agentNeedsInput') }}
-										</p>
-										<p class="mt-1 text-sm text-text-secondary max-w-[540px]">
-											{{ t('dashboard.inbox.detail.clarificationLead') }}
-											<template v-if="replyLanguageName(message.classification?.language)">
-												{{
-													t('dashboard.inbox.detail.replyLanguageNote', {
-														language: replyLanguageName(message.classification?.language),
-													})
-												}}
-											</template>
-										</p>
-									</div>
-									<span
-										class="shrink-0 inline-flex items-center gap-1.5 rounded-full surface-1 px-2.5 py-1 text-2xs font-medium text-text-secondary"
-										data-testid="thread-clarification-progress"
-									>
-										<Icon name="lucide:message-circle-question" class="h-3 w-3 text-brand" />
-										{{
-											t('dashboard.inbox.detail.clarificationProgress', {
-												answered: answeredCount(message),
-												total: message.pendingClarification.questions.length,
-											})
-										}}
-									</span>
-								</div>
-								<div class="mt-5 space-y-5">
-									<div
-										v-for="(question, questionIndex) in message.pendingClarification.questions"
-										:key="question.id"
-										data-testid="thread-clarification-question"
-										class="border-t border-border-subtle pt-4"
-									>
-										<p class="lp-eyebrow mb-1.5">
-											{{
-												t('dashboard.inbox.detail.questionCounter', {
-													index: questionIndex + 1,
-													total: message.pendingClarification.questions.length,
-												})
-											}}
-										</p>
-										<TaskAsk :ask="questionCopy(question).text" />
-										<TaskOptions
-											class="mt-1.5"
-											:model-value="clarificationAnswers[message._id]?.[question.id] ?? ''"
-											:options="questionCopy(question).options"
-											:remembered="rememberedAnswer(question)"
-											:placeholder="t('dashboard.inbox.detail.answerPlaceholder')"
-											chip-test-id="thread-clarification-chip"
-											input-test-id="thread-clarification-input"
-											@update:model-value="
-												(value: string) => setClarificationAnswer(message._id, question.id, value)
-											"
-											@submit="hasEveryClarificationAnswer(message) && submitClarification(message)"
-										/>
-									</div>
-									<div class="flex items-center gap-3 pt-1">
-										<UiButton
-											size="sm"
-											:loading="isAnsweringClarification"
-											:disabled="!hasEveryClarificationAnswer(message)"
-											@click="submitClarification(message)"
-										>
-											<Icon name="lucide:sparkles" class="w-3.5 h-3.5" />
-											{{ t('dashboard.inbox.detail.answerAndResume') }}
-										</UiButton>
-										<p
-											v-if="!hasEveryClarificationAnswer(message)"
-											class="text-xs text-text-tertiary"
-											data-testid="thread-clarification-remaining"
-										>
-											{{
-												t(
-													'dashboard.inbox.detail.answerRemaining',
-													{
-														count:
-															message.pendingClarification.questions.length -
-															answeredCount(message),
-													},
-													message.pendingClarification.questions.length - answeredCount(message)
-												)
-											}}
-										</p>
-									</div>
-								</div>
-							</div>
+								:questions="message.pendingClarification.questions"
+								:language="message.classification?.language"
+								:submitting="isAnsweringClarification"
+								@submit="submitClarification(message._id, $event)"
+							/>
 
-							<div
-								v-if="
-									isAdmin &&
-									message.pendingAutoSend &&
-									remainingAutoSendSeconds(message.pendingAutoSend.sendAt) > 0
-								"
-								class="mt-4 flex items-center justify-between gap-3 rounded-lg border border-brand/20 bg-brand-subtle/30 p-3"
-							>
-								<div class="flex items-center gap-2 text-sm text-text-primary">
-									<Icon name="lucide:send" class="h-4 w-4 text-brand" />
-									{{
-										t('dashboard.inbox.detail.sendingAutomatically', {
-											seconds: remainingAutoSendSeconds(message.pendingAutoSend.sendAt),
-										})
-									}}
-								</div>
-								<UiButton
-									variant="secondary"
-									size="sm"
-									:loading="isUndoingAutoSend"
-									@click="cancelAutoSend(message._id)"
-								>
-									{{ t('dashboard.inbox.detail.undo') }}
-								</UiButton>
-							</div>
+							<InboxAutoSendCountdown
+								v-if="isAdmin && message.pendingAutoSend"
+								:send-at="message.pendingAutoSend.sendAt"
+								:busy="isUndoingAutoSend"
+								@cancel="cancelAutoSend(message._id)"
+							/>
 
 							<!-- The agent's working, for admins, behind one disclosure. -->
 							<InboxAgentInsight
@@ -974,7 +789,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 							:body="followUp.body"
 							:at="followUp.sentAt ?? followUp.createdAt"
 							:status="followUp.status"
-							:seconds-left="remainingAutoSendSeconds(followUp.sendAt)"
+							:seconds-left="followUpSecondsLeft(followUp.sendAt)"
 							:error-message="followUp.errorMessage ?? null"
 							:undoing="undoingFollowUpId === followUp._id"
 							@undo="undoFollowUp(followUp._id)"

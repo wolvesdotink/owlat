@@ -7,7 +7,7 @@ import {
 	senderSearchQuery,
 	type SenderAuthFacts,
 } from '../postboxSenderProfile';
-import { parseSearchQuery } from '../postboxSearchQuery';
+import { parseSearchQuery } from '@owlat/shared/mailSearch';
 import { createTestI18n } from '~/__tests__/i18n';
 
 const { t } = createTestI18n().global;

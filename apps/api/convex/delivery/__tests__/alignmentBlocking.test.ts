@@ -32,7 +32,7 @@ import {
 	alignmentCheckIdValidator,
 	alignmentCheckStatusValidator,
 	alignmentVerdictValidator,
-} from '../deliverabilityValidators';
+} from '../../lib/validators/deliverability';
 
 import { modules } from '../../__tests__/testModules';
 

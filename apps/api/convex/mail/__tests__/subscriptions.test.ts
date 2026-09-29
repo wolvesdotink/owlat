@@ -11,6 +11,7 @@
 
 import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api, internal } from '../../_generated/api';
@@ -214,7 +215,7 @@ async function seedListMessage(
 		flagSeen?: boolean;
 		oneClick?: boolean;
 		folderId?: Id<'mailFolders'>;
-		unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
+		unsubscribe?: ListUnsubscribeTarget;
 	}
 ): Promise<Id<'mailMessages'>> {
 	return await t.run(async (ctx) => {

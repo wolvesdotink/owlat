@@ -1,7 +1,7 @@
 import type { PaginationOptions, PaginationResult } from 'convex/server';
 import type { DatabaseReader } from '../_generated/server';
 import type { Doc, TableNames } from '../_generated/dataModel';
-import { countWithPagination } from './pagination';
+import { countIndexRange } from './pagination';
 
 /**
  * Resource listing — one engine, per-entity descriptors (ADR-0037).
@@ -22,7 +22,7 @@ import { countWithPagination } from './pagination';
  * to one table, which a function generic over `TableNames` cannot satisfy at
  * compile time. The public surface is typed via the descriptor's `T` (so call
  * sites are pinned to one table), and the query builders are cast internally —
- * the same trade `lib/pagination.ts:countWithPagination` already makes.
+ * the same trade `lib/pagination.ts:countIndexRange` already makes.
  */
 
 /** Equality filter values legal on a search `filterField` or an index `eq`. */
@@ -335,18 +335,18 @@ export async function countFacet<
 		if (typeof value === 'number') return value;
 		// No denormalized counter yet — fall back to a bounded scan, the same
 		// hint-with-fallback contract the contacts cached count already uses.
-		return countWithPagination(db, descriptor.table);
+		return countIndexRange(db, descriptor.table);
 	}
 
 	if (facet.kind === 'indexCount') {
-		return countWithPagination(db, descriptor.table, facet.index ?? 'by_creation_time');
+		return countIndexRange(db, descriptor.table, facet.index ?? 'by_creation_time');
 	}
 
 	// groupBy: one bounded index count per bucket, summed — never a whole-table
 	// `.collect()` then group in memory.
 	const counts: GroupedCount = { total: 0 } as GroupedCount;
 	for (const bucket of facet.buckets) {
-		const c = await countWithPagination(
+		const c = await countIndexRange(
 			db,
 			descriptor.table,
 			facet.index,

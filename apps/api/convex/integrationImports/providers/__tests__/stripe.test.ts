@@ -7,8 +7,9 @@
  *   - `fetchPage` normalizes `data[]` into `ImportRow[]` (lowercase email,
  *     `name` split into firstName/lastName, `metadata.first_name`
  *     overrides, remaining metadata → `properties`).
- *   - HTTP 429 → `RetryableProviderError`.
- *   - Non-OK with JSON `error.message` → `Error` with extracted message.
+ *   - HTTP 429 and 503 → `RetryableProviderError`; 500 stays permanent.
+ *   - Non-OK with JSON `error.message` → `Error` with extracted message,
+ *     API key redacted.
  *   - Non-OK with non-JSON body → `Error` with status-only message.
  *   - `has_more: false` → `nextCursor: null`; `has_more: true` →
  *     `nextCursor` is the last customer id.
@@ -35,13 +36,15 @@ describe('stripeProvider', () => {
 
 	describe('validateConfig', () => {
 		it('accepts sk_ prefixed key', () => {
-			expect(stripeProvider.validateConfig({ provider: 'stripe', apiKey: 'sk_live_xxx' }))
-				.toEqual({ ok: true });
+			expect(stripeProvider.validateConfig({ provider: 'stripe', apiKey: 'sk_live_xxx' })).toEqual({
+				ok: true,
+			});
 		});
 
 		it('accepts rk_ prefixed key (restricted)', () => {
-			expect(stripeProvider.validateConfig({ provider: 'stripe', apiKey: 'rk_live_xxx' }))
-				.toEqual({ ok: true });
+			expect(stripeProvider.validateConfig({ provider: 'stripe', apiKey: 'rk_live_xxx' })).toEqual({
+				ok: true,
+			});
 		});
 
 		it('rejects empty apiKey', () => {
@@ -77,8 +80,8 @@ describe('stripeProvider', () => {
 						],
 						has_more: false,
 					}),
-					{ status: 200 },
-				),
+					{ status: 200 }
+				)
 			);
 
 			const result = await stripeProvider.fetchPage({ config: baseConfig, cursor: '' });
@@ -105,8 +108,8 @@ describe('stripeProvider', () => {
 						],
 						has_more: false,
 					}),
-					{ status: 200 },
-				),
+					{ status: 200 }
+				)
 			);
 
 			const result = await stripeProvider.fetchPage({ config: baseConfig, cursor: '' });
@@ -129,8 +132,8 @@ describe('stripeProvider', () => {
 						],
 						has_more: false,
 					}),
-					{ status: 200 },
-				),
+					{ status: 200 }
+				)
 			);
 
 			const result = await stripeProvider.fetchPage({ config: baseConfig, cursor: '' });
@@ -147,8 +150,8 @@ describe('stripeProvider', () => {
 						data: [{ id: 'cus_last', email: 'l@example.com', name: null }],
 						has_more: true,
 					}),
-					{ status: 200 },
-				),
+					{ status: 200 }
+				)
 			);
 
 			const result = await stripeProvider.fetchPage({ config: baseConfig, cursor: '' });
@@ -156,12 +159,10 @@ describe('stripeProvider', () => {
 		});
 
 		it('throws RetryableProviderError on 429', async () => {
-			global.fetch = vi
-				.fn()
-				.mockResolvedValue(new Response('Too many', { status: 429 }));
+			global.fetch = vi.fn().mockResolvedValue(new Response('Too many', { status: 429 }));
 
 			await expect(
-				stripeProvider.fetchPage({ config: baseConfig, cursor: '' }),
+				stripeProvider.fetchPage({ config: baseConfig, cursor: '' })
 			).rejects.toBeInstanceOf(RetryableProviderError);
 		});
 
@@ -169,29 +170,63 @@ describe('stripeProvider', () => {
 			global.fetch = vi.fn().mockResolvedValue(
 				new Response(JSON.stringify({ error: { message: 'API key invalid' } }), {
 					status: 401,
-				}),
+				})
 			);
 
-			await expect(
-				stripeProvider.fetchPage({ config: baseConfig, cursor: '' }),
-			).rejects.toThrow('API key invalid');
+			await expect(stripeProvider.fetchPage({ config: baseConfig, cursor: '' })).rejects.toThrow(
+				'API key invalid'
+			);
 		});
 
 		it('throws Error with status-only message on non-JSON error body', async () => {
+			global.fetch = vi.fn().mockResolvedValue(new Response('Internal error', { status: 500 }));
+
+			await expect(stripeProvider.fetchPage({ config: baseConfig, cursor: '' })).rejects.toThrow(
+				'Stripe API error: 500'
+			);
+		});
+
+		it('throws RetryableProviderError on a 503 gateway failure', async () => {
 			global.fetch = vi
 				.fn()
-				.mockResolvedValue(new Response('Internal error', { status: 500 }));
+				.mockResolvedValue(new Response('Service Unavailable', { status: 503 }));
 
 			await expect(
-				stripeProvider.fetchPage({ config: baseConfig, cursor: '' }),
-			).rejects.toThrow('Stripe API error: 500');
+				stripeProvider.fetchPage({ config: baseConfig, cursor: '' })
+			).rejects.toBeInstanceOf(RetryableProviderError);
+		});
+
+		it('keeps 500 a permanent (non-retryable) Error', async () => {
+			global.fetch = vi.fn().mockResolvedValue(new Response('Internal error', { status: 500 }));
+
+			const err = await stripeProvider
+				.fetchPage({ config: baseConfig, cursor: '' })
+				.catch((e: unknown) => e);
+			expect(err).toBeInstanceOf(Error);
+			expect(err).not.toBeInstanceOf(RetryableProviderError);
+		});
+
+		it('redacts the API key from a provider message that echoes it', async () => {
+			global.fetch = vi.fn().mockResolvedValue(
+				new Response(
+					JSON.stringify({
+						error: { message: `Invalid API Key provided: ${baseConfig.apiKey}` },
+					}),
+					{ status: 401 }
+				)
+			);
+
+			const err = (await stripeProvider
+				.fetchPage({ config: baseConfig, cursor: '' })
+				.catch((e: unknown) => e)) as Error;
+			expect(err.message).toBe('Invalid API Key provided: [redacted]');
 		});
 
 		it('wraps fetch throw as RetryableProviderError', async () => {
 			global.fetch = vi.fn().mockRejectedValue(new Error('ECONNRESET'));
 
 			await expect(
-				stripeProvider.fetchPage({ config: baseConfig, cursor: '' }),
+				stripeProvider.fetchPage({ config: baseConfig, cursor: '' })
 			).rejects.toBeInstanceOf(RetryableProviderError);
 		});
 
@@ -201,7 +236,7 @@ describe('stripeProvider', () => {
 				() =>
 					new Response(JSON.stringify({ data: [], has_more: false }), {
 						status: 200,
-					}),
+					})
 			);
 			global.fetch = fetchSpy;
 

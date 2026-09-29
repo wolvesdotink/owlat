@@ -85,8 +85,9 @@ export const snoozeUntilReply = postboxMutation({
 /**
  * Clear any "snooze until they reply" watch on a thread — the awaited reply
  * landed, so resurface the deferred message(s) immediately. Mirrors
- * followUps.clearThreadFollowUp and is called from the same inbound-delivery
- * hook. Fail-soft: a thread with no such watch is a no-op.
+ * followUps.clearThreadFollowUp and is called beside it from the shared
+ * inbound hook (deliveryPipeline/afterInsert.ts::runPostInsertInboundEffects),
+ * under the same rules. Fail-soft: a thread with no such watch is a no-op.
  */
 export async function clearSnoozeUntilReplyForThread(
 	ctx: MutationCtx,

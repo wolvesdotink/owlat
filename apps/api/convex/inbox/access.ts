@@ -16,7 +16,11 @@
 
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import { components } from '../_generated/api';
-import { getSingletonOrganizationId, type OrganizationRole } from '../lib/sessionOrganization';
+import {
+	getSingletonOrganizationId,
+	hasPermission,
+	type OrganizationRole,
+} from '../lib/sessionOrganization';
 
 /**
  * A resolved session is a shared-inbox reader when it is an owner or admin.
@@ -28,7 +32,7 @@ import { getSingletonOrganizationId, type OrganizationRole } from '../lib/sessio
 export function isSharedInboxReader<T extends { role: OrganizationRole | null }>(
 	session: T | null
 ): session is T & { role: 'owner' | 'admin' } {
-	return session?.role === 'owner' || session?.role === 'admin';
+	return hasPermission(session?.role, 'organization:manage');
 }
 
 /** Upper bound on member rows scanned when fanning a notice out to readers. */

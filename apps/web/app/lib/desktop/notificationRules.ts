@@ -9,7 +9,8 @@
  * Nothing here touches the DOM, Tauri, or the network — the composable feeds it
  * plain data and executes the returned plan.
  */
-import type { PostboxMailCategory, PostboxNotifyAbout } from '~/utils/postboxNotify';
+import type { MailCategory } from '~/utils/mailCategory';
+import type { PostboxNotifyAbout } from '~/utils/postboxNotify';
 import type { PostboxQuietHours } from '~/utils/postboxQuietHours';
 import { isQuietHoursArmed, MINUTES_PER_DAY } from '~/utils/postboxQuietHours';
 
@@ -20,7 +21,7 @@ export interface UnreadPeekMessage {
 	fromName?: string;
 	fromAddress: string;
 	subject: string;
-	category?: PostboxMailCategory;
+	category?: MailCategory;
 	/** The message's thread is MUTED (mail/mute.ts) — never toast it. */
 	muted?: boolean;
 	/**
@@ -44,7 +45,7 @@ export interface UnreadPeekMessage {
  *     before classification.
  */
 export function shouldNotify(
-	category: PostboxMailCategory | undefined,
+	category: MailCategory | undefined,
 	setting: PostboxNotifyAbout,
 	muted = false
 ): boolean {
@@ -97,7 +98,7 @@ export function minutesUntilQuietHoursEnd(
 export type NotificationSuppression = 'muted' | 'scope' | 'quiet-hours' | null;
 
 export interface NotifyDecisionInput {
-	category?: PostboxMailCategory;
+	category?: MailCategory;
 	setting: PostboxNotifyAbout;
 	/** The thread is muted (mail/mute.ts). */
 	muted?: boolean;

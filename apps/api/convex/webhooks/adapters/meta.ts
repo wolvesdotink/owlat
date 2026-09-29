@@ -22,7 +22,7 @@ import { constantTimeEqual, hmacSha256Hex } from '../security';
 import { missingChannelSecretResult, resolveChannelInboundSecret } from '../channelSecrets';
 import { logError } from '../../lib/runtimeLog';
 import { internal } from '../../_generated/api';
-import { getClientIp, rateLimitedResponse } from '../../publicRateLimit';
+import { getClientIp, rateLimitedResponse } from '../../lib/publicRateLimit';
 import type { ActionCtx } from '../../_generated/server';
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
@@ -160,7 +160,7 @@ export async function handleMetaChallenge(request: Request, ctx?: ActionCtx): Pr
 		// Keyed apart from the inbound-message buckets so a flood here cannot 429
 		// real provider deliveries, matching the per-source keying in the pipeline.
 		const { ok, retryAfter } = await ctx.runMutation(
-			internal.publicRateLimit.checkPublicRateLimit,
+			internal.lib.publicRateLimit.checkPublicRateLimit,
 			{ limitType: 'webhookIngestion', key: `whatsapp-challenge:${getClientIp(request)}` }
 		);
 		if (!ok) return rateLimitedResponse(retryAfter);

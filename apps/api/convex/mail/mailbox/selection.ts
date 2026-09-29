@@ -20,11 +20,11 @@
 
 import { v } from 'convex/values';
 import { publicQuery } from '../../lib/authedFunctions';
-import { mailSortOrderValidator } from '../../lib/mailSettingsValidators';
+import { mailSortOrderValidator } from '../../lib/validators/mailSettings';
 import type { Id } from '../../_generated/dataModel';
 import { loadReadableMailbox } from '../permissions';
 import { isMessageSnoozed } from '../../lib/mailSnooze';
-import type { FolderRole } from './shared';
+import type { FolderRole } from '../../lib/validators/mail';
 
 /**
  * Hard ceiling on one "select all matching" answer. Matches the per-batch cap

@@ -1,31 +1,10 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
-import type { AssistantToolCall } from '~/components/assistant/AssistantToolCalls.vue';
-
-interface Author {
-	name: string | null;
-	email: string | null;
-	image: string | null;
-}
-
-interface Message {
-	_id: Id<'chatMessages'>;
-	authorId: string;
-	text: string;
-	mentions?: string[];
-	attachmentIds?: Id<'mediaAssets'>[];
-	editedAt?: number;
-	deletedAt?: number;
-	createdAt: number;
-	author: Author;
-	// AI assistant reply fields (set only for @assistant messages).
-	isAssistant?: boolean;
-	aiStatus?: 'streaming' | 'complete' | 'stopped' | 'error';
-	toolCalls?: AssistantToolCall[];
-}
+import { splitMentionSegments } from '@owlat/shared/chatMentions';
+import type { ChatMessageRow } from '~/composables/chat/useChatRoom';
 
 interface Props {
-	message: Message;
+	message: ChatMessageRow;
 	isOwnMessage: boolean;
 	currentUserId: string;
 }
@@ -60,24 +39,7 @@ const formattedTime = computed(() =>
 const isMentioned = computed(() => (props.message.mentions ?? []).includes(props.currentUserId));
 
 // Render the text with @-mentions visually emphasized.
-const segments = computed(() => {
-	const text = props.message.text;
-	const parts: { kind: 'text' | 'mention'; value: string }[] = [];
-	const regex = /@([a-zA-Z0-9_\-.]{1,64})/g;
-	let cursor = 0;
-	let match: RegExpExecArray | null;
-	while ((match = regex.exec(text)) !== null) {
-		if (match.index > cursor) {
-			parts.push({ kind: 'text', value: text.slice(cursor, match.index) });
-		}
-		parts.push({ kind: 'mention', value: match[0] });
-		cursor = match.index + match[0].length;
-	}
-	if (cursor < text.length) {
-		parts.push({ kind: 'text', value: text.slice(cursor) });
-	}
-	return parts;
-});
+const segments = computed(() => splitMentionSegments(props.message.text));
 
 const startEdit = () => {
 	if (props.message.deletedAt) return;

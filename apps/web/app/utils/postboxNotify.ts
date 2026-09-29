@@ -20,19 +20,6 @@
 export type PostboxNotifyAbout = 'everything' | 'people-important' | 'nothing';
 
 /**
- * Smart-inbox category label (mirrors `mailMessages.category.label`). `person`
- * is the only "people & important" class; the rest are lower-signal.
- */
-export type PostboxMailCategory =
-	| 'person'
-	| 'newsletter'
-	| 'notification'
-	| 'receipt'
-	| 'promotion'
-	| 'spam'
-	| 'other';
-
-/**
  * Every scope, in the order a picker offers them. VALUES ONLY — a label pinned
  * here would be English forever: the extracted surfaces resolve their labels
  * through the message catalog, and a surface that isn't extracted yet keeps its

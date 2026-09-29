@@ -34,6 +34,7 @@ import { internal } from '../_generated/api';
 import { authedMutation, authedQuery, authedAction, publicQuery } from '../lib/authedFunctions';
 import { getOptional } from '../lib/env';
 import { recordAuditLog } from '../lib/auditLog';
+import { getInstanceSettings, upsertInstanceSettings } from '../lib/instanceSettings';
 import { hasPermission, requireOrgPermission, requirePermission } from '../lib/sessionOrganization';
 import { throwInvalidInput } from '../_utils/errors';
 import {
@@ -62,7 +63,7 @@ const NOTES_MAX_CHARS = 8000;
 // ── Reads shared by the public queries ───────────────────────────────────────
 
 async function readPolicy(ctx: QueryCtx): Promise<DesktopUpdatePolicy> {
-	const settings = await ctx.db.query('instanceSettings').first();
+	const settings = await getInstanceSettings(ctx.db);
 	const stored = settings?.desktopUpdates;
 	if (!stored) return DEFAULT_DESKTOP_UPDATE_POLICY;
 	return {
@@ -94,7 +95,7 @@ async function readReleases(ctx: QueryCtx): Promise<Doc<'desktopReleases'>[]> {
  * the default policy, which nobody chose.
  */
 async function readLastChange(ctx: QueryCtx): Promise<{ at: number; by: string | null } | null> {
-	const settings = await ctx.db.query('instanceSettings').first();
+	const settings = await getInstanceSettings(ctx.db);
 	const stored = settings?.desktopUpdates;
 	if (!stored) return null;
 	const profile = await ctx.db
@@ -466,17 +467,7 @@ export const updatePolicy = authedMutation({
 			updatedBy: session.userId,
 		};
 
-		const settings = await ctx.db.query('instanceSettings').first();
-		let settingsId: Id<'instanceSettings'>;
-		if (settings) {
-			settingsId = settings._id;
-			await ctx.db.patch(settingsId, { desktopUpdates, updatedAt: Date.now() });
-		} else {
-			settingsId = await ctx.db.insert('instanceSettings', {
-				desktopUpdates,
-				createdAt: Date.now(),
-			});
-		}
+		const settingsId = await upsertInstanceSettings(ctx, { desktopUpdates });
 
 		await recordAuditLog(ctx, {
 			userId: session.userId,

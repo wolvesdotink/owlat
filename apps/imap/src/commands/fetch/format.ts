@@ -1,6 +1,6 @@
 /**
  * FETCH-internal formatters. Pure functions over the envelope row shape
- * returned by `mailImap:fetchEnvelopes`. Co-located with the FETCH
+ * returned by `mail/imap/fetch:fetchEnvelopes`. Co-located with the FETCH
  * module because the only consumer is FETCH (and UID FETCH via the
  * UID dispatcher).
  *
@@ -33,8 +33,18 @@ export interface FetchEnvelope {
 }
 
 const MONTHS = [
-	'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-	'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+	'Jan',
+	'Feb',
+	'Mar',
+	'Apr',
+	'May',
+	'Jun',
+	'Jul',
+	'Aug',
+	'Sep',
+	'Oct',
+	'Nov',
+	'Dec',
 ] as const;
 
 const pad = (n: number): string => String(n).padStart(2, '0');
@@ -64,9 +74,7 @@ export function imapString(s: string | undefined): string {
 	return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
-export function imapAddrList(
-	addrs: ReadonlyArray<{ name?: string; address: string }>,
-): string {
+export function imapAddrList(addrs: ReadonlyArray<{ name?: string; address: string }>): string {
 	if (addrs.length === 0) return 'NIL';
 	const parts = addrs.map((a) => {
 		const [user, host] = a.address.split('@');
@@ -80,9 +88,7 @@ export function formatEnvelope(m: FetchEnvelope): string {
 	const subject = imapString(m.subject);
 	const from = imapAddrList([{ name: m.fromName, address: m.fromAddress }]);
 	const sender = from;
-	const replyTo = m.replyToAddress
-		? imapAddrList([{ address: m.replyToAddress }])
-		: from;
+	const replyTo = m.replyToAddress ? imapAddrList([{ address: m.replyToAddress }]) : from;
 	const to = imapAddrList(m.toAddresses.map((a) => ({ address: a })));
 	const cc = imapAddrList(m.ccAddresses.map((a) => ({ address: a })));
 	const bcc = imapAddrList(m.bccAddresses.map((a) => ({ address: a })));

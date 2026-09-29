@@ -31,10 +31,10 @@ import {
 	type PluginManifest,
 } from '@owlat/plugin-kit';
 import { resolveFlags } from '@owlat/shared/featureFlags';
-import type { QueryCtx } from '../_generated/server';
 import { adminQuery, authedMutation } from '../lib/authedFunctions';
 import { requireAdminContext } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
+import { getInstanceSettings, upsertInstanceSettings } from '../lib/instanceSettings';
 import { throwInvalidInput } from '../_utils/errors';
 import { jsonPrimitiveRecord } from '../lib/convexValidators';
 import { isEnvPresent } from '../lib/env';
@@ -61,11 +61,6 @@ function findBundledManifest(pluginId: PluginId): PluginManifest | undefined {
 	return bundledPluginComposition.find((plugin) => plugin.manifest.id === pluginId)?.manifest;
 }
 
-async function readInstanceSettings(ctx: QueryCtx) {
-	// Org-singleton row ⇒ `first()` is bounded (≤1 row).
-	return await ctx.db.query('instanceSettings').first();
-}
-
 function storedFor(
 	settings: StoredPluginSettings | undefined,
 	flagKey: string
@@ -76,7 +71,7 @@ function storedFor(
 export const getPluginSettingsOverview = adminQuery({
 	args: {},
 	handler: async (ctx) => {
-		const settings = await readInstanceSettings(ctx);
+		const settings = await getInstanceSettings(ctx.db);
 		const resolved = resolveFlags(settings?.featureFlags ?? {}, {
 			registry: FEATURE_FLAG_REGISTRY,
 		});
@@ -141,7 +136,7 @@ export const setPluginSettings = authedMutation({
 		}
 
 		const flagKey = pluginFlagKey(pluginId);
-		const existing = await readInstanceSettings(ctx);
+		const existing = await getInstanceSettings(ctx.db);
 		const currentAll = (existing?.pluginSettings ?? {}) as StoredPluginSettings;
 		// Carry over only stored keys the CURRENT schema still declares, and never a
 		// key that is now a secret. A field removed from the schema in a plugin
@@ -163,18 +158,7 @@ export const setPluginSettings = authedMutation({
 		};
 		const nextAll: StoredPluginSettings = { ...currentAll, [flagKey]: merged };
 
-		const now = Date.now();
-		let settingsId;
-		if (existing) {
-			await ctx.db.patch(existing._id, { pluginSettings: nextAll, updatedAt: now });
-			settingsId = existing._id;
-		} else {
-			settingsId = await ctx.db.insert('instanceSettings', {
-				pluginSettings: nextAll,
-				createdAt: now,
-				updatedAt: now,
-			});
-		}
+		const settingsId = await upsertInstanceSettings(ctx, { pluginSettings: nextAll });
 
 		// Audit records only which fields changed — never their values, so a secret
 		// can never leak into the audit trail.
@@ -205,7 +189,7 @@ export const resetPluginSettings = authedMutation({
 		const flagKey = pluginFlagKey(pluginId);
 		const manifest = findBundledManifest(pluginId);
 
-		const existing = await readInstanceSettings(ctx);
+		const existing = await getInstanceSettings(ctx.db);
 		const currentAll = (existing?.pluginSettings ?? {}) as StoredPluginSettings;
 		// Only delete + audit when something is actually stored; a reset with
 		// nothing stored is idempotent. Either way the return is the same schema

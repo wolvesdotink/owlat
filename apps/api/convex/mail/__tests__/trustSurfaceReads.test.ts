@@ -143,6 +143,29 @@ describe('getMessageDetails', () => {
 			arcSealer: 'lists.example',
 			rawSize: 42,
 		});
+		// The ingest heuristics come through so the panel's Reply-To row reads the
+		// stored registrable-domain verdict rather than re-deriving its own.
+		expect(details?.senderHeuristics?.isReplyToMismatch).toBe(true);
+	});
+
+	it('leaves isReplyToMismatch unset for a Reply-To on a subdomain of the same org', async () => {
+		setOwnerSession();
+		const t = convexTest(schema, modules);
+		const rawStorageId = await setup(t);
+
+		const result = await t.mutation(internal.mail.delivery.deliverToMailbox, {
+			...baseDelivery(rawStorageId, '<details-subdomain@sender.example>'),
+			from: 'News <news@mail.sender.example>',
+			replyTo: 'help@sender.example',
+		});
+		expect('messageId' in result).toBe(true);
+		if (!('messageId' in result)) return;
+
+		const details = await t.query(api.mail.mailbox.messages.getMessageDetails, {
+			messageId: result.messageId,
+		});
+		expect(details?.replyToAddress).toBe('help@sender.example');
+		expect(details?.senderHeuristics?.isReplyToMismatch).toBeUndefined();
 	});
 
 	it('leaves a check the message never carried ABSENT rather than defaulting it', async () => {

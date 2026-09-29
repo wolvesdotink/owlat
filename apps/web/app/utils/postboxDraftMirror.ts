@@ -27,28 +27,19 @@
  * in `postboxOfflineStore.ts`, the wiring in `usePostboxDraftMirror.ts`.
  */
 
+import type { DraftFields } from './postboxDraftFields';
+
 /**
  * The mirrored slice of composer state: everything a person types, and nothing
- * that is a reference to server-side state.
+ * that is a reference to server-side state. It is the canonical draft-field
+ * snapshot (`composeDraftFields`), the same one autosave persists.
  *
  * Attachments are deliberately absent — an attachment only exists once it has
  * been committed to a draft row server-side, so restoring a list of storage ids
  * from a local mirror could only ever re-attach files the server already has
  * (or, worse, ids it no longer has). The mirror is for keystrokes.
  */
-export interface DraftMirrorFields {
-	toAddresses: string[];
-	ccAddresses: string[];
-	bccAddresses: string[];
-	subject: string;
-	bodyHtml: string;
-	/** Serialized EditorBlock[]; only ever present in 'full' composer mode. */
-	bodyBlocks?: string;
-	// Spelled out rather than imported from `usePostboxCompose` so this module
-	// stays a leaf with no composable (and therefore no Vue) dependency, exactly
-	// like `OfflineComposePayload` in postboxOfflineStore.
-	composerMode: 'simple' | 'full';
-}
+export type DraftMirrorFields = DraftFields;
 
 /** One stored mirror: the fields, when they were taken, against which row. */
 export interface DraftMirrorEntry {

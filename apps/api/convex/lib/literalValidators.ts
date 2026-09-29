@@ -7,8 +7,35 @@
  */
 
 import { v } from 'convex/values';
+import { literalUnion } from './literalUnion';
 import type { Infer } from 'convex/values';
 import { INBOUND_RAW_RETENTION_DAY_CHOICES } from '@owlat/shared/inboundRetention';
+
+// Two-to-three member unions that several tables and function args share.
+export const completedOrFailedValidator = v.union(v.literal('completed'), v.literal('failed'));
+export const abVariantValidator = v.union(v.literal('A'), v.literal('B'));
+export const bounceTypeValidator = v.union(v.literal('hard'), v.literal('soft'));
+/** SPF / DKIM / DMARC result on an inbound probe; `unknown` is "not evaluated". */
+export const authResultValidator = v.union(
+	v.literal('pass'),
+	v.literal('fail'),
+	v.literal('unknown')
+);
+export const transportArmValidator = v.union(v.literal('own'), v.literal('reference'));
+export const mailAppPasswordScopeValidator = v.union(v.literal('imap'), v.literal('smtp'));
+export const reviewActionValidator = v.union(
+	v.literal('approved'),
+	v.literal('rejected'),
+	v.literal('edited')
+);
+export const widgetSizeValidator = v.union(
+	v.literal('small'),
+	v.literal('medium'),
+	v.literal('large')
+);
+export const duplicateHandlingValidator = v.union(v.literal('skip'), v.literal('update'));
+export const messageDirectionValidator = v.union(v.literal('inbound'), v.literal('outbound'));
+export const detectionSourceValidator = v.union(v.literal('heuristic'), v.literal('llm'));
 
 /** Outcome of a one-shot run (backup, system update). */
 export const successOrFailedValidator = v.union(v.literal('success'), v.literal('failed'));
@@ -151,17 +178,18 @@ export type CaptureSource = Infer<typeof captureSourceValidator>;
  * stored set and the offered set cannot drift apart and no test has to stand
  * guard over a duplicate.
  */
-export const inboundRawRetentionDaysValidator = v.union(
-	...INBOUND_RAW_RETENTION_DAY_CHOICES.map((days) => v.literal(days))
-);
+export const inboundRawRetentionDaysValidator = literalUnion(INBOUND_RAW_RETENTION_DAY_CHOICES);
 
 /** Lifecycle of a resumable mailbox job (import, semantic index, filter backfill). */
-export const mailJobStatusValidator = v.union(
-	v.literal('running'),
-	v.literal('completed'),
-	v.literal('cancelled'),
-	v.literal('failed')
-);
+const MAIL_JOB_STATUSES = ['running', 'completed', 'cancelled', 'failed'] as const;
+export const mailJobStatusValidator = literalUnion(MAIL_JOB_STATUSES);
+
+/**
+ * Lifecycle of a one-shot knowledge backfill job (`knowledgeBackfillJobs`,
+ * `knowledgeEdgeBackfillJobs`): the mailbox job's states plus `pending`, for a
+ * job created before its first page runs.
+ */
+export const backfillJobStatusValidator = literalUnion(['pending', ...MAIL_JOB_STATUSES] as const);
 
 /** Delivery lifecycle of one send row (`emailSends`, `transactionalSends`). */
 export const sendStatusValidator = v.union(

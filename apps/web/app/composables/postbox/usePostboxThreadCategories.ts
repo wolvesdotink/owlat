@@ -7,61 +7,32 @@
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-
-export type MailCategory =
-	| 'person'
-	| 'newsletter'
-	| 'notification'
-	| 'receipt'
-	| 'promotion'
-	| 'spam'
-	| 'other';
+import { MAIL_CATEGORY_META, type MailCategory } from '~/utils/mailCategory';
+import { usePostboxThreadGroups } from './usePostboxThreadGroups';
 
 /**
- * Section order + presentation (People first, "Everything else" last).
+ * Section order (People first, "Everything else" last); icon and label KEY come
+ * from the one category registry, and the list that renders a section resolves
+ * the key with `t()`.
  *
- * A module-scope registry, so `label` carries a message KEY rather than the
- * sentence itself (the i18n registry convention); the list that renders it
- * resolves the key with `t()`.
+ * `spam` has no section: the classifier files it into the Spam folder, and a
+ * thread the owner brings back is recategorized to something else.
  */
-const CATEGORY_SECTIONS: ReadonlyArray<{
-	key: MailCategory;
-	label: string;
-	icon: string;
-}> = [
-	{
-		key: 'person',
-		label: 'shared.postbox.usePostboxThreadCategories.sections.person',
-		icon: 'lucide:user',
-	},
-	{
-		key: 'newsletter',
-		label: 'shared.postbox.usePostboxThreadCategories.sections.newsletter',
-		icon: 'lucide:newspaper',
-	},
-	{
-		key: 'notification',
-		label: 'shared.postbox.usePostboxThreadCategories.sections.notification',
-		icon: 'lucide:bell',
-	},
-	{
-		key: 'receipt',
-		label: 'shared.postbox.usePostboxThreadCategories.sections.receipt',
-		icon: 'lucide:receipt',
-	},
-	{
-		key: 'promotion',
-		label: 'shared.postbox.usePostboxThreadCategories.sections.promotion',
-		icon: 'lucide:megaphone',
-	},
-	// `spam` has no section: the classifier files it into the Spam folder, and
-	// a thread the owner brings back is recategorized to something else.
-	{
-		key: 'other',
-		label: 'shared.postbox.usePostboxThreadCategories.sections.other',
-		icon: 'lucide:inbox',
-	},
-];
+const CATEGORY_SECTION_ORDER = [
+	'person',
+	'newsletter',
+	'notification',
+	'receipt',
+	'promotion',
+	'other',
+] as const satisfies readonly MailCategory[];
+
+const CATEGORY_SECTIONS: ReadonlyArray<{ key: MailCategory; label: string; icon: string }> =
+	CATEGORY_SECTION_ORDER.map((key) => ({
+		key,
+		label: MAIL_CATEGORY_META[key].labelKey,
+		icon: MAIL_CATEGORY_META[key].icon,
+	}));
 
 /**
  * Categories offered in the "Recategorize as…" picker (excludes ambiguity).
@@ -85,25 +56,12 @@ export function usePostboxThreadCategories(args: {
 	enabled: Ref<boolean>;
 }) {
 	const { t } = useI18n();
-	const { limit, loadMore, atMax } = useGrowableLimit(
-		computed(() => `category:${args.folderRole.value}`)
-	);
-
-	const { data, isLoading } = useConvexQuery(
-		api.mail.mailbox.queries.listThreads,
-		() =>
-			args.enabled.value && args.mailboxId.value
-				? {
-						mailboxId: args.mailboxId.value,
-						folderRole: args.folderRole.value,
-						limit: limit.value,
-					}
-				: 'skip',
-		{ keepPreviousData: true }
-	);
-
-	const threads = computed(() => data.value?.threads ?? []);
-	const hasMore = computed(() => (data.value?.hasMore ?? false) && !atMax.value);
+	// The same listThreads feed as the conversation view, on its own growable
+	// limit so paging one view does not grow the other.
+	const { threads, isLoading, hasMore, loadMore } = usePostboxThreadGroups({
+		...args,
+		limitKey: computed(() => `category:${args.folderRole.value}`),
+	});
 
 	// Unlabeled threads (backfill not yet run, or classification in flight) fall
 	// into "Everything else" so nothing is ever hidden.

@@ -18,6 +18,9 @@
  * grouping rules stay unit-testable.
  */
 
+import { parseAddress } from '@owlat/shared';
+import { FILED_CATEGORIES, type FiledCategory } from '@owlat/shared/threadStatus';
+
 export type TodaySourceKind = 'mail' | 'team';
 
 export interface TodaySource {
@@ -64,7 +67,6 @@ export interface TodayChange {
 	at: number;
 }
 
-export type FiledKey = 'newsletter' | 'notification' | 'receipt' | 'promotion' | 'spam';
 export type ImportantReason = 'person' | 'new_sender' | 'alert';
 
 export interface TodayModel {
@@ -77,9 +79,9 @@ export interface TodayModel {
 	also: TodayLine[];
 	/** Updates that did not fit (never dropped silently). */
 	alsoHidden: number;
-	filed: Record<FiledKey, number>;
+	filed: Record<FiledCategory, number>;
 	/** A few sender names per filed category, newest first. */
-	filedSenders: Record<FiledKey, string[]>;
+	filedSenders: Record<FiledCategory, string[]>;
 	filedTotal: number;
 }
 
@@ -113,8 +115,8 @@ export interface MailboxDigest {
 		summaryRequest?: SummaryRequest;
 		sources: DigestSource[];
 	}>;
-	filed: Record<FiledKey, number>;
-	filedSenders?: Partial<Record<FiledKey, string[]>>;
+	filed: Record<FiledCategory, number>;
+	filedSenders?: Partial<Record<FiledCategory, string[]>>;
 }
 
 /** What to ask the summarizer for when a line has no sentence yet. */
@@ -191,11 +193,17 @@ function senderName(fromName: string | null, fromAddress: string): string {
 	return local.charAt(0).toUpperCase() + local.slice(1);
 }
 
-/** "Ines Weber <ines@x.io>" → { name: "Ines Weber", address: "ines@x.io" }. */
+/**
+ * "Ines Weber <Ines@x.io>" → { name: "Ines Weber", address: "ines@x.io" }.
+ * Goes through the shared RFC 5322 parser, so an RFC 2047 encoded name comes
+ * back decoded and the address lowercased. A value with no parseable address is
+ * kept as the address, trimmed, so the line still names something.
+ */
 export function parseFromHeader(from: string): { name: string | null; address: string } {
-	const match = /^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/.exec(from);
-	if (match) return { name: match[1]?.trim() || null, address: match[2]!.trim() };
-	return { name: null, address: from.trim() };
+	const parsed = parseAddress(from);
+	return parsed
+		? { name: parsed.name ?? null, address: parsed.address }
+		: { name: null, address: from.trim() };
 }
 
 function mailSource(mailboxId: string, threadId: string, s: DigestSource): TodaySource {
@@ -220,14 +228,14 @@ export function buildTodayModel(input: {
 	/** Pick the reader-locale summary out of a per-locale record. */
 	pickSummary: (summary: Record<string, string> | undefined) => string | null;
 }): TodayModel {
-	const filed: Record<FiledKey, number> = {
+	const filed: Record<FiledCategory, number> = {
 		newsletter: 0,
 		notification: 0,
 		receipt: 0,
 		promotion: 0,
 		spam: 0,
 	};
-	const filedSenders: Record<FiledKey, string[]> = {
+	const filedSenders: Record<FiledCategory, string[]> = {
 		newsletter: [],
 		notification: [],
 		receipt: [],
@@ -244,7 +252,7 @@ export function buildTodayModel(input: {
 		if (!digest) continue;
 		newMail += digest.newMail;
 		isNewMailCapped ||= digest.isNewMailCapped;
-		for (const key of Object.keys(filed) as FiledKey[]) {
+		for (const key of FILED_CATEGORIES) {
 			filed[key] += digest.filed[key] ?? 0;
 			for (const name of digest.filedSenders?.[key] ?? []) {
 				const list = filedSenders[key];

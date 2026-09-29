@@ -8,8 +8,9 @@
  *     (which schedules dispatch after undoSendDelayMs)
  *   - offline (or a send that network-fails), send() instead queues the full
  *     compose payload in the on-device outbox and returns a synthetic
- *     {undoToken, sendAt} — the emit contract is unchanged, and the undo
- *     toast un-queues via the token
+ *     {undoToken, sendAt}; the undo toast un-queues via the token
+ *   - either way, a send that went out (or was queued) arms the undo window
+ *     here, so no host has to remember it
  */
 
 import type { FunctionReturnType } from 'convex/server';
@@ -30,6 +31,7 @@ import { usePostboxComposeOfflineSend, type SendOpts } from './usePostboxCompose
 import { usePostboxComposeSignatures } from './usePostboxComposeSignatures';
 import { usePostboxOfflineOutbox } from './usePostboxOfflineOutbox';
 import { usePostboxSettings } from './usePostboxSettings';
+import { usePostboxUndoSend } from './usePostboxUndoSend';
 
 export type ComposerMode = 'simple' | 'full';
 
@@ -43,7 +45,12 @@ export type SendAsIdentity = FunctionReturnType<
 	typeof api.mail.identities.listSendAsIdentities
 >[number];
 
-interface DraftSeed {
+/**
+ * The one-time seed a composer opens with: the one declaration every host
+ * writes (the popup stack's ComposerSpec, the reader's InlineComposeSpec, the
+ * desktop compose window) and PostboxComposer hands over whole.
+ */
+export interface ComposerSeed {
 	mailboxId: Id<'mailboxes'>;
 	/** Reopen an existing draft (continue editing / after undo-send). */
 	draftId?: Id<'mailDrafts'>;
@@ -53,14 +60,20 @@ interface DraftSeed {
 	prefillBcc?: string[];
 	prefillSubject?: string;
 	prefillBodyHtml?: string;
-	/** Attachment refs already committed to `draftId` (see ComposerSpec). */
+	/**
+	 * Attachment refs already committed to `draftId`, shown immediately instead
+	 * of waiting for the draft row. Used when undo un-queues an offline send:
+	 * the draft is unreachable while offline, so the refs come from the queued
+	 * payload (usePostboxOfflineOutbox).
+	 */
 	prefillAttachments?: ComposerAttachment[];
+	/** Clone this message's attachments onto the new draft (Forward). */
 	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
+	/** Attach a transient generated file (key into usePostboxPendingAttachments). */
 	attachPendingKey?: string;
-	initialMode?: ComposerMode;
 }
 
-export function usePostboxCompose(seed: DraftSeed) {
+export function usePostboxCompose(seed: ComposerSeed) {
 	const { t } = useI18n();
 	const draftId = ref<Id<'mailDrafts'> | null>(seed.draftId ?? null);
 	const ensuring = ref(false);
@@ -74,7 +87,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 	// A reply/forward seeds the quoted original here; the user types above it.
 	const bodyHtml = ref<string>(seed.prefillBodyHtml ?? '');
 	const bodyBlocks = ref<EditorBlock[]>([]); // EditorBlock[] in 'full' mode
-	const composerMode = ref<ComposerMode>(seed.initialMode ?? 'simple');
+	const composerMode = ref<ComposerMode>('simple');
 	const fromAddress = ref<string>('');
 	// Lifecycle state of the saved row. A reopened draft can be 'scheduled'
 	// (a future send the user wants to review). While scheduled, autosave is
@@ -97,6 +110,14 @@ export function usePostboxCompose(seed: DraftSeed) {
 	// mutation args this composable sent before the preference existed.
 	const { undoSendSeconds } = usePostboxSettings();
 	const undoSendDelayMs = computed(() => postboxUndoSendDelayMsArg(undoSendSeconds.value));
+	// The toast the send arms (shared state, rendered by whichever host mounts
+	// PostboxUndoSendToast). Arming lives here, at the one place a send
+	// completes, so every host gets the toast and the send sound.
+	const undoWindow = usePostboxUndoSend();
+	function armUndo(sent: { undoToken: string; sendAt: number }) {
+		undoWindow.arm({ ...sent, mailboxId: seed.mailboxId });
+		return sent;
+	}
 	// While send() is actively intercepting, a TRANSPORT failure is claimed
 	// (no error toast) and turned into an offline enqueue instead. Every other
 	// category, and every failure outside a send, keeps today's treatment.
@@ -300,12 +321,12 @@ export function usePostboxCompose(seed: DraftSeed) {
 	 * unsaved changes" holding a message that is already queued, one click from
 	 * sending it twice. Only reached on a successful queue: `queueOfflineSend`
 	 * throws when the device could not store the payload, and that message still
-	 * lives in the composer.
+	 * lives in the composer, and no undo window is armed for it.
 	 */
 	async function queueSendOffline(opts?: SendOpts) {
 		const queued = await queueOfflineSend(opts);
 		draftMirror.retire();
-		return queued;
+		return armUndo(queued);
 	}
 
 	async function send(opts?: SendOpts) {
@@ -336,9 +357,10 @@ export function usePostboxCompose(seed: DraftSeed) {
 				allowUnsealed: opts?.allowUnsealed,
 			});
 			// `useBackendOperation.run` swallows categorized failures (it has already
-			// toasted them) and returns `undefined`. Surface that as a throw so the
-			// caller never arms undo / navigates away on a failed send — unless the
-			// failure was the TRANSPORT, in which case the message queues offline.
+			// toasted them) and returns `undefined`. Surface that as a throw so undo
+			// is never armed and the host never moves on after a failed send —
+			// unless the failure was the TRANSPORT, in which case the message
+			// queues offline.
 			if (!result.ok) {
 				if (sendNetworkFailed) return queueSendOffline(opts);
 				// Already toasted by the operation module — the throw exists only so
@@ -348,7 +370,7 @@ export function usePostboxCompose(seed: DraftSeed) {
 			// It is on the wire (or queued behind the undo window) — the mirror has
 			// nothing left to protect, and must not resurface on a reopened draft.
 			draftMirror.retire();
-			return result.result as { undoToken: string; sendAt: number };
+			return armUndo(result.result as { undoToken: string; sendAt: number });
 		} finally {
 			interceptingSend = false;
 		}

@@ -22,6 +22,9 @@
  * verbatim. Pure, so it tests without mounting anything.
  */
 
+import { extractDomainOrNull } from '@owlat/shared';
+import type { SenderHeuristics } from './senderAuth';
+
 /** The projection `mail.mailbox.messages.getMessageDetails` returns. */
 export interface MessageDetailsSource {
 	fromAddress: string;
@@ -36,6 +39,8 @@ export interface MessageDetailsSource {
 	dkimSigningDomain?: string;
 	dmarcOverride?: string;
 	arcSealer?: string;
+	/** The ingest heuristics; `isReplyToMismatch` drives the Reply-To warning. */
+	senderHeuristics?: SenderHeuristics;
 }
 
 /** How a row's value should read: an authentication outcome, or plain data. */
@@ -70,8 +75,7 @@ function norm(value: string | undefined): string {
 
 /** The domain half of an address, empty when there isn't one. */
 export function domainOf(address: string | undefined): string {
-	const angled = (address ?? '').match(/<([^>]+)>/)?.[1] ?? address ?? '';
-	return angled.trim().toLowerCase().split('@')[1] ?? '';
+	return extractDomainOrNull(address ?? '') ?? '';
 }
 
 /**
@@ -134,13 +138,14 @@ export function buildMessageDetailRows(source: MessageDetailsSource): MessageDet
 		});
 	}
 
-	// Reply-To, flagged when a reply is invited at a DIFFERENT domain than the
-	// visible From — the shape the reply guard fires on, shown here as the fact
-	// it rests on.
+	// Reply-To, flagged when ingest recorded that a reply is invited on a
+	// different REGISTRABLE domain than the visible From. That persisted verdict
+	// is the one rule: the trust chip and risk marker read it too, so a support
+	// subdomain of the same org stays quiet everywhere. A row without it (legacy
+	// mail, or nothing fired) is neutral rather than re-derived here.
 	const replyTo = source.replyToAddress?.trim();
 	if (replyTo) {
-		const replyDomain = domainOf(replyTo);
-		const differs = replyDomain !== '' && fromDomain !== '' && replyDomain !== fromDomain;
+		const differs = source.senderHeuristics?.isReplyToMismatch === true;
 		rows.push({
 			id: 'replyTo',
 			label: `${KEY}.replyTo`,

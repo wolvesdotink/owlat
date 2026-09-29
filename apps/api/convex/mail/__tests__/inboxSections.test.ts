@@ -393,6 +393,39 @@ describe('mail.sections.listSections', () => {
 		expect(sections[0]?.messages.map((m) => m.subject)).toEqual(['plain']);
 	});
 
+	it('carries the thread state a row renders: mute, follow-up and category', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedSectionedInbox(t);
+		const pinned = await seedMessage(t, mailboxId, { subject: 'standup', pinnedSection: 'Team' });
+		const loose = await seedMessage(t, mailboxId, { subject: 'digest' });
+		const plain = await seedMessage(t, mailboxId, { subject: 'plain' });
+		await t.run(async (ctx) => {
+			const pinnedRow = await ctx.db.get(pinned);
+			const looseRow = await ctx.db.get(loose);
+			await ctx.db.patch(pinnedRow!.threadId, {
+				mutedAt: 5,
+				followUp: { messageId: pinned, remindAt: 10, armedAt: 1, dueAt: 20 },
+			});
+			await ctx.db.patch(looseRow!.threadId, {
+				category: { label: 'newsletter', source: 'heuristic', classifiedAt: 1 },
+			});
+		});
+
+		const { sections } = await t.query(api.mail.sections.listSections, { mailboxId });
+		const team = sections.find((s) => s.name === 'Team')?.messages[0];
+		expect(team).toMatchObject({
+			mutedAt: 5,
+			followUp: { remindAt: 10, dueAt: 20, watched: true },
+		});
+		const rest = sections.find((s) => s.name === null)?.messages ?? [];
+		expect(rest.find((m) => m._id === loose)).toMatchObject({ category: 'newsletter' });
+		// Absent state stays absent: no `undefined` keys ride on a plain row.
+		const plainRow = rest.find((m) => m._id === plain)!;
+		expect('category' in plainRow).toBe(false);
+		expect('mutedAt' in plainRow).toBe(false);
+		expect('followUp' in plainRow).toBe(false);
+	});
+
 	it('reveals nothing to someone without access to the mailbox', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedSectionedInbox(t);
@@ -404,5 +437,49 @@ describe('mail.sections.listSections', () => {
 		sessionMocks.role = 'editor';
 		const { sections } = await t.query(api.mail.sections.listSections, { mailboxId });
 		expect(sections).toEqual([]);
+	});
+});
+
+describe('mail.mailbox.queries.listMessages row category', () => {
+	it('returns the category on a row whose thread is older than the newest 50 threads', async () => {
+		// The Today and Bundled views used to join the category from `listThreads`,
+		// which is capped at the newest 50 threads; a row past them lost its label.
+		// The row now carries it, whichever page it is on.
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t);
+		await seedFolder(t, mailboxId);
+		const oldest = await seedMessage(t, mailboxId, { subject: 'old digest', receivedAt: 1_000 });
+		for (let i = 0; i < 55; i++) {
+			await seedMessage(t, mailboxId, { subject: `newer ${i}`, receivedAt: 10_000 + i });
+		}
+		const oldestThreadId = await t.run(async (ctx) => {
+			const row = await ctx.db.get(oldest);
+			await ctx.db.patch(row!.threadId, {
+				category: { label: 'newsletter', source: 'heuristic', classifiedAt: 1 },
+			});
+			return row!.threadId;
+		});
+
+		const { threads } = await t.query(api.mail.mailbox.queries.listThreads, {
+			mailboxId,
+			folderRole: 'inbox',
+		});
+		expect(threads.map((th) => th._id)).not.toContain(oldestThreadId);
+
+		const first = await t.query(api.mail.mailbox.queries.listMessages, {
+			mailboxId,
+			folderRole: 'inbox',
+			limit: 50,
+		});
+		expect(first.messages.map((m) => m._id)).not.toContain(oldest);
+		const second = await t.query(api.mail.mailbox.queries.listMessages, {
+			mailboxId,
+			folderRole: 'inbox',
+			limit: 50,
+			cursor: first.nextCursor ?? undefined,
+		});
+		expect(second.messages.find((m) => m._id === oldest)).toMatchObject({
+			category: 'newsletter',
+		});
 	});
 });

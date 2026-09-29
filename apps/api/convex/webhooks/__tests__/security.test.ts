@@ -173,6 +173,7 @@ describe('hmacSignature', () => {
 		['sha256', 'base64'],
 		['sha1', 'hex'],
 		['sha1', 'base64'],
+		['sha256', 'base64url'],
 	] as const)('cross-checks %s/%s against node:crypto', async (algorithm, encoding) => {
 		const expected = createHmac(algorithm, secret).update(data).digest(encoding);
 		await expect(hmacSignature(secret, data, algorithm, encoding)).resolves.toBe(expected);

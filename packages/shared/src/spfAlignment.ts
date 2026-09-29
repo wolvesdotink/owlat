@@ -1,17 +1,20 @@
 /**
  * DMARC identifier alignment — shared between the Convex backend (sending-domain
- * DNS generation / verification) and the MTA (envelope construction), so both
- * agree on what "aligned" means instead of forking the rule.
+ * DNS generation / verification), the MTA (envelope construction and the
+ * outbound DKIM-alignment gate) and `@owlat/mail-auth` (inbound DMARC and ARC),
+ * so all of them agree on what "aligned" means instead of forking the rule.
  *
  * DMARC (RFC 7489 §3.1) passes when at least one of SPF or DKIM both
- * authenticates AND *aligns* with the RFC5322.From domain. SPF authenticates
- * the envelope MAIL FROM (the return-path) domain, so SPF can only contribute to
- * DMARC when the return-path domain aligns with the From-domain:
+ * authenticates AND *aligns* with the RFC5322.From domain. The same rule serves
+ * both authenticated identities: the SPF identity is the envelope MAIL FROM
+ * (return-path) domain, the DKIM identity is the signature's `d=` domain.
+ * `isIdentifierAligned` is the neutral predicate; `isSpfAligned` is a thin
+ * wrapper kept for the SPF call sites.
  *
- *  - `strict`: the two domains are identical.
- *  - `relaxed` (DMARC's default `aspf=r`): they share the same Organizational
- *    Domain, so a return-path subdomain (`bounce.acme.com`) aligns with
- *    `acme.com`.
+ *  - `strict` (`aspf=s` / `adkim=s`): the two domains are identical.
+ *  - `relaxed` (DMARC's default): they share the same Organizational Domain,
+ *    so a subdomain (`bounce.acme.com`, `mail.acme.com`) aligns with
+ *    `acme.com` and with sibling subdomains such as `news.acme.com`.
  *
  * The Owlat MTA's VERP envelope uses a single shared bounce domain
  * (`bounce+…@RETURN_PATH_DOMAIN`, e.g. `bounces.owlat.com`), which does NOT
@@ -40,19 +43,33 @@ export function organizationalDomain(domain: string): string {
 }
 
 /**
- * DMARC SPF alignment: does the SPF-authenticated identity (the envelope
- * MAIL FROM / return-path domain) align with the RFC5322.From domain?
+ * DMARC identifier alignment (RFC 7489 §3.1): does an authenticated identity
+ * domain (SPF's envelope MAIL FROM domain, or DKIM's `d=` domain) align with
+ * the RFC5322.From domain under the given mode?
+ */
+export function isIdentifierAligned(
+	identityDomain: string,
+	fromDomain: string,
+	mode: AlignmentMode = 'relaxed'
+): boolean {
+	const identity = normalizeDomain(identityDomain);
+	const from = normalizeDomain(fromDomain);
+	if (!identity || !from) return false;
+	if (mode === 'strict') return identity === from;
+	return organizationalDomain(identity) === organizationalDomain(from);
+}
+
+/**
+ * DMARC SPF alignment: {@link isIdentifierAligned} applied to the
+ * SPF-authenticated identity (the envelope MAIL FROM / return-path domain).
+ * A thin wrapper, so the SPF and DKIM sides can never fork.
  */
 export function isSpfAligned(
 	envelopeFromDomain: string,
 	fromDomain: string,
 	mode: AlignmentMode = 'relaxed'
 ): boolean {
-	const envelope = normalizeDomain(envelopeFromDomain);
-	const from = normalizeDomain(fromDomain);
-	if (!envelope || !from) return false;
-	if (mode === 'strict') return envelope === from;
-	return organizationalDomain(envelope) === organizationalDomain(from);
+	return isIdentifierAligned(envelopeFromDomain, fromDomain, mode);
 }
 
 /**

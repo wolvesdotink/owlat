@@ -214,7 +214,7 @@ export async function readBuckets(
  *
  * Use this ONLY where exactly one write is expected. A case that produces two
  * outcome writes draws two INDEPENDENT shard keys, so reading a single row is a
- * 1-in-`TRANSPORT_OUTCOME_SHARD_COUNT` coin flip — use `sumCounters` there.
+ * 1-in-`CELL_ARM_BUCKET_SHARD_COUNT` coin flip — use `sumCounters` there.
  */
 export function pickCounters(bucket: TransportOutcomeBucket | undefined): TransportOutcomeTotals {
 	if (!bucket) throw new Error('no bucket to read counters from');

@@ -40,7 +40,7 @@ import { withoutTestSendEffects } from './sendLifecycle/types';
 import { refuse } from '../lib/lifecycle';
 import { finalizeSendSource } from './sendLifecycle/sourceFinalization';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
-import { bounceTypeValidator } from '../lib/convexValidators';
+import { bounceTypeValidator } from '../lib/literalValidators';
 import { openAgentValidator } from './automatedOpens';
 import { clickAgentValidator } from './automatedClicks';
 

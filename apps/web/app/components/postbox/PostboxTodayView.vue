@@ -27,6 +27,7 @@
 import { api } from '@owlat/api';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import type { Id } from '@owlat/api/dataModel';
+import { useNow } from '~/composables/useNow';
 import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
 import { partitionTodayMessages, formatAutoFiledLine } from '~/utils/postboxTodayPartition';
 import {
@@ -75,38 +76,15 @@ const { messages, isLoading, hasMore, loadMore } = usePostboxThreads({
 	folderRole: folderRef,
 });
 
-// Advisory smart-inbox categories live on the THREAD, not the message —
-// reuse the same listThreads feed the Categories view reads and index it by
-// thread id. Fail-open: an unclassified thread is never auto-filed.
-const { data: threadData } = useConvexQuery(api.mail.mailbox.queries.listThreads, () =>
-	props.mailboxId ? { mailboxId: props.mailboxId, folderRole: 'inbox' } : 'skip'
-);
-const categoryByThread = computed(() => {
-	const map = new Map<string, string>();
-	for (const thread of threadData.value?.threads ?? []) {
-		if (thread.category?.label) map.set(thread._id, thread.category.label);
-	}
-	return map;
-});
-
 // Re-partition as time passes so the local-midnight boundary rolls over
 // without a reload (a minute of drift is invisible; the rows are live).
-const now = ref(new Date());
-let clock: number | undefined;
-onMounted(() => {
-	clock = window.setInterval(() => {
-		now.value = new Date();
-	}, 60_000);
-});
-onUnmounted(() => {
-	if (clock !== undefined) window.clearInterval(clock);
-});
+const now = useNow({ intervalMs: 60_000, as: 'date' });
 
 const partition = computed(() =>
-	partitionTodayMessages(messages.value, {
-		now: now.value,
-		categoryOf: (m) => (m.threadId ? categoryByThread.value.get(m.threadId) : undefined),
-	})
+	// Each row carries its thread's advisory category (attached server-side), so
+	// a row on a later page is auto-filed exactly like one on the first.
+	// Fail-open: an unclassified row is never auto-filed.
+	partitionTodayMessages(messages.value, { now: now.value })
 );
 const todayRows = computed(() => partition.value.today);
 const olderRows = computed(() => partition.value.older);

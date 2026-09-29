@@ -7,7 +7,7 @@ import {
 	type HostedContributionAuthorizationSpec,
 } from './hostedContributionAuthorization';
 import { pluginCronDefinition } from './cronCatalog';
-import { completedOrFailedValidator } from '../lib/convexValidators';
+import { completedOrFailedValidator } from '../lib/literalValidators';
 
 /**
  * Runtime authorization seam for plugin-contributed crons. The host cron

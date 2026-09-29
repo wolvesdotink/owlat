@@ -33,11 +33,13 @@
 
 import { v } from 'convex/values';
 import { internalQuery, internalMutation, type MutationCtx } from '../_generated/server';
-import type { Id } from '../_generated/dataModel';
 import { publicQuery, authedQuery, authedMutation } from '../lib/authedFunctions';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { isEnvPresent } from '../lib/env';
 import { internal } from '../_generated/api';
+import { startFirstRunBackfill } from '../knowledge/backfillJobs';
+import { createMessageBackfillJob, DEFAULT_CHUNK_SIZE } from '../knowledge/messageBackfill';
+import { createEdgeBackfillJob } from '../knowledge/edgeBackfill';
 import { requireAdminContext } from '../lib/sessionOrganization';
 import {
 	applyToggle,
@@ -54,6 +56,7 @@ import {
 } from '@owlat/shared/featureFlags';
 import { getStoredFlags } from '../lib/featureFlags';
 import { recordAuditLog } from '../lib/auditLog';
+import { getInstanceSettings, upsertInstanceSettings } from '../lib/instanceSettings';
 import { hasStoredAiProviderConfig } from '../lib/aiNotConfigured';
 import { throwInvalidInput } from '../_utils/errors';
 import {
@@ -112,7 +115,7 @@ export const getFlagsConfigStatus = authedQuery({
 		// same way `LLM_PROVIDER`/`LLM_API_KEY` in env do — env stays the fallback,
 		// a stored config also counts. Org-singleton ⇒ `first()` is bounded (≤1 row).
 		const aiConfigStored = await hasStoredAiProviderConfig(ctx.db);
-		const settings = await ctx.db.query('instanceSettings').first();
+		const settings = await getInstanceSettings(ctx.db);
 		const pluginCapabilityGrants = settings?.pluginCapabilityGrants ?? {};
 		const status: Record<string, string[]> = {};
 		for (const def of Object.values(FEATURE_FLAG_REGISTRY)) {
@@ -191,8 +194,7 @@ export const setFeatureFlag = authedMutation({
 		const stored = await getStoredFlags(ctx);
 		const { next, cascaded } = applyToggle(stored, flag, args.value, FEATURE_FLAG_REGISTRY);
 
-		const now = Date.now();
-		const existing = await ctx.db.query('instanceSettings').first();
+		const existing = await getInstanceSettings(ctx.db);
 		const patch = pluginFlag
 			? {
 					featureFlags: next,
@@ -201,20 +203,9 @@ export const setFeatureFlag = authedMutation({
 						flag,
 						approvedPluginGrants
 					),
-					updatedAt: now,
 				}
-			: { featureFlags: next, updatedAt: now };
-
-		let settingsId: Id<'instanceSettings'>;
-		if (existing) {
-			await ctx.db.patch(existing._id, patch);
-			settingsId = existing._id;
-		} else {
-			settingsId = await ctx.db.insert('instanceSettings', {
-				...patch,
-				createdAt: now,
-			});
-		}
+			: { featureFlags: next };
+		const settingsId = await upsertInstanceSettings(ctx, patch);
 		if (pluginFlag) {
 			await recordAuditLog(ctx, {
 				userId: session.userId,
@@ -238,22 +229,17 @@ export const setFeatureFlag = authedMutation({
 		const aiAgentExplicitlyTurningOn =
 			flag === 'ai.agent' && args.value === true && stored['ai.agent'] !== true;
 		if (aiAgentExplicitlyTurningOn) {
-			const alreadyHasJob = await ctx.runQuery(internal.agent.knowledgeBackfill.hasAnyJob, {});
-			if (!alreadyHasJob) {
-				const jobId = await ctx.runMutation(internal.agent.knowledgeBackfill.createJob, {
-					triggeredBy: session.userId,
-				});
-				await ctx.scheduler.runAfter(0, internal.agent.knowledgeBackfill.runChunk, {
-					jobId,
-					chunkSize: 30,
-				});
-				await recordAuditLog(ctx, {
-					userId: session.userId,
-					action: 'agent.backfill_started',
-					resource: 'agent_config',
-					details: { jobId },
-				});
-			}
+			await startFirstRunBackfill(ctx, {
+				table: 'knowledgeBackfillJobs',
+				triggeredBy: session.userId,
+				create: () => createMessageBackfillJob(ctx, session.userId),
+				schedule: (jobId) =>
+					ctx.scheduler.runAfter(0, internal.knowledge.messageBackfill.runChunk, {
+						jobId,
+						chunkSize: DEFAULT_CHUNK_SIZE,
+					}),
+				audit: { action: 'agent.backfill_started', resource: 'agent_config' },
+			});
 		}
 
 		// Side effect: an explicit false→true toggle of `ai.knowledge.autoLink`
@@ -267,19 +253,14 @@ export const setFeatureFlag = authedMutation({
 			args.value === true &&
 			stored['ai.knowledge.autoLink'] !== true;
 		if (autoLinkExplicitlyTurningOn) {
-			const alreadyHasJob = await ctx.runQuery(internal.knowledge.edgeBackfill.hasAnyJob, {});
-			if (!alreadyHasJob) {
-				const jobId = await ctx.runMutation(internal.knowledge.edgeBackfill.createJob, {
-					triggeredBy: session.userId,
-				});
-				await ctx.scheduler.runAfter(0, internal.knowledge.edgeBackfill.runEdgeBackfill, { jobId });
-				await recordAuditLog(ctx, {
-					userId: session.userId,
-					action: 'knowledge.edge_backfill_started',
-					resource: 'knowledge_config',
-					details: { jobId },
-				});
-			}
+			await startFirstRunBackfill(ctx, {
+				table: 'knowledgeEdgeBackfillJobs',
+				triggeredBy: session.userId,
+				create: () => createEdgeBackfillJob(ctx, session.userId),
+				schedule: (jobId) =>
+					ctx.scheduler.runAfter(0, internal.knowledge.edgeBackfill.runEdgeBackfill, { jobId }),
+				audit: { action: 'knowledge.edge_backfill_started', resource: 'knowledge_config' },
+			});
 		}
 
 		return { flags: next, cascaded };
@@ -302,18 +283,7 @@ export const setFeaturePack = authedMutation({
 		const stored = await getStoredFlags(ctx);
 		const { next, cascaded } = applyPackToggle(stored, packKey, args.value, FEATURE_FLAG_REGISTRY);
 
-		const now = Date.now();
-		const existing = await ctx.db.query('instanceSettings').first();
-		const patch = { featureFlags: next, updatedAt: now };
-
-		if (existing) {
-			await ctx.db.patch(existing._id, patch);
-		} else {
-			await ctx.db.insert('instanceSettings', {
-				...patch,
-				createdAt: now,
-			});
-		}
+		await upsertInstanceSettings(ctx, { featureFlags: next });
 
 		return { flags: next, cascaded };
 	},
@@ -333,8 +303,7 @@ async function writeAllFlags(ctx: MutationCtx, flags: FeatureFlagState) {
 		}
 	}
 
-	const now = Date.now();
-	const existing = await ctx.db.query('instanceSettings').first();
+	const existing = await getInstanceSettings(ctx.db);
 	const currentOverrides = registeredFeatureFlagOverrides(
 		(existing?.featureFlags ?? {}) as FeatureFlagState,
 		FEATURE_FLAG_REGISTRY
@@ -355,14 +324,8 @@ async function writeAllFlags(ctx: MutationCtx, flags: FeatureFlagState) {
 			existing?.pluginCapabilityGrants ?? {},
 			pluginOverrides
 		),
-		updatedAt: now,
 	};
-
-	if (existing) {
-		await ctx.db.patch(existing._id, patch);
-		return existing._id;
-	}
-	return await ctx.db.insert('instanceSettings', { ...patch, createdAt: now });
+	return await upsertInstanceSettings(ctx, patch);
 }
 
 export const setAllFeatureFlags = authedMutation({

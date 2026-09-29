@@ -196,6 +196,19 @@ describe('trackClick (GET /t/c/...)', () => {
 		expect(res.headers.get('Location')).toBe(new URL(TARGET).toString());
 	});
 
+	it('redirects a signed IDN link to its punycode host, not a Latin-1 misread', async () => {
+		const t = setupTest();
+		const emailSendId = await seedEmailSend(t);
+		const idnTarget = 'https://bücher.de/ä?q=ü';
+		const path = await makeClickPath(emailSendId, idnTarget);
+
+		const res = await t.fetch(path, { method: 'GET', redirect: 'manual' });
+		expect(res.status).toBe(302);
+		const location = res.headers.get('Location');
+		expect(location).toBe('https://xn--bcher-kva.de/%C3%A4?q=%C3%BC');
+		expect(new URL(location!).host).toBe('xn--bcher-kva.de');
+	});
+
 	it('records a reader click for a browser User-Agent', async () => {
 		const t = setupTest();
 		const emailSendId = await seedEmailSend(t);

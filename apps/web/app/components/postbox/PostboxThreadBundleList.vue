@@ -15,11 +15,12 @@
 import type { Id } from '@owlat/api/dataModel';
 import type { PostboxThreadRowMessage } from './PostboxThreadRow.vue';
 import {
-	POSTBOX_BUNDLE_META,
 	bundleMessageIds,
 	bundleOneClickSenders,
 	type PostboxFeedEntry,
 } from '~/utils/postboxBundles';
+import { MAIL_CATEGORY_META } from '~/utils/mailCategory';
+import { senderRowMarkerOf } from '~/utils/senderAuth';
 
 const props = defineProps<{
 	entries: Array<PostboxFeedEntry<PostboxThreadRowMessage>>;
@@ -42,6 +43,15 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
+// The sender-trust marker gate, resolved once for the list (not per row).
+const { isEnabled } = useFeatureFlag();
+const trustMarkers = computed(() => isEnabled('senderAuthBadges'));
+
+/** The row accent for a danger-only sender marker; the body renders the chip. */
+function isDanger(message: PostboxThreadRowMessage): boolean {
+	return senderRowMarkerOf(message, trustMarkers.value) !== null;
+}
+
 function messageTo(message: { _id: Id<'mailMessages'> }) {
 	return `/dashboard/postbox/${props.folderRole}/${String(message._id)}`;
 }
@@ -49,11 +59,7 @@ function messageTo(message: { _id: Id<'mailMessages'> }) {
 /** Every message this list renders, bundles expanded, for j/k navigation. */
 const navigableMessages = computed(() =>
 	props.entries.flatMap((entry) =>
-		entry.kind === 'bundle'
-			? props.expanded[entry.id]
-				? entry.messages
-				: []
-			: [entry.message]
+		entry.kind === 'bundle' ? (props.expanded[entry.id] ? entry.messages : []) : [entry.message]
 	)
 );
 
@@ -67,10 +73,6 @@ const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard({
 /** Flat index of a message among the navigable ones, for the focus ring. */
 function focusIndexOf(messageId: string): number {
 	return navigableMessages.value.findIndex((message) => String(message._id) === messageId);
-}
-
-function senderOf(message: PostboxThreadRowMessage): string {
-	return message.fromName?.trim() || message.fromAddress;
 }
 </script>
 
@@ -93,7 +95,11 @@ function senderOf(message: PostboxThreadRowMessage): string {
 		>
 			<template v-for="entry in entries">
 				<!-- A plain row: everything the fold left alone. -->
-				<li v-if="entry.kind === 'message'" :key="String(entry.message._id)">
+				<li
+					v-if="entry.kind === 'message'"
+					:key="String(entry.message._id)"
+					:class="{ 'pbx-row-danger': isDanger(entry.message) }"
+				>
 					<NuxtLink
 						:id="`postbox-bundled-${String(entry.message._id)}`"
 						role="option"
@@ -102,32 +108,7 @@ function senderOf(message: PostboxThreadRowMessage): string {
 						class="pbx-row-link block px-4 py-3 hover:bg-bg-elevated"
 						:class="{ 'bg-bg-elevated': activeMessageId === String(entry.message._id) }"
 					>
-						<div class="flex items-baseline justify-between gap-3">
-							<span
-								class="truncate text-sm"
-								:class="
-									entry.message.flagSeen
-										? 'text-text-secondary'
-										: 'font-semibold text-text-primary'
-								"
-							>
-								{{ senderOf(entry.message) }}
-							</span>
-							<span class="text-xs text-text-tertiary flex-shrink-0">
-								{{ formatThreadTimestamp(entry.message.receivedAt) }}
-							</span>
-						</div>
-						<p
-							class="truncate text-sm mt-0.5"
-							:class="entry.message.flagSeen ? 'text-text-secondary' : 'font-medium text-text-primary'"
-						>
-							{{
-								entry.message.subject || t('components.postbox.postboxThreadBundleList.noSubject')
-							}}
-						</p>
-						<p class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">
-							{{ entry.message.snippet }}
-						</p>
+						<PostboxThreadRowBody :msg="entry.message" :trust-markers="trustMarkers" />
 					</NuxtLink>
 				</li>
 
@@ -145,12 +126,12 @@ function senderOf(message: PostboxThreadRowMessage): string {
 								class="w-4 h-4 flex-shrink-0 text-text-tertiary"
 							/>
 							<Icon
-								:name="POSTBOX_BUNDLE_META[entry.category].icon"
+								:name="MAIL_CATEGORY_META[entry.category].icon"
 								class="w-4 h-4 flex-shrink-0 text-text-tertiary"
 							/>
 							<span class="truncate text-sm font-medium text-text-primary">
 								<!-- Always plural: a bundle is never fewer than two rows. -->
-								{{ t(POSTBOX_BUNDLE_META[entry.category].label) }}
+								{{ t(MAIL_CATEGORY_META[entry.category].labelKey) }}
 							</span>
 							<span class="text-xs text-text-tertiary tabular-nums flex-shrink-0">
 								{{ entry.count }}
@@ -207,7 +188,11 @@ function senderOf(message: PostboxThreadRowMessage): string {
 					<!-- The rows themselves, one disclosure away. Nothing is hidden:
 					     the bundle states its own count and every message is here. -->
 					<ul v-if="expanded[entry.id]" class="border-t border-border-subtle bg-bg-base">
-						<li v-for="message in entry.messages" :key="String(message._id)">
+						<li
+							v-for="message in entry.messages"
+							:key="String(message._id)"
+							:class="{ 'pbx-row-danger': isDanger(message) }"
+						>
 							<NuxtLink
 								:id="`postbox-bundled-${String(message._id)}`"
 								role="option"
@@ -216,24 +201,7 @@ function senderOf(message: PostboxThreadRowMessage): string {
 								class="pbx-row-link block pl-10 pr-4 py-2 hover:bg-bg-elevated"
 								:class="{ 'bg-bg-elevated': activeMessageId === String(message._id) }"
 							>
-								<div class="flex items-baseline justify-between gap-3">
-									<span
-										class="truncate text-sm"
-										:class="
-											message.flagSeen ? 'text-text-secondary' : 'font-semibold text-text-primary'
-										"
-									>
-										{{ senderOf(message) }}
-									</span>
-									<span class="text-xs text-text-tertiary flex-shrink-0">
-										{{ formatThreadTimestamp(message.receivedAt) }}
-									</span>
-								</div>
-								<p class="truncate text-sm text-text-secondary mt-0.5">
-									{{
-										message.subject || t('components.postbox.postboxThreadBundleList.noSubject')
-									}}
-								</p>
+								<PostboxThreadRowBody :msg="message" :trust-markers="trustMarkers" compact />
 							</NuxtLink>
 						</li>
 					</ul>

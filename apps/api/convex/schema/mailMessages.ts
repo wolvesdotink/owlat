@@ -7,9 +7,9 @@ import { virusVerdictValidator } from '../lib/literalValidators';
 import {
 	mailMessageAttachmentValidator,
 	mailUnsubscribeValidator,
-} from '../lib/mailContentValidators';
-import { senderHeuristicsValidator } from '../lib/senderHeuristicsValidator';
-import { folderRoleValidator } from '../mail/mailbox/shared';
+} from '../lib/validators/mailContent';
+import { senderHeuristicsValidator } from '../lib/validators/senderHeuristics';
+import { folderRoleValidator } from '../lib/validators/mail';
 import { mailEncryptionInfoValidator } from '../mail/sealPolicy';
 
 /**

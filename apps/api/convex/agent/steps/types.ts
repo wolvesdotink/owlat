@@ -16,17 +16,14 @@
 import type { Infer } from 'convex/values';
 import type { ActionCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
-import type {
-	securityFlagsValidator,
-	classificationValidator,
-	tokenUsageValidator,
-} from '../../lib/convexValidators';
-import type { clarificationQuestionValidator } from '../../inbox/clarificationValidators';
+import type { securityFlagsValidator, tokenUsageValidator } from '../../lib/convexValidators';
+import type { classificationValidator } from '../../lib/validators/classification';
+import type { clarificationQuestionValidator } from '../../lib/validators/clarification';
 import type { AgentStepKind } from './catalog';
 
 export type { AgentStepKind } from './catalog';
 
-// Derived from the canonical Convex validators in lib/validators.ts (the same
+// Derived from the canonical Convex validators in lib/convexValidators.ts (the same
 // shapes spread into the inboundMessages / agentActions schema columns) so the
 // agent-step types can't drift from what's actually stored. `securityFlagsValidator`
 // is the accurate superset — it carries the optional `guardUnavailable` flag the

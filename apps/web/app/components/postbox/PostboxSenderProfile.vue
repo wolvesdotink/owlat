@@ -56,7 +56,6 @@ const scope = computed(() =>
 );
 
 const { data: profile } = useConvexQuery(api.mail.senderProfile.profile, () => scope.value);
-const { data: senderState } = useConvexQuery(api.mail.contacts.senderState, () => scope.value);
 const { data: files } = useConvexQuery(api.mail.mailbox.attachments.list, () =>
 	scope.value === 'skip'
 		? ('skip' as const)
@@ -70,11 +69,11 @@ const { data: keyStatus } = useConvexQuery(api.e2ee.recipientKeys.getRecipientKe
 		: ('skip' as const)
 );
 
-const isVip = computed(() => senderState.value?.isVip === true);
-const isScreenerEnabled = computed(() => senderState.value?.isScreenerEnabled === true);
-const isScreenerAccepted = computed(
-	() => senderState.value?.isScreenerAccepted === true || senderState.value?.isKnown === true
-);
+const { isVip, canAccept, isAccepted, toggleVip, acceptSender, busy } = usePostboxSenderState({
+	mailboxId: () => props.mailboxId,
+	email,
+	enabled: () => props.open,
+});
 const isKeyPinned = computed(
 	() => keyStatus.value != null && keyStatus.value.outcome !== 'notFound'
 );
@@ -89,25 +88,6 @@ const countLine = computed(() =>
 		: { key: '', params: undefined }
 );
 const searchLink = computed(() => senderSearchLink(email.value));
-
-const setVipOp = useBackendOperation(api.mail.contacts.setVip, {
-	label: () => t('components.postbox.postboxSenderControls.vipOperation'),
-});
-const acceptOp = useBackendOperation(api.mail.contacts.acceptSender, {
-	label: () => t('components.postbox.postboxSenderControls.acceptOperation'),
-});
-
-function toggleVip() {
-	void setVipOp.run({
-		mailboxId: props.mailboxId as Id<'mailboxes'>,
-		email: email.value,
-		isVip: !isVip.value,
-	});
-}
-
-function acceptSender() {
-	void acceptOp.run({ mailboxId: props.mailboxId as Id<'mailboxes'>, email: email.value });
-}
 
 function close() {
 	emit('update:open', false);
@@ -184,7 +164,7 @@ function close() {
 							size="sm"
 							:variant="isVip ? 'primary' : 'outline'"
 							type="button"
-							:disabled="setVipOp.isLoading.value"
+							:disabled="busy"
 							:aria-pressed="isVip"
 							@click="toggleVip"
 						>
@@ -196,20 +176,21 @@ function close() {
 							}}
 						</UiButton>
 						<!-- Accepting is one-way and only means anything while the screener
-						     is on; an already-accepted sender gets a state, not a button. -->
+						     holds this sender back; a sender it lets through gets a state,
+						     not a button. -->
 						<UiButton
-							v-if="isScreenerEnabled && !isScreenerAccepted"
+							v-if="canAccept"
 							size="sm"
 							variant="outline"
 							type="button"
-							:disabled="acceptOp.isLoading.value"
+							:disabled="busy"
 							@click="acceptSender"
 						>
 							<Icon name="lucide:user-check" class="mr-1.5 h-3.5 w-3.5" />
 							{{ t('components.postbox.postboxSenderControls.accept') }}
 						</UiButton>
 						<span
-							v-else-if="isScreenerEnabled"
+							v-else-if="isAccepted"
 							class="text-xs text-text-tertiary"
 							data-testid="sender-screener-accepted"
 						>

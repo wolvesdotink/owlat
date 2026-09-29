@@ -36,7 +36,7 @@ import {
 	type InboundReceiveResult,
 } from '../inbox/receiveInbound';
 import { openPrivateKey } from './sealing';
-import { shouldRefetch } from './discovery';
+import { resolveSenderVerificationKey } from './senderKey';
 import {
 	decodeUtf8,
 	INBOUND_CIPHER_SUITE,
@@ -316,45 +316,16 @@ async function openWithVault(
 	}
 	if (recipientPrivateKeysArmored.length === 0) return { status: 'cannotDecrypt' };
 
-	const senderPublicKeyArmored = await resolvePinnedSenderKey(ctx, from);
+	// Manifest-first: sealed mail comes from an Owlat instance, whose manifest
+	// carries the instance fingerprint and the key-rotation feed.
+	const sender = await resolveSenderVerificationKey(ctx, from, { skipManifest: false });
+	const senderPublicKeyArmored = sender.status === 'found' ? sender.publicKeyArmored : undefined;
 
 	return openSealed({
 		raw,
 		recipientPrivateKeysArmored,
 		...(senderPublicKeyArmored ? { senderPublicKeyArmored } : {}),
 	});
-}
-
-/**
- * Resolve the armored PUBLIC key to VERIFY the sender's signature against, per
- * the card ("verify against the discovered/pinned sender key"). A cached
- * `trusted` pin is used directly. On a cache MISS — every first-contact sender —
- * we run the SSRF-guarded, TTL-cached `discoverRecipientKey` ONCE and re-read the
- * freshly persisted pin, so a legitimate first message can be verified instead of
- * being permanently recorded UNVERIFIED. Fail-CLOSED throughout: a `keyChanged`
- * conflict is NEVER silently re-pinned (return undefined ⇒ UNVERIFIED), and any
- * discovery error yields no verification key rather than a false claim.
- */
-async function resolvePinnedSenderKey(ctx: ActionCtx, from: string): Promise<string | undefined> {
-	const cached = await ctx.runQuery(internal.e2ee.recipientKeys.getCached, { address: from });
-	if (cached && cached.outcome === 'trusted') return cached.pinnedPublicKeyArmored;
-	// A conflicting (keyChanged) pin must stay UNVERIFIED until an admin resolves
-	// it — never discover past it.
-	if (cached && cached.outcome === 'keyChanged') return undefined;
-	// A fresh negative pin (notFound within TTL) has nothing to verify against and
-	// discovery would only return it from cache — skip the Node-action hop entirely.
-	if (cached && !shouldRefetch(cached, Date.now())) return undefined;
-
-	// First contact (or an expired negative cache): discover once, then re-read.
-	try {
-		await ctx.runAction(internal.e2ee.discovery.discoverRecipientKey, { address: from });
-	} catch {
-		return undefined;
-	}
-	const rediscovered = await ctx.runQuery(internal.e2ee.recipientKeys.getCached, { address: from });
-	return rediscovered && rediscovered.outcome === 'trusted'
-		? rediscovered.pinnedPublicKeyArmored
-		: undefined;
 }
 
 /** Build the honest opened-record from an open outcome + the sender address. */

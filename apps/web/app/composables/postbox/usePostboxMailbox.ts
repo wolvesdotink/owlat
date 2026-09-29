@@ -58,11 +58,10 @@ export function usePostboxMailbox() {
 	};
 
 	// The caller's accessible+active mailboxes (own + explicit shared memberships),
-	// each with its label, scope, and inbox unread. This — NOT `list`, which
-	// returns every org mailbox for owners/admins — drives the sidebar switcher and
-	// Cmd-K entries, so an admin never sees a teammate's private inbox or a shared
-	// inbox they don't belong to advertised as a switch target, and the badges
-	// always match the listed mailboxes.
+	// each with its label, scope, and inbox unread. `list` is the same set as full
+	// mailbox docs (suspended rows included), so `currentMailbox` above can only
+	// fall back to one of these; this projection drives the sidebar switcher and
+	// Cmd-K entries, so the badges always match the listed mailboxes.
 	const { data: accessibleData } = useConvexQuery(api.mail.mailbox.queries.accessible, () => ({}));
 	const accessible = computed(() => accessibleData.value ?? []);
 

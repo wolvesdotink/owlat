@@ -21,7 +21,6 @@ import {
 	seedMailbox,
 	seedMessage,
 } from '../../mail/__tests__/helpers.testlib';
-import { deriveThreadStatus, mostUrgentStatus } from '../threadStatus';
 
 const sessionMock = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -108,21 +107,6 @@ async function addReply(
 		return messageId;
 	});
 }
-
-describe('thread status rules', () => {
-	it('ranks draft ready over needs-you over updated over waiting', () => {
-		expect(deriveThreadStatus({ needsReply: { draftSlot: {} }, newSinceVisit: 3 })).toBe(
-			'draft_ready'
-		);
-		expect(deriveThreadStatus({ needsReply: {}, newSinceVisit: 3 })).toBe('needs_you');
-		expect(deriveThreadStatus({ followUp: { dueAt: 1 }, newSinceVisit: 0 })).toBe('needs_you');
-		expect(deriveThreadStatus({ newSinceVisit: 2, followUp: {} })).toBe('updated');
-		expect(deriveThreadStatus({ followUp: {}, newSinceVisit: 0 })).toBe('waiting');
-		expect(deriveThreadStatus({ newSinceVisit: 0 })).toBeNull();
-		expect(mostUrgentStatus(['waiting', null, 'updated', 'needs_you'])).toBe('needs_you');
-		expect(mostUrgentStatus([null, undefined])).toBeNull();
-	});
-});
 
 describe('today watermark', () => {
 	it('falls back to the last 24 hours, then only moves forward and undoes once', async () => {

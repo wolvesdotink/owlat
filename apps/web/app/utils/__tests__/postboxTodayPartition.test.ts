@@ -28,11 +28,17 @@ const local = (day: number, hour: number, minute = 0) =>
 	new Date(2026, 6, day, hour, minute, 0).getTime();
 
 let nextId = 0;
-function msg(overrides: { receivedAt: number; flagSeen?: boolean; threadId?: string }): {
+function msg(overrides: {
+	receivedAt: number;
+	flagSeen?: boolean;
+	threadId?: string;
+	category?: string;
+}): {
 	_id: string;
 	receivedAt: number;
 	flagSeen: boolean;
 	threadId?: string;
+	category?: string;
 } {
 	return {
 		_id: `m${nextId++}`,
@@ -82,21 +88,13 @@ describe('partitionTodayMessages', () => {
 	});
 
 	it('auto-files categorized Today candidates instead of listing them', () => {
-		const person = msg({ receivedAt: local(6, 8), threadId: 't-person' });
-		const newsletter = msg({ receivedAt: local(6, 7), threadId: 't-news' });
-		const receipt = msg({ receivedAt: local(5, 12), flagSeen: false, threadId: 't-receipt' });
+		const person = msg({ receivedAt: local(6, 8), category: 'person' });
+		const newsletter = msg({ receivedAt: local(6, 7), category: 'newsletter' });
+		const receipt = msg({ receivedAt: local(5, 12), flagSeen: false, category: 'receipt' });
 		const uncategorized = msg({ receivedAt: local(6, 6) });
-		const categories: Record<string, string> = {
-			't-person': 'person',
-			't-news': 'newsletter',
-			't-receipt': 'receipt',
-		};
 		const { today, autoFiled, autoFiledCounts, older } = partitionTodayMessages(
 			[person, newsletter, receipt, uncategorized],
-			{
-				now: NOW,
-				categoryOf: (m) => (m.threadId ? categories[m.threadId] : undefined),
-			}
+			{ now: NOW }
 		);
 		expect(today.map((m) => m._id)).toEqual([person._id, uncategorized._id]);
 		expect(autoFiled.map((m) => m._id)).toEqual([newsletter._id, receipt._id]);
@@ -105,20 +103,35 @@ describe('partitionTodayMessages', () => {
 	});
 
 	it('never auto-files older mail — past mail is for browsing, nothing is lost', () => {
-		const oldNewsletter = msg({ receivedAt: local(1, 12), flagSeen: true, threadId: 't-news' });
-		const { older, autoFiled } = partitionTodayMessages([oldNewsletter], {
-			now: NOW,
-			categoryOf: () => 'newsletter',
-		});
+		const oldNewsletter = msg({ receivedAt: local(1, 12), flagSeen: true, category: 'newsletter' });
+		const { older, autoFiled } = partitionTodayMessages([oldNewsletter], { now: NOW });
 		expect(older.map((m) => m._id)).toEqual([oldNewsletter._id]);
 		expect(autoFiled).toEqual([]);
 	});
 
-	it('fails open: without categoryOf nothing is auto-filed', () => {
+	it('fails open: a row with no category is never auto-filed', () => {
 		const m = msg({ receivedAt: local(6, 8), threadId: 't-news' });
 		const { today, autoFiled } = partitionTodayMessages([m], { now: NOW });
 		expect(today).toHaveLength(1);
 		expect(autoFiled).toEqual([]);
+	});
+
+	it('auto-files a page-3 row whose thread is outside the newest 50', () => {
+		// Regression: the category used to be joined client-side from a
+		// `listThreads` subscription capped at the newest 50 threads, so a
+		// newsletter further down the feed leaked back into "Received today".
+		// Three pages of fifty of today's rows, each on its own thread.
+		const rows = Array.from({ length: 149 }, (_, i) =>
+			msg({ receivedAt: local(6, 9) - i, threadId: `t-${i}`, category: 'person' })
+		);
+		const pageThree = msg({
+			receivedAt: local(6, 0) + 1,
+			threadId: 't-149',
+			category: 'newsletter',
+		});
+		const { today, autoFiled } = partitionTodayMessages([...rows, pageThree], { now: NOW });
+		expect(autoFiled.map((m) => m._id)).toEqual([pageThree._id]);
+		expect(today).toHaveLength(149);
 	});
 });
 

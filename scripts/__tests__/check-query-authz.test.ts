@@ -15,42 +15,21 @@
  * plus the cases that must still be reported.
  */
 
-import { execFile } from 'node:child_process';
-import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
+import { apiTree, removeTrees, runGate } from './convexGates.testlib';
 
-const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
-
-const run = promisify(execFile);
-
-const GATE = 'apps/api/scripts/check-query-authz.sh';
+const GATE = 'check-query-authz.sh';
 
 const roots: string[] = [];
 
-afterAll(async () => {
-	await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
-	roots.length = 0;
-});
+afterAll(() => removeTrees(roots));
 
 /** `file:name` pairs the gate reports for a throwaway tree holding `files`. */
 async function violations(files: Record<string, string>): Promise<string[]> {
-	const root = await mkdtemp(join(tmpdir(), 'owlat-query-authz-gate-'));
-	roots.push(root);
-
-	for (const [path, contents] of Object.entries(files)) {
-		const target = join(root, 'apps/api', path);
-		await mkdir(dirname(target), { recursive: true });
-		await writeFile(target, contents, 'utf8');
-	}
-	await mkdir(join(root, 'apps/api/scripts'), { recursive: true });
-	await copyFile(join(REPOSITORY_ROOT, GATE), join(root, GATE));
-
-	const { stdout } = await run('bash', [GATE, '--generate'], { cwd: root });
-	return stdout.split('\n').filter((line) => line.length > 0);
+	const result = await runGate(await apiTree(files, roots), GATE, ['--generate']);
+	if (result.code !== 0)
+		throw new Error(`${GATE} --generate exited ${result.code}:\n${result.output}`);
+	return result.stdout.split('\n').filter((line) => line.length > 0);
 }
 
 /** A read built with `builder` whose handler body is `body`. */
@@ -71,19 +50,40 @@ function read(builder: string, body: string, note = ''): string {
 }
 
 describe('convex query authorization ratchet', () => {
-	it.each(['authedQuery', 'chatQuery', 'assistantQuery', 'publicQuery', 'publicAction'])(
-		'reports a %s that makes no authorization decision',
-		async (builder) => {
-			expect(
-				await violations({
-					'convex/mail/queries.ts': read(builder, '\t\tawait ctx.db.query("x");'),
-				})
-			).toEqual(['convex/mail/queries.ts:listThreads']);
-		}
-	);
+	it.each([
+		'authedQuery',
+		'chatQuery',
+		'assistantQuery',
+		'postboxQuery',
+		'publicQuery',
+		'publicAction',
+	])('reports a %s that makes no authorization decision', async (builder) => {
+		expect(
+			await violations({
+				'convex/mail/queries.ts': read(builder, '\t\tawait ctx.db.query("x");'),
+			})
+		).toEqual(['convex/mail/queries.ts:listThreads']);
+	});
 
 	it('says nothing about an internalQuery — server-only, no public surface', async () => {
 		expect(await violations({ 'convex/mail/queries.ts': read('internalQuery', '') })).toEqual([]);
+	});
+
+	it('says nothing about an adminQuery — the role floor is the decision', async () => {
+		expect(await violations({ 'convex/mail/queries.ts': read('adminQuery', '') })).toEqual([]);
+	});
+
+	// The throwing gates are the list check-permissions.sh accepts; before the
+	// list moved into scripts/lib/convex-builders.sh this gate's copy lacked
+	// requireContactsManage.
+	it.each([
+		'\t\tawait requireOrgPermission(ctx, "contacts:read");',
+		'\t\trequirePermission(hasPermission(session.role, "contacts:read"));',
+		'\t\tawait requireContactsManage(ctx, session);',
+		'\t\tawait requireCampaignSendersManage(ctx, session);',
+		'\t\tawait assertCanReadRoom(ctx, args.roomId, session);',
+	])('accepts the throwing gate %j', async (gate) => {
+		expect(await violations({ 'convex/mail/queries.ts': read('authedQuery', gate) })).toEqual([]);
 	});
 
 	// The predicates a soft-failing read uses instead of throwing: each answers

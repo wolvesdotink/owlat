@@ -18,7 +18,7 @@
  * grows.
  */
 
-import { v, type Validator } from 'convex/values';
+import { literalUnion } from '../lib/literalUnion';
 
 // ---------------------------------------------------------------------------
 // Action catalog
@@ -314,8 +314,6 @@ export const AUDIT_ACTION_LITERALS = [
 	action('connected_app.secret_rotated'),
 ] as const;
 
-type AuditActionLiteral = (typeof AUDIT_ACTION_LITERALS)[number];
-
 /** Hosted operations safe to persist and display in plugin audit metadata. */
 export const HOSTED_PLUGIN_OPERATION_LITERALS = [
 	'agent.step',
@@ -376,18 +374,11 @@ export const AUDIT_RESOURCE_LITERALS = [
 	'connected_app',
 ] as const;
 
-type AuditResourceLiteral = (typeof AUDIT_RESOURCE_LITERALS)[number];
-
 // ---------------------------------------------------------------------------
-// Convex validators — derived from the catalogs above. The variadic spread
-// loses literal-narrowing in TypeScript, so we cast back to the literal-
-// union type explicitly. Doing it once here keeps every caller narrowed.
+// Convex validators — derived from the catalogs above, so every caller is
+// narrowed to the catalog's literal union.
 // ---------------------------------------------------------------------------
 
-export const auditActionValidator = v.union(
-	...AUDIT_ACTION_LITERALS.map((l) => v.literal(l))
-) as unknown as Validator<AuditActionLiteral>;
+export const auditActionValidator = literalUnion(AUDIT_ACTION_LITERALS);
 
-export const auditResourceValidator = v.union(
-	...AUDIT_RESOURCE_LITERALS.map((l) => v.literal(l))
-) as unknown as Validator<AuditResourceLiteral>;
+export const auditResourceValidator = literalUnion(AUDIT_RESOURCE_LITERALS);

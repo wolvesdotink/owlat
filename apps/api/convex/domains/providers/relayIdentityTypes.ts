@@ -28,7 +28,7 @@ import type { RelayDomainIdentityFacts } from './relayIdentityView';
  *    walks every verified domain on every page and must be cheap and
  *    convergent: a domain that already has a row is done, and re-registering it
  *    would re-issue a provider call per domain per drain. `reprovision: false`.
- *  - the FORWARD PATH (`domains/lifecycle.ts`'s
+ *  - the FORWARD PATH (`domains/lifecycleEffects.ts`'s
  *    `provision_relay_identity_if_enabled`) fires on a real `→ verified` edge,
  *    which an operator can only reach by taking the domain out of `verified`
  *    and putting it back. That deliberate act is the ONLY repair lever for an

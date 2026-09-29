@@ -4,6 +4,7 @@ import {
 	parseSpfMechanisms,
 	mergeSpfRecords,
 	spfRecordHasExactIpMechanism,
+	spfTrailingAllQualifier,
 } from '../spf';
 
 describe('isSpfRecord', () => {
@@ -120,5 +121,30 @@ describe('spfRecordHasExactIpMechanism', () => {
 		]) {
 			expect(spfRecordHasExactIpMechanism(record, '2001:db8::10')).toBe(false);
 		}
+	});
+});
+
+describe('spfTrailingAllQualifier', () => {
+	it.each([
+		['v=spf1 include:_spf.google.com -all', '-all'],
+		['v=spf1 include:_spf.google.com ~all', '~all'],
+		['v=spf1 ip4:203.0.113.10 ?all', '?all'],
+		['v=spf1 ip4:203.0.113.10 +all', '+all'],
+		['v=spf1 ip4:203.0.113.10 all', '+all'],
+		['  V=SPF1 MX -ALL  ', '-all'],
+	])('reads the trailing qualifier of %s', (record, qualifier) => {
+		expect(spfTrailingAllQualifier(record)).toBe(qualifier);
+	});
+
+	it.each([
+		['a redirect= record', 'v=spf1 redirect=_spf.example.com'],
+		['a record with no all', 'v=spf1 include:_spf.google.com'],
+		['a bare version token', 'v=spf1'],
+		['an all that is not the last term', 'v=spf1 -all exp=explain.example.com'],
+		['an unknown version string', 'v=spf1:broken -all'],
+		['a non-SPF record', 'v=DMARC1; p=reject'],
+		['an empty string', ''],
+	])('returns null for %s', (_label, record) => {
+		expect(spfTrailingAllQualifier(record)).toBeNull();
 	});
 });

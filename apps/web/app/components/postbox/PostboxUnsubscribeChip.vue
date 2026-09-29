@@ -2,6 +2,8 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { escapeHtmlWithBreaks } from '@owlat/shared/html';
+import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
+import { parseMailto } from '@owlat/shared/mailto';
 
 /**
  * Quiet "Unsubscribe" chip for list mail, shown only when the message carried
@@ -12,13 +14,14 @@ import { escapeHtmlWithBreaks } from '@owlat/shared/html';
  *   - RFC 8058 One-Click (https + List-Unsubscribe-Post): confirm, then the
  *     backend performs the POST server-side (SSRF-guarded, bounded timeout)
  *     and the result lands as a toast. Never fired on render.
- *   - mailto: opens a prefilled compose.
+ *   - mailto: opens a prefilled compose, when it names at least one To
+ *     recipient (cc/bcc are ignored); otherwise the https target is used.
  *   - plain https: opens the sender's unsubscribe page in a new tab.
  */
 const props = defineProps<{
 	messageId: string;
 	mailboxId: string;
-	unsubscribe: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
+	unsubscribe: ListUnsubscribeTarget;
 }>();
 
 const { t } = useI18n();
@@ -69,8 +72,8 @@ async function onClick() {
 		return;
 	}
 	if (target.mailtoUrl) {
-		const mailto = parseUnsubscribeMailto(target.mailtoUrl);
-		if (mailto) {
+		const mailto = parseMailto(target.mailtoUrl);
+		if (mailto && mailto.to.length > 0) {
 			stack.open({
 				mailboxId: props.mailboxId as Id<'mailboxes'>,
 				prefillTo: mailto.to,

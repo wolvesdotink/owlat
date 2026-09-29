@@ -17,7 +17,6 @@ import { v } from 'convex/values';
 import { internalMutation, type MutationCtx, type DatabaseReader } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
-import { toPaginationCursor } from '../lib/paginationCursor';
 import { bumpStatShard, sumStatShards } from '../lib/statShards';
 
 const ROLLUP_PAGE_SIZE = 50;
@@ -110,7 +109,7 @@ export const rollupAutomationStats = internalMutation({
 	handler: async (ctx, args) => {
 		const page = await ctx.db
 			.query('automations')
-			.paginate({ cursor: toPaginationCursor(args.cursor), numItems: ROLLUP_PAGE_SIZE });
+			.paginate({ cursor: args.cursor ?? null, numItems: ROLLUP_PAGE_SIZE });
 
 		for (const automation of page.page) {
 			if (automation.status === 'draft') continue;

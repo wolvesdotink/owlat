@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { isMentionHandlePrefix } from '@owlat/shared/chatMentions';
 
 const emit = defineEmits<{
 	send: [text: string, attachmentIds?: Id<'mediaAssets'>[]];
@@ -11,9 +12,7 @@ const text = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 
-const pendingAttachments = ref<
-	{ id: Id<'mediaAssets'>; filename: string; mimeType: string }[]
->([]);
+const pendingAttachments = ref<{ id: Id<'mediaAssets'>; filename: string; mimeType: string }[]>([]);
 
 const { uploadFile, isUploading } = useChatAttachments();
 
@@ -22,11 +21,11 @@ const mentionQuery = ref<string | null>(null);
 const mentionStart = ref(-1);
 const { candidates: mentionCandidates } = useChatMentionSearch(
 	// null when no @-mention is in progress → the search is skipped entirely.
-	() => mentionQuery.value,
+	() => mentionQuery.value
 );
 
 const canSend = computed(
-	() => (text.value.trim().length > 0 || pendingAttachments.value.length > 0) && !isUploading.value,
+	() => (text.value.trim().length > 0 || pendingAttachments.value.length > 0) && !isUploading.value
 );
 
 const recalcMentionQuery = () => {
@@ -52,7 +51,9 @@ const recalcMentionQuery = () => {
 		return;
 	}
 	const fragment = before.slice(atIndex + 1);
-	if (!/^[a-zA-Z0-9_\-.]*$/.test(fragment)) {
+	// Same grammar and 64-char cap the server uses to decide who is notified,
+	// so the picker closes once the fragment can no longer be a handle.
+	if (!isMentionHandlePrefix(fragment)) {
 		mentionQuery.value = null;
 		mentionStart.value = -1;
 		return;
@@ -177,9 +178,10 @@ const handleSend = async () => {
 				<button
 					class="text-text-tertiary hover:text-error"
 					@click="removeAttachment(attachment.id)"
-				 :aria-label="
+					:aria-label="
 						t('components.chat.chatInput.removeAttachment', { filename: attachment.filename })
-					">
+					"
+				>
 					<Icon name="lucide:x" class="w-3 h-3" />
 				</button>
 			</div>
@@ -195,13 +197,7 @@ const handleSend = async () => {
 				<Icon v-if="!isUploading" name="lucide:paperclip" class="w-4 h-4" />
 				<UiSpinner v-else size="xs" />
 			</button>
-			<input
-				ref="fileInputRef"
-				type="file"
-				multiple
-				class="hidden"
-				@change="handleFilePick"
-			/>
+			<input ref="fileInputRef" type="file" multiple class="hidden" @change="handleFilePick" />
 
 			<textarea
 				ref="textareaRef"

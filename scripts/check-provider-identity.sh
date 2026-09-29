@@ -224,6 +224,13 @@ literal="$q($kind_alt)$q"
 # no-match exit of the filter must not read as an error under `pipefail`.
 # `path  # note` keeps a per-entry note next to the entry rather than in a
 # second copy of the list further up the file.
+#
+# These two lists keep their own new/stale comparison instead of going through
+# scripts/ratchet.sh: ratchet compares whole lines, so it would not strip the
+# trailing note, and a bare `path` licenses every literal in its file while
+# `path:literal` licenses one, so whether a site is new or an entry is stale
+# depends on the entry's own form, not on set membership. A plain one-entry-
+# per-line list belongs on scripts/ratchet.sh.
 read_list() {
 	{ grep -vE '^[[:space:]]*(#|$)' "$1" || true; } |
 		sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]*$//' | sort -u

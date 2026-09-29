@@ -34,7 +34,11 @@
 import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import { components } from '../_generated/api';
-import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import {
+	getBetterAuthSessionWithRole,
+	hasPermission,
+	type OrganizationRole,
+} from '../lib/sessionOrganization';
 import { batchGet } from '../_utils/batchLoader';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { POSTBOX_FEATURE_FLAGS } from './_helpers';
@@ -74,7 +78,7 @@ export type MailboxAccessOutcome =
  * connected external ones are independent capabilities, and either one makes a
  * mailbox legitimate.
  */
-async function personalMailEnabled(ctx: QueryCtx): Promise<boolean> {
+export async function personalMailEnabled(ctx: QueryCtx): Promise<boolean> {
 	for (const flag of POSTBOX_FEATURE_FLAGS) {
 		if (await isFeatureEnabled(ctx, flag)) return true;
 	}
@@ -106,7 +110,7 @@ export async function requireMailboxAccess(
 	// own user always has owner-level access — both bypass the membership read.
 	// Their effective role on the mailbox is `owner` (the single source of truth
 	// the `myRole` query consumes so effective-role policy never drifts).
-	if (s.role === 'owner' || s.role === 'admin' || mailbox.userId === s.userId) {
+	if (hasPermission(s.role, 'organization:manage') || mailbox.userId === s.userId) {
 		return { ok: true, userId: s.userId, mailbox, role: 'owner' };
 	}
 	// Everyone else needs an explicit membership row meeting `minRole`. This is
@@ -153,7 +157,7 @@ export async function canUserReadMailbox(
 			{ field: 'userId', value: userId },
 		],
 	})) as { role?: string } | null;
-	return member?.role === 'owner' || member?.role === 'admin';
+	return hasPermission((member?.role ?? null) as OrganizationRole | null, 'organization:manage');
 }
 
 /**

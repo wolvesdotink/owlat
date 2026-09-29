@@ -51,17 +51,3 @@ export function logAttempt(attempt: BounceAttempt, parsed: ParsedMessage): void 
 			return;
 	}
 }
-
-/**
- * Check if an IP is a local/loopback address (skip tarpit for these).
- */
-export function isLocalAddress(ip: string): boolean {
-	return (
-		ip === '127.0.0.1' ||
-		ip === '::1' ||
-		ip === '::ffff:127.0.0.1' ||
-		ip.startsWith('10.') ||
-		ip.startsWith('172.16.') ||
-		ip.startsWith('192.168.')
-	);
-}

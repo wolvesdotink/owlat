@@ -106,7 +106,7 @@ describe('contentScreening', () => {
 			// when the DKIM d= aligns with the RFC5322.From domain (exact or
 			// organizational/subdomain under relaxed alignment); a misaligned d=
 			// signs valid mail that still fails DMARC at Gmail/Yahoo. This pins the
-			// three canonical rows so a refactor of isDomainAligned trips here.
+			// canonical rows so a change to the shared isIdentifierAligned rule trips here.
 			describe('alignment decision table (RFC 7489 §3.1.1)', () => {
 				const cases: Array<{
 					name: string;
@@ -131,6 +131,19 @@ describe('contentScreening', () => {
 						name: 'unrelated dkim domain is a misalignment',
 						from: 'sender@evil.com',
 						dkimDomain: 'example.com',
+						allowed: false,
+						reason: 'dkim_misalignment',
+					},
+					{
+						name: 'sibling subdomains share the organizational domain and align',
+						from: 'sender@news.acme.com',
+						dkimDomain: 'mail.acme.com',
+						allowed: true,
+					},
+					{
+						name: 'a tenant under a private PSL suffix does not align with the suffix',
+						from: 'sender@tenant.github.io',
+						dkimDomain: 'github.io',
 						allowed: false,
 						reason: 'dkim_misalignment',
 					},

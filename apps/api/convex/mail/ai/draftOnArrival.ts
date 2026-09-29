@@ -25,6 +25,7 @@ import { resolveLanguageModel } from '../../lib/llmProvider';
 import { buildReplySubject } from '../../lib/emailAddress';
 import { logError } from '../../lib/runtimeLog';
 import { buildConfirmedContext, runSharedDraft } from '../../agent/shared/draftService';
+import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 
 /** Map the personal-mail urgency bucket onto the shared draft block's priority vocabulary. */
 function priorityForUrgency(urgency: 'high' | 'normal' | 'low'): string {
@@ -60,18 +61,11 @@ export async function generateDraftOnArrival(
 	});
 	if (!loaded) return; // not a live needs-reply personal-mail thread
 
-	// Personalize to the owner's learned writing voice (opt-in). FAIL-SOFT: a
-	// missing/disabled profile falls through to the generic tone.
-	let voiceGuidance: string | null = null;
-	try {
-		const res = await ctx.runMutation(internal.mail.ai.voiceProfile.getGuidanceForMailbox, {
-			mailboxId: loaded.mailboxId,
-		});
-		voiceGuidance = res.guidance;
-	} catch {
-		voiceGuidance = null;
-	}
-	const voiceSection = voiceGuidance ? `\n\n${voiceGuidance}` : '';
+	// Personalize to the owner's learned writing voice (opt-in, fail-soft). No
+	// access check: a scheduled internal action for the thread's own mailbox.
+	const voiceSection = formatVoiceSection(
+		await loadVoiceGuidance(ctx, { mailboxId: loaded.mailboxId, requireAccess: false })
+	);
 
 	// Owner-confirmed clarification facts (trusted; rendered outside the
 	// untrusted tags by the shared service).

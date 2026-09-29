@@ -1,6 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { transportArmValidator } from '../lib/convexValidators';
+import { transportArmValidator } from '../lib/literalValidators';
 
 /**
  * The experiment record — one row per recipient per send.

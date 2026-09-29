@@ -4,7 +4,7 @@ import type { Doc } from '../_generated/dataModel';
 import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
 import { insertLlmUsage } from '../analytics/llmUsage';
 import type { TokenUsage } from '../agent/steps/types';
-import { languageEndpointProvenanceValidator } from '../lib/aiProviderConfigValidators';
+import { languageEndpointProvenanceValidator } from '../lib/validators/aiProviderConfig';
 import { tokenUsageValidator } from '../lib/convexValidators';
 import { MAX_LLM_ATTEMPTS } from '../lib/llm/retryPolicy';
 import { estimateKnownCostMicrousd } from '../lib/llm/pricing';

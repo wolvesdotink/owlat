@@ -9,31 +9,18 @@
  */
 
 import { v } from 'convex/values';
-import { openMailMessageInlineBody } from '../../lib/messageBody';
 import { authedAction } from '../../lib/authedFunctions';
 import { api, internal } from '../../_generated/api';
 import type { Doc } from '../../_generated/dataModel';
 import { resolveLanguageModel, resolveLanguageModelForUserText } from '../../lib/llmProvider';
 import { runLlmText } from '../../lib/llm/dispatch';
 import { recordLlmSpend } from '../../analytics/llmUsage';
-import { stripHtml } from '../rfc822';
 import { buildSchedulingReplyInstruction } from '../availability';
 import { generateReplyOptions } from '../replyOptions';
 import { SYSTEM_GUARD } from './promptGuards';
+import { buildThreadTranscript, THREAD_SUMMARY } from './transcript';
+import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 import { throwNotFound } from '../../_utils/errors';
-
-/** Flatten a thread into a bounded plaintext transcript for the prompt. Unseals
- * each row's inline body at rest through the accessor choke point (E8b). */
-export async function threadToText(messages: Doc<'mailMessages'>[]): Promise<string> {
-	const parts = await Promise.all(
-		messages.map(async (m) => {
-			const { text, html } = await openMailMessageInlineBody(m);
-			const body = (text ?? (html ? stripHtml(html) : undefined) ?? m.snippet ?? '').slice(0, 4000);
-			return `From: ${m.fromName || m.fromAddress}\nSubject: ${m.subject}\n${body}`;
-		})
-	);
-	return parts.join('\n\n---\n\n').slice(0, 12000);
-}
 
 /** System prompt for extractive thread summarization (2–4 bullets). */
 const SUMMARIZE_SYSTEM =
@@ -56,7 +43,7 @@ async function runThreadSummary(
 	const { text, tokenUsage, modelUsed } = await runLlmText({
 		model: await resolveLanguageModel(ctx, 'summarize'),
 		system: SUMMARIZE_SYSTEM,
-		prompt: `Summarize this email thread:\n\n${await threadToText(messages)}`,
+		prompt: `Summarize this email thread:\n\n${await buildThreadTranscript(messages, THREAD_SUMMARY)}`,
 		temperature: 0.2,
 	});
 	await recordLlmSpend(ctx, 'postbox_summarize', tokenUsage, modelUsed);
@@ -190,23 +177,14 @@ export const suggestReplies = authedAction({
 			messageId: args.messageId,
 		});
 		if (!thread || thread.messages.length === 0) throwNotFound('Thread');
-		// Personalize to the user's learned writing voice when they have opted in
-		// and a profile exists. This also lazily schedules a background refresh if
-		// the profile is stale; it never blocks or throws, so a missing/disabled
-		// profile falls through to exactly the non-personalized behaviour below.
-		const mailboxId = thread.messages[0]?.mailboxId;
-		let voiceGuidance: string | null = null;
-		if (mailboxId) {
-			try {
-				const res = await ctx.runMutation(internal.mail.ai.voiceProfile.getGuidanceForMailbox, {
-					mailboxId,
-				});
-				voiceGuidance = res.guidance;
-			} catch {
-				voiceGuidance = null;
-			}
-		}
-		const voiceSection = voiceGuidance ? `\n\n${voiceGuidance}` : '';
+		// Personalize to the user's learned writing voice (opt-in, fail-soft). No
+		// access check: the mailbox comes from a thread listThreadMessages let us read.
+		const voiceSection = formatVoiceSection(
+			await loadVoiceGuidance(ctx, {
+				mailboxId: thread.messages[0]?.mailboxId,
+				requireAccess: false,
+			})
+		);
 		// Ground scheduling replies in the owner's real free/busy when a self-hosted
 		// calendar source is configured (see mail/availability). Fetched server-side
 		// (privacy) and fail-soft: no source / any error -> no slots -> today's
@@ -217,7 +195,7 @@ export const suggestReplies = authedAction({
 				: `Suggest up to 3 short, distinct reply options the recipient could send ` +
 					`(1–2 sentences each, ready to send, varied in stance).`;
 		const { replies, tokenUsage, modelUsed } = await generateReplyOptions(ctx, {
-			prompt: `${SYSTEM_GUARD}\n\n${instruction}${voiceSection}\n\nThread:\n\n${await threadToText(thread.messages)}`,
+			prompt: `${SYSTEM_GUARD}\n\n${instruction}${voiceSection}\n\nThread:\n\n${await buildThreadTranscript(thread.messages, THREAD_SUMMARY)}`,
 		});
 		await recordLlmSpend(ctx, 'postbox_suggest_replies', tokenUsage, modelUsed);
 		return { replies };
@@ -239,7 +217,7 @@ const ASK_THREAD_SYSTEM =
 /**
  * Assemble the prompt for {@link askThread}. Pure + exported so the unit test can
  * assert the untrusted-data framing and transcript inclusion without a live
- * model. The transcript is already the bounded flatten from {@link threadToText};
+ * model. The transcript is already the bounded flatten from {@link buildThreadTranscript};
  * `history` is the small in-memory prior Q/A the client replays for follow-ups.
  */
 export function buildAskThreadPrompt(args: {
@@ -286,7 +264,7 @@ export const askThread = authedAction({
 		});
 		if (!thread || thread.messages.length === 0) throwNotFound('Thread');
 		const { system, prompt } = buildAskThreadPrompt({
-			transcript: await threadToText(thread.messages),
+			transcript: await buildThreadTranscript(thread.messages, THREAD_SUMMARY),
 			question: args.question,
 			history: args.history,
 		});
@@ -383,7 +361,7 @@ export function buildRewritePrompt(args: {
 			: '';
 	const languageLine =
 		args.intent === 'translate' && language ? `\nTarget language: ${language}` : '';
-	const voiceSection = args.voiceGuidance ? `\n\n${args.voiceGuidance}` : '';
+	const voiceSection = formatVoiceSection(args.voiceGuidance);
 	const system =
 		`${SYSTEM_GUARD} You are an editing assistant that rewrites a snippet of ` +
 		`the user's OWN email draft according to a single instruction. The ` +
@@ -408,9 +386,8 @@ export function buildRewritePrompt(args: {
 // authz: org membership enforced by authedAction; the `ai` flag + per-user rate
 // limit enforced by aiGate.assertAiAllowed. Operates on the caller's own draft
 // text; mailboxId (if given) is only used to fetch the caller's voice guidance,
-// and ONLY after mail.mailbox.identity.get proves the caller owns that mailbox — a
-// foreign mailboxId resolves to null and yields no guidance (never leaks another
-// user's learned voice / example phrasings).
+// behind loadVoiceGuidance's access proof (requireAccess), so a foreign
+// mailboxId yields no guidance.
 export const rewriteSelection = authedAction({
 	args: {
 		selection: v.string(),
@@ -427,28 +404,12 @@ export const rewriteSelection = authedAction({
 	},
 	handler: async (ctx, args): Promise<{ rewritten: string }> => {
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
-		// Personalize to the user's learned voice when a profile exists; never
-		// blocks or throws, so a missing/disabled profile just falls through.
-		let voiceGuidance: string | null = null;
-		if (args.mailboxId) {
-			try {
-				// Prove the caller owns this mailbox before touching its voice
-				// profile — mail.mailbox.identity.get returns null for a non-owner, so a
-				// foreign mailboxId can never fold another user's private voice
-				// guidance into the rewrite.
-				const mailbox = await ctx.runQuery(api.mail.mailbox.identity.get, {
-					mailboxId: args.mailboxId,
-				});
-				if (mailbox) {
-					const res = await ctx.runMutation(internal.mail.ai.voiceProfile.getGuidanceForMailbox, {
-						mailboxId: args.mailboxId,
-					});
-					voiceGuidance = res.guidance;
-				}
-			} catch {
-				voiceGuidance = null;
-			}
-		}
+		// Personalize to the user's learned voice. The mailboxId comes from the
+		// client, so access is proven before the profile is read.
+		const voiceGuidance = await loadVoiceGuidance(ctx, {
+			mailboxId: args.mailboxId,
+			requireAccess: true,
+		});
 		const { system, prompt } = buildRewritePrompt({
 			intent: args.intent,
 			targetLanguage: args.targetLanguage,

@@ -365,6 +365,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'shared.mailAutodiscover.provider.outlook.name',
 	'shared.mailAutodiscover.provider.yahoo.hint',
 	'shared.mailAutodiscover.provider.yahoo.name',
+	'shared.mailCategory.spam',
 	'shared.mandrillRelayStatus.outstanding.dkim',
 	'shared.mandrillRelayStatus.outstanding.spf',
 	'shared.postbox.usePostboxCommandSurface.groups.labels',

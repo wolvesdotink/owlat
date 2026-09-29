@@ -21,27 +21,15 @@
  * capability line in that state (RFC 3501 §11.1, RFC 2595).
  */
 
-import type { CommandSession, ImapCommandModule, ConnectionState } from '../types.js';
+import type { CommandSession, ImapCommandModule } from '../types.js';
+import { authenticateAppPassword } from '../helpers/auth.js';
 import { syncSession } from '../helpers/session.js';
-import { sleep } from '@owlat/shared';
-import { fn } from '../../convex.js';
-import { logger } from '../../logger.js';
 
 interface AuthenticateArgs {
 	/** The SASL mechanism name, upper-cased (e.g. `PLAIN`). */
 	readonly mechanism: string;
 	/** RFC 4959 initial response (base64), if folded onto the command line. */
 	readonly initialResponse: string | null;
-}
-
-/** Mirror of LOGIN's tarpit cap so a sustained attacker can't burn fds. */
-const TARPIT_SLEEP_CAP_MS = 5_000;
-
-interface VerifyAppPasswordResult {
-	readonly mailboxId: string;
-	readonly appPasswordId: string;
-	readonly userId: string;
-	readonly organizationId: string;
 }
 
 interface DecodedPlain {
@@ -94,7 +82,7 @@ export const authenticateModule: ImapCommandModule<AuthenticateArgs> = {
 			},
 		};
 	},
-	start({ deps, state, args, tag, send }) {
+	start({ deps, state, args, tag, verb, send }) {
 		if (state.auth) {
 			send(`${tag} BAD Already authenticated`);
 			return syncSession();
@@ -133,74 +121,15 @@ export const authenticateModule: ImapCommandModule<AuthenticateArgs> = {
 				return;
 			}
 
-			const address = decoded.authcid.toLowerCase();
-			const limit = await deps.rateLimiter.check(deps.remoteIp, address);
-			if (limit.throttled) {
-				logger.warn(
-					{
-						ip: deps.remoteIp,
-						user: decoded.authcid,
-						authCount: limit.authCount,
-						ipCount: limit.ipCount,
-					},
-					'AUTHENTICATE throttled — tarpitting'
-				);
-				await sleep(Math.min(limit.tarpitMs, TARPIT_SLEEP_CAP_MS));
-				await deps.rateLimiter.recordFailure(deps.remoteIp, address);
-				send(`${tag} NO Authentication failed`);
-				finish();
-				return;
-			}
-
-			try {
-				const result = (await deps.convex.action(
-					fn.verifyAppPassword as never,
-					{
-						address,
-						password: decoded.password,
-						scope: 'imap',
-					} as never
-				)) as VerifyAppPasswordResult | null;
-
-				if (!result) {
-					logger.warn({ ip: deps.remoteIp, user: decoded.authcid }, 'AUTHENTICATE failed');
-					await deps.rateLimiter.recordFailure(deps.remoteIp, address);
-					send(`${tag} NO Authentication failed`);
-					finish();
-					return;
-				}
-
-				// Best-effort touch — mirror LOGIN; don't block the OK on it.
-				deps.convex
-					.mutation(
-						fn.touchAppPassword as never,
-						{
-							appPasswordId: result.appPasswordId,
-							ip: deps.remoteIp,
-							...(state.clientId ? { userAgent: state.clientId } : {}),
-						} as never
-					)
-					.catch(() => undefined);
-
-				const next: ConnectionState = {
-					...state,
-					auth: {
-						mailboxId: result.mailboxId,
-						appPasswordId: result.appPasswordId,
-						userId: result.userId,
-						address,
-					},
-				};
-				deps.commit(next);
-				send(`* OK [${deps.capabilityLine}] Authenticated`);
-				send(`${tag} OK AUTHENTICATE completed`);
-				finish();
-			} catch (err) {
-				logger.error({ err }, 'AUTHENTICATE error');
-				await deps.rateLimiter.recordFailure(deps.remoteIp, address);
-				send(`${tag} NO Authentication failed`);
-				finish();
-			}
+			const outcome = await authenticateAppPassword(
+				{ deps, state, send, verb },
+				decoded.authcid.toLowerCase(),
+				decoded.password
+			);
+			send(
+				outcome === 'ok' ? `${tag} OK AUTHENTICATE completed` : `${tag} NO Authentication failed`
+			);
+			finish();
 		};
 
 		// RFC 4959 SASL-IR: the client folded the initial response onto the

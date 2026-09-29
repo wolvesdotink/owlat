@@ -244,7 +244,7 @@ describe('lifecycle.setReturnPathHost — record regeneration + status', () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedMtaDomain(t);
 
-		const outcome = await t.mutation(internal.domains.lifecycle.setReturnPathHost, {
+		const outcome = await t.mutation(internal.domains.lifecycleReturnPath.setReturnPathHost, {
 			domainId,
 			returnPathHost: 'Bounce.ACME.com',
 			userId: 'user',
@@ -285,7 +285,7 @@ describe('lifecycle.setReturnPathHost — record regeneration + status', () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedMtaDomain(t, { returnPathHost: 'bounce.acme.com' });
 
-		const outcome = await t.mutation(internal.domains.lifecycle.setReturnPathHost, {
+		const outcome = await t.mutation(internal.domains.lifecycleReturnPath.setReturnPathHost, {
 			domainId,
 			returnPathHost: 'bounce.acme.com',
 			userId: 'user',
@@ -306,7 +306,7 @@ describe('lifecycle.setReturnPathHost — record regeneration + status', () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedMtaDomain(t, { providerType: 'sendgrid' });
 
-		const outcome = await t.mutation(internal.domains.lifecycle.setReturnPathHost, {
+		const outcome = await t.mutation(internal.domains.lifecycleReturnPath.setReturnPathHost, {
 			domainId,
 			returnPathHost: 'bounce.acme.com',
 			userId: 'user',
@@ -318,7 +318,7 @@ describe('lifecycle.setReturnPathHost — record regeneration + status', () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedMtaDomain(t);
 
-		const outcome = await t.mutation(internal.domains.lifecycle.setReturnPathHost, {
+		const outcome = await t.mutation(internal.domains.lifecycleReturnPath.setReturnPathHost, {
 			domainId,
 			returnPathHost: 'not a host; rm -rf /',
 			userId: 'user',
@@ -339,7 +339,7 @@ describe('lifecycle.setReturnPathHost — record regeneration + status', () => {
 			await ctx.db.delete(ghost);
 		});
 
-		const outcome = await t.mutation(internal.domains.lifecycle.setReturnPathHost, {
+		const outcome = await t.mutation(internal.domains.lifecycleReturnPath.setReturnPathHost, {
 			domainId: ghost,
 			returnPathHost: 'bounce.acme.com',
 			userId: 'user',
