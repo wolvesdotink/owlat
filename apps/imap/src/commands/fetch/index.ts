@@ -79,13 +79,14 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 				// bounded pages (`FETCH 1:*` on a large folder would otherwise be
 				// one read of every document in it). Rows are indexed by UID so
 				// each resolved {uid, seq} is emitted in true sequence order even
-				// across gaps.
-				const uids = resolved.map((r) => r.uid);
+				// across gaps. `resolved` is ascending by sequence number, and so by
+				// UID, so its ends are the window (no `Math.min(...uids)` spread,
+				// which a whole-folder set could push past the argument limit).
 				const slice = await loadEnvelopes(
 					deps.convex,
 					state.selected!.folderId,
-					Math.min(...uids),
-					Math.max(...uids)
+					resolved[0]!.uid,
+					resolved[resolved.length - 1]!.uid
 				);
 				const byUidMap = new Map<number, FetchEnvelope>();
 				for (const m of slice) byUidMap.set(m.uid, m);

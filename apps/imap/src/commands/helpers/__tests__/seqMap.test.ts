@@ -60,6 +60,44 @@ describe('resolveSet (UID)', () => {
 	});
 });
 
+describe('resolveSet (repeated and overlapping parts)', () => {
+	it('returns each message once, in sequence order, however the parts overlap', () => {
+		const all = [
+			{ uid: 5, seq: 1 },
+			{ uid: 9, seq: 2 },
+			{ uid: 14, seq: 3 },
+		];
+		expect(resolveSet(map, '3,1:2,2,2:3,*', false)).toEqual(all);
+		expect(resolveSet(map, '14,5:9,9,1:6,10:*', true)).toEqual(all);
+	});
+
+	it('ignores position 0 and UIDs outside the folder', () => {
+		expect(resolveSet(map, '0', false)).toEqual([]);
+		expect(resolveSet(map, '0:1', false)).toEqual([{ uid: 5, seq: 1 }]);
+		expect(resolveSet(map, '1:4,6:8,15:99', true)).toEqual([]);
+	});
+
+	it('stays linear for a set of many parts on a large folder', () => {
+		// 60,000 messages with sparse UIDs 1, 3, 5, ...; the sets below are the
+		// size a single maximum-length command line can carry.
+		const large = buildSeqMap(Array.from({ length: 60_000 }, (_, i) => 2 * i + 1));
+		const manyWholeRanges = Array.from({ length: 16_000 }, () => '1:*').join(',');
+		const manySingles = Array.from({ length: 32_000 }, () => '1').join(',');
+
+		const start = performance.now();
+		const bySeq = resolveSet(large, manyWholeRanges, false);
+		const byUid = resolveSet(large, manySingles, true);
+		const byUidRanges = resolveSet(large, manyWholeRanges, true);
+		const elapsedMs = performance.now() - start;
+
+		expect(bySeq).toHaveLength(60_000);
+		expect(bySeq[59_999]).toEqual({ uid: 119_999, seq: 60_000 });
+		expect(byUid).toEqual([{ uid: 1, seq: 1 }]);
+		expect(byUidRanges).toHaveLength(60_000);
+		expect(elapsedMs).toBeLessThan(1000);
+	});
+});
+
 describe('seqForUid', () => {
 	it('returns the 1-based position of a present UID', () => {
 		expect([5, 9, 14].map((uid) => seqForUid(map, uid))).toEqual([1, 2, 3]);

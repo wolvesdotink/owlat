@@ -42,12 +42,6 @@ export function maxUid(map: SeqMap): number {
 	return map.uids.length === 0 ? 0 : (map.uids[map.uids.length - 1] ?? 0);
 }
 
-/** UID for a 1-based sequence number, or undefined when out of range. */
-export function uidForSeq(map: SeqMap, seq: number): number | undefined {
-	if (seq < 1 || seq > map.uids.length) return undefined;
-	return map.uids[seq - 1];
-}
-
 /** 1-based sequence number for a UID, or undefined when the UID is absent. */
 export function seqForUid(map: SeqMap, uid: number): number | undefined {
 	// Binary search: `uids` is ascending, and MOVE / STORE look up one UID per
@@ -70,8 +64,50 @@ export interface ResolvedMessage {
 }
 
 /**
+ * Clamp each range to `[floor, ceiling]`, drop the ones left empty, then sort
+ * and merge overlapping or adjacent ranges. The result is ascending and
+ * disjoint, so walking it visits each member once no matter how many
+ * duplicate or overlapping parts the request repeated.
+ */
+function coalesceRanges(
+	ranges: ReadonlyArray<readonly [number, number]>,
+	floor: number,
+	ceiling: number
+): Array<[number, number]> {
+	const clamped: Array<[number, number]> = [];
+	for (const [low, high] of ranges) {
+		const lo = Math.max(low, floor);
+		const hi = Math.min(high, ceiling);
+		if (lo <= hi) clamped.push([lo, hi]);
+	}
+	clamped.sort((a, b) => a[0] - b[0]);
+	const merged: Array<[number, number]> = [];
+	for (const range of clamped) {
+		const last = merged[merged.length - 1];
+		if (last && range[0] <= last[1] + 1) {
+			if (range[1] > last[1]) last[1] = range[1];
+		} else {
+			merged.push(range);
+		}
+	}
+	return merged;
+}
+
+/** Index of the first UID in `uids` (ascending) that is `>= target`. */
+function lowerBound(uids: readonly number[], target: number): number {
+	let lo = 0;
+	let hi = uids.length;
+	while (lo < hi) {
+		const mid = (lo + hi) >>> 1;
+		if ((uids[mid] ?? 0) < target) lo = mid + 1;
+		else hi = mid;
+	}
+	return lo;
+}
+
+/**
  * Resolve a message set to the `{ uid, seq }` rows it addresses, in
- * ascending sequence order.
+ * ascending sequence order, each message at most once.
  *
  * `byUid: false` — the set holds sequence numbers; each position maps to
  * its UID via the seq map, and `*` is the highest sequence number.
@@ -81,42 +117,38 @@ export interface ResolvedMessage {
  *
  * Out-of-range positions / absent UIDs are silently dropped, matching how
  * real servers ignore set members that no longer exist (RFC 3501 §6.4.8).
+ *
+ * The ranges are clamped to the folder and coalesced before the walk, so
+ * the cost is O(n + r log r) for n messages and r set parts: the numbers
+ * in the request and repeated or overlapping parts cannot multiply it.
  */
 export function resolveSet(map: SeqMap, spec: string, byUid: boolean): ResolvedMessage[] {
-	if (map.uids.length === 0) return [];
-	const ranges = parseUidSet(spec, byUid ? maxUid(map) : maxSeq(map));
-	const seen = new Set<number>();
+	const { uids } = map;
+	if (uids.length === 0) return [];
 	const out: ResolvedMessage[] = [];
 
 	if (byUid) {
-		for (let seq = 1; seq <= map.uids.length; seq += 1) {
-			const uid = map.uids[seq - 1] ?? 0;
-			if (ranges.some(([low, high]) => uid >= low && uid <= high)) {
-				if (!seen.has(seq)) {
-					seen.add(seq);
-					out.push({ uid, seq });
-				}
+		const ranges = coalesceRanges(parseUidSet(spec, maxUid(map)), uids[0] ?? 0, maxUid(map));
+		// Ranges are ascending and disjoint, so each binary search starts a
+		// walk that never revisits a UID an earlier range already emitted.
+		for (const [low, high] of ranges) {
+			for (let i = lowerBound(uids, low); i < uids.length; i += 1) {
+				const uid = uids[i] ?? 0;
+				if (uid > high) break;
+				out.push({ uid, seq: i + 1 });
 			}
 		}
 		return out;
 	}
 
+	// Positions above the message count never resolve, so the ceiling clamp
+	// also keeps `FETCH 1:2000000000` from spinning a two-billion-step loop.
+	const ranges = coalesceRanges(parseUidSet(spec, maxSeq(map)), 1, maxSeq(map));
 	for (const [low, high] of ranges) {
-		// Clamp the upper bound to the mailbox size: positions above the
-		// message count can never resolve (`uidForSeq` returns undefined), so
-		// iterating past it only burns CPU. Without this clamp a short,
-		// syntactically-valid command like `FETCH 1:2000000000` would spin a
-		// ~2-billion-iteration in-process loop and block the worker event loop.
-		const hi = Math.min(high, map.uids.length);
-		for (let seq = low; seq <= hi; seq += 1) {
-			const uid = uidForSeq(map, seq);
-			if (uid === undefined) continue;
-			if (seen.has(seq)) continue;
-			seen.add(seq);
-			out.push({ uid, seq });
+		for (let seq = low; seq <= high; seq += 1) {
+			out.push({ uid: uids[seq - 1] ?? 0, seq });
 		}
 	}
-	out.sort((a, b) => a.seq - b.seq);
 	return out;
 }
 
@@ -124,8 +156,9 @@ export function resolveSet(map: SeqMap, spec: string, byUid: boolean): ResolvedM
  * Resolve a message set against the SELECTed folder: load its UIDs, build the
  * seq map and run {@link resolveSet}. Every command that takes a message set
  * (FETCH, STORE, COPY, MOVE, UID EXPUNGE) goes through here, so a set can only
- * ever address messages that exist in the folder and its cost is bounded by
- * the folder's size, not by the numbers in the request.
+ * ever address messages that exist in the folder, and resolving it costs time
+ * linear in the folder size plus the number of set parts (see
+ * {@link resolveSet}).
  */
 export async function resolveSelectedSet(
 	deps: CommandDeps,
