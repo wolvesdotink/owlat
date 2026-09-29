@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { stripHiddenContent } from '../patterns';
+import { detectSmuggling, MAX_SCAN_INPUT_CHARS, stripHiddenContent } from '../patterns';
 
 describe('stripHiddenContent', () => {
 	it('returns empty string for nullish input', () => {
@@ -75,5 +75,68 @@ describe('stripHiddenContent', () => {
 		expect(out).toContain('Body');
 		expect(out).not.toContain('alert(1)');
 		expect(out).not.toContain('.x{}');
+	});
+
+	it('strips a hidden element nested inside a visible styled element', () => {
+		const out = stripHiddenContent(
+			'<div style="color:#333">Visible <span style="display:none">SECRETPAYLOAD</span> end</div>'
+		);
+		expect(out).toContain('Visible');
+		expect(out).toContain('end');
+		expect(out).not.toContain('SECRETPAYLOAD');
+	});
+
+	it('matches closing tags case-insensitively', () => {
+		expect(stripHiddenContent('<SPAN style="display:none">SECRETPAYLOAD</span>ok')).toBe(' ok');
+	});
+
+	it('leaves an unclosed comment and an unclosed hidden element in place', () => {
+		expect(stripHiddenContent('a <!-- b')).toBe('a <!-- b');
+		expect(stripHiddenContent('<span style="display:none">x')).toBe('<span style="display:none">x');
+	});
+
+	it('caps the scanned input length', () => {
+		const out = stripHiddenContent('a'.repeat(MAX_SCAN_INPUT_CHARS + 10));
+		expect(out.length).toBe(MAX_SCAN_INPUT_CHARS);
+	});
+});
+
+describe('scan helpers run in linear time on adversarial input', () => {
+	const FIVE_MB = 5 * 1024 * 1024;
+	const repeatTo = (unit: string) => unit.repeat(Math.ceil(FIVE_MB / unit.length));
+	const BUDGET_MS = 1000;
+
+	const timed = (fn: () => unknown): number => {
+		const start = performance.now();
+		fn();
+		return performance.now() - start;
+	};
+
+	it.each([
+		['unclosed styled tags', '<a style="x">'],
+		['unclosed hidden tags', '<b style="display:none">'],
+		['unclosed script openers', '<script>'],
+		['unclosed style openers', '<style>'],
+		['unclosed comments', '<!--'],
+		['nested tag openers', '<a x '],
+		['colour values without a closing paren', '<i style="color:rgba(1'],
+	])('stripHiddenContent on 5 MB of %s', (_label, unit) => {
+		const input = repeatTo(unit);
+		expect(timed(() => stripHiddenContent(input))).toBeLessThan(BUDGET_MS);
+	});
+
+	it('stripHiddenContent on many distinct unclosed hidden tag names', () => {
+		const parts: string[] = [];
+		for (let i = 0; parts.length * 30 < FIVE_MB; i++) parts.push(`<t${i} style="display:none">`);
+		const input = parts.join('');
+		expect(timed(() => stripHiddenContent(input))).toBeLessThan(BUDGET_MS);
+	});
+
+	it.each([
+		['unclosed instruction comments', '<!-- ignore '],
+		['colour values in one unterminated style attribute', 'color:rgba(1'],
+	])('detectSmuggling on 5 MB of %s', (_label, unit) => {
+		const input = `<p style="${repeatTo(unit)}`;
+		expect(timed(() => detectSmuggling(input))).toBeLessThan(BUDGET_MS);
 	});
 });
