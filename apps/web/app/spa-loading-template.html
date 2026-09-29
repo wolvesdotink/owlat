@@ -8,8 +8,9 @@
   of the FF design tokens exist yet (their stylesheet ships with the bundle).
   The custom properties below therefore MIRROR the Fluid Functionalism SSOT
   (packages/ui/assets/css/{dark,light}.css: --surface-1, --color-brand,
-  --color-text-primary) rather than inventing new values, and resolve the theme
-  via prefers-color-scheme since the color-mode class is not on <html> this early.
+  --color-text-primary) rather than inventing new values. The theme follows
+  prefers-color-scheme, and a .light/.dark class that the color-mode head script
+  put on <html> (a theme picked in the app) wins over it.
 
   The owl glyph is the same path as public/favicon.svg, inlined so it needs no
   network fetch. On the desktop workspace switch the boot plugin paints its own
