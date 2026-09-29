@@ -11,7 +11,8 @@ import { v } from 'convex/values';
 import { postboxMutation } from './_helpers';
 import type { Id, Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
-import { requireMailboxAccess } from './permissions';
+import { createMailboxAccessGate, requireMailboxAccess } from './permissions';
+import type { MutationSessionContext } from '../lib/sessionOrganization';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { adjustFolderUnseen, bumpFolderModseq } from './folders';
 import { clearThreadNeedsReply } from './needsReply';
@@ -37,6 +38,9 @@ type MovedMessage = {
 };
 
 type MoveResult = { ok: true; moved: MovedMessage[] };
+
+/** One handler's memoized mailbox gate (see `createMailboxAccessGate`). */
+type AccessGate = ReturnType<typeof createMailboxAccessGate>;
 
 /** Apply a flag delta to a single message and update folder/thread caches. */
 async function applyFlagDelta(
@@ -77,15 +81,18 @@ async function applyFlagDelta(
  */
 async function applyFlags(
 	ctx: MutationCtx,
+	session: MutationSessionContext,
 	messageIds: Id<'mailMessages'>[],
 	flagDeltas: Partial<Record<Flag, boolean>>
 ): Promise<void> {
 	if (Object.keys(flagDeltas).length === 0) return;
+	// One access decision per mailbox, not per message (plan 1.13).
+	const access = createMailboxAccessGate(ctx, session);
 	const touchedThreads = new Set<Id<'mailThreads'>>();
 	for (const id of messageIds) {
 		const message = await ctx.db.get(id);
 		if (!message) continue;
-		const owned = await requireMailboxAccess(ctx, message.mailboxId);
+		const owned = await access(message.mailboxId);
 		if (!owned.ok) continue;
 		await applyFlagDelta(ctx, message, flagDeltas);
 		touchedThreads.add(message.threadId);
@@ -97,7 +104,8 @@ async function applyFlags(
 
 // ── Public mutations ──────────────────────────────────────────────
 
-// authz: access enforced by applyFlags (requireMailboxAccess per message).
+// authz: access enforced by applyFlags (the mailbox gate per message, decided
+// once per mailbox by createMailboxAccessGate).
 export const setFlags = postboxMutation({
 	args: {
 		messageIds: v.array(v.id('mailMessages')),
@@ -105,21 +113,21 @@ export const setFlags = postboxMutation({
 		flagged: v.optional(v.boolean()),
 		answered: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		const flagDeltas: Partial<Record<Flag, boolean>> = {};
 		if (args.seen !== undefined) flagDeltas.seen = args.seen;
 		if (args.flagged !== undefined) flagDeltas.flagged = args.flagged;
 		if (args.answered !== undefined) flagDeltas.answered = args.answered;
-		await applyFlags(ctx, args.messageIds, flagDeltas);
+		await applyFlags(ctx, session, args.messageIds, flagDeltas);
 	},
 });
 
 export const markThreadRead = postboxMutation({
 	args: { threadId: v.id('mailThreads'), seen: v.boolean() },
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		const thread = await ctx.db.get(args.threadId);
 		if (!thread) return;
-		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
+		const owned = await requireMailboxAccess(ctx, thread.mailboxId, 'member', session);
 		if (!owned.ok) return;
 
 		const messages = await ctx.db
@@ -233,13 +241,16 @@ export async function moveMessagesToFolder(
 /**
  * `moveMessagesToFolder` behind the caller's mailbox-access check: the body of
  * the public `move`, and what the folder-routing wrappers below call directly.
+ * Takes the handler's access gate so a wrapper that already checked the same
+ * mailbox does not pay for the check twice.
  */
 async function moveWithAccess(
 	ctx: MutationCtx,
+	access: AccessGate,
 	args: { messageIds: Id<'mailMessages'>[]; targetFolderId: Id<'mailFolders'> }
 ): Promise<MoveResult> {
 	const target = await getOrThrow(ctx, args.targetFolderId, 'Target folder');
-	const owned = await requireMailboxAccess(ctx, target.mailboxId);
+	const owned = await access(target.mailboxId);
 	if (!owned.ok) throwForbidden('Folder not accessible');
 	return moveMessagesToFolder(ctx, args);
 }
@@ -252,7 +263,8 @@ export const move = postboxMutation({
 		messageIds: v.array(v.id('mailMessages')),
 		targetFolderId: v.id('mailFolders'),
 	},
-	handler: async (ctx, args): Promise<MoveResult> => moveWithAccess(ctx, args),
+	handler: async (ctx, args, session): Promise<MoveResult> =>
+		moveWithAccess(ctx, createMailboxAccessGate(ctx, session), args),
 });
 
 /** Archive: move to the Archive system folder. */
@@ -260,7 +272,7 @@ export const move = postboxMutation({
 // folder's mailbox); this is a thin folder-routing wrapper.
 export const archive = postboxMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
-	handler: async (ctx, args): Promise<MoveResult | undefined> => {
+	handler: async (ctx, args, session): Promise<MoveResult | undefined> => {
 		const firstId = args.messageIds[0];
 		if (!firstId) return undefined;
 		const first = await ctx.db.get(firstId);
@@ -272,7 +284,7 @@ export const archive = postboxMutation({
 			)
 			.first();
 		if (!archive) throwInvalidState('Archive folder missing');
-		const result = await moveWithAccess(ctx, {
+		const result = await moveWithAccess(ctx, createMailboxAccessGate(ctx, session), {
 			messageIds: args.messageIds,
 			targetFolderId: archive._id,
 		});
@@ -290,7 +302,7 @@ export const archive = postboxMutation({
 // folder's mailbox); this is a thin folder-routing wrapper.
 export const trash = postboxMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
-	handler: async (ctx, args): Promise<MoveResult | undefined> => {
+	handler: async (ctx, args, session): Promise<MoveResult | undefined> => {
 		const firstId = args.messageIds[0];
 		if (!firstId) return undefined;
 		const first = await ctx.db.get(firstId);
@@ -302,7 +314,7 @@ export const trash = postboxMutation({
 			)
 			.first();
 		if (!trash) throwInvalidState('Trash folder missing');
-		const result = await moveWithAccess(ctx, {
+		const result = await moveWithAccess(ctx, createMailboxAccessGate(ctx, session), {
 			messageIds: args.messageIds,
 			targetFolderId: trash._id,
 		});
@@ -313,14 +325,17 @@ export const trash = postboxMutation({
 
 /** Permanently delete from storage (invoked manually from the Trash folder via
  * the bulk-actions bar's "Delete forever"). Frees the raw .eml blob too. */
+// authz: the mailbox gate per message (createMailboxAccessGate, decided once per
+// mailbox); messages in a mailbox the caller cannot access are skipped.
 export const purge = postboxMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
-	handler: async (ctx, args): Promise<{ ok: true }> => {
+	handler: async (ctx, args, session): Promise<{ ok: true }> => {
+		const access = createMailboxAccessGate(ctx, session);
 		const touchedThreads = new Set<Id<'mailThreads'>>();
 		for (const id of args.messageIds) {
 			const message = await ctx.db.get(id);
 			if (!message) continue;
-			const owned = await requireMailboxAccess(ctx, message.mailboxId);
+			const owned = await access(message.mailboxId);
 			if (!owned.ok) continue;
 			touchedThreads.add(await purgeMessageRow(ctx, message));
 		}
@@ -332,26 +347,29 @@ export const purge = postboxMutation({
 });
 
 /** Mark a single message read/unread (convenience wrapper). */
-// authz: access enforced by applyFlags (requireMailboxAccess per message).
+// authz: access enforced by applyFlags (the mailbox gate per message, decided
+// once per mailbox by createMailboxAccessGate).
 export const markRead = postboxMutation({
 	args: { messageId: v.id('mailMessages'), seen: v.boolean() },
-	handler: async (ctx, args): Promise<void> => {
-		await applyFlags(ctx, [args.messageId], { seen: args.seen });
+	handler: async (ctx, args, session): Promise<void> => {
+		await applyFlags(ctx, session, [args.messageId], { seen: args.seen });
 	},
 });
 
 /** Star/unstar a single message. */
-// authz: access enforced by applyFlags (requireMailboxAccess per message).
+// authz: access enforced by applyFlags (the mailbox gate per message, decided
+// once per mailbox by createMailboxAccessGate).
 export const setStar = postboxMutation({
 	args: { messageId: v.id('mailMessages'), starred: v.boolean() },
-	handler: async (ctx, args): Promise<void> => {
-		await applyFlags(ctx, [args.messageId], { flagged: args.starred });
+	handler: async (ctx, args, session): Promise<void> => {
+		await applyFlags(ctx, session, [args.messageId], { flagged: args.starred });
 	},
 });
 
 /** Move messages to a system folder and stamp a spam verdict. */
 async function moveToRoleWithVerdict(
 	ctx: MutationCtx,
+	session: MutationSessionContext,
 	messageIds: Id<'mailMessages'>[],
 	role: 'spam' | 'inbox',
 	verdict: 'spam' | 'ham'
@@ -360,7 +378,10 @@ async function moveToRoleWithVerdict(
 	if (!firstId) return { ok: true, moved: [] };
 	const first = await ctx.db.get(firstId);
 	if (!first) return { ok: true, moved: [] };
-	const owned = await requireMailboxAccess(ctx, first.mailboxId);
+	// One decision per mailbox across the first-message check, the per-message
+	// loop and the move's target check (plan 1.13).
+	const access = createMailboxAccessGate(ctx, session);
+	const owned = await access(first.mailboxId);
 	if (!owned.ok) throwForbidden('Messages not accessible');
 	const folder = await ctx.db
 		.query('mailFolders')
@@ -370,30 +391,32 @@ async function moveToRoleWithVerdict(
 	for (const id of messageIds) {
 		const m = await ctx.db.get(id);
 		if (!m) continue;
-		const o = await requireMailboxAccess(ctx, m.mailboxId);
+		const o = await access(m.mailboxId);
 		if (!o.ok) continue;
 		await ctx.db.patch(id, { spamVerdict: verdict, updatedAt: Date.now() });
 	}
-	return await moveWithAccess(ctx, { messageIds, targetFolderId: folder._id });
+	return await moveWithAccess(ctx, access, { messageIds, targetFolderId: folder._id });
 }
 
 /** Report as spam: move to Spam and record the verdict. */
-// authz: moveToRoleWithVerdict enforces ownership (requireMailboxAccess per message).
+// authz: moveToRoleWithVerdict enforces ownership (the mailbox gate per message,
+// decided once per mailbox by createMailboxAccessGate).
 export const reportSpam = postboxMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
-	handler: async (ctx, args): Promise<MoveResult> => {
-		const result = await moveToRoleWithVerdict(ctx, args.messageIds, 'spam', 'spam');
+	handler: async (ctx, args, session): Promise<MoveResult> => {
+		const result = await moveToRoleWithVerdict(ctx, session, args.messageIds, 'spam', 'spam');
 		await recordTriageVerb(ctx, args.messageIds, 'spam');
 		return result;
 	},
 });
 
 /** Not spam: rescue to the Inbox and clear the spam verdict. */
-// authz: moveToRoleWithVerdict enforces ownership (requireMailboxAccess per message).
+// authz: moveToRoleWithVerdict enforces ownership (the mailbox gate per message,
+// decided once per mailbox by createMailboxAccessGate).
 export const notSpam = postboxMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
-	handler: async (ctx, args): Promise<MoveResult> => {
-		return await moveToRoleWithVerdict(ctx, args.messageIds, 'inbox', 'ham');
+	handler: async (ctx, args, session): Promise<MoveResult> => {
+		return await moveToRoleWithVerdict(ctx, session, args.messageIds, 'inbox', 'ham');
 	},
 });
 
@@ -402,12 +425,15 @@ export const notSpam = postboxMutation({
  * this address to Spam (or deletes it if there's no Spam folder), and move the
  * current message to Spam.
  */
+// authz: the mailbox gate on the message's mailbox (createMailboxAccessGate), shared
+// with the move to Spam.
 export const blockSender = postboxMutation({
 	args: { messageId: v.id('mailMessages') },
-	handler: async (ctx, args): Promise<void> => {
+	handler: async (ctx, args, session): Promise<void> => {
 		const message = await ctx.db.get(args.messageId);
 		if (!message) return;
-		const owned = await requireMailboxAccess(ctx, message.mailboxId);
+		const access = createMailboxAccessGate(ctx, session);
+		const owned = await access(message.mailboxId);
 		if (!owned.ok) throwForbidden('Message not accessible');
 
 		const spam = await ctx.db
@@ -429,7 +455,7 @@ export const blockSender = postboxMutation({
 			updatedAt: now,
 		});
 		if (spam) {
-			await moveWithAccess(ctx, { messageIds: [args.messageId], targetFolderId: spam._id });
+			await moveWithAccess(ctx, access, { messageIds: [args.messageId], targetFolderId: spam._id });
 		}
 	},
 });
