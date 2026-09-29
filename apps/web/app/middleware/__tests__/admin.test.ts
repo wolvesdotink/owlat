@@ -1,8 +1,9 @@
 /**
  * `admin` route guard, run through the shipped composable chain
- * (`useAuth` → `useOrganizationContext` → `useOrganization` → `usePermissions`)
- * over a fake session. The member's role comes from the members list the
- * guard has to wait for, the way it does in the browser.
+ * (`useAuth` → `useOrganizationContext` → `useActiveMemberRole` /
+ * `useOrganization` → `usePermissions`) over a fake session. The member's role
+ * comes from the one `getActiveMember` lookup the guard has to wait for, the way
+ * it does in the browser; the member and invitation lists play no part.
  *
  * Regression pinned here: 34 admin-gated pages 500'd when `useOrganization()`
  * gained an unguarded `useI18n()` — invisible to a suite that stubbed
@@ -15,12 +16,16 @@ import { getCurrentInstance } from 'vue';
 import type { RouteLocationNormalized } from 'vue-router';
 import {
 	authClientMock,
+	getActiveMember,
+	listInvitations,
 	listMembers,
 	loadMiddleware,
 	resetSession,
 	route,
 	session,
 	signIn,
+	ORGANIZATION,
+	USER,
 	useActiveOrganization,
 	useListOrganizations,
 	type Redirect,
@@ -65,13 +70,17 @@ describe('admin middleware', () => {
 		});
 	});
 
-	it('waits for the member list before deciding', async () => {
+	it('waits for the role lookup before deciding', async () => {
 		signIn({ role: 'admin' });
-		let releaseMembers!: () => void;
-		listMembers.mockImplementationOnce(
+		let releaseRole!: () => void;
+		getActiveMember.mockImplementationOnce(
 			() =>
 				new Promise((resolve) => {
-					releaseMembers = () => resolve({ data: { members: session.members.value } });
+					releaseRole = () =>
+						resolve({
+							data: { userId: USER.id, role: 'admin', organizationId: ORGANIZATION.id },
+							error: null,
+						});
 				})
 		);
 		const { middleware } = await load();
@@ -84,37 +93,32 @@ describe('admin middleware', () => {
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(settled).toBe(false);
 
-		releaseMembers();
+		releaseRole();
 		await expect(decision).resolves.toBeUndefined();
 	});
 
-	it('waits when the active organization has not arrived yet', async () => {
-		// The bug this pins: BetterAuth resolves the ACTIVE ORGANIZATION in its own
-		// request, separate from the session. Until it lands there is no
-		// organization id, so the members watcher has not fired, so nothing is
-		// "loading" — and the guard used to read that as "loaded, not an admin"
-		// and bounce the owner. Only reproducible when the org arrives LATE, which
-		// is why a suite handing it over synchronously never saw it: in the browser
-		// every cold load of an admin URL (a refresh, a bookmark, a deep link) sent
-		// the instance owner to /dashboard, while in-app navigation worked because
-		// the role was already cached.
+	it('lets an owner through before the full organization request has answered', async () => {
+		// The role used to come from the member list, whose fetch waited on
+		// better-auth's separate full-organization request; a cold admin deep
+		// link then bounced the owner (nothing was "loading" yet) until the guard
+		// learned to wait for that request too. The role is now looked up from the
+		// session's organization id, so the full organization arriving late (or
+		// never) cannot hold the decision up or flip it.
 		signIn({ role: 'owner' });
-		const organizations = session.organizations.value;
 		session.organizations.value = [];
-
 		const { middleware } = await load();
 
-		let settled = false;
-		const decision = middleware(to, to).then((result) => {
-			settled = true;
-			return result;
-		});
+		await expect(middleware(to, to)).resolves.toBeUndefined();
+	});
 
-		await new Promise((resolve) => setTimeout(resolve, 20));
-		expect(settled, 'decided before the role could possibly be known').toBe(false);
+	it('never loads the member or invitation lists to decide', async () => {
+		signIn({ role: 'owner' });
+		const { middleware } = await load();
 
-		session.organizations.value = organizations;
-		await expect(decision).resolves.toBeUndefined();
+		await expect(middleware(to, to)).resolves.toBeUndefined();
+		expect(getActiveMember).toHaveBeenCalledOnce();
+		expect(listMembers).not.toHaveBeenCalled();
+		expect(listInvitations).not.toHaveBeenCalled();
 	});
 
 	it('decides instead of hanging when the organization request fails', async () => {
@@ -138,9 +142,9 @@ describe('admin middleware', () => {
 		expect(decision).toEqual({ redirect: '/dashboard', options: { replace: true } });
 	});
 
-	it('fails closed to Home when the member list cannot be loaded', async () => {
+	it('fails closed to Home when the role cannot be loaded', async () => {
 		signIn({ role: 'owner' });
-		listMembers.mockRejectedValueOnce(new Error('network down'));
+		getActiveMember.mockRejectedValueOnce(new Error('network down'));
 		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 		const { middleware } = await load();
 
@@ -176,6 +180,7 @@ describe('admin middleware', () => {
 			options: undefined,
 		});
 		expect(listMembers).not.toHaveBeenCalled();
+		expect(getActiveMember).not.toHaveBeenCalled();
 		// Constructing the organization stores IS the request: better-auth fetches
 		// the full organization and the organization list as soon as the hooks are
 		// built. A signed-out visitor would collect 401s from both on the way to

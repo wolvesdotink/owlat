@@ -34,6 +34,10 @@ const {
 	cancelInvite,
 	resendInvite,
 } = useOrganization();
+// Nothing loads the roster at boot any more; this page asks for it (the
+// invite modal reads the same invitations). Started in setup so the spinner
+// shows from the first frame instead of an empty roster.
+void fetchMembers();
 
 // Roster search + per-member mailbox status (hosted / external / none).
 const { memberSearch, filteredMembers, isMailboxStatusPending, mailboxMetaFor } =

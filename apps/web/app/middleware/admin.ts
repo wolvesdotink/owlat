@@ -1,7 +1,9 @@
 /**
  * Organization-admin route guard. Pair with `auth` on privileged pages.
  * It waits for the active organization role before deciding, so owners/admins
- * never flash a denial shell and editor deep links fail closed to Home.
+ * never flash a denial shell and editor deep links fail closed to Home. It is
+ * the only guard that waits for the role (`useActiveMemberRole`, one small
+ * lookup); `auth` decides on the session alone.
  */
 export default defineNuxtRouteMiddleware(async () => {
 	if (import.meta.server) return;

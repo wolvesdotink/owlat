@@ -4,6 +4,9 @@
  * `useFeatureFlag`, `useConvexQuery`) and the real `vue-i18n` `useI18n`, over a
  * fake session and a fake Convex client that the test drives.
  *
+ * The role comes from `useActiveMemberRole` (better-auth `getActiveMember`),
+ * which the harness answers from the same fake session.
+ *
  * The stubs stop at the process boundary: the better-auth client
  * (`~/lib/auth-client`, mocked by each suite via {@link authClientMock}), the
  * Convex client (`useNuxtApp().$convex`), Nuxt's `useState` / `useRuntimeConfig`
@@ -115,6 +118,22 @@ export const useListOrganizations = vi.fn(() =>
 export const listMembers = vi.fn(async () => ({ data: { members: session.members.value } }));
 export const listInvitations = vi.fn(async () => ({ data: [] as unknown[] }));
 export const listOrganizations = vi.fn(async () => ({ data: session.organizations.value }));
+/**
+ * better-auth's `/organization/get-active-member`: the caller's member row in
+ * the session's active organization, or an error when they are not in it (the
+ * same condition that makes the full-organization request fail).
+ */
+export const getActiveMember = vi.fn(async () => {
+	const member = session.activeOrganizationError.value
+		? undefined
+		: session.members.value.find((m) => m.userId === session.user.value?.id);
+	return member
+		? {
+				data: { ...member, organizationId: session.activeOrganizationId.value },
+				error: null,
+			}
+		: { data: null, error: session.activeOrganizationError.value ?? { message: 'FORBIDDEN' } };
+});
 export const setActiveOrganization = vi.fn(async (input: { organizationId: string }) => {
 	session.activeOrganizationId.value = input.organizationId;
 	return {
@@ -133,6 +152,7 @@ export function resetSession(): void {
 	listMembers.mockClear();
 	listInvitations.mockClear();
 	listOrganizations.mockClear();
+	getActiveMember.mockClear();
 	setActiveOrganization.mockClear();
 	useActiveOrganization.mockClear();
 	useListOrganizations.mockClear();
@@ -193,7 +213,7 @@ export function authClientMock() {
 		cancelInvitation: vi.fn(),
 		removeMember: vi.fn(),
 		updateMemberRole: vi.fn(),
-		getActiveMember: vi.fn(),
+		getActiveMember,
 		leaveOrganization: vi.fn(),
 	};
 }
@@ -292,6 +312,7 @@ export async function loadMiddleware<T>(
 
 	const [
 		auth,
+		activeMemberRole,
 		organization,
 		organizationContext,
 		permissions,
@@ -300,6 +321,7 @@ export async function loadMiddleware<T>(
 		backendOperation,
 	] = await Promise.all([
 		import('~/composables/useAuth'),
+		import('~/composables/useActiveMemberRole'),
 		import('~/composables/useOrganization'),
 		import('~/composables/useOrganizationContext'),
 		import('~/composables/usePermissions'),
@@ -308,6 +330,7 @@ export async function loadMiddleware<T>(
 		import('~/composables/useBackendOperation'),
 	]);
 	vi.stubGlobal('useAuth', auth.useAuth);
+	vi.stubGlobal('useActiveMemberRole', activeMemberRole.useActiveMemberRole);
 	vi.stubGlobal('useBackendOperation', backendOperation.useBackendOperation);
 	vi.stubGlobal('useOrganization', organization.useOrganization);
 	vi.stubGlobal('useOrganizationContext', organizationContext.useOrganizationContext);
