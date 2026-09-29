@@ -29,6 +29,8 @@ export function sanitizePostboxHtml(html: string): string {
  * preview source of a pasted inline image, and the `target` / `rel` pair the
  * link command sets.
  */
+const sharedSchemesByTag = POSTBOX_SANITIZE_CONFIG.allowedSchemesByTag;
+
 const POSTBOX_COMPOSER_SANITIZE_CONFIG: sanitizeHtml.IOptions = {
 	...POSTBOX_SANITIZE_CONFIG,
 	allowedAttributes: {
@@ -37,7 +39,7 @@ const POSTBOX_COMPOSER_SANITIZE_CONFIG: sanitizeHtml.IOptions = {
 		img: ['src', 'srcset', 'alt', 'width', 'height', 'loading', 'data-inline-cid'],
 	},
 	allowedSchemesByTag: {
-		...POSTBOX_SANITIZE_CONFIG.allowedSchemesByTag,
+		...(typeof sharedSchemesByTag === 'object' ? sharedSchemesByTag : undefined),
 		img: ['http', 'https', 'cid', 'data', 'blob'],
 	},
 };
