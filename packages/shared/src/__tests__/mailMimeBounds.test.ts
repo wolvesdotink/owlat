@@ -76,8 +76,8 @@ describe('mailMime bounds', () => {
 	});
 
 	it('splits a part holding a very long blank-padded line in bounded time', () => {
-		// One ~1 MB line of spaces ending in a non-blank byte, nested 100 levels
-		// deep, so every level rescans the line when looking for its delimiter.
+		// A large part nested 100 levels deep; the split stays within the time
+		// budget at every level.
 		const longLine = `${' '.repeat(1_000_000)}x`;
 		const open: string[] = [];
 		const close: string[] = [];
