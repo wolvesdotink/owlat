@@ -4,27 +4,31 @@
  * Every mutation that changes a message bumps the containing folder's
  * `highestModseq` so IMAP CONDSTORE clients pick up the change. Folder
  * counters (`totalCount`, `unseenCount`) and thread aggregates are kept
- * in sync inline.
+ * in sync inline: flag changes apply deltas (`flagWrites.ts`), moves and
+ * purges re-derive the thread (`threadAggregates.ts`).
  */
 
 import { v } from 'convex/values';
 import { postboxMutation } from './_helpers';
-import type { Id, Doc } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
+import { internalMutation, type MutationCtx } from '../_generated/server';
+import { internal } from '../_generated/api';
 import { requireMailboxAccess } from './permissions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
-import { adjustFolderUnseen, bumpFolderModseq } from './folders';
 import { clearThreadNeedsReply } from './needsReply';
 import { purgeMessageRow } from './messagePurge';
 import { getOrThrow, throwForbidden, throwInvalidState } from '../_utils/errors';
-import { rebuildThreadAggregates } from './threadAggregates';
+import {
+	applyThreadFlagDeltas,
+	rebuildThreadAggregates,
+	type ThreadFlagDeltas,
+} from './threadAggregates';
+import { FolderFlagWrites, markThreadSeenBatch, writeMessageFlags, type Flag } from './flagWrites';
 import { recordTriageVerb } from './triageTally';
 
 // Re-exported so the modules that reach the rebuild through this one keep
 // working unchanged; it lives in ./threadAggregates now (size cap).
 export { rebuildThreadAggregates };
-
-type Flag = 'seen' | 'flagged' | 'answered' | 'deleted';
 
 /**
  * Per-message provenance returned by the move-family mutations (move /
@@ -38,42 +42,13 @@ type MovedMessage = {
 
 type MoveResult = { ok: true; moved: MovedMessage[] };
 
-/** Apply a flag delta to a single message and update folder/thread caches. */
-async function applyFlagDelta(
-	ctx: MutationCtx,
-	message: Doc<'mailMessages'>,
-	flagDeltas: Partial<Record<Flag, boolean>>
-): Promise<void> {
-	const folder = await ctx.db.get(message.folderId);
-	if (!folder) return;
-
-	const wasSeen = message.flagSeen;
-	const patch: Partial<Doc<'mailMessages'>> = { updatedAt: Date.now() };
-
-	if (flagDeltas.seen !== undefined) patch.flagSeen = flagDeltas.seen;
-	if (flagDeltas.flagged !== undefined) patch.flagFlagged = flagDeltas.flagged;
-	if (flagDeltas.answered !== undefined) patch.flagAnswered = flagDeltas.answered;
-	if (flagDeltas.deleted !== undefined) patch.flagDeleted = flagDeltas.deleted;
-
-	const modseq = await bumpFolderModseq(ctx, folder._id);
-	patch.modseq = modseq;
-	await ctx.db.patch(message._id, patch);
-
-	// folder.unseenCount counts unread AND not-snoozed messages (snooze.ts
-	// adjusts it when the snooze flag flips). A snoozed message isn't counted,
-	// so a seen-flip on it must NOT touch the counter.
-	const snoozed = isMessageSnoozed(message, Date.now());
-	if (flagDeltas.seen !== undefined && flagDeltas.seen !== wasSeen && !snoozed) {
-		await adjustFolderUnseen(ctx, folder._id, flagDeltas.seen ? -1 : +1);
-	}
-}
-
 /**
- * Apply a flag delta to every message the caller can access, then rebuild the
- * touched threads. Shared by `setFlags` and its single-message wrappers, which
- * call it directly: they used to go through `ctx.runMutation` with `api`
- * loaded by a dynamic `import()`, and the Convex isolate rejects that at call
- * time ("dynamic module import unsupported").
+ * Apply a flag delta to every message the caller can access, then apply the
+ * touched threads' `unreadCount` / `hasFlagged` deltas (plan 3.3: a star or a
+ * mark-read no longer re-reads the whole thread). Shared by `setFlags` and its
+ * single-message wrappers, which call it directly: they used to go through
+ * `ctx.runMutation` with `api` loaded by a dynamic `import()`, and the Convex
+ * isolate rejects that at call time ("dynamic module import unsupported").
  */
 async function applyFlags(
 	ctx: MutationCtx,
@@ -81,18 +56,17 @@ async function applyFlags(
 	flagDeltas: Partial<Record<Flag, boolean>>
 ): Promise<void> {
 	if (Object.keys(flagDeltas).length === 0) return;
-	const touchedThreads = new Set<Id<'mailThreads'>>();
+	const folders = new FolderFlagWrites(ctx);
+	const threads: ThreadFlagDeltas = new Map();
 	for (const id of messageIds) {
 		const message = await ctx.db.get(id);
 		if (!message) continue;
 		const owned = await requireMailboxAccess(ctx, message.mailboxId);
 		if (!owned.ok) continue;
-		await applyFlagDelta(ctx, message, flagDeltas);
-		touchedThreads.add(message.threadId);
+		await writeMessageFlags(ctx, folders, threads, message, flagDeltas);
 	}
-	for (const t of touchedThreads) {
-		await rebuildThreadAggregates(ctx, t);
-	}
+	await folders.flush();
+	await applyThreadFlagDeltas(ctx, threads);
 }
 
 // ── Public mutations ──────────────────────────────────────────────
@@ -121,16 +95,24 @@ export const markThreadRead = postboxMutation({
 		if (!thread) return;
 		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
 		if (!owned.ok) return;
-
-		const messages = await ctx.db
-			.query('mailMessages')
-			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
-			.collect(); // bounded: one thread's messages
-		for (const m of messages) {
-			if (m.flagSeen === args.seen) continue;
-			await applyFlagDelta(ctx, m, { seen: args.seen });
+		const { more } = await markThreadSeenBatch(ctx, args.threadId, args.seen);
+		if (more) {
+			await ctx.scheduler.runAfter(0, internal.mail.messageActions.continueMarkThreadRead, args);
 		}
-		await rebuildThreadAggregates(ctx, args.threadId);
+	},
+});
+
+/**
+ * The rest of a mark-thread-read too large for one transaction. Scheduled only
+ * by `markThreadRead` above, after its mailbox-access check passed.
+ */
+export const continueMarkThreadRead = internalMutation({
+	args: { threadId: v.id('mailThreads'), seen: v.boolean() },
+	handler: async (ctx, args) => {
+		const { more } = await markThreadSeenBatch(ctx, args.threadId, args.seen);
+		if (more) {
+			await ctx.scheduler.runAfter(0, internal.mail.messageActions.continueMarkThreadRead, args);
+		}
 	},
 });
 

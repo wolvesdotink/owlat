@@ -10,11 +10,7 @@
  */
 
 import { v } from 'convex/values';
-import {
-	openMailMessageInlineBody,
-	openMailMessageRow,
-	openMailMessageRows,
-} from '../../lib/messageBody';
+import { openMailMessageInlineBody, openMailMessageRow } from '../../lib/messageBody';
 import { mintRawEmlUrl, sealedBlobUrl } from '../../lib/sealedBlob';
 import { internalQuery, type ActionCtx, type QueryCtx } from '../../_generated/server';
 import { publicAction, publicQuery } from '../../lib/authedFunctions';
@@ -22,6 +18,7 @@ import type { Id, Doc } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
 import { requireMessageAccess, loadReadableMailbox } from '../permissions';
 import { senderHeuristicsValidator } from '../../lib/validators/senderHeuristics';
+import { loadThreadOutboundDelivery, loadThreadPage } from './threadReads';
 
 /**
  * Load a message the caller is allowed to READ (owner/admin, or the mailbox
@@ -57,31 +54,38 @@ export const getMessage = publicQuery({
 	},
 });
 
-/** Fetch all messages in a thread (oldest first). Used by the conversation view. */
+/**
+ * The messages of a thread, oldest first. Used by the conversation view and by
+ * the AI features that read a whole conversation.
+ *
+ * Without paging arguments it returns the whole thread (its newest
+ * `THREAD_READ_CAP` messages, see `threadReads.ts`) with every body, the shape the reader has
+ * always rendered. Paging (plan 3.3) is opt-in: `pageSize` messages per page,
+ * newest first; only the newest `withBodies` of them come with bodies in
+ * `messages`, the older ones arrive as body-less `envelopes`; `olderCursor`
+ * fetches the next-older page (pass `withBodies: 0` there and load a body on
+ * expand through `getMessageInlineBody`).
+ */
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listThreadMessages = publicQuery({
-	args: { messageId: v.id('mailMessages') },
+	args: {
+		messageId: v.id('mailMessages'),
+		pageSize: v.optional(v.number()),
+		withBodies: v.optional(v.number()),
+		cursor: v.optional(v.union(v.string(), v.null())),
+	},
 	handler: async (ctx, args) => {
 		const seed = await ctx.db.get(args.messageId);
 		if (!seed) return null;
 		const mailbox = await loadReadableMailbox(ctx, seed.mailboxId);
 		if (!mailbox) return null;
-		const siblings = await ctx.db
-			.query('mailMessages')
-			.withIndex('by_thread', (q) => q.eq('threadId', seed.threadId))
-			.collect(); // bounded: one thread's messages
-		siblings.sort((a, b) => a.receivedAt - b.receivedAt);
+		const page = await loadThreadPage(ctx, seed.threadId, args);
 		const labels = await ctx.db
 			.query('mailLabels')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', seed.mailboxId))
 			.collect(); // bounded: one mailbox's labels
-		const labelMap = new Map(labels.map((l) => [l._id, l]));
 		const thread = await ctx.db.get(seed.threadId);
-		return {
-			thread,
-			messages: await openMailMessageRows(siblings),
-			labels: Array.from(labelMap.values()),
-		};
+		return { thread, labels, ...page };
 	},
 });
 
@@ -232,42 +236,11 @@ export const listThreadOutboundDelivery = publicQuery({
 		if (!seed) return null;
 		const mailbox = await loadReadableMailbox(ctx, seed.mailboxId);
 		if (!mailbox) return null;
-		const siblings = await ctx.db
-			.query('mailMessages')
-			.withIndex('by_thread', (q) => q.eq('threadId', seed.threadId))
-			.collect(); // bounded: one thread's messages
-		siblings.sort((a, b) => a.receivedAt - b.receivedAt);
 		// Only SENT rows carry `outbound`; an inbound message contributes nothing,
 		// so a purely inbound thread yields an empty array (never a false "queued").
-		return siblings.flatMap((message) =>
-			message.outbound ? [{ messageId: message._id, ...projectOutbound(message.outbound) }] : []
-		);
+		return await loadThreadOutboundDelivery(ctx, seed.threadId);
 	},
 });
-
-/**
- * Narrow a stored `outbound` object to what the reader may see: every
- * per-recipient field EXCEPT `mtaJobId`, which is dispatch bookkeeping. Written
- * as explicit spreads rather than a destructure so an `undefined` never travels
- * as a present key — the reader must be able to tell "no bounce text" from
- * "empty bounce text".
- */
-function projectOutbound(outbound: NonNullable<Doc<'mailMessages'>['outbound']>) {
-	return {
-		state: outbound.state,
-		recipients: outbound.recipients.map((r) => ({
-			idx: r.idx,
-			address: r.address,
-			state: r.state,
-			...(r.sentAt !== undefined ? { sentAt: r.sentAt } : {}),
-			...(r.acceptedAt !== undefined ? { acceptedAt: r.acceptedAt } : {}),
-			...(r.bouncedAt !== undefined ? { bouncedAt: r.bouncedAt } : {}),
-			...(r.failedAt !== undefined ? { failedAt: r.failedAt } : {}),
-			...(r.bounceMessage !== undefined ? { bounceMessage: r.bounceMessage } : {}),
-			...(r.errorCode !== undefined ? { errorCode: r.errorCode } : {}),
-		})),
-	};
-}
 
 /**
  * Team-inbox collision safety. Given any message in a thread, return the

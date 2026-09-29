@@ -290,6 +290,19 @@ export const mailMessagesTables = {
 		.index('by_folder_and_trashed', ['folderId', 'trashedAt'])
 		.index('by_mailbox_and_snoozed', ['mailboxId', 'snoozedUntil'])
 		.index('by_thread', ['threadId'])
+		// Thread-scoped slices (plan 3.3), so a flag change or a reader page never
+		// reads the whole conversation: `by_thread_and_received` pages the reader
+		// newest-first; `by_thread_and_seen` finds only the rows a mark-thread-read
+		// actually flips; `by_thread_and_flagged` answers "is anything else still
+		// starred" with one `first()` after an unflag; `by_thread_and_outbound_state`
+		// yields only the SENT rows the delivery strip reads (inbound rows index
+		// `outbound.state` as undefined and never match a concrete state).
+		// `by_thread` is a prefix of `by_thread_and_received` and can go once its
+		// readers move over.
+		.index('by_thread_and_received', ['threadId', 'receivedAt'])
+		.index('by_thread_and_seen', ['threadId', 'flagSeen'])
+		.index('by_thread_and_flagged', ['threadId', 'flagFlagged'])
+		.index('by_thread_and_outbound_state', ['threadId', 'outbound.state'])
 		.index('by_rfc822_message_id', ['rfc822MessageId'])
 		.index('by_mailbox_and_thread_root', ['mailboxId', 'threadRootId'])
 		.index('by_mailbox_and_from', ['mailboxId', 'fromAddress'])

@@ -897,6 +897,7 @@ import type * as mail_filterRun from '../mail/filterRun.js';
 import type * as mail_filters from '../mail/filters.js';
 import type * as mail_filtersEval from '../mail/filtersEval.js';
 import type * as mail_filtersImport from '../mail/filtersImport.js';
+import type * as mail_flagWrites from '../mail/flagWrites.js';
 import type * as mail_folders from '../mail/folders.js';
 import type * as mail_followUps from '../mail/followUps.js';
 import type * as mail_forwarding from '../mail/forwarding.js';
@@ -927,6 +928,7 @@ import type * as mail_mailbox_searchCursor from '../mail/mailbox/searchCursor.js
 import type * as mail_mailbox_selection from '../mail/mailbox/selection.js';
 import type * as mail_mailbox_sendingHealth from '../mail/mailbox/sendingHealth.js';
 import type * as mail_mailbox_shared from '../mail/mailbox/shared.js';
+import type * as mail_mailbox_threadReads from '../mail/mailbox/threadReads.js';
 import type * as mail_mailboxActions from '../mail/mailboxActions.js';
 import type * as mail_mailboxMembers from '../mail/mailboxMembers.js';
 import type * as mail_mailboxMove from '../mail/mailboxMove.js';
@@ -2138,6 +2140,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/filters': typeof mail_filters;
 	'mail/filtersEval': typeof mail_filtersEval;
 	'mail/filtersImport': typeof mail_filtersImport;
+	'mail/flagWrites': typeof mail_flagWrites;
 	'mail/folders': typeof mail_folders;
 	'mail/followUps': typeof mail_followUps;
 	'mail/forwarding': typeof mail_forwarding;
@@ -2168,6 +2171,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/mailbox/selection': typeof mail_mailbox_selection;
 	'mail/mailbox/sendingHealth': typeof mail_mailbox_sendingHealth;
 	'mail/mailbox/shared': typeof mail_mailbox_shared;
+	'mail/mailbox/threadReads': typeof mail_mailbox_threadReads;
 	'mail/mailboxActions': typeof mail_mailboxActions;
 	'mail/mailboxMembers': typeof mail_mailboxMembers;
 	'mail/mailboxMove': typeof mail_mailboxMove;
