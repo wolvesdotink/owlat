@@ -7,7 +7,7 @@
 # prefix every shipped updater's compose allowlist accepts (see
 # docker/clamav.Dockerfile). Alpine is multi-arch, so one Dockerfile serves
 # amd64 and arm64.
-FROM alpine:3.22
+FROM alpine:3.24
 
 RUN apk add --no-cache unbound
 
