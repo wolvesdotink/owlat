@@ -17,6 +17,11 @@
  * Gmail's "All Mail" holds every message under every label, and expunging from
  * it deletes the message everywhere, so a move out of it is a COPY (adding the
  * label) and a delete there is never issued.
+ *
+ * Two ops act on a folder rather than a message: renaming a mirrored folder
+ * (its own name only, so it stays where it sits in the provider's tree) and
+ * deleting one — after moving what the provider still holds in it to the
+ * inbox, which is what deleting a folder does in Owlat too.
  */
 
 import type { FolderRole } from './folders.js';
@@ -27,8 +32,9 @@ export type RemoteFolderRef = { role: FolderRole } | { path: string[] } | { remo
 /** One queued write-back, as `listDueRemoteOps` returns it. */
 export interface RemoteOp {
 	opId: string;
-	kind: 'move' | 'flags' | 'delete';
-	rfc822MessageId: string;
+	kind: 'move' | 'flags' | 'delete' | 'renameFolder' | 'deleteFolder';
+	/** Absent on the two folder kinds. */
+	rfc822MessageId?: string;
 	source: RemoteFolderRef;
 	target?: RemoteFolderRef;
 	flags?: { seen?: boolean; flagged?: boolean; answered?: boolean };
@@ -64,6 +70,9 @@ export interface RemoteOpsClient {
 	messageFlagsRemove(range: string, flags: string[], options: { uid: true }): Promise<unknown>;
 	messageDelete(range: string, options: { uid: true }): Promise<unknown>;
 	mailboxCreate(path: string[]): Promise<{ path: string }>;
+	mailboxRename(path: string, newPath: string): Promise<unknown>;
+	mailboxDelete(path: string): Promise<unknown>;
+	status(path: string, query: { messages: true }): Promise<{ messages?: number }>;
 }
 
 /** What folder discovery learned about the account, shared with the replay. */
@@ -72,6 +81,11 @@ export interface RemoteFolderMap {
 	byRole: Map<FolderRole, string>;
 	/** Paths that list every message regardless of label (Gmail's All Mail). */
 	allMail: Set<string>;
+	/**
+	 * Folders this worker renamed, old path → new. An op queued before the
+	 * backend learned the new name still says the old one.
+	 */
+	renamed?: Map<string, string>;
 }
 
 /** Remote folders are created under these names when a server has no such role. */
@@ -110,9 +124,12 @@ export class RemoteOpReplayer {
 	) {}
 
 	async apply(op: RemoteOp): Promise<Exclude<RemoteOpOutcome, 'failed'>> {
-		const id = canonicalMessageId(op.rfc822MessageId);
-		if (!id) return 'not_found';
 		const source = this.existingPath(op.source);
+		if (op.kind === 'renameFolder') return await this.renameFolder(source, op.target);
+		if (op.kind === 'deleteFolder') return await this.deleteFolder(source);
+
+		const id = canonicalMessageId(op.rfc822MessageId ?? '');
+		if (!id) return 'not_found';
 
 		if (op.kind === 'delete') {
 			if (!source || this.folders.allMail.has(source)) return 'not_found';
@@ -140,6 +157,70 @@ export class RemoteOpReplayer {
 			else await this.client.messageMove(uids, target, UID);
 		});
 		return found ? 'done' : 'not_found';
+	}
+
+	private async renameFolder(
+		path: string | null,
+		target: RemoteFolderRef | undefined
+	): Promise<'done' | 'not_found'> {
+		const name = target && 'path' in target ? target.path[0] : undefined;
+		if (!path || !name || this.isSystemFolder(path)) return 'not_found';
+		if ((await this.messageCount(path)) === null) return 'not_found';
+		const delimiter = this.client.namespace?.delimiter || '/';
+		const parent = path.split(delimiter).slice(0, -1);
+		const renamed = [...parent, name].join(delimiter);
+		if (renamed !== path) {
+			await this.client.mailboxRename(path, renamed);
+			this.folders.renamed?.set(path, renamed);
+		}
+		return 'done';
+	}
+
+	private async deleteFolder(path: string | null): Promise<'done' | 'not_found'> {
+		if (!path || this.isSystemFolder(path)) return 'not_found';
+		const count = await this.messageCount(path);
+		if (count === null) return 'not_found';
+		if (count > 0) {
+			const inbox = this.folders.byRole.get('inbox') ?? 'INBOX';
+			const lock = await this.client.getMailboxLock(path);
+			try {
+				await this.client.messageMove('1:*', inbox, UID);
+			} finally {
+				lock.release();
+			}
+		}
+		await this.client.mailboxDelete(path);
+		return 'done';
+	}
+
+	/** A remote name after any renames this worker made to it. */
+	private currentName(name: string): string {
+		const seen = new Set<string>();
+		let current = name;
+		while (this.folders.renamed?.has(current) && !seen.has(current)) {
+			seen.add(current);
+			current = this.folders.renamed.get(current)!;
+		}
+		return current;
+	}
+
+	/** A system folder, or Gmail's All Mail: never renamed or deleted from here. */
+	private isSystemFolder(path: string): boolean {
+		return (
+			path.toUpperCase() === 'INBOX' ||
+			this.folders.allMail.has(path) ||
+			[...this.folders.byRole.values()].includes(path)
+		);
+	}
+
+	/** How many messages a folder holds, or null when the provider has no such folder. */
+	private async messageCount(path: string): Promise<number | null> {
+		try {
+			return (await this.client.status(path, { messages: true })).messages ?? 0;
+		} catch (err) {
+			if (!this.client.usable) throw err;
+			return null;
+		}
 	}
 
 	/**
@@ -204,7 +285,7 @@ export class RemoteOpReplayer {
 
 	/** The remote path of a folder that should already exist, or null. */
 	private existingPath(ref: RemoteFolderRef): string | null {
-		if ('remote' in ref) return ref.remote;
+		if ('remote' in ref) return this.currentName(ref.remote);
 		if ('role' in ref) return this.folders.byRole.get(ref.role) ?? null;
 		return this.created.get(pathKey(ref.path)) ?? this.userFolderPath(ref.path);
 	}
@@ -223,7 +304,7 @@ export class RemoteOpReplayer {
 
 	/** The remote path to move into, creating the folder when the server lacks it. */
 	private async targetPath(ref: RemoteFolderRef): Promise<string> {
-		if ('remote' in ref) return ref.remote;
+		if ('remote' in ref) return this.currentName(ref.remote);
 		if ('role' in ref) {
 			const known = this.folders.byRole.get(ref.role);
 			if (known) return known;

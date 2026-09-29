@@ -338,6 +338,38 @@ describe('reconcile', () => {
 		]);
 	});
 
+	it('follows mail out of a folder the provider renamed', async () => {
+		const imap = new FakeImap({ INBOX: [], Old: ['a@x'], Archive: [], Trash: [], Sent: [] });
+		const h = harness(imap, [row('a@x', 'Old')], {
+			tracked: ['INBOX', 'Old', 'Archive', 'Trash', 'Sent'],
+		});
+		await reconcile(h.deps);
+
+		imap.boxes.set('New', imap.boxes.get('Old')!);
+		imap.boxes.delete('Old');
+		h.deps.tracked = ['INBOX', 'New', 'Archive', 'Trash', 'Sent'];
+		h.applied.length = 0;
+		await reconcile(h.deps);
+
+		expect(h.applied).toEqual([{ messageId: 'a@x', remoteFolders: ['New'] }]);
+	});
+
+	it('calls mail gone when the provider deleted its folder with it', async () => {
+		const imap = new FakeImap({ INBOX: [], Old: ['a@x'], Archive: [], Trash: [], Sent: [] });
+		const h = harness(imap, [row('a@x', 'Old')], {
+			tracked: ['INBOX', 'Old', 'Archive', 'Trash', 'Sent'],
+		});
+		await reconcile(h.deps);
+
+		imap.boxes.delete('Old');
+		h.deps.tracked = ['INBOX', 'Archive', 'Trash', 'Sent'];
+		h.applied.length = 0;
+		const result = await reconcile(h.deps);
+
+		expect(result.completed).toBe(true);
+		expect(h.applied).toEqual([{ messageId: 'a@x', isGone: true }]);
+	});
+
 	it('does not call mail Owlat never saw on the provider deleted, even on a full pass', async () => {
 		const imap = new FakeImap({ INBOX: [], Archive: [], Trash: [], Sent: [] });
 		const h = harness(imap, [row('local-only@x', 'INBOX')], { forceFull: true });

@@ -357,3 +357,125 @@ describe('mirrored provider folders', () => {
 		]);
 	});
 });
+
+describe('mirrored folders renamed or deleted', () => {
+	async function withReceipts(opts: { syncMode?: 'full' | 'incoming' } = {}) {
+		const fixture = await fullSyncMailbox(opts);
+		await fixture.t.mutation(internal.mail.external.delivery.recordFolderMapping, {
+			accountId: fixture.accountId,
+			folderPath: ['Receipts'],
+			remoteName: 'INBOX.Receipts',
+			remoteUidValidity: 7,
+			initialLastSeenUid: 0,
+		});
+		const receipts = await fixture.t.run(async (ctx) =>
+			ctx.db
+				.query('mailFolders')
+				.withIndex('by_mailbox_and_name', (q) =>
+					q.eq('mailboxId', fixture.mailboxId).eq('name', 'Receipts')
+				)
+				.first()
+		);
+		return { ...fixture, receiptsId: receipts!._id };
+	}
+
+	it('renames the provider folder when the Owlat folder is renamed', async () => {
+		const { t, receiptsId } = await withReceipts();
+
+		await t.mutation(api.mail.folders.rename, { folderId: receiptsId, name: 'Bills' });
+
+		expect(await queuedOps(t)).toEqual([
+			{ kind: 'renameFolder', source: { remote: 'INBOX.Receipts' }, target: { path: ['Bills'] } },
+		]);
+	});
+
+	it('deletes the provider folder after the moves its mail made on the way out', async () => {
+		const { t, mailboxId, folders, receiptsId } = await withReceipts();
+		await t.mutation(api.mail.messageActions.move, {
+			messageIds: [await seedMessage(t, mailboxId, { rfc822MessageId: 'r@x.example' })],
+			targetFolderId: receiptsId,
+		});
+		await t.run(async (ctx) => {
+			for (const op of await ctx.db.query('externalMailRemoteOps').collect()) {
+				await ctx.db.delete(op._id);
+			}
+		});
+
+		await t.mutation(internal.mail.folders.relocateAndDeleteFolder, {
+			folderId: receiptsId,
+			inboxId: folders.inbox,
+		});
+
+		expect(await queuedOps(t)).toEqual([
+			{ kind: 'move', source: { remote: 'INBOX.Receipts' }, target: { remote: 'INBOX' } },
+			{ kind: 'deleteFolder', source: { remote: 'INBOX.Receipts' } },
+		]);
+	});
+
+	it('tells the provider nothing about a folder it never had, or in new-mail-only mode', async () => {
+		const { t, mailboxId, receiptsId } = await withReceipts({ syncMode: 'incoming' });
+		await t.mutation(api.mail.folders.rename, { folderId: receiptsId, name: 'Bills' });
+		const localOnly = await t.mutation(api.mail.folders.create, { mailboxId, name: 'Scratch' });
+		await t.mutation(api.mail.folders.rename, { folderId: localOnly, name: 'Notes' });
+
+		expect(await queuedOps(t)).toEqual([]);
+	});
+
+	it('removes the empty local copy of a folder the provider no longer has', async () => {
+		const { t, accountId, receiptsId } = await withReceipts();
+
+		await t.mutation(internal.mail.external.remoteState.forgetRemoteFolders, {
+			accountId,
+			listed: Object.values(REMOTE),
+		});
+
+		expect(await t.run(async (ctx) => ctx.db.get(receiptsId))).toBeNull();
+		const mappings = await t.run(async (ctx) =>
+			ctx.db
+				.query('externalMailFolderSync')
+				.withIndex('by_folder', (q) => q.eq('folderId', receiptsId))
+				.collect()
+		);
+		expect(mappings).toEqual([]);
+	});
+
+	it('keeps a vanished folder that still holds mail', async () => {
+		const { t, mailboxId, accountId, receiptsId } = await withReceipts();
+		const id = await seedMessage(t, mailboxId, { rfc822MessageId: 'r@x.example' });
+		await t.run(async (ctx) => ctx.db.patch(id, { folderId: receiptsId }));
+
+		await t.mutation(internal.mail.external.remoteState.forgetRemoteFolders, {
+			accountId,
+			listed: Object.values(REMOTE),
+		});
+
+		expect(await t.run(async (ctx) => ctx.db.get(receiptsId))).not.toBeNull();
+	});
+
+	it('keeps a folder the provider renamed, which its new name still maps to', async () => {
+		const { t, accountId, receiptsId } = await withReceipts();
+		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
+			accountId,
+			folderPath: ['Receipts'],
+			remoteName: 'INBOX.Bills',
+			remoteUidValidity: 8,
+			initialLastSeenUid: 0,
+		});
+
+		await t.mutation(internal.mail.external.remoteState.forgetRemoteFolders, {
+			accountId,
+			listed: [...Object.values(REMOTE), 'INBOX.Bills'],
+		});
+
+		expect(await t.run(async (ctx) => ctx.db.get(receiptsId))).not.toBeNull();
+		const names = await t.run(async (ctx) =>
+			(
+				await ctx.db
+					.query('externalMailFolderSync')
+					.withIndex('by_folder', (q) => q.eq('folderId', receiptsId))
+					.collect()
+			).map((r) => r.remoteName)
+		);
+		expect(names).toEqual(['INBOX.Bills']);
+	});
+});

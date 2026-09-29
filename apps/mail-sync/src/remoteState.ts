@@ -387,16 +387,29 @@ export interface ReconcileDeps {
 	isStopped(): boolean;
 }
 
-/** One reconcile pass. Returns whether it compared every local message. */
-export async function reconcile(deps: ReconcileDeps): Promise<{ full: boolean }> {
+/**
+ * One reconcile pass. `full`: it compared every local message; `completed`: it
+ * ran to the end rather than stopping for a lost connection.
+ */
+export async function reconcile(
+	deps: ReconcileDeps
+): Promise<{ full: boolean; completed: boolean }> {
 	const changed = new Set<string>();
 	const vanished = new Set<string>();
 	let rebuilt = false;
-	for (const name of deps.views.keys()) {
-		if (!deps.tracked.includes(name)) deps.views.delete(name);
+	// A folder the provider no longer lists was renamed or deleted there: what it
+	// held has left it, and is looked for wherever it went (or reported gone).
+	for (const [name, view] of deps.views) {
+		if (deps.tracked.includes(name)) continue;
+		deps.views.delete(name);
+		for (const cached of view.messages.values()) {
+			if (!cached.messageId) continue;
+			vanished.add(cached.messageId);
+			changed.add(cached.messageId);
+		}
 	}
 	for (const name of deps.tracked) {
-		if (deps.isStopped()) return { full: false };
+		if (deps.isStopped()) return { full: false, completed: false };
 		const view = deps.views.get(name) ?? new FolderView();
 		deps.views.set(name, view);
 		const result = await refreshFolder(deps.client, name, view);
@@ -442,7 +455,7 @@ export async function reconcile(deps: ReconcileDeps): Promise<{ full: boolean }>
 	if (full) {
 		let cursor: string | null = null;
 		for (;;) {
-			if (deps.isStopped()) return { full: false };
+			if (deps.isStopped()) return { full: false, completed: false };
 			const page = await deps.listLocal(cursor);
 			await settle(page.page);
 			if (page.isDone) break;
@@ -451,9 +464,9 @@ export async function reconcile(deps: ReconcileDeps): Promise<{ full: boolean }>
 		if (!deps.isAligned) await deps.markAligned();
 	} else {
 		for (const ids of chunks([...changed], LOOKUP_CHUNK)) {
-			if (deps.isStopped()) return { full: false };
+			if (deps.isStopped()) return { full: false, completed: false };
 			await settle(await deps.lookupLocal(ids));
 		}
 	}
-	return { full };
+	return { full, completed: true };
 }

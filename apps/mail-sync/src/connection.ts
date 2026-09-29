@@ -118,6 +118,10 @@ export class AccountConnection {
 	private backoffMs = INITIAL_BACKOFF_MS;
 	private folderTimer: ReturnType<typeof setInterval> | null = null;
 	private folders: SyncedFolder[] = [];
+	// Every path the provider's last LIST returned, mirrored or not.
+	private listedPaths: string[] = [];
+	// Folders the write-back renamed (remoteOps.ts), kept across drains.
+	private readonly renamedFolders = new Map<string, string>();
 	// Gmail-style "All Mail" paths: the write-back copies out of them instead of moving.
 	private allMailPaths = new Set<string>();
 	// ── Sync cycles (write-back + remote change sync) — one at a time ──
@@ -370,7 +374,7 @@ export class AccountConnection {
 			.sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role))
 			.map((f) => f.remoteName);
 		const allMail = this.folders.find((f) => this.allMailPaths.has(f.remoteName))?.remoteName;
-		const { full } = await reconcile({
+		const { full, completed } = await reconcile({
 			client,
 			tracked,
 			allMail: allMail ?? null,
@@ -394,6 +398,14 @@ export class AccountConnection {
 			isStopped: () => this.stopped || this.client !== client,
 		});
 		if (full) this.lastFullReconcileAt = Date.now();
+		// Only after a completed pass: by then the mail of a folder the provider
+		// renamed or deleted has followed it, and its empty local copy can go.
+		if (completed) {
+			await this.convex.mutation(fn.forgetRemoteFolders, {
+				accountId,
+				listed: [...new Set([...this.listedPaths, ...this.folders.map((f) => f.remoteName)])],
+			});
+		}
 	}
 
 	private async loadCursors(): Promise<void> {
@@ -418,6 +430,7 @@ export class AccountConnection {
 	 */
 	private async discoverFolders(client: ImapFlow, mode: 'full' | 'incoming'): Promise<void> {
 		const list = await client.list();
+		this.listedPaths = list.map((e) => e.path);
 		const seen = new Set<FolderRole>();
 		const mapped: SyncedFolder[] = [];
 		this.allMailPaths = new Set(
@@ -641,7 +654,11 @@ export class AccountConnection {
 				settle: async (results) => {
 					await this.convex.mutation(fn.settleRemoteOps, { results });
 				},
-				replayer: new RemoteOpReplayer(client, { byRole, allMail: this.allMailPaths }),
+				replayer: new RemoteOpReplayer(client, {
+					byRole,
+					allMail: this.allMailPaths,
+					renamed: this.renamedFolders,
+				}),
 				client,
 				isStopped: () => this.stopped || this.client !== client,
 				onError: (op, err) =>

@@ -311,3 +311,46 @@ export const markFullSyncAligned = internalMutation({
 		await ctx.db.patch(account._id, { fullSyncAlignedAt: Date.now(), updatedAt: Date.now() });
 	},
 });
+
+/**
+ * The provider's folder list after a completed two-way cycle. A mapped folder
+ * the provider no longer lists was renamed or deleted there: its mapping goes,
+ * and a user folder left with no mail, no subfolders and no other mapping is
+ * deleted here too. Its mail has already followed by then — the reconcile that
+ * runs first moves it to the renamed folder, or to Trash when it went with the
+ * folder — so a folder still holding mail (Owlat-only mail, say) is kept.
+ */
+export const forgetRemoteFolders = internalMutation({
+	args: { accountId: v.id('externalMailAccounts'), listed: v.array(v.string()) },
+	handler: async (ctx, args) => {
+		const account = await liveFullSyncAccount(ctx, args.accountId);
+		if (!account) return { forgotten: 0 };
+		const listed = new Set(args.listed);
+		const rows = await ctx.db
+			.query('externalMailFolderSync')
+			.withIndex('by_account', (q) => q.eq('accountId', account._id))
+			.collect(); // bounded: one row per synced folder of one account
+		const gone = rows.filter((r) => !listed.has(r.remoteName));
+		if (gone.length === 0) return { forgotten: 0 };
+		const stillMapped = new Set(
+			rows.filter((r) => listed.has(r.remoteName)).map((r) => r.folderId)
+		);
+		const folders = await ctx.db
+			.query('mailFolders')
+			.withIndex('by_mailbox', (q) => q.eq('mailboxId', account.mailboxId))
+			.collect(); // bounded: one mailbox's folders
+		for (const row of gone) {
+			await ctx.db.delete(row._id);
+			if (stillMapped.has(row.folderId)) continue;
+			const folder = folders.find((f) => f._id === row.folderId);
+			if (!folder || folder.role) continue;
+			if (folders.some((f) => f.parentId === folder._id)) continue;
+			const holdsMail = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_folder_and_uid', (q) => q.eq('folderId', folder._id))
+				.first();
+			if (!holdsMail) await ctx.db.delete(folder._id);
+		}
+		return { forgotten: gone.length };
+	},
+});

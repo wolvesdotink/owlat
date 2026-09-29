@@ -51,6 +51,7 @@ class FakeImap implements RemoteOpsClient {
 	}
 
 	private take(range: string): FakeMessage[] {
+		if (range === '1:*') return [...this.box()];
 		const uids = new Set(range.split(',').map(Number));
 		return this.box().filter((m) => uids.has(m.uid));
 	}
@@ -114,6 +115,25 @@ class FakeImap implements RemoteOpsClient {
 			this.boxes.set(path, []);
 		}
 		return { path };
+	}
+
+	async mailboxRename(path: string, newPath: string) {
+		const box = this.boxes.get(path);
+		if (!box) throw new Error(`NO [NONEXISTENT] ${path}`);
+		this.log.push(`RENAME ${path} -> ${newPath}`);
+		this.boxes.delete(path);
+		this.boxes.set(newPath, box);
+	}
+
+	async mailboxDelete(path: string) {
+		this.log.push(`DELETE-FOLDER ${path}`);
+		this.boxes.delete(path);
+	}
+
+	async status(path: string) {
+		const box = this.boxes.get(path);
+		if (!box) throw new Error(`NO [NONEXISTENT] ${path}`);
+		return { messages: box.length };
 	}
 
 	ids(path: string): string[] {
@@ -348,6 +368,66 @@ describe('RemoteOpReplayer', () => {
 		);
 
 		expect(gmail.log).toEqual([]);
+	});
+});
+
+describe('RemoteOpReplayer — folders', () => {
+	it('renames a mirrored folder in place and sends later ops after it', async () => {
+		const imap = new FakeImap({ INBOX: [[1, '<a@x>']], 'Projects/Owlat': [] });
+		const folders = { ...folderMap({ inbox: 'INBOX' }), renamed: new Map<string, string>() };
+		const replayer = new RemoteOpReplayer(imap, folders);
+
+		const outcome = await replayer.apply(
+			op({
+				kind: 'renameFolder',
+				source: { remote: 'Projects/Owlat' },
+				target: { path: ['Clients'] },
+			})
+		);
+		// Queued before the backend learned the new name.
+		await replayer.apply(
+			op({
+				kind: 'move',
+				rfc822MessageId: 'a@x',
+				source: { role: 'inbox' },
+				target: { remote: 'Projects/Owlat' },
+			})
+		);
+
+		expect(outcome).toBe('done');
+		expect(imap.ids('Projects/Clients')).toEqual(['<a@x>']);
+		expect(imap.boxes.has('Projects/Owlat')).toBe(false);
+	});
+
+	it('moves what the provider still holds to the inbox before deleting a folder', async () => {
+		const imap = new FakeImap({ INBOX: [], Receipts: [[5, '<r@x>']] });
+		const replayer = new RemoteOpReplayer(imap, folderMap({ inbox: 'INBOX' }));
+
+		const outcome = await replayer.apply(
+			op({ kind: 'deleteFolder', source: { remote: 'Receipts' } })
+		);
+
+		expect(outcome).toBe('done');
+		expect(imap.log).toEqual(['MOVE Receipts 1:* -> INBOX', 'DELETE-FOLDER Receipts']);
+		expect(imap.ids('INBOX')).toEqual(['<r@x>']);
+	});
+
+	it('never renames or deletes a system folder, and skips one the provider lacks', async () => {
+		const imap = new FakeImap({ INBOX: [], Archive: [] });
+		const replayer = new RemoteOpReplayer(imap, folderMap({ inbox: 'INBOX', archive: 'Archive' }));
+
+		expect(await replayer.apply(op({ kind: 'deleteFolder', source: { remote: 'Archive' } }))).toBe(
+			'not_found'
+		);
+		expect(
+			await replayer.apply(
+				op({ kind: 'renameFolder', source: { remote: 'INBOX' }, target: { path: ['X'] } })
+			)
+		).toBe('not_found');
+		expect(await replayer.apply(op({ kind: 'deleteFolder', source: { remote: 'Gone' } }))).toBe(
+			'not_found'
+		);
+		expect(imap.log).toEqual([]);
 	});
 });
 

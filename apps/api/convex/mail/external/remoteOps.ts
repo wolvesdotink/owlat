@@ -191,15 +191,55 @@ export async function nudgeWorker(
 }
 
 /**
+ * Rename or delete, at the provider, a local folder that mirrors one of its
+ * folders. A rename changes only the folder's own name, so it stays where it
+ * sits in the provider's tree. A delete must be recorded BEFORE the folder's
+ * mapping rows go (they name the remote folder); the worker moves whatever the
+ * provider still holds in it to the inbox first — the same thing deleting a
+ * folder does here — so no mail Owlat never imported is lost with it. A folder
+ * the provider never had records nothing.
+ */
+export async function recordRemoteFolderChange(
+	ctx: MutationCtx,
+	folderId: Id<'mailFolders'>,
+	change: { kind: 'rename'; name: string } | { kind: 'delete' }
+): Promise<void> {
+	const folder = await ctx.db.get(folderId);
+	if (!folder || folder.role) return;
+	const mappings = await ctx.db
+		.query('externalMailFolderSync')
+		.withIndex('by_folder', (q) => q.eq('folderId', folderId))
+		.collect(); // bounded: a folder maps to one remote folder per account
+	for (const mapping of mappings) {
+		const account = await ctx.db.get(mapping.accountId);
+		if (!account || account.status === 'disconnected' || account.purpose === 'seed') continue;
+		if (!writesBack(account)) continue;
+		await enqueueRemoteOp(
+			ctx,
+			account._id,
+			change.kind === 'rename'
+				? {
+						kind: 'renameFolder',
+						source: { remote: mapping.remoteName },
+						target: { path: [change.name] },
+					}
+				: { kind: 'deleteFolder', source: { remote: mapping.remoteName } }
+		);
+		await nudgeWorker(ctx, account._id);
+	}
+}
+
+/**
  * Queue one write-back directly, for the reconcile that decides the provider is
- * the side to change (`remoteState.ts`). The caller nudges the worker once.
+ * the side to change (`remoteState.ts`) and for folder changes. The caller
+ * nudges the worker once.
  */
 export async function enqueueRemoteOp(
 	ctx: MutationCtx,
 	accountId: Id<'externalMailAccounts'>,
 	op: {
-		kind: 'move' | 'flags';
-		rfc822MessageId: string;
+		kind: Doc<'externalMailRemoteOps'>['kind'];
+		rfc822MessageId?: string;
 		source: RemoteFolderRef;
 		target?: RemoteFolderRef;
 		flags?: RemoteFlagChanges;

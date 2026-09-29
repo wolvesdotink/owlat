@@ -281,11 +281,20 @@ export const mailAccountsTables = {
 	// message turns out not to be on the server, or when its retries run out.
 	externalMailRemoteOps: defineTable({
 		accountId: v.id('externalMailAccounts'),
-		kind: v.union(v.literal('move'), v.literal('flags'), v.literal('delete')),
-		// Canonical Message-ID (no angle brackets): how the worker finds the message.
-		rfc822MessageId: v.string(),
-		source: remoteFolderRefValidator, // where the message is before the op
-		target: v.optional(remoteFolderRefValidator), // 'move' only
+		kind: v.union(
+			v.literal('move'),
+			v.literal('flags'),
+			v.literal('delete'),
+			// A mirrored folder renamed or deleted in Owlat.
+			v.literal('renameFolder'),
+			v.literal('deleteFolder')
+		),
+		// Canonical Message-ID (no angle brackets): how the worker finds the
+		// message. Absent on the two folder kinds.
+		rfc822MessageId: v.optional(v.string()),
+		source: remoteFolderRefValidator, // the message's folder, or the folder itself
+		// 'move': where to. 'renameFolder': `{ path: [newName] }`, the new leaf name.
+		target: v.optional(remoteFolderRefValidator),
 		flags: v.optional(remoteFlagChangesValidator), // 'flags' only
 		attempts: v.number(),
 		nextAttemptAt: v.number(), // the enqueue time until a failed attempt pushes it back

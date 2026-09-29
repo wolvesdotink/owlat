@@ -372,4 +372,9 @@ export const fn = {
 	markFullSyncAligned: makeFunctionReference<'mutation', { accountId: string }, null>(
 		'mail/external/remoteState:markFullSyncAligned'
 	),
+	forgetRemoteFolders: makeFunctionReference<
+		'mutation',
+		{ accountId: string; listed: string[] },
+		{ forgotten: number }
+	>('mail/external/remoteState:forgetRemoteFolders'),
 };
