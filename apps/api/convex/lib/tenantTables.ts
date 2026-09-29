@@ -223,6 +223,8 @@ export const TENANT_TABLES = [
 	'mailArchiveImports',
 	'mailboxMoves',
 	'externalMailFolderSync',
+	// Pending local → remote write-backs (moves, flags, deletes) for an account.
+	'externalMailRemoteOps',
 	'externalMailAccounts',
 	// In-flight Google sign-in handshakes for connecting an external mailbox.
 	// User- and org-attributed, short-lived, and meaningless once the org is gone

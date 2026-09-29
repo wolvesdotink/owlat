@@ -202,6 +202,18 @@ export const _purgeChunk = internalMutation({
 			return;
 		}
 
+		// Write-backs the worker never got to. A bulk action queues one per
+		// message, so they drain a page at a time like the threads.
+		const remoteOps = await ctx.db
+			.query('externalMailRemoteOps')
+			.withIndex('by_account_and_next_attempt', (q) => q.eq('accountId', args.accountId))
+			.take(PURGE_CHUNK);
+		for (const op of remoteOps) await ctx.db.delete(op._id);
+		if (remoteOps.length === PURGE_CHUNK) {
+			await ctx.scheduler.runAfter(0, internal.mail.external.accountTeardown._purgeChunk, args);
+			return;
+		}
+
 		const drafts = await ctx.db
 			.query('mailDrafts')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))

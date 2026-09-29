@@ -35,6 +35,17 @@ export class AccountManager {
 		this.connections.clear();
 	}
 
+	/**
+	 * The backend queued write-backs for this account. False when the worker
+	 * holds no connection for it; the ops wait for the next connect.
+	 */
+	requestRemoteOps(accountId: string): boolean {
+		const conn = this.connections.get(accountId);
+		if (!conn) return false;
+		conn.requestRemoteOps();
+		return true;
+	}
+
 	private async reconcile(): Promise<void> {
 		let accounts: ConnectableAccount[];
 		try {

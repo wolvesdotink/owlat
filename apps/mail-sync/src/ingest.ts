@@ -94,7 +94,8 @@ export function syntheticMessageId(params: {
 
 export interface IngestParams {
 	accountId: string;
-	folderRole: FolderRole;
+	/** Absent for a mirrored user folder (full sync), which the server finds by `remoteName`. */
+	folderRole?: FolderRole;
 	remoteName: string;
 	remoteUid: number;
 	remoteUidValidity: number;

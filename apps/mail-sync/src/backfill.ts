@@ -53,7 +53,7 @@ export interface BackfillFetchedMessage {
 
 export interface BackfillFolderTarget {
 	remoteName: string;
-	role: FolderRole;
+	role: FolderRole | undefined;
 	/** Folder high-water UID (uidNext - 1) — the descending cursor's ceiling. */
 	ceilingUid: number;
 	/** Actual message count (mailbox.exists) — the progress denominator; IMAP
@@ -81,7 +81,7 @@ export interface BackfillFolderDeps {
 	 * mailbox either — a skip the caller must not read as an import. */
 	ingest(
 		remoteName: string,
-		role: FolderRole,
+		role: FolderRole | undefined,
 		uid: number,
 		raw: Buffer,
 		flags: Set<string>

@@ -47,6 +47,7 @@ import { splitBodyForStorage } from '../deliveryPipeline/ingest';
 import { base64ToBytes } from '../../lib/bytes';
 import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
 import { folderRoleValidator } from '../../lib/validators/mail';
+import { ensureMirroredFolder, resolveIngestFolder } from './mirroredFolders';
 
 /**
  * What one ingest did, so the worker can tell the three apart.
@@ -72,7 +73,8 @@ export type ExternalIngestOutcome =
 export const ingestExternalMessage = internalMutation({
 	args: {
 		accountId: v.id('externalMailAccounts'),
-		folderRole: folderRoleValidator,
+		// Absent for a mirrored user folder, which is found by `remoteName`.
+		folderRole: v.optional(folderRoleValidator),
 		remoteName: v.string(),
 		remoteUid: v.number(),
 		remoteUidValidity: v.number(),
@@ -119,12 +121,12 @@ export const ingestExternalMessage = internalMutation({
 			return { skipped: 'duplicate' };
 		}
 
-		const folder = await ctx.db
-			.query('mailFolders')
-			.withIndex('by_mailbox_and_role', (q) =>
-				q.eq('mailboxId', mailbox._id).eq('role', args.folderRole)
-			)
-			.first();
+		const folder = await resolveIngestFolder(ctx, {
+			accountId: args.accountId,
+			mailboxId: mailbox._id,
+			folderRole: args.folderRole,
+			remoteName: args.remoteName,
+		});
 		if (!folder) {
 			await dropBlob();
 			return { skipped: 'no_target' };
@@ -302,7 +304,10 @@ export const recordForwardIngestFailure = internalMutation({
 export const recordFolderMapping = internalMutation({
 	args: {
 		accountId: v.id('externalMailAccounts'),
-		folderRole: folderRoleValidator,
+		// A system folder by role, or — full sync — a provider user folder by its
+		// path of names, which gets a local folder of its own (mirroredFolders.ts).
+		folderRole: v.optional(folderRoleValidator),
+		folderPath: v.optional(v.array(v.string())),
 		remoteName: v.string(),
 		remoteUidValidity: v.number(),
 		initialLastSeenUid: v.number(),
@@ -310,13 +315,6 @@ export const recordFolderMapping = internalMutation({
 	handler: async (ctx, args) => {
 		const account = await ctx.db.get(args.accountId);
 		if (!account) return;
-		const folder = await ctx.db
-			.query('mailFolders')
-			.withIndex('by_mailbox_and_role', (q) =>
-				q.eq('mailboxId', account.mailboxId).eq('role', args.folderRole)
-			)
-			.first();
-		if (!folder) return;
 		const now = Date.now();
 		const existing = await ctx.db
 			.query('externalMailFolderSync')
@@ -336,10 +334,22 @@ export const recordFolderMapping = internalMutation({
 			}
 			return;
 		}
+		const folderRole = args.folderRole;
+		const folderId = folderRole
+			? (
+					await ctx.db
+						.query('mailFolders')
+						.withIndex('by_mailbox_and_role', (q) =>
+							q.eq('mailboxId', account.mailboxId).eq('role', folderRole)
+						)
+						.first()
+				)?._id
+			: args.folderPath && (await ensureMirroredFolder(ctx, account.mailboxId, args.folderPath));
+		if (!folderId) return;
 		await ctx.db.insert('externalMailFolderSync', {
 			accountId: args.accountId,
 			mailboxId: account.mailboxId,
-			folderId: folder._id,
+			folderId,
 			remoteName: args.remoteName,
 			remoteUidValidity: args.remoteUidValidity,
 			lastSeenUid: args.initialLastSeenUid,
@@ -367,7 +377,7 @@ export const recordFolderMapping = internalMutation({
 export const ingestExternalRaw = internalAction({
 	args: {
 		accountId: v.id('externalMailAccounts'),
-		folderRole: folderRoleValidator,
+		folderRole: v.optional(folderRoleValidator),
 		remoteName: v.string(),
 		remoteUid: v.number(),
 		remoteUidValidity: v.number(),
