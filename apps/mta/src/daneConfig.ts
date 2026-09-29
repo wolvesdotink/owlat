@@ -8,6 +8,8 @@
  * trusts.
  */
 
+import { isLoopbackHostname } from '@owlat/shared/ipAddress';
+
 /**
  * How DANE (RFC 7672) participates in outbound delivery, from least to most
  * strict. A discriminated three-valued mode rather than a boolean pair so a send
@@ -47,18 +49,6 @@ export interface DaneConfig {
 	 * loopback resolver).
 	 */
 	daneResolverUrl?: string;
-}
-
-/** True for a loopback host, where a plaintext (http:) DoH channel is acceptable. */
-function isLoopbackHost(hostname: string): boolean {
-	return (
-		hostname === 'localhost' ||
-		hostname === '127.0.0.1' ||
-		// WHATWG URL renders an IPv6 host with brackets (`new URL(...).hostname`).
-		hostname === '::1' ||
-		hostname === '[::1]' ||
-		hostname.endsWith('.localhost')
-	);
 }
 
 /**
@@ -107,7 +97,7 @@ export function loadDaneConfig(
 	}
 
 	const httpsOk = url.protocol === 'https:';
-	const loopbackHttpOk = url.protocol === 'http:' && isLoopbackHost(url.hostname);
+	const loopbackHttpOk = url.protocol === 'http:' && isLoopbackHostname(url.hostname);
 	if (!httpsOk && !loopbackHttpOk) {
 		throw new Error(
 			`DANE_RESOLVER_URL must use https: (http: is allowed only for a loopback resolver) — got ${JSON.stringify(

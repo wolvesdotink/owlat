@@ -1,27 +1,12 @@
 import type { ImapCommandModule, SelectedState } from '../types.js';
-import { asyncSession, syncSession } from '../helpers/session.js';
-import { requireAuth } from '../helpers/auth.js';
+import { asyncSession } from '../helpers/session.js';
 import { resolveFolderByName } from '../helpers/folders.js';
 import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
+import { serverFailure } from '../helpers/replies.js';
 
 interface SelectArgs {
 	readonly mailboxName: string;
-}
-
-interface SelectFolderResult {
-	folder: {
-		_id: string;
-		name: string;
-		role?: string;
-		uidValidity: number;
-		uidNext: number;
-		highestModseq: number;
-		totalCount: number;
-		unseenCount: number;
-	};
-	firstUnseenUid?: number;
-	firstUnseenSeq?: number;
 }
 
 /**
@@ -32,6 +17,7 @@ interface SelectFolderResult {
  */
 export const selectModule: ImapCommandModule<SelectArgs> = {
 	verbs: ['SELECT', 'EXAMINE'],
+	requires: 'auth',
 	parseArgs(rawArgs) {
 		const name = rawArgs[0];
 		if (!name) {
@@ -40,12 +26,6 @@ export const selectModule: ImapCommandModule<SelectArgs> = {
 		return { ok: true, args: { mailboxName: name } };
 	},
 	start({ deps, state, args, tag, verb, send }) {
-		const fail = requireAuth(state, tag);
-		if (fail) {
-			send(fail);
-			return syncSession();
-		}
-
 		const readOnly = verb === 'EXAMINE';
 
 		return asyncSession(async () => {
@@ -53,16 +33,14 @@ export const selectModule: ImapCommandModule<SelectArgs> = {
 				const target = await resolveFolderByName(
 					deps.convex,
 					state.auth!.mailboxId,
-					args.mailboxName,
+					args.mailboxName
 				);
 				if (!target) {
 					send(`${tag} NO Mailbox not found`);
 					return;
 				}
 
-				const result = (await deps.convex.query(fn.selectFolder as never, {
-					folderId: target._id,
-				} as never)) as SelectFolderResult | null;
+				const result = await deps.convex.query(fn.selectFolder, { folderId: target._id });
 
 				if (!result) {
 					send(`${tag} NO Mailbox not found`);
@@ -99,17 +77,13 @@ export const selectModule: ImapCommandModule<SelectArgs> = {
 					// SELECT: STORE is implemented, so advertise the writable
 					// system flags plus `\*` (the client may create new keywords).
 					// RFC 3501 §7.1.
-					send(
-						'* OK [PERMANENTFLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft \\*)] Limited',
-					);
+					send('* OK [PERMANENTFLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft \\*)] Limited');
 				}
 				deps.commit({ ...state, selected });
-				send(
-					`${tag} OK [${readOnly ? 'READ-ONLY' : 'READ-WRITE'}] ${verb} completed`,
-				);
+				send(`${tag} OK [${readOnly ? 'READ-ONLY' : 'READ-WRITE'}] ${verb} completed`);
 			} catch (err) {
 				logger.error({ err }, 'SELECT failed');
-				send(`${tag} BAD ${verb} failed`);
+				send(serverFailure(tag, verb));
 			}
 		});
 	},

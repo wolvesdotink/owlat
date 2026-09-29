@@ -19,18 +19,10 @@ import type { TLSSocket } from 'tls';
 import type { ImapConfig } from './config.js';
 import type { ConvexClient } from './convex.js';
 import { logger } from './logger.js';
-import {
-	parseLine,
-	parseCommandWithLiterals,
-	matchTrailingLiteral,
-} from './parser.js';
+import { parseLine, parseCommandWithLiterals, matchTrailingLiteral } from './parser.js';
 import type { AuthRateLimiter } from './rateLimit.js';
 import { dispatch, assembleCapabilityLine } from './commands/walker.js';
-import type {
-	CommandDeps,
-	CommandSession,
-	ConnectionState,
-} from './commands/types.js';
+import type { CommandDeps, CommandSession, ConnectionState } from './commands/types.js';
 
 const DEFAULT_MAX_LINE_BYTES = 64 * 1024;
 const DEFAULT_MAX_LITERAL_BYTES = 50 * 1024 * 1024;
@@ -46,6 +38,11 @@ const DEFAULT_PRE_AUTH_DEADLINE_MS = 30 * 1000;
  */
 const PRE_AUTH_LITERAL_BYTES = 4 * 1024;
 const CRLF = Buffer.from('\r\n');
+/**
+ * How long a shutdown waits for the BYE to flush before destroying a socket
+ * whose peer has stopped reading. Well inside the process shutdown deadline.
+ */
+const SHUTDOWN_FLUSH_MS = 2_000;
 
 /**
  * A multi-line command being assembled across literal continuations
@@ -90,7 +87,7 @@ export class ImapConnection {
 		 * (LOGINDISABLED + no AUTH=PLAIN when plaintext) and gates the
 		 * credential-bearing LOGIN / AUTHENTICATE commands.
 		 */
-		tls = true,
+		tls = true
 	) {
 		this.maxLineBytes = config.maxLineBytes ?? DEFAULT_MAX_LINE_BYTES;
 		this.maxLiteralBytes = config.maxLiteralBytes ?? DEFAULT_MAX_LITERAL_BYTES;
@@ -100,9 +97,7 @@ export class ImapConnection {
 		// Leave the socket in binary mode: `data` events deliver Buffers, so
 		// literal framing counts octets not decoded characters (RFC 3501 §4.3).
 		socket.on('data', (chunk: Buffer | string) => this.onData(chunk));
-		socket.on('error', (err) =>
-			logger.warn({ err, ip: remoteIp }, 'socket error'),
-		);
+		socket.on('error', (err) => logger.warn({ err, ip: remoteIp }, 'socket error'));
 		socket.on('close', () => this.onClose());
 
 		// Drop connections that go silent: an inactivity timeout bounds idle/
@@ -139,9 +134,7 @@ export class ImapConnection {
 			},
 		};
 
-		this.send(
-			`* OK [${capabilityLine}] ${config.greetingHost} Owlat IMAP ready`,
-		);
+		this.send(`* OK [${capabilityLine}] ${config.greetingHost} Owlat IMAP ready`);
 	}
 
 	private send(line: string | Buffer): void {
@@ -149,9 +142,7 @@ export class ImapConnection {
 			// A Buffer is written as raw octets so a FETCH body literal keeps
 			// the exact 8-bit/binary bytes of the stored message; the trailing
 			// CRLF is appended as octets too. Strings take the UTF-8 text path.
-			this.socket.write(
-				Buffer.isBuffer(line) ? Buffer.concat([line, CRLF]) : `${line}\r\n`,
-			);
+			this.socket.write(Buffer.isBuffer(line) ? Buffer.concat([line, CRLF]) : `${line}\r\n`);
 		} catch (err) {
 			logger.debug({ err }, 'write failed');
 		}
@@ -173,11 +164,24 @@ export class ImapConnection {
 	}
 
 	/**
-	 * Abort the connection with a `* BYE` notice. Prefers `socket.destroy()` so a
-	 * misbehaving/abusive peer is severed immediately; falls back to `end()` for
-	 * the test mock socket which has no `destroy`.
+	 * Server shutdown: send `* BYE <reason>` once (RFC 3501 §7.1.5) and close.
+	 * Unlike an abort, the BYE is flushed before the socket goes, so the client
+	 * sees why it was disconnected and reconnects to the next instance.
 	 */
-	private destroyConnection(reason: string): void {
+	shutdown(reason: string): void {
+		this.destroyConnection(reason, 'flush');
+	}
+
+	/**
+	 * Close the connection with a `* BYE` notice, at most once.
+	 *
+	 * `abort` severs a misbehaving/abusive peer immediately with
+	 * `socket.destroy()`. `flush` ends the socket and destroys it once the BYE has
+	 * been written, or after {@link SHUTDOWN_FLUSH_MS} if the peer stops reading,
+	 * so the server's `close()` never waits on a client that will not hang up.
+	 * Both fall back to `end()` for the test mock socket, which has no `destroy`.
+	 */
+	private destroyConnection(reason: string, mode: 'abort' | 'flush' = 'abort'): void {
 		if (this.closed) return;
 		this.closed = true;
 		try {
@@ -185,9 +189,18 @@ export class ImapConnection {
 		} catch {
 			// best-effort notice; tear down regardless
 		}
-		const sock = this.socket as { destroy?: () => void; end: () => void };
-		if (typeof sock.destroy === 'function') sock.destroy();
-		else sock.end();
+		const sock = this.socket as { destroy?: () => void; end: (cb?: () => void) => void };
+		if (typeof sock.destroy !== 'function') {
+			sock.end();
+			return;
+		}
+		const destroy = sock.destroy.bind(sock);
+		if (mode === 'abort') {
+			destroy();
+			return;
+		}
+		sock.end(destroy);
+		setTimeout(destroy, SHUTDOWN_FLUSH_MS).unref?.();
 	}
 
 	private onData(chunk: Buffer | string): void {
@@ -386,22 +399,14 @@ export class ImapConnection {
 		let parsed;
 		if (this.pendingCommand) {
 			this.pendingCommand.segments.push(line);
-			parsed = parseCommandWithLiterals(
-				this.pendingCommand.segments,
-				this.pendingCommand.literals,
-			);
+			parsed = parseCommandWithLiterals(this.pendingCommand.segments, this.pendingCommand.literals);
 			this.pendingCommand = null;
 		} else {
 			parsed = parseLine(line);
 		}
 		if (!parsed) return;
 
-		const session = dispatch(
-			this.deps,
-			this.state,
-			parsed,
-			(l) => this.send(l),
-		);
+		const session = dispatch(this.deps, this.state, parsed, (l) => this.send(l));
 		this.trackSession(session);
 	}
 

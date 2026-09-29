@@ -13,17 +13,11 @@
 import type { Socket } from 'node:net';
 import { ByteBudget } from './budget.js';
 import { dotDecode } from './dotDecode.js';
-import { Reply, replyBytes, SmtpReplyError } from './reply.js';
+import { invokeHandler, Reply, replyBytes } from './reply.js';
 import { performAuth, type SmtpAuthConfig } from './auth.js';
 import { upgradeTls, type ResolvedTlsConfig } from './tls.js';
 import { SmtpCommandReader, parseAddressCommand, parseCommand } from './reader.js';
-import type {
-	MutableSmtpSession,
-	SmtpHandlerResult,
-	SmtpListenerOptions,
-	SmtpReply,
-	SmtpSession,
-} from './types.js';
+import type { MutableSmtpSession, SmtpListenerOptions, SmtpReply, SmtpSession } from './types.js';
 
 /** Fully-resolved listener configuration (defaults applied). */
 export interface ResolvedListenerConfig<S, T> {
@@ -79,35 +73,19 @@ export function writeReplyWithinBudget(
 	return true;
 }
 
-/** Invoke a handler, normalizing its accept/reject outcome. */
-async function invokeHandler<S, T, A>(
-	handler:
-		| ((arg: A, session: SmtpSession<S, T>) => Promise<SmtpHandlerResult> | SmtpHandlerResult)
-		| undefined,
-	arg: A,
-	session: SmtpSession<S, T>,
-	onError: ((err: Error) => void) | undefined
-): Promise<{ accept: boolean; reply?: SmtpReply }> {
-	if (!handler) return { accept: true };
-	try {
-		const result = (await handler(arg, session)) as SmtpReply | undefined;
-		if (result && result.code >= 400) return { accept: false, reply: result };
-		return { accept: true, reply: result ?? undefined };
-	} catch (err) {
-		if (err instanceof SmtpReplyError) return { accept: false, reply: err.reply };
-		onError?.(err instanceof Error ? err : new Error(String(err)));
-		return { accept: false, reply: Reply.localError() };
-	}
-}
-
 /**
  * Drive one connection to completion. Resolves when the peer QUITs, the socket
  * closes, or a timeout / abort tears it down. Never throws to the caller.
+ *
+ * `admission` is the listener's pending admission verdict for this connection
+ * (see {@link module:admission}): a refusal reply, or `undefined` to admit. It
+ * is awaited after the greeting and before `onConnect`, under the idle timer.
  */
 export async function runCommandLoop<S, T>(
 	socket: Socket,
 	session: MutableSmtpSession<S, T>,
-	config: ResolvedListenerConfig<S, T>
+	config: ResolvedListenerConfig<S, T>,
+	admission?: Promise<SmtpReply | undefined>
 ): Promise<void> {
 	const { opts } = config;
 	// `activeSocket` and `reader` are reassigned by a STARTTLS upgrade: after the
@@ -197,12 +175,18 @@ export async function runCommandLoop<S, T>(
 		return 'continue';
 	};
 
-	// Greeting + optional connect hook.
+	// Greeting, then admission, then the optional connect hook (admitted peers only).
 	write(Reply.greeting(config.banner));
+	const refusal = await admission;
 	const onConnect = opts.onConnect;
-	const connect = onConnect
-		? await invokeHandler((_arg: undefined, s) => onConnect(s), undefined, session, opts.onError)
-		: { accept: true as const };
+	const connect = refusal
+		? { accept: false, reply: refusal }
+		: await invokeHandler(
+				onConnect && ((_arg: undefined, s: SmtpSession<S, T>) => onConnect(s)),
+				undefined,
+				session,
+				opts.onError
+			);
 	if (!connect.accept) {
 		if (connect.reply) write(connect.reply);
 		activeSocket.end();

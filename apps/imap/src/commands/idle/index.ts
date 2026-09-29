@@ -1,18 +1,9 @@
 import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 import type { CommandSession, ImapCommandModule, SelectedState } from '../types.js';
-import { syncSession } from '../helpers/session.js';
-import { requireAuth, requireSelect } from '../helpers/auth.js';
 import { buildSeqMap, seqForUid } from '../helpers/seqMap.js';
 import { loadChangedEnvelopes, loadFolderUids } from '../helpers/folderPaging.js';
 import { formatFlags, type FetchEnvelope } from '../fetch/format.js';
-
-interface PeekResult {
-	readonly highestModseq: number;
-	readonly uidNext: number;
-	readonly totalCount: number;
-	readonly unseenCount: number;
-}
 
 const POLL_INTERVAL_MS = 5_000;
 
@@ -128,14 +119,9 @@ export function diffIdle(args: {
 export const idleModule: ImapCommandModule<void> = {
 	verbs: ['IDLE'],
 	capabilities: ['IDLE'],
+	requires: 'selected',
 	parseArgs: () => ({ ok: true, args: undefined }),
 	start({ deps, state, tag, send }) {
-		const fail = requireAuth(state, tag) ?? requireSelect(state, tag);
-		if (fail) {
-			send(fail);
-			return syncSession();
-		}
-
 		let currentSelected: SelectedState = state.selected!;
 		let resolved = false;
 		let resolveCompletion!: () => void;
@@ -175,12 +161,9 @@ export const idleModule: ImapCommandModule<void> = {
 		const pollTimer = setInterval(async () => {
 			try {
 				await seedUids;
-				const peek = (await deps.convex.query(
-					fn.peekFolderModseq as never,
-					{
-						folderId: currentSelected.folderId,
-					} as never
-				)) as PeekResult | null;
+				const peek = await deps.convex.query(fn.peekFolderModseq, {
+					folderId: currentSelected.folderId,
+				});
 				if (!peek) return;
 				// Nothing observable changed → cheap path, no UID list fetch.
 				if (peek.totalCount === lastTotal && peek.highestModseq === lastModseq) {

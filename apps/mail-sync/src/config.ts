@@ -1,3 +1,5 @@
+import { readIntEnv, TCP_PORT_RANGE, TIMER_DELAY_MS_RANGE } from '@owlat/shared/nodeEnv';
+
 export interface MailSyncConfig {
 	/** HTTP port for the internal /send + /test + /health endpoints. */
 	port: number;
@@ -39,7 +41,7 @@ export function loadConfig(): MailSyncConfig {
 	if (!apiKey) throw new Error('MAIL_SYNC_API_KEY is required');
 
 	return {
-		port: parseInt(process.env['MAIL_SYNC_PORT'] ?? '3200', 10),
+		port: readIntEnv(process.env, 'MAIL_SYNC_PORT', { default: 3200, ...TCP_PORT_RANGE }),
 		listenAddress: process.env['MAIL_SYNC_LISTEN'] ?? '0.0.0.0',
 		convexUrl,
 		convexSiteUrl: (
@@ -47,12 +49,18 @@ export function loadConfig(): MailSyncConfig {
 		).replace(/\/+$/, ''),
 		convexAdminKey,
 		apiKey,
-		reconcileIntervalMs: parseInt(process.env['MAIL_SYNC_RECONCILE_MS'] ?? '30000', 10),
-		folderPollIntervalMs: parseInt(
-			process.env['MAIL_SYNC_FOLDER_POLL_MS'] ?? `${5 * 60 * 1000}`,
-			10
-		),
-		backfillBatchSize: parseInt(process.env['MAIL_SYNC_BACKFILL_BATCH'] ?? '200', 10),
+		reconcileIntervalMs: readIntEnv(process.env, 'MAIL_SYNC_RECONCILE_MS', {
+			default: 30_000,
+			...TIMER_DELAY_MS_RANGE,
+		}),
+		folderPollIntervalMs: readIntEnv(process.env, 'MAIL_SYNC_FOLDER_POLL_MS', {
+			default: 5 * 60 * 1000,
+			...TIMER_DELAY_MS_RANGE,
+		}),
+		backfillBatchSize: readIntEnv(process.env, 'MAIL_SYNC_BACKFILL_BATCH', {
+			default: 200,
+			min: 1,
+		}),
 		allowedFetchOrigins: [
 			new URL(convexUrl).origin,
 			...(process.env['MAIL_SYNC_FETCH_ORIGINS'] ?? '')

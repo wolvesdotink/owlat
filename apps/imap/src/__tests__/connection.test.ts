@@ -17,6 +17,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { getFunctionName, type AnyFunctionReference } from 'convex/server';
 import { EventEmitter } from 'events';
 import type { Socket } from 'net';
 import { ImapConnection } from '../connection.js';
@@ -331,7 +332,8 @@ describe('ImapConnection — LOGIN', () => {
 		const { socket, convex } = makeMocks();
 		socket.written.length = 0;
 		convex.action.mockResolvedValue(null);
-		await exec(socket, 'a001 LOGIN "alice@test" "wrong"');
+		// check → verify → recordFailure: several chained awaits.
+		await execMulti(socket, 'a001 LOGIN "alice@test" "wrong"');
 		const tail = socket.lines().pop()!;
 		expect(tail).toBe('a001 NO Authentication failed');
 	});
@@ -552,7 +554,7 @@ describe('ImapConnection — AUTHENTICATE PLAIN', () => {
 		convex.action.mockResolvedValue(null);
 		socket.written.length = 0;
 		await exec(socket, 'a1 AUTHENTICATE PLAIN');
-		await exec(socket, saslPlain('alice@test', 'wrong'));
+		await execMulti(socket, saslPlain('alice@test', 'wrong'));
 		expect(socket.lines().pop()).toBe('a1 NO Authentication failed');
 	});
 
@@ -802,7 +804,8 @@ describe('ImapConnection — literal octet framing (RFC 3501 §4.3)', () => {
 		mocks.convex.query.mockResolvedValue([
 			{ _id: 'f1', name: 'INBOX', role: 'inbox', uidNext: 1, totalCount: 0 },
 		]);
-		mocks.convex.mutation.mockImplementation((ref: string, args: unknown) => {
+		mocks.convex.mutation.mockImplementation((fnRef: AnyFunctionReference, args: unknown) => {
+			const ref = getFunctionName(fnRef);
 			if (ref === 'mail/imap/append:generateRawUploadUrl') {
 				return Promise.resolve('https://upload.test/blob');
 			}
@@ -836,6 +839,8 @@ describe('ImapConnection — literal octet framing (RFC 3501 §4.3)', () => {
 			// The stored blob is exactly 6 bytes (octet-framed), not 3.
 			expect(appendArgs).toBeDefined();
 			expect(appendArgs!['rawSize']).toBe(6);
+			// The backend derives the snippet from the bodies.
+			expect(appendArgs).not.toHaveProperty('snippet');
 
 			// The body sent to storage is the 6-octet buffer, not a 3-char string.
 			const sentBody = fetchMock.mock.calls[0]![1]!.body as Buffer;

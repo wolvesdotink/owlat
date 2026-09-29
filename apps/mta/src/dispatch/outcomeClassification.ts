@@ -17,6 +17,11 @@ export type DispatchOutcome =
 			smtpCode: number;
 			error: string;
 			enhancedCode: string | undefined;
+			/**
+			 * What the reply means, for the ramp's measurement only: the bounce is
+			 * terminal whatever the category says.
+			 */
+			classification: SmtpClassification;
 	  }
 	| {
 			kind: 'deferred';
@@ -47,23 +52,31 @@ export function classifyResult(
 	}
 
 	if (result.bounceType === 'hard') {
+		const error = result.error ?? '';
 		return {
 			kind: 'hard_bounce',
 			smtpCode: result.smtpCode ?? 550,
-			error: result.error ?? '',
+			error,
 			enhancedCode: result.enhancedCode,
+			classification: classifySmtpResponse(
+				result.smtpCode,
+				error,
+				result.enhancedCode,
+				providerKey
+			),
 		};
 	}
 
 	if (result.bounceType === 'deferred') {
+		const error = result.error ?? '';
 		return {
 			kind: 'deferred',
 			smtpCode: result.smtpCode ?? 450,
-			error: result.error ?? '',
+			error,
 			enhancedCode: result.enhancedCode,
 			classification: classifySmtpResponse(
 				result.smtpCode,
-				result.error ?? '',
+				error,
 				result.enhancedCode,
 				providerKey
 			),

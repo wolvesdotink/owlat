@@ -6,8 +6,9 @@
  * `@owlat/mail-message` (`parseMessage`, replacing `mailparser`): the byte budget
  * (I4), the STARTTLS transport, the RFC 3207 state reset and the hostile-input
  * hardening are the listener's. This module supplies the MX-specific policy as
- * typed listener hooks — a per-IP connection cap + tarpit (onConnect, limiter
- * state in inboundSecurity.ts, I8); the inbound-TLS gate + SPF authentication of
+ * typed listener hooks and admission: the global and per-IP connection caps
+ * (the listener's `admission`, counter in lib/connectionSlots.ts, I8) and the
+ * tarpit for admitted external peers (onConnect); the inbound-TLS gate + SPF authentication of
  * a non-null MAIL FROM (onMailFrom), stashing the RFC 7208 verdict on the typed
  * {@link BounceTransaction} state (replacing the old `SessionWithSpf` widening);
  * the VERP / personal-mailbox / route RCPT gate with structured 552/550 replies
@@ -23,15 +24,16 @@ import {
 	type SmtpAddress,
 	type SmtpHandlerResult,
 	type SmtpTlsConfig,
+	type SmtpAdmission,
 } from '@owlat/smtp-listener';
 import { parseMessage } from '@owlat/mail-message';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 import { emailDomain } from '@owlat/shared/spfAlignment';
+import { isPrivateOrLoopbackIp } from '@owlat/shared/ipAddress';
 import { MAX_INBOUND_MESSAGE_BYTES } from '@owlat/shared/attachments';
-import { checkConnectionRateLimit, releaseConnection } from './inboundSecurity.js';
-import { createSlotTracker } from '../lib/connectionSlots.js';
+import { createConnectionLimiter } from '../lib/connectionSlots.js';
 import { checkSpf, evaluateDmarc, dnsDmarcLookup, verifyDkim } from '@owlat/mail-auth';
 import { createInboundAuthResolvers } from './inboundAuthResolver.js';
 import { verifyArcChain } from './inboundArc.js';
@@ -40,7 +42,6 @@ import { mainPipeline } from './phases/index.js';
 import { dmarcFromIdentity } from '../inbound/parsedAddress.js';
 import type { SpfVerdict } from './types.js';
 import { inboundTlsRequiredReply, isInboundTlsRequired } from '../inbound/inboundTlsPolicy.js';
-import { isLocalAddress } from './serverHelpers.js';
 import { TransientFeedbackProcessingError } from './transientFeedbackError.js';
 import { processBounceAttempt } from './attemptProcessor.js';
 import { recordDeliverabilityProbeIfPresent } from './deliverabilityProbe.js';
@@ -105,29 +106,7 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SmtpListene
 		logger.info('Bounce server TLS configured — STARTTLS will be offered (TLSv1.2+ enforced)');
 	}
 
-	// Reconciles per-IP connection increments against socket lifetime so every kept
-	// increment is released EXACTLY once — the same held-slot bookkeeping the
-	// submission listener uses. `checkConnectionRateLimit` nets 0 for a rejected
-	// connection (increment-then-decrement) and +1 for an allowed one, so only the
-	// allowed connections are marked for release on close; a connection that RSTs
-	// while its async rate-limit check is still in flight self-heals.
-	const slots = createSlotTracker(redis, releaseConnection);
-
-	// Live concurrent-connection count for the global `maxClients` cap. Every
-	// accepted socket increments it on the raw `connection` event and decrements
-	// it on close. `createSmtpListener` registers its OWN accept handler first
-	// (via `createServer(opts, cb)`), and that handler synchronously runs
-	// `handleConnection → runCommandLoop`, writing the banner and executing the
-	// synchronous prefix of `onConnect` — including `isOverCapacity()` — before
-	// its first `await`. So the counting handler MUST run ahead of the accept
-	// handler (`prependListener`, below) or the increment lands after the
-	// capacity check and the connection under decision is excluded from its own
-	// count (off-by-one: the cap would be `maxClients + 1`). Prepending makes
-	// `onConnect` see a count that includes the deciding connection — matching
-	// smtp-server's `connections.size > maxClients`.
-	const liveConnections = { count: 0 };
-
-	const listener = createSmtpListener<unknown, BounceTransaction>({
+	return createSmtpListener<unknown, BounceTransaction>({
 		// The 220 greeting + EHLO open with this name (RFC 5321 §4.2). It MUST be
 		// the FQDN that matches the IP's reverse-DNS PTR record, or a connecting
 		// MTA's banner/PTR consistency check fails.
@@ -148,13 +127,11 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SmtpListene
 		},
 		...(tls ? { tls } : {}),
 
-		// Global concurrent-connection cap + per-IP connection cap + tarpit.
-		onConnect: buildOnConnect(
-			config,
-			redis,
-			(session) => slots.hold(session),
-			() => liveConnections.count > config.bounceMaxClients
-		),
+		// Global concurrent-connection cap + per-IP connection cap.
+		admission: bounceAdmission(config, redis),
+
+		// Tarpit for admitted peers outside loopback and RFC 1918.
+		onConnect: buildOnConnect(config),
 
 		// Inbound-TLS gate + SPF authentication of the envelope sender.
 		onMailFrom: buildOnMailFrom(config, redis, authResolvers),
@@ -167,70 +144,52 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SmtpListene
 
 		onError: (err) => logger.error({ err }, 'Bounce SMTP listener error'),
 	});
+}
 
-	// Track every accepted connection: maintain the live-connection count for the
-	// global cap, and release its per-IP slot on socket close — but ONLY for
-	// connections that actually took a slot. The limiter state lives in
-	// inboundSecurity.ts (I8); the listener exposes only the raw socket.
-	// `prependListener` puts this AHEAD of the listener's internal accept handler
-	// so `count` includes the connection under decision when `onConnect` runs its
-	// synchronous `isOverCapacity()` check (see the `liveConnections` note above).
-	listener.raw.prependListener('connection', (socket) => {
-		liveConnections.count += 1;
-		socket.once('close', () => {
-			liveConnections.count -= 1;
-		});
-		slots.track(socket);
-	});
+/** Per-IP connection counters for port 25 (key prefix and window are deploy-stable). */
+const BOUNCE_CONNECTION_PREFIX = 'mta:bounce:conn:';
+const BOUNCE_CONNECTION_TTL_SECONDS = 300;
 
-	return listener;
+/**
+ * Connection admission for the MX listener. Over the GLOBAL `maxClients` cap the
+ * connection gets a real `421` retry-later reply (smtp-server's `421 … Too many
+ * connected clients`: a remote MTA re-queues on a 421 rather than treating a
+ * bare close as a hard failure); over the PER-IP cap it gets `554`, the
+ * pre-cutover smtp-server connect-reject default. A Redis fault fails open
+ * inside the listener, so a store hiccup cannot block legitimate bounces.
+ */
+function bounceAdmission(config: MtaConfig, redis: Redis): SmtpAdmission {
+	return {
+		maxClients: config.bounceMaxClients,
+		overCapacityReply: { code: 421, text: 'Too many connected clients, try again in a moment' },
+		perIp: {
+			...createConnectionLimiter(
+				redis,
+				BOUNCE_CONNECTION_PREFIX,
+				BOUNCE_CONNECTION_TTL_SECONDS,
+				config.bounceMaxConnectionsPerIp
+			),
+			rejectReply: { code: 554, text: 'Too many connections from your IP' },
+		},
+		onRefused: (peer, reason) =>
+			logger.warn(
+				{ remoteIp: peer.remoteAddress },
+				reason === 'capacity'
+					? 'Bounce server at max concurrent clients'
+					: 'Bounce server connection rate limited'
+			),
+	};
 }
 
 /**
- * Per-IP connection cap (onConnect). Over the GLOBAL `maxClients` cap the
- * connection is refused with a real `421` retry-later reply (matching
- * smtp-server's `421 … Too many connected clients` — a remote MTA re-queues on a
- * 421 rather than treating a bare close as a hard failure); over the PER-IP cap
- * it is refused with `554` (byte-preserving the pre-cutover smtp-server
- * connect-reject default). Fails open on a Redis hiccup so a store fault can't
- * lock out senders. An admitted non-local peer is tarpitted before proceeding.
- * `onSlotHeld` runs only when a slot was actually held (net +1), so close
- * releases exactly that slot.
+ * Tarpit (onConnect): deliberately slow down admitted peers outside loopback
+ * and RFC 1918. Admission has already run, so this hook sees admitted
+ * connections only.
  */
-export function buildOnConnect(
-	config: MtaConfig,
-	redis: Redis,
-	onSlotHeld: (session: BounceSession) => void,
-	isOverCapacity: () => boolean
-) {
+export function buildOnConnect(config: MtaConfig) {
 	return async function onConnect(session: BounceSession): Promise<SmtpHandlerResult> {
-		const remoteIp = session.remoteAddress;
-		// Global concurrent-connection cap first (smtp-server order): a real 421 so
-		// the peer retries later instead of reading an abrupt close as a failure.
-		if (isOverCapacity()) {
-			logger.warn({ remoteIp }, 'Bounce server at max concurrent clients');
-			return { code: 421, text: 'Too many connected clients, try again in a moment' };
-		}
-		try {
-			const allowed = await checkConnectionRateLimit(
-				redis,
-				remoteIp,
-				config.bounceMaxConnectionsPerIp
-			);
-			if (!allowed) {
-				logger.warn({ remoteIp }, 'Bounce server connection rate limited');
-				return { code: 554, text: 'Too many connections from your IP' };
-			}
-			onSlotHeld(session); // net +1 held — release exactly this slot on close
-
-			// Tarpit: deliberately slow non-local connections down.
-			if (config.bounceTarpitEnabled && !isLocalAddress(remoteIp)) {
-				await new Promise((resolve) => setTimeout(resolve, config.bounceTarpitDelayMs));
-			}
-			return;
-		} catch (err) {
-			logger.error({ err, remoteIp }, 'Error in onConnect rate limit check');
-			return; // Fail-open so a Redis hiccup doesn't block legitimate bounces.
+		if (config.bounceTarpitEnabled && !isPrivateOrLoopbackIp(session.remoteAddress)) {
+			await new Promise((resolve) => setTimeout(resolve, config.bounceTarpitDelayMs));
 		}
 	};
 }

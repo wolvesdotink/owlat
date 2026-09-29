@@ -16,6 +16,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
+import { getFunctionName, type AnyFunctionReference } from 'convex/server';
 import { fetchModule, type FetchArgs } from '../index.js';
 import { storeModule, type StoreArgs } from '../../store/index.js';
 import { selectModule } from '../../select/index.js';
@@ -58,32 +59,39 @@ interface ConvexCalls {
 
 function makeConvex(calls: ConvexCalls) {
 	return {
-		query: vi.fn(async (ref: string, params: { uidLow?: number; uidHigh?: number }) => {
-			// Every folder read is paged: the backend answers with one page plus
-			// the UID to resume from, and `nextUid: null` means "that was all".
-			if (ref.endsWith(':listFolderUidsPage')) {
-				return { uids: [...FOLDER_UIDS], nextUid: null };
+		query: vi.fn(
+			async (fnRef: AnyFunctionReference, params: { uidLow?: number; uidHigh?: number }) => {
+				const ref = getFunctionName(fnRef);
+				// Every folder read is paged: the backend answers with one page plus
+				// the UID to resume from, and `nextUid: null` means "that was all".
+				if (ref.endsWith(':listFolderUidsPage')) {
+					return { uids: [...FOLDER_UIDS], nextUid: null };
+				}
+				if (ref.endsWith(':fetchEnvelopes')) {
+					return {
+						rows: ENVELOPES.filter(
+							(m) => m.uid >= (params.uidLow ?? 0) && m.uid <= (params.uidHigh ?? Infinity)
+						),
+						nextUid: null,
+					};
+				}
+				if (ref.endsWith(':resolveMessageIdsByUid')) {
+					return {
+						rows: ENVELOPES.filter(
+							(m) => m.uid >= (params.uidLow ?? 0) && m.uid <= (params.uidHigh ?? Infinity)
+						).map((m) => ({ _id: m._id, uid: m.uid, modseq: m.modseq })),
+						nextUid: null,
+					};
+				}
+				return null;
 			}
-			if (ref.endsWith(':fetchEnvelopes')) {
-				return {
-					rows: ENVELOPES.filter(
-						(m) => m.uid >= (params.uidLow ?? 0) && m.uid <= (params.uidHigh ?? Infinity)
-					),
-					nextUid: null,
-				};
-			}
-			if (ref.endsWith(':resolveMessageIdsByUid')) {
-				return {
-					rows: ENVELOPES.filter(
-						(m) => m.uid >= (params.uidLow ?? 0) && m.uid <= (params.uidHigh ?? Infinity)
-					).map((m) => ({ _id: m._id, uid: m.uid, modseq: m.modseq })),
-					nextUid: null,
-				};
-			}
-			return null;
-		}),
+		),
 		mutation: vi.fn(
-			async (ref: string, params: { messageIds: string[]; flags: string[]; mode: string }) => {
+			async (
+				fnRef: AnyFunctionReference,
+				params: { messageIds: string[]; flags: string[]; mode: string }
+			) => {
+				const ref = getFunctionName(fnRef);
 				if (ref.endsWith(':storeFlags')) {
 					calls.storeFlags.push({
 						messageIds: params.messageIds,
@@ -191,8 +199,8 @@ describe('PR-58 true sequence numbers', () => {
 		// The set was resolved with one range query, not one per message —
 		// the FETCH-parity fix (PR-58 r1). The min..max span (5..14) is queried
 		// once.
-		const resolveCalls = convex.query.mock.calls.filter(([ref]) =>
-			ref.endsWith(':resolveMessageIdsByUid')
+		const resolveCalls = convex.query.mock.calls.filter(([fnRef]) =>
+			getFunctionName(fnRef).endsWith(':resolveMessageIdsByUid')
 		);
 		expect(resolveCalls).toHaveLength(1);
 		expect(resolveCalls[0]![1]).toMatchObject({ uidLow: 5, uidHigh: 14 });
@@ -207,7 +215,8 @@ describe('PR-58 true sequence numbers', () => {
 	it('SELECT emits [UNSEEN seq] for the first-unseen sequence number', async () => {
 		const lines: string[] = [];
 		const convex = {
-			query: vi.fn(async (ref: string) => {
+			query: vi.fn(async (fnRef: AnyFunctionReference) => {
+				const ref = getFunctionName(fnRef);
 				if (ref.endsWith(':listFolders')) {
 					return [{ _id: 'f1', name: 'INBOX', role: 'inbox' }];
 				}

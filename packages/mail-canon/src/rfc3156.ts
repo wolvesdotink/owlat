@@ -20,6 +20,7 @@
  */
 
 import { Buffer } from 'node:buffer';
+import { findRawHeader, parseRawHeaderFields } from './rawMessage.js';
 
 /** The byte-exact halves of an RFC 3156 `multipart/signed` entity. */
 export interface Rfc3156SignedParts {
@@ -56,7 +57,7 @@ export function extractRfc3156SignedPart(raw: Uint8Array): Rfc3156SignedParts | 
 	if (headerEnd < 0) return null;
 	const outerHeaders = text.slice(0, headerEnd);
 
-	const contentType = headerValue(outerHeaders, 'content-type');
+	const contentType = findRawHeader(parseRawHeaderFields(outerHeaders), 'content-type');
 	if (!contentType || !/^multipart\/signed[\s;]/i.test(`${contentType};`)) return null;
 	const boundary = parameterValue(contentType, 'boundary');
 	if (!boundary) return null;
@@ -128,26 +129,6 @@ function endOfDelimiterLine(text: string, afterBoundary: number): number {
 	return i + 2;
 }
 
-/** A single unfolded header value (lower-cased name lookup) from a header block. */
-function headerValue(headerBlock: string, name: string): string | undefined {
-	const lines = headerBlock.split('\r\n');
-	for (let i = 0; i < lines.length; i++) {
-		const line = lines[i];
-		if (line === undefined) continue;
-		const colon = line.indexOf(':');
-		if (colon < 0) continue;
-		if (line.slice(0, colon).trim().toLowerCase() !== name) continue;
-		let value = line.slice(colon + 1);
-		for (let j = i + 1; j < lines.length; j++) {
-			const next = lines[j];
-			if (next !== undefined && /^[ \t]/.test(next)) value += ` ${next.trim()}`;
-			else break;
-		}
-		return value.trim();
-	}
-	return undefined;
-}
-
 /** A (possibly quoted) MIME parameter value from a header value. */
 function parameterValue(headerVal: string, param: string): string | undefined {
 	const re = new RegExp(`;\\s*${param}\\s*=\\s*(?:"([^"]*)"|([^;\\s]+))`, 'i');
@@ -167,10 +148,11 @@ function decodeSignaturePart(part: string): string | null {
 	const headerBlock = headerEnd >= 0 ? part.slice(0, headerEnd) : '';
 	const body = headerEnd >= 0 ? part.slice(headerEnd + 4) : part;
 
-	const contentType = headerValue(headerBlock, 'content-type') ?? '';
+	const fields = parseRawHeaderFields(headerBlock);
+	const contentType = findRawHeader(fields, 'content-type') ?? '';
 	if (!/^application\/pgp-signature\b/i.test(contentType)) return null;
 
-	const cte = (headerValue(headerBlock, 'content-transfer-encoding') ?? '7bit').toLowerCase();
+	const cte = (findRawHeader(fields, 'content-transfer-encoding') ?? '7bit').toLowerCase();
 	let decoded: string;
 	if (cte === 'base64') {
 		decoded = Buffer.from(body.replace(/\s+/g, ''), 'base64').toString('latin1');

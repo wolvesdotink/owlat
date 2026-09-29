@@ -16,9 +16,8 @@
  * Each attack also asserts the listener SURVIVES — a fresh, well-behaved
  * connection completes a transaction afterward — so a bounded attack never
  * degrades into a listener-wide DoS. Connection-COUNT limits are deliberately
- * out of scope here (I8: rate limiting lives in inboundSecurity.ts /
- * submissionSecurity.ts; the listener bounds each connection independently and
- * exposes hook points only).
+ * out of scope here: they are the opt-in `admission` option, covered in
+ * `admission.integration.test.ts`.
  */
 
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
@@ -416,8 +415,8 @@ describe('TLS-handshake abandonment', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Connection flood. Bounded per-connection by the idle timer (I8: the listener
-// caps each connection, not the count — that lives in inboundSecurity.ts).
+// Connection flood. Bounded per-connection by the idle timer (the count is
+// capped only when the `admission` option is configured).
 // ---------------------------------------------------------------------------
 
 describe('connection flood', () => {

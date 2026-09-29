@@ -4,6 +4,8 @@ import {
 	parseAddressObject,
 	parseAddressObjects,
 	formatAddress,
+	addressFieldList,
+	primaryMailbox,
 } from '../parse/address';
 
 describe('parseAddressObject — mailboxes', () => {
@@ -99,5 +101,51 @@ describe('parseAddressObjects — single-vs-array duality', () => {
 		const many = parseAddressObjects(['a@x.com', 'b@y.com']);
 		expect(Array.isArray(many)).toBe(true);
 		expect((many as Array<{ text: string }>).map((o) => o.text)).toEqual(['a@x.com', 'b@y.com']);
+	});
+});
+
+describe('addressFieldList', () => {
+	it('returns [] for an absent header', () => {
+		expect(addressFieldList(undefined)).toEqual([]);
+	});
+
+	it('flattens repeated headers in document order', () => {
+		const field = parseAddressObjects(['A <a@x.com>, b@x.com', 'c@x.com']);
+		expect(addressFieldList(field)).toEqual([
+			{ name: 'A', address: 'a@x.com' },
+			{ name: '', address: 'b@x.com' },
+			{ name: '', address: 'c@x.com' },
+		]);
+	});
+
+	it('leaves out group containers, which carry no address', () => {
+		const field = parseAddressObject('Team: a@x.com, b@x.com;, c@x.com');
+		expect(addressFieldList(field).map((a) => a.address)).toEqual(['c@x.com']);
+	});
+});
+
+describe('primaryMailbox', () => {
+	it('returns undefined for an absent header', () => {
+		expect(primaryMailbox(undefined)).toBeUndefined();
+	});
+
+	it('returns the first mailbox of a single field', () => {
+		const field = parseAddressObject('Jane <jane@x.com>, bob@x.com');
+		expect(primaryMailbox(field)).toEqual({ name: 'Jane', address: 'jane@x.com' });
+	});
+
+	it('reads the LAST object when handed an array', () => {
+		const field = parseAddressObjects(['first@x.com', 'last@x.com']);
+		expect(primaryMailbox(field)?.address).toBe('last@x.com');
+	});
+
+	it('returns undefined when the first entry is a group', () => {
+		expect(primaryMailbox(parseAddressObject('Team: a@x.com;'))).toBeUndefined();
+	});
+
+	it('keeps an encoded display name with a comma as one mailbox', () => {
+		const field = parseAddressObject('=?UTF-8?Q?Smith=2C_John?= <j@x.com>');
+		expect(field.value).toHaveLength(1);
+		expect(primaryMailbox(field)).toEqual({ name: 'Smith, John', address: 'j@x.com' });
 	});
 });

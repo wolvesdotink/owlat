@@ -26,8 +26,12 @@
  * numbers the client still holds.
  */
 
-import type { ConvexClient } from '../../convex.js';
-import { fn } from '../../convex.js';
+import {
+	fn,
+	type ChangedEnvelopePage,
+	type ConvexClient,
+	type MessageIdPage,
+} from '../../convex.js';
 import type { FetchEnvelope } from '../fetch/format.js';
 
 /**
@@ -45,27 +49,6 @@ const MAX_PAGES = 500;
 
 /** Raised when a paging walk cannot be completed. Surfaces as BAD, not OK. */
 class PagingError extends Error {}
-
-interface UidPage {
-	readonly uids: number[];
-	readonly nextUid: number | null;
-}
-
-interface EnvelopePage {
-	readonly rows: FetchEnvelope[];
-	readonly nextUid: number | null;
-}
-
-interface MessageIdPage {
-	readonly rows: Array<{ _id: string; uid: number; modseq: number }>;
-	readonly nextUid: number | null;
-}
-
-interface ChangedPage {
-	readonly page: FetchEnvelope[];
-	readonly isDone: boolean;
-	readonly continueCursor: string | null;
-}
 
 /**
  * Next UID-ordered read position, or `null` when the walk is done. Throws
@@ -90,13 +73,10 @@ export async function loadFolderUids(convex: ConvexClient, folderId: string): Pr
 	const uids: number[] = [];
 	let afterUid: number | undefined;
 	for (let page = 0; page < MAX_PAGES; page += 1) {
-		const result = (await convex.query(
-			fn.listFolderUidsPage as never,
-			{
-				folderId,
-				...(afterUid === undefined ? {} : { afterUid }),
-			} as never
-		)) as UidPage;
+		const result = await convex.query(fn.listFolderUidsPage, {
+			folderId,
+			...(afterUid === undefined ? {} : { afterUid }),
+		});
 		uids.push(...result.uids);
 		const next = advance(result.nextUid, afterUid ?? 0, 'listFolderUidsPage');
 		if (next === null) return uids;
@@ -115,14 +95,7 @@ export async function loadEnvelopes(
 	const rows: FetchEnvelope[] = [];
 	let low = uidLow;
 	for (let page = 0; page < MAX_PAGES; page += 1) {
-		const result = (await convex.query(
-			fn.fetchEnvelopes as never,
-			{
-				folderId,
-				uidLow: low,
-				uidHigh,
-			} as never
-		)) as EnvelopePage;
+		const result = await convex.query(fn.fetchEnvelopes, { folderId, uidLow: low, uidHigh });
 		rows.push(...result.rows);
 		const next = advance(result.nextUid, low, 'fetchEnvelopes');
 		if (next === null || next > uidHigh) return rows;
@@ -141,14 +114,11 @@ export async function loadMessageIds(
 	const rows: MessageIdPage['rows'] = [];
 	let low = uidLow;
 	for (let page = 0; page < MAX_PAGES; page += 1) {
-		const result = (await convex.query(
-			fn.resolveMessageIdsByUid as never,
-			{
-				folderId,
-				uidLow: low,
-				uidHigh,
-			} as never
-		)) as MessageIdPage;
+		const result = await convex.query(fn.resolveMessageIdsByUid, {
+			folderId,
+			uidLow: low,
+			uidHigh,
+		});
 		rows.push(...result.rows);
 		const next = advance(result.nextUid, low, 'resolveMessageIdsByUid');
 		if (next === null || next > uidHigh) return rows;
@@ -177,14 +147,13 @@ export async function loadChangedEnvelopes(
 	const rows: FetchEnvelope[] = [];
 	let cursor: string | null = null;
 	for (let page = 0; page < MAX_PAGES; page += 1) {
-		const result = (await convex.query(
-			fn.fetchChangedEnvelopes as never,
-			{
-				folderId,
-				modseqSince,
-				paginationOpts: { numItems: pageSize, cursor },
-			} as never
-		)) as ChangedPage;
+		// Annotated: `cursor` is fed back from `result`, which TypeScript cannot
+		// infer through the generic call.
+		const result: ChangedEnvelopePage = await convex.query(fn.fetchChangedEnvelopes, {
+			folderId,
+			modseqSince,
+			paginationOpts: { numItems: pageSize, cursor },
+		});
 		rows.push(...result.page);
 		if (result.isDone || result.continueCursor === null) {
 			return rows.sort((a, b) => a.uid - b.uid);

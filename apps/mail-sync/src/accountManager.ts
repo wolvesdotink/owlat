@@ -38,10 +38,7 @@ export class AccountManager {
 	private async reconcile(): Promise<void> {
 		let accounts: ConnectableAccount[];
 		try {
-			accounts = (await this.convex.query(
-				fn.listConnectableAccounts as never,
-				{} as never
-			)) as ConnectableAccount[];
+			accounts = await this.convex.query(fn.listConnectableAccounts, {});
 		} catch (err) {
 			logger.warn({ err }, 'reconcile: listConnectableAccounts failed');
 			return;

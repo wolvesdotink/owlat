@@ -2,9 +2,9 @@
  * TLS material and the STARTTLS / implicit-TLS transport upgrade (RFC 3207,
  * RFC 8314).
  *
- * The cipher policy is copied VERBATIM from today's submission listeners
- * (`apps/mta/src/smtp/submissionServer.ts`): a TLSv1.2 floor, an AEAD-only
- * ECDHE cipher list, `honorCipherOrder`, and optional SNI. Both flavors — the
+ * The cipher policy is `HARDENED_SERVER_TLS_OPTIONS` from
+ * `@owlat/shared/tlsPolicy`, the one IMAPS uses too: a TLSv1.2 floor, an
+ * AEAD-only ECDHE cipher list, `honorCipherOrder`, and optional SNI. Both flavors — the
  * STARTTLS upgrade of a live plaintext socket and an implicit-TLS listener that
  * is encrypted from the first byte — present the same secure context, so the
  * two transports are cryptographically indistinguishable (D6).
@@ -19,20 +19,14 @@ import {
 	type TlsOptions,
 } from 'node:tls';
 import type { Socket } from 'node:net';
+import { HARDENED_SERVER_TLS_OPTIONS } from '@owlat/shared/tlsPolicy';
 
 /**
- * The exact AEAD-only ECDHE suite the 587/465 listeners advertise today. Kept
- * as a single joined string so the wire policy is auditable in one spot and
- * stays byte-identical to `submissionServer.ts` across the cutover.
+ * The AEAD-only ECDHE suite the 25/587/465 listeners advertise, from the
+ * policy IMAPS presents too (`@owlat/shared/tlsPolicy`), so the wire policy is
+ * auditable in one spot.
  */
-export const DEFAULT_SMTP_CIPHERS: string = [
-	'ECDHE-ECDSA-AES128-GCM-SHA256',
-	'ECDHE-RSA-AES128-GCM-SHA256',
-	'ECDHE-ECDSA-AES256-GCM-SHA384',
-	'ECDHE-RSA-AES256-GCM-SHA384',
-	'ECDHE-ECDSA-CHACHA20-POLY1305',
-	'ECDHE-RSA-CHACHA20-POLY1305',
-].join(':');
+export const DEFAULT_SMTP_CIPHERS: string = HARDENED_SERVER_TLS_OPTIONS.ciphers;
 
 /** SNI resolver, mirroring node's `tls` `SNICallback` shape. */
 export type SmtpSniCallback = (
@@ -128,9 +122,9 @@ export function resolveTlsConfig(cfg: SmtpTlsConfig): ResolvedTlsConfig {
 	const contextOptions: SecureContextOptions = {
 		cert: cfg.cert,
 		key: cfg.key,
-		minVersion: cfg.minVersion ?? 'TLSv1.2',
+		minVersion: cfg.minVersion ?? HARDENED_SERVER_TLS_OPTIONS.minVersion,
 		ciphers: cfg.ciphers ?? DEFAULT_SMTP_CIPHERS,
-		honorCipherOrder: cfg.honorCipherOrder ?? true,
+		honorCipherOrder: cfg.honorCipherOrder ?? HARDENED_SERVER_TLS_OPTIONS.honorCipherOrder,
 	};
 	// Build the optional SNI property ONCE and reuse it for both the
 	// implicit-TLS `tls.createServer` options and the resolved config's single

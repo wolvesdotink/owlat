@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { isLoopbackHost, smtpTlsOptions, imapTlsOptions } from '../tls.js';
+import { isLoopbackHostname } from '@owlat/shared/ipAddress';
+import { smtpTlsOptions, imapTlsOptions } from '../tls.js';
 
-describe('isLoopbackHost', () => {
+// The plaintext gate in tls.ts is the shared `isLoopbackHostname`; these cases
+// pin the shapes this worker relies on.
+describe('isLoopbackHostname (mail-sync plaintext gate)', () => {
 	it('accepts loopback hosts (plaintext permitted)', () => {
 		for (const h of [
 			'localhost',
@@ -13,13 +16,13 @@ describe('isLoopbackHost', () => {
 			'0:0:0:0:0:0:0:1',
 			'::ffff:127.0.0.1',
 		]) {
-			expect(isLoopbackHost(h)).toBe(true);
+			expect(isLoopbackHostname(h)).toBe(true);
 		}
 	});
 
 	it('rejects remote hosts (must be encrypted)', () => {
 		for (const h of ['smtp.mail.me.com', 'smtp-mail.outlook.com', 'example.com', '8.8.8.8', '']) {
-			expect(isLoopbackHost(h)).toBe(false);
+			expect(isLoopbackHostname(h)).toBe(false);
 		}
 	});
 
@@ -49,7 +52,7 @@ describe('isLoopbackHost', () => {
 			'[::1].evil.com',
 			'127.0.0.1 ', // trailing space INSIDE (after trim it is canonical) — see canonical-forms test
 		].filter((h) => h !== '127.0.0.1 ')) {
-			expect(isLoopbackHost(h)).toBe(false);
+			expect(isLoopbackHostname(h)).toBe(false);
 		}
 	});
 
@@ -67,7 +70,7 @@ describe('isLoopbackHost', () => {
 			'0:0:0:0:0:0:0:1',
 			'::ffff:127.0.0.1',
 		]) {
-			expect(isLoopbackHost(h)).toBe(true);
+			expect(isLoopbackHostname(h)).toBe(true);
 		}
 	});
 });

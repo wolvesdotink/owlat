@@ -45,4 +45,7 @@ export type {
 	SmtpTimeouts,
 	SmtpHandlerResult,
 	SmtpListenerOptions,
+	SmtpAdmission,
+	SmtpAdmissionPeer,
+	SmtpAdmissionRefusal,
 } from './types.js';

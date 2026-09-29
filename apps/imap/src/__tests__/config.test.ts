@@ -86,6 +86,40 @@ describe('auth rate limiter configuration', () => {
 	});
 });
 
+describe('numeric limits', () => {
+	it('applies the defaults when unset or blank', () => {
+		process.env['IMAP_MAX_CONN_PER_IP'] = '';
+		process.env['IMAP_MAX_CLIENTS'] = ' ';
+		const config = loadConfig();
+		expect(config.port).toBe(993);
+		expect(config.maxConnectionsPerIp).toBe(20);
+		expect(config.maxClients).toBe(500);
+		expect(config.idleTimeoutMs).toBe(30 * 60 * 1000);
+	});
+
+	it('reads valid overrides', () => {
+		process.env['IMAP_PORT'] = '1993';
+		process.env['IMAP_MAX_CONN_PER_IP'] = '5';
+		const config = loadConfig();
+		expect(config.port).toBe(1993);
+		expect(config.maxConnectionsPerIp).toBe(5);
+	});
+
+	// parseInt read these as NaN or a prefix. NaN made `perIp > max` and
+	// `totalActive >= max` false, which switched both connection caps off.
+	it.each([
+		['IMAP_MAX_CONN_PER_IP', 'twenty', 'IMAP_MAX_CONN_PER_IP must be an integer of at least 1'],
+		['IMAP_MAX_CLIENTS', '0', 'IMAP_MAX_CLIENTS must be an integer of at least 1'],
+		['IMAP_MAX_CLIENTS', '5e2', 'IMAP_MAX_CLIENTS must be an integer of at least 1'],
+		['IMAP_PORT', '99999', 'IMAP_PORT must be an integer between 1 and 65535'],
+		['IMAP_IDLE_TIMEOUT_MS', '3000000000', 'IMAP_IDLE_TIMEOUT_MS must be an integer between 1'],
+		['IMAP_PRE_AUTH_DEADLINE_MS', '1.5', 'IMAP_PRE_AUTH_DEADLINE_MS must be an integer'],
+	])('refuses to boot on %s=%j', (key, value, message) => {
+		process.env[key] = value;
+		expect(() => loadConfig()).toThrowError(message);
+	});
+});
+
 describe('TLS material from the shared cert volume', () => {
 	let certDir: string;
 
@@ -145,6 +179,29 @@ describe('TLS material from the shared cert volume', () => {
 		expect(loadConfig().tls?.paths).toEqual({ cert, key });
 
 		process.env['IMAP_TLS_CERT'] = 'INLINE-CERT';
-		expect(loadConfig().tls).toEqual({ cert: 'INLINE-CERT', key: 'KEY-PEM' });
+		process.env['IMAP_TLS_KEY'] = 'INLINE-KEY';
+		expect(loadConfig().tls).toEqual({ cert: 'INLINE-CERT', key: 'INLINE-KEY' });
+	});
+
+	// These used to be skipped silently, so a typo in IMAP_TLS_CERT_FILE booted
+	// on the volume's default pair (or with no TLS at all) instead of failing.
+	it('fails the boot when an explicitly configured file is missing', () => {
+		process.env['IMAP_TLS_CERT_FILE'] = join(certDir, 'typo.crt');
+		process.env['IMAP_TLS_KEY_FILE'] = join(certDir, 'default.key');
+		expect(() => loadConfig()).toThrowError(/IMAP_TLS_CERT_FILE.*ENOENT/);
+	});
+
+	it.each([
+		[{ IMAP_TLS_CERT: 'INLINE-CERT' }, /IMAP_TLS_CERT is set but IMAP_TLS_KEY is not/],
+		[{ IMAP_TLS_KEY_FILE: '/x.key' }, /IMAP_TLS_KEY_FILE is set but IMAP_TLS_CERT_FILE is not/],
+	])('fails the boot on half a pair (%j)', (vars, message) => {
+		Object.assign(process.env, vars);
+		expect(() => loadConfig()).toThrowError(message);
+	});
+
+	it('starts without TLS when the cert directory holds no pair', () => {
+		rmSync(join(certDir, 'default.key'));
+		expect(loadConfig().tls).toBeNull();
+		writeFileSync(join(certDir, 'default.key'), 'KEY-PEM');
 	});
 });

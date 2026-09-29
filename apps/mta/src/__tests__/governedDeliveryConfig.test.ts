@@ -41,22 +41,28 @@ describe('loadGovernedDeliveryConfig', () => {
 		});
 	});
 
-	it.each(['0', '-1', 'not-a-number', String(GOVERNED_MTA_MAX_MESSAGE_AGE_MS + 1)])(
-		'rejects an invalid maximum message age of %s',
-		(value) => {
-			expect(() =>
-				loadGovernedDeliveryConfig(
-					optionalEnv({
-						FBL_DEDUP_PROTOCOL: 'owned-v2',
-						FBL_DEDUP_CUTOVER_ACK: 'fresh-install',
-						MAX_MESSAGE_AGE_MS: value,
-					})
-				)
-			).toThrow('MAX_MESSAGE_AGE_MS must be between');
-		}
-	);
+	it.each([
+		'0',
+		'-1',
+		'not-a-number',
+		'1e3',
+		'3600000ms',
+		String(GOVERNED_MTA_MAX_MESSAGE_AGE_MS + 1),
+	])('rejects an invalid maximum message age of %s', (value) => {
+		expect(() =>
+			loadGovernedDeliveryConfig(
+				optionalEnv({
+					FBL_DEDUP_PROTOCOL: 'owned-v2',
+					FBL_DEDUP_CUTOVER_ACK: 'fresh-install',
+					MAX_MESSAGE_AGE_MS: value,
+				})
+			)
+		).toThrow(
+			`MAX_MESSAGE_AGE_MS must be an integer between 1 and ${GOVERNED_MTA_MAX_MESSAGE_AGE_MS}`
+		);
+	});
 
-	it.each(['0', '-1', 'NaN', '1.5', '1000001', '12entries'])(
+	it.each(['0', '-1', 'NaN', '1.5', '1e3', '1000001', '12entries'])(
 		'rejects an unsafe webhook DLQ maximum of %s at boot',
 		(value) => {
 			expect(() =>
@@ -67,11 +73,11 @@ describe('loadGovernedDeliveryConfig', () => {
 						WEBHOOK_DLQ_MAX_SIZE: value,
 					})
 				)
-			).toThrow('WEBHOOK_DLQ_MAX_SIZE must be an integer');
+			).toThrow('WEBHOOK_DLQ_MAX_SIZE must be an integer between 1 and 1000000');
 		}
 	);
 
-	it.each(['0', '-1', 'NaN', '1.5', '1000001', '12entries'])(
+	it.each(['0', '-1', 'NaN', '1.5', '1e3', '1000001', '12entries'])(
 		'rejects an unsafe SMTP outcome journal maximum of %s at boot',
 		(value) => {
 			expect(() =>
@@ -82,9 +88,27 @@ describe('loadGovernedDeliveryConfig', () => {
 						SMTP_OUTCOME_JOURNAL_MAX_SIZE: value,
 					})
 				)
-			).toThrow('SMTP_OUTCOME_JOURNAL_MAX_SIZE must be an integer');
+			).toThrow('SMTP_OUTCOME_JOURNAL_MAX_SIZE must be an integer between 1 and 1000000');
 		}
 	);
+
+	it('treats blank numeric values as unset', () => {
+		expect(
+			loadGovernedDeliveryConfig(
+				optionalEnv({
+					FBL_DEDUP_PROTOCOL: 'owned-v2',
+					FBL_DEDUP_CUTOVER_ACK: 'fresh-install',
+					MAX_MESSAGE_AGE_MS: '',
+					SMTP_OUTCOME_JOURNAL_MAX_SIZE: ' ',
+					WEBHOOK_DLQ_MAX_SIZE: ' 250 ',
+				})
+			)
+		).toEqual({
+			maxMessageAgeMs: GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
+			smtpOutcomeJournalMaxSize: 10_000,
+			webhookDlqMaxSize: 250,
+		});
+	});
 
 	it.each([{}, { FBL_DEDUP_PROTOCOL: 'legacy-shadow' }, { FBL_DEDUP_PROTOCOL: 'magic-v3' }])(
 		'rejects an absent or unsupported FBL protocol at boot',

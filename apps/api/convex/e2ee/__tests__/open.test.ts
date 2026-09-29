@@ -382,6 +382,18 @@ describe('e2ee/inboundSeal · parseInnerMessage', () => {
 		expect(parseInnerMessage(inner).subject).toBe('a very long folded subject');
 	});
 
+	it("reads Subject from its own field, not another field's folded continuation", () => {
+		const inner = [
+			'X-Note: see below',
+			' Subject: from a continuation line',
+			'Subject: the real subject',
+			'Content-Type: text/plain',
+			'',
+			'body',
+		].join('\n');
+		expect(parseInnerMessage(inner).subject).toBe('the real subject');
+	});
+
 	it('returns a bare non-MIME payload verbatim as text (inline armor)', () => {
 		// No Content-Type / MIME-Version → not a MIME entity. Multi-paragraph, so a
 		// naive header/body split would swallow the first paragraph as headers.
