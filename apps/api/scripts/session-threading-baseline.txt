@@ -104,11 +104,6 @@ convex/delivery/rampControls.ts:setStreamPreset
 convex/delivery/rampEnrollment.ts:enrollCell
 convex/delivery/rampPhasePromotion.ts:promoteCellPhase
 convex/delivery/sends.ts:get
-convex/delivery/sends.ts:getClickedContacts
-convex/delivery/sends.ts:getLinkClickStats
-convex/delivery/sends.ts:getOpenedContacts
-convex/delivery/sends.ts:getOpensTimeline
-convex/delivery/sends.ts:getStatsByCampaign
 convex/devShortcuts/forceVerifyDomain.ts:forceVerifyDomain
 convex/domains/domains.ts:create
 convex/domains/domains.ts:getInboundMailConfig

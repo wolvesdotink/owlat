@@ -20,6 +20,7 @@ import {
 	type PostmasterDomainSignals,
 } from './signals/postmaster';
 import { DAY_MS } from '../lib/constants';
+import { googlePostmasterMetricFields } from '../schema/postmaster';
 
 const INGEST_MAX_AGE_MS = 14 * DAY_MS;
 const RETENTION_MS = 90 * DAY_MS;
@@ -143,12 +144,7 @@ export const ingest = internalMutation({
 	args: {
 		domain: v.string(),
 		date: v.string(),
-		userReportedSpamRatio: v.number(),
-		spfSuccessRatio: v.optional(v.number()),
-		dkimSuccessRatio: v.optional(v.number()),
-		dmarcSuccessRatio: v.optional(v.number()),
-		deliveryErrorRatio: v.optional(v.number()),
-		deliveryErrors: v.optional(v.array(v.object({ category: v.string(), ratio: v.number() }))),
+		...googlePostmasterMetricFields,
 		fetchedAt: v.number(),
 	},
 	handler: async (ctx, args) => {

@@ -242,7 +242,7 @@ export const setDmarcPolicy = authedMutation({
 		if (args.pct !== undefined && (!Number.isInteger(args.pct) || args.pct < 0 || args.pct > 100)) {
 			throwInvalidInput('DMARC pct must be an integer between 0 and 100');
 		}
-		const outcome = await ctx.runMutation(internal.domains.lifecycle.setDmarcPolicy, {
+		const outcome = await ctx.runMutation(internal.domains.lifecycleDmarc.setDmarcPolicy, {
 			domainId: args.domainId,
 			policy: args.policy,
 			subdomainPolicy: args.subdomainPolicy,
@@ -282,7 +282,7 @@ export const setReceivingMode = authedMutation({
 			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage sending domains'
 		);
-		const outcome = await ctx.runMutation(internal.domains.lifecycle.setReceivingMode, {
+		const outcome = await ctx.runMutation(internal.domains.lifecycleReceiving.setReceivingMode, {
 			domainId: args.domainId,
 			mode: args.mode,
 			provider: args.provider,

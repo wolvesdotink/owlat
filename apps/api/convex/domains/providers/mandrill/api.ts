@@ -23,19 +23,10 @@
  * Error would collapse them into "something went wrong".
  */
 
-import { withTimeout } from '../../../lib/inputGuards';
-import { withoutApiKey } from '../../../lib/redactSecret';
 import { getOptional } from '../../../lib/env';
+import { postMandrill } from '../../../lib/sendProviders/mandrill/client';
 import { categorizeMandrillError } from '../../../lib/sendProviders/mandrill/errors';
 import { EmailErrorCode } from '../../../lib/sendProviders/types';
-
-/**
- * Constant, not configurable — the same reasoning as the send adapter's
- * `messages/send-raw` URL: the EU region is served from this host too, and a
- * per-deployment base URL would be an SSRF-shaped knob on a request that
- * carries the API key in its BODY (Mandrill's convention).
- */
-const MANDRILL_API_BASE = 'https://mandrillapp.com/api/1.0';
 
 /** Upper bound on one sender-domain call. */
 const MANDRILL_DOMAIN_API_TIMEOUT_MS = 15_000;
@@ -117,32 +108,6 @@ function readDomainState(payload: unknown, domain: string): MandrillDomainState 
 	};
 }
 
-/**
- * Mandrill's `{ status: 'error', code, name, message }` failure body.
- *
- * Same rule as the send adapter, and for the same reason: THE API KEY TRAVELS
- * IN THE REQUEST BODY, so a gateway that echoes what it received hands the
- * credential back on this path. Only the two STRUCTURED fields of a body that
- * really parses as a Mandrill error are ever surfaced; anything else is
- * reported by HTTP status alone.
- */
-function readApiError(body: string, status: number): { surfaced: string; classifyText: string } {
-	try {
-		const parsed = JSON.parse(body) as Record<string, unknown>;
-		const name = typeof parsed['name'] === 'string' ? parsed['name'] : '';
-		const message = typeof parsed['message'] === 'string' ? parsed['message'] : '';
-		if (name || message) {
-			return {
-				surfaced: name ? `${name}: ${message}` : message,
-				classifyText: `${name}: ${message}`,
-			};
-		}
-	} catch {
-		// Not JSON — classify from the text, surface none of it.
-	}
-	return { surfaced: `Mandrill sender-domain call failed (HTTP ${status})`, classifyText: body };
-}
-
 async function callSenderDomainEndpoint(
 	endpoint: 'add-domain' | 'check-domain',
 	domain: string
@@ -155,46 +120,38 @@ async function callSenderDomainEndpoint(
 		return { outcome: 'auth_failed', error: 'MANDRILL_API_KEY is not configured' };
 	}
 
-	const abort = new AbortController();
 	try {
-		const response = await withTimeout(
-			fetch(`${MANDRILL_API_BASE}/senders/${endpoint}`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ key: apiKey, domain }),
-				signal: abort.signal,
-			}),
-			MANDRILL_DOMAIN_API_TIMEOUT_MS,
-			TIMEOUT_MESSAGE
+		// `postMandrill` owns the base URL, the timeout and abort, and redacts the
+		// key (which travels in the body) from every error it returns or throws.
+		const result = await postMandrill(
+			`/senders/${endpoint}`,
+			{ key: apiKey, domain },
+			{
+				timeoutMs: MANDRILL_DOMAIN_API_TIMEOUT_MS,
+				timeoutMessage: TIMEOUT_MESSAGE,
+				failureLabel: 'Mandrill sender-domain call failed',
+			}
 		);
 
-		if (!response.ok) {
-			const text = await response.text().catch(() => '');
-			const { surfaced, classifyText } = readApiError(text, response.status);
-			const error = withoutApiKey(surfaced, apiKey);
+		if (!result.ok) {
+			const error = result.error.surfaced;
 			// ONE place knows how Mandrill spells a credential failure — the send
 			// adapter's taxonomy — so a new spelling is learned by both paths at
 			// once. Everything else (5xx, quota, an unparseable gateway page) is an
 			// outage from this module's point of view: no evidence either way.
-			return categorizeMandrillError(classifyText, response.status) === EmailErrorCode.AUTH_FAILED
+			return categorizeMandrillError(result.error.classifyText, result.status) ===
+				EmailErrorCode.AUTH_FAILED
 				? { outcome: 'auth_failed', error }
 				: { outcome: 'unavailable', error };
 		}
 
-		const state = readDomainState((await response.json()) as unknown, domain);
+		const state = readDomainState(result.payload, domain);
 		return state === null
 			? { outcome: 'unavailable', error: 'Mandrill returned no sender-domain state' }
 			: { outcome: 'ok', state };
 	} catch (error) {
-		const message = withoutApiKey(
-			error instanceof Error ? error.message : 'Unknown Mandrill error',
-			apiKey
-		);
+		const message = error instanceof Error ? error.message : 'Unknown Mandrill error';
 		return { outcome: 'unavailable', error: message };
-	} finally {
-		// `Promise.race` cannot cancel its losing branch; abort so a timed-out
-		// request does not continue in the background.
-		abort.abort();
 	}
 }
 

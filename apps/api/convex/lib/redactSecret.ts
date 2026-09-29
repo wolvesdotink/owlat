@@ -1,14 +1,17 @@
 /**
- * Credential redaction for provider error text.
+ * Strip a credential out of text that is about to leave the module holding it.
  *
- * A provider that echoes the request back inside an error body would otherwise
- * carry the API key into a stored error string or a UI message. Every adapter
- * that holds a key strips it through this one function before any text leaves
- * the adapter, so the policy (exact match, `[redacted]` marker, empty key is a
- * no-op) is decided here and not by whichever adapter a new one is copied from.
+ * Provider adapters hold an API key while they build error messages from
+ * upstream-controlled text: a structured error `message`, a JSON parse error
+ * quoting a response body, a gateway that echoes the request. Any of those can
+ * carry the key straight back, so every message that may reach
+ * `emailSends.errorMessage`, a log line or an operator's screen goes through
+ * this one function.
  *
- * No Convex imports: both V8 modules and `'use node'` actions import it.
+ * Runtime-neutral (no Node APIs) so both V8 and `'use node'` modules can use it.
+ * An empty or absent secret is a no-op: `split('')` would otherwise interleave
+ * the marker between every character.
  */
-export function withoutApiKey(text: string, apiKey: string): string {
-	return apiKey.length > 0 ? text.split(apiKey).join('[redacted]') : text;
+export function redactSecret(text: string, secret: string | undefined): string {
+	return secret ? text.split(secret).join('[redacted]') : text;
 }

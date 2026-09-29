@@ -38,6 +38,7 @@ import {
 } from '@owlat/shared/dane';
 import { throwNotFound, throwInvalidState, throwInternal } from '../_utils/errors';
 import { txtRecordMatches } from './dnsMatch';
+import { isDmarcRecord } from './dmarc';
 import {
 	inspectExternalReceivingMx,
 	type ExternalReceivingMxCheck,
@@ -98,7 +99,7 @@ async function verifyTxtRecord(
 		// PermError at every receiver (RFC 7208 §3.2) — flag it as a hard
 		// failure even if one of them matches the expected value, since the
 		// duplicate breaks SPF evaluation entirely.
-		if (expectedValue.startsWith('v=spf1') && detectMultipleSpf(txtValues)) {
+		if (isSpfRecord(expectedValue) && detectMultipleSpf(txtValues)) {
 			// When a foreign SPF record is present (a domain that already sends
 			// through another provider), fold our mechanisms into it and offer the
 			// concrete single record the operator should publish instead.
@@ -129,8 +130,8 @@ async function verifyTxtRecord(
 		}
 
 		const partialMatch = txtValues.find((value) => {
-			if (expectedValue.startsWith('v=spf1') && value.startsWith('v=spf1')) return true;
-			if (expectedValue.startsWith('v=DMARC1') && value.startsWith('v=DMARC1')) return true;
+			if (isSpfRecord(expectedValue) && isSpfRecord(value)) return true;
+			if (isDmarcRecord(expectedValue) && isDmarcRecord(value)) return true;
 			return false;
 		});
 		if (partialMatch) {

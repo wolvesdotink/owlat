@@ -10,6 +10,8 @@ type DataVariableType = 'string' | 'number' | 'boolean' | 'date';
 const props = defineProps<{
 	show: boolean;
 	existingKeys: string[];
+	/** Key to start from, e.g. an undefined `{{token}}` the subject references. */
+	initialKey?: string;
 }>();
 
 const emit = defineEmits<{
@@ -45,6 +47,7 @@ watch(
 	() => props.show,
 	(isOpen) => {
 		if (!isOpen) resetForm();
+		else if (props.initialKey) variableKey.value = props.initialKey;
 	}
 );
 </script>

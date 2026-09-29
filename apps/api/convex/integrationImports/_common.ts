@@ -12,7 +12,7 @@
 
 import { v } from 'convex/values';
 import type { ImportRow, ImportSource } from '../contacts/import';
-import { withoutApiKey } from '../lib/redactSecret';
+import { redactSecret } from '../lib/redactSecret';
 
 // ─── Discriminator ──────────────────────────────────────────────────────────
 
@@ -92,7 +92,7 @@ export type FetchProviderPageOptions<ErrorBody extends object> = {
 	extractMessage: (body: ErrorBody) => string | undefined;
 	/**
 	 * The adapter's API key. Every message this helper throws is passed through
-	 * `withoutApiKey` with it, because a provider that echoes the request inside
+	 * `redactSecret` with it, because a provider that echoes the request inside
 	 * an error body would otherwise put the credential into
 	 * `integrationImports.errors`, which the import UI renders.
 	 */
@@ -116,7 +116,7 @@ export async function fetchProviderPage<ErrorBody extends object>(
 	options: FetchProviderPageOptions<ErrorBody>
 ): Promise<Response> {
 	const { label, where, extractMessage } = options;
-	const redact = (text: string) => withoutApiKey(text, options.secret ?? '');
+	const redact = (text: string) => redactSecret(text, options.secret);
 
 	let response: Response;
 	try {

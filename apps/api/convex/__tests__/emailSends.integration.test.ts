@@ -461,3 +461,82 @@ describe('emailSends.getStatsByCampaign', () => {
 		expect(stats.softBounced).toBe(1);
 	});
 });
+
+// ============ one delivered rule across the campaign report ============
+
+describe('campaign report delivered rule', () => {
+	it('gives the click heatmap the same delivered count as the report header', async () => {
+		const t = convexTest(schema, modules);
+		let campaignId: Id<'campaigns'>;
+		const now = Date.now();
+
+		await t.run(async (ctx) => {
+			campaignId = await ctx.db.insert('campaigns', createTestCampaign());
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+
+			// Delivered, never engaged.
+			await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({ campaignId, contactId, status: 'delivered', deliveredAt: now })
+			);
+
+			// Delivered, opened, clicked one link.
+			await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({
+					campaignId,
+					contactId,
+					status: 'clicked',
+					deliveredAt: now,
+					openedAt: now + 1_000,
+					openCount: 1,
+					clickedAt: now + 2_000,
+					clickedLinks: [{ url: 'https://example.com/a', clickedAt: now + 2_000 }],
+				})
+			);
+
+			// Opened, then bounced: current status is `bounced`, but the
+			// recipient was delivered and opened. The old heatmap rule, which
+			// counted by status, dropped this row from its denominator.
+			await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({
+					campaignId,
+					contactId,
+					status: 'bounced',
+					bounceType: 'soft',
+					deliveredAt: now,
+					openedAt: now + 1_000,
+					openCount: 1,
+					bouncedAt: now + 5_000,
+				})
+			);
+
+			// Never delivered.
+			await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({ campaignId, contactId, status: 'failed' })
+			);
+		});
+
+		const stats = await t.query(api.delivery.sends.getStatsByCampaign, {
+			campaignId: campaignId!,
+		});
+		const linkStats = await t.query(api.delivery.sends.getLinkClickStats, {
+			campaignId: campaignId!,
+		});
+		const opened = await t.query(api.delivery.sends.getOpenedContacts, {
+			campaignId: campaignId!,
+		});
+		const clicked = await t.query(api.delivery.sends.getClickedContacts, {
+			campaignId: campaignId!,
+		});
+
+		expect(stats.delivered).toBe(3);
+		expect(linkStats.totalDelivered).toBe(stats.delivered);
+		expect(linkStats.totalUniqueClicks).toBe(1);
+		expect(stats.opened).toBe(2);
+		expect(opened.total).toBe(stats.opened);
+		expect(clicked.total).toBe(stats.clicked);
+	});
+});

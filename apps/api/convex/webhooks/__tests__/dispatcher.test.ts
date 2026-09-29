@@ -1168,7 +1168,7 @@ describe('dispatchInboundEvent — unresolved-bounce observability', () => {
 });
 
 describe('dispatchInboundEvent — DKIM rotation propagation', () => {
-	const RECORD_DKIM_ROTATION = ref(internal.domains.lifecycle.recordDkimRotation);
+	const RECORD_DKIM_ROTATION = ref(internal.domains.lifecycleDkim.recordDkimRotation);
 
 	it.each(['pending', 'activated'] as const)(
 		'routes internal.dkim_rotated (phase=%s) to recordDkimRotation',

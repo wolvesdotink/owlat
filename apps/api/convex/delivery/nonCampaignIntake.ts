@@ -33,7 +33,7 @@ import { type Infer, v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { transactionalEmailPool } from './workpool';
+import { enqueueGovernedSend } from './governedEnqueue';
 import type { SuppressionScope } from '../lib/suppression';
 import type { MessageType } from '../lib/sendProviders/route';
 import { recordSendAssignments } from './sendAssignments';
@@ -274,9 +274,9 @@ export const intake = internalMutation({
 			],
 		});
 
-		await transactionalEmailPool.enqueueAction(
+		await enqueueGovernedSend(
 			ctx,
-			internal.delivery.worker.sendSingleEmail,
+			{ kind: 'transactional', id: sendId },
 			{
 				envelopeInput: {
 					kind: 'transactional' as const,
@@ -315,12 +315,6 @@ export const intake = internalMutation({
 					...(args.listUnsubscribe ? { listUnsubscribe: args.listUnsubscribe } : {}),
 					...(args.convexSiteUrl ? { convexSiteUrl: args.convexSiteUrl } : {}),
 					...(engagementScore !== undefined ? { engagementScore } : {}),
-				},
-			},
-			{
-				onComplete: internal.delivery.sendCompletion.completeSend,
-				context: {
-					sendRef: { kind: 'transactional' as const, id: sendId },
 				},
 			}
 		);
