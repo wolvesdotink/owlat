@@ -19,6 +19,8 @@ import pc from 'picocolors';
 import { readFile } from 'node:fs/promises';
 import { readEnv, type EnvMap } from '../lib/env';
 import { generateSecret } from '@owlat/shared/setupSecrets';
+import { OWN_SEND_PROVIDER_KIND } from '@owlat/shared/sendProviderCatalog';
+import { isSetupSendingKind, sendingConfigFromCredentials } from '@owlat/shared/setupSendingConfig';
 import { persistResolvedSetup } from '../lib/persistSetup';
 import { createReporter, SetupStep } from '../lib/progress';
 import {
@@ -195,28 +197,22 @@ export function buildAssumeYesConfig(existingEnv: EnvMap): SetupConfig {
 
 /**
  * Pick the sending provider for an unattended install. Honors an explicitly
- * configured Resend/SES provider only when its credentials are already present
- * in the environment; otherwise falls back to the self-hosted MTA, which needs
- * no third-party key and is therefore the only provider selectable without a
- * prompt.
+ * configured `EMAIL_PROVIDER` only when every credential its catalog entry
+ * requires is already present (and well-formed) in the environment; otherwise
+ * falls back to the self-hosted MTA, which needs no third-party key and is
+ * therefore the only provider selectable without a prompt.
+ *
+ * The variables are read through the send-provider catalog's credential fields
+ * (`sendingConfigFromCredentials`, shared with the desktop wizard), so every
+ * provider the setup config can carry is honored here without naming it.
  */
 function resolveSending(read: (key: string) => string | undefined): SendingConfig {
 	const provider = read('EMAIL_PROVIDER');
-	if (provider === 'resend') {
-		const apiKey = read('RESEND_API_KEY');
-		if (apiKey) return { provider: 'resend', apiKey };
-	} else if (provider === 'emailit') {
-		const apiKey = read('EMAILIT_API_KEY');
-		if (apiKey) return { provider: 'emailit', apiKey };
-	} else if (provider === 'ses') {
-		const region = read('AWS_SES_REGION');
-		const accessKeyId = read('AWS_SES_ACCESS_KEY_ID');
-		const secretAccessKey = read('AWS_SES_SECRET_ACCESS_KEY');
-		if (region && accessKeyId && secretAccessKey) {
-			return { provider: 'ses', region, accessKeyId, secretAccessKey };
-		}
+	if (isSetupSendingKind(provider)) {
+		const result = sendingConfigFromCredentials(provider, read);
+		if (result.ok) return result.config;
 	}
-	return { provider: 'mta' };
+	return { provider: OWN_SEND_PROVIDER_KIND };
 }
 
 /**

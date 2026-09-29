@@ -25,6 +25,7 @@ import {
 	type FeaturePackKey,
 } from '@owlat/shared/featureFlags';
 import { ensureSecrets } from '@owlat/shared/setupSecrets';
+import { OUTBOUND_TLS_MODES, isOutboundTlsMode } from '@owlat/shared/outboundTlsMode';
 import { mergeEnv, type EnvMap } from './env';
 import { applySetupDefaults } from './setupEnvDefaults';
 import { isValidEmail } from './validators';
@@ -179,6 +180,15 @@ function parseSending(value: unknown): void {
 	const sending = asObject(value, 'config.sending');
 	switch (sending['provider']) {
 		case 'mta':
+			if (
+				sending['outboundTlsMode'] !== undefined &&
+				(typeof sending['outboundTlsMode'] !== 'string' ||
+					!isOutboundTlsMode(sending['outboundTlsMode']))
+			) {
+				throw new SetupConfigError(
+					`config.sending.outboundTlsMode must be one of ${OUTBOUND_TLS_MODES.join(', ')}`
+				);
+			}
 			return;
 		case 'resend':
 		case 'emailit':
@@ -259,6 +269,9 @@ export function buildEnvPatchFromConfig(config: SetupConfig): EnvMap {
 		switch (config.sending.provider) {
 			case 'mta':
 				patch['EMAIL_PROVIDER'] = 'mta';
+				if (config.sending.outboundTlsMode !== undefined) {
+					patch['OUTBOUND_TLS_MODE'] = config.sending.outboundTlsMode;
+				}
 				break;
 			case 'resend':
 				patch['EMAIL_PROVIDER'] = 'resend';

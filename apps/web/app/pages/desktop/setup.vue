@@ -31,7 +31,17 @@ import {
 import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
 import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
 import type { FeaturePackKey } from '@owlat/shared/featureFlags';
+import { OWN_SEND_PROVIDER_KIND, isOwnSendProviderKind } from '@owlat/shared/sendProviderCatalog';
+import {
+	SETUP_SENDING_CATALOG_ENTRIES,
+	isSetupSendingKind,
+	sendingConfigFromCredentials,
+	type SendingCredentialProblem,
+} from '@owlat/shared/setupSendingConfig';
 import { useLocalized } from '~/composables/useLocalized';
+import { useRelayCredentialDraft } from '~/composables/useRelayCredentialDraft';
+import { OUTBOUND_TLS_MODE_OPTIONS } from '~/composables/setupOutboundTls';
+import TransportCredentialFields from '~/components/delivery/TransportCredentialFields.vue';
 
 const { t } = useI18n();
 
@@ -220,17 +230,39 @@ const packOptions: ReadonlyArray<{ key: FeaturePackKey; label: string }> = [
 	{ key: 'ai', label: 'desktop.setup.packs.ai' },
 ];
 /**
- * The subset of setup-cli's sending providers this wizard offers, carved out of
- * the shared config type so a provider the CLI renames or reshapes breaks here.
- * Emailit and SMTP need a catalog-driven credential form (and a field → config
- * mapper) before the desktop wizard can offer them; see issue #879.
+ * Sending provider + credentials. The picker lists every catalog kind the setup
+ * config can carry, the credential form is the catalog's own descriptor renderer
+ * (shared with the in-app transport editor), and `sendingConfigFromCredentials`
+ * turns the entered values into the config's `sending` block. No provider is
+ * named on this page.
  */
-type DesktopSendingConfig = Extract<SendingConfig, { provider: 'mta' | 'resend' | 'ses' }>;
-const sendingProvider = ref<DesktopSendingConfig['provider']>('mta');
-const resendKey = ref('');
-const sesRegion = ref('');
-const sesAccessKey = ref('');
-const sesSecret = ref('');
+const {
+	provider: sendingProvider,
+	credentialValues: sendingCredentials,
+	preset: sendingPreset,
+	presetOptions: sendingPresetOptions,
+} = useRelayCredentialDraft(OWN_SEND_PROVIDER_KIND);
+/** The own MTA is named as an instruction; a relay by its catalog label. */
+const sendingOptions = computed(() =>
+	SETUP_SENDING_CATALOG_ENTRIES.map((entry) => ({
+		value: entry.kind,
+		label: isOwnSendProviderKind(entry.kind) ? t('desktop.setup.sending.mta') : entry.label,
+	}))
+);
+/** Mail/bounce hostnames, their DNS records and the deliverability hint are the own MTA's. */
+const usesOwnMta = computed(() => isOwnSendProviderKind(sendingProvider.value));
+function outboundTlsHint(mode: string): string {
+	return OUTBOUND_TLS_MODE_OPTIONS.find((option) => option.value === mode)?.hint ?? '';
+}
+function sendingProblemMessage({ field, reason }: SendingCredentialProblem): string {
+	if (reason === 'missing') {
+		return t('shared.setupWizardCredentials.enterField', { field: t(field.label) });
+	}
+	if (field.kind === 'host-port') {
+		return t('desktop.setup.errors.portInvalid', { port: field.portDefault });
+	}
+	return t('desktop.setup.errors.fieldInvalid', { field: t(field.label) });
+}
 const aiProvider = ref<'none' | 'openrouter' | 'openai' | 'ollama'>('none');
 const aiKey = ref('');
 const adminEmail = ref('');
@@ -280,7 +312,7 @@ const hostLabels = ref<SubdomainLabels>(defaultSubdomainLabels());
 // providers, and only the live labels are checked for distinctness.
 const HOST_LABEL_INACTIVE_HINT = 'desktop.setup.hostLabels.inactiveHint';
 const disabledLabelKeys = computed<SubdomainKey[]>(() =>
-	sendingProvider.value === 'mta' ? [] : ['mail', 'bounce']
+	usesOwnMta.value ? [] : ['mail', 'bounce']
 );
 const activeLabelKeys = computed<SubdomainKey[]>(() =>
 	SUBDOMAIN_KEYS.filter((k) => !disabledLabelKeys.value.includes(k))
@@ -300,7 +332,7 @@ const effectiveHosts = computed<InstanceHostnames | null>(() =>
 	hasDomain.value ? deriveHostnames(domain.value, hostLabels.value) : null
 );
 
-function buildConfig(): SetupConfigInput {
+function buildConfig(sending: SendingConfig): SetupConfigInput {
 	const cfg: SetupConfigInput = {
 		version: 1,
 		deploymentMode: 'selfhost',
@@ -311,19 +343,8 @@ function buildConfig(): SetupConfigInput {
 			password: adminPassword.value,
 		},
 		seedDemo: seedDemo.value,
+		sending,
 	};
-	let sending: DesktopSendingConfig;
-	if (sendingProvider.value === 'mta') sending = { provider: 'mta' };
-	else if (sendingProvider.value === 'resend')
-		sending = { provider: 'resend', apiKey: resendKey.value.trim() };
-	else
-		sending = {
-			provider: 'ses',
-			region: sesRegion.value.trim(),
-			accessKeyId: sesAccessKey.value.trim(),
-			secretAccessKey: sesSecret.value.trim(),
-		};
-	cfg.sending = sending;
 
 	if (aiProvider.value === 'ollama') cfg.ai = { provider: 'ollama' };
 	else if (aiProvider.value === 'openrouter')
@@ -334,7 +355,7 @@ function buildConfig(): SetupConfigInput {
 	const hosts = effectiveHosts.value;
 	if (hosts) {
 		cfg.network = networkUrlsFromHosts(hosts);
-		if (sendingProvider.value === 'mta') {
+		if (usesOwnMta.value) {
 			cfg.domain = { ehloHostname: hosts.mail, bounceDomain: hosts.bounce };
 		}
 	}
@@ -372,6 +393,14 @@ const {
 
 async function onProvision() {
 	configError.value = '';
+	const kind = sendingProvider.value;
+	if (!isSetupSendingKind(kind)) return;
+	const sending = sendingConfigFromCredentials(kind, (envVar) => sendingCredentials[envVar]);
+	if (!sending.ok) {
+		configStep.value = 'providers';
+		configError.value = sendingProblemMessage(sending.problem);
+		return;
+	}
 	// A remote server needs a public domain, otherwise the install bakes a
 	// localhost URL the app can never open. Block before provisioning.
 	if (isRemoteTarget.value && !hasDomain.value) {
@@ -396,7 +425,7 @@ async function onProvision() {
 	if (!adminName.value.trim()) return fail(t('desktop.setup.errors.adminNameRequired'));
 	const pw = validateAdminPassword(adminPassword.value, adminPasswordConfirm.value);
 	if (!pw.ok) return fail(tk(pw.error) || t('desktop.setup.errors.adminPasswordInvalid'));
-	await provision(buildConfig());
+	await provision(buildConfig(sending.config));
 }
 
 /**
@@ -419,7 +448,7 @@ const dnsRecords = computed(() => {
 	if (!hosts) return [];
 	return buildDnsRecords({
 		hosts,
-		withMta: sendingProvider.value === 'mta',
+		withMta: usesOwnMta.value,
 		serverIp: serverIp.value,
 	});
 });
@@ -869,41 +898,30 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							<label :class="sectionClass">{{ t('desktop.setup.sections.emailSending') }}</label>
 							<div class="relative">
 								<select v-model="sendingProvider" :class="[inputClass, 'appearance-none pr-8']">
-									<option value="mta">{{ t('desktop.setup.sending.mta') }}</option>
-									<option value="resend">{{ t('desktop.setup.sending.resend') }}</option>
-									<option value="ses">{{ t('desktop.setup.sending.ses') }}</option>
+									<option v-for="opt in sendingOptions" :key="opt.value" :value="opt.value">
+										{{ opt.label }}
+									</option>
 								</select>
 								<Icon
 									name="lucide:chevron-down"
 									class="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary"
 								/>
 							</div>
-							<input
-								v-if="sendingProvider === 'resend'"
-								v-model="resendKey"
-								:class="[inputClass, 'mt-2']"
-								:placeholder="t('desktop.setup.sending.resendKeyPlaceholder')"
-							/>
-							<div v-if="sendingProvider === 'ses'" class="mt-2 space-y-2">
-								<input
-									v-model="sesRegion"
-									:class="inputClass"
-									:placeholder="t('desktop.setup.sending.sesRegionPlaceholder')"
-								/>
-								<input
-									v-model="sesAccessKey"
-									:class="inputClass"
-									:placeholder="t('desktop.setup.sending.sesAccessKeyPlaceholder')"
-								/>
-								<input
-									v-model="sesSecret"
-									type="password"
-									:class="inputClass"
-									:placeholder="t('desktop.setup.sending.sesSecretPlaceholder')"
-								/>
-							</div>
+							<!-- The selected kind's catalog credential fields; no per-provider markup. -->
+							<TransportCredentialFields
+								class="mt-3"
+								:kind="sendingProvider"
+								:values="sendingCredentials"
+								:preset="sendingPreset"
+								:preset-options="sendingPresetOptions"
+								@update:preset="sendingPreset = $event"
+							>
+								<template #outboundTlsMode="{ value }">
+									<p :class="hintClass">{{ t(outboundTlsHint(value)) }}</p>
+								</template>
+							</TransportCredentialFields>
 							<I18nT
-								v-if="sendingProvider === 'mta'"
+								v-if="usesOwnMta"
 								keypath="desktop.setup.sending.mtaHint"
 								tag="p"
 								:class="hintClass"
@@ -1085,10 +1103,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									<p v-if="dnsRecords.length" class="mt-2 text-xs text-text-secondary">
 										{{ t('desktop.setup.dns.tlsHint') }}
 									</p>
-									<p
-										v-if="sendingProvider === 'mta' && dnsRecords.length"
-										class="mt-1.5 text-xs text-warning"
-									>
+									<p v-if="usesOwnMta && dnsRecords.length" class="mt-1.5 text-xs text-warning">
 										<Icon name="lucide:info" class="mb-0.5 mr-1 inline size-3.5" />
 										<I18nT keypath="desktop.setup.dns.deliverabilityHint" scope="global">
 											<template #settings

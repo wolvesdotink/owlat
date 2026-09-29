@@ -57,6 +57,13 @@ const ENV_KEYS = [
 	'AWS_SES_REGION',
 	'AWS_SES_ACCESS_KEY_ID',
 	'AWS_SES_SECRET_ACCESS_KEY',
+	'EMAILIT_API_KEY',
+	'SMTP_RELAY_HOST',
+	'SMTP_RELAY_PORT',
+	'SMTP_RELAY_SECURE',
+	'SMTP_RELAY_USERNAME',
+	'SMTP_RELAY_PASSWORD',
+	'OUTBOUND_TLS_MODE',
 	'LLM_PROVIDER',
 	'LLM_API_KEY',
 ];
@@ -138,10 +145,45 @@ describe('buildAssumeYesConfig', () => {
 	it('reads a provider already persisted in the existing .env on a re-run', () => {
 		const config = buildAssumeYesConfig({
 			EMAIL_PROVIDER: 'mta',
+			OUTBOUND_TLS_MODE: 'require',
 			OWLAT_DEPLOYMENT_MODE: 'selfhost',
 		});
-		expect(config.sending).toEqual({ provider: 'mta' });
+		expect(config.sending).toEqual({ provider: 'mta', outboundTlsMode: 'require' });
 		expect(config.deploymentMode).toBe('selfhost');
+	});
+
+	it('selects an SMTP relay or Emailit when their credentials are present', () => {
+		process.env['EMAIL_PROVIDER'] = 'smtp';
+		process.env['SMTP_RELAY_HOST'] = 'smtp.example.com';
+		process.env['SMTP_RELAY_PORT'] = '2525';
+		process.env['SMTP_RELAY_USERNAME'] = 'relay-user';
+		process.env['SMTP_RELAY_PASSWORD'] = 'relay-pass';
+		const smtp = buildAssumeYesConfig({});
+		expect(smtp.sending).toEqual({
+			provider: 'smtp',
+			host: 'smtp.example.com',
+			port: 2525,
+			username: 'relay-user',
+			password: 'relay-pass',
+		});
+		expect(() => parseSetupConfig(smtp)).not.toThrow();
+
+		process.env['EMAIL_PROVIDER'] = 'emailit';
+		process.env['EMAILIT_API_KEY'] = 'em_test';
+		expect(buildAssumeYesConfig({}).sending).toEqual({ provider: 'emailit', apiKey: 'em_test' });
+		noPromptCalled();
+	});
+
+	it('falls back to MTA when a relay credential is malformed or the kind is not configurable', () => {
+		process.env['EMAIL_PROVIDER'] = 'smtp';
+		process.env['SMTP_RELAY_HOST'] = 'smtp.example.com';
+		process.env['SMTP_RELAY_PORT'] = 'not-a-port';
+		process.env['SMTP_RELAY_USERNAME'] = 'relay-user';
+		process.env['SMTP_RELAY_PASSWORD'] = 'relay-pass';
+		expect(buildAssumeYesConfig({}).sending).toEqual({ provider: 'mta' });
+
+		process.env['EMAIL_PROVIDER'] = 'mandrill';
+		expect(buildAssumeYesConfig({}).sending).toEqual({ provider: 'mta' });
 	});
 
 	it('wires an AI provider only when fully specified in the environment', () => {
