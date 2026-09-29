@@ -21,7 +21,7 @@ import { publicAction, publicQuery } from '../../lib/authedFunctions';
 import type { Id, Doc } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
 import { requireMessageAccess, loadReadableMailbox } from '../permissions';
-import { senderHeuristicsValidator } from '../../lib/senderHeuristicsValidator';
+import { senderHeuristicsValidator } from '../../lib/validators/senderHeuristics';
 
 /**
  * Load a message the caller is allowed to READ (owner/admin, or the mailbox
