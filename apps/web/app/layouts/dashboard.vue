@@ -364,12 +364,15 @@ const sidebarToggleLabel = computed(() => {
 });
 
 // Computed sidebar width class — a hidden sidebar peeks at its last width.
+// Collapse swaps the width in one frame: animating `width` here (and the
+// content padding below) relaid the whole app out on every frame of the move.
 const sidebarWidthClass = computed(() => {
 	return isCollapsed.value ? 'w-16' : 'w-64';
 });
 
 // Content padding reserves the rail's gutter. When hidden the content goes
-// full-bleed (no reflow when the peek floats over it).
+// full-bleed (no reflow when the peek floats over it). Never transitioned:
+// it changes in the same frame as the rail's width, so the page lays out once.
 const mainPaddingClass = computed(() => {
 	if (effectiveHidden.value) return '';
 	return isCollapsed.value ? 'lg:pl-16' : 'lg:pl-64';
@@ -377,8 +380,9 @@ const mainPaddingClass = computed(() => {
 
 // Desktop transform for the aside. When hidden it slides off-screen; the peek
 // brings it back over the content (no reflow — padding stays removed). Enter
-// uses the spring-bounce at motion-slow; exit uses ease-exit. Reduced-motion is
-// handled by the global floor in base.css (durations collapse to ~0).
+// uses the spring-bounce at motion-slow; exit uses ease-exit. Only `translate`
+// (and the peek's shadow) transition, both off the layout path; reduced motion
+// drops the slide outright (`motion-reduce:transition-none` on the aside).
 const sidebarDesktopClass = computed(() => {
 	if (!effectiveHidden.value) {
 		return 'lg:translate-x-0 duration-(--motion-moderate)';
@@ -438,7 +442,7 @@ const sidebarDesktopClass = computed(() => {
 		<!-- Sidebar -->
 		<aside
 			:class="[
-				'fixed top-0 left-0 z-50 h-full bg-bg-elevated border-r border-border-subtle flex flex-col transition-all pt-[env(safe-area-inset-top)] lg:pt-0',
+				'fixed top-0 left-0 z-50 h-full bg-bg-elevated border-r border-border-subtle flex flex-col transition-[translate,box-shadow] motion-reduce:transition-none pt-[env(safe-area-inset-top)] lg:pt-0',
 				sidebarWidthClass,
 				isSidebarOpen ? 'translate-x-0' : '-translate-x-full',
 				isFocusMode ? 'lg:-translate-x-full duration-(--motion-moderate)' : sidebarDesktopClass,
@@ -565,10 +569,7 @@ const sidebarDesktopClass = computed(() => {
 		</aside>
 
 		<!-- Main content area -->
-		<div
-			:class="isFocusMode ? '' : mainPaddingClass"
-			class="transition-all duration-(--motion-moderate)"
-		>
+		<div :class="isFocusMode ? '' : mainPaddingClass">
 			<DashboardShellHeader
 				v-if="!isFocusMode"
 				:is-desktop="isDesktop"
