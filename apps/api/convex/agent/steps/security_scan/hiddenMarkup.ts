@@ -4,89 +4,44 @@
  * them away from a model.
  *
  * The pass tokenizes the input once, left to right, the way an HTML tokenizer
- * reads tags, and keeps a stack of open elements. An element is hidden when its
- * inline style hides it (after decoding character references and CSS escapes
- * and dropping CSS comments), when it carries the `hidden` attribute, or when
- * it is a `<template>`. A hidden element is removed with everything inside it,
- * up to the end tag that closes it. Nested elements of the same name are
- * counted, an end tag may carry attributes, and a hidden element that is never
- * closed runs until an end tag closes one of its ancestors, or to the end of the
- * input.
+ * reads tags, and keeps the stack of open elements (`htmlElements.ts`). An
+ * element is hidden when its inline style hides it (`hiddenStyle.ts`), when it
+ * carries the `hidden` attribute, or when the browser never shows it
+ * (`template`, `script`, `style`, `title`, …). A hidden element is removed with
+ * everything inside it, up to where it is closed: by its own end tag (which may
+ * carry attributes), by an end tag or a start tag that closes it implicitly
+ * (a new `<p>`, `<li>`, cell or row), or at the end of the input. Start tags the
+ * browser ignores (`<body>` inside the body, a `<td>` outside a table) are
+ * ignored here too, and the content of a raw-text element such as `<textarea>`
+ * is text, with no markup in it.
  *
  * Where the tree builder's rules are too involved to follow exactly, the pass
  * keeps hiding rather than showing: an end tag it cannot match safely does not
- * end a hidden element, and a hidden formatting element (`<b>`, `<font>`, …) that
- * an ancestor's end tag closes keeps hiding until its own end tag, since the
- * browser reopens formatting elements after such a close. Removing too much only
- * costs the model some visible text; removing too little would let hidden text
- * through.
+ * end a hidden element, and a hidden formatting element (`<b>`, `<font>`, …)
+ * that something else closes keeps hiding until an end tag of its name, since
+ * the browser reopens formatting elements for the content that follows.
+ * Removing too much only costs the model some visible text; removing too little
+ * would let hidden text through.
  *
- * Linear: every character is read a bounded number of times, and the element
- * stack keeps per-name and per-kind indexes so each end tag is matched in
- * constant time (amortised over the pops it causes).
+ * Linear: every character is read a bounded number of times, and every close
+ * decision takes constant time, amortised over the pops it causes.
  */
 
-/**
- * An inline style that hides its element: display:none, visibility:hidden,
- * font-size:0, opacity:0, or white / transparent text. The negative lookbehind
- * keeps `background-color: white` visible. The `rgba(` arguments are
- * length-bounded so a long unterminated value cannot backtrack.
- */
-const HIDING_STYLE =
-	/display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0(?:\.0+)?(?:px|pt|em|rem|%)?(?![.\d])|opacity\s*:\s*0(?:\.0+)?(?![.\d])|(?<![-\w])color\s*:\s*(?:white|transparent|#fff(?:fff)?|rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)|rgba\([^)]{0,64},\s*0(?:\.0+)?\s*\))/i;
-
-/** A set of element names from a whitespace-separated list. */
-const elementNames = (list: string): ReadonlySet<string> => new Set(list.trim().split(/\s+/));
-
-/** Elements that never have content or an end tag. */
-const VOID_ELEMENTS = elementNames(`
-	area base basefont bgsound br col embed frame hr img input keygen link meta
-	param source track wbr
-`);
-
-/** Elements whose content is text up to their own end tag, never markup. */
-const RAW_TEXT_ELEMENTS = elementNames(`
-	iframe noembed noframes plaintext script style textarea title xmp
-`);
-
-/**
- * Formatting elements: the browser reopens these after an ancestor's end tag
- * closes them (the "active formatting elements" list).
- */
-const FORMATTING_ELEMENTS = elementNames(`
-	a b big code em font i nobr s small strike strong tt u
-`);
-
-/**
- * The HTML "special" elements. The end tag of an ordinary element (one not in
- * this set) is ignored when a special element sits above that element on the
- * stack; formatting elements are treated the same way here, which keeps hiding
- * where the browser would restructure the tree instead.
- */
-const SPECIAL_ELEMENTS = elementNames(`
-	address applet article aside blockquote body button caption center colgroup
-	dd details dialog dir div dl dt fieldset figcaption figure footer form
-	frameset h1 h2 h3 h4 h5 h6 head header hgroup html iframe li listing main
-	marquee menu nav noembed noframes noscript object ol p plaintext pre search
-	section select summary table tbody td template textarea tfoot th thead title
-	tr ul xmp
-`);
-
-/**
- * Scope boundaries: the end tag of a special element is ignored when one of
- * these sits above that element on the stack. The HTML default scope, widened
- * by the list-item and button scopes' extra boundaries, so an end tag is
- * ignored whenever any of those scopes would ignore it.
- */
-const SCOPE_BOUNDARIES = elementNames(`
-	applet button caption html marquee object ol select table td template th ul
-`);
-
-/**
- * Elements whose end tag also clears the reopen list back to where they
- * started, so a formatting element inside one is not reopened after it.
- */
-const MARKER_ELEMENTS = elementNames(`applet caption marquee object td template th`);
+import { ActiveFormatting, type FormattingEntry } from './activeFormatting';
+import { styleHides, styleRemoves } from './hiddenStyle';
+import {
+	ALWAYS_HIDDEN_ELEMENTS,
+	ElementStack,
+	type EndTagEffect,
+	FORMATTING_ELEMENTS,
+	IGNORED_START_TAGS,
+	MARKER_ELEMENTS,
+	type Namespace,
+	RAW_TEXT_ELEMENTS,
+	reopensFormatting,
+	TABLE_PARTS,
+	VOID_ELEMENTS,
+} from './htmlElements';
 
 const isTagSpace = (c: string | undefined): boolean =>
 	c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
@@ -94,112 +49,17 @@ const isTagSpace = (c: string | undefined): boolean =>
 const isAsciiAlpha = (c: string | undefined): boolean =>
 	c !== undefined && ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'));
 
-// ── Attribute values ──
-
-/**
- * The named character references that stand for ASCII punctuation or spacing a
- * style could be spelled with. Letters and digits have no named references.
- */
-const NAMED_REFERENCES: Record<string, string> = {
-	amp: '&',
-	apos: "'",
-	ast: '*',
-	bsol: '\\',
-	colon: ':',
-	comma: ',',
-	commat: '@',
-	dollar: '$',
-	equals: '=',
-	excl: '!',
-	grave: '`',
-	gt: '>',
-	hat: '^',
-	lbrace: '{',
-	lbrack: '[',
-	lcub: '{',
-	lowbar: '_',
-	lpar: '(',
-	lsqb: '[',
-	lt: '<',
-	newline: '\n',
-	num: '#',
-	percnt: '%',
-	period: '.',
-	plus: '+',
-	quest: '?',
-	quot: '"',
-	rbrace: '}',
-	rbrack: ']',
-	rcub: '}',
-	rpar: ')',
-	rsqb: ']',
-	semi: ';',
-	sol: '/',
-	tab: '\t',
-	verbar: '|',
-	vert: '|',
-};
-
-/** A decoded numeric reference; the browser turns invalid ones into U+FFFD. */
-function codePointText(code: number): string {
-	if (!Number.isFinite(code) || code === 0 || code > 0x10ffff) return '\uFFFD';
-	if (code >= 0xd800 && code <= 0xdfff) return '\uFFFD';
-	return String.fromCodePoint(code);
-}
-
-const CHARACTER_REFERENCE = /&(?:#[xX]([0-9a-fA-F]+);?|#(\d+);?|([a-zA-Z]{2,8});)/g;
-
-/** Decode the character references in an attribute value, as the tokenizer does. */
-function decodeAttributeValue(value: string): string {
-	if (!value.includes('&')) return value;
-	return value.replace(
-		CHARACTER_REFERENCE,
-		(match, hex: string | undefined, dec: string | undefined, name: string | undefined) => {
-			if (hex !== undefined) return codePointText(Number.parseInt(hex, 16));
-			if (dec !== undefined) return codePointText(Number.parseInt(dec, 10));
-			return NAMED_REFERENCES[(name as string).toLowerCase()] ?? match;
-		}
-	);
-}
-
-/**
- * A CSS comment (an unclosed one runs to the end, as in CSS) or a backslash
- * escape: hex digits with one optional trailing space, an escaped newline, or
- * any other escaped character.
- */
-const CSS_COMMENT_OR_ESCAPE =
-	/\/\*[\s\S]*?(?:\*\/|$)|\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \t\n\r\f])?|(\r\n|[\n\r\f])|([\s\S]))/g;
-
-/**
- * A style declaration as CSS reads it: comments dropped and backslash escapes
- * decoded (`\6e one` and `n\one` both read `none`).
- */
-function normalizeCss(style: string): string {
-	if (!style.includes('\\') && !style.includes('/*')) return style;
-	return style.replace(
-		CSS_COMMENT_OR_ESCAPE,
-		(_match, hex: string | undefined, _newline: string | undefined, char: string | undefined) => {
-			if (hex !== undefined) return codePointText(Number.parseInt(hex, 16));
-			// An escaped character stands for itself; comments and escaped
-			// newlines read as nothing.
-			return char ?? '';
-		}
-	);
-}
-
-/** Whether a raw `style` attribute value hides its element. */
-function styleHides(rawStyle: string): boolean {
-	return HIDING_STYLE.test(normalizeCss(decodeAttributeValue(rawStyle)));
-}
-
 // ── Tags ──
 
 /**
  * A tag read by {@link readTag}: either it ends at `end` (its closing `>`),
- * with its first `style` value and whether it carries `hidden`, or it never
+ * with its first `style` value, whether it carries `hidden` and whether it is
+ * self-closing (`<g />`), or it never
  * ends and scanning resumes at `resume`.
  */
-type Tag = { end: number; style: string | null; hidden: boolean } | { end: null; resume: number };
+type Tag =
+	| { end: number; style: string | null; hidden: boolean; selfClosing: boolean }
+	| { end: null; resume: number };
 
 /**
  * Read the attributes of a tag the way an HTML tokenizer does, from just after
@@ -218,9 +78,14 @@ function readTag(input: string, from: number): Tag {
 	let hidden = false;
 	let i = from;
 	for (;;) {
-		while (i < input.length && (isTagSpace(input[i]) || input[i] === '/')) i++;
+		// A `/` right before the closing `>` marks a self-closing tag.
+		let slash = false;
+		while (i < input.length && (isTagSpace(input[i]) || input[i] === '/')) {
+			slash = input[i] === '/';
+			i++;
+		}
 		if (i >= input.length) return { end: null, resume: input.length };
-		if (input[i] === '>') return { end: i, style, hidden };
+		if (input[i] === '>') return { end: i, style, hidden, selfClosing: slash };
 
 		// Attribute name: a leading `=` belongs to the name.
 		const nameStart = i;
@@ -272,69 +137,11 @@ function rawTextClose(name: string): RegExp {
 	return re;
 }
 
-// ── Element stack ──
+/** Elements a select keeps when they appear inside it. */
+const SELECT_CONTENT = new Set(['hr', 'optgroup', 'option', 'script', 'template']);
 
-/** The last entry of an index list, or -1 when it is empty. */
-const top = (list: readonly number[]): number =>
-	list.length > 0 ? (list[list.length - 1] as number) : -1;
-
-/**
- * The open elements, with per-name, special and scope-boundary indexes so an
- * end tag finds its element, or learns it cannot close it, in constant time.
- */
-class ElementStack {
-	private readonly names: string[] = [];
-	private readonly byName = new Map<string, number[]>();
-	private readonly specials: number[] = [];
-	private readonly boundaries: number[] = [];
-
-	push(name: string): number {
-		const index = this.names.length;
-		this.names.push(name);
-		let positions = this.byName.get(name);
-		if (!positions) {
-			positions = [];
-			this.byName.set(name, positions);
-		}
-		positions.push(index);
-		if (SPECIAL_ELEMENTS.has(name)) this.specials.push(index);
-		if (SCOPE_BOUNDARIES.has(name)) this.boundaries.push(index);
-		return index;
-	}
-
-	/** Pop down to `depth` elements. */
-	truncate(depth: number): void {
-		while (this.names.length > depth) {
-			const name = this.names.pop() as string;
-			const index = this.names.length;
-			this.byName.get(name)?.pop();
-			if (top(this.specials) === index) this.specials.pop();
-			if (top(this.boundaries) === index) this.boundaries.pop();
-		}
-	}
-
-	/**
-	 * The stack index an end tag for `name` closes, or -1 when it closes nothing
-	 * here: no such element is open, or an element it may not close through sits
-	 * above the nearest one (see {@link SPECIAL_ELEMENTS} and
-	 * {@link SCOPE_BOUNDARIES}). `</body>` and `</html>` never close anything,
-	 * since the browser keeps adding later content to the open elements, and
-	 * `</form>` only closes a form that is the current element, since the browser
-	 * then removes the form alone and leaves the elements inside it open.
-	 */
-	closeTarget(name: string): number {
-		if (name === 'body' || name === 'html') return -1;
-		const positions = this.byName.get(name);
-		if (!positions) return -1;
-		const index = top(positions);
-		if (index === -1) return -1;
-		if (name === 'form' && index !== this.names.length - 1) return -1;
-		const blockers = SPECIAL_ELEMENTS.has(name) ? this.boundaries : this.specials;
-		const blocker = top(blockers);
-		// An element never blocks its own end tag.
-		return blocker > index ? -1 : index;
-	}
-}
+/** Markers the browser clears from the formatting list whenever they close. */
+const CELL_MARKERS = new Set(['caption', 'td', 'th']);
 
 /**
  * Drop every hidden element (see the module comment) with its content. The
@@ -343,36 +150,87 @@ class ElementStack {
  */
 export function stripHiddenElements(input: string): string {
 	const stack = new ElementStack();
+	const formatting = new ActiveFormatting();
 	let out = '';
 	let copied = 0;
 
-	// The hidden element being dropped: where its start tag begins, its stack
-	// index, and its name. `carry` is set once an ancestor's end tag closed a
-	// hidden formatting element: hiding then lasts until an end tag of its name.
-	let hiddenStart = -1;
-	let hiddenIndex = -1;
-	let hiddenName = '';
-	let carry = false;
-	// While carrying: elements at or above this stack depth were opened after
-	// the hidden element was closed, so an end tag for one of them closes it,
-	// not the carried element.
-	let carryDepth = 0;
-	// Raw-text elements whose end tag is missing from some position on: it is
-	// then missing from every later position too, so it is not searched again.
-	const missingRawClose = new Set<string>();
+	// The hidden span being dropped: where it began, or -1, and the stack index
+	// of the hidden element keeping it open, or -1 while none is open. The span
+	// also stays open while a closed hidden formatting element waits to be
+	// reopened (see activeFormatting.ts).
+	let regionStart = -1;
+	let rootIndex = -1;
+	// SVG and MathML content is not followed closely enough to know where a
+	// hidden span inside or around it ends, so such a span runs to the end.
+	let sticky = false;
 
-	const drop = (end: number) => {
-		out += `${input.slice(copied, hiddenStart)} `;
+	const endRegionIfClosed = (end: number) => {
+		if (regionStart === -1 || rootIndex !== -1 || sticky) return;
+		if (formatting.hiddenClosed > 0 || formatting.overflowed) return;
+		out += `${input.slice(copied, regionStart)} `;
 		copied = end;
-		hiddenStart = -1;
-		hiddenIndex = -1;
-		carry = false;
+		regionStart = -1;
+	};
+
+	/** Push an element, starting or continuing a hidden span when it hides. */
+	const open = (name: string, hides: boolean, namespace: Namespace, at: number) => {
+		const html = namespace === '';
+		const entry = html && FORMATTING_ELEMENTS.has(name) ? formatting.add(name, hides) : null;
+		if (html && MARKER_ELEMENTS.has(name)) formatting.addMarker();
+		const index = stack.push(name, hides, namespace, entry);
+		if (hides && rootIndex === -1) {
+			if (regionStart === -1) regionStart = at;
+			rootIndex = index;
+		}
+		if (regionStart !== -1 && stack.hasForeign()) sticky = true;
+	};
+
+	/** Reopen closed formatting elements before new content, as the browser does. */
+	const reopenFormatting = (at: number) => {
+		for (const entry of formatting.reopen()) {
+			const index = stack.push(entry.name, entry.hides, '', entry);
+			if (entry.hides && rootIndex === -1) {
+				if (regionStart === -1) regionStart = at;
+				rootIndex = index;
+			}
+		}
+	};
+
+	// Whether a form is open for the parser: a second `<form>` is ignored until
+	// a `</form>`, even when the first form was closed implicitly.
+	let formOpen = false;
+
+	/**
+	 * Close the element at `target` and everything above it. The tag doing so
+	 * starts at `at` and ends just before `after`; `explicit` when it is the
+	 * element's own end tag.
+	 */
+	const closeTo = (target: number, at: number, after: number, explicit: boolean) => {
+		stack.truncate(target, (name, _hides, index, entry) => {
+			const ownEndTag = explicit && index === target;
+			if (entry) {
+				if (ownEndTag) formatting.remove(entry);
+				else formatting.closed(entry);
+			}
+			if (CELL_MARKERS.has(name) || (ownEndTag && MARKER_ELEMENTS.has(name))) {
+				formatting.clearToMarker();
+			}
+		});
+		let end = at;
+		if (rootIndex >= target) {
+			// Its own end tag ends the hidden element; any other close leaves that
+			// tag, which belongs to a visible element, in place.
+			if (explicit && rootIndex === target) end = after;
+			rootIndex = -1;
+		}
+		endRegionIfClosed(end);
 	};
 
 	let pos = 0;
 	for (;;) {
 		const lt = input.indexOf('<', pos);
 		if (lt === -1) break;
+		if (lt > pos) reopenFormatting(pos);
 		const next = input[lt + 1];
 
 		if (isAsciiAlpha(next)) {
@@ -384,26 +242,75 @@ export function stripHiddenElements(input: string): string {
 				continue;
 			}
 			pos = tag.end + 1;
-			if (VOID_ELEMENTS.has(name)) continue;
-
-			const index = stack.push(name);
-			if (
-				hiddenStart === -1 &&
-				(name === 'template' || tag.hidden || (tag.style !== null && styleHides(tag.style)))
-			) {
-				hiddenStart = lt;
-				hiddenIndex = index;
-				hiddenName = name;
+			if (IGNORED_START_TAGS.has(name)) {
+				// The browser copies `<html>` and `<body>` attributes onto the
+				// document's own elements, so hiding one hides the whole document.
+				if (
+					(name === 'html' || name === 'body') &&
+					(tag.hidden || (tag.style !== null && styleRemoves(tag.style)))
+				) {
+					return ' ';
+				}
+				continue;
 			}
-			if (RAW_TEXT_ELEMENTS.has(name) && !missingRawClose.has(name)) {
-				// The content is text up to `</name`; no markup inside it counts.
-				// Without such an end tag the rest is scanned as markup, which can
-				// only remove more.
-				const close = rawTextClose(name);
-				close.lastIndex = pos;
-				const found = close.exec(input);
-				if (found) pos = found.index;
-				else missingRawClose.add(name);
+			if (TABLE_PARTS.has(name) && !stack.inTable()) continue;
+			if (name === 'form') {
+				if (formOpen) continue;
+				formOpen = true;
+			}
+			if (stack.has('select')) {
+				// Inside a select the browser keeps only options and a few others,
+				// and ends the select at another select, a form control, or (in a
+				// table) a table part.
+				const endsSelect =
+					name === 'select' ||
+					name === 'input' ||
+					name === 'keygen' ||
+					name === 'textarea' ||
+					((name === 'table' || TABLE_PARTS.has(name)) && stack.has('table'));
+				if (endsSelect) {
+					closeTo(stack.nearest('select'), lt, lt, false);
+					if (name === 'select') continue;
+				} else if (!SELECT_CONTENT.has(name)) {
+					continue;
+				}
+			}
+
+			if (name === 'a') {
+				// A new link closes one still open in the same stretch.
+				const link = formatting.lastAfterMarker('a');
+				if (link) closeFormatting('a', link, lt, lt);
+			}
+			const item = stack.impliedClose(name);
+			if (item !== -1) closeTo(item, lt, lt, false);
+			const paragraph = stack.impliedParagraphClose(name);
+			if (paragraph !== -1) closeTo(paragraph, lt, lt, false);
+			const heading = stack.impliedHeadingClose(name);
+			if (heading !== -1) closeTo(heading, lt, lt, false);
+			for (const parent of stack.impliedTableParents(name)) open(parent, false, '', lt);
+
+			const namespace = stack.namespaceFor(name);
+			const foreign = namespace !== '';
+			if (!foreign && reopensFormatting(name)) reopenFormatting(lt);
+			if (VOID_ELEMENTS.has(name) || (foreign && tag.selfClosing)) continue;
+
+			const hides =
+				ALWAYS_HIDDEN_ELEMENTS.has(name) ||
+				tag.hidden ||
+				(tag.style !== null && styleHides(tag.style));
+			open(name, hides, namespace, lt);
+
+			if (!foreign && RAW_TEXT_ELEMENTS.has(name)) {
+				// The content is text up to `</name`, or to the end of the input
+				// when there is none (always, for `plaintext`).
+				let found: RegExpExecArray | null = null;
+				if (name !== 'plaintext') {
+					const close = rawTextClose(name);
+					close.lastIndex = pos;
+					found = close.exec(input);
+				}
+				if (!found) break;
+				pos = found.index;
 			}
 			continue;
 		}
@@ -426,41 +333,22 @@ export function stripHiddenElements(input: string): string {
 			}
 			pos = tag.end + 1;
 
-			const target = stack.closeTarget(name);
-			if (carry) {
-				if (name === hiddenName && target < carryDepth) {
-					// No element of this name was opened since the carried one was
-					// closed, so this end tag closes the carried one.
-					drop(pos);
-					continue;
-				}
-				if (target === -1) continue;
-				stack.truncate(target);
-				if (target < carryDepth && MARKER_ELEMENTS.has(name)) {
-					// The carried element was opened inside this one, and its end tag
-					// stops the browser reopening it.
-					drop(lt);
-					continue;
-				}
-				carryDepth = Math.min(carryDepth, target);
+			if (name === 'form') formOpen = false;
+			if (
+				stack.has('select') &&
+				!SELECT_CONTENT.has(name) &&
+				name !== 'select' &&
+				name !== 'table' &&
+				!TABLE_PARTS.has(name)
+			) {
 				continue;
 			}
-			if (target === -1) continue;
-			stack.truncate(target);
-			if (hiddenStart === -1 || target > hiddenIndex) continue;
-			if (target === hiddenIndex) {
-				drop(pos);
-			} else if (FORMATTING_ELEMENTS.has(hiddenName) && !MARKER_ELEMENTS.has(name)) {
-				// An ancestor closed a hidden formatting element; the browser reopens
-				// it for the content that follows.
-				carry = true;
-				carryDepth = target;
-				hiddenIndex = -1;
-			} else {
-				// An ancestor's end tag closed the hidden element; the end tag itself
-				// belongs to the visible ancestor and stays.
-				drop(lt);
+			const entry = FORMATTING_ELEMENTS.has(name) ? formatting.lastAfterMarker(name) : null;
+			if (entry) {
+				closeFormatting(name, entry, lt, pos);
+				continue;
 			}
+			applyEndTag(name, stack.endTag(name), lt, pos);
 			continue;
 		}
 
@@ -476,9 +364,45 @@ export function stripHiddenElements(input: string): string {
 		pos = lt + 1;
 	}
 
-	if (hiddenStart !== -1) {
-		out += `${input.slice(copied, hiddenStart)} `;
+	if (regionStart !== -1) {
+		out += `${input.slice(copied, regionStart)} `;
 		copied = input.length;
 	}
 	return copied === 0 ? input : out + input.slice(copied);
+
+	/** Close a formatting element that is on the list (the adoption agency). */
+	function closeFormatting(name: string, entry: FormattingEntry, at: number, after: number) {
+		if (!entry.open) {
+			// Closed already and waiting to be reopened: it just leaves the list.
+			formatting.remove(entry);
+			endRegionIfClosed(after);
+			return;
+		}
+		// Closing or detaching it takes it off the list; when the end tag is
+		// ignored (it is out of scope) it stays on the list.
+		applyEndTag(name, stack.endTag(name), at, after);
+	}
+
+	/** Apply what an end tag does to the stack. */
+	function applyEndTag(name: string, effect: EndTagEffect, at: number, after: number) {
+		if (effect.kind === 'close') {
+			closeTo(effect.index, at, after, true);
+		} else if (effect.kind === 'detach') {
+			const detached = stack.detach(effect.index);
+			if (detached) {
+				formatting.remove(detached);
+				// The browser moves the content of the highest special element above
+				// the formatting element into a copy of it, then closes that copy
+				// and everything opened inside it.
+				const above = stack.topSpecial() + 1;
+				if (above < stack.depth) closeTo(above, at, at, false);
+			}
+			if (effect.index === rootIndex) {
+				// What was open inside a form stays inside it in the page; what was
+				// inside a detached formatting element no longer sits inside it.
+				rootIndex = name === 'form' ? effect.index + 1 : stack.nextHiding(effect.index);
+				endRegionIfClosed(after);
+			}
+		}
+	}
 }

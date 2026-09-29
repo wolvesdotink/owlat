@@ -162,37 +162,39 @@ function stripDelimited(input: string, open: RegExp, close: RegExp): string {
  *
  * Pure + deterministic. Strips, in order:
  *   - HTML comments (`<!-- ... -->`) -- a classic instruction-smuggling channel.
- *   - `<script>` / `<style>` elements (never human-visible prose).
- *   - Hidden elements with their content (`hiddenMarkup.ts`): an inline style
- *     of display:none, visibility:hidden, font-size:0, opacity:0, or white or
- *     transparent text (`background-color: white` stays visible), read after
- *     character references and CSS escapes are decoded; the `hidden`
- *     attribute; and `<template>`. Elements are matched through nesting and end
- *     tags with attributes, and one that is never closed runs to the end of
- *     its parent, or of the input.
+ *   - For HTML input only (`options.html`), hidden elements with their content
+ *     (`hiddenMarkup.ts`): `<script>`, `<style>`, `<template>` and the other
+ *     elements a browser never shows; an inline style of display:none,
+ *     visibility:hidden, font-size:0, opacity:0, or white or transparent text
+ *     (`background-color: white` stays visible), read after character
+ *     references and CSS escapes are decoded; and the `hidden` attribute.
+ *     Elements are matched the way the browser builds the page, and one that is
+ *     never closed runs to the end of its parent, or of the input.
  *   - Zero-width / invisible / bidi-control unicode used to obfuscate payloads.
  *
- * Non-HTML plain text is handled too: the element rules simply don't match, but
- * the comment strip and the zero-width strip still apply. Input past
- * {@link MAX_SCAN_INPUT_CHARS} is dropped first, and every pass is a single
- * forward scan, so the cost stays linear in the input. Never throws.
+ * Plain text (a text/plain body, a subject, a tool result) is shown as written,
+ * so markup in it hides nothing and the element step does not run: prose that
+ * mentions `<template>` keeps the text after it. The comment strip and the
+ * zero-width strip still apply. Input past {@link MAX_SCAN_INPUT_CHARS} is
+ * dropped first, and every pass is a single forward scan, so the cost stays
+ * linear in the input. Never throws.
  */
-export function stripHiddenContent(input: string | undefined | null): string {
+export function stripHiddenContent(
+	input: string | undefined | null,
+	options: { html?: boolean } = {}
+): string {
 	if (!input) return '';
 	let out = capScanInput(input);
 
 	// 1. HTML comments (first `-->` after each `<!--`).
 	out = stripDelimited(out, /<!--/g, /-->/g);
 
-	// 2. <script> / <style> blocks -- content is never human-visible prose.
-	out = stripDelimited(out, /<script/gi, /<\/script>/gi);
-	out = stripDelimited(out, /<style/gi, /<\/style>/gi);
+	// 2. Hidden elements, including <script> and <style>: the start tag, its
+	//    content and the end tag go. What counts as hidden and how elements are
+	//    matched is in hiddenMarkup.ts.
+	if (options.html) out = stripHiddenElements(out);
 
-	// 3. Hidden elements: the start tag, its content and the end tag go. What
-	//    counts as hidden and how elements are matched is in hiddenMarkup.ts.
-	out = stripHiddenElements(out);
-
-	// 4. Zero-width / invisible / bidi-control characters. The zero-width
+	// 3. Zero-width / invisible / bidi-control characters. The zero-width
 	//    joiner/non-joiner (U+200C/U+200D) are listed as standalone alternatives
 	//    rather than inside a character class -- a class containing them can form
 	//    misleading combining sequences (oxlint: no-misleading-character-class),

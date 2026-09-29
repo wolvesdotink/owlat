@@ -65,6 +65,20 @@ describe('inboundBodyForContext', () => {
 		expect(body).toBe('Plain text body');
 	});
 
+	it('removes hidden elements from an HTML-only body', async () => {
+		const body = await inboundBodyForContext({
+			textBody: null,
+			htmlBody: '<p>Real</p><span style="display:none">HIDDENPAYLOAD</span>',
+		});
+		expect(body).toContain('Real');
+		expect(body).not.toContain('HIDDENPAYLOAD');
+	});
+
+	it('keeps markup quoted in a plain-text body, which a reader sees as written', async () => {
+		const text = 'To hide it, use <template> in Vue.\n\nThe rest of this text is VISIBLE.';
+		expect(await inboundBodyForContext({ textBody: text, htmlBody: null })).toBe(text);
+	});
+
 	it('returns undefined when neither body part is present', async () => {
 		expect(await inboundBodyForContext({ textBody: null, htmlBody: null })).toBeUndefined();
 	});
