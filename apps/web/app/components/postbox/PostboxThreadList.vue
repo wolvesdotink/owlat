@@ -8,7 +8,7 @@ import type { PostboxThreadRowMessage } from './PostboxThreadRow.vue';
 import {
 	usePostboxVirtualList,
 	rememberScroll,
-	recallScroll,
+	useRememberedScroll,
 } from '~/composables/postbox/usePostboxVirtualList';
 import { usePostboxListAutoLoad } from '~/composables/postbox/usePostboxListAutoLoad';
 import { postboxListEmptyState } from '~/utils/postboxListEmptyState';
@@ -360,16 +360,13 @@ const { handleScroll } = usePostboxListAutoLoad({
 	loadMore: () => emit('load-more'),
 });
 
-// Restore the folder's last scroll position when the list (re)mounts, e.g.
-// returning from an opened thread. Best-effort: if the rows aren't tall enough
-// yet the browser clamps the value.
-onMounted(async () => {
-	await nextTick();
-	const saved = recallScroll(folderScrollKey.value);
-	if (saved != null && scrollEl.value) {
-		scrollEl.value.scrollTop = saved;
-		syncScroll();
-	}
+// Restore the folder's last scroll position when the list mounts, and when
+// it comes back from behind the reader (a `display: none` pane loses it).
+useRememberedScroll({
+	scrollEl,
+	key: folderScrollKey,
+	activeMessageId: () => props.activeMessageId,
+	onRestored: syncScroll,
 });
 </script>
 

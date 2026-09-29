@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 /**
- * Files, Subscriptions, the message route and the folder index mount the real
- * `PostboxMailboxGuard`, so a member without a mailbox gets the guard's next
- * step instead of a page-local empty state.
+ * Files, Subscriptions and the folder page (both its list route and its
+ * message route) mount the real `PostboxMailboxGuard`, so a member without a
+ * mailbox gets the guard's next step instead of a page-local empty state.
  *
  * These pages once hand-rolled their own: Files and Subscriptions offered
  * "Add mail account" even while a hosted mailbox was reserved or external
@@ -19,8 +19,7 @@ import { mountDashboardPage } from '~/__tests__/a11y';
 import PostboxMailboxGuard from '~/components/postbox/PostboxMailboxGuard.vue';
 import FilesPage from '../files.vue';
 import SubscriptionsPage from '../subscriptions.vue';
-import FolderIndexPage from '../[folder]/index.vue';
-import MessagePage from '../[folder]/[messageId].vue';
+import FolderPage from '../[folder]/[[messageId]].vue';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -118,16 +117,22 @@ afterEach(() => {
 	wrapper = null;
 });
 
-const pages: Array<[string, Component, string]> = [
-	['files', FilesPage, 'PostboxFilesPanel'],
-	['subscriptions', SubscriptionsPage, 'PostboxSubscriptionsPanel'],
-	['folder index', FolderIndexPage, 'PostboxLayout'],
-	['message route', MessagePage, 'PostboxLayout'],
+// The folder page serves both the list (/inbox) and the open message
+// (/inbox/<id>); each case sets the message id it is mounted under.
+const pages: Array<[string, Component, string, string]> = [
+	['files', FilesPage, 'PostboxFilesPanel', ''],
+	['subscriptions', SubscriptionsPage, 'PostboxSubscriptionsPanel', ''],
+	['folder index', FolderPage, 'PostboxLayout', ''],
+	['message route', FolderPage, 'PostboxLayout', 'msg-1'],
 ];
 
 const byTestId = (w: VueWrapper, id: string) => w.find(`[data-testid="${id}"]`).exists();
 
-describe.each(pages)('the %s page', (_name, page, content) => {
+describe.each(pages)('the %s page', (_name, page, content, messageId) => {
+	beforeEach(() => {
+		route.params.messageId = messageId;
+	});
+
 	it('renders its content for the resolved mailbox', () => {
 		currentMailbox.value = { _id: 'mailbox-1' };
 		const w = mountPage(page);
@@ -164,15 +169,19 @@ describe.each(pages)('the %s page', (_name, page, content) => {
 });
 
 describe('the folder index page', () => {
+	beforeEach(() => {
+		route.params.messageId = '';
+	});
+
 	it('keeps the onboarding checklist below the no-mailbox state', () => {
-		const w = mountPage(FolderIndexPage);
+		const w = mountPage(FolderPage);
 		expect(byTestId(w, 'mailbox-guard-deadend')).toBe(true);
 		expect(byTestId(w, 'DashboardGettingStarted')).toBe(true);
 	});
 
 	it('hides the checklist while loading and once a mailbox exists', async () => {
 		mailboxesLoading.value = true;
-		const w = mountPage(FolderIndexPage);
+		const w = mountPage(FolderPage);
 		expect(byTestId(w, 'DashboardGettingStarted')).toBe(false);
 
 		mailboxesLoading.value = false;
@@ -184,7 +193,7 @@ describe('the folder index page', () => {
 
 	it('shows a failed mailbox query as an error, not as "no mailbox"', () => {
 		mailboxError.value = new Error('boom');
-		const w = mountPage(FolderIndexPage);
+		const w = mountPage(FolderPage);
 		expect(byTestId(w, 'UiErrorAlert')).toBe(true);
 		expect(byTestId(w, 'mailbox-guard-deadend')).toBe(false);
 	});

@@ -11,7 +11,7 @@
  * The pure range/reveal helpers are exported separately so the index math is
  * unit-testable without a DOM.
  */
-import { computed, onBeforeUnmount, onMounted, ref, type Ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue';
 
 export interface VirtualRange {
 	/** First row index to render (inclusive). */
@@ -250,6 +250,34 @@ export function rememberScroll(key: string, top: number): void {
 }
 export function recallScroll(key: string): number | undefined {
 	return scrollMemory.get(key);
+}
+
+/**
+ * Put a list back at its remembered offset when it mounts, and again when the
+ * reader closes. The Postbox page stays mounted across message opens, and a
+ * list pane hidden with `display: none` while the reader has the screen (below
+ * `lg`, or with the reading pane off) comes back at the top. Where the list
+ * stayed visible its offset already matches, so the second pass is a no-op.
+ * Best-effort: if the rows aren't tall enough yet the browser clamps the value.
+ */
+export function useRememberedScroll(opts: {
+	scrollEl: Ref<HTMLElement | null>;
+	key: Ref<string>;
+	activeMessageId: () => string | null | undefined;
+	onRestored: () => void;
+}): void {
+	async function restore() {
+		await nextTick();
+		const saved = recallScroll(opts.key.value);
+		const el = opts.scrollEl.value;
+		if (saved == null || !el || el.scrollTop === saved) return;
+		el.scrollTop = saved;
+		opts.onRestored();
+	}
+	onMounted(restore);
+	watch(opts.activeMessageId, (id, previous) => {
+		if (!id && previous) void restore();
+	});
 }
 
 /**

@@ -321,4 +321,21 @@ describe('PostboxTodayView', () => {
 		const w = mountView({ initialMessageId: 'm-deep' });
 		expect(w.find('.reader-overlay').attributes('data-id')).toBe('m-deep');
 	});
+
+	it('follows a later deep link while it stays mounted, and closes on back', async () => {
+		// The Postbox page keeps this view mounted across /inbox ↔ /inbox/<id>,
+		// so the route's message id arrives as a prop change, not a fresh mount.
+		feed.messages.value = [todayMsg('m-a'), todayMsg('m-b')];
+		queue.items.value = [];
+		const w = mountView();
+		expect(w.find('.reader-overlay').exists()).toBe(false);
+
+		await w.setProps({ initialMessageId: 'm-b' });
+		expect(w.find('.reader-overlay').attributes('data-id')).toBe('m-b');
+
+		// Browser back to /inbox drops the id: the overlay closes with it.
+		await w.setProps({ initialMessageId: null });
+		expect(w.find('.reader-overlay').exists()).toBe(false);
+		expect(w.find('.thread-list').exists()).toBe(true);
+	});
 });

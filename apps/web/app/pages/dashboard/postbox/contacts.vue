@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { postboxPageTransition } from '~/utils/postboxPageTransition';
 /**
  * Personal address book for the current mailbox (api.mail.contacts). This is
  * NOT the org-wide Customers store under /dashboard/audience — that is a
@@ -13,7 +14,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.postbox.contacts.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
-	middleware: 'auth',
+	middleware: ['auth', postboxPageTransition],
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
@@ -134,7 +135,10 @@ function initial(c: { displayName?: string; email: string }) {
 
 		<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="mailboxesLoading">
 			<div v-if="isLoading" class="flex justify-center py-12">
-				<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary" />
+				<Icon
+					name="lucide:loader-2"
+					class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary"
+				/>
 			</div>
 			<div v-else-if="filtered.length === 0" class="text-center py-12">
 				<Icon name="lucide:users" class="w-10 h-10 mx-auto text-text-tertiary" />

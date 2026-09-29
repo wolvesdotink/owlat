@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { postboxPageTransition } from '~/utils/postboxPageTransition';
 import { api } from '@owlat/api';
 
 const { t } = useI18n();
@@ -7,7 +8,7 @@ useHead({ title: () => t('dashboard.postbox.label.detail.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
-	middleware: 'auth',
+	middleware: ['auth', postboxPageTransition],
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
@@ -25,7 +26,11 @@ const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 // display cap gets everything the view can reach. When matches overflow even
 // that slice (`hasMore`), the honest cap note renders — there is no deeper
 // page to load, by design, until label membership gets a real index.
-const { data: labelData, isLoading, error } = useConvexQuery(
+const {
+	data: labelData,
+	isLoading,
+	error,
+} = useConvexQuery(
 	api.mail.mailbox.queries.listByLabel,
 	() =>
 		mailboxId.value ? { mailboxId: mailboxId.value, labelId: labelId.value, limit: 500 } : 'skip',

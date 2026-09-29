@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { postboxPageTransition } from '~/utils/postboxPageTransition';
 /**
  * Files — a mailbox-wide browse over everything ever attached.
  *
@@ -11,7 +12,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.postbox.files.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
-	middleware: 'auth',
+	middleware: ['auth', postboxPageTransition],
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 

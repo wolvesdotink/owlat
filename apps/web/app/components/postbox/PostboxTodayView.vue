@@ -181,6 +181,16 @@ const hasOlder = computed(() => olderRows.value.length > 0 || hasMore.value);
 // `select` instead of navigating): the column stays mounted, preserving
 // scroll and the j/k selection. Deep links seed the same state.
 const openMessageId = ref<string | null>(props.initialMessageId ?? null);
+// The Postbox page stays mounted across /inbox ↔ /inbox/<id>, so a later deep
+// link (palette, notification, browser back/forward) re-seeds the overlay here
+// instead of through a fresh mount. Opening a row in place never touches the
+// route, so this only follows real navigations.
+watch(
+	() => props.initialMessageId,
+	(id) => {
+		openMessageId.value = id ?? null;
+	}
+);
 
 // The visible row order the overlay's j/k and the reader's triage
 // auto-advance walk: today's rows, then the expanded past rows.
