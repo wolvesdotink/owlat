@@ -88,19 +88,21 @@ export function usePostboxCursorFeed<
 	/** Segment key for the tail page currently being fetched. */
 	const tailKey = ref<string | null>(null);
 
+	// No keepPreviousData on the tail: every cursor starts from a blank page, so
+	// each landed page is a delivery the segment watcher below sees. A kept
+	// page could be the very object the next cursor answers with: a warm shared
+	// subscription (a cursor used before this folder was left and re-entered)
+	// replays it, and structural sharing keeps an unchanged page identical, so
+	// the page would never land and "Load more" would spin for good.
 	const {
 		data: tailData,
 		isLoading: tailLoading,
 		error: tailError,
-	} = useConvexQuery(
-		query,
-		() => {
-			const resolved = resolveBaseArgs();
-			if (resolved === 'skip' || !tailCursor.value) return 'skip';
-			return { ...resolved, cursor: tailCursor.value } as FunctionArgs<Query>;
-		},
-		{ keepPreviousData: options?.keepPreviousData ?? true }
-	);
+	} = useConvexQuery(query, () => {
+		const resolved = resolveBaseArgs();
+		if (resolved === 'skip' || !tailCursor.value) return 'skip';
+		return { ...resolved, cursor: tailCursor.value } as FunctionArgs<Query>;
+	});
 
 	// Accumulation works over the structural page shape (a generic Query's
 	// FunctionReturnType stays deferred inside the wrapper, so deriving row
@@ -112,6 +114,8 @@ export function usePostboxCursorFeed<
 
 	/** Loaded tail pages, keyed by the cursor that opened each (insertion-ordered). */
 	const tailSegments = ref(new Map<string, SegmentRows>()) as Ref<Map<string, SegmentRows>>;
+	/** The page whose cursor the pending tail was opened with: the frontier until it lands. */
+	const openerPage = shallowRef<FeedPage | undefined>(undefined);
 
 	/**
 	 * Set by a hard reset, cleared by the next first-page delivery: while set,
@@ -119,12 +123,18 @@ export function usePostboxCursorFeed<
 	 */
 	const suppressRetained = ref(false);
 
-	watch(feedTail, (page) => {
-		if (!page || !tailKey.value) return;
-		const next = new Map(tailSegments.value);
-		next.set(tailKey.value, [...rowsOf(page)]);
-		tailSegments.value = next;
-	});
+	// Sync flush, as in useInbox (plan B11): the clear and the replayed page can
+	// land within one tick, and a deferred watcher would compare them equal.
+	watch(
+		feedTail,
+		(page) => {
+			if (!page || !tailKey.value) return;
+			const next = new Map(tailSegments.value);
+			next.set(tailKey.value, [...rowsOf(page)]);
+			tailSegments.value = next;
+		},
+		{ flush: 'sync' }
+	);
 	watch(feedFirst, () => {
 		suppressRetained.value = false;
 	});
@@ -159,6 +169,7 @@ export function usePostboxCursorFeed<
 			tailCursor.value = null;
 			tailKey.value = null;
 			tailSegments.value = new Map();
+			openerPage.value = undefined;
 		},
 		{ flush: 'sync' }
 	);
@@ -171,15 +182,20 @@ export function usePostboxCursorFeed<
 				tailCursor.value = null;
 				tailKey.value = null;
 				tailSegments.value = new Map();
+				openerPage.value = undefined;
 				suppressRetained.value = true;
 			},
 			{ flush: 'sync' }
 		);
 	}
 
-	/** The page that owns the frontier: the deepest loaded one. */
+	/**
+	 * The page that owns the frontier: the deepest loaded one. While a tail page
+	 * loads, the page that minted its cursor stands in, as the kept tail page
+	 * used to.
+	 */
 	const frontier = computed<FeedPage | undefined>(() =>
-		tailCursor.value ? feedTail.value : feedFirst.value
+		tailCursor.value ? (feedTail.value ?? openerPage.value) : feedFirst.value
 	);
 
 	/** More rows exist beyond what is rendered (cursor-walkable or not). */
@@ -195,6 +211,7 @@ export function usePostboxCursorFeed<
 	function loadMore() {
 		const next = frontier.value?.nextCursor ?? null;
 		if (!next) return;
+		openerPage.value = frontier.value;
 		tailKey.value = next;
 		tailCursor.value = next;
 	}
@@ -205,10 +222,8 @@ export function usePostboxCursorFeed<
 		/** True only while the FIRST page is pending — never during a Load more. */
 		isLoading,
 		/**
-		 * True from the "Load more" click until that page has landed. The tail
-		 * query keeps the previous page's data while the next one loads, so its
-		 * own loading flag is not enough: the page is pending until a segment
-		 * exists under the cursor that was asked for.
+		 * True from the "Load more" click until that page has landed: the page
+		 * is pending until a segment exists under the cursor that was asked for.
 		 */
 		isLoadingMore: computed(() => {
 			const key = tailKey.value;
