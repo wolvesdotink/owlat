@@ -25,6 +25,7 @@ import { resolveDeliverableMailbox } from './mailbox/addressResolution';
 import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import { mailAppPasswordScopeValidator } from '../lib/literalValidators';
 import { bytesToHex } from '../lib/bytes';
+import { constantTimeEqual } from '../lib/crypto';
 
 const PBKDF2_ITERATIONS = 100_000;
 const SALT_BYTES = 16;
@@ -85,12 +86,7 @@ async function verifyPassword(cleartext: string, encoded: string): Promise<boole
 	const salt = hexToBytes(saltHex);
 	const expected = hexToBytes(hashHex);
 	const got = await pbkdf2(cleartext, salt);
-	if (got.length !== expected.length) return false;
-	let mismatch = 0;
-	for (let i = 0; i < got.length; i++) {
-		mismatch |= got[i]! ^ expected[i]!;
-	}
-	return mismatch === 0;
+	return constantTimeEqual(bytesToHex(got), bytesToHex(expected));
 }
 
 // ── Public mutations ──────────────────────────────────────────────

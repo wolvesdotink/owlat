@@ -1,12 +1,13 @@
 /**
  * The backend's constant-time comparison and HMAC, in one module.
  *
- * Every signature check, capability token and shared-secret header in
- * `apps/api/convex` compares and signs through here. Earlier copies of the
- * compare used different algorithms (some returned early on a length mismatch)
- * and several routes open-coded their own `importKey` + `sign` + encoding.
- * `scripts/check-crypto-primitives.sh` keeps it that way: an HMAC `importKey`
- * or a `timingSafeEqual(` outside the sanctioned modules fails `bun run lint`.
+ * Signature checks, capability tokens and shared-secret headers in
+ * `apps/api/convex` compare and sign through here rather than open-coding their
+ * own `importKey` + `sign` + encoding or their own compare loop.
+ * `scripts/check-crypto-primitives.sh` guards the common forms: an HMAC
+ * `importKey` or a `timingSafeEqual(` outside the sanctioned modules fails
+ * `bun run lint`. It is a pattern check, not a proof, so review new crypto code
+ * against this module too.
  *
  * Web Crypto only, so the module runs in the V8 isolate and in `'use node'`
  * actions alike. `webhooks/security.ts` re-exports the compare and HMAC
@@ -21,10 +22,11 @@ import { bytesToBase64, bytesToBase64Url, bytesToHex } from './bytes';
  *
  * The length difference is folded into the SAME accumulator as the per-unit
  * comparison and the loop always runs over the longer input, so an unequal
- * length costs what an unequal character costs. `charCodeAt(i)` past the end of
- * a string is `NaN`, and `NaN | 0` is `0`, so the longer side's trailing units
- * XOR against 0 without an early return. Two empty strings are equal; use
- * {@link secretMatches} to authenticate a caller.
+ * length costs what an unequal character costs. `charCodeAt(i)` past the end
+ * of a string is `NaN`, and `NaN | 0` is `0`, so the longer side's trailing
+ * units XOR against 0 without an early return. The running time still grows
+ * with the longer input, so the length itself is not hidden. Two empty strings
+ * are equal; use {@link secretMatches} to authenticate a caller.
  */
 export function constantTimeEqual(a: string, b: string): boolean {
 	let mismatch = a.length ^ b.length;
