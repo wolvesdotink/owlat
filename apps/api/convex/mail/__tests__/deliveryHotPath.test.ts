@@ -2,9 +2,10 @@
  * Delivery hot-path writes and reads (plan C10).
  *
  *   - The Reply Queue's pending marker is stamped in the insert's own thread
- *     patch, so a live inbox delivery patches its thread once, not once for the
- *     aggregates and again for `needsReplyPendingAt`. The requeue path
- *     (`enqueueNeedsReplyCheck`) still stamps it itself.
+ *     patch, not in a second patch of its own. (The category heuristic, which
+ *     runs in the same mutation since plan E7, is the delivery's only other
+ *     thread write.) The requeue path (`enqueueNeedsReplyCheck`) still stamps
+ *     the marker itself.
  *   - The Message-ID dedup and the In-Reply-To/References walk seek
  *     `by_mailbox_and_rfc822_message_id`: a Message-ID that sits in many
  *     mailboxes (a list post, an all-hands mail) is no longer read out of
@@ -74,7 +75,7 @@ async function scheduledNames(t: T): Promise<string[]> {
 }
 
 describe('Reply Queue pending marker rides the insert thread patch', () => {
-	it('a live inbox delivery patches its thread once and still schedules the classify', async () => {
+	it('a live inbox delivery stamps the marker in the aggregate patch and still schedules the classify', async () => {
 		vi.useFakeTimers();
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox(t);
@@ -92,12 +93,24 @@ describe('Reply Queue pending marker rides the insert thread patch', () => {
 				folder: await inboxOf(ctx, mailboxId),
 				origin: 'mx',
 			});
-			const threadPatches = patch.mock.calls.filter(([id]) => id === message.threadId).length;
+			const threadPatches = patch.mock.calls
+				.filter(([id]) => id === message.threadId)
+				.map(([, value]) => Object.keys(value as object).sort());
 			patch.mockRestore();
 			return { threadPatches, thread: (await ctx.db.get(message.threadId))! };
 		});
 
-		expect(threadPatches).toBe(1);
+		// The pending marker costs no patch of its own: it rides the insert's
+		// aggregate patch (the one that moves the latest pointer).
+		const markerPatches = threadPatches.filter((keys) => keys.includes('needsReplyPendingAt'));
+		expect(markerPatches).toHaveLength(1);
+		expect(markerPatches[0]).toContain('latestMessageId');
+		// The only other thread write is the category stamp, which the heuristic
+		// now writes in the same mutation (plan E7) instead of a later one.
+		expect(threadPatches.filter((keys) => !keys.includes('needsReplyPendingAt'))).toEqual([
+			['category', 'updatedAt'],
+		]);
+		expect(thread.category).toEqual(expect.objectContaining({ source: 'heuristic' }));
 		expect(thread.needsReplyPendingAt).toBe(thread.updatedAt);
 		expect(await scheduledNames(t)).toEqual(
 			expect.arrayContaining([expect.stringContaining('needsReplyClassify')])
