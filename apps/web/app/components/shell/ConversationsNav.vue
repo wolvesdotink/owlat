@@ -18,13 +18,18 @@ const props = defineProps<{
 const { t } = useI18n();
 const route = useRoute();
 const { isEnabled } = useFeatureFlag();
-const { isAdmin } = usePermissions();
+const { isAdmin, isRoleLoading } = usePermissions();
 const { inboxes, hasPersonalMail } = useInboxes();
 const { count: answerCount } = useAnswerQueue();
 const { perInbox, sort, isCollapsed, toggleGroup } = useShellSidebarPrefs();
 
 const showTeamInbox = computed(() => isAdmin.value && isEnabled('inbox'));
 const showChat = computed(() => isAdmin.value && isEnabled('chat'));
+// The team inbox and chat are admin-only, and the page renders before the role
+// is known. Hold their place with a skeleton instead of letting them pop in.
+const showRoleSkeleton = computed(
+	() => isRoleLoading.value && (isEnabled('inbox') || isEnabled('chat'))
+);
 // Knowledge is for every member (the welcome page promises it to all), so it
 // is gated on the feature alone. Named with the navigation table's own key, so
 // the sidebar and ⌘K say the same word.
@@ -179,6 +184,15 @@ function isActive(to: string, exact: boolean): boolean {
 				:collapsed="isCollapsed('chat')"
 				@toggle="toggleGroup('chat')"
 			/>
+			<div
+				v-if="showRoleSkeleton"
+				class="mt-3 space-y-2 px-3"
+				data-testid="shell-nav-role-skeleton"
+			>
+				<UiSkeleton class="h-3 w-20" />
+				<UiSkeleton class="h-4 w-full" />
+				<UiSkeleton class="h-4 w-3/4" />
+			</div>
 			<NuxtLink
 				v-if="showKnowledge"
 				:to="KNOWLEDGE_HREF"

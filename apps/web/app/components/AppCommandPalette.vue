@@ -13,7 +13,11 @@ import {
 } from '~/lib/commandPalette';
 import { resolvePaletteGroups, routePrefixMatcher } from '~/lib/commandPaletteRegistry';
 import { PALETTE_SCOPE_LABEL_KEYS, groupsForScope } from '~/lib/commandPaletteScope';
-import type { CommandPaletteOpenDetail } from '~/composables/useCommandPalette';
+import {
+	COMMAND_PALETTE_ASK_EVENT,
+	type CommandPaletteOpenDetail,
+	commandPaletteChord,
+} from '~/composables/useCommandPalette';
 import {
 	SEARCH_MIN_QUERY,
 	type SearchResults,
@@ -21,8 +25,9 @@ import {
 } from '~/lib/commandPaletteCore';
 
 /**
- * The app's ONE search overlay, mounted once in the dashboard layout so it works
- * on EVERY dashboard page. It is assembled from an ordered, deduplicated provider
+ * The app's ONE search overlay, mounted by the dashboard layout the first time
+ * it is asked for (`useCommandPaletteHost` listens until then) and kept for the
+ * rest of the session, so it works on EVERY dashboard page. It is assembled from an ordered, deduplicated provider
  * registry (`~/lib/commandPaletteRegistry`): core providers built here are
  * consulted first, then the surface/plugin providers registered while mounted.
  *
@@ -42,6 +47,19 @@ import {
  * (`~/lib/commandPalette`); this component holds the state and the keyboard, and
  * `AppCommandPaletteResults` renders it.
  */
+
+const props = defineProps<{
+	/**
+	 * The request that got this palette mounted (see `useCommandPaletteHost`):
+	 * it opens with it as soon as it is mounted. Absent when mounted eagerly.
+	 */
+	initialOpen?: CommandPaletteOpenDetail;
+}>();
+
+const emit = defineEmits<{
+	/** Mounted with its own open triggers attached; the host can stand down. */
+	ready: [];
+}>();
 
 const { t } = useI18n();
 const { verbItems, contextItems, navItems, settingsItems } = useCommandPaletteProviders();
@@ -349,8 +367,9 @@ function onInputKeydown(event: KeyboardEvent) {
 // knowledge Quick Query's own shortcut, unchanged, gated on the same
 // `ai.knowledge` flag the panel it replaced was gated on.
 function onGlobalKey(event: KeyboardEvent) {
-	if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') return;
-	if (event.shiftKey) {
+	const chord = commandPaletteChord(event);
+	if (!chord) return;
+	if (chord === 'ask') {
 		if (!isAskAvailable.value) return;
 		event.preventDefault();
 		void openPalette({ scope: 'ask' });
@@ -378,12 +397,14 @@ onMounted(() => {
 	loadRecent();
 	window.addEventListener('keydown', onGlobalKey);
 	window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, onExternalOpen);
-	window.addEventListener('owlat:open-knowledge-query', onOpenAsk);
+	window.addEventListener(COMMAND_PALETTE_ASK_EVENT, onOpenAsk);
+	emit('ready');
+	if (props.initialOpen) void openPalette(props.initialOpen);
 });
 onBeforeUnmount(() => {
 	window.removeEventListener('keydown', onGlobalKey);
 	window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, onExternalOpen);
-	window.removeEventListener('owlat:open-knowledge-query', onOpenAsk);
+	window.removeEventListener(COMMAND_PALETTE_ASK_EVENT, onOpenAsk);
 });
 </script>
 

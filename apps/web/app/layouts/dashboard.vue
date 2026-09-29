@@ -3,12 +3,20 @@ import { announcedPageLabel, shouldMoveFocusToMain } from '~/utils/liveAnnounce'
 import { useSectionNavigation } from '~/composables/useSectionNavigation';
 import { CORE_NAV_HREFS } from '~/lib/dashboardNavigationCore';
 import { UNDO_TOAST_REGION_ID } from '~/utils/undoToastRegion';
+import { useCommandPaletteHost } from '~/composables/useCommandPaletteHost';
+import { useMountOnFirst } from '~/composables/useMountOnFirst';
+import { usePerfMark } from '~/composables/usePerfMark';
 
 const { t } = useI18n();
 const route = useRoute();
 
 // Initialize keyboard shortcuts
-const { registerNavigationShortcuts } = useKeyboardShortcuts();
+const { registerNavigationShortcuts, isHelpModalOpen } = useKeyboardShortcuts();
+
+// The palette and the "?" sheet stay off the boot path: each mounts the first
+// time it is asked for, and stays mounted after that.
+const { paletteRequested, paletteInitialOpen, onPaletteReady } = useCommandPaletteHost();
+const helpRequested = useMountOnFirst(isHelpModalOpen);
 
 // Feed this user's keyboard map (preset + their own remaps) into the shortcut
 // registry, so every surface below dispatches and documents the same chords.
@@ -103,6 +111,10 @@ onMounted(() => {
 	registerNavigationShortcuts();
 	initFromStorage();
 });
+
+// Navigation start to the shell on screen, for cold loads only (plan 0.2).
+const { measureBoot } = usePerfMark();
+onMounted(() => measureBoot('owlat_boot_shell_ms'));
 
 // ── Route changes, said out loud ──────────────────────────────────────────
 // A client-side navigation is INVISIBLE to assistive technology. The browser
@@ -357,12 +369,15 @@ const sidebarToggleLabel = computed(() => {
 });
 
 // Computed sidebar width class — a hidden sidebar peeks at its last width.
+// Collapse swaps the width in one frame: animating `width` here (and the
+// content padding below) relaid the whole app out on every frame of the move.
 const sidebarWidthClass = computed(() => {
 	return isCollapsed.value ? 'w-16' : 'w-64';
 });
 
 // Content padding reserves the rail's gutter. When hidden the content goes
-// full-bleed (no reflow when the peek floats over it).
+// full-bleed (no reflow when the peek floats over it). Never transitioned:
+// it changes in the same frame as the rail's width, so the page lays out once.
 const mainPaddingClass = computed(() => {
 	if (effectiveHidden.value) return '';
 	return isCollapsed.value ? 'lg:pl-16' : 'lg:pl-64';
@@ -370,8 +385,9 @@ const mainPaddingClass = computed(() => {
 
 // Desktop transform for the aside. When hidden it slides off-screen; the peek
 // brings it back over the content (no reflow — padding stays removed). Enter
-// uses the spring-bounce at motion-slow; exit uses ease-exit. Reduced-motion is
-// handled by the global floor in base.css (durations collapse to ~0).
+// uses the spring-bounce at motion-slow; exit uses ease-exit. Only `translate`
+// (and the peek's shadow) transition, both off the layout path; reduced motion
+// drops the slide outright (`motion-reduce:transition-none` on the aside).
 const sidebarDesktopClass = computed(() => {
 	if (!effectiveHidden.value) {
 		return 'lg:translate-x-0 duration-(--motion-moderate)';
@@ -393,8 +409,8 @@ const sidebarDesktopClass = computed(() => {
 		</a>
 
 		<!-- Native window titlebar (desktop only; no-op on web). `show-search`:
-		     this layout mounts <AppCommandPalette> below, so the pill has a
-		     listener. -->
+		     this layout hosts <AppCommandPalette> below (mounted on first open),
+		     so the pill has a listener. -->
 		<DesktopTitlebar show-search />
 
 		<!-- Fill the iOS notch / dynamic island area so scrolled content never peeks through above the header. -->
@@ -431,7 +447,7 @@ const sidebarDesktopClass = computed(() => {
 		<!-- Sidebar -->
 		<aside
 			:class="[
-				'fixed top-0 left-0 z-50 h-full bg-bg-elevated border-r border-border-subtle flex flex-col transition-all pt-[env(safe-area-inset-top)] lg:pt-0',
+				'fixed top-0 left-0 z-50 h-full bg-bg-elevated border-r border-border-subtle flex flex-col transition-[translate,box-shadow] motion-reduce:transition-none pt-[env(safe-area-inset-top)] lg:pt-0',
 				sidebarWidthClass,
 				isSidebarOpen ? 'translate-x-0' : '-translate-x-full',
 				isFocusMode ? 'lg:-translate-x-full duration-(--motion-moderate)' : sidebarDesktopClass,
@@ -558,10 +574,7 @@ const sidebarDesktopClass = computed(() => {
 		</aside>
 
 		<!-- Main content area -->
-		<div
-			:class="isFocusMode ? '' : mainPaddingClass"
-			class="transition-all duration-(--motion-moderate)"
-		>
+		<div :class="isFocusMode ? '' : mainPaddingClass">
 			<DashboardShellHeader
 				v-if="!isFocusMode"
 				:is-desktop="isDesktop"
@@ -591,7 +604,11 @@ const sidebarDesktopClass = computed(() => {
 
 		<!-- App-wide command palette (Cmd/Ctrl-K), route-scoped: mail search on
 		     Postbox, knowledge Ask on Cmd/Ctrl+Shift+K, objects everywhere else -->
-		<AppCommandPalette />
+		<LazyAppCommandPalette
+			v-if="paletteRequested"
+			:initial-open="paletteInitialOpen"
+			@ready="onPaletteReady"
+		/>
 
 		<!-- Compose over the current page (the top-bar button, the palette and
 		     the c chord), never by navigating to the mailbox. -->
@@ -603,7 +620,7 @@ const sidebarDesktopClass = computed(() => {
 		<div :id="UNDO_TOAST_REGION_ID" class="fixed bottom-4 left-4 z-50 flex flex-col gap-2" />
 
 		<!-- Keyboard shortcuts help modal -->
-		<KeyboardShortcutsHelp />
+		<LazyKeyboardShortcutsHelp v-if="helpRequested" />
 
 		<!-- The app's one pair of live regions. Mounted last and never unmounted:
 		     a region has to be in the document before the text lands in it, so

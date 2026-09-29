@@ -21,6 +21,7 @@ import {
 import { PLATFORM_ROOT_CLASS, readDesktopPlatform } from '~/lib/desktop/platform';
 import { setupDeepLinks } from '~/lib/desktop/deepLink.client';
 import { setupUpdateChecks } from '~/lib/desktop/updater.client';
+import { afterSplashPaint } from '~/lib/desktop/splashPaint';
 import { installNativeFeel } from '~/lib/desktop/nativeFeel.client';
 import type { Router } from 'vue-router';
 
@@ -33,6 +34,22 @@ declare global {
 		 * before the desktop boot plugin runs.
 		 */
 		__NUXT_ROUTER__?: Router;
+	}
+}
+
+/**
+ * The "Open at startup" workspace pin from the device settings, for the main
+ * window only; null when there is none or the settings cannot be read (the
+ * last-active workspace then opens, as before).
+ */
+async function readStartupWorkspacePin(): Promise<string | null> {
+	try {
+		const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+		if (getCurrentWebviewWindow().label !== 'main') return null;
+		const { loadDesktopAppSettings } = await import('~/composables/useDesktopAppSettings');
+		return (await loadDesktopAppSettings()).global.startupWorkspaceId;
+	} catch {
+		return null;
 	}
 }
 
@@ -83,11 +100,17 @@ export default defineNuxtPlugin({
 		const windowBridge = import('@owlat/desktop/src/window');
 
 		// Every window is built hidden (src-tauri window::arm_reveal) so launch
-		// never flashes an empty, see-through frame; show it once the app has
-		// painted. Later calls (a workspace switch reloads the webview) no-op.
-		nuxtApp.hook('app:mounted', () => {
+		// never flashes an empty, see-through frame. Show it as soon as the opaque
+		// SPA splash has painted, not after the boot chain below and the app
+		// mount: the splash is the loading state, and `.is-desktop` (set above)
+		// already keeps the page background opaque. `app:mounted` stays as a
+		// second trigger. The native side shows a window once, so the later
+		// call, and every call after a workspace switch reload, is a no-op.
+		const reveal = () => {
 			void windowBridge.then(({ windowReady }) => windowReady()).catch(() => {});
-		});
+		};
+		void afterSplashPaint().then(reveal);
+		nuxtApp.hook('app:mounted', reveal);
 
 		// "Open at startup" workspace pin (from /desktop/settings). Applied only on
 		// a COLD launch of the MAIN window: workspace switches reload this webview
@@ -99,18 +122,9 @@ export default defineNuxtPlugin({
 		const BOOT_MARKER = 'owlat:booted';
 		const coldLaunch = !sessionStorage.getItem(BOOT_MARKER);
 		sessionStorage.setItem(BOOT_MARKER, '1');
-		let preferredActiveId: string | null = null;
-		if (coldLaunch) {
-			try {
-				const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-				if (getCurrentWebviewWindow().label === 'main') {
-					const { loadDesktopAppSettings } = await import('~/composables/useDesktopAppSettings');
-					preferredActiveId = (await loadDesktopAppSettings()).global.startupWorkspaceId;
-				}
-			} catch {
-				// Settings unreadable — last-active behavior.
-			}
-		}
+		// Not awaited here: loadWorkspaces reads the settings and the workspace
+		// store at the same time and applies the pin once both are in.
+		const preferredActiveId = coldLaunch ? readStartupWorkspacePin() : null;
 
 		// Dev-only auto-connect: `tauri dev` loads the local Nuxt dev server, so
 		// seed the page's own origin as a workspace instead of making the
@@ -138,9 +152,10 @@ export default defineNuxtPlugin({
 
 		// Non-blocking: deep links can arrive any time after boot.
 		void setupDeepLinks();
-		// Non-blocking auto-update check (+ a manual `owlat:check-updates` trigger).
-		// Gates itself to the main window: the compose webview boots this plugin
-		// too, and must not run a second updater against the shared native slot.
+		// Auto-update check, delayed past the launch (+ a manual
+		// `owlat:check-updates` trigger). Gates itself to the main window: the
+		// compose webview boots this plugin too, and must not run a second
+		// updater against the shared native slot.
 		setupUpdateChecks();
 	},
 });

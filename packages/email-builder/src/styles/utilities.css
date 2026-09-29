@@ -2,7 +2,7 @@
  * Email Builder - Shared Tailwind Utilities
  *
  * @utility directives for patterns that can't be expressed as inline Tailwind classes.
- * Consumed by the host app via: @import '@owlat/email-builder/styles'
+ * Imported by EmailBuilder.vue, so it loads with the builder's chunk.
  */
 
 /* === Keyframes === */

@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import type { PluginOption } from 'vite';
 import { I18N_LOCALES } from './i18n/localeOptions';
+import { NUXT_LINK_DEFAULTS, publicAssetCompression } from './scripts/deliveryTuning';
 import { uiLayerIconNames } from './scripts/uiLayerIcons';
 
 // Local default endpoints, single-sourced so the CSP connect-src and the
@@ -29,6 +30,9 @@ export default defineNuxtConfig({
 		compatibilityVersion: 4,
 	},
 
+	// NuxtLink prefetches on hover/focus, not on visibility (scripts/deliveryTuning.ts).
+	experimental: { defaults: { nuxtLink: NUXT_LINK_DEFAULTS } },
+
 	nitro: {
 		// The offline app shell service worker (service-worker/sw.js → /sw.js).
 		// It is NOT in public/ so that this one line can keep it out of a build:
@@ -41,6 +45,8 @@ export default defineNuxtConfig({
 			process.env['OWLAT_DESKTOP'] === 'true'
 				? []
 				: [{ dir: fileURLToPath(new URL('./service-worker', import.meta.url)), maxAge: 0 }],
+		// Precompressed .gz/.br assets (never in the desktop bundle), see scripts/deliveryTuning.ts.
+		compressPublicAssets: publicAssetCompression(process.env['OWLAT_DESKTOP'] === 'true'),
 		// Exclude papaparse from the server bundle — it's client-only and its
 		// blob URL code breaks Rollup's parser during the Nitro build.
 		externals: {
@@ -413,11 +419,9 @@ export default defineNuxtConfig({
 		dirs: ['composables/postbox', 'composables/chat'],
 	},
 
-	css: [
-		'@owlat/email-builder/styles',
-		'@owlat/email-builder/preview-styles',
-		'~/assets/css/main.css',
-	],
+	// The email builder's own stylesheets ride its lazy chunk (EmailBuilder.vue,
+	// EmailPreviewer.vue), so they are not part of every page's CSS.
+	css: ['~/assets/css/main.css'],
 
 	vite: {
 		plugins: [tailwindcss() as PluginOption],

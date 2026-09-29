@@ -6,9 +6,14 @@
  * them onto the shared design tokens).
  *
  * The --ep-* prefix is used to avoid conflicts with other packages.
+ *
+ * EmailPreviewer.vue imports this file, so it arrives with the previewer's
+ * chunk, after the host's own stylesheet. The dark defaults therefore sit in
+ * `:where(:root)` (zero specificity): a host's plain `:root` mapping must keep
+ * winning even though it now comes first in the cascade.
  */
 
-:root {
+:where(:root) {
 	/* Backgrounds - Neutral surface ladder */
 	--ep-bg-deep: #101010;
 	--ep-bg-base: #171717;

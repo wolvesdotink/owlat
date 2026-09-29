@@ -4,7 +4,7 @@
  * mocked so these assertions cover the gating/settings behavior only (the data
  * layer is covered by postboxOfflineStore.test.ts).
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ref } from 'vue';
 
 // A controllable fake store the composable talks to.
@@ -38,7 +38,12 @@ vi.mock('~/utils/postboxOfflineFolderStore', () => ({
 	getPostboxOfflineFolderStore: () => fakeFolderStore,
 }));
 
-import { usePostboxOfflineCache, __resetPostboxOfflineCacheState } from '../usePostboxOfflineCache';
+import {
+	usePostboxOfflineCache,
+	__resetPostboxOfflineCacheState,
+	OFFLINE_WRITE_IDLE_TIMEOUT_MS,
+} from '../usePostboxOfflineCache';
+import { IDLE_FALLBACK_DELAY_MS } from '~/lib/scheduleIdle';
 
 let desktop = false;
 
@@ -141,6 +146,101 @@ describe('usePostboxOfflineCache — persist gating', () => {
 		const { loadThreads } = usePostboxOfflineCache(MBX);
 		expect(await loadThreads('inbox')).toEqual([]);
 		expect(fakeStore.loadThreads).not.toHaveBeenCalled();
+	});
+});
+
+describe('usePostboxOfflineCache — idle, coalesced writes', () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		delete (window as { requestIdleCallback?: unknown }).requestIdleCallback;
+	});
+
+	it('keeps the clone and the write out of the pushing task', async () => {
+		desktop = true;
+		const { persistThreads } = usePostboxOfflineCache(MBX);
+		const done = persistThreads('inbox', [{ _id: 'a' }]);
+
+		await Promise.resolve();
+		expect(fakeStore.saveThreads).not.toHaveBeenCalled();
+
+		await vi.advanceTimersByTimeAsync(IDLE_FALLBACK_DELAY_MS);
+		await done;
+		expect(fakeStore.saveThreads).toHaveBeenCalledWith(MBX, 'inbox', [{ _id: 'a' }]);
+	});
+
+	it('coalesces a burst of pushes into one write of the newest rows', async () => {
+		desktop = true;
+		const { persistThreads } = usePostboxOfflineCache(MBX);
+		const pushes = [
+			persistThreads('inbox', [{ _id: 'a' }]),
+			persistThreads('inbox', [{ _id: 'a' }, { _id: 'b' }]),
+			persistThreads('inbox', [{ _id: 'c' }]),
+		];
+
+		await vi.advanceTimersByTimeAsync(IDLE_FALLBACK_DELAY_MS);
+		await Promise.all(pushes);
+
+		expect(fakeStore.saveThreads).toHaveBeenCalledTimes(1);
+		expect(fakeStore.saveThreads).toHaveBeenCalledWith(MBX, 'inbox', [{ _id: 'c' }]);
+	});
+
+	it('writes each folder and the rail in their own slot', async () => {
+		desktop = true;
+		const cache = usePostboxOfflineCache(MBX);
+		const pushes = [
+			cache.persistThreads('inbox', [{ _id: 'a' }]),
+			cache.persistThreads('sent', [{ _id: 's' }]),
+			cache.persistFolders([{ _id: 'f1' }]),
+			cache.persistFolders([{ _id: 'f1' }, { _id: 'f2' }]),
+		];
+
+		await vi.advanceTimersByTimeAsync(IDLE_FALLBACK_DELAY_MS);
+		await Promise.all(pushes);
+
+		expect(fakeStore.saveThreads).toHaveBeenCalledTimes(2);
+		expect(fakeStore.saveThreads).toHaveBeenCalledWith(MBX, 'inbox', [{ _id: 'a' }]);
+		expect(fakeStore.saveThreads).toHaveBeenCalledWith(MBX, 'sent', [{ _id: 's' }]);
+		expect(fakeFolderStore.saveFolders).toHaveBeenCalledTimes(1);
+		expect(fakeFolderStore.saveFolders).toHaveBeenCalledWith(MBX, [{ _id: 'f1' }, { _id: 'f2' }]);
+	});
+
+	it('uses requestIdleCallback with a deadline where the browser has it', async () => {
+		desktop = true;
+		const idle: Array<{ cb: () => void; timeout?: number }> = [];
+		// happy-dom has no requestIdleCallback (like WebKit); give it one.
+		(window as { requestIdleCallback?: unknown }).requestIdleCallback = (
+			cb: () => void,
+			opts?: { timeout: number }
+		) => idle.push({ cb, timeout: opts?.timeout });
+		const { persistThreads } = usePostboxOfflineCache(MBX);
+		const done = persistThreads('inbox', [{ _id: 'a' }]);
+
+		// Nothing runs until the browser calls back, however long that takes.
+		await vi.advanceTimersByTimeAsync(OFFLINE_WRITE_IDLE_TIMEOUT_MS * 5);
+		expect(fakeStore.saveThreads).not.toHaveBeenCalled();
+		expect(idle).toHaveLength(1);
+		expect(idle[0]?.timeout).toBe(OFFLINE_WRITE_IDLE_TIMEOUT_MS);
+
+		idle[0]?.cb();
+		await done;
+		expect(fakeStore.saveThreads).toHaveBeenCalledTimes(1);
+	});
+
+	it('drops a queued write when the cache is switched off before it runs', async () => {
+		desktop = true;
+		const cache = usePostboxOfflineCache(MBX);
+		const done = cache.persistThreads('inbox', [{ _id: 'a' }]);
+
+		cache.setEnabled(false);
+		await vi.advanceTimersByTimeAsync(IDLE_FALLBACK_DELAY_MS);
+		await done;
+
+		expect(fakeStore.clear).toHaveBeenCalled();
+		expect(fakeStore.saveThreads).not.toHaveBeenCalled();
 	});
 });
 

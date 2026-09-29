@@ -61,9 +61,9 @@ function mountLayout() {
 			stubs: {
 				DesktopTitlebar: true,
 				DashboardShellHeader: true,
-				AppCommandPalette: true,
+				LazyAppCommandPalette: true,
 				ShellComposerOverlay: true,
-				KeyboardShortcutsHelp: true,
+				LazyKeyboardShortcutsHelp: true,
 				AppLiveRegion: true,
 				Icon: true,
 				UiBadge: true,

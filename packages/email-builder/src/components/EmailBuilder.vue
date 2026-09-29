@@ -9,6 +9,9 @@
  * - UnifiedToolbar: combined floating toolbar (formatting + settings)
  */
 import { ref, computed, watch, provide, onMounted, onUnmounted, nextTick } from 'vue';
+// The builder's keyframes and variable-chip style load with the builder chunk,
+// not with every page of the host app.
+import '../styles/utilities.css';
 import type {
 	EditorBlock,
 	BlockType,

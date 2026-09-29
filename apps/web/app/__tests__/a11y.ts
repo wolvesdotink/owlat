@@ -289,6 +289,7 @@ function defaultStubs(): Record<string, unknown> {
 		}),
 		usePermissions: () => ({
 			role: ref('owner'),
+			isRoleLoading: ref(false),
 			isOwner: ref(true),
 			isAdmin: ref(true),
 			canSendTestEmails: ref(true),

@@ -11,9 +11,15 @@
 import type { BlockType } from '@owlat/shared';
 import type { BlockModule } from './_module';
 import { registerBlockValidator } from '../validators/registry';
+import { enrolEmailBlockRegistry, latchEmailBlockRegistriesOnRead } from '../registryLatch';
 
 const registry = new Map<string, BlockModule<BlockType>>();
 let frozen = false;
+
+/** Freeze-on-first-read: a no-op unless the host armed the latch (see `../registryLatch`). */
+const latchOnRead = (): void => {
+	if (!frozen) latchEmailBlockRegistriesOnRead();
+};
 
 /**
  * Register a Block module. The discriminator generic ensures a button module
@@ -27,7 +33,9 @@ let frozen = false;
  */
 export const registerBlockModule = <T extends BlockType>(mod: BlockModule<T>): void => {
 	if (frozen) {
-		throw new Error(`Cannot register block "${mod.type}": registry is frozen. Call registerBlockModule() during setup before finalizeBlockRegistry().`);
+		throw new Error(
+			`Cannot register block "${mod.type}": registry is frozen. Call registerBlockModule() during setup before finalizeBlockRegistry().`
+		);
 	}
 	registry.set(mod.type, mod as unknown as BlockModule<BlockType>);
 
@@ -61,13 +69,19 @@ export const finalizeBlockRegistry = (): void => {
 /** Is the registry currently frozen? */
 export const isBlockRegistryFrozen = (): boolean => frozen;
 
+enrolEmailBlockRegistry(finalizeBlockRegistry);
+
 /**
  * Look up a Block module by type tag, preserving discriminated-union narrowing
  * for built-in types.
  */
-export const moduleFor = <T extends BlockType>(type: T): BlockModule<T> | undefined =>
-	registry.get(type) as BlockModule<T> | undefined;
+export const moduleFor = <T extends BlockType>(type: T): BlockModule<T> | undefined => {
+	latchOnRead();
+	return registry.get(type) as BlockModule<T> | undefined;
+};
 
 /** List all currently registered block types (built-in + custom). */
-export const registeredBlockTypes = (): readonly string[] =>
-	Array.from(registry.keys());
+export const registeredBlockTypes = (): readonly string[] => {
+	latchOnRead();
+	return Array.from(registry.keys());
+};

@@ -17,6 +17,7 @@
 
 import { getPostboxOfflineFolderStore } from '~/utils/postboxOfflineFolderStore';
 import { getPostboxOfflineStore, type OfflineBodyEntry } from '~/utils/postboxOfflineStore';
+import { scheduleIdle } from '~/lib/scheduleIdle';
 
 const STORAGE_KEY = 'owlat:postbox:offline-cache-enabled';
 
@@ -32,6 +33,59 @@ function toPlain<T>(value: readonly T[]): T[] {
 	} catch {
 		return [...value];
 	}
+}
+
+/**
+ * How long a queued row write may wait for an idle moment. The list pushes a
+ * fresh result on every live update; the clone and the IndexedDB write are
+ * background work and must not land in the same task as the render.
+ */
+export const OFFLINE_WRITE_IDLE_TIMEOUT_MS = 1000;
+
+type Waiter = { resolve: () => void; reject: (error: unknown) => void };
+type PendingWrite = { write: () => Promise<void>; waiters: Waiter[] };
+
+/**
+ * Row writes waiting for idle time, one per cache slot (mailbox + folder, or
+ * mailbox rail). A push onto a slot that is already queued replaces the rows
+ * instead of queueing a second write, so a burst of live updates costs one
+ * clone and one write. Every caller's promise settles with the write that
+ * carried its rows or newer ones.
+ */
+const pendingWrites = new Map<string, PendingWrite>();
+
+function queueIdleWrite(slot: string, write: () => Promise<void>): Promise<void> {
+	return new Promise<void>((resolve, reject) => {
+		const queued = pendingWrites.get(slot);
+		if (queued) {
+			queued.write = write;
+			queued.waiters.push({ resolve, reject });
+			return;
+		}
+		const entry: PendingWrite = { write, waiters: [{ resolve, reject }] };
+		pendingWrites.set(slot, entry);
+		scheduleIdle(() => {
+			// Dropped meanwhile (the cache was cleared); its callers are settled.
+			if (pendingWrites.get(slot) !== entry) return;
+			pendingWrites.delete(slot);
+			entry.write().then(
+				() => {
+					for (const w of entry.waiters) w.resolve();
+				},
+				(error: unknown) => {
+					for (const w of entry.waiters) w.reject(error);
+				}
+			);
+		}, OFFLINE_WRITE_IDLE_TIMEOUT_MS);
+	});
+}
+
+/** Forget every queued write (the cache is being wiped), settling its callers. */
+function dropPendingWrites(): void {
+	for (const entry of pendingWrites.values()) {
+		for (const w of entry.waiters) w.resolve();
+	}
+	pendingWrites.clear();
 }
 
 /**
@@ -51,6 +105,7 @@ export function __resetPostboxOfflineCacheState() {
 	enabledRef = null;
 	onlineRef = null;
 	writesDisabledRef = null;
+	dropPendingWrites();
 }
 
 /**
@@ -121,11 +176,17 @@ export function usePostboxOfflineCache(mailboxId?: MaybeRefOrGetter<string | nul
 	async function persistThreads<T>(folderRole: string, rows: readonly T[]): Promise<void> {
 		const ns = namespace.value;
 		if (!canPersist.value || !store || !ns) return;
-		// Deep plain-copy so a reactive Convex proxy never hits structured-clone
-		// (a clone failure would permanently disable the whole cache for the
-		// session). toRaw alone leaves nested proxies, so round-trip through JSON.
-		await store.saveThreads(ns, folderRole, toPlain(rows));
-		syncDisabled();
+		// Queued for idle time and coalesced per folder: the deep copy below is
+		// the expensive part, and only the newest rows are worth writing.
+		return queueIdleWrite(`threads\u0000${ns}\u0000${folderRole}`, async () => {
+			// Switched off while queued: turning the cache off wiped it.
+			if (!enabled.value) return;
+			// Deep plain-copy so a reactive Convex proxy never hits structured-clone
+			// (a clone failure would permanently disable the whole cache for the
+			// session). toRaw alone leaves nested proxies, so round-trip through JSON.
+			await store.saveThreads(ns, folderRole, toPlain(rows));
+			syncDisabled();
+		});
 	}
 
 	async function loadThreads<T>(folderRole: string): Promise<T[]> {
@@ -143,9 +204,12 @@ export function usePostboxOfflineCache(mailboxId?: MaybeRefOrGetter<string | nul
 	async function persistFolders<T>(rows: readonly T[]): Promise<void> {
 		const ns = namespace.value;
 		if (!canPersist.value || !folderStore || !ns) return;
-		// Same structured-clone hazard as the thread rows: a Convex proxy would
-		// throw on the way into IndexedDB.
-		await folderStore.saveFolders(ns, toPlain(rows));
+		return queueIdleWrite(`folders\u0000${ns}`, async () => {
+			if (!enabled.value) return;
+			// Same structured-clone hazard as the thread rows: a Convex proxy would
+			// throw on the way into IndexedDB.
+			await folderStore.saveFolders(ns, toPlain(rows));
+		});
 	}
 
 	async function loadFolders<T>(): Promise<T[]> {
@@ -176,6 +240,8 @@ export function usePostboxOfflineCache(mailboxId?: MaybeRefOrGetter<string | nul
 	/** Wipe everything this device has cached and clear the disabled flag. */
 	async function clearCache(): Promise<void> {
 		if (!store) return;
+		// A write still waiting for idle time would put rows straight back.
+		dropPendingWrites();
 		await store.clear();
 		syncDisabled();
 	}
