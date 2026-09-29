@@ -82,6 +82,10 @@
 			"types": "./src/sendProviderCatalog.ts",
 			"import": "./src/sendProviderCatalog.ts"
 		},
+		"./setupSendingConfig": {
+			"types": "./src/setupSendingConfig.ts",
+			"import": "./src/setupSendingConfig.ts"
+		},
 		"./setupSendingPresets": {
 			"types": "./src/setupSendingPresets.ts",
 			"import": "./src/setupSendingPresets.ts"
