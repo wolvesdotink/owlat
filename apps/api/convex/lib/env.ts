@@ -274,7 +274,9 @@ export type EnvKey =
 	// forwarded IP header is believed only when this secret is presented
 	// (constant-time compared). Unset, or a mismatched/absent secret ⇒ the header
 	// is NOT trusted and the caller falls back to the shared bucket (fail
-	// closed) — see lib/clientIp.ts. Unused by the `xforwarded` mode.
+	// closed) — see lib/clientIp.ts. Unused by the `xforwarded` mode. The proxy
+	// must inject it on the web app origin too: browser sign-in reaches
+	// /api/auth/* through the web app's auth proxy, which forwards the headers.
 	| 'RATE_LIMIT_PROXY_SECRET'
 	// Reverse-proxy IPs / CIDR ranges that front this deployment, used ONLY by the
 	// BetterAuth sign-in limiter when RATE_LIMIT_TRUSTED_PROXY is `xforwarded`: the

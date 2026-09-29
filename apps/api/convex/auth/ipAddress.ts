@@ -1,10 +1,13 @@
 import { getOptional } from '../lib/env';
 import {
 	getTrustedProxyMode,
+	isSecretGatedMode,
+	PROXY_SECRET_HEADER,
 	SECRET_GATED_IP_HEADER,
 	withoutUnverifiedForwardedIp,
 	type TrustedProxyMode,
 } from '../lib/clientIp';
+import { logWarn } from '../lib/runtimeLog';
 
 /**
  * Client-IP resolution for BetterAuth's built-in sign-in / password-reset
@@ -60,16 +63,31 @@ export function resolveBetterAuthIpAddressConfig(
 	}
 }
 
+// Emit the removed-header advisory at most once per warm instance.
+let warnedUnverifiedHeader = false;
+
 /**
  * Wrap a BetterAuth instance so every request reaching its HTTP handler first
  * goes through the proxy-secret check (`withoutUnverifiedForwardedIp`). Used
- * where `/api/auth/*` is registered on the HTTP router.
+ * where `/api/auth/*` is registered on the HTTP router. The first time a header
+ * is removed, log why, so a deployment whose traffic is mostly sign-in still
+ * learns that its proxy is not presenting the secret.
  */
 export function withVerifiedClientIp<
 	Auth extends { handler: (request: Request) => Promise<Response> },
 >(auth: Auth): Auth {
 	return {
 		...auth,
-		handler: (request: Request) => auth.handler(withoutUnverifiedForwardedIp(request)),
+		handler: (request: Request) => {
+			const mode = getTrustedProxyMode();
+			const checked = withoutUnverifiedForwardedIp(request, mode);
+			if (checked !== request && isSecretGatedMode(mode) && !warnedUnverifiedHeader) {
+				warnedUnverifiedHeader = true;
+				logWarn(
+					`[auth] RATE_LIMIT_TRUSTED_PROXY='${mode.kind}': ignored ${SECRET_GATED_IP_HEADER[mode.kind]} on an /api/auth request because ${PROXY_SECRET_HEADER} did not match RATE_LIMIT_PROXY_SECRET (or RATE_LIMIT_PROXY_SECRET is unset). Such sign-in and password-reset requests share one rate-limit bucket. Have your trusted proxy inject ${PROXY_SECRET_HEADER} on every origin that reaches /api/auth, including the web app origin.`
+				);
+			}
+			return auth.handler(checked);
+		},
 	};
 }

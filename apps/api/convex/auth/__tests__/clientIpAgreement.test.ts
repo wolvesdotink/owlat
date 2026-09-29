@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { betterAuth } from 'better-auth';
 import { memoryAdapter } from 'better-auth/adapters/memory';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -197,4 +198,97 @@ describe('sign-in and reset throttle with an unverified forwarded header', () =>
 			expect(statuses).not.toContain(429);
 		});
 	}
+});
+
+describe('advisory when an unverified header is removed', () => {
+	it('logs once per instance, and not for a verified request', async () => {
+		vi.resetModules();
+		const { withVerifiedClientIp: wrap } = await import('../ipAddress');
+		const { logWarn } = await import('../../lib/runtimeLog');
+		vi.mocked(logWarn).mockClear();
+		vi.stubEnv('RATE_LIMIT_TRUSTED_PROXY', 'xrealip');
+		vi.stubEnv('RATE_LIMIT_PROXY_SECRET', SECRET);
+		const seen: Array<string | null> = [];
+		const route = wrap({
+			handler: async (request: Request) => {
+				seen.push(request.headers.get('X-Real-IP'));
+				return new Response(null, { status: 204 });
+			},
+		});
+
+		await route.handler(signIn({ 'X-Real-IP': REAL_IP, 'X-Owlat-Proxy-Secret': SECRET }));
+		expect(logWarn).not.toHaveBeenCalled();
+		await route.handler(signIn({ 'X-Real-IP': REAL_IP }));
+		await route.handler(signIn({ 'X-Real-IP': REAL_IP, 'X-Owlat-Proxy-Secret': 'wrong' }));
+
+		expect(seen).toEqual([REAL_IP, null, null]);
+		expect(logWarn).toHaveBeenCalledTimes(1);
+		expect(String(vi.mocked(logWarn).mock.calls[0]?.[0])).toContain('web app origin');
+	});
+});
+
+/**
+ * The fix relies on BetterAuth still limiting a request for which no client IP
+ * resolves, keyed `no-trusted-ip|<path>` (better-auth 1.6.25:
+ * `resolveRateLimitConfig` in dist/api/rate-limiter/index.mjs, and `getIp` in
+ * @better-auth/core dist/utils/ip.mjs). Under NODE_ENV=test `getIp` returns
+ * 127.0.0.1 instead of null, so the suites above never reach that branch. This
+ * runs BetterAuth in a child process with the production environment to pin the
+ * contract; if an upgrade skips limiting when no IP resolves, this fails.
+ */
+describe('BetterAuth contract: no resolvable client IP still rate-limits', () => {
+	it('keys a request without the configured IP header into one shared bucket', () => {
+		const script = `
+			import { betterAuth } from 'better-auth';
+			import { memoryAdapter } from 'better-auth/adapters/memory';
+			const keys = [];
+			const counts = new Map();
+			const auth = betterAuth({
+				baseURL: 'https://deployment.convex.site',
+				secret: 'test-secret-with-enough-entropy-0123456789',
+				database: memoryAdapter({ user: [], session: [], account: [], verification: [] }),
+				emailAndPassword: { enabled: true },
+				rateLimit: {
+					enabled: true,
+					customStorage: {
+						get: async () => null,
+						set: async () => {},
+						consume: async (key, rule) => {
+							keys.push(key);
+							const count = (counts.get(key) ?? 0) + 1;
+							counts.set(key, count);
+							return count <= rule.max
+								? { allowed: true, retryAfter: null }
+								: { allowed: false, retryAfter: rule.window };
+						},
+					},
+				},
+				advanced: { ipAddress: { ipAddressHeaders: ['x-real-ip'] } },
+				logger: { disabled: true },
+			});
+			const statuses = [];
+			for (let attempt = 1; attempt <= 4; attempt += 1) {
+				const response = await auth.handler(new Request('https://deployment.convex.site/api/auth/sign-in/email', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ email: 'nobody@example.com', password: 'not-the-password-1234' }),
+				}));
+				statuses.push(response.status);
+			}
+			process.stdout.write(JSON.stringify({ keys, statuses }));
+		`;
+		const env: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: 'production' };
+		delete env['TEST'];
+		delete env['VITEST'];
+		const output = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+			cwd: process.cwd(),
+			env,
+			encoding: 'utf8',
+		});
+		const { keys, statuses } = JSON.parse(output) as { keys: string[]; statuses: number[] };
+
+		expect(new Set(keys)).toEqual(new Set(['no-trusted-ip|/sign-in/email']));
+		expect(statuses.slice(0, 3)).not.toContain(429);
+		expect(statuses[3]).toBe(429);
+	});
 });
