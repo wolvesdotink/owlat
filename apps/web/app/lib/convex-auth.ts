@@ -4,6 +4,14 @@ import { authClient } from '~/lib/auth-client';
 let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
 let inflightRequest: Promise<string | null> | null = null;
+/**
+ * The boot warm-up's request, held for the FIRST non-forced caller (the Convex
+ * client's initial `setAuth` fetch). A token it produced is served from the
+ * cache anyway; what this keeps is a `null` answer (signed-out visitor), which
+ * the cache never stores, so that the client does not ask a second time for the
+ * same "no session" the warm-up has already been told.
+ */
+let warmupRequest: Promise<string | null> | null = null;
 
 const REFRESH_BUFFER_MS = 60_000;
 
@@ -44,10 +52,15 @@ function getTokenExpiry(jwt: string): number {
 	}
 }
 
-export function resetConvexAuthTokenCache() {
+function clearCachedToken() {
 	cachedToken = null;
 	tokenExpiresAt = 0;
+}
+
+export function resetConvexAuthTokenCache() {
+	clearCachedToken();
 	inflightRequest = null;
+	warmupRequest = null;
 }
 
 async function fetchToken(): Promise<string | null> {
@@ -56,7 +69,7 @@ async function fetchToken(): Promise<string | null> {
 		const response = await fetch(url, init);
 
 		if (!response.ok) {
-			resetConvexAuthTokenCache();
+			clearCachedToken();
 			return null;
 		}
 
@@ -64,7 +77,7 @@ async function fetchToken(): Promise<string | null> {
 		const token = data.token ?? null;
 
 		if (!token) {
-			resetConvexAuthTokenCache();
+			clearCachedToken();
 			return null;
 		}
 
@@ -72,16 +85,23 @@ async function fetchToken(): Promise<string | null> {
 		tokenExpiresAt = getTokenExpiry(token);
 		return token;
 	} catch {
-		resetConvexAuthTokenCache();
+		clearCachedToken();
 		return null;
 	}
 }
 
 export async function getConvexAuthToken(forceRefreshToken = false): Promise<string | null> {
 	const now = Date.now();
+	// One caller only, forced or not: after that the normal cache rules apply.
+	const warmup = warmupRequest;
+	warmupRequest = null;
 
 	if (!forceRefreshToken && cachedToken && tokenExpiresAt - now > REFRESH_BUFFER_MS) {
 		return cachedToken;
+	}
+
+	if (!forceRefreshToken && warmup) {
+		return warmup;
 	}
 
 	if (!inflightRequest) {
@@ -91,4 +111,18 @@ export async function getConvexAuthToken(forceRefreshToken = false): Promise<str
 	}
 
 	return inflightRequest;
+}
+
+/**
+ * Start the Convex token fetch during boot, before anything needs the token, so
+ * the round trip overlaps the i18n catalog load instead of following it
+ * (plugins/0.auth-warmup.client.ts). Goes through the same in-flight dedupe as
+ * every other caller. The token stays in memory only; it is never persisted.
+ */
+export function warmConvexAuthToken(): void {
+	if (warmupRequest || inflightRequest) return;
+	warmupRequest = getConvexAuthToken();
+	// The first real caller receives this promise and handles its result; a
+	// rejection can't happen (`fetchToken` catches), but never leave one unhandled.
+	warmupRequest.catch(() => {});
 }

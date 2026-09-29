@@ -110,6 +110,17 @@ function sessionStore(): SessionStore {
 	return sharedSession;
 }
 
+/**
+ * Build the shared session store now, which starts its `/get-session` fetch,
+ * instead of waiting for the first `useAuth()` in route middleware. Called by the
+ * boot warm-up plugin (plugins/0.auth-warmup.client.ts) so the request overlaps
+ * the i18n catalog load; every later `useAuth()` reuses the same store and its
+ * in-flight request.
+ */
+export function warmAuthSession(): void {
+	sessionStore();
+}
+
 export function useAuth() {
 	const t = authTranslator();
 	const sessionState = sessionStore();
