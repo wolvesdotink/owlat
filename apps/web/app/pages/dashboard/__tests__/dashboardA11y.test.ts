@@ -130,6 +130,7 @@ beforeEach(() => {
 			loadMoreThreads: vi.fn(),
 		}),
 		useInboxTriage: () => ({ visible: ref([]), run: vi.fn(), onWindowKeydown: vi.fn() }),
+		useInboxAssigneePresence: () => () => false,
 		useOrganization: () => ({
 			organization: ref({ id: 'org1', name: 'Owlat' }),
 			members: ref([]),
