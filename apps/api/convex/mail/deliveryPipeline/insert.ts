@@ -363,6 +363,8 @@ export async function insertDeliveredMessage(
 						latestFromAddress: fromAddress,
 						latestSubject: params.subject,
 						latestMessageId: messageId,
+						// A just-delivered message is never snoozed (plan C8).
+						latestSnoozedUntil: null,
 					}
 				: {}),
 		});

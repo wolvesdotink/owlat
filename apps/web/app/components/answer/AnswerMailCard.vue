@@ -46,6 +46,14 @@ const dueLabel = computed(() => {
 });
 const kind = computed(() => mailAnswerKind(props.row));
 
+// The prepared draft is read for the card on screen only; the queue rows just
+// say one exists (plan C8).
+const { data: draftSlot } = useConvexQuery(api.mail.needsReply.getDraftSlot, () =>
+	props.row.kind !== 'followup' && props.row.hasDraftSlot
+		? { threadId: props.row.threadId as Id<'mailThreads'> }
+		: 'skip'
+);
+
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const aiEnabled = computed(() => isFeatureEnabled('ai'));
 const stack = usePostboxComposerStack();
@@ -233,9 +241,9 @@ const secondaryButton =
 
 		<!-- Draft-on-arrival review slot (human review only). -->
 		<PostboxReviewSlot
-			v-if="row.kind !== 'followup' && row.draftSlot"
+			v-if="row.kind !== 'followup' && draftSlot"
 			class="mb-4"
-			:draft-slot="row.draftSlot"
+			:draft-slot="draftSlot"
 			@review="reviewSlot"
 			@dismiss="markDone"
 		/>
@@ -243,13 +251,13 @@ const secondaryButton =
 		<TaskActions
 			v-if="row.kind !== 'followup'"
 			:primary-label="
-				row.draftSlot
+				row.hasDraftSlot
 					? t('components.answer.mail.writeOwn')
 					: aiEnabled
 						? t('components.postbox.postboxReplyFlow.draftReply')
 						: t('components.postbox.postboxReplyFlow.reply')
 			"
-			:quiet="!!row.draftSlot"
+			:quiet="!!row.hasDraftSlot"
 			primary-icon="lucide:reply"
 			:primary-disabled="busy"
 			:primary-loading="busy"

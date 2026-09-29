@@ -240,6 +240,8 @@ async function runSentEffects(
 			messageCount: thread.messageCount + 1,
 			hasAttachments: thread.hasAttachments || context.attachmentsMeta.length > 0,
 			latestMessageId: messageId,
+			// A just-sent message is never snoozed (plan C8).
+			latestSnoozedUntil: null,
 			// Team-inbox collision safety: record this reply as the thread's newest
 			// outbound so a second teammate who opened the thread earlier is warned
 			// before sending a duplicate (see mail/mailbox/messages.ts::latestReplyState).

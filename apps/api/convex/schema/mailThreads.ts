@@ -89,6 +89,18 @@ export const needsReplyValidator = v.object({
 			generatedAt: v.number(),
 		})
 	),
+	// The trigger message's list fields, copied by applyResult (plan C8) so
+	// the Reply Queue read serves a row without loading the message. Absent on
+	// flags written before it existed; `migrations/0047_denormalize_thread_rows`
+	// backfills them and the read falls back to the message until then.
+	trigger: v.optional(
+		v.object({
+			fromAddress: v.string(),
+			fromName: v.optional(v.string()),
+			subject: v.string(),
+			receivedAt: v.number(),
+		})
+	),
 });
 
 /**
@@ -119,6 +131,13 @@ export const mailThreadsTables = {
 		latestSubject: v.string(),
 		// Newest message in the thread — the row a conversation list links to.
 		latestMessageId: v.optional(v.id('mailMessages')),
+		// `snoozedUntil` of the message `latestMessageId` points at (plan C8), so
+		// the conversation list can hide a snoozed thread without loading that
+		// message. `null` = known not snoozed; `undefined` = not recorded yet
+		// (rows older than the field), where readers fall back to the message.
+		// Kept in step by every write that moves `latestMessageId` or changes
+		// that message's snooze (mail/threadLatestSnooze.ts).
+		latestSnoozedUntil: v.optional(v.union(v.number(), v.null())),
 		// Team-inbox collision safety. Set whenever an outbound reply is committed
 		// to the thread; carries WHO (a BetterAuth user id) replied last so a
 		// shared (team) inbox can show "last reply by …" and warn a second teammate

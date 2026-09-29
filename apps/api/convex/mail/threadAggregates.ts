@@ -92,6 +92,7 @@ export async function rebuildThreadAggregates(
 		latestFromAddress: latest.fromAddress,
 		latestSubject: latest.subject,
 		latestMessageId: latest._id,
+		latestSnoozedUntil: latest.snoozedUntil ?? null,
 		folderRoles: Array.from(folderRoles),
 		labelIds: Array.from(labelIds),
 		participants,

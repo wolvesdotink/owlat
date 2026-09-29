@@ -21,6 +21,8 @@ import { isThreadMuted } from '../../lib/mailMute';
 import { readSession } from './shared';
 import type { FolderRole } from '../../lib/validators/mail';
 import { attachThreadState, type RowThreadState } from './rowThreadState';
+import { toThreadListRow, type ThreadListRow } from './threadListRow';
+import { isThreadLatestSnoozed } from '../threadLatestSnooze';
 
 /**
  * List messages in a mailbox, for the webmail UI.
@@ -237,6 +239,11 @@ export const listByLabel = publicQuery({
  * aren't folder-indexed, so this overfetches the recent set then filters; it's
  * used for the inbox view (where most threads live), with the flat
  * `listMessages` serving other folders.
+ *
+ * Plan C8: the snooze check reads the copy on the thread
+ * (`latestSnoozedUntil`) instead of loading every candidate's newest message,
+ * and rows are projected ({@link toThreadListRow}) so drafts and cached
+ * summaries no longer ride along.
  */
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listThreads = publicQuery({
@@ -246,7 +253,7 @@ export const listThreads = publicQuery({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const empty = { threads: [] as Doc<'mailThreads'>[], hasMore: false };
+		const empty = { threads: [] as ThreadListRow[], hasMore: false };
 		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
 		if (!mailbox) return empty;
 
@@ -258,14 +265,11 @@ export const listThreads = publicQuery({
 			.order('desc')
 			.take((limit + 1) * 3);
 
-		const threads: Doc<'mailThreads'>[] = [];
+		const threads: ThreadListRow[] = [];
 		for (const t of candidates) {
 			if (!t.folderRoles.includes(args.folderRole)) continue;
-			if (t.latestMessageId) {
-				const latest = await ctx.db.get(t.latestMessageId);
-				if (latest && isMessageSnoozed(latest, now)) continue;
-			}
-			threads.push(t);
+			if (await isThreadLatestSnoozed(ctx, t, now)) continue;
+			threads.push(toThreadListRow(t));
 			if (threads.length > limit) break;
 		}
 		return { threads: threads.slice(0, limit), hasMore: threads.length > limit };

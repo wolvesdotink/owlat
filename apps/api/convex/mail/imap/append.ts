@@ -202,7 +202,8 @@ export const appendMessage = internalMutation({
 		} else {
 			// The conversation list links to latestMessageId; set it now that the
 			// appended message exists.
-			await ctx.db.patch(threadId, { latestMessageId: messageId });
+			// A just-appended message is never snoozed (plan C8).
+			await ctx.db.patch(threadId, { latestMessageId: messageId, latestSnoozedUntil: null });
 		}
 
 		// E8b: the IMAP server uploads the raw `.eml` straight to storage
