@@ -1140,6 +1140,7 @@ import type * as schema_mailMessages from '../schema/mailMessages.js';
 import type * as schema_mailRules from '../schema/mailRules.js';
 import type * as schema_mailSettings from '../schema/mailSettings.js';
 import type * as schema_mailThreads from '../schema/mailThreads.js';
+import type * as schema_mailboxJobs from '../schema/mailboxJobs.js';
 import type * as schema_mailboxes from '../schema/mailboxes.js';
 import type * as schema_messaging from '../schema/messaging.js';
 import type * as schema_plugins from '../schema/plugins.js';
@@ -2423,6 +2424,7 @@ declare const fullApi: ApiFromModules<{
 	'schema/mailRules': typeof schema_mailRules;
 	'schema/mailSettings': typeof schema_mailSettings;
 	'schema/mailThreads': typeof schema_mailThreads;
+	'schema/mailboxJobs': typeof schema_mailboxJobs;
 	'schema/mailboxes': typeof schema_mailboxes;
 	'schema/messaging': typeof schema_messaging;
 	'schema/plugins': typeof schema_plugins;
