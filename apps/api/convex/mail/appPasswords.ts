@@ -20,7 +20,7 @@ import { postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireAdminContext } from '../lib/sessionOrganization';
-import { requireMailboxAccess } from './permissions';
+import { personalMailEnabled, requireMailboxAccess } from './permissions';
 import { resolveDeliverableMailbox } from './mailbox/addressResolution';
 import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import { mailAppPasswordScopeValidator } from '../lib/literalValidators';
@@ -276,6 +276,10 @@ export const _candidatesByAddressAndPrefix = internalQuery({
 		scope: mailAppPasswordScopeValidator,
 	},
 	handler: async (ctx, args) => {
+		// IMAP LOGIN and submission AUTH follow the personal-mail feature flags
+		// like every Postbox UI path: with personal mail off, no app password
+		// signs in.
+		if (!(await personalMailEnabled(ctx))) return null;
 		// Bind auth to the live hosted mailbox, not an external read-only archive
 		// that a move may have left on the same address.
 		const mailbox = await resolveDeliverableMailbox(ctx, args.address);

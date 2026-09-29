@@ -457,6 +457,27 @@ describe('appPasswords.verify', () => {
 		expect(res).toBeNull();
 	});
 
+	it('returns null for a correct credential while personal mail is turned off', async () => {
+		const t = await setupTest();
+		const f = await provision(t);
+
+		await t.run(async (ctx) => {
+			const settings = (await ctx.db.query('instanceSettings').first())!;
+			await ctx.db.patch(settings._id, {
+				featureFlags: { ...settings.featureFlags, postbox: false, 'mail.external': false },
+			});
+		});
+
+		for (const scope of ['imap', 'smtp'] as const) {
+			const res = await t.action(internal.mail.appPasswords.verify, {
+				address: f.address,
+				password: f.cleartext,
+				scope,
+			});
+			expect(res).toBeNull();
+		}
+	});
+
 	it('returns null (looks like a failure) when the per-address throttle trips', async () => {
 		const t = await setupTest();
 		const f = await provision(t);
