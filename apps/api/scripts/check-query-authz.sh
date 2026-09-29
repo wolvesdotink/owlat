@@ -91,8 +91,9 @@
 # gate: import inbox/access, or (an action) call
 # `internal.inbox.access.assertSharedInboxReader`. Touches inside an
 # `internalQuery` / `internalMutation` / `internalAction` do not count, since no
-# client can reach them — unless the file defines a public action or a public
-# function calls `internal.<this module>.…` (see touches_inbox_from_public). A
+# client can reach them — unless the file defines a public action or refers to
+# `internal.<this module>` outside an internal function (see
+# touches_inbox_from_public). A
 # module-level helper always counts, since a public function may call it. Such
 # a file is reported as `<file>:#inbox-tables`, and rides the same ratchet and
 # baseline. This is a presence check, like the gate tokens above: a reviewer
@@ -146,7 +147,7 @@ inbox_table_files() {
 		[ -n "$file" ] || continue
 		grep -qE "^export const [A-Za-z0-9_]+ = ($public_builders)\(" "$file" || continue
 		grep -qE "from '(\./|(\.\./)+)inbox/access'|internal\.inbox\.access\." "$file" && continue
-		touches_inbox_from_public "$file" "$public_builders" "$public_actions" || continue
+		touches_inbox_from_public "$file" "$public_actions" || continue
 		printf '%s:#inbox-tables\n' "$file"
 	done <<<"$candidates" | sort
 }
@@ -157,29 +158,34 @@ inbox_table_files() {
 # put the whole file back in scope:
 #   * the file defines a public action, which reaches its internal functions
 #     through `ctx.runQuery` / `ctx.runMutation` by construction;
-#   * a public function in the file calls `internal.<this module>.…`.
-# A module-level helper always counts: a public function may call it. A span
+#   * the file refers to `internal.<this module>` anywhere outside an
+#     internal span — in a public function, in a module-level helper a public
+#     function may call, or in an alias such as `const self = internal.x.y`.
+# A module-level helper's own table touch always counts too. A span
 # opens on its `export const` line and closes on the column-0 `})` or on the
 # next `export const`, so an internal function whose closing brace is not at
 # column 0 cannot hide the public function after it.
 touches_inbox_from_public() {
-	local file="$1" public_builders="$2" public_actions="$3" module
+	local file="$1" public_actions="$2" module
 	grep -qE "^export const [A-Za-z0-9_]+ = ($public_actions)\(" "$file" && return 0
 	module="${file#convex/}"
-	module="internal.${module%.ts}."
+	module="internal.${module%.ts}"
 	module="${module//\//.}"
-	awk -v q="'" -v pub="^export const [A-Za-z0-9_]+ = (${public_builders})\\(" -v self="$module" '
+	awk -v q="'" -v module="$module" '
 		BEGIN {
 			tables = "(inboundMessages|conversationThreads)"
 			touch = "\\.query\\([[:space:]]*[" q "\"]" tables "[" q "\"]|v\\.id\\([[:space:]]*[" q "\"]" tables "[" q "\"]"
+			# `internal.<module>` as a whole path: followed by a member access or
+			# any non-identifier character (an alias ends in `;` or a newline).
+			self = module
+			gsub(/\./, "\\.", self)
+			self = self "([^A-Za-z0-9_]|$)"
 		}
 		/^export const [A-Za-z0-9_]+ = / {
 			internal = ($0 ~ /^export const [A-Za-z0-9_]+ = internal(Query|Mutation|Action)\(/)
-			public = ($0 ~ pub)
 		}
-		!internal && $0 ~ touch { found = 1 }
-		public && index($0, self) { found = 1 }
-		/^}\)/ { internal = 0; public = 0 }
+		!internal && ($0 ~ touch || $0 ~ self) { found = 1 }
+		/^}\)/ { internal = 0 }
 		END { exit found ? 0 : 1 }
 	' "$file"
 }
