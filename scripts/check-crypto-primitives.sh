@@ -27,6 +27,7 @@
 #   xor-compare                    a hand-written XOR-accumulate compare, the
 #                                  `acc |= a ^ b`, `acc += a ^ b`, `acc = acc | (a ^ b)`
 #                                  or `acc = acc + (a ^ b)` loop body, on one line
+#                                  (a caret inside a string literal does not count)
 #
 # across .ts, .tsx, .mts, .cts, .js, .jsx, .mjs, .cjs and .vue files under apps/
 # and packages/, excluding tests (__tests__, *.test.*, *.spec.*, *.testlib.*),
@@ -114,8 +115,12 @@ generate() {
 			}
 			while (/\b(sign|verify)\s*\(\s*(?:[\x27"]HMAC[\x27"]|\{[^{}]*?\bname\s*:\s*[\x27"]HMAC[\x27"])/g) { push @hits, [$-[0], "$1(HMAC)"] }
 			while (/\btimingSafeEqual\b/g) { push @hits, [$-[0], "timingSafeEqual"] }
-			while (/\b[A-Za-z_\$][\w\$]*\s*[|+]=[^;\n]*\^/g) { push @hits, [$-[0], "xor-compare"] }
-			while (/\b([A-Za-z_\$][\w\$]*)\s*=\s*\1\s*(?:\|(?!\|)|\+(?!\+))[^;\n]*\^/g) { push @hits, [$-[0], "xor-compare"] }
+			# The XOR-loop patterns read a copy with string literal contents blanked
+			# (same length, so offsets and line numbers still match), so a caret
+			# inside a string such as a regex source is not an XOR.
+			(my $code = $_) =~ s{([\x27"`])((?:\\.|(?!\1)[^\\])*)\1}{ my ($q, $b) = ($1, $2); $b =~ s/[^\n]/ /g; "$q$b$q" }gse;
+			while ($code =~ /\b[A-Za-z_\$][\w\$]*\s*[|+]=[^;\n]*\^/g) { push @hits, [$-[0], "xor-compare"] }
+			while ($code =~ /\b([A-Za-z_\$][\w\$]*)\s*=\s*\1\s*(?:\|(?!\|)|\+(?!\+))[^;\n]*\^/g) { push @hits, [$-[0], "xor-compare"] }
 			for my $h (@hits) {
 				my $line = 1 + (substr($_, 0, $h->[0]) =~ tr/\n//);
 				print "$ARGV:$line:$h->[1]\n";
