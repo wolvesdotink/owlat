@@ -3,7 +3,6 @@ import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireOrgPermission } from '../lib/sessionOrganization';
-import { buildSearchableText } from '../lib/queryHelpers';
 import {
 	getOrThrow,
 	throwAlreadyExists,
@@ -14,9 +13,13 @@ import {
 } from '../_utils/errors';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { dataVariablesSchemaValidator } from '../lib/convexValidators';
-import { assertEditableForPublishableChange } from './lifecycle';
-import { applyUsageCountDelta } from '../emailBlocks/module';
-import { assertContentRevision, nextContentRevision } from '../lib/contentRevision';
+import {
+	assertEditableForPublishableChange,
+	buildEditablePatch,
+	publishedHtml,
+} from '../lib/publishableEmail';
+import { assertContentRevision } from '../lib/contentRevision';
+import { recordAuditLog } from '../lib/auditLog';
 
 // Data variable type for schema definition
 export type DataVariableType = 'string' | 'number' | 'boolean' | 'date';
@@ -111,7 +114,7 @@ export const create = authedMutation({
 		defaultLanguage: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Id<'transactionalEmails'>> => {
-		await requireOrgPermission(
+		const session = await requireOrgPermission(
 			ctx,
 			'templates:manage',
 			'Only owners and admins can create transactional emails'
@@ -123,7 +126,7 @@ export const create = authedMutation({
 			content: args.content,
 			dataVariablesSchema: args.dataVariablesSchema,
 			defaultLanguage: args.defaultLanguage,
-			userId: 'system:transactional_api',
+			userId: session.userId,
 		});
 
 		if (!outcome.ok) {
@@ -179,14 +182,14 @@ export const update = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'transactional');
-		await requireOrgPermission(
+		const session = await requireOrgPermission(
 			ctx,
 			'templates:manage',
 			'Only owners and admins can update transactional emails'
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
-		assertEditableForPublishableChange(email, args.forceWhilePublished);
+		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
 		assertContentRevision(email, args.expectedContentRevision);
 
 		// If updating slug, check for uniqueness
@@ -209,80 +212,34 @@ export const update = authedMutation({
 			}
 		}
 
-		const contentRevision = nextContentRevision(email);
-		const updates: Partial<{
-			name: string;
-			slug: string;
-			subject: string;
-			content: string;
-			htmlContent: string;
-			plainTextContent: string;
-			plainTextOverride: string | undefined;
-			dataVariablesSchema: Record<string, DataVariableType>;
-			showUnsubscribe: boolean;
-			defaultLanguage: string;
-			supportedLanguages: string[];
-			translations: string;
-			htmlTranslations: string;
-			linkedBlockIds: string[];
-			attachments: string;
-			searchableText: string;
-			htmlRenderState: { stale: boolean };
-			contentRevision: number;
-			updatedAt: number;
-		}> = {
-			contentRevision,
-			updatedAt: Date.now(),
+		const updates = {
+			...(await buildEditablePatch(ctx, email, args, {
+				noun: 'Transactional email',
+				searchableFields: ['name', 'subject', 'slug'],
+			})),
+			...(args.slug !== undefined && { slug: args.slug }),
+			...(args.dataVariablesSchema !== undefined && {
+				dataVariablesSchema: args.dataVariablesSchema,
+			}),
+			...(args.showUnsubscribe !== undefined && { showUnsubscribe: args.showUnsubscribe }),
+			...(args.attachments !== undefined && { attachments: args.attachments }),
 		};
 
-		if (args.name !== undefined) updates.name = args.name;
-		if (args.slug !== undefined) updates.slug = args.slug;
-		if (args.subject !== undefined) updates.subject = args.subject;
-		if (args.content !== undefined) updates.content = args.content;
-		if (args.htmlContent !== undefined) updates.htmlContent = args.htmlContent;
-		// Blocks and the HTML rendered from them, in one write: the HTML matches
-		// the content again, so a saved-block rerender still pending for the
-		// previous revision has nothing left to fix (it no-ops on the moved row).
-		if (args.content !== undefined && args.htmlContent !== undefined && email.htmlRenderState) {
-			updates.htmlRenderState = { stale: false };
-		}
-		if (args.plainTextContent !== undefined) updates.plainTextContent = args.plainTextContent;
-		if (args.plainTextOverride !== undefined) {
-			// Patching to `undefined` REMOVES the column — that is what "the author
-			// cleared the override editor" means; an empty string would otherwise
-			// keep winning over the generated body.
-			updates.plainTextOverride = args.plainTextOverride.trim()
-				? args.plainTextOverride
-				: undefined;
-		}
-		if (args.dataVariablesSchema !== undefined)
-			updates.dataVariablesSchema = args.dataVariablesSchema;
-		if (args.showUnsubscribe !== undefined) updates.showUnsubscribe = args.showUnsubscribe;
-		if (args.defaultLanguage !== undefined) updates.defaultLanguage = args.defaultLanguage;
-		if (args.supportedLanguages !== undefined) updates.supportedLanguages = args.supportedLanguages;
-		if (args.translations !== undefined) updates.translations = args.translations;
-		if (args.htmlTranslations !== undefined) updates.htmlTranslations = args.htmlTranslations;
-		if (args.linkedBlockIds !== undefined) {
-			updates.linkedBlockIds = args.linkedBlockIds;
-			// A normal editor save patches the row directly (it does NOT route
-			// through the lifecycle's create/duplicate effect), so keep saved-block
-			// usageCount in sync here by diffing the previous vs. new linked set.
-			await applyUsageCountDelta(ctx, email.linkedBlockIds ?? [], args.linkedBlockIds);
-		}
-		if (args.attachments !== undefined) updates.attachments = args.attachments;
-
-		// Update searchableText if any searchable field changed
-		if (args.name !== undefined || args.subject !== undefined || args.slug !== undefined) {
-			updates.searchableText = buildSearchableText(
-				args.name ?? email.name,
-				args.subject ?? email.subject,
-				args.slug ?? email.slug
-			);
-		}
-
 		await ctx.db.patch(args.id, updates);
+
+		const changedFields = Object.keys(updates).filter(
+			(k) => k !== 'updatedAt' && k !== 'contentRevision'
+		);
+		await recordAuditLog(ctx, {
+			userId: session.userId,
+			action: 'transactional_email.updated',
+			resource: 'transactional_email',
+			resourceId: args.id,
+			details: { changedFields: changedFields.join(', ') },
+		});
+
 		// The revision this write stored; the editor builds its next save on it.
-		return { id: args.id, contentRevision };
+		return { id: args.id, contentRevision: updates.contentRevision };
 	},
 });
 
@@ -292,8 +249,11 @@ export const update = authedMutation({
 export const publish = authedMutation({
 	args: {
 		id: v.id('transactionalEmails'),
-		htmlContent: v.string(), // Required to ensure HTML is generated
-		// Pre-rendered HTML for each translation language
+		// Ignored when the row holds rendered HTML (see `publishedHtml`). Still
+		// accepted so older clients, which send the row's HTML back, keep working,
+		// and used for a row that was never rendered.
+		htmlContent: v.optional(v.string()),
+		// Pre-rendered HTML for each translation language, with the same rule.
 		htmlTranslations: v.optional(v.string()),
 		// The `contentRevision` the HTML was rendered from. When given, a row
 		// that has moved on is refused with `conflict` instead of going live
@@ -302,7 +262,7 @@ export const publish = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'transactional');
-		await requireOrgPermission(
+		const session = await requireOrgPermission(
 			ctx,
 			'templates:manage',
 			'Only owners and admins can publish transactional emails'
@@ -313,16 +273,12 @@ export const publish = authedMutation({
 			throwInvalidState('Transactional email is already published');
 		}
 		assertContentRevision(email, args.expectedContentRevision, 'publish');
+		const html = publishedHtml(email, args);
 
 		const outcome = await ctx.runMutation(internal.transactional.lifecycle.transition, {
 			emailId: args.id,
-			input: {
-				to: 'published',
-				at: Date.now(),
-				htmlContent: args.htmlContent,
-				htmlTranslations: args.htmlTranslations,
-			},
-			userId: 'system:transactional_api',
+			input: { to: 'published', at: Date.now(), ...html },
+			userId: session.userId,
 		});
 
 		if (!outcome.ok) {
@@ -343,7 +299,7 @@ export const unpublish = authedMutation({
 	args: { id: v.id('transactionalEmails') },
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'transactional');
-		await requireOrgPermission(
+		const session = await requireOrgPermission(
 			ctx,
 			'templates:manage',
 			'Only owners and admins can unpublish transactional emails'
@@ -357,7 +313,7 @@ export const unpublish = authedMutation({
 		const outcome = await ctx.runMutation(internal.transactional.lifecycle.transition, {
 			emailId: args.id,
 			input: { to: 'draft', at: Date.now() },
-			userId: 'system:transactional_api',
+			userId: session.userId,
 		});
 
 		if (!outcome.ok) {
@@ -378,14 +334,14 @@ export const duplicate = authedMutation({
 	args: { id: v.id('transactionalEmails') },
 	handler: async (ctx, args): Promise<Id<'transactionalEmails'>> => {
 		await assertFeatureEnabled(ctx, 'transactional');
-		await requireOrgPermission(
+		const session = await requireOrgPermission(
 			ctx,
 			'templates:manage',
 			'Only owners and admins can duplicate transactional emails'
 		);
 		const outcome = await ctx.runMutation(internal.transactional.lifecycle.duplicate, {
 			emailId: args.id,
-			userId: 'system:transactional_api',
+			userId: session.userId,
 		});
 
 		if (!outcome.ok) {
@@ -402,14 +358,14 @@ export const remove = authedMutation({
 	args: { id: v.id('transactionalEmails') },
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'transactional');
-		await requireOrgPermission(
+		const session = await requireOrgPermission(
 			ctx,
 			'templates:manage',
 			'Only owners and admins can delete transactional emails'
 		);
 		const outcome = await ctx.runMutation(internal.transactional.lifecycle.remove, {
 			emailId: args.id,
-			userId: 'system:transactional_api',
+			userId: session.userId,
 		});
 
 		if (!outcome.ok) {
@@ -437,7 +393,7 @@ export const updateSchema = authedMutation({
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
 
-		assertEditableForPublishableChange(email, args.forceWhilePublished);
+		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
 
 		// Validate schema format
 		const schema = args.dataVariablesSchema;

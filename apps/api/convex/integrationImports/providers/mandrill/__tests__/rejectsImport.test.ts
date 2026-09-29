@@ -215,6 +215,21 @@ describe('mandrill rejects import — adapter', () => {
 		);
 	});
 
+	it('retries a 503 from the gateway, but keeps a 500 permanent', async () => {
+		global.fetch = vi.fn().mockResolvedValue(new Response('unavailable', { status: 503 }));
+		await expect(mandrillProvider.fetchPage({ config: CONFIG, cursor: '' })).rejects.toBeInstanceOf(
+			RetryableProviderError
+		);
+
+		global.fetch = vi.fn().mockResolvedValue(new Response('boom', { status: 500 }));
+		const err = await mandrillProvider
+			.fetchPage({ config: CONFIG, cursor: '' })
+			.catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(Error);
+		expect(err).not.toBeInstanceOf(RetryableProviderError);
+		expect((err as Error).message).toBe('Mandrill API error: 500');
+	});
+
 	it('never lets the key reach an error message, however the provider echoes it', async () => {
 		// The exact leak this guards: a provider that echoes the request back
 		// inside its error body. The message is surfaced into

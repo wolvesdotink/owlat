@@ -29,6 +29,7 @@ import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { defineLifecycle, refuse } from '../lib/lifecycle';
 import { logWarn } from '../lib/runtimeLog';
 import { trackEvent } from '../lib/posthogHelpers';
+import { loadOrderedSteps } from './steps';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -290,10 +291,7 @@ async function dispatch(
 	// Preconditions for `→ active` (both `draft → active` and
 	// `paused → active`). Skipped on self-loops (already `active`).
 	if (input.to === 'active' && !verdict.isSelfLoop) {
-		const steps = await ctx.db
-			.query('automationSteps')
-			.withIndex('by_automation', (q) => q.eq('automationId', automation._id))
-			.collect(); // bounded: one automation's steps
+		const steps = await loadOrderedSteps(ctx.db, automation._id);
 		if (steps.length === 0) {
 			return { ok: false, reason: 'no_steps', from, to: input.to };
 		}
