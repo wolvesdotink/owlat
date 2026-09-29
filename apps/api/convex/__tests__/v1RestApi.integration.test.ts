@@ -562,6 +562,16 @@ describe('DELETE /api/v1/contacts/{idOrEmail} (deleteContact → contacts:write)
 
 // ─── POST /api/v1/events ─────────────────────────────────────────────────────
 
+async function setAutomationsFlag(t: ReturnType<typeof setupTest>, enabled: boolean) {
+	await t.run(async (ctx) => {
+		await ctx.db.insert('instanceSettings', {
+			contactCount: 0,
+			createdAt: Date.now(),
+			featureFlags: { automations: enabled },
+		});
+	});
+}
+
 describe('POST /api/v1/events (sendEvent → events:write)', () => {
 	it('401 with no key', async () => {
 		const t = setupTest();
@@ -586,9 +596,36 @@ describe('POST /api/v1/events (sendEvent → events:write)', () => {
 		expect(body.error.message).toContain('events:write');
 	});
 
+	it('403 forbidden while the automations feature is off, without creating the contact', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['events:write']);
+		await setAutomationsFlag(t, false);
+		const res = await t.fetch('/api/v1/events', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({
+				email: 'off@example.com',
+				eventName: 'signed_up',
+				createContactIfNotExists: true,
+			}),
+		});
+		expect(res.status).toBe(403);
+		const body = await res.json();
+		expect(body.error.category).toBe('forbidden');
+		expect(body.error.data?.reason).toBe('feature_disabled');
+		const contact = await t.run(async (ctx) =>
+			ctx.db
+				.query('contacts')
+				.withIndex('by_email', (q) => q.eq('email', 'off@example.com'))
+				.first()
+		);
+		expect(contact).toBeNull();
+	});
+
 	it('404 when the contact does not exist and createContactIfNotExists is not set', async () => {
 		const t = setupTest();
 		const key = await seedKey(t, ['events:write']);
+		await setAutomationsFlag(t, true);
 		const res = await t.fetch('/api/v1/events', {
 			method: 'POST',
 			headers: authHeaders(key),
@@ -602,6 +639,7 @@ describe('POST /api/v1/events (sendEvent → events:write)', () => {
 	it('201 creating the contact when createContactIfNotExists is true', async () => {
 		const t = setupTest();
 		const key = await seedKey(t, ['events:write']);
+		await setAutomationsFlag(t, true);
 		const res = await t.fetch('/api/v1/events', {
 			method: 'POST',
 			headers: authHeaders(key),
@@ -621,6 +659,7 @@ describe('POST /api/v1/events (sendEvent → events:write)', () => {
 	it('400 invalid_input for a malformed eventName', async () => {
 		const t = setupTest();
 		const key = await seedKey(t, ['events:write']);
+		await setAutomationsFlag(t, true);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('contacts', createTestContact({ email: 'has@example.com' }));
 		});
@@ -635,6 +674,7 @@ describe('POST /api/v1/events (sendEvent → events:write)', () => {
 	it('400 invalid_input for a nested eventProperties value', async () => {
 		const t = setupTest();
 		const key = await seedKey(t, ['events:write']);
+		await setAutomationsFlag(t, true);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('contacts', createTestContact({ email: 'nest@example.com' }));
 		});
