@@ -16,12 +16,13 @@ import { v } from 'convex/values';
 export const inboxCollaborationTables = {
 	// Thread Presence - ephemeral "who is here" rows for the shared-inbox thread
 	// view. One row per (thread, user); `mode` is `viewing` while the thread is
-	// open and `replying` while a reply/review editor is focused. `heartbeatAt`
-	// is refreshed every ~20s by the client (inbox/presence.ts → heartbeat); a
-	// row is considered ACTIVE only while `heartbeatAt` is within
-	// PRESENCE_ACTIVE_WINDOW_MS (60s), and the `sweep expired presence` cron
-	// deletes rows past that window. Purely a read-side collaboration hint — it
-	// never gates a mutation and never records an audit-log entry.
+	// open and `replying` while a reply/review editor is focused. The client
+	// beats every ~20s; `heartbeatAt` is rewritten once it is 45s old or the mode
+	// changes (inbox/presence.ts → heartbeat). A row is considered ACTIVE only
+	// while `heartbeatAt` is within PRESENCE_ACTIVE_WINDOW_MS (90s), and the
+	// `sweep expired presence` cron deletes rows past that window. Purely a
+	// read-side collaboration hint — it never gates a mutation and never records
+	// an audit-log entry.
 	threadPresence: defineTable({
 		threadId: v.id('conversationThreads'),
 		userId: v.string(), // BetterAuth user ID

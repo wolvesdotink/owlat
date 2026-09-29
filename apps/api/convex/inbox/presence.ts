@@ -4,8 +4,11 @@
  * A row in `threadPresence` says a given team member currently has a thread open
  * (`mode: 'viewing'`) or is actively drafting a reply/review on it
  * (`mode: 'replying'`). The client heartbeats every ~20s while the thread is
- * open (see apps/web app/composables/useThreadPresence.ts), so a row is treated
- * as ACTIVE only while its `heartbeatAt` is within PRESENCE_ACTIVE_WINDOW_MS.
+ * open (see apps/web app/composables/useThreadPresence.ts), but a beat only
+ * rewrites the row when its mode changed or its `heartbeatAt` is at least
+ * PRESENCE_REFRESH_MS old: every write re-runs each admin's thread list, which
+ * reads presence per row. A row is treated as ACTIVE only while its
+ * `heartbeatAt` is within PRESENCE_ACTIVE_WINDOW_MS.
  * The `internalSweep` cron deletes rows past that window so the table can't grow
  * unbounded when a tab is closed without a clean "leave".
  *
@@ -30,20 +33,32 @@ import { getMutationContext, getBetterAuthSessionWithRole } from '../lib/session
 import { isSharedInboxReader } from './access';
 import { getOrThrow } from '../_utils/errors';
 
+/** The client's heartbeat cadence (useThreadPresence.ts). */
+const PRESENCE_HEARTBEAT_INTERVAL_MS = 20_000;
+
+/**
+ * A beat in the same mode leaves the row alone until its `heartbeatAt` is this
+ * old, so an open thread costs one write per ~45-65s instead of one per beat.
+ */
+export const PRESENCE_REFRESH_MS = 45_000;
+
 /**
  * A presence row is ACTIVE while its `heartbeatAt` is within this window of now.
- * The client heartbeats every ~20s, so a 60s window tolerates two missed beats
- * before a viewer is considered gone.
+ * With every beat arriving, a stored row is at most one beat past
+ * PRESENCE_REFRESH_MS old; the window adds one missed beat and 5s of slack
+ * (90s) before a viewer is considered gone.
  */
-export const PRESENCE_ACTIVE_WINDOW_MS = 60_000;
+export const PRESENCE_ACTIVE_WINDOW_MS =
+	PRESENCE_REFRESH_MS + 2 * PRESENCE_HEARTBEAT_INTERVAL_MS + 5_000;
 
 /**
  * Record (or refresh) the caller's presence on a thread. Called on thread open,
  * then every ~20s while it stays open, and whenever the reply/review editor gains
  * or loses focus (`mode` flips between `viewing` and `replying`).
  *
- * Upsert semantics: one row per (thread, user). No audit-log entry — presence is
- * a signal, not an auditable action.
+ * Upsert semantics: one row per (thread, user); a same-mode beat inside
+ * PRESENCE_REFRESH_MS is a no-op. No audit-log entry — presence is a signal,
+ * not an auditable action.
  */
 export const heartbeat = adminMutation({
 	args: {
@@ -64,6 +79,11 @@ export const heartbeat = adminMutation({
 			.unique();
 
 		if (existing) {
+			// Same mode and still well inside the active window: nothing a reader
+			// would see changes, so skip the write.
+			if (existing.mode === args.mode && now - existing.heartbeatAt < PRESENCE_REFRESH_MS) {
+				return { success: true };
+			}
 			await ctx.db.patch(existing._id, { mode: args.mode, heartbeatAt: now });
 		} else {
 			await ctx.db.insert('threadPresence', {
@@ -79,7 +99,8 @@ export const heartbeat = adminMutation({
 
 /**
  * Explicitly drop the caller's presence on a thread (clean "leave" on close).
- * Best-effort — a lost leave is reconciled by the sweep cron within a minute.
+ * Best-effort — a lost leave is reconciled once the row leaves the active
+ * window (the sweep cron deletes it within a minute after that).
  */
 export const leave = adminMutation({
 	args: {

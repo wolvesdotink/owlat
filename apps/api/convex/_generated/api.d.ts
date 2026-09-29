@@ -325,6 +325,7 @@ import type * as delivery_marketingCompliance from '../delivery/marketingComplia
 import type * as delivery_marketingDispatchGate from '../delivery/marketingDispatchGate.js';
 import type * as delivery_marketingSendAttribution from '../delivery/marketingSendAttribution.js';
 import type * as delivery_mtaHealth from '../delivery/mtaHealth.js';
+import type * as delivery_mtaHealthFreshness from '../delivery/mtaHealthFreshness.js';
 import type * as delivery_messageIdRouting from '../delivery/messageIdRouting.js';
 import type * as delivery_observationFreshness from '../delivery/observationFreshness.js';
 import type * as delivery_observabilityStatus from '../delivery/observabilityStatus.js';
@@ -1566,6 +1567,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/marketingDispatchGate': typeof delivery_marketingDispatchGate;
 	'delivery/marketingSendAttribution': typeof delivery_marketingSendAttribution;
 	'delivery/mtaHealth': typeof delivery_mtaHealth;
+	'delivery/mtaHealthFreshness': typeof delivery_mtaHealthFreshness;
 	'delivery/messageIdRouting': typeof delivery_messageIdRouting;
 	'delivery/observationFreshness': typeof delivery_observationFreshness;
 	'delivery/observabilityStatus': typeof delivery_observabilityStatus;
