@@ -387,16 +387,16 @@ function onModeSelect(mode: PostboxInboxMode) {
 		</div>
 
 		<!-- Centered reader: the ONE doing-surface while a conversation is open.
-		     Enters with the shared fade+rise; the list underneath keeps its
-		     scroll and selection for Esc/scrim return. -->
-		<Transition name="pbx-reader">
-			<PostboxTodayReaderOverlay
-				v-if="overlayMessage"
-				:message="overlayMessage"
-				:advance-ids="overlayAdvanceIds"
-				@open="openMessageId = $event"
-				@close="closeOverlay"
-			/>
-		</Transition>
+		     Fades in with the reader's enter-only swap and closes in the same
+		     frame; the list underneath keeps its scroll and selection for
+		     Esc/scrim return. -->
+		<PostboxTodayReaderOverlay
+			v-if="overlayMessage"
+			class="pbx-reader-swap"
+			:message="overlayMessage"
+			:advance-ids="overlayAdvanceIds"
+			@open="openMessageId = $event"
+			@close="closeOverlay"
+		/>
 	</div>
 </template>
