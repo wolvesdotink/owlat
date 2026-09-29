@@ -16,7 +16,7 @@ import {
 	openMailMessageRows,
 } from '../../lib/messageBody';
 import { mintRawEmlUrl, sealedBlobUrl } from '../../lib/sealedBlob';
-import { internalQuery, type QueryCtx } from '../../_generated/server';
+import { internalQuery, type ActionCtx, type QueryCtx } from '../../_generated/server';
 import { publicAction, publicQuery } from '../../lib/authedFunctions';
 import type { Id, Doc } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
@@ -314,22 +314,108 @@ export const latestReplyState = publicQuery({
 });
 
 /**
- * Resolve a single message's body for the reader. Small bodies are stored
- * inline on the row; bodies over the inline threshold (newsletters, long
- * threads) live in storage blobs (`htmlBodyStorageId` / `textBodyStorageId`)
- * and are fetched lazily via the returned signed URLs — previously they had no
- * inline value and rendered blank.
+ * The reader's body, as a reactive QUERY: the unsealed inline html/text plus
+ * whether the body also has an over-threshold storage blob. Most mail fits the
+ * 64 KB inline threshold, so the reader can render straight from this
+ * subscription without an action round trip. Only when `hasHtmlBlob` /
+ * `hasTextBlob` is set and the matching inline value is null does it need
+ * {@link getMessageBodyBlobUrls} (queries cannot mint storage URLs).
+ *
+ * Same read gate as every other by-id read here ({@link loadReadableMessage}),
+ * so a message from another mailbox, or an anonymous caller, gets null.
+ */
+// public: soft-auth — returns null for anonymous; mailbox access is still enforced in-handler
+export const getMessageInlineBody = publicQuery({
+	args: { messageId: v.id('mailMessages') },
+	returns: v.union(
+		v.null(),
+		v.object({
+			htmlInline: v.union(v.string(), v.null()),
+			textInline: v.union(v.string(), v.null()),
+			hasHtmlBlob: v.boolean(),
+			hasTextBlob: v.boolean(),
+		})
+	),
+	handler: async (ctx, args) => {
+		const message = await loadReadableMessage(ctx, args.messageId);
+		if (!message) return null;
+		const { text, html } = await openMailMessageInlineBody(message);
+		return {
+			htmlInline: html ?? null,
+			textInline: text ?? null,
+			hasHtmlBlob: message.htmlBodyStorageId !== undefined,
+			hasTextBlob: message.textBodyStorageId !== undefined,
+		};
+	},
+});
+
+/** Blob ids only: the URL-minting action needs no decrypted inline body. */
+export const getReadableMessageBodyStorageIds = internalQuery({
+	args: { messageId: v.id('mailMessages') },
+	handler: async (ctx, args): Promise<BodyStorageIds | null> => {
+		const message = await loadReadableMessage(ctx, args.messageId);
+		if (!message) return null;
+		return {
+			htmlBodyStorageId: message.htmlBodyStorageId ?? null,
+			textBodyStorageId: message.textBodyStorageId ?? null,
+		};
+	},
+});
+
+type BodyStorageIds = {
+	htmlBodyStorageId: Id<'_storage'> | null;
+	textBodyStorageId: Id<'_storage'> | null;
+};
+type BodyBlobUrls = { htmlUrl: string | null; textUrl: string | null };
+
+/** E8b: the over-threshold body blobs are sealed at rest, so hand the reader a
+ * decrypt-serving proxy URL. Action storage can inspect a keyless blob before
+ * minting a direct legacy-plaintext URL, so key loss fails closed. */
+async function mintBodyBlobUrls(
+	storage: ActionCtx['storage'],
+	ids: BodyStorageIds
+): Promise<BodyBlobUrls> {
+	return {
+		htmlUrl: ids.htmlBodyStorageId
+			? await sealedBlobUrl(storage, ids.htmlBodyStorageId, 'text/html; charset=utf-8')
+			: null,
+		textUrl: ids.textBodyStorageId
+			? await sealedBlobUrl(storage, ids.textBodyStorageId, 'text/plain; charset=utf-8')
+			: null,
+	};
+}
+
+/**
+ * Signed URLs for a large body's storage blobs — the action half of
+ * {@link getMessageInlineBody}. Call it only when that query reports a blob;
+ * a message without blobs answers `{ htmlUrl: null, textUrl: null }`.
+ */
+// public: soft-auth — internal source query returns null for anonymous and enforces mailbox access
+// authz: gate lives in internal.mail.mailbox.messages.getReadableMessageBodyStorageIds (loadReadableMessage).
+export const getMessageBodyBlobUrls = publicAction({
+	args: { messageId: v.id('mailMessages') },
+	handler: async (ctx, args): Promise<BodyBlobUrls | null> => {
+		const ids: BodyStorageIds | null = await ctx.runQuery(
+			internal.mail.mailbox.messages.getReadableMessageBodyStorageIds,
+			args
+		);
+		return ids ? await mintBodyBlobUrls(ctx.storage, ids) : null;
+	},
+});
+
+/**
+ * Inline body plus blob URLs in one action. Superseded by
+ * {@link getMessageInlineBody} + {@link getMessageBodyBlobUrls}; kept until the
+ * web reader moves over (plan 2.5), then removed.
  */
 type ReadableMessageBodySource = {
 	htmlInline: string | null;
 	textInline: string | null;
-	htmlBodyStorageId: Id<'_storage'> | null;
-	textBodyStorageId: Id<'_storage'> | null;
-} | null;
+} & BodyStorageIds;
 
 export const getReadableMessageBodySource = internalQuery({
 	args: { messageId: v.id('mailMessages') },
-	handler: async (ctx, args): Promise<ReadableMessageBodySource> => {
+	handler: async (ctx, args): Promise<ReadableMessageBodySource | null> => {
 		const message = await loadReadableMessage(ctx, args.messageId);
 		if (!message) return null;
 		const { text, html } = await openMailMessageInlineBody(message);
@@ -345,32 +431,22 @@ export const getReadableMessageBodySource = internalQuery({
 type ReadableMessageBody = {
 	htmlInline: string | null;
 	textInline: string | null;
-	htmlUrl: string | null;
-	textUrl: string | null;
-} | null;
+} & BodyBlobUrls;
 
 // public: soft-auth — internal source query returns null for anonymous and enforces mailbox access
 // authz: gate lives in internal.mail.mailbox.messages.getReadableMessageBodySource (loadReadableMessage).
 export const getMessageBody = publicAction({
 	args: { messageId: v.id('mailMessages') },
-	handler: async (ctx, args): Promise<ReadableMessageBody> => {
-		const source: ReadableMessageBodySource = await ctx.runQuery(
+	handler: async (ctx, args): Promise<ReadableMessageBody | null> => {
+		const source: ReadableMessageBodySource | null = await ctx.runQuery(
 			internal.mail.mailbox.messages.getReadableMessageBodySource,
 			args
 		);
 		if (!source) return null;
-		// E8b: the over-threshold body blobs are sealed at rest, so hand the reader
-		// a decrypt-serving proxy URL. Action storage can inspect a keyless blob
-		// before minting a direct legacy-plaintext URL, so key loss fails closed.
 		return {
 			htmlInline: source.htmlInline,
 			textInline: source.textInline,
-			htmlUrl: source.htmlBodyStorageId
-				? await sealedBlobUrl(ctx.storage, source.htmlBodyStorageId, 'text/html; charset=utf-8')
-				: null,
-			textUrl: source.textBodyStorageId
-				? await sealedBlobUrl(ctx.storage, source.textBodyStorageId, 'text/plain; charset=utf-8')
-				: null,
+			...(await mintBodyBlobUrls(ctx.storage, source)),
 		};
 	},
 });
