@@ -6,8 +6,11 @@
  * running. Until it is armed every report is a no-op, so a deployment without
  * PostHog pays for nothing but the `performance.mark` calls.
  *
- * A sample is a timing and a route NAME (`dashboard-postbox-folder`), never a
- * URL, an id or anything about the person. The boot samples are taken before
+ * The properties a sample adds are a timing and a route NAME
+ * (`dashboard-postbox-folder`), never a URL, an id or anything about the
+ * person. PostHog itself still attaches its default properties to every
+ * capture, `$current_url` and `$pathname` among them, as it does for the
+ * `$pageview` this deployment already sends. The boot samples are taken before
  * the PostHog client can exist (the shell mounts while `posthog-js` is still
  * loading), so a handful of them wait in memory for the sender. They leave the
  * browser only once the flag is on and the client is started, and they are

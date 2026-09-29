@@ -36,7 +36,9 @@ import { observeWebVitals } from '~/lib/webVitals';
  *
  * Performance samples (web vitals and the `usePerfMark` timings) ride the same
  * gate: collected only when a key is configured, sent only through the running
- * client. They carry route names, never URLs; see `lib/perfTelemetry`.
+ * client. Their own properties are route names, never URLs; PostHog's default
+ * properties (`$current_url`, `$pathname`) still ride along, as on every
+ * capture. See `lib/perfTelemetry`.
  */
 export default defineNuxtPlugin(() => {
 	const config = useRuntimeConfig();
