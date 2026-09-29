@@ -68,7 +68,18 @@ export const NOTHING_UNCLEARED: UnclearedLeaves = { capped: 0, unscanned: 0, ref
  * verdict worth a round-trip.
  */
 export function inboundAttachmentCandidates(rawBinary: string): InboundAttachmentPart[] {
-	const leaves = extractAttachments(rawBinary).filter((part) => part.bytes.byteLength > 0);
+	return candidatesFromLeaves(extractAttachments(rawBinary));
+}
+
+/**
+ * {@link inboundAttachmentCandidates} over a walk already made — for the scan,
+ * which also keeps the untouched document-order walk for the per-part store
+ * (plan 3.5) instead of walking the message a second time.
+ */
+export function candidatesFromLeaves(
+	allLeaves: readonly InboundAttachmentPart[]
+): InboundAttachmentPart[] {
+	const leaves = allLeaves.filter((part) => part.bytes.byteLength > 0);
 	return [
 		...leaves.filter((part) => part.disposition !== 'inline'),
 		...leaves.filter((part) => part.disposition === 'inline'),

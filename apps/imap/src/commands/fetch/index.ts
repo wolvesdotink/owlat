@@ -1,5 +1,3 @@
-import type { ConvexClient } from '../../convex.js';
-import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 import { parseList } from '../../parser.js';
 import type { ImapCommandModule } from '../types.js';
@@ -9,6 +7,14 @@ import { loadEnvelopes, loadFolderUids } from '../helpers/folderPaging.js';
 import { type FetchEnvelope, formatEnvelope, formatFlags, formatInternalDate } from './format.js';
 import { type BodySectionRequest, formatBodySection, parseBodySectionItem } from './bodySection.js';
 import { serverFailure } from '../helpers/replies.js';
+import {
+	downloadRaw,
+	forEachOrdered,
+	markSeenBatch,
+	mintRawUrls,
+	RAW_DOWNLOAD_CONCURRENCY,
+	RAW_URL_BATCH,
+} from './rawBodies.js';
 
 export interface FetchArgs {
 	readonly set: string;
@@ -93,6 +99,7 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 				for (const m of slice) byUidMap.set(m.uid, m);
 
 				let dropped = 0;
+				const rows: Array<{ seq: number; m: FetchEnvelope }> = [];
 				for (const { uid, seq } of resolved) {
 					const m = byUidMap.get(uid);
 					if (!m) {
@@ -103,15 +110,15 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 						dropped += 1;
 						continue;
 					}
+					rows.push({ seq, m });
+				}
+
+				const emit = (
+					{ seq, m }: { seq: number; m: FetchEnvelope },
+					seenFlags: string | undefined,
+					raw: Buffer | null
+				): void => {
 					const fields: string[] = [];
-
-					// Implicit \Seen must be applied before the FLAGS field is
-					// emitted so the response reflects the new flag set.
-					let seenFlags: string | undefined;
-					if (setsSeen && !m.flagSeen) {
-						seenFlags = await markSeen(deps.convex, m._id);
-					}
-
 					if (args.byUid || items.has('UID')) fields.push(`UID ${m.uid}`);
 					if (items.has('FLAGS') || setsSeen) {
 						fields.push(`FLAGS (${seenFlags ?? formatFlagsWithSeen(m, setsSeen)})`);
@@ -128,29 +135,53 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 					// ASCII prose fields, then each body literal spliced in
 					// verbatim. Sending it as a UTF-8 string would re-encode the
 					// body and desync the declared `{N}` octet count.
-					if (needsRaw) {
-						const raw = await fetchRawBody(deps.convex, m._id);
-						if (raw != null) {
-							// The prose prefix keeps the UTF-8 text path (an ENVELOPE
-							// subject/name may carry non-ASCII); only the appended
-							// body literal is spliced in as verbatim raw octets.
-							const parts: Buffer[] = [
-								Buffer.from(
-									`* ${seq} FETCH (${fields.length > 0 ? `${fields.join(' ')} ` : ''}`,
-									'utf8'
-								),
-							];
-							bodyRequests.forEach((req, i) => {
-								if (i > 0) parts.push(SPACE);
-								parts.push(formatBodySection(req, raw));
-							});
-							parts.push(CLOSE_PAREN);
-							send(Buffer.concat(parts));
-							continue;
-						}
+					if (raw != null) {
+						// The prose prefix keeps the UTF-8 text path (an ENVELOPE
+						// subject/name may carry non-ASCII); only the appended
+						// body literal is spliced in as verbatim raw octets.
+						const parts: Buffer[] = [
+							Buffer.from(
+								`* ${seq} FETCH (${fields.length > 0 ? `${fields.join(' ')} ` : ''}`,
+								'utf8'
+							),
+						];
+						bodyRequests.forEach((req, i) => {
+							if (i > 0) parts.push(SPACE);
+							parts.push(formatBodySection(req, raw));
+						});
+						parts.push(CLOSE_PAREN);
+						send(Buffer.concat(parts));
+						return;
 					}
-
 					send(`* ${seq} FETCH (${fields.join(' ')})`);
+				};
+
+				if (!needsRaw) {
+					for (const row of rows) emit(row, undefined, null);
+				} else {
+					// Per chunk: one \Seen write and one URL mint, side by side,
+					// then the downloads in parallel and the responses in order.
+					// The implicit \Seen still lands before the chunk's FLAGS are
+					// emitted, so each response reflects the new flag set.
+					for (let i = 0; i < rows.length; i += RAW_URL_BATCH) {
+						const chunk = rows.slice(i, i + RAW_URL_BATCH);
+						const ids = chunk.map(({ m }) => m._id);
+						const [seen, urls] = await Promise.all([
+							setsSeen
+								? markSeenBatch(
+										deps.convex,
+										chunk.filter(({ m }) => !m.flagSeen).map(({ m }) => m._id)
+									)
+								: Promise.resolve(new Map<string, string>()),
+							mintRawUrls(deps.convex, ids),
+						]);
+						await forEachOrdered(
+							chunk,
+							RAW_DOWNLOAD_CONCURRENCY,
+							({ m }) => downloadRaw(urls.get(m._id)),
+							(row, raw) => emit(row, seen.get(row.m._id), raw)
+						);
+					}
 				}
 
 				if (dropped > 0) {
@@ -167,54 +198,11 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 
 /**
  * Render the message's flags as they will be after an implicit \Seen.
- * Used only when \Seen was already set on the row (so markSeen was
- * skipped) but the response must still carry FLAGS.
+ * Used when the \Seen write did not report the row (it was already seen,
+ * or it vanished) but the response must still carry FLAGS.
  */
 function formatFlagsWithSeen(m: FetchEnvelope, setsSeen: boolean): string {
 	const base = formatFlags(m);
 	if (!setsSeen || m.flagSeen) return base;
 	return base.length > 0 ? `\\Seen ${base}` : '\\Seen';
-}
-
-/**
- * Add \Seen to a message via the shared storeFlags mutation and return
- * the formatted flag string from the mutation result. Returns undefined
- * if the mutation reports no update (e.g. the row vanished) so the caller
- * falls back to the envelope's own flags.
- */
-async function markSeen(convex: ConvexClient, messageId: string): Promise<string | undefined> {
-	const result = await convex.mutation(fn.storeFlags, {
-		messageIds: [messageId],
-		flags: ['\\Seen'],
-		mode: 'add',
-	});
-	const row = result.updated[0];
-	return row ? row.flags.join(' ') : undefined;
-}
-
-/**
- * Pull a message's raw bytes out of Convex storage as a `Buffer`. Returns
- * null on any failure so FETCH can drop the body fields gracefully without
- * aborting the whole multi-row response.
- *
- * The response is read as an `ArrayBuffer`, never `res.text()`: the stored
- * RFC822 blob is arbitrary 8-bit/binary MIME, and a UTF-8 decode would
- * replace invalid bytes with U+FFFD and inflate/shrink the octet count,
- * breaking the FETCH literal framing.
- */
-async function fetchRawBody(convex: ConvexClient, messageId: string): Promise<Buffer | null> {
-	try {
-		const meta = await convex.query(fn.fetchRawStorageId, { messageId });
-		if (!meta) return null;
-		const url = await convex
-			.action(fn.getRawStorageUrl, { storageId: meta.storageId })
-			.catch(() => null);
-		if (!url) return null;
-		const res = await fetch(url);
-		if (!res.ok) return null;
-		return Buffer.from(await res.arrayBuffer());
-	} catch (err) {
-		logger.warn({ err, messageId }, 'fetchRawBody failed');
-		return null;
-	}
 }

@@ -73,7 +73,7 @@ const isOffline = ref(false);
 vi.mock('../usePostboxOfflineOutbox', () => ({
 	usePostboxOfflineOutbox: () => ({ isOffline, queueSend }),
 	isQueuedSendToken: (token: string) => token.startsWith('outbox:'),
-	OFFLINE_QUEUE_UNDO_WINDOW_MS: 30_000,
+	OFFLINE_QUEUE_UNDO_WINDOW_MS: 10_000,
 }));
 
 /** Which mutation drops its connection mid-send, if any. */

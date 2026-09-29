@@ -2,9 +2,10 @@
  * Outbound relay + connection testing through a user's external SMTP/IMAP.
  *
  * `sendViaExternal` ships the exact .eml bytes Convex already built (preserving
- * From / threading headers + the provider's own DKIM) via the user's SMTP, then
- * APPENDs a copy to the remote Sent folder. `testConnection` validates
- * credentials without persisting anything.
+ * From / threading headers + the provider's own DKIM) via the user's SMTP;
+ * `fileSentCopy` then APPENDs a copy to the remote Sent folder, after the route
+ * has answered. `testConnection` validates credentials without persisting
+ * anything.
  *
  * TLS is enforced at this layer: for any non-loopback host the connection MUST be
  * encrypted (implicit TLS or forced STARTTLS via tls.ts), so the mailbox password
@@ -96,13 +97,45 @@ export async function sendViaExternal(
 			: { address, status: 'sent' }
 	);
 
-	// Best-effort Sent filing. A later sync re-ingests it, but the Message-ID
-	// dedup skips it against the lifecycle-inserted Sent row.
-	await appendToSent(creds, params.raw).catch((err) =>
+	return { recipients };
+}
+
+/**
+ * File the sent copy in the account's remote Sent folder. Best-effort and
+ * never rejects: a failure is logged at warn level. A later sync re-ingests
+ * the copy, but the Message-ID dedup skips it against the lifecycle-inserted
+ * Sent row.
+ *
+ * Separate from {@link sendViaExternal} so the `/send` route can answer as soon
+ * as SMTP has accepted the message and file the copy AFTER responding: the
+ * APPEND is a second login to a different server, and the sender was waiting
+ * on it for nothing.
+ */
+export async function fileSentCopy(creds: WorkerCredentials, raw: Buffer): Promise<void> {
+	await appendToSent(creds, raw).catch((err) =>
 		logger.warn({ err }, 'append-to-Sent failed (non-fatal)')
 	);
+}
 
-	return { recipients };
+/** Sent copies filed after their /send answered and not yet finished. */
+const pendingSentCopies = new Set<Promise<void>>();
+
+/**
+ * Start {@link fileSentCopy} without waiting for it, and remember it so a
+ * shutdown can let it finish. Before the route answered first, a SIGTERM could
+ * not strand a copy: the APPEND ran inside the request, and the server drains
+ * open requests. {@link drainSentCopies} keeps that true.
+ */
+export function fileSentCopyInBackground(creds: WorkerCredentials, raw: Buffer): void {
+	const pending: Promise<void> = fileSentCopy(creds, raw).finally(() => {
+		pendingSentCopies.delete(pending);
+	});
+	pendingSentCopies.add(pending);
+}
+
+/** Resolve once every background Sent copy started so far has settled. */
+export async function drainSentCopies(): Promise<void> {
+	await Promise.all(pendingSentCopies);
 }
 
 async function appendToSent(creds: WorkerCredentials, raw: Buffer): Promise<void> {

@@ -95,15 +95,6 @@ export interface ChangedEnvelopePage {
 	readonly continueCursor: string | null;
 }
 
-/** Where a message's raw RFC822 bytes live. */
-export interface RawStorageMeta {
-	readonly storageId: string;
-	readonly rawSize: number;
-	readonly internalDate: number;
-	readonly folderId: string;
-	readonly uid: number;
-}
-
 /** STORE: the rows that changed, and the CONDSTORE rows left alone. */
 export interface StoreFlagsResult {
 	readonly updated: ReadonlyArray<{
@@ -216,9 +207,6 @@ export const fn = {
 		{ folderId: string; afterUid?: number; limit?: number },
 		UidPage
 	>('mail/imap/fetch:listFolderUidsPage'),
-	fetchRawStorageId: makeFunctionReference<'query', { messageId: string }, RawStorageMeta | null>(
-		'mail/imap/fetch:fetchRawStorageId'
-	),
 	peekFolderModseq: makeFunctionReference<'query', { folderId: string }, PeekResult | null>(
 		'mail/imap/session:peekFolderModseq'
 	),
@@ -257,9 +245,11 @@ export const fn = {
 		{ folderId: string; uidLow: number; uidHigh: number; limit?: number },
 		MessageIdPage
 	>('mail/imap/fetch:resolveMessageIdsByUid'),
-	getRawStorageUrl: makeFunctionReference<'action', { storageId: string }, string | null>(
-		'mail/imap/fetch:getRawStorageUrl'
-	),
+	getRawStorageUrls: makeFunctionReference<
+		'action',
+		{ messageIds: string[] },
+		Array<{ messageId: string; url: string | null }>
+	>('mail/imap/fetch:getRawStorageUrls'),
 	generateUploadUrl: makeFunctionReference<'mutation', Record<string, never>, string>(
 		'mail/imap/append:generateRawUploadUrl'
 	),

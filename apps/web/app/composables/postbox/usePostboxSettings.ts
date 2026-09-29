@@ -169,7 +169,7 @@ export function usePostboxSettings() {
 	// no sound, so the composer stays silent unless the user turns it on.
 	const sendSound = computed<boolean>(() => data.value?.isSendSoundOn ?? false);
 
-	// Undo-send window. An unset (or unknown) value resolves to 30s — the server
+	// Undo-send window. An unset (or unknown) value resolves to 10s — the server
 	// default the composer gets by sending no `undoSendDelayMs` at all.
 	const undoSendSeconds = computed<PostboxUndoSendSeconds>(() =>
 		resolvePostboxUndoSendSeconds(data.value?.undoSendSeconds)

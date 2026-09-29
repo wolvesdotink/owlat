@@ -35,6 +35,14 @@ export interface ProxyConfig {
 	readonly workerToken: string;
 }
 
+/**
+ * Deadline for one forwarded call, response body included. Every allowlisted
+ * function is a queue query or mutation that answers in milliseconds; past this
+ * the deployment is treated as hung and the worker gets a 504 it can retry,
+ * instead of a request that never ends.
+ */
+export const UPSTREAM_TIMEOUT_MS = 30_000;
+
 /** Cap the forwarded body so a compromised worker cannot stream an unbounded request. */
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
 
@@ -73,7 +81,8 @@ function json(res: ServerResponse, status: number, body: unknown): void {
  */
 export function createProxyHandler(
 	config: ProxyConfig,
-	fetchImpl: typeof fetch = fetch
+	fetchImpl: typeof fetch = fetch,
+	upstreamTimeoutMs: number = UPSTREAM_TIMEOUT_MS
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
 	const base = config.convexUrl.replace(/\/+$/, '');
 
@@ -115,18 +124,26 @@ export function createProxyHandler(
 			upstreamHeaders['Convex-Client'] = clientHeader;
 		}
 
+		// The deadline covers the response body too, and the body read sits inside
+		// the try: a rejection that escaped this handler would be an unhandled
+		// rejection, which ends the process (see index.ts).
 		let upstream: Response;
+		let text: string;
 		try {
 			upstream = await fetchImpl(`${base}${pathname}`, {
 				method: 'POST',
 				headers: upstreamHeaders,
 				body: rawBody,
+				signal: AbortSignal.timeout(upstreamTimeoutMs),
 			});
-		} catch {
+			text = await upstream.text();
+		} catch (error) {
+			if (error instanceof Error && error.name === 'TimeoutError') {
+				return json(res, 504, { error: 'Upstream Convex request timed out' });
+			}
 			return json(res, 502, { error: 'Upstream Convex request failed' });
 		}
 
-		const text = await upstream.text();
 		const contentType = upstream.headers.get('content-type') ?? 'application/json';
 		if (!res.headersSent) {
 			res.writeHead(upstream.status, { 'Content-Type': contentType });

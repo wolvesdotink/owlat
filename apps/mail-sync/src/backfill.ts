@@ -16,6 +16,7 @@
  */
 
 import type { FolderRole } from './folders.js';
+import { runIngestPipeline } from './ingestPipeline.js';
 
 export interface BackfillRange {
 	/** Lowest UID in this batch (inclusive). */
@@ -90,6 +91,19 @@ export interface BackfillFolderDeps {
 	 * somewhere. The backfill swallowing ingest errors in silence is how an
 	 * ingest that threw on EVERY message still finished as "100% imported". */
 	reportIngestFailure(remoteName: string, uid: number, error: unknown): void;
+	/** The upload half of `ingest`, run ahead of time: resolves with the ingest
+	 * call still to make. When given, a batch uploads `ingestConcurrency`
+	 * messages at once and commits them one at a time in fetch order, instead
+	 * of paying both round trips per message in series. */
+	stageIngest?(
+		remoteName: string,
+		role: FolderRole,
+		uid: number,
+		raw: Buffer,
+		flags: Set<string>
+	): Promise<() => Promise<boolean>>;
+	/** Uploads in flight at once when `stageIngest` is given (default 1). */
+	ingestConcurrency?: number;
 	/** Persist batch progress: cursor dropped to `newCursor`, with the batch split
 	 * into messages that landed and messages that did not. Returns false once the
 	 * migration is no longer importing (e.g. the user hit Cancel), so the walk
@@ -103,6 +117,13 @@ export interface BackfillFolderDeps {
 	): Promise<boolean>;
 	/** Cooperative cancellation (worker stop). */
 	isStopped(): boolean;
+	/** Runs between two batches of the same folder, once the first one's
+	 * progress is persisted. connection.ts forward-polls the INBOX here: the walk
+	 * keeps another folder selected, so INBOX IDLE is off for as long as the
+	 * folder takes, and new mail would otherwise wait for the periodic poll.
+	 * Not called after the folder's last batch — the next folder's own INBOX poll
+	 * covers that gap. */
+	betweenBatches?(): Promise<void>;
 }
 
 /**
@@ -128,49 +149,50 @@ export async function backfillFolder(
 		const messages = await deps.fetchBatch(target.remoteName, range.start, range.end);
 		let imported = 0;
 		let failed = 0;
-		for (const msg of messages) {
-			if (deps.isStopped()) break;
+		await runIngestPipeline(
 			// A server quirk can return a UID outside the requested range — don't
 			// count it against this folder's `messageCount` denominator.
-			if (msg.uid < range.start || msg.uid > range.end) continue;
-			if (msg.alreadyPresent) {
-				// Skipped before the download, so the provider's bandwidth was never
-				// spent on it. Counted exactly as the ingest path counts the
-				// `duplicate` it would otherwise have returned, so a resumed or
-				// re-walked import reports the same numbers it always did.
-				imported++;
-				continue;
+			messages.filter((msg) => msg.uid >= range.start && msg.uid <= range.end),
+			{
+				concurrency: deps.stageIngest ? (deps.ingestConcurrency ?? 1) : 1,
+				stage: (msg) => stageOne(deps, target, msg),
+				commit: async (msg, staged) => {
+					if (msg.alreadyPresent) {
+						// Skipped before the download, so the provider's bandwidth was never
+						// spent on it. Counted exactly as the ingest path counts the
+						// `duplicate` it would otherwise have returned, so a resumed or
+						// re-walked import reports the same numbers it always did.
+						imported++;
+						return;
+					}
+					if (!msg.source) {
+						// The server listed the message but returned no body. Nothing was
+						// stored, so it is not an import — but it did consume one of the
+						// folder's messages, so it counts toward progress like a failure.
+						failed++;
+						return;
+					}
+					try {
+						if (!staged.ok) throw staged.error;
+						const landed = staged.value ? await staged.value() : false;
+						// A server-side skip stores nothing and does NOT throw, so counting
+						// every non-throwing ingest as an import would reopen exactly the
+						// hole this split closes.
+						if (landed) imported++;
+						else failed++;
+					} catch (error) {
+						// Skip one bad message (e.g. oversized); the cursor still advances
+						// past the whole range below. The message stays on the remote
+						// server. It is NOT counted as imported: a run where every ingest
+						// threw has to end up looking like the total failure it is, not
+						// like a completed import of the same size.
+						deps.reportIngestFailure(target.remoteName, msg.uid, error);
+						failed++;
+					}
+				},
+				isStopped: () => deps.isStopped(),
 			}
-			if (!msg.source) {
-				// The server listed the message but returned no body. Nothing was
-				// stored, so it is not an import — but it did consume one of the
-				// folder's messages, so it counts toward progress like a failure.
-				failed++;
-				continue;
-			}
-			try {
-				const landed = await deps.ingest(
-					target.remoteName,
-					target.role,
-					msg.uid,
-					msg.source,
-					msg.flags
-				);
-				// A server-side skip stores nothing and does NOT throw, so counting
-				// every non-throwing ingest as an import would reopen exactly the hole
-				// this split closes.
-				if (landed) imported++;
-				else failed++;
-			} catch (error) {
-				// Skip one bad message (e.g. oversized); the cursor still advances
-				// past the whole range below. The message stays on the remote server.
-				// It is NOT counted as imported: a run where every ingest threw has
-				// to end up looking like the total failure it is, not like a
-				// completed import of the same size.
-				deps.reportIngestFailure(target.remoteName, msg.uid, error);
-				failed++;
-			}
-		}
+		);
 
 		const newCursor = range.start - 1;
 		// Progress advances on `imported + failed`, so the walk still reaches the
@@ -185,6 +207,26 @@ export async function backfillFolder(
 		);
 		cursor = newCursor;
 		if (!stillImporting) return false; // migration cancelled — stop promptly
+		if (cursor > 0 && !deps.isStopped()) await deps.betweenBatches?.();
 	}
 	return false; // interrupted
+}
+
+/**
+ * The staged half of one message's ingest: the call still to make, or null
+ * when there is nothing to ingest (already present, or no body). Without a
+ * `stageIngest` dep the whole ingest is deferred to the commit, which keeps the
+ * old one-message-at-a-time behaviour.
+ */
+async function stageOne(
+	deps: BackfillFolderDeps,
+	target: BackfillFolderTarget,
+	msg: BackfillFetchedMessage
+): Promise<(() => Promise<boolean>) | null> {
+	const source = msg.source;
+	if (msg.alreadyPresent || !source) return null;
+	if (deps.stageIngest) {
+		return await deps.stageIngest(target.remoteName, target.role, msg.uid, source, msg.flags);
+	}
+	return () => deps.ingest(target.remoteName, target.role, msg.uid, source, msg.flags);
 }

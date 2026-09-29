@@ -19,16 +19,16 @@ describe('POSTBOX_UNDO_SEND_SECONDS', () => {
 		expect([...POSTBOX_UNDO_SEND_SECONDS]).toEqual([0, 10, 30, 60]);
 	});
 
-	it('defaults to the 30s window the server already applies', () => {
-		expect(POSTBOX_UNDO_SEND_DEFAULT_SECONDS).toBe(30);
+	it('defaults to the 10s window the server applies (plan Q1)', () => {
+		expect(POSTBOX_UNDO_SEND_DEFAULT_SECONDS).toBe(10);
 		expect(POSTBOX_UNDO_SEND_SECONDS).toContain(POSTBOX_UNDO_SEND_DEFAULT_SECONDS);
 	});
 });
 
 describe('resolvePostboxUndoSendSeconds', () => {
-	it('reads an unset preference as the 30s default', () => {
-		expect(resolvePostboxUndoSendSeconds(undefined)).toBe(30);
-		expect(resolvePostboxUndoSendSeconds(null)).toBe(30);
+	it('reads an unset preference as the 10s default', () => {
+		expect(resolvePostboxUndoSendSeconds(undefined)).toBe(10);
+		expect(resolvePostboxUndoSendSeconds(null)).toBe(10);
 	});
 
 	it('passes every offered window through unchanged', () => {
@@ -42,9 +42,9 @@ describe('resolvePostboxUndoSendSeconds', () => {
 	});
 
 	it('normalises a value outside the closed set back to the default', () => {
-		expect(resolvePostboxUndoSendSeconds(45)).toBe(30);
-		expect(resolvePostboxUndoSendSeconds(-10)).toBe(30);
-		expect(resolvePostboxUndoSendSeconds(3600)).toBe(30);
+		expect(resolvePostboxUndoSendSeconds(45)).toBe(10);
+		expect(resolvePostboxUndoSendSeconds(-10)).toBe(10);
+		expect(resolvePostboxUndoSendSeconds(3600)).toBe(10);
 	});
 });
 
@@ -58,8 +58,11 @@ describe('postboxUndoSendDelayMsArg', () => {
 	});
 
 	it('converts the other windows to milliseconds', () => {
-		expect(postboxUndoSendDelayMsArg(10)).toBe(10_000);
 		expect(postboxUndoSendDelayMsArg(60)).toBe(60_000);
+	});
+
+	it('sends the old 30s default explicitly, so a stored 30s choice survives the new default', () => {
+		expect(postboxUndoSendDelayMsArg(30)).toBe(30_000);
 	});
 });
 

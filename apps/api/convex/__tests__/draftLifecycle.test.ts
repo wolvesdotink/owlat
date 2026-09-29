@@ -15,6 +15,7 @@ import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { assertStateIs, dedupedRecipients } from '../mail/draftLifecycle/reducers';
+import { DEFAULT_UNDO_SEND_DELAY_MS } from '../mail/draftLifecycle/types';
 import type { Doc } from '../_generated/dataModel';
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -315,6 +316,22 @@ describe('draftLifecycle.transition — to: pending_send', () => {
 			expect(draft?.undoToken).toMatch(/^und_/);
 			expect(draft?.scheduledSendAt).toBe(now + 5000);
 		});
+	});
+
+	it('holds a send with no explicit window for the 10s default (plan Q1)', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedMailboxAndSent(t);
+		const draftId = await seedDraft(t, mailboxId);
+		const now = Date.now();
+
+		const outcome = await t.mutation(internal.mail.draftLifecycle.transition, {
+			draftId,
+			input: { to: 'pending_send', at: now },
+		});
+
+		expect(DEFAULT_UNDO_SEND_DELAY_MS).toBe(10_000);
+		expect(outcome.ok).toBe(true);
+		if (outcome.ok) expect(outcome.sendAt).toBe(now + 10_000);
 	});
 
 	it('refuses with no_recipients when toAddresses is empty', async () => {

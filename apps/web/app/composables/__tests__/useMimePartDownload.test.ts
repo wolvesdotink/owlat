@@ -16,6 +16,8 @@
  *   - a thrown loader goes through `showOperationError`, so a dropped
  *     connection still reads as "check your connection"
  *   - the spinner key is the `messageId:partIndex` pair the row matches on
+ *   - a part stored on its own is used first, and the raw message is the
+ *     fallback when there is none or it fails (plan 3.5)
  *   - the line that failure renders, in the REAL catalog, promises nothing a
  *     retry cannot deliver
  */
@@ -64,11 +66,11 @@ beforeEach(() => {
 	vi.stubGlobal('ref', (initial: unknown) => ({ value: initial }));
 
 	// happy-dom gives us a real anchor; the click is what we watch for.
-	vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(
-		function (this: HTMLAnchorElement) {
-			clicks.push({ download: this.download });
-		}
-	);
+	vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+		this: HTMLAnchorElement
+	) {
+		clicks.push({ download: this.download });
+	});
 	globalThis.URL.createObjectURL = () => 'blob:mock';
 	globalThis.URL.revokeObjectURL = () => undefined;
 });
@@ -153,6 +155,43 @@ describe('useMimePartDownload', () => {
 
 		expect(toasts).toEqual([]);
 		expect(operationErrors).toEqual([[boom, FAILURE_KEY]]);
+	});
+
+	it('downloads the part stored on its own without touching the raw message', async () => {
+		const loadRaw = vi.fn(async () => RAW_EML);
+		const loadPart = vi.fn(async () => new Blob(['stored'], { type: 'text/plain' }));
+		const { extractPartBlob } = useMimePartDownload({
+			loadRaw,
+			loadPart,
+			failureKey: FAILURE_KEY,
+		});
+
+		const blob = await extractPartBlob('msg_1', part);
+
+		expect(await blob!.text()).toBe('stored');
+		expect(loadPart).toHaveBeenCalledWith('msg_1', part);
+		expect(loadRaw).not.toHaveBeenCalled();
+	});
+
+	it('falls back to the raw message when no part is stored, or the stored one fails', async () => {
+		for (const loadPart of [
+			async () => null,
+			async () => {
+				throw new Error('part fetch failed');
+			},
+		]) {
+			const loadRaw = vi.fn(async () => RAW_EML);
+			const { extractPartBlob } = useMimePartDownload({
+				loadRaw,
+				loadPart,
+				failureKey: FAILURE_KEY,
+			});
+
+			const blob = await extractPartBlob('msg_1', part);
+
+			expect(await blob!.text()).toBe('hello there');
+			expect(loadRaw).toHaveBeenCalledWith('msg_1');
+		}
 	});
 
 	it('keys the spinner on messageId:partIndex while the fetch is in flight', async () => {

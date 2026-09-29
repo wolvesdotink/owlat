@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { extractFirstPartByType } from '@owlat/shared/mailMime';
 import {
@@ -27,15 +28,35 @@ const { stash } = usePostboxPendingAttachments();
 const event = ref<ICalEvent | null>(null);
 const method = ref<string | undefined>(undefined);
 
+/**
+ * The invite's iCalendar text. Delivery cuts the text/calendar part out on its
+ * own (plan 3.5), so the card asks for those few KB rather than downloading the
+ * whole message on every mount. Mail stored before that, or whose parts are
+ * still being cut, answers `unknown` and is read from the raw .eml as before.
+ */
+async function loadInviteText(): Promise<string | null> {
+	try {
+		const stored = await requireConvex().action(api.mail.mailbox.parts.getMessageCalendar, {
+			messageId: props.messageId as Id<'mailMessages'>,
+		});
+		if (stored.status === 'found') return stored.ics;
+		if (stored.status === 'absent') return null;
+	} catch {
+		// Fall back to the raw message below.
+	}
+	const bin = await loadRawEml(props.messageId);
+	if (!bin) return null;
+	// Invites are commonly an inline text/calendar part (no disposition or
+	// filename), so match by content-type rather than the attachment index.
+	const part = extractFirstPartByType(bin, 'text/calendar');
+	return part ? new TextDecoder('utf-8').decode(part.bytes) : null;
+}
+
 onMounted(async () => {
 	try {
-		const bin = await loadRawEml(props.messageId);
-		if (!bin) return;
-		// Invites are commonly an inline text/calendar part (no disposition or
-		// filename), so match by content-type rather than the attachment index.
-		const part = extractFirstPartByType(bin, 'text/calendar');
-		if (!part) return;
-		const cal = parseICalendar(new TextDecoder('utf-8').decode(part.bytes));
+		const ics = await loadInviteText();
+		if (ics === null) return;
+		const cal = parseICalendar(ics);
 		method.value = cal.method;
 		event.value = cal.events[0] ?? null;
 	} catch {

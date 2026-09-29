@@ -12,6 +12,7 @@ const { instances, resetInstances } = vi.hoisted(() => {
 		account: { accountId: string };
 		start: ReturnType<typeof import('vitest').vi.fn>;
 		stop: ReturnType<typeof import('vitest').vi.fn>;
+		isStopped: boolean;
 	}> = [];
 	return {
 		instances,
@@ -25,6 +26,7 @@ vi.mock('../connection.js', () => {
 	class AccountConnection {
 		start = vi.fn().mockResolvedValue(undefined);
 		stop = vi.fn().mockResolvedValue(undefined);
+		isStopped = false;
 		constructor(public account: { accountId: string }) {
 			instances.push(this as never);
 		}
@@ -226,5 +228,88 @@ describe('AccountManager.start / stop lifecycle', () => {
 		expect(query.mock.calls.length).toBe(callsAfterStop);
 
 		vi.useRealTimers();
+	});
+});
+
+describe('AccountManager.requestReconcile (Convex poke, plan 3.6)', () => {
+	it('opens a new account right away instead of on the next tick', async () => {
+		vi.useFakeTimers();
+		const { client, query } = mockConvex([[], [account('new')]]);
+		const mgr = new AccountManager(client, CONFIG);
+		await mgr.start();
+		expect(connFor('new')).toBeUndefined();
+
+		await mgr.requestReconcile();
+
+		expect(query).toHaveBeenCalledTimes(2);
+		expect(connFor('new')?.start).toHaveBeenCalledTimes(1);
+		await mgr.stop();
+	});
+
+	it('runs one more pass, not an overlapping one, when poked mid-pass', async () => {
+		let release!: (accounts: ConnectableAccount[]) => void;
+		let inFlight = 0;
+		let peak = 0;
+		const lists: Array<ConnectableAccount[] | Promise<ConnectableAccount[]>> = [
+			new Promise<ConnectableAccount[]>((resolve) => (release = resolve)),
+			[account('a'), account('b')],
+		];
+		const query = vi.fn(async () => {
+			inFlight++;
+			peak = Math.max(peak, inFlight);
+			try {
+				return await (lists.shift() ?? [account('a'), account('b')]);
+			} finally {
+				inFlight--;
+			}
+		});
+		const mgr = new AccountManager({ query } as unknown as ConvexClient, CONFIG);
+
+		const first = mgr.requestReconcile();
+		// Two pokes while the first pass still waits on its (stale) list.
+		const second = mgr.requestReconcile();
+		const third = mgr.requestReconcile();
+		release([account('a')]);
+		await Promise.all([first, second, third]);
+
+		// Exactly one follow-up pass, and never two at once.
+		expect(query).toHaveBeenCalledTimes(2);
+		expect(peak).toBe(1);
+		expect(connFor('b')?.start).toHaveBeenCalledTimes(1);
+		await mgr.stop();
+	});
+
+	it('does nothing once stopped', async () => {
+		const { client, query } = mockConvex([[account('a')]]);
+		const mgr = new AccountManager(client, CONFIG);
+		await mgr.stop();
+		await mgr.requestReconcile();
+		expect(query).not.toHaveBeenCalled();
+	});
+});
+
+describe('AccountManager replaces a connection that stopped for good', () => {
+	it('opens a fresh connection when its account is connectable again', async () => {
+		// The connection hit an auth error and stopped; the user re-entered the
+		// password before any pass saw the account leave the list.
+		const { client } = mockConvex([[account('a')]]);
+		const mgr = new AccountManager(client, CONFIG);
+		await mgr.requestReconcile();
+		const first = instances[0]!;
+		first.isStopped = true;
+
+		await mgr.requestReconcile();
+
+		expect(instances).toHaveLength(2);
+		expect(first.stop).toHaveBeenCalledTimes(1);
+		expect(instances[1]!.start).toHaveBeenCalledTimes(1);
+	});
+
+	it('leaves a live connection alone', async () => {
+		const { client } = mockConvex([[account('a')]]);
+		const mgr = new AccountManager(client, CONFIG);
+		await mgr.requestReconcile();
+		await mgr.requestReconcile();
+		expect(instances).toHaveLength(1);
 	});
 });

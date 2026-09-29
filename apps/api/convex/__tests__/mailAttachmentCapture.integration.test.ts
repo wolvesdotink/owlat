@@ -4,8 +4,9 @@
  * Closes the gap where inbound attachments were parsed onto the `mailMessages`
  * row but never persisted as `semanticFiles`, so the "Email attachments" source
  * filter on /dashboard/files always showed nothing. `mail.delivery.ingestFromWebhook`
- * now pulls attachment leaves out of the raw .eml and ingests each via
- * `semanticFiles.ingest`. This drives that action end-to-end.
+ * now pulls attachment leaves out of the raw .eml, stages them, and schedules
+ * `captureStagedAttachments` to ingest each via `semanticFiles.ingest`. This
+ * drives that action end-to-end.
  */
 
 import { convexTest } from 'convex-test';
@@ -58,6 +59,19 @@ afterEach(() => {
 	globalThis.fetch = originalFetch;
 	vi.restoreAllMocks();
 });
+
+/**
+ * Run the capture `ingestFromWebhook` scheduled.
+ *
+ * The webhook only stages the eligible parts and schedules the indexing with
+ * no delay (plan E2): the MTA gives the notifier 10 s and re-POSTs the whole
+ * message on a timeout, so the file rows appear once that zero-delay mutation
+ * has run, not when the action returns.
+ */
+async function drainCapture(t: ReturnType<typeof convexTest>): Promise<void> {
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	await t.finishInProgressScheduledFunctions();
+}
 
 /**
  * Attachment capture charges the per-sender/global AI-ingest budget before it
@@ -175,6 +189,7 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 			messageId: '<cap-1@example.com>',
 			attachments: [{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' }],
 		});
+		await drainCapture(t);
 		expect('messageId' in result).toBe(true);
 
 		// The .txt attachment was captured into the file library; the inline image
@@ -223,6 +238,7 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 			messageId: '<cap-infected@example.com>',
 			attachments: [{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' }],
 		});
+		await drainCapture(t);
 
 		// The message is delivered (to Spam) and its `.eml` is kept for an
 		// operator — but nothing out of it reaches summarise, embed or the
@@ -262,6 +278,7 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 			messageId: '<cap-no-clamav@example.com>',
 			attachments: [{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' }],
 		});
+		await drainCapture(t);
 
 		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
 		expect(files.map((f) => f.filename)).toEqual(['notes.txt']);
@@ -302,6 +319,7 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 				{ filename: 'setup.msi', contentType: 'application/octet-stream', size: 9, partIndex: '1' },
 			],
 		});
+		await drainCapture(t);
 
 		// The document is in the library; the installer nobody scanned is not.
 		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
@@ -343,6 +361,7 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 			arcSealerDomain: 'forwarder.example',
 			arcAttestsOriginalPass: true,
 		});
+		await drainCapture(t);
 
 		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
 		expect(files.map((f) => f.filename)).toEqual(['notes.txt']);
@@ -367,6 +386,7 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 			dmarcResult: 'fail',
 			dmarcPolicy: 'none',
 		});
+		await drainCapture(t);
 
 		// The rescue is what makes the difference, not the mere presence of a
 		// `fail`: a spoofed sender still files nothing anywhere.
@@ -402,6 +422,7 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 			messageId: '<plain-1@example.com>',
 			attachments: [],
 		});
+		await drainCapture(t);
 
 		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
 		expect(files).toHaveLength(0);
@@ -525,6 +546,7 @@ describe('mail.delivery.ingestFromWebhook — sender contact linking', () => {
 			messageId: '<cap-link-1@example.com>',
 			attachments: [{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' }],
 		});
+		await drainCapture(t);
 		expect('messageId' in result).toBe(true);
 
 		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
@@ -563,6 +585,7 @@ describe('mail.delivery.ingestFromWebhook — sender contact linking', () => {
 			messageId: '<cap-link-2@example.com>',
 			attachments: [{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' }],
 		});
+		await drainCapture(t);
 
 		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
 		expect(files).toHaveLength(1);
@@ -576,5 +599,172 @@ describe('mail.delivery.ingestFromWebhook — sender contact linking', () => {
 				.collect()
 		);
 		expect(junction).toHaveLength(0);
+	});
+});
+
+/** The webhook args for {@link buildRawEml}, under a given delivery/Message-ID. */
+function webhookArgs(deliveryId: string, messageId: string, raw = buildRawEml()) {
+	return {
+		deliveryId,
+		rawBytesBase64: Buffer.from(raw, 'latin1').toString('base64'),
+		recipientAddress: 'alice@example.com',
+		from: 'Bob <bob@example.com>',
+		to: ['alice@example.com'],
+		cc: [],
+		bcc: [],
+		subject: 'with attachment',
+		textBody: 'See the attached notes.',
+		messageId,
+		attachments: [{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' }],
+	};
+}
+
+async function scheduledCaptures(t: ReturnType<typeof convexTest>) {
+	return await t.run(async (ctx) =>
+		(await ctx.db.system.query('_scheduled_functions').collect()).filter((job) =>
+			job.name.includes('captureStagedAttachments')
+		)
+	);
+}
+
+describe('mail.delivery.ingestFromWebhook — capture runs off the webhook', () => {
+	it('returns once the row lands and schedules the capture with storage ids, not bytes', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+
+		const result = await t.action(
+			internal.mail.delivery.ingestFromWebhook,
+			webhookArgs('d-deferred', '<cap-deferred@example.com>')
+		);
+		expect('messageId' in result).toBe(true);
+
+		// Nothing indexed yet: the action did not wait for the contact lookup,
+		// the budget charge or the ingest. The MTA's 10 s notifier deadline only
+		// covers staging now.
+		expect(await t.run((ctx) => ctx.db.query('semanticFiles').collect())).toHaveLength(0);
+		const jobs = await scheduledCaptures(t);
+		expect(jobs).toHaveLength(1);
+		const parts = (jobs[0]!.args[0] as { parts: Array<{ storageId: string; bytes?: unknown }> })
+			.parts;
+		expect(parts).toHaveLength(1);
+		expect(parts[0]).toMatchObject({ filename: 'notes.txt', contentType: 'text/plain' });
+		expect(parts[0]).toHaveProperty('storageId');
+		expect(parts[0]).not.toHaveProperty('bytes');
+
+		await drainCapture(t);
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files.map((f) => f.storageId)).toEqual([parts[0]!.storageId]);
+	});
+
+	it('stages every eligible part of a multi-attachment message', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+		const boundary = 'b0undary';
+		const raw = buildRawEml().replace(
+			`--${boundary}--`,
+			[
+				`--${boundary}`,
+				'Content-Type: text/plain; name="minutes.txt"',
+				'Content-Disposition: attachment; filename="minutes.txt"',
+				'Content-Transfer-Encoding: base64',
+				'',
+				Buffer.from('the second document').toString('base64'),
+				'',
+				`--${boundary}--`,
+			].join('\r\n')
+		);
+
+		await t.action(
+			internal.mail.delivery.ingestFromWebhook,
+			webhookArgs('d-two-docs', '<cap-two-docs@example.com>', raw)
+		);
+		await drainCapture(t);
+
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files.map((f) => f.filename).sort()).toEqual(['minutes.txt', 'notes.txt']);
+	});
+
+	it('captures once when the MTA re-POSTs the same message', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+
+		// The re-POST a notifier timeout causes: same delivery, same Message-ID.
+		await t.action(
+			internal.mail.delivery.ingestFromWebhook,
+			webhookArgs('d-repost', '<cap-repost@example.com>')
+		);
+		const again = await t.action(
+			internal.mail.delivery.ingestFromWebhook,
+			webhookArgs('d-repost', '<cap-repost@example.com>')
+		);
+		expect(again).toEqual({ skipped: true });
+		expect(await scheduledCaptures(t)).toHaveLength(1);
+
+		await drainCapture(t);
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files).toHaveLength(1);
+	});
+
+	it('schedules nothing for a sender DMARC could not verify', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+
+		await t.action(internal.mail.delivery.ingestFromWebhook, {
+			...webhookArgs('d-unverified-deferred', '<cap-unverified-deferred@example.com>'),
+			dmarcResult: 'fail',
+			dmarcPolicy: 'none',
+		});
+
+		// Settled inside the webhook, with no blob staged for a scheduled step
+		// to clean up.
+		expect(await scheduledCaptures(t)).toHaveLength(0);
+	});
+});
+
+describe('mail.delivery.captureStagedAttachments', () => {
+	async function stageBlob(t: ReturnType<typeof convexTest>): Promise<Id<'_storage'>> {
+		return await t.run((ctx) =>
+			ctx.storage.store(new Blob(['a staged document'], { type: 'text/plain' }))
+		);
+	}
+
+	function stagedArgs(storageId: Id<'_storage'>) {
+		return {
+			messageId: '<staged@example.com>',
+			from: 'Bob <bob@example.com>',
+			captureSource: 'mailbox' as const,
+			parts: [{ storageId, filename: 'notes.txt', contentType: 'text/plain', size: 17 }],
+		};
+	}
+
+	it('skips a staged blob that is already gone', async () => {
+		const t = setupTest();
+		const storageId = await stageBlob(t);
+		await t.run((ctx) => ctx.storage.delete(storageId));
+
+		await t.mutation(internal.mail.delivery.captureStagedAttachments, stagedArgs(storageId));
+
+		// No row pointing at nothing.
+		expect(await t.run((ctx) => ctx.db.query('semanticFiles').collect())).toHaveLength(0);
+	});
+
+	it('drops the staged blobs when the AI-ingest budget refuses the batch', async () => {
+		const t = setupTest();
+		// Drain the sender's bucket (no contact matches, so the key is the address).
+		let refused = false;
+		for (let i = 0; i < 500 && !refused; i++) {
+			const { ok } = await t.mutation(
+				internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
+				{ senderKey: 'bob@example.com', count: ATTACHMENT_COMPOSE_LIMITS.maxCount }
+			);
+			refused = !ok;
+		}
+		expect(refused).toBe(true);
+
+		const storageId = await stageBlob(t);
+		await t.mutation(internal.mail.delivery.captureStagedAttachments, stagedArgs(storageId));
+
+		expect(await t.run((ctx) => ctx.db.query('semanticFiles').collect())).toHaveLength(0);
+		expect(await t.run((ctx) => ctx.storage.get(storageId))).toBeNull();
 	});
 });

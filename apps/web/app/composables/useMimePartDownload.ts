@@ -14,9 +14,15 @@ import type { AttachmentMeta } from '~/utils/attachmentMeta';
  * `loadRaw` is the reader's own loader (`postbox/loadRawEml` or
  * `loadInboundRawEml`) and `failureKey` its own i18n line, because the two
  * surfaces name the same failure in their own namespaces.
+ *
+ * `loadPart`, when the reader has one, fetches the single part delivery stored
+ * on its own (`postbox/loadMessagePart`, plan 3.5) and is tried first. Its
+ * `null` — or any failure — falls back to the raw `.eml`, which is still the
+ * answer for mail stored before parts were.
  */
 export function useMimePartDownload(options: {
 	loadRaw: (messageId: string) => Promise<string | null>;
+	loadPart?: (messageId: string, att: AttachmentMeta) => Promise<Blob | null>;
 	failureKey: string;
 }) {
 	const { t } = useI18n();
@@ -26,8 +32,17 @@ export function useMimePartDownload(options: {
 	/** `messageId:partIndex` of the part being extracted, so its row can spin. */
 	const downloadingAttachment = ref<string | null>(null);
 
-	/** Fetch the raw `.eml` and extract one part client-side as a Blob. */
+	/** The stored part if there is one, else the raw `.eml` with the part cut out client-side. */
 	async function extractPartBlob(messageId: string, att: AttachmentMeta): Promise<Blob | null> {
+		if (options.loadPart) {
+			try {
+				const part = await options.loadPart(messageId, att);
+				if (part) return part;
+			} catch {
+				// The raw path below answers for real: a dropped connection fails
+				// there too and is reported from there.
+			}
+		}
 		const bin = await options.loadRaw(messageId);
 		if (!bin) return null;
 		const extracted = extractAttachmentAt(bin, att.partIndex ?? '0', att.filename);

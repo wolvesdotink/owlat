@@ -35,7 +35,7 @@ vi.mock('@owlat/api', () => ({
 			signatures: { list: 'signatures.list' },
 			// usePostboxCompose reads the undo-send window through
 			// usePostboxSettings (plan idea 8); unanswered here, so it resolves to
-			// the 30s default and puts no `undoSendDelayMs` on the wire.
+			// the 10s default and puts no `undoSendDelayMs` on the wire.
 			settings: { get: 'settings.get', update: 'settings.update' },
 		},
 	},

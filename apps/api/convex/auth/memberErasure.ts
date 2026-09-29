@@ -43,6 +43,7 @@ import { removeMessageAttachments } from '../mail/attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../mail/messagePurge';
 import { deleteMailboxUsage } from '../mail/mailboxUsage';
 import { isOrgInfrastructureAccount } from '../mail/external/personalAccount';
+import { deleteStoredAccessToken } from '../mail/external/accessTokenStore';
 import { isPersonalMailbox } from '../mail/permissions';
 
 const MESSAGE_BATCH = 100;
@@ -228,6 +229,7 @@ export const eraseMemberData = internalMutation({
 				.withIndex('by_account', (q) => q.eq('accountId', account._id))
 				.collect(); // bounded: folders of one account
 			for (const row of syncRows) await ctx.db.delete(row._id);
+			await deleteStoredAccessToken(ctx, account._id);
 			// The import records name the account row deleted below, and carry the
 			// erased member's `userId` themselves.
 			const migrations = await ctx.db

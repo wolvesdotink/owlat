@@ -34,6 +34,7 @@ export type OrganizationDeletionTable =
 	| 'mailBodySearchBackfillJobs'
 	| 'mailMessageBodies'
 	| 'mailMessages'
+	| 'mailMessageParts'
 	| 'mailDrafts'
 	| 'transactionalSends'
 	| 'emailSends'
@@ -160,6 +161,7 @@ export type OrganizationDeletionTable =
 	| 'mailArchiveImports'
 	| 'mailboxMoves'
 	| 'externalMailFolderSync'
+	| 'externalMailAccessTokens'
 	| 'externalMailAccounts'
 	| 'externalMailOAuthStates'
 	| 'pendingMailboxes'
@@ -231,6 +233,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailBodySearchBackfillJobs'),
 	v.literal('mailMessageBodies'),
 	v.literal('mailMessages'),
+	v.literal('mailMessageParts'),
 	v.literal('mailDrafts'),
 	v.literal('transactionalSends'),
 	v.literal('emailSends'),
@@ -357,6 +360,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailArchiveImports'),
 	v.literal('mailboxMoves'),
 	v.literal('externalMailFolderSync'),
+	v.literal('externalMailAccessTokens'),
 	v.literal('externalMailAccounts'),
 	v.literal('externalMailOAuthStates'),
 	v.literal('pendingMailboxes'),

@@ -35,6 +35,7 @@ import { components } from '../_generated/api';
 import { TENANT_TABLES } from '../lib/tenantTables';
 import { betterAuthAdapterArgs } from '../lib/betterAuthAdapterArgs';
 import { deleteMessageRowAndBlobs } from '../mail/messagePurge';
+import { partBlobIds } from '../mail/messageParts';
 import { deleteBlobQuietly } from '../lib/storageBlobs';
 import type { Doc, Id, TableNames } from '../_generated/dataModel';
 
@@ -224,6 +225,8 @@ function ownedBlobs(table: (typeof TENANT_TABLES)[number], row: Doc<TableNames>)
 			const stored = (row as Doc<'mailArchiveImports'>).storageId;
 			return stored ? [stored] : [];
 		}
+		case 'mailMessageParts':
+			return partBlobIds(row as Doc<'mailMessageParts'>);
 		case 'mailDrafts':
 			return (row as Doc<'mailDrafts'>).attachments.map((att) => att.storageId);
 		case 'transactionalSends':

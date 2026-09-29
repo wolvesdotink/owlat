@@ -189,6 +189,9 @@ export const TENANT_TABLES = [
 	// Inline bodies, 1:1 with the message rows below (plan 3.2).
 	'mailMessageBodies',
 	'mailMessages',
+	// Attachment parts stored out of a raw `.eml` (plan 3.5). Freed with the raw
+	// blob by `deleteMessageRowAndBlobs`; listed so an orphan still wipes.
+	'mailMessageParts',
 	'mailThreads',
 	'mailDrafts',
 	'mailLabels',
@@ -229,6 +232,8 @@ export const TENANT_TABLES = [
 	'mailArchiveImports',
 	'mailboxMoves',
 	'externalMailFolderSync',
+	// Sealed OAuth access-token cache, one row per oauth2 account.
+	'externalMailAccessTokens',
 	'externalMailAccounts',
 	// In-flight Google sign-in handshakes for connecting an external mailbox.
 	// User- and org-attributed, short-lived, and meaningless once the org is gone

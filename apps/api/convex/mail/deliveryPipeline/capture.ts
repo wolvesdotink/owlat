@@ -12,11 +12,12 @@
  * other: staging runs BEFORE the delivery mutation and may fail it; capture
  * runs after and never can.
  *
- * Action-only: needs `ctx.storage`, `ctx.runQuery` and `ctx.runMutation`.
+ * `captureAttachments` is action-only: it needs `ctx.storage`, `ctx.runQuery`
+ * and `ctx.runMutation`. `planCapture` is its pure front half; the I/O steps
+ * live in `captureIndex.ts`, and `deferredCapture.ts` runs them off the MTA
+ * webhook for the personal mailbox.
  */
 
-import type { ActionCtx } from '../../_generated/server';
-import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { extractEmail } from '../../lib/emailAddress';
 import {
@@ -26,12 +27,17 @@ import {
 } from '@owlat/shared/attachments';
 import { isFileTypeAccepted } from '@owlat/email-scanner';
 import { emailDomain, isSpfAligned } from '@owlat/shared/spfAlignment';
-import { hasTextExtraction } from '../../lib/fileExtraction';
 import { logWarn } from '../../lib/runtimeLog';
 import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import type { InboundAttachmentPart, UnclearedLeaves } from './attachmentParts';
 import type { CaptureSource } from '../../lib/literalValidators';
 import type { DmarcOverride } from './routing';
+import {
+	ingestStoredPart,
+	scopeAndChargeBudget,
+	type CaptureRunner,
+	type IndexedPart,
+} from './captureIndex';
 
 /**
  * What one `captureAttachments` call did, so the caller can say it.
@@ -340,13 +346,57 @@ export function selectIngestible(
  * back so the caller can record it.
  */
 export async function captureAttachments(
-	ctx: {
-		storage: { store: (blob: Blob) => Promise<Id<'_storage'>> };
-		runMutation: ActionCtx['runMutation'];
-		runQuery: ActionCtx['runQuery'];
-	},
+	ctx: CaptureRunner & { storage: { store: (blob: Blob) => Promise<Id<'_storage'>> } },
 	input: CaptureAttachmentsInput
 ): Promise<AttachmentCaptureOutcome> {
+	const plan = planCapture(input);
+	if ('outcome' in plan) return plan.outcome;
+	const { eligible, skippedReason } = plan;
+
+	const scope = await scopeAndChargeBudget(ctx, {
+		from: input.from,
+		messageId: input.messageId,
+		count: eligible.length,
+	});
+	if (!scope) return { indexed: 0, skippedReason: 'budget' };
+
+	const results: IndexedPart[] = [];
+	for (const part of eligible) {
+		const storageId = await ctx.storage.store(new Blob([part.bytes], { type: part.contentType }));
+		results.push(
+			await ingestStoredPart(
+				ctx,
+				{
+					storageId,
+					filename: part.filename,
+					contentType: part.contentType,
+					size: part.bytes.byteLength,
+				},
+				{
+					messageId: input.messageId,
+					captureSource: input.captureSource,
+					contactIds: scope.contactIds,
+				}
+			)
+		);
+	}
+	return summarizeCapture(results, skippedReason);
+}
+
+/**
+ * The pure front half of a capture: select, then verify. Either the capture is
+ * already over (`outcome`), or these parts are to be scoped, charged and
+ * ingested. Split out so the personal-mailbox route can decide it inside the
+ * webhook and leave the I/O to a scheduled mutation (`deferredCapture.ts`).
+ */
+export function planCapture(
+	input: Pick<CaptureAttachmentsInput, 'parts' | 'withheld' | 'messageId' | 'from' | 'auth'>
+):
+	| { outcome: AttachmentCaptureOutcome }
+	| {
+			eligible: InboundAttachmentPart[];
+			skippedReason?: AttachmentCaptureOutcome['skippedReason'];
+	  } {
 	const anyWithheld =
 		input.withheld.capped + input.withheld.unscanned + input.withheld.refusedType > 0;
 
@@ -355,7 +405,7 @@ export async function captureAttachments(
 	// reporting one anyway would log a line about every plain message that ever
 	// arrives from a domain with no DMARC record.
 	const { eligible, skippedReason } = selectIngestible(input.parts, input.withheld);
-	if (eligible.length === 0 && !skippedReason && !anyWithheld) return { indexed: 0 };
+	if (eligible.length === 0 && !skippedReason && !anyWithheld) return { outcome: { indexed: 0 } };
 
 	// An unverifiable sender is refused before any of the size/type work: there
 	// is no scope this message's files could safely be filed under, so the
@@ -369,81 +419,23 @@ export async function captureAttachments(
 				dmarcResult: input.auth.dmarcResult,
 			}
 		);
-		return { indexed: 0, skippedReason: 'unverified' };
+		return { outcome: { indexed: 0, skippedReason: 'unverified' } };
 	}
 
-	if (eligible.length === 0) return { indexed: 0, skippedReason };
+	if (eligible.length === 0) return { outcome: { indexed: 0, skippedReason } };
+	return { eligible, skippedReason };
+}
 
-	// Scope captured files to the sender's EXISTING contact (find-only). An
-	// unresolvable sender leaves the file org-general. Resolved once per
-	// message, not per part.
-	const senderEmail = extractEmail(input.from);
-	let senderContactIds: Id<'contacts'>[] | undefined;
-	// Resolved HERE rather than taken from the caller even where the caller has
-	// just upserted the contact: `getByEmailForTeam` is the lookup that ignores
-	// GDPR gravestones, and an id handed in from outside would file an
-	// attachment under an erased contact.
-	if (senderEmail) {
-		const contact = await ctx.runQuery(internal.contacts.contacts.getByEmailForTeam, {
-			email: senderEmail,
-		});
-		if (contact) senderContactIds = [contact._id];
-	}
-
-	// Prefer the resolved contact id: it survives a sender rewriting their
-	// display name, and it is the key the agent-pipeline gate already uses. The
-	// already-lowercased address is the fallback for a sender with no contact (or
-	// one erased under GDPR, which `getByEmailForTeam` reads as absent).
-	// `||`, not `??`: `extractEmail` returns `''` for a From header with nothing
-	// address-shaped in it, and an empty bucket key is not a key.
-	const senderKey = senderContactIds?.[0] ?? (senderEmail || 'unknown');
-	const { ok } = await ctx.runMutation(
-		internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
-		{
-			senderKey,
-			count: eligible.length,
-		}
-	);
-	if (!ok) {
-		// The bytes are NOT dropped: the message row, its attachment metadata and
-		// the sealed raw `.eml` all exist, so the reader's download still works.
-		// Only the indexing — and therefore the model spend — is skipped. A WARN,
-		// not an error: this is the budget doing its job, on a route where a busy
-		// inbox will trip it routinely.
-		logWarn('[Attachment capture] AI ingest budget exhausted — bytes stored, indexing skipped', {
-			senderKey,
-			messageId: input.messageId,
-			count: eligible.length,
-		});
-		return { indexed: 0, skippedReason: 'budget' };
-	}
-
-	let indexed = 0;
-	let namesOnly = false;
-	for (const part of eligible) {
-		const storageId = await ctx.storage.store(new Blob([part.bytes], { type: part.contentType }));
-		// `ingest` re-runs the same file-type policy as the filter above and
-		// deletes the blob if it disagrees.
-		const fileId = await ctx.runMutation(internal.semanticFiles.ingest, {
-			storageId,
-			filename: part.filename,
-			mimeType: part.contentType,
-			fileSize: part.bytes.byteLength,
-			sourceType: 'email_attachment',
-			captureSource: input.captureSource,
-			sourceMessageId: input.messageId,
-			contactIds: senderContactIds,
-		});
-		if (!fileId) continue;
-		indexed++;
-		// Ingested, and the extractor will answer it with `[Word document: …]`.
-		// Recorded so the reader is not shown a row that looks exactly like a
-		// PDF the assistant read cover to cover.
-		if (!hasTextExtraction(part.contentType, part.filename)) namesOnly = true;
-	}
+/** Fold per-part ingest results into the outcome the caller reports. */
+export function summarizeCapture(
+	results: IndexedPart[],
+	skippedReason: AttachmentCaptureOutcome['skippedReason']
+): AttachmentCaptureOutcome {
+	const indexed = results.filter((r) => r.indexed).length;
+	const namesOnly = results.some((r) => r.namesOnly);
 	// A part the pre-filter accepted and `ingest` still refused is a policy
 	// disagreement, not a silent success: report it as the type skip it is.
-	if (indexed < eligible.length && !skippedReason) {
+	if (indexed < results.length && !skippedReason) {
 		return { indexed, skippedReason: 'unsupported_type', namesOnly };
 	}
 	return { indexed, skippedReason, namesOnly };

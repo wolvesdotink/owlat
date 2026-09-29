@@ -3,13 +3,15 @@
  *
  * - AccountManager holds one persistent IMAP connection per connected external
  *   account (inbound sync, near-real-time via IDLE).
- * - HTTP server exposes /send + /test for Convex (outbound relay + cred check).
+ * - HTTP server exposes /send + /test for Convex (outbound relay + cred check),
+ *   and /reconcile so a freshly connected mailbox starts syncing at once.
  */
 
 import { loadConfig } from './config.js';
 import { createConvexClient } from './convex.js';
 import { AccountManager } from './accountManager.js';
 import { startServer } from './server.js';
+import { drainSentCopies } from './send.js';
 import { startSeedProbeSweeper } from './seedProbeRunner.js';
 import { logger } from './logger.js';
 import { installCrashHandlers, installShutdown, pinoShutdownLog } from '@owlat/shared/nodeShutdown';
@@ -22,19 +24,24 @@ export async function main(): Promise<void> {
 	const manager = new AccountManager(convex, config);
 	await manager.start();
 
-	const server = startServer(config, convex);
+	const server = startServer(config, convex, {
+		requestReconcile: () => {
+			void manager.requestReconcile();
+		},
+	});
 	// Deliverability seed-probe sweep. With no seed mailboxes connected — the
 	// default — every pass is an empty no-op (D2).
 	const stopSeedSweeper = startSeedProbeSweeper(convex);
 
 	// Stop the HTTP server first, then let every account connection log out of
-	// IMAP before the process exits. 25s sits under the compose
-	// stop_grace_period of 30s, so the watchdog ends a wedged logout, not Docker.
+	// IMAP, and every Sent copy a /send already answered for finish its APPEND,
+	// before the process exits. 25s sits under the compose stop_grace_period of
+	// 30s, so the watchdog ends a wedged logout, not Docker.
 	installShutdown({
 		server,
 		drain: async () => {
 			stopSeedSweeper();
-			await manager.stop();
+			await Promise.all([manager.stop(), drainSentCopies()]);
 		},
 		timeoutMs: 25_000,
 		log: pinoShutdownLog(logger),

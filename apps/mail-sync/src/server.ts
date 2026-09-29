@@ -5,6 +5,8 @@
  *
  *   POST /send  — relay an outbound message through the account's external SMTP
  *   POST /test  — validate IMAP+SMTP credentials (persists nothing)
+ *   POST /reconcile — re-read the connectable accounts now (a mailbox was just
+ *                    connected or re-authorized); answers 202 at once
  *   GET  /health
  */
 
@@ -37,7 +39,7 @@ import { isSmtpError } from '@owlat/smtp-client';
 import type { ConvexClient } from './convex.js';
 import { fetchWorkerCredentials } from './convex.js';
 import type { MailSyncConfig } from './config.js';
-import { sendViaExternal, testConnection } from './send.js';
+import { fileSentCopyInBackground, sendViaExternal, testConnection } from './send.js';
 import type { ProtocolCreds, RecipientResult } from './send.js';
 import { logger } from './logger.js';
 
@@ -52,7 +54,25 @@ interface SendBody {
 	rawEmlUrl: string;
 }
 
-export function startServer(config: MailSyncConfig, convex: ConvexClient): ServerType {
+/**
+ * Deadline for fetching the outgoing `.eml` back from Convex (at most 8 MiB, from
+ * a storage proxy on the same network). A hung fetch answers 502 instead of
+ * holding the send until the caller gives up.
+ */
+const RAW_EML_FETCH_TIMEOUT_MS = 30_000;
+
+/** What the routes need from the rest of the worker, beyond Convex. */
+export interface ServerHooks {
+	/** Start a reconcile pass without waiting for it (AccountManager.requestReconcile). */
+	requestReconcile?: () => void;
+}
+
+/** The worker's routes, without a listener (tests drive it through `app.request`). */
+export function createApp(
+	config: MailSyncConfig,
+	convex: ConvexClient,
+	hooks: ServerHooks = {}
+): Hono {
 	const app = new Hono();
 
 	const auth = async (c: Context, next: () => Promise<void>) => {
@@ -64,8 +84,18 @@ export function startServer(config: MailSyncConfig, convex: ConvexClient): Serve
 	};
 	app.use('/send', auth);
 	app.use('/test', auth);
+	app.use('/reconcile', auth);
 
 	app.get('/health', (c) => c.json({ ok: true, service: 'owlat-mail-sync' }));
+
+	// Convex pokes this after a connect so the new account's IMAP connection
+	// opens now rather than on the next reconcile tick (up to 30 s later). The
+	// pass itself runs in the background: the caller only needs to know the
+	// worker heard it, and the account list is read from Convex, not from here.
+	app.post('/reconcile', (c) => {
+		hooks.requestReconcile?.();
+		return c.json({ ok: true }, 202);
+	});
 
 	app.post('/test', async (c) => {
 		const body = (await c.req.json().catch(() => null)) as TestBody | null;
@@ -110,11 +140,19 @@ export function startServer(config: MailSyncConfig, convex: ConvexClient): Serve
 			return c.json({ error: 'rawEmlUrl origin not allowed' }, 400);
 		}
 
-		const fetched = await fetch(body.rawEmlUrl);
-		if (!fetched.ok) {
-			return c.json({ error: `failed to fetch raw eml: ${fetched.status}` }, 502);
+		let raw: Buffer;
+		try {
+			const fetched = await fetch(body.rawEmlUrl, {
+				signal: AbortSignal.timeout(RAW_EML_FETCH_TIMEOUT_MS),
+			});
+			if (!fetched.ok) {
+				return c.json({ error: `failed to fetch raw eml: ${fetched.status}` }, 502);
+			}
+			raw = Buffer.from(await fetched.arrayBuffer());
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			return c.json({ error: `failed to fetch raw eml: ${message}` }, 502);
 		}
-		const raw = Buffer.from(await fetched.arrayBuffer());
 
 		try {
 			const result = await sendViaExternal(creds, {
@@ -122,6 +160,10 @@ export function startServer(config: MailSyncConfig, convex: ConvexClient): Serve
 				recipients: body.recipients,
 				raw,
 			});
+			// Filed AFTER the answer: the caller is waiting on SMTP's verdict, not
+			// on a second login to the IMAP server. The copy never rejects (a
+			// failure is logged at warn, as before), and shutdown waits for it.
+			fileSentCopyInBackground(creds, raw);
 			return c.json(result);
 		} catch (err) {
 			// A client-side SMTPUTF8 refusal (the external server does not advertise
@@ -149,6 +191,15 @@ export function startServer(config: MailSyncConfig, convex: ConvexClient): Serve
 		}
 	});
 
+	return app;
+}
+
+export function startServer(
+	config: MailSyncConfig,
+	convex: ConvexClient,
+	hooks: ServerHooks = {}
+): ServerType {
+	const app = createApp(config, convex, hooks);
 	const server = serve({ fetch: app.fetch, hostname: config.listenAddress, port: config.port });
 	logger.info({ port: config.port }, 'mail-sync HTTP server listening');
 	return server;

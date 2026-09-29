@@ -32,6 +32,7 @@ import { deleteMessageRowAndBlobs } from '../messagePurge';
 import { deleteMailboxUsage } from '../mailboxUsage';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { cancelActiveMigrationForAccount } from './accountShared';
+import { deleteStoredAccessToken } from './accessTokenStore';
 import { listMailboxesOnAddress } from '../mailbox/addressResolution';
 import type { Doc } from '../../_generated/dataModel';
 
@@ -79,6 +80,9 @@ export async function stopExternalAccountSync(
 		secretAuthTag: undefined,
 		secretEnvelopeVersion: undefined,
 	});
+	// And the access token minted from it: forgetting the grant but keeping a
+	// token that still opens the mailbox for up to an hour would not be forgetting.
+	await deleteStoredAccessToken(ctx, account._id);
 	// `cancelActiveMigrationForAccount` is the quiet half (no audit row) — the
 	// audited `migration.cancel` is for a member cancelling an import they meant
 	// to run. Here the mailbox is going away in the same transaction, and this
@@ -237,6 +241,7 @@ export const _purgeChunk = internalMutation({
 			.withIndex('by_account', (q) => q.eq('accountId', args.accountId))
 			.collect(); // bounded: per-account folder cursors (≤ a handful)
 		for (const sr of syncRows) await ctx.db.delete(sr._id);
+		await deleteStoredAccessToken(ctx, args.accountId);
 
 		// The account's import jobs (personal migrations AND team-inbox ones) point
 		// at a row that is about to stop existing — drop them. Deleting is enough to

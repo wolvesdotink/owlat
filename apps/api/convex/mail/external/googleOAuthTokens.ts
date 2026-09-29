@@ -17,7 +17,9 @@
 
 import { createHash, randomBytes } from 'node:crypto';
 import { internal } from '../../_generated/api';
+import { decryptSecret, encryptSecret } from '../../lib/credentialCrypto';
 import { getOptional } from '../../lib/env';
+import { FETCH_TIMEOUTS, fetchWithTimeout } from '../../lib/fetchWithTimeout';
 import { throwInvalidInput } from '../../_utils/errors';
 import type { ActionCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
@@ -134,11 +136,15 @@ interface GoogleTokenResponse {
 }
 
 async function postToken(body: URLSearchParams): Promise<GoogleTokenResponse> {
-	const res = await fetch(TOKEN_ENDPOINT, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-		body: body.toString(),
-	});
+	const res = await fetchWithTimeout(
+		TOKEN_ENDPOINT,
+		{
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: body.toString(),
+		},
+		FETCH_TIMEOUTS.thirdPartyApi
+	);
 	let parsed: GoogleTokenResponse;
 	try {
 		parsed = (await res.json()) as GoogleTokenResponse;
@@ -248,10 +254,11 @@ export async function exchangeAuthorizationCode(params: {
  * Warm-isolate cache of minted access tokens, keyed by account AND by the
  * envelope the refresh token came out of.
  *
- * Convex may reuse a Node isolate across invocations, in which case the worker's
- * repeated credential fetches reuse one token instead of spending a Google token
- * request each time. A cold isolate is simply a miss — never a correctness
- * difference — so nothing depends on this surviving.
+ * The first of two tiers. Convex may reuse a Node isolate across invocations,
+ * in which case the worker's repeated credential fetches reuse one token without
+ * even a database read. A cold isolate falls through to the sealed
+ * `externalMailAccessTokens` row (`accessTokenStore.ts`), and only a miss there
+ * spends a Google token request.
  *
  * The envelope's IV is part of the key because it is re-randomized on every
  * write: a reconnect (new grant, new refresh token, same account id) therefore
@@ -293,8 +300,13 @@ export type GoogleAccessTokenResult =
  * account is flipped to `auth_error` with a message that names the one action
  * that does (reconnect), exactly as a wrong app password would be.
  *
+ * A token is reused until {@link ACCESS_TOKEN_REFRESH_SKEW_MS} before it expires:
+ * first from this isolate's memory, then from the sealed row a previous mint
+ * stored. Only when both miss is Google asked for a new one.
+ *
  * `envelopeIv` is the account row's `secretIv`; it only identifies which stored
- * envelope this refresh token came from, so the cache cannot outlive a rotation.
+ * envelope this refresh token came from, so neither cache tier can outlive a
+ * rotation.
  */
 export async function refreshGoogleAccessToken(
 	ctx: ActionCtx,
@@ -304,8 +316,13 @@ export async function refreshGoogleAccessToken(
 ): Promise<GoogleAccessTokenResult> {
 	const cacheKey = `${accountId}:${envelopeIv}`;
 	const cached = accessTokenCache.get(cacheKey);
-	if (cached && cached.expiresAt - Date.now() > ACCESS_TOKEN_REFRESH_SKEW_MS) {
+	if (cached && isFresh(cached.expiresAt)) {
 		return { kind: 'token', ...cached };
+	}
+	const stored = await readStoredAccessToken(ctx, accountId, envelopeIv);
+	if (stored) {
+		accessTokenCache.set(cacheKey, stored);
+		return { kind: 'token', ...stored };
 	}
 
 	const client = requireGoogleOAuthClient();
@@ -320,6 +337,9 @@ export async function refreshGoogleAccessToken(
 	if (token.error === 'invalid_grant') {
 		accessTokenCache.delete(cacheKey);
 		console.warn('google oauth: refresh token rejected (invalid_grant)', { accountId });
+		await ctx.runMutation(internal.mail.external.accessTokenStore._clearStoredAccessToken, {
+			accountId,
+		});
 		await ctx.runMutation(internal.mail.external.accounts.setSyncStatus, {
 			accountId,
 			status: 'auth_error',
@@ -339,5 +359,66 @@ export async function refreshGoogleAccessToken(
 		expiresAt: Date.now() + (token.expires_in ?? 3600) * 1000,
 	};
 	accessTokenCache.set(cacheKey, minted);
+	await storeAccessToken(ctx, accountId, envelopeIv, minted);
 	return { kind: 'token', ...minted };
+}
+
+function isFresh(expiresAt: number): boolean {
+	return expiresAt - Date.now() > ACCESS_TOKEN_REFRESH_SKEW_MS;
+}
+
+/**
+ * The stored token for this account and envelope, when it is still fresh.
+ *
+ * Any problem reading or opening it is a cache miss, never an error: the worst
+ * outcome is one extra token request, which is what every call cost before the
+ * row existed.
+ */
+async function readStoredAccessToken(
+	ctx: ActionCtx,
+	accountId: Id<'externalMailAccounts'>,
+	envelopeIv: string
+): Promise<GoogleAccessToken | null> {
+	try {
+		const row = await ctx.runQuery(internal.mail.external.accessTokenStore._getStoredAccessToken, {
+			accountId,
+		});
+		if (!row || row.sourceIv !== envelopeIv || !isFresh(row.expiresAt)) return null;
+		const accessToken = decryptSecret({
+			ciphertext: row.ciphertext,
+			iv: row.iv,
+			authTag: row.authTag,
+			version: row.version,
+		});
+		return { accessToken, expiresAt: row.expiresAt };
+	} catch {
+		console.warn('google oauth: stored access token unreadable, minting a new one', { accountId });
+		return null;
+	}
+}
+
+/**
+ * Seal and persist a freshly minted token. Best-effort: the caller already has
+ * a live token, and a failed write only means the next cold call mints again.
+ */
+async function storeAccessToken(
+	ctx: ActionCtx,
+	accountId: Id<'externalMailAccounts'>,
+	envelopeIv: string,
+	minted: GoogleAccessToken
+): Promise<void> {
+	try {
+		const sealed = encryptSecret(minted.accessToken);
+		await ctx.runMutation(internal.mail.external.accessTokenStore._storeAccessToken, {
+			accountId,
+			sourceIv: envelopeIv,
+			ciphertext: sealed.ciphertext,
+			iv: sealed.iv,
+			authTag: sealed.authTag,
+			version: sealed.version,
+			expiresAt: minted.expiresAt,
+		});
+	} catch {
+		console.warn('google oauth: could not store the minted access token', { accountId });
+	}
 }

@@ -37,14 +37,14 @@ export interface DomainWaitingScan {
 	 * does over all groups — so a caller can tell a backlog from a listing cap.
 	 */
 	waiting: number;
-	/** Matching `{ipPool}:{domain}` groups. */
+	/** Matching `[{lane}:]{ipPool}:{domain}` groups. */
 	groups: number;
 }
 
 /** Ids of the matching groups, ordered as `SMEMBERS` returned them. */
 function matchingGroupIds(groupIds: string[], domain: string): string[] {
-	// The key is `{ipPool}:{recipientDomain}` and `buildGroupKey` lowercases the
-	// domain, so the domain is everything after the last colon.
+	// The key is `[{lane}:]{ipPool}:{recipientDomain}` and `buildGroupKey`
+	// lowercases the domain, so the domain is everything after the last colon.
 	const suffix = `:${domain.toLowerCase()}`;
 	return groupIds.filter((groupId) => groupId.toLowerCase().endsWith(suffix));
 }

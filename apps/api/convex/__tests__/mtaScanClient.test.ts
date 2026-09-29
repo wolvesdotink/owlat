@@ -16,6 +16,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { scanAttachmentBytes } from '../mail/mtaClient';
+import { FETCH_TIMEOUTS } from '../lib/fetchWithTimeout';
 import * as scannerHealth from '../lib/scannerHealth';
 import { readScanRequest } from '../mail/__tests__/scannerStub.testlib';
 
@@ -120,6 +121,34 @@ describe('scanAttachmentBytes', () => {
 		const verdict = await scanAttachmentBytes(MTA, 'invoice.pdf', DATA);
 
 		expect(verdict).toEqual({ kind: 'skipped', reason: 'ECONNREFUSED' });
+		expect(warnSpy).toHaveBeenCalled();
+	});
+
+	it('FAIL-OPEN: a scanner that never answers is cut off at the scan deadline and surfaced', async () => {
+		const warnSpy = vi.spyOn(scannerHealth, 'warnScanSkipped');
+		let signal: AbortSignal | null | undefined;
+		// The hung scanner: the request ends only when its signal fires.
+		vi.spyOn(globalThis, 'fetch').mockImplementation(
+			(_url, init) =>
+				new Promise((_resolve, reject) => {
+					signal = init?.signal;
+					signal?.addEventListener('abort', () => reject(signal!.reason));
+				})
+		);
+		const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => {
+			const controller = new AbortController();
+			setTimeout(() => controller.abort(new DOMException('aborted', 'TimeoutError')), 5);
+			return controller.signal;
+		});
+
+		const verdict = await scanAttachmentBytes(MTA, 'invoice.pdf', DATA);
+
+		expect(timeoutSpy).toHaveBeenCalledWith(FETCH_TIMEOUTS.attachmentScan);
+		expect(signal).toBeInstanceOf(AbortSignal);
+		expect(verdict).toEqual({
+			kind: 'skipped',
+			reason: `Request timed out after ${FETCH_TIMEOUTS.attachmentScan} ms`,
+		});
 		expect(warnSpy).toHaveBeenCalled();
 	});
 

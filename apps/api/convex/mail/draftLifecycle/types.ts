@@ -18,7 +18,11 @@ import { mailEncryptionInfoValidator, type OutboundEncryptionInfo } from '../sea
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-export const DEFAULT_UNDO_SEND_DELAY_MS = 30_000;
+// How long a Postbox send waits in `pending_send` when the sender has no stored
+// undo-send preference. 10 s (plan Q1, was 30 s): long enough to catch a slip,
+// short enough that the recipient doesn't wait. Senders who explicitly picked
+// 30 or 60 s send that window on the wire, so this default never reaches them.
+export const DEFAULT_UNDO_SEND_DELAY_MS = 10_000;
 
 // ─── States / inputs / outcomes ─────────────────────────────────────────────
 

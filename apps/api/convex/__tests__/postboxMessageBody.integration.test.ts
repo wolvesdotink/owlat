@@ -224,6 +224,28 @@ describe('mail.mailbox.messages.getMessageBody', () => {
 			})
 		).toBeTruthy();
 	});
+
+	it('mints raw URLs for a batch of messages in one call (IMAP FETCH, plan 3.6)', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const { mailboxId, folderId } = await seedMailboxAndFolder(t);
+		const kept = await insertMessage(t, mailboxId, folderId, { htmlBodyInline: '<p>a</p>' });
+		const gone = await insertMessage(t, mailboxId, folderId, { htmlBodyInline: '<p>b</p>' });
+		await t.run((ctx) => ctx.db.delete(gone));
+
+		const rows = await t.action(internal.mail.imap.fetch.getRawStorageUrls, {
+			messageIds: [kept, gone],
+		});
+
+		expect(rows.map((r) => r.messageId)).toEqual([kept, gone]);
+		expect(rows[0]?.url).toBeTruthy();
+		expect(rows[1]?.url).toBeNull();
+		await expect(
+			t.action(internal.mail.imap.fetch.getRawStorageUrls, {
+				messageIds: Array.from({ length: 101 }, () => kept),
+			})
+		).rejects.toThrow(/At most 100/);
+	});
 });
 
 describe('mail.mailbox.messages.getMessageInlineBody (reactive body query)', () => {

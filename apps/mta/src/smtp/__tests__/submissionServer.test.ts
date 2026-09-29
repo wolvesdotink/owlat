@@ -290,6 +290,10 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 		const job = queue.add.mock.calls[0]![0].data;
 		expect(job.messageId).toMatch(/^pb-smtp-mb1-/);
 		expect(job.from).toBe('jane@example.com');
+		// Postbox mail sent from a desktop client rides the same lane as the
+		// webmail dispatch path (plan 2.13).
+		expect(job.queueLane).toBe('postbox');
+		expect(queue.add.mock.calls[0]![0].groupId).toBe('postbox:transactional:x.com');
 	});
 
 	it('allows master/credential sessions to send any From and fans out per recipient', async () => {
@@ -335,6 +339,9 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 		expect(reply).toBeUndefined();
 		expect(queue.add).toHaveBeenCalledTimes(1);
 		expect(queue.add.mock.calls[0]![0].data.dkimDomain).toBe('brand.com');
+		// A per-org credential stays on the shared transactional group.
+		expect(queue.add.mock.calls[0]![0].data.queueLane).toBeUndefined();
+		expect(queue.add.mock.calls[0]![0].groupId).toBe('transactional:x.com');
 	});
 
 	it('rejects any From for a per-org credential with an empty verified set (fail-closed)', async () => {

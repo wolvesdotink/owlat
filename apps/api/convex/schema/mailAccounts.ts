@@ -117,8 +117,9 @@ export const mailAccountsTables = {
 		// access token the backend mints on demand from a stored REFRESH token.
 		// That refresh token lives INSIDE the same encrypted envelope below
 		// (`{ oauthRefreshToken }` instead of `{ imapPassword, smtpPassword }`), so
-		// there is exactly one encrypt site and one decrypt site for both methods
-		// and no access-token column ever hits disk.
+		// there is exactly one encrypt site and one decrypt site for both
+		// methods. The short-lived ACCESS token minted from it is cached in its
+		// own sealed row (`externalMailAccessTokens`), never on this one.
 		//
 		// Every pre-OAuth row is 'password', so widening the union adds a case
 		// rather than changing one (CONVENTIONS.md §Schema evolution).
@@ -221,6 +222,29 @@ export const mailAccountsTables = {
 	})
 		.index('by_state', ['state'])
 		.index('by_user', ['userId']),
+
+	// The last OAuth access token minted for an `authMethod: 'oauth2'` account,
+	// sealed in the same AES-256-GCM box as the refresh token it came from.
+	//
+	// A cache, not state: `getCredentialsForWorker` reuses it until a minute
+	// before `expiresAt` instead of asking Google for a new token on every
+	// worker connect and every /send. At most one row per account, kept off the
+	// account row so the hourly write neither re-runs the account's subscribers
+	// nor contends with the worker's status writes. `sourceIv` is the IV of the
+	// refresh-token envelope it was minted from: a reconnect re-seals that
+	// envelope under a fresh IV, so a token from the previous grant can never be
+	// served. Deleted when the account is disconnected, purged or erased, and
+	// when Google reports the grant revoked.
+	externalMailAccessTokens: defineTable({
+		accountId: v.id('externalMailAccounts'),
+		sourceIv: v.string(),
+		secretCiphertext: v.string(),
+		secretIv: v.string(),
+		secretAuthTag: v.string(),
+		secretEnvelopeVersion: v.number(),
+		expiresAt: v.number(),
+		updatedAt: v.number(),
+	}).index('by_account', ['accountId']),
 
 	// Per-(account, folder) IMAP sync cursor. Separate from mailFolders' own
 	// uidValidity/uidNext (those track Owlat-as-IMAP-server); these track

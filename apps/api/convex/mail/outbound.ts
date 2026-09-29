@@ -219,23 +219,27 @@ export const dispatchDraft = internalAction({
 		// unchanged. The reducer independently re-validates the binding.
 		const sendingMailboxId = draft.sendAsMailboxId ?? draft.mailboxId;
 
-		// Fetch the allowed-from set once and pass it into every MTA /send
+		// Two independent reads, run side by side rather than one after the other:
+		//
+		// The allowed-from set, fetched once and passed into every MTA /send
 		// call. This gives the MTA a hard "is this From authorized?" check
 		// independent of Convex (defence-in-depth around the lifecycle's
 		// reducer-side check). Keyed on the SENDING mailbox so the MTA-side
 		// allowlist covers the sanctioned cross-mailbox identity too.
-		const allowedFromAddresses = (await ctx.runQuery(
-			internal.mail.identities.resolveAllowedFromAddresses,
-			{ mailboxId: sendingMailboxId }
-		)) as string[];
-
-		// Branch transport on mailbox kind. External mailboxes send through the
-		// user's own SMTP via the mail-sync worker (single POST, synchronous
-		// per-recipient result); hosted mailboxes go per-recipient to the MTA.
-		// Resolved from the sending mailbox so each identity uses its OWN transport.
-		const transport = await ctx.runQuery(internal.mail.outboundTransport.resolveOutboundTransport, {
-			mailboxId: sendingMailboxId,
-		});
+		//
+		// The transport, to branch on mailbox kind. External mailboxes send
+		// through the user's own SMTP via the mail-sync worker (single POST,
+		// synchronous per-recipient result); hosted mailboxes go per-recipient to
+		// the MTA. Resolved from the sending mailbox so each identity uses its OWN
+		// transport.
+		const [allowedFromAddresses, transport] = await Promise.all([
+			ctx.runQuery(internal.mail.identities.resolveAllowedFromAddresses, {
+				mailboxId: sendingMailboxId,
+			}) as Promise<string[]>,
+			ctx.runQuery(internal.mail.outboundTransport.resolveOutboundTransport, {
+				mailboxId: sendingMailboxId,
+			}),
+		]);
 		if (transport.kind === 'external') {
 			await dispatchViaExternalWorker(ctx, {
 				externalAccountId: transport.externalAccountId,

@@ -27,7 +27,7 @@ import { loadThreadOutboundDelivery, loadThreadPage } from './threadReads';
  * through the canonical {@link loadReadableMailbox} so a suspended/deleted
  * mailbox can't be read by id.
  */
-async function loadReadableMessage(
+export async function loadReadableMessage(
 	ctx: QueryCtx,
 	messageId: Id<'mailMessages'>
 ): Promise<Doc<'mailMessages'> | null> {

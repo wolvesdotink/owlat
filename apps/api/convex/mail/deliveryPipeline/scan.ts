@@ -9,13 +9,21 @@
 
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import { scanAttachmentBytes } from '../mtaClient';
+import { mapWithConcurrency } from '../../lib/mapWithConcurrency';
 import type { VirusVerdict } from '../../lib/literalValidators';
+import { extractAttachments } from '@owlat/shared/mailMime';
 import {
-	inboundAttachmentCandidates,
+	candidatesFromLeaves,
 	NOTHING_UNCLEARED,
 	type InboundAttachmentPart,
 	type UnclearedLeaves,
 } from './attachmentParts';
+
+/**
+ * How many attachment leaves one inbound message sends to the scanner at once.
+ * Bounded so a ten-leaf message cannot occupy every clamd worker the MTA has.
+ */
+const INBOUND_SCAN_CONCURRENCY = 4;
 
 /**
  * What one inbound scan established — the verdict, the parts it covers, and
@@ -62,6 +70,13 @@ export type InboundScanResult = {
 	 * rebuild the list the walk above already produced.
 	 */
 	candidates: InboundAttachmentPart[];
+	/**
+	 * Every attachment leaf in DOCUMENT order, empty ones included — exactly
+	 * `extractAttachments` over the message, which is what a `partIndex`
+	 * addresses. Carried for the per-part store (plan 3.5). Optional because
+	 * a result built without a walk (the team inbox's no-scan branch) has none.
+	 */
+	leaves?: InboundAttachmentPart[];
 	/**
 	 * The leaves the endpoint's FILE-TYPE GATE refused, before ClamAV ever ran.
 	 *
@@ -135,7 +150,8 @@ export async function scanInboundAttachments(
 	// tells the reader "there was nothing to scan" apart from "nobody scanned
 	// it", and only the MIME says which. One walk, shared with capture through
 	// the parts this returns.
-	const candidates = inboundAttachmentCandidates(rawBinary);
+	const leaves = extractAttachments(rawBinary);
+	const candidates = candidatesFromLeaves(leaves);
 	// Nothing looked at this message. Every leaf it carries is therefore
 	// UNSCANNED — the count is not zero just because the reason is "there is no
 	// scanner here" rather than "the scanner timed out". A message with no
@@ -144,6 +160,7 @@ export async function scanInboundAttachments(
 		verdict: priorVerdict,
 		cleanParts: [],
 		candidates,
+		leaves,
 		typeRefusedParts: [],
 		uncleared: { ...NOTHING_UNCLEARED, unscanned: candidates.length },
 		scannerAnswered: false,
@@ -157,6 +174,7 @@ export async function scanInboundAttachments(
 		verdict: 'infected',
 		cleanParts: [],
 		candidates,
+		leaves,
 		typeRefusedParts: [],
 		uncleared: NOTHING_UNCLEARED,
 		scannerAnswered: true,
@@ -173,6 +191,7 @@ export async function scanInboundAttachments(
 					verdict: 'clean',
 					cleanParts: candidates,
 					candidates,
+					leaves,
 					typeRefusedParts: [],
 					uncleared: NOTHING_UNCLEARED,
 					scannerAnswered: true,
@@ -210,20 +229,32 @@ export async function scanInboundAttachments(
 		capped: beyondBudget.filter((part) => part.disposition !== 'inline').length,
 		unscanned: beyondBudget.filter((part) => part.disposition === 'inline').length,
 	};
-	for (const part of candidates.slice(0, budget)) {
-		const filename = part.filename || 'attachment';
-		// Shared client owns the POST + fail-open (scanner-down / network error
-		// resolve to 'skipped' and are surfaced via warnScanSkipped). This
-		// path's POLICY: AGGREGATE the per-part verdicts — a single confirmed
-		// infection short-circuits to quarantine; any skip downgrades the
-		// aggregate to 'skipped'.
-		const verdict = await scanAttachmentBytes(mta, filename, part.bytes);
-		if (verdict.kind === 'infected') {
-			// Confirmed malware — short-circuit; the message goes to quarantine
-			// and NOTHING out of it is cleared, not even the leaves already
-			// scanned: the message is the unit a reader quarantines.
-			return quarantined;
-		}
+	// Shared client owns the POST, its deadline and the fail-open (scanner-down,
+	// network error or timeout resolve to 'skipped' and are surfaced via
+	// warnScanSkipped). The leaves are scanned INBOUND_SCAN_CONCURRENCY at a
+	// time rather than one after another: ten sequential ClamAV round trips
+	// were enough to outlast the MTA's webhook timeout on their own.
+	const inBudget = candidates.slice(0, budget);
+	const verdicts = await mapWithConcurrency(
+		inBudget,
+		INBOUND_SCAN_CONCURRENCY,
+		(part) => scanAttachmentBytes(mta, part.filename || 'attachment', part.bytes),
+		// A confirmed infection decides the message, so no further leaf is sent.
+		{ stopWhen: (verdict) => verdict.kind === 'infected' }
+	);
+	// This path's POLICY: AGGREGATE the per-part verdicts, in scan order — a
+	// single confirmed infection short-circuits to quarantine; any skip
+	// downgrades the aggregate to 'skipped'.
+	if (verdicts.some((verdict) => verdict?.kind === 'infected')) {
+		// Confirmed malware — the message goes to quarantine and NOTHING out of
+		// it is cleared, not even the leaves already scanned: the message is the
+		// unit a reader quarantines.
+		return quarantined;
+	}
+	for (const [index, part] of inBudget.entries()) {
+		// Every leaf has a verdict here: the run only stops early on an
+		// infection, and that returned above.
+		const verdict = verdicts[index]!;
 		if (verdict.kind === 'refused') {
 			// The endpoint's file-type gate, not ClamAV: this file is not
 			// malware, it is a type the scanner will not pass through. It is
@@ -257,12 +288,21 @@ export async function scanInboundAttachments(
 			verdict: 'skipped',
 			cleanParts,
 			candidates,
+			leaves,
 			typeRefusedParts,
 			uncleared,
 			scannerAnswered,
 		};
 	}
-	return { verdict: 'clean', cleanParts, candidates, typeRefusedParts, uncleared, scannerAnswered };
+	return {
+		verdict: 'clean',
+		cleanParts,
+		candidates,
+		leaves,
+		typeRefusedParts,
+		uncleared,
+		scannerAnswered,
+	};
 }
 
 /**
