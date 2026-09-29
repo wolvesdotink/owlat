@@ -1,7 +1,39 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { detectionSourceValidator, messageDirectionValidator } from '../lib/convexValidators';
-import { editAdjustmentValidator } from '../mail/ai/editLearningValidators';
+import { detectionSourceValidator, messageDirectionValidator } from '../lib/literalValidators';
+import { editAdjustmentValidator } from '../lib/validators/editLearning';
+import { voiceProfileValidator } from '../lib/validators/mailAi';
+
+/** Field record of `mailCommitments`, shared with the functions that write it. */
+export const mailCommitmentsFields = {
+	mailboxId: v.id('mailboxes'),
+	threadId: v.id('mailThreads'),
+	// The source message the commitment was extracted from (inbound message
+	// that stated a deadline, or the owner's own sent message that made a
+	// promise). One commitment per message+direction (dedup key).
+	messageId: v.id('mailMessages'),
+	// `inbound` = a deadline someone gave the owner; `outbound` = a promise the
+	// owner made in sent mail.
+	direction: messageDirectionValidator,
+	// One line describing the commitment (<= 200 chars).
+	description: v.string(),
+	// The other party (who is owed / who is waiting). Display hint.
+	counterparty: v.optional(v.string()),
+	// Parsed absolute deadline (ms epoch), when the source stated a concrete
+	// date. Absent when only a fuzzy phrase was found — the row still shows in
+	// the brief but the pre-lapse reminder needs a concrete dueAt.
+	dueAt: v.optional(v.number()),
+	// The raw deadline phrase as written ("by Friday", "end of week"), for the
+	// auditable brief even when it could not be parsed to a timestamp.
+	dueHintRaw: v.optional(v.string()),
+	status: v.union(v.literal('open'), v.literal('reminded'), v.literal('done'), v.literal('lapsed')),
+	source: detectionSourceValidator,
+	// Set once the pre-lapse reminder fired (status → reminded), so the cron
+	// never re-reminds the same commitment.
+	remindedAt: v.optional(v.number()),
+	createdAt: v.number(),
+	updatedAt: v.number(),
+};
 
 /**
  * AI features over the mailbox: learned voice profiles, extracted
@@ -17,17 +49,7 @@ export const mailAiTables = {
 		isEnabled: v.boolean(),
 		// Guards against scheduling a second refresh while one is in flight.
 		status: v.union(v.literal('idle'), v.literal('refreshing')),
-		profile: v.optional(
-			v.object({
-				greetings: v.array(v.string()),
-				signOffs: v.array(v.string()),
-				formality: v.number(), // 1 (very casual) … 5 (very formal)
-				brevity: v.number(), // 1 (terse) … 5 (elaborate)
-				languages: v.array(v.string()),
-				isEmojiUser: v.boolean(),
-				examplePhrasings: v.array(v.string()),
-			})
-		),
+		profile: v.optional(voiceProfileValidator),
 		// Number of SENT messages sampled at the last successful derivation.
 		sampleCount: v.number(),
 		// Sent-folder message count observed at the last derivation — a cheap way
@@ -57,40 +79,7 @@ export const mailAiTables = {
 	// recipient-specific deltas (e.g. "always replies to this contact in German")
 	// with the same promote-on-recurrence gate as the voice-level adjustments.
 
-	mailCommitments: defineTable({
-		mailboxId: v.id('mailboxes'),
-		threadId: v.id('mailThreads'),
-		// The source message the commitment was extracted from (inbound message
-		// that stated a deadline, or the owner's own sent message that made a
-		// promise). One commitment per message+direction (dedup key).
-		messageId: v.id('mailMessages'),
-		// `inbound` = a deadline someone gave the owner; `outbound` = a promise the
-		// owner made in sent mail.
-		direction: messageDirectionValidator,
-		// One line describing the commitment (<= 200 chars).
-		description: v.string(),
-		// The other party (who is owed / who is waiting). Display hint.
-		counterparty: v.optional(v.string()),
-		// Parsed absolute deadline (ms epoch), when the source stated a concrete
-		// date. Absent when only a fuzzy phrase was found — the row still shows in
-		// the brief but the pre-lapse reminder needs a concrete dueAt.
-		dueAt: v.optional(v.number()),
-		// The raw deadline phrase as written ("by Friday", "end of week"), for the
-		// auditable brief even when it could not be parsed to a timestamp.
-		dueHintRaw: v.optional(v.string()),
-		status: v.union(
-			v.literal('open'),
-			v.literal('reminded'),
-			v.literal('done'),
-			v.literal('lapsed')
-		),
-		source: detectionSourceValidator,
-		// Set once the pre-lapse reminder fired (status → reminded), so the cron
-		// never re-reminds the same commitment.
-		remindedAt: v.optional(v.number()),
-		createdAt: v.number(),
-		updatedAt: v.number(),
-	})
+	mailCommitments: defineTable(mailCommitmentsFields)
 		.index('by_mailbox', ['mailboxId'])
 		// Dedup / idempotency: at most one commitment per source message+direction.
 		.index('by_message', ['messageId', 'direction'])

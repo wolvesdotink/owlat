@@ -1,17 +1,23 @@
 import { fn } from '../../convex.js';
 import type { ImapCommandModule } from '../types.js';
-import { asyncSession, syncSession } from '../helpers/session.js';
-import { requireAuth, requireSelect, requireWritableSelect } from '../helpers/auth.js';
+import { asyncSession } from '../helpers/session.js';
 import { runCopyOrMove } from '../helpers/copyMove.js';
 
-export interface CopyArgs {
+interface CopyArgs {
 	readonly set: string;
 	readonly target: string;
 	readonly byUid: boolean;
 }
 
+/**
+ * COPY (RFC 3501 §6.4.7) — copy messages from the selected folder into
+ * another one. It only reads the source, so it runs on an EXAMINEd
+ * (read-only) folder too; MOVE, which removes the source messages,
+ * requires a writable selection.
+ */
 export const copyModule: ImapCommandModule<CopyArgs> = {
 	verbs: ['COPY'],
+	requires: 'selected',
 	parseArgs(rawArgs) {
 		const [set, target] = rawArgs;
 		if (!set || !target) {
@@ -20,13 +26,6 @@ export const copyModule: ImapCommandModule<CopyArgs> = {
 		return { ok: true, args: { set, target, byUid: false } };
 	},
 	start({ deps, state, args, tag, send }) {
-		const fail =
-			requireAuth(state, tag) ?? requireSelect(state, tag) ?? requireWritableSelect(state, tag);
-		if (fail) {
-			send(fail);
-			return syncSession();
-		}
-
 		const label = args.byUid ? 'UID COPY' : 'COPY';
 
 		return asyncSession(() =>

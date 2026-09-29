@@ -1,0 +1,59 @@
+import { v } from 'convex/values';
+import { DNSBL_LIST_IDS, DNSBL_UNKNOWN_REASONS } from '@owlat/shared/dnsbl';
+import { FCRDNS_FAILURE_REASONS, FCRDNS_VERDICTS } from '@owlat/shared/fcrdns';
+import {
+	DNSBL_STATUSES,
+	IP_READINESS_BLOCK_REASONS,
+	IPV6_SPF_FAILURE_REASONS,
+	IPV6_SPF_VERDICTS,
+	SOURCE_ADDRESS_FAILURE_REASONS,
+	SOURCE_ADDRESS_VERDICTS,
+} from '@owlat/shared/ipReadiness';
+import { literalUnion } from '../literalUnion';
+
+/** The MTA's configured IP pools, as reported with its warming snapshot. */
+export const warmingPoolsValidator = v.object({
+	transactional: v.array(v.string()),
+	campaign: v.array(v.string()),
+});
+
+/** Per-IP readiness fields, spread into `schema/delivery.ts` `warmingIpFields`. */
+export const ipReadinessFieldValidators = {
+	blockReasons: v.optional(v.array(literalUnion(IP_READINESS_BLOCK_REASONS))),
+	dnsblListings: v.optional(v.array(literalUnion(DNSBL_LIST_IDS))),
+	dnsbl: v.optional(literalUnion(DNSBL_STATUSES)),
+	dnsblCheckedAt: v.optional(v.number()),
+	/** Why the last blocklist sweep could not measure this address. */
+	dnsblUnknownReason: v.optional(literalUnion(DNSBL_UNKNOWN_REASONS)),
+	fcrdns: v.optional(
+		v.object({
+			ehlo: v.string(),
+			ptrNames: v.array(v.string()),
+			isPtrPresent: v.boolean(),
+			isPtrFqdn: v.boolean(),
+			isForwardConfirmed: v.boolean(),
+			isEhloMatched: v.boolean(),
+			verdict: literalUnion(FCRDNS_VERDICTS),
+			isGenericPtr: v.boolean(),
+			reason: v.optional(literalUnion(FCRDNS_FAILURE_REASONS)),
+			checkedAt: v.number(),
+			isOverridden: v.boolean(),
+		})
+	),
+	ipv6Spf: v.optional(
+		v.object({
+			domain: v.string(),
+			verdict: literalUnion(IPV6_SPF_VERDICTS),
+			reason: v.optional(literalUnion(IPV6_SPF_FAILURE_REASONS)),
+			checkedAt: v.number(),
+		})
+	),
+	sourceAddress: v.optional(
+		v.object({
+			verdict: literalUnion(SOURCE_ADDRESS_VERDICTS),
+			reason: v.optional(literalUnion(SOURCE_ADDRESS_FAILURE_REASONS)),
+			target: v.optional(v.string()),
+			checkedAt: v.number(),
+		})
+	),
+};

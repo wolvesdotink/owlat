@@ -1,5 +1,6 @@
 import type { PaginationResult } from 'convex/server';
 import { v } from 'convex/values';
+import { literalUnion } from '../lib/literalUnion';
 import {
 	ACCOUNT_EXPORT_ORGANIZATION_RESOURCES,
 	ACCOUNT_EXPORT_PERSONAL_RESOURCES,
@@ -28,11 +29,11 @@ import { sealedBlobUrl, storeSealedBlob } from '../lib/sealedBlob';
 
 const ACCOUNT_EXPORT_PAGE_SIZE = 100;
 const ACCOUNT_EXPORT_CONTENT_PAGE_SIZE = 1;
-const accountExportResourceValidator = v.union(
-	v.literal('organizationMemberships'),
-	...ACCOUNT_EXPORT_ORGANIZATION_RESOURCES.map((resource) => v.literal(resource)),
-	...ACCOUNT_EXPORT_PERSONAL_RESOURCES.map((resource) => v.literal(resource))
-);
+const accountExportResourceValidator = literalUnion([
+	'organizationMemberships',
+	...ACCOUNT_EXPORT_ORGANIZATION_RESOURCES,
+	...ACCOUNT_EXPORT_PERSONAL_RESOURCES,
+]);
 
 function isContentResource(resource: string): boolean {
 	return (

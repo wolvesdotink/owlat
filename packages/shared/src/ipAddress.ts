@@ -82,6 +82,82 @@ export function isIpv4MappedIpv6(value: string): boolean {
 	return parsed?.family === 'ipv6' && parsed.address.startsWith('::ffff:');
 }
 
+const IPV4_MAPPED_PREFIX = '::ffff:';
+
+/**
+ * Strip an IPv4-mapped IPv6 prefix down to the dotted quad; return anything
+ * else unchanged.
+ *
+ * A dual-stack listener (`::`) reports an IPv4 peer as `::ffff:10.0.0.1`, while
+ * the WHATWG canonical form {@link parseIpAddress} produces is `::ffff:a00:1`;
+ * both map to `10.0.0.1`. Native IPv6 is deliberately NOT canonicalized: the
+ * result keys Redis connection slots and auth-failure counters, which must stay
+ * byte-identical for every address a socket already reports.
+ */
+export function unmapIpv4(ip: string): string {
+	if (ip.slice(0, IPV4_MAPPED_PREFIX.length).toLowerCase() !== IPV4_MAPPED_PREFIX) return ip;
+	const tail = ip.slice(IPV4_MAPPED_PREFIX.length);
+	if (parseIpv4(tail)) return tail;
+	const hex = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(tail);
+	if (!hex) return ip;
+	const high = Number.parseInt(hex[1]!, 16);
+	const low = Number.parseInt(hex[2]!, 16);
+	return [high >> 8, high & 0xff, low >> 8, low & 0xff].join('.');
+}
+
+/** The IPv4 octets of a native IPv4 or IPv4-mapped IPv6 address, else null. */
+function ipv4Octets(parsed: ParsedIpAddress): number[] | null {
+	const v4 = parsed.family === 'ipv4' ? parsed.address : unmapIpv4(parsed.address);
+	return v4.includes(':') ? null : v4.split('.').map(Number);
+}
+
+/**
+ * True for a loopback address: 127.0.0.0/8, `::1` in any spelling, and the
+ * IPv4-mapped forms of 127/8. Anything that does not parse as a bare address
+ * (a hostname, brackets, a port) is false.
+ */
+export function isLoopbackIp(ip: string): boolean {
+	const parsed = parseIpAddress(ip);
+	if (!parsed) return false;
+	const octets = ipv4Octets(parsed);
+	return octets ? octets[0] === 127 : parsed.address === '::1';
+}
+
+/**
+ * True for loopback plus the RFC 1918 private ranges (10/8, 172.16/12,
+ * 192.168/16), including their IPv4-mapped forms. IPv6 unique-local space
+ * (fc00::/7) is deliberately out of scope: no deployment addresses internal
+ * peers that way today, and an exemption is easier to widen than to take back.
+ */
+export function isPrivateOrLoopbackIp(ip: string): boolean {
+	const parsed = parseIpAddress(ip);
+	if (!parsed) return false;
+	const octets = ipv4Octets(parsed);
+	if (!octets) return parsed.address === '::1';
+	const [first, second] = octets as [number, number];
+	return (
+		first === 127 ||
+		first === 10 ||
+		(first === 172 && second >= 16 && second <= 31) ||
+		(first === 192 && second === 168)
+	);
+}
+
+/**
+ * True when a host name or literal names this machine: exactly `localhost`, or
+ * a loopback IP literal ({@link isLoopbackIp}). Case, surrounding whitespace,
+ * one trailing dot and URI brackets (`[::1]`) are ignored. Subdomains of
+ * `localhost` are NOT accepted: this gates plaintext credentials and a
+ * plain-http DNSSEC resolver, and no resolver is obliged to map
+ * `anything.localhost` to loopback.
+ */
+export function isLoopbackHostname(host: string): boolean {
+	let h = host.trim().toLowerCase();
+	if (h.endsWith('.')) h = h.slice(0, -1);
+	if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1);
+	return h === 'localhost' || isLoopbackIp(h);
+}
+
 /** True unless an IPv6-capable pool lacks an IPv4 address for the same workload. */
 export function hasIpv4FallbackForIpv6(addresses: readonly string[]): boolean {
 	const families = new Set(addresses.map(ipAddressFamily).filter(Boolean));

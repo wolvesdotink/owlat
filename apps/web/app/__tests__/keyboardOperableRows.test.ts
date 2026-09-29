@@ -6,28 +6,48 @@
  * (role="button"), operable with Enter and Space, and — for the expandable
  * delivery rows — reflecting open/closed state via aria-expanded.
  *
- * The two extracted rows are MOUNTED and driven with real keyboard events;
- * the domain row, whose header nests action controls, also proves that
- * activating one never fires the row's own action. The marketing/transactional
- * rows are inline in their Convex-backed pages, so their opening tags are read
- * from the source.
+ * The rows are MOUNTED and driven with real keyboard events; the domain row,
+ * whose header nests action controls, also proves that activating one never
+ * fires the row's own action. The marketing and transactional lists share one
+ * grid card and one table row (`components/send/TemplateGrid.vue`,
+ * `TemplateTable.vue`) and one sort menu (`components/list/ListSortMenu.vue`).
+ *
+ * The segment and topic lists share `components/audience/AudienceListTable.vue`.
+ * Its rows are not buttons: the keyboard route to an item is the link on its
+ * name. The topic table used to be a mouse-only `<tr @click>` with no route at
+ * all, and its edit/delete buttons had no focus ring.
+ *
+ * The automations list (`components/automations/ListTable.vue`, with
+ * `RowActions.vue` in both layouts) follows the same rule. Its names used to be
+ * a mouse-only `<span @click>`.
  */
-import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { capitalize } from 'vue';
+import { describe, it, expect, vi } from 'vitest';
+import { capitalize, defineComponent, h, nextTick, useSlots, type Component } from 'vue';
 import { mount } from '@vue/test-utils';
 import RecordRow from '~/components/domains/RecordRow.vue';
 import WebhookRow from '~/components/webhooks/WebhookRow.vue';
+import TemplateGrid from '~/components/send/TemplateGrid.vue';
+import TemplateTable from '~/components/send/TemplateTable.vue';
+import TemplateActionsMenu from '~/components/send/TemplateActionsMenu.vue';
+import TemplateStatusBadge from '~/components/send/TemplateStatusBadge.vue';
+import ListSortMenu from '~/components/list/ListSortMenu.vue';
+import AudienceListTable from '~/components/audience/AudienceListTable.vue';
+import AutomationsListTable, {
+	type AutomationListItem,
+} from '~/components/automations/ListTable.vue';
+import AutomationsRowActions from '~/components/automations/RowActions.vue';
+import { useAutomationBadges } from '~/composables/useAutomationBadges';
+import UiCard from '@owlat/ui/components/ui/Card.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { formatDate } from '~/utils/formatters';
 
-Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
-
-const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
-
-const marketing = read('../pages/dashboard/send/marketing/index.vue');
-const transactional = read('../pages/dashboard/send/transactional/index.vue');
+Object.assign(globalThis, {
+	useI18n: i18nStubs.useI18n,
+	formatDate,
+	useClickOutsideSelector: vi.fn(),
+	useSlots,
+	useAutomationBadges,
+});
 
 const rowStubs = {
 	Icon: { template: '<i />' },
@@ -132,87 +152,246 @@ it('domains row header does not toggle when a nested control is activated', asyn
 	expect(wrapper.emitted('toggle')).toBeUndefined();
 });
 
-/** Every opening tag in `src` whose attribute list contains `marker`. */
-function tagsWith(src: string, marker: string): string[] {
-	const tags: string[] = [];
-	let idx = src.indexOf(marker);
-	while (idx !== -1) {
-		const start = src.lastIndexOf('<', idx);
-		const end = src.indexOf('>', idx);
-		if (start === -1 || end === -1) break;
-		tags.push(src.slice(start, end + 1));
-		idx = src.indexOf(marker, end);
-	}
-	return tags;
+const template = {
+	_id: 'tpl_1',
+	name: 'Welcome',
+	subject: 'Hello',
+	status: 'published' as const,
+	createdAt: 0,
+	updatedAt: 0,
+};
+
+const apiCodeAction = {
+	key: 'api-code',
+	icon: 'lucide:code',
+	label: 'View API code',
+	overlay: true,
+	inline: true,
+	run: vi.fn(),
+};
+
+const sendStubs = {
+	UiCard,
+	SendTemplateActionsMenu: TemplateActionsMenu,
+	SendTemplateStatusBadge: TemplateStatusBadge,
+	UiDropdownMenu: { template: '<div class="menu"><slot name="trigger" /><slot /></div>' },
+	UiDropdownMenuItem: { template: '<button type="button" class="menu-item"><slot /></button>' },
+	UiDropdownDivider: { template: '<hr />' },
+};
+
+function mountSend(component: Component, props: Record<string, unknown> = {}) {
+	return mount(component, {
+		props: { items: [template], canManage: true, actions: [apiCodeAction], ...props },
+		slots: { cells: '<td>Welcome</td>' },
+		global: { plugins: [createTestI18n()], components: sendStubs },
+	});
 }
 
-/** The single `<tagName …>` opening tag that carries `marker`. */
-function pick(src: string, marker: string, tagName: string): string {
-	const matches = tagsWith(src, marker).filter((t) => t.startsWith(`<${tagName}`));
-	expect(
-		matches.length,
-		`expected exactly one <${tagName}> carrying \`${marker}\`, found ${matches.length}`
-	).toBe(1);
-	return matches[0]!;
-}
-
-/** Assert a container tag is a keyboard-operable, non-bubbling activation surface. */
-function expectActivationContainer(tag: string) {
-	expect(tag).toMatch(/role="button"/);
-	expect(tag).toMatch(/tabindex="0"/);
-	// Operable by keyboard, mirroring components/campaigns/CommandRow.vue.
-	expect(tag).toMatch(/@keydown\.enter\.self=/);
-	expect(tag).toMatch(/@keydown\.space\.self\.prevent=/);
-	// `.self` is what prevents a nested control's keyboard activation from also
-	// firing this handler — a bare @keydown.enter would reintroduce the defect.
-	expect(tag).not.toMatch(/@keydown\.enter="/);
-	// Enter has no default on these elements, so `.prevent` on it is inert; the
-	// reference pattern omits it.
-	expect(tag).not.toMatch(/@keydown\.enter\.prevent/);
-}
-
-describe('send template cards and rows are keyboard-operable', () => {
-	it('marketing: both the grid card and the list row activate without bubbling', () => {
-		expectActivationContainer(pick(marketing, '@click="handleEdit(template._id)"', 'UiCard'));
-		expectActivationContainer(pick(marketing, '@click="handleEdit(template._id)"', 'tr'));
-		// Nested action controls exist (overlay + row buttons) with @click.stop —
-		// `.self` on the containers keeps their keyboard activation isolated.
-		expect(marketing).toMatch(/@click\.stop=/);
+describe.each([
+	['grid card', () => mountSend(TemplateGrid)],
+	['table row', () => mountSend(TemplateTable, { columns: ['Name'] })],
+] as const)('send template %s', (_name, mountRow) => {
+	it('is a focusable button named after the template', () => {
+		const row = mountRow().get('[role="button"]');
+		expect(row.attributes('tabindex')).toBe('0');
+		expect(row.attributes('aria-label')).toBe('Edit Welcome');
 	});
 
-	it('transactional: both the grid card and the list row activate without bubbling', () => {
-		expectActivationContainer(pick(transactional, '@click="handleEdit(email._id)"', 'UiCard'));
-		expectActivationContainer(pick(transactional, '@click="handleEdit(email._id)"', 'tr'));
-		expect(transactional).toMatch(/@click\.stop=/);
-		// Icon-only controls that relied on `title` alone are now labelled — the
-		// accessible names come from the message catalog, so pin the bindings.
-		expect(transactional).toMatch(
-			/:aria-label="t\('dashboard\.send\.transactional\.index\.viewApiCode'\)"/
-		);
-		expect(transactional).toMatch(/:aria-label="t\('common\.edit'\)"/);
+	it('opens on Enter and on Space, and Space does not scroll the page', async () => {
+		const wrapper = mountRow();
+		const row = wrapper.get('[role="button"]');
+		await row.trigger('keydown', { key: 'Enter' });
+		expect(wrapper.emitted('edit')).toEqual([[template]]);
+		const space = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+		row.element.dispatchEvent(space);
+		await nextTick();
+		expect(wrapper.emitted('edit')).toHaveLength(2);
+		expect(space.defaultPrevented).toBe(true);
+	});
+
+	it('does not open when a nested control is activated from the keyboard', async () => {
+		const wrapper = mountRow();
+		const nested = wrapper.get('[role="button"]').get('button');
+		await nested.trigger('keydown', { key: 'Enter' });
+		await nested.trigger('keydown', { key: ' ' });
+		expect(wrapper.emitted('edit')).toBeUndefined();
+	});
+
+	it('does not open when a nested control is clicked', async () => {
+		const wrapper = mountRow();
+		await wrapper.get('button[aria-label="View API code"]').trigger('click');
+		expect(apiCodeAction.run).toHaveBeenCalledWith(template);
+		expect(wrapper.emitted('edit')).toBeUndefined();
+	});
+
+	it('labels its icon-only controls', () => {
+		const wrapper = mountRow();
+		for (const label of ['View API code', 'Edit', 'More actions']) {
+			expect(wrapper.find(`button[aria-label="${label}"]`).exists(), label).toBe(true);
+		}
 	});
 });
 
-describe('custom sort dropdowns expose listbox semantics linked to their trigger', () => {
-	const cases = [
-		{ name: 'marketing', src: marketing, id: 'marketing-sort-listbox' },
-		{ name: 'transactional', src: transactional, id: 'transactional-sort-listbox' },
-	];
+describe('the list sort menu exposes listbox semantics linked to its trigger', () => {
+	it('links trigger and listbox and announces the selected option', async () => {
+		const wrapper = mount(ListSortMenu, {
+			props: {
+				options: [
+					{ value: 'updatedAt-desc', label: 'shared.templateList.sort.updatedDesc' },
+					{ value: 'name-asc', label: 'shared.templateList.sort.nameAsc' },
+				],
+				modelValue: 'name-asc',
+				label: 'Sort templates',
+				listboxId: 'marketing-sort-listbox',
+			},
+			global: { plugins: [createTestI18n()] },
+		});
+		const trigger = wrapper.get('button[aria-haspopup="listbox"]');
+		expect(trigger.attributes('aria-controls')).toBe('marketing-sort-listbox');
+		expect(trigger.attributes('aria-expanded')).toBe('false');
 
-	for (const { name, src, id } of cases) {
-		it(`${name}: trigger and listbox are aria-linked with per-option state`, () => {
-			// UiButton renders a native <button> and forwards aria-* via $attrs,
-			// so the design-system trigger satisfies the same contract.
-			const trigger = pick(src, 'aria-haspopup="listbox"', 'UiButton');
-			expect(trigger).toMatch(/:aria-expanded=/);
-			expect(trigger).toContain(`aria-controls="${id}"`);
+		await trigger.trigger('click');
+		expect(trigger.attributes('aria-expanded')).toBe('true');
+		const listbox = wrapper.get('[role="listbox"]');
+		expect(listbox.attributes('id')).toBe('marketing-sort-listbox');
+		const options = listbox.findAll('[role="option"]');
+		expect(options.map((o) => o.attributes('aria-selected'))).toEqual(['false', 'true']);
 
-			const listbox = pick(src, 'role="listbox"', 'div');
-			expect(listbox).toContain(`id="${id}"`);
+		await options[0]!.trigger('click');
+		expect(wrapper.emitted('update:modelValue')).toEqual([['updatedAt-desc']]);
+		expect(wrapper.find('[role="listbox"]').exists()).toBe(false);
+	});
+});
 
-			// Options announce their selected state.
-			const option = pick(src, 'role="option"', 'button');
-			expect(option).toMatch(/:aria-selected=/);
+describe.each(['table', 'cards'] as const)('audience list %s', (layout) => {
+	const topic = {
+		_id: 'tp_1',
+		name: 'Product updates',
+		description: 'Release notes',
+		contactCount: 12,
+		createdAt: 0,
+	};
+
+	function mountList() {
+		return mount(AudienceListTable as Component, {
+			props: {
+				items: [topic],
+				layout,
+				icon: 'lucide:list',
+				itemTo: (item: { _id: string }) => `/dashboard/audience/topics/${item._id}`,
+				countOf: (item: { contactCount: number }) => item.contactCount,
+				countField: 'contactCount',
+				countHeader: 'Contacts',
+				createdHeader: 'Created',
+				totalText: '1 topic',
+				editLabel: 'Edit topic',
+				deleteLabel: 'Delete topic',
+				canManage: true,
+				getSortIcon: () => null,
+			},
+			global: { plugins: [createTestI18n()], stubs: rowStubs },
 		});
 	}
+
+	it('reaches the item through a focusable link on its name', () => {
+		const link = mountList().get('a[href="/dashboard/audience/topics/tp_1"]');
+		expect(link.text()).toContain('Product updates');
+		expect(link.classes()).toContain('focus-visible:ring-2');
+	});
+
+	it('gives the edit and delete buttons a name and a focus ring', async () => {
+		const wrapper = mountList();
+		for (const [label, event] of [
+			['Edit topic', 'edit'],
+			['Delete topic', 'delete'],
+		] as const) {
+			const button = wrapper.get(`button[aria-label="${label}"]`);
+			expect(button.classes()).toContain('focus-visible:ring-2');
+			await button.trigger('click');
+			expect(wrapper.emitted(event)).toEqual([[topic]]);
+		}
+	});
+});
+
+describe.each(['table', 'cards'] as const)('automations list %s', (layout) => {
+	const paused = {
+		_id: 'au_1',
+		name: 'Re-engagement: 90 days quiet',
+		status: 'paused',
+		triggerType: 'contact_created',
+		statsActive: 0,
+		createdAt: 0,
+	} as AutomationListItem;
+	const draft = {
+		...paused,
+		_id: 'au_2',
+		name: 'Birthday greeting',
+		status: 'draft',
+	} as AutomationListItem;
+
+	function mountList(canManage = true) {
+		const onToggle = vi.fn();
+		const onEdit = vi.fn();
+		const Harness = defineComponent({
+			setup: () => () =>
+				h(
+					AutomationsListTable,
+					{ items: [paused, draft], layout, canManage },
+					{
+						actions: (slot: { automation: AutomationListItem; touch: boolean }) =>
+							h(AutomationsRowActions, {
+								automation: slot.automation,
+								canManage,
+								toggling: false,
+								touch: slot.touch,
+								onToggle,
+								onEdit,
+							}),
+					}
+				),
+		});
+		const wrapper = mount(Harness, {
+			global: {
+				plugins: [createTestI18n()],
+				stubs: {
+					...rowStubs,
+					UiDropdownMenu: sendStubs.UiDropdownMenu,
+					UiDropdownMenuItem: sendStubs.UiDropdownMenuItem,
+					UiDropdownDivider: sendStubs.UiDropdownDivider,
+				},
+			},
+		});
+		return { wrapper, onToggle, onEdit };
+	}
+
+	it('reaches the automation through a focusable link on its name', () => {
+		const { wrapper } = mountList();
+		const link = wrapper.get('a[href="/dashboard/automations/au_1"]');
+		expect(link.text()).toBe('Re-engagement: 90 days quiet');
+		expect(link.classes()).toContain('focus-visible:ring-2');
+		// A draft has no analytics yet: its name opens the builder.
+		expect(wrapper.get('a[href="/dashboard/automations/au_2/edit"]').text()).toBe(
+			'Birthday greeting'
+		);
+	});
+
+	it("leaves a draft's name plain for a member who cannot edit it", () => {
+		const { wrapper } = mountList(false);
+		expect(wrapper.find('a[href="/dashboard/automations/au_1"]').exists()).toBe(true);
+		expect(wrapper.findAll('a').map((a) => a.text())).not.toContain('Birthday greeting');
+		expect(wrapper.text()).toContain('Birthday greeting');
+	});
+
+	it('gives the row actions a name and a focus ring', async () => {
+		const { wrapper, onToggle, onEdit } = mountList();
+		const row = wrapper.findAll(layout === 'table' ? 'tbody tr' : 'li')[0]!;
+		for (const label of ['Activate', 'Edit', 'More actions']) {
+			const button = row.get(`button[aria-label="${label}"]`);
+			expect(button.classes()).toContain('focus-visible:ring-2');
+		}
+		await row.get('button[aria-label="Activate"]').trigger('click');
+		await row.get('button[aria-label="Edit"]').trigger('click');
+		expect(onToggle).toHaveBeenCalledWith(paused);
+		expect(onEdit).toHaveBeenCalledWith(paused);
+	});
 });

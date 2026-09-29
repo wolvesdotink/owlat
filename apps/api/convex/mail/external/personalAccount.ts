@@ -96,9 +96,9 @@ export async function getLivePersonalExternalAccountForUser(
  * address.
  *
  * Soft-disconnect keeps the synced mail; without this lookup that promise is
- * empty, because the dup-check below only sees ACTIVE mailboxes, so reconnecting
- * would mint a fresh empty mailbox and strand every retained message in a row no
- * screen can reach. Deliberately narrow: the caller's own PERSONAL account, the
+ * empty, because the connect's claim check (`findAddressClaim`) lets a
+ * soft-deleted external mailbox through, so reconnecting would mint a fresh
+ * empty mailbox and strand every retained message in a row no screen can reach. Deliberately narrow: the caller's own PERSONAL account, the
  * same canonical address, and a mailbox that is soft-deleted. A completed move's
  * archive keeps its mailbox ACTIVE, so it can never be resurrected here, and a
  * shared team inbox or a seed is not a personal account at all.

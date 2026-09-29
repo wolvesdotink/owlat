@@ -30,7 +30,7 @@ import { v } from 'convex/values';
 import { internalMutation, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { audienceValidator } from './audience';
-import { abVariantValidator } from '../lib/convexValidators';
+import { abVariantValidator } from '../lib/literalValidators';
 
 const variantModeValidator = v.union(
 	v.literal('plain'),

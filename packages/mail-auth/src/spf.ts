@@ -11,9 +11,9 @@
  */
 
 import { resolve as dnsResolve } from 'dns/promises';
+import { unmapIpv4 } from '@owlat/shared/ipAddress';
 import { emailDomain } from '@owlat/shared/spfAlignment';
 import {
-	normalizeIp,
 	ipMatchesCidr,
 	ipv6MatchesCidr,
 	expandMacros,
@@ -183,7 +183,7 @@ async function evaluateSpf(
 	resolver: SpfDnsResolver,
 	macroContext: SpfMacroContext
 ): Promise<SpfResult> {
-	const normalizedIp = normalizeIp(senderIp);
+	const normalizedIp = unmapIpv4(senderIp);
 	const terms = spfRecord.split(/\s+/).slice(1); // Skip "v=spf1"
 
 	// redirect= is a modifier, not a mechanism: it only applies if no mechanism

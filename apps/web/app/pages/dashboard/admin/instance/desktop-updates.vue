@@ -20,6 +20,8 @@
  * route guard already keeps non-admins off the page, so this is the second
  * lock rather than the only one.
  */
+import { UnsavedChangesDialog } from '@owlat/email-builder';
+import { useSettingsForm } from '~/composables/useSettingsForm';
 import { formatDateTime, formatRelativeTime } from '~/utils/formatters';
 
 const { t } = useI18n();
@@ -34,7 +36,7 @@ definePageMeta({
 const { canManageSettings } = usePermissions();
 const { showToast } = useToast();
 
-const { policy, releases, isLoading, error, savePolicy, isSaving, checkNow, isChecking } =
+const { policy, releases, isLoading, error, savePolicy, checkNow, isChecking } =
 	useDesktopUpdatePolicy();
 
 type Mode = 'latest' | 'pinned' | 'paused';
@@ -46,28 +48,68 @@ const MAX_DEFER_HOURS = 168;
 const MODES: Mode[] = ['latest', 'pinned', 'paused'];
 const CHANNELS: Channel[] = ['stable', 'prerelease'];
 
-const form = reactive({
-	mode: 'latest' as Mode,
-	channel: 'stable' as Channel,
+type PolicyForm = {
+	mode: Mode;
+	channel: Channel;
+	pinnedVersion: string;
+	deferHours: number;
+};
+
+const DEFAULTS: PolicyForm = {
+	mode: 'latest',
+	channel: 'stable',
 	pinnedVersion: '',
 	deferHours: 0,
-});
+};
 
-// The stored policy is the authority; the form is a working copy of it, re-seeded
-// whenever the subscription re-emits (another admin saving, or our own write
-// landing).
-watch(
-	policy,
-	(value) => {
-		const stored = value?.policy;
-		if (!stored) return;
-		form.mode = stored.mode;
-		form.channel = stored.channel;
-		form.pinnedVersion = stored.pinnedVersion ?? '';
-		form.deferHours = stored.deferHours ?? 0;
+const storedPolicy = computed(() => policy.value?.policy ?? undefined);
+
+const deferInvalid = (hours: number) =>
+	!(Number.isInteger(hours) && hours >= 0 && hours <= MAX_DEFER_HOURS);
+
+/** A policy the backend accepts from this member: a valid window, and a pin when pinned. */
+const isSavable = (draft: PolicyForm) =>
+	canManageSettings.value &&
+	!deferInvalid(draft.deferHours) &&
+	(draft.mode !== 'pinned' || draft.pinnedVersion !== '');
+
+// The stored policy is the authority; the form is a working copy of it. Another
+// admin saving (or our own write landing) re-emits it, which replaces the copy
+// only while it holds no unsaved change.
+const { form, isDirty, isSaving, handleSave, unsavedDialog } = useSettingsForm({
+	source: storedPolicy,
+	defaults: DEFAULTS,
+	project: (stored) => ({
+		mode: stored.mode,
+		channel: stored.channel,
+		pinnedVersion: stored.pinnedVersion ?? '',
+		deferHours: stored.deferHours ?? 0,
+	}),
+	// The pin only means something in pinned mode: a pin left over from an
+	// earlier pinned policy, or dropped by the channel watch below, is no change.
+	dirtyKey: (draft) => ({
+		mode: draft.mode,
+		channel: draft.channel,
+		deferHours: draft.deferHours,
+		pinnedVersion: draft.mode === 'pinned' ? draft.pinnedVersion : '',
+	}),
+	validate: isSavable,
+	save: async (draft) => {
+		// `requiredVersion` has no control yet (the blocking prompt is a later
+		// change), and `updatePolicy` REPLACES the whole object — so carry the
+		// stored value through rather than clearing a floor nobody asked us to clear.
+		const result = await savePolicy({
+			mode: draft.mode,
+			channel: draft.channel,
+			pinnedVersion: draft.mode === 'pinned' ? draft.pinnedVersion : undefined,
+			requiredVersion: storedPolicy.value?.requiredVersion ?? undefined,
+			deferHours: draft.deferHours > 0 ? draft.deferHours : undefined,
+		});
+		if (!result.ok) return false;
+		showToast(t('dashboard.admin.instance.desktopUpdates.savedToast'));
+		return true;
 	},
-	{ immediate: true }
-);
+});
 
 const cachedReleases = computed(() => releases.value ?? []);
 
@@ -77,9 +119,7 @@ const cachedReleases = computed(() => releases.value ?? []);
  * side, so the picker is the UI half of the same rule rather than a hint.
  */
 const pinnableReleases = computed(() =>
-	cachedReleases.value.filter(
-		(release) => !release.isPrerelease || form.channel === 'prerelease'
-	)
+	cachedReleases.value.filter((release) => !release.isPrerelease || form.channel === 'prerelease')
 );
 
 /** `listReleases` hands back newest-first, so the head of the filtered list is it. */
@@ -110,47 +150,13 @@ function lineLabel(line: string): string {
 	);
 }
 
-const deferError = computed(() => {
-	const hours = form.deferHours;
-	if (Number.isInteger(hours) && hours >= 0 && hours <= MAX_DEFER_HOURS) return '';
-	return t('dashboard.admin.instance.desktopUpdates.defer.invalid', { max: MAX_DEFER_HOURS });
-});
-
-const isDirty = computed(() => {
-	const stored = policy.value?.policy;
-	if (!stored) return false;
-	return (
-		form.mode !== stored.mode ||
-		form.channel !== stored.channel ||
-		form.deferHours !== (stored.deferHours ?? 0) ||
-		(form.mode === 'pinned' && form.pinnedVersion !== (stored.pinnedVersion ?? ''))
-	);
-});
-
-const canSave = computed(
-	() =>
-		canManageSettings.value &&
-		isDirty.value &&
-		!deferError.value &&
-		(form.mode !== 'pinned' || form.pinnedVersion !== '')
+const deferError = computed(() =>
+	deferInvalid(form.deferHours)
+		? t('dashboard.admin.instance.desktopUpdates.defer.invalid', { max: MAX_DEFER_HOURS })
+		: ''
 );
 
-async function save() {
-	if (!canSave.value) return;
-	// `requiredVersion` has no control yet (the blocking prompt is a later
-	// change), and `updatePolicy` REPLACES the whole object — so carry the stored
-	// value through rather than clearing a floor nobody asked us to clear.
-	const stored = policy.value?.policy;
-	const result = await savePolicy({
-		mode: form.mode,
-		channel: form.channel,
-		pinnedVersion: form.mode === 'pinned' ? form.pinnedVersion : undefined,
-		requiredVersion: stored?.requiredVersion ?? undefined,
-		deferHours: form.deferHours > 0 ? form.deferHours : undefined,
-	});
-	if (!result.ok) return;
-	showToast(t('dashboard.admin.instance.desktopUpdates.savedToast'));
-}
+const canSave = computed(() => isDirty.value && isSavable(form));
 
 async function runCheck() {
 	const result = await checkNow({});
@@ -170,14 +176,10 @@ async function runCheck() {
 
 <template>
 	<div class="space-y-6">
-		<div>
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.admin.instance.desktopUpdates.title') }}
-			</h1>
-			<p class="mt-1 text-text-secondary">
-				{{ t('dashboard.admin.instance.desktopUpdates.intro') }}
-			</p>
-		</div>
+		<UiPageHeader
+			:title="t('dashboard.admin.instance.desktopUpdates.title')"
+			:description="t('dashboard.admin.instance.desktopUpdates.intro')"
+		/>
 
 		<UiQueryBoundary :loading="isLoading && !policy" :error="error">
 			<div class="space-y-6">
@@ -235,9 +237,7 @@ async function runCheck() {
 						class="mt-3 text-xs text-warning"
 						data-testid="desktop-updates-check-error"
 					>
-						{{
-							t('dashboard.admin.instance.desktopUpdates.lastCheckError', { error: checkError })
-						}}
+						{{ t('dashboard.admin.instance.desktopUpdates.lastCheckError', { error: checkError }) }}
 					</p>
 				</section>
 
@@ -359,11 +359,17 @@ async function runCheck() {
 								{{ t('dashboard.admin.instance.desktopUpdates.defer.suffix') }}
 							</span>
 						</div>
-						<p v-if="deferError" class="text-xs text-error" data-testid="desktop-updates-defer-error">
+						<p
+							v-if="deferError"
+							class="text-xs text-error"
+							data-testid="desktop-updates-defer-error"
+						>
 							{{ deferError }}
 						</p>
 						<p v-else class="text-xs text-text-tertiary">
-							{{ t('dashboard.admin.instance.desktopUpdates.defer.help', { max: MAX_DEFER_HOURS }) }}
+							{{
+								t('dashboard.admin.instance.desktopUpdates.defer.help', { max: MAX_DEFER_HOURS })
+							}}
 						</p>
 					</div>
 
@@ -394,7 +400,7 @@ async function runCheck() {
 							:loading="isSaving"
 							:disabled="!canSave"
 							data-testid="desktop-updates-save"
-							@click="save"
+							@click="handleSave"
 						>
 							{{ t('dashboard.admin.instance.desktopUpdates.save') }}
 						</UiButton>
@@ -466,8 +472,7 @@ async function runCheck() {
 										</summary>
 										<pre
 											class="mt-2 text-xs text-text-secondary whitespace-pre-wrap font-sans leading-relaxed"
-											>{{ release.notes }}</pre
-										>
+											>{{ release.notes }}</pre>
 									</details>
 								</td>
 							</tr>
@@ -476,5 +481,12 @@ async function runCheck() {
 				</section>
 			</div>
 		</UiQueryBoundary>
+
+		<UnsavedChangesDialog
+			:show="unsavedDialog.showDialog"
+			@close="unsavedDialog.cancelNavigation"
+			@discard="unsavedDialog.confirmDiscard"
+			@save="unsavedDialog.confirmSave"
+		/>
 	</div>
 </template>

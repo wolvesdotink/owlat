@@ -120,6 +120,7 @@ function mountPage() {
 			UiButton: buttonStub,
 			UiBadge: true,
 			NuxtLink: true,
+			UiSwitch: true,
 		},
 	});
 }

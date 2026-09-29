@@ -1,6 +1,6 @@
 import { hostname } from 'os';
-import { readFileSync, existsSync } from 'fs';
-import { join } from 'path';
+import { readIntEnv, TCP_PORT_RANGE, TIMER_DELAY_MS_RANGE } from '@owlat/shared/nodeEnv';
+import { loadTlsMaterial, type TlsMaterial } from '@owlat/shared/tlsMaterial';
 
 export interface ImapConfig {
 	port: number;
@@ -9,7 +9,7 @@ export interface ImapConfig {
 	 * `paths` is set when both halves were read from files, so the server can
 	 * re-read them after a renewal (tlsReload.ts). Inline PEM has none.
 	 */
-	tls: { cert: string; key: string; paths?: { cert: string; key: string } } | null;
+	tls: TlsMaterial | null;
 	greetingHost: string;
 	convexUrl: string;
 	convexAdminKey: string;
@@ -48,46 +48,8 @@ function allowsUnthrottledAuth(): boolean {
 	return process.env['IMAP_ALLOW_UNTHROTTLED_AUTH'] === 'true';
 }
 
-/**
- * Read a PEM off disk, turning the one failure that actually happens in
- * production into an actionable message.
- *
- * `existsSync` passes and `readFileSync` throws EACCES whenever the file is
- * present but owned by another uid — which is precisely what a root-written
- * 0600 key on the shared mail-certs volume looks like to this process. The bare
- * `EACCES: permission denied, open '…/default.key'` that used to escape
- * loadConfig named no cause and no fix, and crash-looped 724 times on a live
- * instance. The volume is mounted read-only, so the repair belongs to whoever
- * wrote the file; say so.
- */
-function readCertFile(path: string): string {
-	try {
-		return readFileSync(path, 'utf-8');
-	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === 'EACCES') {
-			throw new Error(
-				`Cannot read TLS material at ${path}: permission denied. The IMAP process runs ` +
-					`as uid ${typeof process.getuid === 'function' ? process.getuid() : 'unknown'} and ` +
-					'mounts the cert volume read-only, so it cannot fix this itself — whatever writes ' +
-					'the cert must hand ownership over (docker-compose.yml: imap-cert-init chowns to ' +
-					'IMAP_RUNTIME_USER; on the VPS: infra/templates/acme-entrypoint.sh).',
-				{ cause: err }
-			);
-		}
-		throw err;
-	}
-}
-
-function readPemEnv(envName: string, fileEnvName: string): string | null {
-	const inline = process.env[envName];
-	if (inline) return inline;
-	const path = process.env[fileEnvName];
-	if (path && existsSync(path)) return readCertFile(path);
-	return null;
-}
-
 export function loadConfig(): ImapConfig {
-	const port = parseInt(process.env['IMAP_PORT'] ?? '993', 10);
+	const port = readIntEnv(process.env, 'IMAP_PORT', { default: 993, ...TCP_PORT_RANGE });
 	const listenAddress = process.env['IMAP_LISTEN'] ?? '0.0.0.0';
 	const greetingHost = process.env['IMAP_GREETING_HOST'] ?? hostname();
 	const convexUrl = process.env['CONVEX_URL'] ?? '';
@@ -120,30 +82,20 @@ export function loadConfig(): ImapConfig {
 		);
 	}
 
-	let tls: ImapConfig['tls'] = null;
-	const cert = readPemEnv('IMAP_TLS_CERT', 'IMAP_TLS_CERT_FILE');
-	const key = readPemEnv('IMAP_TLS_KEY', 'IMAP_TLS_KEY_FILE');
-	if (cert && key) {
-		const certFile = process.env['IMAP_TLS_CERT'] ? undefined : process.env['IMAP_TLS_CERT_FILE'];
-		const keyFile = process.env['IMAP_TLS_KEY'] ? undefined : process.env['IMAP_TLS_KEY_FILE'];
-		tls = {
-			cert,
-			key,
-			...(certFile && keyFile ? { paths: { cert: certFile, key: keyFile } } : {}),
-		};
-	} else {
-		// Look for the shared mail-certs volume mounted at /opt/owlat/certs
-		const certDir = process.env['TLS_CERT_DIR'] ?? '/opt/owlat/certs';
-		const defaultCert = join(certDir, 'default.crt');
-		const defaultKey = join(certDir, 'default.key');
-		if (existsSync(defaultCert) && existsSync(defaultKey)) {
-			tls = {
-				cert: readCertFile(defaultCert),
-				key: readCertFile(defaultKey),
-				paths: { cert: defaultCert, key: defaultKey },
-			};
-		}
-	}
+	// Same loader and fail-loud rules as the MTA's port-25 listener, which reads
+	// the same mail-certs volume: half a pair or a missing explicit file stops
+	// the boot. The volume is mounted at /opt/owlat/certs by default.
+	const tls: ImapConfig['tls'] = loadTlsMaterial({
+		inlineCert: 'IMAP_TLS_CERT',
+		inlineKey: 'IMAP_TLS_KEY',
+		certFile: 'IMAP_TLS_CERT_FILE',
+		keyFile: 'IMAP_TLS_KEY_FILE',
+		certDir: process.env['TLS_CERT_DIR'] ?? '/opt/owlat/certs',
+		label: 'IMAP',
+		ownershipHint:
+			'The IMAP container mounts the cert volume read-only, so it cannot fix this itself ' +
+			'(on the VPS the acme sidecar writes it: infra/templates/acme-entrypoint.sh).',
+	});
 
 	return {
 		port,
@@ -153,14 +105,23 @@ export function loadConfig(): ImapConfig {
 		convexUrl,
 		convexAdminKey,
 		redisUrl,
-		maxConnectionsPerIp: parseInt(process.env['IMAP_MAX_CONN_PER_IP'] ?? '20', 10),
-		maxClients: parseInt(process.env['IMAP_MAX_CLIENTS'] ?? '500', 10),
+		maxConnectionsPerIp: readIntEnv(process.env, 'IMAP_MAX_CONN_PER_IP', { default: 20, min: 1 }),
+		maxClients: readIntEnv(process.env, 'IMAP_MAX_CLIENTS', { default: 500, min: 1 }),
 		// IMAP IDLE clients are expected to issue a NOOP / re-IDLE every
 		// 29 minutes (RFC 2177). We close idle channels at 30 min.
-		idleTimeoutMs: parseInt(process.env['IMAP_IDLE_TIMEOUT_MS'] ?? `${30 * 60 * 1000}`, 10),
-		maxLineBytes: parseInt(process.env['IMAP_MAX_LINE_BYTES'] ?? `${64 * 1024}`, 10),
-		maxLiteralBytes: parseInt(process.env['IMAP_MAX_LITERAL_BYTES'] ?? `${50 * 1024 * 1024}`, 10),
-		preAuthDeadlineMs: parseInt(process.env['IMAP_PRE_AUTH_DEADLINE_MS'] ?? `${30 * 1000}`, 10),
+		idleTimeoutMs: readIntEnv(process.env, 'IMAP_IDLE_TIMEOUT_MS', {
+			default: 30 * 60 * 1000,
+			...TIMER_DELAY_MS_RANGE,
+		}),
+		maxLineBytes: readIntEnv(process.env, 'IMAP_MAX_LINE_BYTES', { default: 64 * 1024, min: 1 }),
+		maxLiteralBytes: readIntEnv(process.env, 'IMAP_MAX_LITERAL_BYTES', {
+			default: 50 * 1024 * 1024,
+			min: 1,
+		}),
+		preAuthDeadlineMs: readIntEnv(process.env, 'IMAP_PRE_AUTH_DEADLINE_MS', {
+			default: 30 * 1000,
+			...TIMER_DELAY_MS_RANGE,
+		}),
 		authRateLimit: {
 			failuresPerWindow: 5,
 			windowMs: 60_000,

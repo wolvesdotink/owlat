@@ -1,6 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { destinationProviderValidator } from '../delivery/deliverabilityValidators';
+import { destinationProviderValidator } from '../lib/validators/deliverability';
 import { archiveFormatValidator } from '../lib/literalValidators';
 
 /**
@@ -38,6 +38,19 @@ export const googleOAuthIntentValidator = v.union(
 	}),
 	v.object({ kind: v.literal('updateShared'), mailboxId: v.id('mailboxes') }),
 	v.object({ kind: v.literal('connectSeed'), seedProvider: destinationProviderValidator })
+);
+
+/**
+ * Connection/sync status of an external mail account. Owned here, beside the
+ * `externalMailAccounts.status` column; `mail/external/accounts.ts` imports it
+ * for the worker's status write.
+ */
+export const externalAccountStatusValidator = v.union(
+	v.literal('pending'), // created; worker not yet connected
+	v.literal('connected'), // IMAP IDLE live
+	v.literal('auth_error'), // bad credentials — needs user fix
+	v.literal('error'), // transient/connection error (backoff)
+	v.literal('disconnected') // user paused / removed
 );
 
 export const mailAccountsTables = {
@@ -149,13 +162,7 @@ export const mailAccountsTables = {
 		adminRetiredAt: v.optional(v.number()),
 
 		// Connection/sync status — the mail-sync worker is the writer.
-		status: v.union(
-			v.literal('pending'), // created; worker not yet connected
-			v.literal('connected'), // IMAP IDLE live
-			v.literal('auth_error'), // bad credentials — needs user fix
-			v.literal('error'), // transient/connection error (backoff)
-			v.literal('disconnected') // user paused / removed
-		),
+		status: externalAccountStatusValidator,
 		lastError: v.optional(v.string()),
 		lastErrorAt: v.optional(v.number()),
 		lastConnectedAt: v.optional(v.number()),
@@ -305,7 +312,7 @@ export const mailAccountsTables = {
 		messagesFailed: v.optional(v.number()),
 		messagesIndexed: v.number(), // messages swept into the knowledge graph
 
-		// Index-sweep cursor over mailMessages (mirrors knowledgeBackfill).
+		// Index-sweep cursor over mailMessages (mirrors knowledge/messageBackfill).
 		indexCursorReceivedAt: v.optional(v.number()),
 		indexCursorId: v.optional(v.id('mailMessages')),
 

@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { FunctionReturnType } from 'convex/server';
+import { useListPage, type ListSortOption } from '~/composables/useListPage';
+
+type BlockRow = FunctionReturnType<typeof api.emailBlocks.blocks.list>[number];
 
 const { t } = useI18n();
 
@@ -13,7 +17,6 @@ definePageMeta({
 
 const router = useRouter();
 
-// Get the current user's organization
 const { hasActiveOrganization, isLoading: teamLoading } = useOrganizationContext();
 // Reusable blocks are templates as far as authorization goes: create, update,
 // duplicate and remove all require `templates:manage` (owner/admin) —
@@ -22,46 +25,15 @@ const { can, showGateFor } = usePermissions();
 const canManage = computed(() => can('templates:manage'));
 const showManageGate = computed(() => showGateFor('templates:manage'));
 
-// Sort state
-type SortOption = 'recent' | 'mostUsed' | 'name';
-const selectedSort = ref<SortOption>('recent');
+// Sort runs server-side: the list query reads the selected option.
+const BLOCK_SORT_OPTIONS = [
+	{ value: 'recent', label: 'dashboard.send.blocks.index.sort.recent' },
+	{ value: 'mostUsed', label: 'dashboard.send.blocks.index.sort.mostUsed' },
+	{ value: 'name', label: 'dashboard.send.blocks.index.sort.name' },
+] as const satisfies readonly ListSortOption[];
 
-const sortOptions = computed<{ value: SortOption; label: string; icon: string }[]>(() => [
-	{ value: 'recent', label: t('dashboard.send.blocks.index.sort.recent'), icon: 'lucide:clock' },
-	{
-		value: 'mostUsed',
-		label: t('dashboard.send.blocks.index.sort.mostUsed'),
-		icon: 'lucide:trending-up',
-	},
-	{
-		value: 'name',
-		label: t('dashboard.send.blocks.index.sort.name'),
-		icon: 'lucide:arrow-down-a-z',
-	},
-]);
+const { showToast } = useToast();
 
-// List FILTER — narrows this page's blocks. It is not the search box (that is
-// the one ⌘K overlay), which is why it says "Filter…" and wears a filter icon.
-// Debouncing is the shared `useDebouncedSearch`, not a private timeout.
-const { searchQuery, debouncedSearch, clear: clearFilter } = useDebouncedSearch();
-
-// Fetch blocks with real-time updates (uses session-based organization context)
-const {
-	data: blocks,
-	isLoading: blocksLoading,
-	error: blocksError,
-	refetch: refetchBlocks,
-} = useConvexQuery(api.emailBlocks.blocks.list, () => ({
-	search: debouncedSearch.value || undefined,
-	sortBy: selectedSort.value,
-}));
-
-// Fetch block stats
-const { data: blockStats } = useOrganizationQuery(api.emailBlocks.blocks.getStatsByTeam);
-
-const isLoading = computed(() => teamLoading.value || blocksLoading.value);
-
-// Mutations (createBlock uses session-based organization context)
 const { run: duplicateBlock } = useBackendOperation(api.emailBlocks.blocks.duplicate, {
 	label: () => t('dashboard.send.blocks.index.duplicateOperation'),
 });
@@ -72,50 +44,46 @@ const { run: createBlock } = useBackendOperation(api.emailBlocks.blocks.create, 
 	label: () => t('dashboard.send.blocks.index.createOperation'),
 });
 
-// Action dropdown state (using reactive object for AppUiDropdownMenu v-model:open per item)
-const dropdownOpenStates = reactive<Record<string, boolean>>({});
+const isCreateModalOpen = ref(false);
+const isEditModalOpen = ref(false);
 
-// Toast notification
-const { showToast: showNotification } = useToast();
+// `reactive` unwraps the composable's refs, so the template reads `list.searchQuery`.
+const list = reactive(
+	useListPage<(typeof BLOCK_SORT_OPTIONS)[number], BlockRow>({
+		sortOptions: BLOCK_SORT_OPTIONS,
+		onDelete: async (block) => {
+			const result = await deleteBlock({ blockId: block._id });
+			if (result.ok) showToast(t('dashboard.send.blocks.index.deletedToast'));
+			return result.ok;
+		},
+		onNew: () => openCreateModal(),
+		canCreate: () => canManage.value,
+		isBusy: () => isCreateModalOpen.value || isEditModalOpen.value,
+	})
+);
 
-// Handle duplicate
-const handleDuplicate = async (blockId: Id<'emailBlocks'>) => {
-	const result = await duplicateBlock({ blockId });
-	if (!result.ok) return;
-	showNotification(t('dashboard.send.blocks.index.duplicatedToast'));
-};
+// Real-time list, skipped until the session has an active organization.
+const {
+	data: blocks,
+	isLoading: blocksLoading,
+	error: blocksError,
+	refetch: refetchBlocks,
+} = useOrganizationQuery(api.emailBlocks.blocks.list, () => ({
+	search: list.debouncedSearch || undefined,
+	sortBy: list.currentSort.value,
+}));
 
-// Delete confirmation modal
-const isDeleteModalOpen = ref(false);
-const blockToDelete = ref<{ id: Id<'emailBlocks'>; name: string; usageCount: number } | null>(null);
-const isDeleting = ref(false);
+const { data: blockStats } = useOrganizationQuery(api.emailBlocks.blocks.getStatsByTeam);
 
-const openDeleteModal = (id: Id<'emailBlocks'>, name: string, usageCount: number) => {
-	blockToDelete.value = { id, name, usageCount };
-	isDeleteModalOpen.value = true;
-};
+const isLoading = computed(() => teamLoading.value || blocksLoading.value);
+const isEmpty = computed(() => !blocks.value || blocks.value.length === 0);
 
-const closeDeleteModal = () => {
-	isDeleteModalOpen.value = false;
-	blockToDelete.value = null;
-};
-
-const handleDelete = async () => {
-	if (!blockToDelete.value) return;
-
-	isDeleting.value = true;
-	try {
-		const result = await deleteBlock({ blockId: blockToDelete.value.id });
-		if (!result.ok) return;
-		showNotification(t('dashboard.send.blocks.index.deletedToast'));
-		closeDeleteModal();
-	} finally {
-		isDeleting.value = false;
-	}
+const handleDuplicate = async (block: BlockRow) => {
+	const result = await duplicateBlock({ blockId: block._id });
+	if (result.ok) showToast(t('dashboard.send.blocks.index.duplicatedToast'));
 };
 
 // Create new block modal
-const isCreateModalOpen = ref(false);
 const createForm = reactive({
 	name: '',
 	description: '',
@@ -166,13 +134,8 @@ const handleCreate = async () => {
 	}
 };
 
-// Edit modal (placeholder for future full editing)
-const isEditModalOpen = ref(false);
-const blockToEdit = ref<{
-	id: Id<'emailBlocks'>;
-	name: string;
-	description?: string;
-} | null>(null);
+// Quick-settings modal: name and description (content has its own editor page)
+const blockToEdit = ref<Id<'emailBlocks'> | null>(null);
 const editForm = reactive({
 	name: '',
 	description: '',
@@ -185,12 +148,8 @@ const { run: updateBlock } = useBackendOperation(api.emailBlocks.blocks.update, 
 	label: () => t('dashboard.send.blocks.index.updateOperation'),
 });
 
-const openEditModal = (block: { _id: Id<'emailBlocks'>; name: string; description?: string }) => {
-	blockToEdit.value = {
-		id: block._id,
-		name: block.name,
-		description: block.description,
-	};
+const openEditModal = (block: BlockRow) => {
+	blockToEdit.value = block._id;
 	editForm.name = block.name;
 	editForm.description = block.description || '';
 	editFormErrors.name = '';
@@ -218,13 +177,13 @@ const handleEdit = async () => {
 
 	try {
 		const result = await updateBlock({
-			blockId: blockToEdit.value.id,
+			blockId: blockToEdit.value,
 			name: editForm.name.trim(),
 			description: editForm.description.trim() || undefined,
 		});
 		if (!result.ok) return;
 
-		showNotification(t('dashboard.send.blocks.index.updatedToast'));
+		showToast(t('dashboard.send.blocks.index.updatedToast'));
 		closeEditModal();
 	} finally {
 		isEditing.value = false;
@@ -232,21 +191,61 @@ const handleEdit = async () => {
 };
 
 // Navigate to the full edit page for content editing
-const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
-	router.push(`/dashboard/send/blocks/${blockId}/edit`);
+const navigateToEditPage = (block: BlockRow) => {
+	router.push(`/dashboard/send/blocks/${block._id}/edit`);
 };
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
-		<!-- Header -->
-		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.send.blocks.index.title') }}
-				</h1>
-				<p class="mt-1 text-text-secondary">{{ t('dashboard.send.blocks.index.subtitle') }}</p>
-			</div>
+	<ListPageShell
+		v-model:search="list.searchQuery"
+		layout="grid"
+		:title="t('dashboard.send.blocks.index.title')"
+		:description="t('dashboard.send.blocks.index.subtitle')"
+		:loading="isLoading && !blocks"
+		:error="blocksError"
+		:error-title="t('dashboard.send.blocks.index.loadError')"
+		:loading-label="t('dashboard.send.blocks.index.loading')"
+		:has-organization="hasActiveOrganization"
+		:is-empty="isEmpty"
+		:active-search="list.debouncedSearch"
+		:search-placeholder="t('common.filterPlaceholder')"
+		:sort-options="list.sortOptions"
+		:sort="list.currentSort.value"
+		:sort-label="t('dashboard.send.blocks.index.sortLabel')"
+		sort-listbox-id="blocks-sort-listbox"
+		:empty-no-org="{
+			icon: 'lucide:blocks',
+			title: t('dashboard.send.blocks.index.noWorkspaceTitle'),
+			description: t('dashboard.send.blocks.index.noWorkspaceDescription'),
+		}"
+		:empty="{
+			icon: 'lucide:blocks',
+			title: t('dashboard.send.blocks.index.emptyTitle'),
+			description: t('dashboard.send.blocks.index.emptyDescription'),
+		}"
+		:no-results="{
+			title: t('dashboard.send.blocks.index.noResultsTitle'),
+			description: t('dashboard.send.blocks.index.noResultsDescription', {
+				query: list.debouncedSearch,
+			}),
+		}"
+		:delete-copy="{
+			title: t('dashboard.send.blocks.index.deleteBlock'),
+			confirmKeypath: 'dashboard.send.blocks.index.deleteConfirmQuestion',
+			description: t('dashboard.send.blocks.index.deleteIrreversible'),
+			confirmText: t('dashboard.send.blocks.index.deleteBlock'),
+		}"
+		:delete-open="list.isDeleteOpen"
+		:delete-name="list.deleteTarget?.name"
+		:is-deleting="list.isDeleting"
+		@update:sort="list.selectSort"
+		@retry="refetchBlocks"
+		@clear-search="list.clearSearch"
+		@confirm-delete="list.confirmDelete"
+		@cancel-delete="list.closeDelete"
+	>
+		<template #actions>
 			<UiButton v-if="canManage" size="sm" @click="openCreateModal">
 				<template #iconLeft>
 					<Icon name="lucide:plus" class="w-4 h-4" />
@@ -256,228 +255,54 @@ const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
 			<p v-else-if="showManageGate" class="text-xs text-text-tertiary">
 				{{ t('dashboard.send.blocks.index.adminsOnly') }}
 			</p>
-		</div>
+		</template>
 
-		<!-- Filters and Search -->
-		<div class="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
-			<!-- Stats -->
-			<div v-if="blockStats" class="text-sm text-text-secondary">
+		<template #filters>
+			<p v-if="blockStats" class="text-sm text-text-secondary">
 				{{
 					t('dashboard.send.blocks.index.blockCount', { count: blockStats.total }, blockStats.total)
 				}}
-			</div>
+			</p>
+		</template>
 
-			<div class="flex-1" />
-
-			<!-- Sort Dropdown -->
-			<div class="relative">
-				<select v-model="selectedSort" class="input input-sm pr-8 appearance-none cursor-pointer">
-					<option v-for="option in sortOptions" :key="option.value" :value="option.value">
-						{{ option.label }}
-					</option>
-				</select>
-				<Icon
-					name="lucide:arrow-up-down"
-					class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary pointer-events-none"
-				/>
-			</div>
-
-			<!-- Filter (not search — see the composable comment above) -->
-			<UiInput
-				v-model="searchQuery"
-				type="text"
-				:placeholder="t('common.filterPlaceholder')"
-				size="sm"
-				class="w-64"
-			>
+		<template v-if="canManage" #empty-action>
+			<UiButton @click="openCreateModal">
 				<template #iconLeft>
-					<Icon name="lucide:list-filter" class="w-4 h-4 text-text-tertiary" />
+					<Icon name="lucide:plus" class="w-4 h-4" />
 				</template>
-			</UiInput>
-		</div>
+				{{ t('dashboard.send.blocks.index.createBlock') }}
+			</UiButton>
+		</template>
 
-		<!-- Content -->
-		<div>
-			<UiQueryBoundary :loading="isLoading && !blocks" :error="blocksError" @retry="refetchBlocks">
-				<template #loading>
-					<div class="flex items-center justify-center py-16">
-						<div class="flex flex-col items-center gap-3">
-							<UiSpinner />
-							<p class="text-text-secondary text-sm">
-								{{ t('dashboard.send.blocks.index.loading') }}
-							</p>
-						</div>
-					</div>
-				</template>
-
-				<!-- Empty State (no organization) -->
-				<UiEmptyState
-					v-if="!hasActiveOrganization"
-					icon="lucide:blocks"
-					:title="t('dashboard.send.blocks.index.noWorkspaceTitle')"
-					:description="t('dashboard.send.blocks.index.noWorkspaceDescription')"
+		<template #grid>
+			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+				<SendBlockCard
+					v-for="block in blocks"
+					:key="block._id"
+					:block="block"
+					:can-manage="canManage"
+					@open="navigateToEditPage"
+					@settings="openEditModal"
+					@duplicate="handleDuplicate"
+					@delete="list.openDelete"
 				/>
+			</div>
+		</template>
 
-				<!-- Empty State (no blocks) -->
-				<UiEmptyState
-					v-else-if="!isLoading && (!blocks || blocks.length === 0) && !debouncedSearch"
-					icon="lucide:blocks"
-					:title="t('dashboard.send.blocks.index.emptyTitle')"
-					:description="t('dashboard.send.blocks.index.emptyDescription')"
-				>
-					<template v-if="canManage" #action>
-						<UiButton @click="openCreateModal">
-							<template #iconLeft>
-								<Icon name="lucide:plus" class="w-4 h-4" />
-							</template>
-							{{ t('dashboard.send.blocks.index.createBlock') }}
-						</UiButton>
-					</template>
-				</UiEmptyState>
-
-				<!-- Empty State (no search results) -->
-				<UiEmptyState
-					v-else-if="!isLoading && (!blocks || blocks.length === 0) && debouncedSearch"
-					icon="lucide:search"
-					:title="t('dashboard.send.blocks.index.noResultsTitle')"
-					:description="
-						t('dashboard.send.blocks.index.noResultsDescription', { query: debouncedSearch })
-					"
-				>
-					<template #action>
-						<UiButton variant="secondary" @click="clearFilter">
-							{{ t('dashboard.send.blocks.index.clearSearch') }}
-						</UiButton>
-					</template>
-				</UiEmptyState>
-
-				<!-- Grid View -->
-				<div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-					<UiCard
-						v-for="block in blocks"
-						:key="block._id"
-						padding="none"
-						overflow="hidden"
-						hoverable
-						clickable
-						class="group"
-						@click="navigateToEditPage(block._id)"
-					>
-						<!-- Thumbnail Area -->
-						<div class="aspect-[4/3] bg-bg-surface flex items-center justify-center relative">
-							<Icon name="lucide:blocks" class="w-12 h-12 text-text-tertiary/30" />
-							<!-- Hover Overlay -->
-							<div
-								class="absolute inset-0 bg-bg-deep/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
-							>
-								<button
-									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
-									:title="t('dashboard.send.blocks.index.editContent')"
-									@click.stop="navigateToEditPage(block._id)"
-								>
-									<Icon name="lucide:file-edit" class="w-4 h-4" />
-								</button>
-								<button
-									v-if="canManage"
-									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
-									:title="t('dashboard.send.blocks.index.quickSettings')"
-									@click.stop="openEditModal(block)"
-								>
-									<Icon name="lucide:settings" class="w-4 h-4" />
-								</button>
-								<button
-									v-if="canManage"
-									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-brand hover:text-text-inverse transition-colors"
-									:title="t('common.duplicate')"
-									@click.stop="handleDuplicate(block._id)"
-								>
-									<Icon name="lucide:copy" class="w-4 h-4" />
-								</button>
-								<button
-									v-if="canManage"
-									class="p-2 rounded-lg bg-bg-elevated text-text-primary hover:bg-error hover:text-text-inverse transition-colors"
-									:title="t('common.delete')"
-									@click.stop="openDeleteModal(block._id, block.name, block.usageCount)"
-								>
-									<Icon name="lucide:trash-2" class="w-4 h-4" />
-								</button>
-							</div>
-						</div>
-
-						<!-- Info -->
-						<div class="p-4">
-							<div class="flex items-start justify-between gap-2">
-								<div class="min-w-0 flex-1">
-									<h3 class="font-medium text-text-primary truncate">{{ block.name }}</h3>
-									<p class="text-sm text-text-tertiary truncate mt-0.5">
-										{{ block.description || t('dashboard.send.blocks.index.noDescription') }}
-									</p>
-								</div>
-								<!-- Dropdown Menu -->
-								<UiDropdownMenu v-model:open="dropdownOpenStates[block._id]" @click.stop>
-									<template #trigger>
-										<UiButton variant="ghost" size="sm">
-											<Icon name="lucide:more-vertical" class="w-4 h-4" />
-										</UiButton>
-									</template>
-									<UiDropdownMenuItem
-										icon="lucide:file-edit"
-										@click="navigateToEditPage(block._id)"
-									>
-										{{ t('dashboard.send.blocks.index.editContent') }}
-									</UiDropdownMenuItem>
-									<UiDropdownMenuItem
-										v-if="canManage"
-										icon="lucide:settings"
-										@click="openEditModal(block)"
-									>
-										{{ t('common.settings') }}
-									</UiDropdownMenuItem>
-									<UiDropdownMenuItem
-										v-if="canManage"
-										icon="lucide:copy"
-										@click="handleDuplicate(block._id)"
-									>
-										{{ t('common.duplicate') }}
-									</UiDropdownMenuItem>
-									<UiDropdownDivider v-if="canManage" />
-									<UiDropdownMenuItem
-										v-if="canManage"
-										icon="lucide:trash-2"
-										danger
-										@click="openDeleteModal(block._id, block.name, block.usageCount)"
-									>
-										{{ t('common.delete') }}
-									</UiDropdownMenuItem>
-								</UiDropdownMenu>
-							</div>
-
-							<!-- Meta Info -->
-							<div class="flex items-center gap-2 mt-3">
-								<span
-									v-if="block.blockCount && block.blockCount > 1"
-									class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-brand/10 text-brand"
-								>
-									{{ t('dashboard.send.blocks.index.blocksBadge', { count: block.blockCount }) }}
-								</span>
-								<span
-									class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-bg-surface text-text-tertiary"
-								>
-									<Icon name="lucide:bar-chart" class="w-3 h-3" />
-									{{ t('dashboard.send.blocks.index.usesBadge', { count: block.usageCount }) }}
-								</span>
-							</div>
-
-							<p class="text-xs text-text-tertiary mt-3">
-								{{
-									t('dashboard.send.blocks.index.updatedAt', { date: formatDate(block.updatedAt) })
-								}}
-							</p>
-						</div>
-					</UiCard>
-				</div>
-			</UiQueryBoundary>
-		</div>
+		<template #delete-extra>
+			<p
+				v-if="list.deleteTarget && list.deleteTarget.usageCount > 0"
+				class="text-sm text-warning mt-2"
+			>
+				{{
+					t(
+						'dashboard.send.blocks.index.deleteUsageWarning',
+						{ count: list.deleteTarget.usageCount },
+						list.deleteTarget.usageCount
+					)
+				}}
+			</p>
+		</template>
 
 		<!-- Create Modal -->
 		<UiModal
@@ -570,55 +395,5 @@ const navigateToEditPage = (blockId: Id<'emailBlocks'>) => {
 				</UiButton>
 			</template>
 		</UiModal>
-
-		<!-- Delete Confirmation Modal -->
-		<UiModal
-			v-model:open="isDeleteModalOpen"
-			:title="t('dashboard.send.blocks.index.deleteBlock')"
-			:persistent="isDeleting"
-		>
-			<div class="flex items-start gap-4">
-				<div class="p-3 rounded-full bg-error/10 shrink-0 flex items-center justify-center">
-					<Icon name="lucide:trash-2" class="w-6 h-6 text-error" />
-				</div>
-				<div>
-					<I18nT
-						keypath="dashboard.send.blocks.index.deleteConfirmQuestion"
-						tag="p"
-						class="text-text-primary"
-						scope="global"
-					>
-						<template #name>
-							<span class="font-semibold">"{{ blockToDelete?.name }}"</span>
-						</template>
-					</I18nT>
-					<p class="text-sm text-text-secondary mt-2">
-						{{ t('dashboard.send.blocks.index.deleteIrreversible') }}
-					</p>
-					<p v-if="blockToDelete && blockToDelete.usageCount > 0" class="text-sm text-warning mt-2">
-						{{
-							t(
-								'dashboard.send.blocks.index.deleteUsageWarning',
-								{ count: blockToDelete.usageCount },
-								blockToDelete.usageCount
-							)
-						}}
-					</p>
-				</div>
-			</div>
-
-			<template #footer>
-				<UiButton variant="secondary" :disabled="isDeleting" @click="closeDeleteModal">
-					{{ t('common.cancel') }}
-				</UiButton>
-				<UiButton variant="danger" :loading="isDeleting" @click="handleDelete">
-					{{
-						isDeleting
-							? t('dashboard.send.blocks.index.deleting')
-							: t('dashboard.send.blocks.index.deleteBlock')
-					}}
-				</UiButton>
-			</template>
-		</UiModal>
-	</div>
+	</ListPageShell>
 </template>

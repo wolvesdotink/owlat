@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveVerificationVerdict } from '../lifecycle';
+import { deriveVerificationVerdict } from '../lifecycleReducer';
 import type { Doc } from '../../_generated/dataModel';
 
 type VerificationResults = NonNullable<Doc<'domains'>['verificationResults']>;
@@ -30,7 +30,7 @@ describe('deriveVerificationVerdict', () => {
 
 	it('fails when the provider check reports an error even with aligned DNS', () => {
 		expect(
-			deriveVerificationVerdict(fullyAlignedDns(), { verified: false, lastError: 'nope' }),
+			deriveVerificationVerdict(fullyAlignedDns(), { verified: false, lastError: 'nope' })
 		).toBe('failed');
 	});
 

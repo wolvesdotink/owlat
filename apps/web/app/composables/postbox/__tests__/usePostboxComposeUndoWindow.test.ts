@@ -59,6 +59,10 @@ vi.mock('../usePostboxComposeAttachments', () => ({
 	}),
 }));
 
+/** The undo toast's window: send() arms it after every send that went out. */
+const undoArm = vi.fn();
+vi.mock('../usePostboxUndoSend', () => ({ usePostboxUndoSend: () => ({ arm: undoArm }) }));
+
 /** Stand-in for the offline outbox so the offline branch is observable. */
 const queueSend = vi.fn(async () => ({ undoToken: 'outbox:ns:1', sendAt: 0 }));
 const isOffline = ref(false);
@@ -76,6 +80,7 @@ beforeEach(() => {
 	settingsData = ref(null);
 	isOffline.value = false;
 	queueSend.mockClear();
+	undoArm.mockClear();
 
 	vi.stubGlobal('useConvexQuery', (fn: unknown) => {
 		if (fn === 'settings.get') return { data: settingsData, isLoading: ref(false) };
@@ -171,5 +176,40 @@ describe('usePostboxCompose — undo-send window on the wire', () => {
 		await composer.send();
 		const [, windowMs] = queueSend.mock.calls[0] as unknown as [unknown, number | undefined];
 		expect(windowMs).toBe(0);
+	});
+});
+
+describe('usePostboxCompose — send arms the undo window', () => {
+	it('arms it once, for the seed mailbox, with the token the send returned', async () => {
+		const composer = await makeComposer();
+		const sent = await composer.send();
+		expect(sent).toEqual({ undoToken: 'tok', sendAt: 1 });
+		expect(undoArm).toHaveBeenCalledOnce();
+		expect(undoArm).toHaveBeenCalledWith({ undoToken: 'tok', sendAt: 1, mailboxId: 'mbx-1' });
+	});
+
+	it('arms it for a scheduled send too, as the hosts did before', async () => {
+		const composer = await makeComposer();
+		await composer.send({ scheduledSendAt: 5_000 });
+		expect(undoArm).toHaveBeenCalledOnce();
+	});
+
+	it('arms it with the synthetic token when the send is queued offline', async () => {
+		isOffline.value = true;
+		const composer = await makeComposer();
+		await composer.send();
+		expect(undoArm).toHaveBeenCalledOnce();
+		expect(undoArm).toHaveBeenCalledWith({
+			undoToken: 'outbox:ns:1',
+			sendAt: 0,
+			mailboxId: 'mbx-1',
+		});
+	});
+
+	it('does not arm it when the server refuses the send', async () => {
+		sendRun.mockResolvedValueOnce({ ok: false });
+		const composer = await makeComposer();
+		await expect(composer.send()).rejects.toThrow('Send failed');
+		expect(undoArm).not.toHaveBeenCalled();
 	});
 });

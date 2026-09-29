@@ -19,6 +19,7 @@ import { getFunctionName } from 'convex/server';
 import { api } from '@owlat/api';
 import { installNuxtStubs, mountDashboardPage, queryResult } from '~/__tests__/a11y';
 import { expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
+import UiPageHeader from '@owlat/ui/components/ui/PageHeader.vue';
 import AiRepliesPage from '../ai-replies.vue';
 
 const flags = ref<Record<string, boolean>>({});
@@ -86,6 +87,7 @@ beforeEach(() => {
 
 function mountPage() {
 	return mountDashboardPage(AiRepliesPage, {
+		components: { UiPageHeader },
 		stubs: {
 			UnsavedChangesDialog: true,
 			UiErrorAlert: true,
@@ -191,5 +193,20 @@ describe('AI replies page', () => {
 		// The rules section is not mounted, so its queries never subscribe.
 		expect(queryArgs.has(getFunctionName(api.autonomy.listRules))).toBe(false);
 		expect(queryArgs.has(getFunctionName(api.autonomyOutcome.listAutoDemotions))).toBe(false);
+	});
+
+	it('keeps an unsaved tone edit when a mode change re-emits the config', async () => {
+		const wrapper = mountPage();
+		await flushPromises();
+		await wrapper.get('#ai-replies-tone').setValue('Warm and brief');
+
+		// The mode write lands on the same config row, which re-emits.
+		await radio(wrapper, 'auto').trigger('change');
+		await flushPromises();
+
+		expect(writes).toEqual([{ fn: SET_MODE, args: { mode: 'auto' } }]);
+		expect((wrapper.get('#ai-replies-tone').element as HTMLTextAreaElement).value).toBe(
+			'Warm and brief'
+		);
 	});
 });

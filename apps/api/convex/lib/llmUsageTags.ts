@@ -22,7 +22,7 @@
  */
 
 import { v } from 'convex/values';
-import { literalUnion } from './convexValidators';
+import { literalUnion } from './literalUnion';
 
 /**
  * The planes a row's spend can belong to, as a runtime tuple so the type and

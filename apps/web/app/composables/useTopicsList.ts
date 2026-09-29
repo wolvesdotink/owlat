@@ -1,14 +1,20 @@
 import { api } from '@owlat/api';
+import { useLoadAllPages } from './useLoadAllPages';
 
 /**
- * Shared subscription to the organization's topics list (paginated, first 100) —
- * the source of truth for topic pickers/dropdowns across the app.
+ * Shared subscription to the organization's topics — the source of truth for
+ * topic pickers and dropdowns across the app (campaign audience, form settings,
+ * automation triggers, the segment filter builder, a contact's topics).
+ *
+ * Every page is loaded (`useLoadAllPages`, 100 at a time), the same as the
+ * topics list page: a picker that stopped at the first page could not offer a
+ * topic the list page shows.
  *
  * Usage: `const { results: topics } = useTopicsList()`.
- *
- * The topics management page (`audience/topics/index.vue`) owns its own
- * paginated list (with its own page size + loadMore) and does not use this.
  */
 export function useTopicsList() {
-	return usePaginatedQuery(api.topics.topics.list, () => ({}), { initialNumItems: 100 });
+	return useLoadAllPages(
+		useOrganizationPaginatedQuery(api.topics.topics.list, undefined, { initialNumItems: 100 }),
+		100
+	);
 }

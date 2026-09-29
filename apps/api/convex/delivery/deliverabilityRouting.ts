@@ -13,7 +13,7 @@ import { contactEmailOf, loadSend, resolveProviderMessageId } from './sendLifecy
 import {
 	deliverabilitySignalValidator,
 	destinationProviderValidator,
-} from './deliverabilityValidators';
+} from '../lib/validators/deliverability';
 
 export const DELIVERABILITY_SIGNAL_MAX_AGE_MS = 10 * 60 * 1000;
 const DELIVERABILITY_MIN_HEALTHY_MS = 15 * 60 * 1000;

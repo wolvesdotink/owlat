@@ -328,7 +328,7 @@ describe('mail.delivery.ingestFromWebhook — decrypt-on-ingest (Sealed Mail E4/
 		await seedMailbox(t);
 		await t.action(internal.e2ee.keysNode.mintForAddress, { address: RECIPIENT });
 		const sender = await generateTestKeypair(SENDER);
-		// No pinned sender key is seeded: `resolvePinnedSenderKey` runs discovery once.
+		// No pinned sender key is seeded: `resolveSenderVerificationKey` runs discovery once.
 		// The `.test` domain resolves to nothing, so discovery fails closed (notFound)
 		// and the message is stored UNVERIFIED rather than claiming a verified signer.
 

@@ -3,7 +3,8 @@
  * PostboxTodayView smoke — the focused inbox landing surface:
  *   - renders the sections in order (header → For you → Today → Show past)
  *   - "For you" strips come from the Reply Queue feed and route there
- *   - auto-filed roll-up line summarises categorized Today mail
+ *   - auto-filed roll-up line summarises categorized Today mail, read off
+ *     each row's own `category` (no second thread subscription)
  *   - inbox-zero shows the quiet "All clear" line
  *   - Browse button emits `browse`; "Show past mails (n)" expands inline.
  *
@@ -43,7 +44,9 @@ const queue = {
 	count: computed(() => queueItems.value.length),
 	isLoading: ref(false),
 };
-const threads = ref<{ threads: Array<Record<string, unknown>> } | undefined>({ threads: [] });
+// The only Convex read the view makes itself is the deep-linked message; the
+// category rides on the feed rows, so no thread feed is stubbed here.
+const convexQuery = vi.fn(() => ({ data: ref(undefined), isLoading: ref(false) }));
 // Reactive route so deep-link tests can arm the For-you scroll at mount and the
 // component's `route.hash` watch fires when the hash is re-set (a pill re-click).
 const routeState = reactive({ hash: '', query: {} as Record<string, unknown> });
@@ -56,7 +59,7 @@ const routerReplace = vi.fn((loc: { hash?: string }) => {
 beforeAll(() => {
 	vi.stubGlobal('usePostboxThreads', () => feed);
 	vi.stubGlobal('usePostboxReplyQueue', () => queue);
-	vi.stubGlobal('useConvexQuery', () => ({ data: threads, isLoading: ref(false) }));
+	vi.stubGlobal('useConvexQuery', convexQuery);
 	vi.stubGlobal('useRoute', () => routeState);
 	vi.stubGlobal('useRouter', () => ({ replace: routerReplace }));
 	// Section headings, the For-you strips and the past-mail affordance render
@@ -192,17 +195,14 @@ describe('PostboxTodayView', () => {
 
 	it('rolls up auto-filed mail into one quiet line and emits view-auto-filed', async () => {
 		feed.messages.value = [
-			todayMsg('m-person', { threadId: 't-person' }),
-			todayMsg('m-news', { threadId: 't-news' }),
+			todayMsg('m-person', { threadId: 't-person', category: 'person' }),
+			todayMsg('m-news', { threadId: 't-news', category: 'newsletter' }),
 		];
 		queue.items.value = [];
-		threads.value = {
-			threads: [
-				{ _id: 't-person', category: { label: 'person' } },
-				{ _id: 't-news', category: { label: 'newsletter' } },
-			],
-		};
+		convexQuery.mockClear();
 		const w = mountView();
+		// One Convex read (the deep-linked message), never a capped thread feed.
+		expect(convexQuery).toHaveBeenCalledTimes(1);
 		expect(w.text()).toContain('1 newsletter auto-filed');
 		expect(w.find('.thread-list').attributes('data-count')).toBe('1');
 		const viewButton = w.findAll('button').find((b) => b.text() === 'view');
@@ -222,7 +222,6 @@ describe('PostboxTodayView', () => {
 	it('shows the quiet All clear line at inbox zero and no For you section', () => {
 		feed.messages.value = [];
 		queue.items.value = [];
-		threads.value = { threads: [] };
 		const w = mountView();
 		expect(w.text()).toContain('All clear');
 		expect(w.text()).not.toContain('For you');
@@ -235,7 +234,6 @@ describe('PostboxTodayView', () => {
 			todayMsg('m-old-2', { receivedAt: Date.now() - 9 * 86_400_000, flagSeen: true }),
 		];
 		queue.items.value = [];
-		threads.value = { threads: [] };
 		const w = mountView();
 		expect(w.find('.inbox-mode-toggle').attributes('data-mode')).toBe('today');
 		await w.find('[data-segment="browse"]').trigger('click');
@@ -252,7 +250,6 @@ describe('PostboxTodayView', () => {
 	it('opens a selected row in the centered overlay, keeping the list mounted', async () => {
 		feed.messages.value = [todayMsg('m-a'), todayMsg('m-b')];
 		queue.items.value = [];
-		threads.value = { threads: [] };
 		const w = mountView();
 		// Rows open in place (no navigation) — the list is selectable.
 		const list = w.findComponent(threadListStub);
@@ -289,7 +286,6 @@ describe('PostboxTodayView', () => {
 		routeState.hash = '#postbox-for-you';
 		routerReplace.mockClear();
 		feed.messages.value = [];
-		threads.value = { threads: [] };
 		queue.items.value = [queueItem('q1')];
 		try {
 			const w = mountView();
@@ -322,7 +318,6 @@ describe('PostboxTodayView', () => {
 	it('seeds the overlay from a deep-linked message id', () => {
 		feed.messages.value = [todayMsg('m-deep')];
 		queue.items.value = [];
-		threads.value = { threads: [] };
 		const w = mountView({ initialMessageId: 'm-deep' });
 		expect(w.find('.reader-overlay').attributes('data-id')).toBe('m-deep');
 	});

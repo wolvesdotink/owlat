@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { getClientIp } from '../publicRateLimit';
+import { getClientIp } from '../lib/publicRateLimit';
 
 /**
  * getClientIp must not let a client-supplied forwarded header mint unlimited

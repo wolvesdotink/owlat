@@ -1,9 +1,10 @@
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
+import { readIntEnv, type IntEnvOptions } from '@owlat/shared/nodeEnv';
 
 type OptionalEnv = (key: string, defaultValue: string) => string;
 type GovernedCapacityEnv = 'SMTP_OUTCOME_JOURNAL_MAX_SIZE' | 'WEBHOOK_DLQ_MAX_SIZE';
 
-const DEFAULT_GOVERNED_CAPACITY = '10000';
+const DEFAULT_GOVERNED_CAPACITY = 10_000;
 const MAX_GOVERNED_CAPACITY = 1_000_000;
 
 const FBL_DEDUP_PROTOCOL = 'owned-v2';
@@ -23,12 +24,20 @@ export interface GovernedDeliveryConfig {
 	maxMessageAgeMs: number;
 }
 
+/**
+ * Validated integer read through the caller's `optionalEnv`. An empty value is
+ * passed as the fallback so readIntEnv treats unset and blank alike.
+ */
+function readGovernedInt(optionalEnv: OptionalEnv, key: string, options: IntEnvOptions): number {
+	return readIntEnv({ [key]: optionalEnv(key, '') }, key, options);
+}
+
 function loadGovernedCapacity(optionalEnv: OptionalEnv, key: GovernedCapacityEnv): number {
-	const capacity = Number(optionalEnv(key, DEFAULT_GOVERNED_CAPACITY));
-	if (!Number.isSafeInteger(capacity) || capacity <= 0 || capacity > MAX_GOVERNED_CAPACITY) {
-		throw new Error(`${key} must be an integer between 1 and ${MAX_GOVERNED_CAPACITY}`);
-	}
-	return capacity;
+	return readGovernedInt(optionalEnv, key, {
+		default: DEFAULT_GOVERNED_CAPACITY,
+		min: 1,
+		max: MAX_GOVERNED_CAPACITY,
+	});
 }
 
 /** Load governed retry-age and Redis safety-state capacity ceilings. */
@@ -49,17 +58,11 @@ export function loadGovernedDeliveryConfig(optionalEnv: OptionalEnv): GovernedDe
 		);
 	}
 
-	const maxMessageAgeMs = parseInt(
-		optionalEnv('MAX_MESSAGE_AGE_MS', String(GOVERNED_MTA_MAX_MESSAGE_AGE_MS)),
-		10
-	);
-	if (
-		!Number.isFinite(maxMessageAgeMs) ||
-		maxMessageAgeMs <= 0 ||
-		maxMessageAgeMs > GOVERNED_MTA_MAX_MESSAGE_AGE_MS
-	) {
-		throw new Error(`MAX_MESSAGE_AGE_MS must be between 1 and ${GOVERNED_MTA_MAX_MESSAGE_AGE_MS}`);
-	}
+	const maxMessageAgeMs = readGovernedInt(optionalEnv, 'MAX_MESSAGE_AGE_MS', {
+		default: GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
+		min: 1,
+		max: GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
+	});
 
 	const smtpOutcomeJournalMaxSize = loadGovernedCapacity(
 		optionalEnv,

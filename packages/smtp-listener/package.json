@@ -28,6 +28,9 @@
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage"
 	},
+	"dependencies": {
+		"@owlat/shared": "workspace:*"
+	},
 	"devDependencies": {
 		"@types/node": "catalog:",
 		"@types/smtp-server": "^3.5.10",

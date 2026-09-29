@@ -10,6 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { getFunctionName, type AnyFunctionReference } from 'convex/server';
 import type { ConnectableAccount, ConvexClient } from '../convex.js';
 import type { MailSyncConfig } from '../config.js';
 import type { BackfillFolderDeps } from '../backfill.js';
@@ -193,8 +194,10 @@ describe('forward INBOX poll inside the backfill loop', () => {
 
 	function backfillConnection(trace: Trace): BackfillInternals {
 		const convex = {
-			query: vi.fn(async (ref: string) =>
-				ref.includes('getBackfillWork') ? { isActive: true, migrationId: 'mig_1' } : ([] as unknown)
+			query: vi.fn(async (fnRef: AnyFunctionReference) =>
+				getFunctionName(fnRef).includes('getBackfillWork')
+					? { isActive: true, migrationId: 'mig_1' }
+					: ([] as unknown)
 			),
 			mutation: vi.fn(async () => ({})),
 			action: vi.fn(async () => ({})),

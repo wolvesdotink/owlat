@@ -91,7 +91,7 @@ async function mountPanel(rows: Row[]) {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	// REAL refs, not `{ value }` literals: the template renders the rows through a
 	// computed, and Vue only unwraps something `isRef` says is a ref.
-	vi.stubGlobal('usePaginatedQuery', () => ({
+	vi.stubGlobal('useOrganizationPaginatedQuery', () => ({
 		results: ref(rows),
 		status: ref('Exhausted'),
 		loadMore: vi.fn(),

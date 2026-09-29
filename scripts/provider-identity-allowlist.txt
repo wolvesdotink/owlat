@@ -159,10 +159,12 @@
 # `SendingDomainProviderModule` yet; domains/providers/index.ts states the gap in
 # full. No wave-0 or wave-1 piece clears this one — whichever piece finally grows
 # that capability, D1's field reaching the module contract, deletes all three
-# lines.
+# lines. The lifecycle split (#860) gathered every lifecycle-side branch of this
+# family (create's up-front check, the edit, the reconcile, the reflection) into
+# domains/returnPathProviders.ts.
 
-apps/api/convex/domains/lifecycle.ts:mta  # the record-set derivation: which kinds publish a MAIL FROM at all
-apps/api/convex/domains/lifecycle.ts:ses  # …and the one that resolves a custom return-path host
+apps/api/convex/domains/returnPathProviders.ts:mta  # the record-set derivation: which kinds publish a MAIL FROM at all
+apps/api/convex/domains/returnPathProviders.ts:ses  # …and the one that resolves a custom return-path host
 apps/api/convex/delivery/checklistDomainValidators.ts:ses  # restates the same question as a checklist item
 
 
@@ -405,13 +407,15 @@ apps/web/app/pages/setup/email.vue:smtp
 # composables, none of them below), and P1.3 is TESTS — it pins that every
 # `setupProbe.validator` names a real export, which is a guard on the declaration,
 # not a rewrite of the switch that dispatches it. So the CLI's prompts and
-# config writer, the two validate endpoints and the probe dispatch itself have no
-# owning card in this plan. Recorded with an honest owner rather than left
-# attributed to a piece that has merged — an owner who has shipped is how a
-# family becomes nobody's.
+# config writer have no owning card in this plan. Recorded with an honest owner
+# rather than left attributed to a piece that has merged — an owner who has
+# shipped is how a family becomes nobody's. The two validate endpoints left this
+# family when their dispatch moved onto the catalog's `setupProbe`
+# (apps/web/server/utils/sendProviderProbe.ts keys on the validator name, never
+# on a kind).
 #
 # THIS IS WHERE A NEW VENDOR LANDS, which is why the bare-path form had to go:
-# six files, nineteen spellings, and every kind added to the product adds a line
+# four files, fifteen spellings, and every kind added to the product adds a line
 # to most of them. Under a file-granular licence that arrival was silent.
 
 apps/setup-cli/src/commands/setupNonInteractive.ts:emailit  # the non-interactive env table
@@ -427,9 +431,5 @@ apps/setup-cli/src/lib/setupConfig.ts:mta
 apps/setup-cli/src/lib/setupConfig.ts:resend
 apps/setup-cli/src/lib/setupConfig.ts:ses
 apps/setup-cli/src/lib/setupConfig.ts:smtp
-apps/web/server/api/delivery/validate-transport.post.ts:emailit  # per-kind live checks
-apps/web/server/api/delivery/validate-transport.post.ts:resend
-apps/web/server/api/delivery/validate-transport.post.ts:smtp
-apps/web/server/api/setup/validate-provider.post.ts:smtp  # the wizard's copy of them
 packages/shared/src/setupValidators.ts:emailit  # the probes themselves
 packages/shared/src/setupValidators.ts:resend

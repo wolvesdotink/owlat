@@ -21,6 +21,8 @@ import UiInput from '@owlat/ui/components/ui/Input.vue';
 import AuthShell from '../components/auth/AuthShell.vue';
 import AuthPasswordInput from '../components/auth/AuthPasswordInput.vue';
 import AuthLegalFooter from '../components/auth/AuthLegalFooter.vue';
+import AuthTwoFactorStageForm from '../components/auth/TwoFactorStageForm.vue';
+import { useAuthForm } from '../composables/useAuthForm';
 import LoginPage from '../pages/auth/login.vue';
 import RegisterPage from '../pages/auth/register.vue';
 import ForgotPasswordPage from '../pages/auth/forgot-password.vue';
@@ -45,24 +47,6 @@ const isPending = ref(false);
 const workspaceSettings = ref<{ isMigrationMode: boolean } | undefined>({ isMigrationMode: false });
 const settingsLoading = ref(false);
 
-/** The real `useAuthForm`, small enough to reproduce: run the effect, hold errors. */
-function fakeAuthForm() {
-	const isLoading = ref(false);
-	const errorMessage = ref('');
-	return {
-		isLoading,
-		errorMessage,
-		submit: async (fn: () => Promise<void>) => {
-			isLoading.value = true;
-			try {
-				await fn();
-			} finally {
-				isLoading.value = false;
-			}
-		},
-	};
-}
-
 beforeAll(() => {
 	Object.assign(globalThis, {
 		useI18n: i18nStubs.useI18n,
@@ -84,7 +68,8 @@ beforeAll(() => {
 			forgotPassword,
 			resetPassword,
 		}),
-		useAuthForm: fakeAuthForm,
+		// The real lifecycle: a rejected sign-in has to land on screen, not escape.
+		useAuthForm,
 		useRecipientSender: () => ({ senderName: ref(null), contactEmail: ref(null) }),
 		useBackendOperation: () => ({ run: vi.fn(async () => null), isLoading: ref(false) }),
 		useOrganizationContext: () => ({ organization }),
@@ -131,6 +116,7 @@ function mountSurface(component: unknown) {
 				AuthShell,
 				AuthPasswordInput,
 				AuthLegalFooter,
+				AuthTwoFactorStageForm,
 			},
 			stubs: {
 				Icon: { template: '<span />' },

@@ -28,11 +28,11 @@ import { recordOperatorRampAction } from '../rampControlAudit';
 import { describeRampDecision, rampDecisionAdminNotice } from '../ramp/controllerNarrative';
 import { rampDecisionChangedState } from '../ramp/controllerTypes';
 import type { Infer } from 'convex/values';
-import {
+import type {
 	paceDecisionReasonValidator,
 	rampDecisionReasonValidator,
 	rampGateIdValidator,
-} from '../deliverabilityValidators';
+} from '../../lib/validators/deliverability';
 import type { PaceDecisionReason } from '../ramp/paceTypes';
 import { PACE_AIMD } from '../ramp/paceConfig';
 import type { RampControllerInput, RampDecisionReason } from '../ramp/controllerTypes';

@@ -24,7 +24,7 @@ import {
 	type DraftQuality,
 } from '../../agent/steps/draft/index';
 import { recordLlmSpend } from '../../analytics/llmUsage';
-import { threadToText } from './assist';
+import { buildThreadTranscript, THREAD_SUMMARY } from './transcript';
 
 /**
  * Categories the flat self-check flags are bucketed into for inline display
@@ -141,7 +141,7 @@ export const coachDraft = authedAction({
 					messageId: args.messageId,
 				});
 				if (thread && thread.messages.length > 0) {
-					context = await threadToText(thread.messages);
+					context = await buildThreadTranscript(thread.messages, THREAD_SUMMARY);
 				}
 			}
 			const { object, tokenUsage, modelUsed } = await runLlmObject({

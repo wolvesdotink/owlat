@@ -1,21 +1,20 @@
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import type { ActionCtx } from '../_generated/server';
 import { getOptional } from '../lib/env';
 import {
 	createAuthenticatedHandler,
 	requireScope,
 	type AuthenticatedContext,
 } from '../auth/apiHandlers';
-import { jsonResponse, errorResponse } from '../auth/apiResponses';
-import { isValidEmail, isValidConvexId, safeDecodeURIComponent } from '../lib/inputGuards';
-import { resolveContactRef } from '../contacts/api';
-
-// Type for the action context
-interface ActionContext {
-	runQuery: <T>(query: unknown, args: unknown) => Promise<T>;
-	runMutation: <T>(mutation: unknown, args: unknown) => Promise<T>;
-	runAction: <T>(action: unknown, args: unknown) => Promise<T>;
-}
+import {
+	jsonResponse,
+	errorResponse,
+	pathSegmentAfter,
+	type PathSegment,
+} from '../auth/apiResponses';
+import { isValidEmail, isValidConvexId } from '../lib/inputGuards';
+import { contactRefFromPath, resolveContactRef } from '../contacts/api';
 
 // Request body types
 interface AddContactBody {
@@ -36,45 +35,31 @@ interface RemoveContactResponse {
 	removed: boolean;
 }
 
-// Database types
-interface Topic {
-	_id: Id<'topics'>;
-	name: string;
-	description?: string;
-	requireDoubleOptIn?: boolean;
-	createdAt: number;
-}
-
 /**
- * Parse a string as a Convex document ID. Delegates to the shared validator
- * so under-length or hyphen-containing inputs are handled consistently with
- * the rest of the backend (lib/validation.ts:isValidConvexId). Module-private:
- * the two handlers below are the only callers.
+ * The `{topicId}` segment of `/api/v1/topics/{topicId}/...`, or the 400 to
+ * return. The ID-shape check is the shared Convex-ID validator, so an
+ * under-length value is a 400 rather than a `v.id('topics')` 500.
  */
-function isValidId(id: string): boolean {
-	return isValidConvexId(id);
+function topicIdFromPath(segment: PathSegment): Id<'topics'> | Response {
+	if (!segment.ok && segment.reason === 'missing') {
+		return errorResponse('invalid_input', 'Topic ID is required');
+	}
+	if (!segment.ok || !isValidConvexId(segment.value)) {
+		return errorResponse('invalid_input', 'Invalid topic ID format');
+	}
+	return segment.value as Id<'topics'>;
 }
 
 /**
  * POST /api/v1/topics/{topicId}/contacts - Add contact to a topic
  */
 export const addContactToTopic = createAuthenticatedHandler(
-	async (ctx: ActionContext, request: Request, auth: AuthenticatedContext): Promise<Response> => {
+	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
 		const denied = requireScope(auth, 'topics:write', request.headers.get('Origin'));
 		if (denied) return denied;
-		// Extract topicId from URL path
-		const url = new URL(request.url);
-		const pathParts = url.pathname.split('/');
 		// Path: /api/v1/topics/{topicId}/contacts
-		const topicsIndex = pathParts.indexOf('topics');
-		if (topicsIndex === -1 || topicsIndex + 1 >= pathParts.length) {
-			return errorResponse('invalid_input', 'Topic ID is required');
-		}
-		const topicId = pathParts[topicsIndex + 1];
-
-		if (!topicId || !isValidId(topicId)) {
-			return errorResponse('invalid_input', 'Invalid topic ID format');
-		}
+		const topicId = topicIdFromPath(pathSegmentAfter(request, 'topics'));
+		if (topicId instanceof Response) return topicId;
 
 		// Parse request body
 		let body: AddContactBody;
@@ -95,14 +80,12 @@ export const addContactToTopic = createAuthenticatedHandler(
 		}
 
 		// Validate contactId format if provided
-		if (body.contactId && !isValidId(body.contactId)) {
+		if (body.contactId && !isValidConvexId(body.contactId)) {
 			return errorResponse('invalid_input', 'Invalid contactId format');
 		}
 
 		// Check if the topic exists and belongs to the organization
-		const topic = await ctx.runQuery<Topic | null>(internal.topics.topics.getInternal, {
-			topicId: topicId as Id<'topics'>,
-		});
+		const topic = await ctx.runQuery(internal.topics.topics.getInternal, { topicId });
 
 		if (!topic) {
 			return errorResponse('not_found', 'Topic not found');
@@ -123,11 +106,8 @@ export const addContactToTopic = createAuthenticatedHandler(
 
 		// Add contact to topic
 		try {
-			const result = await ctx.runMutation<{
-				membershipId: Id<'contactTopics'>;
-				doiStatus: 'not_required' | 'pending' | 'confirmed';
-			}>(internal.topics.topics.addContactInternal, {
-				topicId: topicId as Id<'topics'>,
+			const result = await ctx.runMutation(internal.topics.topics.addContactInternal, {
+				topicId,
 				contactId,
 				siteUrl: getOptional('SITE_URL'),
 			});
@@ -151,40 +131,18 @@ export const addContactToTopic = createAuthenticatedHandler(
  * DELETE /api/v1/topics/{topicId}/contacts/{emailOrId} - Remove contact from a topic
  */
 export const removeContactFromTopic = createAuthenticatedHandler(
-	async (ctx: ActionContext, request: Request, auth: AuthenticatedContext): Promise<Response> => {
+	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
 		const denied = requireScope(auth, 'topics:write', request.headers.get('Origin'));
 		if (denied) return denied;
-		// Extract topicId and emailOrId from URL path
-		const url = new URL(request.url);
-		const pathParts = url.pathname.split('/');
 		// Path: /api/v1/topics/{topicId}/contacts/{emailOrId}
-		const topicsIndex = pathParts.indexOf('topics');
-		if (topicsIndex === -1 || topicsIndex + 1 >= pathParts.length) {
-			return errorResponse('invalid_input', 'Topic ID is required');
-		}
-		const topicId = pathParts[topicsIndex + 1];
+		const topicId = topicIdFromPath(pathSegmentAfter(request, 'topics'));
+		if (topicId instanceof Response) return topicId;
 
-		const contactsIndex = pathParts.indexOf('contacts', topicsIndex);
-		if (contactsIndex === -1 || contactsIndex + 1 >= pathParts.length) {
-			return errorResponse('invalid_input', 'Contact ID or email is required');
-		}
-		const emailOrId = safeDecodeURIComponent(pathParts[contactsIndex + 1] || '');
-
-		if (!topicId || !isValidId(topicId)) {
-			return errorResponse('invalid_input', 'Invalid topic ID format');
-		}
-
-		if (emailOrId === null) {
-			return errorResponse('invalid_input', 'Invalid contact ID or email format');
-		}
-		if (!emailOrId) {
-			return errorResponse('invalid_input', 'Contact ID or email is required');
-		}
+		const emailOrId = contactRefFromPath(pathSegmentAfter(request, 'contacts'));
+		if (emailOrId instanceof Response) return emailOrId;
 
 		// Check if the topic exists and belongs to the organization
-		const topic = await ctx.runQuery<Topic | null>(internal.topics.topics.getInternal, {
-			topicId: topicId as Id<'topics'>,
-		});
+		const topic = await ctx.runQuery(internal.topics.topics.getInternal, { topicId });
 
 		if (!topic) {
 			return errorResponse('not_found', 'Topic not found');
@@ -206,19 +164,17 @@ export const removeContactFromTopic = createAuthenticatedHandler(
 		// to (each keyed by `_id`), not contactTopics membership rows — so match
 		// on the topic's `_id`. (The previous `m.topicId` was always undefined,
 		// so `removed` was always reported false even on a real unsubscribe.)
-		const topicsForContact = await ctx.runQuery<Array<{ _id: Id<'topics'> }>>(
+		const topicsForContact = await ctx.runQuery(
 			internal.topics.topics.getTopicsForContactInternal,
 			{ contactId }
 		);
 
-		const isInTopic = topicsForContact.some(
-			(topicDoc) => topicDoc._id === (topicId as Id<'topics'>)
-		);
+		const isInTopic = topicsForContact.some((topicDoc) => topicDoc._id === topicId);
 
 		// Remove contact from topic (this is idempotent, won't error if not a member)
 		try {
-			await ctx.runMutation<undefined>(internal.topics.topics.removeContactInternal, {
-				topicId: topicId as Id<'topics'>,
+			await ctx.runMutation(internal.topics.topics.removeContactInternal, {
+				topicId,
 				contactId,
 			});
 

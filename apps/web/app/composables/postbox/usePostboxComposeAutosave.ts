@@ -26,6 +26,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
 import type { Ref } from 'vue';
 import type { BackendOperation } from '~/composables/useBackendOperation';
+import { composeDraftFields } from '~/utils/postboxDraftFields';
 import type { ComposerMode } from './usePostboxCompose';
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
@@ -115,15 +116,9 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 		try {
 			const result = await updateDraft.run({
 				draftId: id,
-				toAddresses: toAddresses.value,
-				ccAddresses: ccAddresses.value,
-				bccAddresses: bccAddresses.value,
-				subject: subject.value,
-				bodyHtml: bodyHtml.value,
-				// Only persist blocks when in 'full' mode — keeps simple-mode
-				// drafts small and unambiguous on the wire.
-				bodyBlocks: composerMode.value === 'full' ? JSON.stringify(bodyBlocks.value) : undefined,
-				composerMode: composerMode.value,
+				// The canonical draft snapshot, the same one the on-device mirror
+				// stores (so its restore offer compares like with like).
+				...composeDraftFields(opts),
 				// Always sent: a timestamp arms, explicit null clears server-side.
 				followUpRemindAt: followUpRemindAt.value,
 			});

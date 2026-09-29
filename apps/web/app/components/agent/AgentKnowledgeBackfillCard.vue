@@ -11,8 +11,8 @@ const { t } = useI18n();
 const { showToast } = useToast();
 
 // Knowledge backfill status (live-reactive Convex query — no manual polling)
-const { data: backfillJob } = useConvexQuery(api.agent.knowledgeBackfill.getStatus, () => ({}));
-const { run: cancelBackfill } = useBackendOperation(api.agent.knowledgeBackfill.cancel, {
+const { data: backfillJob } = useConvexQuery(api.knowledge.messageBackfill.getStatus, () => ({}));
+const { run: cancelBackfill } = useBackendOperation(api.knowledge.messageBackfill.cancel, {
 	label: () => t('dashboard.admin.instance.agent.cancelBackfillOperation'),
 });
 

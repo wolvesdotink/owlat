@@ -1,11 +1,10 @@
 import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 import { parseList } from '../../parser.js';
-import { buildSnippet, parseAppendHeaders } from '../../mime.js';
 import type { CommandSession, ImapCommandModule } from '../types.js';
-import { syncSession } from '../helpers/session.js';
-import { requireAuth } from '../helpers/auth.js';
 import { resolveFolderByName } from '../helpers/folders.js';
+import { appendEnvelope } from './envelope.js';
+import { serverFailure } from '../helpers/replies.js';
 
 export interface AppendArgs {
 	readonly folderName: string;
@@ -24,12 +23,6 @@ export interface AppendArgs {
  */
 const MAX_APPEND_LITERAL_BYTES = 50 * 1024 * 1024;
 
-interface AppendResult {
-	readonly uid: number;
-	readonly uidValidity: number;
-	readonly modseq: number;
-}
-
 /**
  * APPEND — RFC 3501 + LITERAL+ (RFC 7888). Two phases:
  *
@@ -41,12 +34,13 @@ interface AppendResult {
  *   2. The pump absorbs N raw OCTETS from the wire into `onLiteralBytes`
  *      (the pump buffers Buffers, so `{N}` frames by bytes not decoded
  *      characters — 8-bit/binary bodies round-trip). Once N have arrived
- *      the module uploads to Convex storage, calls `mailImap:appendMessage`,
+ *      the module uploads to Convex storage, calls `mail/imap/append:appendMessage`,
  *      and resolves `completion`.
  */
 export const appendModule: ImapCommandModule<AppendArgs> = {
 	verbs: ['APPEND'],
 	capabilities: ['LITERAL+'],
+	requires: 'auth',
 	parseArgs(rawArgs) {
 		const folderName = rawArgs[0];
 		if (folderName === undefined) {
@@ -93,12 +87,6 @@ export const appendModule: ImapCommandModule<AppendArgs> = {
 		};
 	},
 	start({ deps, state, args, tag, send }) {
-		const fail = requireAuth(state, tag);
-		if (fail) {
-			send(fail);
-			return syncSession();
-		}
-
 		if (!args.isLiteralPlus) {
 			send('+ Ready for literal data');
 		}
@@ -131,10 +119,7 @@ export const appendModule: ImapCommandModule<AppendArgs> = {
 					return;
 				}
 
-				const uploadUrl = (await deps.convex.mutation(
-					fn.generateUploadUrl as never,
-					{} as never
-				)) as string;
+				const uploadUrl = await deps.convex.mutation(fn.generateUploadUrl, {});
 				const uploadRes = await fetch(uploadUrl, {
 					method: 'POST',
 					headers: { 'Content-Type': 'message/rfc822' },
@@ -146,30 +131,28 @@ export const appendModule: ImapCommandModule<AppendArgs> = {
 				}
 				const { storageId } = (await uploadRes.json()) as { storageId: string };
 
-				const headers = parseAppendHeaders(rawBuffer);
-				const snippet = buildSnippet(headers.textBody);
+				const envelope = appendEnvelope(rawBuffer);
 
-				const result = (await deps.convex.mutation(
-					fn.appendMessage as never,
-					{
-						folderId: folder._id,
-						rawStorageId: storageId,
-						rawSize: rawBuffer.length,
-						rfc822MessageId: headers.messageId,
-						inReplyTo: headers.inReplyTo,
-						references: headers.references,
-						fromAddress: headers.from.address,
-						fromName: headers.from.name,
-						toAddresses: headers.to.map((a) => a.address),
-						ccAddresses: headers.cc.map((a) => a.address),
-						bccAddresses: headers.bcc.map((a) => a.address),
-						subject: headers.subject,
-						snippet,
-						textBodyInline: headers.textBody?.slice(0, 65536),
-						internalDate: args.internalDate ?? headers.internalDate,
-						flags: args.flags,
-					} as never
-				)) as AppendResult;
+				// No snippet: the backend derives it from the bodies, like every
+				// other ingest path.
+				const result = await deps.convex.mutation(fn.appendMessage, {
+					folderId: folder._id,
+					rawStorageId: storageId,
+					rawSize: rawBuffer.length,
+					rfc822MessageId: envelope.messageId,
+					inReplyTo: envelope.inReplyTo,
+					references: envelope.references,
+					fromAddress: envelope.from.address,
+					fromName: envelope.from.name,
+					toAddresses: envelope.to.map((a) => a.address),
+					ccAddresses: envelope.cc.map((a) => a.address),
+					bccAddresses: envelope.bcc.map((a) => a.address),
+					subject: envelope.subject,
+					textBodyInline: envelope.text,
+					htmlBodyInline: envelope.html,
+					internalDate: args.internalDate ?? envelope.internalDate,
+					flags: args.flags,
+				});
 
 				finalize(`${tag} OK [APPENDUID ${result.uidValidity} ${result.uid}] APPEND completed`);
 			} catch (err) {
@@ -187,7 +170,7 @@ export const appendModule: ImapCommandModule<AppendArgs> = {
 					return;
 				}
 				logger.error({ err }, 'APPEND processing failed');
-				finalize(`${tag} NO APPEND failed`);
+				finalize(serverFailure(tag, 'APPEND'));
 			}
 		};
 
@@ -202,7 +185,7 @@ export const appendModule: ImapCommandModule<AppendArgs> = {
 					// Fire and forget — completion resolves when upload finishes
 					performUpload().catch((err) => {
 						logger.error({ err }, 'APPEND upload failed');
-						finalize(`${tag} NO APPEND failed`);
+						finalize(serverFailure(tag, 'APPEND'));
 					});
 				}
 			},

@@ -1,4 +1,5 @@
 <script lang="ts">
+import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 import type { SenderHeuristics } from '~/utils/senderAuth';
 import type { InboundEncryptionInfo } from '~/utils/sealedMessage';
 import type { InboundSignatureInfo } from '~/utils/signatureBadge';
@@ -65,7 +66,7 @@ export type PostboxReaderMessage = {
 	// the badge's drivers, not here.
 	inboundSignatureInfo?: InboundSignatureInfo;
 	flagSeen?: boolean;
-	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
+	unsubscribe?: ListUnsubscribeTarget;
 };
 </script>
 
@@ -76,6 +77,7 @@ import { extractEmailAddress } from '~/utils/emailAddress';
 import { discussionCounterpartyLabel } from '~/utils/postboxThreadDiscussion';
 import { deriveReplyRisk, senderRiskInputOf, type ReplyRisk } from '~/utils/senderAuth';
 import { formatCompactRelativeTime } from '~/utils/formatters';
+import { useNow } from '~/composables/useNow';
 import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
 import {
 	POSTBOX_MARK_READ_DWELL_MS,
@@ -417,19 +419,10 @@ const expanded = ref<Set<string>>(new Set());
 // Minute tick so the relative timestamps ("2h ago") stay fresh while a
 // thread sits open. Presentation-only; the absolute datetime lives in the
 // title tooltip.
-const relativeTimeTick = ref(0);
-let relativeTimeTimer: ReturnType<typeof setInterval> | undefined;
-onMounted(() => {
-	relativeTimeTimer = setInterval(() => {
-		relativeTimeTick.value++;
-	}, 60_000);
-});
-onBeforeUnmount(() => {
-	if (relativeTimeTimer) clearInterval(relativeTimeTimer);
-});
+const relativeTimeNow = useNow({ intervalMs: 60_000 });
 function relativeReceivedAt(timestamp: number): string {
-	// Touch the tick so the computed template bindings re-run each minute.
-	void relativeTimeTick.value;
+	// Touch the clock so the computed template bindings re-run each minute.
+	void relativeTimeNow.value;
 	return formatCompactRelativeTime(timestamp);
 }
 

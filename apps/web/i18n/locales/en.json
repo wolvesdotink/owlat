@@ -243,6 +243,9 @@
 				"undo": "Undo",
 				"undoTitle": "Undo last (⌘Z)"
 			},
+			"clarificationQuestions": {
+				"questionCounter": "Question {index} of {total}"
+			},
 			"reviewApproveUndoToast": {
 				"approved": "Approved",
 				"sendingIn": "{what} — sending in {seconds}s",
@@ -4519,17 +4522,13 @@
 				"allClear": "All clear",
 				"listLabel": "Categorized conversations",
 				"loadMore": "Load more",
-				"noSubject": "(no subject)",
 				"recategorize": "Recategorize as…",
 				"recategorizeHint": "Remembered for this sender — future mail from them lands here too."
 			},
 			"postboxThreadGroupList": {
 				"allClear": "All clear",
 				"listLabel": "Conversations",
-				"loadMore": "Load more",
-				"noSubject": "(no subject)",
-				"noSubjectLabel": "No subject",
-				"rowLabel": "{subject}, {count} unread"
+				"loadMore": "Load more"
 			},
 			"postboxThreadHeader": {
 				"alertOnReply": "Alert on reply",
@@ -4624,6 +4623,7 @@
 				"dueLabel": "No reply yet — dismiss reminder",
 				"dueTitle": "No reply yet — click to dismiss the reminder",
 				"noReplyYet": "No reply yet",
+				"reminderSetTitle": "Reply reminder {when}",
 				"reminderTitle": "Reply reminder {when} — click to cancel"
 			},
 			"postboxTodayReaderOverlay": {
@@ -4829,7 +4829,6 @@
 				"allClear": "All clear",
 				"listLabel": "Bundled messages",
 				"loadMore": "Load more",
-				"noSubject": "(no subject)",
 				"latestFrom": "latest from {sender}",
 				"archiveAll": "Archive all",
 				"archiveAllLabel": "Archive all {count} messages in this bundle",
@@ -4840,7 +4839,6 @@
 				"allClear": "All clear",
 				"listLabel": "Inbox sections",
 				"everythingElse": "Everything else",
-				"noSubject": "(no subject)",
 				"unreadCapped": "{count}+",
 				"loadMoreIn": "Load more in {section}"
 			},
@@ -5054,6 +5052,11 @@
 				"toastDeleting": "Deleting this mailbox and its mail.",
 				"toastDisconnected": "Mailbox disconnected.",
 				"updateCredentials": "Update password"
+			},
+			"postboxConversationRow": {
+				"noSubject": "(no subject)",
+				"noSubjectLabel": "No subject",
+				"rowLabel": "{subject}, {count} unread"
 			},
 			"threadDiscussion": {
 				"close": "Hide discussion",
@@ -5945,7 +5948,8 @@
 	"compose": {
 		"loadingMailbox": "Loading mailbox…",
 		"noMailbox": "No mailbox is configured for this workspace.",
-		"pageTitle": "Compose — Owlat"
+		"pageTitle": "Compose — Owlat",
+		"sentNotice": "Your message is on its way. This window closes when the time to undo it runs out."
 	},
 	"dashboard": {
 		"admin": {
@@ -8178,7 +8182,6 @@
 							"audience": "Audience",
 							"segments": "Segments"
 						},
-						"clearSearch": "Clear search",
 						"createdOn": "Created {date}",
 						"empty": {
 							"action": "Edit segment",
@@ -8194,31 +8197,13 @@
 						"exportCsv": "Export CSV",
 						"loading": "Loading segment...",
 						"matchingContacts": "{count} matching contact | {count} matching contacts",
-						"noResults": {
-							"body": "No contacts match \"{query}\". Try a different search term.",
-							"title": "No results found"
-						},
 						"notFound": {
 							"action": "Back to segments",
 							"body": "This segment may have been deleted or doesn't exist.",
 							"title": "Segment not found"
 						},
 						"pageTitle": "Segment — Owlat",
-						"pagination": {
-							"next": "Next",
-							"previous": "Previous"
-						},
-						"searchPlaceholder": "Search contacts in this segment...",
-						"showing": {
-							"empty": "0 contacts",
-							"label": "Showing {range}",
-							"range": "{start}-{end} of {total}"
-						},
-						"table": {
-							"added": "Added",
-							"firstName": "First name",
-							"lastName": "Last name"
-						}
+						"searchPlaceholder": "Search contacts in this segment..."
 					}
 				},
 				"index": {
@@ -8228,14 +8213,12 @@
 						"viewContacts": "View contacts"
 					},
 					"adminsOnly": "Only owners and admins can create or edit segments.",
-					"clearSearch": "Clear search",
 					"count": "{count} segment | {count} segments",
 					"deleteDialog": {
-						"body": "Are you sure you want to delete \"{name}\"?",
+						"body": "Are you sure you want to delete {name}?",
 						"note": "This action cannot be undone. Any campaigns using this segment will need to be updated.",
 						"title": "Delete segment"
 					},
-					"deleting": "Deleting...",
 					"empty": {
 						"description": "Create your first segment to filter contacts based on properties, activity, and more.",
 						"title": "No segments yet"
@@ -8413,7 +8396,6 @@
 							"audience": "Audience",
 							"topics": "Topics"
 						},
-						"clearSearch": "Clear search",
 						"contactCount": "{count} contact | {count} contacts",
 						"contactFallback": "contact",
 						"createdOn": "Created {date}",
@@ -8424,10 +8406,6 @@
 							"title": "No contacts in this topic"
 						},
 						"loading": "Loading topic...",
-						"noResults": {
-							"body": "No contacts match \"{query}\". Try a different search term.",
-							"title": "No results found"
-						},
 						"notFound": {
 							"action": "Back to topics",
 							"body": "This topic may have been deleted or doesn't exist.",
@@ -8437,26 +8415,12 @@
 							"removeContact": "Remove from topic"
 						},
 						"pageTitle": "Subscription topic — Owlat",
-						"pagination": {
-							"next": "Next",
-							"previous": "Previous"
-						},
 						"removeDialog": {
 							"description": "Remove \"{email}\" from this topic? The contact will not be deleted, only removed from \"{topic}\".",
 							"title": "Remove from topic"
 						},
 						"removeFromTopic": "Remove from topic",
 						"searchPlaceholder": "Search contacts in this topic...",
-						"showing": {
-							"empty": "0 contacts",
-							"label": "Showing {range}",
-							"range": "{start}-{end} of {total}"
-						},
-						"table": {
-							"added": "Added",
-							"firstName": "First name",
-							"lastName": "Last name"
-						},
 						"toasts": {
 							"removed": "Removed \"{email}\" from the topic"
 						}
@@ -8468,19 +8432,17 @@
 						"edit": "Edit topic"
 					},
 					"adminsOnly": "Only owners and admins can create or edit topics.",
-					"clearSearch": "Clear search",
 					"count": "{count} topic | {count} topics",
 					"createModal": {
 						"title": "Create topic"
 					},
 					"creating": "Creating...",
 					"deleteModal": {
-						"body": "Are you sure you want to delete \"{name}\"?",
+						"body": "Are you sure you want to delete {name}?",
 						"contactsKept": "The {count} contact in this topic will not be deleted, only removed from the topic. | The {count} contacts in this topic will not be deleted, only removed from the topic.",
 						"irreversible": "This action cannot be undone.",
 						"title": "Delete topic"
 					},
-					"deleting": "Deleting...",
 					"editModal": {
 						"title": "Edit topic"
 					},
@@ -8622,6 +8584,7 @@
 						"noEmail": "No email",
 						"previous": "Previous",
 						"range": "{from}–{to}",
+						"statusFilterLabel": "Filter contacts by status",
 						"stepAndTime": "Step {number} · {time}",
 						"title": "Contacts in automation",
 						"viewContact": "View contact"
@@ -8641,14 +8604,12 @@
 					"viewDetails": "View details"
 				},
 				"adminsOnly": "Only owners and admins can create or edit automations.",
-				"clearSearch": "Clear search",
 				"deleteDialog": {
 					"activeWarning": "Active automations must be paused before deletion.",
 					"body": "Are you sure you want to delete {name}?",
 					"note": "This action cannot be undone. The automation and all its steps will be permanently deleted.",
 					"title": "Delete automation"
 				},
-				"deleting": "Deleting...",
 				"empty": {
 					"action": "Create automation",
 					"description": "Create your first automation to send emails automatically when a contact signs up, subscribes, or triggers an event.",
@@ -8675,6 +8636,7 @@
 					"draft": "Draft",
 					"paused": "Paused"
 				},
+				"statusFilterLabel": "Automation status",
 				"subtitle": "Create automated email workflows triggered by events",
 				"table": {
 					"contactsInFlow": "Contacts in flow",
@@ -8741,20 +8703,6 @@
 						"switchLabel": "Public archive",
 						"title": "Public archive"
 					},
-					"audience": {
-						"eligible": "eligible recipients",
-						"eligibleForTopic": "eligible recipients for this topic",
-						"ineligibleDescription": "{excluded} of {total} contacts in this topic are not eligible (no email address, unsubscribed/suppressed, or double opt-in not completed) and will be excluded.",
-						"ineligibleTitle": "Some subscribers won't receive this campaign",
-						"segmentDescription": "Target contacts matching specific criteria.",
-						"segmentTitle": "Saved segment",
-						"selectSegment": "Select a segment...",
-						"selectTopic": "Select a topic...",
-						"title": "Audience",
-						"topicDescription": "Send to contacts subscribed to a specific topic.",
-						"topicOption": "{name} ({count} contacts)",
-						"topicTitle": "Specific topic"
-					},
 					"backToCampaigns": "Back to campaigns",
 					"badges": {
 						"draft": "Draft",
@@ -8779,10 +8727,6 @@
 					"details": {
 						"campaignName": "Campaign name",
 						"campaignNamePlaceholder": "e.g. Summer newsletter 2026",
-						"fromEmail": "From address",
-						"fromEmailPlaceholder": "e.g., hello{'@'}acme.com",
-						"fromName": "From name",
-						"fromNamePlaceholder": "e.g. John from Acme",
 						"optionalSuffix": "(optional)",
 						"replyTo": "Reply-to address",
 						"replyToPlaceholder": "e.g., support{'@'}acme.com",
@@ -8938,13 +8882,11 @@
 				"deleteDialog": {
 					"confirm": "Delete campaign",
 					"confirmQuestion": "Are you sure you want to delete {name}?",
-					"deleting": "Deleting…",
 					"description": "This action cannot be undone. The campaign and its data will be permanently deleted.",
 					"title": "Delete campaign"
 				},
 				"deleteOperation": "Delete campaign",
 				"duplicateOperation": "Duplicate campaign",
-				"errorMessage": "We hit an error loading your campaigns.",
 				"errorTitle": "Couldn't load campaigns",
 				"listEmpty": {
 					"description": "Create your first campaign to start reaching your audience.",
@@ -8952,6 +8894,10 @@
 				},
 				"loadMore": "Load more",
 				"newCampaign": "New campaign",
+				"noWorkspace": {
+					"description": "Create or select a workspace to start sending campaigns.",
+					"title": "No workspace selected"
+				},
 				"pageTitle": "Campaigns — Owlat",
 				"pills": {
 					"attention": "Needs attention",
@@ -8960,11 +8906,11 @@
 					"sent": "Sent"
 				},
 				"searchEmpty": {
-					"clear": "Clear search",
 					"description": "No campaigns match \"{query}\". Try a different search term.",
 					"title": "No results found"
 				},
 				"searchPlaceholder": "Search campaigns…",
+				"statusFilterLabel": "Campaign status",
 				"subtitle": "Everything you've sent and everything waiting on you, in one place.",
 				"title": "Campaigns",
 				"toasts": {
@@ -9275,7 +9221,6 @@
 					"urgent": "urgent"
 				},
 				"processingFailed": "Processing failed",
-				"questionCounter": "Question {index} of {total}",
 				"rejectDraft": "Reject draft",
 				"rejectModalBody": "Optionally provide a reason. This feedback helps improve future drafts.",
 				"rejectReasonPlaceholder": "Reason for rejection (optional)",
@@ -9695,7 +9640,6 @@
 			},
 			"detail": {
 				"detail": {
-					"noMailbox": "No mailbox configured",
 					"pageTitle": "Mail — Owlat"
 				},
 				"index": {
@@ -9821,16 +9765,10 @@
 				}
 			},
 			"subscriptions": {
-				"addMailAccount": "Add a mail account",
-				"noMailbox": "No mailbox yet",
-				"noMailboxHint": "Connect or create a mail account to see what you are subscribed to.",
 				"pageTitle": "Subscriptions"
 			},
 			"files": {
-				"pageTitle": "Files — Owlat",
-				"noMailbox": "No mailbox yet",
-				"noMailboxHint": "Connect or create a mailbox to browse its attachments.",
-				"addMailAccount": "Add mail account"
+				"pageTitle": "Files — Owlat"
 			}
 		},
 		"preferences": {
@@ -10276,19 +10214,13 @@
 						"previewSubject": "Block preview",
 						"saveOperation": "Save block",
 						"savedToast": "Block saved successfully",
-						"settingsTitle": "Block settings",
-						"variables": {
-							"email": "Email",
-							"firstName": "First name",
-							"lastName": "Last name"
-						}
+						"settingsTitle": "Block settings"
 					}
 				},
 				"index": {
 					"adminsOnly": "Only owners and admins can create or delete blocks.",
 					"blockCount": "{count} block | {count} blocks",
 					"blocksBadge": "{count} blocks",
-					"clearSearch": "Clear search",
 					"createBlock": "Create block",
 					"createOperation": "Create block",
 					"creating": "Creating...",
@@ -10298,7 +10230,6 @@
 					"deleteOperation": "Delete block",
 					"deleteUsageWarning": "This block has been used {count} time. Linked instances in emails will be automatically detached. | This block has been used {count} times. Linked instances in emails will be automatically detached.",
 					"deletedToast": "Block deleted successfully",
-					"deleting": "Deleting...",
 					"descriptionPlaceholder": "Brief description of the block...",
 					"duplicateOperation": "Duplicate block",
 					"duplicatedToast": "Block duplicated successfully",
@@ -10306,6 +10237,7 @@
 					"editContent": "Edit content",
 					"emptyDescription": "Save blocks from your email templates to reuse across multiple emails.",
 					"emptyTitle": "No saved blocks yet",
+					"loadError": "Couldn't load blocks",
 					"loading": "Loading blocks...",
 					"namePlaceholder": "e.g., Hero Banner, Call to Action",
 					"nameRequired": "Name is required",
@@ -10324,6 +10256,7 @@
 						"name": "Name (A-Z)",
 						"recent": "Most recent"
 					},
+					"sortLabel": "Sort blocks",
 					"subtitle": "Reusable email components for your templates",
 					"title": "Saved blocks",
 					"updateOperation": "Update block",
@@ -10359,11 +10292,7 @@
 							"unpublished": "Email returned to draft"
 						},
 						"translations": "Translations",
-						"unpublish": "Unpublish",
-						"variables": {
-							"firstName": "First name",
-							"lastName": "Last name"
-						}
+						"unpublish": "Unpublish"
 					},
 					"settings": {
 						"backToEmails": "Back to emails",
@@ -10442,12 +10371,12 @@
 					"marketing": "Marketing",
 					"transactional": "Transactional"
 				},
-				"title": "Templates"
+				"title": "Templates",
+				"typeFilterLabel": "Template type"
 			},
 			"marketing": {
 				"index": {
 					"adminsOnly": "Only owners and admins can create or delete templates.",
-					"clearSearch": "Clear search",
 					"columns": {
 						"subject": "Subject",
 						"updated": "Updated"
@@ -10457,11 +10386,9 @@
 					"delete": {
 						"confirm": "Are you sure you want to delete {name}?",
 						"confirmButton": "Delete template",
-						"deleting": "Deleting...",
 						"description": "This action cannot be undone. The template will be permanently deleted.",
 						"title": "Delete template"
 					},
-					"editAriaLabel": "Edit {name}",
 					"empty": {
 						"action": "Create marketing template",
 						"description": "Create your first marketing template to start sending campaigns and newsletters.",
@@ -10471,8 +10398,6 @@
 						"description": "Create or select a team to start creating email templates.",
 						"title": "No team selected"
 					},
-					"gridView": "Grid view",
-					"listView": "List view",
 					"loadError": "Couldn't load templates",
 					"loadingTemplates": "Loading templates...",
 					"newTemplate": "New marketing template",
@@ -10480,36 +10405,21 @@
 						"description": "No templates match “{query}”. Try a different search term.",
 						"title": "No results found"
 					},
-					"noSubject": "No subject",
 					"operations": {
 						"create": "Create template",
 						"delete": "Delete template",
 						"duplicate": "Duplicate template"
 					},
 					"pageTitle": "Marketing emails — Owlat",
-					"rowActions": "Template actions",
 					"searchPlaceholder": "Search templates...",
-					"sort": {
-						"createdAsc": "Oldest created",
-						"createdDesc": "Newest created",
-						"nameAsc": "Name (A-Z)",
-						"nameDesc": "Name (Z-A)",
-						"updatedAsc": "Oldest modified",
-						"updatedDesc": "Last modified"
-					},
 					"sortLabel": "Sort templates",
-					"status": {
-						"draft": "Draft",
-						"published": "Published"
-					},
 					"subtitle": "Create and manage marketing email templates for campaigns and newsletters",
 					"templateCount": "{count} marketing template | {count} marketing templates",
 					"title": "Marketing templates",
 					"toasts": {
 						"deleted": "Template deleted successfully",
 						"duplicated": "Template duplicated successfully"
-					},
-					"updatedAt": "Updated {date}"
+					}
 				}
 			},
 			"media": {
@@ -10620,7 +10530,6 @@
 						"subtitle": "Send “{name}” via API",
 						"title": "API usage"
 					},
-					"clearSearch": "Clear search",
 					"columns": {
 						"sends": "Sends",
 						"slug": "Slug",
@@ -10630,19 +10539,21 @@
 						"creating": "Creating...",
 						"defaultLanguage": "Default language",
 						"namePlaceholder": "e.g., Welcome Email, Order Confirmation",
+						"nameRequired": "Name is required",
+						"operation": "Create transactional email",
 						"slugHelp": "Used to identify this email in API calls. Use lowercase letters, numbers, and hyphens.",
+						"slugInvalid": "Slug must be lowercase alphanumeric with hyphens (e.g., 'welcome-email')",
 						"slugLabel": "Slug",
 						"slugPlaceholder": "e.g., welcome-email, order-confirmation",
+						"slugRequired": "Slug is required",
 						"submit": "Create & edit",
 						"title": "Create transactional email"
 					},
 					"delete": {
 						"confirm": "Are you sure you want to delete {name}?",
-						"deleting": "Deleting...",
 						"description": "This action cannot be undone. Any API calls referencing this email will fail.",
 						"title": "Delete transactional email"
 					},
-					"editAriaLabel": "Edit {name}",
 					"empty": {
 						"action": "Create transactional email",
 						"description": "Transactional emails are triggered by your application via API. Create your first one to get started.",
@@ -10652,24 +10563,28 @@
 						"description": "Create or select a workspace to start creating transactional emails.",
 						"title": "No workspace selected"
 					},
-					"gridView": "Grid view",
-					"listView": "List view",
 					"loadError": "Couldn't load transactional emails",
 					"loadingEmails": "Loading transactional emails...",
-					"moreActions": "More actions",
 					"newEmail": "New transactional email",
 					"noResults": {
 						"description": "No transactional emails match “{query}”. Try a different search term.",
 						"title": "No results found"
 					},
-					"noSubject": "No subject",
+					"operations": {
+						"delete": "Delete transactional email",
+						"duplicate": "Duplicate transactional email"
+					},
 					"pageTitle": "Transactional emails — Owlat",
 					"searchPlaceholder": "Search by name or slug...",
 					"sendCount": "{count} sends",
 					"sortLabel": "Sort emails",
+					"statusFilterLabel": "Filter by status",
 					"subtitle": "API-triggered emails for your application",
 					"title": "Transactional emails",
-					"updatedAt": "Updated {date}",
+					"toasts": {
+						"deleted": "Transactional email deleted successfully",
+						"duplicated": "Transactional email duplicated successfully"
+					},
 					"viewApiCode": "View API code",
 					"viewSends": "View sends"
 				}
@@ -10749,7 +10664,6 @@
 		"connect": {
 			"copied": "Copied!",
 			"errors": {
-				"credentialsRequired": "Email and password are required.",
 				"generic": "Something went wrong.",
 				"noToken": "No token returned by the server.",
 				"signInFailed": "Sign-in failed.",
@@ -11241,6 +11155,7 @@
 			"contactSender": "Questions? Write to {email}.",
 			"contactToOptOut": "To stop these emails, you can also write to {email}.",
 			"emailPreferences": "Email preferences",
+			"rateLimited": "Too many attempts right now. Please wait a minute and try again.",
 			"verifying": "Verifying your link…"
 		},
 		"unsubscribe": {
@@ -12909,6 +12824,12 @@
 				"label": "Waiting"
 			}
 		},
+		"listPage": {
+			"clearSearch": "Clear search",
+			"gridView": "Grid view",
+			"listView": "List view",
+			"viewMode": "View mode"
+		},
 		"mailAutodiscover": {
 			"appPassword": {
 				"fastmail": "Create an app password under Settings → Privacy & Security → App Passwords and paste it here.",
@@ -12995,6 +12916,25 @@
 				"dkim": "DKIM",
 				"ownership": "domain ownership",
 				"spf": "SPF"
+			}
+		},
+		"memberTable": {
+			"added": "Added",
+			"firstName": "First name",
+			"lastName": "Last name",
+			"noResults": {
+				"body": "No contacts match \"{query}\". Try a different search term.",
+				"title": "No results found"
+			},
+			"pagination": {
+				"label": "Pages",
+				"next": "Next",
+				"previous": "Previous"
+			},
+			"showing": {
+				"empty": "0 contacts",
+				"label": "Showing {range}",
+				"range": "{start}-{end} of {total}"
 			}
 		},
 		"onboarding": {
@@ -13135,6 +13075,11 @@
 				"sourceAddress": "Assign and route the IPv6 address on the MTA host/container, then run readiness again.",
 				"spf": "Publish the generated ip6: mechanism on the return-path domain, then verify again."
 			}
+		},
+		"personalizationVariables": {
+			"email": "Email",
+			"firstName": "First name",
+			"lastName": "Last name"
 		},
 		"postbox": {
 			"offlineOutbox": {
@@ -13302,15 +13247,7 @@
 					"receipt": "Receipt",
 					"spam": "Spam"
 				},
-				"recategorizeThread": "Recategorize thread",
-				"sections": {
-					"newsletter": "Newsletters",
-					"notification": "Notifications",
-					"other": "Everything else",
-					"person": "People",
-					"promotion": "Promotions",
-					"receipt": "Receipts"
-				}
+				"recategorizeThread": "Recategorize thread"
 			},
 			"usePostboxTriageUndo": {
 				"undo": "Undo"
@@ -14169,6 +14106,25 @@
 				"summary": "Full control of the workspace."
 			}
 		},
+		"templateList": {
+			"editAriaLabel": "Edit {name}",
+			"moreActions": "More actions",
+			"noSubject": "No subject",
+			"sort": {
+				"createdAsc": "Oldest created",
+				"createdDesc": "Newest created",
+				"nameAsc": "Name (A-Z)",
+				"nameDesc": "Name (Z-A)",
+				"updatedAsc": "Oldest modified",
+				"updatedDesc": "Last modified"
+			},
+			"status": {
+				"draft": "Draft",
+				"pendingReview": "Pending review",
+				"published": "Published"
+			},
+			"updatedAt": "Updated {date}"
+		},
 		"threadStatusChip": {
 			"draftReady": "Draft ready",
 			"open": "Open",
@@ -14567,18 +14523,9 @@
 			}
 		},
 		"useCampaignForm": {
-			"audience": {
-				"notConfigured": "Not configured",
-				"segment": "Segment: {name}",
-				"segmentFallback": "Segment",
-				"topic": "Topic: {name}",
-				"topicFallback": "Topic"
-			},
 			"errors": {
 				"audienceRequired": "Please configure the campaign audience",
 				"campaignNameRequired": "Campaign name is required",
-				"fromEmailInvalid": "Please enter a valid email address",
-				"fromEmailRequired": "From email is required",
 				"segmentRequired": "Please select a segment",
 				"subjectRequired": "Subject line is required",
 				"templateRequired": "Please select an email template",
@@ -14939,29 +14886,6 @@
 			"unsnoozeThread": "Unsnooze thread",
 			"updateThreadStatus": "Update thread status"
 		},
-		"useTransactionalList": {
-			"createOperation": "Create transactional email",
-			"deleteOperation": "Delete transactional email",
-			"deleted": "Transactional email deleted successfully",
-			"duplicateOperation": "Duplicate transactional email",
-			"duplicated": "Transactional email duplicated successfully",
-			"nameRequired": "Name is required",
-			"slugInvalid": "Slug must be lowercase alphanumeric with hyphens (e.g., 'welcome-email')",
-			"slugRequired": "Slug is required",
-			"sort": {
-				"lastModified": "Last modified",
-				"nameAsc": "Name (A-Z)",
-				"nameDesc": "Name (Z-A)",
-				"newestCreated": "Newest created",
-				"oldestCreated": "Oldest created",
-				"oldestModified": "Oldest modified"
-			},
-			"status": {
-				"draft": "Draft",
-				"pendingReview": "Pending review",
-				"published": "Published"
-			}
-		},
 		"useWebhookActions": {
 			"copyFailed": "Failed to copy to clipboard",
 			"deleteWebhook": "Delete webhook",
@@ -15119,11 +15043,14 @@
 			"days": "waiting {days}d",
 			"daysHours": "waiting {days}d {hours}h"
 		},
-		"postboxBundles": {
+		"mailCategory": {
+			"person": "People",
 			"newsletter": "Newsletters",
 			"notification": "Notifications",
+			"receipt": "Receipts",
 			"promotion": "Promotions",
-			"receipt": "Receipts"
+			"spam": "Spam",
+			"other": "Everything else"
 		},
 		"accountExportResources": {
 			"apiKeys": "API keys",

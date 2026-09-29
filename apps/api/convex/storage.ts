@@ -1,6 +1,6 @@
 import { authedMutation, authedQuery } from './lib/authedFunctions';
 import { getUserIdFromSession } from './lib/sessionOrganization';
-import { rateLimiter } from './rateLimiter';
+import { rateLimiter } from './lib/rateLimiter';
 import { throwRateLimited, throwNotFound } from './_utils/errors';
 import { v } from 'convex/values';
 import { isChatAttachment } from './chat/attachmentAccess';

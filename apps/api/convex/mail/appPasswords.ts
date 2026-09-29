@@ -21,9 +21,9 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireAdminContext } from '../lib/sessionOrganization';
 import { requireMailboxAccess } from './permissions';
-import { resolveDeliverableMailbox } from './mailbox/identity';
+import { resolveDeliverableMailbox } from './mailbox/addressResolution';
 import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
-import { mailAppPasswordScopeValidator } from '../lib/convexValidators';
+import { mailAppPasswordScopeValidator } from '../lib/literalValidators';
 import { bytesToHex } from '../lib/bytes';
 
 const PBKDF2_ITERATIONS = 100_000;

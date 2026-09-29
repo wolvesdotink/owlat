@@ -5,7 +5,7 @@
  * leads — so they stay unit-testable.
  */
 
-import type { FiledKey } from './todayDigest';
+import type { FiledCategory } from '@owlat/shared/threadStatus';
 
 /** A mailbox id, or `team` for the team inbox. */
 export type WorkbenchScope = string;
@@ -64,7 +64,7 @@ export function workbenchTabs(input: {
 }
 
 /** Where a "Filed away" count opens: that exact list, in that inbox. */
-export function filedHref(scope: WorkbenchScope, key: FiledKey): string {
+export function filedHref(scope: WorkbenchScope, key: FiledCategory): string {
 	if (scope === TEAM_SCOPE) {
 		const view = key === 'promotion' ? 'promotions' : key === 'spam' ? 'spam' : 'notifications';
 		return `/dashboard/inbox/updates?view=${view}`;

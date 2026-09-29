@@ -18,6 +18,9 @@ const dryRun = spawnSync(
 	{
 		cwd: workspaceRoot,
 		encoding: 'utf8',
+		// The dry-run JSON lists every repo file as a task input, so it outgrows
+		// the 1 MiB default buffer as the tree grows.
+		maxBuffer: 64 * 1024 * 1024,
 	}
 );
 if (dryRun.error) throw dryRun.error;

@@ -17,13 +17,13 @@
  * server. The panel always shows the exact CLI commands, and every value here
  * is presented as "recorded by you", never as a verified live status.
  *
- * Gating: all UI-facing functions are platform-admin only (requirePlatformAdmin).
+ * Gating: all UI-facing functions are platform-admin only
+ * (`platformAdminQuery` / `platformAdminMutation`).
  */
 import { v } from 'convex/values';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
-import { authedMutation, authedQuery } from './lib/authedFunctions';
-import { requirePlatformAdmin } from './platformAdmin/platformAdmin';
+import { platformAdminMutation, platformAdminQuery } from './lib/authedFunctions';
 import { successOrFailedValidator } from './lib/literalValidators';
 
 /**
@@ -68,11 +68,9 @@ async function upsertBackupState(
  * Returns `null` when nothing has been recorded yet (the panel then shows its
  * "no backup plan recorded" empty state). Platform-admin only.
  */
-export const getBackupState = authedQuery({
+export const getBackupState = platformAdminQuery({
 	args: {},
 	handler: async (ctx) => {
-		await requirePlatformAdmin(ctx);
-
 		const state = await getState(ctx);
 		if (!state) return null;
 
@@ -93,11 +91,9 @@ export const getBackupState = authedQuery({
  * `disable`) on their server — it is their attestation, not a live check.
  * Platform-admin only.
  */
-export const setScheduleEnabled = authedMutation({
+export const setScheduleEnabled = platformAdminMutation({
 	args: { enabled: v.boolean() },
-	handler: async (ctx, { enabled }) => {
-		const admin = await requirePlatformAdmin(ctx);
-
+	handler: async (ctx, { enabled }, admin) => {
 		await upsertBackupState(ctx, admin, { isScheduleEnabled: enabled });
 
 		return { isScheduleEnabled: enabled };
@@ -111,11 +107,9 @@ export const setScheduleEnabled = authedMutation({
  * recorded by you". Does not (and cannot) trigger the backup itself — the panel
  * surfaces the command to run on the host. Platform-admin only.
  */
-export const logManualRun = authedMutation({
+export const logManualRun = platformAdminMutation({
 	args: { status: successOrFailedValidator },
-	handler: async (ctx, { status }) => {
-		const admin = await requirePlatformAdmin(ctx);
-
+	handler: async (ctx, { status }, admin) => {
 		const now = Date.now();
 		await upsertBackupState(ctx, admin, { lastRunAt: now, lastRunStatus: status });
 

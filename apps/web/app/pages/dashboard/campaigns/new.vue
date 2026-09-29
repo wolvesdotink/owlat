@@ -16,7 +16,6 @@ definePageMeta({
 const route = useRoute();
 const router = useRouter();
 useOrganizationContext();
-const { isPending: authPending, isAuthenticated } = useAuth();
 
 // Wizard steps — a simple campaign is three screens. The A/B test lives inside
 // the Setup step as an optional expander, so it is never seen unless added.
@@ -116,12 +115,9 @@ const {
 	results: emailTemplates,
 	error: emailTemplatesError,
 	refetch: refetchEmailTemplates,
-} = usePaginatedQuery(
+} = useOrganizationPaginatedQuery(
 	api.emailTemplates.emails.list,
-	() => {
-		if (authPending.value || !isAuthenticated.value) return 'skip';
-		return { type: 'marketing' as const };
-	},
+	{ type: 'marketing' as const },
 	{ initialNumItems: 100 }
 );
 

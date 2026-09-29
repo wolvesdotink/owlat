@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * One schema-rendered plugin settings control. Fully self-contained and
- * accessible (explicit label association, aria-describedby, aria-required, and a
- * role="switch" toggle) so the schema-driven form needs no per-field custom UI.
+ * accessible (explicit label association, aria-describedby, aria-required, and
+ * UiSwitch for booleans) so the schema-driven form needs no per-field custom UI.
  *
  * A secret field is read-only: its value is supplied by a `PLUGIN_`-prefixed
  * deployment environment variable, so the control renders the variable name and
@@ -69,21 +69,17 @@ function onSelect(event: Event) {
 	emit('update:modelValue', (event.target as HTMLSelectElement).value);
 }
 
-function toggle() {
-	if (props.disabled) return;
-	emit('update:modelValue', !booleanValue.value);
-}
-
 const inputClass =
 	'w-full bg-surface-1 rounded-lg text-text-primary placeholder:text-text-tertiary px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-brand disabled:opacity-50 disabled:cursor-not-allowed border border-border-subtle';
 </script>
 
 <template>
 	<div class="py-1">
-		<!-- Boolean uses a role=switch button, named via aria-labelledby (a button
-		     cannot be the target of <label for>). Secret uses the same treatment for
-		     the same reason. Every remaining kind renders a real form control and is
-		     named with <label for>. -->
+		<!-- Boolean uses UiSwitch, a role=switch button (the id and aria attrs fall
+		     through to it), named via aria-labelledby because a button cannot be the
+		     target of <label for>. Secret uses the same treatment for the same
+		     reason. Every remaining kind renders a real form control and is named
+		     with <label for>. -->
 		<div v-if="field.kind === 'boolean'" class="flex items-start justify-between gap-4">
 			<div class="min-w-0">
 				<span :id="labelId" class="text-sm font-medium text-text-primary">{{ field.label }}</span>
@@ -91,27 +87,14 @@ const inputClass =
 					{{ field.description }}
 				</p>
 			</div>
-			<button
-				type="button"
-				role="switch"
+			<UiSwitch
 				:id="controlId"
-				:aria-checked="booleanValue"
+				:model-value="booleanValue"
+				:disabled="disabled"
 				:aria-labelledby="labelId"
 				:aria-describedby="describedBy"
-				:disabled="disabled"
-				class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50 disabled:cursor-not-allowed"
-				:class="booleanValue ? 'bg-brand' : 'bg-bg-surface-hover'"
-				@click="toggle"
-			>
-				<!-- palette-ok: the thumb is a fixed white puck in both themes, the one
-				     packages/ui Switch.vue draws — it rides a brand/surface TRACK, so a
-				     surface token would make it vanish into the off state, and there is no
-				     inverse-surface token to name it with. -->
-				<span
-					class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform"
-					:class="booleanValue ? 'translate-x-[22px]' : 'translate-x-[2px]'"
-				/>
-			</button>
+				@update:model-value="emit('update:modelValue', $event)"
+			/>
 		</div>
 
 		<!-- Env-supplied credential: presence only, never an editable value. The

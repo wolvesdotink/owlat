@@ -5,29 +5,11 @@
  * fallback to the role.
  */
 
-import type { ConvexClient } from '../../convex.js';
-import { fn } from '../../convex.js';
+import { fn, type ConvexClient, type FolderRow } from '../../convex.js';
 
-export interface FolderRow {
-	_id: string;
-	name: string;
-	role?: string;
-	subscribed?: boolean;
-	uidValidity?: number;
-	uidNext?: number;
-	highestModseq?: number;
-	totalCount?: number;
-	unseenCount?: number;
-}
-
-/** Untyped wrapper around `mailImap:listFolders`. */
-export async function listFolders(
-	convex: ConvexClient,
-	mailboxId: string,
-): Promise<FolderRow[]> {
-	return (await convex.query(fn.listFolders as never, {
-		mailboxId,
-	} as never)) as FolderRow[];
+/** Every folder of a mailbox (`mail/imap/session:listFolders`). */
+export async function listFolders(convex: ConvexClient, mailboxId: string): Promise<FolderRow[]> {
+	return await convex.query(fn.listFolders, { mailboxId });
 }
 
 /**
@@ -38,7 +20,7 @@ export async function listFolders(
 export async function resolveFolderByName(
 	convex: ConvexClient,
 	mailboxId: string,
-	name: string,
+	name: string
 ): Promise<FolderRow | null> {
 	const folders = await listFolders(convex, mailboxId);
 	const lower = name.toLowerCase();

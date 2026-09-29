@@ -1,6 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { widgetSizeValidator } from '../lib/convexValidators';
+import { dashboardCardValidator, dashboardRuleValidator } from '../lib/validators/dashboard';
 
 /**
  * Dashboard tables — AI-generated visualizations + per-user adaptive layouts.
@@ -51,36 +51,9 @@ export const dashboardTables = {
 	dashboardLayouts: defineTable({
 		userId: v.string(),
 		// Context-driven layout rules
-		rules: v.array(
-			v.object({
-				condition: v.object({
-					timeRange: v.optional(
-						v.object({
-							start: v.string(), // e.g., '06:00'
-							end: v.string(), // e.g., '12:00'
-						})
-					),
-					dayOfWeek: v.optional(v.array(v.number())), // 0=Sun, 1=Mon, etc.
-					role: v.optional(v.string()),
-				}),
-				cards: v.array(
-					v.object({
-						type: v.string(), // 'verification_queue', 'campaign_performance', etc.
-						size: widgetSizeValidator,
-					})
-				),
-				priority: v.number(),
-			})
-		),
+		rules: v.array(dashboardRuleValidator),
 		// Pinned cards always show regardless of context
-		pinnedCards: v.optional(
-			v.array(
-				v.object({
-					type: v.string(),
-					size: widgetSizeValidator,
-				})
-			)
-		),
+		pinnedCards: v.optional(v.array(dashboardCardValidator)),
 		updatedAt: v.number(),
 	}).index('by_user', ['userId']),
 };

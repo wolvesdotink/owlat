@@ -16,7 +16,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { getFunctionName, type AnyFunctionReference } from 'convex/server';
 import { idleModule, diffIdle } from '../commands/idle/index.js';
+import { dispatch } from '../commands/walker.js';
 import type { FetchEnvelope } from '../commands/fetch/format.js';
 import type {
 	CommandDeps,
@@ -138,21 +140,24 @@ describe('IDLE — pushes EXISTS + FETCH FLAGS + EXPUNGE during a single IDLE (P
 		// ticks. peekFolderModseq returns counters; listFolderUidsPage returns the
 		// live UID list as one page; fetchChangedEnvelopes returns the rows the
 		// `by_folder_and_modseq` index would yield for modseq > modseqSince.
-		convex.query.mockImplementation((ref: string, qargs: Record<string, unknown>) => {
-			if (ref === 'mail/imap/session:peekFolderModseq') return Promise.resolve(peek);
-			if (ref === 'mail/imap/fetch:listFolderUidsPage') {
-				return Promise.resolve({ uids, nextUid: null });
+		convex.query.mockImplementation(
+			(fnRef: AnyFunctionReference, qargs: Record<string, unknown>) => {
+				const ref = getFunctionName(fnRef);
+				if (ref === 'mail/imap/session:peekFolderModseq') return Promise.resolve(peek);
+				if (ref === 'mail/imap/fetch:listFolderUidsPage') {
+					return Promise.resolve({ uids, nextUid: null });
+				}
+				if (ref === 'mail/imap/fetch:fetchChangedEnvelopes') {
+					const since = (qargs.modseqSince as number) ?? 0;
+					return Promise.resolve({
+						page: rows.filter((r) => r.modseq > since),
+						isDone: true,
+						continueCursor: null,
+					});
+				}
+				return Promise.resolve(null);
 			}
-			if (ref === 'mail/imap/fetch:fetchChangedEnvelopes') {
-				const since = (qargs.modseqSince as number) ?? 0;
-				return Promise.resolve({
-					page: rows.filter((r) => r.modseq > since),
-					isDone: true,
-					continueCursor: null,
-				});
-			}
-			return Promise.resolve(null);
-		});
+		);
 
 		// Mutable folder fixtures the implementation reads each tick.
 		let peek = { highestModseq: 7, uidNext: 3, totalCount: 2, unseenCount: 2 };
@@ -204,16 +209,23 @@ describe('IDLE — pushes EXISTS + FETCH FLAGS + EXPUNGE during a single IDLE (P
 	});
 
 	it('refuses IDLE without a SELECTed mailbox', async () => {
+		// The precondition is IDLE's declared `requires`, enforced by the
+		// walker before `start` runs.
 		const convex = mockConvex();
 		const { deps } = makeDeps(convex);
-		const { start, lines } = startArgs(deps, {
-			auth: { mailboxId: 'mb1', appPasswordId: 'ap1', address: 'a@t', userId: 'u1' },
-			selected: null,
-			clientId: null,
-		});
-		const session = idleModule.start(start);
+		const lines: string[] = [];
+		const session = dispatch(
+			deps,
+			{
+				auth: { mailboxId: 'mb1', appPasswordId: 'ap1', address: 'a@t', userId: 'u1' },
+				selected: null,
+				clientId: null,
+			},
+			{ tag: 'a1', command: 'IDLE', args: [] },
+			(l) => lines.push(l as string)
+		);
 		await session.completion;
-		expect(lines.some((l) => l.includes('a1 BAD') || l.includes('a1 NO'))).toBe(true);
+		expect(lines).toEqual(['a1 BAD No mailbox selected']);
 		expect(convex.query).not.toHaveBeenCalled();
 	});
 });

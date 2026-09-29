@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { parseStoredBlocks } from '@owlat/email-builder';
 import { api } from '@owlat/api';
 import { languageOptions } from '~/data/languageOptions';
 import type { Id } from '@owlat/api/dataModel';
@@ -252,13 +253,8 @@ const translatableRows = computed((): TranslatableRow[] => {
 		});
 	}
 
-	// Parse content blocks
-	try {
-		const blocks = JSON.parse(email.value.content || '[]') as Block[];
-		extractBlockRows(blocks, rows);
-	} catch {
-		// Invalid content
-	}
+	// Content blocks; unreadable content contributes no rows.
+	extractBlockRows(parseStoredBlocks(email.value.content) as Block[], rows);
 
 	return rows;
 });

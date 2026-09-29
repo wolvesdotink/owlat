@@ -1,30 +1,23 @@
 import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { getClientIp } from '../publicRateLimit';
+import { getClientIp } from '../lib/publicRateLimit';
 import { isValidConvexId, isSafeRedirectUrl } from '../lib/inputGuards';
 import { getOptional } from '../lib/env';
 import { logError } from '../lib/runtimeLog';
 import { isSeedProbeId } from '@owlat/shared/seedPlacement';
-import { bytesToBase64Url } from '../lib/bytes';
+import { constantTimeEqual, hmacSignature } from '../webhooks/security';
+import { decodeTrackedTarget, trackedLinkSigningInput } from './sendComposition/trackingUrl';
 import { classifyOpenRequest } from './automatedOpens';
 import { classifyClickRequest } from './automatedClicks';
-
-// Constant-time string compare for the tracking signature.
-function timingSafeStrEqual(a: string, b: string): boolean {
-	if (a.length !== b.length) return false;
-	let mismatch = 0;
-	for (let i = 0; i < a.length; i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
-	return mismatch === 0;
-}
 
 /**
  * Verify the HMAC that binds a click-tracking redirect target to its
  * emailSendId. The encode side (delivery/sendComposition/transform.ts) signs
- * `${emailSendId}.${encodedUrl}` with UNSUBSCRIBE_SECRET; an attacker who knows
- * a valid emailSendId (every recipient gets one) but cannot forge the signature
- * therefore cannot swap the encoded-URL segment to point the trusted tracking
- * domain at an arbitrary host (open redirect / phishing).
+ * `trackedLinkSigningInput(emailSendId, encodedUrl)` with UNSUBSCRIBE_SECRET; an
+ * attacker who knows a valid emailSendId (every recipient gets one) but cannot
+ * forge the signature therefore cannot swap the encoded-URL segment to point
+ * the trusted tracking domain at an arbitrary host (open redirect / phishing).
  */
 async function verifyTrackingSignature(
 	emailSendId: string,
@@ -34,20 +27,13 @@ async function verifyTrackingSignature(
 	const secret = getOptional('UNSUBSCRIBE_SECRET');
 	if (!secret || !signature) return false;
 	try {
-		const key = await crypto.subtle.importKey(
-			'raw',
-			new TextEncoder().encode(secret),
-			{ name: 'HMAC', hash: 'SHA-256' },
-			false,
-			['sign']
+		const expected = await hmacSignature(
+			secret,
+			trackedLinkSigningInput(emailSendId, encodedUrl),
+			'sha256',
+			'base64url'
 		);
-		const mac = await crypto.subtle.sign(
-			'HMAC',
-			key,
-			new TextEncoder().encode(`${emailSendId}.${encodedUrl}`)
-		);
-		const expected = bytesToBase64Url(new Uint8Array(mac));
-		return timingSafeStrEqual(expected, signature);
+		return constantTimeEqual(expected, signature);
 	} catch {
 		return false;
 	}
@@ -60,18 +46,6 @@ const TRACKING_PIXEL = new Uint8Array([
 	0xff, 0xff, 0xff, 0x21, 0xf9, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00,
 	0x01, 0x00, 0x01, 0x00, 0x00, 0x02, 0x01, 0x44, 0x00, 0x3b,
 ]);
-
-// Helper function to decode base64url string (Web API equivalent of Buffer)
-function base64UrlDecode(str: string): string {
-	// Convert base64url to base64
-	let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
-	// Add padding if needed
-	while (base64.length % 4) {
-		base64 += '=';
-	}
-	// Decode base64 to string
-	return atob(base64);
-}
 
 // HTTP action for open tracking (tracking pixel).
 //
@@ -120,7 +94,7 @@ export const trackOpen = httpAction(async (ctx, request) => {
 
 	// Rate limit check (graceful - always return pixel, but skip recording if rate limited)
 	const ip = getClientIp(request);
-	const { ok } = await ctx.runMutation(internal.publicRateLimit.checkPublicRateLimit, {
+	const { ok } = await ctx.runMutation(internal.lib.publicRateLimit.checkPublicRateLimit, {
 		limitType: 'emailTracking',
 		key: ip,
 	});
@@ -187,7 +161,7 @@ export const trackClick = httpAction(async (ctx, request) => {
 				signature &&
 				(await verifyTrackingSignature(emailSendId, encodedUrl, signature))
 			) {
-				const decoded = base64UrlDecode(encodedUrl);
+				const decoded = decodeTrackedTarget(encodedUrl);
 				if (isSafeRedirectUrl(decoded)) probeTarget = new URL(decoded).toString();
 			}
 		} catch {
@@ -207,8 +181,7 @@ export const trackClick = httpAction(async (ctx, request) => {
 			// link could repoint the trusted tracking domain at an arbitrary host
 			// (open redirect). Only decode + honor the URL once the signature checks.
 			if (await verifyTrackingSignature(emailSendId, encodedUrl, signature)) {
-				// Decode the URL (base64url encoded) using Web API
-				const decodedUrl = base64UrlDecode(encodedUrl);
+				const decodedUrl = decodeTrackedTarget(encodedUrl);
 				if (isSafeRedirectUrl(decodedUrl)) {
 					redirectUrl = new URL(decodedUrl).toString();
 					hasValidTarget = true;
@@ -238,7 +211,7 @@ export const trackClick = httpAction(async (ctx, request) => {
 
 	// Rate limit check (graceful - always redirect, but skip recording if rate limited)
 	const ip = getClientIp(request);
-	const { ok } = await ctx.runMutation(internal.publicRateLimit.checkPublicRateLimit, {
+	const { ok } = await ctx.runMutation(internal.lib.publicRateLimit.checkPublicRateLimit, {
 		limitType: 'emailTracking',
 		key: ip,
 	});

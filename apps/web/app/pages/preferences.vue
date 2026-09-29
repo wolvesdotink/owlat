@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { fetchPublicToken } from '~/lib/publicTokenClient';
+import { useRecipientTokenFlow } from '~/composables/useRecipientTokenFlow';
+import RecipientStateCard from '~/components/recipient/RecipientStateCard.vue';
+
 const { t } = useI18n();
 
 useSeoMeta({
@@ -12,11 +16,8 @@ definePageMeta({
 	layout: false, // No dashboard layout, standalone page
 });
 
-const route = useRoute();
 const { senderName, contactEmail, logo } = useRecipientSender();
-const config = useRuntimeConfig();
 
-// Types
 interface Topic {
 	_id: string;
 	name: string;
@@ -24,86 +25,71 @@ interface Topic {
 	subscribed: boolean;
 }
 
-// State
-const isLoading = ref(true);
-const isSaving = ref(false);
-const error = ref<string | null>(null);
-const successMessage = ref<string | null>(null);
-const contactInfo = ref<{
+interface PreferencesContact {
 	email: string;
 	firstName?: string;
-	subscribed: boolean;
 	teamName: string;
 	topics: Topic[];
-} | null>(null);
+}
 
-// Local state for tracking changes
+const {
+	state,
+	data: contact,
+	errorKey,
+	isProcessing: isSaving,
+	run,
+} = useRecipientTokenFlow({
+	verify: (token) => fetchPublicToken<PreferencesContact>('prefs/verify', token),
+	missingTokenKey: 'recipient.preferences.errors.missingToken',
+	reasons: { expired: 'recipient.preferences.errors.expired' },
+	fallbackKey: 'recipient.preferences.errors.invalid',
+	unreachableKey: 'recipient.preferences.errors.verifyFailed',
+});
+
+/** "Subscribed" globally means opted in to at least one topic. */
+function anySubscribed(topics: Topic[]): boolean {
+	return topics.some((topic) => topic.subscribed);
+}
+
+const successMessage = ref<string | null>(null);
+/** Hides the "saved" banner again; cleared on unmount so it never fires late. */
+let successTimer: ReturnType<typeof setTimeout> | undefined;
+
+function clearSuccessTimer(): void {
+	if (successTimer !== undefined) clearTimeout(successTimer);
+	successTimer = undefined;
+}
+
+onBeforeUnmount(clearSuccessTimer);
+
+// What was last loaded or saved, and the draft the switches edit.
+const saved = ref<{ subscribed: boolean; topics: Topic[] }>({ subscribed: true, topics: [] });
 const localSubscribed = ref(true);
 const localTopics = ref<Topic[]>([]);
 
-// Get the token from the URL
-const token = computed(() => route.query['token'] as string | undefined);
+function resetBaseline(subscribed: boolean, topics: Topic[]): void {
+	saved.value = { subscribed, topics: topics.map((topic) => ({ ...topic })) };
+	localSubscribed.value = subscribed;
+	localTopics.value = topics.map((topic) => ({ ...topic }));
+}
 
-// Check if there are unsaved changes
-const hasChanges = computed(() => {
-	if (!contactInfo.value) return false;
-
-	// Check global subscription change
-	if (localSubscribed.value !== contactInfo.value.subscribed) return true;
-
-	// Check topic changes
-	for (const list of localTopics.value) {
-		const original = contactInfo.value.topics.find((l) => l._id === list._id);
-		if (original && original.subscribed !== list.subscribed) return true;
-	}
-
-	return false;
+watch(contact, (loaded) => {
+	if (loaded) resetBaseline(anySubscribed(loaded.topics), loaded.topics);
 });
 
-// Verify the token on mount
-onMounted(async () => {
-	if (!token.value) {
-		error.value = t('recipient.preferences.errors.missingToken');
-		isLoading.value = false;
-		return;
-	}
+/** The topics whose switch differs from what was saved. */
+const changedTopics = computed(() =>
+	localTopics.value.filter((topic) => {
+		const original = saved.value.topics.find((entry) => entry._id === topic._id);
+		return original !== undefined && original.subscribed !== topic.subscribed;
+	})
+);
 
-	try {
-		// Verify the token via the Convex HTTP endpoint (outcome mode: 200 either way)
-		const verifyUrl = `${config.public.convexSiteUrl}/prefs/verify/${encodeURIComponent(token.value)}`;
-		const response = await fetch(verifyUrl);
-		const body = await response.json();
-
-		if (!body.ok) {
-			error.value =
-				body.reason === 'expired'
-					? t('recipient.preferences.errors.expired')
-					: t('recipient.preferences.errors.invalid');
-			isLoading.value = false;
-			return;
-		}
-
-		const { data } = body;
-		// "Subscribed" globally means the contact is opted in to at least one
-		// topic. Flipping this off issues a one-click unsubscribe-from-all.
-		const subscribed = data.topics.some((list: Topic) => list.subscribed);
-		contactInfo.value = {
-			email: data.email,
-			firstName: data.firstName,
-			subscribed,
-			teamName: data.teamName,
-			topics: data.topics,
-		};
-
-		// Initialize local state
-		localSubscribed.value = subscribed;
-		localTopics.value = data.topics.map((list: Topic) => ({ ...list }));
-	} catch (err) {
-		error.value = t('recipient.preferences.errors.verifyFailed');
-	} finally {
-		isLoading.value = false;
-	}
-});
+const hasChanges = computed(
+	() =>
+		contact.value !== null &&
+		(localSubscribed.value !== saved.value.subscribed || changedTopics.value.length > 0)
+);
 
 // Toggle topic subscription
 function toggleTopicSubscription(listId: string) {
@@ -113,7 +99,7 @@ function toggleTopicSubscription(listId: string) {
 	}
 	// Keep the global switch in sync with the per-topic state: subscribed to
 	// any topic ⇒ globally subscribed.
-	localSubscribed.value = localTopics.value.some((l) => l.subscribed);
+	localSubscribed.value = anySubscribed(localTopics.value);
 }
 
 // Handle global unsubscribe toggle. Turning it off is a one-click
@@ -129,66 +115,41 @@ function toggleGlobalSubscription() {
 	}
 }
 
-// Save preferences
+// Save preferences. A failure stays on the form, next to the switches.
 async function savePreferences() {
-	if (!token.value || !contactInfo.value) return;
-
-	isSaving.value = true;
-	error.value = null;
+	if (!contact.value) return;
+	clearSuccessTimer();
 	successMessage.value = null;
 
-	try {
-		// Prepare topic updates (only changed ones)
-		const topicUpdates = localTopics.value
-			.filter((list) => {
-				const original = contactInfo.value!.topics.find((l) => l._id === list._id);
-				return original && original.subscribed !== list.subscribed;
-			})
-			.map((list) => ({
-				topicId: list._id,
-				subscribed: list.subscribed,
-			}));
+	const topicUpdates = changedTopics.value.map((topic) => ({
+		topicId: topic._id,
+		subscribed: topic.subscribed,
+	}));
+	const nextSubscribed = localSubscribed.value;
+	const nextTopics = localTopics.value.map((topic) => ({ ...topic }));
+	const globalUnsubscribe = nextSubscribed !== saved.value.subscribed ? !nextSubscribed : undefined;
 
-		// Determine if global subscription changed
-		const globalUnsubscribe =
-			localSubscribed.value !== contactInfo.value.subscribed ? !localSubscribed.value : undefined;
-
-		const updateUrl = `${config.public.convexSiteUrl}/prefs/update/${encodeURIComponent(token.value)}`;
-		const response = await fetch(updateUrl, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-			},
-			body: JSON.stringify({
-				globalUnsubscribe,
-				topicUpdates: topicUpdates.length > 0 ? topicUpdates : undefined,
+	const result = await run(
+		(token) =>
+			fetchPublicToken('prefs/update', token, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					globalUnsubscribe,
+					topicUpdates: topicUpdates.length > 0 ? topicUpdates : undefined,
+				}),
 			}),
-		});
+		{ fallbackKey: 'recipient.preferences.errors.saveFailed', inline: true }
+	);
+	if (!result?.ok) return;
 
-		const body = await response.json();
-
-		if (!response.ok || !body.ok) {
-			throw new Error(body.error?.message || 'Failed to update preferences');
-		}
-
-		// Update the original state to match saved state
-		contactInfo.value = {
-			...contactInfo.value,
-			subscribed: localSubscribed.value,
-			topics: localTopics.value.map((list) => ({ ...list })),
-		};
-
-		successMessage.value = t('recipient.preferences.saved');
-
-		// Clear success message after 5 seconds
-		setTimeout(() => {
-			successMessage.value = null;
-		}, 5000);
-	} catch (err) {
-		error.value = err instanceof Error ? err.message : t('recipient.preferences.errors.saveFailed');
-	} finally {
-		isSaving.value = false;
-	}
+	// What was just saved is the new baseline.
+	resetBaseline(nextSubscribed, nextTopics);
+	successMessage.value = t('recipient.preferences.saved');
+	successTimer = setTimeout(() => {
+		successTimer = undefined;
+		successMessage.value = null;
+	}, 5000);
 }
 </script>
 
@@ -206,45 +167,25 @@ async function savePreferences() {
 			:purpose="t('recipient.shared.emailPreferences')"
 		/>
 
-		<!-- Loading State -->
-		<div v-if="isLoading" class="card w-full max-w-lg py-8 text-center">
-			<div class="flex flex-col items-center gap-4">
-				<UiSpinner size="lg" />
-				<p class="text-text-secondary">{{ t('recipient.preferences.loading') }}</p>
-			</div>
-		</div>
+		<RecipientStateCard
+			v-if="state === 'loading'"
+			variant="loading"
+			width="lg"
+			:message="t('recipient.preferences.loading')"
+		/>
 
-		<!-- Error State -->
-		<div v-else-if="error && !contactInfo" class="card w-full max-w-lg">
-			<div class="py-2 text-center sm:py-4">
-				<div
-					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-error-subtle sm:h-16 sm:w-16"
-				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-7 w-7 text-error sm:h-8 sm:w-8"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-						/>
-					</svg>
-				</div>
-				<h2 class="mb-2 text-lg font-semibold text-text-primary">
-					{{ t('recipient.preferences.errorHeading') }}
-				</h2>
-				<p class="text-text-secondary">{{ error }}</p>
-				<RecipientContactHint :email="contactEmail" keypath="recipient.shared.contactToOptOut" />
-			</div>
-		</div>
+		<RecipientStateCard
+			v-else-if="state === 'error'"
+			variant="error"
+			width="lg"
+			:heading="t('recipient.preferences.errorHeading')"
+			:message="errorKey ? t(errorKey) : undefined"
+		>
+			<RecipientContactHint :email="contactEmail" keypath="recipient.shared.contactToOptOut" />
+		</RecipientStateCard>
 
 		<!-- Preferences Form -->
-		<div v-else-if="contactInfo" class="card w-full max-w-lg">
+		<div v-else-if="contact" class="card w-full max-w-lg">
 			<!-- Header -->
 			<div class="mb-6 text-center">
 				<h2 class="mb-2 text-xl font-semibold text-text-primary">
@@ -253,23 +194,24 @@ async function savePreferences() {
 				<!-- break-words: contact emails and org names are unbounded strings and
 				     this card is read at 320px. -->
 				<p class="break-words text-text-secondary">
-					<template v-if="contactInfo.firstName">
-						{{ t('recipient.preferences.greeting', { name: contactInfo.firstName }) }}
+					<template v-if="contact.firstName">
+						{{ t('recipient.preferences.greeting', { name: contact.firstName }) }}
 					</template>
 					<I18nT keypath="recipient.preferences.intro" tag="span" scope="global">
 						<template #organization
-							><strong>{{ contactInfo.teamName }}</strong></template
+							><strong>{{ contact.teamName }}</strong></template
 						>
 					</I18nT>
 				</p>
 				<p class="mt-1 text-sm break-words text-text-tertiary">
-					{{ contactInfo.email }}
+					{{ contact.email }}
 				</p>
 			</div>
 
 			<!-- Success Message -->
 			<div
 				v-if="successMessage"
+				role="status"
 				class="mb-4 flex items-start gap-2 rounded-lg bg-success-subtle p-3 text-sm text-success"
 			>
 				<svg
@@ -278,6 +220,7 @@ async function savePreferences() {
 					fill="none"
 					viewBox="0 0 24 24"
 					stroke="currentColor"
+					aria-hidden="true"
 				>
 					<path
 						stroke-linecap="round"
@@ -291,7 +234,8 @@ async function savePreferences() {
 
 			<!-- Error Message -->
 			<div
-				v-if="error && contactInfo"
+				v-if="errorKey"
+				role="alert"
 				class="mb-4 flex items-start gap-2 rounded-lg bg-error-subtle p-3 text-sm text-error"
 			>
 				<svg
@@ -300,6 +244,7 @@ async function savePreferences() {
 					fill="none"
 					viewBox="0 0 24 24"
 					stroke="currentColor"
+					aria-hidden="true"
 				>
 					<path
 						stroke-linecap="round"
@@ -308,7 +253,7 @@ async function savePreferences() {
 						d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
 					/>
 				</svg>
-				{{ error }}
+				{{ t(errorKey) }}
 			</div>
 
 			<!-- Global Subscription Toggle.

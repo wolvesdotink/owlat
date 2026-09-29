@@ -27,6 +27,7 @@ import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { evalMessageFromRow, filterConditionsMatch } from './filters';
 import { moveMessagesToFolder, rebuildThreadAggregates } from './messageActions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
+import { cancelJob, readJob, startJob } from './_jobLifecycle';
 
 /**
  * Messages read per transaction. Smaller than the attachment backfill's page:
@@ -66,10 +67,7 @@ export const status = publicQuery({
 		if (!filter) return null;
 		const owned = await requireMailboxAccess(ctx, filter.mailboxId);
 		if (!owned.ok) return null;
-		return ctx.db
-			.query('mailFilterRunJobs')
-			.withIndex('by_filter', (q) => q.eq('filterId', args.filterId))
-			.first();
+		return readJob(ctx, { table: 'mailFilterRunJobs', key: args.filterId });
 	},
 });
 
@@ -87,39 +85,16 @@ export const start = postboxMutation({
 		const owned = await requireMailboxAccess(ctx, filter.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Filter not accessible');
 
-		const existing = await ctx.db
-			.query('mailFilterRunJobs')
-			.withIndex('by_filter', (q) => q.eq('filterId', args.filterId))
-			.first();
-		if (existing?.status === 'running') return { started: false };
-
-		const now = Date.now();
-		if (existing) {
-			await ctx.db.patch(existing._id, {
-				status: 'running',
-				cursor: undefined,
-				scannedCount: 0,
-				matchedCount: 0,
-				startedAt: now,
-				updatedAt: now,
-				finishedAt: undefined,
-				errorMessage: undefined,
-			});
-		} else {
-			await ctx.db.insert('mailFilterRunJobs', {
-				mailboxId: filter.mailboxId,
-				filterId: args.filterId,
-				status: 'running',
-				scannedCount: 0,
-				matchedCount: 0,
-				startedAt: now,
-				updatedAt: now,
-			});
-		}
-		await ctx.scheduler.runAfter(0, internal.mail.filterRun.runBatch, {
-			filterId: args.filterId,
+		return startJob(ctx, {
+			table: 'mailFilterRunJobs',
+			key: args.filterId,
+			insertFields: { mailboxId: filter.mailboxId, filterId: args.filterId, matchedCount: 0 },
+			resetFields: { matchedCount: 0 },
+			schedule: () =>
+				ctx.scheduler.runAfter(0, internal.mail.filterRun.runBatch, {
+					filterId: args.filterId,
+				}),
 		});
-		return { started: true };
 	},
 });
 
@@ -135,13 +110,7 @@ export const cancel = postboxMutation({
 		const filter = await getOrThrow(ctx, args.filterId, 'Filter');
 		const owned = await requireMailboxAccess(ctx, filter.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Filter not accessible');
-		const job = await ctx.db
-			.query('mailFilterRunJobs')
-			.withIndex('by_filter', (q) => q.eq('filterId', args.filterId))
-			.first();
-		if (!job || job.status !== 'running') return;
-		const now = Date.now();
-		await ctx.db.patch(job._id, { status: 'cancelled', updatedAt: now, finishedAt: now });
+		await cancelJob(ctx, { table: 'mailFilterRunJobs', key: args.filterId });
 	},
 });
 
@@ -230,10 +199,7 @@ async function applyActions(
 export const runBatch = internalMutation({
 	args: { filterId: v.id('mailFilters') },
 	handler: async (ctx, args): Promise<void> => {
-		const job = await ctx.db
-			.query('mailFilterRunJobs')
-			.withIndex('by_filter', (q) => q.eq('filterId', args.filterId))
-			.first();
+		const job = await readJob(ctx, { table: 'mailFilterRunJobs', key: args.filterId });
 		if (!job || job.status !== 'running') return;
 
 		const now = Date.now();
@@ -276,9 +242,6 @@ export async function removeFilterRunJob(
 	ctx: MutationCtx,
 	filterId: Id<'mailFilters'>
 ): Promise<void> {
-	const job = await ctx.db
-		.query('mailFilterRunJobs')
-		.withIndex('by_filter', (q) => q.eq('filterId', filterId))
-		.first();
+	const job = await readJob(ctx, { table: 'mailFilterRunJobs', key: filterId });
 	if (job) await ctx.db.delete(job._id);
 }

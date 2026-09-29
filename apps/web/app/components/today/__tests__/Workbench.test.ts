@@ -16,6 +16,8 @@ import TodayScopeHeader from '../TodayScopeHeader.vue';
 import { auditA11y } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import type { WorkbenchTab } from '~/utils/workbench';
+import { FILED_CATEGORIES } from '@owlat/shared/threadStatus';
+import { MAIL_CATEGORY_META } from '~/utils/mailCategory';
 
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
@@ -117,6 +119,27 @@ describe('TodayFiledAway', () => {
 		expect(tiles[1]!.text()).toContain('From GitHub, Linear');
 		expect(tiles[1]!.text()).not.toContain('and others');
 		expect(tiles[0]!.attributes('href')).toBe('/dashboard/inboxes?in=mb_me&category=newsletter');
+	});
+
+	it('gives each kind the icon the inbox and bundles use for it', () => {
+		const w = mount(TodayFiledAway, {
+			props: {
+				model: {
+					...MODEL,
+					filed: { newsletter: 1, notification: 1, receipt: 1, promotion: 1, spam: 1 },
+					filedTotal: 5,
+				},
+				scope: 'mb_me',
+			},
+			global: { plugins: [createTestI18n()], stubs },
+		});
+		const iconOf = (kind: string) =>
+			w.find(`[data-filed-kind="${kind}"]`).findAll('icon-stub')[0]!.attributes('name');
+		for (const kind of FILED_CATEGORIES) {
+			expect(iconOf(kind)).toBe(MAIL_CATEGORY_META[kind].icon);
+		}
+		// `lucide:tag` is the Recategorize button; a promotion wears the megaphone.
+		expect(iconOf('promotion')).toBe('lucide:megaphone');
 	});
 
 	it('says so when nothing was filed away', () => {

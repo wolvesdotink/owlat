@@ -36,7 +36,7 @@
 import { v } from 'convex/values';
 import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
-import { mailMessageAttachmentValidator } from '../lib/mailContentValidators';
+import { mailMessageAttachmentValidator } from '../lib/validators/mailContent';
 import { insertDeliveredMessage } from './deliveryPipeline/insert';
 import { batchGet } from '../_utils/batchLoader';
 import { getActiveMailboxForUser } from './mailbox/identity';

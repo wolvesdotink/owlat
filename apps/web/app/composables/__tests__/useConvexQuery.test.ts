@@ -256,6 +256,25 @@ describe('useConvexQuery', () => {
 			expect(data.value).toEqual({ body: 'hi' });
 		});
 
+		it('does not resubscribe when a re-evaluation passes the same reactive array', async () => {
+			// The same case as usePaginatedQuery's: both adapters share the
+			// subscription core, and its watch compares the args' value.
+			const tags = reactive(['inbox']);
+			const nonce = ref(0);
+			const { data } = useConvexQuery(fakeQuery, () => {
+				void nonce.value;
+				return { tags, folder: 'all' };
+			});
+			mockOnUpdateCallback!({ body: 'hi' });
+
+			nonce.value += 1;
+			await nextTick();
+
+			expect(mockClient.onUpdate).toHaveBeenCalledTimes(1);
+			expect(mockUnsubscribe).not.toHaveBeenCalled();
+			expect(data.value).toEqual({ body: 'hi' });
+		});
+
 		it('does resubscribe when a nested value changes', async () => {
 			const message = ref({ id: 'm1', labels: ['inbox'] });
 			useConvexQuery(fakeQuery, () => ({

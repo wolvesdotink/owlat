@@ -45,6 +45,8 @@ import InboxIndex from '../inbox/index.vue';
 import AdminIndex from '../admin/index.vue';
 import SettingsIndex from '../preferences/index.vue';
 import GettingStarted from '~/components/dashboard/GettingStarted.vue';
+import ListPageShell from '~/components/list/ListPageShell.vue';
+import ListSortMenu from '~/components/list/ListSortMenu.vue';
 
 // The inbox page imports this composable explicitly rather than by auto-import,
 // so a global stub cannot reach it — and the real module builds a BetterAuth
@@ -179,11 +181,24 @@ interface AuditedPage {
 	loaded: string;
 	/** False for a page whose title lives in the shell header, not its own body. */
 	ownsH1?: boolean;
+	/**
+	 * Shared frames the page renders its chrome through. Feature components stay
+	 * unresolved in an audit, but a page on the list scaffold has its header,
+	 * toolbar and empty states inside `ListPageShell`, so it has to be real.
+	 */
+	components?: Record<string, Component>;
 }
+
+const LIST_SCAFFOLD = { ListPageShell, ListSortMenu };
 
 const pages: readonly AuditedPage[] = [
 	{ name: 'dashboard home', component: DashboardHome, loaded: 'One workbench per inbox' },
-	{ name: 'campaigns list', component: CampaignsIndex, loaded: 'New campaign' },
+	{
+		name: 'campaigns list',
+		component: CampaignsIndex,
+		loaded: 'New campaign',
+		components: LIST_SCAFFOLD,
+	},
 	{ name: 'new campaign wizard', component: CampaignsNew, loaded: 'Create campaign' },
 	{ name: 'contacts list', component: ContactsIndex, loaded: 'No contacts yet' },
 	{ name: 'templates list', component: SendIndex, loaded: 'No templates yet' },
@@ -194,11 +209,11 @@ const pages: readonly AuditedPage[] = [
 	{ name: 'settings overview', component: SettingsIndex, loaded: 'How Owlat looks', ownsH1: false },
 ];
 
-describe.each(pages)('$name — accessibility', ({ component, loaded, ownsH1 }) => {
+describe.each(pages)('$name — accessibility', ({ component, loaded, ownsH1, components }) => {
 	it('has no axe violations on an empty instance', async () => {
 		const violations = await auditA11y(component, {
 			// Extracted pages render their chrome through vue-i18n.
-			global: { plugins: [createTestI18n()] },
+			global: { plugins: [createTestI18n()], components },
 			// A page that threw or rendered nothing would pass an empty audit.
 			prepare: (wrapper) => {
 				expect(wrapper.text()).toContain(loaded);

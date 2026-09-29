@@ -930,7 +930,7 @@ describe('Sending domain lifecycle — recordDkimRotation (MTA→Convex propagat
 		const t = convexTest(schema, modules);
 		const domainId = await seedRotatedDomain(t, 'rotate.com');
 
-		const outcome = await t.mutation(internal.domains.lifecycle.recordDkimRotation, {
+		const outcome = await t.mutation(internal.domains.lifecycleDkim.recordDkimRotation, {
 			domain: 'rotate.com',
 			selector: 's2',
 			dnsRecord: 'v=DKIM1; k=rsa; p=NEWKEY',
@@ -970,7 +970,7 @@ describe('Sending domain lifecycle — recordDkimRotation (MTA→Convex propagat
 		const t = convexTest(schema, modules);
 		const domainId = await seedRotatedDomain(t, 'verifyhost.com');
 
-		await t.mutation(internal.domains.lifecycle.recordDkimRotation, {
+		await t.mutation(internal.domains.lifecycleDkim.recordDkimRotation, {
 			domain: 'verifyhost.com',
 			selector: 's2',
 			dnsRecord: 'v=DKIM1; k=rsa; p=NEWKEY',
@@ -994,7 +994,7 @@ describe('Sending domain lifecycle — recordDkimRotation (MTA→Convex propagat
 		const domainId = await seedRotatedDomain(t, 'activate.com');
 
 		// Overlap first…
-		await t.mutation(internal.domains.lifecycle.recordDkimRotation, {
+		await t.mutation(internal.domains.lifecycleDkim.recordDkimRotation, {
 			domain: 'activate.com',
 			selector: 's2',
 			dnsRecord: 'v=DKIM1; k=rsa; p=NEWKEY',
@@ -1003,7 +1003,7 @@ describe('Sending domain lifecycle — recordDkimRotation (MTA→Convex propagat
 		});
 
 		// …then activation switches signing and retires s1.
-		const outcome = await t.mutation(internal.domains.lifecycle.recordDkimRotation, {
+		const outcome = await t.mutation(internal.domains.lifecycleDkim.recordDkimRotation, {
 			domain: 'activate.com',
 			selector: 's2',
 			dnsRecord: 'v=DKIM1; k=rsa; p=NEWKEY',
@@ -1028,7 +1028,7 @@ describe('Sending domain lifecycle — recordDkimRotation (MTA→Convex propagat
 		await seedRotatedDomain(t, 'idem.com');
 
 		// Land the overlap once.
-		await t.mutation(internal.domains.lifecycle.recordDkimRotation, {
+		await t.mutation(internal.domains.lifecycleDkim.recordDkimRotation, {
 			domain: 'idem.com',
 			selector: 's2',
 			dnsRecord: 'v=DKIM1; k=rsa; p=NEWKEY',
@@ -1037,7 +1037,7 @@ describe('Sending domain lifecycle — recordDkimRotation (MTA→Convex propagat
 		});
 
 		// A retried webhook re-delivers the identical overlap event → no change.
-		const outcome = await t.mutation(internal.domains.lifecycle.recordDkimRotation, {
+		const outcome = await t.mutation(internal.domains.lifecycleDkim.recordDkimRotation, {
 			domain: 'idem.com',
 			selector: 's2',
 			dnsRecord: 'v=DKIM1; k=rsa; p=NEWKEY',
@@ -1053,7 +1053,7 @@ describe('Sending domain lifecycle — recordDkimRotation (MTA→Convex propagat
 	it('returns domain_not_found for a domain the MTA does not know in Convex', async () => {
 		const t = convexTest(schema, modules);
 
-		const outcome = await t.mutation(internal.domains.lifecycle.recordDkimRotation, {
+		const outcome = await t.mutation(internal.domains.lifecycleDkim.recordDkimRotation, {
 			domain: 'unknown-to-convex.com',
 			selector: 's2',
 			dnsRecord: 'v=DKIM1; k=rsa; p=NEWKEY',
@@ -1094,7 +1094,7 @@ describe('Sending domain lifecycle — setDmarcPolicy', () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedPendingDomain(t, 'raise.com');
 
-		const outcome = await t.mutation(internal.domains.lifecycle.setDmarcPolicy, {
+		const outcome = await t.mutation(internal.domains.lifecycleDmarc.setDmarcPolicy, {
 			domainId,
 			policy: 'reject',
 			userId: 'user',
@@ -1125,7 +1125,7 @@ describe('Sending domain lifecycle — setDmarcPolicy', () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedPendingDomain(t, 'rollout.com');
 
-		const outcome = await t.mutation(internal.domains.lifecycle.setDmarcPolicy, {
+		const outcome = await t.mutation(internal.domains.lifecycleDmarc.setDmarcPolicy, {
 			domainId,
 			policy: 'reject',
 			subdomainPolicy: 'none',
@@ -1152,7 +1152,7 @@ describe('Sending domain lifecycle — setDmarcPolicy', () => {
 		const domainId = await seedPendingDomain(t, 'clearstaged.com');
 
 		// First set the staged-rollout knobs…
-		await t.mutation(internal.domains.lifecycle.setDmarcPolicy, {
+		await t.mutation(internal.domains.lifecycleDmarc.setDmarcPolicy, {
 			domainId,
 			policy: 'reject',
 			subdomainPolicy: 'none',
@@ -1161,7 +1161,7 @@ describe('Sending domain lifecycle — setDmarcPolicy', () => {
 		});
 
 		// …then raise to full enforcement, omitting both knobs.
-		const outcome = await t.mutation(internal.domains.lifecycle.setDmarcPolicy, {
+		const outcome = await t.mutation(internal.domains.lifecycleDmarc.setDmarcPolicy, {
 			domainId,
 			policy: 'reject',
 			userId: 'user',
@@ -1183,7 +1183,7 @@ describe('Sending domain lifecycle — setDmarcPolicy', () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedPendingDomain(t, 'staged-noop.com');
 
-		await t.mutation(internal.domains.lifecycle.setDmarcPolicy, {
+		await t.mutation(internal.domains.lifecycleDmarc.setDmarcPolicy, {
 			domainId,
 			policy: 'quarantine',
 			subdomainPolicy: 'none',
@@ -1191,7 +1191,7 @@ describe('Sending domain lifecycle — setDmarcPolicy', () => {
 			userId: 'user',
 		});
 
-		const outcome = await t.mutation(internal.domains.lifecycle.setDmarcPolicy, {
+		const outcome = await t.mutation(internal.domains.lifecycleDmarc.setDmarcPolicy, {
 			domainId,
 			policy: 'quarantine',
 			subdomainPolicy: 'none',
@@ -1209,7 +1209,7 @@ describe('Sending domain lifecycle — setDmarcPolicy', () => {
 		const domainId = await seedPendingDomain(t, 'badpct.com');
 
 		await expect(
-			t.mutation(internal.domains.lifecycle.setDmarcPolicy, {
+			t.mutation(internal.domains.lifecycleDmarc.setDmarcPolicy, {
 				domainId,
 				policy: 'reject',
 				pct: 150,
@@ -1222,7 +1222,7 @@ describe('Sending domain lifecycle — setDmarcPolicy', () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedPendingDomain(t, 'noop.com');
 
-		const outcome = await t.mutation(internal.domains.lifecycle.setDmarcPolicy, {
+		const outcome = await t.mutation(internal.domains.lifecycleDmarc.setDmarcPolicy, {
 			domainId,
 			policy: 'none',
 			userId: 'user',
@@ -1252,7 +1252,7 @@ describe('Sending domain lifecycle — setDmarcPolicy', () => {
 			})
 		);
 
-		const outcome = await t.mutation(internal.domains.lifecycle.setDmarcPolicy, {
+		const outcome = await t.mutation(internal.domains.lifecycleDmarc.setDmarcPolicy, {
 			domainId,
 			policy: 'quarantine',
 			userId: 'user',
@@ -1278,7 +1278,7 @@ describe('Sending domain lifecycle — setDmarcPolicy', () => {
 			return id;
 		});
 
-		const outcome = await t.mutation(internal.domains.lifecycle.setDmarcPolicy, {
+		const outcome = await t.mutation(internal.domains.lifecycleDmarc.setDmarcPolicy, {
 			domainId,
 			policy: 'reject',
 			userId: 'user',

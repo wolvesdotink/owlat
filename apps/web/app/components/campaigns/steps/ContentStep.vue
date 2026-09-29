@@ -36,7 +36,6 @@ const createdTemplate = ref<{
 	subject: string;
 } | null>(null);
 const { t } = useI18n();
-const { isPending: authPending, isAuthenticated } = useAuth();
 
 const { data: campaignWithRelations } = useConvexQuery(
 	api.campaigns.campaigns.getWithRelations,
@@ -45,12 +44,9 @@ const { data: campaignWithRelations } = useConvexQuery(
 	})
 );
 
-const { results: emailTemplates } = usePaginatedQuery(
+const { results: emailTemplates } = useOrganizationPaginatedQuery(
 	api.emailTemplates.emails.list,
-	() => {
-		if (authPending.value || !isAuthenticated.value) return 'skip';
-		return { type: 'marketing' as const };
-	},
+	{ type: 'marketing' as const },
 	{ initialNumItems: 100 }
 );
 
@@ -337,7 +333,10 @@ defineExpose({
 					</p>
 				</div>
 
-				<div v-if="selectedTemplate" class="p-4 bg-bg-surface border border-border-default rounded-lg">
+				<div
+					v-if="selectedTemplate"
+					class="p-4 bg-bg-surface border border-border-default rounded-lg"
+				>
 					<p class="text-sm text-text-secondary">
 						{{ t('components.campaigns.steps.contentStep.selectedTemplate') }}
 					</p>

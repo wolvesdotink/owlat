@@ -1,7 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { suppressionCountsValidator } from '../integrationImports/_common';
-import { duplicateHandlingValidator } from '../lib/convexValidators';
+import { duplicateHandlingValidator } from '../lib/literalValidators';
 
 /**
  * Integration tables — async import jobs for external providers (Mailchimp,

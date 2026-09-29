@@ -34,10 +34,12 @@ import {
 	readCellArmCategoryBuckets,
 	recordSmtpResponseForCell,
 	summarizeSmtpBlockObservation,
-	SMTP_RESPONSE_CATEGORY_CLEANUP_BATCH_SIZE,
-	SMTP_RESPONSE_CATEGORY_RETENTION_MS,
 	type SmtpCategoryBucket,
 } from '../smtpResponseCategories';
+import {
+	CELL_ARM_BUCKET_CLEANUP_BATCH_SIZE,
+	CELL_ARM_BUCKET_RETENTION_MS,
+} from '../cellArmBuckets';
 import {
 	DAY_MS,
 	GMAIL_CAMPAIGN_CELL,
@@ -463,7 +465,7 @@ describe('the aging sweep', () => {
 				cell: GMAIL_CAMPAIGN_CELL,
 				arm: 'own',
 				category: 'greylisted',
-				now: NOW - SMTP_RESPONSE_CATEGORY_RETENTION_MS - DAY_MS,
+				now: NOW - CELL_ARM_BUCKET_RETENTION_MS - DAY_MS,
 			});
 			await recordSmtpResponseForCell(ctx, {
 				organizationId: OUTCOME_ORG,
@@ -482,6 +484,6 @@ describe('the aging sweep', () => {
 		expect(deleted).toBe(1);
 		expect((await allRows(t)).map((row) => row.periodStart)).toEqual([TODAY]);
 		// A tick that comes back short does not reschedule itself.
-		expect(deleted).toBeLessThan(SMTP_RESPONSE_CATEGORY_CLEANUP_BATCH_SIZE);
+		expect(deleted).toBeLessThan(CELL_ARM_BUCKET_CLEANUP_BATCH_SIZE);
 	});
 });

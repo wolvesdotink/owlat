@@ -17,6 +17,7 @@
 import { api } from '@owlat/api';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import type { Id } from '@owlat/api/dataModel';
+import { useNow } from '~/composables/useNow';
 import {
 	briefGreeting,
 	composeBriefSentences,
@@ -36,16 +37,7 @@ const localize = (value: string | { key: string; params?: Record<string, unknown
 // Local clock: localDay keys the cache + dismissal; re-checked each minute so
 // the card rolls over at midnight (and the greeting with the hour) without a
 // reload — same pattern as the Today partition clock.
-const now = ref(new Date());
-let clock: number | undefined;
-onMounted(() => {
-	clock = window.setInterval(() => {
-		now.value = new Date();
-	}, 60_000);
-});
-onUnmounted(() => {
-	if (clock !== undefined) window.clearInterval(clock);
-});
+const now = useNow({ intervalMs: 60_000, as: 'date' });
 
 const localDay = computed(() => localDayOf(now.value));
 const greeting = computed(() => localize(briefGreeting(now.value.getHours())));

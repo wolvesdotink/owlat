@@ -12,73 +12,15 @@
 
 import { mailCategoryLabelValidator } from '../../lib/literalValidators';
 import { v, type Infer } from 'convex/values';
-import type { QueryCtx } from '../../_generated/server';
 import { publicQuery } from '../../lib/authedFunctions';
-import { mailSortOrderValidator } from '../../lib/mailSettingsValidators';
+import { mailSortOrderValidator } from '../../lib/validators/mailSettings';
 import type { Id, Doc } from '../../_generated/dataModel';
 import { loadReadableMailbox, loadAccessibleMailboxes } from '../permissions';
 import { isMessageSnoozed } from '../../lib/mailSnooze';
-import { openMailMessageRow } from '../../lib/messageBody';
 import { isThreadMuted } from '../../lib/mailMute';
-import { readSession, type FolderRole } from './shared';
-import { batchGet } from '../../_utils/batchLoader';
-
-/**
- * Follow-up watch state attached to each list row ("No reply yet" chip /
- * armed-reminder chip in the thread list). One thread get per distinct thread
- * on the page, memoized.
- */
-type RowFollowUp = { remindAt: number; dueAt?: number; watched: boolean };
-
-/**
- * Thread-level state a list row renders as a chip: the follow-up watch, the
- * mute marker (mail/mute.ts) and the transient back-from-snooze marker
- * (mail/snooze.ts). Each key is spread in only when the thread actually has it,
- * so a row without any of them travels with exactly the shape the list had
- * before these existed (an `undefined` never rides as a present key).
- */
-type RowThreadState = {
-	followUp?: RowFollowUp;
-	mutedAt?: number;
-	snoozeReturnedAt?: number;
-};
-
-async function attachThreadState(
-	ctx: QueryCtx,
-	messages: Doc<'mailMessages'>[]
-): Promise<Array<Doc<'mailMessages'> & RowThreadState>> {
-	// A page of messages collapses to far fewer threads; `batchGet` keeps the
-	// dedupe and reads what is left in parallel rather than row by row.
-	const cache = await batchGet(
-		ctx,
-		messages.map((m) => m.threadId)
-	);
-	const out: Array<Doc<'mailMessages'> & RowThreadState> = [];
-	for (const m of messages) {
-		const thread = cache.get(m.threadId) ?? null;
-		const followUp = thread?.followUp;
-		const state: RowThreadState = {
-			...(followUp
-				? {
-						followUp: {
-							remindAt: followUp.remindAt,
-							dueAt: followUp.dueAt,
-							watched: followUp.messageId === m._id,
-						},
-					}
-				: {}),
-			...(thread?.mutedAt !== undefined ? { mutedAt: thread.mutedAt } : {}),
-			...(thread?.snoozeReturnedAt !== undefined
-				? { snoozeReturnedAt: thread.snoozeReturnedAt }
-				: {}),
-		};
-		// E8b: the row's inline bodies are SEALED at rest and the reader renders
-		// them straight off the list row, so they are unsealed here — the one
-		// place every row in these views passes through on its way out.
-		out.push({ ...(await openMailMessageRow(m)), ...state });
-	}
-	return out;
-}
+import { readSession } from './shared';
+import type { FolderRole } from '../../lib/validators/mail';
+import { attachThreadState, type RowThreadState } from './rowThreadState';
 
 /**
  * List messages in a mailbox, for the webmail UI.
@@ -340,9 +282,9 @@ export const listFolders = publicQuery({
  * switcher and the Cmd-K "switch mailbox" entries: sections, labels, and badges
  * all derive from one accessible+active set, so an admin never sees a teammate's
  * private inbox or a shared inbox they don't belong to advertised as a switch
- * target (unlike `identity.list`, which returns every org mailbox for
- * owners/admins). Suspended/deleted rows are filtered out here, so there are no
- * dead-end targets.
+ * target. `identity.list` reads the same `loadAccessibleMailboxes` set but keeps
+ * suspended rows and returns full mailbox docs. Suspended/deleted rows are
+ * filtered out here, so there are no dead-end targets.
  *
  * O(1) per mailbox: reads the denormalized `mailFolders.unseenCount`. Read
  * state is a single shared truth per message,

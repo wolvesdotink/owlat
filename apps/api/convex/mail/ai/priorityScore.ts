@@ -13,6 +13,8 @@
  * contact already outranks a stranger. The LLM urgency then nudges it.
  */
 
+import { DAY_MS } from '../../lib/constants';
+
 export type PriorityUrgency = 'high' | 'normal' | 'low';
 
 /**
@@ -29,6 +31,50 @@ export interface SenderSignal {
 	frecency?: number;
 	/** The owner explicitly accepted this sender through the HEY-style screener. */
 	accepted?: boolean;
+}
+
+/**
+ * Blended frecency score (recency × frequency) of an address-book row — higher
+ * sorts first. Pure/deterministic given `now`. Feeds the sender signal below
+ * and the composer's recipient autocomplete ordering (mail/contacts.ts).
+ */
+export function contactFrecencyScore(
+	contact: { useCount: number; lastUsedAt: number },
+	now: number
+): number {
+	const days = Math.max(0, now - contact.lastUsedAt) / DAY_MS;
+	const recency = days < 1 ? 100 : days < 7 ? 70 : days < 30 ? 40 : days < 90 ? 20 : 10;
+	// Frequency is bounded so a runaway useCount can't drown out recency.
+	const frequency = Math.min(50, Math.max(0, contact.useCount) * 5);
+	return recency + frequency;
+}
+
+/** The mailContacts fields the sender signal reads. */
+export interface SenderContactRow {
+	isVip?: boolean;
+	isScreenerAccepted?: boolean;
+	useCount: number;
+	lastUsedAt: number;
+}
+
+/**
+ * The sender signal for one address-book row. Any row at all makes the sender
+ * a known contact (a bare VIP/accept row with useCount 0 included); no row
+ * means a first-time sender, which scores as a stranger (empty signal). Shared
+ * by the Reply Queue scoring and the reader's `senderState` so both classify a
+ * sender the same way.
+ */
+export function senderSignalFromContact(
+	contact: SenderContactRow | null,
+	now: number
+): SenderSignal {
+	if (!contact) return {};
+	return {
+		isVip: contact.isVip === true,
+		isKnownContact: true,
+		frecency: contactFrecencyScore(contact, now),
+		accepted: contact.isScreenerAccepted === true,
+	};
 }
 
 /** Content-urgency weight — the LLM's 3-bucket urgency mapped to a number. */

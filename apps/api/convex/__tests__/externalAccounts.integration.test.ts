@@ -163,6 +163,7 @@ describe('mail.external — connect + provisioning', () => {
 		expect(result).not.toHaveProperty('secretCiphertext');
 		expect(result).not.toHaveProperty('secretIv');
 		expect(result).not.toHaveProperty('secretAuthTag');
+		if (!result.configured) throw new Error('expected a configured account');
 		expect(result.emailAddress).toBe('me@example.com');
 		expect(result.status).toBe('pending');
 	});

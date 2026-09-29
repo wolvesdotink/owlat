@@ -5,6 +5,7 @@ import { instanceTimezoneSelectOptions } from '~/data/instanceTimezoneOptions';
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 import { isValidEmail } from '@owlat/shared';
 import { unverifiedFromDomainWarning } from '~/utils/fromEmailDomain';
+import { useSettingsForm } from '~/composables/useSettingsForm';
 
 const { t } = useI18n();
 
@@ -59,18 +60,125 @@ const { flags, isEnabled: isFeatureEnabled } = useFeatureFlag();
 // connected mailbox. Same gate the settings registry uses for mail settings.
 const hasMail = computed(() => isFeatureEnabled('postbox') || isFeatureEnabled('mail.external'));
 
-// Form state
-const form = reactive({
+type GeneralForm = {
+	name: string;
+	timezone: string;
+	defaultFromName: string;
+	defaultFromEmail: string;
+	archiveEnabled: boolean;
+};
+
+const DEFAULTS: GeneralForm = {
 	name: '',
 	timezone: '',
 	defaultFromName: '',
 	defaultFromEmail: '',
 	archiveEnabled: false,
-});
+};
+
+// BetterAuth refreshes the active organization after its own round trip, so a
+// name just saved stands in for it until that refresh lands.
+const savedName = ref<string | null>(null);
+watch(
+	() => organization.value?.name,
+	() => {
+		savedName.value = null;
+	}
+);
+
+// The form draws on three stores: the settings row, the BetterAuth organization
+// (the name) and the `campaigns.archive` feature flag (the archive default,
+// which is not an instanceSettings column).
+const stored = computed(() =>
+	organizationSettings.value === undefined
+		? undefined
+		: {
+				settings: organizationSettings.value,
+				name: savedName.value ?? organization.value?.name ?? '',
+				archiveEnabled: flags.value['campaigns.archive'] === true,
+			}
+);
 
 const formErrors = reactive({
 	name: '',
 	defaultFromEmail: '',
+});
+
+// Toast notification using global composable
+const { showToast } = useToast();
+
+// Validate form
+const validateForm = (draft: GeneralForm): boolean => {
+	formErrors.name = '';
+	formErrors.defaultFromEmail = '';
+
+	let isValid = true;
+
+	if (!draft.name.trim()) {
+		formErrors.name = t('dashboard.admin.instance.general.errors.nameRequired');
+		isValid = false;
+	}
+
+	if (draft.defaultFromEmail && !isValidEmail(draft.defaultFromEmail)) {
+		formErrors.defaultFromEmail = t('dashboard.admin.instance.general.errors.emailInvalid');
+		isValid = false;
+	}
+
+	return isValid;
+};
+
+// Three writes, in order: the settings row, the archive flag if it changed,
+// then the organization name.
+async function saveGeneral(draft: GeneralForm): Promise<boolean> {
+	if (!hasActiveOrganization.value) return false;
+
+	const settingsResult = await updateOrganizationSettings({
+		timezone: draft.timezone || undefined,
+		defaultFromName: draft.defaultFromName.trim() || undefined,
+		defaultFromEmail: draft.defaultFromEmail.trim() || undefined,
+	});
+	if (!settingsResult.ok) return false;
+
+	const archiveFlag = flags.value['campaigns.archive'] === true;
+	if (draft.archiveEnabled !== archiveFlag) {
+		if (!(await setFeatureFlag({ flag: 'campaigns.archive', value: draft.archiveEnabled })).ok) {
+			return false;
+		}
+	}
+
+	// Also update the BetterAuth organization name if it exists and the name changed
+	const name = draft.name.trim();
+	if (organization.value && name !== organization.value.name) {
+		try {
+			await updateOrganization({ name });
+			savedName.value = name;
+		} catch {
+			// Don't fail the whole operation if organization update fails
+		}
+	}
+
+	showToast(t('dashboard.admin.instance.general.savedToast'));
+	return true;
+}
+
+const {
+	form,
+	isDirty: isFormDirty,
+	isSaving,
+	handleSave,
+	unsavedDialog,
+} = useSettingsForm({
+	source: stored,
+	defaults: DEFAULTS,
+	project: (row) => ({
+		name: row.name,
+		timezone: row.settings?.timezone || '',
+		defaultFromName: row.settings?.defaultFromName || '',
+		defaultFromEmail: row.settings?.defaultFromEmail || '',
+		archiveEnabled: row.archiveEnabled,
+	}),
+	validate: validateForm,
+	save: saveGeneral,
 });
 
 // Non-blocking warning when the From email's domain is not a verified sending
@@ -91,164 +199,19 @@ function applyVerifiedDomain(domain: string) {
 	form.defaultFromEmail = `${local}@${domain}`;
 }
 
-// Track if form has been modified
-const isFormDirty = ref(false);
-const isSaving = ref(false);
-
 // Common timezones for dropdown — a computed so the labels follow the active
 // locale rather than the one that happened to be active at setup. The catalog
 // itself lives in ~/data/instanceTimezoneOptions.
 const timezones = computed(() => instanceTimezoneSelectOptions(t));
-
-// Initialize form when organization settings load
-watch(
-	organizationSettings,
-	(settings) => {
-		if (settings) {
-			form.timezone = settings.timezone || '';
-			form.defaultFromName = settings.defaultFromName || '';
-			form.defaultFromEmail = settings.defaultFromEmail || '';
-			isFormDirty.value = false;
-		}
-	},
-	{ immediate: true }
-);
-
-// Initialize archive toggle from the feature flag (single source of truth)
-watch(
-	() => flags.value['campaigns.archive'],
-	(enabled) => {
-		form.archiveEnabled = enabled === true;
-	},
-	{ immediate: true }
-);
-
-// Initialize name from BetterAuth organization
-watch(
-	organization,
-	(org) => {
-		if (org) {
-			form.name = org.name || '';
-		}
-	},
-	{ immediate: true }
-);
-
-// Watch form changes
-watch(
-	form,
-	() => {
-		const orgName = organization.value?.name || '';
-		const settings = organizationSettings.value;
-		const archiveFlag = flags.value['campaigns.archive'] === true;
-		const hasChanges =
-			form.name !== orgName ||
-			form.timezone !== (settings?.timezone || '') ||
-			form.defaultFromName !== (settings?.defaultFromName || '') ||
-			form.defaultFromEmail !== (settings?.defaultFromEmail || '') ||
-			form.archiveEnabled !== archiveFlag;
-		isFormDirty.value = hasChanges;
-	},
-	{ deep: true }
-);
-
-// Toast notification using global composable
-const { showToast } = useToast();
-
-// Validate form
-const validateForm = (): boolean => {
-	formErrors.name = '';
-	formErrors.defaultFromEmail = '';
-
-	let isValid = true;
-
-	if (!form.name.trim()) {
-		formErrors.name = t('dashboard.admin.instance.general.errors.nameRequired');
-		isValid = false;
-	}
-
-	if (form.defaultFromEmail && !isValidEmail(form.defaultFromEmail)) {
-		formErrors.defaultFromEmail = t('dashboard.admin.instance.general.errors.emailInvalid');
-		isValid = false;
-	}
-
-	return isValid;
-};
-
-// Save settings. Resolves to whether the save succeeded so the unsaved-changes
-// guard can keep the user on the page (and keep their edits) when it fails.
-const handleSave = async (): Promise<boolean> => {
-	if (!hasActiveOrganization.value) return false;
-
-	if (!validateForm()) return false;
-
-	isSaving.value = true;
-
-	// Update the organization settings (timezone, from name/email)
-	const settingsResult = await updateOrganizationSettings({
-		timezone: form.timezone || undefined,
-		defaultFromName: form.defaultFromName.trim() || undefined,
-		defaultFromEmail: form.defaultFromEmail.trim() || undefined,
-	});
-	if (!settingsResult.ok) {
-		isSaving.value = false;
-		return false;
-	}
-
-	// Archive default is a feature flag, not an instanceSettings column
-	const archiveFlag = flags.value['campaigns.archive'] === true;
-	if (form.archiveEnabled !== archiveFlag) {
-		if (!(await setFeatureFlag({ flag: 'campaigns.archive', value: form.archiveEnabled })).ok) {
-			isSaving.value = false;
-			return false;
-		}
-	}
-
-	// Also update the BetterAuth organization name if it exists and the name changed
-	if (organization.value && form.name.trim() !== organization.value.name) {
-		try {
-			await updateOrganization({ name: form.name.trim() });
-		} catch (orgError) {
-			// Don't fail the whole operation if organization update fails
-		}
-	}
-
-	isSaving.value = false;
-	showToast(t('dashboard.admin.instance.general.savedToast'));
-	isFormDirty.value = false;
-	return true;
-};
-
-// Unsaved-changes guard: a sidebar click (or any in-app navigation) while the
-// General form is dirty prompts to save/discard instead of silently dropping
-// the edits. Reuses the shared composable + dialog (the same ones the email
-// editor uses). `onSave` throws on failure so a failed save keeps the user here.
-const {
-	showDialog: showUnsavedDialog,
-	confirmDiscard,
-	confirmSave,
-	cancelNavigation,
-	setHasChanges,
-} = useUnsavedChanges({
-	onSave: async () => {
-		if (!(await handleSave())) throw new Error('Save failed');
-	},
-});
-
-watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 </script>
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="mb-6">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.admin.instance.general.title') }}
-			</h1>
-			<p class="mt-1 text-text-secondary">
-				{{ t('dashboard.admin.instance.general.subtitle') }}
-			</p>
-		</div>
+		<UiPageHeader
+			:title="t('dashboard.admin.instance.general.title')"
+			:description="t('dashboard.admin.instance.general.subtitle')"
+			class="mb-6"
+		/>
 
 		<UiQueryBoundary
 			:loading="isLoading && !organizationSettings"
@@ -458,10 +421,10 @@ watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 
 		<!-- Unsaved Changes Dialog -->
 		<UnsavedChangesDialog
-			:show="showUnsavedDialog"
-			@close="cancelNavigation"
-			@discard="confirmDiscard"
-			@save="confirmSave"
+			:show="unsavedDialog.showDialog"
+			@close="unsavedDialog.cancelNavigation"
+			@discard="unsavedDialog.confirmDiscard"
+			@save="unsavedDialog.confirmSave"
 		/>
 
 		<!-- ── Moved here from the Team page (#795) ───────────────────────────

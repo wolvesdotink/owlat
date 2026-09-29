@@ -7,6 +7,7 @@
 
 import type Redis from 'ioredis';
 import { extractDomainOrNull } from '@owlat/shared';
+import { isIdentifierAligned } from '@owlat/shared/spfAlignment';
 import type { EmailJob } from '../types.js';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
@@ -45,8 +46,10 @@ export async function screenContent(
 	// 3. DKIM domain alignment check
 	const fromDomain = extractDomainOrNull(job.from);
 	if (fromDomain && job.dkimDomain) {
-		// Allow subdomain alignment (e.g., notifications.example.com aligns with example.com)
-		if (!isDomainAligned(fromDomain, job.dkimDomain)) {
+		// DMARC relaxed alignment (RFC 7489 §3.1.1): d= and From must share the
+		// PSL-derived Organizational Domain, so sibling subdomains align but
+		// tenants under a private suffix such as github.io do not.
+		if (!isIdentifierAligned(job.dkimDomain, fromDomain)) {
 			return { allowed: false, reason: 'dkim_misalignment' };
 		}
 	}
@@ -78,27 +81,6 @@ export async function screenContent(
 	}
 
 	return { allowed: true };
-}
-
-/**
- * Check DKIM domain alignment (relaxed — allows subdomain)
- *
- * For example: from=notifications.example.com, dkim=example.com → aligned
- */
-function isDomainAligned(fromDomain: string, dkimDomain: string): boolean {
-	const from = fromDomain.toLowerCase();
-	const dkim = dkimDomain.toLowerCase();
-
-	// Exact match
-	if (from === dkim) return true;
-
-	// From is a subdomain of DKIM domain
-	if (from.endsWith(`.${dkim}`)) return true;
-
-	// DKIM is a subdomain of From domain
-	if (dkim.endsWith(`.${from}`)) return true;
-
-	return false;
 }
 
 /**
@@ -199,7 +181,7 @@ async function checkRspamd(
 				return null; // Fail open
 			}
 
-			const result = await response.json() as RspamdResponse;
+			const result = (await response.json()) as RspamdResponse;
 
 			if (result.score >= rejectThreshold) {
 				logger.warn(

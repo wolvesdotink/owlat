@@ -1,8 +1,95 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { clarificationTranslationValidator } from '../inbox/clarificationValidators';
-import { detectionSourceValidator, draftQualityValidator } from '../lib/convexValidators';
-import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';
+import { needsReplyClarificationValidator } from '../lib/validators/clarification';
+import { draftQualityValidator } from '../lib/convexValidators';
+import {
+	mailCategoryLabelValidator,
+	mailCategorySourceValidator,
+	detectionSourceValidator,
+} from '../lib/literalValidators';
+
+/** Reply Queue urgency bucket (the LLM refinement's 3-way verdict). */
+export const needsReplyUrgencyValidator = v.union(
+	v.literal('high'),
+	v.literal('normal'),
+	v.literal('low')
+);
+
+/**
+ * The classification result fields of `mailThreads.needsReply`: everything the
+ * classifier hands to `mail.needsReply.applyResult`. The stored flag adds
+ * `detectedAt` (stamped by applyResult) and `draftSlot` (written later by
+ * draft-on-arrival), see `needsReplyValidator` below.
+ */
+export const needsReplyResultFields = {
+	// The inbound message that triggered the flag (usually the newest).
+	messageId: v.id('mailMessages'),
+	source: detectionSourceValidator,
+	urgency: needsReplyUrgencyValidator,
+	// Unified cross-thread priority score (mail/ai/priorityScore.ts): the
+	// deterministic sender-importance signal (VIP / person / frecency)
+	// blended with the LLM urgency. REPLACES the 3-bucket urgency for
+	// Reply Queue ranking. Optional so pre-existing rows fall back to
+	// their urgency bucket in the comparator until re-scored. Computed in
+	// applyResult (server-side) from the address book, never sent by callers.
+	priorityScore: v.optional(v.number()),
+	// One-line "what they are asking" (<= 120 chars). LLM-refined only.
+	askSummary: v.optional(v.string()),
+	// ISO date when the message states a deadline. LLM-refined only.
+	dueHint: v.optional(v.string()),
+	// Plain-prose scheduling request detected on the trigger message (no .ics
+	// attached — the calendar-invite path in PostboxInviteCard owns real
+	// invites). Drives the "Scheduling request — draft a reply?" chip in the
+	// reader. LLM-refined only; absent when nothing schedule-like was found.
+	meetingIntent: v.optional(
+		v.object({
+			isScheduling: v.boolean(),
+			// Verbatim time phrases the sender proposed ("Tuesday afternoon").
+			proposedTimes: v.array(v.string()),
+			// What the meeting is about, if stated (<= 120 chars).
+			topic: v.optional(v.string()),
+		})
+	),
+	// Clarification loop (Postbox-native), see
+	// lib/validators/clarification.ts needsReplyClarificationValidator.
+	clarification: v.optional(needsReplyClarificationValidator),
+};
+
+/**
+ * The stored `mailThreads.needsReply` flag (see the field comment on the
+ * table): the classification result plus the stamp and the draft slot.
+ */
+export const needsReplyValidator = v.object({
+	...needsReplyResultFields,
+	detectedAt: v.number(),
+	// Draft-on-arrival review slot (postbox.aiDraft flag): a reply
+	// pre-generated the moment the message landed — or the moment a
+	// clarification was answered — via the SHARED draft service
+	// (agent/shared/draftService.ts), so the owner reviews-and-sends
+	// instead of starting from a blank composer. HUMAN REVIEW ONLY: its
+	// presence never auto-sends. Absent when the flag is off, no AI
+	// provider is configured, or generation failed (fail-soft — the
+	// plain needs-reply row still renders).
+	draftSlot: v.optional(
+		v.object({
+			// The pre-generated reply body (option 0 == this string).
+			draft: v.string(),
+			// Reply subject (Re: …) composed from the trigger message.
+			draftSubject: v.optional(v.string()),
+			// Confidence surfaced next to the draft (0..1) — the blended
+			// classifier/urgency signal, NOT an auto-send authorization.
+			confidence: v.number(),
+			// Draft-quality self-check (completeness/grounding/tone). Absent
+			// when the self-check failed → shown as "unverified" in review.
+			quality: v.optional(draftQualityValidator),
+			// Alternative pickable drafts (present only on low-confidence /
+			// low-quality cases; options[0] == draft). Absent otherwise.
+			options: v.optional(v.array(v.string())),
+			// When the slot was generated (advisory; freshness display).
+			generatedAt: v.number(),
+		})
+	),
+});
 
 /**
  * Thread rollups, labels and saved searches — the list-view surface.
@@ -60,121 +147,18 @@ export const mailThreadsTables = {
 		// urgency / askSummary / dueHint when AI is enabled and the call succeeds.
 		// Cleared by any outbound reply in the thread, archive/trash of its
 		// messages, or the manual clear mutation (mail/needsReply.ts).
-		needsReply: v.optional(
-			v.object({
-				// The inbound message that triggered the flag (usually the newest).
-				messageId: v.id('mailMessages'),
-				detectedAt: v.number(),
-				source: detectionSourceValidator,
-				urgency: v.union(v.literal('high'), v.literal('normal'), v.literal('low')),
-				// Unified cross-thread priority score (mail/ai/priorityScore.ts): the
-				// deterministic sender-importance signal (VIP / person / frecency)
-				// blended with the LLM urgency. REPLACES the 3-bucket urgency for
-				// Reply Queue ranking. Optional so pre-existing rows fall back to
-				// their urgency bucket in the comparator until re-scored.
-				priorityScore: v.optional(v.number()),
-				// One-line "what they are asking" (<= 120 chars). LLM-refined only.
-				askSummary: v.optional(v.string()),
-				// ISO date when the message states a deadline. LLM-refined only.
-				dueHint: v.optional(v.string()),
-				// Plain-prose scheduling request detected on the trigger message (no .ics
-				// attached — the calendar-invite path in PostboxInviteCard owns real
-				// invites). Drives the "Scheduling request — draft a reply?" chip in the
-				// reader. LLM-refined only; absent when nothing schedule-like was found.
-				meetingIntent: v.optional(
-					v.object({
-						isScheduling: v.boolean(),
-						// Verbatim time phrases the sender proposed ("Tuesday afternoon").
-						proposedTimes: v.array(v.string()),
-						// What the meeting is about, if stated (<= 120 chars).
-						topic: v.optional(v.string()),
-					})
-				),
-				// Clarification loop (Postbox-native): set when the refinement pass
-				// decides a good reply needs a fact only the owner can supply and the
-				// capable-tier divergence confirmation agrees it is genuinely open.
-				// Flips the Reply Queue row from "Needs you" to "Needs your input".
-				// LLM-refined only; every question is deterministically sanitized
-				// (credential/OTP solicitations dropped) and attributed to the sender
-				// in mail/ai/needsReplyClassify.ts before it is persisted here.
-				clarification: v.optional(
-					v.object({
-						// True while at least one question is still awaiting an answer.
-						isNeeded: v.boolean(),
-						questions: v.array(
-							v.object({
-								// Stable id matching an incoming answer back to its question.
-								id: v.string(),
-								// The reply-slot kind (shared taxonomy, inbox/clarificationSlots.ts).
-								slotType: v.string(),
-								// The question shown to the owner.
-								text: v.string(),
-								// Provenance + "Owlat will never ask for your password" promise.
-								attribution: v.string(),
-								// Suggested scoped answers rendered as one-tap chips (multiple
-								// choice); absent for a free-text-only slot.
-								options: v.optional(v.array(v.string())),
-								// Per-locale renderings of text + options (see
-								// inbox/clarificationValidators.ts). Absent when localization
-								// failed; the card then shows the canonical English copy.
-								translations: v.optional(v.array(clarificationTranslationValidator)),
-								// The owner's answer — absent until answered.
-								answer: v.optional(
-									v.object({
-										value: v.string(),
-										at: v.number(),
-									})
-								),
-							})
-						),
-						// When the questions were surfaced (advisory ordering only).
-						askedAt: v.number(),
-						// Set once the owner answers — drives the draftWithAnswers path.
-						answeredAt: v.optional(v.number()),
-						// The starter reply produced by draftWithAnswers once the owner
-						// answered. Its presence flips the card to "Draft ready".
-						draft: v.optional(v.string()),
-					})
-				),
-				// Draft-on-arrival review slot (postbox.aiDraft flag): a reply
-				// pre-generated the moment the message landed — or the moment a
-				// clarification was answered — via the SHARED draft service
-				// (agent/shared/draftService.ts), so the owner reviews-and-sends
-				// instead of starting from a blank composer. HUMAN REVIEW ONLY: its
-				// presence never auto-sends. Absent when the flag is off, no AI
-				// provider is configured, or generation failed (fail-soft — the
-				// plain needs-reply row still renders).
-				draftSlot: v.optional(
-					v.object({
-						// The pre-generated reply body (option 0 == this string).
-						draft: v.string(),
-						// Reply subject (Re: …) composed from the trigger message.
-						draftSubject: v.optional(v.string()),
-						// Confidence surfaced next to the draft (0..1) — the blended
-						// classifier/urgency signal, NOT an auto-send authorization.
-						confidence: v.number(),
-						// Draft-quality self-check (completeness/grounding/tone). Absent
-						// when the self-check failed → shown as "unverified" in review.
-						quality: v.optional(draftQualityValidator),
-						// Alternative pickable drafts (present only on low-confidence /
-						// low-quality cases; options[0] == draft). Absent otherwise.
-						options: v.optional(v.array(v.string())),
-						// When the slot was generated (advisory; freshness display).
-						generatedAt: v.number(),
-					})
-				),
-			})
-		),
+		needsReply: v.optional(needsReplyValidator),
 		// Set when inbound ingest enqueues needs-reply classification; cleared once
 		// the classify action persists a result. Backs the reconcile cron that
 		// re-schedules threads whose scheduled classification was lost.
 		needsReplyPendingAt: v.optional(v.number()),
 		// "Remind me if no reply" follow-up watch on a sent message (Boomerang
 		// parity, mail/followUps.ts). Armed at send time (from the draft's
-		// followUpRemindAt) or after the fact from the reader/sent list. ANY
-		// inbound delivery into the thread clears it silently; otherwise the
-		// sweep cron resurfaces the thread at the deadline (sets dueAt exactly
-		// once — the "No reply yet" chip + Reply Queue follow-up item key off it).
+		// followUpRemindAt) or after the fact from the reader/sent list. An
+		// inbound reply from someone else clears it silently (rules in
+		// mail/deliveryPipeline/afterInsert.ts); otherwise the sweep cron
+		// resurfaces the thread at the deadline (sets dueAt exactly once — the
+		// "No reply yet" chip + Reply Queue follow-up item key off it).
 		followUp: v.optional(
 			v.object({
 				// The sent message being watched for a reply.

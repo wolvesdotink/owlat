@@ -3,7 +3,7 @@
  * receiving it".
  *
  * The provider table for a SEND-ONLY sending domain, shared between the Convex
- * record generator (`domains/providers/mta/index.ts`, `domains/lifecycle.ts`)
+ * record generator (`domains/providers/mta/index.ts`, `domains/lifecycleReceiving.ts`)
  * and the web domain panel, so both answer "which MX belongs to whom" and
  * "which SPF term does that provider need" from ONE table. A second copy in the
  * UI is how a domain gets told to publish an apex SPF record that omits the

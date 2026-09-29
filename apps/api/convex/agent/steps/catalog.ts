@@ -1,4 +1,4 @@
-import { v } from 'convex/values';
+import { literalUnion } from '../../lib/literalUnion';
 import { CORE_AGENT_STEP_DEFINITIONS, type CoreAgentStepKind } from '@owlat/plugin-host';
 import { BUNDLED_PLUGIN_AGENT_STEP_CATALOG } from '../../plugins/agentStepCatalog.generated';
 import {
@@ -40,7 +40,7 @@ export const AGENT_STEP_KINDS = Object.freeze([
 	...PLUGIN_AGENT_STEP_CATALOG.map((definition) => definition.kind as GeneratedPluginAgentStepKind),
 ]) as readonly AgentStepKind[];
 
-export const agentStepKindValidator = v.union(...AGENT_STEP_KINDS.map((kind) => v.literal(kind)));
+export const agentStepKindValidator = literalUnion(AGENT_STEP_KINDS);
 
 export function isPluginAgentStepKind(kind: AgentStepKind): kind is GeneratedPluginAgentStepKind {
 	return kind.startsWith('plugin.');

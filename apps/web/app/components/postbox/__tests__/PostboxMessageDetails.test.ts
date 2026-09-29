@@ -34,7 +34,11 @@ const DETAILS = {
 	dmarcResult: 'pass',
 	envelopeFromDomain: 'bounce.northwind.studio',
 	dkimSigningDomain: 'northwind.studio',
+	senderHeuristics: { isReplyToMismatch: true },
 };
+
+/** What the stubbed query resolves to; a test swaps it before opening the panel. */
+let details: Record<string, unknown> = DETAILS;
 
 /** Args the component handed the query on each (re)subscribe. */
 const queryArgs = vi.fn();
@@ -55,7 +59,7 @@ beforeAll(() => {
 		watchEffect(() => {
 			const resolved = args();
 			queryArgs(resolved);
-			data.value = resolved === 'skip' ? undefined : DETAILS;
+			data.value = resolved === 'skip' ? undefined : details;
 		});
 		return { data, isLoading, error: ref(null), isRefetching: ref(false), refetch: vi.fn() };
 	});
@@ -63,6 +67,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+	details = DETAILS;
 	queryArgs.mockClear();
 	loadRawEml.mockClear();
 	showToast.mockClear();
@@ -100,12 +105,27 @@ describe('PostboxMessageDetails', () => {
 		expect(w.find('[data-testid="message-details-row-dkim"]').text()).toContain('northwind.studio');
 	});
 
-	it('flags a Reply-To that points at another domain', async () => {
+	it('flags a Reply-To that ingest recorded as a mismatch', async () => {
 		const w = mountPanel();
 		await w.find('[data-testid="message-details-toggle"]').trigger('click');
 		const replyTo = w.find('[data-testid="message-details-row-replyTo"]');
 		expect(replyTo.text()).toContain('billing@other-domain.example');
 		expect(replyTo.text()).toContain('different domain from the sender');
+	});
+
+	it('stays quiet on a parent-domain Reply-To the persisted heuristic did not flag', async () => {
+		// The trust chip and risk marker read the same flag, so the panel must not
+		// warn where they stay silent.
+		details = {
+			fromAddress: 'news@mail.example.com',
+			replyToAddress: 'help@example.com',
+			rfc822MessageId: '<abc@mail.example.com>',
+		};
+		const w = mountPanel();
+		await w.find('[data-testid="message-details-toggle"]').trigger('click');
+		const replyTo = w.find('[data-testid="message-details-row-replyTo"]');
+		expect(replyTo.text()).toContain('help@example.com');
+		expect(replyTo.text()).not.toContain('different domain from the sender');
 	});
 
 	it('downloads the original .eml as a real file', async () => {

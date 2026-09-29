@@ -5,8 +5,6 @@ devdep:apps/docs/package.json:@vue/server-renderer
 devdep:apps/web/package.json:@faker-js/faker
 devdep:apps/web/package.json:autoprefixer
 devdep:apps/web/package.json:postcss
-export:apps/imap/src/commands/helpers/auth.ts:assertAuth
-export:apps/imap/src/commands/helpers/auth.ts:assertSelected
 export:apps/mta/src/bounce/pipeline.ts:PhaseOutcome
 export:apps/mta/src/bounce/types.ts:InboundAttachmentMeta
 export:apps/mta/src/dispatch/pipeline.ts:PhaseOutcome

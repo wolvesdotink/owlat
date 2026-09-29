@@ -10,7 +10,17 @@ describe('extractEmailAddress', () => {
 		expect(extractEmailAddress('  Bob@Example.com ')).toBe('bob@example.com');
 	});
 
-	it('handles the first angle-bracket group only', () => {
-		expect(extractEmailAddress('x <a@b.com> <c@d.com>')).toBe('a@b.com');
+	it('skips an RFC 5322 comment that holds an address-shaped decoy', () => {
+		// A local `<...>`/split regex read the comment; the shared parser does not.
+		expect(extractEmailAddress('(x@a.com) real@evil.com')).toBe('real@evil.com');
+	});
+
+	it('keeps an "@" inside a quoted local part in the local part', () => {
+		expect(extractEmailAddress('"a@b"@Evil.COM')).toBe('"a@b"@evil.com');
+	});
+
+	it('falls back to the trimmed, lowercased input when nothing parses', () => {
+		expect(extractEmailAddress('  Undisclosed-Recipients ')).toBe('undisclosed-recipients');
+		expect(extractEmailAddress('')).toBe('');
 	});
 });

@@ -10,7 +10,7 @@ import {
 	rampDecisionReasonValidator,
 	rampGateIdValidator,
 	rampPresetValidator,
-} from '../delivery/deliverabilityValidators';
+} from '../lib/validators/deliverability';
 
 /**
  * Deliverability ROUTING tables — the ramp cell's durable state, the MX-learned

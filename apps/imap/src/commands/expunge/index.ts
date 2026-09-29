@@ -2,20 +2,14 @@ import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 import { parseUidSet } from '../../parser.js';
 import type { ImapCommandModule } from '../types.js';
-import { asyncSession, syncSession } from '../helpers/session.js';
-import { requireAuth, requireSelect, requireWritableSelect } from '../helpers/auth.js';
+import { asyncSession } from '../helpers/session.js';
+import { serverFailure } from '../helpers/replies.js';
 
-export interface ExpungeArgs {
-	/** Present iff this is UID EXPUNGE. */
+interface ExpungeArgs {
+	/** The UID set of a UID EXPUNGE; absent for a whole-folder sweep. */
 	readonly uidSpec?: string;
-}
-
-interface ExpungeResult {
-	readonly sequenceNumbers: number[];
-	readonly modseq: number;
-	readonly done?: boolean;
-	readonly beforeUid?: number;
-	readonly nextSequenceNumber?: number;
+	/** Set by the UID dispatcher for UID EXPUNGE. */
+	readonly byUid: boolean;
 }
 
 /**
@@ -28,19 +22,13 @@ interface ExpungeResult {
  */
 export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 	verbs: ['EXPUNGE'],
+	requires: 'writable',
 	parseArgs(rawArgs) {
 		// Bare EXPUNGE has no args; UID dispatcher passes the rest through.
-		return { ok: true, args: { uidSpec: rawArgs[0] } };
+		return { ok: true, args: { uidSpec: rawArgs[0], byUid: false } };
 	},
 	start({ deps, state, args, tag, send }) {
-		const fail =
-			requireAuth(state, tag) ?? requireSelect(state, tag) ?? requireWritableSelect(state, tag);
-		if (fail) {
-			send(fail);
-			return syncSession();
-		}
-
-		const label = args.uidSpec ? 'UID EXPUNGE' : 'EXPUNGE';
+		const label = args.byUid ? 'UID EXPUNGE' : 'EXPUNGE';
 
 		let uidSet: number[] | undefined;
 		if (args.uidSpec) {
@@ -57,15 +45,12 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 				let beforeUid: number | undefined;
 				let nextSequenceNumber: number | undefined;
 				do {
-					const result = (await deps.convex.mutation(
-						fn.expungeFolder as never,
-						{
-							folderId: state.selected!.folderId,
-							uidSet,
-							beforeUid,
-							nextSequenceNumber,
-						} as never
-					)) as ExpungeResult;
+					const result = await deps.convex.mutation(fn.expungeFolder, {
+						folderId: state.selected!.folderId,
+						uidSet,
+						beforeUid,
+						nextSequenceNumber,
+					});
 					// Each page has already committed. Publish it before requesting the
 					// next page so a later failure cannot hide permanent deletions.
 					for (const seq of [...result.sequenceNumbers].sort((a, b) => b - a)) {
@@ -85,7 +70,7 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 				send(`${tag} OK ${label} completed`);
 			} catch (err) {
 				logger.error({ err }, 'EXPUNGE failed');
-				send(`${tag} BAD EXPUNGE failed`);
+				send(serverFailure(tag, label));
 			}
 		});
 	},

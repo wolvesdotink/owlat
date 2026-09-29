@@ -18,6 +18,7 @@
 import type { Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
+import { composeDraftFields } from '~/utils/postboxDraftFields';
 import type { OfflineComposePayload } from '~/utils/postboxOfflineStore';
 import type { ComposerAttachment } from './usePostboxComposeAttachments';
 import type { ComposerMode } from './usePostboxCompose';
@@ -72,16 +73,9 @@ export function usePostboxComposeOfflineSend(sources: OfflineSendSources) {
 			inReplyToMessageId: sources.inReplyToMessageId
 				? String(sources.inReplyToMessageId)
 				: undefined,
-			toAddresses: [...sources.toAddresses.value],
-			ccAddresses: [...sources.ccAddresses.value],
-			bccAddresses: [...sources.bccAddresses.value],
-			subject: sources.subject.value,
-			bodyHtml: sources.bodyHtml.value,
-			bodyBlocks:
-				sources.composerMode.value === 'full'
-					? JSON.stringify(sources.bodyBlocks.value)
-					: undefined,
-			composerMode: sources.composerMode.value,
+			// The canonical draft snapshot autosave persists; the rest of the
+			// payload is what a replay needs beyond it.
+			...composeDraftFields(sources),
 			fromAddress: sources.fromAddress.value || undefined,
 			followUpRemindAt: sources.followUpRemindAt.value,
 			attachments: sources.attachments.value.map((a) => ({

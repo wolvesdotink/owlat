@@ -14,12 +14,11 @@ import {
 	type RoutingReentryTokenPayload,
 } from './routingReentryToken';
 import type { SendRef } from './sendLifecycle/types';
-import { campaignEmailPool, transactionalEmailPool } from './workpool';
+import { enqueueGovernedSend } from './governedEnqueue';
 import {
 	envelopeInputValidator,
 	retryStateValidator,
 	type WorkerEnvelopeInput,
-	type WorkerRetryState,
 } from './workerEnvelope';
 
 export const sendRefValidator = v.union(
@@ -122,7 +121,6 @@ interface ReentryTarget {
 	sendRef: SendRef;
 	send: ReentrySend;
 	recordAttempt(): Promise<void>;
-	enqueue(): Promise<void>;
 }
 
 type TargetResolution =
@@ -138,7 +136,6 @@ async function resolveReentryTarget(
 	ctx: MutationCtx,
 	payload: RoutingReentryTokenPayload,
 	envelopeInput: WorkerEnvelopeInput,
-	retryState: WorkerRetryState,
 	messageId: string
 ): Promise<TargetResolution> {
 	// A seed probe is DISPOSABLE by design: no lifecycle to resume and no
@@ -167,17 +164,6 @@ async function resolveReentryTarget(
 							: {}),
 					});
 				},
-				enqueue: async () => {
-					await campaignEmailPool.enqueueAction(
-						ctx,
-						internal.delivery.worker.sendSingleEmail,
-						{ envelopeInput, retryState },
-						{
-							onComplete: internal.delivery.sendCompletion.completeSend,
-							context: { sendRef: { kind: 'campaign', id } },
-						}
-					);
-				},
 			},
 		};
 	}
@@ -198,17 +184,6 @@ async function resolveReentryTarget(
 					mtaRoutingReentryAttempt: payload.attempt,
 					...(!send.providerMessageId ? { providerMessageId: messageId, providerType: 'mta' } : {}),
 				});
-			},
-			enqueue: async () => {
-				await transactionalEmailPool.enqueueAction(
-					ctx,
-					internal.delivery.worker.sendSingleEmail,
-					{ envelopeInput, retryState },
-					{
-						onComplete: internal.delivery.sendCompletion.completeSend,
-						context: { sendRef: { kind: 'transactional', id } },
-					}
-				);
 			},
 		},
 	};
@@ -260,15 +235,9 @@ export const consumeSnapshot = internalMutation({
 		const deadlineExpired = budget.deadline === 'deadline_expired';
 		if (!deadlineExpired && payload.expiresAt <= now) return { disposition: 'expired' as const };
 
-		const resolution = await resolveReentryTarget(
-			ctx,
-			payload,
-			args.envelopeInput,
-			args.retryState,
-			args.messageId
-		);
+		const resolution = await resolveReentryTarget(ctx, payload, args.envelopeInput, args.messageId);
 		if (!resolution.ok) return { disposition: resolution.disposition };
-		const { sendRef, send, recordAttempt, enqueue } = resolution.target;
+		const { sendRef, send, recordAttempt } = resolution.target;
 		if (send.status !== 'queued') return { disposition: 'terminal' as const };
 		if (send.providerMessageId && send.providerMessageId !== args.messageId) {
 			return { disposition: 'message_mismatch' as const };
@@ -301,7 +270,10 @@ export const consumeSnapshot = internalMutation({
 			});
 			return { disposition: 'retry_exhausted' as const };
 		}
-		await enqueue();
+		await enqueueGovernedSend(ctx, sendRef, {
+			envelopeInput: args.envelopeInput,
+			retryState: args.retryState,
+		});
 		return { disposition: 'enqueued' as const, reason: args.reason };
 	},
 });

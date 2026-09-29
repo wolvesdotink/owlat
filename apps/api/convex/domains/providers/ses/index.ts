@@ -15,9 +15,9 @@
 
 import { internal } from '../../../_generated/api';
 import { createSESIdentityManager } from '../../../lib/emailProviders/sesIdentity';
-import { getOptional } from '../../../lib/env';
 import { logError } from '../../../lib/runtimeLog';
-import { buildDmarcRecordValue, DEFAULT_DMARC_POLICY } from '../../dmarc';
+import { defaultDmarcDnsRecord } from '../../dmarc';
+import { buildSpfRecordValue } from '../../spf';
 import { buildSesMailFromRecords, resolveSesMailFrom } from './mailFrom';
 import { sesReferenceArm } from './referenceArm';
 import { sesRelayIdentityFacts } from './relayIdentityView';
@@ -72,19 +72,13 @@ export const sesProvider: RelayProvingProviderModule<'ses'> = {
 			spf: {
 				type: 'TXT',
 				host: '@',
-				value: 'v=spf1 include:amazonses.com -all',
+				// Hard fail (`-all`) is deliberate for a relay domain: SES owns the
+				// sending IPs behind its include. SPF_QUALIFIER does not apply here;
+				// it governs only the apex record for our own MTA pool.
+				value: buildSpfRecordValue({ include: 'amazonses.com', qualifier: '-all' }),
 			},
 			dkim: dkimRecords,
-			// New domains start in monitor-only mode (`p=none`); the customer
-			// raises the policy to quarantine/reject via `setDmarcPolicy`.
-			dmarc: {
-				type: 'TXT',
-				host: '_dmarc',
-				value: buildDmarcRecordValue(domain, {
-					policy: DEFAULT_DMARC_POLICY,
-					rua: getOptional('MTA_DMARC_RUA'),
-				}),
-			},
+			dmarc: defaultDmarcDnsRecord(domain),
 			// The MX + SPF TXT SES requires at the (default or override) MAIL FROM
 			// subdomain (see `mailFrom.ts` — SES's shape, not the MTA's).
 			mailFrom: buildSesMailFromRecords(mailFrom.host, region),

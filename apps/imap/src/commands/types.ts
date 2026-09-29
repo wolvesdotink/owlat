@@ -164,6 +164,15 @@ export type ImapVerb =
 	| 'APPEND';
 
 /**
+ * The connection state a command needs before it may run, from weakest
+ * to strongest: `auth` (logged in), `selected` (logged in with a folder
+ * SELECTed or EXAMINEd), `writable` (the selected folder was SELECTed,
+ * not EXAMINEd). See `checkRequires` in `helpers/auth.ts` for the reply
+ * sent when the precondition is not met.
+ */
+export type CommandRequirement = 'auth' | 'selected' | 'writable';
+
+/**
  * A per-verb module. Lives at `commands/<verb>/index.ts`. Modules are
  * pure with respect to I/O — they receive `send` from the pump and
  * never touch the socket directly.
@@ -176,6 +185,13 @@ export interface ImapCommandModule<TArgs = unknown> {
 	 * CAPABILITY response.
 	 */
 	readonly capabilities?: readonly string[];
+	/**
+	 * Precondition enforced by the dispatcher (the walker, and the UID
+	 * dispatcher for UID sub-commands) after `parseArgs` succeeds and
+	 * before `start` runs. `start` can therefore rely on it. A check that
+	 * depends on the parsed args stays inline in `start`.
+	 */
+	readonly requires?: CommandRequirement;
 	parseArgs(rawArgs: string[]): ParseResult<TArgs>;
 	start(args: StartArgs<TArgs>): CommandSession;
 }

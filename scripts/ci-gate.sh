@@ -53,7 +53,7 @@ step bunx turbo "${turbo_tasks[@]}" "${turbo_concurrency_args[@]}" --filter='!@o
 # inside each lint:* entry, which booted vitest once per gate and left the
 # test files without a matching lint:* entry running only in security.yml.
 for gate in warnings scripts script-tests deadcode catalog build-graph convex-orphans convex-globals filesize adr branding format imports providers \
-	ui-buttons tokens member-jargon docker-workspaces deploy-closure installer compose; do
+	ui-buttons page-headers tokens member-jargon docker-workspaces deploy-closure installer compose mail-services; do
 	step bun run "lint:$gate"
 done
 # lint:plugin-imports without its plugins:prepare prefix (see above).

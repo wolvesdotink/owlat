@@ -26,6 +26,17 @@ const props = defineProps<{
 	campaignId: Id<'campaigns'> | null;
 	// `undefined` while the campaign query is loading; `null` when there is none.
 	campaignDetails: CampaignSenderDetails | null | undefined;
+	// Read-only (a scheduled campaign on the edit page).
+	disabled?: boolean;
+}>();
+
+const emit = defineEmits<{
+	/**
+	 * The one-shot preselect has chosen a row. The writes it makes to the from
+	 * name/address are the picker's, not the user's (a host that tracks unsaved
+	 * edits uses this to tell them apart).
+	 */
+	preselected: [];
 }>();
 
 // The from name/address are the source of truth in the parent form (submit
@@ -124,6 +135,19 @@ watch([selectedSenderId, senders], ([value]) => {
 // One-shot preselect once the picker (and, when editing, the persisted campaign)
 // has loaded: reuse the campaign's saved sender if it still matches a curated
 // row, fall back to the custom branch when allowed, else the default sender.
+function initialSenderValue(): string {
+	const existingEmail = props.campaignDetails?.fromEmail?.trim().toLowerCase();
+	if (existingEmail) {
+		const match = senders.value.find((s) => s.email === existingEmail);
+		if (match) return match._id;
+		if (isCustomAllowed.value) {
+			fromName.value = props.campaignDetails?.fromName ?? '';
+			fromEmail.value = props.campaignDetails?.fromEmail ?? '';
+			return CUSTOM_SENDER_VALUE;
+		}
+	}
+	return defaultSenderValue(senders.value, isCustomAllowed.value);
+}
 let senderInitialized = false;
 watch(
 	[senders, isCustomAllowed, () => props.campaignDetails],
@@ -131,22 +155,8 @@ watch(
 		if (senderInitialized || !senderPicker.value) return;
 		if (props.campaignId && props.campaignDetails === undefined) return;
 		senderInitialized = true;
-
-		const existingEmail = props.campaignDetails?.fromEmail?.trim().toLowerCase();
-		if (existingEmail) {
-			const match = senders.value.find((s) => s.email === existingEmail);
-			if (match) {
-				selectedSenderId.value = match._id;
-				return;
-			}
-			if (isCustomAllowed.value) {
-				selectedSenderId.value = CUSTOM_SENDER_VALUE;
-				fromName.value = props.campaignDetails?.fromName ?? '';
-				fromEmail.value = props.campaignDetails?.fromEmail ?? '';
-				return;
-			}
-		}
-		selectedSenderId.value = defaultSenderValue(senders.value, isCustomAllowed.value);
+		selectedSenderId.value = initialSenderValue();
+		emit('preselected');
 	},
 	{ immediate: true }
 );
@@ -295,6 +305,7 @@ defineExpose({ validate, isReady });
 				:model-value="selectedSenderId"
 				:placeholder="t('components.campaigns.steps.setupSenderPicker.selectPlaceholder')"
 				:error="senderError ?? undefined"
+				:disabled="disabled"
 				@update:model-value="onSelectSender"
 			/>
 			<p v-if="!isCustomSelected && !senderError" class="mt-1.5 text-sm text-text-tertiary">
@@ -323,6 +334,7 @@ defineExpose({ validate, isReady });
 						id="fromName"
 						v-model="fromName"
 						type="text"
+						:disabled="disabled"
 						:placeholder="t('components.campaigns.steps.setupSenderPicker.fromNamePlaceholder')"
 						:class="['input mt-1.5', senderErrorField === 'name' ? 'input-error' : '']"
 					/>
@@ -341,6 +353,7 @@ defineExpose({ validate, isReady });
 						id="fromEmail"
 						v-model="fromEmail"
 						type="email"
+						:disabled="disabled"
 						:placeholder="t('components.campaigns.steps.setupSenderPicker.fromEmailPlaceholder')"
 						:class="['input mt-1.5', senderErrorField === 'email' ? 'input-error' : '']"
 					/>

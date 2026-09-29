@@ -95,6 +95,7 @@ export {
 	serializeHistoryState,
 	deserializeVersionSnapshot,
 	parseSnapshotBlocks,
+	parseStoredBlocks,
 	snapshotMatchesState,
 	formatSnapshotSize,
 } from './utils';

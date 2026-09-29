@@ -12,8 +12,10 @@
  * the flat list:
  *
  *   - It is a pure re-shaping of the feed the flat list already has. No new
- *     query, no server work, nothing hidden: every message in a bundle is one
- *     disclosure away, and the bundle states its own count.
+ *     query, nothing hidden: every message in a bundle is one disclosure
+ *     away, and the bundle states its own count. The category rides on each
+ *     row (the server attaches its thread's label, `mail/mailbox/rowThreadState`),
+ *     so a row on any page folds the same way as a row on the first.
  *   - Only CONSECUTIVE non-person rows fold. A newsletter sitting between two
  *     replies stays exactly where the arrival order put it, so the feed's
  *     chronology is never rearranged — a bundle is a run, not a filter.
@@ -24,13 +26,16 @@
  * a missed message.
  */
 
+import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
+import type { MailCategory } from './mailCategory';
+
 /** Categories that fold. `person` and anything unlabeled never do. */
 export const POSTBOX_BUNDLE_CATEGORIES = [
 	'newsletter',
 	'notification',
 	'receipt',
 	'promotion',
-] as const;
+] as const satisfies readonly MailCategory[];
 
 export type PostboxBundleCategory = (typeof POSTBOX_BUNDLE_CATEGORIES)[number];
 
@@ -40,14 +45,6 @@ export type PostboxBundleCategory = (typeof POSTBOX_BUNDLE_CATEGORIES)[number];
  * pairs people would rather just see.
  */
 export const POSTBOX_BUNDLE_MIN_SIZE = 2;
-
-/** Icon + label KEY per bundle category (module scope never calls `useI18n`). */
-export const POSTBOX_BUNDLE_META: Record<PostboxBundleCategory, { label: string; icon: string }> = {
-	newsletter: { label: 'shared.postboxBundles.newsletter', icon: 'lucide:newspaper' },
-	notification: { label: 'shared.postboxBundles.notification', icon: 'lucide:bell' },
-	receipt: { label: 'shared.postboxBundles.receipt', icon: 'lucide:receipt' },
-	promotion: { label: 'shared.postboxBundles.promotion', icon: 'lucide:megaphone' },
-};
 
 function isBundleCategory(value: string | undefined): value is PostboxBundleCategory {
 	return value !== undefined && (POSTBOX_BUNDLE_CATEGORIES as readonly string[]).includes(value);
@@ -60,7 +57,9 @@ export interface PostboxBundleMessage {
 	fromAddress: string;
 	fromName?: string;
 	flagSeen: boolean;
-	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
+	/** The thread's advisory smart-inbox category label, attached server-side. */
+	category?: string;
+	unsubscribe?: ListUnsubscribeTarget;
 }
 
 export interface PostboxBundle<T> {
@@ -90,14 +89,13 @@ function displayName(message: PostboxBundleMessage): string {
 }
 
 /**
- * Fold the feed. `categoryOf` supplies the advisory smart-inbox category for a
- * row (usually via its thread); the feed order is preserved exactly, and every
- * message appears in the output exactly once — either as its own row or inside
- * one bundle.
+ * Fold the feed by each row's `category`; the feed order is preserved exactly,
+ * and every message appears in the output exactly once — either as its own row
+ * or inside one bundle.
  */
 export function bundlePostboxFeed<T extends PostboxBundleMessage>(
 	messages: readonly T[],
-	options: { categoryOf?: (message: T) => string | undefined; minSize?: number } = {}
+	options: { minSize?: number } = {}
 ): Array<PostboxFeedEntry<T>> {
 	const minSize = options.minSize ?? POSTBOX_BUNDLE_MIN_SIZE;
 	const entries: Array<PostboxFeedEntry<T>> = [];
@@ -115,7 +113,7 @@ export function bundlePostboxFeed<T extends PostboxBundleMessage>(
 		const buckets = new Map<PostboxBundleCategory, T[]>();
 		const loose: Array<{ index: number; message: T }> = [];
 		for (const [index, message] of run.entries()) {
-			const category = options.categoryOf?.(message);
+			const category = message.category;
 			if (!isBundleCategory(category)) {
 				loose.push({ index, message });
 				continue;
@@ -155,7 +153,7 @@ export function bundlePostboxFeed<T extends PostboxBundleMessage>(
 	}
 
 	for (const message of messages) {
-		const category = options.categoryOf?.(message);
+		const category = message.category;
 		if (isBundleCategory(category)) {
 			run.push(message);
 			continue;

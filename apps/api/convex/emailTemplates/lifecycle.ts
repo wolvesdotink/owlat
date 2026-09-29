@@ -22,7 +22,6 @@
 
 import { v } from 'convex/values';
 import { emailTemplateTypeValidator } from '../lib/convexValidators';
-import { throwInvalidState } from '../_utils/errors';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
@@ -30,6 +29,7 @@ import { defineLifecycle, refuse } from '../lib/lifecycle';
 import { applyUsageCountDelta } from '../emailBlocks/module';
 import { deleteTemplateVersions } from './versions';
 import { buildSearchableText } from '../lib/queryHelpers';
+import { duplicateEmailFields } from '../lib/publishableEmail';
 import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from '../lib/constants';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -340,7 +340,8 @@ export const transition = internalMutation({
 
 /**
  * Duplicate an email template. The copy lands at `draft` regardless of
- * the source's status; `linkedBlockIds` are copied and usage counts are
+ * the source's status and carries every content column of the source
+ * (`duplicateEmailFields`); `linkedBlockIds` are copied and usage counts are
  * propagated.
  */
 export const duplicate = internalMutation({
@@ -357,19 +358,9 @@ export const duplicate = internalMutation({
 		const searchableText = buildSearchableText(newName, template.subject);
 
 		const newId = await ctx.db.insert('emailTemplates', {
+			...duplicateEmailFields(template),
 			name: newName,
-			subject: template.subject,
-			previewText: template.previewText,
-			content: template.content,
-			htmlContent: template.htmlContent,
-			type: template.type,
 			status: 'draft',
-			defaultLanguage: template.defaultLanguage,
-			supportedLanguages: template.supportedLanguages,
-			translations: template.translations,
-			linkedBlockIds: template.linkedBlockIds,
-			contentBlockVersion: template.contentBlockVersion ?? CURRENT_CONTENT_BLOCK_VERSION,
-			rendererVersion: template.rendererVersion ?? CURRENT_RENDERER_VERSION,
 			searchableText,
 			createdAt: now,
 			updatedAt: now,
@@ -445,24 +436,3 @@ export const remove = internalMutation({
 		return { ok: true };
 	},
 });
-
-// ─── Publish invariant guard ────────────────────────────────────────────────
-
-/**
- * Refuse to mutate publishable content on a `published` row unless the
- * caller passes `forceWhilePublished: true`. Consumed by every mutation
- * in `emailTemplates/` that touches publishable content.
- *
- * The editor UX surfaces an "Unpublish to edit?" gate to the user;
- * setting `forceWhilePublished: true` is the explicit opt-in.
- */
-export function assertEditableForPublishableChange(
-	template: Doc<'emailTemplates'>,
-	force?: boolean
-): void {
-	if (template.status === 'published' && !force) {
-		throwInvalidState('Template is published. Pass forceWhilePublished: true or unpublish first.', {
-			action: 'unpublish',
-		});
-	}
-}

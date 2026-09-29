@@ -1,41 +1,27 @@
 /**
  * Manages up to 3 simultaneous popup composers (Gmail-style).
  *
- * Each entry holds a one-time seed for usePostboxCompose.
+ * Each entry holds a one-time seed for usePostboxCompose (ComposerSeed).
  */
 
 import type { Id } from '@owlat/api/dataModel';
-import type { ComposerAttachment } from './usePostboxComposeAttachments';
+import type { ComposerSeed } from './usePostboxCompose';
 
-export interface ComposerSpec {
-	id: string;
-	mailboxId: Id<'mailboxes'>;
-	draftId?: Id<'mailDrafts'>;
-	inReplyToMessageId?: Id<'mailMessages'>;
-	prefillTo?: string[];
-	prefillCc?: string[];
-	prefillBcc?: string[];
-	prefillSubject?: string;
-	prefillBodyHtml?: string;
-	/**
-	 * Attachment refs already committed to `draftId`, shown immediately instead
-	 * of waiting for the draft row. Used when undo un-queues an offline send:
-	 * the draft is unreachable while offline, so the refs come from the queued
-	 * payload (usePostboxOfflineOutbox).
-	 */
-	prefillAttachments?: ComposerAttachment[];
-	/** Clone this message's attachments onto the new draft (Forward). */
-	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
-	/** Attach a transient generated file (key into usePostboxPendingAttachments). */
-	attachPendingKey?: string;
-	/**
-	 * On a plain Reply, the recipients a Reply-All would additionally include
-	 * (raw address strings). Drives the dismissible "Also include …" gap hint
-	 * under the To field. Empty/undefined on Reply-All, forwards, and new mail.
-	 */
+/**
+ * On a plain Reply, the recipients a Reply-All would additionally include
+ * (raw address strings). Drives the dismissible "Also include …" gap hint
+ * under the To field. Empty/undefined on Reply-All, forwards, and new mail.
+ */
+interface ReplyAllHint {
 	replyAllRecipients?: string[];
-	minimized: boolean;
 }
+
+/** A popup composer on the stack: its seed plus the stack's bookkeeping. */
+export type ComposerSpec = ComposerSeed &
+	ReplyAllHint & {
+		id: string;
+		minimized: boolean;
+	};
 
 export type InlineComposeKind = 'reply' | 'replyAll' | 'forward';
 
@@ -44,10 +30,11 @@ export type InlineComposeKind = 'reply' | 'replyAll' | 'forward';
  * one-time compose seed as a popup, minus the stack bookkeeping. `key` changes
  * whenever the seed changes so the inline composer remounts and re-seeds.
  */
-export interface InlineComposeSpec extends Omit<ComposerSpec, 'id' | 'minimized'> {
-	key: string;
-	kind: InlineComposeKind;
-}
+export type InlineComposeSpec = ComposerSeed &
+	ReplyAllHint & {
+		key: string;
+		kind: InlineComposeKind;
+	};
 
 /**
  * Live field values handed up when an inline composer is promoted to a popup.

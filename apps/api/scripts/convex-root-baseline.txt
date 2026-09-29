@@ -1,0 +1,50 @@
+# Files allowed at the Convex root (apps/api/convex/*.ts). FROZEN: never add a
+# line. New modules go into a domain folder or lib/. Moving a file out of the
+# root makes its line stale; delete it. Checked by scripts/check-convex-root.sh.
+#
+# Must stay at the root: schema.ts, convex.config.ts, http.ts, auth.config.ts
+# and crons.ts (the Convex CLI resolves them there by name), and env.d.ts.
+# Every other line is a legacy module waiting for its own move.
+accountDeletionEmail.ts
+agentConfigMutations.ts
+agentHealth.ts
+aiProviderConfig.ts
+aiProviderConfigActions.ts
+apiV1Http.ts
+auditLogs.ts
+auth.config.ts
+autonomy.ts
+autonomyFeedback.ts
+autonomyOutcome.ts
+autonomySuggestions.ts
+backups.ts
+blockedEmails.ts
+codeWorkTasks.ts
+confirmationEmail.ts
+confirmationEmailQueries.ts
+convex.config.ts
+crons.ts
+env.d.ts
+eventsApi.ts
+globalSearch.ts
+http.ts
+mediaAssets.ts
+providerRoutes.ts
+quickQuery.ts
+quickQueryGate.ts
+schema.ts
+seedAdminHttp.ts
+segments.ts
+semanticFileProcessing.ts
+semanticFiles.ts
+shareLinkHttp.ts
+shareLinkQueries.ts
+shareLinks.ts
+storage.ts
+systemMail.ts
+systemUpdates.ts
+systemUpdatesReleaseCheck.ts
+translate.ts
+unifiedMessages.ts
+visualizationAgent.ts
+visualizationAgentActions.ts

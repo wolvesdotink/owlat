@@ -6,18 +6,25 @@
  * This module owns the *editing* shape: a blank rule, the day-of-week labels,
  * and the normalization that turns the editor's working copy into the exact
  * payload `saveLayout({ rules })` accepts. It is deliberately free of Vue/Convex
- * imports so the save-shape logic can be unit-tested in isolation.
+ * runtime imports (types only) so the save-shape logic can be unit-tested in
+ * isolation.
  */
 
-export type CardSize = 'small' | 'medium' | 'large';
+import type { Doc } from '@owlat/api/dataModel';
+import type { OrganizationRole } from '~/composables/useOrganization';
 
-export interface RuleCard {
-	type: string;
-	size: CardSize;
-}
+/**
+ * Persisted rule shape accepted by saveLayout. Derived from the table, whose
+ * validator (lib/validators/dashboard) is shared with the mutation args.
+ */
+export type SavedRule = Doc<'dashboardLayouts'>['rules'][number];
 
-/** Role values mirror OrganizationRole in apps/api/convex/lib/sessionOrganization.ts. */
-export type RuleRole = 'owner' | 'admin' | 'editor';
+export type RuleCard = SavedRule['cards'][number];
+
+export type CardSize = RuleCard['size'];
+
+/** The roles a rule can target. `condition.role` stays a plain string on the wire. */
+export type RuleRole = OrganizationRole;
 
 /**
  * The editor's working copy of a rule. Time fields are kept as plain strings so
@@ -29,17 +36,6 @@ export interface EditableRule {
 	timeEnd: string;
 	dayOfWeek: number[];
 	role: RuleRole | '';
-	cards: RuleCard[];
-	priority: number;
-}
-
-/** Persisted rule shape accepted by saveLayout (matches schema/dashboard.ts). */
-export interface SavedRule {
-	condition: {
-		timeRange?: { start: string; end: string };
-		dayOfWeek?: number[];
-		role?: string;
-	};
 	cards: RuleCard[];
 	priority: number;
 }

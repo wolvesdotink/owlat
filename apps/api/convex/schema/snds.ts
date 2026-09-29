@@ -1,6 +1,7 @@
 import { defineTable } from 'convex/server';
-import { type Infer, v } from 'convex/values';
-import type { SndsComplaintBand, SndsFilterResult } from '../delivery/sndsFeed';
+import { type Infer, type ObjectType, v } from 'convex/values';
+import type { SndsComplaintBand, SndsDayObservation, SndsFilterResult } from '../delivery/sndsFeed';
+import type { AssertTrue, Exact } from '../lib/typeAssert';
 
 /**
  * Microsoft Smart Network Data Services (SNDS) telemetry.
@@ -37,32 +38,41 @@ export const sndsFilterResultValidator = v.union(
 	v.literal('red')
 );
 
-/** Compile-time proof that the stored unions and the parser's stay identical. */
-type AssertSame<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
-export type SndsBandUnionsMatch = AssertSame<
-	SndsComplaintBand,
-	Infer<typeof sndsComplaintBandValidator>
+/**
+ * One (IP, UTC day) observation as the poller hands it over: the
+ * `sndsIpDailyStats` row minus the two timestamps the ingest mutation stamps.
+ * `delivery/snds.ts` validates its batch with exactly these fields.
+ */
+export const sndsObservationFields = {
+	/** Canonical sending IP, as the feed reported it. */
+	ip: v.string(),
+	/** UTC midnight of the activity day the row folds. */
+	periodStart: v.number(),
+	complaintBand: sndsComplaintBandValidator,
+	filterResult: sndsFilterResultValidator,
+	/** Spam-trap hits Microsoft attributed to the IP that day. */
+	trapHits: v.number(),
+	messageRecipients: v.number(),
+	rcptCommands: v.number(),
+	dataCommands: v.number(),
+	/** A HELO name the feed sampled — operator-facing hygiene, never a key. */
+	sampleHelo: v.optional(v.string()),
+};
+
+/** Compile-time proof that the stored shapes and the parser's stay identical. */
+export type SndsBandUnionsMatch = AssertTrue<
+	Exact<SndsComplaintBand, Infer<typeof sndsComplaintBandValidator>>
 >;
-export type SndsFilterUnionsMatch = AssertSame<
-	SndsFilterResult,
-	Infer<typeof sndsFilterResultValidator>
+export type SndsFilterUnionsMatch = AssertTrue<
+	Exact<SndsFilterResult, Infer<typeof sndsFilterResultValidator>>
+>;
+export type SndsObservationMatches = AssertTrue<
+	Exact<SndsDayObservation, ObjectType<typeof sndsObservationFields>>
 >;
 
 export const sndsTables = {
 	sndsIpDailyStats: defineTable({
-		/** Canonical sending IP, as the feed reported it. */
-		ip: v.string(),
-		/** UTC midnight of the activity day the row folds. */
-		periodStart: v.number(),
-		complaintBand: sndsComplaintBandValidator,
-		filterResult: sndsFilterResultValidator,
-		/** Spam-trap hits Microsoft attributed to the IP that day. */
-		trapHits: v.number(),
-		messageRecipients: v.number(),
-		rcptCommands: v.number(),
-		dataCommands: v.number(),
-		/** A HELO name the feed sampled — operator-facing hygiene, never a key. */
-		sampleHelo: v.optional(v.string()),
+		...sndsObservationFields,
 		/** When the poller read the feed; drives replay and staleness rejection. */
 		fetchedAt: v.number(),
 		ingestedAt: v.number(),

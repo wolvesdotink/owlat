@@ -19,7 +19,7 @@ import { BodyTooLargeError, readBodyText } from '../../lib/readBody';
 
 import type { ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
-import { getClientIp, rateLimitedResponse } from '../../publicRateLimit';
+import { getClientIp, rateLimitedResponse } from '../../lib/publicRateLimit';
 import { logError } from '../../lib/runtimeLog';
 import { getOptional } from '../../lib/env';
 import { verifyMtaHeaders } from './mta';
@@ -273,10 +273,13 @@ export async function readVerifiedMtaBody(
 	// default deployment this is one shared bucket. The real spend control is
 	// the per-sender attachment budget charged at the capture site, not this.
 	const ip = getClientIp(request);
-	const { ok, retryAfter } = await ctx.runMutation(internal.publicRateLimit.checkPublicRateLimit, {
-		limitType: 'webhookIngestion',
-		key: `${opts.rateLimitKeyPrefix}:${ip}`,
-	});
+	const { ok, retryAfter } = await ctx.runMutation(
+		internal.lib.publicRateLimit.checkPublicRateLimit,
+		{
+			limitType: 'webhookIngestion',
+			key: `${opts.rateLimitKeyPrefix}:${ip}`,
+		}
+	);
 	if (!ok) {
 		return { ok: false, response: rateLimitedResponse(retryAfter) };
 	}

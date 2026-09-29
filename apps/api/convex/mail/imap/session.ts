@@ -7,7 +7,7 @@
 
 import { v } from 'convex/values';
 import { internalQuery } from '../../_generated/server';
-import { folderRoleValidator } from '../mailbox/shared';
+import { folderRoleValidator } from '../../lib/validators/mail';
 
 /** LIST output for a single mailbox account. Includes role + counts so the
  *  IMAP server can emit `* LIST (\Inbox \HasNoChildren) "/" "INBOX"` etc. */

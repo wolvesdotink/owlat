@@ -3,7 +3,7 @@ import { v } from 'convex/values';
 import {
 	alignmentCheckValidator,
 	alignmentVerdictValidator,
-} from '../delivery/deliverabilityValidators';
+} from '../lib/validators/deliverability';
 
 /**
  * Dual-transport alignment pre-flight state, kept in its own schema

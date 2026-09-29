@@ -221,6 +221,15 @@ crons.interval(
 	{}
 );
 
+// Daily sweep marking knowledge backfill jobs that stopped making progress as
+// failed (knowledge/backfillJobs.ts).
+crons.interval(
+	'knowledge backfill stale sweep',
+	{ hours: 24 },
+	internal.knowledge.maintenance.failStaleBackfillJobs,
+	{}
+);
+
 // Daily contact-scoped knowledge dedup-merge: collapse near-identical facts a
 // large mailbox import extracts about the same contact many times over.
 crons.interval(

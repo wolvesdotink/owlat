@@ -2,9 +2,10 @@
  * Mailbox search — free-text + structured query across one mailbox's messages.
  *
  * Kept apart from `mailbox/queries.ts` because it is the one read whose shape
- * is driven by the query PARSER (`parseSearchQuery` on the web side) rather
- * than by a folder/label view: its arg list, its two index branches, and its
- * post-filter chain all track the search grammar.
+ * is driven by the query PARSER (`parseSearchQuery` in
+ * `@owlat/shared/mailSearch`) rather than by a folder/label view: its arg list,
+ * its two index branches, and its post-filter chain all track the search
+ * grammar.
  *
  * Siblings: `mailbox/identity.ts` (CRUD + provisioning), `mailbox/queries.ts`
  * (list views), `mailbox/messages.ts` (single-message reads).
@@ -15,7 +16,8 @@ import { publicQuery } from '../../lib/authedFunctions';
 import type { QueryCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { loadAccessibleMailboxes, loadReadableMailbox } from '../permissions';
-import { readSession, type FolderRole } from './shared';
+import { readSession } from './shared';
+import type { FolderRole } from '../../lib/validators/mail';
 import { resolveBodySearchMode, textSearchQuery } from '../searchBody';
 import { openMailMessageRows } from '../../lib/messageBody';
 import {
@@ -32,6 +34,7 @@ import {
 	type SearchClause,
 	isDeadClause,
 	matchesClause,
+	normalizeClause,
 	searchClauseFields,
 	searchClauseValidator,
 } from './searchClause';
@@ -47,8 +50,8 @@ async function resolveNames(
 	clauses: readonly SearchClause[]
 ): Promise<ResolvedNames> {
 	const names: ResolvedNames = { folderByRole: new Map(), labelByName: new Map() };
-	// Labels are stored with their display casing while the parser lowercases
-	// every operand, so `label:work` has to reach a label named "Work". The
+	// Labels are stored with their display casing while `normalizeClause`
+	// lowercases every operand, so `label:work` has to reach a label named "Work". The
 	// indexed exact hit is tried first and the case-insensitive sweep over the
 	// mailbox's (few) labels is the fallback.
 	let allLabels: Doc<'mailLabels'>[] | null = null;
@@ -311,7 +314,9 @@ export const search = publicQuery({
 	handler: async (ctx, args) => {
 		const empty = { messages: [] as Doc<'mailMessages'>[], hasMore: false, nextCursor: null };
 		const { mailboxId, mailboxIds, or, limit: rawLimit, cursor, ...primary } = args;
-		const clauses: SearchClause[] = [primary as SearchClause, ...(or ?? [])];
+		// Case-fold every clause before anything reads it: the matching below
+		// does not trust the caller to have lowercased its operands.
+		const clauses = [primary, ...(or ?? [])].map(normalizeClause);
 		const limit = Math.min(rawLimit ?? 50, 200);
 
 		// ── Fan-out: several mailboxes (or every readable one), manual keyset.

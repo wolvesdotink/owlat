@@ -7,23 +7,14 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-	normalizeIp,
-	stripIpv4Prefix,
-	expandMacros,
-	ipMatchesCidr,
-	ipv6MatchesCidr,
-} from '../ip.js';
+import { expandMacros, ipMatchesCidr, ipv6MatchesCidr } from '../ip.js';
 
-describe('normalizeIp / stripIpv4Prefix', () => {
-	it('strips the IPv4-mapped IPv6 prefix', () => {
-		expect(normalizeIp('::ffff:1.2.3.4')).toBe('1.2.3.4');
-		expect(stripIpv4Prefix('::ffff:203.0.113.9')).toBe('203.0.113.9');
-	});
-
-	it('leaves a plain address untouched', () => {
-		expect(normalizeIp('1.2.3.4')).toBe('1.2.3.4');
-		expect(stripIpv4Prefix('2001:db8::1')).toBe('2001:db8::1');
+describe('IPv4-mapped senders', () => {
+	it('matches a mapped peer against IPv4 terms in the dotted and hex spellings', () => {
+		expect(ipMatchesCidr('::ffff:203.0.113.9', '203.0.113.0/24')).toBe(true);
+		expect(ipMatchesCidr('::ffff:cb00:7109', '203.0.113.0/24')).toBe(true);
+		expect(ipMatchesCidr('::ffff:203.0.113.9', '203.0.113.9')).toBe(true);
+		expect(ipMatchesCidr('::ffff:203.0.114.9', '203.0.113.0/24')).toBe(false);
 	});
 });
 

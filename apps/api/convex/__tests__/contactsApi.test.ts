@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-	formatContactResponse,
-	isValidContactId,
-	type Contact,
-} from '../contacts/api';
+import { formatContactResponse, type Contact } from '../contacts/api';
 
 describe('formatContactResponse', () => {
 	const baseContact: Contact = {
@@ -94,59 +90,9 @@ describe('formatContactResponse', () => {
 		const result = formatContactResponse(baseContact) as unknown as Record<string, unknown>;
 		expect(result).not.toHaveProperty('_id');
 	});
-});
 
-describe('isValidContactId', () => {
-	it('should accept Convex-shaped IDs (>=10 alphanumeric/underscore chars)', () => {
-		expect(isValidContactId('abc1234567')).toBe(true);
-	});
-
-	it('should accept IDs with hyphens (URL-safe base64 alphabet)', () => {
-		expect(isValidContactId('abc-1234567')).toBe(true);
-	});
-
-	it('should accept uppercase letters', () => {
-		expect(isValidContactId('ABC1234567')).toBe(true);
-	});
-
-	it('should accept mixed case with underscores', () => {
-		expect(isValidContactId('Ab_Cd_1234')).toBe(true);
-	});
-
-	it('should reject empty string', () => {
-		expect(isValidContactId('')).toBe(false);
-	});
-
-	it('should reject IDs with spaces', () => {
-		expect(isValidContactId('abc 1234567')).toBe(false);
-	});
-
-	it('should reject too-short IDs (under 10 chars)', () => {
-		expect(isValidContactId('abc123')).toBe(false);
-		expect(isValidContactId('abc-123')).toBe(false);
-		expect(isValidContactId('a')).toBe(false);
-		expect(isValidContactId('1')).toBe(false);
-	});
-
-	it('should reject IDs with dots', () => {
-		expect(isValidContactId('abc.1234567')).toBe(false);
-	});
-
-	it('should reject IDs with special characters', () => {
-		expect(isValidContactId('abc@1234567')).toBe(false);
-		expect(isValidContactId('abc!1234567')).toBe(false);
-		expect(isValidContactId('abc#1234567')).toBe(false);
-	});
-
-	it('should reject email addresses', () => {
-		expect(isValidContactId('user@example.com')).toBe(false);
-	});
-
-	it('should accept long IDs', () => {
-		expect(isValidContactId('a'.repeat(100))).toBe(true);
-	});
-
-	it('should reject IDs with slashes', () => {
-		expect(isValidContactId('abc/1234567')).toBe(false);
+	it('should emit an empty email for a contact that has none', () => {
+		const contact = { ...baseContact, email: undefined };
+		expect(formatContactResponse(contact).email).toBe('');
 	});
 });

@@ -12,19 +12,11 @@
  */
 
 import { v } from 'convex/values';
-import { openMailMessageInlineBody } from '../../lib/messageBody';
 import { internalQuery, internalMutation } from '../../_generated/server';
 import { draftQualityValidator } from '../../lib/convexValidators';
 import { NEEDS_REPLY_CONTEXT_MESSAGES } from '../needsReply';
 import { isFromMailboxOwner } from '../needsReplyHeuristic';
-import type { Doc } from '../../_generated/dataModel';
-
-/** Cap each message excerpt fed into the draft context. */
-const EXCERPT_CHARS = 2000;
-/** Cap the assembled transcript. */
-const CONTEXT_CHARS = 12000;
-/** Heads the message the draft answers — always the last one in the transcript. */
-const TRIGGER_MARKER = '=== The message to reply to ===';
+import { buildThreadTranscript, DRAFT_ON_ARRIVAL } from './transcript';
 
 /**
  * Load everything the draft-on-arrival action needs for one thread, or `null`
@@ -70,32 +62,16 @@ export const loadForDraft = internalQuery({
 		}
 
 		// Chronological history up to the trigger, then the trigger itself LAST
-		// and marked, with every message labelled by side. Without the labels the
-		// model cannot tell our messages from theirs and happily drafts the other
-		// party's answer to what we wrote.
+		// and marked, with every message labelled by side (mail/ai/transcript.ts
+		// explains why the labels matter). Oldest history is trimmed first.
 		const history = newestDesc
 			.filter((m) => m._id !== trigger._id && m.receivedAt <= trigger.receivedAt)
 			.sort((a, b) => a.receivedAt - b.receivedAt);
-		const render = async (m: Doc<'mailMessages'>) => {
-			const body = ((await openMailMessageInlineBody(m)).text ?? m.snippet ?? '').slice(
-				0,
-				EXCERPT_CHARS
-			);
-			const sender = m.fromName ? `${m.fromName} <${m.fromAddress}>` : m.fromAddress;
-			const side = isFromMailboxOwner(m, ownerAddress)
-				? 'the mailbox owner (you)'
-				: 'the other party';
-			return `From: ${sender} — ${side}\nSubject: ${m.subject}\n${body}`;
-		};
-		const earlier = await Promise.all(history.map(render));
-		const latest = `${TRIGGER_MARKER}\n${await render(trigger)}`;
-		// Trim the OLDEST history first so the message being answered always fits.
-		let transcript = [...earlier, latest].join('\n\n---\n\n');
-		while (transcript.length > CONTEXT_CHARS && earlier.length > 0) {
-			earlier.shift();
-			transcript = [...earlier, latest].join('\n\n---\n\n');
-		}
-		transcript = transcript.slice(0, CONTEXT_CHARS);
+		const transcript = await buildThreadTranscript([...history, trigger], {
+			...DRAFT_ON_ARRIVAL,
+			ownerAddress,
+			triggerId: trigger._id,
+		});
 
 		// Confirmed-owner facts from the clarification loop (only the ANSWERED
 		// questions; unanswered questions carry no confirmed block). Shape matches

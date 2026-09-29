@@ -194,6 +194,18 @@
 			"types": "./src/listUnsubscribe.ts",
 			"import": "./src/listUnsubscribe.ts"
 		},
+		"./mailto": {
+			"types": "./src/mailto.ts",
+			"import": "./src/mailto.ts"
+		},
+		"./mailSearch": {
+			"types": "./src/mailSearch.ts",
+			"import": "./src/mailSearch.ts"
+		},
+		"./chatMentions": {
+			"types": "./src/chatMentions.ts",
+			"import": "./src/chatMentions.ts"
+		},
 		"./ical": {
 			"types": "./src/ical.ts",
 			"import": "./src/ical.ts"
@@ -310,6 +322,10 @@
 			"types": "./src/spf.ts",
 			"import": "./src/spf.ts"
 		},
+		"./dnsTagList": {
+			"types": "./src/dnsTagList.ts",
+			"import": "./src/dnsTagList.ts"
+		},
 		"./externalReceiving": {
 			"types": "./src/externalReceiving.ts",
 			"import": "./src/externalReceiving.ts"
@@ -334,9 +350,21 @@
 			"types": "./src/nodeShutdown.ts",
 			"import": "./src/nodeShutdown.ts"
 		},
+		"./nodeEnv": {
+			"types": "./src/nodeEnv.ts",
+			"import": "./src/nodeEnv.ts"
+		},
 		"./tlsCertReloader": {
 			"types": "./src/tlsCertReloader.ts",
 			"import": "./src/tlsCertReloader.ts"
+		},
+		"./tlsMaterial": {
+			"types": "./src/tlsMaterial.ts",
+			"import": "./src/tlsMaterial.ts"
+		},
+		"./tlsPolicy": {
+			"types": "./src/tlsPolicy.ts",
+			"import": "./src/tlsPolicy.ts"
 		},
 		"./networkPorts": {
 			"types": "./src/networkPorts.ts",
@@ -349,6 +377,10 @@
 		"./logRedaction": {
 			"types": "./src/logRedaction.ts",
 			"import": "./src/logRedaction.ts"
+		},
+		"./threadStatus": {
+			"types": "./src/threadStatus.ts",
+			"import": "./src/threadStatus.ts"
 		},
 		"./utils/guards": {
 			"types": "./src/utils/guards.ts",

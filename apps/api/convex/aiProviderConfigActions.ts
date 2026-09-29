@@ -37,13 +37,13 @@ import { decisionEnvApiKey, decisionKindNeedsKey } from './lib/decisionProvider'
 import { listDecisionModels, testDecisionPlane } from './lib/decision/settingsActions';
 import { fetchGuarded } from './lib/ssrfGuard';
 import { validateOutboundUrl } from './lib/outboundUrlValidation';
-import { rateLimiter } from './rateLimiter';
+import { rateLimiter } from './lib/rateLimiter';
 import { throwUnauthenticated } from './_utils/errors';
 import {
 	decisionProviderKindValidator,
 	embeddingProviderKindValidator,
 	languageProviderKindValidator,
-} from './lib/aiProviderConfigValidators';
+} from './lib/validators/aiProviderConfig';
 
 /** Which plane a test / discovery call is about. Absent ⇒ `language`, as before. */
 const planeValidator = v.optional(v.union(v.literal('language'), v.literal('decision')));

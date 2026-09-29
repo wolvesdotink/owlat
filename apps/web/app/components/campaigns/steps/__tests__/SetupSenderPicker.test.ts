@@ -11,6 +11,7 @@ import { mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick, ref, type Ref } from 'vue';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import UiInput from '@owlat/ui/components/ui/Input.vue';
+import type { Id } from '@owlat/api/dataModel';
 
 import SetupSenderPicker from '../SetupSenderPicker.vue';
 import SetupAddSenderInline from '../SetupAddSenderInline.vue';
@@ -195,5 +196,53 @@ describe('SetupAddSenderInline', () => {
 			displayName: 'Example news',
 		});
 		expect(wrapper.emitted('added')).toEqual([['sender_1']]);
+	});
+});
+
+describe('SetupSenderPicker on a saved campaign (the edit page)', () => {
+	function mountForCampaign(details: { fromName?: string; fromEmail?: string } | undefined) {
+		return mount(SetupSenderPicker, {
+			props: {
+				campaignId: 'cmp_1' as Id<'campaigns'>,
+				campaignDetails: details,
+				fromName: details?.fromName ?? '',
+				fromEmail: details?.fromEmail ?? '',
+				disabled: true,
+			},
+			global: {
+				plugins: [createTestI18n()],
+				components: {
+					CampaignsStepsSetupAddSenderInline: SetupAddSenderInline,
+					CampaignsSenderAuthChip: SenderAuthChip,
+					UiInput,
+				},
+				stubs: { UiErrorAlert: true, UiSelect: true },
+			},
+		}) as VueWrapper;
+	}
+
+	it('waits for the campaign, then preselects its curated sender once and says so', async () => {
+		pickerData.value = { senders: [SENDER], isCustomAllowed: false, canManage: true };
+		const wrapper = mountForCampaign(undefined);
+		expect(wrapper.emitted('preselected')).toBeUndefined();
+
+		await wrapper.setProps({
+			campaignDetails: { fromName: 'Old name', fromEmail: 'News@Example.com' },
+		});
+		await nextTick();
+		expect(wrapper.emitted('preselected')).toEqual([[]]);
+		expect(wrapper.findComponent({ name: 'UiSelect' }).attributes('model-value')).toBe('sender_1');
+		// The curated row's identity replaces the saved one.
+		expect(wrapper.emitted('update:fromName')?.at(-1)).toEqual(['Example news']);
+
+		pickerData.value = { ...pickerData.value };
+		await nextTick();
+		expect(wrapper.emitted('preselected')).toHaveLength(1);
+	});
+
+	it('is read-only when disabled', () => {
+		pickerData.value = { senders: [SENDER], isCustomAllowed: true, canManage: true };
+		const wrapper = mountForCampaign({ fromName: 'Owlat', fromEmail: 'news@example.com' });
+		expect(wrapper.findComponent({ name: 'UiSelect' }).attributes('disabled')).toBe('true');
 	});
 });

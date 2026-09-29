@@ -84,7 +84,7 @@ import type { RampControlRefusal } from './rampControls';
 import {
 	deliverabilityStreamValidator,
 	destinationProviderValidator,
-} from './deliverabilityValidators';
+} from '../lib/validators/deliverability';
 import { ROUTE_STATE_TTL_MS } from './rampControllerWrites';
 
 interface RampEnrollmentResult {

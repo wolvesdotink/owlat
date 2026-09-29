@@ -3,7 +3,7 @@ import {
 	EmailBuilder,
 	UnsavedChangesDialog,
 	useFocusMode,
-	type Variable,
+	parseStoredBlocks,
 	type EmailBuilderConfig,
 } from '@owlat/email-builder';
 import { api } from '@owlat/api';
@@ -37,38 +37,8 @@ const { run: updateBlock } = useBackendOperation(api.emailBlocks.blocks.update, 
 // Organization email theme (incl. baseWidth) from the shared source.
 const { emailTheme } = useEmailTheme();
 
-// Fetch contact properties for personalization variables
-const { data: contactProperties } = useOrganizationQuery(
-	api.contacts.properties.listByOrganization
-);
-
-// Built-in contact variables (always available)
-const builtInVariables = computed<Variable[]>(() => [
-	{ key: 'email', label: t('dashboard.send.blocks.detail.edit.variables.email'), isBuiltIn: true },
-	{
-		key: 'firstName',
-		label: t('dashboard.send.blocks.detail.edit.variables.firstName'),
-		isBuiltIn: true,
-	},
-	{
-		key: 'lastName',
-		label: t('dashboard.send.blocks.detail.edit.variables.lastName'),
-		isBuiltIn: true,
-	},
-]);
-
-// Combine built-in and custom contact properties
-const variables = computed<Variable[]>(() => {
-	const customVars: Variable[] = (contactProperties.value || [])
-		.filter((prop) => !['first_name', 'last_name'].includes(prop.key))
-		.map((prop) => ({
-			key: prop.key,
-			label: prop.label,
-			isBuiltIn: false,
-		}));
-
-	return [...builtInVariables.value, ...customVars];
-});
+// Personalization variables: built-in contact fields plus custom properties.
+const variables = usePersonalizationVariables();
 
 // Page-owned editor state.
 const description = ref('');
@@ -112,28 +82,9 @@ const {
 		ctx.name.value = b.name;
 		description.value = b.description || '';
 		ctx.subject.value = ''; // Blocks don't have subjects
-		try {
-			const parsed = JSON.parse(b.content || '[]');
-			// Handle multi-block format
-			if (parsed && parsed.blocks && Array.isArray(parsed.blocks)) {
-				ctx.blocks.value = parsed.blocks;
-			} else if (Array.isArray(parsed)) {
-				ctx.blocks.value = parsed;
-			} else if (parsed && parsed.type && parsed.content) {
-				// Single block legacy format
-				ctx.blocks.value = [
-					{
-						id: `block_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
-						type: parsed.type,
-						content: parsed.content,
-					},
-				];
-			} else {
-				ctx.blocks.value = [];
-			}
-		} catch {
-			ctx.blocks.value = [];
-		}
+		// Reads the { blocks } envelope this page writes, a bare array and the
+		// legacy single-block form.
+		ctx.blocks.value = parseStoredBlocks(b.content);
 	},
 	save: async (ctx) => {
 		if (ctx.blocks.value.length === 0) {

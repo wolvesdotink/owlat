@@ -23,11 +23,11 @@
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { sndsComplaintBandValidator, sndsFilterResultValidator } from '../schema/snds';
+import { sndsObservationFields } from '../schema/snds';
 import { normalizeSndsIp, type SndsDayObservation } from './sndsFeed';
 import { oldestStorableDay } from './sndsConfig';
 import { observationVerdict } from './observationFreshness';
-import { type ObservationSweepResult, sweepExpiredObservations } from './observationRetention';
+import { type ObservationSweepResult, sweepExpiredObservations } from '../lib/retentionSweep';
 import { DAY_MS } from '../lib/constants';
 
 const RETENTION_MS = 90 * DAY_MS;
@@ -35,17 +35,7 @@ const FETCHED_AT_FUTURE_TOLERANCE_MS = 5 * 60 * 1_000;
 
 const SNDS_CLEANUP_BATCH_SIZE = 128;
 
-const observationValidator = v.object({
-	ip: v.string(),
-	periodStart: v.number(),
-	complaintBand: sndsComplaintBandValidator,
-	filterResult: sndsFilterResultValidator,
-	trapHits: v.number(),
-	messageRecipients: v.number(),
-	rcptCommands: v.number(),
-	dataCommands: v.number(),
-	sampleHelo: v.optional(v.string()),
-});
+const observationValidator = v.object(sndsObservationFields);
 
 /** A counter that survived the wire: finite, non-negative, integral. */
 function isNonNegativeSafeInteger(value: number): boolean {

@@ -8,13 +8,7 @@
  * Canonicalization is delegated to the shared `../canon.ts` public API (D4).
  */
 
-import {
-	createHash,
-	createPublicKey,
-	timingSafeEqual,
-	verify as cryptoVerify,
-	type KeyObject,
-} from 'crypto';
+import { createHash, timingSafeEqual, verify as cryptoVerify } from 'crypto';
 import {
 	canonicalizeBody,
 	canonicalizeHeaderField,
@@ -23,18 +17,11 @@ import {
 	type Canonicalization,
 } from '@owlat/mail-canon';
 import type { DkimVerdict } from '../dmarc.js';
-import { isNoRecordDnsError } from '../dnsErrors.js';
-import { isKeyRecordError, parseDkimKeyRecord, type DkimKeyRecord } from './keyRecord.js';
+import { resolveDkimKey, type DkimDnsResolver } from './keyRecord.js';
 import type { HeaderField } from './message.js';
-import { parseTagList } from './tagList.js';
+import { parseTagList, stripWsp } from './tagList.js';
 
-/**
- * The DNS surface the verifier needs: a TXT lookup returning the raw
- * character-strings of each record. Shape-compatible with `mailauth`'s
- * resolver and with the mocked resolvers the existing inbound tests use, so a
- * single resolver drives both sides of the differential suite.
- */
-export type DkimDnsResolver = (name: string, rrtype: 'TXT') => Promise<string[][]>;
+export type { DkimDnsResolver } from './keyRecord.js';
 
 /** Per-signature verdict, exposed so tests can inspect individual signatures. */
 export interface DkimSignatureResult {
@@ -62,29 +49,6 @@ export interface MessageSignatureOptions {
 	 * so the ARC verifier passes `false`.
 	 */
 	readonly requireVersion?: boolean;
-}
-
-/** DER SubjectPublicKeyInfo prefix for a raw 32-byte Ed25519 key (RFC 8410). */
-const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
-
-/**
- * RFC 8301 §3.2: verifiers MUST NOT treat an RSA public key shorter than 1024
- * bits as valid. Below this a signature is trivially forgeable (a sub-1024-bit
- * modulus is factorable), so a "valid" signature from such a key must never
- * authenticate a message. mailauth (the differential oracle) enforces the same
- * `minBitLength: 1024` with a policy/weak-key result — never `pass`.
- */
-const MIN_RSA_KEY_BITS = 1024;
-
-/** True for an RSA key whose modulus is below the RFC 8301 §3.2 floor. */
-function isWeakRsaKey(key: KeyObject): boolean {
-	const modulusLength = key.asymmetricKeyDetails?.modulusLength;
-	return modulusLength !== undefined && modulusLength < MIN_RSA_KEY_BITS;
-}
-
-/** Strip all whitespace — for base64 (`b=`, `bh=`) and colon lists (`h=`). */
-function stripWsp(value: string): string {
-	return value.replace(/[ \t\r\n]+/g, '');
 }
 
 /** Header names carried by `h=`, normalized for RFC 6376 case-insensitive matching. */
@@ -293,59 +257,22 @@ export async function verifyMessageSignature(
 		return withVerdict('fail');
 	}
 
-	// --- Public key retrieval --------------------------------------------
-	const keyName = `${selector}._domainkey.${domain}`;
-	let keyRecord: DkimKeyRecord;
-	try {
-		const records = await resolver(keyName, 'TXT');
-		const joined = records.map((chunks) => chunks.join('')).filter((r) => r !== '');
-		if (joined.length === 0) {
-			return withVerdict('permerror');
-		}
-		const parsed = joined.map((r) => parseDkimKeyRecord(r)).find((r) => !isKeyRecordError(r));
-		if (parsed === undefined || isKeyRecordError(parsed)) {
-			return withVerdict('permerror');
-		}
-		keyRecord = parsed;
-	} catch (err) {
-		return withVerdict(classifyDnsError(err));
-	}
-
-	// Revoked (empty p=), key/alg mismatch, a hash the key forbids, or a key whose
-	// explicit service list does not authorize email: PERMFAIL. `s=` is optional
-	// and defaults to `*`, represented by an empty parsed list; when present it
-	// must name either `email` or `*` (RFC 6376 §3.6.1).
-	if (keyRecord.revoked || keyRecord.keyType !== algorithm.keyType) {
-		return withVerdict('permerror');
-	}
-	if (
-		keyRecord.hashAlgorithms !== undefined &&
-		!keyRecord.hashAlgorithms.includes(algorithm.hash)
-	) {
-		return withVerdict('permerror');
-	}
-	if (
-		keyRecord.serviceTypes.length > 0 &&
-		!keyRecord.serviceTypes.includes('email') &&
-		!keyRecord.serviceTypes.includes('*')
-	) {
-		return withVerdict('permerror');
+	// --- Public key retrieval (RFC 6376 §3.6.1, shared with ARC-Seal) -----
+	// A missing, unparseable, revoked or type-mismatched record, a hash the key
+	// forbids, an `s=` list that does not authorize email, or an undecodable key
+	// is PERMFAIL; a DNS rejection is permerror for NXDOMAIN / NODATA and
+	// temperror otherwise. A weak RSA key is held back until after `t=s`.
+	const resolved = await resolveDkimKey(resolver, selector, domain, algorithm);
+	if (!resolved.ok && resolved.reason !== 'weak-rsa') {
+		return withVerdict(resolved.reason === 'dns-temp' ? 'temperror' : 'permerror');
 	}
 	// `t=s` prohibits subdomain AUIDs even though the general i=/d= relationship
 	// allows them (RFC 6376 §3.6.1).
 	if (
 		requireVersion &&
-		keyRecord.flags.includes('s') &&
+		resolved.record.flags.includes('s') &&
 		identityDomain !== normalizeDkimDomain(domain)
 	) {
-		return withVerdict('permerror');
-	}
-
-	// --- Signature verification (RFC 6376 §3.7 / RFC 8463) ---------------
-	let publicKey: KeyObject;
-	try {
-		publicKey = buildPublicKey(keyRecord, algorithm.keyType);
-	} catch {
 		return withVerdict('permerror');
 	}
 
@@ -353,11 +280,14 @@ export async function verifyMessageSignature(
 	// pass — a factorable modulus makes the signature forgeable. mailauth records
 	// a policy/weak-key result; we mirror the same permanent non-pass verdict the
 	// rsa-sha1 deprecation uses below (`fail`), NOT a throw (=> `permerror`) and
-	// NOT `temperror`. Checked BEFORE the crypto verify so a valid signature over
+	// NOT `temperror`. Decided BEFORE the crypto verify so a valid signature over
 	// a weak key can never reach `pass`.
-	if (algorithm.keyType === 'rsa' && isWeakRsaKey(publicKey)) {
+	if (!resolved.ok) {
 		return withVerdict('fail');
 	}
+	const publicKey = resolved.key;
+
+	// --- Signature verification (RFC 6376 §3.7 / RFC 8463) ---------------
 
 	const headerInput = buildHeaderHashInput(headerFields, hTag, sigField, headerMode);
 	const signature = Buffer.from(stripWsp(bTag), 'base64');
@@ -465,24 +395,6 @@ function buildHeaderHashInput(
 	const sigCanon = canonicalizeHeaderField(stripSignatureValue(sigField), mode);
 	const joined = parts.map((p) => `${p}\r\n`).join('') + sigCanon;
 	return Buffer.from(joined, 'latin1');
-}
-
-/** Construct a Node public key from a parsed DKIM key record. */
-function buildPublicKey(record: DkimKeyRecord, keyType: 'rsa' | 'ed25519'): KeyObject {
-	const material = Buffer.from(record.publicKey, 'base64');
-	if (keyType === 'ed25519') {
-		const der = Buffer.concat([ED25519_SPKI_PREFIX, material]);
-		return createPublicKey({ key: der, format: 'der', type: 'spki' });
-	}
-	// DKIM RSA keys are published as an SPKI SubjectPublicKeyInfo (RFC 6376 §3.6.1),
-	// which is also what the mailauth oracle accepts — do NOT fall back to bare
-	// PKCS#1, or we would verdict-diverge by accepting a key the oracle rejects.
-	return createPublicKey({ key: material, format: 'der', type: 'spki' });
-}
-
-/** Classify a resolver rejection into a permanent vs transient DKIM verdict. */
-function classifyDnsError(err: unknown): DkimVerdict {
-	return isNoRecordDnsError(err) ? 'permerror' : 'temperror';
 }
 
 /**

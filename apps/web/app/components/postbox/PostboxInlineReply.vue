@@ -48,7 +48,6 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const stack = usePostboxComposerStack();
-const undoSend = usePostboxUndoSend();
 
 const rootEl = ref<HTMLElement | null>(null);
 const composerRef = ref<{ focusBody: () => void } | null>(null);
@@ -64,12 +63,6 @@ watch(
 		});
 	}
 );
-
-function onSent(undoToken: string, sendAt: number) {
-	const spec = props.spec;
-	if (spec) undoSend.arm({ undoToken, sendAt, mailboxId: spec.mailboxId });
-	emit('collapse');
-}
 
 /**
  * Promote the inline draft to a normal popup composer. The composer flushed
@@ -226,20 +219,14 @@ defineExpose({
 			:aria-label="t('components.postbox.postboxInlineReply.dialogLabel')"
 			class="h-[380px] flex flex-col overflow-hidden rounded border border-border-subtle bg-bg-elevated shadow-sm"
 		>
+			<!-- The whole seed rides in, attachments included; the composer arms
+			     the undo window itself, so a send here only collapses the box. -->
 			<PostboxComposer
 				ref="composerRef"
 				inline
-				:mailbox-id="spec.mailboxId"
-				:draft-id="spec.draftId"
-				:in-reply-to-message-id="spec.inReplyToMessageId"
-				:prefill-to="spec.prefillTo"
-				:prefill-cc="spec.prefillCc"
-				:prefill-bcc="spec.prefillBcc"
-				:prefill-subject="spec.prefillSubject"
-				:prefill-body-html="spec.prefillBodyHtml"
-				:forward-attachments-from-message-id="spec.forwardAttachmentsFromMessageId"
+				:seed="spec"
 				:reply-all-recipients="spec.replyAllRecipients"
-				@sent="onSent"
+				@sent="emit('collapse')"
 				@discarded="emit('collapse')"
 				@minimize="emit('collapse')"
 				@promote="onPromote"

@@ -16,7 +16,7 @@ import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api, internal } from '../../_generated/api';
 import { ATTACHMENT_SHARE_EXPIRY_DAY_CHOICES } from '@owlat/shared/attachmentShares';
-import { mailShareLinkExpiryDaysValidator } from '../../lib/mailSettingsValidators';
+import { mailShareLinkExpiryDaysValidator } from '../../lib/validators/mailSettings';
 import { modules, seedMailbox } from './helpers.testlib';
 
 const sessionMocks = vi.hoisted(() => ({
@@ -495,7 +495,7 @@ describe('the expiry sweep', () => {
 describe('the stored lifetime preference', () => {
 	/**
 	 * Convex validators must be spelled with literals, so the closed set exists
-	 * twice: once in `mailSettingsValidators` and once in the shared module both
+	 * twice: once in `lib/validators/mailSettings` and once in the shared module both
 	 * planes resolve against. A choice added to one and not the other is a
 	 * control that saves a value the client will silently clamp away.
 	 */

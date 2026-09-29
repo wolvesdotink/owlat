@@ -417,7 +417,7 @@ describe('lifecycle.setReceivingMode — owlat → external', () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedVerifiedDomain(t, 'switch.example');
 
-		const outcome = await t.mutation(internal.domains.lifecycle.setReceivingMode, {
+		const outcome = await t.mutation(internal.domains.lifecycleReceiving.setReceivingMode, {
 			domainId,
 			mode: 'external',
 			provider: 'google',
@@ -453,7 +453,7 @@ describe('lifecycle.setReceivingMode — owlat → external', () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedVerifiedDomain(t, 'audited.example');
 
-		await t.mutation(internal.domains.lifecycle.setReceivingMode, {
+		await t.mutation(internal.domains.lifecycleReceiving.setReceivingMode, {
 			domainId,
 			mode: 'external',
 			provider: 'microsoft',
@@ -480,13 +480,13 @@ describe('lifecycle.setReceivingMode — owlat → external', () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedVerifiedDomain(t, 'reswitch.example');
 
-		await t.mutation(internal.domains.lifecycle.setReceivingMode, {
+		await t.mutation(internal.domains.lifecycleReceiving.setReceivingMode, {
 			domainId,
 			mode: 'external',
 			provider: 'google',
 			userId: 'user',
 		});
-		await t.mutation(internal.domains.lifecycle.setReceivingMode, {
+		await t.mutation(internal.domains.lifecycleReceiving.setReceivingMode, {
 			domainId,
 			mode: 'external',
 			provider: 'microsoft',
@@ -506,7 +506,7 @@ describe('lifecycle.setReceivingMode — owlat → external', () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedVerifiedDomain(t, 'other.example');
 
-		await t.mutation(internal.domains.lifecycle.setReceivingMode, {
+		await t.mutation(internal.domains.lifecycleReceiving.setReceivingMode, {
 			domainId,
 			mode: 'external',
 			provider: 'other',
@@ -529,13 +529,13 @@ describe('lifecycle.setReceivingMode — external → owlat', () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedVerifiedDomain(t, 'back.example');
 
-		await t.mutation(internal.domains.lifecycle.setReceivingMode, {
+		await t.mutation(internal.domains.lifecycleReceiving.setReceivingMode, {
 			domainId,
 			mode: 'external',
 			provider: 'google',
 			userId: 'user',
 		});
-		await t.mutation(internal.domains.lifecycle.setReceivingMode, {
+		await t.mutation(internal.domains.lifecycleReceiving.setReceivingMode, {
 			domainId,
 			mode: 'owlat',
 			userId: 'user',
@@ -554,14 +554,14 @@ describe('lifecycle.setReceivingMode — external → owlat', () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedVerifiedDomain(t, 'no-rua.example');
 
-		await t.mutation(internal.domains.lifecycle.setReceivingMode, {
+		await t.mutation(internal.domains.lifecycleReceiving.setReceivingMode, {
 			domainId,
 			mode: 'external',
 			provider: 'google',
 			userId: 'user',
 		});
 		vi.stubEnv('MTA_TLSRPT_RUA', '');
-		await t.mutation(internal.domains.lifecycle.setReceivingMode, {
+		await t.mutation(internal.domains.lifecycleReceiving.setReceivingMode, {
 			domainId,
 			mode: 'owlat',
 			userId: 'user',
@@ -579,7 +579,7 @@ describe('lifecycle.setReceivingMode — the cases that must NOT move records', 
 		const t = convexTest(schema, modules);
 		const domainId = await seedVerifiedDomain(t, 'noop.example');
 
-		const outcome = await t.mutation(internal.domains.lifecycle.setReceivingMode, {
+		const outcome = await t.mutation(internal.domains.lifecycleReceiving.setReceivingMode, {
 			domainId,
 			mode: 'owlat',
 			userId: 'user',
@@ -605,7 +605,7 @@ describe('lifecycle.setReceivingMode — the cases that must NOT move records', 
 		const t = convexTest(schema, modules);
 		const domainId = await seedVerifiedDomain(t, 'inflight.example', { status: 'registering' });
 
-		const outcome = await t.mutation(internal.domains.lifecycle.setReceivingMode, {
+		const outcome = await t.mutation(internal.domains.lifecycleReceiving.setReceivingMode, {
 			domainId,
 			mode: 'external',
 			provider: 'google',
@@ -659,7 +659,7 @@ describe('lifecycle.setReceivingMode — the cases that must NOT move records', 
 			})
 		);
 
-		await t.mutation(internal.domains.lifecycle.setReceivingMode, {
+		await t.mutation(internal.domains.lifecycleReceiving.setReceivingMode, {
 			domainId,
 			mode: 'owlat',
 			userId: 'user',
@@ -693,7 +693,7 @@ describe('lifecycle.setReceivingMode — the cases that must NOT move records', 
 			})
 		);
 
-		await t.mutation(internal.domains.lifecycle.setReceivingMode, {
+		await t.mutation(internal.domains.lifecycleReceiving.setReceivingMode, {
 			domainId,
 			mode: 'external',
 			provider: 'google',
@@ -719,7 +719,7 @@ describe('lifecycle.setReceivingMode — the cases that must NOT move records', 
 		const t = convexTest(schema, modules);
 		const domainId = await seedVerifiedDomain(t, 'ses.example', { providerType: 'ses' });
 
-		await t.mutation(internal.domains.lifecycle.setReceivingMode, {
+		await t.mutation(internal.domains.lifecycleReceiving.setReceivingMode, {
 			domainId,
 			mode: 'external',
 			provider: 'google',
@@ -746,7 +746,7 @@ describe('lifecycle.setReceivingMode — the cases that must NOT move records', 
 		const domainId = await seedVerifiedDomain(t, 'doomed.example');
 		await t.run(async (ctx) => ctx.db.delete(domainId));
 
-		const outcome = await t.mutation(internal.domains.lifecycle.setReceivingMode, {
+		const outcome = await t.mutation(internal.domains.lifecycleReceiving.setReceivingMode, {
 			domainId,
 			mode: 'external',
 			provider: 'google',

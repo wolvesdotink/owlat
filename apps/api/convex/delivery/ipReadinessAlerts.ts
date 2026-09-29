@@ -1,24 +1,14 @@
 /** Persistent, admin-visible incident seam for confirmed MTA IPv6 regressions. */
 
-import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
+import { mtaIpReadinessAlertFields } from '../schema/delivery';
 
 const ALERT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 const CLEANUP_BATCH_SIZE = 100;
 
-const alertArgs = {
-	eventId: v.string(),
-	ip: v.string(),
-	readinessCheck: v.union(v.literal('fcrdns'), v.literal('spf')),
-	readinessReason: v.string(),
-	eligibilityGeneration: v.number(),
-	observedAt: v.number(),
-	message: v.string(),
-};
-
 export const recordRegression = internalMutation({
-	args: alertArgs,
+	args: mtaIpReadinessAlertFields,
 	handler: async (ctx, args) => {
 		const existing = await ctx.db
 			.query('mtaIpReadinessAlerts')

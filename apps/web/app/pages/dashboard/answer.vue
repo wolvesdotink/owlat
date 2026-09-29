@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import ReviewApproveUndoToast from '~/components/agent-tasks/ReviewApproveUndoToast.vue';
+import ReviewApproveUndoToast from '~/components/answer/ReviewApproveUndoToast.vue';
 
 /**
  * The Answer queue page: everything waiting on the viewer's answer, one card

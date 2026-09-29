@@ -1,12 +1,37 @@
-import type { ImapCommandModule, ImapVerb } from '../types.js';
+import type { ImapCommandModule } from '../types.js';
+import { checkRequires } from '../helpers/auth.js';
 import { syncSession } from '../helpers/session.js';
-import { fetchModule, type FetchArgs } from '../fetch/index.js';
-import { storeModule, type StoreArgs } from '../store/index.js';
-import { copyModule, type CopyArgs } from '../copy/index.js';
-import { moveModule, type MoveArgs } from '../move/index.js';
-import { expungeModule, type ExpungeArgs } from '../expunge/index.js';
+import { fetchModule } from '../fetch/index.js';
+import { storeModule } from '../store/index.js';
+import { copyModule } from '../copy/index.js';
+import { moveModule } from '../move/index.js';
+import { expungeModule } from '../expunge/index.js';
 
 type UidSubVerb = 'FETCH' | 'STORE' | 'COPY' | 'MOVE' | 'EXPUNGE';
+
+/** The args shape every UID-capable sub-module shares. */
+interface UidCapableArgs {
+	readonly byUid: boolean;
+}
+
+/**
+ * The sub-modules a UID command can re-enter. Each one parses its own
+ * post-verb args and reads `byUid` to switch from sequence numbers to
+ * UIDs. Typing the table by the shared `byUid` field keeps one dispatch
+ * path below: a module's `start` only ever receives the args its own
+ * `parseArgs` produced, with `byUid` switched on.
+ */
+const UID_SUBCOMMANDS: Record<UidSubVerb, ImapCommandModule<UidCapableArgs>> = {
+	FETCH: fetchModule,
+	STORE: storeModule,
+	COPY: copyModule,
+	MOVE: moveModule,
+	EXPUNGE: expungeModule,
+};
+
+function isUidSubVerb(sub: string): sub is UidSubVerb {
+	return Object.hasOwn(UID_SUBCOMMANDS, sub);
+}
 
 interface UidArgs {
 	readonly sub: UidSubVerb;
@@ -19,10 +44,9 @@ interface UidArgs {
  * flag set. The sub-modules' parseArgs handle the post-verb args; this
  * module just routes by the leading sub-verb token.
  *
- * Single-file delegation rather than splitting into one walker entry
- * per sub-verb — the IMAP parser returns the verb as `UID` and the
- * sub-verb sits in args[0]; the dispatcher decision belongs in one
- * place.
+ * The walker only sees the `UID` verb, so this dispatcher repeats the
+ * walker's ceremony for the sub-module: parse (BAD on error), then the
+ * sub-module's declared `requires`, then `start`.
  */
 export const uidModule: ImapCommandModule<UidArgs> = {
 	verbs: ['UID'],
@@ -33,82 +57,29 @@ export const uidModule: ImapCommandModule<UidArgs> = {
 			return { ok: false, error: 'UID requires a sub-command' };
 		}
 		const sub = first.toUpperCase();
-		if (
-			sub !== 'FETCH' &&
-			sub !== 'STORE' &&
-			sub !== 'COPY' &&
-			sub !== 'MOVE' &&
-			sub !== 'EXPUNGE'
-		) {
+		if (!isUidSubVerb(sub)) {
 			return { ok: false, error: `UID ${sub} not supported` };
 		}
 		return { ok: true, args: { sub, rest: rawArgs.slice(1) } };
 	},
 	start(start) {
-		const { args, tag, send } = start;
+		const { args, state, tag, send } = start;
+		const module = UID_SUBCOMMANDS[args.sub];
 
-		switch (args.sub) {
-			case 'FETCH': {
-				const parsed = fetchModule.parseArgs(args.rest);
-				if (!parsed.ok) {
-					send(`${tag} BAD ${parsed.error}`);
-					return syncSession();
-				}
-				const next: FetchArgs = { ...parsed.args, byUid: true };
-				return fetchModule.start({
-					...start,
-					verb: 'FETCH' as ImapVerb,
-					args: next,
-				});
-			}
-			case 'STORE': {
-				const parsed = storeModule.parseArgs(args.rest);
-				if (!parsed.ok) {
-					send(`${tag} BAD ${parsed.error}`);
-					return syncSession();
-				}
-				const next: StoreArgs = { ...parsed.args, byUid: true };
-				return storeModule.start({
-					...start,
-					verb: 'STORE' as ImapVerb,
-					args: next,
-				});
-			}
-			case 'COPY': {
-				const parsed = copyModule.parseArgs(args.rest);
-				if (!parsed.ok) {
-					send(`${tag} BAD ${parsed.error}`);
-					return syncSession();
-				}
-				const next: CopyArgs = { ...parsed.args, byUid: true };
-				return copyModule.start({
-					...start,
-					verb: 'COPY' as ImapVerb,
-					args: next,
-				});
-			}
-			case 'MOVE': {
-				const parsed = moveModule.parseArgs(args.rest);
-				if (!parsed.ok) {
-					send(`${tag} BAD ${parsed.error}`);
-					return syncSession();
-				}
-				const next: MoveArgs = { ...parsed.args, byUid: true };
-				return moveModule.start({
-					...start,
-					verb: 'MOVE' as ImapVerb,
-					args: next,
-				});
-			}
-			case 'EXPUNGE': {
-				// UID EXPUNGE takes an optional UID set in args.rest[0].
-				const next: ExpungeArgs = { uidSpec: args.rest[0] };
-				return expungeModule.start({
-					...start,
-					verb: 'EXPUNGE' as ImapVerb,
-					args: next,
-				});
-			}
+		const parsed = module.parseArgs(args.rest);
+		if (!parsed.ok) {
+			send(`${tag} BAD ${parsed.error}`);
+			return syncSession();
 		}
+		const unmet = checkRequires(module.requires, state, tag);
+		if (unmet) {
+			send(unmet);
+			return syncSession();
+		}
+		return module.start({
+			...start,
+			verb: args.sub,
+			args: { ...parsed.args, byUid: true },
+		});
 	},
 };
