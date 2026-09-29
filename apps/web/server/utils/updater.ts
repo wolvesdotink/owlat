@@ -38,6 +38,12 @@ export function getInstanceSecret(notConfiguredMessage: string): string {
  * given message) if the secret is not configured, or 401 if the header is
  * missing or does not match. Returns the configured secret on success so the
  * caller can forward it to the updater.
+ *
+ * Unlike the Convex `X-Instance-Secret` routes (`apps/api/convex/lib/instanceSecret.ts`)
+ * this compare is not rate limited. The web server sees the reverse proxy as the
+ * peer of every request, so a per-IP bucket here would be one bucket shared with
+ * the control plane's own self-update and health calls. The secret is 32 random
+ * bytes (`scripts/setup.sh`), which is what the compare relies on.
  */
 export function requireInstanceSecret(event: H3Event, notConfiguredMessage: string): string {
 	const instanceSecret = getInstanceSecret(notConfiguredMessage);
