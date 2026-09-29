@@ -8,6 +8,7 @@ import { computed, effectScope, nextTick, ref, type ComputedRef, type Ref } from
 import { getFunctionName } from 'convex/server';
 import { consumeResolvedPostboxMessageBody } from '../postboxBodyResolver';
 import { usePostboxActiveMessage, usePostboxOpenMessage } from '../usePostboxOpenMessage';
+import { threadPageArgs } from '../postboxThreadPage';
 
 const THREAD = 'mail/mailbox/messages:listThreadMessages';
 const BODY = 'mail/mailbox/messages:getMessageInlineBody';
@@ -53,7 +54,8 @@ function answerThread(messages: Array<{ _id: string }> | null) {
 describe('usePostboxOpenMessage', () => {
 	it('subscribes the thread and the inline body from the message id at once', () => {
 		run(() => usePostboxOpenMessage(ref('m1')));
-		expect(stubs[THREAD]?.args.value).toEqual({ messageId: 'm1' });
+		// The reader's newest page (plan 3.3), so the reader shares this subscription.
+		expect(stubs[THREAD]?.args.value).toEqual(threadPageArgs('m1'));
 		expect(stubs[BODY]?.args.value).toEqual({ messageId: 'm1' });
 	});
 

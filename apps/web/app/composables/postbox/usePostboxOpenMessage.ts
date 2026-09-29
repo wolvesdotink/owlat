@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { resolvePostboxMessageBody } from './postboxBodyResolver';
 import { inlineBodyNeedsBlob } from './usePostboxPrefetch';
+import { threadPageArgs } from './postboxThreadPage';
 
 /**
  * The open message's queries, started from the route's message id (plan 2.5).
@@ -22,8 +23,9 @@ import { inlineBodyNeedsBlob } from './usePostboxPrefetch';
 export function usePostboxOpenMessage(messageId: MaybeRefOrGetter<string | null | undefined>) {
 	const openId = computed(() => toValue(messageId) || null);
 
+	// The reader's newest page (plan 3.3), so the reader joins this subscription.
 	const thread = useConvexQuery(api.mail.mailbox.messages.listThreadMessages, () =>
-		openId.value ? { messageId: openId.value as Id<'mailMessages'> } : 'skip'
+		openId.value ? threadPageArgs(openId.value) : 'skip'
 	);
 
 	/** The open message's own row in its thread, once the thread has loaded. */

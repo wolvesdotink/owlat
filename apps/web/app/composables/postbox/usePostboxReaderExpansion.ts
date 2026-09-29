@@ -27,16 +27,21 @@ export interface ReaderExpansionMessage {
 /** How many unread messages, counted from the newest, open expanded. */
 export const MAX_AUTO_EXPANDED_UNREAD = 3;
 
-/** The default expanded set for a freshly opened thread. */
+/**
+ * The default expanded set for a freshly opened thread. `startsThread` is false
+ * when `messages` is only the newest page of a longer thread (plan 3.3): its
+ * oldest message is not the thread's first, so it stays collapsed.
+ */
 export function initialExpandedIds(
 	messages: readonly ReaderExpansionMessage[],
-	activeId: string
+	activeId: string,
+	startsThread = true
 ): Set<string> {
 	const next = new Set<string>();
 	const last = messages[messages.length - 1];
 	if (last) next.add(last._id);
 	const first = messages[0];
-	if (messages.length > 2 && first) next.add(first._id);
+	if (startsThread && messages.length > 2 && first) next.add(first._id);
 	let unread = 0;
 	for (let i = messages.length - 1; i >= 0 && unread < MAX_AUTO_EXPANDED_UNREAD; i--) {
 		const m = messages[i];
@@ -54,8 +59,14 @@ export interface PostboxReaderExpansionSource {
 	threadKey: () => string;
 	/** The message the reader was opened on; always expanded. */
 	activeId: () => string;
-	/** The thread's loaded messages, or `undefined` while the query loads. */
+	/**
+	 * The thread's newest page (the whole thread when it is short), or
+	 * `undefined` while the query loads. Earlier pages the reader loads later
+	 * are not passed here, so they arrive collapsed.
+	 */
 	messages: () => readonly ReaderExpansionMessage[] | undefined;
+	/** The messages reach back to the thread's first one. Absent: they do. */
+	startsThread?: () => boolean;
 }
 
 export function usePostboxReaderExpansion(source: PostboxReaderExpansionSource): {
@@ -96,7 +107,7 @@ export function usePostboxReaderExpansion(source: PostboxReaderExpansionSource):
 			if (!messages) return;
 			if (!known) {
 				known = new Set(messages.map((m) => m._id));
-				expanded.value = initialExpandedIds(messages, active);
+				expanded.value = initialExpandedIds(messages, active, source.startsThread?.() ?? true);
 				return;
 			}
 			const arrived: string[] = [];

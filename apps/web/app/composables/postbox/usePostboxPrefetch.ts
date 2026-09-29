@@ -4,12 +4,13 @@ import type { ConvexClient } from 'convex/browser';
 import type { FunctionReturnType } from 'convex/server';
 import { holdConvexQuery } from '~/lib/convexQueryHold';
 import { clearResolvedPostboxBodies, resolvePostboxMessageBody } from './postboxBodyResolver';
+import { threadPageArgs } from './postboxThreadPage';
 
 /**
  * Read-ahead for the Postbox reader (plan 2.5).
  *
  * For each warmed row it holds the two queries the reader opens with, the
- * thread (`listThreadMessages`) and the inline body (`getMessageInlineBody`),
+ * thread's newest page (`listThreadMessages`) and the inline body (`getMessageInlineBody`),
  * as subscriptions in the shared registry. Opening that row then joins live,
  * loaded subscriptions and renders in the same tick. A hold is released when
  * the row falls out of the small LRU or the list unmounts, and the registry
@@ -142,7 +143,7 @@ export function usePostboxPrefetch(options?: {
 		const releaseThread = holdConvexQuery(
 			client,
 			api.mail.mailbox.messages.listThreadMessages,
-			args
+			threadPageArgs(messageId)
 		);
 		const releaseBody = holdConvexQuery(
 			client,

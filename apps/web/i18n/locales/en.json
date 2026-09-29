@@ -4569,6 +4569,11 @@
 				"trashOperation": "Move to trash",
 				"trashedUndo": "Moved to trash"
 			},
+			"postboxThreadEarlier": {
+				"load": "Load earlier messages",
+				"loadCount": "Load {count} earlier message | Load {count} earlier messages",
+				"failed": "Earlier messages could not be loaded. Try again."
+			},
 			"postboxThreadReader": {
 				"attachmentDownloadFailed": "That attachment could not be downloaded. Try again.",
 				"blockSender": "Block sender",

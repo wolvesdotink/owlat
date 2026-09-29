@@ -88,6 +88,11 @@ import { useNow } from '~/composables/useNow';
 import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
 import { usePostboxReaderExpansion } from '~/composables/postbox/usePostboxReaderExpansion';
 import { usePostboxReaderOpenRow } from '~/composables/postbox/usePostboxReaderOpenRow';
+import {
+	usePostboxEnvelopeBodies,
+	usePostboxThreadPages,
+} from '~/composables/postbox/usePostboxThreadPages';
+import { placeAnchorRow } from '~/composables/postbox/postboxThreadPage';
 import { usePostboxMountAllBodies } from '~/composables/postbox/usePostboxLazyBody';
 import {
 	POSTBOX_MARK_READ_DWELL_MS,
@@ -193,12 +198,12 @@ function openSenderProfile(msg: { fromAddress: string; fromName?: string | null 
 }
 
 const messageId = computed(() => props.message._id as Id<'mailMessages'>);
-const { data: threadData, isLoading } = useConvexQuery(
-	api.mail.mailbox.messages.listThreadMessages,
-	() => ({
-		messageId: messageId.value,
-	})
-);
+const threadKey = () => props.message.threadId ?? props.message._id;
+// The conversation in pages (plan 3.3): the newest messages with bodies, older
+// ones as envelopes, earlier pages behind "Load earlier".
+const threadPages = usePostboxThreadPages({ messageId: () => props.message._id, threadKey });
+const { data: threadData, isLoading } = threadPages.newest;
+const { hasEarlier, loadingEarlier, earlierFailed, loadEarlier } = threadPages;
 
 // Until the thread answers, render the row the reader was opened with and
 // its inline body (plan 2.5) instead of a skeleton; the page subscribed both
@@ -207,7 +212,34 @@ const openRow = usePostboxReaderOpenRow({
 	message: () => props.message,
 	threadMessages: () => threadData.value?.messages,
 });
-const allMessages = computed(() => threadData.value?.messages ?? [openRow.value]);
+
+// Expanded messages: the default set is built once per thread from its newest
+// page, then only grows as messages arrive (see usePostboxReaderExpansion).
+const { expanded, toggleExpanded } = usePostboxReaderExpansion({
+	threadKey,
+	activeId: () => props.message._id,
+	messages: () => threadPages.newestRows.value,
+	startsThread: () => threadPages.startsThread.value,
+});
+// The opened message is always in the conversation, even before the page that
+// holds it has loaded; an expanded envelope gets its body folded in.
+const threadMessages = usePostboxEnvelopeBodies({
+	rows: () => {
+		const rows = threadPages.rows.value;
+		return rows
+			? placeAnchorRow<(typeof rows)[number] | PostboxReaderMessage>(rows, openRow.value)
+			: undefined;
+	},
+	expanded: () => expanded.value,
+	bodyIds: () => threadPages.bodyIds.value,
+});
+const allMessages = computed(() => threadMessages.value ?? [openRow.value]);
+/** What the header counts: the whole thread once part of it is not loaded. */
+const threadMessageCount = computed(() =>
+	hasEarlier.value
+		? Math.max(threadData.value?.thread?.messageCount ?? 0, allMessages.value.length)
+		: allMessages.value.length
+);
 const latestMessage = computed(() => allMessages.value[allMessages.value.length - 1]);
 
 // The one reader AI strip (PostboxAiStrip) mounts whenever AI is on and the
@@ -370,7 +402,7 @@ function runMarkThreadRead(threadId: string) {
 }
 
 /** True while the open thread still has an unread message (drives the button). */
-const threadHasUnread = computed(() => (threadData.value?.messages ?? []).some((m) => !m.flagSeen));
+const threadHasUnread = threadPages.hasUnread;
 const showsManualMarkReadButton = computed(() =>
 	showsManualMarkRead(markReadPolicy.value, threadHasUnread.value)
 );
@@ -389,7 +421,7 @@ watch(
 		const thread = data?.thread;
 		if (!thread) return;
 		if (markedThreads.has(thread._id)) return;
-		if (!(data?.messages ?? []).some((m) => !m.flagSeen)) return;
+		if (!threadHasUnread.value) return;
 		const mode = markReadOnOpen(markReadPolicy.value);
 		if (mode === 'never') return;
 		markedThreads.add(thread._id);
@@ -435,13 +467,6 @@ watch(
 	{ immediate: true }
 );
 
-// Expanded messages: the default set is built once per thread, then only
-// grows as messages arrive (see usePostboxReaderExpansion).
-const { expanded, toggleExpanded } = usePostboxReaderExpansion({
-	threadKey: () => props.message.threadId ?? props.message._id,
-	activeId: () => props.message._id,
-	messages: () => threadData.value?.messages,
-});
 // Expanded bodies mount as they near the viewport; printing mounts them all.
 const articleEl = ref<HTMLElement | null>(null);
 const { mountAll: mountAllBodies, preparePrint } = usePostboxMountAllBodies({
@@ -710,7 +735,7 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 	>
 		<PostboxThreadHeader
 			:subject="message.subject"
-			:message-count="allMessages.length"
+			:message-count="threadMessageCount"
 			:message-id="messageId"
 			:thread="readerThread"
 			:latest-outbound-id="latestOutboundId"
@@ -760,6 +785,14 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 				:key="latestMessage._id"
 				:message-id="latestMessage._id"
 				:warrants-summary="warrantsSummary"
+			/>
+
+			<PostboxThreadEarlier
+				v-if="hasEarlier || loadingEarlier || earlierFailed"
+				:remaining="Math.max(0, threadMessageCount - allMessages.length)"
+				:loading="loadingEarlier"
+				:failed="earlierFailed"
+				@load="loadEarlier"
 			/>
 
 			<PostboxReaderMessage

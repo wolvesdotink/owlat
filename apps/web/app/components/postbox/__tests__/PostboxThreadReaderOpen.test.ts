@@ -142,6 +142,7 @@ const CHROME = [
 	'PostboxSnoozeDialog',
 	'PostboxThreadDiscussion',
 	'PostboxThreadDiscussionToggle',
+	'PostboxThreadEarlier',
 	'PostboxThreadHeader',
 	'PostboxTriageSuggestion',
 	'PostboxTrustChip',
@@ -197,6 +198,8 @@ describe('PostboxThreadReader while its thread loads', () => {
 				{ ...listRow, _id: 'm0', textBodyInline: 'Earlier message', flagSeen: true },
 				{ ...listRow, textBodyInline: 'From the thread', flagSeen: true },
 			],
+			envelopes: [],
+			olderCursor: null,
 		};
 		thread.isLoading.value = false;
 		await flushPromises();

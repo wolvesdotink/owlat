@@ -38,6 +38,11 @@ describe('initialExpandedIds', () => {
 		expect([...initialExpandedIds([msg('a'), msg('b')], 'b')]).toEqual(['b']);
 	});
 
+	it("leaves the oldest loaded message collapsed when it is not the thread's first (plan 3.3)", () => {
+		const set = initialExpandedIds([msg('k'), msg('l'), msg('m')], 'm', false);
+		expect([...set]).toEqual(['m']);
+	});
+
 	it('expands only the newest unread messages of a long unread thread', () => {
 		const thread = Array.from({ length: 12 }, (_, i) => msg(`m${i}`, false));
 		// The first, the last three unread (the latest among them) and the active one.

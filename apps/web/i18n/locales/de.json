@@ -4569,6 +4569,11 @@
 				"trashOperation": "In den Papierkorb verschieben",
 				"trashedUndo": "In den Papierkorb verschoben"
 			},
+			"postboxThreadEarlier": {
+				"load": "Ältere Nachrichten laden",
+				"loadCount": "{count} ältere Nachricht laden | {count} ältere Nachrichten laden",
+				"failed": "Ältere Nachrichten konnten nicht geladen werden. Bitte erneut versuchen."
+			},
 			"postboxThreadReader": {
 				"attachmentDownloadFailed": "Dieser Anhang konnte nicht heruntergeladen werden. Bitte erneut versuchen.",
 				"blockSender": "Absender blockieren",

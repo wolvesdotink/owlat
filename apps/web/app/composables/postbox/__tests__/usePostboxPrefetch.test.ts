@@ -3,6 +3,7 @@ import { effectScope } from 'vue';
 import { getFunctionName } from 'convex/server';
 import { SUBSCRIPTION_LINGER_MS } from '~/lib/sharedConvexSubscriptions';
 import { consumeResolvedPostboxMessageBody } from '../postboxBodyResolver';
+import { threadPageArgs } from '../postboxThreadPage';
 import {
 	inlineBodyNeedsBlob,
 	usePostboxPrefetch,
@@ -94,6 +95,18 @@ describe('usePostboxPrefetch', () => {
 		await vi.advanceTimersByTimeAsync(1);
 		expect(fake.open(THREAD)).toEqual(['next-id', 'prev-id']);
 		expect(fake.open(BODY)).toEqual(['next-id', 'prev-id']);
+	});
+
+	it("holds the thread's newest page with the reader's args, so the reader joins it (plan 3.3)", async () => {
+		const fake = makeFakeClient();
+		const { prefetch } = usePostboxPrefetch({ client: fake.client, debounceMs: 150 });
+
+		prefetch(['next-id']);
+		await vi.advanceTimersByTimeAsync(150);
+		const threadArgs = fake.onUpdate.mock.calls
+			.filter(([ref]) => getFunctionName(ref as never) === THREAD)
+			.map(([, args]) => args);
+		expect(threadArgs).toEqual([threadPageArgs('next-id')]);
 	});
 
 	it('coalesces rapid focus changes so only the last targets are held', async () => {
