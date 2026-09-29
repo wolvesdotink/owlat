@@ -3,7 +3,7 @@
  *
  * Convex queries cannot fetch the MTA directly, so a short cron action polls
  * its public health endpoint and stores only non-secret operational signals on
- * the instance-settings singleton. Delivery queries can then include the same
+ * the `mtaHealth` row of `instanceCounters`. Delivery queries can then include the same
  * worker, DNS, Redis, emergency, and per-IP SMTP readiness that operators see
  * at the source.
  */
@@ -12,7 +12,7 @@ import { isRecord } from '@owlat/shared';
 import type { Infer } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalAction, internalMutation } from '../_generated/server';
-import { getInstanceSettings, upsertInstanceSettings } from '../lib/instanceSettings';
+import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounters';
 import { getMtaBaseUrl } from '../mail/mtaClient';
 import { mtaHealthSnapshotValidator } from '../schema/instance';
 import { canSkipMtaHealthWrite } from './mtaHealthFreshness';
@@ -116,13 +116,12 @@ export const sync = internalAction({
 export const record = internalMutation({
 	args: { snapshot: mtaHealthSnapshotValidator },
 	handler: async (ctx, args): Promise<void> => {
-		// The singleton backs every feature-flag read, so a poll that only
-		// refreshed timestamps is not written until the stored snapshot needs a
-		// re-stamp (see mtaHealthFreshness.ts).
-		const stored = (await getInstanceSettings(ctx.db))?.mtaHealth;
+		// The snapshot has its own counter row (plan 2.4), so it no longer
+		// re-runs feature-gated queries. A poll that only refreshed timestamps is
+		// still not written until the stored snapshot needs a re-stamp (see
+		// mtaHealthFreshness.ts): the Delivery surfaces subscribe to the row.
+		const { mtaHealth: stored } = await readInstanceCounter(ctx.db, 'mtaHealth');
 		if (canSkipMtaHealthWrite(stored, args.snapshot)) return;
-		// Often the first writer on a fresh deployment: the helper creates a bare
-		// row without the seed columns, so `/seed/admin` still fills them later.
-		await upsertInstanceSettings(ctx, { mtaHealth: args.snapshot });
+		await writeInstanceCounter(ctx, 'mtaHealth', { mtaHealth: args.snapshot });
 	},
 });

@@ -12,6 +12,7 @@ import { publicQuery } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { isSharedInboxReader } from './access';
 import { assertFeatureEnabled } from '../lib/featureFlags';
+import { readInstanceCounter } from '../lib/instanceCounters';
 import { PRESENCE_ACTIVE_WINDOW_MS } from './presence';
 import { compareNeedsAttention, compareOldestWaiting } from './threadSort';
 import {
@@ -373,11 +374,11 @@ export const getFailed = publicQuery({
 /**
  * Get inbound email statistics for the dashboard.
  *
- * Reads the denormalized `instanceSettings.inboxStats` counters
- * maintained by `inbox/messages.ts` (insert) and
- * `inbox/processingLifecycle.ts` (status transitions), plus the
- * `instanceSettings.openThreads` counter maintained by the Conversation
- * thread module (`inbox/threads/module.ts`). The pre-deepening shape did
+ * Reads the denormalized `inboxStats` counters maintained by
+ * `inbox/messages.ts` (insert) and `inbox/processingLifecycle.ts` (status
+ * transitions), plus the `openThreads` counter maintained by the Conversation
+ * thread module (`inbox/threads/module.ts`), from the `inbox` row of
+ * `instanceCounters` (plan 2.4). The pre-deepening shape did
  * `inboundMessages.collect()` AND a `conversationThreads` open-status
  * collect on every subscriber — and this query is subscribed by the inbox
  * view, the workspace badge, the desktop notifier, and three dashboard
@@ -391,8 +392,8 @@ export const getInboundStats = publicQuery({
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!isSharedInboxReader(session)) return null;
 
-		const settings = await ctx.db.query('instanceSettings').first();
-		const counters = settings?.inboxStats ?? {
+		const stored = await readInstanceCounter(ctx.db, 'inbox');
+		const counters = stored.inboxStats ?? {
 			received: 0,
 			processing: 0,
 			draftReady: 0,
@@ -415,7 +416,7 @@ export const getInboundStats = publicQuery({
 			quarantined: counters.quarantined,
 			failed: counters.failed,
 			informational: counters.informational ?? 0,
-			openThreads: settings?.openThreads ?? 0,
+			openThreads: stored.openThreads ?? 0,
 		};
 	},
 });

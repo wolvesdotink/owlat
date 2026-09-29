@@ -42,6 +42,15 @@ export async function enableFeatures(
 	for (const f of enabled) featureFlags[f] = true;
 	const now = Date.now();
 	await t.run(async (ctx) => {
+		// Once a flag write has created the dedicated singleton (plan 2.4), gates
+		// read only that, so merge into it as well as the legacy column.
+		const flagRow = await ctx.db.query('featureFlagSettings').first();
+		if (flagRow) {
+			await ctx.db.patch(flagRow._id, {
+				featureFlags: { ...flagRow.featureFlags, ...featureFlags },
+				updatedAt: now,
+			});
+		}
 		const settings = await ctx.db.query('instanceSettings').first();
 		if (settings) {
 			await ctx.db.patch(settings._id, {

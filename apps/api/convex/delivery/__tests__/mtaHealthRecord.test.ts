@@ -1,10 +1,11 @@
 /**
- * `mtaHealth.record` writes the `instanceSettings` singleton that every
- * feature-flag gate reads, so a poll that only refreshed timestamps must not
- * write it until the stored snapshot needs a re-stamp.
+ * `mtaHealth.record` writes the `mtaHealth` counter row the Delivery surfaces
+ * subscribe to, so a poll that only refreshed timestamps must not write it until
+ * the stored snapshot needs a re-stamp. It never writes the documents feature
+ * gates read (plan 2.4).
  */
 
-import { convexTest } from 'convex-test';
+import { convexTest, type TestConvex } from 'convex-test';
 import { describe, expect, it } from 'vitest';
 import type { Infer } from 'convex/values';
 import schema from '../../schema';
@@ -57,11 +58,52 @@ function poll(at: number, overrides: Partial<Snapshot> = {}): Snapshot {
 	};
 }
 
-async function stored(t: ReturnType<typeof convexTest>) {
-	return await t.run(async (ctx) => await ctx.db.query('instanceSettings').first());
+async function stored(t: TestConvex<typeof schema>) {
+	return await t.run(
+		async (ctx) =>
+			await ctx.db
+				.query('instanceCounters')
+				.withIndex('by_key', (q) => q.eq('key', 'mtaHealth'))
+				.first()
+	);
 }
 
 describe('mtaHealth.record', () => {
+	it('never patches the settings or flag documents the gates read', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', { createdAt: T0, updatedAt: T0 });
+			await ctx.db.insert('featureFlagSettings', { featureFlags: {}, updatedAt: T0 });
+		});
+		const gateDocs = () =>
+			t.run(async (ctx) => ({
+				settings: await ctx.db.query('instanceSettings').first(),
+				flags: await ctx.db.query('featureFlagSettings').first(),
+			}));
+		const before = await gateDocs();
+
+		await t.mutation(internal.delivery.mtaHealth.record, { snapshot: poll(T0) });
+		await t.mutation(internal.delivery.mtaHealth.record, {
+			snapshot: poll(T0 + MTA_HEALTH_SYNC_INTERVAL_MS, { status: 'degraded' }),
+		});
+
+		expect(await gateDocs()).toEqual(before);
+		expect((await stored(t))?.mtaHealth?.status).toBe('degraded');
+	});
+
+	it('carries on from a snapshot stored on instanceSettings before the split', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', { mtaHealth: poll(T0), createdAt: T0 });
+		});
+
+		// A repeat of the legacy snapshot is still skipped: the fallback read sees it.
+		await t.mutation(internal.delivery.mtaHealth.record, {
+			snapshot: poll(T0 + MTA_HEALTH_SYNC_INTERVAL_MS),
+		});
+		expect(await stored(t)).toBeNull();
+	});
+
 	it('skips a poll that repeats the stored snapshot inside the re-stamp interval', async () => {
 		const t = convexTest(schema, modules);
 		await t.mutation(internal.delivery.mtaHealth.record, { snapshot: poll(T0) });

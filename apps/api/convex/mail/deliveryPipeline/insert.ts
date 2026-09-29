@@ -28,6 +28,7 @@ import { redirectMutedDelivery } from '../mute';
 import { indexMessageAttachments } from '../attachmentIndex';
 import { conversationRootId, resolveDeliveryThread } from './threading';
 import { mergeThreadParticipants } from '../threadAggregates';
+import { applyMailboxUsageDelta } from '../mailboxUsage';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import type { SenderHeuristics } from '../senderHeuristics';
 import type { InboundEncryptionInfo } from '../../e2ee/inboundSeal';
@@ -179,7 +180,7 @@ export async function insertDeliveredMessage(
 		 * claimed this message for. Absent ⇒ the message renders in the trailing
 		 * "Everything else" section, which is exactly today's flat inbox. */
 		pinnedSection?: string;
-		/** Add rawSize to mailbox.usedBytes (local cache accounting). */
+		/** Add rawSize to the mailbox's used bytes (local cache accounting). */
 		countUsedBytes?: boolean;
 	}
 ): Promise<Id<'mailMessages'>> {
@@ -367,11 +368,9 @@ export async function insertDeliveredMessage(
 		});
 	}
 
-	await ctx.db.patch(mailbox._id, {
-		...(params.countUsedBytes ? { usedBytes: mailbox.usedBytes + params.rawSize } : {}),
-		usageRevision: (mailbox.usageRevision ?? 0) + 1,
-		updatedAt: now,
-	});
+	// Usage lives on the 1:1 `mailboxUsage` row, so a delivery leaves the
+	// mailbox document (read by every access check) untouched (plan 2.4).
+	await applyMailboxUsageDelta(ctx, mailbox, params.countUsedBytes ? params.rawSize : 0, now);
 
 	await ctx.db.insert('mailAuditLog', {
 		mailboxId: mailbox._id,

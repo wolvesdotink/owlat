@@ -14,6 +14,7 @@ import { rebuildThreadAggregates } from '../messageActions';
 import { bumpFolderModseq } from '../folders';
 import { indexMessageAttachments, removeMessageAttachments } from '../attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../messagePurge';
+import { applyMailboxUsageDelta } from '../mailboxUsage';
 
 /**
  * COPY — clones a message into another folder of the SAME mailbox.
@@ -111,11 +112,7 @@ export const copyMessages = internalMutation({
 			// hold", which is what the MTA's over-quota recipient gate asks.
 			const mailbox = await ctx.db.get(target.mailboxId);
 			if (mailbox) {
-				await ctx.db.patch(mailbox._id, {
-					usedBytes: mailbox.usedBytes + bytesAdded,
-					usageRevision: (mailbox.usageRevision ?? 0) + 1,
-					updatedAt: now,
-				});
+				await applyMailboxUsageDelta(ctx, mailbox, bytesAdded, now);
 			}
 		}
 
@@ -274,10 +271,7 @@ export const expungeFolder = internalMutation({
 			});
 			const mailbox = await ctx.db.get(folder.mailboxId);
 			if (mailbox) {
-				await ctx.db.patch(mailbox._id, {
-					usedBytes: Math.max(0, mailbox.usedBytes - bytesRemoved),
-					updatedAt: Date.now(),
-				});
+				await applyMailboxUsageDelta(ctx, mailbox, -bytesRemoved);
 			}
 		}
 

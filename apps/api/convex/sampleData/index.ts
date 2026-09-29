@@ -117,7 +117,7 @@ export const deleteTaggedRows = internalMutation({
  * topic cascade mirrors `topics.remove`: memberships, then the topic.
  *
  * `decrementCount: false` because the seed loaders never incremented
- * `instanceSettings.contactCount` in the first place; decrementing here would
+ * the cached contact count in the first place; decrementing here would
  * push the operator's own contact count below the truth.
  */
 async function deleteSeededRow(

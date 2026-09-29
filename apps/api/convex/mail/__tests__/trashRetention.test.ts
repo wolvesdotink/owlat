@@ -14,6 +14,7 @@ import type { Id } from '../../_generated/dataModel';
 import { api, internal } from '../../_generated/api';
 import { modules, seedMailbox, seedFolder, seedMessage } from './helpers.testlib';
 import { enableFeatures } from '../../__tests__/factories';
+import { readMailboxUsage } from '../mailboxUsage';
 
 const sessionMocks = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -198,7 +199,7 @@ describe('trash auto-purge sweep', () => {
 				.first();
 			expect(trash?.totalCount).toBe(0);
 			expect(trash?.unseenCount).toBe(0);
-			expect((await ctx.db.get(mailboxId))?.usedBytes).toBe(0);
+			expect((await readMailboxUsage(ctx.db, (await ctx.db.get(mailboxId))!)).usedBytes).toBe(0);
 		});
 	});
 });

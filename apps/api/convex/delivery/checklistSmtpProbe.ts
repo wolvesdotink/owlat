@@ -1,6 +1,6 @@
 /**
  * Deployment checks judged from the MTA's live outbound SMTP probe
- * (`/health` → `smtpOutbound`, cached on `instanceSettings.mtaHealth`).
+ * (`/health` → `smtpOutbound`, cached on the `mtaHealth` counter row).
  *
  * `deployment.port25` asks whether each source address reaches a recipient MX.
  * `deployment.source_ip` asks whether each address leaves from its own IP: the

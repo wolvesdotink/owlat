@@ -27,6 +27,7 @@ import { mergeThreadParticipants } from '../threadAggregates';
 import { normalizeSubject } from '../../lib/emailAddress';
 import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
 import { indexMessageAttachments } from '../attachmentIndex';
+import { applyMailboxUsageDelta } from '../mailboxUsage';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import { buildSnippet } from '../deliveryPipeline/insert';
 import { refuse } from '../../lib/lifecycle';
@@ -297,11 +298,7 @@ async function runSentEffects(
 	}
 
 	// patch_mailbox_bytes effect — the SENDING mailbox holds the sent copy.
-	await ctx.db.patch(sendingMailboxId, {
-		usedBytes: mailbox.usedBytes + context.rawSize,
-		usageRevision: (mailbox.usageRevision ?? 0) + 1,
-		updatedAt: now,
-	});
+	await applyMailboxUsageDelta(ctx, mailbox, context.rawSize, now);
 
 	return { messageId };
 }

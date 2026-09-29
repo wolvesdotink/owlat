@@ -2,9 +2,10 @@
  * How long a cached MTA health snapshot stays current, and when a new poll may
  * skip writing it.
  *
- * The snapshot lives on the `instanceSettings` singleton, which every feature
- * flag gate reads, so each write re-runs every flag-gated query on the
- * deployment. The sync cron polls every two minutes, and almost every poll
+ * The snapshot lives on the `mtaHealth` row of `instanceCounters` (it used to
+ * sit on the `instanceSettings` singleton every feature gate reads; plan 2.4
+ * moved it), and each write re-runs the Delivery queries that read it. The
+ * sync cron polls every two minutes, and almost every poll
  * repeats the last one: the MTA stamps `checkedAt` on its TLS and SMTP probe
  * results each time it answers, so only the timestamps differ. `record` skips
  * such a poll until the stored snapshot is `MTA_HEALTH_RESTAMP_MS` old, then

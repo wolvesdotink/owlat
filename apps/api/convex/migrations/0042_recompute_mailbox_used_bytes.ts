@@ -22,6 +22,7 @@ import {
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { logInfo } from '../lib/runtimeLog';
+import { readMailboxUsage, setMailboxUsageIfUnchanged } from '../mail/mailboxUsage';
 
 const PAGE_SIZE = 100;
 const cursorArgs = { cursor: v.union(v.string(), v.null()) };
@@ -45,8 +46,9 @@ export const messageSizePage = internalQuery({
 			.query('mailMessages')
 			.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', mailboxId))
 			.paginate({ numItems: PAGE_SIZE, cursor });
+		const mailbox = await ctx.db.get(mailboxId);
 		return {
-			revision: (await ctx.db.get(mailboxId))?.usageRevision ?? 0,
+			revision: mailbox ? (await readMailboxUsage(ctx.db, mailbox)).usageRevision : 0,
 			bytes: result.page.reduce((sum, message) => sum + message.rawSize, 0),
 			cursor: result.continueCursor,
 			isDone: result.isDone,
@@ -59,18 +61,14 @@ export const setMailboxUsedBytes = internalMutation({
 	handler: async (ctx, { mailboxId, usedBytes, revision }) => {
 		const mailbox = await ctx.db.get(mailboxId);
 		if (!mailbox) return 'missing' as const;
-		if ((mailbox.usageRevision ?? 0) !== revision) return 'retry' as const;
-		await ctx.db.patch(mailboxId, {
-			usedBytes,
-			usageRevision: revision + 1,
-			updatedAt: Date.now(),
-		});
-		return 'updated' as const;
+		// Usage lives on the `mailboxUsage` row since plan 2.4.
+		const isUpdated = await setMailboxUsageIfUnchanged(ctx, mailbox, usedBytes, revision);
+		return isUpdated ? ('updated' as const) : ('retry' as const);
 	},
 });
 
 async function recomputeMailbox(ctx: ActionCtx, mailboxId: Id<'mailboxes'>): Promise<boolean> {
-	// Every size-changing write increments usageRevision in its transaction.
+	// Every size-changing write increments the usage revision in its transaction.
 	// A changed revision invalidates the entire scan, not just its final page.
 	for (let attempt = 0; attempt < 5; attempt++) {
 		let cursor: string | null = null;

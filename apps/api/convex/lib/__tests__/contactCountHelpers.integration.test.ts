@@ -4,6 +4,7 @@ import schema from '../../schema';
 import type { MutationCtx } from '../../_generated/server';
 import {
 	decrementContactCount,
+	getCachedContactCount,
 	getContactCount,
 	incrementContactCount,
 	reconcileContactCount,
@@ -33,10 +34,7 @@ describe('reconcileContactCount — paginated count (ADR-0033)', () => {
 		expect(result.corrected).toBe(true);
 
 		// The cached count is now written and matches the streamed actual.
-		const cached = await t.run(async (ctx) => {
-			const settings = await ctx.db.query('instanceSettings').first();
-			return settings?.contactCount ?? null;
-		});
+		const cached = await t.run(async (ctx) => await getCachedContactCount(ctx));
 		expect(cached).toBe(TOTAL);
 	});
 
@@ -90,16 +88,21 @@ describe('getContactCount — cached count, else the live count', () => {
 });
 
 describe('increment/decrementContactCount', () => {
-	it('creates the singleton on the first increment without seed columns', async () => {
+	it('counts on its own counter row and never creates the settings singleton', async () => {
+		// The settings row is read by every feature gate (plan 2.4); a contact
+		// write must not create or patch it, so `/seed/admin` still sees an
+		// unseeded instance.
 		const t = convexTest(schema, modules);
-		const row = await t.run(async (ctx) => {
+		const { count, settings } = await t.run(async (ctx) => {
 			await incrementContactCount(ctx, 2);
 			await incrementContactCount(ctx);
-			return await ctx.db.query('instanceSettings').first();
+			return {
+				count: await getCachedContactCount(ctx),
+				settings: await ctx.db.query('instanceSettings').first(),
+			};
 		});
-		expect(row?.contactCount).toBe(3);
-		expect(row?.timezone).toBeUndefined();
-		expect(row?.isMigrationMode).toBeUndefined();
+		expect(count).toBe(3);
+		expect(settings).toBeNull();
 	});
 
 	it('does not create the singleton on a decrement', async () => {

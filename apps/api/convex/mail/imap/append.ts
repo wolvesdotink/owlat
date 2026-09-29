@@ -21,6 +21,7 @@ import { conversationRootId, resolveDeliveryThread } from '../deliveryPipeline/t
 import { clearNeedsReplyOnOwnerReply } from '../needsReply';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import { buildSnippet } from '../deliveryPipeline/insert';
+import { applyMailboxUsageDelta } from '../mailboxUsage';
 
 /**
  * Error string used by APPEND to signal a from-address violation. The
@@ -217,11 +218,7 @@ export const appendMessage = internalMutation({
 			unseenCount: folder.unseenCount + (flagSet.has('\\seen') ? 0 : 1),
 			updatedAt: now,
 		});
-		await ctx.db.patch(mailbox._id, {
-			usedBytes: mailbox.usedBytes + args.rawSize,
-			usageRevision: (mailbox.usageRevision ?? 0) + 1,
-			updatedAt: now,
-		});
+		await applyMailboxUsageDelta(ctx, mailbox, args.rawSize, now);
 
 		return {
 			messageId,

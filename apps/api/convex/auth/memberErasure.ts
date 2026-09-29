@@ -41,6 +41,7 @@ import {
 } from '../delivery/checklistAlertRecipients';
 import { removeMessageAttachments } from '../mail/attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../mail/messagePurge';
+import { deleteMailboxUsage } from '../mail/mailboxUsage';
 import { isOrgInfrastructureAccount } from '../mail/external/personalAccount';
 import { isPersonalMailbox } from '../mail/permissions';
 
@@ -202,6 +203,7 @@ export const eraseMemberData = internalMutation({
 				await ctx.db.delete(row._id); // bounded: members of one mailbox
 			}
 
+			await deleteMailboxUsage(ctx, mailbox._id);
 			await ctx.db.delete(mailbox._id);
 			await reschedule();
 			return;

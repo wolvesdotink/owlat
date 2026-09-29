@@ -234,6 +234,8 @@ export const TENANT_TABLES = [
 	'seedPlacementProbes',
 	'mailboxMembers',
 	'pendingMailboxMembers',
+	// 1:1 storage accounting row of a mailbox (plan 2.4).
+	'mailboxUsage',
 	'mailboxes',
 	'pendingMailboxes',
 	'mailboxRequests',
@@ -306,8 +308,11 @@ export const NON_TENANT_TABLES = [
 	// row to `completed`, so it must survive the wipe.
 	'accountDeletionRequests',
 	// Instance configuration singleton — recreated by setup; reset clears it in a
-	// dedicated step.
+	// dedicated step. The flag singleton and counter rows split off it (plan 2.4)
+	// go with it, in the same reset step and the walker's terminal steps.
 	'instanceSettings',
+	'featureFlagSettings',
+	'instanceCounters',
 	// Per-org AI provider selection + encrypted key envelope — an admin-recreated
 	// config singleton like instanceSettings, not org business data.
 	'aiProviderConfig',
