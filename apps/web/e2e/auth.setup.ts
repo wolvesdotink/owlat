@@ -57,18 +57,39 @@ setup('bootstrap the instance and save auth state', async ({ page, request }) =>
 	await page.getByRole('button', { name: 'Sign in' }).click();
 
 	// A brand-new owner has never seen the welcome screen, so `first-login.global`
-	// routes them there — but only when its Convex query wins the race against JWT
-	// setup, which makes a bare wait for /dashboard flaky. Accept either, and when
-	// we do land on /welcome let it stamp `welcomedAt` (it fires markWelcomed on
-	// mount) so every later spec gets a deterministic /dashboard.
+	// sends them there. The check does not block the navigation: /dashboard
+	// renders first and the redirect follows once the onboarding query answers,
+	// and a query that loses the race against JWT setup fails open and is simply
+	// retried on the next load. So settle it explicitly: wait until the page is
+	// either on /welcome (which stamps `welcomedAt` on mount) or the guard has
+	// cached the "welcomed" answer in localStorage. The cache entry goes into the
+	// saved storage state, so every later spec gets a deterministic /dashboard
+	// without asking the server again.
 	await page.waitForURL(/\/(dashboard|welcome)/, { timeout: 30_000 });
 
-	if (new URL(page.url()).pathname.startsWith('/welcome')) {
-		await expect(page.getByRole('heading').first()).toBeVisible({ timeout: 15_000 });
-		await page.goto('/dashboard');
+	// `.catch`: evaluating mid-navigation throws "execution context destroyed".
+	const welcomedCached = () =>
+		page
+			.evaluate(() => Object.keys(localStorage).some((key) => key.startsWith('owlat:welcomed:')))
+			.catch(() => false);
+	for (let attempt = 0; attempt < 5 && !(await welcomedCached()); attempt++) {
+		await page
+			.waitForFunction(
+				() =>
+					location.pathname.startsWith('/welcome') ||
+					Object.keys(localStorage).some((key) => key.startsWith('owlat:welcomed:')),
+				null,
+				{ timeout: 10_000 }
+			)
+			.catch(() => undefined);
+		if (new URL(page.url()).pathname.startsWith('/welcome')) {
+			await expect(page.getByRole('heading').first()).toBeVisible({ timeout: 15_000 });
+		}
+		if (!(await welcomedCached())) await page.goto('/dashboard');
 	}
 
 	await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
+	await expect.poll(welcomedCached, { timeout: 15_000 }).toBe(true);
 
 	await page.context().storageState({ path: STORAGE_STATE });
 });
