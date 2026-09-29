@@ -37,7 +37,10 @@ export class EventsResource extends BaseResource {
 	 * ```
 	 */
 	async send(params: SendEventParams): Promise<SendEventResponse> {
-		const response = await this.http.post<ApiResponse<SendEventResponse>>('/api/v1/events', params);
+		const response = await this.http.post<ApiResponse<SendEventResponse>>(
+			'/api/v1/events',
+			params
+		);
 		return response.data.data;
 	}
 }
