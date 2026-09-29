@@ -15,6 +15,8 @@ definePageMeta({ layout: false });
 
 import { formatConnectionCode } from '~/lib/desktop/connectionCode';
 import { requiresTwoFactor } from '~/utils/accountTwoFactor';
+import { useCopyToClipboard } from '~/composables/useCopyToClipboard';
+import { useSignInValidation } from '~/composables/useSignInValidation';
 import { useTwoFactorChallenge } from '~/composables/useTwoFactorChallenge';
 
 const route = useRoute();
@@ -27,14 +29,16 @@ const redirectValid = computed(() => redirect.value.startsWith('owlat://'));
 
 const email = ref('');
 const password = ref('');
-const isLoading = ref(false);
-const errorMessage = ref('');
+const { isLoading, errorMessage, submit } = useAuthForm();
+const { errors, validateEmail, validatePassword, validate } = useSignInValidation(email, password);
 const handingBack = ref(false);
 // Deep-link fallback: the same payload as a paste-able code, for environments
 // where the `owlat://` link never reaches the app (macOS `tauri dev` binaries,
 // browsers that refuse custom schemes). See lib/desktop/connectionCode.ts.
 const connectionCode = ref('');
-const codeCopied = ref(false);
+const { copy, copiedKey } = useCopyToClipboard();
+// A failed copy needs no message: the code is selectable text, copy by hand.
+const copyCode = () => copy(connectionCode.value);
 
 /**
  * Sign-in is two stages once the account has TOTP enabled: BetterAuth answers
@@ -42,39 +46,26 @@ const codeCopied = ref(false);
  * `user` watcher below never fires and there is nothing to hand back yet. The
  * challenge is a stage of THIS form — the desktop handshake has nowhere to
  * navigate to, and the `state` nonce lives in the query string of this very URL.
+ * State and markup are the sign-in page's (`useTwoFactorChallenge`,
+ * `AuthTwoFactorStageForm`).
  */
+const twoFactor = useTwoFactorChallenge({
+	onSwitch: () => {
+		errorMessage.value = '';
+	},
+	onReset: () => {
+		password.value = '';
+		errorMessage.value = '';
+	},
+});
 const {
 	stage,
 	code: twoFactorCode,
-	useBackupCode,
 	method: twoFactorMethod,
 	canSubmit: canSubmitCode,
-	onCodeInput,
 	challenge,
-	switchMethod,
 	reset: resetChallenge,
-} = useTwoFactorChallenge();
-
-function switchCodeMethod() {
-	switchMethod();
-	errorMessage.value = '';
-}
-
-function backToCredentials() {
-	resetChallenge();
-	password.value = '';
-	errorMessage.value = '';
-}
-
-async function copyCode() {
-	try {
-		await navigator.clipboard.writeText(connectionCode.value);
-		codeCopied.value = true;
-		setTimeout(() => (codeCopied.value = false), 2000);
-	} catch {
-		// Clipboard unavailable — the code is selectable text, copy by hand.
-	}
-}
+} = twoFactor;
 
 async function generateAndReturn() {
 	if (handingBack.value) return;
@@ -106,13 +97,8 @@ watch(
 );
 
 async function handleSubmit() {
-	errorMessage.value = '';
-	if (!email.value || !password.value) {
-		errorMessage.value = t('desktop.connect.errors.credentialsRequired');
-		return;
-	}
-	isLoading.value = true;
-	try {
+	if (!validate()) return;
+	await submit(async () => {
 		const result = await signInWithEmail(email.value, password.value);
 		// The password was right but the account wants its second factor. No
 		// session exists, so waiting on the `user` watcher here would hang the
@@ -123,27 +109,17 @@ async function handleSubmit() {
 		}
 		await nextTick();
 		// The `user` watcher fires `generateAndReturn` once the session resolves.
-	} catch (e) {
-		errorMessage.value = e instanceof Error ? e.message : t('desktop.connect.errors.signInFailed');
-	} finally {
-		isLoading.value = false;
-	}
+	}, t('desktop.connect.errors.signInFailed'));
 }
 
 async function handleTwoFactorSubmit() {
 	if (!canSubmitCode.value) return;
-	errorMessage.value = '';
-	isLoading.value = true;
-	try {
+	await submit(async () => {
 		await completeTwoFactorSignIn({ code: twoFactorCode.value, method: twoFactorMethod.value });
 		await nextTick();
 		// Same tail as the one-stage sign-in: the `user` watcher hands the token
 		// back once the session resolves.
-	} catch (e) {
-		errorMessage.value = e instanceof Error ? e.message : t('desktop.connect.errors.signInFailed');
-	} finally {
-		isLoading.value = false;
-	}
+	}, t('desktop.connect.errors.signInFailed'));
 }
 </script>
 
@@ -174,82 +150,51 @@ async function handleTwoFactorSubmit() {
 							{{ connectionCode }}
 						</code>
 						<UiButton variant="outline" size="sm" class="shrink-0" @click="copyCode">
-							{{ codeCopied ? t('desktop.connect.copied') : t('common.copy') }}
+							{{ copiedKey ? t('desktop.connect.copied') : t('common.copy') }}
 						</UiButton>
 					</div>
 				</div>
 			</div>
 
 			<form v-else-if="stage === 'credentials'" class="space-y-4" @submit.prevent="handleSubmit">
-				<div>
-					<label class="label mb-1 text-sm" for="email">{{ t('common.email') }}</label>
-					<input
-						id="email"
-						v-model="email"
-						type="email"
-						autocomplete="email"
-						class="input input-sm text-sm"
-					/>
-				</div>
+				<UiInput
+					id="email"
+					v-model="email"
+					type="email"
+					autocomplete="email"
+					size="sm"
+					:label="t('common.email')"
+					:error="errors.email"
+					@blur="validateEmail"
+				/>
 				<AuthPasswordInput
 					id="password"
 					v-model="password"
 					autocomplete="current-password"
 					:label="t('desktop.connect.password')"
+					:error="errors.password"
+					@blur="validatePassword"
 				/>
 				<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
-				<UiButton type="submit" :disabled="isLoading" full-width>
+				<UiButton type="submit" :loading="isLoading" full-width>
 					{{ isLoading ? t('desktop.connect.signingInButton') : t('desktop.connect.submit') }}
 				</UiButton>
 			</form>
 
 			<!--
 				Second stage. The password has already been accepted; the server is
-				holding the session behind a short-lived challenge cookie. The copy is
-				the sign-in page's — it is the same question, asked by the same
-				product, and a second set of keys would only drift from the first.
+				holding the session behind a short-lived challenge cookie. The form is
+				the sign-in page's: the same question, asked by the same product.
 			-->
-			<form v-else class="space-y-4" @submit.prevent="handleTwoFactorSubmit">
-				<div>
-					<h2 class="text-sm font-medium">{{ t('auth.login.twoFactor.title') }}</h2>
-					<p class="mt-1 text-sm text-text-secondary">
-						{{
-							useBackupCode ? t('auth.login.twoFactor.backupBody') : t('auth.login.twoFactor.body')
-						}}
-					</p>
-				</div>
-				<div>
-					<label class="label mb-1 text-sm" for="two-factor-code">{{
-						useBackupCode
-							? t('auth.login.twoFactor.backupLabel')
-							: t('auth.login.twoFactor.codeLabel')
-					}}</label>
-					<input
-						id="two-factor-code"
-						:value="twoFactorCode"
-						:autocomplete="useBackupCode ? 'off' : 'one-time-code'"
-						type="text"
-						class="input input-sm text-sm"
-						@input="onCodeInput(($event.target as HTMLInputElement).value)"
-					/>
-				</div>
-				<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
-				<UiButton type="submit" :disabled="isLoading || !canSubmitCode" full-width>
-					{{ isLoading ? t('auth.login.twoFactor.submitting') : t('auth.login.twoFactor.submit') }}
-				</UiButton>
-				<div class="flex items-center justify-between text-sm">
-					<button type="button" class="link" @click="switchCodeMethod">
-						{{
-							useBackupCode
-								? t('auth.login.twoFactor.useAuthenticator')
-								: t('auth.login.twoFactor.useBackupCode')
-						}}
-					</button>
-					<button type="button" class="link" @click="backToCredentials">
-						{{ t('auth.login.twoFactor.cancel') }}
-					</button>
-				</div>
-			</form>
+			<AuthTwoFactorStageForm
+				v-else
+				:challenge="twoFactor"
+				:is-loading="isLoading"
+				:error-message="errorMessage"
+				compact
+				@submit="handleTwoFactorSubmit"
+				@cancel="resetChallenge"
+			/>
 		</div>
 	</div>
 </template>

@@ -10,9 +10,10 @@
  * page alone, and the connect page silently dead-ended: the form reset itself
  * and waited for a session the server was never going to send.
  *
- * Only the STATE is shared. Each page keeps its own markup (the connect page is
- * a compact card, the sign-in page an `AuthShell`) and its own error copy, so
- * this holds no strings and touches no auth client.
+ * The state lives here and the markup in `components/auth/TwoFactorStageForm.vue`.
+ * This holds no strings and touches no auth client; what a page has to clean up
+ * on its own side (the password it kept, the error it showed) it passes in as
+ * hooks, so both pages leave the stage the same way.
  */
 
 import { computed, ref } from 'vue';
@@ -28,7 +29,14 @@ export type TwoFactorStage = 'credentials' | 'two-factor';
  */
 export type TwoFactorMethod = 'totp' | 'backup-code';
 
-export function useTwoFactorChallenge() {
+interface TwoFactorChallengeHooks {
+	/** After `reset()`: drop what the credentials leg kept (the password, the error). */
+	onReset?: () => void;
+	/** After `switchMethod()`: drop anything that described the previous factor. */
+	onSwitch?: () => void;
+}
+
+export function useTwoFactorChallenge(hooks: TwoFactorChallengeHooks = {}) {
 	const stage = ref<TwoFactorStage>('credentials');
 	const code = ref('');
 	const useBackupCode = ref(false);
@@ -63,6 +71,7 @@ export function useTwoFactorChallenge() {
 	function switchMethod() {
 		useBackupCode.value = !useBackupCode.value;
 		code.value = '';
+		hooks.onSwitch?.();
 	}
 
 	/** Back to the credentials form, with nothing from the challenge left over. */
@@ -70,6 +79,7 @@ export function useTwoFactorChallenge() {
 		stage.value = 'credentials';
 		code.value = '';
 		useBackupCode.value = false;
+		hooks.onReset?.();
 	}
 
 	return {
@@ -84,3 +94,5 @@ export function useTwoFactorChallenge() {
 		reset,
 	};
 }
+
+export type TwoFactorChallenge = ReturnType<typeof useTwoFactorChallenge>;

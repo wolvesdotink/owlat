@@ -54,7 +54,7 @@ const {
 	results: relayDomains,
 	status: relayDomainStatus,
 	loadMore: loadMoreRelayDomains,
-} = usePaginatedQuery(api.providerRoutes.listRelayDomainIdentities, () => ({}), {
+} = useOrganizationPaginatedQuery(api.providerRoutes.listRelayDomainIdentities, undefined, {
 	initialNumItems: 100,
 });
 const canLoadMoreRelayDomains = computed(() => relayDomainStatus.value === 'CanLoadMore');

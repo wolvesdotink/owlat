@@ -14,6 +14,16 @@ import { isValidEmail } from '@owlat/shared';
 /** Message-key root for this module; see `i18n/locales/en.json`. */
 const K = 'shared.campaignSenderPicker';
 
+/**
+ * What `CampaignsStepsSetupSenderPicker` exposes to the form that hosts it:
+ * `validate()` sets the picker's own error and returns its message (null when
+ * the selection can be saved), `isReady` says the same without touching the UI.
+ */
+export interface SenderPickerHandle {
+	validate: () => string | null;
+	isReady: boolean;
+}
+
 /** Sentinel select value for the "Custom address…" option. */
 export const CUSTOM_SENDER_VALUE = '__custom__';
 

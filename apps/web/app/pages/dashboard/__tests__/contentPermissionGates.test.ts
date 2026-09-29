@@ -12,10 +12,19 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { ref, type Ref } from 'vue';
+import { ref, useSlots, type Ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { NuxtLinkStub } from '~/__tests__/nuxtComponents';
 import { queryResult, paginatedResult } from '~/__tests__/queryStubs';
 import { usePermissions } from '~/composables/usePermissions';
+import { useLoadAllPages } from '~/composables/useLoadAllPages';
+import { api } from '@owlat/api';
+import { getFunctionName, type FunctionReference } from 'convex/server';
+import ListPageShell from '~/components/list/ListPageShell.vue';
+import BlockCard from '~/components/send/BlockCard.vue';
+import AudienceListTable from '~/components/audience/AudienceListTable.vue';
+import AutomationsListTable from '~/components/automations/ListTable.vue';
+import AutomationsRowActions from '~/components/automations/RowActions.vue';
 
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
@@ -91,6 +100,10 @@ function stubNuxt() {
 	vi.stubGlobal('useClickOutsideSelector', vi.fn());
 	vi.stubGlobal('useDebouncedSearch', () => ({ searchQuery: ref(''), debouncedSearch: ref('') }));
 	vi.stubGlobal('useTopicsList', () => paginatedResult([]));
+	vi.stubGlobal('useLoadAllPages', useLoadAllPages);
+	// The audience lists share their row markup through `AudienceListTable`,
+	// mounted for real below, so the gate is asserted on the rendered buttons.
+	vi.stubGlobal('useSlots', useSlots);
 	// The role is the only thing these cases vary — `usePermissions` itself is
 	// the production composable, reading the shared permission map.
 	vi.stubGlobal('useOrganizationContext', () => ({
@@ -123,13 +136,24 @@ const STUBS = {
 	UiDropdownMenuItem: true,
 	UiDropdownDivider: true,
 	ConditionsConditionEditor: true,
+	// The list frame and the audience rows render for real: the write actions
+	// live inside them.
+	ListPageShell,
+	AudienceListTable,
+	SendBlockCard: BlockCard,
+	// Row names are links; render them so the list's content can be asserted.
+	NuxtLink: NuxtLinkStub,
+	ListSortMenu: true,
+	UiSegmentedControl: true,
+	UiConfirmationDialog: true,
 };
 
 // `stubNuxt` runs at mount time, so a per-page stub set in a `beforeEach` would
 // be clobbered by the defaults. Pass it here instead and it lands last.
 async function mountPage(
 	loader: () => Promise<{ default: unknown }>,
-	overrides: Record<string, unknown> = {}
+	overrides: Record<string, unknown> = {},
+	extraStubs: Record<string, unknown> = {}
 ) {
 	stubNuxt();
 	for (const [name, value] of Object.entries(overrides)) vi.stubGlobal(name, value);
@@ -138,7 +162,7 @@ async function mountPage(
 		shallow: true,
 		global: {
 			plugins: [createTestI18n()],
-			stubs: STUBS,
+			stubs: { ...STUBS, ...extraStubs },
 			// Auto-imported formatters the TEMPLATES call: outside the Nuxt vite
 			// plugin they resolve through the instance proxy, not module scope.
 			mocks: { formatDate: (value: number) => new Date(value).toISOString().slice(0, 10) },
@@ -152,16 +176,30 @@ beforeEach(() => {
 
 describe('segments list', () => {
 	beforeEach(() => {
-		vi.stubGlobal('usePaginatedQuery', () => paginatedResult(SEGMENTS));
+		vi.stubGlobal('useOrganizationPaginatedQuery', () => paginatedResult(SEGMENTS));
 		vi.stubGlobal('useSegmentFilters', () => ({
 			describeFilters: () => 'All contacts',
 			conditions: ref([]),
 		}));
 		vi.stubGlobal('useSegmentForm', () => ({
-			form: ref({ name: '', description: '', conditions: [] }),
-			isSubmitting: ref(false),
-			reset: vi.fn(),
-			submit: vi.fn(),
+			isSegmentModalOpen: ref(false),
+			isEditMode: ref(false),
+			segmentForm: { name: '', description: '', filters: { logic: 'AND', conditions: [] } },
+			segmentErrors: { name: '', conditions: '', general: '' },
+			isSaving: ref(false),
+			isSegmentFormDirty: ref(false),
+			matchingCount: ref(null),
+			countLoading: ref(false),
+			openCreateModal: vi.fn(),
+			openEditModal: vi.fn(),
+			closeSegmentModal: vi.fn(),
+			handleSave: vi.fn(),
+			isDeleteModalOpen: ref(false),
+			deleteTarget: ref(null),
+			isDeleting: ref(false),
+			openDeleteModal: vi.fn(),
+			closeDeleteModal: vi.fn(),
+			handleDelete: vi.fn(),
 		}));
 		vi.stubGlobal('useFormModal', () => ({
 			isOpen: ref(false),
@@ -191,9 +229,12 @@ describe('segments list', () => {
 		expect(wrapper.find('button[title="Edit segment"]').exists()).toBe(false);
 		expect(wrapper.find('button[title="Delete segment"]').exists()).toBe(false);
 		expect(wrapper.text()).toContain('Only owners and admins can create or edit segments.');
-		// The list itself is member-readable and stays (the name renders inside a
-		// NuxtLink, which `shallow` stubs, so the row is what we can assert on).
+		// The list itself is member-readable and stays, its name a link to the
+		// segment.
 		expect(wrapper.findAll('tbody tr')).toHaveLength(1);
+		expect(wrapper.get('a[href="/dashboard/audience/segments/sg_1"]').text()).toContain(
+			'Engaged, last 90 days'
+		);
 		wrapper.unmount();
 	});
 
@@ -208,7 +249,24 @@ describe('segments list', () => {
 
 describe('topics list', () => {
 	beforeEach(() => {
-		vi.stubGlobal('usePaginatedQuery', () => paginatedResult(TOPICS));
+		vi.stubGlobal('useOrganizationPaginatedQuery', () => paginatedResult(TOPICS));
+		vi.stubGlobal('useTopicForm', () => ({
+			isTopicModalOpen: ref(false),
+			isEditMode: ref(false),
+			topicForm: { id: '', name: '', description: '', requireDoubleOptIn: false },
+			topicErrors: { name: '', general: '' },
+			isSaving: ref(false),
+			openCreateModal: vi.fn(),
+			openEditModal: vi.fn(),
+			closeTopicModal: vi.fn(),
+			handleSave: vi.fn(),
+			isDeleteModalOpen: ref(false),
+			deleteTarget: ref(null),
+			isDeleting: ref(false),
+			openDeleteModal: vi.fn(),
+			closeDeleteModal: vi.fn(),
+			handleDelete: vi.fn(),
+		}));
 	});
 
 	it('offers edit and delete to an admin', async () => {
@@ -237,7 +295,13 @@ describe('topics list', () => {
 // `blocks.update` mutation, and the first shipped ungated while the second was
 // gated — a disagreement only a case that looks at both would catch.
 describe('blocks list', () => {
-	const blocksQuery = { useConvexQuery: () => queryResult(BLOCKS) };
+	// The list goes through the organization-gated query; the stats query next
+	// to it resolves empty.
+	const BLOCKS_LIST = getFunctionName(api.emailBlocks.blocks.list);
+	const blocksQuery = {
+		useOrganizationQuery: (query: FunctionReference<'query'>) =>
+			queryResult(getFunctionName(query) === BLOCKS_LIST ? BLOCKS : null),
+	};
 
 	it('offers quick settings, duplicate and delete to an admin', async () => {
 		role.value = 'admin';
@@ -262,8 +326,23 @@ describe('blocks list', () => {
 });
 
 describe('automations list', () => {
+	// The rows and their actions render for real, menu items included, so the
+	// gate is asserted on what an editor can actually reach.
+	const automationStubs = {
+		AutomationsListTable,
+		AutomationsRowActions,
+		UiDropdownMenu: { template: '<div><slot name="trigger" /><slot /></div>' },
+		UiDropdownMenuItem: { template: '<button role="menuitem"><slot /></button>' },
+	};
+	const listQuery = {
+		useOrganizationPaginatedQuery: () => paginatedResult(AUTOMATIONS),
+		// Going back to the ungated query would reach this and fail the mount.
+		usePaginatedQuery: () => {
+			throw new Error('the automations list must read through useOrganizationPaginatedQuery');
+		},
+	};
+
 	beforeEach(() => {
-		vi.stubGlobal('usePaginatedQuery', () => paginatedResult(AUTOMATIONS));
 		vi.stubGlobal('useAutomation', () => ({}));
 		vi.stubGlobal('useAutomationBadges', () => ({
 			getStatusBadge: () => ({ color: '', icon: 'lucide:play', label: 'common.active' }),
@@ -276,21 +355,35 @@ describe('automations list', () => {
 		}));
 	});
 
-	it('offers edit and the action menu to an admin', async () => {
+	it('offers edit, pause and the action menu to an admin', async () => {
 		role.value = 'admin';
-		const wrapper = await mountPage(() => import('../automations/index.vue'));
+		const wrapper = await mountPage(
+			() => import('../automations/index.vue'),
+			listQuery,
+			automationStubs
+		);
 
 		expect(wrapper.find('button[title="Edit"]').exists()).toBe(true);
-		expect(wrapper.find('[data-dropdown]').exists()).toBe(true);
+		expect(wrapper.find('button[title="Pause"]').exists()).toBe(true);
+		expect(wrapper.find('button[title="More actions"]').exists()).toBe(true);
+		const menu = wrapper.findAll('[role="menuitem"]').map((item) => item.text());
+		expect(menu).toEqual(['View details', 'Edit', 'Duplicate', 'Pause']);
 		wrapper.unmount();
 	});
 
 	it('takes the write actions off an editor', async () => {
 		role.value = 'editor';
-		const wrapper = await mountPage(() => import('../automations/index.vue'));
+		const wrapper = await mountPage(
+			() => import('../automations/index.vue'),
+			listQuery,
+			automationStubs
+		);
 
 		expect(wrapper.find('button[title="Edit"]').exists()).toBe(false);
 		expect(wrapper.find('button[title="Pause"]').exists()).toBe(false);
+		// Reading the automation is not a write: the menu keeps "View details".
+		const menu = wrapper.findAll('[role="menuitem"]').map((item) => item.text());
+		expect(menu).toEqual(['View details']);
 		expect(wrapper.text()).toContain('Only owners and admins can create or edit automations.');
 		expect(wrapper.text()).toContain('Welcome sequence');
 		wrapper.unmount();

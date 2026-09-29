@@ -14,6 +14,7 @@ import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 import AiReplyModeControl from '~/components/settings/AiReplyModeControl.vue';
 import AiReplyCategoryRules from '~/components/autonomy/CategoryRulesSection.vue';
+import { useSettingsForm } from '~/composables/useSettingsForm';
 import {
 	deriveAiReplyMode,
 	planAiReplyModeChange,
@@ -97,64 +98,37 @@ const DEFAULTS = {
 	coalesceWindowMs: 30000,
 };
 
-const form = reactive({ ...DEFAULTS });
-
-function stored() {
-	const c = config.value;
-	return {
+// A draft of the stored config. The mode control and working hours write the
+// same row, so it re-emits while this form is open; unsaved edits survive that.
+const {
+	form,
+	isDirty: isFormDirty,
+	isSaving,
+	handleSave,
+	unsavedDialog,
+} = useSettingsForm({
+	source: config,
+	defaults: DEFAULTS,
+	project: (c) => ({
 		confidenceThreshold: c?.confidenceThreshold ?? DEFAULTS.confidenceThreshold,
 		maxDailyAutoReplies: c?.maxDailyAutoReplies ?? DEFAULTS.maxDailyAutoReplies,
 		toneDescription: c?.toneDescription ?? DEFAULTS.toneDescription,
 		signatureTemplate: c?.signatureTemplate ?? DEFAULTS.signatureTemplate,
 		coalesceWindowMs: c?.coalesceWindowMs ?? DEFAULTS.coalesceWindowMs,
-	};
-}
-
-watch(config, () => Object.assign(form, stored()), { immediate: true });
-
-const isFormDirty = computed(() => {
-	const s = stored();
-	return (Object.keys(s) as (keyof typeof s)[]).some((key) => form[key] !== s[key]);
-});
-
-const isSaving = ref(false);
-
-// Resolves to whether the save succeeded, so the unsaved-changes guard keeps
-// the admin (and their edits) on the page when it fails.
-const handleSave = async (): Promise<boolean> => {
-	isSaving.value = true;
-	try {
+	}),
+	save: async (draft) => {
 		const result = await updateConfig({
-			confidenceThreshold: form.confidenceThreshold,
-			maxDailyAutoReplies: form.maxDailyAutoReplies,
-			toneDescription: form.toneDescription || undefined,
-			signatureTemplate: form.signatureTemplate || undefined,
-			coalesceWindowMs: form.coalesceWindowMs,
+			confidenceThreshold: draft.confidenceThreshold,
+			maxDailyAutoReplies: draft.maxDailyAutoReplies,
+			toneDescription: draft.toneDescription || undefined,
+			signatureTemplate: draft.signatureTemplate || undefined,
+			coalesceWindowMs: draft.coalesceWindowMs,
 		});
 		if (!result.ok) return false;
 		showToast(t('dashboard.admin.instance.aiReplies.toasts.saved'));
 		return true;
-	} finally {
-		isSaving.value = false;
-	}
-};
-
-// Unsaved-changes guard: in-app navigation while the form is dirty prompts to
-// save or discard instead of silently dropping the edits. `onSave` throws on
-// failure so a failed save keeps the admin here.
-const {
-	showDialog: showUnsavedDialog,
-	confirmDiscard,
-	confirmSave,
-	cancelNavigation,
-	setHasChanges,
-} = useUnsavedChanges({
-	onSave: async () => {
-		if (!(await handleSave())) throw new Error('Save failed');
 	},
 });
-
-watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 
 const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 100));
 
@@ -196,18 +170,13 @@ const { data: feedbackStats } = useConvexQuery(api.autonomyFeedback.getFeedbackS
 
 <template>
 	<div>
-		<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
-			<div class="flex items-center gap-4">
-				<UiIconBox icon="lucide:bot" size="xl" variant="brand" rounded="full" />
-				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ t('dashboard.admin.instance.aiReplies.title') }}
-					</h1>
-					<p class="text-text-secondary mt-1 max-w-xl">
-						{{ t('dashboard.admin.instance.aiReplies.subtitle') }}
-					</p>
-				</div>
-			</div>
+		<div class="flex items-center gap-4 mb-8">
+			<UiIconBox icon="lucide:bot" size="xl" variant="brand" rounded="full" />
+			<UiPageHeader
+				class="flex-1"
+				:title="t('dashboard.admin.instance.aiReplies.title')"
+				:description="t('dashboard.admin.instance.aiReplies.subtitle')"
+			/>
 		</div>
 
 		<div
@@ -464,10 +433,10 @@ const { data: feedbackStats } = useConvexQuery(api.autonomyFeedback.getFeedbackS
 		</div>
 
 		<UnsavedChangesDialog
-			:show="showUnsavedDialog"
-			@close="cancelNavigation"
-			@discard="confirmDiscard"
-			@save="confirmSave"
+			:show="unsavedDialog.showDialog"
+			@close="unsavedDialog.cancelNavigation"
+			@discard="unsavedDialog.confirmDiscard"
+			@save="unsavedDialog.confirmSave"
 		/>
 	</div>
 </template>

@@ -42,6 +42,8 @@ const props = defineProps<{
 	 * looks like a workspace with no topics or segments (#818).
 	 */
 	loadFailed?: boolean;
+	/** Read-only (a scheduled campaign on the edit page). */
+	disabled?: boolean;
 }>();
 
 defineEmits<{
@@ -158,6 +160,7 @@ const nonEligibleRecipients = computed(() => {
 			data-testid="audience-picker"
 			:class="['input w-full mt-1.5', error ? 'input-error' : '']"
 			:aria-invalid="error ? 'true' : undefined"
+			:disabled="disabled"
 		>
 			<option value="" disabled>{{ t(`${prefix}.placeholder`) }}</option>
 			<optgroup v-if="topicOptions.length" :label="t(`${prefix}.topicsGroup`)">

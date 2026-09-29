@@ -3,7 +3,7 @@
  * PluginSettingsField — one schema-rendered plugin settings control.
  *
  * Covers the accessibility wiring (label association, aria-describedby,
- * aria-required, role=switch), the secret-field behaviour (read-only, presence
+ * aria-required, a UiSwitch for booleans), the secret-field behaviour (read-only, presence
  * only, names the environment variable, offers no input), and SSR-safety
  * (renders to a string with no window/document access).
  */
@@ -12,6 +12,7 @@ import { mount } from '@vue/test-utils';
 import { renderToString } from '@vue/server-renderer';
 import { createSSRApp, h } from 'vue';
 import type { PluginSettingsField as Field } from '@owlat/plugin-kit';
+import UiSwitch from '@owlat/ui/components/ui/Switch.vue';
 import PluginSettingsField from '../PluginSettingsField.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
@@ -24,7 +25,7 @@ beforeEach(() => {
 function mountField(field: Field, props: Record<string, unknown> = {}) {
 	return mount(PluginSettingsField, {
 		props: { field, modelValue: props.modelValue ?? '', ...props },
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()], components: { UiSwitch }, stubs: { Icon: true } },
 	});
 }
 
@@ -97,6 +98,27 @@ describe('PluginSettingsField accessibility', () => {
 		const labelledBy = button.attributes('aria-labelledby');
 		expect(wrapper.get(`#${labelledBy}`).text()).toBe('Verbose');
 	});
+
+	it('passes its id and description through to the one UiSwitch button (#865)', () => {
+		const field: Field = {
+			kind: 'boolean',
+			key: 'verbose',
+			label: 'Verbose',
+			description: 'Log every request',
+		};
+		const wrapper = mountField(field, { modelValue: false });
+		const switches = wrapper.findAllComponents(UiSwitch);
+		expect(switches).toHaveLength(1);
+		const button = wrapper.get('button[role="switch"]');
+		expect(switches[0]!.element).toBe(button.element);
+		expect(button.attributes('id')).toBeTruthy();
+		expect(button.attributes('aria-checked')).toBe('false');
+		// Named by the visible label, so UiSwitch's own aria-label stays off.
+		expect(button.attributes('aria-label')).toBeUndefined();
+		expect(wrapper.get(`#${button.attributes('aria-describedby')}`).text()).toBe(
+			'Log every request'
+		);
+	});
 });
 
 describe('PluginSettingsField secret handling', () => {
@@ -147,6 +169,22 @@ describe('PluginSettingsField emits', () => {
 		const wrapper = mountField(field, { modelValue: false });
 		await wrapper.get('button[role="switch"]').trigger('click');
 		expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([true]);
+	});
+
+	it('toggles a checked boolean off', async () => {
+		const field: Field = { kind: 'boolean', key: 'verbose', label: 'Verbose' };
+		const wrapper = mountField(field, { modelValue: true });
+		await wrapper.get('button[role="switch"]').trigger('click');
+		expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([false]);
+	});
+
+	it('does not toggle a disabled boolean', async () => {
+		const field: Field = { kind: 'boolean', key: 'verbose', label: 'Verbose' };
+		const wrapper = mountField(field, { modelValue: false, disabled: true });
+		const button = wrapper.get('button[role="switch"]');
+		expect(button.attributes('disabled')).toBeDefined();
+		await button.trigger('click');
+		expect(wrapper.emitted('update:modelValue')).toBeUndefined();
 	});
 
 	it('emits the selected option value', async () => {

@@ -1,6 +1,6 @@
 import { ref, type Ref } from 'vue';
-import type { EditorBlock, SavedBlock, BlockType } from '../types';
-import { generateId, regenerateNestedBlockIds } from '../utils';
+import type { EditorBlock, SavedBlock } from '../types';
+import { generateId, parseStoredBlocks, regenerateNestedBlockIds } from '../utils';
 import { useEmailBuilderHandlers } from './useEmailBuilderHandlers';
 
 export interface SavedBlockPickerState {
@@ -67,9 +67,6 @@ export function useSavedBlockPicker(
 
 	const handleSavedBlockSelect = (block: SavedBlock) => {
 		try {
-			// Parse the saved block content
-			const parsed = JSON.parse(block.content);
-			let blocksToInsert: EditorBlock[] = [];
 			const groupId = generateId(); // Shared groupId for all blocks from this insertion
 
 			const savedBlockRef = {
@@ -78,12 +75,9 @@ export function useSavedBlockPicker(
 				blockName: block.name,
 			};
 
-			// Deep-clone a parsed block, assign a fresh id + savedBlockRef, and
+			// Deep-clone a stored block, assign a fresh id + savedBlockRef, and
 			// regenerate any nested container/column IDs.
-			const rehydrateSavedBlock = (b: {
-				type: BlockType;
-				content: EditorBlock['content'];
-			}): EditorBlock => {
+			const rehydrateSavedBlock = (b: EditorBlock): EditorBlock => {
 				const newBlock: EditorBlock = {
 					id: generateId(),
 					type: b.type,
@@ -95,16 +89,9 @@ export function useSavedBlockPicker(
 				return newBlock;
 			};
 
-			// Handle multi-block format
-			if (parsed && parsed.blocks && Array.isArray(parsed.blocks)) {
-				blocksToInsert = parsed.blocks.map(rehydrateSavedBlock);
-			} else if (Array.isArray(parsed)) {
-				// Legacy array format
-				blocksToInsert = parsed.map(rehydrateSavedBlock);
-			} else if (parsed && parsed.type && parsed.content) {
-				// Single block format
-				blocksToInsert = [rehydrateSavedBlock(parsed)];
-			}
+			// One reader for every stored shape: the { blocks } envelope, a bare
+			// array and the legacy single block.
+			const blocksToInsert = parseStoredBlocks(block.content).map(rehydrateSavedBlock);
 
 			if (blocksToInsert.length > 0) {
 				// Find the insertion point - after currently selected block or at the end
@@ -122,7 +109,7 @@ export function useSavedBlockPicker(
 				}
 			}
 		} catch {
-			// Parse failed silently
+			// A block whose content cannot be cloned is skipped silently
 		}
 
 		closeSavedBlockPicker();

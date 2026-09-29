@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { fetchPublicToken } from '~/lib/publicTokenClient';
+import { useRecipientTokenFlow } from '~/composables/useRecipientTokenFlow';
+import RecipientStateCard from '~/components/recipient/RecipientStateCard.vue';
+
 const { t } = useI18n();
 
 useSeoMeta({
@@ -12,97 +16,44 @@ definePageMeta({
 	layout: false, // No dashboard layout, standalone page
 });
 
-const route = useRoute();
 const { senderName, contactEmail, logo } = useRecipientSender();
-const config = useRuntimeConfig();
 
-// State
-const isLoading = ref(true);
-const isProcessing = ref(false);
-const error = ref<string | null>(null);
-const contactInfo = ref<{
+interface UnsubscribeContact {
 	email: string;
 	firstName?: string;
 	subscribed: boolean;
-	teamName: string;
-} | null>(null);
-const unsubscribeSuccess = ref(false);
-const alreadyUnsubscribed = ref(false);
+	organizationName: string;
+}
 
-// Get the token from the URL
-const token = computed(() => route.query['token'] as string | undefined);
+interface UnsubscribeOutcome {
+	alreadyUnsubscribed?: boolean;
+}
 
-// Verify the token on mount
-onMounted(async () => {
-	if (!token.value) {
-		error.value = t('recipient.unsubscribe.errors.missingToken');
-		isLoading.value = false;
-		return;
-	}
-
-	try {
-		// Verify the token via the Convex HTTP endpoint (outcome mode: 200 either way)
-		const verifyUrl = `${config.public.convexSiteUrl}/unsub/verify/${encodeURIComponent(token.value)}`;
-		const response = await fetch(verifyUrl);
-		const body = await response.json();
-
-		if (!body.ok) {
-			error.value =
-				body.reason === 'expired'
-					? t('recipient.unsubscribe.errors.expired')
-					: t('recipient.unsubscribe.errors.invalid');
-			isLoading.value = false;
-			return;
-		}
-
-		const { data } = body;
-		contactInfo.value = {
-			email: data.email,
-			firstName: data.firstName,
-			subscribed: data.subscribed,
-			teamName: data.organizationName,
-		};
-
-		// Check if already unsubscribed
-		if (!data.subscribed) {
-			alreadyUnsubscribed.value = true;
-		}
-	} catch (err) {
-		error.value = t('recipient.unsubscribe.errors.verifyFailed');
-	} finally {
-		isLoading.value = false;
-	}
+// Verify is outcome mode (200 either way), the one-click POST is action mode;
+// the client reads the reason out of both.
+const {
+	state,
+	data: contact,
+	errorKey,
+	isProcessing,
+	run,
+} = useRecipientTokenFlow({
+	verify: (token) => fetchPublicToken<UnsubscribeContact>('unsub/verify', token),
+	missingTokenKey: 'recipient.unsubscribe.errors.missingToken',
+	reasons: { expired: 'recipient.unsubscribe.errors.expired' },
+	fallbackKey: 'recipient.unsubscribe.errors.invalid',
+	unreachableKey: 'recipient.unsubscribe.errors.verifyFailed',
 });
 
-// Handle unsubscribe confirmation
+/** The POST found nothing left to remove: the second click on the same link. */
+const wasAlreadyUnsubscribed = ref(false);
+
 async function handleUnsubscribe() {
-	if (!token.value) return;
-
-	isProcessing.value = true;
-	error.value = null;
-
-	try {
-		// Call the one-click unsubscribe endpoint (action mode)
-		const unsubscribeUrl = `${config.public.convexSiteUrl}/unsub/${encodeURIComponent(token.value)}`;
-		const response = await fetch(unsubscribeUrl, {
-			method: 'POST',
-		});
-		const body = await response.json();
-
-		if (!response.ok || !body.ok) {
-			throw new Error(body.error?.message || 'Failed to unsubscribe');
-		}
-
-		unsubscribeSuccess.value = true;
-		if (body.data?.message?.includes('already')) {
-			alreadyUnsubscribed.value = true;
-		}
-	} catch (err) {
-		error.value =
-			err instanceof Error ? err.message : t('recipient.unsubscribe.errors.processFailed');
-	} finally {
-		isProcessing.value = false;
-	}
+	const result = await run(
+		(token) => fetchPublicToken<UnsubscribeOutcome>('unsub', token, { method: 'POST' }),
+		{ fallbackKey: 'recipient.unsubscribe.errors.processFailed' }
+	);
+	if (result?.ok) wasAlreadyUnsubscribed.value = result.data.alreadyUnsubscribed === true;
 }
 </script>
 
@@ -120,197 +71,117 @@ async function handleUnsubscribe() {
 			:purpose="t('recipient.shared.emailPreferences')"
 		/>
 
-		<!-- Loading State -->
-		<div v-if="isLoading" class="card w-full max-w-md py-8 text-center">
-			<div class="flex flex-col items-center gap-4">
-				<UiSpinner size="lg" />
-				<p class="text-text-secondary">{{ t('recipient.shared.verifying') }}</p>
-			</div>
-		</div>
+		<RecipientStateCard
+			v-if="state === 'loading'"
+			variant="loading"
+			:message="t('recipient.shared.verifying')"
+		/>
 
-		<!-- Error State -->
-		<div v-else-if="error" class="card w-full max-w-md">
-			<div class="py-2 text-center sm:py-4">
-				<div
-					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-error-subtle sm:h-16 sm:w-16"
-				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-7 w-7 text-error sm:h-8 sm:w-8"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-						/>
-					</svg>
-				</div>
-				<h2 class="mb-2 text-lg font-semibold text-text-primary">
-					{{ t('recipient.unsubscribe.errorHeading') }}
-				</h2>
-				<p class="text-text-secondary">{{ error }}</p>
-				<RecipientContactHint :email="contactEmail" keypath="recipient.shared.contactToOptOut" />
-			</div>
-		</div>
+		<RecipientStateCard
+			v-else-if="state === 'error'"
+			variant="error"
+			:heading="t('recipient.unsubscribe.errorHeading')"
+			:message="errorKey ? t(errorKey) : undefined"
+		>
+			<RecipientContactHint :email="contactEmail" keypath="recipient.shared.contactToOptOut" />
+		</RecipientStateCard>
 
-		<!-- Success State -->
-		<div v-else-if="unsubscribeSuccess" class="card w-full max-w-md">
-			<div class="py-2 text-center sm:py-4">
-				<div
-					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-success-subtle sm:h-16 sm:w-16"
+		<!-- break-words: contact emails and org names are unbounded strings and
+		     these cards are read at 320px. -->
+		<RecipientStateCard
+			v-else-if="state === 'done'"
+			variant="success"
+			:heading="
+				wasAlreadyUnsubscribed
+					? t('recipient.unsubscribe.alreadyHeading')
+					: t('recipient.unsubscribe.successHeading')
+			"
+		>
+			<I18nT
+				:keypath="
+					wasAlreadyUnsubscribed
+						? 'recipient.unsubscribe.alreadyBody'
+						: 'recipient.unsubscribe.successBody'
+				"
+				tag="p"
+				scope="global"
+				class="mb-6 break-words text-text-secondary"
+			>
+				<template #organization
+					><strong>{{ contact?.organizationName }}</strong></template
 				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-7 w-7 text-success sm:h-8 sm:w-8"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M5 13l4 4L19 7"
-						/>
-					</svg>
-				</div>
-				<h2 class="mb-2 text-lg font-semibold text-text-primary">
-					{{
-						alreadyUnsubscribed
-							? t('recipient.unsubscribe.alreadyHeading')
-							: t('recipient.unsubscribe.successHeading')
-					}}
-				</h2>
-				<!-- break-words: contact emails and org names are unbounded strings and
-				     these cards are read at 320px. -->
-				<I18nT
-					:keypath="
-						alreadyUnsubscribed
-							? 'recipient.unsubscribe.alreadyBody'
-							: 'recipient.unsubscribe.successBody'
-					"
-					tag="p"
-					scope="global"
-					class="mb-6 break-words text-text-secondary"
+			</I18nT>
+			<I18nT
+				keypath="recipient.unsubscribe.successNote"
+				tag="p"
+				scope="global"
+				class="text-sm break-words text-text-tertiary"
+			>
+				<template #email
+					><strong>{{ contact?.email }}</strong></template
 				>
-					<template #organization
-						><strong>{{ contactInfo?.teamName }}</strong></template
-					>
-				</I18nT>
-				<I18nT
-					keypath="recipient.unsubscribe.successNote"
-					tag="p"
-					scope="global"
-					class="text-sm break-words text-text-tertiary"
+			</I18nT>
+		</RecipientStateCard>
+
+		<!-- Already unsubscribed before the button was ever pressed. -->
+		<RecipientStateCard
+			v-else-if="contact && !contact.subscribed"
+			variant="already"
+			:heading="t('recipient.unsubscribe.alreadyHeading')"
+		>
+			<I18nT
+				keypath="recipient.unsubscribe.alreadyStateBody"
+				tag="p"
+				scope="global"
+				class="break-words text-text-secondary"
+			>
+				<template #organization
+					><strong>{{ contact.organizationName }}</strong></template
 				>
+			</I18nT>
+			<I18nT
+				keypath="recipient.unsubscribe.alreadyStateNote"
+				tag="p"
+				scope="global"
+				class="mt-4 text-sm break-words text-text-tertiary"
+			>
+				<template #email
+					><strong>{{ contact.email }}</strong></template
+				>
+			</I18nT>
+		</RecipientStateCard>
+
+		<RecipientStateCard
+			v-else-if="contact"
+			variant="prompt"
+			tone="neutral"
+			:heading="t('recipient.unsubscribe.confirmHeading')"
+		>
+			<p class="mb-6 break-words text-text-secondary">
+				<template v-if="contact.firstName">
+					{{ t('recipient.unsubscribe.greeting', { name: contact.firstName }) }}
+				</template>
+				<I18nT keypath="recipient.unsubscribe.confirmBody" tag="span" scope="global">
 					<template #email
-						><strong>{{ contactInfo?.email }}</strong></template
+						><strong>{{ contact.email }}</strong></template
 					>
-				</I18nT>
-			</div>
-		</div>
-
-		<!-- Already Unsubscribed State (before clicking button) -->
-		<div v-else-if="alreadyUnsubscribed && contactInfo" class="card w-full max-w-md">
-			<div class="py-2 text-center sm:py-4">
-				<div
-					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-brand-subtle sm:h-16 sm:w-16"
-				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-7 w-7 text-brand sm:h-8 sm:w-8"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M5 13l4 4L19 7"
-						/>
-					</svg>
-				</div>
-				<h2 class="mb-2 text-lg font-semibold text-text-primary">
-					{{ t('recipient.unsubscribe.alreadyHeading') }}
-				</h2>
-				<I18nT
-					keypath="recipient.unsubscribe.alreadyStateBody"
-					tag="p"
-					scope="global"
-					class="break-words text-text-secondary"
-				>
 					<template #organization
-						><strong>{{ contactInfo.teamName }}</strong></template
+						><strong>{{ contact.organizationName }}</strong></template
 					>
 				</I18nT>
-				<I18nT
-					keypath="recipient.unsubscribe.alreadyStateNote"
-					tag="p"
-					scope="global"
-					class="mt-4 text-sm break-words text-text-tertiary"
-				>
-					<template #email
-						><strong>{{ contactInfo.email }}</strong></template
-					>
-				</I18nT>
-			</div>
-		</div>
+			</p>
 
-		<!-- Confirmation State -->
-		<div v-else-if="contactInfo" class="card w-full max-w-md">
-			<div class="py-2 text-center sm:py-4">
-				<div
-					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-bg-surface sm:h-16 sm:w-16"
-				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-7 w-7 text-text-secondary sm:h-8 sm:w-8"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-						/>
-					</svg>
-				</div>
-				<h2 class="mb-2 text-lg font-semibold text-text-primary">
-					{{ t('recipient.unsubscribe.confirmHeading') }}
-				</h2>
-				<p class="mb-6 break-words text-text-secondary">
-					<template v-if="contactInfo.firstName">
-						{{ t('recipient.unsubscribe.greeting', { name: contactInfo.firstName }) }}
-					</template>
-					<I18nT keypath="recipient.unsubscribe.confirmBody" tag="span" scope="global">
-						<template #email
-							><strong>{{ contactInfo.email }}</strong></template
-						>
-						<template #organization
-							><strong>{{ contactInfo.teamName }}</strong></template
-						>
-					</I18nT>
-				</p>
+			<!-- h-12: the only action on the page, sized past the 44px touch target. -->
+			<UiButton full-width class="h-12" :disabled="isProcessing" @click="handleUnsubscribe">
+				<span v-if="isProcessing" class="flex items-center justify-center gap-2">
+					<UiSpinner size="sm" tone="inverse" />
+					{{ t('recipient.unsubscribe.processing') }}
+				</span>
+				<span v-else>{{ t('recipient.unsubscribe.submit') }}</span>
+			</UiButton>
 
-				<!-- h-12: the only action on the page, sized past the 44px touch target. -->
-				<UiButton full-width class="h-12" :disabled="isProcessing" @click="handleUnsubscribe">
-					<span v-if="isProcessing" class="flex items-center justify-center gap-2">
-						<UiSpinner size="sm" tone="inverse" />
-						{{ t('recipient.unsubscribe.processing') }}
-					</span>
-					<span v-else>{{ t('recipient.unsubscribe.submit') }}</span>
-				</UiButton>
-
-				<p class="mt-6 text-xs text-text-tertiary">{{ t('recipient.unsubscribe.footnote') }}</p>
-			</div>
-		</div>
+			<p class="mt-6 text-xs text-text-tertiary">{{ t('recipient.unsubscribe.footnote') }}</p>
+		</RecipientStateCard>
 
 		<RecipientFooter />
 	</div>

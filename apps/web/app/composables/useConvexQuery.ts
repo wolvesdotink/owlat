@@ -1,71 +1,8 @@
-import {
-	getFunctionName,
-	type FunctionReference,
-	type FunctionArgs,
-	type FunctionReturnType,
-} from 'convex/server';
-import { convexToJson } from 'convex/values';
-import { logWarn } from '~/lib/runtimeLog';
-import { createTransientRetry } from '~/lib/queryRetry';
+import type { FunctionReference, FunctionArgs, FunctionReturnType } from 'convex/server';
+import { createConvexSubscription, type ArgsOrFactory } from '~/lib/convexSubscription';
 import type { Ref } from 'vue';
 
-export type ArgsOrFactory<Args> = Args | (() => Args | 'skip');
-
-function resolveArgs<Args>(args: ArgsOrFactory<Args>): Args | 'skip' {
-	return typeof args === 'function' ? (args as () => Args | 'skip')() : args;
-}
-
-/**
- * JSON with object keys in a fixed order. `convexToJson` already sorts keys and
- * drops `undefined` fields, so the sorting here is for the fallback path below,
- * where the args never went through it.
- */
-function stableJson(value: unknown): string {
-	if (value === undefined) return 'undefined';
-	if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'undefined';
-	if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
-	const entries = Object.entries(value as Record<string, unknown>)
-		.filter(([, v]) => v !== undefined)
-		.sort(([a], [b]) => (a < b ? -1 : 1));
-	return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableJson(v)}`).join(',')}}`;
-}
-
-/**
- * Counter behind the last-resort identity below. Module scope so two queries
- * cannot collide on the same token.
- */
-let unserialisableArgsCounter = 0;
-
-/**
- * Identity of a set of query args, for deciding whether to re-subscribe.
- *
- * Args factories return a fresh object literal on every evaluation, so comparing
- * by reference (or watching `deep`, which skips the changed-check entirely) makes
- * any unrelated re-evaluation — a Convex push handing a component a structurally
- * identical prop, say — tear down and reopen the subscription, blanking `data`
- * and flashing a spinner. Compare the VALUE instead: Convex args are
- * JSON-compatible, and `convexToJson` normalises the exotic members (Int64,
- * bytes) into that shape.
- *
- * Anything `convexToJson` rejects is not a valid query arg, so the Convex client
- * is about to throw on it anyway — but this runs inside a watcher, where a throw
- * would take the caller down instead. Try the raw value, and if even that will
- * not stringify (a bigint, a cycle), answer with a token that is unique per
- * evaluation: the query then re-subscribes on every change, which is exactly the
- * behaviour this composable had before.
- */
-function argsIdentity(args: unknown): string {
-	if (args === 'skip') return 'skip';
-	try {
-		return stableJson(convexToJson(args as Parameters<typeof convexToJson>[0]));
-	} catch {
-		try {
-			return stableJson(args);
-		} catch {
-			return `unserialisable:${(unserialisableArgsCounter += 1)}`;
-		}
-	}
-}
+export type { ArgsOrFactory } from '~/lib/convexSubscription';
 
 /** Return type of useConvexQuery, preserving the query result type */
 export interface ConvexQueryResult<T> {
@@ -91,13 +28,12 @@ export interface ConvexQueryResult<T> {
  * A transient server failure (a function timeout, an uncaught error) is retried
  * a few times with backoff before it reaches `error`; until then the query stays
  * in its loading (or background-refetching) state. Refusals the backend makes
- * on purpose (`ConvexError`) surface at once. See `~/lib/queryRetry`.
+ * on purpose (`ConvexError`) surface at once. The lifecycle lives in
+ * `~/lib/convexSubscription`, shared with `usePaginatedQuery`.
  *
  * Return "skip" from the args factory function to skip the query subscription.
  * This is useful when required arguments are not yet available.
  */
-const DEFAULT_TIMEOUT = 10_000;
-
 export function useConvexQuery<Query extends FunctionReference<'query'>>(
 	query: Query,
 	args: ArgsOrFactory<FunctionArgs<Query>>,
@@ -107,146 +43,24 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 	const data = ref<FunctionReturnType<Query> | undefined>(undefined) as Ref<
 		FunctionReturnType<Query> | undefined
 	>;
-	const error = ref<Error | null>(null);
-	const isLoading = ref(true);
-	const isRefetching = ref(false);
 
-	let unsubscribe: (() => void) | null = null;
-	let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-	const timeoutMs = options?.timeout ?? DEFAULT_TIMEOUT;
-	const retry = createTransientRetry();
-
-	const clearSubscriptionTimeout = () => {
-		if (timeoutId !== null) {
-			clearTimeout(timeoutId);
-			timeoutId = null;
-		}
-	};
-
-	const resolvedArgs = computed(() => resolveArgs(args));
-	const argsKey = computed(() => argsIdentity(resolvedArgs.value));
-
-	const releaseSubscription = () => {
-		if (unsubscribe) {
-			unsubscribe();
-			unsubscribe = null;
-		}
-	};
-
-	const subscribe = (opts?: { background?: boolean; isRetry?: boolean }) => {
-		// A retry spends the budget; anything else (new args, a manual refetch)
-		// starts it over.
-		retry.cancel();
-		if (!opts?.isRetry) retry.reset();
-
-		// Clean up previous subscription and timeout. MUST null the handle after
-		// calling it: the Convex client's unsubscribe throws on a second call
-		// (removeSubscriber reads a deleted query token). Leaving it set meant a
-		// valid → skip → valid args sequence (e.g. typing through an invalid
-		// email) called the dead unsubscribe again, the throw aborted this
-		// re-subscribe, and the UI silently kept the PREVIOUS args' data forever.
-		releaseSubscription();
-		clearSubscriptionTimeout();
-
-		// Skip if args indicate we should skip. There is no pending request, so
-		// only stay in the loading state if we never delivered data (initial
-		// skip, waiting for real args); once data has loaded, a transition to
-		// skip is idle — never leave isLoading=true with no in-flight request.
-		if (resolvedArgs.value === 'skip') {
-			isLoading.value = data.value === undefined;
-			isRefetching.value = false;
-			return;
-		}
-
-		if (!client) {
-			error.value = new Error('Convex client not initialized');
-			isLoading.value = false;
-			return;
-		}
-
-		// Stale-while-revalidate: when keepPreviousData is set (or this is an
-		// explicit background refetch) and we already have data (e.g. switching
-		// folders), keep showing it and flag a background refetch instead of
-		// blanking to a full-pane spinner.
-		if ((options?.keepPreviousData || opts?.background) && data.value !== undefined) {
-			isRefetching.value = true;
-		} else {
-			isLoading.value = true;
+	const subscription = createConvexSubscription<FunctionArgs<Query>, FunctionReturnType<Query>>({
+		query,
+		name: 'useConvexQuery',
+		args,
+		open: client
+			? (resolved, onUpdate, onError) => client.onUpdate(query, resolved, onUpdate, onError)
+			: null,
+		hasData: () => data.value !== undefined,
+		accept: (value) => {
+			data.value = value;
+		},
+		clear: () => {
 			data.value = undefined;
-		}
-		error.value = null;
+		},
+		keepPreviousData: options?.keepPreviousData,
+		timeout: options?.timeout,
+	});
 
-		unsubscribe = client.onUpdate(
-			query,
-			resolvedArgs.value,
-			(newData) => {
-				clearSubscriptionTimeout();
-				retry.reset();
-				data.value = newData;
-				isLoading.value = false;
-				isRefetching.value = false;
-				error.value = null;
-			},
-			(e) => {
-				clearSubscriptionTimeout();
-				// Release the failed subscription BEFORE waiting, not at the retry:
-				// the Convex client shares one server query between identical
-				// subscriptions and re-runs it only once its last subscriber has
-				// gone. Components that failed together unsubscribe together, so
-				// the first one back re-executes the query instead of inheriting
-				// the cached failure.
-				if (retry.schedule(e, () => subscribe({ background: true, isRetry: true }))) {
-					releaseSubscription();
-					return;
-				}
-				error.value = e instanceof Error ? e : new Error(String(e));
-				isLoading.value = false;
-				isRefetching.value = false;
-			}
-		);
-
-		// Start timeout — if neither callback fires, stop loading with an error
-		timeoutId = setTimeout(() => {
-			timeoutId = null;
-			if (isLoading.value || isRefetching.value) {
-				error.value = new Error('Convex query subscription timed out');
-				isLoading.value = false;
-				isRefetching.value = false;
-			}
-		}, timeoutMs);
-	};
-
-	// Re-subscribe only when the args' VALUE changes — see `argsIdentity`.
-	watch(argsKey, () => subscribe(), { immediate: true });
-
-	// Force a fresh read with the current args, keeping prior data visible.
-	const refetch = () => subscribe({ background: true });
-
-	// Clean up on unmount
-	if (getCurrentScope()) {
-		onScopeDispose(() => {
-			clearSubscriptionTimeout();
-			retry.cancel();
-			releaseSubscription();
-		});
-	} else if (import.meta.dev) {
-		// No scope means nothing will ever call the unsubscribe: the socket
-		// subscription outlives whatever created it. The usual cause is a call
-		// made after an `await` in route middleware, where Nuxt's `runWithContext`
-		// scope is no longer active — one leaked subscription per navigation, on a
-		// guard that runs on nearly every page. Shared state like this belongs in a
-		// module singleton owned by a detached `effectScope`; see `useFeatureFlag`.
-		let name: string;
-		try {
-			name = getFunctionName(query);
-		} catch {
-			name = String(query);
-		}
-		logWarn(
-			`[useConvexQuery] ${name} was created outside an effect scope — its subscription will never be released.`
-		);
-	}
-
-	return { data, error, isLoading, isRefetching, refetch };
+	return { data, ...subscription };
 }

@@ -3,11 +3,12 @@
  * JWT through the internal token proxy and returns a client carrying it. The
  * proxy URL is built from the configured site origin, never the request Host,
  * so a spoofed Host cannot make the server forward the caller's cookie
- * elsewhere.
+ * elsewhere. `mapGateError` is the one mapping every admin gate uses for a
+ * failed probe.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConvexHttpClient } from 'convex/browser';
-import { authedConvexClient } from '../authedConvexClient';
+import { authedConvexClient, mapGateError } from '../authedConvexClient';
 import { installNitroGlobals, requestEvent } from './nitro';
 
 const CONVEX_URL = 'https://convex.example.com';
@@ -83,5 +84,47 @@ describe('authedConvexClient', () => {
 			statusCode: 401,
 			message: 'No auth token',
 		});
+	});
+});
+
+describe('mapGateError', () => {
+	const options = { forbiddenMessage: 'Gate access required' };
+
+	/** A Convex function error carrying the shared Operation error as its data. */
+	function operationFailure(category: string): Error {
+		return Object.assign(new Error(category), { data: { category, message: category } });
+	}
+
+	it('maps a forbidden Operation error to 403 with the gate message', () => {
+		expect(mapGateError(operationFailure('forbidden'), options)).toMatchObject({
+			statusCode: 403,
+			message: 'Gate access required',
+		});
+	});
+
+	it('maps an unauthenticated Operation error to 401', () => {
+		expect(mapGateError(operationFailure('unauthenticated'), options)).toMatchObject({
+			statusCode: 401,
+			message: 'Not authenticated',
+		});
+	});
+
+	it.each([
+		['a network failure', new TypeError('fetch failed')],
+		['another Operation category', operationFailure('conflict')],
+		['a thrown non-error', 'boom'],
+		['nothing at all', undefined],
+	])('maps %s to 503, never an access answer', (_label, error) => {
+		expect(mapGateError(error, options)).toMatchObject({
+			statusCode: 503,
+			message: 'Could not verify access: the backend is unreachable.',
+		});
+	});
+
+	it('returns an error that already carries an HTTP status untouched', () => {
+		// The shape `createError` returns (see nitro.ts): an Error with a status.
+		const existing = Object.assign(new Error('Slow down'), { statusCode: 429 });
+
+		expect(mapGateError(existing, options)).toBe(existing);
 	});
 });

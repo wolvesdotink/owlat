@@ -15,7 +15,9 @@
  * open, and no mount would notice because the markup is all there. The behaviour
  * of `useUnsavedChanges` itself is covered by
  * `composables/__tests__/useUnsavedChanges.test.ts`; what only a source read can
- * say is that seven pages agree on how to use it.
+ * say is that the pages agree on how to use it. The instance settings pages
+ * reach it through `useSettingsForm`, which carries the wiring once; they are
+ * checked for binding its dialog, and the composable for the wiring itself.
  *
  * DIRTINESS (mount): the guard is only as good as the predicate feeding it, and
  * the predicate is the part that regresses. Provider routing stands in for the
@@ -47,13 +49,23 @@ const read = (rel: string): string => readFileSync(resolve(here, '..', rel), 'ut
 const guardedPages = {
 	'admin/delivery/provider-routing.vue': read('admin/delivery/provider-routing.vue'),
 	'admin/delivery/webhooks.vue': read('admin/delivery/webhooks.vue'),
-	'admin/instance/ai-replies.vue': read('admin/instance/ai-replies.vue'),
 	'admin/instance/ai-provider.vue': read('admin/instance/ai-provider.vue'),
-	'admin/instance/email-theme.vue': read('admin/instance/email-theme.vue'),
 	'admin/instance/forms.vue': read('admin/instance/forms.vue'),
-	'admin/instance/general.vue': read('admin/instance/general.vue'),
 	'preferences/account.vue': read('preferences/account.vue'),
 };
+
+/** The settings pages whose guard comes with `useSettingsForm`. */
+const settingsFormPages = {
+	'admin/instance/ai-replies.vue': read('admin/instance/ai-replies.vue'),
+	'admin/instance/desktop-updates.vue': read('admin/instance/desktop-updates.vue'),
+	'admin/instance/email-theme.vue': read('admin/instance/email-theme.vue'),
+	'admin/instance/general.vue': read('admin/instance/general.vue'),
+};
+
+const settingsFormSource = readFileSync(
+	resolve(here, '../../../composables/useSettingsForm.ts'),
+	'utf8'
+);
 
 describe.each(Object.entries(guardedPages))('%s guards its form', (_name, source) => {
 	it('routes through the one shared composable and the one shared dialog', () => {
@@ -79,6 +91,34 @@ describe.each(Object.entries(guardedPages))('%s guards its form', (_name, source
 		expect(source).toContain('@close="cancelNavigation"');
 		expect(source).toContain('@discard="confirmDiscard"');
 		expect(source).toMatch(/@save="(?:confirmSave|handleGuardSave)"/);
+	});
+});
+
+describe('useSettingsForm carries the guard wiring once', () => {
+	it('feeds the dirty flag into the one shared composable', () => {
+		expect(settingsFormSource).toContain('useUnsavedChanges({');
+		expect(settingsFormSource).toMatch(/guard\.setHasChanges\(dirty\)/);
+	});
+
+	it('keeps the user on the page when the save fails', () => {
+		expect(settingsFormSource).toContain("throw new Error('Save failed')");
+	});
+});
+
+describe.each(Object.entries(settingsFormPages))('%s guards its form', (_name, source) => {
+	it('takes its form and guard from useSettingsForm', () => {
+		expect(source).toContain('useSettingsForm({');
+		// The wiring lives in the composable; a page copy would be a second one.
+		expect(source).not.toContain('useUnsavedChanges(');
+		expect(source).not.toContain('setHasChanges');
+	});
+
+	it('binds the shared dialog to all three outcomes', () => {
+		expect(source).toContain("import { UnsavedChangesDialog } from '@owlat/email-builder'");
+		expect(source).toContain(':show="unsavedDialog.showDialog"');
+		expect(source).toContain('@close="unsavedDialog.cancelNavigation"');
+		expect(source).toContain('@discard="unsavedDialog.confirmDiscard"');
+		expect(source).toContain('@save="unsavedDialog.confirmSave"');
 	});
 });
 

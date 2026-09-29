@@ -16,7 +16,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { auditA11y, installNuxtStubs } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
-import { interpretShareResponse } from '~/utils/shareLinkResponse';
 import UnsubscribePage from '../unsubscribe.vue';
 import PreferencesPage from '../preferences.vue';
 import ConfirmPage from '../confirm.vue';
@@ -97,9 +96,6 @@ beforeEach(() => {
 			isLoading: ref(false),
 			error: ref(null),
 		}),
-		// A pure auto-imported util: the real one, so the share page reaches the
-		// same branch it reaches in production.
-		interpretShareResponse,
 	});
 	stubRecipientFetch();
 });

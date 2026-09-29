@@ -8182,7 +8182,6 @@
 							"audience": "Zielgruppe",
 							"segments": "Segmente"
 						},
-						"clearSearch": "Suche zurücksetzen",
 						"createdOn": "Erstellt {date}",
 						"empty": {
 							"action": "Segment bearbeiten",
@@ -8198,31 +8197,13 @@
 						"exportCsv": "CSV exportieren",
 						"loading": "Segment wird geladen...",
 						"matchingContacts": "{count} passender Kontakt | {count} passende Kontakte",
-						"noResults": {
-							"body": "Keine Kontakte passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff.",
-							"title": "Keine Ergebnisse gefunden"
-						},
 						"notFound": {
 							"action": "Zurück zu den Segmenten",
 							"body": "Dieses Segment wurde möglicherweise gelöscht oder existiert nicht.",
 							"title": "Segment nicht gefunden"
 						},
 						"pageTitle": "Segment — Owlat",
-						"pagination": {
-							"next": "Weiter",
-							"previous": "Zurück"
-						},
-						"searchPlaceholder": "Kontakte in diesem Segment durchsuchen...",
-						"showing": {
-							"empty": "0 Kontakte",
-							"label": "Angezeigt: {range}",
-							"range": "{start}-{end} von {total}"
-						},
-						"table": {
-							"added": "Hinzugefügt",
-							"firstName": "Vorname",
-							"lastName": "Nachname"
-						}
+						"searchPlaceholder": "Kontakte in diesem Segment durchsuchen..."
 					}
 				},
 				"index": {
@@ -8232,14 +8213,12 @@
 						"viewContacts": "Kontakte ansehen"
 					},
 					"adminsOnly": "Nur Inhaber und Administratoren können Segmente erstellen oder bearbeiten.",
-					"clearSearch": "Suche zurücksetzen",
 					"count": "{count} Segment | {count} Segmente",
 					"deleteDialog": {
-						"body": "Möchten Sie „{name}“ wirklich löschen?",
+						"body": "Möchten Sie {name} wirklich löschen?",
 						"note": "Diese Aktion kann nicht rückgängig gemacht werden. Kampagnen, die dieses Segment verwenden, müssen angepasst werden.",
 						"title": "Segment löschen"
 					},
-					"deleting": "Wird gelöscht...",
 					"empty": {
 						"description": "Erstellen Sie Ihr erstes Segment, um Kontakte nach Eigenschaften, Aktivität und mehr zu filtern.",
 						"title": "Noch keine Segmente"
@@ -8417,7 +8396,6 @@
 							"audience": "Zielgruppe",
 							"topics": "Themen"
 						},
-						"clearSearch": "Suche zurücksetzen",
 						"contactCount": "{count} Kontakt | {count} Kontakte",
 						"contactFallback": "Kontakt",
 						"createdOn": "Erstellt {date}",
@@ -8428,10 +8406,6 @@
 							"title": "Keine Kontakte in diesem Thema"
 						},
 						"loading": "Thema wird geladen...",
-						"noResults": {
-							"body": "Keine Kontakte passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff.",
-							"title": "Keine Ergebnisse gefunden"
-						},
 						"notFound": {
 							"action": "Zurück zu den Themen",
 							"body": "Dieses Thema wurde möglicherweise gelöscht oder existiert nicht.",
@@ -8441,26 +8415,12 @@
 							"removeContact": "Aus Thema entfernen"
 						},
 						"pageTitle": "Abonnement-Thema — Owlat",
-						"pagination": {
-							"next": "Weiter",
-							"previous": "Zurück"
-						},
 						"removeDialog": {
 							"description": "„{email}“ aus diesem Thema entfernen? Der Kontakt wird nicht gelöscht, sondern nur aus „{topic}“ entfernt.",
 							"title": "Aus Thema entfernen"
 						},
 						"removeFromTopic": "Aus dem Thema entfernen",
 						"searchPlaceholder": "Kontakte in diesem Thema durchsuchen...",
-						"showing": {
-							"empty": "0 Kontakte",
-							"label": "Angezeigt: {range}",
-							"range": "{start}-{end} von {total}"
-						},
-						"table": {
-							"added": "Hinzugefügt",
-							"firstName": "Vorname",
-							"lastName": "Nachname"
-						},
 						"toasts": {
 							"removed": "„{email}“ wurde aus dem Thema entfernt"
 						}
@@ -8472,19 +8432,17 @@
 						"edit": "Thema bearbeiten"
 					},
 					"adminsOnly": "Nur Inhaber und Administratoren können Themen erstellen oder bearbeiten.",
-					"clearSearch": "Suche zurücksetzen",
 					"count": "{count} Thema | {count} Themen",
 					"createModal": {
 						"title": "Thema erstellen"
 					},
 					"creating": "Wird erstellt...",
 					"deleteModal": {
-						"body": "Möchten Sie „{name}“ wirklich löschen?",
+						"body": "Möchten Sie {name} wirklich löschen?",
 						"contactsKept": "Der {count} Kontakt in diesem Thema wird nicht gelöscht, sondern nur aus dem Thema entfernt. | Die {count} Kontakte in diesem Thema werden nicht gelöscht, sondern nur aus dem Thema entfernt.",
 						"irreversible": "Diese Aktion kann nicht rückgängig gemacht werden.",
 						"title": "Thema löschen"
 					},
-					"deleting": "Wird gelöscht...",
 					"editModal": {
 						"title": "Thema bearbeiten"
 					},
@@ -8626,6 +8584,7 @@
 						"noEmail": "Keine E-Mail",
 						"previous": "Zurück",
 						"range": "{from}–{to}",
+						"statusFilterLabel": "Kontakte nach Status filtern",
 						"stepAndTime": "Schritt {number} · {time}",
 						"title": "Kontakte in der Automatisierung",
 						"viewContact": "Kontakt ansehen"
@@ -8645,14 +8604,12 @@
 					"viewDetails": "Details ansehen"
 				},
 				"adminsOnly": "Nur Inhaber und Administratoren können Automationen erstellen oder bearbeiten.",
-				"clearSearch": "Suche zurücksetzen",
 				"deleteDialog": {
 					"activeWarning": "Aktive Automationen müssen vor dem Löschen pausiert werden.",
 					"body": "Möchten Sie {name} wirklich löschen?",
 					"note": "Diese Aktion kann nicht rückgängig gemacht werden. Die Automation und alle ihre Schritte werden endgültig gelöscht.",
 					"title": "Automation löschen"
 				},
-				"deleting": "Wird gelöscht...",
 				"empty": {
 					"action": "Automation erstellen",
 					"description": "Erstellen Sie Ihre erste Automation, um automatisch E-Mails zu senden, wenn sich ein Kontakt registriert, etwas abonniert oder ein Ereignis auslöst.",
@@ -8679,6 +8636,7 @@
 					"draft": "Entwurf",
 					"paused": "Pausiert"
 				},
+				"statusFilterLabel": "Automationsstatus",
 				"subtitle": "Erstellen Sie automatisierte E-Mail-Workflows, die durch Ereignisse ausgelöst werden",
 				"table": {
 					"contactsInFlow": "Kontakte im Ablauf",
@@ -8745,20 +8703,6 @@
 						"switchLabel": "Öffentliches Archiv",
 						"title": "Öffentliches Archiv"
 					},
-					"audience": {
-						"eligible": "berechtigte Empfänger",
-						"eligibleForTopic": "berechtigte Empfänger für dieses Thema",
-						"ineligibleDescription": "{excluded} von {total} Kontakten in diesem Thema sind nicht berechtigt (keine E-Mail-Adresse, abgemeldet/gesperrt oder Double-Opt-in nicht abgeschlossen) und werden ausgeschlossen.",
-						"ineligibleTitle": "Einige Abonnenten erhalten diese Kampagne nicht",
-						"segmentDescription": "Kontakte ansprechen, die bestimmte Kriterien erfüllen.",
-						"segmentTitle": "Gespeichertes Segment",
-						"selectSegment": "Segment auswählen …",
-						"selectTopic": "Thema auswählen …",
-						"title": "Zielgruppe",
-						"topicDescription": "An Kontakte senden, die ein bestimmtes Thema abonniert haben.",
-						"topicOption": "{name} ({count} Kontakte)",
-						"topicTitle": "Bestimmtes Thema"
-					},
 					"backToCampaigns": "Zurück zu den Kampagnen",
 					"badges": {
 						"draft": "Entwurf",
@@ -8783,10 +8727,6 @@
 					"details": {
 						"campaignName": "Kampagnenname",
 						"campaignNamePlaceholder": "z. B. Sommer-Newsletter 2026",
-						"fromEmail": "Absenderadresse",
-						"fromEmailPlaceholder": "z. B. hallo{'@'}acme.com",
-						"fromName": "Absendername",
-						"fromNamePlaceholder": "z. B. Anna von Acme GmbH",
 						"optionalSuffix": "(optional)",
 						"replyTo": "Antwortadresse",
 						"replyToPlaceholder": "z. B. support{'@'}acme.com",
@@ -8942,13 +8882,11 @@
 				"deleteDialog": {
 					"confirm": "Kampagne löschen",
 					"confirmQuestion": "Möchten Sie {name} wirklich löschen?",
-					"deleting": "Wird gelöscht …",
 					"description": "Diese Aktion kann nicht rückgängig gemacht werden. Die Kampagne und ihre Daten werden dauerhaft gelöscht.",
 					"title": "Kampagne löschen"
 				},
 				"deleteOperation": "Kampagne löschen",
 				"duplicateOperation": "Kampagne duplizieren",
-				"errorMessage": "Beim Laden Ihrer Kampagnen ist ein Fehler aufgetreten.",
 				"errorTitle": "Kampagnen konnten nicht geladen werden",
 				"listEmpty": {
 					"description": "Erstellen Sie Ihre erste Kampagne, um Ihre Zielgruppe zu erreichen.",
@@ -8956,6 +8894,10 @@
 				},
 				"loadMore": "Mehr laden",
 				"newCampaign": "Neue Kampagne",
+				"noWorkspace": {
+					"description": "Erstellen oder wählen Sie einen Workspace, um Kampagnen zu versenden.",
+					"title": "Kein Workspace ausgewählt"
+				},
 				"pageTitle": "Kampagnen — Owlat",
 				"pills": {
 					"attention": "Braucht Aufmerksamkeit",
@@ -8964,11 +8906,11 @@
 					"sent": "Versendet"
 				},
 				"searchEmpty": {
-					"clear": "Suche zurücksetzen",
 					"description": "Keine Kampagne passt zu \"{query}\". Versuchen Sie einen anderen Suchbegriff.",
 					"title": "Keine Ergebnisse gefunden"
 				},
 				"searchPlaceholder": "Kampagnen suchen …",
+				"statusFilterLabel": "Kampagnenstatus",
 				"subtitle": "Alles, was Sie versendet haben, und alles, was auf Sie wartet – an einem Ort.",
 				"title": "Kampagnen",
 				"toasts": {
@@ -10272,19 +10214,13 @@
 						"previewSubject": "Baustein-Vorschau",
 						"saveOperation": "Baustein speichern",
 						"savedToast": "Baustein erfolgreich gespeichert",
-						"settingsTitle": "Baustein-Einstellungen",
-						"variables": {
-							"email": "E-Mail",
-							"firstName": "Vorname",
-							"lastName": "Nachname"
-						}
+						"settingsTitle": "Baustein-Einstellungen"
 					}
 				},
 				"index": {
 					"adminsOnly": "Nur Inhaber und Administratoren können Bausteine erstellen oder löschen.",
 					"blockCount": "{count} Baustein | {count} Bausteine",
 					"blocksBadge": "{count} Bausteine",
-					"clearSearch": "Suche zurücksetzen",
 					"createBlock": "Baustein erstellen",
 					"createOperation": "Baustein erstellen",
 					"creating": "Wird erstellt...",
@@ -10294,7 +10230,6 @@
 					"deleteOperation": "Baustein löschen",
 					"deleteUsageWarning": "Dieser Baustein wurde {count}-mal verwendet. Verknüpfte Instanzen in E-Mails werden automatisch abgekoppelt. | Dieser Baustein wurde {count}-mal verwendet. Verknüpfte Instanzen in E-Mails werden automatisch abgekoppelt.",
 					"deletedToast": "Baustein erfolgreich gelöscht",
-					"deleting": "Wird gelöscht...",
 					"descriptionPlaceholder": "Kurze Beschreibung des Bausteins...",
 					"duplicateOperation": "Baustein duplizieren",
 					"duplicatedToast": "Baustein erfolgreich dupliziert",
@@ -10302,6 +10237,7 @@
 					"editContent": "Inhalt bearbeiten",
 					"emptyDescription": "Speichern Sie Bausteine aus Ihren E-Mail-Vorlagen, um sie in mehreren E-Mails wiederzuverwenden.",
 					"emptyTitle": "Noch keine gespeicherten Bausteine",
+					"loadError": "Bausteine konnten nicht geladen werden",
 					"loading": "Bausteine werden geladen...",
 					"namePlaceholder": "z. B. Hero-Banner, Call to Action",
 					"nameRequired": "Name ist erforderlich",
@@ -10320,6 +10256,7 @@
 						"name": "Name (A-Z)",
 						"recent": "Neueste"
 					},
+					"sortLabel": "Bausteine sortieren",
 					"subtitle": "Wiederverwendbare E-Mail-Komponenten für Ihre Vorlagen",
 					"title": "Gespeicherte Bausteine",
 					"updateOperation": "Baustein aktualisieren",
@@ -10355,11 +10292,7 @@
 							"unpublished": "E-Mail wurde in den Entwurf zurückgesetzt"
 						},
 						"translations": "Übersetzungen",
-						"unpublish": "Zurückziehen",
-						"variables": {
-							"firstName": "Vorname",
-							"lastName": "Nachname"
-						}
+						"unpublish": "Zurückziehen"
 					},
 					"settings": {
 						"backToEmails": "Zurück zu den E-Mails",
@@ -10438,12 +10371,12 @@
 					"marketing": "Marketing",
 					"transactional": "Transaktional"
 				},
-				"title": "Vorlagen"
+				"title": "Vorlagen",
+				"typeFilterLabel": "Vorlagentyp"
 			},
 			"marketing": {
 				"index": {
 					"adminsOnly": "Nur Inhaber und Administratoren können Vorlagen erstellen oder löschen.",
-					"clearSearch": "Suche zurücksetzen",
 					"columns": {
 						"subject": "Betreff",
 						"updated": "Aktualisiert"
@@ -10453,11 +10386,9 @@
 					"delete": {
 						"confirm": "Möchten Sie {name} wirklich löschen?",
 						"confirmButton": "Vorlage löschen",
-						"deleting": "Wird gelöscht...",
 						"description": "Diese Aktion kann nicht rückgängig gemacht werden. Die Vorlage wird endgültig gelöscht.",
 						"title": "Vorlage löschen"
 					},
-					"editAriaLabel": "{name} bearbeiten",
 					"empty": {
 						"action": "Marketing-Vorlage erstellen",
 						"description": "Erstellen Sie Ihre erste Marketing-Vorlage, um Kampagnen und Newsletter zu versenden.",
@@ -10467,8 +10398,6 @@
 						"description": "Erstellen oder wählen Sie ein Team, um E-Mail-Vorlagen anzulegen.",
 						"title": "Kein Team ausgewählt"
 					},
-					"gridView": "Kachelansicht",
-					"listView": "Listenansicht",
 					"loadError": "Vorlagen konnten nicht geladen werden",
 					"loadingTemplates": "Vorlagen werden geladen...",
 					"newTemplate": "Neue Marketing-Vorlage",
@@ -10476,36 +10405,21 @@
 						"description": "Keine Vorlagen passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff.",
 						"title": "Keine Ergebnisse gefunden"
 					},
-					"noSubject": "Kein Betreff",
 					"operations": {
 						"create": "Vorlage erstellen",
 						"delete": "Vorlage löschen",
 						"duplicate": "Vorlage duplizieren"
 					},
 					"pageTitle": "Marketing-E-Mails — Owlat",
-					"rowActions": "Vorlagenaktionen",
 					"searchPlaceholder": "Vorlagen suchen...",
-					"sort": {
-						"createdAsc": "Zuerst erstellt",
-						"createdDesc": "Zuletzt erstellt",
-						"nameAsc": "Name (A-Z)",
-						"nameDesc": "Name (Z-A)",
-						"updatedAsc": "Am längsten nicht geändert",
-						"updatedDesc": "Zuletzt geändert"
-					},
 					"sortLabel": "Vorlagen sortieren",
-					"status": {
-						"draft": "Entwurf",
-						"published": "Veröffentlicht"
-					},
 					"subtitle": "Erstellen und verwalten Sie Marketing-E-Mail-Vorlagen für Kampagnen und Newsletter",
 					"templateCount": "{count} Marketing-Vorlage | {count} Marketing-Vorlagen",
 					"title": "Marketing-Vorlagen",
 					"toasts": {
 						"deleted": "Vorlage erfolgreich gelöscht",
 						"duplicated": "Vorlage erfolgreich dupliziert"
-					},
-					"updatedAt": "Aktualisiert {date}"
+					}
 				}
 			},
 			"media": {
@@ -10616,7 +10530,6 @@
 						"subtitle": "„{name}“ über die API senden",
 						"title": "API-Nutzung"
 					},
-					"clearSearch": "Suche zurücksetzen",
 					"columns": {
 						"sends": "Sendungen",
 						"slug": "Slug",
@@ -10626,19 +10539,21 @@
 						"creating": "Wird erstellt...",
 						"defaultLanguage": "Standardsprache",
 						"namePlaceholder": "z. B. Willkommens-E-Mail, Bestellbestätigung",
+						"nameRequired": "Name ist erforderlich",
+						"operation": "Transaktions-E-Mail erstellen",
 						"slugHelp": "Dient zur Identifikation dieser E-Mail in API-Aufrufen. Verwenden Sie Kleinbuchstaben, Ziffern und Bindestriche.",
+						"slugInvalid": "Der Slug muss aus Kleinbuchstaben, Ziffern und Bindestrichen bestehen (z. B. 'welcome-email')",
 						"slugLabel": "Slug",
 						"slugPlaceholder": "z. B. welcome-email, order-confirmation",
+						"slugRequired": "Slug ist erforderlich",
 						"submit": "Erstellen & bearbeiten",
 						"title": "Transaktions-E-Mail erstellen"
 					},
 					"delete": {
 						"confirm": "Möchten Sie {name} wirklich löschen?",
-						"deleting": "Wird gelöscht...",
 						"description": "Diese Aktion kann nicht rückgängig gemacht werden. Alle API-Aufrufe, die auf diese E-Mail verweisen, schlagen danach fehl.",
 						"title": "Transaktions-E-Mail löschen"
 					},
-					"editAriaLabel": "{name} bearbeiten",
 					"empty": {
 						"action": "Transaktions-E-Mail erstellen",
 						"description": "Transaktions-E-Mails werden von Ihrer Anwendung über die API ausgelöst. Erstellen Sie Ihre erste, um loszulegen.",
@@ -10648,24 +10563,28 @@
 						"description": "Erstellen oder wählen Sie einen Workspace, um Transaktions-E-Mails anzulegen.",
 						"title": "Kein Workspace ausgewählt"
 					},
-					"gridView": "Kachelansicht",
-					"listView": "Listenansicht",
 					"loadError": "Transaktions-E-Mails konnten nicht geladen werden",
 					"loadingEmails": "Transaktions-E-Mails werden geladen...",
-					"moreActions": "Weitere Aktionen",
 					"newEmail": "Neue Transaktions-E-Mail",
 					"noResults": {
 						"description": "Keine Transaktions-E-Mails passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff.",
 						"title": "Keine Ergebnisse gefunden"
 					},
-					"noSubject": "Kein Betreff",
+					"operations": {
+						"delete": "Transaktions-E-Mail löschen",
+						"duplicate": "Transaktions-E-Mail duplizieren"
+					},
 					"pageTitle": "Transaktions-E-Mails — Owlat",
 					"searchPlaceholder": "Nach Name oder Slug suchen...",
 					"sendCount": "{count} Sendungen",
 					"sortLabel": "E-Mails sortieren",
+					"statusFilterLabel": "Nach Status filtern",
 					"subtitle": "Per API ausgelöste E-Mails für Ihre Anwendung",
 					"title": "Transaktions-E-Mails",
-					"updatedAt": "Aktualisiert {date}",
+					"toasts": {
+						"deleted": "Transaktions-E-Mail erfolgreich gelöscht",
+						"duplicated": "Transaktions-E-Mail erfolgreich dupliziert"
+					},
 					"viewApiCode": "API-Code anzeigen",
 					"viewSends": "Sendungen anzeigen"
 				}
@@ -10745,7 +10664,6 @@
 		"connect": {
 			"copied": "Kopiert!",
 			"errors": {
-				"credentialsRequired": "E-Mail-Adresse und Passwort sind erforderlich.",
 				"generic": "Etwas ist schiefgelaufen.",
 				"noToken": "Der Server hat kein Token zurückgegeben.",
 				"signInFailed": "Anmeldung fehlgeschlagen.",
@@ -11237,6 +11155,7 @@
 			"contactSender": "Fragen? Schreiben Sie an {email}.",
 			"contactToOptOut": "Um diese E-Mails abzubestellen, können Sie auch an {email} schreiben.",
 			"emailPreferences": "E-Mail-Einstellungen",
+			"rateLimited": "Gerade gab es zu viele Versuche. Bitte warten Sie eine Minute und versuchen Sie es erneut.",
 			"verifying": "Ihr Link wird geprüft…"
 		},
 		"unsubscribe": {
@@ -12905,6 +12824,12 @@
 				"label": "Wartend"
 			}
 		},
+		"listPage": {
+			"clearSearch": "Suche zurücksetzen",
+			"gridView": "Kachelansicht",
+			"listView": "Listenansicht",
+			"viewMode": "Ansicht"
+		},
 		"mailAutodiscover": {
 			"appPassword": {
 				"fastmail": "Erstellen Sie unter Einstellungen → Datenschutz & Sicherheit → App-Passwörter ein App-Passwort und fügen Sie es hier ein.",
@@ -12991,6 +12916,25 @@
 				"dkim": "DKIM",
 				"ownership": "Domain-Inhaberschaft",
 				"spf": "SPF"
+			}
+		},
+		"memberTable": {
+			"added": "Hinzugefügt",
+			"firstName": "Vorname",
+			"lastName": "Nachname",
+			"noResults": {
+				"body": "Keine Kontakte passen zu „{query}“. Versuchen Sie einen anderen Suchbegriff.",
+				"title": "Keine Ergebnisse gefunden"
+			},
+			"pagination": {
+				"label": "Seiten",
+				"next": "Weiter",
+				"previous": "Zurück"
+			},
+			"showing": {
+				"empty": "0 Kontakte",
+				"label": "Angezeigt: {range}",
+				"range": "{start}-{end} von {total}"
 			}
 		},
 		"onboarding": {
@@ -13131,6 +13075,11 @@
 				"sourceAddress": "Weisen Sie die IPv6-Adresse auf dem MTA-Host bzw. -Container zu und routen Sie sie, und führen Sie dann die Bereitschaftsprüfung erneut aus.",
 				"spf": "Veröffentlichen Sie den erzeugten ip6:-Mechanismus auf der Return-Path-Domain und verifizieren Sie dann erneut."
 			}
+		},
+		"personalizationVariables": {
+			"email": "E-Mail",
+			"firstName": "Vorname",
+			"lastName": "Nachname"
 		},
 		"postbox": {
 			"offlineOutbox": {
@@ -14157,6 +14106,25 @@
 				"summary": "Volle Kontrolle über den Workspace."
 			}
 		},
+		"templateList": {
+			"editAriaLabel": "{name} bearbeiten",
+			"moreActions": "Weitere Aktionen",
+			"noSubject": "Kein Betreff",
+			"sort": {
+				"createdAsc": "Zuerst erstellt",
+				"createdDesc": "Zuletzt erstellt",
+				"nameAsc": "Name (A-Z)",
+				"nameDesc": "Name (Z-A)",
+				"updatedAsc": "Am längsten nicht geändert",
+				"updatedDesc": "Zuletzt geändert"
+			},
+			"status": {
+				"draft": "Entwurf",
+				"pendingReview": "Prüfung ausstehend",
+				"published": "Veröffentlicht"
+			},
+			"updatedAt": "Aktualisiert {date}"
+		},
 		"threadStatusChip": {
 			"draftReady": "Entwurf bereit",
 			"open": "Offen",
@@ -14555,18 +14523,9 @@
 			}
 		},
 		"useCampaignForm": {
-			"audience": {
-				"notConfigured": "Nicht konfiguriert",
-				"segment": "Segment: {name}",
-				"segmentFallback": "Segment",
-				"topic": "Thema: {name}",
-				"topicFallback": "Thema"
-			},
 			"errors": {
 				"audienceRequired": "Bitte konfigurieren Sie die Zielgruppe der Kampagne",
 				"campaignNameRequired": "Kampagnenname ist erforderlich",
-				"fromEmailInvalid": "Bitte geben Sie eine gültige E-Mail-Adresse ein",
-				"fromEmailRequired": "Absenderadresse ist erforderlich",
 				"segmentRequired": "Bitte wählen Sie ein Segment",
 				"subjectRequired": "Betreffzeile ist erforderlich",
 				"templateRequired": "Bitte wählen Sie eine E-Mail-Vorlage",
@@ -14926,29 +14885,6 @@
 			"snoozeThread": "Konversation zurückstellen",
 			"unsnoozeThread": "Zurückstellung aufheben",
 			"updateThreadStatus": "Konversationsstatus aktualisieren"
-		},
-		"useTransactionalList": {
-			"createOperation": "Transaktions-E-Mail erstellen",
-			"deleteOperation": "Transaktions-E-Mail löschen",
-			"deleted": "Transaktions-E-Mail erfolgreich gelöscht",
-			"duplicateOperation": "Transaktions-E-Mail duplizieren",
-			"duplicated": "Transaktions-E-Mail erfolgreich dupliziert",
-			"nameRequired": "Name ist erforderlich",
-			"slugInvalid": "Der Slug muss aus Kleinbuchstaben, Ziffern und Bindestrichen bestehen (z. B. 'welcome-email')",
-			"slugRequired": "Slug ist erforderlich",
-			"sort": {
-				"lastModified": "Zuletzt geändert",
-				"nameAsc": "Name (A-Z)",
-				"nameDesc": "Name (Z-A)",
-				"newestCreated": "Zuletzt erstellt",
-				"oldestCreated": "Zuerst erstellt",
-				"oldestModified": "Am längsten nicht geändert"
-			},
-			"status": {
-				"draft": "Entwurf",
-				"pendingReview": "Prüfung ausstehend",
-				"published": "Veröffentlicht"
-			}
 		},
 		"useWebhookActions": {
 			"copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen",

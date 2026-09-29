@@ -24,28 +24,42 @@ const pages = Object.fromEntries(
 	pageNames.map((name) => [name, readFileSync(resolve(here, '..', 'pages', `${name}.vue`), 'utf8')])
 ) as Record<(typeof pageNames)[number], string>;
 
+/** The shared pieces the pages draw their states and the framed email with. */
+const partNames = ['RecipientStateCard', 'PublicEmailFrame'] as const;
+const parts = Object.fromEntries(
+	partNames.map((name) => [
+		name,
+		readFileSync(resolve(here, '..', 'components', 'recipient', `${name}.vue`), 'utf8'),
+	])
+) as Record<(typeof partNames)[number], string>;
+const sources: Record<string, string> = { ...pages, ...parts };
+const sourceNames = [...pageNames, ...partNames];
+
 /** The card-shaped pages: brand header, one card, one action, footer. */
 const cardPages = ['unsubscribe', 'confirm', 'preferences'] as const;
 /** The two pages that frame an email in a sandboxed iframe. */
 const framePages = ['archive', 'share'] as const;
 
 describe('recipient pages follow the recipient color scheme', () => {
-	it.each(pageNames)('%s paints itself with semantic tokens only', (name) => {
+	it.each(sourceNames)('%s paints itself with semantic tokens only', (name) => {
 		const rawPalette =
 			/\b(?:bg|text|border|from|to|via)-(?:white|black|gray|slate|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)\b/g;
-		expect(pages[name].match(rawPalette) ?? []).toEqual([]);
+		expect(sources[name]!.match(rawPalette) ?? []).toEqual([]);
 	});
 
-	it.each(pageNames)('%s carries no hardcoded color literals', (name) => {
-		expect(pages[name]).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
-		expect(pages[name]).not.toMatch(/\brgba?\(/);
+	it.each(sourceNames)('%s carries no hardcoded color literals', (name) => {
+		expect(sources[name]).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+		expect(sources[name]).not.toMatch(/\brgba?\(/);
 	});
 
-	it.each(pageNames)('%s leaves the mode switch to the token layer, not dark: variants', (name) => {
-		// The tokens re-resolve on `.dark`; a `dark:` utility on top of them is a
-		// second, divergent source of truth for the same pixel.
-		expect(pages[name]).not.toMatch(/\bdark:/);
-	});
+	it.each(sourceNames)(
+		'%s leaves the mode switch to the token layer, not dark: variants',
+		(name) => {
+			// The tokens re-resolve on `.dark`; a `dark:` utility on top of them is a
+			// second, divergent source of truth for the same pixel.
+			expect(sources[name]).not.toMatch(/\bdark:/);
+		}
+	);
 });
 
 describe('recipient pages are mobile-first', () => {
@@ -62,23 +76,37 @@ describe('recipient pages are mobile-first', () => {
 		expect(pages[name]).toContain('break-words');
 	});
 
-	it.each(framePages)('%s wraps the unbounded subject line', (name) => {
+	it.each(framePages)('%s wraps the unbounded sender line', (name) => {
 		expect(pages[name]).toContain('break-words');
+	});
+
+	it('the email frame wraps the unbounded subject line', () => {
+		expect(parts.PublicEmailFrame).toMatch(/<h1[^>]*break-words/);
 	});
 });
 
 describe('framed email stays readable and sandboxed', () => {
-	it.each(framePages)('%s never lets the untrusted email run scripts', (name) => {
+	it.each(framePages)(
+		'%s frames the email through PublicEmailFrame, not its own iframe',
+		(name) => {
+			// One component owns the sandbox policy for public pages.
+			expect(pages[name]).toContain('<PublicEmailFrame');
+			expect(pages[name]).not.toContain('<iframe');
+		}
+	);
+
+	it('never lets the untrusted email run scripts', () => {
 		// same-origin + scripts = full escape from the sandbox, and this frame
 		// renders attacker-influenced HTML.
-		expect(pages[name]).toContain('sandbox="allow-same-origin"');
+		expect(parts.PublicEmailFrame).toContain('sandbox="allow-same-origin"');
 		// The attribute, not the source: the comment above the frame names
 		// `allow-scripts` precisely to say it must never be added.
-		expect(pages[name]).not.toMatch(/sandbox="[^"]*allow-scripts/);
+		expect(parts.PublicEmailFrame).not.toMatch(/sandbox="[^"]*allow-scripts/);
 	});
 
-	it.each(framePages)('%s names the frame for screen readers', (name) => {
-		expect(pages[name]).toMatch(/<iframe[\s\S]*?title="[^"]+"/);
+	it('names the frame for screen readers', () => {
+		expect(parts.PublicEmailFrame).toMatch(/<iframe[\s\S]*?:title="[^"]+"/);
+		for (const name of framePages) expect(pages[name]).toMatch(/:frame-title="[^"]+"/);
 	});
 });
 
