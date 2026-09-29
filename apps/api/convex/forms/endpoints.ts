@@ -12,7 +12,7 @@ import { getOrThrow, throwRateLimited, throwInvalidInput } from '../_utils/error
 import { rateLimiter } from '../lib/rateLimiter';
 import { formFieldValidator } from '../lib/convexValidators';
 import type { TransitionOutcome as DoiTransitionOutcome } from '../contacts/doiLifecycle';
-import { findContactByConfirmationToken } from '../contacts/doiLifecycle';
+import { findContactByConfirmationToken, isFormTokenDisabled } from '../contacts/doiLifecycle';
 import type { MarkConfirmedOutcome } from './submission';
 
 // Field configuration type
@@ -246,6 +246,9 @@ export const getByConfirmationToken = publicQuery({
 		token: v.string(),
 	},
 	handler: async (ctx, args) => {
+		// A form-minted token follows the `forms` flag, like the submit endpoint.
+		if (await isFormTokenDisabled(ctx, args.token)) return null;
+
 		const submission = await ctx.db
 			.query('formSubmissions')
 			.withIndex('by_confirmation_token', (q) => q.eq('confirmationToken', args.token))
@@ -347,6 +350,12 @@ export const confirmSubmission = publicMutation({
 		});
 		if (!ok) {
 			throwRateLimited('Too many confirmation attempts. Please try again shortly.', retryAfter);
+		}
+
+		// A form-minted token follows the `forms` flag, like the submit endpoint.
+		// Refused here rather than falling through to the contact-level confirm.
+		if (await isFormTokenDisabled(ctx, args.token)) {
+			return { success: false, error: 'invalid_token' };
 		}
 
 		// Step 1: peek the form-side state. The DOI side clears its token on

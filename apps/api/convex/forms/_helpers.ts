@@ -11,8 +11,11 @@
  * NOT for every function under `forms/`:
  *   - the recipient-facing `publicQuery` / `publicMutation` pair behind the
  *     double-opt-in link (`getByConfirmationToken`, `confirmSubmission`) stays
- *     public and ungated: a subscriber who submitted while the flag was on must
- *     still be able to confirm.
+ *     public, with no org-member floor. It also serves contact-level DOI tokens
+ *     that no form minted, so it cannot take the `forms` floor either. Instead
+ *     a token a form submission minted follows the flag through
+ *     `contacts/doiLifecycle.isFormTokenDisabled`, on these two functions and
+ *     on the contact-level `/confirm/doi` routes alike.
  *   - `internal*` functions are untouched.
  *
  * Not exported as Convex functions (the leading underscore keeps this module
