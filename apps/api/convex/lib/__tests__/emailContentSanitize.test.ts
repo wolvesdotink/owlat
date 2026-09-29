@@ -130,6 +130,35 @@ describe('sanitizeStoredBlocksJson numeric style fields', () => {
 		expect(JSON.stringify(out)).not.toContain('data-probe');
 	});
 
+	it('normalizes width and value on the block types that store them as numbers', () => {
+		const json = JSON.stringify([
+			{ id: 'i', type: 'image', content: { src: 'x', width: BAD } },
+			{ id: 'v', type: 'video', content: { videoUrl: 'x', width: '80' } },
+			{
+				id: 'k',
+				type: 'container',
+				content: { items: [{ id: 'd', type: 'divider', content: { width: BAD, thickness: 1 } }] },
+			},
+			{
+				id: 'p',
+				type: 'progressBar',
+				content: {
+					value: BAD,
+					maxValue: 100,
+					condition: { variable: 'plan', operator: 'equals', value: 'pro' },
+				},
+			},
+		]);
+		const out = JSON.parse(sanitizeStoredBlocksJson(json));
+		expect(out[0].content).toEqual({ src: 'x' });
+		expect(out[1].content).toEqual({ videoUrl: 'x', width: 80 });
+		expect(out[2].content.items[0].content).toEqual({ thickness: 1 });
+		expect(out[3].content).toEqual({
+			maxValue: 100,
+			condition: { variable: 'plan', operator: 'equals', value: 'pro' },
+		});
+	});
+
 	it('leaves string-typed width and condition values alone', () => {
 		const json = JSON.stringify([
 			{

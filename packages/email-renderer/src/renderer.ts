@@ -57,7 +57,7 @@ const createContext = (options: RenderOptions = {}): RenderContext => {
 		variableType,
 		variableClass:
 			variableType === 'personalization' ? 'personalization-variable' : 'data-variable',
-		baseWidth: px(options.baseWidth ?? options.theme?.baseWidth, DEFAULT_BASE_WIDTH),
+		baseWidth: px(options.baseWidth, px(options.theme?.baseWidth, DEFAULT_BASE_WIDTH)),
 		preheaderText: options.preheaderText ?? '',
 		title: options.title ?? '',
 		breakpoint: px(options.breakpoint, 480),

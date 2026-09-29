@@ -199,6 +199,53 @@ describe('numeric style fields are coerced before interpolation', () => {
 		});
 		expect(html).not.toContain(MARKER);
 	});
+
+	it('falls back to the theme base width when the base width option is not a number', () => {
+		const render = (baseWidth?: unknown) =>
+			renderEmailHtml([poisonedBlock('text', 't')], {
+				inlineCss: false,
+				baseWidth: baseWidth as number | undefined,
+				theme: { baseWidth: 520 } as never,
+			});
+		expect(render(BAD)).toBe(render());
+		expect(render()).toContain('max-width:520px');
+	});
+});
+
+describe('theme colours in the document style block', () => {
+	const PROBE = '</style><x-probe>';
+	const theme = {
+		darkModeBackgroundColor: PROBE,
+		darkModeTextColor: PROBE,
+		darkModeLinkColor: PROBE,
+		linkColor: PROBE,
+	};
+
+	it.each([false, true])('only emit colour values (darkMode: %s)', (darkMode) => {
+		const html = renderEmailHtml([poisonedBlock('text', 't')], {
+			inlineCss: false,
+			darkMode,
+			theme: theme as never,
+		});
+		expect(html).not.toContain('<x-probe>');
+		expect(html).toContain('{color:#93c5fd!important}');
+	});
+
+	it('keeps ordinary colour values', () => {
+		const html = renderEmailHtml([poisonedBlock('text', 't')], {
+			inlineCss: false,
+			theme: {
+				darkModeBackgroundColor: '#0a0a0a',
+				darkModeTextColor: 'rgb(240, 240, 240)',
+				darkModeLinkColor: 'hsl(210 80% 70% / 0.9)',
+				linkColor: 'rebeccapurple',
+			} as never,
+		});
+		expect(html).toContain('background-color:#0a0a0a!important');
+		expect(html).toContain('{color:rgb(240, 240, 240)!important}');
+		expect(html).toContain('a{color:hsl(210 80% 70% / 0.9)!important}');
+		expect(html).toContain('a{color:rebeccapurple}');
+	});
 });
 
 const STRING_STYLE_KEYS = [

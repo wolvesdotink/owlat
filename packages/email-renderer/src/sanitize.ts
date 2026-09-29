@@ -53,6 +53,20 @@ export const escapeCss = (value: string | undefined | null): string => {
 };
 
 /**
+ * Characters a CSS colour value can be written with: hex, named colours and
+ * the functional forms (`rgb(0, 0, 0)`, `hsl(210 80% 70% / 0.9)`).
+ */
+const CSS_COLOR_VALUE = /^[#\w\s(),.%/+-]{1,100}$/;
+
+/**
+ * A colour for a rule inside the document `<style>` element, or `fallback`.
+ * Entities are not decoded inside `<style>`, so escaping cannot make an
+ * arbitrary value safe there; only values made of colour characters pass.
+ */
+export const cssColorOr = (value: unknown, fallback: string): string =>
+	typeof value === 'string' && CSS_COLOR_VALUE.test(value) ? value : fallback;
+
+/**
  * Escape a value for use inside a CSS url() function.
  * Prevents breakout via ') or other CSS injection.
  */

@@ -28,7 +28,8 @@ function isObject(value: unknown): value is JsonObject {
 /**
  * Block content fields typed `number` in `@owlat/shared` that end up in style
  * or sizing attributes. `width` and `value` are left out: `TableColumn.width`
- * and `BlockCondition.value` are strings under the same names.
+ * and `BlockCondition.value` are strings under the same names. They are
+ * handled per block type by {@link NUMERIC_CONTENT_FIELDS_BY_TYPE}.
  */
 const NUMERIC_STYLE_FIELDS: ReadonlySet<string> = new Set([
 	'paddingTop',
@@ -69,20 +70,42 @@ const NUMERIC_STYLE_FIELDS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Normalize the numeric style fields of one object in place: finite numbers
- * and null stay, numeric strings become numbers, anything else is removed.
- * Returns whether anything changed.
+ * Numeric content fields whose names other shapes use for strings, keyed by
+ * the block type whose `content` holds them as numbers.
  */
+const NUMERIC_CONTENT_FIELDS_BY_TYPE: Readonly<Record<string, readonly string[]>> = {
+	image: ['width'],
+	video: ['width'],
+	divider: ['width'],
+	progressBar: ['value'],
+};
+
+/**
+ * Normalize `node[key]` in place when present: finite numbers and null stay,
+ * numeric strings become numbers, anything else is removed. Returns whether it
+ * changed.
+ */
+function normalizeNumericField(node: JsonObject, key: string): boolean {
+	if (!(key in node)) return false;
+	const value = node[key];
+	if (value === null || (typeof value === 'number' && Number.isFinite(value))) return false;
+	const parsed = typeof value === 'string' && value.trim() !== '' ? Number(value) : Number.NaN;
+	if (Number.isFinite(parsed)) node[key] = parsed;
+	else delete node[key];
+	return true;
+}
+
+/** Normalize the numeric style fields of one object in place. Returns whether anything changed. */
 function normalizeNumericFields(node: JsonObject): boolean {
 	let changed = false;
 	for (const key of Object.keys(node)) {
-		if (!NUMERIC_STYLE_FIELDS.has(key)) continue;
-		const value = node[key];
-		if (value === null || (typeof value === 'number' && Number.isFinite(value))) continue;
-		const parsed = typeof value === 'string' && value.trim() !== '' ? Number(value) : Number.NaN;
-		if (Number.isFinite(parsed)) node[key] = parsed;
-		else delete node[key];
-		changed = true;
+		if (NUMERIC_STYLE_FIELDS.has(key)) changed = normalizeNumericField(node, key) || changed;
+	}
+	const typed =
+		typeof node['type'] === 'string' ? NUMERIC_CONTENT_FIELDS_BY_TYPE[node['type']] : undefined;
+	const content = node['content'];
+	if (typed && isObject(content)) {
+		for (const key of typed) changed = normalizeNumericField(content, key) || changed;
 	}
 	return changed;
 }
