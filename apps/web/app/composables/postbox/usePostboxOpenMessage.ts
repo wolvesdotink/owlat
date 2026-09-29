@@ -1,6 +1,8 @@
 import type { MaybeRefOrGetter } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { resolvePostboxMessageBody } from './postboxBodyResolver';
+import { inlineBodyNeedsBlob } from './usePostboxPrefetch';
 
 /**
  * The open message's queries, started from the route's message id (plan 2.5).
@@ -12,7 +14,8 @@ import type { Id } from '@owlat/api/dataModel';
  * guard has resolved, so the thread (`listThreadMessages`) and the inline body
  * (`getMessageInlineBody`) load in parallel with the list. The reader asks for
  * the same queries with the same args and joins these subscriptions through
- * the shared registry instead of starting its own.
+ * the shared registry instead of starting its own. A body stored as a blob
+ * starts its download from here too.
  *
  * Both queries check mailbox access on the server; nothing here renders.
  */
@@ -32,11 +35,22 @@ export function usePostboxOpenMessage(messageId: MaybeRefOrGetter<string | null 
 
 	// The body, in parallel with the thread; released once the thread row
 	// (which carries the body) is here.
-	useConvexQuery(api.mail.mailbox.messages.getMessageInlineBody, () =>
+	const { data: inlineBody } = useConvexQuery(api.mail.mailbox.messages.getMessageInlineBody, () =>
 		openId.value && !threadMessage.value
 			? { messageId: openId.value as Id<'mailMessages'> }
 			: 'skip'
 	);
+
+	// A body over the inline threshold only exists as a blob, which needs the
+	// URL-minting action and a download. Start both as soon as the inline query
+	// says so, into the shared body cache the reader's body consumes, instead of
+	// waiting for the reader to mount on the thread row. Fail-soft: the reader
+	// retries for itself and shows its own error state.
+	const client = useConvex();
+	watch([openId, inlineBody], ([id, body]) => {
+		if (!client || !id || !inlineBodyNeedsBlob(body)) return;
+		resolvePostboxMessageBody(client, id, { blobOnly: true }).catch(() => {});
+	});
 
 	return {
 		threadMessage,

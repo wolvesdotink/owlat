@@ -292,13 +292,13 @@ const {
 	},
 });
 
-// Read-ahead: when the j/k focus or the open message changes, warm the next and
-// previous rows' bodies (same query the reader runs, debounced, LRU-capped and
-// fail-soft) so Enter / auto-advance opens instantly, not on a body round-trip.
+// Read-ahead: when the j/k focus or the open message changes, hold the next and
+// previous rows' thread and inline-body queries (the ones the reader opens with;
+// debounced, LRU-capped and fail-soft) so Enter / auto-advance opens from cache.
 const { prefetch: prefetchAdjacent } = usePostboxPrefetch();
 
 // The mouse half of the same read-ahead: hovering (or tabbing to) a row warms
-// the body the click is about to need. The composable's 150ms debounce means a
+// the thread and body the click is about to need. The composable's 150ms debounce means a
 // pointer sweeping down the list warms only where it comes to rest, and its LRU
 // cap bounds what a long sweep can accumulate — so this needs no throttle of
 // its own.
