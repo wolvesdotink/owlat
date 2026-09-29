@@ -19,6 +19,7 @@
 
 import { throwAlreadyExists, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import { nextContentRevision } from './contentRevision';
+import { sanitizeOverlayBlocksJson, sanitizeStoredBlocksJson } from './emailContentSanitize';
 import {
 	mergeTranslationIntoItem,
 	type TranslatableBlockContent,
@@ -384,7 +385,10 @@ export function updateTranslationPatch(
 		translation.previewText = previewText.trim();
 	}
 	if (update.blocks !== undefined) {
-		translation.blocks = JSON.parse(update.blocks) as Record<string, TranslatableBlockContent>;
+		translation.blocks = JSON.parse(sanitizeOverlayBlocksJson(update.blocks)) as Record<
+			string,
+			TranslatableBlockContent
+		>;
 	}
 	translations[update.language] = translation;
 
@@ -443,7 +447,7 @@ export function setDefaultLanguagePatch(
 	return {
 		subject: newDefault.subject,
 		...(fields.hasPreviewText ? { previewText: newDefault.previewText } : {}),
-		content: newDefaultContent,
+		content: sanitizeStoredBlocksJson(newDefaultContent),
 		defaultLanguage: language,
 		translations: serializeTranslations(updatedTranslations),
 		...revisionStamp(row),

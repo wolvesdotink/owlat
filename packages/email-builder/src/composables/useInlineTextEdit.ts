@@ -1,5 +1,5 @@
 import { ref, shallowRef, computed, type Ref, type ShallowRef, type ComputedRef } from 'vue';
-import { sanitizeRawHtml } from '@owlat/email-renderer';
+import { sanitizeEditorHtml } from '@owlat/email-renderer';
 import type { EditorBlock } from '../types';
 
 export interface UseInlineTextEditOptions {
@@ -67,7 +67,7 @@ export function useInlineTextEdit(options: UseInlineTextEditOptions): UseInlineT
 			// Belt-and-suspenders: scrub contenteditable output before it is
 			// persisted, so a pasted `<img onerror=…>`/`<script>` never reaches
 			// storage. The renderer sanitises again at the email boundary.
-			const committed = sanitizeRawHtml(html);
+			const committed = sanitizeEditorHtml(html);
 			// Closing without a change commits nothing: rewriting the block would
 			// count as an edit, and a host that held a newer server copy back
 			// while the editor was open could no longer follow it.

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, nextTick } from 'vue';
 import { useRichText } from '@owlat/ui/composables/useRichText';
+import { sanitizeEditorHtml } from '@owlat/email-renderer';
 import type { Variable } from '../../types';
-import { sanitizeHtml } from '../../utils/htmlSanitizer';
 import { insertVariableChip, useVariableTrigger } from '../../composables/useVariableTrigger';
 import { Bold, Italic, Underline, Link, Code, Variable as VariableIcon } from '@lucide/vue';
 import VariablePickerMenu from '../canvas/VariablePickerMenu.vue';
@@ -36,18 +36,27 @@ const variablePicker = useVariableTrigger({
 const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.userAgent);
 const modKey = isMac ? '⌘' : 'Ctrl';
 
-// Sync content from prop to editor
+// Sync content from prop to editor. Stored HTML is sanitized before it enters
+// the live contenteditable, on mount and on every prop change.
 onMounted(() => {
 	if (editorRef.value) {
-		editorRef.value.innerHTML = props.value;
+		editorRef.value.innerHTML = sanitizeEditorHtml(props.value);
 	}
 });
+
+// The last value this editor emitted. Its echo back through the prop is
+// skipped, so typing never resets the caret or rewrites the source textarea
+// (the sanitizer's serialization differs from the browser's `innerHTML`).
+let lastEmitted: string | null = null;
 
 watch(
 	() => props.value,
 	(newVal) => {
-		if (editorRef.value && editorRef.value.innerHTML !== newVal) {
-			editorRef.value.innerHTML = newVal;
+		if (newVal === lastEmitted) return;
+		lastEmitted = null;
+		const safe = sanitizeEditorHtml(newVal);
+		if (editorRef.value && sanitizeEditorHtml(editorRef.value.innerHTML) !== safe) {
+			editorRef.value.innerHTML = safe;
 		}
 		if (isSourceMode.value) {
 			sourceValue.value = newVal;
@@ -55,9 +64,14 @@ watch(
 	}
 );
 
+function emitSanitized(html: string) {
+	lastEmitted = sanitizeEditorHtml(html);
+	emit('update', lastEmitted);
+}
+
 function emitHtml() {
 	if (!editorRef.value) return;
-	emit('update', sanitizeHtml(editorRef.value.innerHTML));
+	emitSanitized(editorRef.value.innerHTML);
 }
 
 function handleInput() {
@@ -84,7 +98,7 @@ function insertVariable(variable: Variable) {
 
 function toggleSourceMode() {
 	if (isSourceMode.value) {
-		emit('update', sanitizeHtml(sourceValue.value));
+		emitSanitized(sourceValue.value);
 	} else {
 		sourceValue.value = props.value;
 	}
@@ -93,7 +107,7 @@ function toggleSourceMode() {
 
 function handleSourceInput(event: Event) {
 	sourceValue.value = (event.target as HTMLTextAreaElement).value;
-	emit('update', sanitizeHtml(sourceValue.value));
+	emitSanitized(sourceValue.value);
 }
 </script>
 

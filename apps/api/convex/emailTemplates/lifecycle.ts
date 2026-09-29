@@ -30,6 +30,7 @@ import { applyUsageCountDelta } from '../emailBlocks/module';
 import { deleteTemplateVersions } from './versions';
 import { buildSearchableText } from '../lib/queryHelpers';
 import { duplicateEmailFields } from '../lib/publishableEmail';
+import { sanitizeStoredBlocksJson } from '../lib/emailContentSanitize';
 import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from '../lib/constants';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -277,7 +278,7 @@ export const create = internalMutation({
 			name,
 			subject,
 			previewText: args.previewText?.trim(),
-			content: args.content ?? '[]',
+			content: sanitizeStoredBlocksJson(args.content ?? '[]'),
 			type: args.type,
 			status: 'draft',
 			defaultLanguage,

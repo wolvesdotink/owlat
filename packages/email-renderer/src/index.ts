@@ -61,6 +61,7 @@ export {
 	sanitizeUrl,
 	sanitizeCss,
 	sanitizeRawHtml,
+	sanitizeEditorHtml,
 } from './sanitize';
 
 // Compatibility — per-block data owned by Block modules, surfaced via the
