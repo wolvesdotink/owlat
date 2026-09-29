@@ -30,21 +30,6 @@ export const handleVerifyCredential = httpAction(async (ctx, request) => {
 		});
 	}
 
-	// Same ingestion bucket as the other inbound webhooks (this was the only
-	// one without a rate-limit gate). Keyed per-source like webhooks/pipeline
-	// so a flood here cannot drain the bounce/complaint buckets.
-	const rateIp = getClientIp(request);
-	const { ok: rateOk, retryAfter } = await ctx.runMutation(
-		internal.lib.publicRateLimit.checkPublicRateLimit,
-		{ limitType: 'webhookIngestion', key: `mta-verify-credential:${rateIp}` }
-	);
-	if (!rateOk) {
-		return new Response(JSON.stringify({ error: 'Rate limited' }), {
-			status: 429,
-			headers: retryAfter ? { 'Retry-After': String(Math.ceil(retryAfter / 1000)) } : {},
-		});
-	}
-
 	const secret = getOptional('MTA_WEBHOOK_SECRET');
 	if (!secret) {
 		logError('[mta-verify-credential] MTA_WEBHOOK_SECRET not configured');
@@ -77,6 +62,23 @@ export const handleVerifyCredential = httpAction(async (ctx, request) => {
 	if (!verdict.ok) {
 		return new Response(JSON.stringify({ error: 'Invalid signature' }), {
 			status: 401,
+		});
+	}
+
+	// Same ingestion bucket as the other inbound webhooks, keyed per-source like
+	// webhooks/pipeline so a flood here cannot drain the bounce/complaint
+	// buckets. Charged only after the signature check (the body is capped at
+	// 100 KB above): without RATE_LIMIT_TRUSTED_PROXY every caller shares the
+	// 'unknown' key, so unsigned requests must not spend the MTA's budget.
+	const rateIp = getClientIp(request);
+	const { ok: rateOk, retryAfter } = await ctx.runMutation(
+		internal.lib.publicRateLimit.checkPublicRateLimit,
+		{ limitType: 'webhookIngestion', key: `mta-verify-credential:${rateIp}` }
+	);
+	if (!rateOk) {
+		return new Response(JSON.stringify({ error: 'Rate limited' }), {
+			status: 429,
+			headers: retryAfter ? { 'Retry-After': String(Math.ceil(retryAfter / 1000)) } : {},
 		});
 	}
 
