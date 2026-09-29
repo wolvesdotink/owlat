@@ -3,6 +3,8 @@ import type { EditorBlock } from '../types';
 
 export interface UseLinkedBlocksOptions {
 	canvasBlocks: Ref<EditorBlock[]>;
+	/** Called after detaching, which edits the blocks in place (see useBlockTreeVersion). */
+	onTreeMutated?: () => void;
 }
 
 export interface LinkedBlockGroup {
@@ -27,7 +29,7 @@ export interface UseLinkedBlocksReturn {
  * Composable for managing linked block state and operations
  */
 export function useLinkedBlocks(options: UseLinkedBlocksOptions): UseLinkedBlocksReturn {
-	const { canvasBlocks } = options;
+	const { canvasBlocks, onTreeMutated } = options;
 
 	const isLinkedBlock = (blockId: string): boolean => {
 		const block = canvasBlocks.value.find((b) => b.id === blockId);
@@ -59,11 +61,14 @@ export function useLinkedBlocks(options: UseLinkedBlocksOptions): UseLinkedBlock
 	};
 
 	const detachLinkedGroup = (groupId: string): void => {
+		let detached = false;
 		canvasBlocks.value.forEach((block) => {
 			if (block.savedBlockRef?.groupId === groupId) {
 				delete block.savedBlockRef;
+				detached = true;
 			}
 		});
+		if (detached) onTreeMutated?.();
 	};
 
 	const detachBlock = (blockId: string): void => {

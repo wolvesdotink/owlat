@@ -16,6 +16,7 @@ import {
 	ehloRowProblem,
 	type EhloOverrideRow,
 } from '~/utils/ehloOverrides';
+import { stableRowKey } from '~/utils/stableRowKey';
 
 const { t } = useI18n();
 
@@ -56,7 +57,7 @@ function removeRow(index: number) {
 		<div class="p-6 space-y-4">
 			<div
 				v-for="(row, index) in rows"
-				:key="index"
+				:key="stableRowKey(row)"
 				class="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-start"
 				data-testid="ehlo-override-row"
 			>

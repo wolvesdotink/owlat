@@ -20,9 +20,9 @@ import type { EditorBlock } from '../../types';
  * Harness notes:
  *  - `blocks` is a deep `ref`, matching the editor's `canvasBlocks`. Its
  *    `.value` is a reactive proxy, which `structuredClone` rejects in every
- *    engine (DataCloneError) — the composable's JSON-fallback clone must absorb
- *    that, so using a deep ref here is the regression test for the editor
- *    crashing at mount.
+ *    engine (DataCloneError) — the composable's clone (utils/plainClone) must
+ *    read through it, so using a deep ref here is the regression test for the
+ *    editor crashing at mount.
  *  - Real timers with a tiny `debounceMs` drive the debounce.
  */
 

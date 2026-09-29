@@ -3,6 +3,7 @@ import {
 	AVATAR_BG_CLASSES,
 	AVATAR_COLOR_STYLES,
 	AVATAR_SIZE_CLASSES,
+	AVATAR_SIZE_PX,
 	avatarInitials,
 	initialsAndColorForAddress,
 	type AvatarBg,
@@ -36,7 +37,7 @@ const props = withDefaults(
 		size: 'sm',
 		bg: 'surface',
 		deterministicColor: false,
-	},
+	}
 );
 
 const identity = computed(() => {
@@ -51,6 +52,7 @@ const initials = computed(() =>
 	identity.value ? identity.value.initials : avatarInitials(props.name, props.email)
 );
 const sizeClass = computed(() => AVATAR_SIZE_CLASSES[props.size]);
+const sizePx = computed(() => AVATAR_SIZE_PX[props.size]);
 const bgClass = computed(() => (identity.value ? '' : AVATAR_BG_CLASSES[props.bg]));
 const colorStyle = computed(() =>
 	identity.value ? AVATAR_COLOR_STYLES[identity.value.colorToken] : undefined
@@ -63,7 +65,17 @@ const colorStyle = computed(() =>
 		:class="[sizeClass, bgClass]"
 		:style="colorStyle"
 	>
-		<img v-if="image" :src="image" :alt="name ?? ''" class="w-full h-full object-cover" />
+		<!-- Sized and decoded off the main thread, so a list of avatars neither
+			shifts layout as images arrive nor blocks a frame decoding them. -->
+		<img
+			v-if="image"
+			:src="image"
+			:alt="name ?? ''"
+			:width="sizePx"
+			:height="sizePx"
+			decoding="async"
+			class="w-full h-full object-cover"
+		/>
 		<span v-else>{{ initials }}</span>
 	</div>
 </template>

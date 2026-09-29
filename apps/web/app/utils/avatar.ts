@@ -45,6 +45,14 @@ export const AVATAR_SIZE_CLASSES: Record<AvatarSize, string> = {
 	lg: 'w-9 h-9 text-xs text-text-secondary',
 };
 
+/** Rendered diameter in CSS pixels per named size, matching the w-/h- classes above. */
+export const AVATAR_SIZE_PX: Record<AvatarSize, number> = {
+	xs: 20,
+	sm: 24,
+	md: 28,
+	lg: 36,
+};
+
 /** Background class for the avatar circle. */
 export const AVATAR_BG_CLASSES: Record<AvatarBg, string> = {
 	surface: 'bg-bg-surface',
