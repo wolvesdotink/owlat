@@ -9,11 +9,12 @@
  * explicitly because linking `/dashboard/postbox/migrate` at all is the point —
  * before this group the wizard was reachable only by typing the URL.
  */
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { ref } from 'vue';
+import { nextTick, ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import PostboxRailMoreGroup from '../PostboxRailMoreGroup.vue';
+import { usePostboxMessageDrag } from '~/composables/postbox/usePostboxMessageDrag';
 
 const routePath = ref('/dashboard/postbox/inbox');
 const moreOpen = ref(false);
@@ -44,7 +45,7 @@ const railLinkStub = {
 	template: '<a class="rail-link" :href="to" :data-active="active">{{ label }}</a>',
 };
 const folderListStub = {
-	props: ['folders', 'unreadCounts', 'activeFolder', 'collapsed'],
+	props: ['mailboxId', 'folders', 'unreadCounts', 'activeFolder', 'collapsed'],
 	template:
 		'<nav class="folder-list"><span v-for="f in folders" :key="f._id">{{ f.role }}</span></nav>',
 };
@@ -56,7 +57,13 @@ const folders = [
 
 function mountGroup(props: Record<string, unknown> = {}) {
 	return mount(PostboxRailMoreGroup, {
-		props: { collapsed: false, folders, folderRole: 'inbox', ...props },
+		props: {
+			mailboxId: 'mbx-1' as never,
+			collapsed: false,
+			folders,
+			folderRole: 'inbox',
+			...props,
+		},
 		global: {
 			plugins: [createTestI18n()],
 			components: {
@@ -119,5 +126,64 @@ describe('PostboxRailMoreGroup', () => {
 		const buttons = w.findAll('button');
 		await buttons[buttons.length - 1]!.trigger('click');
 		expect(openManager).toHaveBeenCalledWith({ section: 'folders' });
+	});
+});
+
+describe('PostboxRailMoreGroup while a message is dragged', () => {
+	function startDrag() {
+		usePostboxMessageDrag().start(
+			{ dataTransfer: { setData: vi.fn(), setDragImage: vi.fn() } } as unknown as DragEvent,
+			{
+				mailboxId: 'mbx-1' as never,
+				messageIds: ['m1' as never],
+				sourceFolder: 'inbox',
+				moveTo: vi.fn(async () => {}),
+			},
+			'Subject'
+		);
+	}
+
+	afterEach(() => {
+		usePostboxMessageDrag().end();
+		vi.useRealTimers();
+	});
+
+	it('springs open after a beat over the header, then folds back when the drag ends', async () => {
+		vi.useFakeTimers();
+		const w = mountGroup();
+		startDrag();
+		const header = w.get('button[aria-expanded]');
+		await header.trigger('dragenter');
+		expect(header.attributes('aria-expanded')).toBe('false');
+		await vi.advanceTimersByTimeAsync(500);
+		expect(header.attributes('aria-expanded')).toBe('true');
+		// Spam and Trash are now on screen as drop targets.
+		expect(w.get('.folder-list').text()).toContain('trash');
+		// Never persisted: the saved preference was not toggled.
+		expect(toggle).not.toHaveBeenCalled();
+
+		usePostboxMessageDrag().end();
+		await nextTick();
+		expect(header.attributes('aria-expanded')).toBe('false');
+	});
+
+	it('does not spring open when the pointer only passes over the header', async () => {
+		vi.useFakeTimers();
+		const w = mountGroup();
+		startDrag();
+		const header = w.get('button[aria-expanded]');
+		await header.trigger('dragenter');
+		await header.trigger('dragleave');
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(header.attributes('aria-expanded')).toBe('false');
+	});
+
+	it('ignores a drag that is not a message drag', async () => {
+		vi.useFakeTimers();
+		const w = mountGroup();
+		const header = w.get('button[aria-expanded]');
+		await header.trigger('dragenter');
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(header.attributes('aria-expanded')).toBe('false');
 	});
 });

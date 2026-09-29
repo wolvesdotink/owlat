@@ -37,6 +37,9 @@ export function usePostboxLabels(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	const toggleOnMessage = useBackendOperation(api.mail.labels.toggleOnMessage, {
 		label: () => t('shared.postbox.usePostboxLabels.updateMessageLabels'),
 	});
+	const addToMessages = useBackendOperation(api.mail.labels.setOnMessages, {
+		label: () => t('shared.postbox.usePostboxLabels.updateMessageLabels'),
+	});
 	const toggleOnThread = useBackendOperation(api.mail.labels.toggleOnThread, {
 		label: () => t('shared.postbox.usePostboxLabels.updateThreadLabels'),
 	});
@@ -89,6 +92,11 @@ export function usePostboxLabels(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		await toggleOnMessage.run({ messageId, labelId, add });
 	}
 
+	/** Add a label to many messages in one mutation (a dragged selection). */
+	function applyToMessages(messageIds: Id<'mailMessages'>[], labelId: Id<'mailLabels'>) {
+		return addToMessages.run({ messageIds, labelId, add: true });
+	}
+
 	async function setOnThread(threadId: Id<'mailThreads'>, labelId: Id<'mailLabels'>, add: boolean) {
 		await toggleOnThread.run({ threadId, labelId, add });
 	}
@@ -106,6 +114,7 @@ export function usePostboxLabels(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		setColor,
 		remove,
 		setOnMessage,
+		applyToMessages,
 		setOnThread,
 	};
 }

@@ -67,9 +67,10 @@ export function usePostboxRowTriage(args: {
 	 * Run a row-removing mutation: hide first, restore on failure, and register
 	 * the inverse move for the "Undo — Cmd+Z" toast when rows actually moved.
 	 * archive/trash/move all return `{ ok, moved }`, so they share this shape.
+	 * Resolves to whether the mutation landed.
 	 */
 	async function runRemoving(
-		id: Id<'mailMessages'>,
+		ids: Id<'mailMessages'>[],
 		undoLabel: string,
 		mutate: () => Promise<
 			BackendOperationResult<{
@@ -77,36 +78,53 @@ export function usePostboxRowTriage(args: {
 			} | null>
 		>
 	) {
-		args.hide(id);
+		const unhideAll = () => {
+			for (const id of ids) args.unhide(id);
+		};
+		for (const id of ids) args.hide(id);
 		const outcome = await mutate();
 		if (!outcome.ok || outcome.result === null) {
-			args.unhide(id);
-			return;
+			unhideAll();
+			return false;
 		}
 		if (outcome.result.moved.length > 0) {
 			triageUndo.registerMoveBack({
 				label: undoLabel,
 				moved: outcome.result.moved,
 				runMove: (a) => moveOp.run(a),
-				after: () => args.unhide(id),
+				after: unhideAll,
 			});
 		}
+		return true;
 	}
 
 	const archiveMsg = (id: Id<'mailMessages'>) =>
-		runRemoving(id, t('components.postbox.postboxThreadList.archivedUndo'), () =>
+		runRemoving([id], t('components.postbox.postboxThreadList.archivedUndo'), () =>
 			archiveOp.run({ messageIds: [id] })
 		);
 
 	const trashMsg = (id: Id<'mailMessages'>) =>
-		runRemoving(id, t('components.postbox.postboxThreadList.trashedUndo'), () =>
+		runRemoving([id], t('components.postbox.postboxThreadList.trashedUndo'), () =>
 			trashOp.run({ messageIds: [id] })
 		);
 
+	/**
+	 * Move one row or several (a dragged selection) in ONE mutation, so the undo
+	 * toast is one entry that puts every one of them back.
+	 */
+	const moveMany = (ids: Id<'mailMessages'>[], targetFolderId: Id<'mailFolders'>) =>
+		ids.length === 0
+			? Promise.resolve(false)
+			: runRemoving(
+					ids,
+					ids.length > 1
+						? t('shared.postbox.usePostboxBulkActions.undo.movedMany', { count: ids.length })
+						: t('components.postbox.postboxThreadList.movedUndo'),
+					() => moveOp.run({ messageIds: ids, targetFolderId })
+				);
+
 	const moveMsg = (id: Id<'mailMessages'>, targetFolderId: Id<'mailFolders'>) =>
-		runRemoving(id, t('components.postbox.postboxThreadList.movedUndo'), () =>
-			moveOp.run({ messageIds: [id], targetFolderId })
-		);
+		moveMany([id], targetFolderId);
 
 	/**
 	 * Star and mark-read keep their row, so instead of the hide/restore pair they
@@ -162,6 +180,7 @@ export function usePostboxRowTriage(args: {
 		archiveMsg,
 		trashMsg,
 		moveMsg,
+		moveMany,
 		snoozeMsg,
 		snoozeThread,
 		toggleMute,
