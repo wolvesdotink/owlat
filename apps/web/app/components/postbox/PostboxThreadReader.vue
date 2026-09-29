@@ -94,6 +94,7 @@ import {
 } from '@owlat/shared/secureMessage';
 import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 import type { OutboundDelivery } from '~/utils/postboxDeliveryStrip';
+import { optimisticMarkThreadRead } from '~/lib/mailOptimistic/mailUpdaters';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -333,8 +334,11 @@ const { autoAdvance, replyDefault, markReadPolicy } = usePostboxSettings();
 //
 // Guarded per thread so the reactive re-fetch that follows (flagSeen flips →
 // query re-runs) doesn't re-fire, and so a dwell timer is armed at most once.
+// The optimistic update clears the list row's bold and the rail's count as the
+// conversation opens, not a round trip later (plan 2.2).
 const markThreadReadOp = useBackendOperation(api.mail.messageActions.markThreadRead, {
 	label: () => t('components.postbox.postboxThreadReader.markReadOperation'),
+	optimisticUpdate: optimisticMarkThreadRead,
 });
 const markedThreads = new Set<string>();
 let dwellTimer: ReturnType<typeof setTimeout> | undefined;

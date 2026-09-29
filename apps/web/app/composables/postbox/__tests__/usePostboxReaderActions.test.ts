@@ -14,6 +14,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { BackendOperationResult } from '~/composables/useBackendOperation';
 import type { PostboxAutoAdvanceMode } from '~/utils/postboxAutoAdvance';
 import { usePostboxOptimisticHide } from '../usePostboxOptimisticHide';
+import * as mailUpdaters from '~/lib/mailOptimistic/mailUpdaters';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -39,7 +40,7 @@ const MOVED = {
 
 // Every operation the composable builds, by its (echoed) label key, in
 // creation order — snooze and snooze-thread share a label.
-let ops: Record<string, Array<{ run: ReturnType<typeof vi.fn> }>>;
+let ops: Record<string, Array<{ run: ReturnType<typeof vi.fn>; optimisticUpdate?: unknown }>>;
 let pending: Deferred[];
 let navigateTo: ReturnType<typeof vi.fn>;
 let currentRoute: { value: { path: string } };
@@ -67,17 +68,21 @@ beforeEach(() => {
 	vi.stubGlobal('usePostboxLabels', () => ({ labels: ref([]), setOnMessage: vi.fn() }));
 	vi.stubGlobal('usePostboxFolders', () => ({ folders: ref([]) }));
 	vi.stubGlobal('usePostboxTriageUndo', () => ({ registerMoveBack }));
-	vi.stubGlobal('useBackendOperation', (_fn: unknown, opts: { label: () => string }) => {
-		const entry = {
-			run: vi.fn(() => {
-				const d = deferred();
-				pending.push(d);
-				return d.promise;
-			}),
-		};
-		(ops[opts.label()] ??= []).push(entry);
-		return entry;
-	});
+	vi.stubGlobal(
+		'useBackendOperation',
+		(_fn: unknown, opts: { label: () => string; optimisticUpdate?: unknown }) => {
+			const entry = {
+				run: vi.fn(() => {
+					const d = deferred();
+					pending.push(d);
+					return d.promise;
+				}),
+				optimisticUpdate: opts.optimisticUpdate,
+			};
+			(ops[opts.label()] ??= []).push(entry);
+			return entry;
+		}
+	);
 });
 
 async function flush() {
@@ -352,5 +357,24 @@ describe('usePostboxReaderActions — in-place host (Today overlay)', () => {
 		await flush();
 		expect(openId.value).toBe('m3');
 		wrapper.unmount();
+	});
+});
+
+describe('usePostboxReaderActions — native optimistic updates (plan 2.2)', () => {
+	it('sends each verb with the updater that patches the local store', async () => {
+		await setup();
+		const reader = 'components.postbox.postboxThreadReader.';
+		expect(op('common.archive').optimisticUpdate).toBe(mailUpdaters.optimisticArchive);
+		expect(op(`${reader}moveToTrashOperation`).optimisticUpdate).toBe(mailUpdaters.optimisticTrash);
+		expect(op(`${reader}star`).optimisticUpdate).toBe(mailUpdaters.optimisticSetStar);
+		expect(op(`${reader}markReadOperation`).optimisticUpdate).toBe(mailUpdaters.optimisticMarkRead);
+		expect(op(`${reader}snoozeOperation`, 0).optimisticUpdate).toBe(mailUpdaters.optimisticSnooze);
+		expect(op(`${reader}snoozeOperation`, 1).optimisticUpdate).toBe(
+			mailUpdaters.optimisticSnoozeThread
+		);
+		expect(op(`${reader}snoozeUntilReplyOperation`).optimisticUpdate).toBe(
+			mailUpdaters.optimisticSnoozeUntilReply
+		);
+		expect(op(`${reader}moveOperation`).optimisticUpdate).toBe(mailUpdaters.optimisticMove);
 	});
 });

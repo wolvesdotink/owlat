@@ -5,6 +5,16 @@ import type { BackendOperationResult } from '~/composables/useBackendOperation';
 import { pickAdjacentMessageId, type PostboxAutoAdvanceMode } from '~/utils/postboxAutoAdvance';
 import type { PostboxSnoozeScope } from '~/utils/postboxSnoozeScope';
 import { hidePostboxRowEverywhere, unhidePostboxRowEverywhere } from './usePostboxOptimisticHide';
+import {
+	optimisticArchive,
+	optimisticMarkRead,
+	optimisticMove,
+	optimisticSetStar,
+	optimisticSnooze,
+	optimisticSnoozeThread,
+	optimisticSnoozeUntilReply,
+	optimisticTrash,
+} from '~/lib/mailOptimistic/mailUpdaters';
 
 /** The live thread fields the reader's thread-level actions branch on. */
 export type ReaderActionThread = {
@@ -96,26 +106,35 @@ export function usePostboxReaderActions(opts: {
 		folders.value.filter((f) => f.role !== 'sent' && f.role !== 'drafts')
 	);
 
+	// The native optimistic updates repaint the list, the open conversation and
+	// the rail's counts the moment a verb is sent (plan 2.2).
 	const archiveOp = useBackendOperation(api.mail.messageActions.archive, {
 		label: () => t('common.archive'),
+		optimisticUpdate: optimisticArchive,
 	});
 	const trashOp = useBackendOperation(api.mail.messageActions.trash, {
 		label: () => t('components.postbox.postboxThreadReader.moveToTrashOperation'),
+		optimisticUpdate: optimisticTrash,
 	});
 	const setStarOp = useBackendOperation(api.mail.messageActions.setStar, {
 		label: () => t('components.postbox.postboxThreadReader.star'),
+		optimisticUpdate: optimisticSetStar,
 	});
 	const markReadOp = useBackendOperation(api.mail.messageActions.markRead, {
 		label: () => t('components.postbox.postboxThreadReader.markReadOperation'),
+		optimisticUpdate: optimisticMarkRead,
 	});
 	const snoozeOp = useBackendOperation(api.mail.snooze.snooze, {
 		label: () => t('components.postbox.postboxThreadReader.snoozeOperation'),
+		optimisticUpdate: optimisticSnooze,
 	});
 	const snoozeUntilReplyOp = useBackendOperation(api.mail.snooze.snoozeUntilReply, {
 		label: () => t('components.postbox.postboxThreadReader.snoozeUntilReplyOperation'),
+		optimisticUpdate: optimisticSnoozeUntilReply,
 	});
 	const snoozeThreadOp = useBackendOperation(api.mail.snooze.snoozeThread, {
 		label: () => t('components.postbox.postboxThreadReader.snoozeOperation'),
+		optimisticUpdate: optimisticSnoozeThread,
 	});
 	const setMutedOp = useBackendOperation(api.mail.mute.setMutedForMessage, {
 		label: () => t('components.postbox.postboxThreadReader.muteOperation'),
@@ -125,6 +144,7 @@ export function usePostboxReaderActions(opts: {
 	});
 	const moveOp = useBackendOperation(api.mail.messageActions.move, {
 		label: () => t('components.postbox.postboxThreadReader.moveOperation'),
+		optimisticUpdate: optimisticMove,
 	});
 	const reportSpamOp = useBackendOperation(api.mail.messageActions.reportSpam, {
 		label: () => t('components.postbox.postboxThreadReader.reportSpam'),

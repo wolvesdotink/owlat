@@ -12,6 +12,12 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { rangeBetween } from '~/utils/postboxRangeSelect';
+import {
+	optimisticArchive,
+	optimisticMove,
+	optimisticSetFlags,
+	optimisticTrash,
+} from '~/lib/mailOptimistic/mailUpdaters';
 
 /** Provenance of the current selection, for the header's count line. */
 interface SelectAllMatchingState {
@@ -120,20 +126,26 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 			? t(`shared.postbox.usePostboxBulkActions.undo.${action}Many`, { count: n })
 			: t(`shared.postbox.usePostboxBulkActions.undo.${action}`);
 
+	// Native optimistic updates (plan 2.2): the selection's rows repaint or
+	// leave the list, and the rail's counts move, before the server answers.
 	const setFlags = useBackendOperation(api.mail.messageActions.setFlags, {
 		label: () => t('shared.postbox.usePostboxBulkActions.setFlagsOperation'),
+		optimisticUpdate: optimisticSetFlags,
 	});
 	const archive = useBackendOperation(api.mail.messageActions.archive, {
 		label: () => t('shared.postbox.usePostboxBulkActions.archiveOperation'),
+		optimisticUpdate: optimisticArchive,
 	});
 	const trash = useBackendOperation(api.mail.messageActions.trash, {
 		label: () => t('shared.postbox.usePostboxBulkActions.trashOperation'),
+		optimisticUpdate: optimisticTrash,
 	});
 	const purge = useBackendOperation(api.mail.messageActions.purge, {
 		label: () => t('shared.postbox.usePostboxBulkActions.purgeOperation'),
 	});
 	const move = useBackendOperation(api.mail.messageActions.move, {
 		label: () => t('shared.postbox.usePostboxBulkActions.moveOperation'),
+		optimisticUpdate: optimisticMove,
 	});
 	const reportSpamOp = useBackendOperation(api.mail.messageActions.reportSpam, {
 		label: () => t('shared.postbox.usePostboxBulkActions.reportSpamOperation'),
