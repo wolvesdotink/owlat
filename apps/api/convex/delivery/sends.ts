@@ -1,10 +1,36 @@
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
+import type { QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
 import { abVariantValidator } from '../lib/convexValidators';
+import { hasClicked, hasOpened, hasReachedDelivered } from './sendEngagement';
+
+// bounded: the campaign report queries below read a campaign's `emailSends`
+// through the `by_campaign` index and stop at this many rows, so a large
+// campaign can't exceed the per-query document read limit. Campaigns with more
+// recipients should use the denormalized stats on the campaign record.
+const CAMPAIGN_REPORT_SEND_SCAN_LIMIT = 10_000;
+
+/**
+ * Shared prologue of the campaign report queries: require the campaign to
+ * exist, then load its first CAMPAIGN_REPORT_SEND_SCAN_LIMIT `emailSends` rows.
+ * The caller's session is already checked by the `authedQuery` floor
+ * (`requireOrgMember`), so it is not resolved a second time here.
+ */
+async function loadCampaignSendsForReport(
+	ctx: QueryCtx,
+	campaignId: Id<'campaigns'>
+): Promise<Doc<'emailSends'>[]> {
+	await getOrThrow(ctx, campaignId, 'Campaign');
+
+	return await ctx.db
+		.query('emailSends')
+		.withIndex('by_campaign', (q) => q.eq('campaignId', campaignId))
+		.take(CAMPAIGN_REPORT_SEND_SCAN_LIMIT);
+}
 
 // Get a single email send by ID
 export const get = authedQuery({
@@ -35,18 +61,11 @@ export const get = authedQuery({
 	},
 });
 
-// Get statistics for a campaign
-// Limits to first 10,000 sends; campaigns with more recipients should use denormalized stats on the campaign record
+// Get statistics for a campaign (bounded by CAMPAIGN_REPORT_SEND_SCAN_LIMIT)
 export const getStatsByCampaign = authedQuery({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
-		await getOrThrow(ctx, args.campaignId, 'Campaign');
-
-		const sends = await ctx.db
-			.query('emailSends')
-			.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId))
-			.take(10_000);
+		const sends = await loadCampaignSendsForReport(ctx, args.campaignId);
 
 		const stats = {
 			total: sends.length,
@@ -76,12 +95,9 @@ export const getStatsByCampaign = authedQuery({
 
 		for (const send of sends) {
 			// Current-status buckets for the states a row LEAVES as it
-			// progresses (queued → sent → … ). delivered/opened/clicked are
-			// derived from monotonic timestamps below — NOT from `status` —
-			// so a delivered→opened row still counts as delivered and an
-			// opened-then-bounced row still counts as opened. Counting those
-			// by `status` (the old behaviour) silently dropped any recipient
-			// who progressed past the bucket, breaking every rate denominator.
+			// progresses (queued → sent → … ). delivered/opened/clicked come
+			// from the sendEngagement predicates below, which read monotonic
+			// timestamps rather than `status` (see that module for why).
 			if (send.status === 'queued') stats.queued++;
 			else if (send.status === 'sent') stats.sent++;
 			else if (send.status === 'failed') stats.failed++;
@@ -101,15 +117,13 @@ export const getStatsByCampaign = authedQuery({
 				}
 			}
 
-			// "Ever reached delivered" — the deliverability denominator. A row
-			// carrying any delivered/opened/clicked timestamp passed through
-			// delivery, even if a later event moved its current status.
-			if (send.deliveredAt || send.openedAt || send.clickedAt) {
+			// "Ever reached delivered" — the deliverability denominator.
+			if (hasReachedDelivered(send)) {
 				stats.delivered++;
 			}
 
 			// Count unique opens (any send that has been opened, regardless of current status)
-			if (send.openedAt) {
+			if (hasOpened(send)) {
 				stats.opened++;
 				stats.uniqueOpens++;
 				stats.totalOpens += send.openCount || 1;
@@ -119,7 +133,7 @@ export const getStatsByCampaign = authedQuery({
 			if (send.automatedClickedAt) stats.automatedClicks++;
 
 			// Count unique clicks
-			if (send.clickedAt || (send.clickedLinks && send.clickedLinks.length > 0)) {
+			if (hasClicked(send)) {
 				stats.clicked++;
 				stats.uniqueClicks++;
 				stats.totalClicks += send.clickedLinks?.length || 1;
@@ -225,24 +239,18 @@ export const createBatch = internalMutation({
 // SendRef `{ kind: 'campaign', id }` and a typed transition input. See
 // CONTEXT.md "Send lifecycle".
 
-// Get opens timeline data for a campaign (grouped by hour)
-// Limits to first 10,000 sends to avoid unbounded reads
+// Get opens timeline data for a campaign (grouped by hour, bounded by
+// CAMPAIGN_REPORT_SEND_SCAN_LIMIT)
 export const getOpensTimeline = authedQuery({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
-		await getOrThrow(ctx, args.campaignId, 'Campaign');
-
-		const sends = await ctx.db
-			.query('emailSends')
-			.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId))
-			.take(10_000);
+		const sends = await loadCampaignSendsForReport(ctx, args.campaignId);
 
 		// Filter to only opened emails and group by hour
 		const opensByHour: Record<string, number> = {};
 
 		for (const send of sends) {
-			if (send.openedAt) {
+			if (hasOpened(send)) {
 				// Round to hour
 				const hourTimestamp = Math.floor(send.openedAt / (1000 * 60 * 60)) * (1000 * 60 * 60);
 				const hourKey = hourTimestamp.toString();
@@ -270,19 +278,13 @@ export const getOpenedContacts = authedQuery({
 		offset: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
-		await getOrThrow(ctx, args.campaignId, 'Campaign');
-
-		const sends = await ctx.db
-			.query('emailSends')
-			.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId))
-			.take(10_000);
+		const sends = await loadCampaignSendsForReport(ctx, args.campaignId);
 
 		// Filter to only opened emails
-		const openedSends = sends.filter((s) => s.openedAt);
+		const openedSends = sends.filter(hasOpened);
 
 		// Sort by openedAt descending (most recent first)
-		openedSends.sort((a, b) => (b.openedAt || 0) - (a.openedAt || 0));
+		openedSends.sort((a, b) => b.openedAt - a.openedAt);
 
 		// Apply pagination
 		const offset = args.offset || 0;
@@ -319,18 +321,10 @@ export const getClickedContacts = authedQuery({
 		offset: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
-		await getOrThrow(ctx, args.campaignId, 'Campaign');
-
-		const sends = await ctx.db
-			.query('emailSends')
-			.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId))
-			.take(10_000);
+		const sends = await loadCampaignSendsForReport(ctx, args.campaignId);
 
 		// Filter to only clicked emails
-		const clickedSends = sends.filter(
-			(s) => s.clickedAt || (s.clickedLinks && s.clickedLinks.length > 0)
-		);
+		const clickedSends = sends.filter(hasClicked);
 
 		// Sort by clickedAt descending (most recent first)
 		clickedSends.sort((a, b) => (b.clickedAt || 0) - (a.clickedAt || 0));
@@ -366,13 +360,7 @@ export const getClickedContacts = authedQuery({
 export const getLinkClickStats = authedQuery({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
-		await getOrThrow(ctx, args.campaignId, 'Campaign');
-
-		const sends = await ctx.db
-			.query('emailSends')
-			.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId))
-			.take(10_000);
+		const sends = await loadCampaignSendsForReport(ctx, args.campaignId);
 
 		// Aggregate clicks by URL
 		const linkStats: Record<string, { url: string; clicks: number; uniqueClickers: number }> = {};
@@ -405,10 +393,10 @@ export const getLinkClickStats = authedQuery({
 		// Convert to array and sort by clicks descending
 		const sortedStats = Object.values(linkStats).sort((a, b) => b.clicks - a.clicks);
 
-		// Calculate total unique clickers for rate calculation
-		const totalDelivered = sends.filter(
-			(s) => s.status === 'delivered' || s.status === 'opened' || s.status === 'clicked'
-		).length;
+		// Rate denominator for the heatmap: the same "ever reached delivered"
+		// rule as getStatsByCampaign, so the per-link click rate and the
+		// campaign click rate on the report page share one denominator.
+		const totalDelivered = sends.filter(hasReachedDelivered).length;
 
 		return {
 			links: sortedStats,

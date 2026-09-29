@@ -327,7 +327,7 @@ export const provisionDeliverabilityRelayBatch = internalMutation({
 		// before it reads a page rather than paginating the whole domain table to
 		// call nothing. The registry filter itself lives with the rule, in
 		// `lib/sendProviders/fallbackRelays.ts` — the forward half of this pair
-		// (`domains/lifecycle.ts`'s `provision_relay_identity_if_enabled` effect)
+		// (`domains/lifecycleEffects.ts`'s `provision_relay_identity_if_enabled` effect)
 		// calls the same two functions, so neither half can grow a private idea of
 		// which relay a domain's identity is for or of which domains get one.
 		const backfills = relayIdentityBackfills(kinds);

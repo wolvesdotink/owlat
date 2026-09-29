@@ -10,7 +10,8 @@
  *
  * Every single-create caller routes through `createContact` instead of calling
  * `resolveContact` directly: the four strict mutations (`contacts.ts:create` /
- * `createForTeam`, `organization.ts:createForOrganization` /
+ * `createForTeam` via `contactEdit.ts:createContactStrict`,
+ * `organization.ts:createForOrganization` /
  * `createForOrganizationInternal`) and the four upsert inbound paths
  * (`inbox/messages.ts`, `webhooks/channels.ts`, `transactional/dispatch.ts`,
  * `forms/submission.ts`). Callers keep their own domain effects on top (e.g.

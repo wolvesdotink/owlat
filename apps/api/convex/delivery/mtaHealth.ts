@@ -9,74 +9,13 @@
  */
 
 import { isRecord } from '@owlat/shared';
-import { v } from 'convex/values';
+import type { Infer } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalAction, internalMutation } from '../_generated/server';
-import { getOptional } from '../lib/env';
+import { getMtaBaseUrl } from '../mail/mtaClient';
+import { mtaHealthSnapshotValidator } from '../schema/instance';
 
-const ipResultValidator = v.object({
-	ip: v.string(),
-	status: v.union(v.literal('ok'), v.literal('failed')),
-	reason: v.optional(v.string()),
-	// Absent from an MTA that predates it; `nat` means the host's NAT, not the
-	// MTA, picks the source address.
-	sourceBinding: v.optional(v.union(v.literal('bound'), v.literal('nat'))),
-});
-
-const snapshotValidator = v.object({
-	status: v.union(v.literal('ok'), v.literal('degraded'), v.literal('unreachable')),
-	isRedisConnected: v.optional(v.boolean()),
-	isWorkerAlive: v.optional(v.boolean()),
-	isDnsReachable: v.optional(v.boolean()),
-	isAllIpsBlocked: v.optional(v.boolean()),
-	smtpOutbound: v.optional(
-		v.object({
-			status: v.union(v.literal('ok'), v.literal('degraded')),
-			checkedAt: v.number(),
-			ips: v.array(ipResultValidator),
-		})
-	),
-	smtpTls: v.optional(
-		v.object({
-			status: v.union(v.literal('pass'), v.literal('warn'), v.literal('fail')),
-			hostname: v.string(),
-			isHostnameMatched: v.boolean(),
-			validFrom: v.optional(v.number()),
-			validTo: v.optional(v.number()),
-			reason: v.optional(v.string()),
-			checkedAt: v.number(),
-		})
-	),
-	observedAt: v.number(),
-});
-
-type Snapshot = {
-	status: 'ok' | 'degraded' | 'unreachable';
-	isRedisConnected?: boolean;
-	isWorkerAlive?: boolean;
-	isDnsReachable?: boolean;
-	isAllIpsBlocked?: boolean;
-	smtpOutbound?: {
-		status: 'ok' | 'degraded';
-		checkedAt: number;
-		ips: Array<{
-			ip: string;
-			status: 'ok' | 'failed';
-			reason?: string;
-			sourceBinding?: 'bound' | 'nat';
-		}>;
-	};
-	smtpTls?: {
-		status: 'pass' | 'warn' | 'fail';
-		hostname: string;
-		isHostnameMatched: boolean;
-		validFrom?: number;
-		validTo?: number;
-		reason?: string;
-		checkedAt: number;
-	};
-	observedAt: number;
-};
+type Snapshot = Infer<typeof mtaHealthSnapshotValidator>;
 
 export function parseHealth(value: unknown, observedAt: number): Snapshot | null {
 	if (!isRecord(value)) return null;
@@ -148,7 +87,8 @@ export function parseHealth(value: unknown, observedAt: number): Snapshot | null
 export const sync = internalAction({
 	args: {},
 	handler: async (ctx): Promise<void> => {
-		const baseUrl = getOptional('MTA_INTERNAL_URL') ?? getOptional('MTA_API_URL');
+		// `/health` is unauthenticated, so the key is not required here.
+		const baseUrl = getMtaBaseUrl();
 		if (!baseUrl) return;
 
 		const observedAt = Date.now();
@@ -156,7 +96,7 @@ export const sync = internalAction({
 		const timer = setTimeout(() => ctrl.abort(), 5_000);
 		let snapshot: Snapshot;
 		try {
-			const response = await fetch(`${baseUrl.replace(/\/+$/, '')}/health`, {
+			const response = await fetch(`${baseUrl}/health`, {
 				signal: ctrl.signal,
 			});
 			const parsed = response.ok ? parseHealth(await response.json(), observedAt) : null;
@@ -172,7 +112,7 @@ export const sync = internalAction({
 });
 
 export const record = internalMutation({
-	args: { snapshot: snapshotValidator },
+	args: { snapshot: mtaHealthSnapshotValidator },
 	handler: async (ctx, args): Promise<void> => {
 		const settings = await ctx.db.query('instanceSettings').first(); // bounded: singleton row
 		if (settings) {

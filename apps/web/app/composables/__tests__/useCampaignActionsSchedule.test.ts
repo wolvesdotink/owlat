@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Doc, Id } from '@owlat/api/dataModel';
+import type { OperationError } from '@owlat/shared/operationError';
 import { useCampaignActions } from '../useCampaignActions';
 import { createTestI18n } from '~/__tests__/i18n';
 import type { useCampaignABTest } from '../useCampaignABTest';
@@ -144,5 +145,86 @@ describe('useCampaignActions schedule clock', () => {
 
 		expect(actions.saveError.value).toBe('Please select a date and time for scheduling');
 		expect(scheduleRuns).toEqual([]);
+	});
+});
+
+/**
+ * `reschedule` runs the same pre-flight as `schedule`, so moving a scheduled
+ * campaign's start can be refused for capacity. That refusal is an offer, not
+ * a fault: the editor claims it into `capacitySchedule` (the panel the edit
+ * page renders) exactly as the draft `schedule` path does, instead of a toast.
+ */
+describe('useCampaignActions reschedule capacity refusal', () => {
+	const PLAN = {
+		days: 5,
+		slices: [0, 100, 200, 200, 100],
+		finishesAt: new Date('2026-03-15T00:00:00').getTime(),
+		covered: 600,
+		truncated: false,
+		audienceUnderCounted: false,
+	};
+	const claimedBy: string[] = [];
+
+	beforeEach(() => {
+		claimedBy.length = 0;
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-03-10T09:00:00'));
+		vi.stubGlobal('useI18n', () => i18n.global);
+		vi.stubGlobal('useRouter', () => ({ push: () => {} }));
+		vi.stubGlobal('useToast', () => ({ showToast: () => {} }));
+		vi.stubGlobal('useCampaignUndoSend', () => ({ arm: () => {} }));
+		// Every operation fails with the capacity refusal the backend throws, and
+		// hands it to the caller's `onError` the way `useBackendOperation` does.
+		vi.stubGlobal(
+			'useBackendOperation',
+			(
+				_reference: unknown,
+				options: {
+					label: string | (() => string);
+					onError?: (error: OperationError) => boolean;
+				}
+			) => ({
+				run: async () => {
+					const label = typeof options.label === 'function' ? options.label() : options.label;
+					const error: OperationError = {
+						category: 'invalid_state',
+						message: 'This campaign is larger than your sending capacity allows in one go.',
+						data: { reason: 'exceeds_sending_capacity', capacityPlan: PLAN },
+					};
+					if (options.onError?.(error) === true) claimedBy.push(label);
+					return { ok: false };
+				},
+			})
+		);
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllGlobals();
+	});
+
+	it('claims the refusal into capacitySchedule instead of a toast', async () => {
+		const actions = useCampaignActions({
+			campaignId: ref('campaign_1' as Id<'campaigns'>),
+			abTest: {
+				abTestEnabled: ref(false),
+				buildEnablePayload: () => ({}),
+			} as unknown as ABTest,
+			campaignData: ref<Doc<'campaigns'> | null>({
+				isABTest: false,
+			} as unknown as Doc<'campaigns'>),
+			isDraft: computed(() => false),
+			isScheduled: computed(() => true),
+			validateForm: () => true,
+			handleSaveFields: async () => true,
+		});
+		actions.scheduledDate.value = '2026-03-10';
+		actions.scheduledTime.value = '10:00';
+
+		await actions.handleSchedule();
+
+		expect(claimedBy).toEqual(['Reschedule campaign']);
+		expect(actions.capacitySchedule.value).toEqual(PLAN);
+		expect(actions.saveError.value).toBe('');
 	});
 });

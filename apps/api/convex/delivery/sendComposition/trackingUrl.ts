@@ -1,46 +1,55 @@
 /**
  * Send composition (module) — tracking URL leaf.
  *
- * Single V8-pure implementation of `getTrackingPixelUrl` / `getTrackedLinkUrl`
- * usable from both Convex V8 runtimes and `'use node'` actions. Replaces the
- * pre-deepening Node-only `Buffer.toString('base64url')` variant in
- * `emailWorker.ts` and the parallel `stringToBase64Url` in
- * `delivery/tracking.ts`.
+ * The one definition of the open-pixel URL and of the click-tracking link
+ * codec. V8-pure (Web APIs only), so both runtimes share it:
  *
- * The decode side lives in `delivery/trackingHttp.ts` (it imports the V8
- * APIs directly for `base64url → string`). Both halves now share this single
- * format definition, locking the encode/decode contract by construction.
+ *   - the encode side, `transform.ts` (`'use node'`), wraps each href as
+ *     `/t/c/{emailSendId}/{encodeTrackedTarget(href)}/{sig}`, where `sig` is
+ *     HMAC-SHA256 (UNSUBSCRIBE_SECRET, base64url) over
+ *     `trackedLinkSigningInput(emailSendId, encodedUrl)`;
+ *   - the decode side, `delivery/trackingHttp.ts` (V8), recomputes that
+ *     signature over the same signing input and, only when it matches, turns the
+ *     segment back into the target with `decodeTrackedTarget`.
+ *
+ * The target segment is the unpadded base64url of the href's UTF-8 bytes, the
+ * shape Node's `Buffer.from(href, 'utf-8').toString('base64url')` produced
+ * before this codec existed, so links already sent keep decoding and verifying.
+ * Decoding goes back through UTF-8: a Latin-1 read of those bytes would send an
+ * IDN host such as `bücher.de` to a different hostname.
  */
 
-function stringToBase64Url(str: string): string {
-	const bytes = new TextEncoder().encode(str);
-	let binary = '';
-	for (let i = 0; i < bytes.length; i++) {
-		const byte = bytes[i];
-		if (byte !== undefined) {
-			binary += String.fromCharCode(byte);
-		}
-	}
-	return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
+import { base64UrlToBytes, bytesToBase64Url } from '../../lib/bytes';
 
 export function getTrackingPixelUrl(convexSiteUrl: string, emailSendId: string): string {
 	return `${convexSiteUrl}/t/o/${emailSendId}`;
 }
 
+/** The `{encodedUrl}` path segment for a tracked href. */
+export function encodeTrackedTarget(url: string): string {
+	return bytesToBase64Url(new TextEncoder().encode(url));
+}
+
+/** The href a `{encodedUrl}` path segment carries. */
+export function decodeTrackedTarget(segment: string): string {
+	return new TextDecoder().decode(base64UrlToBytes(segment));
+}
+
 /**
- * NOTE: currently has no callers — the live encode path is the inlined
- * link-wrapper in `transform.ts`, which HMAC-signs each target as
- * `/t/c/{id}/{encodedUrl}/{sig}`. The click handler (`trackingHttp.ts`) REQUIRES
- * a valid signature, so the unsigned URL this helper produces would be rejected
- * (redirect to `/`). If you revive it, sign the target the same way transform.ts
- * does — emitting an unsigned tracking link re-opens the open-redirect vector.
+ * The string the click signature is computed over. It binds the target to its
+ * send, so a recipient cannot graft their own valid signature onto a different
+ * target (open redirect).
  */
-export function getTrackedLinkUrl(
-	convexSiteUrl: string,
+export function trackedLinkSigningInput(emailSendId: string, encodedUrl: string): string {
+	return `${emailSendId}.${encodedUrl}`;
+}
+
+/** The full signed click-tracking URL, as the click handler parses it. */
+export function trackedLinkPath(
+	siteUrl: string,
 	emailSendId: string,
-	originalUrl: string,
+	encodedUrl: string,
+	signature: string
 ): string {
-	const encodedUrl = stringToBase64Url(originalUrl);
-	return `${convexSiteUrl}/t/c/${emailSendId}/${encodedUrl}`;
+	return `${siteUrl}/t/c/${emailSendId}/${encodedUrl}/${signature}`;
 }

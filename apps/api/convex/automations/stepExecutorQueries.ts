@@ -4,6 +4,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { stepKindValidator } from './steps/catalog';
 import { MAX_RETRY_ATTEMPTS } from '../lib/constants';
 import { recordAutomationRunFailure } from './lifecycle';
+import { loadOrderedSteps } from './steps';
 import { gateStepRun } from './stepOrchestration';
 import {
 	activeStepRunOf,
@@ -121,11 +122,7 @@ export const getAutomationSteps = internalQuery({
 		automationId: v.id('automations'),
 	},
 	handler: async (ctx, args) => {
-		const steps = await ctx.db
-			.query('automationSteps')
-			.withIndex('by_automation', (q) => q.eq('automationId', args.automationId))
-			.collect(); // bounded: one automation's steps
-		return steps.sort((a, b) => a.stepIndex - b.stepIndex);
+		return await loadOrderedSteps(ctx.db, args.automationId);
 	},
 });
 

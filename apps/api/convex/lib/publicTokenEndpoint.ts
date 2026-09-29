@@ -45,6 +45,7 @@ import {
 } from './httpResponse';
 import type { OperationErrorCategory } from '@owlat/shared/operationError';
 import { logError } from './runtimeLog';
+import { safeDecodeURIComponent } from './inputGuards';
 
 /**
  * Best-effort reverse map for the action-mode failure boundary: an endpoint
@@ -349,10 +350,8 @@ export function createShellHandler(
 		if (!tokenRaw) {
 			return errorResponse('invalid_input', 'Missing token', undefined, corsHeaders);
 		}
-		let token: string;
-		try {
-			token = decodeURIComponent(tokenRaw);
-		} catch {
+		const token = safeDecodeURIComponent(tokenRaw);
+		if (token === null) {
 			return errorResponse('invalid_input', 'Invalid token encoding', undefined, corsHeaders);
 		}
 

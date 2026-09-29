@@ -310,6 +310,10 @@
 			"types": "./src/spf.ts",
 			"import": "./src/spf.ts"
 		},
+		"./dnsTagList": {
+			"types": "./src/dnsTagList.ts",
+			"import": "./src/dnsTagList.ts"
+		},
 		"./externalReceiving": {
 			"types": "./src/externalReceiving.ts",
 			"import": "./src/externalReceiving.ts"

@@ -17,6 +17,7 @@ import {
 	takesCustodyOnAcceptance,
 } from '../lib/sendProviders/catalog';
 import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
+import { LOCAL_DEFER_MS } from '../lib/sendProviders/errors';
 import { defaultSendTransportId } from '../lib/sendProviders/transports';
 import { buildDispatchExtrasFor, type EmailSendParams } from '../lib/sendProviders';
 import { resolveLastMileRouting } from './lastMileRouting';
@@ -308,7 +309,7 @@ export async function dispatchGovernedEmail(
 	) {
 		return {
 			kind: 'deferred',
-			retryAfterMs: dispatched.result.retryAfterMs ?? 60_000,
+			retryAfterMs: dispatched.result.retryAfterMs ?? LOCAL_DEFER_MS,
 			// TWO 409s, ONE WAIT, TWO DIFFERENT CLAIMS. `ROUTING_DEFERRED` is the MTA
 			// revalidating its own lease at enqueue and withdrawing it — an aged-out
 			// or no-longer-binding decision, an open breaker, an IP whose eligibility

@@ -20,15 +20,19 @@
  *              `s` strict).
  *   - `rua=`   aggregate-report reporting URI.
  *
- * Both provider adapters generate the initial `_dmarc` TXT record with
- * `buildDmarcRecordValue` so the wire shape can't drift, and the lifecycle's
- * `setDmarcPolicy` regenerates the same record when the customer raises the
- * policy. The DNS verifier compares the customer-published record against the
- * stored `dnsRecords.dmarc.value`, so raising the policy and re-publishing the
+ * Every provider adapter generates the initial `_dmarc` TXT record with
+ * `defaultDmarcDnsRecord` so the wire shape can't drift, and the lifecycle's
+ * `setDmarcPolicy` regenerates the same record (through
+ * `buildDmarcRecordValue`) when the customer raises the policy. The optional
+ * `rua=` target is read in exactly one place, `dmarcRuaFromEnv`. The DNS
+ * verifier compares the customer-published record against the stored
+ * `dnsRecords.dmarc.value`, so raising the policy and re-publishing the
  * matching record verifies cleanly.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
+import { getOptional } from '../lib/env';
+import type { dnsRecordValidator } from '../lib/convexValidators';
 
 export const DMARC_POLICIES = ['none', 'quarantine', 'reject'] as const;
 
@@ -47,6 +51,17 @@ export const dmarcPolicyValidator = v.union(
 	v.literal('quarantine'),
 	v.literal('reject')
 );
+
+/** Matches the RFC 7489 §6.4 version tag that must open a DMARC record. */
+const DMARC_RECORD_RE = /^\s*v\s*=\s*DMARC1\s*(;|$)/i;
+
+/**
+ * True when a TXT value is a DMARC record: it opens with `v=DMARC1`, compared
+ * case-insensitively with whitespace allowed around `=` (RFC 7489 §6.4).
+ */
+export function isDmarcRecord(txt: string): boolean {
+	return DMARC_RECORD_RE.test(txt);
+}
 
 export function isDmarcPolicy(value: string | undefined | null): value is DmarcPolicy {
 	return value === 'none' || value === 'quarantine' || value === 'reject';
@@ -76,9 +91,10 @@ interface DmarcRecordOptions {
 	/**
 	 * Aggregate-report reporting URI — the `rua=` tag. Owlat does not provision
 	 * a `dmarc@<customer-domain>` mailbox, so this is emitted only when the
-	 * operator opts in (the `MTA_DMARC_RUA` env var, threaded in by the provider
-	 * adapters and the lifecycle). Emitted verbatim and expected to be an
-	 * RFC-7489 reporting URI such as `mailto:dmarc-reports@example.com`.
+	 * operator opts in (the `MTA_DMARC_RUA` env var, read by `dmarcRuaFromEnv`
+	 * and threaded in by the provider adapters and the lifecycle). Emitted
+	 * verbatim and expected to be an RFC-7489 reporting URI such as
+	 * `mailto:dmarc-reports@example.com`.
 	 */
 	rua?: string;
 }
@@ -123,4 +139,30 @@ export function buildDmarcRecordValue(domain: string, options: DmarcRecordOption
 	}
 
 	return parts.join('; ');
+}
+
+/**
+ * The operator's aggregate-report URI (`MTA_DMARC_RUA`), trimmed, or
+ * `undefined` when unset or blank. The only read of that env key: the provider
+ * adapters, `setDmarcPolicy` and the stream-subdomain wizard all come here, so
+ * every `_dmarc` record Owlat renders carries the same `rua=` (or none).
+ */
+export function dmarcRuaFromEnv(): string | undefined {
+	return getOptional('MTA_DMARC_RUA')?.trim() || undefined;
+}
+
+/**
+ * The `_dmarc` TXT record a sending-domain provider adapter publishes for a
+ * brand-new domain. New domains start in monitor-only mode (`p=none`); the
+ * customer raises the policy to quarantine/reject via `setDmarcPolicy`.
+ */
+export function defaultDmarcDnsRecord(domain: string): Infer<typeof dnsRecordValidator> {
+	return {
+		type: 'TXT',
+		host: '_dmarc',
+		value: buildDmarcRecordValue(domain, {
+			policy: DEFAULT_DMARC_POLICY,
+			rua: dmarcRuaFromEnv(),
+		}),
+	};
 }

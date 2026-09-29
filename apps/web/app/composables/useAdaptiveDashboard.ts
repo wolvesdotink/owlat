@@ -1,7 +1,5 @@
 import { api } from '@owlat/api';
-import type { SavedRule } from './useDashboardRules';
-
-type CardSize = 'small' | 'medium' | 'large';
+import type { CardSize, SavedRule } from './useDashboardRules';
 
 interface DashboardCard {
 	type: string;

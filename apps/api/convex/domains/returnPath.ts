@@ -5,7 +5,7 @@
  * grows past ~500 LOC). This is the thin, admin-gated public shell over the
  * **Sending domain lifecycle (module)**'s `setReturnPathHost` — validation +
  * authz only; the record regeneration, status drop, provider reflection (MTA or
- * SES, X1), and audit all live in `domains/lifecycle.ts`.
+ * SES, X1), and audit all live in `domains/lifecycleReturnPath.ts`.
  */
 
 import { v } from 'convex/values';
@@ -43,7 +43,7 @@ export const setReturnPathHost = authedMutation({
 				'Invalid return-path host. Enter a valid DNS hostname, e.g. bounce.example.com.'
 			);
 		}
-		const outcome = await ctx.runMutation(internal.domains.lifecycle.setReturnPathHost, {
+		const outcome = await ctx.runMutation(internal.domains.lifecycleReturnPath.setReturnPathHost, {
 			domainId: args.domainId,
 			returnPathHost: normalized,
 			userId: LIFECYCLE_USER_PUBLIC_MUTATION,

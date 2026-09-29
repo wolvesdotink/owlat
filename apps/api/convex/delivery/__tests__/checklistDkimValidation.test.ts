@@ -54,6 +54,19 @@ describe('parsedDkimKeyBits', () => {
 		expect(parsedDkimKeyBits(`${record}; \t ; \t `)).toBeNull();
 	});
 
+	it('accepts a p= a DNS panel folded with whitespace inside the key', () => {
+		const record = rsaDkimRecord();
+		const [head, key] = record.split('p=') as [string, string];
+		const folded = `${head}p=${key.slice(0, 60)} ${key.slice(60, 120)}\t${key.slice(120)}`;
+		expect(parsedDkimKeyBits(folded)).toBe(2_048);
+	});
+
+	it('rejects a duplicate p= rather than picking one of the keys', () => {
+		const record = rsaDkimRecord();
+		const key = record.split('p=')[1]!;
+		expect(parsedDkimKeyBits(`${record}; p=${key}`)).toBeNull();
+	});
+
 	it('accepts compatible service and hash lists', () => {
 		expect(parsedDkimKeyBits(`${rsaDkimRecord()}; s=calendar:email; h=sha1:sha256`)).toBe(2_048);
 		expect(parsedDkimKeyBits(`${rsaDkimRecord()}; s=*; h=sha256`)).toBe(2_048);

@@ -18,11 +18,13 @@ import {
 	type SendProviderModule,
 	type SystemMailExtrasInput,
 } from '../types';
+import { isAmbiguousPostDispatchTimeout } from '../errors';
 import { sendProviderCatalogEntry } from '../catalog';
 import { bytesToBase64 } from '../../bytes';
 import { transportEnvRequired } from '../transportEnv';
 import type { SendTransportRecord } from '../transports';
 const RESEND_TIMEOUT_MS = 30_000;
+const RESEND_TIMEOUT_MESSAGE = 'Resend API call timed out';
 
 // One client per CONFIGURED TRANSPORT, not one per deployment: two `resend`
 // transports carry different API keys, so caching by kind would leak the first
@@ -86,6 +88,10 @@ export const resendSendProvider: SendProviderModule<'resend'> = {
 						from: params.from,
 						subject: params.subject,
 						html: params.html,
+						// The author's plain-text version (or a strip of the UNTRACKED
+						// html). Without it Resend derives its own text part from the
+						// tracked html, redirect links included.
+						text: params.text,
 						replyTo: params.replyTo,
 						headers:
 							params.headers && Object.keys(params.headers).length > 0 ? params.headers : undefined,
@@ -105,7 +111,7 @@ export const resendSendProvider: SendProviderModule<'resend'> = {
 					extras?.idempotencyKey ? { idempotencyKey: extras.idempotencyKey } : undefined
 				),
 				RESEND_TIMEOUT_MS,
-				'Resend API call timed out'
+				RESEND_TIMEOUT_MESSAGE
 			);
 
 			if (result.error) {
@@ -121,6 +127,19 @@ export const resendSendProvider: SendProviderModule<'resend'> = {
 			return { success: true, id: result.data?.id ?? '' };
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+			const errorName = error instanceof Error ? error.name : undefined;
+			// Report a post-dispatch timeout as what it is. `sendProviderDispatch`
+			// still retries it, because Resend dedups on the `Idempotency-Key` and
+			// the extras carry one; without a key, or when the last retry times out
+			// too, it comes back terminal with `acceptanceUnknown` so the Send can
+			// wait for Resend's webhooks instead of failing outright.
+			if (isAmbiguousPostDispatchTimeout(errorName, errorMessage, RESEND_TIMEOUT_MESSAGE)) {
+				return {
+					success: false,
+					errorMessage,
+					errorCode: EmailErrorCode.AMBIGUOUS_TIMEOUT,
+				};
+			}
 			return {
 				success: false,
 				errorMessage,

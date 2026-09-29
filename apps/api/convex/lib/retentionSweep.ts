@@ -1,12 +1,14 @@
 /**
- * Retention sweep shared by every external-reputation ingest path (Google
- * Postmaster, Microsoft SNDS).
+ * Retention sweep for any table that ages rows out by a timestamp index.
  *
- * All of them store one row per subject per UTC day behind a `by_period` index,
- * so all of them retire rows the same way: scan the days older than the horizon,
+ * Every caller retires rows the same way: scan the rows older than the horizon,
  * take a bounded page, delete it, and reschedule when the page came back full.
  * Only the typed `.query(table).withIndex(...)` differs, so that is the one part
- * the caller supplies.
+ * the caller supplies, as one scan per table.
+ *
+ * Callers today: the external-reputation ingests (`delivery/postmaster.ts`,
+ * `delivery/snds.ts`) and the per-cell counters (`analytics/transportOutcomes.ts`,
+ * `analytics/smtpResponseCategories.ts`).
  */
 
 import type { Id, TableNames } from '../_generated/dataModel';

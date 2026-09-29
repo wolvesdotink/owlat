@@ -49,6 +49,7 @@ import { moveBlock, type MoveDirection } from '../utils/blockMove';
 import { resolveEditorKeyAction } from '../utils/editorKeyboard';
 import { htmlToBlocks } from '../utils/htmlToBlocks';
 import { generateId } from '../utils/id';
+import { fillPreviewVariables } from '../utils/variables';
 import { setByPath } from '../utils/propertyPath';
 import { defaultTheme } from '../defaults';
 import { getBlock, getContainerItemTypes, getColumnItemTypes } from '../registry';
@@ -213,9 +214,12 @@ const variableType = computed<VariableType>(() => props.config?.variableType ?? 
 // `create-variable` so the host page can persist it (api.transactional.emails.updateSchema).
 const showDataVariables = computed(() => variableType.value === 'data');
 const showVariableDialog = ref(false);
+// Prefill for the dialog when it opens from the subject's "Define <key>" hint.
+const variableDialogKey = ref('');
 const existingVariableKeys = computed(() => props.variables.map((v) => v.key));
 
-function openVariableDialog() {
+function openVariableDialog(key?: string) {
+	variableDialogKey.value = key ?? '';
 	showVariableDialog.value = true;
 }
 
@@ -524,6 +528,15 @@ const {
 	renderOptions,
 	variables: computed(() => props.variables),
 });
+
+// The preview fills the subject's tokens the way it fills the body's, so the
+// inbox line reads "Alex invited you" instead of "{{inviterName}} invited you".
+const previewSubject = computed(() =>
+	fillPreviewVariables(formSubject.value, {
+		values: renderOptions.value.variableValues ?? {},
+		labels: Object.fromEntries(props.variables.map((v) => [v.key, v.label])),
+	})
+);
 
 // Keep the live editing reactivity the canvas had before: while a non-edit
 // preview is open, re-render the moment the blocks change.
@@ -1034,6 +1047,7 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 						:subject="formSubject"
 						:hide-subject="hideSubject"
 						:mode="config?.mode"
+						:variables="variables"
 						:show-data-variables="showDataVariables"
 						:data-variables="variables"
 						@update:name="formName = $event"
@@ -1086,7 +1100,7 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 		<div v-if="previewMode !== 'edit'" class="flex-1 overflow-hidden">
 			<PreviewPanel
 				:html="previewHtml"
-				:subject="formSubject"
+				:subject="previewSubject"
 				:is-generating="isGeneratingHtml"
 				:dark-mode="previewDarkMode"
 				:plain-text="previewPlainText"
@@ -1142,6 +1156,7 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 		     data variable. Emits create-variable so the host page persists it. -->
 		<VariableCreateDialog
 			:show="showVariableDialog"
+			:initial-key="variableDialogKey"
 			:existing-keys="existingVariableKeys"
 			@create="handleVariableCreate"
 			@close="showVariableDialog = false"

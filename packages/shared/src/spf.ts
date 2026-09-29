@@ -33,6 +33,28 @@ export function isSpfRecord(txt: string): boolean {
 	return SPF_RECORD_RE.test(txt);
 }
 
+/** The qualified form of an SPF `all` mechanism (RFC 7208 §4.6.2, §5.1). */
+export type SpfAllQualifier = '-all' | '~all' | '?all' | '+all';
+
+/**
+ * The qualifier of the record's trailing `all` mechanism, or `null` when the
+ * value is not an SPF record ({@link isSpfRecord}) or its last term is not an
+ * `all` mechanism — e.g. a record whose policy lives behind `redirect=`, or
+ * one with no default result at all. A bare `all` carries the default `+`
+ * qualifier. Case-insensitive; the result is lowercased.
+ *
+ * The one reading of "what does this record do with everyone else" for the
+ * deliverability checklist's strict-policy check and its hardened-value hint.
+ */
+export function spfTrailingAllQualifier(record: string): SpfAllQualifier | null {
+	if (!isSpfRecord(record)) return null;
+	const terms = record.trim().split(/\s+/);
+	const last = terms[terms.length - 1]!;
+	if (!ALL_MECHANISM_RE.test(last)) return null;
+	const lowered = last.toLowerCase();
+	return (lowered === 'all' ? '+all' : lowered) as SpfAllQualifier;
+}
+
 /**
  * The mechanism tokens of an SPF record — everything after the `v=spf1` version
  * token, EXCLUDING the trailing `all` mechanism (e.g. `include:_spf.google.com`,

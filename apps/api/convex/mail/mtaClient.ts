@@ -19,11 +19,51 @@ export interface MtaConfig {
 	apiKey: string;
 }
 
-export function getMtaConfig(): MtaConfig | null {
+/**
+ * The MTA base URL alone, for the one endpoint that needs no key (`/health`).
+ * Null when neither URL is set; trailing slashes are trimmed.
+ */
+export function getMtaBaseUrl(): string | null {
 	const baseUrl = getOptional('MTA_INTERNAL_URL') ?? getOptional('MTA_API_URL');
+	return baseUrl ? baseUrl.replace(/\/+$/, '') : null;
+}
+
+export function getMtaConfig(): MtaConfig | null {
+	const baseUrl = getMtaBaseUrl();
 	const apiKey = getOptional('MTA_API_KEY');
 	if (!baseUrl || !apiKey) return null;
-	return { baseUrl: baseUrl.replace(/\/+$/, ''), apiKey };
+	return { baseUrl, apiKey };
+}
+
+/** Default bound on one {@link mtaFetch} round trip. */
+export const MTA_FETCH_TIMEOUT_MS = 10_000;
+
+/**
+ * An authenticated request to the MTA: `path` (starting with `/`, query string
+ * included) is joined onto the base URL, the bearer header is set, and the
+ * request is aborted when no response has arrived after `timeoutMs`, so a hung
+ * MTA cannot hold the action until the Convex runtime kills it. Rejects on a
+ * network failure or the timeout; the status is the caller's to judge.
+ */
+export async function mtaFetch(
+	config: MtaConfig,
+	path: string,
+	init: RequestInit = {},
+	timeoutMs: number = MTA_FETCH_TIMEOUT_MS
+): Promise<Response> {
+	const headers = new Headers(init.headers);
+	headers.set('Authorization', `Bearer ${config.apiKey}`);
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), timeoutMs);
+	try {
+		return await fetch(`${config.baseUrl}${path}`, {
+			...init,
+			headers,
+			signal: controller.signal,
+		});
+	} finally {
+		clearTimeout(timer);
+	}
 }
 
 export interface MailSyncConfig {
