@@ -45,7 +45,7 @@ const QUEUED_TOKEN_PREFIX = 'outbox:';
  * send. The item stays un-queueable for as long as it is queued; the window
  * only bounds the toast.
  */
-export const OFFLINE_QUEUE_UNDO_WINDOW_MS = 30_000;
+export const OFFLINE_QUEUE_UNDO_WINDOW_MS = 10_000;
 
 /** True for the synthetic undo tokens minted by {@link queueSend}. */
 export function isQueuedSendToken(undoToken: string): boolean {
