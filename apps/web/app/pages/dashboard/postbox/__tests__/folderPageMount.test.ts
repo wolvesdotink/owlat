@@ -43,9 +43,13 @@ beforeAll(() => {
 		usePostboxBodyCacheScope: () => {},
 		usePostboxMailbox: () => ({
 			currentMailbox: ref({ _id: 'mailbox-1' }),
+			mailboxId: ref('mailbox-1'),
 			isLoading: ref(false),
 			error: ref(null),
 		}),
+		// The open message's route-driven queries have their own spec
+		// (usePostboxOpenMessage.test.ts).
+		usePostboxOpenMessage: () => ({}),
 	});
 });
 

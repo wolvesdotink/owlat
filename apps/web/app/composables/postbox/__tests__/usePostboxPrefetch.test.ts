@@ -1,28 +1,78 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { effectScope } from 'vue';
+import { getFunctionName } from 'convex/server';
+import { SUBSCRIPTION_LINGER_MS } from '~/lib/sharedConvexSubscriptions';
+import { consumeResolvedPostboxMessageBody } from '../postboxBodyResolver';
 import {
-	CONSUMED_POSTBOX_BODY_TTL_MS,
-	clearResolvedPostboxBodies,
-	consumeResolvedPostboxMessageBody,
-	resolvePostboxMessageBody,
-	setResolvedPostboxBodyScope,
-} from '../postboxBodyResolver';
-import { usePostboxPrefetch, type PrefetchClient } from '../usePostboxPrefetch';
+	inlineBodyNeedsBlob,
+	usePostboxPrefetch,
+	type PrefetchClient,
+} from '../usePostboxPrefetch';
 
-type BodyResult = {
+const THREAD = 'mail/mailbox/messages:listThreadMessages';
+const BODY = 'mail/mailbox/messages:getMessageInlineBody';
+
+type InlineBody = {
 	htmlInline: string | null;
 	textInline: string | null;
-	htmlUrl: string | null;
-	textUrl: string | null;
-} | null;
+	hasHtmlBlob: boolean;
+	hasTextBlob: boolean;
+};
 
-function makeFakeClient(result: BodyResult = null) {
-	const action = vi.fn((_action: unknown, _args: { messageId: string }) => Promise.resolve(result));
-	return {
-		client: { action } as unknown as PrefetchClient,
-		action,
-	};
+interface FakeSubscription {
+	name: string;
+	messageId: string;
+	deliver: (value: unknown) => void;
+	closed: boolean;
 }
+
+/**
+ * A client that records every transport subscription (the holds open them
+ * through the shared registry) and answers the blob URL action.
+ */
+function makeFakeClient(
+	blobAction: (messageId: string) => Promise<unknown> = async () => ({
+		htmlUrl: 'https://storage.example/signed-html',
+		textUrl: null,
+	})
+) {
+	const subscriptions: FakeSubscription[] = [];
+	const onUpdate = vi.fn(
+		(ref: unknown, args: { messageId: string }, callback: (value: unknown) => void) => {
+			const sub: FakeSubscription = {
+				name: getFunctionName(ref as never),
+				messageId: args.messageId,
+				deliver: callback,
+				closed: false,
+			};
+			subscriptions.push(sub);
+			return () => {
+				sub.closed = true;
+			};
+		}
+	);
+	const action = vi.fn((_ref: unknown, args: { messageId: string }) => blobAction(args.messageId));
+	const query = vi.fn(async () => null);
+	const client = { onUpdate, action, query } as unknown as PrefetchClient;
+	const open = (name: string) =>
+		subscriptions.filter((s) => s.name === name && !s.closed).map((s) => s.messageId);
+	const find = (name: string, messageId: string) =>
+		subscriptions.find((s) => s.name === name && s.messageId === messageId && !s.closed);
+	return { client, onUpdate, action, subscriptions, open, find };
+}
+
+const blobBody: InlineBody = {
+	htmlInline: null,
+	textInline: null,
+	hasHtmlBlob: true,
+	hasTextBlob: false,
+};
+const inlineBody: InlineBody = {
+	htmlInline: '<p>hi</p>',
+	textInline: null,
+	hasHtmlBlob: false,
+	hasTextBlob: false,
+};
 
 describe('usePostboxPrefetch', () => {
 	beforeEach(() => {
@@ -33,287 +83,142 @@ describe('usePostboxPrefetch', () => {
 		vi.useRealTimers();
 	});
 
-	it('warms the requested targets only after the debounce window', async () => {
-		const { client, action } = makeFakeClient();
-		const { prefetch } = usePostboxPrefetch({ client, debounceMs: 150 });
+	it('holds the thread and inline body queries only after the debounce window', async () => {
+		const fake = makeFakeClient();
+		const { prefetch } = usePostboxPrefetch({ client: fake.client, debounceMs: 150 });
 
 		prefetch(['next-id', 'prev-id']);
-		expect(action).not.toHaveBeenCalled();
-
 		await vi.advanceTimersByTimeAsync(149);
-		expect(action).not.toHaveBeenCalled();
+		expect(fake.onUpdate).not.toHaveBeenCalled();
 
 		await vi.advanceTimersByTimeAsync(1);
-		expect(action.mock.calls.map((call) => call[1].messageId)).toEqual(['next-id', 'prev-id']);
+		expect(fake.open(THREAD)).toEqual(['next-id', 'prev-id']);
+		expect(fake.open(BODY)).toEqual(['next-id', 'prev-id']);
 	});
 
-	it('coalesces rapid focus changes so only the last targets are warmed', async () => {
-		const { client, action } = makeFakeClient();
-		const { prefetch } = usePostboxPrefetch({ client, debounceMs: 150 });
+	it('coalesces rapid focus changes so only the last targets are held', async () => {
+		const fake = makeFakeClient();
+		const { prefetch } = usePostboxPrefetch({ client: fake.client, debounceMs: 150 });
 
 		prefetch(['b', 'a']);
 		await vi.advanceTimersByTimeAsync(100);
 		prefetch(['c', 'b']);
 		await vi.advanceTimersByTimeAsync(100);
 		prefetch(['d', 'c']);
-		expect(action).not.toHaveBeenCalled();
+		expect(fake.onUpdate).not.toHaveBeenCalled();
 
 		await vi.advanceTimersByTimeAsync(150);
-		expect(action.mock.calls.map((call) => call[1].messageId)).toEqual(['d', 'c']);
+		expect(fake.open(THREAD)).toEqual(['d', 'c']);
 	});
 
-	it('skips ids that are already warm', async () => {
-		const { client, action } = makeFakeClient();
-		const { prefetch, isWarm } = usePostboxPrefetch({ client, debounceMs: 150 });
+	it('skips ids that are already warm and ignores list edges', async () => {
+		const fake = makeFakeClient();
+		const { prefetch, isWarm } = usePostboxPrefetch({ client: fake.client, debounceMs: 0 });
 
-		prefetch(['a', 'b']);
-		await vi.advanceTimersByTimeAsync(150);
-		expect(action).toHaveBeenCalledTimes(2);
+		prefetch(['a', undefined, null]);
+		await vi.advanceTimersByTimeAsync(1);
+		prefetch(['a']);
+		await vi.advanceTimersByTimeAsync(1);
 
-		prefetch(['a', 'b']);
-		await vi.advanceTimersByTimeAsync(150);
-		expect(action).toHaveBeenCalledTimes(2);
+		expect(fake.onUpdate).toHaveBeenCalledTimes(2);
 		expect(isWarm('a')).toBe(true);
-		expect(isWarm('b')).toBe(true);
 	});
 
-	it('ignores null and undefined targets at list edges', async () => {
-		const { client, action } = makeFakeClient();
-		const { prefetch } = usePostboxPrefetch({ client, debounceMs: 150 });
-
-		prefetch([undefined, null]);
-		await vi.advanceTimersByTimeAsync(150);
-		expect(action).not.toHaveBeenCalled();
-
-		prefetch(['a', undefined]);
-		await vi.advanceTimersByTimeAsync(150);
-		expect(action.mock.calls.map((call) => call[1].messageId)).toEqual(['a']);
-	});
-
-	it('caps the warm set with least-recently-used eviction', async () => {
-		const { client } = makeFakeClient();
+	it('releases the least-recently-used holds, which then close after the linger', async () => {
+		const fake = makeFakeClient();
 		const { prefetch, isWarm, size } = usePostboxPrefetch({
-			client,
+			client: fake.client,
 			debounceMs: 0,
 			maxEntries: 3,
 		});
 
-		for (const id of ['a', 'b', 'c']) {
+		for (const id of ['a', 'b', 'c', 'a', 'd', 'e']) {
 			prefetch([id]);
 			await vi.advanceTimersByTimeAsync(1);
 		}
 		expect(size()).toBe(3);
+		expect(['a', 'd', 'e'].every(isWarm)).toBe(true);
+		expect(isWarm('b') || isWarm('c')).toBe(false);
 
-		// Re-warm 'a' so it becomes most recent, then overflow with 'd' and 'e'.
-		for (const id of ['a', 'd', 'e']) {
-			prefetch([id]);
-			await vi.advanceTimersByTimeAsync(1);
-		}
-
-		expect(size()).toBe(3);
-		expect(isWarm('a')).toBe(true);
-		expect(isWarm('d')).toBe(true);
-		expect(isWarm('e')).toBe(true);
-		expect(isWarm('b')).toBe(false);
-		expect(isWarm('c')).toBe(false);
+		// Released, not closed: the registry keeps them warm for its linger.
+		expect(fake.open(THREAD)).toEqual(['a', 'b', 'c', 'd', 'e']);
+		await vi.advanceTimersByTimeAsync(SUBSCRIPTION_LINGER_MS);
+		expect(fake.open(THREAD)).toEqual(['a', 'd', 'e']);
+		expect(fake.open(BODY)).toEqual(['a', 'd', 'e']);
 	});
 
-	it('shares a fully resolved storage-backed body with the reader', async () => {
-		const { client, action } = makeFakeClient({
-			htmlInline: null,
-			textInline: null,
-			htmlUrl: 'https://storage.example/signed-html',
-			textUrl: null,
-		});
-		const fetchImpl = vi.fn(() => Promise.resolve({ text: () => Promise.resolve('body') }));
-		const { prefetch } = usePostboxPrefetch({ client, fetchImpl, debounceMs: 0 });
+	it('never calls the action for an inline body', async () => {
+		const fake = makeFakeClient();
+		const fetchImpl = vi.fn();
+		const { prefetch } = usePostboxPrefetch({ client: fake.client, fetchImpl, debounceMs: 0 });
 
-		prefetch(['blob-msg', 'blob-msg']);
+		prefetch(['inline-msg']);
 		await vi.advanceTimersByTimeAsync(1);
-		const resolved = await consumeResolvedPostboxMessageBody(client, 'blob-msg', fetchImpl);
+		fake.find(BODY, 'inline-msg')?.deliver(inlineBody);
+		await vi.advanceTimersByTimeAsync(1);
 
+		expect(fake.action).not.toHaveBeenCalled();
+		expect(fetchImpl).not.toHaveBeenCalled();
+	});
+
+	it('resolves a blob body the query reports and shares it with the reader', async () => {
+		const fake = makeFakeClient();
+		const fetchImpl = vi.fn(() => Promise.resolve({ text: () => Promise.resolve('body') }));
+		const { prefetch } = usePostboxPrefetch({ client: fake.client, fetchImpl, debounceMs: 0 });
+
+		prefetch(['blob-msg']);
+		await vi.advanceTimersByTimeAsync(1);
+		fake.find(BODY, 'blob-msg')?.deliver(blobBody);
+		// A live update of the same answer does not queue a second download.
+		fake.find(BODY, 'blob-msg')?.deliver(blobBody);
+		await vi.advanceTimersByTimeAsync(1);
+
+		const resolved = await consumeResolvedPostboxMessageBody(fake.client, 'blob-msg', {
+			fetchImpl,
+			blobOnly: true,
+		});
 		expect(resolved).toEqual({ html: 'body', text: null });
-		expect(action).toHaveBeenCalledTimes(1);
+		expect(fake.action).toHaveBeenCalledTimes(1);
 		expect(fetchImpl).toHaveBeenCalledTimes(1);
 		expect(fetchImpl).toHaveBeenCalledWith('https://storage.example/signed-html');
 	});
 
-	it('keeps a consumed body for the TTL, then drops it', async () => {
-		const { client, action } = makeFakeClient({
-			htmlInline: '<p>kept</p>',
-			textInline: null,
-			htmlUrl: null,
-			textUrl: null,
-		});
-
-		await consumeResolvedPostboxMessageBody(client, 'read-msg');
-		expect(action).toHaveBeenCalledTimes(1);
-
-		// Re-opening within the window (back, j/k past and back) is free.
-		await vi.advanceTimersByTimeAsync(CONSUMED_POSTBOX_BODY_TTL_MS - 1000);
-		expect(await consumeResolvedPostboxMessageBody(client, 'read-msg')).toEqual({
-			html: '<p>kept</p>',
-			text: null,
-		});
-		expect(action).toHaveBeenCalledTimes(1);
-
-		// That second read restarted the window.
-		await vi.advanceTimersByTimeAsync(CONSUMED_POSTBOX_BODY_TTL_MS - 1000);
-		await resolvePostboxMessageBody(client, 'read-msg');
-		expect(action).toHaveBeenCalledTimes(1);
-
-		// Past the window the decrypted copy is gone and the next read refetches.
-		await vi.advanceTimersByTimeAsync(1000);
-		await resolvePostboxMessageBody(client, 'read-msg');
-		expect(action).toHaveBeenCalledTimes(2);
-	});
-
-	it('keeps warmed bodies when the list that warmed them unmounts', async () => {
-		const { client, action } = makeFakeClient({
-			htmlInline: '<p>warm</p>',
-			textInline: null,
-			htmlUrl: null,
-			textUrl: null,
-		});
-		const scope = effectScope();
-		const prefetcher = scope.run(() => usePostboxPrefetch({ client, debounceMs: 0 }));
-		prefetcher?.prefetch(['warm-msg']);
-		await vi.advanceTimersByTimeAsync(1);
-		expect(action).toHaveBeenCalledTimes(1);
-
-		scope.stop();
-		await consumeResolvedPostboxMessageBody(client, 'warm-msg');
-		expect(action).toHaveBeenCalledTimes(1);
-	});
-
-	it('cancels queued warm-ups when the list unmounts', async () => {
-		const { client, action } = makeFakeClient();
-		const scope = effectScope();
-		const prefetcher = scope.run(() => usePostboxPrefetch({ client, debounceMs: 150 }));
-		prefetcher?.prefetch(['late']);
-		scope.stop();
-		await vi.advanceTimersByTimeAsync(150);
-		expect(action).not.toHaveBeenCalled();
-	});
-
-	it('drops every cached body when the scope changes, not when it repeats', async () => {
-		const { client, action } = makeFakeClient({
-			htmlInline: '<p>a</p>',
-			textInline: null,
-			htmlUrl: null,
-			textUrl: null,
-		});
-		setResolvedPostboxBodyScope(client, 'user-1||mailbox-a');
-		await resolvePostboxMessageBody(client, 'a');
-
-		setResolvedPostboxBodyScope(client, 'user-1||mailbox-a');
-		await resolvePostboxMessageBody(client, 'a');
-		expect(action).toHaveBeenCalledTimes(1);
-
-		setResolvedPostboxBodyScope(client, 'user-1||mailbox-b');
-		await resolvePostboxMessageBody(client, 'a');
-		expect(action).toHaveBeenCalledTimes(2);
-	});
-
-	it('clearResolvedPostboxBodies drops consumed bodies before their TTL', async () => {
-		const { client, action } = makeFakeClient({
-			htmlInline: '<p>a</p>',
-			textInline: null,
-			htmlUrl: null,
-			textUrl: null,
-		});
-		await consumeResolvedPostboxMessageBody(client, 'a');
-		clearResolvedPostboxBodies(client);
-		await resolvePostboxMessageBody(client, 'a');
-		expect(action).toHaveBeenCalledTimes(2);
-	});
-
-	it('does not retain an oversized decrypted body', async () => {
-		const oversizedBody = 'x'.repeat(512 * 1024 + 1);
-		const { client, action } = makeFakeClient({
-			htmlInline: oversizedBody,
-			textInline: null,
-			htmlUrl: null,
-			textUrl: null,
-		});
-		const { prefetch } = usePostboxPrefetch({ client, debounceMs: 0 });
-
-		prefetch(['oversized']);
-		await vi.advanceTimersByTimeAsync(1);
-		await resolvePostboxMessageBody(client, 'oversized');
-
-		expect(action).toHaveBeenCalledTimes(2);
-	});
-
-	it('evicts the least-recently-used bodies when the aggregate cache budget is exceeded', async () => {
-		const action = vi.fn(async () => ({
-			htmlInline: 'x'.repeat(400 * 1024),
-			textInline: null,
-			htmlUrl: null,
-			textUrl: null,
-		}));
-		const client = { action } as unknown as PrefetchClient;
-
-		for (const messageId of ['a', 'b', 'c', 'd', 'e', 'f']) {
-			await resolvePostboxMessageBody(client, messageId);
-		}
-		await resolvePostboxMessageBody(client, 'a');
-
-		expect(action).toHaveBeenCalledTimes(7);
-	});
-
-	it('does not perform a browser fetch for an inline body', async () => {
-		const { client } = makeFakeClient({
-			htmlInline: '<p>hi</p>',
-			textInline: null,
-			htmlUrl: 'https://storage.example/should-not-fetch',
-			textUrl: null,
-		});
-		const fetchImpl = vi.fn(() => Promise.resolve({ text: () => Promise.resolve('') }));
-		const { prefetch } = usePostboxPrefetch({ client, fetchImpl, debounceMs: 0 });
-
-		prefetch(['inline-msg']);
-		await vi.advanceTimersByTimeAsync(1);
-
-		expect(fetchImpl).not.toHaveBeenCalled();
-	});
-
-	it('swallows action and blob-fetch errors and allows a later retry', async () => {
-		const action = vi
+	it('swallows blob failures and retries when the query reports the blob again', async () => {
+		const blobAction = vi
 			.fn()
 			.mockRejectedValueOnce(new Error('action unavailable'))
-			.mockResolvedValueOnce({
-				htmlInline: null,
-				textInline: null,
-				htmlUrl: 'https://storage.example/signed-html',
-				textUrl: null,
-			});
-		const client = { action } as unknown as PrefetchClient;
-		const fetchImpl = vi.fn(() => Promise.reject(new Error('network down')));
-		const { prefetch, isWarm } = usePostboxPrefetch({ client, fetchImpl, debounceMs: 0 });
+			.mockResolvedValueOnce({ htmlUrl: 'https://storage.example/signed-html', textUrl: null });
+		const fake = makeFakeClient(blobAction);
+		const fetchImpl = vi.fn(() => Promise.resolve({ text: () => Promise.resolve('body') }));
+		const { prefetch, isWarm } = usePostboxPrefetch({
+			client: fake.client,
+			fetchImpl,
+			debounceMs: 0,
+		});
 
 		prefetch(['err-msg']);
 		await vi.advanceTimersByTimeAsync(1);
-		expect(isWarm('err-msg')).toBe(false);
-
-		prefetch(['err-msg']);
+		fake.find(BODY, 'err-msg')?.deliver(blobBody);
 		await vi.advanceTimersByTimeAsync(1);
-		expect(action).toHaveBeenCalledTimes(2);
+		expect(isWarm('err-msg')).toBe(true);
+		expect(fetchImpl).not.toHaveBeenCalled();
+
+		fake.find(BODY, 'err-msg')?.deliver(blobBody);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(blobAction).toHaveBeenCalledTimes(2);
 		expect(fetchImpl).toHaveBeenCalledTimes(1);
-		expect(isWarm('err-msg')).toBe(false);
 	});
 
 	it('never exceeds the configured action concurrency', async () => {
-		const resolvers: Array<(result: BodyResult) => void> = [];
-		const action = vi.fn(
+		const resolvers: Array<(value: unknown) => void> = [];
+		const fake = makeFakeClient(
 			() =>
-				new Promise<BodyResult>((resolve) => {
+				new Promise((resolve) => {
 					resolvers.push(resolve);
 				})
 		);
-		const client = { action } as unknown as PrefetchClient;
 		const { prefetch } = usePostboxPrefetch({
-			client,
+			client: fake.client,
 			debounceMs: 0,
 			maxConcurrent: 2,
 			maxEntries: 6,
@@ -321,11 +226,39 @@ describe('usePostboxPrefetch', () => {
 
 		prefetch(['a', 'b', 'c', 'd']);
 		await vi.advanceTimersByTimeAsync(1);
-		expect(action).toHaveBeenCalledTimes(2);
+		for (const id of ['a', 'b', 'c', 'd']) fake.find(BODY, id)?.deliver(blobBody);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(fake.action).toHaveBeenCalledTimes(2);
 
 		resolvers[0]?.(null);
-		await vi.runAllTimersAsync();
-		expect(action).toHaveBeenCalledTimes(3);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(fake.action).toHaveBeenCalledTimes(3);
+	});
+
+	it('cancels pending warm-ups and releases its holds when the list unmounts', async () => {
+		const fake = makeFakeClient();
+		const scope = effectScope();
+		const prefetcher = scope.run(() => usePostboxPrefetch({ client: fake.client, debounceMs: 0 }));
+		prefetcher?.prefetch(['held']);
+		await vi.advanceTimersByTimeAsync(1);
+		prefetcher?.prefetch(['late']);
+		scope.stop();
+
+		await vi.advanceTimersByTimeAsync(1);
+		expect(fake.open(THREAD)).toEqual(['held']);
+		await vi.advanceTimersByTimeAsync(SUBSCRIPTION_LINGER_MS);
+		expect(fake.open(THREAD)).toEqual([]);
+	});
+
+	it('clear forgets warm entries', async () => {
+		const fake = makeFakeClient();
+		const { prefetch, clear, size } = usePostboxPrefetch({ client: fake.client, debounceMs: 0 });
+
+		prefetch(['a']);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(size()).toBe(1);
+		clear();
+		expect(size()).toBe(0);
 	});
 
 	it('is a no-op without a Convex client', async () => {
@@ -334,21 +267,16 @@ describe('usePostboxPrefetch', () => {
 		await vi.advanceTimersByTimeAsync(1);
 		expect(size()).toBe(0);
 	});
+});
 
-	it('clear cancels pending work and forgets warm entries', async () => {
-		const { client, action } = makeFakeClient();
-		const { prefetch, clear, size } = usePostboxPrefetch({ client, debounceMs: 150 });
-
-		prefetch(['a']);
-		await vi.advanceTimersByTimeAsync(150);
-		expect(size()).toBe(1);
-		prefetch(['b']);
-		clear();
-		await vi.advanceTimersByTimeAsync(150);
-
-		expect(size()).toBe(0);
-		expect(action).toHaveBeenCalledTimes(1);
-		await resolvePostboxMessageBody(client, 'a');
-		expect(action).toHaveBeenCalledTimes(2);
+describe('inlineBodyNeedsBlob', () => {
+	it('is true only when there is no inline body but a blob', () => {
+		expect(inlineBodyNeedsBlob(blobBody)).toBe(true);
+		expect(inlineBodyNeedsBlob({ ...blobBody, hasHtmlBlob: false, hasTextBlob: true })).toBe(true);
+		expect(inlineBodyNeedsBlob(inlineBody)).toBe(false);
+		expect(inlineBodyNeedsBlob({ ...blobBody, textInline: 'short' })).toBe(false);
+		expect(inlineBodyNeedsBlob({ ...blobBody, hasHtmlBlob: false })).toBe(false);
+		expect(inlineBodyNeedsBlob(null)).toBe(false);
+		expect(inlineBodyNeedsBlob(undefined)).toBe(false);
 	});
 });

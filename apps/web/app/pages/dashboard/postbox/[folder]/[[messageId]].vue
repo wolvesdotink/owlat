@@ -35,8 +35,15 @@ useHead({
 			: t('dashboard.postbox.detail.index.pageTitle'),
 });
 
-const { currentMailbox, isLoading: mailboxesLoading, error: mailboxError } = usePostboxMailbox();
-const mailboxId = computed(() => currentMailbox.value?._id ?? null);
+// The open message's thread and body start loading from the route right away,
+// in parallel with the mailbox and the list (plan 2.5); the reader joins them.
+usePostboxOpenMessage(messageId);
+
+// Seeded from the persisted choice once the shell's accessible mailboxes vouch
+// for it, so the list does not wait for the mailbox list (plan 2.5).
+const { mailboxId, isLoading: mailboxesLoading, error: mailboxError } = usePostboxMailbox();
+// The guard spins only while there is no mailbox to render with yet.
+const guardLoading = computed(() => mailboxesLoading.value && !mailboxId.value);
 // Prefetched and just-read bodies outlive the list and reader; they are
 // dropped when the mailbox, user or organization changes.
 usePostboxBodyCacheScope(mailboxId);
@@ -61,7 +68,7 @@ const showGettingStarted = computed(() => !mailboxId.value && !mailboxesLoading.
 		<!-- The no-mailbox state stacks the guard's next step above the onboarding
 		     checklist and scrolls; every other state is the full-height row. -->
 		<div v-else class="flex-1" :class="showGettingStarted ? 'overflow-y-auto' : 'flex'">
-			<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="mailboxesLoading">
+			<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="guardLoading">
 				<PostboxLayout
 					:mailbox-id="mailboxId!"
 					:folder-role="folder.folderRole"

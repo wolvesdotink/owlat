@@ -26,14 +26,15 @@ vi.mock('~/lib/auth-client', () => ({
 import { resolvePostboxMessageBody } from '../postboxBodyResolver';
 import { postboxBodyScopeKey, usePostboxBodyCacheScope } from '../usePostboxBodyCacheScope';
 
+/** An inline body: one `getMessageInlineBody` read per uncached resolve. */
 function makeClient() {
-	const action = vi.fn(async () => ({
+	const bodyRead = vi.fn(async () => ({
 		htmlInline: '<p>body</p>',
 		textInline: null,
-		htmlUrl: null,
-		textUrl: null,
+		hasHtmlBlob: false,
+		hasTextBlob: false,
 	}));
-	return { client: { action }, action };
+	return { client: { query: bodyRead, action: vi.fn() }, bodyRead };
 }
 
 const user = ref<{ id: string } | null>({ id: 'user-1' });
@@ -63,50 +64,50 @@ describe('postboxBodyScopeKey', () => {
 
 describe('usePostboxBodyCacheScope', () => {
 	it('keeps bodies across a remount of the same mailbox', async () => {
-		const { client, action } = makeClient();
+		const { client, bodyRead } = makeClient();
 		const first = setup(client);
 		await resolvePostboxMessageBody(client, 'm1');
 		first.scope.stop();
 
 		setup(client);
 		await resolvePostboxMessageBody(client, 'm1');
-		expect(action).toHaveBeenCalledTimes(1);
+		expect(bodyRead).toHaveBeenCalledTimes(1);
 	});
 
 	it('drops bodies on a mailbox switch but not while the next mailbox loads', async () => {
-		const { client, action } = makeClient();
+		const { client, bodyRead } = makeClient();
 		const { mailboxId } = setup(client);
 		await resolvePostboxMessageBody(client, 'm1');
 
 		mailboxId.value = null;
 		await nextTick();
 		await resolvePostboxMessageBody(client, 'm1');
-		expect(action).toHaveBeenCalledTimes(1);
+		expect(bodyRead).toHaveBeenCalledTimes(1);
 
 		mailboxId.value = 'mailbox-b';
 		await nextTick();
 		await resolvePostboxMessageBody(client, 'm1');
-		expect(action).toHaveBeenCalledTimes(2);
+		expect(bodyRead).toHaveBeenCalledTimes(2);
 	});
 
 	it('drops bodies when the organization changes or the user signs out', async () => {
-		const { client, action } = makeClient();
+		const { client, bodyRead } = makeClient();
 		setup(client);
 		await resolvePostboxMessageBody(client, 'm1');
 
 		activeOrganizationId.value = 'org-2';
 		await nextTick();
 		await resolvePostboxMessageBody(client, 'm1');
-		expect(action).toHaveBeenCalledTimes(2);
+		expect(bodyRead).toHaveBeenCalledTimes(2);
 
 		user.value = null;
 		await nextTick();
 		await resolvePostboxMessageBody(client, 'm1');
-		expect(action).toHaveBeenCalledTimes(3);
+		expect(bodyRead).toHaveBeenCalledTimes(3);
 	});
 
 	it('drops bodies on any session change, also after the Postbox unmounted', async () => {
-		const { client, action } = makeClient();
+		const { client, bodyRead } = makeClient();
 		const { scope } = setup(client);
 		setup(client);
 		// One listener per client, and registering it cleared nothing.
@@ -115,10 +116,10 @@ describe('usePostboxBodyCacheScope', () => {
 		scope.stop();
 
 		await resolvePostboxMessageBody(client, 'm1');
-		expect(action).toHaveBeenCalledTimes(1);
+		expect(bodyRead).toHaveBeenCalledTimes(1);
 
 		signalListeners[0]?.();
 		await resolvePostboxMessageBody(client, 'm1');
-		expect(action).toHaveBeenCalledTimes(2);
+		expect(bodyRead).toHaveBeenCalledTimes(2);
 	});
 });

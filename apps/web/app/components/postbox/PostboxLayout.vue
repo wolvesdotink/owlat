@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
 const props = defineProps<{
@@ -225,16 +224,13 @@ const {
 	listMessages,
 });
 
-const listActive = computed(() => messages.value.find((m) => m._id === props.activeMessageId));
-// Deep-link fallback: when the active message isn't in the loaded page (an old
-// message reached via bookmark / notification / search), fetch it by id so the
-// reader renders instead of showing an empty "Select a message".
-const { data: fetchedActive } = useConvexQuery(api.mail.mailbox.messages.getMessage, () =>
-	props.activeMessageId && !listActive.value
-		? { messageId: props.activeMessageId as Id<'mailMessages'> }
-		: 'skip'
-);
-const activeMessage = computed(() => listActive.value ?? fetchedActive.value ?? undefined);
+// The reader's message: the list row, else its row from the thread the page
+// already subscribed from the route (plan 2.5), else a fetch by id for an old
+// message reached via bookmark / notification / search.
+const activeMessage = usePostboxActiveMessage({
+	activeMessageId: () => props.activeMessageId,
+	listRows: () => messages.value,
+});
 
 // Auto-advance context for the reader: the flat list's visual row order
 // (optimistic-hide filtered, via the template ref below). In every grouped

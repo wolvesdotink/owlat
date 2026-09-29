@@ -22,6 +22,13 @@ export type PostboxReaderMessage = {
 	receivedAt: number;
 	htmlBodyInline?: string;
 	textBodyInline?: string;
+	// Where a body over the inline threshold lives (thread rows), or the inline
+	// body query's word for it while the reader renders from a list row (plan
+	// 2.5; see usePostboxReaderOpenRow).
+	htmlBodyStorageId?: string;
+	textBodyStorageId?: string;
+	hasBodyBlob?: boolean;
+	bodyPending?: boolean;
 	hasAttachments: boolean;
 	attachments: Array<{
 		filename: string;
@@ -80,6 +87,7 @@ import { formatCompactRelativeTime } from '~/utils/formatters';
 import { useNow } from '~/composables/useNow';
 import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
 import { usePostboxReaderExpansion } from '~/composables/postbox/usePostboxReaderExpansion';
+import { usePostboxReaderOpenRow } from '~/composables/postbox/usePostboxReaderOpenRow';
 import { usePostboxMountAllBodies } from '~/composables/postbox/usePostboxLazyBody';
 import {
 	POSTBOX_MARK_READ_DWELL_MS,
@@ -192,7 +200,14 @@ const { data: threadData, isLoading } = useConvexQuery(
 	})
 );
 
-const allMessages = computed(() => threadData.value?.messages ?? [props.message]);
+// Until the thread answers, render the row the reader was opened with and
+// its inline body (plan 2.5) instead of a skeleton; the page subscribed both
+// from the route in parallel with the list, so they are usually here already.
+const openRow = usePostboxReaderOpenRow({
+	message: () => props.message,
+	threadMessages: () => threadData.value?.messages,
+});
+const allMessages = computed(() => threadData.value?.messages ?? [openRow.value]);
 const latestMessage = computed(() => allMessages.value[allMessages.value.length - 1]);
 
 // The one reader AI strip (PostboxAiStrip) mounts whenever AI is on and the
@@ -731,17 +746,17 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			@accepted="refetchCorrespondentKey()"
 		/>
 
-		<!-- Layout-matching skeleton while the thread loads (header is already
-		     rendered above from the list row, so only the message card shimmers). -->
-		<PostboxReaderSkeleton v-if="isLoading" />
-
-		<div v-else class="space-y-2">
+		<!-- No skeleton while the thread loads: the opened row renders with its
+		     inline body, and the rest of the conversation joins it on arrival.
+		     What depends on the whole thread (the AI strip, the reply box, the
+		     triage offer) waits for it. -->
+		<div class="space-y-2">
 			<!-- The reader's ONE AI home, one line: the summary gist plus an Ask
 			     link (Draft reply lives in the reply bar). Renders nothing when
 			     there's no summary and the thread is too short to warrant one
 			     (fail-soft, same thresholds). -->
 			<PostboxAiStrip
-				v-if="showAiStrip && latestMessage"
+				v-if="showAiStrip && latestMessage && !isLoading"
 				:key="latestMessage._id"
 				:message-id="latestMessage._id"
 				:warrants-summary="warrantsSummary"
@@ -797,7 +812,7 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			<!-- Inline reply box pinned under the conversation (r / a / f or the
 			     affordance expand it; it collapses back after send/discard). -->
 			<PostboxInlineReply
-				v-if="latestMessage"
+				v-if="latestMessage && !isLoading"
 				ref="inlineReplyEl"
 				:sender-label="inlineSenderLabel"
 				:show-reply-all="hasOtherRecipients(latestMessage)"
@@ -821,7 +836,7 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			     observation about the SENDER, not about this message. Strictly an
 			     offer — it renders nothing until a sender's tally earns one, and
 			     nothing is ever applied without the explicit click. -->
-			<PostboxTriageSuggestion v-if="latestMessage" :message-id="latestMessage._id" />
+			<PostboxTriageSuggestion v-if="latestMessage && !isLoading" :message-id="latestMessage._id" />
 		</div>
 
 		<PostboxThreadDiscussion

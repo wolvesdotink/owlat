@@ -45,7 +45,7 @@ import {
 	POSTBOX_SRCDOC_HEAD,
 	postboxBodyPlaceholder,
 } from '~/utils/postboxBodyPlaceholder';
-import { consumeResolvedPostboxMessageBody } from '~/composables/postbox/postboxBodyResolver';
+import { usePostboxBodySource } from '~/composables/postbox/usePostboxBodySource';
 import { usePostboxFrameAutosize } from '~/composables/postbox/usePostboxFrameAutosize';
 import {
 	postboxSenderKey,
@@ -63,6 +63,10 @@ const props = defineProps<{
 		textBodyInline?: string;
 		htmlBodyStorageId?: string;
 		textBodyStorageId?: string;
+		/** The reader's inline body query reported a blob-only body. */
+		hasBodyBlob?: boolean;
+		/** The reader opened on a list row and its inline body is on the way. */
+		bodyPending?: boolean;
 		/** From header — keys the per-sender remote-image allowlist. */
 		fromAddress?: string;
 	};
@@ -153,56 +157,10 @@ const senderKey = computed(() => postboxSenderKey(props.message.fromAddress));
 /** What the "Always for…" button names (the sender's domain). */
 const senderTrustLabel = computed(() => postboxSenderTrustLabel(props.message.fromAddress));
 
-// Bodies over the inline threshold are stored as blobs, not on the row. When
-// no inline body is present but a storage id is, fetch the body lazily so
-// large mail (newsletters, long threads) no longer renders blank.
-const fetchedHtml = ref<string | null>(null);
-const fetchedText = ref<string | null>(null);
-
-const needsBodyFetch = computed(
-	() =>
-		!props.message.htmlBodyInline &&
-		!props.message.textBodyInline &&
-		!!(props.message.htmlBodyStorageId || props.message.textBodyStorageId)
-);
-
-// Flips once the lazy body fetch has resolved (with content, empty, or a
-// failed blob download) so the loading skeleton can't outlive the fetch.
-const bodyFetchSettled = ref(false);
-const bodyError = ref<unknown>(null);
-let bodyRequestSequence = 0;
-
-watch(
-	[needsBodyFetch, () => props.message._id],
-	async ([shouldFetch, messageId]) => {
-		const requestSequence = ++bodyRequestSequence;
-		fetchedHtml.value = null;
-		fetchedText.value = null;
-		bodyError.value = null;
-
-		if (!shouldFetch || !messageId) {
-			bodyFetchSettled.value = true;
-			return;
-		}
-
-		bodyFetchSettled.value = false;
-		try {
-			const resolvedBody = await consumeResolvedPostboxMessageBody(requireConvex(), messageId);
-			if (requestSequence !== bodyRequestSequence) return;
-			if (resolvedBody === null) return;
-			fetchedHtml.value = resolvedBody.html;
-			fetchedText.value = resolvedBody.text;
-		} catch (error) {
-			if (requestSequence !== bodyRequestSequence) return;
-			bodyError.value = error;
-			// Leave empty — the reader shows "(empty message)".
-		} finally {
-			if (requestSequence === bodyRequestSequence) {
-				bodyFetchSettled.value = true;
-			}
-		}
-	},
-	{ immediate: true }
+// Inline body, a blob download, or still waiting for the reader's inline body
+// query (see usePostboxBodySource).
+const { waiting, contentFinal, effectiveHtml, effectiveText } = usePostboxBodySource(
+	() => props.message
 );
 
 // The saved copy shown in place of a live body that is not here (yet).
@@ -210,17 +168,10 @@ const placeholder = computed(() =>
 	postboxBodyPlaceholder(cachedSrcdoc.value, { blockRemote: !isOffline.value })
 );
 
-// Paragraph-bar skeleton while a blob-stored body loads, unless a saved copy
-// can stand in for it. Degrades to the normal "(empty message)" iframe if the
-// action errors or the download fails.
-const bodyLoading = computed(
-	() => needsBodyFetch.value && !bodyFetchSettled.value && !bodyError.value && !placeholder.value
-);
-
-const effectiveHtml = computed(
-	() => props.message.htmlBodyInline ?? fetchedHtml.value ?? undefined
-);
-const effectiveText = computed(() => props.message.textBodyInline ?? fetchedText.value ?? '');
+// Paragraph-bar skeleton while the body loads, unless a saved copy can stand
+// in for it. Degrades to the normal "(empty message)" iframe if the action
+// errors or the download fails.
+const bodyLoading = computed(() => waiting.value && !placeholder.value);
 
 function sanitize(html: string): string {
 	return sanitizeHtml(html, POSTBOX_SANITIZE_CONFIG);
@@ -299,9 +250,8 @@ function buildRender(): Omit<PostboxRenderEntry, 'height'> {
 
 // The render key includes every option that changes the output; a body is
 // immutable once fetched, so a hit is always valid. We only touch the cache
-// once the body content is final (not mid-fetch), so a transient loading state
-// can never be memoised under a real key.
-const contentFinal = computed(() => !needsBodyFetch.value || bodyFetchSettled.value);
+// once the body content is final (not pending or mid-fetch), so a transient
+// loading state can never be memoised under a real key.
 const renderKey = computed(() =>
 	props.message._id
 		? postboxRenderKey(props.message._id, {

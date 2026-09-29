@@ -82,12 +82,12 @@ describe('PostboxMessageBody saved-copy placeholder', () => {
 		expect(placeholder).toContain('img-src data:;');
 		expect(placeholder).not.toContain(POSTBOX_BODY_META_CSP);
 
-		resolveBody?.({
-			htmlInline: '<p>live body</p>',
-			textInline: null,
-			htmlUrl: null,
-			textUrl: null,
-		});
+		// A blob-stored body: the action mints its URL, the download is the body.
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => ({ text: async () => '<p>live body</p>' }))
+		);
+		resolveBody?.({ htmlUrl: 'https://storage.example/live', textUrl: null });
 		await flushPromises();
 		const live = w.find('iframe').attributes('srcdoc') ?? '';
 		expect(live).toContain('live body');

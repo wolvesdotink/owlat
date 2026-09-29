@@ -2,24 +2,28 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { ConvexClient } from 'convex/browser';
 
-export type PostboxBodyClient = Pick<ConvexClient, 'action'>;
+export type PostboxBodyClient = Pick<ConvexClient, 'action' | 'query'>;
 
 export type ResolvedPostboxBody = {
 	html: string | null;
 	text: string | null;
 } | null;
 
-type BodySource = {
-	htmlInline: string | null;
-	textInline: string | null;
-	htmlUrl: string | null;
-	textUrl: string | null;
-} | null;
-
 type BodyFetch = (url: string) => Promise<{
 	ok?: boolean;
 	text(): Promise<string>;
 }>;
+
+export interface ResolvePostboxBodyOptions {
+	/** Injected for tests; defaults to global fetch. */
+	fetchImpl?: BodyFetch;
+	/**
+	 * The caller already knows the body is not inline (a thread row with a
+	 * storage id, or `getMessageInlineBody` reporting a blob), so go straight to
+	 * the URL-minting action instead of asking the inline query first.
+	 */
+	blobOnly?: boolean;
+}
 
 const MAX_RESOLVED_BODIES_PER_CLIENT = 6;
 const MAX_RESOLVED_BODY_CHARS = 512 * 1024;
@@ -70,26 +74,39 @@ function resolvedBodyCharCount(body: ResolvedPostboxBody): number {
 	return (body?.html?.length ?? 0) + (body?.text?.length ?? 0);
 }
 
+/**
+ * Inline bodies come from the reactive `getMessageInlineBody` query (answered
+ * locally when the reader, the open-message hold or the read-ahead already
+ * subscribes to it); the action runs only for bodies stored as blobs, because
+ * only an action can mint their URLs.
+ */
 async function loadPostboxBody(
 	client: PostboxBodyClient,
 	messageId: string,
-	fetchImpl: BodyFetch
+	fetchImpl: BodyFetch,
+	blobOnly: boolean
 ): Promise<ResolvedPostboxBody> {
-	const source = (await client.action(api.mail.mailbox.messages.getMessageBody, {
-		messageId: messageId as Id<'mailMessages'>,
-	})) as BodySource;
-	if (!source) return null;
-	let html = source.htmlInline;
-	let text = source.textInline;
-	const bodyUrl = html === null && text === null ? (source.htmlUrl ?? source.textUrl) : null;
-	if (bodyUrl) {
-		const response = await fetchImpl(bodyUrl);
-		if (response.ok === false) throw new Error('Could not load message body');
-		const body = await response.text();
-		if (source.htmlUrl) html = body;
-		else text = body;
+	const id = messageId as Id<'mailMessages'>;
+	if (!blobOnly) {
+		const inline = await client.query(api.mail.mailbox.messages.getMessageInlineBody, {
+			messageId: id,
+		});
+		if (!inline) return null;
+		if (inline.htmlInline !== null || inline.textInline !== null) {
+			return { html: inline.htmlInline, text: inline.textInline };
+		}
+		if (!inline.hasHtmlBlob && !inline.hasTextBlob) return { html: null, text: null };
 	}
-	return { html, text };
+	const urls = await client.action(api.mail.mailbox.messages.getMessageBodyBlobUrls, {
+		messageId: id,
+	});
+	if (!urls) return null;
+	const bodyUrl = urls.htmlUrl ?? urls.textUrl;
+	if (!bodyUrl) return { html: null, text: null };
+	const response = await fetchImpl(bodyUrl);
+	if (response.ok === false) throw new Error('Could not load message body');
+	const body = await response.text();
+	return urls.htmlUrl ? { html: body, text: null } : { html: null, text: body };
 }
 
 /** Resolve and cache the complete body, not its short-lived signed URL. The
@@ -98,8 +115,9 @@ async function loadPostboxBody(
 export function resolvePostboxMessageBody(
 	client: PostboxBodyClient,
 	messageId: string,
-	fetchImpl: BodyFetch = (url) => fetch(url)
+	options: ResolvePostboxBodyOptions = {}
 ): Promise<ResolvedPostboxBody> {
+	const fetchImpl = options.fetchImpl ?? ((url: string) => fetch(url));
 	const cache = cacheFor(client);
 	const existing = cache.entries.get(messageId);
 	if (existing && existing.expiresAt !== null && existing.expiresAt <= Date.now()) {
@@ -115,7 +133,7 @@ export function resolvePostboxMessageBody(
 		expiresAt: null,
 		expiryTimer: null,
 	};
-	entry.promise = loadPostboxBody(client, messageId, fetchImpl)
+	entry.promise = loadPostboxBody(client, messageId, fetchImpl, options.blobOnly === true)
 		.then((body) => {
 			if (cache.entries.get(messageId) !== entry) return body;
 			const charCount = resolvedBodyCharCount(body);
@@ -152,9 +170,9 @@ export function resolvePostboxMessageBody(
 export async function consumeResolvedPostboxMessageBody(
 	client: PostboxBodyClient,
 	messageId: string,
-	fetchImpl: BodyFetch = (url) => fetch(url)
+	options: ResolvePostboxBodyOptions = {}
 ): Promise<ResolvedPostboxBody> {
-	const pending = resolvePostboxMessageBody(client, messageId, fetchImpl);
+	const pending = resolvePostboxMessageBody(client, messageId, options);
 	try {
 		return await pending;
 	} finally {

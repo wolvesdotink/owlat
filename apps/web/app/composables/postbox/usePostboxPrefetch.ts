@@ -1,31 +1,53 @@
+import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
 import type { ConvexClient } from 'convex/browser';
+import type { FunctionReturnType } from 'convex/server';
+import { holdConvexQuery } from '~/lib/convexQueryHold';
 import { clearResolvedPostboxBodies, resolvePostboxMessageBody } from './postboxBodyResolver';
 
 /**
- * Read-ahead for the Postbox reader. URL minting belongs in an action, so the
- * warm-up is a bounded action queue rather than a live query subscription.
+ * Read-ahead for the Postbox reader (plan 2.5).
  *
- * Storage-backed bodies are fully resolved into a bounded client-scoped cache
- * that the reader consumes. Calls remain debounced, LRU-capped and strictly
- * fail-soft; the real reader load is always authoritative.
+ * For each warmed row it holds the two queries the reader opens with, the
+ * thread (`listThreadMessages`) and the inline body (`getMessageInlineBody`),
+ * as subscriptions in the shared registry. Opening that row then joins live,
+ * loaded subscriptions and renders in the same tick. A hold is released when
+ * the row falls out of the small LRU or the list unmounts, and the registry
+ * then keeps the query warm for its linger window before it closes.
  *
- * That shared cache outlives this composable on purpose: a hover-warmed body
- * must still be there when the list unmounts and the reader asks for it. It is
- * dropped on mailbox, account and organization changes instead (see
- * usePostboxBodyCacheScope).
+ * Only a body stored as a blob still needs the action (queries cannot mint
+ * storage URLs). Those are resolved through a bounded action queue into the
+ * client-scoped body cache the reader consumes. That cache outlives this
+ * composable on purpose, and is dropped on mailbox, account and organization
+ * changes instead (see usePostboxBodyCacheScope).
+ *
+ * Everything here is debounced, capped and strictly fail-soft; the reader's
+ * own load is always authoritative.
  */
 
 const DEFAULT_DEBOUNCE_MS = 150;
 const DEFAULT_MAX_ENTRIES = 6;
 const DEFAULT_MAX_CONCURRENT = 2;
 
-/** The single ConvexClient method we need — narrow for easy test fakes. */
-export type PrefetchClient = Pick<ConvexClient, 'action'>;
+/** The ConvexClient methods we need — narrow for easy test fakes. */
+export type PrefetchClient = Pick<ConvexClient, 'action' | 'query' | 'onUpdate'>;
+
+type InlineBody = FunctionReturnType<typeof api.mail.mailbox.messages.getMessageInlineBody>;
 
 type CacheEntry = {
 	token: symbol;
-	state: 'queued' | 'loading' | 'settled';
+	/** Releases the held thread and inline-body subscriptions. */
+	release: () => void;
+	/** The blob download, for bodies too large to travel inline. */
+	blob: 'none' | 'queued' | 'loading' | 'settled';
 };
+
+/** True when the inline body query reports a body that only exists as a blob. */
+export function inlineBodyNeedsBlob(body: InlineBody | undefined): boolean {
+	if (!body) return false;
+	if (body.htmlInline !== null || body.textInline !== null) return false;
+	return body.hasHtmlBlob || body.hasTextBlob;
+}
 
 export function usePostboxPrefetch(options?: {
 	/** Injected for tests; defaults to the app Convex client. */
@@ -52,7 +74,10 @@ export function usePostboxPrefetch(options?: {
 	let pendingIds: string[] = [];
 
 	function evict(messageId: string) {
+		const entry = cache.get(messageId);
+		if (!entry) return;
 		cache.delete(messageId);
+		entry.release();
 	}
 
 	function enforceLimit() {
@@ -63,20 +88,17 @@ export function usePostboxPrefetch(options?: {
 		}
 	}
 
-	async function runWarm(messageId: string, token: symbol) {
+	async function runBlobWarm(messageId: string, token: symbol) {
 		if (!client) return;
 		try {
-			await resolvePostboxMessageBody(client, messageId, fetchImpl);
-			const entry = cache.get(messageId);
-			if (!entry || entry.token !== token) return;
+			await resolvePostboxMessageBody(client, messageId, { fetchImpl, blobOnly: true });
 			const current = cache.get(messageId);
-			if (current?.token === token) current.state = 'settled';
+			if (current?.token === token) current.blob = 'settled';
 		} catch {
-			// An action failure is not warm and may be retried later. A blob
-			// download failure is equally harmless: the reader performs its own
-			// authoritative fetch when opened.
+			// An action or download failure is not warm and may be retried when the
+			// body query next reports the blob; the reader fetches for itself anyway.
 			const current = cache.get(messageId);
-			if (current?.token === token) evict(messageId);
+			if (current?.token === token) current.blob = 'none';
 		}
 	}
 
@@ -85,15 +107,23 @@ export function usePostboxPrefetch(options?: {
 			const queued = queue.shift();
 			if (!queued) return;
 			const entry = cache.get(queued.messageId);
-			if (!entry || entry.token !== queued.token || entry.state !== 'queued') continue;
+			if (!entry || entry.token !== queued.token || entry.blob !== 'queued') continue;
 
-			entry.state = 'loading';
+			entry.blob = 'loading';
 			activeCount += 1;
-			void runWarm(queued.messageId, queued.token).finally(() => {
+			void runBlobWarm(queued.messageId, queued.token).finally(() => {
 				activeCount -= 1;
 				pumpQueue();
 			});
 		}
+	}
+
+	function queueBlob(messageId: string, token: symbol) {
+		const entry = cache.get(messageId);
+		if (!entry || entry.token !== token || entry.blob !== 'none') return;
+		entry.blob = 'queued';
+		queue.push({ messageId, token });
+		pumpQueue();
 	}
 
 	function warm(messageId: string) {
@@ -106,10 +136,27 @@ export function usePostboxPrefetch(options?: {
 		}
 
 		const token = Symbol(messageId);
-		cache.set(messageId, { token, state: 'queued' });
-		queue.push({ messageId, token });
+		const entry: CacheEntry = { token, release: () => {}, blob: 'none' };
+		cache.set(messageId, entry);
+		const args = { messageId: messageId as Id<'mailMessages'> };
+		const releaseThread = holdConvexQuery(
+			client,
+			api.mail.mailbox.messages.listThreadMessages,
+			args
+		);
+		const releaseBody = holdConvexQuery(
+			client,
+			api.mail.mailbox.messages.getMessageInlineBody,
+			args,
+			(body) => {
+				if (inlineBodyNeedsBlob(body)) queueBlob(messageId, token);
+			}
+		);
+		entry.release = () => {
+			releaseThread();
+			releaseBody();
+		};
 		enforceLimit();
-		pumpQueue();
 	}
 
 	/**
@@ -133,8 +180,9 @@ export function usePostboxPrefetch(options?: {
 		}, debounceMs);
 	}
 
-	/** Cancel pending and queued warm-ups. Bodies already resolved stay in the
-	 * shared cache for the reader. */
+	/** Cancel pending and queued warm-ups and release every held subscription
+	 * (the registry keeps each warm for its linger window). Bodies already
+	 * resolved stay in the shared cache for the reader. */
 	function dispose() {
 		if (timer !== null) {
 			clearTimeout(timer);
@@ -142,7 +190,7 @@ export function usePostboxPrefetch(options?: {
 		}
 		pendingIds = [];
 		queue.length = 0;
-		cache.clear();
+		for (const messageId of Array.from(cache.keys())) evict(messageId);
 	}
 
 	/** dispose() plus dropping the shared resolved bodies. */

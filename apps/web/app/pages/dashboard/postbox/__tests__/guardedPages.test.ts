@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import type { VueWrapper } from '@vue/test-utils';
-import { defineComponent, h, reactive, ref, type Component } from 'vue';
+import { computed, defineComponent, h, reactive, ref, type Component } from 'vue';
 
 import { i18nStubs } from '~/__tests__/i18n';
 import { mountDashboardPage } from '~/__tests__/a11y';
@@ -47,9 +47,12 @@ beforeAll(() => {
 		usePostboxBodyCacheScope: () => {},
 		usePostboxMailbox: () => ({
 			currentMailbox,
+			mailboxId: computed(() => currentMailbox.value?._id ?? null),
 			isLoading: mailboxesLoading,
 			error: mailboxError,
 		}),
+		// The open message's route-driven queries have their own spec.
+		usePostboxOpenMessage: () => ({}),
 		// The guard's only query: the self-scoped fresh-start status.
 		useConvexQuery: () => ({
 			data: ref({
