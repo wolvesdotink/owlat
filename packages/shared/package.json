@@ -62,6 +62,10 @@
 			"types": "./src/setupValidators.ts",
 			"import": "./src/setupValidators.ts"
 		},
+		"./setupConfigTypes": {
+			"types": "./src/setupConfigTypes.ts",
+			"import": "./src/setupConfigTypes.ts"
+		},
 		"./verp": {
 			"types": "./src/verp.ts",
 			"import": "./src/verp.ts"
