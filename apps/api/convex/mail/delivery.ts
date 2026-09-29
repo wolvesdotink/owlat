@@ -389,6 +389,7 @@ export const deliverToMailbox = internalMutation({
 			unsubscribe: args.unsubscribe,
 			pinnedSection: filterOutcome.pinnedSection,
 			countUsedBytes: true,
+			inboundOrigin: 'mx',
 		});
 
 		// 11b. Classifier enqueues, follow-up / snooze-until-reply clears and the

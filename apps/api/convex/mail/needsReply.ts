@@ -16,8 +16,8 @@
  *      boolean says otherwise. Fail-soft: any LLM/gate failure leaves the
  *      deterministic candidate flag with urgency `normal` and no askSummary.
  *
- * Trigger: `enqueueNeedsReplyCheck` on inbound webhook delivery (bounded to
- * the affected thread), plus a reconcile cron (`sweepPending`) that
+ * Trigger: `scheduleNeedsReplyClassify` on inbound webhook delivery (bounded to
+ * the affected thread; the insert stamps the pending marker), plus a reconcile cron (`sweepPending`) that
  * re-schedules threads whose scheduled classification was lost.
  *
  * Clearing: any outbound send in the thread (draftLifecycle sent-effects),
@@ -59,22 +59,37 @@ export function isCalendarAttachment(att: { filename: string; contentType: strin
 export const NEEDS_REPLY_CONTEXT_MESSAGES = 6;
 
 /**
- * Mark the thread pending and schedule the classify action. Called for inbox
- * deliveries only, from hosted delivery (deliverToMailbox) and forward IMAP
- * sync (mail/external/delivery.ts, `origin: 'sync'`): a bulk history import
- * must never fan out LLM work, and the reconcile cron stays bounded likewise.
+ * Mark the thread pending and schedule the classify action (the reconcile
+ * cron's requeue). Inbound delivery does not come through here: the insert
+ * stamps `needsReplyPendingAt` in its own thread patch and the post-insert
+ * tail calls {@link scheduleNeedsReplyClassify} directly (plan C10).
  */
 export async function enqueueNeedsReplyCheck(
 	ctx: MutationCtx,
 	threadId: Id<'mailThreads'>,
-	// Ingest-time headers of the triggering message. None of them are persisted
-	// on the row, so they ride along here or the screen never sees them.
 	opts: NeedsReplyHeaders = {}
 ): Promise<void> {
 	await ctx.db.patch(threadId, {
 		needsReplyPendingAt: Date.now(),
 		updatedAt: Date.now(),
 	});
+	await scheduleNeedsReplyClassify(ctx, threadId, opts);
+}
+
+/**
+ * Schedule the classify action for a thread already marked pending. Called for
+ * inbox deliveries only, from hosted delivery (deliverToMailbox) and forward
+ * IMAP sync (mail/external/delivery.ts, `origin: 'sync'`), via
+ * deliveryPipeline/afterInsert.ts: a bulk history import must never fan out
+ * LLM work, and the reconcile cron stays bounded likewise.
+ */
+export async function scheduleNeedsReplyClassify(
+	ctx: MutationCtx,
+	threadId: Id<'mailThreads'>,
+	// Ingest-time headers of the triggering message. None of them are persisted
+	// on the row, so they ride along here or the screen never sees them.
+	opts: NeedsReplyHeaders = {}
+): Promise<void> {
 	await ctx.scheduler.runAfter(0, internal.mail.ai.needsReplyClassify.classifyThread, {
 		threadId,
 		precedence: opts.precedence,

@@ -29,45 +29,7 @@ export const list = adminQuery({
 		const organizationId = await activeAuditOrganizationId(ctx);
 		const limit = auditPageLimit(args.limit);
 		const pluginId = args.pluginId === undefined ? undefined : parsePluginId(args.pluginId);
-
-		// Plugin-filtered reads seek directly within the authenticated tenant.
-		// Unfiltered reads retain legacy instance-global core rows whose
-		// organizationId predates explicit attribution.
-		const baseQuery =
-			pluginId === undefined
-				? ctx.db.query('auditLogs').withIndex('by_created_at').order('desc')
-				: ctx.db
-						.query('auditLogs')
-						.withIndex('by_organization_id_and_plugin_id_and_created_at', (q) =>
-							q.eq('organizationId', organizationId).eq('pluginId', pluginId)
-						)
-						.order('desc');
-
-		// Apply date and attribute filters at the database level
-		const query = baseQuery.filter((q) => {
-			const conditions = [];
-			if (args.startDate) conditions.push(q.gte(q.field('createdAt'), args.startDate));
-			if (args.endDate) conditions.push(q.lte(q.field('createdAt'), args.endDate));
-			if (args.action) conditions.push(q.eq(q.field('action'), args.action));
-			if (args.resource) conditions.push(q.eq(q.field('resource'), args.resource));
-			if (args.userId) conditions.push(q.eq(q.field('userId'), args.userId));
-			if (pluginId === undefined) {
-				conditions.push(
-					q.or(
-						q.eq(q.field('organizationId'), organizationId),
-						q.eq(q.field('organizationId'), undefined)
-					)
-				);
-			}
-			if (conditions.length === 0) return true;
-			if (conditions.length === 1) return conditions[0]!;
-			const [first, second, ...rest] = conditions;
-			let combined = q.and(first!, second!);
-			for (const condition of rest) {
-				combined = q.and(combined, condition);
-			}
-			return combined;
-		});
+		const query = auditLogListQuery(ctx, args, organizationId, pluginId);
 
 		// Cursor pagination via Convex's native paginate(): it seeks past the
 		// opaque continuation cursor in the index instead of collecting the
@@ -191,6 +153,90 @@ export const getActiveUsers = adminQuery({
 			}));
 	},
 });
+
+interface AuditListFilters {
+	action?: string;
+	resource?: string;
+	userId?: string;
+	startDate?: number;
+	endDate?: number;
+}
+
+/**
+ * The newest-first read behind `list`. The date window rides the index range
+ * on every path, and a userId or action filter seeks its own compound index,
+ * so a narrow filter over a long audit history reads the matching rows rather
+ * than paging through every row and dropping most of them (plan C10).
+ *
+ *   - `pluginId`: seek the plugin's rows within the authenticated tenant.
+ *   - otherwise `userId`, then `action`, then the bare `createdAt` order. These
+ *     also keep legacy instance-global core rows whose organizationId predates
+ *     explicit attribution, so the tenant test stays in the filter.
+ *
+ * Whatever the chosen index does not cover (resource, the second of userId and
+ * action, the tenant test) stays in `.filter()`. A falsy bound means "open",
+ * as it always has.
+ */
+export function auditLogListQuery(
+	ctx: Pick<QueryCtx, 'db'>,
+	args: AuditListFilters,
+	organizationId: string,
+	pluginId: string | undefined
+) {
+	const from = args.startDate || Number.MIN_SAFE_INTEGER;
+	const to = args.endDate || Number.MAX_SAFE_INTEGER;
+	const table = ctx.db.query('auditLogs');
+	let seekedUser = false;
+	let seekedAction = false;
+	let base;
+	if (pluginId !== undefined) {
+		base = table.withIndex('by_organization_id_and_plugin_id_and_created_at', (q) =>
+			q
+				.eq('organizationId', organizationId)
+				.eq('pluginId', pluginId)
+				.gte('createdAt', from)
+				.lte('createdAt', to)
+		);
+	} else if (args.userId) {
+		const userId = args.userId;
+		seekedUser = true;
+		base = table.withIndex('by_user_and_created_at', (q) =>
+			q.eq('userId', userId).gte('createdAt', from).lte('createdAt', to)
+		);
+	} else if (args.action) {
+		// The column is a literal union; an unknown string simply matches nothing.
+		const action = args.action as Doc<'auditLogs'>['action'];
+		seekedAction = true;
+		base = table.withIndex('by_action_and_created_at', (q) =>
+			q.eq('action', action).gte('createdAt', from).lte('createdAt', to)
+		);
+	} else {
+		base = table.withIndex('by_created_at', (q) => q.gte('createdAt', from).lte('createdAt', to));
+	}
+
+	return base.order('desc').filter((q) => {
+		const conditions = [];
+		if (args.action && !seekedAction) conditions.push(q.eq(q.field('action'), args.action));
+		if (args.resource) conditions.push(q.eq(q.field('resource'), args.resource));
+		if (args.userId && !seekedUser) conditions.push(q.eq(q.field('userId'), args.userId));
+		if (pluginId === undefined) {
+			conditions.push(
+				q.or(
+					q.eq(q.field('organizationId'), organizationId),
+					q.eq(q.field('organizationId'), undefined)
+				)
+			);
+		}
+		if (conditions.length === 0) return true;
+		if (conditions.length === 1) return conditions[0]!;
+		const [first, second, ...rest] = conditions;
+		let combined = q.and(first!, second!);
+		for (const condition of rest) {
+			combined = q.and(combined, condition);
+		}
+		return combined;
+	});
+}
 
 async function activeAuditOrganizationId(ctx: Parameters<typeof getBetterAuthSessionWithRole>[0]) {
 	const session = await getBetterAuthSessionWithRole(ctx);

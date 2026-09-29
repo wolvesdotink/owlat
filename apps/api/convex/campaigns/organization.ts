@@ -28,6 +28,17 @@ const ATTENTION_CANDIDATE_STATUSES = [
 	'pending_review',
 ] as const;
 
+// `cancelled` is terminal, so unlike the other three states it never drains:
+// every stopped send would stay a candidate forever and the scan would grow
+// with the org's age. A stop is only worth reviving while it is recent, so the
+// cancelled bucket is the ones touched in the last 30 days, read as an index
+// range on `updatedAt` (plan C10). Older ones stay under the Cancelled pill.
+export const CANCELLED_ATTENTION_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+// bounded: each attention state is transient/small (cancelled by the window
+// above); capped well above any real count so the scan can never run unbounded.
+const ATTENTION_CANDIDATE_CAP = 1000;
+
 // Only the fields the command center's attention classifier + row actually
 // read. Projecting keeps the live subscription off the heavy per-campaign
 // payload (archiveHtmlContent, the frozen `audience` snapshot, abTestConfig),
@@ -85,13 +96,21 @@ export const listAttentionCandidates = campaignsQuery({
 	args: {},
 	handler: async (ctx) => {
 		const out: AttentionCandidate[] = [];
+		const cancelledSince = Date.now() - CANCELLED_ATTENTION_WINDOW_MS;
 		for (const status of ATTENTION_CANDIDATE_STATUSES) {
-			// bounded: each attention state is transient/small; capped well above
-			// any real count so the scan can never run unbounded.
-			const batch = await ctx.db
-				.query('campaigns')
-				.withIndex('by_status', (q) => q.eq('status', status))
-				.take(1000);
+			const batch =
+				status === 'cancelled'
+					? await ctx.db
+							.query('campaigns')
+							.withIndex('by_status_and_updated_at', (q) =>
+								q.eq('status', status).gte('updatedAt', cancelledSince)
+							)
+							.order('desc')
+							.take(ATTENTION_CANDIDATE_CAP)
+					: await ctx.db
+							.query('campaigns')
+							.withIndex('by_status', (q) => q.eq('status', status))
+							.take(ATTENTION_CANDIDATE_CAP);
 			out.push(...batch.map(projectCandidate));
 		}
 		return out;

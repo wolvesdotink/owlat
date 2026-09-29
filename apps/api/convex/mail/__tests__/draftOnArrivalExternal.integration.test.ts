@@ -383,7 +383,7 @@ describe('draft-on-arrival on an external-only install (postbox=false)', () => {
 
 	// Gap 1 end-to-end on a TEAM inbox, starting at the worker's ingest:
 	//   ingestExternalMessage(origin: 'sync', INBOX)
-	//     → enqueueNeedsReplyCheck + enqueueCategoryCheck
+	//     → pending stamp in the insert + scheduleNeedsReplyClassify + enqueueCategoryCheck
 	//     → the real classify action → applyResult → draft slot.
 	// The admin who connected the account has the HEY-style sender screener ON.
 	// On a PERSONAL mailbox that setting holds an unknown first-time sender out
