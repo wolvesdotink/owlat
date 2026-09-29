@@ -57,14 +57,21 @@ export function usePostboxThreadPages(source: {
 		}
 	);
 
+	// Recorded as each page delivers, so reading a page stays a pure read.
+	// Synchronous, so a page that delivers and re-reads in one tick is kept.
+	watch(
+		() => earlierKeys.value.map((key) => earlier.get(key)?.data.value),
+		(delivered) => {
+			for (const [i, data] of delivered.entries()) {
+				if (data) lastDelivered.set(i + 1, data);
+			}
+		},
+		{ flush: 'sync' }
+	);
+
 	function pageAt(index: number): ThreadPage | undefined {
 		if (index === 0) return newest.data.value ?? undefined;
-		const data = earlier.get(String(index))?.data.value;
-		if (data) {
-			lastDelivered.set(index, data);
-			return data;
-		}
-		return lastDelivered.get(index);
+		return earlier.get(String(index))?.data.value ?? lastDelivered.get(index);
 	}
 
 	/** The loaded pages, newest first, up to the first one still loading. */

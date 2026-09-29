@@ -247,4 +247,36 @@ describe('PostboxThreadReader on a long thread', () => {
 		// The earlier page arrives collapsed: no body loads for it.
 		expect(bodies(w)).toEqual(['m9']);
 	});
+
+	it('keeps an earlier page on screen while a new reply moves its cursor', async () => {
+		answerNewestPage();
+		const w = mountReader();
+		await flushPromises();
+		await w
+			.findAll('button')
+			.find((b) => b.text().includes('earlier messages'))
+			?.trigger('click');
+		answers.set(keyOf(THREAD, earlierThreadPageArgs('m9', 'c1')), {
+			thread: { _id: 't1', messageCount: 60, unreadCount: 0 },
+			labels: [],
+			messages: [],
+			envelopes: [row('m1', 1)],
+			olderCursor: null,
+		});
+		await flushPromises();
+		expect(w.text()).toContain('Snippet m1');
+
+		// A reply lands: the newest page re-reads with a new cursor, and the
+		// earlier page re-reads from it. Until it answers, its rows stay.
+		answers.set(keyOf(THREAD, threadPageArgs('m9')), {
+			thread: { _id: 't1', messageCount: 61, unreadCount: 0 },
+			labels: [],
+			messages: [row('m10', 10, { textBodyInline: 'A new reply' })],
+			envelopes: [row('m8', 8), row('m9', 9)],
+			olderCursor: 'c2',
+		});
+		await flushPromises();
+		expect(opened.map((sub) => sub.args)).toContainEqual(earlierThreadPageArgs('m9', 'c2'));
+		expect(w.text()).toContain('Snippet m1');
+	});
 });
