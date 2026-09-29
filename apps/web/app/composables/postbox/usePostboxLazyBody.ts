@@ -14,23 +14,13 @@
  * they always did, and focusing or scrolling to a message mounts its body.
  */
 import { nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue';
+import { findOverflowAncestor } from './usePostboxScrollHost';
 
 /** How far outside the scroll viewport a body starts mounting, in px. */
 export const POSTBOX_LAZY_BODY_MARGIN_PX = 600;
 
 /** Placeholder height for a body that has never been measured. */
 export const POSTBOX_BODY_PLACEHOLDER_PX = 200;
-
-/** The nearest ancestor that scrolls vertically, or null for the viewport. */
-export function findScrollParent(el: HTMLElement): HTMLElement | null {
-	let node = el.parentElement;
-	while (node && node !== document.body && node !== document.documentElement) {
-		const overflowY = getComputedStyle(node).overflowY;
-		if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') return node;
-		node = node.parentElement;
-	}
-	return null;
-}
 
 /** Whether `el` lies within `margin` px of the visible part of `root`. */
 export function isNearViewport(el: HTMLElement, root: HTMLElement | null, margin: number): boolean {
@@ -72,7 +62,8 @@ export function usePostboxLazyBody(opts: {
 		(el) => {
 			stop();
 			if (!el || mounted.value) return;
-			const root = findScrollParent(el);
+			// null: only the document scrolls, so the observer watches the viewport.
+			const root = findOverflowAncestor(el);
 			// Measured once when the placeholder binds, so a body already on
 			// screen mounts in this same flush rather than one observer callback
 			// (and one painted placeholder frame) later.

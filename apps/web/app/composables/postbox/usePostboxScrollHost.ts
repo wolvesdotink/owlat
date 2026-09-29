@@ -22,18 +22,27 @@ export function isDocumentScroller(el: Element): boolean {
 }
 
 /**
- * The nearest ancestor that scrolls vertically, falling back to the document's
- * scroller. Decided by computed `overflow-y`, not by current overflow, so a
- * container that is short right now (rows still loading) is still found.
+ * The nearest ancestor element that scrolls vertically, or null when only the
+ * document scrolls. Decided by computed `overflow-y`, not by current overflow,
+ * so a container that is short right now (rows still loading) is still found.
  */
-export function findScrollParent(el: HTMLElement): HTMLElement {
+export function findOverflowAncestor(el: HTMLElement): HTMLElement | null {
 	let node = el.parentElement;
 	while (node && node !== document.body && node !== document.documentElement) {
 		const overflowY = getComputedStyle(node).overflowY;
 		if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') return node;
 		node = node.parentElement;
 	}
-	return (document.scrollingElement as HTMLElement | null) ?? document.documentElement;
+	return null;
+}
+
+/** {@link findOverflowAncestor}, falling back to the document's scroller. */
+export function findScrollParent(el: HTMLElement): HTMLElement {
+	return (
+		findOverflowAncestor(el) ??
+		(document.scrollingElement as HTMLElement | null) ??
+		document.documentElement
+	);
 }
 
 /**
