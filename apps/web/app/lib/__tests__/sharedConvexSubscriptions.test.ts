@@ -2,14 +2,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { effectScope, ref } from 'vue';
 import { ConvexError } from 'convex/values';
 import type { FunctionReference } from 'convex/server';
+import { api } from '@owlat/api';
 import { createConvexSubscription } from '../convexSubscription';
 import {
+	BODY_SUBSCRIPTION_LINGER_MS,
+	MAX_LINGERING_BODY_SUBSCRIPTIONS,
 	MAX_LINGERING_SUBSCRIPTIONS,
+	lingerClassOf,
 	resetSharedConvexSubscriptions,
 	SUBSCRIPTION_LINGER_MS,
 } from '../sharedConvexSubscriptions';
 
 const query = 'api.test.list' as unknown as FunctionReference<'query'>;
+/** A query whose value carries message bodies (a reader thread page). */
+const bodyQuery =
+	'mail/mailbox/messages:listThreadMessages' as unknown as FunctionReference<'query'>;
 
 type Args = Record<string, unknown>;
 
@@ -53,13 +60,17 @@ type Client = ReturnType<typeof fakeClient>;
 function own(
 	client: Client,
 	args: Args | (() => Args | 'skip'),
-	opts: { accept?: (value: unknown) => void; keepPreviousData?: boolean } = {}
+	opts: {
+		accept?: (value: unknown) => void;
+		keepPreviousData?: boolean;
+		query?: FunctionReference<'query'>;
+	} = {}
 ) {
 	const scope = effectScope();
 	const data = ref<unknown>(undefined);
 	const subscription = scope.run(() =>
 		createConvexSubscription<Args, unknown>({
-			query,
+			query: opts.query ?? query,
 			name: 'useTestQuery',
 			args,
 			open: (resolved, update, fail) => client.onUpdate(resolved, update, fail),
@@ -196,6 +207,39 @@ describe('shared Convex subscriptions', () => {
 		expect(client.wire[0]!.unsubscribe).toHaveBeenCalledOnce();
 		expect(client.wire[1]!.unsubscribe).not.toHaveBeenCalled();
 		expect(client.wire[MAX_LINGERING_SUBSCRIPTIONS]!.unsubscribe).not.toHaveBeenCalled();
+	});
+
+	it('classes the reader queries that carry bodies, and only them, as body-bearing', () => {
+		expect(lingerClassOf(api.mail.mailbox.messages.listThreadMessages)).toBe('body');
+		expect(lingerClassOf(api.mail.mailbox.messages.getMessageInlineBody)).toBe('body');
+		expect(lingerClassOf(api.mail.mailbox.messages.getMessage)).toBe('body');
+		expect(lingerClassOf(api.mail.mailbox.queries.listFolders)).toBe('default');
+	});
+
+	it('keeps a released body-bearing query warm for the shorter body linger', () => {
+		const client = fakeClient();
+		own(client, { id: 1 }, { query: bodyQuery }).leave();
+		own(client, { id: 1 }).leave();
+
+		vi.advanceTimersByTime(BODY_SUBSCRIPTION_LINGER_MS);
+		expect(client.wire[0]!.unsubscribe).toHaveBeenCalledOnce();
+		expect(client.wire[1]!.unsubscribe).not.toHaveBeenCalled();
+		vi.advanceTimersByTime(SUBSCRIPTION_LINGER_MS - BODY_SUBSCRIPTION_LINGER_MS);
+		expect(client.wire[1]!.unsubscribe).toHaveBeenCalledOnce();
+	});
+
+	it('caps lingering body-bearing queries on their own, sparing the rest', () => {
+		const client = fakeClient();
+		const light = own(client, { id: 'light' });
+		light.leave();
+		for (let i = 0; i <= MAX_LINGERING_BODY_SUBSCRIPTIONS; i += 1) {
+			own(client, { id: i }, { query: bodyQuery }).leave();
+		}
+
+		// The oldest body linger closed; the older plain one did not.
+		expect(client.wire[0]!.unsubscribe).not.toHaveBeenCalled();
+		expect(client.wire[1]!.unsubscribe).toHaveBeenCalledOnce();
+		expect(client.wire[2]!.unsubscribe).not.toHaveBeenCalled();
 	});
 
 	it('forgets everything on an identity reset', () => {

@@ -13,7 +13,7 @@
 import type { ConvexClient } from 'convex/browser';
 import type { FunctionArgs, FunctionReference, FunctionReturnType } from 'convex/server';
 import { argsIdentity } from '~/lib/convexSubscription';
-import { openShared, sharedSubscriptionKey } from '~/lib/sharedConvexSubscriptions';
+import { lingerClassOf, openShared, sharedSubscriptionKey } from '~/lib/sharedConvexSubscriptions';
 
 export type HoldClient = Pick<ConvexClient, 'onUpdate'>;
 
@@ -41,6 +41,7 @@ export function holdConvexQuery<Query extends FunctionReference<'query'>>(
 			// the reader that opens the message runs its own authoritative query.
 			fail: () => {},
 		},
-		false
+		false,
+		lingerClassOf(query)
 	);
 }

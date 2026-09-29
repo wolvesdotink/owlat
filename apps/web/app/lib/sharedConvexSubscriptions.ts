@@ -35,6 +35,32 @@ export const SUBSCRIPTION_LINGER_MS = 45_000;
 /** Most released queries kept warm at once. Past this, the oldest one closes. */
 export const MAX_LINGERING_SUBSCRIPTIONS = 64;
 
+/**
+ * Queries whose value carries message bodies: a thread page holds up to ten
+ * inline bodies, so one lingering copy can run to several hundred KB, and the
+ * reader's read-ahead and j/k browsing release exactly these. They linger for
+ * less time and fewer of them at once, so what is kept (and kept live on the
+ * server) after the reader has moved on stays a few MB, not tens.
+ */
+const BODY_BEARING_QUERIES: ReadonlySet<string> = new Set([
+	'mail/mailbox/messages:getMessage',
+	'mail/mailbox/messages:getMessageInlineBody',
+	'mail/mailbox/messages:listThreadMessages',
+]);
+
+/** How long a body-bearing query stays subscribed after its last owner left. */
+export const BODY_SUBSCRIPTION_LINGER_MS = 15_000;
+
+/** Most released body-bearing queries kept warm at once (within the overall cap). */
+export const MAX_LINGERING_BODY_SUBSCRIPTIONS = 12;
+
+/** How a released query lingers: `body` for the queries above, `default` for the rest. */
+export type LingerClass = 'default' | 'body';
+
+export function lingerClassOf(query: FunctionReference<'query'>): LingerClass {
+	return BODY_BEARING_QUERIES.has(functionNameOf(query)) ? 'body' : 'default';
+}
+
 interface SharedListener {
 	update: (value: unknown) => void;
 	fail: (error: unknown) => void;
@@ -56,6 +82,7 @@ interface SharedEntry {
 	hasValue: boolean;
 	value: unknown;
 	lingerTimer: ReturnType<typeof setTimeout> | null;
+	lingerClass: LingerClass;
 }
 
 /**
@@ -66,6 +93,8 @@ interface SharedEntry {
 const sharedEntries = new Map<string, SharedEntry>();
 /** Released entries waiting out their linger, oldest first. */
 const lingering = new Set<SharedEntry>();
+/** The body-bearing subset of `lingering`, oldest first. */
+const lingeringBodies = new Set<SharedEntry>();
 const sourceIds = new WeakMap<object, number>();
 let nextSourceId = 0;
 
@@ -102,6 +131,7 @@ function cancelLinger(entry: SharedEntry): void {
 		entry.lingerTimer = null;
 	}
 	lingering.delete(entry);
+	lingeringBodies.delete(entry);
 }
 
 // Calls the handle at most once: the Convex client's unsubscribe throws on a
@@ -124,11 +154,22 @@ function detach(entry: SharedEntry): void {
 }
 
 function startLinger(entry: SharedEntry): void {
-	entry.lingerTimer = setTimeout(() => {
-		entry.lingerTimer = null;
-		detach(entry);
-	}, SUBSCRIPTION_LINGER_MS);
+	const isBody = entry.lingerClass === 'body';
+	entry.lingerTimer = setTimeout(
+		() => {
+			entry.lingerTimer = null;
+			detach(entry);
+		},
+		isBody ? BODY_SUBSCRIPTION_LINGER_MS : SUBSCRIPTION_LINGER_MS
+	);
 	lingering.add(entry);
+	if (isBody) {
+		lingeringBodies.add(entry);
+		if (lingeringBodies.size > MAX_LINGERING_BODY_SUBSCRIPTIONS) {
+			const oldest = lingeringBodies.values().next().value;
+			if (oldest) detach(oldest);
+		}
+	}
 	if (lingering.size > MAX_LINGERING_SUBSCRIPTIONS) {
 		const oldest = lingering.values().next().value;
 		if (oldest) detach(oldest);
@@ -166,14 +207,16 @@ function fanOut(entry: SharedEntry, call: (listener: SharedListener) => void): v
  * Joins the shared subscription for `key`, opening it if nobody holds it. A
  * live or lingering entry that already has a value hands it to the new owner
  * synchronously. `fresh` detaches the current entry first, so the query
- * re-executes once its remaining owners have let go of it.
+ * re-executes once its remaining owners have let go of it. `lingerClass`
+ * (see {@link lingerClassOf}) sets how the entry lingers once released.
  */
 export function openShared<Args, Update>(
 	key: string,
 	args: Args,
 	open: OpenSubscription<Args, Update>,
 	listener: SharedListener,
-	fresh: boolean
+	fresh: boolean,
+	lingerClass: LingerClass = 'default'
 ): () => void {
 	let entry = sharedEntries.get(key);
 	if (entry && fresh) {
@@ -195,6 +238,7 @@ export function openShared<Args, Update>(
 			hasValue: false,
 			value: undefined,
 			lingerTimer: null,
+			lingerClass,
 		};
 		entry = created;
 		sharedEntries.set(key, created);

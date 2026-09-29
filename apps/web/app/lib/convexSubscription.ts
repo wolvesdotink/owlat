@@ -20,6 +20,7 @@ import { isDevBuild, logWarn } from '~/lib/runtimeLog';
 import { createTransientRetry } from '~/lib/queryRetry';
 import {
 	functionNameOf,
+	lingerClassOf,
 	openShared,
 	sharedSubscriptionKey,
 	type OpenSubscription,
@@ -280,7 +281,8 @@ export function createConvexSubscription<Args, Update>(
 						args,
 						options.open,
 						{ update: (v) => onUpdate(v as Update), fail: onError },
-						opts?.fresh === true
+						opts?.fresh === true,
+						lingerClassOf(options.query)
 					);
 	};
 
