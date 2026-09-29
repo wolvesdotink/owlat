@@ -12,8 +12,10 @@
 #
 # A site passes when it does ONE of:
 #
-#   * calls a recognized authorization gate inside the handler (same token list
-#     as check-permissions.sh);
+#   * calls a recognized authorization gate inside the handler (the shared
+#     CONVEX_AUTHZ_GATES list in scripts/lib/convex-builders.sh, the same one
+#     check-permissions.sh accepts), or one of the soft-fail read predicates
+#     below (CONVEX_AUTHZ_READ_PREDICATES, same file);
 #   * carries an explicit opt-out comment — inside the handler body, or on the
 #     line directly above the `export const`:
 #       // authz: <why this needs no role check / where the gate actually lives>
@@ -69,43 +71,43 @@
 # here by construction, so it carries the `// authz: <where the gate lives>`
 # opt-out instead.
 #
-# NOTE: `chatQuery` / `assistantQuery` / `postboxQuery` (chat/_helpers.ts,
-# assistant/conversations.ts, mail/_helpers.ts) compose `authedQuery` with a `assertFeatureEnabled`
-# FEATURE-flag floor only — a feature flag is NOT an authorization decision — so
-# they are matched by the is_export regex below and remain SUBJECT to this
-# ratchet exactly like a bare `authedQuery`. The pre-existing chat reads keep
-# their baseline entries until each is individually reviewed.
+# The scanned builders are every query builder with a MEMBER floor plus
+# `publicQuery` / `publicAction`, derived from source by
+# scripts/lib/convex-builders.sh. That takes in every `featureGated(Any)`
+# composition of `authedQuery` (`chatQuery`, `assistantQuery`, `postboxQuery`,
+# and the next one): a FEATURE flag is NOT an authorization decision, so they
+# stay SUBJECT to this ratchet exactly like a bare `authedQuery`. The
+# pre-existing chat reads keep their baseline entries until each is
+# individually reviewed. `adminQuery` has a role floor and is not scanned.
 
 set -uo pipefail
 repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
 self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$(dirname "$0")/.."
 
+# shellcheck source=lib/convex-builders.sh
+. scripts/lib/convex-builders.sh
+
 generate() {
+	local member_queries public_reads builders program
+	member_queries=$(convex_builder_regex 'query' 'member') || exit 1
+	public_reads=$(convex_builder_regex 'query|action' 'public') || exit 1
+	builders="$member_queries|$public_reads"
+	# The span scanner (scripts/lib/convex-defs.awk) opens a span on each
+	# `export const X = <builder>(` and closes it on the column-0 `})`; this
+	# fragment reports a span with neither a gate token nor an opt-out comment.
+	program=$(convex_defs_program '
+		function on_start() { gate = 0 }
+		function on_line() { if ($0 ~ gates) gate = 1 }
+		function on_end() { if (!gate && !def_optout) print FILENAME ":" def_name }
+	') || exit 1
 	find convex -name "*.ts" \
 		-not -path "*/_generated/*" \
 		-not -path "*/__tests__/*" \
-		-exec awk '
-			BEGIN { in_fn = 0; gate = 0; name = ""; block_optout = 0 }
-			{
-				is_comment = ($0 ~ /^[[:space:]]*\/\//)
-				is_optout  = ($0 ~ /\/\/[[:space:]]*(authz|all-members):/)
-				is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedQuery|chatQuery|assistantQuery|postboxQuery|externalMailQuery|transactionalQuery|campaignsQuery|automationsQuery|formsQuery|publicQuery|publicAction)\(/)
-			}
-			is_comment && is_optout { block_optout = 1 }
-			is_export {
-				in_fn = 1; name = $3
-				gate = block_optout
-				block_optout = 0
-			}
-			in_fn && $0 ~ /(requirePermission|requireAdminContext|requireOwnerContext|requireOrgPermission|requireCampaignSendersManage|requireMailboxAccess|requireMessageAccess|assertCanReadRoom|assertCanWriteRoom|assertCanAdministerRoom|requirePlatformAdmin|isActiveOrgMember|isSharedInboxReader|loadReadableMailbox|loadReadableMessage|loadAccessibleMailboxes)/ { gate = 1 }
-			in_fn && is_optout { gate = 1 }
-			in_fn && /^\}\)/ {
-				if (!gate) print FILENAME ":" name
-				in_fn = 0
-			}
-			(!is_comment && !is_export) { block_optout = 0 }
-		' {} \; 2>/dev/null | sort || true
+		-print0 \
+		| xargs -0 -r awk -v builders="$builders" -v optout='authz|all-members' \
+			-v gates="($CONVEX_AUTHZ_GATES|$CONVEX_AUTHZ_READ_PREDICATES)" "$program" \
+		| sort
 }
 
 if [ "${1:-}" = "--generate" ]; then

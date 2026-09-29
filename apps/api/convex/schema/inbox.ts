@@ -2,20 +2,21 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import {
 	securityFlagsValidator,
-	classificationValidator,
 	contextCoverageValidator,
 	draftQualityValidator,
 	groundingSourceValidator,
 	agentDecisionValidator,
 	tokenUsageValidator,
 } from '../lib/convexValidators';
-import { pendingClarificationValidator } from '../inbox/clarificationValidators';
-import { attachmentSuggestionsValidator } from '../inbox/attachmentValidators';
+import { classificationValidator } from '../lib/validators/classification';
+import { pendingClarificationValidator } from '../lib/validators/clarification';
+import { attachmentSuggestionsValidator } from '../lib/validators/attachment';
 import { agentStepKindValidator } from '../agent/steps/catalog';
 import { llmUsageTagFields } from '../lib/llmUsageTags';
 import {
 	agentMetricTypeValidator,
 	attachmentIndexingValidator,
+	backfillJobStatusValidator,
 	contextTierValidator,
 	virusVerdictValidator,
 } from '../lib/literalValidators';
@@ -419,17 +420,11 @@ export const inboxTables = {
 		.index('by_inbound_message', ['inboundMessageId'])
 		.index('by_status', ['status']),
 
-	// Knowledge Backfill Jobs - tracks one-time bulk extraction of historical
-	// inbound mail into the knowledge graph. Created when the agent master
-	// toggle flips false→true and no prior job exists.
+	// Knowledge Backfill Jobs - one-time extraction of historical inbound mail,
+	// created on the first ai.agent false→true toggle; walker and lifecycle in
+	// knowledge/messageBackfill.ts and knowledge/backfillJobs.ts.
 	knowledgeBackfillJobs: defineTable({
-		status: v.union(
-			v.literal('pending'),
-			v.literal('running'),
-			v.literal('completed'),
-			v.literal('cancelled'),
-			v.literal('failed')
-		),
+		status: backfillJobStatusValidator,
 		triggeredBy: v.string(), // identity.subject
 		totalCount: v.number(),
 		scannedCount: v.number(),

@@ -21,8 +21,8 @@
  *   audit_log                    — fires on every transition + create +
  *                                  duplicate + remove.
  *   record_content_scan_result   — fires on suspicious / blocked publish.
- *   update_block_usage_counts    — fires on create/duplicate when blocks
- *                                  are linked.
+ *   update_block_usage_counts    — fires on create/duplicate/remove when
+ *                                  blocks are linked.
  *
  * See docs/adr/0022-template-lifecycle-modules.md.
  */
@@ -34,10 +34,11 @@ import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { defineLifecycle, refuse } from '../lib/lifecycle';
 import { applyUsageCountDelta } from '../emailBlocks/module';
 import { buildSearchableText } from '../lib/queryHelpers';
+import { duplicateEmailFields } from '../lib/publishableEmail';
 import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from '../lib/constants';
 import { dataVariablesSchemaValidator } from '../lib/convexValidators';
 import { scanContent } from '@owlat/email-scanner';
-import { throwAlreadyExists, throwInvalidInput, throwInvalidState } from '../_utils/errors';
+import { throwInvalidState } from '../_utils/errors';
 import type { ContentFlag, ContentScanLevel } from '@owlat/email-scanner';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -520,7 +521,8 @@ export const transition = internalMutation({
 
 /**
  * Duplicate a transactional email. The copy lands at `draft`, gets a
- * unique slug (suffixed with `-copy[-N]`).
+ * unique slug (suffixed with `-copy[-N]`) and carries every content column
+ * of the source, attachments included (`duplicateEmailFields`).
  */
 export const duplicate = internalMutation({
 	args: {
@@ -548,19 +550,10 @@ export const duplicate = internalMutation({
 		const searchableText = buildSearchableText(newName, email.subject, newSlug);
 
 		const newId = await ctx.db.insert('transactionalEmails', {
+			...duplicateEmailFields(email),
 			name: newName,
 			slug: newSlug,
-			subject: email.subject,
-			content: email.content,
-			htmlContent: email.htmlContent,
-			dataVariablesSchema: email.dataVariablesSchema,
 			status: 'draft',
-			defaultLanguage: email.defaultLanguage,
-			supportedLanguages: email.supportedLanguages,
-			translations: email.translations,
-			linkedBlockIds: email.linkedBlockIds,
-			contentBlockVersion: email.contentBlockVersion ?? CURRENT_CONTENT_BLOCK_VERSION,
-			rendererVersion: email.rendererVersion ?? CURRENT_RENDERER_VERSION,
 			searchableText,
 			createdAt: now,
 			updatedAt: now,
@@ -594,8 +587,9 @@ export const duplicate = internalMutation({
 });
 
 /**
- * Delete a transactional email. Emits an audit log; block usage counts
- * for `linkedBlockIds` are NOT decremented today (left as follow-up).
+ * Delete a transactional email. Emits an audit log and decrements the usage
+ * counts of any saved blocks the email linked, so the block library's "X uses"
+ * count stays accurate after a delete.
  */
 export const remove = internalMutation({
 	args: {
@@ -610,7 +604,7 @@ export const remove = internalMutation({
 		const slug = email.slug;
 		await ctx.db.delete(args.emailId);
 
-		await applyEffects(ctx, [
+		const effects: Effect[] = [
 			{
 				kind: 'audit_log',
 				action: 'transactional_email.deleted',
@@ -622,35 +616,16 @@ export const remove = internalMutation({
 					applied: 'transitioned',
 				},
 			},
-		]);
+		];
+		if (email.linkedBlockIds && email.linkedBlockIds.length > 0) {
+			effects.push({
+				kind: 'update_block_usage_counts',
+				previousIds: email.linkedBlockIds,
+				nextIds: [],
+			});
+		}
+		await applyEffects(ctx, effects);
 
 		return { ok: true };
 	},
 });
-
-// ─── Publish invariant guard ────────────────────────────────────────────────
-
-/**
- * Refuse to mutate publishable content on a `published` row unless the
- * caller passes `forceWhilePublished: true`. Consumed by every mutation
- * in `transactional/` that touches publishable content.
- *
- * Mirrors the email-template guard with the same shape; both throw
- * `invalid_state` with `data.action = 'unpublish'` to keep error handling
- * parallel.
- */
-export function assertEditableForPublishableChange(
-	email: Doc<'transactionalEmails'>,
-	force?: boolean
-): void {
-	if (email.status === 'published' && !force) {
-		throwInvalidState(
-			'Transactional email is published. Pass forceWhilePublished: true or unpublish first.',
-			{ action: 'unpublish' }
-		);
-	}
-}
-
-// Re-export error throwers used by callers that translate create-outcome
-// reasons. Keep here so callers don't import _utils/errors twice.
-export { throwAlreadyExists, throwInvalidInput };

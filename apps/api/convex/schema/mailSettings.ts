@@ -19,7 +19,7 @@ import {
 	mailTrashAutoPurgeDaysValidator,
 	mailUndoSendSecondsValidator,
 	mailViewModeValidator,
-} from '../lib/mailSettingsValidators';
+} from '../lib/validators/mailSettings';
 
 /**
  * Per-user Postbox preferences.

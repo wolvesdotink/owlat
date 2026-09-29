@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 import { DEFAULT_EMAIL_THEME } from '@owlat/shared/emailDefaults';
+import { useSettingsForm } from '~/composables/useSettingsForm';
 
 const { t } = useI18n();
 
@@ -22,13 +23,20 @@ const { data: organizationSettings, isLoading: organizationSettingsLoading } = u
 
 const isLoading = computed(() => organizationLoading.value || organizationSettingsLoading.value);
 
+type ThemeForm = {
+	primaryColor: string;
+	fontFamily: string;
+	backgroundColor: string;
+	baseWidth: number;
+};
+
 // Mutations
 const { run: updateOrganizationSettings } = useBackendOperation(api.workspaces.settings.update, {
 	label: () => t('dashboard.admin.instance.emailTheme.saveOperation'),
 });
 
 // Default theme values: the shared defaults the renderer and editor use
-const defaultTheme = {
+const defaultTheme: ThemeForm = {
 	primaryColor: DEFAULT_EMAIL_THEME.primaryColor,
 	fontFamily: DEFAULT_EMAIL_THEME.fontFamily,
 	backgroundColor: DEFAULT_EMAIL_THEME.backgroundColor,
@@ -63,51 +71,6 @@ const fontOptions = computed(() => [
 	},
 ]);
 
-// Form state
-const form = reactive({
-	primaryColor: defaultTheme.primaryColor,
-	fontFamily: defaultTheme.fontFamily,
-	backgroundColor: defaultTheme.backgroundColor,
-	baseWidth: defaultTheme.baseWidth,
-});
-
-// Track if form has been modified
-const isFormDirty = ref(false);
-const isSaving = ref(false);
-
-// Initialize form when organization settings load
-watch(
-	organizationSettings,
-	(settings) => {
-		if (settings) {
-			const theme = settings.emailTheme;
-			form.primaryColor = theme?.primaryColor || defaultTheme.primaryColor;
-			form.fontFamily = theme?.fontFamily || defaultTheme.fontFamily;
-			form.backgroundColor = theme?.backgroundColor || defaultTheme.backgroundColor;
-			form.baseWidth = theme?.baseWidth || defaultTheme.baseWidth;
-			isFormDirty.value = false;
-		}
-	},
-	{ immediate: true }
-);
-
-// Watch form changes
-watch(
-	form,
-	() => {
-		if (organizationSettings.value) {
-			const theme = organizationSettings.value.emailTheme;
-			const hasChanges =
-				form.primaryColor !== (theme?.primaryColor || defaultTheme.primaryColor) ||
-				form.fontFamily !== (theme?.fontFamily || defaultTheme.fontFamily) ||
-				form.backgroundColor !== (theme?.backgroundColor || defaultTheme.backgroundColor) ||
-				form.baseWidth !== (theme?.baseWidth || defaultTheme.baseWidth);
-			isFormDirty.value = hasChanges;
-		}
-	},
-	{ deep: true }
-);
-
 // Toast notifications (global)
 const { showToast: showNotification } = useToast();
 
@@ -123,18 +86,18 @@ const formErrors = reactive({
 });
 
 // Validate form
-const validateForm = (): boolean => {
+const validateForm = (draft: ThemeForm): boolean => {
 	formErrors.primaryColor = '';
 	formErrors.backgroundColor = '';
 
 	let isValid = true;
 
-	if (!isValidHexColor(form.primaryColor)) {
+	if (!isValidHexColor(draft.primaryColor)) {
 		formErrors.primaryColor = t('dashboard.admin.instance.emailTheme.errors.primaryColor');
 		isValid = false;
 	}
 
-	if (!isValidHexColor(form.backgroundColor)) {
+	if (!isValidHexColor(draft.backgroundColor)) {
 		formErrors.backgroundColor = t('dashboard.admin.instance.emailTheme.errors.backgroundColor');
 		isValid = false;
 	}
@@ -142,57 +105,38 @@ const validateForm = (): boolean => {
 	return isValid;
 };
 
-// Save settings. Resolves to whether the save succeeded so the unsaved-changes
-// guard can keep the operator on the page (and keep their edits) when it fails.
-const handleSave = async (): Promise<boolean> => {
+async function saveTheme(draft: ThemeForm): Promise<boolean> {
 	if (!hasActiveOrganization.value) return false;
-
-	if (!validateForm()) return false;
-
-	isSaving.value = true;
-
-	const result = await updateOrganizationSettings({
-		emailTheme: {
-			primaryColor: form.primaryColor,
-			fontFamily: form.fontFamily,
-			backgroundColor: form.backgroundColor,
-			baseWidth: form.baseWidth,
-		},
-	});
-	isSaving.value = false;
-
+	const result = await updateOrganizationSettings({ emailTheme: { ...draft } });
 	if (!result.ok) return false;
-
 	showNotification(t('dashboard.admin.instance.emailTheme.savedToast'));
-	isFormDirty.value = false;
 	return true;
-};
+}
 
-// Unsaved-changes guard: navigating away with an unsaved theme edit prompts to
-// save/discard instead of silently dropping it. Same shared composable + dialog
-// the General settings page uses; `onSave` throws on failure so a failed save
-// keeps the operator here.
+// The theme is one field of the shared settings row, so a write to any other
+// field re-emits it; the draft survives that while it holds unsaved changes.
 const {
-	showDialog: showUnsavedDialog,
-	confirmDiscard,
-	confirmSave,
-	cancelNavigation,
-	setHasChanges,
-} = useUnsavedChanges({
-	onSave: async () => {
-		if (!(await handleSave())) throw new Error('Save failed');
+	form,
+	isDirty: isFormDirty,
+	isSaving,
+	handleSave,
+	resetToDefaults,
+	unsavedDialog,
+} = useSettingsForm({
+	source: organizationSettings,
+	defaults: defaultTheme,
+	project: (settings) => {
+		const theme = settings?.emailTheme;
+		return {
+			primaryColor: theme?.primaryColor || defaultTheme.primaryColor,
+			fontFamily: theme?.fontFamily || defaultTheme.fontFamily,
+			backgroundColor: theme?.backgroundColor || defaultTheme.backgroundColor,
+			baseWidth: theme?.baseWidth || defaultTheme.baseWidth,
+		};
 	},
+	validate: validateForm,
+	save: saveTheme,
 });
-
-watch(isFormDirty, (dirty) => setHasChanges(dirty), { immediate: true });
-
-// Reset to defaults
-const handleReset = () => {
-	form.primaryColor = defaultTheme.primaryColor;
-	form.fontFamily = defaultTheme.fontFamily;
-	form.backgroundColor = defaultTheme.backgroundColor;
-	form.baseWidth = defaultTheme.baseWidth;
-};
 
 // The live preview (and the two contrast computations it needs) lives in
 // `components/email/ThemePreview.vue` — it only reads the theme.
@@ -200,15 +144,11 @@ const handleReset = () => {
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="mb-6">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.admin.instance.emailTheme.title') }}
-			</h1>
-			<p class="mt-1 text-text-secondary">
-				{{ t('dashboard.admin.instance.emailTheme.subtitle') }}
-			</p>
-		</div>
+		<UiPageHeader
+			:title="t('dashboard.admin.instance.emailTheme.title')"
+			:description="t('dashboard.admin.instance.emailTheme.subtitle')"
+			class="mb-6"
+		/>
 
 		<!--
 			First load: a content-shaped placeholder at the geometry of the form
@@ -376,7 +316,7 @@ const handleReset = () => {
 							type="button"
 							class="gap-2"
 							:disabled="isSaving"
-							@click="handleReset"
+							@click="resetToDefaults"
 						>
 							<Icon name="lucide:refresh-cw" class="w-4 h-4" />
 							{{ t('dashboard.admin.instance.emailTheme.resetToDefaults') }}
@@ -417,10 +357,10 @@ const handleReset = () => {
 
 		<!-- Unsaved Changes Dialog -->
 		<UnsavedChangesDialog
-			:show="showUnsavedDialog"
-			@close="cancelNavigation"
-			@discard="confirmDiscard"
-			@save="confirmSave"
+			:show="unsavedDialog.showDialog"
+			@close="unsavedDialog.cancelNavigation"
+			@discard="unsavedDialog.confirmDiscard"
+			@save="unsavedDialog.confirmSave"
 		/>
 	</div>
 </template>

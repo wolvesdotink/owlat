@@ -1,9 +1,9 @@
 import { Square } from '@lucide/vue';
 import { moduleFor } from '@owlat/email-renderer';
-import type { EditorModule, NestedChild } from '../_module';
-import type { BlockType, ContainerBlockContent } from '../../types';
+import type { EditorModule } from '../_module';
+import type { ContainerBlockContent } from '../../types';
 import { containerSchema } from '../../schema/definitions/container';
-import { editorModuleFor, getAllEditorModules } from '../_registry';
+import { itemsChildrenView, containerChildTypes } from '../_itemsChildren';
 
 export const containerEditor: EditorModule<'container'> = {
 	type: 'container',
@@ -21,24 +21,8 @@ export const containerEditor: EditorModule<'container'> = {
 
 	// Container opts out of the universal defaultPadding/defaultMargin spread —
 	// its own getContainerPadding helper owns the inset math.
-	createDefault: (theme) =>
-		moduleFor('container')!.createDefault!(theme) as ContainerBlockContent,
+	createDefault: (theme) => moduleFor('container')!.createDefault!(theme) as ContainerBlockContent,
 
-	childrenView(block): NestedChild[] {
-		return (block.content.items ?? []).map((item) => {
-			const mod = editorModuleFor(item.type as BlockType);
-			return {
-				id: item.id,
-				type: item.type,
-				label: mod?.label ?? item.type,
-				icon: mod?.icon ?? null,
-			};
-		});
-	},
-
-	allowedChildTypes() {
-		return getAllEditorModules()
-			.filter((m) => m.canBeInContainer)
-			.map((m) => m.type);
-	},
+	childrenView: itemsChildrenView,
+	allowedChildTypes: containerChildTypes,
 };

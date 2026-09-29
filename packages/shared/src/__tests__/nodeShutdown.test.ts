@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
 	installCrashHandlers,
 	installShutdown,
+	pinoShutdownLog,
 	type ShutdownHandle,
 	type ShutdownOptions,
 } from '../nodeShutdown';
@@ -220,7 +221,8 @@ describe('installShutdown', () => {
 	it('hard-exits 1 when the drain outlives the deadline', async () => {
 		vi.useFakeTimers();
 		const exit = vi.fn();
-		const handle = install({ exit, timeoutMs: 5_000 });
+		const log = vi.fn();
+		const handle = install({ exit, log, timeoutMs: 5_000 });
 
 		handle.critical(() => new Promise<void>(() => {}));
 		void handle.shutdown('SIGTERM');
@@ -229,6 +231,12 @@ describe('installShutdown', () => {
 		expect(exit).not.toHaveBeenCalled();
 		vi.advanceTimersByTime(5_000);
 		expect(exit).toHaveBeenCalledWith(1);
+		// Logged as an Error, so a structured logger reports it at error level.
+		expect(log).toHaveBeenLastCalledWith(
+			expect.stringContaining('deadline exceeded'),
+			expect.objectContaining({ message: 'drain did not finish within 5000 ms' })
+		);
+		expect(log.mock.lastCall?.[1]).toBeInstanceOf(Error);
 	});
 
 	it('ignores a duplicate signal instead of closing twice', async () => {
@@ -304,5 +312,27 @@ describe('installCrashHandlers', () => {
 			expect(process.listeners('uncaughtException').length).toBe(before.uncaught);
 			expect(process.listeners('unhandledRejection').length).toBe(before.rejection);
 		}
+	});
+});
+
+describe('pinoShutdownLog', () => {
+	it('logs an Error detail at error level under err, anything else at info', () => {
+		const logger = { info: vi.fn(), error: vi.fn() };
+		const log = pinoShutdownLog(logger);
+		const err = new Error('boom');
+
+		log('drain failed', err);
+		log('shutdown signal received', { signal: 'SIGTERM' });
+		log('plain');
+		log('scalar', 7);
+
+		expect(logger.error).toHaveBeenCalledWith({ err }, 'drain failed');
+		expect(logger.info).toHaveBeenNthCalledWith(
+			1,
+			{ signal: 'SIGTERM' },
+			'shutdown signal received'
+		);
+		expect(logger.info).toHaveBeenNthCalledWith(2, {}, 'plain');
+		expect(logger.info).toHaveBeenNthCalledWith(3, { detail: 7 }, 'scalar');
 	});
 });

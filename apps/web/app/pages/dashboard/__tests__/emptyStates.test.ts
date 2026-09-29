@@ -34,29 +34,10 @@ const guards: EmptyStateGuard[] = [
 	{
 		// Extracted page: the title and the CTA label are message keys in the
 		// source, so the guard anchors on the key it binds rather than the copy
-		// (which now lives in i18n/locales/en.json).
-		name: 'campaigns',
-		page: '../campaigns/index.vue',
-		emptyTitle: "t('dashboard.campaigns.index.listEmpty.title')",
-		primaryCta: {
-			label: "t('dashboard.campaigns.index.newCampaign')",
-			handler: 'handleNewCampaign',
-		},
-		dataBranchMarker: 'v-for="row in visibleRows"',
-	},
-	{
-		// Extracted page — same as campaigns above: anchor on the message keys.
-		name: 'automations',
-		page: '../automations/index.vue',
-		emptyTitle: "t('dashboard.automations.index.empty.title')",
-		primaryCta: {
-			label: "t('dashboard.automations.index.empty.action')",
-			handler: 'handleNewAutomation',
-		},
-		dataBranchMarker: 'v-for="automation in filteredAutomations"',
-	},
-	{
-		// Extracted page — same as campaigns above: anchor on the message keys.
+		// (which lives in i18n/locales/en.json). The campaigns and automations
+		// lists left this guard for the shared list scaffold; their empty states
+		// are asserted on the mounted pages (campaigns/__tests__/campaignsList
+		// and automations/__tests__/automationsList).
 		name: 'suppressions',
 		page: '../audience/suppressions.vue',
 		emptyTitle: "t('dashboard.audience.suppressions.empty.title')",

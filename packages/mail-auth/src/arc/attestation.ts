@@ -9,7 +9,7 @@
  */
 
 import { normalizeDomain } from '@owlat/shared';
-import { isSpfAligned } from '@owlat/shared/spfAlignment';
+import { isIdentifierAligned } from '@owlat/shared/spfAlignment';
 import type { HeaderField } from '../dkim/message.js';
 
 /** The authentication methods parsed out of a sealed ARC-Authentication-Results. */
@@ -115,5 +115,5 @@ export function aarAttestsPass(aar: HeaderField): boolean {
  * `github.io` cannot become cross-tenant ARC rescue boundaries.
  */
 function domainsAlign(authDomain: string, fromDomain: string): boolean {
-	return isSpfAligned(authDomain, fromDomain, 'relaxed');
+	return isIdentifierAligned(authDomain, fromDomain, 'relaxed');
 }

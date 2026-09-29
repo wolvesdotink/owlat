@@ -30,7 +30,7 @@ import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
 import { constantTimeEqual, hmacSha256Hex } from './security';
 import { logError, logInfo } from '../lib/runtimeLog';
-import { getClientIp, rateLimitedResponse } from '../publicRateLimit';
+import { getClientIp, rateLimitedResponse } from '../lib/publicRateLimit';
 
 const SIGNATURE_PREFIX = 'sha256=';
 
@@ -68,7 +68,7 @@ export const handleGithubWebhook = httpAction(async (ctx, request) => {
 	// get per-IP isolation.
 	const ip = getClientIp(request);
 	const { ok: rateOk, retryAfter } = await ctx.runMutation(
-		internal.publicRateLimit.checkPublicRateLimit,
+		internal.lib.publicRateLimit.checkPublicRateLimit,
 		{ limitType: 'webhookIngestion', key: `github:${ip}` }
 	);
 	if (!rateOk) return rateLimitedResponse(retryAfter);

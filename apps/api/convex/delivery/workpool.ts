@@ -11,6 +11,10 @@ import { components } from '../_generated/api';
  * Combined ~50/sec stays under Resend's 100/sec limit with safety margin.
  * This ensures transactional emails won't be blocked behind campaign queues.
  *
+ * Producers do not call `enqueueAction` on these pools directly: they go
+ * through `delivery/governedEnqueue.ts`, which owns the worker reference and
+ * the completion wiring.
+ *
  * Retry authority: the **Send dispatch (helper)** (`lib/sendProviders/dispatch.ts`,
  * per ADR-0020) owns the send-side retry loop — it calls each provider's
  * single-attempt `sendEmail` up to `1 + retryDelays.length` times, classifying

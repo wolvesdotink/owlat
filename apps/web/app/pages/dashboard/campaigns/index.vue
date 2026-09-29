@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { useCampaignCommandRows } from '~/composables/useCampaignCommandRows';
+import { useListPage } from '~/composables/useListPage';
 import type { CampaignStatus } from '~/composables/useCampaignStatusBadge';
 import type { CampaignRowFields, DecoratedRow } from '~/utils/campaignCommandRow';
 
@@ -55,27 +56,31 @@ watch(
 	}
 );
 
-// Search — debounced 300ms, server-side (preserved from the old all-list). The
-// shared composable also clears its timer on unmount, so a late tick can't fire
-// after the page is gone.
-const { searchQuery, debouncedSearch: rawSearch, clear: clearSearch } = useDebouncedSearch(300);
-const debouncedSearch = computed(() => rawSearch.value.trim());
+const { hasActiveOrganization, isLoading: teamLoading } = useOrganizationContext();
 
-// Keyboard: 'n' opens the new-campaign wizard (kept from the old all-list);
-// Escape closes the delete-confirm modal (kept from the old all-list).
-const { registerNewShortcut, registerEscapeHandler, unregisterShortcut } = useKeyboardShortcuts();
-onMounted(() => {
-	registerNewShortcut(() => {
-		if (!isDeleteModalOpen.value) router.push('/dashboard/campaigns/new');
-	});
-	registerEscapeHandler(() => {
-		if (isDeleteModalOpen.value && !isDeleting.value) closeDeleteModal();
-	});
+const { showToast } = useToast();
+
+const { run: duplicateCampaign } = useBackendOperation(api.campaigns.campaigns.duplicate, {
+	label: () => t('dashboard.campaigns.index.duplicateOperation'),
 });
-onUnmounted(() => {
-	unregisterShortcut('global.newItem');
-	unregisterShortcut('global.close');
+const { run: deleteCampaign } = useBackendOperation(api.campaigns.campaigns.remove, {
+	label: () => t('dashboard.campaigns.index.deleteOperation'),
 });
+
+// Search (debounced, server-side), the delete dialog and the `n` / Escape
+// shortcuts. No sort menu: the status tabs are how this list narrows down.
+// `reactive` unwraps the refs, so the template reads `list.searchQuery`.
+const list = reactive(
+	useListPage<CampaignRowFields>({
+		onDelete: async (campaign) => {
+			const result = await deleteCampaign({ campaignId: campaign._id });
+			if (result.ok) showToast(t('dashboard.campaigns.index.toasts.deleted'));
+			return result.ok;
+		},
+		onNew: () => handleNewCampaign(),
+	})
+);
+const debouncedSearch = computed(() => list.debouncedSearch.trim());
 
 // The active pill drives a SERVER-SIDE status filter for the browse pills so the
 // list can never disagree with the org-wide count badge (e.g. "Sent 250" while
@@ -101,7 +106,7 @@ const {
 	isLoading,
 	error: listError,
 	refetch: refetchList,
-} = usePaginatedQuery(
+} = useOrganizationPaginatedQuery(
 	api.campaigns.campaigns.list,
 	() => ({ status: serverStatus.value, search: debouncedSearch.value || undefined }),
 	{ initialNumItems: 100, keepPreviousData: true }
@@ -162,13 +167,18 @@ const activeError = computed(() =>
 const activeLoading = computed(() =>
 	selectedPill.value === 'attention' ? attentionLoading.value : isLoading.value
 );
+// keepPreviousData: a refetch (new pill, new search) keeps the old rows on
+// screen, so only a load with nothing to show yet takes the skeleton.
+const showSkeleton = computed(
+	() => (teamLoading.value || activeLoading.value) && visibleRows.value.length === 0
+);
 function retryActive() {
 	if (selectedPill.value === 'attention') refetchAttention();
 	else refetchList();
 }
 
 interface Pill {
-	key: PillKey;
+	value: PillKey;
 	label: string;
 	count: number | undefined;
 }
@@ -176,20 +186,37 @@ const pills = computed<Pill[]>(() => {
 	const c = statusCounts.value;
 	return [
 		{
-			key: 'attention',
+			value: 'attention',
 			label: t('dashboard.campaigns.index.pills.attention'),
 			count: attentionCount.value,
 		},
-		{ key: 'all', label: t('common.all'), count: c?.['total'] },
-		{ key: 'draft', label: t('dashboard.campaigns.index.pills.drafts'), count: c?.['draft'] },
+		{ value: 'all', label: t('common.all'), count: c?.['total'] },
+		{ value: 'draft', label: t('dashboard.campaigns.index.pills.drafts'), count: c?.['draft'] },
 		{
-			key: 'scheduled',
+			value: 'scheduled',
 			label: t('dashboard.campaigns.index.pills.scheduled'),
 			count: c?.['scheduled'],
 		},
-		{ key: 'sent', label: t('dashboard.campaigns.index.pills.sent'), count: c?.['sent'] },
+		{ value: 'sent', label: t('dashboard.campaigns.index.pills.sent'), count: c?.['sent'] },
 	];
 });
+
+// An empty "Needs attention" is good news, not a missing list: it gets its own
+// all-clear copy and no create action. The browse tabs share "nothing here yet".
+const emptyCopy = computed(() =>
+	selectedPill.value === 'attention'
+		? {
+				icon: 'lucide:check-circle',
+				eyebrow: t('dashboard.campaigns.index.attentionEmpty.eyebrow'),
+				title: t('dashboard.campaigns.index.attentionEmpty.title'),
+				description: t('dashboard.campaigns.index.attentionEmpty.description'),
+			}
+		: {
+				icon: 'lucide:send',
+				title: t('dashboard.campaigns.index.listEmpty.title'),
+				description: t('dashboard.campaigns.index.listEmpty.description'),
+			}
+);
 
 // --- Presentational helpers -------------------------------------------------
 
@@ -225,170 +252,99 @@ function handleNewCampaign() {
 	router.push('/dashboard/campaigns/new');
 }
 
-// --- Row-level actions: Duplicate + Delete (preserved from the old all-list) -
-const { showToast } = useToast();
-
-const { run: duplicateCampaign } = useBackendOperation(api.campaigns.campaigns.duplicate, {
-	label: () => t('dashboard.campaigns.index.duplicateOperation'),
-});
-const { run: deleteCampaign } = useBackendOperation(api.campaigns.campaigns.remove, {
-	label: () => t('dashboard.campaigns.index.deleteOperation'),
-});
-
+// --- Row-level actions: Duplicate (Delete goes through `list.openDelete`) ----
 async function handleDuplicate(id: Id<'campaigns'>) {
 	const newId = await duplicateCampaign({ campaignId: id });
 	if (!newId.ok) return;
 	showToast(t('dashboard.campaigns.index.toasts.duplicated'));
 	router.push(`/dashboard/campaigns/${newId.result}/edit`);
 }
-
-const isDeleteModalOpen = ref(false);
-const campaignToDelete = ref<{ id: Id<'campaigns'>; name: string } | null>(null);
-const isDeleting = ref(false);
-
-function openDeleteModal(id: Id<'campaigns'>, name: string) {
-	campaignToDelete.value = { id, name };
-	isDeleteModalOpen.value = true;
-}
-function closeDeleteModal() {
-	isDeleteModalOpen.value = false;
-	campaignToDelete.value = null;
-}
-async function handleDelete() {
-	if (!campaignToDelete.value) return;
-	isDeleting.value = true;
-	try {
-		const result = await deleteCampaign({ campaignId: campaignToDelete.value.id });
-		if (!result.ok) return;
-		showToast(t('dashboard.campaigns.index.toasts.deleted'));
-		closeDeleteModal();
-	} finally {
-		isDeleting.value = false;
-	}
-}
-
-const showEmptyState = computed(
-	() => !activeLoading.value && !activeError.value && visibleRows.value.length === 0
-);
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
-		<UiPageHeader
-			:title="t('dashboard.campaigns.index.title')"
-			:description="t('dashboard.campaigns.index.subtitle')"
-			class="mb-6"
-		>
-			<!-- On desktop the top bar's primary is already New campaign in the
-			     Marketing workspace; the header copy is for phones, whose top bar
-			     has no create button. -->
-			<template #actions>
-				<UiButton class="lg:hidden" @click="handleNewCampaign">
-					<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-					{{ t('dashboard.campaigns.index.newCampaign') }}
-				</UiButton>
-			</template>
-		</UiPageHeader>
+	<ListPageShell
+		v-model:search="list.searchQuery"
+		:title="t('dashboard.campaigns.index.title')"
+		:description="t('dashboard.campaigns.index.subtitle')"
+		:loading="showSkeleton"
+		:error="activeError"
+		:error-title="t('dashboard.campaigns.index.errorTitle')"
+		:has-organization="hasActiveOrganization"
+		:is-empty="visibleRows.length === 0"
+		:active-search="debouncedSearch"
+		:search-placeholder="t('dashboard.campaigns.index.searchPlaceholder')"
+		:empty-no-org="{
+			icon: 'lucide:send',
+			title: t('dashboard.campaigns.index.noWorkspace.title'),
+			description: t('dashboard.campaigns.index.noWorkspace.description'),
+		}"
+		:empty="emptyCopy"
+		:no-results="{
+			title: t('dashboard.campaigns.index.searchEmpty.title'),
+			description: t('dashboard.campaigns.index.searchEmpty.description', {
+				query: debouncedSearch,
+			}),
+		}"
+		:delete-copy="{
+			title: t('dashboard.campaigns.index.deleteDialog.title'),
+			confirmKeypath: 'dashboard.campaigns.index.deleteDialog.confirmQuestion',
+			description: t('dashboard.campaigns.index.deleteDialog.description'),
+			confirmText: t('dashboard.campaigns.index.deleteDialog.confirm'),
+		}"
+		:delete-open="list.isDeleteOpen"
+		:delete-name="list.deleteTarget?.name"
+		:is-deleting="list.isDeleting"
+		@retry="retryActive"
+		@clear-search="list.clearSearch"
+		@confirm-delete="list.confirmDelete"
+		@cancel-delete="list.closeDelete"
+	>
+		<!-- On desktop the top bar's primary is already New campaign in the
+		     Marketing workspace; the header copy is for phones, whose top bar
+		     has no create button. -->
+		<template #actions>
+			<UiButton class="lg:hidden" @click="handleNewCampaign">
+				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+				{{ t('dashboard.campaigns.index.newCampaign') }}
+			</UiButton>
+		</template>
 
-		<div class="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
-			<div class="flex items-center gap-1 p-1 bg-bg-surface rounded-lg overflow-x-auto">
-				<button
-					v-for="pill in pills"
-					:key="pill.key"
-					:class="[
-						'px-3 py-1.5 rounded-md text-sm flex items-center gap-1.5 whitespace-nowrap transition-colors duration-(--motion-fast) ease-spring',
-						selectedPill === pill.key
-							? 'bg-bg-elevated text-text-primary font-semibold shadow-sm'
-							: 'text-text-secondary hover:text-text-primary font-medium',
-					]"
-					@click="selectedPill = pill.key"
+		<!-- Five tabs with counts do not fit a phone: the strip scrolls sideways
+		     at its natural width rather than spilling out of its track. -->
+		<template #filters>
+			<div class="max-w-full overflow-x-auto">
+				<UiSegmentedControl
+					:model-value="selectedPill"
+					:options="pills"
+					:aria-label="t('dashboard.campaigns.index.statusFilterLabel')"
+					class="min-w-max"
+					@update:model-value="selectedPill = $event as PillKey"
 				>
-					{{ pill.label }}
-					<span v-if="pill.count !== undefined" class="text-xs tabular-nums text-text-tertiary">
-						{{ pill.count }}
-					</span>
-				</button>
+					<template v-for="pill in pills" :key="pill.value" #[`option-${pill.value}`]>
+						{{ pill.label }}
+						<span v-if="pill.count !== undefined" class="tabular-nums text-text-tertiary">
+							{{ pill.count }}
+						</span>
+					</template>
+				</UiSegmentedControl>
 			</div>
+		</template>
 
-			<div class="flex-1" />
+		<template v-if="selectedPill !== 'attention'" #empty-action>
+			<UiButton @click="handleNewCampaign">
+				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+				{{ t('dashboard.campaigns.index.newCampaign') }}
+			</UiButton>
+		</template>
 
-			<div class="relative">
-				<Icon
-					name="lucide:search"
-					class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
-				/>
-				<input
-					v-model="searchQuery"
-					type="text"
-					:placeholder="t('dashboard.campaigns.index.searchPlaceholder')"
-					class="input pl-10 w-full sm:w-64"
-				/>
-			</div>
-		</div>
+		<template #loading>
+			<UiCard padding="none" overflow="hidden">
+				<DashboardListSkeleton variant="card" :rows="6" />
+			</UiCard>
+		</template>
 
-		<UiCard v-if="activeLoading && visibleRows.length === 0" padding="none" overflow="hidden">
-			<DashboardListSkeleton variant="card" :rows="6" />
-		</UiCard>
-
-		<UiErrorAlert
-			v-else-if="activeError"
-			:title="t('dashboard.campaigns.index.errorTitle')"
-			:message="t('dashboard.campaigns.index.errorMessage')"
-			:action-label="t('common.tryAgain')"
-			action-icon="lucide:refresh-cw"
-			class="my-8"
-			@action="retryActive"
-		/>
-
-		<!-- The shared empty state, not a hand-rolled one: this sits one click
-		     from contacts/topics/segments, which all read eyebrow → title → lead.
-		     The filled success disc was the loudest thing on an otherwise empty
-		     screen, and the glyph belongs in the eyebrow, unfilled. -->
-		<UiCard
-			v-else-if="showEmptyState && selectedPill === 'attention' && !debouncedSearch"
-			padding="none"
-			overflow="hidden"
-		>
-			<UiEmptyState
-				icon="lucide:check-circle"
-				:eyebrow="t('dashboard.campaigns.index.attentionEmpty.eyebrow')"
-				:title="t('dashboard.campaigns.index.attentionEmpty.title')"
-				:description="t('dashboard.campaigns.index.attentionEmpty.description')"
-			/>
-		</UiCard>
-
-		<UiCard v-else-if="showEmptyState && debouncedSearch" padding="none" overflow="hidden">
-			<UiEmptyState
-				icon="lucide:search"
-				:title="t('dashboard.campaigns.index.searchEmpty.title')"
-				:description="
-					t('dashboard.campaigns.index.searchEmpty.description', { query: debouncedSearch })
-				"
-			>
-				<template #action>
-					<UiButton variant="secondary" @click="clearSearch">
-						{{ t('dashboard.campaigns.index.searchEmpty.clear') }}
-					</UiButton>
-				</template>
-			</UiEmptyState>
-		</UiCard>
-
-		<UiCard v-else-if="showEmptyState" padding="none" overflow="hidden">
-			<UiEmptyState
-				icon="lucide:send"
-				:title="t('dashboard.campaigns.index.listEmpty.title')"
-				:description="t('dashboard.campaigns.index.listEmpty.description')"
-			>
-				<template #action>
-					<UiButton @click="handleNewCampaign">
-						<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-						{{ t('dashboard.campaigns.index.newCampaign') }}
-					</UiButton>
-				</template>
-			</UiEmptyState>
-		</UiCard>
-
-		<UiCard v-else padding="none" overflow="hidden">
+		<!-- One row layout at every width, so there is no #table. -->
+		<template #cards>
 			<ul class="divide-y divide-border-subtle">
 				<CampaignsCommandRow
 					v-for="row in visibleRows"
@@ -398,7 +354,7 @@ const showEmptyState = computed(
 					@run-action="runAttentionAction(row)"
 					@ab-results="openCampaign(row.campaign)"
 					@duplicate="handleDuplicate(row.campaign._id)"
-					@delete="openDeleteModal(row.campaign._id, row.campaign.name)"
+					@delete="list.openDelete(row.campaign)"
 				/>
 			</ul>
 
@@ -418,46 +374,6 @@ const showEmptyState = computed(
 					{{ t('dashboard.campaigns.index.allLoaded') }}
 				</span>
 			</div>
-		</UiCard>
-
-		<!-- Delete confirmation -->
-		<UiModal
-			v-model:open="isDeleteModalOpen"
-			:title="t('dashboard.campaigns.index.deleteDialog.title')"
-			:persistent="isDeleting"
-		>
-			<div class="flex items-start gap-4">
-				<div class="p-3 rounded-full bg-error/10 shrink-0 flex items-center justify-center">
-					<Icon name="lucide:trash-2" class="w-6 h-6 text-error" />
-				</div>
-				<div>
-					<I18nT
-						keypath="dashboard.campaigns.index.deleteDialog.confirmQuestion"
-						tag="p"
-						class="text-text-primary"
-						scope="global"
-					>
-						<template #name>
-							<span class="font-semibold">"{{ campaignToDelete?.name }}"</span>
-						</template>
-					</I18nT>
-					<p class="text-sm text-text-secondary mt-2">
-						{{ t('dashboard.campaigns.index.deleteDialog.description') }}
-					</p>
-				</div>
-			</div>
-			<template #footer>
-				<UiButton variant="secondary" :disabled="isDeleting" @click="closeDeleteModal">
-					{{ t('common.cancel') }}
-				</UiButton>
-				<UiButton variant="danger" :loading="isDeleting" @click="handleDelete">
-					{{
-						isDeleting
-							? t('dashboard.campaigns.index.deleteDialog.deleting')
-							: t('dashboard.campaigns.index.deleteDialog.confirm')
-					}}
-				</UiButton>
-			</template>
-		</UiModal>
-	</div>
+		</template>
+	</ListPageShell>
 </template>

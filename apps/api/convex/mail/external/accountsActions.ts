@@ -21,7 +21,7 @@
 import { v, type Infer } from 'convex/values';
 import { internalAction } from '../../_generated/server';
 import { authedAction } from '../../lib/authedFunctions';
-import { destinationProviderValidator } from '../../delivery/deliverabilityValidators';
+import { destinationProviderValidator } from '../../lib/validators/deliverability';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { encryptSecret, decryptSecret } from '../../lib/credentialCrypto';

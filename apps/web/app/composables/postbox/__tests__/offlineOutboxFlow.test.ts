@@ -54,6 +54,10 @@ vi.mock('@owlat/api', () => ({
 }));
 
 // The attachments sibling pulls its own Convex context; stub it out.
+/** send() arms the undo window itself; a queued send must arm it too. */
+const undoArm = vi.fn();
+vi.mock('../usePostboxUndoSend', () => ({ usePostboxUndoSend: () => ({ arm: undoArm }) }));
+
 vi.mock('../usePostboxComposeAttachments', () => ({
 	usePostboxComposeAttachments: () => ({
 		attachments: ref([]),
@@ -253,6 +257,7 @@ beforeEach(async () => {
 	backend.call = originalBackendCall;
 	backend.reset();
 	toasts.length = 0;
+	undoArm.mockClear();
 	localStorage.clear();
 
 	vi.stubGlobal('useI18n', () => i18n.global);
@@ -342,6 +347,9 @@ describe('offline send', () => {
 			composerMode: 'simple',
 		});
 		expect(backend.calls).toHaveLength(0);
+		// The queued send arms the undo window with its synthetic token.
+		expect(undoArm).toHaveBeenCalledOnce();
+		expect(undoArm).toHaveBeenCalledWith({ ...result, mailboxId: 'mbx-1' });
 	});
 
 	it('surfaces a storage failure instead of pretending the send worked', async () => {
@@ -352,6 +360,8 @@ describe('offline send', () => {
 		await expect(composer.send()).rejects.toThrow('Send failed');
 		expect(toasts).toContain(i18n.global.t('shared.postbox.offlineOutbox.outOfStorage'));
 		expect(fakeOutbox.list('mbx-1')).toHaveLength(0);
+		// Nothing was kept anywhere, so there is nothing to undo.
+		expect(undoArm).not.toHaveBeenCalled();
 	});
 
 	it('a send whose transport drops mid-flight queues instead of erroring', async () => {

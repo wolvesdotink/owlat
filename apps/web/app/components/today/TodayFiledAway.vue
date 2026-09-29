@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import type { FiledKey, TodayModel } from '~/utils/todayDigest';
+import { FILED_CATEGORIES } from '@owlat/shared/threadStatus';
+import { MAIL_CATEGORY_META } from '~/utils/mailCategory';
+import type { TodayModel } from '~/utils/todayDigest';
 import { filedHref, type WorkbenchScope } from '~/utils/workbench';
 
 /**
@@ -15,22 +17,14 @@ const props = defineProps<{
 }>();
 const { t } = useI18n();
 
-const KINDS: ReadonlyArray<{ key: FiledKey; icon: string }> = [
-	{ key: 'newsletter', icon: 'lucide:newspaper' },
-	{ key: 'notification', icon: 'lucide:bell' },
-	{ key: 'receipt', icon: 'lucide:receipt' },
-	{ key: 'promotion', icon: 'lucide:tag' },
-	{ key: 'spam', icon: 'lucide:shield-off' },
-];
-
 const tiles = computed(() =>
-	KINDS.filter(({ key }) => props.model.filed[key] > 0).map(({ key, icon }) => {
+	FILED_CATEGORIES.filter((key) => props.model.filed[key] > 0).map((key) => {
 		const count = props.model.filed[key];
 		const senders = props.model.filedSenders[key] ?? [];
 		const names = senders.join(', ');
 		return {
 			key,
-			icon,
+			icon: MAIL_CATEGORY_META[key].icon,
 			count,
 			label: t(`components.today.filed.kind.${key}`, { count }, count),
 			from:

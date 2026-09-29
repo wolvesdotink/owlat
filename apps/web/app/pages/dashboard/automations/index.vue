@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { formatNumber } from '~/utils/formatters';
+import type { AutomationListItem } from '~/components/automations/ListTable.vue';
+import { useListPage } from '~/composables/useListPage';
 
 const { t } = useI18n();
 
@@ -12,31 +13,8 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-// Keyboard shortcuts
-const { registerNewShortcut, registerEscapeHandler, unregisterShortcut } = useKeyboardShortcuts();
+const router = useRouter();
 
-onMounted(() => {
-	// 'n' to create new automation — same permission the New button carries.
-	registerNewShortcut(() => {
-		if (canManage.value && !isDeleteModalOpen.value) {
-			router.push('/dashboard/automations/new');
-		}
-	});
-
-	// Escape to close delete modal
-	registerEscapeHandler(() => {
-		if (isDeleteModalOpen.value && !isDeleting.value) {
-			closeDeleteModal();
-		}
-	});
-});
-
-onUnmounted(() => {
-	unregisterShortcut('global.newItem');
-	unregisterShortcut('global.close');
-});
-
-// Get the current user's organization
 const { hasActiveOrganization, isLoading: teamLoading } = useOrganizationContext();
 // Every automation write — create, edit, duplicate, activate/pause, delete —
 // requires `automations:manage` (owner/admin) on the backend
@@ -45,59 +23,9 @@ const { hasActiveOrganization, isLoading: teamLoading } = useOrganizationContext
 const { can, showGateFor } = usePermissions();
 const canManage = computed(() => can('automations:manage'));
 const showManageGate = computed(() => showGateFor('automations:manage'));
-const router = useRouter();
 
-// Status filter state
-type AutomationStatus = 'all' | 'draft' | 'active' | 'paused';
-const selectedStatus = ref<AutomationStatus>('all');
+const { showToast } = useToast();
 
-// List FILTER — narrows the loaded page in place. It is not the search box (that
-// is the one ⌘K overlay), which is why it says "Filter…" and wears a filter
-// icon. Debouncing is the shared `useDebouncedSearch`, not a private timeout.
-const { searchQuery, debouncedSearch, clear: clearFilter } = useDebouncedSearch();
-
-// Status filter options
-const statusFilters = computed<{ value: AutomationStatus; label: string }[]>(() => [
-	{ value: 'all', label: t('common.all') },
-	{ value: 'active', label: t('common.active') },
-	{ value: 'paused', label: t('dashboard.automations.index.status.paused') },
-	{ value: 'draft', label: t('dashboard.automations.index.status.draft') },
-]);
-
-// Fetch automations with real-time updates (session-based, no organizationId needed).
-// Status filtering runs server-side through the Listing engine (ADR-0037).
-const {
-	results: automations,
-	isLoading: automationsLoading,
-	error: automationsError,
-	refetch: refetchAutomations,
-} = usePaginatedQuery(
-	api.automations.automations.list,
-	() => ({
-		status: selectedStatus.value === 'all' ? undefined : selectedStatus.value,
-	}),
-	{ initialNumItems: 100, keepPreviousData: true }
-);
-
-// Client-side search filtering
-const filteredAutomations = computed(() => {
-	if (!automations.value) return [];
-	if (!debouncedSearch.value) return automations.value;
-
-	const search = debouncedSearch.value.toLowerCase();
-	return automations.value.filter(
-		(automation) =>
-			automation.name.toLowerCase().includes(search) ||
-			(automation.description && automation.description.toLowerCase().includes(search))
-	);
-});
-
-// Fetch automation counts by status
-const { data: statusCounts } = useOrganizationQuery(api.automations.automations.countByStatus);
-
-const isLoading = computed(() => teamLoading.value || automationsLoading.value);
-
-// Mutations
 const { run: duplicateAutomation } = useBackendOperation(api.automations.automations.duplicate, {
 	label: () => t('dashboard.automations.index.operations.duplicate'),
 });
@@ -111,153 +39,171 @@ const { run: resumeAutomation } = useBackendOperation(api.automations.automation
 	label: () => t('dashboard.automations.index.operations.resume'),
 });
 
-// Status + trigger badges (shared with the automation detail page)
-const { getStatusBadge, getTriggerDisplay } = useAutomationBadges();
+const handleNewAutomation = () => router.push('/dashboard/automations/new');
 
-// Action dropdown state
-const openDropdownId = ref<Id<'automations'> | null>(null);
+// Both of the shell's row slots render the same component in its two layouts.
+const rowLayouts = ['table', 'cards'] as const;
 
-const toggleDropdown = (id: Id<'automations'>) => {
-	openDropdownId.value = openDropdownId.value === id ? null : id;
-};
+// The list filter (debounced, client-side over the loaded rows), the delete
+// dialog and the `n` / Escape shortcuts. No sort menu: the status tabs narrow
+// this list. `reactive` unwraps the refs, so the template reads `list.*`.
+const list = reactive(
+	useListPage<AutomationListItem>({
+		onDelete: async (automation) => {
+			const result = await deleteAutomation({ automationId: automation._id });
+			if (result.ok) showToast(t('dashboard.automations.index.toasts.deleted'));
+			return result.ok;
+		},
+		onNew: handleNewAutomation,
+		canCreate: canManage,
+	})
+);
 
-// Close dropdown when clicking outside
-useClickOutsideSelector('[data-dropdown]', () => {
-	openDropdownId.value = null;
+// Status filter — runs server-side through the Listing engine (ADR-0037).
+type StatusFilter = 'all' | AutomationListItem['status'];
+const selectedStatus = ref<StatusFilter>('all');
+
+const { data: statusCounts } = useOrganizationQuery(api.automations.automations.countByStatus);
+
+const statusFilters = computed(() => {
+	const counts = statusCounts.value;
+	return [
+		{ value: 'all', label: t('common.all'), count: counts?.['total'] },
+		{ value: 'active', label: t('common.active'), count: counts?.['active'] },
+		{
+			value: 'paused',
+			label: t('dashboard.automations.index.status.paused'),
+			count: counts?.['paused'],
+		},
+		{
+			value: 'draft',
+			label: t('dashboard.automations.index.status.draft'),
+			count: counts?.['draft'],
+		},
+	];
 });
 
-// Toast notifications (global)
-const { showToast: showNotification } = useToast();
+const {
+	results: automations,
+	isLoading: automationsLoading,
+	error: automationsError,
+	refetch: refetchAutomations,
+} = useOrganizationPaginatedQuery(
+	api.automations.automations.list,
+	() => ({
+		status: selectedStatus.value === 'all' ? undefined : selectedStatus.value,
+	}),
+	{ initialNumItems: 100, keepPreviousData: true }
+);
 
-// Toggle active/paused status
-const toggleingId = ref<Id<'automations'> | null>(null);
-const toggleLabel = (status: string) =>
-	status === 'active'
-		? t('dashboard.automations.index.actions.pause')
-		: t('dashboard.automations.index.actions.activate');
+const filteredAutomations = computed<AutomationListItem[]>(() => {
+	const search = list.debouncedSearch.trim().toLowerCase();
+	if (!search) return automations.value;
+	return automations.value.filter(
+		(automation) =>
+			automation.name.toLowerCase().includes(search) ||
+			automation.description?.toLowerCase().includes(search)
+	);
+});
 
-const handleToggleStatus = async (automation: {
-	_id: Id<'automations'>;
-	status: 'draft' | 'active' | 'paused';
-	name: string;
-}) => {
+// keepPreviousData: a refetch (a new status tab) keeps the old rows on screen,
+// so only a load with nothing to show yet takes the skeleton.
+const showSkeleton = computed(
+	() => (teamLoading.value || automationsLoading.value) && automations.value.length === 0
+);
+
+// Delete is offered only for an automation that is not running, but the row is
+// live: one activated while the dialog is open is refused, not deleted.
+const deleteBlocked = computed(() => {
+	const target = list.deleteTarget;
+	if (!target) return false;
+	const live = automations.value.find((automation) => automation._id === target._id);
+	return (live ?? target).status === 'active';
+});
+
+// --- Row actions ------------------------------------------------------------
+
+const togglingId = ref<Id<'automations'> | null>(null);
+
+const handleToggleStatus = async (automation: AutomationListItem) => {
 	// Re-entrancy guard: ignore repeat clicks while a toggle is already running
-	// (the inline button and the dropdown item both call this).
-	if (toggleingId.value) return;
+	// (the inline button and the menu item both call this).
+	if (togglingId.value) return;
 	if (automation.status === 'draft') {
-		// Cannot toggle draft, must edit first
-		showNotification(t('dashboard.automations.index.toasts.draftNotToggleable'), 'error');
+		showToast(t('dashboard.automations.index.toasts.draftNotToggleable'), 'error');
 		return;
 	}
 
-	toggleingId.value = automation._id;
+	togglingId.value = automation._id;
 	try {
 		if (automation.status === 'active') {
 			if (!(await pauseAutomation({ automationId: automation._id })).ok) return;
-			showNotification(t('dashboard.automations.index.toasts.paused', { name: automation.name }));
+			showToast(t('dashboard.automations.index.toasts.paused', { name: automation.name }));
 		} else {
 			if (!(await resumeAutomation({ automationId: automation._id })).ok) return;
-			showNotification(
-				t('dashboard.automations.index.toasts.activated', { name: automation.name })
-			);
+			showToast(t('dashboard.automations.index.toasts.activated', { name: automation.name }));
 		}
-		openDropdownId.value = null;
 	} finally {
-		toggleingId.value = null;
+		togglingId.value = null;
 	}
 };
 
-// Handle duplicate
-const handleDuplicate = async (automationId: Id<'automations'>) => {
-	const result = await duplicateAutomation({ automationId });
-	if (!result.ok) return;
-	showNotification(t('dashboard.automations.index.toasts.duplicated'));
-	openDropdownId.value = null;
+const handleDuplicate = async (automation: AutomationListItem) => {
+	const result = await duplicateAutomation({ automationId: automation._id });
+	if (result.ok) showToast(t('dashboard.automations.index.toasts.duplicated'));
 };
 
-// Delete confirmation modal
-const isDeleteModalOpen = ref(false);
-const automationToDelete = ref<{
-	id: Id<'automations'>;
-	name: string;
-	status: 'draft' | 'active' | 'paused';
-} | null>(null);
-const isDeleting = ref(false);
+const handleEdit = (automation: AutomationListItem) =>
+	router.push(`/dashboard/automations/${automation._id}/edit`);
 
-const openDeleteModal = (
-	id: Id<'automations'>,
-	name: string,
-	status: 'draft' | 'active' | 'paused'
-) => {
-	automationToDelete.value = { id, name, status };
-	isDeleteModalOpen.value = true;
-	openDropdownId.value = null;
-};
-
-const closeDeleteModal = () => {
-	isDeleteModalOpen.value = false;
-	automationToDelete.value = null;
-};
-
-const handleDelete = async () => {
-	if (!automationToDelete.value) return;
-
-	isDeleting.value = true;
-	try {
-		const result = await deleteAutomation({ automationId: automationToDelete.value.id });
-		if (!result.ok) return;
-		showNotification(t('dashboard.automations.index.toasts.deleted'));
-		closeDeleteModal();
-	} finally {
-		isDeleting.value = false;
-	}
-};
-
-// Navigate to automation builder
-const handleNewAutomation = () => {
-	router.push('/dashboard/automations/new');
-};
-
-// Navigate to edit automation
-const handleEdit = (automationId: Id<'automations'>) => {
-	router.push(`/dashboard/automations/${automationId}/edit`);
-};
-
-// Navigate to automation detail/analytics
-const handleViewDetails = (automationId: Id<'automations'>) => {
-	router.push(`/dashboard/automations/${automationId}`);
-};
-
-/**
- * Where a row's NAME goes. A draft opens the builder, anything else its
- * detail/analytics page — and a draft's detail page is deliberately withheld
- * everywhere in this list (the row menu has no "View details" for one, because
- * an automation that has never run has no analytics to show). So for a caller
- * without `automations:manage` a draft's name leads nowhere, and says so by
- * not looking clickable.
- */
-const nameOpens = (status: 'draft' | 'active' | 'paused') =>
-	status === 'draft' ? canManage.value : true;
-
-const openFromName = (automation: {
-	_id: Id<'automations'>;
-	status: 'draft' | 'active' | 'paused';
-}) => {
-	if (automation.status !== 'draft') return handleViewDetails(automation._id);
-	if (canManage.value) handleEdit(automation._id);
-};
+const handleViewDetails = (automation: AutomationListItem) =>
+	router.push(`/dashboard/automations/${automation._id}`);
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
-		<!-- Header -->
-		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-					{{ t('dashboard.automations.index.title') }}
-				</h1>
-				<p class="mt-1 text-text-secondary">{{ t('dashboard.automations.index.subtitle') }}</p>
-			</div>
+	<ListPageShell
+		v-model:search="list.searchQuery"
+		:title="t('dashboard.automations.index.title')"
+		:description="t('dashboard.automations.index.subtitle')"
+		:loading="showSkeleton"
+		:error="automationsError"
+		:error-title="t('dashboard.automations.index.errorTitle')"
+		:has-organization="hasActiveOrganization"
+		:is-empty="filteredAutomations.length === 0"
+		:active-search="list.debouncedSearch.trim()"
+		:search-placeholder="t('common.filterPlaceholder')"
+		:empty-no-org="{
+			icon: 'lucide:zap',
+			title: t('dashboard.automations.index.noTeam.title'),
+			description: t('dashboard.automations.index.noTeam.description'),
+		}"
+		:empty="{
+			icon: 'lucide:zap',
+			title: t('dashboard.automations.index.empty.title'),
+			description: t('dashboard.automations.index.empty.description'),
+		}"
+		:no-results="{
+			title: t('dashboard.automations.index.noResults.title'),
+			description: t('dashboard.automations.index.noResults.description', {
+				query: list.debouncedSearch.trim(),
+			}),
+		}"
+		:delete-copy="{
+			title: t('dashboard.automations.index.deleteDialog.title'),
+			confirmKeypath: 'dashboard.automations.index.deleteDialog.body',
+			description: t('dashboard.automations.index.deleteDialog.note'),
+			confirmText: t('dashboard.automations.index.deleteDialog.title'),
+		}"
+		:delete-open="list.isDeleteOpen"
+		:delete-name="list.deleteTarget?.name"
+		:is-deleting="list.isDeleting"
+		:delete-blocked="deleteBlocked"
+		@retry="refetchAutomations"
+		@clear-search="list.clearSearch"
+		@confirm-delete="list.confirmDelete"
+		@cancel-delete="list.closeDelete"
+	>
+		<template #actions>
 			<UiButton v-if="canManage" size="sm" @click="handleNewAutomation">
 				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
 				{{ t('dashboard.automations.index.newAutomation') }}
@@ -265,400 +211,66 @@ const openFromName = (automation: {
 			<p v-else-if="showManageGate" class="text-xs text-text-tertiary">
 				{{ t('dashboard.automations.index.adminsOnly') }}
 			</p>
-		</div>
+		</template>
 
-		<!-- Filters and Search -->
-		<div class="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
-			<!-- Status Filters -->
-			<div class="flex items-center gap-1 p-1 bg-bg-surface rounded-lg">
-				<button
-					v-for="filter in statusFilters"
-					:key="filter.value"
-					:class="[
-						'px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5',
-						selectedStatus === filter.value
-							? 'bg-bg-elevated text-text-primary shadow-sm'
-							: 'text-text-secondary hover:text-text-primary',
-					]"
-					@click="selectedStatus = filter.value"
+		<template #filters>
+			<div class="max-w-full overflow-x-auto">
+				<UiSegmentedControl
+					:model-value="selectedStatus"
+					:options="statusFilters"
+					:aria-label="t('dashboard.automations.index.statusFilterLabel')"
+					class="min-w-max"
+					@update:model-value="selectedStatus = $event as StatusFilter"
 				>
-					{{ filter.label }}
-					<span v-if="statusCounts" class="text-xs text-text-tertiary">
-						({{ filter.value === 'all' ? statusCounts['total'] : statusCounts[filter.value] }})
-					</span>
-				</button>
-			</div>
-
-			<div class="flex-1" />
-
-			<!-- Filter (not search — see the composable comment above) -->
-			<UiInput
-				v-model="searchQuery"
-				type="text"
-				:placeholder="t('common.filterPlaceholder')"
-				size="sm"
-				class="w-64"
-			>
-				<template #iconLeft>
-					<Icon name="lucide:list-filter" class="w-4 h-4 text-text-tertiary" />
-				</template>
-			</UiInput>
-		</div>
-
-		<!-- Content -->
-		<div class="card p-0 overflow-hidden">
-			<UiQueryBoundary
-				:loading="isLoading && automations.length === 0"
-				:error="automationsError"
-				@retry="refetchAutomations"
-				:error-title="t('dashboard.automations.index.errorTitle')"
-			>
-				<!-- Loading State: content-shaped skeleton on first load only -->
-				<template #loading>
-					<DashboardListSkeleton variant="table" :columns="6" :rows="6" />
-				</template>
-
-				<!-- Empty State (no team) -->
-				<UiEmptyState
-					v-if="!hasActiveOrganization"
-					icon="lucide:zap"
-					:title="t('dashboard.automations.index.noTeam.title')"
-					:description="t('dashboard.automations.index.noTeam.description')"
-				/>
-
-				<!-- Empty State (no automations) -->
-				<UiEmptyState
-					v-else-if="
-						!isLoading &&
-						(!filteredAutomations || filteredAutomations.length === 0) &&
-						!debouncedSearch
-					"
-					icon="lucide:zap"
-					:title="t('dashboard.automations.index.empty.title')"
-					:description="t('dashboard.automations.index.empty.description')"
-				>
-					<template v-if="canManage" #action>
-						<UiButton @click="handleNewAutomation">
-							<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
-							{{ t('dashboard.automations.index.empty.action') }}
-						</UiButton>
+					<template v-for="filter in statusFilters" :key="filter.value" #[`option-${filter.value}`]>
+						{{ filter.label }}
+						<span v-if="filter.count !== undefined" class="tabular-nums text-text-tertiary">
+							{{ filter.count }}
+						</span>
 					</template>
-				</UiEmptyState>
-
-				<!-- Empty State (no search results) -->
-				<UiEmptyState
-					v-else-if="
-						!isLoading &&
-						(!filteredAutomations || filteredAutomations.length === 0) &&
-						debouncedSearch
-					"
-					icon="lucide:search"
-					:title="t('dashboard.automations.index.noResults.title')"
-					:description="
-						t('dashboard.automations.index.noResults.description', { query: debouncedSearch })
-					"
-				>
-					<template #action>
-						<UiButton variant="secondary" @click="clearFilter">
-							{{ t('dashboard.automations.index.clearSearch') }}
-						</UiButton>
-					</template>
-				</UiEmptyState>
-
-				<!-- Automations Table -->
-				<div v-else>
-					<div class="overflow-x-auto">
-						<table class="w-full">
-							<thead>
-								<tr class="border-b border-border-subtle">
-									<th
-										class="text-left px-6 py-4 text-sm font-medium text-text-secondary whitespace-nowrap"
-									>
-										{{ t('common.name') }}
-									</th>
-									<th
-										class="text-left px-6 py-4 text-sm font-medium text-text-secondary whitespace-nowrap"
-									>
-										{{ t('dashboard.automations.index.table.trigger') }}
-									</th>
-									<th
-										class="text-left px-6 py-4 text-sm font-medium text-text-secondary whitespace-nowrap"
-									>
-										{{ t('common.status') }}
-									</th>
-									<th
-										class="text-left px-6 py-4 text-sm font-medium text-text-secondary whitespace-nowrap"
-									>
-										{{ t('dashboard.automations.index.table.contactsInFlow') }}
-									</th>
-									<th
-										class="text-left px-6 py-4 text-sm font-medium text-text-secondary whitespace-nowrap"
-									>
-										{{ t('dashboard.automations.index.table.created') }}
-									</th>
-									<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
-										{{ t('common.actions') }}
-									</th>
-								</tr>
-							</thead>
-							<tbody>
-								<tr
-									v-for="automation in filteredAutomations"
-									:key="automation._id"
-									class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors"
-								>
-									<td class="px-6 py-4">
-										<div class="min-w-0">
-											<span
-												:class="[
-													'text-text-primary font-medium transition-colors',
-													nameOpens(automation.status) ? 'hover:text-brand cursor-pointer' : '',
-												]"
-												@click="openFromName(automation)"
-											>
-												{{ automation.name }}
-											</span>
-											<p
-												v-if="automation.description"
-												class="text-sm text-text-tertiary truncate mt-0.5 max-w-xs"
-											>
-												{{ automation.description }}
-											</p>
-										</div>
-									</td>
-									<td class="px-6 py-4">
-										<div class="flex items-center gap-1.5">
-											<Icon
-												:name="getTriggerDisplay(automation.triggerType).icon"
-												class="w-4 h-4 text-text-tertiary"
-											/>
-											<span class="text-text-secondary text-sm">
-												{{ t(getTriggerDisplay(automation.triggerType).label) }}
-											</span>
-										</div>
-									</td>
-									<td class="px-6 py-4">
-										<span
-											:class="[
-												'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap',
-												getStatusBadge(automation.status).color,
-											]"
-										>
-											<Icon :name="getStatusBadge(automation.status).icon" class="w-3 h-3" />
-											{{ t(getStatusBadge(automation.status).label) }}
-										</span>
-									</td>
-									<td class="px-6 py-4">
-										<div class="flex items-center gap-1.5">
-											<Icon name="lucide:users" class="w-4 h-4 text-text-tertiary" />
-											<span class="text-text-secondary text-sm tabular-nums">
-												{{ formatNumber(automation.statsActive ?? 0) }}
-											</span>
-										</div>
-									</td>
-									<td class="px-6 py-4">
-										<span class="text-text-secondary text-sm whitespace-nowrap">
-											{{ formatDate(automation.createdAt) }}
-										</span>
-									</td>
-									<td class="px-6 py-4">
-										<div class="flex items-center justify-end gap-1" @click.stop>
-											<!-- Toggle Active/Paused -->
-											<button
-												v-if="canManage && automation.status !== 'draft'"
-												:class="[
-													'p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
-													automation.status === 'active'
-														? 'text-warning hover:text-warning hover:bg-warning/10'
-														: 'text-success hover:text-success hover:bg-success/10',
-												]"
-												:title="toggleLabel(automation.status)"
-												:aria-label="toggleLabel(automation.status)"
-												:disabled="toggleingId === automation._id"
-												@click="handleToggleStatus(automation)"
-											>
-												<Icon
-													v-if="toggleingId === automation._id"
-													name="lucide:loader-2"
-													class="w-4 h-4 animate-spin motion-reduce:animate-none"
-												/>
-												<Icon
-													v-else-if="automation.status === 'active'"
-													name="lucide:pause"
-													class="w-4 h-4"
-												/>
-												<Icon v-else name="lucide:play" class="w-4 h-4" />
-											</button>
-											<!-- Edit -->
-											<button
-												v-if="canManage"
-												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-												:title="t('common.edit')"
-												:aria-label="t('common.edit')"
-												@click="handleEdit(automation._id)"
-											>
-												<Icon name="lucide:pencil" class="w-4 h-4" />
-											</button>
-											<!-- More Actions Dropdown -->
-											<!-- An editor keeps only "View details", which this list withholds
-											     for a draft, so the menu would be empty — hide the trigger. -->
-											<div
-												v-if="canManage || automation.status !== 'draft'"
-												class="relative"
-												data-dropdown
-											>
-												<button
-													class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-													@click="toggleDropdown(automation._id)"
-													:title="t('dashboard.automations.index.actions.more')"
-													:aria-label="t('dashboard.automations.index.actions.more')"
-												>
-													<Icon name="lucide:more-vertical" class="w-4 h-4" />
-												</button>
-												<Transition
-													enter-active-class="duration-(--motion-moderate) ease-spring"
-													enter-from-class="opacity-0 scale-95"
-													enter-to-class="opacity-100 scale-100"
-													leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-													leave-from-class="opacity-100 scale-100"
-													leave-to-class="opacity-0 scale-95"
-												>
-													<div
-														v-if="openDropdownId === automation._id"
-														class="absolute right-0 top-full mt-1 w-40 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-10 py-1"
-													>
-														<button
-															v-if="automation.status !== 'draft'"
-															class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
-															@click="handleViewDetails(automation._id)"
-														>
-															<Icon name="lucide:zap" class="w-4 h-4" />
-															{{ t('dashboard.automations.index.actions.viewDetails') }}
-														</button>
-														<button
-															v-if="canManage"
-															class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
-															@click="handleEdit(automation._id)"
-														>
-															<Icon name="lucide:pencil" class="w-4 h-4" />
-															{{ t('common.edit') }}
-														</button>
-														<button
-															v-if="canManage"
-															class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
-															@click="handleDuplicate(automation._id)"
-														>
-															<Icon name="lucide:copy" class="w-4 h-4" />
-															{{ t('common.duplicate') }}
-														</button>
-														<button
-															v-if="canManage && automation.status !== 'draft'"
-															:disabled="toggleingId === automation._id"
-															class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-															@click="handleToggleStatus(automation)"
-														>
-															<Icon
-																:name="
-																	automation.status === 'active' ? 'lucide:pause' : 'lucide:play'
-																"
-																class="w-4 h-4"
-															/>
-															{{
-																automation.status === 'active'
-																	? t('dashboard.automations.index.actions.pause')
-																	: t('dashboard.automations.index.actions.activate')
-															}}
-														</button>
-														<div
-															v-if="canManage && automation.status !== 'active'"
-															class="border-t border-border-subtle my-1"
-														/>
-														<button
-															v-if="canManage && automation.status !== 'active'"
-															class="w-full px-3 py-2 text-left text-sm text-error hover:bg-error/10 flex items-center gap-2 transition-colors"
-															@click="
-																openDeleteModal(automation._id, automation.name, automation.status)
-															"
-														>
-															<Icon name="lucide:trash-2" class="w-4 h-4" />
-															{{ t('common.delete') }}
-														</button>
-													</div>
-												</Transition>
-											</div>
-										</div>
-									</td>
-								</tr>
-							</tbody>
-						</table>
-					</div>
-				</div>
-			</UiQueryBoundary>
-		</div>
-
-		<!-- Delete Confirmation Modal -->
-		<UiModal
-			:open="isDeleteModalOpen"
-			:title="t('dashboard.automations.index.deleteDialog.title')"
-			size="md"
-			:closable="!isDeleting"
-			:persistent="isDeleting"
-			@update:open="
-				(v) => {
-					if (!v) closeDeleteModal();
-				}
-			"
-		>
-			<div class="flex items-start gap-4">
-				<div class="p-3 rounded-full bg-error/10 shrink-0 flex items-center justify-center">
-					<Icon name="lucide:trash-2" class="w-6 h-6 text-error" />
-				</div>
-				<div>
-					<I18nT
-						keypath="dashboard.automations.index.deleteDialog.body"
-						tag="p"
-						class="text-text-primary"
-						scope="global"
-					>
-						<template #name>
-							<span class="font-semibold">"{{ automationToDelete?.name }}"</span>
-						</template>
-					</I18nT>
-					<p class="text-sm text-text-secondary mt-2">
-						{{ t('dashboard.automations.index.deleteDialog.note') }}
-					</p>
-					<p
-						v-if="automationToDelete?.status === 'active'"
-						class="text-sm text-warning mt-2 flex items-center gap-1.5"
-					>
-						<Icon name="lucide:alert-circle" class="w-4 h-4" />
-						{{ t('dashboard.automations.index.deleteDialog.activeWarning') }}
-					</p>
-				</div>
+				</UiSegmentedControl>
 			</div>
+		</template>
 
-			<template #footer>
-				<UiButton variant="secondary" :disabled="isDeleting" @click="closeDeleteModal">
-					{{ t('common.cancel') }}
-				</UiButton>
-				<UiButton
-					variant="danger"
-					class="gap-2"
-					:disabled="isDeleting || automationToDelete?.status === 'active'"
-					@click="handleDelete"
-				>
-					<Icon
-						v-if="isDeleting"
-						name="lucide:loader-2"
-						class="w-4 h-4 animate-spin motion-reduce:animate-none"
+		<template v-if="canManage" #empty-action>
+			<UiButton @click="handleNewAutomation">
+				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+				{{ t('dashboard.automations.index.empty.action') }}
+			</UiButton>
+		</template>
+
+		<template #loading>
+			<UiCard padding="none" overflow="hidden">
+				<DashboardListSkeleton variant="table" :columns="6" :rows="6" />
+			</UiCard>
+		</template>
+
+		<template v-for="layout in rowLayouts" :key="layout" #[layout]>
+			<AutomationsListTable :items="filteredAutomations" :layout="layout" :can-manage="canManage">
+				<template #actions="{ automation, touch }">
+					<AutomationsRowActions
+						:automation="automation"
+						:can-manage="canManage"
+						:toggling="togglingId === automation._id"
+						:touch="touch"
+						@toggle="handleToggleStatus"
+						@edit="handleEdit"
+						@view="handleViewDetails"
+						@duplicate="handleDuplicate"
+						@delete="list.openDelete"
 					/>
-					{{
-						isDeleting
-							? t('dashboard.automations.index.deleting')
-							: t('dashboard.automations.index.deleteDialog.title')
-					}}
-				</UiButton>
-			</template>
-		</UiModal>
-	</div>
+				</template>
+			</AutomationsListTable>
+		</template>
+
+		<template #delete-extra>
+			<p
+				v-if="deleteBlocked"
+				class="text-sm text-warning mt-2 flex items-center justify-center gap-1.5"
+			>
+				<Icon name="lucide:alert-circle" class="w-4 h-4" />
+				{{ t('dashboard.automations.index.deleteDialog.activeWarning') }}
+			</p>
+		</template>
+	</ListPageShell>
 </template>

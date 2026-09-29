@@ -13,6 +13,7 @@
 import { fullSupport, type ContainerBlockContent, type EditorBlock } from '@owlat/shared';
 import { DEFAULT_BLOCK_MARGIN, DEFAULT_BLOCK_PADDING } from '@owlat/shared/emailDefaults';
 import { itemToBlock, type BlockModule, type Placement } from '../_module';
+import { walkItemsPlaintext, ampPaddedItems } from '../_items';
 import { toPixelWidth } from '../../helpers/dimensions';
 import { gradientToCssOrEmpty } from '../../helpers/gradient';
 import { msoVmlBackground, msoVmlBackgroundClose } from '../../outlook';
@@ -48,10 +49,10 @@ const renderNested = (
 	baseWidth: number,
 	walk: (child: EditorBlock, w: number, p: 'container') => string
 ): string => {
-	const paddingTop = content.paddingTop ?? 16;
-	const paddingRight = content.paddingRight ?? 24;
-	const paddingBottom = content.paddingBottom ?? 16;
-	const paddingLeft = content.paddingLeft ?? 24;
+	const paddingTop = content.paddingTop ?? DEFAULT_BLOCK_PADDING.paddingTop;
+	const paddingRight = content.paddingRight ?? DEFAULT_BLOCK_PADDING.paddingRight;
+	const paddingBottom = content.paddingBottom ?? DEFAULT_BLOCK_PADDING.paddingBottom;
+	const paddingLeft = content.paddingLeft ?? DEFAULT_BLOCK_PADDING.paddingLeft;
 	const marginTop = content.marginTop ?? 0;
 	const marginBottom = content.marginBottom ?? 0;
 
@@ -145,20 +146,24 @@ export const containerModule: BlockModule<'container'> = {
 	},
 
 	plaintext({ content, walk }) {
-		const parts: string[] = [];
-		for (const item of content.items) {
-			const text = walk(itemToBlock(item));
-			if (text) parts.push(text);
-		}
-		return parts.join('\n');
+		return walkItemsPlaintext(content.items, walk);
 	},
 
 	amp({ content, walk }) {
-		const style = content.backgroundColor
-			? `background-color:${escapeCss(content.backgroundColor)};`
-			: '';
-		const itemsHtml = content.items.map((item) => walk(itemToBlock(item))).join('\n');
-		return `<div style="${style}padding:${content.paddingTop}px ${content.paddingRight}px ${content.paddingBottom}px ${content.paddingLeft}px">${itemsHtml}</div>`;
+		// Same padding defaults as the HTML path (renderNested / getSectionPadding).
+		return ampPaddedItems(
+			{
+				items: content.items,
+				background: content.backgroundColor,
+				padding: {
+					top: content.paddingTop ?? DEFAULT_BLOCK_PADDING.paddingTop,
+					right: content.paddingRight ?? DEFAULT_BLOCK_PADDING.paddingRight,
+					bottom: content.paddingBottom ?? DEFAULT_BLOCK_PADDING.paddingBottom,
+					left: content.paddingLeft ?? DEFAULT_BLOCK_PADDING.paddingLeft,
+				},
+			},
+			walk
+		);
 	},
 
 	createDefault() {

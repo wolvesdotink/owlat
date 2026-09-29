@@ -10,7 +10,6 @@ const props = defineProps<{
 const { t } = useI18n();
 
 const stack = usePostboxComposerStack();
-const undoSend = usePostboxUndoSend();
 const { size, setSize } = usePostboxComposerSize();
 
 const isFocused = computed(() => stack.focusedId.value === props.composer.id);
@@ -24,15 +23,6 @@ const popupStyle = computed(() => ({
 	right: `${24 + props.slotIndex * (size.value.width + 16)}px`,
 	bottom: 'var(--pbx-composer-inset-bottom, 0px)',
 }));
-
-function onSent(composerId: string, undoToken: string, sendAt: number, mailboxId: string) {
-	stack.close(composerId);
-	undoSend.arm({
-		undoToken,
-		sendAt,
-		mailboxId: mailboxId as import('@owlat/api/dataModel').Id<'mailboxes'>,
-	});
-}
 
 // Esc / header Minimize: while focused, demote back to the popup (state intact);
 // otherwise dock the composer as usual.
@@ -107,20 +97,11 @@ onBeforeUnmount(() => {
 					:title="t('components.postbox.postboxComposerPopup.resizeHandle')"
 					@pointerdown="onResizeDown"
 				/>
+				<!-- The composer arms the undo window itself; a sent popup only closes. -->
 				<PostboxComposer
-					:mailbox-id="composer.mailboxId"
-					:draft-id="composer.draftId"
-					:in-reply-to-message-id="composer.inReplyToMessageId"
-					:prefill-to="composer.prefillTo"
-					:prefill-cc="composer.prefillCc"
-					:prefill-bcc="composer.prefillBcc"
-					:prefill-subject="composer.prefillSubject"
-					:prefill-body-html="composer.prefillBodyHtml"
-					:prefill-attachments="composer.prefillAttachments"
-					:forward-attachments-from-message-id="composer.forwardAttachmentsFromMessageId"
-					:attach-pending-key="composer.attachPendingKey"
+					:seed="composer"
 					:reply-all-recipients="composer.replyAllRecipients"
-					@sent="(token, sendAt) => onSent(composer.id, token, sendAt, composer.mailboxId)"
+					@sent="stack.close(composer.id)"
 					@discarded="stack.close(composer.id)"
 					@minimize="onMinimize"
 				/>

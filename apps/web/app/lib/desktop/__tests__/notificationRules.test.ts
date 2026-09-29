@@ -14,7 +14,7 @@ import {
 	type ThreadWindowEntry,
 	type UnreadPeekMessage,
 } from '../notificationRules';
-import type { PostboxMailCategory } from '~/utils/postboxNotify';
+import type { MailCategory } from '~/utils/mailCategory';
 import type { PostboxQuietHours } from '~/utils/postboxQuietHours';
 
 function msg(over: Partial<UnreadPeekMessage> & { messageId: string }): UnreadPeekMessage {
@@ -29,7 +29,7 @@ function msg(over: Partial<UnreadPeekMessage> & { messageId: string }): UnreadPe
 }
 
 describe('shouldNotify (category x setting matrix)', () => {
-	const categories: Array<PostboxMailCategory | undefined> = [
+	const categories: Array<MailCategory | undefined> = [
 		'person',
 		'newsletter',
 		'notification',

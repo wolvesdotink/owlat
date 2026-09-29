@@ -344,6 +344,26 @@ describe('shell — token extract', () => {
 		const body = await response.json();
 		expect(body.error.category).toBe('invalid_input');
 	});
+
+	it('returns 400 "Invalid token encoding" for malformed percent-encoding', async () => {
+		const handler = createShellHandler(
+			{
+				path: '/unsub/:token',
+				method: 'POST',
+				rateLimit: 'subscriptionManagement',
+				cors: false,
+				resultMode: 'action',
+			},
+			async () => ({ ok: true, data: {} })
+		);
+		const ctx = makeFakeCtx();
+		const request = new Request('http://localhost/unsub/%E0%A4%A', { method: 'POST' });
+		const response = await handler(ctx, request);
+		expect(response.status).toBe(400);
+		const body = await response.json();
+		expect(body.error.category).toBe('invalid_input');
+		expect(body.error.message).toBe('Invalid token encoding');
+	});
 });
 
 // ─── Shell shape: body parsing ─────────────────────────────────────────────

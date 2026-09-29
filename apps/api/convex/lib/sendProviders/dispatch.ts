@@ -10,13 +10,24 @@
  *
  * Responsibilities:
  *   1. Retry loop driven by `module.retryDelays` and `module.categorizeError`.
- *      Each attempt calls the module's single-attempt `sendEmail`.
- *   2. Health recording — writes to `providerHealth` via the
+ *      Each attempt calls the module's single-attempt `sendEmail`. A retryable
+ *      failure waits `max(retryDelays[attempt], result.retryAfterMs)`, so a
+ *      provider's Retry-After is honoured. The loop never waits longer in total
+ *      than the sum of `retryDelays`: a Retry-After that does not fit in what is
+ *      left of that budget returns the failure (with its `retryAfterMs`) at once.
+ *   2. The ambiguous-timeout policy, decided here from the catalog rather than
+ *      in each adapter. Adapters only report `AMBIGUOUS_TIMEOUT` ("the request
+ *      may have been accepted"). It is retried only when the kind deduplicates
+ *      on an idempotency key AND the extras carry one. Otherwise it is terminal,
+ *      and a kind declaring `acceptanceSemantics: 'unknown-on-timeout'` gets
+ *      `acceptanceUnknown: true`, which lets the governed boundary park the Send
+ *      on provider feedback instead of failing it.
+ *   3. Health recording — writes to `providerHealth` via the
  *      **Send provider health (module)**'s `recordSendResult` mutation after
  *      every terminal outcome (success or exhausted retries). Closes the
  *      silent-drift bug where bypass callers (test sends, automation steps)
  *      previously skipped health recording.
- *   3. Error categorization at the boundary — the result carries the typed
+ *   4. Error categorization at the boundary — the result carries the typed
  *      `EmailErrorCode`, not just the raw error string.
  *
  * See CONTEXT.md "Send dispatch (helper)".
@@ -34,12 +45,14 @@ import { isEnvPresent } from '../env';
 import { getBundledPluginManifest } from '../../plugins/authorization';
 import { providerFor } from './index';
 import { resolveSendTransport, type SendTransportId, type SendTransportRecord } from './transports';
+import { acceptanceSemanticsFor, deduplicatesOnIdempotencyKeyFor } from './catalog';
 import {
 	EmailErrorCode,
 	isRetryableErrorCode,
 	type DispatchResult,
 	type EmailSendParams,
 	type SendProviderExtras,
+	type SendProviderKind,
 } from './types';
 
 function delay(ms: number): Promise<void> {
@@ -96,6 +109,12 @@ export async function sendProviderDispatch(
 	const pluginHost = pluginId ? createSendTransportHost(pluginId) : null;
 	const startTime = Date.now();
 	let attempts = 0;
+	// The most the loop would ever wait on its own schedule. A Retry-After can
+	// stretch one wait, but never the total.
+	const waitBudgetMs = module.retryDelays.reduce((sum, delayMs) => sum + delayMs, 0);
+	let waitedMs = 0;
+	const mayRetryAmbiguousTimeout =
+		deduplicatesOnIdempotencyKeyFor(kind) && carriesIdempotencyKey(extras);
 
 	for (let attempt = 0; attempt <= module.retryDelays.length; attempt++) {
 		if (pluginId) {
@@ -120,18 +139,56 @@ export async function sendProviderDispatch(
 		}
 
 		const isLastAttempt = attempt === module.retryDelays.length;
-		const retryable = isRetryableErrorCode(result.errorCode);
+		const ambiguous = result.errorCode === EmailErrorCode.AMBIGUOUS_TIMEOUT;
+		const retryable = ambiguous ? mayRetryAmbiguousTimeout : isRetryableErrorCode(result.errorCode);
+		const settled = ambiguous ? settleAmbiguousTimeout(kind, result) : result;
 
 		if (!retryable || isLastAttempt) {
-			return await terminalResult(ctx, transport, startTime, attempts, result, pluginId);
+			return await terminalResult(ctx, transport, startTime, attempts, settled, pluginId);
 		}
 
-		const delayMs = module.retryDelays[attempt]!;
+		const delayMs = Math.max(module.retryDelays[attempt]!, result.retryAfterMs ?? 0);
+		if (waitedMs + delayMs > waitBudgetMs) {
+			// The provider asked for a longer pause than this loop may still spend.
+			// Hand the failure back now, `retryAfterMs` intact, rather than sleep
+			// through the action's time or hammer a throttling provider early.
+			return await terminalResult(ctx, transport, startTime, attempts, settled, pluginId);
+		}
 		await delay(delayMs);
+		waitedMs += delayMs;
 	}
 
 	// Unreachable — the loop returns at every iteration.
 	throw new Error('sendProviderDispatch: invariant violated — loop exhausted without returning');
+}
+
+/**
+ * Does the kind-agnostic extras object carry a non-empty idempotency key?
+ *
+ * Read structurally: `ResendExtras`, `EmailitExtras` and the plugin tier all
+ * name it `idempotencyKey`. A dedup-capable kind without a key (a system mail
+ * whose caller supplied none, a test send) cannot dedup a retry, so its
+ * ambiguous timeout is never retried blind.
+ */
+function carriesIdempotencyKey(extras: unknown): boolean {
+	if (typeof extras !== 'object' || extras === null) return false;
+	const key = (extras as { idempotencyKey?: unknown }).idempotencyKey;
+	return typeof key === 'string' && key.length > 0;
+}
+
+/**
+ * The terminal form of an ambiguous timeout. A kind that declares
+ * `'unknown-on-timeout'` is marked `acceptanceUnknown`, so the governed
+ * boundary parks the Send on provider feedback (or throws, for a kind with no
+ * feedback channel) instead of recording a definite failure.
+ */
+function settleAmbiguousTimeout(
+	kind: SendProviderKind,
+	result: Extract<DispatchResult['result'], { success: false }>
+): DispatchResult['result'] {
+	return acceptanceSemanticsFor(kind) === 'unknown-on-timeout'
+		? { ...result, acceptanceUnknown: true }
+		: result;
 }
 
 function createSendTransportHost(pluginId: PluginId): PluginHost {

@@ -19,6 +19,7 @@ import type { MutationCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import { components } from '../../_generated/api';
 import { provisionMailbox } from '../../mail/mailbox/identity';
+import { listMailboxesOnAddress } from '../../mail/mailbox/addressResolution';
 import type { LoadResult, Loader } from './types';
 
 interface MailboxFixture {
@@ -82,10 +83,7 @@ async function load(ctx: MutationCtx, rawRecords: unknown[]): Promise<LoadResult
 			continue;
 		}
 
-		const existing = await ctx.db
-			.query('mailboxes')
-			.withIndex('by_address', (q) => q.eq('address', address))
-			.first();
+		const [existing] = await listMailboxesOnAddress(ctx, address);
 		if (existing) {
 			ids[rec.slug] = existing._id;
 			skipped++;

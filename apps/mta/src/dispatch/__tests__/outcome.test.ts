@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { classifyResult, reduce, type DispatchOutcome } from '../outcome.js';
 import { classifySmtpResponse } from '../../intelligence/smtpClassifier.js';
-import { isSmtpBlockCategory, isSmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
+import {
+	isSmtpBlockCategory,
+	isSmtpFailureCategory,
+	SMTP_BLOCK_MESSAGE_SAMPLES,
+} from '@owlat/shared/smtpBlockCategories';
 import type { AttemptCtx } from '../types.js';
 import type { EmailJob, EmailJobResult } from '../../types.js';
 
@@ -47,6 +51,29 @@ function makeCtx(overrides: Partial<AttemptCtx> = {}): AttemptCtx {
 	};
 }
 
+/** A real `550 5.7.1 ... blocked` reply, from the shared pinning fixture. */
+const BLOCKED_550 = (() => {
+	const sample = SMTP_BLOCK_MESSAGE_SAMPLES.find(
+		(s) => s.smtpCode === 550 && s.enhancedCode === '5.7.1' && /blocked/.test(s.response)
+	);
+	if (!sample) throw new Error('fixture lost its 550 5.7.1 block sample');
+	return sample;
+})();
+
+function hardBounceResult(sample: {
+	smtpCode: number;
+	response: string;
+	enhancedCode?: string;
+}): EmailJobResult {
+	return {
+		success: false,
+		bounceType: 'hard',
+		smtpCode: sample.smtpCode,
+		error: sample.response,
+		...(sample.enhancedCode === undefined ? {} : { enhancedCode: sample.enhancedCode }),
+	};
+}
+
 describe('classifyResult', () => {
 	it('success → delivered', () => {
 		const result: EmailJobResult = {
@@ -83,8 +110,32 @@ describe('classifyResult', () => {
 		if (out.kind === 'hard_bounce') {
 			expect(out.smtpCode).toBe(550);
 			expect(out.error).toBe('User unknown');
+			// The classifier's 5xx fallback, reachable from dispatch since issue #866.
+			expect(out.classification).toEqual(classifySmtpResponse(550, 'User unknown', '5.1.1'));
+			expect(out.classification.category).toBe('unknown');
 		}
 	});
+
+	it('classifies a 550 5.7.1 block as content_rejected on the hard-bounce path', () => {
+		const out = classifyResult(hardBounceResult(BLOCKED_550), BLOCKED_550.provider);
+		if (out.kind !== 'hard_bounce') throw new Error('expected a hard bounce');
+		expect(out.classification.category).toBe('content_rejected');
+		expect(isSmtpBlockCategory(out.classification.category)).toBe(true);
+	});
+
+	it.each(SMTP_BLOCK_MESSAGE_SAMPLES.filter((sample) => sample.smtpCode >= 500))(
+		'classifies the $smtpCode $enhancedCode $provider fixture as $category on the hard-bounce path',
+		(sample) => {
+			// The shared fixture says the ramp halts on these categories; the hard
+			// bounce is the path a 5xx reply actually takes through dispatch.
+			const out = classifyResult(hardBounceResult(sample), sample.provider);
+			if (out.kind !== 'hard_bounce') throw new Error('expected a hard bounce');
+			expect(out.classification.category).toBe(sample.category);
+			expect(out.classification).toEqual(
+				classifySmtpResponse(sample.smtpCode, sample.response, sample.enhancedCode, sample.provider)
+			);
+		}
+	);
 
 	it('hard_bounce defaults smtpCode to 550', () => {
 		const out = classifyResult({ success: false, bounceType: 'hard', error: 'x' });
@@ -192,9 +243,10 @@ describe('reduce(hard_bounce)', () => {
 		smtpCode: 550,
 		error: 'User unknown',
 		enhancedCode: '5.1.1',
+		classification: classifySmtpResponse(550, 'User unknown', '5.1.1'),
 	};
 
-	it('produces the canonical 8-effect list with suppress_recipient last and no defer', () => {
+	it('produces the canonical 9-effect list with suppress_recipient last and no defer', () => {
 		const { effects, defer } = reduce(outcome, makeCtx());
 		expect(defer).toBeUndefined();
 		expect(effects.map((e) => e.kind)).toEqual([
@@ -205,8 +257,37 @@ describe('reduce(hard_bounce)', () => {
 			'metrics_record',
 			'log_delivery_event',
 			'notify_convex',
+			'notify_convex',
 			'suppress_recipient',
 		]);
+	});
+
+	it('notifies the bounce with the receiver text, then the classified response', () => {
+		const { effects } = reduce(outcome, makeCtx());
+		const notified = effects.flatMap((e) => (e.kind === 'notify_convex' ? [e.event] : []));
+		expect(notified.map((event) => event.event)).toEqual(['bounced', 'smtp.classified']);
+		expect(notified[0]?.message).toBe('User unknown');
+		expect(notified[0]?.smtpCategory).toBeUndefined();
+		expect(notified[1]?.smtpCategory).toBe('unknown');
+	});
+
+	it('logs the classified category beside the hard bounce', () => {
+		const { effects } = reduce(outcome, makeCtx());
+		const log = effects.find((e) => e.kind === 'log_delivery_event');
+		if (log?.kind !== 'log_delivery_event') throw new Error('expected a delivery log');
+		expect(log.event).toMatchObject({ status: 'bounced', bounceType: 'hard', category: 'unknown' });
+	});
+
+	it('reports a 550 5.7.1 block as content_rejected (issue #866)', () => {
+		// THE CLEAREST REFUSAL SIGNAL a receiver sends. It used to reach Convex only
+		// as a bounce, so the ramp's block clause never counted it.
+		const blocked = classifyResult(hardBounceResult(BLOCKED_550), BLOCKED_550.provider);
+		const classified = reduce(blocked, makeCtx()).effects.find(
+			(e) => e.kind === 'notify_convex' && e.event.event === 'smtp.classified'
+		);
+		if (classified?.kind !== 'notify_convex') throw new Error('expected a classified response');
+		expect(classified.event.smtpCategory).toBe('content_rejected');
+		expect(isSmtpBlockCategory(classified.event.smtpCategory ?? '')).toBe(true);
 	});
 
 	it('suppress_recipient targets the recipient with hard_bounce reason', () => {
@@ -232,32 +313,47 @@ describe('reduce(hard_bounce)', () => {
 describe('member test delivery effect isolation', () => {
 	it.each([
 		{
-			kind: 'delivered',
-			smtpCode: 250,
-			smtpResponse: 'Queued',
-			enhancedCode: '2.0.0',
-		} as const,
+			outcome: {
+				kind: 'delivered',
+				smtpCode: 250,
+				smtpResponse: 'Queued',
+				remoteMessageId: undefined,
+				enhancedCode: '2.0.0',
+			},
+			notifications: 1,
+		},
 		{
-			kind: 'hard_bounce',
-			smtpCode: 550,
-			error: 'No such user',
-			enhancedCode: '5.1.1',
-		} as const,
-	])('retains lifecycle/log evidence but no production state for $kind', (outcome) => {
-		const job = makeJob({ deliveryDomain: 'member_test' });
-		const { effects } = reduce(outcome, makeCtx({ job }));
-		expect(effects.map((effect) => effect.kind)).toEqual(['log_delivery_event', 'notify_convex']);
-		const notify = effects.find((effect) => effect.kind === 'notify_convex');
-		expect(notify).toMatchObject({
-			kind: 'notify_convex',
-			event: { messageId: 'msg-001', deliveryDomain: 'member_test' },
-		});
-		if (notify?.kind === 'notify_convex') {
-			expect(notify.event.recipient).toBeUndefined();
-			expect(notify.event.destinationProvider).toBeUndefined();
-			expect(notify.event.primarySendingDomain).toBeUndefined();
+			outcome: {
+				kind: 'hard_bounce',
+				smtpCode: 550,
+				error: 'No such user',
+				enhancedCode: '5.1.1',
+				classification: classifySmtpResponse(550, 'No such user', '5.1.1'),
+			},
+			notifications: 2,
+		},
+	] satisfies { outcome: DispatchOutcome; notifications: number }[])(
+		'retains lifecycle/log evidence but no production state for $outcome.kind',
+		({ outcome, notifications }) => {
+			const job = makeJob({ deliveryDomain: 'member_test' });
+			const { effects } = reduce(outcome, makeCtx({ job }));
+			expect(effects.map((effect) => effect.kind)).toEqual([
+				'log_delivery_event',
+				...Array.from({ length: notifications }, () => 'notify_convex'),
+			]);
+			for (const notify of effects.filter((effect) => effect.kind === 'notify_convex')) {
+				expect(notify).toMatchObject({
+					kind: 'notify_convex',
+					event: { messageId: 'msg-001', deliveryDomain: 'member_test' },
+				});
+				if (notify.kind === 'notify_convex') {
+					expect(notify.event.recipient).toBeUndefined();
+					expect(notify.event.destinationProvider).toBeUndefined();
+					expect(notify.event.primarySendingDomain).toBeUndefined();
+				}
+			}
 		}
-	});
+	);
 });
 
 describe('reduce(deferred)', () => {
@@ -592,5 +688,116 @@ describe('reduce — shared invariants', () => {
 		if (log?.kind === 'log_delivery_event') {
 			expect(log.event.pool).toBe('transactional');
 		}
+	});
+});
+
+describe('reduce — which outcomes report smtp.classified (issue #866)', () => {
+	const classification = (smtpCode: number, error: string) =>
+		classifySmtpResponse(smtpCode, error, undefined);
+
+	it.each<{ name: string; outcome: DispatchOutcome; classified: boolean }>([
+		{
+			name: 'hard_bounce',
+			outcome: classifyResult(hardBounceResult(BLOCKED_550)),
+			classified: true,
+		},
+		{
+			name: 'deferred (retryable)',
+			outcome: {
+				kind: 'deferred',
+				smtpCode: 450,
+				error: 'Greylisted, try again in 90 seconds',
+				enhancedCode: undefined,
+				classification: classification(450, 'Greylisted, try again in 90 seconds'),
+			},
+			classified: true,
+		},
+		{
+			name: 'deferred (non-retryable)',
+			outcome: {
+				kind: 'deferred',
+				smtpCode: 451,
+				error: '451 Message rejected due to spam policy',
+				enhancedCode: undefined,
+				classification: classification(451, '451 Message rejected due to spam policy'),
+			},
+			classified: true,
+		},
+		{
+			name: 'delivered',
+			outcome: {
+				kind: 'delivered',
+				smtpCode: 250,
+				smtpResponse: 'Queued',
+				remoteMessageId: undefined,
+				enhancedCode: '2.0.0',
+			},
+			classified: false,
+		},
+		{
+			name: 'soft_bounce',
+			outcome: { kind: 'soft_bounce', error: 'Connection refused' },
+			classified: false,
+		},
+		{
+			name: 'ambiguous',
+			outcome: { kind: 'ambiguous', error: 'connection dropped after DATA' },
+			classified: false,
+		},
+	])('$name → smtp.classified: $classified', ({ outcome, classified }) => {
+		const reports = reduce(outcome, makeCtx()).effects.filter(
+			(e) => e.kind === 'notify_convex' && e.event.event === 'smtp.classified'
+		);
+		expect(reports).toHaveLength(classified ? 1 : 0);
+	});
+
+	it('emits the same terminal effect list for a hard bounce and a non-retryable deferral', () => {
+		// ONE builder (`terminalBounceEffects`) for both. The documented differences
+		// are the codes and text themselves and the `bounced` message: the hard
+		// bounce passes the receiver text through, the deferral names its category.
+		const error = '550 5.7.1 Message rejected due to spam policy';
+		const hard: DispatchOutcome = {
+			kind: 'hard_bounce',
+			smtpCode: 550,
+			error,
+			enhancedCode: '5.7.1',
+			classification: classifySmtpResponse(550, error, '5.7.1'),
+		};
+		const deferral: DispatchOutcome = {
+			kind: 'deferred',
+			smtpCode: 550,
+			error,
+			enhancedCode: '5.7.1',
+			classification: classifySmtpResponse(550, error, '5.7.1'),
+		};
+		const withoutTime = (effects: ReturnType<typeof reduce>['effects']) =>
+			effects.map((effect) =>
+				effect.kind === 'notify_convex'
+					? { ...effect, event: { ...effect.event, timestamp: 0 } }
+					: effect
+			);
+
+		const hardEffects = withoutTime(reduce(hard, makeCtx()).effects);
+		const deferralEffects = withoutTime(reduce(deferral, makeCtx()).effects);
+		const bouncedMessage = (effects: typeof hardEffects) =>
+			effects.find((e) => e.kind === 'notify_convex' && e.event.event === 'bounced');
+
+		const hardBounced = bouncedMessage(hardEffects);
+		const deferralBounced = bouncedMessage(deferralEffects);
+		if (hardBounced?.kind !== 'notify_convex' || deferralBounced?.kind !== 'notify_convex') {
+			throw new Error('expected a bounced notification on both paths');
+		}
+		expect(hardBounced.event.message).toBe(error);
+		expect(deferralBounced.event.message).toBe(
+			`Non-retryable SMTP deferral (content_rejected): ${error}`
+		);
+
+		const withoutMessage = (effects: typeof hardEffects) =>
+			effects.map((effect) =>
+				effect.kind === 'notify_convex' && effect.event.event === 'bounced'
+					? { ...effect, event: { ...effect.event, message: undefined } }
+					: effect
+			);
+		expect(withoutMessage(hardEffects)).toEqual(withoutMessage(deferralEffects));
 	});
 });

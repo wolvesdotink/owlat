@@ -9,7 +9,7 @@ const FORM_SUBMISSION_DELETE_BATCH = 256;
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwRateLimited, throwInvalidInput } from '../_utils/errors';
-import { rateLimiter } from '../rateLimiter';
+import { rateLimiter } from '../lib/rateLimiter';
 import { formFieldValidator } from '../lib/convexValidators';
 import type { TransitionOutcome as DoiTransitionOutcome } from '../contacts/doiLifecycle';
 import { findContactByConfirmationToken } from '../contacts/doiLifecycle';

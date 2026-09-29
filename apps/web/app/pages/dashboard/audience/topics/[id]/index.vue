@@ -11,8 +11,6 @@ definePageMeta({
 	middleware: 'auth',
 });
 
-const router = useRouter();
-
 // Breadcrumbs
 const { setDynamicBreadcrumbs, clearDynamicBreadcrumbs } = useBreadcrumbs();
 
@@ -32,22 +30,16 @@ const { data: topic, isLoading: topicLoading } = useConvexQuery(api.topics.topic
 }));
 
 // Fetch contacts in this topic (paginated)
-const {
-	results: topicContacts,
-	isLoading: contactsLoading,
-	loadMore,
-	status: contactsPaginationStatus,
-} = usePaginatedQuery(api.topics.topics.getContacts, () => ({ topicId: topicId.value }), {
-	initialNumItems: 50,
-});
+const contactsPage = usePaginatedQuery(
+	api.topics.topics.getContacts,
+	() => ({ topicId: topicId.value }),
+	{ initialNumItems: 50 }
+);
+const contactsLoading = contactsPage.isLoading;
 
 const isLoading = computed(
 	() => organizationLoading.value || topicLoading.value || contactsLoading.value
 );
-
-// Below md the five columns have nowhere to go — the same rows render as a card
-// list instead (one tap opens the contact, the remove action stays on the row).
-const tableFits = useDataTableViewport();
 
 // Update breadcrumbs when topic data is loaded
 watch(
@@ -75,158 +67,18 @@ onUnmounted(() => {
 	clearDynamicBreadcrumbs();
 });
 
-// Search state
-const searchQuery = ref('');
-const debouncedSearch = ref('');
-let searchTimeout: ReturnType<typeof setTimeout> | null = null;
-
-// Debounce search input
-watch(searchQuery, (value) => {
-	if (searchTimeout) {
-		clearTimeout(searchTimeout);
-	}
-	searchTimeout = setTimeout(() => {
-		debouncedSearch.value = value;
-	}, 300);
-});
-
-// Pagination state
-const currentPage = ref(1);
-const pageSize = 25;
-
-// Sorting state
-type SortField = 'email' | 'firstName' | 'lastName' | 'addedAt';
-const sortBy = ref<SortField>('addedAt');
-const sortOrder = ref<'asc' | 'desc'>('desc');
-
-// Reset to page 1 when search or sort changes
-watch([debouncedSearch, sortBy, sortOrder], () => {
-	currentPage.value = 1;
-});
-
-// Filtered and sorted contacts
-const filteredContacts = computed(() => {
-	if (!topicContacts.value) return [];
-
-	let contacts = [...topicContacts.value];
-
-	// Filter by search
-	if (debouncedSearch.value) {
-		const query = debouncedSearch.value.toLowerCase();
-		contacts = contacts.filter(
-			(contact) =>
-				(contact.email && contact.email.toLowerCase().includes(query)) ||
-				(contact.firstName && contact.firstName.toLowerCase().includes(query)) ||
-				(contact.lastName && contact.lastName.toLowerCase().includes(query))
-		);
-	}
-
-	// Sort
-	contacts.sort((a, b) => {
-		let comparison = 0;
-		if (sortBy.value === 'email') {
-			comparison = (a.email ?? '').localeCompare(b.email ?? '');
-		} else if (sortBy.value === 'firstName') {
-			comparison = (a.firstName || '').localeCompare(b.firstName || '');
-		} else if (sortBy.value === 'lastName') {
-			comparison = (a.lastName || '').localeCompare(b.lastName || '');
-		} else if (sortBy.value === 'addedAt') {
-			comparison = a.addedAt - b.addedAt;
-		}
-		return sortOrder.value === 'asc' ? comparison : -comparison;
-	});
-
-	return contacts;
-});
-
-// Paginated contacts
-const paginatedContacts = computed(() => {
-	const start = (currentPage.value - 1) * pageSize;
-	return filteredContacts.value.slice(start, start + pageSize);
-});
-
-// Pagination calculations
-const totalPages = computed(() => Math.max(1, Math.ceil(filteredContacts.value.length / pageSize)));
-const totalCount = computed(() => filteredContacts.value.length);
-
-const canGoPrev = computed(() => currentPage.value > 1);
-const canGoNext = computed(() => currentPage.value < totalPages.value);
-
-// The server query is cursor-paginated (50/page) but the table pages
-// client-side over the loaded set; without driving loadMore, members past the
-// first page were unreachable. Progressively pull more pages: when the user
-// nears the end of the loaded window, and eagerly while a search is active
-// (client-side search must see every member to find a match).
-const canLoadMore = computed(() => contactsPaginationStatus.value === 'CanLoadMore');
-watch(
-	[currentPage, debouncedSearch, contactsPaginationStatus],
-	() => {
-		if (!canLoadMore.value) return;
-		const loaded = topicContacts.value?.length ?? 0;
-		const needed = currentPage.value * pageSize + pageSize;
-		if (debouncedSearch.value || loaded < needed) {
-			loadMore(50);
-		}
-	},
-	{ immediate: true }
+// Search, sort and paging over the loaded contacts (client-side), pulling more
+// server pages as the user nears the end or searches. Newest members first.
+const contacts = reactive(
+	useMemberTable({
+		paginated: contactsPage,
+		dateField: 'addedAt',
+		defaultSort: 'addedAt',
+		loadMoreSize: 50,
+	})
 );
-
-const goToPage = (page: number) => {
-	if (page >= 1 && page <= totalPages.value) {
-		currentPage.value = page;
-	}
-};
-
-// Handle column sort
-const handleSort = (field: SortField) => {
-	if (sortBy.value === field) {
-		sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
-	} else {
-		sortBy.value = field;
-		sortOrder.value = field === 'addedAt' ? 'desc' : 'asc';
-	}
-};
-
-// Get sort icon for column
-const getSortIcon = (field: SortField): string | null => {
-	if (sortBy.value !== field) return null;
-	return sortOrder.value === 'asc' ? 'lucide:chevron-up' : 'lucide:chevron-down';
-};
-
-// Generate page numbers for pagination
-const pageNumbers = computed(() => {
-	const pages: (number | '...')[] = [];
-	const total = totalPages.value;
-	const current = currentPage.value;
-
-	if (total <= 7) {
-		for (let i = 1; i <= total; i++) {
-			pages.push(i);
-		}
-	} else {
-		if (current <= 3) {
-			pages.push(1, 2, 3, 4, '...', total);
-		} else if (current >= total - 2) {
-			pages.push(1, '...', total - 3, total - 2, total - 1, total);
-		} else {
-			pages.push(1, '...', current - 1, current, current + 1, '...', total);
-		}
-	}
-
-	return pages;
-});
-
-// Showing range text
-const showingRange = computed(() => {
-	if (totalCount.value === 0) return t('dashboard.audience.topics.detail.index.showing.empty');
-	const start = (currentPage.value - 1) * pageSize + 1;
-	const end = Math.min(currentPage.value * pageSize, totalCount.value);
-	return t('dashboard.audience.topics.detail.index.showing.range', {
-		start,
-		end,
-		total: totalCount.value,
-	});
-});
+const contactPath = (contact: { _id: Id<'contacts'> }) =>
+	`/dashboard/audience/topics/${topicId.value}/contacts/${contact._id}`;
 
 // ============================================
 // Remove Contact Modal State
@@ -283,11 +135,6 @@ const handleRemove = async () => {
 // Toast Notification (global)
 // ============================================
 const { showToast } = useToast();
-
-// Navigate to contact in topic detail
-const viewContact = (contactId: Id<'contacts'>) => {
-	router.push(`/dashboard/audience/topics/${topicId.value}/contacts/${contactId}`);
-};
 </script>
 
 <template>
@@ -365,254 +212,49 @@ const viewContact = (contactId: Id<'contacts'>) => {
 				</UiPageHeader>
 			</div>
 
-			<!-- Search Bar -->
-			<div class="mb-6">
-				<div class="relative max-w-md">
-					<Icon
-						name="lucide:search"
-						class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
-					/>
-					<input
-						v-model="searchQuery"
-						type="text"
-						:placeholder="t('dashboard.audience.topics.detail.index.searchPlaceholder')"
-						class="input pl-10"
-					/>
-				</div>
-			</div>
-
-			<!-- Contacts Table -->
-			<div class="card p-0 overflow-hidden">
-				<!-- Empty State (no contacts in topic) -->
-				<div
-					v-if="!contactsLoading && filteredContacts.length === 0 && !debouncedSearch"
-					class="flex flex-col items-center justify-center py-16 text-center px-6"
-				>
-					<UiIconBox icon="lucide:users" size="xl" variant="surface" rounded="full" class="mb-4" />
-					<p class="text-text-secondary font-medium">
-						{{ t('dashboard.audience.topics.detail.index.empty.title') }}
-					</p>
-					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-						{{ t('dashboard.audience.topics.detail.index.empty.body') }}
-					</p>
-					<UiButton to="/dashboard/audience/contacts" class="gap-2 mt-6">
+			<AudienceMemberTable
+				v-model:search="contacts.searchQuery"
+				:rows="contacts.pageRows"
+				date-field="addedAt"
+				:row-to="contactPath"
+				:active-search="contacts.debouncedSearch"
+				:search-placeholder="t('dashboard.audience.topics.detail.index.searchPlaceholder')"
+				:loading="contactsLoading"
+				:empty="{
+					icon: 'lucide:users',
+					title: t('dashboard.audience.topics.detail.index.empty.title'),
+					description: t('dashboard.audience.topics.detail.index.empty.body'),
+				}"
+				:is-sortable="contacts.isSortable"
+				:get-sort-icon="contacts.getSortIcon"
+				:current-page="contacts.currentPage"
+				:total-pages="contacts.totalPages"
+				:page-numbers="contacts.pageNumbers"
+				:showing-range="contacts.showingRange"
+				@sort="contacts.toggleSort"
+				@page="contacts.goToPage"
+				@clear-search="contacts.clearSearch"
+			>
+				<template #empty-action>
+					<UiButton to="/dashboard/audience/contacts">
 						{{ t('dashboard.audience.topics.detail.index.empty.action') }}
 					</UiButton>
-				</div>
-
-				<!-- Empty State (no search results) -->
-				<div
-					v-else-if="!contactsLoading && filteredContacts.length === 0 && debouncedSearch"
-					class="flex flex-col items-center justify-center py-16 text-center px-6"
-				>
-					<UiIconBox icon="lucide:search" size="xl" variant="surface" rounded="full" class="mb-4" />
-					<p class="text-text-secondary font-medium">
-						{{ t('dashboard.audience.topics.detail.index.noResults.title') }}
-					</p>
-					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-						{{
-							t('dashboard.audience.topics.detail.index.noResults.body', { query: debouncedSearch })
-						}}
-					</p>
-					<UiButton
-						variant="secondary"
-						class="mt-6"
-						@click="
-							searchQuery = '';
-							debouncedSearch = '';
-						"
+				</template>
+				<template v-if="canManage" #row-actions="{ row, layout }">
+					<button
+						type="button"
+						:class="[
+							'flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+							layout === 'card' ? 'w-11 h-11' : 'p-2',
+						]"
+						:title="t('dashboard.audience.topics.detail.index.removeFromTopic')"
+						:aria-label="t('dashboard.audience.topics.detail.index.removeFromTopic')"
+						@click="openRemoveModal(row)"
 					>
-						{{ t('dashboard.audience.topics.detail.index.clearSearch') }}
-					</UiButton>
-				</div>
-
-				<!-- Data Table -->
-				<div v-else>
-					<!-- Card list below md. The two are alternatives, not layers: a
-					     CSS-only switch would keep both copies of every row in the DOM. -->
-					<ul v-if="!tableFits" class="divide-y divide-border-subtle">
-						<li
-							v-for="contact in paginatedContacts"
-							:key="contact._id"
-							class="flex items-center gap-1 px-4 py-2"
-						>
-							<button
-								type="button"
-								class="flex-1 min-w-0 text-left py-1"
-								@click="viewContact(contact._id)"
-							>
-								<span class="block text-text-primary font-medium truncate">{{
-									contact.email
-								}}</span>
-								<span
-									v-if="contact.firstName || contact.lastName"
-									class="block text-sm text-text-secondary truncate"
-								>
-									{{ [contact.firstName, contact.lastName].filter(Boolean).join(' ') }}
-								</span>
-								<span class="block text-xs text-text-tertiary mt-0.5">
-									{{ formatDate(contact.addedAt) }}
-								</span>
-							</button>
-							<button
-								v-if="canManage"
-								class="w-11 h-11 flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
-								:aria-label="t('dashboard.audience.topics.detail.index.removeFromTopic')"
-								@click="openRemoveModal(contact)"
-							>
-								<Icon name="lucide:trash-2" class="w-4 h-4" />
-							</button>
-						</li>
-					</ul>
-
-					<div v-else class="overflow-x-auto">
-						<table class="w-full">
-							<thead>
-								<tr class="border-b border-border-subtle">
-									<th
-										class="text-left px-6 py-4 text-sm font-medium text-text-secondary cursor-pointer hover:text-text-primary transition-colors"
-										@click="handleSort('email')"
-									>
-										<div class="flex items-center gap-1">
-											{{ t('common.email') }}
-											<Icon
-												v-if="getSortIcon('email')"
-												:name="getSortIcon('email')!"
-												class="w-4 h-4"
-											/>
-										</div>
-									</th>
-									<th
-										class="text-left px-6 py-4 text-sm font-medium text-text-secondary cursor-pointer hover:text-text-primary transition-colors"
-										@click="handleSort('firstName')"
-									>
-										<div class="flex items-center gap-1">
-											{{ t('dashboard.audience.topics.detail.index.table.firstName') }}
-											<Icon
-												v-if="getSortIcon('firstName')"
-												:name="getSortIcon('firstName')!"
-												class="w-4 h-4"
-											/>
-										</div>
-									</th>
-									<th
-										class="text-left px-6 py-4 text-sm font-medium text-text-secondary cursor-pointer hover:text-text-primary transition-colors"
-										@click="handleSort('lastName')"
-									>
-										<div class="flex items-center gap-1">
-											{{ t('dashboard.audience.topics.detail.index.table.lastName') }}
-											<Icon
-												v-if="getSortIcon('lastName')"
-												:name="getSortIcon('lastName')!"
-												class="w-4 h-4"
-											/>
-										</div>
-									</th>
-									<th
-										class="text-left px-6 py-4 text-sm font-medium text-text-secondary cursor-pointer hover:text-text-primary transition-colors"
-										@click="handleSort('addedAt')"
-									>
-										<div class="flex items-center gap-1">
-											{{ t('dashboard.audience.topics.detail.index.table.added') }}
-											<Icon
-												v-if="getSortIcon('addedAt')"
-												:name="getSortIcon('addedAt')!"
-												class="w-4 h-4"
-											/>
-										</div>
-									</th>
-									<th class="text-right px-6 py-4 text-sm font-medium text-text-secondary">
-										{{ t('common.actions') }}
-									</th>
-								</tr>
-							</thead>
-							<tbody>
-								<tr
-									v-for="contact in paginatedContacts"
-									:key="contact._id"
-									class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors cursor-pointer"
-									@click="viewContact(contact._id)"
-								>
-									<td class="px-6 py-4">
-										<span class="text-text-primary font-medium">{{ contact.email }}</span>
-									</td>
-									<td class="px-6 py-4">
-										<span class="text-text-secondary">{{ contact.firstName || '—' }}</span>
-									</td>
-									<td class="px-6 py-4">
-										<span class="text-text-secondary">{{ contact.lastName || '—' }}</span>
-									</td>
-									<td class="px-6 py-4">
-										<span class="text-text-tertiary text-sm">{{
-											formatDate(contact.addedAt)
-										}}</span>
-									</td>
-									<td class="px-6 py-4">
-										<div class="flex items-center justify-end gap-1">
-											<button
-												v-if="canManage"
-												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
-												:title="t('dashboard.audience.topics.detail.index.removeFromTopic')"
-												@click.stop="openRemoveModal(contact)"
-											>
-												<Icon name="lucide:trash-2" class="w-4 h-4" />
-											</button>
-										</div>
-									</td>
-								</tr>
-							</tbody>
-						</table>
-					</div>
-
-					<!-- Pagination -->
-					<div
-						v-if="totalPages > 1 || totalCount > 0"
-						class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-6 py-4 border-t border-border-subtle"
-					>
-						<p class="text-sm text-text-tertiary">
-							{{
-								t('dashboard.audience.topics.detail.index.showing.label', { range: showingRange })
-							}}
-						</p>
-
-						<div class="flex items-center gap-1">
-							<button
-								class="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface disabled:opacity-50 disabled:pointer-events-none transition-colors"
-								:disabled="!canGoPrev"
-								@click="goToPage(currentPage - 1)"
-								:aria-label="t('dashboard.audience.topics.detail.index.pagination.previous')"
-							>
-								<Icon name="lucide:chevron-left" class="w-4 h-4" />
-							</button>
-
-							<template v-for="(page, index) in pageNumbers" :key="index">
-								<span v-if="page === '...'" class="px-2 text-text-tertiary"> ... </span>
-								<button
-									v-else
-									:class="[
-										'min-w-[32px] h-8 px-2 rounded-lg text-sm font-medium transition-colors',
-										page === currentPage
-											? 'bg-text-primary text-text-inverse'
-											: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
-									]"
-									@click="goToPage(page)"
-								>
-									{{ page }}
-								</button>
-							</template>
-
-							<button
-								class="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface disabled:opacity-50 disabled:pointer-events-none transition-colors"
-								:disabled="!canGoNext"
-								@click="goToPage(currentPage + 1)"
-								:aria-label="t('dashboard.audience.topics.detail.index.pagination.next')"
-							>
-								<Icon name="lucide:chevron-right" class="w-4 h-4" />
-							</button>
-						</div>
-					</div>
-				</div>
-			</div>
+						<Icon name="lucide:trash-2" class="w-4 h-4" />
+					</button>
+				</template>
+			</AudienceMemberTable>
 		</template>
 
 		<!-- Remove Contact Modal -->

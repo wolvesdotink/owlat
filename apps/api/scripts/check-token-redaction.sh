@@ -75,45 +75,37 @@ fi
 scan_root="${1:-convex}"
 baseline_file="${2:-scripts/token-redaction-baseline.txt}"
 
-# awk walks each file (NR resets per file via find -exec ... {} \;). It tracks
-# the span of each `export const X = authedQuery(`/`publicQuery(` definition —
-# including the feature-gated `postboxQuery` compositions, which serialize to the
-# browser exactly like the `authedQuery` they wrap —
-# from the export line to the dedented `})` that closes it (top-level defs sit at
-# column 0; everything inside the handler is indented, so the only column-0 `})`
-# is the definition's own close). A span is flagged when it reads a token-bearing
-# table (`reads`) but never hits a redaction helper or a `// token-safe:` comment
-# (`ok`). `block_optout` lets a `// token-safe:` note sit in the contiguous `//`
-# block directly above the export; it is reset by any non-comment, non-export
-# line so it can never leak onto an unrelated later definition.
+# shellcheck source=lib/convex-builders.sh
+. scripts/lib/convex-builders.sh
+
+# The scanned builders are every query builder that serializes its return value
+# to the browser: the member, role and public floors (`authedQuery`,
+# `adminQuery`, `publicQuery` and every `featureGated(Any)` composition such as
+# `chatQuery` / `assistantQuery` / `postboxQuery`), derived from the REAL
+# convex/ tree by scripts/lib/convex-builders.sh even when a fixture root is
+# scanned. The shared span scanner (scripts/lib/convex-defs.awk) opens a span on
+# each `export const X = <builder>(` and closes it on the column-0 `})`; this
+# fragment flags a span that reads a token-bearing table (`reads`) but never
+# hits a redaction helper or a `// token-safe:` comment. An admin role floor is
+# not a redaction: an adminQuery that returns a raw token row still hands the
+# bearer secret to the browser, so it is scanned like any other read.
 generate() {
+	local builders program
+	builders=$(convex_builder_regex 'query' 'member|role|public') || exit 1
+	program=$(convex_defs_program '
+		function on_start() { reads = 0; ok = 0 }
+		function on_line() {
+			if ($0 ~ /\.query\((\x27|")(contacts|shareLinks|apiKeys|webhooks)(\x27|")\)/) reads = 1
+			if ($0 ~ /(redactContactCapabilityFields|PublicContact|stripWebhookSecret)/) ok = 1
+		}
+		function on_end() { if (reads && !ok && !def_optout) print FILENAME ":" def_name }
+	') || exit 1
 	find "$1" -name "*.ts" \
 		-not -path "*/_generated/*" \
 		-not -path "*/__tests__/*" \
-		-exec awk '
-			BEGIN { in_fn = 0; reads = 0; ok = 0; name = ""; block_optout = 0 }
-			{
-				is_comment = ($0 ~ /^[[:space:]]*\/\//)
-				is_just    = ($0 ~ /\/\/[[:space:]]*token-safe:/)
-				is_export  = ($0 ~ /^export const [A-Za-z0-9_]+ = (authedQuery|publicQuery|postboxQuery|externalMailQuery|transactionalQuery|campaignsQuery|automationsQuery|formsQuery)\(/)
-				is_read    = ($0 ~ /\.query\((\x27|")(contacts|shareLinks|apiKeys|webhooks)(\x27|")\)/)
-				is_redact  = ($0 ~ /(redactContactCapabilityFields|PublicContact|stripWebhookSecret)/)
-			}
-			is_comment && is_just { block_optout = 1 }
-			is_export {
-				in_fn = 1; name = $3; reads = 0
-				ok = block_optout
-				block_optout = 0
-			}
-			in_fn && is_read   { reads = 1 }
-			in_fn && is_redact { ok = 1 }
-			in_fn && is_just   { ok = 1 }
-			in_fn && /^\}\)/ {
-				if (reads && !ok) print FILENAME ":" name
-				in_fn = 0
-			}
-			(!is_comment && !is_export) { block_optout = 0 }
-		' {} \; 2>/dev/null | sort || true
+		-print0 \
+		| xargs -0 -r awk -v builders="$builders" -v optout='token-safe' "$program" \
+		| sort
 }
 
 if [ -n "$generate_root" ]; then

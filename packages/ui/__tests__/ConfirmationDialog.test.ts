@@ -36,7 +36,7 @@ const ModalStub = defineComponent({
 });
 
 const ButtonStub = defineComponent({
-	props: { variant: String, loading: Boolean },
+	props: { variant: String, loading: Boolean, disabled: Boolean },
 	setup:
 		(props, { slots }) =>
 		() =>
@@ -46,6 +46,9 @@ const ButtonStub = defineComponent({
 					class: 'ui-button',
 					'data-variant': props.variant,
 					'data-loading': String(props.loading),
+					// A marker, not the native attribute: a native `disabled` would stop
+					// the click before it reached the dialog's own guard.
+					'data-disabled': String(props.disabled),
 				},
 				[slots['iconLeft']?.(), slots['default']?.()]
 			),
@@ -94,5 +97,48 @@ describe('ConfirmationDialog — confirm button', () => {
 		const disc = mountDialog({ variant: 'danger' }).find('.rounded-full');
 
 		expect(disc.classes()).toEqual(expect.arrayContaining(['bg-error/10', 'text-error']));
+	});
+});
+
+describe('ConfirmationDialog — description', () => {
+	it('renders the description prop as the lead', () => {
+		expect(mountDialog({ description: 'Gone for good.' }).text()).toContain('Gone for good.');
+	});
+
+	it('lets #description replace the lead with markup', () => {
+		const w = mount(ConfirmationDialog, {
+			props: { open: true, description: 'Plain lead' },
+			slots: { description: '<p>Delete <strong>Welcome</strong>?</p>' },
+			global: {
+				plugins: [createUiI18n()],
+				stubs: { UiModal: ModalStub, UiButton: ButtonStub, Icon: true },
+			},
+		});
+
+		expect(w.find('strong').text()).toBe('Welcome');
+		expect(w.text()).not.toContain('Plain lead');
+	});
+});
+
+describe('ConfirmationDialog — refused action', () => {
+	it('enables the confirm button by default', async () => {
+		const w = mountDialog({ variant: 'danger' });
+
+		expect(confirm(w)?.attributes('data-disabled')).toBe('false');
+		await confirm(w)?.trigger('click');
+		expect(w.emitted('confirm')).toHaveLength(1);
+	});
+
+	it('disables confirm and never emits it while confirmDisabled is set', async () => {
+		const w = mountDialog({ variant: 'danger', confirmDisabled: true });
+
+		expect(confirm(w)?.attributes('data-disabled')).toBe('true');
+		await confirm(w)?.trigger('click');
+		expect(w.emitted('confirm')).toBeUndefined();
+		// Cancel stays available: the user can back out of a refused action.
+		const cancel = w.findAll('.footer .ui-button')[0];
+		expect(cancel?.attributes('data-disabled')).toBe('false');
+		await cancel?.trigger('click');
+		expect(w.emitted('update:open')).toEqual([[false]]);
 	});
 });

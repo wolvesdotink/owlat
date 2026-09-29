@@ -1,20 +1,32 @@
 import { v, type VLiteral, type VUnion } from 'convex/values';
 
 /**
- * A closed string union derived from an `as const` array, so a vocabulary owned
- * by `@owlat/shared` is never re-spelled here. The inferred type is
- * `T[number]`, the same closed union a hand-written `v.union(v.literal(...))`
- * gives, and `.members` stays available for parity tests. The cast is needed
- * because destructuring a generic tuple widens the rest to `string[]`.
+ * The one way to build a closed Convex union from a list of literals, so a
+ * vocabulary owned by a catalog or by `@owlat/shared` is never re-spelled as
+ * `v.union(v.literal(...), ...)`. The hand-rolled `v.union(...X.map((x) =>
+ * v.literal(x)))` form is banned by `scripts/check-convex-patterns.sh`.
  *
- * A leaf (imports only `convex/values`) so `literalValidators.ts` and
- * `appLocales.ts` can use it without a cycle through `convexValidators.ts`,
- * which re-exports it for existing importers.
+ * A leaf module (it imports only `convex/values`), so catalogs that
+ * `convexValidators.ts` itself re-exports, and the schema, can use it without
+ * an import cycle.
+ *
+ * - An `as const` tuple (strings or numbers) infers `T[number]`, the same closed
+ *   union a hand-written `v.union(v.literal(...))` gives.
+ * - A computed list (a `.filter` subset, a plugin-composed catalog, a `Set`)
+ *   is not a tuple type, so it takes the second overload: the union is its
+ *   element type, and an empty list throws at module load instead of building
+ *   a validator that accepts nothing.
+ *
+ * `.members` stays available for parity tests either way.
  */
-export function literalUnion<const T extends readonly [string, ...string[]]>(values: T) {
+export function literalUnion<const T extends readonly [Literal, ...Literal[]]>(
+	values: T
+): VUnion<T[number], VLiteral<T[number]>[]>;
+export function literalUnion<T extends Literal>(values: Iterable<T>): VUnion<T, VLiteral<T>[]>;
+export function literalUnion(values: Iterable<Literal>) {
 	const [first, ...rest] = values;
-	return v.union(v.literal(first), ...rest.map((value) => v.literal(value))) as VUnion<
-		T[number],
-		VLiteral<T[number]>[]
-	>;
+	if (first === undefined) throw new Error('literalUnion needs at least one literal');
+	return v.union(v.literal(first), ...rest.map((value) => v.literal(value)));
 }
+
+type Literal = string | number;

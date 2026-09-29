@@ -1,18 +1,15 @@
 import { v } from 'convex/values';
 import { transactionalMutation, transactionalQuery } from './_helpers';
 import { requireOrgPermission } from '../lib/sessionOrganization';
-import { getOrThrow, throwNotFound } from '../_utils/errors';
-import { assertEditableForPublishableChange } from './lifecycle';
-import { type TranslatableBlockContent } from '../emailTemplates/translationMerge';
+import { getOrThrow } from '../_utils/errors';
+import { assertEditableForPublishableChange } from '../lib/publishableEmail';
 import {
-	addLanguage,
-	parseTranslations,
-	removeLanguage,
+	addTranslationPatch,
+	removeTranslationPatch,
 	resolveForLanguage,
-	serializeTranslations,
 	TRANSACTIONAL_TRANSLATABLE_FIELDS,
+	updateTranslationPatch,
 } from '../lib/emailTranslations';
-import { nextContentRevision } from '../lib/contentRevision';
 
 /**
  * Get transactional email content for a specific language
@@ -53,17 +50,12 @@ export const addTranslation = transactionalMutation({
 			'Only owners and admins can manage transactional email translations'
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
+		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
 
-		assertEditableForPublishableChange(email, args.forceWhilePublished);
-
-		const patch = addLanguage(email, args.language, TRANSACTIONAL_TRANSLATABLE_FIELDS);
-
-		await ctx.db.patch(args.id, {
-			...patch,
-			contentRevision: nextContentRevision(email),
-			updatedAt: Date.now(),
-		});
-
+		await ctx.db.patch(
+			args.id,
+			addTranslationPatch(email, args.language, TRANSACTIONAL_TRANSLATABLE_FIELDS)
+		);
 		return args.id;
 	},
 });
@@ -87,50 +79,12 @@ export const updateTranslation = transactionalMutation({
 			'Only owners and admins can manage transactional email translations'
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
+		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
 
-		assertEditableForPublishableChange(email, args.forceWhilePublished);
-
-		const defaultLanguage = email.defaultLanguage ?? 'en';
-
-		// If updating the default language, update the main fields
-		if (args.language === defaultLanguage) {
-			const updates: {
-				subject?: string;
-				contentRevision: number;
-				updatedAt: number;
-			} = { contentRevision: nextContentRevision(email), updatedAt: Date.now() };
-
-			if (args.subject !== undefined) {
-				updates.subject = args.subject.trim();
-			}
-
-			await ctx.db.patch(args.id, updates);
-			return args.id;
-		}
-
-		// For non-default languages, update the translations object
-		const translations = parseTranslations(email.translations);
-
-		const translation = translations[args.language];
-		if (!translation) {
-			throwNotFound('Translation');
-		}
-
-		if (args.subject !== undefined) {
-			translation.subject = args.subject.trim();
-		}
-		if (args.blocks !== undefined) {
-			translation.blocks = JSON.parse(args.blocks) as Record<string, TranslatableBlockContent>;
-		}
-
-		translations[args.language] = translation;
-
-		await ctx.db.patch(args.id, {
-			translations: serializeTranslations(translations),
-			contentRevision: nextContentRevision(email),
-			updatedAt: Date.now(),
-		});
-
+		await ctx.db.patch(
+			args.id,
+			updateTranslationPatch(email, args, TRANSACTIONAL_TRANSLATABLE_FIELDS)
+		);
 		return args.id;
 	},
 });
@@ -151,17 +105,9 @@ export const removeTranslation = transactionalMutation({
 			'Only owners and admins can manage transactional email translations'
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
+		assertEditableForPublishableChange(email, 'Transactional email', args.forceWhilePublished);
 
-		assertEditableForPublishableChange(email, args.forceWhilePublished);
-
-		const patch = removeLanguage(email, args.language);
-
-		await ctx.db.patch(args.id, {
-			...patch,
-			contentRevision: nextContentRevision(email),
-			updatedAt: Date.now(),
-		});
-
+		await ctx.db.patch(args.id, removeTranslationPatch(email, args.language));
 		return args.id;
 	},
 });

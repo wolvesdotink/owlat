@@ -7,14 +7,15 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
 import { requireDraftCampaign } from './guards';
 import { getOrThrow, throwInvalidState, throwInvalidInput } from '../_utils/errors';
-import { abVariantValidator } from '../lib/convexValidators';
+import { abVariantValidator } from '../lib/literalValidators';
+import { hasClicked, hasOpened, hasReachedDelivered } from '../delivery/sendEngagement';
 
 /**
- * Per-variant A/B stats from a variant's `emailSends` rows. opened/clicked are
- * counted from monotonic timestamps (an opened-then-bounced recipient still
- * counts as opened — counting by current `status` dropped them), and the rate
- * denominator is "ever delivered", consistent with the main campaign report.
- * `delivered` is guaranteed ≥ opened ≥ clicked, so the rates never exceed 100%.
+ * Per-variant A/B stats from a variant's `emailSends` rows. delivered, opened
+ * and clicked use the same `delivery/sendEngagement` predicates as the main
+ * campaign report, so the rate denominator is "ever reached delivered" and
+ * `delivered` is at least `opened` and at least `clicked`: the rates never
+ * exceed 100%.
  * Reduced shape behind the `getABTestStats` query that powers the report's A/B
  * fold-in.
  */
@@ -31,9 +32,9 @@ function computeAbVariantStats(sends: ReadonlyArray<Doc<'emailSends'>>): {
 	let opened = 0;
 	let clicked = 0;
 	for (const s of sends) {
-		if (s.deliveredAt || s.openedAt || s.clickedAt) delivered++;
-		if (s.openedAt) opened++;
-		if (s.clickedAt || (s.clickedLinks && s.clickedLinks.length > 0)) clicked++;
+		if (hasReachedDelivered(s)) delivered++;
+		if (hasOpened(s)) opened++;
+		if (hasClicked(s)) clicked++;
 	}
 	return {
 		sent,

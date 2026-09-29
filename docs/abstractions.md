@@ -142,7 +142,7 @@ domains use it.
 provisioning is: both the forward path (a domain reaching `verified`) and the
 catch-up drain walk this registry and ask `ensureRelayIdentity`, so a newly
 registered kind is on both the moment it registers (the seams plan's P0.4).
-What `domains/lifecycle.ts` still carries `providerType` branches for is the
+What `domains/returnPathProviders.ts` still carries `providerType` branches for is the
 RETURN-PATH family — which `mailFrom` bundle a custom return-path host
 publishes, and which reflection action pushes it to the provider — and a new
 kind silently gets neither. That capability has no home on the adapter

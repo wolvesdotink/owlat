@@ -9,8 +9,14 @@ export function usePostboxThreadGroups(args: {
 	mailboxId: Ref<Id<'mailboxes'> | null>;
 	folderRole: Ref<string>;
 	enabled: Ref<boolean>;
+	/**
+	 * What resets the growable limit (and so which view's paging this is).
+	 * Defaults to the folder; the Categories view passes its own key so it
+	 * pages independently of the conversation view on the same feed.
+	 */
+	limitKey?: Ref<string>;
 }) {
-	const { limit, loadMore, atMax } = useGrowableLimit(args.folderRole);
+	const { limit, loadMore, atMax } = useGrowableLimit(args.limitKey ?? args.folderRole);
 
 	const { data, isLoading, isRefetching } = useConvexQuery(
 		api.mail.mailbox.queries.listThreads,

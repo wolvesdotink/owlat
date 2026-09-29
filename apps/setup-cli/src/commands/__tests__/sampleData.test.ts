@@ -1,11 +1,11 @@
 /**
- * `owlat-setup sample-data` — argument parsing and count formatting. The
- * wiring guard (quickstart must never write OWLAT_DEV_MODE=true) lives in
- * scripts/check-installer-invariants.sh.
+ * `owlat-setup sample-data` — argument parsing. Count formatting is covered in
+ * lib/__tests__/format.test.ts; the wiring guard (quickstart must never write
+ * OWLAT_DEV_MODE=true) lives in scripts/check-installer-invariants.sh.
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseAction, formatCounts } from '../sampleData.js';
+import { parseAction } from '../sampleData.js';
 
 describe('parseAction', () => {
 	it('accepts the three actions', () => {
@@ -25,23 +25,5 @@ describe('parseAction', () => {
 
 	it('ignores trailing arguments', () => {
 		expect(parseAction(['remove', 'extra'])).toBe('remove');
-	});
-});
-
-describe('formatCounts', () => {
-	// picocolors wraps the numbers when the environment forces color (CI does),
-	// so assertions compare the text content, not the escape codes around it.
-	const stripAnsi = (s: string) => s.replace(/\u001b\[\d+m/g, '');
-
-	it('lists non-zero counts and drops the zeros', () => {
-		const out = stripAnsi(formatCounts({ contacts: 15, topics: 3, webhooks: 0 }));
-		expect(out).toContain('15 contacts');
-		expect(out).toContain('3 topics');
-		expect(out).not.toContain('webhooks');
-	});
-
-	it('says "none" for an empty result instead of an empty line', () => {
-		expect(formatCounts({})).toContain('none');
-		expect(formatCounts({ contacts: 0 })).toContain('none');
 	});
 });

@@ -20,8 +20,8 @@ import {
 	recordTransportOutcomeForCell,
 	recordTransportOutcomeForSend,
 	summarizeTransportOutcomes,
-	TRANSPORT_OUTCOME_SHARD_COUNT,
 } from '../transportOutcomes';
+import { CELL_ARM_BUCKET_SHARD_COUNT } from '../cellArmBuckets';
 import { modules } from '../../__tests__/testModules';
 import { GMAIL_CAMPAIGN_CELL, OUTCOME_ORG, seedAssignedSend } from './transportOutcomesFixtures';
 
@@ -115,7 +115,7 @@ describe('transportOutcomes write path — contention', () => {
 			// …and they really did spread: a single-row hotspot would show one shard.
 			const rows = await ctx.db.query('transportOutcomes').collect();
 			expect(rows.length).toBeGreaterThan(1);
-			expect(rows.length).toBeLessThanOrEqual(TRANSPORT_OUTCOME_SHARD_COUNT);
+			expect(rows.length).toBeLessThanOrEqual(CELL_ARM_BUCKET_SHARD_COUNT);
 			expect(new Set(rows.map((row) => row.shardKey)).size).toBe(rows.length);
 		});
 	});
@@ -128,7 +128,7 @@ describe('transportOutcomes write path — contention', () => {
 			sendId = seeded.sendId;
 			// Pre-existing history the writer must not read.
 			for (let day = 1; day <= 40; day += 1) {
-				for (let shard = 0; shard < TRANSPORT_OUTCOME_SHARD_COUNT; shard += 1) {
+				for (let shard = 0; shard < CELL_ARM_BUCKET_SHARD_COUNT; shard += 1) {
 					await ctx.db.insert('transportOutcomes', {
 						organizationId: OUTCOME_ORG,
 						cell: GMAIL_CAMPAIGN_CELL,

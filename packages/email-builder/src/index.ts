@@ -85,10 +85,7 @@ export {
 	createBlock,
 	createColumnItem,
 	getBlockPadding,
-	updateBlockPadding,
-	toggleLinkedPadding,
 	getBlockMargin,
-	updateBlockMargin,
 	getBlockBackgroundColor,
 	updateBlockBackgroundColor,
 	blockSupportsBorderRadius,
@@ -98,6 +95,7 @@ export {
 	serializeHistoryState,
 	deserializeVersionSnapshot,
 	parseSnapshotBlocks,
+	parseStoredBlocks,
 	snapshotMatchesState,
 	formatSnapshotSize,
 } from './utils';

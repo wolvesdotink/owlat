@@ -298,7 +298,7 @@ async function worstCellDeferralRate(
 	//
 	// THE NUMBER, because "bounded" stopped being the useful word here: 15 cells
 	// (3 streams × 5 destination providers) × up to 30 day-buckets
-	// (`DEFERRAL_TELEMETRY_SPAN_MS`) × `TRANSPORT_OUTCOME_SHARD_COUNT` = 8 shards
+	// (`DEFERRAL_TELEMETRY_SPAN_MS`) × `CELL_ARM_BUCKET_SHARD_COUNT` = 8 shards
 	// ≈ 3,600 documents in ONE mutation, against ~120 when this read was a 24h
 	// summary. That is comfortably inside Convex's per-transaction read limit and
 	// `promoteCellPhase` runs for one cell at a time, so it is headroom rather

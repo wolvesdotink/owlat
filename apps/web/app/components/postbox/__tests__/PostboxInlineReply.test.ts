@@ -12,7 +12,8 @@ import type { InlineComposeSpec } from '../../../composables/postbox/usePostboxC
  *   - expanding renders a composer seeded for the correct thread with the
  *     quoted original,
  *   - promote-to-popup reopens the SAME draft id on the composer stack,
- *   - send collapses (and arms undo-send for the right mailbox),
+ *   - the whole seed is forwarded (attachments included), send only
+ *     collapses (the composer arms undo-send itself),
  *   - and, since plan §05 moved it here from the AI strip, that Draft reply
  *     dispatches only when the `ai` flag is on and hands the chosen suggestion
  *     back verbatim.
@@ -23,15 +24,8 @@ const ComposerStub = defineComponent({
 		// Typed so the bare `inline` attribute casts to a real boolean, like the
 		// real PostboxComposer's defineProps<{ inline?: boolean }> does.
 		inline: { type: Boolean, default: false },
-		mailboxId: { type: String, default: undefined },
-		draftId: { type: String, default: undefined },
-		inReplyToMessageId: { type: String, default: undefined },
-		prefillTo: { type: Array, default: undefined },
-		prefillCc: { type: Array, default: undefined },
-		prefillBcc: { type: Array, default: undefined },
-		prefillSubject: { type: String, default: undefined },
-		prefillBodyHtml: { type: String, default: undefined },
-		forwardAttachmentsFromMessageId: { type: String, default: undefined },
+		seed: { type: Object, required: true },
+		replyAllRecipients: { type: Array, default: undefined },
 	},
 	emits: ['sent', 'discarded', 'minimize', 'promote'],
 	template: '<div data-testid="composer-stub" />',
@@ -45,6 +39,7 @@ vi.stubGlobal('usePostboxComposerStack', () => ({
 	close: vi.fn(),
 	minimize: vi.fn(),
 }));
+// Present only to prove the box no longer arms undo-send on its own.
 vi.stubGlobal('usePostboxUndoSend', () => ({ arm: undoArm }));
 // Draft reply's one backend action (mail.ai.assist.suggestReplies).
 const suggestRun = vi.fn(async (_a: unknown): Promise<unknown> => ({ ok: false }));
@@ -124,13 +119,42 @@ describe('PostboxInlineReply', () => {
 		const w = mountInline(replySpec);
 		const composer = w.getComponent(ComposerStub);
 		expect(composer.props('inline')).toBe(true);
-		expect(composer.props('mailboxId')).toBe('mbx-1');
-		expect(composer.props('inReplyToMessageId')).toBe('msg-1');
-		expect(composer.props('prefillTo')).toEqual(['alice@example.com']);
-		expect(composer.props('prefillSubject')).toBe('Re: Hello');
-		expect(composer.props('prefillBodyHtml')).toContain('original body');
+		expect(composer.props('seed')).toMatchObject({
+			mailboxId: 'mbx-1',
+			inReplyToMessageId: 'msg-1',
+			prefillTo: ['alice@example.com'],
+			prefillSubject: 'Re: Hello',
+		});
+		expect((composer.props('seed') as InlineComposeSpec).prefillBodyHtml).toContain(
+			'original body'
+		);
 		// The collapsed affordance is gone while expanded.
 		expect(w.text()).not.toContain('Reply to Alice…');
+	});
+
+	it('forwards the whole seed, including the fields the old prop list dropped', () => {
+		const attachment = {
+			storageId: 'st-1',
+			filename: 'report.pdf',
+			contentType: 'application/pdf',
+			size: 1200,
+		};
+		const spec: InlineComposeSpec = {
+			...replySpec,
+			kind: 'forward',
+			key: 'msg-1:forward',
+			prefillAttachments: [attachment as never],
+			attachPendingKey: 'pending-7',
+			forwardAttachmentsFromMessageId: 'msg-1' as never,
+			replyAllRecipients: ['carol@example.com'],
+		};
+		const composer = mountInline(spec).getComponent(ComposerStub);
+		expect(composer.props('seed')).toMatchObject({
+			prefillAttachments: [attachment],
+			attachPendingKey: 'pending-7',
+			forwardAttachmentsFromMessageId: 'msg-1',
+		});
+		expect(composer.props('replyAllRecipients')).toEqual(['carol@example.com']);
 	});
 
 	it('promote-to-popup reopens the SAME draft id on the stack and collapses', () => {
@@ -174,15 +198,12 @@ describe('PostboxInlineReply', () => {
 		expect(w.emitted('collapse')).toHaveLength(1);
 	});
 
-	it('send arms undo-send for the mailbox and collapses', () => {
+	it('send collapses, leaving the undo window to the composer', () => {
 		const w = mountInline(replySpec);
-		w.getComponent(ComposerStub).vm.$emit('sent', 'undo-token', 1234567);
+		w.getComponent(ComposerStub).vm.$emit('sent', { scheduled: false });
 
-		expect(undoArm).toHaveBeenCalledWith({
-			undoToken: 'undo-token',
-			sendAt: 1234567,
-			mailboxId: 'mbx-1',
-		});
+		// The composer's send() arms it; a second arm here would replay the sound.
+		expect(undoArm).not.toHaveBeenCalled();
 		expect(w.emitted('collapse')).toHaveLength(1);
 	});
 

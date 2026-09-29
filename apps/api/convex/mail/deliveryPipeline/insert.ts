@@ -5,16 +5,24 @@
  * allocation, the `mailMessages` insert, and the folder/thread/usedBytes
  * aggregates + audit, plus the header parsing helpers that shape the row. This
  * is the one place a delivered message becomes a row, shared by the hosted MX
- * inbound path (`mail/delivery.ts::deliverToMailbox`) and external IMAP sync
- * (`mail/external/delivery.ts::ingestExternalMessage`).
+ * inbound path (`mail/delivery.ts::deliverToMailbox`), external IMAP sync
+ * (`mail/external/delivery.ts::ingestExternalMessage`) and archive import
+ * (`mail/archiveImport.ts::ingestArchiveMessage`).
+ *
+ * The pre-insert checks those callers share live here too: the Message-ID
+ * dedup (`findDuplicateInMailbox`), the quota test (`isOverQuota`) and the
+ * cleanup of staged blobs when a message is not inserted (`dropStagedBlobs`).
  */
 
 import { htmlToPlainText } from '@owlat/shared/html';
 import { truncateCodePoints } from '@owlat/shared/unicode';
+import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 
-import type { MutationCtx } from '../../_generated/server';
+import type { StorageWriter } from 'convex/server';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { extractEmail, normalizeSubject } from '../../lib/emailAddress';
+import { canonicalMessageId, canonicalOptionalMessageId } from '../../lib/messageId';
 import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
 import { redirectMutedDelivery } from '../mute';
 import { indexMessageAttachments } from '../attachmentIndex';
@@ -42,16 +50,52 @@ export function buildSnippet(text: string | undefined, html: string | undefined)
 	return truncateCodePoints(source, 200);
 }
 
-export function stripBrackets(s: string | undefined): string | undefined {
-	return s?.replace(/[<>]/g, '').trim() || undefined;
-}
-
 function parseReferences(refs: string | undefined): string[] {
 	if (!refs) return [];
 	return refs
 		.split(/\s+/)
 		.map((r) => r.replace(/[<>]/g, '').trim())
 		.filter(Boolean);
+}
+
+/**
+ * The message already in `mailboxId` under this Message-ID, or null. Takes the
+ * RAW header and canonicalises it the same way the insert below writes the
+ * column, so the dedup read and the write cannot drift apart.
+ */
+export async function findDuplicateInMailbox(
+	ctx: Pick<QueryCtx, 'db'>,
+	mailboxId: Id<'mailboxes'>,
+	rawMessageId: string
+): Promise<Doc<'mailMessages'> | null> {
+	const rfc822MessageId = canonicalMessageId(rawMessageId);
+	return await ctx.db
+		.query('mailMessages')
+		.withIndex('by_rfc822_message_id', (q) => q.eq('rfc822MessageId', rfc822MessageId))
+		.filter((q) => q.eq(q.field('mailboxId'), mailboxId))
+		.first();
+}
+
+/**
+ * Delete the blobs staged for a message that was not inserted (duplicate, no
+ * target, over quota). Best-effort: a blob that is already gone must not turn
+ * the skip into a failure.
+ */
+export async function dropStagedBlobs(
+	ctx: { storage: StorageWriter },
+	ids: Array<Id<'_storage'> | undefined>
+): Promise<void> {
+	for (const id of ids) {
+		if (id) await ctx.storage.delete(id).catch(() => undefined);
+	}
+}
+
+/** Whether storing `rawSize` more bytes would take the mailbox past its quota. */
+export function isOverQuota(
+	mailbox: Pick<Doc<'mailboxes'>, 'quotaBytes' | 'usedBytes'>,
+	rawSize: number
+): boolean {
+	return mailbox.quotaBytes != null && mailbox.usedBytes + rawSize > mailbox.quotaBytes;
 }
 
 interface DeliveredAttachment {
@@ -69,9 +113,9 @@ interface DeliveredAttachment {
  * `mailbox` + `folder`, run any dedup, and decided flags/labels. Returns the
  * new message id.
  *
- * Used by `deliverToMailbox` (hosted MX inbound) and
- * `external/delivery.ingestExternalMessage` (external IMAP sync). Post-delivery
- * hooks (forwarding/vacation) are NOT run here — each caller decides.
+ * Post-delivery work is NOT run here: the inbound callers follow up with
+ * `runPostInsertInboundEffects` (`./afterInsert`), and forwarding/vacation stay
+ * with the hosted MX path.
  */
 export async function insertDeliveredMessage(
 	ctx: MutationCtx,
@@ -130,7 +174,7 @@ export async function insertDeliveredMessage(
 		 * its presence never changes routing or delivery. */
 		inboundSignatureInfo?: InboundSignatureInfo;
 		/** Parsed List-Unsubscribe target (extracted at ingest from the raw header block). */
-		unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
+		unsubscribe?: ListUnsubscribeTarget;
 		/** Split inbox (idea 24): the named inbox section a `pinToSection` filter
 		 * claimed this message for. Absent ⇒ the message renders in the trailing
 		 * "Everything else" section, which is exactly today's flat inbox. */
@@ -146,9 +190,9 @@ export async function insertDeliveredMessage(
 	const recipient = mailbox.address;
 	const fromAddress = extractEmail(params.from);
 	const fromName = extractName(params.from);
-	const rfc822MessageId = stripBrackets(params.messageId) ?? params.messageId;
+	const rfc822MessageId = canonicalMessageId(params.messageId);
 	const refs = parseReferences(params.references);
-	const inReplyTo = stripBrackets(params.inReplyTo);
+	const inReplyTo = canonicalOptionalMessageId(params.inReplyTo);
 	const normalizedSubject = normalizeSubject(params.subject);
 	const now = Date.now();
 	const snippet = params.snippet ?? buildSnippet(params.textBodyInline, params.htmlBodyInline);

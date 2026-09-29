@@ -328,10 +328,16 @@ describe('transactionalEmails.publish', () => {
 		const t = convexTest(schema, modules);
 		let emailId: Id<'transactionalEmails'>;
 
+		// Never rendered, so the caller's HTML is what goes live (a rendered row
+		// publishes its own HTML; see publishableEmailParity).
 		await t.run(async (ctx) => {
 			emailId = await ctx.db.insert(
 				'transactionalEmails',
-				createTestTransactionalEmail({ slug: 'publish-test', status: 'draft' })
+				createTestTransactionalEmail({
+					slug: 'publish-test',
+					status: 'draft',
+					htmlContent: undefined,
+				})
 			);
 		});
 

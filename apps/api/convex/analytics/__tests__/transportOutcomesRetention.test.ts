@@ -13,9 +13,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import {
-	TRANSPORT_OUTCOME_CLEANUP_BATCH_SIZE,
-	TRANSPORT_OUTCOME_RETENTION_MS,
-} from '../transportOutcomes';
+	CELL_ARM_BUCKET_CLEANUP_BATCH_SIZE,
+	CELL_ARM_BUCKET_RETENTION_MS,
+} from '../cellArmBuckets';
 import { utcDayStart } from '../../lib/clock';
 import { modules } from '../../__tests__/testModules';
 import { bucketRow, DAY_MS, readBuckets } from './transportOutcomesFixtures';
@@ -32,11 +32,11 @@ describe('aging sweep', () => {
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'transportOutcomes',
-				bucketRow({ periodStart: now - TRANSPORT_OUTCOME_RETENTION_MS - DAY_MS, shardKey: 0 })
+				bucketRow({ periodStart: now - CELL_ARM_BUCKET_RETENTION_MS - DAY_MS, shardKey: 0 })
 			);
 			await ctx.db.insert(
 				'transportOutcomes',
-				bucketRow({ periodStart: now - TRANSPORT_OUTCOME_RETENTION_MS - 5 * DAY_MS, shardKey: 3 })
+				bucketRow({ periodStart: now - CELL_ARM_BUCKET_RETENTION_MS - 5 * DAY_MS, shardKey: 3 })
 			);
 			await ctx.db.insert(
 				'transportOutcomes',
@@ -67,13 +67,13 @@ describe('aging sweep', () => {
 		vi.useFakeTimers();
 		const t = convexTest(schema, modules);
 		const now = utcDayStart(Date.now());
-		const expired = TRANSPORT_OUTCOME_CLEANUP_BATCH_SIZE + 25;
+		const expired = CELL_ARM_BUCKET_CLEANUP_BATCH_SIZE + 25;
 		await t.run(async (ctx) => {
 			for (let index = 0; index < expired; index += 1) {
 				await ctx.db.insert(
 					'transportOutcomes',
 					bucketRow({
-						periodStart: now - TRANSPORT_OUTCOME_RETENTION_MS - DAY_MS - index,
+						periodStart: now - CELL_ARM_BUCKET_RETENTION_MS - DAY_MS - index,
 						shardKey: index % 8,
 					})
 				);
@@ -84,9 +84,9 @@ describe('aging sweep', () => {
 		const first = await t.mutation(internal.analytics.transportOutcomes.cleanupExpiredOutcomes, {
 			now,
 		});
-		expect(first.deleted).toBe(TRANSPORT_OUTCOME_CLEANUP_BATCH_SIZE);
+		expect(first.deleted).toBe(CELL_ARM_BUCKET_CLEANUP_BATCH_SIZE);
 		expect(await t.run(async (ctx) => (await readBuckets(ctx)).length)).toBe(
-			expired + 1 - TRANSPORT_OUTCOME_CLEANUP_BATCH_SIZE
+			expired + 1 - CELL_ARM_BUCKET_CLEANUP_BATCH_SIZE
 		);
 
 		// The tick came back full, so it rescheduled itself; drain the follow-up.
@@ -113,7 +113,7 @@ describe('aging sweep', () => {
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'transportOutcomes',
-				bucketRow({ periodStart: now - TRANSPORT_OUTCOME_RETENTION_MS - DAY_MS, shardKey: 0 })
+				bucketRow({ periodStart: now - CELL_ARM_BUCKET_RETENTION_MS - DAY_MS, shardKey: 0 })
 			);
 		});
 
@@ -130,7 +130,7 @@ describe('aging sweep', () => {
 			await ctx.db.insert(
 				'transportOutcomes',
 				bucketRow({
-					periodStart: Date.now() - TRANSPORT_OUTCOME_RETENTION_MS - DAY_MS,
+					periodStart: Date.now() - CELL_ARM_BUCKET_RETENTION_MS - DAY_MS,
 					shardKey: 0,
 				})
 			);

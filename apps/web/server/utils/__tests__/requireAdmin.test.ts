@@ -1,7 +1,8 @@
 /**
  * `requirePlatformAdmin`: authentication through the real `authedConvexClient`
  * (token proxy stubbed at the network), then the `isPlatformAdmin` probe on the
- * returned client.
+ * returned client. A failed probe goes through the shared `mapGateError`, so a
+ * Convex outage answers 503 here exactly as it does on `requireOrgAdmin`.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConvexHttpClient } from 'convex/browser';
@@ -13,6 +14,11 @@ import { installNitroGlobals, requestEvent } from './nitro';
 const COOKIE = 'better-auth.session_token=abc123';
 const fetchMock = vi.fn<typeof fetch>();
 const query = vi.spyOn(ConvexHttpClient.prototype, 'query');
+
+/** A Convex function error carrying the shared Operation error as its data. */
+function operationFailure(category: string): Error {
+	return Object.assign(new Error(category), { data: { category, message: category } });
+}
 
 beforeEach(() => {
 	installNitroGlobals({
@@ -43,6 +49,32 @@ describe('requirePlatformAdmin', () => {
 
 	it('answers 403 for a signed-in member who is not a platform admin', async () => {
 		query.mockResolvedValue(false);
+
+		await expect(requirePlatformAdmin(requestEvent({ cookie: COOKIE }))).rejects.toMatchObject({
+			statusCode: 403,
+			message: 'Platform admin access required',
+		});
+	});
+
+	it('answers 503, not an unmapped 500, when Convex is unreachable', async () => {
+		query.mockRejectedValue(new TypeError('fetch failed'));
+
+		await expect(requirePlatformAdmin(requestEvent({ cookie: COOKIE }))).rejects.toMatchObject({
+			statusCode: 503,
+			message: 'Could not verify access: the backend is unreachable.',
+		});
+	});
+
+	it('answers 401 when the probe reports the session as unauthenticated', async () => {
+		query.mockRejectedValue(operationFailure('unauthenticated'));
+
+		await expect(requirePlatformAdmin(requestEvent({ cookie: COOKIE }))).rejects.toMatchObject({
+			statusCode: 401,
+		});
+	});
+
+	it('answers 403 when the probe itself denies access', async () => {
+		query.mockRejectedValue(operationFailure('forbidden'));
 
 		await expect(requirePlatformAdmin(requestEvent({ cookie: COOKIE }))).rejects.toMatchObject({
 			statusCode: 403,

@@ -11,12 +11,11 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { nanoid } from 'nanoid';
 import { requireOrgPermission } from '../lib/sessionOrganization';
-import { countWithPagination } from '../lib/pagination';
+import { countIndexRange } from '../lib/pagination';
 import { getOptional } from '../lib/env';
 import { listResources } from '../lib/listing';
 import { topicListing } from './listing';
 import { redactContactCapabilityFields } from '../contacts/listing';
-import { toPaginationCursor } from '../lib/paginationCursor';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwNotFound } from '../_utils/errors';
 import { trackEvent } from '../lib/posthogHelpers';
@@ -615,12 +614,12 @@ export const reconcileMemberCounts = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		const result = await ctx.db.query('topics').paginate({
-			cursor: toPaginationCursor(args.cursor),
+			cursor: args.cursor ?? null,
 			numItems: 20,
 		});
 
 		for (const topic of result.page) {
-			const actualCount = await countWithPagination(ctx.db, 'contactTopics', 'by_topic', (q) =>
+			const actualCount = await countIndexRange(ctx.db, 'contactTopics', 'by_topic', (q) =>
 				q.eq('topicId', topic._id)
 			);
 

@@ -7,6 +7,7 @@
  * "declared sortable" can never drift into a silently-inert sort.
  */
 import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { nextTick } from 'vue';
 import { useDebouncedSearch } from '../useDebouncedSearch';
 import { useDataTable } from '../useDataTable';
 
@@ -78,5 +79,57 @@ describe('useDataTable getSortIcon', () => {
 		// Toggling the active column flips the direction.
 		toggleSort('name');
 		expect(getSortIcon('name')).toBe('lucide:chevron-down');
+	});
+});
+
+describe('useDataTable paging', () => {
+	it('returns to page 1 when the sort column or direction changes', async () => {
+		const { currentPage, toggleSort } = useDataTable<'name' | 'createdAt'>({
+			defaultSort: 'createdAt',
+			sortableFields: ['name', 'createdAt'],
+		});
+
+		currentPage.value = 4;
+		toggleSort('name');
+		await nextTick();
+		expect(currentPage.value).toBe(1);
+
+		currentPage.value = 3;
+		toggleSort('name');
+		await nextTick();
+		expect(currentPage.value).toBe(1);
+	});
+
+	it('returns to page 1 when the debounced search changes', async () => {
+		vi.useFakeTimers();
+		try {
+			const { currentPage, searchQuery } = useDataTable<'name'>({
+				defaultSort: 'name',
+				searchDebounceDelay: 50,
+			});
+			currentPage.value = 2;
+			searchQuery.value = 'ada';
+			await nextTick();
+			vi.advanceTimersByTime(50);
+			await nextTick();
+			expect(currentPage.value).toBe(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('numbers pages with an ellipsis around the current page and clamps goToPage', () => {
+		const { currentPage, getPageNumbers, goToPage } = useDataTable<'name'>({
+			defaultSort: 'name',
+		});
+
+		expect(getPageNumbers(5)).toEqual([1, 2, 3, 4, 5]);
+		expect(getPageNumbers(10)).toEqual([1, 2, 3, 4, '...', 10]);
+		goToPage(6, 10);
+		expect(getPageNumbers(10)).toEqual([1, '...', 5, 6, 7, '...', 10]);
+		goToPage(11, 10);
+		expect(currentPage.value).toBe(6);
+		goToPage(10, 10);
+		expect(getPageNumbers(10)).toEqual([1, '...', 7, 8, 9, 10]);
 	});
 });

@@ -1,26 +1,9 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
-
-interface Author {
-	name: string | null;
-	email: string | null;
-	image: string | null;
-}
-
-interface Message {
-	_id: Id<'chatMessages'>;
-	authorId: string;
-	text: string;
-	mentions?: string[];
-	attachmentIds?: Id<'mediaAssets'>[];
-	editedAt?: number;
-	deletedAt?: number;
-	createdAt: number;
-	author: Author;
-}
+import type { ChatMessageRow } from '~/composables/chat/useChatRoom';
 
 interface Props {
-	messages: Message[];
+	messages: ChatMessageRow[];
 	currentUserId: string;
 }
 
@@ -43,7 +26,7 @@ const groupedMessages = computed(() => {
 		month: 'long',
 		day: 'numeric',
 	});
-	const groups: { date: string; messages: Message[] }[] = [];
+	const groups: { date: string; messages: ChatMessageRow[] }[] = [];
 	let currentDate = '';
 	for (const message of props.messages) {
 		const messageDate = dateFormat.format(new Date(message.createdAt));
@@ -56,7 +39,7 @@ const groupedMessages = computed(() => {
 	return groups;
 });
 
-const isOwnMessage = (message: Message) => message.authorId === props.currentUserId;
+const isOwnMessage = (message: ChatMessageRow) => message.authorId === props.currentUserId;
 
 const scrollToBottom = () => {
 	nextTick(() => {

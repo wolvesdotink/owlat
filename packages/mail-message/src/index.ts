@@ -38,6 +38,8 @@ export {
 	parseAddressObject,
 	parseAddressObjects,
 	formatAddress,
+	addressFieldList,
+	primaryMailbox,
 	type EmailAddress,
 	type AddressObject,
 } from './parse/address';

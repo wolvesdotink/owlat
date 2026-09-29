@@ -1,8 +1,8 @@
 import { v } from 'convex/values';
 import { PLUGIN_AUTOMATION_STEP_CAPABILITY } from '@owlat/plugin-kit';
-import { type MutationCtx, type QueryCtx } from '../_generated/server';
+import { type DatabaseReader, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { automationsMutation } from './_helpers';
-import type { Doc } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { requireDraftAutomation } from './guards';
 import { requireAuthenticatedBundledPlugin } from '../plugins/authorization';
 import { getOrThrow, throwInvalidInput } from '../_utils/errors';
@@ -46,6 +46,22 @@ export function computeEntryDelay(step: Doc<'automationSteps'>): number {
 	if (!module.entryDelay) return 0;
 	const config = module.parseConfig(step.config);
 	return module.entryDelay(config as never);
+}
+
+/**
+ * Load one automation's steps in walk order (ascending `stepIndex`). Step order
+ * is the rule the walker, the funnel and the editor all read against, so every
+ * full-list read goes through here and the index supplies the order — no
+ * in-memory sort.
+ */
+export async function loadOrderedSteps(
+	db: DatabaseReader,
+	automationId: Id<'automations'>
+): Promise<Doc<'automationSteps'>[]> {
+	return await db
+		.query('automationSteps')
+		.withIndex('by_automation_and_index', (q) => q.eq('automationId', automationId))
+		.collect(); // bounded: one automation's steps
 }
 
 /**
@@ -184,10 +200,7 @@ export const addStep = automationsMutation({
 		// run-time-only gate; see `requirePluginStepAuthorization`.)
 		await requirePluginStepAuthorization(ctx, args.stepType);
 
-		const existingSteps = await ctx.db
-			.query('automationSteps')
-			.withIndex('by_automation', (q) => q.eq('automationId', args.automationId))
-			.collect(); // bounded: one automation's steps
+		const existingSteps = await loadOrderedSteps(ctx.db, args.automationId);
 
 		const now = Date.now();
 		let stepIndex: number;
@@ -338,10 +351,7 @@ export const removeStep = automationsMutation({
 
 		await ctx.db.delete(args.stepId);
 
-		const remainingSteps = await ctx.db
-			.query('automationSteps')
-			.withIndex('by_automation', (q) => q.eq('automationId', automationId))
-			.collect(); // bounded: one automation's steps
+		const remainingSteps = await loadOrderedSteps(ctx.db, automationId);
 
 		const now = Date.now();
 

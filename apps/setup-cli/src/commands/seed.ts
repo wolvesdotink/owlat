@@ -7,9 +7,9 @@
  */
 
 import { intro, outro, log } from '@clack/prompts';
-import { progressSpinner } from '../lib/progress';
 import pc from 'picocolors';
-import { backendErrorMessage, loadBackendContext, postJson } from '../lib/backend';
+import { loadBackendContext, postWithSpinner } from '../lib/backend';
+import { formatCounts } from '../lib/format';
 
 import type { CliOptions as RunOptions } from '../lib/cliOptions';
 
@@ -28,26 +28,13 @@ export async function runSeed(opts: RunOptions, baseUrlOverride?: string): Promi
 	// the published localhost port instead.
 	const ctx = await loadBackendContext(opts.owlatDir, baseUrlOverride);
 
-	const s = progressSpinner();
-	s.start(`POST ${ctx.baseUrl}/seed/demo${reset ? '?reset=true' : ''}`);
-	let response;
-	try {
-		response = await postJson<SeedSummary>(ctx, {
-			path: '/seed/demo',
-			searchParams: reset ? { reset: 'true' } : undefined,
-		});
-	} catch (e) {
-		s.stop(pc.red(`Failed: ${(e as Error).message}`));
-		log.error('Is the docker stack up? Try `docker compose up -d` first.');
-		return 1;
-	}
+	const response = await postWithSpinner<SeedSummary>(
+		ctx,
+		{ path: '/seed/demo', searchParams: reset ? { reset: 'true' } : undefined },
+		{ stopMessage: pc.green('Demo data seeded') }
+	);
+	if (!response) return 1;
 
-	if (response.status !== 200) {
-		s.stop(pc.red(`Failed: ${backendErrorMessage(response.body, `HTTP ${response.status}`)}`));
-		return 1;
-	}
-
-	s.stop(pc.green('Demo data seeded'));
 	if (response.body.deleted) {
 		log.info(`Deleted: ${formatCounts(response.body.deleted)}`);
 	}
@@ -56,15 +43,6 @@ export async function runSeed(opts: RunOptions, baseUrlOverride?: string): Promi
 		log.info(`Skipped (already present): ${formatCounts(response.body.skipped)}`);
 	}
 
-	outro(`${pc.green('Done.')} Sign in at http://localhost:3000 to browse the seeded data.`);
+	outro(`${pc.green('Done.')} Sign in at ${ctx.siteUrl} to browse the seeded data.`);
 	return 0;
-}
-
-function formatCounts(counts: Record<string, number>): string {
-	return (
-		Object.entries(counts)
-			.filter(([, n]) => n > 0)
-			.map(([k, n]) => `${pc.cyan(String(n))} ${k}`)
-			.join(', ') || pc.dim('none')
-	);
 }

@@ -196,6 +196,19 @@ describe('trackClick (GET /t/c/...)', () => {
 		expect(res.headers.get('Location')).toBe(new URL(TARGET).toString());
 	});
 
+	it('redirects a signed IDN link to its punycode host, not a Latin-1 misread', async () => {
+		const t = setupTest();
+		const emailSendId = await seedEmailSend(t);
+		const idnTarget = 'https://bücher.de/ä?q=ü';
+		const path = await makeClickPath(emailSendId, idnTarget);
+
+		const res = await t.fetch(path, { method: 'GET', redirect: 'manual' });
+		expect(res.status).toBe(302);
+		const location = res.headers.get('Location');
+		expect(location).toBe('https://xn--bcher-kva.de/%C3%A4?q=%C3%BC');
+		expect(new URL(location!).host).toBe('xn--bcher-kva.de');
+	});
+
 	it('records a reader click for a browser User-Agent', async () => {
 		const t = setupTest();
 		const emailSendId = await seedEmailSend(t);
@@ -698,16 +711,25 @@ describe('handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)', () =>
 
 		const first = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: 'POST' });
 		expect(first.status).toBe(200);
-		expect(((await first.json()) as { data: { listsRemoved: number } }).data.listsRemoved).toBe(1);
+		const firstJson = (await first.json()) as {
+			data: { listsRemoved: number; alreadyUnsubscribed: boolean };
+		};
+		expect(firstJson.data.listsRemoved).toBe(1);
+		expect(firstJson.data.alreadyUnsubscribed).toBe(false);
 		expect(await countMemberships(t, contactId)).toBe(0);
 
 		// Second POST with the SAME token — already removed → alreadyUnsubscribed,
 		// nothing further removed. Still a clean 200 {ok:true}.
 		const second = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: 'POST' });
 		expect(second.status).toBe(200);
-		const json = (await second.json()) as { ok: boolean; data: { listsRemoved: number } };
+		const json = (await second.json()) as {
+			ok: boolean;
+			data: { listsRemoved: number; alreadyUnsubscribed: boolean };
+		};
 		expect(json.ok).toBe(true);
 		expect(json.data.listsRemoved).toBe(0);
+		// The page reads this flag, not the English `message`.
+		expect(json.data.alreadyUnsubscribed).toBe(true);
 		expect(await countMemberships(t, contactId)).toBe(0);
 	});
 

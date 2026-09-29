@@ -151,7 +151,7 @@ runs `ci:verify` locally.
 
 ### Writing a baseline ratchet
 
-Seven gates share one comparison. A check script owns a _generator_ — the walk
+Eight gates share one comparison. A check script owns a _generator_ — the walk
 that prints today's violation set, one entry per line — and hands the rest to
 `scripts/ratchet.sh`, which compares that set against the frozen baseline,
 strict in both directions, and prints the wording the check passes in as flags:
@@ -286,7 +286,7 @@ Otherwise, extend an existing package. Most backend logic belongs in `apps/api/c
 ### Workspace Conventions
 
 - Package names use the `@owlat/` scope (e.g., `@owlat/email-renderer`)
-- Each package has its own `tsconfig.json` and `vitest.config.ts` (if tested)
+- Each package has its own `tsconfig.json` and `vitest.config.ts` (if tested). Build the config's coverage block with `packageCoverage` from the root `vitest.shared.ts` (or the whole config with `nodePackageConfig` for a plain node package), and take a longer time budget only from `vitest.timeouts.ts`
 - Use Bun workspaces for cross-package dependencies (`"@owlat/shared": "workspace:*"`)
 
 ## File Naming Conventions

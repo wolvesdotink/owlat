@@ -3,7 +3,6 @@ apps/api/convex/campaigns/lifecycle.ts
 apps/api/convex/campaigns/send.ts
 apps/api/convex/contacts/contacts.ts
 apps/api/convex/contacts/doiLifecycle.ts
-apps/api/convex/domains/lifecycle.ts
 apps/api/convex/emailBlocks/module.ts
 apps/api/convex/knowledge/graph.ts
 apps/api/convex/semanticFiles.ts
@@ -44,13 +43,8 @@ apps/web/app/pages/dashboard/admin/team/api/index.vue
 apps/web/app/pages/dashboard/admin/team/index.vue
 apps/web/app/pages/dashboard/audience/contacts/[id].vue
 apps/web/app/pages/dashboard/audience/contacts/index.vue
-apps/web/app/pages/dashboard/audience/segments/[id]/index.vue
-apps/web/app/pages/dashboard/audience/segments/index.vue
-apps/web/app/pages/dashboard/audience/topics/[id]/index.vue
-apps/web/app/pages/dashboard/audience/topics/index.vue
 apps/web/app/pages/dashboard/automations/[id]/edit.vue
 apps/web/app/pages/dashboard/automations/[id]/index.vue
-apps/web/app/pages/dashboard/automations/index.vue
 apps/web/app/pages/dashboard/campaigns/[id]/edit.vue
 apps/web/app/pages/dashboard/campaigns/[id]/report.vue
 apps/web/app/pages/dashboard/files/[id].vue
@@ -58,12 +52,8 @@ apps/web/app/pages/dashboard/inbox/[threadId].vue
 apps/web/app/pages/dashboard/knowledge/[id].vue
 apps/web/app/pages/dashboard/postbox/migrate.vue
 apps/web/app/pages/dashboard/preferences/account.vue
-apps/web/app/pages/dashboard/send/blocks/index.vue
-apps/web/app/pages/dashboard/send/marketing/index.vue
-apps/web/app/pages/dashboard/send/transactional/index.vue
 apps/web/app/pages/desktop/setup.vue
 packages/email-builder/src/components/EmailBuilder.vue
-packages/email-builder/src/components/canvas/InlineTextEditor.vue
 packages/email-builder/src/preview/components/ClientSelector.vue
 packages/email-builder/src/preview/components/EmailPreviewer.vue
 packages/email-builder/src/preview/components/RenderOptionsPanel.vue

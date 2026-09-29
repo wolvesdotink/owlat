@@ -113,6 +113,42 @@ describe('TodayAnswerCard', () => {
 		expect(w.text()).toContain('1 needs an answer from you');
 		expect(w.text()).toContain('All 6 in the queue');
 	});
+
+	it('shows a team row sender by its decoded display name', () => {
+		const team = {
+			id: 'team:m1',
+			source: 'team',
+			at: Date.now(),
+			entry: {
+				message: {
+					_id: 'm1',
+					subject: 'Contract renewal',
+					from: '=?utf-8?B?SW7DqHMgV2ViZXI=?= <Ines@Example.COM>',
+				},
+			},
+		} as never;
+		const w = mount(TodayAnswerCard, {
+			props: {
+				items: [team],
+				counts: { mail: 0, team: 1, mention: 0, drafts: 0 },
+				isLoading: false,
+			},
+			global: {
+				plugins: [createTestI18n()],
+				stubs: {
+					UiButton: { template: '<a><slot /></a>' },
+					UiSkeleton: true,
+					Icon: true,
+					InboxChip: true,
+					NuxtLink: { template: '<a><slot /></a>' },
+				},
+			},
+		});
+		const line = w.find('[data-today-line]').text();
+		expect(line).toContain('Contract renewal');
+		expect(line).toContain('Inès Weber');
+		expect(line).not.toContain('=?utf-8?');
+	});
 });
 
 describe('TodaySourceLink', () => {

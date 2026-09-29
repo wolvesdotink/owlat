@@ -38,13 +38,24 @@ Convex generated function paths mirror the folder structure: a query in
 `mail/imap/session.ts` is reached via `api.mail.imap.session.<funcName>`.
 
 **Magic root files never move into domain folders.** `schema.ts`,
-`convex.config.ts`, `http.ts`, and `auth.config.ts` are filenames the Convex
-CLI resolves at the convex root, exactly. `auth.config.ts` in particular is
-the instance auth (JWT provider) configuration evaluated at push time — a past
+`convex.config.ts`, `http.ts`, `auth.config.ts` and `crons.ts` are filenames
+the Convex CLI resolves at the convex root, exactly. `env.d.ts` (ambient type
+declarations for the Convex tsconfig) stays there too. `auth.config.ts` in
+particular is the instance auth (JWT provider) configuration evaluated at push
+time — a past
 reorg moved it to `auth/config.ts` and every freshly-pushed deployment silently
 lost all auth providers: sessions kept working, but every
 `ctx.auth.getUserIdentity()` returned null and all authed queries threw
 "Not authenticated".
+
+**The root is frozen.** No new module goes at the convex root: put it in a
+domain folder or `lib/`. `scripts/check-convex-root.sh` (part of `bun run lint`)
+compares `convex/*.ts` with `scripts/convex-root-baseline.txt` and fails on a
+new root file. When you move a legacy root module out, delete its baseline line,
+or the check fails it as stale. A move changes the module's function paths
+(`api.foo.bar` becomes `api.domain.foo.bar`), so a module whose public functions
+clients call by path, or whose functions are scheduled, needs a one-release
+shim at the old path.
 
 ### One file per `<domain>/<feature>.ts`
 
@@ -245,11 +256,16 @@ bare `authedQuery` / `authedMutation` export under `convex/mail/`.
 soft-auth reads and the modules `mail/_helpers.ts` exempts), each group with its
 reason. A new entry means a handler skipped its gated builder: use the builder.
 When you give another folder gated builders, add its `<flag> <path prefix>` pair
-to `FAMILIES`, and add the builder names to the builder lists in
-`check-permissions.sh`, `check-query-authz.sh`, `check-session-threading.sh`,
-`check-token-redaction.sh` and `check-errors.sh` (and to `EXPECTED_BUILDERS` in
-`check-entry-wiring.ts`) — a handler on a builder those scanners do not know
-silently leaves their gates.
+to `FAMILIES` and the builder names to `EXPECTED_BUILDERS` in
+`check-entry-wiring.ts`.
+
+The definition gates (`check-permissions`, `check-query-authz`,
+`check-session-threading`, `check-token-redaction`, `check-errors`) need no
+edits for a composition: they read their builder families from source through
+`scripts/lib/convex-builders.sh`: every `(export )?const X = featureGated(Any)(<base>, …)`
+under `convex/` inherits its base's kind and auth floor. A new **base** builder
+exported from `lib/authedFunctions.ts` must be classified in that helper's
+`CONVEX_BASE_BUILDERS` table; until it is, every one of those gates fails.
 
 ## Permissions
 
@@ -262,12 +278,17 @@ three ways:
 
 - **Role-bearing wrapper** — `adminMutation` / `ownerMutation` (and `adminQuery`
   for sensitive reads) from `lib/authedFunctions.ts` bake the role check in. Use
-  these for admin-only writes.
+  these for admin-only writes. Deployment-level operator functions use
+  `platformAdminQuery` / `platformAdminMutation` (and
+  `platformSuperadminMutation` for roster management), which pass the
+  platform-admin context `{ authUserId, email, role }` as the handler's third
+  argument.
 - **In-handler gate** — `requirePermission(hasPermission(role, '<scope>:<verb>'))`
   (or `requireAdminContext` / `requireOrgPermission`, or the per-user
   `requireMailboxAccess` / `requireMessageAccess`, chat `assertCan*Room`,
-  `requirePlatformAdmin`). Prefer the specific `<scope>:<verb>` permission where
-  one fits the capability.
+  `requirePlatformAdmin` / `requireSuperadmin`). Prefer the specific `<scope>:<verb>` permission where
+  one fits the capability. The accepted helpers are `CONVEX_AUTHZ_GATES` in
+  `scripts/lib/convex-builders.sh`, shared with `check-query-authz.sh`.
 - **Explicit opt-out comment** — `// authz: <reason>` when the gate genuinely
   lives elsewhere (a delegated `internal*` mutation, or a self-scope check like
   `args.userId === session.userId`), or `// all-members: <reason>` when the write
@@ -293,8 +314,9 @@ such a secret:
 
 `scripts/check-token-redaction.sh` (wired into `bun run lint`) is the read-side
 sibling of `check-permissions.sh`: a **ratchet** that fails CI on any _new_
-`authedQuery`/`publicQuery` which scans one of these tables (`ctx.db.query('…')`)
-without stripping the secret. Satisfy it one of three ways:
+query that serializes to the browser (`authedQuery`, `adminQuery`, `publicQuery`
+and their `featureGated` compositions) which scans one of these tables
+(`ctx.db.query('…')`) without stripping the secret. Satisfy it one of three ways:
 
 - **Redaction/projection helper** — `redactContactCapabilityFields` (returns the
   `PublicContact` shape, `contacts/listing.ts`) or `stripWebhookSecret`
@@ -602,9 +624,23 @@ This codebase tracks the official Convex AI/cursor rules
   numeric entities, and stays linear on hostile input. The root
   `scripts/check-html-to-text.sh` (in `ci:lint`) flags a private
   `.replace(/<[^>]+>/g, …)` or `.replace(/<[^>]*>/g, …)` strip.
+- **Build a union from a literal list with `literalUnion`.** When a vocabulary
+  already exists as a list (an `as const` tuple of strings or numbers, a
+  `.filter` subset, a plugin-composed catalog, a `Set`), pass it to
+  `literalUnion` from `lib/literalUnion.ts`. It infers the closed union with no
+  cast and throws at load on an empty list. Never write
+  `v.union(...LIST.map((x) => v.literal(x)))` by hand; the check fails on it.
+- **Resumable per-mailbox walks share one job lifecycle.** The attachment
+  backfill, the body-search backfill and the retroactive filter run keep one
+  job row per subject. Their tables spread `mailboxJobFields` from
+  `lib/validators/mail.ts`, and their `status`/`start`/`cancel` go through
+  `readJob`, `startJob` and `cancelJob` in `mail/_jobLifecycle.ts`. A new walk
+  adds its table to that module's `JobKeys` and lookup instead of copying one
+  of the three. Authorization, feature floors and what a start schedules stay
+  in the calling module.
 
 The `bun run lint:patterns` script (also wired into `bun run lint`) tracks
-all four of these against a checked-in baseline.
+these against a checked-in baseline.
 
 ## Schema
 
@@ -646,6 +682,55 @@ export const mailTables = {
 with the 41 table definitions living in `schema/mailboxes.ts`,
 `schema/mailMessages.ts`, `schema/mailThreads.ts` and the rest. Put a new
 Postbox table in the sibling that owns its feature, not in `schema/mail.ts`.
+
+### Validators
+
+A validator that a table shares with the functions reading or writing it has
+one home, picked by its shape, not by which file has room:
+
+- `lib/literalValidators.ts`: closed literal unions (`bounceTypeValidator`,
+  `blockReasonValidator`, ...).
+- `lib/convexValidators.ts`: the cross-domain composites (objects, records)
+  and the unions derived from a shared catalog with `literalUnion`.
+- `lib/validators/<domain>.ts`: everything owned by one domain
+  (`mailContent`, `mailSettings`, `classification`, `deliverability`,
+  `contacts`, `mail`, ...). Add a new domain file here rather than a
+  `*Validators.ts` beside a feature.
+
+All three are leaves. A `lib/validators/` module may load only
+`convex/values`, `@owlat/*`, its siblings and the few leaf modules listed in
+`scripts/check-schema-imports.ts` (`lib/literalUnion.ts`,
+`lib/literalValidators.ts` and the AI-provider kind tuples). Never define a validator the schema needs inside a module that
+holds functions: the schema would load that module, and through it
+`_generated/api` or the BetterAuth session read.
+
+`bun run lint:schema-imports` (part of `bun run lint`) enforces this. It
+walks the value imports (`import type` is ignored) of `schema.ts` and
+`schema/*.ts` and fails when they reach `_generated/api`,
+`_generated/server` or `lib/sessionOrganization`, and it fails when a
+`lib/validators/` module loads anything outside its leaf set. The schema may
+still import leaf catalogs such as `auditActions/catalog`.
+
+When a function's arguments are most of a table's row, do not retype the
+fields. Export the table's field record from its schema file and pass it to
+`defineTable`, then derive the arguments from it with the helpers in
+`lib/validators/fields.ts`:
+
+```ts
+// schema/askEagerness.ts
+export const clarificationAskLogFields = { source: ..., createdAt: v.number() };
+clarificationAskLog: defineTable(clarificationAskLogFields).index(...),
+
+// inbox/clarificationLog.ts
+args: omit(clarificationAskLogFields, ['createdAt']),
+```
+
+`pick` and `omit` select fields, and `optionalFields` makes every field
+optional for patch-style arguments. A field that differs from its column,
+such as an argument that is optional where the column is required, is written
+out next to the derived fields (`mail/vacation.ts:upsert`). Only export a
+record that a function uses. A nested object or union that a function reuses
+on its own gets a name in `lib/validators/<domain>.ts`.
 
 ## Schema evolution (post-launch immutability)
 

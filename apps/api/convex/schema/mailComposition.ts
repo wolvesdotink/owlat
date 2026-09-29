@@ -1,12 +1,12 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { mailJobStatusValidator } from '../lib/literalValidators';
+import { mailboxJobFields } from '../lib/validators/mail';
 import {
 	mailAttachmentShareScanValidator,
 	mailAttachmentShareScopeValidator,
 	mailDraftAttachmentValidator,
 	mailSnippetVariableValidator,
-} from '../lib/mailContentValidators';
+} from '../lib/validators/mailContent';
 
 /**
  * Composing and attachments: drafts, attachment rows and their
@@ -129,18 +129,13 @@ export const mailCompositionTables = {
 	// rescheduling itself — the same shape as `mail/labels.stripLabelReferences`,
 	// with a row on top so the Files view can show progress and the user can
 	// cancel a walk mid-flight.
+	// The job columns are `mailboxJobFields`, shared with the body-search and
+	// filter-run jobs; the start/cancel lifecycle is `mail/_jobLifecycle.ts`.
 
 	mailAttachmentBackfillJobs: defineTable({
 		mailboxId: v.id('mailboxes'),
-		status: mailJobStatusValidator,
-		// Resumable pagination cursor over `mailMessages` (Convex continueCursor).
-		cursor: v.optional(v.string()),
-		scannedCount: v.number(),
+		...mailboxJobFields,
 		indexedCount: v.number(),
-		startedAt: v.number(),
-		updatedAt: v.number(),
-		finishedAt: v.optional(v.number()),
-		errorMessage: v.optional(v.string()),
 	}).index('by_mailbox', ['mailboxId']),
 
 	// Resumable backfill of `mailMessages.searchBody` over mail that predates the
@@ -159,16 +154,9 @@ export const mailCompositionTables = {
 	mailBodySearchBackfillJobs: defineTable({
 		mailboxId: v.id('mailboxes'),
 		mode: v.union(v.literal('index'), v.literal('purge')),
-		status: mailJobStatusValidator,
-		// Resumable pagination cursor over `mailMessages` (Convex continueCursor).
-		cursor: v.optional(v.string()),
-		scannedCount: v.number(),
+		...mailboxJobFields,
 		/** Rows whose `searchBody` this walk actually wrote (or cleared). */
 		indexedCount: v.number(),
-		startedAt: v.number(),
-		updatedAt: v.number(),
-		finishedAt: v.optional(v.number()),
-		errorMessage: v.optional(v.string()),
 	}).index('by_mailbox', ['mailboxId']),
 
 	// Saved searches — a named, re-runnable Postbox query.

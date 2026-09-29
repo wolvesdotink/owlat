@@ -1,18 +1,15 @@
 import { v } from 'convex/values';
 import { countBlockedByReason } from '../blockedEmails/lookup';
-import { authedQuery } from '../lib/authedFunctions';
+import { platformAdminQuery } from '../lib/authedFunctions';
 import { utcDayKey } from '../lib/clock';
-import { requirePlatformAdmin } from './platformAdmin';
 import { summarize } from '../analytics/sendingReputation';
 
 /**
  * List instance status if flagged for abuse (high/critical risk or warned/suspended status).
  */
-export const listFlaggedOrganizations = authedQuery({
+export const listFlaggedOrganizations = platformAdminQuery({
 	args: {},
 	handler: async (ctx) => {
-		await requirePlatformAdmin(ctx);
-
 		// Get instance settings (singleton)
 		const settings = await ctx.db.query('instanceSettings').first();
 		if (!settings) return [];
@@ -54,11 +51,9 @@ export const listFlaggedOrganizations = authedQuery({
 /**
  * Get detailed instance information for admin review.
  */
-export const getOrganizationDetail = authedQuery({
+export const getOrganizationDetail = platformAdminQuery({
 	args: {},
 	handler: async (ctx) => {
-		await requirePlatformAdmin(ctx);
-
 		// Get instance settings
 		const settings = await ctx.db.query('instanceSettings').first();
 
@@ -132,11 +127,9 @@ export const getOrganizationDetail = authedQuery({
 /**
  * List recent abuse-related events across all organizations.
  */
-export const listRecentAbuse = authedQuery({
+export const listRecentAbuse = platformAdminQuery({
 	args: {},
 	handler: async (ctx) => {
-		await requirePlatformAdmin(ctx);
-
 		// Get recent content scan results that are suspicious or blocked
 		const recentScans = await ctx.db.query('contentScanResults').order('desc').take(50);
 
@@ -171,11 +164,9 @@ export const listRecentAbuse = authedQuery({
 /**
  * Aggregate platform-wide statistics.
  */
-export const getPlatformStats = authedQuery({
+export const getPlatformStats = platformAdminQuery({
 	args: {},
 	handler: async (ctx) => {
-		await requirePlatformAdmin(ctx);
-
 		const settings = await ctx.db.query('instanceSettings').first();
 
 		// Rolling 30-day org reputation, derived on read. (This previously read
@@ -230,14 +221,12 @@ export const getPlatformStats = authedQuery({
 /**
  * Get instance settings with metrics.
  */
-export const listAllOrganizations = authedQuery({
+export const listAllOrganizations = platformAdminQuery({
 	args: {
 		search: v.optional(v.string()),
 		statusFilter: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requirePlatformAdmin(ctx);
-
 		const settings = await ctx.db.query('instanceSettings').first();
 		if (!settings) return [];
 
@@ -277,11 +266,9 @@ export const listAllOrganizations = authedQuery({
 /**
  * List all platform admins.
  */
-export const listPlatformAdmins = authedQuery({
+export const listPlatformAdmins = platformAdminQuery({
 	args: {},
 	handler: async (ctx) => {
-		await requirePlatformAdmin(ctx);
-
 		const admins = await ctx.db.query('platformAdmins').collect(); // bounded: super-admin roster, low-tens at most
 
 		return admins
@@ -299,13 +286,11 @@ export const listPlatformAdmins = authedQuery({
 /**
  * List all users with search filtering.
  */
-export const listAllUsers = authedQuery({
+export const listAllUsers = platformAdminQuery({
 	args: {
 		search: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requirePlatformAdmin(ctx);
-
 		// bounded: single-org membership; in a real deployment this is dozens.
 		// If a deployment scales to thousands of users we should switch to
 		// pagination at the UI layer.
@@ -342,13 +327,11 @@ export const listAllUsers = authedQuery({
 /**
  * Get content review queue with pending campaigns and transactional emails.
  */
-export const getContentReviewQueue = authedQuery({
+export const getContentReviewQueue = platformAdminQuery({
 	args: {
 		filter: v.optional(v.string()),
 	},
 	handler: async (ctx, _args) => {
-		await requirePlatformAdmin(ctx);
-
 		// Get pending review campaigns
 		const pendingCampaigns = await ctx.db
 			.query('campaigns')

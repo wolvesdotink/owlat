@@ -25,6 +25,7 @@
  */
 
 import { Hono } from 'hono';
+import { readIntEnv, TCP_PORT_RANGE } from '@owlat/shared/nodeEnv';
 import type { MtaConfig } from '../config.js';
 import { validateFile } from '@owlat/email-scanner/files';
 import { createClamClient, type ClamClient } from '@owlat/email-scanner/clamav';
@@ -68,14 +69,14 @@ export function createScanRoutes(config: MtaConfig): Hono {
 	// All scan routes require the master key (constant-time compare)
 	app.use('*', masterKeyAuth(config));
 
-	// Initialize ClamAV client (lazy — starts health checks on first request)
+	// The address is validated when the routes are built (boot); the client
+	// itself is lazy and starts health checks on the first request.
+	const clamHost = process.env['CLAMAV_HOST'] ?? 'clamav';
+	const clamPort = readIntEnv(process.env, 'CLAMAV_PORT', { default: 3310, ...TCP_PORT_RANGE });
 	let clamClient: ClamClient | null = null;
 
 	function getClamClient(): ClamClient {
 		if (!clamClient) {
-			const clamHost = process.env['CLAMAV_HOST'] ?? 'clamav';
-			const clamPort = parseInt(process.env['CLAMAV_PORT'] ?? '3310', 10);
-
 			clamClient = createClamClient({
 				host: clamHost,
 				port: clamPort,

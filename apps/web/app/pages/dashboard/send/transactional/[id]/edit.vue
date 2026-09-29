@@ -3,6 +3,7 @@ import {
 	EmailBuilder,
 	UnsavedChangesDialog,
 	useFocusMode,
+	parseStoredBlocks,
 	type Variable,
 } from '@owlat/email-builder';
 import { api } from '@owlat/api';
@@ -157,14 +158,7 @@ const {
 		ctx.subject.value = e.subject;
 		showUnsubscribe.value = e.showUnsubscribe ?? false;
 		plainTextOverride.value = e.plainTextOverride ?? '';
-		try {
-			const parsed = JSON.parse(e.content || '[]');
-			if (Array.isArray(parsed)) {
-				ctx.blocks.value = parsed;
-			}
-		} catch {
-			ctx.blocks.value = [];
-		}
+		ctx.blocks.value = parseStoredBlocks(e.content);
 		// Initialize attachments
 		try {
 			const parsedAttachments = JSON.parse(e.attachments || '[]');

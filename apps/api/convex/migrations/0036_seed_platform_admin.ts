@@ -9,11 +9,15 @@
  * can satisfy either bootstrap path. An operator with shell access then runs
  * `convex run migrations/0036_seed_platform_admin:run '{...}'` once.
  *
- * Like the in-app paths, it only succeeds while the table is empty.
+ * Like the in-app paths, it only succeeds while the table is empty, and it
+ * writes the same `platform_admin.bootstrap_granted` audit row (via
+ * `break_glass`) through `grantInitialSuperadmin`.
  */
 
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
+import { throwInvalidState } from '../_utils/errors';
+import { grantInitialSuperadmin } from '../platformAdmin/bootstrap';
 
 export const run = internalMutation({
 	args: {
@@ -21,16 +25,16 @@ export const run = internalMutation({
 		email: v.string(),
 	},
 	handler: async (ctx, args) => {
-		const existingAdmin = await ctx.db.query('platformAdmins').first();
-		if (existingAdmin) {
-			throw new Error('Platform admins already exist. Use platformAdminMutations to add more.');
+		const adminId = await grantInitialSuperadmin(
+			ctx,
+			{ authUserId: args.authUserId, email: args.email },
+			'break_glass'
+		);
+		if (adminId === null) {
+			throwInvalidState(
+				'Platform admins already exist. A superadmin can add more with platformAdmin/mutations:addPlatformAdmin.'
+			);
 		}
-
-		return await ctx.db.insert('platformAdmins', {
-			authUserId: args.authUserId,
-			email: args.email,
-			role: 'superadmin',
-			createdAt: Date.now(),
-		});
+		return adminId;
 	},
 });

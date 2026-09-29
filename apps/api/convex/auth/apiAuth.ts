@@ -14,7 +14,7 @@
  */
 import { internalMutation } from '../_generated/server';
 import { v } from 'convex/values';
-import { rateLimiter } from '../rateLimiter';
+import { rateLimiter } from '../lib/rateLimiter';
 import { deriveEffectiveScopes } from '../plugins/apiKeyBinding';
 import { isApiKeyUsable } from './apiKeyAuth';
 

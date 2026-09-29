@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { DELIVERY_PIPELINE_FEATURES, docsSendProviders } from '../../utils/sendProviderDiagrams'
 
 const visible = ref(false)
 onMounted(() => {
@@ -12,37 +13,13 @@ const builderItems = [
   { name: 'Saved Blocks', icon: 'M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z' },
 ]
 
-const defaultProvider = {
-  name: 'Owlat MTA',
-  detail: 'Direct SMTP · Intelligence pipeline · IP warming',
-  icon: 'M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2',
-}
-
-const alternativeProviders = [
-  {
-    name: 'Resend',
-    detail: 'Optional',
-    icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
-  },
-  {
-    name: 'AWS SES',
-    detail: 'Optional',
-    icon: 'M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z',
-  },
-]
+const providers = docsSendProviders()
+const ownDetail = 'Direct SMTP · Intelligence pipeline · IP warming'
 
 const sesFeatures = [
   'Domain registration (VerifyDomainIdentity/DKIM)',
   'MAIL FROM configuration',
   'Verification status polling',
-]
-
-const pipelineFeatures = [
-  { label: 'DKIM signing', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
-  { label: 'MX delivery', icon: 'M12 19l9 2-9-18-9 18 9-2zm0 0v-8' },
-  { label: 'IP warming', icon: 'M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z' },
-  { label: 'Rate limiting', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
-  { label: 'Health-aware failover', icon: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15' },
 ]
 </script>
 
@@ -125,11 +102,11 @@ const pipelineFeatures = [
       <!-- Default provider (MTA) -->
       <div class="email-provider email-provider--default" :style="{ '--i': 6 }">
         <div class="email-provider-icon email-provider-icon--brand">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path :d="defaultProvider.icon" /></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path :d="providers.own.icon" /></svg>
         </div>
         <div class="email-provider-text">
-          <span class="email-provider-name">{{ defaultProvider.name }}</span>
-          <span class="email-provider-detail">{{ defaultProvider.detail }}</span>
+          <span class="email-provider-name">{{ providers.own.name }}</span>
+          <span class="email-provider-detail">{{ ownDetail }}</span>
         </div>
         <span class="email-provider-badge">Default</span>
       </div>
@@ -138,8 +115,8 @@ const pipelineFeatures = [
       <div class="email-alt-label" :style="{ '--i': 7 }">Optional alternatives</div>
       <div class="email-providers">
         <div
-          v-for="(prov, i) in alternativeProviders"
-          :key="prov.name"
+          v-for="(prov, i) in providers.alternatives"
+          :key="prov.kind"
           class="email-provider"
           :style="{ '--i': i + 8 }"
         >
@@ -148,13 +125,13 @@ const pipelineFeatures = [
           </div>
           <div class="email-provider-text">
             <span class="email-provider-name">{{ prov.name }}</span>
-            <span class="email-provider-detail">{{ prov.detail }}</span>
+            <span class="email-provider-detail">Optional</span>
           </div>
         </div>
       </div>
 
       <!-- SES Identity Manager -->
-      <div class="email-ses" :style="{ '--i': 10 }">
+      <div class="email-ses" :style="{ '--i': providers.alternatives.length + 8 }">
         <div class="email-ses-header">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
           <span>SES Identity Manager</span>
@@ -170,10 +147,10 @@ const pipelineFeatures = [
         <code class="email-fn-name">resolveRoute() → getProviderByType()</code>
         <div class="email-pipeline-tags">
           <div
-            v-for="(feat, i) in pipelineFeatures"
+            v-for="(feat, i) in DELIVERY_PIPELINE_FEATURES"
             :key="feat.label"
             class="email-pipeline-tag"
-            :style="{ '--i': i + 10 }"
+            :style="{ '--i': i + providers.alternatives.length + 8 }"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path :d="feat.icon" /></svg>
             <span>{{ feat.label }}</span>

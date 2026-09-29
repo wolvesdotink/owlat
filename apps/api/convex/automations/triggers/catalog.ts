@@ -1,4 +1,4 @@
-import { v } from 'convex/values';
+import { literalUnion } from '../../lib/literalUnion';
 import type { PluginAutomationTriggerCapability } from '@owlat/plugin-kit';
 import { BUNDLED_PLUGIN_AUTOMATION_TRIGGER_CATALOG } from '../../plugins/automationTriggerCatalog.generated';
 
@@ -46,7 +46,7 @@ export const TRIGGER_KINDS = Object.freeze([
 ]) as readonly TriggerKind[];
 
 /** Persisted-kind validator for `automations.triggerType`; widens as plugins compose. */
-export const triggerKindValidator = v.union(...TRIGGER_KINDS.map((kind) => v.literal(kind)));
+export const triggerKindValidator = literalUnion(TRIGGER_KINDS);
 
 export function isCoreTriggerKind(kind: string): kind is CoreTriggerKind {
 	return (CORE_TRIGGER_KINDS as readonly string[]).includes(kind);

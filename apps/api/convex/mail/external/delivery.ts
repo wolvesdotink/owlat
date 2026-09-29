@@ -12,17 +12,19 @@
  * These are all internal functions — the worker calls them with the admin key.
  *
  * Each ingest carries an `origin`: `'sync'` for forward IDLE/poll sync,
- * `'backfill'` for a historical import. Only `'sync'` inbox mail enters the
- * Reply Queue + category classification, so importing years of history never
- * fans out background LLM work. A worker one release behind sends no `origin`
- * at all, which is read as a backfill — the safe direction.
+ * `'backfill'` for a historical import. Only `'sync'` mail sets off the
+ * post-insert effects that assume new mail (`deliveryPipeline/afterInsert.ts`):
+ * Reply Queue + category classification and the follow-up / snooze-until-reply
+ * clears, so importing years of history never fans out background LLM work or
+ * settles a watch with an old message. A worker one release behind sends no
+ * `origin` at all, which is read as a backfill — the safe direction.
+ *
+ * No quota check here: the provider owns the storage, and refusing a synced
+ * message would only leave a gap in the local copy.
  */
 
 import { v } from 'convex/values';
-import {
-	mailMessageAttachmentValidator,
-	mailUnsubscribeValidator,
-} from '../../lib/mailContentValidators';
+import { mailUnsubscribeValidator } from '../../lib/validators/mailContent';
 import {
 	internalAction,
 	internalMutation,
@@ -31,16 +33,20 @@ import {
 } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
-import { insertDeliveredMessage, buildSnippet } from '../deliveryPipeline/insert';
-import { clearNeedsReplyOnOwnerReply, enqueueNeedsReplyCheck } from '../needsReply';
-import { enqueueCategoryCheck } from '../category';
+import {
+	buildSnippet,
+	dropStagedBlobs,
+	findDuplicateInMailbox,
+	insertDeliveredMessage,
+} from '../deliveryPipeline/insert';
+import { runPostInsertInboundEffects } from '../deliveryPipeline/afterInsert';
+import { deliveredEnvelopeFields, storedBodyFields } from '../deliveryPipeline/ingestFields';
 import { extractAntiLoopHeaders } from '../../lib/inboundClassification';
 import { buildSearchBody } from '../searchBody';
 import { splitBodyForStorage } from '../deliveryPipeline/ingest';
 import { base64ToBytes } from '../../lib/bytes';
-import { canonicalMessageId } from '../../lib/messageId';
 import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
-import { folderRoleValidator } from '../mailbox/shared';
+import { folderRoleValidator } from '../../lib/validators/mail';
 
 /**
  * What one ingest did, so the worker can tell the three apart.
@@ -70,27 +76,8 @@ export const ingestExternalMessage = internalMutation({
 		remoteName: v.string(),
 		remoteUid: v.number(),
 		remoteUidValidity: v.number(),
-		rawStorageId: v.id('_storage'),
-		rawSize: v.number(),
-		from: v.string(),
-		to: v.array(v.string()),
-		cc: v.array(v.string()),
-		bcc: v.array(v.string()),
-		replyTo: v.optional(v.string()),
-		subject: v.string(),
-		textBodyInline: v.optional(v.string()),
-		textBodyStorageId: v.optional(v.id('_storage')),
-		htmlBodyInline: v.optional(v.string()),
-		htmlBodyStorageId: v.optional(v.id('_storage')),
-		snippet: v.optional(v.string()),
-		// Deep-search excerpt (idea 32). Always sent by the sync action; the insert
-		// step drops it unless the instance opted in.
-		searchBody: v.optional(v.string()),
-		messageId: v.string(),
-		inReplyTo: v.optional(v.string()),
-		references: v.optional(v.string()),
-		receivedAt: v.number(),
-		attachments: v.array(mailMessageAttachmentValidator),
+		...deliveredEnvelopeFields,
+		...storedBodyFields,
 		flagSeen: v.optional(v.boolean()),
 		flagFlagged: v.optional(v.boolean()),
 		// Parsed List-Unsubscribe target (extracted at ingest by ingestExternalRaw).
@@ -105,15 +92,12 @@ export const ingestExternalMessage = internalMutation({
 		antiLoopHeaders: v.optional(v.record(v.string(), v.string())),
 	},
 	handler: async (ctx, args): Promise<ExternalIngestOutcome> => {
-		const dropBlob = async () => {
-			await ctx.storage.delete(args.rawStorageId).catch(() => undefined);
-			if (args.textBodyStorageId) {
-				await ctx.storage.delete(args.textBodyStorageId).catch(() => undefined);
-			}
-			if (args.htmlBodyStorageId) {
-				await ctx.storage.delete(args.htmlBodyStorageId).catch(() => undefined);
-			}
-		};
+		const dropBlob = async () =>
+			await dropStagedBlobs(ctx, [
+				args.rawStorageId,
+				args.textBodyStorageId,
+				args.htmlBodyStorageId,
+			]);
 
 		const account = await ctx.db.get(args.accountId);
 		if (!account || account.status === 'disconnected') {
@@ -129,13 +113,7 @@ export const ingestExternalMessage = internalMutation({
 		// Dedup on Message-ID within this mailbox. This also catches the Sent
 		// copy the worker APPENDs after an outbound send (same Message-ID as the
 		// lifecycle-inserted Sent row), so we don't double-insert.
-		const rfc822MessageId = canonicalMessageId(args.messageId);
-		const dup = await ctx.db
-			.query('mailMessages')
-			.withIndex('by_rfc822_message_id', (q) => q.eq('rfc822MessageId', rfc822MessageId))
-			.filter((q) => q.eq(q.field('mailboxId'), mailbox._id))
-			.first();
-		if (dup) {
+		if (await findDuplicateInMailbox(ctx, mailbox._id, args.messageId)) {
 			await dropBlob();
 			await advanceCursor(ctx, args, mailbox._id);
 			return { skipped: 'duplicate' };
@@ -181,27 +159,15 @@ export const ingestExternalMessage = internalMutation({
 			countUsedBytes: true,
 		});
 
-		// Reply Queue + smart-inbox categories, mirroring mail/delivery.ts:380-399.
-		// Forward sync only: a history import ('backfill', or an older worker that
-		// sends no origin) must never fan out background LLM work. Inbox deliveries
-		// only, and the row's ACTUAL folder counts — a muted thread was re-routed
-		// to Archive inside the insert (mail/mute.ts).
-		if (args.origin === 'sync' && folder.role === 'inbox') {
-			const delivered = await ctx.db.get(messageId);
-			if (delivered && delivered.folderId === folder._id) {
-				const precedence = args.antiLoopHeaders?.['precedence'];
-				// Auto-Submitted / List-Id ride along too — why a synced robot stays out.
-				await enqueueNeedsReplyCheck(ctx, delivered.threadId, {
-					precedence,
-					autoSubmitted: args.antiLoopHeaders?.['auto-submitted'],
-					listId: args.antiLoopHeaders?.['list-id'],
-				});
-				await enqueueCategoryCheck(ctx, delivered.threadId, { precedence });
-			}
-		}
-
-		// Our own reply sent from the provider's client settles the Reply Queue row.
-		await clearNeedsReplyOnOwnerReply(ctx, messageId);
+		// Classifier enqueues, follow-up / snooze-until-reply clears and the
+		// owner-reply Reply Queue settle — the tail shared with hosted delivery.
+		// An older worker that sends no origin is read as a backfill.
+		await runPostInsertInboundEffects(ctx, {
+			messageId,
+			folder,
+			origin: args.origin ?? 'backfill',
+			antiLoopHeaders: args.antiLoopHeaders,
+		});
 		await advanceCursor(ctx, args, mailbox._id);
 		await ctx.db.patch(args.accountId, { lastSyncAt: Date.now(), updatedAt: Date.now() });
 		return { messageId };
@@ -411,19 +377,10 @@ export const ingestExternalRaw = internalAction({
 		rawSize: v.number(),
 		/** First 64 KiB of the raw message, base64 — the header block. */
 		headerBlockBase64: v.string(),
-		from: v.string(),
-		to: v.array(v.string()),
-		cc: v.array(v.string()),
-		bcc: v.array(v.string()),
-		replyTo: v.optional(v.string()),
-		subject: v.string(),
+		...deliveredEnvelopeFields,
 		textBodyInline: v.optional(v.string()),
 		htmlBodyInline: v.optional(v.string()),
-		messageId: v.string(),
-		inReplyTo: v.optional(v.string()),
-		references: v.optional(v.string()),
 		receivedAt: v.number(),
-		attachments: v.array(mailMessageAttachmentValidator),
 		flagSeen: v.optional(v.boolean()),
 		flagFlagged: v.optional(v.boolean()),
 		// Forward sync vs historical import; see the file header.

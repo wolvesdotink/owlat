@@ -20,14 +20,14 @@
  * there (cf. domains/trackingDomains.ts's DoH lookup).
  */
 
-import { v, type Validator } from 'convex/values';
+import { v } from 'convex/values';
+import { literalUnion } from '../lib/literalUnion';
 import { internalAction, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { getMtaConfig } from '../mail/mtaClient';
-import { bounceTypeValidator } from '../lib/convexValidators';
-import type { BlockReason } from '../lib/literalValidators';
+import { bounceTypeValidator, type BlockReason } from '../lib/literalValidators';
 
 /**
  * The reasons that are a MARKETING-HYGIENE decision about bulk mail, not
@@ -67,14 +67,8 @@ const MIRRORED_BLOCK_REASONS = [
 	'manual',
 ] as const satisfies readonly MirroredBlockReason[];
 
-/**
- * Convex validator over the mirrored reasons. Spreading into `v.union` loses
- * literal narrowing, so it is cast back once here (cf.
- * `contactActivities/catalog.ts`'s `contactActivityTypeValidator`).
- */
-const mirroredBlockReasonValidator = v.union(
-	...MIRRORED_BLOCK_REASONS.map((reason) => v.literal(reason))
-) as unknown as Validator<MirroredBlockReason>;
+/** Convex validator over the mirrored reasons. */
+const mirroredBlockReasonValidator = literalUnion(MIRRORED_BLOCK_REASONS);
 
 const MARKETING_ONLY_SET: ReadonlySet<string> = new Set(MARKETING_ONLY_BLOCK_REASONS);
 

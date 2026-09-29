@@ -5,6 +5,8 @@
  * store re-exports everything here, so import sites are unchanged.
  */
 
+import type { DraftFields } from './postboxDraftFields';
+
 /** An attachment already committed server-side, referenced by storage id. */
 export interface OfflineComposeAttachmentRef {
 	storageId: string;
@@ -18,21 +20,14 @@ export interface OfflineComposeAttachmentRef {
  * replay `drafts.create → update → send` on reconnect. Payload-complete by
  * design: a fully-offline composition has no server draft row, so a bare
  * `draftId` reference would be unreplayable. Ids are plain strings (this is a
- * pure data layer; the drain path casts back to Convex ids).
+ * pure data layer; the drain path casts back to Convex ids). The typed fields
+ * are the canonical draft snapshot (`composeDraftFields`).
  */
-export interface OfflineComposePayload {
+export interface OfflineComposePayload extends DraftFields {
 	mailboxId: string;
 	/** The server draft row, when one existed before the device went offline. */
 	draftId?: string;
 	inReplyToMessageId?: string;
-	toAddresses: string[];
-	ccAddresses: string[];
-	bccAddresses: string[];
-	subject: string;
-	bodyHtml: string;
-	/** Serialized EditorBlock[] — present only in 'full' composer mode. */
-	bodyBlocks?: string;
-	composerMode: 'simple' | 'full';
 	fromAddress?: string;
 	followUpRemindAt?: number | null;
 	/** Refs to already-uploaded attachments; offline-added files cannot queue. */

@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import { ref } from 'vue';
+import { nextTick, ref, useSlots } from 'vue';
+import UiPageHeader from '@owlat/ui/components/ui/PageHeader.vue';
 
 import DesktopUpdatesPage from '../desktop-updates.vue';
 import { useDesktopUpdatePolicy } from '~/composables/useDesktopUpdatePolicy';
@@ -69,6 +70,7 @@ const canManageSettings = ref(true);
 const savePolicy = vi.fn();
 const checkNow = vi.fn();
 const showToast = vi.fn();
+const setHasChanges = vi.fn();
 
 function storedPolicy(overrides: Record<string, unknown> = {}) {
 	return {
@@ -83,9 +85,17 @@ let operationCall = 0;
 
 beforeAll(() => {
 	vi.stubGlobal('useHead', vi.fn());
+	vi.stubGlobal('useSlots', useSlots);
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('useToast', () => ({ showToast }));
 	vi.stubGlobal('usePermissions', () => ({ canManageSettings }));
+	vi.stubGlobal('useUnsavedChanges', () => ({
+		showDialog: ref(false),
+		confirmDiscard: vi.fn(),
+		confirmSave: vi.fn(),
+		cancelNavigation: vi.fn(),
+		setHasChanges,
+	}));
 	// The page reaches the backend only through this composable, so the real one
 	// runs here and the two Convex seams underneath it are what gets stubbed.
 	vi.stubGlobal('useDesktopUpdatePolicy', useDesktopUpdatePolicy);
@@ -109,6 +119,7 @@ beforeEach(() => {
 	savePolicy.mockReset().mockResolvedValue({ ok: true, result: {} });
 	checkNow.mockReset().mockResolvedValue({ ok: true, result: { checkedAt: 1, error: null } });
 	showToast.mockReset();
+	setHasChanges.mockReset();
 });
 
 const passthroughStub = { template: '<div><slot name="header"/><slot/></div>' };
@@ -124,6 +135,8 @@ const emptyStateStub = {
 };
 
 const stubs = {
+	UiPageHeader,
+	UnsavedChangesDialog: true,
 	UiQueryBoundary: passthroughStub,
 	UiCard: passthroughStub,
 	UiEmptyState: emptyStateStub,
@@ -306,5 +319,43 @@ describe('Desktop updates — the settings:manage floor', () => {
 		await wrapper.find(CHECK).trigger('click');
 		await flushPromises();
 		expect(checkNow).toHaveBeenCalledWith({});
+	});
+});
+
+describe('Desktop updates — the unsaved policy', () => {
+	it('keeps an unsaved edit when the stored policy re-emits', async () => {
+		const wrapper = mountPage();
+		await nextTick();
+		await wrapper.find(MODE_PAUSED).setValue();
+
+		// Another admin saves a defer window meanwhile.
+		policy.value = storedPolicy({ deferHours: 6 });
+		await flushPromises();
+
+		expect((wrapper.find(MODE_PAUSED).element as HTMLInputElement).checked).toBe(true);
+		expect((wrapper.find(DEFER).element as HTMLInputElement).value).toBe('0');
+		expect(wrapper.find(SAVE).attributes('disabled')).toBeUndefined();
+	});
+
+	it('follows a re-emitted policy while nothing is unsaved', async () => {
+		const wrapper = mountPage();
+		policy.value = storedPolicy({ deferHours: 6 });
+		await flushPromises();
+
+		expect((wrapper.find(DEFER).element as HTMLInputElement).value).toBe('6');
+		expect(wrapper.find(SAVE).attributes('disabled')).toBeDefined();
+	});
+
+	it('arms the leave guard while the policy is changed, and disarms it once saved', async () => {
+		const wrapper = mountPage();
+		await nextTick();
+		expect(setHasChanges).toHaveBeenLastCalledWith(false);
+
+		await wrapper.find(MODE_PAUSED).setValue();
+		expect(setHasChanges).toHaveBeenLastCalledWith(true);
+
+		await wrapper.find(SAVE).trigger('click');
+		await flushPromises();
+		expect(setHasChanges).toHaveBeenLastCalledWith(false);
 	});
 });

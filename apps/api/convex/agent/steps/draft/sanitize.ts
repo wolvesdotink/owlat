@@ -62,9 +62,9 @@ export const ALLOWED_PRIORITIES = new Set([
 ]);
 
 // The mail-kind vocabulary lives with the validator that persists it
-// (lib/classificationValidator.ts) so the isolate side reads it without
+// (lib/validators/classification.ts) so the isolate side reads it without
 // importing an agent step; re-exported here beside its sibling allowlists.
-export { ALLOWED_KINDS, BULK_KINDS } from '../../../lib/classificationValidator';
+export { ALLOWED_KINDS, BULK_KINDS } from '../../../lib/validators/classification';
 
 /** ISO 639-1 (optionally region-tagged) language code, lowercased; else undefined. */
 export function safeLanguage(value: unknown): string | undefined {

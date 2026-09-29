@@ -22,7 +22,7 @@
  *     person. `other` from the model or the user is really "none of these".
  */
 
-import { FILED_CATEGORIES, type FiledCategory, isFiledCategory } from './threadStatus';
+import { FILED_CATEGORIES, type FiledCategory, isFiledCategory } from '@owlat/shared/threadStatus';
 
 export type WorkbenchBucket = 'important' | 'routine' | FiledCategory;
 

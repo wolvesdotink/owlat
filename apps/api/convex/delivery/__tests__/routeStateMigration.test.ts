@@ -21,7 +21,7 @@ import {
 import {
 	deliverabilitySignalSourceValidator,
 	deliverabilityStreamValidator,
-} from '../deliverabilityValidators';
+} from '../../lib/validators/deliverability';
 
 import { modules } from '../../__tests__/testModules';
 

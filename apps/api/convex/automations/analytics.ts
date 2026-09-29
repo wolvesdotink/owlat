@@ -1,6 +1,7 @@
 import { v } from 'convex/values';
 import { automationsQuery } from './_helpers';
 import { PAGE_SIZE_DEFAULT } from '../lib/constants';
+import { loadOrderedSteps } from './steps';
 
 // Get automation runs for analytics with contact details.
 // Pagination is index-ordered (desc by creation time); the previous shape
@@ -68,38 +69,32 @@ export const getStepAnalytics = automationsQuery({
 		automationId: v.id('automations'),
 	},
 	handler: async (ctx, args) => {
-		// Get all steps for this automation
-		const steps = await ctx.db
-			.query('automationSteps')
-			.withIndex('by_automation', (q) => q.eq('automationId', args.automationId))
-			.collect(); // bounded: one automation's steps
+		const steps = await loadOrderedSteps(ctx.db, args.automationId);
 
 		// Read the funnel counts off each step's denormalized per-status counters
 		// (maintained by the step-run transition mutations) instead of collecting
 		// every run and N+1 collecting each run's step-runs.
-		return steps
-			.sort((a, b) => a.stepIndex - b.stepIndex)
-			.map((step) => {
-				const completed = step.statCompleted ?? 0;
-				const failed = step.statFailed ?? 0;
-				const pending = step.statPending ?? 0;
-				const executing = step.statExecuting ?? 0;
-				const skipped = step.statSkipped ?? 0;
-				return {
-					stepId: step._id,
-					stepIndex: step.stepIndex,
-					stepType: step.stepType,
-					config: step.config,
-					stats: {
-						completed,
-						failed,
-						pending,
-						executing,
-						skipped,
-						total: completed + failed + pending + executing + skipped,
-					},
-				};
-			});
+		return steps.map((step) => {
+			const completed = step.statCompleted ?? 0;
+			const failed = step.statFailed ?? 0;
+			const pending = step.statPending ?? 0;
+			const executing = step.statExecuting ?? 0;
+			const skipped = step.statSkipped ?? 0;
+			return {
+				stepId: step._id,
+				stepIndex: step.stepIndex,
+				stepType: step.stepType,
+				config: step.config,
+				stats: {
+					completed,
+					failed,
+					pending,
+					executing,
+					skipped,
+					total: completed + failed + pending + executing + skipped,
+				},
+			};
+		});
 	},
 });
 
@@ -123,10 +118,7 @@ export const getAutomationStats = automationsQuery({
 
 		// Step-level counts summed from each step's denormalized per-status
 		// counters (bounded read of the step rows) — no run × step-run scan.
-		const steps = await ctx.db
-			.query('automationSteps')
-			.withIndex('by_automation', (q) => q.eq('automationId', args.automationId))
-			.collect(); // bounded: steps per automation
+		const steps = await loadOrderedSteps(ctx.db, args.automationId);
 
 		let totalStepRuns = 0;
 		let completedStepRuns = 0;

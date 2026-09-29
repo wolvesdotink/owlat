@@ -5,8 +5,10 @@
  *   - campaigns/scheduling.ts:
  *       schedule/cancel/reschedule/unschedule permission gate (campaigns:schedule),
  *       only `scheduled` campaigns may be cancelled/rescheduled/unscheduled,
- *       reschedule's future-date guard, and reschedule's `campaign.scheduled`
- *       audit row.
+ *       reschedule's future-date guard (part of the pre-flight it shares with
+ *       `schedule`; the capacity and allow-list refusals are covered in
+ *       preflightBindingRescheduleMutation.test.ts), and reschedule's
+ *       `campaign.scheduled` audit row.
  *   - campaigns/testSend.ts: the recipient allowlist guard — a member can only
  *       test-send to the org's own member inboxes; a disallowed recipient is
  *       rejected (`forbidden`).
@@ -24,11 +26,18 @@
 
 import { convexTest, type TestConvex } from 'convex-test';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { createTestCampaign, enableFeatures } from './factories';
+import {
+	createTestCampaign,
+	createTestCampaignSender,
+	createTestDomain,
+	createTestEmailTemplate,
+	createTestTopic,
+	enableFeatures,
+} from './factories';
 
 // Mutable session mock — flip role per test (owner/admin can schedule + manage;
 // editor cannot).
@@ -113,16 +122,63 @@ async function seedCampaign(
 	);
 }
 
+// A scheduled campaign that passes pre-flight: template, topic audience, a
+// verified From-domain and a curated sender. `reschedule` runs the same
+// pre-flight as `schedule`, so a bare seeded row would be refused.
+async function seedSchedulableCampaign(
+	t: TestConvex<typeof schema>,
+	overrides: Record<string, unknown> = {}
+): Promise<Id<'campaigns'>> {
+	return await t.run(async (ctx) => {
+		const emailTemplateId = await ctx.db.insert('emailTemplates', createTestEmailTemplate());
+		await ctx.db.insert(
+			'domains',
+			createTestDomain({
+				domain: 'verified.example.com',
+				status: 'verified',
+				lastVerifiedAt: Date.now(),
+			})
+		);
+		await ctx.db.insert(
+			'campaignSenders',
+			createTestCampaignSender({ email: 'sender@verified.example.com' })
+		);
+		const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
+		return await ctx.db.insert(
+			'campaigns',
+			createTestCampaign({
+				status: 'scheduled',
+				emailTemplateId,
+				fromEmail: 'sender@verified.example.com',
+				audience: { kind: 'topic', topicId },
+				...overrides,
+			}) as never
+		);
+	});
+}
+
 // ============================================================================
 // scheduling.reschedule
 // ============================================================================
 
 describe('campaigns.scheduling.reschedule', () => {
+	// Pre-flight refuses without a configured delivery provider.
+	beforeEach(() => {
+		process.env['EMAIL_PROVIDER'] = 'mta';
+		process.env['MTA_API_URL'] = 'http://mta:3100';
+		process.env['MTA_API_KEY'] = 'test-key';
+	});
+
+	afterEach(() => {
+		delete process.env['EMAIL_PROVIDER'];
+		delete process.env['MTA_API_URL'];
+		delete process.env['MTA_API_KEY'];
+	});
+
 	it('reschedules a scheduled campaign to a future time and writes a campaign.scheduled audit row', async () => {
 		const t = setupTest();
 		const future = Date.now() + 24 * HOUR;
-		const campaignId = await seedCampaign(t, {
-			status: 'scheduled',
+		const campaignId = await seedSchedulableCampaign(t, {
 			scheduledAt: Date.now() + 2 * HOUR,
 		});
 
@@ -155,8 +211,7 @@ describe('campaigns.scheduling.reschedule', () => {
 	it('toggles recipient-timezone staggering and the target local hour on reschedule', async () => {
 		const t = setupTest();
 		// Seed a wall-clock (non-timezone) scheduled campaign.
-		const campaignId = await seedCampaign(t, {
-			status: 'scheduled',
+		const campaignId = await seedSchedulableCampaign(t, {
 			scheduledAt: Date.now() + 2 * HOUR,
 			useRecipientTimezone: false,
 		});
@@ -180,8 +235,7 @@ describe('campaigns.scheduling.reschedule', () => {
 
 	it('turns recipient-timezone staggering back off on reschedule', async () => {
 		const t = setupTest();
-		const campaignId = await seedCampaign(t, {
-			status: 'scheduled',
+		const campaignId = await seedSchedulableCampaign(t, {
 			scheduledAt: Date.now() + 2 * HOUR,
 			useRecipientTimezone: true,
 			scheduledHour: 9,
@@ -200,8 +254,7 @@ describe('campaigns.scheduling.reschedule', () => {
 
 	it('leaves timezone fields untouched when reschedule omits them', async () => {
 		const t = setupTest();
-		const campaignId = await seedCampaign(t, {
-			status: 'scheduled',
+		const campaignId = await seedSchedulableCampaign(t, {
 			scheduledAt: Date.now() + 2 * HOUR,
 			useRecipientTimezone: true,
 			scheduledHour: 8,
@@ -221,8 +274,7 @@ describe('campaigns.scheduling.reschedule', () => {
 
 	it('rejects a reschedule into the past', async () => {
 		const t = setupTest();
-		const campaignId = await seedCampaign(t, {
-			status: 'scheduled',
+		const campaignId = await seedSchedulableCampaign(t, {
 			scheduledAt: Date.now() + 2 * HOUR,
 		});
 
@@ -231,7 +283,7 @@ describe('campaigns.scheduling.reschedule', () => {
 				campaignId,
 				scheduledAt: Date.now() - HOUR,
 			})
-		).rejects.toThrow();
+		).rejects.toThrow('Scheduled time must be in the future');
 	});
 
 	it('rejects rescheduling a campaign that is not scheduled', async () => {
@@ -248,8 +300,7 @@ describe('campaigns.scheduling.reschedule', () => {
 
 	it('accepts an editor (holds campaigns:schedule under the d4 map)', async () => {
 		const t = setupTest();
-		const campaignId = await seedCampaign(t, {
-			status: 'scheduled',
+		const campaignId = await seedSchedulableCampaign(t, {
 			scheduledAt: Date.now() + 2 * HOUR,
 		});
 

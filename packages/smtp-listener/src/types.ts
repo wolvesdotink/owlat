@@ -112,6 +112,47 @@ export interface SmtpTimeouts {
 	dataMs: number;
 }
 
+/** The peer identity admission hooks see: the TCP peer as accepted. */
+export interface SmtpAdmissionPeer {
+	/** Peer IP as reported by the socket at accept (`''` when already gone). */
+	readonly remoteAddress: string;
+	readonly remotePort: number;
+}
+
+/** Why admission refused a connection (for {@link SmtpAdmission.onRefused}). */
+export type SmtpAdmissionRefusal = 'capacity' | 'perIp';
+
+/**
+ * Connection admission, applied by the listener in its own accept path before
+ * any caller hook runs.
+ *
+ * `maxClients` caps live connections on this listener. `perIp`, when present,
+ * is a slot limiter (typically a shared counter, so the cap holds across
+ * replicas): `acquire` takes one slot or refuses, and the listener calls
+ * `release` exactly once for every slot `acquire` granted, when that connection
+ * closes, including a connection that closed while its `acquire` was in flight.
+ * A throwing or rejecting `acquire` fails OPEN: the connection is admitted, the
+ * error goes to {@link SmtpListenerOptions.onError}, and no release is owed.
+ *
+ * Plaintext and STARTTLS listeners send the greeting, then answer a refusal
+ * with `overCapacityReply` / `perIp.rejectReply` and close; `onConnect` runs
+ * only for admitted peers. An implicit-TLS listener admits BEFORE the
+ * handshake (so a silent peer cannot hold a TLS slot for free) and cannot
+ * reply before TLS, so refused sockets are destroyed. Pending admissions there
+ * are bounded by a 30 s deadline.
+ */
+export interface SmtpAdmission {
+	maxClients: number;
+	overCapacityReply: SmtpReply;
+	perIp?: {
+		acquire(peer: SmtpAdmissionPeer): Promise<boolean>;
+		release(peer: SmtpAdmissionPeer): Promise<void>;
+		rejectReply: SmtpReply;
+	};
+	/** Observability hook, called once per refused connection. */
+	onRefused?: (peer: SmtpAdmissionPeer, reason: SmtpAdmissionRefusal) => void;
+}
+
 /** Options for {@link createSmtpListener}. */
 export interface SmtpListenerOptions<S = unknown, T = unknown> {
 	/** Hostname announced in the 220 banner and EHLO greeting. */
@@ -164,9 +205,11 @@ export interface SmtpListenerOptions<S = unknown, T = unknown> {
 	implicitTls?: boolean;
 	/** SASL AUTH configuration. When present the listener advertises + accepts AUTH. */
 	auth?: SmtpAuthConfig<S, T>;
+	/** Global + per-IP connection admission (see {@link SmtpAdmission}). */
+	admission?: SmtpAdmission;
 	/** Build caller session state for a new connection. */
 	createSession?: (base: SmtpSession<S, T>) => S;
-	/** Called after the banner is sent. */
+	/** Called after the banner is sent, for admitted connections only. */
 	onConnect?: (session: SmtpSession<S, T>) => Promise<SmtpHandlerResult> | SmtpHandlerResult;
 	/** Called on HELO/EHLO with the announced client hostname. */
 	onHelo?: (

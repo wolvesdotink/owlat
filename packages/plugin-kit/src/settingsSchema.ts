@@ -1,5 +1,6 @@
 import type { JsonPrimitive, JsonValue } from './json';
 import { isRecord } from './manifestValue';
+import { RESERVED_LOCAL_IDS } from './namespacedKind';
 
 /**
  * Declarative settings schema a plugin exposes so the host can render a generic
@@ -91,8 +92,12 @@ export const SETTINGS_FIELD_KINDS: readonly PluginSettingsFieldKind[] = [
 	'select',
 ];
 
-/** Field keys that would collide with object internals; rejected everywhere. */
-export const RESERVED_FIELD_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+/**
+ * Field keys that would collide with object internals; rejected everywhere. The
+ * same set as a contribution's reserved local ids, so a new reserved word is
+ * added in one place.
+ */
+export const RESERVED_FIELD_KEYS: ReadonlySet<string> = RESERVED_LOCAL_IDS;
 
 /** Upper bound on any text field's length, shared by both validators. */
 export const MAX_TEXT_LENGTH = 8_192;

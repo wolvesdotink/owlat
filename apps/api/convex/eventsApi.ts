@@ -1,25 +1,24 @@
 import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
+import type { ActionCtx } from './_generated/server';
 import {
 	createAuthenticatedHandler,
 	requireScope,
 	type AuthenticatedContext,
 } from './auth/apiHandlers';
 import { jsonResponse, errorResponse } from './auth/apiResponses';
-import { isValidEmail, normalizeEmail } from './lib/inputGuards';
-
-// Type for the action context
-interface ActionContext {
-	runQuery: <T>(query: unknown, args: unknown) => Promise<T>;
-	runMutation: <T>(mutation: unknown, args: unknown) => Promise<T>;
-	runAction: <T>(action: unknown, args: unknown) => Promise<T>;
-}
+import {
+	isJsonPrimitiveRecord,
+	isValidEmail,
+	normalizeEmail,
+	type JsonPrimitiveValue,
+} from './lib/inputGuards';
 
 // Request body type for sending events
 interface SendEventBody {
 	email: string;
 	eventName: string;
-	eventProperties?: Record<string, unknown>;
+	eventProperties?: Record<string, JsonPrimitiveValue>;
 	createContactIfNotExists?: boolean;
 }
 
@@ -30,17 +29,6 @@ interface SendEventResponse {
 	eventName: string;
 	triggeredAutomations: number;
 	contactCreated: boolean;
-}
-
-// Contact type from database
-interface Contact {
-	_id: Id<'contacts'>;
-	email: string;
-	firstName?: string;
-	lastName?: string;
-	source: 'api' | 'import' | 'form';
-	createdAt: number;
-	updatedAt: number;
 }
 
 /**
@@ -69,7 +57,7 @@ export function generateEventId(): string {
  * - contactCreated: Whether a new contact was created
  */
 export const sendEvent = createAuthenticatedHandler(
-	async (ctx: ActionContext, request: Request, auth: AuthenticatedContext): Promise<Response> => {
+	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
 		const denied = requireScope(auth, 'events:write', request.headers.get('Origin'));
 		if (denied) return denied;
 		// Parse request body
@@ -111,8 +99,11 @@ export const sendEvent = createAuthenticatedHandler(
 		}
 
 		// Validate optional fields
-		if (body.eventProperties !== undefined && typeof body.eventProperties !== 'object') {
-			return errorResponse('invalid_input', 'eventProperties must be an object');
+		if (body.eventProperties !== undefined && !isJsonPrimitiveRecord(body.eventProperties)) {
+			return errorResponse(
+				'invalid_input',
+				'eventProperties must be an object of string, number, boolean or null values'
+			);
 		}
 
 		if (
@@ -123,12 +114,9 @@ export const sendEvent = createAuthenticatedHandler(
 		}
 
 		// Check if contact exists
-		const existingContact = await ctx.runQuery<Contact | null>(
-			internal.contacts.contacts.getByEmailForTeam,
-			{
-				email: normalizeEmail(body.email),
-			}
-		);
+		const existingContact = await ctx.runQuery(internal.contacts.contacts.getByEmailForTeam, {
+			email: normalizeEmail(body.email),
+		});
 
 		let contactCreated = false;
 		let contactId: Id<'contacts'>;
@@ -142,7 +130,7 @@ export const sendEvent = createAuthenticatedHandler(
 			}
 
 			// Create the contact
-			contactId = await ctx.runMutation<Id<'contacts'>>(internal.contacts.contacts.createForTeam, {
+			contactId = await ctx.runMutation(internal.contacts.contacts.createForTeam, {
 				email: body.email,
 				source: 'api' as const,
 			});
@@ -153,11 +141,7 @@ export const sendEvent = createAuthenticatedHandler(
 
 		// Call the sendEvent mutation to fire automation triggers
 		try {
-			const result = await ctx.runMutation<{
-				contactId: Id<'contacts'>;
-				eventName: string;
-				triggeredAutomations: number;
-			}>(internal.automations.triggers.sendEvent, {
+			const result = await ctx.runMutation(internal.automations.triggers.sendEvent, {
 				email: normalizeEmail(body.email),
 				eventName: body.eventName,
 				eventProperties: body.eventProperties,

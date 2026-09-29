@@ -9,14 +9,15 @@ import { v } from 'convex/values';
 import { requireAutomationManage, requireAutomation, requireDraftAutomation } from './guards';
 import { paginationOptsValidator } from 'convex/server';
 import { automationsQuery, automationsMutation } from './_helpers';
-import type { Doc } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
+import type { QueryCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { throwInvalidState } from '../_utils/errors';
 import { trackEvent } from '../lib/posthogHelpers';
 import { triggerConfigValidator } from '../lib/convexValidators';
 import { listResources, countFacet } from '../lib/listing';
 import { automationListing } from './listing';
-import { enrichStepForQuery } from './steps';
+import { enrichStepForQuery, loadOrderedSteps } from './steps';
 import { enrichTriggerForQuery } from './triggers';
 import type { TriggerKind } from './triggers/types';
 import type { AutomationTransitionOutcome } from './lifecycle';
@@ -71,6 +72,16 @@ export type ConditionOperator =
 
 // ============== Queries ==============
 
+/** One automation plus its steps in walk order, or null when it does not exist. */
+async function loadAutomationWithSteps(
+	ctx: Pick<QueryCtx, 'db'>,
+	automationId: Id<'automations'>
+): Promise<{ automation: Doc<'automations'>; steps: Doc<'automationSteps'>[] } | null> {
+	const automation = await ctx.db.get(automationId);
+	if (!automation) return null;
+	return { automation, steps: await loadOrderedSteps(ctx.db, automation._id) };
+}
+
 // List automations using session-based context.
 export const list = automationsQuery({
 	args: {
@@ -91,21 +102,9 @@ export const get = automationsQuery({
 		automationId: v.id('automations'),
 	},
 	handler: async (ctx, args) => {
-		const automation = await ctx.db.get(args.automationId);
-		if (!automation) return null;
-
-		const steps = await ctx.db
-			.query('automationSteps')
-			.withIndex('by_automation', (q) => q.eq('automationId', automation._id))
-			.collect(); // bounded: one automation's steps
-
-		// Sort steps by stepIndex
-		const sortedSteps = steps.sort((a, b) => a.stepIndex - b.stepIndex);
-
-		return {
-			...automation,
-			steps: sortedSteps,
-		};
+		const loaded = await loadAutomationWithSteps(ctx, args.automationId);
+		if (!loaded) return null;
+		return { ...loaded.automation, steps: loaded.steps };
 	},
 });
 
@@ -115,22 +114,14 @@ export const getWithRelations = automationsQuery({
 		automationId: v.id('automations'),
 	},
 	handler: async (ctx, args) => {
-		const automation = await ctx.db.get(args.automationId);
-		if (!automation) return null;
-
-		const steps = await ctx.db
-			.query('automationSteps')
-			.withIndex('by_automation', (q) => q.eq('automationId', automation._id))
-			.collect(); // bounded: one automation's steps
-
-		const sortedSteps = steps.sort((a, b) => a.stepIndex - b.stepIndex);
+		const loaded = await loadAutomationWithSteps(ctx, args.automationId);
+		if (!loaded) return null;
+		const { automation, steps } = loaded;
 
 		// Per-kind enrichment (email step joins its template, etc.) — dispatched
 		// through the step module's optional `enrichForQuery` hook so this query
 		// stays switch-free over `step.stepType`.
-		const enrichedSteps = await Promise.all(
-			sortedSteps.map((step) => enrichStepForQuery(ctx, step))
-		);
+		const enrichedSteps = await Promise.all(steps.map((step) => enrichStepForQuery(ctx, step)));
 
 		// Per-kind trigger enrichment (topic_subscribed joins the topic, etc.)
 		// — dispatched through the trigger module's optional `enrichForQuery`
@@ -344,10 +335,7 @@ export const duplicate = automationsMutation({
 		});
 
 		// Copy all steps
-		const steps = await ctx.db
-			.query('automationSteps')
-			.withIndex('by_automation', (q) => q.eq('automationId', args.automationId))
-			.collect(); // bounded: one automation's steps
+		const steps = await loadOrderedSteps(ctx.db, args.automationId);
 
 		for (const step of steps) {
 			await ctx.db.insert('automationSteps', {
@@ -379,10 +367,7 @@ export const remove = automationsMutation({
 		}
 
 		// Delete all steps
-		const steps = await ctx.db
-			.query('automationSteps')
-			.withIndex('by_automation', (q) => q.eq('automationId', args.automationId))
-			.collect(); // bounded: one automation's steps
+		const steps = await loadOrderedSteps(ctx.db, args.automationId);
 
 		for (const step of steps) {
 			await ctx.db.delete(step._id);

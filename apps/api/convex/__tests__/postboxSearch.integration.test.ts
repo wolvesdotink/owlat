@@ -631,3 +631,71 @@ describe('mail.mailbox.search.search — filter-grammar parity', () => {
 		expect(results.messages.map((m) => m.subject)).toEqual(['lunch plans']);
 	});
 });
+
+describe('mail.mailbox.search.search — server-side case folding', () => {
+	// The web parser lowercases every operand, but the query is public: a clause
+	// that reaches it from anywhere else must match the same way.
+	it('matches a mixed-case from: sent straight to the query', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const { mailboxId } = await seed(t);
+		const results = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: '',
+			from: 'Sara@ACME.com',
+		});
+		expect(results.messages.map((m) => m.subject)).toEqual(['project meeting']);
+	});
+
+	it('folds the operands of an OR side and of an exclusion too', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const { mailboxId } = await seedGrammar(t);
+		const union = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: '',
+			from: 'MEI',
+			or: [{ text: '', subject: 'Quarterly' }],
+		});
+		expect(union.messages.map((m) => m.subject).sort()).toEqual(['lunch plans', 'quarterly deck']);
+		const excluded = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: '',
+			not: { from: ['Ines@Northwind.Studio'] },
+		});
+		expect(excluded.messages.map((m) => m.subject)).toEqual(['lunch plans']);
+	});
+
+	it('resolves an upper-case label: against the stored display name', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const { mailboxId } = await seedGrammar(t);
+		const results = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: '',
+			labelName: 'BILLING',
+		});
+		expect(results.messages.map((m) => m.subject)).toEqual(['invoice 4471']);
+	});
+
+	it('matches an address stored with its original casing', async () => {
+		// Delivered mail stores addresses lowercased, but an IMAP APPEND keeps
+		// what the client sent, so the haystack is folded as well.
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const { mailboxId } = await seed(t);
+		await t.run(async (ctx) => {
+			const row = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', mailboxId))
+				.first();
+			await ctx.db.patch(row!._id, { fromAddress: 'Sara@Acme.com' });
+		});
+		const results = await t.query(api.mail.mailbox.search.search, {
+			mailboxId,
+			text: '',
+			from: 'sara@acme',
+		});
+		expect(results.messages.map((m) => m.subject)).toEqual(['project meeting']);
+	});
+});

@@ -3,17 +3,19 @@ import { emailTemplateTypeValidator } from '../lib/convexValidators';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { paginationOptsValidator } from 'convex/server';
 import { internal } from '../_generated/api';
-import type { Doc, Id } from '../_generated/dataModel';
+import type { Id } from '../_generated/dataModel';
 import { requireOrgPermission } from '../lib/sessionOrganization';
-import { buildSearchableText } from '../lib/queryHelpers';
 import { listResources } from '../lib/listing';
 import { emailTemplateListing } from './listing';
 import { getOrThrow, throwNotFound, throwInvalidState } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
-import { assertEditableForPublishableChange } from './lifecycle';
-import { applyUsageCountDelta } from '../emailBlocks/module';
+import {
+	assertEditableForPublishableChange,
+	buildEditablePatch,
+	publishedHtml,
+} from '../lib/publishableEmail';
 import { captureTemplateVersion } from './versions';
-import { assertContentRevision, nextContentRevision } from '../lib/contentRevision';
+import { assertContentRevision } from '../lib/contentRevision';
 
 // Query to get a single email template by ID
 export const get = authedQuery({
@@ -64,98 +66,16 @@ export const update = authedMutation({
 
 		const template = await getOrThrow(ctx, args.templateId, 'Email template');
 
-		assertEditableForPublishableChange(template, args.forceWhilePublished);
+		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
 		assertContentRevision(template, args.expectedContentRevision);
 
-		const updates: {
-			name?: string;
-			subject?: string;
-			previewText?: string;
-			content?: string;
-			htmlContent?: string;
-			plainTextContent?: string;
-			plainTextOverride?: string;
-			defaultLanguage?: string;
-			supportedLanguages?: string[];
-			translations?: string;
-			htmlTranslations?: string;
-			linkedBlockIds?: string[];
-			searchableText?: string;
-			htmlRenderState?: { stale: boolean };
-			contentRevision: number;
-			updatedAt: number;
-		} = { contentRevision: nextContentRevision(template), updatedAt: Date.now() };
-
-		if (args.name !== undefined) {
-			updates.name = args.name.trim();
-		}
-
-		if (args.subject !== undefined) {
-			updates.subject = args.subject.trim();
-		}
-
-		if (args.previewText !== undefined) {
-			updates.previewText = args.previewText.trim();
-		}
-
-		if (args.content !== undefined) {
-			updates.content = args.content;
-		}
-
-		if (args.htmlContent !== undefined) {
-			updates.htmlContent = args.htmlContent;
-		}
-
-		// Blocks and the HTML rendered from them, in one write: the HTML matches
-		// the content again, so a saved-block rerender still pending for the
-		// previous revision has nothing left to fix (it no-ops on the moved row).
-		if (args.content !== undefined && args.htmlContent !== undefined && template.htmlRenderState) {
-			updates.htmlRenderState = { stale: false };
-		}
-
-		if (args.plainTextContent !== undefined) {
-			updates.plainTextContent = args.plainTextContent;
-		}
-
-		if (args.plainTextOverride !== undefined) {
-			// Patching a field to `undefined` REMOVES it, which is what "the author
-			// cleared the override editor" has to mean — otherwise an empty string
-			// would keep winning over the generated body forever.
-			updates.plainTextOverride = args.plainTextOverride.trim()
-				? args.plainTextOverride
-				: undefined;
-		}
-
-		if (args.defaultLanguage !== undefined) {
-			updates.defaultLanguage = args.defaultLanguage;
-		}
-
-		if (args.supportedLanguages !== undefined) {
-			updates.supportedLanguages = args.supportedLanguages;
-		}
-
-		if (args.translations !== undefined) {
-			updates.translations = args.translations;
-		}
-
-		if (args.htmlTranslations !== undefined) {
-			updates.htmlTranslations = args.htmlTranslations;
-		}
-
-		if (args.linkedBlockIds !== undefined) {
-			updates.linkedBlockIds = args.linkedBlockIds;
-			// A normal editor save patches the row directly (it does NOT route
-			// through the lifecycle's create/duplicate effect), so keep saved-block
-			// usageCount in sync here by diffing the previous vs. new linked set.
-			await applyUsageCountDelta(ctx, template.linkedBlockIds ?? [], args.linkedBlockIds);
-		}
-
-		// Update searchableText if name or subject changed
-		if (args.name !== undefined || args.subject !== undefined) {
-			const newName = updates.name ?? template.name;
-			const newSubject = updates.subject ?? template.subject;
-			updates.searchableText = buildSearchableText(newName, newSubject);
-		}
+		const updates = {
+			...(await buildEditablePatch(ctx, template, args, {
+				noun: 'Template',
+				searchableFields: ['name', 'subject'],
+			})),
+			...(args.previewText !== undefined && { previewText: args.previewText.trim() }),
+		};
 
 		await ctx.db.patch(args.templateId, updates);
 
@@ -186,43 +106,6 @@ export const update = authedMutation({
 		return { templateId: args.templateId, contentRevision: updates.contentRevision };
 	},
 });
-
-/**
- * The HTML a publish puts live: the row's own rendered HTML, read in the same
- * transaction as the status change.
- *
- * Client HTML is not trusted here. The editor sends the HTML of the row it last
- * saw, and a saved-block rerender can replace the row's HTML without moving its
- * content revision; publishing the client's copy after that would put the
- * pre-propagation HTML live on a row whose render state says it is current.
- * For the same reason a row whose HTML is still behind its content (a rerender
- * pending or failed) is refused instead of published.
- */
-function publishedHtml(
-	template: Doc<'emailTemplates'>,
-	args: { htmlContent?: string; htmlTranslations?: string }
-): { htmlContent: string; htmlTranslations?: string } {
-	if (template.htmlRenderState?.stale) {
-		throwInvalidState(
-			'A saved block this email uses changed and its HTML is still being updated, so it was not published. Try again in a moment.',
-			{
-				reason: 'html_render_pending',
-				messageKey: 'dashboard.send.emails.detail.edit.toasts.htmlStillRendering',
-			}
-		);
-	}
-	if (template.htmlContent !== undefined) {
-		return { htmlContent: template.htmlContent, htmlTranslations: template.htmlTranslations };
-	}
-	// Never rendered (created outside the editor): the caller's HTML is all there is.
-	if (args.htmlContent === undefined) {
-		throwInvalidState('Save the email before publishing it.', {
-			reason: 'html_missing',
-			messageKey: 'dashboard.send.emails.detail.edit.toasts.saveBeforePublish',
-		});
-	}
-	return { htmlContent: args.htmlContent, htmlTranslations: args.htmlTranslations };
-}
 
 // Mutation to publish an email template
 export const publish = authedMutation({
@@ -368,7 +251,7 @@ export const changeType = authedMutation({
 
 		const template = await getOrThrow(ctx, args.templateId, 'Email template');
 
-		assertEditableForPublishableChange(template, args.forceWhilePublished);
+		assertEditableForPublishableChange(template, 'Template', args.forceWhilePublished);
 
 		await ctx.db.patch(args.templateId, {
 			type: args.type,

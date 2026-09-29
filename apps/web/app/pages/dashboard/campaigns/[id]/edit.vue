@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 import { isValidEmail } from '@owlat/shared';
 import { openAfterSave, openWithoutSaving } from '~/lib/openAfterSave';
+import type { SenderPickerHandle } from '~/utils/campaignSenderPicker';
 import { formatNumber } from '~/utils/formatters';
 
 const { t, locale } = useI18n();
@@ -19,15 +20,16 @@ const campaignId = useRouteId<'campaigns'>();
 
 // Initialize composables
 const abTest = useCampaignABTest();
+// The wizard's sender picker; its validate() guards every save.
+const senderPickerRef = ref<SenderPickerHandle | null>(null);
 
 const {
 	// Data
 	campaignData,
 	campaignLoading,
 	campaignError,
-	topics,
-	segments,
 	emailTemplates,
+	campaignAudience,
 	audienceCount,
 	audience,
 
@@ -36,9 +38,6 @@ const {
 	fromName,
 	fromEmail,
 	replyTo,
-	audienceType,
-	selectedTopicId,
-	selectedSegmentId,
 	selectedTemplateId,
 	campaignSubject,
 	archiveEnabled,
@@ -52,7 +51,6 @@ const {
 	isScheduled,
 	isDraft,
 	canEdit,
-	audienceDisplayText,
 	templateLanguages,
 
 	// Errors & loading
@@ -66,6 +64,7 @@ const {
 	confirmDiscard,
 	confirmSave,
 	cancelNavigation,
+	onSenderPreselected,
 
 	// Actions
 	handleSave,
@@ -81,7 +80,18 @@ const {
 	formatDate,
 	getMinScheduleDate,
 	getLanguageLabel,
-} = useCampaignForm(campaignId, abTest);
+} = useCampaignForm(campaignId, abTest, senderPickerRef);
+
+// The wizard's recipients control, fed by the same composable as the wizard.
+const {
+	audienceType,
+	selectedTopicId,
+	selectedSegmentId,
+	topics,
+	segments,
+	audienceLoadFailed,
+	retryAudienceLists,
+} = campaignAudience;
 
 /** The scheduled send moment, formatted against the active locale. */
 const scheduledAtDisplay = computed(() => {
@@ -449,43 +459,17 @@ const shownCapacityPlan = computed(() => {
 								</p>
 							</div>
 
-							<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-								<!-- From Name -->
-								<div>
-									<label for="fromName" class="label flex items-center gap-2">
-										<Icon name="lucide:user" class="w-4 h-4 text-text-tertiary" />
-										{{ t('dashboard.campaigns.detail.edit.details.fromName') }}
-									</label>
-									<input
-										id="fromName"
-										v-model="fromName"
-										type="text"
-										:placeholder="t('dashboard.campaigns.detail.edit.details.fromNamePlaceholder')"
-										class="input mt-1.5"
-										:disabled="isScheduled"
-									/>
-								</div>
-
-								<!-- From Email -->
-								<div>
-									<label for="fromEmail" class="label flex items-center gap-2">
-										<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
-										{{ t('dashboard.campaigns.detail.edit.details.fromEmail') }}
-										<span class="text-error">*</span>
-									</label>
-									<input
-										id="fromEmail"
-										v-model="fromEmail"
-										type="email"
-										:placeholder="t('dashboard.campaigns.detail.edit.details.fromEmailPlaceholder')"
-										:class="['input mt-1.5', errors.fromEmail ? 'input-error' : '']"
-										:disabled="isScheduled"
-									/>
-									<p v-if="errors.fromEmail" class="mt-1.5 text-sm text-error">
-										{{ errors.fromEmail }}
-									</p>
-								</div>
-							</div>
+							<!-- From: the wizard's curated sender picker (the server refuses
+							     any address off that list) -->
+							<CampaignsStepsSetupSenderPicker
+								ref="senderPickerRef"
+								v-model:from-name="fromName"
+								v-model:from-email="fromEmail"
+								:campaign-id="campaignId"
+								:campaign-details="campaignData"
+								:disabled="isScheduled"
+								@preselected="onSenderPreselected"
+							/>
 
 							<!-- Reply-to -->
 							<div>
@@ -508,168 +492,19 @@ const shownCapacityPlan = computed(() => {
 						</div>
 					</div>
 
-					<!-- Audience Card -->
-					<div class="card p-6">
-						<h2 class="text-lg font-semibold text-text-primary mb-6">
-							{{ t('dashboard.campaigns.detail.edit.audience.title') }}
-						</h2>
-
-						<div class="space-y-4">
-							<!-- Topic -->
-							<label
-								:class="[
-									'flex items-start gap-4 p-4 border rounded-lg transition-colors',
-									isScheduled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
-									audienceType === 'topic'
-										? 'border-brand bg-brand/5'
-										: 'border-border-subtle hover:border-border-default',
-								]"
-							>
-								<input
-									v-model="audienceType"
-									type="radio"
-									name="audienceType"
-									value="topic"
-									class="mt-1 w-4 h-4 text-brand focus:ring-brand border-border-subtle bg-bg-surface"
-									:disabled="isScheduled"
-								/>
-								<div class="flex-1">
-									<div class="flex items-center gap-2">
-										<Icon name="lucide:list-checks" class="w-5 h-5 text-brand" />
-										<span class="font-medium text-text-primary">{{
-											t('dashboard.campaigns.detail.edit.audience.topicTitle')
-										}}</span>
-									</div>
-									<p class="text-sm text-text-secondary mt-1">
-										{{ t('dashboard.campaigns.detail.edit.audience.topicDescription') }}
-									</p>
-
-									<div v-if="audienceType === 'topic'" class="mt-4">
-										<select
-											v-model="selectedTopicId"
-											:class="['input w-full', errors.audience ? 'input-error' : '']"
-											:disabled="isScheduled"
-											@click.stop
-										>
-											<option :value="null" disabled>
-												{{ t('dashboard.campaigns.detail.edit.audience.selectTopic') }}
-											</option>
-											<option v-for="list in topics" :key="list._id" :value="list._id">
-												{{
-													t('dashboard.campaigns.detail.edit.audience.topicOption', {
-														name: list.name,
-														count: list.contactCount,
-													})
-												}}
-											</option>
-										</select>
-										<p v-if="errors.audience" class="mt-1.5 text-sm text-error">
-											{{ errors.audience }}
-										</p>
-									</div>
-								</div>
-							</label>
-
-							<!-- Segment -->
-							<label
-								:class="[
-									'flex items-start gap-4 p-4 border rounded-lg transition-colors',
-									isScheduled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
-									audienceType === 'segment'
-										? 'border-brand bg-brand/5'
-										: 'border-border-subtle hover:border-border-default',
-								]"
-							>
-								<input
-									v-model="audienceType"
-									type="radio"
-									name="audienceType"
-									value="segment"
-									class="mt-1 w-4 h-4 text-brand focus:ring-brand border-border-subtle bg-bg-surface"
-									:disabled="isScheduled"
-								/>
-								<div class="flex-1">
-									<div class="flex items-center gap-2">
-										<Icon name="lucide:filter" class="w-5 h-5 text-warning" />
-										<span class="font-medium text-text-primary">{{
-											t('dashboard.campaigns.detail.edit.audience.segmentTitle')
-										}}</span>
-									</div>
-									<p class="text-sm text-text-secondary mt-1">
-										{{ t('dashboard.campaigns.detail.edit.audience.segmentDescription') }}
-									</p>
-
-									<div v-if="audienceType === 'segment'" class="mt-4">
-										<select
-											v-model="selectedSegmentId"
-											:class="['input w-full', errors.audience ? 'input-error' : '']"
-											:disabled="isScheduled"
-											@click.stop
-										>
-											<option :value="null" disabled>
-												{{ t('dashboard.campaigns.detail.edit.audience.selectSegment') }}
-											</option>
-											<option v-for="segment in segments" :key="segment._id" :value="segment._id">
-												{{ segment.name }}
-											</option>
-										</select>
-										<p v-if="errors.audience" class="mt-1.5 text-sm text-error">
-											{{ errors.audience }}
-										</p>
-									</div>
-								</div>
-							</label>
-
-							<!-- Audience Count -->
-							<div class="p-4 bg-bg-surface shadow-surface-1 rounded-lg">
-								<div class="flex items-center justify-between">
-									<div class="flex items-center gap-2">
-										<Icon name="lucide:users" class="w-5 h-5 text-text-tertiary" />
-										<span class="text-text-secondary">{{ audienceDisplayText }}</span>
-									</div>
-									<span class="text-xl font-semibold text-brand">{{
-										audienceCount?.eligible ?? 0
-									}}</span>
-								</div>
-								<p v-if="audienceType === 'topic'" class="mt-1 text-sm text-text-tertiary">
-									{{ t('dashboard.campaigns.detail.edit.audience.eligibleForTopic') }}
-								</p>
-								<p v-else class="mt-1 text-sm text-text-tertiary">
-									{{ t('dashboard.campaigns.detail.edit.audience.eligible') }}
-								</p>
-
-								<!-- Warning if there are non-opted-in contacts (only for topic) -->
-								<div
-									v-if="
-										audienceType === 'topic' &&
-										audienceCount &&
-										audienceCount.total > audienceCount.eligible
-									"
-									class="mt-3 p-3 bg-warning/10 border border-warning/20 rounded-lg"
-								>
-									<div class="flex items-start gap-2">
-										<Icon
-											name="lucide:alert-triangle"
-											class="w-4 h-4 text-warning shrink-0 mt-0.5"
-										/>
-										<div class="text-sm">
-											<p class="text-warning font-medium">
-												{{ t('dashboard.campaigns.detail.edit.audience.ineligibleTitle') }}
-											</p>
-											<p class="text-warning/80 mt-0.5">
-												{{
-													t('dashboard.campaigns.detail.edit.audience.ineligibleDescription', {
-														excluded: audienceCount.total - audienceCount.eligible,
-														total: audienceCount.total,
-													})
-												}}
-											</p>
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
-					</div>
+					<!-- Recipients: the wizard's one control, with its count and warnings -->
+					<CampaignsStepsSetupAudiencePicker
+						v-model:audience-type="audienceType"
+						v-model:selected-topic-id="selectedTopicId"
+						v-model:selected-segment-id="selectedSegmentId"
+						:topics="topics ?? null"
+						:segments="segments ?? null"
+						:audience-count="audienceCount ?? null"
+						:error="errors.audience ?? null"
+						:load-failed="audienceLoadFailed"
+						:disabled="isScheduled"
+						@retry="retryAudienceLists"
+					/>
 
 					<!-- Email Content Card -->
 					<div class="card p-6">

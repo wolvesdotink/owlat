@@ -21,6 +21,8 @@ import { publicQuery } from '../lib/authedFunctions';
 import { postboxMutation } from './_helpers';
 import { requireMailboxAccess } from './permissions';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
+import { pick } from '../lib/validators/fields';
+import { mailVacationRespondersFields } from '../schema/mailRules';
 
 const DEFAULT_REPLY_INTERVAL_DAYS = 7;
 
@@ -39,14 +41,17 @@ export const get = publicQuery({
 
 export const upsert = postboxMutation({
 	args: {
-		mailboxId: v.id('mailboxes'),
-		isEnabled: v.boolean(),
-		subject: v.string(),
-		bodyText: v.string(),
-		bodyHtml: v.optional(v.string()),
-		startAt: v.optional(v.number()),
-		endAt: v.optional(v.number()),
-		replyIntervalDays: v.optional(v.number()),
+		...pick(mailVacationRespondersFields, [
+			'mailboxId',
+			'isEnabled',
+			'subject',
+			'bodyText',
+			'bodyHtml',
+			'startAt',
+			'endAt',
+		]),
+		// Unset or non-positive falls back to DEFAULT_REPLY_INTERVAL_DAYS.
+		replyIntervalDays: v.optional(mailVacationRespondersFields.replyIntervalDays),
 	},
 	handler: async (ctx, args) => {
 		// Vacation auto-reply is a mailbox-wide setting — owner-grade.

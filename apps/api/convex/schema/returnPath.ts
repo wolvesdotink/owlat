@@ -9,6 +9,7 @@
 
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { literalUnion } from '../lib/literalUnion';
 import {
 	RETURN_PATH_PROBE_REASONS,
 	RETURN_PATH_PROBE_STATUSES,
@@ -22,18 +23,10 @@ import {
  * literal sets are how a status added to the core silently fails to validate at
  * the table — a drift that would surface as a write rejection on the send path.
  */
-const probeStatusValidator = v.union(
-	...RETURN_PATH_PROBE_STATUSES.map((status) => v.literal(status))
-);
-const probeReasonValidator = v.union(
-	...RETURN_PATH_PROBE_REASONS.map((reason) => v.literal(reason))
-);
-const settledStatusValidator = v.union(
-	...SETTLED_RETURN_PATH_PROBE_STATUSES.map((status) => v.literal(status))
-);
-const settledReasonValidator = v.union(
-	...SETTLED_RETURN_PATH_PROBE_REASONS.map((reason) => v.literal(reason))
-);
+const probeStatusValidator = literalUnion(RETURN_PATH_PROBE_STATUSES);
+const probeReasonValidator = literalUnion(RETURN_PATH_PROBE_REASONS);
+const settledStatusValidator = literalUnion(SETTLED_RETURN_PATH_PROBE_STATUSES);
+const settledReasonValidator = literalUnion(SETTLED_RETURN_PATH_PROBE_REASONS);
 
 export const returnPathTables = {
 	// Custom return-path (VERP envelope sender) capability, observed per

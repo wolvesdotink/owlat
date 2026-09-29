@@ -6,10 +6,7 @@ export {
 	createBlock,
 	createColumnItem,
 	getBlockPadding,
-	updateBlockPadding,
-	toggleLinkedPadding,
 	getBlockMargin,
-	updateBlockMargin,
 	getBlockBackgroundColor,
 	updateBlockBackgroundColor,
 	blockSupportsBorderRadius,
@@ -37,6 +34,7 @@ export {
 	snapshotMatchesState,
 	formatSnapshotSize,
 } from './versionSnapshot';
+export { parseStoredBlocks } from './storedBlocks';
 export {
 	containsVariable,
 	extractVariableName,

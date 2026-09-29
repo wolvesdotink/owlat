@@ -16,8 +16,12 @@
  *                         could write these fields.
  *   - `remove`           — schedules the **Organization deletion**
  *                         walker; owner-only.
- *   - `createInternal`   — idempotent bootstrap insert (called by
- *                         `seedAdminHttp.ts`).
+ *   - `createInternal`   — idempotent bootstrap (called by
+ *                         `seedAdminHttp.ts`); fills the seed columns onto a
+ *                         row another writer created first.
+ *
+ * The row itself is created by `upsertInstanceSettings` in
+ * `lib/instanceSettings.ts`, the one insert site every column owner shares.
  *
  * See docs/adr/0026-organization-settings-modules.md.
  */
@@ -27,12 +31,13 @@ import { MAX_TRUSTED_ARC_FORWARDERS, sanitizeTrustedForwarders } from '@owlat/sh
 import { sealPolicyValidator } from '../mail/sealPolicy';
 import { mtaStsModeValidator } from '../lib/convexValidators';
 import { inboundRawRetentionDaysValidator } from '../lib/literalValidators';
-import { internalMutation, internalQuery } from '../_generated/server';
-import type { Id } from '../_generated/dataModel';
+import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
+import type { Doc } from '../_generated/dataModel';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { throwInvalidInput } from '../_utils/errors';
 import { internal } from '../_generated/api';
 import { recordAuditLog } from '../lib/auditLog';
+import { getInstanceSettings, upsertInstanceSettings } from '../lib/instanceSettings';
 import {
 	getUserIdFromSession,
 	getMutationContext,
@@ -44,7 +49,7 @@ export const get = authedQuery({
 	args: {},
 	handler: async (ctx) => {
 		await getUserIdFromSession(ctx);
-		return await ctx.db.query('instanceSettings').first();
+		return await getInstanceSettings(ctx.db);
 	},
 });
 
@@ -140,7 +145,7 @@ export const update = authedMutation({
 				? { relayCurrency: args.relayCurrency.toUpperCase() }
 				: {}),
 		};
-		const existing = await ctx.db.query('instanceSettings').first();
+		const existing = await getInstanceSettings(ctx.db);
 		const changes: Record<string, { from: unknown; to: unknown }> = {};
 		for (const key of Object.keys(patch) as Array<keyof typeof patch>) {
 			const to = patch[key];
@@ -149,17 +154,7 @@ export const update = authedMutation({
 			if (JSON.stringify(from) !== JSON.stringify(to)) changes[key] = { from, to };
 		}
 
-		let settingsId: Id<'instanceSettings'>;
-		if (existing) {
-			await ctx.db.patch(existing._id, { ...patch, updatedAt: now });
-			settingsId = existing._id;
-		} else {
-			settingsId = await ctx.db.insert('instanceSettings', {
-				...patch,
-				createdAt: now,
-				updatedAt: now,
-			});
-		}
+		const settingsId = await upsertInstanceSettings(ctx, patch, { now });
 		if (Object.keys(changes).length > 0) {
 			await recordAuditLog(ctx, {
 				userId: session.userId,
@@ -199,7 +194,7 @@ export const update = authedMutation({
 export const getTrustedArcForwarders = internalQuery({
 	args: {},
 	handler: async (ctx): Promise<string[] | undefined> => {
-		const settings = await ctx.db.query('instanceSettings').first();
+		const settings = await getInstanceSettings(ctx.db);
 		return settings?.trustedArcForwarders;
 	},
 });
@@ -208,7 +203,7 @@ export const getTrustedArcForwarders = internalQuery({
 export const getInboundTlsPolicy = internalQuery({
 	args: {},
 	handler: async (ctx): Promise<boolean> => {
-		const settings = await ctx.db.query('instanceSettings').first();
+		const settings = await getInstanceSettings(ctx.db);
 		return settings?.isInboundTlsRequired !== false;
 	},
 });
@@ -222,6 +217,45 @@ export const remove = authedMutation({
 		return { success: true, message: 'Organization deletion started' };
 	},
 });
+
+type SeedColumnArgs = {
+	timezone?: string;
+	defaultFromName?: string;
+	isMigrationMode?: boolean;
+};
+
+/** The seed columns a fresh singleton is created with. */
+function seedColumnDefaults(args: SeedColumnArgs) {
+	return {
+		timezone: args.timezone || 'UTC',
+		defaultFromName: args.defaultFromName,
+		isMigrationMode: args.isMigrationMode ?? false,
+	};
+}
+
+/**
+ * Fill the seed columns onto an existing, still-unlatched singleton, plus any
+ * `extra` columns (the latch itself). Only columns that are still undefined are
+ * written. No user exists before the seed, so a value already there came from
+ * an earlier seed step (`createInternal` runs before the claim) and is kept.
+ * The caller checks the latch: a latched row is never passed in.
+ */
+async function applySeedColumns(
+	ctx: MutationCtx,
+	existing: Doc<'instanceSettings'>,
+	args: SeedColumnArgs,
+	extra: { adminSeedCompletedAt?: number }
+): Promise<void> {
+	const defaults = seedColumnDefaults(args);
+	const fill: SeedColumnArgs = {};
+	if (existing.timezone === undefined) fill.timezone = defaults.timezone;
+	if (existing.defaultFromName === undefined && defaults.defaultFromName !== undefined) {
+		fill.defaultFromName = defaults.defaultFromName;
+	}
+	if (existing.isMigrationMode === undefined) fill.isMigrationMode = defaults.isMigrationMode;
+	const patch = { ...fill, ...extra };
+	if (Object.keys(patch).length > 0) await ctx.db.patch(existing._id, patch);
+}
 
 export const createInternal = internalMutation({
 	args: {
@@ -237,22 +271,22 @@ export const createInternal = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		const now = Date.now();
-		const existing = await ctx.db.query('instanceSettings').first();
+		const latch = args.markAdminSeeded ? { adminSeedCompletedAt: now } : {};
+		const existing = await getInstanceSettings(ctx.db);
 		if (existing) {
-			// The singleton already exists (idempotent bootstrap). Still stamp the
-			// latch if this is the seed path and it isn't stamped yet, so the gate
-			// is durable even when settings were created before the user rows.
-			if (args.markAdminSeeded && existing.adminSeedCompletedAt === undefined) {
-				await ctx.db.patch(existing._id, { adminSeedCompletedAt: now });
+			// The singleton already exists, usually because a cron or a counter
+			// bump created it before the seed ran. A row is only "bootstrapped"
+			// once the latch is stamped, so until then fill in the seed columns it
+			// still lacks, and stamp the latch if this is the seed path. A latched
+			// row is never touched.
+			if (existing.adminSeedCompletedAt === undefined) {
+				await applySeedColumns(ctx, existing, args, latch);
 			}
 			return existing._id;
 		}
-		return await ctx.db.insert('instanceSettings', {
-			timezone: args.timezone || 'UTC',
-			defaultFromName: args.defaultFromName,
-			isMigrationMode: args.isMigrationMode ?? false,
-			...(args.markAdminSeeded ? { adminSeedCompletedAt: now } : {}),
-			createdAt: now,
+		return await upsertInstanceSettings(ctx, latch, {
+			now,
+			onCreate: seedColumnDefaults(args),
 		});
 	},
 });
@@ -281,23 +315,23 @@ export const claimAdminSeedInternal = internalMutation({
 	},
 	handler: async (ctx, args): Promise<{ claimed: boolean }> => {
 		const now = Date.now();
-		const existing = await ctx.db.query('instanceSettings').first();
+		const existing = await getInstanceSettings(ctx.db);
 		if (existing) {
 			// Already latched ⇒ a prior seed claimed it; refuse (concurrent loser or
 			// a re-run against a de-populated instance).
 			if (existing.adminSeedCompletedAt !== undefined) {
 				return { claimed: false };
 			}
-			await ctx.db.patch(existing._id, { adminSeedCompletedAt: now });
+			// Unlatched: stamp the latch and fill the seed columns another writer
+			// left unset, in this same transaction.
+			await applySeedColumns(ctx, existing, args, { adminSeedCompletedAt: now });
 			return { claimed: true };
 		}
-		await ctx.db.insert('instanceSettings', {
-			timezone: args.timezone || 'UTC',
-			defaultFromName: args.defaultFromName,
-			isMigrationMode: args.isMigrationMode ?? false,
-			adminSeedCompletedAt: now,
-			createdAt: now,
-		});
+		await upsertInstanceSettings(
+			ctx,
+			{ adminSeedCompletedAt: now },
+			{ now, onCreate: seedColumnDefaults(args) }
+		);
 		return { claimed: true };
 	},
 });
@@ -310,7 +344,7 @@ export const claimAdminSeedInternal = internalMutation({
 export const hasCompletedAdminSeedInternal = internalQuery({
 	args: {},
 	handler: async (ctx): Promise<boolean> => {
-		const settings = await ctx.db.query('instanceSettings').first();
+		const settings = await getInstanceSettings(ctx.db);
 		return settings?.adminSeedCompletedAt !== undefined;
 	},
 });

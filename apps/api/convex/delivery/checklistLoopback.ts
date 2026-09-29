@@ -12,7 +12,7 @@ import { throwInvalidState } from '../_utils/errors';
 import { getOptional } from '../lib/env';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { internalAction } from '../_generated/server';
-import { authResultValidator } from '../lib/convexValidators';
+import { authResultValidator } from '../lib/literalValidators';
 
 const PROBE_TIMEOUT_MS = 15 * 60_000;
 

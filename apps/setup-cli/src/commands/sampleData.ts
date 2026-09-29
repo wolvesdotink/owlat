@@ -16,9 +16,9 @@
  */
 
 import { intro, outro, log, confirm, isCancel } from '@clack/prompts';
-import { progressSpinner } from '../lib/progress';
 import pc from 'picocolors';
-import { backendErrorMessage, loadBackendContext, postJson } from '../lib/backend';
+import { loadBackendContext, postWithSpinner, type BackendContext } from '../lib/backend';
+import { formatCounts } from '../lib/format';
 import { resolveLocalHost } from '../lib/localHost';
 
 import type { CliOptions as RunOptions } from '../lib/cliOptions';
@@ -88,7 +88,7 @@ export async function installSampleData(
 	const ctx = await loadBackendContext(opts.owlatDir, resolveBaseUrl(baseUrlOverride));
 
 	const response = await call(ctx, '/sample-data/install', 'Installing sample data');
-	if (typeof response === 'number') return response;
+	if (!response) return 1;
 
 	log.info(`Inserted: ${formatCounts(response.inserted ?? {})}`);
 	if (response.skipped && Object.values(response.skipped).some((n) => n > 0)) {
@@ -116,7 +116,7 @@ async function removeSampleData(opts: RunOptions, baseUrlOverride?: string): Pro
 
 	const ctx = await loadBackendContext(opts.owlatDir, resolveBaseUrl(baseUrlOverride));
 	const response = await call(ctx, '/sample-data/remove', 'Removing sample data');
-	if (typeof response === 'number') return response;
+	if (!response) return 1;
 
 	const deleted = response.deleted ?? {};
 	log.info(`Deleted: ${formatCounts(deleted)}`);
@@ -134,7 +134,7 @@ async function statusSampleData(opts: RunOptions, baseUrlOverride?: string): Pro
 
 	const ctx = await loadBackendContext(opts.owlatDir, resolveBaseUrl(baseUrlOverride));
 	const response = await call(ctx, '/sample-data/status', 'Counting sample-data rows');
-	if (typeof response === 'number') return response;
+	if (!response) return 1;
 
 	if (response.truncated) log.warn(TRUNCATED_SCAN_NOTE);
 
@@ -151,38 +151,18 @@ async function statusSampleData(opts: RunOptions, baseUrlOverride?: string): Pro
 
 /** POST one endpoint, reporting failures the same way for all three actions. */
 async function call(
-	ctx: Awaited<ReturnType<typeof loadBackendContext>>,
+	ctx: BackendContext,
 	path: string,
-	message: string
-): Promise<SampleDataResponse | number> {
-	const s = progressSpinner();
-	s.start(`${message} — POST ${ctx.baseUrl}${path}`);
-	let response;
-	try {
-		response = await postJson<SampleDataResponse>(ctx, { path });
-	} catch (e) {
-		s.stop(pc.red(`Failed: ${(e as Error).message}`));
-		log.error('Is the docker stack up? Try `docker compose up -d` first.');
-		return 1;
-	}
-	if (response.status !== 200) {
-		s.stop(pc.red(`Failed: ${backendErrorMessage(response.body, `HTTP ${response.status}`)}`));
-		if (response.status === 404) {
-			log.error(
-				'The backend has no /sample-data routes — deploy the current functions (`owlat quickstart`) and retry.'
-			);
+	label: string
+): Promise<SampleDataResponse | null> {
+	const response = await postWithSpinner<SampleDataResponse>(
+		ctx,
+		{ path },
+		{
+			label,
+			notFoundHint:
+				'The backend has no /sample-data routes — deploy the current functions (`owlat quickstart`) and retry.',
 		}
-		return 1;
-	}
-	s.stop(pc.green('Done'));
-	return response.body;
-}
-
-export function formatCounts(counts: Record<string, number>): string {
-	return (
-		Object.entries(counts)
-			.filter(([, n]) => n > 0)
-			.map(([k, n]) => `${pc.cyan(String(n))} ${k}`)
-			.join(', ') || pc.dim('none')
 	);
+	return response?.body ?? null;
 }

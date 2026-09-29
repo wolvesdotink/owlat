@@ -14,7 +14,7 @@ import { BodyTooLargeError, readBodyText } from '../lib/readBody';
 
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
-import { getClientIp, rateLimitedResponse } from '../publicRateLimit';
+import { getClientIp, rateLimitedResponse } from '../lib/publicRateLimit';
 import { logError } from '../lib/runtimeLog';
 import { InboundBatchDispatchError, dispatchEventsInOrder, jsonResponse } from './inboundHttp';
 import type { InboundEvent } from './types';
@@ -171,7 +171,7 @@ export async function runInboundPipeline(
 	// confine a flood to the targeted provider.
 	const ip = getClientIp(request);
 	const { ok: rateOk, retryAfter } = await ctx.runMutation(
-		internal.publicRateLimit.checkPublicRateLimit,
+		internal.lib.publicRateLimit.checkPublicRateLimit,
 		{ limitType: 'webhookIngestion', key: `${adapter.source}:${ip}` }
 	);
 	if (!rateOk) return rateLimitedResponse(retryAfter);

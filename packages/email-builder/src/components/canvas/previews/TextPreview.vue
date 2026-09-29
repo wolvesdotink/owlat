@@ -69,14 +69,4 @@ const styles = computed(() => {
 	color: inherit;
 	text-decoration: underline;
 }
-.text-preview :deep(.variable-tag),
-.text-preview :deep(span[data-variable]) {
-	display: inline;
-	background: rgba(196, 120, 90, 0.12);
-	border: 1px solid rgba(196, 120, 90, 0.3);
-	border-radius: 3px;
-	padding: 0 3px;
-	font-size: 0.9em;
-	color: var(--color-brand, #c4785a);
-}
 </style>

@@ -13,7 +13,7 @@
 import { v } from 'convex/values';
 import { internalMutation, internalQuery } from '../_generated/server';
 import { normalizeEmail } from '@owlat/shared';
-import { mailAppPasswordScopeValidator } from '../lib/convexValidators';
+import { mailAppPasswordScopeValidator } from '../lib/literalValidators';
 
 const WINDOW_MS = 60_000;
 const PER_ADDRESS_LIMIT = 5;

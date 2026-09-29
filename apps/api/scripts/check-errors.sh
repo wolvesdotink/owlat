@@ -60,55 +60,35 @@ if [[ -n "$convex_error_hits" ]]; then
 fi
 
 # ── Check 2: bare `throw new Error` inside user-facing handler blocks ─────────
-# awk walks each file tracking brace depth from the start of an
-# `export const X = <public builder>({ ... })` declaration to its close, and
-# flags any bare `throw new Error(` lexically within. internal* and plain
-# helpers are not matched, so their bare throws are allowed.
+# The shared span scanner (scripts/lib/convex-defs.awk) tracks each
+# `export const X = <public builder>({ ... })` definition from the export line
+# to its column-0 `})`, and this fragment flags any bare `throw new Error(`
+# lexically within. internal* and plain helpers are not matched, so their bare
+# throws are allowed.
 #
-# Every public builder actually in use, so that adding one to
-# lib/authedFunctions.ts (or composing a new feature-gated pair) does not
-# quietly carve a hole in this gate:
-#   lib/authedFunctions.ts  authedQuery authedMutation authedAction
-#                           authedIdentityMutation adminQuery adminMutation
-#                           ownerMutation publicQuery publicMutation publicAction
-#   chat/_helpers.ts        chatQuery chatMutation          (featureGated 'chat')
-#   assistant/conversations.ts
-#                           assistantQuery assistantMutation (featureGated 'ai')
-#   mail/external/externalFeature.ts
-#                           externalMailQuery externalMailMutation
-#                           externalMailAdminMutation (featureGated 'mail.external')
-#   transactional/_helpers.ts transactionalQuery transactionalMutation
-#                           (featureGated 'transactional')
-#   campaigns/_helpers.ts   campaignsQuery campaignsMutation (featureGated 'campaigns')
-#   automations/_helpers.ts automationsQuery automationsMutation
-#                           (featureGated 'automations')
-#   forms/_helpers.ts       formsQuery formsMutation        (featureGated 'forms')
-PUBLIC_BUILDERS='query|mutation|action|authedQuery|authedMutation|authedAction|authedIdentityMutation|adminQuery|adminMutation|ownerMutation|publicQuery|publicMutation|publicAction|chatQuery|chatMutation|assistantQuery|assistantMutation|externalMailQuery|externalMailMutation|externalMailAdminMutation|transactionalQuery|transactionalMutation|campaignsQuery|campaignsMutation|automationsQuery|automationsMutation|formsQuery|formsMutation'
+# The builders are EVERY public builder, derived from source by
+# scripts/lib/convex-builders.sh: the exports of lib/authedFunctions.ts plus
+# every `featureGated(Any)` composition (chatQuery/chatMutation,
+# assistantQuery/assistantMutation, postboxQuery/postboxMutation, …), so a new
+# builder cannot quietly carve a hole in this gate. The hand-typed list it
+# replaces had already missed the two postbox builders. The bare Convex
+# `query` / `mutation` / `action` stay in the list only so the gate still fires
+# if the check-public-functions.sh ban on them is ever relaxed.
+. scripts/lib/convex-builders.sh
+
+public_builders=$(convex_builder_regex '.*' '.*')
+program=$(convex_defs_program '
+	function on_start() { }
+	function on_line() { if ($0 ~ /throw[ \t]+new[ \t]+Error\(/) print FILENAME ":" FNR ":" $0 }
+	function on_end() { }
+')
 
 bare_throws=$(find convex -name "*.ts" \
 	-not -path "*/_generated/*" \
 	-not -path "*/__tests__/*" \
 	! -name "*.test.ts" \
-	-exec awk -v builders="$PUBLIC_BUILDERS" '
-		{
-			line = $0
-			if (line ~ "^export const [A-Za-z0-9_]+ = (" builders ")\\(") {
-				inpub = 1
-				depth = 0
-			}
-			if (inpub) {
-				o = line; nopen = gsub(/{/, "", o)
-				c = line; nclose = gsub(/}/, "", c)
-				depth += nopen - nclose
-				if (line ~ /throw[ \t]+new[ \t]+Error\(/) {
-					print FILENAME ":" FNR ":" line
-				}
-				if ((nopen + nclose) > 0 && depth <= 0) {
-					inpub = 0
-				}
-			}
-		}
-	' {} \; 2>/dev/null || true)
+	-print0 \
+	| xargs -0 -r awk -v builders="query|mutation|action|$public_builders" -v optout='' "$program")
 
 if [[ -n "$bare_throws" ]]; then
 	echo "ERROR: bare 'throw new Error(...)' inside user-facing query/mutation/action handlers:"

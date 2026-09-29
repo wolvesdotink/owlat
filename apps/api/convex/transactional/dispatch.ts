@@ -27,7 +27,7 @@ import { checkEmailDomainVerification } from '../domains/domains';
 import { resolveSendRouteFromDb } from '../lib/sendProviders/route';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { nextDailySendCount } from '../lib/sendingLimits';
-import { transactionalEmailPool } from '../delivery/workpool';
+import { enqueueGovernedSend } from '../delivery/governedEnqueue';
 import { recordSendAssignments } from '../delivery/sendAssignments';
 import { runSendIntakeGates, type SendIntakeRejectionReason } from '../delivery/sendIntakeGates';
 import { jsonPrimitiveValue } from '../lib/convexValidators';
@@ -361,9 +361,9 @@ export const dispatch = internalMutation({
 			recipients: [{ sendId, email: args.email, contactId: resolved.contactId }],
 		});
 
-		await transactionalEmailPool.enqueueAction(
+		await enqueueGovernedSend(
 			ctx,
-			internal.delivery.worker.sendSingleEmail,
+			{ kind: 'transactional', id: sendId },
 			{
 				envelopeInput: {
 					kind: 'transactional' as const,
@@ -390,12 +390,6 @@ export const dispatch = internalMutation({
 								siteUrl: getOptional('SITE_URL') || undefined,
 							}
 						: {}),
-				},
-			},
-			{
-				onComplete: internal.delivery.sendCompletion.completeSend,
-				context: {
-					sendRef: { kind: 'transactional' as const, id: sendId },
 				},
 			}
 		);

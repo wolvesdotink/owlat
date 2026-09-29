@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import PageHeader from '@owlat/ui/components/ui/PageHeader.vue';
+import SegmentedControl from '@owlat/ui/components/ui/SegmentedControl.vue';
 
 import SendIndex from '../index.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
@@ -46,7 +47,7 @@ function render(templates = TEMPLATES): VueWrapper {
 			if (name === 'emailBlocks/blocks:getStatsByTeam') return queryResult({ total: 4 });
 			return queryResult(undefined);
 		},
-		usePaginatedQuery: (_reference: unknown, args: () => unknown) => {
+		useOrganizationPaginatedQuery: (_reference: unknown, args: () => unknown) => {
 			listArgs.push(args());
 			const result = paginatedResult(templates);
 			result.error.value = listError as never;
@@ -59,6 +60,7 @@ function render(templates = TEMPLATES): VueWrapper {
 			components: {
 				UiPageHeader: PageHeader,
 				UiQueryBoundary: QueryBoundary,
+				UiSegmentedControl: SegmentedControl,
 			},
 			stubs: {
 				UiIconBox: true,
@@ -96,12 +98,23 @@ describe('templates list', () => {
 	it('offers a type filter with counts and links saved blocks', () => {
 		const wrapper = render();
 		const filter = wrapper.find('[data-testid="template-type-filter"]');
-		expect(filter.findAll('button').map((b) => b.text().replace(/\s+/g, ' '))).toEqual([
+		expect(filter.findAll('[role="tab"]').map((b) => b.text().replace(/\s+/g, ' '))).toEqual([
 			'All 2',
 			'Marketing 1',
 			'Transactional 1',
 		]);
 		expect(wrapper.text()).toContain('Saved blocks (4)');
+	});
+
+	it('exposes the filter as a named tablist with the selected type (#865)', () => {
+		query = { type: 'transactional' };
+		const wrapper = render();
+		const tablist = wrapper.get('[data-testid="template-type-filter"] [role="tablist"]');
+		expect(tablist.attributes('aria-label')).toBe('Template type');
+		const tabs = tablist.findAll('[role="tab"]');
+		expect(tabs.map((tab) => tab.attributes('aria-selected'))).toEqual(['false', 'false', 'true']);
+		// Roving tabindex: only the selected tab is in the tab order.
+		expect(tabs.map((tab) => tab.attributes('tabindex'))).toEqual(['-1', '-1', '0']);
 	});
 
 	it('queries all types by default and one type when filtered', () => {
@@ -116,10 +129,19 @@ describe('templates list', () => {
 		const wrapper = render();
 		const marketing = wrapper
 			.find('[data-testid="template-type-filter"]')
-			.findAll('button')
+			.findAll('[role="tab"]')
 			.find((b) => b.text().startsWith('Marketing'));
 		await marketing!.trigger('click');
 		expect(replace).toHaveBeenCalledWith({ query: { type: 'marketing' } });
+	});
+
+	it('clears the type from the URL when the arrow keys reach All', async () => {
+		query = { type: 'marketing' };
+		const wrapper = render();
+		await wrapper
+			.get('[data-testid="template-type-filter"] [role="tablist"]')
+			.trigger('keydown', { key: 'ArrowLeft' });
+		expect(replace).toHaveBeenCalledWith({ query: { type: undefined } });
 	});
 
 	it('names the filter in the empty state', () => {

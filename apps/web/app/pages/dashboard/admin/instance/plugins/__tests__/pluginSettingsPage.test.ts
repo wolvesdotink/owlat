@@ -107,6 +107,7 @@ function mountPage() {
 			UiButton: buttonStub,
 			UiBadge: passthroughStub,
 			NuxtLink: true,
+			UiSwitch: true,
 		},
 	});
 }

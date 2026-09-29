@@ -2,9 +2,9 @@
 #
 # Session-threading ratchet. The org-scoped builders in
 # convex/lib/authedFunctions.ts (`authedQuery`, `authedMutation`, `adminQuery`,
-# `adminMutation`, `ownerMutation`, plus the `featureGated` chat*/assistant*
-# compositions) each resolve the caller's membership session in their auth FLOOR
-# and thread it to the handler as a third argument:
+# `adminMutation`, `ownerMutation`, plus every `featureGated(Any)` composition
+# of them: chat*, assistant*, postbox*) each resolve the caller's membership
+# session in their auth FLOOR and thread it to the handler as a third argument:
 #
 #     export const rename = authedMutation({
 #       args: { … },
@@ -37,7 +37,12 @@
 # HEURISTIC LIMITS (this is grep/awk pragmatism, not a parser — same tradeoff as
 # check-query-authz.sh):
 #   * Granularity is per registered function (`file:exportName`), delimited by
-#     `^export const <name> = <builder>(` … `^})` at column 0. This is what makes
+#     `^export const <name> = <builder>(` … `^})` at column 0 (the shared span
+#     scanner, scripts/lib/convex-defs.awk). The builders are the query and
+#     mutation builders with a member or role floor, derived from source by
+#     scripts/lib/convex-builders.sh; `authedAction` has a member floor but
+#     threads no session (an action cannot read the db), so actions are left
+#     out. This is what makes
 #     the gate precise about the common ambiguity: 63 of the 104 debt files ALSO
 #     export a non-threading function (`internalQuery`/`internalMutation`/
 #     `internalAction`, `publicQuery`/`publicMutation`, `authedAction`,
@@ -63,37 +68,30 @@ repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
 self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$(dirname "$0")/.."
 
-builders='authedQuery|authedMutation|adminQuery|adminMutation|ownerMutation|chatQuery|chatMutation|assistantQuery|assistantMutation|postboxQuery|postboxMutation|externalMailQuery|externalMailMutation|externalMailAdminMutation|transactionalQuery|transactionalMutation|campaignsQuery|campaignsMutation|automationsQuery|automationsMutation|formsQuery|formsMutation'
+# shellcheck source=lib/convex-builders.sh
+. scripts/lib/convex-builders.sh
+
 helpers='getMutationContext|getUserIdFromSession|getBetterAuthSessionWithRole|getBetterAuthSession|requireOrgMember|requireOrgPermission|requireAdminContext|requireOwnerContext'
 
 generate() {
+	local builders program
+	builders=$(convex_builder_regex 'query|mutation' 'member|role') || exit 1
+	# The span scanner (scripts/lib/convex-defs.awk) opens a span on each
+	# `export const X = <builder>(` and closes it on the column-0 `})`; this
+	# fragment reports a span that calls a session-resolving helper and carries
+	# no `// session:` opt-out.
+	program=$(convex_defs_program '
+		function on_start() { hit = 0 }
+		function on_line() { if ($0 ~ ("(^|[^A-Za-z0-9_.])(" helpers ")\\(")) hit = 1 }
+		function on_end() { if (hit && !def_optout) print FILENAME ":" def_name }
+	') || exit 1
 	find convex -name "*.ts" \
 		-not -path "*/_generated/*" \
 		-not -path "*/__tests__/*" \
 		-not -path "convex/lib/*" \
-		-exec awk -v builders="$builders" -v helpers="$helpers" '
-			BEGIN { in_fn = 0; name = ""; hit = 0; block_optout = 0 }
-			{
-				is_comment = ($0 ~ /^[[:space:]]*\/\//)
-				is_optout  = ($0 ~ /\/\/[[:space:]]*session:/)
-				is_export  = ($0 ~ "^export const [A-Za-z0-9_]+ = (" builders ")\\(")
-			}
-			is_comment && is_optout { block_optout = 1 }
-			is_export {
-				in_fn = 1; name = $3
-				hit = 0
-				optout = block_optout
-				block_optout = 0
-				next
-			}
-			in_fn && is_optout { optout = 1 }
-			in_fn && $0 ~ "(^|[^A-Za-z0-9_.])(" helpers ")\\(" { hit = 1 }
-			in_fn && /^\}\)/ {
-				if (hit && !optout) print FILENAME ":" name
-				in_fn = 0
-			}
-			(!is_comment && !is_export) { block_optout = 0 }
-		' {} \; 2>/dev/null | LC_ALL=C sort -u
+		-print0 \
+		| xargs -0 -r awk -v builders="$builders" -v optout='session' -v helpers="$helpers" "$program" \
+		| LC_ALL=C sort -u
 }
 
 if [ "${1:-}" = "--generate" ]; then

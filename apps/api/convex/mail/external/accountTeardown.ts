@@ -31,6 +31,7 @@ import { removeMessageAttachments } from '../attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../messagePurge';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { cancelActiveMigrationForAccount } from './accountShared';
+import { listMailboxesOnAddress } from '../mailbox/addressResolution';
 import type { Doc } from '../../_generated/dataModel';
 
 /** Messages deleted per purge step; the step re-schedules itself while more remain. */
@@ -137,12 +138,7 @@ export async function prepareAccountPurge(
 	// keyed by ADDRESS, and a completed move leaves the archive being purged here
 	// sharing its address with the hosted mailbox that succeeded it — revoking
 	// there would stop peers sealing mail to a mailbox that is still receiving it.
-	// (Read inline rather than through `mailbox/identity.ts`'s resolver: that
-	// module already imports this one, and the question here is narrower anyway.)
-	const onThisAddress = await ctx.db
-		.query('mailboxes')
-		.withIndex('by_address', (q) => q.eq('address', mailbox.address))
-		.collect(); // bounded: at most an external archive + its hosted successor
+	const onThisAddress = await listMailboxesOnAddress(ctx, mailbox.address);
 	const addressGoesAway = !onThisAddress.some(
 		(other) => other._id !== mailbox._id && other.status === 'active'
 	);

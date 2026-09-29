@@ -1,18 +1,10 @@
 import { defineConfig } from 'vitest/config';
+import { packageCoverage } from '../../vitest.shared';
 
 export default defineConfig({
 	test: {
 		include: ['test/**/*.test.ts'],
 		globals: false,
-		coverage: {
-			provider: 'v8',
-			reporter: ['text', 'json-summary', 'html'],
-			reportsDirectory: './coverage',
-			include: ['src/**/*.ts'],
-			exclude: ['test/**'],
-			thresholds: {
-				lines: 96,
-			},
-		},
+		coverage: packageCoverage({ lines: 96, exclude: ['test/**'] }),
 	},
 });

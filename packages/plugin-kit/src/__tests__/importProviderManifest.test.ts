@@ -137,6 +137,22 @@ describe('plugin import provider contributions', () => {
 		).toBe(true);
 	});
 
+	it('rejects a reserved id and an untrimmed label', () => {
+		const issues = issuesFor(base([{ ...validProvider(), id: 'prototype', label: ' HubSpot ' }]));
+		expect(issues).toContainEqual(
+			expect.objectContaining({
+				code: 'invalid_format',
+				path: '$.contributes.importProviders[0].id',
+			})
+		);
+		expect(issues).toContainEqual(
+			expect.objectContaining({
+				code: 'invalid_format',
+				path: '$.contributes.importProviders[0].label',
+			})
+		);
+	});
+
 	it('rejects duplicate provider ids', () => {
 		const issues = issuesFor(base([validProvider(), validProvider()]));
 		expect(issues.some((issue) => issue.code === 'duplicate')).toBe(true);

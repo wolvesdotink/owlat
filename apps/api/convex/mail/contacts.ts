@@ -13,30 +13,21 @@ import { postboxMutation } from './_helpers';
 import { requireMailboxAccess } from './permissions';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { normalizeEmail } from '@owlat/shared';
-import { DAY_MS } from '../lib/constants';
+import { contactFrecencyScore, isScreenedOut, senderSignalFromContact } from './ai/priorityScore';
+import { resolveScreenerEnabled } from './ai/needsReplyScoring';
 
 // ─── Pure frecency ranking (recency × frequency blend) ───────────────────────
 // Exported for unit tests. The autocomplete ordering blends how *recently* a
 // contact was corresponded with (a decaying bucket) and how *often* (a bounded
-// useCount boost), so a name typed daily outranks one used once long ago.
+// useCount boost), so a name typed daily outranks one used once long ago. That
+// blend is `contactFrecencyScore` in ai/priorityScore.ts, which the Reply Queue
+// sender signal reads too.
 
 export interface RankableContact {
 	email: string;
 	displayName?: string;
 	useCount: number;
 	lastUsedAt: number;
-}
-
-/** Blended frecency score — higher sorts first. Pure/deterministic given `now`. */
-export function contactFrecencyScore(
-	contact: Pick<RankableContact, 'useCount' | 'lastUsedAt'>,
-	now: number
-): number {
-	const days = Math.max(0, now - contact.lastUsedAt) / DAY_MS;
-	const recency = days < 1 ? 100 : days < 7 ? 70 : days < 30 ? 40 : days < 90 ? 20 : 10;
-	// Frequency is bounded so a runaway useCount can't drown out recency.
-	const frequency = Math.min(50, Math.max(0, contact.useCount) * 5);
-	return recency + frequency;
 }
 
 type MatchKind = 'emailPrefix' | 'nameStart' | 'nameContains' | 'none';
@@ -137,47 +128,51 @@ export const autocomplete = publicQuery({
 /**
  * Sender-facing state for the thread reader's VIP star + first-time-sender
  * screener affordance: whether this address is flagged VIP, is a known contact
- * (in the address book), has been waved through the screener, and whether the
- * owner has the screener switched on at all. Drives whether the reader shows an
- * "Accept sender" button. Soft-auth: anonymous / non-owner reads return a safe
- * empty state (no flags, screener off) so nothing renders.
+ * (in the address book), has been waved through the screener, whether the
+ * screener applies to this mailbox at all, and `canAccept` — the sender is
+ * screened out today, so "Accept sender" would release their mail.
+ *
+ * The screener answer is the Reply Queue gate's own (`resolveScreenerEnabled`
+ * + `isScreenedOut`), so the reader never offers "Accept" for mail the gate did
+ * not hold back: a shared mailbox is always off, and a personal mailbox follows
+ * its owner's preference. That preference is shown to the owner only; any other
+ * caller (an org admin acting on the mailbox) reads the screener as off, so the
+ * owner's setting never leaks to a delegate. Soft-auth: anonymous / no-access
+ * reads return a safe empty state (no flags, screener off) so nothing renders.
  */
 // public: soft-auth — returns empty state for anonymous; mailbox access is still enforced in-handler
 export const senderState = publicQuery({
 	args: { mailboxId: v.id('mailboxes'), email: v.string() },
 	handler: async (ctx, args) => {
-		const empty = {
-			isVip: false,
-			isKnown: false,
-			isScreenerAccepted: false,
-			isScreenerEnabled: false,
-		};
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
-		if (!owned.ok) return empty;
-		const email = normalizeEmail(args.email);
-		// The screener toggle is a per-user preference, so read it for the CALLER
-		// (`owned.userId`), not the mailbox owner (`owned.mailbox.userId`): on a
-		// shared mailbox a delegate previously saw the owner's screener state
-		// instead of their own. On a personal mailbox the two ids coincide.
-		const settings = await ctx.db
-			.query('mailUserSettings')
-			.withIndex('by_user', (q) => q.eq('userId', owned.userId))
-			.first();
-		const isScreenerEnabled = settings?.isSenderScreenerOn === true;
+		if (!owned.ok) {
+			return {
+				isVip: false,
+				isKnown: false,
+				isScreenerAccepted: false,
+				isScreenerEnabled: false,
+				canAccept: false,
+			};
+		}
+		const isScreenerEnabled =
+			owned.userId === owned.mailbox.userId
+				? await resolveScreenerEnabled(ctx, owned.mailbox)
+				: false;
 		const contact = await ctx.db
 			.query('mailContacts')
 			.withIndex('by_mailbox_and_email', (q) =>
-				q.eq('mailboxId', args.mailboxId).eq('email', email)
+				q.eq('mailboxId', args.mailboxId).eq('email', normalizeEmail(args.email))
 			)
 			.first();
-		if (!contact) return { ...empty, isScreenerEnabled };
+		const sender = senderSignalFromContact(contact, Date.now());
 		return {
-			isVip: contact.isVip === true,
-			// A row with real correspondence history is a "known" contact; a bare
-			// VIP/accept row (useCount 0) still counts so its VIP star reads right.
-			isKnown: true,
-			isScreenerAccepted: contact.isScreenerAccepted === true,
+			isVip: sender.isVip === true,
+			// Any row is a "known" contact: a bare VIP/accept row (useCount 0)
+			// counts too, so its VIP star reads right.
+			isKnown: sender.isKnownContact === true,
+			isScreenerAccepted: sender.accepted === true,
 			isScreenerEnabled,
+			canAccept: isScreenedOut({ screenerEnabled: isScreenerEnabled, sender }),
 		};
 	},
 });

@@ -36,7 +36,7 @@ import {
 	mailSwipeActionValidator,
 	mailShortcutPresetValidator,
 	mailShortcutOverridesValidator,
-} from '../lib/mailSettingsValidators';
+} from '../lib/validators/mailSettings';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 
 // public: soft-auth — returns null for anonymous; the row is self-scoped to

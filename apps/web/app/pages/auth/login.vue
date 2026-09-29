@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { isValidEmail } from '@owlat/shared';
 import { requiresTwoFactor } from '~/utils/accountTwoFactor';
+import { useSignInValidation } from '~/composables/useSignInValidation';
 import { useTwoFactorChallenge } from '~/composables/useTwoFactorChallenge';
 import { registrationOpenFor, workspaceDisplayName } from '~/utils/instanceEntry';
 
@@ -42,11 +42,7 @@ const email = ref(prefilledEmail);
 const password = ref('');
 const { isLoading, errorMessage, submit } = useAuthForm();
 
-// Field-level validation errors
-const errors = reactive({
-	email: '',
-	password: '',
-});
+const { errors, validateEmail, validatePassword, validate } = useSignInValidation(email, password);
 
 /**
  * Sign-in is two stages once an account has TOTP enabled. BetterAuth answers the
@@ -54,68 +50,31 @@ const errors = reactive({
  * on that response would land on a dashboard the user is not signed in to. The
  * challenge is a stage of THIS form rather than its own route: the desktop
  * connect handshake needs the same stage with nowhere to navigate to, and a
- * route would put the half-finished sign-in in the browser's history. The state
- * is shared with that page (`pages/desktop/connect.vue`); only the markup here
- * is this page's own.
+ * route would put the half-finished sign-in in the browser's history. State and
+ * markup are shared with that page (`pages/desktop/connect.vue`) through
+ * `useTwoFactorChallenge` and `AuthTwoFactorStageForm`.
  */
+const twoFactor = useTwoFactorChallenge({
+	onSwitch: () => {
+		errorMessage.value = '';
+	},
+	onReset: () => {
+		password.value = '';
+		errorMessage.value = '';
+	},
+});
 const {
 	stage,
 	code: twoFactorCode,
-	useBackupCode,
 	method: twoFactorMethod,
 	canSubmit: canSubmitCode,
-	onCodeInput,
 	challenge,
-	switchMethod,
 	reset: resetChallenge,
-} = useTwoFactorChallenge();
-
-function switchCodeMethod() {
-	switchMethod();
-	errorMessage.value = '';
-}
-
-function backToCredentials() {
-	resetChallenge();
-	password.value = '';
-	errorMessage.value = '';
-}
-
-// Validate email
-function validateEmail(): boolean {
-	if (!email.value) {
-		errors.email = t('auth.validation.emailRequired');
-		return false;
-	}
-	if (!isValidEmail(email.value)) {
-		errors.email = t('auth.validation.emailInvalid');
-		return false;
-	}
-	errors.email = '';
-	return true;
-}
-
-// Signing in only needs a password to check. Its length is the server's call:
-// an account created under an older minimum must still be able to sign in.
-function validatePassword(): boolean {
-	if (!password.value) {
-		errors.password = t('auth.validation.passwordRequired');
-		return false;
-	}
-	errors.password = '';
-	return true;
-}
-
-// Validate all fields
-function validateForm(): boolean {
-	const emailValid = validateEmail();
-	const passwordValid = validatePassword();
-	return emailValid && passwordValid;
-}
+} = twoFactor;
 
 // Handle form submission
 async function handleSubmit() {
-	if (!validateForm()) {
+	if (!validate()) {
 		return;
 	}
 
@@ -170,9 +129,9 @@ async function handleTwoFactorSubmit() {
 			{{ t('auth.login.postSetupBanner') }}
 		</div>
 
-		<!-- Error Message -->
+		<!-- Error Message (the code stage shows its own, on the code field) -->
 		<div
-			v-if="errorMessage"
+			v-if="errorMessage && stage === 'credentials'"
 			class="mb-6 p-4 bg-error-subtle border border-error/30 rounded-lg text-error text-sm"
 		>
 			{{ errorMessage }}
@@ -220,46 +179,14 @@ async function handleTwoFactorSubmit() {
 			holding the session behind a short-lived challenge cookie, so this form
 			replaces the first rather than sitting beside it.
 		-->
-		<form v-else class="space-y-5" @submit.prevent="handleTwoFactorSubmit">
-			<div>
-				<h2 class="font-medium">{{ t('auth.login.twoFactor.title') }}</h2>
-				<p class="text-sm text-text-secondary mt-1">
-					{{
-						useBackupCode ? t('auth.login.twoFactor.backupBody') : t('auth.login.twoFactor.body')
-					}}
-				</p>
-			</div>
-
-			<UiInput
-				id="two-factor-code"
-				:model-value="twoFactorCode"
-				:autocomplete="useBackupCode ? 'off' : 'one-time-code'"
-				:label="
-					useBackupCode
-						? t('auth.login.twoFactor.backupLabel')
-						: t('auth.login.twoFactor.codeLabel')
-				"
-				autofocus
-				@update:model-value="(value: string | number) => onCodeInput(String(value))"
-			/>
-
-			<UiButton type="submit" size="lg" full-width :loading="isLoading" :disabled="!canSubmitCode">
-				{{ isLoading ? t('auth.login.twoFactor.submitting') : t('auth.login.twoFactor.submit') }}
-			</UiButton>
-
-			<div class="flex items-center justify-between text-sm">
-				<button type="button" class="link" @click="switchCodeMethod">
-					{{
-						useBackupCode
-							? t('auth.login.twoFactor.useAuthenticator')
-							: t('auth.login.twoFactor.useBackupCode')
-					}}
-				</button>
-				<button type="button" class="link" @click="backToCredentials">
-					{{ t('auth.login.twoFactor.cancel') }}
-				</button>
-			</div>
-		</form>
+		<AuthTwoFactorStageForm
+			v-else
+			:challenge="twoFactor"
+			:is-loading="isLoading"
+			:error-message="errorMessage"
+			@submit="handleTwoFactorSubmit"
+			@cancel="resetChallenge"
+		/>
 
 		<template #footer>
 			<p v-if="canRegister">

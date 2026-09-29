@@ -24,7 +24,9 @@ import {
 	throwInvalidState,
 	throwAlreadyExists,
 } from '../_utils/errors';
-import { canonicalAddress, provisionMailbox, isDomainVerified } from './mailbox/identity';
+import { provisionMailbox, isDomainVerified } from './mailbox/identity';
+import { findAddressClaim } from './mailbox/addressResolution';
+import { extractEmail } from '../lib/emailAddress';
 
 // Upper bound on the reservations swept per domain in one verify/remove pass.
 // A brand-new instance carries at most a handful of pre-verification
@@ -46,7 +48,8 @@ const LOCALPART_PATTERN = /^[a-z0-9._-]+$/;
  *     pre-verification reservation on a brand-new instance). The reservation is
  *     left in place so it can materialize once the domain verifies; the invitee
  *     sees "reserved, activates when your domain verifies" progress meanwhile.
- *   - `'address_taken'` — a live mailbox already holds the reserved address. The
+ *   - `'address_taken'` — a mailbox already claims the reserved address
+ *     (`findAddressClaim` in `mailbox/addressResolution.ts`). The
  *     reservation is left in place; the caller decides whether to clear it.
  *
  * On success it provisions the mailbox at the reserved address, deletes the
@@ -69,11 +72,7 @@ export async function claimReservedMailbox(
 		return { ok: false as const, reason: 'domain_unverified' as const };
 	}
 
-	const liveCollision = await ctx.db
-		.query('mailboxes')
-		.withIndex('by_address', (q) => q.eq('address', pending.address))
-		.first();
-	if (liveCollision) {
+	if (await findAddressClaim(ctx, pending.address)) {
 		return { ok: false as const, reason: 'address_taken' as const };
 	}
 
@@ -218,13 +217,9 @@ export const setForInvitation = authedMutation({
 			);
 		}
 
-		const address = canonicalAddress(`${localpart}@${domain}`);
+		const address = extractEmail(`${localpart}@${domain}`);
 
-		const liveCollision = await ctx.db
-			.query('mailboxes')
-			.withIndex('by_address', (q) => q.eq('address', address))
-			.first();
-		if (liveCollision) {
+		if (await findAddressClaim(ctx, address)) {
 			throwAlreadyExists(`Mailbox ${address} already exists`);
 		}
 
@@ -334,7 +329,7 @@ export const claimForInvitation = authedMutation({
 					address: pending.address,
 				};
 			}
-			// A live mailbox already holds the reserved address — the reservation is
+			// Another mailbox already claims the reserved address — the reservation is
 			// stale, so clear it (the invitee will land in the fresh-start flow).
 			await ctx.db.delete(pending._id);
 			return { created: false as const, error: 'address_taken' as const };

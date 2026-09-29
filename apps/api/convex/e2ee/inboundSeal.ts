@@ -21,6 +21,7 @@
 import { v } from 'convex/values';
 import { classifyRawSecureMessage, isEncryptedClass } from '@owlat/shared/secureMessage';
 import { extractFirstPartByType } from '@owlat/shared/mailMime';
+import { findRawHeader, parseRawHeaderFields } from '@owlat/mail-canon/rawMessage';
 
 /**
  * The cipher-suite label recorded for an opened sealed message. PGP/MIME (RFC
@@ -123,7 +124,7 @@ export function parseInnerMessage(innerMime: string): RestoredMessage {
 		return innerMime.length > 0 ? { text: innerMime } : {};
 	}
 
-	const subject = extractHeader(headerBlock, 'subject');
+	const subject = findRawHeader(parseRawHeaderFields(headerBlock), 'subject');
 	const textPart = extractFirstPartByType(innerMime, 'text/plain');
 	const htmlPart = extractFirstPartByType(innerMime, 'text/html');
 
@@ -159,27 +160,6 @@ export function usableRestoredBodies(r: {
  */
 function hasMimeHeaderBlock(headerBlock: string): boolean {
 	return /^(?:content-type|mime-version):/im.test(headerBlock);
-}
-
-/** Extract a single (unfolded) header value by lower-cased name from a header block. */
-function extractHeader(headerBlock: string, name: string): string | undefined {
-	const lines = headerBlock.split('\n');
-	for (let i = 0; i < lines.length; i++) {
-		const line = lines[i];
-		if (line === undefined) continue;
-		const colon = line.indexOf(':');
-		if (colon < 0) continue;
-		if (line.slice(0, colon).trim().toLowerCase() !== name) continue;
-		let value = line.slice(colon + 1);
-		// Unfold continuation lines (leading whitespace).
-		for (let j = i + 1; j < lines.length; j++) {
-			const next = lines[j];
-			if (next !== undefined && /^[ \t]/.test(next)) value += ` ${next.trim()}`;
-			else break;
-		}
-		return value.trim();
-	}
-	return undefined;
 }
 
 /** Decode part bytes as UTF-8 (best-effort; never throws on malformed input). */

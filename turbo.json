@@ -7,7 +7,12 @@
 	// remote cache shared with CI. Only configs an actual turbo task reads belong
 	// here: oxfmtrc.json, knip.jsonc and plugins.config.ts are consumed by root
 	// `lint:*` scripts and the uncached `//#plugins:check`, never by a cached task.
-	"globalDependencies": ["tsconfig.base.json", "oxlintrc.json", "vitest.timeouts.ts"],
+	"globalDependencies": [
+		"tsconfig.base.json",
+		"oxlintrc.json",
+		"vitest.timeouts.ts",
+		"vitest.shared.ts"
+	],
 	"tasks": {
 		"//#plugins:check": {
 			"cache": false

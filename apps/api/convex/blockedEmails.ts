@@ -13,9 +13,9 @@ import { getOrThrow, throwInvalidInput, throwAlreadyExists } from './_utils/erro
 import * as sm from './delivery/suppressionMirrorScheduler';
 import { recordAuditLog } from './lib/auditLog';
 import { restoreSunsetSuppression } from './contacts/sunsetRestore';
-import { bounceTypeValidator } from './lib/convexValidators';
 import {
 	blockedEmailReasonValidator,
+	bounceTypeValidator,
 	manualOrEventBlockReasonValidator,
 } from './lib/literalValidators';
 
@@ -24,7 +24,6 @@ import {
 	countBlockedByReason,
 	findBlockedByEmail,
 } from './blockedEmails/lookup';
-export { findBlockedByEmail } from './blockedEmails/lookup';
 
 // Derive the polymorphic block `sourceType` from whichever source-send id was
 // supplied (emailSend vs transactionalSend), or undefined for a manual block.

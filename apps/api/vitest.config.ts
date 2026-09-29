@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
+import { packageCoverage } from '../../vitest.shared';
 import { scheduledFailureSeam } from './convex/__tests__/helpers/scheduledFailureSeam.ts';
 
 const integrationTestPattern = 'convex/**/__tests__/**/*.integration.test.ts';
@@ -57,12 +58,9 @@ export default defineConfig({
 		// `t.finishAllScheduledFunctions(...)` before returning, rather than be
 		// excused here. `convex/__tests__/unhandledErrorGate.test.ts` checks that
 		// a leaked rejection still fails the run.
-		coverage: {
-			provider: 'v8',
-			reporter: ['text', 'json-summary', 'html'],
-			reportsDirectory: './coverage',
+		coverage: packageCoverage({
 			include: ['convex/**/*.ts'],
-			exclude: ['convex/_generated/**', 'convex/**/__tests__/**', 'convex/betterAuth/**'],
+			exclude: ['convex/_generated/**', 'convex/betterAuth/**'],
 			// Ratchet baseline: the suite covers ~69% of lines (3300+ tests). Set a
 			// few points below actual so the threshold guards real regressions
 			// without flaking on run-to-run async/retry variance. Raise as coverage
@@ -72,10 +70,8 @@ export default defineConfig({
 			// --coverage.thresholds.lines=0 (test.yml); the merged report enforces
 			// it. If you add another threshold key here (functions, branches, …),
 			// the shard jobs will fail spuriously unless it's zeroed there too.
-			thresholds: {
-				lines: 65,
-			},
-		},
+			lines: 65,
+		}),
 	},
 	resolve: {
 		alias: {

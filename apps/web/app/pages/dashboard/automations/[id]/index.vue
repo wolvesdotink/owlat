@@ -44,7 +44,8 @@ const { data: stepAnalytics } = useConvexQuery(api.automations.analytics.getStep
 // Pagination state for contacts list
 const pageSize = 10;
 const runsOffset = ref(0);
-const selectedRunStatus = ref<'all' | 'running' | 'completed' | 'cancelled'>('all');
+type RunStatusFilter = 'all' | 'running' | 'completed' | 'cancelled';
+const selectedRunStatus = ref<RunStatusFilter>('all');
 
 // Fetch automation runs (contacts in automation)
 const { data: runs, isLoading: runsLoading } = useConvexQuery(
@@ -498,21 +499,13 @@ const handleEdit = () => {
 						{{ t('dashboard.automations.detail.index.runs.title') }}
 					</h3>
 					<!-- Status filter -->
-					<div class="flex items-center gap-1 p-1 bg-bg-surface rounded-lg">
-						<button
-							v-for="filter in runStatusFilters"
-							:key="filter.value"
-							:class="[
-								'px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
-								selectedRunStatus === filter.value
-									? 'bg-bg-elevated text-text-primary shadow-sm'
-									: 'text-text-secondary hover:text-text-primary',
-							]"
-							@click="selectedRunStatus = filter.value"
-						>
-							{{ filter.label }}
-						</button>
-					</div>
+					<UiSegmentedControl
+						:model-value="selectedRunStatus"
+						:options="runStatusFilters"
+						size="sm"
+						:aria-label="t('dashboard.automations.detail.index.runs.statusFilterLabel')"
+						@update:model-value="selectedRunStatus = $event as RunStatusFilter"
+					/>
 				</div>
 
 				<!-- Loading -->

@@ -3,8 +3,8 @@ import {
 	EmailBuilder,
 	UnsavedChangesDialog,
 	useFocusMode,
+	parseStoredBlocks,
 	type HistoryState,
-	type Variable,
 } from '@owlat/email-builder';
 import { api } from '@owlat/api';
 
@@ -51,38 +51,8 @@ const isChangingPublication = computed(() => isPublishing.value || isUnpublishin
 // Organization email theme (incl. baseWidth) from the shared source.
 const { emailTheme } = useEmailTheme();
 
-// Fetch contact properties for personalization variables
-const { data: contactProperties } = useOrganizationQuery(
-	api.contacts.properties.listByOrganization
-);
-
-// Built-in contact variables (always available)
-const builtInVariables = computed<Variable[]>(() => [
-	{ key: 'email', label: t('common.email'), isBuiltIn: true },
-	{
-		key: 'firstName',
-		label: t('dashboard.send.emails.detail.edit.variables.firstName'),
-		isBuiltIn: true,
-	},
-	{
-		key: 'lastName',
-		label: t('dashboard.send.emails.detail.edit.variables.lastName'),
-		isBuiltIn: true,
-	},
-]);
-
-// Combine built-in and custom contact properties
-const variables = computed<Variable[]>(() => {
-	const customVars: Variable[] = (contactProperties.value || [])
-		.filter((prop) => !['first_name', 'last_name'].includes(prop.key))
-		.map((prop) => ({
-			key: prop.key,
-			label: prop.label,
-			isBuiltIn: false,
-		}));
-
-	return [...builtInVariables.value, ...customVars];
-});
+// Personalization variables: built-in contact fields plus custom properties.
+const variables = usePersonalizationVariables();
 
 // The author's manual text/plain body ('' = ship the generated one). Edited in
 // the builder's Text view; dirty-tracked and saved with the rest of the email.
@@ -122,14 +92,7 @@ const {
 		ctx.name.value = t.name;
 		ctx.subject.value = t.subject;
 		plainTextOverride.value = t.plainTextOverride ?? '';
-		try {
-			const parsed = JSON.parse(t.content || '[]');
-			if (Array.isArray(parsed)) {
-				ctx.blocks.value = parsed;
-			}
-		} catch {
-			ctx.blocks.value = [];
-		}
+		ctx.blocks.value = parseStoredBlocks(t.content);
 	},
 	save: async (ctx, base) => {
 		// Everything is read here, before the first await; the payload is built

@@ -20,13 +20,8 @@ import { isFeatureEnabled } from '../lib/featureFlags';
 import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { requireMailboxAccess } from '../mail/permissions';
-import {
-	chatMutation,
-	loadProfileSummary,
-	MAIL_THREAD_DISCUSSION,
-	requireMessageText,
-	type ProfileSummary,
-} from './_helpers';
+import { chatMutation, MAIL_THREAD_DISCUSSION, requireMessageText } from './_helpers';
+import { loadProfileSummary, type ProfileSummary } from '../lib/userProfiles';
 import { insertRoomMessage } from './messageInsert';
 
 /** How many recent messages the panel renders. */

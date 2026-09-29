@@ -10,11 +10,12 @@
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
-import type { Id } from '@owlat/api/dataModel';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxThreadRow, { type PostboxThreadRowMessage } from '../PostboxThreadRow.vue';
 import PostboxRowCore from '../PostboxRowCore.vue';
+import PostboxThreadRowBody from '../PostboxThreadRowBody.vue';
+import { BASE_MESSAGE } from './spoofedSenderFixture';
 
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
@@ -29,17 +30,7 @@ const contextMenuStub = {
 };
 const avatarStub = { props: ['name', 'email', 'size'], template: '<span />' };
 
-const BASE: PostboxThreadRowMessage = {
-	_id: 'msg-1' as Id<'mailMessages'>,
-	fromAddress: 'billing@brightpath-finance.co',
-	fromName: 'Brightpath Finance',
-	subject: 'Urgent: update your payment details',
-	snippet: 'Your account will be suspended unless…',
-	receivedAt: 1_700_000_000_000,
-	flagSeen: false,
-	flagFlagged: false,
-	hasAttachments: false,
-};
+const BASE = BASE_MESSAGE;
 
 function mountRow(msg: Partial<PostboxThreadRowMessage>, trustMarkers = true) {
 	return mount(PostboxThreadRow, {
@@ -56,6 +47,7 @@ function mountRow(msg: Partial<PostboxThreadRowMessage>, trustMarkers = true) {
 			plugins: [createTestI18n()],
 			components: {
 				PostboxRowCore,
+				PostboxThreadRowBody,
 				Icon: iconStub,
 				NuxtLink: nuxtLinkStub,
 				UiContextMenu: contextMenuStub,

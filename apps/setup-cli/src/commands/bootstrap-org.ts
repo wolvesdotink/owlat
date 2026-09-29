@@ -21,7 +21,7 @@ import { intro, outro, text, password as passwordPrompt, isCancel, log } from '@
 import { progressSpinner } from '../lib/progress';
 import pc from 'picocolors';
 import { hashPassword } from '../lib/passwordHash';
-import { backendErrorMessage, loadBackendContext, postJson } from '../lib/backend';
+import { loadBackendContext, postWithSpinner } from '../lib/backend';
 import { loadFlagState } from '../lib/flagState';
 import { isValidEmail } from '../lib/validators';
 import { resolveFlags } from '@owlat/shared/featureFlags';
@@ -105,38 +105,35 @@ export async function bootstrap(
 	// to compiled-in defaults and the selections are silently dropped).
 	const flags = resolveFlags(await loadFlagState(opts.owlatDir));
 
-	s.start(`POST ${ctx.baseUrl}/seed/admin`);
-	let response;
-	try {
-		response = await postJson<{ success?: boolean; userId?: string }>(ctx, {
+	// 201 creates the admin; 409 means one already exists, which is the
+	// idempotent re-run and exits 0 as well.
+	const response = await postWithSpinner(
+		ctx,
+		{
 			path: '/seed/admin',
 			body: { email: input.email, name: input.name, passwordHash, flags },
-		});
-	} catch (e) {
-		s.stop(pc.red(`Failed: ${(e as Error).message}`));
-		log.error('Is the docker stack up? Try `docker compose up -d` first.');
-		return 1;
-	}
+		},
+		{
+			okStatuses: [201, 409],
+			stopMessage: (status) =>
+				status === 201
+					? pc.green('Admin created')
+					: pc.yellow('Admin already exists — nothing to do.'),
+		}
+	);
+	if (!response) return 1;
 
 	if (response.status === 201) {
-		s.stop(pc.green('Admin created'));
 		outro(
-			`${pc.green('Bootstrap complete!')} Sign in at http://localhost:3000 as ${pc.cyan(input.email)}.`
+			`${pc.green('Bootstrap complete!')} Sign in at ${ctx.siteUrl} as ${pc.cyan(input.email)}.`
 		);
 		return 0;
 	}
 
-	if (response.status === 409) {
-		s.stop(pc.yellow('Admin already exists — nothing to do.'));
-		outro(
-			`${pc.dim('Tip:')} run ${pc.cyan('bunx owlat-setup reset')} to wipe the instance back to blank.`
-		);
-		return 0;
-	}
-
-	const message = backendErrorMessage(response.body, `Unexpected status ${response.status}`);
-	s.stop(pc.red(`Failed: ${message}`));
-	return 1;
+	outro(
+		`${pc.dim('Tip:')} run ${pc.cyan('bunx owlat-setup reset')} to wipe the instance back to blank.`
+	);
+	return 0;
 }
 
 function parseArgs(args: string[]): BootstrapInput {

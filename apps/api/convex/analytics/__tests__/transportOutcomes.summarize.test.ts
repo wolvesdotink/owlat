@@ -19,9 +19,9 @@ import {
 	recordTransportOutcomeForCell,
 	summarizeTransportOutcomeArms,
 	summarizeTransportOutcomes,
-	TRANSPORT_OUTCOME_SHARD_COUNT,
 	type TransportOutcomeBucket,
 } from '../transportOutcomes';
+import { CELL_ARM_BUCKET_SHARD_COUNT } from '../cellArmBuckets';
 import {
 	DEFERRAL_TELEMETRY_MIN_OBSERVED_MS,
 	DEFERRAL_TELEMETRY_SPAN_MS,
@@ -356,7 +356,7 @@ describe('summarizeTransportOutcomeBuckets (pure)', () => {
 describe('summarizeTransportOutcomes (reader-typed, over real rows)', () => {
 	it('sums every shard the writer spread events across', async () => {
 		const t = convexTest(schema, modules);
-		const events = TRANSPORT_OUTCOME_SHARD_COUNT * 12;
+		const events = CELL_ARM_BUCKET_SHARD_COUNT * 12;
 		await t.run(async (ctx) => {
 			for (let i = 0; i < events; i += 1) {
 				await recordTransportOutcomeForCell(ctx, {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { docsSendProviders } from '../../utils/sendProviderDiagrams'
 
 const visible = ref(false)
 onMounted(() => {
@@ -33,17 +34,9 @@ const backendLayer = {
   ],
 }
 
-const primaryEmail = {
-  name: 'Owlat MTA',
-  detail: 'Default — Direct SMTP delivery',
-  icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
-  features: ['Intelligence pipeline', 'IP warming', 'Bounce processing'],
-}
-
-const altProviders = [
-  { name: 'AWS SES', detail: 'Alternative', icon: 'M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z' },
-  { name: 'Resend', detail: 'Alternative', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
-]
+const providers = docsSendProviders()
+const ownDetail = 'Default — Direct SMTP delivery'
+const ownFeatures = ['Intelligence pipeline', 'IP warming', 'Bounce processing']
 
 const webhooks = { name: 'Webhooks', detail: 'Events', icon: 'M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1' }
 
@@ -144,21 +137,21 @@ const analytics = { name: 'PostHog', detail: 'Analytics & Errors', lines: ['Clie
       <div class="arch-primary-provider" :style="{ '--item-stagger': 9 }">
         <div class="arch-primary-provider-header">
           <div class="arch-item-icon arch-item-icon--primary">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path :d="primaryEmail.icon" /></svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path :d="providers.own.icon" /></svg>
           </div>
           <div class="arch-primary-provider-text">
-            <span class="arch-item-name">{{ primaryEmail.name }}</span>
-            <span class="arch-item-detail">{{ primaryEmail.detail }}</span>
+            <span class="arch-item-name">{{ providers.own.name }}</span>
+            <span class="arch-item-detail">{{ ownDetail }}</span>
           </div>
         </div>
         <div class="arch-primary-provider-features">
-          <span v-for="feat in primaryEmail.features" :key="feat" class="arch-feature-tag">{{ feat }}</span>
+          <span v-for="feat in ownFeatures" :key="feat" class="arch-feature-tag">{{ feat }}</span>
         </div>
         <div class="arch-alt-providers">
           <span class="arch-alt-label">or</span>
           <div
-            v-for="alt in altProviders"
-            :key="alt.name"
+            v-for="alt in providers.alternatives"
+            :key="alt.kind"
             class="arch-alt-provider"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path :d="alt.icon" /></svg>
@@ -544,6 +537,7 @@ const analytics = { name: 'PostHog', detail: 'Analytics & Errors', lines: ['Clie
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--color-border-subtle);

@@ -1,16 +1,16 @@
-import { ref, computed, type Ref } from 'vue';
+import { ref, computed, nextTick, type Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { emailRegex } from '@owlat/shared';
+import type { SenderPickerHandle } from '~/utils/campaignSenderPicker';
 import type { useCampaignABTest } from './useCampaignABTest';
 import { useCampaignActions } from './useCampaignActions';
+import { useCampaignAudience } from './useCampaignAudience';
 import { useEditorDirtyTracking } from './useEditorDirtyTracking';
 
 type ABTest = ReturnType<typeof useCampaignABTest>;
 
 export interface CampaignFormErrors {
 	campaignName?: string;
-	fromEmail?: string;
 	audience?: string;
 	content?: string;
 	subject?: string;
@@ -21,11 +21,16 @@ export interface CampaignFormErrors {
  * Composable for managing the campaign edit form.
  *
  * Delegates action handlers to useCampaignActions and
- * test-email sending to the CampaignsTestEmailModal component.
+ * test-email sending to the CampaignsTestEmailModal component. The recipients
+ * come from useCampaignAudience and the From from the wizard's sender picker,
+ * whose `validate()` guards every save (`senderPicker` is its template ref).
  */
-export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest) {
+export function useCampaignForm(
+	campaignId: Ref<Id<'campaigns'>>,
+	abTest: ABTest,
+	senderPicker: Ref<SenderPickerHandle | null>
+) {
 	const { t, locale } = useI18n();
-	const { isPending: authPending, isAuthenticated } = useAuth();
 
 	// ─── Data Fetching ──────────────────────────────────────────────────
 
@@ -37,23 +42,12 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 		campaignId: campaignId.value,
 	}));
 
-	const { results: topics } = useTopicsList();
+	const campaignAudience = useCampaignAudience();
+	const { audienceType, selectedTopicId, selectedSegmentId, audience } = campaignAudience;
 
-	const { results: segments } = usePaginatedQuery(
-		api.segments.list,
-		() => {
-			if (authPending.value || !isAuthenticated.value) return 'skip';
-			return {};
-		},
-		{ initialNumItems: 100 }
-	);
-
-	const { results: emailTemplates } = usePaginatedQuery(
+	const { results: emailTemplates } = useOrganizationPaginatedQuery(
 		api.emailTemplates.emails.list,
-		() => {
-			if (authPending.value || !isAuthenticated.value) return 'skip';
-			return { type: 'marketing' as const };
-		},
+		{ type: 'marketing' as const },
 		{ initialNumItems: 100 }
 	);
 
@@ -67,25 +61,9 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 	const fromName = ref('');
 	const fromEmail = ref('');
 	const replyTo = ref('');
-	const audienceType = ref<'topic' | 'segment'>('topic');
-	const selectedTopicId = ref<Id<'topics'> | null>(null);
-	const selectedSegmentId = ref<Id<'segments'> | null>(null);
 	const selectedTemplateId = ref<Id<'emailTemplates'> | null>(null);
 	const campaignSubject = ref('');
 	const archiveEnabled = ref(flags.value['campaigns.archive'] === true);
-
-	// One discriminated Audience value derived from the radio + dropdown state —
-	// the single source of truth for the count query and the save mutation
-	// (ADR-0033). Null until a complete topic/segment selection exists.
-	const audience = computed(() => {
-		if (audienceType.value === 'topic' && selectedTopicId.value) {
-			return { kind: 'topic' as const, topicId: selectedTopicId.value };
-		}
-		if (audienceType.value === 'segment' && selectedSegmentId.value) {
-			return { kind: 'segment' as const, segmentId: selectedSegmentId.value };
-		}
-		return null;
-	});
 
 	const isFormInitialized = ref(false);
 	const errors = ref<CampaignFormErrors>({});
@@ -111,11 +89,10 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 			errors.value.campaignName = t('shared.useCampaignForm.errors.campaignNameRequired');
 		}
 
-		if (!fromEmail.value.trim()) {
-			errors.value.fromEmail = t('shared.useCampaignForm.errors.fromEmailRequired');
-		} else if (!emailRegex.test(fromEmail.value.trim())) {
-			errors.value.fromEmail = t('shared.useCampaignForm.errors.fromEmailInvalid');
-		}
+		// The sender picker shows its own error and mirrors the server's
+		// curated-sender gate, so an address the save would be refused for never
+		// reaches `updateBasics`.
+		const senderProblem = senderPicker.value?.validate() ?? null;
 
 		if (audienceType.value === 'topic' && !selectedTopicId.value) {
 			errors.value.audience = t('shared.useCampaignForm.errors.topicRequired');
@@ -133,7 +110,7 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 			errors.value.subject = t('shared.useCampaignForm.errors.subjectRequired');
 		}
 
-		return Object.keys(errors.value).length === 0;
+		return senderProblem === null && Object.keys(errors.value).length === 0;
 	};
 
 	// ─── Field Save (used by actions) ───────────────────────────────────
@@ -181,26 +158,6 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 	const isDraft = computed(() => campaignData.value?.status === 'draft');
 	const canEdit = computed(() => isDraft.value || isScheduled.value);
 
-	const audienceDisplayText = computed(() => {
-		if (audienceType.value === 'topic' && selectedTopicId.value) {
-			const list = topics.value?.find(
-				(l: { _id: string; name: string }) => l._id === selectedTopicId.value
-			);
-			return list
-				? t('shared.useCampaignForm.audience.topic', { name: list.name })
-				: t('shared.useCampaignForm.audience.topicFallback');
-		}
-		if (audienceType.value === 'segment' && selectedSegmentId.value) {
-			const segment = segments.value?.find(
-				(s: { _id: string }) => s._id === selectedSegmentId.value
-			);
-			return segment
-				? t('shared.useCampaignForm.audience.segment', { name: segment.name })
-				: t('shared.useCampaignForm.audience.segmentFallback');
-		}
-		return t('shared.useCampaignForm.audience.notConfigured');
-	});
-
 	const templateLanguages = computed(() => {
 		if (!selectedTemplate.value) return [];
 		const defaultLang = selectedTemplate.value.defaultLanguage ?? 'en';
@@ -213,13 +170,6 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 		}
 		return langs;
 	});
-
-	// ─── Audience Count ─────────────────────────────────────────────────
-
-	const { data: audienceCount } = useOrganizationQuery(
-		api.campaigns.audienceResolution.countRecipients,
-		() => ({ audience: audience.value ?? undefined })
-	);
 
 	// ─── Unsaved-changes Guard ──────────────────────────────────────────
 
@@ -263,7 +213,7 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 	// the form dirty on any subsequent field edit. The shared tracker defers its
 	// "initialized" flag by a tick so the initial writes don't count as edits
 	// (no false-positive "unsaved changes" on load).
-	const { markClean } = useEditorDirtyTracking({
+	const { markClean, hasChanges } = useEditorDirtyTracking({
 		source: campaignData,
 		initialize: (campaign) => {
 			if (isFormInitialized.value) return;
@@ -271,11 +221,7 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 			fromName.value = campaign.fromName ?? '';
 			fromEmail.value = campaign.fromEmail ?? '';
 			replyTo.value = campaign.replyTo ?? '';
-			audienceType.value = campaign.audience?.kind ?? 'topic';
-			selectedTopicId.value =
-				campaign.audience?.kind === 'topic' ? campaign.audience.topicId : null;
-			selectedSegmentId.value =
-				campaign.audience?.kind === 'segment' ? campaign.audience.segmentId : null;
+			campaignAudience.hydrate(campaign.audience);
 			selectedTemplateId.value = campaign.emailTemplateId ?? null;
 			campaignSubject.value = campaign.subject ?? campaign.emailTemplate?.subject ?? '';
 			archiveEnabled.value = campaign.archiveEnabled ?? flags.value['campaigns.archive'] === true;
@@ -310,6 +256,16 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 		onDirtyChange: setHasChanges,
 	});
 	markCleanForm = markClean;
+
+	// The sender picker settles the loaded From onto its curated row once, and
+	// may write that sender's current name and address (or the default sender
+	// when the saved one is gone). That write is the picker's, not the user's:
+	// on a form nobody has touched it must not arm the leave guard. The dirty
+	// flag is read before the write's watchers run, then cleared after them.
+	const onSenderPreselected = () => {
+		if (hasChanges.value) return;
+		void nextTick(() => markClean());
+	};
 
 	// ─── Helpers ────────────────────────────────────────────────────────
 
@@ -368,10 +324,10 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 		campaignData,
 		campaignLoading,
 		campaignError,
-		topics,
-		segments,
 		emailTemplates,
-		audienceCount,
+		/** Recipients: picker models, list subscriptions, derived `audience`, count. */
+		campaignAudience,
+		audienceCount: campaignAudience.audienceCount,
 		/** The resolved audience selector, or `null` until one is chosen. */
 		audience,
 
@@ -380,9 +336,6 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 		fromName,
 		fromEmail,
 		replyTo,
-		audienceType,
-		selectedTopicId,
-		selectedSegmentId,
 		selectedTemplateId,
 		campaignSubject,
 		archiveEnabled,
@@ -396,7 +349,6 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 		isScheduled,
 		isDraft,
 		canEdit,
-		audienceDisplayText,
 		templateLanguages,
 
 		// Errors & loading
@@ -410,6 +362,7 @@ export function useCampaignForm(campaignId: Ref<Id<'campaigns'>>, abTest: ABTest
 		confirmDiscard,
 		confirmSave,
 		cancelNavigation,
+		onSenderPreselected,
 
 		// Actions
 		handleSave: actions.handleSave,

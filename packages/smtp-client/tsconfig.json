@@ -3,9 +3,6 @@
 	"compilerOptions": {
 		"importHelpers": true,
 		"types": ["node"],
-		"paths": {
-			"@/*": ["./src/*"]
-		},
 		"lib": ["ESNext"],
 		"declaration": true,
 		"declarationMap": true

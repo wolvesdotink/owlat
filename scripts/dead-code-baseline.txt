@@ -1,13 +1,10 @@
 dep:apps/code-worker/package.json:execa
 dep:apps/desktop/package.json:@tauri-apps/plugin-window-state
-dep:apps/setup-cli/package.json:yaml
 dep:package.json:nuxt
 devdep:apps/docs/package.json:@vue/server-renderer
 devdep:apps/web/package.json:@faker-js/faker
 devdep:apps/web/package.json:autoprefixer
 devdep:apps/web/package.json:postcss
-export:apps/imap/src/commands/helpers/auth.ts:assertAuth
-export:apps/imap/src/commands/helpers/auth.ts:assertSelected
 export:apps/mta/src/bounce/pipeline.ts:PhaseOutcome
 export:apps/mta/src/bounce/types.ts:InboundAttachmentMeta
 export:apps/mta/src/dispatch/pipeline.ts:PhaseOutcome
@@ -32,5 +29,4 @@ export:packages/plugin-kit/src/importProvider.ts:PluginImportProviderKind
 export:packages/plugin-kit/src/workerTask.ts:PLUGIN_WORKER_MAX_PENDING_JOBS
 export:packages/sdk-js/test/helpers.ts:mockFetchError
 export:packages/shared/src/setupProgress.ts:SetupStepId
-export:packages/shared/src/types/blocks.ts:UniversalBorder
 export:packages/shared/src/utils/validation.ts:slugRegex

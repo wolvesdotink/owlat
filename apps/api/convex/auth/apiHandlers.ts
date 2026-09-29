@@ -8,7 +8,7 @@
  * rate-limit/CORS headers on the way out.
  */
 import { BodyTooLargeError, readBodyBytes } from '../lib/readBody';
-import { httpAction } from '../_generated/server';
+import { httpAction, type ActionCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { corsHeaders as sharedCorsHeaders } from '../lib/cors';
 import { logError } from '../lib/runtimeLog';
@@ -91,21 +91,14 @@ export function requireScope(
 	});
 }
 
-// Type for the full action context including runAction and storage
-interface ActionContext extends AuthContext {
-	runAction: <T>(action: unknown, args: unknown) => Promise<T>;
-	storage: {
-		store(blob: Blob): Promise<string>;
-		getUrl(storageId: string): Promise<string | null>;
-	};
-}
-
 /**
  * Create an authenticated HTTP action wrapper
- * This is a factory function that wraps an HTTP action with authentication
+ * This is a factory function that wraps an HTTP action with authentication.
+ * The handler receives the real Convex `ActionCtx`, so `ctx.runQuery` /
+ * `ctx.runMutation` check their arguments and infer their return types.
  */
 export function createAuthenticatedHandler(
-	handler: (ctx: ActionContext, request: Request, auth: AuthenticatedContext) => Promise<Response>
+	handler: (ctx: ActionCtx, request: Request, auth: AuthenticatedContext) => Promise<Response>
 ) {
 	return httpAction(async (ctx, request) => {
 		const origin = request.headers.get('Origin');
@@ -140,7 +133,7 @@ export function createAuthenticatedHandler(
 
 		// Call the handler with authenticated context
 		try {
-			const response = await handler(ctx as unknown as ActionContext, capped.request, {
+			const response = await handler(ctx, capped.request, {
 				keyId: authResult.keyId,
 				scopes: authResult.scopes,
 				rateLimit: authResult.rateLimit,

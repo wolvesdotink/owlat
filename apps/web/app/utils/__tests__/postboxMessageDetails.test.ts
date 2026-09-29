@@ -51,10 +51,11 @@ describe('buildMessageDetailRows', () => {
 		expect(t(dkim!.note!)).toBe('no domain recorded for this check');
 	});
 
-	it('highlights a Reply-To on a different domain, and leaves a matching one alone', () => {
+	it('highlights a Reply-To only when ingest recorded a mismatch', () => {
 		const differing = buildMessageDetailRows({
 			fromAddress: 'ceo@acme.com',
 			replyToAddress: 'billing@other-domain.example',
+			senderHeuristics: { isReplyToMismatch: true },
 		});
 		expect(byId(differing, 'replyTo')).toMatchObject({ tone: 'warn' });
 		expect(t(byId(differing, 'replyTo')!.note!)).toBe('different domain from the sender');
@@ -65,6 +66,25 @@ describe('buildMessageDetailRows', () => {
 		});
 		expect(byId(same, 'replyTo')?.tone).toBe('neutral');
 		expect(byId(same, 'replyTo')?.note).toBeUndefined();
+	});
+
+	it('does not re-derive a host comparison: a subdomain From with a parent-domain Reply-To stays neutral', () => {
+		// The persisted rule compares registrable domains, so this pair never sets
+		// the flag, and the trust chip and risk marker stay silent. The panel agrees.
+		const unflagged = buildMessageDetailRows({
+			fromAddress: 'news@mail.example.com',
+			replyToAddress: 'help@example.com',
+		});
+		expect(byId(unflagged, 'replyTo')?.tone).toBe('neutral');
+		expect(byId(unflagged, 'replyTo')?.note).toBeUndefined();
+
+		// A legacy row with other signals but no Reply-To verdict is neutral too.
+		const otherSignals = buildMessageDetailRows({
+			fromAddress: 'ceo@acme.com',
+			replyToAddress: 'billing@other-domain.example',
+			senderHeuristics: { isFirstTimeSender: true },
+		});
+		expect(byId(otherSignals, 'replyTo')?.tone).toBe('neutral');
 	});
 
 	it('labels the Return-Path row as the envelope domain SPF checked', () => {
@@ -148,5 +168,13 @@ describe('domainOf', () => {
 	it('is empty for a value with no address in it', () => {
 		expect(domainOf('undisclosed-recipients')).toBe('');
 		expect(domainOf(undefined)).toBe('');
+	});
+
+	it('ignores an address-shaped RFC 5322 comment in front of the real address', () => {
+		expect(domainOf('(x@a.com) real@evil.com')).toBe('evil.com');
+	});
+
+	it('takes the domain after the last "@" when the quoted local part holds one', () => {
+		expect(domainOf('"a@b"@evil.com')).toBe('evil.com');
 	});
 });
