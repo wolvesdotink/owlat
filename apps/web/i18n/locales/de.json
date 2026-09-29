@@ -4545,6 +4545,7 @@
 				"archivedUndo": "Archiviert",
 				"cancelFollowUpOperation": "Antwort-Erinnerung abbrechen",
 				"capNote": "Es werden die neuesten Nachrichten dieser Ansicht angezeigt.",
+				"dragCount": "{count} Nachrichten",
 				"emptyDefaultTitle": "Keine Nachrichten",
 				"emptyFilteredMoreHint": "Dieser Filter umfasst die bisher geladenen Nachrichten — laden Sie weitere, um weiterzusuchen.",
 				"emptyFilteredTitle": "Alles erledigt",
@@ -4811,7 +4812,9 @@
 				"renameLabel": "Label umbenennen",
 				"nameAriaLabel": "Name des Labels",
 				"renameAriaLabel": "Label {name} umbenennen",
-				"deleteAriaLabel": "Label {name} löschen"
+				"deleteAriaLabel": "Label {name} löschen",
+				"labelApplied": "„{name}“ zu {count} Nachricht hinzugefügt | „{name}“ zu {count} Nachrichten hinzugefügt",
+				"labelAlreadyApplied": "Bereits mit „{name}“ gekennzeichnet"
 			},
 			"postboxFilterRunControl": {
 				"run": "Auf vorhandene E-Mails anwenden",
@@ -5076,6 +5079,14 @@
 				"toggleHide": "Team-Diskussion ausblenden",
 				"toggleShow": "Team-Diskussion einblenden",
 				"unknownAuthor": "Ehemaliges Mitglied"
+			},
+			"postboxSyncModeToggle": {
+				"changeOperation": "Postfach-Synchronisierung ändern",
+				"helpOff": "Es kommt nur neue Post herein. Was Sie in Owlat tun, bleibt in Owlat, und das Postfach bei Ihrem Anbieter bleibt, wie es ist.",
+				"helpOn": "Verschieben, Lesen, Markieren und Löschen wirkt in beide Richtungen: Was Sie hier tun, geschieht bei Ihrem Anbieter, und was Sie dort tun — einschließlich seiner Ordner — erscheint hier.",
+				"label": "Änderungen mit Ihrem Anbieter synchronisieren",
+				"toastOff": "Ab jetzt kommt nur noch neue Post herein.",
+				"toastOn": "Die Synchronisierung in beide Richtungen ist an. Beide Seiten werden beim nächsten Abgleich angeglichen."
 			}
 		},
 		"preferences": {
@@ -10803,10 +10814,12 @@
 				"adminNameRequired": "Geben Sie einen Administratornamen ein.",
 				"adminPasswordInvalid": "Prüfen Sie das Administrator-Passwort.",
 				"domainRequired": "Remote-Server benötigen eine öffentliche Domain, damit Sie die App nach der Installation erreichen können. Legen Sie eine unter „Domain & DNS“ fest.",
+				"fieldInvalid": "Prüfen Sie {field} — dieser Wert wird nicht akzeptiert.",
 				"hostRequired": "Geben Sie die Serveradresse ein.",
 				"invalidHostLabels": "Korrigieren Sie die angepassten Hostnamen — jedes Label muss ein gültiges, eindeutiges DNS-Label sein.",
 				"keyPathRequired": "Geben Sie den Pfad zu Ihrer privaten Schlüsseldatei ein.",
 				"passwordRequired": "Geben Sie das Passwort ein.",
+				"portInvalid": "Der Port muss eine ganze Zahl zwischen 1 und 65535 sein (für {port} leer lassen).",
 				"privateKeyRequired": "Fügen Sie Ihren privaten Schlüssel ein.",
 				"usernameRequired": "Geben Sie den SSH-Benutzer ein."
 			},
@@ -10888,13 +10901,7 @@
 			},
 			"sending": {
 				"mta": "Owlat MTA (selbst gehostet)",
-				"mtaHint": "Die Mail-Hostnamen ({outbound} für ausgehend, {returns} für Rückläufer) leiten sich aus der Domain ab, die Sie unten festlegen.",
-				"resend": "Resend",
-				"resendKeyPlaceholder": "Resend-API-Schlüssel (re_…)",
-				"ses": "Amazon SES",
-				"sesAccessKeyPlaceholder": "Access Key ID",
-				"sesRegionPlaceholder": "AWS-Region (us-east-1)",
-				"sesSecretPlaceholder": "Secret Access Key"
+				"mtaHint": "Die Mail-Hostnamen ({outbound} für ausgehend, {returns} für Rückläufer) leiten sich aus der Domain ab, die Sie unten festlegen."
 			},
 			"showAdvanced": "+ Erweiterte Optionen anzeigen",
 			"steps": {

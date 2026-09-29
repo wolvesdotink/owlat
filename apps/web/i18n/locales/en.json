@@ -4545,6 +4545,7 @@
 				"archivedUndo": "Archived",
 				"cancelFollowUpOperation": "Cancel reply reminder",
 				"capNote": "Showing the newest messages in this view.",
+				"dragCount": "{count} messages",
 				"emptyDefaultTitle": "No messages",
 				"emptyFilteredMoreHint": "This filter covers the messages loaded so far — load more to keep looking.",
 				"emptyFilteredTitle": "You're all caught up",
@@ -4811,7 +4812,9 @@
 				"renameLabel": "Rename label",
 				"nameAriaLabel": "Label name",
 				"renameAriaLabel": "Rename the label {name}",
-				"deleteAriaLabel": "Delete the label {name}"
+				"deleteAriaLabel": "Delete the label {name}",
+				"labelApplied": "Added “{name}” to {count} message | Added “{name}” to {count} messages",
+				"labelAlreadyApplied": "Already labelled “{name}”"
 			},
 			"postboxFilterRunControl": {
 				"run": "Run on existing mail",
@@ -5076,6 +5079,14 @@
 				"toggleHide": "Hide the team discussion",
 				"toggleShow": "Show the team discussion",
 				"unknownAuthor": "Former member"
+			},
+			"postboxSyncModeToggle": {
+				"changeOperation": "Change mailbox sync",
+				"helpOff": "Only new mail comes in. What you do in Owlat stays in Owlat, and the mailbox at your provider is left as it is.",
+				"helpOn": "Moving, reading, starring and deleting mail works both ways: what you do here happens at your provider, and what you do there — including its folders — shows up here.",
+				"label": "Sync changes with your provider",
+				"toastOff": "Only new mail comes in from now on.",
+				"toastOn": "Two-way sync is on. Both sides are lined up on the next sync."
 			}
 		},
 		"preferences": {
@@ -10803,10 +10814,12 @@
 				"adminNameRequired": "Enter an admin name.",
 				"adminPasswordInvalid": "Check the admin password.",
 				"domainRequired": "Remote servers need a public domain so you can reach the app after install. Add one under Domain & DNS.",
+				"fieldInvalid": "Check {field} — that value is not accepted.",
 				"hostRequired": "Enter the server address.",
 				"invalidHostLabels": "Fix the customised hostnames — each label must be a valid, distinct DNS label.",
 				"keyPathRequired": "Enter the path to your private key file.",
 				"passwordRequired": "Enter the password.",
+				"portInvalid": "Port must be a whole number between 1 and 65535 (leave blank for {port}).",
 				"privateKeyRequired": "Paste your private key.",
 				"usernameRequired": "Enter the SSH user."
 			},
@@ -10888,13 +10901,7 @@
 			},
 			"sending": {
 				"mta": "Owlat MTA (self-hosted)",
-				"mtaHint": "Mail hostnames ({outbound} for outbound, {returns} for returns) come from the domain you set below.",
-				"resend": "Resend",
-				"resendKeyPlaceholder": "Resend API key (re_…)",
-				"ses": "Amazon SES",
-				"sesAccessKeyPlaceholder": "Access key ID",
-				"sesRegionPlaceholder": "AWS region (us-east-1)",
-				"sesSecretPlaceholder": "Secret access key"
+				"mtaHint": "Mail hostnames ({outbound} for outbound, {returns} for returns) come from the domain you set below."
 			},
 			"showAdvanced": "+ Show advanced",
 			"steps": {

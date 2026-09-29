@@ -3,6 +3,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import { resolveActiveShortcut } from '~/utils/shortcutScope';
 import { answerQueueHrefFor } from '~/utils/postboxReplyQueue';
+import { usePostboxMessageDropTargets } from '~/composables/postbox/usePostboxMessageDrag';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -55,6 +56,9 @@ const answerQueueHref = computed(() => answerQueueHrefFor(props.mailboxId));
 const { openManager, pendingFolderDelete, requestFolderDelete, clearFolderDelete } =
 	usePostboxManageDialog();
 const folderActions = usePostboxFolderActions(mailboxIdRef);
+
+// Custom folders take dragged messages too (the system rows wire their own).
+const drop = usePostboxMessageDropTargets(mailboxIdRef);
 
 /** Right-click on a custom-folder row. */
 function folderMenuItems(folder: { _id: string; name: string }): ContextMenuItem[] {
@@ -167,6 +171,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 		<PostboxMailboxSwitcher :mailbox-id="mailboxId" :collapsed="railCollapsed" />
 
 		<PostboxFolderList
+			:mailbox-id="mailboxId"
 			:folders="primaryFolders"
 			:unread-counts="unreadByRole"
 			:active-folder="folderRole"
@@ -217,7 +222,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 							<NuxtLink
 								:to="`/dashboard/postbox/${folder._id}`"
 								class="flex-1 flex items-center gap-2 px-2.5 py-1 rounded text-sm hover:bg-bg-surface min-w-0"
-								:class="{ 'bg-bg-surface text-brand': folderId === folder._id }"
+								:class="{
+									'bg-bg-surface text-brand': folderId === folder._id,
+									'pbx-drop-target': drop.isOverFolder(folder._id),
+								}"
+								v-on="drop.folder(folder)"
 							>
 								<Icon name="lucide:folder" class="w-4 h-4 flex-shrink-0" />
 								<span class="truncate">{{ folder.name }}</span>
@@ -282,6 +291,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 		     Import, Settings, and the manage surface. -->
 		<PostboxRailMoreGroup
 			class="mt-3"
+			:mailbox-id="mailboxId"
 			:collapsed="railCollapsed"
 			:folders="moreFolders"
 			:folder-role="folderRole"

@@ -76,6 +76,8 @@ beforeAll(() => {
 	vi.stubGlobal('usePostboxLabels', () => ({ labels: ref([]), setOnMessage: vi.fn() }));
 	vi.stubGlobal('usePostboxFolders', () => ({ folders: ref([]) }));
 	vi.stubGlobal('usePostboxRowPickers', usePostboxRowPickers);
+	// Inert: these cases never pick a row up.
+	vi.stubGlobal('usePostboxListRowDrag', () => ({ start: vi.fn() }));
 	vi.stubGlobal('nextUnreadIndex', nextUnreadIndex);
 	vi.stubGlobal('resolvePostboxShortcut', () => undefined);
 });

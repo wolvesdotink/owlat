@@ -13,6 +13,8 @@ import { makeFunctionReference } from 'convex/server';
 import type { MailSyncConfig } from './config.js';
 import type { FolderRole } from './folders.js';
 import type { SeedProbeDeps, SeedProbeWorkPage } from './seedProbes.js';
+import type { RemoteOp, RemoteOpResult } from './remoteOps.js';
+import type { LocalMessageRow, RemoteObservation } from './remoteState.js';
 
 export type ConvexClient = ConvexHttpClient;
 
@@ -172,7 +174,7 @@ type IngestAttachment = {
 
 type IngestExternalRawArgs = {
 	accountId: string;
-	folderRole: FolderRole;
+	folderRole?: FolderRole;
 	remoteName: string;
 	remoteUid: number;
 	remoteUidValidity: number;
@@ -255,7 +257,8 @@ export const fn = {
 		'mutation',
 		{
 			accountId: string;
-			folderRole: FolderRole;
+			folderRole?: FolderRole;
+			folderPath?: string[];
 			remoteName: string;
 			remoteUidValidity: number;
 			initialLastSeenUid: number;
@@ -336,4 +339,42 @@ export const fn = {
 		{ migrationId: string; resumeAt: number; reason?: string },
 		ThrottlePauseResult
 	>('mail/migrationBackfill:pauseImportForThrottle'),
+
+	// ── Local → remote write-back (moves, flags, deletes made in Owlat) ──
+	listDueRemoteOps: makeFunctionReference<'query', { accountId: string }, RemoteOp[]>(
+		'mail/external/remoteOps:listDueRemoteOps'
+	),
+	settleRemoteOps: makeFunctionReference<'mutation', { results: RemoteOpResult[] }, null>(
+		'mail/external/remoteOps:settleRemoteOps'
+	),
+
+	// ── Remote → local change sync (moves, flags, deletes made on the provider) ──
+	getSyncSettings: makeFunctionReference<
+		'query',
+		{ accountId: string },
+		{ mode: 'full' | 'incoming'; isAligned: boolean }
+	>('mail/external/remoteState:getSyncSettings'),
+	listLocalMessages: makeFunctionReference<
+		'query',
+		{ accountId: string; paginationOpts: { numItems: number; cursor: string | null } },
+		{ page: LocalMessageRow[]; isDone: boolean; continueCursor: string }
+	>('mail/external/remoteState:listLocalMessages'),
+	lookupLocalMessages: makeFunctionReference<
+		'query',
+		{ accountId: string; messageIds: string[] },
+		LocalMessageRow[]
+	>('mail/external/remoteState:lookupLocalMessages'),
+	applyRemoteObservations: makeFunctionReference<
+		'mutation',
+		{ accountId: string; observations: RemoteObservation[] },
+		{ pulled: number; pushed: number }
+	>('mail/external/remoteState:applyRemoteObservations'),
+	markFullSyncAligned: makeFunctionReference<'mutation', { accountId: string }, null>(
+		'mail/external/remoteState:markFullSyncAligned'
+	),
+	forgetRemoteFolders: makeFunctionReference<
+		'mutation',
+		{ accountId: string; listed: string[] },
+		{ forgotten: number }
+	>('mail/external/remoteState:forgetRemoteFolders'),
 };

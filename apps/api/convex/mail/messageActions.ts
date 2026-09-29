@@ -19,6 +19,7 @@ import { purgeMessageRow } from './messagePurge';
 import { getOrThrow, throwForbidden, throwInvalidState } from '../_utils/errors';
 import { rebuildThreadAggregates } from './threadAggregates';
 import { recordTriageVerb } from './triageTally';
+import { changedRemoteFlags, recordRemoteChanges, type RemoteChange } from './external/remoteOps';
 
 // Re-exported so the modules that reach the rebuild through this one keep
 // working unchanged; it lives in ./threadAggregates now (size cap).
@@ -38,14 +39,18 @@ type MovedMessage = {
 
 type MoveResult = { ok: true; moved: MovedMessage[] };
 
-/** Apply a flag delta to a single message and update folder/thread caches. */
-async function applyFlagDelta(
+/**
+ * Apply a flag delta to a single message and update folder/thread caches.
+ * Returns what an external mailbox's provider has to be told, for the caller
+ * to record once per batch (a change that came FROM the provider ignores it).
+ */
+export async function applyFlagDelta(
 	ctx: MutationCtx,
 	message: Doc<'mailMessages'>,
 	flagDeltas: Partial<Record<Flag, boolean>>
-): Promise<void> {
+): Promise<RemoteChange | null> {
 	const folder = await ctx.db.get(message.folderId);
-	if (!folder) return;
+	if (!folder) return null;
 
 	const wasSeen = message.flagSeen;
 	const patch: Partial<Doc<'mailMessages'>> = { updatedAt: Date.now() };
@@ -66,6 +71,8 @@ async function applyFlagDelta(
 	if (flagDeltas.seen !== undefined && flagDeltas.seen !== wasSeen && !snoozed) {
 		await adjustFolderUnseen(ctx, folder._id, flagDeltas.seen ? -1 : +1);
 	}
+	const flags = changedRemoteFlags(message, flagDeltas);
+	return { kind: 'flags', message, flags };
 }
 
 /**
@@ -82,17 +89,20 @@ async function applyFlags(
 ): Promise<void> {
 	if (Object.keys(flagDeltas).length === 0) return;
 	const touchedThreads = new Set<Id<'mailThreads'>>();
+	const remote: RemoteChange[] = [];
 	for (const id of messageIds) {
 		const message = await ctx.db.get(id);
 		if (!message) continue;
 		const owned = await requireMailboxAccess(ctx, message.mailboxId);
 		if (!owned.ok) continue;
-		await applyFlagDelta(ctx, message, flagDeltas);
+		const change = await applyFlagDelta(ctx, message, flagDeltas);
+		if (change) remote.push(change);
 		touchedThreads.add(message.threadId);
 	}
 	for (const t of touchedThreads) {
 		await rebuildThreadAggregates(ctx, t);
 	}
+	await recordRemoteChanges(ctx, remote);
 }
 
 // ── Public mutations ──────────────────────────────────────────────
@@ -126,11 +136,14 @@ export const markThreadRead = postboxMutation({
 			.query('mailMessages')
 			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
 			.collect(); // bounded: one thread's messages
+		const remote: RemoteChange[] = [];
 		for (const m of messages) {
 			if (m.flagSeen === args.seen) continue;
-			await applyFlagDelta(ctx, m, { seen: args.seen });
+			const change = await applyFlagDelta(ctx, m, { seen: args.seen });
+			if (change) remote.push(change);
 		}
 		await rebuildThreadAggregates(ctx, args.threadId);
+		await recordRemoteChanges(ctx, remote);
 	},
 });
 
@@ -145,11 +158,15 @@ export const markThreadRead = postboxMutation({
  */
 export async function moveMessagesToFolder(
 	ctx: MutationCtx,
-	args: { messageIds: Id<'mailMessages'>[]; targetFolderId: Id<'mailFolders'> }
+	args: { messageIds: Id<'mailMessages'>[]; targetFolderId: Id<'mailFolders'> },
+	// false when the move mirrors one the provider already made
+	// (mail/external/remoteState.ts), so it is not written back.
+	options: { writeBack?: boolean } = {}
 ): Promise<MoveResult> {
 	const target = await getOrThrow(ctx, args.targetFolderId, 'Target folder');
 	const now = Date.now();
 	const moved: MovedMessage[] = [];
+	const remote: RemoteChange[] = [];
 	const touchedThreads = new Set<Id<'mailThreads'>>();
 	const sourceFolderTouches = new Map<Id<'mailFolders'>, { count: number; unread: number }>();
 
@@ -196,6 +213,12 @@ export async function moveMessagesToFolder(
 			updatedAt: Date.now(),
 		});
 		moved.push({ messageId: id, sourceFolderId: sourceFolder._id });
+		remote.push({
+			kind: 'move',
+			message,
+			sourceFolderId: sourceFolder._id,
+			targetFolderId: args.targetFolderId,
+		});
 		touchedThreads.add(message.threadId);
 	}
 
@@ -227,6 +250,7 @@ export async function moveMessagesToFolder(
 		await rebuildThreadAggregates(ctx, t);
 		if (clearsNeedsReply) await clearThreadNeedsReply(ctx, t);
 	}
+	if (options.writeBack !== false) await recordRemoteChanges(ctx, remote);
 	return { ok: true, moved };
 }
 
@@ -312,21 +336,25 @@ export const trash = postboxMutation({
 });
 
 /** Permanently delete from storage (invoked manually from the Trash folder via
- * the bulk-actions bar's "Delete forever"). Frees the raw .eml blob too. */
+ * the bulk-actions bar's "Delete forever"). Frees the raw .eml blob too, and on
+ * an external mailbox deletes the provider's copy. */
 export const purge = postboxMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
 	handler: async (ctx, args): Promise<{ ok: true }> => {
 		const touchedThreads = new Set<Id<'mailThreads'>>();
+		const remote: RemoteChange[] = [];
 		for (const id of args.messageIds) {
 			const message = await ctx.db.get(id);
 			if (!message) continue;
 			const owned = await requireMailboxAccess(ctx, message.mailboxId);
 			if (!owned.ok) continue;
 			touchedThreads.add(await purgeMessageRow(ctx, message));
+			remote.push({ kind: 'delete', message });
 		}
 		for (const t of touchedThreads) {
 			await rebuildThreadAggregates(ctx, t);
 		}
+		await recordRemoteChanges(ctx, remote);
 		return { ok: true };
 	},
 });

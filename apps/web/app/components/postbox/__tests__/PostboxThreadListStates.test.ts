@@ -21,6 +21,10 @@ import PostboxThreadList from '../PostboxThreadList.vue';
 import { usePostboxRowTriage } from '../../../composables/postbox/usePostboxRowTriage';
 import { usePostboxOptimisticFlags } from '../../../composables/postbox/usePostboxOptimisticFlags';
 import { usePostboxRowPickers } from '../../../composables/postbox/usePostboxRowPickers';
+import {
+	usePostboxListRowDrag,
+	usePostboxMessageDrag,
+} from '../../../composables/postbox/usePostboxMessageDrag';
 import { nextUnreadIndex } from '../../../utils/postboxShortcuts';
 import PostboxThreadRow from '../PostboxThreadRow.vue';
 import PostboxRowCore from '../PostboxRowCore.vue';
@@ -40,6 +44,11 @@ vi.mock('@owlat/api', () => {
 });
 
 const prefetchSpy = vi.fn();
+/** The bulk selection the drag cases start from. */
+const selectedIds = ref<string[]>([]);
+const clearSelection = vi.fn(() => {
+	selectedIds.value = [];
+});
 /** Every triage mutation the list runs; resolves like a landed useBackendOperation. */
 const runSpy = vi.fn(async (_args: unknown): Promise<unknown> => ({ ok: true, result: null }));
 
@@ -47,7 +56,9 @@ beforeAll(() => {
 	vi.stubGlobal('usePostboxPrefetch', () => ({ prefetch: prefetchSpy }));
 	vi.stubGlobal('usePostboxBulkActions', () => ({
 		toggle: vi.fn(),
-		isSelected: () => false,
+		ids: selectedIds,
+		isSelected: (id: string) => selectedIds.value.includes(id),
+		clear: clearSelection,
 	}));
 	vi.stubGlobal('useBackendOperation', () => ({ run: runSpy }));
 	// The REAL flag-override composable: the list's optimistic star / mark-read
@@ -73,6 +84,9 @@ beforeAll(() => {
 	// The h/l/v picker state lives in its own composable now; real, because it is
 	// only refs over the two stubbed queries above.
 	vi.stubGlobal('usePostboxRowPickers', usePostboxRowPickers);
+	// Real: the drag source is the behaviour under test in its own block below.
+	vi.stubGlobal('usePostboxListRowDrag', usePostboxListRowDrag);
+	vi.stubGlobal('useRoute', () => ({ params: { folder: 'inbox' } }));
 	vi.stubGlobal('nextUnreadIndex', nextUnreadIndex);
 	vi.stubGlobal('usePostboxSettings', () => ({ density: ref('comfortable') }));
 	// The list resolves the sender-trust-marker flag once and passes it down.
@@ -285,5 +299,97 @@ describe('PostboxThreadList hover read-ahead', () => {
 		const w = mountList({ loading: false, messages: [makeMessage(1), makeMessage(2)] });
 		await w.findAll('li')[0]!.trigger('focusin');
 		expect(prefetchSpy).toHaveBeenCalledWith(['msg-1']);
+	});
+});
+
+describe('PostboxThreadList drag to a folder', () => {
+	function fakeDataTransfer() {
+		return {
+			effectAllowed: 'none',
+			setData: vi.fn(),
+			setDragImage: vi.fn(),
+		};
+	}
+
+	async function dragRow(w: ReturnType<typeof mountList>, index: number) {
+		const dataTransfer = fakeDataTransfer();
+		await w.findAll('li.pbx-row-li')[index]!.trigger('dragstart', { dataTransfer });
+		return dataTransfer;
+	}
+
+	it('carries the grabbed row alone and moves it through the list verb', async () => {
+		selectedIds.value = [];
+		runSpy.mockClear();
+		const w = mountList({ loading: false, messages: [makeMessage(1), makeMessage(2)] });
+		const dataTransfer = await dragRow(w, 1);
+
+		const { session, end } = usePostboxMessageDrag();
+		expect(session.value?.messageIds).toEqual(['msg-2']);
+		expect(session.value?.sourceFolder).toBe('inbox');
+		expect(dataTransfer.setData).toHaveBeenCalledWith(
+			'application/x-owlat-messages',
+			JSON.stringify(['msg-2'])
+		);
+		// The preview names the message, not the whole row's snapshot.
+		expect((dataTransfer.setDragImage.mock.calls[0]![0] as HTMLElement).textContent).toBe(
+			'Subject 2'
+		);
+		// The dragged row dims while it travels.
+		expect(w.findAll('li.pbx-row-li')[1]!.classes()).toContain('opacity-50');
+
+		await session.value!.moveTo('folder-9' as Id<'mailFolders'>);
+		expect(runSpy).toHaveBeenCalledWith({ messageIds: ['msg-2'], targetFolderId: 'folder-9' });
+		end();
+	});
+
+	it('carries the whole selection when the grabbed row is part of it', async () => {
+		selectedIds.value = ['msg-1', 'msg-3'];
+		clearSelection.mockClear();
+		runSpy.mockClear();
+		const w = mountList({
+			loading: false,
+			messages: [makeMessage(1), makeMessage(2), makeMessage(3)],
+		});
+		const dataTransfer = await dragRow(w, 0);
+
+		const { session, end } = usePostboxMessageDrag();
+		expect(session.value?.messageIds).toEqual(['msg-1', 'msg-3']);
+		expect((dataTransfer.setDragImage.mock.calls[0]![0] as HTMLElement).textContent).toBe(
+			'2 messages'
+		);
+
+		runSpy.mockResolvedValueOnce({ ok: true, result: { moved: [] } });
+		await session.value!.moveTo('folder-9' as Id<'mailFolders'>);
+		// One mutation for the lot, and the selection is spent like the bulk Move.
+		expect(runSpy).toHaveBeenCalledTimes(1);
+		expect(runSpy).toHaveBeenCalledWith({
+			messageIds: ['msg-1', 'msg-3'],
+			targetFolderId: 'folder-9',
+		});
+		expect(clearSelection).toHaveBeenCalled();
+		end();
+	});
+
+	it('keeps the selection when the dropped move fails', async () => {
+		selectedIds.value = ['msg-1', 'msg-2'];
+		clearSelection.mockClear();
+		const w = mountList({ loading: false, messages: [makeMessage(1), makeMessage(2)] });
+		await dragRow(w, 1);
+		const { session, end } = usePostboxMessageDrag();
+		runSpy.mockResolvedValueOnce({ ok: false });
+		await session.value!.moveTo('folder-9' as Id<'mailFolders'>);
+		expect(clearSelection).not.toHaveBeenCalled();
+		expect(selectedIds.value).toEqual(['msg-1', 'msg-2']);
+		end();
+	});
+
+	it('ends the session when the drag is dropped elsewhere or cancelled', async () => {
+		selectedIds.value = [];
+		const w = mountList({ loading: false, messages: [makeMessage(1)] });
+		await dragRow(w, 0);
+		const { session } = usePostboxMessageDrag();
+		expect(session.value).not.toBeNull();
+		await w.find('li.pbx-row-li').trigger('dragend');
+		expect(session.value).toBeNull();
 	});
 });

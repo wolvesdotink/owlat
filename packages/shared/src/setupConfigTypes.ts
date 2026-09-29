@@ -14,11 +14,21 @@
  */
 
 import type { FeatureFlagState, FeaturePackKey } from './featureFlags';
+import type { OutboundTlsMode } from './outboundTlsMode';
 
 export type DeploymentMode = 'selfhost' | 'dev' | 'hosted';
 
+/**
+ * Each variant's properties are its send-provider catalog entry's credential
+ * field keys (an SMTP `host-port` field spreads into `host` / `port` / `secure`);
+ * `_SendingConfigMatchesCatalog` in `./setupSendingConfig` pins that at build time.
+ */
 export type SendingConfig =
-	| { provider: 'mta' }
+	| {
+			provider: 'mta';
+			/** Optional — omitted means the backend default, `opportunistic`. */
+			outboundTlsMode?: OutboundTlsMode;
+	  }
 	| { provider: 'resend'; apiKey: string }
 	| { provider: 'emailit'; apiKey: string }
 	| { provider: 'ses'; region: string; accessKeyId: string; secretAccessKey: string }

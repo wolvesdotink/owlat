@@ -292,7 +292,9 @@ apps/api/convex/domains/mandrillRelay.ts:mandrill  # the scheduled provisioning 
 # ── provider-shaped-ui-followup (owner: the wizard-descriptor follow-up after P1.2 — no card yet) ──
 #
 # The same family, in files P1.2's card does NOT name: the step validator and the
-# two standalone setup pages. They fall out of the descriptor work only if it is
+# standalone setup page. (The desktop server wizard left this family in #879: it
+# renders the catalog's credential form and builds its config through
+# `@owlat/shared/setupSendingConfig`.) They fall out of the descriptor work only if it is
 # carried all the way through the WIZARD DRAFT — `EmailStepDraft` still spells
 # its credential half per vendor (`resendKey`, `ses.region`, `smtp.host`), which
 # is what these three read — so they are recorded here with an honest owner
@@ -303,9 +305,9 @@ apps/api/convex/domains/mandrillRelay.ts:mandrill  # the scheduled provisioning 
 # exhaustive over `TransportCredentialEnvKey`; it holds no kind literal, and it
 # is deleted by whichever piece makes the draft the values map itself.
 #
-# THREE FILES, FIFTEEN SPELLINGS — which is the shape of the debt, not an
+# TWO FILES, ELEVEN SPELLINGS — which is the shape of the debt, not an
 # accident of counting: each of these files answers "what does this vendor need"
-# once per vendor, so the sixth kind costs three more lines here and the gate
+# once per vendor, so the sixth kind costs two more lines here and the gate
 # now says so instead of absorbing them.
 
 apps/web/app/composables/setupWizardValidation.ts:emailit  # per-kind required-field rules, one branch per vendor
@@ -314,9 +316,6 @@ apps/web/app/composables/setupWizardValidation.ts:mta
 apps/web/app/composables/setupWizardValidation.ts:resend
 apps/web/app/composables/setupWizardValidation.ts:ses
 apps/web/app/composables/setupWizardValidation.ts:smtp
-apps/web/app/pages/desktop/setup.vue:mta  # the desktop wizard's own copy: the own-arm branch…
-apps/web/app/pages/desktop/setup.vue:resend  # …and a credential block per kind it offers
-apps/web/app/pages/desktop/setup.vue:ses
 apps/web/app/pages/setup/email.vue:emailit  # the hosted wizard's copy of the same per-kind fields
 apps/web/app/pages/setup/email.vue:mandrill
 apps/web/app/pages/setup/email.vue:resend
@@ -415,12 +414,11 @@ apps/web/app/pages/setup/email.vue:smtp
 # on a kind).
 #
 # THIS IS WHERE A NEW VENDOR LANDS, which is why the bare-path form had to go:
-# four files, fifteen spellings, and every kind added to the product adds a line
-# to most of them. Under a file-granular licence that arrival was silent.
+# three files, twelve spellings, and every kind added to the product adds a line
+# to most of them. Under a file-granular licence that arrival was silent. (The
+# `--assume-yes` env table left in #879; it reads the catalog's credential fields
+# through `@owlat/shared/setupSendingConfig`.)
 
-apps/setup-cli/src/commands/setupNonInteractive.ts:emailit  # the non-interactive env table
-apps/setup-cli/src/commands/setupNonInteractive.ts:resend
-apps/setup-cli/src/commands/setupNonInteractive.ts:ses
 apps/setup-cli/src/commands/setupSendingProvider.ts:emailit  # the interactive prompts
 apps/setup-cli/src/commands/setupSendingProvider.ts:mta
 apps/setup-cli/src/commands/setupSendingProvider.ts:resend

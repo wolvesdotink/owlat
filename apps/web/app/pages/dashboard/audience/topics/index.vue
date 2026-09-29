@@ -215,7 +215,7 @@ onMounted(() => {
 					: t('dashboard.audience.topics.index.createModal.title')
 			"
 		>
-			<form id="topic-form" @submit.prevent="handleSave">
+			<form id="topic-form" novalidate @submit.prevent="handleSave">
 				<div
 					v-if="topicErrors.general"
 					class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20"

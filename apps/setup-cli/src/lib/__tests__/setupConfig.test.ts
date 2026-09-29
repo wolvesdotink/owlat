@@ -8,6 +8,11 @@ import {
 	type SetupConfig,
 } from '../setupConfig';
 import { buildEnvPatchFromConfig } from '../setupConfig';
+import {
+	SETUP_SENDING_CATALOG_ENTRIES,
+	sendingConfigFromCredentials,
+	type SetupSendingKind,
+} from '@owlat/shared/setupSendingConfig';
 import { applySetupDefaults } from '../setupEnvDefaults';
 import { assertFblDedupCutoverConfigured } from '../fblDedupSetup';
 
@@ -66,6 +71,10 @@ describe('parseSetupConfig — rejections (field-named errors)', () => {
 		['bad email', (c) => ((c['admin'] as Record<string, unknown>)['email'] = 'not-an-email')],
 		['short password', (c) => ((c['admin'] as Record<string, unknown>)['password'] = 'short')],
 		['bad sending provider', (c) => (c['sending'] = { provider: 'mailgun' })],
+		[
+			'mta unknown outboundTlsMode',
+			(c) => (c['sending'] = { provider: 'mta', outboundTlsMode: 'always' }),
+		],
 		['resend without apiKey', (c) => (c['sending'] = { provider: 'resend' })],
 		['ses missing keys', (c) => (c['sending'] = { provider: 'ses', region: 'us-east-1' })],
 		[
@@ -156,6 +165,13 @@ describe('buildEnvPatchFromConfig', () => {
 
 	it('maps mta sending to just the provider', () => {
 		expect(patch({ sending: { provider: 'mta' } })).toEqual({ EMAIL_PROVIDER: 'mta' });
+	});
+
+	it('maps mta sending with an outbound TLS floor', () => {
+		expect(patch({ sending: { provider: 'mta', outboundTlsMode: 'require' } })).toEqual({
+			EMAIL_PROVIDER: 'mta',
+			OUTBOUND_TLS_MODE: 'require',
+		});
 	});
 
 	it('maps ses sending to region + credentials', () => {
@@ -284,6 +300,49 @@ describe('buildEnvPatchFromConfig', () => {
 		// base() carries sending:{provider:'mta'}, which the env patch reflects.
 		expect(patch({})).toEqual({ EMAIL_PROVIDER: 'mta' });
 	});
+});
+
+/**
+ * The desktop wizard builds `sending` from the catalog's credential values
+ * (`sendingConfigFromCredentials`); this parser and env builder turn it back into
+ * those same variables on the server. Per kind, the round trip must be lossless.
+ */
+describe('catalog credential values round-trip through the setup config', () => {
+	const cases: Record<SetupSendingKind, Record<string, string>> = {
+		mta: { OUTBOUND_TLS_MODE: 'require-verified' },
+		resend: { RESEND_API_KEY: 're_key' },
+		emailit: { EMAILIT_API_KEY: 'em_key' },
+		ses: {
+			AWS_SES_REGION: 'eu-central-1',
+			AWS_SES_ACCESS_KEY_ID: 'AKIA',
+			AWS_SES_SECRET_ACCESS_KEY: 'secret',
+		},
+		smtp: {
+			SMTP_RELAY_HOST: 'smtp.example.com',
+			SMTP_RELAY_PORT: '465',
+			SMTP_RELAY_SECURE: 'true',
+			SMTP_RELAY_USERNAME: 'user',
+			SMTP_RELAY_PASSWORD: 'pass',
+		},
+	};
+
+	it('covers every kind the setup config can carry', () => {
+		expect(Object.keys(cases).sort()).toEqual(
+			SETUP_SENDING_CATALOG_ENTRIES.map((e) => e.kind).sort()
+		);
+	});
+
+	for (const [kind, values] of Object.entries(cases) as [
+		SetupSendingKind,
+		Record<string, string>,
+	][]) {
+		it(`${kind}: values → config → env patch`, () => {
+			const result = sendingConfigFromCredentials(kind, (k) => values[k]);
+			if (!result.ok) throw new Error(`mapper refused ${kind}: ${result.problem.reason}`);
+			const config = parseSetupConfig({ ...base(), sending: result.config });
+			expect(buildEnvPatchFromConfig(config)).toEqual({ EMAIL_PROVIDER: kind, ...values });
+		});
+	}
 });
 
 describe('buildSetupFromConfig', () => {

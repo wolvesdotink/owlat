@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import type { Id } from '@owlat/api/dataModel';
+import { usePostboxMessageDropTargets } from '~/composables/postbox/usePostboxMessageDrag';
+
 type PostboxFolderRow = {
 	_id: string;
 	name: string;
@@ -7,7 +10,9 @@ type PostboxFolderRow = {
 	totalCount: number;
 };
 
-defineProps<{
+const props = defineProps<{
+	/** The rail's mailbox: a row only accepts messages dragged from it. */
+	mailboxId: Id<'mailboxes'>;
 	folders: PostboxFolderRow[];
 	unreadCounts: Record<string, number>;
 	activeFolder: string;
@@ -17,6 +22,9 @@ defineProps<{
 }>();
 
 const { t } = useI18n();
+
+// Every row is also a drop target for dragged messages (Sent and Drafts refuse).
+const drop = usePostboxMessageDropTargets(computed(() => props.mailboxId));
 
 const ICON_BY_ROLE: Record<string, string> = {
 	inbox: 'lucide:inbox',
@@ -66,24 +74,26 @@ function folderAriaLabel(folder: PostboxFolderRow): string {
 					? 'relative flex items-center justify-center w-9 h-9'
 					: 'flex items-center gap-2 px-2.5 py-1.5',
 				{ 'bg-bg-surface text-brand': activeFolder === folder.role },
+				{ 'pbx-drop-target': drop.isOverFolder(folder._id) },
 			]"
 			:title="collapsed ? folderLabel(folder) : undefined"
 			:aria-label="collapsed ? folderAriaLabel(folder) : undefined"
+			v-on="drop.folder(folder)"
 		>
 			<Icon :name="ICON_BY_ROLE[folder.role ?? ''] ?? 'lucide:folder'" class="w-4 h-4" />
 			<template v-if="!collapsed">
 				<span class="flex-1 capitalize">{{ folderLabel(folder) }}</span>
-				<span
-					v-if="folder.unseenCount > 0"
-					class="text-xs font-medium text-text-secondary"
-				>{{ folder.unseenCount }}</span>
+				<span v-if="folder.unseenCount > 0" class="text-xs font-medium text-text-secondary">{{
+					folder.unseenCount
+				}}</span>
 			</template>
 			<!-- Collapsed: unread count as a corner badge so the number stays
 			     visible without the label. -->
 			<span
 				v-else-if="folder.unseenCount > 0"
 				class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-brand text-text-inverse text-[10px] leading-4 font-medium text-center"
-			>{{ folder.unseenCount > 99 ? '99+' : folder.unseenCount }}</span>
+				>{{ folder.unseenCount > 99 ? '99+' : folder.unseenCount }}</span
+			>
 		</NuxtLink>
 	</nav>
 </template>

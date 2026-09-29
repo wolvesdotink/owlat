@@ -6,6 +6,7 @@
  *
  *   POST /send  — relay an outbound message through the account's external SMTP
  *   POST /test  — validate IMAP+SMTP credentials (persists nothing)
+ *   POST /remote-ops — an account has queued write-backs; replay them now
  *   GET  /health
  */
 
@@ -43,7 +44,17 @@ interface SendBody {
 	rawEmlUrl: string;
 }
 
-export function startServer(config: MailSyncConfig, convex: ConvexClient): ServerType {
+/**
+ * Asks the account's live connection to replay its write-back queue; false when
+ * the worker holds no connection for it (`AccountManager.requestRemoteOps`).
+ */
+export type RemoteOpsRequester = (accountId: string) => boolean;
+
+export function startServer(
+	config: MailSyncConfig,
+	convex: ConvexClient,
+	requestRemoteOps: RemoteOpsRequester
+): ServerType {
 	const app = new Hono();
 
 	const auth = async (c: Context, next: () => Promise<void>) => {
@@ -55,6 +66,7 @@ export function startServer(config: MailSyncConfig, convex: ConvexClient): Serve
 	};
 	app.use('/send', auth);
 	app.use('/test', auth);
+	app.use('/remote-ops', auth);
 
 	app.get('/health', (c) => c.json({ ok: true, service: 'owlat-mail-sync' }));
 
@@ -64,6 +76,16 @@ export function startServer(config: MailSyncConfig, convex: ConvexClient): Serve
 			return c.json({ error: 'imap and smtp credentials required' }, 400);
 		}
 		return c.json(await testConnection(body));
+	});
+
+	// Fire-and-forget: the drain runs on the account's connection, and the
+	// backend only needs to know the nudge arrived.
+	app.post('/remote-ops', async (c) => {
+		const body = (await c.req.json().catch(() => null)) as { accountId?: unknown } | null;
+		if (typeof body?.accountId !== 'string' || !body.accountId) {
+			return c.json({ error: 'accountId required' }, 400);
+		}
+		return c.json({ accepted: requestRemoteOps(body.accountId) }, 202);
 	});
 
 	app.post('/send', async (c) => {

@@ -66,9 +66,13 @@ const reconnectBlocked = computed(
 
 // The reconnect form's non-secret prefill (servers, username) comes from the
 // linked account; only the panel that's open subscribes.
+// It also carries the sync mode, so an active external inbox always subscribes.
 const { data: reconnectAccount, isLoading: reconnectLoading } = useConvexQuery(
 	api.mail.external.sharedInbox.getSharedExternalAccount,
-	() => (props.reconnecting ? { mailboxId: props.inbox._id } : 'skip')
+	() =>
+		props.reconnecting || (props.inbox.kind === 'external' && props.inbox.status === 'active')
+			? { mailboxId: props.inbox._id }
+			: 'skip'
 );
 const reconnectAccountForForm = computed(() =>
 	reconnectAccount.value?.configured ? reconnectAccount.value : null
@@ -322,6 +326,13 @@ const createdOn = computed(() =>
 				<Icon name="lucide:download-cloud" class="w-3.5 h-3.5 shrink-0" />
 				{{ importSummary }}
 			</p>
+
+			<PostboxSyncModeToggle
+				v-if="inbox.kind === 'external' && reconnectAccountForForm"
+				:mode="reconnectAccountForForm.syncMode"
+				:mailbox-id="inbox._id"
+				class="mt-4 pt-4 border-t border-border-subtle"
+			/>
 
 			<!-- Connection is broken but the inbox is suspended, so the in-place
 			     reconnect (which needs an active mailbox) isn't available yet. -->

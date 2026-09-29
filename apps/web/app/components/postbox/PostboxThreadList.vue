@@ -87,6 +87,7 @@ const {
 	archiveMsg,
 	trashMsg,
 	moveMsg,
+	moveMany,
 	snoozeMsg,
 	snoozeThread,
 	toggleMute,
@@ -163,6 +164,9 @@ function onRowSwipe(m: PostboxThreadRowMessage, action: Exclude<PostboxSwipeActi
 			break;
 	}
 }
+
+// Drag a row (or the selection it belongs to) onto a rail folder or label.
+const rowDrag = usePostboxListRowDrag({ mailboxId: mailboxIdRef, bulk, moveMany });
 
 /** Mute/unmute the focused row's conversation (the `m` shortcut + context menu). */
 function toggleMuteRow(m: PostboxThreadRowMessage) {
@@ -451,6 +455,7 @@ onMounted(async () => {
 					@prefetch="prefetchRow(msg._id)"
 					@cancel-follow-up="cancelFollowUp(msg)"
 					@swipe="(action: Exclude<PostboxSwipeAction, 'none'>) => onRowSwipe(msg, action)"
+					@drag-start="(event: DragEvent) => rowDrag.start(msg, event)"
 				/>
 			</div>
 		</ul>

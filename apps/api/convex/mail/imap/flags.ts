@@ -14,6 +14,7 @@ import { v } from 'convex/values';
 import { internalMutation } from '../../_generated/server';
 import type { Id, Doc } from '../../_generated/dataModel';
 import { bumpFolderModseq } from '../folders';
+import { changedRemoteFlags, recordRemoteChanges, type RemoteChange } from '../external/remoteOps';
 
 const IMAP_FLAG_TO_FIELD: Record<string, keyof Doc<'mailMessages'>> = {
 	'\\seen': 'flagSeen',
@@ -80,6 +81,7 @@ export const storeFlags = internalMutation({
 		const folderUnseenDelta = new Map<Id<'mailFolders'>, number>();
 
 		const delta = buildFlagDelta(args.flags, args.mode);
+		const remote: RemoteChange[] = [];
 
 		for (const id of args.messageIds) {
 			const message = await ctx.db.get(id);
@@ -127,6 +129,15 @@ export const storeFlags = internalMutation({
 			patch.modseq = folderModseqValue;
 
 			await ctx.db.patch(id, patch);
+			remote.push({
+				kind: 'flags',
+				message,
+				flags: changedRemoteFlags(message, {
+					seen: patch.flagSeen,
+					flagged: patch.flagFlagged,
+					answered: patch.flagAnswered,
+				}),
+			});
 
 			const newSeen = patch.flagSeen ?? message.flagSeen;
 			if (newSeen !== wasSeen) {
@@ -161,6 +172,7 @@ export const storeFlags = internalMutation({
 			});
 		}
 
+		await recordRemoteChanges(ctx, remote);
 		return { updated, unchanged };
 	},
 });

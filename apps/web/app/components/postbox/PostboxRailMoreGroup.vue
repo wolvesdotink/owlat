@@ -13,7 +13,11 @@
  * the wizard was reachable only by typing the URL. Folding the rail is what
  * finally made room to link it.
  */
+import type { Id } from '@owlat/api/dataModel';
+import { usePostboxMessageDropTargets } from '~/composables/postbox/usePostboxMessageDrag';
+
 const props = defineProps<{
+	mailboxId: Id<'mailboxes'>;
 	/** Rail is the narrow icon strip. */
 	collapsed: boolean;
 	/** Spam and Trash, in rail order. */
@@ -87,7 +91,44 @@ const holdsActiveRoute = computed(
 		LINKS.some((link) => route.path === link.to)
 );
 
-const expanded = computed(() => isOpen.value || holdsActiveRoute.value);
+/**
+ * Spring-loaded while a message is being dragged: hovering the folded header
+ * for a beat opens it, so Spam and Trash are reachable drop targets. It folds
+ * back when the drag ends and never touches the saved preference.
+ */
+const SPRING_OPEN_MS = 500;
+const drop = usePostboxMessageDropTargets(computed(() => props.mailboxId));
+const springOpen = ref(false);
+let springTimer: ReturnType<typeof setTimeout> | undefined;
+
+function armSpring() {
+	if (!drop.active.value || springOpen.value || springTimer) return;
+	springTimer = setTimeout(() => {
+		springTimer = undefined;
+		if (drop.active.value) springOpen.value = true;
+	}, SPRING_OPEN_MS);
+}
+
+function disarmSpring() {
+	clearTimeout(springTimer);
+	springTimer = undefined;
+}
+
+function onHeaderDragleave(event: DragEvent) {
+	// Crossing from the header onto its own icon or label is not leaving it.
+	const into = event.relatedTarget as Node | null;
+	if (into && (event.currentTarget as Node).contains(into)) return;
+	disarmSpring();
+}
+
+watch(drop.active, (active) => {
+	if (active) return;
+	disarmSpring();
+	springOpen.value = false;
+});
+onBeforeUnmount(disarmSpring);
+
+const expanded = computed(() => isOpen.value || holdsActiveRoute.value || springOpen.value);
 </script>
 
 <template>
@@ -110,6 +151,8 @@ const expanded = computed(() => isOpen.value || holdsActiveRoute.value);
 					: t('components.postbox.postboxRailMoreGroup.more')
 			"
 			@click="toggle"
+			@dragenter="armSpring"
+			@dragleave="onHeaderDragleave"
 		>
 			<Icon
 				v-if="collapsed"
@@ -144,6 +187,7 @@ const expanded = computed(() => isOpen.value || holdsActiveRoute.value);
 			:class="collapsed ? 'flex flex-col items-center gap-1' : 'flex flex-col gap-0.5 mt-0.5 pl-2'"
 		>
 			<PostboxFolderList
+				:mailbox-id="mailboxId"
 				:folders="folders"
 				:unread-counts="{}"
 				:active-folder="folderRole"

@@ -28,6 +28,7 @@ import { evalMessageFromRow, filterConditionsMatch } from './filters';
 import { moveMessagesToFolder, rebuildThreadAggregates } from './messageActions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { cancelJob, readJob, startJob } from './_jobLifecycle';
+import { changedRemoteFlags, recordRemoteChanges } from './external/remoteOps';
 
 /**
  * Messages read per transaction. Smaller than the attachment backfill's page:
@@ -174,6 +175,11 @@ async function applyActions(
 		}
 		await ctx.db.patch(message._id, { ...flagPatch, labelIds, modseq, updatedAt: now });
 		await rebuildThreadAggregates(ctx, message.threadId);
+		const flags = changedRemoteFlags(message, {
+			seen: flagPatch.flagSeen,
+			flagged: flagPatch.flagFlagged,
+		});
+		await recordRemoteChanges(ctx, [{ kind: 'flags', message, flags }]);
 	}
 
 	// The move goes last so the flag/label writes above act on the row while it
