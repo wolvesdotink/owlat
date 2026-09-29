@@ -14,9 +14,8 @@ import {
 import { resolvePaletteGroups, routePrefixMatcher } from '~/lib/commandPaletteRegistry';
 import { PALETTE_SCOPE_LABEL_KEYS, groupsForScope } from '~/lib/commandPaletteScope';
 import {
-	COMMAND_PALETTE_ASK_EVENT,
 	type CommandPaletteOpenDetail,
-	commandPaletteChord,
+	listenForCommandPaletteTriggers,
 } from '~/composables/useCommandPalette';
 import {
 	SEARCH_MIN_QUERY,
@@ -365,47 +364,30 @@ function onInputKeydown(event: KeyboardEvent) {
 // ── Global open triggers. This palette owns plain Cmd/Ctrl+K everywhere, and
 // Cmd/Ctrl+Shift+K is now an ALIAS that opens it pre-switched to Ask — the
 // knowledge Quick Query's own shortcut, unchanged, gated on the same
-// `ai.knowledge` flag the panel it replaced was gated on.
-function onGlobalKey(event: KeyboardEvent) {
-	const chord = commandPaletteChord(event);
-	if (!chord) return;
-	if (chord === 'ask') {
-		if (!isAskAvailable.value) return;
-		event.preventDefault();
-		void openPalette({ scope: 'ask' });
-		return;
-	}
-	event.preventDefault();
-	if (open.value) close();
-	else void openPalette();
-}
-
-// Header/mobile search buttons, the desktop titlebar pill and the Postbox `/`
-// shortcut all open us; the detail names a scope when the caller has one.
-function onExternalOpen(event: Event) {
-	if (open.value) return;
-	void openPalette((event as CustomEvent<CommandPaletteOpenDetail>).detail ?? undefined);
-}
-
-// The palette's own "Ask knowledge…" verb keeps its event seam; it now switches
-// this overlay instead of opening a second modal.
-function onOpenAsk() {
-	if (isAskAvailable.value) void openPalette({ scope: 'ask' });
-}
-
+// `ai.knowledge` flag the panel it replaced was gated on. Header/mobile search
+// buttons, the desktop titlebar pill and the Postbox `/` shortcut send the open
+// event (the detail names a scope when the caller has one), and the palette's
+// own "Ask knowledge…" verb switches this overlay instead of opening a modal.
+let detachTriggers: (() => void) | null = null;
 onMounted(() => {
 	loadRecent();
-	window.addEventListener('keydown', onGlobalKey);
-	window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, onExternalOpen);
-	window.addEventListener(COMMAND_PALETTE_ASK_EVENT, onOpenAsk);
+	detachTriggers = listenForCommandPaletteTriggers(
+		{
+			toggle: () => {
+				if (open.value) close();
+				else void openPalette();
+			},
+			ask: () => void openPalette({ scope: 'ask' }),
+			open: (detail) => {
+				if (!open.value) void openPalette(detail);
+			},
+		},
+		() => isAskAvailable.value
+	);
 	emit('ready');
 	if (props.initialOpen) void openPalette(props.initialOpen);
 });
-onBeforeUnmount(() => {
-	window.removeEventListener('keydown', onGlobalKey);
-	window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, onExternalOpen);
-	window.removeEventListener(COMMAND_PALETTE_ASK_EVENT, onOpenAsk);
-});
+onBeforeUnmount(() => detachTriggers?.());
 </script>
 
 <template>

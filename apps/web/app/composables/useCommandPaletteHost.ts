@@ -1,9 +1,7 @@
 import { onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 import {
-	COMMAND_PALETTE_ASK_EVENT,
-	COMMAND_PALETTE_OPEN_EVENT,
 	type CommandPaletteOpenDetail,
-	commandPaletteChord,
+	listenForCommandPaletteTriggers,
 } from '~/composables/useCommandPalette';
 
 /**
@@ -27,56 +25,34 @@ export function useCommandPaletteHost() {
 	const { isEnabled } = useFeatureFlag();
 	const paletteRequested = ref(false);
 	const paletteInitialOpen = shallowRef<CommandPaletteOpenDetail | undefined>(undefined);
-	let listening = false;
-
-	// Same gate the palette's Ask scope uses: knowledge answers need the flag.
-	const isAskAvailable = () => isEnabled('ai.knowledge');
+	let detach: (() => void) | null = null;
 
 	function request(detail: CommandPaletteOpenDetail) {
 		paletteInitialOpen.value = detail;
 		paletteRequested.value = true;
 	}
 
-	function onKeydown(event: KeyboardEvent) {
-		const chord = commandPaletteChord(event);
-		if (!chord) return;
-		if (chord === 'ask') {
-			if (!isAskAvailable()) return;
-			event.preventDefault();
-			request({ scope: 'ask' });
-			return;
-		}
-		event.preventDefault();
-		request({});
-	}
-
-	function onOpenEvent(event: Event) {
-		request((event as CustomEvent<CommandPaletteOpenDetail>).detail ?? {});
-	}
-
-	function onAskEvent() {
-		if (isAskAvailable()) request({ scope: 'ask' });
-	}
-
-	function detach() {
-		if (!listening) return;
-		listening = false;
-		window.removeEventListener('keydown', onKeydown);
-		window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, onOpenEvent);
-		window.removeEventListener(COMMAND_PALETTE_ASK_EVENT, onAskEvent);
+	function stopListening() {
+		detach?.();
+		detach = null;
 	}
 
 	onMounted(() => {
-		listening = true;
-		window.addEventListener('keydown', onKeydown);
-		window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, onOpenEvent);
-		window.addEventListener(COMMAND_PALETTE_ASK_EVENT, onAskEvent);
+		// Same Ask gate the palette's Ask scope uses: knowledge answers need the flag.
+		detach = listenForCommandPaletteTriggers(
+			{
+				toggle: () => request({}),
+				ask: () => request({ scope: 'ask' }),
+				open: (detail) => request(detail ?? {}),
+			},
+			() => isEnabled('ai.knowledge')
+		);
 	});
-	onBeforeUnmount(detach);
+	onBeforeUnmount(stopListening);
 
 	/** The palette is mounted and listening for itself: hand the triggers over. */
 	function onPaletteReady() {
-		detach();
+		stopListening();
 	}
 
 	return { paletteRequested, paletteInitialOpen, onPaletteReady };

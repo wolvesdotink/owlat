@@ -43,6 +43,56 @@ export interface CommandPaletteOpenDetail {
 	query?: string;
 }
 
+/** What each palette trigger asks for; see {@link listenForCommandPaletteTriggers}. */
+export interface CommandPaletteTriggers {
+	/** Plain Cmd/Ctrl+K. */
+	toggle: () => void;
+	/** Cmd/Ctrl+Shift+K or the Ask verb's event, only while Ask is available. */
+	ask: () => void;
+	/** The shared open event, with the detail its caller sent. */
+	open: (detail: CommandPaletteOpenDetail | undefined) => void;
+}
+
+/**
+ * Attach the window listeners that open the palette: the Cmd/Ctrl+K chords,
+ * the shared open event and the Ask verb's event. Both the palette and the
+ * layout's pre-mount stand-in (`useCommandPaletteHost`) listen through this, so
+ * the two agree on what counts as a request. A chord the palette acts on has
+ * its browser default suppressed; the Ask chord without Ask is left alone.
+ * Returns the detach.
+ */
+export function listenForCommandPaletteTriggers(
+	triggers: CommandPaletteTriggers,
+	isAskAvailable: () => boolean
+): () => void {
+	const onKeydown = (event: KeyboardEvent) => {
+		const chord = commandPaletteChord(event);
+		if (!chord) return;
+		if (chord === 'ask') {
+			if (!isAskAvailable()) return;
+			event.preventDefault();
+			triggers.ask();
+			return;
+		}
+		event.preventDefault();
+		triggers.toggle();
+	};
+	const onOpen = (event: Event) => {
+		triggers.open((event as CustomEvent<CommandPaletteOpenDetail>).detail ?? undefined);
+	};
+	const onAsk = () => {
+		if (isAskAvailable()) triggers.ask();
+	};
+	window.addEventListener('keydown', onKeydown);
+	window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, onOpen);
+	window.addEventListener(COMMAND_PALETTE_ASK_EVENT, onAsk);
+	return () => {
+		window.removeEventListener('keydown', onKeydown);
+		window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, onOpen);
+		window.removeEventListener(COMMAND_PALETTE_ASK_EVENT, onAsk);
+	};
+}
+
 export interface CommandPaletteControls {
 	/** Open the app command palette (no-op on the server). */
 	open: (detail?: CommandPaletteOpenDetail) => void;
