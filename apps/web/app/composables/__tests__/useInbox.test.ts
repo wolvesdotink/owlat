@@ -5,17 +5,30 @@ import { useInbox } from '../useInbox';
 /**
  * Regression tests for the inbox pagination wiring (FRONTEND_WIRING_REVIEW H1):
  * - "Load More" must APPEND pages, not replace the visible list.
- * - A filter change must reset the keyset cursor (it is minted against a
+ * - The first page stays live after "Load More" (it never takes a cursor), so
+ *   new threads keep reaching the top.
+ * - A filter change must drop every keyset cursor (each is minted against a
  *   filter-specific backend index, so reusing it is invalid).
  */
 describe('useInbox pagination', () => {
 	// One controllable { data } per useConvexQuery call, in call order.
-	let created: Array<{ data: Ref<unknown>; args: () => unknown }> = [];
+	let created: Array<{
+		data: Ref<unknown>;
+		isRefetching: Ref<boolean>;
+		args: () => unknown;
+		options: unknown;
+	}> = [];
 
 	beforeEach(() => {
 		created = [];
-		vi.stubGlobal('useConvexQuery', (_query: unknown, args: () => unknown) => {
-			const handle = { data: ref<unknown>(undefined), isLoading: ref(false), args };
+		vi.stubGlobal('useConvexQuery', (_query: unknown, args: () => unknown, options?: unknown) => {
+			const handle = {
+				data: ref<unknown>(undefined),
+				isLoading: ref(false),
+				isRefetching: ref(false),
+				args,
+				options,
+			};
 			created.push(handle);
 			return handle;
 		});
@@ -31,68 +44,161 @@ describe('useInbox pagination', () => {
 		}));
 	});
 
-	const thread = (id: string) => ({ _id: id, status: 'open', lastMessageAt: 1 });
+	const thread = (id: string, status = 'open') => ({ _id: id, status, lastMessageAt: 1 });
+	// Call order inside useInbox: list first page, list tail, filter counts, stats.
+	const handles = () => {
+		const [first, tail, counts] = created;
+		return { first: first!, tail: tail!, counts: counts! };
+	};
+	const ids = (rows: Array<{ _id: string }>) => rows.map((t) => t._id);
 
 	it('appends pages on loadMoreThreads instead of replacing them', async () => {
 		const { threads, hasMoreThreads, loadMoreThreads } = useInbox();
-		const threadsData = created[0]!.data;
+		const { first, tail } = handles();
 
-		// First page (cursor undefined) replaces.
-		threadsData.value = { threads: [thread('a'), thread('b')], nextCursor: 'c1' };
+		first.data.value = { threads: [thread('a'), thread('b')], nextCursor: 'c1' };
 		await nextTick();
-		expect(threads.value.map((t) => t._id)).toEqual(['a', 'b']);
+		expect(ids(threads.value)).toEqual(['a', 'b']);
 		expect(hasMoreThreads.value).toBe(true);
+		expect(tail.args()).toBe('skip');
 
-		// Advance the cursor, then deliver the next page — it must append.
+		// Load more opens the tail on the first page's cursor; its page appends.
 		loadMoreThreads();
-		threadsData.value = { threads: [thread('c'), thread('d')], nextCursor: null };
+		expect(tail.args()).toMatchObject({ cursor: 'c1', limit: 25 });
+		expect(hasMoreThreads.value).toBe(false);
+		tail.data.value = { threads: [thread('c'), thread('d')], nextCursor: null };
 		await nextTick();
-		expect(threads.value.map((t) => t._id)).toEqual(['a', 'b', 'c', 'd']);
+		expect(ids(threads.value)).toEqual(['a', 'b', 'c', 'd']);
 		expect(hasMoreThreads.value).toBe(false);
 	});
 
-	it('dedupes overlapping rows across pages', async () => {
+	it('keeps the first page live after load more, so new threads still reach the top', async () => {
 		const { threads, loadMoreThreads } = useInbox();
-		const threadsData = created[0]!.data;
+		const { first, tail } = handles();
 
-		threadsData.value = { threads: [thread('a'), thread('b')], nextCursor: 'c1' };
+		first.data.value = { threads: [thread('a'), thread('b')], nextCursor: 'c1' };
 		await nextTick();
 		loadMoreThreads();
-		threadsData.value = { threads: [thread('b'), thread('c')], nextCursor: null };
+		tail.data.value = { threads: [thread('c')], nextCursor: null };
 		await nextTick();
-		expect(threads.value.map((t) => t._id)).toEqual(['a', 'b', 'c']);
+
+		// The first page never carries a cursor: it is the same live subscription.
+		expect(first.args()).not.toHaveProperty('cursor');
+
+		// A new thread arrives and a thread on the first page is resolved.
+		first.data.value = { threads: [thread('new'), thread('a')], nextCursor: 'c1b' };
+		await nextTick();
+		expect(ids(threads.value)).toEqual(['new', 'a', 'c']);
 	});
 
-	it('resets accumulated pages and cursor when a filter changes', async () => {
-		const { threads, filter, loadMoreThreads } = useInbox();
-		const threadsData = created[0]!.data;
+	it('keeps earlier tail pages when paging deeper', async () => {
+		const { threads, loadMoreThreads } = useInbox();
+		const { first, tail } = handles();
 
-		threadsData.value = { threads: [thread('a'), thread('b')], nextCursor: 'c1' };
+		first.data.value = { threads: [thread('a')], nextCursor: 'c1' };
 		await nextTick();
 		loadMoreThreads();
-		threadsData.value = { threads: [thread('c')], nextCursor: null };
+		tail.data.value = { threads: [thread('b')], nextCursor: 'c2' };
+		await nextTick();
+		loadMoreThreads();
+		expect(tail.args()).toMatchObject({ cursor: 'c2' });
+		tail.data.value = { threads: [thread('c')], nextCursor: null };
+		await nextTick();
+		expect(ids(threads.value)).toEqual(['a', 'b', 'c']);
+	});
+
+	it('dedupes overlapping rows across pages, preferring the live first page', async () => {
+		const { threads, loadMoreThreads } = useInbox();
+		const { first, tail } = handles();
+
+		first.data.value = { threads: [thread('a'), thread('b')], nextCursor: 'c1' };
+		await nextTick();
+		loadMoreThreads();
+		tail.data.value = { threads: [thread('b', 'resolved'), thread('c')], nextCursor: null };
+		await nextTick();
+		expect(ids(threads.value)).toEqual(['a', 'b', 'c']);
+		expect(threads.value[1]!.status).toBe('open');
+	});
+
+	it('drops the tail on a filter change but keeps the rows until the new first page', async () => {
+		const { threads, filter, loadMoreThreads } = useInbox();
+		const { first, tail } = handles();
+
+		first.data.value = { threads: [thread('a'), thread('b')], nextCursor: 'c1' };
+		await nextTick();
+		loadMoreThreads();
+		tail.data.value = { threads: [thread('c')], nextCursor: null };
 		await nextTick();
 		expect(threads.value).toHaveLength(3);
 
-		// Changing the filter must clear the accumulator immediately (sync watch),
-		// so the next first page replaces rather than appends.
+		// Every cursor is invalid for the new view: the tail unsubscribes at once…
 		filter.value = 'resolved';
-		expect(threads.value).toHaveLength(0);
-
-		threadsData.value = { threads: [thread('x')], nextCursor: null };
+		expect(tail.args()).toBe('skip');
+		expect(first.args()).toMatchObject({ filter: 'resolved' });
+		expect(first.args()).not.toHaveProperty('cursor');
+		// …but while the new first page loads, the list does not shrink or blank.
+		first.isRefetching.value = true;
 		await nextTick();
-		expect(threads.value.map((t) => t._id)).toEqual(['x']);
+		expect(ids(threads.value)).toEqual(['a', 'b', 'c']);
+
+		first.data.value = { threads: [thread('x')], nextCursor: null };
+		first.isRefetching.value = false;
+		await nextTick();
+		expect(ids(threads.value)).toEqual(['x']);
+	});
+
+	it('drops the retained rows at once when the new first page is answered from cache', async () => {
+		const { threads, filter, loadMoreThreads } = useInbox();
+		const { first, tail } = handles();
+
+		first.data.value = { threads: [thread('a')], nextCursor: 'c1' };
+		await nextTick();
+		loadMoreThreads();
+		tail.data.value = { threads: [thread('b')], nextCursor: null };
+		await nextTick();
+
+		// The new view's first page lands in the same tick: no refetch is shown.
+		filter.value = 'resolved';
+		first.data.value = { threads: [thread('x')], nextCursor: null };
+		await nextTick();
+		expect(ids(threads.value)).toEqual(['x']);
+
+		// A later background refetch must not bring the old view's rows back.
+		first.isRefetching.value = true;
+		await nextTick();
+		expect(ids(threads.value)).toEqual(['x']);
+	});
+
+	it('keeps the first page and the counts across filter, assignee and sort changes', () => {
+		useInbox();
+		const { first, counts } = handles();
+		expect(first.options).toEqual({ keepPreviousData: true });
+		expect(counts.options).toEqual({ keepPreviousData: true });
+	});
+
+	it('offers no "load more" from the previous view while the new one loads', async () => {
+		const { hasMoreThreads, loadMoreThreads, filter } = useInbox();
+		const { first, tail } = handles();
+		first.data.value = { threads: [thread('a')], nextCursor: 'old-view-cursor' };
+		await nextTick();
+		expect(hasMoreThreads.value).toBe(true);
+
+		filter.value = 'resolved';
+		first.isRefetching.value = true;
+		expect(hasMoreThreads.value).toBe(false);
+		loadMoreThreads();
+		expect(tail.args()).toBe('skip');
 	});
 
 	it('sends the assignment filter to the list and the tab counts', () => {
 		const { assignee, threads, loadMoreThreads } = useInbox();
-		const [list, counts] = created;
-		expect(list!.args()).not.toHaveProperty('assignee');
-		expect(counts!.args()).toEqual({});
+		const { first: list, counts } = handles();
+		expect(list.args()).not.toHaveProperty('assignee');
+		expect(counts.args()).toEqual({});
 
 		assignee.value = 'me';
-		expect(list!.args()).toMatchObject({ filter: 'open', assignee: 'me' });
-		expect(counts!.args()).toEqual({ assignee: 'me' });
+		expect(list.args()).toMatchObject({ filter: 'open', assignee: 'me' });
+		expect(counts.args()).toEqual({ assignee: 'me' });
 		expect(threads.value).toHaveLength(0);
 		expect(typeof loadMoreThreads).toBe('function');
 	});

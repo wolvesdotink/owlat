@@ -1,4 +1,5 @@
 import type { FunctionReference, FunctionArgs, FunctionReturnType } from 'convex/server';
+import type { MutationOptions, OptimisticUpdate } from 'convex/browser';
 import type { Ref } from 'vue';
 import type { OperationError } from '@owlat/shared/operationError';
 import { normalizeToOperationError, categoryTreatment, operationCopy } from '~/lib/operationError';
@@ -52,6 +53,40 @@ export interface BackendOperationOptions {
 }
 
 /**
+ * A Convex optimistic update for `M`'s args, or `never` for an action (the
+ * client only applies optimistic updates to mutations).
+ *
+ * The updater patches the client's local query store the moment the mutation
+ * is sent, so every live subscription over the patched queries repaints at
+ * once. Convex rolls the patch back by itself when the server's result lands
+ * (or the write fails), so there is no revert to write and the server stays
+ * the only authority. Build updaters from `~/lib/optimisticStore`.
+ */
+export type BackendOptimisticUpdate<M extends FunctionReference<'mutation' | 'action'>> =
+	M extends FunctionReference<'mutation'> ? OptimisticUpdate<FunctionArgs<M>> : never;
+
+/** Per-run knobs for {@link BackendOperation.run}. */
+export interface BackendRunOptions<M extends FunctionReference<'mutation' | 'action'>> {
+	/**
+	 * An optimistic update for this one run, used instead of the operation's
+	 * own `optimisticUpdate`. For a runner shared by writes whose local effect
+	 * differs by more than their args say.
+	 */
+	optimisticUpdate?: BackendOptimisticUpdate<M>;
+}
+
+/** {@link BackendOperationOptions} plus the args-typed optimistic update. */
+export interface BackendOperationConfig<
+	M extends FunctionReference<'mutation' | 'action'>,
+> extends BackendOperationOptions {
+	/**
+	 * Applied on every `run` of a mutation, unless the run passes its own. See
+	 * {@link BackendOptimisticUpdate}.
+	 */
+	optimisticUpdate?: BackendOptimisticUpdate<M>;
+}
+
+/**
  * The outcome of one `run`: either the operation completed and carries its
  * `result`, or it did not.
  *
@@ -88,7 +123,10 @@ export type BackendOperationValue<R> =
  * labels and two loading flags for one write.
  */
 export interface BackendOperation<M extends FunctionReference<'mutation' | 'action'>> {
-	run: (args: FunctionArgs<M>) => Promise<BackendOperationResult<FunctionReturnType<M>>>;
+	run: (
+		args: FunctionArgs<M>,
+		runOpts?: BackendRunOptions<M>
+	) => Promise<BackendOperationResult<FunctionReturnType<M>>>;
 	isLoading: Readonly<Ref<boolean>>;
 	inlineError: Readonly<Ref<string | null>>;
 }
@@ -130,7 +168,7 @@ function operationTranslator() {
 
 export function useBackendOperation<M extends FunctionReference<'mutation' | 'action'>>(
 	operation: M,
-	opts: BackendOperationOptions
+	opts: BackendOperationConfig<M>
 ): BackendOperation<M> {
 	const client = useConvex();
 	const { t, copyOptions } = operationTranslator();
@@ -180,8 +218,29 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 		}
 	}
 
+	/**
+	 * Call the client. A mutation with an optimistic update (the run's own, else
+	 * the operation's) hands it to `client.mutation`; without one the call keeps
+	 * its plain two-argument form.
+	 */
+	function send(
+		convex: NonNullable<typeof client>,
+		args: FunctionArgs<M>,
+		runOpts: BackendRunOptions<M> | undefined
+	): Promise<unknown> {
+		if (opts.type === 'action') {
+			return convex.action(operation as FunctionReference<'action'>, args);
+		}
+		const mutation = operation as FunctionReference<'mutation'>;
+		const optimisticUpdate = runOpts?.optimisticUpdate ?? opts.optimisticUpdate;
+		if (!optimisticUpdate) return convex.mutation(mutation, args);
+		const options: MutationOptions = { optimisticUpdate };
+		return convex.mutation(mutation, args, options);
+	}
+
 	const run = async (
-		args: FunctionArgs<M>
+		args: FunctionArgs<M>,
+		runOpts?: BackendRunOptions<M>
 	): Promise<BackendOperationResult<FunctionReturnType<M>>> => {
 		inlineError.value = null;
 
@@ -192,10 +251,7 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 
 		isLoading.value = true;
 		try {
-			const result =
-				opts.type === 'action'
-					? await client.action(operation as FunctionReference<'action'>, args)
-					: await client.mutation(operation as FunctionReference<'mutation'>, args);
+			const result = await send(client, args, runOpts);
 			// The one place every successful write in the app passes through, which
 			// is why the announcement lives here rather than at several hundred
 			// call sites that would each have to remember it. The label is the same

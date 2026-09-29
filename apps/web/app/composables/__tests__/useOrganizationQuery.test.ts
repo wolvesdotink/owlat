@@ -114,4 +114,20 @@ describe('useOrganizationQuery', () => {
 			expect.any(Function)
 		);
 	});
+
+	it('passes keepPreviousData through, so a new term keeps the last results', async () => {
+		const term = ref('ada');
+		const { data, isRefetching } = useOrganizationQuery(fakeQuery, () => ({ query: term.value }), {
+			keepPreviousData: true,
+		});
+		await signInToOrganization();
+		const deliver = client.onUpdate.mock.calls[0]![2] as (value: unknown) => void;
+		deliver(['Ada Lovelace']);
+
+		term.value = 'adam';
+		await nextTick();
+		expect(client.onUpdate).toHaveBeenCalledTimes(2);
+		expect(data.value).toEqual(['Ada Lovelace']);
+		expect(isRefetching.value).toBe(true);
+	});
 });

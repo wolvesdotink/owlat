@@ -9,6 +9,7 @@ export function queryResult<T>(data: T) {
 		isRefetching: ref(false),
 		error: ref(null),
 		refetch: vi.fn(),
+		reset: vi.fn(),
 	};
 }
 

@@ -9,8 +9,10 @@ import { usePostboxTriageUndo } from '~/composables/postbox/usePostboxTriageUndo
  *
  *  - `usePostboxOptimisticHide` removes a row the instant its action fires, so a
  *    resolve/snooze/reassign feels instant instead of waiting on the live
- *    subscription. A failed mutation restores the row; the ConvexClient has no
- *    native optimistic updates.
+ *    subscription. A failed mutation restores the row. (The ConvexClient does
+ *    support native optimistic updates, via `useBackendOperation`'s
+ *    `optimisticUpdate`; this hide set covers the view-local "leaves the
+ *    filter" case, which the forward runner may pair with one.)
  *  - `usePostboxTriageUndo` surfaces the "Resolved — Undo" toast (also
  *    reachable with Cmd/Ctrl+Z outside text fields, which that composable binds
  *    app-wide) whose inverse re-runs the reverse mutation. Its registry is a

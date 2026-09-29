@@ -50,9 +50,13 @@ export function useCommandPaletteInboxScope(options: CommandPaletteInboxScopeOpt
 		pendingQuery.value = value;
 	});
 
-	/** Drop the previous query's hits the moment the overlay closes or reopens. */
+	/**
+	 * Drop the previous query's hits the moment the overlay closes or reopens.
+	 * keepPreviousData bridges keystrokes within one session, not across them.
+	 */
 	function resetQuery(value = '') {
 		setImmediate(value);
+		reset();
 	}
 
 	const isSubscribed = computed(
@@ -62,10 +66,14 @@ export function useCommandPaletteInboxScope(options: CommandPaletteInboxScopeOpt
 			debouncedQuery.value.trim().length >= SEARCH_MIN_QUERY
 	);
 
-	const { data } = useConvexQuery(api.inbox.queries.listThreads, () =>
-		isSubscribed.value
-			? { search: debouncedQuery.value.trim(), limit: INBOX_SCOPE_HIT_LIMIT }
-			: 'skip'
+	// keepPreviousData: the last hits stay listed while the next query runs.
+	const { data, isRefetching, reset } = useConvexQuery(
+		api.inbox.queries.listThreads,
+		() =>
+			isSubscribed.value
+				? { search: debouncedQuery.value.trim(), limit: INBOX_SCOPE_HIT_LIMIT }
+				: 'skip',
+		{ keepPreviousData: true }
 	);
 
 	/** True while the box is ahead of the subscription, or the page is in flight. */
@@ -74,7 +82,9 @@ export function useCommandPaletteInboxScope(options: CommandPaletteInboxScopeOpt
 			options.enabled.value &&
 			isFlagEnabled('inbox') &&
 			options.query.value.trim().length >= SEARCH_MIN_QUERY &&
-			(options.query.value !== debouncedQuery.value || data.value === undefined)
+			(options.query.value !== debouncedQuery.value ||
+				data.value === undefined ||
+				isRefetching.value)
 	);
 
 	const threadItems = computed<PaletteItem[]>(() =>

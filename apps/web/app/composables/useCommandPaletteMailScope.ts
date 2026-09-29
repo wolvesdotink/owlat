@@ -71,16 +71,24 @@ export function useCommandPaletteMailScope(options: CommandPaletteMailScopeOptio
 
 	// ── Data-backed operands. Both reads are per-operator: the address book only
 	// opens while an address operator is being typed, the labels only for `label:`.
-	const { query: contactPrefix, debouncedQuery: debouncedContactPrefix } =
-		useDebouncedSearch(CONTACT_DEBOUNCE_MS);
+	const {
+		query: contactPrefix,
+		debouncedQuery: debouncedContactPrefix,
+		setImmediate: setContactPrefix,
+	} = useDebouncedSearch(CONTACT_DEBOUNCE_MS);
 	watch(operand, (current) => {
 		contactPrefix.value = current && ADDRESS_OPERATORS.includes(current.op) ? current.value : '';
 	});
 
-	const { data: contactData } = useConvexQuery(api.mail.contacts.autocomplete, () =>
-		options.enabled.value && activeMailboxId.value && debouncedContactPrefix.value
-			? { mailboxId: activeMailboxId.value, prefix: debouncedContactPrefix.value, limit: 6 }
-			: 'skip'
+	// keepPreviousData: typing one more letter narrows the list in place instead
+	// of blanking it for a round trip.
+	const { data: contactData, reset: resetContacts } = useConvexQuery(
+		api.mail.contacts.autocomplete,
+		() =>
+			options.enabled.value && activeMailboxId.value && debouncedContactPrefix.value
+				? { mailboxId: activeMailboxId.value, prefix: debouncedContactPrefix.value, limit: 6 }
+				: 'skip',
+		{ keepPreviousData: true }
 	);
 	const contacts = computed(() =>
 		(contactData.value ?? []).map((contact) => ({
@@ -140,9 +148,16 @@ export function useCommandPaletteMailScope(options: CommandPaletteMailScopeOptio
 	watch(options.query, (value) => {
 		pendingQuery.value = value;
 	});
-	/** Drop the previous query's hits the moment the scope closes or reopens. */
+	/**
+	 * Drop the previous query's hits the moment the scope closes or reopens.
+	 * keepPreviousData bridges keystrokes within one session; a new session must
+	 * not open on the last one's hits and completions.
+	 */
 	function resetQuery(value = '') {
 		setImmediate(value);
+		setContactPrefix('');
+		resetSearch();
+		resetContacts();
 	}
 
 	const parsed = computed(() => parseSearchQuery(debouncedQuery.value));
@@ -152,14 +167,23 @@ export function useCommandPaletteMailScope(options: CommandPaletteMailScopeOptio
 			activeMailboxId.value !== null &&
 			debouncedQuery.value.trim().length >= SEARCH_MIN_QUERY
 	);
-	const { data: searchData } = useConvexQuery(api.mail.mailbox.search.search, () =>
-		isSubscribed.value
-			? {
-					mailboxId: activeMailboxId.value as Id<'mailboxes'>,
-					...parsed.value,
-					limit: MAIL_SCOPE_HIT_LIMIT,
-				}
-			: 'skip'
+	// keepPreviousData: the last hits stay listed while the next query runs,
+	// instead of the list collapsing to "Searching…" on every pause in typing.
+	const {
+		data: searchData,
+		isRefetching: isSearchRefetching,
+		reset: resetSearch,
+	} = useConvexQuery(
+		api.mail.mailbox.search.search,
+		() =>
+			isSubscribed.value
+				? {
+						mailboxId: activeMailboxId.value as Id<'mailboxes'>,
+						...parsed.value,
+						limit: MAIL_SCOPE_HIT_LIMIT,
+					}
+				: 'skip',
+		{ keepPreviousData: true }
 	);
 
 	/** True while the box is ahead of the subscription, or the page is in flight. */
@@ -168,7 +192,9 @@ export function useCommandPaletteMailScope(options: CommandPaletteMailScopeOptio
 			options.enabled.value &&
 			activeMailboxId.value !== null &&
 			options.query.value.trim().length >= SEARCH_MIN_QUERY &&
-			(options.query.value !== debouncedQuery.value || searchData.value === undefined)
+			(options.query.value !== debouncedQuery.value ||
+				searchData.value === undefined ||
+				isSearchRefetching.value)
 	);
 
 	const hitItems = computed<PaletteItem[]>(() =>
