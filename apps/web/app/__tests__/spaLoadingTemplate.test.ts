@@ -74,6 +74,16 @@ describe('SPA loading template — themes and motion', () => {
 		expect(lightBgAt).toBeLessThan(darkQueryAt);
 	});
 
+	it('lets the theme picked in the app (the color-mode class) beat the OS preference', () => {
+		// The desktop window is revealed on the splash, so a splash in the OS
+		// theme would flash the wrong background before the app mounts.
+		expect(template).toContain('html.light .owlat-spa');
+		expect(template).toContain('html.dark .owlat-spa');
+		expect(template.indexOf('html.dark .owlat-spa')).toBeGreaterThan(
+			template.indexOf('@media (prefers-color-scheme: dark)')
+		);
+	});
+
 	it('honors reduced motion', () => {
 		expect(template).toContain('@media (prefers-reduced-motion: reduce)');
 	});
