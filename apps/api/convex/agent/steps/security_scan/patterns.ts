@@ -157,7 +157,54 @@ function stripDelimited(input: string, open: RegExp, close: RegExp): string {
  */
 const HIDING_STYLE =
 	/display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0(?:\.0+)?(?:px|pt|em|rem|%)?(?![.\d])|opacity\s*:\s*0(?:\.0+)?(?![.\d])|(?<![-\w])color\s*:\s*(?:white|#fff(?:fff)?|rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)|rgba\([^)]{0,64},\s*0(?:\.0+)?\s*\))/i;
-const STYLE_ATTR = /\bstyle\s*=\s*("[^"]*"|'[^']*')/i;
+const isTagSpace = (c: string | undefined): boolean =>
+	c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
+
+/**
+ * Read the attributes of an opening tag the way an HTML tokenizer does, from
+ * just after the tag name. Returns the index of the tag's closing `>` and the
+ * value of its first `style` attribute, or null when the tag never ends (no
+ * `>`, or a quoted value whose quote never closes). A `>` inside a quoted value
+ * does not end the tag, and a quote only opens a value right after `=`, as in
+ * the browser. Each character is looked at once.
+ */
+function readOpenTag(input: string, from: number): { end: number; style: string | null } | null {
+	let style: string | null = null;
+	let i = from;
+	for (;;) {
+		while (i < input.length && (isTagSpace(input[i]) || input[i] === '/')) i++;
+		if (i >= input.length) return null;
+		if (input[i] === '>') return { end: i, style };
+
+		// Attribute name: a leading `=` belongs to the name.
+		const nameStart = i;
+		i++;
+		while (i < input.length) {
+			const c = input[i];
+			if (isTagSpace(c) || c === '/' || c === '>' || c === '=') break;
+			i++;
+		}
+		const name = input.slice(nameStart, i);
+		while (i < input.length && isTagSpace(input[i])) i++;
+		if (input[i] !== '=') continue;
+		i++;
+		while (i < input.length && isTagSpace(input[i])) i++;
+
+		let value: string;
+		const quote = input[i];
+		if (quote === '"' || quote === "'") {
+			const close = input.indexOf(quote, i + 1);
+			if (close === -1) return null;
+			value = input.slice(i + 1, close);
+			i = close + 1;
+		} else {
+			const valueStart = i;
+			while (i < input.length && !isTagSpace(input[i]) && input[i] !== '>') i++;
+			value = input.slice(valueStart, i);
+		}
+		if (style === null && name.toLowerCase() === 'style') style = value;
+	}
+}
 
 /**
  * Drop every element whose inline style hides it: the opening tag, its content
@@ -165,9 +212,11 @@ const STYLE_ATTR = /\bstyle\s*=\s*("[^"]*"|'[^']*')/i;
  * no nesting). One forward pass:
  *   - closing tags are indexed up front, per tag name, in document order, and
  *     each name's cursor only moves forward;
- *   - an opening tag ends at the next `>`, and scanning resumes after it (or
- *     after the dropped element), so no character is looked at twice by the
- *     tag search.
+ *   - an opening tag is read attribute by attribute up to its closing `>`, and
+ *     scanning resumes after it (or after the dropped element), so no character
+ *     is looked at twice by the tag search. A tag that never ends (no `>`, or a
+ *     quoted value that never closes) ends the pass, because no later tag could
+ *     end either.
  * A visible styled element is kept and its content still scanned, so a hidden
  * element nested inside it is removed too.
  */
@@ -194,12 +243,11 @@ function stripHiddenElements(input: string): string {
 		openTag.lastIndex = pos;
 		const open = openTag.exec(input);
 		if (!open) break;
-		const tagEnd = input.indexOf('>', open.index + open[0].length);
-		if (tagEnd === -1) break;
-		pos = tagEnd + 1;
+		const tag = readOpenTag(input, open.index + open[0].length);
+		if (!tag) break;
+		pos = tag.end + 1;
 
-		const styleAttr = STYLE_ATTR.exec(input.slice(open.index + open[0].length, tagEnd));
-		if (!styleAttr || !HIDING_STYLE.test(styleAttr[1] as string)) continue;
+		if (tag.style === null || !HIDING_STYLE.test(tag.style)) continue;
 
 		const entry = closings.get((open[1] as string).toLowerCase());
 		if (!entry) continue;

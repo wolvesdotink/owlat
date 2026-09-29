@@ -90,6 +90,42 @@ describe('stripHiddenContent', () => {
 		expect(stripHiddenContent('<SPAN style="display:none">SECRETPAYLOAD</span>ok')).toBe(' ok');
 	});
 
+	it('finds the end of an opening tag past a quoted attribute value containing >', () => {
+		expect(
+			stripHiddenContent(
+				'<p>Hi</p><span style="color:red;>;display:none">SECRETPAYLOAD</span><p>bye</p>'
+			)
+		).toBe('<p>Hi</p> <p>bye</p>');
+		expect(
+			stripHiddenContent(`<div style="font-family:'a>b';display:none">SECRETPAYLOAD</div>ok`)
+		).toBe(' ok');
+		expect(
+			stripHiddenContent('<span data-x="a>b" style="display:none">SECRETPAYLOAD</span>ok')
+		).toBe(' ok');
+		expect(
+			stripHiddenContent(`<span title='x>y' style='display:none'>SECRETPAYLOAD</span>ok`)
+		).toBe(' ok');
+	});
+
+	it('reads an unquoted style attribute value', () => {
+		expect(stripHiddenContent('<span style=display:none>SECRETPAYLOAD</span>ok')).toBe(' ok');
+	});
+
+	it('keeps an element whose hiding rule only appears inside another attribute value', () => {
+		const html = '<span title="style=\'display:none\'">Visible text</span>';
+		expect(stripHiddenContent(html)).toBe(html);
+	});
+
+	it('uses the first style attribute when one is repeated', () => {
+		const html = '<span style="color:#333" style="display:none">Visible text</span>';
+		expect(stripHiddenContent(html)).toBe(html);
+	});
+
+	it('stops at an opening tag whose quoted attribute value never closes', () => {
+		const html = `<p title="x>y <span style='display:none'>text</span>`;
+		expect(stripHiddenContent(html)).toBe(html);
+	});
+
 	it('leaves an unclosed comment and an unclosed hidden element in place', () => {
 		expect(stripHiddenContent('a <!-- b')).toBe('a <!-- b');
 		expect(stripHiddenContent('<span style="display:none">x')).toBe('<span style="display:none">x');
@@ -119,6 +155,8 @@ describe('scan helpers run in linear time on adversarial input', () => {
 		['unclosed style openers', '<style>'],
 		['unclosed comments', '<!--'],
 		['nested tag openers', '<a x '],
+		['unterminated quoted attribute values', '<a x="'],
+		['quoted attribute values holding >', `<b style='display:none;>' `],
 		['colour values without a closing paren', '<i style="color:rgba(1'],
 	])('stripHiddenContent on 5 MB of %s', (_label, unit) => {
 		const input = repeatTo(unit);
