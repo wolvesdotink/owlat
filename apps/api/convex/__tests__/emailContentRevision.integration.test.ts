@@ -300,7 +300,7 @@ describe('publish — content revision', () => {
 		expect((await t.run((ctx) => ctx.db.get(templateId)))?.status).toBe('published');
 	});
 
-	it('puts the HTML the row holds live, not the HTML the client sent', async () => {
+	it('puts a render of the blocks live, not the HTML the row holds or the client sent', async () => {
 		const t = convexTest(schema, modules);
 		const templateId = await seedTemplate(t, {
 			contentRevision: 5,
@@ -317,11 +317,12 @@ describe('publish — content revision', () => {
 
 		const row = await t.run((ctx) => ctx.db.get(templateId));
 		expect(row?.status).toBe('published');
-		expect(row?.htmlContent).toBe('<p>Stored</p>');
-		expect(row?.htmlTranslations).toContain('Gespeichert');
+		expect(row?.htmlContent).toContain('Hello');
+		expect(row?.htmlContent).not.toContain('Stored');
+		expect(row?.htmlContent).not.toContain('Client copy');
 	});
 
-	it('publishes the rerendered HTML when the rerender lands between the tab snapshot and the publish', async () => {
+	it('publishes current HTML when the rerender lands between the tab snapshot and the publish', async () => {
 		const t = convexTest(schema, modules);
 		// Saved-block propagation just landed: revision 5, HTML stale. The tab
 		// snapshots { htmlContent: OLD, contentRevision: 5 }.
@@ -348,7 +349,8 @@ describe('publish — content revision', () => {
 
 		const row = await t.run((ctx) => ctx.db.get(templateId));
 		expect(row?.status).toBe('published');
-		expect(row?.htmlContent).toBe('<p>NEW rerendered</p>');
+		expect(row?.htmlContent).toContain('Hello');
+		expect(row?.htmlContent).not.toContain('OLD pre-propagation');
 		expect(row?.htmlRenderState?.stale).toBe(false);
 	});
 

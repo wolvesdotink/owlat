@@ -8,7 +8,7 @@ import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
-import { createTestEmailTemplate } from './factories';
+import { createTestEmailTemplate, createTestTransactionalEmail } from './factories';
 import { renderPublishableEmail } from '../lib/publishableEmail';
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -100,6 +100,53 @@ describe('email template saves', () => {
 
 		const row = await t.run((ctx) => ctx.db.get(templateId));
 		expect(row!.status).toBe('published');
+		expect(row!.htmlContent).not.toContain('client copy');
+		expect(row!.htmlContent).toContain('Stored body');
+	});
+});
+
+describe('rows saved before server rendering', () => {
+	it('publishes a render of the blocks, not the HTML the row still holds', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t, { htmlContent: CLIENT_HTML });
+
+		await t.mutation(api.emailTemplates.emails.publish, { templateId });
+
+		const row = await t.run((ctx) => ctx.db.get(templateId));
+		expect(row!.status).toBe('published');
+		expect(row!.htmlContent).not.toContain('client copy');
+		expect(row!.htmlContent).toContain('Stored body');
+	});
+
+	it('renders a duplicate from the blocks instead of copying the stored HTML', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t, {
+			htmlContent: CLIENT_HTML,
+			htmlRenderState: { stale: true, failureCount: 0 },
+		});
+
+		const copyId = await t.mutation(api.emailTemplates.emails.duplicate, { templateId });
+
+		const copy = await t.run((ctx) => ctx.db.get(copyId));
+		expect(copy!.htmlContent).not.toContain('client copy');
+		expect(copy!.htmlContent).toContain('Stored body');
+		expect(copy!.htmlRenderState).toBeUndefined();
+	});
+
+	it('does the same for a transactional email', async () => {
+		const t = convexTest(schema, modules);
+		const id = await t.run((ctx) =>
+			ctx.db.insert(
+				'transactionalEmails',
+				createTestTransactionalEmail({
+					content: blocksJson('<p>Stored body</p>'),
+					htmlContent: CLIENT_HTML,
+				})
+			)
+		);
+
+		await t.mutation(api.transactional.emails.publish, { id });
+		const row = await t.run((ctx) => ctx.db.get(id));
 		expect(row!.htmlContent).not.toContain('client copy');
 		expect(row!.htmlContent).toContain('Stored body');
 	});

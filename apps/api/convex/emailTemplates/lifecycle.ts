@@ -29,7 +29,7 @@ import { defineLifecycle, refuse } from '../lib/lifecycle';
 import { applyUsageCountDelta } from '../emailBlocks/module';
 import { deleteTemplateVersions } from './versions';
 import { buildSearchableText } from '../lib/queryHelpers';
-import { duplicateEmailFields } from '../lib/publishableEmail';
+import { duplicateEmailFields, loadEmailTheme } from '../lib/publishableEmail';
 import { sanitizeStoredBlocksJson } from '../lib/emailContentSanitize';
 import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from '../lib/constants';
 
@@ -359,7 +359,10 @@ export const duplicate = internalMutation({
 		const searchableText = buildSearchableText(newName, template.subject);
 
 		const newId = await ctx.db.insert('emailTemplates', {
-			...duplicateEmailFields(template),
+			...duplicateEmailFields(template, {
+				variableType: 'personalization',
+				theme: await loadEmailTheme(ctx),
+			}),
 			name: newName,
 			status: 'draft',
 			searchableText,
