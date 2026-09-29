@@ -186,8 +186,9 @@ export function stripHiddenContent(
 	if (!input) return '';
 	let out = capScanInput(input);
 
-	// 1. HTML comments (first `-->` after each `<!--`).
-	out = stripDelimited(out, /<!--/g, /-->/g);
+	// 1. HTML comments: up to the first `-->` (or `--!>`, which also ends a
+	//    comment) after each `<!--`.
+	out = stripDelimited(out, /<!--/g, /--!?>/g);
 
 	// 2. Hidden elements, including <script> and <style>: the start tag, its
 	//    content and the end tag go. What counts as hidden and how elements are

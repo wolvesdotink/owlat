@@ -137,6 +137,13 @@ function rawTextClose(name: string): RegExp {
 	return re;
 }
 
+/** Whether an element hides its content: always, by the `hidden` attribute, or by its style. */
+function tagHides(name: string, tag: { hidden: boolean; style: string | null }): boolean {
+	return (
+		ALWAYS_HIDDEN_ELEMENTS.has(name) || tag.hidden || (tag.style !== null && styleHides(tag.style))
+	);
+}
+
 /** Elements a select keeps when they appear inside it. */
 const SELECT_CONTENT = new Set(['hr', 'optgroup', 'option', 'script', 'template']);
 
@@ -161,7 +168,8 @@ export function stripHiddenElements(input: string): string {
 	let regionStart = -1;
 	let rootIndex = -1;
 	// SVG and MathML content is not followed closely enough to know where a
-	// hidden span inside or around it ends, so such a span runs to the end.
+	// hidden span inside or around it ends, so such a span runs to the end,
+	// unless the SVG or MathML closes cleanly by its own end tag.
 	let sticky = false;
 
 	const endRegionIfClosed = (end: number) => {
@@ -206,8 +214,10 @@ export function stripHiddenElements(input: string): string {
 	 * element's own end tag.
 	 */
 	const closeTo = (target: number, at: number, after: number, explicit: boolean) => {
+		let closedForeignRoot = false;
 		stack.truncate(target, (name, _hides, index, entry) => {
 			const ownEndTag = explicit && index === target;
+			if (ownEndTag && (name === 'svg' || name === 'math')) closedForeignRoot = true;
 			if (entry) {
 				if (ownEndTag) formatting.remove(entry);
 				else formatting.closed(entry);
@@ -216,6 +226,9 @@ export function stripHiddenElements(input: string): string {
 				formatting.clearToMarker();
 			}
 		});
+		// SVG or MathML that closed by its own end tag, with none left open, was
+		// followed well enough: the span can end normally again.
+		if (closedForeignRoot && !stack.hasForeign()) sticky = false;
 		let end = at;
 		if (rootIndex >= target) {
 			// Its own end tag ends the hidden element; any other close leaves that
@@ -242,6 +255,11 @@ export function stripHiddenElements(input: string): string {
 				continue;
 			}
 			pos = tag.end + 1;
+			if (stack.insideForeign(name)) {
+				// An SVG or MathML element: none of the HTML tree rules below apply.
+				if (!tag.selfClosing) open(name, tagHides(name, tag), stack.namespaceFor(name), lt);
+				continue;
+			}
 			if (IGNORED_START_TAGS.has(name)) {
 				// The browser copies `<html>` and `<body>` attributes onto the
 				// document's own elements, so hiding one hides the whole document.
@@ -258,7 +276,7 @@ export function stripHiddenElements(input: string): string {
 				if (formOpen) continue;
 				formOpen = true;
 			}
-			if (stack.has('select')) {
+			if (stack.inSelect()) {
 				// Inside a select the browser keeps only options and a few others,
 				// and ends the select at another select, a form control, or (in a
 				// table) a table part.
@@ -294,11 +312,7 @@ export function stripHiddenElements(input: string): string {
 			if (!foreign && reopensFormatting(name)) reopenFormatting(lt);
 			if (VOID_ELEMENTS.has(name) || (foreign && tag.selfClosing)) continue;
 
-			const hides =
-				ALWAYS_HIDDEN_ELEMENTS.has(name) ||
-				tag.hidden ||
-				(tag.style !== null && styleHides(tag.style));
-			open(name, hides, namespace, lt);
+			open(name, tagHides(name, tag), namespace, lt);
 
 			if (!foreign && RAW_TEXT_ELEMENTS.has(name)) {
 				// The content is text up to `</name`, or to the end of the input
@@ -333,9 +347,17 @@ export function stripHiddenElements(input: string): string {
 			}
 			pos = tag.end + 1;
 
+			if (name === 'p' || name === 'br') {
+				// `</p>` and `</br>` inside SVG or MathML end that content first.
+				const breakout = stack.foreignBreakout();
+				if (breakout !== -1) closeTo(breakout, lt, lt, false);
+			}
 			if (name === 'form') formOpen = false;
+			// How `<noscript>` content is parsed depends on where it sits and on
+			// whether scripting is on, so its end tag never ends a hidden span.
+			if (name === 'noscript' && regionStart !== -1) continue;
 			if (
-				stack.has('select') &&
+				stack.inSelect() &&
 				!SELECT_CONTENT.has(name) &&
 				name !== 'select' &&
 				name !== 'table' &&

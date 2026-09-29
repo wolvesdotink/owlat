@@ -127,6 +127,16 @@ describe('scrubToolOutput', () => {
 		});
 	});
 
+	it('removes hidden elements from a string that is an HTML document, and only from those', () => {
+		const out = scrubToolOutput({
+			page: '<!doctype html><p>Visible</p><div style="display:none">SECRETPAYLOAD</div>',
+			note: 'Wrap it in <template> tags; this stays VISIBLE.',
+		}) as { page: string; note: string };
+		expect(out.page).toContain('Visible');
+		expect(out.page).not.toContain('SECRETPAYLOAD');
+		expect(out.note).toBe('Wrap it in <template> tags; this stays VISIBLE.');
+	});
+
 	it('recurses through arrays and nested objects', () => {
 		const out = scrubToolOutput({
 			results: [{ content: INJECTION }, { content: 'safe' }],

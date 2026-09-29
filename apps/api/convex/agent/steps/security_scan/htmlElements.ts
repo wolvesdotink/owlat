@@ -151,10 +151,7 @@ export function reopensFormatting(name: string): boolean {
 const top = (list: readonly number[]): number =>
 	list.length > 0 ? (list[list.length - 1] as number) : -1;
 
-/**
- * What an end tag does: nothing, close the element at `index` (and everything
- * above it), or detach it (take it off the stack alone).
- */
+/** What an end tag does: nothing, close the element at `index` and all above it, or detach it. */
 export type EndTagEffect =
 	| { kind: 'none' }
 	| { kind: 'close'; index: number }
@@ -162,8 +159,7 @@ export type EndTagEffect =
 
 const NO_EFFECT: EndTagEffect = { kind: 'none' };
 
-/** The name a detached element leaves behind on the stack. */
-const DETACHED = '';
+const DETACHED = ''; // the name a detached element leaves behind on the stack
 
 /** The open elements, with the indexes the close decisions need. */
 export class ElementStack {
@@ -213,6 +209,12 @@ export class ElementStack {
 		return top(this.specials);
 	}
 
+	/** Whether an HTML select is open (not an SVG or MathML element of that name). */
+	inSelect(): boolean {
+		const select = this.nearest('select');
+		return select !== -1 && this.namespaces[select] === '';
+	}
+
 	/** Whether the nearest table context is a table (not a template or none). */
 	inTable(): boolean {
 		const context = top(this.tableScope);
@@ -220,12 +222,45 @@ export class ElementStack {
 	}
 
 	/**
-	 * The namespace a start tag for `name` opens its element in: `svg` and
-	 * `math` start SVG and MathML, and anything inside one that is not an
-	 * integration point stays in it.
+	 * The namespace a start tag for `name` opens its element in: inside SVG or
+	 * MathML content (other than an integration point) it stays in that
+	 * namespace, even `svg` or `math`; elsewhere `svg` and `math` start SVG and
+	 * MathML.
 	 */
 	namespaceFor(name: string): Namespace {
-		if (name === 'svg' || name === 'math') return name;
+		const context = this.foreignContext();
+		if (context !== '') return context;
+		return name === 'svg' || name === 'math' ? name : '';
+	}
+
+	/**
+	 * Whether a start tag for `name` is read as SVG or MathML because of where
+	 * it appears (inside SVG or MathML content it does not break out of), so the
+	 * HTML rules for ignored tags, table parts, selects and implied closes do
+	 * not apply to it.
+	 */
+	insideForeign(name: string): boolean {
+		return !FOREIGN_BREAKOUT.has(name) && this.foreignContext() !== '';
+	}
+
+	/**
+	 * The lowest SVG or MathML element an HTML tag breaks out of: every such
+	 * element down to HTML or an integration point closes. -1 outside SVG and
+	 * MathML content.
+	 */
+	foreignBreakout(): number {
+		if (this.foreignContext() === '') return -1;
+		let index = this.names.length - 1;
+		while (index > 0) {
+			const below = this.namespaces[index - 1] as Namespace;
+			if (below === '' || isIntegrationPoint(below, this.names[index - 1] as string)) break;
+			index--;
+		}
+		return index;
+	}
+
+	/** The current element's namespace when it is SVG or MathML content, else `''`. */
+	private foreignContext(): Namespace {
 		const current = this.names.length - 1;
 		if (current < 0) return '';
 		const namespace = this.namespaces[current] as Namespace;
@@ -344,7 +379,12 @@ export class ElementStack {
 			// element out of the tree and keeps what is above it open.
 			return top(this.specials) > index ? { kind: 'detach', index } : { kind: 'close', index };
 		}
-		if (!SPECIAL_ELEMENTS.has(name) || FOREIGN_SPECIAL_ELEMENTS.has(name)) {
+		// An SVG or MathML element of that name closes by the ordinary rule.
+		if (
+			!SPECIAL_ELEMENTS.has(name) ||
+			FOREIGN_SPECIAL_ELEMENTS.has(name) ||
+			this.namespaces[index] !== ''
+		) {
 			return top(this.specials) > index ? NO_EFFECT : { kind: 'close', index };
 		}
 
@@ -366,15 +406,9 @@ export class ElementStack {
 	impliedClose(name: string): number {
 		const current = this.names.length - 1;
 		if (current < 0) return -1;
-		if (FOREIGN_BREAKOUT.has(name) && this.namespaceFor(name) !== '') {
-			// Close every SVG or MathML element down to HTML or an integration point.
-			let index = current;
-			while (index > 0) {
-				const below = this.namespaces[index - 1] as Namespace;
-				if (below === '' || isIntegrationPoint(below, this.names[index - 1] as string)) break;
-				index--;
-			}
-			return index;
+		if (FOREIGN_BREAKOUT.has(name)) {
+			const breakout = this.foreignBreakout();
+			if (breakout !== -1) return breakout;
 		}
 		if (name === 'li' || name === 'dd' || name === 'dt') {
 			const item =
@@ -434,10 +468,7 @@ export class ElementStack {
 		return [];
 	}
 
-	/**
-	 * The open paragraph a start tag for `name` closes (after
-	 * {@link impliedClose}'s element), or -1.
-	 */
+	/** The open paragraph a start tag for `name` closes (after {@link impliedClose}'s), or -1. */
 	impliedParagraphClose(name: string): number {
 		if (!CLOSES_PARAGRAPH.has(name)) return -1;
 		const paragraph = this.nearest('p');

@@ -333,6 +333,38 @@ describe('stripHiddenContent follows how the browser builds the page', () => {
 	});
 });
 
+describe('stripHiddenContent with SVG, MathML and noscript', () => {
+	it('reads table and select tags inside SVG or MathML as SVG or MathML', () => {
+		expect(stripHtml('<svg><th style="display:none">A</th></svg>VISIBLE')).toBe(
+			'<svg> </svg>VISIBLE'
+		);
+		expect(stripHtml('<math><tr hidden>B</tr></math>VISIBLE')).toBe('<math> </math>VISIBLE');
+	});
+
+	it('ends a hidden span normally after an inline SVG that closes cleanly', () => {
+		// A hidden preheader with an icon.
+		expect(
+			stripHtml(
+				'<div style="display:none;max-height:0"><svg><path d="x"/></svg> mobile</div><p>VISIBLE body</p>'
+			)
+		).toBe(' <p>VISIBLE body</p>');
+		// A white-text button with an icon.
+		expect(
+			stripHtml('<a style="color:#ffffff;background:#06c"><svg><path/></svg>Buy</a><p>VISIBLE</p>')
+		).toBe(' <p>VISIBLE</p>');
+	});
+
+	it('ends SVG content at a paragraph end tag, as the browser does', () => {
+		expect(stripHtml('<svg></p><g hidden>A</svg>SECRETPAYLOAD')).not.toContain('SECRETPAYLOAD');
+	});
+
+	it('never ends a hidden span at a noscript end tag', () => {
+		expect(stripHtml('<noscript><div hidden>A</noscript>SECRETPAYLOAD</div>')).not.toContain(
+			'SECRETPAYLOAD'
+		);
+	});
+});
+
 describe('stripHiddenContent on plain text', () => {
 	it('keeps markup quoted in plain text, which a reader sees as written', () => {
 		const prose =
@@ -344,6 +376,8 @@ describe('stripHiddenContent on plain text', () => {
 
 	it('still removes comments and invisible characters', () => {
 		expect(stripHiddenContent('a<!-- hidden -->b\u200bc')).toBe('a bc');
+		// `--!>` also ends a comment.
+		expect(stripHiddenContent('a<!-- SECRETPAYLOAD --!>b')).toBe('a b');
 	});
 });
 
