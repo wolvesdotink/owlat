@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
 	buildSendingChecklist,
+	isOutsideZone,
 	recordFqdn,
 	summarizeChecklist,
 	toZoneFileLines,
@@ -130,7 +131,7 @@ describe('toZoneFileLines', () => {
 		toZoneFileLines(
 			entries.filter((e) => e.id === id),
 			'mail.example.com',
-			overrides
+			{ valueOverrides: overrides }
 		);
 
 	it('writes absolute names, a TTL and the class', () => {
@@ -174,5 +175,83 @@ describe('toZoneFileLines', () => {
 
 	it('puts one record per line', () => {
 		expect(toZoneFileLines(entries, 'mail.example.com').split('\n')).toHaveLength(7);
+	});
+
+	it('puts a note as a comment line directly above its record', () => {
+		const merged = 'v=spf1 include:other.test include:amazonses.com ~all';
+		const text = toZoneFileLines(entries, 'mail.example.com', {
+			valueOverrides: { spf: merged },
+			notes: { spf: 'Replace the existing v=spf1 record.' },
+		});
+		const lines = text.split('\n');
+		expect(lines).toHaveLength(8);
+		expect(lines.slice(0, 2)).toEqual([
+			'; Replace the existing v=spf1 record.',
+			`mail.example.com.\t3600\tIN\tTXT\t"${merged}"`,
+		]);
+		// Only the noted record carries a comment.
+		expect(lines.filter((l) => l.startsWith(';'))).toHaveLength(1);
+	});
+
+	it('keeps a multi-line note on one comment line', () => {
+		const text = toZoneFileLines(
+			entries.filter((e) => e.id === 'spf'),
+			'mail.example.com',
+			{ notes: { spf: 'first\nsecond' } }
+		);
+		expect(text.split('\n')[0]).toBe('; first second');
+	});
+
+	describe('a record outside the domain zone', () => {
+		// A shared return-path host on the operator's own domain.
+		const sharedBounce = buildSendingChecklist({
+			dnsRecords: {
+				spf: { type: 'TXT', host: '@', value: 'v=spf1 include:_spf.owlat.test ~all' },
+				mailFrom: [
+					{ type: 'MX', hostname: 'bounces.owlat.test', value: 'mx.owlat.test', priority: 10 },
+				],
+			},
+		});
+		const note = (fqdn: string) => `Publish ${fqdn} elsewhere.`;
+
+		it('is written commented out, below its note, so an import skips it', () => {
+			expect(
+				toZoneFileLines(sharedBounce, 'mail.example.com', { outOfZoneNote: note }).split('\n')
+			).toEqual([
+				'mail.example.com.\t3600\tIN\tTXT\t"v=spf1 include:_spf.owlat.test ~all"',
+				'; Publish bounces.owlat.test elsewhere.',
+				'; bounces.owlat.test.\t3600\tIN\tMX\t10 mx.owlat.test.',
+			]);
+		});
+
+		it('is still commented out without a note', () => {
+			expect(toZoneFileLines(sharedBounce.slice(1), 'mail.example.com')).toBe(
+				'; bounces.owlat.test.\t3600\tIN\tMX\t10 mx.owlat.test.'
+			);
+		});
+
+		it('counts an absolute host inside the registrable zone as in zone', () => {
+			const [entry] = buildSendingChecklist({
+				dnsRecords: {
+					mailFrom: [{ type: 'TXT', hostname: 'bounce.example.com', value: 'v=spf1 -all' }],
+				},
+			});
+			expect(toZoneFileLines([entry!], 'mail.example.com', { outOfZoneNote: note })).toBe(
+				'bounce.example.com.\t3600\tIN\tTXT\t"v=spf1 -all"'
+			);
+		});
+	});
+});
+
+describe('isOutsideZone', () => {
+	it('compares against the registrable zone, not the sending domain', () => {
+		expect(isOutsideZone('bounce.example.com', 'mail.example.com')).toBe(false);
+		expect(isOutsideZone('example.com', 'mail.example.com')).toBe(false);
+		expect(isOutsideZone('bounces.owlat.test', 'mail.example.com')).toBe(true);
+		expect(isOutsideZone('bounce.example.co.uk', 'example.com')).toBe(true);
+	});
+
+	it('never flags a record when the domain has no registrable zone', () => {
+		expect(isOutsideZone('bounces.owlat.test', 'localhost')).toBe(false);
 	});
 });

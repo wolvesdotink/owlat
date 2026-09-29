@@ -8,6 +8,7 @@
  * Everything shown is derived from the same `ChecklistEntry[]` the rows render,
  * so the count, the links and the rows cannot disagree.
  */
+import { trySplitZone } from '@owlat/shared';
 import {
 	summarizeChecklist,
 	toZoneFileLines,
@@ -23,6 +24,8 @@ const props = defineProps<{
 	anchorFor: (entry: ChecklistEntry) => string;
 	/** Per-entry value swaps for the copied text (the merged SPF record). */
 	valueOverrides?: Partial<Record<string, string>>;
+	/** Per-entry comments the copied text carries above a record (already localized). */
+	notes?: Partial<Record<string, string>>;
 }>();
 
 const { t } = useI18n();
@@ -47,8 +50,23 @@ const copyLabel = computed(() => {
 	);
 });
 
+// A record in another zone (a shared return-path host) is copied commented out;
+// the note names the zone it belongs in, as the record's row does.
+const outOfZoneNote = (fqdn: string) =>
+	t('components.domains.dnsChecklistSummary.zoneNoteOutOfZone', {
+		domain: trySplitZone(props.domain)?.registrable ?? props.domain,
+		zone: trySplitZone(fqdn)?.registrable ?? fqdn,
+	});
+
 const handleCopy = () =>
-	copy(toZoneFileLines(copyTargets.value, props.domain, props.valueOverrides), 'zone-file');
+	copy(
+		toZoneFileLines(copyTargets.value, props.domain, {
+			valueOverrides: props.valueOverrides,
+			notes: props.notes,
+			outOfZoneNote,
+		}),
+		'zone-file'
+	);
 
 const percent = computed(() =>
 	summary.value.total === 0 ? 0 : Math.round((summary.value.verified / summary.value.total) * 100)
