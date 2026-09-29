@@ -23,6 +23,7 @@ import {
 	workspaceTokenRef,
 } from '~/lib/desktop/workspaceTypes';
 import { applyWorkspaceAccent } from '~/lib/desktop/workspaceAccent';
+import { clearCachedFeatureFlags } from '~/lib/featureFlagCache';
 import {
 	hideSwitchSkeleton,
 	showSwitchSkeleton,
@@ -260,6 +261,9 @@ async function removeWorkspace(id: string): Promise<void> {
 		}
 		clearKeychainStorage();
 	}
+	// Removing a workspace signs out of it without going through useAuth, so
+	// forget the last-known feature flags here too (see useAuth.signOut).
+	clearCachedFeatureFlags();
 	const { secretDelete } = await keychain();
 	await secretDelete(workspaceTokenRef(id));
 
