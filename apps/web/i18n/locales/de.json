@@ -7479,7 +7479,7 @@
 						"endpoints": {
 							"contact": "Einen Kontakt lesen, aktualisieren oder löschen",
 							"contacts": "Kontakte auflisten oder anlegen",
-							"events": "Eigene Ereignisse erfassen (erfordert aktivierte Automatisierungen)",
+							"events": "Eigene Ereignisse erfassen",
 							"health": "Statusprüfung",
 							"topics": "Themen und Abonnements verwalten",
 							"transactional": "Eine Transaktions-E-Mail senden (Slug im Body)"

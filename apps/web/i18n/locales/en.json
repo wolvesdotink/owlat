@@ -7479,7 +7479,7 @@
 						"endpoints": {
 							"contact": "Read, update, or delete a contact",
 							"contacts": "List or create contacts",
-							"events": "Track custom events (needs Automations turned on)",
+							"events": "Track custom events",
 							"health": "Health probe",
 							"topics": "Manage topics and subscriptions",
 							"transactional": "Send a transactional email (slug in body)"
