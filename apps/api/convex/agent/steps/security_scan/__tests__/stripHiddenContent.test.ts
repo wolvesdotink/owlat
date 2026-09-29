@@ -121,9 +121,25 @@ describe('stripHiddenContent', () => {
 		expect(stripHiddenContent(html)).toBe(html);
 	});
 
-	it('stops at an opening tag whose quoted attribute value never closes', () => {
-		const html = `<p title="x>y <span style='display:none'>text</span>`;
-		expect(stripHiddenContent(html)).toBe(html);
+	it('keeps scanning past an opening tag whose quoted attribute value never closes', () => {
+		expect(stripHiddenContent(`<p title="x>y <span style='display:none'>text</span>`)).toBe(
+			'<p title="x>y  '
+		);
+		expect(
+			stripHiddenContent(
+				`<p>Hi</p><a title="oops>text</a> <span style='display:none'>SECRETPAYLOAD</span> bye`
+			)
+		).toBe('<p>Hi</p><a title="oops>text</a>   bye');
+		expect(
+			stripHiddenContent(
+				`<p>Hi</p><a title='oops>text</a> <span style="display:none">SECRETPAYLOAD</span> bye`
+			)
+		).toBe(`<p>Hi</p><a title='oops>text</a>   bye`);
+	});
+
+	it('keeps plain text that contains a < and a lone quote', () => {
+		const text = `if cost<budget it's fine, "approved`;
+		expect(stripHiddenContent(text)).toBe(text);
 	});
 
 	it('leaves an unclosed comment and an unclosed hidden element in place', () => {
@@ -160,6 +176,11 @@ describe('scan helpers run in linear time on adversarial input', () => {
 		['colour values without a closing paren', '<i style="color:rgba(1'],
 	])('stripHiddenContent on 5 MB of %s', (_label, unit) => {
 		const input = repeatTo(unit);
+		expect(timed(() => stripHiddenContent(input))).toBeLessThan(BUDGET_MS);
+	});
+
+	it('stripHiddenContent on 5 MB of tags after unterminated quoted values', () => {
+		const input = `<a x="<b y='${repeatTo('<i s=t ')}`;
 		expect(timed(() => stripHiddenContent(input))).toBeLessThan(BUDGET_MS);
 	});
 

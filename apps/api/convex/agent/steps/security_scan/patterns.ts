@@ -161,19 +161,30 @@ const isTagSpace = (c: string | undefined): boolean =>
 	c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
 
 /**
+ * An opening tag read by {@link readOpenTag}: either it ends at `end` (its
+ * closing `>`) with its first `style` value, or it never ends and scanning
+ * resumes at `resume`.
+ */
+type OpenTag = { end: number; style: string | null } | { end: null; resume: number };
+
+/**
  * Read the attributes of an opening tag the way an HTML tokenizer does, from
  * just after the tag name. Returns the index of the tag's closing `>` and the
- * value of its first `style` attribute, or null when the tag never ends (no
- * `>`, or a quoted value whose quote never closes). A `>` inside a quoted value
- * does not end the tag, and a quote only opens a value right after `=`, as in
- * the browser. Each character is looked at once.
+ * value of its first `style` attribute. A `>` inside a quoted value does not
+ * end the tag, and a quote only opens a value right after `=`, as in the
+ * browser. Each character is looked at once.
+ *
+ * A tag that never ends reports where scanning should resume: the end of the
+ * input when no `>` follows, or just past a quote that never closes. No later
+ * tag can hold a value in that quote character, so a later tag may still end
+ * and the caller keeps going from there.
  */
-function readOpenTag(input: string, from: number): { end: number; style: string | null } | null {
+function readOpenTag(input: string, from: number): OpenTag {
 	let style: string | null = null;
 	let i = from;
 	for (;;) {
 		while (i < input.length && (isTagSpace(input[i]) || input[i] === '/')) i++;
-		if (i >= input.length) return null;
+		if (i >= input.length) return { end: null, resume: input.length };
 		if (input[i] === '>') return { end: i, style };
 
 		// Attribute name: a leading `=` belongs to the name.
@@ -194,7 +205,7 @@ function readOpenTag(input: string, from: number): { end: number; style: string 
 		const quote = input[i];
 		if (quote === '"' || quote === "'") {
 			const close = input.indexOf(quote, i + 1);
-			if (close === -1) return null;
+			if (close === -1) return { end: null, resume: i + 1 };
 			value = input.slice(i + 1, close);
 			i = close + 1;
 		} else {
@@ -214,9 +225,10 @@ function readOpenTag(input: string, from: number): { end: number; style: string 
  *     each name's cursor only moves forward;
  *   - an opening tag is read attribute by attribute up to its closing `>`, and
  *     scanning resumes after it (or after the dropped element), so no character
- *     is looked at twice by the tag search. A tag that never ends (no `>`, or a
- *     quoted value that never closes) ends the pass, because no later tag could
- *     end either.
+ *     is looked at twice by the tag search. A tag that never ends is skipped:
+ *     with no `>` left the pass is over, and past a quote that never closes
+ *     scanning carries on after that quote. A failed quote search can happen
+ *     at most once per quote character, so the pass stays linear.
  * A visible styled element is kept and its content still scanned, so a hidden
  * element nested inside it is removed too.
  */
@@ -244,7 +256,11 @@ function stripHiddenElements(input: string): string {
 		const open = openTag.exec(input);
 		if (!open) break;
 		const tag = readOpenTag(input, open.index + open[0].length);
-		if (!tag) break;
+		if (tag.end === null) {
+			if (tag.resume >= input.length) break;
+			pos = tag.resume;
+			continue;
+		}
 		pos = tag.end + 1;
 
 		if (tag.style === null || !HIDING_STYLE.test(tag.style)) continue;
