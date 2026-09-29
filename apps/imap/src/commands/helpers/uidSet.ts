@@ -42,3 +42,18 @@ export async function collectMessageIds(
 	}
 	return ids;
 }
+
+/**
+ * Most message ids or UIDs a command sends in one Convex call. Convex rejects
+ * an array argument longer than 8,192 elements, so a set over a large folder
+ * (`1:*`) goes out in several calls; the smaller batch also keeps each write
+ * transaction well inside Convex's per-transaction read and write limits.
+ */
+export const CONVEX_BATCH_SIZE = 1000;
+
+/** `items` split into consecutive batches of at most `size`, order kept. */
+export function inBatches<T>(items: readonly T[], size: number = CONVEX_BATCH_SIZE): T[][] {
+	const batches: T[][] = [];
+	for (let i = 0; i < items.length; i += size) batches.push(items.slice(i, i + size));
+	return batches;
+}
