@@ -4606,6 +4606,7 @@
 			"postboxThreadRow": {
 				"backFromSnooze": "Back from snooze",
 				"deselect": "Deselect",
+				"justNow": "just now",
 				"markAsRead": "Mark as read",
 				"markAsUnread": "Mark as unread",
 				"markRead": "Mark read",

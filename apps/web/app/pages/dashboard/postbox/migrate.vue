@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { postboxPageTransition } from '~/utils/postboxPageTransition';
 import { MAIL_SYNC_MAX_RAW_MESSAGE_BYTES } from '@owlat/shared/mailSyncLimits';
 import type { MailProvider } from '~/utils/mailAutodiscover';
 import { MAIL_PROVIDERS, providerForImapHost } from '~/utils/mailAutodiscover';
@@ -11,7 +12,7 @@ useHead({ title: () => t('dashboard.postbox.migrate.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
-	middleware: 'auth',
+	middleware: ['auth', postboxPageTransition],
 });
 
 /** Counts read as body copy, so they follow the active locale's grouping. */

@@ -1,22 +1,45 @@
 <script setup lang="ts">
 import { resolvePostboxFolderParam } from '~/utils/postboxFolderParam';
+import { POSTBOX_PAGE_KEY, postboxPageTransition } from '~/utils/postboxPageTransition';
 
+// One page for the folder list and the open message (/inbox and /inbox/<id>).
+// The constant key keeps PostboxLayout mounted across opens, j/k, back and
+// folder switches, so the rail, the loaded list pages, the scroll position,
+// the keyboard focus and the reader's own transition all survive; the layout
+// reacts to the folder and the message id as props. See utils/postboxPageTransition.
 const { t } = useI18n();
-
-useHead({ title: () => t('dashboard.postbox.detail.index.pageTitle') });
 
 definePageMeta({
 	layout: 'dashboard',
-	middleware: 'auth',
+	middleware: ['auth', postboxPageTransition],
 	requiresAnyFeature: ['postbox', 'mail.external'],
+	key: POSTBOX_PAGE_KEY,
 });
 
 const route = useRoute();
 // The [folder] param is a system role (inbox/sent/…) or, for a custom folder, a
 // mailFolders id — the layout queries by role vs by folder id accordingly.
+// Passing the raw param through as a role would query a role that does not
+// exist and label the mobile back button with a raw Convex id.
 const folder = computed(() => resolvePostboxFolderParam(route.params['folder']));
+// The optional [[messageId]] param: absent (or empty) on the folder list.
+const messageId = computed(() => {
+	const param = route.params['messageId'];
+	return typeof param === 'string' && param !== '' ? param : null;
+});
+
+useHead({
+	title: () =>
+		messageId.value
+			? t('dashboard.postbox.detail.detail.pageTitle')
+			: t('dashboard.postbox.detail.index.pageTitle'),
+});
+
 const { currentMailbox, isLoading: mailboxesLoading, error: mailboxError } = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
+// Prefetched and just-read bodies outlive the list and reader; they are
+// dropped when the mailbox, user or organization changes.
+usePostboxBodyCacheScope(mailboxId);
 
 // For the Postbox empty state: surface the resumable per-user onboarding
 // checklist so a member who has no mailbox yet can pick their setup back up here.
@@ -43,6 +66,7 @@ const showGettingStarted = computed(() => !mailboxId.value && !mailboxesLoading.
 					:mailbox-id="mailboxId!"
 					:folder-role="folder.folderRole"
 					:folder-id="folder.folderId"
+					:active-message-id="messageId"
 				/>
 			</PostboxMailboxGuard>
 			<!-- Resumable per-user onboarding checklist so setup can be picked back up here. -->

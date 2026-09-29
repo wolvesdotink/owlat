@@ -8,6 +8,11 @@ import { clearResolvedPostboxBodies, resolvePostboxMessageBody } from './postbox
  * Storage-backed bodies are fully resolved into a bounded client-scoped cache
  * that the reader consumes. Calls remain debounced, LRU-capped and strictly
  * fail-soft; the real reader load is always authoritative.
+ *
+ * That shared cache outlives this composable on purpose: a hover-warmed body
+ * must still be there when the list unmounts and the reader asks for it. It is
+ * dropped on mailbox, account and organization changes instead (see
+ * usePostboxBodyCacheScope).
  */
 
 const DEFAULT_DEBOUNCE_MS = 150;
@@ -128,7 +133,9 @@ export function usePostboxPrefetch(options?: {
 		}, debounceMs);
 	}
 
-	function clear() {
+	/** Cancel pending and queued warm-ups. Bodies already resolved stay in the
+	 * shared cache for the reader. */
+	function dispose() {
 		if (timer !== null) {
 			clearTimeout(timer);
 			timer = null;
@@ -136,15 +143,21 @@ export function usePostboxPrefetch(options?: {
 		pendingIds = [];
 		queue.length = 0;
 		cache.clear();
+	}
+
+	/** dispose() plus dropping the shared resolved bodies. */
+	function clear() {
+		dispose();
 		if (client) clearResolvedPostboxBodies(client);
 	}
 
 	if (getCurrentScope()) {
-		onScopeDispose(clear);
+		onScopeDispose(dispose);
 	}
 
 	return {
 		prefetch,
+		dispose,
 		clear,
 		/** Test/introspection helpers. */
 		isWarm: (messageId: string) => cache.has(messageId),

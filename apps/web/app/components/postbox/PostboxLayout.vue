@@ -465,23 +465,24 @@ const advanceIds = computed(() =>
 							<span class="capitalize truncate">{{ currentFolderName }}</span>
 						</button>
 
-						<Transition name="pbx-reader" mode="out-in">
-							<PostboxThreadReader
-								v-if="activeMessage"
-								:key="activeMessageId ?? undefined"
-								:message="activeMessage"
-								:advance-ids="advanceIds"
-								:folder-role="folderId ? String(folderId) : folderRole"
-							/>
-							<div v-else class="h-full flex items-center justify-center">
-								<div class="text-center">
-									<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
-									<p class="mt-4 text-text-secondary">
-										{{ t('components.postbox.postboxLayout.selectMessage') }}
-									</p>
-								</div>
+						<!-- Keyed, enter-only swap (postbox-motion.css): the next thread
+						     mounts in the same frame the previous one goes. -->
+						<PostboxThreadReader
+							v-if="activeMessage"
+							:key="activeMessageId ?? undefined"
+							class="pbx-reader-swap"
+							:message="activeMessage"
+							:advance-ids="advanceIds"
+							:folder-role="folderId ? String(folderId) : folderRole"
+						/>
+						<div v-else class="pbx-reader-swap h-full flex items-center justify-center">
+							<div class="text-center">
+								<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
+								<p class="mt-4 text-text-secondary">
+									{{ t('components.postbox.postboxLayout.selectMessage') }}
+								</p>
 							</div>
-						</Transition>
+						</div>
 					</section>
 				</div>
 			</div>

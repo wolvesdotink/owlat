@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { postboxPageTransition } from '~/utils/postboxPageTransition';
 /**
  * The personal Reply Queue became part of the Answer queue, which covers
  * every inbox (plus team drafts and chat mentions). Old links — bookmarks,
@@ -7,7 +8,7 @@
  */
 definePageMeta({
 	layout: 'dashboard',
-	middleware: 'auth',
+	middleware: ['auth', postboxPageTransition],
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 

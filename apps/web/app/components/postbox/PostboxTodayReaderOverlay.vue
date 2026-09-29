@@ -9,7 +9,7 @@
  * Keyboard contract (window-level, mirroring the list/reader vocabulary):
  *   - Esc / scrim click → `close` (the host restores the list)
  *   - j / k (and ↓ / ↑) → `open` the next / previous row WITHOUT closing —
- *     the host swaps `message` and the keyed pbx-reader transition rides
+ *     the host swaps `message` and the keyed reader swaps in (enter-only fade)
  *   - every single-key triage/compose shortcut is forwarded to the reader via
  *     the existing `owlat:postbox-reader-action` bridge while focus is inside
  *     the pane (the pane is a [role=dialog], so the reader's own window
@@ -153,18 +153,17 @@ onUnmounted(() => {
 			class="relative mx-auto w-full max-w-2xl rounded-xl border border-border-subtle bg-bg-elevated shadow-(--shadow-6) outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
 		>
 			<!-- Keyed swap: j/k and triage auto-advance replace the thread in
-			     place with the same fade+rise the three-pane reader uses
-			     (opacity-only under prefers-reduced-motion). -->
-			<Transition name="pbx-reader" mode="out-in">
-				<PostboxThreadReader
-					:key="message._id"
-					:message="message"
-					:advance-ids="advanceIds"
-					folder-role="inbox"
-					advance-in-place
-					@advance="onAdvance"
-				/>
-			</Transition>
+			     place with the same enter-only fade the three-pane reader uses
+			     (postbox-motion.css); nothing waits for the old thread to leave. -->
+			<PostboxThreadReader
+				:key="message._id"
+				class="pbx-reader-swap"
+				:message="message"
+				:advance-ids="advanceIds"
+				folder-role="inbox"
+				advance-in-place
+				@advance="onAdvance"
+			/>
 		</div>
 	</div>
 </template>

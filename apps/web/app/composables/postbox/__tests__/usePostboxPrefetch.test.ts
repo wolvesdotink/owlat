@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { effectScope } from 'vue';
 import {
+	CONSUMED_POSTBOX_BODY_TTL_MS,
+	clearResolvedPostboxBodies,
 	consumeResolvedPostboxMessageBody,
 	resolvePostboxMessageBody,
+	setResolvedPostboxBodyScope,
 } from '../postboxBodyResolver';
 import { usePostboxPrefetch, type PrefetchClient } from '../usePostboxPrefetch';
 
@@ -132,10 +136,96 @@ describe('usePostboxPrefetch', () => {
 		expect(action).toHaveBeenCalledTimes(1);
 		expect(fetchImpl).toHaveBeenCalledTimes(1);
 		expect(fetchImpl).toHaveBeenCalledWith('https://storage.example/signed-html');
+	});
 
-		await resolvePostboxMessageBody(client, 'blob-msg', fetchImpl);
+	it('keeps a consumed body for the TTL, then drops it', async () => {
+		const { client, action } = makeFakeClient({
+			htmlInline: '<p>kept</p>',
+			textInline: null,
+			htmlUrl: null,
+			textUrl: null,
+		});
+
+		await consumeResolvedPostboxMessageBody(client, 'read-msg');
+		expect(action).toHaveBeenCalledTimes(1);
+
+		// Re-opening within the window (back, j/k past and back) is free.
+		await vi.advanceTimersByTimeAsync(CONSUMED_POSTBOX_BODY_TTL_MS - 1000);
+		expect(await consumeResolvedPostboxMessageBody(client, 'read-msg')).toEqual({
+			html: '<p>kept</p>',
+			text: null,
+		});
+		expect(action).toHaveBeenCalledTimes(1);
+
+		// That second read restarted the window.
+		await vi.advanceTimersByTimeAsync(CONSUMED_POSTBOX_BODY_TTL_MS - 1000);
+		await resolvePostboxMessageBody(client, 'read-msg');
+		expect(action).toHaveBeenCalledTimes(1);
+
+		// Past the window the decrypted copy is gone and the next read refetches.
+		await vi.advanceTimersByTimeAsync(1000);
+		await resolvePostboxMessageBody(client, 'read-msg');
 		expect(action).toHaveBeenCalledTimes(2);
-		expect(fetchImpl).toHaveBeenCalledTimes(2);
+	});
+
+	it('keeps warmed bodies when the list that warmed them unmounts', async () => {
+		const { client, action } = makeFakeClient({
+			htmlInline: '<p>warm</p>',
+			textInline: null,
+			htmlUrl: null,
+			textUrl: null,
+		});
+		const scope = effectScope();
+		const prefetcher = scope.run(() => usePostboxPrefetch({ client, debounceMs: 0 }));
+		prefetcher?.prefetch(['warm-msg']);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(action).toHaveBeenCalledTimes(1);
+
+		scope.stop();
+		await consumeResolvedPostboxMessageBody(client, 'warm-msg');
+		expect(action).toHaveBeenCalledTimes(1);
+	});
+
+	it('cancels queued warm-ups when the list unmounts', async () => {
+		const { client, action } = makeFakeClient();
+		const scope = effectScope();
+		const prefetcher = scope.run(() => usePostboxPrefetch({ client, debounceMs: 150 }));
+		prefetcher?.prefetch(['late']);
+		scope.stop();
+		await vi.advanceTimersByTimeAsync(150);
+		expect(action).not.toHaveBeenCalled();
+	});
+
+	it('drops every cached body when the scope changes, not when it repeats', async () => {
+		const { client, action } = makeFakeClient({
+			htmlInline: '<p>a</p>',
+			textInline: null,
+			htmlUrl: null,
+			textUrl: null,
+		});
+		setResolvedPostboxBodyScope(client, 'user-1||mailbox-a');
+		await resolvePostboxMessageBody(client, 'a');
+
+		setResolvedPostboxBodyScope(client, 'user-1||mailbox-a');
+		await resolvePostboxMessageBody(client, 'a');
+		expect(action).toHaveBeenCalledTimes(1);
+
+		setResolvedPostboxBodyScope(client, 'user-1||mailbox-b');
+		await resolvePostboxMessageBody(client, 'a');
+		expect(action).toHaveBeenCalledTimes(2);
+	});
+
+	it('clearResolvedPostboxBodies drops consumed bodies before their TTL', async () => {
+		const { client, action } = makeFakeClient({
+			htmlInline: '<p>a</p>',
+			textInline: null,
+			htmlUrl: null,
+			textUrl: null,
+		});
+		await consumeResolvedPostboxMessageBody(client, 'a');
+		clearResolvedPostboxBodies(client);
+		await resolvePostboxMessageBody(client, 'a');
+		expect(action).toHaveBeenCalledTimes(2);
 	});
 
 	it('does not retain an oversized decrypted body', async () => {

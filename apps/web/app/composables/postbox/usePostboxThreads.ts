@@ -70,27 +70,3 @@ export function usePostboxThreads(args: {
 		loadMore,
 	};
 }
-
-/**
- * Ultra-compact timestamp for thread/message lists ("5m", "3h", "2d", no
- * "ago" suffix). Distinct from the app-wide formatCompactRelativeTime ("5m
- * ago") and formatRelativeTime ("5 minutes ago") in utils/formatters.ts — the
- * distinct name avoids the Nuxt auto-import collision that previously let this
- * shadow the canonical formatter globally.
- */
-export function formatThreadTimestamp(timestamp: number): string {
-	const now = Date.now();
-	const diff = now - timestamp;
-	const minutes = Math.floor(diff / 60000);
-	const hours = Math.floor(diff / 3600000);
-	const days = Math.floor(diff / 86400000);
-
-	if (minutes < 1) return 'just now';
-	if (minutes < 60) return `${minutes}m`;
-	if (hours < 24) return `${hours}h`;
-	if (days < 7) return `${days}d`;
-	return new Date(timestamp).toLocaleDateString('en-US', {
-		month: 'short',
-		day: 'numeric',
-	});
-}

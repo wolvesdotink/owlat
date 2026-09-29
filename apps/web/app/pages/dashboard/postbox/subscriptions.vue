@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { postboxPageTransition } from '~/utils/postboxPageTransition';
 /**
  * Subscriptions — the mailbox-wide list-mail hygiene view.
  *
@@ -11,7 +12,7 @@ const { t } = useI18n();
 useHead({ title: () => t('dashboard.postbox.subscriptions.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
-	middleware: 'auth',
+	middleware: ['auth', postboxPageTransition],
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 

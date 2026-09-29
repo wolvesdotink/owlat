@@ -109,7 +109,6 @@ const globalOptions = {
 		PostboxMovePickerDialog: dialogStub,
 	},
 	mocks: {
-		formatThreadTimestamp: () => '2h',
 		resolveComponent: () => 'a',
 	},
 };

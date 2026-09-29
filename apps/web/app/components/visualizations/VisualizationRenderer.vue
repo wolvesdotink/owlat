@@ -7,14 +7,26 @@ const props = defineProps<{
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 const iframeHeight = ref(props.minHeight ?? '300px');
 
+/**
+ * Tallest the frame may grow. The height the frame reports feeds back into its
+ * own layout (content sized in `vh` or `%` grows with the frame), so without a
+ * ceiling that loop never settles and the card keeps growing.
+ */
+const MAX_VISUALIZATION_HEIGHT = 4000;
+let lastReported: number | null = null;
+
 // Listen for postMessage resize events from the iframe. Only trust messages
 // from *our* iframe's content window — any window/extension/origin can post to
 // `window`, and without this check a hostile message could drive our layout.
 const handleMessage = (event: MessageEvent) => {
 	if (event.source !== iframeRef.value?.contentWindow) return;
-	if (event.data?.type === 'resize' && typeof event.data.height === 'number') {
-		iframeHeight.value = `${event.data.height}px`;
-	}
+	if (event.data?.type !== 'resize') return;
+	const reported = event.data.height;
+	if (typeof reported !== 'number' || !Number.isFinite(reported) || reported <= 0) return;
+	// Sub-pixel jitter would otherwise re-lay out the card on every report.
+	if (lastReported !== null && Math.abs(reported - lastReported) < 1) return;
+	lastReported = reported;
+	iframeHeight.value = `${Math.min(MAX_VISUALIZATION_HEIGHT, Math.ceil(reported))}px`;
 };
 
 onMounted(() => {
@@ -31,12 +43,17 @@ const enhancedHtml = computed(() => {
 	const closeScriptTag = '</' + 'script>';
 	const resizeScript = `
 <script>
-	const resizeObserver = new ResizeObserver(() => {
+(() => {
+	let lastReported = -1;
+	const report = () => {
 		const height = document.documentElement.scrollHeight;
+		if (Math.abs(height - lastReported) < 1) return;
+		lastReported = height;
 		window.parent.postMessage({ type: 'resize', height }, '*');
-	});
-	resizeObserver.observe(document.body);
-	window.parent.postMessage({ type: 'resize', height: document.documentElement.scrollHeight }, '*');
+	};
+	new ResizeObserver(report).observe(document.body);
+	report();
+})();
 ${closeScriptTag}`;
 
 	// Insert the script before </body> or at the end

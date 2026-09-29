@@ -3,14 +3,10 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { PostboxComposeMode, PostboxPendingCompose } from '~/utils/postboxShortcuts';
 import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
-import { POSTBOX_ROW_HEIGHT, POSTBOX_VIRTUAL_THRESHOLD } from '~/utils/postboxDensity';
+import { POSTBOX_ROW_HEIGHT } from '~/utils/postboxDensity';
 import type { PostboxThreadRowMessage } from './PostboxThreadRow.vue';
-import {
-	usePostboxVirtualList,
-	rememberScroll,
-	recallScroll,
-} from '~/composables/postbox/usePostboxVirtualList';
-import { usePostboxListAutoLoad } from '~/composables/postbox/usePostboxListAutoLoad';
+import { usePostboxThreadListWindow } from '~/composables/postbox/usePostboxThreadListWindow';
+import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
 import { postboxListEmptyState } from '~/utils/postboxListEmptyState';
 
 const props = defineProps<{
@@ -41,6 +37,10 @@ const props = defineProps<{
 	// folder's usual copy, so a filtered-to-zero list never reads as
 	// "nothing here".
 	filterActive?: boolean;
+	// The scroller this list sits in when it does not scroll in its own box
+	// (the Today column stacks it under other sections): windowing and
+	// infinite scroll then follow that scroller.
+	scrollParent?: HTMLElement | null;
 }>();
 
 const emit = defineEmits<{
@@ -50,6 +50,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+usePostboxListNow(); // one minute clock for every row's timestamp
 
 // Row trust markers (idea 51) ride the badge's flag, resolved once for the list.
 const { isEnabled: isFlagEnabled } = useFeatureFlag();
@@ -309,67 +310,25 @@ watch([focusedIndex, () => props.activeMessageId], () => {
 });
 
 // --- Windowed rendering + infinite scroll (large folders) --------------------
-// Only folders above POSTBOX_VIRTUAL_THRESHOLD pay the windowing cost; small
-// folders keep the simple content-visibility path. Row height is a known
-// per-density constant, so this is fixed-height windowing with no dynamic
-// measurement.
-const scrollEl = ref<HTMLElement | null>(null);
 const { density, swipeLeftAction, swipeRightAction } = usePostboxSettings();
-const rowHeight = computed(() => POSTBOX_ROW_HEIGHT[density.value]);
-const itemCount = computed(() => visibleMessages.value.length);
-const virtualize = computed(() => itemCount.value > POSTBOX_VIRTUAL_THRESHOLD);
-
-const { range, syncScroll, scrollToIndex } = usePostboxVirtualList({
+const {
 	scrollEl,
-	itemCount,
-	rowHeight,
-	enabled: virtualize,
-});
-
-// Rows actually mounted: a bounded window when virtualizing, everything
-// otherwise. `windowStart` maps a windowed row back to its absolute index so
-// focus, selection and ARIA stay correct.
-const windowStart = computed(() => (virtualize.value ? range.value.startIndex : 0));
-const windowedMessages = computed(() =>
-	virtualize.value
-		? visibleMessages.value.slice(range.value.startIndex, range.value.endIndex)
-		: visibleMessages.value
-);
-
-// Keep the keyboard-focused row visible even when it is outside the mounted
-// window: shift the scroll (which re-derives the window and mounts the row);
-// usePostboxListKeyboard's own scrollIntoView then refines to "nearest".
-watch(focusedIndex, (idx) => {
-	if (idx < 0 || !virtualize.value) return;
-	scrollToIndex(idx);
-});
-
-// Auto-grow the page as the window nears the end (replacing the manual "Load
-// more" click; the button stays as an always-available fallback), coalesced to
-// one derivation per animation frame.
-const folderScrollKey = computed(() => `postbox:scroll:${props.folderRole}`);
-const { handleScroll } = usePostboxListAutoLoad({
-	scrollEl,
-	itemCount,
-	hasMore: computed(() => props.hasMore === true),
-	blocked: computed(() => props.loading || props.loadingMore === true),
-	onScroll: (el) => {
-		syncScroll();
-		rememberScroll(folderScrollKey.value, el.scrollTop);
-	},
+	listEl,
+	virtualize,
+	range,
+	windowStart,
+	windowedRows: windowedMessages,
+	handleScroll,
+} = usePostboxThreadListWindow({
+	rows: visibleMessages,
+	rowHeight: computed(() => POSTBOX_ROW_HEIGHT[density.value]),
+	focusedIndex,
+	scrollParent: () => props.scrollParent,
+	folderRole: () => props.folderRole,
+	activeMessageId: () => props.activeMessageId,
+	hasMore: () => props.hasMore === true,
+	blocked: () => props.loading || props.loadingMore === true,
 	loadMore: () => emit('load-more'),
-});
-
-// Restore the folder's last scroll position when the list (re)mounts, e.g.
-// returning from an opened thread. Best-effort: if the rows aren't tall enough
-// yet the browser clamps the value.
-onMounted(async () => {
-	await nextTick();
-	const saved = recallScroll(folderScrollKey.value);
-	if (saved != null && scrollEl.value) {
-		scrollEl.value.scrollTop = saved;
-		syncScroll();
-	}
 });
 </script>
 
@@ -415,6 +374,7 @@ onMounted(async () => {
 	     row with no offset. -->
 		<ul
 			v-else
+			ref="listEl"
 			tabindex="0"
 			role="listbox"
 			:aria-label="t('components.postbox.postboxThreadList.listLabel')"

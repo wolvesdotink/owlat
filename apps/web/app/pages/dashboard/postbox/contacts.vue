@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { postboxPageTransition } from '~/utils/postboxPageTransition';
 /**
  * Personal address book for the current mailbox (api.mail.contacts). This is
  * NOT the org-wide Customers store under /dashboard/audience — that is a
@@ -7,13 +8,16 @@
  * stale one; the postbox rail and the command palette both link here.
  */
 import type { Id } from '@owlat/api/dataModel';
+import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
+import { usePostboxHostedVirtualList } from '~/composables/postbox/usePostboxHostedVirtualList';
+import { POSTBOX_VIRTUAL_THRESHOLD } from '~/utils/postboxDensity';
 
 const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.postbox.contacts.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
-	middleware: 'auth',
+	middleware: ['auth', postboxPageTransition],
 	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
@@ -24,9 +28,11 @@ type MailContact = (typeof contacts.value)[number];
 const stack = usePostboxComposerStack();
 const { showToast } = useToast();
 
-const search = ref('');
+// The filter runs on a short debounce: a fast typist re-filtering (and
+// re-rendering) the whole book on every keystroke is the lag this avoids.
+const { query: search, debouncedQuery } = useDebouncedSearch(100);
 const filtered = computed(() => {
-	const q = search.value.trim().toLowerCase();
+	const q = debouncedQuery.value.trim().toLowerCase();
 	if (!q) return contacts.value;
 	return contacts.value.filter(
 		(c) =>
@@ -35,6 +41,32 @@ const filtered = computed(() => {
 			(c.organization ?? '').toLowerCase().includes(q)
 	);
 });
+
+// Up to 500 contacts: past the Postbox windowing threshold only the rows near
+// the viewport mount. Rows are a fixed 64px (h-16), and the list scrolls with
+// the page, so the window follows the page's scroller.
+const CONTACT_ROW_HEIGHT = 64;
+const listEl = ref<HTMLElement | null>(null);
+const virtualize = computed(() => filtered.value.length > POSTBOX_VIRTUAL_THRESHOLD);
+const { range } = usePostboxHostedVirtualList({
+	listEl,
+	itemCount: computed(() => filtered.value.length),
+	rowHeight: computed(() => CONTACT_ROW_HEIGHT),
+	enabled: virtualize,
+});
+const visibleContacts = computed(() =>
+	filtered.value.slice(range.value.startIndex, range.value.endIndex)
+);
+// Spacers stand in for the rows outside the window, so the list keeps its full
+// height and the scrollbar stays honest.
+const listPadding = computed(() =>
+	virtualize.value
+		? {
+				paddingTop: `${range.value.offsetY}px`,
+				paddingBottom: `${(filtered.value.length - range.value.endIndex) * CONTACT_ROW_HEIGHT}px`,
+			}
+		: undefined
+);
 
 interface EditForm {
 	contactId: Id<'mailContacts'> | null;
@@ -134,13 +166,16 @@ function initial(c: { displayName?: string; email: string }) {
 
 		<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="mailboxesLoading">
 			<div v-if="isLoading" class="flex justify-center py-12">
-				<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary" />
+				<Icon
+					name="lucide:loader-2"
+					class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary"
+				/>
 			</div>
 			<div v-else-if="filtered.length === 0" class="text-center py-12">
 				<Icon name="lucide:users" class="w-10 h-10 mx-auto text-text-tertiary" />
 				<p class="text-sm text-text-secondary mt-3">
 					{{
-						search
+						debouncedQuery
 							? t('dashboard.postbox.contacts.noMatches')
 							: t('dashboard.postbox.contacts.empty')
 					}}
@@ -148,12 +183,14 @@ function initial(c: { displayName?: string; email: string }) {
 			</div>
 			<ul
 				v-else
+				ref="listEl"
 				class="divide-y divide-border-subtle border border-border-subtle rounded-lg overflow-hidden"
+				:style="listPadding"
 			>
 				<li
-					v-for="c in filtered"
+					v-for="c in visibleContacts"
 					:key="c._id"
-					class="group flex items-center gap-3 px-4 py-3 hover:bg-bg-surface"
+					class="group flex items-center gap-3 h-16 px-4 hover:bg-bg-surface"
 					style="content-visibility: auto; contain-intrinsic-size: auto 64px"
 				>
 					<div

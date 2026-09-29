@@ -40,7 +40,13 @@ import {
 	postboxRenderKey,
 	type PostboxRenderEntry,
 } from '~/utils/postboxRenderCache';
+import {
+	POSTBOX_BODY_META_CSP,
+	POSTBOX_SRCDOC_HEAD,
+	postboxBodyPlaceholder,
+} from '~/utils/postboxBodyPlaceholder';
 import { consumeResolvedPostboxMessageBody } from '~/composables/postbox/postboxBodyResolver';
+import { usePostboxFrameAutosize } from '~/composables/postbox/usePostboxFrameAutosize';
 import {
 	postboxSenderKey,
 	postboxSenderTrustLabel,
@@ -88,9 +94,10 @@ const { t } = useI18n();
 const { isDark } = useAppTheme();
 
 // Offline read cache: persist this message's post-sanitize srcdoc once rendered
-// (so it stays readable without a connection) and, when offline, serve the
-// cached srcdoc if the live body can't be fetched. Best-effort + fail-soft;
-// never stores raw mail — only the sanitized document the iframe already shows.
+// (so it stays readable without a connection) and show the cached srcdoc until
+// the live body arrives: as-is offline, with remote loads blocked online (see
+// utils/postboxBodyPlaceholder). Best-effort + fail-soft; never stores raw mail,
+// only the sanitized document the iframe already shows.
 const { isOffline, persistBody, loadBody } = usePostboxOfflineCache(() => props.message.mailboxId);
 const cachedSrcdoc = ref<string | null>(null);
 let offlineBodyRequestSequence = 0;
@@ -198,16 +205,16 @@ watch(
 	{ immediate: true }
 );
 
-// Paragraph-bar skeleton while a blob-stored body loads. Degrades to the
-// normal "(empty message)" iframe if the action errors or the download fails.
+// The saved copy shown in place of a live body that is not here (yet).
+const placeholder = computed(() =>
+	postboxBodyPlaceholder(cachedSrcdoc.value, { blockRemote: !isOffline.value })
+);
+
+// Paragraph-bar skeleton while a blob-stored body loads, unless a saved copy
+// can stand in for it. Degrades to the normal "(empty message)" iframe if the
+// action errors or the download fails.
 const bodyLoading = computed(
-	() =>
-		needsBodyFetch.value &&
-		!bodyFetchSettled.value &&
-		!bodyError.value &&
-		// Offline with a cached copy: skip the never-resolving skeleton and show
-		// the cached body instead.
-		!(isOffline.value && !!cachedSrcdoc.value)
+	() => needsBodyFetch.value && !bodyFetchSettled.value && !bodyError.value && !placeholder.value
 );
 
 const effectiveHtml = computed(
@@ -238,8 +245,6 @@ function rewriteLinks(html: string): string {
 		return `<a ${cleaned} target="_blank" rel="noreferrer noopener">`;
 	});
 }
-
-const META_CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src https: data:;">`;
 
 const quotedSplit = computed(() => {
 	const html = effectiveHtml.value;
@@ -288,7 +293,7 @@ function buildRender(): Omit<PostboxRenderEntry, 'height'> {
 	// Link transparency (real-host tooltips, phish-mismatch markers, tracking
 	// param stripping) runs on sanitized output only and fails soft to a no-op.
 	const linked = rewriteLinks(applyLinkTransparency(gated));
-	const srcdoc = `<!doctype html><html><head>${META_CSP}${buildBaseStyle(adapted.scheme, adapted.kind)}</head><body>${linked || t('components.postbox.postboxMessageBody.emptyMessage')}</body></html>`;
+	const srcdoc = `${POSTBOX_SRCDOC_HEAD}${POSTBOX_BODY_META_CSP}${buildBaseStyle(adapted.scheme, adapted.kind)}</head><body>${linked || t('components.postbox.postboxMessageBody.emptyMessage')}</body></html>`;
 	return { srcdoc, renderScheme: adapted.scheme, kind: adapted.kind, detection };
 }
 
@@ -329,10 +334,10 @@ const srcdoc = computed(() => render.value.srcdoc);
 const hasLiveContent = computed(() => !!(effectiveHtml.value || effectiveText.value));
 
 // The document the iframe renders: the live render when we have real content,
-// otherwise the cached srcdoc (offline/degraded), otherwise the live render.
-const displaySrcdoc = computed(() =>
-	hasLiveContent.value ? srcdoc.value : (cachedSrcdoc.value ?? srcdoc.value)
-);
+// otherwise the saved copy (still loading, offline or degraded), otherwise the
+// live render.
+const shownPlaceholder = computed(() => (hasLiveContent.value ? null : placeholder.value));
+const displaySrcdoc = computed(() => shownPlaceholder.value?.srcdoc ?? srcdoc.value);
 
 // Persist the rendered srcdoc once the body is final and non-empty. Best-effort
 // (LRU-capped, quota-safe); keeps the 50 most-recently-read bodies offline.
@@ -346,12 +351,17 @@ watch(
 	{ immediate: true }
 );
 // Scheme the iframe actually renders with ("designed" mail stays light —
-// a paper card on the dark app background — even when the app is dark).
-const renderScheme = computed(() => render.value.renderScheme);
+// a paper card on the dark app background — even when the app is dark). The
+// saved copy carries its own scheme and kind in its head.
+const renderScheme = computed(() => shownPlaceholder.value?.scheme ?? render.value.renderScheme);
 // Plain mail sits straight on the message card (transparent canvas, no frame);
-// designed mail keeps its own canvas on a white paper card. The offline
-// fallback has no classification, so it keeps the paper card.
-const isPaper = computed(() => !hasLiveContent.value || render.value.kind === 'designed');
+// designed mail keeps its own canvas on a white paper card, and so does the
+// "(empty message)" document.
+const isPaper = computed(() =>
+	shownPlaceholder.value
+		? shownPlaceholder.value.kind === 'designed'
+		: !hasLiveContent.value || render.value.kind === 'designed'
+);
 const trackerDetection = computed<TrackerDetection>(() => render.value.detection);
 
 watch(trackerDetection, (detection) => emit('trackers', detection), { immediate: true });
@@ -396,39 +406,34 @@ function untrustSender() {
 
 // Pre-size the iframe from the last measured height for this exact render so
 // re-opening a thread doesn't flash the 200px min-height and jump to full size.
-// Reconciled against the real content height on load. Kept as an explicit ref
-// (rather than reading the non-reactive cache in the template) so the height
-// updates when the render key changes.
+// Kept as an explicit ref (rather than reading the non-reactive cache in the
+// template) so the height updates when the render key changes. A new render of
+// the SAME message with no cached height yet (show images, show quoted text)
+// keeps the current height until the new document is measured, instead of
+// dropping back to the min-height for a frame or two.
 const presetHeight = ref<number | null>(null);
 watch(
-	renderKey,
-	(key) => {
-		presetHeight.value = key ? (getPostboxRenderCache().get(key)?.height ?? null) : null;
+	[renderKey, () => props.message._id],
+	([key, messageId], previous) => {
+		const cached = key ? (getPostboxRenderCache().get(key)?.height ?? null) : null;
+		const sameMessage = previous !== undefined && previous[1] === messageId;
+		presetHeight.value = cached ?? (sameMessage ? presetHeight.value : null);
 	},
 	{ immediate: true }
 );
 
-// Auto-resize iframe to content height, and remember it so the next render of
-// this message can pre-size instead of jumping.
-function resizeIframe() {
-	const iframe = iframeRef.value;
-	if (!iframe?.contentDocument) return;
-	const h = Math.max(isPaper.value ? 120 : 24, iframe.contentDocument.documentElement.scrollHeight);
-	iframe.style.height = `${h}px`;
-	presetHeight.value = h;
-	const key = renderKey.value;
-	if (key) getPostboxRenderCache().update(key, { height: h });
-}
-
-// The iframe mounts late when the body-loading skeleton renders first, so
-// attach the resize listener whenever the template ref binds (not onMounted).
-watch(iframeRef, (iframe) => {
-	iframe?.addEventListener('load', resizeIframe);
-});
-
-// Re-fit when the user toggles "Show quoted text" or shows images.
-watch([showQuoted, showImages, loadEverything], () => {
-	nextTick(resizeIframe);
+// Fit the frame to its document from the moment it is parsed, then follow it
+// (late images, fonts, pane resizes), and remember the height so the next
+// render of this message can pre-size instead of jumping.
+usePostboxFrameAutosize({
+	iframeRef,
+	srcdoc: displaySrcdoc,
+	minHeight: () => (isPaper.value ? 120 : 24),
+	onHeight: (height) => {
+		presetHeight.value = height;
+		const key = renderKey.value;
+		if (key) getPostboxRenderCache().update(key, { height });
+	},
 });
 </script>
 

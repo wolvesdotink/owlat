@@ -27,9 +27,15 @@
 import { api } from '@owlat/api';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import type { Id } from '@owlat/api/dataModel';
-import { useNow } from '~/composables/useNow';
+import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
+import { provide } from 'vue';
+import { POSTBOX_READER_HOST_KEY } from '~/composables/postbox/usePostboxReaderActions';
 import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
-import { partitionTodayMessages, formatAutoFiledLine } from '~/utils/postboxTodayPartition';
+import {
+	partitionTodayMessages,
+	formatAutoFiledLine,
+	startOfLocalDay,
+} from '~/utils/postboxTodayPartition';
 import {
 	answerQueueHrefFor,
 	replyQueueHeadline,
@@ -76,15 +82,20 @@ const { messages, isLoading, hasMore, loadMore } = usePostboxThreads({
 	folderRole: folderRef,
 });
 
-// Re-partition as time passes so the local-midnight boundary rolls over
-// without a reload (a minute of drift is invisible; the rows are live).
-const now = useNow({ intervalMs: 60_000, as: 'date' });
+// The list clock both thread lists below share for their row timestamps
+// (provided here, so the two lists and the partition run off one timer).
+const now = usePostboxListNow();
+// The partition only depends on which local day it is. The clock ticks every
+// minute; this number changes once, at midnight, and a computed that returns
+// the same number does not wake its readers, so the rows are re-split then and
+// not 1,440 times a day.
+const todayStart = computed(() => startOfLocalDay(new Date(now.value)));
 
 const partition = computed(() =>
 	// Each row carries its thread's advisory category (attached server-side), so
 	// a row on a later page is auto-filed exactly like one on the first.
 	// Fail-open: an unclassified row is never auto-filed.
-	partitionTodayMessages(messages.value, { now: now.value })
+	partitionTodayMessages(messages.value, { now: new Date(todayStart.value) })
 );
 const todayRows = computed(() => partition.value.today);
 const olderRows = computed(() => partition.value.older);
@@ -170,6 +181,11 @@ function forYouAction(item: ReplyQueueItem): string {
 	return t('components.postbox.postboxTodayView.answer');
 }
 
+// The column scrolls as one: both lists sit in auto-height boxes inside it, so
+// they window and auto-load against this scroller, not their own boxes (which
+// never scroll and would mount every loaded row).
+const scrollHost = ref<HTMLElement | null>(null);
+
 // Older mail stays one interaction away: collapsed behind the centered
 // affordance, expanded inline with the same rows + pagination.
 const showPast = ref(false);
@@ -181,6 +197,16 @@ const hasOlder = computed(() => olderRows.value.length > 0 || hasMore.value);
 // `select` instead of navigating): the column stays mounted, preserving
 // scroll and the j/k selection. Deep links seed the same state.
 const openMessageId = ref<string | null>(props.initialMessageId ?? null);
+// The Postbox page stays mounted across /inbox ↔ /inbox/<id>, so a later deep
+// link (palette, notification, browser back/forward) re-seeds the overlay here
+// instead of through a fresh mount. Opening a row in place never touches the
+// route, so this only follows real navigations.
+watch(
+	() => props.initialMessageId,
+	(id) => {
+		openMessageId.value = id ?? null;
+	}
+);
 
 // The visible row order the overlay's j/k and the reader's triage
 // auto-advance walk: today's rows, then the expanded past rows.
@@ -209,6 +235,15 @@ function closeOverlay() {
 	emit('reader-closed');
 }
 
+// A reader triage advances before its mutation lands; if it then fails, the
+// reader (already swapped out) reopens its message through this host.
+provide(POSTBOX_READER_HOST_KEY, {
+	openId: () => openMessageId.value,
+	open: (id) => {
+		openMessageId.value = id;
+	},
+});
+
 /**
  * The mode switch is two-way, but this surface IS 'today' — only the other
  * segment has anywhere to go, and the host owns the move (it persists the mode).
@@ -219,7 +254,7 @@ function onModeSelect(mode: PostboxInboxMode) {
 </script>
 
 <template>
-	<div class="flex-1 overflow-y-auto bg-bg-base">
+	<div ref="scrollHost" class="flex-1 overflow-y-auto bg-bg-base">
 		<div class="max-w-xl mx-auto px-4 py-8 flex flex-col gap-8">
 			<!-- Minimal header: the count + the two-way switch to the full UI. The
 			     same control the browse list header carries, so the two surfaces
@@ -308,6 +343,7 @@ function onModeSelect(mode: PostboxInboxMode) {
 						:messages="todayRows"
 						:loading="false"
 						folder-role="inbox"
+						:scroll-parent="scrollHost"
 						selectable
 						:active-message-id="openMessageId"
 						@select="openMessageId = $event"
@@ -354,6 +390,7 @@ function onModeSelect(mode: PostboxInboxMode) {
 							:messages="olderRows"
 							:loading="isLoading"
 							folder-role="inbox"
+							:scroll-parent="scrollHost"
 							:has-more="hasMore"
 							selectable
 							:active-message-id="openMessageId"
@@ -366,16 +403,16 @@ function onModeSelect(mode: PostboxInboxMode) {
 		</div>
 
 		<!-- Centered reader: the ONE doing-surface while a conversation is open.
-		     Enters with the shared fade+rise; the list underneath keeps its
-		     scroll and selection for Esc/scrim return. -->
-		<Transition name="pbx-reader">
-			<PostboxTodayReaderOverlay
-				v-if="overlayMessage"
-				:message="overlayMessage"
-				:advance-ids="overlayAdvanceIds"
-				@open="openMessageId = $event"
-				@close="closeOverlay"
-			/>
-		</Transition>
+		     Fades in with the reader's enter-only swap and closes in the same
+		     frame; the list underneath keeps its scroll and selection for
+		     Esc/scrim return. -->
+		<PostboxTodayReaderOverlay
+			v-if="overlayMessage"
+			class="pbx-reader-swap"
+			:message="overlayMessage"
+			:advance-ids="overlayAdvanceIds"
+			@open="openMessageId = $event"
+			@close="closeOverlay"
+		/>
 	</div>
 </template>

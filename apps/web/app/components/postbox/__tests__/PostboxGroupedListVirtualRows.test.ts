@@ -64,9 +64,6 @@ const globalOptions = {
 		PostboxSectionedThreadList,
 		PostboxConversationRow,
 	},
-	// Auto-imports the TEMPLATES call resolve through the component context, not
-	// globalThis, so a vi.stubGlobal would never be seen by the row markup.
-	mocks: { formatThreadTimestamp: () => '10:24' },
 	stubs: {
 		Icon: { props: ['name'], template: '<span />' },
 		NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
