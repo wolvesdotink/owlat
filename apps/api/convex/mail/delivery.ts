@@ -10,8 +10,9 @@
  * delivery mutation, at their existing `internal.mail.delivery.*` paths. The
  * steps live beside it in `./deliveryPipeline/`:
  *
- *   ingest.ts   raw staging, decrypt-on-ingest, signature verify, body split,
- *               attachment capture (action-only)
+ *   ingest.ts   raw staging, decrypt-on-ingest, signature verify, body split
+ *               (action-only)
+ *   deferredCapture.ts  attachment capture, scheduled off the webhook
  *   scan.ts     the aggregate inbound malware verdict
  *   routing.ts  pure spam / filter / DMARC-ARC decisions
  *   insert.ts   dedup + quota checks, threading, UID+modseq, the row insert
@@ -42,7 +43,11 @@ import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
 import { inboundSignatureInfoValidator } from '../e2ee/inboundSignature';
 import { resolveDeliverableMailbox } from './mailbox/addressResolution';
 import { prepareInboundMessage } from './deliveryPipeline/ingest';
-import { captureAttachments } from './deliveryPipeline/capture';
+import {
+	indexStagedAttachments,
+	scheduleStagedCapture,
+	stagedCaptureArgs,
+} from './deliveryPipeline/deferredCapture';
 import { mailboxIndexableParts } from './deliveryPipeline/scan';
 import {
 	dropStagedBlobs,
@@ -156,8 +161,11 @@ export const ingestFromWebhook = internalAction({
 		// Capture real attachments into the semantic file library so they show
 		// up under the "Email attachments" source filter on /dashboard/files and
 		// flow into the file→knowledge pipeline. The raw bytes are only in the
-		// .eml blob (the mailMessages row carries metadata, not content), so we
-		// pull them here while the raw MIME is still in hand. Best-effort: a
+		// .eml blob (the mailMessages row carries metadata, not content), so the
+		// eligible parts are staged here while the raw MIME is still in hand —
+		// and the indexing itself is SCHEDULED, not awaited: the MTA waits on
+		// this action with a 10 s deadline and re-POSTs the whole message on a
+		// timeout (see `deliveryPipeline/deferredCapture.ts`). Best-effort: a
 		// failed capture never fails delivery (the message is already stored).
 		try {
 			// WHICH LEAVES MAY BE INDEXED and WHAT WAS WITHHELD, as one pair from
@@ -170,7 +178,7 @@ export const ingestFromWebhook = internalAction({
 			// is a perfectly defined `'skipped'` with nothing cleared, and this
 			// route quietly stopped capturing anything at all.
 			const { parts, withheld } = mailboxIndexableParts(prepared.scan);
-			await captureAttachments(ctx, {
+			await scheduleStagedCapture(ctx, {
 				parts,
 				withheld,
 				messageId: args.messageId,
@@ -201,6 +209,17 @@ export const ingestFromWebhook = internalAction({
 		}
 
 		return result;
+	},
+});
+
+/**
+ * Scheduled by {@link ingestFromWebhook}: index the attachment parts it staged.
+ * A mutation, so it runs exactly once — see `deliveryPipeline/deferredCapture.ts`.
+ */
+export const captureStagedAttachments = internalMutation({
+	args: stagedCaptureArgs,
+	handler: async (ctx, args) => {
+		await indexStagedAttachments(ctx, args);
 	},
 });
 
