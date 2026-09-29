@@ -1,9 +1,11 @@
 import { v } from 'convex/values';
 import { internalQuery } from './_generated/server';
+import { isFeatureEnabled } from './lib/featureFlags';
 
 /**
  * Get share link data by token.
- * Returns null if not found or revoked, { expired: true } if expired,
+ * Returns null if not found or revoked (or, for a transactional email, while
+ * the transactional feature is off), { expired: true } if expired,
  * or full share link data if valid.
  */
 export const getShareLinkByToken = internalQuery({
@@ -16,15 +18,21 @@ export const getShareLinkByToken = internalQuery({
 
 		if (!shareLink) return null;
 		if (shareLink.revokedAt) return null;
+		// A transactional email's preview follows the transactional feature flag,
+		// like its editor. Email templates belong to the always-on editor.
+		if (
+			shareLink.targetType === 'transactionalEmail' &&
+			!(await isFeatureEnabled(ctx, 'transactional'))
+		) {
+			return null;
+		}
 
 		if (shareLink.expiresAt < Date.now()) {
 			return { expired: true as const };
 		}
 
 		// Get instance display name
-		const settings = await ctx.db
-			.query('instanceSettings')
-			.first();
+		const settings = await ctx.db.query('instanceSettings').first();
 
 		return {
 			html: shareLink.htmlContent,
