@@ -243,6 +243,18 @@ export async function commitIngest(
 	return await convex.action(fn.ingestExternalRaw, staged.args);
 }
 
+/**
+ * Release a staged message that will never be committed: its raw upload is
+ * deleted, since nothing else would ever free it (the next poll fetches and
+ * uploads the message again).
+ */
+export async function discardStagedIngest(
+	convex: ConvexClient,
+	staged: StagedIngest
+): Promise<void> {
+	await convex.mutation(fn.discardStagedRaw, { rawStorageId: staged.args.rawStorageId });
+}
+
 /** Stage and commit one message. */
 export async function ingestMessage(
 	convex: ConvexClient,

@@ -25,6 +25,7 @@ import { imapAuth } from './auth.js';
 import { imapTlsOptions } from './tls.js';
 import {
 	commitIngest,
+	discardStagedIngest,
 	ingestMessage,
 	isMessageLanded,
 	stageIngest,
@@ -499,6 +500,7 @@ export class AccountConnection {
 							if (uid > maxUid) maxUid = uid;
 						},
 						isStopped: () => this.stopped,
+						discard: (_msg, staged) => discardStagedIngest(this.convex, staged),
 					}
 				);
 			} finally {
@@ -907,7 +909,11 @@ export class AccountConnection {
 					this.rawUploadConfig,
 					backfillParams(remoteName, role, uid, raw, flags)
 				);
-				return async () => landedOrWarn(await commitIngest(this.convex, staged), remoteName, uid);
+				return {
+					commit: async () =>
+						landedOrWarn(await commitIngest(this.convex, staged), remoteName, uid),
+					discard: () => discardStagedIngest(this.convex, staged),
+				};
 			},
 			ingestConcurrency: FORWARD_INGEST_CONCURRENCY,
 			reportIngestFailure: (remoteName, uid, err) => {

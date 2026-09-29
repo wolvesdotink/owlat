@@ -17,6 +17,9 @@ const ingest = vi.hoisted(() => ({
 	commitIngest: vi.fn(async (_convex: unknown, _staged: { params: { remoteUid: number } }) => ({
 		messageId: 'msg_1',
 	})),
+	discardStagedIngest: vi.fn(
+		async (_convex: unknown, _staged: { params: { remoteUid: number } }) => undefined
+	),
 }));
 vi.mock('../ingest.js', () => ingest);
 
@@ -67,6 +70,7 @@ const committedUids = () => ingest.commitIngest.mock.calls.map((call) => call[1]
 beforeEach(() => {
 	ingest.stageIngest.mockClear();
 	ingest.commitIngest.mockClear();
+	ingest.discardStagedIngest.mockClear();
 	ingest.stageIngest.mockImplementation(async (_config, params) => ({ params }));
 	ingest.commitIngest.mockImplementation(async () => ({ messageId: 'msg_1' }));
 });
@@ -116,5 +120,10 @@ describe('forward sync pipeline', () => {
 
 		expect(committedUids()).toEqual([42, 43, 44]);
 		expect(conn.cursors.get('INBOX')?.lastSeenUid).toBe(43);
+		// 45 was uploaded and will be fetched again by the next poll: its upload
+		// is freed rather than left behind. 44 reached the server and is not.
+		expect(ingest.discardStagedIngest.mock.calls.map((call) => call[1].params.remoteUid)).toEqual([
+			45,
+		]);
 	});
 });

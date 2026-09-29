@@ -423,10 +423,15 @@ describe('backfillFolder with a staged ingest (plan 3.6)', () => {
 			events.push(`stage:${uid}`);
 			// Uploads finish in reverse: the commits must not follow them.
 			await new Promise<void>((resolve) => uploads.unshift(resolve));
-			return async () => {
-				events.push(`commit:${uid}`);
-				if (uid === 5) throw new Error('ingest failed');
-				return uid !== 2; // 2 is a server-side skip
+			return {
+				commit: async () => {
+					events.push(`commit:${uid}`);
+					if (uid === 5) throw new Error('ingest failed');
+					return uid !== 2; // 2 is a server-side skip
+				},
+				discard: async () => {
+					events.push(`discard:${uid}`);
+				},
 			};
 		};
 		const run = backfillFolder(deps, {

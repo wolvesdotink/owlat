@@ -121,6 +121,49 @@ describe('runIngestPipeline', () => {
 		expect(result).toEqual([1, 2]);
 	});
 
+	it('discards what was staged but never committed once stopped', async () => {
+		let stopped = false;
+		const discarded: number[] = [];
+		const result = await runIngestPipeline([1, 2, 3, 4, 5, 6], {
+			concurrency: 4,
+			stage: async (n) => {
+				if (n === 4) throw new Error('upload failed');
+				return `s${n}`;
+			},
+			commit: async (n) => {
+				if (n === 1) stopped = true;
+			},
+			isStopped: () => stopped,
+			discard: async (n, staged) => {
+				expect(staged).toBe(`s${n}`);
+				discarded.push(n);
+			},
+		});
+		expect(result).toEqual([1]);
+		// 2 and 3 were uploaded and never committed; 4's upload failed, so it
+		// holds nothing, and 5 and 6 were never staged.
+		expect(discarded.sort()).toEqual([2, 3]);
+	});
+
+	it('discards the staged items behind a commit that threw, not the one that threw', async () => {
+		const discarded: number[] = [];
+		await expect(
+			runIngestPipeline([1, 2, 3, 4], {
+				concurrency: 3,
+				stage: async (n) => n,
+				commit: async (n) => {
+					if (n === 2) throw new Error('ledger write failed');
+				},
+				isStopped: () => false,
+				discard: async (n) => {
+					discarded.push(n);
+					throw new Error('discard failures are ignored');
+				},
+			})
+		).rejects.toThrow('ledger write failed');
+		expect(discarded.sort()).toEqual([3, 4]);
+	});
+
 	it('commits what the source yielded before it broke, then rethrows', async () => {
 		async function* source() {
 			yield 1;

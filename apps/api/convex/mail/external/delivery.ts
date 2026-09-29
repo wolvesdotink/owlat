@@ -351,6 +351,26 @@ export const recordFolderMapping = internalMutation({
 });
 
 /**
+ * Free the raw upload of a message the worker staged but will never ingest:
+ * its ingest pipeline stopped (a redeploy mid-poll) or a commit ahead of it
+ * failed. Nothing else would ever delete the blob; the message itself stays on
+ * the remote server and is fetched again by the next poll. A blob a message row
+ * already points at is left alone, so a late or repeated discard can never
+ * take stored mail with it.
+ */
+export const discardStagedRaw = internalMutation({
+	args: { rawStorageId: v.id('_storage') },
+	handler: async (ctx, args) => {
+		const referenced = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_raw_storage', (q) => q.eq('rawStorageId', args.rawStorageId))
+			.first();
+		if (referenced) return;
+		await dropStagedBlobs(ctx, [args.rawStorageId]);
+	},
+});
+
+/**
  * Ingestion entry point for the mail-sync worker.
  *
  * The raw `.eml` arrives OUT OF BAND: the worker PUTs the bytes to

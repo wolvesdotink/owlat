@@ -13,6 +13,10 @@
  * thrown here: it is handed to `commit` in its turn, in order, so the caller
  * records the failure at the same place in the sequence it would have
  * recorded it without the pipeline.
+ *
+ * A staged item that is never committed (the pipeline stopped, or a commit
+ * ahead of it threw) is handed to `discard`, so what its stage holds — the
+ * uploaded raw blob — does not outlive it.
  */
 
 export type StageResult<S> = { ok: true; value: S } | { ok: false; error: unknown };
@@ -30,6 +34,12 @@ export interface IngestPipelineOptions<T, S> {
 	commit(item: T, staged: StageResult<S>): Promise<void>;
 	/** Checked before each commit; a stopped pipeline commits nothing more. */
 	isStopped(): boolean;
+	/**
+	 * Release a successful stage that will never be committed. Not called for
+	 * an item whose commit ran (and possibly threw): the server may already
+	 * hold it. A rejection is ignored; the item is left as it was.
+	 */
+	discard?(item: T, staged: S): Promise<void>;
 }
 
 /**
@@ -47,12 +57,23 @@ export async function runIngestPipeline<T, S>(
 	let stopped = false;
 	let commitFailed = false;
 
+	const discard = async (entry: { item: T; result: Promise<StageResult<S>> }): Promise<void> => {
+		const result = await entry.result;
+		if (!result.ok || !options.discard) return;
+		try {
+			await options.discard(entry.item, result.value);
+		} catch {
+			// Left as it was: a discard is housekeeping, never a reason to fail.
+		}
+	};
+
 	const commitHead = async (): Promise<void> => {
 		const head = inFlight.shift();
 		if (!head) return;
 		const result = await head.result;
 		if (options.isStopped()) {
 			stopped = true;
+			await discard(head);
 			return;
 		}
 		try {
@@ -95,8 +116,8 @@ export async function runIngestPipeline<T, S>(
 		if (sourceError) throw sourceError.error;
 	} finally {
 		// Stages still running after a stop or a throw: let them settle so no
-		// upload outlives the caller's lock. Their results are dropped.
-		await Promise.all(inFlight.map((entry) => entry.result));
+		// upload outlives the caller's lock, then release what they staged.
+		await Promise.all(inFlight.map(discard));
 	}
 	return committed;
 }

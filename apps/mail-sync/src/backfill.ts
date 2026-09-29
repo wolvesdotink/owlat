@@ -62,6 +62,14 @@ export interface BackfillFolderTarget {
 	messageCount: number;
 }
 
+/** A backfill message whose raw bytes are uploaded, waiting for its ingest call. */
+export interface StagedBackfillMessage {
+	/** Make the ingest call; resolves with whether the message landed. */
+	commit(): Promise<boolean>;
+	/** Free the upload of a message whose ingest call will never be made. */
+	discard(): Promise<void>;
+}
+
 export interface BackfillFolderDeps {
 	batchSize: number;
 	/** Snapshot the ceiling/count and return the UID to start descending from,
@@ -92,16 +100,17 @@ export interface BackfillFolderDeps {
 	 * ingest that threw on EVERY message still finished as "100% imported". */
 	reportIngestFailure(remoteName: string, uid: number, error: unknown): void;
 	/** The upload half of `ingest`, run ahead of time: resolves with the ingest
-	 * call still to make. When given, a batch uploads `ingestConcurrency`
-	 * messages at once and commits them one at a time in fetch order, instead
-	 * of paying both round trips per message in series. */
+	 * call still to make, and a way to free the upload if that call is never
+	 * made (the walk stopped first). When given, a batch uploads
+	 * `ingestConcurrency` messages at once and commits them one at a time in
+	 * fetch order, instead of paying both round trips per message in series. */
 	stageIngest?(
 		remoteName: string,
 		role: FolderRole,
 		uid: number,
 		raw: Buffer,
 		flags: Set<string>
-	): Promise<() => Promise<boolean>>;
+	): Promise<StagedBackfillMessage>;
 	/** Uploads in flight at once when `stageIngest` is given (default 1). */
 	ingestConcurrency?: number;
 	/** Persist batch progress: cursor dropped to `newCursor`, with the batch split
@@ -174,7 +183,7 @@ export async function backfillFolder(
 					}
 					try {
 						if (!staged.ok) throw staged.error;
-						const landed = staged.value ? await staged.value() : false;
+						const landed = staged.value ? await staged.value.commit() : false;
 						// A server-side skip stores nothing and does NOT throw, so counting
 						// every non-throwing ingest as an import would reopen exactly the
 						// hole this split closes.
@@ -191,6 +200,9 @@ export async function backfillFolder(
 					}
 				},
 				isStopped: () => deps.isStopped(),
+				discard: async (_msg, staged) => {
+					await staged?.discard();
+				},
 			}
 		);
 
@@ -222,11 +234,14 @@ async function stageOne(
 	deps: BackfillFolderDeps,
 	target: BackfillFolderTarget,
 	msg: BackfillFetchedMessage
-): Promise<(() => Promise<boolean>) | null> {
+): Promise<StagedBackfillMessage | null> {
 	const source = msg.source;
 	if (msg.alreadyPresent || !source) return null;
 	if (deps.stageIngest) {
 		return await deps.stageIngest(target.remoteName, target.role, msg.uid, source, msg.flags);
 	}
-	return () => deps.ingest(target.remoteName, target.role, msg.uid, source, msg.flags);
+	return {
+		commit: () => deps.ingest(target.remoteName, target.role, msg.uid, source, msg.flags),
+		discard: async () => undefined, // nothing was uploaded yet
+	};
 }

@@ -247,6 +247,10 @@ export const fn = {
 	ingestExternalRaw: makeFunctionReference<'action', IngestExternalRawArgs, IngestOutcome>(
 		'mail/external/delivery:ingestExternalRaw'
 	),
+	// Free the raw upload of a staged message the pipeline will never commit.
+	discardStagedRaw: makeFunctionReference<'mutation', { rawStorageId: string }, null>(
+		'mail/external/delivery:discardStagedRaw'
+	),
 	// Resume cursors per folder.
 	getSyncState: makeFunctionReference<'query', { accountId: string }, FolderCursor[]>(
 		'mail/external/delivery:getSyncState'
