@@ -15,15 +15,16 @@
 
 import { v } from 'convex/values';
 import { authedAction } from '../../lib/authedFunctions';
-import { api, internal } from '../../_generated/api';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject } from '../../lib/llm/dispatch';
+import { interactiveLlmPolicy } from '../../lib/llm/retryPolicy';
 import {
 	buildSelfCheckPrompt,
 	draftQualitySchema,
 	type DraftQuality,
 } from '../../agent/steps/draft/index';
-import { recordLlmSpend } from '../../analytics/llmUsage';
+import { scheduleLlmSpend } from '../../analytics/llmUsage';
+import { gatedInParallel, readThreadMessages } from './gate';
 import { buildThreadTranscript, THREAD_SUMMARY } from './transcript';
 
 /**
@@ -134,28 +135,32 @@ export const coachDraft = authedAction({
 		const draft = args.draftText.trim();
 		if (!draft) return { suggestions: [] };
 		try {
-			await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
+			// The gate, the (optional) thread read and the model resolution run side
+			// by side; the gate's verdict still comes first.
+			const [thread, model] = await gatedInParallel(
+				ctx,
+				Promise.all([
+					args.messageId ? readThreadMessages(ctx, args.messageId) : null,
+					resolveLanguageModel(ctx, 'classify'), // cheap / fast tier, same as the agent self-check
+				])
+			);
 			let context = (args.threadContext ?? '').slice(0, COACH_MAX_CONTEXT_CHARS);
-			if (args.messageId) {
-				const thread = await ctx.runQuery(api.mail.mailbox.messages.listThreadMessages, {
-					messageId: args.messageId,
-				});
-				if (thread && thread.messages.length > 0) {
-					context = await buildThreadTranscript(thread.messages, THREAD_SUMMARY);
-				}
+			if (thread && thread.messages.length > 0) {
+				context = await buildThreadTranscript(thread.messages, THREAD_SUMMARY);
 			}
 			const { object, tokenUsage, modelUsed } = await runLlmObject({
-				model: await resolveLanguageModel(ctx, 'classify'), // cheap / fast tier, same as the agent self-check
+				model,
 				schema: draftQualitySchema,
 				prompt: buildSelfCheckPrompt({
 					context,
 					draft: draft.slice(0, COACH_MAX_DRAFT_CHARS),
 				}),
 				temperature: 0.1,
+				...interactiveLlmPolicy('reply'),
 			});
 			// Best-effort spend accounting — never let it break the coach.
 			try {
-				await recordLlmSpend(ctx, 'postbox_coach_draft', tokenUsage, modelUsed);
+				await scheduleLlmSpend(ctx, 'postbox_coach_draft', tokenUsage, modelUsed);
 			} catch {
 				// ignore — spend accounting is advisory
 			}

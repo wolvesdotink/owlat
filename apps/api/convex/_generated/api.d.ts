@@ -693,6 +693,7 @@ import type * as lib_llmProviders_modelListing from '../lib/llmProviders/modelLi
 import type * as lib_llmProviders_openai from '../lib/llmProviders/openai.js';
 import type * as lib_llmProviders_openaiCompatible from '../lib/llmProviders/openaiCompatible.js';
 import type * as lib_llmProviders_openrouter from '../lib/llmProviders/openrouter.js';
+import type * as lib_llmProviders_storedConfigCache from '../lib/llmProviders/storedConfigCache.js';
 import type * as lib_llmProviders_types from '../lib/llmProviders/types.js';
 import type * as lib_llmUsageTags from '../lib/llmUsageTags.js';
 import type * as lib_mailMute from '../lib/mailMute.js';
@@ -1934,6 +1935,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/llmProviders/openai': typeof lib_llmProviders_openai;
 	'lib/llmProviders/openaiCompatible': typeof lib_llmProviders_openaiCompatible;
 	'lib/llmProviders/openrouter': typeof lib_llmProviders_openrouter;
+	'lib/llmProviders/storedConfigCache': typeof lib_llmProviders_storedConfigCache;
 	'lib/llmProviders/types': typeof lib_llmProviders_types;
 	'lib/llmUsageTags': typeof lib_llmUsageTags;
 	'lib/mailMute': typeof lib_mailMute;

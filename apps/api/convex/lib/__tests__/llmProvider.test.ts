@@ -300,6 +300,117 @@ describe('llmProvider', () => {
 		});
 	});
 
+	// ============ lazy per-plane keys + long-lived cache (plan 1.14) ============
+
+	describe('config cache and lazy key decryption', () => {
+		/** Both planes hosted, each with its own key envelope. */
+		const twoKeyRow = (over: Partial<Doc<'aiProviderConfig'>> = {}) =>
+			storedRow({
+				languageProviderKind: 'openai',
+				secretCiphertext: 'lang-ct',
+				secretIv: 'iv',
+				secretAuthTag: 'tag',
+				secretEnvelopeVersion: 1,
+				embeddingProviderKind: 'openai',
+				embeddingModel: 'text-embedding-3-small',
+				embeddingSecretCiphertext: 'emb-ct',
+				embeddingSecretIv: 'eiv',
+				embeddingSecretAuthTag: 'etag',
+				embeddingSecretEnvelopeVersion: 1,
+				...over,
+			});
+		const decrypted = (runAction: ReturnType<typeof vi.fn>) =>
+			runAction.mock.calls.map((call) => (call[1] as { ciphertext: string }).ciphertext);
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it('a text call decrypts only the language key', async () => {
+			const { resolveLanguageModel } = await import('../llmProvider');
+			const { ctx, runAction } = makeCtx(twoKeyRow());
+			await resolveLanguageModel(ctx, 'draft');
+			expect(decrypted(runAction)).toEqual(['lang-ct']);
+		});
+
+		it('an embedding call decrypts only the embedding key', async () => {
+			const { resolveEmbeddingModel } = await import('../llmProvider');
+			const { ctx, runAction } = makeCtx(twoKeyRow());
+			await resolveEmbeddingModel(ctx);
+			expect(decrypted(runAction)).toEqual(['emb-ct']);
+		});
+
+		it('resolveAiConfig decrypts both keys, in parallel', async () => {
+			const { resolveAiConfig } = await import('../llmProvider');
+			let inFlight = 0;
+			let maxInFlight = 0;
+			const { ctx, runAction } = makeCtx(twoKeyRow());
+			runAction.mockImplementation(async () => {
+				inFlight += 1;
+				maxInFlight = Math.max(maxInFlight, inFlight);
+				await new Promise((resolve) => setTimeout(resolve, 5));
+				inFlight -= 1;
+				return 'decrypted-key';
+			});
+			const cfg = await resolveAiConfig(ctx);
+			expect(cfg.language.clientConfig.apiKey).toBe('decrypted-key');
+			expect(cfg.embedding.clientConfig.apiKey).toBe('decrypted-key');
+			expect(maxInFlight).toBe(2);
+		});
+
+		it('keeps decrypted keys for five minutes while the row is unchanged', async () => {
+			vi.useFakeTimers({ toFake: ['Date'] });
+			vi.setSystemTime(new Date('2026-09-29T10:00:00Z'));
+			const { resolveLanguageModel } = await import('../llmProvider');
+			const { ctx, runQuery, runAction } = makeCtx(twoKeyRow());
+			await resolveLanguageModel(ctx, 'draft');
+			// Inside the 30 s recheck window: no row read, no decrypt.
+			vi.setSystemTime(new Date('2026-09-29T10:00:20Z'));
+			await resolveLanguageModel(ctx, 'draft');
+			expect(runQuery).toHaveBeenCalledTimes(1);
+			// Past the recheck: the row is read again, but an unchanged row keeps the key.
+			vi.setSystemTime(new Date('2026-09-29T10:04:00Z'));
+			await resolveLanguageModel(ctx, 'draft');
+			expect(runQuery).toHaveBeenCalledTimes(2);
+			expect(runAction).toHaveBeenCalledTimes(1);
+			// Past the five-minute TTL the key is decrypted afresh.
+			vi.setSystemTime(new Date('2026-09-29T10:05:30Z'));
+			await resolveLanguageModel(ctx, 'draft');
+			expect(runAction).toHaveBeenCalledTimes(2);
+		});
+
+		it('drops the cached key once a settings save moves updatedAt', async () => {
+			vi.useFakeTimers({ toFake: ['Date'] });
+			vi.setSystemTime(new Date('2026-09-29T10:00:00Z'));
+			const { resolveAiConfig } = await import('../llmProvider');
+			const { ctx, runQuery, runAction } = makeCtx(twoKeyRow());
+			await resolveAiConfig(ctx);
+			runQuery.mockResolvedValue(twoKeyRow({ updatedAt: 456, modelCapable: 'new-capable' }));
+			vi.setSystemTime(new Date('2026-09-29T10:00:31Z'));
+			const cfg = await resolveAiConfig(ctx);
+			expect(cfg.language.models.capable).toBe('new-capable');
+			expect(runAction).toHaveBeenCalledTimes(4);
+		});
+
+		it('invalidateAiConfigCache makes the next call re-read the row', async () => {
+			const { resolveLanguageModel, invalidateAiConfigCache } = await import('../llmProvider');
+			const { ctx, runQuery } = makeCtx(twoKeyRow());
+			await resolveLanguageModel(ctx, 'draft');
+			invalidateAiConfigCache();
+			await resolveLanguageModel(ctx, 'draft');
+			expect(runQuery).toHaveBeenCalledTimes(2);
+		});
+
+		it('a failed decrypt is not cached', async () => {
+			const { resolveLanguageModel } = await import('../llmProvider');
+			const { ctx, runAction } = makeCtx(twoKeyRow());
+			runAction.mockRejectedValueOnce(new Error('decrypt failed'));
+			await expect(resolveLanguageModel(ctx, 'draft')).rejects.toThrow('decrypt failed');
+			await resolveLanguageModel(ctx, 'draft');
+			expect(runAction).toHaveBeenCalledTimes(2);
+		});
+	});
+
 	// ============ resolveLanguageModelForClassifiedDraft ============
 
 	describe('resolveLanguageModelForClassifiedDraft', () => {
@@ -443,8 +554,9 @@ describe('llmProvider', () => {
 			);
 			expect(mockCompatTextEmbedding).toHaveBeenCalledWith('nomic-embed-text');
 			expect(mockOpenAIFactory.embedding).not.toHaveBeenCalled();
-			// The local embedder is keyless — only the hosted LANGUAGE key is decrypted.
-			expect(runAction).toHaveBeenCalledTimes(1);
+			// The local embedder is keyless, and an embedding resolution never
+			// decrypts the LANGUAGE key: nothing is decrypted at all.
+			expect(runAction).not.toHaveBeenCalled();
 		});
 
 		it('honors LOCAL_EMBEDDING_MODEL for the local plane', async () => {

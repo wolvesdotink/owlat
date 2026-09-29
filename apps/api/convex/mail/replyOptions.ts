@@ -41,6 +41,13 @@ export async function generateReplyOptions(
 	args: {
 		prompt: string;
 		temperature?: number;
+		/**
+		 * Interactive callers pass their deadline and a lower attempt ceiling
+		 * (`interactiveLlmPolicy('reply')`); the inbound agent's draft step
+		 * passes neither and keeps the background schedule.
+		 */
+		abortSignal?: AbortSignal;
+		maxAttempts?: number;
 	}
 ): Promise<{
 	replies: string[];
@@ -52,6 +59,8 @@ export async function generateReplyOptions(
 		schema: replyOptionsSchema,
 		prompt: args.prompt,
 		temperature: args.temperature ?? 0.7,
+		...(args.abortSignal ? { abortSignal: args.abortSignal } : {}),
+		...(args.maxAttempts === undefined ? {} : { maxAttempts: args.maxAttempts }),
 	});
 	return {
 		replies: object.replies.slice(0, MAX_REPLY_OPTIONS),

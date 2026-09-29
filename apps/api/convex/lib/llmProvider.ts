@@ -12,8 +12,10 @@
  *   • ENV `LLM_*` is the deployment fallback when no row exists — self-hosters
  *     who set `LLM_*` keep working with zero UI.
  *
- * The resolved config is memoized in-process for a short TTL so a burst of LLM
- * calls reads (and decrypts) at most once per window rather than per call. Both
+ * The config row is memoized in-process (`./llmProviders/storedConfigCache`) and
+ * each plane's key is decrypted only when that plane is asked for (a text call
+ * never decrypts the embedding key), then kept for five minutes. The row itself
+ * is re-read every 30 s, and a changed row drops the cached keys. Both
  * paths resolve through the provider-adapter registry (`./llmProviders`), where
  * a `kind` selects the adapter that builds the client.
  *
@@ -43,7 +45,6 @@
  */
 
 import type { EmbeddingModel, LanguageModel } from 'ai';
-import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { getOptional } from './env';
@@ -65,6 +66,13 @@ import {
 	type ResolvedLanguageModel,
 } from './llmProviders';
 import type { StoredEmbeddingProviderKind } from './validators/aiProviderConfig';
+import {
+	invalidateAiConfigCache,
+	loadConfigEntry,
+	planeKey,
+} from './llmProviders/storedConfigCache';
+
+export { invalidateAiConfigCache } from './llmProviders/storedConfigCache';
 
 /**
  * Task types map to a model tier:
@@ -239,121 +247,52 @@ export function buildStoredProviderConfig(
 	};
 }
 
-// A short in-process TTL cache so a burst of LLM calls (classify → clarify →
-// draft → guard …) resolves — and decrypts — the config at most once per window
-// rather than per call. Bounded staleness after an admin edit is the tradeoff.
-const AI_CONFIG_CACHE_TTL_MS = 30_000;
-let configCache: { config: ResolvedProviderConfig; expiresAt: number } | null = null;
-
-/** A complete, decryptable AES-256-GCM envelope read off a config row. */
-interface KeyEnvelope {
-	ciphertext: string;
-	iv: string;
-	authTag: string;
-	version: number;
-}
-
-/**
- * Assemble a `KeyEnvelope` from a row's four secret columns, or `undefined` when
- * any is absent (no key stored). Single-sources the read side across both planes,
- * mirroring how `storedEnvelopeOf` single-sources the persist side.
- */
-function envelopeFromColumns(
-	ciphertext: string | undefined,
-	iv: string | undefined,
-	authTag: string | undefined,
-	version: number | undefined
-): KeyEnvelope | undefined {
-	if (
-		ciphertext === undefined ||
-		iv === undefined ||
-		authTag === undefined ||
-		version === undefined
-	) {
-		return undefined;
-	}
-	return { ciphertext, iv, authTag, version };
-}
-
-/** The language-key envelope of a row, or `undefined` when no key is stored. */
-function languageKeyEnvelope(row: Doc<'aiProviderConfig'>): KeyEnvelope | undefined {
-	return envelopeFromColumns(
-		row.secretCiphertext,
-		row.secretIv,
-		row.secretAuthTag,
-		row.secretEnvelopeVersion
-	);
-}
-
-/** The embedding-key envelope of a row, or `undefined` when no key is stored. */
-function embeddingKeyEnvelope(row: Doc<'aiProviderConfig'>): KeyEnvelope | undefined {
-	return envelopeFromColumns(
-		row.embeddingSecretCiphertext,
-		row.embeddingSecretIv,
-		row.embeddingSecretAuthTag,
-		row.embeddingSecretEnvelopeVersion
-	);
-}
-
 /**
  * Resolve the org's AI config for both planes: the stored per-org row WINS when
- * present (decrypting hosted keys inside a Node action), otherwise the env
- * `LLM_*` fallback. Memoized for a short TTL. This is the single point every
- * language- AND embedding-model resolution flows through. The two planes decrypt
- * their own keys — a hosted language provider and a hosted embedder can each
- * carry a distinct key.
+ * present, otherwise the env `LLM_*` fallback. The two planes decrypt their own
+ * keys, in parallel — a hosted language provider and a hosted embedder can each
+ * carry a distinct key. Callers that need one plane use the plane resolvers
+ * below, which decrypt only that plane's key.
  */
 export async function resolveAiConfig(ctx: ActionCtx): Promise<ResolvedProviderConfig> {
-	const cached = configCache;
-	if (cached && cached.expiresAt > Date.now()) return cached.config;
-
-	const row = await ctx.runQuery(internal.aiProviderConfig._getConfigRow, {});
-	let config: ResolvedProviderConfig;
-	if (!row) {
-		config = resolveEnvProviderConfig();
-	} else {
-		// Decrypt ONLY inside the Node action — this v8-safe module never touches
-		// node:crypto. Each plaintext key builds a model and is then discarded; it
-		// never reaches a query result or the client. Only hosted providers carry a
-		// key; local/keyless ones decrypt nothing.
-		const languageLocal = languageProviderFor(row.languageProviderKind).isLocal;
-		const embeddingLocal = embeddingProviderFor(row.embeddingProviderKind).isLocal;
-		const languageEnvelope = languageLocal ? undefined : languageKeyEnvelope(row);
-		const embeddingEnvelope = embeddingLocal ? undefined : embeddingKeyEnvelope(row);
-		const languageKey = languageEnvelope ? await decryptEnvelope(ctx, languageEnvelope) : undefined;
-		const embeddingKey = embeddingEnvelope
-			? await decryptEnvelope(ctx, embeddingEnvelope)
-			: undefined;
-		config = buildStoredProviderConfig(row, languageKey, embeddingKey);
-	}
-
-	configCache = { config, expiresAt: Date.now() + AI_CONFIG_CACHE_TTL_MS };
-	return config;
+	const entry = await loadConfigEntry(ctx);
+	if (!entry.row) return resolveEnvProviderConfig();
+	const [languageKey, embeddingKey] = await Promise.all([
+		planeKey(ctx, entry, 'language'),
+		planeKey(ctx, entry, 'embedding'),
+	]);
+	return buildStoredProviderConfig(entry.row, languageKey, embeddingKey);
 }
 
-/** Decrypt one envelope via the Node crypto action (the v8 resolver can't). */
-function decryptEnvelope(ctx: ActionCtx, envelope: KeyEnvelope): Promise<string> {
-	return ctx.runAction(internal.aiProviderConfigActions._decryptSecretEnvelope, envelope);
+/** The language plane alone: never decrypts the embedding key. */
+async function resolveLanguagePlane(ctx: ActionCtx): Promise<ResolvedLanguagePlane> {
+	const entry = await loadConfigEntry(ctx);
+	if (!entry.row) return resolveEnvProviderConfig().language;
+	const languageKey = await planeKey(ctx, entry, 'language');
+	return buildStoredProviderConfig(entry.row, languageKey, undefined).language;
+}
+
+/** The embedding plane alone: never decrypts the language key. */
+async function resolveEmbeddingPlaneConfig(ctx: ActionCtx): Promise<ResolvedEmbeddingPlane> {
+	const entry = await loadConfigEntry(ctx);
+	if (!entry.row) return resolveEnvProviderConfig().embedding;
+	const embeddingKey = await planeKey(ctx, entry, 'embedding');
+	return buildStoredProviderConfig(entry.row, undefined, embeddingKey).embedding;
 }
 
 /** Test-only: drop the in-process config cache so a fresh resolution runs. */
-export function __resetAiConfigCacheForTests(): void {
-	configCache = null;
-}
+export const __resetAiConfigCacheForTests = invalidateAiConfigCache;
 
 /** Build a model together with the trusted, secret-free resolution metadata. */
-function resolveLanguageModelFromConfig(
-	cfg: ResolvedProviderConfig,
+function resolveLanguageModelFromPlane(
+	language: ResolvedLanguagePlane,
 	tier: LLMTier
 ): ResolvedLanguageModel {
-	const modelId = tier === 'fast' ? cfg.language.models.fast : cfg.language.models.capable;
+	const modelId = tier === 'fast' ? language.models.fast : language.models.capable;
 	return Object.freeze({
-		model: languageProviderFor(cfg.language.kind).buildChatModel(
-			cfg.language.clientConfig,
-			modelId
-		),
+		model: languageProviderFor(language.kind).buildChatModel(language.clientConfig, modelId),
 		modelId,
-		endpointProvenance: cfg.language.endpointProvenance,
+		endpointProvenance: language.endpointProvenance,
 	});
 }
 
@@ -362,8 +301,7 @@ export async function resolveLanguageModelWithProvenance(
 	ctx: ActionCtx,
 	task: LLMTask = 'draft'
 ): Promise<ResolvedLanguageModel> {
-	const cfg = await resolveAiConfig(ctx);
-	return resolveLanguageModelFromConfig(cfg, taskTier(task));
+	return resolveLanguageModelFromPlane(await resolveLanguagePlane(ctx), taskTier(task));
 }
 
 /** Resolve the language model for a given task (plugs into the AI SDK helpers). */
@@ -387,12 +325,12 @@ export async function resolveLanguageModelForUserText(
 	task: LLMTask,
 	userText: string
 ): Promise<LanguageModel> {
-	const cfg = await resolveAiConfig(ctx);
+	const language = await resolveLanguagePlane(ctx);
 	const downgrade =
 		getOptional('LLM_COMPLEXITY_ROUTING') === '1' &&
 		taskTier(task) === 'capable' &&
 		isTrivialUserText(userText);
-	return resolveLanguageModelFromConfig(cfg, downgrade ? 'fast' : taskTier(task)).model;
+	return resolveLanguageModelFromPlane(language, downgrade ? 'fast' : taskTier(task)).model;
 }
 
 /**
@@ -410,10 +348,10 @@ export async function resolveLanguageModelForClassifiedDraft(
 	ctx: ActionCtx,
 	signals: ClassificationSignals
 ): Promise<LanguageModel> {
-	const cfg = await resolveAiConfig(ctx);
+	const language = await resolveLanguagePlane(ctx);
 	const downgrade =
 		getOptional('LLM_COMPLEXITY_ROUTING') === '1' && isTrivialClassifiedMessage(signals);
-	return resolveLanguageModelFromConfig(cfg, downgrade ? 'fast' : 'capable').model;
+	return resolveLanguageModelFromPlane(language, downgrade ? 'fast' : 'capable').model;
 }
 
 // Known embedding models and their native output width. Used to fail fast when
@@ -452,8 +390,7 @@ function assertKnownEmbeddingWidth(modelId: string): void {
  * try/catch so a misconfiguration surfaces rather than being swallowed.
  */
 export async function resolveEmbeddingModel(ctx: ActionCtx): Promise<EmbeddingModel> {
-	const cfg = await resolveAiConfig(ctx);
-	const { kind, modelId, clientConfig } = cfg.embedding;
+	const { kind, modelId, clientConfig } = await resolveEmbeddingPlaneConfig(ctx);
 	assertKnownEmbeddingWidth(modelId);
 	const adapter = embeddingProviderFor(kind);
 	// Surface an unusable config (missing hosted key / local base URL) as an
