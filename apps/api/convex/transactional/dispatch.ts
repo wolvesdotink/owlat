@@ -34,6 +34,8 @@ import { runSendIntakeGates, type SendIntakeRejectionReason } from '../delivery/
 import { jsonPrimitiveValue } from '../lib/convexValidators';
 import { getOptional } from '../lib/env';
 import { logWarn } from '../lib/runtimeLog';
+import { featureDisabledMessage, resolveStoredFeatureFlags } from '../lib/featureFlags';
+import type { FeatureFlagState } from '@owlat/shared/featureFlags';
 import {
 	validateDataVariables,
 	resolveLanguage,
@@ -55,6 +57,7 @@ import {
  */
 export type DispatchRejectionReason =
 	| SendIntakeRejectionReason
+	| 'feature_disabled'
 	| 'template_not_found'
 	| 'template_not_published'
 	| 'template_no_content'
@@ -127,6 +130,16 @@ export const dispatch = internalMutation({
 		//    they just requested — and blocking the confirmation would make
 		//    consent itself unreachable.
 		const settings = await ctx.db.query('instanceSettings').first();
+		// The `transactional` feature floor, resolved from the row just read so
+		// the singleton is not fetched twice. Nothing is written while it is off.
+		const flags = resolveStoredFeatureFlags((settings?.featureFlags ?? {}) as FeatureFlagState);
+		if (!flags.transactional) {
+			return {
+				ok: false,
+				reason: 'feature_disabled',
+				detail: featureDisabledMessage('transactional'),
+			};
+		}
 		const gates = await runSendIntakeGates(ctx, {
 			email: args.email,
 			suppressionScope: 'transactional',

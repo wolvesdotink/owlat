@@ -1,4 +1,5 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
+import { constantTimeEqual } from './constantTimeEqual';
 import { isDeliverabilityProbeTokenFormat } from './deliverabilityProbeFormat';
 
 export {
@@ -45,5 +46,5 @@ export function verifyDeliverabilityProbeToken(
 		return false;
 	const provided = Buffer.from(providedText, 'base64url');
 	const expected = signature(secret, `${expiresText}.${nonce}`);
-	return provided.length === expected.length && timingSafeEqual(provided, expected);
+	return constantTimeEqual(provided, expected);
 }

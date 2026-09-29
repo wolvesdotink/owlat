@@ -9,7 +9,7 @@
 
 import type { MiddlewareHandler } from 'hono';
 import type { MtaConfig } from '../config.js';
-import { timingSafeStringEqual } from './timingSafe.js';
+import { secretMatches } from '@owlat/shared/constantTimeEqual';
 import { logger } from '../monitoring/logger.js';
 
 /** Hono middleware that gates a route on the master MTA_API_KEY using a
@@ -18,7 +18,7 @@ export function masterKeyAuth(config: MtaConfig): MiddlewareHandler {
 	return async (c, next) => {
 		const token = c.req.header('Authorization')?.replace('Bearer ', '');
 
-		if (token && timingSafeStringEqual(token, config.apiKey)) {
+		if (secretMatches(token, config.apiKey)) {
 			await next();
 			return;
 		}

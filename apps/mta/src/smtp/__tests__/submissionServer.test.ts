@@ -212,7 +212,7 @@ describe('submission authenticate — auth chain', () => {
 			'jane@example.com',
 			'app-pass',
 			'smtp',
-			'thunderbird.local'
+			expect.objectContaining({ clientName: 'thunderbird.local' })
 		);
 	});
 
@@ -229,7 +229,21 @@ describe('submission authenticate — auth chain', () => {
 			'jane@example.com',
 			'app-pass',
 			'smtp',
-			undefined
+			expect.objectContaining({ clientName: undefined })
+		);
+	});
+
+	it('forwards the peer address so the server throttles per submission client', async () => {
+		await authCall(
+			{ username: 'jane@example.com', password: 'app-pass' },
+			{ remoteAddress: '::ffff:203.0.113.7' }
+		);
+		expect(verifyAppPasswordMock).toHaveBeenCalledWith(
+			config,
+			'jane@example.com',
+			'app-pass',
+			'smtp',
+			expect.objectContaining({ remoteIp: '::ffff:203.0.113.7' })
 		);
 	});
 
@@ -904,16 +918,24 @@ describe('submission authenticate — per-IP brute-force throttle', () => {
 		expect(outcome).toEqual({ ok: false });
 	});
 
-	it('clears the failure counter after a successful auth', async () => {
-		await authCallIp({ username: 'x', password: 'nope' }, '7.7.7.7', liveRedis);
-		expect(await liveRedis.get(authKey('7.7.7.7'))).toBe('1');
-		const { outcome } = await authCallIp(
-			{ username: 'x', password: 'master-secret-key' },
-			'7.7.7.7',
-			liveRedis
-		);
-		expect(outcome).toEqual({ ok: true, user: 'master' });
-		expect(await liveRedis.get(authKey('7.7.7.7'))).toBeNull();
+	it('keeps the failure budget across a successful auth from the same IP', async () => {
+		const tenFailureBudget = { ...throttleConfig, submissionMaxAuthFailuresPerIp: 10 };
+		const attempt = (password: string) =>
+			authCall(
+				{ username: 'x', password },
+				{ remoteAddress: '7.7.7.7' },
+				liveRedis,
+				tenFailureBudget
+			);
+		for (let i = 0; i < 9; i++) {
+			expect((await attempt(`guess-${i}`)).outcome.ok).toBe(false);
+		}
+		expect((await attempt('master-secret-key')).outcome).toEqual({ ok: true, user: 'master' });
+		expect((await attempt('guess-9')).outcome.ok).toBe(false);
+		expect(await liveRedis.get(authKey('7.7.7.7'))).toBe('10');
+
+		// The budget is spent: even the correct key is refused for the window.
+		expect((await attempt('master-secret-key')).outcome).toEqual({ ok: false });
 	});
 
 	it('tracks failures per IP independently', async () => {

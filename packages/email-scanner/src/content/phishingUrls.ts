@@ -8,6 +8,7 @@
 import type { ContentFlag } from '../types.js';
 import { registerContentRule } from './rule.js';
 import { decodeHtmlEntities } from './htmlEntities.js';
+import { scanAnchors } from './htmlScan.js';
 
 /** Known phishing domains and patterns */
 const PHISHING_DOMAIN_PATTERNS: RegExp[] = [
@@ -24,30 +25,34 @@ const PHISHING_DOMAIN_PATTERNS: RegExp[] = [
 
 /** URL shortener domains (legitimate senders use their own domains) */
 const URL_SHORTENERS = new Set([
-	'bit.ly', 'tinyurl.com', 'goo.gl', 'ow.ly', 't.co', 'is.gd',
-	'buff.ly', 'adf.ly', 'bl.ink', 'lnkd.in', 'soo.gd', 'clck.ru',
-	's.id', 'cutt.ly', 'rb.gy', 'shorturl.at', 'tiny.cc',
+	'bit.ly',
+	'tinyurl.com',
+	'goo.gl',
+	'ow.ly',
+	't.co',
+	'is.gd',
+	'buff.ly',
+	'adf.ly',
+	'bl.ink',
+	'lnkd.in',
+	'soo.gd',
+	'clck.ru',
+	's.id',
+	'cutt.ly',
+	'rb.gy',
+	'shorturl.at',
+	'tiny.cc',
 ]);
 
 /**
- * Extract all URLs from HTML content.
+ * Extract all URLs from HTML content: every `<a>` with an `href`
+ * (double-quoted, single-quoted, or unquoted as HTML5 allows) and a closing
+ * `</a>`, with its link text. Unquoted hrefs have to be seen too, or they would
+ * be invisible to every downstream URL check (phishing/mismatch/homoglyph/Safe
+ * Browsing). One forward pass over the input.
  */
 export function extractUrls(html: string): Array<{ href: string; text: string }> {
-	const urls: Array<{ href: string; text: string }> = [];
-	// Match href values that are double-quoted, single-quoted, or unquoted
-	// (HTML5 allows `<a href=http://evil.com>`). Unquoted values run up to the
-	// next whitespace or `>`; otherwise unquoted hrefs would be invisible to
-	// every downstream URL check (phishing/mismatch/homoglyph/Safe Browsing).
-	const linkRegex =
-		/<a\s+[^>]*href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))[^>]*>([\s\S]*?)<\/a>/gi;
-	let match;
-	while ((match = linkRegex.exec(html)) !== null) {
-		const href = match[1] ?? match[2] ?? match[3] ?? '';
-		// Strip HTML tags from link text
-		const text = (match[4] ?? '').replace(/<[^>]+>/g, '').trim();
-		urls.push({ href, text });
-	}
-	return urls;
+	return scanAnchors(html);
 }
 
 /**
@@ -85,9 +90,11 @@ function normalizeHref(href: string): string {
  * Scan URLs for phishing patterns, URL shorteners, and anchor mismatches.
  */
 export function scanPhishingUrls(html: string): ContentFlag[] {
-	const flags: ContentFlag[] = [];
-	const urls = extractUrls(html);
+	return scanExtractedUrls(extractUrls(html));
+}
 
+function scanExtractedUrls(urls: Array<{ href: string; text: string }>): ContentFlag[] {
+	const flags: ContentFlag[] = [];
 	for (const { href: rawHref, text } of urls) {
 		// Normalize href to prevent bypass via encoded characters
 		const href = normalizeHref(rawHref);
@@ -131,9 +138,7 @@ export function scanPhishingUrls(html: string): ContentFlag[] {
 
 		// Check for anchor text / href mismatch (phishing pattern)
 		if (text) {
-			const textDomain = extractDomain(
-				text.startsWith('http') ? text : `https://${text}`
-			);
+			const textDomain = extractDomain(text.startsWith('http') ? text : `https://${text}`);
 			if (textDomain && domain !== textDomain && text.includes('.')) {
 				flags.push({
 					type: 'url_mismatch',
@@ -150,5 +155,5 @@ export function scanPhishingUrls(html: string): ContentFlag[] {
 
 registerContentRule({
 	id: 'phishing-urls',
-	scan: ({ html }) => scanPhishingUrls(html),
+	scan: ({ urls }) => scanExtractedUrls(urls),
 });

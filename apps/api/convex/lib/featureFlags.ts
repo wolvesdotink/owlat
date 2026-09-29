@@ -67,6 +67,14 @@ export async function assertFeatureEnabled(
 }
 
 /**
+ * The message a disabled single flag reports. HTTP endpoints that answer with a
+ * `forbidden` response instead of throwing use the same text.
+ */
+export function featureDisabledMessage(flag: FeatureFlagKey): string {
+	return `Feature "${flag}" is disabled on this Owlat instance. An admin can enable it from Settings → Features.`;
+}
+
+/**
  * The `forbidden` error a single-flag floor throws. Shared with the action-side
  * floors (`assertExternalEnabled`, `assertCampaignsEnabledInAction`), which
  * resolve the flag through the internal mirror query because actions have no
@@ -74,7 +82,7 @@ export async function assertFeatureEnabled(
  */
 export function throwFeatureDisabled(flag: FeatureFlagKey): never {
 	throwForbidden(
-		`Feature "${flag}" is disabled on this Owlat instance. An admin can enable it from Settings → Features.`,
+		featureDisabledMessage(flag),
 		// `features` is the key both helpers carry, so a client can read one
 		// field whether the floor was single-flag or any-of; `feature` stays for
 		// the callers that already read it.

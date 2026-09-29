@@ -134,6 +134,10 @@
 			"types": "./src/setupToken.ts",
 			"import": "./src/setupToken.ts"
 		},
+		"./constantTimeEqual": {
+			"types": "./src/constantTimeEqual.ts",
+			"import": "./src/constantTimeEqual.ts"
+		},
 		"./passwordPolicy": {
 			"types": "./src/passwordPolicy.ts",
 			"import": "./src/passwordPolicy.ts"
@@ -269,6 +273,10 @@
 		"./ipAddress": {
 			"types": "./src/ipAddress.ts",
 			"import": "./src/ipAddress.ts"
+		},
+		"./mailAuthPolicy": {
+			"types": "./src/mailAuthPolicy.ts",
+			"import": "./src/mailAuthPolicy.ts"
 		},
 		"./ipAudit": {
 			"types": "./src/ipAudit.ts",

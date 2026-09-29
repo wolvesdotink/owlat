@@ -16,6 +16,7 @@ import type { ContentFlag, ContentScanResult, ContentScanLevel } from '../types.
 import { contentRules, type ScanInput } from './rule.js';
 import { extractUrls } from './phishingUrls.js';
 import { decodeHtmlEntities } from './htmlEntities.js';
+import { capContentScanInput, removeSpans, replaceTags } from './htmlScan.js';
 
 // Side-effect imports — each module registers its rule(s) at load time.
 // Order matches the legacy in-line orchestration in this file:
@@ -35,12 +36,11 @@ import './senderImpersonation.js';
  * Strip HTML tags to get plain text for keyword scanning.
  */
 function stripHtml(html: string): string {
-	const withoutMarkup = html
-		.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '') // Remove style blocks
-		.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '') // Remove script blocks
-		.replace(/<!--[\s\S]*?-->/g, '') // Remove comments
-		.replace(/<[^>]+>/g, ' ') // Remove all HTML tags
-		.replace(/&nbsp;/gi, ' ');
+	// Forward scans, not lazy regexes: the body is sender-controlled.
+	const withoutStyle = removeSpans(html, /<style/gi, /<\/style>/gi, true);
+	const withoutScript = removeSpans(withoutStyle, /<script/gi, /<\/script>/gi, true);
+	const withoutComments = removeSpans(withoutScript, /<!--/g, /-->/g, false);
+	const withoutMarkup = replaceTags(withoutComments, ' ').replace(/&nbsp;/gi, ' ');
 	return decodeHtmlEntities(withoutMarkup).replace(/\s+/g, ' ').trim();
 }
 
@@ -86,7 +86,8 @@ export function levelForScore(score: number): ContentScanLevel {
  * cannot silently drop legitimate flags from healthy rules.
  *
  * @param subject - Email subject line
- * @param htmlContent - Email HTML body content
+ * @param htmlContent - Email HTML body content; only the first
+ *   MAX_CONTENT_SCAN_CHARS code units are scanned
  * @param headers - Optional message headers (`from`, `replyTo`) for the
  *   header-aware rules (sender-impersonation). Omitted by legacy callers, in
  *   which case those rules no-op.
@@ -97,11 +98,12 @@ export function scanContent(
 	htmlContent: string,
 	headers?: { from?: string; replyTo?: string }
 ): ContentScanResult {
-	const text = stripHtml(htmlContent);
-	const urls = extractUrls(htmlContent);
+	const html = capContentScanInput(htmlContent);
+	const text = stripHtml(html);
+	const urls = extractUrls(html);
 	const input: ScanInput = {
 		subject,
-		html: htmlContent,
+		html,
 		text,
 		urls,
 		from: headers?.from,

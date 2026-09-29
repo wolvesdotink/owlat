@@ -64,8 +64,18 @@ export function invoke(t: T, args: AttemptArgs): Promise<AttemptResult> {
 	return handler({ runMutation }, args);
 }
 
-export async function setup(webhook: Record<string, unknown> = {}) {
+export async function setup(
+	webhook: Record<string, unknown> = {},
+	{ featureOn = true }: { featureOn?: boolean } = {}
+) {
 	const t = convexTest(schema, modules);
+	// Delivery follows the `webhooks` feature flag, which is off by default.
+	await t.run((ctx) =>
+		ctx.db.insert('instanceSettings', {
+			featureFlags: { webhooks: featureOn },
+			createdAt: Date.now(),
+		})
+	);
 	const webhookId = await t.run((ctx) =>
 		ctx.db.insert(
 			'webhooks',

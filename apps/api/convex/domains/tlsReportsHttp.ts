@@ -13,9 +13,10 @@
  * `domains/tlsReports.ts:ingest`. (The gunzip step uses `DecompressionStream`,
  * which is absent from Convex's default isolate runtime, so it must run in Node.)
  *
- * Auth mirrors the other MTA webhooks (`mta-verify-credential`): the same
- * `MTA_WEBHOOK_SECRET` HMAC over `${timestamp}.${body}` with a 60s freshness
- * window, so a spoofed report cannot pollute the operator's TLS telemetry.
+ * Auth is the MTA request signature every MTA route verifies
+ * (`webhooks/mtaSignature.ts`): the `MTA_WEBHOOK_SECRET` HMAC over
+ * `${timestamp}.${body}`, here with the 60s request window, so a spoofed report
+ * cannot pollute the operator's TLS telemetry.
  *
  * Malformed / oversized / unsigned-attachment reports are rejected **without
  * throwing** — the handler always returns a 2xx so the MTA does not retry a
@@ -26,7 +27,11 @@ import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logError } from '../lib/runtimeLog';
 import { getOptional } from '../lib/env';
-import { constantTimeEqual, hmacSha256Hex } from '../webhooks/security';
+import {
+	MTA_REQUEST_TOLERANCE_SECONDS,
+	readMtaSignatureHeaders,
+	verifyMtaSignedRequest,
+} from '../webhooks/mtaSignature';
 import { getClientIp } from '../lib/publicRateLimit';
 import { errorResponse, jsonResponse, methodNotAllowed } from '../lib/httpResponse';
 import {
@@ -63,35 +68,19 @@ export const handleTlsReportWebhook = httpAction(async (ctx, request) => {
 		return methodNotAllowed();
 	}
 
-	const rateIp = getClientIp(request);
-	const { ok: rateOk, retryAfter } = await ctx.runMutation(
-		internal.lib.publicRateLimit.checkPublicRateLimit,
-		{ limitType: 'webhookIngestion', key: `mta-tls-report:${rateIp}` }
-	);
-	if (!rateOk) {
-		return errorResponse(
-			'rate_limited',
-			'Rate limited',
-			retryAfter === undefined ? undefined : { retryAfter },
-			retryAfter ? { 'Retry-After': String(Math.ceil(retryAfter / 1000)) } : null
-		);
-	}
-
 	const secret = getOptional('MTA_WEBHOOK_SECRET');
 	if (!secret) {
 		logError('[mta-tls-report] MTA_WEBHOOK_SECRET not configured');
 		return errorResponse('network', 'Endpoint not configured');
 	}
 
-	const signature = request.headers.get('x-mta-signature');
-	const timestamp = request.headers.get('x-mta-timestamp');
-	if (!signature || !timestamp) {
-		return errorResponse('unauthenticated', 'Missing signature');
-	}
-	const ts = parseInt(timestamp, 10);
-	const now = Math.floor(Date.now() / 1000);
-	if (Number.isNaN(ts) || Math.abs(now - ts) > 60) {
-		return errorResponse('unauthenticated', 'Stale timestamp');
+	// Refuse a missing, malformed or stale header pair before reading the body.
+	const signatureWindow = { toleranceSeconds: MTA_REQUEST_TOLERANCE_SECONDS };
+	const headers = readMtaSignatureHeaders(request, signatureWindow);
+	if (!headers.ok) {
+		return headers.reason === 'missing_headers'
+			? errorResponse('unauthenticated', 'Missing signature')
+			: errorResponse('unauthenticated', 'Stale timestamp');
 	}
 
 	const declaredLength = Number(request.headers.get('content-length'));
@@ -108,11 +97,25 @@ export const handleTlsReportWebhook = httpAction(async (ctx, request) => {
 		throw error;
 	}
 	const bodyText = bodyBytes ? new TextDecoder().decode(bodyBytes) : '';
-	// Same HMAC scheme as the other MTA webhooks — reuse the shared helper rather
-	// than re-inlining importKey + sign + hex-encode.
-	const expected = await hmacSha256Hex(secret, `${timestamp}.${bodyText}`);
-	if (!constantTimeEqual(signature, expected)) {
+	const verdict = await verifyMtaSignedRequest(request, bodyText, { ...signatureWindow, secret });
+	if (!verdict.ok) {
 		return errorResponse('unauthenticated', 'Invalid signature');
+	}
+
+	// Charged only once the signature checks out (the body is capped above), so
+	// unsigned requests never spend the MTA's ingestion budget.
+	const rateIp = getClientIp(request);
+	const { ok: rateOk, retryAfter } = await ctx.runMutation(
+		internal.lib.publicRateLimit.checkPublicRateLimit,
+		{ limitType: 'webhookIngestion', key: `mta-tls-report:${rateIp}` }
+	);
+	if (!rateOk) {
+		return errorResponse(
+			'rate_limited',
+			'Rate limited',
+			retryAfter === undefined ? undefined : { retryAfter },
+			retryAfter ? { 'Retry-After': String(Math.ceil(retryAfter / 1000)) } : null
+		);
 	}
 
 	let payload: { attachments?: ForwardedAttachment[] };

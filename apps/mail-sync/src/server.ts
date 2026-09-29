@@ -1,27 +1,19 @@
 /**
  * Internal HTTP surface for Convex → worker calls. Bearer-authenticated with
- * MAIL_SYNC_API_KEY (mirrors the MTA). No public ports — reachable only over
- * the compose network.
+ * MAIL_SYNC_API_KEY, compared with `secretMatches` from
+ * `@owlat/shared/constantTimeEqual` like the MTA's API key. No public ports —
+ * reachable only over the compose network.
  *
  *   POST /send  — relay an outbound message through the account's external SMTP
  *   POST /test  — validate IMAP+SMTP credentials (persists nothing)
  *   POST /reconcile — re-read the connectable accounts now (a mailbox was just
  *                    connected or re-authorized); answers 202 at once
+ *   POST /remote-ops — an account has queued write-backs; replay them now
  *   GET  /health
  */
 
 import { Hono, type Context } from 'hono';
-import { createHash, timingSafeEqual } from 'node:crypto';
-
-/**
- * Constant-time bearer comparison. Both sides are hashed first so
- * timingSafeEqual's equal-length requirement holds without leaking the key
- * length (same pattern as the MTA's auth/timingSafe.ts).
- */
-function bearerTokenMatches(presented: string, expected: string): boolean {
-	const digest = (value: string) => createHash('sha256').update(value).digest();
-	return timingSafeEqual(digest(presented), digest(expected));
-}
+import { secretMatches } from '@owlat/shared/constantTimeEqual';
 
 /** http(s) only, and the origin must be one of the configured Convex origins. */
 export function isAllowedEmlUrl(raw: string, allowedOrigins: string[]): boolean {
@@ -55,16 +47,25 @@ interface SendBody {
 }
 
 /**
+/**
  * Deadline for fetching the outgoing `.eml` back from Convex (at most 8 MiB, from
  * a storage proxy on the same network). A hung fetch answers 502 instead of
  * holding the send until the caller gives up.
  */
 const RAW_EML_FETCH_TIMEOUT_MS = 30_000;
 
+/**
+ * Asks the account's live connection to replay its write-back queue; false when
+ * the worker holds no connection for it (`AccountManager.requestRemoteOps`).
+ */
+export type RemoteOpsRequester = (accountId: string) => boolean;
+
 /** What the routes need from the rest of the worker, beyond Convex. */
 export interface ServerHooks {
 	/** Start a reconcile pass without waiting for it (AccountManager.requestReconcile). */
 	requestReconcile?: () => void;
+	/** Replay one account's write-back queue (AccountManager.requestRemoteOps). */
+	requestRemoteOps?: RemoteOpsRequester;
 }
 
 /** The worker's routes, without a listener (tests drive it through `app.request`). */
@@ -77,7 +78,7 @@ export function createApp(
 
 	const auth = async (c: Context, next: () => Promise<void>) => {
 		const token = c.req.header('Authorization')?.replace('Bearer ', '');
-		if (!token || !bearerTokenMatches(token, config.apiKey)) {
+		if (!secretMatches(token, config.apiKey)) {
 			return c.json({ error: 'Unauthorized' }, 401);
 		}
 		await next();
@@ -85,6 +86,7 @@ export function createApp(
 	app.use('/send', auth);
 	app.use('/test', auth);
 	app.use('/reconcile', auth);
+	app.use('/remote-ops', auth);
 
 	app.get('/health', (c) => c.json({ ok: true, service: 'owlat-mail-sync' }));
 
@@ -103,6 +105,16 @@ export function createApp(
 			return c.json({ error: 'imap and smtp credentials required' }, 400);
 		}
 		return c.json(await testConnection(body));
+	});
+
+	// Fire-and-forget: the drain runs on the account's connection, and the
+	// backend only needs to know the nudge arrived.
+	app.post('/remote-ops', async (c) => {
+		const body = (await c.req.json().catch(() => null)) as { accountId?: unknown } | null;
+		if (typeof body?.accountId !== 'string' || !body.accountId) {
+			return c.json({ error: 'accountId required' }, 400);
+		}
+		return c.json({ accepted: hooks.requestRemoteOps?.(body.accountId) ?? false }, 202);
 	});
 
 	app.post('/send', async (c) => {

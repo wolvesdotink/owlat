@@ -28,6 +28,10 @@
 		"./registry-latch": {
 			"types": "./src/registryLatch.ts",
 			"import": "./src/registryLatch.ts"
+		},
+		"./sanitize": {
+			"types": "./src/sanitize.ts",
+			"import": "./src/sanitize.ts"
 		}
 	},
 	"scripts": {

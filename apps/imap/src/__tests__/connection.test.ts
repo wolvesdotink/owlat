@@ -355,6 +355,16 @@ describe('ImapConnection — LOGIN', () => {
 		expect(lines.pop()).toBe('a001 OK LOGIN completed');
 	});
 
+	it('passes the peer IP to Convex so its per-IP throttle sees this client', async () => {
+		const { socket, convex } = makeMocks();
+		convex.action.mockResolvedValue(null);
+		await exec(socket, 'a001 LOGIN "alice@test.com" "x"');
+		expect(convex.action).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ address: 'alice@test.com', ip: '10.0.0.1' })
+		);
+	});
+
 	it('lowercases the address before passing to Convex (case-insensitive)', async () => {
 		const { socket, convex } = makeMocks();
 		convex.action.mockResolvedValue(null);
@@ -530,7 +540,12 @@ describe('ImapConnection — AUTHENTICATE PLAIN', () => {
 
 		expect(convex.action).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ address: 'alice@test', password: 'good', scope: 'imap' })
+			expect.objectContaining({
+				address: 'alice@test',
+				password: 'good',
+				scope: 'imap',
+				ip: '10.0.0.1',
+			})
 		);
 		const lines = socket.lines();
 		expect(lines.some((l) => /^\* OK \[CAPABILITY.*\] Authenticated$/.test(l))).toBe(true);

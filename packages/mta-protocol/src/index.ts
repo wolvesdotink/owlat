@@ -5,10 +5,12 @@
  * ends: the send intake (`send.ts`), the last-mile routing decision
  * (`routingDecision.ts`), the IP-reputation snapshot (`ipReputation.ts`), the
  * webhook events the MTA reports outcomes with (`webhookEvent.ts`) and the
- * blocklist-access setting (`dnsblAccess.ts`, subpath only).
+ * blocklist-access setting (`dnsblAccess.ts`, subpath only). Every MTA -> API
+ * request carries the signature header pair from `signature.ts`, signed by the
+ * MTA with `signer.ts` (both subpath only; the signer is Node-only).
  *
- * Types and pure validators only — no I/O, no third-party dependencies, and no
- * app imports in either direction. This package does NOT merge the two routing
+ * Types, pure validators and the request signer only — no I/O, no third-party
+ * dependencies, and no app imports in either direction. This package does NOT merge the two routing
  * brains (Convex governance vs. the MTA's breakers/pools/leases); it makes
  * their conversation impossible to drift.
  *

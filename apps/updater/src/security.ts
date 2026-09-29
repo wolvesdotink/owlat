@@ -8,7 +8,6 @@
  * can be exercised in isolation by the unit tests in `__tests__/security.test.ts`.
  * `index.ts` wires these into the request handlers.
  */
-import { timingSafeEqual, createHash } from 'node:crypto';
 import { isIPv4 } from 'node:net';
 import {
 	FEATURE_FLAGS,
@@ -75,17 +74,6 @@ export function isRateLimited(endpoint: string, maxRequests: number, windowMs: n
 /** Test-only: clear the in-memory rate-limit state between cases. */
 export function __resetRateLimits(): void {
 	for (const key of Object.keys(rateLimits)) delete rateLimits[key];
-}
-
-/**
- * Timing-safe comparison of two secret strings.
- * Prevents timing attacks that could leak the secret byte-by-byte.
- */
-export function safeCompare(a: string, b: string): boolean {
-	// Hash both values to ensure equal length for timingSafeEqual
-	const hashA = createHash('sha256').update(a).digest();
-	const hashB = createHash('sha256').update(b).digest();
-	return timingSafeEqual(hashA, hashB);
 }
 
 /**

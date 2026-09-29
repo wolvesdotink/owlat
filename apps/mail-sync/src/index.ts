@@ -4,7 +4,8 @@
  * - AccountManager holds one persistent IMAP connection per connected external
  *   account (inbound sync, near-real-time via IDLE).
  * - HTTP server exposes /send + /test for Convex (outbound relay + cred check),
- *   and /reconcile so a freshly connected mailbox starts syncing at once.
+ *   /reconcile so a freshly connected mailbox starts syncing at once, and
+ *   /remote-ops, the nudge to replay changes made in Owlat on the provider.
  */
 
 import { loadConfig } from './config.js';
@@ -28,6 +29,7 @@ export async function main(): Promise<void> {
 		requestReconcile: () => {
 			void manager.requestReconcile();
 		},
+		requestRemoteOps: (accountId) => manager.requestRemoteOps(accountId),
 	});
 	// Deliverability seed-probe sweep. With no seed mailboxes connected — the
 	// default — every pass is an empty no-op (D2).

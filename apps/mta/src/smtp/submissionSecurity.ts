@@ -6,15 +6,23 @@
  * brute-force-by-reconnect (RFC 4954 §4: servers SHOULD limit authentication
  * failures; OWASP brute-force mitigation). The per-IP connection cap is the
  * listener's admission, over the counter in lib/connectionSlots.ts.
+ *
+ * The counter is keyed on `ipRateLimitKey`: the full address for IPv4, the /64
+ * for IPv6, since one host can draw a fresh source address from its /64 for
+ * every connection. A successful AUTH does not reset it; it ages out with the
+ * rolling window. Postbox app passwords are additionally throttled per address
+ * and per client IP by the Convex `verify` action.
  */
 
 import type Redis from 'ioredis';
-import { unmapIpv4 } from '@owlat/shared/ipAddress';
+import { ipRateLimitKey } from '@owlat/shared/ipAddress';
 
 const AUTH_FAIL_PREFIX = 'mta:submission:authfail:';
 const AUTH_FAIL_TTL = 900; // 15-minute rolling window for failed AUTH attempts
 
 // ─── Per-IP Failed-AUTH Throttling ──────────────────────────────────
+
+const authFailKey = (remoteIp: string): string => `${AUTH_FAIL_PREFIX}${ipRateLimitKey(remoteIp)}`;
 
 /**
  * Returns true when the IP has NOT exceeded its failed-AUTH budget within the
@@ -26,8 +34,7 @@ export async function checkAuthThrottle(
 	remoteIp: string,
 	maxFailuresPerIp: number
 ): Promise<boolean> {
-	const key = `${AUTH_FAIL_PREFIX}${unmapIpv4(remoteIp)}`;
-	const raw = await redis.get(key);
+	const raw = await redis.get(authFailKey(remoteIp));
 	const failures = raw ? parseInt(raw, 10) : 0;
 	return failures < maxFailuresPerIp;
 }
@@ -55,14 +62,7 @@ return count
  * @returns the failure count after recording.
  */
 export async function recordAuthFailure(redis: Redis, remoteIp: string): Promise<number> {
-	const key = `${AUTH_FAIL_PREFIX}${unmapIpv4(remoteIp)}`;
-	return Number(await redis.eval(RECORD_AUTH_FAILURE_SCRIPT, 1, key, AUTH_FAIL_TTL));
-}
-
-/**
- * Clear the failed-AUTH counter for an IP after a successful authentication.
- */
-export async function clearAuthFailures(redis: Redis, remoteIp: string): Promise<void> {
-	const key = `${AUTH_FAIL_PREFIX}${unmapIpv4(remoteIp)}`;
-	await redis.del(key);
+	return Number(
+		await redis.eval(RECORD_AUTH_FAILURE_SCRIPT, 1, authFailKey(remoteIp), AUTH_FAIL_TTL)
+	);
 }

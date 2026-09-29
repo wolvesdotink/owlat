@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { renderEmailHtml } from '../../../renderer';
 import type { EditorBlock, TableBlockContent, TableCell, TableColumn } from '@owlat/shared';
 
+const styleText = (html: string): string =>
+	(html.match(/<style[^>]*>[\s\S]*?<\/style>/g) ?? []).join('\n');
+
 describe('Enhanced Table Block', () => {
 	const makeTableBlock = (content: Partial<TableBlockContent>): EditorBlock => ({
 		id: 'table-1',
@@ -25,14 +28,8 @@ describe('Enhanced Table Block', () => {
 
 	it('should render rich cells with colSpan', () => {
 		const cells: TableCell[][] = [
-			[
-				{ content: 'Full Width', colSpan: 3, fontWeight: 700 },
-			],
-			[
-				{ content: 'A' },
-				{ content: 'B' },
-				{ content: 'C' },
-			],
+			[{ content: 'Full Width', colSpan: 3, fontWeight: 700 }],
+			[{ content: 'A' }, { content: 'B' }, { content: 'C' }],
 		];
 		const html = renderEmailHtml([makeTableBlock({ cells, rows: [] })], { inlineCss: false });
 		expect(html).toContain('colspan="3"');
@@ -42,13 +39,8 @@ describe('Enhanced Table Block', () => {
 
 	it('should render rich cells with rowSpan', () => {
 		const cells: TableCell[][] = [
-			[
-				{ content: 'Spans 2 rows', rowSpan: 2 },
-				{ content: 'B1' },
-			],
-			[
-				{ content: 'B2' },
-			],
+			[{ content: 'Spans 2 rows', rowSpan: 2 }, { content: 'B1' }],
+			[{ content: 'B2' }],
 		];
 		const html = renderEmailHtml([makeTableBlock({ cells, rows: [] })], { inlineCss: false });
 		expect(html).toContain('rowspan="2"');
@@ -56,10 +48,7 @@ describe('Enhanced Table Block', () => {
 
 	it('should render per-cell background color', () => {
 		const cells: TableCell[][] = [
-			[
-				{ content: 'Highlighted', backgroundColor: '#ffff00' },
-				{ content: 'Normal' },
-			],
+			[{ content: 'Highlighted', backgroundColor: '#ffff00' }, { content: 'Normal' }],
 		];
 		const html = renderEmailHtml([makeTableBlock({ cells, rows: [] })], { inlineCss: false });
 		expect(html).toContain('background-color:#ffff00');
@@ -77,31 +66,43 @@ describe('Enhanced Table Block', () => {
 	});
 
 	it('should render per-column text alignment', () => {
-		const columns: TableColumn[] = [
-			{ textAlign: 'left' },
-			{ textAlign: 'right' },
-		];
-		const html = renderEmailHtml([makeTableBlock({
-			columns,
-			headers: ['Name', 'Amount'],
-			rows: [['Item', '$100']],
-		})], { inlineCss: false });
+		const columns: TableColumn[] = [{ textAlign: 'left' }, { textAlign: 'right' }];
+		const html = renderEmailHtml(
+			[
+				makeTableBlock({
+					columns,
+					headers: ['Name', 'Amount'],
+					rows: [['Item', '$100']],
+				}),
+			],
+			{ inlineCss: false }
+		);
 		expect(html).toContain('text-align:right');
 	});
 
 	it('should render footer row', () => {
-		const html = renderEmailHtml([makeTableBlock({
-			footerRow: ['Total', '', '$300'],
-		})], { inlineCss: false });
+		const html = renderEmailHtml(
+			[
+				makeTableBlock({
+					footerRow: ['Total', '', '$300'],
+				}),
+			],
+			{ inlineCss: false }
+		);
 		expect(html).toContain('<tfoot>');
 		expect(html).toContain('Total');
 		expect(html).toContain('$300');
 	});
 
 	it('should render table caption', () => {
-		const html = renderEmailHtml([makeTableBlock({
-			captionText: 'Order Summary',
-		})], { inlineCss: false });
+		const html = renderEmailHtml(
+			[
+				makeTableBlock({
+					captionText: 'Order Summary',
+				}),
+			],
+			{ inlineCss: false }
+		);
 		expect(html).toContain('<caption');
 		expect(html).toContain('Order Summary');
 	});
@@ -111,5 +112,15 @@ describe('Enhanced Table Block', () => {
 		expect(html).toContain('Item 1');
 		expect(html).toContain('$200');
 		expect(html).toContain('Pending');
+	});
+
+	it('keeps only a colour value in the stacked-table style rules', () => {
+		const html = renderEmailHtml(
+			[makeTableBlock({ responsiveMode: 'stack', borderColor: 'red}body{display:none}' })],
+			{ inlineCss: false }
+		);
+		const css = styleText(html);
+		expect(css).not.toContain('body{display:none}');
+		expect(css).toContain('border:1px solid #e0e0e0!important');
 	});
 });

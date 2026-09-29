@@ -36,6 +36,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { rerenderBlocksPool } from './renderingPool';
 import { nextContentRevision } from '../lib/contentRevision';
+import { sanitizeStoredBlocksJson } from '../lib/emailContentSanitize';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -378,7 +379,7 @@ export const create = internalMutation({
 		const blockId = await ctx.db.insert('emailBlocks', {
 			name: args.name.trim(),
 			description: args.description?.trim(),
-			content: args.content,
+			content: sanitizeStoredBlocksJson(args.content),
 			usageCount: 0,
 			createdAt: now,
 			updatedAt: now,
@@ -425,7 +426,8 @@ export const update = internalMutation({
 		const block = await ctx.db.get(args.blockId);
 		if (!block) return { ok: false, reason: 'block_not_found' };
 
-		const contentChanged = args.patch.content !== undefined && args.patch.content !== block.content;
+		const content = sanitizeStoredBlocksJson(args.patch.content);
+		const contentChanged = content !== undefined && content !== block.content;
 		const nameChanged = args.patch.name !== undefined && args.patch.name.trim() !== block.name;
 		const descriptionChanged =
 			args.patch.description !== undefined &&
@@ -435,7 +437,7 @@ export const update = internalMutation({
 		const rowPatch: Partial<Doc<'emailBlocks'>> = { updatedAt: now };
 		if (args.patch.name !== undefined) rowPatch.name = args.patch.name.trim();
 		if (args.patch.description !== undefined) rowPatch.description = args.patch.description.trim();
-		if (args.patch.content !== undefined) rowPatch.content = args.patch.content;
+		if (content !== undefined) rowPatch.content = content;
 
 		await ctx.db.patch(args.blockId, rowPatch);
 
@@ -499,7 +501,7 @@ export const duplicate = internalMutation({
 		const newId = await ctx.db.insert('emailBlocks', {
 			name: newName,
 			description: block.description,
-			content: block.content,
+			content: sanitizeStoredBlocksJson(block.content),
 			usageCount: 0,
 			createdAt: now,
 			updatedAt: now,

@@ -12,10 +12,10 @@
  * cleared rather than both of them re-deriving a set from the same bytes.
  */
 
-import { extractAttachments } from '@owlat/shared/mailMime';
+import { extractAttachmentsWithBounds, type ExtractedAttachment } from '@owlat/shared/mailMime';
 
 /** One attachment leaf as the MIME walker returns it. */
-export type InboundAttachmentPart = ReturnType<typeof extractAttachments>[number];
+export type InboundAttachmentPart = ExtractedAttachment;
 
 /**
  * Why a leaf of a received message was NOT cleared for indexing. Counted per
@@ -68,15 +68,32 @@ export const NOTHING_UNCLEARED: UnclearedLeaves = { capped: 0, unscanned: 0, ref
  * verdict worth a round-trip.
  */
 export function inboundAttachmentCandidates(rawBinary: string): InboundAttachmentPart[] {
-	return candidatesFromLeaves(extractAttachments(rawBinary));
+	return inboundAttachmentWalk(rawBinary).candidates;
 }
 
 /**
- * {@link inboundAttachmentCandidates} over a walk already made — for the scan,
- * which also keeps the untouched document-order walk for the per-part store
- * (plan 3.5) instead of walking the message a second time.
+ * {@link inboundAttachmentCandidates}, plus whether the MIME walker's depth or
+ * part bound left content of this message unwalked.
+ *
+ * `truncated` is what keeps the candidate list from being read as complete.
+ * Leaves past the bound are absent from `candidates`, yet the raw message is
+ * still served whole to mail clients, which render them. A scan that covered
+ * every candidate has therefore not covered the message.
+ *
+ * `leaves` is the untouched document-order walk, which the scan hands to the
+ * per-part store (plan 3.5) instead of walking the message a second time.
  */
-export function candidatesFromLeaves(
+export function inboundAttachmentWalk(rawBinary: string): {
+	candidates: InboundAttachmentPart[];
+	leaves: InboundAttachmentPart[];
+	truncated: boolean;
+} {
+	const { attachments, truncated } = extractAttachmentsWithBounds(rawBinary);
+	return { candidates: candidatesFromLeaves(attachments), leaves: attachments, truncated };
+}
+
+/** The scan candidates among a walk's leaves: non-empty, documents before inline parts. */
+function candidatesFromLeaves(
 	allLeaves: readonly InboundAttachmentPart[]
 ): InboundAttachmentPart[] {
 	const leaves = allLeaves.filter((part) => part.bytes.byteLength > 0);

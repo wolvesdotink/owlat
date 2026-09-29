@@ -1,6 +1,7 @@
 'use node';
 
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac } from 'crypto';
+import { constantTimeEqual } from '../lib/crypto';
 import { getOptional } from '../lib/env';
 import { UNSUBSCRIBE_TOKEN_MAX_AGE_MS } from '../lib/constants';
 
@@ -65,9 +66,7 @@ export function verifyContactToken(
 			.update(data)
 			.digest('base64url');
 
-		const sigBuffer = Buffer.from(signature);
-		const expectedBuffer = Buffer.from(expectedSignature);
-		if (sigBuffer.length !== expectedBuffer.length || !timingSafeEqual(sigBuffer, expectedBuffer)) {
+		if (!constantTimeEqual(signature, expectedSignature)) {
 			return { contactId, valid: false, reason: 'invalid_signature' };
 		}
 

@@ -9,7 +9,8 @@
  * memory and writes it once, with the same modseq sequence and the same
  * clamped counter the one-at-a-time writes produced.
  *
- * Not a Convex function; shared by `mail/messageActions.ts`.
+ * Not a Convex function; shared by `mail/messageActions.ts` and the provider
+ * pull in `mail/external/remoteState.ts`.
  */
 
 import type { Doc, Id } from '../_generated/dataModel';
@@ -21,6 +22,7 @@ import {
 	type ThreadFlagDeltas,
 } from './threadAggregates';
 import { recordMessageCounters } from './messageCounters';
+import { changedRemoteFlags, recordRemoteChanges, type RemoteChange } from './external/remoteOps';
 
 export type Flag = 'seen' | 'flagged' | 'answered' | 'deleted';
 
@@ -65,7 +67,9 @@ export class FolderFlagWrites {
 
 /**
  * Patch one message's flags, queue its folder counter changes on `folders` and
- * its thread's change on `threads`. Returns false (and writes nothing) when the
+ * its thread's change on `threads`. Returns what an external mailbox's provider
+ * has to be told, for the caller to record once per batch (a change that came
+ * FROM the provider ignores it), or null (and writes nothing) when the
  * message's folder is gone.
  */
 export async function writeMessageFlags(
@@ -74,9 +78,9 @@ export async function writeMessageFlags(
 	threads: ThreadFlagDeltas,
 	message: Doc<'mailMessages'>,
 	flagDeltas: Partial<Record<Flag, boolean>>
-): Promise<boolean> {
+): Promise<RemoteChange | null> {
 	const modseq = await folders.nextModseq(message.folderId);
-	if (modseq === null) return false;
+	if (modseq === null) return null;
 
 	const patch: Partial<Doc<'mailMessages'>> = { modseq, updatedAt: Date.now() };
 	if (flagDeltas.seen !== undefined) patch.flagSeen = flagDeltas.seen;
@@ -100,7 +104,23 @@ export async function writeMessageFlags(
 		flagSeen: patch.flagSeen ?? message.flagSeen,
 		flagFlagged: patch.flagFlagged ?? message.flagFlagged,
 	});
-	return true;
+	return { kind: 'flags', message, flags: changedRemoteFlags(message, flagDeltas) };
+}
+
+/**
+ * {@link writeMessageFlags} for one message on its own, with the folder written
+ * straight away. For the provider pull (`external/remoteState.ts`), which
+ * rebuilds the touched threads itself afterwards.
+ */
+export async function applyFlagDelta(
+	ctx: MutationCtx,
+	message: Doc<'mailMessages'>,
+	flagDeltas: Partial<Record<Flag, boolean>>
+): Promise<RemoteChange | null> {
+	const folders = new FolderFlagWrites(ctx);
+	const change = await writeMessageFlags(ctx, folders, new Map(), message, flagDeltas);
+	await folders.flush();
+	return change;
 }
 
 /** Most rows one mark-thread-read transaction flips; the rest go to a continuation. */
@@ -134,11 +154,13 @@ export async function markThreadSeenBatch(
 
 	const folders = new FolderFlagWrites(ctx);
 	const threads: ThreadFlagDeltas = new Map();
-	let written = 0;
+	const remote: RemoteChange[] = [];
 	for (const message of flips) {
-		if (await writeMessageFlags(ctx, folders, threads, message, { seen })) written += 1;
+		const change = await writeMessageFlags(ctx, folders, threads, message, { seen });
+		if (change) remote.push(change);
 	}
 	await folders.flush();
+	const written = remote.length;
 
 	const more = flips.length === MARK_THREAD_READ_BATCH && written > 0;
 	const delta = threads.get(threadId) ?? { unread: 0, flagged: false, unflagged: false };
@@ -155,6 +177,7 @@ export async function markThreadSeenBatch(
 				)
 				.first()) === null);
 	await applyThreadFlagDelta(ctx, threadId, delta, settled ? { allSeen: seen } : undefined);
+	await recordRemoteChanges(ctx, remote);
 	return { more };
 }
 

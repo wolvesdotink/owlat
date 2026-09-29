@@ -1,12 +1,25 @@
-import { bytesToBase64, bytesToBase64Url, bytesToHex } from '../lib/bytes';
+import { bytesToBase64, bytesToHex } from '../lib/bytes';
 
 export { bytesToBase64, bytesToHex };
 
 /**
- * Shared HMAC + constant-time-comparison primitives used by Inbound adapters
- * and channel webhook handlers. Consolidates the three near-identical copies
- * of `constantTimeEqual` and the inline HMAC helpers that lived in the
- * per-provider webhook entry points and in webhooks/channels.ts.
+ * The comparison and HMAC primitives live in `lib/crypto.ts`; they are
+ * re-exported here because the per-provider adapters and channel webhook
+ * handlers import their helpers from this module.
+ */
+export {
+	constantTimeEqual,
+	hmacSignature,
+	hmacSha1Base64,
+	hmacSha256Base64,
+	hmacSha256Hex,
+} from '../lib/crypto';
+
+/**
+ * Shared helpers for Inbound adapters and channel webhook handlers: the
+ * fail-closed missing-secret result, form-body decoding, the Twilio/Mandrill
+ * signing base, and the timestamp rules every `${timestamp}.${body}` HMAC
+ * scheme shares.
  *
  * Uses Web Crypto so this module is V8-runtime-safe — no 'use node'.
  */
@@ -49,8 +62,7 @@ export function parseFormParams(rawBody: string): Record<string, string> {
  *
  * One function rather than a copy per adapter — the two schemes are the same
  * construction under a different secret and a different header, and a
- * near-identical copy is precisely what this module exists to stop (see the
- * `constantTimeEqual` note above).
+ * near-identical copy is precisely what this module exists to stop.
  *
  * https://www.twilio.com/docs/usage/security#validating-requests
  * https://mailchimp.com/developer/transactional/guides/track-respond-activity-webhooks/#authenticating-webhook-requests
@@ -61,62 +73,6 @@ export function urlAndSortedParamsSigningBase(url: string, params: Record<string
 		base += key + params[key];
 	}
 	return base;
-}
-
-export function constantTimeEqual(a: string, b: string): boolean {
-	// XOR lengths first — guarantees result ≠ 0 when lengths differ.
-	let mismatch = a.length ^ b.length;
-	// Iterate the longer string to prevent timing leaks.
-	const len = Math.max(a.length, b.length);
-	for (let i = 0; i < len; i++) {
-		mismatch |= (a.charCodeAt(i) | 0) ^ (b.charCodeAt(i) | 0);
-	}
-	return mismatch === 0;
-}
-
-async function importHmacKey(
-	secret: string | Uint8Array,
-	hash: 'SHA-1' | 'SHA-256'
-): Promise<CryptoKey> {
-	const raw = typeof secret === 'string' ? new TextEncoder().encode(secret) : secret;
-	return crypto.subtle.importKey('raw', raw as BufferSource, { name: 'HMAC', hash }, false, [
-		'sign',
-	]);
-}
-
-/**
- * The parameterized HMAC: the ONE place in the backend that imports a signing
- * key and signs with it.
- *
- * The named helpers below are the fixed-algorithm spellings the per-provider
- * adapters read better with. Callers whose algorithm and encoding are DECLARED
- * rather than fixed — the provider feedback verifier registry and the plugin
- * inbound-signature contract, both of which choose sha256/sha1 × hex/base64 at
- * runtime — use this one directly instead of open-coding `importKey` + `sign`
- * again, which is what this module exists to stop.
- */
-export async function hmacSignature(
-	secret: string | Uint8Array,
-	data: string,
-	algorithm: 'sha256' | 'sha1',
-	encoding: 'hex' | 'base64' | 'base64url'
-): Promise<string> {
-	const key = await importHmacKey(secret, algorithm === 'sha256' ? 'SHA-256' : 'SHA-1');
-	const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
-	if (encoding === 'hex') return bytesToHex(sig);
-	return encoding === 'base64url' ? bytesToBase64Url(sig) : bytesToBase64(sig);
-}
-
-export async function hmacSha256Hex(secret: string, data: string): Promise<string> {
-	return hmacSignature(secret, data, 'sha256', 'hex');
-}
-
-export async function hmacSha256Base64(secret: string | Uint8Array, data: string): Promise<string> {
-	return hmacSignature(secret, data, 'sha256', 'base64');
-}
-
-export async function hmacSha1Base64(secret: string, data: string): Promise<string> {
-	return hmacSignature(secret, data, 'sha1', 'base64');
 }
 
 /**

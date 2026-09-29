@@ -3,7 +3,7 @@ import { internal } from '../_generated/api';
 import { BodyTooLargeError, readBodyText } from '../lib/readBody';
 import { errorResponse, jsonResponse } from '../lib/httpResponse';
 import { getOptional } from '../lib/env';
-import { safeCompare } from '../lib/safeCompare';
+import { secretMatches } from '../lib/crypto';
 import type { Id } from '../_generated/dataModel';
 
 /** Only the web server sees native upload responses and can attest blob ownership.
@@ -17,7 +17,7 @@ function authenticated(request: Request): boolean {
 	if (!header.startsWith('Bearer ')) return false;
 	const token = header.slice(7);
 	const previous = getOptional('INSTANCE_SECRET_PREVIOUS');
-	return safeCompare(token, current) || (previous !== undefined && safeCompare(token, previous));
+	return secretMatches(token, current) || secretMatches(token, previous);
 }
 
 async function serviceRequest(

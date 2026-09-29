@@ -204,7 +204,7 @@ async function handleGuardSave() {
 					>
 						<template #header>
 							<code class="px-1.5 py-0.5 rounded bg-bg-surface text-text-primary text-xs font-mono"
-								>X-Signature</code
+								>X-Owlat-Signature</code
 							>
 						</template>
 					</I18nT>

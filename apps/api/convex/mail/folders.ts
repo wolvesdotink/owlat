@@ -14,6 +14,12 @@ import type { Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
 import { recordMessageCounters } from './messageCounters';
 import {
+	recordRemoteChanges,
+	recordRemoteFolderChange,
+	type RemoteChange,
+} from './external/remoteOps';
+import { dropFolderMappings } from './external/mirroredFolders';
+import {
 	getOrThrow,
 	throwAlreadyExists,
 	throwForbidden,
@@ -125,6 +131,9 @@ export const rename = postboxMutation({
 		}
 
 		await ctx.db.patch(args.folderId, { name: trimmed, updatedAt: Date.now() });
+		if (trimmed !== folder.name) {
+			await recordRemoteFolderChange(ctx, folder._id, { kind: 'rename', name: trimmed });
+		}
 	},
 });
 
@@ -182,6 +191,7 @@ export const relocateAndDeleteFolder = internalMutation({
 			let modseq = inbox.highestModseq;
 			let totalDelta = 0;
 			let unseenDelta = 0;
+			const remote: RemoteChange[] = [];
 			for (const m of batch) {
 				modseq += 1;
 				await ctx.db.patch(m._id, {
@@ -194,6 +204,12 @@ export const relocateAndDeleteFolder = internalMutation({
 				uidNext += 1;
 				totalDelta += 1;
 				unseenDelta += m.flagSeen ? 0 : 1;
+				remote.push({
+					kind: 'move',
+					message: m,
+					sourceFolderId: args.folderId,
+					targetFolderId: args.inboxId,
+				});
 			}
 			// One INBOX patch per batch with the final running values.
 			await ctx.db.patch(args.inboxId, {
@@ -203,6 +219,7 @@ export const relocateAndDeleteFolder = internalMutation({
 				unseenCount: inbox.unseenCount + unseenDelta,
 				updatedAt: now,
 			});
+			await recordRemoteChanges(ctx, remote);
 		}
 
 		if (batch.length === FOLDER_RELOCATE_BATCH) {
@@ -215,7 +232,11 @@ export const relocateAndDeleteFolder = internalMutation({
 			// chains; the second reaching this branch would otherwise delete an
 			// already-deleted folder and throw from the scheduled function.
 			const folder = await ctx.db.get(args.folderId);
-			if (folder) await ctx.db.delete(args.folderId);
+			if (folder) {
+				await recordRemoteFolderChange(ctx, args.folderId, { kind: 'delete' });
+				await dropFolderMappings(ctx, args.folderId);
+				await ctx.db.delete(args.folderId);
+			}
 		}
 	},
 });

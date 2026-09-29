@@ -1,5 +1,5 @@
 import type { RenderContext } from './types';
-import { sanitizeCss } from './sanitize';
+import { cssColorOr, sanitizeCss } from './sanitize';
 
 export const getCssResets = (): string => {
 	return `
@@ -19,9 +19,8 @@ a[x-apple-data-detectors]{color:inherit!important;text-decoration:none!important
 
 export const getMediaQueries = (ctx: RenderContext): string => {
 	const bp = ctx.breakpoint;
-	const responsiveRules = ctx.responsiveRules.length > 0
-		? '\n' + ctx.responsiveRules.join('\n')
-		: '';
+	const responsiveRules =
+		ctx.responsiveRules.length > 0 ? '\n' + ctx.responsiveRules.join('\n') : '';
 	return `
 @media only screen and (max-width:${bp}px){
 body{width:100%!important;min-width:100%!important}
@@ -53,11 +52,19 @@ color:#9acd32;
 `;
 };
 
+/**
+ * Theme colours written into the `<style>` element. Each one must be a plain
+ * colour value; anything else gets the default.
+ */
+const darkModeColors = (ctx: RenderContext): { bg: string; text: string; link: string } => ({
+	bg: cssColorOr(ctx.theme.darkModeBackgroundColor, '#121212'),
+	text: cssColorOr(ctx.theme.darkModeTextColor, '#e4e4e7'),
+	link: cssColorOr(ctx.theme.darkModeLinkColor, '#93c5fd'),
+});
+
 export const getDarkModeStyles = (ctx: RenderContext): string => {
 	if (!ctx.darkMode) return '';
-	const bg = ctx.theme.darkModeBackgroundColor ?? '#121212';
-	const text = ctx.theme.darkModeTextColor ?? '#e4e4e7';
-	const link = ctx.theme.darkModeLinkColor ?? '#93c5fd';
+	const { bg, text, link } = darkModeColors(ctx);
 	return `
 body{background-color:${bg}!important}
 .body-section{background-color:${bg}!important}
@@ -76,9 +83,7 @@ color:#d4ff00!important;
  * Applied in actual email clients (not the preview toggle).
  */
 export const getDarkModeMediaQuery = (ctx: RenderContext): string => {
-	const bg = ctx.theme.darkModeBackgroundColor ?? '#121212';
-	const text = ctx.theme.darkModeTextColor ?? '#e4e4e7';
-	const link = ctx.theme.darkModeLinkColor ?? '#93c5fd';
+	const { bg, text, link } = darkModeColors(ctx);
 	return `
 .owlat-light-img{display:block}
 .owlat-dark-img{display:none}
@@ -105,7 +110,9 @@ img{opacity:0.9}
 };
 
 export const getLinkStyles = (ctx: RenderContext): string => {
-	const linkColor = ctx.darkMode ? (ctx.theme.darkModeLinkColor ?? '#93c5fd') : (ctx.theme.linkColor || '#2563eb');
+	const linkColor = ctx.darkMode
+		? darkModeColors(ctx).link
+		: cssColorOr(ctx.theme.linkColor, '#2563eb');
 	return `a{color:${linkColor}}`;
 };
 
@@ -126,9 +133,7 @@ export const getAnimationStyles = (): string => {
 };
 
 export const buildStyleBlock = (ctx: RenderContext): string => {
-	const globalRules = ctx.globalRules.length > 0
-		? '\n' + ctx.globalRules.join('\n')
-		: '';
+	const globalRules = ctx.globalRules.length > 0 ? '\n' + ctx.globalRules.join('\n') : '';
 	const parts = [
 		getCssResets(),
 		getLinkStyles(ctx),

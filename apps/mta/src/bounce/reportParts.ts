@@ -12,7 +12,7 @@
  * human-readable `.text` body rather than an attachment. Either way its content
  * was always reachable to the old scrapers (from `parsed.attachments` or, for a
  * bare delivery-status, from `parsed.text`). `@owlat/mail-message`'s
- * `parseMessage` follows the `mailMime` predicate instead: a part is an
+ * `parseMessage` uses its own attachment predicate instead: a part is an
  * attachment only when it carries a `Content-Disposition: attachment` or a
  * filename, and only `text/plain` / `text/html` fold into `text`/`html`. Real
  * DSNs/ARFs set NEITHER disposition nor filename on their `message/*` report
@@ -24,7 +24,7 @@
  * `parseMimeTree` / `walkLeaves` / `transferDecode` primitives the parser uses.
  * Every leaf that is NOT a true message body — i.e. not a `text/plain` /
  * `text/html` leaf that lacks an attachment disposition/filename — and NOT a
- * `multipart/*` container is surfaced. That is exactly the `mailMime`
+ * `multipart/*` container is surfaced. That is exactly the shared
  * attachment predicate ({@link isAttachmentPart}) UNION the non-body `message/*`
  * report parts, matching what mailparser handed the scrapers. A `text/plain`
  * attachment (a bounce that returns the original as a text/plain attachment)
@@ -65,8 +65,8 @@ export interface ReportPart {
 /**
  * A leaf is a TRUE message body (folded into `parsed.text`/`.html`, never a
  * report attachment) only when it is a `text/plain` / `text/html` part with no
- * attachment disposition/filename — the exact `mailMime` predicate the parser
- * uses. Everything else (real attachments AND the disposition-less `message/*`
+ * attachment disposition/filename — the {@link isAttachmentPart} predicate the
+ * parser uses. Everything else (real attachments AND the disposition-less `message/*`
  * report parts) is a recoverable report part.
  */
 function isBodyLeaf(contentType: string, isAttachment: boolean): boolean {

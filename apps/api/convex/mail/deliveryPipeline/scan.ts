@@ -11,9 +11,8 @@ import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import { scanAttachmentBytes } from '../mtaClient';
 import { mapWithConcurrency } from '../../lib/mapWithConcurrency';
 import type { VirusVerdict } from '../../lib/literalValidators';
-import { extractAttachments } from '@owlat/shared/mailMime';
 import {
-	candidatesFromLeaves,
+	inboundAttachmentWalk,
 	NOTHING_UNCLEARED,
 	type InboundAttachmentPart,
 	type UnclearedLeaves,
@@ -41,8 +40,9 @@ export type InboundScanResult = {
 	 *     routes the message to Spam/quarantine.
 	 *   · `'skipped'` — something was NOT established: the scanner was
 	 *     unreachable for at least one part, the per-message cap left a leaf
-	 *     unopened, or the endpoint's file-type gate refused a leaf before
-	 *     ClamAV ever ran. Fail-open: the message still delivers. An outage is
+	 *     unopened, the endpoint's file-type gate refused a leaf before
+	 *     ClamAV ever ran, or the MIME walker's depth/part bound left part of
+	 *     the message unwalked. Fail-open: the message still delivers. An outage is
 	 *     surfaced to the operator via `lib/scannerHealth.warnScanSkipped`; a
 	 *     refusal and the cap are not outages and warn nothing — the reader is
 	 *     told about those on the row, via the capture marker.
@@ -150,8 +150,29 @@ export async function scanInboundAttachments(
 	// tells the reader "there was nothing to scan" apart from "nobody scanned
 	// it", and only the MIME says which. One walk, shared with capture through
 	// the parts this returns.
-	const leaves = extractAttachments(rawBinary);
-	const candidates = candidatesFromLeaves(leaves);
+	const { candidates, leaves, truncated } = inboundAttachmentWalk(rawBinary);
+	const scan = await scanCandidates(mta, candidates, leaves, priorVerdict);
+	if (!truncated || scan.verdict === 'infected') return scan;
+	// The MIME walker stopped at its depth or part bound, so this message has
+	// content no candidate covers, and the raw message (served whole over IMAP)
+	// still carries it. Nobody scanned those bytes: count them as one UNSCANNED
+	// leaf, the same floor a walk that threw records (`inbox/inboundIngest.ts`),
+	// and never let the verdict read `'clean'`, or `undefined` ("nothing to
+	// scan"), for a message whose remainder was never opened.
+	return {
+		...scan,
+		verdict: 'skipped',
+		uncleared: { ...scan.uncleared, unscanned: scan.uncleared.unscanned + 1 },
+	};
+}
+
+/** {@link scanInboundAttachments} over an already-walked candidate list. */
+async function scanCandidates(
+	mta: { baseUrl: string; apiKey: string } | null,
+	candidates: InboundAttachmentPart[],
+	leaves: InboundAttachmentPart[],
+	priorVerdict: VirusVerdict | undefined
+): Promise<InboundScanResult> {
 	// Nothing looked at this message. Every leaf it carries is therefore
 	// UNSCANNED — the count is not zero just because the reason is "there is no
 	// scanner here" rather than "the scanner timed out". A message with no

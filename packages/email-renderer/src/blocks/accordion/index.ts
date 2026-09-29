@@ -11,7 +11,8 @@
 
 import { fullSupport } from '@owlat/shared';
 import { itemToBlock, type BlockModule, type Placement } from '../_module';
-import { escapeCss, escapeHtml } from '../../sanitize';
+import { escapeAttr, escapeCss, escapeHtml } from '../../sanitize';
+import { px } from '../../helpers/padding';
 import { checkShape, isString, isArray, isObject } from '../../helpers/validation';
 
 export const accordionModule: BlockModule<'accordion'> = {
@@ -23,41 +24,49 @@ export const accordionModule: BlockModule<'accordion'> = {
 	},
 
 	preflight({ ctx }) {
-		ctx.warnings.push('Accordion block uses CSS :checked selectors — only interactive in Apple Mail/iOS Mail (~40% of clients). Other clients show all sections expanded.');
+		ctx.warnings.push(
+			'Accordion block uses CSS :checked selectors — only interactive in Apple Mail/iOS Mail (~40% of clients). Other clients show all sections expanded.'
+		);
 	},
 
 	html({ content, ctx, walk }) {
 		const headerBg = escapeCss(content.headerBackgroundColor || '#f5f5f5');
 		const headerColor = escapeCss(content.headerTextColor || '#333333');
-		const headerFontSize = content.headerFontSize || 16;
+		const headerFontSize = px(content.headerFontSize, 0) || 16;
 		const contentBg = escapeCss(content.contentBackgroundColor || '#ffffff');
 		const iconColor = escapeCss(content.iconColor || '#666666');
 		const sectionBorder = escapeCss(content.sectionBorderColor || '#e0e0e0');
-		const borderRadius = content.borderRadius || 0;
+		const borderRadius = px(content.borderRadius, 0);
 		const headerFontFamily = escapeCss(ctx.theme.fontFamily);
 
-		const sections = content.sections.map((section, idx) => {
-			const isInitiallyExpanded = content.initialExpanded === idx;
-			const inputType = content.allowMultiple ? 'checkbox' : 'radio';
-			const inputName = content.allowMultiple ? `owlat-acc-${section.id}` : 'owlat-accordion';
-			const checkedAttr = isInitiallyExpanded ? ' checked' : '';
+		const sections = content.sections
+			.map((section, idx) => {
+				const isInitiallyExpanded = content.initialExpanded === idx;
+				const inputType = content.allowMultiple ? 'checkbox' : 'radio';
+				const sectionId = escapeAttr(section.id);
+				const inputName = content.allowMultiple ? `owlat-acc-${sectionId}` : 'owlat-accordion';
+				const checkedAttr = isInitiallyExpanded ? ' checked' : '';
 
-			const childHtml = section.items
-				.map((item) => walk(itemToBlock(item), ctx.baseWidth, 'container'))
-				.filter(Boolean)
-				.join('');
+				const childHtml = section.items
+					.map((item) => walk(itemToBlock(item), ctx.baseWidth, 'container'))
+					.filter(Boolean)
+					.join('');
 
-			return `<div style="border-bottom:1px solid ${sectionBorder}">` +
-				`<input type="${inputType}" name="${inputName}" id="owlat-acc-${section.id}" style="position:absolute;left:-9999px;opacity:0;mso-hide:all"${checkedAttr} />` +
-				`<label for="owlat-acc-${section.id}" style="display:block;padding:12px 16px;background-color:${headerBg};color:${headerColor};font-size:${headerFontSize}px;font-family:${headerFontFamily};cursor:pointer;user-select:none">` +
-				`<span style="display:inline-block;float:right;color:${iconColor};font-size:20px;line-height:${headerFontSize}px">&#9660;</span>` +
-				`${escapeHtml(section.title)}</label>` +
-				`<div class="owlat-acc-content" style="background-color:${contentBg};padding:16px">` +
-				childHtml +
-				`</div></div>`;
-		}).join('');
+				return (
+					`<div style="border-bottom:1px solid ${sectionBorder}">` +
+					`<input type="${inputType}" name="${inputName}" id="owlat-acc-${sectionId}" style="position:absolute;left:-9999px;opacity:0;mso-hide:all"${checkedAttr} />` +
+					`<label for="owlat-acc-${sectionId}" style="display:block;padding:12px 16px;background-color:${headerBg};color:${headerColor};font-size:${headerFontSize}px;font-family:${headerFontFamily};cursor:pointer;user-select:none">` +
+					`<span style="display:inline-block;float:right;color:${iconColor};font-size:20px;line-height:${headerFontSize}px">&#9660;</span>` +
+					`${escapeHtml(section.title)}</label>` +
+					`<div class="owlat-acc-content" style="background-color:${contentBg};padding:16px">` +
+					childHtml +
+					`</div></div>`
+				);
+			})
+			.join('');
 
-		const style = `<style>` +
+		const style =
+			`<style>` +
 			`.owlat-acc-content{max-height:0;overflow:hidden;padding:0 16px!important}` +
 			`input[id^="owlat-acc-"]:checked+label span{transform:rotate(180deg)}` +
 			`input[id^="owlat-acc-"]:checked+label+.owlat-acc-content{max-height:none!important;padding:16px!important}` +
@@ -70,26 +79,28 @@ export const accordionModule: BlockModule<'accordion'> = {
 	},
 
 	plaintext({ content, walk }) {
-		return content.sections.map((section) => {
-			const childParts: string[] = [];
-			for (const item of section.items) {
-				const text = walk(itemToBlock(item));
-				if (text) childParts.push(text);
-			}
-			return `== ${section.title} ==\n${childParts.join('\n')}`;
-		}).join('\n\n');
+		return content.sections
+			.map((section) => {
+				const childParts: string[] = [];
+				for (const item of section.items) {
+					const text = walk(itemToBlock(item));
+					if (text) childParts.push(text);
+				}
+				return `== ${section.title} ==\n${childParts.join('\n')}`;
+			})
+			.join('\n\n');
 	},
 
 	amp({ content, walk }) {
-		const sections = content.sections.map((s) => {
-			const itemsHtml = s.items.map((item) =>
-				walk(itemToBlock(item))
-			).join('\n');
-			return `<section>
+		const sections = content.sections
+			.map((s) => {
+				const itemsHtml = s.items.map((item) => walk(itemToBlock(item))).join('\n');
+				return `<section>
 <h3>${escapeHtml(s.title)}</h3>
 <div>${itemsHtml}</div>
 </section>`;
-		}).join('\n');
+			})
+			.join('\n');
 		return `<amp-accordion>${sections}</amp-accordion>`;
 	},
 
@@ -172,8 +183,7 @@ export const accordionModule: BlockModule<'accordion'> = {
 					yahooMail: 'none',
 				},
 				severity: 'info',
-				recommendation:
-					'All sections expanded in fallback clients — content is always visible',
+				recommendation: 'All sections expanded in fallback clients — content is always visible',
 				owlatHandled: true,
 			},
 		],
@@ -183,21 +193,50 @@ export const accordionModule: BlockModule<'accordion'> = {
 		const ic = content as unknown as Record<string, unknown>;
 
 		// Shape
-		checkShape(ic, [
-			{ field: 'sections', check: isArray, code: 'ACCORDION_SECTIONS_TYPE', message: 'sections must be an array' },
-		], block.id, 'accordion', ctx.issues);
+		checkShape(
+			ic,
+			[
+				{
+					field: 'sections',
+					check: isArray,
+					code: 'ACCORDION_SECTIONS_TYPE',
+					message: 'sections must be an array',
+				},
+			],
+			block.id,
+			'accordion',
+			ctx.issues
+		);
 
 		if (isArray(ic['sections'])) {
 			for (let i = 0; i < (ic['sections'] as unknown[]).length; i++) {
 				const section = (ic['sections'] as unknown[])[i];
-				if (!isObject(section) || !isString(section['id']) || !isString(section['title']) || !isArray(section['items'])) {
-					ctx.issues.push({ blockId: block.id, blockType: 'accordion', severity: 'error', code: 'ACCORDION_SECTION_SHAPE', message: `section ${i} must have id, title, and items` });
+				if (
+					!isObject(section) ||
+					!isString(section['id']) ||
+					!isString(section['title']) ||
+					!isArray(section['items'])
+				) {
+					ctx.issues.push({
+						blockId: block.id,
+						blockType: 'accordion',
+						severity: 'error',
+						code: 'ACCORDION_SECTION_SHAPE',
+						message: `section ${i} must have id, title, and items`,
+					});
 				}
 			}
 		}
 
 		// Semantic: Gmail strips form elements
-		ctx.issues.push({ blockId: block.id, blockType: 'accordion', severity: 'info', code: 'GMAIL_FORM_ELEMENTS', message: 'Accordion uses :checked CSS pattern with form elements — Gmail strips these, so accordion will show all sections expanded in Gmail' });
+		ctx.issues.push({
+			blockId: block.id,
+			blockType: 'accordion',
+			severity: 'info',
+			code: 'GMAIL_FORM_ELEMENTS',
+			message:
+				'Accordion uses :checked CSS pattern with form elements — Gmail strips these, so accordion will show all sections expanded in Gmail',
+		});
 
 		// Recurse into section items
 		for (const section of content.sections) {

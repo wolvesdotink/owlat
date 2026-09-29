@@ -144,6 +144,7 @@ describe('LOGIN and AUTHENTICATE share one credential flow', () => {
 			address: 'alice@test',
 			password: 'secret',
 			scope: 'imap',
+			ip: '192.0.2.1',
 		});
 		expect(convex.mutation).toHaveBeenCalledWith(expect.anything(), {
 			appPasswordId: 'ap1',

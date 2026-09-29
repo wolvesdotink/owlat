@@ -230,7 +230,7 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 		},
 		rateLimit: {
 			// BetterAuth's built-in login/reset limiter keys on the resolved client
-			// IP (see `advanced.ipAddress` below — right-anchored, spoof-resistant).
+			// IP (see `advanced.ipAddress` below; the trust policy is lib/clientIp.ts).
 			// Production deployments get the client IP from the fronting proxy
 			// (Caddy, and the web app's /api/auth proxy extends the chain). Traffic
 			// that reaches a DEV deployment directly (the desktop app in `tauri dev`,
@@ -240,9 +240,11 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 			enabled: !isDevDeployment(),
 		},
 		advanced: {
-			// M12: resolve the limiter's client IP from the RIGHT-anchored trusted
-			// proxy entry (aligned with publicRateLimit.getClientIp) instead of
-			// BetterAuth's default leftmost/spoofable X-Forwarded-For.
+			// The client-IP header list derives from the same RATE_LIMIT_TRUSTED_PROXY
+			// policy as publicRateLimit.getClientIp (lib/clientIp.ts), replacing
+			// BetterAuth's default leftmost X-Forwarded-For. For the cloudflare /
+			// xrealip modes the proxy-secret check happens on the HTTP route
+			// (`withVerifiedClientIp` in http.ts), since this list is static.
 			ipAddress: resolveBetterAuthIpAddressConfig(),
 		},
 		// Deferred to request time (a function, not an eager array): in production

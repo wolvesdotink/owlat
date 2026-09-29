@@ -53,6 +53,29 @@ export const escapeCss = (value: string | undefined | null): string => {
 };
 
 /**
+ * Characters a CSS colour value can be written with: hex, named colours and
+ * the functional forms (`rgb(0, 0, 0)`, `hsl(210 80% 70% / 0.9)`).
+ */
+const CSS_COLOR_VALUE = /^[#\w\s(),.%/+-]{1,100}$/;
+
+/**
+ * A colour for a rule inside the document `<style>` element, or `fallback`.
+ * Entities are not decoded inside `<style>`, so escaping cannot make an
+ * arbitrary value safe there; only values made of colour characters pass.
+ */
+export const cssColorOr = (value: unknown, fallback: string): string =>
+	typeof value === 'string' && CSS_COLOR_VALUE.test(value) ? value : fallback;
+
+/**
+ * Escape a value for a double-quoted CSS string inside the document `<style>`
+ * element, such as an attribute selector. Every character other than ASCII
+ * letters, digits, `_` and `-` becomes a CSS hex escape (`\5c ` for a
+ * backslash), so the value cannot end the string, the rule or the element.
+ */
+export const escapeCssString = (value: string): string =>
+	value.replace(/[^A-Za-z0-9_-]/gu, (ch) => `\\${ch.codePointAt(0)!.toString(16)} `);
+
+/**
  * Escape a value for use inside a CSS url() function.
  * Prevents breakout via ') or other CSS injection.
  */
@@ -123,7 +146,10 @@ export const sanitizeCss = (css: string): string => {
 	result = result.replace(/behavior\s*:[^;]+;?/gi, '');
 
 	// Strip url() with dangerous protocols (javascript:, data:, vbscript:)
-	result = result.replace(/url\s*\(\s*(['"]?)\s*(?:javascript|data|vbscript)\s*:/gi, 'url($1about:');
+	result = result.replace(
+		/url\s*\(\s*(['"]?)\s*(?:javascript|data|vbscript)\s*:/gi,
+		'url($1about:'
+	);
 
 	return result;
 };
@@ -149,15 +175,49 @@ import type { IOptions } from 'sanitize-html';
 
 const RAW_HTML_SANITIZE_CONFIG: IOptions = {
 	allowedTags: [
-		'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-		'p', 'br', 'hr',
-		'span', 'div', 'section', 'article', 'header', 'footer',
-		'b', 'i', 'u', 'em', 'strong', 'small', 'sub', 'sup', 'mark',
-		'a', 'ul', 'ol', 'li',
-		'blockquote', 'pre', 'code',
-		'figure', 'figcaption',
-		'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
-		'img', 'picture', 'source',
+		'h1',
+		'h2',
+		'h3',
+		'h4',
+		'h5',
+		'h6',
+		'p',
+		'br',
+		'hr',
+		'span',
+		'div',
+		'section',
+		'article',
+		'header',
+		'footer',
+		'b',
+		'i',
+		'u',
+		'em',
+		'strong',
+		'small',
+		'sub',
+		'sup',
+		'mark',
+		'a',
+		'ul',
+		'ol',
+		'li',
+		'blockquote',
+		'pre',
+		'code',
+		'figure',
+		'figcaption',
+		'table',
+		'thead',
+		'tbody',
+		'tfoot',
+		'tr',
+		'td',
+		'th',
+		'img',
+		'picture',
+		'source',
 	],
 	disallowedTagsMode: 'discard',
 	allowedAttributes: {
@@ -207,6 +267,52 @@ const RAW_HTML_SANITIZE_CONFIG: IOptions = {
 export const sanitizeRawHtml = (html: string): string => {
 	if (!html) return '';
 	return sanitizeHtmlLib(html, RAW_HTML_SANITIZE_CONFIG);
+};
+
+/**
+ * Policy for text-block HTML as it is stored and edited: the raw-HTML policy
+ * above plus the two pieces of editor markup a text block legitimately
+ * carries, and nothing else.
+ *
+ * - `<s>` / `<strike>`: strikethrough, which the editors' shortcut and HTML
+ *   paste produce.
+ * - Variable chips: `<span class="variable-tag" contenteditable="false"
+ *   data-variable="key">`. `contenteditable` is kept only as `"false"`.
+ *
+ * Schemes, styles and every other tag and attribute follow
+ * `RAW_HTML_SANITIZE_CONFIG`, so the send-time render of stored text never
+ * sees more than this policy lets through.
+ */
+const EDITOR_HTML_SANITIZE_CONFIG: IOptions = {
+	...RAW_HTML_SANITIZE_CONFIG,
+	allowedTags: [...(RAW_HTML_SANITIZE_CONFIG.allowedTags || []), 's', 'strike'],
+	allowedAttributes: {
+		...RAW_HTML_SANITIZE_CONFIG.allowedAttributes,
+		span: ['data-variable', 'contenteditable'],
+	},
+	// sanitize-html's per-value allowlist keeps a rejected attribute as a bare
+	// name, and a bare `contenteditable` means "true", so the value is checked
+	// here instead: only a chip's `"false"` survives.
+	transformTags: {
+		span: (tagName, attribs) => ({
+			tagName,
+			attribs: Object.fromEntries(
+				Object.entries(attribs).filter(
+					([name, value]) => name !== 'contenteditable' || value === 'false'
+				)
+			),
+		}),
+	},
+};
+
+/**
+ * Sanitize text-block HTML for storage and for loading into a contenteditable
+ * editor. Used by every builder load and commit path and by the backend when
+ * template, transactional email and saved block content is written.
+ */
+export const sanitizeEditorHtml = (html: string): string => {
+	if (!html) return '';
+	return sanitizeHtmlLib(html, EDITOR_HTML_SANITIZE_CONFIG);
 };
 
 /**

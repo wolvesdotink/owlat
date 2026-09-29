@@ -5084,6 +5084,14 @@
 				"toggleHide": "Hide the team discussion",
 				"toggleShow": "Show the team discussion",
 				"unknownAuthor": "Former member"
+			},
+			"postboxSyncModeToggle": {
+				"changeOperation": "Change mailbox sync",
+				"helpOff": "Only new mail comes in. What you do in Owlat stays in Owlat, and the mailbox at your provider is left as it is.",
+				"helpOn": "Moving, reading, starring and deleting mail works both ways: what you do here happens at your provider, and what you do there — including its folders — shows up here.",
+				"label": "Sync changes with your provider",
+				"toastOff": "Only new mail comes in from now on.",
+				"toastOn": "Two-way sync is on. Both sides are lined up on the next sync."
 			}
 		},
 		"preferences": {

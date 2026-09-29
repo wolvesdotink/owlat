@@ -12,7 +12,8 @@
  * with the real library is verified by passwordHash.test.ts.
  */
 
-import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import { randomBytes, scrypt } from 'node:crypto';
+import { constantTimeEqual } from './constantTimeEqual';
 
 const SCRYPT_CONFIG = {
 	N: 16384,
@@ -36,7 +37,7 @@ function derive(password: string, saltHex: string): Promise<Buffer> {
 			(err, key) => {
 				if (err) reject(err);
 				else resolve(key);
-			},
+			}
 		);
 	});
 }
@@ -51,12 +52,8 @@ export async function verifyPassword(hash: string, password: string): Promise<bo
 	const [saltHex, keyHex] = hash.split(':');
 	if (!saltHex || !keyHex) return false;
 	const target = await derive(password, saltHex);
-	// Constant-time comparison (matching mail/appPasswords.ts) so a verify can't
-	// leak how many leading bytes matched via early-exit string ===. A malformed
-	// or wrong-length keyHex yields a buffer whose length won't match target's,
-	// so the (non-secret) length gate short-circuits before timingSafeEqual —
-	// which itself throws on unequal lengths.
-	const stored = Buffer.from(keyHex, 'hex');
-	if (stored.length !== target.length) return false;
-	return timingSafeEqual(target, stored);
+	// Constant-time comparison so a verify can't leak how many leading bytes
+	// matched via an early-exit string ===. A malformed or wrong-length keyHex
+	// simply compares unequal.
+	return constantTimeEqual(target, Buffer.from(keyHex, 'hex'));
 }

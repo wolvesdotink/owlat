@@ -77,8 +77,8 @@ const modules = { ...rootGlob, ...webhooksGlob };
 
 function setupTest() {
 	const t = convexTest(schema, modules);
-	// The inbound pipeline rate-limits before signature verification, so every
-	// request here hits the rate-limiter component.
+	// The inbound pipeline charges an ingestion token on every request that
+	// reaches the rate limit, so the rate-limiter component must be live.
 	rateLimiterTest.register(t);
 	return t;
 }

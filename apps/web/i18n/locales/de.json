@@ -5084,6 +5084,14 @@
 				"toggleHide": "Team-Diskussion ausblenden",
 				"toggleShow": "Team-Diskussion einblenden",
 				"unknownAuthor": "Ehemaliges Mitglied"
+			},
+			"postboxSyncModeToggle": {
+				"changeOperation": "Postfach-Synchronisierung ändern",
+				"helpOff": "Es kommt nur neue Post herein. Was Sie in Owlat tun, bleibt in Owlat, und das Postfach bei Ihrem Anbieter bleibt, wie es ist.",
+				"helpOn": "Verschieben, Lesen, Markieren und Löschen wirkt in beide Richtungen: Was Sie hier tun, geschieht bei Ihrem Anbieter, und was Sie dort tun — einschließlich seiner Ordner — erscheint hier.",
+				"label": "Änderungen mit Ihrem Anbieter synchronisieren",
+				"toastOff": "Ab jetzt kommt nur noch neue Post herein.",
+				"toastOn": "Die Synchronisierung in beide Richtungen ist an. Beide Seiten werden beim nächsten Abgleich angeglichen."
 			}
 		},
 		"preferences": {

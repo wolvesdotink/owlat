@@ -10,7 +10,7 @@
  * Events: 'inbound.mailbox.received'
  *
  * The preamble every raw-body MTA route shares — per-source rate limit, secret
- * lookup, the `verifyMtaHeaders` HMAC + 5-minute staleness window, the
+ * lookup, the `verifyMtaSignedRequest` HMAC + 5-minute staleness window, the
  * unbounded body read and the bounded digest-not-a-copy audit row — lives in
  * `webhooks/adapters/mtaRawRoute.ts`, so this route and the team-inbox one
  * cannot drift on any of it. What stays here is the payload shape, the event

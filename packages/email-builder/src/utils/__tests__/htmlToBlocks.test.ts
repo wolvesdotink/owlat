@@ -220,4 +220,21 @@ describe('htmlToBlocks', () => {
 		expect(html).not.toContain('<script>');
 		expect(html).toContain('world');
 	});
+	it('drops javascript: links from imported text', () => {
+		const blocks = htmlToBlocks('<p>Go <a href="javascript:alert(1)">x</a></p>');
+		const html = (blocks[0].content as TextBlockContent).html;
+		expect(html).toContain('x');
+		expect(html).not.toContain('javascript:');
+	});
+
+	it('drops event handlers and unsafe styles from imported text', () => {
+		const blocks = htmlToBlocks(
+			'<h1>T<img src="x" onerror="alert(1)"></h1><p><span style="position: fixed; color: red">s</span></p>'
+		);
+		const heading = (blocks[0].content as TextBlockContent).html;
+		const para = (blocks[1].content as TextBlockContent).html;
+		expect(heading).not.toContain('onerror');
+		expect(para).not.toContain('position');
+		expect(para).toContain('color:red');
+	});
 });

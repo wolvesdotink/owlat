@@ -265,6 +265,26 @@ describe('transactional.dispatch.dispatch — happy path', () => {
 // ─── Per-reason rejection coverage ──────────────────────────────────────────
 
 describe('transactional.dispatch.dispatch — rejections', () => {
+	it("returns 'feature_disabled' and writes no row while the transactional feature is off", async () => {
+		const t = convexTest(schema, modules);
+		const { templateId, settingsId } = await seedBaseline(t);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(settingsId, { featureFlags: { transactional: false } });
+		});
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+		});
+
+		expect(outcome.ok).toBe(false);
+		if (outcome.ok) throw new Error('expected rejection');
+		expect(outcome.reason).toBe('feature_disabled');
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('transactionalSends').collect()).toHaveLength(0);
+		});
+	});
+
 	it("returns 'abuse_blocked' when instance is suspended", async () => {
 		const t = convexTest(schema, modules);
 		const { templateId } = await seedBaseline(t, { abuseStatus: 'suspended' });

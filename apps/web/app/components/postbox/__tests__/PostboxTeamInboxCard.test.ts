@@ -33,6 +33,7 @@ type Status = FunctionReturnType<typeof api.mail.migrationShared.getStatusShared
 const MAILBOX_ID = 'mailbox_support' as Id<'mailboxes'>;
 
 const importStatus: Ref<Status> = ref(null);
+const sharedAccount: Ref<{ configured: true; syncMode: 'full' | 'incoming' } | null> = ref(null);
 
 function inbox(overrides: Partial<SharedInbox> = {}): SharedInbox {
 	return {
@@ -61,11 +62,15 @@ function inbox(overrides: Partial<SharedInbox> = {}): SharedInbox {
 
 beforeEach(() => {
 	importStatus.value = null;
+	sharedAccount.value = null;
 	vi.stubGlobal('useConvexQuery', (reference: Parameters<typeof getFunctionName>[0]) => ({
 		data:
 			getFunctionName(reference) === getFunctionName(api.mail.migrationShared.getStatusShared)
 				? importStatus
-				: ref(null),
+				: getFunctionName(reference) ===
+					  getFunctionName(api.mail.external.sharedInbox.getSharedExternalAccount)
+					? sharedAccount
+					: ref(null),
 		isLoading: ref(false),
 		error: ref(null),
 	}));
@@ -91,6 +96,11 @@ function mountCard(overrides: Partial<SharedInbox> = {}) {
 				PostboxTeamInboxMembersPanel: panelStub,
 				PostboxTeamInboxImportCard: panelStub,
 				PostboxMailboxConnectForm: panelStub,
+				PostboxSyncModeToggle: {
+					props: ['mode', 'mailboxId'],
+					template:
+						'<div data-testid="sync-mode-toggle" :data-mode="mode" :data-mailbox="mailboxId" />',
+				},
 			},
 		},
 	});
@@ -165,5 +175,21 @@ describe('TeamInboxCard', () => {
 		const wrapper = mountCard();
 
 		expect(wrapper.find('[data-testid="team-inbox-import-summary"]').exists()).toBe(false);
+	});
+});
+
+describe('TeamInboxCard — sync with the provider', () => {
+	it('offers the two-way sync switch for the inbox once its account is read', () => {
+		sharedAccount.value = { configured: true, syncMode: 'incoming' };
+		const toggle = mountCard().find('[data-testid="sync-mode-toggle"]');
+		expect(toggle.attributes('data-mode')).toBe('incoming');
+		expect(toggle.attributes('data-mailbox')).toBe(MAILBOX_ID);
+	});
+
+	it('has no switch for a hosted inbox, which has no provider', () => {
+		sharedAccount.value = { configured: true, syncMode: 'full' };
+		expect(mountCard({ kind: 'hosted' }).find('[data-testid="sync-mode-toggle"]').exists()).toBe(
+			false
+		);
 	});
 });

@@ -16,7 +16,7 @@
  * browser-safe.
  */
 
-import { timingSafeEqual, createHash } from 'node:crypto';
+import { secretMatches } from './constantTimeEqual';
 import { generateSecret } from './setupSecrets';
 
 /**
@@ -29,19 +29,13 @@ export function generateSetupToken(): string {
 }
 
 /**
- * Constant-time equality of `provided` against `expected`. Both are hashed to
- * SHA-256 first so `timingSafeEqual`'s equal-length precondition always holds
- * and the comparison leaks neither length nor content via timing. Fails closed
- * when either side is missing or empty — an unconfigured token can never be
- * satisfied. Mirrors the `safeCompare` pattern in
- * `apps/web/server/utils/updater.ts`.
+ * Constant-time equality of `provided` against `expected` (`secretMatches`):
+ * leaks neither length nor content via timing, and fails closed when either
+ * side is missing or empty, so an unconfigured token can never be satisfied.
  */
 export function isValidSetupToken(
 	provided: string | null | undefined,
 	expected: string | null | undefined
 ): boolean {
-	if (!provided || !expected) return false;
-	const hashProvided = createHash('sha256').update(provided).digest();
-	const hashExpected = createHash('sha256').update(expected).digest();
-	return timingSafeEqual(hashProvided, hashExpected);
+	return secretMatches(provided, expected);
 }

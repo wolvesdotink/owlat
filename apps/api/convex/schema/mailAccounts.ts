@@ -2,6 +2,11 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { destinationProviderValidator } from '../lib/validators/deliverability';
 import { archiveFormatValidator } from '../lib/literalValidators';
+import {
+	externalSyncModeValidator,
+	remoteFlagChangesValidator,
+	remoteFolderRefValidator,
+} from '../lib/validators/mail';
 
 /**
  * External mail accounts and mailbox data movement.
@@ -162,6 +167,16 @@ export const mailAccountsTables = {
 		// before re-attach existed.
 		adminRetiredAt: v.optional(v.number()),
 
+		// How far sync reaches. undefined ⇒ 'full': new mail comes in, changes made
+		// on the provider (moves, flags, deletes) are mirrored here, and changes made
+		// here are written back (`mail/external/remoteOps.ts`, `remoteState.ts`).
+		// 'incoming' ⇒ only new mail comes in and the mailbox is managed in Owlat.
+		syncMode: v.optional(externalSyncModeValidator),
+		// When the first full reconcile after turning full sync on (or after the
+		// upgrade that introduced it) finished. Until then diverging messages are
+		// merged rather than pulled; see `applyRemoteObservations`.
+		fullSyncAlignedAt: v.optional(v.number()),
+
 		// Connection/sync status — the mail-sync worker is the writer.
 		status: externalAccountStatusValidator,
 		lastError: v.optional(v.string()),
@@ -280,7 +295,39 @@ export const mailAccountsTables = {
 		backfillDone: v.optional(v.number()),
 	})
 		.index('by_account', ['accountId'])
-		.index('by_account_and_remote', ['accountId', 'remoteName']),
+		.index('by_account_and_remote', ['accountId', 'remoteName'])
+		.index('by_folder', ['folderId']),
+
+	// Local → remote write-back queue. Every move, flag change and permanent
+	// delete a member makes in an external mailbox is recorded here, in the same
+	// transaction, and the mail-sync worker replays it on the provider over IMAP
+	// (`mail/external/remoteOps.ts`). A row is deleted once applied, once the
+	// message turns out not to be on the server, or when its retries run out.
+	externalMailRemoteOps: defineTable({
+		accountId: v.id('externalMailAccounts'),
+		kind: v.union(
+			v.literal('move'),
+			v.literal('flags'),
+			v.literal('delete'),
+			// A mirrored folder renamed or deleted in Owlat.
+			v.literal('renameFolder'),
+			v.literal('deleteFolder')
+		),
+		// Canonical Message-ID (no angle brackets): how the worker finds the
+		// message. Absent on the two folder kinds.
+		rfc822MessageId: v.optional(v.string()),
+		source: remoteFolderRefValidator, // the message's folder, or the folder itself
+		// 'move': where to. 'renameFolder': `{ path: [newName] }`, the new leaf name.
+		target: v.optional(remoteFolderRefValidator),
+		flags: v.optional(remoteFlagChangesValidator), // 'flags' only
+		attempts: v.number(),
+		nextAttemptAt: v.number(), // the enqueue time until a failed attempt pushes it back
+		lastError: v.optional(v.string()),
+		createdAt: v.number(),
+	})
+		.index('by_account_and_next_attempt', ['accountId', 'nextAttemptAt'])
+		// A pending write-back holds a message out of inbound reconcile.
+		.index('by_account_and_message', ['accountId', 'rfc822MessageId']),
 
 	// Mailbox migration job — a one-time historical import of a connected
 	// external mailbox (e.g. "Migrate from Google"). 1:1 with an

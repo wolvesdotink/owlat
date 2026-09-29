@@ -67,7 +67,9 @@ describe('extractTranslatableContent', () => {
 
 describe('mergeTranslationWithContent', () => {
 	it('overlays translated text onto the default content structure', () => {
-		const merged = JSON.parse(mergeTranslationWithContent(CONTENT, { b1: { html: '<p>Hallo</p>' } }));
+		const merged = JSON.parse(
+			mergeTranslationWithContent(CONTENT, { b1: { html: '<p>Hallo</p>' } })
+		);
 		expect(merged[0].content.html).toBe('<p>Hallo</p>');
 		// Untranslated block keeps its default text; styling (url) is preserved.
 		expect(merged[1].content.text).toBe('Click');
@@ -108,7 +110,7 @@ describe('resolveForLanguage', () => {
 		const resolved = resolveForLanguage(
 			templateEntity({ previewText: undefined }),
 			'en',
-			TRANSACTIONAL_TRANSLATABLE_FIELDS,
+			TRANSACTIONAL_TRANSLATABLE_FIELDS
 		);
 		expect('previewText' in resolved).toBe(false);
 	});
@@ -125,6 +127,20 @@ describe('addLanguage', () => {
 		expect(overlay!.blocks).toEqual({ b1: { html: '<p>Hello</p>' }, b2: { buttonText: 'Click' } });
 	});
 
+	it('sanitizes the seeded text block html', () => {
+		const content = JSON.stringify([
+			{
+				id: 'b1',
+				type: 'text',
+				content: { html: '<p>Hi</p><img src="x" onerror="window.__x=1">' },
+			},
+		]);
+		const patch = addLanguage(templateEntity({ content }), 'de', TEMPLATE_TRANSLATABLE_FIELDS);
+		const html = parseTranslations(patch.translations)['de']!.blocks['b1']!.html;
+		expect(html).toContain('Hi');
+		expect(html).not.toContain('onerror');
+	});
+
 	it('does not seed previewText for entities without that field', () => {
 		const patch = addLanguage(templateEntity(), 'de', TRANSACTIONAL_TRANSLATABLE_FIELDS);
 		const overlay = parseTranslations(patch.translations)['de'];
@@ -137,12 +153,16 @@ describe('addLanguage', () => {
 			supportedLanguages: ['en', 'de'],
 			translations: serializeTranslations({ de: { subject: 'Hallo', blocks: {} } }),
 		});
-		expect(categoryOf(() => addLanguage(entity, 'de', TEMPLATE_TRANSLATABLE_FIELDS))).toBe('already_exists');
+		expect(categoryOf(() => addLanguage(entity, 'de', TEMPLATE_TRANSLATABLE_FIELDS))).toBe(
+			'already_exists'
+		);
 	});
 
 	it('rejects a language already in supportedLanguages (already_exists)', () => {
 		const entity = templateEntity({ supportedLanguages: ['en', 'de'] });
-		expect(categoryOf(() => addLanguage(entity, 'de', TEMPLATE_TRANSLATABLE_FIELDS))).toBe('already_exists');
+		expect(categoryOf(() => addLanguage(entity, 'de', TEMPLATE_TRANSLATABLE_FIELDS))).toBe(
+			'already_exists'
+		);
 	});
 });
 
@@ -167,8 +187,8 @@ describe('removeLanguage', () => {
 	});
 
 	it('throws not_found for a missing overlay', () => {
-		expect(categoryOf(() => removeLanguage(templateEntity({ supportedLanguages: ['en'] }), 'es'))).toBe(
-			'not_found',
-		);
+		expect(
+			categoryOf(() => removeLanguage(templateEntity({ supportedLanguages: ['en'] }), 'es'))
+		).toBe('not_found');
 	});
 });

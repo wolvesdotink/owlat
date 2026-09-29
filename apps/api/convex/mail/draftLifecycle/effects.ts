@@ -30,6 +30,7 @@ import { indexMessageAttachments } from '../attachmentIndex';
 import { applyMailboxUsageDelta } from '../mailboxUsage';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import { buildSnippet } from '../deliveryPipeline/insert';
+import { changedRemoteFlags, recordRemoteChanges } from '../external/remoteOps';
 import { refuse } from '../../lib/lifecycle';
 import {
 	DRAFT_LIFECYCLE,
@@ -295,6 +296,8 @@ async function runSentEffects(
 				flagAnswered: true,
 				updatedAt: now,
 			});
+			const flags = changedRemoteFlags(original, { answered: true }); // mirrored on an external provider
+			await recordRemoteChanges(ctx, [{ kind: 'flags', message: original, flags }]);
 		}
 	}
 

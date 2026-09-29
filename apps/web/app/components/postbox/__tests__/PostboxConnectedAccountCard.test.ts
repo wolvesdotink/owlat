@@ -42,6 +42,7 @@ type Account = {
 	status: string;
 	lastError?: string;
 	lastSyncAt?: number;
+	syncMode?: 'full' | 'incoming';
 };
 type Retained = {
 	configured: false;
@@ -66,6 +67,7 @@ const CONNECTED: Account = {
 	imapUsername: 'me@example.com',
 	status: 'connected',
 	lastSyncAt: Date.UTC(2026, 8, 17, 9, 30),
+	syncMode: 'full',
 };
 
 const accountData: Ref<Account | Retained | null> = ref(null);
@@ -147,6 +149,10 @@ const connectFormStub = {
 	props: ['provider', 'mode', 'account', 'hideCancel'],
 	template: '<form class="connect-form" />',
 };
+const syncToggleStub = {
+	props: ['mode', 'mailboxId'],
+	template: '<div data-testid="sync-mode-toggle" :data-mode="mode" />',
+};
 
 const mountCard = (props: Record<string, unknown> = {}) =>
 	mount(PostboxConnectedAccountCard, {
@@ -158,11 +164,18 @@ const mountCard = (props: Record<string, unknown> = {}) =>
 				UiButton: buttonStub,
 				UiConfirmationDialog: confirmStub,
 				PostboxMailboxConnectForm: connectFormStub,
+				PostboxSyncModeToggle: syncToggleStub,
 			},
 		},
 	});
 
 describe('PostboxConnectedAccountCard — a live connection', () => {
+	it('offers the two-way sync switch in the state the account is in', () => {
+		accountData.value = { ...CONNECTED, syncMode: 'incoming' };
+		const toggle = mountCard().find('[data-testid="sync-mode-toggle"]');
+		expect(toggle.attributes('data-mode')).toBe('incoming');
+	});
+
 	it('names the mailbox, how it is doing, and every way out of it', () => {
 		const wrapper = mountCard();
 		expect(wrapper.find('[data-testid="connected-account-address"]').text()).toBe('me@example.com');

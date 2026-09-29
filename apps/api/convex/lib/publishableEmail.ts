@@ -18,6 +18,7 @@ import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from './const
 import { nextContentRevision } from './contentRevision';
 import { parseTranslations } from './emailTranslations';
 import { buildSearchableText } from './queryHelpers';
+import { sanitizeStoredBlocksJson, sanitizeTranslationsJson } from './emailContentSanitize';
 
 export type PublishableEmailRow = Doc<'emailTemplates'> | Doc<'transactionalEmails'>;
 
@@ -112,6 +113,8 @@ type NotDuplicated = (typeof NOT_DUPLICATED)[number];
  *
  * A source whose HTML is still behind its content (`htmlRenderState.stale`)
  * passes that state on, so the copy's stale HTML cannot be published either.
+ * Text-block HTML in the copied content and translation overlays is sanitized,
+ * as on every other content write.
  *
  * The caller sets the copy's name (and slug), `searchableText`,
  * `status: 'draft'`, `createdAt` and `updatedAt`.
@@ -122,6 +125,10 @@ export function duplicateEmailFields<T extends PublishableEmailRow>(
 	const copy: Record<string, unknown> = { ...row };
 	for (const key of NOT_DUPLICATED) delete copy[key];
 	if (row.htmlRenderState?.stale) copy['htmlRenderState'] = row.htmlRenderState;
+	copy['content'] = sanitizeStoredBlocksJson(row.content);
+	if (row.translations !== undefined) {
+		copy['translations'] = sanitizeTranslationsJson(row.translations);
+	}
 	copy['contentBlockVersion'] = row.contentBlockVersion ?? CURRENT_CONTENT_BLOCK_VERSION;
 	copy['rendererVersion'] = row.rendererVersion ?? CURRENT_RENDERER_VERSION;
 	return copy as Omit<T, NotDuplicated> & Pick<Partial<T>, 'htmlRenderState'>;
@@ -209,7 +216,8 @@ export async function buildEditablePatch(
 
 	if (args.name !== undefined) patch.name = args.name.trim();
 	if (args.subject !== undefined) patch.subject = args.subject.trim();
-	if (args.content !== undefined) patch.content = args.content;
+	// Text-block HTML is sanitized on every write (lib/emailContentSanitize.ts).
+	if (args.content !== undefined) patch.content = sanitizeStoredBlocksJson(args.content);
 	if (args.htmlContent !== undefined) patch.htmlContent = args.htmlContent;
 
 	// Blocks and the HTML rendered from them, in one write: the HTML matches
@@ -228,7 +236,9 @@ export async function buildEditablePatch(
 	}
 
 	if (args.supportedLanguages !== undefined) patch.supportedLanguages = args.supportedLanguages;
-	if (args.translations !== undefined) patch.translations = args.translations;
+	if (args.translations !== undefined) {
+		patch.translations = sanitizeTranslationsJson(args.translations);
+	}
 	if (args.htmlTranslations !== undefined) patch.htmlTranslations = args.htmlTranslations;
 
 	if (args.linkedBlockIds !== undefined) {
