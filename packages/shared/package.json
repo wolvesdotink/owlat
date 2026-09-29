@@ -194,6 +194,18 @@
 			"types": "./src/listUnsubscribe.ts",
 			"import": "./src/listUnsubscribe.ts"
 		},
+		"./mailto": {
+			"types": "./src/mailto.ts",
+			"import": "./src/mailto.ts"
+		},
+		"./mailSearch": {
+			"types": "./src/mailSearch.ts",
+			"import": "./src/mailSearch.ts"
+		},
+		"./chatMentions": {
+			"types": "./src/chatMentions.ts",
+			"import": "./src/chatMentions.ts"
+		},
 		"./ical": {
 			"types": "./src/ical.ts",
 			"import": "./src/ical.ts"
@@ -365,6 +377,10 @@
 		"./logRedaction": {
 			"types": "./src/logRedaction.ts",
 			"import": "./src/logRedaction.ts"
+		},
+		"./threadStatus": {
+			"types": "./src/threadStatus.ts",
+			"import": "./src/threadStatus.ts"
 		},
 		"./utils/guards": {
 			"types": "./src/utils/guards.ts",

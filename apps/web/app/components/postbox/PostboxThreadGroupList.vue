@@ -5,23 +5,13 @@
  * conversations, and this renderer used to mount every one of them and offer
  * only a manual "Load more".
  */
-import { POSTBOX_ROW_HEIGHT } from '~/utils/postboxDensity';
+import { POSTBOX_ROW_HEIGHT, POSTBOX_VIRTUAL_THRESHOLD } from '~/utils/postboxDensity';
 import { usePostboxVirtualList } from '~/composables/postbox/usePostboxVirtualList';
 import { usePostboxListAutoLoad } from '~/composables/postbox/usePostboxListAutoLoad';
+import type { PostboxConversationThread } from './PostboxConversationRow.vue';
 
 const props = defineProps<{
-	threads: Array<{
-		_id: string;
-		latestMessageId?: string;
-		latestFromAddress: string;
-		latestSubject: string;
-		latestSnippet: string;
-		lastMessageAt: number;
-		messageCount: number;
-		unreadCount: number;
-		hasFlagged: boolean;
-		hasAttachments: boolean;
-	}>;
+	threads: PostboxConversationThread[];
 	loading: boolean;
 	folderRole: string;
 	activeMessageId?: string | null;
@@ -53,12 +43,11 @@ const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard({
 // Same contract as the flat list: only large lists pay the windowing cost, row
 // height is the known per-density constant, and the focused row is dragged back
 // into the window so j/k never loses the ring on an unmounted row.
-const VIRTUAL_THRESHOLD = 100;
 const scrollEl = ref<HTMLElement | null>(null);
 const { density } = usePostboxSettings();
 const rowHeight = computed(() => POSTBOX_ROW_HEIGHT[density.value]);
 const itemCount = computed(() => props.threads.length);
-const virtualize = computed(() => itemCount.value > VIRTUAL_THRESHOLD);
+const virtualize = computed(() => itemCount.value > POSTBOX_VIRTUAL_THRESHOLD);
 
 const { range, syncScroll, scrollToIndex } = usePostboxVirtualList({
 	scrollEl,
@@ -136,69 +125,13 @@ const { handleScroll } = usePostboxListAutoLoad({
 						contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px);
 					"
 				>
-					<NuxtLink
-						:id="`postbox-thread-${thread._id}`"
-						role="option"
-						:aria-selected="focusedIndex === windowStart + localI"
-						:aria-label="
-							thread.unreadCount > 0
-								? t('components.postbox.postboxThreadGroupList.rowLabel', {
-										subject:
-											thread.latestSubject ||
-											t('components.postbox.postboxThreadGroupList.noSubjectLabel'),
-										count: thread.unreadCount,
-									})
-								: undefined
-						"
+					<PostboxConversationRow
+						:thread="thread"
+						:dom-id="`postbox-thread-${thread._id}`"
 						:to="threadTo(thread)"
-						class="pbx-row-link block px-4 py-3 hover:bg-bg-elevated"
-						:class="{
-							'bg-bg-elevated': activeMessageId && activeMessageId === thread.latestMessageId,
-						}"
-					>
-						<div class="flex items-baseline justify-between gap-3">
-							<span
-								class="truncate text-sm"
-								:class="
-									thread.unreadCount > 0 ? 'font-semibold text-text-primary' : 'text-text-secondary'
-								"
-							>
-								{{ thread.latestFromAddress }}
-								<span v-if="thread.messageCount > 1" class="text-text-tertiary font-normal"
-									>({{ thread.messageCount }})</span
-								>
-							</span>
-							<span class="text-xs text-text-tertiary flex-shrink-0">
-								{{ formatThreadTimestamp(thread.lastMessageAt) }}
-							</span>
-						</div>
-						<div class="flex items-center gap-1.5 mt-0.5">
-							<Icon v-if="thread.hasFlagged" name="lucide:star" class="w-3.5 h-3.5 text-warning" />
-							<Icon
-								v-if="thread.hasAttachments"
-								name="lucide:paperclip"
-								class="w-3.5 h-3.5 text-text-tertiary"
-							/>
-							<p
-								class="truncate text-sm flex-1"
-								:class="
-									thread.unreadCount > 0 ? 'font-medium text-text-primary' : 'text-text-secondary'
-								"
-							>
-								{{
-									thread.latestSubject || t('components.postbox.postboxThreadGroupList.noSubject')
-								}}
-							</p>
-							<span
-								v-if="thread.unreadCount > 0"
-								class="text-xs bg-brand text-text-inverse rounded-full px-1.5 min-w-[1.25rem] text-center"
-								>{{ thread.unreadCount }}</span
-							>
-						</div>
-						<p class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">
-							{{ thread.latestSnippet }}
-						</p>
-					</NuxtLink>
+						:selected="focusedIndex === windowStart + localI"
+						:active="!!activeMessageId && activeMessageId === thread.latestMessageId"
+					/>
 				</li>
 			</div>
 		</ul>

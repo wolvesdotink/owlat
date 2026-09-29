@@ -3,7 +3,7 @@
  * and live hits from the real mail search.
  *
  * This is what the Postbox rail's search bar used to be. The grammar itself is
- * unchanged — the same `~/utils/postboxSearchQuery` parser reaching the same
+ * unchanged — the same `@owlat/shared/mailSearch` parser reaching the same
  * `mail.mailbox.search.search` query, and the same `~/utils/postboxSearchSuggest`
  * ranking for the token under the caret — it just renders as palette rows now
  * instead of a second input with its own dropdown.
@@ -17,7 +17,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { PaletteItem } from '~/lib/commandPalette';
 import { SEARCH_MIN_QUERY } from '~/lib/commandPaletteCore';
-import { parseSearchQuery } from '~/utils/postboxSearchQuery';
+import { parseSearchQuery } from '@owlat/shared/mailSearch';
 import {
 	activeSearchToken,
 	applySearchSuggestion,

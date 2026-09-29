@@ -24,6 +24,7 @@ import { usePostboxRowPickers } from '../../../composables/postbox/usePostboxRow
 import { nextUnreadIndex } from '../../../utils/postboxShortcuts';
 import PostboxThreadRow from '../PostboxThreadRow.vue';
 import PostboxRowCore from '../PostboxRowCore.vue';
+import PostboxThreadRowBody from '../PostboxThreadRowBody.vue';
 import PostboxThreadListSkeleton from '../PostboxThreadListSkeleton.vue';
 import PostboxEmptyState from '../PostboxEmptyState.vue';
 import UiSkeleton from '@owlat/ui/components/ui/Skeleton.vue';
@@ -130,6 +131,7 @@ function mountList(opts: {
 			components: {
 				PostboxThreadRow,
 				PostboxRowCore,
+				PostboxThreadRowBody,
 				PostboxThreadListSkeleton,
 				PostboxEmptyState,
 				UiSkeleton,

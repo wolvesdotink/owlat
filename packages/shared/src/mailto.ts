@@ -1,9 +1,15 @@
 /**
  * Pure `mailto:` parser (RFC 6068).
  *
- * Used when Owlat is the OS default mail handler and the system hands the
- * desktop app a `mailto:` URL to open a prefilled composer. Kept free of any
- * Tauri/DOM dependency so it is trivially unit-testable and reusable.
+ * One parser for every `mailto:` Owlat reads:
+ *   - the desktop app's deep link, when Owlat is the OS default mail handler
+ *     and the system hands it a `mailto:` URL to open a prefilled composer;
+ *   - the `mailto:` target of a received List-Unsubscribe header. That URI is
+ *     attacker-controlled, so nothing here may throw, and callers must
+ *     HTML-escape `subject`/`body` before embedding them in markup.
+ *
+ * Imports nothing and touches no DOM, so every workspace (and every Docker
+ * image that copies this package's source) can use it as is.
  *
  * Behaviour:
  *   - recipients may appear in the path (`mailto:a@x,b@y`) and/or as `to`
@@ -35,11 +41,20 @@ function decodeComponent(raw: string): string {
 	}
 }
 
-/** Split a comma-separated address list, decode + trim each, drop empties. */
-function splitAddresses(raw: string): string[] {
+/**
+ * Split an RFC 6068 comma-separated address list: split on the literal commas,
+ * trim each entry, drop empties.
+ *
+ * With `decode`, each entry is percent-decoded after the split (the raw
+ * `mailto:` form, where an encoded `%2C` belongs to its address and must not
+ * split it). Leave `decode` off for a list that is already decoded, such as
+ * the `?to=` route query the desktop deep link hands to the compose window:
+ * decoding it a second time would alter an address holding a literal `%`.
+ */
+export function splitMailtoAddressList(raw: string, options: { decode?: boolean } = {}): string[] {
 	return raw
 		.split(',')
-		.map((addr) => decodeComponent(addr).trim())
+		.map((addr) => (options.decode ? decodeComponent(addr) : addr).trim())
 		.filter((addr) => addr.length > 0);
 }
 
@@ -55,7 +70,7 @@ export function parseMailto(uri: string): ParsedMailto | null {
 	let body: string | undefined;
 
 	const path = (match[1] ?? '').trim();
-	if (path) to.push(...splitAddresses(path));
+	if (path) to.push(...splitMailtoAddressList(path, { decode: true }));
 
 	const query = match[2] ?? '';
 	if (query) {
@@ -67,13 +82,13 @@ export function parseMailto(uri: string): ParsedMailto | null {
 			const key = decodeComponent(rawKey).toLowerCase();
 			switch (key) {
 				case 'to':
-					to.push(...splitAddresses(rawVal));
+					to.push(...splitMailtoAddressList(rawVal, { decode: true }));
 					break;
 				case 'cc':
-					cc.push(...splitAddresses(rawVal));
+					cc.push(...splitMailtoAddressList(rawVal, { decode: true }));
 					break;
 				case 'bcc':
-					bcc.push(...splitAddresses(rawVal));
+					bcc.push(...splitMailtoAddressList(rawVal, { decode: true }));
 					break;
 				case 'subject':
 					if (subject === undefined) subject = decodeComponent(rawVal);

@@ -2,8 +2,11 @@
  * One status per conversation row, highest priority wins.
  *
  * The sidebar (and Today) never shows two pills on a row. Pure and
- * framework-free so the ordering stays pinned by unit tests; the web mirrors
- * the same priority list for team-inbox rows it derives client-side.
+ * framework-free (it imports nothing) so the ordering stays pinned by unit
+ * tests and one rule serves both sides: the Convex Today/sidebar reads
+ * (`apps/api/convex/today`) derive it server-side, and the web's
+ * `utils/conversationStatus.ts` builds its wider pill vocabulary on top of
+ * this priority list and derives Postbox list rows with `deriveThreadStatus`.
  */
 
 export type ThreadStatus = 'draft_ready' | 'needs_you' | 'updated' | 'waiting';

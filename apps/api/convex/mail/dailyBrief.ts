@@ -28,6 +28,7 @@ import type { Id } from '../_generated/dataModel';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { urgencyFallbackScore } from './ai/priorityScore';
 import { resolveCounterpartName } from './counterpartName';
+import type { MailCategory } from './category';
 
 // ─── Pure ranking + bundling (unit-tested, framework-free) ───────────────────
 
@@ -61,7 +62,13 @@ export function rankBriefItems(items: BriefItem[]): BriefItem[] {
 	});
 }
 
-type BundledCategory = 'newsletter' | 'notification' | 'receipt';
+/** The low-signal categories the brief bundles away (person/other never bundled). */
+const BUNDLED_CATEGORIES = [
+	'newsletter',
+	'notification',
+	'receipt',
+] as const satisfies readonly MailCategory[];
+type BundledCategory = (typeof BUNDLED_CATEGORIES)[number];
 
 export interface BundledEntry {
 	threadId: Id<'mailThreads'>;
@@ -69,9 +76,6 @@ export interface BundledEntry {
 	fromAddress: string;
 	subject: string;
 }
-
-/** The low-signal categories the brief bundles away (person/other never bundled). */
-const BUNDLED_CATEGORIES: readonly BundledCategory[] = ['newsletter', 'notification', 'receipt'];
 
 export function isBundledCategory(label: string): label is BundledCategory {
 	for (const c of BUNDLED_CATEGORIES) if (c === label) return true;
@@ -86,9 +90,13 @@ export function isBundledCategory(label: string): label is BundledCategory {
  */
 export function bundleLowSignal(entries: BundledEntry[]): {
 	bundled: BundledEntry[];
-	bundledCounts: { newsletter: number; notification: number; receipt: number };
+	bundledCounts: Record<BundledCategory, number>;
 } {
-	const bundledCounts = { newsletter: 0, notification: 0, receipt: 0 };
+	const bundledCounts: Record<BundledCategory, number> = {
+		newsletter: 0,
+		notification: 0,
+		receipt: 0,
+	};
 	for (const e of entries) bundledCounts[e.category] += 1;
 	return { bundled: entries, bundledCounts };
 }

@@ -25,6 +25,7 @@
 
 import { v } from 'convex/values';
 import { normalizeEmail } from '@owlat/shared';
+import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 import { api, internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
@@ -70,7 +71,7 @@ export interface SubscriptionMessageInput {
 	fromName?: string;
 	receivedAt: number;
 	flagSeen: boolean;
-	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
+	unsubscribe?: ListUnsubscribeTarget;
 }
 
 interface SubscriptionSender {

@@ -218,14 +218,7 @@ export const applyResult = internalMutation({
 				// Single write point for the unified priority score + the HEY-style
 				// screener gate (mail/ai/needsReplyScoring.ts). Fail-soft: a missing
 				// message/mailbox row skips scoring and persists the raw result.
-				resolved = await scoreAndScreenResult(ctx, {
-					mailboxId: thread.mailboxId,
-					// A shared team inbox has no single owner: `mailbox.userId` is only the
-					// connecting admin, so omit it and the screener stays off for the team.
-					ownerUserId: mailbox.scope === 'shared' ? undefined : mailbox.userId,
-					message,
-					resolved,
-				});
+				resolved = await scoreAndScreenResult(ctx, { mailbox, message, resolved });
 			}
 		}
 

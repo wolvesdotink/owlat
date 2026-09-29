@@ -1,6 +1,16 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { FunctionReturnType } from 'convex/server';
 import type { Ref } from 'vue';
+
+/**
+ * One chat message as `listMessages` returns it: the stored row plus its
+ * resolved `author` and the `isAssistant` flag. The message list and the
+ * message row both take this, so neither can drift from the query.
+ */
+export type ChatMessageRow = FunctionReturnType<
+	typeof api.chat.messages.listMessages
+>['messages'][number];
 
 /**
  * Data + actions for a single chat room (channel or DM).

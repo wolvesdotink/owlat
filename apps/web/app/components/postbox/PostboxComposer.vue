@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
-import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
-import type { ComposerAttachment } from '~/composables/postbox/usePostboxComposeAttachments';
+import type { ComposerMode, ComposerSeed } from '~/composables/postbox/usePostboxCompose';
 import type { ComposerPromotePayload } from '~/composables/postbox/usePostboxComposerStack';
 import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
 import { convertReplyToReplyAll } from '~/utils/postboxReplyDefault';
@@ -11,19 +10,8 @@ const EmailBuilder = defineAsyncComponent(() =>
 );
 
 const props = defineProps<{
-	mailboxId: Id<'mailboxes'>;
-	draftId?: Id<'mailDrafts'>;
-	inReplyToMessageId?: Id<'mailMessages'>;
-	prefillTo?: string[];
-	prefillCc?: string[];
-	prefillBcc?: string[];
-	prefillSubject?: string;
-	prefillBodyHtml?: string;
-	/** Attachment refs already committed to `draftId` (see ComposerSpec). */
-	prefillAttachments?: ComposerAttachment[];
-	forwardAttachmentsFromMessageId?: Id<'mailMessages'>;
-	attachPendingKey?: string;
-	initialMode?: ComposerMode;
+	/** The one-time seed; handed to usePostboxCompose whole. */
+	seed: ComposerSeed;
 	/**
 	 * On a plain Reply, the extra recipients Reply-All would include. When
 	 * non-empty the envelope shows a dismissible "Also include …? (reply-all)"
@@ -40,7 +28,11 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-	(e: 'sent', undoToken: string, sendAt: number): void;
+	/**
+	 * The send went out (or was queued offline). The undo window is already
+	 * armed; hosts only do their own bookkeeping (close, collapse).
+	 */
+	(e: 'sent', outcome: { scheduled: boolean }): void;
 	(e: 'discarded'): void;
 	(e: 'minimize'): void;
 	(e: 'promote', payload: ComposerPromotePayload): void;
@@ -88,20 +80,7 @@ const {
 	flush,
 	send,
 	discard,
-} = usePostboxCompose({
-	mailboxId: props.mailboxId,
-	draftId: props.draftId,
-	inReplyToMessageId: props.inReplyToMessageId,
-	prefillTo: props.prefillTo,
-	prefillCc: props.prefillCc,
-	prefillBcc: props.prefillBcc,
-	prefillSubject: props.prefillSubject,
-	prefillBodyHtml: props.prefillBodyHtml,
-	prefillAttachments: props.prefillAttachments,
-	forwardAttachmentsFromMessageId: props.forwardAttachmentsFromMessageId,
-	attachPendingKey: props.attachPendingKey,
-	initialMode: props.initialMode,
-});
+} = usePostboxCompose(props.seed);
 
 // Inline ghost-text autocomplete: gated by the `ai` flag AND the per-user
 // toggle; the subject line is the bounded thread context for the prompt.
@@ -134,7 +113,7 @@ const { persistentToolbar, toggleToolbar } = usePostboxToolbarPreference();
 // Canned responses ("/" slash-trigger); inert when the mailbox has no snippets.
 // The third argument is what a snippet's sender-identity variables resolve to.
 const { editorSnippets, snippetVariableContext } = usePostboxComposerSnippets(
-	() => props.mailboxId ?? null,
+	() => props.seed.mailboxId ?? null,
 	() => toAddresses.value[0],
 	() => ({
 		name: availableIdentities.value.find((i) => i.address === fromAddress.value)?.label,
@@ -211,7 +190,7 @@ const {
 	confirmOpen: staleConfirmOpen,
 	blockSend: blockStaleSend,
 	confirm: confirmStaleSend,
-} = usePostboxStaleReplyGuard(() => props.inReplyToMessageId, {
+} = usePostboxStaleReplyGuard(() => props.seed.inReplyToMessageId, {
 	onConfirm: (opts) => void handleSend(opts),
 });
 
@@ -220,7 +199,7 @@ const {
 // model involved, so all of it works with the `ai` flag off.
 const guards = usePostboxComposerGuards(
 	{
-		mailboxId: () => props.mailboxId,
+		mailboxId: () => props.seed.mailboxId,
 		identities: () => availableIdentities.value,
 		fromAddress: () => fromAddress.value,
 		subject: () => subject.value,
@@ -257,10 +236,10 @@ async function handleSend(opts?: SendOptions) {
 		// `send()` throws on a backend reject (no_recipients, from_revoked,
 		// illegal_edge, scan-block, …). Those arrive as a SurfacedOperationError,
 		// because the operation module has already toasted them; here we only need
-		// to stay put: do NOT emit `sent` (which would arm undo + navigate away) on
-		// failure. A real `{ undoToken, sendAt }` reaching here means it sent.
-		const result = await send(opts);
-		emit('sent', result.undoToken, result.sendAt);
+		// to stay put: do NOT emit `sent` (the host would close or collapse) on
+		// failure. Reaching the emit means it sent, and send() armed the undo.
+		await send(opts);
+		emit('sent', { scheduled: opts?.scheduledSendAt !== undefined });
 	} catch (err) {
 		// Anything NOT already surfaced (the draft row could not be created, a
 		// throw from the flush before it) gets a toast of its own — this used to
@@ -357,7 +336,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			v-model:cc-addresses="ccAddresses"
 			v-model:bcc-addresses="bccAddresses"
 			v-model:subject="subject"
-			:mailbox-id="mailboxId"
+			:mailbox-id="seed.mailboxId"
 			:from-address="fromAddress"
 			:available-identities="availableIdentities"
 			:reply-all-recipients="replyAllRecipients"
@@ -405,7 +384,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 				:suggestions-enabled="ghostSuggestionsEnabled"
 				:ghost-thread-context="subject"
 				:rewrite-enabled="aiRewriteEnabled"
-				:rewrite-mailbox-id="mailboxId"
+				:rewrite-mailbox-id="seed.mailboxId"
 				:persistent-toolbar="persistentToolbar"
 				:emoji-shortcodes-enabled="true"
 				:inline-images-enabled="true"
@@ -447,8 +426,8 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 		<PostboxComposerAdvisory
 			v-model:body-html="bodyHtml"
 			:ai-enabled="aiRewriteEnabled"
-			:mailbox-id="mailboxId"
-			:in-reply-to-message-id="inReplyToMessageId"
+			:mailbox-id="seed.mailboxId"
+			:in-reply-to-message-id="seed.inReplyToMessageId"
 		/>
 
 		<PostboxComposerFooter
@@ -486,7 +465,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 		<PostboxComposerDialogs
 			v-model:schedule-open="scheduleOpen"
 			v-model:stale-open="staleConfirmOpen"
-			:mailbox-id="mailboxId"
+			:mailbox-id="seed.mailboxId"
 			:recipients="[...toAddresses, ...ccAddresses, ...bccAddresses]"
 			:seal-confirm-open="seal.confirmOpen"
 			:seal-state="seal.state"

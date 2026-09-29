@@ -16,6 +16,7 @@ import { POSTBOX_SWIPE_COMMIT_PX } from '~/utils/postboxSwipe';
 
 import PostboxThreadRow, { type PostboxThreadRowMessage } from '../PostboxThreadRow.vue';
 import PostboxRowCore from '../PostboxRowCore.vue';
+import PostboxThreadRowBody from '../PostboxThreadRowBody.vue';
 import PostboxSwipeTrack from '../PostboxSwipeTrack.vue';
 
 beforeAll(() => {
@@ -58,6 +59,7 @@ function mountRow(props: Partial<Record<'swipeLeft' | 'swipeRight', string>> = {
 			plugins: [createTestI18n()],
 			components: {
 				PostboxRowCore,
+				PostboxThreadRowBody,
 				PostboxSwipeTrack,
 				Icon: iconStub,
 				NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },

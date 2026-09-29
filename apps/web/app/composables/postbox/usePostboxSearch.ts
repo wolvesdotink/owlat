@@ -4,7 +4,7 @@
  * Parses the user's free-form query into operators (`from:` / `is:` /
  * `before:` etc.) on the client, then hands the structured payload to
  * the Convex `mailMailbox.search` query. The grammar itself lives in
- * `~/utils/postboxSearchQuery` so it stays testable without a Convex mount.
+ * `@owlat/shared/mailSearch` so it stays testable without a Convex mount.
  *
  * The subscription runs off a DEBOUNCED copy of the box: every keystroke used
  * to tear down and re-open a Convex subscription (typing "invoice" opened
@@ -14,7 +14,7 @@
 
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { parseSearchQuery } from '~/utils/postboxSearchQuery';
+import { parseSearchQuery } from '@owlat/shared/mailSearch';
 import { searchWalkStep } from '~/utils/postboxSearchWalk';
 
 /** How long the box has to be still before the subscription re-opens. */

@@ -25,7 +25,7 @@
  * `migrations/0037_backfill_mail_categories:run` for recent existing threads.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import {
 	internalMutation,
 	internalQuery,
@@ -44,19 +44,11 @@ import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/
 
 // ─── Pure deterministic classifier ───────────────────────────────────────────
 
-const MAIL_CATEGORIES = [
-	'person',
-	'newsletter',
-	'notification',
-	'receipt',
-	'promotion',
-	'spam',
-	'other',
-] as const;
-export type MailCategory = (typeof MAIL_CATEGORIES)[number];
+/** A smart-inbox category label; the schema validator is the one list. */
+export type MailCategory = Infer<typeof mailCategoryLabelValidator>;
 
-/** Categories a user may pick in "Recategorize as…" (no ambiguity there). */
-type MailCategorySource = 'heuristic' | 'llm' | 'user';
+/** Who assigned the label (`user` = a remembered per-sender override). */
+type MailCategorySource = Infer<typeof mailCategorySourceValidator>;
 
 /** Subject keywords that mark transactional receipts / orders / invoices. */
 const RECEIPT_SUBJECT =

@@ -55,6 +55,15 @@ export const POSTBOX_ROW_HEIGHT: Record<PostboxDensity, number> = {
 };
 
 /**
+ * Row count above which a Postbox list renderer switches to windowed rendering.
+ * Below it every row is mounted at its natural height; above it only the rows
+ * in view are mounted and pinned to POSTBOX_ROW_HEIGHT. One value for every
+ * renderer (flat, conversations, categories, sections), so the switch happens
+ * at the same size whichever view the reader picked.
+ */
+export const POSTBOX_VIRTUAL_THRESHOLD = 100;
+
+/**
  * Height of a collapsible section header in the grouped list renderers
  * (`px-4 py-2` around a 16px `text-xs` line). Density-independent: the header
  * is a label, not a row, and stays the same size in both modes. The sectioned

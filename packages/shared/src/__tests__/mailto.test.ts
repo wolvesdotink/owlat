@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseMailto } from '../mailto';
+import { parseMailto, splitMailtoAddressList } from '../mailto';
 
 describe('parseMailto', () => {
 	it('parses a single recipient in the path', () => {
@@ -76,5 +76,79 @@ describe('parseMailto', () => {
 	it('is not fooled by a non-string input', () => {
 		// @ts-expect-error — exercising the runtime guard
 		expect(parseMailto(null)).toBeNull();
+	});
+});
+
+// The `mailto:` target of a List-Unsubscribe header on received mail.
+describe('parseMailto on List-Unsubscribe targets', () => {
+	it('parses subject and body alongside the recipient', () => {
+		expect(
+			parseMailto('mailto:unsub@example.com?subject=unsubscribe&body=please%20remove%20me')
+		).toEqual({
+			to: ['unsub@example.com'],
+			cc: [],
+			bcc: [],
+			subject: 'unsubscribe',
+			body: 'please remove me',
+		});
+	});
+
+	it('reads a recipient given only as a `to` field (empty path)', () => {
+		expect(parseMailto('mailto:?to=unsub@list.example&subject=unsubscribe')).toEqual({
+			to: ['unsub@list.example'],
+			cc: [],
+			bcc: [],
+			subject: 'unsubscribe',
+		});
+	});
+
+	it('splits comma-separated recipients next to a subject', () => {
+		expect(parseMailto('mailto:a@x.com,b@y.com?subject=unsub')?.to).toEqual(['a@x.com', 'b@y.com']);
+	});
+
+	it('decodes %2B in the address', () => {
+		expect(parseMailto('mailto:list%2Bunsub@example.com')?.to).toEqual(['list+unsub@example.com']);
+	});
+
+	it('keeps a literal + in a query value (not form encoding)', () => {
+		expect(parseMailto('mailto:u@x.com?subject=a+b')?.subject).toBe('a+b');
+	});
+
+	it('returns a hostile body verbatim for the caller to escape', () => {
+		const parsed = parseMailto(
+			'mailto:unsub@evil.test?body=%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E'
+		);
+		expect(parsed?.body).toBe('<img src=x onerror=alert(1)>');
+	});
+
+	it('returns null for a non-mailto target or an empty string', () => {
+		expect(parseMailto('https://example.com/unsub')).toBeNull();
+		expect(parseMailto('')).toBeNull();
+	});
+});
+
+describe('splitMailtoAddressList', () => {
+	it('splits, trims and drops empties', () => {
+		expect(splitMailtoAddressList(' a@x.com , ,b@y.com ')).toEqual(['a@x.com', 'b@y.com']);
+		expect(splitMailtoAddressList('')).toEqual([]);
+	});
+
+	it('leaves an already-decoded list alone by default', () => {
+		expect(splitMailtoAddressList('a%41b@x.com, list+news@y.com')).toEqual([
+			'a%41b@x.com',
+			'list+news@y.com',
+		]);
+	});
+
+	it('decodes each entry after the split when asked', () => {
+		expect(splitMailtoAddressList('a%2Cb@x.com,c%40y.com', { decode: true })).toEqual([
+			'a,b@x.com',
+			'c@y.com',
+		]);
+	});
+
+	it('round-trips the deep-link hand-off: parseMailto output joined with ", "', () => {
+		const parsed = parseMailto('mailto:list%2Bnews@example.com,b@y.com?to=c@z.com');
+		expect(splitMailtoAddressList(parsed?.to.join(', ') ?? '')).toEqual(parsed?.to);
 	});
 });

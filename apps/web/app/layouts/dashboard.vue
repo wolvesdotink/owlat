@@ -2,6 +2,7 @@
 import { announcedPageLabel, shouldMoveFocusToMain } from '~/utils/liveAnnounce';
 import { useSectionNavigation } from '~/composables/useSectionNavigation';
 import { CORE_NAV_HREFS } from '~/lib/dashboardNavigationCore';
+import { UNDO_TOAST_REGION_ID } from '~/utils/undoToastRegion';
 
 const { t } = useI18n();
 const route = useRoute();
@@ -595,6 +596,11 @@ const sidebarDesktopClass = computed(() => {
 		<!-- Compose over the current page (the top-bar button, the palette and
 		     the c chord), never by navigating to the mailbox. -->
 		<ShellComposerOverlay />
+
+		<!-- Where every undo countdown toast lands (mail send, review approve,
+		     campaign send): one bottom-left column, so two live windows stack
+		     instead of covering each other's Undo button. -->
+		<div :id="UNDO_TOAST_REGION_ID" class="fixed bottom-4 left-4 z-50 flex flex-col gap-2" />
 
 		<!-- Keyboard shortcuts help modal -->
 		<KeyboardShortcutsHelp />

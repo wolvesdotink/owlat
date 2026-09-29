@@ -55,6 +55,9 @@ vi.mock('@owlat/api', () => ({
 }));
 
 // The attachments sibling pulls its own Convex context; stub it out.
+// send() arms the undo window; its toast state is not what these cases test.
+vi.mock('../usePostboxUndoSend', () => ({ usePostboxUndoSend: () => ({ arm: () => {} }) }));
+
 vi.mock('../usePostboxComposeAttachments', () => ({
 	usePostboxComposeAttachments: () => ({
 		attachments: ref([]),

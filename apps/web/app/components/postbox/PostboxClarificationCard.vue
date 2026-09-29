@@ -1,14 +1,14 @@
 <script setup lang="ts">
+import ClarificationQuestions from '~/components/agent-tasks/ClarificationQuestions.vue';
 import TaskActions from '~/components/agent-tasks/TaskActions.vue';
 import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
-import TaskOptions from '~/components/agent-tasks/TaskOptions.vue';
 import { resolveAgentTaskShortcut } from '~/utils/agentTaskShortcuts';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import type { ReplyQueueItem } from '~/utils/postboxReplyQueue';
 import { clarificationCardState } from '~/utils/postboxReplyQueue';
-import { canonicalOption, localizedQuestionCopy } from '~/utils/clarificationLocale';
+import type { ClarificationAnswer } from '~/utils/clarificationAnswers';
 
 /**
  * "Needs your input" Reply Queue card — the Postbox-native clarification loop,
@@ -18,7 +18,8 @@ import { canonicalOption, localizedQuestionCopy } from '~/utils/clarificationLoc
  * When the AI decided a good reply is missing a fact only the owner can supply,
  * the thread carries `clarification.questions`. Each question renders with its
  * sender attribution (the WHY line), single-select option chips and a free-text
- * box, so the owner can resolve it without opening the thread. Answering flips
+ * box (the shared ClarificationQuestions list, where one answer is enough), so
+ * the owner can resolve it without opening the thread. Answering flips
  * the card: 'asking' → 'drafting' (starter reply generating) → 'ready' ("Draft
  * ready", open the composer prefilled).
  *
@@ -41,46 +42,20 @@ const emit = defineEmits<{
 	(e: 'defer'): void;
 }>();
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 
 const clarification = computed(() => props.item.clarification);
-// The question in the owner's own language (canonical English when no
-// translation landed). Chip values are mapped back to the canonical option on
-// submit so the persisted answer matches what answer-memory expects.
-const copyFor = (
-	q: ReplyQueueItem['clarification'] extends infer C
-		? C extends { questions: (infer Q)[] }
-			? Q
-			: never
-		: never
-) => localizedQuestionCopy(q, locale.value);
 const state = computed(() => clarificationCardState(clarification.value));
 const questions = computed(() => clarification.value?.questions ?? []);
+const questionList = ref<InstanceType<typeof ClarificationQuestions> | null>(null);
 
-// Per-question working value (chip pick or typed text), keyed by question id.
-const values = reactive<Record<string, string>>({});
-
-const canSubmit = computed(
-	() => !props.submitting && questions.value.some((q) => (values[q.id] ?? '').trim().length > 0)
-);
-
-function submit() {
-	if (!canSubmit.value) return;
-	const answers = questions.value
-		.filter((q) => (values[q.id] ?? '').trim().length > 0)
-		.map((q) => ({
-			questionId: q.id,
-			value: canonicalOption(q, locale.value, values[q.id]!.trim()),
-		}));
-	if (answers.length > 0) emit('answer', answers);
-}
-
-// 1–9 picks a chip on the first question that offers options — the common case
-// is a single question; multi-question cards keep chips clickable per question.
-const optionRefs = ref<InstanceType<typeof TaskOptions>[]>([]);
-function pickChipByIndex(index: number) {
-	const qi = questions.value.findIndex((q) => (q.options?.length ?? 0) > 0);
-	if (qi >= 0) optionRefs.value[qi]?.pickIndex(index);
+// Postbox answers carry no source (nothing is pre-filled from memory here, and
+// the mail mutation takes only the question and value).
+function onAnswers(answers: ClarificationAnswer[]) {
+	emit(
+		'answer',
+		answers.map(({ questionId, value }) => ({ questionId, value }))
+	);
 }
 
 /**
@@ -96,10 +71,10 @@ function onCardKeydown(event: KeyboardEvent) {
 	switch (shortcut.type) {
 		case 'chip':
 			if (state.value !== 'asking') return;
-			pickChipByIndex(shortcut.index);
+			questionList.value?.pickIndex(shortcut.index);
 			break;
 		case 'submit':
-			if (state.value === 'asking') submit();
+			if (state.value === 'asking') questionList.value?.submit();
 			else if (state.value === 'ready') emit('open-draft', clarification.value?.draft ?? '');
 			else return;
 			break;
@@ -142,39 +117,32 @@ function onCardKeydown(event: KeyboardEvent) {
 
 		<!-- asking: question(s) + chips + free text -->
 		<template v-if="state === 'asking'">
-			<div
-				v-for="(q, qi) in questions"
-				:key="q.id"
-				class="mt-2"
-				data-testid="clarification-question"
+			<ClarificationQuestions
+				ref="questionList"
+				:questions="questions"
+				:require-all="false"
+				:submitting="submitting"
+				@submit="onAnswers"
 			>
-				<TaskAsk :ask="copyFor(q).text" :why="q.attribution" />
-				<TaskOptions
-					:ref="(el) => (optionRefs[qi] = el as InstanceType<typeof TaskOptions>)"
-					v-model="values[q.id]"
-					class="mt-1.5"
-					:options="copyFor(q).options"
-					chip-test-id="clarification-chip"
-					input-test-id="clarification-input"
-					@submit="submit"
-				/>
-			</div>
-			<TaskActions
-				class="mt-2"
-				:primary-label="t('components.postbox.postboxClarificationCard.answer')"
-				primary-test-id="clarification-submit"
-				:primary-disabled="!canSubmit"
-				:primary-loading="submitting"
-				:skip-label="t('common.dismiss')"
-				skip-test-id="clarification-dismiss"
-				:hints="[
-					{ keys: ['1–9'], label: t('components.postbox.postboxClarificationCard.hintPick') },
-					{ keys: ['Enter'], label: t('components.postbox.postboxClarificationCard.answer') },
-					{ keys: ['s'], label: t('components.postbox.postboxClarificationCard.hintLater') },
-				]"
-				@primary="submit"
-				@skip="emit('done')"
-			/>
+				<template #actions="{ canSubmit, submit }">
+					<TaskActions
+						class="mt-2"
+						:primary-label="t('components.postbox.postboxClarificationCard.answer')"
+						primary-test-id="clarification-submit"
+						:primary-disabled="!canSubmit"
+						:primary-loading="submitting"
+						:skip-label="t('common.dismiss')"
+						skip-test-id="clarification-dismiss"
+						:hints="[
+							{ keys: ['1–9'], label: t('components.postbox.postboxClarificationCard.hintPick') },
+							{ keys: ['Enter'], label: t('components.postbox.postboxClarificationCard.answer') },
+							{ keys: ['s'], label: t('components.postbox.postboxClarificationCard.hintLater') },
+						]"
+						@primary="submit"
+						@skip="emit('done')"
+					/>
+				</template>
+			</ClarificationQuestions>
 		</template>
 
 		<!-- drafting: answered, starter reply generating. "I'll answer later" is

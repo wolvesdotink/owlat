@@ -243,6 +243,9 @@
 				"undo": "Rückgängig",
 				"undoTitle": "Letzte Aktion rückgängig machen (⌘Z)"
 			},
+			"clarificationQuestions": {
+				"questionCounter": "Frage {index} von {total}"
+			},
 			"reviewApproveUndoToast": {
 				"approved": "Genehmigt",
 				"sendingIn": "{what} — wird in {seconds} s gesendet",
@@ -4519,17 +4522,13 @@
 				"allClear": "Alles erledigt",
 				"listLabel": "Kategorisierte Unterhaltungen",
 				"loadMore": "Mehr laden",
-				"noSubject": "(kein Betreff)",
 				"recategorize": "Neu kategorisieren als…",
 				"recategorizeHint": "Für diesen Absender gemerkt — künftige Post von ihm landet ebenfalls hier."
 			},
 			"postboxThreadGroupList": {
 				"allClear": "Alles erledigt",
 				"listLabel": "Unterhaltungen",
-				"loadMore": "Mehr laden",
-				"noSubject": "(kein Betreff)",
-				"noSubjectLabel": "Kein Betreff",
-				"rowLabel": "{subject}, {count} ungelesen"
+				"loadMore": "Mehr laden"
 			},
 			"postboxThreadHeader": {
 				"alertOnReply": "Bei Antwort benachrichtigen",
@@ -4624,6 +4623,7 @@
 				"dueLabel": "Noch keine Antwort — Erinnerung ausblenden",
 				"dueTitle": "Noch keine Antwort — klicken, um die Erinnerung auszublenden",
 				"noReplyYet": "Noch keine Antwort",
+				"reminderSetTitle": "Antwort-Erinnerung {when}",
 				"reminderTitle": "Antwort-Erinnerung {when} — klicken zum Abbrechen"
 			},
 			"postboxTodayReaderOverlay": {
@@ -4829,7 +4829,6 @@
 				"allClear": "Alles erledigt",
 				"listLabel": "Gebündelte Nachrichten",
 				"loadMore": "Mehr laden",
-				"noSubject": "(kein Betreff)",
 				"latestFrom": "zuletzt von {sender}",
 				"archiveAll": "Alle archivieren",
 				"archiveAllLabel": "Alle {count} Nachrichten dieses Bündels archivieren",
@@ -4840,7 +4839,6 @@
 				"allClear": "Alles erledigt",
 				"listLabel": "Posteingangs-Bereiche",
 				"everythingElse": "Alles Übrige",
-				"noSubject": "(kein Betreff)",
 				"unreadCapped": "{count}+",
 				"loadMoreIn": "Mehr laden in {section}"
 			},
@@ -5054,6 +5052,11 @@
 				"toastDeleting": "Postfach und Mails werden gelöscht.",
 				"toastDisconnected": "Postfach getrennt.",
 				"updateCredentials": "Passwort aktualisieren"
+			},
+			"postboxConversationRow": {
+				"noSubject": "(kein Betreff)",
+				"noSubjectLabel": "Kein Betreff",
+				"rowLabel": "{subject}, {count} ungelesen"
 			},
 			"threadDiscussion": {
 				"close": "Diskussion ausblenden",
@@ -5945,7 +5948,8 @@
 	"compose": {
 		"loadingMailbox": "Postfach wird geladen…",
 		"noMailbox": "Für diesen Workspace ist kein Postfach konfiguriert.",
-		"pageTitle": "Verfassen — Owlat"
+		"pageTitle": "Verfassen — Owlat",
+		"sentNotice": "Ihre Nachricht ist unterwegs. Dieses Fenster schließt sich, sobald die Zeit zum Rückgängigmachen abgelaufen ist."
 	},
 	"dashboard": {
 		"admin": {
@@ -9275,7 +9279,6 @@
 					"urgent": "dringend"
 				},
 				"processingFailed": "Verarbeitung fehlgeschlagen",
-				"questionCounter": "Frage {index} von {total}",
 				"rejectDraft": "Entwurf ablehnen",
 				"rejectModalBody": "Geben Sie optional eine Begründung an. Dieses Feedback verbessert künftige Entwürfe.",
 				"rejectReasonPlaceholder": "Begründung der Ablehnung (optional)",
@@ -9695,7 +9698,6 @@
 			},
 			"detail": {
 				"detail": {
-					"noMailbox": "Kein Postfach konfiguriert",
 					"pageTitle": "E-Mail — Owlat"
 				},
 				"index": {
@@ -9821,16 +9823,10 @@
 				}
 			},
 			"subscriptions": {
-				"addMailAccount": "Mailkonto hinzufügen",
-				"noMailbox": "Noch kein Postfach",
-				"noMailboxHint": "Verbinde oder erstelle ein Mailkonto, um zu sehen, was du abonniert hast.",
 				"pageTitle": "Abonnements"
 			},
 			"files": {
-				"pageTitle": "Dateien – Owlat",
-				"noMailbox": "Noch kein Postfach",
-				"noMailboxHint": "Verbinden oder erstellen Sie ein Postfach, um dessen Anhänge zu durchsuchen.",
-				"addMailAccount": "E-Mail-Konto hinzufügen"
+				"pageTitle": "Dateien – Owlat"
 			}
 		},
 		"preferences": {
@@ -13302,15 +13298,7 @@
 					"receipt": "Beleg",
 					"spam": "Spam"
 				},
-				"recategorizeThread": "Konversation neu einordnen",
-				"sections": {
-					"newsletter": "Newsletter",
-					"notification": "Benachrichtigungen",
-					"other": "Alles Übrige",
-					"person": "Personen",
-					"promotion": "Werbung",
-					"receipt": "Belege"
-				}
+				"recategorizeThread": "Konversation neu einordnen"
 			},
 			"usePostboxTriageUndo": {
 				"undo": "Rückgängig"
@@ -15119,11 +15107,14 @@
 			"days": "wartet {days} T.",
 			"daysHours": "wartet {days} T. {hours} Std."
 		},
-		"postboxBundles": {
+		"mailCategory": {
+			"person": "Personen",
 			"newsletter": "Newsletter",
 			"notification": "Benachrichtigungen",
+			"receipt": "Belege",
 			"promotion": "Werbung",
-			"receipt": "Belege"
+			"spam": "Spam",
+			"other": "Alles Übrige"
 		},
 		"accountExportResources": {
 			"apiKeys": "API-Schlüssel",

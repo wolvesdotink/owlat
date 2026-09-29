@@ -243,6 +243,9 @@
 				"undo": "Undo",
 				"undoTitle": "Undo last (⌘Z)"
 			},
+			"clarificationQuestions": {
+				"questionCounter": "Question {index} of {total}"
+			},
 			"reviewApproveUndoToast": {
 				"approved": "Approved",
 				"sendingIn": "{what} — sending in {seconds}s",
@@ -4519,17 +4522,13 @@
 				"allClear": "All clear",
 				"listLabel": "Categorized conversations",
 				"loadMore": "Load more",
-				"noSubject": "(no subject)",
 				"recategorize": "Recategorize as…",
 				"recategorizeHint": "Remembered for this sender — future mail from them lands here too."
 			},
 			"postboxThreadGroupList": {
 				"allClear": "All clear",
 				"listLabel": "Conversations",
-				"loadMore": "Load more",
-				"noSubject": "(no subject)",
-				"noSubjectLabel": "No subject",
-				"rowLabel": "{subject}, {count} unread"
+				"loadMore": "Load more"
 			},
 			"postboxThreadHeader": {
 				"alertOnReply": "Alert on reply",
@@ -4624,6 +4623,7 @@
 				"dueLabel": "No reply yet — dismiss reminder",
 				"dueTitle": "No reply yet — click to dismiss the reminder",
 				"noReplyYet": "No reply yet",
+				"reminderSetTitle": "Reply reminder {when}",
 				"reminderTitle": "Reply reminder {when} — click to cancel"
 			},
 			"postboxTodayReaderOverlay": {
@@ -4829,7 +4829,6 @@
 				"allClear": "All clear",
 				"listLabel": "Bundled messages",
 				"loadMore": "Load more",
-				"noSubject": "(no subject)",
 				"latestFrom": "latest from {sender}",
 				"archiveAll": "Archive all",
 				"archiveAllLabel": "Archive all {count} messages in this bundle",
@@ -4840,7 +4839,6 @@
 				"allClear": "All clear",
 				"listLabel": "Inbox sections",
 				"everythingElse": "Everything else",
-				"noSubject": "(no subject)",
 				"unreadCapped": "{count}+",
 				"loadMoreIn": "Load more in {section}"
 			},
@@ -5054,6 +5052,11 @@
 				"toastDeleting": "Deleting this mailbox and its mail.",
 				"toastDisconnected": "Mailbox disconnected.",
 				"updateCredentials": "Update password"
+			},
+			"postboxConversationRow": {
+				"noSubject": "(no subject)",
+				"noSubjectLabel": "No subject",
+				"rowLabel": "{subject}, {count} unread"
 			},
 			"threadDiscussion": {
 				"close": "Hide discussion",
@@ -5945,7 +5948,8 @@
 	"compose": {
 		"loadingMailbox": "Loading mailbox…",
 		"noMailbox": "No mailbox is configured for this workspace.",
-		"pageTitle": "Compose — Owlat"
+		"pageTitle": "Compose — Owlat",
+		"sentNotice": "Your message is on its way. This window closes when the time to undo it runs out."
 	},
 	"dashboard": {
 		"admin": {
@@ -9275,7 +9279,6 @@
 					"urgent": "urgent"
 				},
 				"processingFailed": "Processing failed",
-				"questionCounter": "Question {index} of {total}",
 				"rejectDraft": "Reject draft",
 				"rejectModalBody": "Optionally provide a reason. This feedback helps improve future drafts.",
 				"rejectReasonPlaceholder": "Reason for rejection (optional)",
@@ -9695,7 +9698,6 @@
 			},
 			"detail": {
 				"detail": {
-					"noMailbox": "No mailbox configured",
 					"pageTitle": "Mail — Owlat"
 				},
 				"index": {
@@ -9821,16 +9823,10 @@
 				}
 			},
 			"subscriptions": {
-				"addMailAccount": "Add a mail account",
-				"noMailbox": "No mailbox yet",
-				"noMailboxHint": "Connect or create a mail account to see what you are subscribed to.",
 				"pageTitle": "Subscriptions"
 			},
 			"files": {
-				"pageTitle": "Files — Owlat",
-				"noMailbox": "No mailbox yet",
-				"noMailboxHint": "Connect or create a mailbox to browse its attachments.",
-				"addMailAccount": "Add mail account"
+				"pageTitle": "Files — Owlat"
 			}
 		},
 		"preferences": {
@@ -13302,15 +13298,7 @@
 					"receipt": "Receipt",
 					"spam": "Spam"
 				},
-				"recategorizeThread": "Recategorize thread",
-				"sections": {
-					"newsletter": "Newsletters",
-					"notification": "Notifications",
-					"other": "Everything else",
-					"person": "People",
-					"promotion": "Promotions",
-					"receipt": "Receipts"
-				}
+				"recategorizeThread": "Recategorize thread"
 			},
 			"usePostboxTriageUndo": {
 				"undo": "Undo"
@@ -15119,11 +15107,14 @@
 			"days": "waiting {days}d",
 			"daysHours": "waiting {days}d {hours}h"
 		},
-		"postboxBundles": {
+		"mailCategory": {
+			"person": "People",
 			"newsletter": "Newsletters",
 			"notification": "Notifications",
+			"receipt": "Receipts",
 			"promotion": "Promotions",
-			"receipt": "Receipts"
+			"spam": "Spam",
+			"other": "Everything else"
 		},
 		"accountExportResources": {
 			"apiKeys": "API keys",
