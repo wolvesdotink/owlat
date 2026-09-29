@@ -18,7 +18,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
-import { rateLimiter } from '../rateLimiter';
+import { rateLimiter } from '../lib/rateLimiter';
 import {
 	throwInvalidInput,
 	throwNotFound,

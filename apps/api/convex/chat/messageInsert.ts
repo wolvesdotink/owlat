@@ -15,7 +15,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { isFeatureEnabled } from '../lib/featureFlags';
-import { rateLimiter } from '../rateLimiter';
+import { rateLimiter } from '../lib/rateLimiter';
 import { canUserReadMailbox } from '../mail/permissions';
 import {
 	ASSISTANT_AUTHOR_ID,

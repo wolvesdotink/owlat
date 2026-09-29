@@ -1,13 +1,7 @@
 /**
  * Mail CONTENT validators — the shapes a message, draft or snippet carries in
  * the database, as opposed to the per-user preferences in the sibling
- * `mailSettingsValidators.ts`.
- *
- * Split out of `lib/convexValidators.ts` for the ~500 LOC ratchet, along the
- * same seam the settings validators and the sealed-mail policy validators
- * already use: `convexValidators.ts` keeps the cross-domain vocabulary
- * (campaigns, contacts, DNS, AI) and each mail-shaped family lives beside the
- * rest of its feature.
+ * `mailSettings.ts`.
  *
  * These are the single source for the schema, the mutation args and the
  * handlers, so a field can never be spelled two ways.

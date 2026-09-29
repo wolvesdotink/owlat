@@ -38,10 +38,9 @@ import {
 } from './deliveryPipeline/insert';
 import { deliveredEnvelopeFields, storedBodyFields } from './deliveryPipeline/ingestFields';
 import { resolveLabelPath } from './labelsTree';
-import { completedOrFailedValidator } from '../lib/convexValidators';
-import { archiveFormatValidator } from '../lib/literalValidators';
+import { archiveFormatValidator, completedOrFailedValidator } from '../lib/literalValidators';
 import { consumeUpload, deleteOwnedUpload } from '../storage/uploads';
-import { folderRoleValidator } from './mailbox/shared';
+import { folderRoleValidator } from '../lib/validators/mail';
 
 /**
  * Largest archive one job accepts. Defined in `@owlat/shared` because the upload

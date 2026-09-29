@@ -33,7 +33,7 @@ import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { throwAlreadyExists } from '../_utils/errors';
 import { buildSearchableText } from '../lib/queryHelpers';
-import { literalUnion } from '../lib/convexValidators';
+import type { ContactSource } from '../lib/validators/contacts';
 
 // ============================================================
 // Types
@@ -42,19 +42,6 @@ import { literalUnion } from '../lib/convexValidators';
 const CHANNEL_KIND_LITERALS = ['email', 'sms', 'whatsapp', 'phone', 'generic', 'chat'] as const;
 
 export type ChannelKind = (typeof CHANNEL_KIND_LITERALS)[number];
-
-const CONTACT_SOURCE_LITERALS = ['api', 'import', 'form', 'transactional', 'inbound'] as const;
-
-export type ContactSource = (typeof CONTACT_SOURCE_LITERALS)[number];
-
-export const contactSourceValidator = literalUnion(CONTACT_SOURCE_LITERALS);
-
-// Sources a caller may set when CREATING a contact. 'inbound' is excluded — it
-// is assigned only internally the first time a contact appears via an inbound
-// message, never accepted from the create API.
-const CONTACT_CREATE_SOURCE_LITERALS = ['api', 'import', 'form', 'transactional'] as const;
-
-export const contactCreateSourceValidator = literalUnion(CONTACT_CREATE_SOURCE_LITERALS);
 
 const RESOLVE_MODE_LITERALS = ['strict', 'upsert', 'merge'] as const;
 

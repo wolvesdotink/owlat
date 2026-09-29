@@ -13,7 +13,7 @@ import { internal } from '../_generated/api';
 import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
 import { deliverabilityTargetKey } from './checklistEvidence';
 import { checklistTraits } from './checklistTraits';
-import { authResultValidator } from '../lib/convexValidators';
+import { authResultValidator } from '../lib/literalValidators';
 
 const EVIDENCE_LIMIT = 1_500;
 

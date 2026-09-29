@@ -20,7 +20,8 @@ import { recordAuditLog } from '../lib/auditLog';
 import { validateStringLength, normalizeEmail, STRING_LIMITS } from '../lib/inputGuards';
 import { buildSearchableText } from '../lib/queryHelpers';
 import { createContact } from './creation';
-import { changeContactEmail, type ContactSource } from './resolution';
+import type { ContactSource } from '../lib/validators/contacts';
+import { changeContactEmail } from './resolution';
 
 /** Who the audit row names: a session's user id, or `'api'` for API-key writes. */
 export interface ContactWriteActor {

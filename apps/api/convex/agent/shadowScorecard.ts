@@ -29,7 +29,7 @@ import { adminQuery } from '../lib/authedFunctions';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { extractEmail } from '../lib/emailAddress';
 import { draftSimilarity } from './shadowSimilarity';
-import { reviewActionValidator } from '../lib/convexValidators';
+import { reviewActionValidator } from '../lib/literalValidators';
 
 /**
  * A shadowed auto-approve counts as "matched" only when the human approved the

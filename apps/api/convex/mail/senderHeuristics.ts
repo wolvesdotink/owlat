@@ -30,9 +30,9 @@ import {
 import { boundedEditDistance, LOOKALIKE_MAX_EDITS } from '@owlat/shared';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
-import type { SenderHeuristics } from '../lib/senderHeuristicsValidator';
+import type { SenderHeuristics } from '../lib/validators/senderHeuristics';
 
-// Persisted shape is the single source of truth in `lib/senderHeuristicsValidator`
+// Persisted shape is the single source of truth in `lib/validators/senderHeuristics`
 // (`senderHeuristicsValidator`); the schema references that validator and this
 // type is derived from it, so the field set never drifts across the three sites.
 export type { SenderHeuristics };

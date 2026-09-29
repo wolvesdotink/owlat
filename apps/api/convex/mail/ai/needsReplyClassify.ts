@@ -59,7 +59,7 @@ import {
 } from '../../inbox/askEagerness';
 import { SYSTEM_GUARD } from './promptGuards';
 import { logError } from '../../lib/runtimeLog';
-import type { needsReplyClarificationValidator } from '../../inbox/clarificationValidators';
+import type { needsReplyClarificationValidator } from '../../lib/validators/clarification';
 import { localizeQuestions } from '../../inbox/clarificationLocalize';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 
@@ -248,7 +248,7 @@ type SpendCtx = Parameters<typeof recordLlmSpend>[0];
 
 /**
  * The clarification refineClarification produces: the persisted
- * `needsReply.clarification` shape (inbox/clarificationValidators.ts) before
+ * `needsReply.clarification` shape (lib/validators/clarification.ts) before
  * the owner answers, so without `answeredAt` and `draft`.
  */
 type ClarificationFlag = Omit<

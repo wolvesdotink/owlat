@@ -2,12 +2,15 @@
  * Integration tests for how the `platformAdmins` roster is BOOTSTRAPPED
  * (apps/api/convex/platformAdmin/bootstrap.ts).
  *
- * Two entry points, one shared precondition — the table must be empty:
+ * Three entry points, one shared precondition — the table must be empty — and
+ * one writer, `grantInitialSuperadmin`, which also records the audit row:
  *
  *   - `seedInitialPlatformAdmin` (internal) runs inside `/seed/admin` and grants
  *     the freshly-created setup user `superadmin`.
  *   - `claimInitialPlatformAdmin` (`ownerMutation`) lets the org OWNER take the
  *     empty roster from the admin hub on an instance seeded before that existed.
+ *   - `migrations/0036_seed_platform_admin:run` is the shell-only break-glass
+ *     recovery path.
  *
  * The empty-table precondition is the only thing standing between "the owner of
  * a single-org self-host can operate their own box" and "any org admin can
@@ -167,9 +170,11 @@ describe('seedInitialPlatformAdmin', () => {
 
 		const logs = await t.run(async (ctx) => ctx.db.query('auditLogs').collect());
 		expect(logs).toHaveLength(1);
+		const [admin] = await roster(t);
 		expect(logs[0]).toMatchObject({
 			action: 'platform_admin.bootstrap_granted',
 			resource: 'platform_admin',
+			resourceId: admin?._id,
 			userId: 'setup-user',
 		});
 		expect(logs[0]?.details).toMatchObject({ via: 'setup', role: 'superadmin' });
@@ -224,6 +229,28 @@ describe('claimInitialPlatformAdmin', () => {
 			authUserId: 'owner-user',
 			email: 'owner@example.com',
 			role: 'superadmin',
+		});
+	});
+
+	it('writes an audit row attributing the grant to the owner claim', async () => {
+		const t = convexTest(schema, modules);
+		await seedProfile(t, 'owner-user', { email: 'owner@example.com' });
+
+		await t.mutation(api.platformAdmin.bootstrap.claimInitialPlatformAdmin, {});
+
+		const [admin] = await roster(t);
+		const logs = await t.run(async (ctx) => ctx.db.query('auditLogs').collect());
+		expect(logs).toHaveLength(1);
+		expect(logs[0]).toMatchObject({
+			action: 'platform_admin.bootstrap_granted',
+			resourceId: admin?._id,
+			userId: 'owner-user',
+			organizationId: 'org-1',
+		});
+		expect(logs[0]?.details).toEqual({
+			email: 'owner@example.com',
+			role: 'superadmin',
+			via: 'owner_claim',
 		});
 	});
 
@@ -294,6 +321,56 @@ describe('claimInitialPlatformAdmin', () => {
 			t.mutation(api.platformAdmin.bootstrap.claimInitialPlatformAdmin, {})
 		).rejects.toThrow();
 		expect(await roster(t)).toHaveLength(0);
+	});
+});
+
+// ============ migrations/0036_seed_platform_admin (break-glass) ============
+
+describe('break-glass migration', () => {
+	it('grants superadmin on an empty roster and audits it as break_glass', async () => {
+		const t = convexTest(schema, modules);
+
+		const adminId = await t.mutation(internal.migrations['0036_seed_platform_admin'].run, {
+			authUserId: 'recovery-user',
+			email: 'recovery@example.com',
+		});
+
+		const rows = await roster(t);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({ _id: adminId, role: 'superadmin' });
+		const logs = await t.run(async (ctx) => ctx.db.query('auditLogs').collect());
+		expect(logs).toHaveLength(1);
+		expect(logs[0]).toMatchObject({
+			action: 'platform_admin.bootstrap_granted',
+			resource: 'platform_admin',
+			resourceId: adminId,
+			userId: 'recovery-user',
+		});
+		expect(logs[0]?.details).toEqual({
+			email: 'recovery@example.com',
+			role: 'superadmin',
+			via: 'break_glass',
+		});
+	});
+
+	it('refuses a second run and writes nothing', async () => {
+		const t = convexTest(schema, modules);
+		const args = { authUserId: 'recovery-user', email: 'recovery@example.com' };
+		await t.mutation(internal.migrations['0036_seed_platform_admin'].run, args);
+
+		const second = t.mutation(internal.migrations['0036_seed_platform_admin'].run, {
+			authUserId: 'another-user',
+			email: 'another@example.com',
+		});
+		await expect(second).rejects.toThrow(/platformAdmin\/mutations:addPlatformAdmin/);
+		expect(await second.catch((e: { data?: { category?: string } }) => e?.data?.category)).toBe(
+			'invalid_state'
+		);
+
+		expect(await roster(t)).toHaveLength(1);
+		const logs = await t.run(async (ctx) => ctx.db.query('auditLogs').collect());
+		expect(logs).toHaveLength(1);
+		expect(args.authUserId).toBe((await roster(t))[0]?.authUserId);
 	});
 });
 

@@ -1,8 +1,7 @@
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
-import { getCachedContactCount } from '../lib/contactCountHelpers';
-import { countWithPagination } from '../lib/pagination';
+import { getContactCount } from '../lib/contactCountHelpers';
 import { readDailyStats } from '../lib/sendDailyStats';
 import { batchGet } from '../_utils/batchLoader';
 
@@ -19,10 +18,7 @@ export const getStats = authedQuery({
 	handler: async (ctx) => {
 		await getUserIdFromSession(ctx);
 
-		let totalContacts = await getCachedContactCount(ctx);
-		if (totalContacts === null) {
-			totalContacts = await countWithPagination(ctx.db, 'contacts', 'by_created_at', (q) => q);
-		}
+		const totalContacts = await getContactCount(ctx);
 
 		// Read the last 30 days of daily roll-up stats, summed across write shards.
 		// Bounded to 30 days × SHARD_COUNT small docs regardless of send volume.

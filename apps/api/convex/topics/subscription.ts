@@ -22,6 +22,7 @@
  */
 
 import { v } from 'convex/values';
+import { literalUnion } from '../lib/literalUnion';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -44,7 +45,7 @@ const SUBSCRIBE_SOURCE_LITERALS = [
 
 export type SubscribeSource = (typeof SUBSCRIBE_SOURCE_LITERALS)[number];
 
-const subscribeSourceValidator = v.union(...SUBSCRIBE_SOURCE_LITERALS.map((l) => v.literal(l)));
+const subscribeSourceValidator = literalUnion(SUBSCRIBE_SOURCE_LITERALS);
 
 const UNSUBSCRIBE_SOURCE_LITERALS = [
 	'admin',
@@ -55,7 +56,7 @@ const UNSUBSCRIBE_SOURCE_LITERALS = [
 
 export type UnsubscribeSource = (typeof UNSUBSCRIBE_SOURCE_LITERALS)[number];
 
-const unsubscribeSourceValidator = v.union(...UNSUBSCRIBE_SOURCE_LITERALS.map((l) => v.literal(l)));
+const unsubscribeSourceValidator = literalUnion(UNSUBSCRIBE_SOURCE_LITERALS);
 
 // ─── Outcome types ──────────────────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 /**
  * Attachment-suggestion validator (inboundMessages.attachmentSuggestions).
  *
- * Co-located with the pure matcher (`./attachmentMatch.ts`) and consumed by
+ * The pure matcher is `inbox/attachmentMatch.ts`; this shape is consumed by
  * `schema/inbox.ts` and `inbox/stepOutputs.ts`. Read-side advisory metadata the
  * `draft` step persists when the inbound asks for a document and a contact-scoped
  * `semanticFiles` match exists: the review gate + composer render it as a

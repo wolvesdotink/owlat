@@ -1,6 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { transportArmValidator } from '../lib/convexValidators';
+import { transportArmValidator } from '../lib/literalValidators';
 
 /**
  * Per-cell, per-arm rolling OUTCOME counters — the table that measures

@@ -1,4 +1,4 @@
-import { v } from 'convex/values';
+import { literalUnion } from '../../lib/literalUnion';
 import type { PluginAutomationStepCapability, PluginId } from '@owlat/plugin-kit';
 import { BUNDLED_PLUGIN_AUTOMATION_STEP_CATALOG } from '../../plugins/automationStepCatalog.generated';
 import {
@@ -52,7 +52,7 @@ export const STEP_KINDS = Object.freeze([
 ]) as readonly StepKind[];
 
 /** Persisted-kind validator for `automationSteps.stepType`; widens as plugins compose. */
-export const stepKindValidator = v.union(...STEP_KINDS.map((kind) => v.literal(kind)));
+export const stepKindValidator = literalUnion(STEP_KINDS);
 
 export function isCoreStepKind(kind: string): kind is CoreStepKind {
 	return (CORE_STEP_KINDS as readonly string[]).includes(kind);

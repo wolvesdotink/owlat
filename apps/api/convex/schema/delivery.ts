@@ -2,20 +2,36 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { returnPathTables } from './returnPath';
 import {
-	authResultValidator,
-	bounceTypeValidator,
 	contentScanFlagValidator,
 	deliverabilityStatusValidator,
 	messageTypeValidator,
 } from '../lib/convexValidators';
-import { ipReadinessFieldValidators, warmingPoolsValidator } from '../delivery/readinessValidators';
+import {
+	contentScanLevelValidator,
+	contentScanResourceTypeValidator,
+} from '../lib/validators/contentScan';
+import { ipReadinessFieldValidators, warmingPoolsValidator } from '../lib/validators/readiness';
 import { deliverabilityRoutingTables } from './deliverabilityRouting';
 import {
 	deliverabilityAlertRecipientStatusValidator,
 	deliverabilityAlertRecipientUnavailableReasonValidator,
 	deliverabilityCheckIdSchemaValidator,
-} from './deliveryChecklistValidators';
-import { healthStatusValidator } from '../lib/literalValidators';
+} from '../lib/validators/deliveryChecklist';
+import {
+	healthStatusValidator,
+	authResultValidator,
+	bounceTypeValidator,
+} from '../lib/literalValidators';
+
+/** Field record of `contentScanResults`, shared with the functions that write it. */
+export const contentScanResultsFields = {
+	resourceType: contentScanResourceTypeValidator,
+	resourceId: v.string(), // campaign or transactional email ID
+	score: v.number(), // 0-100 spam score
+	level: contentScanLevelValidator,
+	flags: v.array(contentScanFlagValidator),
+	scannedAt: v.number(),
+};
 
 /**
  * Fields the MTA reports for one confirmed IPv6 identity/SPF regression. The
@@ -214,23 +230,10 @@ export const deliveryTables = {
 	}).index('by_period', ['periodStart']),
 
 	// Content Scan Results - audit trail for pre-send content scanning
-	contentScanResults: defineTable({
-		resourceType: v.union(
-			v.literal('campaign'),
-			v.literal('transactional'),
-			v.literal('attachment'),
-			v.literal('media_upload')
-		),
-		resourceId: v.string(), // campaign or transactional email ID
-		score: v.number(), // 0-100 spam score
-		level: v.union(
-			v.literal('clean'), // Passed all checks
-			v.literal('suspicious'), // Flagged for review
-			v.literal('blocked') // Blocked from sending
-		),
-		flags: v.array(contentScanFlagValidator),
-		scannedAt: v.number(),
-	}).index('by_resource', ['resourceType', 'resourceId']),
+	contentScanResults: defineTable(contentScanResultsFields).index('by_resource', [
+		'resourceType',
+		'resourceId',
+	]),
 
 	// URL Reputation Cache - cached verdicts from Google Safe Browsing API
 	urlReputationCache: defineTable({

@@ -22,7 +22,7 @@ import {
 	draftQualityValidator,
 	groundingSourceValidator,
 } from '../lib/convexValidators';
-import { attachmentSuggestionsValidator } from './attachmentValidators';
+import { attachmentSuggestionsValidator } from '../lib/validators/attachment';
 import { contextTierValidator } from '../lib/literalValidators';
 
 /**
@@ -107,7 +107,7 @@ export const recordDraftOutput = internalMutation({
 		// on low-confidence / low-quality cases). `draftOptions[0]` mirrors
 		// `draftResponse`. Absent on the normal single-draft path.
 		draftOptions: v.optional(v.array(v.string())),
-		// Advisory attachment suggestion (see attachmentValidators). Absent unless
+		// Advisory attachment suggestion (see lib/validators/attachment.ts). Absent unless
 		// the inbound asked for a document and a contact-scoped file matched.
 		attachmentSuggestions: v.optional(attachmentSuggestionsValidator),
 	},

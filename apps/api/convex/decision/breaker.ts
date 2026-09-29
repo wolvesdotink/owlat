@@ -58,7 +58,7 @@
 import { calculateRateLimit } from '@convex-dev/rate-limiter';
 import { internalMutation, internalQuery } from '../_generated/server';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { rateLimiter } from '../rateLimiter';
+import { rateLimiter } from '../lib/rateLimiter';
 
 /**
  * Fraction of the failure budget that must be back before the hop is allowed

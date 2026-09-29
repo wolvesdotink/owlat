@@ -258,7 +258,7 @@ async function detectPhishingUrls(
 	}
 }
 
-// The canonical inboundMessages.securityFlags shape (lib/validators.ts). This
+// The canonical inboundMessages.securityFlags shape (lib/convexValidators.ts). This
 // step always populates `spamScore`, `phishingDetected`, and `guardUnavailable`,
 // which the validator marks optional — a fully-populated value is assignable.
 type SecurityFlags = Infer<typeof securityFlagsValidator>;

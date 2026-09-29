@@ -1,8 +1,6 @@
 /**
  * The classifier's persisted verdict (`inboundMessages.classification`, also
- * spread into `agentActions`). Split out of `lib/convexValidators.ts` to keep
- * that module under the ~500 LOC file-size ratchet; re-exported from there so
- * every existing import path still resolves. See ADR-0061 for the fields the
+ * spread into `agentActions`). See ADR-0061 for the fields the
  * response-disposition rework added.
  */
 

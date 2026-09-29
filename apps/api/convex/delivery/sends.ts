@@ -5,7 +5,7 @@ import { authedQuery } from '../lib/authedFunctions';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
-import { abVariantValidator } from '../lib/convexValidators';
+import { abVariantValidator } from '../lib/literalValidators';
 import { hasClicked, hasOpened, hasReachedDelivered } from './sendEngagement';
 
 // bounded: the campaign report queries below read a campaign's `emailSends`

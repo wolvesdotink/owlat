@@ -7,7 +7,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
 import { requireDraftCampaign } from './guards';
 import { getOrThrow, throwInvalidState, throwInvalidInput } from '../_utils/errors';
-import { abVariantValidator } from '../lib/convexValidators';
+import { abVariantValidator } from '../lib/literalValidators';
 import { hasClicked, hasOpened, hasReachedDelivered } from '../delivery/sendEngagement';
 
 /**

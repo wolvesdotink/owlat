@@ -22,6 +22,7 @@ import { internal } from '../_generated/api';
 import { requireMailboxAccess } from './permissions';
 import { throwForbidden } from '../_utils/errors';
 import { indexMessageAttachments, indexableFromMessage } from './attachmentIndex';
+import { cancelJob, readJob, startJob } from './_jobLifecycle';
 
 /**
  * Messages read per transaction. Deliberately smaller than the label-cleanup
@@ -41,10 +42,7 @@ export const status = publicQuery({
 	handler: async (ctx, args) => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return null;
-		return ctx.db
-			.query('mailAttachmentBackfillJobs')
-			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.first();
+		return readJob(ctx, { table: 'mailAttachmentBackfillJobs', key: args.mailboxId });
 	},
 });
 
@@ -62,38 +60,16 @@ export const start = postboxMutation({
 		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 
-		const existing = await ctx.db
-			.query('mailAttachmentBackfillJobs')
-			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.first();
-		if (existing?.status === 'running') return { started: false };
-
-		const now = Date.now();
-		if (existing) {
-			await ctx.db.patch(existing._id, {
-				status: 'running',
-				cursor: undefined,
-				scannedCount: 0,
-				indexedCount: 0,
-				startedAt: now,
-				updatedAt: now,
-				finishedAt: undefined,
-				errorMessage: undefined,
-			});
-		} else {
-			await ctx.db.insert('mailAttachmentBackfillJobs', {
-				mailboxId: args.mailboxId,
-				status: 'running',
-				scannedCount: 0,
-				indexedCount: 0,
-				startedAt: now,
-				updatedAt: now,
-			});
-		}
-		await ctx.scheduler.runAfter(0, internal.mail.attachmentBackfill.runBatch, {
-			mailboxId: args.mailboxId,
+		return startJob(ctx, {
+			table: 'mailAttachmentBackfillJobs',
+			key: args.mailboxId,
+			insertFields: { mailboxId: args.mailboxId, indexedCount: 0 },
+			resetFields: { indexedCount: 0 },
+			schedule: () =>
+				ctx.scheduler.runAfter(0, internal.mail.attachmentBackfill.runBatch, {
+					mailboxId: args.mailboxId,
+				}),
 		});
-		return { started: true };
 	},
 });
 
@@ -107,13 +83,7 @@ export const cancel = postboxMutation({
 	handler: async (ctx, args): Promise<void> => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
-		const job = await ctx.db
-			.query('mailAttachmentBackfillJobs')
-			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.first();
-		if (!job || job.status !== 'running') return;
-		const now = Date.now();
-		await ctx.db.patch(job._id, { status: 'cancelled', updatedAt: now, finishedAt: now });
+		await cancelJob(ctx, { table: 'mailAttachmentBackfillJobs', key: args.mailboxId });
 	},
 });
 
@@ -125,10 +95,7 @@ export const cancel = postboxMutation({
 export const runBatch = internalMutation({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args): Promise<void> => {
-		const job = await ctx.db
-			.query('mailAttachmentBackfillJobs')
-			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.first();
+		const job = await readJob(ctx, { table: 'mailAttachmentBackfillJobs', key: args.mailboxId });
 		if (!job || job.status !== 'running') return;
 
 		const { page, isDone, continueCursor } = await ctx.db

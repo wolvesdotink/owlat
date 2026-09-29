@@ -1,6 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { dashboardCardValidator, dashboardRuleValidator } from '../lib/dashboardLayoutValidators';
+import { dashboardCardValidator, dashboardRuleValidator } from '../lib/validators/dashboard';
 
 /**
  * Dashboard tables — AI-generated visualizations + per-user adaptive layouts.

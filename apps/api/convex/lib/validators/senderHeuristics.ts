@@ -7,9 +7,6 @@ import { v, type Infer } from 'convex/values';
 // nothing fired, so an unremarkable sender / legacy row renders no extra lines
 // rather than a false "all clear". Single source of truth: the schema references
 // this validator and the ingest code derives its type via `Infer` below.
-//
-// Kept in its own module (rather than in lib/convexValidators.ts) so that file
-// stays under the ~500 LOC file-size ratchet.
 export const senderHeuristicsValidator = v.object({
 	// From domain visually spoofs a real domain (homoglyph or punycode).
 	isFromDomainSpoofed: v.optional(v.boolean()),

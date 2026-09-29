@@ -4,8 +4,8 @@ import {
 	deliverabilityStreamValidator,
 	destinationProviderValidator,
 	seedPlacementValidator,
-} from '../delivery/deliverabilityValidators';
-import { transportArmValidator, abVariantValidator } from '../lib/convexValidators';
+} from '../lib/validators/deliverability';
+import { transportArmValidator, abVariantValidator } from '../lib/literalValidators';
 
 /**
  * Retention bound for the probe ledger (D16 — write amplification is a design

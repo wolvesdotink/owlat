@@ -13,7 +13,7 @@
 import { v } from 'convex/values';
 import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
 import { throwInvalidInput, throwRateLimited } from '../_utils/errors';
-import { rateLimiter } from '../rateLimiter';
+import { rateLimiter } from '../lib/rateLimiter';
 import { chatQuery, chatMutation, assertCanReadRoom, getRoomOrThrow } from './_helpers';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { assertUnregisteredMediaStorage } from './attachmentAccess';

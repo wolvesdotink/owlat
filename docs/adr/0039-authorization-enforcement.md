@@ -85,7 +85,8 @@ authentication rule.
   `campaigns:send` for `emailSends.create`). Editors lose these capabilities —
   intended, since editors already cannot send campaigns or manage content.
 - Diverse legitimate gates are now greppable via `// authz:` / `// all-members:`.
-- When a new gate helper is introduced, add its name to the gate-token regex in
-  `check-permissions.sh`.
+- When a new gate helper is introduced, add its name to `CONVEX_AUTHZ_GATES` in
+  `apps/api/scripts/lib/convex-builders.sh`, the list `check-permissions.sh` and
+  `check-query-authz.sh` share.
 - The shared-inbox restriction (ADR-0040) is the first adopter of `adminMutation`
   / `adminQuery`.

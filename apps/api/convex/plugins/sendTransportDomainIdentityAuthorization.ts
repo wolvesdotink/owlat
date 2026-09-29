@@ -7,7 +7,7 @@ import {
 	recordHostedContributionOutcome,
 	type HostedContributionAuthorizationSpec,
 } from './hostedContributionAuthorization';
-import { completedOrFailedValidator } from '../lib/convexValidators';
+import { completedOrFailedValidator } from '../lib/literalValidators';
 
 /**
  * Runtime authorization seam for a bundled send transport's SENDING-DOMAIN

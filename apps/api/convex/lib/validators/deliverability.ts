@@ -8,7 +8,7 @@ import {
 	ALIGNMENT_CHECK_IDS,
 	ALIGNMENT_CHECK_STATUSES,
 } from '@owlat/shared/deliverabilityAlignment';
-import { literalUnion } from '../lib/convexValidators';
+import { literalUnion } from '../literalUnion';
 
 /**
  * The destination-provider cell axis. DERIVED from `DESTINATION_PROVIDER_KEYS`

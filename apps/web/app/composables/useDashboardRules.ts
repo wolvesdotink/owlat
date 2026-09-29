@@ -15,7 +15,7 @@ import type { OrganizationRole } from '~/composables/useOrganization';
 
 /**
  * Persisted rule shape accepted by saveLayout. Derived from the table, whose
- * validator (lib/dashboardLayoutValidators) is shared with the mutation args.
+ * validator (lib/validators/dashboard) is shared with the mutation args.
  */
 export type SavedRule = Doc<'dashboardLayouts'>['rules'][number];
 

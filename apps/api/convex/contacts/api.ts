@@ -13,7 +13,7 @@ import {
 	type PathSegment,
 } from '../auth/apiResponses';
 import { isValidEmail, isValidConvexId, STRING_LIMITS } from '../lib/inputGuards';
-import type { ContactSource } from './resolution';
+import type { ContactSource } from '../lib/validators/contacts';
 
 // Request body types
 interface CreateContactBody {

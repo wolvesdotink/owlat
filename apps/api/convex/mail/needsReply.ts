@@ -42,7 +42,7 @@ import { resolveCounterpartName } from './counterpartName';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { isFromMailboxOwner, type NeedsReplyHeaders } from './needsReplyHeuristic';
 import { needsReplyResultFields } from '../schema/mailThreads';
-import type { needsReplyClarificationValidator } from '../inbox/clarificationValidators';
+import type { needsReplyClarificationValidator } from '../lib/validators/clarification';
 
 /** True when an attachment is a calendar invite (.ics / text/calendar). */
 export function isCalendarAttachment(att: { filename: string; contentType: string }): boolean {

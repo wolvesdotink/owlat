@@ -8,7 +8,7 @@ import { internal } from '../_generated/api';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { listResources, countFacet } from '../lib/listing';
 import { contactListing, redactContactCapabilityFields } from './listing';
-import { contactCreateSourceValidator } from './resolution';
+import { contactCreateSourceValidator } from '../lib/validators/contacts';
 import { applyContactEdit, createContactStrict } from './contactEdit';
 import { reconcileContactCount } from '../lib/contactCountHelpers';
 import { softDeleteContact } from '../lib/contactMutations';
@@ -18,7 +18,7 @@ import { recordAuditLog } from '../lib/auditLog';
 import { trackEvent } from '../lib/posthogHelpers';
 import { validateStringLength, normalizeEmail, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwNotFound, throwInvalidInput } from '../_utils/errors';
-import { duplicateHandlingValidator } from '../lib/convexValidators';
+import { duplicateHandlingValidator } from '../lib/literalValidators';
 import { batchGet } from '../_utils/batchLoader';
 
 // Query to get a single contact by ID (session-authenticated client callers).

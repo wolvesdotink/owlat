@@ -12,7 +12,7 @@
  */
 
 import { v } from 'convex/values';
-import { mailMessageAttachmentValidator } from '../../lib/mailContentValidators';
+import { mailMessageAttachmentValidator } from '../../lib/validators/mailContent';
 
 /** The addressing and identity headers of a delivered message. */
 export const deliveredEnvelopeFields = {

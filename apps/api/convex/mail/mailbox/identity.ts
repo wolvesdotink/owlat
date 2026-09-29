@@ -35,7 +35,8 @@ import {
 } from '../permissions';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { extractEmail } from '../../lib/emailAddress';
-import { SYSTEM_FOLDER_NAMES, SYSTEM_FOLDER_ROLES, readSession } from './shared';
+import { SYSTEM_FOLDER_NAMES, readSession } from './shared';
+import { SYSTEM_FOLDER_ROLES } from '../../lib/validators/mail';
 import { findAddressClaim } from './addressResolution';
 import { stopExternalAccountSync } from '../external/accountTeardown';
 

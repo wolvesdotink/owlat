@@ -1,10 +1,8 @@
 /**
  * Clarification-loop validators (inboundMessages.pendingClarification).
  *
- * Split out of `lib/convexValidators.ts` to keep that shared module under the
- * ~500 LOC file-size ratchet (CONVENTIONS.md — split into domain siblings, not
- * baseline). Co-located with the clarification mutation (`./clarification.ts`)
- * and consumed by `schema/inbox.ts` and `processingLifecycle/types.ts`. The
+ * The clarification mutation is `inbox/clarification.ts`; this shape is
+ * consumed by `schema/inbox.ts` and `inbox/processingLifecycle/types.ts`. The
  * Reply Queue's own clarification shape (`needsReplyClarificationValidator`,
  * at the bottom) lives here too and feeds `schema/mailThreads.ts` and
  * `mail/needsReply.ts`.

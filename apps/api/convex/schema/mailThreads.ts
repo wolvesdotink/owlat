@@ -1,8 +1,12 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { needsReplyClarificationValidator } from '../inbox/clarificationValidators';
-import { detectionSourceValidator, draftQualityValidator } from '../lib/convexValidators';
-import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';
+import { needsReplyClarificationValidator } from '../lib/validators/clarification';
+import { draftQualityValidator } from '../lib/convexValidators';
+import {
+	mailCategoryLabelValidator,
+	mailCategorySourceValidator,
+	detectionSourceValidator,
+} from '../lib/literalValidators';
 
 /** Reply Queue urgency bucket (the LLM refinement's 3-way verdict). */
 export const needsReplyUrgencyValidator = v.union(
@@ -47,7 +51,7 @@ export const needsReplyResultFields = {
 		})
 	),
 	// Clarification loop (Postbox-native), see
-	// inbox/clarificationValidators.ts needsReplyClarificationValidator.
+	// lib/validators/clarification.ts needsReplyClarificationValidator.
 	clarification: v.optional(needsReplyClarificationValidator),
 };
 

@@ -71,7 +71,7 @@ import {
 	type HostedSendTransportWebhook,
 } from '../plugins/sendTransportWebhookCatalog';
 import { verifyPluginWebhookDelivery } from '../plugins/inboundSignature';
-import { getClientIp, rateLimitedResponse } from '../publicRateLimit';
+import { getClientIp, rateLimitedResponse } from '../lib/publicRateLimit';
 import { InboundBatchDispatchError, dispatchEventsInOrder, jsonResponse } from './inboundHttp';
 import type { PluginFeedbackClaimResult } from './pluginFeedbackDeliveries';
 import {
@@ -124,10 +124,13 @@ async function spendRateLimitToken(
 	pluginId: string | null
 ): Promise<Response | null> {
 	const ip = getClientIp(request);
-	const { ok, retryAfter } = await ctx.runMutation(internal.publicRateLimit.checkPublicRateLimit, {
-		limitType: 'webhookIngestion',
-		key: `plugin:${pluginId ?? 'unknown'}:${ip}`,
-	});
+	const { ok, retryAfter } = await ctx.runMutation(
+		internal.lib.publicRateLimit.checkPublicRateLimit,
+		{
+			limitType: 'webhookIngestion',
+			key: `plugin:${pluginId ?? 'unknown'}:${ip}`,
+		}
+	);
 	return ok ? null : rateLimitedResponse(retryAfter);
 }
 

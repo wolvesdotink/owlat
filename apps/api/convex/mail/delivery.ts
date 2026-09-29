@@ -31,7 +31,7 @@
 
 import { v } from 'convex/values';
 import { spamVerdictValidator } from '../lib/convexValidators';
-import { mailUnsubscribeValidator } from '../lib/mailContentValidators';
+import { mailUnsubscribeValidator } from '../lib/validators/mailContent';
 import { internalMutation, internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';

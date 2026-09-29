@@ -9,7 +9,7 @@ import {
 	SOURCE_ADDRESS_FAILURE_REASONS,
 	SOURCE_ADDRESS_VERDICTS,
 } from '@owlat/shared/ipReadiness';
-import { literalUnion } from '../lib/convexValidators';
+import { literalUnion } from '../literalUnion';
 
 /** The MTA's configured IP pools, as reported with its warming snapshot. */
 export const warmingPoolsValidator = v.object({

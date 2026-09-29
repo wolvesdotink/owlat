@@ -2,8 +2,7 @@
  * Validators for the per-user Postbox preference row (`mailUserSettings`) and
  * the `mail/settings` update args that write it.
  *
- * They live beside each other, in their own module rather than in the general
- * `convexValidators.ts` grab bag, because they are ONE contract read from three
+ * They live beside each other, in one module, because they are ONE contract read from three
  * places — the schema field, the mutation arg and (for the sort order) the list
  * read — and a literal added on one side only is a silently rejected write.
  */

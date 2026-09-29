@@ -17,16 +17,13 @@
  *
  * Run by `bun run lint` (apps/api): `bun scripts/check-gate-input-wiring.ts`.
  */
-import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join } from 'node:path';
+import { createChecker, productionModules, sourceMap } from './lib/sourceGraph';
 
 const convexRoot = join(import.meta.dirname, '..', 'convex');
-const GATE_TYPES = join(convexRoot, 'delivery', 'ramp', 'gateTypes.ts');
+const GATE_TYPES = 'delivery/ramp/gateTypes.ts';
 
-const failures: string[] = [];
-function check(condition: boolean, message: string): void {
-	if (!condition) failures.push(message);
-}
+const { check, report } = createChecker();
 
 /** Fields with no production supplier today, each written down. Exact. */
 const KNOWN_UNSUPPLIED: readonly string[] = [];
@@ -38,31 +35,11 @@ const REQUIRED_SUPPLIERS: readonly string[] = [
 /** Fields only one reader supplies today, mapped to that reader. Exact. */
 const KNOWN_ONE_SIDED: Readonly<Record<string, string>> = {};
 
-function productionModules(dir: string): string[] {
-	const found: string[] = [];
-	for (const entry of readdirSync(dir, { withFileTypes: true })) {
-		const full = join(dir, entry.name);
-		if (entry.isDirectory()) {
-			if (entry.name === '__tests__' || entry.name === '_generated') continue;
-			found.push(...productionModules(full));
-			continue;
-		}
-		if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts')) found.push(full);
-	}
-	return found.sort();
-}
-
-function sourceWithoutComments(file: string): string {
-	return readFileSync(file, 'utf8')
-		.replace(/\/\*[\s\S]*?\*\//g, '')
-		.replace(/^\s*\/\/.*$/gm, '');
-}
-
-const MODULES = productionModules(convexRoot);
-const named = (file: string): string => relative(convexRoot, file);
+/** Every production module under convex/, comments stripped, keyed by its relative path. */
+const SOURCES = sourceMap(convexRoot, productionModules(convexRoot));
 
 function interfaceBody(): string {
-	const source = sourceWithoutComments(GATE_TYPES);
+	const source = SOURCES.get(GATE_TYPES) ?? '';
 	return /export interface RampGateEvaluationInput \{([\s\S]*?)\n\}/.exec(source)?.[1] ?? '';
 }
 
@@ -197,12 +174,12 @@ function evaluationLiterals(source: string): string[] {
 }
 
 const SUPPLIERS = new Map<string, Set<string>>();
-for (const file of MODULES) {
+for (const [file, source] of SOURCES) {
 	const fields = new Set<string>();
-	for (const literal of evaluationLiterals(sourceWithoutComments(file))) {
+	for (const literal of evaluationLiterals(source)) {
 		for (const key of suppliedKeys(literal)) fields.add(key);
 	}
-	if (fields.size > 0) SUPPLIERS.set(named(file), fields);
+	if (fields.size > 0) SUPPLIERS.set(file, fields);
 }
 
 const BODY = interfaceBody();
@@ -212,7 +189,8 @@ const suppliersFor = (field: string): string[] =>
 
 // ─── The checks ─────────────────────────────────────────────────────────────
 
-check(MODULES.length > 100, `walked only ${MODULES.length} modules`);
+check(SOURCES.size > 100, `walked only ${SOURCES.size} modules`);
+check(SOURCES.has(GATE_TYPES), `${GATE_TYPES} dropped out of the walk`);
 check(
 	FIELDS.length > 0,
 	'read no fields off RampGateEvaluationInput — the interface moved or was renamed'
@@ -266,8 +244,4 @@ for (const field of FIELDS) {
 	}
 }
 
-if (failures.length > 0) {
-	for (const failure of failures) console.error(`FAIL: ${failure}`);
-	process.exit(1);
-}
-console.log(`check-gate-input-wiring: OK (${FIELDS.length} fields, ${SUPPLIERS.size} suppliers)`);
+report('check-gate-input-wiring', `${FIELDS.length} fields, ${SUPPLIERS.size} suppliers`);

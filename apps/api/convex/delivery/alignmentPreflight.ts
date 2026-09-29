@@ -39,7 +39,10 @@ import { getOptional } from '../lib/env';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { relayIdentityProviderFor } from '../domains/providers';
 import { parsePoolIps } from '../domains/spf';
-import { alignmentCheckValidator, alignmentVerdictValidator } from './deliverabilityValidators';
+import {
+	alignmentCheckValidator,
+	alignmentVerdictValidator,
+} from '../lib/validators/deliverability';
 import { configuredRelayKinds } from './relayConfiguration';
 
 /**

@@ -2,6 +2,20 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { clarificationSourceValidator } from '../lib/literalValidators';
 
+/** Field record of `clarificationAskLog`, shared with the functions that write it. */
+export const clarificationAskLogFields = {
+	source: clarificationSourceValidator,
+	slotTypes: v.array(v.string()), // the slot kinds asked about
+	questionCount: v.number(),
+	predictedValue: v.number(), // cheap predicted value of asking, [0, 1]
+	eagerness: v.optional(v.string()), // dial position at ask time, if any
+	threadId: v.optional(v.id('mailThreads')),
+	// Filled once the answer lands and a draft is produced:
+	isDraftChanged: v.optional(v.boolean()), // answer materially changed the draft
+	draftDivergence: v.optional(v.number()), // 1 - similarity, when sampled
+	createdAt: v.number(),
+};
+
 /**
  * Ask-eagerness + clarification-memory tables — the trust dial setting, its
  * ask-outcome log, and the durable answer-memory that stops the clarify loop
@@ -33,18 +47,7 @@ export const askEagernessTables = {
 	// divergence, sampled cheaply). Feeds calibration of the eagerness dial: are
 	// the asks we predicted valuable the ones that actually moved the draft?
 	// Never drives routing.
-	clarificationAskLog: defineTable({
-		source: clarificationSourceValidator,
-		slotTypes: v.array(v.string()), // the slot kinds asked about
-		questionCount: v.number(),
-		predictedValue: v.number(), // cheap predicted value of asking, [0, 1]
-		eagerness: v.optional(v.string()), // dial position at ask time, if any
-		threadId: v.optional(v.id('mailThreads')),
-		// Filled once the answer lands and a draft is produced:
-		isDraftChanged: v.optional(v.boolean()), // answer materially changed the draft
-		draftDivergence: v.optional(v.number()), // 1 - similarity, when sampled
-		createdAt: v.number(),
-	}).index('by_created_at', ['createdAt']),
+	clarificationAskLog: defineTable(clarificationAskLogFields).index('by_created_at', ['createdAt']),
 
 	// Clarification answer-memory - the durable, user-editable store that stops
 	// the clarify loop from asking the same question twice. Each ANSWERED

@@ -14,7 +14,7 @@ import {
 	dashboardCardValidator,
 	dashboardRuleValidator,
 	type DashboardRuleCondition,
-} from '../lib/dashboardLayoutValidators';
+} from '../lib/validators/dashboard';
 
 // ============================================================
 // Default Card Definitions

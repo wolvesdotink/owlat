@@ -1,6 +1,91 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { reviewActionValidator } from '../lib/convexValidators';
+import { reviewActionValidator } from '../lib/literalValidators';
+import { autonomyFeedbackSourceValidator } from '../lib/validators/autonomy';
+
+/** Field record of `agentConfig`, shared with the functions that write it. */
+export const agentConfigFields = {
+	// Auto-reply settings
+	isAutoReplyEnabled: v.boolean(),
+	confidenceThreshold: v.number(), // 0-1, minimum confidence for auto-approval
+	// Organization communication style
+	toneDescription: v.optional(v.string()),
+	signatureTemplate: v.optional(v.string()),
+	// Rate limiting
+	maxDailyAutoReplies: v.optional(v.number()),
+	dailyAutoReplyCount: v.optional(v.number()),
+	dailyAutoReplyResetAt: v.optional(v.number()),
+	// Message coalescing debounce window. Opt-in: a positive value enables
+	// burst coalescing (suggested 30000 = 30s); unset/0 processes each
+	// message immediately. See agent/coalescing.ts.
+	coalesceWindowMs: v.optional(v.number()),
+	// Undo / send-delay window (ms) applied to AUTONOMOUS auto-sends only.
+	// The auto-approved reply is scheduled after this delay instead of
+	// firing immediately, recording a cancellable pending-send marker so a
+	// landing customer reply, the kill switch, or an explicit user "Undo"
+	// can abort it before it goes out. Unset ⇒ DEFAULT_AUTO_SEND_DELAY_MS
+	// (60s). 0 preserves the legacy immediate-send behaviour. Human-reviewed
+	// approvals are unaffected. See inbox/processingLifecycle/effects.ts.
+	autoSendDelayMs: v.optional(v.number()),
+	// Undo window (ms) after a HUMAN Approve on the review surfaces. The
+	// approved reply is scheduled after this delay with the same cancellable
+	// `pendingAutoSend` marker the autonomous path uses, so the reviewer can
+	// pull it back ("Approved — Undo (14s)") through `undoAutoSend`. Clamped
+	// to 0–120000 at read/write; unset ⇒ DEFAULT_HUMAN_APPROVE_UNDO_DELAY_MS
+	// (15s). 0 restores the legacy immediate human send. Autonomous sends are
+	// governed by `autoSendDelayMs` above, not this. See
+	// inbox/processingLifecycle/effects.ts.
+	humanApproveUndoDelayMs: v.optional(v.number()),
+	// Abandoned-clarification window (ms). A message parked in
+	// `awaiting_clarification` for longer than this with no owner answer is
+	// resumed by the fallback cron as a flagged best-guess that is never
+	// auto-send-eligible. Unset ⇒ DEFAULT_CLARIFICATION_TIMEOUT_MS (24h). See
+	// inbox/processingLifecycle.ts:reconcileAbandonedClarifications.
+	clarificationTimeoutMs: v.optional(v.number()),
+	// Shadow ("would-have-sent") mode. When true (or unset — shadow is the
+	// DEFAULT posture before any real auto-send is trusted for a slice), the
+	// `route` step computes the auto-send decision EXACTLY as normal but never
+	// sends: an auto-approve is logged as a shadow "would-have-sent"
+	// observation (agent/shadowScorecard.ts) and the message is routed to
+	// human review instead. Set explicitly to `false` to let trusted slices
+	// auto-send for real. Zero send-side risk while on. See
+	// agent/steps/route/index.ts.
+	isShadowMode: v.optional(v.boolean()),
+	// Timezone-aware WORKING-HOURS window for AUTONOMOUS auto-sends. When
+	// `isWorkingHoursEnabled` is true, an auto-approved reply whose routing
+	// decision lands OUTSIDE the window is held for human review instead of
+	// sent (the draft is still queued) — so the agent never fires at 3am and
+	// out-of-hours replies wait for morning review. Times are minutes from
+	// local midnight in `workingHoursTimezone` (an IANA zone); `workingHoursDays`
+	// are the allowed weekdays (0=Sun … 6=Sat). Unset fields fall back to the
+	// Mon–Fri 09:00–17:00 UTC default. Human-reviewed approvals are unaffected.
+	// See lib/workingHours.ts + agent/steps/route/index.ts.
+	isWorkingHoursEnabled: v.optional(v.boolean()),
+	workingHoursTimezone: v.optional(v.string()),
+	workingHoursStart: v.optional(v.number()),
+	workingHoursEnd: v.optional(v.number()),
+	workingHoursDays: v.optional(v.array(v.number())),
+	// Timestamps
+	createdAt: v.number(),
+	updatedAt: v.number(),
+};
+
+/** Field record of `autonomyFeedback`, shared with the functions that write it. */
+export const autonomyFeedbackFields = {
+	ruleId: v.optional(v.id('autonomyRules')),
+	category: v.string(),
+	action: reviewActionValidator,
+	agentConfidence: v.number(),
+	userFeedback: v.optional(v.string()),
+	inboundMessageId: v.optional(v.id('inboundMessages')),
+	// Provenance. Absent (or 'human') = a reviewer decision; 'outcome' = a
+	// real-world post-send outcome captured by agent/outcomeFeedback.
+	source: v.optional(autonomyFeedbackSourceValidator),
+	// For `source: 'outcome'` rows, which real-world signal produced it:
+	// 'reply_negative' | 'bounce' | 'complaint' | 'clarification_unedited_send'.
+	outcomeSignal: v.optional(v.string()),
+	createdAt: v.number(),
+};
 
 /**
  * The deterministic matcher a handling rule compiles to (see the `handlingRules`
@@ -48,71 +133,7 @@ export const handlingRuleActionValidator = v.object({
 export const autonomyTables = {
 	// Agent Config - operational tuning for the agent pipeline (singleton).
 	// The master on/off is the `ai.agent` feature flag — not a column here.
-	agentConfig: defineTable({
-		// Auto-reply settings
-		isAutoReplyEnabled: v.boolean(),
-		confidenceThreshold: v.number(), // 0-1, minimum confidence for auto-approval
-		// Organization communication style
-		toneDescription: v.optional(v.string()),
-		signatureTemplate: v.optional(v.string()),
-		// Rate limiting
-		maxDailyAutoReplies: v.optional(v.number()),
-		dailyAutoReplyCount: v.optional(v.number()),
-		dailyAutoReplyResetAt: v.optional(v.number()),
-		// Message coalescing debounce window. Opt-in: a positive value enables
-		// burst coalescing (suggested 30000 = 30s); unset/0 processes each
-		// message immediately. See agent/coalescing.ts.
-		coalesceWindowMs: v.optional(v.number()),
-		// Undo / send-delay window (ms) applied to AUTONOMOUS auto-sends only.
-		// The auto-approved reply is scheduled after this delay instead of
-		// firing immediately, recording a cancellable pending-send marker so a
-		// landing customer reply, the kill switch, or an explicit user "Undo"
-		// can abort it before it goes out. Unset ⇒ DEFAULT_AUTO_SEND_DELAY_MS
-		// (60s). 0 preserves the legacy immediate-send behaviour. Human-reviewed
-		// approvals are unaffected. See inbox/processingLifecycle/effects.ts.
-		autoSendDelayMs: v.optional(v.number()),
-		// Undo window (ms) after a HUMAN Approve on the review surfaces. The
-		// approved reply is scheduled after this delay with the same cancellable
-		// `pendingAutoSend` marker the autonomous path uses, so the reviewer can
-		// pull it back ("Approved — Undo (14s)") through `undoAutoSend`. Clamped
-		// to 0–120000 at read/write; unset ⇒ DEFAULT_HUMAN_APPROVE_UNDO_DELAY_MS
-		// (15s). 0 restores the legacy immediate human send. Autonomous sends are
-		// governed by `autoSendDelayMs` above, not this. See
-		// inbox/processingLifecycle/effects.ts.
-		humanApproveUndoDelayMs: v.optional(v.number()),
-		// Abandoned-clarification window (ms). A message parked in
-		// `awaiting_clarification` for longer than this with no owner answer is
-		// resumed by the fallback cron as a flagged best-guess that is never
-		// auto-send-eligible. Unset ⇒ DEFAULT_CLARIFICATION_TIMEOUT_MS (24h). See
-		// inbox/processingLifecycle.ts:reconcileAbandonedClarifications.
-		clarificationTimeoutMs: v.optional(v.number()),
-		// Shadow ("would-have-sent") mode. When true (or unset — shadow is the
-		// DEFAULT posture before any real auto-send is trusted for a slice), the
-		// `route` step computes the auto-send decision EXACTLY as normal but never
-		// sends: an auto-approve is logged as a shadow "would-have-sent"
-		// observation (agent/shadowScorecard.ts) and the message is routed to
-		// human review instead. Set explicitly to `false` to let trusted slices
-		// auto-send for real. Zero send-side risk while on. See
-		// agent/steps/route/index.ts.
-		isShadowMode: v.optional(v.boolean()),
-		// Timezone-aware WORKING-HOURS window for AUTONOMOUS auto-sends. When
-		// `isWorkingHoursEnabled` is true, an auto-approved reply whose routing
-		// decision lands OUTSIDE the window is held for human review instead of
-		// sent (the draft is still queued) — so the agent never fires at 3am and
-		// out-of-hours replies wait for morning review. Times are minutes from
-		// local midnight in `workingHoursTimezone` (an IANA zone); `workingHoursDays`
-		// are the allowed weekdays (0=Sun … 6=Sat). Unset fields fall back to the
-		// Mon–Fri 09:00–17:00 UTC default. Human-reviewed approvals are unaffected.
-		// See lib/workingHours.ts + agent/steps/route/index.ts.
-		isWorkingHoursEnabled: v.optional(v.boolean()),
-		workingHoursTimezone: v.optional(v.string()),
-		workingHoursStart: v.optional(v.number()),
-		workingHoursEnd: v.optional(v.number()),
-		workingHoursDays: v.optional(v.array(v.number())),
-		// Timestamps
-		createdAt: v.number(),
-		updatedAt: v.number(),
-	}),
+	agentConfig: defineTable(agentConfigFields),
 
 	// Agent Circuit Breakers - automated safety mechanisms
 	agentCircuitBreakers: defineTable({
@@ -179,21 +200,7 @@ export const autonomyTables = {
 	// unchanged: a negative outcome maps to `rejected`, a positive to
 	// `approved`. `source`/`outcomeSignal` are optional provenance — absent
 	// rows are legacy human feedback.
-	autonomyFeedback: defineTable({
-		ruleId: v.optional(v.id('autonomyRules')),
-		category: v.string(),
-		action: reviewActionValidator,
-		agentConfidence: v.number(),
-		userFeedback: v.optional(v.string()),
-		inboundMessageId: v.optional(v.id('inboundMessages')),
-		// Provenance. Absent (or 'human') = a reviewer decision; 'outcome' = a
-		// real-world post-send outcome captured by agent/outcomeFeedback.
-		source: v.optional(v.union(v.literal('human'), v.literal('outcome'))),
-		// For `source: 'outcome'` rows, which real-world signal produced it:
-		// 'reply_negative' | 'bounce' | 'complaint' | 'clarification_unedited_send'.
-		outcomeSignal: v.optional(v.string()),
-		createdAt: v.number(),
-	})
+	autonomyFeedback: defineTable(autonomyFeedbackFields)
 		.index('by_category', ['category'])
 		.index('by_created_at', ['createdAt'])
 		.index('by_inbound_message', ['inboundMessageId']),

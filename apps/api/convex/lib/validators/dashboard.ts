@@ -1,5 +1,5 @@
 import { v, type Infer } from 'convex/values';
-import { widgetSizeValidator } from './convexValidators';
+import { widgetSizeValidator } from '../literalValidators';
 
 /**
  * Adaptive dashboard layout validators — the single declaration of a saved

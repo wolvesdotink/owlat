@@ -13,12 +13,9 @@
 
 import { v, type Infer } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
-import {
-	securityFlagsValidator,
-	classificationValidator,
-	tokenUsageValidator,
-} from '../../lib/convexValidators';
-import { pendingClarificationValidator } from '../clarificationValidators';
+import { securityFlagsValidator, tokenUsageValidator } from '../../lib/convexValidators';
+import { classificationValidator } from '../../lib/validators/classification';
+import { pendingClarificationValidator } from '../../lib/validators/clarification';
 import { MAX_RETRY_ATTEMPTS } from '../../lib/constants';
 import { agentStepKindValidator, type AgentStepKind } from '../../agent/steps/catalog';
 import { contextTierValidator } from '../../lib/literalValidators';

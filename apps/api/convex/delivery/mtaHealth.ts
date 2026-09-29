@@ -12,6 +12,7 @@ import { isRecord } from '@owlat/shared';
 import type { Infer } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalAction, internalMutation } from '../_generated/server';
+import { upsertInstanceSettings } from '../lib/instanceSettings';
 import { getMtaBaseUrl } from '../mail/mtaClient';
 import { mtaHealthSnapshotValidator } from '../schema/instance';
 
@@ -114,15 +115,8 @@ export const sync = internalAction({
 export const record = internalMutation({
 	args: { snapshot: mtaHealthSnapshotValidator },
 	handler: async (ctx, args): Promise<void> => {
-		const settings = await ctx.db.query('instanceSettings').first(); // bounded: singleton row
-		if (settings) {
-			await ctx.db.patch(settings._id, { mtaHealth: args.snapshot, updatedAt: Date.now() });
-		} else {
-			await ctx.db.insert('instanceSettings', {
-				mtaHealth: args.snapshot,
-				createdAt: Date.now(),
-				updatedAt: Date.now(),
-			});
-		}
+		// Often the first writer on a fresh deployment: the helper creates a bare
+		// row without the seed columns, so `/seed/admin` still fills them later.
+		await upsertInstanceSettings(ctx, { mtaHealth: args.snapshot });
 	},
 });
