@@ -13,7 +13,6 @@ import {
 	normalizeEmail,
 	type JsonPrimitiveValue,
 } from './lib/inputGuards';
-import { featureDisabledMessage } from './lib/featureFlags';
 
 // Request body type for sending events
 interface SendEventBody {
@@ -61,14 +60,6 @@ export const sendEvent = createAuthenticatedHandler(
 	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
 		const denied = requireScope(auth, 'events:write', request.headers.get('Origin'));
 		if (denied) return denied;
-		// Events only start automations, so the endpoint follows the `automations`
-		// feature floor. Refuse before any contact is created.
-		const flags = await ctx.runQuery(internal.workspaces.featureFlags.getResolvedFlags, {});
-		if (!flags.automations) {
-			return errorResponse('forbidden', featureDisabledMessage('automations'), {
-				data: { reason: 'feature_disabled' },
-			});
-		}
 		// Parse request body
 		let body: SendEventBody;
 		try {
