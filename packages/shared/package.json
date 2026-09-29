@@ -266,6 +266,10 @@
 			"types": "./src/ipAddress.ts",
 			"import": "./src/ipAddress.ts"
 		},
+		"./mailAuthPolicy": {
+			"types": "./src/mailAuthPolicy.ts",
+			"import": "./src/mailAuthPolicy.ts"
+		},
 		"./ipAudit": {
 			"types": "./src/ipAudit.ts",
 			"import": "./src/ipAudit.ts"

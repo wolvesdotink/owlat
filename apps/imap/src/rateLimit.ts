@@ -37,10 +37,15 @@
  *
  * Failure mode: Redis unreachable → fail-open (warn-log + skip), so a
  * misconfigured Redis cannot lock everyone out of their mail.
+ *
+ * This is a pre-filter: LOGIN then calls Convex `verify` with the peer IP,
+ * whose failure table applies the same policy (`@owlat/shared/mailAuthPolicy`)
+ * across IMAP and SMTP submission.
  */
 
 import { createHash } from 'crypto';
 import type Redis from 'ioredis';
+import { MAIL_AUTH_FAILURES_PER_IP } from '@owlat/shared/mailAuthPolicy';
 import { logger } from './logger.js';
 
 export interface RateLimitConfig {
@@ -51,7 +56,7 @@ export interface RateLimitConfig {
 	tarpitMs: number;
 }
 
-const PER_IP_FAILURE_LIMIT = 50;
+const PER_IP_FAILURE_LIMIT = MAIL_AUTH_FAILURES_PER_IP;
 
 /**
  * Record one failed LOGIN against both windows, atomically.

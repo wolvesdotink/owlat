@@ -24,7 +24,7 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -788,5 +788,155 @@ describe('appPasswords.revokeAll', () => {
 		setSession('user-admin', 'admin', 'org-1');
 
 		await expect(t.mutation(api.mail.appPasswords.revokeAll, { mailboxId })).rejects.toThrow();
+	});
+});
+
+// ─── verify-credential route: per-client throttling ─────────────────────────
+
+describe('verify-credential route keys the auth throttle on the client IP', () => {
+	const VERIFY_PATH = '/webhooks/mta-verify-credential';
+	const MTA_SECRET = 'mta-test-secret';
+	const savedEnv = { ...process.env };
+
+	beforeEach(() => {
+		process.env['MTA_WEBHOOK_SECRET'] = MTA_SECRET;
+		// The request source is resolvable, so a regression back to the request
+		// address shows up as the wrong IP rather than as the shared bucket.
+		process.env['RATE_LIMIT_TRUSTED_PROXY'] = 'xforwarded';
+	});
+
+	afterEach(() => {
+		process.env = { ...savedEnv };
+	});
+
+	async function signedVerify(
+		t: Awaited<ReturnType<typeof setupTest>>,
+		body: Record<string, unknown>,
+		requestSourceIp = '198.51.100.9'
+	): Promise<{ ok: boolean }> {
+		const text = JSON.stringify(body);
+		const ts = String(Math.floor(Date.now() / 1000));
+		const key = await crypto.subtle.importKey(
+			'raw',
+			new TextEncoder().encode(MTA_SECRET),
+			{ name: 'HMAC', hash: 'SHA-256' },
+			false,
+			['sign']
+		);
+		const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${ts}.${text}`));
+		const res = await t.fetch(VERIFY_PATH, {
+			method: 'POST',
+			body: text,
+			headers: {
+				'Content-Type': 'application/json',
+				'X-Forwarded-For': requestSourceIp,
+				'x-mta-timestamp': ts,
+				'x-mta-signature': Array.from(new Uint8Array(sig))
+					.map((b) => b.toString(16).padStart(2, '0'))
+					.join(''),
+			},
+		});
+		expect(res.status).toBe(200);
+		return (await res.json()) as { ok: boolean };
+	}
+
+	async function provisionSmtp(t: Awaited<ReturnType<typeof setupTest>>) {
+		const { mailboxId, address } = await seedMailbox(t);
+		const { id, cleartext } = await t.mutation(api.mail.appPasswords.generate, {
+			mailboxId,
+			label: 'smtp-client',
+		});
+		return { address, appPasswordId: id, cleartext };
+	}
+
+	const failureIps = (t: Awaited<ReturnType<typeof setupTest>>) =>
+		t.run(async (ctx) => (await ctx.db.query('mailAuthFailures').collect()).map((f) => f.ip));
+
+	it('records a failure under the IP carried in the signed body, not the request source', async () => {
+		const t = await setupTest();
+		await signedVerify(t, {
+			address: 'nobody@example.com',
+			password: 'wrong-password',
+			scope: 'smtp',
+			ip: '203.0.113.7',
+		});
+		expect(await failureIps(t)).toEqual(['203.0.113.7']);
+	});
+
+	it('falls back to the request source when the body carries no usable ip', async () => {
+		// An MTA from before the ip field existed, during a rolling upgrade.
+		const t = await setupTest();
+		await signedVerify(t, { address: 'nobody@example.com', password: 'wrong', scope: 'smtp' });
+		await signedVerify(t, {
+			address: 'nobody@example.com',
+			password: 'wrong',
+			scope: 'smtp',
+			ip: 'not-an-address',
+		});
+		expect(await failureIps(t)).toEqual(['198.51.100.9', '198.51.100.9']);
+	});
+
+	it('does not let 50 failures from one client block a correct login from another', async () => {
+		const t = await setupTest();
+		const f = await provisionSmtp(t);
+
+		for (let i = 0; i < 50; i++) {
+			const res = await signedVerify(t, {
+				address: `guess${i}@example.com`,
+				password: 'wrong-password',
+				scope: 'smtp',
+				ip: '203.0.113.7',
+			});
+			expect(res.ok).toBe(false);
+		}
+
+		const other = await signedVerify(t, {
+			address: f.address,
+			password: f.cleartext,
+			scope: 'smtp',
+			ip: '192.0.2.44',
+		});
+		expect(other.ok).toBe(true);
+
+		// The client that burned the budget is still held back.
+		const same = await signedVerify(t, {
+			address: f.address,
+			password: f.cleartext,
+			scope: 'smtp',
+			ip: '203.0.113.7',
+		});
+		expect(same.ok).toBe(false);
+
+		// Last-used records the submitting client, not the MTA.
+		const row = await t.run(async (ctx) => ctx.db.get(f.appPasswordId));
+		expect(row!.lastUsedIp).toBe('192.0.2.44');
+	});
+
+	it('counts an IPv6 client per /64', async () => {
+		const t = await setupTest();
+		const f = await provisionSmtp(t);
+		for (let i = 0; i < 50; i++) {
+			await t.mutation(internal.mail.authRateLimit.recordFailure, {
+				address: `guess${i}@example.com`,
+				ip: `2001:db8:1:2::${(i + 1).toString(16)}`,
+				scope: 'smtp',
+			});
+		}
+
+		const sameNetwork = await t.action(internal.mail.appPasswords.verify, {
+			address: f.address,
+			password: f.cleartext,
+			scope: 'smtp',
+			ip: '2001:db8:1:2:ffff::1',
+		});
+		expect(sameNetwork).toBeNull();
+
+		const otherNetwork = await t.action(internal.mail.appPasswords.verify, {
+			address: f.address,
+			password: f.cleartext,
+			scope: 'smtp',
+			ip: '2001:db8:1:3::1',
+		});
+		expect(otherNetwork).not.toBeNull();
 	});
 });

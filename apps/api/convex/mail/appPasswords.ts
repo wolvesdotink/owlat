@@ -208,8 +208,8 @@ export const verify = internalAction({
 		address: v.string(),
 		password: v.string(),
 		scope: mailAppPasswordScopeValidator,
-		// Optional caller IP — used by the shared rate-limit table so the
-		// SMTP submission path can throttle (the IMAP path also uses Redis).
+		// The logging-in client's IP (the IMAP peer, or the SMTP peer the MTA
+		// forwarded), keyed per client by the shared auth-failure table.
 		ip: v.optional(v.string()),
 	},
 	handler: async (
@@ -223,9 +223,8 @@ export const verify = internalAction({
 	} | null> => {
 		const lowerAddress = args.address.toLowerCase();
 
-		// Cross-path throttle. The IMAP server has its own Redis sliding
-		// window; this is the SMTP submission's equivalent — also catches
-		// any future caller (e.g. the HMAC verify endpoint).
+		// Cross-protocol throttle, per address and per client IP, for IMAP and
+		// SMTP submission alike (the IMAP server also keeps a Redis pre-filter).
 		const throttled = await ctx.runQuery(internal.mail.authRateLimit.isThrottled, {
 			address: lowerAddress,
 			ip: args.ip,

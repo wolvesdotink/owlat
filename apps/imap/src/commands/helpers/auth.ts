@@ -105,10 +105,13 @@ export async function authenticateAppPassword(
 	}
 
 	try {
+		// The peer IP lets Convex apply its per-IP failure budget to this client,
+		// under the same policy that throttles SMTP submission.
 		const result = await deps.convex.action(fn.verifyAppPassword, {
 			address,
 			password,
 			scope: 'imap',
+			ip: deps.remoteIp,
 		});
 
 		if (!result) {

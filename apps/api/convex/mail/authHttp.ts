@@ -3,7 +3,7 @@ import { BodyTooLargeError, readBodyText } from '../lib/readBody';
  * HMAC-signed credential verification endpoint for the MTA / IMAP server.
  *
  * Endpoint: POST /webhooks/mta-verify-credential
- * Body:    { address, password, scope: 'imap' | 'smtp' }
+ * Body:    { address, password, scope: 'imap' | 'smtp', clientName?, ip? }
  * Returns: { ok: true, mailboxId, appPasswordId, organizationId, userId } | { ok: false }
  *
  * Uses the same MTA_WEBHOOK_SECRET HMAC pattern as the MTA feedback adapter
@@ -17,6 +17,7 @@ import { logError } from '../lib/runtimeLog';
 import { getOptional } from '../lib/env';
 import { constantTimeEqual } from '../webhooks/security';
 import { getClientIp } from '../lib/publicRateLimit';
+import { normalizePeerIp } from '@owlat/shared/ipAddress';
 
 export const handleVerifyCredential = httpAction(async (ctx, request) => {
 	if (request.method !== 'POST') {
@@ -102,6 +103,10 @@ export const handleVerifyCredential = httpAction(async (ctx, request) => {
 		// forwards so successful submissions populate the app-password
 		// "Last used" device/client column, mirroring the IMAP ID path.
 		clientName?: string;
+		// The submission client's address as the MTA saw it on the socket. The
+		// HTTP caller here is the MTA itself, so the request's own source address
+		// says nothing about which client is logging in.
+		ip?: unknown;
 	};
 	try {
 		payload = JSON.parse(bodyText);
@@ -113,14 +118,15 @@ export const handleVerifyCredential = httpAction(async (ctx, request) => {
 		return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400 });
 	}
 
-	const clientIp = getClientIp(request);
+	// Key verify's per-IP auth-failure throttle on the client the MTA reports in
+	// the signed body. A body without a usable ip comes from an MTA that predates
+	// the field (a rolling upgrade), which falls back to the request source.
+	const clientIp =
+		(typeof payload.ip === 'string' ? normalizePeerIp(payload.ip) : null) ?? getClientIp(request);
 	const result = await ctx.runAction(internal.mail.appPasswords.verify, {
 		address: payload.address,
 		password: payload.password,
 		scope: payload.scope,
-		// Engage verify's per-IP auth-failure throttle (getClientIp already
-		// honors RATE_LIMIT_TRUSTED_PROXY); without this the throttle was dead
-		// from its only caller.
 		ip: clientIp,
 	});
 
