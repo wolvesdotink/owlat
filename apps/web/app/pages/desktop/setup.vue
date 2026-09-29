@@ -16,6 +16,7 @@ import {
 	SUBDOMAIN_KEYS,
 	type HostKeyPrompt,
 	type InstanceHostnames,
+	type SendingConfig,
 	type SetupConfigInput,
 	type SubdomainKey,
 	type SubdomainLabels,
@@ -29,6 +30,7 @@ import {
 } from '~/lib/desktop/provisioningForm';
 import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
 import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
+import type { FeaturePackKey } from '@owlat/shared/featureFlags';
 import { useLocalized } from '~/composables/useLocalized';
 
 const { t } = useI18n();
@@ -205,13 +207,26 @@ async function onConnect() {
 }
 
 // ---- config form ----
-const packs = reactive({ emailClient: true, marketing: true, ai: false });
-const packOptions = [
+// Keyed by the shared pack vocabulary, so a misspelled pack is a compile error
+// here rather than a `parseSetupConfig` rejection on the server.
+const packs = reactive<Record<FeaturePackKey, boolean>>({
+	emailClient: true,
+	marketing: true,
+	ai: false,
+});
+const packOptions: ReadonlyArray<{ key: FeaturePackKey; label: string }> = [
 	{ key: 'emailClient', label: 'desktop.setup.packs.emailClient' },
 	{ key: 'marketing', label: 'desktop.setup.packs.marketing' },
 	{ key: 'ai', label: 'desktop.setup.packs.ai' },
-] as const;
-const sendingProvider = ref<'mta' | 'resend' | 'ses'>('mta');
+];
+/**
+ * The subset of setup-cli's sending providers this wizard offers, carved out of
+ * the shared config type so a provider the CLI renames or reshapes breaks here.
+ * Emailit and SMTP need a catalog-driven credential form (and a field → config
+ * mapper) before the desktop wizard can offer them; see issue #879.
+ */
+type DesktopSendingConfig = Extract<SendingConfig, { provider: 'mta' | 'resend' | 'ses' }>;
+const sendingProvider = ref<DesktopSendingConfig['provider']>('mta');
 const resendKey = ref('');
 const sesRegion = ref('');
 const sesAccessKey = ref('');
@@ -297,16 +312,18 @@ function buildConfig(): SetupConfigInput {
 		},
 		seedDemo: seedDemo.value,
 	};
-	if (sendingProvider.value === 'mta') cfg.sending = { provider: 'mta' };
+	let sending: DesktopSendingConfig;
+	if (sendingProvider.value === 'mta') sending = { provider: 'mta' };
 	else if (sendingProvider.value === 'resend')
-		cfg.sending = { provider: 'resend', apiKey: resendKey.value.trim() };
+		sending = { provider: 'resend', apiKey: resendKey.value.trim() };
 	else
-		cfg.sending = {
+		sending = {
 			provider: 'ses',
 			region: sesRegion.value.trim(),
 			accessKeyId: sesAccessKey.value.trim(),
 			secretAccessKey: sesSecret.value.trim(),
 		};
+	cfg.sending = sending;
 
 	if (aiProvider.value === 'ollama') cfg.ai = { provider: 'ollama' };
 	else if (aiProvider.value === 'openrouter')
