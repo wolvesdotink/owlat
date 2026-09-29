@@ -1,9 +1,14 @@
 import { v } from 'convex/values';
 import { internalQuery, internalMutation } from '../_generated/server';
+import { resolveStoredFeatureFlags } from '../lib/featureFlags';
+import type { FeatureFlagState } from '@owlat/shared/featureFlags';
 
 /**
  * Get campaign archive data by archive token.
- * Only returns data for sent campaigns with archiveEnabled: true.
+ * Only returns data for sent campaigns with archiveEnabled: true, and only
+ * while the `campaigns` feature is on. `campaigns.archive` is not checked
+ * here: send.ts reads it as the default for campaigns that leave
+ * archiveEnabled unset, and a campaign's own setting overrides it.
  */
 export const getCampaignByArchiveToken = internalQuery({
 	args: { archiveToken: v.string() },
@@ -19,9 +24,9 @@ export const getCampaignByArchiveToken = internalQuery({
 		if (!campaign.archiveHtmlContent) return null;
 
 		// Get instance display name
-		const orgSettings = await ctx.db
-			.query('instanceSettings')
-			.first();
+		const orgSettings = await ctx.db.query('instanceSettings').first();
+		const flags = resolveStoredFeatureFlags((orgSettings?.featureFlags ?? {}) as FeatureFlagState);
+		if (!flags.campaigns) return null;
 
 		return {
 			html: campaign.archiveHtmlContent,
