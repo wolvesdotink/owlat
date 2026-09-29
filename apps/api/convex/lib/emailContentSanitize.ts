@@ -1,11 +1,16 @@
 /**
- * Write-time sanitization of text-block HTML in stored editor content.
+ * Write-time sanitization of stored editor content.
  *
  * Email templates, transactional emails and saved blocks keep their editor
  * state as a JSON string, and the builder loads a text block's `html` into a
  * live contenteditable. Every write of that JSON runs the text-block HTML
  * through `sanitizeEditorHtml`, the same policy the builder applies on load and
  * on commit, so stored content matches what the editors would produce.
+ *
+ * The same pass normalizes numeric style fields (padding, margin, sizes): a
+ * numeric string becomes a number and any other non-number value is dropped,
+ * so the renderer falls back to its default. The renderer coerces these
+ * fields too; this keeps the stored JSON in the shape the types describe.
  *
  * Pure helpers (no Convex-runtime imports). The only dependency is the
  * `@owlat/email-renderer/sanitize` entry, which pulls in `sanitize-html` and
@@ -20,6 +25,68 @@ function isObject(value: unknown): value is JsonObject {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Block content fields typed `number` in `@owlat/shared` that end up in style
+ * or sizing attributes. `width` and `value` are left out: `TableColumn.width`
+ * and `BlockCondition.value` are strings under the same names.
+ */
+const NUMERIC_STYLE_FIELDS: ReadonlySet<string> = new Set([
+	'paddingTop',
+	'paddingRight',
+	'paddingBottom',
+	'paddingLeft',
+	'marginTop',
+	'marginRight',
+	'marginBottom',
+	'marginLeft',
+	'borderWidth',
+	'borderRadius',
+	'buttonBorderWidth',
+	'bulletSize',
+	'cellPadding',
+	'colSpan',
+	'rowSpan',
+	'columnGap',
+	'fontSize',
+	'fontWeight',
+	'headerFontSize',
+	'height',
+	'iconSize',
+	'iconSpacing',
+	'iconWidth',
+	'itemSpacing',
+	'labelFontSize',
+	'letterSpacing',
+	'lineHeight',
+	'maxValue',
+	'maxWidth',
+	'mobileFontSize',
+	'paddingX',
+	'paddingY',
+	'playButtonSize',
+	'thickness',
+	'thumbnailWidth',
+]);
+
+/**
+ * Normalize the numeric style fields of one object in place: finite numbers
+ * and null stay, numeric strings become numbers, anything else is removed.
+ * Returns whether anything changed.
+ */
+function normalizeNumericFields(node: JsonObject): boolean {
+	let changed = false;
+	for (const key of Object.keys(node)) {
+		if (!NUMERIC_STYLE_FIELDS.has(key)) continue;
+		const value = node[key];
+		if (value === null || (typeof value === 'number' && Number.isFinite(value))) continue;
+		const parsed = typeof value === 'string' && value.trim() !== '' ? Number(value) : Number.NaN;
+		if (Number.isFinite(parsed)) node[key] = parsed;
+		else delete node[key];
+		changed = true;
+	}
+	return changed;
+}
+
 /** Sanitize `holder[key]` in place when it is a string. Returns whether it changed. */
 function sanitizeField(holder: JsonObject, key: string): boolean {
 	const value = holder[key];
@@ -31,25 +98,26 @@ function sanitizeField(holder: JsonObject, key: string): boolean {
 }
 
 /**
- * Walk a parsed block tree and sanitize the `content.html` of every text
- * block, however deeply it is nested (columns, containers, hero items, the
+ * Walk a parsed block tree, sanitize the `content.html` of every text block
+ * and normalize numeric style fields, however deeply they are nested
+ * (columns, column styles, containers, hero items, table cells, the
  * saved-block envelope). Returns whether anything changed.
  */
-function sanitizeTextBlocks(node: unknown): boolean {
+function sanitizeBlockTree(node: unknown): boolean {
 	if (Array.isArray(node)) {
 		let changed = false;
-		for (const entry of node) changed = sanitizeTextBlocks(entry) || changed;
+		for (const entry of node) changed = sanitizeBlockTree(entry) || changed;
 		return changed;
 	}
 	if (!isObject(node)) return false;
 
-	let changed = false;
+	let changed = normalizeNumericFields(node);
 	if (node['type'] === 'text' && isObject(node['content'])) {
-		changed = sanitizeField(node['content'], 'html');
+		changed = sanitizeField(node['content'], 'html') || changed;
 	}
 	for (const value of Object.values(node)) {
 		if (typeof value === 'object' && value !== null) {
-			changed = sanitizeTextBlocks(value) || changed;
+			changed = sanitizeBlockTree(value) || changed;
 		}
 	}
 	return changed;
@@ -65,10 +133,10 @@ function tryParse(json: string): unknown {
 }
 
 /**
- * Sanitize the text-block HTML inside stored block JSON: a bare block array,
- * the `{ blocks }` envelope or a single legacy block. The string comes back
- * untouched when nothing needed cleaning or it is not valid JSON (every reader
- * treats unparseable content as empty).
+ * Sanitize the text-block HTML and numeric style fields inside stored block
+ * JSON: a bare block array, the `{ blocks }` envelope or a single legacy
+ * block. The string comes back untouched when nothing needed cleaning or it is
+ * not valid JSON (every reader treats unparseable content as empty).
  */
 export function sanitizeStoredBlocksJson(json: string): string;
 export function sanitizeStoredBlocksJson(json: string | undefined): string | undefined;
@@ -76,7 +144,7 @@ export function sanitizeStoredBlocksJson(json: string | undefined): string | und
 	if (json === undefined) return undefined;
 	const parsed = tryParse(json);
 	if (parsed === undefined) return json;
-	return sanitizeTextBlocks(parsed) ? JSON.stringify(parsed) : json;
+	return sanitizeBlockTree(parsed) ? JSON.stringify(parsed) : json;
 }
 
 /**

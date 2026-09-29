@@ -10,6 +10,7 @@ import { fullSupport, type CarouselBlockContent } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
 import { escapeAttr, escapeCss, sanitizeUrl } from '../../sanitize';
 import { transformUrl } from '../../helpers/linkTransform';
+import { px } from '../../helpers/padding';
 import { checkShape, isString, isArray, isObject } from '../../helpers/validation';
 
 export const renderCarouselContent = (
@@ -20,11 +21,14 @@ export const renderCarouselContent = (
 	if (!images || images.length === 0) return '';
 
 	const carouselId = `owlat-car-${Math.random().toString(36).slice(2, 8)}`;
-	const iconColor = content.iconColor || ctx.theme.primaryColor || '#333333';
-	const inactiveColor = content.iconInactiveColor || '#cccccc';
-	const iconWidth = content.iconWidth || 12;
-	const borderRadius = content.borderRadius ? `border-radius:${content.borderRadius}px;` : '';
-	const thumbnailWidth = content.thumbnailWidth || 0;
+	// Escaped once here: both colours reach the global <style> rules as well as
+	// inline style attributes.
+	const iconColor = escapeCss(content.iconColor || ctx.theme.primaryColor || '#333333');
+	const inactiveColor = escapeCss(content.iconInactiveColor || '#cccccc');
+	const iconWidth = px(content.iconWidth, 0) || 12;
+	const radius = px(content.borderRadius, 0);
+	const borderRadius = radius ? `border-radius:${radius}px;` : '';
+	const thumbnailWidth = px(content.thumbnailWidth, 0);
 	const slidesClass = `${carouselId}-slides`;
 	const dotsClass = `${carouselId}-dots`;
 	const thumbsClass = `${carouselId}-thumbs`;
@@ -84,7 +88,7 @@ export const renderCarouselContent = (
 
 	const dots = images
 		.map((_, i) => {
-			const bg = escapeCss(i === 0 ? iconColor : inactiveColor);
+			const bg = i === 0 ? iconColor : inactiveColor;
 			return `<label for="${carouselId}-${i}" style="display:inline-block;width:${iconWidth}px;height:${iconWidth}px;border-radius:50%;background-color:${bg};margin:0 4px;cursor:pointer"></label>`;
 		})
 		.join('');
@@ -96,7 +100,7 @@ export const renderCarouselContent = (
 			.map((img, i) => {
 				const thumbSrc = img.thumbnailSrc || img.src;
 				const safeThumbSrc = escapeAttr(sanitizeUrl(thumbSrc));
-				const borderColor = escapeCss(i === 0 ? iconColor : 'transparent');
+				const borderColor = i === 0 ? iconColor : 'transparent';
 				return `<label for="${carouselId}-${i}" style="display:inline-block;margin:0 2px;cursor:pointer;border:2px solid ${borderColor};${borderRadius}"><img src="${safeThumbSrc}" alt="" width="${thumbnailWidth}" style="display:block;width:${thumbnailWidth}px;height:auto;${borderRadius}" border="0" /></label>`;
 			})
 			.join('');

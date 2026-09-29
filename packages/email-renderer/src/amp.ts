@@ -11,6 +11,7 @@ import type { RenderOptions } from './types';
 import { escapeHtml, escapeAttr } from './sanitize';
 import { moduleFor } from './blocks/_registry';
 import { DEFAULT_BASE_WIDTH } from './renderer';
+import { px } from './helpers/padding';
 // Side-effect: ensure built-in modules are registered when AMP rendering runs
 // even if `blocks/index.ts` was never imported by the caller.
 import './blocks/_builtin-modules';
@@ -45,7 +46,7 @@ ${needsFit(blocks) ? '<script async custom-element="amp-fit-text" src="https://c
 <style amp4email-boilerplate>body{visibility:hidden}</style>
 <style amp-custom>
 body{margin:0;padding:0;font-family:Arial,sans-serif}
-.owlat-container{max-width:${options?.baseWidth ?? DEFAULT_BASE_WIDTH}px;margin:0 auto;padding:0 16px}
+.owlat-container{max-width:${px(options?.baseWidth, DEFAULT_BASE_WIDTH)}px;margin:0 auto;padding:0 16px}
 .owlat-btn{display:inline-block;text-decoration:none;text-align:center;border-radius:4px;padding:12px 24px}
 </style>
 <title>${title}</title>

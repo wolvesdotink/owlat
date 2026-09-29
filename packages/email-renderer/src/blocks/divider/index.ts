@@ -8,21 +8,28 @@
 import { fullSupport, type DividerBlockContent } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
 import { escapeAttr, escapeCss } from '../../sanitize';
+import { px } from '../../helpers/padding';
 import { checkShape, isString, isNumber, isOneOf } from '../../helpers/validation';
 
 const DIVIDER_STYLES = ['solid', 'dashed', 'dotted'] as const;
 
+/** Style values shared by every placement, each escaped or coerced. */
+const dividerParts = (content: DividerBlockContent) => ({
+	style: escapeCss(content.style || 'solid'),
+	align: escapeAttr(content.align || 'center'),
+	width: px(content.width, 100),
+	thickness: px(content.thickness, 1),
+});
+
 const renderInner = (content: DividerBlockContent): string => {
-	const style = content.style || 'solid';
-	const align = content.align || 'center';
-	return `<table width="${content.width}%" cellpadding="0" cellspacing="0" border="0" role="presentation" align="${align}" aria-hidden="true"><tr><td style="border-top:${content.thickness}px ${style} ${escapeCss(content.color)};font-size:1px;line-height:1px">&nbsp;</td></tr></table>`;
+	const { style, align, width, thickness } = dividerParts(content);
+	return `<table width="${width}%" cellpadding="0" cellspacing="0" border="0" role="presentation" align="${align}" aria-hidden="true"><tr><td style="border-top:${thickness}px ${style} ${escapeCss(content.color)};font-size:1px;line-height:1px">&nbsp;</td></tr></table>`;
 };
 
 /** Column / container placement wraps the inner table in a padding cell. */
 const renderInColumn = (content: DividerBlockContent): string => {
-	const align = content.align || 'center';
-	const style = content.style || 'solid';
-	return `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td style="padding:8px 0"><table width="${content.width}%" cellpadding="0" cellspacing="0" border="0" role="presentation" align="${align}"><tr><td style="border-top:${content.thickness}px ${style} ${escapeCss(content.color)};font-size:1px;line-height:1px">&nbsp;</td></tr></table></td></tr></table>`;
+	const { style, align, width, thickness } = dividerParts(content);
+	return `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td style="padding:8px 0"><table width="${width}%" cellpadding="0" cellspacing="0" border="0" role="presentation" align="${align}"><tr><td style="border-top:${thickness}px ${style} ${escapeCss(content.color)};font-size:1px;line-height:1px">&nbsp;</td></tr></table></td></tr></table>`;
 };
 
 export const dividerModule: BlockModule<'divider'> = {
@@ -38,7 +45,8 @@ export const dividerModule: BlockModule<'divider'> = {
 	},
 
 	amp({ content }) {
-		return `<hr style="border:none;border-top:${content.thickness}px ${content.style} ${escapeAttr(content.color)};width:${content.width}%">`;
+		const { style, width, thickness } = dividerParts(content);
+		return `<hr style="border:none;border-top:${thickness}px ${style} ${escapeAttr(content.color)};width:${width}%">`;
 	},
 
 	createDefault() {

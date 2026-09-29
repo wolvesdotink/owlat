@@ -78,6 +78,73 @@ describe('sanitizeStoredBlocksJson', () => {
 	});
 });
 
+describe('sanitizeStoredBlocksJson numeric style fields', () => {
+	const BAD = '0" data-probe="1';
+
+	it('drops non-numeric values and keeps numbers', () => {
+		const json = JSON.stringify([
+			{
+				id: 'b1',
+				type: 'text',
+				content: { html: 'x', fontSize: 16, paddingTop: BAD, marginLeft: ['1'], borderWidth: 2 },
+			},
+		]);
+		const out = JSON.parse(sanitizeStoredBlocksJson(json));
+		expect(out[0].content).toEqual({ html: 'x', fontSize: 16, borderWidth: 2 });
+	});
+
+	it('converts numeric strings to numbers', () => {
+		const json = JSON.stringify([
+			{ id: 's', type: 'spacer', content: { height: '24', paddingLeft: ' 8 ' } },
+		]);
+		const out = JSON.parse(sanitizeStoredBlocksJson(json));
+		expect(out[0].content).toEqual({ height: 24, paddingLeft: 8 });
+	});
+
+	it('reaches nested column styles, container items and table cells', () => {
+		const json = JSON.stringify([
+			{
+				id: 'c',
+				type: 'columns',
+				content: {
+					columns: [[{ id: 'i', type: 'spacer', content: { height: BAD } }]],
+					columnStyles: [{ paddingTop: BAD, borderRadius: 4 }],
+				},
+			},
+			{
+				id: 'k',
+				type: 'container',
+				content: { items: [{ id: 'n', type: 'divider', content: { thickness: BAD } }] },
+			},
+			{
+				id: 't',
+				type: 'table',
+				content: { cells: [[{ content: 'a', colSpan: BAD, rowSpan: 2 }]] },
+			},
+		]);
+		const out = JSON.parse(sanitizeStoredBlocksJson(json));
+		expect(out[0].content.columns[0][0].content).toEqual({});
+		expect(out[0].content.columnStyles[0]).toEqual({ borderRadius: 4 });
+		expect(out[1].content.items[0].content).toEqual({});
+		expect(out[2].content.cells[0][0]).toEqual({ content: 'a', rowSpan: 2 });
+		expect(JSON.stringify(out)).not.toContain('data-probe');
+	});
+
+	it('leaves string-typed width and condition values alone', () => {
+		const json = JSON.stringify([
+			{
+				id: 't',
+				type: 'table',
+				content: {
+					columns: [{ width: '25%' }],
+					condition: { variable: 'plan', operator: 'equals', value: 'pro' },
+				},
+			},
+		]);
+		expect(sanitizeStoredBlocksJson(json)).toBe(json);
+	});
+});
+
 describe('translation overlays', () => {
 	it('cleans overlay html in a translations blob and keeps the rest', () => {
 		const blob = JSON.stringify({

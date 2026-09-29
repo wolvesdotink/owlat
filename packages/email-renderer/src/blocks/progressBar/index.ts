@@ -11,20 +11,21 @@ import type { BlockModule, Placement } from '../_module';
 import { checkShape, isString, isNumber } from '../../helpers/validation';
 import { getContrastRatio } from '../../validators/registry';
 import { escapeCss } from '../../sanitize';
+import { px } from '../../helpers/padding';
 
 export const renderProgressBarContent = (content: ProgressBarBlockContent): string => {
-	const maxValue = content.maxValue ?? 100;
-	const percentage = Math.min(100, Math.max(0, (content.value / maxValue) * 100));
+	const maxValue = px(content.maxValue, 100);
+	const percentage = Math.min(100, Math.max(0, (px(content.value, 0) / maxValue) * 100)) || 0;
 	const rounded = Math.round(percentage);
-	const height = content.height || 20;
+	const height = px(content.height, 0) || 20;
 	const barColor = escapeCss(content.barColor || '#4CAF50');
 	const trackColor = escapeCss(content.trackColor || '#e0e0e0');
-	const borderRadius = content.borderRadius ?? 0;
+	const borderRadius = px(content.borderRadius, 0);
 
 	const showLabel = content.showLabel ?? false;
 	const labelPosition = content.labelPosition || 'right';
 	const labelColor = escapeCss(content.labelColor || '#333333');
-	const labelFontSize = content.labelFontSize ?? 14;
+	const labelFontSize = px(content.labelFontSize, 14);
 	const labelText = `${rounded}%`;
 
 	const cellBase = `height:${height}px;font-size:0;line-height:0;padding:0;margin:0;`;

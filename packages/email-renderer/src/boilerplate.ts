@@ -1,7 +1,7 @@
 import type { RenderContext, GmailAnnotations } from './types';
 import { buildStyleBlock } from './styles';
 import { getOfficeDocumentSettings, msoTableOpen, msoTableClose } from './outlook';
-import { escapeAttr, escapeHtml, isHttpsUrl } from './sanitize';
+import { escapeAttr, escapeCss, escapeHtml, isHttpsUrl } from './sanitize';
 
 /**
  * Generate hidden preheader text that shows as inbox preview snippet.
@@ -90,9 +90,9 @@ const getGmailAnnotations = (annotations: GmailAnnotations | undefined): string 
 };
 
 export const wrapDocument = (bodyContent: string, ctx: RenderContext): string => {
-	const bgColor = ctx.darkMode
-		? (ctx.theme.darkModeBackgroundColor ?? '#121212')
-		: ctx.theme.backgroundColor;
+	const bgColor = escapeCss(
+		ctx.darkMode ? (ctx.theme.darkModeBackgroundColor ?? '#121212') : ctx.theme.backgroundColor
+	);
 	const lang = ` lang="${escapeAttr(ctx.lang || 'en')}"`;
 	const dir = ctx.direction !== 'ltr' ? ` dir="${escapeAttr(ctx.direction)}"` : '';
 	const titleTag = ctx.title ? `<title>${escapeHtml(ctx.title)}</title>` : '<title></title>';

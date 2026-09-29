@@ -17,6 +17,7 @@ import { gradientToCssOrEmpty } from '../../helpers/gradient';
 import { msoVmlBackground, msoVmlBackgroundClose } from '../../outlook';
 import { escapeCssUrl, escapeCss } from '../../sanitize';
 import { backgroundImageCss } from '../../helpers/inline-styles';
+import { px } from '../../helpers/padding';
 import {
 	checkShape,
 	checkGradientStopLimit,
@@ -47,14 +48,14 @@ export const heroModule: BlockModule<'hero'> = {
 	html({ content, ctx, walk }) {
 		const bgPosition = content.backgroundPosition || 'center';
 		const bgSize = content.backgroundSize || 'cover';
-		const height = content.height || 400;
-		const vAlign = content.verticalAlign || 'middle';
+		const height = px(content.height, 0) || 400;
+		const vAlign = escapeCss(content.verticalAlign || 'middle');
 		const overlayColor = content.overlayColor;
 
-		const paddingTop = content.paddingTop ?? 40;
-		const paddingRight = content.paddingRight ?? 24;
-		const paddingBottom = content.paddingBottom ?? 40;
-		const paddingLeft = content.paddingLeft ?? 24;
+		const paddingTop = px(content.paddingTop, 40);
+		const paddingRight = px(content.paddingRight, 24);
+		const paddingBottom = px(content.paddingBottom, 40);
+		const paddingLeft = px(content.paddingLeft, 24);
 
 		const childHtml = content.items
 			.map((item) => walk(itemToBlock(item), ctx.baseWidth, 'container'))
@@ -102,10 +103,10 @@ export const heroModule: BlockModule<'hero'> = {
 				items: content.items,
 				background: content.overlayColor || content.backgroundColor,
 				padding: {
-					top: content.paddingTop ?? 40,
-					right: content.paddingRight ?? 24,
-					bottom: content.paddingBottom ?? 40,
-					left: content.paddingLeft ?? 24,
+					top: px(content.paddingTop, 40),
+					right: px(content.paddingRight, 24),
+					bottom: px(content.paddingBottom, 40),
+					left: px(content.paddingLeft, 24),
 				},
 			},
 			walk

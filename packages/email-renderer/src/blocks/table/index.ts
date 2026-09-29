@@ -19,6 +19,7 @@ import type { BlockModule, Placement } from '../_module';
 import type { RenderContext } from '../../types';
 import { escapeHtml, escapeAttr, escapeCss } from '../../sanitize';
 import { stripHtml } from '../../helpers/text';
+import { px } from '../../helpers/padding';
 import {
 	checkShape,
 	isString,
@@ -32,14 +33,15 @@ const TABLE_ALIGNS = ['left', 'center', 'right'] as const;
 
 const injectResponsiveCss = (content: TableBlockContent, ctx: RenderContext): void => {
 	const mode = content.responsiveMode;
+	const borderColor = escapeCss(content.borderColor || '#e0e0e0');
 	if (mode === 'stack') {
 		ctx.responsiveRules.push(
 			'.owlat-data-table thead{display:none!important}',
 			'.owlat-data-table tr{display:block!important;margin-bottom:8px!important;border:1px solid ' +
-				(content.borderColor || '#e0e0e0') +
+				borderColor +
 				'!important}',
 			'.owlat-data-table td{display:block!important;text-align:right!important;border:none!important;border-bottom:1px solid ' +
-				(content.borderColor || '#e0e0e0') +
+				borderColor +
 				'!important;position:relative!important;padding-left:50%!important}',
 			'.owlat-data-table td:last-child{border-bottom:none!important}',
 			'.owlat-data-table td:before{content:attr(data-label);position:absolute!important;left:8px!important;top:8px!important;font-weight:700!important;text-align:left!important}'
@@ -64,11 +66,14 @@ const renderRichCell = (
 	responsiveMode?: string,
 	content?: TableBlockContent
 ): string => {
-	const colAlign = cell.textAlign || columns?.[colIdx]?.textAlign || defaultAlign;
+	const colAlign = escapeCss(cell.textAlign || columns?.[colIdx]?.textAlign || defaultAlign);
 	const bg = cell.backgroundColor ? `background-color:${escapeCss(cell.backgroundColor)};` : rowBg;
-	const fw = cell.fontWeight ? `font-weight:${escapeCss(String(cell.fontWeight))};` : '';
-	const colSpan = cell.colSpan && cell.colSpan > 1 ? ` colspan="${cell.colSpan}"` : '';
-	const rowSpan = cell.rowSpan && cell.rowSpan > 1 ? ` rowspan="${cell.rowSpan}"` : '';
+	const fontWeight = px(cell.fontWeight, 0);
+	const fw = fontWeight ? `font-weight:${fontWeight};` : '';
+	const colSpanN = px(cell.colSpan, 0);
+	const rowSpanN = px(cell.rowSpan, 0);
+	const colSpan = colSpanN > 1 ? ` colspan="${colSpanN}"` : '';
+	const rowSpan = rowSpanN > 1 ? ` rowspan="${rowSpanN}"` : '';
 	const hideClass =
 		responsiveMode === 'hide-columns' && content?.hideOnMobileColumns?.includes(colIdx)
 			? ' class="owlat-hide-col"'
@@ -81,8 +86,8 @@ const renderRichCell = (
 };
 
 export const renderTableContent = (content: TableBlockContent, ctx?: RenderContext): string => {
-	const cellPadding = content.cellPadding ?? 8;
-	const textAlign = content.textAlign || 'left';
+	const cellPadding = px(content.cellPadding, 8);
+	const textAlign = escapeCss(content.textAlign || 'left');
 	const borderColor = escapeCss(content.borderColor || '#e0e0e0');
 	const borderStyle = `border:1px solid ${borderColor}`;
 	const headerBg = escapeCss(content.headerBackgroundColor || '#f5f5f5');
@@ -110,7 +115,7 @@ export const renderTableContent = (content: TableBlockContent, ctx?: RenderConte
 
 	const headerCells = content.headers
 		.map((h, colIdx) => {
-			const colAlign = columns?.[colIdx]?.textAlign || textAlign;
+			const colAlign = escapeCss(columns?.[colIdx]?.textAlign) || textAlign;
 			const hideClass =
 				responsiveMode === 'hide-columns' && content.hideOnMobileColumns?.includes(colIdx)
 					? ' class="owlat-hide-col"'
@@ -151,7 +156,7 @@ export const renderTableContent = (content: TableBlockContent, ctx?: RenderConte
 				const rowBg = content.striped && rowIdx % 2 === 1 ? `background-color:${stripedBg};` : '';
 				const cells = row
 					.map((cell, colIdx) => {
-						const colAlign = columns?.[colIdx]?.textAlign || textAlign;
+						const colAlign = escapeCss(columns?.[colIdx]?.textAlign) || textAlign;
 						const hideClass =
 							responsiveMode === 'hide-columns' && content.hideOnMobileColumns?.includes(colIdx)
 								? ' class="owlat-hide-col"'
@@ -173,7 +178,7 @@ export const renderTableContent = (content: TableBlockContent, ctx?: RenderConte
 	if (content.footerRow && content.footerRow.length > 0) {
 		const footerCells = content.footerRow
 			.map((cell, colIdx) => {
-				const colAlign = columns?.[colIdx]?.textAlign || textAlign;
+				const colAlign = escapeCss(columns?.[colIdx]?.textAlign) || textAlign;
 				const hideClass =
 					responsiveMode === 'hide-columns' && content.hideOnMobileColumns?.includes(colIdx)
 						? ' class="owlat-hide-col"'

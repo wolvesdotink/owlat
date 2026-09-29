@@ -22,6 +22,7 @@ import {
 } from '../../outlook';
 import { escapeCss, escapeCssUrl } from '../../sanitize';
 import { backgroundImageCss } from '../../helpers/inline-styles';
+import { px } from '../../helpers/padding';
 import {
 	checkShape,
 	isString,
@@ -42,7 +43,7 @@ export const columnsModule: BlockModule<'columns'> = {
 	html({ content, ctx, walk }) {
 		const widths = getColumnWidths(content.columnCount, content.ratio);
 		const verticalAlign = content.verticalAlign || 'top';
-		const gap = content.columnGap ?? 0;
+		const gap = px(content.columnGap, 0);
 		const gapLeft = Math.floor(gap / 2);
 		const gapRight = gap - gapLeft;
 		const direction = content.direction || ctx.direction;
@@ -70,11 +71,11 @@ export const columnsModule: BlockModule<'columns'> = {
 			const colBg = colStyle?.backgroundColor
 				? `background-color:${escapeCss(colStyle.backgroundColor)};`
 				: '';
-			const colVAlign = colStyle?.verticalAlign || verticalAlign;
-			const colPaddingTop = colStyle?.paddingTop ?? 0;
-			const colPaddingRight = colStyle?.paddingRight ?? gapRight;
-			const colPaddingBottom = colStyle?.paddingBottom ?? 0;
-			const colPaddingLeft = colStyle?.paddingLeft ?? gapLeft;
+			const colVAlign = escapeCss(colStyle?.verticalAlign || verticalAlign);
+			const colPaddingTop = px(colStyle?.paddingTop, 0);
+			const colPaddingRight = px(colStyle?.paddingRight, gapRight);
+			const colPaddingBottom = px(colStyle?.paddingBottom, 0);
+			const colPaddingLeft = px(colStyle?.paddingLeft, gapLeft);
 			const colPadding =
 				colPaddingTop || colPaddingRight || colPaddingBottom || colPaddingLeft
 					? `padding:${colPaddingTop}px ${colPaddingRight}px ${colPaddingBottom}px ${colPaddingLeft}px;`
@@ -82,16 +83,15 @@ export const columnsModule: BlockModule<'columns'> = {
 						? `padding:0 ${gapLeft}px 0 ${gapRight}px;`
 						: '';
 
-			const colBorderWidth = colStyle?.borderWidth ?? 0;
-			const colBorderStyle = colStyle?.borderStyle ?? 'none';
+			const colBorderWidth = px(colStyle?.borderWidth, 0);
+			const colBorderStyle = escapeCss(colStyle?.borderStyle ?? 'none');
 			const colBorderColor = escapeCss(colStyle?.borderColor ?? '#000000');
 			const colBorder =
 				colBorderWidth > 0 && colBorderStyle !== 'none'
 					? `border:${colBorderWidth}px ${colBorderStyle} ${colBorderColor};`
 					: '';
-			const colBorderRadius = colStyle?.borderRadius
-				? `border-radius:${colStyle.borderRadius}px;`
-				: '';
+			const colRadius = px(colStyle?.borderRadius, 0);
+			const colBorderRadius = colRadius ? `border-radius:${colRadius}px;` : '';
 			const colBgImage = colStyle?.backgroundImage
 				? backgroundImageCss(
 						escapeCssUrl(colStyle.backgroundImage),

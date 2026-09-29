@@ -11,7 +11,8 @@
 
 import { fullSupport } from '@owlat/shared';
 import { itemToBlock, type BlockModule, type Placement } from '../_module';
-import { escapeCss, escapeHtml } from '../../sanitize';
+import { escapeAttr, escapeCss, escapeHtml } from '../../sanitize';
+import { px } from '../../helpers/padding';
 import { checkShape, isString, isArray, isObject } from '../../helpers/validation';
 
 export const accordionModule: BlockModule<'accordion'> = {
@@ -31,18 +32,19 @@ export const accordionModule: BlockModule<'accordion'> = {
 	html({ content, ctx, walk }) {
 		const headerBg = escapeCss(content.headerBackgroundColor || '#f5f5f5');
 		const headerColor = escapeCss(content.headerTextColor || '#333333');
-		const headerFontSize = content.headerFontSize || 16;
+		const headerFontSize = px(content.headerFontSize, 0) || 16;
 		const contentBg = escapeCss(content.contentBackgroundColor || '#ffffff');
 		const iconColor = escapeCss(content.iconColor || '#666666');
 		const sectionBorder = escapeCss(content.sectionBorderColor || '#e0e0e0');
-		const borderRadius = content.borderRadius || 0;
+		const borderRadius = px(content.borderRadius, 0);
 		const headerFontFamily = escapeCss(ctx.theme.fontFamily);
 
 		const sections = content.sections
 			.map((section, idx) => {
 				const isInitiallyExpanded = content.initialExpanded === idx;
 				const inputType = content.allowMultiple ? 'checkbox' : 'radio';
-				const inputName = content.allowMultiple ? `owlat-acc-${section.id}` : 'owlat-accordion';
+				const sectionId = escapeAttr(section.id);
+				const inputName = content.allowMultiple ? `owlat-acc-${sectionId}` : 'owlat-accordion';
 				const checkedAttr = isInitiallyExpanded ? ' checked' : '';
 
 				const childHtml = section.items
@@ -52,8 +54,8 @@ export const accordionModule: BlockModule<'accordion'> = {
 
 				return (
 					`<div style="border-bottom:1px solid ${sectionBorder}">` +
-					`<input type="${inputType}" name="${inputName}" id="owlat-acc-${section.id}" style="position:absolute;left:-9999px;opacity:0;mso-hide:all"${checkedAttr} />` +
-					`<label for="owlat-acc-${section.id}" style="display:block;padding:12px 16px;background-color:${headerBg};color:${headerColor};font-size:${headerFontSize}px;font-family:${headerFontFamily};cursor:pointer;user-select:none">` +
+					`<input type="${inputType}" name="${inputName}" id="owlat-acc-${sectionId}" style="position:absolute;left:-9999px;opacity:0;mso-hide:all"${checkedAttr} />` +
+					`<label for="owlat-acc-${sectionId}" style="display:block;padding:12px 16px;background-color:${headerBg};color:${headerColor};font-size:${headerFontSize}px;font-family:${headerFontFamily};cursor:pointer;user-select:none">` +
 					`<span style="display:inline-block;float:right;color:${iconColor};font-size:20px;line-height:${headerFontSize}px">&#9660;</span>` +
 					`${escapeHtml(section.title)}</label>` +
 					`<div class="owlat-acc-content" style="background-color:${contentBg};padding:16px">` +

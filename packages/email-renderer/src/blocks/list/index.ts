@@ -12,6 +12,7 @@ import { fullSupport, type ListBlockContent } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
 import { escapeHtml, escapeAttr, escapeCss, sanitizeUrl } from '../../sanitize';
 import { checkShape, isArray, isOneOf } from '../../helpers/validation';
+import { px } from '../../helpers/padding';
 
 const LIST_TYPES = ['bullet', 'numbered', 'check', 'icon'] as const;
 
@@ -44,11 +45,11 @@ const renderList = (content: ListBlockContent): string => {
 	const items = content.items;
 	if (!items || items.length === 0) return '';
 
-	const fontSize = content.fontSize ?? 16;
+	const fontSize = px(content.fontSize, 16);
 	const textColor = escapeCss(content.textColor || '#333333');
 	const bulletColor = escapeCss(content.bulletColor || content.textColor || '#333333');
-	const bulletSize = content.bulletSize ?? fontSize;
-	const itemSpacing = content.itemSpacing ?? 6;
+	const bulletSize = px(content.bulletSize, fontSize);
+	const itemSpacing = px(content.itemSpacing, 6);
 
 	const rows = items
 		.map((item, i) => {
@@ -103,11 +104,11 @@ export const listModule: BlockModule<'list'> = {
 		const items = content.items;
 		if (!items || items.length === 0) return '';
 
-		const fontSize = content.fontSize ?? 16;
+		const fontSize = px(content.fontSize, 16);
 		const textColor = content.textColor || '#333333';
 		const bulletColor = content.bulletColor || textColor;
-		const bulletSize = content.bulletSize ?? fontSize;
-		const itemSpacing = content.itemSpacing ?? 6;
+		const bulletSize = px(content.bulletSize, fontSize);
+		const itemSpacing = px(content.itemSpacing, 6);
 
 		const iconSrc =
 			content.listType === 'icon' && content.iconUrl ? sanitizeUrl(content.iconUrl) : '';

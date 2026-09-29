@@ -10,6 +10,7 @@ import { fullSupport, type VideoBlockContent } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
 import { toPixelWidth } from '../../helpers/dimensions';
 import { escapeAttr, sanitizeUrl } from '../../sanitize';
+import { px } from '../../helpers/padding';
 import { transformUrl } from '../../helpers/linkTransform';
 import { checkShape, isString, isNumber, isOneOf } from '../../helpers/validation';
 
@@ -19,9 +20,10 @@ export const renderVideoContent = (content: VideoBlockContent, baseWidth: number
 	if (!content.thumbnailUrl || !content.videoUrl) return '';
 
 	const widthPx = toPixelWidth(content.width, baseWidth);
-	const playSize = content.playButtonSize ?? 64;
+	const playSize = px(content.playButtonSize, 64);
 	const playColor = content.playButtonColor ?? 'rgba(255,255,255,0.9)';
-	const borderRadius = content.borderRadius ? `border-radius:${content.borderRadius}px;` : '';
+	const radius = px(content.borderRadius, 0);
+	const borderRadius = radius ? `border-radius:${radius}px;` : '';
 
 	const alignMap: Record<string, string> = { center: 'center', right: 'right', left: 'left' };
 	const tableAlign = alignMap[content.align] || 'center';

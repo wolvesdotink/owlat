@@ -1,3 +1,5 @@
+import { escapeCss } from '../sanitize';
+
 /**
  * Build the `background-image` + position/size + `background-repeat:no-repeat`
  * CSS shorthand emitted by blocks that paint a background image (hero,
@@ -14,8 +16,8 @@ export const backgroundImageCss = (
 	size: string,
 	order: 'position-size' | 'size-position' = 'position-size'
 ): string => {
-	const positionDecl = `background-position:${position};`;
-	const sizeDecl = `background-size:${size};`;
+	const positionDecl = `background-position:${escapeCss(position)};`;
+	const sizeDecl = `background-size:${escapeCss(size)};`;
 	const ordered =
 		order === 'position-size' ? `${positionDecl}${sizeDecl}` : `${sizeDecl}${positionDecl}`;
 	return `background-image:url('${escapedUrl}');${ordered}background-repeat:no-repeat;`;

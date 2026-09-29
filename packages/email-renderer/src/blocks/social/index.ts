@@ -23,10 +23,13 @@ import {
 import type { BlockModule, Placement } from '../_module';
 import { escapeAttr, sanitizeUrl } from '../../sanitize';
 import { transformUrl } from '../../helpers/linkTransform';
+import { px } from '../../helpers/padding';
 import { checkShape, isString, isNumber, isArray, isOneOf } from '../../helpers/validation';
 
 const SOCIAL_ALIGNS = ['left', 'center', 'right'] as const;
 const SOCIAL_ICON_STYLES = ['filled', 'outline'] as const;
+const DEFAULT_ICON_SIZE = 64;
+const DEFAULT_ICON_SPACING = 12;
 
 const PLATFORM_NAMES: Record<SocialPlatform, string> = Object.fromEntries(
 	(Object.entries(SOCIAL_PLATFORMS) as [SocialPlatform, { label: string }][]).map(([value, m]) => [
@@ -55,7 +58,9 @@ export const renderSocialContent = (content: SocialBlockContent): string => {
 	const enabledLinks = content.links.filter((link) => link.enabled && link.url);
 	if (enabledLinks.length === 0) return '';
 
-	const halfSpacing = Math.floor(content.iconSpacing / 2);
+	const halfSpacing = Math.floor(px(content.iconSpacing, DEFAULT_ICON_SPACING) / 2);
+	const iconSize = px(content.iconSize, DEFAULT_ICON_SIZE);
+	const align = escapeAttr(content.align);
 	const isVertical = content.mode === 'vertical';
 
 	if (isVertical) {
@@ -63,20 +68,20 @@ export const renderSocialContent = (content: SocialBlockContent): string => {
 			.map((link) => {
 				const name = PLATFORM_NAMES[link.platform] || link.platform;
 				const iconSrc = link.iconUrl || getDefaultIconUrl(link.platform, content.iconStyle);
-				const imgTag = renderIconImg(iconSrc, name, content.iconSize);
+				const imgTag = renderIconImg(iconSrc, name, iconSize);
 				const safeUrl = escapeAttr(sanitizeUrl(link.url));
 				const cellContent = `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration:none">${imgTag}</a>`;
-				return `<tr><td style="padding:${halfSpacing}px 0;text-align:${content.align}">${cellContent}</td></tr>`;
+				return `<tr><td style="padding:${halfSpacing}px 0;text-align:${align}">${cellContent}</td></tr>`;
 			})
 			.join('');
-		return `<table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${content.align}">${rows}</table>`;
+		return `<table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${align}">${rows}</table>`;
 	}
 
 	const iconBlocks = enabledLinks
 		.map((link) => {
 			const name = PLATFORM_NAMES[link.platform] || link.platform;
 			const iconSrc = link.iconUrl || getDefaultIconUrl(link.platform, content.iconStyle);
-			const imgTag = renderIconImg(iconSrc, name, content.iconSize);
+			const imgTag = renderIconImg(iconSrc, name, iconSize);
 			const safeUrl = escapeAttr(sanitizeUrl(link.url));
 			return `<!--[if mso | IE]><td style="vertical-align:top;padding:0 ${halfSpacing}px"><![endif]--><div style="display:inline-block;vertical-align:top;text-align:center;padding:0 ${halfSpacing}px"><a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration:none">${imgTag}</a></div><!--[if mso | IE]></td><![endif]-->`;
 		})
@@ -88,7 +93,7 @@ export const renderSocialContent = (content: SocialBlockContent): string => {
 			: content.align === 'right'
 				? 'text-align:right'
 				: 'text-align:center';
-	return `<div style="${alignStyle};font-size:0;word-spacing:normal"><!--[if mso | IE]><table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${content.align}"><tr><![endif]-->${iconBlocks}<!--[if mso | IE]></tr></table><![endif]--></div>`;
+	return `<div style="${alignStyle};font-size:0;word-spacing:normal"><!--[if mso | IE]><table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${align}"><tr><![endif]-->${iconBlocks}<!--[if mso | IE]></tr></table><![endif]--></div>`;
 };
 
 export const socialModule: BlockModule<'social'> = {
@@ -132,8 +137,8 @@ export const socialModule: BlockModule<'social'> = {
 		const enabledLinks = content.links.filter((link) => link.enabled && link.url);
 		if (enabledLinks.length === 0) return '';
 
-		const size = content.iconSize;
-		const halfSpacing = Math.floor(content.iconSpacing / 2);
+		const size = px(content.iconSize, DEFAULT_ICON_SIZE);
+		const halfSpacing = Math.floor(px(content.iconSpacing, DEFAULT_ICON_SPACING) / 2);
 
 		const cells = enabledLinks
 			.map((link) => {
@@ -147,7 +152,7 @@ export const socialModule: BlockModule<'social'> = {
 			})
 			.join('');
 
-		return `<table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${content.align}"><tr>${cells}</tr></table>`;
+		return `<table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${escapeAttr(content.align)}"><tr>${cells}</tr></table>`;
 	},
 
 	createDefault() {
@@ -161,8 +166,8 @@ export const socialModule: BlockModule<'social'> = {
 			],
 			iconStyle: 'filled',
 			align: 'center',
-			iconSize: 64,
-			iconSpacing: 12,
+			iconSize: DEFAULT_ICON_SIZE,
+			iconSpacing: DEFAULT_ICON_SPACING,
 			iconColor: '#374151',
 		};
 	},

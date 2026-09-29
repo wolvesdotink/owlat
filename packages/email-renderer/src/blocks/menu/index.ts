@@ -15,6 +15,7 @@ import type { BlockModule, Placement } from '../_module';
 import type { RenderContext } from '../../types';
 import { escapeHtml, escapeAttr, escapeCss, sanitizeUrl } from '../../sanitize';
 import { transformUrl } from '../../helpers/linkTransform';
+import { px } from '../../helpers/padding';
 import { checkShape, isString, isArray, isObject, isOneOf } from '../../helpers/validation';
 
 const MENU_ALIGNS = ['left', 'center', 'right'] as const;
@@ -26,17 +27,18 @@ const MENU_ALIGNS = ['left', 'center', 'right'] as const;
 export const renderMenuContent = (content: MenuBlockContent, ctx: RenderContext): string => {
 	if (!content.items || content.items.length === 0) return '';
 
-	const fontSize = content.fontSize || 14;
+	const fontSize = px(content.fontSize, 0) || 14;
 	const fontFamily = escapeCss(content.fontFamily || ctx.theme.fontFamily);
-	const fontWeight = content.fontWeight || 400;
+	const fontWeight = px(content.fontWeight, 0) || 400;
 	const textColor = escapeCss(content.textColor || ctx.theme.bodyTextColor || '#333333');
 	const textTransform =
 		content.textTransform && content.textTransform !== 'none'
-			? `text-transform:${content.textTransform};`
+			? `text-transform:${escapeCss(content.textTransform)};`
 			: '';
 	const separator = content.separator || '';
 	const separatorColor = content.separatorColor || '#999999';
-	const itemSpacing = content.itemSpacing ?? 16;
+	const itemSpacing = px(content.itemSpacing, 16);
+	const align = escapeAttr(content.align);
 	const halfSpacing = Math.floor(itemSpacing / 2);
 
 	const linkStyle = `color:${textColor};text-decoration:none;font-size:${fontSize}px;font-family:${fontFamily};font-weight:${fontWeight};${textTransform}`;
@@ -58,7 +60,7 @@ export const renderMenuContent = (content: MenuBlockContent, ctx: RenderContext)
 		})
 		.join('');
 
-	const desktopMenu = `<table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${content.align}"><tr>${cells}</tr></table>`;
+	const desktopMenu = `<table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${align}"><tr>${cells}</tr></table>`;
 
 	if (!content.hamburgerOnMobile) {
 		return desktopMenu;
@@ -90,7 +92,7 @@ export const renderMenuContent = (content: MenuBlockContent, ctx: RenderContext)
 		`${style}` +
 		`<div class="owlat-desktop-nav">${desktopMenu}</div>` +
 		`<input type="checkbox" id="owlat-menu-toggle" class="owlat-menu-toggle" />` +
-		`<label for="owlat-menu-toggle" class="owlat-hamburger" style="text-align:${content.align}">${hamburgerIcon}</label>` +
+		`<label for="owlat-menu-toggle" class="owlat-hamburger" style="text-align:${align}">${hamburgerIcon}</label>` +
 		`<div class="owlat-mobile-nav">${mobileLinks}</div>`
 	);
 };
@@ -134,12 +136,12 @@ export const menuModule: BlockModule<'menu'> = {
 		// drop the mobile hamburger affordance.
 		if (!content.items || content.items.length === 0) return '';
 
-		const fontSize = content.fontSize || 14;
-		const fontWeight = content.fontWeight || 400;
+		const fontSize = px(content.fontSize, 0) || 14;
+		const fontWeight = px(content.fontWeight, 0) || 400;
 		const textColor = content.textColor || '#333333';
 		const separator = content.separator || '';
 		const separatorColor = content.separatorColor || '#999999';
-		const itemSpacing = content.itemSpacing ?? 16;
+		const itemSpacing = px(content.itemSpacing, 16);
 		const halfSpacing = Math.floor(itemSpacing / 2);
 		const linkStyle = `color:${escapeAttr(textColor)};text-decoration:none;font-size:${fontSize}px;font-weight:${fontWeight}`;
 
@@ -159,7 +161,7 @@ export const menuModule: BlockModule<'menu'> = {
 			})
 			.join('');
 
-		return `<table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${content.align}"><tr>${cells}</tr></table>`;
+		return `<table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${escapeAttr(content.align)}"><tr>${cells}</tr></table>`;
 	},
 
 	createDefault() {
