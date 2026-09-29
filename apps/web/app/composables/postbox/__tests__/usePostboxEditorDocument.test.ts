@@ -130,3 +130,34 @@ describe('usePostboxEditorDocument — incoming model writes', () => {
 		expect(el().innerHTML).toBe('<p><br></p>');
 	});
 });
+
+describe('usePostboxEditorDocument — sanitizing incoming values', () => {
+	it('sanitizes the initial value before it reaches the element', () => {
+		const { el } = setup('<p>Hi</p><img src="x" onerror="window.__x = 1"><script>1</script>');
+		expect(el().innerHTML).not.toContain('onerror');
+		expect(el().innerHTML).not.toContain('<script');
+		expect(el().innerHTML).toContain('<p>Hi</p>');
+	});
+
+	it('sanitizes an external model write before it reaches the element', async () => {
+		const { el, model } = setup();
+		model.value = '<p>Draft</p><a href="javascript:void(0)" onclick="1">x</a>';
+		await nextTick();
+		expect(el().innerHTML).not.toContain('javascript:');
+		expect(el().innerHTML).not.toContain('onclick');
+		expect(el().innerHTML).toContain('<p>Draft</p>');
+	});
+
+	it('keeps the markup the editor itself produces', async () => {
+		const { el, model } = setup();
+		const own =
+			'<p><a href="https://example.com" target="_blank" rel="noreferrer noopener">link</a></p>' +
+			'<p><img src="blob:https://app.example/1234" data-inline-cid="img-1" style="max-width:100%;height:auto"></p>';
+		model.value = own;
+		await nextTick();
+		expect(el().innerHTML).toContain('target="_blank"');
+		expect(el().innerHTML).toContain('rel="noreferrer noopener"');
+		expect(el().innerHTML).toContain('data-inline-cid="img-1"');
+		expect(el().innerHTML).toContain('src="blob:https://app.example/1234"');
+	});
+});
