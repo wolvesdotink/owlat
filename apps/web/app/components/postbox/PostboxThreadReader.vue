@@ -79,6 +79,7 @@ import { deriveReplyRisk, senderRiskInputOf, type ReplyRisk } from '~/utils/send
 import { formatCompactRelativeTime } from '~/utils/formatters';
 import { useNow } from '~/composables/useNow';
 import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
+import { usePostboxReaderExpansion } from '~/composables/postbox/usePostboxReaderExpansion';
 import {
 	POSTBOX_MARK_READ_DWELL_MS,
 	markReadOnOpen,
@@ -414,7 +415,13 @@ watch(
 	{ immediate: true }
 );
 
-const expanded = ref<Set<string>>(new Set());
+// Expanded messages: the default set is built once per thread, then only
+// grows as messages arrive (see usePostboxReaderExpansion).
+const { expanded, toggleExpanded } = usePostboxReaderExpansion({
+	threadKey: () => props.message.threadId ?? props.message._id,
+	activeId: () => props.message._id,
+	messages: () => threadData.value?.messages,
+});
 
 // Minute tick so the relative timestamps ("2h ago") stay fresh while a
 // thread sits open. Presentation-only; the absolute datetime lives in the
@@ -430,35 +437,6 @@ function relativeReceivedAt(timestamp: number): string {
 // forcing light rendering for a single message while the app is dark.
 const { isDark: appIsDark } = useAppTheme();
 const { isForcedLight, toggleForcedLight } = usePostboxForcedLight();
-
-watch(
-	allMessages,
-	(messages) => {
-		if (messages.length === 0) {
-			expanded.value = new Set();
-			return;
-		}
-		const next = new Set<string>();
-		const last = messages[messages.length - 1];
-		if (last) next.add(last._id);
-		// Show first message too if more than 2
-		const first = messages[0];
-		if (messages.length > 2 && first) next.add(first._id);
-		// Show all unread
-		for (const m of messages) if (!m.flagSeen) next.add(m._id);
-		// Always include the active message
-		next.add(props.message._id);
-		expanded.value = next;
-	},
-	{ immediate: true }
-);
-
-function toggleExpanded(id: string) {
-	const next = new Set(expanded.value);
-	if (next.has(id)) next.delete(id);
-	else next.add(id);
-	expanded.value = next;
-}
 
 const mailboxIdRef = computed(() => props.message.mailboxId as Id<'mailboxes'>);
 
