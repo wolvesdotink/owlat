@@ -18,6 +18,7 @@ import { internal } from '../_generated/api';
 import { encryptSecret } from '../lib/credentialCrypto';
 import { clearGoogleAccessTokenCache } from '../mail/external/googleOAuthTokens';
 import { stopExternalAccountSync } from '../mail/external/accountTeardown';
+import { applyCredentialRotation, pickConnectionFields } from '../mail/external/accountShared';
 import type { Id } from '../_generated/dataModel';
 
 const modules = import.meta.glob('../**/*.*s');
@@ -200,6 +201,33 @@ describe('stored Google access tokens', () => {
 			kind: 'unavailable',
 			reason: 'auth_revoked',
 		});
+		expect(await storedRows(t)).toHaveLength(0);
+	});
+
+	it('rotating the credential forgets the token minted from the replaced grant', async () => {
+		const t = convexTest(schema, modules);
+		const accountId = await seedOAuthAccount(t);
+		stubToken({ access_token: 'ya29.OLD-GRANT', expires_in: 3599 });
+		await fetchToken(t, accountId);
+		expect(await storedRows(t)).toHaveLength(1);
+
+		const rotated = encryptSecret(JSON.stringify({ oauthRefreshToken: '1//NEW-REFRESH' }));
+		await t.run(async (ctx) => {
+			const account = (await ctx.db.get(accountId))!;
+			await applyCredentialRotation(
+				ctx,
+				accountId,
+				{
+					...pickConnectionFields(account as Parameters<typeof pickConnectionFields>[0]),
+					secretCiphertext: rotated.ciphertext,
+					secretIv: rotated.iv,
+					secretAuthTag: rotated.authTag,
+					secretEnvelopeVersion: rotated.version,
+				},
+				Date.now()
+			);
+		});
+
 		expect(await storedRows(t)).toHaveLength(0);
 	});
 
