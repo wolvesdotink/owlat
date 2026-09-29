@@ -373,6 +373,55 @@ describe('thread aggregates stay exact under deltas (plan 3.3)', () => {
 		expect(thread.unreadCount).toBe(0);
 		await expectConsistent(t, mailboxId);
 	});
+
+	it('a mark-thread-read continuation leaves a reply that landed after the click unread', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, folders } = await seedBox(t);
+		const size = MARK_THREAD_READ_BATCH + 30;
+		const { threadId, messageIds } = await seedThread(
+			t,
+			mailboxId,
+			folders,
+			Array.from({ length: size }, () => ({}))
+		);
+
+		await t.mutation(api.mail.messageActions.markThreadRead, { threadId, seen: true });
+		// A reply is delivered before the continuation runs.
+		const replyId = await t.run(async (ctx) => {
+			const { _id, _creationTime, ...copy } = (await ctx.db.get(messageIds[size - 1]!))!;
+			const folder = (await ctx.db.get(folders.inbox))!;
+			const thread = (await ctx.db.get(threadId))!;
+			const id = await ctx.db.insert('mailMessages', {
+				...copy,
+				flagSeen: false,
+				uid: folder.uidNext,
+				modseq: folder.highestModseq + 1,
+				rfc822MessageId: '<late-reply@example.com>',
+				receivedAt: copy.receivedAt + 1000,
+			});
+			await ctx.db.patch(folders.inbox, {
+				uidNext: folder.uidNext + 1,
+				highestModseq: folder.highestModseq + 1,
+				totalCount: folder.totalCount + 1,
+				unseenCount: folder.unseenCount + 1,
+			});
+			await ctx.db.patch(threadId, {
+				messageCount: thread.messageCount + 1,
+				unreadCount: thread.unreadCount + 1,
+				lastMessageAt: copy.receivedAt + 1000,
+			});
+			return id;
+		});
+
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		const { reply, thread } = await t.run(async (ctx) => ({
+			reply: (await ctx.db.get(replyId))!,
+			thread: (await ctx.db.get(threadId))!,
+		}));
+		expect(reply.flagSeen).toBe(false);
+		expect(thread.unreadCount).toBe(1);
+		await expectConsistent(t, mailboxId);
+	});
 });
 
 describe('listThreadMessages paging (plan 3.3)', () => {

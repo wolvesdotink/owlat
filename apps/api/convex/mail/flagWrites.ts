@@ -111,15 +111,25 @@ export const MARK_THREAD_READ_BATCH = 200;
  * messages that still have the other value, found through `by_thread_and_seen`
  * so already-read messages (and their bodies) are never read. Returns
  * `more: true` when a full batch was written and more rows may be left.
+ *
+ * `ceiling` bounds a continuation to the rows that existed when the user asked
+ * (see {@link newestThreadMessageCreation}): a reply that lands between two
+ * batches of a long thread stays unread, and the thread count is healed
+ * outright only when no such newer row disagrees. The first batch runs in the
+ * user's own transaction and needs none.
  */
 export async function markThreadSeenBatch(
 	ctx: MutationCtx,
 	threadId: Id<'mailThreads'>,
-	seen: boolean
+	seen: boolean,
+	ceiling?: number
 ): Promise<{ more: boolean }> {
 	const flips = await ctx.db
 		.query('mailMessages')
-		.withIndex('by_thread_and_seen', (q) => q.eq('threadId', threadId).eq('flagSeen', !seen))
+		.withIndex('by_thread_and_seen', (q) => {
+			const rows = q.eq('threadId', threadId).eq('flagSeen', !seen);
+			return ceiling === undefined ? rows : rows.lte('_creationTime', ceiling);
+		})
 		.take(MARK_THREAD_READ_BATCH);
 
 	const folders = new FolderFlagWrites(ctx);
@@ -134,7 +144,32 @@ export async function markThreadSeenBatch(
 	const delta = threads.get(threadId) ?? { unread: 0, flagged: false, unflagged: false };
 	// Every row that disagreed was flipped: the thread is now all-read or
 	// all-unread, so the count is known outright (and a stale one heals).
-	const settled = !more && written === flips.length;
+	const settled =
+		!more &&
+		written === flips.length &&
+		(ceiling === undefined ||
+			(await ctx.db
+				.query('mailMessages')
+				.withIndex('by_thread_and_seen', (q) =>
+					q.eq('threadId', threadId).eq('flagSeen', !seen).gt('_creationTime', ceiling)
+				)
+				.first()) === null);
 	await applyThreadFlagDelta(ctx, threadId, delta, settled ? { allSeen: seen } : undefined);
 	return { more };
+}
+
+/**
+ * Creation time of the thread's newest message: the `ceiling` a mark-thread-read
+ * continuation carries, so it flips only what the user saw when they asked.
+ */
+export async function newestThreadMessageCreation(
+	ctx: MutationCtx,
+	threadId: Id<'mailThreads'>
+): Promise<number> {
+	const newest = await ctx.db
+		.query('mailMessages')
+		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
+		.order('desc')
+		.first();
+	return newest?._creationTime ?? 0;
 }

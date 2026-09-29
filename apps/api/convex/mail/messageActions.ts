@@ -24,7 +24,13 @@ import {
 	rebuildThreadAggregates,
 	type ThreadFlagDeltas,
 } from './threadAggregates';
-import { FolderFlagWrites, markThreadSeenBatch, writeMessageFlags, type Flag } from './flagWrites';
+import {
+	FolderFlagWrites,
+	markThreadSeenBatch,
+	newestThreadMessageCreation,
+	writeMessageFlags,
+	type Flag,
+} from './flagWrites';
 import { recordTriageVerb } from './triageTally';
 import { recordMessageCounters } from './messageCounters';
 
@@ -106,7 +112,12 @@ export const markThreadRead = postboxMutation({
 		if (!owned.ok) return;
 		const { more } = await markThreadSeenBatch(ctx, args.threadId, args.seen);
 		if (more) {
-			await ctx.scheduler.runAfter(0, internal.mail.messageActions.continueMarkThreadRead, args);
+			// Mail that arrives while a long thread is still being flipped is not
+			// part of what the user marked.
+			await ctx.scheduler.runAfter(0, internal.mail.messageActions.continueMarkThreadRead, {
+				...args,
+				ceiling: await newestThreadMessageCreation(ctx, args.threadId),
+			});
 		}
 	},
 });
@@ -116,9 +127,9 @@ export const markThreadRead = postboxMutation({
  * by `markThreadRead` above, after its mailbox-access check passed.
  */
 export const continueMarkThreadRead = internalMutation({
-	args: { threadId: v.id('mailThreads'), seen: v.boolean() },
+	args: { threadId: v.id('mailThreads'), seen: v.boolean(), ceiling: v.number() },
 	handler: async (ctx, args) => {
-		const { more } = await markThreadSeenBatch(ctx, args.threadId, args.seen);
+		const { more } = await markThreadSeenBatch(ctx, args.threadId, args.seen, args.ceiling);
 		if (more) {
 			await ctx.scheduler.runAfter(0, internal.mail.messageActions.continueMarkThreadRead, args);
 		}
