@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { nextTick } from 'vue';
+import { isReactive, nextTick, watch } from 'vue';
 import { ConvexError } from 'convex/values';
 import { usePaginatedQuery } from '../usePaginatedQuery';
 import { SUBSCRIPTION_LINGER_MS } from '~/lib/sharedConvexSubscriptions';
@@ -112,6 +112,60 @@ describe('usePaginatedQuery', () => {
 			mockSuccessCallback!({ results: [] });
 
 			expect(status.value).toBe('Exhausted');
+		});
+	});
+
+	describe('structural sharing', () => {
+		const doc = (id: string, name: string) => ({ _id: id, name, tags: ['a'] });
+
+		it('keeps unchanged rows when a later page loads or one row changes', () => {
+			const { results } = usePaginatedQuery(fakeQuery, { teamId: '123' }, { initialNumItems: 2 });
+
+			mockSuccessCallback!({
+				results: [doc('1', 'Alice'), doc('2', 'Bob')],
+				status: 'CanLoadMore',
+			});
+			const [alice, bob] = results.value as ReturnType<typeof doc>[];
+
+			// A second page lands: fresh objects from Convex for the first page too.
+			mockSuccessCallback!({
+				results: [doc('1', 'Alice'), doc('2', 'Bob'), doc('3', 'Cara')],
+				status: 'Exhausted',
+			});
+			expect(results.value[0]).toBe(alice);
+			expect(results.value[1]).toBe(bob);
+
+			mockSuccessCallback!({
+				results: [doc('1', 'Alice'), doc('2', 'Robert'), doc('3', 'Cara')],
+				status: 'Exhausted',
+			});
+			expect(results.value[0]).toBe(alice);
+			expect(results.value[1]).not.toBe(bob);
+			expect(results.value[1]).toEqual(doc('2', 'Robert'));
+		});
+
+		it('leaves results untouched, and effects idle, when an update changes nothing', async () => {
+			const { results } = usePaginatedQuery(fakeQuery, { teamId: '123' }, { initialNumItems: 2 });
+			mockSuccessCallback!({ results: [doc('1', 'Alice')], status: 'Exhausted' });
+			const before = results.value;
+			const onChange = vi.fn();
+			watch(results, onChange, { flush: 'sync' });
+
+			mockSuccessCallback!({ results: [doc('1', 'Alice')], status: 'Exhausted' });
+			await nextTick();
+
+			expect(results.value).toBe(before);
+			expect(onChange).not.toHaveBeenCalled();
+		});
+
+		it('holds rows shallowly, without reactive proxies', () => {
+			const { results } = usePaginatedQuery(fakeQuery, { teamId: '123' }, { initialNumItems: 2 });
+			const delivered = [doc('1', 'Alice')];
+
+			mockSuccessCallback!({ results: delivered, status: 'Exhausted' });
+
+			expect(isReactive(results.value)).toBe(false);
+			expect(results.value[0]).toBe(delivered[0]);
 		});
 	});
 

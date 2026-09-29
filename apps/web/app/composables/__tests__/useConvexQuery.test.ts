@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { isReactive, watch } from 'vue';
 import { ConvexError } from 'convex/values';
 import { useConvexQuery } from '../useConvexQuery';
 import { SUBSCRIPTION_LINGER_MS } from '~/lib/sharedConvexSubscriptions';
@@ -97,6 +98,56 @@ describe('useConvexQuery', () => {
 			expect(error.value).toBeInstanceOf(Error);
 			expect(error.value!.message).toBe('ArgumentValidationError: string error');
 			expect(isLoading.value).toBe(false);
+		});
+	});
+
+	describe('structural sharing', () => {
+		const doc = (id: string, subject: string) => ({ _id: id, subject, labels: ['inbox'] });
+
+		it('keeps the object of every row that did not change', () => {
+			const { data } = useConvexQuery(fakeQuery, { teamId: '123' });
+			mockOnUpdateCallback!({ threads: [doc('a', 'One'), doc('b', 'Two')], nextCursor: null });
+			const first = data.value as { threads: ReturnType<typeof doc>[] };
+			const [a, b] = first.threads;
+
+			// Convex re-delivers everything as new objects; only b changed, and a new
+			// row arrived on top.
+			mockOnUpdateCallback!({
+				threads: [doc('c', 'Three'), doc('a', 'One'), doc('b', 'Two, edited')],
+				nextCursor: null,
+			});
+			const second = data.value as { threads: ReturnType<typeof doc>[] };
+
+			expect(second).not.toBe(first);
+			expect(second.threads[1]).toBe(a);
+			expect(second.threads[2]).not.toBe(b);
+			expect(second.threads[2]!.subject).toBe('Two, edited');
+			expect(second.threads[2]!.labels).toBe(b!.labels);
+		});
+
+		it('does not touch data, or wake its watchers, when an update changes nothing', () => {
+			const { data } = useConvexQuery(fakeQuery, { teamId: '123' });
+			mockOnUpdateCallback!([doc('a', 'One')]);
+			const before = data.value;
+			const onChange = vi.fn();
+			watch(data, onChange, { flush: 'sync' });
+
+			mockOnUpdateCallback!([doc('a', 'One')]);
+			expect(data.value).toBe(before);
+			expect(onChange).not.toHaveBeenCalled();
+
+			mockOnUpdateCallback!([doc('a', 'Changed')]);
+			expect(onChange).toHaveBeenCalledOnce();
+		});
+
+		it('holds the delivered value shallowly, without reactive proxies', () => {
+			const { data } = useConvexQuery(fakeQuery, { teamId: '123' });
+			const delivered = [doc('a', 'One')];
+
+			mockOnUpdateCallback!(delivered);
+
+			expect(data.value).toBe(delivered);
+			expect(isReactive(data.value)).toBe(false);
 		});
 	});
 
