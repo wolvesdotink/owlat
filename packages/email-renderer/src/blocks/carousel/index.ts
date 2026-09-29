@@ -12,7 +12,10 @@ import { escapeAttr, escapeCss, sanitizeUrl } from '../../sanitize';
 import { transformUrl } from '../../helpers/linkTransform';
 import { checkShape, isString, isArray, isObject } from '../../helpers/validation';
 
-export const renderCarouselContent = (content: CarouselBlockContent, ctx: { globalRules: string[]; theme: { primaryColor?: string } }): string => {
+export const renderCarouselContent = (
+	content: CarouselBlockContent,
+	ctx: { globalRules: string[]; theme: { primaryColor?: string } }
+): string => {
 	const images = content.images;
 	if (!images || images.length === 0) return '';
 
@@ -27,54 +30,76 @@ export const renderCarouselContent = (content: CarouselBlockContent, ctx: { glob
 	const thumbsClass = `${carouselId}-thumbs`;
 
 	const hideAll = `.${slidesClass} div[class^="${carouselId}-slide"]{display:none!important;max-height:0!important;overflow:hidden!important}`;
-	const showChecked = images.map((_, i) =>
-		`#${carouselId}-${i}:checked ~ .${slidesClass} .${carouselId}-slide-${i}{display:block!important;max-height:none!important;overflow:visible!important}`
-	).join('\n');
+	const showChecked = images
+		.map(
+			(_, i) =>
+				`#${carouselId}-${i}:checked ~ .${slidesClass} .${carouselId}-slide-${i}{display:block!important;max-height:none!important;overflow:visible!important}`
+		)
+		.join('\n');
 	const resetDots = `.${dotsClass} label{background-color:${inactiveColor}!important}`;
-	const activeDots = images.map((_, i) =>
-		`#${carouselId}-${i}:checked ~ .${dotsClass} label[for="${carouselId}-${i}"]{background-color:${iconColor}!important}`
-	).join('\n');
+	const activeDots = images
+		.map(
+			(_, i) =>
+				`#${carouselId}-${i}:checked ~ .${dotsClass} label[for="${carouselId}-${i}"]{background-color:${iconColor}!important}`
+		)
+		.join('\n');
 
 	let thumbCss = '';
 	if (thumbnailWidth > 0) {
 		const resetThumbs = `.${thumbsClass} label{border-color:transparent!important}`;
-		const activeThumbs = images.map((_, i) =>
-			`#${carouselId}-${i}:checked ~ .${thumbsClass} label[for="${carouselId}-${i}"]{border-color:${iconColor}!important}`
-		).join('\n');
+		const activeThumbs = images
+			.map(
+				(_, i) =>
+					`#${carouselId}-${i}:checked ~ .${thumbsClass} label[for="${carouselId}-${i}"]{border-color:${iconColor}!important}`
+			)
+			.join('\n');
 		thumbCss = `\n${resetThumbs}\n${activeThumbs}`;
 	}
 
-	const carouselCss = [hideAll, showChecked, resetDots, activeDots, thumbCss].filter(Boolean).join('\n');
+	const carouselCss = [hideAll, showChecked, resetDots, activeDots, thumbCss]
+		.filter(Boolean)
+		.join('\n');
 	ctx.globalRules.push(carouselCss);
 
-	const radios = images.map((_, i) =>
-		`<input type="radio" id="${carouselId}-${i}" name="${carouselId}" style="display:none!important;max-height:0;visibility:hidden;font-size:0;mso-hide:all"${i === 0 ? ' checked="checked"' : ''} />`
-	).join('');
+	const radios = images
+		.map(
+			(_, i) =>
+				`<input type="radio" id="${carouselId}-${i}" name="${carouselId}" style="display:none!important;max-height:0;visibility:hidden;font-size:0;mso-hide:all"${i === 0 ? ' checked="checked"' : ''} />`
+		)
+		.join('');
 	const radiosWrapped = `<!--[if !mso]><!-->${radios}<!--<![endif]-->`;
 
-	const slides = images.map((img, i) => {
-		const linkOpen = img.linkUrl ? `<a href="${escapeAttr(sanitizeUrl(img.linkUrl))}" target="_blank">` : '';
-		const linkClose = img.linkUrl ? '</a>' : '';
-		const display = i === 0 ? 'display:block' : 'display:none;max-height:0;overflow:hidden';
-		const safeSrc = escapeAttr(sanitizeUrl(img.src));
-		const safeAlt = escapeAttr(img.alt || '');
-		return `<div class="${carouselId}-slide-${i}" style="${display}">${linkOpen}<img src="${safeSrc}" alt="${safeAlt}" width="100%" style="display:block;width:100%;height:auto;${borderRadius}" border="0" />${linkClose}</div>`;
-	}).join('');
+	const slides = images
+		.map((img, i) => {
+			const linkOpen = img.linkUrl
+				? `<a href="${escapeAttr(sanitizeUrl(img.linkUrl))}" target="_blank">`
+				: '';
+			const linkClose = img.linkUrl ? '</a>' : '';
+			const display = i === 0 ? 'display:block' : 'display:none;max-height:0;overflow:hidden';
+			const safeSrc = escapeAttr(sanitizeUrl(img.src));
+			const safeAlt = escapeAttr(img.alt || '');
+			return `<div class="${carouselId}-slide-${i}" style="${display}">${linkOpen}<img src="${safeSrc}" alt="${safeAlt}" width="100%" style="display:block;width:100%;height:auto;${borderRadius}" border="0" />${linkClose}</div>`;
+		})
+		.join('');
 
-	const dots = images.map((_, i) => {
-		const bg = escapeCss(i === 0 ? iconColor : inactiveColor);
-		return `<label for="${carouselId}-${i}" style="display:inline-block;width:${iconWidth}px;height:${iconWidth}px;border-radius:50%;background-color:${bg};margin:0 4px;cursor:pointer"></label>`;
-	}).join('');
+	const dots = images
+		.map((_, i) => {
+			const bg = escapeCss(i === 0 ? iconColor : inactiveColor);
+			return `<label for="${carouselId}-${i}" style="display:inline-block;width:${iconWidth}px;height:${iconWidth}px;border-radius:50%;background-color:${bg};margin:0 4px;cursor:pointer"></label>`;
+		})
+		.join('');
 	const dotsWrapped = `<!--[if !mso]><!--><div class="${dotsClass}" style="text-align:center;padding-top:8px">${dots}</div><!--<![endif]-->`;
 
 	let thumbHtml = '';
 	if (thumbnailWidth > 0) {
-		const thumbs = images.map((img, i) => {
-			const thumbSrc = img.thumbnailSrc || img.src;
-			const safeThumbSrc = escapeAttr(sanitizeUrl(thumbSrc));
-			const borderColor = escapeCss(i === 0 ? iconColor : 'transparent');
-			return `<label for="${carouselId}-${i}" style="display:inline-block;margin:0 2px;cursor:pointer;border:2px solid ${borderColor};${borderRadius}"><img src="${safeThumbSrc}" alt="" width="${thumbnailWidth}" style="display:block;width:${thumbnailWidth}px;height:auto;${borderRadius}" border="0" /></label>`;
-		}).join('');
+		const thumbs = images
+			.map((img, i) => {
+				const thumbSrc = img.thumbnailSrc || img.src;
+				const safeThumbSrc = escapeAttr(sanitizeUrl(thumbSrc));
+				const borderColor = escapeCss(i === 0 ? iconColor : 'transparent');
+				return `<label for="${carouselId}-${i}" style="display:inline-block;margin:0 2px;cursor:pointer;border:2px solid ${borderColor};${borderRadius}"><img src="${safeThumbSrc}" alt="" width="${thumbnailWidth}" style="display:block;width:${thumbnailWidth}px;height:auto;${borderRadius}" border="0" /></label>`;
+			})
+			.join('');
 		thumbHtml = `<!--[if !mso]><!--><div class="${thumbsClass}" style="text-align:center;padding-top:8px">${thumbs}</div><!--<![endif]-->`;
 	}
 
@@ -90,15 +115,22 @@ export const carouselModule: BlockModule<'carousel'> = {
 	},
 
 	preflight({ ctx }) {
-		ctx.warnings.push('Carousel block uses CSS :checked selectors — only interactive in Apple Mail/iOS Mail (~40% of clients). Other clients show first image as fallback.');
+		ctx.warnings.push(
+			'Carousel block uses CSS :checked selectors — only interactive in Apple Mail/iOS Mail (~40% of clients). Other clients show first image as fallback.'
+		);
 	},
 
 	html({ block, content, ctx }) {
 		const transformed = ctx.linkTransform
-			? { ...content, images: content.images.map((img) => ({
-					...img,
-					linkUrl: img.linkUrl ? transformUrl(img.linkUrl, 'carousel', block.id, ctx) : img.linkUrl,
-				})) }
+			? {
+					...content,
+					images: content.images.map((img) => ({
+						...img,
+						linkUrl: img.linkUrl
+							? transformUrl(img.linkUrl, 'carousel', block.id, ctx)
+							: img.linkUrl,
+					})),
+				}
 			: content;
 		return renderCarouselContent(transformed, ctx);
 	},
@@ -113,17 +145,19 @@ export const carouselModule: BlockModule<'carousel'> = {
 	},
 
 	amp({ content }) {
-		const slides = content.images.map((img) => {
-			const src = sanitizeUrl(img.src);
-			if (!src) return '';
-			const alt = escapeAttr(img.alt || '');
-			const tag = `<amp-img src="${escapeAttr(src)}" alt="${alt}" width="600" height="400" layout="responsive"></amp-img>`;
-			if (img.linkUrl) {
-				const href = sanitizeUrl(img.linkUrl);
-				return href ? `<a href="${escapeAttr(href)}">${tag}</a>` : tag;
-			}
-			return tag;
-		}).join('\n');
+		const slides = content.images
+			.map((img) => {
+				const src = sanitizeUrl(img.src);
+				if (!src) return '';
+				const alt = escapeAttr(img.alt || '');
+				const tag = `<amp-img src="${escapeAttr(src)}" alt="${alt}" width="600" height="400" layout="responsive"></amp-img>`;
+				if (img.linkUrl) {
+					const href = sanitizeUrl(img.linkUrl);
+					return href ? `<a href="${escapeAttr(href)}">${tag}</a>` : tag;
+				}
+				return tag;
+			})
+			.join('\n');
 		return `<amp-carousel width="600" height="400" layout="responsive" type="slides">${slides}</amp-carousel>`;
 	},
 
@@ -220,36 +254,90 @@ export const carouselModule: BlockModule<'carousel'> = {
 		const ic = content as unknown as Record<string, unknown>;
 
 		// Shape
-		checkShape(ic, [
-			{ field: 'images', check: isArray, code: 'CAROUSEL_IMAGES_TYPE', message: 'images must be an array' },
-		], block.id, 'carousel', ctx.issues);
+		checkShape(
+			ic,
+			[
+				{
+					field: 'images',
+					check: isArray,
+					code: 'CAROUSEL_IMAGES_TYPE',
+					message: 'images must be an array',
+				},
+			],
+			block.id,
+			'carousel',
+			ctx.issues
+		);
 
 		if (isArray(ic['images'])) {
 			for (let i = 0; i < (ic['images'] as unknown[]).length; i++) {
 				const img = (ic['images'] as unknown[])[i];
 				if (!isObject(img) || !isString(img['src']) || !isString(img['alt'])) {
-					ctx.issues.push({ blockId: block.id, blockType: 'carousel', severity: 'error', code: 'CAROUSEL_IMAGE_SHAPE', message: `image ${i} must have src and alt strings` });
+					ctx.issues.push({
+						blockId: block.id,
+						blockType: 'carousel',
+						severity: 'error',
+						code: 'CAROUSEL_IMAGE_SHAPE',
+						message: `image ${i} must have src and alt strings`,
+					});
 				}
 			}
 		}
 
 		// Semantic
-		ctx.issues.push({ blockId: block.id, blockType: 'carousel', severity: 'info', code: 'GMAIL_FORM_ELEMENTS', message: 'Carousel uses :checked CSS pattern with radio buttons — Gmail strips form elements, showing first image as static fallback' });
+		ctx.issues.push({
+			blockId: block.id,
+			blockType: 'carousel',
+			severity: 'info',
+			code: 'GMAIL_FORM_ELEMENTS',
+			message:
+				'Carousel uses :checked CSS pattern with radio buttons — Gmail strips form elements, showing first image as static fallback',
+		});
 
 		if (!content.images || content.images.length === 0) {
-			ctx.issues.push({ blockId: block.id, blockType: 'carousel', severity: 'error', code: 'CAROUSEL_NO_IMAGES', message: 'Carousel block has no images' });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'carousel',
+				severity: 'error',
+				code: 'CAROUSEL_NO_IMAGES',
+				message: 'Carousel block has no images',
+			});
 		} else if (content.images.length === 1) {
-			ctx.issues.push({ blockId: block.id, blockType: 'carousel', severity: 'info', code: 'CAROUSEL_SINGLE_IMAGE', message: 'Carousel has only one image — consider using an image block instead' });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'carousel',
+				severity: 'info',
+				code: 'CAROUSEL_SINGLE_IMAGE',
+				message: 'Carousel has only one image — consider using an image block instead',
+			});
 		}
 		if (content.images && content.images.length > 8) {
-			ctx.issues.push({ blockId: block.id, blockType: 'carousel', severity: 'warning', code: 'CAROUSEL_MANY_IMAGES', message: `Carousel has ${content.images.length} images — more than 8 increases email size significantly and may cause slow loading` });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'carousel',
+				severity: 'warning',
+				code: 'CAROUSEL_MANY_IMAGES',
+				message: `Carousel has ${content.images.length} images — more than 8 increases email size significantly and may cause slow loading`,
+			});
 		}
 		for (const img of content.images || []) {
 			if (!img.src || img.src.trim() === '') {
-				ctx.issues.push({ blockId: block.id, blockType: 'carousel', severity: 'error', code: 'CAROUSEL_IMAGE_NO_SRC', message: 'Carousel image has no source URL' });
+				ctx.issues.push({
+					blockId: block.id,
+					blockType: 'carousel',
+					severity: 'error',
+					code: 'CAROUSEL_IMAGE_NO_SRC',
+					message: 'Carousel image has no source URL',
+				});
 			}
 			if (ctx.options?.accessibilityAudit && (!img.alt || img.alt.trim() === '')) {
-				ctx.issues.push({ blockId: block.id, blockType: 'carousel', severity: 'warning', code: 'A11Y_CAROUSEL_IMAGE_NO_ALT', message: 'Carousel image is missing alt text' });
+				ctx.issues.push({
+					blockId: block.id,
+					blockType: 'carousel',
+					severity: 'warning',
+					code: 'A11Y_CAROUSEL_IMAGE_NO_ALT',
+					message: 'Carousel image is missing alt text',
+				});
 			}
 		}
 	},

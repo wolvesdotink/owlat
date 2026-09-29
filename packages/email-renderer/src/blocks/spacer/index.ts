@@ -63,8 +63,19 @@ export const spacerModule: BlockModule<'spacer'> = {
 	},
 
 	validate({ block, content, ctx }) {
-		checkShape(content as unknown as Record<string, unknown>, [
-			{ field: 'height', check: isNumber, code: 'SPACER_HEIGHT_TYPE', message: 'height must be a number' },
-		], block.id, 'spacer', ctx.issues);
+		checkShape(
+			content as unknown as Record<string, unknown>,
+			[
+				{
+					field: 'height',
+					check: isNumber,
+					code: 'SPACER_HEIGHT_TYPE',
+					message: 'height must be a number',
+				},
+			],
+			block.id,
+			'spacer',
+			ctx.issues
+		);
 	},
 };

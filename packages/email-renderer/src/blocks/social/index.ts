@@ -14,7 +14,12 @@
  * blocks, so `column` remains unsupported.
  */
 
-import { fullSupport, SOCIAL_PLATFORMS, type SocialBlockContent, type SocialPlatform } from '@owlat/shared';
+import {
+	fullSupport,
+	SOCIAL_PLATFORMS,
+	type SocialBlockContent,
+	type SocialPlatform,
+} from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
 import { escapeAttr, sanitizeUrl } from '../../sanitize';
 import { transformUrl } from '../../helpers/linkTransform';
@@ -24,7 +29,10 @@ const SOCIAL_ALIGNS = ['left', 'center', 'right'] as const;
 const SOCIAL_ICON_STYLES = ['filled', 'outline'] as const;
 
 const PLATFORM_NAMES: Record<SocialPlatform, string> = Object.fromEntries(
-	(Object.entries(SOCIAL_PLATFORMS) as [SocialPlatform, { label: string }][]).map(([value, m]) => [value, m.label]),
+	(Object.entries(SOCIAL_PLATFORMS) as [SocialPlatform, { label: string }][]).map(([value, m]) => [
+		value,
+		m.label,
+	])
 ) as Record<SocialPlatform, string>;
 
 const getDefaultIconUrl = (platform: SocialPlatform, style: 'filled' | 'outline'): string =>
@@ -74,7 +82,12 @@ export const renderSocialContent = (content: SocialBlockContent): string => {
 		})
 		.join('');
 
-	const alignStyle = content.align === 'left' ? 'text-align:left' : content.align === 'right' ? 'text-align:right' : 'text-align:center';
+	const alignStyle =
+		content.align === 'left'
+			? 'text-align:left'
+			: content.align === 'right'
+				? 'text-align:right'
+				: 'text-align:center';
 	return `<div style="${alignStyle};font-size:0;word-spacing:normal"><!--[if mso | IE]><table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${content.align}"><tr><![endif]-->${iconBlocks}<!--[if mso | IE]></tr></table><![endif]--></div>`;
 };
 
@@ -88,10 +101,13 @@ export const socialModule: BlockModule<'social'> = {
 
 	html({ block, content, ctx, placement }) {
 		const transformed = ctx.linkTransform
-			? { ...content, links: content.links.map((link) => ({
-					...link,
-					url: link.url ? transformUrl(link.url, 'social', block.id, ctx) : link.url,
-				})) }
+			? {
+					...content,
+					links: content.links.map((link) => ({
+						...link,
+						url: link.url ? transformUrl(link.url, 'social', block.id, ctx) : link.url,
+					})),
+				}
 			: content;
 		const inner = renderSocialContent(transformed);
 		if (placement === 'container' && inner) {
@@ -119,13 +135,17 @@ export const socialModule: BlockModule<'social'> = {
 		const size = content.iconSize;
 		const halfSpacing = Math.floor(content.iconSpacing / 2);
 
-		const cells = enabledLinks.map((link) => {
-			const name = escapeAttr(PLATFORM_NAMES[link.platform] || link.platform);
-			const iconSrc = escapeAttr(sanitizeUrl(link.iconUrl || getDefaultIconUrl(link.platform, content.iconStyle)));
-			const safeUrl = escapeAttr(sanitizeUrl(link.url));
-			const img = `<amp-img src="${iconSrc}" alt="${name}" width="${size}" height="${size}" layout="fixed"></amp-img>`;
-			return `<td style="padding:0 ${halfSpacing}px"><a href="${safeUrl}">${img}</a></td>`;
-		}).join('');
+		const cells = enabledLinks
+			.map((link) => {
+				const name = escapeAttr(PLATFORM_NAMES[link.platform] || link.platform);
+				const iconSrc = escapeAttr(
+					sanitizeUrl(link.iconUrl || getDefaultIconUrl(link.platform, content.iconStyle))
+				);
+				const safeUrl = escapeAttr(sanitizeUrl(link.url));
+				const img = `<amp-img src="${iconSrc}" alt="${name}" width="${size}" height="${size}" layout="fixed"></amp-img>`;
+				return `<td style="padding:0 ${halfSpacing}px"><a href="${safeUrl}">${img}</a></td>`;
+			})
+			.join('');
 
 		return `<table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${content.align}"><tr>${cells}</tr></table>`;
 	},
@@ -201,13 +221,49 @@ export const socialModule: BlockModule<'social'> = {
 	},
 
 	validate({ block, content, ctx }) {
-		checkShape(content as unknown as Record<string, unknown>, [
-			{ field: 'links', check: isArray, code: 'SOCIAL_LINKS_TYPE', message: 'links must be an array' },
-			{ field: 'iconStyle', check: (v) => isOneOf(v, SOCIAL_ICON_STYLES), code: 'SOCIAL_ICON_STYLE_INVALID', message: 'iconStyle must be filled or outline' },
-			{ field: 'align', check: (v) => isOneOf(v, SOCIAL_ALIGNS), code: 'SOCIAL_ALIGN_INVALID', message: 'align must be left, center, or right' },
-			{ field: 'iconSize', check: isNumber, code: 'SOCIAL_ICON_SIZE_TYPE', message: 'iconSize must be a number' },
-			{ field: 'iconSpacing', check: isNumber, code: 'SOCIAL_ICON_SPACING_TYPE', message: 'iconSpacing must be a number' },
-			{ field: 'iconColor', check: isString, code: 'SOCIAL_ICON_COLOR_TYPE', message: 'iconColor must be a string' },
-		], block.id, 'social', ctx.issues);
+		checkShape(
+			content as unknown as Record<string, unknown>,
+			[
+				{
+					field: 'links',
+					check: isArray,
+					code: 'SOCIAL_LINKS_TYPE',
+					message: 'links must be an array',
+				},
+				{
+					field: 'iconStyle',
+					check: (v) => isOneOf(v, SOCIAL_ICON_STYLES),
+					code: 'SOCIAL_ICON_STYLE_INVALID',
+					message: 'iconStyle must be filled or outline',
+				},
+				{
+					field: 'align',
+					check: (v) => isOneOf(v, SOCIAL_ALIGNS),
+					code: 'SOCIAL_ALIGN_INVALID',
+					message: 'align must be left, center, or right',
+				},
+				{
+					field: 'iconSize',
+					check: isNumber,
+					code: 'SOCIAL_ICON_SIZE_TYPE',
+					message: 'iconSize must be a number',
+				},
+				{
+					field: 'iconSpacing',
+					check: isNumber,
+					code: 'SOCIAL_ICON_SPACING_TYPE',
+					message: 'iconSpacing must be a number',
+				},
+				{
+					field: 'iconColor',
+					check: isString,
+					code: 'SOCIAL_ICON_COLOR_TYPE',
+					message: 'iconColor must be a string',
+				},
+			],
+			block.id,
+			'social',
+			ctx.issues
+		);
 	},
 };

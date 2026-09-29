@@ -71,11 +71,37 @@ export const dividerModule: BlockModule<'divider'> = {
 	},
 
 	validate({ block, content, ctx }) {
-		checkShape(content as unknown as Record<string, unknown>, [
-			{ field: 'color', check: isString, code: 'DIVIDER_COLOR_TYPE', message: 'color must be a string' },
-			{ field: 'thickness', check: isNumber, code: 'DIVIDER_THICKNESS_TYPE', message: 'thickness must be a number' },
-			{ field: 'width', check: isNumber, code: 'DIVIDER_WIDTH_TYPE', message: 'width must be a number' },
-			{ field: 'style', check: (v) => isOneOf(v, DIVIDER_STYLES), code: 'DIVIDER_STYLE_INVALID', message: 'style must be solid, dashed, or dotted' },
-		], block.id, 'divider', ctx.issues);
+		checkShape(
+			content as unknown as Record<string, unknown>,
+			[
+				{
+					field: 'color',
+					check: isString,
+					code: 'DIVIDER_COLOR_TYPE',
+					message: 'color must be a string',
+				},
+				{
+					field: 'thickness',
+					check: isNumber,
+					code: 'DIVIDER_THICKNESS_TYPE',
+					message: 'thickness must be a number',
+				},
+				{
+					field: 'width',
+					check: isNumber,
+					code: 'DIVIDER_WIDTH_TYPE',
+					message: 'width must be a number',
+				},
+				{
+					field: 'style',
+					check: (v) => isOneOf(v, DIVIDER_STYLES),
+					code: 'DIVIDER_STYLE_INVALID',
+					message: 'style must be solid, dashed, or dotted',
+				},
+			],
+			block.id,
+			'divider',
+			ctx.issues
+		);
 	},
 };

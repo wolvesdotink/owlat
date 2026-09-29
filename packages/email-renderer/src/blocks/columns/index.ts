@@ -14,10 +14,22 @@ import { fullSupport } from '@owlat/shared';
 import { itemToBlock, type BlockModule, type Placement } from '../_module';
 import { toPixelWidth, toPercentNumber } from '../../helpers/dimensions';
 import { getColumnWidths } from '../../helpers/table';
-import { msoColumnsOpen, msoColumnCellOpen, msoColumnCellClose, msoColumnsClose } from '../../outlook';
+import {
+	msoColumnsOpen,
+	msoColumnCellOpen,
+	msoColumnCellClose,
+	msoColumnsClose,
+} from '../../outlook';
 import { escapeCss, escapeCssUrl } from '../../sanitize';
 import { backgroundImageCss } from '../../helpers/inline-styles';
-import { checkShape, isString, isBoolean, isNumber, isArray, isObject } from '../../helpers/validation';
+import {
+	checkShape,
+	isString,
+	isBoolean,
+	isNumber,
+	isArray,
+	isObject,
+} from '../../helpers/validation';
 
 export const columnsModule: BlockModule<'columns'> = {
 	type: 'columns',
@@ -55,29 +67,37 @@ export const columnsModule: BlockModule<'columns'> = {
 			const columnStacks = colStyle?.stackOnMobile ?? content.mobileStacking;
 			const mobileClass = columnStacks ? ' class="owlat-col"' : '';
 
-			const colBg = colStyle?.backgroundColor ? `background-color:${escapeCss(colStyle.backgroundColor)};` : '';
+			const colBg = colStyle?.backgroundColor
+				? `background-color:${escapeCss(colStyle.backgroundColor)};`
+				: '';
 			const colVAlign = colStyle?.verticalAlign || verticalAlign;
 			const colPaddingTop = colStyle?.paddingTop ?? 0;
 			const colPaddingRight = colStyle?.paddingRight ?? gapRight;
 			const colPaddingBottom = colStyle?.paddingBottom ?? 0;
 			const colPaddingLeft = colStyle?.paddingLeft ?? gapLeft;
-			const colPadding = (colPaddingTop || colPaddingRight || colPaddingBottom || colPaddingLeft)
-				? `padding:${colPaddingTop}px ${colPaddingRight}px ${colPaddingBottom}px ${colPaddingLeft}px;`
-				: gap > 0 ? `padding:0 ${gapLeft}px 0 ${gapRight}px;` : '';
+			const colPadding =
+				colPaddingTop || colPaddingRight || colPaddingBottom || colPaddingLeft
+					? `padding:${colPaddingTop}px ${colPaddingRight}px ${colPaddingBottom}px ${colPaddingLeft}px;`
+					: gap > 0
+						? `padding:0 ${gapLeft}px 0 ${gapRight}px;`
+						: '';
 
 			const colBorderWidth = colStyle?.borderWidth ?? 0;
 			const colBorderStyle = colStyle?.borderStyle ?? 'none';
 			const colBorderColor = escapeCss(colStyle?.borderColor ?? '#000000');
-			const colBorder = colBorderWidth > 0 && colBorderStyle !== 'none'
-				? `border:${colBorderWidth}px ${colBorderStyle} ${colBorderColor};`
+			const colBorder =
+				colBorderWidth > 0 && colBorderStyle !== 'none'
+					? `border:${colBorderWidth}px ${colBorderStyle} ${colBorderColor};`
+					: '';
+			const colBorderRadius = colStyle?.borderRadius
+				? `border-radius:${colStyle.borderRadius}px;`
 				: '';
-			const colBorderRadius = colStyle?.borderRadius ? `border-radius:${colStyle.borderRadius}px;` : '';
 			const colBgImage = colStyle?.backgroundImage
 				? backgroundImageCss(
 						escapeCssUrl(colStyle.backgroundImage),
 						colStyle.backgroundPosition || 'center',
 						colStyle.backgroundSize || 'cover',
-						'size-position',
+						'size-position'
 					)
 				: '';
 
@@ -205,8 +225,7 @@ export const columnsModule: BlockModule<'columns'> = {
 				feature: 'Non-stacking columns',
 				description: 'Per-column opt-out from mobile stacking using table-cell display',
 				support: { ...fullSupport, outlookDesktop: 'none' },
-				fallback:
-					'Outlook always renders side-by-side (which is the desired behavior)',
+				fallback: 'Outlook always renders side-by-side (which is the desired behavior)',
 				owlatHandled: true,
 			},
 			{
@@ -233,8 +252,7 @@ export const columnsModule: BlockModule<'columns'> = {
 				description: 'Spacing between columns',
 				support: { ...fullSupport, outlookDesktop: 'none' },
 				severity: 'info',
-				recommendation:
-					'Outlook ignores padding-based gap — columns appear tighter',
+				recommendation: 'Outlook ignores padding-based gap — columns appear tighter',
 				owlatHandled: false,
 			},
 			{
@@ -282,24 +300,62 @@ export const columnsModule: BlockModule<'columns'> = {
 	validate({ block, content, ctx }) {
 		// Shape
 		const ic = content as unknown as Record<string, unknown>;
-		checkShape(ic, [
-			{ field: 'columnCount', check: (v) => isNumber(v) && [1, 2, 3, 4].includes(v), code: 'COLUMNS_COUNT_INVALID', message: 'columnCount must be 1, 2, 3, or 4' },
-			{ field: 'ratio', check: isString, code: 'COLUMNS_RATIO_TYPE', message: 'ratio must be a string' },
-			{ field: 'mobileStacking', check: isBoolean, code: 'COLUMNS_STACKING_TYPE', message: 'mobileStacking must be a boolean' },
-			{ field: 'columns', check: isArray, code: 'COLUMNS_COLUMNS_TYPE', message: 'columns must be an array' },
-		], block.id, 'columns', ctx.issues);
+		checkShape(
+			ic,
+			[
+				{
+					field: 'columnCount',
+					check: (v) => isNumber(v) && [1, 2, 3, 4].includes(v),
+					code: 'COLUMNS_COUNT_INVALID',
+					message: 'columnCount must be 1, 2, 3, or 4',
+				},
+				{
+					field: 'ratio',
+					check: isString,
+					code: 'COLUMNS_RATIO_TYPE',
+					message: 'ratio must be a string',
+				},
+				{
+					field: 'mobileStacking',
+					check: isBoolean,
+					code: 'COLUMNS_STACKING_TYPE',
+					message: 'mobileStacking must be a boolean',
+				},
+				{
+					field: 'columns',
+					check: isArray,
+					code: 'COLUMNS_COLUMNS_TYPE',
+					message: 'columns must be an array',
+				},
+			],
+			block.id,
+			'columns',
+			ctx.issues
+		);
 
 		if (isArray(ic['columns'])) {
 			for (let colIdx = 0; colIdx < (ic['columns'] as unknown[]).length; colIdx++) {
 				const col = (ic['columns'] as unknown[])[colIdx];
 				if (!isArray(col)) {
-					ctx.issues.push({ blockId: block.id, blockType: 'columns', severity: 'error', code: 'COLUMNS_COLUMN_NOT_ARRAY', message: `column ${colIdx} must be an array` });
+					ctx.issues.push({
+						blockId: block.id,
+						blockType: 'columns',
+						severity: 'error',
+						code: 'COLUMNS_COLUMN_NOT_ARRAY',
+						message: `column ${colIdx} must be an array`,
+					});
 					continue;
 				}
 				for (let itemIdx = 0; itemIdx < col.length; itemIdx++) {
 					const item = col[itemIdx];
 					if (!isObject(item) || !isString(item['id']) || !isString(item['type'])) {
-						ctx.issues.push({ blockId: block.id, blockType: 'columns', severity: 'error', code: 'COLUMNS_ITEM_SHAPE', message: `column item ${colIdx}[${itemIdx}] must have id and type strings` });
+						ctx.issues.push({
+							blockId: block.id,
+							blockType: 'columns',
+							severity: 'error',
+							code: 'COLUMNS_ITEM_SHAPE',
+							message: `column item ${colIdx}[${itemIdx}] must have id and type strings`,
+						});
 					}
 				}
 			}
@@ -308,7 +364,13 @@ export const columnsModule: BlockModule<'columns'> = {
 		// Semantic
 		const allEmpty = content.columns.slice(0, content.columnCount).every((col) => col.length === 0);
 		if (allEmpty) {
-			ctx.issues.push({ blockId: block.id, blockType: 'columns', severity: 'warning', code: 'COLUMNS_ALL_EMPTY', message: 'All columns are empty' });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'columns',
+				severity: 'warning',
+				code: 'COLUMNS_ALL_EMPTY',
+				message: 'All columns are empty',
+			});
 		}
 
 		// Outlook: column background images have no VML fallback
@@ -316,7 +378,13 @@ export const columnsModule: BlockModule<'columns'> = {
 			for (let i = 0; i < content.columnStyles.length; i++) {
 				const colStyle = content.columnStyles[i];
 				if (colStyle?.backgroundImage) {
-					ctx.issues.push({ blockId: block.id, blockType: 'columns', severity: 'warning', code: 'OUTLOOK_COLUMN_BG_IMAGE', message: `Column ${i + 1} has a background image — Outlook ignores CSS background-image on table cells. Set a solid backgroundColor as fallback.` });
+					ctx.issues.push({
+						blockId: block.id,
+						blockType: 'columns',
+						severity: 'warning',
+						code: 'OUTLOOK_COLUMN_BG_IMAGE',
+						message: `Column ${i + 1} has a background image — Outlook ignores CSS background-image on table cells. Set a solid backgroundColor as fallback.`,
+					});
 				}
 			}
 		}

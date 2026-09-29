@@ -26,7 +26,9 @@ export const renderVideoContent = (content: VideoBlockContent, baseWidth: number
 	const alignMap: Record<string, string> = { center: 'center', right: 'right', left: 'left' };
 	const tableAlign = alignMap[content.align] || 'center';
 
-	const playSvg = encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="${playColor}"/><polygon points="26,18 26,46 48,32" fill="#333"/></svg>`);
+	const playSvg = encodeURIComponent(
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="${playColor}"/><polygon points="26,18 26,46 48,32" fill="#333"/></svg>`
+	);
 
 	const safeThumbnailUrl = escapeAttr(sanitizeUrl(content.thumbnailUrl));
 	const safeAlt = escapeAttr(content.alt || 'Video thumbnail');
@@ -52,7 +54,9 @@ export const videoModule: BlockModule<'video'> = {
 	},
 
 	preflight({ ctx }) {
-		ctx.warnings.push('Video block uses position:absolute for play button overlay — stripped by Gmail. Thumbnail remains clickable as fallback.');
+		ctx.warnings.push(
+			'Video block uses position:absolute for play button overlay — stripped by Gmail. Thumbnail remains clickable as fallback.'
+		);
 	},
 
 	html({ block, content, ctx }) {
@@ -102,8 +106,7 @@ export const videoModule: BlockModule<'video'> = {
 					outlookDesktop: 'none',
 					outlook365: 'none',
 				},
-				fallback:
-					'Uses position:absolute — stripped by Gmail. Thumbnail remains clickable.',
+				fallback: 'Uses position:absolute — stripped by Gmail. Thumbnail remains clickable.',
 				owlatHandled: false,
 				canIEmailSlug: 'css-position',
 			},
@@ -148,20 +151,58 @@ export const videoModule: BlockModule<'video'> = {
 
 	validate({ block, content, ctx }) {
 		// Shape
-		checkShape(content as unknown as Record<string, unknown>, [
-			{ field: 'thumbnailUrl', check: isString, code: 'VIDEO_THUMBNAIL_TYPE', message: 'thumbnailUrl must be a string' },
-			{ field: 'videoUrl', check: isString, code: 'VIDEO_URL_TYPE', message: 'videoUrl must be a string' },
-			{ field: 'alt', check: isString, code: 'VIDEO_ALT_TYPE', message: 'alt must be a string' },
-			{ field: 'width', check: isNumber, code: 'VIDEO_WIDTH_TYPE', message: 'width must be a number' },
-			{ field: 'align', check: (v) => isOneOf(v, VIDEO_ALIGNS), code: 'VIDEO_ALIGN_INVALID', message: 'align must be left, center, or right' },
-		], block.id, 'video', ctx.issues);
+		checkShape(
+			content as unknown as Record<string, unknown>,
+			[
+				{
+					field: 'thumbnailUrl',
+					check: isString,
+					code: 'VIDEO_THUMBNAIL_TYPE',
+					message: 'thumbnailUrl must be a string',
+				},
+				{
+					field: 'videoUrl',
+					check: isString,
+					code: 'VIDEO_URL_TYPE',
+					message: 'videoUrl must be a string',
+				},
+				{ field: 'alt', check: isString, code: 'VIDEO_ALT_TYPE', message: 'alt must be a string' },
+				{
+					field: 'width',
+					check: isNumber,
+					code: 'VIDEO_WIDTH_TYPE',
+					message: 'width must be a number',
+				},
+				{
+					field: 'align',
+					check: (v) => isOneOf(v, VIDEO_ALIGNS),
+					code: 'VIDEO_ALIGN_INVALID',
+					message: 'align must be left, center, or right',
+				},
+			],
+			block.id,
+			'video',
+			ctx.issues
+		);
 
 		// Semantic
 		if (!content.thumbnailUrl || content.thumbnailUrl.trim() === '') {
-			ctx.issues.push({ blockId: block.id, blockType: 'video', severity: 'error', code: 'VIDEO_NO_THUMBNAIL', message: 'Video block has no thumbnail URL' });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'video',
+				severity: 'error',
+				code: 'VIDEO_NO_THUMBNAIL',
+				message: 'Video block has no thumbnail URL',
+			});
 		}
 		if (!content.videoUrl || content.videoUrl.trim() === '') {
-			ctx.issues.push({ blockId: block.id, blockType: 'video', severity: 'error', code: 'VIDEO_NO_URL', message: 'Video block has no video URL' });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'video',
+				severity: 'error',
+				code: 'VIDEO_NO_URL',
+				message: 'Video block has no video URL',
+			});
 		}
 	},
 };

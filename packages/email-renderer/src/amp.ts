@@ -61,8 +61,7 @@ ${bodyContent}
 const needsAccordion = (blocks: EditorBlock[]): boolean =>
 	blocks.some((b) => b.type === 'accordion');
 
-const needsCarousel = (blocks: EditorBlock[]): boolean =>
-	blocks.some((b) => b.type === 'carousel');
+const needsCarousel = (blocks: EditorBlock[]): boolean => blocks.some((b) => b.type === 'carousel');
 
 const needsFit = (_blocks: EditorBlock[]): boolean => false;
 
@@ -75,9 +74,11 @@ const needsFit = (_blocks: EditorBlock[]): boolean => false;
  */
 const renderAmpBlock = (block: EditorBlock): string => {
 	const mod = moduleFor(block.type);
-	return mod?.amp?.({
-		block,
-		content: block.content,
-		walk: renderAmpBlock,
-	}) ?? `<!-- AMP: ${escapeHtml(block.type)} block not supported -->`;
+	return (
+		mod?.amp?.({
+			block,
+			content: block.content,
+			walk: renderAmpBlock,
+		}) ?? `<!-- AMP: ${escapeHtml(block.type)} block not supported -->`
+	);
 };

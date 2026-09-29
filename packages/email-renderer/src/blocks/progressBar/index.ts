@@ -36,9 +36,16 @@ export const renderProgressBarContent = (content: ProgressBarBlockContent): stri
 
 	let barRadius: string;
 	let trackRadius: string;
-	if (rounded >= 100) { barRadius = rFull; trackRadius = ''; }
-	else if (rounded <= 0) { barRadius = ''; trackRadius = rFull; }
-	else { barRadius = rLeft; trackRadius = rRight; }
+	if (rounded >= 100) {
+		barRadius = rFull;
+		trackRadius = '';
+	} else if (rounded <= 0) {
+		barRadius = '';
+		trackRadius = rFull;
+	} else {
+		barRadius = rLeft;
+		trackRadius = rRight;
+	}
 
 	const hasInsideLabel = showLabel && labelPosition === 'inside' && percentage > 15;
 	const filler = '&#8203;';
@@ -97,8 +104,7 @@ export const progressBarModule: BlockModule<'progressBar'> = {
 		features: [
 			{
 				feature: 'Table-based progress bar',
-				description:
-					'Progress bar rendered using nested tables with percentage widths',
+				description: 'Progress bar rendered using nested tables with percentage widths',
 				support: fullSupport,
 				fallback: 'Progress bar rendered using nested tables',
 				owlatHandled: true,
@@ -137,24 +143,62 @@ export const progressBarModule: BlockModule<'progressBar'> = {
 
 	validate({ block, content, ctx }) {
 		// Shape
-		checkShape(content as unknown as Record<string, unknown>, [
-			{ field: 'value', check: isNumber, code: 'PROGRESS_VALUE_TYPE', message: 'value must be a number' },
-			{ field: 'barColor', check: isString, code: 'PROGRESS_BAR_COLOR_TYPE', message: 'barColor must be a string' },
-			{ field: 'trackColor', check: isString, code: 'PROGRESS_TRACK_COLOR_TYPE', message: 'trackColor must be a string' },
-			{ field: 'height', check: isNumber, code: 'PROGRESS_HEIGHT_TYPE', message: 'height must be a number' },
-		], block.id, 'progressBar', ctx.issues);
+		checkShape(
+			content as unknown as Record<string, unknown>,
+			[
+				{
+					field: 'value',
+					check: isNumber,
+					code: 'PROGRESS_VALUE_TYPE',
+					message: 'value must be a number',
+				},
+				{
+					field: 'barColor',
+					check: isString,
+					code: 'PROGRESS_BAR_COLOR_TYPE',
+					message: 'barColor must be a string',
+				},
+				{
+					field: 'trackColor',
+					check: isString,
+					code: 'PROGRESS_TRACK_COLOR_TYPE',
+					message: 'trackColor must be a string',
+				},
+				{
+					field: 'height',
+					check: isNumber,
+					code: 'PROGRESS_HEIGHT_TYPE',
+					message: 'height must be a number',
+				},
+			],
+			block.id,
+			'progressBar',
+			ctx.issues
+		);
 
 		// Semantic
 		const maxValue = content.maxValue ?? 100;
 		if (content.value < 0 || content.value > maxValue) {
-			ctx.issues.push({ blockId: block.id, blockType: 'progressBar', severity: 'warning', code: 'PROGRESS_OUT_OF_RANGE', message: `Progress value (${content.value}) is outside expected range 0-${maxValue}` });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'progressBar',
+				severity: 'warning',
+				code: 'PROGRESS_OUT_OF_RANGE',
+				message: `Progress value (${content.value}) is outside expected range 0-${maxValue}`,
+			});
 		}
 
 		// Accessibility (audit mode)
 		if (ctx.options?.accessibilityAudit && content.barColor && content.trackColor) {
 			const contrast = getContrastRatio(content.barColor, content.trackColor);
 			if (contrast < 3) {
-				ctx.issues.push({ blockId: block.id, blockType: 'progressBar', severity: 'warning', code: 'A11Y_PROGRESS_LOW_CONTRAST', message: `Progress bar/track contrast ratio (${contrast.toFixed(1)}:1) is below recommended 3:1` });
+				ctx.issues.push({
+					blockId: block.id,
+					blockType: 'progressBar',
+					severity: 'warning',
+					code: 'A11Y_PROGRESS_LOW_CONTRAST',
+					message: `Progress bar/track contrast ratio (${contrast.toFixed(1)}:1) is below recommended 3:1`,
+				});
 			}
 		}
 	},

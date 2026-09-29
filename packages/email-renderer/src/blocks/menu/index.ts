@@ -30,9 +30,10 @@ export const renderMenuContent = (content: MenuBlockContent, ctx: RenderContext)
 	const fontFamily = escapeCss(content.fontFamily || ctx.theme.fontFamily);
 	const fontWeight = content.fontWeight || 400;
 	const textColor = escapeCss(content.textColor || ctx.theme.bodyTextColor || '#333333');
-	const textTransform = content.textTransform && content.textTransform !== 'none'
-		? `text-transform:${content.textTransform};`
-		: '';
+	const textTransform =
+		content.textTransform && content.textTransform !== 'none'
+			? `text-transform:${content.textTransform};`
+			: '';
 	const separator = content.separator || '';
 	const separatorColor = content.separatorColor || '#999999';
 	const itemSpacing = content.itemSpacing ?? 16;
@@ -40,16 +41,22 @@ export const renderMenuContent = (content: MenuBlockContent, ctx: RenderContext)
 
 	const linkStyle = `color:${textColor};text-decoration:none;font-size:${fontSize}px;font-family:${fontFamily};font-weight:${fontWeight};${textTransform}`;
 
-	const cells = content.items.map((item, idx) => {
-		const parts: string[] = [];
-		if (idx > 0 && separator) {
-			parts.push(`<td style="padding:0 ${halfSpacing}px;color:${escapeCss(separatorColor)};font-size:${fontSize}px;font-family:${fontFamily}">${escapeHtml(separator)}</td>`);
-		}
-		const paddingStyle = `padding:0 ${halfSpacing}px`;
-		const safeUrl = escapeAttr(sanitizeUrl(item.url));
-		parts.push(`<td style="${paddingStyle}"><a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="${linkStyle}">${escapeHtml(item.label)}</a></td>`);
-		return parts.join('');
-	}).join('');
+	const cells = content.items
+		.map((item, idx) => {
+			const parts: string[] = [];
+			if (idx > 0 && separator) {
+				parts.push(
+					`<td style="padding:0 ${halfSpacing}px;color:${escapeCss(separatorColor)};font-size:${fontSize}px;font-family:${fontFamily}">${escapeHtml(separator)}</td>`
+				);
+			}
+			const paddingStyle = `padding:0 ${halfSpacing}px`;
+			const safeUrl = escapeAttr(sanitizeUrl(item.url));
+			parts.push(
+				`<td style="${paddingStyle}"><a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="${linkStyle}">${escapeHtml(item.label)}</a></td>`
+			);
+			return parts.join('');
+		})
+		.join('');
 
 	const desktopMenu = `<table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${content.align}"><tr>${cells}</tr></table>`;
 
@@ -66,7 +73,8 @@ export const renderMenuContent = (content: MenuBlockContent, ctx: RenderContext)
 
 	const hamburgerIcon = `<span style="font-size:24px;line-height:1;cursor:pointer;color:${textColor}">&#9776;</span>`;
 
-	const style = `<style>` +
+	const style =
+		`<style>` +
 		`.owlat-menu-toggle{display:none!important;mso-hide:all}` +
 		`.owlat-hamburger{display:none}` +
 		`.owlat-mobile-nav{display:none;max-height:0;overflow:hidden}` +
@@ -78,11 +86,13 @@ export const renderMenuContent = (content: MenuBlockContent, ctx: RenderContext)
 		`}` +
 		`</style>`;
 
-	return `${style}` +
+	return (
+		`${style}` +
 		`<div class="owlat-desktop-nav">${desktopMenu}</div>` +
 		`<input type="checkbox" id="owlat-menu-toggle" class="owlat-menu-toggle" />` +
 		`<label for="owlat-menu-toggle" class="owlat-hamburger" style="text-align:${content.align}">${hamburgerIcon}</label>` +
-		`<div class="owlat-mobile-nav">${mobileLinks}</div>`;
+		`<div class="owlat-mobile-nav">${mobileLinks}</div>`
+	);
 };
 
 export const menuModule: BlockModule<'menu'> = {
@@ -95,16 +105,21 @@ export const menuModule: BlockModule<'menu'> = {
 
 	preflight({ content, ctx }) {
 		if (content.hamburgerOnMobile) {
-			ctx.warnings.push('Menu with hamburgerOnMobile hides the menu on mobile with no interactive replacement. Consider disabling hamburgerOnMobile or see 3.3 hamburger menu feature.');
+			ctx.warnings.push(
+				'Menu with hamburgerOnMobile hides the menu on mobile with no interactive replacement. Consider disabling hamburgerOnMobile or see 3.3 hamburger menu feature.'
+			);
 		}
 	},
 
 	html({ block, content, ctx }) {
 		const transformed = ctx.linkTransform
-			? { ...content, items: content.items.map((item) => ({
-					...item,
-					url: transformUrl(item.url, 'menu', block.id, ctx),
-				})) }
+			? {
+					...content,
+					items: content.items.map((item) => ({
+						...item,
+						url: transformUrl(item.url, 'menu', block.id, ctx),
+					})),
+				}
 			: content;
 		return renderMenuContent(transformed, ctx);
 	},
@@ -128,15 +143,21 @@ export const menuModule: BlockModule<'menu'> = {
 		const halfSpacing = Math.floor(itemSpacing / 2);
 		const linkStyle = `color:${escapeAttr(textColor)};text-decoration:none;font-size:${fontSize}px;font-weight:${fontWeight}`;
 
-		const cells = content.items.map((item, idx) => {
-			const parts: string[] = [];
-			if (idx > 0 && separator) {
-				parts.push(`<td style="padding:0 ${halfSpacing}px;color:${escapeAttr(separatorColor)};font-size:${fontSize}px">${escapeHtml(separator)}</td>`);
-			}
-			const safeUrl = escapeAttr(sanitizeUrl(item.url));
-			parts.push(`<td style="padding:0 ${halfSpacing}px"><a href="${safeUrl}" style="${linkStyle}">${escapeHtml(item.label)}</a></td>`);
-			return parts.join('');
-		}).join('');
+		const cells = content.items
+			.map((item, idx) => {
+				const parts: string[] = [];
+				if (idx > 0 && separator) {
+					parts.push(
+						`<td style="padding:0 ${halfSpacing}px;color:${escapeAttr(separatorColor)};font-size:${fontSize}px">${escapeHtml(separator)}</td>`
+					);
+				}
+				const safeUrl = escapeAttr(sanitizeUrl(item.url));
+				parts.push(
+					`<td style="padding:0 ${halfSpacing}px"><a href="${safeUrl}" style="${linkStyle}">${escapeHtml(item.label)}</a></td>`
+				);
+				return parts.join('');
+			})
+			.join('');
 
 		return `<table cellpadding="0" cellspacing="0" border="0" role="presentation" align="${content.align}"><tr>${cells}</tr></table>`;
 	},
@@ -168,8 +189,7 @@ export const menuModule: BlockModule<'menu'> = {
 			},
 			{
 				feature: 'Hamburger on mobile',
-				description:
-					'CSS-only hamburger toggle with vertical mobile nav using :checked pattern',
+				description: 'CSS-only hamburger toggle with vertical mobile nav using :checked pattern',
 				support: {
 					...fullSupport,
 					gmail: 'partial',
@@ -204,8 +224,7 @@ export const menuModule: BlockModule<'menu'> = {
 					yahooMail: 'partial',
 				},
 				severity: 'warning',
-				recommendation:
-					'Expanded vertical nav shown as fallback in non-supporting clients',
+				recommendation: 'Expanded vertical nav shown as fallback in non-supporting clients',
 				owlatHandled: true,
 			},
 		],
@@ -215,23 +234,52 @@ export const menuModule: BlockModule<'menu'> = {
 		const ic = content as unknown as Record<string, unknown>;
 
 		// Shape
-		checkShape(ic, [
-			{ field: 'items', check: isArray, code: 'MENU_ITEMS_TYPE', message: 'items must be an array' },
-			{ field: 'align', check: (v) => isOneOf(v, MENU_ALIGNS), code: 'MENU_ALIGN_INVALID', message: 'align must be left, center, or right' },
-		], block.id, 'menu', ctx.issues);
+		checkShape(
+			ic,
+			[
+				{
+					field: 'items',
+					check: isArray,
+					code: 'MENU_ITEMS_TYPE',
+					message: 'items must be an array',
+				},
+				{
+					field: 'align',
+					check: (v) => isOneOf(v, MENU_ALIGNS),
+					code: 'MENU_ALIGN_INVALID',
+					message: 'align must be left, center, or right',
+				},
+			],
+			block.id,
+			'menu',
+			ctx.issues
+		);
 
 		if (isArray(ic['items'])) {
 			for (let i = 0; i < (ic['items'] as unknown[]).length; i++) {
 				const item = (ic['items'] as unknown[])[i];
 				if (!isObject(item) || !isString(item['label']) || !isString(item['url'])) {
-					ctx.issues.push({ blockId: block.id, blockType: 'menu', severity: 'error', code: 'MENU_ITEM_SHAPE', message: `menu item ${i} must have label and url strings` });
+					ctx.issues.push({
+						blockId: block.id,
+						blockType: 'menu',
+						severity: 'error',
+						code: 'MENU_ITEM_SHAPE',
+						message: `menu item ${i} must have label and url strings`,
+					});
 				}
 			}
 		}
 
 		// Semantic
 		if (content.hamburgerOnMobile) {
-			ctx.issues.push({ blockId: block.id, blockType: 'menu', severity: 'info', code: 'GMAIL_FORM_ELEMENTS', message: 'Menu hamburger toggle uses :checked CSS pattern — Gmail strips form elements, showing expanded vertical nav as fallback' });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'menu',
+				severity: 'info',
+				code: 'GMAIL_FORM_ELEMENTS',
+				message:
+					'Menu hamburger toggle uses :checked CSS pattern — Gmail strips form elements, showing expanded vertical nav as fallback',
+			});
 		}
 	},
 };

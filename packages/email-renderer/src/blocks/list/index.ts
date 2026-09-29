@@ -20,7 +20,7 @@ const getBulletContent = (
 	index: number,
 	color: string,
 	size: number,
-	iconUrl?: string,
+	iconUrl?: string
 ): string => {
 	switch (listType) {
 		case 'bullet':
@@ -50,11 +50,19 @@ const renderList = (content: ListBlockContent): string => {
 	const bulletSize = content.bulletSize ?? fontSize;
 	const itemSpacing = content.itemSpacing ?? 6;
 
-	const rows = items.map((item, i) => {
-		const bulletContent = getBulletContent(content.listType, i, bulletColor, bulletSize, content.iconUrl);
-		const paddingBottom = i < items.length - 1 ? itemSpacing : 0;
-		return `<tr><td style="vertical-align:top;padding:0 8px ${paddingBottom}px 0;width:24px;font-size:${bulletSize}px;color:${bulletColor};line-height:1.5;font-family:inherit">${bulletContent}</td><td style="vertical-align:top;padding:0 0 ${paddingBottom}px 0;font-size:${fontSize}px;color:${textColor};line-height:1.5;font-family:inherit">${escapeHtml(item)}</td></tr>`;
-	}).join('');
+	const rows = items
+		.map((item, i) => {
+			const bulletContent = getBulletContent(
+				content.listType,
+				i,
+				bulletColor,
+				bulletSize,
+				content.iconUrl
+			);
+			const paddingBottom = i < items.length - 1 ? itemSpacing : 0;
+			return `<tr><td style="vertical-align:top;padding:0 8px ${paddingBottom}px 0;width:24px;font-size:${bulletSize}px;color:${bulletColor};line-height:1.5;font-family:inherit">${bulletContent}</td><td style="vertical-align:top;padding:0 0 ${paddingBottom}px 0;font-size:${fontSize}px;color:${textColor};line-height:1.5;font-family:inherit">${escapeHtml(item)}</td></tr>`;
+		})
+		.join('');
 
 	return `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">${rows}</table>`;
 };
@@ -101,24 +109,25 @@ export const listModule: BlockModule<'list'> = {
 		const bulletSize = content.bulletSize ?? fontSize;
 		const itemSpacing = content.itemSpacing ?? 6;
 
-		const iconSrc = content.listType === 'icon' && content.iconUrl
-			? sanitizeUrl(content.iconUrl)
-			: '';
+		const iconSrc =
+			content.listType === 'icon' && content.iconUrl ? sanitizeUrl(content.iconUrl) : '';
 
-		const rows = items.map((item, i) => {
-			const paddingBottom = i < items.length - 1 ? itemSpacing : 0;
-			let bullet: string;
-			if (content.listType === 'numbered') {
-				bullet = `${i + 1}.`;
-			} else if (content.listType === 'check') {
-				bullet = '&#10003;';
-			} else if (iconSrc) {
-				bullet = `<amp-img src="${escapeAttr(iconSrc)}" alt="" width="${bulletSize}" height="${bulletSize}" layout="fixed"></amp-img>`;
-			} else {
-				bullet = '&#8226;';
-			}
-			return `<tr><td style="vertical-align:top;padding:0 8px ${paddingBottom}px 0;width:24px;font-size:${bulletSize}px;color:${escapeAttr(bulletColor)};line-height:1.5">${bullet}</td><td style="vertical-align:top;padding:0 0 ${paddingBottom}px 0;font-size:${fontSize}px;color:${escapeAttr(textColor)};line-height:1.5">${escapeHtml(item)}</td></tr>`;
-		}).join('');
+		const rows = items
+			.map((item, i) => {
+				const paddingBottom = i < items.length - 1 ? itemSpacing : 0;
+				let bullet: string;
+				if (content.listType === 'numbered') {
+					bullet = `${i + 1}.`;
+				} else if (content.listType === 'check') {
+					bullet = '&#10003;';
+				} else if (iconSrc) {
+					bullet = `<amp-img src="${escapeAttr(iconSrc)}" alt="" width="${bulletSize}" height="${bulletSize}" layout="fixed"></amp-img>`;
+				} else {
+					bullet = '&#8226;';
+				}
+				return `<tr><td style="vertical-align:top;padding:0 8px ${paddingBottom}px 0;width:24px;font-size:${bulletSize}px;color:${escapeAttr(bulletColor)};line-height:1.5">${bullet}</td><td style="vertical-align:top;padding:0 0 ${paddingBottom}px 0;font-size:${fontSize}px;color:${escapeAttr(textColor)};line-height:1.5">${escapeHtml(item)}</td></tr>`;
+			})
+			.join('');
 
 		return `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">${rows}</table>`;
 	},
@@ -138,8 +147,7 @@ export const listModule: BlockModule<'list'> = {
 		features: [
 			{
 				feature: 'Table-based list rendering',
-				description:
-					'Lists rendered using tables instead of ul/ol for cross-client consistency',
+				description: 'Lists rendered using tables instead of ul/ol for cross-client consistency',
 				support: fullSupport,
 				fallback: 'Lists rendered using tables for cross-client consistency',
 				owlatHandled: true,
@@ -170,8 +178,7 @@ export const listModule: BlockModule<'list'> = {
 				description: 'Custom bullet/number color',
 				support: fullSupport,
 				severity: 'info',
-				recommendation:
-					'Safe to use everywhere — rendered as inline color on table cells',
+				recommendation: 'Safe to use everywhere — rendered as inline color on table cells',
 				owlatHandled: true,
 			},
 		],
@@ -179,17 +186,45 @@ export const listModule: BlockModule<'list'> = {
 
 	validate({ block, content, ctx }) {
 		// Shape
-		checkShape(content as unknown as Record<string, unknown>, [
-			{ field: 'items', check: isArray, code: 'LIST_ITEMS_TYPE', message: 'items must be an array' },
-			{ field: 'listType', check: (v) => isOneOf(v, LIST_TYPES), code: 'LIST_TYPE_INVALID', message: 'listType must be bullet, numbered, check, or icon' },
-		], block.id, 'list', ctx.issues);
+		checkShape(
+			content as unknown as Record<string, unknown>,
+			[
+				{
+					field: 'items',
+					check: isArray,
+					code: 'LIST_ITEMS_TYPE',
+					message: 'items must be an array',
+				},
+				{
+					field: 'listType',
+					check: (v) => isOneOf(v, LIST_TYPES),
+					code: 'LIST_TYPE_INVALID',
+					message: 'listType must be bullet, numbered, check, or icon',
+				},
+			],
+			block.id,
+			'list',
+			ctx.issues
+		);
 
 		// Semantic
 		if (!content.items || content.items.length === 0) {
-			ctx.issues.push({ blockId: block.id, blockType: 'list', severity: 'warning', code: 'LIST_EMPTY', message: 'List block has no items' });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'list',
+				severity: 'warning',
+				code: 'LIST_EMPTY',
+				message: 'List block has no items',
+			});
 		}
 		if (content.listType === 'icon' && !content.iconUrl) {
-			ctx.issues.push({ blockId: block.id, blockType: 'list', severity: 'warning', code: 'LIST_ICON_NO_URL', message: 'List type is "icon" but no iconUrl is provided — will fall back to bullet' });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'list',
+				severity: 'warning',
+				code: 'LIST_ICON_NO_URL',
+				message: 'List type is "icon" but no iconUrl is provided — will fall back to bullet',
+			});
 		}
 	},
 };

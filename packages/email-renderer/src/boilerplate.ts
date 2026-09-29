@@ -90,7 +90,9 @@ const getGmailAnnotations = (annotations: GmailAnnotations | undefined): string 
 };
 
 export const wrapDocument = (bodyContent: string, ctx: RenderContext): string => {
-	const bgColor = ctx.darkMode ? (ctx.theme.darkModeBackgroundColor ?? '#121212') : ctx.theme.backgroundColor;
+	const bgColor = ctx.darkMode
+		? (ctx.theme.darkModeBackgroundColor ?? '#121212')
+		: ctx.theme.backgroundColor;
 	const lang = ` lang="${escapeAttr(ctx.lang || 'en')}"`;
 	const dir = ctx.direction !== 'ltr' ? ` dir="${escapeAttr(ctx.direction)}"` : '';
 	const titleTag = ctx.title ? `<title>${escapeHtml(ctx.title)}</title>` : '<title></title>';
