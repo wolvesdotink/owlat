@@ -293,19 +293,17 @@ describe('unifiedMessages.listRecent', () => {
 		}
 	});
 
-	it('requires the shared-inbox owner/admin permission', async () => {
-		const { requireOrgPermission } = await import('../lib/sessionOrganization');
-		const mock = vi.mocked(requireOrgPermission);
-		mock.mockClear();
-
+	it('requires a shared-inbox reader', async () => {
+		const { requireOrgMember } = await import('../lib/sessionOrganization');
 		const t = convexTest(schema, modules);
-		await t.query(api.unifiedMessages.listRecent, {});
-		expect(mock).toHaveBeenCalledWith(expect.anything(), 'organization:manage');
+		await expect(t.query(api.unifiedMessages.listRecent, {})).resolves.toEqual([]);
 
-		mock.mockRejectedValueOnce(new Error('Insufficient permissions'));
-		await expect(t.query(api.unifiedMessages.listRecent, {})).rejects.toThrow(
-			'Insufficient permissions'
-		);
+		vi.mocked(requireOrgMember).mockResolvedValueOnce({
+			userId: 'test-user',
+			role: 'editor',
+			activeOrganizationId: 'test-org',
+		});
+		await expect(t.query(api.unifiedMessages.listRecent, {})).rejects.toThrow(/Team Inbox/);
 	});
 });
 

@@ -19,8 +19,8 @@ const modules = Object.fromEntries(
 		([path]) =>
 			!path.includes('sesActions') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('semanticFileProcessing'),
-	),
+			!path.includes('semanticFileProcessing')
+	)
 );
 
 const DIM = 1536;
@@ -40,7 +40,7 @@ type EntrySpec = {
 
 async function insertEntry(
 	t: ReturnType<typeof convexTest>,
-	spec: EntrySpec,
+	spec: EntrySpec
 ): Promise<Id<'knowledgeEntries'>> {
 	const now = Date.now();
 	return await t.run(async (ctx) =>
@@ -57,7 +57,7 @@ async function insertEntry(
 			searchableText: spec.title,
 			createdAt: now,
 			updatedAt: now,
-		}),
+		})
 	);
 }
 
@@ -65,7 +65,7 @@ async function relate(
 	t: ReturnType<typeof convexTest>,
 	from: Id<'knowledgeEntries'>,
 	to: Id<'knowledgeEntries'>,
-	relationType: 'relates_to' | 'supports' | 'supersedes' | 'contradicts',
+	relationType: 'relates_to' | 'supports' | 'supersedes' | 'contradicts'
 ): Promise<void> {
 	const now = Date.now();
 	await t.run(async (ctx) => {
@@ -117,6 +117,7 @@ describe('graphTraversal.expandNeighbors — per-hop contact-scope gate', () => 
 		const { t, contactA, seedId, naId, nbId, ncId } = await setup();
 
 		const res = await t.query(internal.knowledge.graphTraversal.expandNeighbors, {
+			includeInboxDerived: true,
 			seedIds: [seedId],
 			scope: contactA,
 			hops: 1,
@@ -137,6 +138,7 @@ describe('graphTraversal.expandNeighbors — per-hop contact-scope gate', () => 
 		const { t, seedId, naId, nbId, ncId } = await setup();
 
 		const res = await t.query(internal.knowledge.graphTraversal.expandNeighbors, {
+			includeInboxDerived: true,
 			seedIds: [seedId],
 			scope: 'org-general-only',
 			hops: 1,
@@ -153,6 +155,7 @@ describe('graphTraversal.expandNeighbors — per-hop contact-scope gate', () => 
 		const { t, seedId, naId, nbId, ncId } = await setup();
 
 		const res = await t.query(internal.knowledge.graphTraversal.expandNeighbors, {
+			includeInboxDerived: true,
 			seedIds: [seedId],
 			scope: 'org-wide',
 			hops: 1,
@@ -174,7 +177,7 @@ describe('graphTraversal.expandNeighbors — per-hop contact-scope gate', () => 
 				doiStatus: 'not_required' as const,
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
-			}),
+			})
 		);
 		const contactB = await t.run(async (ctx) =>
 			ctx.db.insert('contacts', {
@@ -183,7 +186,7 @@ describe('graphTraversal.expandNeighbors — per-hop contact-scope gate', () => 
 				doiStatus: 'not_required' as const,
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
-			}),
+			})
 		);
 		const seedId = await insertEntry(t, { title: 'seed' });
 		const nbId = await insertEntry(t, { title: 'contact-B hop-1', contactIds: [contactB] });
@@ -192,6 +195,7 @@ describe('graphTraversal.expandNeighbors — per-hop contact-scope gate', () => 
 		await relate(t, nbId, ncId, 'relates_to'); // hop 2 (only reachable through B)
 
 		const res = await t.query(internal.knowledge.graphTraversal.expandNeighbors, {
+			includeInboxDerived: true,
 			seedIds: [seedId],
 			scope: contactA,
 			hops: 2,
@@ -213,6 +217,7 @@ describe('graphTraversal.expandNeighbors — per-hop contact-scope gate', () => 
 		await relate(t, seedId, expiredId, 'relates_to');
 
 		const res = await t.query(internal.knowledge.graphTraversal.expandNeighbors, {
+			includeInboxDerived: true,
 			seedIds: [seedId],
 			scope: 'org-wide',
 			hops: 1,
@@ -231,6 +236,7 @@ describe('graphTraversal.expandNeighbors — per-hop contact-scope gate', () => 
 		await relate(t, seedId, prefId, 'relates_to');
 
 		const res = await t.query(internal.knowledge.graphTraversal.expandNeighbors, {
+			includeInboxDerived: true,
 			seedIds: [seedId],
 			scope: 'org-wide',
 			hops: 1,
@@ -253,6 +259,7 @@ describe('semanticSearch — graph-augmented annotations + kill switch', () => {
 		await relate(t, newer, older, 'supersedes'); // newer SUPERSEDES older
 
 		const results = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			includeInboxDerived: true,
 			embedding: unit(4),
 			scopeToContact: 'org-wide',
 			limit: 10,
@@ -268,7 +275,7 @@ describe('semanticSearch — graph-augmented annotations + kill switch', () => {
 
 		// Demoted: the newer (superseding) fact ranks above the stale one.
 		expect(results.findIndex((r) => r._id === newer)).toBeLessThan(
-			results.findIndex((r) => r._id === older),
+			results.findIndex((r) => r._id === older)
 		);
 	});
 
@@ -279,6 +286,7 @@ describe('semanticSearch — graph-augmented annotations + kill switch', () => {
 		await relate(t, a, b, 'contradicts');
 
 		const results = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			includeInboxDerived: true,
 			embedding: unit(6),
 			scopeToContact: 'org-wide',
 			limit: 10,
@@ -297,11 +305,13 @@ describe('semanticSearch — graph-augmented annotations + kill switch', () => {
 		await relate(t, a, b, 'supersedes');
 
 		const flat = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			includeInboxDerived: true,
 			embedding: unit(5),
 			scopeToContact: 'org-wide',
 			limit: 10,
 		});
 		const off = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			includeInboxDerived: true,
 			embedding: unit(5),
 			scopeToContact: 'org-wide',
 			limit: 10,

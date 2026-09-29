@@ -48,6 +48,8 @@
 #
 #   isActiveOrgMember      lib/sessionOrganization.ts — authenticated ACTIVE member
 #   isSharedInboxReader    inbox/access.ts — owner/admin, the shared-inbox reader rule
+#   resolveKnowledgeViewer knowledge/graph.ts — `ai.knowledge` on and an active
+#                          member; carries the reader rule for inbox-derived entries
 #   loadReadableMailbox    mail/permissions.ts — requireMailboxAccess collapsed to a doc|null
 #   loadReadableMessage    mail/mailbox/messages.ts — the same, keyed by message id
 #   loadAccessibleMailboxes mail/permissions.ts — the caller's own + shared-member mailboxes
@@ -85,12 +87,17 @@
 # in one place: inbox/access.ts (`isSharedInboxReader`). A file outside
 # `inbox/` and `agent/` that defines a public function (member, identity or
 # public floor, any kind) AND touches those tables — a `.query('<table>')` or a
-# `v.id('<table>')` argument — must import inbox/access. Such a file is
-# reported as `<file>:#inbox-tables`, and rides the same ratchet and baseline.
-# The pre-existing entries gate inline on `organization:manage` (the same rule,
-# spelled out a second time); they should route through the named gate as they
-# are touched. This is a presence check, like the gate tokens above: a reviewer
-# still confirms the import is actually used on the path that reads the rows.
+# `v.id('<table>')` argument — outside its internal functions must use that
+# gate: import inbox/access, or (an action) call
+# `internal.inbox.access.assertSharedInboxReader`. Touches inside an
+# `internalQuery` / `internalMutation` / `internalAction` do not count, since no
+# client can reach them — unless the file defines a public action or refers to
+# `internal.<this module>` outside an internal function (see
+# touches_inbox_from_public). A
+# module-level helper always counts, since a public function may call it. Such
+# a file is reported as `<file>:#inbox-tables`, and rides the same ratchet and
+# baseline. This is a presence check, like the gate tokens above: a reviewer
+# still confirms the gate is actually used on the path that reads the rows.
 
 set -uo pipefail
 repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -124,10 +131,13 @@ generate() {
 }
 
 # Files outside inbox/ and agent/ that define a public function, touch a Team
-# Inbox table and do not import the shared-inbox reader gate.
+# Inbox table outside their internal functions, and do not use the
+# shared-inbox reader gate (an import of inbox/access, or an action's call to
+# its internal assert through `internal.inbox.access`).
 inbox_table_files() {
-	local public_builders candidates file
+	local public_builders public_actions candidates file
 	public_builders=$(convex_builder_regex 'query|mutation|action' 'member|identity|public') || return 1
+	public_actions=$(convex_builder_regex 'action' 'member|identity|public') || return 1
 	# grep exits 1 on no match; an empty candidate list is a clean result.
 	candidates=$(grep -rlE --include='*.ts' \
 		"\.query\(\s*['\"](inboundMessages|conversationThreads)['\"]|v\.id\(\s*['\"](inboundMessages|conversationThreads)['\"]" \
@@ -136,9 +146,48 @@ inbox_table_files() {
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
 		grep -qE "^export const [A-Za-z0-9_]+ = ($public_builders)\(" "$file" || continue
-		grep -qE "from '(\./|(\.\./)+)inbox/access'" "$file" && continue
+		grep -qE "from '(\./|(\.\./)+)inbox/access'|internal\.inbox\.access\." "$file" && continue
+		touches_inbox_from_public "$file" "$public_actions" || continue
 		printf '%s:#inbox-tables\n' "$file"
 	done <<<"$candidates" | sort
+}
+
+# True when a client can reach `file`'s Team Inbox table touches. Touches
+# inside an `internalQuery` / `internalMutation` / `internalAction` span do not
+# count on their own, since no client can call one — with two exceptions that
+# put the whole file back in scope:
+#   * the file defines a public action, which reaches its internal functions
+#     through `ctx.runQuery` / `ctx.runMutation` by construction;
+#   * the file refers to `internal.<this module>` anywhere outside an
+#     internal span — in a public function, in a module-level helper a public
+#     function may call, or in an alias such as `const self = internal.x.y`.
+# A module-level helper's own table touch always counts too. A span
+# opens on its `export const` line and closes on the column-0 `})` or on the
+# next `export const`, so an internal function whose closing brace is not at
+# column 0 cannot hide the public function after it.
+touches_inbox_from_public() {
+	local file="$1" public_actions="$2" module
+	grep -qE "^export const [A-Za-z0-9_]+ = ($public_actions)\(" "$file" && return 0
+	module="${file#convex/}"
+	module="internal.${module%.ts}"
+	module="${module//\//.}"
+	awk -v q="'" -v module="$module" '
+		BEGIN {
+			tables = "(inboundMessages|conversationThreads)"
+			touch = "\\.query\\([[:space:]]*[" q "\"]" tables "[" q "\"]|v\\.id\\([[:space:]]*[" q "\"]" tables "[" q "\"]"
+			# `internal.<module>` as a whole path: followed by a member access or
+			# any non-identifier character (an alias ends in `;` or a newline).
+			self = module
+			gsub(/\./, "\\.", self)
+			self = self "([^A-Za-z0-9_]|$)"
+		}
+		/^export const [A-Za-z0-9_]+ = / {
+			internal = ($0 ~ /^export const [A-Za-z0-9_]+ = internal(Query|Mutation|Action)\(/)
+		}
+		!internal && ($0 ~ touch || $0 ~ self) { found = 1 }
+		/^}\)/ { internal = 0 }
+		END { exit found ? 0 : 1 }
+	' "$file"
 }
 
 if [ "${1:-}" = "--generate" ]; then

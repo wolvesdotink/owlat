@@ -34,7 +34,7 @@ import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { defineLifecycle, refuse } from '../lib/lifecycle';
 import { applyUsageCountDelta } from '../emailBlocks/module';
 import { buildSearchableText } from '../lib/queryHelpers';
-import { duplicateEmailFields } from '../lib/publishableEmail';
+import { duplicateEmailFields, loadEmailTheme } from '../lib/publishableEmail';
 import { sanitizeStoredBlocksJson } from '../lib/emailContentSanitize';
 import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from '../lib/constants';
 import { dataVariablesSchemaValidator } from '../lib/convexValidators';
@@ -551,7 +551,7 @@ export const duplicate = internalMutation({
 		const searchableText = buildSearchableText(newName, email.subject, newSlug);
 
 		const newId = await ctx.db.insert('transactionalEmails', {
-			...duplicateEmailFields(email),
+			...duplicateEmailFields(email, { variableType: 'data', theme: await loadEmailTheme(ctx) }),
 			name: newName,
 			slug: newSlug,
 			status: 'draft',

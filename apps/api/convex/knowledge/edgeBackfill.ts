@@ -36,10 +36,10 @@
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { publicQuery, adminMutation } from '../lib/authedFunctions';
-import { isActiveOrgMember } from '../lib/sessionOrganization';
+import { publicQuery } from '../lib/authedFunctions';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { cancelLatestJob, createCappedJob, latestJob } from './backfillJobs';
+import { knowledgeAdminMutation, resolveKnowledgeViewer } from './graph';
 
 /**
  * Entries paged — and `inferRelations` actions scheduled — per self-rescheduled
@@ -156,7 +156,7 @@ export const getStatus = publicQuery({
 	// public: soft-auth — org members only; returns null for anonymous/non-members
 	args: {},
 	handler: async (ctx) => {
-		if (!(await isActiveOrgMember(ctx))) return null;
+		if (!(await resolveKnowledgeViewer(ctx))) return null;
 		return await latestJob(ctx, 'knowledgeEdgeBackfillJobs');
 	},
 });
@@ -168,7 +168,7 @@ export const getStatus = publicQuery({
  * Admin-only: starting/stopping the backfill is an operational lever paired with
  * the `ai.knowledge.autoLink` feature flag toggle, which is itself admin-gated.
  */
-export const cancel = adminMutation({
+export const cancel = knowledgeAdminMutation({
 	args: {},
 	handler: async (ctx, _args, session) => {
 		return await cancelLatestJob(ctx, {

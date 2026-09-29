@@ -12,6 +12,7 @@ import { recordAuditLog } from '../lib/auditLog';
 import {
 	assertEditableForPublishableChange,
 	buildEditablePatch,
+	loadEmailTheme,
 	publishedHtml,
 } from '../lib/publishableEmail';
 import { captureTemplateVersion } from './versions';
@@ -34,6 +35,8 @@ export const update = authedMutation({
 		subject: v.optional(v.string()),
 		previewText: v.optional(v.string()),
 		content: v.optional(v.string()),
+		// Accepted for older clients and ignored: the server renders the HTML
+		// from the stored blocks (lib/publishableEmail.ts buildEditablePatch).
 		htmlContent: v.optional(v.string()),
 		// text/plain alternative shipped with the html. `plainTextContent` is the
 		// effective body (override when the author wrote one, else the body the
@@ -47,7 +50,7 @@ export const update = authedMutation({
 		defaultLanguage: v.optional(v.string()),
 		supportedLanguages: v.optional(v.array(v.string())),
 		translations: v.optional(v.string()),
-		// Pre-rendered HTML for translations
+		// Ignored, like htmlContent: rendered from the translation overlays.
 		htmlTranslations: v.optional(v.string()),
 		// IDs of saved blocks linked in this template
 		linkedBlockIds: v.optional(v.array(v.string())),
@@ -72,6 +75,7 @@ export const update = authedMutation({
 		const updates = {
 			...(await buildEditablePatch(ctx, template, args, {
 				noun: 'Template',
+				variableType: 'personalization',
 				searchableFields: ['name', 'subject'],
 			})),
 			...(args.previewText !== undefined && { previewText: args.previewText.trim() }),
@@ -111,12 +115,11 @@ export const update = authedMutation({
 export const publish = authedMutation({
 	args: {
 		templateId: v.id('emailTemplates'),
-		// Ignored when the row holds rendered HTML (see `publishedHtml`). Still
-		// accepted so older clients, which send the row's HTML back, keep working,
-		// and used for a row that was never rendered.
+		// Ignored: publish uses the row's own HTML, or renders a never-rendered
+		// row from its blocks (see `publishedHtml`). Still accepted so older
+		// clients, which send the row's HTML back, keep working.
 		htmlContent: v.optional(v.string()),
-		// Pre-rendered HTML for each translation language, with the same rule.
-		// Structure: { "de": { "htmlContent": "...", "subject": "..." }, ... }
+		// Ignored, like htmlContent.
 		htmlTranslations: v.optional(v.string()),
 		// The `contentRevision` the caller last saw. When given, a row that has
 		// moved on is refused with `conflict`, so what goes live is the version
@@ -133,7 +136,10 @@ export const publish = authedMutation({
 		const template = await ctx.db.get(args.templateId);
 		if (!template) throwNotFound('Email template');
 		assertContentRevision(template, args.expectedContentRevision, 'publish');
-		const html = publishedHtml(template, args);
+		const html = publishedHtml(template, {
+			variableType: 'personalization',
+			theme: await loadEmailTheme(ctx),
+		});
 
 		const outcome = await ctx.runMutation(internal.emailTemplates.lifecycle.transition, {
 			templateId: args.templateId,

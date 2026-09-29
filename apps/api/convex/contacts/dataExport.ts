@@ -11,7 +11,8 @@
 
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
+import { isSharedInboxReader } from '../inbox/access';
 import { getOrThrow } from '../_utils/errors';
 import { redactContactCapabilityFields } from './listing';
 import {
@@ -24,9 +25,13 @@ const CAP = 1000;
 
 export const exportContactData = authedQuery({
 	args: { contactId: v.id('contacts') },
-	handler: async (ctx, args) => {
-		// Full personal-data disclosure — operator surface.
-		await requireOrgPermission(ctx, 'organization:manage');
+	handler: async (ctx, args, session) => {
+		// Full personal-data disclosure — operator surface. The bundle carries the
+		// contact's Team Inbox mail and threads, so the caller must also pass the
+		// shared-inbox reader gate (inbox/access.ts): a bundle with those left out
+		// would not answer an access request.
+		requirePermission(hasPermission(session.role, 'organization:manage'));
+		requirePermission(isSharedInboxReader(session));
 
 		const contact = await getOrThrow(ctx, args.contactId, 'Contact');
 

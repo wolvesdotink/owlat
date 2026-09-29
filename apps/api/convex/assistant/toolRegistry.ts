@@ -50,6 +50,16 @@ type AssistantToolScope = 'workspace:read' | 'workspace:draft';
 export const ASSISTANT_TOOL_DRAFT_SPEND = 'assistant_tool_draft' as const;
 
 /**
+ * Who a turn's tool output is for. The personal assistant answers its owner;
+ * @assistant in chat answers a whole room, which may include members outside
+ * the Team Inbox, so it never counts as a reader.
+ */
+export interface AssistantAudience {
+	/** Whether knowledge derived from Team Inbox mail may be returned. */
+	readonly canReadInbox: boolean;
+}
+
+/**
  * A hosted assistant tool: its host-enforced metadata plus a builder that closes
  * over the runner's action context to produce the AI-SDK tool. Data-only fields
  * first, executable last — the same shape as the other hosted-module registries.
@@ -63,7 +73,7 @@ export interface HostedAssistantToolModule {
 	readonly spend: string | null;
 	/** When true, the host injection-scrubs the tool's output before it reaches the model. */
 	readonly scrubOutput: boolean;
-	build(ctx: ActionCtx): Tool;
+	build(ctx: ActionCtx, audience: AssistantAudience): Tool;
 }
 
 /** Resolved feature-flag state as returned by the host's flag resolver. */

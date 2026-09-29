@@ -18,7 +18,7 @@
 
 import { v } from 'convex/values';
 import { openInboundMessageBody } from '../lib/messageBody';
-import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
+import { getMutationContext } from '../lib/sessionOrganization';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { isSharedInboxReader } from '../inbox/access';
@@ -150,12 +150,15 @@ export const getLinkedThreadView = chatQuery({
 /**
  * For an inbox thread, find which (if any) chat channels reference it.
  * Used by the inbox thread detail page to render a "Discussed in #channel"
- * indicator + jump link.
+ * indicator + jump link. That page is for shared-inbox readers, and so is this
+ * answer: anyone else gets an empty list rather than learning which channels
+ * discuss a given thread.
  */
 export const findChannelsForInboxThread = chatQuery({
 	args: { inboxThreadId: v.id('conversationThreads') },
-	handler: async (ctx, args) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, args, session) => {
+		if (!isSharedInboxReader(session)) return [];
+		const { userId } = session;
 
 		const channels = await ctx.db
 			.query('chatRooms')

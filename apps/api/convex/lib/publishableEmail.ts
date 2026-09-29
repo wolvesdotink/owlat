@@ -8,12 +8,23 @@
  * Status transitions stay in each table's lifecycle module (ADR-0022); this
  * module only computes what those transitions and the editor `update`
  * mutations write.
+ *
+ * The rendered HTML is computed here, on the server, from the stored (and so
+ * sanitized) blocks: the editor save, publish and the saved-block rerender all
+ * call `renderPublishableEmail`. HTML a client sends is not stored.
  */
 
+import { renderEmailHtml, renderPlainText } from '@owlat/email-renderer';
+import type { EmailTheme } from '@owlat/shared';
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
-import { throwInvalidState } from '../_utils/errors';
-import { applyUsageCountDelta } from '../emailBlocks/module';
+import { throwInvalidInput, throwInvalidState } from '../_utils/errors';
+import { applyUsageCountDelta, parseContentBlocks } from '../emailBlocks/module';
+import {
+	mergeTranslationIntoItem,
+	type BlockLikeItem,
+	type TranslatableBlockContent,
+} from '../emailTemplates/translationMerge';
 import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from './constants';
 import { nextContentRevision } from './contentRevision';
 import { parseTranslations } from './emailTranslations';
@@ -21,6 +32,136 @@ import { buildSearchableText } from './queryHelpers';
 import { sanitizeStoredBlocksJson, sanitizeTranslationsJson } from './emailContentSanitize';
 
 export type PublishableEmailRow = Doc<'emailTemplates'> | Doc<'transactionalEmails'>;
+
+// ─── Render ─────────────────────────────────────────────────────────────────
+
+/** Templates personalize per contact; transactional emails interpolate data. */
+export type PublishableEmailVariableType = 'personalization' | 'data';
+
+/** The columns a render reads. */
+export type RenderablePublishableEmail = {
+	content: string;
+	subject: string;
+	translations?: string;
+	supportedLanguages?: string[];
+	defaultLanguage?: string;
+	/** Author's hand-written text/plain body — never overwritten by a render. */
+	plainTextOverride?: string;
+};
+
+export interface RenderedPublishableEmail {
+	html: string;
+	htmlTranslations: string | undefined;
+	/** Regenerated text/plain body; absent when the author wrote their own. */
+	plainTextContent: string | undefined;
+}
+
+/**
+ * Overlay a language's translated text onto the default-language blocks. Falls
+ * back to the unmerged blocks if the translation has no per-block map.
+ */
+function mergeTranslatedBlocks(
+	defaultBlocks: BlockLikeItem[],
+	translationBlocks: Record<string, TranslatableBlockContent> | undefined
+): BlockLikeItem[] {
+	if (!translationBlocks) return defaultBlocks;
+	return defaultBlocks.map((block) => mergeTranslationIntoItem(block, translationBlocks));
+}
+
+/**
+ * Render a publishable email row: the default-language body, then each
+ * supported language's translated text overlaid onto the default block
+ * structure, exactly as `getForLanguage` merges at save time. The two tables
+ * differ only by `variableType`.
+ *
+ * Cost: one full render per language with an overlay, plus the default, and
+ * every render walks every block. The editor save, publish and duplicate run
+ * this inside a mutation, so a large template translated into many languages
+ * spends that many renders of the mutation's execution budget. Measured on the
+ * seed fixtures repeated to 200 blocks, one render took about 13 ms (Bun, warm
+ * JIT; the Convex isolate is slower cold). There is no cap on
+ * `supportedLanguages`; if very large multi-language templates start to time
+ * out, cap the languages or move the translation renders to the rerender pool.
+ */
+export function renderPublishableEmail(
+	row: RenderablePublishableEmail,
+	variableType: PublishableEmailVariableType,
+	theme: EmailTheme | undefined
+): RenderedPublishableEmail {
+	const blocks = parseContentBlocks(row.content);
+	const html = renderEmailHtml(blocks as Parameters<typeof renderEmailHtml>[0], {
+		variableType,
+		theme,
+	});
+	// The text/plain body tracks the blocks exactly as the html does — EXCEPT
+	// when the author wrote their own, which a render must not clobber.
+	const plainTextContent = row.plainTextOverride?.trim()
+		? undefined
+		: renderPlainText(blocks as Parameters<typeof renderPlainText>[0]);
+
+	let htmlTranslations: string | undefined;
+	if (row.translations && row.supportedLanguages?.length) {
+		const translationsObj: Record<string, { htmlContent: string; subject: string }> = {};
+		try {
+			const translations = JSON.parse(row.translations) as Record<
+				string,
+				{ subject?: string; blocks?: Record<string, TranslatableBlockContent> }
+			>;
+
+			for (const lang of row.supportedLanguages) {
+				if (lang === row.defaultLanguage) continue;
+				const langTranslation = translations[lang];
+				if (!langTranslation) continue;
+
+				const translatedBlocks = mergeTranslatedBlocks(
+					blocks as BlockLikeItem[],
+					langTranslation.blocks
+				);
+				translationsObj[lang] = {
+					htmlContent: renderEmailHtml(
+						translatedBlocks as unknown as Parameters<typeof renderEmailHtml>[0],
+						{ variableType, theme }
+					),
+					subject: langTranslation.subject ?? row.subject,
+				};
+			}
+		} catch {
+			// Invalid translations JSON — skip; render still proceeds.
+		}
+
+		if (Object.keys(translationsObj).length > 0) {
+			htmlTranslations = JSON.stringify(translationsObj);
+		}
+	}
+
+	return { html, htmlTranslations, plainTextContent };
+}
+
+/**
+ * `renderPublishableEmail` for a mutation: a row whose blocks the renderer
+ * cannot handle is refused as invalid input instead of failing the write with
+ * an internal error. The editor renders the same blocks with the same renderer
+ * before it saves, so only a malformed API payload lands here.
+ */
+function renderForWrite(
+	row: RenderablePublishableEmail,
+	variableType: PublishableEmailVariableType,
+	theme: EmailTheme | undefined
+): RenderedPublishableEmail {
+	try {
+		return renderPublishableEmail(row, variableType, theme);
+	} catch {
+		throwInvalidInput('The email content could not be rendered.');
+	}
+}
+
+/** The instance's email theme, which every render of a stored email uses. */
+export async function loadEmailTheme(ctx: {
+	db: MutationCtx['db'];
+}): Promise<EmailTheme | undefined> {
+	const settings = await ctx.db.query('instanceSettings').first();
+	return settings?.emailTheme ?? undefined;
+}
 
 // ─── Publish invariant guard ────────────────────────────────────────────────
 
@@ -48,19 +189,20 @@ export function assertEditableForPublishableChange(
 // ─── Publish ────────────────────────────────────────────────────────────────
 
 /**
- * The HTML a publish puts live: the row's own rendered HTML, read in the same
- * transaction as the status change.
+ * The HTML a publish puts live: rendered here from the row's stored blocks and
+ * translation overlays, in the same transaction as the status change.
  *
- * Client HTML is not trusted here. The editor sends the HTML of the row it last
- * saw, and a saved-block rerender can replace the row's HTML without moving its
- * content revision; publishing the client's copy after that would put the
- * pre-propagation HTML live on a row whose render state says it is current.
- * For the same reason a row whose HTML is still behind its content (a rerender
- * pending or failed) is refused instead of published.
+ * Neither client HTML nor the row's stored HTML is used. The editor sends the
+ * HTML of the row it last saw, and a saved-block rerender can replace the
+ * row's HTML without moving its content revision; and a row saved before the
+ * server rendered on save may still hold HTML a client sent. Rendering from
+ * the blocks covers both, and a row that was never rendered. A row whose HTML
+ * is still behind its content (a rerender pending or failed) is refused, as
+ * before, so what the editor shows as pending is not published under it.
  */
 export function publishedHtml(
-	row: Pick<PublishableEmailRow, 'htmlContent' | 'htmlTranslations' | 'htmlRenderState'>,
-	args: { htmlContent?: string; htmlTranslations?: string }
+	row: Pick<PublishableEmailRow, 'htmlRenderState'> & RenderablePublishableEmail,
+	render: { variableType: PublishableEmailVariableType; theme: EmailTheme | undefined }
 ): { htmlContent: string; htmlTranslations?: string } {
 	if (row.htmlRenderState?.stale) {
 		throwInvalidState(
@@ -71,24 +213,15 @@ export function publishedHtml(
 			}
 		);
 	}
-	if (row.htmlContent !== undefined) {
-		return { htmlContent: row.htmlContent, htmlTranslations: row.htmlTranslations };
-	}
-	// Never rendered (created outside the editor): the caller's HTML is all there is.
-	if (args.htmlContent === undefined) {
-		throwInvalidState('Save the email before publishing it.', {
-			reason: 'html_missing',
-			messageKey: 'dashboard.send.emails.detail.edit.toasts.saveBeforePublish',
-		});
-	}
-	return { htmlContent: args.htmlContent, htmlTranslations: args.htmlTranslations };
+	const rendered = renderForWrite(row, render.variableType, render.theme);
+	return { htmlContent: rendered.html, htmlTranslations: rendered.htmlTranslations };
 }
 
 // ─── Duplicate ──────────────────────────────────────────────────────────────
 
 /**
  * Columns a copy never inherits: identity, publish state, timestamps,
- * per-row bookkeeping and the render state (handled separately below).
+ * per-row bookkeeping and the render state (the copy is rendered fresh).
  */
 const NOT_DUPLICATED = [
 	'_id',
@@ -111,27 +244,44 @@ type NotDuplicated = (typeof NOT_DUPLICATED)[number];
  * in `NOT_DUPLICATED`, so a column added to either table is copied by default
  * instead of silently dropped.
  *
- * A source whose HTML is still behind its content (`htmlRenderState.stale`)
- * passes that state on, so the copy's stale HTML cannot be published either.
  * Text-block HTML in the copied content and translation overlays is sanitized,
- * as on every other content write.
+ * as on every other content write, and the copy's HTML is rendered from that
+ * sanitized content rather than copied: the source's stored HTML may be behind
+ * its content (a pending saved-block rerender) or, on a row saved before the
+ * server rendered on save, HTML a client sent.
  *
  * The caller sets the copy's name (and slug), `searchableText`,
  * `status: 'draft'`, `createdAt` and `updatedAt`.
  */
 export function duplicateEmailFields<T extends PublishableEmailRow>(
-	row: T
-): Omit<T, NotDuplicated> & Pick<Partial<T>, 'htmlRenderState'> {
+	row: T,
+	render: { variableType: PublishableEmailVariableType; theme: EmailTheme | undefined }
+): Omit<T, NotDuplicated> {
 	const copy: Record<string, unknown> = { ...row };
 	for (const key of NOT_DUPLICATED) delete copy[key];
-	if (row.htmlRenderState?.stale) copy['htmlRenderState'] = row.htmlRenderState;
-	copy['content'] = sanitizeStoredBlocksJson(row.content);
-	if (row.translations !== undefined) {
-		copy['translations'] = sanitizeTranslationsJson(row.translations);
+	const content = sanitizeStoredBlocksJson(row.content);
+	const translations =
+		row.translations === undefined ? undefined : sanitizeTranslationsJson(row.translations);
+	copy['content'] = content;
+	if (translations !== undefined) copy['translations'] = translations;
+	try {
+		const rendered = renderPublishableEmail(
+			{ ...row, content, translations },
+			render.variableType,
+			render.theme
+		);
+		copy['htmlContent'] = rendered.html;
+		copy['htmlTranslations'] = rendered.htmlTranslations;
+	} catch {
+		// Blocks the renderer cannot handle: the copy starts unrendered, like a
+		// row created outside the editor, and its publish is refused until it
+		// renders. The duplicate itself still succeeds.
+		delete copy['htmlContent'];
+		delete copy['htmlTranslations'];
 	}
 	copy['contentBlockVersion'] = row.contentBlockVersion ?? CURRENT_CONTENT_BLOCK_VERSION;
 	copy['rendererVersion'] = row.rendererVersion ?? CURRENT_RENDERER_VERSION;
-	return copy as Omit<T, NotDuplicated> & Pick<Partial<T>, 'htmlRenderState'>;
+	return copy as Omit<T, NotDuplicated>;
 }
 
 // ─── Editor update ──────────────────────────────────────────────────────────
@@ -173,6 +323,19 @@ export interface EditableEmailPatch {
 	updatedAt: number;
 }
 
+/**
+ * The update arguments that change what the rendered HTML is built from, or
+ * that carry client-rendered HTML the server replaces with its own render.
+ */
+const RENDER_INPUTS = [
+	'content',
+	'htmlContent',
+	'htmlTranslations',
+	'translations',
+	'supportedLanguages',
+	'defaultLanguage',
+] as const satisfies ReadonlyArray<keyof EditableEmailArgs>;
+
 /** The columns a table folds into `searchableText`, in order. */
 type SearchableField = 'name' | 'subject' | 'slug';
 
@@ -193,7 +356,11 @@ export async function buildEditablePatch(
 	ctx: MutationCtx,
 	row: PublishableEmailRow,
 	args: EditableEmailArgs & { slug?: string },
-	options: { noun: string; searchableFields: ReadonlyArray<SearchableField> }
+	options: {
+		noun: string;
+		searchableFields: ReadonlyArray<SearchableField>;
+		variableType: PublishableEmailVariableType;
+	}
 ): Promise<EditableEmailPatch> {
 	const patch: EditableEmailPatch = {
 		contentRevision: nextContentRevision(row),
@@ -218,14 +385,6 @@ export async function buildEditablePatch(
 	if (args.subject !== undefined) patch.subject = args.subject.trim();
 	// Text-block HTML is sanitized on every write (lib/emailContentSanitize.ts).
 	if (args.content !== undefined) patch.content = sanitizeStoredBlocksJson(args.content);
-	if (args.htmlContent !== undefined) patch.htmlContent = args.htmlContent;
-
-	// Blocks and the HTML rendered from them, in one write: the HTML matches
-	// the content again, so a saved-block rerender still pending for the
-	// previous revision has nothing left to fix (it no-ops on the moved row).
-	if (args.content !== undefined && args.htmlContent !== undefined && row.htmlRenderState) {
-		patch.htmlRenderState = { stale: false };
-	}
 
 	if (args.plainTextContent !== undefined) patch.plainTextContent = args.plainTextContent;
 	if (args.plainTextOverride !== undefined) {
@@ -239,7 +398,32 @@ export async function buildEditablePatch(
 	if (args.translations !== undefined) {
 		patch.translations = sanitizeTranslationsJson(args.translations);
 	}
-	if (args.htmlTranslations !== undefined) patch.htmlTranslations = args.htmlTranslations;
+
+	// The HTML is rendered here from the blocks being stored, never taken from
+	// the client: `htmlContent` / `htmlTranslations` in `args` only say that the
+	// caller expects the HTML to follow this write. A write that changes what
+	// the HTML is built from renders it too, so the stored HTML always matches
+	// the stored (sanitized) content.
+	if (RENDER_INPUTS.some((field) => args[field] !== undefined)) {
+		const rendered = renderForWrite(
+			{
+				content: patch.content ?? row.content,
+				subject: patch.subject ?? row.subject,
+				translations: patch.translations ?? row.translations,
+				supportedLanguages: patch.supportedLanguages ?? row.supportedLanguages,
+				defaultLanguage: patch.defaultLanguage ?? row.defaultLanguage,
+				plainTextOverride: row.plainTextOverride,
+			},
+			options.variableType,
+			await loadEmailTheme(ctx)
+		);
+		patch.htmlContent = rendered.html;
+		patch.htmlTranslations = rendered.htmlTranslations;
+		// The HTML matches the content again, so a saved-block rerender still
+		// pending for the previous revision has nothing left to fix (it no-ops
+		// on the moved row).
+		if (row.htmlRenderState) patch.htmlRenderState = { stale: false };
+	}
 
 	if (args.linkedBlockIds !== undefined) {
 		patch.linkedBlockIds = args.linkedBlockIds;

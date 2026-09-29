@@ -124,6 +124,7 @@ const handleLeave = async () => {
 			<ChatRoomHeader
 				:room="room"
 				:member-count="members.length"
+				:can-see-linked-email="!!linkedThread"
 				@show-members="showMembers = !showMembers"
 				@link-email="showLinkEmail = true"
 				@edit-channel="showEditChannel = true"

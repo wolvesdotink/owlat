@@ -85,6 +85,8 @@ export function buildRecallKnowledgeTool(args: RecallToolArgs) {
 					// org-wide, so this can only surface org-general OR this contact's
 					// knowledge.
 					scopeToContact: args.scopeToContact,
+					// Drafting a Team Inbox reply, like the context step.
+					includeInboxDerived: true,
 					// Flat retrieval — the tool is a targeted fetch-more, not a graph walk.
 					expandGraph: false,
 				});

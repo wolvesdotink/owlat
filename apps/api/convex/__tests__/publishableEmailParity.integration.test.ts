@@ -164,7 +164,7 @@ describe.each(drivers)('publishable email parity — $table', (driver) => {
 		expect((await getRow(t, id))?.status).toBe('draft');
 	});
 
-	it("publishes the row's own HTML, not the client's copy", async () => {
+	it("publishes a render of the row's blocks, not the client's or the row's HTML", async () => {
 		const t = convexTest(schema, modules);
 		const id = await driver.seed(t);
 
@@ -172,7 +172,9 @@ describe.each(drivers)('publishable email parity — $table', (driver) => {
 
 		const row = await getRow(t, id);
 		expect(row?.status).toBe('published');
-		expect(row?.htmlContent).toBe('<p>Row HTML</p>');
+		expect(row?.htmlContent).toContain('<!DOCTYPE html>');
+		expect(row?.htmlContent).not.toContain('Stale client HTML');
+		expect(row?.htmlContent).not.toContain('Row HTML');
 	});
 
 	it('duplicates every content column and resets publish state and counters', async () => {
@@ -199,10 +201,11 @@ describe.each(drivers)('publishable email parity — $table', (driver) => {
 			plainTextContent: 'Hand-written text',
 			plainTextOverride: 'Hand-written text',
 			showUnsubscribe: true,
-			htmlTranslations,
-			htmlContent: '<p>Row HTML</p>',
 			...driver.duplicateKeeps,
 		});
+		// The copy's HTML is rendered from its blocks, not copied.
+		expect(copy?.['htmlContent']).toContain('<!DOCTYPE html>');
+		expect(copy?.['htmlContent']).not.toContain('Row HTML');
 		expect(copy?.['publishedAt']).toBeUndefined();
 		expect(copy?.['contentRevision']).toBeUndefined();
 		expect(copy?.['htmlRenderState']).toBeUndefined();
@@ -211,15 +214,17 @@ describe.each(drivers)('publishable email parity — $table', (driver) => {
 		}
 	});
 
-	it('carries a pending rerender over to the copy, so its HTML cannot be published either', async () => {
+	it('renders the copy of a row whose rerender is pending, so the copy is current', async () => {
 		const t = convexTest(schema, modules);
 		const sourceId = await driver.seed(t, { htmlRenderState: { stale: true, failureCount: 0 } });
 
 		const copyId = await driver.duplicate(t, sourceId);
 
-		expect((await getRow(t, copyId))?.htmlRenderState?.stale).toBe(true);
-		const data = await operationError(driver.publish(t, copyId));
-		expect(data.data).toMatchObject({ reason: 'html_render_pending' });
+		const copy = await getRow(t, copyId);
+		expect(copy?.htmlRenderState).toBeUndefined();
+		expect(copy?.htmlContent).not.toContain('Row HTML');
+		await driver.publish(t, copyId);
+		expect((await getRow(t, copyId))?.status).not.toBe('draft');
 	});
 
 	it("decrements the linked saved block's usage count on delete", async () => {

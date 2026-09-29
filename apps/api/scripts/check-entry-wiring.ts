@@ -139,6 +139,8 @@ const EXPECTED_BUILDERS: readonly string[] = [
 	'internalAction',
 	'internalMutation',
 	'internalQuery',
+	'knowledgeAdminMutation',
+	'knowledgeMutation',
 	'mutation',
 	'ownerMutation',
 	'platformAdminMutation',

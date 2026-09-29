@@ -8,20 +8,20 @@ import { api } from '../_generated/api';
 // (inbox/messages.ts recordInboundMirror) and surface in the contact timeline, so
 // getTimeline must withhold the inbound *email* body from non-admin members while
 // keeping the row + its subject/metadata. These tests drive that gate by varying
-// the soft role read (getBetterAuthSessionWithRole) the handler performs.
+// the role on the session the membership floor threads to the handler.
 
-// `role` is flipped per-test. We mock both the membership floor (requireOrgMember,
-// which authedQuery calls) so an 'editor' still passes as a member and receives the
-// timeline, AND the handler's own soft role read (getBetterAuthSessionWithRole),
-// which decides whether the inbound-email body is redacted. An 'editor' lacks
-// `organization:manage`, so its body must be withheld.
+// `role` is flipped per-test. The membership floor (requireOrgMember, which
+// authedQuery calls) lets an 'editor' through as a member so it receives the
+// timeline; the handler asks the shared-inbox reader gate (inbox/access.ts) of
+// that session to decide whether the inbound-email body is redacted. An 'editor'
+// is not a reader, so its body must be withheld. getBetterAuthSessionWithRole
+// stays mocked for any other soft read on the path.
 let currentRole: 'owner' | 'admin' | 'editor' = 'owner';
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual =
-		await vi.importActual<typeof import('../lib/sessionOrganization')>(
-			'../lib/sessionOrganization',
-		);
+	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
+		'../lib/sessionOrganization'
+	);
 	return {
 		...actual,
 		requireOrgMember: vi.fn(async () => ({ userId: 'test-user', role: currentRole })),

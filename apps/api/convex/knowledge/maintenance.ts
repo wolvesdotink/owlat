@@ -30,6 +30,7 @@ import {
 } from '../lib/knowledgeDedup';
 import { repointEdge } from './edges';
 import { failStaleRunningJobs, STALE_RUNNING_JOB_MS } from './backfillJobs';
+import { isInboxDerivedKnowledge } from '../inbox/access';
 
 /** Decay rates per knowledge type (percentage per day) */
 const DECAY_RATES: Record<string, number> = {
@@ -238,6 +239,11 @@ function nonEmpty<T>(arr: T[]): T[] | undefined {
  * extracts the same fact many times with different titles; this collapses
  * near-identical embeddings (cosine >= threshold) into one entry. Idempotent and
  * convergent: the survivor is chosen deterministically, so re-runs are no-ops.
+ *
+ * Entries derived from Team Inbox mail are clustered only with each other
+ * (inbox/access.ts `isInboxDerivedKnowledge`): a merge folds the loser's
+ * content into the survivor and deletes the loser, so a cross-side merge would
+ * either show inbox-derived text to every member or hide a member-visible fact.
  */
 export const dedupeContactEntries = internalMutation({
 	args: {
@@ -261,7 +267,10 @@ export const dedupeContactEntries = internalMutation({
 		);
 		if (entries.length < 2) return { merged: 0 };
 
-		const clusters = clusterBySimilarity(entries, (e) => e.embedding, threshold);
+		const clusters = [
+			entries.filter((e) => isInboxDerivedKnowledge(e)),
+			entries.filter((e) => !isInboxDerivedKnowledge(e)),
+		].flatMap((side) => clusterBySimilarity(side, (e) => e.embedding, threshold));
 
 		let merged = 0;
 		for (const cluster of clusters) {

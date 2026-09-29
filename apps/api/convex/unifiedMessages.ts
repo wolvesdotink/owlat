@@ -9,8 +9,9 @@
 import { v } from 'convex/values';
 import { internalQuery, internalMutation, internalAction } from './_generated/server';
 import type { MutationCtx } from './_generated/server';
-import { authedQuery, adminQuery, authedMutation } from './lib/authedFunctions';
-import { requireOrgPermission, hasPermission } from './lib/sessionOrganization';
+import { authedQuery, authedMutation } from './lib/authedFunctions';
+import { requireOrgPermission, hasPermission, requirePermission } from './lib/sessionOrganization';
+import { isSharedInboxReader } from './inbox/access';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { unifiedMessageChannelValidator, outboundChannelValidator } from './lib/convexValidators';
@@ -35,15 +36,20 @@ async function openTimelineRow(msg: Doc<'unifiedMessages'>) {
 	};
 }
 
+/** Refusal for a timeline read by a caller outside the Team Inbox. */
+const NOT_A_READER = 'Only owners and admins can read Team Inbox conversations';
+
 /**
- * Get messages for a conversation thread (unified timeline)
+ * Get messages for a conversation thread (unified timeline). Team Inbox
+ * content: shared-inbox readers only (inbox/access.ts).
  */
-export const getThreadTimeline = adminQuery({
+export const getThreadTimeline = authedQuery({
 	args: {
 		threadId: v.id('conversationThreads'),
 		limit: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
+		requirePermission(isSharedInboxReader(session), NOT_A_READER);
 		const messages = await ctx.db
 			.query('unifiedMessages')
 			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
@@ -55,14 +61,16 @@ export const getThreadTimeline = adminQuery({
 });
 
 /**
- * Get messages for a contact across all channels
+ * Get messages for a contact across all channels. Team Inbox content:
+ * shared-inbox readers only (inbox/access.ts).
  */
-export const getContactTimeline = adminQuery({
+export const getContactTimeline = authedQuery({
 	args: {
 		contactId: v.id('contacts'),
 		limit: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
+		requirePermission(isSharedInboxReader(session), NOT_A_READER);
 		const messages = await ctx.db
 			.query('unifiedMessages')
 			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
@@ -74,14 +82,16 @@ export const getContactTimeline = adminQuery({
 });
 
 /**
- * Get recent messages across all channels
+ * Get recent messages across all channels. Team Inbox content: shared-inbox
+ * readers only (inbox/access.ts).
  */
-export const listRecent = adminQuery({
+export const listRecent = authedQuery({
 	args: {
 		channel: v.optional(unifiedMessageChannelValidator),
 		limit: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
+		requirePermission(isSharedInboxReader(session), NOT_A_READER);
 		let q;
 		if (args.channel) {
 			q = ctx.db
@@ -258,11 +268,11 @@ export const sendChatMessage = authedMutation({
 		text: v.string(),
 		contactId: v.optional(v.id('contacts')),
 	},
-	handler: async (ctx, args) => {
-		// Conversation threads are the shared customer inbox (admin-only, per the
-		// inbox access policy) — sending an outbound chat message on a thread is a
-		// support action, so require an owner/admin.
-		await requireOrgPermission(ctx, 'organization:manage');
+	handler: async (ctx, args, session) => {
+		// Conversation threads are the shared customer inbox — sending an outbound
+		// chat message on a thread is a support action, so the caller must be a
+		// shared-inbox reader (inbox/access.ts).
+		requirePermission(isSharedInboxReader(session), NOT_A_READER);
 		const content = JSON.stringify({ text: args.text });
 
 		const now = Date.now();
