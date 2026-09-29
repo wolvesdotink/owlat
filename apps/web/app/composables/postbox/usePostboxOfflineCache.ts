@@ -69,8 +69,12 @@ function queueIdleWrite(slot: string, write: () => Promise<void>): Promise<void>
 			if (pendingWrites.get(slot) !== entry) return;
 			pendingWrites.delete(slot);
 			entry.write().then(
-				() => entry.waiters.forEach((w) => w.resolve()),
-				(error: unknown) => entry.waiters.forEach((w) => w.reject(error))
+				() => {
+					for (const w of entry.waiters) w.resolve();
+				},
+				(error: unknown) => {
+					for (const w of entry.waiters) w.reject(error);
+				}
 			);
 		}, OFFLINE_WRITE_IDLE_TIMEOUT_MS);
 	});
@@ -78,7 +82,9 @@ function queueIdleWrite(slot: string, write: () => Promise<void>): Promise<void>
 
 /** Forget every queued write (the cache is being wiped), settling its callers. */
 function dropPendingWrites(): void {
-	for (const entry of pendingWrites.values()) entry.waiters.forEach((w) => w.resolve());
+	for (const entry of pendingWrites.values()) {
+		for (const w of entry.waiters) w.resolve();
+	}
 	pendingWrites.clear();
 }
 
