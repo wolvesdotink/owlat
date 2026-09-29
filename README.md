@@ -243,7 +243,7 @@ Tests use **vitest** — `cd apps/api && npx vitest run`. Do **not** use `bun te
 | Endpoint                                                           | Description                                           |
 | ------------------------------------------------------------------ | ----------------------------------------------------- |
 | `GET/POST /api/v1/contacts`, `GET/PUT/DELETE /api/v1/contacts/:id` | Manage contacts                                       |
-| `POST /api/v1/events`                                              | Track custom events                                   |
+| `POST /api/v1/events`                                              | Track custom events (needs Automations turned on)     |
 | `POST /api/v1/transactional`                                       | Send transactional emails (template slug in the body) |
 | `/api/v1/topics/*`                                                 | Manage topics + subscriptions                         |
 | `GET /api/v1/health`                                               | Health probe                                          |

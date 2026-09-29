@@ -15,6 +15,9 @@ export class EventsResource extends BaseResource {
 	 * @param params - Event parameters
 	 * @returns Response with event ID and triggered automation count
 	 * @throws {NotFoundError} If contact not found and createContactIfNotExists is false
+	 * @throws {ForbiddenError} If the key lacks `events:write`, or the Automations
+	 *   feature is off on the instance (`reason: "feature_disabled"`; nothing is
+	 *   recorded and no contact is created)
 	 * @throws {ValidationError} If event name format is invalid
 	 *
 	 * @example
