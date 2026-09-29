@@ -10,10 +10,14 @@
  * body.
  *
  * What is pinned here is the boundary rule: sealing is an AT-REST property, so a
- * row that leaves an access-checked read carries PLAINTEXT — on every one of
- * those surfaces, for a sealed row and for a legacy-plaintext one alike, with an
- * absent inline column staying absent (the reader keys its lazy blob fetch on
- * exactly that).
+ * row that leaves an access-checked READER read carries PLAINTEXT — for a sealed
+ * row and for a legacy-plaintext one alike, with an absent inline column staying
+ * absent (the reader keys its lazy blob fetch on exactly that).
+ *
+ * The LIST surfaces (folder pages, label view, sections, search) no longer carry
+ * a body at all (plan 2.3): they return slim rows and the reader loads bodies
+ * through `listThreadMessages` / `getMessage`. What is pinned for them is that
+ * neither the sealed envelope nor the plaintext leaves on a list row.
  */
 
 import { convexTest } from 'convex-test';
@@ -91,6 +95,13 @@ async function seedSealedMessage(
 	return messageId;
 }
 
+/** Assert a list row carries no body column at all — sealed or plaintext. */
+function expectNoBody(row: object): void {
+	expect(row).not.toHaveProperty('textBodyInline');
+	expect(row).not.toHaveProperty('htmlBodyInline');
+	expect(row).not.toHaveProperty('searchBody');
+}
+
 /** Assert a row the client received carries the plaintext body, not an envelope. */
 function expectPlaintextBody(row: { textBodyInline?: string; htmlBodyInline?: string }): void {
 	expect(row.textBodyInline).toBe(TEXT);
@@ -98,7 +109,7 @@ function expectPlaintextBody(row: { textBodyInline?: string; htmlBodyInline?: st
 }
 
 describe('mailMessages read boundary — sealed bodies leave as plaintext', () => {
-	it('listMessages: a folder page carries decrypted inline bodies', async () => {
+	it('listMessages: a folder page carries no inline bodies', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedInbox(t);
 		await seedSealedMessage(t, mailboxId);
@@ -108,10 +119,10 @@ describe('mailMessages read boundary — sealed bodies leave as plaintext', () =
 			folderRole: 'inbox',
 		});
 		expect(messages).toHaveLength(1);
-		expectPlaintextBody(messages[0]!);
+		expectNoBody(messages[0]!);
 	});
 
-	it('listByLabel: the label view carries decrypted inline bodies', async () => {
+	it('listByLabel: the label view carries no inline bodies', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedInbox(t);
 		const messageId = await seedSealedMessage(t, mailboxId);
@@ -130,7 +141,7 @@ describe('mailMessages read boundary — sealed bodies leave as plaintext', () =
 			labelId,
 		});
 		expect(messages).toHaveLength(1);
-		expectPlaintextBody(messages[0]!);
+		expectNoBody(messages[0]!);
 	});
 
 	it('getMessage: the reader deep-link fallback carries a decrypted body', async () => {
@@ -153,7 +164,7 @@ describe('mailMessages read boundary — sealed bodies leave as plaintext', () =
 		expectPlaintextBody(result!.messages[0]!);
 	});
 
-	it('search: a structured (text-free) result page is decrypted', async () => {
+	it('search: a structured (text-free) result page carries no inline bodies', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedInbox(t);
 		await seedSealedMessage(t, mailboxId, { fromAddress: 'no-reply@hinterland.camp' });
@@ -164,10 +175,10 @@ describe('mailMessages read boundary — sealed bodies leave as plaintext', () =
 			from: 'no-reply',
 		});
 		expect(messages).toHaveLength(1);
-		expectPlaintextBody(messages[0]!);
+		expectNoBody(messages[0]!);
 	});
 
-	it('listSections: both the named section and the remainder are decrypted', async () => {
+	it('listSections: neither the named section nor the remainder carries bodies', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedInbox(t);
 		await t.run(async (ctx: { db: DatabaseWriter }) => {
@@ -192,8 +203,8 @@ describe('mailMessages read boundary — sealed bodies leave as plaintext', () =
 		const remainder = sections.find((s) => s.name === null);
 		expect(named?.messages).toHaveLength(1);
 		expect(remainder?.messages).toHaveLength(1);
-		expectPlaintextBody(named!.messages[0]!);
-		expectPlaintextBody(remainder!.messages[0]!);
+		expectNoBody(named!.messages[0]!);
+		expectNoBody(remainder!.messages[0]!);
 	});
 
 	it('a legacy-plaintext row (pre-E8b / unmigrated) is returned verbatim', async () => {
@@ -202,31 +213,25 @@ describe('mailMessages read boundary — sealed bodies leave as plaintext', () =
 		// Including one whose body merely STARTS with the reserved prefix: it is
 		// plaintext, and the strict envelope test must read it as such.
 		const looksSealed = 'atrest: not really — a customer pasted this';
-		await seedMessage(t, mailboxId, {
+		const messageId = await seedMessage(t, mailboxId, {
 			subject: 'Legacy',
 			textBodyInline: looksSealed,
 			htmlBodyInline: '<p>legacy html</p>',
 		});
 
-		const { messages } = await t.query(api.mail.mailbox.queries.listMessages, {
-			mailboxId,
-			folderRole: 'inbox',
-		});
-		expect(messages[0]?.textBodyInline).toBe(looksSealed);
-		expect(messages[0]?.htmlBodyInline).toBe('<p>legacy html</p>');
+		const message = await t.query(api.mail.mailbox.messages.getMessage, { messageId });
+		expect(message?.textBodyInline).toBe(looksSealed);
+		expect(message?.htmlBodyInline).toBe('<p>legacy html</p>');
 	});
 
 	it('a blob-stored body keeps its inline columns ABSENT, not present-undefined', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedInbox(t);
 		// No inline body at all — the shape the reader keys its lazy blob fetch on.
-		await seedMessage(t, mailboxId, { subject: 'Big newsletter' });
+		const messageId = await seedMessage(t, mailboxId, { subject: 'Big newsletter' });
 
-		const { messages } = await t.query(api.mail.mailbox.queries.listMessages, {
-			mailboxId,
-			folderRole: 'inbox',
-		});
-		expect(messages[0]).not.toHaveProperty('textBodyInline');
-		expect(messages[0]).not.toHaveProperty('htmlBodyInline');
+		const result = await t.query(api.mail.mailbox.messages.listThreadMessages, { messageId });
+		expect(result?.messages[0]).not.toHaveProperty('textBodyInline');
+		expect(result?.messages[0]).not.toHaveProperty('htmlBodyInline');
 	});
 });

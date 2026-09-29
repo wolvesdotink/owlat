@@ -20,7 +20,7 @@ import { isMessageSnoozed } from '../../lib/mailSnooze';
 import { isThreadMuted } from '../../lib/mailMute';
 import { readSession } from './shared';
 import type { FolderRole } from '../../lib/validators/mail';
-import { attachThreadState, type RowThreadState } from './rowThreadState';
+import { attachThreadState, type MailListRow, type RowThreadState } from './rowThreadState';
 
 /**
  * List messages in a mailbox, for the webmail UI.
@@ -48,7 +48,7 @@ export const listMessages = publicQuery({
 	},
 	handler: async (ctx, args) => {
 		const empty = {
-			messages: [] as Array<Doc<'mailMessages'> & RowThreadState>,
+			messages: [] as Array<MailListRow & RowThreadState>,
 			hasMore: false,
 			nextCursor: null,
 		};
@@ -183,7 +183,11 @@ export const listByLabel = publicQuery({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const empty = { messages: [] as Doc<'mailMessages'>[], hasMore: false, nextCursor: null };
+		const empty = {
+			messages: [] as Array<MailListRow & RowThreadState>,
+			hasMore: false,
+			nextCursor: null,
+		};
 		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
 		if (!mailbox) return empty;
 
