@@ -118,7 +118,7 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  *     allowlist reach zero.
  *
  * Read those three, not this list. For orientation only, the surviving families: the RETURN-PATH
- * pair (`domains/lifecycle.ts`, `delivery/checklistDomainValidators.ts`), waiting on a
+ * pair (`domains/returnPathProviders.ts`, `delivery/checklistDomainValidators.ts`), waiting on a
  * capability that has no home on the sending-domain adapter interface yet; the FROZEN-SIBLING
  * READ that is left (`delivery/checklistValidatorTypes.ts` — its twin, the relay panel's query,
  * now walks the relay-identity registry instead); ADAPTER-ADJACENT actions living beside an

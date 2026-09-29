@@ -11,6 +11,7 @@ import type { ResolvedRoute } from '../lib/sendProviders/routing';
 import { transportEnvOptional } from '../lib/sendProviders/transportEnv';
 import { defaultSendTransportId, resolveSendTransport } from '../lib/sendProviders/transports';
 import { selectSendProviderKind } from '../lib/sendProviders/types';
+import { LOCAL_DEFER_MS } from '../lib/sendProviders/errors';
 
 interface LastMileInput {
 	messageType: GovernedMessageType;
@@ -106,7 +107,7 @@ function withReconciliationSafety(
 	if (result.kind === 'ready' && result.providerKind !== OWN_ARM_TRANSPORT_KIND) {
 		// OUR OWN IDEMPOTENCY WAIT, not the receiver's answer: nothing about this
 		// identity's standing has been observed, so it is not gate 2's evidence.
-		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
+		return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
 	}
 	return result;
 }
@@ -185,7 +186,7 @@ export async function resolveLastMileRouting(
 		!transportEnvOptional(mtaTransport, 'MTA_API_KEY')
 	) {
 		// Unconfigured on our side — a fault, not a verdict about this identity.
-		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
+		return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
 	}
 	const baseProviderKind = selectSendProviderKind(
 		plan.baseRoute?.providerType ?? input.providerType
@@ -194,7 +195,7 @@ export async function resolveLastMileRouting(
 		throw new Error('Owned-MTA routing has no configured base transport.');
 	}
 	if (input.mtaReconciliation && baseProviderKind !== OWN_ARM_TRANSPORT_KIND) {
-		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
+		return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
 	}
 
 	const decision = await resolveMtaRoutingDecision(mtaTransport, {
@@ -250,7 +251,7 @@ export async function resolveLastMileRouting(
 		};
 	}
 	if (input.mtaReconciliation) {
-		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
+		return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
 	}
 	// GO FIND A RELAY, unless the route already put us on one. The second half of
 	// this gate used to read `route?.providerType !== 'ses'`, which picked out the

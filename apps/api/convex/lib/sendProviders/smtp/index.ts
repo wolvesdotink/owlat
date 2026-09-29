@@ -42,6 +42,7 @@ import {
 	type SmtpExtras,
 } from '../types';
 import { sendProviderCatalogEntry } from '../catalog';
+import { toComposeInput } from '../composeInput';
 import type { SendTransportRecord } from '../transports';
 import { getClientConfig, type RelayClientConfig } from './config';
 import { resolveRelayEnvelopeSender } from './returnPath';
@@ -211,25 +212,7 @@ async function sendViaRelay(
 	// nothing ever reached the relay.
 	let composed: ReturnType<typeof composeMessage>;
 	try {
-		composed = composeMessage({
-			from: params.from,
-			to: [params.to],
-			subject: params.subject,
-			html: params.html,
-			text: params.text,
-			replyTo: params.replyTo,
-			headers:
-				params.headers && Object.keys(params.headers).length > 0 ? params.headers : undefined,
-			attachments: params.attachments?.map((a) => ({
-				filename: a.filename,
-				contentType: a.contentType ?? 'application/octet-stream',
-				isInline: false,
-				// `EmailAttachment.content` is runtime-neutral bytes (the isolate has no
-				// Buffer); this module is `'use node'`, so the composer's Buffer is
-				// available here at the boundary.
-				data: Buffer.from(a.content),
-			})),
-		});
+		composed = composeMessage(toComposeInput(params));
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 		// A composition failure never touched the wire — classify it via the

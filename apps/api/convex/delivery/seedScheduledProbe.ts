@@ -25,13 +25,13 @@
  * this shape does catch.
  *
  * NOT COUNTABLE, BY CONSTRUCTION. A probe carries NO `sendId`, so there
- * is no `transactionalSends` row; it is enqueued with NO `onComplete` and no
- * `sendRef` context, so the Send lifecycle — and with it every daily stat, every
- * `sendingReputation` event, every customer webhook and every contact activity
- * row — is never entered; and it writes NO `sendAssignments` row, so
- * `analytics/transportOutcomes.ts` records nothing against the cell's
- * denominators. Its only durable record is its probe-ledger row. The mutual
- * exclusion is asserted on the composition path by
+ * is no `transactionalSends` row; it is enqueued through `enqueueUntrackedProbe`,
+ * with NO `onComplete` and no `sendRef` context, so the Send lifecycle — and
+ * with it every daily stat, every `sendingReputation` event, every customer
+ * webhook and every contact activity row — is never entered; and it writes NO
+ * `sendAssignments` row, so `analytics/transportOutcomes.ts` records nothing
+ * against the cell's denominators. Its only durable record is its probe-ledger
+ * row. The mutual exclusion is asserted on the composition path by
  * `delivery/worker.ts#assertSeedShadowExclusion`, which now covers both envelope
  * kinds precisely because this module exists.
  *
@@ -61,7 +61,7 @@ import { toPaginationCursor } from '../lib/paginationCursor';
 import { resolveSendRouteFromDb } from '../lib/sendProviders/route';
 import { SEED_PROBE_RETENTION_MS } from '../schema/seedPlacement';
 import { newSeedProbeId } from './seedShadowCopy';
-import { transactionalEmailPool } from './workpool';
+import { enqueueUntrackedProbe } from './governedEnqueue';
 
 /**
  * The streams this schedule covers: every GOVERNED stream except the one that
@@ -215,26 +215,24 @@ async function probeStream(
 			sentAt: args.now,
 			expiresAt: args.now + SEED_PROBE_RETENTION_MS,
 		});
-		await transactionalEmailPool.enqueueAction(ctx, internal.delivery.worker.sendSingleEmail, {
-			envelopeInput: {
-				kind: 'transactional' as const,
-				deliveryDomain: 'production' as const,
-				// The cell's stream axis, stated rather than inferred: this is what
-				// makes the governed router treat the probe as this stream's mail.
-				messageType: args.stream,
-				emailPurpose:
-					args.stream === 'automation' ? ('marketing' as const) : ('transactional' as const),
-				to: seed.address,
-				from: args.from,
-				providerType: route.providerType,
-				...(route.ipPool !== undefined ? { ipPool: route.ipPool } : {}),
-				template: message,
-				organizationId: args.organizationId,
-				...(args.convexSiteUrl !== undefined ? { convexSiteUrl: args.convexSiteUrl } : {}),
-				...(args.stream === 'automation' ? { listUnsubscribe: true } : {}),
-				seedProbeId: probeId,
-				seedProbeRef: probeRef,
-			},
+		await enqueueUntrackedProbe(ctx, 'transactional', {
+			kind: 'transactional' as const,
+			deliveryDomain: 'production' as const,
+			// The cell's stream axis, stated rather than inferred: this is what
+			// makes the governed router treat the probe as this stream's mail.
+			messageType: args.stream,
+			emailPurpose:
+				args.stream === 'automation' ? ('marketing' as const) : ('transactional' as const),
+			to: seed.address,
+			from: args.from,
+			providerType: route.providerType,
+			...(route.ipPool !== undefined ? { ipPool: route.ipPool } : {}),
+			template: message,
+			organizationId: args.organizationId,
+			...(args.convexSiteUrl !== undefined ? { convexSiteUrl: args.convexSiteUrl } : {}),
+			...(args.stream === 'automation' ? { listUnsubscribe: true } : {}),
+			seedProbeId: probeId,
+			seedProbeRef: probeRef,
 		});
 	}
 	return seeds.length;

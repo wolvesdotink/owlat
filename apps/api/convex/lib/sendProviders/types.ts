@@ -80,12 +80,13 @@ export interface EmailAttachment {
 	 *
 	 * `Uint8Array`, not `Buffer` — the runtime-neutral type. Today's only
 	 * producer is `delivery/worker.ts::resolveAttachments`, which is `'use node'`
-	 * and hands over real `Buffer`s, but the ADAPTERS are not all Node: `ses/`
-	 * and `resend/` carry no `'use node'` directive, so they run in the V8
-	 * isolate where `Buffer` does not exist and `content.toString('base64')`
-	 * would yield a comma-joined list of decimal byte values. Encode through
-	 * `lib/bytes.ts::bytesToBase64`; a `'use node'` adapter that needs a real
-	 * `Buffer` for its own composer converts at its own boundary.
+	 * and hands over real `Buffer`s, but the ADAPTERS are not all Node:
+	 * `resend/` carries no `'use node'` directive, so it runs in the V8 isolate
+	 * where `Buffer` does not exist and `content.toString('base64')` would
+	 * yield a comma-joined list of decimal byte values. Encode through
+	 * `lib/bytes.ts::bytesToBase64` there. The `'use node'` adapters that
+	 * compose their own MIME (SMTP, Mandrill, SES) convert to a `Buffer` in
+	 * one place, `composeInput.ts::toComposeInput`.
 	 */
 	content: Uint8Array;
 	/** MIME type (defaults to application/octet-stream) */

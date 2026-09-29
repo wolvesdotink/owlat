@@ -42,7 +42,7 @@ import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive
 import { listSendTransports } from '../lib/sendProviders/transports';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { offerBimiRecord, type BimiOffer } from './bimi';
-import { DEFAULT_DMARC_POLICY } from './dmarc';
+import { DEFAULT_DMARC_POLICY, dmarcRuaFromEnv } from './dmarc';
 import { parsePoolIpsLenient, parseReturnPathRelaySpfTerms, resolveSpfQualifier } from './spf';
 import {
 	buildStreamSubdomainRecords,
@@ -252,7 +252,7 @@ export const getStreamSubdomainPlan = authedQuery({
 
 		const relaySpfTerms = parseReturnPathRelaySpfTerms(getOptional('MTA_RETURN_PATH_RELAY_SPF'));
 		const mailHost = getOptional('EHLO_HOSTNAME')?.trim();
-		const rua = getOptional('MTA_DMARC_RUA')?.trim();
+		const rua = dmarcRuaFromEnv();
 		const spfInclude = getOptional('MTA_SPF_INCLUDE');
 
 		// PER-FQDN, from each proposed host's own row — see dmarcSettingsForHost.
@@ -271,7 +271,7 @@ export const getStreamSubdomainPlan = authedQuery({
 
 		const { records } = buildStreamSubdomainRecords(layout, {
 			dmarcByRole,
-			...(rua === undefined || rua === '' ? {} : { dmarcRua: rua }),
+			...(rua === undefined ? {} : { dmarcRua: rua }),
 			spfQualifier: resolveSpfQualifier(getOptional('SPF_QUALIFIER')),
 			// The From-domain SPF comes from the SAME variable the shipped provider
 			// adapter uses, and is omitted with it — see streamSubdomainRecords.

@@ -177,11 +177,14 @@ export const run = internalAction({
 		// throw (e.g. SES with a missing region) must not poison a registered domain
 		// back to `failed`; and on a failed registration there is nothing to reconcile.
 		if (registered) {
-			await ctx.runMutation(internal.domains.lifecycle.reconcileReturnPathAfterRegistration, {
-				domainId: args.domainId,
-				registeredReturnPathHost: domain.returnPathHost,
-				userId: LIFECYCLE_USER_PROVIDER_REGISTER,
-			});
+			await ctx.runMutation(
+				internal.domains.lifecycleReturnPath.reconcileReturnPathAfterRegistration,
+				{
+					domainId: args.domainId,
+					registeredReturnPathHost: domain.returnPathHost,
+					userId: LIFECYCLE_USER_PROVIDER_REGISTER,
+				}
+			);
 		}
 	},
 });
@@ -292,7 +295,7 @@ async function runReturnPathReflection(
 	}
 
 	const recordGiveUp = (message: string, attempts: number) =>
-		ctx.runMutation(internal.domains.lifecycle.recordReturnPathPushResult, {
+		ctx.runMutation(internal.domains.lifecycleReturnPath.recordReturnPathPushResult, {
 			domainId: args.domainId,
 			returnPathHost: args.returnPathHost,
 			error: message,
@@ -359,7 +362,7 @@ async function runReturnPathReflection(
 
 	logInfo(`[${tag}] Return-path host for ${domain.domain} reflected as ${outcome.describe}`);
 	// Success — clear any prior sync-failure marker.
-	await ctx.runMutation(internal.domains.lifecycle.recordReturnPathPushResult, {
+	await ctx.runMutation(internal.domains.lifecycleReturnPath.recordReturnPathPushResult, {
 		domainId: args.domainId,
 		returnPathHost: args.returnPathHost,
 		userId: config.userId,
