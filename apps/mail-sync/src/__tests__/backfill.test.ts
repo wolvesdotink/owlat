@@ -407,3 +407,55 @@ describe('backfillFolder — the betweenBatches hook', () => {
 		expect(stopped.trace).not.toContain('between');
 	});
 });
+
+describe('backfillFolder with a staged ingest (plan 3.6)', () => {
+	it('uploads ahead, commits in fetch order and counts the same', async () => {
+		const { deps, rec } = fakeDeps({
+			uids: [1, 2, 3, 4, 5, 6],
+			batchSize: 10,
+			startCursor: 6,
+			alreadyPresent: [4],
+		});
+		const events: string[] = [];
+		const uploads: Array<() => void> = [];
+		deps.ingestConcurrency = 3;
+		deps.stageIngest = async (_remoteName, _role, uid) => {
+			events.push(`stage:${uid}`);
+			// Uploads finish in reverse: the commits must not follow them.
+			await new Promise<void>((resolve) => uploads.unshift(resolve));
+			return async () => {
+				events.push(`commit:${uid}`);
+				if (uid === 5) throw new Error('ingest failed');
+				return uid !== 2; // 2 is a server-side skip
+			};
+		};
+		const run = backfillFolder(deps, {
+			remoteName: 'INBOX',
+			role: 'inbox',
+			ceilingUid: 6,
+			messageCount: 6,
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		// Three uploads started before any commit.
+		expect(events).toEqual(['stage:1', 'stage:2', 'stage:3']);
+		// Release uploads as they queue up, newest first, until the walk ends.
+		while (!rec.progress.length) {
+			for (const release of uploads.splice(0)) release();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+		await run;
+
+		expect(events.filter((e) => e.startsWith('commit:'))).toEqual([
+			'commit:1',
+			'commit:2',
+			'commit:3',
+			'commit:5',
+			'commit:6',
+		]);
+		// 1, 3, 6 landed; 4 was already present; 2 was skipped and 5 threw.
+		expect(rec.progress).toEqual([{ newCursor: 0, importedDelta: 4, failedDelta: 2 }]);
+		expect(rec.failures.map((f) => f.uid)).toEqual([5]);
+		// The plain `ingest` dep is not used when a staged one is given.
+		expect(rec.ingested).toEqual([]);
+	});
+});

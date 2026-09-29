@@ -3,7 +3,8 @@
  *
  * - AccountManager holds one persistent IMAP connection per connected external
  *   account (inbound sync, near-real-time via IDLE).
- * - HTTP server exposes /send + /test for Convex (outbound relay + cred check).
+ * - HTTP server exposes /send + /test for Convex (outbound relay + cred check),
+ *   and /reconcile so a freshly connected mailbox starts syncing at once.
  */
 
 import { loadConfig } from './config.js';
@@ -23,7 +24,11 @@ export async function main(): Promise<void> {
 	const manager = new AccountManager(convex, config);
 	await manager.start();
 
-	const server = startServer(config, convex);
+	const server = startServer(config, convex, {
+		requestReconcile: () => {
+			void manager.requestReconcile();
+		},
+	});
 	// Deliverability seed-probe sweep. With no seed mailboxes connected — the
 	// default — every pass is an empty no-op (D2).
 	const stopSeedSweeper = startSeedProbeSweeper(convex);

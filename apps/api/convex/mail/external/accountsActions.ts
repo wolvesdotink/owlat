@@ -12,7 +12,8 @@
  *   Public:   connect, connectShared, updateCredentials, updateCredentialsShared,
  *             testConnection
  *   Internal: getCredentialsForWorker (the ONLY function that returns plaintext
- *             credentials — internal/admin-key only, never exposed publicly)
+ *             credentials — internal/admin-key only, never exposed publicly),
+ *             pokeWorkerReconcile
  *
  * Live IMAP/SMTP validation is delegated to the apps/mail-sync worker's /test
  * endpoint, so the heavy protocol libraries stay out of the Convex bundle.
@@ -25,7 +26,7 @@ import { destinationProviderValidator } from '../../lib/validators/deliverabilit
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { encryptSecret, decryptSecret } from '../../lib/credentialCrypto';
-import { getMailSyncConfig } from '../mtaClient';
+import { getMailSyncConfig, pokeMailSyncReconcile } from '../mtaClient';
 import { FETCH_TIMEOUTS, fetchWithTimeout } from '../../lib/fetchWithTimeout';
 import { throwInvalidInput } from '../../_utils/errors';
 import { assertExternalEnabled } from './externalFeature';
@@ -438,5 +439,20 @@ export const getCredentialsForWorker = internalAction({
 				smtpPassword: creds.smtpPassword ?? creds.imapPassword,
 			},
 		};
+	},
+});
+
+/**
+ * Tell the mail-sync worker an account just became connectable. Scheduled by
+ * `insertExternalAccountRow` and `applyCredentialRotation` (accountShared.ts)
+ * with `runAfter(0)`, so it only runs once the connect or credential change has
+ * committed and the worker's `listConnectableAccounts` can see it. Without it a
+ * new mailbox waited for the worker's next reconcile tick (up to 30 s) before
+ * its first sync even started.
+ */
+export const pokeWorkerReconcile = internalAction({
+	args: {},
+	handler: async (): Promise<void> => {
+		await pokeMailSyncReconcile();
 	},
 });

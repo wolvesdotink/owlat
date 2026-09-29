@@ -131,9 +131,16 @@ async function connectTeamInbox(t: ReturnType<typeof convexTest>): Promise<{
 }
 
 /** Names of the jobs currently on the scheduler. */
+/**
+ * Jobs scheduled by the code under test. Connecting the account also wakes the
+ * mail-sync worker (`pokeWorkerReconcile`, plan 3.6); that is setup, not what
+ * these tests measure, so it is left out.
+ */
 async function scheduledNames(t: ReturnType<typeof convexTest>): Promise<string[]> {
 	return await t.run(async (ctx) =>
-		(await ctx.db.system.query('_scheduled_functions').collect()).map((job) => job.name)
+		(await ctx.db.system.query('_scheduled_functions').collect())
+			.map((job) => job.name)
+			.filter((name) => name !== 'mail/external/accountsActions:pokeWorkerReconcile')
 	);
 }
 

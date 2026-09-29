@@ -200,6 +200,34 @@ describe('mail.external — connect + provisioning', () => {
 	});
 });
 
+describe('mail.external — waking the mail-sync worker (plan 3.6)', () => {
+	async function pokesScheduled(t: ReturnType<typeof convexTest>): Promise<number> {
+		return await t.run(
+			async (ctx) =>
+				(await ctx.db.system.query('_scheduled_functions').collect()).filter((job) =>
+					job.name.includes('pokeWorkerReconcile')
+				).length
+		);
+	}
+
+	it('schedules a reconcile poke when an account is connected', async () => {
+		const t = convexTest(schema, modules);
+		await enableExternal(t);
+		setSession('user-A', 'owner');
+		await t.mutation(internal.mail.external.accounts._connectInternal, CREDS);
+		expect(await pokesScheduled(t)).toBe(1);
+	});
+
+	it('schedules another when the credentials are replaced', async () => {
+		const t = convexTest(schema, modules);
+		await enableExternal(t);
+		setSession('user-A', 'owner');
+		await t.mutation(internal.mail.external.accounts._connectInternal, CREDS);
+		await t.mutation(internal.mail.external.accounts._updateCredentialsInternal, CREDS);
+		expect(await pokesScheduled(t)).toBe(2);
+	});
+});
+
 describe('mail.external — disconnect', () => {
 	it('soft-disables the account + mailbox and retains the rows', async () => {
 		const t = convexTest(schema, modules);

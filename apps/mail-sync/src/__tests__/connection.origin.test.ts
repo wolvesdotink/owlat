@@ -15,13 +15,24 @@ import type { ConnectableAccount, ConvexClient } from '../convex.js';
 import type { MailSyncConfig } from '../config.js';
 import type { BackfillFolderDeps } from '../backfill.js';
 
-const ingest = vi.hoisted(() => ({
-	ingestMessage: vi.fn(async () => ({ messageId: 'msg_1' })),
-	isMessageLanded: vi.fn(() => true),
-}));
+const ingest = vi.hoisted(() => {
+	const ingestMessage = vi.fn(async (..._args: unknown[]) => ({ messageId: 'msg_1' }));
+	return {
+		ingestMessage,
+		isMessageLanded: vi.fn(() => true),
+		// The staged path lands in `ingestMessage` too, so both call shapes are
+		// asserted through one call log.
+		stageIngest: vi.fn(async (_config: unknown, params: unknown) => ({ params })),
+		commitIngest: vi.fn(async (convex: unknown, staged: { params: unknown }) =>
+			ingestMessage(convex, undefined, staged.params)
+		),
+	};
+});
 vi.mock('../ingest.js', () => ({
 	ingestMessage: ingest.ingestMessage,
 	isMessageLanded: ingest.isMessageLanded,
+	stageIngest: ingest.stageIngest,
+	commitIngest: ingest.commitIngest,
 }));
 
 // The folder walk itself is covered by backfill.test.ts; stubbing it here keeps

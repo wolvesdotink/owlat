@@ -18,6 +18,7 @@ import {
 	primaryMailbox,
 	type AddressObject,
 } from '@owlat/mail-message';
+import type { FunctionArgs } from 'convex/server';
 import { fn, type ConvexClient, type IngestOutcome } from './convex.js';
 import type { FolderRole } from './folders.js';
 
@@ -157,11 +158,29 @@ export interface RawUploadConfig {
 	apiKey: string;
 }
 
-export async function ingestMessage(
-	convex: ConvexClient,
+/**
+ * A message whose raw bytes are already stored, waiting for its ingest call.
+ *
+ * Ingest is two round trips: the raw upload and the `ingestExternalRaw`
+ * action. Only the second one has to happen in UID order (it advances the
+ * folder cursor and dedupes on Message-ID), so the forward and backfill loops
+ * stage several uploads at once and commit the staged messages one by one
+ * (ingestPipeline.ts).
+ */
+export interface StagedIngest {
+	readonly params: IngestParams;
+	readonly args: FunctionArgs<typeof fn.ingestExternalRaw>;
+}
+
+/**
+ * Parse the message and upload its raw bytes: everything ingest does before
+ * the server call. Throws on an over-size message or a failed upload, like
+ * {@link ingestMessage}.
+ */
+export async function stageIngest(
 	config: RawUploadConfig,
 	params: IngestParams
-): Promise<IngestOutcome> {
+): Promise<StagedIngest> {
 	if (params.raw.byteLength > MAIL_SYNC_MAX_RAW_MESSAGE_BYTES) {
 		throw new Error(
 			`Message exceeds the ${MAIL_SYNC_MAX_RAW_MESSAGE_BYTES / (1024 * 1024)} MiB raw message limit (including attachments)`
@@ -185,30 +204,50 @@ export async function ingestMessage(
 	// call's argument budget, however large the message is.
 	const uploaded = await uploadRawMessage(config, params.raw);
 
-	return await convex.action(fn.ingestExternalRaw, {
-		accountId: params.accountId,
-		folderRole: params.folderRole,
-		remoteName: params.remoteName.toWellFormed(),
-		remoteUid: params.remoteUid,
-		remoteUidValidity: params.remoteUidValidity,
-		rawStorageId: uploaded.storageId,
-		rawSize: uploaded.size,
-		headerBlockBase64: params.raw.subarray(0, HEADER_BLOCK_BYTES).toString('base64'),
-		from: primaryAddress(parsed.from),
-		to: addrList(parsed.to),
-		cc: addrList(parsed.cc),
-		bcc: addrList(parsed.bcc),
-		replyTo: addrText(parsed.replyTo),
-		subject: parsed.subject?.toWellFormed() ?? '',
-		textBodyInline: capBody(text),
-		htmlBodyInline: capBody(html),
-		messageId: parsed.messageId?.toWellFormed() ?? syntheticMessageId(params),
-		inReplyTo: parsed.inReplyTo?.toWellFormed(),
-		references: references?.toWellFormed(),
-		receivedAt: (parsed.date ?? new Date()).getTime(),
-		attachments,
-		flagSeen: params.flags.has('\\Seen'),
-		flagFlagged: params.flags.has('\\Flagged'),
-		origin: params.origin,
-	});
+	return {
+		params,
+		args: {
+			accountId: params.accountId,
+			folderRole: params.folderRole,
+			remoteName: params.remoteName.toWellFormed(),
+			remoteUid: params.remoteUid,
+			remoteUidValidity: params.remoteUidValidity,
+			rawStorageId: uploaded.storageId,
+			rawSize: uploaded.size,
+			headerBlockBase64: params.raw.subarray(0, HEADER_BLOCK_BYTES).toString('base64'),
+			from: primaryAddress(parsed.from),
+			to: addrList(parsed.to),
+			cc: addrList(parsed.cc),
+			bcc: addrList(parsed.bcc),
+			replyTo: addrText(parsed.replyTo),
+			subject: parsed.subject?.toWellFormed() ?? '',
+			textBodyInline: capBody(text),
+			htmlBodyInline: capBody(html),
+			messageId: parsed.messageId?.toWellFormed() ?? syntheticMessageId(params),
+			inReplyTo: parsed.inReplyTo?.toWellFormed(),
+			references: references?.toWellFormed(),
+			receivedAt: (parsed.date ?? new Date()).getTime(),
+			attachments,
+			flagSeen: params.flags.has('\\Seen'),
+			flagFlagged: params.flags.has('\\Flagged'),
+			origin: params.origin,
+		},
+	};
+}
+
+/** The server half of ingest: insert a staged message into the mailbox. */
+export async function commitIngest(
+	convex: ConvexClient,
+	staged: StagedIngest
+): Promise<IngestOutcome> {
+	return await convex.action(fn.ingestExternalRaw, staged.args);
+}
+
+/** Stage and commit one message. */
+export async function ingestMessage(
+	convex: ConvexClient,
+	config: RawUploadConfig,
+	params: IngestParams
+): Promise<IngestOutcome> {
+	return await commitIngest(convex, await stageIngest(config, params));
 }

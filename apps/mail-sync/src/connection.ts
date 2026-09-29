@@ -17,13 +17,20 @@
 
 import { ImapFlow } from 'imapflow';
 import { sleep } from '@owlat/shared';
-import type { BackfillWork, ConnectableAccount, ConvexClient } from './convex.js';
+import type { BackfillWork, ConnectableAccount, ConvexClient, IngestOutcome } from './convex.js';
 import { CredentialsUnavailableError, fetchWorkerCredentials, fn } from './convex.js';
 import type { MailSyncConfig } from './config.js';
 import { mapFolderRole, type FolderRole } from './folders.js';
 import { imapAuth } from './auth.js';
 import { imapTlsOptions } from './tls.js';
-import { ingestMessage, isMessageLanded, type RawUploadConfig } from './ingest.js';
+import {
+	commitIngest,
+	ingestMessage,
+	isMessageLanded,
+	stageIngest,
+	type RawUploadConfig,
+} from './ingest.js';
+import { FORWARD_INGEST_CONCURRENCY, newMessages, runIngestPipeline } from './ingestPipeline.js';
 import {
 	backfillFolder,
 	type BackfillFetchedMessage,
@@ -121,6 +128,11 @@ export class AccountConnection {
 	/** Where `ingestMessage` PUTs the raw `.eml` before referencing it. */
 	private get rawUploadConfig(): RawUploadConfig {
 		return { convexSiteUrl: this.config.convexSiteUrl, apiKey: this.config.apiKey };
+	}
+
+	/** True once the connection has stopped for good (see connectLoop). */
+	get isStopped(): boolean {
+		return this.stopped;
 	}
 
 	async start(): Promise<void> {
@@ -417,61 +429,82 @@ export class AccountConnection {
 
 			if (uidNext <= cursor.lastSeenUid + 1) return; // nothing new
 
-			let maxUid = cursor.lastSeenUid;
-			for await (const msg of client.fetch(
-				`${cursor.lastSeenUid + 1}:*`,
-				{ uid: true, source: true, flags: true },
-				{ uid: true }
-			)) {
-				if (this.stopped) break;
-				const uid = Number(msg.uid);
-				if (!msg.source || uid <= cursor.lastSeenUid) continue;
-				try {
-					await ingestMessage(this.convex, this.rawUploadConfig, {
-						accountId: this.account.accountId,
-						folderRole: role,
-						remoteName,
-						remoteUid: uid,
-						remoteUidValidity: uidValidity,
-						raw: msg.source,
-						flags: msg.flags ?? new Set<string>(),
-						// Forward sync: this mail is arriving now, so the server may
-						// enqueue the Reply Queue + category classification for it.
-						origin: 'sync',
-					});
-				} catch (err) {
-					// Advance past one bad message so it cannot head-of-line-block newer
-					// mail, but persist the hole before ingesting any later UID. Every hole is retried independently
-					// and becomes a visible terminal-failure count after three attempts.
-					logger.warn(
-						{ accountId: this.account.accountId, remoteName, uid, err },
-						'ingest failed; skipping message'
-					);
-					const state = await this.convex.mutation(fn.recordForwardIngestFailure, {
-						accountId: this.account.accountId,
-						remoteName,
-						remoteUidValidity: uidValidity,
-						uid,
-					});
-					if (state.retry) {
-						cursor.forwardIngestFailures.push({ uid, attempts: state.attempts });
-					} else {
-						logger.error(
-							{
+			// Uploads run FORWARD_INGEST_CONCURRENCY at a time while the ingest calls
+			// commit one by one in UID order, so the cursor below is always the
+			// highest UID of a committed prefix — never past a message still in
+			// flight.
+			const lastSeenUid = cursor.lastSeenUid;
+			const failures = cursor.forwardIngestFailures;
+			let maxUid = lastSeenUid;
+			try {
+				await runIngestPipeline(
+					newMessages(
+						client.fetch(
+							`${lastSeenUid + 1}:*`,
+							{ uid: true, source: true, flags: true },
+							{ uid: true }
+						),
+						lastSeenUid
+					),
+					{
+						concurrency: FORWARD_INGEST_CONCURRENCY,
+						stage: (msg) =>
+							stageIngest(this.rawUploadConfig, {
 								accountId: this.account.accountId,
+								folderRole: role,
 								remoteName,
-								uid,
-								attempts: state.attempts,
-							},
-							'forward-sync message could not enter the retry ledger'
-						);
+								remoteUid: msg.uid,
+								remoteUidValidity: uidValidity,
+								raw: msg.source,
+								flags: msg.flags,
+								// Forward sync: this mail is arriving now, so the server may
+								// enqueue the Reply Queue + category classification for it.
+								origin: 'sync',
+							}),
+						commit: async (msg, staged) => {
+							const uid = msg.uid;
+							try {
+								if (!staged.ok) throw staged.error;
+								await commitIngest(this.convex, staged.value);
+							} catch (err) {
+								// Advance past one bad message so it cannot head-of-line-block
+								// newer mail, but persist the hole before committing any later
+								// UID. Every hole is retried independently and becomes a
+								// visible terminal-failure count after three attempts.
+								logger.warn(
+									{ accountId: this.account.accountId, remoteName, uid, err },
+									'ingest failed; skipping message'
+								);
+								const state = await this.convex.mutation(fn.recordForwardIngestFailure, {
+									accountId: this.account.accountId,
+									remoteName,
+									remoteUidValidity: uidValidity,
+									uid,
+								});
+								if (state.retry) {
+									failures.push({ uid, attempts: state.attempts });
+								} else {
+									logger.error(
+										{
+											accountId: this.account.accountId,
+											remoteName,
+											uid,
+											attempts: state.attempts,
+										},
+										'forward-sync message could not enter the retry ledger'
+									);
+								}
+							}
+							// Advance only after successful ingest or a durable retry/terminal record.
+							if (uid > maxUid) maxUid = uid;
+						},
+						isStopped: () => this.stopped,
 					}
+				);
+			} finally {
+				if (maxUid > lastSeenUid) {
+					this.cursors.set(remoteName, { ...cursor, uidValidity, lastSeenUid: maxUid });
 				}
-				// Advance only after successful ingest or a durable retry/terminal record.
-				if (uid > maxUid) maxUid = uid;
-			}
-			if (maxUid > cursor.lastSeenUid) {
-				this.cursors.set(remoteName, { ...cursor, uidValidity, lastSeenUid: maxUid });
 			}
 		} finally {
 			lock.release();
@@ -819,6 +852,35 @@ export class AccountConnection {
 
 	private makeBackfillDeps(uidValidity: number, migrationId: string): BackfillFolderDeps {
 		const accountId = this.account.accountId;
+		const backfillParams = (
+			remoteName: string,
+			role: FolderRole,
+			uid: number,
+			raw: Buffer,
+			flags: Set<string>
+		) => ({
+			accountId,
+			folderRole: role,
+			remoteName,
+			remoteUid: uid,
+			remoteUidValidity: uidValidity,
+			raw,
+			flags,
+			// Historical import: never enqueue background LLM work for it.
+			origin: 'backfill' as const,
+		});
+		const landedOrWarn = (outcome: IngestOutcome, remoteName: string, uid: number): boolean => {
+			const landed = isMessageLanded(outcome);
+			if (!landed && 'skipped' in outcome) {
+				// Stored nothing and did not throw — the shape that used to be
+				// indistinguishable from a successful import.
+				logger.warn(
+					{ accountId, remoteName, uid, reason: outcome.skipped },
+					'backfill ingest stored nothing'
+				);
+			}
+			return landed;
+		};
 		return {
 			batchSize: this.config.backfillBatchSize,
 			initFolder: async (remoteName, ceilingUid, messageCount) =>
@@ -830,29 +892,24 @@ export class AccountConnection {
 					messageCount,
 				}),
 			fetchBatch: (remoteName, start, end) => this.fetchBackfillBatch(remoteName, start, end),
-			ingest: async (remoteName, role, uid, raw, flags) => {
-				const outcome = await ingestMessage(this.convex, this.rawUploadConfig, {
-					accountId,
-					folderRole: role,
+			ingest: async (remoteName, role, uid, raw, flags) =>
+				landedOrWarn(
+					await ingestMessage(
+						this.convex,
+						this.rawUploadConfig,
+						backfillParams(remoteName, role, uid, raw, flags)
+					),
 					remoteName,
-					remoteUid: uid,
-					remoteUidValidity: uidValidity,
-					raw,
-					flags,
-					// Historical import: never enqueue background LLM work for it.
-					origin: 'backfill',
-				});
-				const landed = isMessageLanded(outcome);
-				if (!landed && 'skipped' in outcome) {
-					// Stored nothing and did not throw — the shape that used to be
-					// indistinguishable from a successful import.
-					logger.warn(
-						{ accountId, remoteName, uid, reason: outcome.skipped },
-						'backfill ingest stored nothing'
-					);
-				}
-				return landed;
+					uid
+				),
+			stageIngest: async (remoteName, role, uid, raw, flags) => {
+				const staged = await stageIngest(
+					this.rawUploadConfig,
+					backfillParams(remoteName, role, uid, raw, flags)
+				);
+				return async () => landedOrWarn(await commitIngest(this.convex, staged), remoteName, uid);
 			},
+			ingestConcurrency: FORWARD_INGEST_CONCURRENCY,
 			reportIngestFailure: (remoteName, uid, err) => {
 				// The forward-sync loop logs its skips (pollFolder below); the backfill
 				// used to swallow them, which is how an ingest that threw on every
