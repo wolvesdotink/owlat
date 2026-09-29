@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import { languageSelectOptions } from '~/data/languageOptions';
 import { isValidEmail } from '@owlat/shared';
 
@@ -146,50 +145,9 @@ const toggleContactSelection = (contactId: Id<'contacts'>) => {
 const contactName = (contact: { firstName?: string | null; lastName?: string | null }) =>
 	[contact.firstName, contact.lastName].filter(Boolean).join(' ');
 
-// Right-click row menu — reuses the row's existing affordances (open + select)
-// plus a native copy. No new mutation path: one action source, two entry points.
-async function copyEmail(email: string) {
-	try {
-		await navigator.clipboard.writeText(email);
-		showToast(t('dashboard.audience.contacts.index.toasts.emailCopied'), 'success');
-	} catch {
-		showToast(t('dashboard.audience.contacts.index.toasts.copyFailed'), 'error');
-	}
-}
-
-function contactContextItems(contact: { _id: Id<'contacts'>; email?: string }): ContextMenuItem[] {
-	const selected = bulkSelection.selectedIds.value.has(contact._id);
-	const email = contact.email;
-	const items: ContextMenuItem[] = [
-		{
-			id: 'open',
-			label: t('dashboard.audience.contacts.index.contextMenu.open'),
-			icon: 'lucide:arrow-right',
-			run: () => void router.push(`/dashboard/audience/contacts/${contact._id}`),
-		},
-		{
-			id: 'copy-email',
-			label: t('dashboard.audience.contacts.index.contextMenu.copyEmail'),
-			icon: 'lucide:copy',
-			disabled: !email,
-			run: () => {
-				if (email) void copyEmail(email);
-			},
-		},
-	];
-	if (canManageContacts.value) {
-		items.push({
-			id: 'select',
-			label: selected
-				? t('dashboard.audience.contacts.index.contextMenu.deselect')
-				: t('dashboard.audience.contacts.index.contextMenu.select'),
-			icon: selected ? 'lucide:square' : 'lucide:check-square',
-			separatorBefore: true,
-			run: () => toggleContactSelection(contact._id),
-		});
-	}
-	return items;
-}
+/** Row click and the row menu's "Open" both land on the contact's page. */
+const openContact = (contactId: Id<'contacts'>) =>
+	void router.push(`/dashboard/audience/contacts/${contactId}`);
 
 // ============================================
 // Add Contact Modal
@@ -770,7 +728,7 @@ onUnmounted(() => {
 								<button
 									type="button"
 									class="flex-1 min-w-0 text-left"
-									@click="router.push(`/dashboard/audience/contacts/${contact._id}`)"
+									@click="openContact(contact._id)"
 								>
 									<span class="block text-text-primary font-medium truncate">{{
 										contact.email
@@ -843,61 +801,17 @@ onUnmounted(() => {
 								</tr>
 							</thead>
 							<tbody>
-								<UiContextMenu
+								<!-- One component per row with a boolean `selected`: a checkbox click
+								     re-renders the row it flips, and the menu is built on open. -->
+								<ContactsContactRow
 									v-for="contact in contacts"
 									:key="contact._id"
-									:items="contactContextItems(contact)"
-									v-slot="{ onContextmenu, onKeydown }"
-								>
-									<tr
-										class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface transition-colors cursor-pointer"
-										:class="{ 'bg-brand/5': bulkSelection.selectedIds.value.has(contact._id) }"
-										@click="router.push(`/dashboard/audience/contacts/${contact._id}`)"
-										@contextmenu="onContextmenu"
-										@keydown="onKeydown"
-									>
-										<td v-if="canManageContacts" class="w-12 px-4 py-4">
-											<button
-												class="w-5 h-5 rounded border flex items-center justify-center transition-colors"
-												:class="[
-													bulkSelection.selectedIds.value.has(contact._id)
-														? 'bg-brand border-brand text-text-inverse'
-														: 'border-border-default hover:border-border-strong',
-												]"
-												@click.stop="toggleContactSelection(contact._id)"
-												:aria-label="
-													bulkSelection.selectedIds.value.has(contact._id)
-														? t('dashboard.audience.contacts.index.deselectContact', {
-																email: contact.email,
-															})
-														: t('dashboard.audience.contacts.index.selectContact', {
-																email: contact.email,
-															})
-												"
-											>
-												<Icon
-													v-if="bulkSelection.selectedIds.value.has(contact._id)"
-													name="lucide:check"
-													class="w-3 h-3"
-												/>
-											</button>
-										</td>
-										<td class="px-6 py-4">
-											<span class="text-text-primary font-medium">{{ contact.email }}</span>
-										</td>
-										<td class="px-6 py-4">
-											<span class="text-text-secondary">{{ contact.firstName || '-' }}</span>
-										</td>
-										<td class="px-6 py-4">
-											<span class="text-text-secondary">{{ contact.lastName || '-' }}</span>
-										</td>
-										<td class="px-6 py-4">
-											<span class="text-text-tertiary text-sm">{{
-												formatDate(contact.createdAt)
-											}}</span>
-										</td>
-									</tr>
-								</UiContextMenu>
+									:contact="contact"
+									:selected="bulkSelection.selectedIds.value.has(contact._id)"
+									:can-manage="canManageContacts"
+									@open="openContact(contact._id)"
+									@toggle-select="toggleContactSelection(contact._id)"
+								/>
 							</tbody>
 						</table>
 					</div>

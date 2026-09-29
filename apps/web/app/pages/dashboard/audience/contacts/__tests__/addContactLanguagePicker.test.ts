@@ -74,7 +74,7 @@ function languageOptionTexts(): string[] {
 				UiErrorAlert: true,
 				UiSpinner: true,
 				UiEmptyState: true,
-				UiContextMenu: true,
+				ContactsContactRow: true,
 				DashboardListSkeleton: true,
 				LazyContactsCsvImportModal: true,
 				LazyContactsExportModal: true,
