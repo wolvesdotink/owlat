@@ -14,7 +14,8 @@ interface MoveArgs {
  * MOVE (RFC 6851) — atomically COPY + EXPUNGE. Each moved source message
  * is reported as `* n EXPUNGE` with its sequence number from the seq map
  * the set was resolved against, highest first, so every number is still
- * valid when the client reads it (RFC 3501 §7.4.1).
+ * valid when the client reads it (RFC 3501 §7.4.1), and the selected
+ * state's message count drops by the same amount.
  */
 export const moveModule: ImapCommandModule<MoveArgs> = {
 	verbs: ['MOVE'],
@@ -54,6 +55,16 @@ export const moveModule: ImapCommandModule<MoveArgs> = {
 						for (const seq of expunged) {
 							send(`* ${seq} EXPUNGE`);
 						}
+						// Keep the selected message count in step with the EXPUNGE
+						// lines just sent, as EXPUNGE does.
+						const selected = state.selected!;
+						deps.commit({
+							...state,
+							selected: {
+								...selected,
+								totalCount: Math.max(0, selected.totalCount - expunged.length),
+							},
+						});
 					}
 					send(`${tag} OK ${label} completed`);
 				},

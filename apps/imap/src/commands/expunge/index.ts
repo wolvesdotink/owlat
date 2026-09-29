@@ -1,7 +1,7 @@
 import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 import type { ImapCommandModule } from '../types.js';
-import { asyncSession } from '../helpers/session.js';
+import { asyncSession, syncSession } from '../helpers/session.js';
 import { serverFailure } from '../helpers/replies.js';
 import { resolveSelectedSet } from '../helpers/seqMap.js';
 
@@ -27,12 +27,21 @@ export const expungeModule: ImapCommandModule<ExpungeArgs> = {
 	requires: 'writable',
 	parseArgs(rawArgs) {
 		// Bare EXPUNGE has no args; UID dispatcher passes the rest through.
+		// Whether an argument is allowed depends on `byUid`, which the UID
+		// dispatcher sets only after parsing, so start() rejects a plain
+		// EXPUNGE that carries one.
 		return { ok: true, args: { uidSpec: rawArgs[0], byUid: false } };
 	},
 	start({ deps, state, args, tag, send }) {
 		const label = args.byUid ? 'UID EXPUNGE' : 'EXPUNGE';
 
 		const uidSpec = args.uidSpec;
+		// RFC 3501 EXPUNGE takes no arguments; a set here must not quietly turn
+		// it into UID EXPUNGE.
+		if (!args.byUid && uidSpec !== undefined) {
+			send(`${tag} BAD EXPUNGE takes no arguments`);
+			return syncSession();
+		}
 
 		return asyncSession(async () => {
 			try {

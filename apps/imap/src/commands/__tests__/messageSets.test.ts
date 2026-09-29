@@ -11,6 +11,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { getFunctionName, type AnyFunctionReference } from 'convex/server';
 import { copyModule } from '../copy/index.js';
+import { expungeModule } from '../expunge/index.js';
 import { moveModule } from '../move/index.js';
 import { uidModule } from '../uid/index.js';
 import type {
@@ -139,6 +140,7 @@ const asModule = <T>(m: ImapCommandModule<T>) => m as unknown as ImapCommandModu
 const uid = asModule(uidModule);
 const copy = asModule(copyModule);
 const move = asModule(moveModule);
+const expunge = asModule(expungeModule);
 
 describe('UID EXPUNGE resolves its set against the folder', () => {
 	const tenMessages = Array.from({ length: 10 }, (_, i) => ({
@@ -161,6 +163,13 @@ describe('UID EXPUNGE resolves its set against the folder', () => {
 		const h = harness([{ uid: 5 }, { uid: 7, deleted: true }, { uid: 9 }]);
 		await run(h, selected(3), uid, 'UID', ['EXPUNGE', '1:8']);
 		expect(h.calls('expungeFolder')[0]?.uidSet).toEqual([5, 7]);
+	});
+
+	it('answers BAD for plain EXPUNGE with a set instead of treating it as UID EXPUNGE', async () => {
+		const h = harness(tenMessages);
+		const lines = await run(h, selected(10), expunge, 'EXPUNGE', ['1:3']);
+		expect(h.mutation).not.toHaveBeenCalled();
+		expect(lines).toEqual(['a1 BAD EXPUNGE takes no arguments']);
 	});
 
 	it('skips the mutation when no UID in the set exists', async () => {
@@ -218,5 +227,13 @@ describe('COPY and MOVE address sequence numbers unless prefixed with UID', () =
 			'* 1 EXPUNGE',
 			'a1 OK UID MOVE completed',
 		]);
+	});
+
+	it('MOVE lowers the selected message count by the messages it expunged', async () => {
+		const h = harness(sparse);
+		await run(h, selected(3), move, 'MOVE', ['1,3', 'Target']);
+		expect(h.deps.commit).toHaveBeenCalledTimes(1);
+		const [committed] = vi.mocked(h.deps.commit).mock.calls[0]!;
+		expect(committed.selected?.totalCount).toBe(1);
 	});
 });
