@@ -18,11 +18,12 @@ Every webhook payload is wrapped in this envelope:
 }
 ```
 
-The HTTP request body is the JSON-stringified envelope. The HMAC signature in `X-Signature` is computed over that exact string.
+The HTTP request body is the JSON-stringified envelope. Both HMAC signatures are computed over that exact string.
 
 Headers sent with every webhook delivery:
-- `X-Signature` — HMAC-SHA256 over the body, hex-encoded
-- `X-Timestamp` — Unix seconds when the delivery was attempted
+- `X-Owlat-Signature` — `t=<timestamp>,v1=<hex>`, where `v1` is HMAC-SHA256 over `${t}.${X-Webhook-Delivery-Id}.${body}` (built in `webhooks/outboundSignature.ts`)
+- `X-Signature` — deprecated, removed after the next release: HMAC-SHA256 over the body alone, hex-encoded
+- `X-Timestamp` — Unix seconds when the delivery was attempted; the same value as `t`
 - `X-Webhook-Id` — Convex ID of the webhook subscription
 - `X-Webhook-Delivery-Id` — ID of this delivery (its delivery-log row); identical on every retry, so receivers can deduplicate redeliveries
 - `X-Webhook-Attempt` — attempt number of this request, starting at 1

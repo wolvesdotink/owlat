@@ -1213,6 +1213,7 @@ import type * as webhooks_githubHttp from '../webhooks/githubHttp.js';
 import type * as webhooks_inboundHttp from '../webhooks/inboundHttp.js';
 import type * as webhooks_inboundSignatureMirror from '../webhooks/inboundSignatureMirror.js';
 import type * as webhooks_mtaSignature from '../webhooks/mtaSignature.js';
+import type * as webhooks_outboundSignature from '../webhooks/outboundSignature.js';
 import type * as webhooks_payloads from '../webhooks/payloads.js';
 import type * as webhooks_pipeline from '../webhooks/pipeline.js';
 import type * as webhooks_pluginFeedbackDeliveries from '../webhooks/pluginFeedbackDeliveries.js';
@@ -2457,6 +2458,7 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/inboundHttp': typeof webhooks_inboundHttp;
 	'webhooks/inboundSignatureMirror': typeof webhooks_inboundSignatureMirror;
 	'webhooks/mtaSignature': typeof webhooks_mtaSignature;
+	'webhooks/outboundSignature': typeof webhooks_outboundSignature;
 	'webhooks/payloads': typeof webhooks_payloads;
 	'webhooks/pipeline': typeof webhooks_pipeline;
 	'webhooks/pluginFeedbackDeliveries': typeof webhooks_pluginFeedbackDeliveries;

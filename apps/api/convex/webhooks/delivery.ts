@@ -4,6 +4,7 @@ import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { hmacSha256Hex } from './security';
+import { OWLAT_SIGNATURE_HEADER, owlatSignatureHeader } from './outboundSignature';
 import { fetchWithGuardedDispatcher, readBodyPreview, validatePublicUrl } from '../lib/ssrfGuard';
 
 // Result type for the retry-aware delivery action.
@@ -52,7 +53,7 @@ async function previewResponseBody(response: Response): Promise<string> {
 
 // Retry configuration lives in lib/constants; the retry decision is made in
 // deliveryQueries.recordDeliveryAttempt, in the same transaction that schedules
-// the next attempt. HMAC-SHA256 signing comes from the shared ./security
+// the next attempt. HMAC-SHA256 signing comes from the shared lib/crypto
 // primitive (hmacSha256Hex) so this can't diverge from the inbound-adapter /
 // channel-webhook copies.
 
@@ -84,8 +85,16 @@ export const deliverWebhookInternal = internalAction({
 		);
 		if (claim.kind === 'skip') return { success: false, skipped: true, error: claim.reason };
 
-		const signature = await hmacSha256Hex(claim.secret, claim.payload);
 		const timestamp = Math.floor(Date.now() / 1000).toString();
+		// Binds the timestamp and delivery id to the body (see ./outboundSignature).
+		const owlatSignature = await owlatSignatureHeader(claim.secret, {
+			timestamp,
+			deliveryId: logId,
+			body: claim.payload,
+		});
+		// Deprecated body-only signature, kept for one release so existing
+		// receivers keep verifying while they move to X-Owlat-Signature.
+		const legacySignature = await hmacSha256Hex(claim.secret, claim.payload);
 
 		const startTime = Date.now();
 		let httpStatusCode: number | undefined;
@@ -104,7 +113,8 @@ export const deliverWebhookInternal = internalAction({
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
-					'X-Signature': signature,
+					[OWLAT_SIGNATURE_HEADER]: owlatSignature,
+					'X-Signature': legacySignature,
 					'X-Timestamp': timestamp,
 					'X-Webhook-Id': webhookId,
 					// Same value on every retry of this delivery, so a receiver can
