@@ -20,6 +20,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
 import { mount } from '@vue/test-utils';
 import { usePostboxEditorDocument } from '../usePostboxEditorDocument';
+import { applySignatureToBody, wrapSignatureBlock } from '../usePostboxSignatureBody';
+import { buildQuotedReply } from '../usePostboxQuotedText';
 
 function setup(initial = '<p>Numbers attached.</p>') {
 	const model = ref(initial);
@@ -159,5 +161,35 @@ describe('usePostboxEditorDocument — sanitizing incoming values', () => {
 		expect(el().innerHTML).toContain('rel="noreferrer noopener"');
 		expect(el().innerHTML).toContain('data-inline-cid="img-1"');
 		expect(el().innerHTML).toContain('src="blob:https://app.example/1234"');
+	});
+
+	it('keeps the signature marker through mount and emit, so the picker swaps the block in place', () => {
+		const { model, doc } = setup(`<p>Hello</p>${wrapSignatureBlock('<p>-- Ana</p>')}`);
+		doc().emitContent();
+
+		const swapped = applySignatureToBody(model.value, '<p>-- Team</p>');
+		expect(swapped).toContain('-- Team');
+		expect(swapped).not.toContain('-- Ana');
+		expect(swapped.match(/data-postbox-signature/g)).toHaveLength(1);
+		expect(applySignatureToBody(model.value, '')).not.toContain('-- Ana');
+	});
+
+	it('keeps the signature marker on an external model write', async () => {
+		const { model, doc } = setup('<p>Hello</p>');
+		model.value = `<p>Hello</p>${wrapSignatureBlock('<p>-- Ana</p>')}`;
+		await nextTick();
+		doc().emitContent();
+		expect(applySignatureToBody(model.value, '<p>-- Team</p>')).not.toContain('-- Ana');
+	});
+
+	it('keeps the quoted-reply bar and plain-text wrapping', () => {
+		const quoted = buildQuotedReply({
+			fromAddress: 'ana@example.com',
+			receivedAt: 0,
+			textBodyInline: 'original',
+		});
+		const { el } = setup(`<p>Reply</p>${quoted}`);
+		expect(el().innerHTML).toContain('border-left:1px solid #ccc');
+		expect(el().innerHTML).toContain('white-space:pre-wrap');
 	});
 });
