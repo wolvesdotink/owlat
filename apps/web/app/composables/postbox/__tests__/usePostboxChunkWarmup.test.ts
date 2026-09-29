@@ -1,6 +1,29 @@
 // @vitest-environment happy-dom
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect, vi } from 'vitest';
 import { usePostboxChunkWarmup, type ChunkLoader } from '../usePostboxChunkWarmup';
+
+const appRoot = join(dirname(fileURLToPath(import.meta.url)), '../../..');
+
+function vueFiles(dir: string): string[] {
+	return readdirSync(dir).flatMap((entry) => {
+		const path = join(dir, entry);
+		if (statSync(path).isDirectory()) return entry === '__tests__' ? [] : vueFiles(path);
+		return path.endsWith('.vue') ? [path] : [];
+	});
+}
+
+/** Nuxt's auto-import name for `~/components/<dirs>/<File>.vue` (prefix de-duplicated). */
+function nuxtComponentName(componentPath: string): string {
+	const segments = componentPath.replace(/\.vue$/, '').split('/');
+	const file = segments.pop()!;
+	const prefix = segments
+		.map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+		.join('');
+	return file.startsWith(prefix) ? file : `${prefix}${file}`;
+}
 
 /** A synchronous scheduler so the warm-up body runs immediately. */
 const runNow = (cb: () => void) => cb();
@@ -72,5 +95,28 @@ describe('usePostboxChunkWarmup', () => {
 		warm();
 		await flush();
 		expect(rejecting).toHaveBeenCalledTimes(1);
+	});
+
+	// A warmed module the app imports statically is already in the chunk that
+	// imports it, so the "warm-up" would fetch nothing. Every default loader must
+	// point at a component some template mounts through its lazy `<Lazy…>` name.
+	it('warms only modules the app mounts behind a lazy boundary', () => {
+		const source = readFileSync(
+			join(appRoot, 'composables/postbox/usePostboxChunkWarmup.ts'),
+			'utf8'
+		);
+		const warmed = [...source.matchAll(/import\('~\/components\/([^']+\.vue)'\)/g)].map(
+			(match) => match[1]!
+		);
+		expect(warmed.length).toBeGreaterThan(0);
+
+		const templates = vueFiles(appRoot).map((file) => readFileSync(file, 'utf8'));
+		for (const componentPath of warmed) {
+			const lazyTag = `<Lazy${nuxtComponentName(componentPath)}`;
+			expect(
+				templates.some((template) => template.includes(lazyTag)),
+				`${componentPath} is warmed but nothing mounts ${lazyTag}`
+			).toBe(true);
+		}
 	});
 });

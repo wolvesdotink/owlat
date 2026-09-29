@@ -1,16 +1,20 @@
 /**
  * Post-first-paint chunk warm-up for the Postbox.
  *
- * The inbox list is what the user sees first, so the composer and the
- * reader-heavy code (sanitize-html, the rich editor) are not on the critical
- * path for first paint. But once the list has settled, the very next thing a
- * user does is press `c` (compose) or `Enter` (open a message) — and if those
- * chunks still need to be downloaded, that first interaction stalls.
+ * The inbox list is what the user sees first, so code the shell loads on demand
+ * is not on the critical path for first paint. But once the list has settled,
+ * the next thing a user does is often press `/` (search) or `c` (compose), and
+ * if that chunk still has to be downloaded, the first interaction stalls.
  *
  * After the list settles we therefore idle-prefetch those chunks with
  * `requestIdleCallback` so the code is already parsed by the time it's needed.
  * This is a pure warm-up: the loaders only pull the module into the bundler's
  * cache, they never mount anything, and every failure is swallowed.
+ *
+ * Only modules that sit behind a real async boundary belong here: a module the
+ * page already imports statically is in its chunk, and importing it again
+ * fetches nothing. A test pins every default loader to a lazy mount
+ * (`<Lazy…>`) in the app, so the list cannot drift back to no-ops.
  *
  * Deliberately excluded: the Designer-mode `@owlat/email-builder` chunk, which
  * stays lazy (it is large and rarely used) — see PostboxComposer.vue.
@@ -37,14 +41,14 @@ function defaultIdleScheduler(cb: () => void): void {
 }
 
 /**
- * Default chunks to warm: the composer stack (compose / reply) and the
- * reader-heavy body renderer. NOT the EmailBuilder.
+ * Default chunks to warm, each mounted lazily by the dashboard shell: the
+ * command palette (the Postbox `/` search opens it) and the composer stack the
+ * shell mounts when a composer opens (`ShellComposerOverlay`). NOT the
+ * EmailBuilder.
  */
 const DEFAULT_LOADERS: ChunkLoader[] = [
+	() => import('~/components/AppCommandPalette.vue'),
 	() => import('~/components/postbox/PostboxComposerStack.vue'),
-	() => import('~/components/postbox/PostboxComposerPopup.vue'),
-	() => import('~/components/postbox/PostboxThreadReader.vue'),
-	() => import('~/components/postbox/PostboxMessageBody.vue'),
 ];
 
 export function usePostboxChunkWarmup(options?: {

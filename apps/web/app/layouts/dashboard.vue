@@ -3,12 +3,19 @@ import { announcedPageLabel, shouldMoveFocusToMain } from '~/utils/liveAnnounce'
 import { useSectionNavigation } from '~/composables/useSectionNavigation';
 import { CORE_NAV_HREFS } from '~/lib/dashboardNavigationCore';
 import { UNDO_TOAST_REGION_ID } from '~/utils/undoToastRegion';
+import { useCommandPaletteHost } from '~/composables/useCommandPaletteHost';
+import { useMountOnFirst } from '~/composables/useMountOnFirst';
 
 const { t } = useI18n();
 const route = useRoute();
 
 // Initialize keyboard shortcuts
-const { registerNavigationShortcuts } = useKeyboardShortcuts();
+const { registerNavigationShortcuts, isHelpModalOpen } = useKeyboardShortcuts();
+
+// The palette and the "?" sheet stay off the boot path: each mounts the first
+// time it is asked for, and stays mounted after that.
+const { paletteRequested, paletteInitialOpen, onPaletteReady } = useCommandPaletteHost();
+const helpRequested = useMountOnFirst(isHelpModalOpen);
 
 // Feed this user's keyboard map (preset + their own remaps) into the shortcut
 // registry, so every surface below dispatches and documents the same chords.
@@ -393,8 +400,8 @@ const sidebarDesktopClass = computed(() => {
 		</a>
 
 		<!-- Native window titlebar (desktop only; no-op on web). `show-search`:
-		     this layout mounts <AppCommandPalette> below, so the pill has a
-		     listener. -->
+		     this layout hosts <AppCommandPalette> below (mounted on first open),
+		     so the pill has a listener. -->
 		<DesktopTitlebar show-search />
 
 		<!-- Fill the iOS notch / dynamic island area so scrolled content never peeks through above the header. -->
@@ -591,7 +598,11 @@ const sidebarDesktopClass = computed(() => {
 
 		<!-- App-wide command palette (Cmd/Ctrl-K), route-scoped: mail search on
 		     Postbox, knowledge Ask on Cmd/Ctrl+Shift+K, objects everywhere else -->
-		<AppCommandPalette />
+		<LazyAppCommandPalette
+			v-if="paletteRequested"
+			:initial-open="paletteInitialOpen"
+			@ready="onPaletteReady"
+		/>
 
 		<!-- Compose over the current page (the top-bar button, the palette and
 		     the c chord), never by navigating to the mailbox. -->
@@ -603,7 +614,7 @@ const sidebarDesktopClass = computed(() => {
 		<div :id="UNDO_TOAST_REGION_ID" class="fixed bottom-4 left-4 z-50 flex flex-col gap-2" />
 
 		<!-- Keyboard shortcuts help modal -->
-		<KeyboardShortcutsHelp />
+		<LazyKeyboardShortcutsHelp v-if="helpRequested" />
 
 		<!-- The app's one pair of live regions. Mounted last and never unmounted:
 		     a region has to be in the document before the text lands in it, so
