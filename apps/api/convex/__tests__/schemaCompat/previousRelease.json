@@ -1,6 +1,6 @@
 {
-	"release": "v0.6.4",
-	"commit": "e2677dad672f73eb6ec0a609dca523ea7ae13b0b",
+	"release": "v0.6.5",
+	"commit": "0f9f54f1c0d09ac11d18c9311f9fd80d7263e3d0",
 	"tables": {
 		"accessRequests": {"type": "object", "value": {
 			"authUserId": {"fieldType":{"type":"string"},"optional":false},
@@ -138,7 +138,7 @@
 			"model": {"fieldType":{"type":"string"},"optional":true},
 			"ownerId": {"fieldType":{"type":"string"},"optional":false},
 			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"streaming"},{"type":"literal","value":"complete"},{"type":"literal","value":"error"}]},"optional":false},
-			"surface": {"fieldType":{"type":"union","value":[{"type":"literal","value":"compose"},{"type":"literal","value":"review"}]},"optional":false},
+			"surface": {"fieldType":{"type":"union","value":[{"type":"literal","value":"compose"},{"type":"literal","value":"review"},{"type":"literal","value":"suggest"}]},"optional":false},
 			"text": {"fieldType":{"type":"string"},"optional":false},
 			"tokenUsage": {"fieldType":{"type":"object","value":{"promptTokens":{"fieldType":{"type":"number"},"optional":false},"completionTokens":{"fieldType":{"type":"number"},"optional":false},"totalTokens":{"fieldType":{"type":"number"},"optional":false}}},"optional":true},
 			"updatedAt": {"fieldType":{"type":"number"},"optional":false}
@@ -660,6 +660,23 @@
 			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"open"},{"type":"literal","value":"waiting"},{"type":"literal","value":"resolved"},{"type":"literal","value":"closed"}]},"optional":false},
 			"subject": {"fieldType":{"type":"string"},"optional":false}
 		}},
+		"counterBuckets": {"type": "object", "value": {
+			"bucket": {"fieldType":{"type":"string"},"optional":false},
+			"count": {"fieldType":{"type":"number"},"optional":false},
+			"scope": {"fieldType":{"type":"string"},"optional":false},
+			"updatedAt": {"fieldType":{"type":"number"},"optional":false}
+		}},
+		"counterScopes": {"type": "object", "value": {
+			"completedAt": {"fieldType":{"type":"number"},"optional":true},
+			"cursor": {"fieldType":{"type":"union","value":[{"type":"string"},{"type":"null"}]},"optional":false},
+			"isReady": {"fieldType":{"type":"boolean"},"optional":false},
+			"kind": {"fieldType":{"type":"union","value":[{"type":"literal","value":"mailLabelUnread"},{"type":"literal","value":"mailSectionUnread"},{"type":"literal","value":"mailFolderArrivals"},{"type":"literal","value":"campaignStatus"},{"type":"literal","value":"templateType"},{"type":"literal","value":"automationStatus"},{"type":"literal","value":"contactCreatedDay"}]},"optional":false},
+			"ownerId": {"fieldType":{"type":"string"},"optional":true},
+			"scope": {"fieldType":{"type":"string"},"optional":false},
+			"startedAt": {"fieldType":{"type":"number"},"optional":false},
+			"updatedAt": {"fieldType":{"type":"number"},"optional":false},
+			"watermark": {"fieldType":{"type":"object","value":{"key":{"fieldType":{"type":"number"},"optional":false},"creationTime":{"fieldType":{"type":"number"},"optional":false}}},"optional":true}
+		}},
 		"dashboardLayouts": {"type": "object", "value": {
 			"pinnedCards": {"fieldType":{"type":"array","value":{"type":"object","value":{"type":{"fieldType":{"type":"string"},"optional":false},"size":{"fieldType":{"type":"union","value":[{"type":"literal","value":"small"},{"type":"literal","value":"medium"},{"type":"literal","value":"large"}]},"optional":false}}}},"optional":true},
 			"rules": {"fieldType":{"type":"array","value":{"type":"object","value":{"condition":{"fieldType":{"type":"object","value":{"timeRange":{"fieldType":{"type":"object","value":{"start":{"fieldType":{"type":"string"},"optional":false},"end":{"fieldType":{"type":"string"},"optional":false}}},"optional":true},"dayOfWeek":{"fieldType":{"type":"array","value":{"type":"number"}},"optional":true},"role":{"fieldType":{"type":"string"},"optional":true}}},"optional":false},"cards":{"fieldType":{"type":"array","value":{"type":"object","value":{"type":{"fieldType":{"type":"string"},"optional":false},"size":{"fieldType":{"type":"union","value":[{"type":"literal","value":"small"},{"type":"literal","value":"medium"},{"type":"literal","value":"large"}]},"optional":false}}}},"optional":false},"priority":{"fieldType":{"type":"number"},"optional":false}}}},"optional":false},
@@ -939,10 +956,21 @@
 			"type": {"fieldType":{"type":"union","value":[{"type":"literal","value":"marketing"},{"type":"literal","value":"transactional"}]},"optional":false},
 			"updatedAt": {"fieldType":{"type":"number"},"optional":false}
 		}},
+		"externalMailAccessTokens": {"type": "object", "value": {
+			"accountId": {"fieldType":{"type":"id","tableName":"externalMailAccounts"},"optional":false},
+			"expiresAt": {"fieldType":{"type":"number"},"optional":false},
+			"secretAuthTag": {"fieldType":{"type":"string"},"optional":false},
+			"secretCiphertext": {"fieldType":{"type":"string"},"optional":false},
+			"secretEnvelopeVersion": {"fieldType":{"type":"number"},"optional":false},
+			"secretIv": {"fieldType":{"type":"string"},"optional":false},
+			"sourceIv": {"fieldType":{"type":"string"},"optional":false},
+			"updatedAt": {"fieldType":{"type":"number"},"optional":false}
+		}},
 		"externalMailAccounts": {"type": "object", "value": {
 			"adminRetiredAt": {"fieldType":{"type":"number"},"optional":true},
 			"authMethod": {"fieldType":{"type":"union","value":[{"type":"literal","value":"password"},{"type":"literal","value":"oauth2"}]},"optional":false},
 			"createdAt": {"fieldType":{"type":"number"},"optional":false},
+			"fullSyncAlignedAt": {"fieldType":{"type":"number"},"optional":true},
 			"imapHost": {"fieldType":{"type":"string"},"optional":false},
 			"imapPort": {"fieldType":{"type":"number"},"optional":false},
 			"imapUsername": {"fieldType":{"type":"string"},"optional":false},
@@ -969,6 +997,7 @@
 			"smtpPort": {"fieldType":{"type":"number"},"optional":false},
 			"smtpUsername": {"fieldType":{"type":"string"},"optional":true},
 			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"pending"},{"type":"literal","value":"connected"},{"type":"literal","value":"auth_error"},{"type":"literal","value":"error"},{"type":"literal","value":"disconnected"}]},"optional":false},
+			"syncMode": {"fieldType":{"type":"union","value":[{"type":"literal","value":"full"},{"type":"literal","value":"incoming"}]},"optional":true},
 			"updatedAt": {"fieldType":{"type":"number"},"optional":false},
 			"userId": {"fieldType":{"type":"string"},"optional":false}
 		}},
@@ -997,6 +1026,23 @@
 			"returnTo": {"fieldType":{"type":"string"},"optional":false},
 			"state": {"fieldType":{"type":"string"},"optional":false},
 			"userId": {"fieldType":{"type":"string"},"optional":false}
+		}},
+		"externalMailRemoteOps": {"type": "object", "value": {
+			"accountId": {"fieldType":{"type":"id","tableName":"externalMailAccounts"},"optional":false},
+			"attempts": {"fieldType":{"type":"number"},"optional":false},
+			"createdAt": {"fieldType":{"type":"number"},"optional":false},
+			"flags": {"fieldType":{"type":"object","value":{"seen":{"fieldType":{"type":"boolean"},"optional":true},"flagged":{"fieldType":{"type":"boolean"},"optional":true},"answered":{"fieldType":{"type":"boolean"},"optional":true}}},"optional":true},
+			"kind": {"fieldType":{"type":"union","value":[{"type":"literal","value":"move"},{"type":"literal","value":"flags"},{"type":"literal","value":"delete"},{"type":"literal","value":"renameFolder"},{"type":"literal","value":"deleteFolder"}]},"optional":false},
+			"lastError": {"fieldType":{"type":"string"},"optional":true},
+			"nextAttemptAt": {"fieldType":{"type":"number"},"optional":false},
+			"rfc822MessageId": {"fieldType":{"type":"string"},"optional":true},
+			"source": {"fieldType":{"type":"union","value":[{"type":"object","value":{"role":{"fieldType":{"type":"union","value":[{"type":"literal","value":"inbox"},{"type":"literal","value":"sent"},{"type":"literal","value":"drafts"},{"type":"literal","value":"trash"},{"type":"literal","value":"spam"},{"type":"literal","value":"archive"}]},"optional":false}}},{"type":"object","value":{"path":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":false}}},{"type":"object","value":{"remote":{"fieldType":{"type":"string"},"optional":false}}}]},"optional":false},
+			"target": {"fieldType":{"type":"union","value":[{"type":"object","value":{"role":{"fieldType":{"type":"union","value":[{"type":"literal","value":"inbox"},{"type":"literal","value":"sent"},{"type":"literal","value":"drafts"},{"type":"literal","value":"trash"},{"type":"literal","value":"spam"},{"type":"literal","value":"archive"}]},"optional":false}}},{"type":"object","value":{"path":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":false}}},{"type":"object","value":{"remote":{"fieldType":{"type":"string"},"optional":false}}}]},"optional":true}
+		}},
+		"featureFlagSettings": {"type": "object", "value": {
+			"featureFlags": {"fieldType":{"type":"record","keys":{"type":"string"},"values":{"fieldType":{"type":"boolean"},"optional":false}},"optional":true},
+			"pluginCapabilityGrants": {"fieldType":{"type":"record","keys":{"type":"string"},"values":{"fieldType":{"type":"record","keys":{"type":"string"},"values":{"fieldType":{"type":"boolean"},"optional":false}},"optional":false}},"optional":true},
+			"updatedAt": {"fieldType":{"type":"number"},"optional":false}
 		}},
 		"formEndpoints": {"type": "object", "value": {
 			"createdAt": {"fieldType":{"type":"number"},"optional":false},
@@ -1157,6 +1203,18 @@
 			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"scheduled"},{"type":"literal","value":"sending"},{"type":"literal","value":"sent"},{"type":"literal","value":"failed"},{"type":"literal","value":"cancelled"}]},"optional":false},
 			"subject": {"fieldType":{"type":"string"},"optional":false},
 			"threadId": {"fieldType":{"type":"id","tableName":"conversationThreads"},"optional":false}
+		}},
+		"instanceCounters": {"type": "object", "value": {
+			"contactCount": {"fieldType":{"type":"number"},"optional":true},
+			"dailySendCount": {"fieldType":{"type":"number"},"optional":true},
+			"dailySendCountResetAt": {"fieldType":{"type":"number"},"optional":true},
+			"deliveryTestLastSucceededAt": {"fieldType":{"type":"number"},"optional":true},
+			"inboxStats": {"fieldType":{"type":"object","value":{"received":{"fieldType":{"type":"number"},"optional":false},"processing":{"fieldType":{"type":"number"},"optional":false},"draftReady":{"fieldType":{"type":"number"},"optional":false},"approved":{"fieldType":{"type":"number"},"optional":false},"sent":{"fieldType":{"type":"number"},"optional":false},"quarantined":{"fieldType":{"type":"number"},"optional":false},"failed":{"fieldType":{"type":"number"},"optional":false},"rejected":{"fieldType":{"type":"number"},"optional":false},"archived":{"fieldType":{"type":"number"},"optional":false},"informational":{"fieldType":{"type":"number"},"optional":true},"total":{"fieldType":{"type":"number"},"optional":false}}},"optional":true},
+			"key": {"fieldType":{"type":"union","value":[{"type":"literal","value":"contacts"},{"type":"literal","value":"inbox"},{"type":"literal","value":"sends"},{"type":"literal","value":"mtaHealth"},{"type":"literal","value":"deliveryTest"}]},"optional":false},
+			"mtaHealth": {"fieldType":{"type":"object","value":{"status":{"fieldType":{"type":"union","value":[{"type":"literal","value":"ok"},{"type":"literal","value":"degraded"},{"type":"literal","value":"unreachable"}]},"optional":false},"isRedisConnected":{"fieldType":{"type":"boolean"},"optional":true},"isWorkerAlive":{"fieldType":{"type":"boolean"},"optional":true},"isDnsReachable":{"fieldType":{"type":"boolean"},"optional":true},"isAllIpsBlocked":{"fieldType":{"type":"boolean"},"optional":true},"smtpOutbound":{"fieldType":{"type":"object","value":{"status":{"fieldType":{"type":"union","value":[{"type":"literal","value":"ok"},{"type":"literal","value":"degraded"}]},"optional":false},"checkedAt":{"fieldType":{"type":"number"},"optional":false},"ips":{"fieldType":{"type":"array","value":{"type":"object","value":{"ip":{"fieldType":{"type":"string"},"optional":false},"status":{"fieldType":{"type":"union","value":[{"type":"literal","value":"ok"},{"type":"literal","value":"failed"}]},"optional":false},"reason":{"fieldType":{"type":"string"},"optional":true},"sourceBinding":{"fieldType":{"type":"union","value":[{"type":"literal","value":"bound"},{"type":"literal","value":"nat"}]},"optional":true}}}},"optional":false}}},"optional":true},"smtpTls":{"fieldType":{"type":"object","value":{"status":{"fieldType":{"type":"union","value":[{"type":"literal","value":"pass"},{"type":"literal","value":"warn"},{"type":"literal","value":"fail"}]},"optional":false},"hostname":{"fieldType":{"type":"string"},"optional":false},"isHostnameMatched":{"fieldType":{"type":"boolean"},"optional":false},"validFrom":{"fieldType":{"type":"number"},"optional":true},"validTo":{"fieldType":{"type":"number"},"optional":true},"reason":{"fieldType":{"type":"string"},"optional":true},"checkedAt":{"fieldType":{"type":"number"},"optional":false}}},"optional":true},"observedAt":{"fieldType":{"type":"number"},"optional":false}}},"optional":true},
+			"openThreads": {"fieldType":{"type":"number"},"optional":true},
+			"transactionalSendCount": {"fieldType":{"type":"number"},"optional":true},
+			"updatedAt": {"fieldType":{"type":"number"},"optional":false}
 		}},
 		"instanceSettings": {"type": "object", "value": {
 			"abuseStatus": {"fieldType":{"type":"union","value":[{"type":"literal","value":"clean"},{"type":"literal","value":"warned"},{"type":"literal","value":"suspended"},{"type":"literal","value":"banned"}]},"optional":true},
@@ -1580,6 +1638,18 @@
 			"order": {"fieldType":{"type":"number"},"optional":true},
 			"parentId": {"fieldType":{"type":"id","tableName":"mailLabels"},"optional":true}
 		}},
+		"mailMessageBodies": {"type": "object", "value": {
+			"htmlBodyInline": {"fieldType":{"type":"string"},"optional":true},
+			"messageId": {"fieldType":{"type":"id","tableName":"mailMessages"},"optional":false},
+			"textBodyInline": {"fieldType":{"type":"string"},"optional":true}
+		}},
+		"mailMessageParts": {"type": "object", "value": {
+			"calendarStorageId": {"fieldType":{"type":"id","tableName":"_storage"},"optional":true},
+			"createdAt": {"fieldType":{"type":"number"},"optional":false},
+			"parts": {"fieldType":{"type":"array","value":{"type":"object","value":{"filename":{"fieldType":{"type":"string"},"optional":false},"contentType":{"fieldType":{"type":"string"},"optional":false},"size":{"fieldType":{"type":"number"},"optional":false},"storageId":{"fieldType":{"type":"id","tableName":"_storage"},"optional":false}}}},"optional":false},
+			"rawStorageId": {"fieldType":{"type":"id","tableName":"_storage"},"optional":false},
+			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"stored"},{"type":"literal","value":"too_many_parts"}]},"optional":false}
+		}},
 		"mailMessages": {"type": "object", "value": {
 			"arcSealer": {"fieldType":{"type":"string"},"optional":true},
 			"attachments": {"fieldType":{"type":"array","value":{"type":"object","value":{"filename":{"fieldType":{"type":"string"},"optional":false},"contentType":{"fieldType":{"type":"string"},"optional":false},"size":{"fieldType":{"type":"number"},"optional":false},"contentId":{"fieldType":{"type":"string"},"optional":true},"partIndex":{"fieldType":{"type":"string"},"optional":false}}}},"optional":false},
@@ -1703,11 +1773,12 @@
 			"latestMessageId": {"fieldType":{"type":"id","tableName":"mailMessages"},"optional":true},
 			"latestReply": {"fieldType":{"type":"object","value":{"messageId":{"fieldType":{"type":"id","tableName":"mailMessages"},"optional":false},"byUserId":{"fieldType":{"type":"string"},"optional":true},"at":{"fieldType":{"type":"number"},"optional":false},"isFromPersonalAddress":{"fieldType":{"type":"boolean"},"optional":true}}},"optional":true},
 			"latestSnippet": {"fieldType":{"type":"string"},"optional":false},
+			"latestSnoozedUntil": {"fieldType":{"type":"union","value":[{"type":"number"},{"type":"null"}]},"optional":true},
 			"latestSubject": {"fieldType":{"type":"string"},"optional":false},
 			"mailboxId": {"fieldType":{"type":"id","tableName":"mailboxes"},"optional":false},
 			"messageCount": {"fieldType":{"type":"number"},"optional":false},
 			"mutedAt": {"fieldType":{"type":"number"},"optional":true},
-			"needsReply": {"fieldType":{"type":"object","value":{"messageId":{"fieldType":{"type":"id","tableName":"mailMessages"},"optional":false},"source":{"fieldType":{"type":"union","value":[{"type":"literal","value":"heuristic"},{"type":"literal","value":"llm"}]},"optional":false},"urgency":{"fieldType":{"type":"union","value":[{"type":"literal","value":"high"},{"type":"literal","value":"normal"},{"type":"literal","value":"low"}]},"optional":false},"priorityScore":{"fieldType":{"type":"number"},"optional":true},"askSummary":{"fieldType":{"type":"string"},"optional":true},"dueHint":{"fieldType":{"type":"string"},"optional":true},"meetingIntent":{"fieldType":{"type":"object","value":{"isScheduling":{"fieldType":{"type":"boolean"},"optional":false},"proposedTimes":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":false},"topic":{"fieldType":{"type":"string"},"optional":true}}},"optional":true},"clarification":{"fieldType":{"type":"object","value":{"isNeeded":{"fieldType":{"type":"boolean"},"optional":false},"questions":{"fieldType":{"type":"array","value":{"type":"object","value":{"id":{"fieldType":{"type":"string"},"optional":false},"slotType":{"fieldType":{"type":"string"},"optional":false},"text":{"fieldType":{"type":"string"},"optional":false},"attribution":{"fieldType":{"type":"string"},"optional":false},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true},"translations":{"fieldType":{"type":"array","value":{"type":"object","value":{"locale":{"fieldType":{"type":"string"},"optional":false},"text":{"fieldType":{"type":"string"},"optional":false},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true}}}},"optional":true},"answer":{"fieldType":{"type":"object","value":{"value":{"fieldType":{"type":"string"},"optional":false},"at":{"fieldType":{"type":"number"},"optional":false}}},"optional":true}}}},"optional":false},"askedAt":{"fieldType":{"type":"number"},"optional":false},"answeredAt":{"fieldType":{"type":"number"},"optional":true},"draft":{"fieldType":{"type":"string"},"optional":true}}},"optional":true},"detectedAt":{"fieldType":{"type":"number"},"optional":false},"draftSlot":{"fieldType":{"type":"object","value":{"draft":{"fieldType":{"type":"string"},"optional":false},"draftSubject":{"fieldType":{"type":"string"},"optional":true},"confidence":{"fieldType":{"type":"number"},"optional":false},"quality":{"fieldType":{"type":"object","value":{"score":{"fieldType":{"type":"number"},"optional":false},"complete":{"fieldType":{"type":"boolean"},"optional":false},"grounded":{"fieldType":{"type":"boolean"},"optional":false},"flags":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":false}}},"optional":true},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true},"generatedAt":{"fieldType":{"type":"number"},"optional":false}}},"optional":true}}},"optional":true},
+			"needsReply": {"fieldType":{"type":"object","value":{"messageId":{"fieldType":{"type":"id","tableName":"mailMessages"},"optional":false},"source":{"fieldType":{"type":"union","value":[{"type":"literal","value":"heuristic"},{"type":"literal","value":"llm"}]},"optional":false},"urgency":{"fieldType":{"type":"union","value":[{"type":"literal","value":"high"},{"type":"literal","value":"normal"},{"type":"literal","value":"low"}]},"optional":false},"priorityScore":{"fieldType":{"type":"number"},"optional":true},"askSummary":{"fieldType":{"type":"string"},"optional":true},"dueHint":{"fieldType":{"type":"string"},"optional":true},"meetingIntent":{"fieldType":{"type":"object","value":{"isScheduling":{"fieldType":{"type":"boolean"},"optional":false},"proposedTimes":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":false},"topic":{"fieldType":{"type":"string"},"optional":true}}},"optional":true},"clarification":{"fieldType":{"type":"object","value":{"isNeeded":{"fieldType":{"type":"boolean"},"optional":false},"questions":{"fieldType":{"type":"array","value":{"type":"object","value":{"id":{"fieldType":{"type":"string"},"optional":false},"slotType":{"fieldType":{"type":"string"},"optional":false},"text":{"fieldType":{"type":"string"},"optional":false},"attribution":{"fieldType":{"type":"string"},"optional":false},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true},"translations":{"fieldType":{"type":"array","value":{"type":"object","value":{"locale":{"fieldType":{"type":"string"},"optional":false},"text":{"fieldType":{"type":"string"},"optional":false},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true}}}},"optional":true},"answer":{"fieldType":{"type":"object","value":{"value":{"fieldType":{"type":"string"},"optional":false},"at":{"fieldType":{"type":"number"},"optional":false}}},"optional":true}}}},"optional":false},"askedAt":{"fieldType":{"type":"number"},"optional":false},"answeredAt":{"fieldType":{"type":"number"},"optional":true},"draft":{"fieldType":{"type":"string"},"optional":true}}},"optional":true},"detectedAt":{"fieldType":{"type":"number"},"optional":false},"draftSlot":{"fieldType":{"type":"object","value":{"draft":{"fieldType":{"type":"string"},"optional":false},"draftSubject":{"fieldType":{"type":"string"},"optional":true},"confidence":{"fieldType":{"type":"number"},"optional":false},"quality":{"fieldType":{"type":"object","value":{"score":{"fieldType":{"type":"number"},"optional":false},"complete":{"fieldType":{"type":"boolean"},"optional":false},"grounded":{"fieldType":{"type":"boolean"},"optional":false},"flags":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":false}}},"optional":true},"options":{"fieldType":{"type":"array","value":{"type":"string"}},"optional":true},"generatedAt":{"fieldType":{"type":"number"},"optional":false}}},"optional":true},"trigger":{"fieldType":{"type":"object","value":{"fromAddress":{"fieldType":{"type":"string"},"optional":false},"fromName":{"fieldType":{"type":"string"},"optional":true},"subject":{"fieldType":{"type":"string"},"optional":false},"receivedAt":{"fieldType":{"type":"number"},"optional":false}}},"optional":true}}},"optional":true},
 			"needsReplyPendingAt": {"fieldType":{"type":"number"},"optional":true},
 			"normalizedSubject": {"fieldType":{"type":"string"},"optional":false},
 			"notifyOnReplyAt": {"fieldType":{"type":"number"},"optional":true},
@@ -1851,6 +1922,12 @@
 			"resolvedAt": {"fieldType":{"type":"number"},"optional":true},
 			"resolvedByUserId": {"fieldType":{"type":"string"},"optional":true},
 			"status": {"fieldType":{"type":"union","value":[{"type":"literal","value":"open"},{"type":"literal","value":"fulfilled"},{"type":"literal","value":"resolved"}]},"optional":false}
+		}},
+		"mailboxUsage": {"type": "object", "value": {
+			"mailboxId": {"fieldType":{"type":"id","tableName":"mailboxes"},"optional":false},
+			"updatedAt": {"fieldType":{"type":"number"},"optional":false},
+			"usageRevision": {"fieldType":{"type":"number"},"optional":false},
+			"usedBytes": {"fieldType":{"type":"number"},"optional":false}
 		}},
 		"mailboxes": {"type": "object", "value": {
 			"address": {"fieldType":{"type":"string"},"optional":false},
