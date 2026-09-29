@@ -6,7 +6,10 @@ import type {
 	InboundBatchAdapter,
 	InboundBatchParser,
 } from './pipeline';
-import { verifyProviderFeedbackRequest } from './providerVerifierRegistry';
+import {
+	missingDeclaredSignatureHeaders,
+	verifyProviderFeedbackRequest,
+} from './providerVerifierRegistry';
 
 function isBatchParser(parser: AnyInboundParser): parser is InboundBatchParser {
 	return 'parseEvents' in parser;
@@ -64,6 +67,8 @@ export function composeProviderFeedbackAdapter<K extends string>(
 		// Every declared scheme but SNS is an HMAC over the capped body, so it is
 		// checked before the request spends an ingestion token.
 		verifyBeforeRateLimit: contribution.verifier.scheme !== LEGACY_VERIFIER_SCHEME,
+		missingSignatureHeaders: (request: Request) =>
+			missingDeclaredSignatureHeaders(request, contribution.verifier),
 		...(parser.shouldStoreRawPayload
 			? { shouldStoreRawPayload: parser.shouldStoreRawPayload.bind(parser) }
 			: {}),

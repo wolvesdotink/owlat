@@ -105,10 +105,15 @@ describe('handleSmsWebhook (Twilio)', () => {
 	it('rejects (503) when TWILIO_AUTH_TOKEN is unset', async () => {
 		delete process.env['TWILIO_AUTH_TOKEN'];
 		const t = setupTest();
+		// Signed, so the request gets past the missing-header refusal to the
+		// configuration check.
 		const res = await t.fetch(TWILIO_URL_PATH, {
 			method: 'POST',
 			body: TWILIO_BODY.toString(),
-			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			headers: {
+				'Content-Type': 'application/x-www-form-urlencoded',
+				'X-Twilio-Signature': 'unverifiable',
+			},
 		});
 		expect(res.status).toBe(503);
 	});
@@ -192,7 +197,7 @@ describe('handleWhatsAppWebhook POST (Meta)', () => {
 		const res = await t.fetch(WHATSAPP_URL_PATH, {
 			method: 'POST',
 			body: META_BODY,
-			headers: { 'Content-Type': 'application/json' },
+			headers: { 'Content-Type': 'application/json', 'X-Hub-Signature-256': 'sha256=00' },
 		});
 		expect(res.status).toBe(503);
 	});
@@ -280,7 +285,7 @@ describe('handleGenericWebhook', () => {
 		const res = await t.fetch(GENERIC_URL_PATH, {
 			method: 'POST',
 			body: GENERIC_BODY,
-			headers: { 'Content-Type': 'application/json' },
+			headers: { 'Content-Type': 'application/json', 'x-webhook-secret': 'unverifiable' },
 		});
 		expect(res.status).toBe(503);
 	});

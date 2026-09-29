@@ -2,9 +2,11 @@ import { BodyTooLargeError, readBodyText } from '../lib/readBody';
 /**
  * Inbound webhook pipeline — shared HTTP shell for per-provider adapters.
  *
- * Pipeline: rate-limit → adapter.verifySignature → conditional audit-store
- * → adapter.parseEvent → dispatchInboundEvent → HTTP response. An adapter that
- * sets `verifyBeforeRateLimit` swaps the first two steps.
+ * Pipeline: signature-header check → rate-limit → adapter.verifySignature →
+ * conditional audit-store → adapter.parseEvent → dispatchInboundEvent → HTTP
+ * response. An adapter that sets `verifyBeforeRateLimit` swaps the rate limit
+ * and the verification, with the bounded free read described on
+ * `FREE_VERIFY_BODY_BYTES` (`./security.ts`).
  *
  * Replaces the verify/parse/audit/dispatch ceremony that each provider's own
  * HTTP entry point used to open-code. The send-provider half of those entry
@@ -18,6 +20,7 @@ import type { ActionCtx } from '../_generated/server';
 import { getClientIp, rateLimitedResponse } from '../lib/publicRateLimit';
 import { logError } from '../lib/runtimeLog';
 import { InboundBatchDispatchError, dispatchEventsInOrder, jsonResponse } from './inboundHttp';
+import { declaresBodyAtMost, FREE_VERIFY_BODY_BYTES } from './security';
 import type { InboundEvent } from './types';
 
 /**
@@ -150,13 +153,24 @@ export interface InboundAdapter<S extends string = string> extends InboundParser
 	 * secrets) leave it unset and are charged first.
 	 */
 	readonly verifyBeforeRateLimit?: boolean;
+	/**
+	 * The reason `verifySignature` would give for a request missing the headers
+	 * it cannot succeed without, or `null` when they are all present. Checked
+	 * first: a request with a reason is refused with 401 before its body is read
+	 * or any bucket is charged. Adapters whose signature travels in the body
+	 * (SNS) leave it unset.
+	 */
+	missingSignatureHeaders?(request: Request): string | null;
 }
 
 /** The batch shape of {@link InboundAdapter}. */
 export interface InboundBatchAdapter<S extends string = string>
 	extends
 		InboundBatchParser<S>,
-		Pick<InboundAdapter<S>, 'verifySignature' | 'verifyBeforeRateLimit'> {}
+		Pick<
+			InboundAdapter<S>,
+			'verifySignature' | 'verifyBeforeRateLimit' | 'missingSignatureHeaders'
+		> {}
 
 /** Either adapter shape. What `runInboundPipeline` accepts. */
 export type AnyInboundAdapter<S extends string = string> =
@@ -172,6 +186,14 @@ export async function runInboundPipeline(
 		return jsonResponse(405, { error: 'Method not allowed' });
 	}
 
+	// A request without the scheme's signature headers cannot verify, so it is
+	// refused before the body is read or any bucket is charged.
+	const missingHeaders = adapter.missingSignatureHeaders?.(request) ?? null;
+	if (missingHeaders !== null) {
+		logError(`[${adapter.source} Webhook] ${missingHeaders}`);
+		return jsonResponse(401, { error: missingHeaders });
+	}
+
 	// Key the ingestion bucket per provider source (`<source>:<ip>`).
 	// getClientIp() collapses to 'unknown' for every caller when
 	// RATE_LIMIT_TRUSTED_PROXY is unset (the default). Without the per-source
@@ -180,16 +202,17 @@ export async function runInboundPipeline(
 	// dropping suppression events and harming sender reputation. Per-source keys
 	// confine a flood to the targeted provider. Adapters with a local signature
 	// check are charged only once the check passes; the rest are charged first.
-	const chargeIngestion = async (): Promise<Response | null> => {
-		const ip = getClientIp(request);
+	const ip = getClientIp(request);
+	const charge = async (key: string): Promise<Response | null> => {
 		const { ok: rateOk, retryAfter } = await ctx.runMutation(
 			internal.lib.publicRateLimit.checkPublicRateLimit,
-			{ limitType: 'webhookIngestion', key: `${adapter.source}:${ip}` }
+			{ limitType: 'webhookIngestion', key }
 		);
 		return rateOk ? null : rateLimitedResponse(retryAfter);
 	};
+	const verifiedKey = `${adapter.source}:${ip}`;
 	if (!adapter.verifyBeforeRateLimit) {
-		const limited = await chargeIngestion();
+		const limited = await charge(verifiedKey);
 		if (limited) return limited;
 	}
 
@@ -203,9 +226,22 @@ export async function runInboundPipeline(
 		return jsonResponse(413, { error: 'Payload too large' });
 	}
 
+	// A verify-first adapter reads a small declared body for free, capped at that
+	// size. A larger or undeclared body pays a key of its own before it is read,
+	// so it never spends the budget of the requests that verify for free.
+	const freeRead =
+		adapter.verifyBeforeRateLimit === true && declaresBodyAtMost(request, FREE_VERIFY_BODY_BYTES);
+	if (adapter.verifyBeforeRateLimit && !freeRead) {
+		const limited = await charge(`${adapter.source}:unverified:${ip}`);
+		if (limited) return limited;
+	}
+
 	let rawBody: string;
 	try {
-		rawBody = await readBodyText(request, MAX_WEBHOOK_BODY_BYTES);
+		rawBody = await readBodyText(
+			request,
+			freeRead ? FREE_VERIFY_BODY_BYTES : MAX_WEBHOOK_BODY_BYTES
+		);
 	} catch (error) {
 		if (error instanceof BodyTooLargeError)
 			return jsonResponse(413, { error: 'Payload too large' });
@@ -219,7 +255,7 @@ export async function runInboundPipeline(
 	}
 
 	if (adapter.verifyBeforeRateLimit) {
-		const limited = await chargeIngestion();
+		const limited = await charge(verifiedKey);
 		if (limited) return limited;
 	}
 

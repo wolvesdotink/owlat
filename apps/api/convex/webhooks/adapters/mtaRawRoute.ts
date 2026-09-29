@@ -25,6 +25,7 @@ import { getOptional } from '../../lib/env';
 import { MTA_SIGNATURE_HEADER, MTA_TIMESTAMP_HEADER } from '@owlat/mta-protocol/signature';
 import { MTA_EVENT_TOLERANCE_SECONDS, verifyMtaSignedRequest } from '../mtaSignature';
 import { jsonResponse } from '../inboundHttp';
+import { declaresBodyAtMost, FREE_VERIFY_BODY_BYTES } from '../security';
 
 /**
  * Which of the two raw routes is calling — the audit row's `source` and the
@@ -160,38 +161,6 @@ export async function storeRawRouteAudit(
 }
 
 /**
- * Bodies at or under this declared size are HMAC-verified BEFORE the shared
- * rate-limit bucket is charged.
- *
- * WHY A BOUND AT ALL. Verifying first is what keeps unsigned traffic from
- * spending the bucket — but verifying means READING the body, and on a route
- * that accepts a 13 MiB base64 message that read is the cost an unauthenticated
- * caller must not be able to impose at will. So the free verification is
- * offered only to a caller whose own `Content-Length` says the body is small;
- * anything bigger pays first, on a key of its own (see `readVerifiedMtaBody`). A caller that lies
- * about its length is reading a body no bigger than the route already accepts
- * from a signed one, and it pays the bucket on the very next request.
- *
- * 256 KiB comfortably covers every signature probe, every health check and
- * every hand-rolled junk POST — the traffic this exists to keep off the bucket.
- */
-const FREE_VERIFY_BYTES = 256 * 1024;
-
-/**
- * Does this request's own `Content-Length` declare a body at or under `limit`?
- *
- * Strict about the header itself: absent (a chunked body declares nothing),
- * empty, negative or not a number all answer `false`, because the free body
- * read below is offered on the strength of that number alone.
- */
-function declaresBodyUnder(request: Request, limit: number): boolean {
-	const raw = request.headers.get('content-length');
-	if (raw === null || raw.trim() === '') return false;
-	const declared = Number(raw);
-	return Number.isFinite(declared) && declared >= 0 && declared <= limit;
-}
-
-/**
  * Everything that has to be true before a raw-route body is worth parsing:
  * method, both signature headers, a configured secret, a readable body, a valid
  * HMAC inside the staleness window, and the per-source rate limit — ordered so
@@ -282,7 +251,7 @@ export async function readVerifiedMtaBody(
 	// `Number(null)` is 0. Absent, empty, unparseable or large: the read is paid
 	// for first, from a key of its own, so it never spends the budget of
 	// requests that verify for free; once verified it is charged like them.
-	if (declaresBodyUnder(request, FREE_VERIFY_BYTES)) {
+	if (declaresBodyAtMost(request, FREE_VERIFY_BODY_BYTES)) {
 		const verified = await readAndVerify();
 		if (!verified.ok) return verified;
 		return (await charge(verifiedKey)) ?? verified;
