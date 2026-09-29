@@ -182,6 +182,50 @@ describe('convex query authorization ratchet', () => {
 			}
 		);
 
+		it('says nothing when only internal functions touch the tables', async () => {
+			const settings = [
+				'export const listRules = adminQuery({\n\targs: {},\n\thandler: async () => [],\n});',
+				'export const recordOutcome = internalMutation({',
+				"\targs: { inboundMessageId: v.id('inboundMessages') },",
+				"\thandler: async (ctx) => {\n\t\tawait ctx.db.query('conversationThreads');\n\t},",
+				'});',
+				read(
+					'authedQuery',
+					"\t\trequirePermission(hasPermission(session.role, 'organization:manage'));"
+				),
+			].join('\n');
+			expect(await violations({ 'convex/autonomy.ts': settings })).toEqual([]);
+		});
+
+		it('reports a module-level helper that reads the tables beside a public function', async () => {
+			const helper = [
+				'async function loadThread(ctx) {',
+				"\treturn await ctx.db.query('conversationThreads').first();",
+				'}',
+				read(
+					'authedQuery',
+					"\t\trequirePermission(hasPermission(session.role, 'organization:manage'));"
+				),
+			].join('\n');
+			expect(await violations({ 'convex/contacts/view.ts': helper })).toEqual([
+				'convex/contacts/view.ts:#inbox-tables',
+			]);
+		});
+
+		it('accepts an action that asserts the gate through internal.inbox.access', async () => {
+			const action = [
+				'// authz: asserted through the internal reader gate',
+				'export const send = authedAction({',
+				"\targs: { threadId: v.id('conversationThreads') },",
+				'\thandler: async (ctx) => {',
+				'\t\tawait ctx.runQuery(internal.inbox.access.assertSharedInboxReader, {});',
+				'\t},',
+				'});',
+				'',
+			].join('\n');
+			expect(await violations({ 'convex/channels/outbound.ts': action })).toEqual([]);
+		});
+
 		it('says nothing about a file with no public function', async () => {
 			const internal = read('internalQuery', "\t\tawait ctx.db.query('conversationThreads');");
 			expect(await violations({ 'convex/maintenance/sweep.ts': internal })).toEqual([]);

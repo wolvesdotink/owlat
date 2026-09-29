@@ -40,7 +40,6 @@ convex/chat/attachments.ts:getAttachmentDetails
 convex/chat/attachments.ts:registerAttachment
 convex/chat/dms.ts:findOrCreateDm
 convex/chat/dms.ts:listMyDms
-convex/chat/emailLink.ts:findChannelsForInboxThread
 convex/chat/emailLink.ts:unlinkChannel
 convex/chat/members.ts:addMember
 convex/chat/members.ts:joinChannel
@@ -66,7 +65,6 @@ convex/chat/rooms.ts:listPublicChannels
 convex/chat/rooms.ts:unarchiveChannel
 convex/chat/rooms.ts:updateChannel
 convex/codeWorkTasks.ts:cancel
-convex/codeWorkTasks.ts:create
 convex/connectedApps/mutations.ts:remove
 convex/connectedApps/queries.ts:listByTeam
 convex/contacts/contacts.ts:bulkDelete
@@ -75,7 +73,6 @@ convex/contacts/contacts.ts:importBatch
 convex/contacts/contacts.ts:remove
 convex/contacts/contacts.ts:update
 convex/contacts/contacts.ts:updateNotes
-convex/contacts/dataExport.ts:exportContactData
 convex/contacts/identities.ts:addIdentity
 convex/contacts/identities.ts:mergeContacts
 convex/contacts/identities.ts:removeIdentity
@@ -90,7 +87,6 @@ convex/contacts/sunset.ts:listSunsetStage
 convex/contacts/sunset.ts:restoreSunsetContact
 convex/contacts/sunset.ts:setSunsetContactExemption
 convex/contacts/sunset.ts:setSunsetPolicy
-convex/contacts/timeline.ts:getTimeline
 convex/delivery/health.ts:getDeliveryHealth
 convex/delivery/observabilityStatus.ts:get
 convex/delivery/postmaster.ts:getPostmasterStatus
@@ -217,7 +213,6 @@ convex/transactional/emails.ts:updateSchema
 convex/transactional/translations.ts:addTranslation
 convex/transactional/translations.ts:removeTranslation
 convex/transactional/translations.ts:updateTranslation
-convex/unifiedMessages.ts:sendChatMessage
 convex/unifiedMessages.ts:updateChannelConfig
 convex/visualizationAgent.ts:createFromPrompt
 convex/visualizationAgent.ts:regenerate

@@ -14,7 +14,8 @@ import { paginationOptsValidator, type PaginationResult } from 'convex/server';
 import { internalQuery, internalMutation, type MutationCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
-import { requireAdminContext, hasPermission } from './lib/sessionOrganization';
+import { requireAdminContext } from './lib/sessionOrganization';
+import { isSharedInboxReader } from './inbox/access';
 import { throwInvalidInput } from './_utils/errors';
 import {
 	isExtensionAllowed,
@@ -66,13 +67,12 @@ function hydrateFiles(
 /**
  * Get a file by ID.
  *
- * The conversation link is admin-only. The shared inbox itself is admin-only
- * (`organization:manage`, per the inbox access policy), so handing a non-admin
- * member the linked thread's id — let alone its SUBJECT, which is customer text
- * from a mailbox they cannot open — would leak the inbox through the file
- * library. An admin gets the subject inline: one point-read to label the link
- * and prefill the picker, instead of pulling the whole thread through
- * `inbox.queries.getThread`.
+ * The conversation link follows the shared-inbox reader rule
+ * (inbox/access.ts): handing any other member the linked thread's id — let
+ * alone its SUBJECT, which is customer text from a mailbox they cannot open —
+ * would leak the inbox through the file library. A reader gets the subject
+ * inline: one point-read to label the link and prefill the picker, instead of
+ * pulling the whole thread through `inbox.queries.getThread`.
  */
 export const get = authedQuery({
 	args: { fileId: v.id('semanticFiles') },
@@ -80,7 +80,7 @@ export const get = authedQuery({
 		const file = await ctx.db.get(args.fileId);
 		if (!file) return null;
 		const hydrated = await hydrateFile(ctx, file);
-		if (!hasPermission(session.role, 'organization:manage')) {
+		if (!isSharedInboxReader(session)) {
 			return { ...hydrated, threadId: undefined, threadSubject: undefined };
 		}
 		const thread = file.threadId ? await ctx.db.get(file.threadId) : null;

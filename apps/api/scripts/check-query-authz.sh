@@ -87,12 +87,15 @@
 # in one place: inbox/access.ts (`isSharedInboxReader`). A file outside
 # `inbox/` and `agent/` that defines a public function (member, identity or
 # public floor, any kind) AND touches those tables — a `.query('<table>')` or a
-# `v.id('<table>')` argument — must import inbox/access. Such a file is
-# reported as `<file>:#inbox-tables`, and rides the same ratchet and baseline.
-# The pre-existing entries gate inline on `organization:manage` (the same rule,
-# spelled out a second time); they should route through the named gate as they
-# are touched. This is a presence check, like the gate tokens above: a reviewer
-# still confirms the import is actually used on the path that reads the rows.
+# `v.id('<table>')` argument — outside its internal functions must use that
+# gate: import inbox/access, or (an action) call
+# `internal.inbox.access.assertSharedInboxReader`. Touches inside an
+# `internalQuery` / `internalMutation` / `internalAction` do not count, since no
+# client can reach them; a module-level helper does, since a public function
+# may call it. Such a file is reported as `<file>:#inbox-tables`, and rides the
+# same ratchet and baseline. This is a presence check, like the gate tokens
+# above: a reviewer still confirms the gate is actually used on the path that
+# reads the rows.
 
 set -uo pipefail
 repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -126,7 +129,9 @@ generate() {
 }
 
 # Files outside inbox/ and agent/ that define a public function, touch a Team
-# Inbox table and do not import the shared-inbox reader gate.
+# Inbox table outside their internal functions, and do not use the
+# shared-inbox reader gate (an import of inbox/access, or an action's call to
+# its internal assert through `internal.inbox.access`).
 inbox_table_files() {
 	local public_builders candidates file
 	public_builders=$(convex_builder_regex 'query|mutation|action' 'member|identity|public') || return 1
@@ -138,9 +143,29 @@ inbox_table_files() {
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
 		grep -qE "^export const [A-Za-z0-9_]+ = ($public_builders)\(" "$file" || continue
-		grep -qE "from '(\./|(\.\./)+)inbox/access'" "$file" && continue
+		grep -qE "from '(\./|(\.\./)+)inbox/access'|internal\.inbox\.access\." "$file" && continue
+		touches_inbox_outside_internal "$file" || continue
 		printf '%s:#inbox-tables\n' "$file"
 	done <<<"$candidates" | sort
+}
+
+# True when `file` touches a Team Inbox table anywhere except inside an
+# `internalQuery` / `internalMutation` / `internalAction` span (opened by its
+# `export const`, closed by the column-0 `})`, as in convex-defs.awk). No
+# client can call an internal function, so a module whose only inbox reads
+# live there has no public read to gate. A module-level helper still counts:
+# a public function may call it.
+touches_inbox_outside_internal() {
+	awk -v q="'" '
+		BEGIN {
+			tables = "(inboundMessages|conversationThreads)"
+			touch = "\\.query\\([[:space:]]*[" q "\"]" tables "[" q "\"]|v\\.id\\([[:space:]]*[" q "\"]" tables "[" q "\"]"
+		}
+		/^export const [A-Za-z0-9_]+ = internal(Query|Mutation|Action)\(/ { inside = 1 }
+		!inside && $0 ~ touch { found = 1 }
+		inside && /^}\)/ { inside = 0 }
+		END { exit found ? 0 : 1 }
+	' "$1"
 }
 
 if [ "${1:-}" = "--generate" ]; then

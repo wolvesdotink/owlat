@@ -8,7 +8,7 @@
 
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
-import { getBetterAuthSessionWithRole, hasPermission } from '../lib/sessionOrganization';
+import { isSharedInboxReader } from '../inbox/access';
 import { openUnifiedMessageContent } from '../lib/messageBody';
 import type { UnifiedMessageContent } from '../lib/messageBody';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -57,7 +57,7 @@ export const getTimeline = authedQuery({
 		limit: v.optional(v.number()),
 		beforeTimestamp: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		// Don't surface a soft-deleted (GDPR-erased) contact's message bodies and
 		// activity PII — mirror get()'s guard, which the timeline read otherwise
 		// bypasses by querying the child tables directly.
@@ -73,12 +73,9 @@ export const getTimeline = authedQuery({
 		// (e.g. an editor) could read inbound customer email through the contact
 		// timeline — defeating the boundary. Soft role read: members still receive
 		// the timeline; we only withhold the body of inbound *email* rows from
-		// callers lacking `organization:manage`. Non-email channels and outbound
-		// rows are unaffected.
-		const session = await getBetterAuthSessionWithRole(ctx);
-		const canReadInboundEmail = session?.role
-			? hasPermission(session.role, 'organization:manage')
-			: false;
+		// callers who are not shared-inbox readers (inbox/access.ts). Non-email
+		// channels and outbound rows are unaffected.
+		const canReadInboundEmail = isSharedInboxReader(session);
 
 		const limit = args.limit ?? 50;
 		// Fetch more than needed from each source, then merge and trim. The keyset

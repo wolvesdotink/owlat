@@ -2,8 +2,9 @@
  * Who may read the shared inbox.
  *
  * THE shared-inbox reader gate: a signed-in owner or admin. Every thread
- * query, the presence list and the raw-message signed URL ask it here, so the
- * rule changes in one place.
+ * query, the presence list and the raw-message signed URL ask it here, and so
+ * does every module outside inbox/ that serves Team Inbox rows to a client
+ * (scripts/check-query-authz.sh), so the rule changes in one place.
  *
  * CONVENTIONS asks for a named `<scope>:<verb>` permission rather than an
  * inline role compare, because a role compare obscures the capability being
@@ -15,12 +16,15 @@
  */
 
 import type { Expression, FilterBuilder, NamedTableInfo } from 'convex/server';
-import type { QueryCtx, MutationCtx } from '../_generated/server';
+import { internalQuery, type QueryCtx, type MutationCtx } from '../_generated/server';
 import type { DataModel, Doc } from '../_generated/dataModel';
 import { components } from '../_generated/api';
+import { throwUnauthenticated } from '../_utils/errors';
 import {
+	getBetterAuthSessionWithRole,
 	getSingletonOrganizationId,
 	hasPermission,
+	requirePermission,
 	type OrganizationRole,
 } from '../lib/sessionOrganization';
 
@@ -36,6 +40,25 @@ export function isSharedInboxReader<T extends { role: OrganizationRole | null }>
 ): session is T & { role: 'owner' | 'admin' } {
 	return hasPermission(session?.role, 'organization:manage');
 }
+
+/**
+ * The reader gate for an `authedAction`, which cannot read the session itself:
+ * the action calls this through `ctx.runQuery`, inheriting its identity.
+ * Throws `unauthenticated` without a session and `forbidden` for a caller who
+ * is not a shared-inbox reader; returns `null` otherwise.
+ */
+export const assertSharedInboxReader = internalQuery({
+	args: {},
+	handler: async (ctx): Promise<null> => {
+		const session = await getBetterAuthSessionWithRole(ctx);
+		if (!session) throwUnauthenticated();
+		requirePermission(
+			isSharedInboxReader(session),
+			'Only owners and admins can use the Team Inbox'
+		);
+		return null;
+	},
+});
 
 /** Upper bound on member rows scanned when fanning a notice out to readers. */
 const MAX_READER_SCAN = 200;
