@@ -307,8 +307,13 @@ export function useAuth() {
 		}
 
 		// The next boot in this browser may be someone else's: drop the
-		// last-known feature flags so it starts from the shipped defaults.
+		// last-known feature flags so it starts from the shipped defaults, and
+		// the Postbox rows and bodies cached on this device. Loaded on demand so
+		// the IndexedDB store stays out of the boot bundle.
 		clearCachedFeatureFlags();
+		const { wipePostboxOfflineReadCache } =
+			await import('~/composables/postbox/usePostboxOfflineCache');
+		await wipePostboxOfflineReadCache();
 
 		await refetch({ force: true, expected: 'unauthenticated' });
 		await waitUntilSignedOut();

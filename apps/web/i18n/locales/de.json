@@ -4250,9 +4250,8 @@
 					"unsupported": "In diesem Browser nicht verfügbar — Owlat braucht zum Starten eine Verbindung."
 				},
 				"store": {
-					"defaultBrowser": "Im Browser standardmäßig aus.",
-					"defaultDesktop": "In der Desktop-App standardmäßig an.",
-					"hint": "Hält Ihre Posteingangsliste und kürzlich gelesene Nachrichten sofort und ohne Verbindung lesbar. Es wird nur bereinigte Post gespeichert, unverschlüsselt, in der lokalen Datenbank dieses Browsers — lassen Sie es auf gemeinsam genutzten Computern aus.",
+					"default": "Standardmäßig an und wird beim Abmelden gelöscht.",
+					"hint": "Hält Ihre Posteingangsliste und kürzlich gelesene Nachrichten sofort und ohne Verbindung lesbar. Es wird nur bereinigte Post gespeichert, unverschlüsselt, in der lokalen Datenbank dieses Browsers — schalten Sie es auf gemeinsam genutzten Computern aus.",
 					"label": "Aktuelle Post auf diesem Gerät speichern"
 				},
 				"writesDisabled": "Der lokale Speicher ist voll oder nicht verfügbar — neue Post wird auf diesem Gerät nicht zwischengespeichert. Den Cache zu leeren kann helfen."

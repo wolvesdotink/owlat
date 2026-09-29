@@ -5,8 +5,9 @@ import { FEATURE_FLAG_CACHE_KEY, writeCachedFeatureFlags } from '~/lib/featureFl
 /**
  * Removing a desktop workspace signs out of it through `authClient.signOut()`
  * directly, not through `useAuth().signOut`, so it has to forget the
- * last-known feature flags itself. Otherwise the next session in this app
- * would boot with the removed workspace's nav.
+ * last-known feature flags and the Postbox offline rows itself. Otherwise the
+ * next session in this app would boot with the removed workspace's nav, and
+ * its cached mail would stay on the device.
  */
 
 const saveWorkspaceStore = vi.fn<(store: WorkspaceStoreShape) => Promise<void>>(async () => {});
@@ -39,6 +40,10 @@ vi.mock('~/lib/desktop/workspaceAccent', () => ({ applyWorkspaceAccent: vi.fn() 
 vi.mock('~/lib/auth-client', () => ({ authClient: { signOut: vi.fn(async () => ({})) } }));
 vi.mock('~/composables/useDesktopAppSettings', () => ({
 	pruneWorkspaceSettings: vi.fn(async () => {}),
+}));
+const wipeOfflineCache = vi.fn(async () => {});
+vi.mock('~/composables/postbox/usePostboxOfflineCache', () => ({
+	wipePostboxOfflineReadCache: () => wipeOfflineCache(),
 }));
 
 import { loadWorkspaces, useDesktopWorkspaces } from '../useDesktopWorkspaces';
@@ -83,5 +88,14 @@ describe('useDesktopWorkspaces.removeWorkspace', () => {
 		await useDesktopWorkspaces().removeWorkspace('w1');
 
 		expect(localStorage.getItem(FEATURE_FLAG_CACHE_KEY)).toBeNull();
+	});
+
+	it('wipes the Postbox offline cache', async () => {
+		await loadWorkspaces();
+		wipeOfflineCache.mockClear();
+
+		await useDesktopWorkspaces().removeWorkspace('w1');
+
+		expect(wipeOfflineCache).toHaveBeenCalledTimes(1);
 	});
 });

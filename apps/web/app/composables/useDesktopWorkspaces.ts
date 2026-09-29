@@ -262,8 +262,12 @@ async function removeWorkspace(id: string): Promise<void> {
 		clearKeychainStorage();
 	}
 	// Removing a workspace signs out of it without going through useAuth, so
-	// forget the last-known feature flags here too (see useAuth.signOut).
+	// forget the last-known feature flags and the Postbox offline rows here too
+	// (see useAuth.signOut).
 	clearCachedFeatureFlags();
+	const { wipePostboxOfflineReadCache } =
+		await import('~/composables/postbox/usePostboxOfflineCache');
+	await wipePostboxOfflineReadCache();
 	const { secretDelete } = await keychain();
 	await secretDelete(workspaceTokenRef(id));
 

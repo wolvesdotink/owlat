@@ -4250,9 +4250,8 @@
 					"unsupported": "Not available in this browser — Owlat needs a connection to start."
 				},
 				"store": {
-					"defaultBrowser": "Off by default in the browser.",
-					"defaultDesktop": "On by default in the desktop app.",
-					"hint": "Keeps your inbox list and recently-read messages readable instantly and without a connection. Only sanitized mail is stored, unencrypted, in this browser's local database — leave it off on shared computers.",
+					"default": "On by default, and wiped when you sign out.",
+					"hint": "Keeps your inbox list and recently-read messages readable instantly and without a connection. Only sanitized mail is stored, unencrypted, in this browser's local database — turn it off on shared computers.",
 					"label": "Store recent mail on this device"
 				},
 				"writesDisabled": "Local storage is full or unavailable — new mail isn't being cached on this device. Clearing the cache may help."

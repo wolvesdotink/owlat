@@ -262,6 +262,8 @@ beforeEach(async () => {
 
 	vi.stubGlobal('useI18n', () => i18n.global);
 	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(false) }));
+	// The offline cache namespaces its rows by the signed-in user.
+	vi.stubGlobal('useAuth', () => ({ user: ref({ id: 'user-test' }) }));
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => false }));
 	vi.stubGlobal('useToast', () => ({
 		showToast: (msg: string) => {

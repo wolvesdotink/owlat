@@ -97,6 +97,8 @@ beforeEach(() => {
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(async () => undefined) }));
 	// The offline-outbox chain (E2) pulls these at composable setup; inert here.
 	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(false) }));
+	// The offline cache namespaces its rows by the signed-in user.
+	vi.stubGlobal('useAuth', () => ({ user: ref({ id: 'user-test' }) }));
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => false }));
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
 	vi.stubGlobal('useConvex', () => null);
