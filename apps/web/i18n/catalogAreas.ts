@@ -48,10 +48,11 @@ const ALWAYS_ON_FILES = ['app.vue', 'error.vue'];
 /**
  * The area a page file (relative to `pages/`) belongs to, or `null` for a page
  * whose messages ship in the boot catalog: the auth pages, the root page, and
- * any page whose area segment is dynamic.
+ * any page whose area segment is dynamic. Either separator splits a segment:
+ * `path.relative` gives backslashes on Windows.
  */
 export function pageArea(relativePath: string): AreaRoute | null {
-	const segments = relativePath.replace(/\.vue$/, '').split('/');
+	const segments = relativePath.replace(/\.vue$/, '').split(/[\\/]/);
 	const [first, second] = segments;
 	if (!first || first === 'auth' || first === 'index' || first.startsWith('[')) return null;
 	if (first === 'dashboard') {
@@ -139,7 +140,7 @@ export function planCatalogAreas(input: PlanInput): CatalogPlan {
 	}
 	for (const root of [input.appDir, ...input.layerDirs]) {
 		for (const file of files) {
-			const rel = relative(root, file);
+			const rel = relative(root, file).replaceAll('\\', '/');
 			if (
 				ALWAYS_ON_FILES.includes(rel) ||
 				ALWAYS_ON_DIRS.some((dir) => inDir(file, join(root, dir)))

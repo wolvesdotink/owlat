@@ -90,9 +90,11 @@ export function splitByCase(value: string): string[] {
 /**
  * The name Nuxt registers a component file under (its `resolveComponentNameSegments`),
  * lower-cased with the separators dropped so `PostboxReader` and
- * `postbox-reader` compare equal. `relativePath` is relative to `components/`.
+ * `postbox-reader` compare equal. `path` is relative to `components/`.
  */
-export function componentKey(relativePath: string): string {
+export function componentKey(path: string): string {
+	// `path.relative` gives backslashes on Windows; `splitByCase` splits on `/` only.
+	const relativePath = path.replaceAll('\\', '/');
 	const prefixParts = splitByCase(dirname(relativePath) === '.' ? '' : dirname(relativePath));
 	let fileName = basename(relativePath, extname(relativePath)).replace(
 		/(?:\.(?:client|server))?(?:\.global|\.island)*$/,

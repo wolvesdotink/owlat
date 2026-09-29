@@ -63,6 +63,16 @@ describe('pageArea', () => {
 	});
 });
 
+it('reads a Windows relative path the same way', () => {
+	expect(pageArea('dashboard\\admin\\instance\\ai-replies.vue')).toEqual({
+		path: '/dashboard/admin',
+		exact: false,
+		area: 'dashboard-admin',
+	});
+	expect(pageArea('setup\\index.vue')?.area).toBe('setup');
+	expect(pageArea('auth\\login.vue')).toBeNull();
+});
+
 describe('componentKey', () => {
 	it('names a component the way Nuxt registers it', () => {
 		expect(componentKey('postbox/PostboxReader.vue')).toBe('postboxreader');
@@ -70,6 +80,12 @@ describe('componentKey', () => {
 		expect(componentKey('shell/index.vue')).toBe('shell');
 		expect(componentKey('AppCommandPalette.vue')).toBe('appcommandpalette');
 		expect(componentKey('ui/Button.client.vue')).toBe('uibutton');
+	});
+
+	it('names a component from a Windows relative path the same way', () => {
+		expect(componentKey('postbox\\PostboxReader.vue')).toBe('postboxreader');
+		expect(componentKey('admin\\instance\\AiReplies.vue')).toBe('admininstanceaireplies');
+		expect(componentKey('shell\\index.vue')).toBe('shell');
 	});
 });
 

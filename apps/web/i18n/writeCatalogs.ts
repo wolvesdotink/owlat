@@ -120,7 +120,9 @@ export function writeBuildCatalogs(): AreaManifest {
 export function areaManifestModule(manifest: AreaManifest): string {
 	const chunks = Object.entries(manifest.chunks).map(([area, locales]) => {
 		const imports = Object.entries(locales).map(
-			([locale, path]) => `${JSON.stringify(locale)}: () => import(${JSON.stringify(path)})`
+			// Forward slashes: a Windows path's backslashes are not an import specifier.
+			([locale, path]) =>
+				`${JSON.stringify(locale)}: () => import(${JSON.stringify(path.replaceAll('\\', '/'))})`
 		);
 		return `\t${JSON.stringify(area)}: { ${imports.join(', ')} },`;
 	});

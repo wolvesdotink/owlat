@@ -98,6 +98,15 @@ describe('build catalogs', () => {
 		expect(module).toContain(`export const areaRoutes = ${JSON.stringify(manifest.routes)};`);
 	});
 
+	it('imports a Windows chunk path with forward slashes', () => {
+		const module = areaManifestModule({
+			routes: [],
+			roots: [],
+			chunks: { setup: { en: 'D:\\a\\web\\areas\\setup.en.json' } },
+		});
+		expect(module).toContain('"en": () => import("D:/a/web/areas/setup.en.json")');
+	});
+
 	it('turns the runtime en fallback off outside dev', async () => {
 		vi.stubGlobal('defineI18nConfig', (config: () => unknown) => config);
 		const { default: config } = await import('~~/i18n/i18n.config');
