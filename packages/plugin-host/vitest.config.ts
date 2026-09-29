@@ -1,16 +1,10 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
+import { packageCoverage } from '../../vitest.shared';
 
 export default defineConfig({
 	test: {
-		coverage: {
-			provider: 'v8',
-			reporter: ['text', 'json-summary', 'html'],
-			reportsDirectory: './coverage',
-			include: ['src/**/*.ts'],
-			exclude: ['**/__tests__/**', '**/*.d.ts'],
-			thresholds: { lines: 96 },
-		},
+		coverage: packageCoverage({ lines: 96, exclude: ['**/*.d.ts'] }),
 		include: ['src/**/__tests__/**/*.test.ts'],
 		environment: 'node',
 	},

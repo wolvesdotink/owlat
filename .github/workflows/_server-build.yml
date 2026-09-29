@@ -43,6 +43,7 @@ jobs:
     outputs:
       git_sha: ${{ steps.meta.outputs.git_sha }}
       build_date: ${{ steps.meta.outputs.build_date }}
+      images: ${{ steps.images.outputs.images }}
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
@@ -85,6 +86,29 @@ jobs:
           echo "build_date=${BUILD_DATE}" >> "$GITHUB_OUTPUT"
           echo "Resolved: VERSION=${VERSION} GIT_SHA=${GIT_SHA} BUILD_DATE=${BUILD_DATE}"
 
+      # docker/images.json is the one list of published images: both matrices
+      # and the anonymous-pull gate below read it from this output, and
+      # scripts/check-compose-invariants.sh reads the same file. Image names
+      # end up in tags, paths and artifact names, so hold them to a strict
+      # charset here, before any job uses them.
+      - id: images
+        name: Load the image manifest
+        run: |
+          set -euo pipefail
+          jq -e '
+            type == "array" and length > 0 and all(.[];
+              (.name | type == "string" and test("^[a-z0-9][a-z0-9-]*$")) and
+              (.dockerfile | type == "string" and length > 0) and
+              (.context | type == "string" and length > 0) and
+              (.title | type == "string" and length > 0) and
+              (.description | type == "string" and length > 0))
+          ' docker/images.json > /dev/null || {
+            echo "::error::docker/images.json is malformed (see the entry shape in docs/RELEASING.md)" >&2
+            exit 1
+          }
+          echo "images=$(jq -c . docker/images.json)" >> "$GITHUB_OUTPUT"
+          jq -r '.[].name' docker/images.json
+
   # ── Build + push each image, natively per architecture ───────────────────────
   # Every image is published for linux/amd64 AND linux/arm64 (Hetzner CAX,
   # Oracle Ampere, AWS Graviton, Raspberry Pi — the cheapest tier at most
@@ -97,65 +121,19 @@ jobs:
   # manifest list per tag, and that list digest is what gets signed, attested,
   # and pinned into the release compose.
   build-and-push:
-    name: Build ${{ matrix.name }} (${{ matrix.platform }})
+    name: Build ${{ matrix.image.name }} (${{ matrix.platform }})
     needs: resolve
     runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
-      # `name` MUST be a base matrix key alongside `platform`. With `platform`
-      # alone, each `include` entry below carries a key (`name`) that is not an
-      # original matrix value, so GitHub merges every entry into the SAME two
-      # combinations in turn and only the last image survives — v0.4.10 built
-      # nothing but tinyproxy. With `name` in the base matrix, each include
-      # entry only adds `dockerfile`/`context` to the combinations whose `name`
-      # matches, which is the documented merge behaviour.
+      # One `image` value is a whole docker/images.json entry, so each
+      # combination carries its own dockerfile and context. Keep it that way
+      # rather than going back to a name list plus `include:`: include entries
+      # whose keys are not base matrix keys all merge into the SAME
+      # combinations, and v0.4.10 built nothing but tinyproxy.
       matrix:
         platform: [linux/amd64, linux/arm64]
-        # Keep in sync with the merge-manifests matrix and verify-anonymous-pull.
-        name: [web, mta, updater, convex-deploy, imap, mail-sync, code-worker, convex-fn-proxy, setup, clamav, tinyproxy, unbound]
-        include:
-          - name: web
-            dockerfile: apps/web/Dockerfile
-            context: .
-          - name: mta
-            dockerfile: apps/mta/Dockerfile
-            context: .
-          - name: updater
-            dockerfile: apps/updater/Dockerfile
-            # Monorepo-root context: the updater's `catalog:` versions only
-            # resolve via a bun workspace install (see its Dockerfile).
-            context: .
-          - name: convex-deploy
-            dockerfile: docker/convex-deploy.Dockerfile
-            context: .
-          - name: imap
-            dockerfile: apps/imap/Dockerfile
-            context: .
-          - name: mail-sync
-            dockerfile: apps/mail-sync/Dockerfile
-            context: .
-          - name: code-worker
-            dockerfile: apps/code-worker/Dockerfile
-            context: .
-          - name: convex-fn-proxy
-            dockerfile: apps/convex-fn-proxy/Dockerfile
-            # Monorepo-root context: the proxy's `catalog:` versions only resolve
-            # via a bun workspace install (see its Dockerfile).
-            context: .
-          - name: setup
-            dockerfile: apps/setup-cli/Dockerfile
-            context: .
-          # Thin first-party wrappers around upstream images that are not
-          # multi-arch under one name (see the Dockerfiles for the reasoning).
-          - name: clamav
-            dockerfile: docker/clamav.Dockerfile
-            context: docker
-          - name: tinyproxy
-            dockerfile: docker/tinyproxy.Dockerfile
-            context: docker
-          - name: unbound
-            dockerfile: docker/unbound.Dockerfile
-            context: docker
+        image: ${{ fromJSON(needs.resolve.outputs.images) }}
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
@@ -179,11 +157,18 @@ jobs:
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
-          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }}
           tags: |
             type=semver,pattern={{version}},value=v${{ inputs.version }}
             type=semver,pattern={{major}}.{{minor}},value=v${{ inputs.version }}
             type=raw,value=latest
+          # Per-image title and description from docker/images.json. Without
+          # them, metadata-action's defaults give every image the repository's
+          # name and description. source, licenses, version, revision and
+          # created stay as metadata-action computes them.
+          labels: |
+            org.opencontainers.image.title=${{ matrix.image.title }}
+            org.opencontainers.image.description=${{ matrix.image.description }}
 
       # Derive a filesystem-safe arch suffix (linux/arm64 → arm64) for the
       # cache scope and the digest artifact name.
@@ -200,14 +185,14 @@ jobs:
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.dockerfile }}
           platforms: ${{ matrix.platform }}
-          tags: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
+          tags: ${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=release-${{ matrix.name }}-${{ steps.platform.outputs.arch }}
-          cache-to: type=gha,mode=max,scope=release-${{ matrix.name }}-${{ steps.platform.outputs.arch }}
+          cache-from: type=gha,scope=release-${{ matrix.image.name }}-${{ steps.platform.outputs.arch }}
+          cache-to: type=gha,mode=max,scope=release-${{ matrix.image.name }}-${{ steps.platform.outputs.arch }}
           provenance: mode=max
           sbom: true
           build-args: |
@@ -229,7 +214,7 @@ jobs:
       - name: Upload per-arch digest
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: arch-digest-${{ matrix.name }}-${{ steps.platform.outputs.arch }}
+          name: arch-digest-${{ matrix.image.name }}-${{ steps.platform.outputs.arch }}
           path: /tmp/arch-digest/${{ steps.platform.outputs.arch }}.txt
           if-no-files-found: error
           retention-days: 1
@@ -238,14 +223,13 @@ jobs:
   # Also the ONLY place that signs and attests: the digest consumers pin, pull
   # and verify is the manifest LIST digest, not either per-arch leaf.
   merge-manifests:
-    name: Publish ${{ matrix.name }} (multi-arch)
-    needs: build-and-push
+    name: Publish ${{ matrix.image.name }} (multi-arch)
+    needs: [resolve, build-and-push]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # Keep in sync with the build-and-push matrix above.
-        name: [web, mta, updater, convex-deploy, imap, mail-sync, code-worker, convex-fn-proxy, setup, clamav, tinyproxy, unbound]
+        image: ${{ fromJSON(needs.resolve.outputs.images) }}
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
@@ -254,7 +238,7 @@ jobs:
       - name: Collect per-arch digests
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          pattern: arch-digest-${{ matrix.name }}-*
+          pattern: arch-digest-${{ matrix.image.name }}-*
           path: /tmp/arch-digest
           merge-multiple: true
 
@@ -272,16 +256,21 @@ jobs:
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
-          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }}
           tags: |
             type=semver,pattern={{version}},value=v${{ inputs.version }}
             type=semver,pattern={{major}}.{{minor}},value=v${{ inputs.version }}
             type=raw,value=latest
+          # Same inputs as the build-and-push metadata step, so both compute
+          # the same metadata for the image.
+          labels: |
+            org.opencontainers.image.title=${{ matrix.image.title }}
+            org.opencontainers.image.description=${{ matrix.image.description }}
 
       - name: Create multi-arch manifest list
         id: merge
         env:
-          IMAGE: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
+          IMAGE: ${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }}
           TAGS: ${{ steps.meta.outputs.tags }}
           VERSION: ${{ inputs.version }}
         run: |
@@ -312,18 +301,19 @@ jobs:
       # collect and feed into gen-release-compose.sh.
       - name: Record image digest for compose pinning
         env:
+          NAME: ${{ matrix.image.name }}
           DIGEST: ${{ steps.merge.outputs.digest }}
         run: |
           set -euo pipefail
           mkdir -p /tmp/image-digest
-          echo "${{ matrix.name }} ${DIGEST}" > "/tmp/image-digest/${{ matrix.name }}.txt"
-          cat "/tmp/image-digest/${{ matrix.name }}.txt"
+          echo "${NAME} ${DIGEST}" > "/tmp/image-digest/${NAME}.txt"
+          cat "/tmp/image-digest/${NAME}.txt"
 
       - name: Upload image digest
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: image-digest-${{ matrix.name }}
-          path: /tmp/image-digest/${{ matrix.name }}.txt
+          name: image-digest-${{ matrix.image.name }}
+          path: /tmp/image-digest/${{ matrix.image.name }}.txt
           if-no-files-found: error
           retention-days: 1
 
@@ -357,7 +347,7 @@ jobs:
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
-          subject-name: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
+          subject-name: ${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }}
           subject-digest: ${{ steps.merge.outputs.digest }}
           push-to-registry: true
 
@@ -370,7 +360,7 @@ jobs:
   # `server` job and therefore blocks the draft release from going live.
   verify-anonymous-pull:
     name: Verify images pull anonymously
-    needs: merge-manifests
+    needs: [resolve, merge-manifests]
     runs-on: ubuntu-latest
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
@@ -378,12 +368,17 @@ jobs:
           egress-policy: audit
 
       - name: Inspect each release image without credentials
+        env:
+          # Both passed via env, never interpolated into the script body.
+          IMAGES: ${{ needs.resolve.outputs.images }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           failed=0
-          # Keep this list in sync with the build-and-push matrix above.
-          for name in web mta updater convex-deploy imap mail-sync code-worker convex-fn-proxy setup clamav tinyproxy unbound; do
-            image="${IMAGE_PREFIX}/${name}:${{ inputs.version }}"
+          names=$(jq -r '.[].name' <<<"$IMAGES")
+          [ -n "$names" ] || { echo "::error::the image manifest is empty"; exit 1; }
+          for name in $names; do
+            image="${IMAGE_PREFIX}/${name}:${VERSION}"
             if manifest=$(docker manifest inspect "$image" 2>/dev/null); then
               # Anonymously visible AND multi-arch: an image that lost a platform
               # would still pull on amd64 and only fail on an arm64 install.

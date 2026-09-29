@@ -54,7 +54,6 @@ apps/web/app/pages/dashboard/postbox/migrate.vue
 apps/web/app/pages/dashboard/preferences/account.vue
 apps/web/app/pages/desktop/setup.vue
 packages/email-builder/src/components/EmailBuilder.vue
-packages/email-builder/src/components/canvas/InlineTextEditor.vue
 packages/email-builder/src/preview/components/ClientSelector.vue
 packages/email-builder/src/preview/components/EmailPreviewer.vue
 packages/email-builder/src/preview/components/RenderOptionsPanel.vue

@@ -6,9 +6,10 @@
  * Calls `POST /dev/reset`. Confirms destructively unless --assume-yes.
  */
 
-import { intro, outro, confirm, isCancel, log, spinner } from '@clack/prompts';
+import { intro, outro, confirm, isCancel, log } from '@clack/prompts';
 import pc from 'picocolors';
-import { backendErrorMessage, loadBackendContext, postJson } from '../lib/backend';
+import { loadBackendContext, postWithSpinner } from '../lib/backend';
+import { formatCounts } from '../lib/format';
 
 import type { CliOptions as RunOptions } from '../lib/cliOptions';
 
@@ -31,36 +32,15 @@ export async function runReset(opts: RunOptions): Promise<number> {
 
 	const ctx = await loadBackendContext(opts.owlatDir);
 
-	const s = spinner();
-	s.start(`POST ${ctx.baseUrl}/dev/reset`);
-	let response;
-	try {
-		response = await postJson<ResetResponse>(ctx, { path: '/dev/reset' });
-	} catch (e) {
-		s.stop(pc.red(`Failed: ${(e as Error).message}`));
-		log.error('Is the docker stack up? Try `docker compose up -d` first.');
-		return 1;
-	}
+	const response = await postWithSpinner<ResetResponse>(
+		ctx,
+		{ path: '/dev/reset' },
+		{ stopMessage: pc.green('Instance reset to blank slate') }
+	);
+	if (!response) return 1;
 
-	if (response.status !== 200) {
-		s.stop(pc.red(`Failed: ${backendErrorMessage(response.body, `HTTP ${response.status}`)}`));
-		return 1;
-	}
-
-	s.stop(pc.green('Instance reset to blank slate'));
 	const deleted = response.body.deleted ?? {};
-	log.info(`Deleted: ${formatCounts(deleted)}`);
-	outro(
-		`${pc.green('Done.')} Visit ${pc.cyan('http://localhost:3000')} — it will redirect to /auth/register.`
-	);
+	log.info(`Deleted: ${formatCounts(deleted, 'nothing (instance was already blank)')}`);
+	outro(`${pc.green('Done.')} Visit ${pc.cyan(ctx.siteUrl)} — it will redirect to /auth/register.`);
 	return 0;
-}
-
-function formatCounts(counts: Record<string, number>): string {
-	return (
-		Object.entries(counts)
-			.filter(([, n]) => n > 0)
-			.map(([k, n]) => `${pc.cyan(String(n))} ${k}`)
-			.join(', ') || pc.dim('nothing (instance was already blank)')
-	);
 }

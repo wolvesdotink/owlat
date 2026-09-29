@@ -48,7 +48,9 @@ describe('draft strategy manifest contract', () => {
 
 	it.each([
 		['invalid id', { id: 'Legal' }],
+		['reserved id', { id: 'constructor' }],
 		['blank label', { label: '' }],
+		['untrimmed label', { label: ' Legal clauses ' }],
 		['unsafe export', { module: { exportPath: '../secret' } }],
 		['short timeout', { timeoutMs: 99 }],
 		['long timeout', { timeoutMs: 30_001 }],
@@ -65,7 +67,12 @@ describe('draft strategy manifest contract', () => {
 			module: { exportPath: './draft/duplicate' },
 			timeoutMs: 1_000,
 		});
-		expect(validatePluginManifest(value).ok).toBe(false);
+		const result = validatePluginManifest(value);
+		expect(result.ok ? [] : result.issues).toContainEqual({
+			code: 'duplicate',
+			path: '$.contributes.draftStrategies[1].id',
+			message: 'duplicates draft strategy legal',
+		});
 	});
 
 	it('requires the capability and feature flag', () => {

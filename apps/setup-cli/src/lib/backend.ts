@@ -11,11 +11,25 @@
  */
 
 import { join } from 'node:path';
-import { readEnv } from './env';
+import { log } from '@clack/prompts';
+import pc from 'picocolors';
+import { readEnv, type EnvMap } from './env';
+import { progressSpinner } from './progress';
 
 export interface BackendContext {
 	baseUrl: string;
 	instanceSecret: string;
+	/** Where the operator signs in, for the success messages. */
+	siteUrl: string;
+}
+
+/**
+ * The web app's public URL as the install configured it. `SITE_URL` is the
+ * canonical key; `NUXT_PUBLIC_SITE_URL` covers an `.env` written before it
+ * existed, and a blank `.env` means the local dev stack.
+ */
+export function resolveSiteUrl(env: EnvMap): string {
+	return env['SITE_URL'] || env['NUXT_PUBLIC_SITE_URL'] || 'http://localhost:3000';
 }
 
 export async function loadBackendContext(
@@ -43,7 +57,7 @@ export async function loadBackendContext(
 		env['NUXT_PUBLIC_CONVEX_SITE_URL'] ||
 		'http://localhost:3211';
 
-	return { baseUrl, instanceSecret };
+	return { baseUrl, instanceSecret, siteUrl: resolveSiteUrl(env) };
 }
 
 export interface PostJsonOptions {
@@ -52,15 +66,19 @@ export interface PostJsonOptions {
 	searchParams?: Record<string, string>;
 }
 
-export async function postJson<T = unknown>(
-	ctx: BackendContext,
-	opts: PostJsonOptions
-): Promise<{ status: number; body: T }> {
+function endpointUrl(ctx: BackendContext, opts: PostJsonOptions): string {
 	const url = new URL(opts.path, ctx.baseUrl);
 	for (const [k, v] of Object.entries(opts.searchParams ?? {})) {
 		url.searchParams.set(k, v);
 	}
-	const resp = await fetch(url.toString(), {
+	return url.toString();
+}
+
+export async function postJson<T = unknown>(
+	ctx: BackendContext,
+	opts: PostJsonOptions
+): Promise<{ status: number; body: T }> {
+	const resp = await fetch(endpointUrl(ctx, opts), {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
@@ -102,4 +120,56 @@ export function backendErrorMessage(body: unknown, fallback: string): string {
 		if (typeof message === 'string' && message.length > 0) return message;
 	}
 	return fallback;
+}
+
+export interface PostWithSpinnerOptions<T> {
+	/** Prefix for the spinner line: `<label> — POST <url>`. Omitted, just `POST <url>`. */
+	label?: string;
+	/** Statuses that count as success. Defaults to `[200]`. */
+	okStatuses?: readonly number[];
+	/**
+	 * The spinner's closing line on success, already coloured. A function when
+	 * the text depends on which OK status came back. Defaults to a green `Done`.
+	 */
+	stopMessage?: string | ((status: number, body: T) => string);
+	/** Logged under the failure when the endpoint answers 404 (a stale backend). */
+	notFoundHint?: string;
+}
+
+/**
+ * POST one backend endpoint under a spinner, reporting failures the same way
+ * for every command: a transport error closes the spinner red and points at
+ * the docker stack, a non-OK status closes it with the backend's own message
+ * (plus `notFoundHint` on a 404). Returns `null` once a failure has been
+ * reported, so the caller only exits 1; otherwise the status and body.
+ */
+export async function postWithSpinner<T = unknown>(
+	ctx: BackendContext,
+	request: PostJsonOptions,
+	opts: PostWithSpinnerOptions<T> = {}
+): Promise<{ status: number; body: T } | null> {
+	const s = progressSpinner();
+	const target = `POST ${endpointUrl(ctx, request)}`;
+	s.start(opts.label ? `${opts.label} — ${target}` : target);
+
+	let response: { status: number; body: T };
+	try {
+		response = await postJson<T>(ctx, request);
+	} catch (e) {
+		s.stop(pc.red(`Failed: ${(e as Error).message}`));
+		log.error('Is the docker stack up? Try `docker compose up -d` first.');
+		return null;
+	}
+
+	if (!(opts.okStatuses ?? [200]).includes(response.status)) {
+		s.stop(pc.red(`Failed: ${backendErrorMessage(response.body, `HTTP ${response.status}`)}`));
+		if (response.status === 404 && opts.notFoundHint) log.error(opts.notFoundHint);
+		return null;
+	}
+
+	const { stopMessage = pc.green('Done') } = opts;
+	s.stop(
+		typeof stopMessage === 'function' ? stopMessage(response.status, response.body) : stopMessage
+	);
+	return response;
 }

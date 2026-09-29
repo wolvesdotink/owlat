@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
 import vue from '@vitejs/plugin-vue';
 import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
+import { packageCoverage } from '../../vitest.shared';
 
 export default defineConfig({
 	plugins: [vue()],
@@ -17,15 +18,12 @@ export default defineConfig({
 		// 5000ms default and failed the gate on machine load rather than on code.
 		testTimeout: PARALLEL_GATE_TIMEOUT_MS,
 		hookTimeout: PARALLEL_GATE_TIMEOUT_MS,
-		coverage: {
-			provider: 'v8',
-			reporter: ['text', 'json-summary', 'html'],
-			reportsDirectory: './coverage',
+		coverage: packageCoverage({
 			// The denominator is the whole app, Vue surfaces and Nitro server included,
 			// so a file nobody tests still counts against the total instead of
 			// dropping out of it.
 			include: ['app/**/*.{ts,vue}', 'server/**/*.ts'],
-			exclude: ['**/__tests__/**', '**/*.d.ts', '**/*.generated.ts', 'app/generated/**'],
+			exclude: ['**/*.d.ts', '**/*.generated.ts', 'app/generated/**'],
 			// Floors, not targets: each sits a point or two under what the suite
 			// measured when it was set (2026-09-23), so real erosion fails the run
 			// while ordinary churn does not. Raise one when its path's coverage
@@ -40,8 +38,8 @@ export default defineConfig({
 			// Threshold globs skip dot segments, so the server key names
 			// `routes/.well-known/` explicitly or those routes would count only
 			// toward the global floor.
+			lines: 50,
 			thresholds: {
-				lines: 50,
 				statements: 49,
 				functions: 41,
 				branches: 43,
@@ -57,7 +55,7 @@ export default defineConfig({
 				'app/utils/**': { lines: 93, statements: 92, functions: 93, branches: 87 },
 				'app/composables/**': { lines: 58, statements: 56, functions: 49, branches: 48 },
 			},
-		},
+		}),
 	},
 	resolve: {
 		alias: [

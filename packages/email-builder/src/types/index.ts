@@ -53,9 +53,6 @@ export type {
 	SavedBlock,
 } from './blocks';
 
-// Control component types (aliases for better ergonomics)
-export type { Padding, Margin, Border } from './controls';
-
 // Variable types
 export type { Variable, VariableType } from './variables';
 

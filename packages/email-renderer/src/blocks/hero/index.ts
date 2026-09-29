@@ -12,11 +12,19 @@
 
 import { fullSupport } from '@owlat/shared';
 import { itemToBlock, type BlockModule, type Placement } from '../_module';
+import { walkItemsPlaintext, ampPaddedItems } from '../_items';
 import { gradientToCssOrEmpty } from '../../helpers/gradient';
 import { msoVmlBackground, msoVmlBackgroundClose } from '../../outlook';
-import { escapeCssUrl, escapeAttr, escapeCss } from '../../sanitize';
+import { escapeCssUrl, escapeCss } from '../../sanitize';
 import { backgroundImageCss } from '../../helpers/inline-styles';
-import { checkShape, checkGradientStopLimit, isString, isNumber, isArray, isOneOf } from '../../helpers/validation';
+import {
+	checkShape,
+	checkGradientStopLimit,
+	isString,
+	isNumber,
+	isArray,
+	isOneOf,
+} from '../../helpers/validation';
 
 const HERO_BG_POSITIONS = ['top', 'center', 'bottom'] as const;
 const HERO_BG_SIZES = ['cover', 'contain'] as const;
@@ -53,7 +61,8 @@ export const heroModule: BlockModule<'hero'> = {
 			.filter(Boolean)
 			.join('');
 
-		const heightStyle = content.mode === 'fixed-height' ? `height:${height}px;` : `min-height:${height}px;`;
+		const heightStyle =
+			content.mode === 'fixed-height' ? `height:${height}px;` : `min-height:${height}px;`;
 		const overlayStyle = overlayColor ? `background-color:${escapeCss(overlayColor)};` : '';
 		const gradientCss = escapeCss(gradientToCssOrEmpty(content.backgroundGradient));
 
@@ -66,8 +75,12 @@ export const heroModule: BlockModule<'hero'> = {
 		const divStyle = [gradientCss, bgImageCss, heightStyle].filter(Boolean).join('');
 		parts.push(`<div style="${divStyle}">`);
 		parts.push(`<!--<![endif]-->`);
-		parts.push(`<table width="100%" height="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${overlayStyle ? ` style="${overlayStyle}height:100%"` : ' style="height:100%"'}>`);
-		parts.push(`<tr><td valign="${vAlign}" style="padding:${paddingTop}px ${paddingRight}px ${paddingBottom}px ${paddingLeft}px;vertical-align:${vAlign}">`);
+		parts.push(
+			`<table width="100%" height="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"${overlayStyle ? ` style="${overlayStyle}height:100%"` : ' style="height:100%"'}>`
+		);
+		parts.push(
+			`<tr><td valign="${vAlign}" style="padding:${paddingTop}px ${paddingRight}px ${paddingBottom}px ${paddingLeft}px;vertical-align:${vAlign}">`
+		);
 		parts.push(childHtml);
 		parts.push(`</td></tr></table>`);
 		parts.push(`<!--[if !mso]><!--></div><!--<![endif]-->`);
@@ -76,12 +89,7 @@ export const heroModule: BlockModule<'hero'> = {
 	},
 
 	plaintext({ content, walk }) {
-		const parts: string[] = [];
-		for (const item of content.items) {
-			const text = walk(itemToBlock(item));
-			if (text) parts.push(text);
-		}
-		return parts.join('\n');
+		return walkItemsPlaintext(content.items, walk);
 	},
 
 	amp({ content, walk }) {
@@ -89,17 +97,19 @@ export const heroModule: BlockModule<'hero'> = {
 		// the hero degrades to a padded block carrying the overlay/background
 		// color. Its child blocks still recurse via `walk` instead of being
 		// dropped to an empty comment.
-		const itemsHtml = content.items
-			.map((item) => walk(itemToBlock(item)))
-			.filter(Boolean)
-			.join('\n');
-		const bg = content.overlayColor || content.backgroundColor;
-		const bgStyle = bg ? `background-color:${escapeAttr(bg)};` : '';
-		const paddingTop = content.paddingTop ?? 40;
-		const paddingRight = content.paddingRight ?? 24;
-		const paddingBottom = content.paddingBottom ?? 40;
-		const paddingLeft = content.paddingLeft ?? 24;
-		return `<div style="${bgStyle}padding:${paddingTop}px ${paddingRight}px ${paddingBottom}px ${paddingLeft}px">${itemsHtml}</div>`;
+		return ampPaddedItems(
+			{
+				items: content.items,
+				background: content.overlayColor || content.backgroundColor,
+				padding: {
+					top: content.paddingTop ?? 40,
+					right: content.paddingRight ?? 24,
+					bottom: content.paddingBottom ?? 40,
+					left: content.paddingLeft ?? 24,
+				},
+			},
+			walk
+		);
 	},
 
 	createDefault() {
@@ -195,24 +205,78 @@ export const heroModule: BlockModule<'hero'> = {
 
 	validate({ block, content, ctx }) {
 		// Shape
-		checkShape(content as unknown as Record<string, unknown>, [
-			{ field: 'backgroundImage', check: isString, code: 'HERO_BG_IMAGE_TYPE', message: 'backgroundImage must be a string' },
-			{ field: 'backgroundPosition', check: (v) => isOneOf(v, HERO_BG_POSITIONS), code: 'HERO_BG_POSITION_INVALID', message: 'backgroundPosition must be top, center, or bottom' },
-			{ field: 'backgroundSize', check: (v) => isOneOf(v, HERO_BG_SIZES), code: 'HERO_BG_SIZE_INVALID', message: 'backgroundSize must be cover or contain' },
-			{ field: 'height', check: isNumber, code: 'HERO_HEIGHT_TYPE', message: 'height must be a number' },
-			{ field: 'mode', check: (v) => isOneOf(v, HERO_MODES), code: 'HERO_MODE_INVALID', message: 'mode must be fixed-height or fluid-height' },
-			{ field: 'verticalAlign', check: (v) => isOneOf(v, HERO_V_ALIGNS), code: 'HERO_VALIGN_INVALID', message: 'verticalAlign must be top, middle, or bottom' },
-			{ field: 'items', check: isArray, code: 'HERO_ITEMS_TYPE', message: 'items must be an array' },
-		], block.id, 'hero', ctx.issues);
+		checkShape(
+			content as unknown as Record<string, unknown>,
+			[
+				{
+					field: 'backgroundImage',
+					check: isString,
+					code: 'HERO_BG_IMAGE_TYPE',
+					message: 'backgroundImage must be a string',
+				},
+				{
+					field: 'backgroundPosition',
+					check: (v) => isOneOf(v, HERO_BG_POSITIONS),
+					code: 'HERO_BG_POSITION_INVALID',
+					message: 'backgroundPosition must be top, center, or bottom',
+				},
+				{
+					field: 'backgroundSize',
+					check: (v) => isOneOf(v, HERO_BG_SIZES),
+					code: 'HERO_BG_SIZE_INVALID',
+					message: 'backgroundSize must be cover or contain',
+				},
+				{
+					field: 'height',
+					check: isNumber,
+					code: 'HERO_HEIGHT_TYPE',
+					message: 'height must be a number',
+				},
+				{
+					field: 'mode',
+					check: (v) => isOneOf(v, HERO_MODES),
+					code: 'HERO_MODE_INVALID',
+					message: 'mode must be fixed-height or fluid-height',
+				},
+				{
+					field: 'verticalAlign',
+					check: (v) => isOneOf(v, HERO_V_ALIGNS),
+					code: 'HERO_VALIGN_INVALID',
+					message: 'verticalAlign must be top, middle, or bottom',
+				},
+				{
+					field: 'items',
+					check: isArray,
+					code: 'HERO_ITEMS_TYPE',
+					message: 'items must be an array',
+				},
+			],
+			block.id,
+			'hero',
+			ctx.issues
+		);
 
 		// Semantic
 		if (!content.backgroundImage || content.backgroundImage.trim() === '') {
-			ctx.issues.push({ blockId: block.id, blockType: 'hero', severity: 'warning', code: 'HERO_NO_BG', message: 'Hero block has no background image' });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'hero',
+				severity: 'warning',
+				code: 'HERO_NO_BG',
+				message: 'Hero block has no background image',
+			});
 		}
 
 		// Outlook
 		if (content.mode === 'fluid-height') {
-			ctx.issues.push({ blockId: block.id, blockType: 'hero', severity: 'warning', code: 'OUTLOOK_HERO_FLUID', message: 'Hero fluid-height mode is unreliable in Outlook — VML uses a fixed height. Consider using fixed-height for consistent rendering.' });
+			ctx.issues.push({
+				blockId: block.id,
+				blockType: 'hero',
+				severity: 'warning',
+				code: 'OUTLOOK_HERO_FLUID',
+				message:
+					'Hero fluid-height mode is unreliable in Outlook — VML uses a fixed height. Consider using fixed-height for consistent rendering.',
+			});
 		}
 		checkGradientStopLimit(content.backgroundGradient, block.id, 'hero', ctx.issues);
 

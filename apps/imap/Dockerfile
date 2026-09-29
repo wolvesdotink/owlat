@@ -48,14 +48,6 @@ ARG OWLAT_VERSION=dev
 ARG OWLAT_GIT_SHA=unknown
 ARG OWLAT_BUILD_DATE=unknown
 
-LABEL org.opencontainers.image.source="https://github.com/wolvesdotink/owlat" \
-      org.opencontainers.image.licenses="Apache-2.0" \
-      org.opencontainers.image.title="owlat-imap" \
-      org.opencontainers.image.description="Owlat IMAP server" \
-      org.opencontainers.image.version="${OWLAT_VERSION}" \
-      org.opencontainers.image.revision="${OWLAT_GIT_SHA}" \
-      org.opencontainers.image.created="${OWLAT_BUILD_DATE}"
-
 ENV OWLAT_VERSION=${OWLAT_VERSION} \
     OWLAT_GIT_SHA=${OWLAT_GIT_SHA} \
     OWLAT_BUILD_DATE=${OWLAT_BUILD_DATE}

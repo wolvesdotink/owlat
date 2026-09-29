@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { shallowRef, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { moduleFor } from '@owlat/email-renderer';
 import type {
 	EditorBlock,
@@ -10,6 +10,11 @@ import type {
 } from '../../types';
 import { defaultPadding } from '../../defaults';
 import { useSlashCommands } from '../../composables/useSlashCommands';
+import {
+	menuPosition,
+	removeTextRange,
+	useVariableTrigger,
+} from '../../composables/useVariableTrigger';
 import { useRichText } from '@owlat/ui/composables/useRichText';
 import SlashCommandMenu from './SlashCommandMenu.vue';
 import VariablePickerMenu from './VariablePickerMenu.vue';
@@ -52,20 +57,10 @@ const slashCommands = useSlashCommands();
 let slashStartOffset = -1;
 let slashStartNode: Node | null = null;
 
-// Variable picker state
-const variablePickerOpen = ref(false);
-const variableQuery = ref('');
-const variableSelectedIndex = ref(0);
-const variablePickerPosition = ref({ top: 0, left: 0 });
-let triggerStartOffset = -1;
-let triggerStartNode: Node | null = null;
-
-const filteredVariables = computed(() => {
-	if (!props.variables?.length) return [];
-	const q = variableQuery.value.toLowerCase();
-	return props.variables.filter(
-		(v) => v.key.toLowerCase().includes(q) || v.label.toLowerCase().includes(q)
-	);
+// Variable picker ("{{" or "@")
+const variablePicker = useVariableTrigger({
+	variables: () => props.variables,
+	wrapperEl,
 });
 
 // Compute editor styles from block properties
@@ -93,26 +88,11 @@ const editorStyles = computed(() => {
 	};
 });
 
-function getCursorRect(): DOMRect | null {
-	const selection = window.getSelection();
-	if (!selection || selection.rangeCount === 0) return null;
-	const range = selection.getRangeAt(0);
-	const rect = range.getBoundingClientRect();
-	return rect;
-}
-
-function getMenuPosition(): { top: number; left: number } {
-	const cursorRect = getCursorRect();
-	const wrapperRect = wrapperEl.value?.getBoundingClientRect();
-	if (!cursorRect || !wrapperRect) return { top: 0, left: 0 };
-	return {
-		top: cursorRect.bottom - wrapperRect.top + 4,
-		left: cursorRect.left - wrapperRect.left,
-	};
-}
-
 function handleInput() {
 	if (!editorEl.value) return;
+
+	// Variable triggers take precedence, but only while the slash menu is closed.
+	if (!slashCommands.isOpen.value && variablePicker.detect()) return;
 
 	const selection = window.getSelection();
 	if (!selection || selection.rangeCount === 0) return;
@@ -123,53 +103,11 @@ function handleInput() {
 
 	if (node.nodeType !== Node.TEXT_NODE) {
 		if (slashCommands.isOpen.value) slashCommands.close();
-		if (variablePickerOpen.value) closeVariablePicker();
 		return;
 	}
 
 	const text = node.textContent || '';
 	const beforeCursor = text.slice(0, offset);
-
-	// Check for variable picker triggers: "{{" or "@"
-	if (props.variables?.length && !slashCommands.isOpen.value) {
-		// Check for "{{" trigger first (higher priority)
-		const doubleBraceMatch = beforeCursor.match(/\{\{([^}]*)$/);
-		// Check for "@" trigger
-		const atIdx = beforeCursor.lastIndexOf('@');
-		const atValid = atIdx !== -1 && (atIdx === 0 || /\s/.test(text[atIdx - 1]!));
-
-		// Use whichever trigger is closer to the cursor
-		let matchedTriggerIdx = -1;
-		let query = '';
-
-		if (doubleBraceMatch) {
-			const braceIdx = beforeCursor.lastIndexOf('{{');
-			if (atValid && atIdx > braceIdx) {
-				matchedTriggerIdx = atIdx;
-				query = beforeCursor.slice(atIdx + 1);
-			} else {
-				matchedTriggerIdx = braceIdx;
-				query = doubleBraceMatch[1]!;
-			}
-		} else if (atValid) {
-			matchedTriggerIdx = atIdx;
-			query = beforeCursor.slice(atIdx + 1);
-		}
-
-		if (matchedTriggerIdx !== -1) {
-			if (!variablePickerOpen.value) {
-				triggerStartOffset = matchedTriggerIdx;
-				triggerStartNode = node;
-				variablePickerPosition.value = getMenuPosition();
-			}
-			variablePickerOpen.value = true;
-			variableQuery.value = query;
-			variableSelectedIndex.value = 0;
-			return;
-		} else if (variablePickerOpen.value) {
-			closeVariablePicker();
-		}
-	}
 
 	// Check for "/" trigger (slash commands)
 	const slashIdx = beforeCursor.lastIndexOf('/');
@@ -191,103 +129,16 @@ function handleInput() {
 		// Open the menu
 		slashStartOffset = slashIdx;
 		slashStartNode = node;
-		const pos = getMenuPosition();
-		slashCommands.open(pos);
+		slashCommands.open(menuPosition(wrapperEl.value));
 	}
 
 	slashCommands.updateQuery(query);
 }
 
-function closeVariablePicker() {
-	variablePickerOpen.value = false;
-	variableQuery.value = '';
-	variableSelectedIndex.value = 0;
-	triggerStartOffset = -1;
-	triggerStartNode = null;
-}
-
-function cleanupTriggerText() {
-	if (!editorEl.value || triggerStartNode === null || triggerStartOffset === -1) return;
-
-	const text = triggerStartNode.textContent || '';
-	const selection = window.getSelection();
-	const cursorOffset = selection?.rangeCount ? selection.getRangeAt(0).startOffset : text.length;
-	const endOffset =
-		triggerStartNode === selection?.getRangeAt(0)?.startContainer ? cursorOffset : text.length;
-	const before = text.slice(0, triggerStartOffset);
-	const after = text.slice(endOffset);
-	triggerStartNode.textContent = before + after;
-
-	// Restore cursor position
-	if (selection && triggerStartNode.parentNode) {
-		const range = document.createRange();
-		range.setStart(
-			triggerStartNode,
-			Math.min(triggerStartOffset, (triggerStartNode.textContent || '').length)
-		);
-		range.collapse(true);
-		selection.removeAllRanges();
-		selection.addRange(range);
-	}
-
-	triggerStartOffset = -1;
-	triggerStartNode = null;
-}
-
-function handleVariableSelect(variable: Variable) {
-	cleanupTriggerText();
-
-	// Insert variable span at cursor
-	if (!editorEl.value) return;
-	const span = document.createElement('span');
-	span.className = 'variable-tag';
-	span.contentEditable = 'false';
-	span.dataset['variable'] = variable.key;
-	span.textContent = `{{${variable.key}}}`;
-
-	const selection = window.getSelection();
-	if (selection && selection.rangeCount > 0) {
-		const range = selection.getRangeAt(0);
-		range.deleteContents();
-		range.insertNode(span);
-		// Add a zero-width space after for cursor placement
-		const spacer = document.createTextNode('\u200B');
-		range.setStartAfter(span);
-		range.insertNode(spacer);
-		range.setStartAfter(spacer);
-		range.setEndAfter(spacer);
-		selection.removeAllRanges();
-		selection.addRange(range);
-	}
-
-	closeVariablePicker();
-}
-
 function cleanupSlashText() {
-	if (!editorEl.value || slashStartNode === null || slashStartOffset === -1) return;
-
-	const text = slashStartNode.textContent || '';
-	const selection = window.getSelection();
-	const cursorOffset = selection?.rangeCount ? selection.getRangeAt(0).startOffset : text.length;
-	// Remove from slashStartOffset to current cursor position
-	const endOffset =
-		slashStartNode === selection?.getRangeAt(0)?.startContainer ? cursorOffset : text.length;
-	const before = text.slice(0, slashStartOffset);
-	const after = text.slice(endOffset);
-	slashStartNode.textContent = before + after;
-
-	// Restore cursor position
-	if (selection && slashStartNode.parentNode) {
-		const range = document.createRange();
-		range.setStart(
-			slashStartNode,
-			Math.min(slashStartOffset, (slashStartNode.textContent || '').length)
-		);
-		range.collapse(true);
-		selection.removeAllRanges();
-		selection.addRange(range);
+	if (slashStartNode !== null && slashStartOffset !== -1) {
+		removeTextRange(slashStartNode, slashStartOffset);
 	}
-
 	slashStartOffset = -1;
 	slashStartNode = null;
 }
@@ -302,7 +153,7 @@ function handleBlur() {
 	// Delay to allow toolbar/menu clicks to register
 	blurTimeout = setTimeout(() => {
 		if (slashCommands.isOpen.value) slashCommands.close();
-		if (variablePickerOpen.value) closeVariablePicker();
+		variablePicker.close();
 		emit('exit');
 	}, 150);
 }
@@ -333,36 +184,7 @@ function handleKeydown(event: KeyboardEvent) {
 	const metaOrCtrl = event.metaKey || event.ctrlKey;
 
 	// --- Variable picker navigation ---
-	if (variablePickerOpen.value) {
-		if (event.key === 'ArrowDown') {
-			event.preventDefault();
-			event.stopPropagation();
-			variableSelectedIndex.value = Math.min(
-				variableSelectedIndex.value + 1,
-				filteredVariables.value.length - 1
-			);
-			return;
-		}
-		if (event.key === 'ArrowUp') {
-			event.preventDefault();
-			event.stopPropagation();
-			variableSelectedIndex.value = Math.max(variableSelectedIndex.value - 1, 0);
-			return;
-		}
-		if (event.key === 'Enter' || event.key === 'Tab') {
-			event.preventDefault();
-			event.stopPropagation();
-			const selected = filteredVariables.value[variableSelectedIndex.value];
-			if (selected) handleVariableSelect(selected);
-			return;
-		}
-		if (event.key === 'Escape') {
-			event.preventDefault();
-			event.stopPropagation();
-			closeVariablePicker();
-			return;
-		}
-	}
+	if (variablePicker.handleKeydown(event)) return;
 
 	// --- Slash command navigation ---
 	if (slashCommands.isOpen.value) {
@@ -506,12 +328,12 @@ defineExpose({
 			@select="handleSlashSelect"
 		/>
 		<VariablePickerMenu
-			v-if="variablePickerOpen && filteredVariables.length > 0"
-			:variables="filteredVariables"
-			:query="variableQuery"
-			:selected-index="variableSelectedIndex"
-			:position="variablePickerPosition"
-			@select="handleVariableSelect"
+			v-if="variablePicker.open.value && variablePicker.filteredVariables.value.length > 0"
+			:variables="variablePicker.filteredVariables.value"
+			:query="variablePicker.query.value"
+			:selected-index="variablePicker.selectedIndex.value"
+			:position="variablePicker.position.value"
+			@select="variablePicker.select"
 		/>
 	</div>
 </template>
@@ -520,17 +342,5 @@ defineExpose({
 [data-inline-text] a {
 	color: inherit;
 	text-decoration: underline;
-}
-
-[data-inline-text] span[data-variable],
-[data-inline-text] .variable-tag {
-	display: inline;
-	background: rgba(196, 120, 90, 0.12);
-	border: 1px solid rgba(196, 120, 90, 0.3);
-	border-radius: 3px;
-	padding: 0 3px;
-	font-size: 0.9em;
-	color: var(--color-brand);
-	cursor: default;
 }
 </style>

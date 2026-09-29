@@ -1,17 +1,11 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
+import { packageCoverage } from '../../vitest.shared';
 import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
 
 export default defineConfig({
 	test: {
-		coverage: {
-			provider: 'v8',
-			reporter: ['text', 'json-summary', 'html'],
-			reportsDirectory: './coverage',
-			include: ['src/**/*.ts'],
-			exclude: ['**/__tests__/**', '**/*.d.ts'],
-			thresholds: { lines: 89 },
-		},
+		coverage: packageCoverage({ lines: 89, exclude: ['**/*.d.ts'] }),
 		include: ['src/**/__tests__/**/*.test.ts'],
 		environment: 'node',
 		// The codegen tests build a throwaway workspace on disk, run the generator

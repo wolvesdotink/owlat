@@ -1,13 +1,12 @@
 import { defineConfig } from 'vitest/config';
+import { coverageReports } from '../../vitest.shared';
 
 export default defineConfig({
 	test: {
 		include: ['__tests__/**/*.test.ts'],
 		environment: 'node',
-		coverage: {
-			provider: 'v8',
-			reporter: ['text', 'json-summary', 'html'],
-			reportsDirectory: './coverage',
-		},
+		// Reports only: no file selection and no floor, so the report covers just
+		// what the page-invariant suites load.
+		coverage: coverageReports(),
 	},
 });

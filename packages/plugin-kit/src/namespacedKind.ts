@@ -21,7 +21,20 @@ const PLUGIN_KIND_NAMESPACE = 'plugin' as const;
 export const PLUGIN_KIND_PREFIX = `${PLUGIN_KIND_NAMESPACE}.` as const;
 
 const LOCAL_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
-const MAX_LOCAL_ID_LENGTH = 64;
+export const MAX_LOCAL_ID_LENGTH = 64;
+
+/**
+ * Local ids a manifest may not declare even though they match the grammar: the
+ * host indexes contributions by local id into plain objects, where these names
+ * are object internals rather than keys. Enforced by the manifest validator
+ * (`./contributionManifest`), not by {@link isPluginLocalId}, whose public
+ * behaviour is unchanged. Settings field keys reuse the same set.
+ *
+ * Internal: not exported from the package entry point.
+ */
+export const RESERVED_LOCAL_IDS: ReadonlySet<string> = Object.freeze(
+	new Set(['constructor', 'prototype', '__proto__'])
+);
 
 /**
  * A contribution's plugin-local identifier: the `id` of one entry in one
