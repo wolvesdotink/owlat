@@ -8,8 +8,10 @@
 
 import { createHmac } from 'node:crypto';
 import {
+	MTA_LENGTH_SIGNATURE_HEADER,
 	MTA_SIGNATURE_HEADER,
 	MTA_TIMESTAMP_HEADER,
+	mtaLengthSigningInput,
 	mtaSigningInput,
 	type MtaSignatureHeaders,
 } from './signature';
@@ -29,5 +31,12 @@ export function signMtaRequest(
 	const signature = createHmac('sha256', secret)
 		.update(mtaSigningInput(timestamp, body))
 		.digest('hex');
-	return { [MTA_TIMESTAMP_HEADER]: timestamp, [MTA_SIGNATURE_HEADER]: signature };
+	const lengthSignature = createHmac('sha256', secret)
+		.update(mtaLengthSigningInput(timestamp, Buffer.byteLength(body, 'utf8')))
+		.digest('hex');
+	return {
+		[MTA_TIMESTAMP_HEADER]: timestamp,
+		[MTA_SIGNATURE_HEADER]: signature,
+		[MTA_LENGTH_SIGNATURE_HEADER]: lengthSignature,
+	};
 }

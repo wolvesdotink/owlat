@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
+import { signMtaRequest } from '@owlat/mta-protocol/signer';
 import schema from '../schema';
 import { expectScheduledFailure } from './helpers/scheduledFailures';
 
@@ -205,6 +206,74 @@ describe('MTA raw routes keep a separate bucket for bodies read before verificat
 				body,
 			});
 			expect([401, 429]).not.toContain(signed.status);
+		});
+	}
+});
+
+describe('MTA raw routes keep large signed deliveries off the unverified key', () => {
+	for (const path of ['/webhooks/mta-inbound', '/webhooks/mta-mailbox'] as const) {
+		it(`${path} answers a large signed request after the unverified key is exhausted`, async () => {
+			vi.useFakeTimers({ toFake: ['Date'] });
+			const t = convexTest(schema, modules);
+			rateLimiterTest.register(t);
+			const timestamp = String(Math.floor(Date.now() / 1000));
+			const junk = JSON.stringify({ event: 'unsupported.kind' });
+
+			const unverified = await Promise.all(
+				Array.from({ length: 150 }, () =>
+					t.fetch(path, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'X-MTA-Timestamp': timestamp,
+							'X-MTA-Signature': '0'.repeat(64),
+						},
+						body: junk,
+					})
+				)
+			);
+			expect(unverified.some((res) => res.status === 429)).toBe(true);
+
+			// Over the 256 KiB free-verification size, signed the way the MTA signs.
+			const body = JSON.stringify({ event: 'unsupported.kind', padding: 'x'.repeat(300 * 1024) });
+			const large = (headers: Record<string, string>) =>
+				t.fetch(path, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Content-Length': String(Buffer.byteLength(body)),
+						...headers,
+					},
+					body,
+				});
+
+			// Without a valid length signature it still shares the unverified key.
+			const signedHeaders = signMtaRequest(SECRET, body);
+			const forgedLength = await large({
+				...signedHeaders,
+				'X-MTA-Length-Signature': '0'.repeat(64),
+			});
+			expect(forgedLength.status).toBe(429);
+
+			const signed = await large(signedHeaders);
+			expect([401, 429]).not.toContain(signed.status);
+		});
+
+		it(`${path} refuses a length-signed request whose body does not verify`, async () => {
+			const t = convexTest(schema, modules);
+			rateLimiterTest.register(t);
+			const body = JSON.stringify({ event: 'unsupported.kind', padding: 'x'.repeat(300 * 1024) });
+			const other = body.replace('unsupported', 'unsupporteX');
+			const res = await t.fetch(path, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Content-Length': String(Buffer.byteLength(other)),
+					...signMtaRequest(SECRET, body),
+				},
+				body: other,
+			});
+			expect(res.status).toBe(401);
 		});
 	}
 });

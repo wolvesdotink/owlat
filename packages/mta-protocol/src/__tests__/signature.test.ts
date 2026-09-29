@@ -1,12 +1,33 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { MTA_SIGNATURE_HEADER, MTA_TIMESTAMP_HEADER, mtaSigningInput } from '../signature';
+import {
+	MTA_LENGTH_SIGNATURE_HEADER,
+	MTA_SIGNATURE_HEADER,
+	MTA_TIMESTAMP_HEADER,
+	mtaLengthSigningInput,
+	mtaSigningInput,
+} from '../signature';
 import { signMtaRequest } from '../signer';
 
 describe('MTA request signature wire format', () => {
-	it('names the two headers the API verifies', () => {
+	it('names the headers the API verifies', () => {
 		expect(MTA_SIGNATURE_HEADER.toLowerCase()).toBe('x-mta-signature');
 		expect(MTA_TIMESTAMP_HEADER.toLowerCase()).toBe('x-mta-timestamp');
+		expect(MTA_LENGTH_SIGNATURE_HEADER.toLowerCase()).toBe('x-mta-length-signature');
+	});
+
+	it('signs the declared byte length under a prefix no body input can start with', () => {
+		expect(mtaLengthSigningInput('1700000000', 42)).toBe('owlat-mta-length-v1.1700000000.42');
+	});
+
+	it('signs the UTF-8 byte length, which is what Content-Length declares', () => {
+		const body = JSON.stringify({ note: 'café' });
+		const headers = signMtaRequest('k', body, 1_000_000);
+		expect(headers[MTA_LENGTH_SIGNATURE_HEADER]).toBe(
+			createHmac('sha256', 'k')
+				.update(`owlat-mta-length-v1.1000.${new TextEncoder().encode(body).length}`)
+				.digest('hex')
+		);
 	});
 
 	it('signs `${timestamp}.${body}`', () => {
@@ -32,6 +53,9 @@ describe('MTA request signature wire format', () => {
 		expect(headers).toEqual({
 			[MTA_TIMESTAMP_HEADER]: '1000',
 			[MTA_SIGNATURE_HEADER]: createHmac('sha256', 'k').update('1000.body').digest('hex'),
+			[MTA_LENGTH_SIGNATURE_HEADER]: createHmac('sha256', 'k')
+				.update('owlat-mta-length-v1.1000.4')
+				.digest('hex'),
 		});
 	});
 });

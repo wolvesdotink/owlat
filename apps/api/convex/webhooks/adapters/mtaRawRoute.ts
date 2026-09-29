@@ -23,7 +23,11 @@ import { getClientIp, rateLimitedResponse } from '../../lib/publicRateLimit';
 import { logError } from '../../lib/runtimeLog';
 import { getOptional } from '../../lib/env';
 import { MTA_SIGNATURE_HEADER, MTA_TIMESTAMP_HEADER } from '@owlat/mta-protocol/signature';
-import { MTA_EVENT_TOLERANCE_SECONDS, verifyMtaSignedRequest } from '../mtaSignature';
+import {
+	MTA_EVENT_TOLERANCE_SECONDS,
+	verifyMtaDeclaredLength,
+	verifyMtaSignedRequest,
+} from '../mtaSignature';
 import { jsonResponse } from '../inboundHttp';
 import { declaresBodyAtMost, FREE_VERIFY_BODY_BYTES } from '../security';
 
@@ -173,9 +177,11 @@ export async function storeRawRouteAudit(
  * genuine delivery, which the MTA reads as retryable: six attempts, then the
  * DLQ. Refusing a request without both signature headers costs one header
  * lookup and charges nothing; refusing a SMALL request whose signature does not
- * verify costs one read and one HMAC and also charges nothing. A body too big
- * to verify for free pays before it is read, from a separate
- * `<route>:unverified:<ip>` key; every verified request pays `<route>:<ip>`.
+ * verify costs one read and one HMAC and also charges nothing. A larger body
+ * whose length the MTA signed is read up to that length and verified without a
+ * pre-charge. Any other body too big to verify for free pays before it is read,
+ * from a separate `<route>:unverified:<ip>` key; every verified request pays
+ * `<route>:<ip>`.
  *
  * Returns the verified body, or the exact `Response` to answer with. The body
  * budget is larger than the feedback pipeline's because these routes carry
@@ -207,10 +213,10 @@ export async function readVerifiedMtaBody(
 	 * the 5-minute staleness window, through the one MTA verifier
 	 * (`../mtaSignature.ts`) every MTA route shares.
 	 */
-	const readAndVerify = async (): Promise<VerifiedMtaBody> => {
+	const readAndVerify = async (maxBytes: number): Promise<VerifiedMtaBody> => {
 		let bodyText: string;
 		try {
-			bodyText = await readBodyText(request, MAX_RAW_WEBHOOK_BYTES);
+			bodyText = await readBodyText(request, maxBytes);
 		} catch (error) {
 			if (error instanceof BodyTooLargeError) {
 				return { ok: false, response: jsonResponse(413, { error: 'Payload too large' }) };
@@ -252,14 +258,30 @@ export async function readVerifiedMtaBody(
 	// for first, from a key of its own, so it never spends the budget of
 	// requests that verify for free; once verified it is charged like them.
 	if (declaresBodyAtMost(request, FREE_VERIFY_BODY_BYTES)) {
-		const verified = await readAndVerify();
+		const verified = await readAndVerify(FREE_VERIFY_BODY_BYTES);
+		if (!verified.ok) return verified;
+		return (await charge(verifiedKey)) ?? verified;
+	}
+
+	// A larger body the MTA signed for (`X-MTA-Length-Signature`, a header-only
+	// HMAC over the timestamp and the declared length) is read up to that length
+	// and verified without touching the unverified key, so unsigned traffic
+	// cannot hold back a large signed delivery. An MTA that predates the header
+	// falls through to the unverified key below.
+	const attestedLength = await verifyMtaDeclaredLength(request, {
+		secret,
+		toleranceSeconds: MTA_EVENT_TOLERANCE_SECONDS,
+		maxBytes: MAX_RAW_WEBHOOK_BYTES,
+	});
+	if (attestedLength !== null) {
+		const verified = await readAndVerify(attestedLength);
 		if (!verified.ok) return verified;
 		return (await charge(verifiedKey)) ?? verified;
 	}
 
 	const limited = await charge(`${opts.rateLimitKeyPrefix}:unverified:${ip}`);
 	if (limited) return limited;
-	const verified = await readAndVerify();
+	const verified = await readAndVerify(MAX_RAW_WEBHOOK_BYTES);
 	if (!verified.ok) return verified;
 	return (await charge(verifiedKey)) ?? verified;
 }
