@@ -266,7 +266,7 @@ function firstFrom(field: AddressObject | AddressObject[] | undefined): string {
  * The first `text/x-amp-html` leaf in document order wins, decoded with the
  * package's single `transferDecode` (7bit / QP / base64 — one decoder, no second
  * copy). NOTE (sanctioned divergence, PR body): `MimeNode.rawBody` is CRLF→LF
- * normalized for nested non-`message/*` leaves (mailMime parity), so a multi-line
+ * normalized for nested non-`message/*` leaves, so a multi-line
  * AMP document's `job.amp` carries LF line endings rather than the wire's CRLF.
  * This is immaterial: the sender re-encodes the part when re-emitting it, applying
  * canonical CRLF + transfer-encoding on the way out.
