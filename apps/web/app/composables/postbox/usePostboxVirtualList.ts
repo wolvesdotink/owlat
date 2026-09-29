@@ -259,7 +259,10 @@ export function recallScroll(key: string): number | undefined {
  * list pane hidden with `display: none` while the reader has the screen (below
  * `lg`, or with the reading pane off) comes back at the top. Where the list
  * stayed visible its offset already matches, so the second pass is a no-op.
- * Best-effort: if the rows aren't tall enough yet the browser clamps the value.
+ * The page also stays mounted across folder switches, so a new `key` moves the
+ * same scroller to that folder's offset, or to the top for a folder not seen
+ * yet this session. Best-effort: if the rows aren't tall enough yet the browser
+ * clamps the value.
  */
 export function useRememberedScroll(opts: {
 	scrollEl: Ref<HTMLElement | null>;
@@ -267,18 +270,19 @@ export function useRememberedScroll(opts: {
 	activeMessageId: () => string | null | undefined;
 	onRestored: () => void;
 }): void {
-	async function restore() {
+	async function restore(fallback?: number) {
 		await nextTick();
-		const saved = recallScroll(opts.key.value);
+		const saved = recallScroll(opts.key.value) ?? fallback;
 		const el = opts.scrollEl.value;
 		if (saved == null || !el || el.scrollTop === saved) return;
 		el.scrollTop = saved;
 		opts.onRestored();
 	}
-	onMounted(restore);
+	onMounted(() => restore());
 	watch(opts.activeMessageId, (id, previous) => {
 		if (!id && previous) void restore();
 	});
+	watch(opts.key, () => restore(0));
 }
 
 /**

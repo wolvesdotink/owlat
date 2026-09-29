@@ -28,7 +28,8 @@ export function usePostboxThreadListWindow<T>(opts: {
 	rowHeight: Ref<number>;
 	focusedIndex: Ref<number>;
 	scrollParent: () => HTMLElement | null | undefined;
-	folderRole: () => string;
+	/** The folder's role, or its id for a custom folder: keys the scroll memory. */
+	folderKey: () => string;
 	activeMessageId: () => string | null | undefined;
 	hasMore: () => boolean;
 	/** A page (first or "load more") is already in flight. */
@@ -71,7 +72,7 @@ export function usePostboxThreadListWindow<T>(opts: {
 	// Auto-grow the page as the window nears the end (replacing the manual "Load
 	// more" click; the button stays as an always-available fallback), coalesced
 	// to one derivation per animation frame.
-	const folderScrollKey = computed(() => `postbox:scroll:${opts.folderRole()}`);
+	const folderScrollKey = computed(() => `postbox:scroll:${opts.folderKey()}`);
 	const { handleScroll } = usePostboxListAutoLoad({
 		scrollEl: scrollTarget,
 		itemCount,
@@ -86,8 +87,9 @@ export function usePostboxThreadListWindow<T>(opts: {
 	// A hosted list's own box never scrolls; the host's scroll drives it.
 	usePostboxScrollEvent(hostEl, handleScroll);
 
-	// Restore the folder's last scroll position when the list mounts, and when
-	// it comes back from behind the reader (a `display: none` pane loses it).
+	// Restore the folder's last scroll position when the list mounts, when it
+	// comes back from behind the reader (a `display: none` pane loses it), and
+	// when the folder changes under the same list (top for an unseen folder).
 	useRememberedScroll({
 		scrollEl: computed(() => (hostEl.value ? null : scrollEl.value)),
 		key: folderScrollKey,

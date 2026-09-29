@@ -14,6 +14,8 @@ const props = defineProps<{
 	messages: Array<PostboxThreadRowMessage>;
 	loading: boolean;
 	folderRole: string;
+	/** Set for a custom folder, whose folderRole is empty. Tells folders apart. */
+	folderId?: string;
 	activeMessageId?: string | null;
 	/** A further page exists AND there is a cursor to walk to it. */
 	hasMore?: boolean;
@@ -57,6 +59,9 @@ const { isEnabled: isFlagEnabled } = useFeatureFlag();
 const trustMarkers = computed(() => isFlagEnabled('senderAuthBadges'));
 
 const mailboxIdRef = computed(() => props.mailboxId);
+// Which folder the rows belong to. The page stays mounted across folder
+// switches, so focus and scroll reset on this key instead of on a remount.
+const folderKey = computed(() => props.folderId ?? props.folderRole);
 const bulk = usePostboxBulkActions(mailboxIdRef);
 
 // Optimistic row state, in two layers over the rows the folder query delivers:
@@ -220,7 +225,7 @@ const {
 	onKeydown: onListKeydown,
 } = usePostboxListKeyboard({
 	items: visibleMessages,
-	resetKey: computed(() => props.folderRole),
+	resetKey: folderKey,
 	rowDomId: (m) => `postbox-row-${m._id}`,
 	onActivate: (m) =>
 		props.selectable
@@ -324,7 +329,7 @@ const {
 	rowHeight: computed(() => POSTBOX_ROW_HEIGHT[density.value]),
 	focusedIndex,
 	scrollParent: () => props.scrollParent,
-	folderRole: () => props.folderRole,
+	folderKey: () => folderKey.value,
 	activeMessageId: () => props.activeMessageId,
 	hasMore: () => props.hasMore === true,
 	blocked: () => props.loading || props.loadingMore === true,
