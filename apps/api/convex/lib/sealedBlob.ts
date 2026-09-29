@@ -41,7 +41,7 @@
  */
 
 import type { Id } from '../_generated/dataModel';
-import { bytesToBase64Url } from './bytes';
+import { constantTimeEqual, hmacSignature } from './crypto';
 import { getOptional } from './env';
 import { logWarn } from './runtimeLog';
 import {
@@ -59,8 +59,6 @@ const RFC822_CONTENT_TYPE = 'message/rfc822';
 /** How long a minted proxy URL stays valid. Matches the short-lived nature of a
  * Convex signed storage URL; long enough for a reader fetch or an MTA transmit. */
 const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
-
-const encoder = new TextEncoder();
 
 /** Minimal storage surface for STORING a blob (action/mutation `ctx.storage`). */
 export interface BlobStore {
@@ -83,24 +81,9 @@ function canReadBlob(storage: BlobGetUrl): storage is BlobGetUrl & BlobGet {
 	return 'get' in storage && typeof storage.get === 'function';
 }
 
-/** Constant-time string compare for the capability token. */
-function timingSafeStrEqual(a: string, b: string): boolean {
-	if (a.length !== b.length) return false;
-	let mismatch = 0;
-	for (let i = 0; i < a.length; i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
-	return mismatch === 0;
-}
-
-async function hmac(secret: string, message: string): Promise<string> {
-	const key = await crypto.subtle.importKey(
-		'raw',
-		encoder.encode(secret),
-		{ name: 'HMAC', hash: 'SHA-256' },
-		false,
-		['sign']
-	);
-	const mac = await crypto.subtle.sign('HMAC', key, encoder.encode(message));
-	return bytesToBase64Url(new Uint8Array(mac));
+/** HMAC-SHA256 of the capability-token message, unpadded base64url. */
+function hmac(secret: string, message: string): Promise<string> {
+	return hmacSignature(secret, message, 'sha256', 'base64url');
 }
 
 /**
@@ -347,6 +330,6 @@ export async function verifyBlobToken(
 	const expMs = Number(exp);
 	if (!Number.isFinite(expMs) || expMs < Date.now()) return null;
 	const expected = await hmac(secret, tokenMessage(id, contentType, expMs));
-	if (!timingSafeStrEqual(expected, sig)) return null;
+	if (!constantTimeEqual(expected, sig)) return null;
 	return { storageId: id, contentType };
 }

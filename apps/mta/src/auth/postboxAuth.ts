@@ -7,7 +7,7 @@
  * authenticate per-user clients (Apple Mail, Thunderbird, …).
  */
 
-import { createHmac } from 'crypto';
+import { signMtaRequest } from '@owlat/mta-protocol/signer';
 import { normalizePeerIp } from '@owlat/shared/ipAddress';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
@@ -52,10 +52,7 @@ export async function verifyPostboxAppPassword(
 		...(client.clientName ? { clientName: client.clientName } : {}),
 		...(ip ? { ip } : {}),
 	});
-	const timestamp = String(Math.floor(Date.now() / 1000));
-	const signature = createHmac('sha256', config.webhookSecret)
-		.update(`${timestamp}.${body}`)
-		.digest('hex');
+	const signatureHeaders = signMtaRequest(config.webhookSecret, body);
 
 	const controller = new AbortController();
 	const t = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -65,8 +62,7 @@ export async function verifyPostboxAppPassword(
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				'X-MTA-Timestamp': timestamp,
-				'X-MTA-Signature': signature,
+				...signatureHeaders,
 			},
 			body,
 			signal: controller.signal,

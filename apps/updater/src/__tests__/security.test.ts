@@ -6,28 +6,11 @@ import {
 	isRateLimited,
 	isValidIPv4,
 	parseReleaseVersionFromTemplate,
-	safeCompare,
 	validateComposeTemplate,
 	__resetRateLimits,
 } from '../security.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
-
-describe('safeCompare', () => {
-	it('is true for equal strings', () => {
-		expect(safeCompare('s3cret-value', 's3cret-value')).toBe(true);
-	});
-
-	it('is false for different strings (including different lengths)', () => {
-		expect(safeCompare('s3cret-value', 's3cret-valu')).toBe(false);
-		expect(safeCompare('a', 'completely-different')).toBe(false);
-		expect(safeCompare('', 'x')).toBe(false);
-	});
-
-	it('is true for two empty strings', () => {
-		expect(safeCompare('', '')).toBe(true);
-	});
-});
 
 describe('isValidIPv4', () => {
 	it('accepts well-formed addresses', () => {

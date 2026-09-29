@@ -8,7 +8,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { execFileSync } from 'node:child_process';
 import { errorMessage } from '@owlat/shared';
 import { parseComposePs, type ComposeService } from '@owlat/shared/containerHealth';
-import { safeCompare } from './security.js';
+import { secretMatches } from '@owlat/shared/constantTimeEqual';
 
 const INSTANCE_SECRET = process.env['INSTANCE_SECRET'];
 export const OWLAT_DIR = process.env['OWLAT_DIR'] || '/opt/owlat';
@@ -38,7 +38,7 @@ export function requireAuth(req: IncomingMessage, res: ServerResponse): boolean 
 	}
 
 	const provided = req.headers['x-instance-secret'];
-	if (typeof provided !== 'string' || !safeCompare(provided, INSTANCE_SECRET)) {
+	if (typeof provided !== 'string' || !secretMatches(provided, INSTANCE_SECRET)) {
 		json(res, 401, { error: 'Unauthorized' });
 		return false;
 	}

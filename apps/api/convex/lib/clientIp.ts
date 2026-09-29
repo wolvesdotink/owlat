@@ -1,5 +1,5 @@
 import { getOptional } from './env';
-import { safeCompare } from './safeCompare';
+import { secretMatches } from './crypto';
 
 /**
  * Client-IP trust policy shared by BOTH rate limiters:
@@ -76,7 +76,7 @@ export function isSecretGatedMode(mode: TrustedProxyMode): mode is { kind: Secre
 function hasVerifiedProxySecret(request: Request): boolean {
 	const proxySecret = getOptional('RATE_LIMIT_PROXY_SECRET');
 	const presented = request.headers.get(PROXY_SECRET_HEADER);
-	return Boolean(proxySecret && presented && safeCompare(presented, proxySecret));
+	return secretMatches(presented, proxySecret);
 }
 
 /**

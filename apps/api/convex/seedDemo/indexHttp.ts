@@ -6,7 +6,7 @@
  *   Query:   ?reset=true to wipe seed-tagged rows first
  *
  * Protected by:
- *   1. `safeCompare` against `INSTANCE_SECRET`
+ *   1. `secretMatches` against `INSTANCE_SECRET`
  *   2. `assertDevDeployment()` — refuses prod-prefixed deployments
  *
  * DEV ONLY, and it stays that way: this endpoint seeds the dummy teammate
@@ -22,7 +22,7 @@
 import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
-import { safeCompare } from '../lib/safeCompare';
+import { secretMatches } from '../lib/crypto';
 import { logError } from '../lib/runtimeLog';
 import { devDeploymentResponseOrNull } from '../devShortcuts/_guard';
 import { errorResponse, jsonResponse } from '../lib/httpResponse';
@@ -33,7 +33,7 @@ export const seedDemoHttp = httpAction(async (ctx, request) => {
 
 	const secret = request.headers.get('X-Instance-Secret');
 	const expected = getOptional('INSTANCE_SECRET');
-	if (!expected || !secret || !safeCompare(secret, expected)) {
+	if (!secretMatches(secret, expected)) {
 		return errorResponse('unauthenticated', 'Unauthorized');
 	}
 

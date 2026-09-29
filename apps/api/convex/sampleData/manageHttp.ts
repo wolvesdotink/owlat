@@ -29,7 +29,7 @@ import { internal } from '../_generated/api';
 import type { GenericActionCtx, HttpRouter } from 'convex/server';
 import type { DataModel, TableNames } from '../_generated/dataModel';
 import { getOptional } from '../lib/env';
-import { safeCompare } from '../lib/safeCompare';
+import { secretMatches } from '../lib/crypto';
 import { logError } from '../lib/runtimeLog';
 import { SEEDED_TABLES } from '../seedDemo/pipeline';
 import { errorResponse, jsonResponse } from '../lib/httpResponse';
@@ -54,7 +54,7 @@ type ActionCtx = GenericActionCtx<DataModel>;
 function unauthorizedOrNull(request: Request): Response | null {
 	const secret = request.headers.get('X-Instance-Secret');
 	const expected = getOptional('INSTANCE_SECRET');
-	if (!expected || !secret || !safeCompare(secret, expected)) {
+	if (!secretMatches(secret, expected)) {
 		return errorResponse('unauthenticated', 'Unauthorized');
 	}
 	return null;

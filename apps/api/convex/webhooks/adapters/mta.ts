@@ -4,9 +4,9 @@
  *
  * Authentication is NOT this module's decision: the bundle declares the
  * `hmac-timestamp-body` scheme and the host verifier registry enforces it
- * (`../providerVerifierRegistry.ts`). `verifyMtaHeaders` below is the scheme's
- * reusable inner half, and the mailbox route `/webhooks/mta-mailbox` — which is
- * not a provider-feedback surface and so has no bundle — calls it directly.
+ * (`../providerVerifierRegistry.ts`). The MTA routes that are not
+ * provider-feedback surfaces (`/webhooks/mta-mailbox`, `/webhooks/mta-inbound`,
+ * the TLS-report and credential routes) verify through `../mtaSignature.ts`.
  *
  * MTA pre-classifies bounces on the sending side (DSN status codes → hard/
  * soft) so the adapter trusts `payload.bounceType` and does no further
@@ -22,7 +22,6 @@
  * never to this surface.
  */
 
-import { constantTimeEqual, hmacSha256Hex } from '../security';
 import type { InboundParser } from '../pipeline';
 import type { InboundEvent } from '../types';
 import { isMtaWebhookEvent, type ValidatedMtaWebhookEvent } from '@owlat/mta-protocol/webhookEvent';
@@ -59,8 +58,6 @@ function postmasterAcknowledgement(event: InboundEvent, dispatchResult: unknown)
 	);
 }
 
-const MTA_TIMESTAMP_TOLERANCE_SECONDS = 300; // 5 minutes
-
 const ROUTING_REENTRY_DISPOSITION_STATUS = {
 	invalid_token: 409,
 	binding_mismatch: 409,
@@ -73,23 +70,6 @@ const ROUTING_REENTRY_DISPOSITION_STATUS = {
 	deadline_expired: 200,
 	retry_exhausted: 200,
 } as const;
-
-export async function verifyMtaHeaders(
-	body: string,
-	signature: string,
-	timestamp: string,
-	secret: string,
-	nowSeconds: number = Math.floor(Date.now() / 1000)
-): Promise<boolean> {
-	const timestampSeconds = parseInt(timestamp, 10);
-	if (isNaN(timestampSeconds)) return false;
-	if (Math.abs(nowSeconds - timestampSeconds) > MTA_TIMESTAMP_TOLERANCE_SECONDS) {
-		return false;
-	}
-
-	const expected = await hmacSha256Hex(secret, `${timestamp}.${body}`);
-	return constantTimeEqual(signature, expected);
-}
 
 export const mtaAdapter: InboundParser<'mta'> = {
 	source: 'mta',

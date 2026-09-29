@@ -20,7 +20,8 @@
  * parameters.
  */
 
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac } from 'node:crypto';
+import { constantTimeEqual } from './constantTimeEqual';
 import { normalizeReturnPathDomain, normalizeVerpKey } from './verpNormalize';
 
 // Re-exported so every existing `@owlat/shared/verp` import site keeps working
@@ -97,11 +98,7 @@ function computeVerpMac(encodedId: string, window: number, key: string): string 
 
 /** Constant-time string compare that never throws on length mismatch. */
 export function signedTokenMacsEqual(a: string, b: string): boolean {
-	if (a.length !== b.length) return false;
-	const ab = Buffer.from(a);
-	const bb = Buffer.from(b);
-	if (ab.length !== bb.length) return false;
-	return timingSafeEqual(ab, bb);
+	return constantTimeEqual(a, b);
 }
 
 /**

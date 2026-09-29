@@ -4,7 +4,7 @@ import { components } from './_generated/api';
 import { internal } from './_generated/api';
 import { getOptional } from './lib/env';
 import { betterAuthAdapterArgs } from './lib/betterAuthAdapterArgs';
-import { safeCompare } from './lib/safeCompare';
+import { secretMatches } from './lib/crypto';
 import { getClientIp, rateLimitedResponse } from './lib/publicRateLimit';
 import { logError } from './lib/runtimeLog';
 import { errorResponse, jsonResponse } from './lib/httpResponse';
@@ -50,7 +50,7 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 	const secret = request.headers.get('X-Instance-Secret');
 	const expectedSecret = getOptional('INSTANCE_SECRET');
 
-	if (!expectedSecret || !secret || !safeCompare(secret, expectedSecret)) {
+	if (!secretMatches(secret, expectedSecret)) {
 		return errorResponse('unauthenticated', 'Unauthorized');
 	}
 

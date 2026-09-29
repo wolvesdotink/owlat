@@ -22,7 +22,8 @@ import { internal } from '../../_generated/api';
 import { getClientIp, rateLimitedResponse } from '../../lib/publicRateLimit';
 import { logError } from '../../lib/runtimeLog';
 import { getOptional } from '../../lib/env';
-import { verifyMtaHeaders } from './mta';
+import { MTA_SIGNATURE_HEADER, MTA_TIMESTAMP_HEADER } from '@owlat/mta-protocol/signature';
+import { MTA_EVENT_TOLERANCE_SECONDS, verifyMtaSignedRequest } from '../mtaSignature';
 import { jsonResponse } from '../inboundHttp';
 
 /**
@@ -220,9 +221,7 @@ export async function readVerifiedMtaBody(
 	}
 
 	// Both signature headers are a string comparison against no state at all.
-	const signature = request.headers.get('x-mta-signature');
-	const mtaTimestamp = request.headers.get('x-mta-timestamp');
-	if (!signature || !mtaTimestamp) {
+	if (!request.headers.get(MTA_SIGNATURE_HEADER) || !request.headers.get(MTA_TIMESTAMP_HEADER)) {
 		logError(`${opts.logTag} Missing X-MTA-Signature or X-MTA-Timestamp`);
 		return { ok: false, response: jsonResponse(401, { error: 'Missing signature headers' }) };
 	}
@@ -235,8 +234,8 @@ export async function readVerifiedMtaBody(
 
 	/**
 	 * Read the body and check the HMAC-SHA256 over `${timestamp}.${body}` plus
-	 * the 5-minute staleness window — shared with the main MTA webhook
-	 * (`./mta.ts`) so the three inbound paths can never drift on the scheme.
+	 * the 5-minute staleness window, through the one MTA verifier
+	 * (`../mtaSignature.ts`) every MTA route shares.
 	 */
 	const readAndVerify = async (): Promise<VerifiedMtaBody> => {
 		let bodyText: string;
@@ -248,7 +247,11 @@ export async function readVerifiedMtaBody(
 			}
 			return { ok: false, response: jsonResponse(400, { error: 'Failed to read request body' }) };
 		}
-		if (!(await verifyMtaHeaders(bodyText, signature, mtaTimestamp, secret))) {
+		const verdict = await verifyMtaSignedRequest(request, bodyText, {
+			secret,
+			toleranceSeconds: MTA_EVENT_TOLERANCE_SECONDS,
+		});
+		if (!verdict.ok) {
 			logError(`${opts.logTag} Invalid signature or stale timestamp`);
 			return { ok: false, response: jsonResponse(401, { error: 'Invalid signature' }) };
 		}

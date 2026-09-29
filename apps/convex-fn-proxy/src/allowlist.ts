@@ -87,7 +87,9 @@ export function extractConvexToken(authorization: string | undefined): string | 
 /**
  * Constant-time comparison of two secrets. Both are SHA-256 hashed first so the
  * lengths always match `timingSafeEqual`'s equal-length requirement and the
- * comparison never leaks length. Mirrors the updater sidecar's `safeCompare`.
+ * comparison never leaks length. Same construction as `constantTimeEqual` in
+ * `@owlat/shared/constantTimeEqual`, kept as a local copy because this proxy
+ * has no workspace dependencies (its image ships a self-contained bundle).
  */
 export function safeTokenEqual(a: string, b: string): boolean {
 	const hashA = createHash('sha256').update(a).digest();

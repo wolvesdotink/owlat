@@ -6,16 +6,20 @@ import { BodyTooLargeError, readBodyText } from '../lib/readBody';
  * Body:    { address, password, scope: 'imap' | 'smtp', clientName?, ip? }
  * Returns: { ok: true, mailboxId, appPasswordId, organizationId, userId } | { ok: false }
  *
- * Uses the same MTA_WEBHOOK_SECRET HMAC pattern as the MTA feedback adapter
- * (`webhooks/adapters/mta.ts`) so we don't have to ship the Convex admin key
- * to the MTA.
+ * Authenticated with the MTA request signature every MTA route verifies
+ * (`webhooks/mtaSignature.ts`, MTA_WEBHOOK_SECRET, 60s request window) so we
+ * don't have to ship the Convex admin key to the MTA.
  */
 
 import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logError } from '../lib/runtimeLog';
 import { getOptional } from '../lib/env';
-import { constantTimeEqual } from '../webhooks/security';
+import {
+	MTA_REQUEST_TOLERANCE_SECONDS,
+	readMtaSignatureHeaders,
+	verifyMtaSignedRequest,
+} from '../webhooks/mtaSignature';
 import { getClientIp } from '../lib/publicRateLimit';
 import { normalizePeerIp } from '@owlat/shared/ipAddress';
 
@@ -49,20 +53,12 @@ export const handleVerifyCredential = httpAction(async (ctx, request) => {
 		});
 	}
 
-	const signature = request.headers.get('x-mta-signature');
-	const timestamp = request.headers.get('x-mta-timestamp');
-	if (!signature || !timestamp) {
-		return new Response(JSON.stringify({ error: 'Missing signature' }), {
-			status: 401,
-		});
-	}
-
-	const ts = parseInt(timestamp, 10);
-	const now = Math.floor(Date.now() / 1000);
-	if (Number.isNaN(ts) || Math.abs(now - ts) > 60) {
-		return new Response(JSON.stringify({ error: 'Stale timestamp' }), {
-			status: 401,
-		});
+	// Refuse a missing, malformed or stale header pair before reading the body.
+	const signatureWindow = { toleranceSeconds: MTA_REQUEST_TOLERANCE_SECONDS };
+	const headers = readMtaSignatureHeaders(request, signatureWindow);
+	if (!headers.ok) {
+		const error = headers.reason === 'missing_headers' ? 'Missing signature' : 'Stale timestamp';
+		return new Response(JSON.stringify({ error }), { status: 401 });
 	}
 
 	let bodyText: string;
@@ -77,19 +73,8 @@ export const handleVerifyCredential = httpAction(async (ctx, request) => {
 		);
 	}
 
-	const enc = new TextEncoder();
-	const key = await crypto.subtle.importKey(
-		'raw',
-		enc.encode(secret),
-		{ name: 'HMAC', hash: 'SHA-256' },
-		false,
-		['sign']
-	);
-	const sig = await crypto.subtle.sign('HMAC', key, enc.encode(`${timestamp}.${bodyText}`));
-	const expected = Array.from(new Uint8Array(sig))
-		.map((b) => b.toString(16).padStart(2, '0'))
-		.join('');
-	if (!constantTimeEqual(signature, expected)) {
+	const verdict = await verifyMtaSignedRequest(request, bodyText, { ...signatureWindow, secret });
+	if (!verdict.ok) {
 		return new Response(JSON.stringify({ error: 'Invalid signature' }), {
 			status: 401,
 		});

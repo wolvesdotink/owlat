@@ -1,4 +1,4 @@
-import { timingSafeEqual, createHash } from 'node:crypto';
+import { secretMatches } from '@owlat/shared/constantTimeEqual';
 import { Agent, request, type IncomingHttpHeaders } from 'node:http';
 import { Readable } from 'node:stream';
 import type { H3Event } from 'h3';
@@ -18,17 +18,6 @@ import type { H3Event } from 'h3';
  */
 
 const UPDATER_BASE_URL = 'http://updater:3200';
-
-/**
- * Constant-time string comparison. Hashes both inputs to SHA-256 so the
- * `timingSafeEqual` length precondition always holds (equal-length digests)
- * and the comparison leaks neither length nor content via timing.
- */
-function safeCompare(a: string, b: string): boolean {
-	const hashA = createHash('sha256').update(a).digest();
-	const hashB = createHash('sha256').update(b).digest();
-	return timingSafeEqual(hashA, hashB);
-}
 
 /**
  * Read `INSTANCE_SECRET` from the environment, throwing a 503 with the given
@@ -54,7 +43,7 @@ export function requireInstanceSecret(event: H3Event, notConfiguredMessage: stri
 	const instanceSecret = getInstanceSecret(notConfiguredMessage);
 
 	const providedSecret = getHeader(event, 'x-instance-secret');
-	if (!providedSecret || !safeCompare(providedSecret, instanceSecret)) {
+	if (!secretMatches(providedSecret, instanceSecret)) {
 		throw createError({ statusCode: 401, message: 'Unauthorized' });
 	}
 

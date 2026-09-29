@@ -8,7 +8,8 @@
  * Canonicalization is delegated to the shared `../canon.ts` public API (D4).
  */
 
-import { createHash, timingSafeEqual, verify as cryptoVerify } from 'crypto';
+import { createHash, verify as cryptoVerify } from 'crypto';
+import { constantTimeEqual } from '@owlat/shared/constantTimeEqual';
 import {
 	canonicalizeBody,
 	canonicalizeHeaderField,
@@ -252,7 +253,7 @@ export async function verifyMessageSignature(
 			cache.hash.set(cacheKey, computedBodyHash);
 		}
 	}
-	if (!timingSafeEqualStrings(computedBodyHash, stripWsp(bhTag))) {
+	if (!constantTimeEqual(computedBodyHash, stripWsp(bhTag))) {
 		// Body hash mismatch — the body changed after signing (PERMFAIL).
 		return withVerdict('fail');
 	}
@@ -395,17 +396,4 @@ function buildHeaderHashInput(
 	const sigCanon = canonicalizeHeaderField(stripSignatureValue(sigField), mode);
 	const joined = parts.map((p) => `${p}\r\n`).join('') + sigCanon;
 	return Buffer.from(joined, 'latin1');
-}
-
-/**
- * Constant-time equality for base64 hash strings via `crypto.timingSafeEqual`,
- * which needs equal-length buffers (hence the length short-circuit first).
- */
-function timingSafeEqualStrings(a: string, b: string): boolean {
-	const ab = Buffer.from(a, 'latin1');
-	const bb = Buffer.from(b, 'latin1');
-	if (ab.length !== bb.length) {
-		return false;
-	}
-	return timingSafeEqual(ab, bb);
 }

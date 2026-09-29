@@ -23,7 +23,8 @@
  * Verification is constant-time (see `constantTimeEqual`).
  */
 
-import { constantTimeEqual, bytesToHex } from '../webhooks/security';
+import { bytesToHex } from '../lib/bytes';
+import { constantTimeEqual, hmacSha256Hex } from '../lib/crypto';
 import type { ConnectedAppHookKind } from './hookProtocol';
 import { CONNECTED_APP_HOOK_PROTOCOL_VERSION } from './hookProtocol';
 
@@ -47,19 +48,6 @@ export interface HookSignatureFields {
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
 	const digest = await crypto.subtle.digest('SHA-256', bytes as BufferSource);
 	return bytesToHex(digest);
-}
-
-/** HMAC-SHA256 of `data` under `secret`, lowercase hex. */
-async function hmacHex(secret: string, data: string): Promise<string> {
-	const key = await crypto.subtle.importKey(
-		'raw',
-		new TextEncoder().encode(secret),
-		{ name: 'HMAC', hash: 'SHA-256' },
-		false,
-		['sign']
-	);
-	const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
-	return bytesToHex(signature);
 }
 
 /** A fresh, URL-safe 128-bit nonce. Uses the CSPRNG; no Node dependency. */
@@ -99,7 +87,7 @@ export async function signHookRequest(
 	secret: string,
 	fields: HookSignatureFields
 ): Promise<string> {
-	const mac = await hmacHex(secret, await buildRequestSigningString(fields));
+	const mac = await hmacSha256Hex(secret, await buildRequestSigningString(fields));
 	return `${SIGNATURE_SCHEME}=${mac}`;
 }
 
@@ -112,7 +100,7 @@ export async function signHookResponse(
 	secret: string,
 	fields: HookSignatureFields
 ): Promise<string> {
-	const mac = await hmacHex(secret, await buildResponseSigningString(fields));
+	const mac = await hmacSha256Hex(secret, await buildResponseSigningString(fields));
 	return `${SIGNATURE_SCHEME}=${mac}`;
 }
 

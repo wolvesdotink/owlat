@@ -40,7 +40,7 @@ import {
 	transferDecode,
 	type AddressObject,
 } from '@owlat/mail-message';
-import { timingSafeStringEqual } from '../auth/timingSafe.js';
+import { secretMatches } from '@owlat/shared/constantTimeEqual';
 import type { Queue } from 'groupmq';
 import type Redis from 'ioredis';
 import type { EmailJob } from '../types.js';
@@ -196,7 +196,7 @@ export function buildAuthenticate(deps: Pick<SubmissionDeps, 'redis' | 'config'>
 
 		try {
 			// Master key — constant-time compare like every other secret check.
-			if (timingSafeStringEqual(apiKey, config.apiKey)) {
+			if (secretMatches(apiKey, config.apiKey)) {
 				session.state.auth = { organizationId: '__master__', credentialName: 'master' };
 				return { ok: true, user: 'master' };
 			}

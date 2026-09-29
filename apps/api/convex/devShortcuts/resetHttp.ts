@@ -14,7 +14,7 @@
 import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
-import { safeCompare } from '../lib/safeCompare';
+import { secretMatches } from '../lib/crypto';
 import { logError } from '../lib/runtimeLog';
 import { devDeploymentResponseOrNull } from './_guard';
 import { errorResponse, jsonResponse } from '../lib/httpResponse';
@@ -25,7 +25,7 @@ export const resetHttp = httpAction(async (ctx, request) => {
 
 	const secret = request.headers.get('X-Instance-Secret');
 	const expected = getOptional('INSTANCE_SECRET');
-	if (!expected || !secret || !safeCompare(secret, expected)) {
+	if (!secretMatches(secret, expected)) {
 		return errorResponse('unauthenticated', 'Unauthorized');
 	}
 

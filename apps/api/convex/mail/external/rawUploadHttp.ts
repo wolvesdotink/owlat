@@ -25,7 +25,7 @@ import { BodyTooLargeError, readBodyBytes } from '../../lib/readBody';
 
 import { httpAction } from '../../_generated/server';
 import { getOptional } from '../../lib/env';
-import { safeCompare } from '../../lib/safeCompare';
+import { secretMatches } from '../../lib/crypto';
 import { errorResponse, jsonResponse } from '../../lib/httpResponse';
 import { storeSealedBlob } from '../../lib/sealedBlob';
 import { logError } from '../../lib/runtimeLog';
@@ -42,7 +42,7 @@ export const handleRawMessageUpload = httpAction(async (ctx, request) => {
 	}
 	const header = request.headers.get('authorization') ?? '';
 	const presented = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : '';
-	if (!safeCompare(presented, expected)) {
+	if (!secretMatches(presented, expected)) {
 		return errorResponse('unauthenticated', 'Unauthorized');
 	}
 
