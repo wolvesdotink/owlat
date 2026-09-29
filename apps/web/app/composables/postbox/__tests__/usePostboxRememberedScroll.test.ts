@@ -3,11 +3,12 @@
  * useRememberedScroll puts the thread list back at its remembered offset on
  * mount and when the reader closes. The Postbox page no longer remounts the
  * list per open, so a list pane hidden (`display: none`) behind the reader
- * would otherwise come back at the top.
+ * would otherwise come back at the top. A folder switch hands the same list a
+ * new key, and the list moves to that folder's offset (or the top).
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
-import { defineComponent, h, ref } from 'vue';
+import { defineComponent, h, ref, type Ref } from 'vue';
 import { rememberScroll, useRememberedScroll } from '../usePostboxVirtualList';
 
 let wrapper: VueWrapper | null = null;
@@ -17,7 +18,7 @@ afterEach(() => {
 	wrapper = null;
 });
 
-function mountList(key: string, activeMessageId = ref<string | null>(null)) {
+function mountList(key: string | Ref<string>, activeMessageId = ref<string | null>(null)) {
 	const onRestored = vi.fn();
 	const scrollEl = ref<HTMLElement | null>(null);
 	wrapper = mount(
@@ -25,7 +26,7 @@ function mountList(key: string, activeMessageId = ref<string | null>(null)) {
 			setup() {
 				useRememberedScroll({
 					scrollEl,
-					key: ref(key),
+					key: typeof key === 'string' ? ref(key) : key,
 					activeMessageId: () => activeMessageId.value,
 					onRestored,
 				});
@@ -73,6 +74,23 @@ describe('useRememberedScroll', () => {
 		activeMessageId.value = null;
 		await flushPromises();
 		expect(onRestored).not.toHaveBeenCalled();
+	});
+
+	it("moves to the next folder's offset, or the top, when the key changes", async () => {
+		rememberScroll('test:folder-b', 260);
+		const key = ref('test:folder-a');
+		const { el, onRestored } = mountList(key);
+		await flushPromises();
+		el().scrollTop = 700;
+
+		key.value = 'test:folder-b';
+		await flushPromises();
+		expect(el().scrollTop).toBe(260);
+
+		key.value = 'test:folder-unseen';
+		await flushPromises();
+		expect(el().scrollTop).toBe(0);
+		expect(onRestored).toHaveBeenCalledTimes(2);
 	});
 
 	it('does nothing for a folder with no remembered offset', async () => {

@@ -415,6 +415,7 @@ const advanceIds = computed(() =>
 											:messages="listMessages"
 											:loading="isLoading && !showingCached"
 											:folder-role="folderRole"
+											:folder-id="folderId"
 											:active-message-id="activeMessageId"
 											:has-more="canLoadMore"
 											:loading-more="isLoadingMore"
