@@ -195,9 +195,7 @@ describe('knowledge reads follow the shared-inbox reader rule', () => {
 
 		// A page of one scans four rows, all of them Team Inbox-derived.
 		expect(await t.query(api.knowledge.graph.listAll, { limit: 1 })).toEqual([]);
-		expect(titles(await t.query(api.knowledge.graph.listAll, { limit: 2 }))).toEqual([
-			'open fact',
-		]);
+		expect(titles(await t.query(api.knowledge.graph.listAll, { limit: 2 }))).toEqual(['open fact']);
 	});
 
 	it('returns null for an inbox-derived entry and drops it from relations', async () => {
