@@ -229,6 +229,12 @@ export async function runInboundPipeline(
 	// A verify-first adapter reads a small declared body for free, capped at that
 	// size. A larger or undeclared body pays a key of its own before it is read,
 	// so it never spends the budget of the requests that verify for free.
+	//
+	// There is deliberately no per-adapter free-read size. A large genuine batch
+	// (Mandrill's `mandrill_events`, up to the 5 MiB cap) shares the unverified
+	// key with large junk on the same route and can be answered 429 under a
+	// flood; the provider retries it like any non-2xx. Raising the free size for
+	// such a route would hand any caller that sets the header a free 5 MiB read.
 	const freeRead =
 		adapter.verifyBeforeRateLimit === true && declaresBodyAtMost(request, FREE_VERIFY_BODY_BYTES);
 	if (adapter.verifyBeforeRateLimit && !freeRead) {
