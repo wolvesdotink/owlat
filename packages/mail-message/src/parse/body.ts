@@ -239,9 +239,12 @@ export function isAttachmentPart(node: MimeNode): boolean {
  * Transfer-decode a leaf body (binary string) into raw bytes, honoring
  * `Content-Transfer-Encoding`. base64 / quoted-printable / 7bit / 8bit / binary
  * are handled; a malformed base64 part yields empty bytes rather than aborting.
- * Byte-for-byte identical to the current `mailMime` decoder.
+ * `@owlat/shared/mailMime` adapts this decoder rather than keeping its own.
  */
-export function transferDecode(rawBody: string, encoding: string | undefined): Uint8Array {
+export function transferDecode(
+	rawBody: string,
+	encoding: string | undefined
+): Uint8Array<ArrayBuffer> {
 	const enc = (encoding ?? '7bit').toLowerCase().trim();
 	if (enc === 'base64') {
 		const clean = rawBody.replace(/[^A-Za-z0-9+/=]/g, '');

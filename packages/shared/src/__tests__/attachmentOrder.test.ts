@@ -3,23 +3,23 @@ import { extractAttachments } from '@owlat/mail-message';
 import { extractAttachments as oracleExtract } from '../mailMime';
 
 /**
- * Attachment order is the load-bearing contract shared with the read side:
- * `@owlat/shared/mailMime.extractAttachments` records `partIndex === String(i)`
- * on stored metadata, so the in-house `@owlat/mail-message` parser MUST emit
- * attachment leaves in the exact same document order (depth-first, children
- * left-to-right) and with the exact same "is this an attachment" predicate.
+ * Attachment order is the load-bearing contract shared with the read side: the
+ * writers record `partIndex === String(i)` from `@owlat/mail-message`, and the
+ * reader resolves it through `@owlat/shared/mailMime.extractAttachmentAt`, so
+ * both MUST emit attachment leaves in the exact same document order
+ * (depth-first, children left-to-right) with the exact same "is this an
+ * attachment" predicate.
  *
- * This is a DIFFERENTIAL against that named oracle: every fixture is run through
- * BOTH extractors and their outputs are asserted equal on filename order,
- * contentType, disposition, contentId and decoded bytes. Hand-computed
- * expectations alone can't catch a shared misreading of the mailMime predicate;
- * pinning to the oracle can.
+ * `mailMime` is now a thin adapter over the `@owlat/mail-message` walker, so the
+ * order agrees by construction. This DIFFERENTIAL still runs every fixture
+ * through BOTH extractors and asserts filename order, contentType, disposition,
+ * contentId and decoded bytes equal, which pins the adapter's field mapping, and
+ * the `expectedNames` pins keep the fixtures' historical order fixed.
  *
  * It lives in `@owlat/shared` (which already prod-depends on
- * `@owlat/mail-message` via the `/headers` re-export shim) rather than in
- * `@owlat/mail-message` itself, so the live oracle is importable next to the new
- * extractor with ZERO new package edges — a devDependency the other direction
- * would form a `mail-message <-> shared` build cycle.
+ * `@owlat/mail-message`) rather than in `@owlat/mail-message` itself: a
+ * devDependency the other direction would form a `mail-message <-> shared`
+ * build cycle.
  */
 
 /** Assemble an eml with CRLF line endings from raw lines. */
