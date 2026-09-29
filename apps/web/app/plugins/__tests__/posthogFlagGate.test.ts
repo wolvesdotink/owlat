@@ -42,7 +42,10 @@ async function loadPlugin(options?: { apiKey?: string }) {
 	vi.stubGlobal('useFeatureFlag', () => ({
 		isEnabled: (key: string) => key === 'analytics.posthog' && flag.value,
 	}));
-	vi.stubGlobal('useRouter', () => ({ afterEach: afterEach_ }));
+	vi.stubGlobal('useRouter', () => ({
+		afterEach: afterEach_,
+		currentRoute: { value: { name: 'dashboard-postbox-folder' } },
+	}));
 	vi.resetModules();
 	const mod = await import('../posthog.client');
 	return { plugin: mod.default as unknown as Plugin, flag };
@@ -137,5 +140,45 @@ describe('posthog plugin — analytics.posthog gate', () => {
 
 		expect(posthogStub.init).not.toHaveBeenCalled();
 		expect(provide.posthog.value).toBeNull();
+	});
+});
+
+describe('posthog plugin — performance samples', () => {
+	beforeEach(() => {
+		for (const fn of Object.values(posthogStub)) fn.mockClear();
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('holds boot samples until the flag is on, then captures them with the route name', async () => {
+		const { plugin, flag } = await loadPlugin();
+		// Same module registry as the plugin: loadPlugin reset it just before.
+		const telemetry = await import('~/lib/perfTelemetry');
+		plugin();
+		telemetry.reportPerf('owlat_boot_shell_ms', { duration_ms: 420 });
+		await settle();
+
+		expect(posthogStub.capture).not.toHaveBeenCalled();
+
+		flag.value = true;
+		await settle();
+
+		expect(posthogStub.capture).toHaveBeenCalledWith('owlat_boot_shell_ms', {
+			route: 'dashboard-postbox-folder',
+			duration_ms: 420,
+		});
+	});
+
+	it('collects nothing without a key', async () => {
+		const { plugin } = await loadPlugin({ apiKey: '' });
+		const telemetry = await import('~/lib/perfTelemetry');
+		plugin();
+		const send = vi.fn();
+		telemetry.setPerfSender(send);
+		telemetry.reportPerf('owlat_boot_shell_ms', { duration_ms: 420 });
+
+		expect(send).not.toHaveBeenCalled();
 	});
 });

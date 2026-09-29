@@ -5,6 +5,7 @@ import { CORE_NAV_HREFS } from '~/lib/dashboardNavigationCore';
 import { UNDO_TOAST_REGION_ID } from '~/utils/undoToastRegion';
 import { useCommandPaletteHost } from '~/composables/useCommandPaletteHost';
 import { useMountOnFirst } from '~/composables/useMountOnFirst';
+import { usePerfMark } from '~/composables/usePerfMark';
 
 const { t } = useI18n();
 const route = useRoute();
@@ -110,6 +111,10 @@ onMounted(() => {
 	registerNavigationShortcuts();
 	initFromStorage();
 });
+
+// Navigation start to the shell on screen, for cold loads only (plan 0.2).
+const { measureBoot } = usePerfMark();
+onMounted(() => measureBoot('owlat_boot_shell_ms'));
 
 // ── Route changes, said out loud ──────────────────────────────────────────
 // A client-side navigation is INVISIBLE to assistive technology. The browser
