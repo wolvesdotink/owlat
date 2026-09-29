@@ -273,13 +273,17 @@ export async function readVerifiedMtaBody(
 		toleranceSeconds: MTA_EVENT_TOLERANCE_SECONDS,
 		maxBytes: MAX_RAW_WEBHOOK_BYTES,
 	});
+	const unverifiedKey = `${opts.rateLimitKeyPrefix}:unverified:${ip}`;
 	if (attestedLength !== null) {
 		const verified = await readAndVerify(attestedLength);
-		if (!verified.ok) return verified;
+		// A valid length signature over a body that does not verify is a replayed
+		// or mangled header set: it pays the unverified key after the fact, so it
+		// cannot be repeated for free reads.
+		if (!verified.ok) return (await charge(unverifiedKey)) ?? verified;
 		return (await charge(verifiedKey)) ?? verified;
 	}
 
-	const limited = await charge(`${opts.rateLimitKeyPrefix}:unverified:${ip}`);
+	const limited = await charge(unverifiedKey);
 	if (limited) return limited;
 	const verified = await readAndVerify(MAX_RAW_WEBHOOK_BYTES);
 	if (!verified.ok) return verified;

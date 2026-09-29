@@ -259,6 +259,40 @@ describe('MTA raw routes keep large signed deliveries off the unverified key', (
 			expect([401, 429]).not.toContain(signed.status);
 		});
 
+		it(`${path} charges the unverified key when a length-signed body does not verify`, async () => {
+			vi.useFakeTimers({ toFake: ['Date'] });
+			const t = convexTest(schema, modules);
+			rateLimiterTest.register(t);
+			const body = JSON.stringify({ event: 'unsupported.kind', padding: 'x'.repeat(300 * 1024) });
+			const other = body.replace('unsupported', 'unsupporteX');
+			const headers = {
+				'Content-Type': 'application/json',
+				'Content-Length': String(Buffer.byteLength(other)),
+				...signMtaRequest(SECRET, body),
+			};
+
+			// More failed length-signed deliveries than the unverified key holds.
+			const failed = await Promise.all(
+				Array.from({ length: 110 }, () => t.fetch(path, { method: 'POST', headers, body: other }))
+			);
+			// Each is refused; once the key is empty the refusal is the 429 itself.
+			expect(failed.every((res) => res.status === 401 || res.status === 429)).toBe(true);
+			expect(failed.some((res) => res.status === 429)).toBe(true);
+
+			// A request that pays the unverified key up front now finds it empty.
+			const junk = JSON.stringify({ event: 'unsupported.kind' });
+			const unverified = await t.fetch(path, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-MTA-Timestamp': String(Math.floor(Date.now() / 1000)),
+					'X-MTA-Signature': '0'.repeat(64),
+				},
+				body: junk,
+			});
+			expect(unverified.status).toBe(429);
+		});
+
 		it(`${path} refuses a length-signed request whose body does not verify`, async () => {
 			const t = convexTest(schema, modules);
 			rateLimiterTest.register(t);
