@@ -52,6 +52,7 @@ import type * as agent_steps_index from '../agent/steps/index.js';
 import type * as agent_steps_route_autoSendGates from '../agent/steps/route/autoSendGates.js';
 import type * as agent_steps_route_index from '../agent/steps/route/index.js';
 import type * as agent_steps_route_pluginAutoSendGates from '../agent/steps/route/pluginAutoSendGates.js';
+import type * as agent_steps_security_scan_hiddenMarkup from '../agent/steps/security_scan/hiddenMarkup.js';
 import type * as agent_steps_security_scan_index from '../agent/steps/security_scan/index.js';
 import type * as agent_steps_security_scan_patterns from '../agent/steps/security_scan/patterns.js';
 import type * as agent_steps_types from '../agent/steps/types.js';
@@ -1302,6 +1303,7 @@ declare const fullApi: ApiFromModules<{
 	'agent/steps/route/autoSendGates': typeof agent_steps_route_autoSendGates;
 	'agent/steps/route/index': typeof agent_steps_route_index;
 	'agent/steps/route/pluginAutoSendGates': typeof agent_steps_route_pluginAutoSendGates;
+	'agent/steps/security_scan/hiddenMarkup': typeof agent_steps_security_scan_hiddenMarkup;
 	'agent/steps/security_scan/index': typeof agent_steps_security_scan_index;
 	'agent/steps/security_scan/patterns': typeof agent_steps_security_scan_patterns;
 	'agent/steps/types': typeof agent_steps_types;

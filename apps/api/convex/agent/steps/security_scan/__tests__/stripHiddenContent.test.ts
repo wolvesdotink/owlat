@@ -142,14 +142,128 @@ describe('stripHiddenContent', () => {
 		expect(stripHiddenContent(text)).toBe(text);
 	});
 
-	it('leaves an unclosed comment and an unclosed hidden element in place', () => {
+	it('leaves an unclosed comment in place', () => {
 		expect(stripHiddenContent('a <!-- b')).toBe('a <!-- b');
-		expect(stripHiddenContent('<span style="display:none">x')).toBe('<span style="display:none">x');
 	});
 
 	it('caps the scanned input length', () => {
 		const out = stripHiddenContent('a'.repeat(MAX_SCAN_INPUT_CHARS + 10));
 		expect(out.length).toBe(MAX_SCAN_INPUT_CHARS);
+	});
+});
+
+describe('stripHiddenContent removes what a browser hides', () => {
+	it('ends a hidden element at an end tag that carries attributes', () => {
+		expect(stripHiddenContent('<span style="display:none">SECRETPAYLOAD</span foo="bar">ok')).toBe(
+			' ok'
+		);
+		expect(stripHiddenContent(`<span style="display:none">SECRETPAYLOAD</SPAN title='>'>ok`)).toBe(
+			' ok'
+		);
+	});
+
+	it('reads a style written with character references', () => {
+		for (const style of [
+			'display&#58;none',
+			'display&#x3A;none',
+			'display&#x000000003a;none',
+			'display&colon;none',
+			'display:&#110;one',
+			'&#100;isplay:none',
+			'visibility&colon;hidden',
+		]) {
+			expect(stripHiddenContent(`<span style="${style}">SECRETPAYLOAD</span>ok`), style).toBe(
+				' ok'
+			);
+		}
+	});
+
+	it('reads a style written with CSS escapes or comments', () => {
+		for (const style of [
+			'display:\\6e one',
+			'display:n\\one',
+			'display:/**/none',
+			'dis\\play:none',
+			'display:&#92;6e one',
+		]) {
+			expect(stripHiddenContent(`<span style="${style}">SECRETPAYLOAD</span>ok`), style).toBe(
+				' ok'
+			);
+		}
+	});
+
+	it('removes a hidden element that is never closed up to the end of its parent', () => {
+		expect(stripHiddenContent('<div><span style="display:none">SECRETPAYLOAD</div>visible')).toBe(
+			'<div> </div>visible'
+		);
+		expect(stripHiddenContent('<p>Hi</p><span style="display:none">SECRETPAYLOAD')).toBe(
+			'<p>Hi</p> '
+		);
+	});
+
+	it('keeps hiding past a nested element of the same name', () => {
+		expect(
+			stripHiddenContent('<div style="display:none"><div>inner</div>SECRETPAYLOAD</div>after')
+		).toBe(' after');
+	});
+
+	it('removes elements with the hidden attribute and template content', () => {
+		expect(stripHiddenContent('<div hidden>SECRETPAYLOAD</div>ok')).toBe(' ok');
+		expect(stripHiddenContent('<p HIDDEN="">SECRETPAYLOAD</p>ok')).toBe(' ok');
+		expect(stripHiddenContent('<template><p>SECRETPAYLOAD</p></template>ok')).toBe(' ok');
+	});
+
+	it('treats transparent text as hidden', () => {
+		expect(stripHiddenContent('<span style="color: transparent">SECRETPAYLOAD</span>ok')).toBe(
+			' ok'
+		);
+	});
+
+	it('keeps hiding a formatting element the browser reopens after its parent closes', () => {
+		expect(stripHiddenContent('<p><b style="display:none">x</p>SECRETPAYLOAD</b>visible')).toBe(
+			'<p> visible'
+		);
+	});
+
+	it('stops hiding a formatting element at the end of its table cell', () => {
+		expect(
+			stripHiddenContent(
+				'<table><tr><td><a style="display:none">x</td><td>visible</td></tr></table>'
+			)
+		).toBe('<table><tr><td> </td><td>visible</td></tr></table>');
+	});
+
+	it('does not end a hidden element at an end tag the browser ignores', () => {
+		// Inside raw text, an end tag is only text.
+		expect(
+			stripHiddenContent(
+				'<span style="display:none"><textarea></span>SECRETPAYLOAD</textarea></span>ok'
+			)
+		).toBe(' ok');
+		// An ordinary end tag does not close through a block element.
+		expect(
+			stripHiddenContent('<span style="display:none"><div>x</span>SECRETPAYLOAD</div></span>ok')
+		).toBe(' ok');
+		// A block end tag does not close through a table.
+		expect(
+			stripHiddenContent(
+				'<div style="display:none"><table><tr><td></div>SECRETPAYLOAD</td></tr></table></div>ok'
+			)
+		).toBe(' ok');
+		// `</body>` leaves the open elements open.
+		expect(stripHiddenContent('<body><div style="display:none">x</body>SECRETPAYLOAD')).toBe(
+			'<body> '
+		);
+	});
+
+	it('keeps a hidden void element from hiding what follows it', () => {
+		const html = '<img style="display:none" src="x.gif">Visible text';
+		expect(stripHiddenContent(html)).toBe(html);
+	});
+
+	it('keeps visible markup as it is', () => {
+		const html = '<div>Keep <span>this</span> and <b>that</b></div><p>too</p>';
+		expect(stripHiddenContent(html)).toBe(html);
 	});
 });
 
@@ -177,6 +291,41 @@ describe('scan helpers run in linear time on adversarial input', () => {
 	])('stripHiddenContent on 5 MB of %s', (_label, unit) => {
 		const input = repeatTo(unit);
 		expect(timed(() => stripHiddenContent(input))).toBeLessThan(BUDGET_MS);
+	});
+
+	it.each([
+		['end tags with quoted attributes', `</b x='>' `],
+		['unclosed raw-text elements', '<textarea>'],
+		['unclosed titles and scripts', '<title><script>'],
+		['hidden elements closed by attributes end tags', '<i style="display:none">x</i y>'],
+	])('stripHiddenContent on 5 MB of %s', (_label, unit) => {
+		const input = repeatTo(unit);
+		expect(timed(() => stripHiddenContent(input))).toBeLessThan(BUDGET_MS);
+	});
+
+	// The next cases fit under the scan cap, so the whole input is processed.
+	const fitted = (unit: string, overhead: number) =>
+		unit.repeat(Math.floor((MAX_SCAN_INPUT_CHARS - overhead) / unit.length));
+
+	it('stripHiddenContent on a deep stack with end tags that close nothing', () => {
+		const n = Math.floor((MAX_SCAN_INPUT_CHARS - 8) / 10);
+		const input = `<b><div>${'<span>'.repeat(n)}${'</b>'.repeat(n)}`;
+		expect(input.length).toBeLessThanOrEqual(MAX_SCAN_INPUT_CHARS);
+		expect(timed(() => stripHiddenContent(input))).toBeLessThan(BUDGET_MS);
+	});
+
+	it.each([
+		['character references', '&#58;'],
+		['long numeric references', '&#x0000000000000000003a;'],
+		['CSS escapes and comments', '\\6e /**/'],
+		['unclosed CSS comments', '/*'],
+	])('stripHiddenContent on a style attribute as long as the scan cap of %s', (_label, unit) => {
+		const input = `<a style="${fitted(unit, 32)}">SECRETPAYLOAD</a>`;
+		expect(input.length).toBeLessThanOrEqual(MAX_SCAN_INPUT_CHARS);
+		let out = '';
+		expect(timed(() => (out = stripHiddenContent(input)))).toBeLessThan(BUDGET_MS);
+		// The value was read (and did not hide the element).
+		expect(out).toContain('SECRETPAYLOAD');
 	});
 
 	it('stripHiddenContent on 5 MB of tags after unterminated quoted values', () => {
