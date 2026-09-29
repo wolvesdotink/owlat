@@ -19,6 +19,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import { flattenLabelTree, labelAncestorIds } from '~/utils/postboxLabelTree';
 import { moveSibling } from '~/utils/postboxReorder';
+import { usePostboxMessageDropTargets } from '~/composables/postbox/usePostboxMessageDrag';
 
 const props = withDefaults(
 	defineProps<{
@@ -34,7 +35,7 @@ const props = withDefaults(
 const { t } = useI18n();
 
 const mailboxIdRef = computed(() => props.mailboxId);
-const { labels, labelTree, reorder, setParent, rename, setColor, remove } =
+const { labels, labelTree, reorder, setParent, rename, setColor, remove, applyToMessages } =
 	usePostboxLabels(mailboxIdRef);
 const { collapsedIds, toggle, expandAll } = usePostboxLabelCollapse();
 const { openManager, editLabelId } = usePostboxManageDialog();
@@ -114,6 +115,39 @@ async function onDrop(targetId: string) {
 	await reorder(run);
 }
 
+// The label drag above only exists in manage mode; in nav mode the rows must
+// not claim a drop they will not handle.
+function onRowDragOver(event: DragEvent, labelId: string) {
+	if (!props.manage) return;
+	event.preventDefault();
+	onDragOver(labelId);
+}
+
+function onRowDrop(event: DragEvent, labelId: string) {
+	if (!props.manage) return;
+	event.preventDefault();
+	void onDrop(labelId);
+}
+
+// ── nav mode: drop dragged messages on a label to apply it ──
+// The rows stay where they are (a label is not a location), so the toast is
+// the only sign the drop did anything.
+const messageDrop = usePostboxMessageDropTargets(mailboxIdRef);
+const { showToast } = useToast();
+
+async function labelDropped(label: { _id: string; name: string }, ids: Id<'mailMessages'>[]) {
+	const outcome = await applyToMessages(ids, label._id as Id<'mailLabels'>);
+	if (!outcome.ok) return;
+	// `changed` counts only messages that did not carry the label yet.
+	const count = outcome.result.changed;
+	showToast(
+		count > 0
+			? t('components.postbox.postboxLabelTree.labelApplied', { name: label.name, count }, count)
+			: t('components.postbox.postboxLabelTree.labelAlreadyApplied', { name: label.name }),
+		count > 0 ? 'success' : 'info'
+	);
+}
+
 // ── manage mode: rename in place ──────────────────────────────────────────
 const renamingId = ref<string | null>(null);
 const renameName = ref('');
@@ -184,9 +218,9 @@ function menuItems(label: { _id: string; name: string }): ContextMenuItem[] {
 					@contextmenu="onContextmenu"
 					@keydown="onKeydown"
 					@dragstart="manage && onDragStart(row.label._id)"
-					@dragover.prevent="manage && onDragOver(row.label._id)"
+					@dragover="onRowDragOver($event, row.label._id)"
 					@dragleave="dropTargetId = null"
-					@drop.prevent="manage && onDrop(row.label._id)"
+					@drop="onRowDrop($event, row.label._id)"
 					@dragend="
 						draggingId = null;
 						dropTargetId = null;
@@ -221,7 +255,11 @@ function menuItems(label: { _id: string; name: string }): ContextMenuItem[] {
 						v-if="!manage"
 						:to="`/dashboard/postbox/label/${row.label._id}`"
 						class="flex-1 flex items-center gap-2 px-1.5 py-1 rounded text-sm hover:bg-bg-surface min-w-0"
-						:class="{ 'bg-bg-surface text-brand': activeLabelId === row.label._id }"
+						:class="{
+							'bg-bg-surface text-brand': activeLabelId === row.label._id,
+							'pbx-drop-target': messageDrop.isOverLabel(row.label._id),
+						}"
+						v-on="messageDrop.label(row.label._id, (ids) => labelDropped(row.label, ids))"
 					>
 						<span
 							class="w-2.5 h-2.5 rounded-full flex-shrink-0"

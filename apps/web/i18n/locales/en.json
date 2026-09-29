@@ -4545,6 +4545,7 @@
 				"archivedUndo": "Archived",
 				"cancelFollowUpOperation": "Cancel reply reminder",
 				"capNote": "Showing the newest messages in this view.",
+				"dragCount": "{count} messages",
 				"emptyDefaultTitle": "No messages",
 				"emptyFilteredMoreHint": "This filter covers the messages loaded so far — load more to keep looking.",
 				"emptyFilteredTitle": "You're all caught up",
@@ -4811,7 +4812,9 @@
 				"renameLabel": "Rename label",
 				"nameAriaLabel": "Label name",
 				"renameAriaLabel": "Rename the label {name}",
-				"deleteAriaLabel": "Delete the label {name}"
+				"deleteAriaLabel": "Delete the label {name}",
+				"labelApplied": "Added “{name}” to {count} message | Added “{name}” to {count} messages",
+				"labelAlreadyApplied": "Already labelled “{name}”"
 			},
 			"postboxFilterRunControl": {
 				"run": "Run on existing mail",

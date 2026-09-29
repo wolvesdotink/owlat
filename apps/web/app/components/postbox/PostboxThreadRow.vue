@@ -61,6 +61,7 @@ export type PostboxThreadRowMessage = SenderAuthMessage & {
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
 import { usePostboxRowGestures } from '~/composables/postbox/usePostboxRowGestures';
+import { usePostboxMessageDrag } from '~/composables/postbox/usePostboxMessageDrag';
 import { senderRowMarkerOf } from '~/utils/senderAuth';
 
 const { t } = useI18n();
@@ -106,9 +107,17 @@ const emit = defineEmits<{
 	 * row it passes over).
 	 */
 	prefetch: [];
+	/**
+	 * A mouse drag picked the row up. The list decides what it carries (this
+	 * row, or the whole selection) and the rail's folders are the targets.
+	 */
+	'drag-start': [event: DragEvent];
 }>();
 
 const rowId = computed(() => `postbox-row-${props.msg._id}`);
+
+// Dimmed while it travels; the drag in flight is shared module state.
+const messageDrag = usePostboxMessageDrag();
 
 /** The row accent for a danger-only sender marker; the body renders the chip. */
 const isDanger = computed(() => senderRowMarkerOf(props.msg, props.trustMarkers) !== null);
@@ -263,7 +272,9 @@ function onCapturedClick(event: MouseEvent) {
 					'pbx-virtual-row': virtualize,
 					'pbx-row-danger': isDanger,
 					'pbx-row-swiping': !!gestures.track.value,
+					'opacity-50': messageDrag.isDragged(msg._id),
 				}"
+				draggable="true"
 				style="
 					content-visibility: auto;
 					contain-intrinsic-size: auto var(--pbx-row-intrinsic, 76px);
@@ -277,6 +288,8 @@ function onCapturedClick(event: MouseEvent) {
 				@pointerup="gestures.onPointerup"
 				@pointercancel="gestures.onPointercancel"
 				@click.capture="onCapturedClick"
+				@dragstart="emit('drag-start', $event)"
+				@dragend="messageDrag.end()"
 			>
 				<!-- Revealed behind the row while it follows the finger sideways. -->
 				<PostboxSwipeTrack v-if="gestures.track.value" :track="gestures.track.value" />

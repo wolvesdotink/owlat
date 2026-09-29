@@ -4545,6 +4545,7 @@
 				"archivedUndo": "Archiviert",
 				"cancelFollowUpOperation": "Antwort-Erinnerung abbrechen",
 				"capNote": "Es werden die neuesten Nachrichten dieser Ansicht angezeigt.",
+				"dragCount": "{count} Nachrichten",
 				"emptyDefaultTitle": "Keine Nachrichten",
 				"emptyFilteredMoreHint": "Dieser Filter umfasst die bisher geladenen Nachrichten — laden Sie weitere, um weiterzusuchen.",
 				"emptyFilteredTitle": "Alles erledigt",
@@ -4811,7 +4812,9 @@
 				"renameLabel": "Label umbenennen",
 				"nameAriaLabel": "Name des Labels",
 				"renameAriaLabel": "Label {name} umbenennen",
-				"deleteAriaLabel": "Label {name} löschen"
+				"deleteAriaLabel": "Label {name} löschen",
+				"labelApplied": "„{name}“ zu {count} Nachricht hinzugefügt | „{name}“ zu {count} Nachrichten hinzugefügt",
+				"labelAlreadyApplied": "Bereits mit „{name}“ gekennzeichnet"
 			},
 			"postboxFilterRunControl": {
 				"run": "Auf vorhandene E-Mails anwenden",
