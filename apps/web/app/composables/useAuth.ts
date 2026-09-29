@@ -2,6 +2,7 @@ import type { BetterFetchError } from '@better-fetch/fetch';
 import { effectScope, type EffectScope } from 'vue';
 import { authClient, type AuthSessionData } from '~/lib/auth-client';
 import { resetConvexAuthTokenCache } from '~/lib/convex-auth';
+import { clearCachedFeatureFlags } from '~/lib/featureFlagCache';
 import { requiresTwoFactor } from '~/utils/accountTwoFactor';
 
 type SessionData = AuthSessionData | null;
@@ -304,6 +305,10 @@ export function useAuth() {
 		if (result.error) {
 			throw new Error(result.error.message || t('shared.useAuth.signOutFailed'));
 		}
+
+		// The next boot in this browser may be someone else's: drop the
+		// last-known feature flags so it starts from the shipped defaults.
+		clearCachedFeatureFlags();
 
 		await refetch({ force: true, expected: 'unauthenticated' });
 		await waitUntilSignedOut();
