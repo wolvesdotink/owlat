@@ -79,6 +79,18 @@
 # stay SUBJECT to this ratchet exactly like a bare `authedQuery`. The
 # pre-existing chat reads keep their baseline entries until each is
 # individually reviewed. `adminQuery` has a role floor and is not scanned.
+#
+# A second, file-level rule covers the Team Inbox tables. `inboundMessages` and
+# `conversationThreads` hold shared-inbox mail, and who may read it is decided
+# in one place: inbox/access.ts (`isSharedInboxReader`). A file outside
+# `inbox/` and `agent/` that defines a public function (member, identity or
+# public floor, any kind) AND touches those tables — a `.query('<table>')` or a
+# `v.id('<table>')` argument — must import inbox/access. Such a file is
+# reported as `<file>:#inbox-tables`, and rides the same ratchet and baseline.
+# The pre-existing entries gate inline on `organization:manage` (the same rule,
+# spelled out a second time); they should route through the named gate as they
+# are touched. This is a presence check, like the gate tokens above: a reviewer
+# still confirms the import is actually used on the path that reads the rows.
 
 set -uo pipefail
 repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -108,6 +120,25 @@ generate() {
 		| xargs -0 -r awk -v builders="$builders" -v optout='authz|all-members' \
 			-v gates="($CONVEX_AUTHZ_GATES|$CONVEX_AUTHZ_READ_PREDICATES)" "$program" \
 		| sort
+	inbox_table_files || exit 1
+}
+
+# Files outside inbox/ and agent/ that define a public function, touch a Team
+# Inbox table and do not import the shared-inbox reader gate.
+inbox_table_files() {
+	local public_builders candidates file
+	public_builders=$(convex_builder_regex 'query|mutation|action' 'member|identity|public') || return 1
+	# grep exits 1 on no match; an empty candidate list is a clean result.
+	candidates=$(grep -rlE --include='*.ts' \
+		"\.query\(\s*['\"](inboundMessages|conversationThreads)['\"]|v\.id\(\s*['\"](inboundMessages|conversationThreads)['\"]" \
+		convex \
+		| grep -vE '^convex/(inbox|agent|schema|_generated)/|/__tests__/|\.test\.ts$' || true)
+	while IFS= read -r file; do
+		[ -n "$file" ] || continue
+		grep -qE "^export const [A-Za-z0-9_]+ = ($public_builders)\(" "$file" || continue
+		grep -qE "from '(\./|(\.\./)+)inbox/access'" "$file" && continue
+		printf '%s:#inbox-tables\n' "$file"
+	done <<<"$candidates" | sort
 }
 
 if [ "${1:-}" = "--generate" ]; then
@@ -118,13 +149,16 @@ fi
 exec "$repo_root/scripts/ratchet.sh" \
 	--baseline scripts/query-authz-baseline.txt \
 	--seed "bash apps/api/scripts/check-query-authz.sh --write-baseline" \
-	--ok "no new authedQuery without an authorization decision" \
+	--ok "no new authedQuery without an authorization decision, no Team Inbox read outside the reader gate" \
 	--new-header "FAIL: {n} new authedQuery definition(s) with no authorization decision." \
 	--new-advice "authedQuery only requires an authenticated org member (any role). A read
 must also decide WHO may see the data:
   - call requireOrgPermission / requireAdminContext / requireMailboxAccess / etc., or
   - add a '// authz: <reason>' (gate lives elsewhere) or
     '// all-members: <reason>' (intentionally member-visible) comment.
+A '<file>:#inbox-tables' entry reads inboundMessages / conversationThreads
+outside inbox/ and agent/: gate those reads on isSharedInboxReader from
+inbox/access.ts (and the 'inbox' feature flag) instead of an inline role check.
 Do NOT add new entries to {baseline} — it is frozen debt." \
 	--stale-header "FAIL: {n} stale entr(y/ies) in {baseline} (query fixed or removed):" \
 	"$@" \

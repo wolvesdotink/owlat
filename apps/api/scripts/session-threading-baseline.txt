@@ -42,8 +42,6 @@ convex/chat/attachments.ts:registerAttachment
 convex/chat/dms.ts:findOrCreateDm
 convex/chat/dms.ts:listMyDms
 convex/chat/emailLink.ts:findChannelsForInboxThread
-convex/chat/emailLink.ts:getLinkedThreadView
-convex/chat/emailLink.ts:linkChannelToInboxThread
 convex/chat/emailLink.ts:unlinkChannel
 convex/chat/members.ts:addMember
 convex/chat/members.ts:joinChannel
