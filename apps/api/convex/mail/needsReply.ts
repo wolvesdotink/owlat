@@ -38,6 +38,7 @@ import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './ai/priorityScore';
 import { scoreAndScreenResult } from './ai/needsReplyScoring';
 import { buildThreadTranscript, NEEDS_REPLY } from './ai/transcript';
+import { withStoredInlineBodies } from '../lib/messageBodyStore';
 import { resolveCounterpartName } from './counterpartName';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { isFromMailboxOwner, type NeedsReplyHeaders } from './needsReplyHeuristic';
@@ -144,7 +145,7 @@ export const getThreadContext = internalQuery({
 		return {
 			ownerAddress,
 			latestMessageId: thread.latestMessageId,
-			transcript: await buildThreadTranscript(newest, {
+			transcript: await buildThreadTranscript(await withStoredInlineBodies(ctx.db, newest), {
 				...NEEDS_REPLY,
 				ownerAddress,
 				includeTo: true,

@@ -15,6 +15,7 @@ import { bumpFolderModseq } from '../folders';
 import { indexMessageAttachments, removeMessageAttachments } from '../attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../messagePurge';
 import { recordMessageCounters } from '../messageCounters';
+import { copyMessageBody } from '../../lib/messageBodyStore';
 
 /**
  * COPY — clones a message into another folder of the SAME mailbox.
@@ -80,6 +81,7 @@ export const copyMessages = internalMutation({
 				createdAt: now,
 				updatedAt: now,
 			});
+			await copyMessageBody(ctx.db, m._id, copyId);
 			await recordMessageCounters(ctx, null, { ...rest, folderId: target._id });
 			// The copy is its own message row, so it gets its own junction rows —
 			// otherwise a COPY into a folder would silently drop the copy's files

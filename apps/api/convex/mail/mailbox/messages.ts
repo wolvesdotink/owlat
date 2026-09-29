@@ -10,7 +10,7 @@
  */
 
 import { v } from 'convex/values';
-import { openMailMessageInlineBody, openMailMessageRow } from '../../lib/messageBody';
+import { openStoredInlineBody, openStoredMailMessageRow } from '../../lib/messageBodyStore';
 import { mintRawEmlUrl, sealedBlobUrl } from '../../lib/sealedBlob';
 import { internalQuery, type ActionCtx, type QueryCtx } from '../../_generated/server';
 import { publicAction, publicQuery } from '../../lib/authedFunctions';
@@ -48,9 +48,10 @@ export const getMessage = publicQuery({
 	args: { messageId: v.id('mailMessages') },
 	handler: async (ctx, args) => {
 		const message = await loadReadableMessage(ctx, args.messageId);
-		// E8b: the row's inline bodies are sealed at rest; the reader renders them
-		// straight off the row, so they leave this boundary as plaintext.
-		return message === null ? null : openMailMessageRow(message);
+		// E8b: the inline bodies are sealed at rest; the reader renders them
+		// straight off the row, so they leave this boundary as plaintext. Plan 3.2:
+		// they live in `mailMessageBodies` and are attached here.
+		return message === null ? null : openStoredMailMessageRow(ctx.db, message);
 	},
 });
 
@@ -312,7 +313,7 @@ export const getMessageInlineBody = publicQuery({
 	handler: async (ctx, args) => {
 		const message = await loadReadableMessage(ctx, args.messageId);
 		if (!message) return null;
-		const { text, html } = await openMailMessageInlineBody(message);
+		const { text, html } = await openStoredInlineBody(ctx.db, message);
 		return {
 			htmlInline: html ?? null,
 			textInline: text ?? null,
@@ -391,7 +392,7 @@ export const getReadableMessageBodySource = internalQuery({
 	handler: async (ctx, args): Promise<ReadableMessageBodySource | null> => {
 		const message = await loadReadableMessage(ctx, args.messageId);
 		if (!message) return null;
-		const { text, html } = await openMailMessageInlineBody(message);
+		const { text, html } = await openStoredInlineBody(ctx.db, message);
 		return {
 			htmlInline: html ?? null,
 			textInline: text ?? null,

@@ -23,7 +23,7 @@ import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { extractEmail, normalizeSubject } from '../../lib/emailAddress';
 import { canonicalMessageId, canonicalOptionalMessageId } from '../../lib/messageId';
-import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
+import { insertMessageBody } from '../../lib/messageBodyStore';
 import { redirectMutedDelivery } from '../mute';
 import { indexMessageAttachments } from '../attachmentIndex';
 import { recordMessageCounters } from '../messageCounters';
@@ -279,9 +279,7 @@ export async function insertDeliveredMessage(
 		searchBody,
 		rawStorageId: params.rawStorageId,
 		rawSize: params.rawSize,
-		textBodyInline: await sealBodyAtWriteMaybe(params.textBodyInline),
 		textBodyStorageId: params.textBodyStorageId,
-		htmlBodyInline: await sealBodyAtWriteMaybe(params.htmlBodyInline),
 		htmlBodyStorageId: params.htmlBodyStorageId,
 		attachments: params.attachments,
 		hasAttachments,
@@ -312,6 +310,11 @@ export async function insertDeliveredMessage(
 		pinnedSection: params.pinnedSection,
 		createdAt: now,
 		updatedAt: now,
+	});
+	// Inline bodies live in their own table (plan 3.2), sealed as before.
+	await insertMessageBody(ctx.db, messageId, {
+		text: params.textBodyInline,
+		html: params.htmlBodyInline,
 	});
 	await recordMessageCounters(ctx, null, {
 		mailboxId: mailbox._id,

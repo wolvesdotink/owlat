@@ -75,6 +75,12 @@ async function messageBody(m: Doc<'mailMessages'>): Promise<string> {
  * Flatten a thread into a bounded plaintext transcript. `messages` must be in
  * chronological order (oldest first); callers own the bounded read and the
  * ordering. Unseals each row's inline body through the accessor choke point.
+ *
+ * The rows must carry their inline bodies: a reader query's rows do
+ * (`listThreadMessages`), rows straight from `ctx.db` do not since plan 3.2
+ * moved bodies to `mailMessageBodies`, so pass those through
+ * `withStoredInlineBodies(ctx.db, rows)` first. A row without one falls back
+ * to its snippet.
  */
 export async function buildThreadTranscript(
 	messages: Doc<'mailMessages'>[],

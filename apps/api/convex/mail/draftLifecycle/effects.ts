@@ -25,7 +25,7 @@ import { isSanctionedSendAsForUser } from '../identities';
 import { followUpWaitingOn } from '../followUps';
 import { mergeThreadParticipants } from '../threadAggregates';
 import { normalizeSubject } from '../../lib/emailAddress';
-import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
+import { insertMessageBody } from '../../lib/messageBodyStore';
 import { indexMessageAttachments } from '../attachmentIndex';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import { buildSnippet } from '../deliveryPipeline/insert';
@@ -146,12 +146,6 @@ async function runSentEffects(
 			: undefined,
 		rawStorageId: context.rawStorageId,
 		rawSize: context.rawSize,
-		textBodyInline: await sealBodyAtWriteMaybe(
-			context.bodyText && context.bodyText.length <= 64 * 1024 ? context.bodyText : undefined
-		),
-		htmlBodyInline: await sealBodyAtWriteMaybe(
-			context.bodyHtml.length <= 64 * 1024 ? context.bodyHtml : undefined
-		),
 		attachments: context.attachmentsMeta,
 		hasAttachments: context.attachmentsMeta.length > 0,
 		// Team-inbox attribution: WHO fired this send (captured by drafts.send).
@@ -173,6 +167,11 @@ async function runSentEffects(
 		...(context.encryptionInfo ? { encryptionInfo: context.encryptionInfo } : {}),
 		createdAt: now,
 		updatedAt: now,
+	});
+
+	await insertMessageBody(ctx.db, messageId, {
+		text: context.bodyText && context.bodyText.length <= 64 * 1024 ? context.bodyText : undefined,
+		html: context.bodyHtml.length <= 64 * 1024 ? context.bodyHtml : undefined,
 	});
 
 	await ctx.db.patch(messageId, {

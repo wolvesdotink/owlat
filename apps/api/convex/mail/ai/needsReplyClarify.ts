@@ -25,6 +25,7 @@ import { requireMailboxAccess } from '../permissions';
 import { NEEDS_REPLY_CONTEXT_MESSAGES } from '../needsReply';
 import { captureStandingAnswers } from '../../inbox/clarificationMemory';
 import { buildThreadTranscript, CLARIFY_DRAFT } from './transcript';
+import { withStoredInlineBodies } from '../../lib/messageBodyStore';
 
 /**
  * Answer the clarification questions on a Reply Queue thread and kick off the
@@ -142,7 +143,7 @@ export const getClarificationContext = internalQuery({
 		const newest = newestFirst.sort((a, b) => a.receivedAt - b.receivedAt);
 		// Labelled by side with the flagged message last and marked: this
 		// transcript drafts the owner's reply, exactly like draft-on-arrival.
-		const transcript = await buildThreadTranscript(newest, {
+		const transcript = await buildThreadTranscript(await withStoredInlineBodies(ctx.db, newest), {
 			...CLARIFY_DRAFT,
 			ownerAddress: mailbox.address,
 			triggerId: flag.messageId,

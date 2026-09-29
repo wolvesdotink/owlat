@@ -218,7 +218,8 @@ export const runBatch = internalMutation({
 
 		let matched = 0;
 		for (const message of page) {
-			if (!filterConditionsMatch(filter, await evalMessageFromRow(message))) continue;
+			if (!filterConditionsMatch(filter, await evalMessageFromRow(ctx.db, message, filter)))
+				continue;
 			matched += 1;
 			await applyActions(ctx, filter, message);
 		}

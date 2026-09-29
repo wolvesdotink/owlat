@@ -9,7 +9,7 @@
 
 import type { QueryCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { openMailMessageRows } from '../../lib/messageBody';
+import { openStoredMailMessageRows } from '../../lib/messageBodyStore';
 import { toMailListRow, type MailListRow } from './rowThreadState';
 
 /**
@@ -64,7 +64,7 @@ export async function loadThreadPage(
 	const newest = page.page.slice(0, withBodies).reverse();
 	const older = page.page.slice(withBodies).reverse();
 	return {
-		messages: await openMailMessageRows(newest),
+		messages: await openStoredMailMessageRows(ctx.db, newest),
 		envelopes: older.map(toMailListRow),
 		olderCursor: page.isDone ? null : page.continueCursor,
 	};

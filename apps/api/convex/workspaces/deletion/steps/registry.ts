@@ -63,6 +63,9 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'mailAttachments',
 	'mailAttachmentBackfillJobs',
 	'mailBodySearchBackfillJobs',
+	// Inline bodies (plan 3.2), 1:1 with mailMessages: swept before their rows
+	// like the attachment index, so no body outlives its message.
+	'mailMessageBodies',
 	'mailMessages',
 	'mailDrafts',
 	// Share links own the blobs the drafts above no longer reference, so they
@@ -307,6 +310,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailAttachments: makeSweepStep('mailAttachments'),
 	mailAttachmentBackfillJobs: makeSweepStep('mailAttachmentBackfillJobs'),
 	mailBodySearchBackfillJobs: makeSweepStep('mailBodySearchBackfillJobs'),
+	mailMessageBodies: makeSweepStep('mailMessageBodies'),
 	mailMessages: mailMessagesStep,
 	mailDrafts: mailDraftsStep,
 	transactionalSends: transactionalSendsStep,

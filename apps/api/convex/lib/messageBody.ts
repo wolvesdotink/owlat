@@ -15,6 +15,9 @@
  *                        `htmlBodyInline`) or a storage blob
  *                        (`textBodyStorageId` / `htmlBodyStorageId`); large
  *                        bodies live in the blob, small ones inline.
+ *                        Since plan 3.2 the inline pair is stored in its own
+ *                        `mailMessageBodies` row; code holding a stored
+ *                        message row resolves it through messageBodyStore.ts.
  *   3. unifiedMessages — a JSON `content` string: `{ text, html, subject,
  *                        mediaUrl }`.
  */
@@ -306,14 +309,14 @@ export async function openInboundMessageRows<T extends InboundMessageBodyFields>
 /** The inline body fields on a `mailMessages` row (both optional). Large
  * bodies are NOT here — they live in the `*BodyStorageId` blobs; use
  * {@link readMailMessageText} when the full body is required. */
-interface MailMessageInlineFields {
+export interface MailMessageInlineFields {
 	textBodyInline?: string;
 	htmlBodyInline?: string;
 }
 
 /** Normalized inline body of a `mailMessages` row. Values are the row's inline
  * fields verbatim (the blob, if any, is not fetched). */
-interface MailMessageInlineBody {
+export interface MailMessageInlineBody {
 	text: string | undefined;
 	html: string | undefined;
 }

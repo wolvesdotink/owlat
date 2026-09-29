@@ -14,7 +14,7 @@ import { internal } from '../../_generated/api';
 import { resolveAllowedFromAddressesForCtx } from '../identities';
 import { normalizeSubject } from '../../lib/emailAddress';
 import { normalizeEmail } from '@owlat/shared';
-import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
+import { insertMessageBody } from '../../lib/messageBodyStore';
 import { isImapSystemFlag } from './flags';
 import { mergeThreadParticipants, rebuildThreadAggregates } from '../threadAggregates';
 import { conversationRootId, resolveDeliveryThread } from '../deliveryPipeline/threading';
@@ -175,8 +175,6 @@ export const appendMessage = internalMutation({
 				: undefined,
 			rawStorageId: args.rawStorageId,
 			rawSize: args.rawSize,
-			textBodyInline: await sealBodyAtWriteMaybe(args.textBodyInline),
-			htmlBodyInline: await sealBodyAtWriteMaybe(args.htmlBodyInline),
 			attachments: [],
 			hasAttachments: false,
 			flagSeen: flagSet.has('\\seen'),
@@ -190,6 +188,10 @@ export const appendMessage = internalMutation({
 			internalDate,
 			createdAt: now,
 			updatedAt: now,
+		});
+		await insertMessageBody(ctx.db, messageId, {
+			text: args.textBodyInline,
+			html: args.htmlBodyInline,
 		});
 		await recordMessageCounters(ctx, null, {
 			mailboxId: folder.mailboxId,

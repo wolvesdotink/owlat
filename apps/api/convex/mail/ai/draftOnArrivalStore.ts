@@ -17,6 +17,7 @@ import { draftQualityValidator } from '../../lib/convexValidators';
 import { NEEDS_REPLY_CONTEXT_MESSAGES } from '../needsReply';
 import { isFromMailboxOwner } from '../needsReplyHeuristic';
 import { buildThreadTranscript, DRAFT_ON_ARRIVAL } from './transcript';
+import { withStoredInlineBodies } from '../../lib/messageBodyStore';
 
 /**
  * Load everything the draft-on-arrival action needs for one thread, or `null`
@@ -67,11 +68,14 @@ export const loadForDraft = internalQuery({
 		const history = newestDesc
 			.filter((m) => m._id !== trigger._id && m.receivedAt <= trigger.receivedAt)
 			.sort((a, b) => a.receivedAt - b.receivedAt);
-		const transcript = await buildThreadTranscript([...history, trigger], {
-			...DRAFT_ON_ARRIVAL,
-			ownerAddress,
-			triggerId: trigger._id,
-		});
+		const transcript = await buildThreadTranscript(
+			await withStoredInlineBodies(ctx.db, [...history, trigger]),
+			{
+				...DRAFT_ON_ARRIVAL,
+				ownerAddress,
+				triggerId: trigger._id,
+			}
+		);
 
 		// Confirmed-owner facts from the clarification loop (only the ANSWERED
 		// questions; unanswered questions carry no confirmed block). Shape matches
