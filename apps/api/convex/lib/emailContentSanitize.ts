@@ -175,7 +175,7 @@ export function sanitizeStoredBlocksJson(json: string | undefined): string | und
  * (`Record<blockId, { html?, buttonText?, alt? }>`), in place. Returns whether
  * anything changed.
  */
-function sanitizeOverlayBlocks(blocks: unknown): boolean {
+export function sanitizeOverlayBlocks(blocks: unknown): boolean {
 	if (!isObject(blocks)) return false;
 	let changed = false;
 	for (const entry of Object.values(blocks)) {
