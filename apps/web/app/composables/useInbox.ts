@@ -133,14 +133,23 @@ export function useInbox(gate?: Ref<boolean>) {
 	});
 
 	/** Landed tail pages, keyed by the cursor that opened each (in page order). */
+	// Sync flush: a cursor used before (back to a view, then "Load more" again)
+	// re-subscribes to a lingering shared query, which clears the page and hands
+	// back the very same object within one tick. A deferred watcher would compare
+	// equal values and miss the page. Sync also means a value always belongs to
+	// the cursor that was current when it was assigned.
 	const tailSegments = shallowRef(new Map<string, Thread[]>());
-	watch(tailData, (page) => {
-		const key = tailCursor.value;
-		if (!page || !key) return;
-		const next = new Map(tailSegments.value);
-		next.set(key, page.threads);
-		tailSegments.value = next;
-	});
+	watch(
+		tailData,
+		(page) => {
+			const key = tailCursor.value;
+			if (!page || !key) return;
+			const next = new Map(tailSegments.value);
+			next.set(key, page.threads);
+			tailSegments.value = next;
+		},
+		{ flush: 'sync' }
+	);
 
 	// The rows below the first page when the view changed. They stay under the
 	// retained first page until the new first page lands, so switching a filter

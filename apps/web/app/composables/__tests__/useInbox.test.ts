@@ -169,6 +169,36 @@ describe('useInbox pagination', () => {
 		expect(ids(threads.value)).toEqual(['x']);
 	});
 
+	it('lands a tail page replayed from a warm subscription as the same object', async () => {
+		const { threads, filter, hasMoreThreads, loadMoreThreads } = useInbox();
+		const { first, tail } = handles();
+
+		const firstPage = { threads: [thread('a')], nextCursor: 'c1' };
+		const tailPage = { threads: [thread('b')], nextCursor: null };
+		first.data.value = firstPage;
+		await nextTick();
+		loadMoreThreads();
+		tail.data.value = tailPage;
+		await nextTick();
+
+		// Away and back: a skipped tail keeps its last value, as the real query does.
+		filter.value = 'resolved';
+		await nextTick();
+		filter.value = 'open';
+		await nextTick();
+		expect(ids(threads.value)).toEqual(['a']);
+
+		// The same cursor again: the lingering subscription clears, then hands
+		// back the very same page object within one re-subscribe.
+		loadMoreThreads();
+		expect(tail.args()).toMatchObject({ cursor: 'c1' });
+		tail.data.value = undefined;
+		tail.data.value = tailPage;
+		await nextTick();
+		expect(ids(threads.value)).toEqual(['a', 'b']);
+		expect(hasMoreThreads.value).toBe(false);
+	});
+
 	it('keeps the first page and the counts across filter, assignee and sort changes', () => {
 		useInbox();
 		const { first, counts } = handles();
