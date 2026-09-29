@@ -45,6 +45,7 @@ import { hasNoMeasuredTraffic } from '~/utils/deliveryAdvancedEmpty';
 // Imported, not auto-resolved: the empty state is this screen's content, and
 // a mount that resolved it to nothing would hide the one thing it says.
 import DeliveryAdvancedEmptyState from '~/components/delivery/AdvancedEmptyState.vue';
+import { useLocalized } from '~/composables/useLocalized';
 
 const { t } = useI18n();
 
@@ -54,9 +55,7 @@ const { t } = useI18n();
  * the render boundary that turns them into words — the same contract
  * `MeasurementCellCard` renders its own tables through.
  */
-type MeasurementMessage = string | { key: string; params?: Record<string, unknown> };
-const message = (value: MeasurementMessage): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const message = useLocalized();
 
 useHead({ title: () => t('dashboard.admin.delivery.advanced.measurement.pageTitle') });
 

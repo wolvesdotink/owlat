@@ -9,6 +9,7 @@ import {
 	type ChecklistStepId,
 	type OnboardingMode,
 } from '~/utils/welcomeFlow';
+import { useLocalized } from '~/composables/useLocalized';
 
 /**
  * The single, adaptive "Getting started" surface. It REPLACES the three
@@ -49,9 +50,7 @@ const { t } = useI18n();
  * A copy field owned by the shared getting-started model: either a bare message
  * key or a key plus the values it interpolates.
  */
-type LocalizedField = string | { key: string; params?: Record<string, unknown> };
-const localize = (value: LocalizedField): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const localize = useLocalized();
 
 const config = useRuntimeConfig();
 const isSelfHost = config.public.deploymentMode === 'selfhost';

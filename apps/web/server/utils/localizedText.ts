@@ -17,11 +17,9 @@
  * (`userProfiles.locale`). Those pass it; everything else keeps English.
  */
 import type { AppLocale } from '@owlat/shared/appLocales';
+import type { LocalizedText } from '~/utils/localizedText';
 import de from '~~/i18n/locales/de.json';
 import en from '~~/i18n/locales/en.json';
-
-/** A catalog key with its interpolations, or a sentence that is already words. */
-export type LocalizedText = string | { key: string; params?: Record<string, unknown> };
 
 type Catalog = { [key: string]: string | Catalog };
 

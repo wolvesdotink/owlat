@@ -23,6 +23,7 @@
  */
 import { FORCE_ADVANCE_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
 import { rampCellLabel, shareLabel, type RampCellControl } from '~/utils/deliverabilityRamp';
+import { useLocalized } from '~/composables/useLocalized';
 
 const props = defineProps<{
 	cell: RampCellControl;
@@ -72,10 +73,7 @@ const { t, locale } = useI18n();
  * convention); a plain string is still accepted so an unparseable cell reads as
  * itself.
  */
-type LocalizedText = string | { key: string; params?: Record<string, unknown> };
-function localized(value: LocalizedText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const localized = useLocalized();
 
 /** Rungs and shares are numbers, so they format against the active locale. */
 const percentFormatter = computed(

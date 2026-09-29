@@ -6,6 +6,7 @@ import { useAutomationStepConfig } from './useAutomationStepConfig';
 import { listStepEditorModules, stepEditorModuleFor, type StepKind } from './automations/steps';
 import type { StepMessage } from './automations/steps/types';
 import { useAutomationPluginPalette } from './automations/pluginPalette';
+import { useLocalized } from '~/composables/useLocalized';
 
 interface AutomationWithSteps {
 	_id: Id<'automations'>;
@@ -39,8 +40,7 @@ export function useAutomationSteps(
 
 	// A step editor module hands back message KEYS (it is module scope and cannot
 	// translate); the builder is what renders them, so it resolves them here.
-	const translateStepMessage = (message: StepMessage): string =>
-		typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
+	const translateStepMessage = useLocalized();
 
 	const isAddStepDropdownOpen = ref(false);
 	const addStepDropdownIndex = ref<number | null>(null);

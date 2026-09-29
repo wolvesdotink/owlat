@@ -6,20 +6,13 @@ import type {
 	DeliverabilitySeverity as CanonicalDeliverabilitySeverity,
 	DeliverabilitySetupValue as CanonicalDeliverabilitySetupValue,
 } from '@owlat/shared';
+import type { LocalizedText } from '~/utils/localizedText';
 
 export type DeliverabilityGrade = CanonicalDeliverabilityGrade;
 export type DeliverabilityItemStatus = DeliverabilityChecklistStatus;
 export type DeliverabilitySeverity = CanonicalDeliverabilitySeverity;
 
 export type DeliverabilitySetupValue = CanonicalDeliverabilitySetupValue;
-
-/**
- * A translatable value produced by a module-scope table: the catalog KEY the
- * deliverability screen resolves, plus the values it interpolates. The tables
- * below are evaluated at import time and never call `useI18n`; a plain string is
- * still accepted so a value with nothing to translate reads as itself.
- */
-export type LocalizedText = string | { key: string; params?: Record<string, unknown> };
 
 export interface DeliverabilityInstructions {
 	provider?: string;

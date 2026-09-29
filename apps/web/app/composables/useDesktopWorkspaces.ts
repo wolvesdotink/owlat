@@ -44,6 +44,7 @@ import {
 	completeConnection,
 	connectError,
 } from '~/lib/desktop/workspaceConnect';
+import { useLocalized } from '~/composables/useLocalized';
 
 // Re-exported because the URL normalizer is part of this composable's public
 // contract (the connect form calls it through `addWorkspace`) even though it now
@@ -282,8 +283,8 @@ async function removeWorkspace(id: string): Promise<void> {
  */
 function workspaceTranslator(): (key: string, params?: Record<string, unknown>) => string {
 	if (!getCurrentInstance()) return (key: string) => key;
-	const { t } = useI18n();
-	return (key: string, params?: Record<string, unknown>) => t(key, params ?? {});
+	const localized = useLocalized();
+	return (key: string, params?: Record<string, unknown>) => localized({ key, params });
 }
 
 export function useDesktopWorkspaces() {

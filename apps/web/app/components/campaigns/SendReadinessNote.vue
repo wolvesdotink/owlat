@@ -15,6 +15,7 @@
  * is worse than no line.
  */
 import { sendReadinessNote, type SendingReadiness } from '~/lib/sendReadiness';
+import { useLocalized } from '~/composables/useLocalized';
 
 const props = defineProps<{
 	readiness: SendingReadiness | null | undefined;
@@ -24,7 +25,7 @@ const props = defineProps<{
 	now?: number;
 }>();
 
-const { t, locale } = useI18n();
+const { locale } = useI18n();
 
 /**
  * The copy is derived in `~/lib/sendReadiness`, which is module scope and so
@@ -33,9 +34,7 @@ const { t, locale } = useI18n();
  * dates inside those parameters are formatted here too, which is why the active
  * locale travels down with them.
  */
-type ReadinessMessage = string | { key: string; params?: Record<string, unknown> };
-const message = (value: ReadinessMessage): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const message = useLocalized();
 
 const note = computed(() =>
 	sendReadinessNote(props.readiness, {

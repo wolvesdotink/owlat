@@ -22,6 +22,7 @@ import {
 	isCapacityDayToday,
 	type CampaignCapacitySchedulePlan,
 } from '~/lib/campaignCapacityRefusal';
+import { useLocalized } from '~/composables/useLocalized';
 
 const props = defineProps<{
 	plan: CampaignCapacitySchedulePlan;
@@ -44,9 +45,7 @@ const { t, locale } = useI18n();
  * catalog key (with its parameters when it has any), and the render boundary —
  * here — is what turns that into words.
  */
-type CapacityMessage = string | { key: string; params?: Record<string, unknown> };
-const message = (value: CapacityMessage): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const message = useLocalized();
 
 const headline = computed(() => message(capacityScheduleHeadline(props.plan)));
 

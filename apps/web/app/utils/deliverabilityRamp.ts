@@ -25,12 +25,8 @@ import type { api } from '@owlat/api';
 import type { RampPreset } from '@owlat/shared/deliverabilityIndependence';
 import { parseDeliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
 import { formatNumber, formatPercentage, formatShortDate } from '~/utils/formatters';
-import {
-	cellLabel,
-	providerLabel,
-	streamLabel,
-	type LocalizedText,
-} from '~/utils/deliverabilityMeasurement';
+import { cellLabel, providerLabel, streamLabel } from '~/utils/deliverabilityMeasurement';
+import type { LocalizedText } from '~/utils/localizedText';
 import { transportIdLabel } from '~/utils/transportState';
 
 export type RampControls = FunctionReturnType<

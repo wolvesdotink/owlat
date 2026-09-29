@@ -1,6 +1,7 @@
 import type { Component } from 'vue';
 import type { Doc } from '@owlat/api/dataModel';
 import type { Condition } from '~/composables/conditions';
+import type { LocalizedText } from '~/utils/localizedText';
 
 export type StepKind = 'email' | 'delay' | 'condition';
 
@@ -46,9 +47,9 @@ export interface StepActivationContext {
  * Registry-owned copy carries message KEYS, never sentences: these modules are
  * module-scope definitions, so they cannot call `useI18n`. A message that
  * interpolates values travels as its key plus those values; the component that
- * renders it is what translates (`t(value)` / `t(value.key, value.params)`).
+ * renders it is what translates (`useLocalized()`).
  */
-export type StepMessage = string | { key: string; params?: Record<string, unknown> };
+export type StepMessage = LocalizedText;
 
 export interface StepEditorModule<K extends StepKind> {
 	readonly kind: K;

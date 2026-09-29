@@ -29,6 +29,7 @@ import {
 } from '~/lib/desktop/provisioningForm';
 import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
 import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
+import { useLocalized } from '~/composables/useLocalized';
 
 const { t } = useI18n();
 
@@ -36,9 +37,7 @@ const { t } = useI18n();
  * Registry-supplied copy (host-key prompts, password assessment) arrives as a
  * message key, optionally with interpolation params — render either shape.
  */
-type MessageRef = string | { key: string; params?: Record<string, unknown> };
-const tk = (message: MessageRef | null | undefined): string =>
-	!message ? '' : typeof message === 'string' ? t(message) : t(message.key, message.params ?? {});
+const tk = useLocalized();
 
 useHead({ title: () => t('desktop.setup.pageTitle') });
 definePageMeta({ layout: false });
@@ -115,7 +114,7 @@ function toggleAdvanced(event: MouseEvent) {
 
 /** Host-key prompt copy + whether a CHANGED key needs the extra confirmation. */
 const hostKeyPrompt = computed<HostKeyPrompt | null>(() =>
-	connectInfo.value ? describeHostKey(connectInfo.value.knownHostStatus) : null,
+	connectInfo.value ? describeHostKey(connectInfo.value.knownHostStatus) : null
 );
 // A changed (mismatch) key must be explicitly acknowledged before "Accept".
 const mismatchAcknowledged = ref(false);
@@ -123,7 +122,7 @@ watch(
 	() => connectInfo.value?.fingerprint,
 	() => {
 		mismatchAcknowledged.value = false;
-	},
+	}
 );
 
 /**
@@ -159,8 +158,10 @@ async function browseKeyFile() {
 async function onConnect() {
 	connectError.value = '';
 	if (!host.value.trim()) return (connectError.value = t('desktop.setup.errors.hostRequired'));
-	if (!username.value.trim()) return (connectError.value = t('desktop.setup.errors.usernameRequired'));
-	if (authMethod.value === 'password' && !password.value) return (connectError.value = t('desktop.setup.errors.passwordRequired'));
+	if (!username.value.trim())
+		return (connectError.value = t('desktop.setup.errors.usernameRequired'));
+	if (authMethod.value === 'password' && !password.value)
+		return (connectError.value = t('desktop.setup.errors.passwordRequired'));
 	if (authMethod.value === 'key' && keySource.value === 'file' && !keyPath.value.trim())
 		return (connectError.value = t('desktop.setup.errors.keyPathRequired'));
 	if (authMethod.value === 'key' && keySource.value === 'paste' && !privateKey.value.trim())
@@ -169,8 +170,16 @@ async function onConnect() {
 	const auth =
 		authMethod.value === 'key'
 			? keySource.value === 'file'
-				? ({ type: 'key', privateKeyPath: keyPath.value.trim(), passphrase: passphrase.value || undefined } as const)
-				: ({ type: 'key', privateKey: privateKey.value, passphrase: passphrase.value || undefined } as const)
+				? ({
+						type: 'key',
+						privateKeyPath: keyPath.value.trim(),
+						passphrase: passphrase.value || undefined,
+					} as const)
+				: ({
+						type: 'key',
+						privateKey: privateKey.value,
+						passphrase: passphrase.value || undefined,
+					} as const)
 			: ({ type: 'password', password: password.value } as const);
 
 	await connect({
@@ -184,7 +193,10 @@ async function onConnect() {
 				? {
 						branch: branch.value.trim() || 'main',
 						...(isDev && localSource.value.trim()
-							? { localSource: normalizeLocalPath(localSource.value), localImages: imageMode.value === 'local' }
+							? {
+									localSource: normalizeLocalPath(localSource.value),
+									localImages: imageMode.value === 'local',
+								}
 							: {}),
 					}
 				: {}),
@@ -253,13 +265,15 @@ const hostLabels = ref<SubdomainLabels>(defaultSubdomainLabels());
 // providers, and only the live labels are checked for distinctness.
 const HOST_LABEL_INACTIVE_HINT = 'desktop.setup.hostLabels.inactiveHint';
 const disabledLabelKeys = computed<SubdomainKey[]>(() =>
-	sendingProvider.value === 'mta' ? [] : ['mail', 'bounce'],
+	sendingProvider.value === 'mta' ? [] : ['mail', 'bounce']
 );
 const activeLabelKeys = computed<SubdomainKey[]>(() =>
-	SUBDOMAIN_KEYS.filter((k) => !disabledLabelKeys.value.includes(k)),
+	SUBDOMAIN_KEYS.filter((k) => !disabledLabelKeys.value.includes(k))
 );
 /** Per-field label validation (charset/length + mutual distinctness) of the live labels. */
-const labelValidation = computed(() => validateSubdomainLabels(hostLabels.value, activeLabelKeys.value));
+const labelValidation = computed(() =>
+	validateSubdomainLabels(hostLabels.value, activeLabelKeys.value)
+);
 const seedDemo = ref(false);
 const configError = ref('');
 
@@ -268,7 +282,7 @@ const hasDomain = computed(() => !!domain.value.trim());
 
 /** Hostnames for the entered domain with the current label overrides applied. */
 const effectiveHosts = computed<InstanceHostnames | null>(() =>
-	hasDomain.value ? deriveHostnames(domain.value, hostLabels.value) : null,
+	hasDomain.value ? deriveHostnames(domain.value, hostLabels.value) : null
 );
 
 function buildConfig(): SetupConfigInput {
@@ -276,16 +290,29 @@ function buildConfig(): SetupConfigInput {
 		version: 1,
 		deploymentMode: 'selfhost',
 		features: { packs: { ...packs } },
-		admin: { email: adminEmail.value.trim(), name: adminName.value.trim(), password: adminPassword.value },
+		admin: {
+			email: adminEmail.value.trim(),
+			name: adminName.value.trim(),
+			password: adminPassword.value,
+		},
 		seedDemo: seedDemo.value,
 	};
 	if (sendingProvider.value === 'mta') cfg.sending = { provider: 'mta' };
-	else if (sendingProvider.value === 'resend') cfg.sending = { provider: 'resend', apiKey: resendKey.value.trim() };
-	else cfg.sending = { provider: 'ses', region: sesRegion.value.trim(), accessKeyId: sesAccessKey.value.trim(), secretAccessKey: sesSecret.value.trim() };
+	else if (sendingProvider.value === 'resend')
+		cfg.sending = { provider: 'resend', apiKey: resendKey.value.trim() };
+	else
+		cfg.sending = {
+			provider: 'ses',
+			region: sesRegion.value.trim(),
+			accessKeyId: sesAccessKey.value.trim(),
+			secretAccessKey: sesSecret.value.trim(),
+		};
 
 	if (aiProvider.value === 'ollama') cfg.ai = { provider: 'ollama' };
-	else if (aiProvider.value === 'openrouter') cfg.ai = { provider: 'openrouter', apiKey: aiKey.value.trim() };
-	else if (aiProvider.value === 'openai') cfg.ai = { provider: 'openai', apiKey: aiKey.value.trim() };
+	else if (aiProvider.value === 'openrouter')
+		cfg.ai = { provider: 'openrouter', apiKey: aiKey.value.trim() };
+	else if (aiProvider.value === 'openai')
+		cfg.ai = { provider: 'openai', apiKey: aiKey.value.trim() };
 
 	const hosts = effectiveHosts.value;
 	if (hosts) {
@@ -347,7 +374,8 @@ async function onProvision() {
 		configStep.value = 'admin';
 		configError.value = msg;
 	};
-	if (!/^.+@.+\..+$/.test(adminEmail.value)) return fail(t('desktop.setup.errors.adminEmailInvalid'));
+	if (!/^.+@.+\..+$/.test(adminEmail.value))
+		return fail(t('desktop.setup.errors.adminEmailInvalid'));
 	if (!adminName.value.trim()) return fail(t('desktop.setup.errors.adminNameRequired'));
 	const pw = validateAdminPassword(adminPassword.value, adminPasswordConfirm.value);
 	if (!pw.ok) return fail(tk(pw.error) || t('desktop.setup.errors.adminPasswordInvalid'));
@@ -372,7 +400,11 @@ const hostIsIp = computed(() => resolveServerIp(host.value, '') !== null);
 const dnsRecords = computed(() => {
 	const hosts = effectiveHosts.value;
 	if (!hosts) return [];
-	return buildDnsRecords({ hosts, withMta: sendingProvider.value === 'mta', serverIp: serverIp.value });
+	return buildDnsRecords({
+		hosts,
+		withMta: sendingProvider.value === 'mta',
+		serverIp: serverIp.value,
+	});
 });
 
 /**
@@ -426,7 +458,7 @@ watch(
 			});
 		}, 450);
 	},
-	{ immediate: true },
+	{ immediate: true }
 );
 
 /** DNS rows for display, with the starter SPF row merged into any existing one. */
@@ -440,11 +472,13 @@ const displayDnsRecords = computed<DnsRecordRow[]>(() => {
 					value: suggestion.merged,
 					note: 'desktop.setup.dns.spfMergedNote',
 				}
-			: r,
+			: r
 	);
 });
 
-const inConnect = computed(() => ['idle', 'connecting', 'hostkey', 'authenticating'].includes(stage.value));
+const inConnect = computed(() =>
+	['idle', 'connecting', 'hostkey', 'authenticating'].includes(stage.value)
+);
 
 /** The provisioned URL is a loopback address — unreachable from this app. */
 const siteIsLoopback = computed(() => isLoopbackUrl(siteUrl.value));
@@ -496,15 +530,27 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 
 			<template v-else>
 				<header class="mb-6">
-					<NuxtLink to="/desktop/welcome" class="mb-4 inline-flex items-center gap-1 text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary">
+					<NuxtLink
+						to="/desktop/welcome"
+						class="mb-4 inline-flex items-center gap-1 text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary"
+					>
 						<Icon name="lucide:arrow-left" class="size-3.5" /> {{ t('common.back') }}
 					</NuxtLink>
-					<I18nT keypath="desktop.setup.heading" tag="h1" class="text-3xl font-medium tracking-[-0.02em] text-text-primary" scope="global">
-							<template #accent><span class="font-display italic">{{ t('desktop.setup.headingAccent') }}</span></template>
-						</I18nT>
-						<p class="mt-2 text-md leading-[1.65] text-text-secondary">
-							{{ t('desktop.setup.subtitle') }}
-						</p>
+					<I18nT
+						keypath="desktop.setup.heading"
+						tag="h1"
+						class="text-3xl font-medium tracking-[-0.02em] text-text-primary"
+						scope="global"
+					>
+						<template #accent
+							><span class="font-display italic">{{
+								t('desktop.setup.headingAccent')
+							}}</span></template
+						>
+					</I18nT>
+					<p class="mt-2 text-md leading-[1.65] text-text-secondary">
+						{{ t('desktop.setup.subtitle') }}
+					</p>
 				</header>
 
 				<!-- ============ CONNECT ============ -->
@@ -512,8 +558,15 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 					<form class="space-y-4" @submit.prevent="onConnect">
 						<div class="grid grid-cols-[1fr_5rem] gap-3">
 							<div>
-								<label class="mb-1 block text-xs font-medium text-text-secondary">{{ t('desktop.setup.fields.host') }}</label>
-									<input v-model="host" :class="inputClass" :placeholder="t('desktop.setup.fields.hostPlaceholder')" :disabled="busy" />
+								<label class="mb-1 block text-xs font-medium text-text-secondary">{{
+									t('desktop.setup.fields.host')
+								}}</label>
+								<input
+									v-model="host"
+									:class="inputClass"
+									:placeholder="t('desktop.setup.fields.hostPlaceholder')"
+									:disabled="busy"
+								/>
 							</div>
 							<div>
 								<label :class="labelClass">{{ t('desktop.setup.fields.port') }}</label>
@@ -528,7 +581,11 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 
 						<div>
 							<label :class="labelClass">{{ t('desktop.setup.fields.authentication') }}</label>
-							<div class="mb-2 inline-block" role="group" :aria-label="t('desktop.setup.fields.authMethod')">
+							<div
+								class="mb-2 inline-block"
+								role="group"
+								:aria-label="t('desktop.setup.fields.authMethod')"
+							>
 								<UiSegmentedControl
 									size="sm"
 									:options="authOptions"
@@ -545,9 +602,15 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 										placeholder="~/.ssh/id_ed25519"
 										:disabled="busy"
 									/>
-									<UiButton variant="outline" size="sm" class="shrink-0" :disabled="busy" @click="browseKeyFile">
-											{{ t('desktop.setup.fields.browse') }}
-										</UiButton>
+									<UiButton
+										variant="outline"
+										size="sm"
+										class="shrink-0"
+										:disabled="busy"
+										@click="browseKeyFile"
+									>
+										{{ t('desktop.setup.fields.browse') }}
+									</UiButton>
 								</div>
 								<textarea
 									v-else
@@ -562,7 +625,11 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									:disabled="busy"
 									@click="keySource = keySource === 'file' ? 'paste' : 'file'"
 								>
-									{{ keySource === 'file' ? t('desktop.setup.fields.pasteKeyInstead') : t('desktop.setup.fields.useKeyFileInstead') }}
+									{{
+										keySource === 'file'
+											? t('desktop.setup.fields.pasteKeyInstead')
+											: t('desktop.setup.fields.useKeyFileInstead')
+									}}
 								</button>
 								<input
 									v-model="passphrase"
@@ -582,7 +649,11 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							/>
 						</div>
 
-						<button type="button" class="text-xs text-text-secondary hover:text-text-primary" @click="toggleAdvanced">
+						<button
+							type="button"
+							class="text-xs text-text-secondary hover:text-text-primary"
+							@click="toggleAdvanced"
+						>
 							{{ showAdvanced ? t('desktop.setup.hideAdvanced') : t('desktop.setup.showAdvanced') }}
 						</button>
 						<div v-if="showAdvanced" class="space-y-3">
@@ -593,19 +664,34 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								</div>
 								<div v-if="devInstall">
 									<label :class="labelClass">{{ t('desktop.setup.fields.branch') }}</label>
-									<input v-model="branch" :class="inputClass" :disabled="busy || !!localSource.trim()" />
+									<input
+										v-model="branch"
+										:class="inputClass"
+										:disabled="busy || !!localSource.trim()"
+									/>
 								</div>
 								<div v-else>
 									<label :class="labelClass">{{ t('desktop.setup.fields.version') }}</label>
-									<input :value="t('desktop.setup.fields.versionLatest')" :class="inputClass" readonly />
-									<p class="mt-1.5 text-xs text-text-secondary">{{ t('desktop.setup.fields.versionHint') }}</p>
+									<input
+										:value="t('desktop.setup.fields.versionLatest')"
+										:class="inputClass"
+										readonly
+									/>
+									<p class="mt-1.5 text-xs text-text-secondary">
+										{{ t('desktop.setup.fields.versionHint') }}
+									</p>
 								</div>
 							</div>
-							<label v-if="devOptionsRevealed" class="flex cursor-pointer items-start gap-2.5 text-sm">
+							<label
+								v-if="devOptionsRevealed"
+								class="flex cursor-pointer items-start gap-2.5 text-sm"
+							>
 								<input v-model="devInstallChosen" type="checkbox" class="mt-0.5" :disabled="busy" />
 								<span>
 									{{ t('desktop.setup.fields.devInstall') }}
-									<span class="block text-xs text-text-secondary">{{ t('desktop.setup.fields.devInstallHint') }}</span>
+									<span class="block text-xs text-text-secondary">{{
+										t('desktop.setup.fields.devInstallHint')
+									}}</span>
 								</span>
 							</label>
 							<div v-if="isDev && devInstall">
@@ -617,8 +703,8 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									:disabled="busy"
 								/>
 								<p class="mt-1.5 text-xs text-text-secondary">
-										{{ t('desktop.setup.fields.localSourceHint') }}
-									</p>
+									{{ t('desktop.setup.fields.localSourceHint') }}
+								</p>
 								<div v-if="localSource.trim()" class="mt-3 space-y-1.5">
 									<label class="flex cursor-pointer items-start gap-2.5 text-sm">
 										<input v-model="imageMode" type="radio" value="local" class="peer sr-only" />
@@ -629,11 +715,11 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 											<span v-if="imageMode === 'local'" class="size-2 rounded-full bg-brand" />
 										</span>
 										<span>
-												{{ t('desktop.setup.imageMode.localTitle') }}
-												<span class="block text-xs text-text-secondary">
-													{{ t('desktop.setup.imageMode.localHint') }}
-												</span>
+											{{ t('desktop.setup.imageMode.localTitle') }}
+											<span class="block text-xs text-text-secondary">
+												{{ t('desktop.setup.imageMode.localHint') }}
 											</span>
+										</span>
 									</label>
 									<label class="flex cursor-pointer items-start gap-2.5 text-sm">
 										<input v-model="imageMode" type="radio" value="server" class="peer sr-only" />
@@ -644,11 +730,11 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 											<span v-if="imageMode === 'server'" class="size-2 rounded-full bg-brand" />
 										</span>
 										<span>
-												{{ t('desktop.setup.imageMode.serverTitle') }}
-												<span class="block text-xs text-text-secondary">
-													{{ t('desktop.setup.imageMode.serverHint') }}
-												</span>
+											{{ t('desktop.setup.imageMode.serverTitle') }}
+											<span class="block text-xs text-text-secondary">
+												{{ t('desktop.setup.imageMode.serverHint') }}
 											</span>
+										</span>
 									</label>
 								</div>
 							</div>
@@ -658,21 +744,36 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 						<div
 							v-if="stage === 'hostkey' && hostKeyPrompt"
 							class="rounded-xl border p-3"
-							:class="hostKeyPrompt.tone === 'danger' ? 'border-error/40 bg-error/5' : 'border-warning/40 bg-warning/5'"
+							:class="
+								hostKeyPrompt.tone === 'danger'
+									? 'border-error/40 bg-error/5'
+									: 'border-warning/40 bg-warning/5'
+							"
 						>
-							<p class="text-sm font-medium" :class="hostKeyPrompt.tone === 'danger' ? 'text-error' : 'text-warning'">
+							<p
+								class="text-sm font-medium"
+								:class="hostKeyPrompt.tone === 'danger' ? 'text-error' : 'text-warning'"
+							>
 								<Icon name="lucide:shield-alert" class="mb-0.5 mr-1 inline size-4" />
 								{{ tk(hostKeyPrompt.title) }}
 							</p>
 							<p class="mt-1 text-xs text-text-secondary">{{ tk(hostKeyPrompt.body) }}</p>
-							<code class="mt-2 block break-all rounded bg-bg-deep px-2 py-1 font-mono text-xs text-text-primary">{{ connectInfo?.fingerprint }}</code>
+							<code
+								class="mt-2 block break-all rounded bg-bg-deep px-2 py-1 font-mono text-xs text-text-primary"
+								>{{ connectInfo?.fingerprint }}</code
+							>
 
 							<!-- A CHANGED key (possible interception) demands an explicit opt-in. -->
 							<label
 								v-if="hostKeyPrompt.requiresExplicitConfirmation"
 								class="mt-3 flex cursor-pointer items-start gap-2 text-xs text-error"
 							>
-								<input v-model="mismatchAcknowledged" type="checkbox" class="mt-0.5" :disabled="busy" />
+								<input
+									v-model="mismatchAcknowledged"
+									type="checkbox"
+									class="mt-0.5"
+									:disabled="busy"
+								/>
 								<span>{{ t('desktop.setup.hostKey.acknowledge') }}</span>
 							</label>
 
@@ -680,10 +781,16 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 								size="sm"
 								class="mt-3"
 								:variant="hostKeyPrompt.tone === 'danger' ? 'danger' : 'primary'"
-								:disabled="busy || (hostKeyPrompt.requiresExplicitConfirmation && !mismatchAcknowledged)"
+								:disabled="
+									busy || (hostKeyPrompt.requiresExplicitConfirmation && !mismatchAcknowledged)
+								"
 								@click="acceptHostKey(hostKeyPrompt.isMismatch)"
 							>
-								{{ hostKeyPrompt.isMismatch ? t('desktop.setup.hostKey.acceptChanged') : t('desktop.setup.hostKey.accept') }}
+								{{
+									hostKeyPrompt.isMismatch
+										? t('desktop.setup.hostKey.acceptChanged')
+										: t('desktop.setup.hostKey.accept')
+								}}
 							</UiButton>
 						</div>
 
@@ -692,8 +799,10 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 
 						<UiButton v-if="stage !== 'hostkey'" type="submit" :disabled="busy" full-width>
 							<span v-if="stage === 'connecting'">{{ t('desktop.setup.connecting') }}</span>
-								<span v-else-if="stage === 'authenticating'">{{ t('desktop.setup.authenticating') }}</span>
-								<span v-else>{{ t('desktop.setup.connect') }}</span>
+							<span v-else-if="stage === 'authenticating'">{{
+								t('desktop.setup.authenticating')
+							}}</span>
+							<span v-else>{{ t('desktop.setup.connect') }}</span>
 						</UiButton>
 					</form>
 				</section>
@@ -728,7 +837,11 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 										class="flex size-4 shrink-0 items-center justify-center rounded border-2 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface-2"
 										:class="packs[opt.key] ? 'border-brand bg-brand' : 'border-border-default'"
 									>
-										<Icon v-if="packs[opt.key]" name="lucide:check" class="size-3 text-text-inverse" />
+										<Icon
+											v-if="packs[opt.key]"
+											name="lucide:check"
+											class="size-3 text-text-inverse"
+										/>
 									</span>
 									<span>{{ t(opt.label) }}</span>
 								</label>
@@ -740,21 +853,48 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							<div class="relative">
 								<select v-model="sendingProvider" :class="[inputClass, 'appearance-none pr-8']">
 									<option value="mta">{{ t('desktop.setup.sending.mta') }}</option>
-										<option value="resend">{{ t('desktop.setup.sending.resend') }}</option>
-										<option value="ses">{{ t('desktop.setup.sending.ses') }}</option>
+									<option value="resend">{{ t('desktop.setup.sending.resend') }}</option>
+									<option value="ses">{{ t('desktop.setup.sending.ses') }}</option>
 								</select>
-								<Icon name="lucide:chevron-down" class="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary" />
+								<Icon
+									name="lucide:chevron-down"
+									class="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary"
+								/>
 							</div>
-							<input v-if="sendingProvider === 'resend'" v-model="resendKey" :class="[inputClass, 'mt-2']" :placeholder="t('desktop.setup.sending.resendKeyPlaceholder')" />
+							<input
+								v-if="sendingProvider === 'resend'"
+								v-model="resendKey"
+								:class="[inputClass, 'mt-2']"
+								:placeholder="t('desktop.setup.sending.resendKeyPlaceholder')"
+							/>
 							<div v-if="sendingProvider === 'ses'" class="mt-2 space-y-2">
-								<input v-model="sesRegion" :class="inputClass" :placeholder="t('desktop.setup.sending.sesRegionPlaceholder')" />
-								<input v-model="sesAccessKey" :class="inputClass" :placeholder="t('desktop.setup.sending.sesAccessKeyPlaceholder')" />
-								<input v-model="sesSecret" type="password" :class="inputClass" :placeholder="t('desktop.setup.sending.sesSecretPlaceholder')" />
+								<input
+									v-model="sesRegion"
+									:class="inputClass"
+									:placeholder="t('desktop.setup.sending.sesRegionPlaceholder')"
+								/>
+								<input
+									v-model="sesAccessKey"
+									:class="inputClass"
+									:placeholder="t('desktop.setup.sending.sesAccessKeyPlaceholder')"
+								/>
+								<input
+									v-model="sesSecret"
+									type="password"
+									:class="inputClass"
+									:placeholder="t('desktop.setup.sending.sesSecretPlaceholder')"
+								/>
 							</div>
-							<I18nT v-if="sendingProvider === 'mta'" keypath="desktop.setup.sending.mtaHint" tag="p" :class="hintClass" scope="global">
-									<template #outbound><span class="font-mono">mail.</span></template>
-									<template #returns><span class="font-mono">bounce.</span></template>
-								</I18nT>
+							<I18nT
+								v-if="sendingProvider === 'mta'"
+								keypath="desktop.setup.sending.mtaHint"
+								tag="p"
+								:class="hintClass"
+								scope="global"
+							>
+								<template #outbound><span class="font-mono">mail.</span></template>
+								<template #returns><span class="font-mono">bounce.</span></template>
+							</I18nT>
 						</div>
 
 						<div v-show="configStep === 'providers'" class="mt-5">
@@ -762,11 +902,14 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							<div class="relative">
 								<select v-model="aiProvider" :class="[inputClass, 'appearance-none pr-8']">
 									<option value="none">{{ t('common.none') }}</option>
-										<option value="openrouter">{{ t('desktop.setup.ai.openrouter') }}</option>
-										<option value="openai">{{ t('desktop.setup.ai.openai') }}</option>
-										<option value="ollama">{{ t('desktop.setup.ai.ollama') }}</option>
+									<option value="openrouter">{{ t('desktop.setup.ai.openrouter') }}</option>
+									<option value="openai">{{ t('desktop.setup.ai.openai') }}</option>
+									<option value="ollama">{{ t('desktop.setup.ai.ollama') }}</option>
 								</select>
-								<Icon name="lucide:chevron-down" class="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary" />
+								<Icon
+									name="lucide:chevron-down"
+									class="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary"
+								/>
 							</div>
 							<input
 								v-if="aiProvider === 'openrouter' || aiProvider === 'openai'"
@@ -780,19 +923,29 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							<label :class="sectionClass">{{ t('desktop.setup.sections.admin') }}</label>
 							<div class="space-y-2">
 								<input v-model="adminEmail" :class="inputClass" placeholder="admin@example.com" />
-								<input v-model="adminName" :class="inputClass" :placeholder="t('desktop.setup.admin.namePlaceholder')" />
+								<input
+									v-model="adminName"
+									:class="inputClass"
+									:placeholder="t('desktop.setup.admin.namePlaceholder')"
+								/>
 								<div class="relative">
 									<input
 										v-model="adminPassword"
 										:type="revealPassword ? 'text' : 'password'"
 										:class="[inputClass, 'pr-10']"
 										autocomplete="new-password"
-										:placeholder="t('desktop.setup.admin.passwordPlaceholder', { min: MIN_PASSWORD_LENGTH })"
+										:placeholder="
+											t('desktop.setup.admin.passwordPlaceholder', { min: MIN_PASSWORD_LENGTH })
+										"
 									/>
 									<button
 										type="button"
 										class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-text-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-										:aria-label="revealPassword ? t('desktop.setup.admin.hidePassword') : t('desktop.setup.admin.showPassword')"
+										:aria-label="
+											revealPassword
+												? t('desktop.setup.admin.hidePassword')
+												: t('desktop.setup.admin.showPassword')
+										"
 										:aria-pressed="revealPassword"
 										@click="revealPassword = !revealPassword"
 									>
@@ -813,30 +966,53 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 											v-for="seg in 4"
 											:key="seg"
 											class="h-full flex-1 rounded-full transition-colors"
-											:class="seg <= passwordAssessment.score
-												? (passwordAssessment.strength === 'strong'
-													? 'bg-success'
-													: passwordAssessment.strength === 'fair'
-														? 'bg-warning'
-														: 'bg-error')
-												: 'bg-border-default'"
+											:class="
+												seg <= passwordAssessment.score
+													? passwordAssessment.strength === 'strong'
+														? 'bg-success'
+														: passwordAssessment.strength === 'fair'
+															? 'bg-warning'
+															: 'bg-error'
+													: 'bg-border-default'
+											"
 										/>
 									</div>
 									<span
 										class="w-20 shrink-0 text-right text-xs"
-										:class="passwordAssessment.meetsMinLength ? 'text-text-secondary' : 'text-error'"
-									>{{ tk(passwordAssessment.label) }}</span>
+										:class="
+											passwordAssessment.meetsMinLength ? 'text-text-secondary' : 'text-error'
+										"
+										>{{ tk(passwordAssessment.label) }}</span
+									>
 								</div>
-								<p v-if="adminPasswordError" class="text-xs text-error">{{ tk(adminPasswordError) }}</p>
+								<p v-if="adminPasswordError" class="text-xs text-error">
+									{{ tk(adminPasswordError) }}
+								</p>
 							</div>
 						</div>
 
 						<div v-show="configStep === 'domain'">
-							<label :class="sectionClass">{{ isRemoteTarget ? t('desktop.setup.domain.labelRequired') : t('desktop.setup.domain.label') }}</label>
-							<input v-model="domain" :class="inputClass" :placeholder="isRemoteTarget ? t('desktop.setup.domain.placeholderRequired') : t('desktop.setup.domain.placeholder')" />
+							<label :class="sectionClass">{{
+								isRemoteTarget
+									? t('desktop.setup.domain.labelRequired')
+									: t('desktop.setup.domain.label')
+							}}</label>
+							<input
+								v-model="domain"
+								:class="inputClass"
+								:placeholder="
+									isRemoteTarget
+										? t('desktop.setup.domain.placeholderRequired')
+										: t('desktop.setup.domain.placeholder')
+								"
+							/>
 							<p class="mt-1.5 text-xs text-text-secondary">
 								{{ t('desktop.setup.domain.hint') }}
-								<I18nT v-if="isRemoteTarget" keypath="desktop.setup.domain.hintRemote" scope="global">
+								<I18nT
+									v-if="isRemoteTarget"
+									keypath="desktop.setup.domain.hintRemote"
+									scope="global"
+								>
 									<template #localhost><span class="font-mono">localhost</span></template>
 								</I18nT>
 								<template v-else>
@@ -853,7 +1029,12 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							     the operator override it if detection failed or was wrong. -->
 							<div v-if="hasDomain && !hostIsIp" class="mt-3">
 								<label :class="labelClass">{{ t('desktop.setup.domain.publicIpLabel') }}</label>
-								<input v-model="publicIp" :class="[inputClass, 'font-mono text-xs']" placeholder="203.0.113.5" inputmode="decimal" />
+								<input
+									v-model="publicIp"
+									:class="[inputClass, 'font-mono text-xs']"
+									placeholder="203.0.113.5"
+									inputmode="decimal"
+								/>
 								<p class="mt-1 text-xs text-text-secondary">
 									{{ t('desktop.setup.domain.publicIpHint') }}
 								</p>
@@ -870,30 +1051,44 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									/>
 								</div>
 
-								<div class="mt-3 overflow-x-auto rounded-lg border border-border-subtle bg-bg-deep p-3">
+								<div
+									class="mt-3 overflow-x-auto rounded-lg border border-border-subtle bg-bg-deep p-3"
+								>
 									<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
 										{{ t('desktop.setup.dns.createTitle') }}
 									</p>
 									<DesktopDnsRecordList v-if="dnsRecords.length" :records="displayDnsRecords" />
 									<p v-else class="text-xs text-text-secondary">
 										{{ t('desktop.setup.dns.enterDomain') }}
-										<template v-if="isRemoteTarget"> {{ t('desktop.setup.dns.enterDomainRemote') }}</template>
+										<template v-if="isRemoteTarget">
+											{{ t('desktop.setup.dns.enterDomainRemote') }}</template
+										>
 										<template v-else> {{ t('desktop.setup.dns.enterDomainLocal') }}</template>
 									</p>
 									<p v-if="dnsRecords.length" class="mt-2 text-xs text-text-secondary">
 										{{ t('desktop.setup.dns.tlsHint') }}
 									</p>
-									<p v-if="sendingProvider === 'mta' && dnsRecords.length" class="mt-1.5 text-xs text-warning">
+									<p
+										v-if="sendingProvider === 'mta' && dnsRecords.length"
+										class="mt-1.5 text-xs text-warning"
+									>
 										<Icon name="lucide:info" class="mb-0.5 mr-1 inline size-3.5" />
 										<I18nT keypath="desktop.setup.dns.deliverabilityHint" scope="global">
-											<template #settings><span class="font-medium">{{ t('desktop.setup.dns.settingsDomains') }}</span></template>
+											<template #settings
+												><span class="font-medium">{{
+													t('desktop.setup.dns.settingsDomains')
+												}}</span></template
+											>
 										</I18nT>
 									</p>
 								</div>
 							</div>
 						</div>
 
-						<label v-show="configStep === 'admin'" class="mt-4 flex cursor-pointer items-center gap-2.5 text-sm">
+						<label
+							v-show="configStep === 'admin'"
+							class="mt-4 flex cursor-pointer items-center gap-2.5 text-sm"
+						>
 							<input v-model="seedDemo" type="checkbox" class="peer sr-only" />
 							<span
 								class="flex size-4 shrink-0 items-center justify-center rounded border-2 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface-2"
@@ -907,14 +1102,14 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 						<p v-if="configError" class="mt-4 text-sm text-error">{{ configError }}</p>
 						<div class="mt-5 flex items-center gap-3 border-t border-border-subtle pt-4">
 							<UiButton v-if="stepIndex > 0" variant="outline" size="sm" @click="prevStep">
-									{{ t('common.back') }}
-								</UiButton>
-								<UiButton v-if="!isLastStep" size="sm" class="ml-auto" @click="nextStep">
-									{{ t('common.next') }}
-								</UiButton>
-								<UiButton v-else type="submit" size="sm" class="ml-auto">
-									{{ t('desktop.setup.provision') }}
-								</UiButton>
+								{{ t('common.back') }}
+							</UiButton>
+							<UiButton v-if="!isLastStep" size="sm" class="ml-auto" @click="nextStep">
+								{{ t('common.next') }}
+							</UiButton>
+							<UiButton v-else type="submit" size="sm" class="ml-auto">
+								{{ t('desktop.setup.provision') }}
+							</UiButton>
 						</div>
 					</form>
 				</section>
@@ -924,78 +1119,144 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 					<DesktopProvisioningTimeline :steps="steps" :logs="logs" :progress="progress" />
 
 					<!-- READY: the public URL is up and reachable -->
-					<div v-if="stage === 'done' && canOpenWorkspace" class="mt-6 rounded-xl border border-success/30 bg-success/5 p-4">
+					<div
+						v-if="stage === 'done' && canOpenWorkspace"
+						class="mt-6 rounded-xl border border-success/30 bg-success/5 p-4"
+					>
 						<p class="flex items-center gap-2 text-sm font-medium text-success">
-							<Icon name="lucide:party-popper" class="size-4" /> {{ t('desktop.setup.done.readyTitle') }}
+							<Icon name="lucide:party-popper" class="size-4" />
+							{{ t('desktop.setup.done.readyTitle') }}
 						</p>
 						<p v-if="siteUrl" class="mt-1 text-xs text-text-secondary">{{ siteUrl }}</p>
 						<UiButton class="mt-3" full-width @click="connectWorkspace">
-								{{ t('desktop.setup.done.openWorkspace') }}
-							</UiButton>
+							{{ t('desktop.setup.done.openWorkspace') }}
+						</UiButton>
 					</div>
 
 					<!-- FINISHING UP: installed, but the public URL isn't answering yet (DNS/TLS) -->
-					<div v-else-if="stage === 'done' && !siteIsLoopback" class="mt-6 rounded-xl border border-warning/40 bg-warning/5 p-4">
+					<div
+						v-else-if="stage === 'done' && !siteIsLoopback"
+						class="mt-6 rounded-xl border border-warning/40 bg-warning/5 p-4"
+					>
 						<p class="flex items-center gap-2 text-sm font-medium text-warning">
-							<Icon name="lucide:loader-circle" class="size-4" :class="{ 'animate-spin motion-reduce:animate-none': checkingReach }" />
+							<Icon
+								name="lucide:loader-circle"
+								class="size-4"
+								:class="{ 'animate-spin motion-reduce:animate-none': checkingReach }"
+							/>
 							{{ t('desktop.setup.finishing.title') }}
-							</p>
-						<I18nT keypath="desktop.setup.finishing.body" tag="p" class="mt-1 text-xs text-text-secondary" scope="global">
-								<template #url><span class="font-mono">{{ siteUrl }}</span></template>
-							</I18nT>
-						<div v-if="dnsRecords.length" class="mt-3 overflow-x-auto rounded-lg border border-border-subtle bg-bg-deep p-3">
+						</p>
+						<I18nT
+							keypath="desktop.setup.finishing.body"
+							tag="p"
+							class="mt-1 text-xs text-text-secondary"
+							scope="global"
+						>
+							<template #url
+								><span class="font-mono">{{ siteUrl }}</span></template
+							>
+						</I18nT>
+						<div
+							v-if="dnsRecords.length"
+							class="mt-3 overflow-x-auto rounded-lg border border-border-subtle bg-bg-deep p-3"
+						>
 							<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
-									{{ t('desktop.setup.finishing.createRecords') }}
-								</p>
+								{{ t('desktop.setup.finishing.createRecords') }}
+							</p>
 							<DesktopDnsRecordList :records="displayDnsRecords" />
 							<p class="mt-2 text-xs text-text-secondary">
-									{{ t('desktop.setup.finishing.tlsHint') }}
-								</p>
+								{{ t('desktop.setup.finishing.tlsHint') }}
+							</p>
 						</div>
-						<UiButton variant="outline" size="sm" class="mt-3" :disabled="checkingReach" @click="recheckReachable">
+						<UiButton
+							variant="outline"
+							size="sm"
+							class="mt-3"
+							:disabled="checkingReach"
+							@click="recheckReachable"
+						>
 							<template #iconLeft>
-								<Icon name="lucide:refresh-cw" class="size-3.5" :class="{ 'animate-spin motion-reduce:animate-none': checkingReach }" />
+								<Icon
+									name="lucide:refresh-cw"
+									class="size-3.5"
+									:class="{ 'animate-spin motion-reduce:animate-none': checkingReach }"
+								/>
 							</template>
-							{{ checkingReach ? t('desktop.setup.finishing.checking') : t('desktop.setup.finishing.checkAgain') }}
+							{{
+								checkingReach
+									? t('desktop.setup.finishing.checking')
+									: t('desktop.setup.finishing.checkAgain')
+							}}
 						</UiButton>
 					</div>
 
 					<!-- LOOPBACK: the URL only works on the server itself -->
-					<div v-else-if="stage === 'done'" class="mt-6 rounded-xl border border-warning/40 bg-warning/5 p-4">
+					<div
+						v-else-if="stage === 'done'"
+						class="mt-6 rounded-xl border border-warning/40 bg-warning/5 p-4"
+					>
 						<p class="flex items-center gap-2 text-sm font-medium text-warning">
-							<Icon name="lucide:circle-check" class="size-4" /> {{ t('desktop.setup.loopback.title') }}
+							<Icon name="lucide:circle-check" class="size-4" />
+							{{ t('desktop.setup.loopback.title') }}
 						</p>
-						<I18nT keypath="desktop.setup.loopback.body" tag="p" class="mt-1 text-xs text-text-secondary" scope="global">
-								<template #url><span class="font-mono">{{ siteUrl }}</span></template>
-							</I18nT>
+						<I18nT
+							keypath="desktop.setup.loopback.body"
+							tag="p"
+							class="mt-1 text-xs text-text-secondary"
+							scope="global"
+						>
+							<template #url
+								><span class="font-mono">{{ siteUrl }}</span></template
+							>
+						</I18nT>
 						<UiButton variant="outline" size="sm" class="mt-3" @click="retry">
-								{{ t('desktop.setup.loopback.retry') }}
-							</UiButton>
+							{{ t('desktop.setup.loopback.retry') }}
+						</UiButton>
 					</div>
 
 					<!-- After any successful install: note the fate of the secrets-bearing config. -->
-					<div v-if="stage === 'done'" class="mt-3 flex items-start gap-2 text-xs text-text-secondary">
-						<Icon :name="secretsRemoved ? 'lucide:shield-check' : 'lucide:shield-alert'" class="mt-0.5 size-3.5 shrink-0" :class="secretsRemoved ? 'text-success' : 'text-warning'" />
+					<div
+						v-if="stage === 'done'"
+						class="mt-3 flex items-start gap-2 text-xs text-text-secondary"
+					>
+						<Icon
+							:name="secretsRemoved ? 'lucide:shield-check' : 'lucide:shield-alert'"
+							class="mt-0.5 size-3.5 shrink-0"
+							:class="secretsRemoved ? 'text-success' : 'text-warning'"
+						/>
 						<span v-if="secretsRemoved">
 							{{ t('desktop.setup.secrets.removed') }}
 						</span>
-						<I18nT v-else keypath="desktop.setup.secrets.notRemoved" tag="span" class="text-warning" scope="global">
+						<I18nT
+							v-else
+							keypath="desktop.setup.secrets.notRemoved"
+							tag="span"
+							class="text-warning"
+							scope="global"
+						>
 							<template #file><span class="font-mono">.owlat-setup.json</span></template>
 						</I18nT>
 					</div>
 
-					<div v-else-if="stage === 'error'" class="mt-6 rounded-xl border border-error/40 bg-error/5 p-4">
+					<div
+						v-else-if="stage === 'error'"
+						class="mt-6 rounded-xl border border-error/40 bg-error/5 p-4"
+					>
 						<p class="text-sm font-medium text-error">{{ t('desktop.setup.failure.title') }}</p>
 						<p class="mt-1 text-xs text-text-secondary">{{ error }}</p>
 						<!-- The failing step's stderr tail, pinned so the root cause stays readable. -->
 						<div v-if="failureTail.length" class="mt-2">
-							<p class="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary">{{ t('desktop.setup.failure.lastOutput') }}</p>
-							<pre class="max-h-40 overflow-auto rounded bg-bg-deep p-2 font-mono text-[11px] leading-snug text-error">{{ failureTail.join('\n') }}</pre>
+							<p class="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+								{{ t('desktop.setup.failure.lastOutput') }}
+							</p>
+							<pre
+								class="max-h-40 overflow-auto rounded bg-bg-deep p-2 font-mono text-[11px] leading-snug text-error"
+								>{{ failureTail.join('\n') }}</pre>
 						</div>
 						<p class="mt-2 text-xs text-text-secondary">{{ t('desktop.setup.failure.hint') }}</p>
 						<UiButton variant="outline" size="sm" class="mt-3" @click="retry">
-								{{ t('desktop.setup.failure.retry') }}
-							</UiButton>
+							{{ t('desktop.setup.failure.retry') }}
+						</UiButton>
 					</div>
 				</section>
 			</template>

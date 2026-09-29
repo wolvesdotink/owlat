@@ -2,6 +2,7 @@
 import { isValidEmail, sanitizeCsvCell } from '@owlat/shared';
 import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
 import { passwordChangeProblem } from '~/utils/passwordChange';
+import { useLocalized } from '~/composables/useLocalized';
 import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 import Papa from 'papaparse';
@@ -19,6 +20,7 @@ import {
 } from '~/utils/accountExportProgress';
 
 const { t } = useI18n();
+const localized = useLocalized();
 
 useHead({ title: () => t('dashboard.preferences.account.pageTitle') });
 
@@ -172,7 +174,7 @@ const savingPassword = ref(false);
 async function changePassword() {
 	const problem = passwordChangeProblem(newPassword.value, confirmPassword.value);
 	if (problem) {
-		showToast(t(problem.key, problem.params ?? {}), 'error');
+		showToast(localized(problem), 'error');
 		return;
 	}
 	savingPassword.value = true;

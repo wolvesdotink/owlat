@@ -12,7 +12,7 @@
  */
 
 import type { HealthTone } from '~/utils/healthTone';
-import type { LocalizedText } from '~/utils/readinessGate';
+import type { LocalizedText } from '~/utils/localizedText';
 import { explainBounce, type BounceExplanation } from '~/utils/postboxBounceCatalog';
 
 /** Per-recipient state, exactly as `mailMessages.outbound.recipients[].state`. */

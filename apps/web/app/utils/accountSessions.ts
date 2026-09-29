@@ -19,7 +19,7 @@
  * device name at all.
  */
 
-import type { LocalizedText } from '~/utils/readinessGate';
+import type { LocalizedText } from '~/utils/localizedText';
 
 /** A session row as BetterAuth's `/list-sessions` returns it (JSON: dates are strings). */
 export type AuthSessionRecord = {

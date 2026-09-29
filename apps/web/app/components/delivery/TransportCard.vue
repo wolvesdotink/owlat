@@ -15,9 +15,10 @@
  * being able to change it.
  */
 import { api } from '@owlat/api';
-import { deriveTransportDisplay, type TransportText } from '~/utils/transportState';
+import { deriveTransportDisplay } from '~/utils/transportState';
 import { healthChipClass, healthDotClass } from '~/utils/healthTone';
 import { formatCompactRelativeTime } from '~/utils/formatters';
+import { useLocalized } from '~/composables/useLocalized';
 
 const { t } = useI18n();
 
@@ -28,9 +29,7 @@ const { t } = useI18n();
  * values its message interpolates. A plain string is still accepted so a name
  * from the catalog, the backend or an unknown `EMAIL_PROVIDER` reads as itself.
  */
-function localized(value: TransportText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const localized = useLocalized();
 
 const {
 	data: summary,
@@ -49,7 +48,10 @@ const infrastructureChecks = computed(() => {
 	const health = summary.value?.infrastructure;
 	if (!health) return [];
 	return [
-		{ label: t('components.delivery.transportCard.checks.queueStore'), ok: health.isRedisConnected },
+		{
+			label: t('components.delivery.transportCard.checks.queueStore'),
+			ok: health.isRedisConnected,
+		},
 		{
 			label: t('components.delivery.transportCard.checks.deliveryWorker'),
 			ok: health.isWorkerAlive,

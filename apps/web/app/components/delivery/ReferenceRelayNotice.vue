@@ -17,6 +17,7 @@
  */
 import { api } from '@owlat/api';
 import { referenceRelayNotice } from '~/utils/referenceRelay';
+import { useLocalized } from '~/composables/useLocalized';
 
 const { data: alignmentArms } = useOrganizationQuery(
 	api.delivery.alignmentPreflight.getAlignmentArms
@@ -24,18 +25,13 @@ const { data: alignmentArms } = useOrganizationQuery(
 
 const notice = computed(() => referenceRelayNotice(alignmentArms.value));
 
-const { t } = useI18n();
-
 /**
  * The notice's own copy lives in `utils/referenceRelay` as i18n keys rather than
  * sentences (the registry convention for module-scope definitions); a plain
  * string is still accepted, which is what the backend's verbatim detail — the
  * sentence naming the relays — stays.
  */
-type LocalizedText = string | { key: string; params?: Record<string, unknown> };
-function localized(value: LocalizedText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const localized = useLocalized();
 </script>
 
 <template>

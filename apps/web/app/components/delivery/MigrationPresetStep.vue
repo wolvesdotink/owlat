@@ -31,6 +31,7 @@ import {
 	type MigrationRouteView,
 	type MigrationTransportEntry,
 } from '~/utils/mandrillMigration';
+import { useLocalized } from '~/composables/useLocalized';
 
 const props = defineProps<{
 	readonly catalog: readonly MigrationTransportEntry[] | null;
@@ -48,9 +49,7 @@ const { t } = useI18n();
  * The migration table is module scope and never calls `useI18n`: it hands back
  * catalog keys, and this step is the render boundary that turns them into words.
  */
-type MigrationMessage = string | { key: string; params?: Record<string, unknown> };
-const message = (value: MigrationMessage): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const message = useLocalized();
 
 const { run: setRoute } = useBackendOperation(api.providerRoutes.setRoute, {
 	label: () => t('components.delivery.migrationPresetStep.applyRouteOperation'),

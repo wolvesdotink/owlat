@@ -40,6 +40,7 @@ import {
 } from '~/utils/deliverabilityMeasurement';
 import { formatNumber, formatShortDate } from '~/utils/formatters';
 import { transportIdLabel } from '~/utils/transportState';
+import { useLocalized } from '~/composables/useLocalized';
 
 const props = defineProps<{
 	cell: DeliverabilityDashboardCell;
@@ -55,9 +56,7 @@ const { t, locale } = useI18n();
  * back catalog keys (with parameters where they have any), and this card is the
  * render boundary that turns them into words.
  */
-type MeasurementMessage = string | { key: string; params?: Record<string, unknown> };
-const message = (value: MeasurementMessage): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const message = useLocalized();
 
 const title = computed(() => message(cellLabel(props.cell.cell)));
 const headingId = computed(() => `measurement-cell-${props.cell.cellKey.replace(':', '-')}`);

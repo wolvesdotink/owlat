@@ -13,6 +13,7 @@
 
 import type { FunctionArgs } from 'convex/server';
 import type { api } from '@owlat/api';
+import type { LocalizedText } from '~/utils/localizedText';
 
 /**
  * The unified-message channel discriminator — DERIVED, never restated.
@@ -25,14 +26,6 @@ import type { api } from '@owlat/api';
  * new kind is handled — instead of silently rendering a channel with no fields.
  */
 export type ChannelKind = FunctionArgs<typeof api.unifiedMessages.updateChannelConfig>['channel'];
-
-/**
- * A translatable value produced by a module-scope definition set: the message
- * KEY a rendering component resolves, plus the parameters it interpolates. The
- * tables below never call `useI18n` — they are evaluated once, at import time,
- * long before a locale is active.
- */
-export type LocalizedText = string | { key: string; params?: Record<string, unknown> };
 
 export interface AddableChannel {
 	kind: ChannelKind;

@@ -23,7 +23,7 @@ import {
 	relayRemovalConsequenceCopy,
 	type RelayRemovalConsequence,
 } from '~/utils/deliverabilityRamp';
-import type { LocalizedText } from '~/utils/deliverabilityMeasurement';
+import type { LocalizedText } from '~/utils/localizedText';
 
 export interface RelayRemovalGuard {
 	/**

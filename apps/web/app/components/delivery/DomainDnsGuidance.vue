@@ -16,6 +16,7 @@
  */
 import { api } from '@owlat/api';
 import { transportDnsGuidance } from '~/utils/transportDnsGuidance';
+import { useLocalized } from '~/composables/useLocalized';
 
 const { t } = useI18n();
 const { data: summary } = useOrganizationQuery(api.delivery.status.getTransportSummary);
@@ -25,9 +26,7 @@ const { data: summary } = useOrganizationQuery(api.delivery.status.getTransportS
  * catalog keys (with parameters where it has any) and this render boundary is
  * what turns them into words.
  */
-type GuidanceMessage = string | { key: string; params?: Record<string, unknown> };
-const message = (value: GuidanceMessage): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const message = useLocalized();
 
 const guidance = computed(() => transportDnsGuidance(summary.value?.provider ?? undefined));
 

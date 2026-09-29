@@ -31,6 +31,7 @@ import type { FunctionReturnType } from 'convex/server';
 import type { api } from '@owlat/api';
 import { formatNumber, formatPercentage } from '~/utils/formatters';
 import { transportIdLabel } from '~/utils/transportState';
+import type { LocalizedText } from '~/utils/localizedText';
 
 export type DeliverabilityDashboard = FunctionReturnType<
 	typeof api.delivery.deliverabilityDashboard.getDeliverabilityDashboard
@@ -39,15 +40,6 @@ export type DeliverabilityDashboardCell = DeliverabilityDashboard['cells'][numbe
 export type DeliverabilityDashboardGate = DeliverabilityDashboardCell['gates'][number];
 export type DeliverabilityArmSummary = DeliverabilityDashboardCell['own'];
 export type DeliverabilityConfidence = DeliverabilityDashboardCell['confidence'];
-
-/**
- * A sentence this module hands out: the catalog KEY that carries it, plus the
- * numbers it interpolates. Every table here is module scope and evaluated at
- * import time, so none of them can call `useI18n` — the screen that renders a
- * value is the boundary that turns it into words (the registry convention). A
- * plain string is a key with no parameters.
- */
-export type LocalizedText = string | { key: string; params?: Record<string, unknown> };
 
 /**
  * The headline, honestly: with nothing to compare against, the feature is

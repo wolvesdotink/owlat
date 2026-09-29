@@ -24,6 +24,7 @@ import {
 	type ThreadWindowEntry,
 	type UnreadPeekMessage,
 } from '~/lib/desktop/notificationRules';
+import { useLocalized } from '~/composables/useLocalized';
 
 /**
  * Desktop-only native notifications and the app-icon unread badge.
@@ -67,9 +68,7 @@ export function useDesktopNotifications() {
 	 * Copy produced by the pure notice rules: a message key, optionally with the
 	 * values it interpolates. Resolved here — the rules modules are Vue-free.
 	 */
-	type NoticeText = string | { key: string; params?: Record<string, unknown> };
-	const localize = (text: NoticeText): string =>
-		typeof text === 'string' ? t(text) : t(text.key, text.params ?? {});
+	const localize = useLocalized();
 
 	/**
 	 * Same job for the notification rules, whose copy is TAGGED: `{ text }` came

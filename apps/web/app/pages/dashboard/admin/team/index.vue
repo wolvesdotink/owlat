@@ -7,6 +7,7 @@ import type {
 } from '~/composables/useOrganization';
 import { ROLE_DEFINITIONS, roleDefinition } from '~/utils/teamRoles';
 import { formatDate } from '~/utils/formatters';
+import { useLocalized } from '~/composables/useLocalized';
 
 const { t, locale } = useI18n();
 
@@ -252,10 +253,7 @@ const handleTransferOwnership = async () => {
  * carry i18n keys rather than sentences (the registry convention); a plain string
  * is still accepted so a value with nothing to translate reads as itself.
  */
-type LocalizedText = string | { key: string; params?: Record<string, unknown> };
-function localized(value: LocalizedText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const localized = useLocalized();
 
 const isInviteExpired = (invite: OrganizationInvitation) =>
 	new Date(invite.expiresAt).getTime() < Date.now();

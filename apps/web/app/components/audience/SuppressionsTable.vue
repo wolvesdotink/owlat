@@ -6,6 +6,7 @@ import {
 	indexSuppressionProvenance,
 	suppressionProvenanceLine,
 } from '~/utils/suppressionProvenance';
+import { useLocalized } from '~/composables/useLocalized';
 
 /**
  * The suppression list itself: one row per blocked address, with the reason
@@ -23,6 +24,7 @@ defineProps<{ rows: SuppressionRow[] }>();
 const emit = defineEmits<{ remove: [row: SuppressionRow] }>();
 
 const { t } = useI18n();
+const localized = useLocalized();
 
 // WHO PUT THIS HERE. A `manual` row can be a colleague's decision or a provider
 // blacklist hit mirrored in with nobody behind it; the audit entry is
@@ -35,7 +37,7 @@ const provenanceById = computed(() => indexSuppressionProvenance(provenanceData.
 // the sentence is assembled here, where a locale exists.
 const provenanceFor = (blockedEmailId: string): string | null => {
 	const line = suppressionProvenanceLine(provenanceById.value.get(blockedEmailId));
-	return line === null ? null : t(line.key, line.params ?? {});
+	return line === null ? null : localized(line);
 };
 
 // The reason -> badge/icon/label decision lives in ONE place (see

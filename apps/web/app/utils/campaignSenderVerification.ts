@@ -13,6 +13,8 @@
  * Pure and framework-free so it is unit-tested directly.
  */
 
+import type { LocalizedText } from '~/utils/localizedText';
+
 /** Message-key root for this module; see `i18n/locales/en.json`. */
 const K = 'shared.campaignSenderVerification';
 
@@ -34,9 +36,9 @@ export type SenderVerificationTone = 'neutral' | 'success' | 'warning';
  * Advisory copy carries message KEYS, never sentences: this module is
  * framework-free, so it cannot call `useI18n`. Copy that names the domain
  * travels as its key plus that value, and the modal that renders it translates
- * (`t(value)` / `t(value.key, value.params)`).
+ * (`useLocalized()`).
  */
-export type SenderVerificationMessage = string | { key: string; params?: Record<string, unknown> };
+export type SenderVerificationMessage = LocalizedText;
 
 export interface SenderVerification {
 	tone: SenderVerificationTone;

@@ -34,6 +34,7 @@ import {
 	mandrillOutstanding,
 	type MandrillRelayIdentityInput,
 } from '~/utils/mandrillRelayStatus';
+import type { LocalizedText } from '~/utils/localizedText';
 
 /**
  * A piece of copy this module hands back, as the catalog key that carries it —
@@ -41,7 +42,7 @@ import {
  * never calls `useI18n`; the migration screen and its steps are the render
  * boundaries that word what they are given.
  */
-export type MigrationMessage = string | { key: string; params?: Record<string, unknown> };
+export type MigrationMessage = LocalizedText;
 
 /** The relay this flow migrates from. */
 export const MIGRATION_RELAY_KIND = 'mandrill';

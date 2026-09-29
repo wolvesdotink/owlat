@@ -4,8 +4,8 @@ import {
 	ADDABLE_CHANNEL_KINDS,
 	availableChannelKinds as computeAvailableChannelKinds,
 	type ChannelKind,
-	type LocalizedText,
 } from '~/utils/channelKinds';
+import { useLocalized } from '~/composables/useLocalized';
 
 definePageMeta({
 	layout: 'admin',
@@ -19,9 +19,7 @@ const { t } = useI18n();
  * so it carries message KEYS (optionally with params) rather than sentences —
  * resolving them is the consumer's job. A plain string still reads as a key.
  */
-function localized(value: LocalizedText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const localized = useLocalized();
 
 useHead({ title: () => t('dashboard.admin.instance.channels.pageTitle') });
 

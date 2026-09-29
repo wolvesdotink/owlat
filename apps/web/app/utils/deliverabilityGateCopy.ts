@@ -22,7 +22,8 @@
  */
 
 import { formatNumber, formatPercentage } from '~/utils/formatters';
-import type { DeliverabilityDashboardGate, LocalizedText } from '~/utils/deliverabilityMeasurement';
+import type { DeliverabilityDashboardGate } from '~/utils/deliverabilityMeasurement';
+import type { LocalizedText } from '~/utils/localizedText';
 
 const GATE_LABELS = {
 	hard_bounce: 'shared.deliverabilityMeasurement.gate.hardBounce',

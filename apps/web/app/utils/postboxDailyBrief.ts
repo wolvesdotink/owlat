@@ -13,6 +13,8 @@
  * WHY ("answering them unblocks…") rides inside the sentence itself.
  */
 
+import type { LocalizedText } from '~/utils/localizedText';
+
 /** Where each linked count routes. Same-page anchors keep focus in the flow. */
 export const BRIEF_LINK_TARGETS = {
 	newMail: '#postbox-today',
@@ -32,7 +34,7 @@ export interface DailyBriefCounts {
  * interpolate. This module is module scope and never calls `useI18n`; the brief
  * card is the render boundary that words each chunk.
  */
-export type BriefText = string | { key: string; params?: Record<string, unknown> };
+export type BriefText = LocalizedText;
 
 /** One renderable chunk: plain text, or an emphasized count linking somewhere. */
 export type BriefSegment = { text: BriefText; to?: string };

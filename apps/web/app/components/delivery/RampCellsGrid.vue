@@ -24,6 +24,7 @@ import {
 	shareLabel,
 	type RampCellControl,
 } from '~/utils/deliverabilityRamp';
+import { useLocalized } from '~/composables/useLocalized';
 
 const props = defineProps<{
 	cells: readonly RampCellControl[];
@@ -55,10 +56,7 @@ const { t } = useI18n();
  * than sentences (the registry convention for module-scope definitions); a plain
  * string is still accepted so a value with nothing to translate reads as itself.
  */
-type LocalizedText = string | { key: string; params?: Record<string, unknown> };
-function localized(value: LocalizedText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const localized = useLocalized();
 
 const TONE_CLASS = {
 	ok: 'border-success/40 text-success',

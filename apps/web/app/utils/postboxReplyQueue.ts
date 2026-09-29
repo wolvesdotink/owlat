@@ -4,6 +4,8 @@
  * the ordering contract is unit-testable.
  */
 
+import type { LocalizedText } from '~/utils/localizedText';
+
 export type ReplyQueueUrgency = 'high' | 'normal' | 'low';
 
 /**
@@ -21,7 +23,7 @@ export function answerQueueHrefFor(mailboxId: string): string {
  * i18n key, optionally with its interpolations. This module is pure, so it
  * never calls `useI18n`; callers run the value through `t()`.
  */
-export type ReplyQueueText = string | { key: string; params?: Record<string, unknown> };
+export type ReplyQueueText = LocalizedText;
 
 /** A single clarification question shown on a "Needs your input" card. */
 export interface ReplyQueueClarificationQuestion {

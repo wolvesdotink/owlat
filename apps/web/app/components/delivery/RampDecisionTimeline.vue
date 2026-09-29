@@ -13,6 +13,7 @@
  */
 import { rampReasonLabel, shareLabel, type RampCellDecision } from '~/utils/deliverabilityRamp';
 import { formatShortDate } from '~/utils/formatters';
+import { useLocalized } from '~/composables/useLocalized';
 
 defineProps<{
 	decisions: readonly RampCellDecision[];
@@ -26,10 +27,7 @@ const { t, locale } = useI18n();
  * than sentences (the registry convention for module-scope definitions); a plain
  * string is still accepted, which is what an unknown reason falls back to.
  */
-type LocalizedText = string | { key: string; params?: Record<string, unknown> };
-function localized(value: LocalizedText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const localized = useLocalized();
 </script>
 
 <template>

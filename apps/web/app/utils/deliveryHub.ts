@@ -1,6 +1,7 @@
 import { REPUTATION_THRESHOLDS } from '@owlat/shared/reputation';
 import type { DeliveryHealthLevel } from '~/composables/useDeliveryHealth';
 import { formatNumber, formatPercentage } from '~/utils/formatters';
+import type { LocalizedText } from '~/utils/localizedText';
 
 /**
  * Pure copy/derivation helpers for the Delivery health page. Kept DB- and
@@ -10,14 +11,6 @@ import { formatNumber, formatPercentage } from '~/utils/formatters';
  * `deliveryVerdict` is the one place a level becomes human words, so the chip and
  * the dot can never disagree.
  */
-
-/**
- * A translatable value produced by a module-scope definition set: the message
- * KEY the page resolves, plus the parameters it interpolates. These tables are
- * evaluated at import time, long before a locale is active, so they carry keys
- * rather than sentences.
- */
-export type LocalizedText = string | { key: string; params?: Record<string, unknown> };
 
 /** Health tone shared by the verdict chip and the stat tiles. */
 export type DeliveryTone = 'ok' | 'warn' | 'error';

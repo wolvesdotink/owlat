@@ -29,7 +29,8 @@
 import type { OutboundAlignmentState } from '@owlat/shared';
 import type { HealthTone } from '~/utils/healthTone';
 import type { ReadinessLevel } from '~/utils/deliveryReadiness';
-import type { LocalizedText, ReadinessGateStatus } from '~/utils/readinessGate';
+import type { LocalizedText } from '~/utils/localizedText';
+import type { ReadinessGateStatus } from '~/utils/readinessGate';
 import { senderAuthDisplay } from '~/utils/senderAlignment';
 import { explainBounce } from '~/utils/postboxBounceCatalog';
 

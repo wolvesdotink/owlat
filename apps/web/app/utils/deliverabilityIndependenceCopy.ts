@@ -20,7 +20,8 @@ import {
 	type IndependenceProjection,
 } from '@owlat/shared/deliverabilityIndependence';
 import { formatNumber, formatShortDate } from '~/utils/formatters';
-import { measurementHeadline, type LocalizedText } from '~/utils/deliverabilityMeasurement';
+import { measurementHeadline } from '~/utils/deliverabilityMeasurement';
+import type { LocalizedText } from '~/utils/localizedText';
 import { transportIdLabel } from '~/utils/transportState';
 
 export type IndependenceSummary = FunctionReturnType<

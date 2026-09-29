@@ -1,5 +1,6 @@
 import type { Component, ComputedRef } from 'vue';
 import type { Doc } from '@owlat/api/dataModel';
+import type { LocalizedText } from '~/utils/localizedText';
 
 export type TriggerKind =
 	| 'contact_created'
@@ -41,9 +42,9 @@ export interface TriggerDisplayContext {
  * Registry-owned copy carries message KEYS, never sentences: these modules are
  * module-scope definitions, so they cannot call `useI18n`. A message that
  * interpolates values travels as its key plus those values; the component that
- * renders it is what translates (`t(value)` / `t(value.key, value.params)`).
+ * renders it is what translates (`useLocalized()`).
  */
-export type TriggerMessage = string | { key: string; params?: Record<string, unknown> };
+export type TriggerMessage = LocalizedText;
 
 export interface TriggerEditorModule<K extends TriggerKind> {
 	readonly kind: K;

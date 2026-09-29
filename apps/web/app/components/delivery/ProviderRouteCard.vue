@@ -10,6 +10,8 @@
  * so the card is props in, events out.
  */
 import type { ProviderRouteMessageType } from '~/utils/providerRouteOptions';
+import { useLocalized } from '~/composables/useLocalized';
+import type { LocalizedText } from '~/utils/localizedText';
 
 interface RouteProvider {
 	providerType: string;
@@ -28,13 +30,11 @@ interface RouteSummary {
 	};
 }
 
-/** Labels in the definition set are message KEYS, per the registry convention. */
-type LocalizedText = string | { key: string; params?: Record<string, unknown> };
-
 const props = defineProps<{
 	messageType: {
 		value: ProviderRouteMessageType;
 		icon: string;
+		/** Labels in the definition set are message KEYS, per the registry convention. */
 		label: LocalizedText;
 		description: LocalizedText;
 	};
@@ -50,8 +50,7 @@ const emit = defineEmits<{ edit: []; reset: [] }>();
 
 const { t } = useI18n();
 
-const localized = (value: LocalizedText): string =>
-	typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
+const localized = useLocalized();
 
 const label = computed(() => localized(props.messageType.label));
 const description = computed(() => localized(props.messageType.description));

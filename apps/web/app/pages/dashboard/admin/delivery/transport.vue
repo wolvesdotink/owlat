@@ -8,6 +8,7 @@ import {
 	providerFeedbackWebhookUrl,
 } from '~/utils/providerFeedbackPanel';
 import { transportKindLabel } from '~/utils/transportState';
+import { useLocalized } from '~/composables/useLocalized';
 
 const { t } = useI18n();
 
@@ -16,10 +17,7 @@ const { t } = useI18n();
  * i18n keys rather than sentences (the registry convention); a plain string is
  * still accepted so a value with nothing to translate reads as itself.
  */
-type LocalizedText = string | { key: string; params?: Record<string, unknown> };
-function localized(value: LocalizedText): string {
-	return typeof value === 'string' ? t(value) : t(value.key, value.params ?? {});
-}
+const localized = useLocalized();
 
 useHead({ title: () => t('dashboard.admin.delivery.transport.pageTitle') });
 
