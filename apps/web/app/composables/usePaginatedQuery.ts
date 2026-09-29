@@ -44,6 +44,9 @@ interface PaginatedUpdateResult<T> {
  * as in `useConvexQuery`. `refetch` reopens the subscription on demand (the
  * handler behind a "Try again" control); it starts over from the first page.
  *
+ * Like `useConvexQuery`, identical queries share one subscription, which stays
+ * warm for a while after its last reader leaves, with the pages loaded so far.
+ *
  * Note: Results are typed as `unknown[]` because Convex's onPaginatedUpdate_experimental
  * has mismatched declared vs runtime types, preventing proper generic inference.
  */
@@ -74,6 +77,9 @@ export function usePaginatedQuery<Query extends FunctionReference<'query'>>(
 						onError
 					)
 			: null,
+		// Shared and kept warm like `useConvexQuery`, pages loaded so far included.
+		// The page size is part of the key: it shapes what the transport holds.
+		share: client ? { source: client, variant: `paginated:${options.initialNumItems}` } : undefined,
 		hasData: () => results.value.length > 0,
 		accept: (update) => {
 			results.value = update.results ?? [];

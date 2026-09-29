@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { nextTick } from 'vue';
 import { ConvexError } from 'convex/values';
 import { usePaginatedQuery } from '../usePaginatedQuery';
+import { SUBSCRIPTION_LINGER_MS } from '~/lib/sharedConvexSubscriptions';
 
 const dev = vi.hoisted(() => ({ build: false }));
 vi.mock('~/lib/runtimeLog', async (importOriginal) => ({
@@ -267,12 +268,46 @@ describe('usePaginatedQuery', () => {
 	});
 
 	describe('cleanup', () => {
-		it('unsubscribes on unmount', () => {
-			usePaginatedQuery(fakeQuery, { teamId: '123' }, { initialNumItems: 20 });
+		it('unsubscribes once the linger after unmount runs out', () => {
+			vi.useFakeTimers();
+			try {
+				usePaginatedQuery(fakeQuery, { teamId: '123' }, { initialNumItems: 20 });
 
-			expect(capturedUnmountCallback).toBeTruthy();
+				expect(capturedUnmountCallback).toBeTruthy();
+				capturedUnmountCallback!();
+				expect(mockSubDispose).not.toHaveBeenCalled();
+
+				vi.advanceTimersByTime(SUBSCRIPTION_LINGER_MS);
+				expect(mockSubDispose).toHaveBeenCalledOnce();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it('hands a remount the pages loaded so far, synchronously', () => {
+			const loadMorePage = vi.fn();
+			usePaginatedQuery(fakeQuery, { teamId: '123' }, { initialNumItems: 20 });
+			mockSuccessCallback!({
+				results: [{ id: '1' }, { id: '2' }, { id: '3' }],
+				status: 'CanLoadMore',
+				loadMore: loadMorePage,
+			});
 			capturedUnmountCallback!();
-			expect(mockSubDispose).toHaveBeenCalled();
+
+			const again = usePaginatedQuery(fakeQuery, { teamId: '123' }, { initialNumItems: 20 });
+
+			expect(mockClient.onPaginatedUpdate_experimental).toHaveBeenCalledOnce();
+			expect(again.results.value).toEqual([{ id: '1' }, { id: '2' }, { id: '3' }]);
+			expect(again.status.value).toBe('CanLoadMore');
+			expect(again.isLoading.value).toBe(false);
+			again.loadMore(20);
+			expect(loadMorePage).toHaveBeenCalledWith(20);
+		});
+
+		it('keys the shared subscription by page size', () => {
+			usePaginatedQuery(fakeQuery, { teamId: '123' }, { initialNumItems: 20 });
+			usePaginatedQuery(fakeQuery, { teamId: '123' }, { initialNumItems: 50 });
+			expect(mockClient.onPaginatedUpdate_experimental).toHaveBeenCalledTimes(2);
 		});
 
 		it('warns in a dev build when created outside an effect scope', () => {
@@ -329,24 +364,31 @@ describe('usePaginatedQuery', () => {
 			expect(mockClient.onPaginatedUpdate_experimental).toHaveBeenCalledTimes(2);
 		});
 
-		it('unsubscribes and resubscribes when args change', async () => {
-			const teamId = ref('123');
-			usePaginatedQuery(fakeQuery, () => ({ teamId: teamId.value }), { initialNumItems: 20 });
+		it('releases the old args after their linger and resubscribes when args change', async () => {
+			vi.useFakeTimers();
+			try {
+				const teamId = ref('123');
+				usePaginatedQuery(fakeQuery, () => ({ teamId: teamId.value }), { initialNumItems: 20 });
 
-			expect(mockClient.onPaginatedUpdate_experimental).toHaveBeenCalledTimes(1);
+				expect(mockClient.onPaginatedUpdate_experimental).toHaveBeenCalledTimes(1);
 
-			teamId.value = '456';
-			await nextTick();
+				teamId.value = '456';
+				await nextTick();
 
-			expect(mockSubDispose).toHaveBeenCalled();
-			expect(mockClient.onPaginatedUpdate_experimental).toHaveBeenCalledTimes(2);
-			expect(mockClient.onPaginatedUpdate_experimental).toHaveBeenLastCalledWith(
-				fakeQuery,
-				{ teamId: '456' },
-				{ initialNumItems: 20 },
-				expect.any(Function),
-				expect.any(Function)
-			);
+				expect(mockSubDispose).not.toHaveBeenCalled();
+				vi.advanceTimersByTime(SUBSCRIPTION_LINGER_MS);
+				expect(mockSubDispose).toHaveBeenCalledOnce();
+				expect(mockClient.onPaginatedUpdate_experimental).toHaveBeenCalledTimes(2);
+				expect(mockClient.onPaginatedUpdate_experimental).toHaveBeenLastCalledWith(
+					fakeQuery,
+					{ teamId: '456' },
+					{ initialNumItems: 20 },
+					expect.any(Function),
+					expect.any(Function)
+				);
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 
 		it('resets state when resubscribing', async () => {

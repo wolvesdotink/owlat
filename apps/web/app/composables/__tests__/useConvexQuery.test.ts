@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ConvexError } from 'convex/values';
 import { useConvexQuery } from '../useConvexQuery';
+import { SUBSCRIPTION_LINGER_MS } from '~/lib/sharedConvexSubscriptions';
 
 describe('useConvexQuery', () => {
 	let mockOnUpdateCallback: ((data: unknown) => void) | null = null;
@@ -187,15 +188,22 @@ describe('useConvexQuery', () => {
 	});
 
 	describe('cleanup', () => {
-		it('cleans up subscription on unmount', () => {
-			useConvexQuery(fakeQuery, { teamId: '123' });
+		it('releases the subscription once the linger after unmount runs out', () => {
+			vi.useFakeTimers();
+			try {
+				useConvexQuery(fakeQuery, { teamId: '123' });
 
-			expect(mockClient.onUpdate).toHaveBeenCalledOnce();
-			expect(onScopeDisposeCallback).toBeTypeOf('function');
+				expect(mockClient.onUpdate).toHaveBeenCalledOnce();
+				expect(onScopeDisposeCallback).toBeTypeOf('function');
 
-			onScopeDisposeCallback!();
+				onScopeDisposeCallback!();
+				expect(mockUnsubscribe).not.toHaveBeenCalled();
 
-			expect(mockUnsubscribe).toHaveBeenCalledOnce();
+				vi.advanceTimersByTime(SUBSCRIPTION_LINGER_MS);
+				expect(mockUnsubscribe).toHaveBeenCalledOnce();
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 
 		it('does not call unsubscribe on unmount if no subscription exists', () => {
@@ -347,17 +355,30 @@ describe('useConvexQuery', () => {
 			expect(mockClient.onUpdate).toHaveBeenCalledTimes(2);
 		});
 
-		it('unsubscribes old subscription before subscribing new on args change', async () => {
-			const teamId = ref('123');
-			useConvexQuery(fakeQuery, () => ({ teamId: teamId.value }));
+		it('keeps the old args warm after an args change, then releases them', async () => {
+			vi.useFakeTimers();
+			try {
+				const teamId = ref('123');
+				const { data } = useConvexQuery(fakeQuery, () => ({ teamId: teamId.value }));
+				mockOnUpdateCallback!(['team 123']);
 
-			expect(mockUnsubscribe).not.toHaveBeenCalled();
+				teamId.value = '456';
+				await nextTick();
+				expect(mockClient.onUpdate).toHaveBeenCalledTimes(2);
+				expect(mockUnsubscribe).not.toHaveBeenCalled();
 
-			teamId.value = '456';
-			await nextTick();
+				// Back to the first args inside the linger: no new subscription, and
+				// the value is there before any callback fires.
+				teamId.value = '123';
+				await nextTick();
+				expect(mockClient.onUpdate).toHaveBeenCalledTimes(2);
+				expect(data.value).toEqual(['team 123']);
 
-			expect(mockUnsubscribe).toHaveBeenCalledOnce();
-			expect(mockClient.onUpdate).toHaveBeenCalledTimes(2);
+				vi.advanceTimersByTime(SUBSCRIPTION_LINGER_MS);
+				expect(mockUnsubscribe).toHaveBeenCalledOnce();
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 	});
 

@@ -31,6 +31,11 @@ export interface ConvexQueryResult<T> {
  * on purpose (`ConvexError`) surface at once. The lifecycle lives in
  * `~/lib/convexSubscription`, shared with `usePaginatedQuery`.
  *
+ * Every component reading the same query with the same args shares one
+ * subscription, and a query stays subscribed for a while after its last reader
+ * unmounts: coming back to it (back navigation, a tab switch) renders its value
+ * in the same tick, with no loading state.
+ *
  * Return "skip" from the args factory function to skip the query subscription.
  * This is useful when required arguments are not yet available.
  */
@@ -51,6 +56,9 @@ export function useConvexQuery<Query extends FunctionReference<'query'>>(
 		open: client
 			? (resolved, onUpdate, onError) => client.onUpdate(query, resolved, onUpdate, onError)
 			: null,
+		// One `onUpdate` per query and args for the whole app, kept warm briefly
+		// after the last component using it unmounts. See ~/lib/sharedConvexSubscriptions.
+		share: client ? { source: client, variant: 'query' } : undefined,
 		hasData: () => data.value !== undefined,
 		accept: (value) => {
 			data.value = value;

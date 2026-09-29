@@ -3,6 +3,7 @@ import { authClient } from '~/lib/auth-client';
 import { getConvexAuthToken, resetConvexAuthTokenCache } from '~/lib/convex-auth';
 import { isDesktopRuntime, getActiveWorkspace } from '~/lib/desktop/activeWorkspace';
 import { logWarn } from '~/lib/runtimeLog';
+import { resetSharedConvexSubscriptions } from '~/lib/sharedConvexSubscriptions';
 
 let authListenerRegistered = false;
 
@@ -102,13 +103,17 @@ export default defineNuxtPlugin(() => {
 				staleSessionNotifies = 0;
 				return;
 			}
+			resetSharedConvexSubscriptions();
 			void handleAuthLoss();
 		};
 		client.setAuth(authCallback, onAuthChange);
 
 		if (!authListenerRegistered) {
 			authListenerRegistered = true;
+			// Fires on sign-in, sign-out and an organization switch. Queries kept
+			// warm for the previous identity must not render for the next one.
 			authClient.$store.listen('$sessionSignal', () => {
+				resetSharedConvexSubscriptions();
 				resetConvexAuthTokenCache();
 				client.setAuth(authCallback, onAuthChange);
 			});
