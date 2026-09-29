@@ -24,9 +24,7 @@
 		"./focus-mode": {
 			"types": "./src/composables/useFocusMode.ts",
 			"import": "./src/composables/useFocusMode.ts"
-		},
-		"./styles": "./src/styles/utilities.css",
-		"./preview-styles": "./src/preview/styles/variables.css"
+		}
 	},
 	"scripts": {
 		"lint": "oxlint --config ../../oxlintrc.json src",
