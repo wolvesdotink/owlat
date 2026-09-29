@@ -20,7 +20,8 @@ type InstanceSecretLimitType = Extract<PublicRateLimitType, 'adminSeed' | 'insta
  * try values, whether or not its guess is right. The same secret also derives
  * the at-rest sealing keys, so every route that reads it from this header goes
  * through here. The upload service routes (`storage/uploadsHttp.ts`) take it as
- * a bearer token from the web server and check it themselves. The web app's own
+ * a bearer token from the web server and go through `requireInstanceSecretBearer`
+ * below, which charges only failures. The web app's own
  * `X-Instance-Secret` routes (self-update, configure-ip, the aggregated health
  * check) compare it in `apps/web/server/utils/updater.ts` without a throttle;
  * that file records why.
@@ -43,4 +44,42 @@ export async function requireInstanceSecret(
 		return errorResponse('unauthenticated', 'Unauthorized');
 	}
 	return null;
+}
+
+/** True when the `Authorization: Bearer` token matches the current or previous secret. */
+function bearerMatchesInstanceSecret(request: Request): boolean {
+	const current = getOptional('INSTANCE_SECRET');
+	if (!current) return false;
+	const header = request.headers.get('authorization') ?? '';
+	if (!header.startsWith('Bearer ')) return false;
+	const token = header.slice(7);
+	return (
+		secretMatches(token, current) || secretMatches(token, getOptional('INSTANCE_SECRET_PREVIOUS'))
+	);
+}
+
+/**
+ * Gate a route on the instance secret sent as a bearer token by the web server
+ * (the upload service routes). `INSTANCE_SECRET_PREVIOUS` is accepted during a
+ * rotation.
+ *
+ * Unlike `requireInstanceSecret`, the comparison runs first and only a FAILED
+ * compare charges the caller's per-IP `instanceSecret` bucket. The web server
+ * reaches these routes in bursts, often from the shared `'unknown'` bucket, so a
+ * throttle checked before the compare would let failing callers stall uploads.
+ * A matching secret never reads or spends the bucket. A caller that keeps
+ * failing gets 429 with `Retry-After` instead of 401 once its bucket is empty.
+ *
+ * Returns the 429 or 401 response to send, or `null` when the caller may proceed.
+ */
+export async function requireInstanceSecretBearer(
+	ctx: Pick<ActionCtx, 'runMutation'>,
+	request: Request
+): Promise<Response | null> {
+	if (bearerMatchesInstanceSecret(request)) return null;
+	const { ok, retryAfter } = await ctx.runMutation(
+		internal.lib.publicRateLimit.checkPublicRateLimit,
+		{ limitType: 'instanceSecret', key: getClientIp(request) }
+	);
+	return ok ? errorResponse('unauthenticated', 'Unauthorized') : rateLimitedResponse(retryAfter);
 }
