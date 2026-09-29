@@ -20,7 +20,7 @@ const route = useRoute();
 const { isEnabled } = useFeatureFlag();
 const { isAdmin, isRoleLoading } = usePermissions();
 const { inboxes, hasPersonalMail } = useInboxes();
-const { count: answerCount } = useAnswerQueue();
+const { count: answerCount } = useAnswerQueueCount();
 const { perInbox, sort, isCollapsed, toggleGroup } = useShellSidebarPrefs();
 
 const showTeamInbox = computed(() => isAdmin.value && isEnabled('inbox'));

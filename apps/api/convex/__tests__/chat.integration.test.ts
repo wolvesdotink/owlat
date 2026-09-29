@@ -29,7 +29,13 @@ vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
-		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		// The auth floor threads this session to handlers that take it (plan 2.11's
+		// mention count), so it follows the test's current user too.
+		requireOrgMember: vi.fn().mockImplementation(async () => ({
+			userId: sessionMock.user.id,
+			role: sessionMock.user.role,
+			activeOrganizationId: 'test-org',
+		})),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockImplementation(async () => sessionMock.user.id),
 		getMutationContext: vi.fn().mockImplementation(async () => ({
@@ -563,6 +569,43 @@ describe('chat.mentions', () => {
 
 		const mentions = await t.run(async (ctx) => ctx.db.query('chatMentions').collect());
 		expect(mentions).toHaveLength(0);
+	});
+});
+
+describe('chat.mentions.countMyVisibleUnreadMentions (plan 2.11)', () => {
+	it('counts the mentions the feed shows, not the raw unread rows', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['chat']);
+		await seedUsers(t, ['alice', 'bob']);
+
+		setUser('alice', 'editor');
+		const roomId = await t.mutation(api.chat.rooms.createChannel, {
+			name: 'general',
+			visibility: 'public',
+		});
+		await t.mutation(api.chat.members.addMember, { roomId: roomId!, memberId: 'bob' });
+		for (const text of ['@bob first', '@bob second', '@bob third']) {
+			await t.mutation(api.chat.messages.sendMessage, { roomId: roomId!, text });
+		}
+		// A deleted message drops out of the feed, but its mention row stays unread.
+		const [deleted] = await t.run(async (ctx) =>
+			ctx.db
+				.query('chatMessages')
+				.filter((q) => q.eq(q.field('text'), '@bob second'))
+				.collect()
+		);
+		await t.mutation(api.chat.messages.deleteMessage, { messageId: deleted!._id });
+
+		setUser('bob', 'editor');
+		const feed = await t.query(api.chat.mentions.listMyUnreadMentions, {});
+		expect(feed).toHaveLength(2);
+		expect(await t.query(api.chat.mentions.countMyVisibleUnreadMentions, {})).toBe(feed.length);
+		expect(await t.query(api.chat.mentions.countMyUnreadMentions, {})).toBe(3);
+
+		const page = await t.query(api.chat.mentions.listMyUnreadMentions, { limit: 1 });
+		expect(await t.query(api.chat.mentions.countMyVisibleUnreadMentions, { limit: 1 })).toBe(
+			page.length
+		);
 	});
 });
 

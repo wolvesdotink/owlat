@@ -30,7 +30,7 @@ beforeEach(() => {
 		useFeatureFlag: () => ({ isEnabled: (flag: string) => flags.has(flag) }),
 		usePermissions: () => ({ isAdmin, isRoleLoading }),
 		useInboxes: () => ({ inboxes: ref([]), hasPersonalMail: ref(true) }),
-		useAnswerQueue: () => ({ count: ref(0) }),
+		useAnswerQueueCount: () => ({ count: ref(0) }),
 		useShellSidebarPrefs: () => ({
 			perInbox: ref(5),
 			sort: ref('recent'),

@@ -79,7 +79,7 @@ beforeEach(() => {
 	vi.stubGlobal('useQuickCreateMenu', () => ({ actions: computed(() => actions) }));
 	vi.stubGlobal('usePostboxComposerStack', () => ({ activeComposerId }));
 	vi.stubGlobal('useRailDrawer', () => ({ isOpen: railDrawerOpen, setOpen: vi.fn() }));
-	vi.stubGlobal('useAnswerQueue', () => ({ count: answerCount }));
+	vi.stubGlobal('useAnswerQueueCount', () => ({ count: answerCount }));
 	vi.stubGlobal('useDashboardNavigation', () => ({
 		navigationSections: computed(() =>
 			buildNavigationSections({

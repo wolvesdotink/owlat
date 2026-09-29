@@ -21,6 +21,14 @@ export const MENTION_SCORE = 55;
 
 export type AnswerSource = 'mail' | 'team' | 'mention';
 
+/**
+ * How many team drafts and mentions the queue reads. The list (Answer, Today)
+ * and the shell's count badge pass the same limits, so the badge counts what
+ * the list shows.
+ */
+export const ANSWER_REVIEW_LIMIT = 50;
+export const ANSWER_MENTION_LIMIT = 25;
+
 export interface AnswerOrderInput {
 	source: AnswerSource;
 	/** When the thing started waiting (message received / mention created). */

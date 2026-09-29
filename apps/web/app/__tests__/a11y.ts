@@ -493,6 +493,7 @@ export function dashboardShellStubs(): Record<string, unknown> {
 			hasPersonalMail: ref(true),
 			isLoading: ref(false),
 		}),
+		useAnswerQueueCount: () => ({ count: ref(0) }),
 		useAnswerQueue: () => ({
 			items: ref([]),
 			count: ref(0),

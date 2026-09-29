@@ -56,7 +56,7 @@ interface TabItem {
 	badge?: number;
 }
 
-const { count: answerCount } = useAnswerQueue();
+const { count: answerCount } = useAnswerQueueCount();
 
 /**
  * The inbox slot goes wherever this instance's mail actually lives: every

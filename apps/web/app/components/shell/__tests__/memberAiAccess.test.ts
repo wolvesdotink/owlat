@@ -36,7 +36,7 @@ beforeEach(() => {
 		}),
 		useKeyboardShortcuts: () => ({ openHelpModal: vi.fn() }),
 		useInboxes: () => ({ inboxes: ref([]), hasPersonalMail: ref(false) }),
-		useAnswerQueue: () => ({ count: ref(0) }),
+		useAnswerQueueCount: () => ({ count: ref(0) }),
 		useShellSidebarPrefs: () => ({
 			perInbox: ref(5),
 			sort: ref('recent'),

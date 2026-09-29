@@ -280,14 +280,7 @@ export const getReviewQueue = publicQuery({
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!isSharedInboxReader(session)) return [];
 
-		const limit = args.limit ?? 50;
-
-		// Get messages that are draft_ready
-		const pendingMessages = await ctx.db
-			.query('inboundMessages')
-			.withIndex('by_processing_status', (q) => q.eq('processingStatus', 'draft_ready'))
-			.order('desc')
-			.take(limit);
+		const pendingMessages = await readPendingReview(ctx, args.limit ?? 50);
 
 		// Enrich with thread and contact data
 		const enriched = await Promise.all(
@@ -305,6 +298,31 @@ export const getReviewQueue = publicQuery({
 		return enriched;
 	},
 });
+
+/**
+ * How many rows `getReviewQueue` returns for the same `limit` (at most 200),
+ * without the
+ * thread and contact joins (plan 2.11). Feeds the shell's Answer badge; the
+ * Answer and Today pages read the list itself.
+ */
+// public: soft-auth — admin-only shared inbox; returns 0 for non-admins
+export const countReviewQueue = publicQuery({
+	args: { limit: v.optional(v.number()) },
+	handler: async (ctx, args): Promise<number> => {
+		const session = await getBetterAuthSessionWithRole(ctx);
+		if (!isSharedInboxReader(session)) return 0;
+		return (await readPendingReview(ctx, Math.min(args.limit ?? 50, 200))).length;
+	},
+});
+
+/** The newest `draft_ready` messages, the review queue's rows. */
+async function readPendingReview(ctx: QueryCtx, limit: number) {
+	return await ctx.db
+		.query('inboundMessages')
+		.withIndex('by_processing_status', (q) => q.eq('processingStatus', 'draft_ready'))
+		.order('desc')
+		.take(limit);
+}
 
 /**
  * Get quarantined messages for admin review

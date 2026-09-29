@@ -32,9 +32,8 @@ import { postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
-import { isMessageSnoozed } from '../lib/mailSnooze';
-import { isThreadMuted } from '../lib/mailMute';
-import { needsReplyTriggerOf, readQueueTrigger } from './needsReplyTrigger';
+import { needsReplyTriggerOf } from './needsReplyTrigger';
+import { QUEUE_LIMIT, scanReplyQueue } from './needsReplyQueueScan';
 import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './ai/priorityScore';
 import { scoreAndScreenResult } from './ai/needsReplyScoring';
@@ -266,9 +265,6 @@ export const applyResult = internalMutation({
 	},
 });
 
-/** Upper bound on Reply Queue rows returned per query. */
-const QUEUE_LIMIT = 100;
-
 /**
  * The Reply Queue — every thread in the mailbox currently flagged as
  * "needs a reply from me", joined with the message that triggered the flag.
@@ -288,22 +284,9 @@ export const listQueue = publicQuery({
 		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
 		if (!mailbox) return { items: [] };
 
-		const now = Date.now();
-		const threads = await ctx.db
-			.query('mailThreads')
-			.withIndex('by_mailbox_needs_reply', (q) =>
-				q.eq('mailboxId', args.mailboxId).gt('needsReply.detectedAt', 0)
-			)
-			.order('desc')
-			.take(QUEUE_LIMIT);
-
+		const { needsReply, followUps } = await scanReplyQueue(ctx, args.mailboxId, Date.now());
 		const items = [];
-		for (const thread of threads) {
-			const flag = thread.needsReply;
-			// Muted (mail/mute.ts) = the owner opted out of the conversation.
-			if (!flag || isThreadMuted(thread)) continue;
-			const trigger = await readQueueTrigger(ctx, thread, flag, now);
-			if (!trigger) continue;
+		for (const { thread, flag, trigger } of needsReply) {
 			items.push({
 				kind: 'needs_reply' as const,
 				threadId: thread._id,
@@ -332,23 +315,7 @@ export const listQueue = publicQuery({
 				receivedAt: trigger.receivedAt,
 			});
 		}
-
-		// Follow-up items — sent mail whose "remind me if no reply" deadline
-		// passed (mail/followUps.ts sweep stamped followUp.dueAt). Deterministic;
-		// cleared by any inbound reply or the cancel/dismiss mutation.
-		const dueFollowUps = await ctx.db
-			.query('mailThreads')
-			.withIndex('by_mailbox_follow_up_due', (q) =>
-				q.eq('mailboxId', args.mailboxId).gt('followUp.dueAt', 0)
-			)
-			.order('desc')
-			.take(QUEUE_LIMIT);
-		for (const thread of dueFollowUps) {
-			const flag = thread.followUp;
-			if (!flag || flag.dueAt === undefined || isThreadMuted(thread)) continue;
-			const message = await ctx.db.get(flag.messageId);
-			if (!message) continue;
-			if (isMessageSnoozed(message, now)) continue;
+		for (const { thread, flag, message } of followUps) {
 			const counterpart = flag.waitingOn ?? message.toAddresses[0] ?? message.fromAddress;
 			items.push({
 				kind: 'followup' as const,
@@ -374,6 +341,24 @@ export const listQueue = publicQuery({
 			});
 		}
 		return { items };
+	},
+});
+
+/**
+ * How many rows `listQueue` returns for the mailbox, without building them
+ * (plan 2.11). The shell's Answer badge subscribes to this on every dashboard
+ * page; the full list is only read on the Answer and Today pages. Same scan,
+ * same filters, so the badge matches the list; it skips the per-follow-up name
+ * lookups, and a change to a card's text does not re-send anything.
+ */
+// public: soft-auth — returns 0 for anonymous; mailbox access is still enforced in-handler
+export const countQueue = publicQuery({
+	args: { mailboxId: v.id('mailboxes') },
+	handler: async (ctx, args): Promise<number> => {
+		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
+		if (!mailbox) return 0;
+		const { needsReply, followUps } = await scanReplyQueue(ctx, args.mailboxId, Date.now());
+		return needsReply.length + followUps.length;
 	},
 });
 
