@@ -181,6 +181,25 @@ describe('knowledge reads follow the shared-inbox reader rule', () => {
 		expect(titles(page)).toEqual(['open fact']);
 	});
 
+	it('bounds the rows a member read scans, returning a short page past the bound', async () => {
+		const t = await makeT();
+		await seed(t);
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 4; i++) {
+				await ctx.db.insert(
+					'knowledgeEntries',
+					createTestKnowledgeEntry({ title: `newer inbox ${i}`, createdAt: 10 + i })
+				);
+			}
+		});
+
+		// A page of one scans four rows, all of them Team Inbox-derived.
+		expect(await t.query(api.knowledge.graph.listAll, { limit: 1 })).toEqual([]);
+		expect(titles(await t.query(api.knowledge.graph.listAll, { limit: 2 }))).toEqual([
+			'open fact',
+		]);
+	});
+
 	it('returns null for an inbox-derived entry and drops it from relations', async () => {
 		const t = await makeT();
 		const { inbox, threaded, open } = await seed(t);

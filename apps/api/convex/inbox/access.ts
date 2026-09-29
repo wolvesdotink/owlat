@@ -15,9 +15,8 @@
  * its surface (an empty list, `null`, a throw). This only answers the question.
  */
 
-import type { Expression, FilterBuilder, NamedTableInfo } from 'convex/server';
 import { internalQuery, type QueryCtx, type MutationCtx } from '../_generated/server';
-import type { DataModel, Doc } from '../_generated/dataModel';
+import type { Doc } from '../_generated/dataModel';
 import { components } from '../_generated/api';
 import { throwUnauthenticated } from '../_utils/errors';
 import {
@@ -105,18 +104,4 @@ export function isInboxDerivedKnowledge(
 	entry: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'threadId'>
 ): boolean {
 	return entry.sourceType === 'agent_extracted' || entry.threadId !== undefined;
-}
-
-/**
- * The database-side form of `!isInboxDerivedKnowledge(entry)`, for a
- * `.filter()` on a `knowledgeEntries` query. Filtering in the query rather
- * than after `.take(n)` keeps a non-reader's page full instead of short.
- */
-export function notInboxDerivedKnowledge(
-	q: FilterBuilder<NamedTableInfo<DataModel, 'knowledgeEntries'>>
-): Expression<boolean> {
-	return q.and(
-		q.neq(q.field('sourceType'), 'agent_extracted'),
-		q.eq(q.field('threadId'), undefined)
-	);
 }

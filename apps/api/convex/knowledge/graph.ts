@@ -19,11 +19,7 @@ import {
 	requirePermission,
 } from '../lib/sessionOrganization';
 import type { MutationSessionContext } from '../lib/sessionOrganization';
-import {
-	isInboxDerivedKnowledge,
-	isSharedInboxReader,
-	notInboxDerivedKnowledge,
-} from '../inbox/access';
+import { isInboxDerivedKnowledge, isSharedInboxReader } from '../inbox/access';
 import { batchGet } from '../_utils/batchLoader';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { sameContactScope } from '../lib/contactScope';
@@ -78,6 +74,31 @@ export function isKnowledgeEntryVisible(
 	entry: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'threadId'>
 ): boolean {
 	return canReadInbox || !isInboxDerivedKnowledge(entry);
+}
+
+/**
+ * Largest number of rows a list read scans to fill a page for a caller who
+ * cannot see Team Inbox-derived entries. Entries carry a 1536-float embedding,
+ * so an unbounded skip-and-continue scan over an inbox-heavy graph would hit
+ * the query read limit; bounded, the page may come back short instead.
+ */
+const HIDDEN_ENTRY_SCAN_CAP = 250;
+
+/**
+ * Take up to `limit` entries from `query` that the caller may see. A reader
+ * reads exactly `limit` rows, as before; anyone else scans up to four times
+ * the page (bounded by HIDDEN_ENTRY_SCAN_CAP, never below `limit`) and keeps
+ * the visible ones.
+ */
+async function takeVisibleEntries(
+	query: { take(n: number): Promise<Doc<'knowledgeEntries'>[]> },
+	canReadInbox: boolean,
+	limit: number
+): Promise<Doc<'knowledgeEntries'>[]> {
+	if (canReadInbox) return await query.take(limit);
+	const scan = Math.max(limit, Math.min(limit * 4, HIDDEN_ENTRY_SCAN_CAP));
+	const rows = await query.take(scan);
+	return rows.filter((row) => isKnowledgeEntryVisible(false, row)).slice(0, limit);
 }
 
 /**
@@ -172,9 +193,7 @@ export const search = publicQuery({
 				return sq;
 			});
 
-		return await (
-			viewer.canReadInbox ? searchQuery : searchQuery.filter(notInboxDerivedKnowledge)
-		).take(limit);
+		return await takeVisibleEntries(searchQuery, viewer.canReadInbox, limit);
 	},
 });
 
@@ -195,9 +214,7 @@ export const listByType = publicQuery({
 			.query('knowledgeEntries')
 			.withIndex('by_entry_type', (q) => q.eq('entryType', args.entryType))
 			.order('desc');
-		return await (viewer.canReadInbox ? rows : rows.filter(notInboxDerivedKnowledge)).take(
-			args.limit ?? 50
-		);
+		return await takeVisibleEntries(rows, viewer.canReadInbox, args.limit ?? 50);
 	},
 });
 
@@ -217,9 +234,7 @@ export const listAll = publicQuery({
 		if (!viewer) return [];
 
 		const rows = ctx.db.query('knowledgeEntries').withIndex('by_created_at').order('desc');
-		return await (viewer.canReadInbox ? rows : rows.filter(notInboxDerivedKnowledge)).take(
-			args.limit ?? 50
-		);
+		return await takeVisibleEntries(rows, viewer.canReadInbox, args.limit ?? 50);
 	},
 });
 
