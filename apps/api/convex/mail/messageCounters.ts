@@ -29,6 +29,7 @@ import type { DatabaseReader, MutationCtx } from '../_generated/server';
 import {
 	AFTER_EVERY_ROW,
 	applyCounterChange,
+	clearCounterScope,
 	counterScopeKey,
 	loadCounterScope,
 	readCounterScope,
@@ -147,6 +148,28 @@ export async function startEmptyMailboxCounters(
 	await startCounterScope(ctx, 'mailLabelUnread', mailboxId, { isEmpty: true });
 	await startCounterScope(ctx, 'mailSectionUnread', inboxFolderId, { isEmpty: true });
 	await startCounterScope(ctx, 'mailFolderArrivals', inboxFolderId, { isEmpty: true });
+}
+
+/**
+ * Drop a folder's counter scopes as the folder row is hard-deleted. Only inbox
+ * folders carry scopes; for any other folder this is two indexed reads. The
+ * folder's messages are gone by then and every delete moved their buckets back
+ * to zero (an empty bucket is no row), so one clearing pass takes the rest.
+ */
+export async function deleteFolderCounters(
+	ctx: MutationCtx,
+	folderId: Id<'mailFolders'>
+): Promise<void> {
+	await clearCounterScope(ctx, sectionUnreadScope(folderId));
+	await clearCounterScope(ctx, folderArrivalsScope(folderId));
+}
+
+/** Drop the mailbox-wide counter scope as the mailbox row is hard-deleted. */
+export async function deleteMailboxCounters(
+	ctx: MutationCtx,
+	mailboxId: Id<'mailboxes'>
+): Promise<void> {
+	await clearCounterScope(ctx, labelUnreadScope(mailboxId));
 }
 
 /** Unread count per label id, or null until the mailbox's scope is backfilled. */

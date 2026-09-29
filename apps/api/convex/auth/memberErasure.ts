@@ -42,6 +42,7 @@ import {
 import { removeMessageAttachments } from '../mail/attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../mail/messagePurge';
 import { deleteMailboxUsage } from '../mail/mailboxUsage';
+import { deleteFolderCounters, deleteMailboxCounters } from '../mail/messageCounters';
 import { isOrgInfrastructureAccount } from '../mail/external/personalAccount';
 import { deleteStoredAccessToken } from '../mail/external/accessTokenStore';
 import { isPersonalMailbox } from '../mail/permissions';
@@ -120,6 +121,7 @@ export const eraseMemberData = internalMutation({
 				.query('mailFolders')
 				.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailbox._id))
 				.collect()) {
+				await deleteFolderCounters(ctx, row._id);
 				await ctx.db.delete(row._id); // bounded: per-mailbox configuration rows
 			}
 			for (const row of await ctx.db
@@ -205,6 +207,7 @@ export const eraseMemberData = internalMutation({
 			}
 
 			await deleteMailboxUsage(ctx, mailbox._id);
+			await deleteMailboxCounters(ctx, mailbox._id);
 			await ctx.db.delete(mailbox._id);
 			await reschedule();
 			return;

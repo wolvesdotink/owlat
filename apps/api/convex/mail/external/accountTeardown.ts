@@ -30,6 +30,7 @@ import { internal } from '../../_generated/api';
 import { removeMessageAttachments } from '../attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../messagePurge';
 import { deleteMailboxUsage } from '../mailboxUsage';
+import { deleteFolderCounters, deleteMailboxCounters } from '../messageCounters';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { cancelActiveMigrationForAccount } from './accountShared';
 import { deleteStoredAccessToken } from './accessTokenStore';
@@ -191,7 +192,10 @@ export const _purgeChunk = internalMutation({
 			.query('mailFolders')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
 			.collect(); // bounded: per-mailbox folder set
-		for (const f of folders) await ctx.db.delete(f._id);
+		for (const f of folders) {
+			await deleteFolderCounters(ctx, f._id);
+			await ctx.db.delete(f._id);
+		}
 
 		// Threads are per-conversation, not per-message, but a long-lived mailbox can
 		// still hold more of them than one mutation may delete. Drain them a page at
@@ -265,6 +269,7 @@ export const _purgeChunk = internalMutation({
 
 		await ctx.db.delete(args.accountId);
 		await deleteMailboxUsage(ctx, args.mailboxId);
+		await deleteMailboxCounters(ctx, args.mailboxId);
 		await ctx.db.delete(args.mailboxId);
 	},
 });

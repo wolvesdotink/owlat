@@ -17,7 +17,12 @@
  */
 
 import { v } from 'convex/values';
-import { internalAction, internalMutation, internalQuery } from '../_generated/server';
+import {
+	internalAction,
+	internalMutation,
+	internalQuery,
+	type QueryCtx,
+} from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import {
@@ -80,6 +85,17 @@ export const clearScope = internalMutation({
 		clearCounterScope(ctx, counterScopeKey(scope.kind, scope.ownerId)),
 });
 
+/** Whether the mailbox or folder a per-owner scope belongs to still exists. */
+async function scopeOwnerExists(ctx: QueryCtx, scope: ScopeRef): Promise<boolean> {
+	if (scope.ownerId === undefined) return true;
+	if (scope.kind === 'mailLabelUnread') {
+		const mailboxId = ctx.db.normalizeId('mailboxes', scope.ownerId);
+		return mailboxId !== null && (await ctx.db.get(mailboxId)) !== null;
+	}
+	const folderId = ctx.db.normalizeId('mailFolders', scope.ownerId);
+	return folderId !== null && (await ctx.db.get(folderId)) !== null;
+}
+
 /**
  * Start (or resume) each scope's walk. A new scope gets its state row and a
  * first step; a scope still walking gets another step, which is how a chain
@@ -90,6 +106,9 @@ export const startScopes = internalMutation({
 	handler: async (ctx, { scopes }) => {
 		const outcomes = { started: 0, running: 0, ready: 0 };
 		for (const scope of scopes) {
+			// The mailbox may have been purged since `mailboxPage` listed it; a scope
+			// started now would outlive it with nothing left to delete it.
+			if (!(await scopeOwnerExists(ctx, scope))) continue;
 			const outcome = await startCounterScope(ctx, scope.kind, scope.ownerId);
 			outcomes[outcome] += 1;
 			if (outcome === 'ready') continue;
