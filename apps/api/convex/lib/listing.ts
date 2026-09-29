@@ -78,7 +78,8 @@ export type Facet<T extends TableNames> =
 			/** Index keyed on `field`, used to count each bucket without a scan. */
 			index: string;
 	  }
-	| { kind: 'cachedCounter'; table: TableNames; field: string };
+	/** A denormalized count (`null` when not cached yet, which falls back to a scan). */
+	| { kind: 'cachedCounter'; read: (db: DatabaseReader) => Promise<number | null> };
 
 export interface ListingDescriptor<
 	T extends TableNames,
@@ -330,9 +331,8 @@ export async function countFacet<
 	}
 
 	if (facet.kind === 'cachedCounter') {
-		const row = (await db.query(facet.table as never).first()) as Record<string, unknown> | null;
-		const value = row?.[facet.field];
-		if (typeof value === 'number') return value;
+		const value = await facet.read(db);
+		if (value !== null) return value;
 		// No denormalized counter yet — fall back to a bounded scan, the same
 		// hint-with-fallback contract the contacts cached count already uses.
 		return countIndexRange(db, descriptor.table);

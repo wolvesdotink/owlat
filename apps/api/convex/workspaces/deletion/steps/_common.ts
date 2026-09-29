@@ -73,6 +73,7 @@ export type OrganizationDeletionTable =
 	| 'mailThreadVisits'
 	| 'todayStates'
 	| 'todayThreadSummaries'
+	| 'mailboxUsage'
 	| 'mailboxes'
 	| 'webhookDeliveryLogs'
 	| 'mtaCampaignAlertReceipts'
@@ -123,6 +124,8 @@ export type OrganizationDeletionTable =
 	| 'onboardingProgress'
 	| 'auditLogs'
 	| 'invitationResends'
+	| 'featureFlagSettings'
+	| 'instanceCounters'
 	| 'instanceSettings'
 	| 'unifiedMessages'
 	| 'channelConfigs'
@@ -264,6 +267,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailThreadVisits'),
 	v.literal('todayStates'),
 	v.literal('todayThreadSummaries'),
+	v.literal('mailboxUsage'),
 	v.literal('mailboxes'),
 	v.literal('webhookDeliveryLogs'),
 	v.literal('mtaCampaignAlertReceipts'),
@@ -314,6 +318,8 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('onboardingProgress'),
 	v.literal('auditLogs'),
 	v.literal('invitationResends'),
+	v.literal('featureFlagSettings'),
+	v.literal('instanceCounters'),
 	v.literal('instanceSettings'),
 	v.literal('unifiedMessages'),
 	v.literal('channelConfigs'),

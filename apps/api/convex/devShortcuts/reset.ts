@@ -140,6 +140,11 @@ export const runReset = internalMutation({
 			await ctx.db.delete(s._id);
 			counts.instanceSettings++;
 		}
+		// The rows split off the singleton (plan 2.4): flags and counters.
+		const flagRows = await ctx.db.query('featureFlagSettings').collect(); // bounded: dev-only; singleton row
+		for (const row of flagRows) await ctx.db.delete(row._id);
+		const counterRows = await ctx.db.query('instanceCounters').collect(); // bounded: dev-only; one row per counter key
+		for (const row of counterRows) await ctx.db.delete(row._id);
 
 		const onboarding = await ctx.db.query('onboardingProgress').collect(); // bounded: dev-only; one row per user
 		for (const o of onboarding) {

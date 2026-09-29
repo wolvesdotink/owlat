@@ -27,6 +27,7 @@ import { mergeThreadParticipants } from '../threadAggregates';
 import { normalizeSubject } from '../../lib/emailAddress';
 import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
 import { indexMessageAttachments } from '../attachmentIndex';
+import { applyMailboxUsageDelta } from '../mailboxUsage';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import { buildSnippet } from '../deliveryPipeline/insert';
 import { refuse } from '../../lib/lifecycle';
@@ -239,6 +240,8 @@ async function runSentEffects(
 			messageCount: thread.messageCount + 1,
 			hasAttachments: thread.hasAttachments || context.attachmentsMeta.length > 0,
 			latestMessageId: messageId,
+			// A just-sent message is never snoozed (plan C8).
+			latestSnoozedUntil: null,
 			// Team-inbox collision safety: record this reply as the thread's newest
 			// outbound so a second teammate who opened the thread earlier is warned
 			// before sending a duplicate (see mail/mailbox/messages.ts::latestReplyState).
@@ -297,11 +300,7 @@ async function runSentEffects(
 	}
 
 	// patch_mailbox_bytes effect — the SENDING mailbox holds the sent copy.
-	await ctx.db.patch(sendingMailboxId, {
-		usedBytes: mailbox.usedBytes + context.rawSize,
-		usageRevision: (mailbox.usageRevision ?? 0) + 1,
-		updatedAt: now,
-	});
+	await applyMailboxUsageDelta(ctx, mailbox, context.rawSize, now);
 
 	return { messageId };
 }

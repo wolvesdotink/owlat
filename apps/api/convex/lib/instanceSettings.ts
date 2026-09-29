@@ -3,9 +3,9 @@
  * `instanceSettings` row.
  *
  * Many modules write their own columns onto this row, and any of them can be
- * the first writer on a fresh deployment (the MTA health cron usually is). Each
- * used to hand-roll "patch if present, else insert", so the row's creation
- * depended on whichever writer ran first. Every writer now goes through
+ * the first writer on a fresh deployment. Each used to hand-roll "patch if
+ * present, else insert", so the row's creation depended on whichever writer
+ * ran first. Every writer now goes through
  * `upsertInstanceSettings`; `scripts/check-convex-patterns.sh` fails a raw
  * `insert('instanceSettings'` anywhere else.
  *
@@ -14,10 +14,15 @@
  *     `timezone`, `defaultFromName`, `defaultFromEmail`, `isMigrationMode`,
  *     `isInboundTlsRequired`, `updatedAt`, and the admin-seed latch
  *     `adminSeedCompletedAt`.
- *   - Feature flags (`workspaces/featureFlags.ts`): `featureFlags`,
- *     `pluginCapabilityGrants`.
+ *   - Feature flags (`workspaces/featureFlags.ts`): the deprecated
+ *     `featureFlags` / `pluginCapabilityGrants` rollback mirror; the live copy
+ *     is the `featureFlagSettings` singleton (`lib/featureFlagSettings.ts`).
  *   - Abuse status (`workspaces/abuseStatus.ts`): the abuse-status columns.
  *   - Workspace branding (`workspaces/branding.ts`): the logo columns.
+ *
+ * Counters and telemetry (contact count, inbox and send counters, MTA health,
+ * delivery-test stamp) no longer belong here: they live on `instanceCounters`
+ * rows (`lib/instanceCounters.ts`, plan 2.4) so this row stays quiet.
  *
  * The seed-owned columns (`timezone`, `defaultFromName`, `isMigrationMode`,
  * `adminSeedCompletedAt`) are never written by an insert here unless the caller

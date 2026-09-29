@@ -5,6 +5,7 @@ import { contentScanResultsFields } from '../schema/delivery';
 import type { StoredAudience } from './audience';
 import { logError } from '../lib/runtimeLog';
 import { nextDailySendCount } from '../lib/sendingLimits';
+import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounters';
 import { requireOrgMember } from '../lib/sessionOrganization';
 import { rateLimiter } from '../lib/rateLimiter';
 
@@ -357,9 +358,12 @@ export const upsertUrlReputationVerdict = internalMutation({
 export const incrementDailySendCountInternal = internalMutation({
 	args: { count: v.number() },
 	handler: async (ctx, args) => {
+		// The counter lives on the `sends` counter row (plan 2.4); it is kept only
+		// once the instance exists, as before.
 		const settings = await ctx.db.query('instanceSettings').first();
 		if (!settings) return;
-		await ctx.db.patch(settings._id, nextDailySendCount(settings, args.count, Date.now()));
+		const sends = await readInstanceCounter(ctx.db, 'sends');
+		await writeInstanceCounter(ctx, 'sends', nextDailySendCount(sends, args.count, Date.now()));
 	},
 });
 

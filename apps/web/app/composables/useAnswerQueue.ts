@@ -117,7 +117,7 @@ export function answerCounts(items: readonly AnswerItem[]) {
 	for (const item of items) {
 		tally[item.source] += 1;
 		if (item.source === 'team' && item.entry.message.draftResponse?.trim()) tally.drafts += 1;
-		if (item.source === 'mail' && item.row.draftSlot) tally.drafts += 1;
+		if (item.source === 'mail' && item.row.hasDraftSlot) tally.drafts += 1;
 	}
 	return tally;
 }

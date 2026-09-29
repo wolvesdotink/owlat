@@ -2,8 +2,10 @@
  * Convex-side feature flag helpers.
  *
  * Public functions in gated modules should call `assertFeatureEnabled(ctx, 'inbox')`
- * at the top. The check reads `instanceSettings.featureFlags` and resolves dependencies
- * via the shared `resolveFlags` helper, throwing a `forbidden` Operation error when off.
+ * at the top. The check reads the `featureFlagSettings` singleton (plan 2.4: a
+ * document no counter writes, so gated queries are not re-run by counter traffic)
+ * and resolves dependencies via the shared `resolveFlags` helper, throwing a
+ * `forbidden` Operation error when off.
  */
 
 import {
@@ -14,15 +16,16 @@ import {
 import { throwForbidden } from '../_utils/errors';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import { FEATURE_FLAG_REGISTRY } from '../plugins/featureFlagRegistry';
+import { readFeatureFlagSettings } from './featureFlagSettings';
 
 /**
- * Read the stored feature flag map from the singleton instanceSettings row.
- * Falls back to an empty object if no settings exist yet (defaults apply at
- * resolution time via `resolveFlags`).
+ * Read the stored feature flag map from the `featureFlagSettings` singleton
+ * (the deprecated `instanceSettings` column before the backfill). An empty
+ * object when nothing is stored yet (defaults apply at resolution time via
+ * `resolveFlags`).
  */
 export async function getStoredFlags(ctx: QueryCtx | MutationCtx): Promise<FeatureFlagState> {
-	const settings = await ctx.db.query('instanceSettings').first();
-	return (settings?.featureFlags ?? {}) as FeatureFlagState;
+	return (await readFeatureFlagSettings(ctx.db)).featureFlags as FeatureFlagState;
 }
 
 /**

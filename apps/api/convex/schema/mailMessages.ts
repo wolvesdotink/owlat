@@ -291,6 +291,10 @@ export const mailMessagesTables = {
 		.index('by_mailbox_and_snoozed', ['mailboxId', 'snoozedUntil'])
 		.index('by_thread', ['threadId'])
 		.index('by_rfc822_message_id', ['rfc822MessageId'])
+		// Per-mailbox Message-ID lookups — the delivery dedup and the threading
+		// walk seek straight to one mailbox's copy instead of reading every
+		// mailbox's copy of a widely-sent Message-ID and filtering (plan C10).
+		.index('by_mailbox_and_rfc822_message_id', ['mailboxId', 'rfc822MessageId'])
 		.index('by_mailbox_and_thread_root', ['mailboxId', 'threadRootId'])
 		.index('by_mailbox_and_from', ['mailboxId', 'fromAddress'])
 		.index('by_mailbox_and_unseen', ['mailboxId', 'flagSeen'])

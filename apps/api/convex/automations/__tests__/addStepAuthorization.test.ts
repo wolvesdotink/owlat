@@ -56,9 +56,9 @@ function makeCtx() {
 	const ctx = {
 		db: {
 			// `addStep` runs on `automationsMutation`, whose feature floor reads
-			// the flag map from `instanceSettings` before the handler starts.
+			// the flag map from `featureFlagSettings` before the handler starts.
 			query: (table: string) =>
-				table === 'instanceSettings'
+				table === 'featureFlagSettings'
 					? { first: async () => ({ featureFlags: { automations: true } }) }
 					: { withIndex: () => ({ collect: async () => [] }) },
 			insert,

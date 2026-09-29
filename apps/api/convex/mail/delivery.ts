@@ -51,6 +51,7 @@ import {
 	isOverQuota,
 } from './deliveryPipeline/insert';
 import { runPostInsertInboundEffects } from './deliveryPipeline/afterInsert';
+import { withMailboxUsage } from './mailboxUsage';
 import { deliveredEnvelopeFields, storedBodyFields } from './deliveryPipeline/ingestFields';
 import {
 	resolveDmarcRouting,
@@ -260,7 +261,7 @@ export const deliverToMailbox = internalMutation({
 		}
 
 		// 2. Quota check: a full hosted mailbox refuses the message.
-		if (isOverQuota(mailbox, args.rawSize)) {
+		if (isOverQuota(await withMailboxUsage(ctx.db, mailbox), args.rawSize)) {
 			return { skipped: true };
 		}
 
@@ -388,6 +389,7 @@ export const deliverToMailbox = internalMutation({
 			unsubscribe: args.unsubscribe,
 			pinnedSection: filterOutcome.pinnedSection,
 			countUsedBytes: true,
+			inboundOrigin: 'mx',
 		});
 
 		// 11b. Classifier enqueues, follow-up / snooze-until-reply clears and the

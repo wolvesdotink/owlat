@@ -35,6 +35,7 @@ import { adminQuery, authedMutation } from '../lib/authedFunctions';
 import { requireAdminContext } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
 import { getInstanceSettings, upsertInstanceSettings } from '../lib/instanceSettings';
+import { readFeatureFlagSettings } from '../lib/featureFlagSettings';
 import { throwInvalidInput } from '../_utils/errors';
 import { jsonPrimitiveRecord } from '../lib/convexValidators';
 import { isEnvPresent } from '../lib/env';
@@ -72,10 +73,11 @@ export const getPluginSettingsOverview = adminQuery({
 	args: {},
 	handler: async (ctx) => {
 		const settings = await getInstanceSettings(ctx.db);
-		const resolved = resolveFlags(settings?.featureFlags ?? {}, {
+		const stored = await readFeatureFlagSettings(ctx.db);
+		const resolved = resolveFlags(stored.featureFlags, {
 			registry: FEATURE_FLAG_REGISTRY,
 		});
-		const grants = settings?.pluginCapabilityGrants ?? {};
+		const grants = stored.pluginCapabilityGrants;
 		const pluginSettings = (settings?.pluginSettings ?? {}) as StoredPluginSettings;
 
 		const installedFlagKeys = new Set<string>();

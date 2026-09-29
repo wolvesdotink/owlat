@@ -14,6 +14,7 @@ import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id, Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
+import { SEGMENT_COUNT_RESTAMP_MS } from '../segments/countRefresh';
 const modules = import.meta.glob('../**/*.*s');
 
 /** These filters read nothing but the contact row, so one contact costs one document. */
@@ -239,5 +240,82 @@ describe('refreshAllSegmentCounts (cron sweep)', () => {
 		);
 		expect(firstSegment?.cachedCount).toBe(MATCHING);
 		expect(lateSegment?.cachedCount).toBeUndefined();
+	});
+});
+
+describe('unchanged counts', () => {
+	/** Three matching contacts: enough for one execution to finish the walk. */
+	async function seedSmall(t: ReturnType<typeof convexTest>, stamp: number) {
+		return await t.run(async (ctx) => {
+			for (let i = 0; i < 3; i++) {
+				await ctx.db.insert('contacts', {
+					email: `s${i}@acme.com`,
+					source: 'api',
+					doiStatus: 'not_required',
+					createdAt: Date.now(),
+					updatedAt: Date.now(),
+				});
+			}
+			const now = Date.now();
+			return await ctx.db.insert('segments', {
+				name: 'acme',
+				filters: ACME_FILTERS,
+				cachedCount: 3,
+				cachedCountUpdatedAt: stamp,
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+	}
+
+	const read = (t: ReturnType<typeof convexTest>, id: Id<'segments'>) =>
+		t.run(async (ctx) => await ctx.db.get(id));
+
+	it('leaves a recently confirmed count and its stamp alone', async () => {
+		const t = convexTest(schema, modules);
+		const stamp = Date.now() - 60 * 60_000;
+		const segmentId = await seedSmall(t, stamp);
+
+		await t.mutation(internal.segments.countRefresh.refreshAllSegmentCounts, {});
+		await drain(t);
+		await t.mutation(internal.segments.countRefresh.refreshSingleSegmentCount, { segmentId });
+
+		const segment = await read(t, segmentId);
+		expect(segment?.cachedCount).toBe(3);
+		expect(segment?.cachedCountUpdatedAt).toBe(stamp);
+	});
+
+	it('re-stamps an unchanged count once its stamp is SEGMENT_COUNT_RESTAMP_MS old', async () => {
+		const t = convexTest(schema, modules);
+		const stamp = Date.now() - SEGMENT_COUNT_RESTAMP_MS;
+		const segmentId = await seedSmall(t, stamp);
+
+		await t.mutation(internal.segments.countRefresh.refreshAllSegmentCounts, {});
+		await drain(t);
+
+		const segment = await read(t, segmentId);
+		expect(segment?.cachedCount).toBe(3);
+		expect(segment?.cachedCountUpdatedAt).toBeGreaterThan(stamp);
+	});
+
+	it('writes a changed count straight away', async () => {
+		const t = convexTest(schema, modules);
+		const stamp = Date.now() - 60_000;
+		const segmentId = await seedSmall(t, stamp);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('contacts', {
+				email: 's3@acme.com',
+				source: 'api',
+				doiStatus: 'not_required',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		await t.mutation(internal.segments.countRefresh.refreshSingleSegmentCount, { segmentId });
+
+		const segment = await read(t, segmentId);
+		expect(segment?.cachedCount).toBe(4);
+		expect(segment?.cachedCountUpdatedAt).toBeGreaterThan(stamp);
 	});
 });

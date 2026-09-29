@@ -12,6 +12,7 @@ import { contactTables } from './schema/contacts';
 import { contactErasureTables } from './schema/contactErasure';
 import { authTables } from './schema/auth';
 import { instanceTables } from './schema/instance';
+import { instanceHotRowTables } from './schema/instanceHotRows';
 import { templateTables } from './schema/templates';
 import { alignmentTables } from './schema/alignment';
 import { sendAssignmentTables } from './schema/sendAssignments';
@@ -54,6 +55,7 @@ export default defineSchema({
 	...contactErasureTables,
 	...authTables,
 	...instanceTables,
+	...instanceHotRowTables,
 	...templateTables,
 	...deliveryTables,
 	...seedPlacementTables,

@@ -23,9 +23,9 @@ export interface AnswerCardControls {
 
 /** The flow kind of a Postbox reply-queue row (drives ordering + card). */
 export function mailAnswerKind(
-	row: Pick<ReplyQueueItem, 'clarification' | 'kind' | 'draftSlot'>
+	row: Pick<ReplyQueueItem, 'clarification' | 'kind' | 'hasDraftSlot'>
 ): TaskFlowKind {
 	if (replyQueueSection(row) === 'needs_input') return 'question';
-	if (row.kind !== 'followup' && row.draftSlot) return 'draft_review';
+	if (row.kind !== 'followup' && row.hasDraftSlot) return 'draft_review';
 	return 'reply';
 }

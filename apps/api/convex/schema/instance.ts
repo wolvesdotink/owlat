@@ -60,6 +60,27 @@ export const mtaHealthSnapshotValidator = v.object({
 });
 
 /**
+ * The inbox processing-status counters (`lib/inboxStats.ts`). Stored on the
+ * `inbox` row of `instanceCounters`; the copy on `instanceSettings` is the
+ * deprecated pre-split location, read only as a fallback.
+ */
+export const inboxStatsValidator = v.object({
+	received: v.number(),
+	processing: v.number(), // security_check + classifying + drafting
+	draftReady: v.number(),
+	approved: v.number(),
+	sent: v.number(),
+	quarantined: v.number(),
+	failed: v.number(),
+	rejected: v.number(),
+	archived: v.number(),
+	// Parked as needs-no-reply (the Updates dashboard). Optional: rows
+	// written before the bucket existed have no field and read as 0.
+	informational: v.optional(v.number()),
+	total: v.number(),
+});
+
+/**
  * Instance-administration tables — the deployment-wide singletons an operator
  * configures: instanceSettings, systemUpdates, backupState, aiProviderConfig.
  *
@@ -170,13 +191,12 @@ export const instanceTables = {
 		// `settings.update`; read by `delivery/rampIndependence`.
 		relayMinorUnitsPerThousand: v.optional(v.number()),
 		relayCurrency: v.optional(v.string()),
-		// Feature toggles (see packages/shared/src/featureFlags.ts for the schema).
-		// Unset keys fall back to FEATURE_FLAGS[key].default at resolution time.
-		// Includes `campaigns.archive` — there is no separate `archiveEnabled` column.
+		// DEPRECATED (plan 2.4): the flag map and plugin capability grants live on
+		// the `featureFlagSettings` singleton (schema/instanceHotRows.ts), so
+		// gate reads never share a document with counter writers. Still
+		// dual-written by `lib/featureFlagSettings.ts` so a rollback reads current
+		// flags; read only as the pre-backfill fallback. Narrow in a later release.
 		featureFlags: v.optional(v.record(v.string(), v.boolean())),
-		// Explicit operator approvals for capabilities requested by each bundled
-		// plugin flag. The host still checks each grant at call time; disabling a
-		// plugin clears its record so re-enabling always requires fresh approval.
 		pluginCapabilityGrants: v.optional(v.record(v.string(), v.record(v.string(), v.boolean()))),
 		// Operator-configured settings values for each bundled plugin, keyed by the
 		// `plugin.<id>` flag key then by the plugin's settings-schema field key.
@@ -186,17 +206,14 @@ export const instanceTables = {
 		// removed plugin's residual config is purged); independent of the capability
 		// grants above. Admin-gated writes via `plugins/settings`.
 		pluginSettings: v.optional(v.record(v.string(), jsonPrimitiveRecord)),
-		// Timestamp of the last successful delivery test send (Settings → Delivery
-		// "Send test email"). Drives the send-path-verified signal on the status
-		// page and onboarding. Unset ⇒ no successful test recorded yet.
+		// DEPRECATED (plan 2.4): counters and telemetry moved to their own
+		// `instanceCounters` rows (schema/instanceHotRows.ts, `lib/instanceCounters.ts`).
+		// No longer written; read only as the pre-backfill fallback. These are
+		// deliveryTestLastSucceededAt, mtaHealth, contactCount,
+		// transactionalSendCount, dailySendCount(+ResetAt), inboxStats, openThreads.
 		deliveryTestLastSucceededAt: v.optional(v.number()),
-		// Latest non-secret health snapshot from the built-in MTA. Refreshed by a
-		// Convex cron so reactive Delivery surfaces can report infrastructure
-		// readiness without querying an external service from a database query.
 		mtaHealth: v.optional(mtaHealthSnapshotValidator),
-		// Cached contact count for O(1) queries (maintained on contact create/delete)
 		contactCount: v.optional(v.number()),
-		// Cached transactional send count for analytics reporting (incremented on each send)
 		transactionalSendCount: v.optional(v.number()),
 		// Anti-abuse: organization status for spam/abuse prevention.
 		// Per ADR-0011 the legacy `throttled` literal is dropped — it
@@ -225,40 +242,8 @@ export const instanceTables = {
 		),
 		dailySendCount: v.optional(v.number()),
 		dailySendCountResetAt: v.optional(v.number()),
-		// AGGREGATED — singleton inbound message counters by processing
-		// status. Maintained by `inbox/processingLifecycle.ts` (transitions)
-		// and `inbox/messages.ts` (insert). The Dashboard
-		// review-queue/agent-health cards and inbox badge composables all
-		// subscribe to these; pre-deepening `getInboundStats` did
-		// `inboundMessages.collect()` per subscriber, which grew linearly
-		// with deployment age.
-		inboxStats: v.optional(
-			v.object({
-				received: v.number(),
-				processing: v.number(), // security_check + classifying + drafting
-				draftReady: v.number(),
-				approved: v.number(),
-				sent: v.number(),
-				quarantined: v.number(),
-				failed: v.number(),
-				rejected: v.number(),
-				archived: v.number(),
-				// Parked as needs-no-reply (the Updates dashboard). Optional: rows
-				// written before the bucket existed have no field and read as 0.
-				informational: v.optional(v.number()),
-				total: v.number(),
-			})
-		),
-		// AGGREGATED — count of `conversationThreads` currently in the 'open'
-		// status (the human-review backlog). Maintained through
-		// `applyOpenThreadDelta` (lib/inboxStats.ts) by every create-as-open /
-		// status-transition path: the Conversation thread module
-		// (`inbox/threads/module.ts`) for inbound activity, and the manual
-		// outbound-channel thread opener
-		// (`unifiedMessages.resolveOutboundThread`). Bumped on create-as-open and
-		// on a non-open → open transition, decremented on open → non-open.
-		// `getInboundStats` reads this instead of collecting the whole
-		// open-thread set per subscriber.
+		// DEPRECATED (plan 2.4): see the counters note above.
+		inboxStats: v.optional(inboxStatsValidator),
 		// SERVER-MANAGED DESKTOP UPDATES. What connected Owlat desktop apps are
 		// offered when they ask this instance which version to install. Absent —
 		// the ordinary state — means `latest` on the `stable` channel with no
@@ -287,6 +272,7 @@ export const instanceTables = {
 				updatedBy: v.string(), // auth user id
 			})
 		),
+		// DEPRECATED (plan 2.4): see the counters note above.
 		openThreads: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.optional(v.number()),

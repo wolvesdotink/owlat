@@ -1,15 +1,16 @@
 import type { DatabaseReader, MutationCtx, QueryCtx } from '../_generated/server';
 import type { Value } from 'convex/values';
 import { countIndexRange } from './pagination';
-import { getInstanceSettings, upsertInstanceSettings } from './instanceSettings';
+import { readInstanceCounter, writeInstanceCounter } from './instanceCounters';
+import { getInstanceSettings } from './instanceSettings';
 
 /**
- * Increment the contact count for the instance.
- * Creates the instanceSettings document if it doesn't exist.
+ * Increment the contact count for the instance, on its own `instanceCounters`
+ * row (plan 2.4) so contact writes never touch the row feature gates read.
  */
 export async function incrementContactCount(ctx: MutationCtx, delta: number = 1): Promise<void> {
-	const settings = await getInstanceSettings(ctx.db);
-	await upsertInstanceSettings(ctx, { contactCount: (settings?.contactCount ?? 0) + delta });
+	const { contactCount } = await readInstanceCounter(ctx.db, 'contacts');
+	await writeInstanceCounter(ctx, 'contacts', { contactCount: (contactCount ?? 0) + delta });
 }
 
 /**
@@ -17,16 +18,12 @@ export async function incrementContactCount(ctx: MutationCtx, delta: number = 1)
  * Ensures count never goes below 0.
  */
 export async function decrementContactCount(ctx: MutationCtx, delta: number = 1): Promise<void> {
-	const settings = await getInstanceSettings(ctx.db);
-
-	if (settings) {
-		const newCount = Math.max(0, (settings.contactCount ?? 0) - delta);
-		await ctx.db.patch(settings._id, {
-			contactCount: newCount,
-			updatedAt: Date.now(),
-		});
-	}
-	// If no settings document exists, there's nothing to decrement
+	const { contactCount } = await readInstanceCounter(ctx.db, 'contacts');
+	// Before the instance exists there is nothing to decrement.
+	if (contactCount === undefined && !(await getInstanceSettings(ctx.db))) return;
+	await writeInstanceCounter(ctx, 'contacts', {
+		contactCount: Math.max(0, (contactCount ?? 0) - delta),
+	});
 }
 
 /**
@@ -37,9 +34,12 @@ export async function decrementContactCount(ctx: MutationCtx, delta: number = 1)
  * Use this one only when an absent cache has to be told apart from a real count.
  */
 export async function getCachedContactCount(ctx: QueryCtx | MutationCtx): Promise<number | null> {
-	const settings = await getInstanceSettings(ctx.db);
+	return await readCachedContactCount(ctx.db);
+}
 
-	return settings?.contactCount ?? null;
+/** `getCachedContactCount` for callers holding only a database reader. */
+export async function readCachedContactCount(db: DatabaseReader): Promise<number | null> {
+	return (await readInstanceCounter(db, 'contacts')).contactCount ?? null;
 }
 
 /**
@@ -84,14 +84,12 @@ export async function reconcileContactCount(
 ): Promise<{ previous: number | null; actual: number; corrected: boolean }> {
 	const actual = await countLiveContacts(ctx.db);
 
-	const settings = await getInstanceSettings(ctx.db);
-
-	const previous = settings?.contactCount ?? null;
+	const previous = await readCachedContactCount(ctx.db);
 	const corrected = previous !== actual;
 
 	// No row reads as `previous === null`, so it always counts as corrected.
 	if (corrected) {
-		await upsertInstanceSettings(ctx, { contactCount: actual });
+		await writeInstanceCounter(ctx, 'contacts', { contactCount: actual });
 	}
 
 	return { previous, actual, corrected };

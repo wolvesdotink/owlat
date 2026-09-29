@@ -1,5 +1,6 @@
 import type { Doc } from '../_generated/dataModel';
 import type { ListingDescriptor } from '../lib/listing';
+import { readCachedContactCount } from '../lib/contactCountHelpers';
 
 /**
  * A Contact row as it may leave the backend — the stored row minus its
@@ -30,8 +31,8 @@ export function redactContactCapabilityFields<
  * Contact listing descriptor (ADR-0037). The cleanest case: the
  * `search_contacts` index already exists, so search is genuinely multi-page via
  * a real Convex cursor (the `'search'` sentinel dies), soft-delete rides the
- * index on both paths, and the total is the denormalized `instanceSettings`
- * counter.
+ * index on both paths, and the total is the denormalized contact counter
+ * (`lib/contactCountHelpers.ts`).
  *
  * The generics spell out "no enrichment, rows redacted to `PublicContact`": the
  * page's row type is the redacted one, so the capability strip is enforced by
@@ -51,6 +52,6 @@ export const contactListing: ContactListing = {
 	softDelete: true,
 	redact: redactContactCapabilityFields,
 	facets: {
-		total: { kind: 'cachedCounter', table: 'instanceSettings', field: 'contactCount' },
+		total: { kind: 'cachedCounter', read: readCachedContactCount },
 	},
 };

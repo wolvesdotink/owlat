@@ -130,6 +130,8 @@ export const ingestExternalMessage = internalMutation({
 			return { skipped: 'no_target' };
 		}
 
+		// An older worker that sends no origin is read as a backfill.
+		const origin = args.origin ?? 'backfill';
 		const messageId = await insertDeliveredMessage(ctx, {
 			mailbox,
 			folder,
@@ -157,15 +159,15 @@ export const ingestExternalMessage = internalMutation({
 			unsubscribe: args.unsubscribe,
 			// Remote provider already filtered spam/virus; no verdict fields.
 			countUsedBytes: true,
+			inboundOrigin: origin,
 		});
 
 		// Classifier enqueues, follow-up / snooze-until-reply clears and the
 		// owner-reply Reply Queue settle — the tail shared with hosted delivery.
-		// An older worker that sends no origin is read as a backfill.
 		await runPostInsertInboundEffects(ctx, {
 			messageId,
 			folder,
-			origin: args.origin ?? 'backfill',
+			origin,
 			antiLoopHeaders: args.antiLoopHeaders,
 		});
 		await advanceCursor(ctx, args, mailbox._id);

@@ -136,6 +136,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'mailAppPasswords',
 	'mailboxMembers',
 	'pendingMailboxMembers',
+	'mailboxUsage',
 	'mailboxes',
 
 	// Delivery reputation history — standalone daily snapshots, no dependents
@@ -273,7 +274,10 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// Audit logs LAST (accumulates from delegated lifecycle calls above)
 	'auditLogs',
 
-	// Terminal — the singleton row that owned the org's existence
+	// The rows split off instanceSettings (plan 2.4), then the terminal
+	// singleton row that owned the org's existence
+	'featureFlagSettings',
+	'instanceCounters',
 	'instanceSettings',
 ] as const;
 
@@ -325,6 +329,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailAppPasswords: makeSweepStep('mailAppPasswords'),
 	mailboxMembers: makeSweepStep('mailboxMembers'),
 	pendingMailboxMembers: makeSweepStep('pendingMailboxMembers'),
+	mailboxUsage: makeSweepStep('mailboxUsage'),
 	mailboxes: makeSweepStep('mailboxes'),
 	deliverySnapshots: makeSweepStep('deliverySnapshots'),
 	seedPlacementProbes: makeSweepStep('seedPlacementProbes'),
@@ -384,6 +389,8 @@ export const ORGANIZATION_DELETION_STEPS = {
 	onboardingProgress: makeSweepStep('onboardingProgress'),
 	invitationResends: makeSweepStep('invitationResends'),
 	auditLogs: makeSweepStep('auditLogs'),
+	featureFlagSettings: makeSweepStep('featureFlagSettings'),
+	instanceCounters: makeSweepStep('instanceCounters'),
 	instanceSettings: instanceSettingsStep,
 	threadPresence: makeSweepStep('threadPresence'),
 	threadReads: makeSweepStep('threadReads'),

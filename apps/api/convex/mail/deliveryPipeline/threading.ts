@@ -94,8 +94,9 @@ export async function resolveDeliveryThread(
 	for (const candidate of params.references) {
 		const referenced = await ctx.db
 			.query('mailMessages')
-			.withIndex('by_rfc822_message_id', (q) => q.eq('rfc822MessageId', candidate))
-			.filter((q) => q.eq(q.field('mailboxId'), mailbox._id))
+			.withIndex('by_mailbox_and_rfc822_message_id', (q) =>
+				q.eq('mailboxId', mailbox._id).eq('rfc822MessageId', candidate)
+			)
 			.first();
 		if (referenced) return referenced.threadId;
 	}

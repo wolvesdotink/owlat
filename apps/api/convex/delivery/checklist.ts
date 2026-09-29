@@ -36,6 +36,7 @@ import { checklistTraits, DEPLOYMENT_CHECK_IDS, DOMAIN_CHECK_IDS } from './check
 import { ipv6SendingAddresses, isIpv6CheckId, partitionIpv6Items } from './checklistIpv6';
 import { OWN_SENDING_DOMAIN_PROVIDER_KIND } from '../domains/providers';
 import { readyFallbackRelayKinds } from '../lib/sendProviders/fallbackRelays';
+import { readInstanceCounter } from '../lib/instanceCounters';
 
 export const CENTER_MATERIALIZATION_DOMAIN_LIMIT = 100;
 const CENTER_MATERIALIZATION_TRACKING_LIMIT = 100;
@@ -152,6 +153,17 @@ export function loopbackDomains(
  * second BetterAuth session + `member` lookup on a query the Deliverability
  * Center live-subscribes.
  */
+/**
+ * The settings singleton with the MTA health snapshot from its own counter row
+ * (plan 2.4 moved it off `instanceSettings`), as the check context expects.
+ */
+async function loadSettingsWithMtaHealth(ctx: QueryCtx): Promise<Doc<'instanceSettings'> | null> {
+	const settings = await ctx.db.query('instanceSettings').first(); // bounded: singleton row
+	if (!settings) return null;
+	const { mtaHealth } = await readInstanceCounter(ctx.db, 'mtaHealth');
+	return { ...settings, mtaHealth };
+}
+
 async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 	const organizationId = session.activeOrganizationId;
 	const domains = await loadCenterDomains(ctx);
@@ -170,7 +182,7 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 				)
 			),
 			loadTrackingDomains(ctx),
-			ctx.db.query('instanceSettings').first(), // bounded: singleton row
+			loadSettingsWithMtaHealth(ctx),
 			ctx.db.query('warmingState').first(), // bounded: singleton row
 			ctx.db.query('providerRoutes').take(10), // bounded: three message-type rows
 			ctx.db
@@ -433,7 +445,7 @@ export const getVerificationContext = internalQuery({
 		const needsPostmaster = dependencies.includes('postmaster');
 		const [settings, warming, routes, relayIdentities, tracking, postmaster, readyRelayKinds] =
 			await Promise.all([
-				needsMtaHealth ? ctx.db.query('instanceSettings').first() : Promise.resolve(null),
+				needsMtaHealth ? loadSettingsWithMtaHealth(ctx) : Promise.resolve(null),
 				needsWarming ? ctx.db.query('warmingState').first() : Promise.resolve(null),
 				needsRelay ? ctx.db.query('providerRoutes').take(10) : Promise.resolve([]),
 				needsRelay ? loadRelayIdentities(ctx) : Promise.resolve([]),

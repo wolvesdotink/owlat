@@ -3,6 +3,8 @@ import { countBlockedByReason } from '../blockedEmails/lookup';
 import { platformAdminQuery } from '../lib/authedFunctions';
 import { utcDayKey } from '../lib/clock';
 import { summarize } from '../analytics/sendingReputation';
+import { readInstanceCounter } from '../lib/instanceCounters';
+import { readCachedContactCount } from '../lib/contactCountHelpers';
 
 /**
  * List instance status if flagged for abuse (high/critical risk or warned/suspended status).
@@ -85,9 +87,9 @@ export const getOrganizationDetail = platformAdminQuery({
 				abuseStatusReason: settings.abuseStatusReason,
 				abuseStatusChangedAt: settings.abuseStatusChangedAt,
 				abuseStatusChangedBy: settings.abuseStatusChangedBy,
-				dailySendCount: settings.dailySendCount || 0,
+				dailySendCount: (await readInstanceCounter(ctx.db, 'sends')).dailySendCount || 0,
 				createdAt: settings.createdAt,
-				contactCount: settings.contactCount || 0,
+				contactCount: (await readCachedContactCount(ctx.db)) || 0,
 			},
 			reputation: latestBucket
 				? {
@@ -174,7 +176,7 @@ export const getPlatformStats = platformAdminQuery({
 		// other reader — ADR-0042.)
 		const reputation = await summarize(ctx.db, { kind: 'org' });
 
-		const totalContacts = settings?.contactCount || 0;
+		const totalContacts = (await readCachedContactCount(ctx.db)) || 0;
 		const abuseStatus = settings?.abuseStatus || 'clean';
 
 		// Aggregate reputation
@@ -236,7 +238,7 @@ export const listAllOrganizations = platformAdminQuery({
 		const entry = {
 			abuseStatus: settings.abuseStatus || 'clean',
 			abuseStatusReason: settings.abuseStatusReason,
-			contactCount: settings.contactCount || 0,
+			contactCount: (await readCachedContactCount(ctx.db)) || 0,
 			createdAt: settings.createdAt,
 			defaultFromName: settings.defaultFromName,
 			defaultFromEmail: settings.defaultFromEmail,

@@ -14,10 +14,18 @@ vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
-		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		requireOrgMember: vi.fn().mockResolvedValue({
+			userId: 'test-user',
+			role: 'owner',
+			activeOrganizationId: 'test-org',
+		}),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
-		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		getMutationContext: vi.fn().mockResolvedValue({
+			userId: 'test-user',
+			role: 'owner',
+			activeOrganizationId: 'test-org',
+		}),
 		getBetterAuthSessionWithRole: vi.fn().mockResolvedValue({
 			userId: 'test-user',
 			role: 'owner',

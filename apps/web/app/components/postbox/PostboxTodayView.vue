@@ -176,7 +176,7 @@ function forYouDetail(item: ReplyQueueItem): string {
 /** The strip's action says what happens (no jargon). */
 function forYouAction(item: ReplyQueueItem): string {
 	if (item.kind === 'followup') return t('common.open');
-	if (item.draftSlot || item.clarification?.draft)
+	if (item.hasDraftSlot || item.clarification?.draft)
 		return t('components.postbox.postboxTodayView.reviewAndSend');
 	return t('components.postbox.postboxTodayView.answer');
 }

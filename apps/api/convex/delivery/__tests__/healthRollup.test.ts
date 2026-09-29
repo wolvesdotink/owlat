@@ -2,6 +2,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
+import { MTA_HEALTH_MAX_AGE_MS, MTA_HEALTH_RESTAMP_MS } from '../mtaHealthFreshness';
 
 /**
  * Roll-up agreement: the sidebar Delivery dot and the Delivery health page's
@@ -169,5 +170,55 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 		// A verified domain can't send if no provider is configured — the provider
 		// dimension escalates the roll-up on its own.
 		expect(health.level).toBe('error');
+	});
+
+	/** A healthy MTA snapshot last written `ageMs` ago, next to a verified domain. */
+	async function seedHealthySnapshot(t: ReturnType<typeof convexTest>, ageMs: number) {
+		const observedAt = Date.now() - ageMs;
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				mtaHealth: {
+					status: 'ok',
+					isRedisConnected: true,
+					isWorkerAlive: true,
+					isDnsReachable: true,
+					isAllIpsBlocked: false,
+					smtpOutbound: {
+						status: 'ok',
+						checkedAt: observedAt,
+						ips: [{ ip: '192.0.2.10', status: 'ok' }],
+					},
+					observedAt,
+				},
+				createdAt: observedAt,
+			});
+			await ctx.db.insert('domains', {
+				domain: 'mail.example.com',
+				status: 'verified',
+				dnsRecords: {},
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+	}
+
+	it('stays ok while an unchanged snapshot waits for its re-stamp', async () => {
+		// `mtaHealth.record` skips unchanged polls until the re-stamp interval, so
+		// a healthy snapshot can be older than one poll without the sync failing.
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await seedHealthySnapshot(t, MTA_HEALTH_RESTAMP_MS + 60_000);
+
+		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
+		expect(health.level).toBe('ok');
+	});
+
+	it('warns once the snapshot is older than the freshness window', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await seedHealthySnapshot(t, MTA_HEALTH_MAX_AGE_MS + 60_000);
+
+		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
+		expect(health).toEqual({ level: 'warn', reason: 'Mail server health check is stale' });
 	});
 });

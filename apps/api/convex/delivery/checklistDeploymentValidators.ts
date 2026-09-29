@@ -17,6 +17,7 @@ import {
 	STALE_MTA_HEALTH,
 } from './checklistSmtpProbe';
 import { checklistTraits } from './checklistTraits';
+import { MTA_HEALTH_MAX_AGE_MS } from './mtaHealthFreshness';
 import {
 	checklistObservation,
 	pendingDnsStatus,
@@ -194,7 +195,8 @@ export async function observeDeploymentCheck(
 			return observeSourceAddress(context, now);
 		case 'deployment.tls': {
 			const tls = context.settings?.mtaHealth?.smtpTls;
-			const tlsFresh = mtaHealthFresh && tls !== undefined && now - tls.checkedAt <= 5 * 60_000;
+			const tlsFresh =
+				mtaHealthFresh && tls !== undefined && now - tls.checkedAt <= MTA_HEALTH_MAX_AGE_MS;
 			return checklistObservation(
 				'mta.smtp-tls-certificate',
 				tlsFresh ? (tls?.status ?? 'fail') : 'warn',

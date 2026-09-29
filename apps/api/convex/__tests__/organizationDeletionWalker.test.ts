@@ -96,8 +96,15 @@ describe('Organization deletion walker — STEPS list invariants', () => {
 		expect(STEPS[STEPS.length - 1]).toBe('instanceSettings');
 	});
 
-	it('has auditLogs as second-to-last (accumulates from delegated calls)', () => {
-		expect(STEPS[STEPS.length - 2]).toBe('auditLogs');
+	it('ends with auditLogs, then the rows split off instanceSettings, then instanceSettings', () => {
+		// auditLogs accumulates from delegated calls; the flag and counter rows
+		// (plan 2.4) go with the singleton they were split from.
+		expect(STEPS.slice(-4)).toEqual([
+			'auditLogs',
+			'featureFlagSettings',
+			'instanceCounters',
+			'instanceSettings',
+		]);
 	});
 
 	it('orders contacts after emailSends + transactionalSends', () => {

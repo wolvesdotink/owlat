@@ -28,6 +28,7 @@ import { redirectMutedDelivery } from '../mute';
 import { indexMessageAttachments } from '../attachmentIndex';
 import { conversationRootId, resolveDeliveryThread } from './threading';
 import { mergeThreadParticipants } from '../threadAggregates';
+import { applyMailboxUsageDelta } from '../mailboxUsage';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import type { SenderHeuristics } from '../senderHeuristics';
 import type { InboundEncryptionInfo } from '../../e2ee/inboundSeal';
@@ -71,8 +72,9 @@ export async function findDuplicateInMailbox(
 	const rfc822MessageId = canonicalMessageId(rawMessageId);
 	return await ctx.db
 		.query('mailMessages')
-		.withIndex('by_rfc822_message_id', (q) => q.eq('rfc822MessageId', rfc822MessageId))
-		.filter((q) => q.eq(q.field('mailboxId'), mailboxId))
+		.withIndex('by_mailbox_and_rfc822_message_id', (q) =>
+			q.eq('mailboxId', mailboxId).eq('rfc822MessageId', rfc822MessageId)
+		)
 		.first();
 }
 
@@ -96,6 +98,34 @@ export function isOverQuota(
 	rawSize: number
 ): boolean {
 	return mailbox.quotaBytes != null && mailbox.usedBytes + rawSize > mailbox.quotaBytes;
+}
+
+/**
+ * Where an inbound message came from. `'mx'` is hosted delivery, `'sync'` is
+ * forward IMAP sync, `'backfill'` is a historical IMAP import (and what an
+ * older sync worker that sends no origin is read as).
+ */
+export type InboundOrigin = 'mx' | 'sync' | 'backfill';
+
+/**
+ * Whether an inbound insert queues a Reply Queue check: live mail (never a
+ * backfill) the caller filed into the inbox that stayed there. A muted
+ * thread's delivery is re-routed to Archive inside the insert, so `landedIn`
+ * is the row's actual folder. The insert stamps the pending marker off this
+ * and `runPostInsertInboundEffects` schedules the classify off it, so the two
+ * cannot disagree.
+ */
+export function queuesNeedsReplyCheck(
+	origin: InboundOrigin | undefined,
+	filedTo: Pick<Doc<'mailFolders'>, '_id' | 'role'>,
+	landedIn: Id<'mailFolders'>
+): boolean {
+	return (
+		origin !== undefined &&
+		origin !== 'backfill' &&
+		filedTo.role === 'inbox' &&
+		landedIn === filedTo._id
+	);
 }
 
 interface DeliveredAttachment {
@@ -179,8 +209,14 @@ export async function insertDeliveredMessage(
 		 * claimed this message for. Absent ⇒ the message renders in the trailing
 		 * "Everything else" section, which is exactly today's flat inbox. */
 		pinnedSection?: string;
-		/** Add rawSize to mailbox.usedBytes (local cache accounting). */
+		/** Add rawSize to the mailbox's used bytes (local cache accounting). */
 		countUsedBytes?: boolean;
+		/** Set by the inbound callers that run `runPostInsertInboundEffects`
+		 * next (hosted MX, IMAP sync). When that tail will queue a Reply Queue
+		 * check ({@link queuesNeedsReplyCheck}), the thread patch below stamps
+		 * `needsReplyPendingAt` itself, so the enqueue does not patch the thread
+		 * a second time (plan C10). Absent for archive import and the brief. */
+		inboundOrigin?: InboundOrigin;
 	}
 ): Promise<Id<'mailMessages'>> {
 	const { mailbox } = params;
@@ -355,6 +391,9 @@ export async function insertDeliveredMessage(
 			// thread holds — the parent a history import reaches last.
 			firstMessageAt: Math.min(thread.firstMessageAt, params.receivedAt),
 			updatedAt: now,
+			...(queuesNeedsReplyCheck(params.inboundOrigin, params.folder, folder._id)
+				? { needsReplyPendingAt: now }
+				: {}),
 			...(isNewest
 				? {
 						lastMessageAt: params.receivedAt,
@@ -362,16 +401,16 @@ export async function insertDeliveredMessage(
 						latestFromAddress: fromAddress,
 						latestSubject: params.subject,
 						latestMessageId: messageId,
+						// A just-delivered message is never snoozed (plan C8).
+						latestSnoozedUntil: null,
 					}
 				: {}),
 		});
 	}
 
-	await ctx.db.patch(mailbox._id, {
-		...(params.countUsedBytes ? { usedBytes: mailbox.usedBytes + params.rawSize } : {}),
-		usageRevision: (mailbox.usageRevision ?? 0) + 1,
-		updatedAt: now,
-	});
+	// Usage lives on the 1:1 `mailboxUsage` row, so a delivery leaves the
+	// mailbox document (read by every access check) untouched (plan 2.4).
+	await applyMailboxUsageDelta(ctx, mailbox, params.countUsedBytes ? params.rawSize : 0, now);
 
 	await ctx.db.insert('mailAuditLog', {
 		mailboxId: mailbox._id,

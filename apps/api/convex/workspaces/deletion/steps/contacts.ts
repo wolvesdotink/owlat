@@ -13,9 +13,9 @@ import { defineStep, DEFAULT_BATCH_SIZE } from './_common';
  * By the time this step runs, `emailSends` and `transactionalSends`
  * are already empty (their steps ran earlier in `STEPS`), so the
  * helper's soft-mark-sends loop is a no-op index lookup — no waste, no
- * special flag needed. `decrementCount: false` because the
- * `instanceSettings.contactCount` cache is going away with the
- * terminal step.
+ * special flag needed. `decrementCount: false` because the cached
+ * contact count (its `instanceCounters` row) is going away with the
+ * terminal steps.
  */
 export const contactsStep = defineStep({
 	table: 'contacts',

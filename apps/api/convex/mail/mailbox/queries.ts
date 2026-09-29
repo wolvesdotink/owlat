@@ -21,6 +21,8 @@ import { isThreadMuted } from '../../lib/mailMute';
 import { readSession } from './shared';
 import type { FolderRole } from '../../lib/validators/mail';
 import { attachThreadState, type RowThreadState } from './rowThreadState';
+import { toThreadListRow, type ThreadListRow } from './threadListRow';
+import { isThreadLatestSnoozed } from '../threadLatestSnooze';
 
 /**
  * List messages in a mailbox, for the webmail UI.
@@ -84,17 +86,25 @@ export const listMessages = publicQuery({
 			return { messages: await attachThreadState(ctx, messages), hasMore, nextCursor: null };
 		}
 
-		// Custom-folder view, addressed directly by id — custom IMAP folders carry
-		// no role, so the sidebar links them here (the by_folder index, like the
-		// role path below, just keyed on the folder id). Ownership re-checked.
+		// Folder addressed directly by id. Custom IMAP folders carry no role, so
+		// the sidebar links them here, and the client also sends the id of a role
+		// folder once `listFolders` has resolved it.
+		//
+		// The folder DOC is deliberately not read. IMAP bookkeeping (modseq,
+		// counts) patches it on every delivery and flag change, and reading it
+		// would make this subscription re-run page 1 whenever any message in the
+		// folder is marked read. Ownership is checked on the rows instead: a
+		// folder belongs to one mailbox, so every message filed in it carries
+		// that mailbox's id, and a page holding any other mailbox's row means
+		// the id was not this mailbox's folder.
 		if (args.folderId) {
-			const folder = await ctx.db.get(args.folderId);
-			if (!folder || folder.mailboxId !== args.mailboxId) return empty;
+			const folderId = args.folderId;
 			const page = await ctx.db
 				.query('mailMessages')
-				.withIndex('by_folder_and_received', (q) => q.eq('folderId', folder._id))
+				.withIndex('by_folder_and_received', (q) => q.eq('folderId', folderId))
 				.order(order)
 				.paginate(pagination);
+			if (page.page.some((m) => m.mailboxId !== args.mailboxId)) return empty;
 			return {
 				messages: await attachThreadState(
 					ctx,
@@ -105,7 +115,10 @@ export const listMessages = publicQuery({
 			};
 		}
 
-		// Folder-scoped view, indexed by arrival (no mailbox-wide overfetch).
+		// Folder-scoped view by role, indexed by arrival (no mailbox-wide
+		// overfetch). Resolving the role reads the folder doc, so this
+		// subscription also re-runs on the folder's IMAP bookkeeping writes;
+		// clients that already hold the folder id send `folderId` instead.
 		if (args.folderRole) {
 			const folder = await ctx.db
 				.query('mailFolders')
@@ -226,6 +239,11 @@ export const listByLabel = publicQuery({
  * aren't folder-indexed, so this overfetches the recent set then filters; it's
  * used for the inbox view (where most threads live), with the flat
  * `listMessages` serving other folders.
+ *
+ * Plan C8: the snooze check reads the copy on the thread
+ * (`latestSnoozedUntil`) instead of loading every candidate's newest message,
+ * and rows are projected ({@link toThreadListRow}) so drafts and cached
+ * summaries no longer ride along.
  */
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listThreads = publicQuery({
@@ -235,7 +253,7 @@ export const listThreads = publicQuery({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const empty = { threads: [] as Doc<'mailThreads'>[], hasMore: false };
+		const empty = { threads: [] as ThreadListRow[], hasMore: false };
 		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
 		if (!mailbox) return empty;
 
@@ -247,14 +265,11 @@ export const listThreads = publicQuery({
 			.order('desc')
 			.take((limit + 1) * 3);
 
-		const threads: Doc<'mailThreads'>[] = [];
+		const threads: ThreadListRow[] = [];
 		for (const t of candidates) {
 			if (!t.folderRoles.includes(args.folderRole)) continue;
-			if (t.latestMessageId) {
-				const latest = await ctx.db.get(t.latestMessageId);
-				if (latest && isMessageSnoozed(latest, now)) continue;
-			}
-			threads.push(t);
+			if (await isThreadLatestSnoozed(ctx, t, now)) continue;
+			threads.push(toThreadListRow(t));
 			if (threads.length > limit) break;
 		}
 		return { threads: threads.slice(0, limit), hasMore: threads.length > limit };

@@ -4,6 +4,7 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
+import { readInstanceCounter } from '../../lib/instanceCounters';
 
 /**
  * Unit tests for the Organization settings (module).
@@ -606,8 +607,9 @@ describe('organizations.settings.claimAdminSeedInternal', () => {
 		const t = convexTest(schema, modules);
 
 		// The MTA health cron runs every 2 minutes from first deploy and records a
-		// snapshot even when the MTA is unreachable, so it usually creates the
-		// singleton before the operator finishes the setup wizard.
+		// snapshot even when the MTA is unreachable. It used to create the
+		// singleton before the operator finished the setup wizard; since plan 2.4
+		// it writes its own counter row, and the seed must land either way.
 		await t.mutation(internal.delivery.mtaHealth.record, {
 			snapshot: { status: 'unreachable', observedAt: Date.now() },
 		});
@@ -625,7 +627,9 @@ describe('organizations.settings.claimAdminSeedInternal', () => {
 			const rows = await ctx.db.query('instanceSettings').take(5);
 			expect(rows).toHaveLength(1);
 			const row = rows[0];
-			expect(row?.mtaHealth?.status).toBe('unreachable');
+			expect((await readInstanceCounter(ctx.db, 'mtaHealth')).mtaHealth?.status).toBe(
+				'unreachable'
+			);
 			expect(row?.isMigrationMode).toBe(true);
 			expect(row?.defaultFromName).toBe("Admin's Team");
 			expect(row?.timezone).toBe('UTC');

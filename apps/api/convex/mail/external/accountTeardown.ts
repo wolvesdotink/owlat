@@ -29,6 +29,7 @@ import { internalMutation, type MutationCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { removeMessageAttachments } from '../attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../messagePurge';
+import { deleteMailboxUsage } from '../mailboxUsage';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { cancelActiveMigrationForAccount } from './accountShared';
 import { listMailboxesOnAddress } from '../mailbox/addressResolution';
@@ -258,6 +259,7 @@ export const _purgeChunk = internalMutation({
 		for (const mv of moves) await ctx.db.delete(mv._id);
 
 		await ctx.db.delete(args.accountId);
+		await deleteMailboxUsage(ctx, args.mailboxId);
 		await ctx.db.delete(args.mailboxId);
 	},
 });
