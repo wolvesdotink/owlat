@@ -21,7 +21,7 @@ import {
 	verifyMtaSignedRequest,
 } from '../webhooks/mtaSignature';
 import { getClientIp } from '../lib/publicRateLimit';
-import { normalizePeerIp } from '@owlat/shared/ipAddress';
+import { ipRateLimitKey, normalizePeerIp } from '@owlat/shared/ipAddress';
 
 export const handleVerifyCredential = httpAction(async (ctx, request) => {
 	if (request.method !== 'POST') {
@@ -65,22 +65,6 @@ export const handleVerifyCredential = httpAction(async (ctx, request) => {
 		});
 	}
 
-	// Same ingestion bucket as the other inbound webhooks, keyed per-source like
-	// webhooks/pipeline so a flood here cannot drain the bounce/complaint
-	// buckets. Charged only after the signature check (the body is capped at
-	// 100 KB above), so only signed requests spend it.
-	const rateIp = getClientIp(request);
-	const { ok: rateOk, retryAfter } = await ctx.runMutation(
-		internal.lib.publicRateLimit.checkPublicRateLimit,
-		{ limitType: 'webhookIngestion', key: `mta-verify-credential:${rateIp}` }
-	);
-	if (!rateOk) {
-		return new Response(JSON.stringify({ error: 'Rate limited' }), {
-			status: 429,
-			headers: retryAfter ? { 'Retry-After': String(Math.ceil(retryAfter / 1000)) } : {},
-		});
-	}
-
 	let payload: {
 		address?: string;
 		password?: string;
@@ -100,15 +84,32 @@ export const handleVerifyCredential = httpAction(async (ctx, request) => {
 		return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400 });
 	}
 
-	if (!payload.address || !payload.password || !payload.scope) {
-		return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400 });
-	}
-
 	// Key verify's per-IP auth-failure throttle on the client the MTA reports in
 	// the signed body. A body without a usable ip comes from an MTA that predates
 	// the field (a rolling upgrade), which falls back to the request source.
 	const clientIp =
 		(typeof payload.ip === 'string' ? normalizePeerIp(payload.ip) : null) ?? getClientIp(request);
+
+	// The ingestion bucket is charged only after the signature check, so only
+	// the MTA can spend it, and it is keyed on the same signed client IP (an IPv6
+	// client per /64). Keyed on the request source instead, every login would
+	// share the MTA's one bucket: a burst of checks for other clients would 429 a
+	// legitimate login, and the MTA counts that as the client's auth failure. The
+	// per-client bucket still bounds how many checks one client can cause.
+	const { ok: rateOk, retryAfter } = await ctx.runMutation(
+		internal.lib.publicRateLimit.checkPublicRateLimit,
+		{ limitType: 'webhookIngestion', key: `mta-verify-credential:${ipRateLimitKey(clientIp)}` }
+	);
+	if (!rateOk) {
+		return new Response(JSON.stringify({ error: 'Rate limited' }), {
+			status: 429,
+			headers: retryAfter ? { 'Retry-After': String(Math.ceil(retryAfter / 1000)) } : {},
+		});
+	}
+
+	if (!payload.address || !payload.password || !payload.scope) {
+		return new Response(JSON.stringify({ error: 'Missing fields' }), { status: 400 });
+	}
 	const result = await ctx.runAction(internal.mail.appPasswords.verify, {
 		address: payload.address,
 		password: payload.password,

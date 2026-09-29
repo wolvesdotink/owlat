@@ -277,3 +277,32 @@ describe('MTA raw routes keep large signed deliveries off the unverified key', (
 		});
 	}
 });
+
+describe('the credential-check route keys its ingestion bucket on the signed client IP', () => {
+	it('answers one client after a burst from many others', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		const check = (clientIp: string) => {
+			const body = JSON.stringify({
+				address: 'nobody@example.com',
+				password: 'wrong-password',
+				scope: 'smtp',
+				ip: clientIp,
+			});
+			return t.fetch('/webhooks/mta-verify-credential', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', ...signMtaRequest(SECRET, body) },
+				body,
+			});
+		};
+
+		// More signed checks than one bucket holds, each for a different client.
+		const burst = await Promise.all(
+			Array.from({ length: 150 }, (_, i) => check(`203.0.${Math.floor(i / 250)}.${(i % 250) + 1}`))
+		);
+		expect(burst.every((res) => res.status === 200)).toBe(true);
+
+		expect((await check('192.0.2.44')).status).toBe(200);
+	});
+});
