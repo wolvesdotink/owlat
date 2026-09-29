@@ -340,9 +340,9 @@ export const listFolders = publicQuery({
  * switcher and the Cmd-K "switch mailbox" entries: sections, labels, and badges
  * all derive from one accessible+active set, so an admin never sees a teammate's
  * private inbox or a shared inbox they don't belong to advertised as a switch
- * target (unlike `identity.list`, which returns every org mailbox for
- * owners/admins). Suspended/deleted rows are filtered out here, so there are no
- * dead-end targets.
+ * target. `identity.list` reads the same `loadAccessibleMailboxes` set but keeps
+ * suspended rows and returns full mailbox docs. Suspended/deleted rows are
+ * filtered out here, so there are no dead-end targets.
  *
  * O(1) per mailbox: reads the denormalized `mailFolders.unseenCount`. Read
  * state is a single shared truth per message,

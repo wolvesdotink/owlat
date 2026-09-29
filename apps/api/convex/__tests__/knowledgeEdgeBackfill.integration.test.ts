@@ -359,3 +359,118 @@ describe('knowledgeEdgeBackfill.cancel', () => {
 		expect(result).toBe(false);
 	});
 });
+
+// =====================================================================
+// Stale-job sweep — a walk that died is marked failed
+// =====================================================================
+
+describe('knowledge.maintenance.failStaleBackfillJobs', () => {
+	const HOUR_MS = 60 * 60 * 1000;
+
+	it('marks a running edge job untouched for over an hour as failed', async () => {
+		const t = convexTest(schema, modules);
+
+		let staleId!: Id<'knowledgeEdgeBackfillJobs'>;
+		await t.run(async (ctx) => {
+			const longAgo = Date.now() - 2 * HOUR_MS;
+			staleId = await ctx.db.insert('knowledgeEdgeBackfillJobs', {
+				status: 'running',
+				triggeredBy: 'test',
+				totalCount: 10,
+				scannedCount: 4,
+				scheduledCount: 4,
+				startedAt: longAgo,
+				updatedAt: longAgo,
+			});
+		});
+
+		const result = await t.mutation(internal.knowledge.maintenance.failStaleBackfillJobs, {});
+		expect(result).toEqual({ messageJobs: 0, edgeJobs: 1 });
+
+		await t.run(async (ctx) => {
+			const job = await ctx.db.get(staleId);
+			expect(job!.status).toBe('failed');
+			expect(job!.finishedAt).toBeDefined();
+			expect(job!.errorMessage).toMatch(/stopped making progress/);
+			// Progress so far is kept for the admin card.
+			expect(job!.scannedCount).toBe(4);
+		});
+	});
+
+	it('leaves a fresh running job and finished stale jobs untouched', async () => {
+		const t = convexTest(schema, modules);
+
+		let freshId!: Id<'knowledgeEdgeBackfillJobs'>;
+		let doneId!: Id<'knowledgeEdgeBackfillJobs'>;
+		let messageFreshId!: Id<'knowledgeBackfillJobs'>;
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			const longAgo = now - 2 * HOUR_MS;
+			freshId = await ctx.db.insert('knowledgeEdgeBackfillJobs', {
+				status: 'running',
+				triggeredBy: 'test',
+				totalCount: 10,
+				scannedCount: 4,
+				scheduledCount: 4,
+				startedAt: longAgo,
+				updatedAt: now - 5 * 60 * 1000,
+			});
+			doneId = await ctx.db.insert('knowledgeEdgeBackfillJobs', {
+				status: 'completed',
+				triggeredBy: 'test',
+				totalCount: 10,
+				scannedCount: 10,
+				scheduledCount: 10,
+				startedAt: longAgo,
+				updatedAt: longAgo,
+				finishedAt: longAgo,
+			});
+			messageFreshId = await ctx.db.insert('knowledgeBackfillJobs', {
+				status: 'running',
+				triggeredBy: 'test',
+				totalCount: 10,
+				scannedCount: 1,
+				extractedCount: 1,
+				skippedCount: 0,
+				errorCount: 0,
+				startedAt: now,
+				updatedAt: now,
+			});
+		});
+
+		const result = await t.mutation(internal.knowledge.maintenance.failStaleBackfillJobs, {});
+		expect(result).toEqual({ messageJobs: 0, edgeJobs: 0 });
+
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(freshId))!.status).toBe('running');
+			expect((await ctx.db.get(doneId))!.status).toBe('completed');
+			expect((await ctx.db.get(messageFreshId))!.status).toBe('running');
+		});
+	});
+
+	it('also fails a stale running message backfill job', async () => {
+		const t = convexTest(schema, modules);
+
+		let staleId!: Id<'knowledgeBackfillJobs'>;
+		await t.run(async (ctx) => {
+			const longAgo = Date.now() - 2 * HOUR_MS;
+			staleId = await ctx.db.insert('knowledgeBackfillJobs', {
+				status: 'running',
+				triggeredBy: 'test',
+				totalCount: 10,
+				scannedCount: 3,
+				extractedCount: 2,
+				skippedCount: 1,
+				errorCount: 0,
+				startedAt: longAgo,
+				updatedAt: longAgo,
+			});
+		});
+
+		const result = await t.mutation(internal.knowledge.maintenance.failStaleBackfillJobs, {});
+		expect(result).toEqual({ messageJobs: 1, edgeJobs: 0 });
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(staleId))!.status).toBe('failed');
+		});
+	});
+});

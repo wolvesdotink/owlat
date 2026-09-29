@@ -28,9 +28,10 @@
 
 import { v } from 'convex/values';
 import { authedAction } from '../../lib/authedFunctions';
-import { api, internal } from '../../_generated/api';
+import { internal } from '../../_generated/api';
 import { resolveLanguageModelForUserText } from '../../lib/llmProvider';
 import { runLlmStream } from '../../lib/llm/dispatch';
+import { createThrottledStreamFlusher } from '../../lib/llm/streamFlusher';
 import { recordLlmSpend } from '../../analytics/llmUsage';
 import {
 	detectInjection,
@@ -38,13 +39,18 @@ import {
 } from '../../agent/steps/security_scan/patterns';
 import { SYSTEM_GUARD } from './promptGuards';
 import { draftSurfaceValidator } from '../../lib/literalValidators';
+import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 
 /** Bound each untrusted-ish / trusted input that reaches the model. */
 const REVISE_MAX_INSTRUCTION_CHARS = 2000;
 const REVISE_MAX_DRAFT_CHARS = 12000;
 const REVISE_MAX_THREAD_CHARS = 8000;
 
-/** How often (ms) partial text is flushed to the reactive buffer. */
+/**
+ * How often (ms) partial text is flushed to the reactive buffer. Finer than the
+ * assistant runner's 250 ms: the buffer is one short draft typed into the
+ * composer the user is looking at, so smoothness is worth the extra writes.
+ */
 const FLUSH_INTERVAL_MS = 120;
 
 /**
@@ -60,7 +66,7 @@ export function buildRevisePrompt(args: {
 	voiceGuidance?: string | null;
 }): { system: string; prompt: string } {
 	const instruction = args.instruction.slice(0, REVISE_MAX_INSTRUCTION_CHARS).trim();
-	const voiceSection = args.voiceGuidance ? `\n\n${args.voiceGuidance}` : '';
+	const voiceSection = formatVoiceSection(args.voiceGuidance);
 	const system =
 		`${SYSTEM_GUARD} You revise the user's OWN email reply draft according to ` +
 		`the user's instruction. The instruction below is a TRUSTED directive from ` +
@@ -108,24 +114,12 @@ export const reviseDraft = authedAction({
 			streamId: args.streamId,
 		});
 
-		// Personalize to the user's learned voice when a profile exists; never
-		// blocks or throws, so a missing/disabled profile just falls through.
-		let voiceGuidance: string | null = null;
-		if (args.mailboxId) {
-			try {
-				const mailbox = await ctx.runQuery(api.mail.mailbox.identity.get, {
-					mailboxId: args.mailboxId,
-				});
-				if (mailbox) {
-					const res = await ctx.runMutation(internal.mail.ai.voiceProfile.getGuidanceForMailbox, {
-						mailboxId: args.mailboxId,
-					});
-					voiceGuidance = res.guidance;
-				}
-			} catch {
-				voiceGuidance = null;
-			}
-		}
+		// Personalize to the user's learned voice. The mailboxId comes from the
+		// client, so access is proven before the profile is read.
+		const voiceGuidance = await loadVoiceGuidance(ctx, {
+			mailboxId: args.mailboxId,
+			requireAccess: true,
+		});
 
 		const { system, prompt } = buildRevisePrompt({
 			instruction: args.instruction,
@@ -134,22 +128,18 @@ export const reviseDraft = authedAction({
 			voiceGuidance,
 		});
 
-		const controller = new AbortController();
-		let lastFlushAt = 0;
-		let streamed = '';
-
 		// Throttled flush to the reactive buffer; a `stop` (client discarded the
-		// buffer) cooperatively aborts the model stream.
-		const flush = async (force: boolean): Promise<void> => {
-			const now = Date.now();
-			if (!force && now - lastFlushAt < FLUSH_INTERVAL_MS) return;
-			lastFlushAt = now;
-			const res = await ctx.runMutation(internal.mail.draftStreamStore.appendDraftStream, {
-				streamId: args.streamId,
-				text: streamed,
-			});
-			if (res.stop) controller.abort();
-		};
+		// buffer) cooperatively aborts the model stream. aiDraftStreams has no
+		// 'stopped' status, so an aborted revise settles 'complete' or 'error'
+		// below exactly as before.
+		const stream = createThrottledStreamFlusher({
+			intervalMs: FLUSH_INTERVAL_MS,
+			patch: (text) =>
+				ctx.runMutation(internal.mail.draftStreamStore.appendDraftStream, {
+					streamId: args.streamId,
+					text,
+				}),
+		});
 
 		try {
 			const result = await runLlmStream({
@@ -160,14 +150,11 @@ export const reviseDraft = authedAction({
 				system,
 				messages: [{ role: 'user', content: prompt }],
 				temperature: 0.4,
-				abortSignal: controller.signal,
-				onTextDelta: async (full) => {
-					streamed = full;
-					await flush(false);
-				},
+				abortSignal: stream.signal,
+				onTextDelta: stream.onText,
 			});
 
-			const finalText = (result.text || streamed).trim();
+			const finalText = (result.text || stream.text).trim();
 			// Safety scan runs on the FINAL text ONLY (never mid-stream). Advisory:
 			// a hit flags the buffer for the human; it never blocks or auto-sends.
 			const outbound = detectInjection(finalText);
@@ -190,7 +177,7 @@ export const reviseDraft = authedAction({
 			const message = error instanceof Error ? error.message : 'Revise failed';
 			await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
 				streamId: args.streamId,
-				text: streamed.trim(),
+				text: stream.text.trim(),
 				status: 'error',
 				errorMessage: message.slice(0, 500),
 			});

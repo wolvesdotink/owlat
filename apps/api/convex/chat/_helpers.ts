@@ -14,6 +14,7 @@ import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors'
 import { hasPermission, type OrganizationRole } from '../lib/sessionOrganization';
 import { authedQuery, authedMutation, featureGated } from '../lib/authedFunctions';
 import { requireMailboxAccess } from '../mail/permissions';
+import { assertLiveOrgMembers } from '../lib/userProfiles';
 
 /**
  * Feature-gated function builders for the chat module. They compose the
@@ -35,7 +36,7 @@ const MENTION_PATTERN = /@([a-zA-Z0-9_\-.]{1,64})/g;
  * Reserved author id for AI assistant replies (`@assistant`). It is NOT a valid
  * BetterAuth user id (the colon never appears in one), so it can never collide
  * with a real member, a real member can never author "as the assistant", and
- * `loadProfileSummary` simply returns null fields for it (the renderer labels
+ * `loadProfileSummary` (lib/userProfiles) simply returns null fields for it (the renderer labels
  * it "Assistant"). Only `assistant/runner.ts` inserts messages under this id,
  * via internal mutations that bypass the membership write floor.
  */
@@ -47,31 +48,21 @@ const ASSISTANT_MENTION_HANDLE = 'assistant';
 export const CHAT_MEMBER_BATCH_MAX = 50;
 
 /**
- * Validate that every supplied auth-user id maps to a real instance user, and
- * that the batch isn't oversized. DM/channel membership-write mutations take
- * free-form id strings; without this a caller could seed a chat room with bogus
- * or foreign ids, or pass an unbounded array. We resolve against
- * `userProfiles.by_auth_user_id` — the same participant source of truth the
- * chat module already uses (loadProfileSummary, DM label assembly) — which a
- * bogus id can never satisfy. (Single-org: a profile row ⇒ a user of this
- * deployment; the caller's own membership floor is enforced upstream.)
+ * Validate that every supplied auth-user id is a live org member (see
+ * `lib/userProfiles.ts`), and that the batch isn't oversized. DM/channel
+ * membership-write mutations take free-form id strings; without this a caller
+ * could seed a chat room with bogus, foreign or soft-deleted ids, or pass an
+ * unbounded array. The caller's own membership floor is enforced upstream.
  */
 export async function assertChatTargetsAreOrgMembers(
 	ctx: QueryCtx | MutationCtx,
 	authUserIds: string[]
 ): Promise<void> {
-	if (authUserIds.length > CHAT_MEMBER_BATCH_MAX) {
-		throwInvalidInput(`Cannot add more than ${CHAT_MEMBER_BATCH_MAX} people at once`);
-	}
-	for (const id of new Set(authUserIds)) {
-		const profile = await ctx.db
-			.query('userProfiles')
-			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', id))
-			.first();
-		if (!profile) {
-			throwInvalidInput('One or more selected people are not members of this organization');
-		}
-	}
+	await assertLiveOrgMembers(ctx, authUserIds, {
+		max: CHAT_MEMBER_BATCH_MAX,
+		tooManyMessage: `Cannot add more than ${CHAT_MEMBER_BATCH_MAX} people at once`,
+		message: 'One or more selected people are not members of this organization',
+	});
 }
 
 /** Normalize a channel name for uniqueness/lookup. */
@@ -222,37 +213,6 @@ export async function assertCanAdministerRoom(
 		return;
 	}
 	throwForbidden('Only room admins can perform this action');
-}
-
-/**
- * Projection of a chat participant's `userProfiles` row used by message,
- * member, and DM listings. All fields default to `null` when the profile
- * row is missing.
- */
-export type ProfileSummary = {
-	name: string | null;
-	email: string | null;
-	image: string | null;
-};
-
-/**
- * Load the `{ name, email, image }` summary for a chat participant via the
- * `userProfiles.by_auth_user_id` index. Returns null-filled fields when no
- * profile row exists for the given auth user.
- */
-export async function loadProfileSummary(
-	ctx: QueryCtx | MutationCtx,
-	authUserId: string
-): Promise<ProfileSummary> {
-	const row = await ctx.db
-		.query('userProfiles')
-		.withIndex('by_auth_user_id', (q) => q.eq('authUserId', authUserId))
-		.first();
-	return {
-		name: row?.name ?? null,
-		email: row?.email ?? null,
-		image: row?.image ?? null,
-	};
 }
 
 /**

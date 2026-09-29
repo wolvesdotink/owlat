@@ -9,7 +9,7 @@
  * (mailbox re-activation, audit prefixes) that differ between personal and shared.
  */
 
-import { v } from 'convex/values';
+import { v, type ObjectType } from 'convex/values';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { DatabaseReader, MutationCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
@@ -118,9 +118,8 @@ export function takeConnectableSeedAccounts(
 /**
  * The Convex argument validator for {@link ExternalConnectFields} plus the
  * address — the shape `_connectInternal`, `_connectSharedInternal`,
- * `_connectSeedInternal` and both rotation mutations declare. Declared beside the
- * writers below so the validator and the TypeScript shape it validates into
- * cannot drift.
+ * `_connectSeedInternal` and both rotation mutations declare. The TypeScript
+ * shape below is derived from it, so the two cannot drift.
  */
 export const connectFieldsValidator = {
 	emailAddress: v.string(),
@@ -134,7 +133,9 @@ export const connectFieldsValidator = {
 	smtpUsername: v.optional(v.string()),
 	// Widened for Google sign-in: an 'oauth2' row's envelope holds a refresh
 	// token instead of passwords (see schema/mailAccounts.ts). App passwords are
-	// unchanged and remain supported for every provider, Gmail included.
+	// unchanged and remain supported for every provider, Gmail included. Both
+	// write through this one shape, so a row can rotate from one to the other and
+	// back without a second path.
 	authMethod: v.union(v.literal('password'), v.literal('oauth2')),
 	oauthProvider: v.optional(v.literal('google')),
 	secretCiphertext: v.string(),
@@ -147,29 +148,73 @@ export const connectFieldsValidator = {
  * The non-secret IMAP/SMTP settings + the encrypted-password envelope that every
  * external-account write persists — the single source of truth for the row's
  * credential shape, so adding a field (e.g. an `oauth` authMethod) is one edit
- * here instead of a shotgun across the insert + both rotation patches.
+ * to the validator above instead of a shotgun across the insert + both rotation
+ * patches.
  */
-type ExternalConnectFields = {
-	imapHost: string;
-	imapPort: number;
-	isImapSecure: boolean;
-	smtpHost: string;
-	smtpPort: number;
-	isSmtpSecure: boolean;
-	/**
-	 * 'password' — an app password in the envelope. 'oauth2' — a provider refresh
-	 * token in the envelope (Google sign-in). Both write through this one shape,
-	 * so a row can rotate from one to the other and back without a second path.
-	 */
-	authMethod: 'password' | 'oauth2';
-	oauthProvider?: 'google';
-	imapUsername: string;
-	smtpUsername?: string;
-	secretCiphertext: string;
-	secretIv: string;
-	secretAuthTag: string;
-	secretEnvelopeVersion: number;
-};
+type ExternalConnectFields = Omit<ObjectType<typeof connectFieldsValidator>, 'emailAddress'>;
+
+/**
+ * Every key of {@link ExternalConnectFields}, spelled out. The `satisfies`
+ * makes a key added to the validator (or dropped from it) a compile error here
+ * rather than a column silently left out of the row.
+ */
+const CONNECTION_FIELD_KEYS = Object.keys({
+	imapHost: true,
+	imapPort: true,
+	isImapSecure: true,
+	smtpHost: true,
+	smtpPort: true,
+	isSmtpSecure: true,
+	authMethod: true,
+	oauthProvider: true,
+	imapUsername: true,
+	smtpUsername: true,
+	secretCiphertext: true,
+	secretIv: true,
+	secretAuthTag: true,
+	secretEnvelopeVersion: true,
+} satisfies Record<keyof ExternalConnectFields, true>) as Array<keyof ExternalConnectFields>;
+
+/**
+ * Copy exactly the connection columns out of a connect/rotate mutation's args.
+ *
+ * Explicit, not a spread: those args also carry `emailAddress`, `displayName`,
+ * `memberUserIds`, `seedProvider` or `mailboxId`, none of which belongs on the
+ * account row. Every key is copied even when its value is `undefined`, so a
+ * rotation from oauth2 back to a password clears `oauthProvider`.
+ */
+export function pickConnectionFields(fields: ExternalConnectFields): ExternalConnectFields {
+	return Object.fromEntries(
+		CONNECTION_FIELD_KEYS.map((key) => [key, fields[key]])
+	) as ExternalConnectFields;
+}
+
+/**
+ * The non-secret connection settings and live status of an account, for the
+ * personal settings card and the admin team-inbox reconnect form. The one
+ * projection of an account row that may leave the server: it never carries the
+ * credential envelope (`secret*`). Each query adds its own ids and address.
+ */
+export function toPublicAccountView(account: Doc<'externalMailAccounts'>) {
+	return {
+		imapHost: account.imapHost,
+		imapPort: account.imapPort,
+		isImapSecure: account.isImapSecure,
+		smtpHost: account.smtpHost,
+		smtpPort: account.smtpPort,
+		isSmtpSecure: account.isSmtpSecure,
+		imapUsername: account.imapUsername,
+		smtpUsername: account.smtpUsername,
+		// How the account authenticates, so a connect form can offer "Reconnect
+		// with Google" instead of a password field. Never a credential.
+		authMethod: account.authMethod,
+		oauthProvider: account.oauthProvider,
+		status: account.status,
+		lastError: account.lastError,
+		lastSyncAt: account.lastSyncAt,
+		lastConnectedAt: account.lastConnectedAt,
+	};
+}
 
 /**
  * Insert one `externalMailAccounts` row from the encrypted-envelope connect
@@ -205,20 +250,7 @@ export async function insertExternalAccountRow(
 		mailboxId: params.mailboxId,
 		...(params.legacyScope ? { scope: params.legacyScope } : {}),
 		...(params.seed ? { purpose: 'seed' as const, seedProvider: params.seed.seedProvider } : {}),
-		imapHost: fields.imapHost,
-		imapPort: fields.imapPort,
-		isImapSecure: fields.isImapSecure,
-		smtpHost: fields.smtpHost,
-		smtpPort: fields.smtpPort,
-		isSmtpSecure: fields.isSmtpSecure,
-		authMethod: fields.authMethod,
-		oauthProvider: fields.oauthProvider,
-		imapUsername: fields.imapUsername,
-		smtpUsername: fields.smtpUsername,
-		secretCiphertext: fields.secretCiphertext,
-		secretIv: fields.secretIv,
-		secretAuthTag: fields.secretAuthTag,
-		secretEnvelopeVersion: fields.secretEnvelopeVersion,
+		...pickConnectionFields(fields),
 		status: 'pending',
 		createdAt: now,
 		updatedAt: now,
@@ -237,8 +269,8 @@ export async function insertExternalAccountRow(
  * Rotate the credential + connection settings on an existing external-account row
  * and reset it to `pending` so the mail-sync worker re-validates with the new
  * credentials on its next pass. Shared by the personal `_updateCredentialsInternal`
- * and the shared-team-inbox `_updateCredentialsSharedInternal`, so the 13-field
- * credential patch can never drift between the two twins. Callers own any
+ * and the shared-team-inbox `_updateCredentialsSharedInternal`, so the credential
+ * patch can never drift between the two twins. Callers own any
  * surrounding side effects (mailbox re-activation, the shared audit event) that
  * differ between the personal and shared paths.
  */
@@ -249,25 +281,13 @@ export async function applyCredentialRotation(
 	now: number
 ): Promise<void> {
 	await ctx.db.patch(accountId, {
-		imapHost: fields.imapHost,
-		imapPort: fields.imapPort,
-		isImapSecure: fields.isImapSecure,
-		smtpHost: fields.smtpHost,
-		smtpPort: fields.smtpPort,
-		isSmtpSecure: fields.isSmtpSecure,
-		// Rotating an account between auth methods must move BOTH of these, or an
-		// app-password repair of an oauth2 row would leave it claiming XOAUTH2 with
-		// a password in the envelope (and vice versa) — the worker would then
-		// authenticate with the wrong mechanism forever. Writing `undefined` clears
-		// `oauthProvider` on the oauth2 → password direction.
-		authMethod: fields.authMethod,
-		oauthProvider: fields.oauthProvider,
-		imapUsername: fields.imapUsername,
-		smtpUsername: fields.smtpUsername,
-		secretCiphertext: fields.secretCiphertext,
-		secretIv: fields.secretIv,
-		secretAuthTag: fields.secretAuthTag,
-		secretEnvelopeVersion: fields.secretEnvelopeVersion,
+		// Every connection column, `authMethod` and `oauthProvider` included:
+		// rotating between auth methods must move BOTH, or an app-password repair
+		// of an oauth2 row would leave it claiming XOAUTH2 with a password in the
+		// envelope (and vice versa) — the worker would then authenticate with the
+		// wrong mechanism forever. The `undefined` `oauthProvider` a password
+		// rotation carries clears it.
+		...pickConnectionFields(fields),
 		// Reset to pending so the worker re-validates with the new creds.
 		status: 'pending',
 		lastError: undefined,

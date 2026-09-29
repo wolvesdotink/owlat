@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
+import { DEFAULT_CHUNK_SIZE } from '../../knowledge/messageBackfill';
 
 vi.mock('../../plugins/plugins.generated', () => ({
 	bundledPluginComposition: Object.freeze([
@@ -397,6 +398,13 @@ describe('organizations.featureFlags.setFeatureFlag — ai.agent backfill', () =
 				.withIndex('by_action', (q) => q.eq('action', 'agent.backfill_started'))
 				.collect();
 			expect(auditLogs).toHaveLength(1);
+
+			// The first chunk is scheduled on the moved module with the shared
+			// default chunk size.
+			const scheduled = await ctx.db.system.query('_scheduled_functions').collect();
+			const chunk = scheduled.find((job) => job.name.includes('messageBackfill'));
+			expect(chunk?.name).toBe('knowledge/messageBackfill:runChunk');
+			expect(chunk?.args[0]).toMatchObject({ jobId: jobs[0]!._id, chunkSize: DEFAULT_CHUNK_SIZE });
 		});
 	});
 

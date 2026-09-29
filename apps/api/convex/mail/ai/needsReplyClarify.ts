@@ -17,7 +17,6 @@
  */
 
 import { v } from 'convex/values';
-import { openMailMessageInlineBody } from '../../lib/messageBody';
 import { internalMutation, internalQuery } from '../../_generated/server';
 import { postboxMutation } from '../_helpers';
 import { internal } from '../../_generated/api';
@@ -25,6 +24,7 @@ import { getOrThrow, throwForbidden, throwInvalidInput, throwNotFound } from '..
 import { requireMailboxAccess } from '../permissions';
 import { NEEDS_REPLY_CONTEXT_MESSAGES } from '../needsReply';
 import { captureStandingAnswers } from '../../inbox/clarificationMemory';
+import { buildThreadTranscript, CLARIFY_DRAFT } from './transcript';
 
 /**
  * Answer the clarification questions on a Reply Queue thread and kick off the
@@ -126,8 +126,9 @@ export const getClarificationContext = internalQuery({
 	handler: async (ctx, args) => {
 		const thread = await ctx.db.get(args.threadId);
 		if (!thread) return null;
-		const clarification = thread.needsReply?.clarification;
-		if (!clarification || clarification.answeredAt === undefined) return null;
+		const flag = thread.needsReply;
+		const clarification = flag?.clarification;
+		if (!flag || !clarification || clarification.answeredAt === undefined) return null;
 		const mailbox = await ctx.db.get(thread.mailboxId);
 		if (!mailbox || mailbox.status !== 'active') return null;
 
@@ -139,16 +140,13 @@ export const getClarificationContext = internalQuery({
 			.order('desc')
 			.take(NEEDS_REPLY_CONTEXT_MESSAGES);
 		const newest = newestFirst.sort((a, b) => a.receivedAt - b.receivedAt);
-		const transcript = (
-			await Promise.all(
-				newest.map(
-					async (m) =>
-						`From: ${m.fromName || m.fromAddress}\nSubject: ${m.subject}\n${((await openMailMessageInlineBody(m)).text ?? m.snippet ?? '').slice(0, 2000)}`
-				)
-			)
-		)
-			.join('\n\n---\n\n')
-			.slice(0, 12000);
+		// Labelled by side with the flagged message last and marked: this
+		// transcript drafts the owner's reply, exactly like draft-on-arrival.
+		const transcript = await buildThreadTranscript(newest, {
+			...CLARIFY_DRAFT,
+			ownerAddress: mailbox.address,
+			triggerId: flag.messageId,
+		});
 
 		const answers = [];
 		// Slot kinds of the ANSWERED questions — carried through so the draft path

@@ -18,6 +18,12 @@
  * only references the sender's proposed times). This never throws to the caller.
  */
 
+import {
+	getTzParts,
+	icalDateTimeToEpoch,
+	parseICalendar,
+	wallClockToEpoch,
+} from '@owlat/shared/ical';
 import { getOptional } from '../lib/env';
 import { buildSchedulingInstruction } from './ai/scheduling';
 import { DAY_MS } from '../lib/constants';
@@ -44,166 +50,34 @@ const BUSINESS_START_HOUR = 9;
 const BUSINESS_END_HOUR = 17;
 /** Length of an offered slot, minutes. */
 const SLOT_MINUTES = 60;
+const SLOT_MS = SLOT_MINUTES * 60 * 1000;
 /** How many open slots we surface to the model. */
 const MAX_OPEN_SLOTS = 3;
 /** Network fetch budget for the feed. */
 const FETCH_TIMEOUT_MS = 5000;
 
 /**
- * Unfold RFC 5545 folded lines: a CRLF (or LF) followed by a space or tab is a
- * continuation of the previous logical line.
+ * Extract busy intervals from a raw ICS body. The feed goes through the shared
+ * iCalendar parser and only each VEVENT's DTSTART/DTEND are read (free/busy
+ * masking); summaries, attendees and every other property are dropped here, so
+ * no event content leaves this function. TZID times are converted in their own
+ * zone; floating and all-day times are read in `timeZone`, the zone the
+ * business-hours slots use. Events without a usable end default to a one-slot
+ * block (or a full day for all-day starts). Pure + exported for unit testing.
  */
-function unfoldIcs(text: string): string[] {
-	const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-	const rawLines = normalized.split('\n');
-	const lines: string[] = [];
-	for (const line of rawLines) {
-		if ((line.startsWith(' ') || line.startsWith('\t')) && lines.length > 0) {
-			lines[lines.length - 1] += line.slice(1);
-		} else {
-			lines.push(line);
-		}
-	}
-	return lines;
-}
-
-/**
- * Parse an ICS date-time property value into an epoch-ms instant and whether it
- * was a date-only (all-day) value. Supports the two forms a self-hosted iCal
- * export emits: UTC `YYYYMMDDTHHMMSSZ`, floating/TZID `YYYYMMDDTHHMMSS` (treated
- * as UTC — good enough for v1 busy-masking), and `VALUE=DATE` `YYYYMMDD`.
- * Returns null if the value is not a shape we understand.
- */
-export function parseIcsInstant(value: string): { ms: number; allDay: boolean } | null {
-	const v = value.trim();
-	const dateOnly = /^(\d{4})(\d{2})(\d{2})$/.exec(v);
-	if (dateOnly) {
-		const year = Number(dateOnly[1]);
-		const month = Number(dateOnly[2]);
-		const day = Number(dateOnly[3]);
-		return { ms: Date.UTC(year, month - 1, day), allDay: true };
-	}
-	const dateTime = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/.exec(v);
-	if (dateTime) {
-		const year = Number(dateTime[1]);
-		const month = Number(dateTime[2]);
-		const day = Number(dateTime[3]);
-		const hour = Number(dateTime[4]);
-		const minute = Number(dateTime[5]);
-		const second = Number(dateTime[6]);
-		return { ms: Date.UTC(year, month - 1, day, hour, minute, second), allDay: false };
-	}
-	return null;
-}
-
-/**
- * Extract busy intervals from a raw ICS body. Only VEVENT DTSTART/DTEND are used
- * (free/busy masking); every other property is ignored, so no event content
- * leaves this function. Events without a usable end default to a 1-hour block (or
- * a full day for all-day starts). Pure + exported for unit testing.
- */
-export function parseIcsBusyIntervals(ics: string): BusyInterval[] {
-	const lines = unfoldIcs(ics);
+export function parseIcsBusyIntervals(ics: string, timeZone = 'UTC'): BusyInterval[] {
 	const intervals: BusyInterval[] = [];
-	let inEvent = false;
-	let start: { ms: number; allDay: boolean } | null = null;
-	let end: { ms: number; allDay: boolean } | null = null;
-	for (const line of lines) {
-		if (line === 'BEGIN:VEVENT') {
-			inEvent = true;
-			start = null;
-			end = null;
-			continue;
-		}
-		if (line === 'END:VEVENT') {
-			if (inEvent && start) {
-				const startMs = start.ms;
-				let endMs: number;
-				if (end) {
-					endMs = end.ms;
-				} else if (start.allDay) {
-					endMs = startMs + DAY_MS;
-				} else {
-					endMs = startMs + SLOT_MINUTES * 60 * 1000;
-				}
-				if (endMs > startMs) {
-					intervals.push({ start: startMs, end: endMs });
-				}
-			}
-			inEvent = false;
-			start = null;
-			end = null;
-			continue;
-		}
-		if (!inEvent) continue;
-		const colon = line.indexOf(':');
-		if (colon < 0) continue;
-		const name = line.slice(0, colon).split(';')[0];
-		const value = line.slice(colon + 1);
-		if (name === 'DTSTART') {
-			start = parseIcsInstant(value);
-		} else if (name === 'DTEND') {
-			end = parseIcsInstant(value);
-		}
+	for (const event of parseICalendar(ics).events) {
 		if (intervals.length >= MAX_BUSY_INTERVALS) break;
+		if (!event.start) continue;
+		const startMs = icalDateTimeToEpoch(event.start, timeZone);
+		if (startMs === null) continue;
+		const endMs =
+			(event.end ? icalDateTimeToEpoch(event.end, timeZone) : null) ??
+			startMs + (event.start.allDay ? DAY_MS : SLOT_MS);
+		if (endMs > startMs) intervals.push({ start: startMs, end: endMs });
 	}
 	return intervals;
-}
-
-/** Wall-clock fields of an instant, read in a given IANA timezone. */
-function getTzParts(
-	ms: number,
-	timeZone: string
-): { year: number; month: number; day: number; hour: number; minute: number; weekday: number } {
-	const dtf = new Intl.DateTimeFormat('en-US', {
-		timeZone,
-		hourCycle: 'h23',
-		year: 'numeric',
-		month: '2-digit',
-		day: '2-digit',
-		hour: '2-digit',
-		minute: '2-digit',
-		weekday: 'short',
-	});
-	const parts = dtf.formatToParts(new Date(ms));
-	const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
-	const weekdayMap: Record<string, number> = {
-		Sun: 0,
-		Mon: 1,
-		Tue: 2,
-		Wed: 3,
-		Thu: 4,
-		Fri: 5,
-		Sat: 6,
-	};
-	return {
-		year: Number(get('year')),
-		month: Number(get('month')),
-		day: Number(get('day')),
-		hour: Number(get('hour')),
-		minute: Number(get('minute')),
-		weekday: weekdayMap[get('weekday')] ?? 0,
-	};
-}
-
-/**
- * Epoch-ms for a wall-clock Y/M/D H:M in the given timezone. Computes the zone's
- * offset at that instant via {@link getTzParts} and corrects for it (one refine
- * pass handles the DST-boundary case well enough for slot proposals).
- */
-function wallClockToEpoch(
-	year: number,
-	month: number,
-	day: number,
-	hour: number,
-	minute: number,
-	timeZone: string
-): number {
-	const asUtc = Date.UTC(year, month - 1, day, hour, minute);
-	const parts = getTzParts(asUtc, timeZone);
-	const back = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute);
-	const offset = back - asUtc;
-	return asUtc - offset;
 }
 
 function overlapsBusy(start: number, end: number, busy: BusyInterval[]): boolean {
@@ -225,7 +99,7 @@ export function computeOpenSlots(busy: BusyInterval[], now: number, timeZone: st
 		if (probe.weekday === 0 || probe.weekday === 6) continue;
 		for (let hour = BUSINESS_START_HOUR; hour < BUSINESS_END_HOUR; hour++) {
 			const startMs = wallClockToEpoch(probe.year, probe.month, probe.day, hour, 0, timeZone);
-			const endMs = startMs + SLOT_MINUTES * 60 * 1000;
+			const endMs = startMs + SLOT_MS;
 			if (startMs <= now) continue;
 			if (overlapsBusy(startMs, endMs, busy)) continue;
 			slots.push({ start: startMs, end: endMs });
@@ -278,8 +152,8 @@ export async function fetchOpenSlots(deps: AvailabilityDeps = {}): Promise<strin
 		} finally {
 			clearTimeout(timer);
 		}
-		if (!body.includes('BEGIN:VEVENT')) return [];
-		const busy = parseIcsBusyIntervals(body);
+		if (!/BEGIN:VEVENT/i.test(body)) return [];
+		const busy = parseIcsBusyIntervals(body, timeZone);
 		const slots = computeOpenSlots(busy, now, timeZone);
 		return formatOpenSlots(slots, timeZone);
 	} catch {

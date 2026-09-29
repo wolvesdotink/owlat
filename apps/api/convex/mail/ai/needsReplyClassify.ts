@@ -22,7 +22,7 @@
  *      it never sends or modifies mail.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { z } from 'zod';
 import { internalAction } from '../../_generated/server';
 import { internal } from '../../_generated/api';
@@ -58,7 +58,10 @@ import {
 	shouldSampleDraftDelta,
 } from '../../inbox/askEagerness';
 import { SYSTEM_GUARD } from './promptGuards';
+import { logError } from '../../lib/runtimeLog';
+import type { needsReplyClarificationValidator } from '../../inbox/clarificationValidators';
 import { localizeQuestions } from '../../inbox/clarificationLocalize';
+import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 
 const refinementSchema = z.object({
 	// What the message IS (closed taxonomy, ai/replyIntent.ts). The queue
@@ -137,13 +140,7 @@ export const classifyThread = internalAction({
 			// rate limit. Throws when disabled/limited → deterministic flag stays.
 			await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 
-			const transcript = context.messages
-				.map(
-					(m) =>
-						`From: ${m.fromName || m.fromAddress}\nTo: ${m.toAddresses.join(', ')}\nSubject: ${m.subject}\n${m.excerpt}`
-				)
-				.join('\n\n---\n\n')
-				.slice(0, 12000);
+			const transcript = context.transcript; // side-labelled, built in getThreadContext
 
 			const { object, tokenUsage, modelUsed } = await runLlmObject({
 				// High-volume background classification → cheap "summarize" tier.
@@ -210,23 +207,36 @@ export const classifyThread = internalAction({
 				}
 			}
 
-			await ctx.runMutation(internal.mail.needsReply.applyResult, {
-				threadId: args.threadId,
-				expectedLatestMessageId: context.latestMessageId,
-				needsReply: decision.needsReply
-					? {
-							messageId: latestInbound.messageId,
-							source: 'llm',
-							urgency: object.urgency,
-							askSummary: object.askSummary?.trim().slice(0, 120) || undefined,
-							dueHint: normalizeDueHint(object.dueHint),
-							meetingIntent: normalizeMeetingIntent(object.meetingIntent, {
-								hasCalendarInvite: latestInbound.hasCalendarInvite,
-							}),
-							clarification,
-						}
-					: null,
-			});
+			// Narrow catch, distinct from the outer one: the outer catch also absorbs
+			// the expected aiGate refusal (AI off, rate-limited) and stays silent. A
+			// throw here is a real fault (e.g. the result no longer matching the
+			// applyResult validator), so log it and keep the heuristic flag. Only
+			// the first line: a Convex validation error goes on to print the whole
+			// argument, and that carries the ask summary and question text.
+			try {
+				await ctx.runMutation(internal.mail.needsReply.applyResult, {
+					threadId: args.threadId,
+					expectedLatestMessageId: context.latestMessageId,
+					needsReply: decision.needsReply
+						? {
+								messageId: latestInbound.messageId,
+								source: 'llm',
+								urgency: object.urgency,
+								askSummary: object.askSummary?.trim().slice(0, 120) || undefined,
+								dueHint: normalizeDueHint(object.dueHint),
+								meetingIntent: normalizeMeetingIntent(object.meetingIntent, {
+									hasCalendarInvite: latestInbound.hasCalendarInvite,
+								}),
+								clarification,
+							}
+						: null,
+				});
+			} catch (err) {
+				logError(
+					'[needsReplyClassify] applyResult failed:',
+					err instanceof Error ? err.message.split('\n', 1)[0] : 'non-Error thrown'
+				);
+			}
 		} catch {
 			// Fail-soft (AI disabled, rate-limited, provider down, bad output):
 			// the deterministic candidate flag persisted above stands.
@@ -236,19 +246,15 @@ export const classifyThread = internalAction({
 
 type SpendCtx = Parameters<typeof recordLlmSpend>[0];
 
-/** The persisted clarification shape (mirrors mail/needsReply.ts validator). */
-interface ClarificationFlag {
-	isNeeded: boolean;
-	questions: {
-		id: string;
-		slotType: string;
-		text: string;
-		attribution: string;
-		options?: string[];
-		translations?: { locale: string; text: string; options?: string[] }[];
-	}[];
-	askedAt: number;
-}
+/**
+ * The clarification refineClarification produces: the persisted
+ * `needsReply.clarification` shape (inbox/clarificationValidators.ts) before
+ * the owner answers, so without `answeredAt` and `draft`.
+ */
+type ClarificationFlag = Omit<
+	Infer<typeof needsReplyClarificationValidator>,
+	'answeredAt' | 'draft'
+>;
 
 /**
  * Decide whether a good reply to this thread is missing a fact only the owner
@@ -387,17 +393,11 @@ export const draftWithAnswers = internalAction({
 			);
 			if (!context || context.answers.length === 0) return;
 
-			// Personalize to the owner's learned voice when opted in; never blocks.
-			let voiceGuidance: string | null = null;
-			try {
-				const res = await ctx.runMutation(internal.mail.ai.voiceProfile.getGuidanceForMailbox, {
-					mailboxId: context.mailboxId,
-				});
-				voiceGuidance = res.guidance;
-			} catch {
-				voiceGuidance = null;
-			}
-			const voiceSection = voiceGuidance ? `\n\n${voiceGuidance}` : '';
+			// Personalize to the owner's learned voice (opt-in, fail-soft). No access
+			// check: a scheduled internal action for the flagged thread's own mailbox.
+			const voiceSection = formatVoiceSection(
+				await loadVoiceGuidance(ctx, { mailboxId: context.mailboxId, requireAccess: false })
+			);
 
 			const confirmed = context.answers.map((a) => `- ${a.question}\n  ${a.answer}`).join('\n');
 
