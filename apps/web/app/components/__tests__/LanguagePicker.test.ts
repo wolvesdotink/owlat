@@ -43,10 +43,14 @@ vi.mock('@owlat/api', () => {
 /** The `locales:` entries the i18n module is actually configured with. */
 function configuredLocales(): Array<{ code: string; language: string; name: string }> {
 	// The config has to register THIS list, or the picker is tested against one
-	// the app does not use. A build registers it with generated catalog files
-	// (i18n/completeCatalogs.ts), so only the `file` may differ.
-	const config = readFileSync(join(import.meta.dirname, '../../../nuxt.config.ts'), 'utf8');
-	expect(config).toMatch(/\blocales: i18nBuildLocales\(\),/);
+	// the app does not use. nuxt.config passes the i18n options kept in
+	// i18n/catalogModule.ts. A build registers the list with generated catalog
+	// files (i18n/completeCatalogs.ts), so only the `file` may differ.
+	const webRoot = join(import.meta.dirname, '../../..');
+	const config = readFileSync(join(webRoot, 'nuxt.config.ts'), 'utf8');
+	expect(config).toMatch(/\bi18n: I18N_OPTIONS,/);
+	const options = readFileSync(join(webRoot, 'i18n/catalogModule.ts'), 'utf8');
+	expect(options).toMatch(/\blocales: i18nBuildLocales\(\),/);
 	expect(i18nBuildLocales().map(({ file: _file, ...locale }) => locale)).toEqual(
 		I18N_LOCALES.map(({ file: _file, ...locale }) => locale)
 	);

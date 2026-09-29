@@ -1,8 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import type { PluginOption } from 'vite';
-import { I18N_MODULES } from './i18n/catalogModule';
-import { i18nBuildLocales } from './i18n/completeCatalogs';
+import { I18N_MODULES, I18N_OPTIONS } from './i18n/catalogModule';
 import { NUXT_LINK_DEFAULTS, publicAssetCompression } from './scripts/deliveryTuning';
 import { uiLayerIconNames } from './scripts/uiLayerIcons';
 
@@ -60,27 +59,8 @@ export default defineNuxtConfig({
 
 	modules: ['nuxt-security', '@nuxtjs/color-mode', '@nuxt/fonts', '@nuxt/icon', ...I18N_MODULES],
 
-	i18n: {
-		defaultLocale: 'en',
-		// `no_prefix`: the locale never appears in the URL. Every path in this app
-		// is either a dashboard route or a token link printed inside an already-sent
-		// email (/unsubscribe?token=…), so a locale segment would break live links
-		// and would have to be mirrored in every `routeRules` redirect above.
-		strategy: 'no_prefix',
-		// Message files live in i18n/locales/ (the module's `restructureDir`) and are
-		// loaded on demand, one catalog per visitor: a build registers each locale's
-		// boot catalog (translations completed from `en`, i18n/completeCatalogs.ts),
-		// and each route area's messages load with the area (i18n/catalogAreas.ts).
-		// Built from `@owlat/shared/appLocales` (see i18n/localeOptions.ts).
-		locales: i18nBuildLocales(),
-		// The whole UI is extracted, so a first-time visitor can safely be served
-		// the locale their browser asks for. The cookie is what makes the choice
-		// stick: with `no_prefix` the URL carries no locale, so without it every
-		// reload would re-run detection and undo the picker
-		// (components/LanguagePicker.vue) for anyone whose browser disagrees with
-		// them. `owlat-locale` is read back by that picker's `setLocale`.
-		detectBrowserLanguage: { useCookie: true, cookieKey: 'owlat-locale' },
-	},
+	// Locales, URL strategy and detection: i18n/catalogModule.ts.
+	i18n: I18N_OPTIONS,
 
 	fonts: {
 		// Variable wght axis required: the design system's weight-based emphasis
