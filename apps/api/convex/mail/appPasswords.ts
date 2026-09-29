@@ -238,6 +238,9 @@ export const verify = internalAction({
 				scope: args.scope,
 			}
 		);
+		// With personal mail turned off no credential can sign in, so a refusal
+		// says nothing about the password and is not counted as a failure.
+		if (candidates === 'feature_off') return null;
 		if (!candidates) {
 			await ctx.runMutation(internal.mail.authRateLimit.recordFailure, {
 				address: lowerAddress,
@@ -279,7 +282,7 @@ export const _candidatesByAddressAndPrefix = internalQuery({
 		// IMAP LOGIN and submission AUTH follow the personal-mail feature flags
 		// like every Postbox UI path: with personal mail off, no app password
 		// signs in.
-		if (!(await personalMailEnabled(ctx))) return null;
+		if (!(await personalMailEnabled(ctx))) return 'feature_off' as const;
 		// Bind auth to the live hosted mailbox, not an external read-only archive
 		// that a move may have left on the same address.
 		const mailbox = await resolveDeliverableMailbox(ctx, args.address);

@@ -473,9 +473,13 @@ describe('appPasswords.verify', () => {
 				address: f.address,
 				password: f.cleartext,
 				scope,
+				ip: '203.0.113.7',
 			});
 			expect(res).toBeNull();
 		}
+		// A refusal while the feature is off is not an authentication failure.
+		const failures = await t.run((ctx) => ctx.db.query('mailAuthFailures').collect());
+		expect(failures).toHaveLength(0);
 	});
 
 	it('returns null (looks like a failure) when the per-address throttle trips', async () => {
