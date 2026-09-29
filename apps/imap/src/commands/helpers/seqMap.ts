@@ -19,6 +19,8 @@
  */
 
 import { parseUidSet } from '../../parser.js';
+import type { CommandDeps, ConnectionState } from '../types.js';
+import { loadFolderUids } from './folderPaging.js';
 
 export interface SeqMap {
 	/** UIDs in ascending order; position i (0-based) is sequence number i+1. */
@@ -48,8 +50,18 @@ export function uidForSeq(map: SeqMap, seq: number): number | undefined {
 
 /** 1-based sequence number for a UID, or undefined when the UID is absent. */
 export function seqForUid(map: SeqMap, uid: number): number | undefined {
-	const idx = map.uids.indexOf(uid);
-	return idx === -1 ? undefined : idx + 1;
+	// Binary search: `uids` is ascending, and MOVE / STORE look up one UID per
+	// affected message.
+	let lo = 0;
+	let hi = map.uids.length - 1;
+	while (lo <= hi) {
+		const mid = (lo + hi) >>> 1;
+		const at = map.uids[mid] ?? 0;
+		if (at === uid) return mid + 1;
+		if (at < uid) lo = mid + 1;
+		else hi = mid - 1;
+	}
+	return undefined;
 }
 
 export interface ResolvedMessage {
@@ -70,11 +82,7 @@ export interface ResolvedMessage {
  * Out-of-range positions / absent UIDs are silently dropped, matching how
  * real servers ignore set members that no longer exist (RFC 3501 §6.4.8).
  */
-export function resolveSet(
-	map: SeqMap,
-	spec: string,
-	byUid: boolean,
-): ResolvedMessage[] {
+export function resolveSet(map: SeqMap, spec: string, byUid: boolean): ResolvedMessage[] {
 	if (map.uids.length === 0) return [];
 	const ranges = parseUidSet(spec, byUid ? maxUid(map) : maxSeq(map));
 	const seen = new Set<number>();
@@ -110,4 +118,22 @@ export function resolveSet(
 	}
 	out.sort((a, b) => a.seq - b.seq);
 	return out;
+}
+
+/**
+ * Resolve a message set against the SELECTed folder: load its UIDs, build the
+ * seq map and run {@link resolveSet}. Every command that takes a message set
+ * (FETCH, STORE, COPY, MOVE, UID EXPUNGE) goes through here, so a set can only
+ * ever address messages that exist in the folder and its cost is bounded by
+ * the folder's size, not by the numbers in the request.
+ */
+export async function resolveSelectedSet(
+	deps: CommandDeps,
+	state: ConnectionState,
+	set: string,
+	byUid: boolean
+): Promise<{ seqMap: SeqMap; resolved: ResolvedMessage[] }> {
+	const folderUids = await loadFolderUids(deps.convex, state.selected!.folderId);
+	const seqMap = buildSeqMap(folderUids);
+	return { seqMap, resolved: resolveSet(seqMap, set, byUid) };
 }

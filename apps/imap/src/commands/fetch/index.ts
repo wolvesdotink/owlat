@@ -4,8 +4,8 @@ import { logger } from '../../logger.js';
 import { parseList } from '../../parser.js';
 import type { ImapCommandModule } from '../types.js';
 import { asyncSession } from '../helpers/session.js';
-import { buildSeqMap, resolveSet } from '../helpers/seqMap.js';
-import { loadEnvelopes, loadFolderUids } from '../helpers/folderPaging.js';
+import { resolveSelectedSet } from '../helpers/seqMap.js';
+import { loadEnvelopes } from '../helpers/folderPaging.js';
 import { type FetchEnvelope, formatEnvelope, formatFlags, formatInternalDate } from './format.js';
 import { type BodySectionRequest, formatBodySection, parseBodySectionItem } from './bodySection.js';
 import { serverFailure } from '../helpers/replies.js';
@@ -68,9 +68,7 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 				// resolve the set against it. A non-UID set holds positions; a
 				// UID set holds UIDs. Either way `resolved` is ordered by true
 				// sequence number and carries the UID to fetch.
-				const folderUids = await loadFolderUids(deps.convex, state.selected!.folderId);
-				const seqMap = buildSeqMap(folderUids);
-				const resolved = resolveSet(seqMap, args.set, args.byUid);
+				const { resolved } = await resolveSelectedSet(deps, state, args.set, args.byUid);
 
 				if (resolved.length === 0) {
 					send(`${tag} OK ${label} completed`);

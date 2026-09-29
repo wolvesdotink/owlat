@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { buildSeqMap, resolveSet } from '../seqMap.js';
+import { buildSeqMap, resolveSet, seqForUid } from '../seqMap.js';
 
 const map = buildSeqMap([14, 5, 9]); // unsorted input → sorted to 5,9,14
 
@@ -57,5 +57,17 @@ describe('resolveSet (UID)', () => {
 
 	it('resolves * to the highest UID', () => {
 		expect(resolveSet(map, '*', true)).toEqual([{ uid: 14, seq: 3 }]);
+	});
+});
+
+describe('seqForUid', () => {
+	it('returns the 1-based position of a present UID', () => {
+		expect([5, 9, 14].map((uid) => seqForUid(map, uid))).toEqual([1, 2, 3]);
+	});
+
+	it('returns undefined for an absent UID or an empty map', () => {
+		expect(seqForUid(map, 7)).toBeUndefined();
+		expect(seqForUid(map, 20)).toBeUndefined();
+		expect(seqForUid(buildSeqMap([]), 5)).toBeUndefined();
 	});
 });
