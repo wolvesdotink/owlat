@@ -6,13 +6,15 @@
  * global cap, calls `acquire` before any hook runs, and calls `release` exactly
  * once for every granted slot when that connection closes (including one that
  * reset while its acquire was in flight). This module supplies only the
- * counter: one Redis key per peer IP, shared by every MTA replica, under a
+ * counter: one Redis key per peer, shared by every MTA replica, under a
  * listener-specific prefix (`mta:bounce:conn:` for port 25,
- * `mta:submission:conn:` for 587 and 465).
+ * `mta:submission:conn:` for 587 and 465). A peer is keyed with
+ * `ipRateLimitKey`: the address for IPv4, the /64 for IPv6, since one host can
+ * take a fresh source address from its /64 for every connection.
  */
 
 import type Redis from 'ioredis';
-import { unmapIpv4 } from '@owlat/shared/ipAddress';
+import { ipRateLimitKey } from '@owlat/shared/ipAddress';
 
 /**
  * Take one slot on `key`, or refuse when the IP is already at its limit.
@@ -79,11 +81,15 @@ interface ConnectionLimiter {
 }
 
 /**
- * Build the limiter for one listener. Keys are `${prefix}${ip}` with an
- * IPv4-mapped IPv6 peer unmapped, so a dual-stack socket and a v4 socket from
- * the same host share one counter. The key names and `ttlSeconds` are part of
- * the rolling-deploy contract: an old and a new replica must count the same
- * keys.
+ * Build the limiter for one listener. Keys are `${prefix}${ipRateLimitKey(ip)}`:
+ * an IPv4-mapped IPv6 peer is unmapped, so a dual-stack socket and a v4 socket
+ * from the same host share one counter, and an IPv6 peer counts under its /64
+ * (`2001:db8:1:2::/64`). The key names and `ttlSeconds` are part of the
+ * rolling-deploy contract: replicas that count the same keys share one limit.
+ * IPv4 keys are unchanged from the per-address scheme. While replicas that
+ * still key IPv6 per address run next to ones that key it per /64, an IPv6 peer
+ * is counted under both kinds of key, so its limit is briefly looser; every
+ * replica releases under the key it acquired, so no slot leaks.
  */
 export function createConnectionLimiter(
 	redis: Redis,
@@ -92,7 +98,7 @@ export function createConnectionLimiter(
 	maxPerIp: number
 ): ConnectionLimiter {
 	const key = (peer: LimiterPeer): string =>
-		`${prefix}${unmapIpv4(peer.remoteAddress || 'unknown')}`;
+		`${prefix}${ipRateLimitKey(peer.remoteAddress || 'unknown')}`;
 	return {
 		async acquire(peer) {
 			return (

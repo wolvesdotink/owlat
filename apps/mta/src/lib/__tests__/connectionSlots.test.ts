@@ -52,6 +52,19 @@ describe.each([
 		expect(await count('1.2.3.4')).toBe('2');
 	});
 
+	it('counts every IPv6 address of one /64 under one key', async () => {
+		const l = limiter(2);
+		expect(await l.acquire(peer('2001:db8:1:2::1'))).toBe(true);
+		expect(await l.acquire(peer('2001:db8:1:2:aaaa:bbbb:cccc:dddd'))).toBe(true);
+		expect(await l.acquire(peer('2001:db8:1:2::ffff'))).toBe(false);
+		expect(await count('2001:db8:1:2::/64')).toBe('2');
+		// A neighbouring /64 is a different client.
+		expect(await l.acquire(peer('2001:db8:1:3::1'))).toBe(true);
+
+		await l.release(peer('2001:db8:1:2::ffff:1'));
+		expect(await count('2001:db8:1:2::/64')).toBe('1');
+	});
+
 	it('keeps the counter window at the configured TTL', async () => {
 		await limiter(5).acquire(peer('1.2.3.4'));
 		const ttl = await redis.ttl(`${prefix}1.2.3.4`);
