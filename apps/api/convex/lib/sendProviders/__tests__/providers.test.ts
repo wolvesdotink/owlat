@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { SESClient, SendEmailCommand, SendRawEmailCommand } from '@aws-sdk/client-ses';
+import { SESClient, SendRawEmailCommand } from '@aws-sdk/client-ses';
 import { mtaSendProvider } from '../mta';
 import { sesSendProvider, _resetSesClientCacheForTests } from '../ses';
 import { resendSendProvider, _resetResendClientCacheForTests } from '../resend';
@@ -369,9 +369,10 @@ describe('sesSendProvider', () => {
 	});
 
 	// ────────────────────────────────────────────────────────────────────────
-	// FIX PR-17: the no-attachment path must emit raw MIME when custom headers
-	// are present, so List-Unsubscribe / List-Unsubscribe-Post (RFC 8058) are
-	// not silently dropped by SES `SendEmailCommand`.
+	// FIX PR-17: the no-attachment path must carry custom headers, so
+	// List-Unsubscribe / List-Unsubscribe-Post (RFC 8058) are not silently
+	// dropped the way SES `SendEmailCommand` drops them. Every SES send now
+	// goes out as composed raw MIME through `SendRawEmailCommand`.
 	// ────────────────────────────────────────────────────────────────────────
 	describe('no-attachment send with custom headers (FIX PR-17)', () => {
 		let sendSpy: ReturnType<typeof vi.spyOn>;
@@ -382,8 +383,8 @@ describe('sesSendProvider', () => {
 			vi.stubEnv('AWS_SES_SECRET_ACCESS_KEY', 'secret');
 			_resetSesClientCacheForTests();
 			// Capture the command object passed to SESClient.send without making a
-			// real AWS call. The real SendRawEmailCommand / SendEmailCommand
-			// classes are still constructed by the adapter, so `instanceof` holds.
+			// real AWS call. The real SendRawEmailCommand class is still
+			// constructed by the adapter, so `instanceof` holds.
 			sendSpy = vi
 				.spyOn(SESClient.prototype, 'send')
 				.mockResolvedValue({ MessageId: 'ses-msg-1' } as never);
@@ -412,9 +413,8 @@ describe('sesSendProvider', () => {
 			expect(sendSpy).toHaveBeenCalledTimes(1);
 
 			const command = sendSpy.mock.calls[0]![0];
-			// Must be the raw path, not the plain SendEmailCommand (which drops headers).
+			// Must be the raw path (the plain SendEmailCommand drops headers).
 			expect(command).toBeInstanceOf(SendRawEmailCommand);
-			expect(command).not.toBeInstanceOf(SendEmailCommand);
 
 			const rawData = (command as SendRawEmailCommand).input.RawMessage!.Data!;
 			const decoded = Buffer.from(rawData as Uint8Array).toString('utf-8');
@@ -425,17 +425,24 @@ describe('sesSendProvider', () => {
 			expect(decoded).toContain('List-Unsubscribe-Post: List-Unsubscribe=One-Click');
 		});
 
-		it('still uses plain SendEmailCommand when there are no headers and no attachments', async () => {
+		it('sends a header-less, attachment-less message as raw MIME too, with a text part', async () => {
 			const result = await sesSendProvider.sendEmail(SES_TRANSPORT, {
 				to: 'to@example.com',
 				from: 'from@example.com',
 				subject: 'hi',
 				html: '<p>hi</p>',
+				text: 'hi in plain text',
 			});
 
 			expect(result).toEqual({ success: true, id: 'ses-msg-1' });
 			expect(sendSpy).toHaveBeenCalledTimes(1);
-			expect(sendSpy.mock.calls[0]![0]).toBeInstanceOf(SendEmailCommand);
+			const command = sendSpy.mock.calls[0]![0];
+			expect(command).toBeInstanceOf(SendRawEmailCommand);
+			const rawData = (command as SendRawEmailCommand).input.RawMessage!.Data!;
+			const decoded = Buffer.from(rawData as Uint8Array).toString('utf-8');
+			expect(decoded).toMatch(/^Content-Type: text\/plain/im);
+			expect(decoded).toMatch(/^Message-ID: </im);
+			expect(decoded).toMatch(/^Date: /im);
 		});
 	});
 
@@ -501,6 +508,9 @@ describe('sesSendProvider', () => {
 			expect(dispatched.result.success).toBe(false);
 			if (!dispatched.result.success) {
 				expect(dispatched.result.errorCode).toBe(EmailErrorCode.AMBIGUOUS_TIMEOUT);
+				// SES has a feedback channel: the governed boundary parks this Send
+				// on SNS feedback instead of failing it outright.
+				expect(dispatched.result.acceptanceUnknown).toBe(true);
 			}
 		});
 

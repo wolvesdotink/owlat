@@ -47,7 +47,7 @@ import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
-import { findBlockedByEmail } from '../blockedEmails';
+import { findBlockedByEmail } from '../blockedEmails/lookup';
 import { isValidEmail, normalizeEmail } from '../lib/inputGuards';
 import { recordAuditLog } from '../lib/auditLog';
 import {

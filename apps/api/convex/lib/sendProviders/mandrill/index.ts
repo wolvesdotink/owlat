@@ -10,8 +10,10 @@
  * measurement plane knows this file exists.
  *
  * Shaped on `resend/index.ts` (the other HTTP-API ESP): a per-`transport.id`
- * config cache and a timeout wrapper around one single-attempt call. Two things
- * differ, and both are decisions rather than accidents:
+ * config cache and one single-attempt call. The HTTP plumbing (base URL,
+ * timeout, abort, error-body reading, key redaction) lives in `./client.ts`,
+ * shared with the sender-domain client. Two things differ from Resend, and both
+ * are decisions rather than accidents:
  *
  *  - **We send our own MIME.** Owlat's composition pipeline IS the product:
  *    first-party open/click tracking, RFC 8058 one-click unsubscribe headers,
@@ -24,15 +26,16 @@
  *    ramp gate is comparing two different rulers.
  *  - **A timeout is TERMINAL.** Mandrill's API has no idempotency key, so a
  *    timed-out request may or may not have been accepted. Retrying would
- *    double-deliver, which is why this returns `AMBIGUOUS_TIMEOUT` +
- *    `acceptanceUnknown` — the SES posture, never the Resend one.
+ *    double-deliver. The adapter only reports `AMBIGUOUS_TIMEOUT`; the catalog
+ *    (`deduplicatesOnIdempotencyKey: false`, `unknown-on-timeout`) is what makes
+ *    `sendProviderDispatch` return it terminal with `acceptanceUnknown`, the
+ *    same outcome SES and Emailit get from the same declaration.
  *
  * This module runs on the `'use node'` delivery worker: `@owlat/mail-message`
  * composes into a Node `Buffer`.
  */
 
 import { composeMessage } from '@owlat/mail-message';
-import { withTimeout } from '../../inputGuards';
 import {
 	EmailErrorCode,
 	type DispatchExtrasInput,
@@ -42,11 +45,13 @@ import {
 	type SendProviderModule,
 } from '../types';
 import { sendProviderCatalogEntry } from '../catalog';
+import { toComposeInput } from '../composeInput';
 import { transportEnvOptional, transportEnvRequired } from '../transportEnv';
 import type { SendTransportRecord } from '../transports';
+import { isAmbiguousPostDispatchTimeout } from '../errors';
+import { postMandrill } from './client';
 import {
 	categorizeMandrillError,
-	isAmbiguousMandrillTimeout,
 	parseRetryAfterMs,
 	MANDRILL_SEND_TIMEOUT_MESSAGE,
 	MANDRILL_SEND_TIMEOUT_MS,
@@ -54,18 +59,10 @@ import {
 
 export {
 	categorizeMandrillError,
-	isAmbiguousMandrillTimeout,
 	parseRetryAfterMs,
 	MANDRILL_SEND_TIMEOUT_MESSAGE,
 	MANDRILL_SEND_TIMEOUT_MS,
 } from './errors';
-
-/**
- * Mandrill's raw-message endpoint. Constant, not configurable: the EU region is
- * served from this same host, and a per-deployment base URL would be an
- * SSRF-shaped knob on a path that carries an API key in the request body.
- */
-const MANDRILL_SEND_RAW_URL = 'https://mandrillapp.com/api/1.0/messages/send-raw';
 
 /**
  * The instance-level configuration one Mandrill transport sends with.
@@ -182,55 +179,6 @@ function readRecipientResult(payload: unknown): EmailSendAttempt {
 	};
 }
 
-/**
- * Read Mandrill's `{ status: 'error', code, name, message }` failure body.
- *
- * `classifyText` is what the taxonomy reads and is DISCARDED afterwards;
- * `surfaced` is the only part that may reach `emailSends.errorMessage`, a log
- * sink, or an operator's screen. They are deliberately different values.
- *
- * The API KEY TRAVELS IN THE REQUEST BODY (Mandrill convention), so a proxy or
- * gateway that echoes what it received hands the credential straight back on
- * this path. Copying an unstructured body into the surfaced message would
- * therefore persist the key — which is precisely what
- * `__tests__/transportSecrets.test.ts` caught. Only the two STRUCTURED fields of
- * a body that actually parses as a Mandrill error are ever surfaced; anything
- * else is reported by HTTP status alone.
- */
-function readApiError(
-	body: string,
-	status: number
-): { surfaced: string; classifyText: string; name: string } {
-	try {
-		const parsed = JSON.parse(body) as Record<string, unknown>;
-		const name = typeof parsed['name'] === 'string' ? parsed['name'] : '';
-		const message = typeof parsed['message'] === 'string' ? parsed['message'] : '';
-		if (name || message) {
-			return {
-				surfaced: name ? `${name}: ${message}` : message,
-				classifyText: `${name}: ${message}`,
-				name,
-			};
-		}
-	} catch {
-		// Not JSON — a gateway error page, a truncated body, or an echo of our own
-		// request. Classify from the text, surface none of it.
-	}
-	return { surfaced: `Mandrill send failed (HTTP ${status})`, classifyText: body, name: '' };
-}
-
-/**
- * Strip the API key from anything about to leave the adapter.
- *
- * Defence in depth behind {@link readApiError}: that function already refuses to
- * surface a body it could not parse, but the STRUCTURED `message` field of a
- * body that does parse is still upstream-controlled text. The adapter is holding
- * the key at this point, so proving it absent costs one `split`.
- */
-function withoutApiKey(text: string, apiKey: string): string {
-	return apiKey.length > 0 ? text.split(apiKey).join('[redacted]') : text;
-}
-
 export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 	kind: 'mandrill',
 	retryDelays: sendProviderCatalogEntry('mandrill').retryDelays,
@@ -273,25 +221,7 @@ export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 		// failure here is terminal and unambiguous — nothing reached Mandrill.
 		let composed: ReturnType<typeof composeMessage>;
 		try {
-			composed = composeMessage({
-				from: params.from,
-				to: [params.to],
-				subject: params.subject,
-				html: params.html,
-				text: params.text,
-				replyTo: params.replyTo,
-				headers:
-					params.headers && Object.keys(params.headers).length > 0 ? params.headers : undefined,
-				attachments: params.attachments?.map((a) => ({
-					filename: a.filename,
-					contentType: a.contentType ?? 'application/octet-stream',
-					// `EmailAttachment.content` is runtime-neutral bytes (the isolate has no
-					// Buffer); this module is `'use node'`, so the composer's Buffer is
-					// available here at the boundary.
-					isInline: false,
-					data: Buffer.from(a.content),
-				})),
-			});
+			composed = composeMessage(toComposeInput(params));
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 			return { success: false, errorMessage, errorCode: categorizeMandrillError(errorMessage) };
@@ -324,49 +254,38 @@ export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 			...(extras?.returnPathDomain ? { return_path_domain: extras.returnPathDomain } : {}),
 		};
 
-		const abort = new AbortController();
 		try {
-			const response = await withTimeout(
-				fetch(MANDRILL_SEND_RAW_URL, {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					// Mandrill convention: the key travels in the JSON body, not a
-					// header. It therefore never reaches a URL or a log line.
-					body: JSON.stringify(body),
-					signal: abort.signal,
-				}),
-				MANDRILL_SEND_TIMEOUT_MS,
-				MANDRILL_SEND_TIMEOUT_MESSAGE
-			);
+			// The key travels in the JSON body (Mandrill convention); `postMandrill`
+			// redacts it from every error it returns or throws.
+			const result = await postMandrill('/messages/send-raw', body, {
+				timeoutMs: MANDRILL_SEND_TIMEOUT_MS,
+				timeoutMessage: MANDRILL_SEND_TIMEOUT_MESSAGE,
+				failureLabel: 'Mandrill send failed',
+			});
 
-			if (!response.ok) {
-				const text = await response.text().catch(() => '');
-				const { surfaced, classifyText } = readApiError(text, response.status);
-				const retryAfterMs = parseRetryAfterMs(response.headers.get('Retry-After'));
+			if (!result.ok) {
+				const retryAfterMs = parseRetryAfterMs(result.retryAfter);
 				return {
 					success: false,
-					errorMessage: withoutApiKey(surfaced, config.apiKey),
-					errorCode: this.categorizeError(classifyText, response.status),
+					errorMessage: result.error.surfaced,
+					errorCode: this.categorizeError(result.error.classifyText, result.status),
 					...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
 				};
 			}
 
-			return readRecipientResult((await response.json()) as unknown);
+			return readRecipientResult(result.payload);
 		} catch (error) {
-			// Redacted for the same reason as the `!response.ok` path: a JSON parse
-			// failure on a body that echoed our request would otherwise carry a
-			// snippet of it — including the key — into the error message.
-			const errorMessage = withoutApiKey(
-				error instanceof Error ? error.message : 'Unknown error',
-				config.apiKey
-			);
+			// Already redacted by `postMandrill`, including a JSON parse failure on
+			// a body that echoed our request.
+			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 			const errorName = error instanceof Error ? error.name : undefined;
 
 			// NEVER blind-retry a timeout. Mandrill has no idempotency surface,
 			// so a lost response may sit on top of an accepted (and delivered)
-			// message. `AMBIGUOUS_TIMEOUT` is not retryable, and `acceptanceUnknown`
-			// tells the governed boundary the outcome is genuinely undecided rather
-			// than a definite failure.
+			// message. Report `AMBIGUOUS_TIMEOUT`; `sendProviderDispatch` reads the
+			// catalog, returns it terminal and adds `acceptanceUnknown`, which tells
+			// the governed boundary the outcome is undecided rather than a definite
+			// failure.
 			//
 			// WHAT UNDECIDED COSTS, stated here because this is where it is created:
 			// the response we lost is the one that carried the `_id`, and `_id` is
@@ -377,12 +296,11 @@ export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 			// later evidence — and `delivery/sendCompletion.ts` ages it out at the
 			// delivery deadline as `PROVIDER_ACCEPTANCE_UNCONFIRMED` rather than
 			// claiming a delivery failure it cannot know about.
-			if (isAmbiguousMandrillTimeout(errorName, errorMessage)) {
+			if (isAmbiguousPostDispatchTimeout(errorName, errorMessage, MANDRILL_SEND_TIMEOUT_MESSAGE)) {
 				return {
 					success: false,
 					errorMessage,
 					errorCode: EmailErrorCode.AMBIGUOUS_TIMEOUT,
-					acceptanceUnknown: true,
 				};
 			}
 
@@ -391,10 +309,6 @@ export const mandrillSendProvider: SendProviderModule<'mandrill'> = {
 				errorMessage,
 				errorCode: this.categorizeError(`${errorName ?? ''}: ${errorMessage}`),
 			};
-		} finally {
-			// Promise.race cannot cancel its losing branch. Abort the request when
-			// the deadline wins so it does not continue in the background.
-			abort.abort();
 		}
 	},
 

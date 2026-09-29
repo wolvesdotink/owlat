@@ -17,12 +17,6 @@ vi.mock('@aws-sdk/client-ses', () => ({
 	SESClient: class {
 		send = sendMock;
 	},
-	SendEmailCommand: class {
-		input: unknown;
-		constructor(input: unknown) {
-			this.input = input;
-		}
-	},
 	SendRawEmailCommand: class {
 		input: unknown;
 		constructor(input: unknown) {
@@ -101,6 +95,25 @@ describe('SES raw-MIME header injection', () => {
 		const headerBlock = capturedHeaderBlock();
 		expect(headerBlock).toMatch(/^From: from@example\.com$/im);
 		expect(headerBlock).toMatch(/^To: to@example\.com$/im);
+	});
+
+	it('strips CRLF-smuggled headers from From, To and a custom header name', async () => {
+		const result = await sesSendProvider.sendEmail(SES_TRANSPORT, {
+			to: 'to@example.com\r\nBcc: to-smuggled@evil.com',
+			from: 'from@example.com\r\nBcc: from-smuggled@evil.com',
+			subject: 'hello\r\nBcc: subject-smuggled@evil.com',
+			html: '<p>hi</p>',
+			headers: { 'X-Name\r\nBcc: name-smuggled@evil.com\r\nX-Tail': 'v' },
+		});
+
+		expect(result).toEqual({ success: true, id: 'ses-msg-1' });
+		const raw = capturedRaw();
+		expect(raw).not.toMatch(/^Bcc:/im);
+		// No header line starts with anything but a field name or folding
+		// whitespace: a smuggled line would begin mid-header-block.
+		for (const line of capturedHeaderBlock().split(/\r\n/)) {
+			expect(line).toMatch(/^([!-9;-~]+:|[ \t])/);
+		}
 	});
 
 	it('preserves a benign attachment filename intact', async () => {

@@ -16,10 +16,12 @@ export enum EmailErrorCode {
 	/**
 	 * The send request timed out AFTER it was put on the wire, so it is
 	 * ambiguous whether the provider already accepted (and delivered) it.
-	 * NOT retryable: on a provider with no server-side dedup (SES), a retry
-	 * of an already-accepted request would double-deliver. Used only where a
-	 * surviving retry cannot be de-duped at the provider (see the SES adapter;
-	 * MTA/Resend instead thread an idempotency key and stay retryable).
+	 * Adapters only REPORT this fact (see {@link isAmbiguousPostDispatchTimeout});
+	 * `sendProviderDispatch` decides what it means from the catalog. It retries
+	 * only a kind that deduplicates on an idempotency key AND only when the
+	 * extras carry one; otherwise the result is terminal, and a kind declaring
+	 * `acceptanceSemantics: 'unknown-on-timeout'` gets `acceptanceUnknown: true`
+	 * stamped on it so the governed boundary can park the Send.
 	 */
 	AMBIGUOUS_TIMEOUT = 'AMBIGUOUS_TIMEOUT',
 	/**
@@ -85,10 +87,60 @@ export function isRetryableErrorCode(code: EmailErrorCode): boolean {
 	return code === EmailErrorCode.RATE_LIMIT || code === EmailErrorCode.SERVER_ERROR;
 }
 
+/** Lower bound on any provider- or MTA-supplied retry delay. */
+export const RETRY_AFTER_MIN_MS = 1_000;
+/** Upper bound on any provider- or MTA-supplied retry delay. */
+export const RETRY_AFTER_MAX_MS = 3_600_000;
+/**
+ * The wait for a deferral WE decided locally (a missing MTA configuration, an
+ * unreadable decision answer, a lease we could not mint) rather than one a
+ * receiver or the MTA asked for.
+ */
+export const LOCAL_DEFER_MS = 60_000;
+
+/**
+ * Bound a retry delay to `[RETRY_AFTER_MIN_MS, RETRY_AFTER_MAX_MS]`. The one
+ * clamp every site that turns a remote answer into a schedule goes through.
+ * An absent or non-finite value takes `fallbackMs`, which is clamped as well.
+ */
+export function clampRetryAfterMs(ms: number | undefined, fallbackMs: number): number {
+	const value = ms !== undefined && Number.isFinite(ms) ? ms : fallbackMs;
+	return Math.min(Math.max(value, RETRY_AFTER_MIN_MS), RETRY_AFTER_MAX_MS);
+}
+
 /** Parse a bounded RFC 9110 Retry-After delta-seconds value. */
 export function parseRetryAfterDeltaMs(headerValue: string | null): number | undefined {
 	if (headerValue === null) return undefined;
 	const seconds = Number(headerValue.trim());
 	if (!Number.isFinite(seconds) || seconds <= 0) return undefined;
-	return Math.min(Math.max(Math.round(seconds * 1_000), 1_000), 3_600_000);
+	// `seconds` is finite and positive, so the only non-finite product is an
+	// overflow: an absurdly long wait, which the upper bound already answers.
+	return clampRetryAfterMs(Math.round(seconds * 1_000), RETRY_AFTER_MAX_MS);
+}
+
+/**
+ * Was this send failure an ambiguous post-dispatch timeout, i.e. did the
+ * request possibly reach the provider before we stopped waiting for the answer?
+ *
+ * Covers the adapter's own `withTimeout` `sentinel` message plus the runtime's
+ * native timeout/abort signals. A definite refusal that never reached
+ * acceptance (`ECONNREFUSED`, an explicit 5xx body) is not ambiguous and must
+ * stay the retryable `SERVER_ERROR`: broadening this predicate would turn safe
+ * retries into dropped mail.
+ */
+export function isAmbiguousPostDispatchTimeout(
+	name: string | undefined,
+	message: string,
+	sentinel: string
+): boolean {
+	if (message === sentinel) return true;
+	const lowerName = (name ?? '').toLowerCase();
+	if (lowerName === 'timeouterror' || lowerName === 'aborterror') return true;
+	const lower = message.toLowerCase();
+	return (
+		lower.includes('timed out') ||
+		lower.includes('timeout') ||
+		lower.includes('etimedout') ||
+		lower.includes('socket hang up')
+	);
 }

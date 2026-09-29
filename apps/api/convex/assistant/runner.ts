@@ -26,6 +26,7 @@ import { internal } from '../_generated/api';
 import { runLlmStream, DEFAULT_MAX_TOOL_STEPS } from '../lib/llm/dispatch';
 import { resolveLanguageModelForUserText } from '../lib/llmProvider';
 import { recordLlmSpend } from '../analytics/llmUsage';
+import { createThrottledStreamFlusher } from '../lib/llm/streamFlusher';
 import { buildAssistantTools } from './tools';
 import { buildAssistantSystemPrompt, clampText, type AssistantSurface } from './prompt';
 import { assistantToolCallValidator } from '../lib/convexValidators';
@@ -33,7 +34,11 @@ import { assistantToolCallValidator } from '../lib/convexValidators';
 type ToolCall = Infer<typeof assistantToolCallValidator>;
 type Status = 'complete' | 'stopped' | 'error';
 
-/** Min wall-clock between streaming row writes (caps write amplification). */
+/**
+ * Min wall-clock between streaming row writes. A turn can run for a minute of
+ * tool calls and every write re-renders the whole conversation, so this is
+ * coarser than the composer's revise stream (mail/ai/reviseDraft.ts).
+ */
 const FLUSH_INTERVAL_MS = 250;
 const MAX_TOOL_RESULT_JSON = 4000;
 const MAX_TOOL_ARGS_JSON = 1000;
@@ -83,22 +88,12 @@ async function streamAssistantTurn(
 	}
 ): Promise<void> {
 	const tools = await buildAssistantTools(ctx);
-	const controller = new AbortController();
-	let text = '';
 	const toolCalls: ToolCall[] = [];
-	let lastFlushAt = 0;
-	let stopRequested = false;
-
-	const flush = async (force: boolean): Promise<void> => {
-		const now = Date.now();
-		if (!force && now - lastFlushAt < FLUSH_INTERVAL_MS) return;
-		lastFlushAt = now;
-		const res = await opts.patch(text, toolCalls.length ? toolCalls : undefined);
-		if (res.stop) {
-			stopRequested = true;
-			controller.abort();
-		}
-	};
+	// Every write carries the tool cards too; a tool event flushes at once.
+	const stream = createThrottledStreamFlusher({
+		intervalMs: FLUSH_INTERVAL_MS,
+		patch: (text) => opts.patch(text, toolCalls.length ? toolCalls : undefined),
+	});
 
 	try {
 		const result = await runLlmStream({
@@ -108,11 +103,8 @@ async function streamAssistantTurn(
 			tools,
 			maxSteps: DEFAULT_MAX_TOOL_STEPS,
 			temperature: 0.3,
-			abortSignal: controller.signal,
-			onTextDelta: async (full) => {
-				text = full;
-				await flush(false);
-			},
+			abortSignal: stream.signal,
+			onTextDelta: stream.onText,
 			onToolCall: async (c) => {
 				toolCalls.push({
 					toolCallId: c.toolCallId,
@@ -120,7 +112,7 @@ async function streamAssistantTurn(
 					argsJson: safeJson(c.input, MAX_TOOL_ARGS_JSON),
 					status: 'running',
 				});
-				await flush(true);
+				await stream.flush(true);
 			},
 			onToolResult: async (r) => {
 				const tc = toolCalls.find((x) => x.toolCallId === r.toolCallId);
@@ -128,7 +120,7 @@ async function streamAssistantTurn(
 					tc.status = 'done';
 					tc.resultJson = safeJson(r.output, MAX_TOOL_RESULT_JSON);
 				}
-				await flush(true);
+				await stream.flush(true);
 			},
 			onToolError: async (e) => {
 				const tc = toolCalls.find((x) => x.toolCallId === e.toolCallId);
@@ -136,21 +128,21 @@ async function streamAssistantTurn(
 					tc.status = 'error';
 					tc.resultJson = clampText(String(e.error), 500);
 				}
-				await flush(true);
+				await stream.flush(true);
 			},
 		});
 
 		await recordLlmSpend(ctx, opts.feature, result.tokenUsage, result.modelUsed);
 		await opts.finalize({
-			text: result.text || text,
-			status: stopRequested || result.aborted ? 'stopped' : 'complete',
+			text: result.text || stream.text,
+			status: stream.stopRequested || result.aborted ? 'stopped' : 'complete',
 			model: result.modelUsed,
 			tokenUsage: result.tokenUsage,
 			toolCalls: toolCalls.length ? toolCalls : undefined,
 		});
 	} catch (error) {
 		await opts.finalize({
-			text,
+			text: stream.text,
 			status: 'error',
 			errorMessage: clampText(String((error as { message?: unknown })?.message ?? error), 300),
 			toolCalls: toolCalls.length ? toolCalls : undefined,

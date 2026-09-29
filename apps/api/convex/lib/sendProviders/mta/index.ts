@@ -37,6 +37,7 @@ import {
 	type SendProviderModule,
 	type SystemMailExtrasInput,
 } from '../types';
+import { clampRetryAfterMs, LOCAL_DEFER_MS } from '../errors';
 import { sendProviderCatalogEntry } from '../catalog';
 import { transportEnvOptional } from '../transportEnv';
 import { sendTransportEnvName, type SendTransportRecord } from '../transports';
@@ -68,7 +69,7 @@ export async function resolveMtaRoutingDecision(
 ): Promise<MtaRoutingDecision> {
 	const baseUrl = transportEnvOptional(transport, 'MTA_API_URL');
 	const apiKey = transportEnvOptional(transport, 'MTA_API_KEY');
-	if (!baseUrl || !apiKey) return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
+	if (!baseUrl || !apiKey) return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
 	const controller = new AbortController();
 	const timeout = setTimeout(() => controller.abort(), MTA_DECISION_TIMEOUT_MS);
 	try {
@@ -78,10 +79,10 @@ export async function resolveMtaRoutingDecision(
 			body: JSON.stringify({ ...input, ipPool: input.ipPool ?? 'transactional' }),
 			signal: controller.signal,
 		});
-		if (!response.ok) return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
+		if (!response.ok) return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
 		const value = (await response.json()) as unknown;
 		if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-			return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
+			return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
 		}
 		const result = value as Record<string, unknown>;
 		if (result['decision'] === 'mta') {
@@ -142,10 +143,10 @@ export async function resolveMtaRoutingDecision(
 			return {
 				kind: 'defer',
 				origin: deferOrigin,
-				retryAfterMs:
-					typeof retryAfterMs === 'number' && Number.isFinite(retryAfterMs)
-						? Math.min(Math.max(retryAfterMs, 1_000), 60 * 60 * 1000)
-						: 60_000,
+				retryAfterMs: clampRetryAfterMs(
+					typeof retryAfterMs === 'number' ? retryAfterMs : undefined,
+					LOCAL_DEFER_MS
+				),
 			};
 		}
 		// THE UNRECOGNISED ANSWER, deliberately beside the malformed-body and
@@ -156,9 +157,9 @@ export async function resolveMtaRoutingDecision(
 		// `MTA_DEFER_REASON_ORIGIN` with an origin beside it — the two sides change
 		// together, which is the safe direction (a reason nobody vouched for cannot
 		// halt a cell) but never a silent one.
-		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
+		return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
 	} catch {
-		return { kind: 'defer', retryAfterMs: 60_000, origin: 'local' };
+		return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
 	} finally {
 		clearTimeout(timeout);
 	}
@@ -305,7 +306,7 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 						const code = isMtaSendErrorCode(parsed['code']) ? parsed['code'] : undefined;
 						intakePending = code === 'INTAKE_PENDING';
 						if (typeof parsed['retryAfterMs'] === 'number') {
-							retryAfterMs = Math.min(Math.max(parsed['retryAfterMs'], 1_000), 3_600_000);
+							retryAfterMs = clampRetryAfterMs(parsed['retryAfterMs'], LOCAL_DEFER_MS);
 						}
 					} catch {
 						// The categorizer still handles a non-JSON 409 conservatively.

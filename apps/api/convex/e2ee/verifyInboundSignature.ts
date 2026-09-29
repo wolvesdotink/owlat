@@ -9,8 +9,8 @@
  *
  *   extraction (`@owlat/mail-canon` byte-exact RFC 3156 first part, or the
  *   clearsigned armor straight from the body)
- *     → sender-key resolution (the SAME TOFU ladder sealed mail uses, but
- *       WKD-first: the instance-manifest fetch is skipped)
+ *     → sender-key resolution (`e2ee/senderKey.ts`, the TOFU ladder sealed
+ *       mail also uses, run WKD-first: the instance-manifest fetch is skipped)
  *     → the detached-verify primitive (`manifest.ts:verifyManifest`'s shape)
  *     → an honest {@link InboundSignatureInfo} verdict.
  *
@@ -28,14 +28,13 @@
 import { v, type Infer } from 'convex/values';
 import * as openpgp from 'openpgp';
 import { internalAction, type ActionCtx } from '../_generated/server';
-import { internal } from '../_generated/api';
 import { extractRfc3156SignedPart } from '@owlat/mail-canon';
 import {
 	extractClearsignedBlock,
 	isClearsigned,
 	isSignedPgpMime,
 } from '@owlat/shared/secureMessage';
-import { shouldRefetch } from './discovery';
+import { resolveSenderVerificationKey } from './senderKey';
 import { inboundSignatureInfoValidator, type InboundSignatureInfo } from './inboundSignature';
 
 /** The outcome of one low-level verify attempt. Bytes + a key in, structured out. */
@@ -133,60 +132,6 @@ export async function verifyClearsignedBody(
 	}
 }
 
-/** How the sender's verification key resolved through the TOFU ladder. */
-type ResolvedSenderKey =
-	| { status: 'found'; publicKeyArmored: string; keySource: 'pinned' | 'wkd' | 'manifest' }
-	| { status: 'keyChanged' }
-	| { status: 'notFound' };
-
-/**
- * Resolve the sender's verification key through the SAME TOFU ladder sealed
- * mail uses (`e2ee/open.ts:resolvePinnedSenderKey`), extended with the key's
- * SOURCE for the persisted verdict and running discovery WKD-first
- * (`skipManifest`). Fail-CLOSED throughout: a `keyChanged` conflict is
- * NEVER silently re-pinned, and any discovery error resolves to `notFound`
- * rather than a false claim.
- */
-async function resolveSenderKeyWithSource(
-	ctx: ActionCtx,
-	from: string
-): Promise<ResolvedSenderKey> {
-	const cached = await ctx.runQuery(internal.e2ee.recipientKeys.getCached, { address: from });
-	if (cached && cached.outcome === 'trusted' && cached.pinnedPublicKeyArmored) {
-		return {
-			status: 'found',
-			publicKeyArmored: cached.pinnedPublicKeyArmored,
-			keySource: 'pinned',
-		};
-	}
-	// A conflicting pin must stay UNVERIFIED until an admin resolves it.
-	if (cached && cached.outcome === 'keyChanged') return { status: 'keyChanged' };
-	// A fresh negative (notFound within TTL) would only be answered from cache.
-	if (cached && !shouldRefetch(cached, Date.now())) return { status: 'notFound' };
-
-	// First contact (or an expired negative cache): discover once, then re-read.
-	// Discovery persists the TOFU pin exactly as sealed mail does (and is the
-	// same flag-gated no-op when Sealed Mail is off).
-	try {
-		await ctx.runAction(internal.e2ee.discovery.discoverRecipientKey, {
-			address: from,
-			skipManifest: true,
-		});
-	} catch {
-		return { status: 'notFound' };
-	}
-	const rediscovered = await ctx.runQuery(internal.e2ee.recipientKeys.getCached, { address: from });
-	if (rediscovered && rediscovered.outcome === 'trusted' && rediscovered.pinnedPublicKeyArmored) {
-		return {
-			status: 'found',
-			publicKeyArmored: rediscovered.pinnedPublicKeyArmored,
-			keySource: rediscovered.source ?? 'wkd',
-		};
-	}
-	if (rediscovered && rediscovered.outcome === 'keyChanged') return { status: 'keyChanged' };
-	return { status: 'notFound' };
-}
-
 /** Result of the verification attempt, consumed by `mail/delivery.ts`. */
 const verifyResultValidator = v.union(
 	// Not structurally signed — the plaintext path is unchanged (no record written).
@@ -243,7 +188,9 @@ async function verify(
 	detached: boolean,
 	from: string
 ): Promise<InboundSignatureInfo> {
-	const resolved = await resolveSenderKeyWithSource(ctx, from);
+	// WKD-first: an arbitrary PGP sender is rarely an Owlat instance, so the
+	// manifest fetch buys nothing (rationale at `discoverKeyForAddress`).
+	const resolved = await resolveSenderVerificationKey(ctx, from, { skipManifest: true });
 	if (resolved.status === 'keyChanged') {
 		// Pin refusal (fail-closed, identical to sealed mail): the observed sender
 		// key conflicts with the TOFU pin, so no verification claim is possible.

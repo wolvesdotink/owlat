@@ -59,8 +59,7 @@
 
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
-import { internal } from '../_generated/api';
-import { campaignEmailPool } from './workpool';
+import { enqueueUntrackedProbe } from './governedEnqueue';
 import type { WorkerEnvelopeInput } from './workerEnvelope';
 import { loadSeedAccounts } from '../analytics/seedAccounts';
 import { SEED_PROBE_RETENTION_MS } from '../schema/seedPlacement';
@@ -155,9 +154,10 @@ export function newSeedProbeId(): string {
  * Enqueue one shadow copy per seed mailbox and write its ledger row, INSIDE
  * the caller's transaction (the campaign enqueue mutation).
  *
- * Deliberately enqueued WITHOUT the `onComplete` / `sendRef` wiring every real
- * Send carries: there is no Send to complete, so the lifecycle — and with it
- * every analytics and reputation denominator — is never entered.
+ * Deliberately enqueued through `enqueueUntrackedProbe`, WITHOUT the
+ * `onComplete` / `sendRef` wiring `enqueueGovernedSend` gives every real Send:
+ * there is no Send to complete, so the lifecycle — and with it every analytics
+ * and reputation denominator — is never entered.
  *
  * IDEMPOTENT per (organization, campaign, A/B variant): the campaign walker
  * fans out over pages and time zones and calls this once per page, so the
@@ -221,9 +221,7 @@ export async function enqueueSeedShadowCopies(
 			probeId,
 			probeRef,
 		});
-		await campaignEmailPool.enqueueAction(ctx, internal.delivery.worker.sendSingleEmail, {
-			envelopeInput: shadow,
-		});
+		await enqueueUntrackedProbe(ctx, 'campaign', shadow);
 	}
 
 	return { enqueued: seeds.length };

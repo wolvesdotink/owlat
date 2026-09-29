@@ -17,7 +17,6 @@ import { bounceTypeValidator } from './lib/convexValidators';
 import { blockReasonValidator } from './lib/literalValidators';
 
 import { findBlockedByEmail } from './blockedEmails/lookup';
-export { findBlockedByEmail } from './blockedEmails/lookup';
 
 // Derive the polymorphic block `sourceType` from whichever source-send id was
 // supplied (emailSend vs transactionalSend), or undefined for a manual block.

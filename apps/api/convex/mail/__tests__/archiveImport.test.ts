@@ -232,6 +232,34 @@ describe('archive import', () => {
 		expect(status?.messagesImported).toBe(1);
 	});
 
+	it('stops as failed when the mailbox fills up, and never goes past its quota', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailboxWithFolders(t);
+		// Room for one ~1.2 KB message, not two.
+		const quotaBytes = 1_800;
+		await t.run(async (ctx) => {
+			await ctx.db.patch(mailboxId, { quotaBytes });
+		});
+		const body = 'x'.repeat(1_000);
+		const archive =
+			takeoutMessage({ messageId: 'one@x', subject: 'One', body }) +
+			takeoutMessage({ messageId: 'two@x', subject: 'Two', body }) +
+			takeoutMessage({ messageId: 'three@x', subject: 'Three', body });
+
+		await importArchive(t, mailboxId, archive);
+
+		const status = await t.query(api.mail.archiveImport.getStatus, { mailboxId });
+		expect(status?.status).toBe('failed');
+		expect(status?.lastError).toBe(
+			'This mailbox is full. The import stopped before the rest of the archive.'
+		);
+		expect(status?.messagesImported).toBe(1);
+		expect((await messagesIn(t, mailboxId)).map((m) => m.subject)).toEqual(['One']);
+		const mailbox = await t.run(async (ctx) => await ctx.db.get(mailboxId));
+		expect(mailbox?.usedBytes).toBeGreaterThan(0);
+		expect(mailbox?.usedBytes).toBeLessThanOrEqual(quotaBytes);
+	});
+
 	it('imports a single .eml as one message', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailboxWithFolders(t);

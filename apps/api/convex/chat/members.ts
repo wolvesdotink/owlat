@@ -17,8 +17,8 @@ import {
 	assertChatTargetsAreOrgMembers,
 	getMembership,
 	getRoomOrThrow,
-	loadProfileSummary,
 } from './_helpers';
+import { loadProfileSummary } from '../lib/userProfiles';
 import { chatMemberRoleValidator } from '../lib/literalValidators';
 
 /**

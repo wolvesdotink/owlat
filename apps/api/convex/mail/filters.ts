@@ -23,6 +23,11 @@ import { requireMailboxAccess } from './permissions';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { removeFilterRunJob } from './filterRun';
 import { evalMessageFromRow, filterConditionsMatch } from './filtersEval';
+import {
+	mailFilterActionValidator,
+	mailFilterConditionValidator,
+	mailFilterMatchTypeValidator,
+} from '../schema/mailRules';
 
 // ── Public CRUD ───────────────────────────────────────────────────
 
@@ -37,51 +42,6 @@ export const list = publicQuery({
 			.withIndex('by_mailbox_and_priority', (q) => q.eq('mailboxId', args.mailboxId))
 			.collect(); // bounded: one mailbox's filters
 	},
-});
-
-const conditionValidator = v.object({
-	field: v.union(
-		v.literal('from'),
-		v.literal('to'),
-		v.literal('cc'),
-		v.literal('subject'),
-		v.literal('body'),
-		v.literal('header'),
-		v.literal('size'),
-		v.literal('hasAttachment')
-	),
-	headerName: v.optional(v.string()),
-	op: v.union(
-		v.literal('contains'),
-		v.literal('notContains'),
-		v.literal('equals'),
-		v.literal('matches'),
-		v.literal('greaterThan'),
-		v.literal('lessThan'),
-		v.literal('isTrue')
-	),
-	value: v.optional(v.string()),
-	valueNumber: v.optional(v.number()),
-});
-
-/** One grouping level: `all` AND-s the conditions, `any` OR-s them. */
-const matchTypeValidator = v.union(v.literal('all'), v.literal('any'));
-
-const actionValidator = v.object({
-	type: v.union(
-		v.literal('moveToFolder'),
-		v.literal('addLabel'),
-		v.literal('markRead'),
-		v.literal('markFlagged'),
-		v.literal('forward'),
-		v.literal('delete'),
-		v.literal('pinToSection'),
-		v.literal('discard')
-	),
-	folderId: v.optional(v.id('mailFolders')),
-	labelId: v.optional(v.id('mailLabels')),
-	forwardTo: v.optional(v.string()),
-	sectionName: v.optional(v.string()),
 });
 
 /**
@@ -127,9 +87,9 @@ export const create = postboxMutation({
 		name: v.string(),
 		isEnabled: v.optional(v.boolean()),
 		priority: v.optional(v.number()),
-		conditions: v.array(conditionValidator),
-		actions: v.array(actionValidator),
-		matchType: v.optional(matchTypeValidator),
+		conditions: v.array(mailFilterConditionValidator),
+		actions: v.array(mailFilterActionValidator),
+		matchType: v.optional(mailFilterMatchTypeValidator),
 		stopProcessing: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
@@ -195,9 +155,9 @@ export const update = postboxMutation({
 		name: v.optional(v.string()),
 		isEnabled: v.optional(v.boolean()),
 		priority: v.optional(v.number()),
-		conditions: v.optional(v.array(conditionValidator)),
-		actions: v.optional(v.array(actionValidator)),
-		matchType: v.optional(matchTypeValidator),
+		conditions: v.optional(v.array(mailFilterConditionValidator)),
+		actions: v.optional(v.array(mailFilterActionValidator)),
+		matchType: v.optional(mailFilterMatchTypeValidator),
 		stopProcessing: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
@@ -302,8 +262,8 @@ interface FilterPreviewMatch {
 export const preview = publicQuery({
 	args: {
 		mailboxId: v.id('mailboxes'),
-		conditions: v.array(conditionValidator),
-		matchType: v.optional(matchTypeValidator),
+		conditions: v.array(mailFilterConditionValidator),
+		matchType: v.optional(mailFilterMatchTypeValidator),
 		limit: v.optional(v.number()),
 	},
 	handler: async (

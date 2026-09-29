@@ -30,9 +30,13 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { throwForbidden } from '../_utils/errors';
 import { requireMailboxAccess } from './permissions';
-import { insertDeliveredMessage } from './deliveryPipeline/insert';
-import { mailMessageAttachmentValidator } from '../lib/mailContentValidators';
-import { canonicalMessageId } from '../lib/messageId';
+import {
+	dropStagedBlobs,
+	findDuplicateInMailbox,
+	insertDeliveredMessage,
+	isOverQuota,
+} from './deliveryPipeline/insert';
+import { deliveredEnvelopeFields, storedBodyFields } from './deliveryPipeline/ingestFields';
 import { resolveLabelPath } from './labelsTree';
 import { completedOrFailedValidator } from '../lib/convexValidators';
 import { archiveFormatValidator } from '../lib/literalValidators';
@@ -279,53 +283,44 @@ export const finishJob = internalMutation({
 });
 
 /**
+ * What one archive insert did. `overQuota` means the mailbox is full: nothing
+ * was stored, and the runner stops the job rather than skip the rest of the
+ * archive one message at a time.
+ */
+export type ArchiveIngestOutcome = {
+	imported: boolean;
+	skipped: boolean;
+	labelsCreated: number;
+	overQuota?: true;
+};
+
+/**
  * Insert one parsed archive message.
  *
  * Deduped on Message-ID within the mailbox, so re-importing an archive (or
  * re-reading the bytes after a failed run) adds nothing twice. Gmail Takeout's
  * `X-Gmail-Labels` decides the folder, the read/star flags and the labels —
  * see `@owlat/shared/gmailTakeout`; an archive without that header lands
- * wherever the caller's `folderRole` says.
+ * wherever the caller's `folderRole` says. A message that would take the
+ * mailbox past its quota is refused with `overQuota`, the same limit hosted
+ * delivery applies.
  */
 export const ingestArchiveMessage = internalMutation({
 	args: {
 		importId: v.id('mailArchiveImports'),
 		folderRole: folderRoleValidator,
-		rawStorageId: v.id('_storage'),
-		rawSize: v.number(),
-		from: v.string(),
-		to: v.array(v.string()),
-		cc: v.array(v.string()),
-		bcc: v.array(v.string()),
-		replyTo: v.optional(v.string()),
-		subject: v.string(),
-		textBodyInline: v.optional(v.string()),
-		textBodyStorageId: v.optional(v.id('_storage')),
-		htmlBodyInline: v.optional(v.string()),
-		htmlBodyStorageId: v.optional(v.id('_storage')),
-		snippet: v.optional(v.string()),
-		searchBody: v.optional(v.string()),
-		messageId: v.string(),
-		inReplyTo: v.optional(v.string()),
-		references: v.optional(v.string()),
-		receivedAt: v.number(),
-		attachments: v.array(mailMessageAttachmentValidator),
+		...deliveredEnvelopeFields,
+		...storedBodyFields,
 		/** Raw `X-Gmail-Labels` value, when the archive carries one. */
 		gmailLabels: v.optional(v.string()),
 	},
-	handler: async (
-		ctx,
-		args
-	): Promise<{ imported: boolean; skipped: boolean; labelsCreated: number }> => {
-		const dropBlobs = async () => {
-			await ctx.storage.delete(args.rawStorageId).catch(() => undefined);
-			if (args.textBodyStorageId) {
-				await ctx.storage.delete(args.textBodyStorageId).catch(() => undefined);
-			}
-			if (args.htmlBodyStorageId) {
-				await ctx.storage.delete(args.htmlBodyStorageId).catch(() => undefined);
-			}
-		};
+	handler: async (ctx, args): Promise<ArchiveIngestOutcome> => {
+		const dropBlobs = async () =>
+			await dropStagedBlobs(ctx, [
+				args.rawStorageId,
+				args.textBodyStorageId,
+				args.htmlBodyStorageId,
+			]);
 		const skip = async () => {
 			await dropBlobs();
 			return { imported: false, skipped: true, labelsCreated: 0 };
@@ -336,13 +331,11 @@ export const ingestArchiveMessage = internalMutation({
 		const mailbox = await ctx.db.get(job.mailboxId);
 		if (!mailbox || mailbox.status !== 'active') return await skip();
 
-		const rfc822MessageId = canonicalMessageId(args.messageId);
-		const duplicate = await ctx.db
-			.query('mailMessages')
-			.withIndex('by_rfc822_message_id', (q) => q.eq('rfc822MessageId', rfc822MessageId))
-			.filter((q) => q.eq(q.field('mailboxId'), mailbox._id))
-			.first();
-		if (duplicate) return await skip();
+		if (await findDuplicateInMailbox(ctx, mailbox._id, args.messageId)) return await skip();
+		if (isOverQuota(mailbox, args.rawSize)) {
+			await dropBlobs();
+			return { imported: false, skipped: false, labelsCreated: 0, overQuota: true };
+		}
 
 		// Gmail's own labels outrank the caller's guess: the header is the only
 		// record of where the message actually lived.
@@ -384,7 +377,7 @@ export const ingestArchiveMessage = internalMutation({
 			htmlBodyStorageId: args.htmlBodyStorageId,
 			snippet: args.snippet,
 			searchBody: args.searchBody,
-			messageId: rfc822MessageId,
+			messageId: args.messageId,
 			inReplyTo: args.inReplyTo,
 			references: args.references,
 			receivedAt: args.receivedAt,

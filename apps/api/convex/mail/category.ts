@@ -26,7 +26,6 @@
  */
 
 import { v } from 'convex/values';
-import { openMailMessageInlineBody } from '../lib/messageBody';
 import {
 	internalMutation,
 	internalQuery,
@@ -38,6 +37,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { isBulkOrNoReplySender } from './needsReplyHeuristic';
+import { buildThreadTranscript, CATEGORY } from './ai/transcript';
 import { requireMailboxAccess } from './permissions';
 import { moveMessagesToFolder } from './messageActions';
 import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';
@@ -246,18 +246,10 @@ export const getThreadCategoryContext = internalQuery({
 			)
 			.first();
 
-		const transcript = (
-			await Promise.all(
-				ordered
-					.slice(-CATEGORY_CONTEXT_MESSAGES)
-					.map(
-						async (m) =>
-							`From: ${m.fromName || m.fromAddress}\nSubject: ${m.subject}\n${((await openMailMessageInlineBody(m)).text ?? m.snippet ?? '').slice(0, 1500)}`
-					)
-			)
-		)
-			.join('\n\n---\n\n')
-			.slice(0, 8000);
+		const transcript = await buildThreadTranscript(
+			ordered.slice(-CATEGORY_CONTEXT_MESSAGES),
+			CATEGORY
+		);
 
 		return {
 			latestMessageId: thread.latestMessageId,

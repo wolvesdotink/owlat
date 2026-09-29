@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { transactionalEmailPool } from './workpool';
+import { enqueueGovernedSend } from './governedEnqueue';
 import { selectedSendProviderReady } from '../lib/sendProviders/capability';
 
 /**
@@ -54,9 +54,9 @@ export const enqueueTestSend = internalMutation({
 			queuedAt,
 		});
 
-		await transactionalEmailPool.enqueueAction(
+		await enqueueGovernedSend(
 			ctx,
-			internal.delivery.worker.sendSingleEmail,
+			{ kind: 'transactional', id: sendId },
 			{
 				envelopeInput: {
 					kind: 'transactional' as const,
@@ -70,10 +70,6 @@ export const enqueueTestSend = internalMutation({
 					sendId,
 					template: { subject: args.subject, htmlContent: args.html },
 				},
-			},
-			{
-				onComplete: internal.delivery.sendCompletion.completeSend,
-				context: { sendRef: { kind: 'transactional' as const, id: sendId } },
 			}
 		);
 		await ctx.scheduler.runAfter(

@@ -34,6 +34,7 @@ import { storeSealedBlob } from '../lib/sealedBlob';
 import { splitBodyForStorage } from './deliveryPipeline/ingest';
 import { buildSnippet } from './deliveryPipeline/insert';
 import { buildSearchBody } from './searchBody';
+import type { ArchiveIngestOutcome } from './archiveImport';
 
 /** Bytes decoded at a time. Small enough that a `.mbox` never lands whole in a string. */
 const WINDOW_BYTES = 512 * 1024;
@@ -41,6 +42,9 @@ const WINDOW_BYTES = 512 * 1024;
 const RUN_BYTE_BUDGET = 4 * 1024 * 1024;
 /** Messages one pass inserts before it commits and reschedules. */
 const RUN_MESSAGE_BUDGET = 200;
+/** The job's `lastError` when the mailbox reaches its quota mid-archive. */
+const MAILBOX_FULL_ERROR =
+	'This mailbox is full. The import stopped before the rest of the archive.';
 
 /** Fallback for an archive entry whose `Date:` is missing or unparseable. */
 function receivedAtOf(date: Date | undefined, fallback: number): number {
@@ -85,8 +89,6 @@ function latin1Bytes(value: string): Uint8Array {
 	return bytes;
 }
 
-type IngestOutcome = { imported: boolean; skipped: boolean; labelsCreated: number };
-
 /**
  * Parse one archive entry and hand it to the insert mutation.
  *
@@ -98,7 +100,7 @@ async function ingestEntry(
 	ctx: ActionCtx,
 	job: Doc<'mailArchiveImports'>,
 	entry: MboxEntry
-): Promise<IngestOutcome> {
+): Promise<ArchiveIngestOutcome> {
 	let parsed;
 	try {
 		parsed = parseMessage(entry.raw);
@@ -206,6 +208,9 @@ export const runChunk = internalAction({
 		const consume = async (entries: MboxEntry[]) => {
 			for (const entry of entries) {
 				const outcome = await ingestEntry(ctx, job, entry);
+				// A full mailbox ends the import: every later message would be
+				// refused too. The catch below commits what landed and fails the job.
+				if (outcome.overQuota) throw new Error(MAILBOX_FULL_ERROR);
 				if (outcome.imported) imported++;
 				if (outcome.skipped) skipped++;
 				labelsCreated += outcome.labelsCreated;

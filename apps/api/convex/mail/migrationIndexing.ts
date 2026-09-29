@@ -7,7 +7,7 @@
  * via `knowledge.extraction.extractFromMailMessage`, so the AI assistant can
  * recall and learn from the user's imported correspondence.
  *
- * It deliberately mirrors `agent/knowledgeBackfill.ts` (the inbound-message
+ * It deliberately mirrors `knowledge/messageBackfill.ts` (the inbound-message
  * backfill): a self-rescheduling chunk runner with cursor pagination over a
  * stable, post-import message set, idempotent extraction, and paced LLM calls
  * so a large mailbox doesn't blow the model budget. The import phase finishes
@@ -34,7 +34,7 @@ import { markOnboardingStep } from '../auth/userOnboarding';
 import { normalizeEmail } from '@owlat/shared';
 import { logError } from '../lib/runtimeLog';
 
-// Tunables — kept in step with agent/knowledgeBackfill.ts.
+// Tunables — kept in step with knowledge/messageBackfill.ts.
 const INTER_MESSAGE_DELAY_MS = 150;
 const INTER_CHUNK_DELAY_MS = 1500;
 
@@ -82,7 +82,7 @@ export const getMessageForExtraction = internalQuery({
  * `(receivedAt, _id)`; on the first page both are undefined.
  *
  * Same-timestamp groups are drained exactly — see lib/receivedAtCursor.ts
- * for the rationale (this walker and knowledgeBackfill share it).
+ * for the rationale (this walker and knowledge/messageBackfill share it).
  */
 export const nextIndexChunk = internalQuery({
 	args: {
@@ -248,7 +248,7 @@ export const runIndexChunk = internalAction({
 		migrationId: v.id('mailboxMigrations'),
 		chunkSize: v.number(),
 		// Tests pass 0 so `finishInProgressScheduledFunctions` drains the chain
-		// without real-time waits (mirrors knowledgeBackfill.runChunk).
+		// without real-time waits (mirrors messageBackfill.runChunk).
 		interChunkDelayMs: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {

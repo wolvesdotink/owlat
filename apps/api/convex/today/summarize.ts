@@ -19,7 +19,7 @@ import { resolveLanguageModel } from '../lib/llmProvider';
 import { runLlmText } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
 import { SYSTEM_GUARD } from '../mail/ai/promptGuards';
-import { threadToText } from '../mail/ai/assist';
+import { buildThreadTranscript, THREAD_SUMMARY } from '../mail/ai/transcript';
 import { cleanTodaySentence, todaySummaryPrompt } from './summaryPrompt';
 
 /** At most this many conversations per call (the page asks in small batches). */
@@ -49,8 +49,11 @@ export const summarizeThreads = authedAction({
 				guard: SYSTEM_GUARD,
 				locale: args.locale,
 				isFollowUp: sinceCount > 0,
-				earlier: sinceCount > 0 ? await threadToText(thread.messages.slice(0, sinceCount)) : '',
-				latest: await threadToText(thread.messages.slice(sinceCount)),
+				earlier:
+					sinceCount > 0
+						? await buildThreadTranscript(thread.messages.slice(0, sinceCount), THREAD_SUMMARY)
+						: '',
+				latest: await buildThreadTranscript(thread.messages.slice(sinceCount), THREAD_SUMMARY),
 			});
 			try {
 				const { text, tokenUsage, modelUsed } = await runLlmText({

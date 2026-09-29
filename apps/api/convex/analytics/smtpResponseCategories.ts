@@ -13,8 +13,8 @@
  * ONE WRITER, on the ingress path. `smtp.classified` arrives on the MTA webhook
  * carrying a message id and a category — never a cell and never an arm, because
  * the MTA knows neither. `recordSmtpResponseForSend` resolves the send, joins it
- * through `sendAssignments` exactly as `analytics/transportOutcomes.ts` does, and
- * bumps ONE RANDOM SHARD of the (org, cell, arm, day) bucket. Two indexed point
+ * through `sendAssignments` with the same `resolveCellArmForSend` that
+ * `analytics/transportOutcomes.ts` uses, and bumps ONE RANDOM SHARD of the (org, cell, arm, day) bucket. Two indexed point
  * reads and one patch — no window scan, no `.collect()` (ADR-0042).
  *
  * ONE READER-TYPED SUMMARIZER (`summarizeSmtpBlockObservation`), which sums
@@ -40,26 +40,25 @@
  * the derived block rate by a rounding error rather than toward a halt; the
  * shipped `smtpBlock` sample floor is what protects the verdict from a thin
  * window, in this direction as in every other.
+ *
+ * SHARD COUNT, RETENTION AND WINDOW RANGE ARE NOT THIS MODULE'S. They come from
+ * `./cellArmBuckets`, the same source `transportOutcomes` reads, because the
+ * gate judges the two tables side by side over the same windows.
  */
 
 import { v } from 'convex/values';
 import { internalMutation, type DatabaseReader, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import {
-	deliverabilityCellKey,
-	parseDeliverabilityCellKey,
-	type DeliverabilityCellKey,
-} from '@owlat/shared/deliverabilityRouting';
+import type { DeliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
 import {
 	isSmtpFailureCategory,
 	SMTP_FAILURE_CATEGORIES,
 	type SmtpFailureCategory,
 } from '@owlat/shared/smtpBlockCategories';
 import type { Doc } from '../_generated/dataModel';
-import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { logWarn } from '../lib/runtimeLog';
 import { resolveNow, startOfDayUtc } from '../lib/clock';
-import { readAssignmentForSend } from '../delivery/sendAssignments';
+import { type ObservationSweepResult, sweepExpiredObservations } from '../lib/retentionSweep';
 import { resolveProviderMessageId } from '../delivery/sendLifecycle/lookups';
 import type { SmtpBlockObservation } from '../delivery/ramp/gateTypes';
 import {
@@ -68,28 +67,16 @@ import {
 	type TransportOutcomeArm,
 	type TransportOutcomeWindow,
 } from './transportOutcomeSummary';
+import {
+	CELL_ARM_BUCKET_CLEANUP_BATCH_SIZE,
+	CELL_ARM_BUCKET_RETENTION_MS,
+	cellArmPeriodRange,
+	randomCellArmShardKey,
+	resolveCellArmForSend,
+	type CellArmWindowQuery,
+} from './cellArmBuckets';
 
 // ============ CONSTANTS ============
-
-/**
- * Write-shard count per (org, cell, arm, day) bucket — the same knob, for the
- * same reason, as `transportOutcomes`'. One classified response bumps one random
- * shard, so a wave of greylisting spreads its read-modify-writes across 8
- * documents instead of contending on one. Purely write-side: the summarizer sums
- * across all shards.
- */
-const SMTP_RESPONSE_CATEGORY_SHARD_COUNT = 8;
-
-/**
- * Buckets age out after 90 days — the `transportOutcomes` horizon, because the
- * two are read side by side over the same windows and a shorter one here would
- * make a cell's block evidence expire while the outcomes it is judged beside
- * remain.
- */
-export const SMTP_RESPONSE_CATEGORY_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
-
-/** Rows deleted per aging tick; the sweep re-schedules itself while full. */
-export const SMTP_RESPONSE_CATEGORY_CLEANUP_BATCH_SIZE = 200;
 
 /**
  * THE BOUND ON HOW MANY DISTINCT CATEGORIES ONE SHARD ROW MAY CARRY: the whole
@@ -106,12 +93,6 @@ const MAX_CATEGORY_KEYS = SMTP_FAILURE_CATEGORIES.size;
 
 // ============ READ SIDE ============
 
-interface SmtpCategoryWindowQuery extends TransportOutcomeWindow {
-	readonly organizationId: string;
-	readonly cell: DeliverabilityCellKey;
-	readonly arm: TransportOutcomeArm;
-}
-
 /**
  * Read one (org, cell, arm) window's shard rows. Org-leading and bounded: the
  * aging cron keeps a cell/arm at <=90 days x SHARD_COUNT rows, and the day range
@@ -127,14 +108,9 @@ interface SmtpCategoryWindowQuery extends TransportOutcomeWindow {
  */
 export async function readCellArmCategoryBuckets(
 	db: DatabaseReader,
-	input: SmtpCategoryWindowQuery
+	input: CellArmWindowQuery
 ): Promise<Doc<'smtpResponseCategories'>[]> {
-	const { sinceDay, until } = transportOutcomeWindowBounds(input);
-	// One range expression, not a branch per bound: an unbounded side becomes a
-	// sentinel no real bucket day can fall outside of. The exact window filter is
-	// re-applied by the pure summarizer, so a sentinel can never widen the answer.
-	const lower = Number.isFinite(sinceDay) ? sinceDay : 0;
-	const upper = Number.isFinite(until) ? until : Number.MAX_SAFE_INTEGER;
+	const { lower, upper } = cellArmPeriodRange(input);
 	return await db
 		.query('smtpResponseCategories')
 		.withIndex('by_org_cell_arm_period_shard', (q) =>
@@ -283,9 +259,8 @@ interface RecordSmtpResponseInput {
 /**
  * Bump ONE random shard of the (org, cell, arm, today) bucket by ONE classified
  * response. The shard is drawn per call so concurrent responses for the same cell
- * spread across `SMTP_RESPONSE_CATEGORY_SHARD_COUNT` documents instead of
- * contending on a single row. (Mutations may use `Math.random`; only the workflow
- * runtime forbids it.)
+ * spread across `CELL_ARM_BUCKET_SHARD_COUNT` documents instead of contending
+ * on a single row.
  *
  * `observed` AND the category counter MOVE TOGETHER, in one patch. They are the
  * denominator and the numerator of the one rate the gate derives, and a write
@@ -305,7 +280,7 @@ export async function recordSmtpResponseForCell(
 			cell: input.cell,
 			arm: input.arm,
 			periodStart: startOfDayUtc(now),
-			shardKey: Math.floor(Math.random() * SMTP_RESPONSE_CATEGORY_SHARD_COUNT),
+			shardKey: randomCellArmShardKey(),
 		},
 		now
 	);
@@ -352,33 +327,18 @@ async function recordSmtpResponseForSend(
 		readonly now?: number;
 	}
 ): Promise<RecordSmtpResponseResult> {
-	let organizationId: string;
-	try {
-		organizationId = await getSingletonOrganizationId(ctx);
-	} catch {
-		return 'no_organization';
-	}
-
 	const ref = await resolveProviderMessageId(ctx, input.providerMessageId);
 	// A response for a message this deployment has no send row for — a probe, a
 	// send already reaped, a replay from another install sharing the secret.
 	if (!ref) return 'send_not_found';
 
-	// THE tenant-scoped join, shared with every other reader of the row. No
-	// assignment row => this send is outside the experiment (seed shadow copies,
-	// legacy sends), and it must never enter a denominator.
-	const assignment = await readAssignmentForSend(ctx.db, organizationId, ref.id);
-	if (!assignment) return 'no_assignment';
-	// `cell` is a plain string in the schema; a malformed one would create a
-	// bucket no reader can ever address. Parse ONCE here and hand the branded,
-	// re-canonicalized key down.
-	const parsedCell = parseDeliverabilityCellKey(assignment.cell);
-	if (parsedCell === null) return 'invalid_cell';
+	const resolved = await resolveCellArmForSend(ctx, ref.id);
+	if (!resolved.ok) return resolved.reason;
 
 	await recordSmtpResponseForCell(ctx, {
-		organizationId,
-		cell: deliverabilityCellKey(parsedCell),
-		arm: assignment.arm,
+		organizationId: resolved.organizationId,
+		cell: resolved.cell,
+		arm: resolved.arm,
 		category: input.category,
 		...(input.now !== undefined ? { now: input.now } : {}),
 	});
@@ -433,27 +393,29 @@ export const recordClassifiedResponse = internalMutation({
 // ============ AGING CRON ============
 
 /**
- * Drop buckets past the retention horizon. Indexed, bounded and self-resuming,
- * so a backlog drains across ticks instead of blowing one transaction — the same
- * sweep shape as `cleanupExpiredOutcomes` beside it.
+ * Drop buckets past the retention horizon. Indexed, bounded and self-resuming
+ * through the shared `sweepExpiredObservations`, with the same horizon and batch
+ * size as `cleanupExpiredOutcomes`.
  */
 export const cleanupExpiredSmtpResponses = internalMutation({
 	args: { now: v.optional(v.number()) },
-	handler: async (ctx, args) => {
-		const now = resolveNow(args.now);
-		const cutoff = now - SMTP_RESPONSE_CATEGORY_RETENTION_MS;
-		const expired = await ctx.db
-			.query('smtpResponseCategories')
-			.withIndex('by_period_start', (q) => q.lt('periodStart', cutoff))
-			.take(SMTP_RESPONSE_CATEGORY_CLEANUP_BATCH_SIZE);
-		await Promise.all(expired.map((row) => ctx.db.delete(row._id)));
-		if (expired.length === SMTP_RESPONSE_CATEGORY_CLEANUP_BATCH_SIZE) {
-			await ctx.scheduler.runAfter(
-				0,
-				internal.analytics.smtpResponseCategories.cleanupExpiredSmtpResponses,
-				args
-			);
-		}
-		return { deleted: expired.length };
-	},
+	handler: async (ctx, args): Promise<ObservationSweepResult> =>
+		sweepExpiredObservations(ctx, {
+			now: resolveNow(args.now),
+			retentionMs: CELL_ARM_BUCKET_RETENTION_MS,
+			batchSize: CELL_ARM_BUCKET_CLEANUP_BATCH_SIZE,
+			scans: [
+				(horizon, limit) =>
+					ctx.db
+						.query('smtpResponseCategories')
+						.withIndex('by_period_start', (q) => q.lt('periodStart', horizon))
+						.take(limit),
+			],
+			scheduleContinuation: () =>
+				ctx.scheduler.runAfter(
+					0,
+					internal.analytics.smtpResponseCategories.cleanupExpiredSmtpResponses,
+					args
+				),
+		}),
 });

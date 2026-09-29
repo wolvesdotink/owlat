@@ -372,11 +372,15 @@ export const knowledgeTables = {
 	// retrieval would have nothing to traverse until new mail arrives.
 	//
 	// Created when the autoLink toggle flips false→true and no prior job exists
-	// (first-run gate, mirroring `knowledgeBackfillJobs`). Kept in its OWN table
-	// so the gate is independent of the agent message-extraction backfill.
+	// (first-run gate, mirroring `knowledgeBackfillJobs` and its walker
+	// `knowledge/messageBackfill.ts`; shared lifecycle in
+	// `knowledge/backfillJobs.ts`). Kept in its OWN table so the gate is
+	// independent of the agent message-extraction backfill.
 	// `knowledge.edgeBackfill.runEdgeBackfill` walks `knowledgeEntries` by cursor,
 	// scheduling one `edgeInference.inferRelations` action per entry; the job is
 	// idempotent (re-runs merge via upsertEdge) and admin-cancellable mid-walk.
+	// A walk that stops making progress is marked 'failed' by the daily
+	// stale-job sweep (`knowledge.maintenance.failStaleBackfillJobs`).
 	knowledgeEdgeBackfillJobs: defineTable({
 		status: v.union(
 			v.literal('pending'),

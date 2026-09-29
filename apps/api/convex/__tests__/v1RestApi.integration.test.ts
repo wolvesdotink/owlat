@@ -472,6 +472,37 @@ describe('PUT /api/v1/contacts/{idOrEmail} (updateContact → contacts:write)', 
 		expect(raw).not.toContain(sentinel);
 		expect(raw).not.toContain('update-canary');
 	});
+
+	it('400 invalid_input for malformed percent-encoding in the path (not 500)', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['contacts:write']);
+		const res = await t.fetch('/api/v1/contacts/%E0%A4%A', {
+			method: 'PUT',
+			headers: authHeaders(key),
+			body: JSON.stringify({ firstName: 'X' }),
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error.category).toBe('invalid_input');
+		expect(body.error.message).toBe('Invalid contact ID or email format');
+	});
+
+	it('400 invalid_input naming the field when firstName is over the length cap', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['contacts:write']);
+		const id = await t.run(async (ctx) =>
+			ctx.db.insert('contacts', createTestContact({ email: 'long@example.com' }))
+		);
+		const res = await t.fetch(`/api/v1/contacts/${id}`, {
+			method: 'PUT',
+			headers: authHeaders(key),
+			body: JSON.stringify({ firstName: 'a'.repeat(201) }),
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error.category).toBe('invalid_input');
+		expect(body.error.message).toBe('firstName must be at most 200 characters');
+	});
 });
 
 // ─── DELETE /api/v1/contacts/{idOrEmail} (delete) ────────────────────────────
@@ -513,6 +544,19 @@ describe('DELETE /api/v1/contacts/{idOrEmail} (deleteContact → contacts:write)
 			headers: authHeaders(key),
 		});
 		expect(res.status).toBe(404);
+	});
+
+	it('400 invalid_input for malformed percent-encoding in the path (not 500)', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['contacts:write']);
+		const res = await t.fetch('/api/v1/contacts/%E0%A4%A', {
+			method: 'DELETE',
+			headers: authHeaders(key),
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error.category).toBe('invalid_input');
+		expect(body.error.message).toBe('Invalid contact ID or email format');
 	});
 });
 
@@ -587,6 +631,26 @@ describe('POST /api/v1/events (sendEvent → events:write)', () => {
 		});
 		expect(res.status).toBe(400);
 	});
+
+	it('400 invalid_input for a nested eventProperties value', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['events:write']);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('contacts', createTestContact({ email: 'nest@example.com' }));
+		});
+		const res = await t.fetch('/api/v1/events', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({
+				email: 'nest@example.com',
+				eventName: 'signed_up',
+				eventProperties: { plan: { tier: 'pro' } },
+			}),
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error.category).toBe('invalid_input');
+	});
 });
 
 // ─── POST /api/v1/transactional ──────────────────────────────────────────────
@@ -622,6 +686,23 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 			method: 'POST',
 			headers: authHeaders(key),
 			body: JSON.stringify({ email: 'to@example.com' }),
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error.category).toBe('invalid_input');
+	});
+
+	it('400 invalid_input for a nested dataVariables value (not 500)', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await t.fetch('/api/v1/transactional', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({
+				email: 'to@example.com',
+				slug: 'welcome',
+				dataVariables: { order: { id: 1 } },
+			}),
 		});
 		expect(res.status).toBe(400);
 		const body = await res.json();
