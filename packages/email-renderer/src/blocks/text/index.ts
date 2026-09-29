@@ -11,7 +11,7 @@ import { fullSupport, type TextBlockContent } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
 import { transformHtmlLinks } from '../../helpers/linkTransform';
 import { stripHtml, extractLinks, underlineHeading } from '../../helpers/text';
-import { escapeAttr, escapeCss, sanitizeRawHtml } from '../../sanitize';
+import { escapeAttr, escapeCss, escapeCssString, sanitizeRawHtml } from '../../sanitize';
 import { checkShape, isString, isNumber, isOneOf } from '../../helpers/validation';
 import { px } from '../../helpers/padding';
 
@@ -120,7 +120,7 @@ export const textModule: BlockModule<'text'> = {
 		const mobileFontSize = px(content.mobileFontSize, 0);
 		if (!mobileFontSize) return [];
 		return [
-			`[data-block-id="${escapeCss(block.id)}"] div{font-size:${mobileFontSize}px!important}`,
+			`[data-block-id="${escapeCssString(block.id)}"] div{font-size:${mobileFontSize}px!important}`,
 		];
 	},
 

@@ -17,7 +17,7 @@ import {
 } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
 import type { RenderContext } from '../../types';
-import { escapeHtml, escapeAttr, escapeCss } from '../../sanitize';
+import { cssColorOr, escapeHtml, escapeAttr, escapeCss } from '../../sanitize';
 import { stripHtml } from '../../helpers/text';
 import { px } from '../../helpers/padding';
 import {
@@ -33,7 +33,8 @@ const TABLE_ALIGNS = ['left', 'center', 'right'] as const;
 
 const injectResponsiveCss = (content: TableBlockContent, ctx: RenderContext): void => {
 	const mode = content.responsiveMode;
-	const borderColor = escapeCss(content.borderColor || '#e0e0e0');
+	// These rules go into the document <style>, where only a colour value is safe.
+	const borderColor = cssColorOr(content.borderColor, '#e0e0e0');
 	if (mode === 'stack') {
 		ctx.responsiveRules.push(
 			'.owlat-data-table thead{display:none!important}',

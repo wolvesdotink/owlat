@@ -67,6 +67,15 @@ export const cssColorOr = (value: unknown, fallback: string): string =>
 	typeof value === 'string' && CSS_COLOR_VALUE.test(value) ? value : fallback;
 
 /**
+ * Escape a value for a double-quoted CSS string inside the document `<style>`
+ * element, such as an attribute selector. Every character other than ASCII
+ * letters, digits, `_` and `-` becomes a CSS hex escape (`\5c ` for a
+ * backslash), so the value cannot end the string, the rule or the element.
+ */
+export const escapeCssString = (value: string): string =>
+	value.replace(/[^A-Za-z0-9_-]/gu, (ch) => `\\${ch.codePointAt(0)!.toString(16)} `);
+
+/**
  * Escape a value for use inside a CSS url() function.
  * Prevents breakout via ') or other CSS injection.
  */

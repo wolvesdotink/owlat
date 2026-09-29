@@ -8,7 +8,7 @@
 
 import { fullSupport, type CarouselBlockContent } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
-import { escapeAttr, escapeCss, sanitizeUrl } from '../../sanitize';
+import { cssColorOr, escapeAttr, sanitizeUrl } from '../../sanitize';
 import { transformUrl } from '../../helpers/linkTransform';
 import { px } from '../../helpers/padding';
 import { checkShape, isString, isArray, isObject } from '../../helpers/validation';
@@ -21,10 +21,11 @@ export const renderCarouselContent = (
 	if (!images || images.length === 0) return '';
 
 	const carouselId = `owlat-car-${Math.random().toString(36).slice(2, 8)}`;
-	// Escaped once here: both colours reach the global <style> rules as well as
-	// inline style attributes.
-	const iconColor = escapeCss(content.iconColor || ctx.theme.primaryColor || '#333333');
-	const inactiveColor = escapeCss(content.iconInactiveColor || '#cccccc');
+	// Both colours reach the global <style> rules as well as inline style
+	// attributes, so only colour values pass (see cssColorOr); they need no
+	// further escaping in either place.
+	const iconColor = cssColorOr(content.iconColor, cssColorOr(ctx.theme.primaryColor, '#333333'));
+	const inactiveColor = cssColorOr(content.iconInactiveColor, '#cccccc');
 	const iconWidth = px(content.iconWidth, 0) || 12;
 	const radius = px(content.borderRadius, 0);
 	const borderRadius = radius ? `border-radius:${radius}px;` : '';

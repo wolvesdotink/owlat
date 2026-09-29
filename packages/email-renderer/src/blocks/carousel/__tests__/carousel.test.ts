@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { renderEmailHtml } from '../../../renderer';
 import type { EditorBlock, CarouselBlockContent } from '@owlat/shared';
 
+const styleText = (html: string): string =>
+	(html.match(/<style[^>]*>[\s\S]*?<\/style>/g) ?? []).join('\n');
+
 describe('Carousel Block', () => {
 	const makeCarouselBlock = (content: Partial<CarouselBlockContent>): EditorBlock => ({
 		id: 'carousel-1',
@@ -42,7 +45,11 @@ describe('Carousel Block', () => {
 	it('should render link-wrapped images', () => {
 		const block = makeCarouselBlock({
 			images: [
-				{ src: 'https://example.com/img1.jpg', alt: 'Image 1', linkUrl: 'https://example.com/page1' },
+				{
+					src: 'https://example.com/img1.jpg',
+					alt: 'Image 1',
+					linkUrl: 'https://example.com/page1',
+				},
 			],
 		});
 		const html = renderEmailHtml([block], { inlineCss: false });
@@ -71,7 +78,9 @@ describe('Carousel Block', () => {
 		// The "hide all" default rule should exist
 		expect(html).toMatch(/div\[class\^="owlat-car-.*-slide"\]\{display:none!important/);
 		// The ":checked show" rules should exist
-		expect(html).toMatch(/:checked ~ \.owlat-car-.*-slides \.owlat-car-.*-slide-0\{display:block!important/);
+		expect(html).toMatch(
+			/:checked ~ \.owlat-car-.*-slides \.owlat-car-.*-slide-0\{display:block!important/
+		);
 	});
 
 	it('should place carousel CSS outside media queries (global rules)', () => {
@@ -90,5 +99,31 @@ describe('Carousel Block', () => {
 		expect(hideAllIndex).toBeGreaterThan(-1);
 		expect(mediaIndex).toBeGreaterThan(-1);
 		expect(hideAllIndex).toBeLessThan(mediaIndex);
+	});
+
+	it('keeps only colour values in the style block rules', () => {
+		const html = renderEmailHtml(
+			[
+				makeCarouselBlock({
+					iconColor: 'red}body{display:none}',
+					iconInactiveColor: '#ccc}p{color:red}',
+					thumbnailWidth: 60,
+				}),
+			],
+			{ inlineCss: false }
+		);
+		const css = styleText(html);
+		expect(css).not.toContain('body{display:none}');
+		expect(css).not.toContain('p{color:red}');
+		// An invalid icon colour falls back to the theme's primary colour.
+		expect(css).toMatch(/dots label\[for="[^"]+"\]\{background-color:#[0-9a-f]{6}!important\}/);
+		expect(css).toContain('background-color:#cccccc!important');
+	});
+
+	it('uses a valid icon colour unchanged', () => {
+		const html = renderEmailHtml([makeCarouselBlock({ iconColor: 'rgb(10, 20, 30)' })], {
+			inlineCss: false,
+		});
+		expect(styleText(html)).toContain('background-color:rgb(10, 20, 30)!important');
 	});
 });
