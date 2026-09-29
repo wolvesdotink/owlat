@@ -31,7 +31,7 @@ import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 import { emailDomain } from '@owlat/shared/spfAlignment';
-import { isPrivateOrLoopbackIp } from '@owlat/shared/ipAddress';
+import { isPrivateOrLoopbackIp, unmapIpv4 } from '@owlat/shared/ipAddress';
 import { MAX_INBOUND_MESSAGE_BYTES } from '@owlat/shared/attachments';
 import { createConnectionLimiter } from '../lib/connectionSlots.js';
 import { checkSpf, evaluateDmarc, dnsDmarcLookup, verifyDkim } from '@owlat/mail-auth';
@@ -154,9 +154,11 @@ const BOUNCE_CONNECTION_TTL_SECONDS = 300;
  * Connection admission for the MX listener. Over the GLOBAL `maxClients` cap the
  * connection gets a real `421` retry-later reply (smtp-server's `421 … Too many
  * connected clients`: a remote MTA re-queues on a 421 rather than treating a
- * bare close as a hard failure); over the PER-IP cap it gets `554`, the
- * pre-cutover smtp-server connect-reject default. A Redis fault fails open
- * inside the listener, so a store hiccup cannot block legitimate bounces.
+ * bare close as a hard failure), and over the PER-IP cap it gets `421 4.7.0`
+ * for the same reason: the sender retries later instead of failing the
+ * delivery. The per-IP cap counts each address on its own, IPv6 included,
+ * because large senders deliver from many hosts in one /64. A Redis fault fails
+ * open inside the listener, so a store hiccup cannot block legitimate bounces.
  */
 function bounceAdmission(config: MtaConfig, redis: Redis): SmtpAdmission {
 	return {
@@ -167,9 +169,10 @@ function bounceAdmission(config: MtaConfig, redis: Redis): SmtpAdmission {
 				redis,
 				BOUNCE_CONNECTION_PREFIX,
 				BOUNCE_CONNECTION_TTL_SECONDS,
-				config.bounceMaxConnectionsPerIp
+				config.bounceMaxConnectionsPerIp,
+				unmapIpv4
 			),
-			rejectReply: { code: 554, text: 'Too many connections from your IP' },
+			rejectReply: { code: 421, enhanced: '4.7.0', text: 'Too many connections from your IP' },
 		},
 		onRefused: (peer, reason) =>
 			logger.warn(
