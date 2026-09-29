@@ -379,8 +379,9 @@ export const getMessageBodyBlobUrls = publicAction({
 
 /**
  * Inline body plus blob URLs in one action. Superseded by
- * {@link getMessageInlineBody} + {@link getMessageBodyBlobUrls}; kept until the
- * web reader moves over (plan 2.5), then removed.
+ * {@link getMessageInlineBody} + {@link getMessageBodyBlobUrls}. The web reader
+ * moved over in plan 2.5; this stays one release for tabs still running the
+ * previous reader (`scripts/entryWiringPreviousRelease.ts`), then goes.
  */
 type ReadableMessageBodySource = {
 	htmlInline: string | null;
