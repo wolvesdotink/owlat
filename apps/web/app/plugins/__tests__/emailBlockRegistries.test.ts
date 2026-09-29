@@ -1,23 +1,21 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 
 /**
- * Unit-test the boot plugin's wiring: it must run the host's email-block
- * composition exactly once at module evaluation, guarded so an already-frozen
- * set of registries (repeat SSR import / dev HMR) is not composed again. The
- * real freeze semantics are covered by the @owlat/email-builder package tests;
- * here the host is mocked so the plugin's own logic is what is under test.
+ * Unit-test the boot plugin's wiring: it must arm the email-block registries'
+ * freeze-on-first-read latch at module evaluation, and it must do so without
+ * importing the email builder or the renderer barrel, which would put the
+ * editor registry, SortableJS, the renderer and sanitize-html back into the
+ * boot bundle. The freeze semantics themselves are covered by the
+ * @owlat/email-builder package tests; here the latch is mocked so the plugin's
+ * own logic is what is under test.
  */
-const hoisted = vi.hoisted(() => ({
-	state: { frozen: false },
-	compose: vi.fn((_contributions: readonly unknown[]) => [] as readonly unknown[]),
-}));
+const hoisted = vi.hoisted(() => ({ arm: vi.fn() }));
 
-vi.mock('@owlat/email-builder', () => ({
-	areEmailBlockRegistriesFrozen: () => hoisted.state.frozen,
-	composeHostedEmailBlocks: (contributions: readonly unknown[]) => {
-		hoisted.state.frozen = true;
-		return hoisted.compose(contributions);
-	},
+vi.mock('@owlat/email-renderer/registry-latch', () => ({
+	armEmailBlockRegistryFreeze: hoisted.arm,
 }));
 
 async function loadPlugin() {
@@ -28,26 +26,23 @@ async function loadPlugin() {
 }
 
 describe('email-block registries host boot plugin', () => {
-	beforeEach(() => {
-		hoisted.state.frozen = false;
-		hoisted.compose.mockClear();
-	});
+	beforeEach(() => hoisted.arm.mockClear());
 	afterEach(() => vi.unstubAllGlobals());
 
-	it('composes the host email blocks once at boot with an empty contribution list', async () => {
+	it('arms the freeze-on-first-read latch once at boot', async () => {
 		await loadPlugin();
-		expect(hoisted.compose).toHaveBeenCalledTimes(1);
-		expect(hoisted.compose).toHaveBeenCalledWith([]);
-	});
-
-	it('skips composition when the registries are already frozen', async () => {
-		hoisted.state.frozen = true;
-		await loadPlugin();
-		expect(hoisted.compose).not.toHaveBeenCalled();
+		expect(hoisted.arm).toHaveBeenCalledTimes(1);
 	});
 
 	it('exposes a valid Nuxt plugin object', async () => {
 		const plugin = await loadPlugin();
 		expect(plugin).toMatchObject({ name: 'owlat:email-block-registries' });
+	});
+
+	it('imports only the leaf latch module, not the email packages', () => {
+		const here = dirname(fileURLToPath(import.meta.url));
+		const source = readFileSync(resolve(here, '../plugin-email-blocks.ts'), 'utf8');
+		const specifiers = [...source.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
+		expect(specifiers).toEqual(['@owlat/email-renderer/registry-latch']);
 	});
 });

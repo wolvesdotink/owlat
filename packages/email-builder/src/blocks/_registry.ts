@@ -12,6 +12,10 @@
 
 import type { BlockType } from '../types';
 import type { EditorModule } from './_module';
+import {
+	enrolEmailBlockRegistry,
+	latchEmailBlockRegistriesOnRead,
+} from '@owlat/email-renderer/registry-latch';
 import { createFreezeLatch } from '../registry/freezeLatch';
 
 const registry = new Map<BlockType, EditorModule<BlockType>>();
@@ -45,17 +49,27 @@ export function isEditorModuleRegistryFrozen(): boolean {
 	return latch.isFrozen();
 }
 
+enrolEmailBlockRegistry(finalizeEditorModuleRegistry);
+
+/** Freeze-on-first-read: a no-op unless the host armed the latch. */
+function latchOnRead(): void {
+	if (!latch.isFrozen()) latchEmailBlockRegistriesOnRead();
+}
+
 /** Look up the Editor module for a block type. Returns undefined if absent. */
 export function editorModuleFor<T extends BlockType>(type: T): EditorModule<T> | undefined {
+	latchOnRead();
 	return registry.get(type) as EditorModule<T> | undefined;
 }
 
 /** All registered editor modules, in registration order. */
 export function getAllEditorModules(): EditorModule<BlockType>[] {
+	latchOnRead();
 	return [...registry.values()];
 }
 
 /** All registered block types. */
 export function getRegisteredTypes(): BlockType[] {
+	latchOnRead();
 	return [...registry.keys()];
 }

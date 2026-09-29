@@ -2,9 +2,21 @@
 	"name": "@owlat/email-renderer",
 	"version": "0.6.4",
 	"private": true,
-	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",
+	"license": "Apache-2.0",
 	"type": "module",
+	"sideEffects": [
+		"./src/index.ts",
+		"./src/blocks/_builtin-modules.ts",
+		"./src/blocks/index.ts",
+		"./src/simulators/index.ts",
+		"./src/simulators/appleMail.ts",
+		"./src/simulators/gmail.ts",
+		"./src/simulators/outlookDesktop.ts",
+		"./src/simulators/outlookNew.ts",
+		"./src/simulators/yahooMail.ts",
+		"**/*.css"
+	],
 	"main": "./src/index.ts",
 	"module": "./src/index.ts",
 	"types": "./src/index.ts",
@@ -12,6 +24,10 @@
 		".": {
 			"types": "./src/index.ts",
 			"import": "./src/index.ts"
+		},
+		"./registry-latch": {
+			"types": "./src/registryLatch.ts",
+			"import": "./src/registryLatch.ts"
 		}
 	},
 	"scripts": {
@@ -24,15 +40,15 @@
 		"preview": "bun src/preview/generate.ts",
 		"preview:open": "bun src/preview/generate.ts --open"
 	},
+	"dependencies": {
+		"@owlat/shared": "workspace:*",
+		"sanitize-html": "^2.17.6"
+	},
 	"devDependencies": {
 		"@types/node": "catalog:",
 		"@types/sanitize-html": "^2.13.0",
 		"@vitest/coverage-v8": "catalog:",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
-	},
-	"dependencies": {
-		"@owlat/shared": "workspace:*",
-		"sanitize-html": "^2.17.6"
 	}
 }

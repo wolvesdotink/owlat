@@ -3,6 +3,7 @@ import type { RenderContext } from '../types';
 import { wrapSection } from '../helpers/table';
 import type { BlockLayout, BlockModule, BlockOf, HtmlWalk, Placement, RenderArgs } from './_module';
 import { moduleFor } from './_registry';
+import { enrolEmailBlockRegistry, latchEmailBlockRegistriesOnRead } from '../registryLatch';
 // Side-effect import: registers built-in Block modules with the registry.
 import './_builtin-modules';
 
@@ -29,7 +30,9 @@ let registryFrozen = false;
  */
 export const registerBlock = (type: string, renderer: BlockRenderer): void => {
 	if (registryFrozen) {
-		throw new Error(`Cannot register block "${type}": registry is frozen. Call registerBlock() during setup before finalizeRegistry().`);
+		throw new Error(
+			`Cannot register block "${type}": registry is frozen. Call registerBlock() during setup before finalizeRegistry().`
+		);
 	}
 	customBlockRegistry.set(type, renderer);
 };
@@ -60,10 +63,13 @@ export const isRegistryFinalized = (): boolean => {
 	return registryFrozen;
 };
 
+enrolEmailBlockRegistry(finalizeRegistry);
+
 /**
  * Get all registered custom block types.
  */
 export const getRegisteredBlocks = (): string[] => {
+	if (!registryFrozen) latchEmailBlockRegistriesOnRead();
 	return Array.from(customBlockRegistry.keys());
 };
 
@@ -85,7 +91,7 @@ const wrapForPlacement = (
 	inner: string,
 	ctx: RenderContext,
 	placement: Placement,
-	layout?: BlockLayout,
+	layout?: BlockLayout
 ): string => {
 	return placement === 'root' ? wrapSection(block, inner, ctx, layout) : inner;
 };
@@ -102,7 +108,7 @@ const dispatchBlockModule = (
 	block: EditorBlock,
 	ctx: RenderContext,
 	width: number,
-	placement: Placement,
+	placement: Placement
 ): string | null => {
 	const mod = moduleFor(block.type);
 	if (!mod) return null;
@@ -162,6 +168,7 @@ export const renderBlock = (block: EditorBlock, ctx: RenderContext): string => {
 	if (viaModule !== null) return viaModule;
 
 	// Legacy custom-block API: an HTML-only renderer registered against a string type.
+	if (!registryFrozen) latchEmailBlockRegistriesOnRead();
 	const customRenderer = customBlockRegistry.get(block.type);
 	if (!customRenderer) return '';
 	const innerHtml = customRenderer(block.content, ctx, block);
@@ -172,7 +179,11 @@ export const renderBlock = (block: EditorBlock, ctx: RenderContext): string => {
  * Render a ColumnItem at the `column` placement. All built-in column items
  * are now Block modules; this function is a thin walker dispatch.
  */
-export const renderColumnItem = (item: ColumnItem, baseWidth: number, ctx: RenderContext): string => {
+export const renderColumnItem = (
+	item: ColumnItem,
+	baseWidth: number,
+	ctx: RenderContext
+): string => {
 	const viaModule = dispatchBlockModule(item as unknown as EditorBlock, ctx, baseWidth, 'column');
 	return viaModule ?? '';
 };
@@ -181,7 +192,16 @@ export const renderColumnItem = (item: ColumnItem, baseWidth: number, ctx: Rende
  * Render a ContainerItem at the `container` placement. All built-in container
  * items are now Block modules; this function is a thin walker dispatch.
  */
-export const renderContainerItem = (item: ContainerItem, baseWidth: number, ctx: RenderContext): string => {
-	const viaModule = dispatchBlockModule(item as unknown as EditorBlock, ctx, baseWidth, 'container');
+export const renderContainerItem = (
+	item: ContainerItem,
+	baseWidth: number,
+	ctx: RenderContext
+): string => {
+	const viaModule = dispatchBlockModule(
+		item as unknown as EditorBlock,
+		ctx,
+		baseWidth,
+		'container'
+	);
 	return viaModule ?? '';
 };

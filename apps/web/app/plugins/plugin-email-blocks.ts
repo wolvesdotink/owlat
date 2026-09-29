@@ -1,25 +1,24 @@
-import { areEmailBlockRegistriesFrozen, composeHostedEmailBlocks } from '@owlat/email-builder';
+import { armEmailBlockRegistryFreeze } from '@owlat/email-renderer/registry-latch';
 
 /**
- * Host boot: freeze the email-block registries.
+ * Host boot: latch the email-block registries shut on first use.
  *
  * The renderer and editor block registries are populated by built-in
- * side-effect registration at package import. This plugin runs the host's
- * email-block composition once at boot: with no bundled plugin contributing
- * blocks yet the contribution list is empty, and the call latches every block
- * registry shut — closing the silent-mutation window that existed while the
- * freeze functions were never called.
+ * side-effect registration when `@owlat/email-renderer` / `@owlat/email-builder`
+ * are imported. Both packages are loaded lazily (the builder, the renderer,
+ * SortableJS and sanitize-html are not part of the boot bundle), so the host
+ * cannot compose and freeze them here. It arms the freeze-on-first-read latch
+ * instead: the first read of any block registry freezes every block registry,
+ * which is exactly what `composeHostedEmailBlocks([])` did at boot, because no
+ * bundled plugin contributes email blocks. A registry is therefore never read
+ * while still open to mutation.
  *
- * The composition runs at module evaluation (once per process, after the built-
- * ins have registered via the `@owlat/email-builder` import), guarded so a dev
- * HMR re-eval or a repeated SSR import does not compose a second time against
- * already-frozen registries.
+ * The latch lives in a leaf module and arming is idempotent, so a dev HMR
+ * re-eval or a repeated SSR import cannot compose or freeze twice.
  */
-const composedEmailBlocks = areEmailBlockRegistriesFrozen() ? [] : composeHostedEmailBlocks([]);
+armEmailBlockRegistryFreeze();
 
 export default defineNuxtPlugin({
 	name: 'owlat:email-block-registries',
-	setup() {
-		void composedEmailBlocks;
-	},
+	setup() {},
 });
