@@ -22,8 +22,15 @@
  *     <template #empty><UiEmptyState … /></template>
  *     <YourContent :data="data" />
  *   </UiQueryBoundary>
+ *
+ * The loading branch goes through `useDelayedLoading`: a query that answers
+ * within 150 ms (a warm cache, a fast backend) renders nothing in between and
+ * then its content, instead of flashing the loader for a frame; a loader that
+ * did appear stays up for at least 300 ms. Custom `#loading` skeletons get the
+ * same treatment.
  */
 import { computed, getCurrentInstance } from 'vue';
+import { useDelayedLoading } from '@owlat/ui/composables/useDelayedLoading';
 import { queryErrorCopy, resolveOperationCopy } from '~/lib/operationError';
 
 interface Props {
@@ -54,6 +61,20 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const { t, te, locale } = useI18n();
+
+const showLoading = useDelayedLoading(() => props.loading);
+
+/**
+ * `pending` is the grace period: still loading, loader not shown yet. It
+ * renders nothing, which beats both a one-frame spinner and the empty state a
+ * not-yet-loaded list would otherwise claim.
+ */
+const state = computed<'error' | 'loading' | 'pending' | 'empty' | 'content'>(() => {
+	if (props.error) return 'error';
+	if (showLoading.value) return 'loading';
+	if (props.loading) return 'pending';
+	return props.empty ? 'empty' : 'content';
+});
 
 const emit = defineEmits<{
 	/** Fired when the user clicks retry. Unwired → falls back to a page reload. */
@@ -94,7 +115,7 @@ function handleRetry() {
 
 <template>
 	<!-- Error takes precedence: a faulted query may still have stale data/empty. -->
-	<slot v-if="error" name="error" :error="error" :retry="handleRetry">
+	<slot v-if="state === 'error'" name="error" :error="error" :retry="handleRetry">
 		<div class="flex flex-col items-center gap-4 py-12 px-6">
 			<div class="w-full max-w-md">
 				<UiErrorAlert :title="displayTitle" :message="displayMessage" variant="error" />
@@ -106,7 +127,7 @@ function handleRetry() {
 		</div>
 	</slot>
 
-	<slot v-else-if="loading" name="loading">
+	<slot v-else-if="state === 'loading'" name="loading">
 		<div class="flex items-center justify-center py-16">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
@@ -115,7 +136,7 @@ function handleRetry() {
 		</div>
 	</slot>
 
-	<slot v-else-if="empty" name="empty">
+	<slot v-else-if="state === 'empty'" name="empty">
 		<UiEmptyState
 			icon="lucide:inbox"
 			:title="t('components.ui.queryBoundary.emptyTitle')"
@@ -123,5 +144,5 @@ function handleRetry() {
 		/>
 	</slot>
 
-	<slot v-else />
+	<slot v-else-if="state === 'content'" />
 </template>

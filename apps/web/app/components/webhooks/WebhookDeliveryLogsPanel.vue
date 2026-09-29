@@ -156,7 +156,11 @@ function formatJson(value: unknown) {
 				:disabled="isSendingTest"
 				@click="emit('sendTest')"
 			>
-				<Icon v-if="isSendingTest" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+				<Icon
+					v-if="isSendingTest"
+					name="lucide:loader-2"
+					class="w-4 h-4 animate-spin motion-reduce:animate-none"
+				/>
 				<Icon v-else name="lucide:send" class="w-4 h-4" />
 				{{
 					isSendingTest
@@ -200,8 +204,19 @@ function formatJson(value: unknown) {
 		<!-- Content area -->
 		<div class="overflow-y-auto max-h-[60vh] -mx-6">
 			<!-- Loading -->
-			<div v-if="logsLoading && !logs" class="flex items-center justify-center py-16">
-				<UiSpinner size="md" />
+			<div v-if="logsLoading && !logs" aria-busy="true">
+				<p role="status" class="sr-only">{{ t('common.loading') }}</p>
+				<!-- Rows at the log list's own geometry: status chip, event, time. -->
+				<div
+					v-for="row in 5"
+					:key="row"
+					aria-hidden="true"
+					class="flex items-center gap-4 px-6 py-3 border-b border-border-subtle"
+				>
+					<UiSkeleton class="h-5 w-16 shrink-0" />
+					<UiSkeleton class="h-3.5" :class="row % 2 ? 'w-40' : 'w-28'" />
+					<UiSkeleton class="h-3 w-14 shrink-0 ml-auto" />
+				</div>
 			</div>
 
 			<!-- Selected log detail -->
@@ -336,7 +351,11 @@ function formatJson(value: unknown) {
 					{{ t('components.webhooks.webhookDeliveryLogsPanel.emptyDescription') }}
 				</p>
 				<UiButton class="gap-2 mt-4" :disabled="isSendingTest" @click="emit('sendTest')">
-					<Icon v-if="isSendingTest" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+					<Icon
+						v-if="isSendingTest"
+						name="lucide:loader-2"
+						class="w-4 h-4 animate-spin motion-reduce:animate-none"
+					/>
 					<Icon v-else name="lucide:send" class="w-4 h-4" />
 					{{
 						isSendingTest

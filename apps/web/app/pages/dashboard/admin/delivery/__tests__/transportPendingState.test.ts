@@ -18,8 +18,8 @@
  *   - resolved with a status → the real cards, and no skeleton left behind.
  */
 import { mount } from '@vue/test-utils';
-import { describe, expect, it, vi } from 'vitest';
-import { ref } from 'vue';
+import { describe, expect, it, vi, onTestFinished } from 'vitest';
+import { nextTick, ref } from 'vue';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import { api } from '@owlat/api';
 import TransportPage from '../transport.vue';
@@ -107,9 +107,14 @@ const globalOptions = {
 };
 
 describe('the delivery transport page never renders a bare header', () => {
-	it('stands in for the cards that are coming while the status is in flight', () => {
+	it('stands in for the cards that are coming while the status is in flight', async () => {
+		vi.useFakeTimers();
+		onTestFinished(() => vi.useRealTimers());
 		stubPage({ status: undefined, isLoading: true, error: null });
 		const wrapper = mount(TransportPage, { global: globalOptions });
+		// The boundary holds its loader back for 150 ms (useDelayedLoading).
+		vi.advanceTimersByTime(150);
+		await nextTick();
 
 		// Content-shaped, not a single centred spinner: the status card's icon
 		// disc and heading plus two configuration cards' worth of rows.

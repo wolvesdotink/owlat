@@ -238,9 +238,7 @@ const handleRemoveRelation = async (relationId: string) => {
 		</NuxtLink>
 
 		<!-- Loading -->
-		<div v-if="isLoading" class="flex items-center justify-center py-20">
-			<UiSpinner />
-		</div>
+		<DashboardDetailSkeleton v-if="isLoading" lead="tile-lg" meta :actions="2" />
 
 		<!-- Not Found -->
 		<div v-else-if="!entry" class="flex flex-col items-center justify-center py-20 text-center">

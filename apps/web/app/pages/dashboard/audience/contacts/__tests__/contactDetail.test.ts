@@ -125,6 +125,7 @@ function mountPage() {
 				UiButton: { template: '<button><slot /></button>' },
 				UiIconBox: true,
 				UiSpinner: true,
+				DashboardDetailSkeleton: true,
 				UiTextarea: true,
 				Teleport: true,
 				ContactsSuppressionNotice: true,

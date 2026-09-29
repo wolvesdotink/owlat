@@ -97,9 +97,7 @@ const handleLeave = async () => {
 		</div>
 
 		<!-- Loading shell -->
-		<div v-if="roomLoading" class="flex-1 flex items-center justify-center">
-			<UiSpinner />
-		</div>
+		<ChatRoomSkeleton v-if="roomLoading" />
 
 		<!-- Not found / no access -->
 		<div
@@ -167,9 +165,7 @@ const handleLeave = async () => {
 						@edit="(id, text) => editMessage(id, text)"
 						@delete="(id) => deleteMessage(id)"
 					/>
-					<div v-else class="flex-1 flex items-center justify-center">
-						<UiSpinner size="md" />
-					</div>
+					<ChatRoomSkeleton v-else :header="false" />
 					<ChatInput v-if="room.isMember" @send="handleSend" />
 				</div>
 

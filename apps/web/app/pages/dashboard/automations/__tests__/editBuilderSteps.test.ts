@@ -83,6 +83,7 @@ async function mountBuilder() {
 			plugins: [createTestI18n()],
 			stubs: {
 				Icon: true,
+				UiSpinner: true,
 				NuxtLink: { template: '<a><slot /></a>' },
 				UiButton: { template: '<button><slot /></button>' },
 				UnsavedChangesDialog: true,

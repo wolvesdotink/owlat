@@ -254,7 +254,7 @@ const copyUrl = async (url: string) => {
 			v-else-if="isLoading && assets.length === 0"
 			class="flex items-center justify-center py-20"
 		>
-			<UiSpinner />
+			<UiSpinner delay />
 		</div>
 
 		<!-- Empty state -->

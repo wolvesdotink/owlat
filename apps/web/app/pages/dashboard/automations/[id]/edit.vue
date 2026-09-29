@@ -481,10 +481,7 @@ onUnmounted(() => {
 
 		<!-- Loading State -->
 		<div v-if="isLoadingAutomation" class="flex-1 flex items-center justify-center">
-			<Icon
-				name="lucide:loader-2"
-				class="w-8 h-8 animate-spin motion-reduce:animate-none text-brand"
-			/>
+			<UiSpinner delay />
 		</div>
 
 		<!-- Not Found -->
