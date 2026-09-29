@@ -349,3 +349,63 @@ describe('string style fields are escaped before interpolation', () => {
 		expect(html).not.toContain(RAW_BREAKOUT);
 	});
 });
+
+describe('background image URLs stay inside the style attribute', () => {
+	const URL_BREAKOUT = `https://example.com/a" ${MARKER}="1`;
+	const URL_TAGS = 'https://example.com/a</style><x-probe>';
+	const ATTR_OUTSIDE_VALUE = new RegExp(`"\\s*${MARKER}=`);
+	const text = (id: string) => ({ id, type: 'text', content: { html: '<p>x</p>' } });
+
+	const hero = (url: string): EditorBlock =>
+		({ id: 'h', type: 'hero', content: { backgroundImage: url, items: [text('t')] } }) as never;
+	const nestedContainer = (url: string): EditorBlock =>
+		({
+			id: 'outer',
+			type: 'container',
+			content: {
+				items: [
+					{
+						id: 'inner',
+						type: 'container',
+						content: { backgroundImage: url, items: [text('t')] },
+					},
+				],
+			},
+		}) as never;
+	const columns = (url: string): EditorBlock =>
+		({
+			id: 'cols',
+			type: 'columns',
+			content: {
+				columnCount: 2,
+				columns: [[text('a')], [text('b')]],
+				columnStyles: [{ backgroundImage: url }, {}],
+			},
+		}) as never;
+
+	const cases = [
+		['hero', hero],
+		['nested container', nestedContainer],
+		['columns', columns],
+	] as const;
+
+	it.each(cases)('%s: a quote in the URL does not end the attribute', (_name, build) => {
+		for (const darkMode of [false, true]) {
+			const html = renderEmailHtml([build(URL_BREAKOUT)], { darkMode });
+			expect(html).not.toMatch(ATTR_OUTSIDE_VALUE);
+		}
+	});
+
+	it.each(cases)('%s: markup in the URL is not emitted as tags', (_name, build) => {
+		for (const darkMode of [false, true]) {
+			const html = renderEmailHtml([build(URL_TAGS)], { darkMode });
+			expect(html).not.toContain('<x-probe');
+			expect(html).not.toContain('</style style=');
+		}
+	});
+
+	it.each(cases)('%s: an ordinary URL renders unchanged', (_name, build) => {
+		const html = renderEmailHtml([build('https://example.com/bg.png')], { inlineCss: false });
+		expect(html).toContain("background-image:url('https://example.com/bg.png')");
+	});
+});
