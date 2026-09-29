@@ -22,6 +22,7 @@ export const automationListing: ListingDescriptor<'automations'> = {
 			field: 'status',
 			buckets: ['draft', 'active', 'paused'],
 			index: 'by_status',
+			counter: 'automationStatus',
 		},
 	},
 };

@@ -21,6 +21,7 @@ import { conversationRootId, resolveDeliveryThread } from '../deliveryPipeline/t
 import { clearNeedsReplyOnOwnerReply } from '../needsReply';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import { buildSnippet } from '../deliveryPipeline/insert';
+import { recordMessageCounters } from '../messageCounters';
 
 /**
  * Error string used by APPEND to signal a from-address violation. The
@@ -189,6 +190,13 @@ export const appendMessage = internalMutation({
 			internalDate,
 			createdAt: now,
 			updatedAt: now,
+		});
+		await recordMessageCounters(ctx, null, {
+			mailboxId: folder.mailboxId,
+			folderId: folder._id,
+			flagSeen: flagSet.has('\\seen'),
+			labelIds: [],
+			receivedAt: internalDate,
 		});
 
 		if (existingThreadId) {

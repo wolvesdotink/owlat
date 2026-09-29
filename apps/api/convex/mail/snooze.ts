@@ -18,6 +18,7 @@ import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors'
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { requireMailboxAccess, requireMessageAccess } from './permissions';
 import { adjustFolderUnseen } from './folders';
+import { recordMessageCounters } from './messageCounters';
 
 export const snooze = postboxMutation({
 	args: {
@@ -37,6 +38,7 @@ export const snooze = postboxMutation({
 			snoozedFromFolderId: message.snoozedFromFolderId ?? message.folderId,
 			updatedAt: Date.now(),
 		});
+		await recordMessageCounters(ctx, message, { ...message, snoozedUntil: args.until });
 		// A snoozed message leaves the unread count (it's hidden from its folder).
 		if (!message.flagSeen && !alreadySnoozed) {
 			await adjustFolderUnseen(ctx, message.folderId, -1);
@@ -76,6 +78,7 @@ export const snoozeUntilReply = postboxMutation({
 			isSnoozeUntilReply: true,
 			updatedAt: Date.now(),
 		});
+		await recordMessageCounters(ctx, message, { ...message, snoozedUntil: args.capUntil });
 		if (!message.flagSeen && !alreadySnoozed) {
 			await adjustFolderUnseen(ctx, message.folderId, -1);
 		}
@@ -107,6 +110,7 @@ export async function clearSnoozeUntilReplyForThread(
 			isSnoozeUntilReply: undefined,
 			updatedAt: now,
 		});
+		await recordMessageCounters(ctx, m, { ...m, snoozedUntil: undefined });
 		// Returning to its folder re-enters the unread count (see unsnooze).
 		if (!m.flagSeen) {
 			await adjustFolderUnseen(ctx, m.folderId, 1);
@@ -131,6 +135,7 @@ async function clearMessageSnooze(
 		isSnoozeUntilReply: undefined,
 		updatedAt: now,
 	});
+	await recordMessageCounters(ctx, message, { ...message, snoozedUntil: undefined });
 	// Returning to its folder re-enters the unread count. The decrement happened
 	// when `snoozedUntil` was SET, and nothing re-adds it when the wake time
 	// merely passes — so the presence of the column, not `isMessageSnoozed`, is
@@ -183,6 +188,7 @@ export const snoozeThread = postboxMutation({
 				snoozedFromFolderId: m.snoozedFromFolderId ?? m.folderId,
 				updatedAt: now,
 			});
+			await recordMessageCounters(ctx, m, { ...m, snoozedUntil: args.until });
 			if (!m.flagSeen && !alreadySnoozed) {
 				await adjustFolderUnseen(ctx, m.folderId, -1);
 			}
@@ -260,6 +266,7 @@ export const snoozeMany = postboxMutation({
 				snoozedFromFolderId: message.snoozedFromFolderId ?? message.folderId,
 				updatedAt: now,
 			});
+			await recordMessageCounters(ctx, message, { ...message, snoozedUntil: args.until });
 			if (!message.flagSeen && !alreadySnoozed) {
 				await adjustFolderUnseen(ctx, message.folderId, -1);
 			}

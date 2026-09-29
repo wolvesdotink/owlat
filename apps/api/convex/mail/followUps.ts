@@ -32,6 +32,7 @@ import { isMessageSnoozed } from '../lib/mailSnooze';
 import { requireMailboxAccess, requireMessageAccess } from './permissions';
 import { adjustFolderUnseen } from './folders';
 import { rebuildThreadAggregates } from './messageActions';
+import { recordMessageCounters } from './messageCounters';
 
 // ─── Pure helpers ────────────────────────────────────────────────────────────
 
@@ -197,6 +198,7 @@ export const internalSweep = internalMutation({
 					modseq: inbox.highestModseq + 1,
 					updatedAt: now,
 				});
+				await recordMessageCounters(ctx, message, { ...message, folderId: inbox._id });
 				await ctx.db.patch(inbox._id, {
 					uidNext: inbox.uidNext + 1,
 					highestModseq: inbox.highestModseq + 1,
@@ -220,6 +222,7 @@ export const internalSweep = internalMutation({
 					}
 				}
 				await ctx.db.patch(fresh._id, patch);
+				await recordMessageCounters(ctx, fresh, { ...fresh, ...patch });
 			}
 
 			// Re-derive thread aggregates (folderRoles/unreadCount/hasFlagged),

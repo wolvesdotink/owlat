@@ -53,6 +53,8 @@ export type OrganizationDeletionTable =
 	| 'inboxAssignmentNotices'
 	| 'inboundMessages'
 	| 'conversationThreads'
+	| 'counterScopes'
+	| 'counterBuckets'
 	| 'mailAliases'
 	| 'mailFolders'
 	| 'mailLabels'
@@ -244,6 +246,8 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('inboxAssignmentNotices'),
 	v.literal('inboundMessages'),
 	v.literal('conversationThreads'),
+	v.literal('counterScopes'),
+	v.literal('counterBuckets'),
 	v.literal('mailAliases'),
 	v.literal('mailFolders'),
 	v.literal('mailLabels'),

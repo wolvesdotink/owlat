@@ -4,6 +4,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { getOrThrow, throwNotFound, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
+import { recordListingCounter } from '../lib/listingCounters';
 import { findPlatformAdmin } from '../lib/platformAdminAccess';
 import { abuseStatusValidator } from '../workspaces/abuseStatus';
 
@@ -99,6 +100,7 @@ export const approveCampaign = platformAdminMutation({
 			status: 'draft',
 			updatedAt: now,
 		});
+		await recordListingCounter(ctx, 'campaignStatus', campaign, { status: 'draft' });
 
 		// Log the approval
 		await recordAuditLog(ctx, {
@@ -183,6 +185,7 @@ export const rejectContent = platformAdminMutation({
 				status: 'draft',
 				updatedAt: now,
 			});
+			await recordListingCounter(ctx, 'campaignStatus', campaign, { status: 'draft' });
 
 			await recordAuditLog(ctx, {
 				userId: admin.authUserId,

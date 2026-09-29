@@ -29,6 +29,7 @@ import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { defineLifecycle, refuse } from '../lib/lifecycle';
 import { logWarn } from '../lib/runtimeLog';
 import { trackEvent } from '../lib/posthogHelpers';
+import { recordListingCounter } from '../lib/listingCounters';
 import { loadOrderedSteps } from './steps';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -305,6 +306,10 @@ async function dispatch(
 
 	if (Object.keys(result.patch).length > 0) {
 		await ctx.db.patch(automation._id, result.patch as Partial<Doc<'automations'>>);
+		await recordListingCounter(ctx, 'automationStatus', automation, {
+			...automation,
+			...result.patch,
+		});
 	}
 	await applyEffects(ctx, result.effects);
 

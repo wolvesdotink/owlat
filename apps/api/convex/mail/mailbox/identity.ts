@@ -39,6 +39,7 @@ import { SYSTEM_FOLDER_NAMES, readSession } from './shared';
 import { SYSTEM_FOLDER_ROLES } from '../../lib/validators/mail';
 import { findAddressClaim } from './addressResolution';
 import { stopExternalAccountSync } from '../external/accountTeardown';
+import { startEmptyMailboxCounters } from '../messageCounters';
 
 /**
  * The caller-visible personal mailbox for a member: their single `active`
@@ -167,7 +168,7 @@ export async function provisionMailbox(
 	}
 
 	for (const role of SYSTEM_FOLDER_ROLES) {
-		await ctx.db.insert('mailFolders', {
+		const folderId = await ctx.db.insert('mailFolders', {
 			mailboxId,
 			name: SYSTEM_FOLDER_NAMES[role],
 			role,
@@ -180,6 +181,8 @@ export async function provisionMailbox(
 			createdAt: now,
 			updatedAt: now,
 		});
+		// A new mailbox holds no mail: its counters (plan 3.1) start out exact.
+		if (role === 'inbox') await startEmptyMailboxCounters(ctx, mailboxId, folderId);
 	}
 
 	// External mailboxes are NOT authoritative on the local MTA — mail for an

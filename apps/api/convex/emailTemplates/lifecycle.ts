@@ -29,6 +29,7 @@ import { defineLifecycle, refuse } from '../lib/lifecycle';
 import { applyUsageCountDelta } from '../emailBlocks/module';
 import { deleteTemplateVersions } from './versions';
 import { buildSearchableText } from '../lib/queryHelpers';
+import { recordListingCounter } from '../lib/listingCounters';
 import { duplicateEmailFields } from '../lib/publishableEmail';
 import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from '../lib/constants';
 
@@ -289,6 +290,7 @@ export const create = internalMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
+		await recordListingCounter(ctx, 'templateType', null, { type: args.type });
 
 		const effects: Effect[] = [
 			{
@@ -365,6 +367,7 @@ export const duplicate = internalMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
+		await recordListingCounter(ctx, 'templateType', null, { type: template.type });
 
 		const effects: Effect[] = [
 			{
@@ -409,6 +412,7 @@ export const remove = internalMutation({
 
 		const name = template.name;
 		await ctx.db.delete(args.templateId);
+		await recordListingCounter(ctx, 'templateType', template, null);
 		// Cascade: version snapshots are owned by the template row.
 		await deleteTemplateVersions(ctx, args.templateId);
 

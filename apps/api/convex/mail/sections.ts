@@ -54,10 +54,12 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { loadReadableMailbox } from './permissions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { attachThreadState, type MailListRow, type RowThreadState } from './mailbox/rowThreadState';
+import { readSectionUnreadCounts } from './messageCounters';
 
 /**
  * How many named sections one inbox can render. Each section costs its own
- * indexed page read plus its own unread count, so this bounds the query's fan-out.
+ * indexed page read (plus, before the counter is backfilled, its own unread
+ * scan), so this bounds the query's fan-out.
  * Filters beyond the cap keep filing mail (the row still carries the name); their
  * sections just fold into "Everything else" until an earlier one is retired.
  */
@@ -70,8 +72,9 @@ export const DEFAULT_SECTION_LIMIT = 20;
 export const MAX_SECTION_LIMIT = 200;
 
 /**
- * Unread counting stops here. A section header says "9+" past the cap rather
- * than walking an unbounded range to print an exact number nobody reads.
+ * Where the fallback unread scan stops (used only until the inbox's section
+ * counter is backfilled, see `messageCounters.ts`). A section header says
+ * "99+" past the cap rather than walking an unbounded range.
  */
 const UNREAD_COUNT_CAP = 99;
 
@@ -96,8 +99,9 @@ interface InboxSection {
 	unreadCount: number;
 	/**
 	 * `unreadCount` is a floor, not the exact number — render it as "{count}+".
-	 * True when the count hit {@link UNREAD_COUNT_CAP}, or when the remainder's
-	 * walk spent its scan budget before it ran out of unread mail.
+	 * Only the fallback scan sets it: when the count hit {@link UNREAD_COUNT_CAP},
+	 * or when the remainder's walk spent its scan budget before it ran out of
+	 * unread mail. A counted section is exact and never capped.
 	 */
 	isUnreadCapped: boolean;
 }
@@ -192,10 +196,15 @@ export const listSections = publicQuery({
 		const names = sectionNamesFromFilters(filters);
 
 		const now = Date.now();
+		// Exact per-section unread counts (plan 3.1) once the inbox's counter is
+		// backfilled; until then each section keeps its bounded unread scan.
+		const counted = await readSectionUnreadCounts(ctx.db, folder._id);
+		const renderedNames = new Set(names);
 		const sections: InboxSection[] = [];
 		for (const name of names) {
 			const limit = resolveSectionLimit(args.limits, name);
-			sections.push(await readSection(ctx, folder._id, name, limit, now));
+			const unread = counted ? exactUnread(counted.get(name) ?? 0) : undefined;
+			sections.push(await readSection(ctx, folder._id, name, limit, now, unread));
 		}
 		// The remainder goes last: it reads as the bottom of the inbox rather than
 		// competing with the named sections. It is the complement of exactly the
@@ -204,22 +213,48 @@ export const listSections = publicQuery({
 			await readRemainder(
 				ctx,
 				folder._id,
-				new Set(names),
+				renderedNames,
 				resolveSectionLimit(args.limits, null),
-				now
+				now,
+				counted ? exactUnread(remainderUnread(counted, renderedNames)) : undefined
 			)
 		);
 		return { sections };
 	},
 });
 
-/** One NAMED section's page + unread count, both bounded indexed reads. */
+type UnreadCount = Pick<InboxSection, 'unreadCount' | 'isUnreadCapped'>;
+
+function exactUnread(count: number): UnreadCount {
+	return { unreadCount: count, isUnreadCapped: false };
+}
+
+/**
+ * Unread mail in "Everything else" from the per-section counter: every bucket
+ * whose name no rendered section carries (unstamped rows are the `''` bucket).
+ */
+export function remainderUnread(
+	counted: ReadonlyMap<string, number>,
+	renderedNames: ReadonlySet<string>
+): number {
+	let total = 0;
+	for (const [name, count] of counted) {
+		if (belongsToRemainder(name, renderedNames)) total += count;
+	}
+	return total;
+}
+
+/**
+ * One NAMED section's page + unread count, both bounded indexed reads. A
+ * counted `unread` replaces the unread scan.
+ */
 async function readSection(
 	ctx: QueryCtx,
 	folderId: Id<'mailFolders'>,
 	name: string,
 	limit: number,
-	now: number
+	now: number,
+	unread?: UnreadCount
 ): Promise<InboxSection> {
 	const raw = await ctx.db
 		.query('mailMessages')
@@ -231,6 +266,24 @@ async function readSection(
 	const hasMore = raw.length > limit;
 	const messages = raw.slice(0, limit).filter((m) => !isMessageSnoozed(m, now));
 
+	return {
+		name,
+		// A section row is rendered by the same row body as a flat-list row, so it
+		// leaves through the same projection: the slim list row (no bodies) with
+		// the thread's chip state attached.
+		messages: await attachThreadState(ctx, messages),
+		hasMore,
+		...(unread ?? (await scanSectionUnread(ctx, folderId, name, now))),
+	};
+}
+
+/** Fallback unread count for a named section: at most {@link UNREAD_COUNT_CAP} + 1 rows. */
+async function scanSectionUnread(
+	ctx: QueryCtx,
+	folderId: Id<'mailFolders'>,
+	name: string,
+	now: number
+): Promise<UnreadCount> {
 	const unread = await ctx.db
 		.query('mailMessages')
 		.withIndex('by_folder_and_section_and_seen', (q) =>
@@ -239,12 +292,6 @@ async function readSection(
 		.take(UNREAD_COUNT_CAP + 1);
 	const unreadRows = unread.filter((m) => !isMessageSnoozed(m, now));
 	return {
-		name,
-		// A section row is rendered by the same row body as a flat-list row, so it
-		// leaves through the same projection: the slim list row (no bodies) with
-		// the thread's chip state attached.
-		messages: await attachThreadState(ctx, messages),
-		hasMore,
 		unreadCount: Math.min(unreadRows.length, UNREAD_COUNT_CAP),
 		isUnreadCapped: unreadRows.length > UNREAD_COUNT_CAP,
 	};
@@ -263,7 +310,8 @@ async function readRemainder(
 	folderId: Id<'mailFolders'>,
 	renderedNames: ReadonlySet<string>,
 	limit: number,
-	now: number
+	now: number,
+	unread?: UnreadCount
 ): Promise<InboxSection> {
 	const budget = Math.min(limit * REMAINDER_SCAN_FACTOR, REMAINDER_MAX_SCAN);
 
@@ -290,6 +338,21 @@ async function readRemainder(
 		messages.push(row);
 	}
 
+	return {
+		name: null,
+		messages: await attachThreadState(ctx, messages),
+		hasMore,
+		...(unread ?? (await scanRemainderUnread(ctx, folderId, renderedNames, now))),
+	};
+}
+
+/** Fallback unread count for "Everything else", bounded by {@link REMAINDER_MAX_SCAN}. */
+async function scanRemainderUnread(
+	ctx: QueryCtx,
+	folderId: Id<'mailFolders'>,
+	renderedNames: ReadonlySet<string>,
+	now: number
+): Promise<UnreadCount> {
 	let unreadCount = 0;
 	let isUnreadCapped = false;
 	let unreadScanned = 0;
@@ -310,12 +373,5 @@ async function readRemainder(
 		}
 		unreadCount += 1;
 	}
-
-	return {
-		name: null,
-		messages: await attachThreadState(ctx, messages),
-		hasMore,
-		unreadCount,
-		isUnreadCapped,
-	};
+	return { unreadCount, isUnreadCapped };
 }

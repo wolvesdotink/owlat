@@ -20,6 +20,7 @@ import {
 	recordThreadFlagChange,
 	type ThreadFlagDeltas,
 } from './threadAggregates';
+import { recordMessageCounters } from './messageCounters';
 
 export type Flag = 'seen' | 'flagged' | 'answered' | 'deleted';
 
@@ -83,6 +84,7 @@ export async function writeMessageFlags(
 	if (flagDeltas.answered !== undefined) patch.flagAnswered = flagDeltas.answered;
 	if (flagDeltas.deleted !== undefined) patch.flagDeleted = flagDeltas.deleted;
 	await ctx.db.patch(message._id, patch);
+	await recordMessageCounters(ctx, message, { ...message, ...patch });
 
 	// folder.unseenCount counts unread AND not-snoozed messages (snooze.ts
 	// adjusts it when the snooze flag flips). A snoozed message isn't counted,

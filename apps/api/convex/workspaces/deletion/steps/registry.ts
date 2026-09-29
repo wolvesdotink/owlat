@@ -50,6 +50,10 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'accountExportArtifactLeases',
 	'accountExportArtifacts',
 	'accountExportSessions',
+	// Derived counts first: the mail and contact wipes below then find no scope
+	// to keep in step.
+	'counterScopes',
+	'counterBuckets',
 	// Storage-bearing leaves: storage hooks fire before row delete
 	'mediaAssets',
 	'semanticFileContacts', // junction mirror — clear before its parent files
@@ -311,6 +315,8 @@ export const ORGANIZATION_DELETION_STEPS = {
 	contentScanResults: makeSweepStep('contentScanResults'),
 	inboundMessages: inboundMessagesStep,
 	conversationThreads: makeSweepStep('conversationThreads'),
+	counterScopes: makeSweepStep('counterScopes'),
+	counterBuckets: makeSweepStep('counterBuckets'),
 	mailAliases: makeSweepStep('mailAliases'),
 	mailFolders: makeSweepStep('mailFolders'),
 	mailLabels: makeSweepStep('mailLabels'),

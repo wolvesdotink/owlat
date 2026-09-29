@@ -25,6 +25,7 @@ import {
 } from './threadAggregates';
 import { FolderFlagWrites, markThreadSeenBatch, writeMessageFlags, type Flag } from './flagWrites';
 import { recordTriageVerb } from './triageTally';
+import { recordMessageCounters } from './messageCounters';
 
 // Re-exported so the modules that reach the rebuild through this one keep
 // working unchanged; it lives in ./threadAggregates now (size cap).
@@ -177,6 +178,7 @@ export async function moveMessagesToFolder(
 			trashedAt: target.role === 'trash' ? now : undefined,
 			updatedAt: Date.now(),
 		});
+		await recordMessageCounters(ctx, message, { ...message, folderId: args.targetFolderId });
 		moved.push({ messageId: id, sourceFolderId: sourceFolder._id });
 		touchedThreads.add(message.threadId);
 	}

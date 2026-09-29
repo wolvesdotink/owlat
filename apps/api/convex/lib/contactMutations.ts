@@ -1,6 +1,7 @@
 import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { decrementContactCount } from './contactCountHelpers';
+import { recordContactGrowth } from '../contacts/growthCounters';
 import { deleteIdentitiesForContact } from '../contacts/resolution';
 import {
 	repointContactJunction,
@@ -197,11 +198,13 @@ export async function softDeleteContact(
 ): Promise<void> {
 	const existing = await ctx.db.get(contactId);
 	if (!existing || existing.deletedAt !== undefined) return;
+	const deletedAt = Date.now();
 	await ctx.db.patch(contactId, {
-		deletedAt: Date.now(),
+		deletedAt,
 		deletedBy,
-		updatedAt: Date.now(),
+		updatedAt: deletedAt,
 	});
+	await recordContactGrowth(ctx, existing, { ...existing, deletedAt });
 	// Cascade: identifier is privacy-sensitive and should disappear on day 1,
 	// not 30 days later. See docs/adr/0008-contact-resolution-module.md.
 	await deleteIdentitiesForContact(ctx, contactId);

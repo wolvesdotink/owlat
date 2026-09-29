@@ -20,6 +20,12 @@ export const campaignListing: ListingDescriptor<'campaigns'> = {
 	filters: ['status'],
 	facets: {
 		total: { kind: 'indexCount', index: 'by_updated_at' },
-		byStatus: { kind: 'groupBy', field: 'status', buckets: CAMPAIGN_STATUSES, index: 'by_status' },
+		byStatus: {
+			kind: 'groupBy',
+			field: 'status',
+			buckets: CAMPAIGN_STATUSES,
+			index: 'by_status',
+			counter: 'campaignStatus',
+		},
 	},
 };

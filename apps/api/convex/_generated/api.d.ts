@@ -1,7 +1,15 @@
 import type * as agent_replyEnvelope from '../agent/replyEnvelope.js';
 import type * as chat_attachmentAccess from '../chat/attachmentAccess.js';
+import type * as contacts_growthCounters from '../contacts/growthCounters.js';
 import type * as delivery_sendLifecycle_sourceFinalization from '../delivery/sendLifecycle/sourceFinalization.js';
 import type * as inbox_followUps from '../inbox/followUps.js';
+import type * as lib_counters from '../lib/counters.js';
+import type * as lib_listingCounters from '../lib/listingCounters.js';
+import type * as lib_rowCounters from '../lib/rowCounters.js';
+import type * as mail_messageCounters from '../mail/messageCounters.js';
+import type * as maintenance_counterBackfill from '../maintenance/counterBackfill.js';
+import type * as migrations_0046_backfill_counters from '../migrations/0046_backfill_counters.js';
+import type * as schema_counters from '../schema/counters.js';
 import type * as workspaces_deletion_steps_storageUploads from '../workspaces/deletion/steps/storageUploads.js';
 import type * as storage_uploadsHttp from '../storage/uploadsHttp.js';
 import type * as storage_uploads from '../storage/uploads.js';
@@ -1253,8 +1261,16 @@ import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server
 declare const fullApi: ApiFromModules<{
 	'agent/replyEnvelope': typeof agent_replyEnvelope;
 	'chat/attachmentAccess': typeof chat_attachmentAccess;
+	'contacts/growthCounters': typeof contacts_growthCounters;
 	'delivery/sendLifecycle/sourceFinalization': typeof delivery_sendLifecycle_sourceFinalization;
 	'inbox/followUps': typeof inbox_followUps;
+	'lib/counters': typeof lib_counters;
+	'lib/listingCounters': typeof lib_listingCounters;
+	'lib/rowCounters': typeof lib_rowCounters;
+	'mail/messageCounters': typeof mail_messageCounters;
+	'maintenance/counterBackfill': typeof maintenance_counterBackfill;
+	'migrations/0046_backfill_counters': typeof migrations_0046_backfill_counters;
+	'schema/counters': typeof schema_counters;
 	'workspaces/deletion/steps/storageUploads': typeof workspaces_deletion_steps_storageUploads;
 	'storage/uploadsHttp': typeof storage_uploadsHttp;
 	'storage/uploads': typeof storage_uploads;

@@ -26,6 +26,7 @@ import { canonicalMessageId, canonicalOptionalMessageId } from '../../lib/messag
 import { sealBodyAtWriteMaybe } from '../../lib/messageBody';
 import { redirectMutedDelivery } from '../mute';
 import { indexMessageAttachments } from '../attachmentIndex';
+import { recordMessageCounters } from '../messageCounters';
 import { conversationRootId, resolveDeliveryThread } from './threading';
 import { mergeThreadParticipants } from '../threadAggregates';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
@@ -311,6 +312,14 @@ export async function insertDeliveredMessage(
 		pinnedSection: params.pinnedSection,
 		createdAt: now,
 		updatedAt: now,
+	});
+	await recordMessageCounters(ctx, null, {
+		mailboxId: mailbox._id,
+		folderId: folder._id,
+		flagSeen,
+		labelIds: params.labelIds ?? [],
+		receivedAt: params.receivedAt,
+		pinnedSection: params.pinnedSection,
 	});
 
 	// Attachment index (idea 37): the indexable mirror of the array we just

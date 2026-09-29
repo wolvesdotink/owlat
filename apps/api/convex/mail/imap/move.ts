@@ -14,6 +14,7 @@ import { rebuildThreadAggregates } from '../messageActions';
 import { bumpFolderModseq } from '../folders';
 import { indexMessageAttachments, removeMessageAttachments } from '../attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../messagePurge';
+import { recordMessageCounters } from '../messageCounters';
 
 /**
  * COPY — clones a message into another folder of the SAME mailbox.
@@ -79,6 +80,7 @@ export const copyMessages = internalMutation({
 				createdAt: now,
 				updatedAt: now,
 			});
+			await recordMessageCounters(ctx, null, { ...rest, folderId: target._id });
 			// The copy is its own message row, so it gets its own junction rows —
 			// otherwise a COPY into a folder would silently drop the copy's files
 			// out of the Files view and out of `filename:`.
@@ -172,6 +174,7 @@ export const moveMessages = internalMutation({
 				modseq: newModseq,
 				updatedAt: now,
 			});
+			await recordMessageCounters(ctx, m, { ...m, folderId: target._id });
 			pairs.push({ sourceUid: m.uid, targetUid: newUid });
 		}
 
