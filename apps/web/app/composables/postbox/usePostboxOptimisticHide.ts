@@ -1,8 +1,9 @@
 /**
- * Optimistic row removal for the message list. The ConvexClient has no native
- * optimistic updates, so a triage action hides its row immediately and the live
- * subscription confirms it; a failed action restores the row. Hidden ids are
- * pruned once the row actually leaves the source list.
+ * Optimistic row removal for the message list: a triage action hides its row
+ * immediately and the live subscription confirms it; a failed action restores
+ * the row. Hidden ids are pruned once the row actually leaves the source list.
+ * Patching the cached query results themselves is the job of a Convex
+ * `optimisticUpdate` (see `useBackendOperation` and `~/lib/optimisticStore`).
  */
 export function usePostboxOptimisticHide<T extends { _id: string }>(items: Ref<T[]>) {
 	const hidden = ref<Set<string>>(new Set());
