@@ -37,6 +37,9 @@ useHead({
 
 const { currentMailbox, isLoading: mailboxesLoading, error: mailboxError } = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
+// Prefetched and just-read bodies outlive the list and reader; they are
+// dropped when the mailbox, user or organization changes.
+usePostboxBodyCacheScope(mailboxId);
 
 // For the Postbox empty state: surface the resumable per-user onboarding
 // checklist so a member who has no mailbox yet can pick their setup back up here.

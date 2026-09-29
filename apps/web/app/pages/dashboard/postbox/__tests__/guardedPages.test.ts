@@ -43,6 +43,8 @@ beforeAll(() => {
 		definePageMeta: () => {},
 		useRoute: () => route,
 		useAuth: () => ({ user: ref({ id: 'user-1' }) }),
+		// The body-cache scope has its own spec (usePostboxBodyCacheScope.test.ts).
+		usePostboxBodyCacheScope: () => {},
 		usePostboxMailbox: () => ({
 			currentMailbox,
 			isLoading: mailboxesLoading,

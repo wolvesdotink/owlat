@@ -24,24 +24,46 @@ type BodyFetch = (url: string) => Promise<{
 const MAX_RESOLVED_BODIES_PER_CLIENT = 6;
 const MAX_RESOLVED_BODY_CHARS = 512 * 1024;
 const MAX_RESOLVED_BODY_CACHE_CHARS = 2 * 1024 * 1024;
+/** How long a body the reader has read stays cached, so re-opening it (back,
+ * j/k past it and back, a reply that quotes it) needs no second round trip. */
+export const CONSUMED_POSTBOX_BODY_TTL_MS = 2 * 60 * 1000;
 
 interface ResolvedBodyCacheEntry {
 	promise: Promise<ResolvedPostboxBody>;
 	charCount: number;
+	/** Set once a reader consumes the body; null while it is only prefetched. */
+	expiresAt: number | null;
+	expiryTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface ResolvedBodyCache {
 	entries: Map<string, ResolvedBodyCacheEntry>;
 	charCount: number;
+	/** Who and which mailbox the entries belong to; see setResolvedPostboxBodyScope. */
+	scope: string | null;
 }
 
 const resolvedBodies = new WeakMap<PostboxBodyClient, ResolvedBodyCache>();
 
+function cacheFor(client: PostboxBodyClient): ResolvedBodyCache {
+	let cache = resolvedBodies.get(client);
+	if (!cache) {
+		cache = { entries: new Map(), charCount: 0, scope: null };
+		resolvedBodies.set(client, cache);
+	}
+	return cache;
+}
+
 function removeCachedBody(cache: ResolvedBodyCache, messageId: string): void {
 	const entry = cache.entries.get(messageId);
 	if (!entry) return;
+	if (entry.expiryTimer !== null) clearTimeout(entry.expiryTimer);
 	cache.entries.delete(messageId);
 	cache.charCount = Math.max(0, cache.charCount - entry.charCount);
+}
+
+function dropAllCachedBodies(cache: ResolvedBodyCache): void {
+	for (const messageId of Array.from(cache.entries.keys())) removeCachedBody(cache, messageId);
 }
 
 function resolvedBodyCharCount(body: ResolvedPostboxBody): number {
@@ -78,13 +100,11 @@ export function resolvePostboxMessageBody(
 	messageId: string,
 	fetchImpl: BodyFetch = (url) => fetch(url)
 ): Promise<ResolvedPostboxBody> {
-	let cache = resolvedBodies.get(client);
-	if (!cache) {
-		cache = { entries: new Map(), charCount: 0 };
-		resolvedBodies.set(client, cache);
-	}
+	const cache = cacheFor(client);
 	const existing = cache.entries.get(messageId);
-	if (existing) {
+	if (existing && existing.expiresAt !== null && existing.expiresAt <= Date.now()) {
+		removeCachedBody(cache, messageId);
+	} else if (existing) {
 		cache.entries.delete(messageId);
 		cache.entries.set(messageId, existing);
 		return existing.promise;
@@ -92,10 +112,12 @@ export function resolvePostboxMessageBody(
 	const entry: ResolvedBodyCacheEntry = {
 		promise: Promise.resolve(null),
 		charCount: 0,
+		expiresAt: null,
+		expiryTimer: null,
 	};
 	entry.promise = loadPostboxBody(client, messageId, fetchImpl)
 		.then((body) => {
-			if (cache?.entries.get(messageId) !== entry) return body;
+			if (cache.entries.get(messageId) !== entry) return body;
 			const charCount = resolvedBodyCharCount(body);
 			if (charCount > MAX_RESOLVED_BODY_CHARS) {
 				removeCachedBody(cache, messageId);
@@ -111,7 +133,7 @@ export function resolvePostboxMessageBody(
 			return body;
 		})
 		.catch((error) => {
-			if (cache?.entries.get(messageId) === entry) removeCachedBody(cache, messageId);
+			if (cache.entries.get(messageId) === entry) removeCachedBody(cache, messageId);
 			throw error;
 		});
 	cache.entries.set(messageId, entry);
@@ -123,8 +145,10 @@ export function resolvePostboxMessageBody(
 	return entry.promise;
 }
 
-/** Consume a prefetched result once, then remove the decrypted body from the
- * client cache. Concurrent consumers still share the same in-flight promise. */
+/** Read a body for display. A prefetched result is reused, and the resolved
+ * body then stays cached for CONSUMED_POSTBOX_BODY_TTL_MS (within the entry and
+ * byte caps above) before the decrypted copy is dropped. Reading it again
+ * restarts that window. Concurrent consumers share the same in-flight promise. */
 export async function consumeResolvedPostboxMessageBody(
 	client: PostboxBodyClient,
 	messageId: string,
@@ -135,12 +159,33 @@ export async function consumeResolvedPostboxMessageBody(
 		return await pending;
 	} finally {
 		const cache = resolvedBodies.get(client);
-		if (cache?.entries.get(messageId)?.promise === pending) {
-			removeCachedBody(cache, messageId);
+		const entry = cache?.entries.get(messageId);
+		if (cache && entry?.promise === pending) {
+			if (entry.expiryTimer !== null) clearTimeout(entry.expiryTimer);
+			entry.expiresAt = Date.now() + CONSUMED_POSTBOX_BODY_TTL_MS;
+			entry.expiryTimer = setTimeout(() => {
+				if (cache.entries.get(messageId) === entry) removeCachedBody(cache, messageId);
+			}, CONSUMED_POSTBOX_BODY_TTL_MS);
 		}
 	}
 }
 
+/**
+ * Tie the cache to who is reading which mailbox. The key is opaque (the
+ * caller builds it from user, organization and mailbox); a key that differs
+ * from the previous one drops every cached body first, so switching mailbox,
+ * account or organization never serves the old context's mail.
+ */
+export function setResolvedPostboxBodyScope(client: PostboxBodyClient, scope: string): void {
+	const cache = cacheFor(client);
+	if (cache.scope !== null && cache.scope !== scope) dropAllCachedBodies(cache);
+	cache.scope = scope;
+}
+
+/** Drop every cached body (and the scope) for this client: sign-out and any
+ * other session change. */
 export function clearResolvedPostboxBodies(client: PostboxBodyClient): void {
+	const cache = resolvedBodies.get(client);
+	if (cache) dropAllCachedBodies(cache);
 	resolvedBodies.delete(client);
 }

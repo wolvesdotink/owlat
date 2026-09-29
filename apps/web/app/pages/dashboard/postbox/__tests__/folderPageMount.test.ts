@@ -39,6 +39,8 @@ beforeAll(() => {
 		},
 		useRoute,
 		useAuth: () => ({ user: ref({ id: 'user-1' }) }),
+		// The body-cache scope has its own spec (usePostboxBodyCacheScope.test.ts).
+		usePostboxBodyCacheScope: () => {},
 		usePostboxMailbox: () => ({
 			currentMailbox: ref({ _id: 'mailbox-1' }),
 			isLoading: ref(false),
