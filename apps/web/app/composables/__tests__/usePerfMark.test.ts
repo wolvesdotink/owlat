@@ -53,6 +53,19 @@ describe('usePerfMark', () => {
 		expect(performance.getEntriesByName('owlat_test_start', 'mark')).toHaveLength(0);
 	});
 
+	it('can start the span at an earlier time, such as an input event', async () => {
+		const { composable, sent } = await load();
+		const { mark, measure } = composable.usePerfMark();
+
+		const startTime = Math.max(0, performance.now() - 40);
+		mark('owlat_test_start', startTime);
+
+		expect(performance.getEntriesByName('owlat_test_start', 'mark')[0]?.startTime).toBe(startTime);
+		const before = performance.now();
+		expect(measure('owlat_test_ms', 'owlat_test_start')).toBeGreaterThanOrEqual(before - startTime);
+		expect(sent).toHaveLength(1);
+	});
+
 	it('reports nothing for a start mark that was never set', async () => {
 		const { composable, sent } = await load();
 

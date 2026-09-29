@@ -26,9 +26,13 @@ function measureSpan(metric: string, startMark?: string): number | null {
 }
 
 export function usePerfMark() {
-	function mark(name: string): void {
+	/**
+	 * Set a start point now, or at `startTime` (a `performance.now()` value,
+	 * such as the `timeStamp` of the input event that started the span).
+	 */
+	function mark(name: string, startTime?: number): void {
 		if (typeof performance === 'undefined') return;
-		performance.mark(name);
+		performance.mark(name, startTime === undefined ? undefined : { startTime });
 	}
 
 	function measure(metric: string, startMark?: string): number | null {

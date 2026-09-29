@@ -47,6 +47,7 @@ import {
 } from '~/utils/postboxBodyPlaceholder';
 import { usePostboxBodySource } from '~/composables/postbox/usePostboxBodySource';
 import { usePostboxFrameAutosize } from '~/composables/postbox/usePostboxFrameAutosize';
+import { notePostboxBodyRendered } from '~/composables/postbox/usePostboxPerfMarks';
 import {
 	postboxSenderKey,
 	postboxSenderTrustLabel,
@@ -380,6 +381,9 @@ usePostboxFrameAutosize({
 	srcdoc: displaySrcdoc,
 	minHeight: () => (isPaper.value ? 120 : 24),
 	onHeight: (height) => {
+		// A measured document is a body on screen: it ends a timed open (plan
+		// 0.2) once it is the real body or its saved copy, not the error stand-in.
+		if (contentFinal.value || shownPlaceholder.value) notePostboxBodyRendered(props.message._id);
 		presetHeight.value = height;
 		const key = renderKey.value;
 		if (key) getPostboxRenderCache().update(key, { height });

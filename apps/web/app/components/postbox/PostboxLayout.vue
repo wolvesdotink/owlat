@@ -62,6 +62,8 @@ const {
 });
 // The divider measures the list pane it moves, so it needs the element itself.
 const listPaneRef = ref<HTMLElement | null>(null);
+// Plan 0.2: time an open to its body on screen, and back to the list's rows.
+usePostboxPerfMarks({ activeMessageId: () => props.activeMessageId, listPane: listPaneRef });
 
 // Newest / oldest arrival order for the list, persisted per user. The pick
 // applies optimistically and the feed re-subscribes on the new order (its
