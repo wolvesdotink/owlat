@@ -11,7 +11,7 @@
  *      these tests instead of agreeing with itself. Wrong key, wrong URL,
  *      missing header and unset env var each have their own case.
  *   2. THE JOIN. Every event in the D10 table is replayed through the REAL
- *      route — `t.fetch('/webhooks/mandrill')` → rate limit → signature → audit
+ *      route — `t.fetch('/webhooks/mandrill')` → signature → rate limit → audit
  *      store → batch parse → dispatcher → Send lifecycle — against a seeded
  *      send row, and the assertion is on the row and its blocklist/counter
  *      side-effects, never on an intermediate call. Nothing is stubbed between

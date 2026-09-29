@@ -61,8 +61,8 @@ function nowSeconds(): number {
 
 function setupTest() {
 	const t = convexTest(schema, modules);
-	// The handler rate-limits before signature verification, so the rate-limiter
-	// component must be live.
+	// A signed request spends an ingestion token, so the rate-limiter component
+	// must be live.
 	rateLimiterTest.register(t);
 	return t;
 }

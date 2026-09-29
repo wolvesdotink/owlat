@@ -68,20 +68,6 @@ export const handleTlsReportWebhook = httpAction(async (ctx, request) => {
 		return methodNotAllowed();
 	}
 
-	const rateIp = getClientIp(request);
-	const { ok: rateOk, retryAfter } = await ctx.runMutation(
-		internal.lib.publicRateLimit.checkPublicRateLimit,
-		{ limitType: 'webhookIngestion', key: `mta-tls-report:${rateIp}` }
-	);
-	if (!rateOk) {
-		return errorResponse(
-			'rate_limited',
-			'Rate limited',
-			retryAfter === undefined ? undefined : { retryAfter },
-			retryAfter ? { 'Retry-After': String(Math.ceil(retryAfter / 1000)) } : null
-		);
-	}
-
 	const secret = getOptional('MTA_WEBHOOK_SECRET');
 	if (!secret) {
 		logError('[mta-tls-report] MTA_WEBHOOK_SECRET not configured');
@@ -114,6 +100,22 @@ export const handleTlsReportWebhook = httpAction(async (ctx, request) => {
 	const verdict = await verifyMtaSignedRequest(request, bodyText, { ...signatureWindow, secret });
 	if (!verdict.ok) {
 		return errorResponse('unauthenticated', 'Invalid signature');
+	}
+
+	// Charged only once the signature checks out (the body is capped above), so
+	// unsigned requests never spend the MTA's ingestion budget.
+	const rateIp = getClientIp(request);
+	const { ok: rateOk, retryAfter } = await ctx.runMutation(
+		internal.lib.publicRateLimit.checkPublicRateLimit,
+		{ limitType: 'webhookIngestion', key: `mta-tls-report:${rateIp}` }
+	);
+	if (!rateOk) {
+		return errorResponse(
+			'rate_limited',
+			'Rate limited',
+			retryAfter === undefined ? undefined : { retryAfter },
+			retryAfter ? { 'Retry-After': String(Math.ceil(retryAfter / 1000)) } : null
+		);
 	}
 
 	let payload: { attachments?: ForwardedAttachment[] };

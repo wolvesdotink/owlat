@@ -123,32 +123,43 @@ describe('MTA-signed routes share one timestamp rule', () => {
 	}
 });
 
-describe('/webhooks/mta-verify-credential rate limit', () => {
-	it('checks the signature before spending the ingestion bucket', async () => {
-		const t = convexTest(schema, modules);
-		rateLimiterTest.register(t);
-		const path = '/webhooks/mta-verify-credential';
-		const body = JSON.stringify({});
+describe('MTA-signed routes check the signature before spending the ingestion bucket', () => {
+	const RATE_LIMITED_ROUTES = [
+		{ path: '/webhooks/mta', body: { event: 'unsupported.kind' } },
+		{ path: '/webhooks/mta-tls-report', body: { attachments: [] } },
+		{ path: '/webhooks/mta-verify-credential', body: {} },
+	] as const;
 
-		// More unsigned requests than the bucket holds, sent at once.
-		const unsigned = await Promise.all(
-			Array.from({ length: 150 }, () =>
-				t.fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
-			)
-		);
-		expect(unsigned.every((res) => res.status === 401)).toBe(true);
+	for (const route of RATE_LIMITED_ROUTES) {
+		it(`${route.path} answers a signed request after an unsigned burst`, async () => {
+			const t = convexTest(schema, modules);
+			rateLimiterTest.register(t);
+			const body = JSON.stringify(route.body);
 
-		const timestamp = String(Math.floor(Date.now() / 1000));
-		const signature = createHmac('sha256', SECRET).update(`${timestamp}.${body}`).digest('hex');
-		const signed = await t.fetch(path, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'X-MTA-Timestamp': timestamp,
-				'X-MTA-Signature': signature,
-			},
-			body,
+			// More unsigned requests than the bucket holds, sent at once.
+			const unsigned = await Promise.all(
+				Array.from({ length: 150 }, () =>
+					t.fetch(route.path, {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body,
+					})
+				)
+			);
+			expect(unsigned.every((res) => res.status === 401)).toBe(true);
+
+			const timestamp = String(Math.floor(Date.now() / 1000));
+			const signature = createHmac('sha256', SECRET).update(`${timestamp}.${body}`).digest('hex');
+			const signed = await t.fetch(route.path, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-MTA-Timestamp': timestamp,
+					'X-MTA-Signature': signature,
+				},
+				body,
+			});
+			expect([401, 429]).not.toContain(signed.status);
 		});
-		expect(signed.status).toBe(400);
-	});
+	}
 });

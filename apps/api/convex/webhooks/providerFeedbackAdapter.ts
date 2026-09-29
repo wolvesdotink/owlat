@@ -61,6 +61,9 @@ export function composeProviderFeedbackAdapter<K extends string>(
 		source: kind,
 		verifySignature: (request: Request, rawBody: string) =>
 			verifyProviderFeedbackRequest(request, rawBody, contribution.verifier, legacyVerifier),
+		// Every declared scheme but SNS is an HMAC over the capped body, so it is
+		// checked before the request spends an ingestion token.
+		verifyBeforeRateLimit: contribution.verifier.scheme !== LEGACY_VERIFIER_SCHEME,
 		...(parser.shouldStoreRawPayload
 			? { shouldStoreRawPayload: parser.shouldStoreRawPayload.bind(parser) }
 			: {}),

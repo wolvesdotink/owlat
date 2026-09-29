@@ -3,7 +3,8 @@ import { BodyTooLargeError, readBodyText } from '../lib/readBody';
  * Inbound webhook pipeline — shared HTTP shell for per-provider adapters.
  *
  * Pipeline: rate-limit → adapter.verifySignature → conditional audit-store
- * → adapter.parseEvent → dispatchInboundEvent → HTTP response.
+ * → adapter.parseEvent → dispatchInboundEvent → HTTP response. An adapter that
+ * sets `verifyBeforeRateLimit` swaps the first two steps.
  *
  * Replaces the verify/parse/audit/dispatch ceremony that each provider's own
  * HTTP entry point used to open-code. The send-provider half of those entry
@@ -141,11 +142,21 @@ export interface InboundAdapter<S extends string = string> extends InboundParser
 		rawBody: string,
 		ctx?: ActionCtx
 	): Promise<{ ok: true } | { ok: false; status: number; reason: string }>;
+	/**
+	 * Check the signature before spending an ingestion token, so only signed
+	 * requests count against the source's bucket. For adapters whose check is a
+	 * local computation over the capped body (a declared HMAC scheme). Adapters
+	 * whose check fetches or queries (SNS certificates, database-held channel
+	 * secrets) leave it unset and are charged first.
+	 */
+	readonly verifyBeforeRateLimit?: boolean;
 }
 
 /** The batch shape of {@link InboundAdapter}. */
 export interface InboundBatchAdapter<S extends string = string>
-	extends InboundBatchParser<S>, Pick<InboundAdapter<S>, 'verifySignature'> {}
+	extends
+		InboundBatchParser<S>,
+		Pick<InboundAdapter<S>, 'verifySignature' | 'verifyBeforeRateLimit'> {}
 
 /** Either adapter shape. What `runInboundPipeline` accepts. */
 export type AnyInboundAdapter<S extends string = string> =
@@ -161,20 +172,26 @@ export async function runInboundPipeline(
 		return jsonResponse(405, { error: 'Method not allowed' });
 	}
 
-	// Key the ingestion bucket per provider source (`<source>:<ip>`). The limit
-	// is consumed before signature verification (so unsigned junk still spends a
-	// token), and getClientIp() collapses to 'unknown' for every caller when
+	// Key the ingestion bucket per provider source (`<source>:<ip>`).
+	// getClientIp() collapses to 'unknown' for every caller when
 	// RATE_LIMIT_TRUSTED_PROXY is unset (the default). Without the per-source
 	// prefix, a flood on the cheapest path (e.g. /webhooks/sms) would drain one
 	// shared bucket and 429 legitimate Resend/MTA bounce + complaint webhooks —
 	// dropping suppression events and harming sender reputation. Per-source keys
-	// confine a flood to the targeted provider.
-	const ip = getClientIp(request);
-	const { ok: rateOk, retryAfter } = await ctx.runMutation(
-		internal.lib.publicRateLimit.checkPublicRateLimit,
-		{ limitType: 'webhookIngestion', key: `${adapter.source}:${ip}` }
-	);
-	if (!rateOk) return rateLimitedResponse(retryAfter);
+	// confine a flood to the targeted provider. Adapters with a local signature
+	// check are charged only once the check passes; the rest are charged first.
+	const chargeIngestion = async (): Promise<Response | null> => {
+		const ip = getClientIp(request);
+		const { ok: rateOk, retryAfter } = await ctx.runMutation(
+			internal.lib.publicRateLimit.checkPublicRateLimit,
+			{ limitType: 'webhookIngestion', key: `${adapter.source}:${ip}` }
+		);
+		return rateOk ? null : rateLimitedResponse(retryAfter);
+	};
+	if (!adapter.verifyBeforeRateLimit) {
+		const limited = await chargeIngestion();
+		if (limited) return limited;
+	}
 
 	// Bound the body BEFORE reading it — the body is unauthenticated at this point
 	// (signature verification happens next), so an attacker could otherwise stream
@@ -199,6 +216,11 @@ export async function runInboundPipeline(
 	if (!verification.ok) {
 		logError(`[${adapter.source} Webhook] ${verification.reason}`);
 		return jsonResponse(verification.status, { error: verification.reason });
+	}
+
+	if (adapter.verifyBeforeRateLimit) {
+		const limited = await chargeIngestion();
+		if (limited) return limited;
 	}
 
 	if (adapter.shouldStoreRawPayload?.(rawBody) !== false) {
