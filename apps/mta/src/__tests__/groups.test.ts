@@ -69,4 +69,11 @@ describe('buildGroupKey', () => {
 	it('should lowercase the domain', () => {
 		expect(buildGroupKey('transactional', 'GMAIL.COM')).toBe('transactional:gmail.com');
 	});
+
+	it('prefixes a dedicated lane and still lowercases the domain', () => {
+		expect(buildGroupKey('transactional', 'GMail.com', 'postbox')).toBe(
+			'postbox:transactional:gmail.com'
+		);
+		expect(buildGroupKey('transactional', 'gmail.com', undefined)).toBe('transactional:gmail.com');
+	});
 });

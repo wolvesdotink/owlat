@@ -328,7 +328,7 @@ async function disposeDefer(
 		queue,
 		job.id,
 		requeued,
-		buildGroupKey(data.ipPool, domain),
+		buildGroupKey(data.ipPool, domain, data.queueLane),
 		delay
 	);
 

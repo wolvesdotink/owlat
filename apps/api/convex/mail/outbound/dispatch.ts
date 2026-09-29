@@ -263,6 +263,11 @@ export async function dispatchViaMta(
 								: {}),
 							...(params.referencesHeaderValue ? { References: params.referencesHeaderValue } : {}),
 						},
+						// Same IP pool as system/API mail, but not the same queue: the
+						// MTA's /send/postbox route puts every job on the `postbox`
+						// lane (its own per-domain group), so a transactional burst to
+						// a domain does not hold a person's reply back. The lane comes
+						// from the route, never from this body.
 						ipPool: 'transactional',
 						organizationId: 'postbox',
 						dkimDomain,

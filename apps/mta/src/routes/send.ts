@@ -376,6 +376,10 @@ export function createSendHandler(
 			replyTo: body.replyTo,
 			headers: body.headers,
 			ipPool: body.ipPool,
+			// Person-to-person mail gets its own per-domain group so it does not
+			// queue behind system/API bursts to the same domain. Derived from the
+			// master-key-only route, not from anything the caller sends.
+			...(mode === 'postbox' ? { queueLane: 'postbox' as const } : {}),
 			organizationId: body.organizationId,
 			deliveryDomain: mode === 'governed' ? body.deliveryDomain : undefined,
 			engagementScore,
@@ -392,7 +396,7 @@ export function createSendHandler(
 
 		// Calculate group key and priority
 		const domain = extractDomain(body.to);
-		const groupId = buildGroupKey(body.ipPool, domain);
+		const groupId = buildGroupKey(body.ipPool, domain, job.queueLane);
 		const priority = mapToPriority(engagementScore);
 
 		try {

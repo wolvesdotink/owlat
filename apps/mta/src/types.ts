@@ -58,6 +58,13 @@ export interface EmailJob {
 	attachments?: EmailAttachment[];
 	/** IP pool for routing: transactional (time-sensitive) or campaign (bulk) */
 	ipPool: IpPoolType;
+	/**
+	 * Queue lane, set by the MTA from the authenticated intake (never read from
+	 * the request body). `postbox` gives person-to-person mail its own GroupMQ
+	 * group per domain; absent means the shared `{ipPool}:{domain}` group. It is
+	 * carried on the job so a defer re-enqueue lands back on the same lane.
+	 */
+	queueLane?: QueueLane;
 	/** Organization ID for circuit breaker and webhook correlation */
 	organizationId: string;
 	/** Authenticated production-vs-member-preview effect domain. */
@@ -102,6 +109,9 @@ export interface EmailJob {
 }
 
 export type IpPoolType = 'transactional' | 'campaign';
+
+/** Dedicated GroupMQ lane; see `buildGroupKey` in `queue/groups.ts`. */
+export type QueueLane = 'postbox';
 
 /** A single MIME attachment carried on an {@link EmailJob}. */
 export interface EmailAttachment {
