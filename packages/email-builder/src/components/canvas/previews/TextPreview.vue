@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { sanitizeRawHtml, moduleFor } from '@owlat/email-renderer';
 import type { EditorBlock, EmailTheme, TextBlockContent } from '../../../types';
+import { blockBoxStyle } from '../../../utils/blocks';
 
 const props = defineProps<{
 	block: EditorBlock;
@@ -49,19 +50,12 @@ const styles = computed(() => {
 		letterSpacing: c.letterSpacing ? `${c.letterSpacing}px` : 'normal',
 		textTransform: c.textTransform || 'none',
 		textDecoration: c.textDecoration || 'none',
-		paddingTop: `${c.paddingTop ?? 16}px`,
-		paddingRight: `${c.paddingRight ?? 24}px`,
-		paddingBottom: `${c.paddingBottom ?? 16}px`,
-		paddingLeft: `${c.paddingLeft ?? 24}px`,
 		backgroundColor: c.backgroundColor || 'transparent',
 		borderRadius: c.borderRadius ? `${c.borderRadius}px` : undefined,
-		// The explicit margin longhands double as the heading UA-margin reset:
-		// the renderer zeroes the <h*> tag's own margin and folds these values
-		// into the section padding, so the net box is identical.
-		marginTop: `${c.marginTop ?? 0}px`,
-		marginRight: `${c.marginRight ?? 0}px`,
-		marginBottom: `${c.marginBottom ?? 0}px`,
-		marginLeft: `${c.marginLeft ?? 0}px`,
+		// The explicit margin longhands from blockBoxStyle double as the heading
+		// UA-margin reset: the renderer zeroes the <h*> tag's own margin and
+		// folds these values into the section padding, so the net box is identical.
+		...blockBoxStyle({ content: c }),
 	};
 });
 </script>

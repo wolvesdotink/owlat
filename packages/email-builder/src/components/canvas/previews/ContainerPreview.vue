@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent } from 'vue';
 import type { EditorBlock, EmailTheme, ContainerBlockContent, Variable, SlashCommand } from '../../../types';
+import { blockBoxStyle } from '../../../utils/blocks';
 import type { ParentContext } from '../types';
 import { VueDraggable } from 'vue-draggable-plus';
 import { gradientCss as buildGradientCss } from '../../../utils/gradient';
@@ -44,18 +45,11 @@ const containerStyles = computed(() => {
 		backgroundPosition: content.value.backgroundImage ? (content.value.backgroundPosition || 'center') : undefined,
 		backgroundSize: content.value.backgroundImage ? (content.value.backgroundSize || 'cover') : undefined,
 		backgroundRepeat: content.value.backgroundImage ? 'no-repeat' : undefined,
-		paddingTop: `${content.value.paddingTop ?? 16}px`,
-		paddingRight: `${content.value.paddingRight ?? 24}px`,
-		paddingBottom: `${content.value.paddingBottom ?? 16}px`,
-		paddingLeft: `${content.value.paddingLeft ?? 24}px`,
+		...blockBoxStyle(props.block),
 		borderRadius: content.value.borderRadius ? `${content.value.borderRadius}px` : undefined,
 		borderWidth: content.value.borderWidth ? `${content.value.borderWidth}px` : undefined,
 		borderColor: content.value.borderColor || undefined,
 		borderStyle: content.value.borderWidth ? (content.value.borderStyle || 'solid') : undefined,
-		marginTop: `${content.value.marginTop ?? 0}px`,
-		marginRight: `${content.value.marginRight ?? 0}px`,
-		marginBottom: `${content.value.marginBottom ?? 0}px`,
-		marginLeft: `${content.value.marginLeft ?? 0}px`,
 		maxWidth: content.value.maxWidth && content.value.maxWidth < 100 ? `${content.value.maxWidth}%` : undefined,
 	};
 });

@@ -103,7 +103,7 @@ export const createColumnItem = (type: ColumnItem['type'], theme?: EmailTheme): 
 /**
  * Get block padding with defaults for legacy blocks
  */
-export const getBlockPadding = (block: EditorBlock): UniversalPadding => {
+export const getBlockPadding = (block: Pick<EditorBlock, 'content'>): UniversalPadding => {
 	const content = block.content as CommonBlockProperties;
 	return {
 		paddingTop: (content.paddingTop as number | undefined) ?? defaultPadding.paddingTop,
@@ -156,13 +156,46 @@ export const toggleLinkedPadding = (block: EditorBlock): void => {
 /**
  * Get block margin with defaults
  */
-export const getBlockMargin = (block: EditorBlock): UniversalMargin => {
+export const getBlockMargin = (block: Pick<EditorBlock, 'content'>): UniversalMargin => {
 	const content = block.content as CommonBlockProperties;
 	return {
 		marginTop: (content.marginTop as number | undefined) ?? defaultMargin.marginTop,
 		marginRight: (content.marginRight as number | undefined) ?? defaultMargin.marginRight,
 		marginBottom: (content.marginBottom as number | undefined) ?? defaultMargin.marginBottom,
 		marginLeft: (content.marginLeft as number | undefined) ?? defaultMargin.marginLeft,
+	};
+};
+
+/** Inline padding and margin longhands of a block's canvas wrapper, in px. */
+interface BlockBoxStyle {
+	paddingTop: string;
+	paddingRight: string;
+	paddingBottom: string;
+	paddingLeft: string;
+	marginTop: string;
+	marginRight: string;
+	marginBottom: string;
+	marginLeft: string;
+}
+
+/**
+ * The padding and margin a canvas preview paints around a block, with the
+ * shared block defaults filling any side the content leaves unset, so the
+ * editor box matches the renderer's section padding. Pass `{ content }` when
+ * the preview renders theme-merged content rather than the raw block.
+ */
+export const blockBoxStyle = (block: Pick<EditorBlock, 'content'>): BlockBoxStyle => {
+	const padding = getBlockPadding(block);
+	const margin = getBlockMargin(block);
+	return {
+		paddingTop: `${padding.paddingTop}px`,
+		paddingRight: `${padding.paddingRight}px`,
+		paddingBottom: `${padding.paddingBottom}px`,
+		paddingLeft: `${padding.paddingLeft}px`,
+		marginTop: `${margin.marginTop}px`,
+		marginRight: `${margin.marginRight}px`,
+		marginBottom: `${margin.marginBottom}px`,
+		marginLeft: `${margin.marginLeft}px`,
 	};
 };
 

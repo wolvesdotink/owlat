@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent } from 'vue';
 import type { EditorBlock, EmailTheme, HeroBlockContent, Variable, SlashCommand } from '../../../types';
+import { blockBoxStyle } from '../../../utils/blocks';
 import type { ParentContext } from '../types';
 import { VueDraggable } from 'vue-draggable-plus';
 import { ImageIcon } from '@lucide/vue';
@@ -55,20 +56,17 @@ const heroStyles = computed(() => {
 	backgroundRepeat: 'no-repeat',
 	backgroundColor: content.value.backgroundColor || '#f0f0f0',
 	minHeight: content.value.mode === 'fixed-height' ? `${content.value.height || 400}px` : '200px',
+	...blockBoxStyle(props.block),
+	// A hero's vertical padding defaults to 40, not the block default of 16,
+	// matching the renderer's hero module.
 	paddingTop: `${content.value.paddingTop ?? 40}px`,
-	paddingRight: `${content.value.paddingRight ?? 24}px`,
 	paddingBottom: `${content.value.paddingBottom ?? 40}px`,
-	paddingLeft: `${content.value.paddingLeft ?? 24}px`,
 	display: 'flex',
 	flexDirection: 'column' as const,
 	justifyContent:
 		content.value.verticalAlign === 'top' ? 'flex-start'
 		: content.value.verticalAlign === 'bottom' ? 'flex-end'
 		: 'center',
-	marginTop: `${content.value.marginTop ?? 0}px`,
-	marginRight: `${content.value.marginRight ?? 0}px`,
-	marginBottom: `${content.value.marginBottom ?? 0}px`,
-	marginLeft: `${content.value.marginLeft ?? 0}px`,
 };
 });
 
