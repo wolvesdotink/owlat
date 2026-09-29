@@ -159,6 +159,17 @@ export function resolveSet(map: SeqMap, spec: string, byUid: boolean): ResolvedM
  * ever address messages that exist in the folder, and resolving it costs time
  * linear in the folder size plus the number of set parts (see
  * {@link resolveSet}).
+ *
+ * The set, including `*`, is resolved against the folder as it is now, not
+ * against a per-session view. Strictly, a client's sequence numbers only change
+ * when the server reports EXPUNGE (RFC 3501 §7.4.1, RFC 9051 §7.5.1), so the
+ * RFC reading is the view last reported to the session. This server keeps no
+ * such view: outside IDLE it does not report other sessions' expunges or new
+ * arrivals, so a stored view would drift further from the folder with every
+ * command. Using a view for `*` alone, in MOVE or elsewhere, would mix two
+ * numberings in one command. A per-session view needs those reports (at NOOP
+ * and at command completion) first; until then every command that takes a set
+ * resolves it the same way.
  */
 export async function resolveSelectedSet(
 	deps: CommandDeps,

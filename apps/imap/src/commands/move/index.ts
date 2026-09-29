@@ -25,6 +25,10 @@ interface MoveArgs {
  * fails, the batches before it stay moved and reported and the command answers
  * NO: RFC 6851 §3.3 allows a partial MOVE as long as each message is either
  * moved or left in place.
+ *
+ * The message set, including `*`, is resolved against the folder as it is when
+ * the command runs, like every other command that takes a set (see
+ * `helpers/seqMap.ts`).
  */
 export const moveModule: ImapCommandModule<MoveArgs> = {
 	verbs: ['MOVE'],
