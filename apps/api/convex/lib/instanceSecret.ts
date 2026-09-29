@@ -18,7 +18,9 @@ type InstanceSecretLimitType = Extract<PublicRateLimitType, 'adminSeed' | 'insta
  * `lib/clientIp.ts` policy), then compares the header with `INSTANCE_SECRET` in
  * constant time. Charging before the comparison bounds how fast one address can
  * try values, whether or not its guess is right. The same secret also derives
- * the at-rest sealing keys, so every route that accepts it goes through here.
+ * the at-rest sealing keys, so every route that reads it from this header goes
+ * through here. The upload service routes (`storage/uploadsHttp.ts`) take it as
+ * a bearer token from the web server and check it themselves.
  *
  * Returns the 429 or 401 response to send, or `null` when the caller may proceed.
  */
