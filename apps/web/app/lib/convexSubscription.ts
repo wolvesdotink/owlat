@@ -132,6 +132,15 @@ export interface ConvexSubscription {
 	 * Skips the shared cache, so the query runs again once no one else holds it.
 	 */
 	refetch: () => void;
+	/**
+	 * Drop the value on screen, so the next delivery is a first load again.
+	 * `keepPreviousData` bridges one args change to the next within a session; a
+	 * surface that starts over (a search overlay reopening) calls this so it
+	 * never opens on the last session's result. A skipped query stays blank
+	 * until its args return; a live one re-subscribes and reads its value afresh
+	 * (in the same tick while the shared subscription is still warm).
+	 */
+	reset: () => void;
 }
 
 /**
@@ -296,10 +305,22 @@ export function createConvexSubscription<Args, Update>(
 		);
 	}
 
+	const reset = () => {
+		options.clear();
+		if (resolvedArgs.value !== 'skip') {
+			subscribe();
+			return;
+		}
+		// The same state as a query that has not had its args yet.
+		isLoading.value = true;
+		isRefetching.value = false;
+	};
+
 	return {
 		error,
 		isLoading,
 		isRefetching,
 		refetch: () => subscribe({ background: true, fresh: true }),
+		reset,
 	};
 }

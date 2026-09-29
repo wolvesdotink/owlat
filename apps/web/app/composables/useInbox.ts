@@ -92,22 +92,30 @@ export function useInbox(gate?: Ref<boolean>) {
 	};
 
 	// ── Thread list (keyset pagination; the args pick the backend index) ──
+	// keepPreviousData: a filter, assignee or sort change (or the next page)
+	// keeps the current rows on screen until the new page lands, instead of
+	// blanking the list to its skeleton.
 	const threadCursor = ref<string | undefined>(undefined);
 	const {
 		data: threadsData,
 		isLoading: threadsLoading,
+		isRefetching: threadsRefetching,
 		error: threadsError,
-	} = useConvexQuery(api.inbox.queries.listThreads, () => {
-		if (!subscribed()) return 'skip';
-		const assigneeArg = inboxAssigneeArg(assignee.value);
-		return {
-			filter: filter.value,
-			...(assigneeArg ? { assignee: assigneeArg } : {}),
-			sort: sort.value,
-			limit: 25,
-			cursor: threadCursor.value,
-		};
-	});
+	} = useConvexQuery(
+		api.inbox.queries.listThreads,
+		() => {
+			if (!subscribed()) return 'skip';
+			const assigneeArg = inboxAssigneeArg(assignee.value);
+			return {
+				filter: filter.value,
+				...(assigneeArg ? { assignee: assigneeArg } : {}),
+				sort: sort.value,
+				limit: 25,
+				cursor: threadCursor.value,
+			};
+		},
+		{ keepPreviousData: true }
+	);
 
 	type Thread = NonNullable<typeof threadsData.value>['threads'][number];
 
@@ -133,25 +141,35 @@ export function useInbox(gate?: Ref<boolean>) {
 
 	// A filter OR sort change selects a different backend index/order, so a
 	// keyset cursor minted for the prior view is invalid. Reset to a fresh first
-	// page synchronously — before the query re-subscribes.
+	// page synchronously — before the query re-subscribes. The rows already on
+	// screen stay until that first page replaces them (the cursor is undefined,
+	// so the accumulator above replaces rather than appends).
 	watch(
 		[filter, assignee, sort],
 		() => {
 			threadCursor.value = undefined;
-			accumulatedThreads.value = [];
 		},
 		{ flush: 'sync' }
 	);
 
 	const threads = computed(() => accumulatedThreads.value);
-	const hasMoreThreads = computed(() => !!threadsData.value?.nextCursor);
+	// While a new page loads, the data on screen belongs to the previous args:
+	// its cursor would page the NEW view from an old view's position.
+	const hasMoreThreads = computed(
+		() => !threadsRefetching.value && !!threadsData.value?.nextCursor
+	);
 
 	// ── Filter-pill counts (bounded reads; a slice at the cap renders "99+") ──
-	const { data: filterCounts } = useConvexQuery(api.inbox.queries.getThreadFilterCounts, () => {
-		if (!subscribed()) return 'skip';
-		const assigneeArg = inboxAssigneeArg(assignee.value);
-		return assigneeArg ? { assignee: assigneeArg } : {};
-	});
+	// keepPreviousData: an assignee change keeps the old counts until the new ones land.
+	const { data: filterCounts } = useConvexQuery(
+		api.inbox.queries.getThreadFilterCounts,
+		() => {
+			if (!subscribed()) return 'skip';
+			const assigneeArg = inboxAssigneeArg(assignee.value);
+			return assigneeArg ? { assignee: assigneeArg } : {};
+		},
+		{ keepPreviousData: true }
+	);
 
 	// Review-queue badge count (drafts ready) — a real pipeline counter, retained
 	// even though the old 8-cell stats grid is gone.
@@ -161,7 +179,7 @@ export function useInbox(gate?: Ref<boolean>) {
 
 	// ── Actions ──
 	const loadMoreThreads = () => {
-		if (threadsData.value?.nextCursor) {
+		if (hasMoreThreads.value && threadsData.value?.nextCursor) {
 			threadCursor.value = threadsData.value.nextCursor;
 		}
 	};

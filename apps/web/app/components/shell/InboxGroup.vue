@@ -22,10 +22,17 @@ const emit = defineEmits<{ toggle: [] }>();
 const { t } = useI18n();
 const route = useRoute();
 
-const { data } = useConvexQuery(api.today.mailbox.sidebarThreads, () => ({
-	mailboxId: props.inbox.mailboxId,
-	limit: props.collapsed ? 0 : props.limit,
-}));
+// keepPreviousData: collapsing, expanding or changing the per-inbox count keeps
+// the rows and the status dot until the new list lands, instead of blinking
+// them out. Each group is keyed by its mailbox, so the rows never cross inboxes.
+const { data } = useConvexQuery(
+	api.today.mailbox.sidebarThreads,
+	() => ({
+		mailboxId: props.inbox.mailboxId,
+		limit: props.collapsed ? 0 : props.limit,
+	}),
+	{ keepPreviousData: true }
+);
 
 const rows = computed(() => {
 	const threads = [...(data.value?.threads ?? [])];

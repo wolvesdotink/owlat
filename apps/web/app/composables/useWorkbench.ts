@@ -10,6 +10,14 @@ import {
 	type TodayModel,
 } from '~/utils/todayDigest';
 
+/** What one Workbench tab renders: its model and the watermark it counts from. */
+interface WorkbenchView {
+	model: TodayModel;
+	since: number | undefined;
+	isFallback: boolean;
+	previousSeenAt: number | null;
+}
+
 /**
  * Everything one Workbench tab shows, live: the viewer's "since you last
  * looked" watermark for that tab, and either that mailbox's digest or — on the
@@ -86,15 +94,18 @@ export function useWorkbench(scope: Ref<WorkbenchScope | null>) {
 		teamTab.value ? {} : 'skip'
 	);
 
-	const model = computed<TodayModel>(() =>
-		buildTodayModel({
+	const liveView = computed<WorkbenchView>(() => ({
+		model: buildTodayModel({
 			digests: [...digests.values()].map((r) => (r.data.value ?? null) as MailboxDigest | null),
 			teamUpdates: teamTab.value ? (teamUpdates.value ?? []) : [],
 			teamCounts: teamTab.value ? (teamCounts.value ?? null) : null,
 			since: since.value ?? mountedAt,
 			pickSummary: (summary) => (summary ? localizedSummary(summary, locale.value) || null : null),
-		})
-	);
+		}),
+		since: since.value,
+		isFallback: state.value?.isFallback ?? false,
+		previousSeenAt: state.value?.previousSeenAt ?? null,
+	}));
 
 	const isLoading = computed(() => {
 		if (stateLoading.value) return true;
@@ -103,6 +114,24 @@ export function useWorkbench(scope: Ref<WorkbenchScope | null>) {
 		return false;
 	});
 
+	// keepPreviousData for the whole tab. A tab switch re-keys a chain (the tab's
+	// watermark, then its digest from that watermark), so the query-level option
+	// cannot bridge it: it would subscribe the new tab's digest with the old tab's
+	// watermark. Instead the last tab that finished loading stays on screen, marked
+	// `isStale`, until the new one has. Only the first load shows a skeleton.
+	const settledView = shallowRef<WorkbenchView | null>(null);
+	watch(
+		[isLoading, liveView],
+		([loading, view]) => {
+			if (!loading) settledView.value = view;
+		},
+		{ immediate: true, flush: 'sync' }
+	);
+	const isStale = computed(() => isLoading.value && settledView.value !== null);
+	const view = computed(() =>
+		isStale.value && settledView.value ? settledView.value : liveView.value
+	);
+
 	const { run: markSeenRun } = useBackendOperation(api.today.state.markSeen, {
 		label: () => t('dashboard.today.operations.markSeen'),
 	});
@@ -110,11 +139,16 @@ export function useWorkbench(scope: Ref<WorkbenchScope | null>) {
 		label: () => t('dashboard.today.operations.markSeen'),
 	});
 	return {
-		since,
-		isFallback: computed(() => state.value?.isFallback ?? false),
-		previousSeenAt: computed(() => state.value?.previousSeenAt ?? null),
-		model,
+		since: computed(() => view.value.since),
+		isFallback: computed(() => view.value.isFallback),
+		previousSeenAt: computed(() => view.value.previousSeenAt),
+		model: computed(() => view.value.model),
 		isLoading,
+		/**
+		 * The page shows the previous tab while this one loads. Nothing on screen
+		 * belongs to the open tab yet, so "mark as seen" must wait.
+		 */
+		isStale,
 		teamOn,
 		/** Mark a tab as seen; the open one unless told otherwise (leaving a tab). */
 		markSeen: (target: WorkbenchScope | null = scope.value) =>

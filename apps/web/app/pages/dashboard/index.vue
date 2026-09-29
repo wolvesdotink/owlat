@@ -177,23 +177,26 @@ async function markAllSeen() {
 }
 const DWELL_MS = 30_000;
 let enteredAt = Date.now();
-// Whether this tab showed anything while open; only ever set, reset on switch.
-let hadAnything = false;
+// The tabs that showed anything of their own while open; cleared on leaving.
+// Tracked per tab: the previous tab stays on screen while the next one loads
+// (`isStale`, which does not count), and two tabs that both have content never
+// flip `hasAnything` at all.
+const hadAnything = new Set<WorkbenchScope>();
 watch(
-	hasAnything,
-	(value) => {
-		if (value) hadAnything = true;
+	() => [scope.value, hasAnything.value && !workbench.isStale.value] as const,
+	([current, showing]) => {
+		if (current && showing) hadAnything.add(current);
 	},
 	{ immediate: true }
 );
 function leaveScope(previous: WorkbenchScope | null) {
-	if (previous && hadAnything && Date.now() - enteredAt >= DWELL_MS)
+	if (previous && hadAnything.has(previous) && Date.now() - enteredAt >= DWELL_MS)
 		void workbench.markSeen(previous);
+	if (previous) hadAnything.delete(previous);
 }
 watch(scope, (_next, previous) => {
 	leaveScope(previous ?? null);
 	enteredAt = Date.now();
-	hadAnything = false;
 	hidden.value = new Set();
 });
 onBeforeUnmount(() => leaveScope(scope.value));
@@ -420,7 +423,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 						moved: isTeam ? null : model.changed.length,
 						filed: model.filedTotal,
 					}"
-					:can-mark-seen="hasAnything"
+					:can-mark-seen="hasAnything && !workbench.isStale.value"
 					:inbox-href="inboxHref"
 					:compose-href="isTeam ? null : `/compose?mailbox=${scope}`"
 					@mark-seen="markAllSeen"

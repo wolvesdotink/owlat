@@ -20,6 +20,12 @@ export interface ConvexQueryResult<T> {
 	 * Also the handler behind a "Try again" control once `error` is set.
 	 */
 	refetch: () => void;
+	/**
+	 * Blank `data` so the next delivery is a first load, not a stale bridge. For a
+	 * `keepPreviousData` query whose surface starts over (a search overlay
+	 * reopening), so it never shows the previous session's result.
+	 */
+	reset: () => void;
 }
 
 /**

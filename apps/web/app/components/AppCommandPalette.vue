@@ -83,11 +83,21 @@ const { recentSearches, loadRecent, saveRecent, clearRecent } = useCommandPalett
 // ── Object search (contacts / templates / campaigns / mail) via the shared index.
 // Skipped outside the Everything-style palette: Mail and Ask have their own
 // backends, and this component is mounted on every dashboard page.
-const { data: searchData } = useOrganizationQuery(api.globalSearch.search, () =>
-	// undefined → the wrapper skips the subscription (no empty / <2-char query).
-	prompt.value === 'palette' && debouncedTerm.value.trim().length >= SEARCH_MIN_QUERY
-		? { query: debouncedTerm.value, limit: 5 }
-		: undefined
+// keepPreviousData: the last results stay listed while the next term runs,
+// instead of the groups vanishing on every pause in typing. `openPalette` resets
+// it, so a new session never opens on the previous one's results.
+const {
+	data: searchData,
+	isRefetching: isGlobalSearchRefetching,
+	reset: resetGlobalSearch,
+} = useOrganizationQuery(
+	api.globalSearch.search,
+	() =>
+		// undefined → the wrapper skips the subscription (no empty / <2-char query).
+		prompt.value === 'palette' && debouncedTerm.value.trim().length >= SEARCH_MIN_QUERY
+			? { query: debouncedTerm.value, limit: 5 }
+			: undefined,
+	{ keepPreviousData: true }
 );
 const searchResults = computed(() => searchData.value as SearchResults | undefined);
 
@@ -131,7 +141,12 @@ const inboxScope = useCommandPaletteInboxScope({
 const isSearching = computed(() => {
 	if (prompt.value === 'mailSearch') return mailScope.isSearching.value;
 	if (prompt.value !== 'palette' || searchTerm.value.trim().length < SEARCH_MIN_QUERY) return false;
-	return searchResults.value === undefined || inboxScope.isSearching.value;
+	return (
+		searchResults.value === undefined ||
+		isGlobalSearchRefetching.value ||
+		searchTerm.value !== debouncedTerm.value ||
+		inboxScope.isSearching.value
+	);
 });
 
 // ── Core providers, consulted before any surface/plugin provider. Their
@@ -190,7 +205,10 @@ const groups = computed<PaletteGroup[]>(() => {
 // everything else on the prefix-stripped term.
 const matchTerm = computed(() => (pendingArgument.value ? searchQuery.value : searchTerm.value));
 
-const flatItems = computed(() => flattenGroups(groups.value));
+// Only while open: the palette is mounted on every dashboard page, and the
+// watcher below would otherwise rebuild every provider's groups on each route,
+// flag or recents change while nobody can see them.
+const flatItems = computed(() => (open.value ? flattenGroups(groups.value) : []));
 const flatIndexById = computed(() => {
 	const map = new Map<string, number>();
 	flatItems.value.forEach((item, index) => map.set(item.id, index));
@@ -231,6 +249,7 @@ async function openPalette(detail?: CommandPaletteOpenDetail) {
 	caret.value = initialQuery.length;
 	pendingArgument.value = null;
 	resetScope(detail?.scope);
+	resetGlobalSearch();
 	mailScope.resetQuery(initialQuery);
 	inboxScope.resetQuery();
 	askScope.reset();

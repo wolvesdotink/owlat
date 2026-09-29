@@ -38,9 +38,10 @@ function useOrganizationArgs<Args>(extraArgs: ExtraArgs<Args> | undefined): () =
  */
 export function useOrganizationQuery<Query extends FunctionReference<'query'>>(
 	query: Query,
-	extraArgs?: ExtraArgs<FunctionArgs<Query>>
+	extraArgs?: ExtraArgs<FunctionArgs<Query>>,
+	options?: { timeout?: number; keepPreviousData?: boolean }
 ): ConvexQueryResult<FunctionReturnType<Query>> {
-	return useConvexQuery(query, useOrganizationArgs<FunctionArgs<Query>>(extraArgs));
+	return useConvexQuery(query, useOrganizationArgs<FunctionArgs<Query>>(extraArgs), options);
 }
 
 /**

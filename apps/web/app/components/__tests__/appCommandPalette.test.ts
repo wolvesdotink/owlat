@@ -382,3 +382,46 @@ describe('AppCommandPalette — Ask scope', () => {
 		expect(scopeChip()).toBe('Ask');
 	});
 });
+
+describe('AppCommandPalette — while closed and across sessions (plan 1.6)', () => {
+	it('builds no groups while closed, only once opened', async () => {
+		const build = vi.fn(() => []);
+		installStubs('/dashboard/campaigns', {
+			useCommandPaletteRegistry: () => ref([{ id: 'surface:spy', priority: 10, build }]),
+		});
+		wrapper = mount(AppCommandPalette, {
+			attachTo: document.body,
+			global: {
+				plugins: [createTestI18n()],
+				components: { AppCommandPaletteResults, QueryResult },
+				stubs: { Icon: true, UiSpinner: true, AppCommandPaletteFooter: true },
+			},
+		});
+		await nextTick();
+		expect(build).not.toHaveBeenCalled();
+
+		window.dispatchEvent(new Event(COMMAND_PALETTE_OPEN_EVENT));
+		await nextTick();
+		expect(build).toHaveBeenCalled();
+	});
+
+	it('keeps the last object results while the next term runs, but not into a new session', async () => {
+		const search = queryResult(searchResults);
+		const useOrganizationQuery = vi.fn(() => search);
+		installStubs('/dashboard/campaigns', { useOrganizationQuery });
+		await openPalette();
+
+		expect(useOrganizationQuery).toHaveBeenCalledWith(expect.anything(), expect.any(Function), {
+			keepPreviousData: true,
+		});
+		// Opening starts from a blank slate, not the previous session's results.
+		expect(search.reset).toHaveBeenCalledOnce();
+
+		// Stale rows are on screen while the next term runs: still searching.
+		await type('ada');
+		search.isRefetching.value = true;
+		await nextTick();
+		expect(document.body.textContent).toContain('Ada Lovelace');
+		expect(wrapper!.findComponent(AppCommandPaletteResults).props('isSearching')).toBe(true);
+	});
+});

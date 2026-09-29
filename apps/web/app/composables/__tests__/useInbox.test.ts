@@ -10,12 +10,23 @@ import { useInbox } from '../useInbox';
  */
 describe('useInbox pagination', () => {
 	// One controllable { data } per useConvexQuery call, in call order.
-	let created: Array<{ data: Ref<unknown>; args: () => unknown }> = [];
+	let created: Array<{
+		data: Ref<unknown>;
+		isRefetching: Ref<boolean>;
+		args: () => unknown;
+		options: unknown;
+	}> = [];
 
 	beforeEach(() => {
 		created = [];
-		vi.stubGlobal('useConvexQuery', (_query: unknown, args: () => unknown) => {
-			const handle = { data: ref<unknown>(undefined), isLoading: ref(false), args };
+		vi.stubGlobal('useConvexQuery', (_query: unknown, args: () => unknown, options?: unknown) => {
+			const handle = {
+				data: ref<unknown>(undefined),
+				isLoading: ref(false),
+				isRefetching: ref(false),
+				args,
+				options,
+			};
 			created.push(handle);
 			return handle;
 		});
@@ -63,9 +74,10 @@ describe('useInbox pagination', () => {
 		expect(threads.value.map((t) => t._id)).toEqual(['a', 'b', 'c']);
 	});
 
-	it('resets accumulated pages and cursor when a filter changes', async () => {
+	it('resets the cursor on a filter change but keeps the rows until the new first page', async () => {
 		const { threads, filter, loadMoreThreads } = useInbox();
-		const threadsData = created[0]!.data;
+		const list = created[0]!;
+		const threadsData = list.data;
 
 		threadsData.value = { threads: [thread('a'), thread('b')], nextCursor: 'c1' };
 		await nextTick();
@@ -74,14 +86,36 @@ describe('useInbox pagination', () => {
 		await nextTick();
 		expect(threads.value).toHaveLength(3);
 
-		// Changing the filter must clear the accumulator immediately (sync watch),
-		// so the next first page replaces rather than appends.
+		// The cursor resets at once (sync watch), so the next page replaces…
 		filter.value = 'resolved';
-		expect(threads.value).toHaveLength(0);
+		expect((list.args() as { cursor?: string }).cursor).toBeUndefined();
+		// …but the list does not blank while it loads (keepPreviousData).
+		expect(threads.value).toHaveLength(3);
 
 		threadsData.value = { threads: [thread('x')], nextCursor: null };
 		await nextTick();
 		expect(threads.value.map((t) => t._id)).toEqual(['x']);
+	});
+
+	it('keeps the list and the counts across filter, assignee and sort changes', () => {
+		useInbox();
+		const [list, counts] = created;
+		expect(list!.options).toEqual({ keepPreviousData: true });
+		expect(counts!.options).toEqual({ keepPreviousData: true });
+	});
+
+	it('offers no "load more" from the previous view while the new one loads', async () => {
+		const { hasMoreThreads, loadMoreThreads, filter } = useInbox();
+		const list = created[0]!;
+		list.data.value = { threads: [thread('a')], nextCursor: 'old-view-cursor' };
+		await nextTick();
+		expect(hasMoreThreads.value).toBe(true);
+
+		filter.value = 'resolved';
+		list.isRefetching.value = true;
+		expect(hasMoreThreads.value).toBe(false);
+		loadMoreThreads();
+		expect((list.args() as { cursor?: string }).cursor).toBeUndefined();
 	});
 
 	it('sends the assignment filter to the list and the tab counts', () => {
