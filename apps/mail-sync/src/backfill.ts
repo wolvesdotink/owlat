@@ -103,6 +103,13 @@ export interface BackfillFolderDeps {
 	): Promise<boolean>;
 	/** Cooperative cancellation (worker stop). */
 	isStopped(): boolean;
+	/** Runs between two batches of the same folder, once the first one's
+	 * progress is persisted. connection.ts forward-polls the INBOX here: the walk
+	 * keeps another folder selected, so INBOX IDLE is off for as long as the
+	 * folder takes, and new mail would otherwise wait for the periodic poll.
+	 * Not called after the folder's last batch — the next folder's own INBOX poll
+	 * covers that gap. */
+	betweenBatches?(): Promise<void>;
 }
 
 /**
@@ -185,6 +192,7 @@ export async function backfillFolder(
 		);
 		cursor = newCursor;
 		if (!stillImporting) return false; // migration cancelled — stop promptly
+		if (cursor > 0 && !deps.isStopped()) await deps.betweenBatches?.();
 	}
 	return false; // interrupted
 }

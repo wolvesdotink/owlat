@@ -57,6 +57,14 @@ const MAX_BACKOFF_MS = 5 * 60 * 1000;
 const SOURCE_FETCH_CHUNK = 50;
 
 /**
+ * Least time between two INBOX forward polls that the backfill makes between
+ * its batches. A re-walk of mail that is already imported moves through a
+ * batch in one envelope fetch, and polling after every one of those would
+ * spend a SELECT pair per batch against providers that meter commands.
+ */
+const BACKFILL_INBOX_POLL_MIN_MS = 10_000;
+
+/**
  * Terminal "the credentials are wrong" — as opposed to a transient drop worth
  * backing off and retrying.
  *
@@ -101,6 +109,8 @@ export class AccountConnection {
 	// Batches this run has persisted — the difference between an import that is
 	// advancing and one that is stuck. Read once the run ends.
 	private backfillBatchesThisRun = 0;
+	// When the backfill last forward-polled the INBOX (pollInboxForward).
+	private lastInboxPollAt = 0;
 
 	constructor(
 		private readonly account: ConnectableAccount,
@@ -292,15 +302,26 @@ export class AccountConnection {
 		}
 	}
 
-	/** Return to INBOX so IDLE resumes there for real-time delivery. */
+	/**
+	 * Return to INBOX so IDLE resumes there for real-time delivery, and catch up
+	 * on what arrived while another folder was selected: that mail raised no
+	 * 'exists' event, so without the UIDNEXT check it would wait for the next
+	 * periodic poll.
+	 */
 	private async resumeInboxIdle(): Promise<void> {
-		if (this.client && !this.stopped) {
-			try {
-				await this.client.mailboxOpen('INBOX');
-			} catch {
-				/* reconnect handler will recover */
-			}
+		const client = this.client;
+		if (!client || this.stopped) return;
+		try {
+			await client.mailboxOpen('INBOX');
+		} catch {
+			return; // reconnect handler will recover
 		}
+		const inbox = this.folders.find((f) => f.role === 'inbox');
+		const cursor = inbox ? this.cursors.get(inbox.remoteName) : undefined;
+		const mb = client.mailbox;
+		if (!cursor || !mb || typeof mb === 'boolean') return;
+		if (Number(mb.uidValidity) !== cursor.uidValidity) return; // pollAll remaps it
+		if (Number(mb.uidNext) > cursor.lastSeenUid + 1) await this.pollInboxForward();
 	}
 
 	private async pollFolder(remoteName: string, role: FolderRole): Promise<void> {
@@ -626,7 +647,9 @@ export class AccountConnection {
 	 * user gets no draft for a message that arrived while importing.
 	 *
 	 * Polling the INBOX immediately before each folder's ceiling snapshot lets
-	 * the arriving copy win that race with origin 'sync'. Safe to call with
+	 * the arriving copy win that race with origin 'sync'; the rate-limited poll
+	 * between batches (pollInboxBetweenBatches) keeps the delay short inside a
+	 * long folder, and resumeInboxIdle uses it to catch up. Safe to call with
 	 * `backfillRunning` set: it takes the same per-mailbox IMAP lock as every
 	 * other fetch (the backfill holds no lock between batches) and never waits on
 	 * the backfill, and it doesn't touch the IDLE state — `maybeRunBackfill`
@@ -637,14 +660,23 @@ export class AccountConnection {
 	private async pollInboxForward(): Promise<void> {
 		const inbox = this.folders.find((f) => f.role === 'inbox');
 		if (!inbox || this.stopped || !this.client) return;
+		this.lastInboxPollAt = Date.now();
 		try {
 			await this.pollFolder(inbox.remoteName, inbox.role);
 		} catch (err) {
-			logger.warn(
-				{ accountId: this.account.accountId, err },
-				'inbox forward poll during backfill failed'
-			);
+			logger.warn({ accountId: this.account.accountId, err }, 'inbox forward poll failed');
 		}
+	}
+
+	/**
+	 * The same forward poll between two batches of one folder, so a long folder
+	 * (a Gmail All Mail of 100k messages) does not hold new mail back until the
+	 * folder is done. Rate-limited by BACKFILL_INBOX_POLL_MIN_MS; the poll before
+	 * each folder's ceiling snapshot is not, because that one decides the race.
+	 */
+	private async pollInboxBetweenBatches(): Promise<void> {
+		if (Date.now() - this.lastInboxPollAt < BACKFILL_INBOX_POLL_MIN_MS) return;
+		await this.pollInboxForward();
 	}
 
 	/** Read a folder's high-water UID, message count, and UIDVALIDITY. */
@@ -847,6 +879,7 @@ export class AccountConnection {
 				return res.stillImporting;
 			},
 			isStopped: () => this.stopped,
+			betweenBatches: () => this.pollInboxBetweenBatches(),
 		};
 	}
 

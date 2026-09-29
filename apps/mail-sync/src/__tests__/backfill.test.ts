@@ -348,3 +348,62 @@ describe('backfillFolder', () => {
 		expect(rec.progress.reduce((n, p) => n + p.failedDelta, 0)).toBe(3);
 	});
 });
+
+describe('backfillFolder — the betweenBatches hook', () => {
+	const target = { remoteName: 'INBOX', role: 'inbox' as const, ceilingUid: 6, messageCount: 6 };
+
+	/** Wraps fakeDeps so the trace shows where the hook ran relative to batches. */
+	function traced(opts: Parameters<typeof fakeDeps>[0]) {
+		const { deps, rec } = fakeDeps(opts);
+		const trace: string[] = [];
+		const fetchBatch = deps.fetchBatch;
+		const recordProgress = deps.recordProgress;
+		deps.fetchBatch = async (remoteName, start, end) => {
+			trace.push(`fetch:${start}-${end}`);
+			return await fetchBatch(remoteName, start, end);
+		};
+		deps.recordProgress = async (remoteName, newCursor, imported, failed) => {
+			trace.push(`progress:${newCursor}`);
+			return await recordProgress(remoteName, newCursor, imported, failed);
+		};
+		deps.betweenBatches = async () => {
+			trace.push('between');
+		};
+		return { deps, rec, trace };
+	}
+
+	it('runs after each persisted batch that has a successor, never after the last', async () => {
+		const { deps, trace } = traced({ uids: [1, 2, 3, 4, 5, 6], batchSize: 2, startCursor: 6 });
+		expect(await backfillFolder(deps, target)).toBe(true);
+		expect(trace).toEqual([
+			'fetch:5-6',
+			'progress:4',
+			'between',
+			'fetch:3-4',
+			'progress:2',
+			'between',
+			'fetch:1-2',
+			'progress:0',
+		]);
+	});
+
+	it('does not run once the migration is cancelled or the worker stops', async () => {
+		const cancelled = traced({
+			uids: [1, 2, 3, 4, 5, 6],
+			batchSize: 2,
+			startCursor: 6,
+			cancelAfterBatches: 1,
+		});
+		await backfillFolder(cancelled.deps, target);
+		expect(cancelled.trace).not.toContain('between');
+
+		const stopped = traced({
+			uids: [1, 2, 3, 4, 5, 6],
+			batchSize: 2,
+			startCursor: 6,
+			stopAfterBatches: 1,
+		});
+		await backfillFolder(stopped.deps, target);
+		expect(stopped.trace).not.toContain('between');
+	});
+});
