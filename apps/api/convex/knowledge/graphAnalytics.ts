@@ -187,13 +187,17 @@ export const getGraphStats = publicQuery({
 		if (viewer.canReadInbox) return memberVisible;
 		// The snapshot names entries by title. A caller outside the Team Inbox
 		// gets the aggregates, minus the named entries derived from inbox mail.
+		// The aggregate counts (nodes, edges, confidence buckets, communities)
+		// still include those entries: they carry no content. A named entry
+		// deleted since the snapshot is dropped too, since its origin can no
+		// longer be checked.
 		const named = await batchGet(ctx, [
 			...row.godNodes.map((n) => n.entryId),
 			...row.surprisingConnections.flatMap((c) => [c.fromEntryId, c.toEntryId]),
 		]);
 		const visible = (id: Id<'knowledgeEntries'>): boolean => {
 			const entry = named.get(id) as Doc<'knowledgeEntries'> | null | undefined;
-			return !entry || isKnowledgeEntryVisible(false, entry);
+			return !!entry && isKnowledgeEntryVisible(false, entry);
 		};
 		return {
 			...memberVisible,

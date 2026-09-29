@@ -234,6 +234,12 @@ Gated families and their builders:
 | `forms`                      | `formsQuery`, `formsMutation`                                            | `forms/_helpers.ts`                |
 | `ai.knowledge`               | `knowledgeMutation`, `knowledgeAdminMutation`                            | `knowledge/graph.ts`               |
 
+The knowledge soft-auth reads apply `ai.knowledge` through
+`resolveKnowledgeViewer` (they return empty rather than throw). The one
+exception in `knowledge/` is the message backfill's `getStatus` / `cancel`
+(`knowledge/messageBackfill.ts`): that job belongs to `ai.agent`, which starts
+and stops it, so it follows that flag instead.
+
 Actions in the `mail.external` family call `assertExternalEnabled(ctx)` from
 the same module; campaign actions call `assertCampaignsEnabledInAction(ctx)`
 from `campaigns/_helpers.ts`.
