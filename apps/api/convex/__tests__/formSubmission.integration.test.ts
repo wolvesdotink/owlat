@@ -529,6 +529,31 @@ describe('submission.submit', () => {
 		}
 	});
 
+	it("returns 'feature_disabled' and writes nothing while the forms feature is off", async () => {
+		const t = convexTest(schema, modules);
+		const formEndpointId = await createForm(t);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				contactCount: 0,
+				createdAt: Date.now(),
+				featureFlags: { forms: false },
+			});
+		});
+
+		const outcome = await t.mutation(internal.forms.submission.submit, {
+			formEndpointId,
+			submissionData: { email: 'user@example.com' },
+		});
+
+		expect(outcome.ok).toBe(false);
+		if (!outcome.ok) {
+			expect(outcome.reason).toBe('feature_disabled');
+		}
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('formSubmissions').collect()).toHaveLength(0);
+		});
+	});
+
 	it('increments formEndpoints.submissionCount on every write', async () => {
 		const t = convexTest(schema, modules);
 		const formEndpointId = await createForm(t);

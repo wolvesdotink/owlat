@@ -90,6 +90,16 @@ export const submitForm = publicTokenEndpoint(
 		});
 
 		if (!outcome.ok) {
+			if (outcome.reason === 'feature_disabled') {
+				// Same status the feature floors use for a disabled flag. The
+				// message stays neutral: the caller is an anonymous site visitor.
+				return {
+					ok: false,
+					reason: 'feature_disabled',
+					message: 'Form submissions are currently disabled',
+					status: 403,
+				};
+			}
 			if (outcome.reason === 'form_not_found') {
 				return {
 					ok: false,
