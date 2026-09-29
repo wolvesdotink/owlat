@@ -105,6 +105,72 @@ describe('email template saves', () => {
 	});
 });
 
+describe('text/plain body and subject on save', () => {
+	it('stores the generated text/plain body, not the client one', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t);
+
+		await t.mutation(api.emailTemplates.emails.update, {
+			templateId,
+			content: blocksJson('<p>Fresh body</p>'),
+			plainTextContent: 'client text',
+			plainTextOverride: '',
+		});
+
+		const row = await t.run((ctx) => ctx.db.get(templateId));
+		expect(row!.plainTextContent).not.toContain('client text');
+		expect(row!.plainTextContent).toContain('Fresh body');
+		expect(row!.plainTextContent).toBe(
+			renderPublishableEmail(row!, 'personalization', undefined).plainTextContent
+		);
+	});
+
+	it('keeps the author override as the text/plain body', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t);
+
+		await t.mutation(api.emailTemplates.emails.update, {
+			templateId,
+			content: blocksJson('<p>Fresh body</p>'),
+			plainTextContent: 'My own words',
+			plainTextOverride: 'My own words',
+		});
+
+		const row = await t.run((ctx) => ctx.db.get(templateId));
+		expect(row!.plainTextOverride).toBe('My own words');
+		expect(row!.plainTextContent).toBe('My own words');
+	});
+
+	it('regenerates the text/plain body when the override is cleared', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t, {
+			plainTextOverride: 'My own words',
+			plainTextContent: 'My own words',
+		});
+
+		await t.mutation(api.emailTemplates.emails.update, { templateId, plainTextOverride: '' });
+
+		const row = await t.run((ctx) => ctx.db.get(templateId));
+		expect(row!.plainTextOverride).toBeUndefined();
+		expect(row!.plainTextContent).toContain('Stored body');
+	});
+
+	it('re-renders translated HTML when only the default subject changes', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t, {
+			subject: 'Old subject',
+			defaultLanguage: 'en',
+			supportedLanguages: ['en', 'de'],
+			translations: JSON.stringify({ de: { blocks: { b1: { html: '<p>Text</p>' } } } }),
+		});
+
+		await t.mutation(api.emailTemplates.emails.update, { templateId, subject: 'New subject' });
+
+		const row = await t.run((ctx) => ctx.db.get(templateId));
+		expect(JSON.parse(row!.htmlTranslations!).de.subject).toBe('New subject');
+	});
+});
+
 describe('rows saved before server rendering', () => {
 	it('publishes a render of the blocks, not the HTML the row still holds', async () => {
 		const t = convexTest(schema, modules);

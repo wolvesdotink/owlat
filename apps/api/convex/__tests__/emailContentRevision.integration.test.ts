@@ -142,8 +142,8 @@ describe('emailTemplates.update — content revision', () => {
 			htmlRenderState: { stale: true, failureCount: 1 },
 		});
 
-		// A subject-only write leaves the HTML as stale as it was.
-		await t.mutation(api.emailTemplates.emails.update, { templateId, subject: 'Just the subject' });
+		// A name-only write leaves the HTML as stale as it was.
+		await t.mutation(api.emailTemplates.emails.update, { templateId, name: 'Just the name' });
 		expect((await t.run((ctx) => ctx.db.get(templateId)))?.htmlRenderState?.stale).toBe(true);
 
 		await t.mutation(api.emailTemplates.emails.update, {
@@ -152,6 +152,21 @@ describe('emailTemplates.update — content revision', () => {
 			htmlContent: '<p>Hello</p>',
 			expectedContentRevision: 3,
 		});
+		expect((await t.run((ctx) => ctx.db.get(templateId)))?.htmlRenderState).toEqual({
+			stale: false,
+		});
+	});
+
+	it('clears a pending rerender flag on a subject-only write, which renders too', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t, {
+			contentRevision: 2,
+			htmlRenderState: { stale: true, failureCount: 1 },
+		});
+
+		// Translated HTML falls back to the default subject, so a subject write
+		// renders the stored blocks and the HTML matches them again.
+		await t.mutation(api.emailTemplates.emails.update, { templateId, subject: 'Just the subject' });
 		expect((await t.run((ctx) => ctx.db.get(templateId)))?.htmlRenderState).toEqual({
 			stale: false,
 		});

@@ -324,13 +324,18 @@ export interface EditableEmailPatch {
 }
 
 /**
- * The update arguments that change what the rendered HTML is built from, or
- * that carry client-rendered HTML the server replaces with its own render.
+ * The update arguments that change what the rendered HTML and text/plain body
+ * are built from, or that carry client-rendered output the server replaces
+ * with its own render. `subject` is one: each translation's HTML entry falls
+ * back to the default subject.
  */
 const RENDER_INPUTS = [
 	'content',
+	'subject',
 	'htmlContent',
 	'htmlTranslations',
+	'plainTextContent',
+	'plainTextOverride',
 	'translations',
 	'supportedLanguages',
 	'defaultLanguage',
@@ -386,7 +391,6 @@ export async function buildEditablePatch(
 	// Text-block HTML is sanitized on every write (lib/emailContentSanitize.ts).
 	if (args.content !== undefined) patch.content = sanitizeStoredBlocksJson(args.content);
 
-	if (args.plainTextContent !== undefined) patch.plainTextContent = args.plainTextContent;
 	if (args.plainTextOverride !== undefined) {
 		// Patching a field to `undefined` REMOVES it, which is what "the author
 		// cleared the override editor" has to mean; an empty string would keep
@@ -403,8 +407,12 @@ export async function buildEditablePatch(
 	// the client: `htmlContent` / `htmlTranslations` in `args` only say that the
 	// caller expects the HTML to follow this write. A write that changes what
 	// the HTML is built from renders it too, so the stored HTML always matches
-	// the stored (sanitized) content.
+	// the stored (sanitized) content. The text/plain body follows the same
+	// render unless the author's override is in effect; only then is the
+	// client's `plainTextContent` (the override as the editor sends it) kept.
 	if (RENDER_INPUTS.some((field) => args[field] !== undefined)) {
+		const plainTextOverride =
+			args.plainTextOverride !== undefined ? patch.plainTextOverride : row.plainTextOverride;
 		const rendered = renderForWrite(
 			{
 				content: patch.content ?? row.content,
@@ -412,13 +420,18 @@ export async function buildEditablePatch(
 				translations: patch.translations ?? row.translations,
 				supportedLanguages: patch.supportedLanguages ?? row.supportedLanguages,
 				defaultLanguage: patch.defaultLanguage ?? row.defaultLanguage,
-				plainTextOverride: row.plainTextOverride,
+				plainTextOverride,
 			},
 			options.variableType,
 			await loadEmailTheme(ctx)
 		);
 		patch.htmlContent = rendered.html;
 		patch.htmlTranslations = rendered.htmlTranslations;
+		if (rendered.plainTextContent !== undefined) {
+			patch.plainTextContent = rendered.plainTextContent;
+		} else if (args.plainTextContent !== undefined) {
+			patch.plainTextContent = args.plainTextContent;
+		}
 		// The HTML matches the content again, so a saved-block rerender still
 		// pending for the previous revision has nothing left to fix (it no-ops
 		// on the moved row).
