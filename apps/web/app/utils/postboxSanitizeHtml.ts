@@ -32,7 +32,7 @@ export function sanitizePostboxHtml(html: string): string {
 const POSTBOX_COMPOSER_SANITIZE_CONFIG: sanitizeHtml.IOptions = {
 	...POSTBOX_SANITIZE_CONFIG,
 	allowedAttributes: {
-		...(POSTBOX_SANITIZE_CONFIG.allowedAttributes || {}),
+		...POSTBOX_SANITIZE_CONFIG.allowedAttributes,
 		a: ['href', 'title', 'name', 'target', 'rel'],
 		img: ['src', 'srcset', 'alt', 'width', 'height', 'loading', 'data-inline-cid'],
 	},
