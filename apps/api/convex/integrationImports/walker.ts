@@ -43,7 +43,7 @@ import {
 import { recordImportSummary } from './suppressions';
 import { sealImportCredential, openImportCredential } from './credentialSeal';
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
-import { duplicateHandlingValidator, completedOrFailedValidator } from '../lib/convexValidators';
+import { duplicateHandlingValidator, completedOrFailedValidator } from '../lib/literalValidators';
 
 const MAX_RETRIES = 2;
 

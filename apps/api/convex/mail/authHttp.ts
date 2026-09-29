@@ -16,7 +16,7 @@ import { internal } from '../_generated/api';
 import { logError } from '../lib/runtimeLog';
 import { getOptional } from '../lib/env';
 import { constantTimeEqual } from '../webhooks/security';
-import { getClientIp } from '../publicRateLimit';
+import { getClientIp } from '../lib/publicRateLimit';
 
 export const handleVerifyCredential = httpAction(async (ctx, request) => {
 	if (request.method !== 'POST') {
@@ -30,7 +30,7 @@ export const handleVerifyCredential = httpAction(async (ctx, request) => {
 	// so a flood here cannot drain the bounce/complaint buckets.
 	const rateIp = getClientIp(request);
 	const { ok: rateOk, retryAfter } = await ctx.runMutation(
-		internal.publicRateLimit.checkPublicRateLimit,
+		internal.lib.publicRateLimit.checkPublicRateLimit,
 		{ limitType: 'webhookIngestion', key: `mta-verify-credential:${rateIp}` }
 	);
 	if (!rateOk) {

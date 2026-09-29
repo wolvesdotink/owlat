@@ -24,6 +24,7 @@ import {
 	type HandlingRuleLike,
 	type HandlingRuleOutcome,
 } from './handlingRules/engine';
+import { handlingRuleActionValidator, handlingRuleMatcherValidator } from '../schema/autonomy';
 
 /**
  * Upper bound on how many handling rules a deployment can hold. The table is
@@ -33,26 +34,6 @@ import {
  * (via `.take(MAX_HANDLING_RULES)`) rather than reading the table unbounded.
  */
 const MAX_HANDLING_RULES = 500;
-
-// Shared validators — the persisted shape mirrors schema/autonomy.ts:handlingRules.
-const matcherValidator = v.object({
-	senders: v.optional(v.array(v.string())),
-	subjectContains: v.optional(v.array(v.string())),
-	bodyContains: v.optional(v.array(v.string())),
-	categories: v.optional(v.array(v.string())),
-});
-
-export const actionValidator = v.object({
-	type: v.union(
-		v.literal('draft_with_stance'),
-		v.literal('categorize'),
-		v.literal('auto_archive'),
-		v.literal('always_ask'),
-		v.literal('never_auto_send')
-	),
-	stance: v.optional(v.string()),
-	category: v.optional(v.string()),
-});
 
 // ── Public read ───────────────────────────────────────────────────
 
@@ -75,8 +56,8 @@ export const list = adminQuery({
 export const create = authedMutation({
 	args: {
 		instruction: v.string(),
-		matcher: matcherValidator,
-		action: actionValidator,
+		matcher: handlingRuleMatcherValidator,
+		action: handlingRuleActionValidator,
 		isEnabled: v.optional(v.boolean()),
 		compiledModel: v.optional(v.string()),
 	},
@@ -109,8 +90,8 @@ export const update = authedMutation({
 	args: {
 		ruleId: v.id('handlingRules'),
 		instruction: v.optional(v.string()),
-		matcher: v.optional(matcherValidator),
-		action: v.optional(actionValidator),
+		matcher: v.optional(handlingRuleMatcherValidator),
+		action: v.optional(handlingRuleActionValidator),
 		isEnabled: v.optional(v.boolean()),
 		compiledModel: v.optional(v.string()),
 	},

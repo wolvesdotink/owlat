@@ -28,7 +28,7 @@ import { loadCellDegradation } from './rampIntegrationPresence';
 import {
 	deliverabilityStreamValidator,
 	destinationProviderValidator,
-} from './deliverabilityValidators';
+} from '../lib/validators/deliverability';
 import { recordOperatorRampAction } from './rampControlAudit';
 import { refusedControl, resolveControlTarget, type RampControlResult } from './rampControls';
 

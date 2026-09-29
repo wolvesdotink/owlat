@@ -13,7 +13,7 @@
  * The previous schema-vs-mutation drift is closed by construction.
  */
 
-import { v, type Validator } from 'convex/values';
+import { literalUnion } from '../lib/literalUnion';
 
 export const CONTACT_ACTIVITY_TYPE_LITERALS = [
 	'email_sent',
@@ -37,11 +37,5 @@ export const CONTACT_ACTIVITY_TYPE_LITERALS = [
 
 export type ContactActivityType = (typeof CONTACT_ACTIVITY_TYPE_LITERALS)[number];
 
-/**
- * Convex validator over every activity type. Derived from the catalog above;
- * spread-into-`v.union` loses literal narrowing in TypeScript so we cast back
- * once here.
- */
-export const contactActivityTypeValidator = v.union(
-	...CONTACT_ACTIVITY_TYPE_LITERALS.map((l) => v.literal(l)),
-) as unknown as Validator<ContactActivityType>;
+/** Convex validator over every activity type, derived from the catalog above. */
+export const contactActivityTypeValidator = literalUnion(CONTACT_ACTIVITY_TYPE_LITERALS);

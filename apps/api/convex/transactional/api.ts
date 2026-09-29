@@ -20,33 +20,27 @@
 
 import type { Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
+import type { ActionCtx } from '../_generated/server';
 import {
 	createAuthenticatedHandler,
 	requireScope,
 	type AuthenticatedContext,
 } from '../auth/apiHandlers';
 import { jsonResponse, errorResponse } from '../auth/apiResponses';
-import { isValidEmail, normalizeEmail } from '../lib/inputGuards';
+import {
+	isJsonPrimitiveRecord,
+	isValidEmail,
+	normalizeEmail,
+	type JsonPrimitiveValue,
+} from '../lib/inputGuards';
 import { validateOutboundUrl } from '../lib/outboundUrlValidation';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import type { OperationErrorCategory } from '@owlat/shared/operationError';
-import type { AttachmentRef, DispatchOutcome, DispatchRejectionReason } from './dispatch';
+import type { AttachmentRef, DispatchRejectionReason } from './dispatch';
 
 // ============================================================
 // HTTP request / response types
 // ============================================================
-
-// Convex action context shape used inside the HTTP handler — narrowed to the
-// surfaces we touch (storage + runMutation).
-interface ActionContext {
-	runQuery: <T>(query: unknown, args: unknown) => Promise<T>;
-	runMutation: <T>(mutation: unknown, args: unknown) => Promise<T>;
-	runAction: <T>(action: unknown, args: unknown) => Promise<T>;
-	storage: {
-		store(blob: Blob): Promise<string>;
-		getUrl(storageId: string): Promise<string | null>;
-	};
-}
 
 interface AttachmentInput {
 	filename: string;
@@ -59,7 +53,7 @@ interface SendTransactionalBody {
 	transactionalId?: string;
 	slug?: string;
 	email: string;
-	dataVariables?: Record<string, unknown>;
+	dataVariables?: Record<string, JsonPrimitiveValue>;
 	language?: string;
 	attachments?: AttachmentInput[];
 }
@@ -100,8 +94,11 @@ function validateRequestShape(body: SendTransactionalBody): Response | null {
 	if (!body.transactionalId && !body.slug) {
 		return errorResponse('invalid_input', 'Either transactionalId or slug is required');
 	}
-	if (body.dataVariables !== undefined && typeof body.dataVariables !== 'object') {
-		return errorResponse('invalid_input', 'dataVariables must be an object');
+	if (body.dataVariables !== undefined && !isJsonPrimitiveRecord(body.dataVariables)) {
+		return errorResponse(
+			'invalid_input',
+			'dataVariables must be an object of string, number, boolean or null values'
+		);
 	}
 	if (body.language !== undefined && typeof body.language !== 'string') {
 		return errorResponse('invalid_input', 'language must be a string');
@@ -143,7 +140,7 @@ type AttachmentUploadResult =
  * dispatch module.
  */
 async function uploadAttachments(
-	ctx: ActionContext,
+	ctx: Pick<ActionCtx, 'storage'>,
 	attachments: AttachmentInput[] | undefined
 ): Promise<AttachmentUploadResult> {
 	if (!attachments || attachments.length === 0) {
@@ -322,7 +319,7 @@ const REJECTION_RESPONSE_MAP: Record<
  * POST /api/v1/transactional — send a transactional email.
  */
 export const sendTransactional = createAuthenticatedHandler(
-	async (ctx: ActionContext, request: Request, auth: AuthenticatedContext): Promise<Response> => {
+	async (ctx: ActionCtx, request: Request, auth: AuthenticatedContext): Promise<Response> => {
 		const denied = requireScope(auth, 'transactional:send', request.headers.get('Origin'));
 		if (denied) return denied;
 		// Parse body.
@@ -351,16 +348,13 @@ export const sendTransactional = createAuthenticatedHandler(
 			: { kind: 'slug' as const, slug: body.slug! };
 
 		// Dispatch.
-		const outcome = (await ctx.runMutation<DispatchOutcome>(
-			internal.transactional.dispatch.dispatch,
-			{
-				templateLookup,
-				email: normalizeEmail(body.email),
-				dataVariables: body.dataVariables,
-				language: body.language,
-				attachmentRefs: uploadResult.refs,
-			}
-		)) as DispatchOutcome;
+		const outcome = await ctx.runMutation(internal.transactional.dispatch.dispatch, {
+			templateLookup,
+			email: normalizeEmail(body.email),
+			dataVariables: body.dataVariables,
+			language: body.language,
+			attachmentRefs: uploadResult.refs,
+		});
 
 		if (!outcome.ok) {
 			const map = REJECTION_RESPONSE_MAP[outcome.reason];

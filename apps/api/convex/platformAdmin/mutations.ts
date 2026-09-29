@@ -1,19 +1,19 @@
 import { v } from 'convex/values';
-import { authedMutation } from '../lib/authedFunctions';
+import { platformAdminMutation, platformSuperadminMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { requirePlatformAdmin } from './platformAdmin';
 import { getOrThrow, throwNotFound, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
+import { findPlatformAdmin } from '../lib/platformAdminAccess';
 import { abuseStatusValidator } from '../workspaces/abuseStatus';
 
-// Authorization model: every mutation here is an `authedMutation` (session
-// floor) whose handler first calls `requirePlatformAdmin(ctx)` — FORBIDDEN
-// unless the caller is in the `platformAdmins` table — and superadmin-only
-// operations additionally check `role === 'superadmin'`. On OSS self-host that
-// table is never populated by any production path, so these mutations are
-// reachable in code but INERT at runtime. This is intentional (control-plane-
-// only); see platformAdmin.ts for the full rationale and the separate Nest repo.
+// Authorization model: every mutation here is a `platformAdminMutation`
+// (org-member floor, then FORBIDDEN unless the caller is in the `platformAdmins`
+// table), and roster management is a `platformSuperadminMutation` (FORBIDDEN
+// unless that row is `superadmin`). The roster is populated in production: the
+// `/seed/admin` bootstrap grants the setup user `superadmin`, an org owner can
+// claim an empty roster from the admin hub, and a superadmin promotes others
+// from Operator → Admins through `addPlatformAdmin`. See `bootstrap.ts`.
 
 // ============ ORGANIZATION STATUS MANAGEMENT ============
 
@@ -29,14 +29,12 @@ import { abuseStatusValidator } from '../workspaces/abuseStatus';
  * compatibility with existing platform-admin UI queries that filter by
  * that literal.
  */
-export const setOrganizationStatus = authedMutation({
+export const setOrganizationStatus = platformAdminMutation({
 	args: {
 		abuseStatus: abuseStatusValidator,
 		reason: v.string(),
 	},
-	handler: async (ctx, args) => {
-		const admin = await requirePlatformAdmin(ctx);
-
+	handler: async (ctx, args, admin) => {
 		const settings = await ctx.db.query('instanceSettings').first();
 
 		if (!settings) {
@@ -83,14 +81,12 @@ export const setOrganizationStatus = authedMutation({
  * Approve a campaign that is pending review.
  * Transitions the campaign back to draft so the user can send it.
  */
-export const approveCampaign = authedMutation({
+export const approveCampaign = platformAdminMutation({
 	args: {
 		campaignId: v.id('campaigns'),
 		notes: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		const admin = await requirePlatformAdmin(ctx);
-
+	handler: async (ctx, args, admin) => {
 		const campaign = await getOrThrow(ctx, args.campaignId, 'Campaign');
 
 		if (campaign.status !== 'pending_review') {
@@ -125,14 +121,12 @@ export const approveCampaign = authedMutation({
  * Approve a transactional email that is pending review.
  * Transitions it to published status.
  */
-export const approveTransactional = authedMutation({
+export const approveTransactional = platformAdminMutation({
 	args: {
 		transactionalEmailId: v.id('transactionalEmails'),
 		notes: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		const admin = await requirePlatformAdmin(ctx);
-
+	handler: async (ctx, args, admin) => {
 		const email = await getOrThrow(ctx, args.transactionalEmailId, 'Transactional email');
 
 		if (email.status !== 'pending_review') {
@@ -168,14 +162,13 @@ export const approveTransactional = authedMutation({
  * Reject content that is pending review.
  * Works for both campaigns and transactional emails.
  */
-export const rejectContent = authedMutation({
+export const rejectContent = platformAdminMutation({
 	args: {
 		resourceType: v.union(v.literal('campaign'), v.literal('transactional')),
 		resourceId: v.string(),
 		reason: v.string(),
 	},
-	handler: async (ctx, args) => {
-		const admin = await requirePlatformAdmin(ctx);
+	handler: async (ctx, args, admin) => {
 		const now = Date.now();
 
 		if (args.resourceType === 'campaign') {
@@ -238,29 +231,16 @@ export const rejectContent = authedMutation({
 // ============ ADMIN MANAGEMENT ============
 
 /**
- * Add a new platform admin (superadmin only).
+ * Add a new platform admin. Superadmin only (`platformSuperadminMutation`).
  */
-export const addPlatformAdmin = authedMutation({
+export const addPlatformAdmin = platformSuperadminMutation({
 	args: {
 		authUserId: v.string(),
 		email: v.string(),
 		role: v.union(v.literal('admin'), v.literal('superadmin')),
 	},
-	handler: async (ctx, args) => {
-		const admin = await requirePlatformAdmin(ctx);
-
-		// Only superadmins can add other admins
-		if (admin.role !== 'superadmin') {
-			throwInvalidInput('Only superadmins can add new platform admins');
-		}
-
-		// Check if already exists
-		const existing = await ctx.db
-			.query('platformAdmins')
-			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', args.authUserId))
-			.first();
-
-		if (existing) {
+	handler: async (ctx, args, admin) => {
+		if (await findPlatformAdmin(ctx.db, args.authUserId)) {
 			throwInvalidInput('User is already a platform admin');
 		}
 
@@ -300,21 +280,14 @@ export const addPlatformAdmin = authedMutation({
 });
 
 /**
- * Remove a platform admin (superadmin only).
+ * Remove a platform admin. Superadmin only (`platformSuperadminMutation`).
  * Cannot remove yourself.
  */
-export const removePlatformAdmin = authedMutation({
+export const removePlatformAdmin = platformSuperadminMutation({
 	args: {
 		adminId: v.id('platformAdmins'),
 	},
-	handler: async (ctx, args) => {
-		const admin = await requirePlatformAdmin(ctx);
-
-		// Only superadmins can remove admins
-		if (admin.role !== 'superadmin') {
-			throwInvalidInput('Only superadmins can remove platform admins');
-		}
-
+	handler: async (ctx, args, admin) => {
 		const targetAdmin = await getOrThrow(ctx, args.adminId, 'Platform admin');
 
 		// Cannot remove yourself

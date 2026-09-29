@@ -43,7 +43,7 @@ import {
 	decisionProviderKindValidator,
 	embeddingProviderKindValidator,
 	languageProviderKindValidator,
-} from './lib/aiProviderConfigValidators';
+} from './lib/validators/aiProviderConfig';
 // Type-only, and from the PURE types module rather than the registry index, so
 // this v8 file never reaches the Node-only adapter files behind it.
 import type { DecisionProviderKind } from './lib/decisionProviders/types';

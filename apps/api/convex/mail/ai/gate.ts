@@ -8,7 +8,7 @@ import { v } from 'convex/values';
 import { internalMutation } from '../../_generated/server';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
-import { rateLimiter } from '../../rateLimiter';
+import { rateLimiter } from '../../lib/rateLimiter';
 import { throwForbidden, throwRateLimited } from '../../_utils/errors';
 import { computeBudgetStatus } from '../../analytics/spendBudget';
 

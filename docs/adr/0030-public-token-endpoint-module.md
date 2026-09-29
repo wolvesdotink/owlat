@@ -2,6 +2,11 @@
 
 **Status:** proposed
 
+**Path note:** `publicRateLimit.ts` has since moved to `convex/lib/`, so the
+mutation is now `internal.lib.publicRateLimit.checkPublicRateLimit` and the
+helpers import from `../lib/publicRateLimit`. The snippets below keep the
+paths as they were when this record was written.
+
 ## Context
 
 The codebase has one cross-cutting concern that crosses six files but

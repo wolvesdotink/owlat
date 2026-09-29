@@ -35,7 +35,7 @@
 import { readBodyBytes } from './readBody';
 import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { getClientIp, rateLimitedResponse, type PublicRateLimitType } from '../publicRateLimit';
+import { getClientIp, rateLimitedResponse, type PublicRateLimitType } from './publicRateLimit';
 import {
 	errorResponse,
 	jsonResponse,
@@ -45,6 +45,7 @@ import {
 } from './httpResponse';
 import type { OperationErrorCategory } from '@owlat/shared/operationError';
 import { logError } from './runtimeLog';
+import { safeDecodeURIComponent } from './inputGuards';
 
 /**
  * Best-effort reverse map for the action-mode failure boundary: an endpoint
@@ -338,7 +339,7 @@ export function createShellHandler(
 		const ip = getClientIp(request);
 		const rateKey = config.rateLimitKeyMode === 'ip+token' && tokenRaw ? `${ip}:${tokenRaw}` : ip;
 		const { ok, retryAfter } = await ctx.runMutation<{ ok: boolean; retryAfter: number }>(
-			internal.publicRateLimit.checkPublicRateLimit,
+			internal.lib.publicRateLimit.checkPublicRateLimit,
 			{ limitType: config.rateLimit, key: rateKey }
 		);
 		if (!ok) {
@@ -349,10 +350,8 @@ export function createShellHandler(
 		if (!tokenRaw) {
 			return errorResponse('invalid_input', 'Missing token', undefined, corsHeaders);
 		}
-		let token: string;
-		try {
-			token = decodeURIComponent(tokenRaw);
-		} catch {
+		const token = safeDecodeURIComponent(tokenRaw);
+		if (token === null) {
 			return errorResponse('invalid_input', 'Invalid token encoding', undefined, corsHeaders);
 		}
 

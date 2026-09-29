@@ -13,6 +13,7 @@ import { publicQuery } from '../lib/authedFunctions';
 import { postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import { requireMailboxAccess } from './permissions';
+import { findAddressClaim } from './mailbox/addressResolution';
 import {
 	getOrThrow,
 	throwForbidden,
@@ -50,11 +51,7 @@ export const create = postboxMutation({
 		if (!alias.includes('@')) throwInvalidInput('Alias must be a full email address');
 
 		// No collision with another mailbox or alias
-		const existingMailbox = await ctx.db
-			.query('mailboxes')
-			.withIndex('by_address', (q) => q.eq('address', alias))
-			.first();
-		if (existingMailbox) {
+		if (await findAddressClaim(ctx, alias)) {
 			throwAlreadyExists('A mailbox already exists at that address');
 		}
 		const existingAlias = await ctx.db

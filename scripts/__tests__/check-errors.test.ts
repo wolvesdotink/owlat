@@ -11,57 +11,27 @@
  * whose `convex/` files are written per case.
  *
  * The cases pin both directions — the builders that must be caught (the
- * secure-by-default ones actually in use, including the feature-gated pairs)
- * and the ones that must not be (internal* and plain helpers, whose bare throws
- * are invariant bugs that never reach a client).
+ * secure-by-default ones actually in use, including the feature-gated pairs,
+ * which the gate derives from source) and the ones that must not be (internal*
+ * and plain helpers, whose bare throws are invariant bugs that never reach a
+ * client).
  */
 
-import { execFile } from 'node:child_process';
-import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
+import { apiTree, type GateResult, removeTrees, runGate as runGateIn } from './convexGates.testlib';
 
-const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
-
-const run = promisify(execFile);
-
-const GATE = 'apps/api/scripts/check-errors.sh';
+const GATE = 'check-errors.sh';
 
 const roots: string[] = [];
 
-afterAll(async () => {
-	await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
-	roots.length = 0;
-});
+afterAll(() => removeTrees(roots));
 
-interface GateResult {
-	readonly code: number;
-	readonly output: string;
-}
-
-/** Build an `apps/api` tree holding the real gate plus `files`, and run it. */
+/**
+ * Build an `apps/api` tree holding the real gate, its shared lib, the builder
+ * sources it derives the public builders from, and `files`; then run it.
+ */
 async function runGate(files: Record<string, string>): Promise<GateResult> {
-	const root = await mkdtemp(join(tmpdir(), 'owlat-errors-gate-'));
-	roots.push(root);
-
-	for (const [path, contents] of Object.entries(files)) {
-		const target = join(root, 'apps/api', path);
-		await mkdir(dirname(target), { recursive: true });
-		await writeFile(target, contents, 'utf8');
-	}
-	await mkdir(join(root, 'apps/api/scripts'), { recursive: true });
-	await copyFile(join(REPOSITORY_ROOT, GATE), join(root, GATE));
-
-	try {
-		const { stdout, stderr } = await run('bash', [GATE], { cwd: root });
-		return { code: 0, output: `${stdout}${stderr}` };
-	} catch (error) {
-		const failure = error as { code?: number; stdout?: string; stderr?: string };
-		return { code: failure.code ?? 1, output: `${failure.stdout ?? ''}${failure.stderr ?? ''}` };
-	}
+	return runGateIn(await apiTree(files, roots), GATE);
 }
 
 /** A module exporting one function built with `builder`, throwing a bare Error. */
@@ -90,7 +60,9 @@ describe('convex operation-error taxonomy gate', () => {
 	});
 
 	// Every builder a user-facing function is actually written with today. The
-	// bare `mutation(` at the end is the one the gate used to key on alone.
+	// postbox pair was missing from the hand-typed list the gate carried before
+	// it derived the builders from source. The bare `mutation(` at the end is
+	// the one the gate used to key on alone.
 	it.each([
 		'authedQuery',
 		'authedMutation',
@@ -106,6 +78,8 @@ describe('convex operation-error taxonomy gate', () => {
 		'chatMutation',
 		'assistantQuery',
 		'assistantMutation',
+		'postboxQuery',
+		'postboxMutation',
 		'mutation',
 	])('flags a bare throw inside a %s', async (builder) => {
 		const result = await runGate({ 'convex/thing.ts': moduleWithBareThrow(builder) });

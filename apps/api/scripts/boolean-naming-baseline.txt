@@ -20,7 +20,5 @@ mailThreads.ts:hasAttachments
 mailThreads.ts:hasFlagged
 templates.ts:showUnsubscribe
 templates.ts:showUnsubscribe
-templates.ts:stale
-templates.ts:stale
 topics.ts:pendingDoiConfirmation
 topics.ts:requireDoubleOptIn

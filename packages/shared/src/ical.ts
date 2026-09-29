@@ -5,6 +5,12 @@
  * DTEND (UTC `Z`, floating, date-only, and `TZID=` wall-clock), ORGANIZER,
  * ATTENDEE (with PARTSTAT), UID, METHOD. Not a full RFC 5545 implementation —
  * enough to render an invite card and send an RSVP.
+ *
+ * `ICalDateTime.date` reads floating and TZID values in the runtime's local
+ * zone, which is right for a browser rendering an invite card but is UTC on a
+ * server. Code that needs the actual instant (e.g. free/busy masking) uses
+ * {@link icalDateTimeToEpoch}, which converts from `raw` and does not depend on
+ * the host zone.
  */
 
 export interface ICalDateTime {
@@ -39,7 +45,10 @@ export interface ICalParsed {
 
 /** Unfold RFC 5545 continuation lines (folded with CRLF + space/tab). */
 function unfold(text: string): string[] {
-	return text.replace(/\r\n/g, '\n').replace(/\n[ \t]/g, '').split('\n');
+	return text
+		.replace(/\r\n/g, '\n')
+		.replace(/\n[ \t]/g, '')
+		.split('\n');
 }
 
 interface ContentLine {
@@ -59,17 +68,16 @@ function parseLine(line: string): ContentLine | null {
 	for (let i = 1; i < segments.length; i++) {
 		const eq = segments[i]!.indexOf('=');
 		if (eq < 0) continue;
-		params[segments[i]!.slice(0, eq).toUpperCase()] = segments[i]!.slice(eq + 1).replace(/^"|"$/g, '');
+		params[segments[i]!.slice(0, eq).toUpperCase()] = segments[i]!.slice(eq + 1).replace(
+			/^"|"$/g,
+			''
+		);
 	}
 	return { name, params, value };
 }
 
 function unescapeText(v: string): string {
-	return v
-		.replace(/\\n/gi, '\n')
-		.replace(/\\,/g, ',')
-		.replace(/\\;/g, ';')
-		.replace(/\\\\/g, '\\');
+	return v.replace(/\\n/gi, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\');
 }
 
 function parseDateTime(line: ContentLine): ICalDateTime {
@@ -80,13 +88,132 @@ function parseDateTime(line: ContentLine): ICalDateTime {
 	const m = v.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?$/);
 	if (m) {
 		const [, y, mo, d, hh, mm, ss, z] = m;
-		const Y = Number(y), Mo = Number(mo) - 1, D = Number(d);
-		const H = Number(hh ?? '0'), Mi = Number(mm ?? '0'), S = Number(ss ?? '0');
+		const Y = Number(y),
+			Mo = Number(mo) - 1,
+			D = Number(d);
+		const H = Number(hh ?? '0'),
+			Mi = Number(mm ?? '0'),
+			S = Number(ss ?? '0');
 		// `Z` → UTC; floating / TZID → treat as the viewer's local wall-clock
 		// (we don't ship a tz database). All-day → local midnight.
 		date = z ? new Date(Date.UTC(Y, Mo, D, H, Mi, S)) : new Date(Y, Mo, D, H, Mi, S);
 	}
 	return { raw: v, date, allDay, tzid };
+}
+
+/** Wall-clock fields of an instant, read in a given IANA timezone. Throws a
+ * RangeError when `timeZone` is not a zone the runtime knows. */
+export function getTzParts(
+	ms: number,
+	timeZone: string
+): {
+	year: number;
+	month: number;
+	day: number;
+	hour: number;
+	minute: number;
+	second: number;
+	weekday: number;
+} {
+	const dtf = new Intl.DateTimeFormat('en-US', {
+		timeZone,
+		hourCycle: 'h23',
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit',
+		hour: '2-digit',
+		minute: '2-digit',
+		second: '2-digit',
+		weekday: 'short',
+	});
+	const parts = dtf.formatToParts(new Date(ms));
+	const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+	const weekdayMap: Record<string, number> = {
+		Sun: 0,
+		Mon: 1,
+		Tue: 2,
+		Wed: 3,
+		Thu: 4,
+		Fri: 5,
+		Sat: 6,
+	};
+	return {
+		year: Number(get('year')),
+		month: Number(get('month')),
+		day: Number(get('day')),
+		hour: Number(get('hour')),
+		minute: Number(get('minute')),
+		second: Number(get('second')),
+		weekday: weekdayMap[get('weekday')] ?? 0,
+	};
+}
+
+/** The zone's UTC offset (ms, east positive) at the given instant. */
+function zoneOffsetAt(ms: number, timeZone: string): number {
+	const whole = Math.floor(ms / 1000) * 1000;
+	const p = getTzParts(whole, timeZone);
+	return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - whole;
+}
+
+/**
+ * Epoch-ms for a wall-clock Y/M/D H:M:S (month 1-based) in the given IANA
+ * timezone. The offset is read at the naive instant and then re-read at the
+ * corrected one, so a time just past a DST switch lands on the right side. A
+ * wall-clock time skipped by a spring-forward gap resolves to an instant an
+ * hour off, which is fine for busy masking and slot proposals. Throws a
+ * RangeError for an unknown zone.
+ */
+export function wallClockToEpoch(
+	year: number,
+	month: number,
+	day: number,
+	hour: number,
+	minute: number,
+	timeZone: string,
+	second = 0
+): number {
+	const asUtc = Date.UTC(year, month - 1, day, hour, minute, second);
+	const firstOffset = zoneOffsetAt(asUtc, timeZone);
+	const secondOffset = zoneOffsetAt(asUtc - firstOffset, timeZone);
+	return asUtc - secondOffset;
+}
+
+const ICAL_DATE_TIME_RE = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?$/;
+
+/**
+ * The instant an iCalendar DATE or DATE-TIME value stands for, as epoch ms,
+ * parsed from `dt.raw`:
+ * - a `Z` value is UTC;
+ * - a `TZID=` value is a wall clock in that IANA zone; an unknown zone name
+ *   (Windows names, vendor prefixes) falls back to `fallbackTz`;
+ * - floating values and all-day (`VALUE=DATE`) values are read in `fallbackTz`
+ *   (all-day values at local midnight).
+ * Returns null for a value that is not a date, or when no usable zone is left.
+ */
+export function icalDateTimeToEpoch(dt: ICalDateTime, fallbackTz: string): number | null {
+	const m = ICAL_DATE_TIME_RE.exec(dt.raw.trim());
+	if (!m) return null;
+	const [, y, mo, d, hh, mi, ss, z] = m;
+	const year = Number(y);
+	const month = Number(mo);
+	const day = Number(d);
+	const hour = Number(hh ?? '0');
+	const minute = Number(mi ?? '0');
+	const second = Number(ss ?? '0');
+	// Reject calendar overflow (month 13, Feb 30) instead of letting Date.UTC roll it over.
+	const calendarDay = new Date(Date.UTC(year, month - 1, day));
+	if (calendarDay.getUTCMonth() !== month - 1 || calendarDay.getUTCDate() !== day) return null;
+	if (hour > 23 || minute > 59 || second > 60) return null;
+	if (z) return Date.UTC(year, month - 1, day, hour, minute, second);
+	const zones = !dt.allDay && hh !== undefined && dt.tzid ? [dt.tzid, fallbackTz] : [fallbackTz];
+	for (const zone of zones) {
+		try {
+			return wallClockToEpoch(year, month, day, hour, minute, zone, second);
+		} catch (err) {
+			if (!(err instanceof RangeError)) throw err;
+		}
+	}
+	return null;
 }
 
 function parseCalAddress(line: ContentLine): { name?: string; email?: string; partstat?: string } {

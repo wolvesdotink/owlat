@@ -42,6 +42,27 @@ describe('loadConfig', () => {
 		expect(cfg.folderPollIntervalMs).toBe(90_000);
 	});
 
+	it('treats a blank numeric value as unset', () => {
+		stubRequired();
+		vi.stubEnv('MAIL_SYNC_PORT', '');
+		vi.stubEnv('MAIL_SYNC_BACKFILL_BATCH', '  ');
+		const cfg = loadConfig();
+		expect(cfg.port).toBe(3200);
+		expect(cfg.backfillBatchSize).toBe(200);
+	});
+
+	it.each([
+		['MAIL_SYNC_PORT', '3200abc', 'MAIL_SYNC_PORT must be an integer between 1 and 65535'],
+		['MAIL_SYNC_PORT', '0', 'MAIL_SYNC_PORT must be an integer between 1 and 65535'],
+		['MAIL_SYNC_RECONCILE_MS', '3e4', 'MAIL_SYNC_RECONCILE_MS must be an integer between 1 and'],
+		['MAIL_SYNC_FOLDER_POLL_MS', '0', 'MAIL_SYNC_FOLDER_POLL_MS must be an integer between 1'],
+		['MAIL_SYNC_BACKFILL_BATCH', '-5', 'MAIL_SYNC_BACKFILL_BATCH must be an integer of at least 1'],
+	])('refuses to boot on %s=%j', (key, value, message) => {
+		stubRequired();
+		vi.stubEnv(key, value);
+		expect(() => loadConfig()).toThrow(message);
+	});
+
 	it.each(['CONVEX_URL', 'CONVEX_ADMIN_KEY', 'MAIL_SYNC_API_KEY'])(
 		'throws when %s is missing',
 		(missing) => {

@@ -92,7 +92,8 @@ export const CORE_SEND_PROVIDER_CATALOG = [
 		// on `sendingDomainSesIdentities`) — the shipped relay-verification path.
 		domainVerification: 'api',
 		// SES has no idempotency surface: a replayed request after a lost response would
-		// double-deliver, which is why its adapter answers AMBIGUOUS_TIMEOUT, not a retryable code.
+		// double-deliver, so `sendProviderDispatch` returns its AMBIGUOUS_TIMEOUT terminal,
+		// marked acceptance-unknown, and the Send waits for SNS feedback.
 		acceptanceSemantics: 'unknown-on-timeout',
 		messageIdSource: 'provider',
 		// No dedup header, no dedup id: a repeat request after a lost response delivers a second copy.
@@ -299,10 +300,10 @@ export const CORE_SEND_PROVIDER_CATALOG = [
 		acceptanceSemantics: 'unknown-on-timeout',
 		messageIdSource: 'provider',
 		// Fail-closed until the vendor documents Idempotency-Key dedup: `true`
-		// would let `systemMailRetryDisposition` auto-retry an ambiguous
-		// system/auth send, double-delivering a password reset if Emailit does
-		// not in fact dedup. The adapter still threads the header, so flipping
-		// this to `true` once proven is a one-line change.
+		// would let `sendProviderDispatch` and `systemMailRetryDisposition`
+		// retry an ambiguous timeout, double-delivering a password reset if
+		// Emailit does not in fact dedup. The adapter still threads the header,
+		// so flipping this to `true` once proven is a one-line change.
 		deduplicatesOnIdempotencyKey: false,
 		tagsFeedbackProvenance: false,
 		setupProbe: { validator: 'validateEmailitKey', label: 'Test API key' },

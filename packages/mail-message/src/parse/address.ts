@@ -364,3 +364,36 @@ export function parseAddressObjects(
 	if (values.length === 1) return parseAddressObject(values[0]!);
 	return values.map(parseAddressObject);
 }
+
+/** An address field as {@link parseAddressObjects} returns it. */
+type AddressField = AddressObject | AddressObject[] | undefined;
+
+/**
+ * Every top-level mailbox of a `To:`/`Cc:`/`Bcc:`-shaped field, across repeated
+ * headers, in document order. Group containers carry no address of their own
+ * and are left out; an absent header yields `[]`.
+ */
+export function addressFieldList(field: AddressField): EmailAddress[] {
+	if (!field) return [];
+	const objs = Array.isArray(field) ? field : [field];
+	const out: EmailAddress[] = [];
+	for (const o of objs) {
+		for (const v of o.value) {
+			if (v.address) out.push(v);
+		}
+	}
+	return out;
+}
+
+/**
+ * The single mailbox of a `From:`-shaped field: the first entry of the field,
+ * or `undefined` when the header is absent or that entry has no address (a
+ * group). `parseMessage` collapses a repeated `From:` to the LAST instance
+ * (mailparser `singleKeys` parity), so the array arm is a defensive fallback
+ * that reads the LAST object, consistent with that collapse.
+ */
+export function primaryMailbox(field: AddressField): EmailAddress | undefined {
+	const obj = Array.isArray(field) ? field[field.length - 1] : field;
+	const first = obj?.value[0];
+	return first?.address ? first : undefined;
+}

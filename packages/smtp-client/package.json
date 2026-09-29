@@ -23,6 +23,9 @@
 		"lint:fix": "oxlint --config ../../oxlintrc.json src __tests__ --fix",
 		"typecheck": "tsc --noEmit"
 	},
+	"dependencies": {
+		"@owlat/shared": "workspace:*"
+	},
 	"devDependencies": {
 		"@types/node": "catalog:",
 		"@types/smtp-server": "^3.5.10",

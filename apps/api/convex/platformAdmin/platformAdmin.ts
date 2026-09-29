@@ -1,9 +1,7 @@
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
-import type { QueryCtx } from '../_generated/server';
 import { publicQuery } from '../lib/authedFunctions';
-import { throwForbidden } from '../_utils/errors';
-import { requireAuthenticatedIdentity } from '../lib/sessionOrganization';
+import { findPlatformAdmin } from '../lib/platformAdminAccess';
 
 /**
  * Platform-admin authorization.
@@ -28,62 +26,17 @@ import { requireAuthenticatedIdentity } from '../lib/sessionOrganization';
  * precondition — not the caller's org role — is what keeps them from becoming an
  * escalation route.
  *
- * Authorization model for the functions that consume this module: each is an
- * `authedMutation` / `authedQuery` whose handler first calls
- * `requirePlatformAdmin(ctx)` (FORBIDDEN otherwise), and superadmin-only
- * operations additionally check `role === 'superadmin'`. The session floor lives
- * in `authedFunctions`; `requirePlatformAdmin` is the second, role gate on top
- * of it.
+ * Authorization model for the functions that consume this module: each is a
+ * `platformAdminQuery` / `platformAdminMutation` (FORBIDDEN unless the caller has
+ * a `platformAdmins` row), and roster management is a
+ * `platformSuperadminMutation` (FORBIDDEN unless that row is `superadmin`). The
+ * builders live in `lib/authedFunctions.ts` on top of the org-member floor; the
+ * lookup and the gates themselves live in `lib/platformAdminAccess.ts`.
  *
  * The same module backs the multi-tenant control plane in the separate private
  * Nest repo (see MEMORY: "Nest Extracted"); the queries here stay
  * single-deployment-shaped because this repo is one org per deployment.
  */
-
-/**
- * Check if the current user is a platform admin.
- * Returns the admin record if found, null otherwise.
- */
-async function getPlatformAdmin(ctx: QueryCtx) {
-	// Get the current user's auth session
-	const identity = await ctx.auth.getUserIdentity();
-	if (!identity) return null;
-
-	// Look up in platformAdmins table by auth user ID
-	const admin = await ctx.db
-		.query('platformAdmins')
-		.withIndex('by_auth_user_id', (q) => q.eq('authUserId', identity.subject))
-		.first();
-
-	return admin;
-}
-
-/**
- * Require the current user to be a platform admin.
- * Throws FORBIDDEN if not an admin.
- */
-export async function requirePlatformAdmin(ctx: QueryCtx): Promise<{
-	authUserId: string;
-	email: string;
-	role: 'admin' | 'superadmin';
-}> {
-	const identity = await requireAuthenticatedIdentity(ctx);
-
-	const admin = await ctx.db
-		.query('platformAdmins')
-		.withIndex('by_auth_user_id', (q) => q.eq('authUserId', identity.subject))
-		.first();
-
-	if (!admin) {
-		throwForbidden('Platform admin access required');
-	}
-
-	return {
-		authUserId: admin.authUserId,
-		email: admin.email,
-		role: admin.role as 'admin' | 'superadmin',
-	};
-}
 
 /**
  * Public query to check if current user is a platform admin.
@@ -93,8 +46,9 @@ export async function requirePlatformAdmin(ctx: QueryCtx): Promise<{
 export const isPlatformAdmin = publicQuery({
 	args: {},
 	handler: async (ctx) => {
-		const admin = await getPlatformAdmin(ctx);
-		return admin !== null;
+		const identity = await ctx.auth.getUserIdentity();
+		if (!identity) return false;
+		return (await findPlatformAdmin(ctx.db, identity.subject)) !== null;
 	},
 });
 
@@ -103,12 +57,5 @@ export const isPlatformAdmin = publicQuery({
  */
 export const isPlatformAdminByUserId = internalQuery({
 	args: { authUserId: v.string() },
-	handler: async (ctx, args) => {
-		const admin = await ctx.db
-			.query('platformAdmins')
-			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', args.authUserId))
-			.first();
-
-		return admin !== null;
-	},
+	handler: async (ctx, args) => (await findPlatformAdmin(ctx.db, args.authUserId)) !== null,
 });

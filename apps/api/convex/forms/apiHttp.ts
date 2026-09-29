@@ -21,7 +21,7 @@ import type { Id } from '../_generated/dataModel';
 import { isSafeRedirectUrl } from '../lib/inputGuards';
 import { publicCorsHeaders } from '../lib/cors';
 import { publicTokenEndpoint } from '../lib/publicTokenEndpoint';
-import { getClientIp } from '../publicRateLimit';
+import { getClientIp } from '../lib/publicRateLimit';
 // Single source of truth: the mutation's real return contract lives in
 // submission.ts. Re-declaring it here previously dropped required fields
 // (submissionId, contactId, confirmationRequired) and risked silent drift.
@@ -82,15 +82,12 @@ export const submitForm = publicTokenEndpoint(
 		const ipAddress = resolvedIp === 'unknown' ? undefined : resolvedIp;
 		const userAgent = request.headers.get('User-Agent') || undefined;
 
-		const outcome = await ctx.runMutation<SubmitOutcome>(
-			internal.forms.submission.submit,
-			{
-				formEndpointId: formEndpointId as Id<'formEndpoints'>,
-				submissionData,
-				ipAddress,
-				userAgent,
-			},
-		);
+		const outcome = await ctx.runMutation<SubmitOutcome>(internal.forms.submission.submit, {
+			formEndpointId: formEndpointId as Id<'formEndpoints'>,
+			submissionData,
+			ipAddress,
+			userAgent,
+		});
 
 		if (!outcome.ok) {
 			if (outcome.reason === 'form_not_found') {
@@ -152,5 +149,5 @@ export const submitForm = publicTokenEndpoint(
 					status: 500,
 				};
 		}
-	},
+	}
 );

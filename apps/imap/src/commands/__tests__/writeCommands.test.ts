@@ -20,6 +20,7 @@ import { expungeModule } from '../expunge/index.js';
 import { copyModule } from '../copy/index.js';
 import { storeModule } from '../store/index.js';
 import { uidModule } from '../uid/index.js';
+import { dispatch } from '../walker.js';
 import type { CommandDeps, ConnectionState, SelectedState, StartArgs } from '../types.js';
 
 vi.mock('../../logger.js', () => ({
@@ -171,15 +172,14 @@ describe('EXPUNGE — descending order + \\Deleted-only + modseq bump (RFC 3501 
 	it('refuses EXPUNGE on a read-only mailbox', async () => {
 		const convex = mockConvex();
 		const { deps } = makeDeps(convex);
-		const parsed = expungeModule.parseArgs([]);
-		const { start, lines } = startArgs(
+		const lines: string[] = [];
+		await dispatch(
 			deps,
 			selectedState({ readOnly: true }),
-			(parsed as { args: never }).args,
-			'EXPUNGE'
-		);
-		await expungeModule.start(start).completion;
-		expect(lines.pop()).toBe('a1 NO Mailbox is read-only');
+			{ tag: 'a1', command: 'EXPUNGE', args: [] },
+			(l) => lines.push(l as string)
+		).completion;
+		expect(lines).toEqual(['a1 NO Mailbox is read-only']);
 		expect(convex.mutation).not.toHaveBeenCalled();
 	});
 });
@@ -381,7 +381,7 @@ it('sends committed deletions when page two fails', async () => {
 		})
 		.mockRejectedValueOnce(new Error('page two failed'));
 	const { deps, committed } = makeDeps(convex);
-	const { start, lines } = startArgs(deps, selectedState(), {}, 'EXPUNGE');
+	const { start, lines } = startArgs(deps, selectedState(), { byUid: false }, 'EXPUNGE');
 	await expungeModule.start(start).completion;
 	expect(lines).toContain('* 5 EXPUNGE');
 	expect(committed.at(-1)?.selected?.totalCount).toBe(4);

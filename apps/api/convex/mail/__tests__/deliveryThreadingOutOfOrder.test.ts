@@ -111,7 +111,6 @@ async function append(
 		ccAddresses: [],
 		bccAddresses: [],
 		subject: 'Re: Plan',
-		snippet: 'my reply',
 		internalDate: msg.internalDate,
 		flags: ['\\Seen'],
 	});

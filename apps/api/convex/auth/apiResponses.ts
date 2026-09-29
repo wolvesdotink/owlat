@@ -12,6 +12,7 @@ import {
 	errorResponse as libErrorResponse,
 	methodNotAllowed as libMethodNotAllowed,
 } from '../lib/httpResponse';
+import { safeDecodeURIComponent } from '../lib/inputGuards';
 import type { OperationErrorCategory } from '@owlat/shared/operationError';
 
 /**
@@ -94,4 +95,36 @@ export function methodNotAllowed(
 	requestOrigin?: string | null
 ): Response {
 	return libMethodNotAllowed(message, sharedCorsHeaders(undefined, requestOrigin));
+}
+
+/**
+ * One decoded path segment of a v1 request, or why there is none. `missing`
+ * means the segment is absent or empty; `malformed` means its percent-encoding
+ * does not decode (a stray `%`). Handlers map each reason to their own 400
+ * copy, so a bad segment never escapes as a thrown `URIError` (a 500).
+ */
+export type PathSegment =
+	| { ok: true; value: string }
+	| { ok: false; reason: 'missing' | 'malformed' };
+
+function decodePathSegment(raw: string | undefined): PathSegment {
+	if (!raw) return { ok: false, reason: 'missing' };
+	const value = safeDecodeURIComponent(raw);
+	return value === null ? { ok: false, reason: 'malformed' } : { ok: true, value };
+}
+
+/** The last segment of the request path, e.g. `{id}` in `/api/v1/contacts/{id}`. */
+export function lastPathSegment(request: Request): PathSegment {
+	const parts = new URL(request.url).pathname.split('/');
+	return decodePathSegment(parts[parts.length - 1]);
+}
+
+/**
+ * The segment right after the first `marker` segment, e.g. `{topicId}` for
+ * marker `topics` in `/api/v1/topics/{topicId}/contacts`.
+ */
+export function pathSegmentAfter(request: Request, marker: string): PathSegment {
+	const parts = new URL(request.url).pathname.split('/');
+	const index = parts.indexOf(marker);
+	return decodePathSegment(index === -1 ? undefined : parts[index + 1]);
 }

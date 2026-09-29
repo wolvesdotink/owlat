@@ -27,7 +27,7 @@ import { internal } from '../_generated/api';
 import { logError } from '../lib/runtimeLog';
 import { getOptional } from '../lib/env';
 import { constantTimeEqual, hmacSha256Hex } from '../webhooks/security';
-import { getClientIp } from '../publicRateLimit';
+import { getClientIp } from '../lib/publicRateLimit';
 import { errorResponse, jsonResponse, methodNotAllowed } from '../lib/httpResponse';
 import {
 	readStreamBytes,
@@ -65,7 +65,7 @@ export const handleTlsReportWebhook = httpAction(async (ctx, request) => {
 
 	const rateIp = getClientIp(request);
 	const { ok: rateOk, retryAfter } = await ctx.runMutation(
-		internal.publicRateLimit.checkPublicRateLimit,
+		internal.lib.publicRateLimit.checkPublicRateLimit,
 		{ limitType: 'webhookIngestion', key: `mta-tls-report:${rateIp}` }
 	);
 	if (!rateOk) {

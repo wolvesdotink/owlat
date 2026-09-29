@@ -13,7 +13,7 @@
  */
 
 import {
-	RetryableProviderError,
+	fetchProviderPage,
 	type FetchPageResult,
 	type IntegrationImportProviderModule,
 	type SuppressionRow,
@@ -36,6 +36,12 @@ interface MailchimpMember {
 interface MailchimpListResponse {
 	members: MailchimpMember[];
 	total_items: number;
+}
+
+/** Mailchimp's problem-details error body. */
+interface MailchimpErrorBody {
+	detail?: string;
+	title?: string;
 }
 
 /**
@@ -114,35 +120,22 @@ export const mailchimpProvider: IntegrationImportProviderModule<'mailchimp'> = {
 			`?count=${PAGE_SIZE}&offset=${offset}` +
 			`&fields=members.email_address,members.status,members.merge_fields,total_items`;
 
-		let response: Response;
-		try {
-			response = await fetch(url, {
+		const response = await fetchProviderPage<MailchimpErrorBody>(
+			url,
+			{
 				method: 'GET',
 				headers: {
 					Authorization: `Basic ${utf8ToBase64(`anystring:${config.apiKey}`)}`,
 					'Content-Type': 'application/json',
 				},
-			});
-		} catch (err) {
-			throw new RetryableProviderError(
-				`Network error fetching Mailchimp page at offset ${offset}: ${err instanceof Error ? err.message : 'unknown'}`
-			);
-		}
-
-		if (response.status === 429) {
-			throw new RetryableProviderError(`Mailchimp rate limit (429) at offset ${offset}`);
-		}
-		if (!response.ok) {
-			const errorText = await response.text();
-			let errorMessage = `Mailchimp API error: ${response.status}`;
-			try {
-				const errorJson = JSON.parse(errorText);
-				errorMessage = errorJson.detail || errorJson.title || errorMessage;
-			} catch {
-				// Non-JSON error response — fall through with status-only message.
+			},
+			{
+				label: 'Mailchimp',
+				where: `at offset ${offset}`,
+				extractMessage: (body) => body.detail || body.title,
+				secret: config.apiKey,
 			}
-			throw new Error(errorMessage);
-		}
+		);
 
 		const data = (await response.json()) as MailchimpListResponse;
 

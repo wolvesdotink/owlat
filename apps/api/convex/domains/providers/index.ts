@@ -18,10 +18,11 @@
  *
  * WHAT THAT ONE FOLDER DOES NOT YET COVER. Both relay-identity provisioning
  * paths now walk this registry, so a registered kind is reached end to end for
- * identities. What `domains/lifecycle.ts` still carries of its own is the
- * RETURN-PATH family — `setReturnPathHost` and its post-registration reconcile
- * branch on `providerType` to decide which bundle of `mailFrom` records to
- * publish and which reflection action to schedule, so a newly registered kind
+ * identities. What the lifecycle still carries of its own is the RETURN-PATH
+ * family — `setReturnPathHost` and its post-registration reconcile
+ * (`domains/lifecycleReturnPath.ts`) branch on `providerType`, through
+ * `domains/returnPathProviders.ts`, to decide which bundle of `mailFrom` records
+ * to publish and which reflection action to schedule, so a newly registered kind
  * silently gets neither. That is a separate capability from the identity seams
  * below and it has no home on this interface yet.
  *

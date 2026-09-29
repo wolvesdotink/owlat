@@ -283,14 +283,16 @@ export function evaluateStandaloneDeferralGate(input: RampGateEvaluationInput): 
  * and turning a quiet block detector into a hold would freeze every cell that has
  * nothing wrong with it.
  *
- * LIVE SINCE ISSUE #501 CLOSED, and BOTH of the MTA's 4xx paths are why. The
- * classification is the MTA's (`apps/mta/src/dispatch/outcome.ts`) and each
- * branch now reports its verdict as a TYPED category on an `smtp.classified`
- * webhook — the RETRYABLE one, which used to emit no `notify_convex` event at
- * all and which supplies this clause's DENOMINATOR, and the NON-RETRYABLE one,
- * which also produces a bounce and supplies the NUMERATOR. Wiring only the
- * second would have delivered refusals over a denominator made of refusals: a
- * 100% block rate on the first one any cell ever collected.
+ * LIVE SINCE ISSUE #501 CLOSED, and every classified path of the MTA is why.
+ * The classification is the MTA's (`apps/mta/src/dispatch/outcome.ts`) and each
+ * branch reports its verdict as a TYPED category on an `smtp.classified`
+ * webhook — the RETRYABLE 4xx one, which used to emit no `notify_convex` event
+ * at all and which supplies this clause's DENOMINATOR, and the two terminal
+ * ones, which also produce a bounce and supply the NUMERATOR: the NON-RETRYABLE
+ * 4xx, and since issue #866 the 5xx HARD BOUNCE, so a `550 5.7.1 ... blocked`
+ * counts too. Every one of them adds to the denominator. Wiring only the
+ * terminal paths would have delivered refusals over a denominator made of
+ * refusals: a 100% block rate on the first one any cell ever collected.
  *
  * The category travels as a field and is never re-parsed out of the bounce's
  * prose `message`: a second classifier is free to disagree with the first, which

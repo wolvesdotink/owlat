@@ -80,7 +80,7 @@ import {
 	deliverabilityStreamValidator,
 	destinationProviderValidator,
 	rampPresetValidator,
-} from './deliverabilityValidators';
+} from '../lib/validators/deliverability';
 import { readRampIncreaseBlock } from './rampHardStops';
 import { recordOperatorRampAction } from './rampControlAudit';
 import { pauseMessage, pinMessage, readsShareDial } from './rampControlMessages';

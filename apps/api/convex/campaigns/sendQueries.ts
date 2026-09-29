@@ -1,12 +1,12 @@
 import { v } from 'convex/values';
 import { internalMutation, internalQuery } from '../_generated/server';
 import { components } from '../_generated/api';
-import { contentScanFlagValidator } from '../lib/convexValidators';
+import { contentScanResultsFields } from '../schema/delivery';
 import type { StoredAudience } from './audience';
 import { logError } from '../lib/runtimeLog';
 import { nextDailySendCount } from '../lib/sendingLimits';
 import { requireOrgMember } from '../lib/sessionOrganization';
-import { rateLimiter } from '../rateLimiter';
+import { rateLimiter } from '../lib/rateLimiter';
 
 /**
  * The set of email addresses a test/preview send may target: the org's own
@@ -273,30 +273,12 @@ export const getDueScheduledCampaigns = internalQuery({
 // `lifecycle.transition({ to: 'pending_review' })` and
 // `lifecycle.transition({ to: 'draft', contentBlockReason })` respectively.
 
-// Internal mutation to store content scan results
+// Internal mutation to store content scan results. The arguments are the
+// table's own field record, so the row is written as given.
 export const storeContentScanResult = internalMutation({
-	args: {
-		resourceType: v.union(
-			v.literal('campaign'),
-			v.literal('transactional'),
-			v.literal('attachment'),
-			v.literal('media_upload')
-		),
-		resourceId: v.string(),
-		score: v.number(),
-		level: v.union(v.literal('clean'), v.literal('suspicious'), v.literal('blocked')),
-		flags: v.array(contentScanFlagValidator),
-		scannedAt: v.number(),
-	},
+	args: contentScanResultsFields,
 	handler: async (ctx, args) => {
-		await ctx.db.insert('contentScanResults', {
-			resourceType: args.resourceType,
-			resourceId: args.resourceId,
-			score: args.score,
-			level: args.level,
-			flags: args.flags,
-			scannedAt: args.scannedAt,
-		});
+		await ctx.db.insert('contentScanResults', args);
 	},
 });
 

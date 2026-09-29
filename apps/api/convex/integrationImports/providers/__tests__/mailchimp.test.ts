@@ -7,8 +7,9 @@
  *   - `fetchPage` normalizes `members[]` into `ImportRow[]` (lowercase
  *     email, `merge_fields.FNAME`/`LNAME` → `firstName`/`lastName`,
  *     remaining merge fields → `properties`).
- *   - HTTP 429 → `RetryableProviderError`.
- *   - Non-OK with JSON body → `Error` with extracted `detail` / `title`.
+ *   - HTTP 429 and 503 → `RetryableProviderError`; 500 stays permanent.
+ *   - Non-OK with JSON body → `Error` with extracted `detail` / `title`,
+ *     API key redacted.
  *   - Non-OK with non-JSON body → `Error` with status-only message.
  *   - Terminal page (response smaller than `PAGE_SIZE`) → `nextCursor:
  *     null`. Full page → `nextCursor` advances by `PAGE_SIZE`.
@@ -40,7 +41,7 @@ describe('mailchimpProvider', () => {
 					provider: 'mailchimp',
 					apiKey: 'abc123-us21',
 					listId: 'list_a',
-				}),
+				})
 			).toEqual({ ok: true });
 		});
 
@@ -99,8 +100,8 @@ describe('mailchimpProvider', () => {
 						],
 						total_items: 1,
 					}),
-					{ status: 200 },
-				),
+					{ status: 200 }
+				)
 			);
 
 			const result = await mailchimpProvider.fetchPage({
@@ -133,8 +134,8 @@ describe('mailchimpProvider', () => {
 						],
 						total_items: 1,
 					}),
-					{ status: 200 },
-				),
+					{ status: 200 }
+				)
 			);
 
 			const result = await mailchimpProvider.fetchPage({
@@ -159,7 +160,7 @@ describe('mailchimpProvider', () => {
 			global.fetch = vi
 				.fn()
 				.mockResolvedValue(
-					new Response(JSON.stringify({ members, total_items: 250 }), { status: 200 }),
+					new Response(JSON.stringify({ members, total_items: 250 }), { status: 200 })
 				);
 
 			const result = await mailchimpProvider.fetchPage({
@@ -173,12 +174,10 @@ describe('mailchimpProvider', () => {
 		});
 
 		it('throws RetryableProviderError on 429', async () => {
-			global.fetch = vi
-				.fn()
-				.mockResolvedValue(new Response('Too many requests', { status: 429 }));
+			global.fetch = vi.fn().mockResolvedValue(new Response('Too many requests', { status: 429 }));
 
 			await expect(
-				mailchimpProvider.fetchPage({ config: baseConfig, cursor: '' }),
+				mailchimpProvider.fetchPage({ config: baseConfig, cursor: '' })
 			).rejects.toBeInstanceOf(RetryableProviderError);
 		});
 
@@ -186,41 +185,72 @@ describe('mailchimpProvider', () => {
 			global.fetch = vi.fn().mockResolvedValue(
 				new Response(JSON.stringify({ detail: 'API Key Invalid', title: 'unused' }), {
 					status: 401,
-				}),
+				})
 			);
 
-			await expect(
-				mailchimpProvider.fetchPage({ config: baseConfig, cursor: '' }),
-			).rejects.toThrow('API Key Invalid');
+			await expect(mailchimpProvider.fetchPage({ config: baseConfig, cursor: '' })).rejects.toThrow(
+				'API Key Invalid'
+			);
 		});
 
 		it('throws Error with extracted "title" when detail missing', async () => {
 			global.fetch = vi.fn().mockResolvedValue(
 				new Response(JSON.stringify({ title: 'Not Found' }), {
 					status: 404,
-				}),
+				})
 			);
 
-			await expect(
-				mailchimpProvider.fetchPage({ config: baseConfig, cursor: '' }),
-			).rejects.toThrow('Not Found');
+			await expect(mailchimpProvider.fetchPage({ config: baseConfig, cursor: '' })).rejects.toThrow(
+				'Not Found'
+			);
 		});
 
 		it('throws Error with status-only message on non-JSON error body', async () => {
+			global.fetch = vi.fn().mockResolvedValue(new Response('Internal error', { status: 500 }));
+
+			await expect(mailchimpProvider.fetchPage({ config: baseConfig, cursor: '' })).rejects.toThrow(
+				'Mailchimp API error: 500'
+			);
+		});
+
+		it('throws RetryableProviderError on a 503 gateway failure', async () => {
 			global.fetch = vi
 				.fn()
-				.mockResolvedValue(new Response('Internal error', { status: 500 }));
+				.mockResolvedValue(new Response('Service Unavailable', { status: 503 }));
 
 			await expect(
-				mailchimpProvider.fetchPage({ config: baseConfig, cursor: '' }),
-			).rejects.toThrow('Mailchimp API error: 500');
+				mailchimpProvider.fetchPage({ config: baseConfig, cursor: '' })
+			).rejects.toBeInstanceOf(RetryableProviderError);
+		});
+
+		it('keeps 500 a permanent (non-retryable) Error', async () => {
+			global.fetch = vi.fn().mockResolvedValue(new Response('Internal error', { status: 500 }));
+
+			const err = await mailchimpProvider
+				.fetchPage({ config: baseConfig, cursor: '' })
+				.catch((e: unknown) => e);
+			expect(err).toBeInstanceOf(Error);
+			expect(err).not.toBeInstanceOf(RetryableProviderError);
+		});
+
+		it('redacts the API key from a provider message that echoes it', async () => {
+			global.fetch = vi.fn().mockResolvedValue(
+				new Response(JSON.stringify({ detail: `API key ${baseConfig.apiKey} is disabled` }), {
+					status: 401,
+				})
+			);
+
+			const err = (await mailchimpProvider
+				.fetchPage({ config: baseConfig, cursor: '' })
+				.catch((e: unknown) => e)) as Error;
+			expect(err.message).toBe('API key [redacted] is disabled');
 		});
 
 		it('wraps fetch throw as RetryableProviderError', async () => {
 			global.fetch = vi.fn().mockRejectedValue(new Error('ECONNRESET'));
 
 			await expect(
-				mailchimpProvider.fetchPage({ config: baseConfig, cursor: '' }),
+				mailchimpProvider.fetchPage({ config: baseConfig, cursor: '' })
 			).rejects.toBeInstanceOf(RetryableProviderError);
 		});
 
@@ -230,7 +260,7 @@ describe('mailchimpProvider', () => {
 				() =>
 					new Response(JSON.stringify({ members: [], total_items: 0 }), {
 						status: 200,
-					}),
+					})
 			);
 			global.fetch = fetchSpy;
 

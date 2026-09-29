@@ -14,8 +14,8 @@
  * that could disagree with what we actually told Mandrill.
  */
 
-import { buildDmarcRecordValue, DEFAULT_DMARC_POLICY } from '../../dmarc';
-import { getOptional } from '../../../lib/env';
+import { defaultDmarcDnsRecord } from '../../dmarc';
+import { buildSpfRecordValue } from '../../spf';
 import type { DnsRecords } from '../../domains';
 
 /** The selector Mandrill signs with. Account-independent (see module header). */
@@ -74,7 +74,10 @@ export function buildMandrillDnsRecords(domain: string): DnsRecords {
 		spf: {
 			type: 'TXT',
 			host: '@',
-			value: `v=spf1 ${MANDRILL_SPF_MECHANISM} -all`,
+			// Hard fail (`-all`) is deliberate for a relay domain: Mandrill owns
+			// the sending IPs behind its include. SPF_QUALIFIER does not apply
+			// here; it governs only the apex record for our own MTA pool.
+			value: buildSpfRecordValue({ extra: [MANDRILL_SPF_MECHANISM], qualifier: '-all' }),
 		},
 		dkim: [
 			{
@@ -83,15 +86,6 @@ export function buildMandrillDnsRecords(domain: string): DnsRecords {
 				value: MANDRILL_DKIM_PUBLIC_KEY,
 			},
 		],
-		// New domains start in monitor-only mode (`p=none`); the operator raises
-		// the policy through `setDmarcPolicy`, same as every other provider.
-		dmarc: {
-			type: 'TXT',
-			host: '_dmarc',
-			value: buildDmarcRecordValue(domain, {
-				policy: DEFAULT_DMARC_POLICY,
-				rua: getOptional('MTA_DMARC_RUA'),
-			}),
-		},
+		dmarc: defaultDmarcDnsRecord(domain),
 	};
 }

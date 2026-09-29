@@ -20,7 +20,7 @@ import type { Infer } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
-import { attachmentSuggestionsValidator } from './attachmentValidators';
+import type { attachmentSuggestionsValidator } from '../lib/validators/attachment';
 import {
 	detectAttachmentRequest,
 	pickAttachmentSuggestion,

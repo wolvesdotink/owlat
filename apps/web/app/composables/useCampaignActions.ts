@@ -61,12 +61,12 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		label: () => t('shared.useCampaignActions.operations.schedule'),
 		onError: claimCapacityRefusal,
 	});
-	// No `onError` claim here, deliberately: `campaigns.scheduling.reschedule`
-	// does not run pre-flight (only `schedule` does), so it cannot refuse for
-	// capacity and the handler could only ever return false. Whether rescheduling
-	// should also run the capacity gate is a separate decision.
+	// `reschedule` runs the same pre-flight as `schedule`, anchored at the new
+	// start, so moving a scheduled campaign earlier can be refused for capacity.
+	// The refusal renders as the same multi-day schedule panel, not a toast.
 	const { run: rescheduleCampaign } = useBackendOperation(api.campaigns.scheduling.reschedule, {
 		label: () => t('shared.useCampaignActions.operations.reschedule'),
+		onError: claimCapacityRefusal,
 	});
 	const { run: unscheduleCampaign } = useBackendOperation(api.campaigns.scheduling.unschedule, {
 		label: () => t('shared.useCampaignActions.operations.unschedule'),

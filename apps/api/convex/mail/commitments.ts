@@ -32,7 +32,8 @@ import { internalMutation, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { isBulkOrNoReplySender } from './needsReplyHeuristic';
 import { armThreadFollowUp, followUpWaitingOn } from './followUps';
-import { messageDirectionValidator, detectionSourceValidator } from '../lib/convexValidators';
+import { pick } from '../lib/validators/fields';
+import { mailCommitmentsFields } from '../schema/mailAi';
 
 // ─── Pure helpers ────────────────────────────────────────────────────────────
 
@@ -138,17 +139,17 @@ export const getMessageContext = internalQuery({
 // ─── Persist an extracted commitment (idempotent) ────────────────────────────
 
 export const applyCommitment = internalMutation({
-	args: {
-		mailboxId: v.id('mailboxes'),
-		threadId: v.id('mailThreads'),
-		messageId: v.id('mailMessages'),
-		direction: messageDirectionValidator,
-		description: v.string(),
-		counterparty: v.optional(v.string()),
-		dueAt: v.optional(v.number()),
-		dueHintRaw: v.optional(v.string()),
-		source: detectionSourceValidator,
-	},
+	args: pick(mailCommitmentsFields, [
+		'mailboxId',
+		'threadId',
+		'messageId',
+		'direction',
+		'description',
+		'counterparty',
+		'dueAt',
+		'dueHintRaw',
+		'source',
+	]),
 	handler: async (ctx, args) => {
 		const existing = await ctx.db
 			.query('mailCommitments')
@@ -173,16 +174,8 @@ export const applyCommitment = internalMutation({
 			return;
 		}
 		await ctx.db.insert('mailCommitments', {
-			mailboxId: args.mailboxId,
-			threadId: args.threadId,
-			messageId: args.messageId,
-			direction: args.direction,
-			description: args.description,
-			counterparty: args.counterparty,
-			dueAt: args.dueAt,
-			dueHintRaw: args.dueHintRaw,
+			...args,
 			status: 'open',
-			source: args.source,
 			createdAt: now,
 			updatedAt: now,
 		});

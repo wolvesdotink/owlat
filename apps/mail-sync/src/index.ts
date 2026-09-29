@@ -12,7 +12,7 @@ import { AccountManager } from './accountManager.js';
 import { startServer } from './server.js';
 import { startSeedProbeSweeper } from './seedProbeRunner.js';
 import { logger } from './logger.js';
-import { installCrashHandlers } from '@owlat/shared/nodeShutdown';
+import { installCrashHandlers, installShutdown, pinoShutdownLog } from '@owlat/shared/nodeShutdown';
 import { pathToFileURL } from 'node:url';
 
 export async function main(): Promise<void> {
@@ -27,15 +27,18 @@ export async function main(): Promise<void> {
 	// default — every pass is an empty no-op (D2).
 	const stopSeedSweeper = startSeedProbeSweeper(convex);
 
-	const shutdown = (signal: string) => {
-		logger.info({ signal }, 'shutting down');
-		void manager.stop();
-		stopSeedSweeper();
-		server.close(() => process.exit(0));
-		setTimeout(() => process.exit(1), 10_000).unref();
-	};
-	process.on('SIGTERM', () => shutdown('SIGTERM'));
-	process.on('SIGINT', () => shutdown('SIGINT'));
+	// Stop the HTTP server first, then let every account connection log out of
+	// IMAP before the process exits. 25s sits under the compose
+	// stop_grace_period of 30s, so the watchdog ends a wedged logout, not Docker.
+	installShutdown({
+		server,
+		drain: async () => {
+			stopSeedSweeper();
+			await manager.stop();
+		},
+		timeoutMs: 25_000,
+		log: pinoShutdownLog(logger),
+	});
 }
 
 const entryPath = process.argv[1];

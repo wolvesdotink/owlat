@@ -23,6 +23,7 @@
 
 import { randomBytes } from 'node:crypto';
 import * as openpgp from 'openpgp';
+import { parseRawHeaderFields, splitRawHeaderBlock } from '@owlat/mail-canon/rawMessage';
 
 /** The literal outer subject for a sealed message. */
 export const OUTER_SUBJECT_PLACEHOLDER = '...';
@@ -68,34 +69,15 @@ const OUTER_KEEP_HEADERS = new Set([
 	'references',
 ]);
 
-interface ParsedHeader {
-	name: string;
-	line: string;
-}
-
-/** Split a raw message into its header block and body at the first blank line (CRLF). */
+/**
+ * Split a raw message into its header block and body, after normalizing every
+ * line ending to CRLF: sealing emits a new message, so the inner copy is
+ * written with CRLF throughout.
+ */
 function splitMessage(raw: string): { headerBlock: string; body: string } {
 	const normalized = raw.replace(/\r?\n/g, '\r\n');
-	const idx = normalized.indexOf('\r\n\r\n');
-	if (idx < 0) return { headerBlock: normalized, body: '' };
-	return { headerBlock: normalized.slice(0, idx), body: normalized.slice(idx + 4) };
-}
-
-/** Parse a header block into logical headers, joining folded continuation lines. */
-function parseHeaders(headerBlock: string): ParsedHeader[] {
-	const headers: ParsedHeader[] = [];
-	for (const rawLine of headerBlock.split('\r\n')) {
-		const isFold = /^[ \t]/.test(rawLine);
-		const last = headers[headers.length - 1];
-		if (isFold && last) {
-			last.line += `\r\n${rawLine}`;
-			continue;
-		}
-		const colon = rawLine.indexOf(':');
-		const name = (colon >= 0 ? rawLine.slice(0, colon) : rawLine).trim().toLowerCase();
-		headers.push({ name, line: rawLine });
-	}
-	return headers;
+	const { headerBlock, bodyOffset } = splitRawHeaderBlock(normalized);
+	return { headerBlock, body: normalized.slice(bodyOffset) };
 }
 
 /** A crypto-random MIME boundary that a hostile body cannot collide with. */
@@ -116,7 +98,7 @@ export async function sealMime(rawRfc822: string, opts: SealMimeOptions): Promis
 	const protect = opts.protectSubject !== false;
 
 	const { headerBlock, body } = splitMessage(rawRfc822);
-	const parsed = parseHeaders(headerBlock);
+	const parsed = parseRawHeaderFields(headerBlock);
 
 	// Inner cleartext = the ORIGINAL message, with the root Content-Type marked
 	// `protected-headers="v1"` so a reader prefers the (real) headers inside. We
@@ -127,9 +109,9 @@ export async function sealMime(rawRfc822: string, opts: SealMimeOptions): Promis
 	const innerHeaderBlock = protect
 		? parsed
 				.map((h) =>
-					h.name === 'content-type' && !/protected-headers/i.test(h.line)
-						? `${h.line}; protected-headers="v1"`
-						: h.line
+					h.name === 'content-type' && !/protected-headers/i.test(h.raw)
+						? `${h.raw}; protected-headers="v1"`
+						: h.raw
 				)
 				.join('\r\n')
 		: headerBlock;
@@ -162,7 +144,7 @@ export async function sealMime(rawRfc822: string, opts: SealMimeOptions): Promis
 			wroteSubject = true;
 			continue;
 		}
-		if (OUTER_KEEP_HEADERS.has(h.name)) outerHeaderLines.push(h.line);
+		if (OUTER_KEEP_HEADERS.has(h.name)) outerHeaderLines.push(h.raw);
 	}
 	if (!wroteSubject) outerHeaderLines.push(`Subject: ${OUTER_SUBJECT_PLACEHOLDER}`);
 

@@ -1,6 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { mailAppPasswordScopeValidator } from '../lib/convexValidators';
+import { mailAppPasswordScopeValidator } from '../lib/literalValidators';
 
 /**
  * Mailbox credentials and the audit trail: IMAP/SMTP app passwords,

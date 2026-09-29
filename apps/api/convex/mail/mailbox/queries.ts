@@ -13,12 +13,13 @@
 import { mailCategoryLabelValidator } from '../../lib/literalValidators';
 import { v, type Infer } from 'convex/values';
 import { publicQuery } from '../../lib/authedFunctions';
-import { mailSortOrderValidator } from '../../lib/mailSettingsValidators';
+import { mailSortOrderValidator } from '../../lib/validators/mailSettings';
 import type { Id, Doc } from '../../_generated/dataModel';
 import { loadReadableMailbox, loadAccessibleMailboxes } from '../permissions';
 import { isMessageSnoozed } from '../../lib/mailSnooze';
 import { isThreadMuted } from '../../lib/mailMute';
-import { readSession, type FolderRole } from './shared';
+import { readSession } from './shared';
+import type { FolderRole } from '../../lib/validators/mail';
 import { attachThreadState, type RowThreadState } from './rowThreadState';
 
 /**
@@ -281,9 +282,9 @@ export const listFolders = publicQuery({
  * switcher and the Cmd-K "switch mailbox" entries: sections, labels, and badges
  * all derive from one accessible+active set, so an admin never sees a teammate's
  * private inbox or a shared inbox they don't belong to advertised as a switch
- * target (unlike `identity.list`, which returns every org mailbox for
- * owners/admins). Suspended/deleted rows are filtered out here, so there are no
- * dead-end targets.
+ * target. `identity.list` reads the same `loadAccessibleMailboxes` set but keeps
+ * suspended rows and returns full mailbox docs. Suspended/deleted rows are
+ * filtered out here, so there are no dead-end targets.
  *
  * O(1) per mailbox: reads the denormalized `mailFolders.unseenCount`. Read
  * state is a single shared truth per message,

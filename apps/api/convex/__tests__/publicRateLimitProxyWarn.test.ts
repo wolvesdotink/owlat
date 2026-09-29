@@ -29,7 +29,7 @@ async function freshModule(): Promise<{
 }> {
 	vi.resetModules();
 	const runtimeLog = await import('../lib/runtimeLog');
-	const mod = await import('../publicRateLimit');
+	const mod = await import('../lib/publicRateLimit');
 	return { getClientIp: mod.getClientIp, logWarn: runtimeLog.logWarn as ReturnType<typeof vi.fn> };
 }
 

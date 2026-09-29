@@ -41,7 +41,7 @@ import type { RampGateId } from './ramp/gateTypes';
 import {
 	deliverabilityStreamValidator,
 	destinationProviderValidator,
-} from './deliverabilityValidators';
+} from '../lib/validators/deliverability';
 
 /** How many decisions the drill-down timeline shows at once. */
 const DECISION_PAGE_SIZE = 50;

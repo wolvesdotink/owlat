@@ -4,7 +4,7 @@ import { ConvexError } from 'convex/values';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import { createTestTransactionalEmail } from './factories';
-import { assertEditableForPublishableChange } from '../transactional/lifecycle';
+import { assertEditableForPublishableChange } from '../lib/publishableEmail';
 import type { Id, Doc } from '../_generated/dataModel';
 
 const modules = import.meta.glob('../**/*.*s');
@@ -77,10 +77,7 @@ describe('Transactional email lifecycle — create', () => {
 	it('rejects duplicate slug', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
-			await ctx.db.insert(
-				'transactionalEmails',
-				createTestTransactionalEmail({ slug: 'dup' })
-			);
+			await ctx.db.insert('transactionalEmails', createTestTransactionalEmail({ slug: 'dup' }));
 		});
 
 		const outcome = await t.mutation(internal.transactional.lifecycle.create, {
@@ -155,9 +152,7 @@ describe('Transactional email lifecycle — publish with suspicious scan', () =>
 		vi.mocked(mockedScanContent).mockReturnValueOnce({
 			score: 25,
 			pass: false,
-			flags: [
-				{ type: 'spam_keywords', severity: 'medium', description: 'looks spammy' },
-			],
+			flags: [{ type: 'spam_keywords', severity: 'medium', description: 'looks spammy' }],
 			level: 'suspicious',
 		});
 
@@ -210,9 +205,7 @@ describe('Transactional email lifecycle — publish with blocked scan', () => {
 		vi.mocked(mockedScanContent).mockReturnValueOnce({
 			score: 80,
 			pass: false,
-			flags: [
-				{ type: 'phishing_url', severity: 'high', description: 'phishing detected' },
-			],
+			flags: [{ type: 'phishing_url', severity: 'high', description: 'phishing detected' }],
 			level: 'blocked',
 		});
 
@@ -453,21 +446,27 @@ describe('Transactional email — assertEditableForPublishableChange guard', () 
 	} as unknown as Doc<'transactionalEmails'>;
 
 	it('does not throw on draft', () => {
-		expect(() => assertEditableForPublishableChange(baseEmail)).not.toThrow();
+		expect(() =>
+			assertEditableForPublishableChange(baseEmail, 'Transactional email')
+		).not.toThrow();
 	});
 
 	it('does not throw on pending_review', () => {
 		const pending = { ...baseEmail, status: 'pending_review' } as Doc<'transactionalEmails'>;
-		expect(() => assertEditableForPublishableChange(pending)).not.toThrow();
+		expect(() => assertEditableForPublishableChange(pending, 'Transactional email')).not.toThrow();
 	});
 
 	it('throws on published without force', () => {
 		const published = { ...baseEmail, status: 'published' } as Doc<'transactionalEmails'>;
-		expect(() => assertEditableForPublishableChange(published)).toThrow(ConvexError);
+		expect(() => assertEditableForPublishableChange(published, 'Transactional email')).toThrow(
+			ConvexError
+		);
 	});
 
 	it('does not throw on published with force: true', () => {
 		const published = { ...baseEmail, status: 'published' } as Doc<'transactionalEmails'>;
-		expect(() => assertEditableForPublishableChange(published, true)).not.toThrow();
+		expect(() =>
+			assertEditableForPublishableChange(published, 'Transactional email', true)
+		).not.toThrow();
 	});
 });

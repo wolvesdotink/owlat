@@ -1,6 +1,6 @@
 /**
  * Pure, side-effect-free helpers backing the writing-voice profile
- * (mail/ai/voiceProfile.ts): the tuning constants, the profile shape, and the
+ * (mail/ai/voiceProfile.ts): the tuning constants, the profile type, and the
  * staleness / sampling / prompt-assembly functions the unit tests exercise
  * directly. Split out of voiceProfile.ts to keep that v8-runtime module under
  * the file-size cap; it holds only the Convex functions and data access.
@@ -9,7 +9,8 @@
  * work, so it stays trivially testable without a Convex harness.
  */
 
-import { v } from 'convex/values';
+import type { Infer } from 'convex/values';
+import type { voiceProfileValidator } from '../../lib/validators/mailAi';
 import { mailMessageInlineBody } from '../../lib/messageBody';
 import { splitQuotedHtml, splitQuotedText } from '@owlat/shared/quotedText';
 
@@ -26,25 +27,8 @@ export const VOICE_SENT_DELTA = 20;
 
 // ── Shape ─────────────────────────────────────────────────────────────────
 
-export const voiceProfileValidator = v.object({
-	greetings: v.array(v.string()),
-	signOffs: v.array(v.string()),
-	formality: v.number(),
-	brevity: v.number(),
-	languages: v.array(v.string()),
-	isEmojiUser: v.boolean(),
-	examplePhrasings: v.array(v.string()),
-});
-
-export interface VoiceProfile {
-	greetings: string[];
-	signOffs: string[];
-	formality: number;
-	brevity: number;
-	languages: string[];
-	isEmojiUser: boolean;
-	examplePhrasings: string[];
-}
+/** A learned voice profile, as stored in `mailVoiceProfiles.profile`. */
+export type VoiceProfile = Infer<typeof voiceProfileValidator>;
 
 interface VoiceRowLike {
 	status: 'idle' | 'refreshing';

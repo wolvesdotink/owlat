@@ -3,24 +3,25 @@ import type { DatabaseReader } from '../_generated/server';
 import type { TableNames } from '../_generated/dataModel';
 
 /**
- * Count rows matching a query by streaming them, without `.paginate()`.
+ * Count the rows of one index range by streaming them.
  *
- * Convex permits only ONE `.paginate()` call per function execution (a second
- * throws at runtime in a deployed backend), so a page-loop cannot be used to
- * count — and a count query frequently runs alongside a real paginated list in
- * the same execution (e.g. the Listing engine's page + total). Async-iterating
- * the query streams rows incrementally (no `.paginate()`), reading under the
- * same per-execution read limit the old page-loop was already bounded by.
+ * This is a counter, not a paginator: it never calls `.paginate()`. Convex
+ * permits only ONE `.paginate()` call per function execution (a second throws
+ * at runtime in a deployed backend), and a count frequently runs alongside a
+ * real paginated list in the same execution (e.g. the Listing engine's page +
+ * total). Async-iterating the query reads rows incrementally under the normal
+ * per-execution read limit.
  *
- * This is a bounded fallback: it reads every matching row, so callers that must
- * count very large sets should keep using a denormalized counter and only fall
- * back here when one is absent.
+ * It reads every matching row, so callers that must count very large sets
+ * should keep a denormalized counter and only fall back here when one is
+ * absent.
  */
-export async function countWithPagination(
+export async function countIndexRange(
 	db: DatabaseReader,
 	table: TableNames,
 	indexName: string = 'by_creation_time',
-	indexPredicate: (q: IndexRangeBuilder<GenericDocument, string[]>) => IndexRange = (q) => q as unknown as IndexRange
+	indexPredicate: (q: IndexRangeBuilder<GenericDocument, string[]>) => IndexRange = (q) =>
+		q as unknown as IndexRange
 ): Promise<number> {
 	let count = 0;
 	// Cast required: Convex's withIndex() expects IndexName to be a string literal
@@ -33,12 +34,6 @@ export async function countWithPagination(
 	}
 
 	return count;
-}
-
-export interface PaginationResult<T> {
-	page: T[];
-	isDone: boolean;
-	continueCursor: string;
 }
 
 // `paginateArray` was removed with ADR-0037: its stringified-integer offset was

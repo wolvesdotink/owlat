@@ -1,7 +1,6 @@
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
-import { getCachedContactCount } from '../lib/contactCountHelpers';
-import { countWithPagination } from '../lib/pagination';
+import { getContactCount } from '../lib/contactCountHelpers';
 import { redactContactCapabilityFields } from './listing';
 
 // Upper bound on the "recent contacts" dashboard read. Callers pass a small
@@ -22,13 +21,8 @@ const GROWTH_SCAN_CAP = 30000;
 export const getAudienceStats = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		// Try to get cached contact count first
-		let totalContacts = await getCachedContactCount(ctx);
-
-		// Fallback to pagination count if no cache
-		if (totalContacts === null) {
-			totalContacts = await countWithPagination(ctx.db, 'contacts', 'by_created_at', (q) => q);
-		}
+		// Cached count, else a live count (soft-deleted contacts excluded).
+		const totalContacts = await getContactCount(ctx);
 
 		// Get topics count
 		const topics = await ctx.db.query('topics').collect(); // bounded: org topics (org-scale config)

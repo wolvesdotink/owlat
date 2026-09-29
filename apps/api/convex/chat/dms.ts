@@ -14,9 +14,9 @@ import {
 	chatQuery,
 	chatMutation,
 	assertChatTargetsAreOrgMembers,
-	loadProfileSummary,
 	normalizeDmKey,
 } from './_helpers';
+import { loadProfileSummary } from '../lib/userProfiles';
 
 /**
  * Find or create a DM between the caller and `otherMemberIds`. Idempotent —

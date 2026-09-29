@@ -1,5 +1,5 @@
 import type { ListingDescriptor } from '../lib/listing';
-import { countWithPagination } from '../lib/pagination';
+import { countIndexRange } from '../lib/pagination';
 
 /**
  * Topic listing descriptor (ADR-0037). Browse-only (no search index on topics).
@@ -16,9 +16,7 @@ export const topicListing: ListingDescriptor<'topics', { contactCount: number }>
 	enrich: async (db, topic) => ({
 		contactCount:
 			topic.cachedMemberCount ??
-			(await countWithPagination(db, 'contactTopics', 'by_topic', (q) =>
-				q.eq('topicId', topic._id),
-			)),
+			(await countIndexRange(db, 'contactTopics', 'by_topic', (q) => q.eq('topicId', topic._id))),
 	}),
 	facets: {
 		total: { kind: 'indexCount' },

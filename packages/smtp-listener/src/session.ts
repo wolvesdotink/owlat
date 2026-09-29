@@ -11,7 +11,7 @@ import type { Socket } from 'node:net';
 import { TLSSocket } from 'node:tls';
 import { runCommandLoop, type ResolvedListenerConfig } from './commandLoop.js';
 import { resolveTlsConfig } from './tls.js';
-import type { MutableSmtpSession, SmtpListenerOptions } from './types.js';
+import type { MutableSmtpSession, SmtpListenerOptions, SmtpReply } from './types.js';
 
 const DEFAULT_MAX_MESSAGE_BYTES = 10 * 1024 * 1024;
 const DEFAULT_MAX_RECIPIENTS = 100;
@@ -82,12 +82,15 @@ function buildSession<S, T>(
  * Handle one accepted connection end-to-end. Any error is routed to `onError`
  * and the socket is destroyed — a connection fault never takes down the server.
  * `initialSecure` is `true` only for implicit-TLS listeners, whose socket is a
- * `tls.TLSSocket` already handshaken by the time it is accepted.
+ * `tls.TLSSocket` already handshaken by the time it is accepted. `admission` is
+ * the pending admission verdict for a plaintext / STARTTLS connection; an
+ * implicit-TLS connection was admitted before its handshake and passes none.
  */
 export function handleConnection<S, T>(
 	socket: Socket,
 	config: ResolvedListenerConfig<S, T>,
-	initialSecure = false
+	initialSecure = false,
+	admission?: Promise<SmtpReply | undefined>
 ): void {
 	socket.setNoDelay(true);
 	// A socket-level error must not become an unhandled 'error' event crash.
@@ -95,7 +98,7 @@ export function handleConnection<S, T>(
 		config.opts.onError?.(err);
 	});
 	const session = buildSession(socket, config, initialSecure);
-	runCommandLoop(socket, session, config)
+	runCommandLoop(socket, session, config, admission)
 		.catch((err: unknown) => {
 			config.opts.onError?.(err instanceof Error ? err : new Error(String(err)));
 		})

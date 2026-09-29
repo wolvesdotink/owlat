@@ -67,10 +67,18 @@ describe('loadBounceTlsMaterial', () => {
 				TLS_CERT_DIR: dir,
 			})
 		).toEqual({ cert: 'inline-cert', key: 'inline-key' });
-		// A half-configured inline pair never borrows its other half from disk.
-		expect(loadBounceTlsMaterial({ BOUNCE_TLS_CERT: 'inline-cert', TLS_CERT_DIR: dir })).toEqual({
-			cert: 'inline-cert',
-		});
+	});
+
+	// A half inline pair never borrows its other half from disk, and it no longer
+	// boots a listener that has a certificate but no key: it fails the boot.
+	it('fails the boot on a half-configured inline pair', () => {
+		writePair();
+		expect(() =>
+			loadBounceTlsMaterial({ BOUNCE_TLS_CERT: 'inline-cert', TLS_CERT_DIR: dir })
+		).toThrow(/BOUNCE_TLS_CERT is set but BOUNCE_TLS_KEY is not/);
+		expect(() => loadBounceTlsMaterial({ BOUNCE_TLS_KEY: 'inline-key' })).toThrow(
+			/BOUNCE_TLS_KEY is set but BOUNCE_TLS_CERT is not/
+		);
 	});
 
 	it('prefers explicit file paths over the cert directory', () => {
@@ -86,15 +94,25 @@ describe('loadBounceTlsMaterial', () => {
 		).toEqual({ cert: CERT, key: KEY, paths: files });
 	});
 
-	it('reports no reload paths for a half-configured file pair', () => {
+	it('fails the boot on a half-configured file pair', () => {
 		const files = writePair('explicit');
-		expect(loadBounceTlsMaterial({ BOUNCE_TLS_CERT_FILE: files.cert })).toEqual({ cert: CERT });
+		expect(() => loadBounceTlsMaterial({ BOUNCE_TLS_CERT_FILE: files.cert })).toThrow(
+			/BOUNCE_TLS_CERT_FILE is set but BOUNCE_TLS_KEY_FILE is not/
+		);
 	});
 
 	it('fails loudly when an explicitly configured file is missing', () => {
-		expect(() => loadBounceTlsMaterial({ BOUNCE_TLS_CERT_FILE: join(dir, 'nope.crt') })).toThrow(
-			/BOUNCE_TLS_CERT_FILE.*ENOENT/
-		);
+		const files = writePair('explicit');
+		expect(() =>
+			loadBounceTlsMaterial({
+				BOUNCE_TLS_CERT_FILE: join(dir, 'nope.crt'),
+				BOUNCE_TLS_KEY_FILE: files.key,
+			})
+		).toThrow(/BOUNCE_TLS_CERT_FILE.*ENOENT/);
+	});
+
+	it('does not look in a default cert directory when TLS_CERT_DIR is unset', () => {
+		expect(loadBounceTlsMaterial({ BOUNCE_TLS_CERT_FILE: '' })).toEqual({});
 	});
 
 	it.skipIf(process.getuid?.() === 0)(
@@ -107,7 +125,7 @@ describe('loadBounceTlsMaterial', () => {
 				paths: files,
 				unavailable: expect.stringMatching(/permission denied/),
 			});
-			expect(loaded.unavailable).toMatch(/must hand ownership to the MTA runtime user/);
+			expect(loaded.unavailable).toMatch(/must hand ownership over to this uid/);
 		}
 	);
 

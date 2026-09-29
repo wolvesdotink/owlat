@@ -50,8 +50,8 @@ import { resolveLanguageModel } from '../../../lib/llmProvider';
 import { runLlmObject, runLlmText } from '../../../lib/llm/dispatch';
 import type { Id } from '../../../_generated/dataModel';
 import type { Infer } from 'convex/values';
-import { clarificationQuestionValidator } from '../../../inbox/clarificationValidators';
-import type { classificationValidator } from '../../../lib/convexValidators';
+import type { clarificationQuestionValidator } from '../../../lib/validators/clarification';
+import type { classificationValidator } from '../../../lib/validators/classification';
 import { localizeQuestions } from '../../../inbox/clarificationLocalize';
 import {
 	DIVERGENCE_SAMPLES,

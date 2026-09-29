@@ -23,6 +23,7 @@ import { v } from 'convex/values';
 import { adminQuery, authedQuery } from '../lib/authedFunctions';
 import { internalMutation, type QueryCtx } from '../_generated/server';
 import { getOptional, isEnvPresent } from '../lib/env';
+import { getInstanceSettings, upsertInstanceSettings } from '../lib/instanceSettings';
 import { isSendProviderKind } from '../lib/sendProviders/types';
 import { isDeliveryConfigured, isSendProviderReady } from '../lib/sendProviders/capability';
 import {
@@ -73,7 +74,7 @@ export const getStatus = adminQuery({
 		const providerConfigured = isKnownProvider && (await isSendProviderReady(ctx, provider));
 		const canSend = await isDeliveryConfigured(ctx);
 
-		const settings = await ctx.db.query('instanceSettings').first(); // bounded: singleton row
+		const settings = await getInstanceSettings(ctx.db);
 		return {
 			provider,
 			providerLabel: providerEntry?.label ?? null,
@@ -212,7 +213,7 @@ export const getTransportSummary = authedQuery({
 		// sender-alignment gate: the transport's normalized kind plus the effective
 		// DKIM `d=` / return-path domains (DNS-facing values, never credentials).
 		const facts = outboundTransportFacts();
-		const settings = await ctx.db.query('instanceSettings').first(); // bounded: singleton row
+		const settings = await getInstanceSettings(ctx.db);
 
 		return {
 			provider,
@@ -238,19 +239,7 @@ export const getTransportSummary = authedQuery({
 export const recordTestResult = internalMutation({
 	args: { at: v.number() },
 	handler: async (ctx, args): Promise<null> => {
-		const settings = await ctx.db.query('instanceSettings').first(); // bounded: singleton row
-		if (settings) {
-			await ctx.db.patch(settings._id, {
-				deliveryTestLastSucceededAt: args.at,
-				updatedAt: args.at,
-			});
-		} else {
-			await ctx.db.insert('instanceSettings', {
-				deliveryTestLastSucceededAt: args.at,
-				createdAt: args.at,
-				updatedAt: args.at,
-			});
-		}
+		await upsertInstanceSettings(ctx, { deliveryTestLastSucceededAt: args.at }, { now: args.at });
 		return null;
 	},
 });

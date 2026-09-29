@@ -28,7 +28,7 @@ import { isFeatureEnabled } from '../lib/featureFlags';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { latestMigrationRow } from './migration';
 import { scheduleVoiceProfileRefresh } from './ai/voiceProfile';
-import { canonicalMessageId } from '../lib/messageId';
+import { findDuplicateInMailbox } from './deliveryPipeline/insert';
 
 // Chunk size for the post-import knowledge sweep (paced inside runIndexChunk).
 const INDEX_CHUNK_SIZE = 25;
@@ -122,9 +122,10 @@ export const getBackfillWork = internalQuery({
  * So the worker asks first, with envelopes it fetched for a few hundred bytes a
  * message, and downloads bodies only for the ones this returns as unknown.
  *
- * Canonicalisation MUST match the writers' (`lib/messageId.ts`) or a message
- * would look unknown here and duplicate on ingest. Returns the caller's own
- * strings, so it never has to canonicalise anything itself.
+ * Uses the ingest paths' own dedup read (`findDuplicateInMailbox`), so a
+ * message that looks unknown here cannot then dedup on ingest, or the reverse.
+ * Returns the caller's own strings, so it never has to canonicalise anything
+ * itself.
  */
 export const findKnownMessageIds = internalQuery({
 	args: {
@@ -141,13 +142,7 @@ export const findKnownMessageIds = internalQuery({
 		const ids = args.messageIds.slice(0, MAX_KNOWN_MESSAGE_ID_LOOKUP);
 		const known: string[] = [];
 		for (const raw of ids) {
-			const canonical = canonicalMessageId(raw);
-			const hit = await ctx.db
-				.query('mailMessages')
-				.withIndex('by_rfc822_message_id', (q) => q.eq('rfc822MessageId', canonical))
-				.filter((q) => q.eq(q.field('mailboxId'), account.mailboxId))
-				.first();
-			if (hit) known.push(raw);
+			if (await findDuplicateInMailbox(ctx, account.mailboxId, raw)) known.push(raw);
 		}
 		return known;
 	},

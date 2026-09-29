@@ -73,6 +73,25 @@ describe('loadDaneConfig — resolver scheme validation (when a resolver IS set)
 		expect(cfg.daneResolverUrl).toBe('http://127.0.0.1:8443/dns-query');
 	});
 
+	it.each([
+		'http://localhost:8053/dns-query',
+		'http://[::1]:8053/dns-query',
+		'http://127.0.0.2:8053/dns-query',
+		'http://[::ffff:127.0.0.1]:8053/dns-query',
+	])('accepts the loopback http resolver %s', (resolver) => {
+		const cfg = loadDaneConfig(envFrom({ DANE_MODE: 'report', DANE_RESOLVER_URL: resolver }));
+		expect(cfg.daneResolverUrl).toBe(resolver);
+	});
+
+	it.each(['http://resolver.localhost/dns-query', 'http://10.0.0.53/dns-query'])(
+		'rejects the non-loopback http resolver %s',
+		(resolver) => {
+			expect(() =>
+				loadDaneConfig(envFrom({ DANE_MODE: 'report', DANE_RESOLVER_URL: resolver }))
+			).toThrow(/must use https:/);
+		}
+	);
+
 	it('rejects a non-https REMOTE resolver (the AD bit must be unforgeable)', () => {
 		expect(() =>
 			loadDaneConfig(

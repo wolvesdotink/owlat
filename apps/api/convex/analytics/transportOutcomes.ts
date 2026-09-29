@@ -27,6 +27,10 @@
  *   - AN AGING CRON (`cleanupExpiredOutcomes`) drops buckets past the retention
  *     horizon, so the per-cell read set stays bounded.
  *
+ * The shard count, retention horizon, window range and send → (cell, arm) join
+ * are shared with `analytics/smtpResponseCategories.ts` through
+ * `./cellArmBuckets`; this module owns only what a transport outcome counts.
+ *
  * WHAT FEEDS IT: the SHIPPED Send lifecycle. `delivery/sendLifecycle.ts` emits a
  * `transport_outcome` effect for every non-duplicate delivery transition, and
  * the `opened`/`clicked` twins are emitted by the reducers themselves from
@@ -54,22 +58,25 @@
  */
 
 import { v } from 'convex/values';
+import { literalUnion } from '../lib/literalUnion';
 import { internalMutation, type DatabaseReader, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import {
-	deliverabilityCellKey,
-	parseDeliverabilityCellKey,
-	type DeliverabilityCellKey,
-} from '@owlat/shared/deliverabilityRouting';
-import { getSingletonOrganizationId } from '../lib/sessionOrganization';
+import type { DeliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
 import { logWarn } from '../lib/runtimeLog';
 import { resolveNow, startOfDayUtc } from '../lib/clock';
-import { readAssignmentForSend } from '../delivery/sendAssignments';
+import { type ObservationSweepResult, sweepExpiredObservations } from '../lib/retentionSweep';
+import {
+	CELL_ARM_BUCKET_CLEANUP_BATCH_SIZE,
+	CELL_ARM_BUCKET_RETENTION_MS,
+	cellArmPeriodRange,
+	randomCellArmShardKey,
+	resolveCellArmForSend,
+	type CellArmWindowQuery,
+} from './cellArmBuckets';
 import {
 	safeOutcomeCount,
 	summarizeTransportOutcomeBuckets,
 	transportOutcomeCounters,
-	transportOutcomeWindowBounds,
 	TRANSPORT_OUTCOME_EVENTS,
 	ZERO_TRANSPORT_OUTCOME_TOTALS,
 	type TransportOutcomeArm,
@@ -89,29 +96,7 @@ export type {
 	TransportOutcomeSummary,
 } from './transportOutcomeSummary';
 
-// ============ CONSTANTS ============
-
-/**
- * Write-shard count per (org, cell, arm, day) bucket — the same knob, for the
- * same reason, as `sendingReputation`'s. Each event bumps one random shard, so a
- * blast spreads its read-modify-writes across 8 documents instead of contending
- * on one. Purely write-side: the summarizer sums across all shards.
- */
-export const TRANSPORT_OUTCOME_SHARD_COUNT = 8;
-
-/** Buckets age out after 90 days — the `sendAssignments` retention horizon. */
-export const TRANSPORT_OUTCOME_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
-
-/** Rows deleted per aging tick; the sweep re-schedules itself while full. */
-export const TRANSPORT_OUTCOME_CLEANUP_BATCH_SIZE = 200;
-
 // ============ READ SIDE ============
-
-interface CellArmWindowQuery extends TransportOutcomeWindow {
-	readonly organizationId: string;
-	readonly cell: DeliverabilityCellKey;
-	readonly arm: TransportOutcomeArm;
-}
 
 /**
  * Read one (org, cell, arm) window's shard rows. Org-leading and bounded: the
@@ -130,13 +115,7 @@ export async function readCellArmBuckets(
 	db: DatabaseReader,
 	input: CellArmWindowQuery
 ): Promise<TransportOutcomeBucket[]> {
-	const { sinceDay, until } = transportOutcomeWindowBounds(input);
-	// One range expression, not a branch per bound: an unbounded side becomes a
-	// sentinel no real bucket day can fall outside of (`periodStart` is always a
-	// finite UTC day timestamp). The exact window filter is re-applied by the
-	// pure summarizer, so a sentinel can never widen the answer.
-	const lower = Number.isFinite(sinceDay) ? sinceDay : 0;
-	const upper = Number.isFinite(until) ? until : Number.MAX_SAFE_INTEGER;
+	const { lower, upper } = cellArmPeriodRange(input);
 	return await db
 		.query('transportOutcomes')
 		.withIndex('by_org_cell_arm_period_shard', (q) =>
@@ -247,9 +226,8 @@ interface RecordTransportOutcomeInput {
 /**
  * Bump ONE random shard of the (org, cell, arm, today) bucket by ONE event.
  * The shard is drawn per call so concurrent events for the same cell spread
- * across `TRANSPORT_OUTCOME_SHARD_COUNT` documents instead of contending on a
- * single row. (Mutations may use `Math.random`; only the workflow runtime
- * forbids it.)
+ * across `CELL_ARM_BUCKET_SHARD_COUNT` documents instead of contending on a
+ * single row.
  */
 export async function recordTransportOutcomeForCell(
 	ctx: MutationCtx,
@@ -263,7 +241,7 @@ export async function recordTransportOutcomeForCell(
 			cell: input.cell,
 			arm: input.arm,
 			periodStart: startOfDayUtc(now),
-			shardKey: Math.floor(Math.random() * TRANSPORT_OUTCOME_SHARD_COUNT),
+			shardKey: randomCellArmShardKey(),
 		},
 		now
 	);
@@ -293,47 +271,29 @@ export async function recordTransportOutcomeForSend(
 	ctx: MutationCtx,
 	input: { readonly sendId: string; readonly event: TransportOutcomeEvent; readonly now?: number }
 ): Promise<RecordTransportOutcomeResult> {
-	let organizationId: string;
-	try {
-		organizationId = await getSingletonOrganizationId(ctx);
-	} catch {
-		return 'no_organization';
-	}
-
-	// THE tenant-scoped join, shared with every other reader of the row.
-	const assignment = await readAssignmentForSend(ctx.db, organizationId, input.sendId);
-	// No assignment row ⇒ this send is outside the experiment (seed shadow
-	// copies, legacy sends). It must never enter a denominator.
-	if (!assignment) return 'no_assignment';
-	// `cell` is a plain string in the schema; a malformed one would create a
-	// bucket no reader can ever address. Parse ONCE here and hand the branded,
-	// re-canonicalized key down, so a variant spelling can neither reach a
-	// bucket nor be invented by a caller.
-	const parsedCell = parseDeliverabilityCellKey(assignment.cell);
-	if (parsedCell === null) return 'invalid_cell';
+	const resolved = await resolveCellArmForSend(ctx, input.sendId);
+	if (!resolved.ok) return resolved.reason;
 
 	await recordTransportOutcomeForCell(ctx, {
-		organizationId,
-		cell: deliverabilityCellKey(parsedCell),
-		arm: assignment.arm,
+		organizationId: resolved.organizationId,
+		cell: resolved.cell,
+		arm: resolved.arm,
 		event: input.event,
-		isCalibration: assignment.isCalibration,
+		isCalibration: resolved.isCalibration,
 		...(input.now !== undefined ? { now: input.now } : {}),
 	});
 	return 'recorded';
 }
 
 /** Derived from the vocabulary, never re-spelled: one list, one wire contract. */
-const transportOutcomeEventValidator = v.union(
-	...TRANSPORT_OUTCOME_EVENTS.map((event) => v.literal(event))
-);
+const transportOutcomeEventValidator = literalUnion(TRANSPORT_OUTCOME_EVENTS);
 
 /**
  * The Send lifecycle's `transport_outcome` effect, SCHEDULED off the transition
  * rather than applied inside it — the same shape, for the same reason, as
  * `reputation_update`.
  *
- * The bump lands on one of `TRANSPORT_OUTCOME_SHARD_COUNT` shards of a bucket
+ * The bump lands on one of `CELL_ARM_BUCKET_SHARD_COUNT` shards of a bucket
  * that every recipient of the same cell writes to on the same day. Applied
  * inline, an OCC conflict on that shard retries the ENTIRE delivery transaction
  * — the send patch, the campaign counters, the daily stats, the webhook fanout —
@@ -372,27 +332,31 @@ export const recordOutcomeForSend = internalMutation({
 // ============ AGING CRON ============
 
 /**
- * Drop buckets past the retention horizon. Indexed, bounded and self-resuming,
- * so a backlog drains across ticks instead of blowing one transaction — the same
- * sweep shape as the `sendAssignments` retention cron.
+ * Drop buckets past the retention horizon. Indexed, bounded and self-resuming
+ * through the shared `sweepExpiredObservations`, so a backlog drains across
+ * ticks instead of blowing one transaction.
  */
 export const cleanupExpiredOutcomes = internalMutation({
 	args: { now: v.optional(v.number()) },
-	handler: async (ctx, args) => {
-		const now = resolveNow(args.now);
-		const cutoff = now - TRANSPORT_OUTCOME_RETENTION_MS;
-		const expired = await ctx.db
-			.query('transportOutcomes')
-			.withIndex('by_period_start', (q) => q.lt('periodStart', cutoff))
-			.take(TRANSPORT_OUTCOME_CLEANUP_BATCH_SIZE);
-		await Promise.all(expired.map((row) => ctx.db.delete(row._id)));
-		if (expired.length === TRANSPORT_OUTCOME_CLEANUP_BATCH_SIZE) {
-			await ctx.scheduler.runAfter(
-				0,
-				internal.analytics.transportOutcomes.cleanupExpiredOutcomes,
-				args
-			);
-		}
-		return { deleted: expired.length };
-	},
+	handler: async (ctx, args): Promise<ObservationSweepResult> =>
+		sweepExpiredObservations(ctx, {
+			// A non-finite `now` would make the horizon NaN and the sweep a silent
+			// no-op forever: `resolveNow` falls back to the real clock instead.
+			now: resolveNow(args.now),
+			retentionMs: CELL_ARM_BUCKET_RETENTION_MS,
+			batchSize: CELL_ARM_BUCKET_CLEANUP_BATCH_SIZE,
+			scans: [
+				(horizon, limit) =>
+					ctx.db
+						.query('transportOutcomes')
+						.withIndex('by_period_start', (q) => q.lt('periodStart', horizon))
+						.take(limit),
+			],
+			scheduleContinuation: () =>
+				ctx.scheduler.runAfter(
+					0,
+					internal.analytics.transportOutcomes.cleanupExpiredOutcomes,
+					args
+				),
+		}),
 });

@@ -10,6 +10,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { getFunctionName, type AnyFunctionReference } from 'convex/server';
 import { fetchModule, type FetchArgs } from '../index.js';
 import { formatBodySection, parseBodySectionItem, splitHeaderText } from '../bodySection.js';
 import type { FetchEnvelope } from '../format.js';
@@ -72,7 +73,8 @@ function run(
 		}))
 	);
 	const convex = {
-		query: vi.fn(async (ref: string) => {
+		query: vi.fn(async (fnRef: AnyFunctionReference) => {
+			const ref = getFunctionName(fnRef);
 			// Seven messages exist; the fixture message sits at sequence 7
 			// (UID 7), so the harness's `set: '7'` resolves to it whether the
 			// command is UID-based or not.
@@ -83,8 +85,8 @@ function run(
 			if (ref.endsWith(':fetchRawStorageId')) return { storageId: 's1', rawSize: raw.byteLength };
 			return null;
 		}),
-		action: vi.fn(async (ref: string) =>
-			ref.endsWith(':getRawStorageUrl') ? 'https://storage.test/raw' : null
+		action: vi.fn(async (fnRef: AnyFunctionReference) =>
+			getFunctionName(fnRef).endsWith(':getRawStorageUrl') ? 'https://storage.test/raw' : null
 		),
 		mutation: vi.fn(async () => ({
 			updated: [{ uid: msg.uid, modseq: msg.modseq + 1, flags: ['\\Seen'] }],

@@ -7,6 +7,59 @@ import { preflightErrorData, validateReadyToSend } from './preflight';
 import { seedDefaultSenderIfNeeded } from './senders';
 import { assertTransitioned } from './lifecycle';
 import { recordAuditLog } from '../lib/auditLog';
+import type { MutationCtx } from '../_generated/server';
+import type { Doc } from '../_generated/dataModel';
+
+/**
+ * The pre-flight every path that puts a campaign on the clock runs: `schedule`
+ * (draft to scheduled) and `reschedule` (a new start for a scheduled one).
+ * Capacity is judged against the start time because warming caps grow, so a
+ * new start has to be judged again: pulling a campaign that fit a week out
+ * forward to tomorrow can overrun what the IPs can send before the MTA queue
+ * expires the tail. The same run re-checks the sender allow-list, domain
+ * verification and "scheduled in the past".
+ *
+ * The fire-time re-check (`validateReadyToSendQuery`) stays separate and skips
+ * capacity on purpose: nobody is there to act on a refusal at fire time.
+ */
+async function assertSchedulable(
+	ctx: MutationCtx,
+	campaign: Doc<'campaigns'>,
+	scheduledAt: number
+): Promise<void> {
+	// Bootstrap the curated list from the org default before pre-flight so an
+	// upgraded deployment (empty list, toggle off) can still schedule from its
+	// own default address instead of failing `sender_not_allowed`.
+	await seedDefaultSenderIfNeeded(ctx);
+
+	const preflight = await validateReadyToSend(ctx, campaign, { scheduledAt });
+	if (!preflight.ok) {
+		// Carry the structured refusal (and, for a capacity refusal, the
+		// multi-day plan) so the client can offer "send over N days" as a
+		// first-class choice instead of just showing prose.
+		throwInvalidState(preflight.message, preflightErrorData(preflight));
+	}
+}
+
+interface SchedulingOptions {
+	useRecipientTimezone?: boolean;
+	scheduledHour?: number;
+	scheduledMinute?: number;
+}
+
+/**
+ * The recipient-timezone controls `schedule` and `reschedule` both accept, with
+ * the omitted ones left out so a write does not clear a stored value.
+ */
+function pickSchedulingOptions(args: SchedulingOptions): SchedulingOptions {
+	return {
+		...(args.useRecipientTimezone !== undefined
+			? { useRecipientTimezone: args.useRecipientTimezone }
+			: {}),
+		...(args.scheduledHour !== undefined ? { scheduledHour: args.scheduledHour } : {}),
+		...(args.scheduledMinute !== undefined ? { scheduledMinute: args.scheduledMinute } : {}),
+	};
+}
 
 // Mutation to cancel a scheduled campaign
 export const cancel = authedMutation({
@@ -64,10 +117,9 @@ export const reschedule = authedMutation({
 			throwInvalidState('Only scheduled campaigns can be rescheduled');
 		}
 
-		// Ensure scheduled time is in the future
-		if (args.scheduledAt <= Date.now()) {
-			throwInvalidState('Scheduled time must be in the future');
-		}
+		// The same pre-flight as `schedule`, anchored at the new start: capacity,
+		// sender allow-list, domain verification and the future-time check.
+		await assertSchedulable(ctx, campaign, args.scheduledAt);
 
 		// Reschedule is a "stay in scheduled, replace scheduledAt" operation, not a
 		// status transition. We don't cancel the original hop; instead
@@ -76,11 +128,7 @@ export const reschedule = authedMutation({
 		// harmless no-op and the new hop sends on time.
 		await ctx.db.patch(args.campaignId, {
 			scheduledAt: args.scheduledAt,
-			...(args.useRecipientTimezone !== undefined
-				? { useRecipientTimezone: args.useRecipientTimezone }
-				: {}),
-			...(args.scheduledHour !== undefined ? { scheduledHour: args.scheduledHour } : {}),
-			...(args.scheduledMinute !== undefined ? { scheduledMinute: args.scheduledMinute } : {}),
+			...pickSchedulingOptions(args),
 			updatedAt: Date.now(),
 		});
 
@@ -158,20 +206,7 @@ export const schedule = authedMutation({
 			throwInvalidState('Only draft campaigns can be scheduled');
 		}
 
-		// Bootstrap the curated list from the org default before pre-flight so an
-		// upgraded deployment (empty list, toggle off) can still schedule from its
-		// own default address instead of failing `sender_not_allowed`.
-		await seedDefaultSenderIfNeeded(ctx);
-
-		const preflight = await validateReadyToSend(ctx, campaign, {
-			scheduledAt: args.scheduledAt,
-		});
-		if (!preflight.ok) {
-			// Carry the structured refusal (and, for a capacity refusal, the
-			// multi-day plan) so the client can offer "send over N days" as a
-			// first-class choice instead of just showing prose.
-			throwInvalidState(preflight.message, preflightErrorData(preflight));
-		}
+		await assertSchedulable(ctx, campaign, args.scheduledAt);
 
 		const outcome = await ctx.runMutation(internal.campaigns.lifecycle.transition, {
 			campaignId: args.campaignId,
@@ -179,11 +214,7 @@ export const schedule = authedMutation({
 				to: 'scheduled',
 				at: Date.now(),
 				scheduledAt: args.scheduledAt,
-				...(args.useRecipientTimezone !== undefined
-					? { useRecipientTimezone: args.useRecipientTimezone }
-					: {}),
-				...(args.scheduledHour !== undefined ? { scheduledHour: args.scheduledHour } : {}),
-				...(args.scheduledMinute !== undefined ? { scheduledMinute: args.scheduledMinute } : {}),
+				...pickSchedulingOptions(args),
 			},
 			userId: session.userId,
 		});

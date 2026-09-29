@@ -1,4 +1,3 @@
-convex/agent/knowledgeBackfill.ts:cancel
 convex/agentConfigMutations.ts:updateConfig
 convex/analytics/complianceTelemetry.ts:getComplianceTelemetry
 convex/analytics/dashboard.ts:getRecentActivity
@@ -104,11 +103,6 @@ convex/delivery/rampControls.ts:setStreamPreset
 convex/delivery/rampEnrollment.ts:enrollCell
 convex/delivery/rampPhasePromotion.ts:promoteCellPhase
 convex/delivery/sends.ts:get
-convex/delivery/sends.ts:getClickedContacts
-convex/delivery/sends.ts:getLinkClickStats
-convex/delivery/sends.ts:getOpenedContacts
-convex/delivery/sends.ts:getOpensTimeline
-convex/delivery/sends.ts:getStatsByCampaign
 convex/devShortcuts/forceVerifyDomain.ts:forceVerifyDomain
 convex/domains/domains.ts:create
 convex/domains/domains.ts:getInboundMailConfig
@@ -165,7 +159,6 @@ convex/inbox/snooze.ts:snoozeThread
 convex/inbox/snooze.ts:unsnoozeThread
 convex/integrationImports/walker.ts:cancelImport
 convex/integrationImports/walker.ts:startIntegrationImport
-convex/knowledge/edgeBackfill.ts:cancel
 convex/knowledge/graph.ts:addRelation
 convex/knowledge/graph.ts:createEntry
 convex/knowledge/graph.ts:deleteEntry

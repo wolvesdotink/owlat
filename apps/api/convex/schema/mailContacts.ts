@@ -1,8 +1,8 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { mailCategoryLabelValidator } from '../lib/literalValidators';
-import { mailTriageVerbValidator } from '../lib/mailContentValidators';
-import { editAdjustmentValidator } from '../mail/ai/editLearningValidators';
+import { mailTriageVerbValidator } from '../lib/validators/mailContent';
+import { editAdjustmentValidator } from '../lib/validators/editLearning';
 
 /**
  * Per-user sender knowledge: contacts, category and image overrides,

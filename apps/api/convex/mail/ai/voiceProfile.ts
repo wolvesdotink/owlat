@@ -27,19 +27,21 @@ import { isFeatureEnabled } from '../../lib/featureFlags';
 import { requireMailboxAccess } from '../permissions';
 import { throwForbidden } from '../../_utils/errors';
 import { extractEmail } from '../../lib/emailAddress';
+import { voiceProfileValidator } from '../../lib/validators/mailAi';
+import { resolveDeliverableMailbox } from '../mailbox/addressResolution';
 import {
 	buildLayeredGuidance,
 	promotedDirectives,
 	medianEditDistance,
 	type EditDeltaKind,
 } from './editLearning';
-// Tuning constants, the profile shape, and the pure staleness/sampling/prompt
+// Tuning constants, the profile type, and the pure staleness/sampling/prompt
 // helpers live in the sibling voiceProfileText.ts (keeps this Convex-runtime
 // module under the file-size cap). Re-exported here so existing importers and
-// the unit tests keep their `./voiceProfile` import path.
+// the unit tests keep their `./voiceProfile` import path. The profile
+// validator lives in lib/validators/mailAi.ts, which the schema also loads.
 import {
 	VOICE_SAMPLE_SIZE,
-	voiceProfileValidator,
 	isVoiceProfileStale,
 	buildVoiceSamples,
 	buildVoiceGuidance,
@@ -49,7 +51,6 @@ export {
 	VOICE_SAMPLE_CHARS,
 	VOICE_STALE_MS,
 	VOICE_SENT_DELTA,
-	voiceProfileValidator,
 	isVoiceProfileStale,
 	extractSampleText,
 	buildVoiceSamples,
@@ -259,10 +260,10 @@ export const getGuidanceForRecipient = internalMutation({
 	handler: async (ctx, args): Promise<{ guidance: string | null }> => {
 		const address = extractEmail(args.recipient);
 		if (!address) return { guidance: null };
-		const mailbox = await ctx.db
-			.query('mailboxes')
-			.withIndex('by_address', (q) => q.eq('address', address))
-			.first();
+		// The mailbox that receives this address's mail: after a move, the live
+		// hosted mailbox rather than the external archive beside it, and never a
+		// soft-deleted row.
+		const mailbox = await resolveDeliverableMailbox(ctx, address);
 		if (!mailbox) return { guidance: null };
 		// Pass the recipient through so the per-contact override for this exact
 		// address is blended in (never any other contact's override).

@@ -8,7 +8,7 @@
  */
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { getClientIp } from '../publicRateLimit';
+import { getClientIp } from '../lib/publicRateLimit';
 import { logError } from '../lib/runtimeLog';
 import type { RateLimitHeaders } from './apiResponses';
 

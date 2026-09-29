@@ -7,6 +7,7 @@
  */
 
 import { v } from 'convex/values';
+import { literalUnion } from '../lib/literalUnion';
 import { internalMutation, internalQuery } from '../_generated/server';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -30,7 +31,9 @@ import {
 	COMMITMENT_ENTRY_TYPES,
 	POLICY_ENTRY_TYPES,
 	isCommitmentOpen,
+	knowledgeEntriesFields,
 } from '../schema/knowledge';
+import { optionalFields, pick } from '../lib/validators/fields';
 
 // ============================================================
 // Contact junction helpers
@@ -264,16 +267,19 @@ function requireCuratedWriter(
 // all-members: any org member can author knowledge; admin-only would block the AI assistant's primary write path
 export const createEntry = authedMutation({
 	args: {
-		entryType: entryTypeValidator,
-		title: v.string(),
-		content: v.string(),
-		sourceType: sourceTypeValidator,
-		sourceId: v.optional(v.string()),
-		contactIds: v.optional(v.array(v.id('contacts'))),
-		threadId: v.optional(v.id('conversationThreads')),
-		confidence: v.optional(v.number()),
-		tags: v.optional(v.array(v.string())),
-		expiresAt: v.optional(v.number()),
+		...pick(knowledgeEntriesFields, [
+			'entryType',
+			'title',
+			'content',
+			'sourceType',
+			'sourceId',
+			'contactIds',
+			'threadId',
+			'tags',
+			'expiresAt',
+		]),
+		// Defaults to 0.8 for a manually authored entry.
+		confidence: v.optional(knowledgeEntriesFields.confidence),
 	},
 	handler: async (ctx, args) => {
 		await getMutationContext(ctx);
@@ -319,14 +325,18 @@ export const createEntry = authedMutation({
 export const updateEntry = authedMutation({
 	args: {
 		entryId: v.id('knowledgeEntries'),
-		entryType: v.optional(entryTypeValidator),
-		title: v.optional(v.string()),
-		content: v.optional(v.string()),
-		sourceType: v.optional(sourceTypeValidator),
-		contactIds: v.optional(v.array(v.id('contacts'))),
-		confidence: v.optional(v.number()),
-		tags: v.optional(v.array(v.string())),
-		expiresAt: v.optional(v.number()),
+		...optionalFields(
+			pick(knowledgeEntriesFields, [
+				'entryType',
+				'title',
+				'content',
+				'sourceType',
+				'contactIds',
+				'confidence',
+				'tags',
+				'expiresAt',
+			])
+		),
 	},
 	handler: async (ctx, args) => {
 		const session = await getMutationContext(ctx);
@@ -436,25 +446,25 @@ export const deleteEntry = authedMutation({
  * Save a knowledge entry from the agent pipeline (internal)
  */
 export const saveEntry = internalMutation({
-	args: {
-		entryType: entryTypeValidator,
-		title: v.string(),
-		content: v.string(),
-		sourceType: sourceTypeValidator,
-		sourceId: v.optional(v.string()),
-		contactIds: v.optional(v.array(v.id('contacts'))),
-		threadId: v.optional(v.id('conversationThreads')),
-		embedding: v.array(v.float64()),
-		embeddingModel: v.optional(v.string()),
-		embeddingGeneratedAt: v.optional(v.number()),
-		confidence: v.number(),
-		tags: v.optional(v.array(v.string())),
-		expiresAt: v.optional(v.number()),
-		// Deterministic sha256 of normalizeForHash(title, content), computed by the
-		// 'use node' extraction action. Enables the cross-source write-dedup leg
-		// below (and the deterministic linker's exact-dup lookups).
-		contentHash: v.optional(v.string()),
-	},
+	// `contentHash` (computed by the 'use node' extraction action) enables the
+	// cross-source write-dedup leg below and the deterministic linker's
+	// exact-dup lookups.
+	args: pick(knowledgeEntriesFields, [
+		'entryType',
+		'title',
+		'content',
+		'sourceType',
+		'sourceId',
+		'contactIds',
+		'threadId',
+		'embedding',
+		'embeddingModel',
+		'embeddingGeneratedAt',
+		'confidence',
+		'tags',
+		'expiresAt',
+		'contentHash',
+	]),
 	handler: async (ctx, args) => {
 		const now = Date.now();
 		// Write-level idempotency, leg 1 — same source: if an entry from the same
@@ -593,7 +603,7 @@ export const removeRelation = authedMutation({
 // ============================================================
 
 /** Validator for the curated entry types (policy / faq). */
-const policyEntryTypeValidator = v.union(...POLICY_ENTRY_TYPES.map((t) => v.literal(t)));
+const policyEntryTypeValidator = literalUnion(POLICY_ENTRY_TYPES);
 
 /**
  * Author (or edit) a curated canonical answer — the minimal FAQ surface.
