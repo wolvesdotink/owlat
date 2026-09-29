@@ -231,6 +231,7 @@
 				"src/ical.ts",
 				"src/html.ts",
 				"src/appLocales.ts",
+				"src/emailDefaults.ts",
 				"src/attachments.ts",
 				"src/attachmentShares.ts",
 				"src/bounceClassification.ts",

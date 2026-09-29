@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
+import { DEFAULT_EMAIL_THEME } from '@owlat/shared/emailDefaults';
 
 const { t } = useI18n();
 
@@ -26,12 +27,12 @@ const { run: updateOrganizationSettings } = useBackendOperation(api.workspaces.s
 	label: () => t('dashboard.admin.instance.emailTheme.saveOperation'),
 });
 
-// Default theme values
+// Default theme values: the shared defaults the renderer and editor use
 const defaultTheme = {
-	primaryColor: '#c4785a',
-	fontFamily: 'Arial, sans-serif',
-	backgroundColor: '#ffffff',
-	baseWidth: 600,
+	primaryColor: DEFAULT_EMAIL_THEME.primaryColor,
+	fontFamily: DEFAULT_EMAIL_THEME.fontFamily,
+	backgroundColor: DEFAULT_EMAIL_THEME.backgroundColor,
+	baseWidth: DEFAULT_EMAIL_THEME.baseWidth,
 };
 
 // Font options — a computed rather than a frozen array so the labels follow the

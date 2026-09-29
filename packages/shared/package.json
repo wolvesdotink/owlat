@@ -206,6 +206,10 @@
 			"types": "./src/appLocales.ts",
 			"import": "./src/appLocales.ts"
 		},
+		"./emailDefaults": {
+			"types": "./src/emailDefaults.ts",
+			"import": "./src/emailDefaults.ts"
+		},
 		"./attachments": {
 			"types": "./src/attachments.ts",
 			"import": "./src/attachments.ts"

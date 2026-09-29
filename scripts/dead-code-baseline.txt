@@ -33,6 +33,4 @@ export:packages/plugin-kit/src/workerTask.ts:PLUGIN_WORKER_MAX_PENDING_JOBS
 export:packages/sdk-js/test/helpers.ts:mockFetchError
 export:packages/shared/src/setupProgress.ts:SetupStepId
 export:packages/shared/src/types/blocks.ts:UniversalBorder
-export:packages/shared/src/types/blocks.ts:UniversalMargin
-export:packages/shared/src/types/blocks.ts:UniversalPadding
 export:packages/shared/src/utils/validation.ts:slugRegex
