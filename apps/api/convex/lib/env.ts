@@ -248,30 +248,41 @@ export type EnvKey =
 	| 'UNSUBSCRIBE_SECRET'
 	// Security
 	| 'GOOGLE_SAFE_BROWSING_API_KEY'
-	// Trusted-proxy source for per-IP rate limiting on public endpoints. Selects
-	// which (otherwise spoofable) forwarded header to believe — see
-	// publicRateLimit.getClientIp. One of: 'cloudflare' (CF-Connecting-IP),
-	// 'xforwarded' or 'xforwarded:<hops>' (X-Forwarded-For, read N entries from
-	// the right), 'xrealip' (X-Real-IP). Unset ⇒ headers are NOT trusted (single
-	// shared bucket) so a spoofed header can't multiply rate-limit buckets.
+	// Trusted-proxy source for per-IP rate limiting. Parsed once by
+	// lib/clientIp.ts and used by BOTH limiters: the public-endpoint limiter
+	// (publicRateLimit.getClientIp) and BetterAuth's sign-in / password-reset
+	// limiter (auth/ipAddress.ts). Per mode:
+	//   - unset / unrecognised: no forwarded header is trusted. Public endpoints
+	//     share the 'unknown' bucket; sign-in / reset share BetterAuth's
+	//     'no-trusted-ip' bucket (still throttled, never switched off).
+	//   - 'cloudflare' (CF-Connecting-IP) / 'xrealip' (X-Real-IP): the header is
+	//     client-settable, so both limiters trust it only on a request whose
+	//     X-Owlat-Proxy-Secret matches RATE_LIMIT_PROXY_SECRET. Otherwise both
+	//     fall back to their shared bucket (the auth HTTP route removes the
+	//     unverified header before BetterAuth reads it).
+	//   - 'xforwarded' / 'xforwarded:<hops>' (X-Forwarded-For, no secret): the
+	//     two limiters read the chain DIFFERENTLY. The public limiter takes the
+	//     entry <hops> from the right (default 1). The sign-in limiter ignores
+	//     <hops>: it walks right-to-left skipping RATE_LIMIT_TRUSTED_PROXIES and
+	//     keys the first untrusted entry; with that list unset it trusts only a
+	//     single-value header and a multi-hop chain lands in its shared bucket.
 	| 'RATE_LIMIT_TRUSTED_PROXY'
-	// Shared secret a trusted reverse proxy INJECTS (and strips from client
-	// requests) to authenticate the `cloudflare` / `xrealip` trusted-proxy modes.
-	// Those modes believe an otherwise client-settable header (CF-Connecting-IP /
-	// X-Real-IP); because a Convex deployment is directly reachable at its
-	// *.convex.site URL, the header is only trusted when the request also presents
-	// this secret in `X-Owlat-Proxy-Secret` (constant-time compared). Unset, or a
-	// mismatched/absent secret ⇒ the forwarded IP is NOT trusted and the caller
-	// falls back to the shared 'unknown' bucket (fail closed) — see
-	// publicRateLimit.getClientIp. Unused by the `xforwarded` mode, which is
-	// bypass-resistant on its own.
+	// Shared secret a trusted reverse proxy INJECTS as `X-Owlat-Proxy-Secret`
+	// (stripping any client copy) to authenticate the `cloudflare` / `xrealip`
+	// modes, for the public limiter and the sign-in / reset limiter alike. A
+	// Convex deployment is directly reachable at its *.convex.site URL, so the
+	// forwarded IP header is believed only when this secret is presented
+	// (constant-time compared). Unset, or a mismatched/absent secret ⇒ the header
+	// is NOT trusted and the caller falls back to the shared bucket (fail
+	// closed) — see lib/clientIp.ts. Unused by the `xforwarded` mode.
 	| 'RATE_LIMIT_PROXY_SECRET'
 	// Reverse-proxy IPs / CIDR ranges that front this deployment, used ONLY by the
-	// BetterAuth login limiter when RATE_LIMIT_TRUSTED_PROXY is `xforwarded`: the
+	// BetterAuth sign-in limiter when RATE_LIMIT_TRUSTED_PROXY is `xforwarded`: the
 	// X-Forwarded-For chain is walked right-to-left and trusted hops are skipped so
 	// the first UNTRUSTED entry is keyed — a client-injected leftmost hop can never
 	// mint a fresh limiter bucket. Comma- or whitespace-separated (e.g.
-	// `10.0.0.0/8, 192.0.2.10`). Unset ⇒ only a single-value XFF is trusted.
+	// `10.0.0.0/8, 192.0.2.10`). Unset ⇒ only a single-value XFF is trusted. The
+	// public limiter uses the `:<hops>` count instead and ignores this list.
 	| 'RATE_LIMIT_TRUSTED_PROXIES'
 	// Inbound channel webhooks (SMS / WhatsApp / generic)
 	| 'TWILIO_AUTH_TOKEN'
