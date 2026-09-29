@@ -19,12 +19,14 @@
 #   importKey(variable algorithm)  an `importKey(…)` call whose algorithm is not a
 #                                  literal (a variable, or an object whose `name`
 #                                  is not a string literal), since it may be HMAC
-#   sign(HMAC), verify(HMAC)       a Web Crypto `sign('HMAC', …)` / `verify('HMAC', …)`
+#   sign(HMAC), verify(HMAC)       a Web Crypto `sign`/`verify` whose algorithm is
+#                                  'HMAC' or `{ name: 'HMAC', … }`
 #   timingSafeEqual                any reference to node:crypto's `timingSafeEqual`
 #                                  in code: a call, an import (aliased or not), a
 #                                  destructuring, or a property access
 #   xor-compare                    a hand-written XOR-accumulate compare, the
-#                                  `acc |= a ^ b` / `acc = acc | (a ^ b)` loop body
+#                                  `acc |= a ^ b`, `acc += a ^ b`, `acc = acc | (a ^ b)`
+#                                  or `acc = acc + (a ^ b)` loop body, on one line
 #
 # across .ts, .tsx, .mts, .cts, .js, .jsx, .mjs, .cjs and .vue files under apps/
 # and packages/, excluding tests (__tests__, *.test.*, *.spec.*, *.testlib.*),
@@ -34,7 +36,8 @@
 #
 # It is a pattern check, not a proof. It does not see Node's `createHmac`, an
 # HMAC key reached through `deriveKey`/`generateKey`, a `sign`/`verify` whose
-# algorithm is a variable, or a compare loop written some other way. Review new
+# algorithm is a variable, or a compare loop written some other way (split over
+# several lines, through a helper, or accumulating with another operator). Review new
 # crypto code against the sanctioned modules too.
 #
 # Hard-0 with no baseline. A new entry in ALLOWED needs a reason a shared helper
@@ -109,10 +112,10 @@ generate() {
 				if (!defined $name) { push @hits, [$start, "importKey(variable algorithm)"] }
 				elsif (uc $name eq "HMAC") { push @hits, [$start, "importKey(HMAC)"] }
 			}
-			while (/\b(sign|verify)\s*\(\s*[\x27"]HMAC[\x27"]/g) { push @hits, [$-[0], "$1(HMAC)"] }
+			while (/\b(sign|verify)\s*\(\s*(?:[\x27"]HMAC[\x27"]|\{[^{}]*?\bname\s*:\s*[\x27"]HMAC[\x27"])/g) { push @hits, [$-[0], "$1(HMAC)"] }
 			while (/\btimingSafeEqual\b/g) { push @hits, [$-[0], "timingSafeEqual"] }
-			while (/\b[A-Za-z_\$][\w\$]*\s*\|=[^;\n]*\^/g) { push @hits, [$-[0], "xor-compare"] }
-			while (/\b([A-Za-z_\$][\w\$]*)\s*=\s*\1\s*\|[^|][^;\n]*\^/g) { push @hits, [$-[0], "xor-compare"] }
+			while (/\b[A-Za-z_\$][\w\$]*\s*[|+]=[^;\n]*\^/g) { push @hits, [$-[0], "xor-compare"] }
+			while (/\b([A-Za-z_\$][\w\$]*)\s*=\s*\1\s*(?:\|(?!\|)|\+(?!\+))[^;\n]*\^/g) { push @hits, [$-[0], "xor-compare"] }
 			for my $h (@hits) {
 				my $line = 1 + (substr($_, 0, $h->[0]) =~ tr/\n//);
 				print "$ARGV:$line:$h->[1]\n";

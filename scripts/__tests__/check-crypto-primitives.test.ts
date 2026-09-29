@@ -155,6 +155,26 @@ describe('crypto-primitives gate', () => {
 		expect(result.stdout).toContain('apps/api/convex/mail/check.ts:1:verify(HMAC)');
 	});
 
+	it('fails on an HMAC sign or verify that names the algorithm as an object', async () => {
+		const result = await gate({
+			'apps/api/convex/mail/objectForm.ts': [
+				"const sig = await crypto.subtle.sign({ name: 'HMAC' }, key, data);",
+				'const ok = await crypto.subtle.verify(',
+				'\t{ hash: "SHA-256", name: "HMAC" },',
+				'\tkey,',
+				'\tsignature,',
+				'\tdata',
+				');',
+				"const rsa = await crypto.subtle.verify({ name: 'RSASSA-PKCS1-v1_5' }, key, s, d);",
+				'',
+			].join('\n'),
+		});
+		expect(result.code).toBe(1);
+		expect(result.stdout).toContain('apps/api/convex/mail/objectForm.ts:1:sign(HMAC)');
+		expect(result.stdout).toContain('apps/api/convex/mail/objectForm.ts:2:verify(HMAC)');
+		expect(result.stdout).not.toContain('objectForm.ts:8:');
+	});
+
 	it('fails on an aliased or destructured timingSafeEqual import', async () => {
 		const result = await gate({
 			'apps/mta/src/auth/alias.ts': [
@@ -210,12 +230,18 @@ describe('crypto-primitives gate', () => {
 				'for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);',
 				'let other = 0;',
 				'for (let i = 0; i < a.length; i++) other = other | (x[i] ^ y[i]);',
+				'let sum = 0;',
+				'for (let i = 0; i < a.length; i++) sum += a[i] ^ b[i];',
+				'let total = 0;',
+				'for (let i = 0; i < a.length; i++) total = total + (a[i] ^ b[i]);',
 				'',
 			].join('\n'),
 		});
 		expect(result.code).toBe(1);
 		expect(result.stdout).toContain('apps/api/convex/lib/loop.ts:2:xor-compare');
 		expect(result.stdout).toContain('apps/api/convex/lib/loop.ts:4:xor-compare');
+		expect(result.stdout).toContain('apps/api/convex/lib/loop.ts:6:xor-compare');
+		expect(result.stdout).toContain('apps/api/convex/lib/loop.ts:8:xor-compare');
 	});
 
 	it('does not read an XOR outside an accumulating OR as a compare loop', async () => {
@@ -223,6 +249,7 @@ describe('crypto-primitives gate', () => {
 			'apps/api/convex/lib/bits.ts': [
 				'const mixed = a ^ b;',
 				'flags |= MASK;',
+				'count += step;',
 				'hash = (hash ^ byte) >>> 0;',
 				'',
 			].join('\n'),
