@@ -9,6 +9,7 @@ import type { ContentFlag, UrlReputationResult, UrlReputationCache } from '../ty
 import { checkSafeBrowsing, hashUrl, normalizeUrl } from './safeBrowsing.js';
 import { createCachedVerdict } from './cache.js';
 import { extractUrls } from '../content/phishingUrls.js';
+import { capContentScanInput } from '../content/htmlScan.js';
 
 export interface UrlReputationOptions {
 	/** Google Safe Browsing API key */
@@ -29,7 +30,7 @@ export async function checkUrlReputation(
 	options: UrlReputationOptions
 ): Promise<UrlReputationResult[]> {
 	// Extract all URLs from HTML
-	const links = extractUrls(htmlContent);
+	const links = extractUrls(capContentScanInput(htmlContent));
 	const urls = links
 		.map((l) => l.href)
 		.filter((href) => href.startsWith('http://') || href.startsWith('https://'));
