@@ -14,6 +14,7 @@
  */
 import type { PostboxThreadRowMessage } from './PostboxThreadRow.vue';
 import { senderRowMarkerOf } from '~/utils/senderAuth';
+import { useLocalized } from '~/composables/useLocalized';
 
 const { t, locale } = useI18n();
 
