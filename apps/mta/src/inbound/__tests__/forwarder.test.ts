@@ -94,3 +94,36 @@ describe('forwardToEndpoint — webhook payload auth verdicts (Sealed Mail A1)',
 		expect(body['to']).toBe('support@org.example');
 	});
 });
+
+describe('forwardToEndpoint — signed system routes', () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+		vi.useRealTimers();
+	});
+
+	it('signs each attempt with that attempt’s own timestamp', async () => {
+		vi.useFakeTimers({ now: 1_800_000_000_000 });
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce({ ok: false, status: 503 } as Response)
+			.mockResolvedValueOnce({ ok: false, status: 503 } as Response)
+			.mockResolvedValueOnce({ ok: true, status: 200 } as Response);
+		vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock as typeof fetch);
+
+		const pending = forwardToEndpoint(
+			parsed,
+			{ ...route, systemSecret: 'system-route-secret' },
+			'tls-reports@org.example'
+		);
+		await vi.runAllTimersAsync();
+		expect(await pending).toBe(true);
+
+		const timestamps = fetchMock.mock.calls.map((call) => {
+			const init = call[1] as RequestInit;
+			return (init.headers as Record<string, string>)['X-MTA-Timestamp'];
+		});
+		expect(timestamps).toHaveLength(3);
+		expect(new Set(timestamps).size).toBe(3);
+		vi.useRealTimers();
+	});
+});
