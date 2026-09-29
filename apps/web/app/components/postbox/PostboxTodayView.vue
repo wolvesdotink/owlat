@@ -28,6 +28,8 @@ import { api } from '@owlat/api';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import type { Id } from '@owlat/api/dataModel';
 import { useNow } from '~/composables/useNow';
+import { provide } from 'vue';
+import { POSTBOX_READER_HOST_KEY } from '~/composables/postbox/usePostboxReaderActions';
 import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
 import { partitionTodayMessages, formatAutoFiledLine } from '~/utils/postboxTodayPartition';
 import {
@@ -218,6 +220,15 @@ function closeOverlay() {
 	openMessageId.value = null;
 	emit('reader-closed');
 }
+
+// A reader triage advances before its mutation lands; if it then fails, the
+// reader (already swapped out) reopens its message through this host.
+provide(POSTBOX_READER_HOST_KEY, {
+	openId: () => openMessageId.value,
+	open: (id) => {
+		openMessageId.value = id;
+	},
+});
 
 /**
  * The mode switch is two-way, but this surface IS 'today' — only the other
