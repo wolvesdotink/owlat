@@ -5,7 +5,9 @@
  *   POST /sample-data/remove    — delete exactly the seed-tagged rows
  *   POST /sample-data/status    — how many seed-tagged rows are present
  *
- * Headers: `X-Instance-Secret: <INSTANCE_SECRET>` on all three.
+ * Headers: `X-Instance-Secret: <INSTANCE_SECRET>` on all three. Each call is
+ * charged to the caller's per-IP `instanceSecret` bucket before the secret is
+ * compared (`lib/instanceSecret.ts`), so a wrong-secret loop answers 429.
  *
  * Authentication is the on-box operator secret — the same credential
  * `POST /seed/admin` uses to create the first admin, held in the install's
@@ -28,8 +30,7 @@ import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { GenericActionCtx, HttpRouter } from 'convex/server';
 import type { DataModel, TableNames } from '../_generated/dataModel';
-import { getOptional } from '../lib/env';
-import { secretMatches } from '../lib/crypto';
+import { requireInstanceSecret } from '../lib/instanceSecret';
 import { logError } from '../lib/runtimeLog';
 import { SEEDED_TABLES } from '../seedDemo/pipeline';
 import { errorResponse, jsonResponse } from '../lib/httpResponse';
@@ -50,15 +51,6 @@ const DELETE_BATCH = 100;
 const MAX_PAGES = 4000;
 
 type ActionCtx = GenericActionCtx<DataModel>;
-
-function unauthorizedOrNull(request: Request): Response | null {
-	const secret = request.headers.get('X-Instance-Secret');
-	const expected = getOptional('INSTANCE_SECRET');
-	if (!secretMatches(secret, expected)) {
-		return errorResponse('unauthenticated', 'Unauthorized');
-	}
-	return null;
-}
 
 /**
  * Every seed-tagged row id in one table, gathered without deleting anything.
@@ -98,8 +90,8 @@ async function countTagged(
 }
 
 const sampleDataInstallHttp = httpAction(async (ctx, request) => {
-	const unauthorized = unauthorizedOrNull(request);
-	if (unauthorized) return unauthorized;
+	const denied = await requireInstanceSecret(ctx, request, { limitType: 'instanceSecret' });
+	if (denied) return denied;
 
 	try {
 		const summary: { inserted: Record<string, number>; skipped: Record<string, number> } =
@@ -113,8 +105,8 @@ const sampleDataInstallHttp = httpAction(async (ctx, request) => {
 });
 
 const sampleDataRemoveHttp = httpAction(async (ctx, request) => {
-	const unauthorized = unauthorizedOrNull(request);
-	if (unauthorized) return unauthorized;
+	const denied = await requireInstanceSecret(ctx, request, { limitType: 'instanceSecret' });
+	if (denied) return denied;
 
 	try {
 		const deleted: Record<string, number> = {};
@@ -140,8 +132,8 @@ const sampleDataRemoveHttp = httpAction(async (ctx, request) => {
 });
 
 const sampleDataStatusHttp = httpAction(async (ctx, request) => {
-	const unauthorized = unauthorizedOrNull(request);
-	if (unauthorized) return unauthorized;
+	const denied = await requireInstanceSecret(ctx, request, { limitType: 'instanceSecret' });
+	if (denied) return denied;
 
 	try {
 		const { counts: present, truncated } = await countTagged(ctx);
