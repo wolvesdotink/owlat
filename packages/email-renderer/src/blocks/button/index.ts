@@ -11,6 +11,7 @@ import { fullSupport, type ButtonBlockContent } from '@owlat/shared';
 import type { BlockModule, Placement } from '../_module';
 import { gradientToCss } from '../../helpers/gradient';
 import { wrapColumnItem } from '../../helpers/table';
+import { px as toPx } from '../../helpers/padding';
 import { escapeAttr, escapeCss, escapeHtml, sanitizeUrl } from '../../sanitize';
 import { transformUrl } from '../../helpers/linkTransform';
 import {
@@ -29,12 +30,12 @@ const ALIGNS_FULL = ['left', 'center', 'right', 'full'] as const;
  * fillcolor (solid) and v:fill (gradient).
  */
 const renderVmlButton = (content: ButtonBlockContent): string => {
-	const px = content.paddingX || 24;
-	const py = content.paddingY || 12;
-	const fontSize = content.fontSize ?? 16;
+	const px = toPx(content.paddingX, 0) || 24;
+	const py = toPx(content.paddingY, 0) || 12;
+	const fontSize = toPx(content.fontSize, 16);
 	const fontFamily = escapeCss(content.fontFamily ?? 'Arial, sans-serif');
-	const fontWeight = content.fontWeight ?? 400;
-	const radius = content.borderRadius;
+	const fontWeight = toPx(content.fontWeight, 400);
+	const radius = toPx(content.borderRadius, 0);
 
 	let btnWidth: number | undefined;
 	if (content.align === 'full') {
@@ -43,8 +44,8 @@ const renderVmlButton = (content: ButtonBlockContent): string => {
 		btnWidth = parseInt(content.buttonWidth, 10) || undefined;
 	}
 
-	const strokeWeight =
-		content.buttonBorderWidth && content.buttonBorderWidth > 0 ? content.buttonBorderWidth : 0;
+	const buttonBorderWidth = toPx(content.buttonBorderWidth, 0);
+	const strokeWeight = buttonBorderWidth > 0 ? buttonBorderWidth : 0;
 	const strokeColor = escapeAttr(content.buttonBorderColor || content.backgroundColor);
 	const strokeAttr =
 		strokeWeight > 0
@@ -54,11 +55,10 @@ const renderVmlButton = (content: ButtonBlockContent): string => {
 	const widthAttr = btnWidth ? ` style="width:${btnWidth}px"` : '';
 	const textTransformStyle =
 		content.textTransform && content.textTransform !== 'none'
-			? `text-transform:${content.textTransform};`
+			? `text-transform:${escapeCss(content.textTransform)};`
 			: '';
-	const letterSpacingStyle = content.letterSpacing
-		? `letter-spacing:${content.letterSpacing}px;`
-		: '';
+	const letterSpacing = toPx(content.letterSpacing, 0);
+	const letterSpacingStyle = letterSpacing ? `letter-spacing:${letterSpacing}px;` : '';
 
 	const gradient = content.backgroundGradient;
 	if (gradient && gradient.stops.length >= 2) {
@@ -79,7 +79,7 @@ const renderVmlButton = (content: ButtonBlockContent): string => {
  * Exported because the XSS regression suite asserts on the inner output.
  */
 export const renderButtonContent = (content: ButtonBlockContent): string => {
-	const tableAlign = content.align === 'full' ? 'center' : content.align;
+	const tableAlign = content.align === 'full' ? 'center' : escapeAttr(content.align);
 	let btnWidth = '';
 	if (content.align === 'full') {
 		btnWidth = 'width:100%;';
@@ -87,28 +87,27 @@ export const renderButtonContent = (content: ButtonBlockContent): string => {
 		btnWidth = `width:${escapeCss(content.buttonWidth)};`;
 	}
 	const displayStyle = content.align === 'full' ? 'display:block;' : 'display:inline-block;';
-	const fontSize = content.fontSize ?? 'inherit';
+	const fontSize = toPx(content.fontSize, undefined);
 	const fontFamily = content.fontFamily ? escapeCss(content.fontFamily) : 'inherit';
-	const fontWeight = content.fontWeight ?? 'inherit';
+	const fontWeight = toPx(content.fontWeight, undefined) ?? 'inherit';
+	const paddingX = toPx(content.paddingX, 0) || 24;
+	const paddingY = toPx(content.paddingY, 0) || 12;
+	const buttonBorderWidth = toPx(content.buttonBorderWidth, 0);
 
 	const tdStyles: string[] = [
 		`background-color:${escapeCss(content.backgroundColor)}`,
-		`border-radius:${content.borderRadius}px`,
+		`border-radius:${toPx(content.borderRadius, 0)}px`,
 		'text-align:center',
-		`mso-padding-alt:${content.paddingY || 12}px ${content.paddingX || 24}px`,
+		`mso-padding-alt:${paddingY}px ${paddingX}px`,
 	];
 
 	if (content.backgroundGradient && content.backgroundGradient.stops.length >= 2) {
 		tdStyles.push(`background:${escapeCss(gradientToCss(content.backgroundGradient))}`);
 	}
 
-	if (
-		content.buttonBorderWidth &&
-		content.buttonBorderWidth > 0 &&
-		content.buttonBorderStyle !== 'none'
-	) {
+	if (buttonBorderWidth > 0 && content.buttonBorderStyle !== 'none') {
 		tdStyles.push(
-			`border:${content.buttonBorderWidth}px ${content.buttonBorderStyle || 'solid'} ${escapeCss(content.buttonBorderColor || '#000000')}`
+			`border:${buttonBorderWidth}px ${escapeCss(content.buttonBorderStyle || 'solid')} ${escapeCss(content.buttonBorderColor || '#000000')}`
 		);
 	}
 
@@ -116,19 +115,20 @@ export const renderButtonContent = (content: ButtonBlockContent): string => {
 		displayStyle,
 		btnWidth,
 		`color:${escapeCss(content.textColor)}`,
-		`padding:${content.paddingY || 12}px ${content.paddingX || 24}px`,
+		`padding:${paddingY}px ${paddingX}px`,
 		'text-decoration:none',
-		`font-size:${typeof fontSize === 'number' ? `${fontSize}px` : fontSize}`,
+		`font-size:${fontSize === undefined ? 'inherit' : `${fontSize}px`}`,
 		`font-family:${fontFamily}`,
 		`font-weight:${fontWeight}`,
 	];
 
-	if (content.letterSpacing) linkStyles.push(`letter-spacing:${content.letterSpacing}px`);
+	const letterSpacing = toPx(content.letterSpacing, 0);
+	if (letterSpacing) linkStyles.push(`letter-spacing:${letterSpacing}px`);
 	if (content.textTransform && content.textTransform !== 'none')
-		linkStyles.push(`text-transform:${content.textTransform}`);
+		linkStyles.push(`text-transform:${escapeCss(content.textTransform)}`);
 
 	const linkStyleStr = linkStyles.filter(Boolean).join(';');
-	const target = content.target || '_blank';
+	const target = escapeAttr(content.target || '_blank');
 
 	const vml = renderVmlButton(content);
 	const notMsoStart = '<!--[if !mso]><!-->';
@@ -203,7 +203,7 @@ export const buttonModule: BlockModule<'button'> = {
 
 	amp({ content }) {
 		const href = sanitizeUrl(content.url);
-		return `<div style="text-align:${content.align === 'full' ? 'center' : content.align}"><a href="${escapeAttr(href)}" class="owlat-btn" style="background-color:${escapeAttr(content.backgroundColor)};color:${escapeAttr(content.textColor)};border-radius:${content.borderRadius}px;font-size:${content.fontSize ?? 16}px">${escapeHtml(content.text)}</a></div>`;
+		return `<div style="text-align:${content.align === 'full' ? 'center' : escapeAttr(content.align)}"><a href="${escapeAttr(href)}" class="owlat-btn" style="background-color:${escapeAttr(content.backgroundColor)};color:${escapeAttr(content.textColor)};border-radius:${toPx(content.borderRadius, 0)}px;font-size:${toPx(content.fontSize, 16)}px">${escapeHtml(content.text)}</a></div>`;
 	},
 
 	createDefault(theme) {

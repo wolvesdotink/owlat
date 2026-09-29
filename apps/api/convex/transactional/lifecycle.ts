@@ -35,6 +35,7 @@ import { defineLifecycle, refuse } from '../lib/lifecycle';
 import { applyUsageCountDelta } from '../emailBlocks/module';
 import { buildSearchableText } from '../lib/queryHelpers';
 import { duplicateEmailFields } from '../lib/publishableEmail';
+import { sanitizeStoredBlocksJson } from '../lib/emailContentSanitize';
 import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from '../lib/constants';
 import { dataVariablesSchemaValidator } from '../lib/convexValidators';
 import { scanContent } from '@owlat/email-scanner';
@@ -458,7 +459,7 @@ export const create = internalMutation({
 			name: args.name,
 			slug: args.slug,
 			subject,
-			content: args.content ?? '[]',
+			content: sanitizeStoredBlocksJson(args.content ?? '[]'),
 			dataVariablesSchema: args.dataVariablesSchema,
 			status: 'draft',
 			defaultLanguage,

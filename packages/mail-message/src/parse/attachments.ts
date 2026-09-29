@@ -1,13 +1,13 @@
 /**
  * Attachment extraction from a parsed MIME tree.
  *
- * Attachment leaves are returned in DOCUMENT ORDER — the same order the current
- * `@owlat/shared/mailMime.extractAttachments` assigns (and therefore the same
- * `partIndex` recorded on stored message metadata), because both walk the tree
- * with the shared {@link walkLeaves} traversal and the shared
- * {@link isAttachmentPart} predicate. Filenames are decoded, bodies are
- * transfer-decoded into Buffers, and the whole thing tolerates broken input
- * without throwing.
+ * Attachment leaves are returned in DOCUMENT ORDER: the i-th leaf is the one
+ * the writers record as `partIndex === String(i)`. `@owlat/shared/mailMime` is
+ * a thin adapter over the same {@link parseMimeTree} tree, {@link walkLeaves}
+ * traversal and {@link isAttachmentPart} predicate (it keeps no walker of its
+ * own), so the read side resolves a stored index to the same part. Filenames
+ * are decoded, bodies are transfer-decoded into Buffers, and the whole thing
+ * tolerates broken input without throwing.
  */
 
 import {
@@ -36,7 +36,7 @@ export interface MessageAttachment {
 	size: number;
 }
 
-/** `Content-ID` value with every angle bracket stripped anywhere (mailMime parity). */
+/** `Content-ID` value with every angle bracket stripped anywhere. */
 function stripBrackets(value: string | undefined): string | undefined {
 	if (value === undefined) return undefined;
 	const trimmed = value.replace(/[<>]/g, '').trim();

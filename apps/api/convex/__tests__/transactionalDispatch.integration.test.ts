@@ -54,8 +54,8 @@ const modules = Object.fromEntries(
 			!path.includes('posthog') &&
 			!path.includes('delivery/worker.ts') &&
 			!path.includes('campaigns/testSend') &&
-			!path.includes('delivery/workpool'),
-	),
+			!path.includes('delivery/workpool')
+	)
 );
 
 // Silence "Could not find module" rejections from the excluded workpool/worker
@@ -94,7 +94,7 @@ async function seedBaseline(
 		htmlTranslations?: string;
 		supportedLanguages?: string[];
 		defaultLanguage?: string;
-	} = {},
+	} = {}
 ): Promise<{
 	templateId: Id<'transactionalEmails'>;
 	slug: string;
@@ -110,7 +110,7 @@ async function seedBaseline(
 				defaultFromName: 'Owlat',
 				transactionalSendCount: 0,
 				dailySendCount: 0,
-			}),
+			})
 		);
 		const domainId = await ctx.db.insert(
 			'domains',
@@ -118,12 +118,11 @@ async function seedBaseline(
 				domain: 'example.com',
 				status: overrides.domainStatus ?? 'verified',
 				lastVerifiedAt: Date.now(),
-			}),
+			})
 		);
 		const tpl = createTestTransactionalEmail({
 			status: overrides.templateStatus ?? 'published',
-			htmlContent:
-				overrides.htmlContent ?? '<p>Hello {{firstName}}</p>',
+			htmlContent: overrides.htmlContent ?? '<p>Hello {{firstName}}</p>',
 			subject: 'Welcome',
 			dataVariablesSchema: overrides.dataVariablesSchema,
 			htmlTranslations: overrides.htmlTranslations,
@@ -261,6 +260,26 @@ describe('transactional.dispatch.dispatch — happy path', () => {
 // ─── Per-reason rejection coverage ──────────────────────────────────────────
 
 describe('transactional.dispatch.dispatch — rejections', () => {
+	it("returns 'feature_disabled' and writes no row while the transactional feature is off", async () => {
+		const t = convexTest(schema, modules);
+		const { templateId, settingsId } = await seedBaseline(t);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(settingsId, { featureFlags: { transactional: false } });
+		});
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+		});
+
+		expect(outcome.ok).toBe(false);
+		if (outcome.ok) throw new Error('expected rejection');
+		expect(outcome.reason).toBe('feature_disabled');
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('transactionalSends').collect()).toHaveLength(0);
+		});
+	});
+
 	it("returns 'abuse_blocked' when instance is suspended", async () => {
 		const t = convexTest(schema, modules);
 		const { templateId } = await seedBaseline(t, { abuseStatus: 'suspended' });
@@ -312,7 +331,7 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'blockedEmails',
-				createTestBlockedEmail({ email: 'blocked@example.com' }),
+				createTestBlockedEmail({ email: 'blocked@example.com' })
 			);
 		});
 
@@ -340,7 +359,7 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'blockedEmails',
-				createTestBlockedEmail({ email: 'blocked@example.com' }),
+				createTestBlockedEmail({ email: 'blocked@example.com' })
 			);
 		});
 
@@ -357,9 +376,7 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 		expect(outcome.reason).toBe('recipient_blocked');
 
 		// No transactionalSends row was created.
-		const sends = await t.run(async (ctx) =>
-			ctx.db.query('transactionalSends').collect(),
-		);
+		const sends = await t.run(async (ctx) => ctx.db.query('transactionalSends').collect());
 		expect(sends).toHaveLength(0);
 
 		// Counters untouched (the daily/transactional counters fire only after the
@@ -383,10 +400,7 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 		const { templateId } = await seedBaseline(t);
 		await t.run(async (ctx) => {
 			// Stored normalized, exactly as the lifecycle / blocklist writer stores it.
-			await ctx.db.insert(
-				'blockedEmails',
-				createTestBlockedEmail({ email: 'mixed@example.com' }),
-			);
+			await ctx.db.insert('blockedEmails', createTestBlockedEmail({ email: 'mixed@example.com' }));
 		});
 
 		// The HTTP shell sends `normalizeEmail('Mixed@Example.com')` === 'mixed@example.com'.

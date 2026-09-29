@@ -13,6 +13,7 @@ import { inlineCss } from './inliner';
 import { escapeJsonValue } from './sanitize';
 import { simulateClient } from './simulators';
 import { validateBlocks } from './validator';
+import { px } from './helpers/padding';
 
 const MAX_WARNINGS = 50;
 const addWarning = (ctx: RenderContext, message: string): void => {
@@ -56,10 +57,10 @@ const createContext = (options: RenderOptions = {}): RenderContext => {
 		variableType,
 		variableClass:
 			variableType === 'personalization' ? 'personalization-variable' : 'data-variable',
-		baseWidth: options.baseWidth ?? options.theme?.baseWidth ?? DEFAULT_BASE_WIDTH,
+		baseWidth: px(options.baseWidth, px(options.theme?.baseWidth, DEFAULT_BASE_WIDTH)),
 		preheaderText: options.preheaderText ?? '',
 		title: options.title ?? '',
-		breakpoint: options.breakpoint ?? 480,
+		breakpoint: px(options.breakpoint, 480),
 		direction: options.direction ?? 'ltr',
 		fontUrls: options.fontUrls ?? [],
 		customCss: options.customCss ?? '',

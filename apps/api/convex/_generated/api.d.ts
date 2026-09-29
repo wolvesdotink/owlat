@@ -653,6 +653,7 @@ import type * as lib_decisionProviders_typesafe from '../lib/decisionProviders/t
 import type * as lib_decisionProviders_wire from '../lib/decisionProviders/wire.js';
 import type * as lib_deliverabilityRouteState from '../lib/deliverabilityRouteState.js';
 import type * as lib_emailAddress from '../lib/emailAddress.js';
+import type * as lib_emailContentSanitize from '../lib/emailContentSanitize.js';
 import type * as lib_emailHelpers from '../lib/emailHelpers.js';
 import type * as lib_emailProviders_domainVerification from '../lib/emailProviders/domainVerification.js';
 import type * as lib_emailProviders_mtaIdentity from '../lib/emailProviders/mtaIdentity.js';
@@ -1898,6 +1899,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/decisionProviders/wire': typeof lib_decisionProviders_wire;
 	'lib/deliverabilityRouteState': typeof lib_deliverabilityRouteState;
 	'lib/emailAddress': typeof lib_emailAddress;
+	'lib/emailContentSanitize': typeof lib_emailContentSanitize;
 	'lib/emailHelpers': typeof lib_emailHelpers;
 	'lib/emailProviders/domainVerification': typeof lib_emailProviders_domainVerification;
 	'lib/emailProviders/mtaIdentity': typeof lib_emailProviders_mtaIdentity;

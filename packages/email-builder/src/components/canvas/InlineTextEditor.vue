@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { shallowRef, computed, onMounted, onUnmounted, nextTick } from 'vue';
-import { moduleFor } from '@owlat/email-renderer';
+import { moduleFor, sanitizeEditorHtml } from '@owlat/email-renderer';
 import type {
 	EditorBlock,
 	EmailTheme,
@@ -277,10 +277,11 @@ function handleKeydown(event: KeyboardEvent) {
 	}
 }
 
-// Initialize with block HTML content
+// Initialize with block HTML content, sanitized before it enters the live
+// contenteditable.
 onMounted(() => {
 	if (editorEl.value) {
-		editorEl.value.innerHTML = content.value.html || '';
+		editorEl.value.innerHTML = sanitizeEditorHtml(content.value.html || '');
 		nextTick(() => {
 			editorEl.value?.focus();
 			const selection = window.getSelection();

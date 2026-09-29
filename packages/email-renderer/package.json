@@ -12,6 +12,10 @@
 		".": {
 			"types": "./src/index.ts",
 			"import": "./src/index.ts"
+		},
+		"./sanitize": {
+			"types": "./src/sanitize.ts",
+			"import": "./src/sanitize.ts"
 		}
 	},
 	"scripts": {

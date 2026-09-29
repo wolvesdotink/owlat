@@ -8,12 +8,20 @@
  *   linked email thread; replies to the customer still flow through the
  *   inbox UI / approval pipeline.
  * - DMs cannot be linked (we keep the model simple — 1:1 inline-view).
+ *
+ * The link bridges two permission domains, so both sides are checked: the
+ * chat side by the room gates, the Team Inbox side by the `inbox` feature flag
+ * plus the shared-inbox reader gate (`inbox/access.ts`). Linking needs both,
+ * and so does reading the panel — a link is never a way to widen who sees the
+ * thread.
  */
 
 import { v } from 'convex/values';
 import { openInboundMessageBody } from '../lib/messageBody';
 import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
-import { getOrThrow, throwInvalidInput } from '../_utils/errors';
+import { isFeatureEnabled } from '../lib/featureFlags';
+import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
+import { isSharedInboxReader } from '../inbox/access';
 import {
 	chatQuery,
 	chatMutation,
@@ -24,20 +32,24 @@ import {
 
 /**
  * Attach an inbox thread to a channel. Per-room admin required (or org
- * chat:manage). Replaces any previous link.
+ * chat:manage), and the caller must be a shared-inbox reader with the `inbox`
+ * feature on. Replaces any previous link.
  */
 export const linkChannelToInboxThread = chatMutation({
 	args: {
 		roomId: v.id('chatRooms'),
 		inboxThreadId: v.id('conversationThreads'),
 	},
-	handler: async (ctx, args) => {
-		const { userId, role } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId, role } = session;
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind !== 'channel') {
 			throwInvalidInput('Only channels can be linked to email threads');
 		}
 		await assertCanAdministerRoom(ctx, room, userId, role);
+		if (!isSharedInboxReader(session) || !(await isFeatureEnabled(ctx, 'inbox'))) {
+			throwForbidden('Linking an email thread requires access to the Team Inbox');
+		}
 
 		const inboxThread = await getOrThrow(ctx, args.inboxThreadId, 'Inbox thread');
 		// Internal pseudo-threads from the old chat scaffold are not linkable.
@@ -82,16 +94,20 @@ export const unlinkChannel = chatMutation({
  * compact list of recent inbound messages for the panel.
  *
  * Caller must be able to read the chat room. Returns null if the room has no
- * linked thread.
+ * linked thread, if the `inbox` feature is off, or if the caller is not a
+ * shared-inbox reader. Checked on every read rather than at link time alone,
+ * so a link carries no access of its own and a link made before this check
+ * existed shows nothing to a channel reader outside the Team Inbox.
  */
 export const getLinkedThreadView = chatQuery({
 	args: { roomId: v.id('chatRooms') },
-	handler: async (ctx, args) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, args, session) => {
 		const room = await getRoomOrThrow(ctx, args.roomId);
-		await assertCanReadRoom(ctx, room, userId);
+		await assertCanReadRoom(ctx, room, session.userId);
 
 		if (!room.linkedInboxThreadId) return null;
+		if (!isSharedInboxReader(session)) return null;
+		if (!(await isFeatureEnabled(ctx, 'inbox'))) return null;
 
 		const thread = await ctx.db.get(room.linkedInboxThreadId);
 		if (!thread) return null;

@@ -18,6 +18,14 @@
 			"types": "./src/parse/headers.ts",
 			"import": "./src/parse/headers.ts"
 		},
+		"./parse/body": {
+			"types": "./src/parse/body.ts",
+			"import": "./src/parse/body.ts"
+		},
+		"./parse/attachments": {
+			"types": "./src/parse/attachments.ts",
+			"import": "./src/parse/attachments.ts"
+		},
 		"./parse/address": {
 			"types": "./src/parse/address.ts",
 			"import": "./src/parse/address.ts"

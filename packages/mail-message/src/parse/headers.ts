@@ -1,15 +1,9 @@
 /**
  * RFC 5322 / RFC 2047 / RFC 2231 header primitives.
  *
- * This is the canonical home of the header helpers that previously lived
- * (unexported except for `decodeEncodedWords`) inside
- * `packages/shared/src/mailMime.ts`. That module now re-exports these so every
- * existing importer keeps working unchanged while the in-house mail-message
- * parser builds on top of them.
- *
- * `unfold`, `decodeEncodedWords` and `decodeRfc2231` are relocated
- * byte-for-byte from mailMime — no behavior change — so the shared mailMime
- * attachment extractor stays semantically identical.
+ * This is the canonical home of the header helpers for every MIME reader in the
+ * repository. `packages/shared/src/mailMime.ts` is an adapter over this package
+ * and re-exports `decodeEncodedWords` for its existing importers.
  */
 
 import { parseContentType, type ContentType } from './contentType';
@@ -37,8 +31,7 @@ export function decodeQpHexEscapes(s: string): string {
 /**
  * Decode RFC 2047 encoded-words (`=?charset?B|Q?payload?=`), honoring the
  * DECLARED charset. Falls back utf-8 → raw payload when the charset is
- * unknown. Relocated byte-for-byte from mailMime; the shared shim re-exports
- * this exact function.
+ * unknown. `@owlat/shared/mailMime` re-exports this exact function.
  */
 export function decodeEncodedWords(s: string): string {
 	return s.replace(
@@ -85,7 +78,7 @@ export function decodeHeaderValue(raw: string): string {
 /**
  * Decode an RFC 2231 extended parameter value (`charset'lang'pct-encoded`),
  * falling back to the raw value when there is no language/charset prefix or
- * the percent-decode fails. Relocated byte-for-byte from mailMime.
+ * the percent-decode fails.
  */
 export function decodeRfc2231(v: string): string {
 	const m = v.match(/^[^']*'[^']*'(.*)$/);
@@ -103,14 +96,13 @@ export function decodeRfc2231(v: string): string {
  * The `(?:^|[;\s])` anchor matches a param introduced after ANY whitespace, not
  * only after a `;`, so real broken generators that emit
  * `Content-Disposition: attachment filename="x"` or
- * `Content-Type: multipart/mixed boundary="B"` (no semicolon) are read the same
- * way here as by the current `mailMime` extractor. RFC 2231 continuations
- * (`name*0`, `name*1*`) are reassembled and percent-decoded.
+ * `Content-Type: multipart/mixed boundary="B"` (no semicolon) still yield their
+ * params. RFC 2231 continuations (`name*0`, `name*1*`) are reassembled and
+ * percent-decoded.
  *
- * This is the single home of the whitespace-anchored param scanner: both the
- * in-house MIME walker (boundary/filename/disposition extraction) and the shared
- * `mailMime` attachment extractor consume it, so both sides read params
- * identically by construction.
+ * This is the single home of the whitespace-anchored param scanner: the MIME
+ * walker uses it for boundary and filename extraction, and every reader built
+ * on that walker (including `@owlat/shared/mailMime`) inherits it.
  */
 export function getRawParam(headerValue: string | undefined, name: string): string | undefined {
 	if (!headerValue) return undefined;
@@ -237,14 +229,12 @@ export class MessageHeaders {
 	/**
 	 * LAST raw value for `name` (case-insensitive), or `undefined`.
 	 *
-	 * This is the effective value of a duplicated MIME header for
-	 * `mailMime.extractAttachments` parity: `mailMime.parseHeaders` builds its map
-	 * with `map.set` per line, so a repeated `Content-Type` /
-	 * `Content-Disposition` / `Content-Transfer-Encoding` / `Content-ID` collapses
-	 * to the LAST occurrence. The walker reads those four headers via `last` so
-	 * duplicate-header MIME-confusion shapes resolve identically on both sides and
-	 * the stored `partIndex` contract is preserved. (Display/trace headers keep
-	 * using {@link get}/{@link getAll}.)
+	 * This is the effective value of a duplicated MIME header: a repeated
+	 * `Content-Type` / `Content-Disposition` / `Content-Transfer-Encoding` /
+	 * `Content-ID` resolves to its LAST occurrence. The walker reads those four
+	 * headers via `last`, so every reader built on it resolves duplicate-header
+	 * shapes the same way and the stored `partIndex` numbering stays stable.
+	 * (Display/trace headers keep using {@link get}/{@link getAll}.)
 	 */
 	last(name: string): string | undefined {
 		const values = this.map.get(name.toLowerCase());

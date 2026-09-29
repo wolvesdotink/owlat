@@ -189,6 +189,7 @@ describe('UIDPLUS — COPYUID carries the folder uidValidity (RFC 4315)', () => 
 		const convex = mockConvex();
 		convex.query
 			.mockResolvedValueOnce([{ _id: 'tf', name: 'Archive', role: 'archive' }]) // resolveFolderByName
+			.mockResolvedValueOnce({ uids: [1, 2, 3, 4, 5], nextUid: null }) // listFolderUidsPage
 			.mockResolvedValueOnce({
 				rows: [
 					{ _id: 'm1', uid: 3, modseq: 7 },
@@ -221,6 +222,7 @@ describe('UIDPLUS — COPYUID carries the folder uidValidity (RFC 4315)', () => 
 describe('UIDPLUS — UID EXPUNGE honors the UID set (RFC 4315 §2.1)', () => {
 	it('threads the parsed UID set into the expunge mutation', async () => {
 		const convex = mockConvex();
+		convex.query.mockResolvedValueOnce({ uids: [5, 6, 7, 8, 9], nextUid: null }); // listFolderUidsPage
 		convex.mutation.mockResolvedValue({ sequenceNumbers: [3], modseq: 13 });
 		const { deps } = makeDeps(convex);
 

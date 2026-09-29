@@ -142,4 +142,49 @@ describe('convex query authorization ratchet', () => {
 			})
 		).toEqual(['convex/mail/queries.ts:listThreads']);
 	});
+
+	describe('Team Inbox tables outside inbox/', () => {
+		const inboxRead = read(
+			'chatQuery',
+			"\t\tawait assertCanReadRoom(ctx, room, userId);\n\t\tawait ctx.db.query('inboundMessages');"
+		);
+
+		it('reports a public read of an inbox table that does not import the reader gate', async () => {
+			expect(await violations({ 'convex/chat/bridge.ts': inboxRead })).toEqual([
+				'convex/chat/bridge.ts:#inbox-tables',
+			]);
+		});
+
+		it('reports a public mutation that takes a thread id without the reader gate', async () => {
+			const write = [
+				'export const attach = chatMutation({',
+				"\targs: { threadId: v.id('conversationThreads') },",
+				'\thandler: async (ctx, args, session) => {',
+				'\t\tawait assertCanAdministerRoom(ctx, room, session.userId, session.role);',
+				'\t},',
+				'});',
+				'',
+			].join('\n');
+			expect(await violations({ 'convex/chat/bridge.ts': write })).toEqual([
+				'convex/chat/bridge.ts:#inbox-tables',
+			]);
+		});
+
+		it('accepts a file that imports inbox/access', async () => {
+			const gated = `import { isSharedInboxReader } from '../inbox/access';\n${inboxRead}`;
+			expect(await violations({ 'convex/chat/bridge.ts': gated })).toEqual([]);
+		});
+
+		it.each(['convex/inbox/queries.ts', 'convex/agent/steps/read.ts'])(
+			'says nothing about %s — the inbox and agent planes own these tables',
+			async (path) => {
+				expect(await violations({ [path]: inboxRead })).toEqual([]);
+			}
+		);
+
+		it('says nothing about a file with no public function', async () => {
+			const internal = read('internalQuery', "\t\tawait ctx.db.query('conversationThreads');");
+			expect(await violations({ 'convex/maintenance/sweep.ts': internal })).toEqual([]);
+		});
+	});
 });

@@ -12,10 +12,10 @@
  * cleared rather than both of them re-deriving a set from the same bytes.
  */
 
-import { extractAttachments } from '@owlat/shared/mailMime';
+import { extractAttachmentsWithBounds, type ExtractedAttachment } from '@owlat/shared/mailMime';
 
 /** One attachment leaf as the MIME walker returns it. */
-export type InboundAttachmentPart = ReturnType<typeof extractAttachments>[number];
+export type InboundAttachmentPart = ExtractedAttachment;
 
 /**
  * Why a leaf of a received message was NOT cleared for indexing. Counted per
@@ -68,9 +68,29 @@ export const NOTHING_UNCLEARED: UnclearedLeaves = { capped: 0, unscanned: 0, ref
  * verdict worth a round-trip.
  */
 export function inboundAttachmentCandidates(rawBinary: string): InboundAttachmentPart[] {
-	const leaves = extractAttachments(rawBinary).filter((part) => part.bytes.byteLength > 0);
-	return [
-		...leaves.filter((part) => part.disposition !== 'inline'),
-		...leaves.filter((part) => part.disposition === 'inline'),
-	];
+	return inboundAttachmentWalk(rawBinary).candidates;
+}
+
+/**
+ * {@link inboundAttachmentCandidates}, plus whether the MIME walker's depth or
+ * part bound left content of this message unwalked.
+ *
+ * `truncated` is what keeps the candidate list from being read as complete.
+ * Leaves past the bound are absent from `candidates`, yet the raw message is
+ * still served whole to mail clients, which render them. A scan that covered
+ * every candidate has therefore not covered the message.
+ */
+export function inboundAttachmentWalk(rawBinary: string): {
+	candidates: InboundAttachmentPart[];
+	truncated: boolean;
+} {
+	const { attachments, truncated } = extractAttachmentsWithBounds(rawBinary);
+	const leaves = attachments.filter((part) => part.bytes.byteLength > 0);
+	return {
+		candidates: [
+			...leaves.filter((part) => part.disposition !== 'inline'),
+			...leaves.filter((part) => part.disposition === 'inline'),
+		],
+		truncated,
+	};
 }

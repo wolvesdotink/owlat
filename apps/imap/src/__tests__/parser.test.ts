@@ -59,15 +59,14 @@ describe('parseLine — quoted strings', () => {
 	});
 
 	it('handles backslash escapes within quoted strings', () => {
-		expect(
-			parseLine('a001 LOGIN "name with \\"quotes\\"" "pw"')?.args,
-		).toEqual(['name with "quotes"', 'pw']);
+		expect(parseLine('a001 LOGIN "name with \\"quotes\\"" "pw"')?.args).toEqual([
+			'name with "quotes"',
+			'pw',
+		]);
 	});
 
 	it('preserves embedded spaces in quoted folder names', () => {
-		expect(
-			parseLine('a001 SELECT "[Gmail]/All Mail"')?.args,
-		).toEqual(['[Gmail]/All Mail']);
+		expect(parseLine('a001 SELECT "[Gmail]/All Mail"')?.args).toEqual(['[Gmail]/All Mail']);
 	});
 });
 
@@ -80,10 +79,7 @@ describe('parseLine — parenthesized lists', () => {
 
 	it('handles nested parens in BODYSTRUCTURE-style requests', () => {
 		const result = parseLine('a001 FETCH 1 (BODY[HEADER.FIELDS (DATE FROM)])');
-		expect(result?.args).toEqual([
-			'1',
-			'(BODY[HEADER.FIELDS (DATE FROM)])',
-		]);
+		expect(result?.args).toEqual(['1', '(BODY[HEADER.FIELDS (DATE FROM)])']);
 	});
 
 	it('separates multiple paren args at top-level whitespace', () => {
@@ -112,19 +108,11 @@ describe('unwrapParens', () => {
 
 describe('parseList', () => {
 	it('splits a paren list on whitespace', () => {
-		expect(parseList('(FLAGS UID INTERNALDATE)')).toEqual([
-			'FLAGS',
-			'UID',
-			'INTERNALDATE',
-		]);
+		expect(parseList('(FLAGS UID INTERNALDATE)')).toEqual(['FLAGS', 'UID', 'INTERNALDATE']);
 	});
 
 	it('handles tabs and multiple spaces', () => {
-		expect(parseList('(FLAGS\tUID  INTERNALDATE)')).toEqual([
-			'FLAGS',
-			'UID',
-			'INTERNALDATE',
-		]);
+		expect(parseList('(FLAGS\tUID  INTERNALDATE)')).toEqual(['FLAGS', 'UID', 'INTERNALDATE']);
 	});
 
 	it('returns an empty list for empty parens', () => {
@@ -163,10 +151,7 @@ describe('matchTrailingLiteral', () => {
 describe('parseCommandWithLiterals', () => {
 	it('splices LOGIN literal values back as tokens', () => {
 		// `a LOGIN {4}` user `{8}` password → segments stripped of the {N} token.
-		const parsed = parseCommandWithLiterals(
-			['a LOGIN ', ' ', ''],
-			['user', 'password'],
-		);
+		const parsed = parseCommandWithLiterals(['a LOGIN ', ' ', ''], ['user', 'password']);
 		expect(parsed).toEqual({
 			tag: 'a',
 			command: 'LOGIN',
@@ -175,10 +160,7 @@ describe('parseCommandWithLiterals', () => {
 	});
 
 	it('uppercases the command and preserves literal contents verbatim', () => {
-		const parsed = parseCommandWithLiterals(
-			['a login ', ''],
-			['p a s s'],
-		);
+		const parsed = parseCommandWithLiterals(['a login ', ''], ['p a s s']);
 		expect(parsed?.command).toBe('LOGIN');
 		// A literal stands as ONE opaque token even with embedded spaces.
 		expect(parsed?.args).toEqual(['p a s s']);
@@ -223,5 +205,21 @@ describe('parseUidSet', () => {
 
 	it('normalizes reversed ranges (high:low → [low, high])', () => {
 		expect(parseUidSet('10:5', 100)).toEqual([[5, 10]]);
+	});
+
+	it('accepts the largest RFC 3501 nz-number', () => {
+		expect(parseUidSet('4294967295', 100)).toEqual([[4294967295, 4294967295]]);
+	});
+
+	it('drops parts with numbers above 4294967295', () => {
+		expect(parseUidSet('1:4294967296', 100)).toEqual([]);
+		expect(parseUidSet('3,99999999999999999999,7', 100)).toEqual([
+			[3, 3],
+			[7, 7],
+		]);
+	});
+
+	it('drops parts that are not plain digits', () => {
+		expect(parseUidSet('5x,1e9,+4,-2,8', 100)).toEqual([[8, 8]]);
 	});
 });

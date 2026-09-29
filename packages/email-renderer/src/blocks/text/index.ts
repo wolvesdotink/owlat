@@ -13,6 +13,10 @@ import { transformHtmlLinks } from '../../helpers/linkTransform';
 import { stripHtml, extractLinks, underlineHeading } from '../../helpers/text';
 import { escapeAttr, escapeCss, sanitizeRawHtml } from '../../sanitize';
 import { checkShape, isString, isNumber, isOneOf } from '../../helpers/validation';
+import { px } from '../../helpers/padding';
+
+const DEFAULT_FONT_SIZE = 16;
+const DEFAULT_LINE_HEIGHT = 1.5;
 
 const TEXT_BLOCK_TYPES = ['paragraph', 'h1', 'h2', 'h3'] as const;
 const VAGUE_LINK_PATTERNS = [
@@ -39,9 +43,9 @@ const baseStyles = (
 	includeMsoRule: boolean,
 	alignAllValues: boolean
 ): string[] => {
-	const lineHeight = content.lineHeight ?? 1.5;
+	const lineHeight = px(content.lineHeight, DEFAULT_LINE_HEIGHT);
 	const styles: string[] = [
-		`font-size:${content.fontSize}px`,
+		`font-size:${px(content.fontSize, DEFAULT_FONT_SIZE)}px`,
 		`color:${escapeCss(content.textColor)}`,
 		`line-height:${lineHeight}`,
 	];
@@ -51,15 +55,17 @@ const baseStyles = (
 	if (
 		alignAllValues ? !!content.textAlign : !!(content.textAlign && content.textAlign !== 'left')
 	) {
-		styles.push(`text-align:${content.textAlign}`);
+		styles.push(`text-align:${escapeCss(content.textAlign)}`);
 	}
 	if (content.fontFamily) styles.push(`font-family:${escapeCss(content.fontFamily)}`);
-	if (content.fontWeight) styles.push(`font-weight:${content.fontWeight}`);
-	if (content.letterSpacing) styles.push(`letter-spacing:${content.letterSpacing}px`);
+	const fontWeight = px(content.fontWeight, 0);
+	if (fontWeight) styles.push(`font-weight:${fontWeight}`);
+	const letterSpacing = px(content.letterSpacing, 0);
+	if (letterSpacing) styles.push(`letter-spacing:${letterSpacing}px`);
 	if (content.textTransform && content.textTransform !== 'none')
-		styles.push(`text-transform:${content.textTransform}`);
+		styles.push(`text-transform:${escapeCss(content.textTransform)}`);
 	if (content.textDecoration && content.textDecoration !== 'none')
-		styles.push(`text-decoration:${content.textDecoration}`);
+		styles.push(`text-decoration:${escapeCss(content.textDecoration)}`);
 	return styles;
 };
 
@@ -111,8 +117,11 @@ export const textModule: BlockModule<'text'> = {
 	},
 
 	responsiveCss({ block, content }) {
-		if (!content.mobileFontSize) return [];
-		return [`[data-block-id="${block.id}"] div{font-size:${content.mobileFontSize}px!important}`];
+		const mobileFontSize = px(content.mobileFontSize, 0);
+		if (!mobileFontSize) return [];
+		return [
+			`[data-block-id="${escapeCss(block.id)}"] div{font-size:${mobileFontSize}px!important}`,
+		];
 	},
 
 	html({ block, content, ctx, placement }) {
@@ -138,8 +147,11 @@ export const textModule: BlockModule<'text'> = {
 	},
 
 	amp({ content }) {
-		const tag = content.blockType === 'paragraph' ? 'p' : content.blockType;
-		const style = `font-size:${content.fontSize}px;color:${escapeAttr(content.textColor)};line-height:${content.lineHeight ?? 1.5}`;
+		const tag =
+			content.blockType === 'h1' || content.blockType === 'h2' || content.blockType === 'h3'
+				? content.blockType
+				: 'p';
+		const style = `font-size:${px(content.fontSize, DEFAULT_FONT_SIZE)}px;color:${escapeAttr(content.textColor)};line-height:${px(content.lineHeight, DEFAULT_LINE_HEIGHT)}`;
 		return `<${tag} style="${style}">${sanitizeRawHtml(content.html || '')}</${tag}>`;
 	},
 

@@ -19,6 +19,7 @@ import { gradientToCssOrEmpty } from '../../helpers/gradient';
 import { msoVmlBackground, msoVmlBackgroundClose } from '../../outlook';
 import { escapeCss, escapeCssUrl } from '../../sanitize';
 import { backgroundImageCss } from '../../helpers/inline-styles';
+import { px } from '../../helpers/padding';
 import {
 	checkShape,
 	checkGradientStopLimit,
@@ -36,7 +37,7 @@ const renderRoot = (
 	ctx: { baseWidth: number },
 	walk: (child: EditorBlock, w: number, p: 'container') => string
 ): string => {
-	const maxWidthPercent = content.maxWidth ?? 100;
+	const maxWidthPercent = px(content.maxWidth, 100);
 	const effectiveWidth = toPixelWidth(maxWidthPercent, ctx.baseWidth);
 	return content.items
 		.map((item) => walk(itemToBlock(item), effectiveWidth, 'container'))
@@ -49,19 +50,19 @@ const renderNested = (
 	baseWidth: number,
 	walk: (child: EditorBlock, w: number, p: 'container') => string
 ): string => {
-	const paddingTop = content.paddingTop ?? DEFAULT_BLOCK_PADDING.paddingTop;
-	const paddingRight = content.paddingRight ?? DEFAULT_BLOCK_PADDING.paddingRight;
-	const paddingBottom = content.paddingBottom ?? DEFAULT_BLOCK_PADDING.paddingBottom;
-	const paddingLeft = content.paddingLeft ?? DEFAULT_BLOCK_PADDING.paddingLeft;
-	const marginTop = content.marginTop ?? 0;
-	const marginBottom = content.marginBottom ?? 0;
+	const paddingTop = px(content.paddingTop, DEFAULT_BLOCK_PADDING.paddingTop);
+	const paddingRight = px(content.paddingRight, DEFAULT_BLOCK_PADDING.paddingRight);
+	const paddingBottom = px(content.paddingBottom, DEFAULT_BLOCK_PADDING.paddingBottom);
+	const paddingLeft = px(content.paddingLeft, DEFAULT_BLOCK_PADDING.paddingLeft);
+	const marginTop = px(content.marginTop, 0);
+	const marginBottom = px(content.marginBottom, 0);
 
-	const borderWidth = content.borderWidth ?? 0;
-	const borderStyle = content.borderStyle ?? 'none';
+	const borderWidth = px(content.borderWidth, 0);
+	const borderStyle = escapeCss(content.borderStyle ?? 'none');
 	const borderColor = content.borderColor ?? '#000000';
-	const borderRadius = content.borderRadius ?? 0;
+	const borderRadius = px(content.borderRadius, 0);
 	const bgColor = content.backgroundColor || 'transparent';
-	const maxWidthPercent = content.maxWidth ?? 100;
+	const maxWidthPercent = px(content.maxWidth, 100);
 
 	const pixelWidth = toPixelWidth(maxWidthPercent, baseWidth);
 
@@ -156,10 +157,10 @@ export const containerModule: BlockModule<'container'> = {
 				items: content.items,
 				background: content.backgroundColor,
 				padding: {
-					top: content.paddingTop ?? DEFAULT_BLOCK_PADDING.paddingTop,
-					right: content.paddingRight ?? DEFAULT_BLOCK_PADDING.paddingRight,
-					bottom: content.paddingBottom ?? DEFAULT_BLOCK_PADDING.paddingBottom,
-					left: content.paddingLeft ?? DEFAULT_BLOCK_PADDING.paddingLeft,
+					top: px(content.paddingTop, DEFAULT_BLOCK_PADDING.paddingTop),
+					right: px(content.paddingRight, DEFAULT_BLOCK_PADDING.paddingRight),
+					bottom: px(content.paddingBottom, DEFAULT_BLOCK_PADDING.paddingBottom),
+					left: px(content.paddingLeft, DEFAULT_BLOCK_PADDING.paddingLeft),
 				},
 			},
 			walk
