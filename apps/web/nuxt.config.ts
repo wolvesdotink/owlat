@@ -1,7 +1,8 @@
 import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import type { PluginOption } from 'vite';
-import { I18N_LOCALES } from './i18n/localeOptions';
+import { I18N_MODULES } from './i18n/catalogModule';
+import { i18nBuildLocales } from './i18n/completeCatalogs';
 import { NUXT_LINK_DEFAULTS, publicAssetCompression } from './scripts/deliveryTuning';
 import { uiLayerIconNames } from './scripts/uiLayerIcons';
 
@@ -57,7 +58,7 @@ export default defineNuxtConfig({
 		},
 	},
 
-	modules: ['nuxt-security', '@nuxtjs/color-mode', '@nuxt/fonts', '@nuxt/icon', '@nuxtjs/i18n'],
+	modules: ['nuxt-security', '@nuxtjs/color-mode', '@nuxt/fonts', '@nuxt/icon', ...I18N_MODULES],
 
 	i18n: {
 		defaultLocale: 'en',
@@ -67,10 +68,11 @@ export default defineNuxtConfig({
 		// and would have to be mirrored in every `routeRules` redirect above.
 		strategy: 'no_prefix',
 		// Message files live in i18n/locales/ (the module's `restructureDir`) and are
-		// loaded on demand — the default locale's bundle is the only one a visitor
-		// ever downloads.
+		// loaded on demand, one catalog per visitor: a build registers each locale's
+		// boot catalog (translations completed from `en`, i18n/completeCatalogs.ts),
+		// and each route area's messages load with the area (i18n/catalogAreas.ts).
 		// Built from `@owlat/shared/appLocales` (see i18n/localeOptions.ts).
-		locales: I18N_LOCALES,
+		locales: i18nBuildLocales(),
 		// The whole UI is extracted, so a first-time visitor can safely be served
 		// the locale their browser asks for. The cookie is what makes the choice
 		// stick: with `no_prefix` the URL carries no locale, so without it every

@@ -2,15 +2,17 @@
  * Vue I18n runtime options, picked up automatically by @nuxtjs/i18n
  * (`i18n/i18n.config.ts`).
  *
- * `fallbackLocale: 'en'` is what makes a partially translated locale safe: a key
- * that a translation file has not caught up with renders its English text
- * instead of the raw key path.
+ * A key that a translation file has not caught up with renders its English text
+ * instead of the raw key path. On the dev server that is `fallbackLocale: 'en'`;
+ * a build fills the gaps into the catalog itself (./completeCatalogs.ts), so the
+ * runtime fallback is off there and a German visitor loads one catalog instead
+ * of `en` and then `de`.
  */
 import { datetimeFormats, numberFormats } from './formats';
 
 export default defineI18nConfig(() => ({
 	legacy: false,
-	fallbackLocale: 'en',
+	fallbackLocale: import.meta.dev ? 'en' : false,
 	// Named date/number styles, so `$d(value, 'medium')` and `$n(value,
 	// 'compact')` render the ACTIVE locale's version of a format this product
 	// defined once — rather than a bare `Intl` call carrying a hard-coded
