@@ -40,8 +40,9 @@ const NOT_A_REPLY_ROLES: ReadonlySet<string> = new Set(['spam', 'trash', 'sent',
  *
  *   - Reply Queue + smart-inbox category enqueues: inbox mail that stayed in
  *     the inbox, never from a backfill (importing years of history must not
- *     fan out background LLM work). The anti-loop headers ride along because
- *     they are not persisted on the row.
+ *     fan out background LLM work). The category heuristic runs right here in
+ *     the insert; only ambiguous mail reaches the LLM. The anti-loop headers
+ *     ride along because they are not persisted on the row.
  *   - Follow-up and snooze-until-reply clears: the awaited reply arrived. Only
  *     for mail from someone other than the mailbox owner, outside Spam, Trash,
  *     Sent and Drafts, and never from a backfill (an old message is not a new

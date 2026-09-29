@@ -95,17 +95,20 @@ function makeUrlReputationCache(ctx: ActionCtx): UrlReputationCache {
 	};
 }
 
-// Internal action invoked by the daily scheduler tick to start sending any
-// due scheduled campaigns. Delegates to the orchestrator for each due
+// Internal action invoked by the per-minute scheduler tick to start sending
+// any due scheduled campaigns. Delegates to the orchestrator for each due
 // campaign — the `scheduled → sending` transition is owned by the
-// **Campaign send orchestrator (module)** via the lifecycle.
+// **Campaign send orchestrator (module)** via the lifecycle. Each start is its
+// own scheduled action, so due campaigns start side by side, a slow content
+// scan does not hold up the next campaign, and one start that throws does not
+// stop the rest.
 export const processScheduledCampaigns = internalAction({
 	args: {},
 	handler: async (ctx): Promise<{ processedCount: number }> => {
 		const campaigns = await ctx.runQuery(internal.campaigns.sendQueries.getDueScheduledCampaigns);
 
 		for (const campaign of campaigns) {
-			await ctx.runAction(internal.campaigns.send.startCampaignSend, {
+			await ctx.scheduler.runAfter(0, internal.campaigns.send.startCampaignSend, {
 				campaignId: campaign._id,
 			});
 		}
