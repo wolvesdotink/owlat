@@ -13,6 +13,7 @@ import {
 	type InboxFilter,
 	type InboxSort,
 } from '~/utils/inboxFilters';
+import { rememberTeamThreadPreviews } from '~/utils/teamThreadPreviews';
 
 const SORT_STORAGE_KEY = 'inbox-thread-sort';
 
@@ -118,6 +119,8 @@ export function useInbox(gate?: Ref<boolean>) {
 		threadsData,
 		(data) => {
 			if (!data) return;
+			// Lets the thread page head its loading state with this row.
+			rememberTeamThreadPreviews(data.threads);
 			if (!threadCursor.value) {
 				accumulatedThreads.value = [...data.threads];
 			} else {

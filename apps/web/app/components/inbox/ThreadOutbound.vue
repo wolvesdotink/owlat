@@ -6,7 +6,9 @@
  * was rather than only the customer's half of it.
  *
  * A follow-up still inside its undo window counts down with an Undo button,
- * like the auto-send bar on an approved reply.
+ * using the auto-send bar an approved reply shows. The bar owns the clock and
+ * mounts only while the follow-up is scheduled, so nothing ticks for a sent
+ * message and the thread page never re-renders for the countdown.
  */
 import { formatRelativeTime } from '~/utils/formatters';
 
@@ -20,12 +22,12 @@ const props = withDefaults(
 		/** When it was sent, or written if it has not left yet. */
 		at: number;
 		status: OutboundStatus;
-		/** Seconds left in the undo window (`scheduled` only). */
-		secondsLeft?: number;
+		/** Epoch ms the follow-up leaves (`scheduled` only); drives the Undo countdown. */
+		sendAt?: number;
 		errorMessage?: string | null;
 		undoing?: boolean;
 	}>(),
-	{ secondsLeft: 0, errorMessage: null, undoing: false }
+	{ errorMessage: null, undoing: false }
 );
 
 const emit = defineEmits<{ (e: 'undo'): void }>();
@@ -38,8 +40,6 @@ const STATUS_KEYS: Record<OutboundStatus, string> = {
 	sent: 'dashboard.inbox.detail.outbound.sent',
 	failed: 'dashboard.inbox.detail.outbound.failed',
 };
-
-const canUndo = computed(() => props.status === 'scheduled' && props.secondsLeft > 0);
 
 const absoluteTime = computed(() =>
 	new Date(props.at).toLocaleString(locale.value, { dateStyle: 'medium', timeStyle: 'short' })
@@ -75,19 +75,14 @@ const absoluteTime = computed(() =>
 
 		<div class="text-text-secondary text-sm whitespace-pre-wrap">{{ body }}</div>
 
-		<div
-			v-if="canUndo"
-			class="mt-4 flex items-center justify-between gap-3 rounded-lg border border-brand/20 bg-brand-subtle/30 p-3"
+		<InboxAutoSendCountdown
+			v-if="status === 'scheduled' && sendAt !== undefined"
+			:send-at="sendAt"
+			:busy="undoing"
+			label-key="dashboard.inbox.detail.outbound.sendsIn"
 			data-testid="thread-outbound-undo"
-		>
-			<div class="flex items-center gap-2 text-sm text-text-primary">
-				<Icon name="lucide:send" class="h-4 w-4 text-brand" />
-				{{ t('dashboard.inbox.detail.outbound.sendsIn', { seconds: secondsLeft }) }}
-			</div>
-			<UiButton variant="secondary" size="sm" :loading="undoing" @click="emit('undo')">
-				{{ t('dashboard.inbox.detail.undo') }}
-			</UiButton>
-		</div>
+			@cancel="emit('undo')"
+		/>
 
 		<p v-if="status === 'failed'" class="mt-3 text-xs text-error break-words">
 			{{ errorMessage || t('dashboard.inbox.detail.outbound.failedFallback') }}
