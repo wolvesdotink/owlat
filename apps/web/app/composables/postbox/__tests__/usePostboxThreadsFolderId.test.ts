@@ -1,9 +1,11 @@
 /**
  * usePostboxThreads and usePostboxThreadSections address a system folder by id
- * once `listFolders` has it. By role, the server reads the folder document,
+ * when `listFolders` has it. By role, the server reads the folder document,
  * which every delivery and flag change patches, so the list's first page would
- * re-run on any mark-read in the folder. Until the folder list loads, and for
- * the virtual Snoozed view, the role is still sent.
+ * re-run on any mark-read in the folder. The choice is made once per folder
+ * visit: a visit that starts before the folder list has loaded reads by role
+ * until the next folder switch, rather than subscribing page 1 twice. The
+ * virtual Snoozed view always sends the role.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { computed, ref, type Ref } from 'vue';
@@ -76,15 +78,25 @@ describe('usePostboxThreads folder id', () => {
 		expect(feed.args()).toEqual({ mailboxId: MAILBOX, folderRole: 'inbox', limit: 50 });
 	});
 
-	it('sends the folder id instead of the role once the folder list has it', () => {
-		mount();
+	it('sends the folder id from the first read when the folder list is already loaded', () => {
 		loadFolders();
+		mount();
 		expect(feed.args()).toEqual({ mailboxId: MAILBOX, folderId: INBOX, limit: 50 });
+	});
+
+	it('keeps a cold visit on the role when the folder list lands after it', () => {
+		mount();
+		const before = feed.resetKey.value;
+		loadFolders();
+		expect(feed.args()).toEqual({ mailboxId: MAILBOX, folderRole: 'inbox', limit: 50 });
+		// No re-subscription and no dropped tail for the same folder.
+		expect(feed.resetKey.value).toBe(before);
 	});
 
 	it('follows a folder switch to the new folder id', () => {
 		const { folderRole } = mount();
 		loadFolders();
+		expect(feed.args()).toMatchObject({ folderRole: 'inbox' });
 		const before = feed.resetKey.value;
 		folderRole.value = 'archive';
 		expect(feed.args()).toMatchObject({ folderId: ARCHIVE });
@@ -112,11 +124,17 @@ describe('usePostboxThreadSections folder id', () => {
 		return { folderArgs: queryArgs[0]!, sectionArgs: queryArgs[1]! };
 	}
 
-	it('reads by role until the folder list has the inbox, then by id', () => {
+	it('reads by id when the folder list already has the inbox', () => {
+		loadFolders();
+		const { sectionArgs } = mount();
+		expect(sectionArgs()).toMatchObject({ mailboxId: MAILBOX, folderId: INBOX });
+	});
+
+	it('stays on the role when the folder list lands after the sections opened', () => {
 		const { sectionArgs } = mount();
 		expect(sectionArgs()).not.toHaveProperty('folderId');
 		loadFolders();
-		expect(sectionArgs()).toMatchObject({ mailboxId: MAILBOX, folderId: INBOX });
+		expect(sectionArgs()).not.toHaveProperty('folderId');
 	});
 
 	it('does not subscribe to the folder list while sections are off', () => {
