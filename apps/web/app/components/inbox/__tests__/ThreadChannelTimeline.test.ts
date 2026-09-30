@@ -145,6 +145,16 @@ describe('ThreadChannelTimeline per-message reply', () => {
 		expect(replyButtons(wrapper)).toHaveLength(1);
 	});
 
+	it('says a large email mirrored as its excerpt is shortened (#900)', () => {
+		timelineRows.value = [
+			message({ channel: 'email', content: { text: 'The opening', isBodyTruncated: true } }),
+			message({ _id: 'msg_2', channel: 'email', content: { text: 'A whole short email' } }),
+		];
+		const wrapper = mount(ThreadChannelTimeline, mountOpts);
+		const note = 'Shortened: the full message is shown above.';
+		expect(wrapper.text().split(note)).toHaveLength(2);
+	});
+
 	it('renders nothing on a thread no other channel has spoken on', () => {
 		timelineRows.value = [];
 		const wrapper = mount(ThreadChannelTimeline, mountOpts);

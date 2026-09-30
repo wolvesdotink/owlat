@@ -38,6 +38,7 @@ import { betterAuthAdapterArgs } from '../lib/betterAuthAdapterArgs';
 import { deleteMessageRowAndBlobs } from '../mail/messagePurge';
 import { partBlobIds } from '../mail/messageParts';
 import { deleteBlobQuietly } from '../lib/storageBlobs';
+import { inboundBodyBlobIds } from '../lib/messageBodyInbound';
 import type { Doc, Id, TableNames } from '../_generated/dataModel';
 
 interface ResetCounts {
@@ -211,8 +212,11 @@ function ownedBlobs(table: (typeof TENANT_TABLES)[number], row: Doc<TableNames>)
 		case 'mediaAssets':
 			return [(row as Doc<'mediaAssets'>).storageId];
 		case 'inboundMessages': {
-			const raw = (row as Doc<'inboundMessages'>).rawStorageId;
-			return raw ? [raw] : [];
+			const message = row as Doc<'inboundMessages'>;
+			return [
+				...(message.rawStorageId ? [message.rawStorageId] : []),
+				...inboundBodyBlobIds(message),
+			];
 		}
 		case 'semanticFiles': {
 			const stored = (row as Doc<'semanticFiles'>).storageId;

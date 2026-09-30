@@ -120,6 +120,87 @@ describe('dlq', () => {
 		expect((await getEntry(redis, hard))?.event).toMatchObject({ bounceType: 'hard' });
 	});
 
+	describe('protected outbox payload identity', () => {
+		// The row is persisted with JSON.stringify, which drops undefined members,
+		// so a replay that rebuilds the event with an explicit undefined optional
+		// field is the same callback as the one Redis already holds.
+		it('treats an explicitly undefined optional field as its absence', async () => {
+			const explicit: MtaWebhookEvent = {
+				event: 'sent',
+				messageId: 'msg-undefined-field',
+				timestamp: 1_700_000_000_000,
+				remoteMessageId: undefined,
+			};
+			const { remoteMessageId: _dropped, ...absent } = explicit;
+			const key = 'dispatch:msg-undefined-field:sent';
+
+			const first = await storePending(redis, explicit, config, key);
+			expect(await storePending(redis, explicit, config, key)).toBe(first);
+			expect(await storePending(redis, absent, config, key)).toBe(first);
+			expect(await redis.scard(WEBHOOK_DLQ_PROTECTED_KEY)).toBe(1);
+			expect(await redis.zcard(WEBHOOK_DLQ_CREATED_KEY)).toBe(1);
+			expect((await getEntry(redis, first))?.event).toEqual(absent);
+		});
+
+		it('ignores key order and undefined members inside nested payloads', async () => {
+			const reentry = (routingReentry: object): MtaWebhookEvent => ({
+				event: 'routing.reentry',
+				messageId: 'msg-nested',
+				workAttemptId: 'work-attempt-1',
+				routingReentryToken: 'rr2.token',
+				routingReentryReason: 'routing_lease_stale',
+				routingReentry,
+				timestamp: 1_700_000_000_000,
+			});
+			const key = 'dispatch:msg-nested:routing.reentry';
+			const first = await storePending(
+				redis,
+				reentry({
+					retryState: { startedAt: 1, idempotencyKey: 'msg-nested', attempt: 1 },
+					envelopeInput: { tags: ['a'], kind: 'transactional' },
+				}),
+				config,
+				key
+			);
+			const replayed = await storePending(
+				redis,
+				reentry({
+					envelopeInput: { kind: 'transactional', replyTo: undefined, tags: ['a'] },
+					retryState: { attempt: 1, idempotencyKey: 'msg-nested', startedAt: 1 },
+				}),
+				config,
+				key
+			);
+			expect(replayed).toBe(first);
+			expect(await redis.scard(WEBHOOK_DLQ_PROTECTED_KEY)).toBe(1);
+		});
+
+		it('still rejects a real difference, including null against absence', async () => {
+			const reentry = (envelopeInput: object): MtaWebhookEvent => ({
+				event: 'routing.reentry',
+				messageId: 'msg-null',
+				workAttemptId: 'work-attempt-1',
+				routingReentryToken: 'rr2.token',
+				routingReentryReason: 'routing_lease_stale',
+				routingReentry: { envelopeInput, retryState: { attempt: 1 } },
+				timestamp: 1_700_000_000_000,
+			});
+			const key = 'dispatch:msg-null:routing.reentry';
+			const id = await storePending(redis, reentry({ kind: 'transactional' }), config, key);
+
+			await expect(
+				storePending(redis, reentry({ kind: 'transactional', replyTo: null }), config, key)
+			).rejects.toThrow('payload does not match');
+			await expect(storePending(redis, reentry({ kind: 'campaign' }), config, key)).rejects.toThrow(
+				'payload does not match'
+			);
+			expect((await getEntry(redis, id))?.event).toMatchObject({
+				routingReentry: { envelopeInput: { kind: 'transactional' } },
+			});
+			expect(await redis.scard(WEBHOOK_DLQ_PROTECTED_KEY)).toBe(1);
+		});
+	});
+
 	describe('getEntry', () => {
 		it('retrieves entry by dlqId', async () => {
 			const failure = classifyWebhookHttpFailure(503);

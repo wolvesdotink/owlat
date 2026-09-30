@@ -2837,7 +2837,8 @@ verdict on an attachment.
 
 `pending_send` and `scheduled` differ only in _when_ the dispatch
 runs: `pending_send` schedules the dispatch action at
-`now + undoSendDelayMs` (default 30s), `scheduled` schedules it at the
+`now + undoSendDelayMs` (default 10s, `DEFAULT_UNDO_SEND_SECONDS` in
+`@owlat/shared/undoSendPolicy`), `scheduled` schedules it at the
 user-chosen `scheduledSendAt`. Both carry an `undoToken` so the
 cancel-by-token path can lock onto the right row without trusting the
 client's draftId. Both clear `scheduledSendAt` and `undoToken` on

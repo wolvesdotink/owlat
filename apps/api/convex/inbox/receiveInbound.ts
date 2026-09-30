@@ -24,6 +24,10 @@ import { virusVerdictValidator, type VirusVerdict } from '../lib/literalValidato
 import { extractArmoredCiphertext } from '@owlat/shared/secureMessage';
 import { clearsignedSignatureMirror } from '../webhooks/inboundSignatureMirror';
 import type { InboundEmailMessage } from '../webhooks/adapters/inboundRegistry';
+import { storeSealedBlob } from '../lib/sealedBlob';
+import { utf8Bytes } from '../lib/bytes';
+import { deleteBlobQuietly } from '../lib/storageBlobs';
+import { planInboundBodyStorage, type StoredBodyIds } from './bodyStorage';
 
 /**
  * What the raw-carrying route knows and the legacy route does not.
@@ -177,10 +181,72 @@ export async function receiveInboundMail(
 		});
 	}
 
-	return await ctx.runMutation(internal.inbox.messages.receiveMessage, {
+	const receiveArgs = {
 		...persisted,
 		// AI-inbox mirror of the clearsigned-body signature verdict —
 		// see webhooks/inboundSignatureMirror.ts. Best-effort, never blocks.
 		...((await clearsignedSignatureMirror(ctx, input.textBody, input.from)) ?? {}),
-	});
+	};
+	return await receiveStoringLargeBodies(ctx, receiveArgs, (args) =>
+		ctx.runMutation(internal.inbox.messages.receiveMessage, args)
+	);
+}
+
+/**
+ * Call `receiveMessage` with the parts too large to inline already in storage.
+ *
+ * Both writers of a row go through here — this module's plaintext path and
+ * `e2ee/open.decryptAndReceive` after it has decrypted — because a blob can
+ * only be written from an action, and the plan has to be made on the plaintext
+ * the row will hold. `receive` is the mutation call, passed in so the two
+ * writers keep their own argument types.
+ *
+ * NO ORPHANS. A staged blob is referenced by a row or deleted: when a second
+ * store throws after the first succeeded, when the mutation throws (the error is
+ * re-raised so the MTA retries into a clean slate), and when the mutation finds
+ * the delivery already stored — a redelivery keeps the first attempt's blobs
+ * and drops its own. Only a crash of this action between the store and the
+ * mutation can strand one, the same window the raw `.eml` has.
+ */
+export async function receiveStoringLargeBodies<
+	Args extends { messageId: string; textBody?: string; htmlBody?: string },
+>(
+	ctx: Pick<ActionCtx, 'storage'>,
+	input: Args,
+	receive: (args: Args & StoredBodyIds) => Promise<InboundReceiveResult>
+): Promise<InboundReceiveResult> {
+	const plan = planInboundBodyStorage(input);
+	const staged: StoredBodyIds = {};
+	const drop = async () => {
+		for (const storageId of [staged.textBodyStorageId, staged.htmlBodyStorageId]) {
+			if (storageId) {
+				await deleteBlobQuietly(ctx.storage, storageId, '[Inbound] staged body', {
+					messageId: input.messageId,
+				});
+			}
+		}
+	};
+	let result: InboundReceiveResult;
+	try {
+		if (plan.isTextStored && input.textBody !== undefined) {
+			staged.textBodyStorageId = await storeSealedBlob(
+				ctx.storage,
+				utf8Bytes(input.textBody),
+				'text/plain; charset=utf-8'
+			);
+		}
+		if (plan.isHtmlStored && input.htmlBody !== undefined) {
+			staged.htmlBodyStorageId = await storeSealedBlob(
+				ctx.storage,
+				utf8Bytes(input.htmlBody),
+				'text/html; charset=utf-8'
+			);
+		}
+		result = await receive({ ...input, ...staged });
+	} catch (err) {
+		await drop();
+		throw err;
+	}
+	if (result.isDuplicate) await drop();
+	return result;
 }

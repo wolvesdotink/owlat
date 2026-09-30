@@ -666,8 +666,20 @@ describe('dispatchInboundEvent — Postbox message-id routing (pb- prefix)', () 
 });
 
 describe('dispatchInboundEvent — inbound + channel ingestion', () => {
+	/** A ctx whose `receiveMessage` answers like the real one: a stored row. */
+	function makeInboundCtx() {
+		const made = makeCtx();
+		made.nextRunMutationReturns({
+			inboundMessageId: 'inbound-1',
+			isDuplicate: false,
+			threadId: 'thread-1',
+			contactId: 'contact-1',
+		});
+		return made;
+	}
+
 	it('routes inbound.received to inbox.messages.receiveMessage with serialized headers', async () => {
-		const { ctx, runMutationCalls } = makeCtx();
+		const { ctx, runMutationCalls } = makeInboundCtx();
 		const event: InboundEvent = {
 			kind: 'inbound.received',
 			mail: {
@@ -697,7 +709,7 @@ describe('dispatchInboundEvent — inbound + channel ingestion', () => {
 	});
 
 	it('serializes attachmentMeta only when attachments are present', async () => {
-		const { ctx, runMutationCalls } = makeCtx();
+		const { ctx, runMutationCalls } = makeInboundCtx();
 		const attachments = [{ filename: 'a.pdf', contentType: 'application/pdf' }];
 		const event = {
 			kind: 'inbound.received',
@@ -793,7 +805,7 @@ describe('dispatchInboundEvent — inbound + channel ingestion', () => {
 	}
 
 	it('verifies a clearsigned body via e2ee.verifyInboundSignature and mirrors the verdict', async () => {
-		const { ctx, runMutationCalls } = makeCtx();
+		const { ctx, runMutationCalls } = makeInboundCtx();
 		const runActionCalls: { ref: string; args: unknown }[] = [];
 		(ctx as { runAction: unknown }).runAction = vi.fn(async (r: unknown, args: unknown) => {
 			runActionCalls.push({ ref: ref(r), args });
@@ -818,7 +830,7 @@ describe('dispatchInboundEvent — inbound + channel ingestion', () => {
 	});
 
 	it('a verifier failure leaves the mirror fields ABSENT and still delivers (fail-soft)', async () => {
-		const { ctx, runMutationCalls } = makeCtx();
+		const { ctx, runMutationCalls } = makeInboundCtx();
 		(ctx as { runAction: unknown }).runAction = vi.fn(async () => {
 			throw new Error('verifier down');
 		});
@@ -833,7 +845,7 @@ describe('dispatchInboundEvent — inbound + channel ingestion', () => {
 	});
 
 	it('a plain (non-clearsigned) body never spawns the verify action', async () => {
-		const { ctx, runMutationCalls } = makeCtx();
+		const { ctx, runMutationCalls } = makeInboundCtx();
 		const runAction = vi.fn();
 		(ctx as { runAction: unknown }).runAction = runAction;
 

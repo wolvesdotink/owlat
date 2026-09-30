@@ -1332,11 +1332,19 @@
 					"addToTopicTitle": "Add these contacts to a topic",
 					"addedToTopic": "{count} contact added to {name} | {count} contacts added to {name}",
 					"addedToTopics": "{count} contact added to topic | {count} contacts added to topics",
+					"batchFailed": "Row {first} failed: {reason} | Rows {first}–{last} failed: {reason}",
 					"chooseTopic": "Choose a topic…",
 					"downloadErrors": "Download error rows",
 					"errorsTitle": "Errors (first {count})",
 					"failed": "Failed",
 					"imported": "Imported",
+					"incompleteTitle": "Import incomplete",
+					"notImportedRow": "Not imported (row {row}): {email} – {reason}",
+					"notImportedSummary": "{processed} of {total} rows processed. {count} row was not imported. | {processed} of {total} rows processed. {count} rows were not imported.",
+					"notSent": "Row {first} was not sent after the failure. | Rows {first}–{last} were not sent after the failure.",
+					"notSentRow": "Not sent (row {row}): {email}",
+					"retry": "Retry {count} row | Retry {count} rows",
+					"retryHint": "A retry sends only these rows. Rows that were already imported are not sent again.",
 					"skipped": "Skipped",
 					"title": "Import complete!",
 					"updated": "Updated",
@@ -1345,6 +1353,7 @@
 				},
 				"discard": {
 					"body": "Your file and column mapping will be lost.",
+					"incompleteBody": "{count} row was not imported. Closing now drops it and the retry; download the error rows first to keep it. | {count} rows were not imported. Closing now drops them and the retry; download the error rows first to keep them.",
 					"keepEditing": "Keep editing",
 					"title": "Discard this import?"
 				},
@@ -1652,7 +1661,9 @@
 				"emptyForChannel": "No {channel} messages",
 				"emptyHint": "Cross-channel messages will appear here as they are sent and received.",
 				"loading": "Loading timeline...",
+				"longMessage": "Shortened: this is the beginning of a long email.",
 				"messagePlaceholder": "Type a message to send on this channel…",
+				"openFullMessage": "Open the full message",
 				"sendTitle": "Send a message",
 				"statuses": {
 					"delivered": "delivered",
@@ -3317,6 +3328,7 @@
 				"returned": "· Returned"
 			},
 			"threadChannelTimeline": {
+				"longMessage": "Shortened: the full message is shown above.",
 				"reply": "Reply",
 				"replyOn": "Reply on {channel}",
 				"replyPlaceholder": "Reply on {channel}…",
@@ -8093,6 +8105,7 @@
 						"addedToTopic": "Added to \"{topic}\"",
 						"doiFailed": "Could not resend confirmation",
 						"doiSent": "Confirmation email sent",
+						"exportFailed": "Could not export the contact data",
 						"noteSaved": "Customer note saved",
 						"removedFromTopic": "Removed from \"{topic}\"",
 						"suppressionRemoved": "Suppression removed"
@@ -9151,6 +9164,7 @@
 				"assignedToAria": "Assigned to {name}",
 				"autoSendCancelledToast": "Automatic send cancelled and returned to review",
 				"backToInbox": "Back to team inbox",
+				"bodyExcerptNotice": "Showing the beginning of a long message.",
 				"breadcrumb": "Conversation",
 				"categories": {
 					"billing": "billing",
@@ -14659,6 +14673,7 @@
 				"importFailed": "Import failed",
 				"noValidContacts": "No valid contacts found in CSV",
 				"parseFailed": "CSV parsing error: {message}",
+				"propertiesFailed": "The mapped custom properties could not be registered, so no contacts were imported: {reason}",
 				"selectCsv": "Please select a CSV file",
 				"tooFewRows": "CSV file must have at least a header row and one data row"
 			},

@@ -134,6 +134,10 @@
 			"types": "./src/setupToken.ts",
 			"import": "./src/setupToken.ts"
 		},
+		"./canonicalJson": {
+			"types": "./src/canonicalJson.ts",
+			"import": "./src/canonicalJson.ts"
+		},
 		"./constantTimeEqual": {
 			"types": "./src/constantTimeEqual.ts",
 			"import": "./src/constantTimeEqual.ts"
@@ -241,6 +245,10 @@
 		"./attachmentShares": {
 			"types": "./src/attachmentShares.ts",
 			"import": "./src/attachmentShares.ts"
+		},
+		"./undoSendPolicy": {
+			"types": "./src/undoSendPolicy.ts",
+			"import": "./src/undoSendPolicy.ts"
 		},
 		"./bounceClassification": {
 			"types": "./src/bounceClassification.ts",

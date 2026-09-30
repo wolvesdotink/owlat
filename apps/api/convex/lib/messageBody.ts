@@ -10,7 +10,10 @@
  * that hook stays centralized instead of spreading across ~30 call sites.
  *
  * The three shapes:
- *   1. inboundMessages — inline `textBody` / `htmlBody` string fields.
+ *   1. inboundMessages — per part, an inline `textBody` / `htmlBody` string or
+ *                        a `*BodyStorageId` blob, plus a bounded excerpt when
+ *                        a blob holds the readable part. Read through the
+ *                        messageBodyInbound.ts sibling.
  *   2. mailMessages    — either an inline snippet (`textBodyInline` /
  *                        `htmlBodyInline`) or a storage blob
  *                        (`textBodyStorageId` / `htmlBodyStorageId`); large
@@ -129,9 +132,10 @@ export async function openConversationThreadPreview<T extends { lastPreview?: st
 // itself and is dropped from the patch, so re-running the migration is a no-op.
 
 /** Build the sealing patch for an `inboundMessages` row (only changed fields). */
-export async function sealInboundBodyPatch(
-	row: InboundMessageBodyFields
-): Promise<{ textBody?: string; htmlBody?: string }> {
+export async function sealInboundBodyPatch(row: {
+	textBody?: string | null;
+	htmlBody?: string | null;
+}): Promise<{ textBody?: string; htmlBody?: string }> {
 	const patch: { textBody?: string; htmlBody?: string } = {};
 	if (row.textBody !== undefined && row.textBody !== null) {
 		const next = await sealMessageBody(row.textBody);
@@ -235,74 +239,11 @@ export async function openMailDraftBody(draft: Doc<'mailDrafts'>): Promise<Doc<'
 	};
 }
 
-// ── Shape 1: inboundMessages inline bodies ───────────────────────────────────
-
-/** The inline body fields on an `inboundMessages` row (both optional). `null`
- * is tolerated so projections that carry the body as `string | null` (e.g. the
- * agent context builder) can pass through the same accessor. */
-export interface InboundMessageBodyFields {
-	textBody?: string | null;
-	htmlBody?: string | null;
-}
-
-/** Normalized body of an `inboundMessages` row. `null`/absent both collapse to
- * `undefined`; a present string is returned verbatim — this accessor never
- * fabricates or strips content. Destructure it so downstream narrowing works
- * (`const { text } = inboundMessageBody(row)`), rather than calling it inline
- * inside a conditional. */
-export interface InboundMessageBody {
-	text: string | undefined;
-	html: string | undefined;
-}
-
-/** Read the inline text/html body of an `inboundMessages` row. */
-export function inboundMessageBody(row: InboundMessageBodyFields): InboundMessageBody {
-	return { text: row.textBody ?? undefined, html: row.htmlBody ?? undefined };
-}
-
-/**
- * Read AND UNSEAL the inline text/html body of an `inboundMessages` row (E8b).
- * The async sibling of {@link inboundMessageBody} — use it wherever plaintext is
- * needed. A legacy-plaintext row round-trips unchanged.
- */
-export async function openInboundMessageBody(
-	row: InboundMessageBodyFields
-): Promise<InboundMessageBody> {
-	return {
-		text: await openMaybe(row.textBody ?? undefined),
-		html: await openMaybe(row.htmlBody ?? undefined),
-	};
-}
-
-/**
- * Open the inline bodies of a WHOLE `inboundMessages` row, for a read that
- * hands the row itself to a client — the team-inbox thread view, the review
- * queue, the quarantine and failed lists all render `message.textBody`
- * straight off the row they were given. Same rule as
- * {@link openMailMessageRow}: sealing is an at-rest property, so a row leaving
- * the access-checked read boundary carries plaintext.
- *
- * Only keys the row actually HAS are rewritten, so an absent body column never
- * starts travelling as a present `undefined`.
- */
-export async function openInboundMessageRow<T extends InboundMessageBodyFields>(
-	row: T
-): Promise<T> {
-	if (row.textBody == null && row.htmlBody == null) return row;
-	const { text, html } = await openInboundMessageBody(row);
-	return {
-		...row,
-		...(row.textBody != null ? { textBody: text } : {}),
-		...(row.htmlBody != null ? { htmlBody: html } : {}),
-	};
-}
-
-/** {@link openInboundMessageRow} over a page of rows, preserving order. */
-export async function openInboundMessageRows<T extends InboundMessageBodyFields>(
-	rows: T[]
-): Promise<T[]> {
-	return Promise.all(rows.map((row) => openInboundMessageRow(row)));
-}
+// ── Shape 1: inboundMessages ─────────────────────────────────────────────────
+//
+// Lives in `messageBodyInbound.ts`: a Team Inbox body is inline OR a sealed
+// blob per part, plus a bounded excerpt, and the reader for that is large enough
+// to be its own member of this family.
 
 // ── Shape 2: mailMessages inline snippet + storage blob ──────────────────────
 
@@ -420,6 +361,10 @@ export interface UnifiedMessageContent {
 	html?: string;
 	subject?: string;
 	mediaUrl?: string;
+	/** A large team-inbox email mirrored as its excerpt (`inbox/bodyStorage.ts`);
+	 * the whole body is read through the Team Inbox. */
+	isBodyTruncated?: boolean;
+	inboundMessageId?: string;
 }
 
 /**
