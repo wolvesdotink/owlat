@@ -182,12 +182,19 @@ const renderToggleLabel = computed(() =>
 				aria-hidden="true"
 			/>
 			<div class="flex-1 min-w-0">
-				<div class="flex items-baseline justify-between gap-3">
+				<!-- Wraps: on a phone the sender and the trust chip do not fit one
+				     line, and the chip (never shrinking) ran off the card's edge.
+				     The chip's group keeps to the right on the line it wraps to, so
+				     its popover (anchored right) opens inside the card. -->
+				<div
+					class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1"
+					data-testid="reader-message-sender-row"
+				>
 					<!-- Plan idea 45: the sender line was a text label. It now opens
 					     everything this mailbox knows about the person. -->
 					<button
 						type="button"
-						class="text-left hover:underline"
+						class="min-w-0 break-words text-left hover:underline"
 						:title="
 							reduced
 								? t('components.postbox.postboxReaderMessage.showDetails')
@@ -202,8 +209,20 @@ const renderToggleLabel = computed(() =>
 						<span v-if="msg.fromName" class="text-text-tertiary text-sm">
 							&lt;{{ msg.fromAddress }}&gt;
 						</span>
+						<!-- Reduced, the name is a disclosure; say so without a hover. -->
+						<Icon
+							v-if="reduced"
+							name="lucide:chevron-down"
+							class="ml-0.5 inline size-3.5 align-middle text-text-tertiary transition-transform motion-reduce:transition-none"
+							:class="{ 'rotate-180': metaOpen }"
+							aria-hidden="true"
+							data-testid="reader-message-details-cue"
+						/>
 					</button>
-					<div class="flex items-center gap-2 flex-shrink-0">
+					<div
+						class="ml-auto flex max-w-full flex-shrink-0 items-center gap-2"
+						data-testid="reader-message-indicators"
+					>
 						<!-- Five indicators, one pixel budget: the popover still holds the
 						     auth badge, the security / sealed badge, the tracker findings,
 						     the correspondent's sealing key and the sender controls. -->
