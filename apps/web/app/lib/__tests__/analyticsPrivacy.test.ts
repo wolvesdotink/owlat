@@ -190,6 +190,61 @@ describe('sanitizeAnalyticsEvent', () => {
 		});
 	});
 
+	it('reduces a URL or path however the message wraps it', () => {
+		const wrapped = {
+			angle: 'Failed <//owlat.example/unsubscribe/PATH_SENTINEL>',
+			backtick: 'Failed `//owlat.example/confirm?x=QUERY_SENTINEL`',
+			square: 'Failed [//owlat.example/confirm?t=QUERY_SENTINEL#FRAGMENT_SENTINEL]',
+			semicolon: 'a;//owlat.example/confirm?x=QUERY_SENTINEL',
+			pipe: 'a|/dashboard/contacts/PATH_SENTINEL|b',
+			squarePath: 'Failed [/dashboard/contacts/PATH_SENTINEL]',
+			braces: '{/share?x=QUERY_SENTINEL}',
+			ipv6: 'Failed //[2001:db8::1]:8443/confirm?x=QUERY_SENTINEL',
+		};
+		const sent = sanitizeAnalyticsEvent(event('$exception', wrapped), onDashboard)!;
+
+		expect(JSON.stringify(sent)).not.toMatch(/SENTINEL/);
+		expect(sent.properties).toMatchObject({
+			angle: 'Failed <https://owlat.example>',
+			backtick: 'Failed `https://owlat.example`',
+			square: 'Failed [https://owlat.example]',
+			semicolon: 'a;https://owlat.example',
+			pipe: 'a|/dashboard/contacts/:id|b',
+			squarePath: 'Failed [/dashboard/contacts/:id]',
+			braces: '{/share}',
+			ipv6: 'Failed https://[2001:db8::1]:8443',
+		});
+	});
+
+	it('reduces percent-encoded paths, doubly escaped slashes and slash-less schemes', () => {
+		const forms = {
+			encodedNetworkPath: 'redirect=%2F%2Fowlat.example%2Fconfirm%3Fx%3DQUERY_SENTINEL&y=1',
+			encodedPath: 'next=%2Fshare%3Ftoken%3DQUERY_SENTINEL',
+			doublyEscaped: 'next: \\\\/\\\\/owlat.example/confirm?x=QUERY_SENTINEL',
+			noSlashes: 'open https:owlat.example/confirm?x=QUERY_SENTINEL',
+			oneSlash: 'open http:/owlat.example/confirm?x=QUERY_SENTINEL',
+		};
+		const sent = sanitizeAnalyticsEvent(event('$exception', forms), onDashboard)!;
+
+		expect(JSON.stringify(sent)).not.toMatch(/SENTINEL/);
+		expect(sent.properties).toMatchObject({
+			encodedNetworkPath: 'redirect=https://owlat.example&y=1',
+			encodedPath: 'next=/share',
+			doublyEscaped: 'next: https://owlat.example',
+			oneSlash: 'open http://owlat.example',
+		});
+	});
+
+	it('stays linear on long runs of URL-like characters', () => {
+		for (const unit of ['a.', 'a-', 'a+', 'a%', '%2F', 'www.', '?a', 'a/', '/', 'href="']) {
+			const text = unit.repeat(Math.ceil(100_000 / unit.length));
+			const started = performance.now();
+			sanitizeAnalyticsEvent(event('$exception', { $exception_message: text }), onDashboard);
+			// A quadratic scan takes seconds here; linear takes a few milliseconds.
+			expect(performance.now() - started, unit).toBeLessThan(500);
+		}
+	});
+
 	it('leaves prose and quoted element attributes alone', () => {
 		const text = 'Are you sure? Use a/b testing // later, state="open" nth-child="2"';
 		const sent = sanitizeAnalyticsEvent(event('owlat_probe', { text }), onDashboard)!;

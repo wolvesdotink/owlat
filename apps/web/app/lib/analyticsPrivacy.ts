@@ -17,13 +17,16 @@ import type { CaptureResult } from 'posthog-js';
  * - A URL on another origin becomes that origin alone; a URL without a host
  *   (`mailto:`, `tel:`) becomes its scheme.
  * - Anything URL-shaped inside free text (an exception message, a stack trace,
- *   the autocapture element chain) gets the same treatment: absolute,
- *   network-path (`//host/…`), percent-encoded, JSON-escaped and `www.` URLs
- *   and paths. A query with no URL in front of it is dropped, and the value of
- *   a credential-named parameter (`token=`, `code=`, `state=`, …) is emptied.
+ *   the autocapture element chain) gets the same treatment: absolute URLs
+ *   (including `https:host/…`), network-path URLs (`//host/…`), paths, `www.`
+ *   hosts, and the percent-encoded or JSON-escaped forms of these, wherever a
+ *   token starts (after a space, quote, bracket, backtick, `;`, `|`, …). A
+ *   query or fragment with no URL in front of it is dropped, and the value of a
+ *   credential-named parameter (`token=`, `code=`, `state=`, …) is emptied.
  *   Not recognised as URLs: a scheme-less host without `www.` (only the value
- *   of a credential-named parameter in it is emptied; the rest of its query
- *   and its fragment stay), double-encoded or otherwise encoded URLs.
+ *   of a credential-named parameter in it is emptied; the rest of its query,
+ *   its path and its fragment stay), a URL glued to a preceding word
+ *   (`see/share?x`), and double-encoded URLs (`%252F…`).
  * - Events captured while the page is one of `PRIVATE_ROUTE_NAMES` are dropped
  *   whole: those pages exist to handle a credential, and there is nothing on
  *   them worth measuring that would justify the risk.
@@ -128,22 +131,52 @@ export function sanitizeAnalyticsUrl(raw: string, context: AnalyticsUrlContext):
 const URL_KEY = /(?:url|href|referrer|pathname|^attr__(?:src|srcset|action|formaction))$/i;
 /** `href="…"` inside `$elements_chain`, where values are quote-escaped. */
 const CHAIN_HREF = /((?:^|[:";])(?:attr__)?href=")((?:\\.|[^"\\])*)"/g;
-const ABSOLUTE_URL = /\b[a-z][a-z\d+.-]*:\/\/[^\s"'<>()\\]*/gi;
-/** The same, percent-encoded (`https%3A%2F%2F…`), as found in quoted redirect targets. */
-const ENCODED_URL = /\b[a-z][a-z\d+.-]*%3A%2F%2F[^\s"'<>()\\]*/gi;
 /**
- * A path or a network-path URL (`//host/…`) at the start of a token: after
- * whitespace, a quote, `(`, `=` or `,`. Not after `:`, so the `//` of an
- * already reduced absolute URL is left alone.
+ * How far a URL runs inside text: up to whitespace, a quote, or a bracket,
+ * brace, backtick or pipe that a message might wrap it in.
  */
-const RELATIVE_PATH = /(^|[\s"'(=,])(\/[^\s"'<>()\\]*)/g;
+const URL_BODY = String.raw`[^\s"'<>()[\]{}${'`'}|\\]*`;
+/** A bracketed IPv6 host, the one place a URL legitimately holds `[`. */
+const IPV6_HOST = String.raw`(?:\[[\da-f:.]+\])?`;
+/**
+ * Not glued to a preceding word, scheme, path or escape: a path or URL starts
+ * at the beginning of a token, whatever punctuation wraps it. Also keeps the
+ * `//` of an already reduced absolute URL (after `:`) from matching again.
+ */
+const TOKEN_START = String.raw`(?<![\w:/.%\\-])`;
+/**
+ * An absolute URL, plus the slash-less `https:host/…` forms browsers accept.
+ * The scheme is bounded and may not continue a longer run of scheme
+ * characters: an unbounded scheme makes a failed match rescan to the end of
+ * the text from every word boundary.
+ */
+const ABSOLUTE_URL = new RegExp(
+	String.raw`(?<![a-z\d+.-])(?:[a-z][a-z\d+.-]{0,31}:\/\/|https?:\/?(?=[a-z\d[]))` +
+		IPV6_HOST +
+		URL_BODY,
+	'gi'
+);
+/**
+ * The same, or a path or network-path URL, percent-encoded (`https%3A%2F%2F…`,
+ * `%2F%2Fhost%2F…`, `%2Fshare%3F…`), as found in quoted redirect targets.
+ * Stops at `&`, which an encoded value cannot contain unencoded.
+ */
+const ENCODED_URL = new RegExp(
+	String.raw`(?<![\w%.+-])(?:[a-z][a-z\d+.-]{0,31}%3A)?%2F[^\s"'<>()[\]{}${'`'}|\\&]*`,
+	'gi'
+);
+/** A path or a network-path URL (`//host/…`) at the start of a token. */
+const RELATIVE_PATH = new RegExp(TOKEN_START + String.raw`\/(?:\/${IPV6_HOST})?` + URL_BODY, 'gi');
 /** A scheme-less host that still reads as a link. */
-const WWW_HOST = /(^|[\s"'(=,])(www\.[a-z\d-]+(?:\.[a-z\d-]+)+[^\s"'<>()\\]*)/gi;
+const WWW_HOST = new RegExp(
+	TOKEN_START + String.raw`www\.[a-z\d-]+(?:\.[a-z\d-]+)+` + URL_BODY,
+	'gi'
+);
 /** A query or fragment with no URL in front of it (`?token=…`, `#state=…`). */
-const DETACHED_QUERY = /(^|[\s"'(=,])[?#][\w.-]+=[^\s"'<>()\\]*/g;
+const DETACHED_QUERY = new RegExp(TOKEN_START + String.raw`[?#][\w.-]+=` + URL_BODY, 'g');
 /** A credential-named parameter anywhere in text, as `name=value` (quoted values are not). */
 const CREDENTIAL_PARAM =
-	/(^|[\s?&#;,"'(])((?:access_|id_|refresh_)?token|code|state|secret|password|signature|sig|ott|otp|api_?key)=[^\s&#"'<>()\\;,]+/gi;
+	/(^|[\s?&#;,"'(<[{`|])((?:access_|id_|refresh_)?token|code|state|secret|password|signature|sig|ott|otp|api_?key)=[^\s&#"'<>()[\]{}`|\\;,]+/gi;
 
 function decoded(encoded: string): string {
 	try {
@@ -159,17 +192,13 @@ function sanitizeText(text: string, context: AnalyticsUrlContext): string {
 			.replace(CHAIN_HREF, (_m, head: string, value: string) => {
 				return `${head}${sanitizeAnalyticsUrl(value.replace(/\\"/g, '"'), context)}"`;
 			})
-			// JSON-escaped slashes (`https:\/\/…`) read as plain ones.
-			.replace(/\\\//g, '/')
+			// JSON-escaped slashes (`https:\/\/…`, or escaped twice) read as plain ones.
+			.replace(/\\+\//g, '/')
 			.replace(ENCODED_URL, (match) => sanitizeAnalyticsUrl(decoded(match), context))
 			.replace(ABSOLUTE_URL, (match) => sanitizeAnalyticsUrl(match, context))
-			.replace(RELATIVE_PATH, (_m, lead: string, path: string) => {
-				return lead + sanitizeAnalyticsUrl(path, context);
-			})
-			.replace(WWW_HOST, (_m, lead: string, host: string) => {
-				return lead + sanitizeAnalyticsUrl(`//${host}`, context);
-			})
-			.replace(DETACHED_QUERY, (_m, lead: string) => lead)
+			.replace(RELATIVE_PATH, (match) => sanitizeAnalyticsUrl(match, context))
+			.replace(WWW_HOST, (match) => sanitizeAnalyticsUrl(`//${match}`, context))
+			.replace(DETACHED_QUERY, '')
 			.replace(CREDENTIAL_PARAM, (_m, lead: string, name: string) => `${lead}${name}=`)
 	);
 }
