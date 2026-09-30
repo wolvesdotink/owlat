@@ -28,7 +28,7 @@
 import type { Id } from '../_generated/dataModel';
 import { openMessageBody } from './messageBody';
 import { isSealedBytesAtRest } from './atRestBodies';
-import { getOptional, getRequired } from './env';
+import { getOptional } from './env';
 import { readSealedBlobBytes, type BlobGet } from './sealedBlob';
 import { deleteBlobQuietly, type BlobStorage } from './storageBlobs';
 
@@ -88,7 +88,7 @@ async function openPart(
 	// as the inline branch does (`openMessageBody` requires the secret) rather
 	// than decode it into text a model or a reader would take for the body.
 	if (getOptional('INSTANCE_SECRET') === undefined && isSealedBytesAtRest(bytes)) {
-		getRequired('INSTANCE_SECRET');
+		throw new Error('Missing required environment variable: INSTANCE_SECRET');
 	}
 	return { value: decoder.decode(bytes), isMissing: false };
 }

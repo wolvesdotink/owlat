@@ -39,7 +39,10 @@ const isReadableStored = computed(
 );
 
 async function loadFullText(): Promise<void> {
+	// Reset for the message now shown: a fetch still in flight for the previous
+	// one no longer owns either flag (its answer is dropped by id below).
 	fullText.value = null;
+	isLoading.value = false;
 	if (!isReadableStored.value) return;
 	const messageId = props.message._id;
 	isLoading.value = true;

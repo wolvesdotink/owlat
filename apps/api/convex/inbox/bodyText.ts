@@ -5,10 +5,12 @@
  * and a query cannot read blob contents — so a message whose text (or, with no
  * text part, whose HTML) was too large to keep on its row arrives with only its
  * `bodyExcerpt`, and the reader asks here for the rest. With no text part the
- * answer is the HTML as plain text, the same conversion the excerpt used. Same shape as `inbox/rawMessage.ts`: an internal QUERY
- * does the authorization, a public ACTION reads the blob through the one body
- * accessor (`lib/messageBodyInbound.ts`), so the plaintext never passes through
- * a URL or an unauthenticated route.
+ * answer is the HTML as plain text, the same conversion the excerpt used.
+ *
+ * Same shape as `inbox/rawMessage.ts`: an internal QUERY does the
+ * authorization, a public ACTION reads the blob through the one body accessor
+ * (`lib/messageBodyInbound.ts`), so the plaintext never passes through a URL or
+ * an unauthenticated route.
  *
  * The gate is the SHARED-INBOX one — a signed-in owner or admin, the check
  * `getThread` makes before it returns the same message's inline text.

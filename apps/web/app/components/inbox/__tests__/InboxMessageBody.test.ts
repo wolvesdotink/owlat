@@ -117,6 +117,23 @@ describe('InboxMessageBody', () => {
 		expect(action).toHaveBeenCalledTimes(1);
 	});
 
+	it('is not left busy when the view moves on to another message mid-fetch', async () => {
+		answer = () => new Promise<string>(() => {});
+		const wrapper = mountBody({
+			bodyExcerpt: 'The whole long message',
+			textBodyStorageId: 'storage_1' as InboxMessageText['textBodyStorageId'],
+		});
+		await flushPromises();
+		expect(wrapper.find('[aria-busy="true"]').exists()).toBe(true);
+
+		await wrapper.setProps({
+			message: { _id: 'msg_2', textBody: 'A short inline one.' } as InboxMessageText,
+		});
+		await flushPromises();
+		expect(wrapper.text()).toContain('A short inline one.');
+		expect(wrapper.find('[aria-busy="true"]').exists()).toBe(false);
+	});
+
 	it('says there is no text content when the message has none', async () => {
 		const wrapper = mountBody({});
 		await flushPromises();
