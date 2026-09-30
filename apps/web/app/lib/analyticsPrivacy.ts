@@ -24,8 +24,8 @@ import type { CaptureResult } from 'posthog-js';
  */
 
 /**
- * Pages whose URL carries a credential (a token in the query, an OAuth `code`
- * or a handshake nonce). Nuxt route names: the i18n strategy is `no_prefix`, so
+ * Pages whose URL carries a credential (a token in the query, an OAuth `code`,
+ * a handshake nonce or an invitation id). Nuxt route names: the i18n strategy is `no_prefix`, so
  * a name is stable across locales.
  */
 const PRIVATE_ROUTE_NAMES: ReadonlySet<string> = new Set([
@@ -38,6 +38,7 @@ const PRIVATE_ROUTE_NAMES: ReadonlySet<string> = new Set([
 	'cancel-deletion',
 	'oauth-google-callback',
 	'desktop-connect',
+	'invite-accept',
 ]);
 
 /** Events whose payload is a page snapshot or keyed by raw URLs; never sent. */

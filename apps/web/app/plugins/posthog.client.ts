@@ -10,8 +10,8 @@ import {
 } from '~/lib/perfTelemetry';
 import {
 	isPrivateRouteName,
-	sanitizeAnalyticsEvent,
 	routePattern,
+	sanitizeAnalyticsEvent,
 	type ResolvedRoute,
 } from '~/lib/analyticsPrivacy';
 import { logWarn } from '~/lib/runtimeLog';
