@@ -265,6 +265,26 @@ describe('AnswerModeFrame sheet handle', () => {
 		expect(sheet(w).attributes('data-sheet-state')).toBe('half');
 	});
 
+	it('leaves a mouse click on "Reply to …" to the button: no pointer capture until a drag starts', async () => {
+		setWidth(390);
+		const w = mountFrame({ 'onStart-reply': () => {} });
+		const row = w.get('[data-testid="answer-sheet-handle-row"]');
+		const captured: number[] = [];
+		(row.element as HTMLElement).setPointerCapture = (id: number) => void captured.push(id);
+		// A captured pointer's click goes to the row, not the button under it.
+		await pointer(w.get('[data-testid="answer-sheet-peek"]').element, 'pointerdown', 700, 0);
+		await pointer(w.get('[data-testid="answer-sheet-peek"]').element, 'pointerup', 700, 30);
+		expect(captured).toEqual([]);
+		await w.get('[data-testid="answer-sheet-peek"]').trigger('click');
+		expect(w.emitted('start-reply')).toHaveLength(1);
+		expect(sheet(w).attributes('data-sheet-state')).toBe('half');
+
+		// A real drag does capture, so it keeps following off the row.
+		await pointer(row.element, 'pointerdown', 700, 100);
+		await pointer(row.element, 'pointermove', 650, 150);
+		expect(captured).toEqual([1]);
+	});
+
 	it('follows a drag and settles on the nearest height, without a stray tap', async () => {
 		setWidth(390);
 		const w = mountFrame();
