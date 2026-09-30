@@ -13,13 +13,17 @@ const PUBLIC_ROUTE_PATHS = new Set([
 	'/imprint',
 	'/cancel-deletion',
 	// Desktop pre-auth screens: no workspace is connected yet, so there is no
-	// backend to ask for a session — fetches would hit the desktop auth client's
-	// localhost fallback and error-spam the console after every app start.
+	// backend to ask for a session.
 	// (/desktop/connect is NOT here: it runs in the browser on the instance and
 	// performs the actual sign-in.)
 	'/desktop/welcome',
 	'/desktop/setup',
 ]);
+
+/** Whether a route path is a public page that doesn't need auth. */
+export function isPublicPath(path: string): boolean {
+	return PUBLIC_ROUTE_PATHS.has(path);
+}
 
 /**
  * Check if the current route is a public page that doesn't need auth.
@@ -27,5 +31,5 @@ const PUBLIC_ROUTE_PATHS = new Set([
  */
 export function isPublicRoute(): boolean {
 	const route = useRoute();
-	return PUBLIC_ROUTE_PATHS.has(route.path);
+	return isPublicPath(route.path);
 }
