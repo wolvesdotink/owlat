@@ -17,12 +17,8 @@
  */
 
 import { v } from 'convex/values';
-import {
-	internalAction,
-	internalMutation,
-	internalQuery,
-	type QueryCtx,
-} from '../_generated/server';
+import { internalAction, internalQuery, type QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import {

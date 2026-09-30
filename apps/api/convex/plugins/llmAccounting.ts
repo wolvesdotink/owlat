@@ -1,7 +1,8 @@
 import { parsePluginId, type PluginId } from '@owlat/plugin-kit';
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
-import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { insertLlmUsage } from '../analytics/llmUsage';
 import type { TokenUsage } from '../agent/steps/types';
 import { languageEndpointProvenanceValidator } from '../lib/validators/aiProviderConfig';

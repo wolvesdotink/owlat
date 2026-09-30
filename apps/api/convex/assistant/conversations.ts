@@ -13,7 +13,8 @@
 
 import { v } from 'convex/values';
 import { authedQuery, authedMutation, featureGated } from '../lib/authedFunctions';
-import { internalQuery, internalMutation } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internal } from '../_generated/api';

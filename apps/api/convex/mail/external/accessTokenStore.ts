@@ -15,7 +15,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, internalQuery, type MutationCtx } from '../../_generated/server';
+import { internalQuery, type MutationCtx } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 import type { Id } from '../../_generated/dataModel';
 
 /** The sealed token for an account, or null. Callers still check `sourceIv` and expiry. */

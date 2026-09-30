@@ -24,12 +24,8 @@
  */
 
 import { v } from 'convex/values';
-import {
-	internalAction,
-	internalMutation,
-	internalQuery,
-	type ActionCtx,
-} from '../_generated/server';
+import { internalAction, internalQuery, type ActionCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { resealStoredBlob } from '../lib/sealedBlob';

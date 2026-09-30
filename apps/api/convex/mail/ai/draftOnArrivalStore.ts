@@ -12,7 +12,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, internalMutation } from '../../_generated/server';
+import { internalQuery } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 import { draftQualityValidator } from '../../lib/convexValidators';
 import { NEEDS_REPLY_CONTEXT_MESSAGES } from '../needsReply';
 import { isFromMailboxOwner } from '../needsReplyHeuristic';

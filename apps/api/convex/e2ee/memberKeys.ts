@@ -25,7 +25,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
+import { internalQuery, type QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { authedQuery } from '../lib/authedFunctions';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { getBetterAuthSession } from '../lib/sessionOrganization';

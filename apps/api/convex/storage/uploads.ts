@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
-import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Id } from '../_generated/dataModel';
 import { getRequired } from '../lib/env';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';

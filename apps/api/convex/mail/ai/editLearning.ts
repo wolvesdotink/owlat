@@ -35,7 +35,7 @@
 
 import { v } from 'convex/values';
 import { htmlToPlainText } from '@owlat/shared/html';
-import { internalMutation } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 import { extractEmail } from '../../lib/emailAddress';
 import { logError } from '../../lib/runtimeLog';
 

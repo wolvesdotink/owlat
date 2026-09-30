@@ -16,12 +16,8 @@
 
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
-import {
-	internalMutation,
-	internalQuery,
-	type MutationCtx,
-	type QueryCtx,
-} from '../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { campaignsQuery } from './_helpers';
 import { hasPermission, requireOrgMember, requireOrgPermission } from '../lib/sessionOrganization';

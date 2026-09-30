@@ -17,7 +17,7 @@
 
 import { v } from 'convex/values';
 import { postboxQuery, postboxMutation } from './_helpers';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
 import { tokenUsageValidator } from '../lib/convexValidators';
 import { getOrThrow, throwForbidden } from '../_utils/errors';

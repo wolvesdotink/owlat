@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
-import { internalMutation, internalQuery } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Doc, Id } from '../_generated/dataModel';
 import { WEBHOOK_RETRY_DELAYS_MS } from '../lib/constants';
 import { isFeatureEnabled } from '../lib/featureFlags';

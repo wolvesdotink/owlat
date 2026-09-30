@@ -2,7 +2,8 @@ import { v } from 'convex/values';
 import { DELIVERABILITY_ALERT_RECIPIENT_LIMIT } from '@owlat/shared';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import {
 	deliverabilityAlertNotificationPatch,
 	toDeliverabilityAlertRecipientState,

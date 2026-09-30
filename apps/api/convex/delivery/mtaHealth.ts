@@ -11,7 +11,8 @@
 import { isRecord } from '@owlat/shared';
 import type { Infer } from 'convex/values';
 import { internal } from '../_generated/api';
-import { internalAction, internalMutation } from '../_generated/server';
+import { internalAction } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounters';
 import { getMtaBaseUrl } from '../mail/mtaClient';
 import { mtaHealthSnapshotValidator } from '../schema/instance';

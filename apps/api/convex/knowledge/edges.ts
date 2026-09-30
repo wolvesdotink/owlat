@@ -22,7 +22,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, internalQuery } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';

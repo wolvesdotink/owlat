@@ -14,7 +14,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, type MutationCtx, type DatabaseReader } from '../_generated/server';
+import type { MutationCtx, DatabaseReader } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { bumpStatShard, sumStatShards } from '../lib/statShards';

@@ -27,7 +27,7 @@ import {
 	PLUGIN_UNAVAILABLE_RETRY_MS,
 	type PluginRelayObservation,
 } from './providers/plugin/state';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { relayIdentityStatusValidator } from '../lib/literalValidators';
 
 const recordVerdictValidator = v.object({

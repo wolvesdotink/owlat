@@ -6,7 +6,8 @@
  * `scheduled` state whose sendAt is in the past.
  */
 
-import { internalMutation, internalAction } from '../_generated/server';
+import { internalAction } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 
 const BATCH_SIZE = 50;
@@ -37,9 +38,7 @@ export const findOverdueDrafts = internalMutation({
 			)
 			.take(BATCH_SIZE);
 
-		const overdue = [...pending, ...scheduled]
-			.filter((d) => d.undoToken)
-			.slice(0, BATCH_SIZE);
+		const overdue = [...pending, ...scheduled].filter((d) => d.undoToken).slice(0, BATCH_SIZE);
 
 		return {
 			items: overdue.map((d) => ({
@@ -56,8 +55,14 @@ export const findOverdueDrafts = internalMutation({
 export const dispatchOverdueDrafts = internalAction({
 	args: {},
 	handler: async (ctx): Promise<{ dispatched: number }> => {
-		const { items, full }: {
-			items: Array<{ draftId: import('../_generated/dataModel').Id<'mailDrafts'>; undoToken: string }>;
+		const {
+			items,
+			full,
+		}: {
+			items: Array<{
+				draftId: import('../_generated/dataModel').Id<'mailDrafts'>;
+				undoToken: string;
+			}>;
 			full: boolean;
 		} = await ctx.runMutation(internal.mail.outboundCron.findOverdueDrafts, {});
 

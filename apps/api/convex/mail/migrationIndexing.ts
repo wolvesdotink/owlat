@@ -25,12 +25,8 @@
 import { v } from 'convex/values';
 import { openStoredInlineBody } from '../lib/messageBodyStore';
 import { takeReceivedAtChunk } from '../lib/receivedAtCursor';
-import {
-	internalAction,
-	internalMutation,
-	internalQuery,
-	type ActionCtx,
-} from '../_generated/server';
+import { internalAction, internalQuery, type ActionCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { isFeatureEnabled } from '../lib/featureFlags';

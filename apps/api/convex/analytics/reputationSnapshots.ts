@@ -14,7 +14,7 @@
  * rather than inserting a duplicate) so a re-run in the same day is safe.
  */
 
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { authedQuery } from '../lib/authedFunctions';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { summarize, type ReputationSummary } from './sendingReputation';

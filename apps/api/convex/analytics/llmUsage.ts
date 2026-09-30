@@ -18,12 +18,8 @@
  */
 
 import { v } from 'convex/values';
-import {
-	internalMutation,
-	type ActionCtx,
-	type MutationCtx,
-	type QueryCtx,
-} from '../_generated/server';
+import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { adminQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { tokenUsageValidator } from '../lib/convexValidators';

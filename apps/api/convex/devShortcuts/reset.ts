@@ -30,7 +30,8 @@
  * counter.
  */
 
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { components } from '../_generated/api';
 import { TENANT_TABLES } from '../lib/tenantTables';
 import { betterAuthAdapterArgs } from '../lib/betterAuthAdapterArgs';

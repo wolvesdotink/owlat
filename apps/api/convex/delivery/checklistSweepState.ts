@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { paginationOptsValidator } from 'convex/server';
 import { HOURLY_DELIVERABILITY_CHECK_IDS, type DeliverabilityCheckId } from '@owlat/shared';
 import { internal } from '../_generated/api';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { DEPLOYMENT_CHECK_IDS, DOMAIN_CHECK_IDS } from './checklistTraits';
 

@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { dnsRecordsValidator, verificationResultsValidator } from '../lib/convexValidators';
 import { internal } from '../_generated/api';
 import { SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';

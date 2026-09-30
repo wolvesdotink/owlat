@@ -1,4 +1,4 @@
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { authedQuery, ownerMutation } from '../lib/authedFunctions';

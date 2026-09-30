@@ -1,6 +1,6 @@
 import { PLUGIN_SEND_TRANSPORT_CAPABILITY } from '@owlat/plugin-kit';
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { pluginSendTransportWebhookDefinition } from './sendTransportWebhookCatalog';
 import {
 	authorizeHostedContribution,

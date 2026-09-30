@@ -24,7 +24,7 @@
  */
 
 import { type Infer, v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { enqueueGovernedSend } from './governedEnqueue';
 import { recordSendAssignments } from './sendAssignments';
 import { normalizeEngagementScore } from './workerEnvelope';

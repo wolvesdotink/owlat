@@ -13,7 +13,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 
 type HealthStatus = 'healthy' | 'degraded' | 'down';
 
@@ -28,10 +28,7 @@ const HEALTH_THRESHOLDS = {
 	ROLLING_WINDOW: 100,
 } as const;
 
-function calculateStatus(
-	successRate: number,
-	consecutiveFailures: number,
-): HealthStatus {
+function calculateStatus(successRate: number, consecutiveFailures: number): HealthStatus {
 	if (
 		consecutiveFailures >= HEALTH_THRESHOLDS.MAX_CONSECUTIVE_FAILURES ||
 		successRate < HEALTH_THRESHOLDS.DOWN_THRESHOLD
@@ -107,4 +104,3 @@ export const recordSendResult = internalMutation({
 		});
 	},
 });
-

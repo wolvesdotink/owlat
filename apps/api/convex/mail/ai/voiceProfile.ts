@@ -17,7 +17,8 @@
 
 import { v } from 'convex/values';
 import { openStoredInlineBody } from '../../lib/messageBodyStore';
-import { internalQuery, internalMutation } from '../../_generated/server';
+import { internalQuery } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 import type { QueryCtx, MutationCtx } from '../../_generated/server';
 import { publicQuery } from '../../lib/authedFunctions';
 import { postboxMutation } from '../_helpers';

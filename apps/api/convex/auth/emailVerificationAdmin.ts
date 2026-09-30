@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
-import { internalMutation, internalQuery } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
 import { components, internal } from '../_generated/api';
 import { adminMutation, authedAction } from '../lib/authedFunctions';

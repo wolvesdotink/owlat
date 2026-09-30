@@ -49,7 +49,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { DatabaseReader, MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { DeliverabilityStream } from '@owlat/shared/deliverabilityRouting';

@@ -16,7 +16,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalAction, internalMutation } from '../_generated/server';
+import { internalAction } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { ActionCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
@@ -157,7 +158,7 @@ export const recomputeStats = internalAction({
 		scanEntries: for (;;) {
 			const pageResult: EntryFacetPage = await ctx.runQuery(
 				internal.knowledge.graphAnalytics.pageEntryConfidence,
-				{ cursor: entryCursor ?? undefined, numItems: PAGE_SIZE },
+				{ cursor: entryCursor ?? undefined, numItems: PAGE_SIZE }
 			);
 			for (const e of pageResult.page) {
 				if (nodes.size >= maxNodes) {
@@ -190,7 +191,7 @@ export const recomputeStats = internalAction({
 		scanEdges: for (;;) {
 			const pageResult: RelationPage = await ctx.runQuery(
 				internal.knowledge.graphAnalytics.pageRelations,
-				{ cursor: relCursor ?? undefined, numItems: PAGE_SIZE },
+				{ cursor: relCursor ?? undefined, numItems: PAGE_SIZE }
 			);
 			for (const r of pageResult.page) {
 				if (examined >= maxEdges) {
@@ -263,7 +264,11 @@ export const recomputeStats = internalAction({
 				fromTitle: a.title,
 				toTitle: b.title,
 				relationType: e.relationType,
-				score: surprisingScore({ dissimilarity, crossCommunity, tagDisjoint: tagsDisjoint(a.tags, b.tags) }),
+				score: surprisingScore({
+					dissimilarity,
+					crossCommunity,
+					tagDisjoint: tagsDisjoint(a.tags, b.tags),
+				}),
 			};
 		};
 		const rankConnections = (candidates: RawEdge[]): SnapshotConnection[] => {
@@ -273,7 +278,8 @@ export const recomputeStats = internalAction({
 				if (c !== null) scored.push(c);
 			}
 			scored.sort(
-				(x, y) => y.score - x.score || cmp(x.fromEntryId, y.fromEntryId) || cmp(x.toEntryId, y.toEntryId),
+				(x, y) =>
+					y.score - x.score || cmp(x.fromEntryId, y.fromEntryId) || cmp(x.toEntryId, y.toEntryId)
 			);
 			return scored.slice(0, SURPRISING_CAP);
 		};
@@ -326,7 +332,7 @@ function cmp(a: string, b: string): number {
 async function fetchCandidateEmbeddings(
 	ctx: ActionCtx,
 	memberCandidates: RawEdge[],
-	crossCandidates: RawEdge[],
+	crossCandidates: RawEdge[]
 ): Promise<Map<string, number[]>> {
 	const ids: Id<'knowledgeEntries'>[] = [];
 	const seen = new Set<string>();

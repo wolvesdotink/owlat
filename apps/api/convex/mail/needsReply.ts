@@ -26,7 +26,8 @@
  */
 
 import { v, type Infer } from 'convex/values';
-import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { publicQuery } from '../lib/authedFunctions';
 import { postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';

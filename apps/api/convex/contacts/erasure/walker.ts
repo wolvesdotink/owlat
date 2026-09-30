@@ -20,7 +20,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalAction, internalMutation, type MutationCtx } from '../../_generated/server';
+import { internalAction, type MutationCtx } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { logError } from '../../lib/runtimeLog';

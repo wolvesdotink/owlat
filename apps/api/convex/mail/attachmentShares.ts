@@ -36,7 +36,8 @@ import {
 	resolveAttachmentShareExpiryDays,
 	type AttachmentShareState,
 } from '@owlat/shared/attachmentShares';
-import { internalMutation, internalQuery } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { publicQuery } from '../lib/authedFunctions';
 import { postboxQuery, postboxMutation } from './_helpers';
 import {

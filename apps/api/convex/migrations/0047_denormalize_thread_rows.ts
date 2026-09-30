@@ -16,7 +16,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalAction, internalMutation } from '../_generated/server';
+import { internalAction } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { readLatestSnoozedUntil } from '../mail/threadLatestSnooze';

@@ -21,7 +21,8 @@
 
 import { v } from 'convex/values';
 import { adminQuery, authedQuery } from '../lib/authedFunctions';
-import { internalMutation, type QueryCtx } from '../_generated/server';
+import type { QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { getOptional, isEnvPresent } from '../lib/env';
 import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounters';
 import { isSendProviderKind } from '../lib/sendProviders/types';

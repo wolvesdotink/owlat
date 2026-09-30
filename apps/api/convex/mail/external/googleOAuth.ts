@@ -29,7 +29,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 import { authedQuery } from '../../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
 import { isEnvPresent } from '../../lib/env';

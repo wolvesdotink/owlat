@@ -8,7 +8,8 @@
 
 import { v } from 'convex/values';
 import { postboxMutation } from './_helpers';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';

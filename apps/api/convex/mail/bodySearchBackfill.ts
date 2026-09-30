@@ -26,7 +26,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, internalMutation, internalAction } from '../_generated/server';
+import { internalQuery, internalAction } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { publicQuery } from '../lib/authedFunctions';
 import { postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';

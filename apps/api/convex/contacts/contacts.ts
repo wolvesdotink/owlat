@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
-import { internalQuery, internalMutation } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import type { Id } from '../_generated/dataModel';
 import type { ImportOutcome } from './import';
