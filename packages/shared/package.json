@@ -242,6 +242,10 @@
 			"types": "./src/attachmentShares.ts",
 			"import": "./src/attachmentShares.ts"
 		},
+		"./undoSendPolicy": {
+			"types": "./src/undoSendPolicy.ts",
+			"import": "./src/undoSendPolicy.ts"
+		},
 		"./bounceClassification": {
 			"types": "./src/bounceClassification.ts",
 			"import": "./src/bounceClassification.ts"

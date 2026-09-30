@@ -3,13 +3,11 @@
  * dispatches, and therefore how long "Undo" stays on offer.
  *
  * The backend accepts `undoSendDelayMs` on `mail.drafts.send` and falls back to
- * its own default (`DEFAULT_UNDO_SEND_DELAY_MS`, 10s) when it is absent. This
- * module is the whole preference: a CLOSED set of four windows, the mapping to
- * the wire argument, and the rule that decides whether an undo toast exists at
- * all.
- *
- * Four values rather than a free number because the control is four radio
- * choices and an arbitrary window (seven hours) is a footgun, not a preference.
+ * its own default (`DEFAULT_UNDO_SEND_DELAY_MS`, 10s) when it is absent. The
+ * windows and the default are the shared policy (`@owlat/shared/undoSendPolicy`),
+ * the same tuple the backend validates the stored preference against. This
+ * module owns the web half: the mapping to the wire argument and the rule that
+ * decides whether an undo toast exists at all.
  *
  * Invariants the tests pin:
  *   - an unset preference resolves to {@link POSTBOX_UNDO_SEND_DEFAULT_SECONDS}
@@ -26,17 +24,23 @@
  * component — so the semantics are unit-testable on their own.
  */
 
-/** The four windows offered, in seconds. `0` is Off (no hold, no toast). */
-export const POSTBOX_UNDO_SEND_SECONDS = [0, 10, 30, 60] as const;
+import {
+	DEFAULT_UNDO_SEND_SECONDS,
+	UNDO_SEND_SECOND_CHOICES,
+	type UndoSendSeconds,
+} from '@owlat/shared/undoSendPolicy';
 
-export type PostboxUndoSendSeconds = (typeof POSTBOX_UNDO_SEND_SECONDS)[number];
+/** The windows offered, in seconds. `0` is Off (no hold, no toast). */
+export const POSTBOX_UNDO_SEND_SECONDS = UNDO_SEND_SECOND_CHOICES;
+
+export type PostboxUndoSendSeconds = UndoSendSeconds;
 
 /**
- * The window an unset preference means. Must match the server's
- * `DEFAULT_UNDO_SEND_DELAY_MS` (10_000ms): the default is expressed by sending
+ * The window an unset preference means. The server's `DEFAULT_UNDO_SEND_DELAY_MS`
+ * is derived from the same shared default: the default is expressed by sending
  * nothing, so a mismatch would show one window and hold for another.
  */
-export const POSTBOX_UNDO_SEND_DEFAULT_SECONDS: PostboxUndoSendSeconds = 10;
+export const POSTBOX_UNDO_SEND_DEFAULT_SECONDS = DEFAULT_UNDO_SEND_SECONDS;
 
 /** Normalise a stored/unknown value to one of the four windows, defaulting safely. */
 export function resolvePostboxUndoSendSeconds(
