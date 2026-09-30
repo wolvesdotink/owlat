@@ -3718,7 +3718,8 @@
 				"hideCoach": "Hide coach and revise",
 				"discardDraft": "Discard draft",
 				"showQuote": "Show quoted text",
-				"hideQuote": "Hide quoted text"
+				"hideQuote": "Hide quoted text",
+				"gapsLeft": "1 gap left | {count} gaps left"
 			},
 			"postboxComposerGuards": {
 				"alignment": {
@@ -5984,6 +5985,14 @@
 					"conversation": "Conversation",
 					"reply": "Reply"
 				},
+				"sheet": {
+					"hint": "Drag the handle, or use the up and down arrow keys, to change how much of the screen the reply takes.",
+					"raise": "Show the reply",
+					"lower": "Lower the reply",
+					"shrink": "Make the reply smaller",
+					"peek": "Reply to {name}…",
+					"peekNoName": "Write a reply…"
+				},
 				"viewLabel": "How much of the conversation to show",
 				"viewShortcut": "Switch with T",
 				"view": {
@@ -5992,6 +6001,72 @@
 				},
 				"more": "More for this conversation",
 				"openInPostbox": "Open in Postbox"
+			},
+			"catchUp": {
+				"title": "Catching up",
+				"meta": "{count} message since {date} | {count} messages since {date}",
+				"marker": "Show the message from {sender}, {date}",
+				"loading": "Catching up on this conversation",
+				"asksTitle": "They are asking for",
+				"askCovered": "Covered by your draft:",
+				"askOpen": "Not covered yet:",
+				"filesTitle": "Files in this thread",
+				"attachHint": "Click to attach it to the reply, or drag it into the reply",
+				"attachFile": "Attach {file} to the reply",
+				"attachFailed": "The file could not be attached.",
+				"attachOperation": "Attach file",
+				"covered": "{covered} of {total} ask covered | {covered} of {total} asks covered"
+			},
+			"aiBar": {
+				"label": "What should the reply say?",
+				"placeholder": "What should the reply say? Optional, e.g. “send it, say sorry it's late”",
+				"draft": "Draft with AI",
+				"shortcut": "Cmd+J or Ctrl+J jumps here",
+				"checking": "Checking what the reply needs…",
+				"drafting": "Writing the draft…",
+				"failed": "The draft could not be written. Try again.",
+				"aiDraft": "AI draft",
+				"discard": "Discard",
+				"injectionFlagged": "The email may contain instructions meant for the AI. Read the draft before you send it.",
+				"operation": "Draft with AI",
+				"peekDraft": "Draft"
+			},
+			"askCard": {
+				"title": "One thing before I write this | {count} things before I write this",
+				"round": "round {round} of {total}",
+				"subline": "Answer what you can. Anything you skip becomes a highlighted gap in the draft.",
+				"placeholder": {
+					"choice": "Something else…",
+					"text": "Type your answer…",
+					"number": "A number or an amount…",
+					"date": "Or type a date…"
+				},
+				"pickDate": "Pick a date",
+				"answerAndDraft": "Answer and draft",
+				"skip": "Skip, draft with gaps",
+				"operation": "Answer the questions"
+			},
+			"fileAsk": {
+				"dropHere": "Drop the file here or",
+				"choose": "choose a file",
+				"uploading": "Uploading… {percent}%",
+				"attachedAndSaved": "Attached to this reply and saved to the contact's Files",
+				"attachedOnly": "Attached to this reply only",
+				"dontKeep": "Don't keep a copy in Files",
+				"nearMisses": "Close, but maybe not it:",
+				"candidates": "Which one?",
+				"pickFromFiles": "Pick from files",
+				"remove": "Remove {file}",
+				"tooLarge": "{filename} is larger than {mb} MB.",
+				"uploadFailed": "{filename} could not be uploaded.",
+				"unsupported": "{filename} is not a file type that can be attached here."
+			},
+			"filePicker": {
+				"title": "Pick from files",
+				"search": "Search by name",
+				"files": "Files",
+				"mail": "Mail attachments",
+				"empty": "No files found."
 			},
 			"queueBar": {
 				"position": "{position} of {total}",
@@ -13183,7 +13258,9 @@
 				"emptySubject": "no subject",
 				"linkMismatch": "a link reads {text} but goes to {host}",
 				"placeholder": "“{token}” left in the message",
-				"unfilledVariable": "{name} was never filled in"
+				"unfilledVariable": "{name} was never filled in",
+				"draftGap": "“{label}” still needs filling in",
+				"draftGaps": "{count} gaps still need filling in, starting with “{label}”"
 			},
 			"useDraftRevise": {
 				"failed": "Revise failed — your draft is unchanged."

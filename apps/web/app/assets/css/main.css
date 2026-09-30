@@ -5,6 +5,7 @@
 @import './postbox-density.css';
 @import './postbox-panes.css';
 @import './page-transitions.css';
+@import './answer-mode.css';
 
 @source "../../../../../packages/email-builder/src/**/*.vue";
 @source "../../../../../packages/email-builder/src/**/*.ts";

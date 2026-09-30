@@ -22,6 +22,7 @@ const props = defineProps<{
 	persistentToolbar: boolean;
 	/** Deterministic pre-send findings (plan idea 6); empty means nothing to say. */
 	preflight?: PreflightFinding[];
+	/** The save state, or what stands in its place (gaps left, asks covered). */
 	lastSavedLabel: string;
 	/** The identity Send goes out as — named beside the button ("Send · as Support"). */
 	sendAs?: { mailboxId: string; label: string } | null;
@@ -326,12 +327,12 @@ function onPickFiles(event: Event) {
 							: t('components.postbox.postboxComposerFooter.hideQuote')
 					}}
 				</button>
-				<span>{{ lastSavedLabel }}</span>
+				<span data-testid="composer-save-state">{{ lastSavedLabel }}</span>
 			</div>
 		</div>
 		<!-- Plan idea 6: the always-on checks, on their own line under Send so a
 		     long list wraps instead of being cut off. Advisory — Send stays
-		     enabled. -->
+		     enabled, except for an AI draft's gap, which this line explains. -->
 		<PostboxComposerPreflightChip :findings="preflight ?? []" />
 	</footer>
 </template>

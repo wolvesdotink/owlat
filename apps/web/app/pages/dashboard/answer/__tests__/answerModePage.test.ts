@@ -8,7 +8,10 @@
  *     REPLACE, so Back still leaves Answer mode and a reload lands here again;
  *   - Esc leaves (the draft stays saved and is offered back on the list),
  *     `t` toggles Summary / Full, Cmd/Ctrl+J focuses "Draft with AI";
- *   - a send goes back where the reply started.
+ *   - a send goes back where the reply started;
+ *   - with AI on, the composer carries "Draft with AI" (or the ask card while
+ *     the AI asks), the footer the asks covered, and the resting phone sheet a
+ *     "Draft" button (useAnswerModeAssist has its own suite).
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
@@ -34,6 +37,25 @@ let activeQueueSession: { handleSent: ReturnType<typeof vi.fn> } | null = null;
 vi.mock('~/composables/useAnswerQueueSession', () => ({
 	useAnswerQueueSession: () => activeQueueSession,
 }));
+
+const assist = {
+	aiEnabled: ref(false),
+	catchUp: { catchUp: ref(null), loading: ref(false), covered: ref([]) },
+	statusNote: ref<string | undefined>(undefined),
+	ask: {
+		phase: ref('idle'),
+		busy: ref(false),
+		session: ref<Record<string, unknown> | null>(null),
+		injectionFlagged: ref(false),
+		start: vi.fn(),
+		answer: vi.fn(),
+	},
+	attaching: ref(null),
+	attachThreadFile: vi.fn(),
+	resolveThreadFile: vi.fn(),
+	onComposerDrop: vi.fn(),
+};
+vi.mock('~/composables/useAnswerModeAssist', () => ({ useAnswerModeAssist: () => assist }));
 
 const message = {
 	_id: 'msg_1',
@@ -98,18 +120,33 @@ const composerSnapshot = shallowRef({
 	hasContent: false,
 });
 const composerFlush = vi.fn(async () => 'draft_saved');
+const answerApi = { aiDraft: ref<string | null>(null), discardAiDraft: vi.fn() };
 const ComposerStub = defineComponent({
 	name: 'PostboxComposer',
-	props: ['seed', 'replyAllRecipients', 'frame'],
+	props: ['seed', 'replyAllRecipients', 'frame', 'statusNote'],
 	emits: ['draft-id', 'sent', 'discarded', 'minimize'],
-	setup(_p, { expose }) {
+	setup(_p, { expose, slots }) {
 		expose({
 			focusBody: vi.fn(),
 			flush: composerFlush,
 			snapshot: () => composerSnapshot.value,
+			answer: answerApi,
 		});
-		return () => h('div', { 'data-testid': 'composer' });
+		return () =>
+			h('div', { 'data-testid': 'composer' }, slots['above-editor']?.({ composer: answerApi }));
 	},
+});
+const AiBarStub = defineComponent({
+	name: 'AnswerAiBar',
+	props: ['phase', 'busy', 'hasAiDraft', 'injectionFlagged'],
+	emits: ['draft', 'discard'],
+	setup: () => () => h('div', { 'data-testid': 'ai-bar' }),
+});
+const AskCardStub = defineComponent({
+	name: 'AskCard',
+	props: ['questions', 'round', 'submitting', 'mailboxId', 'resolveThreadFile'],
+	emits: ['answer', 'skip'],
+	setup: () => () => h('div', { 'data-testid': 'ask-card' }),
 });
 const ConversationStub = defineComponent({
 	name: 'AnswerConversation',
@@ -162,7 +199,7 @@ async function mountAt(query: Record<string, string>) {
 				AnswerQueueBar: inert('AnswerQueueBar'),
 				AnswerQueueMailAsk: inert('AnswerQueueMailAsk'),
 			},
-			stubs: { Icon: true },
+			stubs: { Icon: true, AnswerAiBar: AiBarStub, AskCard: AskCardStub, CatchUpCard: true },
 		},
 	});
 	await flushPromises();
@@ -182,6 +219,12 @@ beforeEach(() => {
 	composerFlush.mockClear();
 	guardCalls.length = 0;
 	composerSnapshot.value = { draftId: null, toAddresses: [], hasContent: false };
+	assist.aiEnabled.value = false;
+	assist.statusNote.value = undefined;
+	assist.ask.phase.value = 'idle';
+	assist.ask.session.value = null;
+	assist.ask.start.mockClear();
+	assist.ask.answer.mockClear();
 });
 
 afterEach(() => {
@@ -321,5 +364,42 @@ describe('Answer mode page', () => {
 		expect(shell).not.toHaveBeenCalled();
 		document.removeEventListener('keydown', shell);
 		unregister();
+	});
+
+	it('puts "Draft with AI" above the editor when AI is on, and nothing when it is off', async () => {
+		const off = await mountAt({});
+		expect(off.find('[data-testid="ai-bar"]').exists()).toBe(false);
+		off.unmount();
+		wrapper = null;
+
+		assist.aiEnabled.value = true;
+		const w = await mountAt({});
+		const bar = w.getComponent(AiBarStub);
+		bar.vm.$emit('draft', 'send it');
+		expect(assist.ask.start).toHaveBeenCalledWith('send it');
+		bar.vm.$emit('discard');
+		expect(answerApi.discardAiDraft).toHaveBeenCalled();
+	});
+
+	it('swaps the bar for the ask card while the AI asks, and sends its answers', async () => {
+		assist.aiEnabled.value = true;
+		assist.ask.phase.value = 'asking';
+		assist.ask.session.value = { sessionId: 's1', round: 2, questions: [{ id: 'q1' }] };
+		const w = await mountAt({ draft: 'draft_1' });
+		expect(w.find('[data-testid="ai-bar"]').exists()).toBe(false);
+		const card = w.getComponent(AskCardStub);
+		expect(card.props('round')).toBe(2);
+		card.vm.$emit('answer', [{ questionId: 'q1', value: 'Yes' }]);
+		card.vm.$emit('skip', []);
+		expect(assist.ask.answer.mock.calls).toEqual([
+			[[{ questionId: 'q1', value: 'Yes' }]],
+			[[], true],
+		]);
+	});
+
+	it('hands the composer the asks covered for its footer', async () => {
+		assist.statusNote.value = '2 of 3 asks covered';
+		const w = await mountAt({});
+		expect(w.getComponent(ComposerStub).props('statusNote')).toBe('2 of 3 asks covered');
 	});
 });

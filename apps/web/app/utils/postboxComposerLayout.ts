@@ -44,6 +44,59 @@ export function clampComposerSize(size: Partial<ComposerSize>, viewport: Viewpor
 }
 
 /**
+ * Below Tailwind's `sm` a popup composer is a bottom sheet across the whole
+ * width instead of a 320px-minimum box anchored bottom right: on a phone that
+ * box ran off the left edge (its minimum is most of the screen) and covered
+ * the content without using the rest.
+ */
+export const COMPOSER_SHEET_QUERY = '(max-width: 639.98px)';
+/** Composers floating at once on a small screen: one sheet, the rest dock. */
+export const SMALL_SCREEN_MAX_POPUPS = 1;
+
+export interface PopupGeometry {
+	mode: 'box' | 'sheet';
+	style: Record<string, string>;
+}
+
+/**
+ * Where a floating composer sits. A box keeps its persisted size, anchored
+ * bottom right and moved left by its slot. A sheet spans the width and stands
+ * on the on-screen keyboard (`keyboardInset`, px) with its top a little under
+ * the status bar, so the page behind stays recognisable and Send stays above
+ * the keyboard. With no keyboard its bottom clears the home indicator.
+ */
+export function popupComposerGeometry(input: {
+	size: ComposerSize;
+	slotIndex: number;
+	sheet: boolean;
+	keyboardInset: number;
+}): PopupGeometry {
+	const { size, slotIndex, sheet, keyboardInset } = input;
+	if (!sheet) {
+		return {
+			mode: 'box',
+			style: {
+				width: `${size.width}px`,
+				height: `${size.height}px`,
+				right: `${24 + slotIndex * (size.width + 16)}px`,
+				bottom: 'var(--pbx-composer-inset-bottom, 0px)',
+			},
+		};
+	}
+	const inset = Math.max(0, Math.round(keyboardInset));
+	return {
+		mode: 'sheet',
+		style: {
+			left: '0px',
+			right: '0px',
+			bottom: `${inset}px`,
+			height: `calc(100dvh - var(--titlebar-h, 0px) - env(safe-area-inset-top, 0px) - 3rem - ${inset}px)`,
+			paddingBottom: inset > 0 ? '0px' : 'env(safe-area-inset-bottom, 0px)',
+		},
+	};
+}
+
+/**
  * Placement of the open composers. Expanded (non-minimized) composers float as
  * popups anchored bottom-right, but only the most-recent `maxPopups` do so —
  * once three or more are open the overflow collapses into the bottom dock

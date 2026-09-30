@@ -95,6 +95,33 @@ describe('PostboxComposerPopup', () => {
 		expect(undoArm).not.toHaveBeenCalled();
 	});
 
+	it('is a resizable box anchored bottom right on a wide screen', () => {
+		const box = mountPopup().get('[role="region"]');
+		expect(box.attributes('data-geometry')).toBe('box');
+		expect(box.attributes('style')).toContain('width: 520px');
+		expect(box.find('.cursor-nwse-resize').exists()).toBe(true);
+	});
+
+	it('becomes a full-width bottom sheet without a resize grip on a phone', () => {
+		const realMatchMedia = window.matchMedia;
+		window.matchMedia = ((query: string) => ({
+			matches: query.includes('max-width'),
+			media: query,
+			addEventListener: () => {},
+			removeEventListener: () => {},
+		})) as unknown as typeof window.matchMedia;
+		try {
+			const sheet = mountPopup().get('[role="region"]');
+			expect(sheet.attributes('data-geometry')).toBe('sheet');
+			expect(sheet.attributes('style')).toContain('left: 0px');
+			expect(sheet.attributes('style')).not.toContain('width: 520px');
+			expect(sheet.classes()).toContain('rounded-t-xl');
+			expect(sheet.find('.cursor-nwse-resize').exists()).toBe(false);
+		} finally {
+			window.matchMedia = realMatchMedia;
+		}
+	});
+
 	it('moves a reply into Answer mode on maximise, on the same draft', async () => {
 		const wrapper = mount(PostboxComposerPopup, {
 			props: { composer: { ...composer, inReplyToMessageId: 'msg-9' as never }, slotIndex: 0 },

@@ -33,6 +33,11 @@ import {
  * The `header` and `actions` slots receive `{ answered, total, remaining,
  * canSubmit, submit }`, so each surface keeps its own progress line and
  * buttons. `pickIndex` and `submit` are exposed for card keyboards.
+ *
+ * The `answer` slot replaces the chips-and-text input of a question, for a
+ * surface that answers some kinds differently (Answer mode's date and file
+ * questions). It gets `{ question, index, copy, remembered, value, setValue }`;
+ * whatever it sets is the working value the rules above count and submit.
  */
 const props = withDefaults(
 	defineProps<{
@@ -103,7 +108,11 @@ function pickIndex(index: number) {
 	if (qi >= 0) optionRefs.value[qi]?.pickIndex(index);
 }
 
-defineExpose({ pickIndex, submit });
+function setValue(questionId: string, value: string) {
+	values[questionId] = value;
+}
+
+defineExpose({ pickIndex, submit, setValue });
 </script>
 
 <template>
@@ -131,17 +140,27 @@ defineExpose({ pickIndex, submit });
 				}}
 			</p>
 			<TaskAsk :ask="copyFor(question).text" :why="question.attribution" />
-			<TaskOptions
-				:ref="(el) => (optionRefs[qi] = el as InstanceType<typeof TaskOptions>)"
-				v-model="values[question.id]"
-				class="mt-1.5"
-				:options="copyFor(question).options"
+			<slot
+				name="answer"
+				:question="question"
+				:index="qi"
+				:copy="copyFor(question)"
 				:remembered="rememberedFor(question)"
-				:placeholder="placeholder"
-				:chip-test-id="`${testIdPrefix}-chip`"
-				:input-test-id="`${testIdPrefix}-input`"
-				@submit="submit"
-			/>
+				:value="values[question.id] ?? ''"
+				:set-value="(value: string) => setValue(question.id, value)"
+			>
+				<TaskOptions
+					:ref="(el) => (optionRefs[qi] = el as InstanceType<typeof TaskOptions>)"
+					v-model="values[question.id]"
+					class="mt-1.5"
+					:options="copyFor(question).options"
+					:remembered="rememberedFor(question)"
+					:placeholder="placeholder"
+					:chip-test-id="`${testIdPrefix}-chip`"
+					:input-test-id="`${testIdPrefix}-input`"
+					@submit="submit"
+				/>
+			</slot>
 		</div>
 		<slot
 			name="actions"

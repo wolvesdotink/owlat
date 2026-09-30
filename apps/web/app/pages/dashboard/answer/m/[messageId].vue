@@ -33,8 +33,13 @@ import {
 } from '~/composables/useAnswerMode';
 import { useAnswerModeSession, type AnswerModeMessage } from '~/composables/useAnswerModeSession';
 import { useAnswerQueueSession } from '~/composables/useAnswerQueueSession';
+import { useAnswerModeAssist } from '~/composables/useAnswerModeAssist';
+import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
 import type { PostboxReaderMessage } from '~/components/postbox/PostboxThreadReader.vue';
 import type { AnswerConversationView } from '~/components/answer/AnswerConversation.vue';
+import CatchUpCard from '~/components/answer/CatchUpCard.vue';
+import AnswerAiBar from '~/components/answer/AnswerAiBar.vue';
+import AskCard from '~/components/answer/AskCard.vue';
 
 definePageMeta({
 	layout: 'dashboard',
@@ -120,20 +125,42 @@ const tab = ref<'conversation' | 'reply'>('conversation');
 const view = ref<AnswerConversationView>('summary');
 
 // ── The composer and the URL ────────────────────────────────────────────────
-const composerRef = ref<{
+// Shallow: the exposed Answer mode API carries refs its users read as refs.
+const composerRef = shallowRef<{
 	focusBody: () => void;
 	flush: () => Promise<string | null>;
 	snapshot: () => { draftId: string | null; toAddresses: string[]; hasContent: boolean };
+	answer: AnswerComposerApi;
 } | null>(null);
 // One composer per message (and per resumed draft): writing the new draft id
 // into the URL must not remount the editor under the person typing.
 const composerKey = computed(() => `${messageId.value}:${openedDraftId ?? 'new'}`);
 
-function onDraftId(draftId: string) {
-	if (route.query['draft'] === draftId) return;
+const draftId = ref<string | null>(openedDraftId);
+
+function onDraftId(id: string) {
+	draftId.value = id;
+	if (route.query['draft'] === id) return;
 	void router.replace({
-		query: { ...route.query, ...(kind.value ? { kind: kind.value } : {}), draft: draftId },
+		query: { ...route.query, ...(kind.value ? { kind: kind.value } : {}), draft: id },
 	});
+}
+
+// ── Catch-up, "Draft with AI" and thread files (plan §03 to §06) ────────────
+const assist = useAnswerModeAssist({
+	message: () => message.value,
+	composer: () => composerRef.value?.answer ?? null,
+	draftId: () => draftId.value,
+	freshReply: () => !openedDraftId && kind.value !== 'forward',
+	messageCount: () => messageCount.value,
+	view,
+});
+const { catchUp, ask } = assist;
+
+/** The resting phone/tablet sheet's "✦ Draft": open the reply and draft with AI. */
+function draftFromPeek() {
+	tab.value = 'reply';
+	void ask.start('');
 }
 
 const leftDraft = useAnswerLeftDraft();
@@ -167,6 +194,8 @@ function leave() {
 
 // Opened by the Answer queue: a send finishes the item and moves on to the next.
 const queueSession = useAnswerQueueSession();
+// While the queue item's own questions are up, "Draft with AI" waits below them.
+const queueAskVisible = ref(false);
 
 function onSent() {
 	leftDraft.clear();
@@ -274,13 +303,42 @@ onBeforeUnmount(() => {
 				</PostboxOverflowMenu>
 			</template>
 
+			<template v-if="assist.aiEnabled.value && seed" #peek-actions>
+				<UiButton
+					type="button"
+					size="sm"
+					variant="ghost"
+					class="shrink-0"
+					:disabled="ask.busy.value"
+					data-testid="answer-peek-draft"
+					@click="draftFromPeek"
+				>
+					<Icon name="lucide:sparkles" class="mr-1 size-3.5 text-brand" aria-hidden="true" />
+					{{ t('components.answer.aiBar.peekDraft') }}
+				</UiButton>
+			</template>
+
 			<template #conversation>
 				<AnswerConversation
 					v-if="message"
 					v-model:view="view"
 					:message="message"
 					@count="messageCount = $event"
-				/>
+				>
+					<template #catch-up="{ view: shown, messages, reveal }">
+						<CatchUpCard
+							v-if="shown === 'summary'"
+							:catch-up="catchUp.catchUp.value"
+							:loading="catchUp.loading.value"
+							:messages="messages"
+							:covered="catchUp.covered.value"
+							:attaching="assist.attaching.value"
+							:can-attach="!!seed"
+							@reveal="reveal"
+							@attach="assist.attachThreadFile"
+						/>
+					</template>
+				</AnswerConversation>
 				<PostboxReaderSkeleton v-else />
 			</template>
 
@@ -293,13 +351,43 @@ onBeforeUnmount(() => {
 					frame="answer"
 					:seed="seed"
 					:reply-all-recipients="seed.replyAllRecipients"
+					:status-note="assist.statusNote.value"
 					@draft-id="onDraftId"
 					@sent="onSent"
 					@discarded="onDiscarded"
 					@minimize="onComposerEsc"
+					@drop="assist.onComposerDrop"
 				>
-					<template #above-editor>
-						<AnswerQueueMailAsk :message-id="messageId" />
+					<template #above-editor="{ composer }">
+						<!-- A background clarification of the Answer queue item comes first. -->
+						<AnswerQueueMailAsk
+							:message-id="messageId"
+							:mailbox-id="seed.mailboxId"
+							:resolve-thread-file="assist.resolveThreadFile"
+							@visible="queueAskVisible = $event"
+							@use-draft="composer.applyAiDraft($event)"
+						/>
+						<template v-if="assist.aiEnabled.value && !queueAskVisible">
+							<AskCard
+								v-if="ask.phase.value === 'asking' && ask.session.value"
+								:questions="ask.session.value.questions"
+								:round="ask.session.value.round"
+								:submitting="ask.busy.value"
+								:mailbox-id="seed.mailboxId"
+								:resolve-thread-file="assist.resolveThreadFile"
+								@answer="ask.answer($event)"
+								@skip="ask.answer($event, true)"
+							/>
+							<AnswerAiBar
+								v-else
+								:phase="ask.phase.value"
+								:busy="ask.busy.value"
+								:has-ai-draft="composer.aiDraft.value !== null"
+								:injection-flagged="ask.injectionFlagged.value"
+								@draft="ask.start"
+								@discard="composer.discardAiDraft()"
+							/>
+						</template>
 					</template>
 				</PostboxComposer>
 				<div v-else class="flex-1 space-y-3 p-4" aria-hidden="true">

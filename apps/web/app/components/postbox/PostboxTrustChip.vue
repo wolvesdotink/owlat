@@ -143,7 +143,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 
 		<div
 			v-if="open"
-			class="absolute right-0 top-full mt-1 z-20 w-80 max-h-[26rem] overflow-y-auto rounded border border-border-subtle bg-bg-elevated shadow-lg p-3 text-left"
+			class="absolute right-0 top-full mt-1 z-20 w-80 max-w-[calc(100vw-2rem)] max-h-[26rem] overflow-y-auto rounded border border-border-subtle bg-bg-elevated shadow-lg p-3 text-left"
 			role="region"
 			:aria-label="t('components.postbox.postboxTrustChip.panelLabel')"
 			data-testid="trust-chip-panel"
