@@ -408,7 +408,8 @@ describe('CsvImportModal — a failed batch', () => {
 
 		const text = wrapper.text();
 		expect(text).toContain('Import incomplete');
-		expect(text).not.toContain('Import complete!');
+		// Neither the title nor the header's step line may call it complete.
+		expect(text).not.toContain('Import complete');
 		expect(text).toContain('100 of 201 rows processed. 101 rows were not imported.');
 		expect(text).toContain('Rows 101–200 failed: Too many imports, try again in a minute');
 		expect(text).toContain('Row 201 was not sent after the failure.');

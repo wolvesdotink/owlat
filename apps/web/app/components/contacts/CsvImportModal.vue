@@ -31,7 +31,9 @@ const stepDescription = computed(() => {
 		case 'importing':
 			return t('components.contacts.csvImportModal.steps.importing');
 		case 'complete':
-			return t('components.contacts.csvImportModal.steps.complete');
+			return props.csvImport.notImportedRowCount.value > 0
+				? t('components.contacts.csvImportModal.complete.incompleteTitle')
+				: t('components.contacts.csvImportModal.steps.complete');
 		default:
 			return '';
 	}
