@@ -641,6 +641,8 @@ import type * as lib_betterAuthAdapterArgs from '../lib/betterAuthAdapterArgs.js
 import type * as lib_clientIp from '../lib/clientIp.js';
 import type * as lib_clock from '../lib/clock.js';
 import type * as lib_codeAgentGuard from '../lib/codeAgentGuard.js';
+import type * as lib_codeTaskFence from '../lib/codeTaskFence.js';
+import type * as lib_codeTaskInbound from '../lib/codeTaskInbound.js';
 import type * as lib_codeTaskRetry from '../lib/codeTaskRetry.js';
 import type * as lib_constants from '../lib/constants.js';
 import type * as lib_contentRevision from '../lib/contentRevision.js';
@@ -1938,6 +1940,8 @@ declare const fullApi: ApiFromModules<{
 	'lib/clientIp': typeof lib_clientIp;
 	'lib/clock': typeof lib_clock;
 	'lib/codeAgentGuard': typeof lib_codeAgentGuard;
+	'lib/codeTaskFence': typeof lib_codeTaskFence;
+	'lib/codeTaskInbound': typeof lib_codeTaskInbound;
 	'lib/codeTaskRetry': typeof lib_codeTaskRetry;
 	'lib/constants': typeof lib_constants;
 	'lib/contentRevision': typeof lib_contentRevision;
