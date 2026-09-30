@@ -261,7 +261,7 @@ async function send() {
 						     message is read in the Team Inbox. -->
 						<p v-if="item.content.isBodyTruncated" class="text-text-tertiary text-xs mt-0.5">
 							{{ t('components.contacts.unifiedTimelineTab.longMessage') }}
-							<NuxtLink :to="`/dashboard/inbox/${item.threadId}`" class="text-primary hover:underline">
+							<NuxtLink :to="`/dashboard/inbox/${item.threadId}`" class="text-brand hover:underline">
 								{{ t('components.contacts.unifiedTimelineTab.openFullMessage') }}
 							</NuxtLink>
 						</p>
