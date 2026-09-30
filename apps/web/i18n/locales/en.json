@@ -6053,7 +6053,8 @@
 				"operation": "Draft with AI",
 				"peekDraft": "Draft",
 				"readyKept": "The AI draft is ready. Your text stays until you use the draft.",
-				"useDraft": "Use the draft"
+				"useDraft": "Use the draft",
+				"preparedFileFailed": "{filename} from the prepared reply could not be attached. Attach it again if the reply needs it."
 			},
 			"askCard": {
 				"title": "One thing before I write this | {count} things before I write this",

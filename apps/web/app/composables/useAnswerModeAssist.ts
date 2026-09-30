@@ -78,7 +78,10 @@ export function useAnswerModeAssist(opts: {
 			preparedTaken = true;
 			// Something is already written (a suggested lead, a restored draft).
 			if (composer.draftText.value.trim()) return;
-			void composer.applyAiDraft(text).then(() => catchUp.checkCoverage());
+			void composer
+				.applyAiDraft(text)
+				.then(() => prepared.attachFiles(composer))
+				.then(() => catchUp.checkCoverage());
 		},
 		{ immediate: true }
 	);

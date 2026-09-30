@@ -3,7 +3,8 @@
  * Answer mode's wiring around the composer (composables/useAnswerModeAssist):
  *   - the catch-up gets the view and message count (it decides the opening
  *     view and the footer note; useAnswerCatchUp.test.ts);
- *   - a reply the AI prepared earlier goes into an untouched fresh reply only;
+ *   - a reply the AI prepared earlier goes into an untouched fresh reply only,
+ *     with the files answered for it;
  *   - a thread file is copied onto the draft by its index id, and uploaded from
  *     the message when the index does not hold it; a chip dropped on the
  *     composer attaches the same way;
@@ -37,8 +38,9 @@ vi.mock('~/composables/useAnswerCatchUp', () => ({
 }));
 vi.mock('~/composables/useAnswerAskSession', () => ({ useAnswerAskSession: () => ({}) }));
 const preparedText = ref<string | null>(null);
+const preparedAttach = vi.fn(async () => {});
 vi.mock('~/composables/useAnswerPreparedDraft', () => ({
-	useAnswerPreparedDraft: () => ({ text: preparedText }),
+	useAnswerPreparedDraft: () => ({ text: preparedText, attachFiles: preparedAttach }),
 }));
 const indexIdOf = vi.fn();
 const toFile = vi.fn();
@@ -138,6 +140,8 @@ describe('useAnswerModeAssist: a prepared draft', () => {
 		preparedText.value = 'Hi Jonas, here it is.';
 		await flushPromises();
 		expect(composer.applyAiDraft).toHaveBeenCalledWith('Hi Jonas, here it is.');
+		// The files answered on the Reply Queue follow the text onto the draft.
+		expect(preparedAttach).toHaveBeenCalledWith(composer);
 		expect(catchUpState.checkCoverage).toHaveBeenCalled();
 		preparedText.value = 'Another';
 		await flushPromises();

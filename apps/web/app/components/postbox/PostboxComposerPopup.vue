@@ -37,6 +37,15 @@ function onMinimize() {
 	stack.minimize(props.composer.id);
 }
 
+// Esc anywhere in the popup docks it, unless a popover inside (the footer's ⋯,
+// a trust chip) already closed on this press and claimed it.
+function onEscape(event: KeyboardEvent) {
+	if (event.defaultPrevented) return;
+	event.preventDefault();
+	event.stopPropagation();
+	onMinimize();
+}
+
 // A reply's maximise continues the SAME draft (saved by the composer first) in
 // Answer mode; the popup steps aside.
 const answerNav = useAnswerModeNav();
@@ -90,7 +99,7 @@ onBeforeUnmount(() => {
 		<div
 			role="region"
 			data-shortcut-boundary
-			@keydown.esc.prevent.stop="onMinimize"
+			@keydown.esc="onEscape"
 			:aria-label="t('components.postbox.postboxComposerPopup.dialogLabel')"
 			class="fixed flex flex-col z-40 bg-bg-elevated border-border-subtle overflow-hidden shadow-lg"
 			:class="geometry.mode === 'sheet' ? 'rounded-t-xl border-t' : 'rounded-t-md border'"

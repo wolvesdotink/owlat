@@ -103,7 +103,7 @@ const { seed, kind } = useAnswerModeSession({
 	guard: guardReply,
 });
 
-const answerNav = useAnswerModeNav();
+const answerNav = useAnswerModeNav({ currentPath: () => route.path });
 const backLabel = computed(() => t(answerBackLabelKey(answerNav.returnPath.value)));
 const messageCount = ref<number | undefined>(undefined);
 const counterpart = computed(() => {
@@ -159,6 +159,12 @@ const { catchUp, ask } = assist;
 const { canManageOrganization } = usePermissions();
 const copyPolicy = computed<FileCopyPolicy>(() =>
 	canManageOrganization.value ? 'ifContact' : 'never'
+);
+
+// The labels already on the message, for the ⋯ label picker (the live row has
+// them; the reader's type does not name the field).
+const messageLabelIds = computed(
+	() => (message.value as { labelIds?: string[] } | undefined)?.labelIds ?? []
 );
 
 // "Ask about this thread" from the ⋯: the reader's Q&A above the conversation.
@@ -309,6 +315,7 @@ onBeforeUnmount(() => {
 					:message-id="messageId"
 					:mailbox-id="message?.mailboxId ?? null"
 					:can-ask="assist.aiEnabled.value"
+					:label-ids="messageLabelIds"
 					@ask="askAboutThread"
 				/>
 			</template>

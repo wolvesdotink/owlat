@@ -130,14 +130,6 @@ const diffBase = computed(() => props.originalDraft ?? props.draft ?? '');
 const hasChanges = computed(
 	() => hasDraft.value && body.value.trim() !== '' && body.value.trim() !== diffBase.value.trim()
 );
-const canSend = computed(
-	() =>
-		body.value.trim().length > 0 &&
-		!props.busy &&
-		!props.held &&
-		!props.sendHold &&
-		!gaps.hold.value
-);
 // A `[TODO]` or `{{name}}` the agent (or the person) left in the reply.
 const preflight = computed(() =>
 	body.value.trim()
@@ -240,6 +232,14 @@ const answer = useTeamComposerAnswerApi({
 });
 // An AI draft's `[[...]]` gaps hold Send and replace the note beside it.
 const gaps = useTeamComposerGaps(body, answer, props);
+const canSend = computed(
+	() =>
+		body.value.trim().length > 0 &&
+		!props.busy &&
+		!props.held &&
+		!props.sendHold &&
+		!gaps.hold.value
+);
 
 /** What the person typed, for keeping it when they leave without sending. */
 function snapshot() {

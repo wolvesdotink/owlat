@@ -7,7 +7,8 @@
  *  - Open in Postbox: the conversation in the reader, everything included.
  *  - Ask about this thread: the reader's grounded Q&A; the page shows it above
  *    the conversation (`ask`).
- *  - Add label: the reader's label picker, applied to the message answered.
+ *  - Add label: the reader's label picker on the message answered; the labels
+ *    already on it are marked, and picking one of those takes it off.
  */
 import type { Id } from '@owlat/api/dataModel';
 import { usePostboxLabels } from '~/composables/postbox/usePostboxLabels';
@@ -17,6 +18,8 @@ const props = defineProps<{
 	mailboxId: string | null;
 	/** AI is on: "Ask about this thread" is offered. */
 	canAsk: boolean;
+	/** Labels already on the message: the picker marks them, and picking one takes it off. */
+	labelIds?: readonly string[];
 }>();
 
 const emit = defineEmits<{ ask: [] }>();
@@ -29,9 +32,10 @@ const { labels, setOnMessage } = usePostboxLabels(
 // A sibling of the menu, not its slot content: the panel unmounts on the
 // click that opens the dialog.
 const labelOpen = ref(false);
-async function applyLabel(labelId: Id<'mailLabels'>) {
+async function toggleLabel(labelId: Id<'mailLabels'>) {
 	labelOpen.value = false;
-	await setOnMessage(props.messageId as Id<'mailMessages'>, labelId, true);
+	const on = (props.labelIds ?? []).includes(labelId);
+	await setOnMessage(props.messageId as Id<'mailMessages'>, labelId, !on);
 }
 
 const item = 'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-bg-surface';
@@ -81,7 +85,8 @@ const item = 'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover
 	<PostboxLabelPickerDialog
 		:open="labelOpen"
 		:labels="labels"
+		:selected-ids="labelIds ?? []"
 		@update:open="labelOpen = $event"
-		@pick="applyLabel"
+		@pick="toggleLabel"
 	/>
 </template>
