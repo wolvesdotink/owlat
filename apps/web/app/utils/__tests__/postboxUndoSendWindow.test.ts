@@ -7,7 +7,6 @@
  */
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_UNDO_SEND_SECONDS, UNDO_SEND_SECOND_CHOICES } from '@owlat/shared/undoSendPolicy';
-import { OFFLINE_QUEUE_UNDO_WINDOW_MS } from '~/composables/postbox/usePostboxOfflineOutbox';
 import {
 	POSTBOX_UNDO_SEND_SECONDS,
 	POSTBOX_UNDO_SEND_DEFAULT_SECONDS,
@@ -31,7 +30,9 @@ describe('POSTBOX_UNDO_SEND_SECONDS', () => {
  * The web half of the undo-send policy contract. The backend half — the stored
  * preference validator and the scheduling default are the same shared values —
  * lives in `apps/api/convex/mail/__tests__/undoSendPolicy.test.ts`; the web app
- * cannot import Convex modules, so the join is stated from both sides.
+ * cannot import Convex modules, so the join is stated from both sides. The
+ * offline queue's window is pinned where that module is exercised
+ * (`composables/postbox/__tests__/offlineOutboxFlow.test.ts`).
  */
 describe('undo-send policy contract (web)', () => {
 	it('offers the shared choices themselves, not a copy of them', () => {
@@ -41,10 +42,6 @@ describe('undo-send policy contract (web)', () => {
 	it('treats the shared default as the window that sends nothing', () => {
 		expect(POSTBOX_UNDO_SEND_DEFAULT_SECONDS).toBe(DEFAULT_UNDO_SEND_SECONDS);
 		expect(postboxUndoSendDelayMsArg(DEFAULT_UNDO_SEND_SECONDS)).toBeUndefined();
-	});
-
-	it('counts a queued offline send down for the shared default window', () => {
-		expect(OFFLINE_QUEUE_UNDO_WINDOW_MS).toBe(DEFAULT_UNDO_SEND_SECONDS * 1_000);
 	});
 });
 

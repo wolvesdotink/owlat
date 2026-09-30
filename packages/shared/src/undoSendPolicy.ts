@@ -2,10 +2,11 @@
  * Postbox undo-send policy — the windows a user may pick and the one an unset
  * preference means, as ONE set of numbers.
  *
- * Three planes read these: the web settings control and composer
- * (`apps/web/app/utils/postboxUndoSendWindow.ts`), the Convex validator that
- * guards the stored preference (`mailUndoSendSecondsValidator`), and the draft
- * lifecycle's scheduling fallback (`DEFAULT_UNDO_SEND_DELAY_MS`). The composer
+ * Read by the web settings control and composer
+ * (`apps/web/app/utils/postboxUndoSendWindow.ts`, and through it the offline
+ * outbox's `OFFLINE_QUEUE_UNDO_WINDOW_MS`), the Convex validator that guards the
+ * stored preference (`mailUndoSendSecondsValidator`), and the draft lifecycle's
+ * scheduling fallback (`DEFAULT_UNDO_SEND_DELAY_MS`). The composer
  * expresses the default by sending NO delay, so a client and server that
  * disagree on the default would show one countdown and hold for another.
  *

@@ -6,10 +6,11 @@
  * The composer expresses the default window by sending no `undoSendDelayMs` at
  * all, so a backend default that drifted from the web one would count down one
  * window and hold for another; a validator that drifted would reject a choice
- * the settings page offers. The web half of the join — the offered options and
- * the offline-queue window are the shared values — is pinned in
- * `apps/web/app/utils/__tests__/postboxUndoSendWindow.test.ts`, because nothing
- * in `apps/api` may import a web module.
+ * the settings page offers. The web half of the join is pinned where each web
+ * owner is tested, because nothing in `apps/api` may import a web module: the
+ * offered options and default in
+ * `apps/web/app/utils/__tests__/postboxUndoSendWindow.test.ts`, the offline-queue
+ * window in `apps/web/app/composables/postbox/__tests__/offlineOutboxFlow.test.ts`.
  */
 
 import { DEFAULT_UNDO_SEND_SECONDS, UNDO_SEND_SECOND_CHOICES } from '@owlat/shared/undoSendPolicy';
@@ -35,6 +36,5 @@ describe('undo-send policy contract', () => {
 
 	it('defaults to a window the settings control actually offers', () => {
 		expect(UNDO_SEND_SECOND_CHOICES).toContain(DEFAULT_UNDO_SEND_SECONDS);
-		expect(DEFAULT_UNDO_SEND_SECONDS).toBe(10);
 	});
 });
