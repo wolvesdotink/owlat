@@ -21,7 +21,7 @@
  * actions return the same view once they finish.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { authedAction } from '../../lib/authedFunctions';
 import { api, internal } from '../../_generated/api';
 import type { ActionCtx } from '../../_generated/server';
@@ -30,14 +30,17 @@ import { MAX_ASK_ROUNDS } from '@owlat/shared/answerMode';
 import { isAppLocale } from '@owlat/shared/appLocales';
 import { logError } from '../../lib/runtimeLog';
 import { throwInvalidInput, throwInvalidState } from '../../_utils/errors';
-import { answerAskTargetValidator, type AnswerAskTarget } from '../../lib/validators/answerAsk';
+import {
+	answerAskTargetValidator,
+	type AnswerAskTarget,
+	type AnswerDraftContext,
+} from '../../lib/validators/answerAsk';
 import { clarificationFileRefValidator } from '../../lib/validators/clarification';
-import { assembleInboundBriefing } from '../../agent/steps/context_retrieval';
-import type { EagernessMode } from '../../inbox/askEagerness';
 import { copyExistingIntoDraft } from '../attachExisting';
 import { candidateForLabel } from '../../inbox/clarificationAnswers';
-import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 import { toAskSessionView, type AskSessionView } from './composeDraftStore';
+import { draftContextOf, loadAnswerContext } from './composeDraftLoad';
+import { normalizeTimeZone, resolveFollowUpAt } from './composeDraftDates';
 import { attributionFor, localizeForOwner, runGapCheck } from './composeDraftGap';
 import { writeAnswerDraft } from './composeDraftWrite';
 import {
@@ -48,111 +51,12 @@ import {
 	canonicalAnswerValue,
 	formatGapFor,
 	isNotReadyAnswer,
-	resolveFollowUpAt,
 	type AskFileRef,
 	type AskQuestion,
 } from './composeDraftPolicy';
 
 const MAX_INSTRUCTION_CHARS = 2000;
 const MAX_ANSWER_CHARS = 2000;
-
-/** Everything the gap check and the drafter need about a target. */
-interface AnswerContext {
-	context: string;
-	triggerText: string;
-	subject: string;
-	counterpartAddress?: string | undefined;
-	contactId?: Id<'contacts'> | undefined;
-	language?: string | undefined;
-	mailboxId?: Id<'mailboxes'> | undefined;
-	eagerness?: EagernessMode | undefined;
-	audience: string;
-	styleReference: string;
-	toneInstruction: string;
-	signatureInstruction: string;
-	voiceSection: string;
-}
-
-const PERSONAL_TONE =
-	'\n\nTone: match the owner’s natural, personal style — warm and direct, not corporate.';
-
-/** Open commitments to the contact, one line each, or '' (fail-soft). */
-async function commitmentSection(ctx: ActionCtx, contactId: Id<'contacts'>): Promise<string> {
-	try {
-		const open = await ctx.runQuery(internal.knowledge.graph.getOpenCommitmentsByContact, {
-			contactId,
-			limit: 5,
-		});
-		if (open.length === 0) return '';
-		return `[OPEN COMMITMENTS — still owed to this contact]\n${open
-			.map((c) => `- ${c.title}: ${c.content.slice(0, 300)}`)
-			.join('\n')}\n\n`;
-	} catch {
-		return '';
-	}
-}
-
-/** Load (access-checked) and assemble the context for a target. */
-async function loadAnswerContext(ctx: ActionCtx, target: AnswerAskTarget): Promise<AnswerContext> {
-	if (target.kind === 'mailDraft') {
-		const loaded = await ctx.runQuery(internal.mail.ai.composeDraftContext.loadMailDraftContext, {
-			draftId: target.draftId,
-		});
-		const contact = loaded.contact;
-		const contactLine = contact
-			? `[CONTACT] ${loaded.counterpartAddress ?? ''}${contact.name ? ` | Name: ${contact.name}` : ''}${contact.language ? ` | Language: ${contact.language}` : ''}\n\n`
-			: '';
-		const commitments = contact ? await commitmentSection(ctx, contact.contactId) : '';
-		return {
-			context: `${contactLine}${commitments}${loaded.transcript}`,
-			triggerText: loaded.triggerText,
-			subject: loaded.subject,
-			counterpartAddress: loaded.counterpartAddress,
-			contactId: contact?.contactId,
-			language: contact?.language,
-			mailboxId: loaded.mailboxId,
-			eagerness: loaded.eagerness,
-			audience: `the mailbox owner (${loaded.ownerAddress}), answering the last message in the thread, which the other party sent`,
-			styleReference: "the owner's",
-			toneInstruction: PERSONAL_TONE,
-			signatureInstruction: '',
-			// The mailbox was access-checked by the loader above.
-			voiceSection: formatVoiceSection(
-				await loadVoiceGuidance(ctx, { mailboxId: loaded.mailboxId, requireAccess: false })
-			),
-		};
-	}
-	const loaded = await ctx.runQuery(internal.mail.ai.composeDraftContext.loadTeamThreadContext, {
-		threadId: target.threadId,
-	});
-	// The pipeline's own briefing (contact, commitments, knowledge, files,
-	// history, the quarantined current message), without re-recording it.
-	let context = loaded.triggerText;
-	try {
-		context = (await assembleInboundBriefing(ctx, loaded.inboundMessageId)).context;
-	} catch (err) {
-		logError('[composeDraft] team briefing failed, drafting from the message:', err);
-	}
-	const agentConfig = await ctx.runQuery(internal.agent.agentPipeline.getAgentConfig, {});
-	return {
-		context,
-		triggerText: loaded.triggerText,
-		subject: loaded.subject,
-		counterpartAddress: loaded.counterpartAddress,
-		contactId: loaded.contact?.contactId,
-		language: loaded.contact?.language,
-		eagerness: loaded.eagerness,
-		audience: 'an organization',
-		styleReference: "the organization's",
-		toneInstruction: agentConfig?.toneDescription
-			? `\n\nTone guidance: ${agentConfig.toneDescription}`
-			: '\n\nTone: Professional and helpful. Use a friendly but concise style.',
-		signatureInstruction: agentConfig?.signatureTemplate
-			? `\n\nEnd the email with this signature:\n${agentConfig.signatureTemplate}`
-			: '',
-		voiceSection: '',
-	};
-}
 
 /** Where a file answer goes: the target, and the contact Files copies are linked to. */
 interface FileOwner {
@@ -246,14 +150,15 @@ async function keepCopyInFiles(
 function followUpFor(
 	questions: readonly AskQuestion[],
 	fileLabel: string | undefined,
-	now: number
+	now: number,
+	timeZone: string | undefined
 ): { value: string; at?: number } | undefined {
 	const file = questions.find((q) => q.id === FILE_QUESTION_ID);
 	if (!file || !isNotReadyAnswer(file, file.answer?.value)) return undefined;
 	const date = questions.find((q) => q.id === FOLLOW_UP_QUESTION_ID);
 	if (!date) return { value: 'as soon as it is ready' };
 	if (!date.answer) return { value: formatGapFor(date, fileLabel) };
-	const at = resolveFollowUpAt(date.answer.value, now);
+	const at = resolveFollowUpAt(date.answer.value, now, timeZone);
 	return { value: date.answer.value, ...(at !== undefined ? { at } : {}) };
 }
 
@@ -261,10 +166,15 @@ function followUpFor(
 async function draftNow(
 	ctx: ActionCtx,
 	session: Doc<'answerAskSessions'>,
-	context: AnswerContext
+	context: AnswerDraftContext
 ): Promise<AskSessionView> {
 	const now = Date.now();
-	const followUp = followUpFor(session.questions, session.fileRequest?.label, now);
+	const followUp = followUpFor(
+		session.questions,
+		session.fileRequest?.label,
+		now,
+		session.timeZone
+	);
 	if (followUp?.at !== undefined) {
 		await ctx.runMutation(internal.mail.ai.composeDraftStore.updateSession, {
 			sessionId: session._id,
@@ -285,12 +195,13 @@ async function draftNow(
 		signatureInstruction: context.signatureInstruction,
 		voiceSection: context.voiceSection,
 		language: context.language,
-		contactId: context.contactId,
+		contactId: session.contactId,
 		questions: session.questions,
 		attachedFiles: session.attachedFiles,
 		fileLabel: session.fileRequest?.label,
 		followUp,
 		instruction: session.instruction,
+		timeZone: session.timeZone,
 	});
 	const settled = await ctx.runQuery(internal.mail.ai.composeDraftStore.getOwnSession, {
 		sessionId: session._id,
@@ -308,11 +219,14 @@ export const start = authedAction({
 		target: answerAskTargetValidator,
 		instruction: v.optional(v.string()),
 		locale: v.string(),
+		// The owner's IANA time zone, for round 2's dates (UTC when absent).
+		timeZone: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<AskSessionView> => {
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 		const instruction = args.instruction?.trim().slice(0, MAX_INSTRUCTION_CHARS) || undefined;
 		const locale = isAppLocale(args.locale) ? args.locale : 'en';
+		const timeZone = normalizeTimeZone(args.timeZone);
 		const context = await loadAnswerContext(ctx, args.target);
 		const gap = await runGapCheck(ctx, {
 			context: context.context,
@@ -358,6 +272,7 @@ export const start = authedAction({
 		}
 
 		const isAsking = gap.mayAsk && questions.some((q) => !q.answer);
+		const draftContext = draftContextOf(context);
 		const session = await ctx.runMutation(internal.mail.ai.composeDraftStore.replaceSession, {
 			target: args.target,
 			...(instruction ? { instruction } : {}),
@@ -368,11 +283,83 @@ export const start = authedAction({
 			...(context.contactId ? { contactId: context.contactId } : {}),
 			...(context.counterpartAddress ? { counterpartAddress: context.counterpartAddress } : {}),
 			...(gap.fileRequest ? { fileRequest: gap.fileRequest } : {}),
+			...(draftContext ? { draftContext } : {}),
+			...(timeZone ? { timeZone } : {}),
 		});
 		if (isAsking) return toAskSessionView(session);
 		return await draftNow(ctx, session, context);
 	},
 });
+
+const givenAnswerValidator = v.object({
+	questionId: v.string(),
+	value: v.optional(v.string()),
+	file: v.optional(clarificationFileRefValidator),
+	keepCopy: v.optional(v.boolean()),
+});
+
+/**
+ * Fold the owner's answers into the session's questions, attaching file
+ * answers on the way, and open round 2 when "It isn't ready yet" asks for it.
+ */
+async function applyAnswers(
+	ctx: ActionCtx,
+	session: Doc<'answerAskSessions'>,
+	answers: ReadonlyArray<Infer<typeof givenAnswerValidator>>,
+	skip: boolean,
+	timeZone: string | undefined
+) {
+	const now = Date.now();
+	const questions: AskQuestion[] = session.questions.map((q) => ({ ...q }));
+	let attachedFiles = [...session.attachedFiles];
+	const answered: string[] = [];
+	for (const given of answers) {
+		const question = questions.find((q) => q.id === given.questionId);
+		if (!question) continue;
+		// A client that sends a candidate's chip label instead of a file
+		// reference still picks that candidate.
+		const picked =
+			!given.file && given.value && question.answerKind === 'file'
+				? candidateForLabel(question.fileCandidates, given.value)
+				: undefined;
+		const givenFile =
+			given.file ??
+			(picked ? { source: picked.source, id: picked.id, filename: picked.filename } : undefined);
+		if (givenFile) {
+			if (question.answerKind !== 'file') throwInvalidInput('Only a file question takes a file');
+			const ref = await attachFileAnswer(ctx, session, givenFile, given.keepCopy !== false);
+			question.answer = { value: ref.filename, at: now, source: 'user', file: ref };
+			attachedFiles = [
+				...attachedFiles.filter((f) => !(f.source === ref.source && f.id === ref.id)),
+				ref,
+			];
+		} else {
+			const value = given.value?.trim().slice(0, MAX_ANSWER_CHARS);
+			if (!value) continue;
+			question.answer = { value: canonicalAnswerValue(question, value), at: now, source: 'user' };
+		}
+		answered.push(question.id);
+	}
+
+	const file = questions.find((q) => q.id === FILE_QUESTION_ID);
+	const opensRoundTwo =
+		!skip &&
+		session.round < MAX_ASK_ROUNDS &&
+		!!file &&
+		answered.includes(file.id) &&
+		isNotReadyAnswer(file, file.answer?.value) &&
+		!questions.some((q) => q.id === FOLLOW_UP_QUESTION_ID);
+	if (opensRoundTwo) {
+		const label = session.fileRequest?.label ?? 'the requested file';
+		const [followUpQuestion] = await localizeForOwner(
+			ctx,
+			[buildFollowUpQuestion(label, file.attribution, now, timeZone)],
+			session.locale
+		);
+		questions.push(followUpQuestion!);
+	}
+	return { questions, attachedFiles, answered, opensRoundTwo };
+}
 
 /**
  * Answer the open questions (or skip them) and continue: round 2 when an
@@ -382,15 +369,10 @@ export const start = authedAction({
 export const answer = authedAction({
 	args: {
 		sessionId: v.id('answerAskSessions'),
-		answers: v.array(
-			v.object({
-				questionId: v.string(),
-				value: v.optional(v.string()),
-				file: v.optional(clarificationFileRefValidator),
-				keepCopy: v.optional(v.boolean()),
-			})
-		),
+		answers: v.array(givenAnswerValidator),
 		skip: v.optional(v.boolean()),
+		// The owner's IANA time zone; replaces the one `start` stored.
+		timeZone: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<AskSessionView> => {
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
@@ -398,68 +380,38 @@ export const answer = authedAction({
 			sessionId: args.sessionId,
 		});
 		if (session.status !== 'asking') throwInvalidState('These questions were already answered');
-
-		const now = Date.now();
-		const questions: AskQuestion[] = session.questions.map((q) => ({ ...q }));
-		let attachedFiles = [...session.attachedFiles];
-		const answered: string[] = [];
-		for (const given of args.answers) {
-			const question = questions.find((q) => q.id === given.questionId);
-			if (!question) continue;
-			// A client that sends a candidate's chip label instead of a file
-			// reference still picks that candidate.
-			const picked =
-				!given.file && given.value && question.answerKind === 'file'
-					? candidateForLabel(question.fileCandidates, given.value)
-					: undefined;
-			const givenFile =
-				given.file ??
-				(picked ? { source: picked.source, id: picked.id, filename: picked.filename } : undefined);
-			if (givenFile) {
-				if (question.answerKind !== 'file') throwInvalidInput('Only a file question takes a file');
-				const ref = await attachFileAnswer(ctx, session, givenFile, given.keepCopy !== false);
-				question.answer = { value: ref.filename, at: now, source: 'user', file: ref };
-				attachedFiles = [
-					...attachedFiles.filter((f) => !(f.source === ref.source && f.id === ref.id)),
-					ref,
-				];
-			} else {
-				const value = given.value?.trim().slice(0, MAX_ANSWER_CHARS);
-				if (!value) continue;
-				question.answer = { value: canonicalAnswerValue(question, value), at: now, source: 'user' };
-			}
-			answered.push(question.id);
+		// Claim the session before anything is attached: a second call racing
+		// this one (a double tap, a retry after a slow first call) is refused
+		// here instead of attaching the same file again and opening a second
+		// stream under the first.
+		await ctx.runMutation(internal.mail.ai.composeDraftStore.updateSession, {
+			sessionId: session._id,
+			status: 'drafting',
+			expectStatus: 'asking',
+		});
+		const timeZone = normalizeTimeZone(args.timeZone) ?? session.timeZone;
+		let applied: Awaited<ReturnType<typeof applyAnswers>>;
+		try {
+			applied = await applyAnswers(ctx, session, args.answers, args.skip === true, timeZone);
+		} catch (err) {
+			// Hand the questions back so the owner can fix the answer and retry.
+			await ctx.runMutation(internal.mail.ai.composeDraftStore.updateSession, {
+				sessionId: session._id,
+				status: 'asking',
+				expectStatus: 'drafting',
+			});
+			throw err;
 		}
-
-		const file = questions.find((q) => q.id === FILE_QUESTION_ID);
-		const opensRoundTwo =
-			!args.skip &&
-			session.round < MAX_ASK_ROUNDS &&
-			!!file &&
-			answered.includes(file.id) &&
-			isNotReadyAnswer(file, file.answer?.value) &&
-			!questions.some((q) => q.id === FOLLOW_UP_QUESTION_ID);
-		if (opensRoundTwo) {
-			const [followUpQuestion] = await localizeForOwner(
-				ctx,
-				[
-					buildFollowUpQuestion(
-						session.fileRequest?.label ?? 'the requested file',
-						file.attribution,
-						now
-					),
-				],
-				session.locale
-			);
-			questions.push(followUpQuestion!);
-		}
+		const { questions, attachedFiles, answered, opensRoundTwo } = applied;
 
 		const updated = await ctx.runMutation(internal.mail.ai.composeDraftStore.updateSession, {
 			sessionId: session._id,
 			status: opensRoundTwo ? 'asking' : 'drafting',
+			expectStatus: 'drafting',
 			round: opensRoundTwo ? session.round + 1 : session.round,
 			questions,
 			attachedFiles,
+			...(timeZone ? { timeZone } : {}),
 		});
 		if (answered.length > 0) {
 			await ctx.runMutation(internal.mail.ai.composeDraftStore.captureSessionAnswers, {
@@ -468,6 +420,8 @@ export const answer = authedAction({
 			});
 		}
 		if (opensRoundTwo) return toAskSessionView(updated);
-		return await draftNow(ctx, updated, await loadAnswerContext(ctx, session.target));
+		// The context `start` built; rebuilt only for a session that has none.
+		const context = updated.draftContext ?? (await loadAnswerContext(ctx, session.target));
+		return await draftNow(ctx, updated, context);
 	},
 });

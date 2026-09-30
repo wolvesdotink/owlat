@@ -26,6 +26,7 @@ import {
 	answerAskStatusValidator,
 	answerAskTargetKey,
 	answerAskTargetValidator,
+	answerDraftContextValidator,
 	type AnswerAskStatus,
 	type AnswerAskTarget,
 } from '../../lib/validators/answerAsk';
@@ -33,7 +34,7 @@ import {
 	clarificationFileRefValidator,
 	needsReplyClarificationQuestionValidator,
 } from '../../lib/validators/clarification';
-import { throwForbidden, throwNotFound } from '../../_utils/errors';
+import { throwForbidden, throwInvalidState, throwNotFound } from '../../_utils/errors';
 import {
 	FILE_QUESTION_ID,
 	FOLLOW_UP_QUESTION_ID,
@@ -202,6 +203,8 @@ const sessionFields = {
 	contactId: v.optional(v.id('contacts')),
 	counterpartAddress: v.optional(v.string()),
 	fileRequest: v.optional(v.object({ questionId: v.string(), label: v.string() })),
+	draftContext: v.optional(answerDraftContextValidator),
+	timeZone: v.optional(v.string()),
 };
 
 /**
@@ -231,20 +234,29 @@ export const replaceSession = internalMutation({
 	},
 });
 
-/** Update an owned session after answers or a finished draft. */
+/**
+ * Update an owned session after answers or a finished draft. With
+ * `expectStatus`, a compare-and-set: refused unless the row is still in that
+ * status, so two `answer` calls racing on one session cannot both proceed.
+ */
 export const updateSession = internalMutation({
 	args: {
 		sessionId: v.id('answerAskSessions'),
 		status: answerAskStatusValidator,
+		expectStatus: v.optional(answerAskStatusValidator),
 		round: v.optional(v.number()),
 		questions: v.optional(v.array(needsReplyClarificationQuestionValidator)),
 		attachedFiles: v.optional(v.array(clarificationFileRefValidator)),
 		followUpAt: v.optional(v.number()),
+		timeZone: v.optional(v.string()),
 		errorMessage: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Doc<'answerAskSessions'>> => {
-		await requireOwnSession(ctx, args.sessionId);
-		const { sessionId, ...patch } = args;
+		const row = await requireOwnSession(ctx, args.sessionId);
+		const { sessionId, expectStatus, ...patch } = args;
+		if (expectStatus !== undefined && row.status !== expectStatus) {
+			throwInvalidState('These questions were already answered');
+		}
 		await ctx.db.patch(sessionId, {
 			...patch,
 			...(args.status !== 'error' ? { errorMessage: undefined } : {}),

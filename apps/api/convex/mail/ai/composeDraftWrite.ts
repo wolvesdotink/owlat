@@ -62,6 +62,8 @@ export interface AnswerDraftInput {
 	fileLabel?: string | undefined;
 	followUp?: { value: string; at?: number | undefined } | undefined;
 	instruction?: string | undefined;
+	/** The owner's IANA zone; the promised day is named on their calendar. */
+	timeZone?: string | undefined;
 }
 
 /** Settle the session as failed; the composer keeps what the person had. */
@@ -113,6 +115,7 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 		fileLabel: input.fileLabel,
 		followUp: input.followUp,
 		instruction: input.instruction,
+		timeZone: input.timeZone,
 	});
 	const messages = buildDraftMessages({
 		systemPrompt: buildDraftSystemPrompt({

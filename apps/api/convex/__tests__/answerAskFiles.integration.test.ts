@@ -334,9 +334,9 @@ describe('upload answers and Files', () => {
 		expect(await t.run(async (ctx) => await ctx.db.query('semanticFiles').collect())).toEqual([]);
 	});
 
-	it('refuses somebody else’s upload', async () => {
+	it('refuses somebody else’s upload and hands the question back', async () => {
 		const t = await makeT();
-		const { sessionId } = await askForUpload(t);
+		const { draftId, sessionId } = await askForUpload(t);
 		const upload = await seedUpload(t, { userId: 'user-b' });
 		await expect(
 			t.action(api.mail.ai.composeDraft.answer, {
@@ -346,6 +346,34 @@ describe('upload answers and Files', () => {
 				],
 			})
 		).rejects.toMatchObject({ data: { category: 'forbidden' } });
+		const target = { kind: 'mailDraft' as const, draftId };
+		expect((await t.query(api.mail.ai.composeDraftStore.getSession, { target }))?.status).toBe(
+			'asking'
+		);
+	});
+
+	it('two answers racing on one session attach the file once', async () => {
+		const t = await makeT();
+		const { draftId, sessionId } = await askForUpload(t);
+		const fileId = await seedFile(t, { filename: 'invoice-2026-09.pdf' });
+		const answerWithFile = () =>
+			t.action(api.mail.ai.composeDraft.answer, {
+				sessionId,
+				answers: [
+					{
+						questionId: 'file_request',
+						file: { source: 'semanticFile', id: fileId, filename: 'invoice-2026-09.pdf' },
+					},
+				],
+			});
+
+		const results = await Promise.allSettled([answerWithFile(), answerWithFile()]);
+
+		expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+		const refused = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+		expect(refused.reason).toMatchObject({ data: { category: 'invalid_state' } });
+		expect((await draftRow(t, draftId)).attachments).toHaveLength(1);
+		expect(vi.mocked(runLlmStream)).toHaveBeenCalledTimes(1);
 	});
 });
 
