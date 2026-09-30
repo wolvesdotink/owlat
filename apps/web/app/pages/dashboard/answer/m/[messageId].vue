@@ -18,6 +18,7 @@
  * instead of opening the Assistant.
  */
 import type { ComputedRef } from 'vue';
+import type { BackendOperationResult } from '~/composables/useBackendOperation';
 import type { ReplyRisk } from '~/utils/senderAuth';
 import { deriveReplyRisk, senderRiskInputOf } from '~/utils/senderAuth';
 import { extractEmailAddress } from '~/utils/emailAddress';
@@ -128,7 +129,7 @@ const view = ref<AnswerConversationView>('summary');
 // Shallow: the exposed Answer mode API carries refs its users read as refs.
 const composerRef = shallowRef<{
 	focusBody: () => void;
-	flush: () => Promise<string | null>;
+	flush: () => Promise<BackendOperationResult<string | null>>;
 	snapshot: () => { draftId: string | null; toAddresses: string[]; hasContent: boolean };
 	answer: AnswerComposerApi;
 } | null>(null);

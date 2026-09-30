@@ -18,6 +18,7 @@
  */
 
 import type { FunctionReturnType } from 'convex/server';
+import type { OperationError } from '@owlat/shared/operationError';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
