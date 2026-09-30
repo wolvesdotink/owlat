@@ -452,6 +452,50 @@ describe('mirrored folders renamed or deleted', () => {
 		expect(await t.run(async (ctx) => ctx.db.get(receiptsId))).not.toBeNull();
 	});
 
+	// Gmail's Important view ("[Gmail]/Wichtig") was mirrored as a folder by
+	// workers that read `specialUse` only. The provider still lists it, so it is
+	// not "gone"; the worker names it retired. Dropping its mapping while it held
+	// mail would leave that mail with no remote name, never reconciled again.
+	it('keeps a retired folder mapped while it holds mail, then drops it once empty', async () => {
+		const { t, mailboxId, accountId, receiptsId } = await withReceipts();
+		const id = await seedMessage(t, mailboxId, { rfc822MessageId: 'r@x.example' });
+		await t.run(async (ctx) => ctx.db.patch(id, { folderId: receiptsId }));
+		const mappings = async () =>
+			await t.run(async (ctx) =>
+				ctx.db
+					.query('externalMailFolderSync')
+					.withIndex('by_folder', (q) => q.eq('folderId', receiptsId))
+					.collect()
+			);
+		const listed = [...Object.values(REMOTE), 'INBOX.Receipts'];
+
+		await t.mutation(internal.mail.external.remoteState.forgetRemoteFolders, {
+			accountId,
+			listed,
+			retired: ['INBOX.Receipts'],
+		});
+		expect(await mappings()).toHaveLength(1);
+		expect(await t.run(async (ctx) => ctx.db.get(receiptsId))).not.toBeNull();
+
+		// Reconcile moved the message to where it lives on the provider.
+		const inbox = await t.run(
+			async (ctx) =>
+				(await ctx.db
+					.query('mailFolders')
+					.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
+					.collect())!.find((f) => f.role === 'inbox')!._id
+		);
+		await t.run(async (ctx) => ctx.db.patch(id, { folderId: inbox }));
+
+		await t.mutation(internal.mail.external.remoteState.forgetRemoteFolders, {
+			accountId,
+			listed,
+			retired: ['INBOX.Receipts'],
+		});
+		expect(await mappings()).toEqual([]);
+		expect(await t.run(async (ctx) => ctx.db.get(receiptsId))).toBeNull();
+	});
+
 	it('keeps a folder the provider renamed, which its new name still maps to', async () => {
 		const { t, accountId, receiptsId } = await withReceipts();
 		await t.mutation(internal.mail.external.delivery.recordFolderMapping, {
