@@ -93,7 +93,7 @@ export async function computeAttachmentSuggestions(
 	}
 }
 
-// ─── Answer mode: files for a request, across Files and the mailbox ─────────
+// Answer mode: files for a request, across Files and the mailbox.
 
 /**
  * One file a search found for an Answer mode file request, before ranking
