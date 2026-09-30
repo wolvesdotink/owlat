@@ -226,7 +226,9 @@ async function keepCopyInFiles(
 		await ctx.runMutation(internal.mail.ai.composeDraftContext.keepAnswerFileCopy, {
 			storageId: copyId,
 			filename: file.filename,
-			contentType: file.contentType,
+			// The stored blob carries the upload's type when the metadata lacks one.
+			contentType:
+				file.contentType === 'application/octet-stream' && blob.type ? blob.type : file.contentType,
 			contactId: session.contactId,
 			isTeamInbox: session.target.kind === 'teamThread',
 			subject: file.subject,
