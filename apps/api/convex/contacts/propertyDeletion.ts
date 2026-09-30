@@ -38,7 +38,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { logError } from '../lib/runtimeLog';
 import { throwInvalidState, throwNotFound } from '../_utils/errors';
-import { isTransactionLimitError } from './erasure/walker';
+import { isTransactionLimitError } from '../lib/convexLimitErrors';
 
 type Job = Doc<'contactPropertyDeletionJobs'>;
 type TickOutcome = 'done' | 'more' | 'stopped';
