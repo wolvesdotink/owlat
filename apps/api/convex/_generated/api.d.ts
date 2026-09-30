@@ -831,6 +831,7 @@ import type * as lib_validators_templates from '../lib/validators/templates.js';
 import type * as lib_vectorMath from '../lib/vectorMath.js';
 import type * as lib_webSecretBox from '../lib/webSecretBox.js';
 import type * as lib_workingHours from '../lib/workingHours.js';
+import type * as lib_writeFence from '../lib/writeFence.js';
 import type * as mail__helpers from '../mail/_helpers.js';
 import type * as mail__jobLifecycle from '../mail/_jobLifecycle.js';
 import type * as mail_ai_assist from '../mail/ai/assist.js';
@@ -1158,6 +1159,7 @@ import type * as schema_today from '../schema/today.js';
 import type * as schema_topics from '../schema/topics.js';
 import type * as schema_transportOutcomes from '../schema/transportOutcomes.js';
 import type * as schema_webhooks from '../schema/webhooks.js';
+import type * as schema_workspaceDeletion from '../schema/workspaceDeletion.js';
 import type * as seedAdminHttp from '../seedAdminHttp.js';
 import type * as seedDemo_index from '../seedDemo/index.js';
 import type * as seedDemo_indexHttp from '../seedDemo/indexHttp.js';
@@ -1271,6 +1273,7 @@ import type * as webhooks_yahooCflObservation from '../webhooks/yahooCflObservat
 import type * as workspaces_abuseGate from '../workspaces/abuseGate.js';
 import type * as workspaces_abuseStatus from '../workspaces/abuseStatus.js';
 import type * as workspaces_branding from '../workspaces/branding.js';
+import type * as workspaces_deletion_job from '../workspaces/deletion/job.js';
 import type * as workspaces_deletion_steps__common from '../workspaces/deletion/steps/_common.js';
 import type * as workspaces_deletion_steps_accountExportArtifacts from '../workspaces/deletion/steps/accountExportArtifacts.js';
 import type * as workspaces_deletion_steps_contacts from '../workspaces/deletion/steps/contacts.js';
@@ -2117,6 +2120,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/vectorMath': typeof lib_vectorMath;
 	'lib/webSecretBox': typeof lib_webSecretBox;
 	'lib/workingHours': typeof lib_workingHours;
+	'lib/writeFence': typeof lib_writeFence;
 	'mail/_helpers': typeof mail__helpers;
 	'mail/_jobLifecycle': typeof mail__jobLifecycle;
 	'mail/ai/assist': typeof mail_ai_assist;
@@ -2444,6 +2448,7 @@ declare const fullApi: ApiFromModules<{
 	'schema/topics': typeof schema_topics;
 	'schema/transportOutcomes': typeof schema_transportOutcomes;
 	'schema/webhooks': typeof schema_webhooks;
+	'schema/workspaceDeletion': typeof schema_workspaceDeletion;
 	seedAdminHttp: typeof seedAdminHttp;
 	'seedDemo/index': typeof seedDemo_index;
 	'seedDemo/indexHttp': typeof seedDemo_indexHttp;
@@ -2557,6 +2562,7 @@ declare const fullApi: ApiFromModules<{
 	'workspaces/abuseGate': typeof workspaces_abuseGate;
 	'workspaces/abuseStatus': typeof workspaces_abuseStatus;
 	'workspaces/branding': typeof workspaces_branding;
+	'workspaces/deletion/job': typeof workspaces_deletion_job;
 	'workspaces/deletion/steps/_common': typeof workspaces_deletion_steps__common;
 	'workspaces/deletion/steps/accountExportArtifacts': typeof workspaces_deletion_steps_accountExportArtifacts;
 	'workspaces/deletion/steps/contacts': typeof workspaces_deletion_steps_contacts;

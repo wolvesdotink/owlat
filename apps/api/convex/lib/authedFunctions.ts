@@ -85,7 +85,8 @@
  */
 
 import { validatePublicInputStrings } from './publicInput';
-import { query, mutation, action } from '../_generated/server';
+import { fenceMutationBuilder } from './writeFence';
+import { query, mutation as rawMutation, action } from '../_generated/server';
 import type { QueryCtx, MutationCtx, ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { GenericValidator, ObjectType, PropertyValidators } from 'convex/values';
@@ -110,6 +111,11 @@ import {
 } from './platformAdminAccess';
 import { assertFeatureEnabled, assertAnyFeatureEnabled } from './featureFlags';
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
+
+// Every public mutation below builds on this: its handler (and the floor before
+// it) gets a `ctx.db` that refuses to write a swept table while the workspace
+// is being deleted (lib/writeFence.ts).
+const mutation = fenceMutationBuilder(rawMutation);
 
 /**
  * The shape a Convex function builder accepts. Kept deliberately opaque
