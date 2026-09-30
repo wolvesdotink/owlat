@@ -22,12 +22,12 @@
  * fenced builders (lib/writeFence.ts), which refuse writes to the swept tables
  * while a job is active. The mutations here are the deletion worker itself, so
  * they are built on the raw `_generated/server` builder, and this module is the
- * only one `scripts/check-write-fence.sh` allows to do that. Keep it that way:
+ * only one `scripts/check-write-fence.ts` allows to do that. Keep it that way:
  * anything a step needs must run inline on the worker's context, never through
  * `ctx.runMutation`, whose callee would be fenced.
  *
- * See docs/adr/0025-organization-deletion-module-family.md and
- * docs/adr/0062-workspace-deletion-lifecycle.md.
+ * See docs/adr/0025-organization-deletion-module-family.md, including its
+ * "Amendment: durable lifecycle and write fence" (#898).
  */
 
 import { v } from 'convex/values';

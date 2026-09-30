@@ -198,6 +198,28 @@ API-key/no-session context must call an `internal*` sibling (see
 `scripts/check-public-functions.sh` (wired into `bun run lint`) bans the bare
 builders outside `lib/authedFunctions.ts` — a forgotten gate fails CI.
 
+### The workspace write fence
+
+While a workspace deletion runs, no mutation may put data back into a table
+the deletion sweeps. [`lib/writeFence.ts`](lib/writeFence.ts) enforces that in
+the database handle the builders give their handlers: insert, patch and
+replace on a swept table throw `invalid_state` while a `workspaceDeletionJobs`
+row is active; deletes and writes to other tables pass. The public mutation
+builders above already build on it. For internal mutations, import
+`internalMutation` from `lib/writeFence`, never from `_generated/server`:
+
+```ts
+import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
+```
+
+`scripts/check-write-fence.ts` (part of `bun run lint`) fails on a raw
+`internalMutation` / `mutation` import anywhere except the fence module, the
+public builders and the deletion worker (`workspaces/deletion/walker.ts`), the
+one writer the fence exempts. A deletion step must therefore run its work
+inline on the worker's context: a `ctx.runMutation` callee is fenced. See
+ADR-0025's #898 amendment.
+
 ### Feature-flag floors
 
 Modules behind an instance feature flag (`chat`, `ai.assistant`, …) must not let

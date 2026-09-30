@@ -666,3 +666,83 @@ the typed-`TransitionInput` + `LEGAL_EDGES` + reducer + effects shape
 by convention, not by a generic factor. This ADR is *not* a lifecycle
 module (no status column, no `LEGAL_EDGES`) and so doesn't bear on
 that question.
+
+## Amendment: durable lifecycle and write fence (#898, 2026-09-30)
+
+The walker above sweeps each table once, in order, and carried its
+progress only in scheduled-function arguments. Two gaps followed. A row
+written into a table after its step had run survived the whole walk (a
+contact created after the `contacts` step, a webhook payload stored
+after `webhookPayloads`, a cron re-creating `instanceSettings`), and
+nothing recorded where a walk stood, whether a second request had
+started a second chain, or why a chain had stopped.
+
+**The job.** Starting a deletion now opens one `workspaceDeletionJobs`
+row, in the requesting transaction (`settings.remove`, or the account
+deletion cron for an owner). At most one row is `isActive`; a second
+request reads it and joins instead of starting a second generation, and
+two concurrent requests serialize on the `by_is_active` index range, so
+the loser's re-run joins. The row holds the generation, status
+(`running` / `retrying` / `failed` / `completed`), phase (`sweep` /
+`verify`), the current step, counters, and the last failure. The table is
+not tenant data and the walk never sweeps it: finished rows are the
+generation history.
+
+**Checkpoints and recovery.** `walker.tick` runs one bounded batch and
+saves the next step on the job row in the same transaction. Every step
+deletes from the front of its table, so the step name is the whole
+cursor. `walker.drive` chains ticks and records a failed tick
+(`recordFailure`: attempts, last error, backoff retry, `failed` after
+five attempts), the same shape as the contact erasure walker. The
+`recover workspace deletion` cron restarts a job whose heartbeat went
+quiet and re-arms a failed one after an hour, from the saved step.
+`walker.status` is the operator's view.
+
+**Verification before completion.** When the sweep passes the last
+table the job enters `verify`: with the fence still up it checks every
+registered table for a row. A table that still has one sends the job
+back to sweeping from there; only an empty pass marks the job
+`completed`, and that transaction is what lifts the fence. A job that
+keeps finding rows fails after five passes instead of looping.
+
+**The write fence.** While a job is active, `lib/writeFence.ts` refuses
+every insert, patch and replace on a table in the deletion registry
+(`invalid_state`, `reason: workspace_deletion_in_progress`). Deletes
+pass, and tables outside the registry (auth identity, instance
+infrastructure, the job table) stay writable, so sign-in, updates and
+backups keep working. The check sits in the database handle the builders
+give their handlers, so there is one check rather than one per mutation:
+the public mutation builders in `lib/authedFunctions.ts` build on a
+fenced `mutation`, and every internal mutation imports the fenced
+`internalMutation` from `lib/writeFence.ts`. Crons, scheduled chains,
+HTTP routes (API-key, inbound webhooks, service callbacks) and actions
+all write through those, so an action that was already running when the
+deletion began has its commit refused at the mutation it calls. The
+deletion worker is the one exemption: `walker.ts` builds on the raw
+builder, and `apps/api/scripts/check-write-fence.ts` (part of the api
+lint) fails on a raw mutation builder anywhere else. For that reason the `domains` step now runs the sending
+domain removal inline on the worker's context instead of through
+`ctx.runMutation`, whose callee would be fenced.
+
+Not fenced: storage writes from actions (`ctx.storage.store` in an HTTP
+action or upload flow). They are not database writes; the row that
+would name such a blob is refused, so the blob is left unreferenced.
+Component tables (BetterAuth, rate limiter, workpool) are outside the
+application schema and are not fenced either.
+
+**BetterAuth rows.** The organization, member and user rows live in the
+BetterAuth component and are not part of the sweep. An owner's account
+deletion removes the organization and that owner's membership in the
+same transaction that opens the job, before any tenant table is
+touched. "Delete workspace" keeps the organization, its members and
+their accounts: after completion the deployment holds the same
+organization with an empty workspace, and `instanceSettings` is
+recreated on the next write. Because users remain, `/seed/admin` stays
+closed, so completion does not return the deployment to first-run setup.
+
+**Compatibility.** The table and its indexes are new, so no existing row
+changes. `walker.start` and `walker.runStep` keep their paths and
+arguments for one release: the previous release's queued `start` opens
+(or joins) a job, and a previous-release `runStep` hop runs its batch
+and adopts the walk into a job at the table it would have continued
+with.

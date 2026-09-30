@@ -13,7 +13,7 @@
  *   - every public mutation builder in `lib/authedFunctions.ts` (and so every
  *     `featureGated` composition of them) wraps its `ctx.db` here;
  *   - `internalMutation` below is the fenced counterpart of the raw builder, and
- *     `scripts/check-write-fence.sh` makes it the only one a module may use.
+ *     `scripts/check-write-fence.ts` makes it the only one a module may use.
  *     Crons, scheduled chains, HTTP routes (API-key, inbound webhooks, service
  *     callbacks) and actions all write through internal mutations, so an action
  *     that was already running when the deletion began has its commit refused
@@ -29,7 +29,8 @@
  * Reads are never fenced.
  *
  * Cost when no deletion is running: one indexed read of an empty range, once
- * per transaction, and only in a transaction that writes a swept table.
+ * per transaction, and only in a transaction that writes a swept table (or
+ * patches a row by bare id).
  */
 
 import {
@@ -88,13 +89,14 @@ export function fenceWorkspaceWrites<Ctx extends { db: Writer }>(ctx: Ctx): Ctx 
 
 	/** `table` is null when the call named only an id; `id` resolves it then. */
 	async function guard(table: string | null, id?: unknown): Promise<void> {
+		// A named table outside the registry never needs the job.
+		if (table !== null && !FENCED_TABLES.has(table)) return;
 		activeJob ??= readActiveWorkspaceDeletion(db);
 		const job = await activeJob;
 		if (job === null) return;
-		const resolved = table ?? tableOfUnfencedId(db, id);
-		// An id that belongs to none of the writable tables is fenced: unknown
-		// fails closed.
-		if (resolved !== null && !FENCED_TABLES.has(resolved)) return;
+		// A bare id is resolved only now, while a deletion runs. An id that
+		// belongs to none of the writable tables is fenced: unknown fails closed.
+		if (table === null && tableOfUnfencedId(db, id) !== null) return;
 		refuseWrite(job);
 	}
 
@@ -180,6 +182,6 @@ export function fenceMutationBuilder<Builder>(builder: Builder): Builder {
 
 /**
  * The fenced `internalMutation`: import it from here, never from
- * `_generated/server` (`scripts/check-write-fence.sh`).
+ * `_generated/server` (`scripts/check-write-fence.ts`).
  */
 export const internalMutation = fenceMutationBuilder(rawInternalMutation);
