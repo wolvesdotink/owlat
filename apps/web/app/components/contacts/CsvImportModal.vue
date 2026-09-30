@@ -11,6 +11,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
 	import: [];
+	/** Resend the rows a failed batch left behind (`csvImport.retryFailedRows`). */
+	retry: [];
 }>();
 
 const { t } = useI18n();
@@ -29,7 +31,9 @@ const stepDescription = computed(() => {
 		case 'importing':
 			return t('components.contacts.csvImportModal.steps.importing');
 		case 'complete':
-			return t('components.contacts.csvImportModal.steps.complete');
+			return props.csvImport.notImportedRowCount.value > 0
+				? t('components.contacts.csvImportModal.complete.incompleteTitle')
+				: t('components.contacts.csvImportModal.steps.complete');
 		default:
 			return '';
 	}
@@ -43,10 +47,17 @@ const canClose = computed(() => props.csvImport.step.value !== 'importing');
  * from any of them asks first — `close()` drops all of it, and `open()` resets,
  * so a stray backdrop click at `mapping` used to cost the whole upload silently.
  *
- * `upload` has nothing to lose and `complete` is already finished, so both close
- * straight away; `importing` is blocked by `canClose` and never reaches here.
+ * `upload` has nothing to lose, so it closes straight away, and so does a
+ * `complete` step that took every row. An INCOMPLETE one asks too: its retry set
+ * lives only in the composable, so closing it drops the one way to send the rows
+ * a failed batch left behind. `importing` is blocked by `canClose` and never
+ * reaches here.
  */
 const DISCARDABLE_STEPS: ReadonlySet<ImportStep> = new Set(['mapping', 'listMapping', 'preview']);
+
+const holdsUnsavedWork = () =>
+	DISCARDABLE_STEPS.has(props.csvImport.step.value) ||
+	(props.csvImport.step.value === 'complete' && props.csvImport.notImportedRowCount.value > 0);
 
 const isConfirmingDiscard = ref(false);
 
@@ -61,7 +72,7 @@ const requestClose = () => {
 		isConfirmingDiscard.value = false;
 		return;
 	}
-	if (DISCARDABLE_STEPS.has(props.csvImport.step.value)) {
+	if (holdsUnsavedWork()) {
 		isConfirmingDiscard.value = true;
 		return;
 	}
@@ -119,7 +130,7 @@ const topicAssignmentSummary = computed(() => {
 		return t(
 			'components.contacts.csvImportModal.topicAssignment.column',
 			{ mapped, skipped },
-			mapped,
+			mapped
 		);
 	}
 	return null;
@@ -134,15 +145,55 @@ const errorRows = computed(() => props.csvImport.results.value?.errors ?? []);
 const previewedErrorRows = computed(() => errorRows.value.slice(0, ERROR_PREVIEW_LIMIT));
 const hiddenErrorCount = computed(() => Math.max(0, errorRows.value.length - ERROR_PREVIEW_LIMIT));
 
+// ── Complete step: a failed batch ───────────────────────────────────────────
+
+const notImportedCount = computed(() => props.csvImport.notImportedRowCount.value);
+const isIncomplete = computed(() => notImportedCount.value > 0);
+/** Rows the backend reported as failed plus the rows it never committed. */
+const failedCount = computed(
+	() => (props.csvImport.results.value?.failed ?? 0) + notImportedCount.value
+);
+
+/** First and last data row of a slice of the not-imported rows, for the summary lines. */
+const rowSpan = (rows: ReadonlyArray<{ row: number }>) => ({
+	count: rows.length,
+	first: rows[0]?.row ?? 0,
+	last: rows[rows.length - 1]?.row ?? 0,
+});
+const failedBatchRows = computed(() =>
+	rowSpan(props.csvImport.notImportedRows.value.filter((r) => r.attempted))
+);
+const unsentRows = computed(() =>
+	rowSpan(props.csvImport.notImportedRows.value.filter((r) => !r.attempted))
+);
+
+/** One line per row that did not make it in, so the download names every address. */
+const notImportedErrorLines = computed(() => {
+	const reason = props.csvImport.failedBatch.value?.reason ?? '';
+	return props.csvImport.notImportedRows.value.map((r) =>
+		r.attempted
+			? t('components.contacts.csvImportModal.complete.notImportedRow', {
+					row: r.row,
+					email: r.email,
+					reason,
+				})
+			: t('components.contacts.csvImportModal.complete.notSentRow', { row: r.row, email: r.email })
+	);
+});
+const downloadableErrorRows = computed(() => [...errorRows.value, ...notImportedErrorLines.value]);
+
 /**
  * The full error list as a file. The on-screen list stays capped — a wall of
  * 200 red lines is not readable — but nothing that only exists in this modal is
  * allowed to die with it.
  */
 const downloadErrorRows = () => {
-	if (errorRows.value.length === 0) return;
+	if (downloadableErrorRows.value.length === 0) return;
 	const stem = props.csvImport.selectedFile.value?.name.replace(/\.csv$/i, '').trim();
-	downloadCsv(buildImportErrorsCsv(errorRows.value), `${stem || 'contacts-import'}-errors.csv`);
+	downloadCsv(
+		buildImportErrorsCsv(downloadableErrorRows.value),
+		`${stem || 'contacts-import'}-errors.csv`
+	);
 };
 
 // A topic assigned after the fact, from the panel below — it becomes the
@@ -186,7 +237,9 @@ const addToTopicId = ref('');
 /**
  * The distinct addresses this import carried, in file order. The results only
  * carry counts, so the rows are re-derived from the parsed file — `close()` is
- * what clears it, and the complete step is still open.
+ * what clears it, and the complete step is still open. Rows a failed batch left
+ * behind are left out: `importBatch` would create them, which is the retry's
+ * job, not a topic assignment's.
  */
 const importedEmails = computed(() => {
 	const emailColumn = Object.entries(props.csvImport.columnMapping.value).find(
@@ -194,9 +247,11 @@ const importedEmails = computed(() => {
 	)?.[0];
 	if (emailColumn === undefined) return [];
 	const index = parseInt(emailColumn, 10);
+	const notImported = new Set(props.csvImport.notImportedRows.value.map((r) => r.row));
 	const seen = new Set<string>();
 	const emails: string[] = [];
-	for (const row of props.csvImport.parsedData.value) {
+	for (const [rowIndex, row] of props.csvImport.parsedData.value.entries()) {
+		if (notImported.has(rowIndex + 1)) continue;
 		const email = row[index]?.trim();
 		if (!email || seen.has(email.toLowerCase())) continue;
 		seen.add(email.toLowerCase());
@@ -290,6 +345,7 @@ watch(
 		<div
 			v-if="csvImport.error.value"
 			class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
+			role="alert"
 		>
 			<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
 			<p class="text-sm text-error">{{ csvImport.error.value }}</p>
@@ -306,7 +362,15 @@ watch(
 					{{ t('components.contacts.csvImportModal.discard.title') }}
 				</p>
 				<p class="text-sm text-text-secondary max-w-sm">
-					{{ t('components.contacts.csvImportModal.discard.body') }}
+					{{
+						csvImport.step.value === 'complete'
+							? t(
+									'components.contacts.csvImportModal.discard.incompleteBody',
+									{ count: csvImport.notImportedRowCount.value },
+									csvImport.notImportedRowCount.value
+								)
+							: t('components.contacts.csvImportModal.discard.body')
+					}}
 				</p>
 			</div>
 		</div>
@@ -381,9 +445,7 @@ watch(
 					scope="global"
 				>
 					<template #count>
-						<span class="text-text-primary font-medium">{{
-							csvImport.totalRowCount.value
-						}}</span>
+						<span class="text-text-primary font-medium">{{ csvImport.totalRowCount.value }}</span>
 					</template>
 					<template #filename>
 						<span class="text-text-primary font-medium">{{
@@ -422,9 +484,7 @@ watch(
 							v-for="field in mappableFields"
 							:key="field.value"
 							:value="field.value"
-							:disabled="
-								field.value === 'topic' && csvImport.listAssignmentMode.value === 'global'
-							"
+							:disabled="field.value === 'topic' && csvImport.listAssignmentMode.value === 'global'"
 						>
 							{{ t(field.label) }}
 						</option>
@@ -472,9 +532,7 @@ watch(
 					:value="csvImport.selectedTopicId.value ?? ''"
 					class="input w-full"
 					:disabled="csvImport.isTopicMapped.value"
-					@change="
-						csvImport.selectGlobalTopic(($event.target as HTMLSelectElement).value || null)
-					"
+					@change="csvImport.selectGlobalTopic(($event.target as HTMLSelectElement).value || null)"
 				>
 					<option value="">{{ t('common.none') }}</option>
 					<option v-for="list in availableLists" :key="list._id" :value="list._id">
@@ -548,7 +606,9 @@ watch(
 			<!-- Validation Summary Cards -->
 			<div v-if="validationResult" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
 				<div class="p-3 rounded-lg bg-success/10 border border-success/20">
-					<p class="text-2xl font-medium tracking-[-0.02em] text-success">{{ validationResult.validCount }}</p>
+					<p class="text-2xl font-medium tracking-[-0.02em] text-success">
+						{{ validationResult.validCount }}
+					</p>
 					<p class="text-xs text-success/80">
 						{{ t('components.contacts.csvImportModal.preview.validContacts') }}
 					</p>
@@ -597,9 +657,7 @@ watch(
 					<p
 						class="text-xs"
 						:class="
-							validationResult.duplicateEmails.length > 0
-								? 'text-warning/80'
-								: 'text-text-tertiary'
+							validationResult.duplicateEmails.length > 0 ? 'text-warning/80' : 'text-text-tertiary'
 						"
 					>
 						{{ t('components.contacts.csvImportModal.preview.duplicates') }}
@@ -615,9 +673,7 @@ watch(
 				>
 					<p
 						class="text-2xl font-medium tracking-[-0.02em]"
-						:class="
-							validationResult.missingEmails.length > 0 ? 'text-error' : 'text-text-tertiary'
-						"
+						:class="validationResult.missingEmails.length > 0 ? 'text-error' : 'text-text-tertiary'"
 					>
 						{{ validationResult.missingEmails.length }}
 					</p>
@@ -842,7 +898,7 @@ watch(
 							t(
 								'components.contacts.csvImportModal.preview.summaryProperties',
 								{ count: mappedPropertyKeys.length, keys: mappedPropertyKeys.join(', ') },
-								mappedPropertyKeys.length,
+								mappedPropertyKeys.length
 							)
 						}}
 					</li>
@@ -883,11 +939,31 @@ watch(
 		<!-- Step 5: Complete -->
 		<div v-else-if="csvImport.step.value === 'complete'" class="py-4">
 			<div class="flex flex-col items-center gap-4 mb-6">
-				<div class="p-3 rounded-full bg-success/10">
+				<div v-if="isIncomplete" class="p-3 rounded-full bg-warning/10">
+					<Icon name="lucide:alert-triangle" class="w-8 h-8 text-warning" />
+				</div>
+				<div v-else class="p-3 rounded-full bg-success/10">
 					<Icon name="lucide:check" class="w-8 h-8 text-success" />
 				</div>
 				<p class="text-lg font-medium text-text-primary">
-					{{ t('components.contacts.csvImportModal.complete.title') }}
+					{{
+						isIncomplete
+							? t('components.contacts.csvImportModal.complete.incompleteTitle')
+							: t('components.contacts.csvImportModal.complete.title')
+					}}
+				</p>
+				<p v-if="isIncomplete" class="text-sm text-text-secondary text-center">
+					{{
+						t(
+							'components.contacts.csvImportModal.complete.notImportedSummary',
+							{
+								processed: csvImport.totalRowCount.value - notImportedCount,
+								total: csvImport.totalRowCount.value,
+								count: notImportedCount,
+							},
+							notImportedCount
+						)
+					}}
 				</p>
 			</div>
 			<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
@@ -907,10 +983,35 @@ watch(
 					variant="secondary"
 				/>
 				<UiStatCard
-					:value="csvImport.results.value?.failed || 0"
+					:value="failedCount"
 					:label="t('components.contacts.csvImportModal.complete.failed')"
 					variant="error"
 				/>
+			</div>
+			<!-- A batch the backend did not commit: which rows, why, and that a retry
+				 sends only those. -->
+			<div
+				v-if="isIncomplete"
+				class="mb-4 p-4 rounded-lg bg-error-subtle border border-error/20"
+				role="alert"
+			>
+				<h4 v-if="failedBatchRows.count > 0" class="text-sm font-medium text-error">
+					{{
+						t(
+							'components.contacts.csvImportModal.complete.batchFailed',
+							{ ...failedBatchRows, reason: csvImport.failedBatch.value?.reason ?? '' },
+							failedBatchRows.count
+						)
+					}}
+				</h4>
+				<p v-if="unsentRows.count > 0" class="mt-1 text-sm text-error/80">
+					{{
+						t('components.contacts.csvImportModal.complete.notSent', unsentRows, unsentRows.count)
+					}}
+				</p>
+				<p class="mt-2 text-sm text-text-secondary">
+					{{ t('components.contacts.csvImportModal.complete.retryHint') }}
+				</p>
 			</div>
 			<div
 				v-if="csvImport.results.value?.addedToList && csvImport.results.value.addedToList > 0"
@@ -922,7 +1023,7 @@ watch(
 						t(
 							'components.contacts.csvImportModal.complete.addedToTopics',
 							{ count: csvImport.results.value.addedToList },
-							csvImport.results.value.addedToList,
+							csvImport.results.value.addedToList
 						)
 					}}
 				</p>
@@ -941,7 +1042,11 @@ watch(
 					</option>
 				</select>
 				<div class="mt-3 flex justify-end gap-3">
-					<UiButton variant="secondary" :disabled="isAddingToTopic" @click="isAddToTopicOpen = false">
+					<UiButton
+						variant="secondary"
+						:disabled="isAddingToTopic"
+						@click="isAddToTopicOpen = false"
+					>
 						{{ t('common.cancel') }}
 					</UiButton>
 					<UiButton
@@ -954,7 +1059,10 @@ watch(
 				</div>
 			</div>
 
-			<div v-if="errorRows.length > 0" class="p-4 rounded-lg bg-error-subtle border border-error/20">
+			<div
+				v-if="errorRows.length > 0"
+				class="p-4 rounded-lg bg-error-subtle border border-error/20"
+			>
 				<h4 class="text-sm font-medium text-error mb-2">
 					{{
 						t('components.contacts.csvImportModal.complete.errorsTitle', {
@@ -985,12 +1093,35 @@ watch(
 
 		<!-- Footer -->
 		<template #footer>
-			<template v-if="isConfirmingDiscard">
-				<UiButton variant="secondary" @click="cancelDiscard()">{{
-					t('components.contacts.csvImportModal.discard.keepEditing')
-				}}</UiButton>
-				<UiButton variant="danger" @click="confirmDiscard()">{{ t('common.discard') }}</UiButton>
-			</template>
+			<!-- Footers with more than two actions: secondary actions on the left,
+				 the decision on the right. Labels stay on one line; when the row does
+				 not fit, the right-hand group wraps below as a whole. -->
+			<div
+				v-if="isConfirmingDiscard"
+				class="flex w-full flex-wrap items-center justify-between gap-3"
+			>
+				<div class="flex flex-wrap gap-3">
+					<!-- The prompt tells the operator to download the missing rows first,
+						 so the download is offered right here. -->
+					<UiButton
+						v-if="csvImport.step.value === 'complete' && downloadableErrorRows.length > 0"
+						variant="secondary"
+						class="whitespace-nowrap"
+						@click="downloadErrorRows()"
+					>
+						<template #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
+						{{ t('components.contacts.csvImportModal.complete.downloadErrors') }}
+					</UiButton>
+				</div>
+				<div class="ml-auto flex flex-wrap justify-end gap-3">
+					<UiButton variant="secondary" class="whitespace-nowrap" @click="cancelDiscard()">{{
+						t('components.contacts.csvImportModal.discard.keepEditing')
+					}}</UiButton>
+					<UiButton variant="danger" class="whitespace-nowrap" @click="confirmDiscard()">{{
+						t('common.discard')
+					}}</UiButton>
+				</div>
+			</div>
 			<template v-else-if="csvImport.step.value === 'upload'">
 				<UiButton variant="secondary" @click="requestClose()">{{ t('common.cancel') }}</UiButton>
 			</template>
@@ -1023,24 +1154,51 @@ watch(
 					}}
 				</UiButton>
 			</template>
-			<template v-else-if="csvImport.step.value === 'complete'">
-				<UiButton v-if="errorRows.length > 0" variant="secondary" @click="downloadErrorRows()">
-					<template #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
-					{{ t('components.contacts.csvImportModal.complete.downloadErrors') }}
-				</UiButton>
-				<UiButton
-					v-if="availableLists.length > 0"
-					variant="secondary"
-					@click="isAddToTopicOpen = !isAddToTopicOpen"
-				>
-					<template #iconLeft><Icon name="lucide:tag" class="w-4 h-4" /></template>
-					{{ t('components.contacts.csvImportModal.complete.addToTopic') }}
-				</UiButton>
-				<UiButton @click="viewImported()">
-					{{ t('components.contacts.csvImportModal.complete.viewImported') }}
-					<template #iconRight><Icon name="lucide:arrow-right" class="w-4 h-4" /></template>
-				</UiButton>
-			</template>
+			<div
+				v-else-if="csvImport.step.value === 'complete'"
+				class="flex w-full flex-wrap items-center justify-between gap-3"
+			>
+				<div class="flex flex-wrap gap-3">
+					<UiButton
+						v-if="downloadableErrorRows.length > 0"
+						variant="secondary"
+						class="whitespace-nowrap"
+						@click="downloadErrorRows()"
+					>
+						<template #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
+						{{ t('components.contacts.csvImportModal.complete.downloadErrors') }}
+					</UiButton>
+					<UiButton
+						v-if="availableLists.length > 0"
+						variant="secondary"
+						class="whitespace-nowrap"
+						@click="isAddToTopicOpen = !isAddToTopicOpen"
+					>
+						<template #iconLeft><Icon name="lucide:tag" class="w-4 h-4" /></template>
+						{{ t('components.contacts.csvImportModal.complete.addToTopic') }}
+					</UiButton>
+				</div>
+				<div class="ml-auto flex flex-wrap justify-end gap-3">
+					<UiButton
+						:variant="isIncomplete ? 'secondary' : 'primary'"
+						class="whitespace-nowrap"
+						@click="viewImported()"
+					>
+						{{ t('components.contacts.csvImportModal.complete.viewImported') }}
+						<template #iconRight><Icon name="lucide:arrow-right" class="w-4 h-4" /></template>
+					</UiButton>
+					<UiButton v-if="isIncomplete" class="whitespace-nowrap" @click="emit('retry')">
+						<template #iconLeft><Icon name="lucide:rotate-cw" class="w-4 h-4" /></template>
+						{{
+							t(
+								'components.contacts.csvImportModal.complete.retry',
+								{ count: notImportedCount },
+								notImportedCount
+							)
+						}}
+					</UiButton>
+				</div>
+			</div>
 		</template>
 	</UiModal>
 </template>
