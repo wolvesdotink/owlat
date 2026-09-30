@@ -3664,11 +3664,11 @@
 				"dropHint": "Drop to attach · drop in text to embed",
 				"minimize": "Minimize",
 				"newMessage": "New message",
-				"openInPopup": "Open in popup",
 				"savedAt": "Saved {time}",
 				"scheduledFor": "Scheduled for {datetime}",
 				"unschedule": "Unschedule to edit",
-				"uploadingToast": "Waiting for attachments to finish uploading…"
+				"uploadingToast": "Waiting for attachments to finish uploading…",
+				"openInAnswerMode": "Open in Answer mode"
 			},
 			"postboxComposerAttachments": {
 				"cancel": "Cancel {filename}",
@@ -3713,7 +3713,12 @@
 				"signature": "Signature",
 				"uploadingTitle": "Waiting for attachments to finish uploading…",
 				"previewAsSent": "Preview as sent",
-				"sendAs": "as {name}"
+				"sendAs": "as {name}",
+				"showCoach": "Coach and revise",
+				"hideCoach": "Hide coach and revise",
+				"discardDraft": "Discard draft",
+				"showQuote": "Show quoted text",
+				"hideQuote": "Hide quoted text"
 			},
 			"postboxComposerGuards": {
 				"alignment": {
@@ -3924,18 +3929,6 @@
 				"label": "Inbox view",
 				"priority": "Priority",
 				"title": "Priority mail or all mail (B)"
-			},
-			"postboxInlineReply": {
-				"dialogLabel": "Inline reply",
-				"draftAReply": "Draft a reply",
-				"draftReply": "Draft reply",
-				"forward": "Forward",
-				"noSuggestions": "No suggestions right now. Try again in a moment.",
-				"replyAll": "Reply all",
-				"replyTo": "Reply to {sender}…",
-				"suggestOperation": "Suggest replies",
-				"suggestedReplies": "Suggested replies",
-				"working": "Working…"
 			},
 			"postboxInviteCard": {
 				"accept": "Accept",
@@ -5092,6 +5085,22 @@
 				"label": "Sync changes with your provider",
 				"toastOff": "Only new mail comes in from now on.",
 				"toastOn": "Two-way sync is on. Both sides are lined up on the next sync."
+			},
+			"postboxReaderMessage": {
+				"showDetails": "Show recipients and details"
+			},
+			"postboxComposerEnvelopeLine": {
+				"label": "Recipients, sender and subject. Open to edit",
+				"copies": "+{count} in copy",
+				"replyAll": "Reply all",
+				"edit": "Edit",
+				"to": "To {names}",
+				"from": "From {address}"
+			},
+			"postboxAnswerDraftBar": {
+				"saved": "Draft to {name} saved",
+				"resume": "Resume",
+				"dismiss": "Hide this reminder"
 			}
 		},
 		"preferences": {
@@ -5885,7 +5894,8 @@
 				"gone": "This email is no longer available here. It may have been moved or deleted.",
 				"done": "Done",
 				"openThread": "Open conversation",
-				"markReadOperation": "Mark as read"
+				"markReadOperation": "Mark as read",
+				"reply": "Reply"
 			},
 			"inboxPicker": {
 				"label": "Choose the inboxes on the Workbench",
@@ -5958,6 +5968,29 @@
 			},
 			"mail": {
 				"writeOwn": "Write my own"
+			},
+			"mode": {
+				"back": "Back to {page}",
+				"backTo": {
+					"inbox": "Inbox",
+					"queue": "Answer queue",
+					"workbench": "Workbench",
+					"previous": "Previous page"
+				},
+				"messageCount": "{count} message | {count} messages",
+				"tabsLabel": "Conversation or reply",
+				"tabs": {
+					"conversation": "Conversation",
+					"reply": "Reply"
+				},
+				"viewLabel": "How much of the conversation to show",
+				"viewShortcut": "Switch with T",
+				"view": {
+					"summary": "Summary",
+					"full": "Full conversation"
+				},
+				"more": "More for this conversation",
+				"openInPostbox": "Open in Postbox"
 			}
 		}
 	},
@@ -10657,7 +10690,10 @@
 			}
 		},
 		"answer": {
-			"pageTitle": "Answer queue"
+			"pageTitle": "Answer queue",
+			"mode": {
+				"pageTitle": "Answer mode"
+			}
 		},
 		"inboxes": {
 			"pageTitle": "All inboxes",
@@ -13955,7 +13991,6 @@
 				"closeConversation": "Close the open conversation / back to Priority",
 				"compose": "Compose",
 				"extendSelection": "Extend selection",
-				"focusComposer": "Focus the composer",
 				"focusSearch": "Focus search",
 				"forward": "Forward",
 				"goToAdmin": "Go to admin",

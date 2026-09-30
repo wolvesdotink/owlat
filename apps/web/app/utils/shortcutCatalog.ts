@@ -370,15 +370,6 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		remappable: false,
 	},
 	{
-		id: 'composer.focus',
-		scope: 'composer',
-		keys: ['mod+F'],
-		displayKeys: 'mod+shift+F',
-		labelKey: L('focusComposer'),
-		groupKey: G.compose,
-		remappable: false,
-	},
-	{
 		id: 'composer.minimize',
 		scope: 'composer',
 		keys: ['Escape'],

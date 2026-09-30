@@ -34,6 +34,7 @@ let navigateTo: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
 	assistantOn = true;
+	route.meta = {};
 	navigateTo = vi.fn();
 	document.body.innerHTML = '';
 	installNuxtStubs({
@@ -91,6 +92,32 @@ describe('dashboard layout — ⌘J', () => {
 		const wrapper = mountLayout();
 		pressCmdJ();
 		expect(navigateTo).not.toHaveBeenCalledWith('/dashboard/assistant');
+		wrapper.unmount();
+	});
+
+	it('leaves the chord to the draft inside Answer mode', () => {
+		route.meta = { answerMode: true };
+		const wrapper = mountLayout();
+		pressCmdJ();
+		expect(navigateTo).not.toHaveBeenCalledWith('/dashboard/assistant');
+		wrapper.unmount();
+	});
+});
+
+describe('dashboard layout — Answer mode chrome', () => {
+	it('hides the shell header and sends the sidebar off-screen, as focus mode does', () => {
+		route.meta = { answerMode: true };
+		const wrapper = mountLayout();
+		expect(wrapper.findComponent({ name: 'DashboardShellHeader' }).exists()).toBe(false);
+		const aside = wrapper.get('aside');
+		expect(aside.classes()).toContain('lg:-translate-x-full');
+		expect(aside.attributes('inert')).toBeDefined();
+		wrapper.unmount();
+	});
+
+	it('keeps the header on every other page', () => {
+		const wrapper = mountLayout();
+		expect(wrapper.findComponent({ name: 'DashboardShellHeader' }).exists()).toBe(true);
 		wrapper.unmount();
 	});
 });

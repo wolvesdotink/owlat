@@ -18,23 +18,32 @@ const ComposerStub = defineComponent({
 		seed: { type: Object, required: true },
 		replyAllRecipients: { type: Array, default: undefined },
 	},
-	emits: ['sent', 'discarded', 'minimize'],
+	emits: ['sent', 'discarded', 'minimize', 'maximise'],
 	template: '<div data-testid="composer" />',
 });
 
 const stackClose = vi.fn();
 const undoArm = vi.fn();
+const navigateTo = vi.fn();
 
 beforeEach(() => {
 	stackClose.mockClear();
 	undoArm.mockClear();
+	navigateTo.mockClear();
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('usePostboxComposerStack', () => ({
-		focusedId: ref(null),
 		close: stackClose,
 		minimize: vi.fn(),
-		unfocus: vi.fn(),
 	}));
+	const state = new Map<string, ReturnType<typeof ref>>();
+	vi.stubGlobal('useState', (key: string, init: () => unknown) => {
+		if (!state.has(key)) state.set(key, ref(init()));
+		return state.get(key);
+	});
+	vi.stubGlobal('useRouter', () => ({
+		currentRoute: ref({ path: '/dashboard/postbox/inbox', fullPath: '/dashboard/postbox/inbox' }),
+	}));
+	vi.stubGlobal('navigateTo', navigateTo);
 	vi.stubGlobal('usePostboxComposerSize', () => ({
 		size: ref({ width: 520, height: 560 }),
 		setSize: vi.fn(),
@@ -84,5 +93,19 @@ describe('PostboxComposerPopup', () => {
 		mountPopup().getComponent(ComposerStub).vm.$emit('sent', { scheduled: false });
 		expect(stackClose).toHaveBeenCalledWith('cmp-1');
 		expect(undoArm).not.toHaveBeenCalled();
+	});
+
+	it('moves a reply into Answer mode on maximise, on the same draft', async () => {
+		const wrapper = mount(PostboxComposerPopup, {
+			props: { composer: { ...composer, inReplyToMessageId: 'msg-9' as never }, slotIndex: 0 },
+			global: {
+				plugins: [createTestI18n()],
+				components: { PostboxComposer: ComposerStub },
+				stubs: { teleport: true },
+			},
+		});
+		wrapper.getComponent(ComposerStub).vm.$emit('maximise', 'draft-1');
+		expect(stackClose).toHaveBeenCalledWith('cmp-1');
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/answer/m/msg-9?draft=draft-1');
 	});
 });

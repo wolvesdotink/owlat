@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import type { ComposerMode, ComposerSeed } from '~/composables/postbox/usePostboxCompose';
-import type { ComposerPromotePayload } from '~/composables/postbox/usePostboxComposerStack';
 import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
+import { usePostboxComposerAnswerFrame } from '~/composables/postbox/usePostboxComposerAnswerFrame';
 import { convertReplyToReplyAll } from '~/utils/postboxReplyDefault';
+import { answerDraftHasContent } from '~/utils/answerMode';
 
 const EmailBuilder = defineAsyncComponent(() =>
 	import('@owlat/email-builder').then((m) => m.EmailBuilder)
@@ -19,12 +20,13 @@ const props = defineProps<{
 	 */
 	replyAllRecipients?: string[];
 	/**
-	 * Compact in-place variant (the reader's inline reply box): the header
-	 * swaps Minimize for an expand-to-popup button that emits `promote` with
-	 * the live draft, and the body editor is focused on mount (inline only
-	 * mounts on an explicit user action, so this never steals focus on load).
+	 * Where the composer is mounted. `popup` (default) is the floating stack's
+	 * window. `answer` is Answer mode's composer column: no title bar, the
+	 * envelope folded to one line, the quote folded out of the editor, Coach
+	 * and Revise under ⋯, and the body focused on mount (Answer mode only
+	 * opens on an explicit reply, so this never steals focus on load).
 	 */
-	inline?: boolean;
+	frame?: 'popup' | 'answer';
 }>();
 
 const emit = defineEmits<{
@@ -34,8 +36,12 @@ const emit = defineEmits<{
 	 */
 	(e: 'sent', outcome: { scheduled: boolean }): void;
 	(e: 'discarded'): void;
+	/** Popup: Esc / Minimize. Answer frame: Esc from inside the composer. */
 	(e: 'minimize'): void;
-	(e: 'promote', payload: ComposerPromotePayload): void;
+	/** Popup reply: continue in Answer mode; the draft row is saved first. */
+	(e: 'maximise', draftId: Id<'mailDrafts'>): void;
+	/** The draft row exists (created by the first autosave, or reopened). */
+	(e: 'draft-id', draftId: Id<'mailDrafts'>): void;
 }>();
 
 const { t, locale } = useI18n();
@@ -89,9 +95,8 @@ const { ghostSuggestionsEnabled } = usePostboxGhostGate();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const aiRewriteEnabled = computed(() => isFeatureEnabled('ai'));
 
-// Sealed Mail (E5): the honest per-draft seal state, the lock indicator and the
-// proceed-or-cancel decision an unsealable draft needs before it can be sent —
-// all wired in usePostboxComposerSealLock so this file stays focused.
+// Sealed Mail (E5): the per-draft seal state, the lock indicator and the
+// proceed-or-cancel decision an unsealable draft needs before it can be sent.
 const seal = usePostboxComposerSealLock(() => activeDraftId.value ?? undefined, {
 	flush,
 	onConfirm: (opts) => void handleSend(opts),
@@ -125,19 +130,14 @@ async function onFromChange(address: string) {
 	try {
 		await setIdentity(address);
 	} catch (err) {
-		// The mutation itself is an Operation and toasts its own refusals; what
-		// lands here is the step before it (the draft row could not be created).
-		// Logging alone left the From field silently snapped back to the old
-		// address with no explanation.
+		// The mutation toasts its own refusals; what lands here is the step
+		// before it (the draft row could not be created), said out loud.
 		showOperationError(err);
 	}
 }
 
-// Reply → Reply-all conversion (the envelope's mode toggle): fold the extra
-// recipients into Cc IN PLACE, keeping To / subject / body exactly as-is.
-// Dedupe by canonical address (against both Cc and To) so an already-present
-// address isn't doubled; self was already excluded when the extras were
-// derived. Same recipient math as opening a fresh reply-all.
+// Reply → Reply-all in place (the envelope's mode toggle): the extras join Cc,
+// deduped against To and Cc; To, subject and body stay exactly as they are.
 function onApplyReplyAll() {
 	const extras = props.replyAllRecipients ?? [];
 	if (extras.length === 0) return;
@@ -177,103 +177,72 @@ function onSignatureChange(event: Event) {
 	applySignature((target.value as Id<'mailSignatures'>) || null);
 }
 
-const sending = ref(false);
 const scheduleOpen = ref(false);
-const { showToast } = useToast();
 
-// Team-inbox collision safety: the guard warns once if a teammate replied to this
-// thread after this reply opened (shared inboxes only; inert on personal mail and
-// fresh composes). It owns the confirm dialog's open state and retries the send
-// via `onConfirm` once acknowledged. Reactive via mailbox.latestReplyState.
-const {
-	staleReplyByName,
-	confirmOpen: staleConfirmOpen,
-	blockSend: blockStaleSend,
-	confirm: confirmStaleSend,
-} = usePostboxStaleReplyGuard(() => props.seed.inReplyToMessageId, {
-	onConfirm: (opts) => void handleSend(opts),
+// Every gate a send passes (uploads, seal, the confidence layer, the stale-reply
+// check) and the send itself, in one composable; see usePostboxComposerSendGate.
+const { sending, handleSend, guards, stale } = usePostboxComposerSendGate({
+	seed: () => props.seed,
+	identities: () => availableIdentities.value,
+	fromAddress: () => fromAddress.value,
+	subject: () => subject.value,
+	bodyHtml: () => bodyHtml.value,
+	recipients: () => [...toAddresses.value, ...ccAddresses.value, ...bccAddresses.value],
+	attachmentCount: () => attachments.value.length,
+	isUploading: () => isUploading.value,
+	canSend: () => canSend.value,
+	seal: () => seal,
+	send,
+	onSent: (outcome) => emit('sent', outcome),
 });
-
-// The deterministic confidence layer (plan ideas 3, 4, 5, 6, 15). Same
-// blockSend + onConfirm replay contract as the seal and stale-reply guards; no
-// model involved, so all of it works with the `ai` flag off.
-const guards = usePostboxComposerGuards(
-	{
-		mailboxId: () => props.seed.mailboxId,
-		identities: () => availableIdentities.value,
-		fromAddress: () => fromAddress.value,
-		subject: () => subject.value,
-		bodyHtml: () => bodyHtml.value,
-		recipients: () => [...toAddresses.value, ...ccAddresses.value, ...bccAddresses.value],
-		attachmentCount: () => attachments.value.length,
-	},
-	{ onConfirm: (opts) => void handleSend(opts) }
-);
-
-type SendOptions = { scheduledSendAt?: number; allowUnsealed?: boolean };
-
-async function handleSend(opts?: SendOptions) {
-	// Explain *why* Send is inert while an upload is in flight (Send is disabled
-	// via `canSend`, and Cmd/Ctrl+Enter routes here too) so the user waits rather
-	// than losing the not-yet-committed attachment. Keep this above the canSend
-	// short-circuit so the toast still fires when uploading is the sole blocker.
-	if (isUploading.value) {
-		showToast(t('components.postbox.postboxComposer.uploadingToast'));
-		return;
-	}
-	if (!canSend.value || sending.value) return;
-	// Sealed Mail (E5): an unsealable draft stops here until the sender decides
-	// (proceed or cancel) — nothing goes out in plaintext by omission.
-	if (await seal.blockSend(opts)) return;
-	// A send that will fail DMARC, a message missing the attachment it promises,
-	// a recipient never written to before — each asked once, each replaying it.
-	if (guards.blockSend(opts)) return;
-	// A teammate replied to this shared-inbox thread after this reply opened —
-	// pause for confirmation before sending a duplicate (asked once).
-	if (blockStaleSend(opts)) return;
-	sending.value = true;
-	try {
-		// `send()` throws on a backend reject (no_recipients, from_revoked,
-		// illegal_edge, scan-block, …). Those arrive as a SurfacedOperationError,
-		// because the operation module has already toasted them; here we only need
-		// to stay put: do NOT emit `sent` (the host would close or collapse) on
-		// failure. Reaching the emit means it sent, and send() armed the undo.
-		await send(opts);
-		emit('sent', { scheduled: opts?.scheduledSendAt !== undefined });
-	} catch (err) {
-		// Anything NOT already surfaced (the draft row could not be created, a
-		// throw from the flush before it) gets a toast of its own — this used to
-		// be a console line, so a send could fail with the composer just sitting
-		// there looking idle.
-		showOperationError(err);
-	} finally {
-		sending.value = false;
-	}
-}
 
 async function handleDiscard() {
 	await discard();
 	emit('discarded');
 }
 
-// --- Inline variant: promote to a normal popup composer. Flush the debounced
-// autosave first (creating the draft row if needed) so the popup reopens the
-// SAME draft id — no content loss. The live field values ride along so the
-// popup seeds instantly instead of waiting for hydration. `focusBody` is
-// exposed so the reader's r/a keys can re-focus an already-open inline box.
-const { promoting, basicEditor, focusBody, handlePromote } = usePostboxComposerInline({
-	inline: props.inline ?? false,
-	flush,
-	snapshot: () => ({
-		toAddresses: [...toAddresses.value],
-		ccAddresses: [...ccAddresses.value],
-		bccAddresses: [...bccAddresses.value],
-		subject: subject.value,
-		bodyHtml: bodyHtml.value,
-	}),
-	emitPromote: (payload) => emit('promote', payload),
+// --- Frames. Answer mode's view state (folded envelope/quote, Coach under ⋯)
+// lives in its own composable; the draft underneath is the popup's, untouched.
+const answerFrame = props.frame === 'answer';
+const frameView = usePostboxComposerAnswerFrame({
+	active: answerFrame,
+	bodyHtml,
+	sealBlocked: () => seal.blockingRecipients.length > 0,
 });
-defineExpose({ focusBody });
+const { envelopeRef, basicEditor, focusBody, onLineReplyAll } = frameView;
+
+// Hosts keep the draft id (Answer mode writes it into its URL).
+watch(
+	activeDraftId,
+	(id) => {
+		if (id) emit('draft-id', id);
+	},
+	{ immediate: true }
+);
+
+// Popup reply → Answer mode: save first so Answer mode reopens the SAME row.
+const maximising = ref(false);
+async function handleMaximise() {
+	if (maximising.value) return;
+	maximising.value = true;
+	try {
+		const id = await flush();
+		if (id) emit('maximise', id);
+	} finally {
+		maximising.value = false;
+	}
+}
+
+defineExpose({
+	focusBody,
+	flush,
+	/** What the host needs as it leaves: the row, who it is for, whether it holds anything. */
+	snapshot: () => ({
+		draftId: activeDraftId.value,
+		toAddresses: [...toAddresses.value],
+		hasContent: answerDraftHasContent(bodyHtml.value, attachments.value.length),
+	}),
+});
 
 const lastSavedLabel = computed(() => {
 	if (isSaving.value) return t('common.saving');
@@ -287,9 +256,8 @@ const lastSavedLabel = computed(() => {
 const { rootEl, dragActive, onDragOver, onDragLeave, onDrop, onPaste } =
 	usePostboxComposerDropZone(addFiles);
 
-// Keyboard shortcuts (Cmd/Ctrl+Enter send, +Shift schedule, Esc minimize),
-// bound on the composer root (capture) so each stacked popup composer only
-// handles its own keys.
+// Cmd/Ctrl+Enter send, +Shift schedule, Esc minimize — bound on the composer
+// root (capture) so each stacked composer only handles its own keys.
 const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostboxComposerKeys({
 	rootEl,
 	canSend,
@@ -323,15 +291,30 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			</span>
 		</div>
 		<PostboxComposerHeader
+			v-if="!answerFrame"
 			:subject="subject"
-			:inline="inline"
-			:promoting="promoting"
-			@promote="handlePromote"
+			:can-maximise="!!seed.inReplyToMessageId"
+			:maximising="maximising"
+			@maximise="handleMaximise"
 			@minimize="emit('minimize')"
 			@discard="handleDiscard"
 		/>
 
+		<PostboxComposerEnvelopeLine
+			v-if="!frameView.envelopeOpen.value"
+			:to-addresses="toAddresses"
+			:cc-addresses="ccAddresses"
+			:bcc-addresses="bccAddresses"
+			:from="fromAddress || availableIdentities[0]?.address || ''"
+			:subject="subject"
+			:can-reply-all="(replyAllRecipients?.length ?? 0) > 0"
+			@expand="frameView.openEnvelope()"
+			@reply-all="onLineReplyAll"
+		/>
+		<!-- Folded, not unmounted: its guard dialogs must stay live. -->
 		<PostboxComposerEnvelope
+			v-show="frameView.envelopeOpen.value"
+			ref="envelopeRef"
 			v-model:to-addresses="toAddresses"
 			v-model:cc-addresses="ccAddresses"
 			v-model:bcc-addresses="bccAddresses"
@@ -344,6 +327,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:seal-states="chipSealStates"
 			@from-change="onFromChange"
 			@apply-reply-all="onApplyReplyAll"
+			@attention="frameView.envelopeAttention.value = $event"
 		/>
 
 		<!-- Sealed Mail (E5): honest seal-lock indicator, shown from the moment the
@@ -375,7 +359,13 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:cancel-schedule="cancelSchedule"
 		/>
 
-		<div class="flex-1 overflow-hidden">
+		<!-- Answer mode's AI bar / ask card (filled by the page). -->
+		<slot name="above-editor" />
+
+		<div
+			class="flex-1 overflow-hidden"
+			:class="{ 'pbx-quote-folded': frameView.quoteFolded.value && frameView.hasQuote.value }"
+		>
 			<PostboxBasicEditor
 				v-if="composerMode === 'simple'"
 				ref="basicEditor"
@@ -424,6 +414,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 		<!-- Advisory AI cluster: "Coach my draft" self-check + freeform whole-draft
 		     revise. Advisory only — never sends; hidden when AI is off / draft empty. -->
 		<PostboxComposerAdvisory
+			v-if="frameView.advisoryOpen.value"
 			v-model:body-html="bodyHtml"
 			:ai-enabled="aiRewriteEnabled"
 			:mailbox-id="seed.mailboxId"
@@ -451,7 +442,15 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:persistent-toolbar="persistentToolbar"
 			:preflight="guards.preflight"
 			:last-saved-label="lastSavedLabel"
+			:frame="frame"
+			:has-quote="frameView.hasQuote.value"
+			:quote-folded="frameView.quoteFolded.value"
+			:advisory-available="aiRewriteEnabled"
+			:advisory-open="frameView.advisoryOpen.value"
 			@send="handleSend()"
+			@toggle-quote="frameView.toggleQuote()"
+			@toggle-advisory="frameView.toggleAdvisory()"
+			@discard="handleDiscard"
 			@schedule="scheduleOpen = true"
 			@add-files="addFiles"
 			@signature-change="onSignatureChange"
@@ -464,16 +463,24 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 		     replays the very send it interrupted, options and all. -->
 		<PostboxComposerDialogs
 			v-model:schedule-open="scheduleOpen"
-			v-model:stale-open="staleConfirmOpen"
+			v-model:stale-open="stale.confirmOpen"
 			:mailbox-id="seed.mailboxId"
 			:recipients="[...toAddresses, ...ccAddresses, ...bccAddresses]"
 			:seal-confirm-open="seal.confirmOpen"
 			:seal-state="seal.state"
-			:stale-reply-by-name="staleReplyByName"
+			:stale-reply-by-name="stale.byName"
 			@schedule="(ts: number) => handleSend({ scheduledSendAt: ts })"
 			@update:seal-confirm-open="seal.setConfirmOpen"
 			@confirm-unsealed="seal.confirmUnsealed"
-			@confirm-stale="confirmStaleSend"
+			@confirm-stale="stale.confirm"
 		/>
 	</div>
 </template>
+
+<style scoped>
+/* Answer mode keeps the quoted original in the body (the draft and the sent
+   message are unchanged) and only folds it out of sight in the editor. */
+.pbx-quote-folded :deep(.postbox-basic-editor .gmail_quote) {
+	display: none;
+}
+</style>

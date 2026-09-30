@@ -131,8 +131,9 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 
 	/**
 	 * Flush any pending autosave immediately and return the draft id (creating
-	 * the row if it doesn't exist yet). Used when promoting an inline reply to
-	 * a popup so the popup reopens the SAME draft with nothing lost.
+	 * the row if it doesn't exist yet). Used when a popup reply moves to Answer
+	 * mode (which reopens the SAME draft with nothing lost) and when Answer mode
+	 * is left with something typed in the last debounce window.
 	 */
 	async function flush(): Promise<Id<'mailDrafts'> | null> {
 		if (saveTimer) {

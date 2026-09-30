@@ -8,9 +8,9 @@ import type { Id } from '@owlat/api/dataModel';
  * about THIS thread inline (single-turn mail.ai.askThread; ephemeral in-memory
  * history, never saved).
  *
- * "Draft reply" used to live here too, at the top of the thread — a long way
- * from the reply box it feeds. It moved into PostboxInlineReply (plan §05),
- * where the reply actually gets written; the same `ai` flag gates both.
+ * "Draft reply" used to live here too, at the top of the thread, a long way
+ * from where a reply gets written. Drafting with AI now happens in Answer mode,
+ * next to the composer it fills.
  *
  * Fail-soft throughout: the summary reads the cache reactively and generates
  * lazily WITHOUT blocking the thread render; any AI failure just hides that part.

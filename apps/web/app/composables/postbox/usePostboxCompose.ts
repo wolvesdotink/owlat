@@ -47,7 +47,7 @@ export type SendAsIdentity = FunctionReturnType<
 
 /**
  * The one-time seed a composer opens with: the one declaration every host
- * writes (the popup stack's ComposerSpec, the reader's InlineComposeSpec, the
+ * writes (the popup stack's ComposerSpec, Answer mode's seed, the
  * desktop compose window) and PostboxComposer hands over whole.
  */
 export interface ComposerSeed {
@@ -115,7 +115,11 @@ export function usePostboxCompose(seed: ComposerSeed) {
 	// completes, so every host gets the toast and the send sound.
 	const undoWindow = usePostboxUndoSend();
 	function armUndo(sent: { undoToken: string; sendAt: number }) {
-		undoWindow.arm({ ...sent, mailboxId: seed.mailboxId });
+		undoWindow.arm({
+			...sent,
+			mailboxId: seed.mailboxId,
+			replyToMessageId: seed.inReplyToMessageId,
+		});
 		return sent;
 	}
 	// While send() is actively intercepting, a TRANSPORT failure is claimed

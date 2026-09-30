@@ -1,12 +1,9 @@
 <script setup lang="ts">
 import { layoutComposerStack } from '~/utils/postboxComposerLayout';
 
-const { state, focusedId } = usePostboxComposerStack();
+const { state } = usePostboxComposerStack();
 
-// Pass focusedId so the promoted composer is always kept floating — it can
-// never be pushed into the dock (which would strand the focus surface with an
-// empty mount while its scrim is up).
-const placement = computed(() => layoutComposerStack(state.value, undefined, focusedId.value));
+const placement = computed(() => layoutComposerStack(state.value));
 
 // Floating popups, each with its right-to-left slot; the docked composers roll
 // up into the bottom dock so nothing marches offscreen once 3+ are open.
@@ -28,9 +25,6 @@ const dockComposers = computed(() =>
 
 <template>
 	<Teleport to="body">
-		<!-- Focus surface first so its teleport target (#pbx-focus-mount) exists
-		     before any popup promotes into it. -->
-		<PostboxComposerFocusSurface />
 		<PostboxComposerPopup
 			v-for="{ spec, slot } in popups"
 			:key="spec.id"
