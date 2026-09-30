@@ -163,16 +163,22 @@ const ABSOLUTE_URL = new RegExp(
 );
 /**
  * The same, or a path or network-path URL, percent-encoded (`https%3A%2F%2F…`,
- * `%2F%2Fhost%2F…`, `%2Fshare%3F…`), as found in quoted redirect targets.
+ * `https:%2F%2F…`, `%2F%2Fhost%2F…`, `%2Fshare%3F…`), as found in quoted
+ * redirect targets.
  * Stops at `&`, which an encoded value cannot contain unencoded.
  */
 const ENCODED_URL = new RegExp(
-	String.raw`(?<![\w%.+-])(?:[a-z][a-z\d+.-]{0,31}%3A)?%2F[^\s"'<>()[\]{}${'`'}|\\&]*`,
+	String.raw`(?<![\w%.+-])(?:[a-z][a-z\d+.-]{0,31}(?:%3A|:(?=%2F%2F)))?%2F[^\s"'<>()[\]{}${'`'}|\\&]*`,
 	'gi'
 );
-/** A path (`/…`, `./…`, `../…`) or a network-path URL (`//host/…`) at the start of a token. */
+/**
+ * A path (`/…`, `./…`, `../…`) or a network-path URL (`//host/…`) at the start
+ * of a token. A network path is taken after any symbol (`@//host`,
+ * `[1]//host`); only a plain path uses the narrower `TOKEN_START`, which is
+ * there for arithmetic and aliases.
+ */
 const RELATIVE_PATH = new RegExp(
-	TOKEN_START + String.raw`(?:\.{1,2}\/|\/(?:\/${IPV6_HOST})?)` + URL_BODY,
+	String.raw`(?:(?<![\w:/.%\\-])\/\/${IPV6_HOST}|${TOKEN_START}(?:\.{1,2}\/|\/))` + URL_BODY,
 	'gi'
 );
 /** A scheme-less host that still reads as a link. */

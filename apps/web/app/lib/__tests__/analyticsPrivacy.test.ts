@@ -216,6 +216,14 @@ describe('sanitizeAnalyticsEvent', () => {
 		});
 	});
 
+	it('reduces a network-path URL after any symbol, including those a plain path may not follow', () => {
+		for (const lead of [')', ']', '}', '~', '@', '+', '*', '!', '€', '$', '£', '¥']) {
+			const text = `x ${lead}//owlat.example/p/PATH_SENTINEL?x=QUERY_SENTINEL`;
+			const sent = sanitizeAnalyticsEvent(event('$exception', { text }), onDashboard)!;
+			expect(sent.properties['text'], lead).toBe(`x ${lead}https://owlat.example`);
+		}
+	});
+
 	it('reduces percent-encoded paths, doubly escaped slashes and slash-less schemes', () => {
 		const forms = {
 			encodedNetworkPath: 'redirect=%2F%2Fowlat.example%2Fconfirm%3Fx%3DQUERY_SENTINEL&y=1',
@@ -224,6 +232,7 @@ describe('sanitizeAnalyticsEvent', () => {
 			noSlashes: 'open https:owlat.example/confirm?x=QUERY_SENTINEL',
 			oneSlash: 'open http:/owlat.example/confirm?x=QUERY_SENTINEL',
 			mixedEncoding: 'open https%3A//owlat.example/confirm?x=QUERY_SENTINEL',
+			encodedSlashes: 'open https:%2F%2Fowlat.example%2Fp%2FPATH_SENTINEL',
 			dotted: 'go ./share?x=QUERY_SENTINEL or ../unsubscribe/PATH_SENTINEL',
 		};
 		const sent = sanitizeAnalyticsEvent(event('$exception', forms), onDashboard)!;
@@ -236,6 +245,7 @@ describe('sanitizeAnalyticsEvent', () => {
 			noSlashes: 'open https://owlat.example',
 			oneSlash: 'open http://owlat.example',
 			mixedEncoding: 'open https://owlat.example',
+			encodedSlashes: 'open https://owlat.example',
 			dotted: 'go /share or /:unmatched',
 		});
 	});
