@@ -81,6 +81,8 @@ type Outcome = 'ok' | 'reject' | 'network';
 let updateOutcomes: Outcome[];
 /** When set, `drafts.update` waits for it before answering (an in-flight save). */
 let updateGate: Promise<void> | null;
+/** Runs inside each `drafts.update` call: an edit made while the save is out. */
+let duringUpdate: (() => void) | null;
 let updateRun: ReturnType<typeof vi.fn>;
 let sendRun: ReturnType<typeof vi.fn>;
 let draftQuery: ReturnType<typeof queryResult<unknown>>;
@@ -101,6 +103,7 @@ beforeEach(() => {
 	isOffline.value = false;
 	updateOutcomes = [];
 	updateGate = null;
+	duringUpdate = null;
 	undoArm.mockClear();
 	retire.mockClear();
 	queueSend.mockClear();
@@ -125,6 +128,7 @@ beforeEach(() => {
 			if (fn === 'drafts.update') {
 				const run = vi.fn(async (args: Record<string, unknown>) => {
 					updateRun(args);
+					duringUpdate?.();
 					if (updateGate) await updateGate;
 					const outcome = updateOutcomes.shift() ?? 'ok';
 					return outcome === 'ok' ? { ok: true, result: { savedAt: Date.now() } } : fail(outcome);
@@ -284,6 +288,55 @@ describe('usePostboxCompose — Send needs the current snapshot saved (#895)', (
 		expect(composer.draftNotice.value).toBe('not_sent');
 	});
 
+	it("saves again when the fields change while Send's own final save is out", async () => {
+		const composer = await reopenDraft();
+		await editRecipientsAndBody(composer);
+		let release!: () => void;
+		updateGate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+
+		// Sent inside the debounce window, so Send's own write is the one held.
+		const sending = composer.send();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(updateRun).toHaveBeenCalledOnce();
+		composer.toAddresses.value = ['later@example.com'];
+		composer.bodyHtml.value = '<p>Edited during the save</p>';
+		await nextTick();
+		updateGate = null;
+		release();
+		await sending;
+
+		expect(updateRun).toHaveBeenCalledTimes(2);
+		expect(lastUpdate()).toMatchObject({
+			toAddresses: ['later@example.com'],
+			bodyHtml: '<p>Edited during the save</p>',
+		});
+		expect(sendRun).toHaveBeenCalledOnce();
+		expect(updateRun.mock.invocationCallOrder.at(-1)!).toBeLessThan(
+			sendRun.mock.invocationCallOrder[0]!
+		);
+	});
+
+	it('refuses to send when the fields keep changing under every save', async () => {
+		const composer = await reopenDraft();
+		await editRecipientsAndBody(composer);
+		let edits = 0;
+		duringUpdate = () => {
+			edits += 1;
+			composer.subject.value = `Still typing ${edits}`;
+		};
+
+		await expect(composer.send()).rejects.toSatisfy(isSurfacedOperationError);
+
+		// Bounded: three writes, then a refusal rather than a stale send.
+		expect(updateRun).toHaveBeenCalledTimes(3);
+		expect(sendRun).not.toHaveBeenCalled();
+		expect(undoArm).not.toHaveBeenCalled();
+		expect(retire).not.toHaveBeenCalled();
+		expect(composer.draftNotice.value).toBe('not_sent');
+	});
+
 	it('does not write again when the current snapshot is already saved', async () => {
 		const composer = await reopenDraft();
 		await editRecipientsAndBody(composer);
@@ -328,6 +381,27 @@ describe('usePostboxCompose — flush() reports whether it saved (#895)', () => 
 		expect(result).toEqual({ ok: false });
 		expect(composer.draftNotice.value).toBe('not_saved');
 		expect(composer.toAddresses.value).toEqual(['new@example.com']);
+	});
+
+	it('saves again when the fields change while its own save is out', async () => {
+		const composer = await reopenDraft();
+		await editRecipientsAndBody(composer);
+		let release!: () => void;
+		updateGate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+
+		const flushing = composer.flush();
+		await vi.advanceTimersByTimeAsync(0);
+		composer.toAddresses.value = ['later@example.com'];
+		await nextTick();
+		updateGate = null;
+		release();
+		const result = await flushing;
+
+		expect(result).toEqual({ ok: true, result: 'draft-1' });
+		expect(updateRun).toHaveBeenCalledTimes(2);
+		expect(lastUpdate()).toMatchObject({ toAddresses: ['later@example.com'] });
 	});
 
 	it('resolves the draft id once the current snapshot is saved', async () => {

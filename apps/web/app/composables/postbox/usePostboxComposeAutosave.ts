@@ -42,6 +42,8 @@ import type { ComposerMode } from './usePostboxCompose';
 import type { InitialHydrationState } from './usePostboxComposeHydration';
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
+/** Writes `settlePendingSave` makes before giving up on fields that keep changing. */
+const SETTLE_WRITES = 3;
 
 interface AutosaveOptions {
 	mailboxId: Id<'mailboxes'>;
@@ -187,28 +189,35 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 	 * resolve to the row it lives on. Send calls this before the send mutation
 	 * reads the row.
 	 *
-	 * An in-flight write is awaited first, but its success is not taken on
-	 * trust: it may have carried an older snapshot, and it may have failed. Only
-	 * an acknowledgement of the current fields skips the write; anything else
-	 * writes again, so a debounced save that failed earlier is retried here
-	 * rather than leaving the row a step behind the editor.
+	 * No save is taken on trust, its own included: an in-flight write may carry
+	 * an older snapshot or fail, and the fields stay editable while a write is
+	 * outstanding, so an acknowledgement can be a keystroke stale by the time it
+	 * lands. After every awaited write the acknowledged snapshot is compared
+	 * with the current fields, and a mismatch writes again. The loop is bounded:
+	 * fields that are still changing after `SETTLE_WRITES` writes resolve to
+	 * `ok: false`, which the caller surfaces itself (Send and promotion show
+	 * their not-sent / not-saved notice) — never to a send of an older snapshot.
 	 *
-	 * `beforeWrite` runs between the two, so a caller can judge the write it
-	 * asked for apart from the earlier one it only waited on.
+	 * `beforeWrite` runs before each write this call makes, so a caller can judge
+	 * those writes apart from an earlier one it only waited on.
 	 */
 	async function settlePendingSave(
 		beforeWrite?: () => void
 	): Promise<BackendOperationResult<Id<'mailDrafts'>>> {
-		clearTimer();
-		if (pendingSave) await pendingSave;
-		const id = draftId.value;
-		// Read-only rows (scheduled / pending send) cannot be written; there is
-		// nothing of the editor's they could be missing.
-		if (id && draftState.value !== 'draft') return { ok: true, result: id };
-		if (isAcknowledged(id)) return { ok: true, result: id };
-		beforeWrite?.();
-		pendingSave = persist();
-		return pendingSave;
+		for (let writes = 0; ; writes += 1) {
+			clearTimer();
+			if (pendingSave) await pendingSave;
+			const id = draftId.value;
+			// Read-only rows (scheduled / pending send) cannot be written; there is
+			// nothing of the editor's they could be missing.
+			if (id && draftState.value !== 'draft') return { ok: true, result: id };
+			if (isAcknowledged(id)) return { ok: true, result: id };
+			if (writes === SETTLE_WRITES) return { ok: false };
+			beforeWrite?.();
+			pendingSave = persist();
+			const saved = await pendingSave;
+			if (!saved.ok) return saved;
+		}
 	}
 
 	/**
