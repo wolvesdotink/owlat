@@ -5,7 +5,8 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { createTestContact } from './factories';
 import { modules } from './testModules';
-import { isTransactionLimitError, startContactErasure } from '../contacts/erasure/walker';
+import { isTransactionLimitError } from '../lib/convexLimitErrors';
+import { startContactErasure } from '../contacts/erasure/walker';
 
 /**
  * The contact-erasure walker against convex-test's enforced transaction limits:
