@@ -8,6 +8,7 @@
 
 import type { Doc, Id } from '../../_generated/dataModel';
 import { deleteBlobQuietly } from '../../lib/storageBlobs';
+import { deleteInboundBodyBlobs } from '../../lib/messageBodyInbound';
 import { detachContactJunctionLink, SEMANTIC_FILE_JUNCTION } from '../../lib/contactJunctions';
 import {
 	deleteAll,
@@ -32,6 +33,9 @@ async function deleteMessageRow({ ctx }: PhaseContext, row: MessageRow): Promise
 	if ('rawStorageId' in row && row.rawStorageId) {
 		await deleteBlobQuietly(ctx.storage, row.rawStorageId, LOG_TAG, { rowId: row._id });
 	}
+	// A team-inbox body too large for the row is in storage as well.
+	// `processingStatus` is required on that table and absent from the other two.
+	if ('processingStatus' in row) await deleteInboundBodyBlobs(ctx.storage, row, LOG_TAG);
 	await ctx.db.delete(row._id);
 }
 

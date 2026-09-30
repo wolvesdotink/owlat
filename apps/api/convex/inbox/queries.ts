@@ -26,11 +26,8 @@ import {
 import { searchThreads } from './threadSearch';
 import { takeOverViewFor } from './manualReply';
 import { redactContactCapabilityFields } from '../contacts/listing';
-import {
-	openConversationThreadPreview,
-	openInboundMessageRow,
-	openInboundMessageRows,
-} from '../lib/messageBody';
+import { openConversationThreadPreview } from '../lib/messageBody';
+import { openInboundMessageRow, openInboundMessageRows } from '../lib/messageBodyInbound';
 
 /**
  * Enrich a loaded page of threads for the team-inbox list DNA. Shared by the

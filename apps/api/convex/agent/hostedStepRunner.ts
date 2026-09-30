@@ -96,7 +96,7 @@ export async function runHostedPluginStep(
 		if (!loadedMessage) throw new TypeError('Hosted agent step message no longer exists');
 		message = loadedMessage;
 		moduleResult = await pluginStepModuleFor(args.kind).execute(
-			await buildPluginAgentStepInput(message)
+			await buildPluginAgentStepInput(message, ctx.storage)
 		);
 	} catch {
 		await failStep(ctx, args.inboundMessageId, actionId, definition.pluginId, args.kind);

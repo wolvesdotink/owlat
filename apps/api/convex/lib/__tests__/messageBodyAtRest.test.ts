@@ -13,8 +13,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { openInboundMessageBody } from '../messageBodyInbound';
 import {
-	openInboundMessageBody,
 	openConversationThreadPreview,
 	openMailMessageInlineBody,
 	openUnifiedMessageContent,
@@ -55,7 +55,7 @@ describe('messageBody open* accessors — sealed rows round-trip', () => {
 			textBody: await sealMessageBody(text),
 			htmlBody: await sealMessageBody(html),
 		};
-		const body = await openInboundMessageBody(row);
+		const body = await openInboundMessageBody(row, null);
 		expect(body.text).toBe(text);
 		expect(body.html).toBe(html);
 	});
@@ -108,7 +108,10 @@ describe('messageBody open* accessors — sealed rows round-trip', () => {
 
 describe('messageBody open* accessors — legacy plaintext rows pass through', () => {
 	it('shape 1: unsealed inbound row', async () => {
-		const body = await openInboundMessageBody({ textBody: 'plain', htmlBody: '<p>plain</p>' });
+		const body = await openInboundMessageBody(
+			{ textBody: 'plain', htmlBody: '<p>plain</p>' },
+			null
+		);
 		expect(body.text).toBe('plain');
 		expect(body.html).toBe('<p>plain</p>');
 	});
@@ -138,7 +141,7 @@ describe('messageBody open* accessors — legacy plaintext rows pass through', (
 	});
 
 	it('absent fields collapse to undefined', async () => {
-		const body = await openInboundMessageBody({});
+		const body = await openInboundMessageBody({}, null);
 		expect(body.text).toBeUndefined();
 		expect(body.html).toBeUndefined();
 	});

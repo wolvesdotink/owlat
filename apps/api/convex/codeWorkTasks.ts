@@ -7,7 +7,7 @@
  */
 
 import { v } from 'convex/values';
-import { openInboundMessageBody } from './lib/messageBody';
+import { openInboundMessageBody } from './lib/messageBodyInbound';
 import { normalizeEmail } from '@owlat/shared';
 import { internalMutation, internalQuery } from './_generated/server';
 import type { MutationCtx } from './_generated/server';
@@ -254,7 +254,13 @@ export const createFromInbound = internalMutation({
 		// Code-agent appropriateness check — distinct from the email-assistant
 		// injection guard. Rejects destructive / exfiltrating / backdoor
 		// instructions before a task is ever queued.
-		const { text: bodyText, html: bodyHtml } = await openInboundMessageBody(message);
+		// A mutation cannot read a body part held in storage, so a large message
+		// is judged — and described to the code agent — by its excerpt. The check
+		// and the description see the same text, so nothing unchecked reaches the
+		// agent; the task says the message was cut so nobody mistakes it for all.
+		const read = await openInboundMessageBody(message, null);
+		const bodyText = read.text ?? read.excerpt;
+		const bodyHtml = read.html;
 		const safety = checkCodeAgentSafety({
 			subject: message.subject ?? '',
 			textBody: bodyText,
@@ -267,7 +273,10 @@ export const createFromInbound = internalMutation({
 		// Build the task description from the inbound subject + body.
 		const subject = message.subject?.trim() || '(no subject)';
 		const body = (bodyText ?? bodyHtml ?? '').trim();
-		const description = body ? `${subject}\n\n${body}` : subject;
+		const cut = read.isComplete
+			? ''
+			: '\n\n[Message shortened: the full text is in the Team Inbox.]';
+		const description = body ? `${subject}\n\n${body}${cut}` : subject;
 
 		const now = Date.now();
 		return await ctx.db.insert('codeWorkTasks', {

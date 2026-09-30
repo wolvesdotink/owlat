@@ -9,7 +9,7 @@
 import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
-import { openInboundMessageBody } from '../../../lib/messageBody';
+import { openInboundMessageBody } from '../../../lib/messageBodyInbound';
 import {
 	EMERGENCY_BUDGET,
 	activityContentSnippet,
@@ -214,7 +214,7 @@ export const contextRetrievalStep: AgentStepModule<
 				const historyLines = await Promise.all(
 					threadMessages.map(
 						async (m) =>
-							`From: ${m.from}\nDate: ${new Date(m.receivedAt).toISOString()}\nSubject: ${m.subject}\n${(await openInboundMessageBody(m)).text ?? '(no text body)'}\n---`
+							`From: ${m.from}\nDate: ${new Date(m.receivedAt).toISOString()}\nSubject: ${m.subject}\n${(await openInboundMessageBody(m, ctx.storage)).text ?? '(no text body)'}\n---`
 					)
 				);
 				contextParts.push('[CONVERSATION HISTORY]\n' + historyLines.join('\n'));
@@ -223,7 +223,7 @@ export const contextRetrievalStep: AgentStepModule<
 
 		// The inbound body the model reads, with remote images / tracking pixels
 		// neutralized (privacy: the agent reads every inbound automatically).
-		const inboundBody = await inboundBodyForContext(message);
+		const inboundBody = await inboundBodyForContext(message, ctx.storage);
 
 		// Query text for semantic retrieval: the inbound subject + body.
 		const queryText = `${message.subject ?? ''}\n${inboundBody ?? ''}`.slice(0, 2000);

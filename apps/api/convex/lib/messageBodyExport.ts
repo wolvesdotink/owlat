@@ -11,10 +11,9 @@ import { hasAtRestEnvelopePrefix, isSealedAtRest } from './atRestBodies';
 import {
 	openMessageBody,
 	type BodyBlobStorageReader,
-	type InboundMessageBody,
-	type InboundMessageBodyFields,
 	type MailMessageExportBodyFields,
 } from './messageBody';
+import type { InboundMessageBody, InboundMessageBodyFields } from './messageBodyInbound';
 import { bytesToBase64 } from './bytes';
 import { readSealedBlobBytesForExport, readSealedBlobTextForExport } from './sealedBlob';
 
@@ -68,16 +67,48 @@ async function openOptionalAccountExportBody(stored: string | undefined): Promis
 	return openAccountExportBodyContent(stored);
 }
 
+/** The inline columns of a Team Inbox row, opened for the contact export. A
+ * part held in storage is absent here; see {@link readStoredInboundPartForContactExport}. */
 export async function openInboundBodyPreservingLegacyForContactExport(
 	row: InboundMessageBodyFields
-): Promise<InboundMessageBody> {
+): Promise<InboundMessageBody & { excerpt: string | undefined }> {
 	const openOptionalPreservingLegacy = async (stored: string | undefined) =>
 		stored === undefined ? undefined : openBodyPreservingLegacyForContactExport(stored);
-	const [text, html] = await Promise.all([
+	const [text, html, excerpt] = await Promise.all([
 		openOptionalPreservingLegacy(row.textBody ?? undefined),
 		openOptionalPreservingLegacy(row.htmlBody ?? undefined),
+		openOptionalPreservingLegacy(row.bodyExcerpt ?? undefined),
 	]);
-	return { text, html };
+	return { text, html, excerpt };
+}
+
+/** What became of one stored Team Inbox body part in a contact export. */
+export type StoredPartExportAvailability = ExportBodyAvailability | 'omitted';
+
+/**
+ * Read one Team Inbox body part held in storage for the contact export, within
+ * a byte budget shared by the whole bundle.
+ *
+ * The bundle is returned from one action, so it has a size ceiling of its own;
+ * a contact with a hundred large newsletters cannot all be inlined. A part whose
+ * blob would overrun the budget is not read and is reported `omitted` — the
+ * row still carries its excerpt — rather than failing the whole export.
+ * Missing and corrupt blobs are reported the way the account export reports
+ * them, and ciphertext never leaves.
+ */
+export async function readStoredInboundPartForContactExport(
+	storage: BodyBlobStorageReader,
+	storageId: Id<'_storage'>,
+	storedBytes: number | undefined,
+	budget: { remainingBytes: number }
+): Promise<{ content: string | undefined; availability: StoredPartExportAvailability }> {
+	if (storedBytes === undefined) return { content: undefined, availability: 'missing' };
+	if (storedBytes > budget.remainingBytes) return { content: undefined, availability: 'omitted' };
+	budget.remainingBytes -= storedBytes;
+	const opened = await readSealedBlobTextForExport(storage, storageId);
+	return opened.availability === 'available'
+		? { content: opened.content, availability: 'available' }
+		: { content: undefined, availability: opened.availability };
 }
 
 export async function openMailDraftForAccountExport(

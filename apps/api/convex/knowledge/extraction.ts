@@ -13,7 +13,8 @@ import { htmlToPlainText } from '@owlat/shared/html';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { openInboundMessageBody, readMailMessageText } from '../lib/messageBody';
+import { readMailMessageText } from '../lib/messageBody';
+import { openInboundMessageBody } from '../lib/messageBodyInbound';
 import { CURRENT_EMBEDDING_MODEL } from '../lib/constants';
 import { embed, type EmbeddingModel } from 'ai';
 import { z } from 'zod';
@@ -145,7 +146,7 @@ export const extractFromMessage = internalAction({
 			inboundMessageId: args.inboundMessageId,
 		});
 		if (!message) return;
-		const { text: bodyText, html: bodyHtml } = await openInboundMessageBody(message);
+		const { text: bodyText, html: bodyHtml } = await openInboundMessageBody(message, ctx.storage);
 
 		const textContent = bodyText ?? '';
 		if (textContent.length < 20) return; // Skip very short messages
