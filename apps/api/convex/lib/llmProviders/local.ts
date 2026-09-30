@@ -15,10 +15,12 @@
  * embedding-only, hence its own module.
  *
  * NOTE ON DIMENSIONS: the vector index is fixed-width (`EMBEDDING_DIMENSIONS`).
- * `nomic-embed-text` emits 768-dim vectors, so a self-hoster pointing this at
- * that model must either run a model whose width matches the index or adjust
- * `EMBEDDING_DIMENSIONS` and re-index. `assertEmbeddingDimension` raises an
- * actionable error at write time rather than storing a mismatched vector.
+ * `nomic-embed-text` emits 768-dim vectors; `toIndexVector` zero-pads them to
+ * the index width, which leaves cosine similarity unchanged.
+ *
+ * The default endpoint is the `ollama` service the self-host compose file ships
+ * under the `ai` profile, which also pulls this model on boot (`ollama-models`).
+ * A Convex backend running outside Docker sets LOCAL_EMBEDDING_BASE_URL instead.
  */
 
 import type { EmbeddingModel } from 'ai';
@@ -39,11 +41,12 @@ function requireBaseUrl(cfg: EmbeddingClientConfig): string {
 export const localEmbeddingAdapter: EmbeddingProviderAdapter<'local'> = {
 	kind: 'local',
 	label: 'Local (self-hosted)',
-	// nomic-embed-text emits 768-dim vectors. Metadata only — the authoritative
-	// runtime guard is `assertEmbeddingDimension` against the fixed index width.
+	// nomic-embed-text emits 768-dim vectors. Metadata only — `toIndexVector`
+	// fits every vector to the fixed index width at runtime.
 	dimensions: 768,
 	isLocal: true,
-	defaultBaseUrl: 'http://localhost:11434/v1',
+	// `localhost` is the Convex container itself, where nothing listens.
+	defaultBaseUrl: 'http://ollama:11434/v1',
 	defaultModel: 'nomic-embed-text',
 	buildEmbeddingModel(cfg: EmbeddingClientConfig): EmbeddingModel {
 		return openAICompatibleClient(

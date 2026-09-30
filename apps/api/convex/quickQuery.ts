@@ -28,7 +28,7 @@ import { v } from 'convex/values';
 import { embed } from 'ai';
 import { authedAction } from './lib/authedFunctions';
 import { internal } from './_generated/api';
-import { resolveEmbeddingModel, resolveLanguageModel } from './lib/llmProvider';
+import { resolveEmbeddingModel, resolveLanguageModel, toIndexVector } from './lib/llmProvider';
 import { runLlmText } from './lib/llm/dispatch';
 import { scrubForInjection, clampText } from './assistant/prompt';
 import { logInfo } from './lib/runtimeLog';
@@ -100,7 +100,7 @@ export const ask = authedAction({
 		const embeddingModel = await resolveEmbeddingModel(ctx);
 		try {
 			const res = await embed({ model: embeddingModel, value: question });
-			embedding = Array.from(res.embedding);
+			embedding = toIndexVector(res.embedding);
 		} catch (error) {
 			logInfo('[quickQuery] embed failed', { error: String(error) });
 			embedding = undefined;
