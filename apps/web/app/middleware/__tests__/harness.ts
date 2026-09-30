@@ -267,6 +267,12 @@ export function createFakeConvex(): FakeConvex {
 export interface LoadOptions {
 	convex?: FakeConvex | null;
 	runtimeConfig?: { public: Record<string, unknown> };
+	/**
+	 * Where the Convex client's auth stands when the guard runs
+	 * (`~/lib/convexAuthReady`). Defaults to confirmed; `'pending'` leaves it
+	 * for the case to report through {@link Loaded.convexAuth}.
+	 */
+	convexAuth?: boolean | 'pending';
 }
 
 export interface Loaded<T> {
@@ -274,6 +280,8 @@ export interface Loaded<T> {
 	convex: FakeConvex | null;
 	/** Nuxt's `useState` buckets for this load, keyed like the app keys them. */
 	state: Map<string, { value: unknown }>;
+	/** This load's copy of the auth-settled signal the convex plugin drives. */
+	convexAuth: typeof import('~/lib/convexAuthReady');
 }
 
 /**
@@ -338,8 +346,11 @@ export async function loadMiddleware<T>(
 	vi.stubGlobal('useFeatureFlag', featureFlag.useFeatureFlag);
 	vi.stubGlobal('useConvexQuery', convexQuery.useConvexQuery);
 
+	const convexAuth = await import('~/lib/convexAuthReady');
+	if (options.convexAuth !== 'pending') convexAuth.reportConvexAuth(options.convexAuth ?? true);
+
 	const middleware = (await importer()).default as T;
-	return { middleware, convex, state };
+	return { middleware, convex, state, convexAuth };
 }
 
 /** Mark the page as the packaged desktop webview (`isDesktopRuntime()` reads this). */
