@@ -60,6 +60,12 @@ export async function rebuildThreadAggregates(
 		.collect(); // bounded: one thread's messages
 
 	if (messages.length === 0) {
+		// Answer mode catch-up cards retell the purged mail: they go with the thread.
+		const catchUps = await ctx.db
+			.query('threadCatchUps')
+			.withIndex('by_mail_thread_and_locale', (q) => q.eq('mailThreadId', threadId))
+			.collect(); // bounded: one row per interface locale
+		for (const row of catchUps) await ctx.db.delete(row._id);
 		await ctx.db.delete(threadId);
 		return;
 	}

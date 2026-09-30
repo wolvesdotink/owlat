@@ -197,7 +197,15 @@ export const eraseMemberData = internalMutation({
 				.query('mailThreads')
 				.withIndex('by_mailbox_and_last_message', (q) => q.eq('mailboxId', mailbox._id))
 				.collect(); // bounded: threads of one (already message-drained) mailbox
-			for (const thread of threads) await ctx.db.delete(thread._id);
+			for (const thread of threads) {
+				// Answer mode catch-up cards retell the thread: they go with it.
+				const catchUps = await ctx.db
+					.query('threadCatchUps')
+					.withIndex('by_mail_thread_and_locale', (q) => q.eq('mailThreadId', thread._id))
+					.collect(); // bounded: one row per interface locale
+				for (const row of catchUps) await ctx.db.delete(row._id);
+				await ctx.db.delete(thread._id);
+			}
 
 			for (const row of await ctx.db
 				.query('mailboxMembers')

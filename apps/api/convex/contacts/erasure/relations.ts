@@ -254,6 +254,13 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	},
 	{
 		parent: 'conversationThreads',
+		table: 'threadCatchUps',
+		field: 'conversationThreadId',
+		action: 'delete',
+		why: 'Answer mode’s catch-up card retells the thread and lists what the person asked for; it goes with the thread it summarises.',
+	},
+	{
+		parent: 'conversationThreads',
 		table: 'knowledgeEntries',
 		field: 'threadId',
 		action: 'retain',
