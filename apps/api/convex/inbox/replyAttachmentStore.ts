@@ -61,7 +61,7 @@ export function assertReplyAttachmentFits(
 }
 
 /** The thread, if a reply on it can carry files: email only. */
-export async function loadAttachableThread(
+async function loadAttachableThread(
 	ctx: QueryCtx,
 	threadId: Id<'conversationThreads'>
 ): Promise<Doc<'conversationThreads'>> {

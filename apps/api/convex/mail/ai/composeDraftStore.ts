@@ -170,7 +170,7 @@ export async function deleteAskSessionsOfOwner(
 }
 
 /** How long a session is kept: long past any draft someone is still writing. */
-export const ASK_SESSION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const ASK_SESSION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const ASK_SESSION_SWEEP_BATCH = 100;
 
 /**
@@ -198,7 +198,7 @@ export const sweepStaleSessions = internalMutation({
 });
 
 /** Whether anyone started "Draft with AI" on this target (the send guards' trigger). */
-export async function targetHasAskSession(
+async function targetHasAskSession(
 	ctx: QueryCtx,
 	target: AnswerAskTarget
 ): Promise<boolean> {

@@ -21,7 +21,7 @@ import type { EagernessMode } from '../../inbox/askEagerness';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 
 /** Everything the gap check and the drafter need about a target. */
-export interface AnswerContext extends AnswerDraftContext {
+interface AnswerContext extends AnswerDraftContext {
 	triggerText: string;
 	subject: string;
 	counterpartAddress?: string | undefined;
