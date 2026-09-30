@@ -32,22 +32,26 @@ export type AnswerItem =
  * badges need a number and use `useAnswerQueueCount`, which reads the same
  * sources as counts (plan 2.11).
  */
-export function useAnswerQueue() {
+export function useAnswerQueue(opts: { enabled?: () => boolean } = {}) {
 	const { isEnabled } = useFeatureFlag();
 	const { isAdmin } = usePermissions();
 	const { ids, byId, isLoading: inboxesLoading } = useInboxes();
+	// A host that mounts on every Answer mode route (the queue's parent page)
+	// reads nothing until the queue is actually in use.
+	const reading = computed(() => opts.enabled?.() ?? true);
+	const mailboxIds = computed(() => (reading.value ? ids.value : []));
 
-	const mailResults = useConvexQueryMap(api.mail.needsReply.listQueue, ids, (mailboxId) => ({
+	const mailResults = useConvexQueryMap(api.mail.needsReply.listQueue, mailboxIds, (mailboxId) => ({
 		mailboxId,
 	}));
 
-	const teamEnabled = computed(() => isAdmin.value && isEnabled('inbox'));
+	const teamEnabled = computed(() => reading.value && isAdmin.value && isEnabled('inbox'));
 	const { data: reviewData, isLoading: reviewLoading } = useConvexQuery(
 		api.inbox.queries.getReviewQueue,
 		() => (teamEnabled.value ? { limit: ANSWER_REVIEW_LIMIT } : 'skip')
 	);
 
-	const chatEnabled = computed(() => isAdmin.value && isEnabled('chat'));
+	const chatEnabled = computed(() => reading.value && isAdmin.value && isEnabled('chat'));
 	const { data: mentionData, isLoading: mentionLoading } = useConvexQuery(
 		api.chat.mentions.listMyUnreadMentions,
 		() => (chatEnabled.value ? { limit: ANSWER_MENTION_LIMIT } : 'skip')

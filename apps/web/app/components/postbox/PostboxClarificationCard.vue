@@ -35,7 +35,7 @@ import type { ClarificationAnswer } from '~/utils/clarificationAnswers';
  */
 const props = defineProps<{ item: ReplyQueueItem; submitting?: boolean }>();
 const emit = defineEmits<{
-	(e: 'answer', answers: { questionId: string; value: string }[]): void;
+	(e: 'answer', answers: ClarificationAnswer[]): void;
 	(e: 'open-draft', draft: string): void;
 	(e: 'open'): void;
 	(e: 'done'): void;
@@ -49,13 +49,12 @@ const state = computed(() => clarificationCardState(clarification.value));
 const questions = computed(() => clarification.value?.questions ?? []);
 const questionList = ref<InstanceType<typeof ClarificationQuestions> | null>(null);
 
-// Postbox answers carry no source (nothing is pre-filled from memory here, and
-// the mail mutation takes only the question and value).
+// A question answer-memory filled starts on the remembered value with its
+// "last time" tag (ClarificationQuestions); each answer says whether it went
+// back untouched (`memory`), so the mutation does not capture a replayed fact
+// again as the owner's own.
 function onAnswers(answers: ClarificationAnswer[]) {
-	emit(
-		'answer',
-		answers.map(({ questionId, value }) => ({ questionId, value }))
-	);
+	emit('answer', answers);
 }
 
 /**

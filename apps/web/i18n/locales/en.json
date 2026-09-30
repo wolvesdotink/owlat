@@ -5975,7 +5975,8 @@
 					"inbox": "Inbox",
 					"queue": "Answer queue",
 					"workbench": "Workbench",
-					"previous": "Previous page"
+					"previous": "Previous page",
+					"teamInbox": "Team inbox"
 				},
 				"messageCount": "{count} message | {count} messages",
 				"tabsLabel": "Conversation or reply",
@@ -5991,6 +5992,40 @@
 				},
 				"more": "More for this conversation",
 				"openInPostbox": "Open in Postbox"
+			},
+			"queueBar": {
+				"position": "{position} of {total}",
+				"previous": "Previous in the Answer queue",
+				"next": "Next in the Answer queue",
+				"menu": "Answer queue",
+				"inQueue": "in Answer queue",
+				"markDone": "Mark done",
+				"backToQueue": "Back to the Answer queue"
+			},
+			"team": {
+				"to": "To {name}",
+				"more": "More for this reply",
+				"showChanges": "Show changes to the agent's draft",
+				"hideChanges": "Hide changes",
+				"discardDraft": "Discard draft",
+				"clear": "Clear",
+				"attachments": {
+					"attach": "Attach",
+					"upload": "Upload a file",
+					"fromThread": "From this conversation",
+					"fromContact": "Other files for {name}",
+					"copying": "Copying…",
+					"failed": "Couldn't copy",
+					"failedWithReason": "Couldn't copy: {reason}",
+					"remove": "Remove {file}",
+					"retry": "Retry",
+					"cancelUpload": "Cancel the upload of {file}",
+					"hold": {
+						"uploading": "Send waits until the upload has finished.",
+						"copying": "Send waits until the file is copied.",
+						"failed": "Remove the file that couldn't be copied, then send."
+					}
+				}
 			}
 		}
 	},
@@ -9173,7 +9208,7 @@
 			"detail": {
 				"agentNeedsInput": "The agent needs your input",
 				"agentNeedsInputEyebrow": "Waiting on you",
-				"answerAndResume": "Answer and resume draft",
+				"answerAndResume": "Answer and draft",
 				"answerClarificationOperation": "Answer clarification",
 				"answerPlaceholder": "Type your answer",
 				"answerRemaining": "Answer {count} more to resume | Answer {count} more to resume",
@@ -9320,7 +9355,8 @@
 				"waitingDraft": {
 					"notice": "A draft reply to this message is also waiting.",
 					"answer": "Answer this message"
-				}
+				},
+				"answerInReply": "Answer in the reply"
 			},
 			"failed": {
 				"emptyBody": "Every inbound message processed successfully.",

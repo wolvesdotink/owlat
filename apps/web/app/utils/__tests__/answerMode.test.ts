@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	answerDraftHasContent,
 	answerModeHref,
+	answerTeamHref,
 	bodyHasQuote,
 	isAnswerModePath,
 	parseAnswerKind,
@@ -25,8 +26,18 @@ describe('answerModeHref', () => {
 
 	it('is recognised as Answer mode, and the queue index is not', () => {
 		expect(isAnswerModePath(answerModeHref('msg_1'))).toBe(true);
+		expect(isAnswerModePath(answerTeamHref('ct_1'))).toBe(true);
 		expect(isAnswerModePath('/dashboard/answer')).toBe(false);
 		expect(isAnswerModePath('/dashboard/postbox/inbox/msg_1')).toBe(false);
+	});
+});
+
+describe('answerTeamHref', () => {
+	it('builds the team route, with the message the reply answers when one is picked', () => {
+		expect(answerTeamHref('ct_1')).toBe('/dashboard/answer/t/ct_1');
+		expect(answerTeamHref('ct_1', { messageId: 'in_2' })).toBe(
+			'/dashboard/answer/t/ct_1?message=in_2'
+		);
 	});
 });
 

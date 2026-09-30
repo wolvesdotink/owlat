@@ -32,6 +32,7 @@ import {
 	useAnswerModeNav,
 } from '~/composables/useAnswerMode';
 import { useAnswerModeSession, type AnswerModeMessage } from '~/composables/useAnswerModeSession';
+import { useAnswerQueueSession } from '~/composables/useAnswerQueueSession';
 import type { PostboxReaderMessage } from '~/components/postbox/PostboxThreadReader.vue';
 import type { AnswerConversationView } from '~/components/answer/AnswerConversation.vue';
 
@@ -164,8 +165,12 @@ function leave() {
 	answerNav.leave();
 }
 
+// Opened by the Answer queue: a send finishes the item and moves on to the next.
+const queueSession = useAnswerQueueSession();
+
 function onSent() {
 	leftDraft.clear();
+	if (queueSession?.handleSent()) return;
 	answerNav.leave();
 }
 
@@ -250,6 +255,9 @@ onBeforeUnmount(() => {
 					</span>
 				</span>
 			</template>
+			<template #queue>
+				<AnswerQueueBar />
+			</template>
 			<template #menu>
 				<PostboxOverflowMenu :label="t('components.answer.mode.more')" align="right">
 					<template #default="{ close }">
@@ -289,7 +297,11 @@ onBeforeUnmount(() => {
 					@sent="onSent"
 					@discarded="onDiscarded"
 					@minimize="onComposerEsc"
-				/>
+				>
+					<template #above-editor>
+						<AnswerQueueMailAsk :message-id="messageId" />
+					</template>
+				</PostboxComposer>
 				<div v-else class="flex-1 space-y-3 p-4" aria-hidden="true">
 					<UiSkeleton class="h-4 w-2/3" />
 					<UiSkeleton class="h-32 w-full" />

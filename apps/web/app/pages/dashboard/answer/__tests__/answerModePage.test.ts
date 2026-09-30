@@ -29,6 +29,11 @@ vi.mock('@owlat/api', () => {
 vi.mock('~/composables/postbox/postboxBodyResolver', () => ({
 	consumeResolvedPostboxMessageBody: async () => null,
 }));
+// The Answer queue's session, when the page is one of its items.
+let activeQueueSession: { handleSent: ReturnType<typeof vi.fn> } | null = null;
+vi.mock('~/composables/useAnswerQueueSession', () => ({
+	useAnswerQueueSession: () => activeQueueSession,
+}));
 
 const message = {
 	_id: 'msg_1',
@@ -154,6 +159,8 @@ async function mountAt(query: Record<string, string>) {
 				InboxChip: inert('InboxChip'),
 				PostboxReaderSkeleton: inert('PostboxReaderSkeleton'),
 				UiSkeleton: inert('UiSkeleton'),
+				AnswerQueueBar: inert('AnswerQueueBar'),
+				AnswerQueueMailAsk: inert('AnswerQueueMailAsk'),
 			},
 			stubs: { Icon: true },
 		},
@@ -168,6 +175,7 @@ const press = (init: KeyboardEventInit) =>
 	window.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
 
 beforeEach(() => {
+	activeQueueSession = null;
 	state = new Map();
 	routerReplace.mockClear();
 	navigateTo.mockClear();
@@ -283,6 +291,15 @@ describe('Answer mode page', () => {
 		w.getComponent(ComposerStub).vm.$emit('sent', { scheduled: false });
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox', { replace: true });
 		expect(useAnswerLeftDraft().left.value).toBeNull();
+	});
+
+	it('in the Answer queue, a send finishes the item and moves on instead of leaving', async () => {
+		const handleSent = vi.fn(() => true);
+		activeQueueSession = { handleSent };
+		const w = await mountAt({ draft: 'draft_1', queue: 'all' });
+		w.getComponent(ComposerStub).vm.$emit('sent', { scheduled: false });
+		expect(handleSent).toHaveBeenCalledTimes(1);
+		expect(navigateTo).not.toHaveBeenCalled();
 	});
 
 	it('toggles Summary / Full conversation with t', async () => {

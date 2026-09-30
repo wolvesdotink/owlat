@@ -5975,7 +5975,8 @@
 					"inbox": "Posteingang",
 					"queue": "Antwortliste",
 					"workbench": "Werkbank",
-					"previous": "Vorherige Seite"
+					"previous": "Vorherige Seite",
+					"teamInbox": "Team-Postfach"
 				},
 				"messageCount": "{count} Nachricht | {count} Nachrichten",
 				"tabsLabel": "Unterhaltung oder Antwort",
@@ -5991,6 +5992,40 @@
 				},
 				"more": "Mehr zu dieser Unterhaltung",
 				"openInPostbox": "In Postbox öffnen"
+			},
+			"queueBar": {
+				"position": "{position} von {total}",
+				"previous": "Vorherige in der Antwortliste",
+				"next": "Nächste in der Antwortliste",
+				"menu": "Antwortliste",
+				"inQueue": "in der Antwortliste",
+				"markDone": "Als erledigt markieren",
+				"backToQueue": "Zurück zur Antwortliste"
+			},
+			"team": {
+				"to": "An {name}",
+				"more": "Mehr zu dieser Antwort",
+				"showChanges": "Änderungen am Entwurf des Agenten zeigen",
+				"hideChanges": "Änderungen ausblenden",
+				"discardDraft": "Entwurf verwerfen",
+				"clear": "Leeren",
+				"attachments": {
+					"attach": "Anhängen",
+					"upload": "Datei hochladen",
+					"fromThread": "Aus dieser Unterhaltung",
+					"fromContact": "Weitere Dateien für {name}",
+					"copying": "Wird kopiert…",
+					"failed": "Kopieren fehlgeschlagen",
+					"failedWithReason": "Kopieren fehlgeschlagen: {reason}",
+					"remove": "{file} entfernen",
+					"retry": "Erneut versuchen",
+					"cancelUpload": "Upload von {file} abbrechen",
+					"hold": {
+						"uploading": "Senden wartet, bis der Upload fertig ist.",
+						"copying": "Senden wartet, bis die Datei kopiert ist.",
+						"failed": "Entfernen Sie die Datei, die nicht kopiert werden konnte, und senden Sie dann."
+					}
+				}
 			}
 		}
 	},
@@ -9173,7 +9208,7 @@
 			"detail": {
 				"agentNeedsInput": "Der Agent braucht Ihre Eingabe",
 				"agentNeedsInputEyebrow": "Wartet auf Sie",
-				"answerAndResume": "Antworten und Entwurf fortsetzen",
+				"answerAndResume": "Beantworten und entwerfen",
 				"answerClarificationOperation": "Rückfrage beantworten",
 				"answerPlaceholder": "Antwort eingeben",
 				"answerRemaining": "Noch {count} Antwort bis zum Fortsetzen | Noch {count} Antworten bis zum Fortsetzen",
@@ -9320,7 +9355,8 @@
 				"waitingDraft": {
 					"notice": "Auch für diese Nachricht wartet ein Antwortentwurf.",
 					"answer": "Diese Nachricht beantworten"
-				}
+				},
+				"answerInReply": "In der Antwort beantworten"
 			},
 			"failed": {
 				"emptyBody": "Jede eingehende Nachricht wurde erfolgreich verarbeitet.",
