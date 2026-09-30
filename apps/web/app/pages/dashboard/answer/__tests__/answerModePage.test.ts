@@ -136,7 +136,7 @@ const canManage = ref(true);
 const labelRun = vi.fn(async () => ({ ok: true }));
 const LabelDialogStub = defineComponent({
 	name: 'PostboxLabelPickerDialog',
-	props: ['open', 'labels'],
+	props: ['open', 'labels', 'selectedIds'],
 	emits: ['update:open', 'pick'],
 	setup: (props) => () => (props.open ? h('div', { 'data-testid': 'label-dialog' }) : null),
 });
@@ -533,6 +533,24 @@ describe('Answer mode page', () => {
 			add: true,
 		});
 		expect(w.find('[data-testid="label-dialog"]').exists()).toBe(false);
+	});
+
+	it('marks a label already on the message, and picking it takes it off', async () => {
+		(message as { labelIds?: string[] }).labelIds = ['lbl_billing'];
+		try {
+			const w = await mountAt({});
+			await w.get('[data-testid="answer-menu-label"]').trigger('click');
+			expect(w.getComponent(LabelDialogStub).props('selectedIds')).toEqual(['lbl_billing']);
+			w.getComponent(LabelDialogStub).vm.$emit('pick', 'lbl_billing');
+			await flushPromises();
+			expect(labelRun).toHaveBeenCalledWith({
+				messageId: 'msg_1',
+				labelId: 'lbl_billing',
+				add: false,
+			});
+		} finally {
+			delete (message as { labelIds?: string[] }).labelIds;
+		}
 	});
 
 	it("keeps a file answer's copy only for someone who may add to Files", async () => {
