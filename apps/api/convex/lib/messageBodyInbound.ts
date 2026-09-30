@@ -89,8 +89,10 @@ async function openPart(
  * Read AND UNSEAL an `inboundMessages` body.
  *
  * `storage` is an action's `ctx.storage` (the full body, blobs fetched) or
- * `null` from a query or mutation (inline parts plus the excerpt). Legacy
- * plaintext columns and unsealed blobs pass through unchanged.
+ * `null` from a query or mutation — or from an action that only wants the
+ * bounded view, like the agent's thread history — for the inline parts plus
+ * the excerpt. Legacy plaintext columns and unsealed blobs pass through
+ * unchanged.
  */
 export async function openInboundMessageBody(
 	row: InboundMessageBodyFields,

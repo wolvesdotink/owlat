@@ -211,11 +211,14 @@ export const contextRetrievalStep: AgentStepModule<
 						title: m.subject || '(no subject)',
 					});
 				}
+				// History is read without storage: the briefing is cut to a few
+				// thousand tokens below, so a prior message whose text is held in
+				// storage contributes its excerpt instead of megabytes nobody keeps.
 				const historyLines = await Promise.all(
-					threadMessages.map(
-						async (m) =>
-							`From: ${m.from}\nDate: ${new Date(m.receivedAt).toISOString()}\nSubject: ${m.subject}\n${(await openInboundMessageBody(m, ctx.storage)).text ?? '(no text body)'}\n---`
-					)
+					threadMessages.map(async (m) => {
+						const { text, excerpt } = await openInboundMessageBody(m, null);
+						return `From: ${m.from}\nDate: ${new Date(m.receivedAt).toISOString()}\nSubject: ${m.subject}\n${text ?? excerpt ?? '(no text body)'}\n---`;
+					})
 				);
 				contextParts.push('[CONVERSATION HISTORY]\n' + historyLines.join('\n'));
 			}

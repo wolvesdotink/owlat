@@ -53,6 +53,13 @@ export function injectionRisk(text: string, html?: string): string | null {
  */
 const EXTRACTION_LLM_DEADLINE_MS = 180_000;
 
+/**
+ * How much of a team-inbox body the extraction prompt carries. A body held in
+ * storage can run to the 10 MiB the inbound route accepts, which no model
+ * takes in one prompt; the injection check still reads all of it.
+ */
+const INBOUND_EXTRACTION_BODY_CHARS = 100_000;
+
 type ExtractedEntry = z.infer<typeof extractionSchema>['entries'][number];
 
 const extractionSchema = z.object({
@@ -182,7 +189,7 @@ export const extractFromMessage = internalAction({
 From: ${message.from}
 Subject: ${message.subject}
 Body:
-${textContent}
+${textContent.slice(0, INBOUND_EXTRACTION_BODY_CHARS)}
 
 Extract any:
 - Facts: verifiable information about people, companies, or things
