@@ -54,6 +54,7 @@ import {
 	type DeletionJobSummary,
 	type DeletionTickOutcome,
 } from './job';
+import { shrunkPageRows } from './quiesce';
 import { organizationDeletionTableValidator } from './steps/_common';
 import { ORGANIZATION_DELETION_STEPS, STEPS } from './steps/registry';
 
@@ -117,7 +118,11 @@ export const recordFailure = internalMutation({
 		const attempts = progress.attempts + 1;
 		const isExhausted = attempts >= MAX_ATTEMPTS;
 		const now = Date.now();
+		// A scheduler page that failed (a limit it ran into, say) is retried
+		// smaller, down to one row, never as the same read again.
+		const isScanning = progress.phase === 'quiesce' || progress.phase === 'verify';
 		await ctx.db.patch(progress._id, {
+			...(isScanning ? { scheduledPageRows: shrunkPageRows(progress) } : {}),
 			attempts,
 			lastError: error.slice(0, MAX_ERROR_CHARS),
 			lastErrorAt: now,

@@ -73,9 +73,15 @@ export const workspaceDeletionTables = {
 		// a value the registry no longer knows restarts the sweep from its first
 		// table.
 		step: v.string(),
-		// The scheduler scan's cursor: the `_creationTime` of the last
-		// `_scheduled_functions` row inspected.
-		scheduledCursor: v.optional(v.number()),
+		// The scheduler scan (workspaces/deletion/quiesce.ts): everything created
+		// up to `scheduledAfter` (a `_creationTime`) has been inspected; inside the
+		// range after it, `scheduledCursor` is the paginate cursor of the next
+		// page, and `scheduledPageRows` the rows that page asks for. The page
+		// shrinks when a read comes back cut short or runs into a limit, and grows
+		// back after a clean one.
+		scheduledAfter: v.optional(v.number()),
+		scheduledCursor: v.optional(v.string()),
+		scheduledPageRows: v.optional(v.number()),
 		scheduledCancelled: v.number(),
 		// Further requests that joined this job instead of starting another.
 		joinedRequests: v.number(),

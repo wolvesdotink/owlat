@@ -10,6 +10,8 @@
 
 import { createHmac } from 'node:crypto';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
+import { convexTest } from 'convex-test';
+import schema from '../schema';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -429,6 +431,82 @@ describe('workspace deletion — the scheduler survivor list', () => {
 	it('keeps the deletion chain itself', () => {
 		expect(isSurvivingScheduledFunction('workspaces/deletion/walker:drive')).toBe(true);
 		expect(isSurvivingScheduledFunction('contacts/contacts:createForTeam')).toBe(false);
+	});
+});
+
+describe('workspace deletion — the scheduler scan under the read limit', () => {
+	const MiB = 1024 * 1024;
+	type Limits = Parameters<typeof convexTest>[0] extends infer O
+		? O extends { transactionLimits?: infer L }
+			? L
+			: never
+		: never;
+	const limitedHarness = (transactionLimits: Limits): Harness =>
+		convexTest({ schema, modules, transactionLimits }) as Harness;
+
+	/** `count` pending contact creations, each carrying `bytes` of arguments. */
+	async function scheduleBulky(t: Harness, count: number, bytes: number) {
+		const ids: Id<'_scheduled_functions'>[] = [];
+		// A few per transaction: scheduled arguments count against its own limits.
+		for (let batch = 0; batch < count; batch += 5) {
+			const scheduled = await t.run(async (ctx) => {
+				const out: Id<'_scheduled_functions'>[] = [];
+				for (let i = batch; i < Math.min(count, batch + 5); i++) {
+					out.push(
+						await ctx.scheduler.runAfter(3_600_000, internal.contacts.contacts.createForTeam, {
+							email: `bulky-${i}@example.com`,
+							firstName: 'x'.repeat(bytes),
+						})
+					);
+				}
+				return out;
+			});
+			ids.push(...scheduled);
+		}
+		return ids;
+	}
+	// One transaction per row: the rows are too big to read together.
+	const states = (t: Harness, ids: Id<'_scheduled_functions'>[]) =>
+		Promise.all(ids.map((id) => t.run(async (ctx) => (await ctx.db.system.get(id))?.state.kind)));
+
+	it('cancels scheduled work whose arguments outgrow one transaction, without a failure', async () => {
+		// Forty rows of ~600 KiB: 24 MiB, where a transaction may read 16.
+		const t = limitedHarness(true);
+		const ids = await scheduleBulky(t, 40, 600 * 1024);
+		const jobId = await startDeletion(t);
+
+		await tickUntil(t, jobId, (s) => s.phase !== 'quiesce');
+
+		expect(await status(t)).toMatchObject({ phase: 'sweep', attempts: 0, lastError: null });
+		expect(new Set(await states(t, ids))).toEqual(new Set(['canceled']));
+	});
+
+	it('retries a scan page that ran into a limit with fewer rows, until it gets through', async () => {
+		// A tighter read limit than the scan's byte bound, so its pages still fail
+		// until they shrink: the failure path must not retry the same read.
+		const t = limitedHarness({ bytesRead: 3 * MiB });
+		const ids = await scheduleBulky(t, 12, 900 * 1024);
+		const jobId = await startDeletion(t);
+
+		const pageRows: number[] = [];
+		for (let i = 0; i < 80 && (await status(t)).phase === 'quiesce'; i++) {
+			await t.action(internal.workspaces.deletion.walker.drive, { jobId });
+			const progress = await t.run(async (ctx) =>
+				ctx.db
+					.query('workspaceDeletionProgress')
+					.withIndex('by_job', (q) => q.eq('jobId', jobId))
+					.unique()
+			);
+			pageRows.push(progress?.scheduledPageRows ?? 200);
+		}
+
+		const done = await status(t);
+		expect(done.phase).toBe('sweep');
+		expect(done.status).not.toBe('failed');
+		expect(done.lastError).toContain('Read too much data');
+		// It shrank from 200 rows to a page that fits.
+		expect(Math.min(...pageRows)).toBeLessThanOrEqual(3);
+		expect(new Set(await states(t, ids))).toEqual(new Set(['canceled']));
 	});
 });
 

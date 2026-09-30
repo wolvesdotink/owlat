@@ -208,10 +208,10 @@ export async function runWorkspaceDeletionTransaction(
 	};
 
 	if (progress.phase === 'quiesce' || progress.phase === 'verify') {
-		const scan = await cancelPendingScheduledFunctions(ctx, progress.scheduledCursor);
+		const scan = await cancelPendingScheduledFunctions(ctx, progress);
 		const scanned = {
 			scheduledCancelled: progress.scheduledCancelled + scan.cancelled,
-			...(scan.cursor !== undefined ? { scheduledCursor: scan.cursor } : {}),
+			...scan.position,
 		};
 		if (!scan.isDone || progress.phase === 'quiesce') {
 			await ctx.db.patch(progress._id, {

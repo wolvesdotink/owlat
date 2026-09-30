@@ -692,15 +692,21 @@ them: finished rows are the generation history.
 
 **Quiescing the scheduler.** The deployment holds one workspace, so
 every pending `_scheduled_functions` row belongs to the one being
-deleted. The job's first phase cancels them, a bounded page per
-transaction from a saved `_creationTime` cursor, except a short survivor
-list (`workspaces/deletion/quiesce.ts`: the deletion's own chain, the
+deleted. The job's first phase cancels them, one page per transaction
+from a saved position, except a short survivor list
+(`workspaces/deletion/quiesce.ts`: the deletion's own chain, the
 provider-side release of a removed sending domain, member erasure, the
 account-deletion mail, Sealed Mail key material, the inbound TLS policy
-push). Verification re-scans from the cursor, catching anything a
-fenced mutation scheduled without writing. Without this, a send-later,
-snooze wake-up, automation wait or long retry queued before the
-deletion would fire after completion into the emptied workspace.
+push). Verification re-scans from the cursor, catching anything a fenced
+mutation scheduled without writing. Without this, a send-later, snooze
+wake-up, automation wait or long retry queued before the deletion would
+fire after completion into the emptied workspace. A page is bounded by
+bytes before rows are loaded (`maximumBytesRead`: a row carries its
+function's arguments, up to 4 MiB, so a row count alone can exceed the
+16 MiB a transaction may read). A page cut short at that bound is
+re-read smaller without advancing, and a scan transaction that fails
+anyway is retried with a quarter of the rows, down to one, so the scan
+always progresses.
 
 **Checkpoints and recovery.** `walker.tick` runs one bounded scheduler
 page, sweep batch or verification pass and saves the checkpoint in the
