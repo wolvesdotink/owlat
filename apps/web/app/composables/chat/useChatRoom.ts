@@ -2,6 +2,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
 import type { Ref } from 'vue';
+import type { BackendOperationResult } from '~/composables/useBackendOperation';
 
 /**
  * One chat message as `listMessages` returns it: the stored row plus its
@@ -72,9 +73,17 @@ export function useChatRoom(roomId: Ref<Id<'chatRooms'> | undefined>) {
 		label: () => t('shared.chat.useChatRoom.leaveRoom'),
 	});
 
-	const sendMessage = async (text: string, attachmentIds?: Id<'mediaAssets'>[]) => {
-		if (!roomId.value) return;
-		await sendMessageMutation({
+	/**
+	 * Send into the open room. The outcome goes back to the composer, which
+	 * keeps the draft until the send is `ok` — a failure has already been
+	 * toasted by the operation, so the draft is all the caller has to keep.
+	 */
+	const sendMessage = async (
+		text: string,
+		attachmentIds?: Id<'mediaAssets'>[]
+	): Promise<BackendOperationResult<Id<'chatMessages'>>> => {
+		if (!roomId.value) return { ok: false };
+		return await sendMessageMutation({
 			roomId: roomId.value,
 			text,
 			attachmentIds,
@@ -82,11 +91,11 @@ export function useChatRoom(roomId: Ref<Id<'chatRooms'> | undefined>) {
 	};
 
 	const editMessage = async (messageId: Id<'chatMessages'>, text: string) => {
-		await editMessageMutation({ messageId, text });
+		return await editMessageMutation({ messageId, text });
 	};
 
 	const deleteMessage = async (messageId: Id<'chatMessages'>) => {
-		await deleteMessageMutation({ messageId });
+		return await deleteMessageMutation({ messageId });
 	};
 
 	const joinChannel = async () => {

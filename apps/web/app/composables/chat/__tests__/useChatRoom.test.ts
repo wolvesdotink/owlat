@@ -277,3 +277,29 @@ describe('useChatRoom read acknowledgement (#944)', () => {
 		expect(rooms[ROOM_A]!.myLastReadAt).toBe(latestAt(ROOM_A));
 	});
 });
+
+describe('useChatRoom.sendMessage (#945)', () => {
+	it('hands the operation outcome back to the caller', async () => {
+		const { chat } = await open();
+
+		await expect(chat.sendMessage('hello', undefined)).resolves.toEqual({
+			ok: true,
+			result: 'msg_new',
+		});
+		sendOutcome = () => ({ ok: false });
+		await expect(chat.sendMessage('hello again', ['asset_1' as never])).resolves.toEqual({
+			ok: false,
+		});
+		expect(sendCalls).toEqual([
+			{ roomId: ROOM_A, text: 'hello', attachmentIds: undefined },
+			{ roomId: ROOM_A, text: 'hello again', attachmentIds: ['asset_1'] },
+		]);
+	});
+
+	it('refuses without a room instead of reporting a send', async () => {
+		const { chat, roomId } = await open();
+		roomId.value = undefined;
+		await expect(chat.sendMessage('hello')).resolves.toEqual({ ok: false });
+		expect(sendCalls).toHaveLength(0);
+	});
+});
