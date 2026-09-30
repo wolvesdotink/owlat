@@ -191,6 +191,46 @@ describe('a large body whose readable part is in storage', () => {
 			inboundMessageId: row._id,
 		});
 		expect(outcome.restrictsAutoSend).toBe(true);
+
+		// The thread view's "rest of the message" is the whole HTML, as text.
+		const full = await t.action(api.inbox.bodyText.getInboundMessageText, { messageId: row._id });
+		expect(full?.startsWith('Refund request for order 4711')).toBe(true);
+		expect(full).toContain(TAIL_CANARY);
+		expect(full).not.toContain('<p>');
+	});
+
+	it('a blank inline text part next to stored HTML is read past, not shown as empty', async () => {
+		const t = setupTest();
+		await ingest(t, {
+			messageId: 'blank-text-1',
+			textBody: ' \n ',
+			htmlBody: htmlOfSize(1.5 * MIB),
+		});
+		const row = await onlyRow(t);
+		expect(row.htmlBodyStorageId).toBeDefined();
+		expect(row.bodyExcerpt).toBeDefined();
+
+		const full = await t.action(api.inbox.bodyText.getInboundMessageText, { messageId: row._id });
+		expect(full?.startsWith('Monthly newsletter')).toBe(true);
+		expect(full).toContain(TAIL_CANARY);
+	});
+
+	it('refuses to decode a sealed blob as text once the key is gone, like an inline body', async () => {
+		const t = setupTest();
+		await ingest(t, {
+			messageId: 'keyless-1',
+			textBody: TEXT_PART,
+			htmlBody: htmlOfSize(1.5 * MIB),
+		});
+		const row = await onlyRow(t);
+
+		vi.stubEnv('INSTANCE_SECRET', undefined);
+		// The blob branch alone: the row's inline columns are sealed too and
+		// would throw on their own.
+		const blobOnly = { htmlBodyStorageId: row.htmlBodyStorageId };
+		await expect(t.run((ctx) => openInboundMessageBody(blobOnly, ctx.storage))).rejects.toThrow(
+			'INSTANCE_SECRET'
+		);
 	});
 
 	it('a multibyte text part too large for the row is stored whole and served to the reader', async () => {

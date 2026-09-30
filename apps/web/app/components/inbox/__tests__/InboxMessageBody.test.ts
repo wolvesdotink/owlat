@@ -6,6 +6,8 @@
  *     it is the beginning, then swaps in the full text the action returns;
  *   - a failed fetch keeps the excerpt and the note — a reader is never shown
  *     a cut message as whole;
+ *   - the same for a message with NO text part whose HTML is in storage (a
+ *     large newsletter), and for one whose inline text part is blank;
  *   - no text at all is the existing "no text content" line.
  */
 import { beforeAll, beforeEach, describe, it, expect, vi } from 'vitest';
@@ -84,6 +86,35 @@ describe('InboxMessageBody', () => {
 		await flushPromises();
 		expect(wrapper.text()).toContain('Only the opening');
 		expect(wrapper.find(EXCERPT_NOTE).exists()).toBe(true);
+	});
+
+	it('marks and completes an HTML-only message whose HTML is in storage', async () => {
+		answer = async () => 'Monthly newsletter, converted in full.';
+		const wrapper = mountBody({
+			bodyExcerpt: 'Monthly newsletter',
+			htmlBodyStorageId: 'storage_2' as InboxMessageText['htmlBodyStorageId'],
+		});
+		expect(wrapper.text()).toContain('Monthly newsletter');
+		expect(wrapper.find(EXCERPT_NOTE).exists()).toBe(true);
+		await flushPromises();
+		expect(wrapper.text()).toContain('converted in full.');
+		expect(wrapper.find(EXCERPT_NOTE).exists()).toBe(false);
+		expect(action).toHaveBeenCalledTimes(1);
+	});
+
+	it('reads past a blank inline text part to the stored HTML', async () => {
+		answer = async () => {
+			throw new Error('offline');
+		};
+		const wrapper = mountBody({
+			textBody: '  \n ',
+			bodyExcerpt: 'Monthly newsletter',
+			htmlBodyStorageId: 'storage_2' as InboxMessageText['htmlBodyStorageId'],
+		});
+		await flushPromises();
+		expect(wrapper.text()).toContain('Monthly newsletter');
+		expect(wrapper.find(EXCERPT_NOTE).exists()).toBe(true);
+		expect(action).toHaveBeenCalledTimes(1);
 	});
 
 	it('says there is no text content when the message has none', async () => {

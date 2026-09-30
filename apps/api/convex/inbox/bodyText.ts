@@ -1,10 +1,11 @@
 /**
- * The full text of a team-inbox message whose text part is held in storage.
+ * The full text of a team-inbox message whose readable part is held in storage.
  *
  * The thread view renders `textBody` straight off the rows `getThread` returns,
- * and a query cannot read blob contents — so a message whose text was too large
- * to keep on its row arrives with only its `bodyExcerpt`, and the reader asks
- * here for the rest. Same shape as `inbox/rawMessage.ts`: an internal QUERY
+ * and a query cannot read blob contents — so a message whose text (or, with no
+ * text part, whose HTML) was too large to keep on its row arrives with only its
+ * `bodyExcerpt`, and the reader asks here for the rest. With no text part the
+ * answer is the HTML as plain text, the same conversion the excerpt used. Same shape as `inbox/rawMessage.ts`: an internal QUERY
  * does the authorization, a public ACTION reads the blob through the one body
  * accessor (`lib/messageBodyInbound.ts`), so the plaintext never passes through
  * a URL or an unauthenticated route.
@@ -19,6 +20,7 @@ import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { publicAction } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { htmlToPlainText } from '@owlat/shared/html';
 import { openInboundMessageBody } from '../lib/messageBodyInbound';
 import { isSharedInboxReader } from './access';
 
@@ -45,7 +47,9 @@ export const getInboundMessageText = publicAction({
 			args
 		);
 		if (!message) return null;
-		const { text } = await openInboundMessageBody(message, ctx.storage);
+		const { text, html } = await openInboundMessageBody(message, ctx.storage);
+		if (text?.trim()) return text;
+		if (html) return htmlToPlainText(html);
 		return text ?? null;
 	},
 });
