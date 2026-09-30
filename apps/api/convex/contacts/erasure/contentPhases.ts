@@ -13,6 +13,7 @@ import {
 	deleteAll,
 	drainEach,
 	drainParents,
+	withoutRow,
 	type PhaseContext,
 	type PhaseRunner,
 } from './phaseKit';
@@ -213,7 +214,7 @@ export const eraseKnowledge: PhaseRunner = (phase) => {
 						.query('knowledgeEntryContacts')
 						.withIndex('by_entry', (q) => q.eq('entryId', link.entryId))
 						.take(n + 1);
-					return rows.filter((row) => row._id !== link._id).slice(0, n);
+					return withoutRow(budget, rows, link._id, n);
 				},
 				(row) => ctx.db.delete(row._id)
 			);
@@ -260,7 +261,7 @@ export const eraseSemanticFiles: PhaseRunner = (phase) => {
 							.query('semanticFileContacts')
 							.withIndex('by_file', (q) => q.eq('fileId', file._id))
 							.take(n + 1);
-						return rows.filter((row) => row._id !== link._id).slice(0, n);
+						return withoutRow(budget, rows, link._id, n);
 					},
 					(row) => ctx.db.delete(row._id)
 				);

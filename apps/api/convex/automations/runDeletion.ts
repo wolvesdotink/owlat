@@ -64,8 +64,10 @@ export async function deleteAutomationRun(
 	if (!run) return { isDeleted: true, rowsTouched: 0 };
 	onRead?.(run);
 
+	// Cancelling writes the run row once; a run already cancelled by an
+	// earlier call costs nothing here, so a one-row call still gets to a step run.
+	let rowsTouched = run.status === 'running' ? 1 : 0;
 	await cancelRun(ctx, run._id);
-	let rowsTouched = 1;
 
 	while (rowsTouched < maxRows) {
 		const stepRuns = await ctx.db
