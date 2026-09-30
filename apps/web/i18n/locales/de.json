@@ -6075,6 +6075,7 @@
 				"choose": "wählen Sie eine Datei aus",
 				"uploading": "Wird hochgeladen … {percent} %",
 				"attachedAndSaved": "Wird an diese Antwort angehängt und in den Dateien des Kontakts gespeichert",
+				"attachedAndSavedIfContact": "Wird an diese Antwort angehängt und in den Dateien gespeichert, falls der Absender einer Ihrer Kontakte ist",
 				"attachedOnly": "Wird nur an diese Antwort angehängt",
 				"dontKeep": "Keine Kopie in den Dateien behalten",
 				"nearMisses": "Ähnlich, aber vielleicht nicht die richtige:",

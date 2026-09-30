@@ -11,8 +11,9 @@
  *    was given come back as `attachedFiles`, which the reply attaches through
  *    `inbox.replyAttachments` (the server does not, for a team thread).
  *
- * The ask session lives on the Postbox side of the backend (`postboxQuery`), so
- * "Draft with AI" needs the `ai` flag and the Postbox (or external mail) on.
+ * "Draft with AI" needs the `ai` flag and the team inbox: the ask session and
+ * its stream are read through `answerModeQuery`, which checks the target's own
+ * flag, so a team-only instance has it too.
  */
 import type { Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
@@ -31,9 +32,7 @@ export function useAnswerTeamAssist(opts: {
 }) {
 	const { isEnabled } = useFeatureFlag();
 	const aiEnabled = computed(() => isEnabled('ai'));
-	const draftWithAi = computed(
-		() => aiEnabled.value && (isEnabled('postbox') || isEnabled('mail.external'))
-	);
+	const draftWithAi = computed(() => aiEnabled.value && isEnabled('inbox'));
 
 	const catchUp = useAnswerCatchUp({
 		target: () => {

@@ -44,6 +44,40 @@ function mountComposer(props: Record<string, unknown> = {}, slots: Record<string
 	});
 }
 
+describe('InboxThreadComposer and the gaps the AI left', () => {
+	const sendButton = (w: ReturnType<typeof mountComposer>) =>
+		w.get('[data-testid="thread-composer-send"]');
+
+	it('holds Send and says how many gaps are left after an AI draft', async () => {
+		const wrapper = mountComposer({ statusNote: '1 of 2 asks covered' });
+		const vm = wrapper.vm as unknown as { answer: { applyAiDraft: (t: string) => Promise<void> } };
+		await vm.answer.applyAiDraft('Attached [[the invoice]].');
+		await nextTick();
+		expect(sendButton(wrapper).attributes('disabled')).toBeDefined();
+		expect(wrapper.get('[data-testid="thread-composer-status"]').text()).toBe('1 gap left');
+
+		await wrapper.get('[data-testid="thread-composer-body"]').setValue('Attached the invoice.');
+		expect(sendButton(wrapper).attributes('disabled')).toBeUndefined();
+		expect(wrapper.get('[data-testid="thread-composer-status"]').text()).toBe(
+			'1 of 2 asks covered'
+		);
+	});
+
+	it('holds Send when the thread has a Draft with AI session (the server would refuse)', async () => {
+		const wrapper = mountComposer({ askSession: true });
+		await wrapper.get('[data-testid="thread-composer-body"]').setValue('See [[the PO]].');
+		expect(sendButton(wrapper).attributes('disabled')).toBeDefined();
+	});
+
+	it('leaves brackets a person typed alone', async () => {
+		const wrapper = mountComposer();
+		await wrapper
+			.get('[data-testid="thread-composer-body"]')
+			.setValue('See [[Onboarding]] in the wiki.');
+		expect(sendButton(wrapper).attributes('disabled')).toBeUndefined();
+	});
+});
+
 describe('InboxThreadComposer in Answer mode', () => {
 	it('opens an empty editor on a thread without a draft, and sends the typed text', async () => {
 		const wrapper = mountComposer();

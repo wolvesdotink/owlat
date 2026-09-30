@@ -6,37 +6,29 @@
  * "AI draft · Discard" tag.
  *
  * The clarification draft is the more informed of the two (it has the
- * person's answers), so it wins when both exist.
+ * person's answers), so it wins when both exist. Both come from one
+ * per-thread read (`needsReplyPrepared.getPreparedDraft`), not from the whole
+ * mailbox's queue.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
 export function useAnswerPreparedDraft(opts: {
 	threadId: () => string | undefined;
-	mailboxId: () => string | undefined;
 	/** Only a fresh reply takes one (a resumed draft already has its text). */
 	enabled: () => boolean;
 }) {
-	const slotQuery = useConvexQuery(api.mail.needsReply.getDraftSlot, () => {
+	const preparedQuery = useConvexQuery(api.mail.needsReplyPrepared.getPreparedDraft, () => {
 		const threadId = opts.threadId();
 		return opts.enabled() && threadId
 			? { threadId: threadId as Id<'mailThreads'> }
 			: ('skip' as const);
 	});
-	const queueQuery = useConvexQuery(api.mail.needsReply.listQueue, () => {
-		const mailboxId = opts.mailboxId();
-		return opts.enabled() && mailboxId
-			? { mailboxId: mailboxId as Id<'mailboxes'> }
-			: ('skip' as const);
-	});
 
 	const text = computed<string | null>(() => {
-		const threadId = opts.threadId();
-		if (!opts.enabled() || !threadId) return null;
-		const row = queueQuery.data.value?.items.find((item) => item.threadId === threadId);
-		const answered = row?.clarification?.draft?.trim();
-		if (answered) return answered;
-		return slotQuery.data.value?.draft?.trim() || null;
+		if (!opts.enabled() || !opts.threadId()) return null;
+		const prepared = preparedQuery.data.value;
+		return prepared?.clarificationDraft ?? prepared?.slotDraft ?? null;
 	});
 
 	return { text };

@@ -6075,6 +6075,7 @@
 				"choose": "choose a file",
 				"uploading": "Uploading… {percent}%",
 				"attachedAndSaved": "Attached to this reply and saved to the contact's Files",
+				"attachedAndSavedIfContact": "Attached to this reply, and saved to Files if the sender is one of your contacts",
 				"attachedOnly": "Attached to this reply only",
 				"dontKeep": "Don't keep a copy in Files",
 				"nearMisses": "Close, but maybe not it:",

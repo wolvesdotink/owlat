@@ -95,6 +95,7 @@ beforeAll(() => {
 			capturedMeta = meta;
 		},
 		useClickOutside,
+		usePermissions: () => ({ canManageOrganization: canManage }),
 		useBackendOperation: () => ({ run: labelRun, isLoading: ref(false) }),
 		useRoute: () => route,
 		useRouter: () => ({
@@ -130,6 +131,7 @@ const answerApi = {
 	discardAiDraft: vi.fn(),
 };
 const composerFocusBody = vi.fn();
+const canManage = ref(true);
 /** Every mutation the page's ⋯ runs (the label toggle). */
 const labelRun = vi.fn(async () => ({ ok: true }));
 const LabelDialogStub = defineComponent({
@@ -167,7 +169,7 @@ const AiBarStub = defineComponent({
 });
 const AskCardStub = defineComponent({
 	name: 'AskCard',
-	props: ['questions', 'round', 'submitting', 'mailboxId', 'resolveThreadFile'],
+	props: ['questions', 'round', 'submitting', 'mailboxId', 'resolveThreadFile', 'copyPolicy'],
 	emits: ['answer', 'skip'],
 	setup: () => () => h('div', { 'data-testid': 'ask-card' }),
 });
@@ -531,6 +533,22 @@ describe('Answer mode page', () => {
 			add: true,
 		});
 		expect(w.find('[data-testid="label-dialog"]').exists()).toBe(false);
+	});
+
+	it("keeps a file answer's copy only for someone who may add to Files", async () => {
+		assist.aiEnabled.value = true;
+		assist.ask.phase.value = 'asking';
+		assist.ask.session.value = { sessionId: 's1', round: 1, questions: [{ id: 'q1' }] };
+		const admin = await mountAt({ draft: 'draft_1' });
+		// The page cannot tell whether the sender is a contact: the card says so.
+		expect(admin.getComponent(AskCardStub).props('copyPolicy')).toBe('ifContact');
+		admin.unmount();
+		wrapper = null;
+
+		canManage.value = false;
+		const member = await mountAt({ draft: 'draft_1' });
+		expect(member.getComponent(AskCardStub).props('copyPolicy')).toBe('never');
+		canManage.value = true;
 	});
 
 	it('hands the composer the asks covered for its footer', async () => {

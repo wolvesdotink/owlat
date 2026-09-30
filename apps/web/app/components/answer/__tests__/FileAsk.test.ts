@@ -109,6 +109,28 @@ describe('FileAsk', () => {
 		expect(lastValue(w)).toEqual({ ...picked, keepCopy: false });
 	});
 
+	it('offers no copy to someone who may not add to Files, and says the file only goes on the reply', async () => {
+		upload.mockResolvedValue({
+			storageId: 'st_1',
+			filename: 'a.pdf',
+			contentType: 'application/pdf',
+			size: 4,
+		});
+		pickAnswerFile.mockResolvedValue(new File(['%PDF'], 'a.pdf', { type: 'application/pdf' }));
+		const w = mountAsk({ copyPolicy: 'never' });
+		expect(w.find('[data-testid="file-ask-dont-keep"]').exists()).toBe(false);
+		expect(w.text()).toContain('Attached to this reply only');
+		await w.get('[data-testid="file-ask-choose"]').trigger('click');
+		await flushPromises();
+		expect(lastValue(w)).toMatchObject({ kind: 'file', keepCopy: false });
+	});
+
+	it('says the copy depends on the sender being a contact when the page cannot tell', () => {
+		const w = mountAsk({ copyPolicy: 'ifContact' });
+		expect(w.find('[data-testid="file-ask-dont-keep"]').exists()).toBe(true);
+		expect(w.text()).toContain('saved to Files if the sender is one of your contacts');
+	});
+
 	it('refuses a file type the upload policy would refuse, before uploading', async () => {
 		const w = mountAsk();
 		const file = new File(['x'], 'photo.heic', { type: 'image/heic' });

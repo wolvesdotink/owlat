@@ -29,6 +29,7 @@ import { useAnswerTeamAssist } from '~/composables/useAnswerTeamAssist';
 import CatchUpCard from '~/components/answer/CatchUpCard.vue';
 import AnswerAiBar from '~/components/answer/AnswerAiBar.vue';
 import AskCard from '~/components/answer/AskCard.vue';
+import type { FileCopyPolicy } from '~/components/answer/FileAsk.vue';
 import { useAnswerQueueSession } from '~/composables/useAnswerQueueSession';
 import { useAnswerTeamReply } from '~/composables/useAnswerTeamReply';
 import { useTeamReplyAttachments } from '~/composables/useTeamReplyAttachments';
@@ -60,7 +61,12 @@ useHead({ title: () => thread.value?.subject || t('dashboard.answer.mode.pageTit
 
 // People: presence and the collision hold
 const { members, fetchMembers } = useOrganization();
-const { isAdmin } = usePermissions();
+const { isAdmin, canManageOrganization } = usePermissions();
+// An uploaded file answer is kept in Files only by someone who may add to
+// Files, and only for the thread's contact (lib/answerFileToFiles.ts).
+const copyPolicy = computed<FileCopyPolicy>(() =>
+	canManageOrganization.value && contact.value ? 'kept' : 'never'
+);
 onMounted(() => void fetchMembers());
 function memberName(userId: string): string {
 	const m = members.value.find((x) => x.userId === userId);
@@ -127,7 +133,10 @@ const assist = useAnswerTeamAssist({
 	composer: () => composerRef.value?.answer ?? null,
 	messageCount: () => (thread.value ? messages.value.length : undefined),
 	view,
-	attachFile: (file) => void files.attachAnswerFile(file),
+	// A reply on another channel carries no files: the server would refuse.
+	attachFile: (file) => {
+		if (attachmentsAllowed.value) void files.attachAnswerFile(file);
+	},
 });
 const catchUpMessages = computed(() =>
 	messages.value.map((m) => ({ _id: m._id, receivedAt: m._creationTime, fromAddress: m.from }))
@@ -152,18 +161,11 @@ const clarificationDeferred = ref(false);
 const showClarification = computed(
 	() => !!reply.clarification.value && !clarificationDeferred.value
 );
+// A file given as an answer goes on the reply on the server, in the same
+// transaction as the answer (inbox.clarification.answerClarification); the
+// attachment list then updates through its subscription.
 async function onClarificationAnswers(answers: AskAnswer[]) {
-	const sent = await reply.submitClarification(answers);
-	// A file the person picked or uploaded as the answer goes on the reply. A
-	// Files pick is copied; an upload kept out of Files is bound as it is; an
-	// upload saved to Files comes back as the agent's (confident) suggestion.
-	for (const answer of sent ?? []) {
-		const file = answer.file;
-		if (!file || !attachmentsAllowed.value) continue;
-		if (file.source === 'semanticFile' || (file.source === 'upload' && answer.keepCopy === false)) {
-			void files.attachAnswerFile(file);
-		}
-	}
+	await reply.submitClarification(answers);
 }
 
 // Text typed and not sent stays with the thread for the session, so leaving
@@ -359,6 +361,7 @@ onBeforeUnmount(() => {
 					:held-reason="holdReason"
 					:send-hold="sendHold"
 					:status-note="assist.statusNote.value"
+					:ask-session="!!assist.ask.session.value"
 					@send="onSend"
 					@save="(body, subject) => reply.save({ body, subject })"
 					@reject="reply.reject.openReject()"
@@ -377,6 +380,7 @@ onBeforeUnmount(() => {
 							<AskCard
 								:questions="clarificationQuestions"
 								require-all
+								:copy-policy="copyPolicy"
 								:submitting="reply.isAnsweringClarification.value"
 								:skip-label="t('components.postbox.postboxClarificationCard.answerLater')"
 								@answer="onClarificationAnswers"
@@ -393,6 +397,7 @@ onBeforeUnmount(() => {
 									v-if="assist.ask.phase.value === 'asking' && assist.ask.session.value"
 									:questions="assist.ask.session.value.questions"
 									:round="assist.ask.session.value.round"
+									:copy-policy="copyPolicy"
 									:submitting="assist.ask.busy.value"
 									@answer="assist.ask.answer($event)"
 									@skip="assist.ask.answer($event, true)"

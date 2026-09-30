@@ -33,6 +33,9 @@ vi.mock('@owlat/api', () => ({
 const data: Record<string, Ref<unknown>> = {};
 const runs: Record<string, ReturnType<typeof vi.fn>> = {};
 const query = vi.fn();
+/** The `onError` each operation was given, by function. */
+const onErrors: Record<string, ((op: unknown) => boolean) | undefined> = {};
+const ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 function session(overrides: Record<string, unknown> = {}) {
 	return {
@@ -62,7 +65,10 @@ beforeEach(() => {
 	Object.assign(globalThis, {
 		useI18n: i18nStubs.useI18n,
 		useConvexQuery: (fn: string) => ({ data: data[fn] }),
-		useBackendOperation: (fn: string) => ({ run: runs[fn], isLoading: ref(false) }),
+		useBackendOperation: (fn: string, opts?: { onError?: (op: unknown) => boolean }) => {
+			onErrors[fn] = opts?.onError;
+			return { run: runs[fn], isLoading: ref(false) };
+		},
 		requireConvex: () => ({ query }),
 	});
 });
@@ -112,6 +118,8 @@ describe('useAnswerAskSession', () => {
 			target: { kind: 'mailDraft', draftId: 'd1' },
 			instruction: 'say sorry it is late',
 			locale: 'en',
+			// Promised dates land at 09:00 on the owner's calendar.
+			timeZone: ZONE,
 		});
 		// The returned view shows before the subscription catches up.
 		expect(api.phase.value).toBe('asking');
@@ -125,7 +133,24 @@ describe('useAnswerAskSession', () => {
 			sessionId: 's1',
 			answers: [{ questionId: 'q1', value: 'Yes' }],
 			skip: true,
+			timeZone: ZONE,
 		});
+	});
+
+	it('takes a double submit quietly: the first answer is already drafting', () => {
+		host(composerMock());
+		const claim = onErrors['answer']!;
+		expect(
+			claim({ category: 'invalid_state', message: 'These questions were already answered' })
+		).toBe(true);
+		// Anything else still surfaces.
+		expect(claim({ category: 'forbidden', message: 'No' })).toBe(false);
+		expect(
+			claim({ category: 'invalid_state', message: 'Gaps', data: { code: 'DRAFT_HAS_GAPS' } })
+		).toBe(false);
+		expect(
+			claim({ category: 'invalid_state', message: 'Attachments can only be sent on email threads' })
+		).toBe(false);
 	});
 
 	it('streams into the editor, then settles the draft, the follow-up and the files once', async () => {
@@ -214,6 +239,7 @@ describe('useAnswerAskSession', () => {
 		expect(runs['start']).toHaveBeenCalledWith({
 			target: { kind: 'teamThread', threadId: 'ct_1' },
 			locale: 'en',
+			timeZone: ZONE,
 		});
 		expect(onAttachedFiles).toHaveBeenCalledWith([file]);
 		// The subscription catching up reports nothing twice.

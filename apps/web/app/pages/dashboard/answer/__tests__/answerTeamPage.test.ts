@@ -119,7 +119,7 @@ beforeAll(() => {
 			sendFollowUp: vi.fn(async () => ({ ok: true, result: {} })),
 			cancelFollowUp: vi.fn(),
 		}),
-		usePermissions: () => ({ isAdmin: ref(true) }),
+		usePermissions: () => ({ isAdmin: ref(true), canManageOrganization: ref(true) }),
 		useFeatureFlag: () => ({ isEnabled: () => true }),
 		useAuth: () => ({ user: ref({ id: 'u_me' }) }),
 		useToast: () => ({ showToast: vi.fn() }),
@@ -316,6 +316,35 @@ describe('Answer mode for a Team inbox thread', () => {
 			inboundMessageId: 'in_1',
 			answers: [{ questionId: 'q1', value: 'Yes', source: 'user' }],
 		});
+	});
+
+	it('leaves a file answer to the server, which attaches it with the answer', async () => {
+		messages.value = [
+			inbound('in_1', {
+				processingStatus: 'awaiting_clarification',
+				draftResponse: undefined,
+				pendingClarification: {
+					questions: [{ id: 'q1', text: 'Which invoice?', options: ['September'] }],
+				},
+			}),
+		];
+		const wrapper = await mountPage();
+		const answers = [
+			{
+				questionId: 'q1',
+				file: { source: 'upload', id: 'st_1', filename: 'inv.pdf' },
+				keepCopy: false,
+			},
+		];
+		wrapper.getComponent({ name: 'AskCard' }).vm.$emit('answer', answers);
+		await flushPromises();
+		expect(findRun('Answer clarification')).toHaveBeenCalledTimes(1);
+		// No second attach from the client: the upload is already bound to the reply,
+		// and attaching it again would fail.
+		const attachCalls = [...runs]
+			.filter(([label]) => label === 'Attach file')
+			.flatMap(([, run]) => run.mock.calls);
+		expect(attachCalls).toEqual([]);
 	});
 
 	it('shows the reply’s files and the agent’s matched file; a running copy holds Send', async () => {

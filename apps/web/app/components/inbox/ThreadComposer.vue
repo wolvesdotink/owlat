@@ -33,6 +33,7 @@
 import PostboxComposerPreflightChip from '~/components/postbox/PostboxComposerPreflightChip.vue';
 import { composerPreflight, type TeamThreadComposerTarget } from '~/utils/composerTarget';
 import { useTeamComposerAnswerApi } from '~/composables/useTeamComposerAnswerApi';
+import { useTeamComposerGaps } from '~/composables/useTeamComposerGaps';
 import {
 	REPLY_BLOCKER_KEYS,
 	REPLY_NOTICE_KEYS,
@@ -67,6 +68,8 @@ const props = withDefaults(
 		sendHold?: string | null;
 		/** A quiet note beside Send ("2 of 3 asks covered"). */
 		statusNote?: string;
+		/** Draft with AI has a session on this thread: its `[[...]]` gaps hold Send. */
+		askSession?: boolean;
 	}>(),
 	{
 		blocker: null,
@@ -80,6 +83,7 @@ const props = withDefaults(
 		heldReason: undefined,
 		sendHold: null,
 		statusNote: undefined,
+		askSession: false,
 	}
 );
 
@@ -127,7 +131,12 @@ const hasChanges = computed(
 	() => hasDraft.value && body.value.trim() !== '' && body.value.trim() !== diffBase.value.trim()
 );
 const canSend = computed(
-	() => body.value.trim().length > 0 && !props.busy && !props.held && !props.sendHold
+	() =>
+		body.value.trim().length > 0 &&
+		!props.busy &&
+		!props.held &&
+		!props.sendHold &&
+		!gaps.hold.value
 );
 // A `[TODO]` or `{{name}}` the agent (or the person) left in the reply.
 const preflight = computed(() =>
@@ -229,6 +238,8 @@ const answer = useTeamComposerAnswerApi({
 	},
 	focus,
 });
+// An AI draft's `[[...]]` gaps hold Send and replace the note beside it.
+const gaps = useTeamComposerGaps(body, answer, props);
 
 /** What the person typed, for keeping it when they leave without sending. */
 function snapshot() {
@@ -375,10 +386,10 @@ const menuItem =
 						>⌘↵</kbd
 					>
 					<span
-						v-if="statusNote"
+						v-if="gaps.note.value"
 						class="ml-auto text-xs text-text-tertiary"
 						data-testid="thread-composer-status"
-						>{{ statusNote }}</span
+						>{{ gaps.note.value }}</span
 					>
 					<PostboxOverflowMenu
 						:label="t('components.answer.team.more')"
