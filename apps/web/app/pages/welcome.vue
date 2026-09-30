@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { whenConvexAuthSettled } from '~/lib/convexAuthReady';
+import { writeWelcomedCache } from '~/lib/welcomedCache';
 
 /**
  * First-login welcome screen.
@@ -55,14 +57,23 @@ firstLoginResolved.value = true;
 // Record that this member has now seen the welcome — best-effort and idempotent,
 // so a failure here simply means the middleware may route them once more in a
 // LATER session; it must never surface an error on the welcome screen itself.
+// Only a committed stamp is cached on this device: the cache lets the next
+// session skip the first-login query, so it must never claim a stamp the server
+// does not have.
 onMounted(async () => {
 	const userId = user.value?.id;
 	if (!userId || !$convex) return;
+	// Reached straight from sign-in, the client may still be installing the
+	// session's token; `markWelcomed` asserts the caller. The result does not
+	// gate the call: if auth never settles the mutation fails and is caught.
+	await whenConvexAuthSettled();
 	try {
 		await $convex.mutation(api.auth.userOnboarding.markWelcomed, { userId });
 	} catch {
 		// Non-fatal — see above.
+		return;
 	}
+	writeWelcomedCache(userId);
 });
 </script>
 
