@@ -37,12 +37,32 @@ import FileAsk, { type FileAnswerRef, type FileAskValue } from './FileAsk.vue';
 const props = withDefaults(
 	defineProps<{
 		questions: readonly AskQuestion[];
-		round: number;
+		/** The ask round; omitted for a background clarification, which has one. */
+		round?: number;
 		submitting?: boolean;
 		mailboxId?: Id<'mailboxes'>;
 		resolveThreadFile?: (file: ThreadFile) => Promise<FileAnswerRef | null>;
+		/**
+		 * The second button's words. "Skip, draft with gaps" for Draft with AI; a
+		 * background clarification (the queue, the team agent) puts the card away
+		 * instead ("Answer later").
+		 */
+		skipLabel?: string;
+		/**
+		 * Every question must be answered before "Answer and draft". The team
+		 * agent's questions (its resumed draft can go out on its own, so a
+		 * question left open would reach it as a guess); see ClarificationQuestions.
+		 */
+		requireAll?: boolean;
 	}>(),
-	{ submitting: false, mailboxId: undefined, resolveThreadFile: undefined }
+	{
+		requireAll: false,
+		round: undefined,
+		submitting: false,
+		mailboxId: undefined,
+		resolveThreadFile: undefined,
+		skipLabel: undefined,
+	}
 );
 
 const emit = defineEmits<{
@@ -132,7 +152,7 @@ const titleId = useId();
 		<ClarificationQuestions
 			ref="listRef"
 			:questions="questions"
-			:require-all="false"
+			:require-all="requireAll"
 			:submitting="submitting"
 			test-id-prefix="ask"
 			@submit="onSubmit"
@@ -145,7 +165,11 @@ const titleId = useId();
 							t('components.answer.askCard.title', { count: questions.length }, questions.length)
 						}}
 					</h2>
-					<span class="text-xs text-text-tertiary" data-testid="ask-round">
+					<span
+						v-if="round !== undefined"
+						class="text-xs text-text-tertiary"
+						data-testid="ask-round"
+					>
 						{{ t('components.answer.askCard.round', { round, total: MAX_ASK_ROUNDS }) }}
 					</span>
 				</div>
@@ -218,7 +242,7 @@ const titleId = useId();
 						data-testid="ask-skip"
 						@click="skip"
 					>
-						{{ t('components.answer.askCard.skip') }}
+						{{ skipLabel ?? t('components.answer.askCard.skip') }}
 					</UiButton>
 				</div>
 			</template>

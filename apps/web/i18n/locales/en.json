@@ -9282,11 +9282,7 @@
 			},
 			"detail": {
 				"agentNeedsInput": "The agent needs your input",
-				"agentNeedsInputEyebrow": "Waiting on you",
-				"answerAndResume": "Answer and draft",
 				"answerClarificationOperation": "Answer clarification",
-				"answerPlaceholder": "Type your answer",
-				"answerRemaining": "Answer {count} more to resume | Answer {count} more to resume",
 				"assign": "Assign",
 				"assignThreadAria": "Assign thread",
 				"assignToMe": "Assign to me",
@@ -9307,8 +9303,6 @@
 				},
 				"changeStatusAria": "Status: {status}. Change thread status",
 				"channelLinkFailedToast": "Channel created, but linking failed",
-				"clarificationLead": "Answer below and the agent finishes the draft with your answers as confirmed facts.",
-				"clarificationProgress": "{answered} of {total} answered",
 				"clarificationSavedToast": "Answers saved — drafting resumed",
 				"composer": {
 					"agentDraft": "Drafted by the agent",

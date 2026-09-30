@@ -16,7 +16,8 @@
 import type { Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import type { ClarificationAnswer } from '~/utils/clarificationAnswers';
+import type { AskAnswer } from '~/composables/useAnswerAskSession';
+import { backgroundAskAnswers } from '~/utils/backgroundAskAnswers';
 import type { TeamThreadComposerTarget } from '~/utils/composerTarget';
 import {
 	hasAgentDraft,
@@ -161,13 +162,20 @@ export function useAnswerTeamReply(opts: {
 		api.inbox.clarification.answerClarification,
 		{ label: () => t('dashboard.inbox.detail.answerClarificationOperation') }
 	);
-	// Answers come canonical and with their source, so a remembered value
-	// confirmed untouched is not captured again.
-	async function submitClarification(answers: ClarificationAnswer[]) {
+	// The ask card leaves a kept remembered answer out; it goes back as
+	// `memory`, so the agent has every answer and the fact is not captured again.
+	// Resolves to the answers sent, or null when nothing was saved.
+	async function submitClarification(answers: AskAnswer[]) {
 		const current = clarification.value;
-		if (!current || !isAdmin.value) return;
-		const result = await answerClarification({ inboundMessageId: current.messageId, answers });
-		if (result.ok) showToast(t('dashboard.inbox.detail.clarificationSavedToast'));
+		if (!current || !isAdmin.value) return null;
+		const sent = backgroundAskAnswers(current.questions, answers);
+		const result = await answerClarification({
+			inboundMessageId: current.messageId,
+			answers: sent,
+		});
+		if (!result.ok) return null;
+		showToast(t('dashboard.inbox.detail.clarificationSavedToast'));
+		return sent;
 	}
 
 	/** Answers the agent reused from memory for the draft in the editor. */

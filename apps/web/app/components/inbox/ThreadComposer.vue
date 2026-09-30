@@ -18,7 +18,8 @@
  *    replying"). Saving is not held.
  *
  * The envelope folds to one line ("To Ana · Re: Invoice"); the subject opens on
- * a click. Slots: `above-editor` (the agent's questions), `attachments` (the
+ * a click. Slots: `above-editor` (the agent's questions, Draft with AI; it
+ * receives the reply as `composer`), `attachments` (the
  * files under the editor), `blocked-action` (what a blocked state offers).
  *
  * The composer answers a `teamThread` composer target (`utils/composerTarget`),
@@ -31,6 +32,7 @@
  */
 import PostboxComposerPreflightChip from '~/components/postbox/PostboxComposerPreflightChip.vue';
 import { composerPreflight, type TeamThreadComposerTarget } from '~/utils/composerTarget';
+import { useTeamComposerAnswerApi } from '~/composables/useTeamComposerAnswerApi';
 import {
 	REPLY_BLOCKER_KEYS,
 	REPLY_NOTICE_KEYS,
@@ -63,6 +65,8 @@ const props = withDefaults(
 		heldReason?: string;
 		/** Something else holds Send (an attachment still copying), with the reason. */
 		sendHold?: string | null;
+		/** A quiet note beside Send ("2 of 3 asks covered"). */
+		statusNote?: string;
 	}>(),
 	{
 		blocker: null,
@@ -75,6 +79,7 @@ const props = withDefaults(
 		heldBy: null,
 		heldReason: undefined,
 		sendHold: null,
+		statusNote: undefined,
 	}
 );
 
@@ -210,12 +215,21 @@ onMounted(() => {
 	if (props.blocker === null) focus();
 });
 
+// What "Draft with AI" and the catch-up card work with (the slot's `composer`).
+const answer = useTeamComposerAnswerApi({
+	body,
+	touch: () => {
+		touched.value = true;
+	},
+	focus,
+});
+
 /** What the person typed, for keeping it when they leave without sending. */
 function snapshot() {
 	return { body: body.value, subject: subject.value, touched: touched.value };
 }
 
-defineExpose({ focus, reset, fill, insert, snapshot });
+defineExpose({ focus, reset, fill, insert, snapshot, answer });
 
 const menuItem =
 	'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-bg-surface disabled:opacity-50';
@@ -301,7 +315,7 @@ const menuItem =
 					{{ t(REPLY_NOTICE_KEYS[notice]) }}
 				</p>
 
-				<slot name="above-editor" />
+				<slot name="above-editor" :composer="answer" />
 
 				<textarea
 					ref="textarea"
@@ -353,6 +367,12 @@ const menuItem =
 					</UiButton>
 					<kbd class="hidden font-mono text-2xs text-text-tertiary sm:inline" aria-hidden="true"
 						>⌘↵</kbd
+					>
+					<span
+						v-if="statusNote"
+						class="ml-auto text-xs text-text-tertiary"
+						data-testid="thread-composer-status"
+						>{{ statusNote }}</span
 					>
 					<PostboxOverflowMenu
 						:label="t('components.answer.team.more')"

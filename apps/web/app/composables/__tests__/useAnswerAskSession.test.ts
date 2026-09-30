@@ -185,4 +185,67 @@ describe('useAnswerAskSession', () => {
 		expect(composer.applyAiDraft).not.toHaveBeenCalled();
 		expect(composer.streamAiDraft).not.toHaveBeenCalled();
 	});
+
+	it('drafts a team thread on the thread itself, and hands back the files it found once', async () => {
+		const composer = composerMock();
+		const onAttachedFiles = vi.fn();
+		const file = { source: 'semanticFile' as const, id: 'sf_1', filename: 'invoice.pdf' };
+		runs['start'] = vi.fn(async () => ({
+			ok: true,
+			result: session({ target: { kind: 'teamThread', threadId: 'ct_1' }, attachedFiles: [file] }),
+		}));
+		let api!: ReturnType<typeof useAnswerAskSession>;
+		mount(
+			defineComponent({
+				setup() {
+					api = useAnswerAskSession({
+						target: () => ({ kind: 'teamThread', threadId: 'ct_1' as never }),
+						composer: () => composer,
+						onAttachedFiles,
+					});
+					return () => h('div');
+				},
+			}),
+			{ global: { plugins: [createTestI18n()] } }
+		);
+		await api.start('');
+		await nextTick();
+		expect(composer.ensureDraftId).not.toHaveBeenCalled();
+		expect(runs['start']).toHaveBeenCalledWith({
+			target: { kind: 'teamThread', threadId: 'ct_1' },
+			locale: 'en',
+		});
+		expect(onAttachedFiles).toHaveBeenCalledWith([file]);
+		// The subscription catching up reports nothing twice.
+		data['getSession']!.value = session({
+			target: { kind: 'teamThread', threadId: 'ct_1' },
+			attachedFiles: [file],
+			updatedAt: 5,
+		});
+		await nextTick();
+		expect(onAttachedFiles).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not hand back files a session found before this page opened', async () => {
+		data['getSession']!.value = session({
+			target: { kind: 'teamThread', threadId: 'ct_1' },
+			attachedFiles: [{ source: 'semanticFile', id: 'sf_1', filename: 'old.pdf' }],
+		});
+		const onAttachedFiles = vi.fn();
+		mount(
+			defineComponent({
+				setup() {
+					useAnswerAskSession({
+						target: () => ({ kind: 'teamThread', threadId: 'ct_1' as never }),
+						composer: () => composerMock(),
+						onAttachedFiles,
+					});
+					return () => h('div');
+				},
+			}),
+			{ global: { plugins: [createTestI18n()] } }
+		);
+		await nextTick();
+		expect(onAttachedFiles).not.toHaveBeenCalled();
+	});
 });

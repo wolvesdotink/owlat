@@ -150,6 +150,27 @@ export function useTeamReplyAttachments(
 		return result.ok;
 	}
 
+	/**
+	 * Attach a file an answer named: a Files row or a received attachment is
+	 * copied; an upload kept out of Files is bound as it is.
+	 */
+	async function attachAnswerFile(file: {
+		source: 'upload' | 'semanticFile' | 'mailAttachment';
+		id: string;
+		filename: string;
+	}) {
+		if (file.source !== 'upload') return attachExisting(file.source, file.id);
+		const thread = threadId();
+		if (!thread) return false;
+		const result = await addOp.run({
+			threadId: thread,
+			storageId: file.id as Id<'_storage'>,
+			filename: file.filename,
+		});
+		if (result.ok) written.value = result.result;
+		return result.ok;
+	}
+
 	async function remove(index: number) {
 		const thread = threadId();
 		if (!thread) return false;
@@ -172,6 +193,7 @@ export function useTeamReplyAttachments(
 		block,
 		addFiles,
 		attachExisting,
+		attachAnswerFile,
 		remove,
 		cancelUpload: uploader.cancel,
 		retryUpload: uploader.retry,

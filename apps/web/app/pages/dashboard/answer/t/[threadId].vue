@@ -22,7 +22,13 @@
  */
 import type { PresencePerson } from '~/components/inbox/InboxThreadPresence.vue';
 import type { AnswerConversationView } from '~/components/answer/AnswerConversation.vue';
-import { useAnswerModeNav } from '~/composables/useAnswerMode';
+import { useAnswerAiFocus, useAnswerModeNav } from '~/composables/useAnswerMode';
+import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
+import type { AskAnswer, AskQuestion } from '~/composables/useAnswerAskSession';
+import { useAnswerTeamAssist } from '~/composables/useAnswerTeamAssist';
+import CatchUpCard from '~/components/answer/CatchUpCard.vue';
+import AnswerAiBar from '~/components/answer/AnswerAiBar.vue';
+import AskCard from '~/components/answer/AskCard.vue';
 import { useAnswerQueueSession } from '~/composables/useAnswerQueueSession';
 import { useAnswerTeamReply } from '~/composables/useAnswerTeamReply';
 import { useTeamReplyAttachments } from '~/composables/useTeamReplyAttachments';
@@ -43,7 +49,7 @@ definePageMeta({
 	answerMode: true,
 });
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const route = useRoute();
 
 const threadId = useRouteId<'conversationThreads'>('threadId');
@@ -104,12 +110,62 @@ const sendHold = computed(() => {
 	return block ? t(`components.answer.team.attachments.hold.${block}`) : null;
 });
 
-const composerRef = ref<{
+// A shallowRef: the reply's `answer` API holds refs its users read as refs.
+const composerRef = shallowRef<{
 	focus: () => void;
 	reset: () => void;
 	fill: (body: string, subject: string) => void;
 	snapshot: () => { body: string; subject: string; touched: boolean };
+	answer: AnswerComposerApi;
 } | null>(null);
+
+const tab = ref<'conversation' | 'reply'>('conversation');
+const view = ref<AnswerConversationView>('summary');
+
+// ── Catch-up, Draft with AI, and the agent's questions ──────────────────────
+const assist = useAnswerTeamAssist({
+	threadId: () => threadId.value,
+	composer: () => composerRef.value?.answer ?? null,
+	messageCount: () => (thread.value ? messages.value.length : undefined),
+	view,
+	attachFile: (file) => void files.attachAnswerFile(file),
+});
+const catchUpMessages = computed(() =>
+	messages.value.map((m) => ({ _id: m._id, receivedAt: m._creationTime, fromAddress: m.from }))
+);
+// The agent's questions carry the clarification question shape the ask card
+// takes (lib/validators/clarification.ts).
+const clarificationQuestions = computed(
+	() => (reply.clarification.value?.questions ?? []) as unknown as AskQuestion[]
+);
+// The sender's language as a readable name in the reader's locale ("German").
+const replyLanguage = computed(() => {
+	const code = reply.target.value?.classification?.language;
+	if (!code) return undefined;
+	try {
+		return new Intl.DisplayNames([locale.value], { type: 'language' }).of(code) ?? code;
+	} catch {
+		return code;
+	}
+});
+// "Answer later" puts the agent's questions away; the editor stays.
+const clarificationDeferred = ref(false);
+const showClarification = computed(
+	() => !!reply.clarification.value && !clarificationDeferred.value
+);
+async function onClarificationAnswers(answers: AskAnswer[]) {
+	const sent = await reply.submitClarification(answers);
+	// A file the person picked or uploaded as the answer goes on the reply. A
+	// Files pick is copied; an upload kept out of Files is bound as it is; an
+	// upload saved to Files comes back as the agent's (confident) suggestion.
+	for (const answer of sent ?? []) {
+		const file = answer.file;
+		if (!file || !attachmentsAllowed.value) continue;
+		if (file.source === 'semanticFile' || (file.source === 'upload' && answer.keepCopy === false)) {
+			void files.attachAnswerFile(file);
+		}
+	}
+}
 
 // Text typed and not sent stays with the thread for the session, so leaving
 // and coming back never throws it away (the team reply has no autosave row).
@@ -167,9 +223,6 @@ async function undoFollowUp(followUpId: Parameters<typeof cancelFollowUp>[0]) {
 	}
 }
 
-const tab = ref<'conversation' | 'reply'>('conversation');
-const view = ref<AnswerConversationView>('summary');
-
 // ── Keys ────────────────────────────────────────────────────────────────────
 function onKeydown(event: KeyboardEvent) {
 	if (event.defaultPrevented || event.isComposing) return;
@@ -193,14 +246,15 @@ function onKeydown(event: KeyboardEvent) {
 		view.value = view.value === 'summary' ? 'full' : 'summary';
 	}
 }
-/** Cmd/Ctrl+J stays with the reply instead of opening the Assistant. */
+const aiFocus = useAnswerAiFocus();
+/** Cmd/Ctrl+J focuses "Draft with AI" (or the reply) instead of opening the Assistant. */
 function onChordCapture(event: KeyboardEvent) {
 	if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
 	if (event.key.toLowerCase() !== 'j') return;
 	event.preventDefault();
 	event.stopPropagation();
 	tab.value = 'reply';
-	composerRef.value?.focus();
+	if (!aiFocus.request()) composerRef.value?.focus();
 }
 onMounted(() => {
 	window.addEventListener('keydown', onKeydown);
@@ -265,7 +319,19 @@ onBeforeUnmount(() => {
 					:member-name="memberName"
 					:undoing-follow-up-id="undoingFollowUpId"
 					@undo-follow-up="undoFollowUp"
-				/>
+				>
+					<template #catch-up="{ view: shown, reveal }">
+						<CatchUpCard
+							v-if="shown === 'summary'"
+							:catch-up="assist.catchUp.catchUp.value"
+							:loading="assist.catchUp.loading.value"
+							:messages="catchUpMessages"
+							:covered="assist.catchUp.covered.value"
+							:can-attach="false"
+							@reveal="reveal"
+						/>
+					</template>
+				</AnswerTeamConversation>
 				<div v-else-if="threadLoading" class="space-y-3 p-6" aria-hidden="true">
 					<UiSkeleton class="h-4 w-1/3" />
 					<UiSkeleton class="h-40 w-full rounded-(--radius-card)" />
@@ -292,24 +358,56 @@ onBeforeUnmount(() => {
 					:held-by="heldBy"
 					:held-reason="holdReason"
 					:send-hold="sendHold"
+					:status-note="assist.statusNote.value"
 					@send="onSend"
 					@save="(body, subject) => reply.save({ body, subject })"
 					@reject="reply.reject.openReject()"
 					@typing="composerTyping = $event"
 				>
-					<template #above-editor>
-						<InboxThreadClarification
-							v-if="reply.clarification.value"
-							class="!mt-0"
-							:questions="reply.clarification.value.questions"
-							:language="reply.target.value?.classification?.language"
-							:submitting="reply.isAnsweringClarification.value"
-							@submit="reply.submitClarification"
-						/>
-						<AnswerTeamReusedAnswers
-							v-else-if="reply.reusedAnswers.value.length > 0"
-							:questions="reply.reusedAnswers.value"
-						/>
+					<template #above-editor="{ composer }">
+						<!-- The agent's own questions come first: answering resumes its draft. -->
+						<div v-if="showClarification" data-testid="answer-team-clarification">
+							<p
+								v-if="replyLanguage"
+								class="px-3 pt-3 text-xs text-text-tertiary"
+								data-testid="answer-team-reply-language"
+							>
+								{{ t('dashboard.inbox.detail.replyLanguageNote', { language: replyLanguage }) }}
+							</p>
+							<AskCard
+								:questions="clarificationQuestions"
+								require-all
+								:submitting="reply.isAnsweringClarification.value"
+								:skip-label="t('components.postbox.postboxClarificationCard.answerLater')"
+								@answer="onClarificationAnswers"
+								@skip="clarificationDeferred = true"
+							/>
+						</div>
+						<template v-else>
+							<AnswerTeamReusedAnswers
+								v-if="reply.reusedAnswers.value.length > 0"
+								:questions="reply.reusedAnswers.value"
+							/>
+							<template v-if="assist.draftWithAi.value">
+								<AskCard
+									v-if="assist.ask.phase.value === 'asking' && assist.ask.session.value"
+									:questions="assist.ask.session.value.questions"
+									:round="assist.ask.session.value.round"
+									:submitting="assist.ask.busy.value"
+									@answer="assist.ask.answer($event)"
+									@skip="assist.ask.answer($event, true)"
+								/>
+								<AnswerAiBar
+									v-else
+									:phase="assist.ask.phase.value"
+									:busy="assist.ask.busy.value"
+									:has-ai-draft="composer.aiDraft.value !== null"
+									:injection-flagged="assist.ask.injectionFlagged.value"
+									@draft="assist.ask.start"
+									@discard="composer.discardAiDraft()"
+								/>
+							</template>
+						</template>
 					</template>
 					<template v-if="attachmentsAllowed" #attachments>
 						<AnswerTeamAttachments

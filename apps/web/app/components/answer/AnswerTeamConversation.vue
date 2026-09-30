@@ -45,6 +45,20 @@ function isOpen(id: string): boolean {
 	if (view.value === 'full') return true;
 	return defaultOpen.value.has(id) !== toggled.value.has(id);
 }
+// A catch-up marker: open the message, bring it into view, and ring it briefly.
+const flashed = ref<string | null>(null);
+function reveal(id: string) {
+	if (!isOpen(id)) toggle(id);
+	void nextTick(() => {
+		const el = document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(id)}"]`);
+		const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+		el?.scrollIntoView?.({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+		flashed.value = id;
+		setTimeout(() => {
+			if (flashed.value === id) flashed.value = null;
+		}, 1600);
+	});
+}
 function toggle(id: string) {
 	const next = new Set(toggled.value);
 	if (next.has(id)) next.delete(id);
@@ -117,12 +131,13 @@ const showViewToggle = computed(() => props.messages.length > 1);
 		</div>
 
 		<!-- The catch-up card (summary, asks) of a thread worth summarising. -->
-		<slot name="catch-up" :view="view" />
+		<slot name="catch-up" :view="view" :reveal="reveal" />
 
 		<template v-for="entry in entries" :key="entry.key">
 			<article
 				v-if="entry.kind === 'inbound'"
-				class="rounded-(--radius-card) border border-border-subtle bg-bg-elevated"
+				class="rounded-(--radius-card) border border-border-subtle bg-bg-elevated transition-shadow"
+				:class="{ 'ring-2 ring-brand/50': flashed === entry.message._id }"
 				:data-message-id="entry.message._id"
 				data-testid="answer-team-message"
 			>

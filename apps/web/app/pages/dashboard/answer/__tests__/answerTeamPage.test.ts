@@ -21,7 +21,6 @@ import AnswerModeFrame from '~/components/answer/AnswerModeFrame.vue';
 import AnswerTeamAttachments from '~/components/answer/AnswerTeamAttachments.vue';
 import AnswerTeamPresence from '~/components/answer/AnswerTeamPresence.vue';
 import AttachSuggestion from '~/components/inbox/AttachSuggestion.vue';
-import ThreadClarification from '~/components/inbox/ThreadClarification.vue';
 import ThreadComposer from '~/components/inbox/ThreadComposer.vue';
 import TeamPage from '../t/[threadId].vue';
 
@@ -35,6 +34,25 @@ vi.mock('@owlat/api', () => {
 let activeQueueSession: { handleSent: ReturnType<typeof vi.fn> } | null = null;
 vi.mock('~/composables/useAnswerQueueSession', () => ({
 	useAnswerQueueSession: () => activeQueueSession,
+}));
+// Catch-up and Draft with AI have their own suites; here they are a seam the
+// test switches on and off.
+const draftWithAi = ref(false);
+vi.mock('~/composables/useAnswerTeamAssist', () => ({
+	useAnswerTeamAssist: () => ({
+		aiEnabled: draftWithAi,
+		draftWithAi,
+		statusNote: ref('1 of 2 asks covered'),
+		catchUp: { catchUp: ref(null), loading: ref(false), covered: ref([]) },
+		ask: {
+			phase: ref('idle'),
+			session: ref(null),
+			busy: ref(false),
+			injectionFlagged: ref(false),
+			start: vi.fn(),
+			answer: vi.fn(),
+		},
+	}),
 }));
 vi.mock('~/composables/useOrganization', () => ({
 	useOrganization: () => ({
@@ -161,7 +179,6 @@ async function mountPage() {
 				AnswerTeamAttachments,
 				InboxAttachSuggestion: AttachSuggestion,
 				InboxThreadComposer: ThreadComposer,
-				InboxThreadClarification: ThreadClarification,
 				AnswerTeamConversation: inert('AnswerTeamConversation'),
 				AnswerTeamReusedAnswers: inert('AnswerTeamReusedAnswers'),
 				AnswerQueueBar: inert('AnswerQueueBar'),
@@ -226,7 +243,17 @@ describe('Answer mode for a Team inbox thread', () => {
 		).toBeUndefined();
 	});
 
-	it('puts the agent questions above the editor as "Answer and draft"', async () => {
+	it('offers Draft with AI above the editor when it is on, with the asks covered beside Send', async () => {
+		draftWithAi.value = true;
+		const wrapper = await mountPage();
+		expect(wrapper.find('[data-testid="answer-ai-bar"]').exists()).toBe(true);
+		expect(wrapper.get('[data-testid="thread-composer-status"]').text()).toBe(
+			'1 of 2 asks covered'
+		);
+		draftWithAi.value = false;
+	});
+
+	it('puts the agent questions above the editor as the ask card, "Answer and draft"', async () => {
 		messages.value = [
 			inbound('in_1', {
 				processingStatus: 'awaiting_clarification',
@@ -237,16 +264,18 @@ describe('Answer mode for a Team inbox thread', () => {
 			}),
 		];
 		const wrapper = await mountPage();
-		const ask = wrapper.get('[data-testid="thread-clarification"]');
+		const ask = wrapper.get('[data-testid="answer-team-clarification"]');
 		expect(ask.text()).toContain('Is the PO on the invoice?');
-		expect(wrapper.get('[data-testid="thread-clarification-submit"]').text()).toContain(
-			'Answer and draft'
-		);
+		expect(wrapper.get('[data-testid="ask-submit"]').text()).toContain('Answer and draft');
 		const html = wrapper.html();
-		expect(html.indexOf('thread-clarification')).toBeLessThan(html.indexOf('thread-composer-body'));
+		expect(html.indexOf('answer-team-clarification')).toBeLessThan(
+			html.indexOf('thread-composer-body')
+		);
+		// Every question needs an answer before the agent drafts.
+		expect(wrapper.get('[data-testid="ask-submit"]').attributes('disabled')).toBeDefined();
 
-		await wrapper.findAll('[data-testid="thread-clarification-chip"]')[0]!.trigger('click');
-		await wrapper.get('[data-testid="thread-clarification-submit"]').trigger('click');
+		await wrapper.findAll('[data-testid="ask-chip"]')[0]!.trigger('click');
+		await wrapper.get('[data-testid="ask-submit"]').trigger('click');
 		await flushPromises();
 		const answer = findRun('Answer clarification');
 		expect(answer).toHaveBeenCalledWith({
