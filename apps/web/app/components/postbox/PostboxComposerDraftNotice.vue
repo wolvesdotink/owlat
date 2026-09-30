@@ -35,11 +35,21 @@ const visible = computed(
 	() => props.notice !== null && (props.notice !== 'loading' || showLoading.value)
 );
 const isError = computed(() => props.notice !== null && props.notice !== 'loading');
+
+// The notice leads the composer's scroll region, which may be scrolled down to
+// the body when a save or send is refused: bring the reason into view.
+const root = ref<HTMLElement | null>(null);
+watch(isError, async (error) => {
+	if (!error) return;
+	await nextTick();
+	root.value?.scrollIntoView?.({ block: 'nearest' });
+});
 </script>
 
 <template>
 	<div
 		v-if="visible && notice"
+		ref="root"
 		class="mx-3 mt-2 flex flex-wrap items-center gap-2 rounded border px-3 py-2 text-xs"
 		:class="isError ? 'border-error/40 bg-error/10' : 'border-border-subtle bg-bg-surface'"
 		:role="isError ? 'alert' : 'status'"

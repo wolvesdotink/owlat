@@ -351,9 +351,9 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			@apply-reply-all="onApplyReplyAll"
 		/>
 
-		<!-- The status strips give way (and scroll) before the body does; the
-		     notice about a refused save or send leads, so it stays in view. -->
-		<div class="min-h-0 overflow-y-auto" data-testid="composer-status-strips">
+		<!-- Everything between the envelope and the footer scrolls as one: the strips
+		     keep their height (the draft notice leads), the body keeps at least 6rem. -->
+		<div class="flex min-h-0 flex-1 flex-col overflow-y-auto" data-testid="composer-scroll">
 			<PostboxComposerDraftNotice :notice="draftNotice" @retry="retryLoad" />
 			<!-- Sealed Mail (E5): honest seal-lock indicator, shown from the moment the
 			     state is being computed. Its unsealed control only REQUESTS the
@@ -383,71 +383,71 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 				:scheduled-send-at="scheduledSendAt"
 				:cancel-schedule="cancelSchedule"
 			/>
+
+			<div class="min-h-24 flex-1 overflow-hidden" data-testid="composer-body">
+				<!-- Withheld until a reopened draft's body loads (see usePostboxCompose). -->
+				<div
+					v-if="bodyPending"
+					class="h-full"
+					role="group"
+					aria-busy="true"
+					:aria-label="t('components.postbox.postboxComposer.bodyLoading')"
+				/>
+				<PostboxBasicEditor
+					v-else-if="composerMode === 'simple'"
+					ref="basicEditor"
+					v-model="bodyHtml"
+					:placeholder="t('components.postbox.postboxComposer.bodyPlaceholder')"
+					:suggestions-enabled="ghostSuggestionsEnabled"
+					:ghost-thread-context="subject"
+					:rewrite-enabled="aiRewriteEnabled"
+					:rewrite-mailbox-id="seed.mailboxId"
+					:persistent-toolbar="persistentToolbar"
+					:emoji-shortcodes-enabled="true"
+					:inline-images-enabled="true"
+					:embed-image="addInlineImage"
+					:on-remove-embedded-image="removeInlineImage"
+					:snippets="editorSnippets"
+					:snippet-variable-context="snippetVariableContext"
+				/>
+				<EmailBuilder
+					v-else
+					:blocks="bodyBlocks"
+					:subject="subject"
+					:name="composerName"
+					:background-color="backgroundColor"
+					:variables="[]"
+					:config="builderConfig"
+					class="h-full"
+					@update:blocks="bodyBlocks = $event"
+					@update:subject="subject = $event"
+					@update:name="composerName = $event"
+					@update:background-color="backgroundColor = $event"
+				/>
+			</div>
+
+			<PostboxComposerAttachments
+				:attachments="attachments"
+				:uploads="uploads"
+				:meter="attachmentSizeMeter"
+				:thumb-url-for="thumbUrlFor"
+				:is-sharing="isSharing"
+				:share-disabled="bodyPending"
+				@remove="removeAttachment"
+				@share="shareAsLink"
+				@cancel="cancelUpload"
+				@retry="retryUpload"
+			/>
+
+			<!-- Advisory AI cluster: "Coach my draft" self-check + freeform whole-draft
+			     revise. Advisory only — never sends; hidden when AI is off / draft empty. -->
+			<PostboxComposerAdvisory
+				v-model:body-html="bodyHtml"
+				:ai-enabled="aiRewriteEnabled"
+				:mailbox-id="seed.mailboxId"
+				:in-reply-to-message-id="seed.inReplyToMessageId"
+			/>
 		</div>
-
-		<div class="min-h-24 flex-1 overflow-hidden" data-testid="composer-body">
-			<!-- Withheld until a reopened draft's body loads (see usePostboxCompose). -->
-			<div
-				v-if="bodyPending"
-				class="h-full"
-				role="group"
-				aria-busy="true"
-				:aria-label="t('components.postbox.postboxComposer.bodyLoading')"
-			/>
-			<PostboxBasicEditor
-				v-else-if="composerMode === 'simple'"
-				ref="basicEditor"
-				v-model="bodyHtml"
-				:placeholder="t('components.postbox.postboxComposer.bodyPlaceholder')"
-				:suggestions-enabled="ghostSuggestionsEnabled"
-				:ghost-thread-context="subject"
-				:rewrite-enabled="aiRewriteEnabled"
-				:rewrite-mailbox-id="seed.mailboxId"
-				:persistent-toolbar="persistentToolbar"
-				:emoji-shortcodes-enabled="true"
-				:inline-images-enabled="true"
-				:embed-image="addInlineImage"
-				:on-remove-embedded-image="removeInlineImage"
-				:snippets="editorSnippets"
-				:snippet-variable-context="snippetVariableContext"
-			/>
-			<EmailBuilder
-				v-else
-				:blocks="bodyBlocks"
-				:subject="subject"
-				:name="composerName"
-				:background-color="backgroundColor"
-				:variables="[]"
-				:config="builderConfig"
-				class="h-full"
-				@update:blocks="bodyBlocks = $event"
-				@update:subject="subject = $event"
-				@update:name="composerName = $event"
-				@update:background-color="backgroundColor = $event"
-			/>
-		</div>
-
-		<PostboxComposerAttachments
-			:attachments="attachments"
-			:uploads="uploads"
-			:meter="attachmentSizeMeter"
-			:thumb-url-for="thumbUrlFor"
-			:is-sharing="isSharing"
-			:share-disabled="bodyPending"
-			@remove="removeAttachment"
-			@share="shareAsLink"
-			@cancel="cancelUpload"
-			@retry="retryUpload"
-		/>
-
-		<!-- Advisory AI cluster: "Coach my draft" self-check + freeform whole-draft
-		     revise. Advisory only — never sends; hidden when AI is off / draft empty. -->
-		<PostboxComposerAdvisory
-			v-model:body-html="bodyHtml"
-			:ai-enabled="aiRewriteEnabled"
-			:mailbox-id="seed.mailboxId"
-			:in-reply-to-message-id="seed.inReplyToMessageId"
-		/>
 
 		<PostboxComposerFooter
 			v-model:follow-up-remind-at="followUpRemindAt"

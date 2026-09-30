@@ -5,7 +5,7 @@
  * wraps inside its own column; it must not claim a whole row of its own and
  * push the icon and the action onto separate lines.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import PostboxComposerDraftNotice from '../PostboxComposerDraftNotice.vue';
@@ -51,6 +51,17 @@ describe('PostboxComposerDraftNotice', () => {
 		const wrapper = mountNotice('missing');
 		expect(wrapper.text()).toContain('This draft no longer exists');
 		expect(wrapper.find('button').exists()).toBe(false);
+	});
+
+	it('scrolls itself into view when a refusal appears', async () => {
+		const scrollIntoView = vi.fn();
+		Element.prototype.scrollIntoView = scrollIntoView;
+		const wrapper = mountNotice(null);
+
+		await wrapper.setProps({ notice: 'not_sent' });
+		await wrapper.vm.$nextTick();
+
+		expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
 	});
 
 	it('says nothing was sent when the final save failed', () => {
