@@ -71,6 +71,9 @@ const {
 	isSaving,
 	lastSavedAt,
 	draftMirror,
+	draftNotice,
+	bodyPending,
+	retryLoad,
 	isUploading,
 	canSend,
 	isScheduled,
@@ -166,6 +169,8 @@ const builderConfig = computed(() => ({
 }));
 
 function switchMode(target: ComposerMode) {
+	// The mode decides which body goes out; it waits for the saved one to load.
+	if (bodyPending.value) return;
 	composerMode.value = target;
 }
 
@@ -346,89 +351,103 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			@apply-reply-all="onApplyReplyAll"
 		/>
 
-		<!-- Sealed Mail (E5): honest seal-lock indicator, shown from the moment the
-		     state is being computed. Its unsealed control only REQUESTS the
-		     decision — the dialog below is the single source of plaintext consent. -->
-		<PostboxComposerSealLock
-			:enabled="seal.enabled"
-			:seal-state="seal.state"
-			:pending="seal.pending"
-			:blocking-recipients="seal.blockingRecipients"
-			:all-verified="seal.allVerified"
-			@request-unsealed="seal.requestUnsealed()"
-			@remove-recipient="removeSealBlocker"
-		/>
-
-		<!-- Plan idea 7: keystrokes the server row never received, after a crash.
-		     Above the editor, because it offers to replace what is in it. -->
-		<PostboxDraftRestoreBar
-			:entry="draftMirror.restorable"
-			@restore="draftMirror.restore"
-			@dismiss="draftMirror.dismiss"
-		/>
-
-		<!-- A scheduled draft is read-only until it is taken back; the banner owns
-		     both the "goes out at" line and the unschedule control. -->
-		<PostboxComposerScheduledBanner
-			:is-scheduled="isScheduled"
-			:scheduled-send-at="scheduledSendAt"
-			:cancel-schedule="cancelSchedule"
-		/>
-
-		<div class="flex-1 overflow-hidden">
-			<PostboxBasicEditor
-				v-if="composerMode === 'simple'"
-				ref="basicEditor"
-				v-model="bodyHtml"
-				:placeholder="t('components.postbox.postboxComposer.bodyPlaceholder')"
-				:suggestions-enabled="ghostSuggestionsEnabled"
-				:ghost-thread-context="subject"
-				:rewrite-enabled="aiRewriteEnabled"
-				:rewrite-mailbox-id="seed.mailboxId"
-				:persistent-toolbar="persistentToolbar"
-				:emoji-shortcodes-enabled="true"
-				:inline-images-enabled="true"
-				:embed-image="addInlineImage"
-				:on-remove-embedded-image="removeInlineImage"
-				:snippets="editorSnippets"
-				:snippet-variable-context="snippetVariableContext"
+		<!-- Everything between the envelope and the footer scrolls as one: the strips
+		     keep their height (the draft notice leads), the body keeps at least 6rem. -->
+		<div class="flex min-h-0 flex-1 flex-col overflow-y-auto" data-testid="composer-scroll">
+			<PostboxComposerDraftNotice :notice="draftNotice" @retry="retryLoad" />
+			<!-- Sealed Mail (E5): honest seal-lock indicator, shown from the moment the
+			     state is being computed. Its unsealed control only REQUESTS the
+			     decision — the dialog below is the single source of plaintext consent. -->
+			<PostboxComposerSealLock
+				:enabled="seal.enabled"
+				:seal-state="seal.state"
+				:pending="seal.pending"
+				:blocking-recipients="seal.blockingRecipients"
+				:all-verified="seal.allVerified"
+				@request-unsealed="seal.requestUnsealed()"
+				@remove-recipient="removeSealBlocker"
 			/>
-			<EmailBuilder
-				v-else
-				:blocks="bodyBlocks"
-				:subject="subject"
-				:name="composerName"
-				:background-color="backgroundColor"
-				:variables="[]"
-				:config="builderConfig"
-				class="h-full"
-				@update:blocks="bodyBlocks = $event"
-				@update:subject="subject = $event"
-				@update:name="composerName = $event"
-				@update:background-color="backgroundColor = $event"
+
+			<!-- Plan idea 7: keystrokes the server row never received, after a crash.
+			     Above the editor, because it offers to replace what is in it. -->
+			<PostboxDraftRestoreBar
+				:entry="draftMirror.restorable"
+				@restore="draftMirror.restore"
+				@dismiss="draftMirror.dismiss"
+			/>
+
+			<!-- A scheduled draft is read-only until it is taken back; the banner owns
+			     both the "goes out at" line and the unschedule control. -->
+			<PostboxComposerScheduledBanner
+				:is-scheduled="isScheduled"
+				:scheduled-send-at="scheduledSendAt"
+				:cancel-schedule="cancelSchedule"
+			/>
+
+			<div class="min-h-24 flex-1 overflow-hidden" data-testid="composer-body">
+				<!-- Withheld until a reopened draft's body loads (see usePostboxCompose). -->
+				<div
+					v-if="bodyPending"
+					class="h-full"
+					role="group"
+					aria-busy="true"
+					:aria-label="t('components.postbox.postboxComposer.bodyLoading')"
+				/>
+				<PostboxBasicEditor
+					v-else-if="composerMode === 'simple'"
+					ref="basicEditor"
+					v-model="bodyHtml"
+					:placeholder="t('components.postbox.postboxComposer.bodyPlaceholder')"
+					:suggestions-enabled="ghostSuggestionsEnabled"
+					:ghost-thread-context="subject"
+					:rewrite-enabled="aiRewriteEnabled"
+					:rewrite-mailbox-id="seed.mailboxId"
+					:persistent-toolbar="persistentToolbar"
+					:emoji-shortcodes-enabled="true"
+					:inline-images-enabled="true"
+					:embed-image="addInlineImage"
+					:on-remove-embedded-image="removeInlineImage"
+					:snippets="editorSnippets"
+					:snippet-variable-context="snippetVariableContext"
+				/>
+				<EmailBuilder
+					v-else
+					:blocks="bodyBlocks"
+					:subject="subject"
+					:name="composerName"
+					:background-color="backgroundColor"
+					:variables="[]"
+					:config="builderConfig"
+					class="h-full"
+					@update:blocks="bodyBlocks = $event"
+					@update:subject="subject = $event"
+					@update:name="composerName = $event"
+					@update:background-color="backgroundColor = $event"
+				/>
+			</div>
+
+			<PostboxComposerAttachments
+				:attachments="attachments"
+				:uploads="uploads"
+				:meter="attachmentSizeMeter"
+				:thumb-url-for="thumbUrlFor"
+				:is-sharing="isSharing"
+				:share-disabled="bodyPending"
+				@remove="removeAttachment"
+				@share="shareAsLink"
+				@cancel="cancelUpload"
+				@retry="retryUpload"
+			/>
+
+			<!-- Advisory AI cluster: "Coach my draft" self-check + freeform whole-draft
+			     revise. Advisory only — never sends; hidden when AI is off / draft empty. -->
+			<PostboxComposerAdvisory
+				v-model:body-html="bodyHtml"
+				:ai-enabled="aiRewriteEnabled"
+				:mailbox-id="seed.mailboxId"
+				:in-reply-to-message-id="seed.inReplyToMessageId"
 			/>
 		</div>
-
-		<PostboxComposerAttachments
-			:attachments="attachments"
-			:uploads="uploads"
-			:meter="attachmentSizeMeter"
-			:thumb-url-for="thumbUrlFor"
-			:is-sharing="isSharing"
-			@remove="removeAttachment"
-			@share="shareAsLink"
-			@cancel="cancelUpload"
-			@retry="retryUpload"
-		/>
-
-		<!-- Advisory AI cluster: "Coach my draft" self-check + freeform whole-draft
-		     revise. Advisory only — never sends; hidden when AI is off / draft empty. -->
-		<PostboxComposerAdvisory
-			v-model:body-html="bodyHtml"
-			:ai-enabled="aiRewriteEnabled"
-			:mailbox-id="seed.mailboxId"
-			:in-reply-to-message-id="seed.inReplyToMessageId"
-		/>
 
 		<PostboxComposerFooter
 			v-model:follow-up-remind-at="followUpRemindAt"
@@ -445,6 +464,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:signatures="signatures"
 			:active-signature-id="activeSignatureId"
 			:composer-mode="composerMode"
+			:body-pending="bodyPending"
 			:subject="subject"
 			:body-html="bodyHtml"
 			:body-blocks="bodyBlocks"

@@ -85,7 +85,7 @@ beforeEach(() => {
 	identitiesData = ref([]);
 
 	vi.stubGlobal('useConvexQuery', (fn: unknown) => {
-		if (fn === 'drafts.get') return { data: hydrateData };
+		if (fn === 'drafts.get') return { data: hydrateData, error: ref(null), refetch: vi.fn() };
 		if (fn === 'signatures.list') return { data: signaturesData };
 		if (fn === 'identities.list') return { data: identitiesData };
 		return { data: ref(undefined) };

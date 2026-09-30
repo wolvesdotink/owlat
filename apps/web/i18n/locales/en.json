@@ -3671,6 +3671,7 @@
 				"suggestionCategory": "{category}:"
 			},
 			"postboxComposer": {
+				"bodyLoading": "Message body, loading",
 				"bodyPlaceholder": "Write your message…",
 				"composerName": "Postbox compose {timestamp}",
 				"dropHint": "Drop to attach · drop in text to embed",
@@ -4904,6 +4905,15 @@
 				"dismiss": "Keep saved version",
 				"message": "Unsaved changes from {time} were recovered from this device.",
 				"restore": "Restore unsaved changes"
+			},
+			"postboxComposerDraftNotice": {
+				"loadFailed": "This draft couldn't be loaded. Nothing has been saved over it; changes you make now are kept and added once it loads.",
+				"loading": "Loading your saved draft… Send is available once it has arrived.",
+				"missing": "This draft no longer exists, or you no longer have access to it. Nothing here will be saved or sent.",
+				"notSaved": "Your latest changes couldn't be saved. Everything you wrote is still here.",
+				"notSent": "Your latest changes couldn't be saved, so nothing was sent. Everything you wrote is still here; try Send again.",
+				"stillChanging": "Your message changed while it was being saved, so nothing was sent. Everything you wrote is still here; try again.",
+				"tryAgain": "Try again"
 			},
 			"postboxPreviewAsSent": {
 				"ampNote": "+ AMP part",
