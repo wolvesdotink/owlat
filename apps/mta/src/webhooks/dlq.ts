@@ -17,6 +17,7 @@ import { webhookDlqRetryDelayMs } from './dlqRetryPolicy.js';
 import { STORE_LUA } from './dlqStoreScript.js';
 import { isMtaWebhookEvent } from '@owlat/mta-protocol/webhookEvent';
 import { isRecord } from '@owlat/shared';
+import { canonicalJson } from '@owlat/shared/canonicalJson';
 
 export {
 	classifyWebhookHttpFailure,
@@ -221,6 +222,11 @@ async function store(
 		throw new Error('Webhook event does not match its runtime contract');
 	const createdAt = Date.now();
 	const entry: DlqEntry = { dlqId, event, failure, attempts: 0, createdAt };
+	// The row is written with JSON.stringify and read back with JSON.parse, so
+	// the comparison must see the event the way that round trip leaves it: an
+	// optional field a replay rebuilds as explicitly undefined was never stored.
+	// canonicalJson has JSON.stringify's semantics, only with sorted keys.
+	const requestedPayload = canonicalJson(event);
 	const observationChanged = -4;
 	let status = observationChanged;
 	for (
@@ -232,7 +238,7 @@ async function store(
 		const observedEntry = observedRaw ? parseDlqEntry(observedRaw, dlqId) : null;
 		const invalidProtectedEntry = observedRaw !== null && observedEntry === null;
 		const requestedPayloadMatches =
-			observedEntry === null || canonicalJson(observedEntry.event) === canonicalJson(event);
+			observedEntry === null || canonicalJson(observedEntry.event) === requestedPayload;
 		const observedPendingEntry =
 			observedEntry?.failure.category === 'pending' ? observedEntry : null;
 		status = (await redis.eval(
@@ -263,17 +269,6 @@ async function store(
 		throw new Error('Existing protected webhook outbox changed during repair');
 	}
 	return { dlqId, inserted: status === 1 };
-}
-
-function canonicalJson(value: unknown): string {
-	if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-	if (isRecord(value)) {
-		return `{${Object.keys(value)
-			.sort()
-			.map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
-			.join(',')}}`;
-	}
-	return JSON.stringify(value) ?? 'undefined';
 }
 
 export async function storeFailed(
