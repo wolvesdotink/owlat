@@ -63,5 +63,7 @@ export const answerAskTables = {
 		// answers "does this draft have an ask session" for the send guard.
 		.index('by_target_owner', ['targetKey', 'ownerId'])
 		// Member erasure drops a departing member's sessions.
-		.index('by_owner', ['ownerId']),
+		.index('by_owner', ['ownerId'])
+		// Contact erasure drops every session about the erased person.
+		.index('by_contact', ['contactId']),
 };

@@ -203,7 +203,6 @@ export const keepAnswerFileCopy = internalMutation({
 		contentType: v.string(),
 		contactId: v.id('contacts'),
 		isTeamInbox: v.boolean(),
-		subject: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Id<'semanticFiles'> | null> => {
 		const session = await requireOrgMember(ctx);
@@ -226,9 +225,6 @@ export const keepAnswerFileCopy = internalMutation({
 			captureSource: args.isTeamInbox ? 'team_inbox' : 'mailbox',
 			uploadedBy: session.userId,
 			contactIds: [args.contactId],
-			...(args.subject
-				? { uploadContext: JSON.stringify({ threadSubject: args.subject.slice(0, 200) }) }
-				: {}),
 		});
 		// A user-created Files row frees its blob through a bound receipt
 		// (semanticFiles.remove), so give the copy one.

@@ -148,7 +148,7 @@ describe('the three file outcomes on a draft', () => {
 			status: 'bound',
 			resourceKey: `mailDrafts:${draftId}`,
 		});
-		const prompt = JSON.stringify(vi.mocked(runLlmStream).mock.calls.at(-1)![0].messages);
+		const prompt = JSON.stringify(vi.mocked(runLlmStream).mock.lastCall![0].messages);
 		expect(prompt).toContain('mention them naturally: invoice-2026-09-brightpath.pdf');
 	});
 

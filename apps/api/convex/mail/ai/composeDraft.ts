@@ -153,6 +153,12 @@ async function loadAnswerContext(ctx: ActionCtx, target: AnswerAskTarget): Promi
 	};
 }
 
+/** Where a file answer goes: the target, and the contact Files copies are linked to. */
+interface FileOwner {
+	target: AnswerAskTarget;
+	contactId?: Id<'contacts'> | undefined;
+}
+
 /**
  * Attach a file answer. A draft gets the file itself (a fresh upload is
  * consumed by `drafts.addAttachment`, an existing file is copied in); a team
@@ -161,10 +167,9 @@ async function loadAnswerContext(ctx: ActionCtx, target: AnswerAskTarget): Promi
  */
 async function attachFileAnswer(
 	ctx: ActionCtx,
-	session: Doc<'answerAskSessions'>,
+	session: FileOwner,
 	file: AskFileRef,
-	keepCopy: boolean,
-	subject: string
+	keepCopy: boolean
 ): Promise<AskFileRef> {
 	const filename =
 		file.filename
@@ -181,7 +186,6 @@ async function attachFileAnswer(
 				storageId,
 				filename,
 				contentType: info.contentType,
-				subject,
 			});
 		}
 		if (session.target.kind === 'mailDraft') {
@@ -214,8 +218,8 @@ async function attachFileAnswer(
 /** Save a second copy of an uploaded answer to Files. Best-effort. */
 async function keepCopyInFiles(
 	ctx: ActionCtx,
-	session: Doc<'answerAskSessions'>,
-	file: { storageId: Id<'_storage'>; filename: string; contentType: string; subject: string }
+	session: FileOwner,
+	file: { storageId: Id<'_storage'>; filename: string; contentType: string }
 ): Promise<void> {
 	if (!session.contactId) return;
 	let copyId: Id<'_storage'> | undefined;
@@ -231,7 +235,6 @@ async function keepCopyInFiles(
 				file.contentType === 'application/octet-stream' && blob.type ? blob.type : file.contentType,
 			contactId: session.contactId,
 			isTeamInbox: session.target.kind === 'teamThread',
-			subject: file.subject,
 		});
 	} catch (err) {
 		logError('[composeDraft] keeping a copy in Files failed:', err);
@@ -324,17 +327,6 @@ export const start = authedAction({
 		});
 
 		let questions = gap.questions;
-		let session = await ctx.runMutation(internal.mail.ai.composeDraftStore.replaceSession, {
-			target: args.target,
-			...(instruction ? { instruction } : {}),
-			locale,
-			status: 'drafting',
-			questions,
-			attachedFiles: [],
-			...(context.contactId ? { contactId: context.contactId } : {}),
-			...(context.counterpartAddress ? { counterpartAddress: context.counterpartAddress } : {}),
-			...(gap.fileRequest ? { fileRequest: gap.fileRequest } : {}),
-		});
 
 		// One confident match: attach it without asking. If that fails (the file
 		// went away, the draft filled up), ask for the file instead.
@@ -344,14 +336,13 @@ export const start = authedAction({
 				attachedFiles.push(
 					await attachFileAnswer(
 						ctx,
-						session,
+						{ target: args.target, contactId: context.contactId },
 						{
 							source: gap.autoAttach.source,
 							id: gap.autoAttach.id,
 							filename: gap.autoAttach.filename,
 						},
-						false,
-						context.subject
+						false
 					)
 				);
 			} catch (err) {
@@ -367,11 +358,16 @@ export const start = authedAction({
 		}
 
 		const isAsking = gap.mayAsk && questions.some((q) => !q.answer);
-		session = await ctx.runMutation(internal.mail.ai.composeDraftStore.updateSession, {
-			sessionId: session._id,
+		const session = await ctx.runMutation(internal.mail.ai.composeDraftStore.replaceSession, {
+			target: args.target,
+			...(instruction ? { instruction } : {}),
+			locale,
 			status: isAsking ? 'asking' : 'drafting',
 			questions,
 			attachedFiles,
+			...(context.contactId ? { contactId: context.contactId } : {}),
+			...(context.counterpartAddress ? { counterpartAddress: context.counterpartAddress } : {}),
+			...(gap.fileRequest ? { fileRequest: gap.fileRequest } : {}),
 		});
 		if (isAsking) return toAskSessionView(session);
 		return await draftNow(ctx, session, context);
@@ -402,7 +398,6 @@ export const answer = authedAction({
 			sessionId: args.sessionId,
 		});
 		if (session.status !== 'asking') throwInvalidState('These questions were already answered');
-		const context = await loadAnswerContext(ctx, session.target);
 
 		const now = Date.now();
 		const questions: AskQuestion[] = session.questions.map((q) => ({ ...q }));
@@ -413,13 +408,7 @@ export const answer = authedAction({
 			if (!question) continue;
 			if (given.file) {
 				if (question.answerKind !== 'file') throwInvalidInput('Only a file question takes a file');
-				const ref = await attachFileAnswer(
-					ctx,
-					session,
-					given.file,
-					given.keepCopy !== false,
-					context.subject
-				);
+				const ref = await attachFileAnswer(ctx, session, given.file, given.keepCopy !== false);
 				question.answer = { value: ref.filename, at: now, source: 'user', file: ref };
 				attachedFiles = [
 					...attachedFiles.filter((f) => !(f.source === ref.source && f.id === ref.id)),
@@ -470,6 +459,6 @@ export const answer = authedAction({
 			});
 		}
 		if (opensRoundTwo) return toAskSessionView(updated);
-		return await draftNow(ctx, updated, context);
+		return await draftNow(ctx, updated, await loadAnswerContext(ctx, session.target));
 	},
 });

@@ -25,6 +25,7 @@ import {
 	DONE,
 	NOT_DONE,
 	deleteAll,
+	drainEach,
 	type ErasureMode,
 	type PhaseContext,
 	type PhaseOutcome,
@@ -193,6 +194,24 @@ const PHASE_RUNNERS: Record<ContactErasurePhase, PhaseRunner> = {
 	formSubmissions: eraseFormSubmissions,
 	knowledge: eraseKnowledge,
 	semanticFiles: eraseSemanticFiles,
+	// Answer mode ask sessions quote the person's mail; the draft stream each
+	// one owns goes with it.
+	answerAskSessions: async (phase) => ({
+		isDone: await drainEach(
+			phase.budget,
+			(n) =>
+				phase.ctx.db
+					.query('answerAskSessions')
+					.withIndex('by_contact', (q) => q.eq('contactId', phase.contactId))
+					.take(n),
+			async (session) => {
+				if (session.streamId && (await phase.ctx.db.get(session.streamId))) {
+					await phase.ctx.db.delete(session.streamId);
+				}
+				await phase.ctx.db.delete(session._id);
+			}
+		),
+	}),
 };
 
 export const FIRST_ERASURE_PHASE: ContactErasurePhase = CONTACT_ERASURE_PHASES[0];

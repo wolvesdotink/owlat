@@ -140,6 +140,12 @@ export const CONTACT_RELATIONS: readonly ErasureRelation[] = [
 		why: 'Submitted form data is the person’s own data.',
 	},
 	{
+		table: 'answerAskSessions',
+		field: 'contactId',
+		action: 'delete',
+		why: 'An Answer mode ask session quotes the person’s mail and holds the owner’s answers about them; its draft stream goes with it.',
+	},
+	{
 		table: 'clarificationMemory',
 		field: 'contactId',
 		action: 'delete',
@@ -216,6 +222,13 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		field: 'threadId',
 		action: 'retain',
 		why: 'Governed by the message’s own contactId: the erased person’s mail is deleted through that relation, another sender’s mail in the same thread is theirs.',
+	},
+	{
+		parent: 'conversationThreads',
+		table: 'answerAskSessions',
+		field: 'target.threadId',
+		action: 'retain',
+		why: 'Governed by the session’s own contactId (deleted above), which is the thread’s contact when one is linked; a session without a contact carries no contact data beyond the thread it names.',
 	},
 	{
 		parent: 'conversationThreads',
