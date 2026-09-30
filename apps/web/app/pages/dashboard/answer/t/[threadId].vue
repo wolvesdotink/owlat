@@ -358,6 +358,7 @@ onBeforeUnmount(() => {
 					:held-reason="holdReason"
 					:send-hold="sendHold"
 					:status-note="assist.statusNote.value"
+					:ask-session="!!assist.ask.session.value"
 					@send="onSend"
 					@save="(body, subject) => reply.save({ body, subject })"
 					@reject="reply.reject.openReject()"
