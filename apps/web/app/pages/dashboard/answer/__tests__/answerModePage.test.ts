@@ -95,6 +95,7 @@ beforeAll(() => {
 			capturedMeta = meta;
 		},
 		useClickOutside,
+		useBackendOperation: () => ({ run: labelRun, isLoading: ref(false) }),
 		useRoute: () => route,
 		useRouter: () => ({
 			replace: routerReplace,
@@ -129,6 +130,20 @@ const answerApi = {
 	discardAiDraft: vi.fn(),
 };
 const composerFocusBody = vi.fn();
+/** Every mutation the page's ⋯ runs (the label toggle). */
+const labelRun = vi.fn(async () => ({ ok: true }));
+const LabelDialogStub = defineComponent({
+	name: 'PostboxLabelPickerDialog',
+	props: ['open', 'labels'],
+	emits: ['update:open', 'pick'],
+	setup: (props) => () => (props.open ? h('div', { 'data-testid': 'label-dialog' }) : null),
+});
+const AiStripStub = defineComponent({
+	name: 'PostboxAiStrip',
+	props: { messageId: String, warrantsSummary: Boolean, askOnly: Boolean },
+	emits: ['close'],
+	setup: () => () => h('div', { 'data-testid': 'ask-strip' }),
+});
 const ComposerStub = defineComponent({
 	name: 'PostboxComposer',
 	props: ['seed', 'replyAllRecipients', 'frame', 'statusNote', 'askSession', 'recipientNames'],
@@ -208,6 +223,16 @@ async function mountAt(query: Record<string, string>, opts: { realMenu?: boolean
 				UiSkeleton: inert('UiSkeleton'),
 				AnswerQueueBar: inert('AnswerQueueBar'),
 				AnswerQueueMailAsk: inert('AnswerQueueMailAsk'),
+				PostboxLabelPickerDialog: LabelDialogStub,
+				PostboxAiStrip: AiStripStub,
+				NuxtLink: defineComponent({
+					name: 'NuxtLink',
+					props: ['to'],
+					setup:
+						(props, { slots }) =>
+						() =>
+							h('a', { href: props.to }, slots.default?.()),
+				}),
 			},
 			stubs: { Icon: true, AnswerAiBar: AiBarStub, AskCard: AskCardStub, CatchUpCard: true },
 		},
@@ -228,6 +253,7 @@ beforeEach(() => {
 	navigateTo.mockClear();
 	composerFlush.mockClear();
 	composerFocusBody.mockClear();
+	labelRun.mockClear();
 	guardCalls.length = 0;
 	composerSnapshot.value = { draftId: null, toAddresses: [], hasContent: false };
 	assist.aiEnabled.value = false;
@@ -474,6 +500,37 @@ describe('Answer mode page', () => {
 		assist.ask.session.value = { sessionId: 's1', round: 1, questions: [] };
 		await flushPromises();
 		expect(w.getComponent(ComposerStub).props('askSession')).toBe(true);
+	});
+
+	it('offers "Ask about this thread" in the ⋯ with AI on, and shows the Q&A above the conversation', async () => {
+		assist.aiEnabled.value = true;
+		const w = await mountAt({});
+		expect(w.find('[data-testid="ask-strip"]').exists()).toBe(false);
+		await w.get('[data-testid="answer-menu-ask"]').trigger('click');
+		const strip = w.getComponent(AiStripStub);
+		expect(strip.props()).toMatchObject({ messageId: 'msg_1', askOnly: true });
+		strip.vm.$emit('close');
+		await flushPromises();
+		expect(w.find('[data-testid="ask-strip"]').exists()).toBe(false);
+	});
+
+	it('has no "Ask about this thread" with AI off', async () => {
+		const w = await mountAt({});
+		expect(w.find('[data-testid="answer-menu-ask"]').exists()).toBe(false);
+	});
+
+	it('labels the message answered from the ⋯', async () => {
+		const w = await mountAt({});
+		await w.get('[data-testid="answer-menu-label"]').trigger('click');
+		expect(w.find('[data-testid="label-dialog"]').exists()).toBe(true);
+		w.getComponent(LabelDialogStub).vm.$emit('pick', 'lbl_billing');
+		await flushPromises();
+		expect(labelRun).toHaveBeenCalledWith({
+			messageId: 'msg_1',
+			labelId: 'lbl_billing',
+			add: true,
+		});
+		expect(w.find('[data-testid="label-dialog"]').exists()).toBe(false);
 	});
 
 	it('hands the composer the asks covered for its footer', async () => {

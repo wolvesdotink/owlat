@@ -41,6 +41,7 @@ import type { AnswerConversationView } from '~/components/answer/AnswerConversat
 import CatchUpCard from '~/components/answer/CatchUpCard.vue';
 import AnswerAiBar from '~/components/answer/AnswerAiBar.vue';
 import AskCard from '~/components/answer/AskCard.vue';
+import AnswerMailMenu from '~/components/answer/AnswerMailMenu.vue';
 
 definePageMeta({
 	layout: 'dashboard',
@@ -153,6 +154,13 @@ const assist = useAnswerModeAssist({
 	view,
 });
 const { catchUp, ask } = assist;
+
+// "Ask about this thread" from the ⋯: the reader's Q&A above the conversation.
+const askingThread = ref(false);
+function askAboutThread() {
+	tab.value = 'conversation';
+	askingThread.value = true;
+}
 
 /** The resting phone/tablet sheet's "✦ Draft": open the reply and draft with AI. */
 function draftFromPeek() {
@@ -292,19 +300,12 @@ onBeforeUnmount(() => {
 				<AnswerQueueBar />
 			</template>
 			<template #menu>
-				<PostboxOverflowMenu :label="t('components.answer.mode.more')" align="right">
-					<template #default="{ close }">
-						<NuxtLink
-							:to="`/dashboard/postbox/inbox/${messageId}`"
-							role="menuitem"
-							class="flex w-full items-center gap-2 px-3 py-1.5 text-sm hover:bg-bg-surface"
-							@click="close()"
-						>
-							<Icon name="lucide:mail-open" class="size-4 text-text-tertiary" />
-							{{ t('components.answer.mode.openInPostbox') }}
-						</NuxtLink>
-					</template>
-				</PostboxOverflowMenu>
+				<AnswerMailMenu
+					:message-id="messageId"
+					:mailbox-id="message?.mailboxId ?? null"
+					:can-ask="assist.aiEnabled.value"
+					@ask="askAboutThread"
+				/>
 			</template>
 
 			<template v-if="assist.aiEnabled.value && seed" #peek-actions>
@@ -323,6 +324,14 @@ onBeforeUnmount(() => {
 			</template>
 
 			<template #conversation>
+				<PostboxAiStrip
+					v-if="askingThread && message"
+					class="mx-4 mt-4"
+					:message-id="messageId"
+					:warrants-summary="false"
+					ask-only
+					@close="askingThread = false"
+				/>
 				<AnswerConversation
 					v-if="message"
 					v-model:view="view"

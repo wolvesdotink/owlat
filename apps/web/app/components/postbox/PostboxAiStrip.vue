@@ -19,6 +19,10 @@ import type { Id } from '@owlat/api/dataModel';
  * long-thread predicate + the per-user auto-summary toggle) for that decision.
  *
  * Presentation consolidation only: the underlying mail.ai actions are unchanged.
+ *
+ * `askOnly`: Answer mode's "Ask about this thread" (its top-bar ⋯). The catch-up
+ * card already summarises there, so the strip is just the Ask, open, focused,
+ * with a Close that emits `close`; no summary is read or generated.
  */
 const props = defineProps<{
 	messageId: string;
@@ -26,7 +30,10 @@ const props = defineProps<{
 	// generate a summary. When false the summary line is only shown if one is
 	// already cached; if neither, the strip collapses to nothing.
 	warrantsSummary: boolean;
+	askOnly?: boolean;
 }>();
+
+const emit = defineEmits<{ close: [] }>();
 
 const { t } = useI18n();
 
@@ -36,9 +43,9 @@ const generated = ref<{ summary: string; messageCount: number } | null>(null);
 const summaryFailed = ref(false);
 let summaryAttempted = false;
 
-const cacheQuery = useConvexQuery(api.mail.ai.summaryCache.getThreadSummary, () => ({
-	messageId: props.messageId as Id<'mailMessages'>,
-}));
+const cacheQuery = useConvexQuery(api.mail.ai.summaryCache.getThreadSummary, () =>
+	props.askOnly ? 'skip' : { messageId: props.messageId as Id<'mailMessages'> }
+);
 const summaryGenOp = useBackendOperation(api.mail.ai.assist.getOrGenerateThreadSummary, {
 	label: () => t('components.postbox.postboxAiStrip.summarizeOperation'),
 	type: 'action',
@@ -124,7 +131,11 @@ function clearAsk() {
 }
 
 // --- Ask is the strip's only expandable section; closed until asked for.
-const askOpen = ref(false);
+const askOpen = ref(props.askOnly === true);
+const askInput = ref<HTMLInputElement | null>(null);
+onMounted(() => {
+	if (props.askOnly) askInput.value?.focus();
+});
 
 function toggleAsk() {
 	askOpen.value = !askOpen.value;
@@ -141,7 +152,7 @@ watch(
 		question.value = '';
 		askHistory.value = [];
 		askErrored.value = false;
-		askOpen.value = false;
+		askOpen.value = props.askOnly === true;
 	}
 );
 
@@ -161,7 +172,21 @@ const visible = computed(() => hasGist.value || props.warrantsSummary || askOpen
 		<!-- ONE line: the gist (shimmer while it fills in), "more" for the bullets,
 		     and the Ask link. Fail-soft — the gist is simply absent when there is no
 		     summary and the thread never warranted one. -->
-		<div class="flex items-center gap-2 px-3 py-2">
+		<div v-if="askOnly" class="flex items-center gap-2 px-3 py-2">
+			<Icon name="lucide:sparkles" class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
+			<p class="flex-1 text-xs font-medium text-text-secondary">
+				{{ t('components.postbox.postboxAiStrip.askAbout') }}
+			</p>
+			<button
+				type="button"
+				class="shrink-0 text-xs text-text-tertiary hover:text-text-primary"
+				data-testid="postbox-ask-close"
+				@click="emit('close')"
+			>
+				{{ t('common.close') }}
+			</button>
+		</div>
+		<div v-else class="flex items-center gap-2 px-3 py-2">
 			<Icon name="lucide:sparkles" class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
 			<div
 				v-if="summaryPending"
@@ -239,6 +264,7 @@ const visible = computed(() => hasGist.value || props.warrantsSummary || askOpen
 			>
 				<Icon name="lucide:sparkles" class="w-4 h-4 shrink-0 text-text-tertiary" />
 				<input
+					ref="askInput"
 					v-model="question"
 					type="text"
 					class="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none"

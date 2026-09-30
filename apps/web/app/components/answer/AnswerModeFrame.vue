@@ -38,6 +38,8 @@ const props = defineProps<{
 	messageCount?: number;
 	/** A short line after the count: the correspondent. */
 	counterpart?: string;
+	/** Where the correspondent's name leads (their contact profile), if anywhere. */
+	counterpartTo?: string;
 }>();
 
 const emit = defineEmits<{
@@ -56,15 +58,15 @@ const tab = defineModel<AnswerTab>('tab', { default: 'conversation' });
 
 const { t } = useI18n();
 
-const metaLine = computed(() => {
-	const parts: string[] = [];
-	if (props.messageCount !== undefined) {
-		parts.push(
-			t('components.answer.mode.messageCount', { count: props.messageCount }, props.messageCount)
-		);
-	}
-	if (props.counterpart) parts.push(props.counterpart);
-	return parts.join(' · ');
+/** The meta line before the correspondent: "5 messages · ", or just the count. */
+const metaPrefix = computed(() => {
+	if (props.messageCount === undefined) return '';
+	const count = t(
+		'components.answer.mode.messageCount',
+		{ count: props.messageCount },
+		props.messageCount
+	);
+	return props.counterpart ? `${count} · ` : count;
 });
 
 const conversationPanelId = useId();
@@ -187,11 +189,18 @@ function startReply() {
 				<!-- The phone's bar stays one line: back, subject, queue position.
 				     The sheet's "Reply to …" row names the correspondent. -->
 				<p
-					v-if="metaLine && layout !== 'phone'"
+					v-if="(metaPrefix || counterpart) && layout !== 'phone'"
 					class="truncate text-xs text-text-tertiary"
 					data-testid="answer-meta"
 				>
-					{{ metaLine }}
+					{{ metaPrefix
+					}}<NuxtLink
+						v-if="counterpart && counterpartTo"
+						:to="counterpartTo"
+						class="hover:text-text-primary hover:underline"
+						data-testid="answer-counterpart"
+						>{{ counterpart }}</NuxtLink
+					><template v-else-if="counterpart">{{ counterpart }}</template>
 				</p>
 			</div>
 			<div class="hidden min-w-0 lg:flex">

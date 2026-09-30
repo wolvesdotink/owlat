@@ -274,6 +274,7 @@ onBeforeUnmount(() => {
 			:subject="thread?.subject ?? ''"
 			:message-count="thread ? messages.length : undefined"
 			:counterpart="reply.senderLabel.value"
+			:counterpart-to="contact ? `/dashboard/audience/contacts/${contact._id}` : undefined"
 			@back="leave"
 			@start-reply="composerRef?.focus()"
 		>

@@ -216,6 +216,13 @@ describe('Answer mode for a Team inbox thread', () => {
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/inbox', { replace: true });
 	});
 
+	it("links the correspondent's name to their contact profile", async () => {
+		const wrapper = await mountPage();
+		const link = wrapper.get('[data-testid="answer-counterpart"]');
+		expect(link.text()).toBe('Ana Ruiz');
+		expect(link.attributes('href')).toBe('/dashboard/audience/contacts/c_1');
+	});
+
 	it('names the Team inbox as the way back when opened by deep link or reload', async () => {
 		const wrapper = await mountPage();
 		expect(wrapper.get('[data-testid="answer-back"]').attributes('aria-label')).toBe(
