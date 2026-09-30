@@ -1,4 +1,7 @@
 import { api } from '@owlat/api';
+import { whenConvexAuthSettled } from '~/lib/convexAuthReady';
+import { TRANSIENT_RETRY_LIMIT, transientRetryDelay } from '~/lib/queryRetry';
+import { readWelcomedCache, writeWelcomedCache } from '~/lib/welcomedCache';
 import { isWelcomeTriggerPath, shouldRouteToWelcome } from '~/utils/welcomeFlow';
 
 /**
@@ -21,37 +24,23 @@ import { isWelcomeTriggerPath, shouldRouteToWelcome } from '~/utils/welcomeFlow'
  * The check NEVER blocks a navigation:
  *
  * - A "returning" answer is terminal, so it is also remembered per user id in
- *   localStorage ({@link WELCOMED_STORAGE_PREFIX}). A later session reads that
- *   and skips the query entirely.
+ *   localStorage (`~/lib/welcomedCache`, which `welcome.vue` writes too). A
+ *   later session reads that and skips the query entirely.
  * - Without that entry the page renders straight away and the query runs in the
  *   background. If it says the member was never welcomed, they are redirected to
  *   `/welcome` once the navigation has settled, provided they are still on a
  *   trigger path and the welcome screen has not been reached in the meantime.
  *
  * The check only runs on the trigger paths ({@link isWelcomeTriggerPath}) so the
- * extra query stays off every other in-app navigation, and it fails OPEN: any
+ * extra query stays off every other in-app navigation, and it fails OPEN: an
  * error leaves the user where they were rather than blocking the app.
+ *
+ * Straight after a SPA sign-in the Convex client is still installing the new
+ * session's token, and `userOnboarding.get` asserts the caller. So the
+ * background check first waits for Convex auth to settle, and a failed query is
+ * retried a few times with backoff. Giving up after the first failure left a new
+ * member on the dashboard until their next full page load.
  */
-
-/** localStorage key prefix; the full key is `${prefix}${userId}`. */
-const WELCOMED_STORAGE_PREFIX = 'owlat:welcomed:';
-
-function readWelcomedCache(userId: string): boolean {
-	try {
-		return localStorage.getItem(`${WELCOMED_STORAGE_PREFIX}${userId}`) === '1';
-	} catch {
-		// Storage blocked (private mode, sandboxed webview): fall back to the query.
-		return false;
-	}
-}
-
-function writeWelcomedCache(userId: string): void {
-	try {
-		localStorage.setItem(`${WELCOMED_STORAGE_PREFIX}${userId}`, '1');
-	} catch {
-		// Storage blocked or full: the next session just asks the server again.
-	}
-}
 
 /** The background check in flight, so repeated trigger navigations share one query. */
 let inflight: Promise<void> | null = null;
@@ -86,10 +75,33 @@ export default defineNuxtRouteMiddleware(async (to) => {
 		if (!isWelcomeTriggerPath(router.currentRoute.value.path)) return;
 		void router.replace('/welcome');
 	};
+	// The answer can take a while (auth wait, retries), long enough for this
+	// navigation to finish and the member to move on. Record when it settles so
+	// the answer is not held back for a navigation that already happened.
+	let navigationSettled = false;
+	const stopSettleWatch = router.afterEach(() => {
+		navigationSettled = true;
+		stopSettleWatch();
+	});
 
-	inflight = $convex
-		.query(api.auth.userOnboarding.get, { userId })
+	const check = async () => {
+		// Only a bounded wait: this runs in the background, never under the navigation.
+		if (!(await whenConvexAuthSettled())) return;
+		for (let attempt = 0; ; attempt++) {
+			try {
+				return await $convex.query(api.auth.userOnboarding.get, { userId });
+			} catch (error) {
+				if (attempt >= TRANSIENT_RETRY_LIMIT) throw error;
+			}
+			await new Promise((resolve) => setTimeout(resolve, transientRetryDelay(attempt)));
+			// welcome.vue was reached in the meantime: nothing left to decide.
+			if (resolved.value) return;
+		}
+	};
+
+	inflight = check()
 		.then((state) => {
+			if (!state) return;
 			if (!shouldRouteToWelcome({ welcomedAt: state.welcomedAt })) {
 				writeWelcomedCache(userId);
 				resolved.value = true;
@@ -98,7 +110,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
 			// Deliberately NOT marking resolved here: the member has not seen the
 			// welcome yet, so a retry on the next trigger path is correct if the
 			// redirect is interrupted. welcome.vue sets the flag.
-			if (router.currentRoute.value.fullPath === to.fullPath) {
+			if (navigationSettled || router.currentRoute.value.fullPath === to.fullPath) {
 				redirectIfStillDue();
 				return;
 			}
@@ -111,9 +123,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
 		})
 		.catch(() => {
 			// Fail open — the welcome nudge must never wedge the app. Leave the flag
-			// unset so a transient error gets one more chance on the next navigation.
+			// unset so the next trigger navigation gets another chance.
 		})
 		.finally(() => {
+			stopSettleWatch();
 			inflight = null;
 		});
 });

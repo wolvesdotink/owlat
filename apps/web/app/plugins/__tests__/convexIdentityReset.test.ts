@@ -75,4 +75,24 @@ describe('convex plugin: shared subscription cache and identity', () => {
 		auth.onChange!(false);
 		expect(reset).toHaveBeenCalledOnce();
 	});
+
+	it('tells one-shot callers when auth settles, and re-arms on every session signal', async () => {
+		await bootPlugin();
+		const { whenConvexAuthSettled } = await import('~/lib/convexAuthReady');
+
+		const boot = whenConvexAuthSettled();
+		auth.onChange!(true);
+		await expect(boot).resolves.toBe(true);
+
+		// Sign-in, sign-out or an organization switch installs a new token: until
+		// the server answers for it, callers wait again.
+		auth.listeners[0]!();
+		const afterSignal = vi.fn();
+		void whenConvexAuthSettled().then(afterSignal);
+		await Promise.resolve();
+		expect(afterSignal).not.toHaveBeenCalled();
+
+		auth.onChange!(false);
+		await vi.waitFor(() => expect(afterSignal).toHaveBeenCalledWith(false));
+	});
 });
