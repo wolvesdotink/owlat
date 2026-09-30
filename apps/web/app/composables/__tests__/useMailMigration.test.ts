@@ -4,6 +4,7 @@ import { api } from '@owlat/api';
 import { getFunctionName, type FunctionReturnType } from 'convex/server';
 import type { Id } from '@owlat/api/dataModel';
 import {
+	canLearnFromImport,
 	deriveMigrationStep,
 	describeMigrationFailure,
 	formatResumeTime,
@@ -58,6 +59,38 @@ describe('deriveMigrationStep', () => {
 		expect(deriveMigrationStep(null, false, 'auth_error')).toBe('connect');
 		// A live migration's status still wins over the account status.
 		expect(deriveMigrationStep('importing', true, 'auth_error')).toBe('importing');
+	});
+});
+
+describe('canLearnFromImport', () => {
+	const finished = {
+		status: 'completed' as const,
+		isAiIndexingEnabled: false,
+		messagesImported: 8300,
+		messagesIndexed: 0,
+	};
+
+	it('offers learning on a finished import that learned nothing', () => {
+		expect(canLearnFromImport(finished, true)).toBe(true);
+		// Swept, but with nothing to show for it (an embedder that stored nothing).
+		expect(canLearnFromImport({ ...finished, isAiIndexingEnabled: true }, true)).toBe(true);
+	});
+
+	it('stays away from an import that already learned', () => {
+		expect(
+			canLearnFromImport({ ...finished, isAiIndexingEnabled: true, messagesIndexed: 8300 }, true)
+		).toBe(false);
+	});
+
+	it('only offers what the backend would accept', () => {
+		// The knowledge graph is off: the sweep would be refused.
+		expect(canLearnFromImport(finished, false)).toBe(false);
+		// Still running: a running import hands off to indexing by itself.
+		expect(canLearnFromImport({ ...finished, status: 'importing' }, true)).toBe(false);
+		expect(canLearnFromImport({ ...finished, status: 'failed' }, true)).toBe(false);
+		// Nothing came in, so there is nothing to learn from.
+		expect(canLearnFromImport({ ...finished, messagesImported: 0 }, true)).toBe(false);
+		expect(canLearnFromImport(null, true)).toBe(false);
 	});
 });
 
@@ -301,6 +334,20 @@ describe('useSharedMailMigration', () => {
 				name: 'mail/migrationShared:cancelShared',
 				args: { mailboxId: MAILBOX_ID },
 				label: 'Stop team inbox import',
+			},
+		]);
+	});
+
+	it('learns from a finished import by mailbox', async () => {
+		const migration = useSharedMailMigration(() => MAILBOX_ID);
+
+		await migration.learn();
+
+		expect(runs).toEqual([
+			{
+				name: 'mail/migrationShared:learnFromImportShared',
+				args: { mailboxId: MAILBOX_ID },
+				label: 'Learn from team inbox import',
 			},
 		]);
 	});

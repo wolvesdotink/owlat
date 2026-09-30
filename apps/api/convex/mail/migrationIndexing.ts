@@ -30,6 +30,7 @@ import {
 	internalMutation,
 	internalQuery,
 	type ActionCtx,
+	type MutationCtx,
 } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -38,11 +39,14 @@ import { resolveContact } from '../contacts/resolution';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { normalizeEmail } from '@owlat/shared';
 import { logError } from '../lib/runtimeLog';
-import { INDEX_CHUNK_SIZE } from './migrationBackfill';
 import { loadExtractableMail } from './knowledgeScreen';
 
 // Tunables. Pacing comes from the concurrency cap: at most this many
 // extractions (LLM calls) in flight per sweep.
+/** Chunk size for the knowledge sweep. Lives here, not with the import that
+ * hands off to it, so this module imports nothing from the migration
+ * lifecycle modules that call into it. */
+export const INDEX_CHUNK_SIZE = 25;
 const INTER_CHUNK_DELAY_MS = 1500;
 const INDEX_CONCURRENCY = 4;
 /** Stop taking new messages after this long; well inside the 600s action limit
@@ -210,51 +214,69 @@ export const patchIndexProgress = internalMutation({
 	},
 });
 
+/** Why {@link startReindexSweep} did not start a sweep. */
+export type ReindexRefusal =
+	| 'not_found'
+	| 'ai_knowledge_disabled'
+	| `status_${Doc<'mailboxMigrations'>['status']}`;
+
 /**
- * Re-run a finished import's indexing sweep (operator entry point:
- * `migrations/0050_reindex_mailbox_knowledge`).
+ * Re-run a finished import's indexing sweep over its mailbox.
  *
- * For an import that finished WITHOUT knowledge — opted out, or swept while
- * the embedder could not store a vector — which otherwise has no way back
- * short of re-importing the whole mailbox. The sweep starts from the first
- * message; messages that already produced entries are counted, not
- * re-extracted.
+ * For an import that finished WITHOUT knowledge — opted out, imported while
+ * `ai.knowledge` was off, or swept while the embedder could not store a
+ * vector — which otherwise has no way back short of re-importing the whole
+ * mailbox. The sweep starts from the first message; messages that already
+ * produced entries are counted, not re-extracted.
+ *
+ * Plain helper, not a Convex function: each caller owns its own authorization
+ * (the operator entry point below; the owner-gated `learnFromImport` /
+ * `learnFromImportShared` behind the wizard and the team-inbox card).
+ */
+export async function startReindexSweep(
+	ctx: MutationCtx,
+	migration: Doc<'mailboxMigrations'> | null
+): Promise<{ started: true } | { started: false; reason: ReindexRefusal }> {
+	if (!migration) return { started: false, reason: 'not_found' };
+	// Only a completed import has a settled message set to walk; a running
+	// one hands off to indexing by itself.
+	if (migration.status !== 'completed') {
+		return { started: false, reason: `status_${migration.status}` };
+	}
+	if (!(await isFeatureEnabled(ctx, 'ai.knowledge'))) {
+		return { started: false, reason: 'ai_knowledge_disabled' };
+	}
+	const now = Date.now();
+	await ctx.db.patch(migration._id, {
+		status: 'indexing',
+		isAiIndexingEnabled: true,
+		messagesIndexed: 0,
+		indexCursorReceivedAt: undefined,
+		indexCursorId: undefined,
+		completedAt: undefined,
+		updatedAt: now,
+	});
+	await ctx.db.insert('mailAuditLog', {
+		mailboxId: migration.mailboxId,
+		event: 'migration.reindex_started',
+		details: `migration=${migration._id}`,
+		occurredAt: now,
+	});
+	await ctx.scheduler.runAfter(0, internal.mail.migrationIndexing.runIndexChunk, {
+		migrationId: migration._id,
+		chunkSize: INDEX_CHUNK_SIZE,
+	});
+	return { started: true };
+}
+
+/**
+ * Operator entry point for {@link startReindexSweep}
+ * (`migrations/0050_reindex_mailbox_knowledge`), keyed by migration id.
  */
 export const reindexMigration = internalMutation({
 	args: { migrationId: v.id('mailboxMigrations') },
-	handler: async (ctx, args): Promise<{ started: boolean; reason?: string }> => {
-		const migration = await ctx.db.get(args.migrationId);
-		if (!migration) return { started: false, reason: 'not_found' };
-		// Only a completed import has a settled message set to walk; a running
-		// one hands off to indexing by itself.
-		if (migration.status !== 'completed') {
-			return { started: false, reason: `status_${migration.status}` };
-		}
-		if (!(await isFeatureEnabled(ctx, 'ai.knowledge'))) {
-			return { started: false, reason: 'ai_knowledge_disabled' };
-		}
-		const now = Date.now();
-		await ctx.db.patch(migration._id, {
-			status: 'indexing',
-			isAiIndexingEnabled: true,
-			messagesIndexed: 0,
-			indexCursorReceivedAt: undefined,
-			indexCursorId: undefined,
-			completedAt: undefined,
-			updatedAt: now,
-		});
-		await ctx.db.insert('mailAuditLog', {
-			mailboxId: migration.mailboxId,
-			event: 'migration.reindex_started',
-			details: `migration=${migration._id}`,
-			occurredAt: now,
-		});
-		await ctx.scheduler.runAfter(0, internal.mail.migrationIndexing.runIndexChunk, {
-			migrationId: migration._id,
-			chunkSize: INDEX_CHUNK_SIZE,
-		});
-		return { started: true };
-	},
+	handler: async (ctx, args): Promise<{ started: boolean; reason?: string }> =>
+		await startReindexSweep(ctx, await ctx.db.get(args.migrationId)),
 });
 
 /** Move the migration to a terminal state. */

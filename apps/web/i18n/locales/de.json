@@ -7795,6 +7795,9 @@
 						},
 						"knowledgeDescription": "Erstellt aus dem Verlauf dieses Teams das gemeinsame Wissensprofil je Kontakt. Standardmäßig aus, weil dafür das gesamte Archiv gelesen wird.",
 						"knowledgeLabel": "Auch aus der importierten Mail lernen",
+						"learnAction": "Aus importierter Mail lernen",
+						"learnBody": "Erstellt aus der importierten Mail das gemeinsame Wissensprofil je Kontakt. Dafür wird das gesamte Archiv gelesen; nichts wird erneut heruntergeladen.",
+						"learnTitle": "Aus diesem Import wurde noch nicht gelernt",
 						"paused": "Pausiert bis {when}",
 						"pausedBody": "Das tägliche Download-Limit des Anbieters ist aufgebraucht. Der Import geht von selbst weiter — es ist nichts zu tun.",
 						"progressLabel": "Import-Fortschritt",
@@ -7805,6 +7808,7 @@
 						"throttleExhausted": "Der Anbieter hat {days} Tage in Folge jeden Download abgelehnt, deshalb wurde der Import an dieser Stelle beendet.",
 						"title": "Vorhandene Mail importieren",
 						"toastCancelled": "Import gestoppt",
+						"toastLearnStarted": "Lernen aus der importierten Mail gestartet",
 						"toastStarted": "Import gestartet"
 					},
 					"intro": "Gemeinsame Adressen, die Ihr Team zusammen liest und von denen es sendet — etwa {supportAddress} oder {salesAddress}.",
@@ -9709,6 +9713,9 @@
 				"indexingBody": "Ihre importierten E-Mails werden gelesen, um Ihre Kontakte und Konversationen kennenzulernen.",
 				"indexingFootnote": "Ihre E-Mails sind bereits in Ihrem Posteingang — dieser letzte Schritt macht die KI nur noch schlauer.",
 				"indexingTitle": "Ihr KI-Assistent wird angelernt",
+				"learnAction": "Aus importierten E-Mails lernen",
+				"learnBody": "Er kann die importierten E-Mails jetzt lesen, um Ihre Kontakte und Konversationen kennenzulernen. Nichts wird erneut heruntergeladen.",
+				"learnTitle": "Ihr KI-Assistent hat aus diesen E-Mails noch nicht gelernt",
 				"openInbox": "Posteingang öffnen",
 				"pageTitle": "E-Mails importieren — Owlat",
 				"pausedBody": "Ihr Mail-Anbieter begrenzt, wie viel Mail pro Tag heruntergeladen werden kann, und das heutige Kontingent ist aufgebraucht. Der Import geht von selbst weiter — Sie müssen nichts tun.",
@@ -9743,6 +9750,7 @@
 				"toastCancelled": "Migration abgebrochen. Importierte E-Mails wurden behalten.",
 				"toastCredentialsUpdated": "Zugangsdaten aktualisiert.",
 				"toastImportStarted": "Ihr E-Mail-Verlauf wird jetzt importiert.",
+				"toastLearnStarted": "Ihr KI-Assistent lernt jetzt aus Ihren importierten E-Mails.",
 				"toastSignatureSaved": "Als Ihre Standardsignatur gespeichert.",
 				"tryAgain": "Erneut versuchen",
 				"useThisSignature": "Diese Signatur verwenden"
@@ -13111,6 +13119,8 @@
 			"useMailMigration": {
 				"cancelOperation": "Postfachmigration abbrechen",
 				"cancelSharedOperation": "Import des Team-Postfachs stoppen",
+				"learnOperation": "Aus importierter Mail lernen",
+				"learnSharedOperation": "Aus dem Import des Team-Postfachs lernen",
 				"startOperation": "Postfachmigration starten",
 				"startSharedOperation": "Import des Team-Postfachs starten"
 			},

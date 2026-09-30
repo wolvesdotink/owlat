@@ -16,10 +16,13 @@
  *
  * Learning from the mail is OPT-IN here and on by default in the personal
  * wizard, because a team's history belongs to the org rather than to whoever
- * happens to be the admin clicking the button.
+ * happens to be the admin clicking the button. The opt-in is offered twice:
+ * before the import starts, and again on a finished import that has not
+ * learned anything yet.
  */
 import type { Id } from '@owlat/api/dataModel';
 import { formatNumber } from '~/utils/formatters';
+import { canLearnFromImport } from '~/composables/postbox/useMailMigration';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -44,8 +47,10 @@ const {
 	failureMessage,
 	start,
 	cancel,
+	learn,
 	startBusy,
 	cancelBusy,
+	learnBusy,
 } = useSharedMailMigration(() => props.mailboxId);
 
 // The checkbox only exists where the knowledge graph does — the backend honours
@@ -61,6 +66,15 @@ const isIdle = computed(() => step.value === 'ready' || step.value === 'connect'
 async function handleStart() {
 	const res = await start({ indexKnowledge: knowledgeAvailable.value && indexKnowledge.value });
 	if (res.ok) showToast(t('dashboard.admin.team.inboxes.import.toastStarted'), 'success');
+}
+
+// The opt-in above only exists before an import starts. An import that
+// finished without it (box left unticked, or a sweep that stored nothing)
+// offers it here instead of forcing a whole re-import to get the knowledge.
+const canLearn = computed(() => canLearnFromImport(migration.value, knowledgeAvailable.value));
+async function handleLearn() {
+	const res = await learn();
+	if (res.ok) showToast(t('dashboard.admin.team.inboxes.import.toastLearnStarted'), 'success');
 }
 
 const showCancel = ref(false);
@@ -245,6 +259,32 @@ const errorPreview = computed(() => {
 						}}
 					</p>
 				</div>
+			</div>
+			<div
+				v-if="canLearn"
+				data-testid="team-inbox-import-learn"
+				class="rounded-lg border border-border-subtle p-3 space-y-3"
+			>
+				<div class="flex items-start gap-2">
+					<Icon name="lucide:brain" class="w-4 h-4 mt-0.5 text-text-tertiary shrink-0" />
+					<div>
+						<p class="text-sm text-text-primary">
+							{{ t('dashboard.admin.team.inboxes.import.learnTitle') }}
+						</p>
+						<p class="text-xs text-text-tertiary mt-0.5">
+							{{ t('dashboard.admin.team.inboxes.import.learnBody') }}
+						</p>
+					</div>
+				</div>
+				<UiButton
+					data-testid="team-inbox-import-learn-start"
+					variant="primary"
+					size="sm"
+					:loading="learnBusy"
+					@click="handleLearn"
+				>
+					{{ t('dashboard.admin.team.inboxes.import.learnAction') }}
+				</UiButton>
 			</div>
 			<!-- The backend starts a fresh run on a completed job — for folders the
 			     team added since, or mail a first pass cut short — so offer that
