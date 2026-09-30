@@ -320,13 +320,25 @@ export const markFullSyncAligned = internalMutation({
  * deleted here too. Its mail has already followed by then — the reconcile that
  * runs first moves it to the renamed folder, or to Trash when it went with the
  * folder — so a folder still holding mail (Owlat-only mail, say) is kept.
+ *
+ * `retired` names folders the provider still lists but the worker stopped
+ * mirroring: the virtual views (Gmail's Important, say) an older worker took
+ * for real folders. Their mail lives in other folders on the provider, and the
+ * reconcile moves it there, but only while the mapping exists: a message whose
+ * folder has no mapping has no remote name and is never looked at again. So a
+ * retired mapping goes only once its folder is empty, and the folder with it.
  */
 export const forgetRemoteFolders = internalMutation({
-	args: { accountId: v.id('externalMailAccounts'), listed: v.array(v.string()) },
+	args: {
+		accountId: v.id('externalMailAccounts'),
+		listed: v.array(v.string()),
+		retired: v.optional(v.array(v.string())),
+	},
 	handler: async (ctx, args) => {
 		const account = await liveFullSyncAccount(ctx, args.accountId);
 		if (!account) return { forgotten: 0 };
-		const listed = new Set(args.listed);
+		const retired = new Set(args.retired ?? []);
+		const listed = new Set(args.listed.filter((name) => !retired.has(name)));
 		const rows = await ctx.db
 			.query('externalMailFolderSync')
 			.withIndex('by_account', (q) => q.eq('accountId', account._id))
@@ -340,18 +352,22 @@ export const forgetRemoteFolders = internalMutation({
 			.query('mailFolders')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', account.mailboxId))
 			.collect(); // bounded: one mailbox's folders
+		const holdsMail = async (folderId: Id<'mailFolders'>): Promise<boolean> =>
+			(await ctx.db
+				.query('mailMessages')
+				.withIndex('by_folder_and_uid', (q) => q.eq('folderId', folderId))
+				.first()) !== null;
+		let forgotten = 0;
 		for (const row of gone) {
+			if (retired.has(row.remoteName) && (await holdsMail(row.folderId))) continue;
 			await ctx.db.delete(row._id);
+			forgotten += 1;
 			if (stillMapped.has(row.folderId)) continue;
 			const folder = folders.find((f) => f._id === row.folderId);
 			if (!folder || folder.role) continue;
 			if (folders.some((f) => f.parentId === folder._id)) continue;
-			const holdsMail = await ctx.db
-				.query('mailMessages')
-				.withIndex('by_folder_and_uid', (q) => q.eq('folderId', folder._id))
-				.first();
-			if (!holdsMail) await ctx.db.delete(folder._id);
+			if (!(await holdsMail(folder._id))) await ctx.db.delete(folder._id);
 		}
-		return { forgotten: gone.length };
+		return { forgotten };
 	},
 });

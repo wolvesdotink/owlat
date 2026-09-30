@@ -24,7 +24,7 @@ import {
 	type RemoteStateClient,
 	type ReconcileDeps,
 } from '../remoteState.js';
-import { mirroredFolderPath } from '../folders.js';
+import { isVirtualView, mirroredFolderPath } from '../folders.js';
 
 interface FakeMessage {
 	uid: number;
@@ -412,5 +412,20 @@ describe('mirroredFolderPath', () => {
 		expect(
 			mirroredFolderPath({ path: '[Gmail]/Starred', delimiter: '/', specialUse: '\\Flagged' }, '')
 		).toBeNull();
+	});
+
+	// imapflow fills `specialUse` only from the RFC 6154 set, which has no
+	// \Important: Gmail's Important view reaches us as a bare LIST attribute.
+	it('skips a view that carries its attribute only in the LIST flags (Gmail Important)', () => {
+		const important = {
+			path: '[Gmail]/Wichtig',
+			delimiter: '/',
+			flags: new Set(['\\HasNoChildren', '\\Important']),
+		};
+		expect(isVirtualView(important)).toBe(true);
+		expect(mirroredFolderPath(important, '')).toBeNull();
+		expect(
+			isVirtualView({ path: 'Erledigt', delimiter: '/', flags: new Set(['\\HasNoChildren']) })
+		).toBe(false);
 	});
 });
