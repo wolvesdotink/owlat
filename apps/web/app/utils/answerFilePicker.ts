@@ -63,6 +63,19 @@ export function isAcceptedAnswerUpload(file: { name: string; type: string }): bo
 }
 
 /**
+ * The content type of an answer upload known only by name (a Reply Queue file
+ * answer attached to a later reply): the accepted set's type for its
+ * extension, else a generic binary type.
+ */
+export function answerUploadContentType(filename: string): string {
+	const name = filename.toLowerCase();
+	return (
+		ACCEPTED.find((entry) => entry.extensions.some((ext) => name.endsWith(ext)))?.mime ??
+		'application/octet-stream'
+	);
+}
+
+/**
  * Open the picker and resolve with the chosen file, or null when it is closed
  * without one. Call it synchronously from the tap's handler: browsers open a
  * file picker only inside a user gesture.

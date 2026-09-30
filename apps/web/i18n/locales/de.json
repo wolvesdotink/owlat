@@ -6053,7 +6053,8 @@
 				"operation": "Mit KI entwerfen",
 				"peekDraft": "Entwerfen",
 				"readyKept": "Der KI-Entwurf ist fertig. Ihr Text bleibt stehen, bis Sie den Entwurf übernehmen.",
-				"useDraft": "Entwurf übernehmen"
+				"useDraft": "Entwurf übernehmen",
+				"preparedFileFailed": "{filename} aus der vorbereiteten Antwort konnte nicht angehängt werden. Hängen Sie die Datei erneut an, falls die Antwort sie braucht."
 			},
 			"askCard": {
 				"title": "Eine Frage, bevor ich schreibe | {count} Fragen, bevor ich schreibe",
