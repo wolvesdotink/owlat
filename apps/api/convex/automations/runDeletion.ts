@@ -31,7 +31,7 @@
  */
 
 import type { MutationCtx } from '../_generated/server';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import {
 	applyStepStatusTransition,
 	cancelRun,
@@ -51,14 +51,18 @@ interface RunDeletionProgress {
 /**
  * Terminate `runId`, delete up to `maxRows` of its step runs, and delete the
  * run when none remain. Call again until `isDeleted` to finish a large run.
+ * `onRead` sees the run and every step run fetched, for a caller that budgets
+ * the bytes its transaction reads.
  */
 export async function deleteAutomationRun(
 	ctx: MutationCtx,
 	runId: Id<'automationRuns'>,
-	maxRows: number
+	maxRows: number,
+	onRead?: (doc: Doc<'automationRuns'> | Doc<'automationStepRuns'>) => void
 ): Promise<RunDeletionProgress> {
 	const run = await ctx.db.get(runId);
 	if (!run) return { isDeleted: true, rowsTouched: 0 };
+	onRead?.(run);
 
 	await cancelRun(ctx, run._id);
 	let rowsTouched = 1;
@@ -74,6 +78,7 @@ export async function deleteAutomationRun(
 			return { isDeleted: true, rowsTouched: rowsTouched + 1 };
 		}
 		for (const stepRun of stepRuns) {
+			onRead?.(stepRun);
 			// Only the in-flight gauges are released: completed / failed / skipped
 			// are lifetime funnel totals, like the run-level completed and
 			// cancelled counters, and work that really happened stays counted

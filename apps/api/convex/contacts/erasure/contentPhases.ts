@@ -185,6 +185,7 @@ export const eraseKnowledge: PhaseRunner = (phase) => {
 				.first(),
 		async (link) => {
 			const entry = await ctx.db.get(link.entryId);
+			if (entry) budget.chargeRead(entry);
 			const remaining = (entry?.contactIds ?? []).filter((c) => c !== contactId);
 			if (entry && remaining.length > 0) {
 				await ctx.db.patch(entry._id, { contactIds: remaining });
@@ -246,6 +247,7 @@ export const eraseSemanticFiles: PhaseRunner = (phase) => {
 				await ctx.db.delete(link._id);
 				return true;
 			}
+			budget.chargeRead(file);
 			const othersRemain = (file.contactIds ?? []).some((c) => c !== contactId);
 			if (file.captureSource && !othersRemain) {
 				// Junction rows of other contacts on a file scoped to this contact
