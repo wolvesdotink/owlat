@@ -211,6 +211,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'sunsetPolicies',
 
 	// Independent definitions (no parent/child among themselves)
+	'contactPropertyDeletionJobs', // deletion progress rows point at the properties below
 	'contactProperties',
 	'topics',
 	'segments',
@@ -373,6 +374,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	emailBlocks: makeSweepStep('emailBlocks'),
 	contactErasureJobs: makeSweepStep('contactErasureJobs'),
 	contacts: contactsStep,
+	contactPropertyDeletionJobs: makeSweepStep('contactPropertyDeletionJobs'),
 	contactProperties: makeSweepStep('contactProperties'),
 	topics: makeSweepStep('topics'),
 	segments: makeSweepStep('segments'),

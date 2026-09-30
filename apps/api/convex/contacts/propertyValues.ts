@@ -5,6 +5,7 @@ import type { Id } from '../_generated/dataModel';
 import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwInvalidInput } from '../_utils/errors';
+import { requireWritableProperty } from './propertyDeletion';
 
 /**
  * Verify a contact exists.
@@ -126,6 +127,10 @@ export const bulkSet = authedMutation({
 		const results: string[] = [];
 
 		for (const { propertyId, value } of args.values) {
+			// No value for a missing property, nor for one being deleted: its
+			// cleanup job must not race a repopulated column.
+			await requireWritableProperty(ctx, propertyId);
+
 			// Check if value already exists
 			const existing = await ctx.db
 				.query('contactPropertyValues')

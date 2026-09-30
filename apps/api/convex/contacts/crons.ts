@@ -1,11 +1,11 @@
 /**
  * Contact-hygiene crons.
  *
- * These four schedules all do the same KIND of work — keeping the contact book
+ * These schedules all do the same KIND of work — keeping the contact book
  * honest between user actions — and they were the tail of a `crons.ts` that had
  * reached the ~500 LOC split threshold CONVENTIONS.md sets. Registration still
- * happens at module load from `crons.ts`; only the grouping moved, so the job
- * names, cadences and arguments are byte-for-byte what they were.
+ * happens at module load from `crons.ts`; only the grouping moved, so the four
+ * original jobs kept their names, cadences and arguments byte-for-byte.
  */
 
 import { cronJobs } from 'convex/server';
@@ -56,6 +56,16 @@ export function registerContactHygieneCrons(crons: Crons): void {
 		'sweep contact sunset policy',
 		{ hours: 1 },
 		internal.contacts.sunsetSweep.sweepSunsetPolicy,
+		{}
+	);
+
+	// Contact property deletion (#918): restart cleanup chains that went quiet
+	// and re-arm failed ones. A deletion normally finishes on its own chain;
+	// this only recovers a crashed action or a lost schedule.
+	crons.interval(
+		'resume stalled contact property deletions',
+		{ hours: 1 },
+		internal.contacts.propertyDeletion.resumeStalled,
 		{}
 	);
 }

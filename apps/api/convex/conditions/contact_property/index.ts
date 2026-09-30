@@ -120,7 +120,10 @@ export const contactPropertyConditionModule: ConditionTypeModule<
 				.query('contactProperties')
 				.withIndex('by_key', (q) => q.eq('key', key))
 				.first();
-			if (property) lookup.propertyIds.set(key, property._id);
+			// A property being deleted matches like one already gone (#918).
+			if (property && property.deletionRequestedAt === undefined) {
+				lookup.propertyIds.set(key, property._id);
+			}
 		}
 
 		// Preload all values for those properties.
@@ -151,7 +154,10 @@ export const contactPropertyConditionModule: ConditionTypeModule<
 				.query('contactProperties')
 				.withIndex('by_key', (q) => q.eq('key', key))
 				.first();
-			if (property) lookup.propertyIds.set(key, property._id);
+			// A property being deleted matches like one already gone (#918).
+			if (property && property.deletionRequestedAt === undefined) {
+				lookup.propertyIds.set(key, property._id);
+			}
 		}
 
 		// Point-read each (contact, property) value via the by_contact_and_property

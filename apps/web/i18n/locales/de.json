@@ -7207,6 +7207,12 @@
 						"question": "Möchten Sie die Eigenschaft {name} wirklich löschen?",
 						"title": "Eigenschaft löschen"
 					},
+					"deletion": {
+						"deleting": "Wird gelöscht",
+						"failed": "Löschen nach wiederholten Fehlern angehalten",
+						"progress": "Bisher {count} Wert entfernt | Bisher {count} Werte entfernt",
+						"retry": "Löschen erneut versuchen"
+					},
 					"editModal": {
 						"immutable": "Schlüssel und Typ können nach der Erstellung nicht mehr geändert werden.",
 						"save": "Änderungen speichern",
@@ -7246,6 +7252,7 @@
 					"toasts": {
 						"created": "Eigenschaft \"{label}\" erstellt",
 						"deleted": "Eigenschaft \"{label}\" gelöscht",
+						"deletionStarted": "\"{label}\" und die zugehörigen Werte werden im Hintergrund gelöscht",
 						"updated": "Eigenschaft aktualisiert"
 					},
 					"types": {

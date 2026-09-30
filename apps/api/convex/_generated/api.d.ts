@@ -272,6 +272,8 @@ import type * as contacts_import from '../contacts/import.js';
 import type * as contacts_listing from '../contacts/listing.js';
 import type * as contacts_organization from '../contacts/organization.js';
 import type * as contacts_properties from '../contacts/properties.js';
+import type * as contacts_propertyCatalog from '../contacts/propertyCatalog.js';
+import type * as contacts_propertyDeletion from '../contacts/propertyDeletion.js';
 import type * as contacts_propertyValues from '../contacts/propertyValues.js';
 import type * as contacts_relationships from '../contacts/relationships.js';
 import type * as contacts_resolution from '../contacts/resolution.js';
@@ -1569,6 +1571,8 @@ declare const fullApi: ApiFromModules<{
 	'contacts/listing': typeof contacts_listing;
 	'contacts/organization': typeof contacts_organization;
 	'contacts/properties': typeof contacts_properties;
+	'contacts/propertyCatalog': typeof contacts_propertyCatalog;
+	'contacts/propertyDeletion': typeof contacts_propertyDeletion;
 	'contacts/propertyValues': typeof contacts_propertyValues;
 	'contacts/relationships': typeof contacts_relationships;
 	'contacts/resolution': typeof contacts_resolution;

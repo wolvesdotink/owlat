@@ -14,12 +14,25 @@ definePageMeta({
 // Get the current user's organization
 const { hasActiveOrganization, isLoading: teamLoading } = useOrganizationContext();
 
-// Get contact properties with real-time updates
+// Get contact properties with real-time updates. Properties being deleted are
+// included (with their deletion progress) so the page can show them as such;
+// every other picker gets the live ones only.
 const {
 	data: propertiesData,
 	isLoading: propertiesLoading,
 	error: propertiesError,
-} = useOrganizationQuery(api.contacts.properties.listByOrganization);
+} = useOrganizationQuery(api.contacts.properties.listByOrganization, () => ({
+	includePendingDeletion: true,
+}));
+
+type ListedProperty = NonNullable<typeof propertiesData.value>[number];
+
+/** A property whose values are still being removed in the background. */
+const isPendingDeletion = (property: ListedProperty) => property.deletionRequestedAt !== undefined;
+
+const liveCount = computed(
+	() => (propertiesData.value ?? []).filter((property) => !isPendingDeletion(property)).length
+);
 
 const isLoading = computed(() => teamLoading.value || propertiesLoading.value);
 
@@ -215,7 +228,7 @@ const handleEdit = async () => {
 };
 
 // Open edit modal
-const openEditModal = (property: NonNullable<typeof propertiesData.value>[number]) => {
+const openEditModal = (property: ListedProperty) => {
 	editingProperty.value = {
 		_id: property._id,
 		key: property.key,
@@ -229,7 +242,7 @@ const openEditModal = (property: NonNullable<typeof propertiesData.value>[number
 };
 
 // Open delete modal
-const openDeleteModal = async (property: NonNullable<typeof propertiesData.value>[number]) => {
+const openDeleteModal = async (property: ListedProperty) => {
 	propertyToDelete.value = {
 		_id: property._id,
 		key: property.key,
@@ -266,12 +279,23 @@ const handleDelete = async () => {
 
 	if (!result.ok) return;
 
-	showToast(
-		t('dashboard.admin.instance.properties.toasts.deleted', {
-			label: propertyToDelete.value.label,
-		})
-	);
+	// `pending`: the values go in bounded batches; the row stays listed as
+	// deleting until the last one is gone. Older backends return nothing.
+	const toastKey =
+		result.result === 'pending'
+			? 'dashboard.admin.instance.properties.toasts.deletionStarted'
+			: 'dashboard.admin.instance.properties.toasts.deleted';
+	showToast(t(toastKey, { label: propertyToDelete.value.label }));
 	propertyToDelete.value = null;
+};
+
+// Re-arm a deletion that stopped after repeated errors. The same mutation
+// joins or restarts the job; it never starts a second one.
+const retryingDeletion = ref<Id<'contactProperties'> | null>(null);
+const retryDeletion = async (property: ListedProperty) => {
+	retryingDeletion.value = property._id;
+	await removeProperty({ propertyId: property._id });
+	retryingDeletion.value = null;
 };
 
 // Close dropdown on click outside
@@ -332,8 +356,8 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 									{{
 										t(
 											'dashboard.admin.instance.properties.customFieldCount',
-											{ count: propertiesData?.length || 0 },
-											propertiesData?.length || 0
+											{ count: liveCount },
+											liveCount
 										)
 									}}
 								</p>
@@ -366,7 +390,10 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 							:key="property._id"
 							class="px-6 py-4 flex items-center justify-between hover:bg-bg-surface/50 transition-colors"
 						>
-							<div class="flex items-center gap-4">
+							<div
+								class="flex items-center gap-4"
+								:class="{ 'opacity-60': isPendingDeletion(property) }"
+							>
 								<!-- Type Icon -->
 								<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
 									<Icon
@@ -389,8 +416,51 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 								</div>
 							</div>
 
+							<!-- Pending deletion: progress, or a retry once the job stopped -->
+							<div
+								v-if="isPendingDeletion(property)"
+								class="flex items-center gap-3"
+								data-testid="property-pending-deletion"
+							>
+								<template v-if="property.deletion?.status === 'failed'">
+									<span class="text-sm text-error">
+										{{ t('dashboard.admin.instance.properties.deletion.failed') }}
+									</span>
+									<UiButton
+										variant="secondary"
+										size="sm"
+										:loading="retryingDeletion === property._id"
+										@click="retryDeletion(property)"
+									>
+										{{ t('dashboard.admin.instance.properties.deletion.retry') }}
+									</UiButton>
+								</template>
+								<template v-else>
+									<div class="text-right">
+										<p
+											class="flex items-center justify-end gap-2 text-sm font-medium text-text-secondary"
+										>
+											<Icon
+												name="lucide:loader-2"
+												class="w-4 h-4 animate-spin motion-reduce:animate-none text-text-tertiary"
+											/>
+											{{ t('dashboard.admin.instance.properties.deletion.deleting') }}
+										</p>
+										<p v-if="property.deletion" class="text-xs text-text-tertiary">
+											{{
+												t(
+													'dashboard.admin.instance.properties.deletion.progress',
+													{ count: property.deletion.valuesDeleted },
+													property.deletion.valuesDeleted
+												)
+											}}
+										</p>
+									</div>
+								</template>
+							</div>
+
 							<!-- Actions -->
-							<div class="relative" data-property-dropdown>
+							<div v-else class="relative" data-property-dropdown>
 								<UiButton
 									variant="ghost"
 									size="sm"
@@ -622,7 +692,10 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 				v-if="isLoadingUsageCount"
 				class="mt-4 p-4 rounded-xl bg-bg-surface border border-border-subtle flex items-center gap-3"
 			>
-				<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none text-text-tertiary" />
+				<Icon
+					name="lucide:loader-2"
+					class="w-4 h-4 animate-spin motion-reduce:animate-none text-text-tertiary"
+				/>
 				<span class="text-sm text-text-tertiary">
 					{{ t('dashboard.admin.instance.properties.deleteModal.checkingUsage') }}
 				</span>
