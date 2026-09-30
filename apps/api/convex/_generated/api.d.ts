@@ -942,6 +942,7 @@ import type * as mail_imap_fetch from '../mail/imap/fetch.js';
 import type * as mail_imap_flags from '../mail/imap/flags.js';
 import type * as mail_imap_move from '../mail/imap/move.js';
 import type * as mail_imap_session from '../mail/imap/session.js';
+import type * as mail_knowledgeScreen from '../mail/knowledgeScreen.js';
 import type * as mail_labels from '../mail/labels.js';
 import type * as mail_labelsMembership from '../mail/labelsMembership.js';
 import type * as mail_labelsTree from '../mail/labelsTree.js';
@@ -2231,6 +2232,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/imap/flags': typeof mail_imap_flags;
 	'mail/imap/move': typeof mail_imap_move;
 	'mail/imap/session': typeof mail_imap_session;
+	'mail/knowledgeScreen': typeof mail_knowledgeScreen;
 	'mail/labels': typeof mail_labels;
 	'mail/labelsMembership': typeof mail_labelsMembership;
 	'mail/labelsTree': typeof mail_labelsTree;

@@ -39,6 +39,7 @@ import {
 	startMigrationForAccount,
 	latestMigrationForAccount,
 	cancelMigrationForAccount,
+	learnFromLatestImportForAccount,
 } from './migration';
 import { requireSharedExternalAccount, resolveSharedExternalAccount } from './external/sharedInbox';
 
@@ -109,5 +110,23 @@ export const cancelShared = externalMailMutation({
 	handler: async (ctx, args) => {
 		const { account } = await requireSharedExternalAccount(ctx, args.mailboxId);
 		return await cancelMigrationForAccount(ctx, account);
+	},
+});
+
+/**
+ * Learn from a shared team inbox's finished import after the fact. Knowledge
+ * indexing is opt-in for a team inbox (see the module header), and the only
+ * place to opt in used to be the checkbox before the import started — an
+ * import that finished without it had no way back short of re-importing the
+ * whole archive. This is that opt-in, given later by the same owner/admin
+ * floor: it re-runs the knowledge sweep over the completed import (refused
+ * while an import is still running, or with `ai.knowledge` off).
+ */
+// authz: requireSharedExternalAccount → requireMailboxAccess(owner) + shared-external gate.
+export const learnFromImportShared = externalMailMutation({
+	args: { mailboxId: v.id('mailboxes') },
+	handler: async (ctx, args) => {
+		const { account } = await requireSharedExternalAccount(ctx, args.mailboxId);
+		return await learnFromLatestImportForAccount(ctx, account._id);
 	},
 });

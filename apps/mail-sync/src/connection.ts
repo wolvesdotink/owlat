@@ -20,7 +20,7 @@ import { sleep } from '@owlat/shared';
 import type { BackfillWork, ConnectableAccount, ConvexClient, IngestOutcome } from './convex.js';
 import { CredentialsUnavailableError, fetchWorkerCredentials, fn } from './convex.js';
 import type { MailSyncConfig } from './config.js';
-import { mapFolderRole, mirroredFolderPath, type FolderRole } from './folders.js';
+import { isVirtualView, mapFolderRole, mirroredFolderPath, type FolderRole } from './folders.js';
 import { imapAuth } from './auth.js';
 import { imapTlsOptions } from './tls.js';
 import {
@@ -133,9 +133,16 @@ export class AccountConnection {
 	private stopped = false;
 	private backoffMs = INITIAL_BACKOFF_MS;
 	private folderTimer: ReturnType<typeof setInterval> | null = null;
+	private inboxTimer: ReturnType<typeof setInterval> | null = null;
+	// Set while the INBOX catch-up poll runs, so a slow one is never stacked.
+	private isInboxCatchUpRunning = false;
 	private folders: SyncedFolder[] = [];
 	// Every path the provider's last LIST returned, mirrored or not.
 	private listedPaths: string[] = [];
+	// Listed paths that are views onto mail filed elsewhere (All Mail, Starred,
+	// Important). Never mirrored; a folder an older worker mirrored for one is
+	// retired once reconcile has moved its mail to where it really lives.
+	private virtualPaths: string[] = [];
 	// Folders the write-back renamed (remoteOps.ts), kept across drains.
 	private readonly renamedFolders = new Map<string, string>();
 	// Gmail-style "All Mail" paths: the write-back copies out of them instead of moving.
@@ -189,6 +196,7 @@ export class AccountConnection {
 			clearInterval(this.folderTimer);
 			this.folderTimer = null;
 		}
+		this.clearInboxTimer();
 		if (this.eventCycleTimer) {
 			clearTimeout(this.eventCycleTimer);
 			this.eventCycleTimer = null;
@@ -250,6 +258,7 @@ export class AccountConnection {
 			clearInterval(this.folderTimer);
 			this.folderTimer = null;
 		}
+		this.clearInboxTimer();
 		this.client = null;
 		void this.connectLoop();
 	}
@@ -319,6 +328,35 @@ export class AccountConnection {
 					logger.warn({ accountId: this.account.accountId, err }, 'periodic poll failed')
 				);
 		}, this.config.folderPollIntervalMs);
+		this.inboxTimer = setInterval(() => void this.catchUpInbox(), this.config.inboxPollIntervalMs);
+	}
+
+	private clearInboxTimer(): void {
+		if (this.inboxTimer) {
+			clearInterval(this.inboxTimer);
+			this.inboxTimer = null;
+		}
+	}
+
+	/**
+	 * Poll the INBOX for new mail on a short timer of its own. IDLE is the fast
+	 * path, but it only runs while the connection is otherwise idle: every cycle,
+	 * reconcile and backfill takes the connection away from it, and a long-lived
+	 * worker on a busy team inbox was seen ingesting new mail only on the
+	 * five-minute folder tick for days, so every reply draft started minutes
+	 * late. This bounds that at one interval whatever IDLE does. The poll waits
+	 * its turn on the mailbox lock, so it slots in between a cycle's folders
+	 * rather than behind the whole cycle, and costs one UID FETCH when nothing
+	 * is new.
+	 */
+	private async catchUpInbox(): Promise<void> {
+		if (this.stopped || !this.client || this.isInboxCatchUpRunning) return;
+		this.isInboxCatchUpRunning = true;
+		try {
+			await this.pollInboxForward();
+		} finally {
+			this.isInboxCatchUpRunning = false;
+		}
 	}
 
 	/** The account's sync mode, read fresh each cycle; null when it cannot be read. */
@@ -427,6 +465,7 @@ export class AccountConnection {
 			await this.convex.mutation(fn.forgetRemoteFolders, {
 				accountId,
 				listed: [...new Set([...this.listedPaths, ...this.folders.map((f) => f.remoteName)])],
+				retired: this.virtualPaths.filter((p) => !this.folders.some((f) => f.remoteName === p)),
 			});
 		}
 	}
@@ -454,6 +493,7 @@ export class AccountConnection {
 	private async discoverFolders(client: ImapFlow, mode: 'full' | 'incoming'): Promise<void> {
 		const list = await client.list();
 		this.listedPaths = list.map((e) => e.path);
+		this.virtualPaths = list.filter((e) => isVirtualView(e)).map((e) => e.path);
 		const seen = new Set<FolderRole>();
 		const mapped: SyncedFolder[] = [];
 		this.allMailPaths = new Set(

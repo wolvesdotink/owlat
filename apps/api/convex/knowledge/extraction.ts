@@ -306,6 +306,9 @@ Extract any facts, decisions, events, preferences, goals, relationships, or acti
  * stored with `sourceType: 'email'`, so they retrieve through the same
  * contact-scoped vector search as live agent-extracted knowledge.
  *
+ * Callers screen the message first (`mail/knowledgeScreen.ts#loadExtractableMail`)
+ * so phishing and spoofed mail never reaches this action.
+ *
  * Idempotent: a re-run (migration restart / cron retry) no-ops if this message
  * already produced entries. Best-effort: a single message's failure never
  * derails the indexing sweep.
