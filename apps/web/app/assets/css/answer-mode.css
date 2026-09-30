@@ -4,10 +4,17 @@
  * composables/postbox/usePostboxComposerGaps.ts, so the draft's HTML never
  * gains a wrapper. `::highlight()` takes colour and decoration only.
  */
+/*
+ * A quarter of the warning colour over the page reads as a marked phrase next
+ * to a disabled Send (the subtle token was near-white). Text on it stays
+ * 12.9:1 light / 9:1 dark, and the solid 2px underline clears 3:1 against both
+ * the highlight and the page in either theme.
+ */
 ::highlight(owlat-draft-gap) {
-	background-color: var(--color-warning-subtle);
+	background-color: color-mix(in srgb, var(--color-warning) 25%, transparent);
 	color: var(--color-text-primary);
-	text-decoration: underline dotted var(--color-warning);
+	text-decoration: underline solid var(--color-warning);
+	text-decoration-thickness: 2px;
 }
 
 /* Answer mode keeps the quoted original in the body (the draft and the sent
