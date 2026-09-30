@@ -7,7 +7,8 @@
  *     the action's cheap pre-check catches it and when only the transactional
  *     check inside `receiveMessage` does (the lost race);
  *   · a `receiveMessage` that throws after the body was staged leaves no blob,
- *     and the error still reaches the MTA so it retries;
+ *     and the error still reaches the MTA so it retries — and so does a
+ *     storage write that fails after the first part was already stored;
  *   · contact erasure and workspace deletion delete the body blobs with the
  *     row;
  *   · the raw-file retention sweep does NOT: a stored body is the message
@@ -19,6 +20,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import type * as MessagesModule from '../messages';
+import type * as SealedBlobModule from '../../lib/sealedBlob';
 import { permanentlyDeleteContactWithRelations } from '../../lib/contactMutations';
 import { DAY_MS } from '../../lib/constants';
 import {
@@ -32,7 +34,13 @@ import {
 	type TestConvex,
 } from './largeBodies.testlib';
 
-const hooks = vi.hoisted(() => ({ blindPreCheck: false, failReceive: false }));
+const hooks = vi.hoisted(() => ({
+	blindPreCheck: false,
+	failReceive: false,
+	/** Throw from this `storeSealedBlob` call (1-based), counting from the test's start. */
+	failStoreCall: 0,
+	storeCalls: 0,
+}));
 
 function withHandler<T extends { _handler: (...args: never[]) => unknown }>(
 	fn: T,
@@ -64,9 +72,25 @@ vi.mock('../messages', async (importOriginal) => {
 	};
 });
 
+// A storage write that fails partway: the text part is staged, then the HTML
+// store throws.
+vi.mock('../../lib/sealedBlob', async (importOriginal) => {
+	const actual = await importOriginal<typeof SealedBlobModule>();
+	return {
+		...actual,
+		storeSealedBlob: async (...args: Parameters<typeof actual.storeSealedBlob>) => {
+			hooks.storeCalls += 1;
+			if (hooks.storeCalls === hooks.failStoreCall) throw new Error('storage store exploded');
+			return await actual.storeSealedBlob(...args);
+		},
+	};
+});
+
 beforeEach(() => {
 	hooks.blindPreCheck = false;
 	hooks.failReceive = false;
+	hooks.failStoreCall = 0;
+	hooks.storeCalls = 0;
 	vi.stubEnv('INSTANCE_SECRET', SECRET);
 	vi.stubEnv('MTA_INTERNAL_URL', '');
 	vi.stubEnv('MTA_API_URL', '');
@@ -123,6 +147,15 @@ describe('redelivery', () => {
 			true,
 			true,
 		]);
+	});
+
+	it('drops the text blob it staged when the HTML store then throws', async () => {
+		const t = setupTest();
+		hooks.failStoreCall = 2;
+		await expect(ingestHuge(t, 'half-1@example.com')).rejects.toThrow('storage store exploded');
+		expect(hooks.storeCalls).toBe(2);
+		expect(await t.run((ctx) => ctx.db.query('inboundMessages').collect())).toHaveLength(0);
+		expect(await storedBlobCount(t)).toBe(0);
 	});
 
 	it('drops the blobs it staged when the receive mutation throws, and rethrows', async () => {

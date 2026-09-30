@@ -16,13 +16,16 @@
  * (~13.3 MiB once base64'd) arrives intact — exactly as it already does on the
  * personal-mailbox route this file is modelled on (`mail/webhookHttp.ts`).
  *
- * ONE ceiling remains, and it is not this route's to raise: Convex's 16 MiB
- * ARGUMENT cap, which the forward is budgeted against — see
- * `fitsForwardedArgBudget` below for the whole reasoning. The 1 MiB DOCUMENT
- * cap no longer bounds the body: a part too large for the row is written to a
- * sealed blob before the row is inserted (`inbox/bodyStorage.ts`, staged by
- * `receiveInbound.receiveStoringLargeBodies`), so a 1.5 MiB HTML newsletter is
- * stored like any other message.
+ * TWO ceilings remain, and neither is this route's to raise:
+ *   · Convex's 16 MiB ARGUMENT cap, which the forward is budgeted against —
+ *     see `fitsForwardedArgBudget` below for the whole reasoning;
+ *   · Convex's 1 MiB DOCUMENT cap, for everything on the row EXCEPT the body.
+ *     A body part too large for the row is written to a sealed blob before the
+ *     insert (`inbox/bodyStorage.ts`, staged by
+ *     `receiveInbound.receiveStoringLargeBodies`), so a 1.5 MiB HTML
+ *     newsletter is stored like any other message. The header map,
+ *     `references` and the attachment metadata are still inlined unbounded, so
+ *     a message with most of a megabyte of headers still fails its insert.
  *
  * Everything the two routes share — the per-source rate limit, the
  * `verifyMtaSignedRequest` HMAC, the unbounded body read and the bounded audit row —

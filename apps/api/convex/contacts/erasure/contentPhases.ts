@@ -34,8 +34,9 @@ async function deleteMessageRow({ ctx }: PhaseContext, row: MessageRow): Promise
 		await deleteBlobQuietly(ctx.storage, row.rawStorageId, LOG_TAG, { rowId: row._id });
 	}
 	// A team-inbox body too large for the row is in storage as well.
-	// `processingStatus` is required on that table and absent from the other two.
-	if ('processingStatus' in row) await deleteInboundBodyBlobs(ctx.storage, row, LOG_TAG);
+	if ('textBodyStorageId' in row || 'htmlBodyStorageId' in row) {
+		await deleteInboundBodyBlobs(ctx.storage, row, LOG_TAG);
+	}
 	await ctx.db.delete(row._id);
 }
 

@@ -16,6 +16,7 @@ import type { Id } from '../_generated/dataModel';
 import { authedAction, authedQuery } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
+import { utf8Bytes } from '../lib/bytes';
 import { redactContactCapabilityFields } from './listing';
 import {
 	openBodyPreservingLegacyForContactExport,
@@ -28,11 +29,11 @@ import {
 const CAP = 1000;
 
 /**
- * How many stored body bytes one bundle may carry. The bundle is one action
- * result, and Convex caps those; the inline rows beside it are bounded by the
- * row cap and the document limit.
+ * How large the whole bundle may get, as JSON. It is one action result, which
+ * Convex caps at 16 MiB; the rest is headroom for the envelope. The inline
+ * bundle is charged first and the stored parts share what is left.
  */
-const STORED_BODY_EXPORT_BUDGET_BYTES = 8 * 1024 * 1024;
+const EXPORT_RESULT_BUDGET_BYTES = 12 * 1024 * 1024;
 
 /** The size of a stored body part, for the action to budget before reading. */
 async function storedSize(
@@ -234,7 +235,7 @@ export const readContactDataForExport = internalQuery({
 /**
  * The per-contact export, complete: the query's bundle with every Team Inbox
  * body part that lives in storage read back in, within
- * {@link STORED_BODY_EXPORT_BUDGET_BYTES}. A part that could not be included says
+ * {@link EXPORT_RESULT_BUDGET_BYTES}. A part that could not be included says
  * why in `storedBodyAvailability`, and its row keeps the excerpt.
  */
 // authz: gate lives in internal.contacts.dataExport.readContactDataForExport (organization:manage, inherited identity).
@@ -245,7 +246,12 @@ export const exportContactDataBundle = authedAction({
 			internal.contacts.dataExport.readContactDataForExport,
 			args
 		);
-		const budget = { remainingBytes: STORED_BODY_EXPORT_BUDGET_BYTES };
+		const budget = {
+			remainingBytes: Math.max(
+				0,
+				EXPORT_RESULT_BUDGET_BYTES - utf8Bytes(JSON.stringify(bundle)).byteLength
+			),
+		};
 		const rows: InboundExportRow[] = [];
 		// In order, so the budget is spent on the rows the bundle lists first.
 		for (const row of bundle.inboundMessages.rows) {

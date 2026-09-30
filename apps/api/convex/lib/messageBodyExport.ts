@@ -14,7 +14,7 @@ import {
 	type MailMessageExportBodyFields,
 } from './messageBody';
 import type { InboundMessageBody, InboundMessageBodyFields } from './messageBodyInbound';
-import { bytesToBase64 } from './bytes';
+import { bytesToBase64, utf8Bytes } from './bytes';
 import { readSealedBlobBytesForExport, readSealedBlobTextForExport } from './sealedBlob';
 
 type ExportBodyAvailability = 'available' | 'missing' | 'corrupt';
@@ -103,12 +103,18 @@ export async function readStoredInboundPartForContactExport(
 	budget: { remainingBytes: number }
 ): Promise<{ content: string | undefined; availability: StoredPartExportAvailability }> {
 	if (storedBytes === undefined) return { content: undefined, availability: 'missing' };
+	// A blob is its text plus a few bytes of envelope, and JSON never shrinks
+	// text, so this skips a read the budget could (all but) not take anyway.
 	if (storedBytes > budget.remainingBytes) return { content: undefined, availability: 'omitted' };
-	budget.remainingBytes -= storedBytes;
 	const opened = await readSealedBlobTextForExport(storage, storageId);
-	return opened.availability === 'available'
-		? { content: opened.content, availability: 'available' }
-		: { content: undefined, availability: opened.availability };
+	if (opened.availability !== 'available') {
+		return { content: undefined, availability: opened.availability };
+	}
+	// Charged as it will be returned: JSON escaping can grow a body.
+	const cost = utf8Bytes(JSON.stringify(opened.content)).byteLength;
+	if (cost > budget.remainingBytes) return { content: undefined, availability: 'omitted' };
+	budget.remainingBytes -= cost;
+	return { content: opened.content, availability: 'available' };
 }
 
 export async function openMailDraftForAccountExport(
