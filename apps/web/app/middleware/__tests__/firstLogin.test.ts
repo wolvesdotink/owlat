@@ -8,11 +8,12 @@
  * redirects through the router afterwards, so the suite drives a fake router
  * (current route + `afterEach` hooks) and flushes the query's promise chain.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { getFunctionName } from 'convex/server';
 import { api } from '@owlat/api';
 import type { RouteLocationNormalized } from 'vue-router';
+import { TRANSIENT_RETRY_LIMIT } from '~/lib/queryRetry';
 import {
 	USER,
 	authClientMock,
@@ -227,20 +228,131 @@ describe('first-login middleware', () => {
 			expect(convex!.query).toHaveBeenCalledTimes(1);
 		});
 
-		it('fails open on a query error and retries on the next trigger navigation', async () => {
+		it('redirects at once when the navigation settled while the answer was pending', async () => {
 			signIn();
-			const { middleware, convex, router, state } = await load();
-			convex!.query.mockRejectedValueOnce(new Error('offline'));
-			convex!.query.mockResolvedValueOnce({ welcomedAt: null });
-
-			await expect(middleware(home, home)).resolves.toBeUndefined();
-			await flush();
-			expect(state.get(RESOLVED_KEY)?.value).toBe(false);
-			expect(router.replace).not.toHaveBeenCalled();
+			const { middleware, convex, router } = await load({ currentPath: '/' });
+			const answer = deferred<{ welcomedAt: number | null }>();
+			convex!.query.mockReturnValue(answer.promise);
 
 			await middleware(home, home);
+			// The dashboard finished loading and the member opened the Postbox
+			// before the answer came back.
+			router.settle('/dashboard');
+			router.settle('/dashboard/postbox/inbox');
+
+			answer.resolve({ welcomedAt: null });
 			await flush();
 			expect(router.replace).toHaveBeenCalledWith('/welcome');
+			expect(router.hookCount()).toBe(0);
+		});
+
+		describe('right after sign-in, while Convex auth settles', () => {
+			it('asks only once the server has confirmed the session', async () => {
+				signIn();
+				const { middleware, convex, router, convexAuth } = await load({
+					convexAuth: 'pending',
+				});
+				convex!.query.mockResolvedValue({ welcomedAt: null });
+
+				await expect(middleware(home, home)).resolves.toBeUndefined();
+				await flush();
+				expect(convex!.query).not.toHaveBeenCalled();
+
+				convexAuth.reportConvexAuth(true);
+				await flush();
+				expect(convex!.query).toHaveBeenCalledTimes(1);
+				expect(router.replace).toHaveBeenCalledWith('/welcome');
+			});
+
+			it('fails open when Convex auth does not come up, and asks again next time', async () => {
+				signIn();
+				const { middleware, convex, router, state, convexAuth } = await load({
+					convexAuth: 'pending',
+				});
+				convex!.query.mockResolvedValue({ welcomedAt: null });
+
+				await middleware(home, home);
+				convexAuth.reportConvexAuth(false);
+				await flush();
+				expect(convex!.query).not.toHaveBeenCalled();
+				expect(router.replace).not.toHaveBeenCalled();
+				expect(state.get(RESOLVED_KEY)?.value).toBe(false);
+
+				convexAuth.markConvexAuthPending();
+				await middleware(home, home);
+				convexAuth.reportConvexAuth(true);
+				await flush();
+				expect(router.replace).toHaveBeenCalledWith('/welcome');
+			});
+		});
+
+		describe('when the query fails', () => {
+			beforeEach(() => {
+				vi.useFakeTimers();
+			});
+			afterEach(() => {
+				vi.useRealTimers();
+			});
+
+			it('retries in the background and redirects once an attempt answers', async () => {
+				signIn();
+				const { middleware, convex, router } = await load();
+				convex!.query.mockRejectedValueOnce(new Error('Not authenticated'));
+				convex!.query.mockResolvedValueOnce({ welcomedAt: null });
+
+				await expect(middleware(home, home)).resolves.toBeUndefined();
+				await vi.advanceTimersByTimeAsync(0);
+				expect(convex!.query).toHaveBeenCalledTimes(1);
+				expect(router.replace).not.toHaveBeenCalled();
+
+				// No further navigation: the same check tries again on its own.
+				await vi.advanceTimersByTimeAsync(10_000);
+				expect(convex!.query).toHaveBeenCalledTimes(2);
+				expect(router.replace).toHaveBeenCalledWith('/welcome');
+			});
+
+			it('caches a welcomed answer that arrives on a retry', async () => {
+				signIn();
+				const { middleware, convex, router, state } = await load();
+				convex!.query.mockRejectedValueOnce(new Error('Not authenticated'));
+				convex!.query.mockResolvedValueOnce({ welcomedAt: 1_700_000_000_000 });
+
+				await middleware(home, home);
+				await vi.advanceTimersByTimeAsync(10_000);
+				expect(router.replace).not.toHaveBeenCalled();
+				expect(localStorage.getItem(CACHE_KEY)).toBe('1');
+				expect(state.get(RESOLVED_KEY)?.value).toBe(true);
+			});
+
+			it('fails open once the retries are spent, and asks again on the next trigger navigation', async () => {
+				signIn();
+				const { middleware, convex, router, state } = await load();
+				convex!.query.mockRejectedValue(new Error('offline'));
+
+				await expect(middleware(home, home)).resolves.toBeUndefined();
+				await vi.advanceTimersByTimeAsync(60_000);
+				expect(convex!.query).toHaveBeenCalledTimes(TRANSIENT_RETRY_LIMIT + 1);
+				expect(router.replace).not.toHaveBeenCalled();
+				expect(state.get(RESOLVED_KEY)?.value).toBe(false);
+
+				convex!.query.mockResolvedValue({ welcomedAt: null });
+				await middleware(home, home);
+				await vi.advanceTimersByTimeAsync(0);
+				expect(router.replace).toHaveBeenCalledWith('/welcome');
+			});
+
+			it('stops retrying once the welcome screen has been reached', async () => {
+				signIn();
+				const { middleware, convex, router, state } = await load();
+				convex!.query.mockRejectedValue(new Error('Not authenticated'));
+
+				await middleware(home, home);
+				await vi.advanceTimersByTimeAsync(0);
+				state.get(RESOLVED_KEY)!.value = true;
+				await vi.advanceTimersByTimeAsync(60_000);
+				expect(convex!.query).toHaveBeenCalledTimes(1);
+				expect(router.replace).not.toHaveBeenCalled();
+			});
 		});
 
 		it('fails open when no Convex client is installed', async () => {
