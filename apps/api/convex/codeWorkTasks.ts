@@ -9,9 +9,8 @@
 import { v } from 'convex/values';
 import { openInboundMessageBody } from './lib/messageBodyInbound';
 import { normalizeEmail } from '@owlat/shared';
-import { internalQuery } from './_generated/server';
+import { internalQuery, type MutationCtx } from './_generated/server';
 import { internalMutation } from './lib/writeFence';
-import type { MutationCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission, requirePermission, hasPermission } from './lib/sessionOrganization';
