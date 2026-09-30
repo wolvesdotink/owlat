@@ -1,6 +1,7 @@
 import { ConvexClient } from 'convex/browser';
 import { authClient } from '~/lib/auth-client';
 import { getConvexAuthToken, resetConvexAuthTokenCache } from '~/lib/convex-auth';
+import { markConvexAuthPending, reportConvexAuth } from '~/lib/convexAuthReady';
 import { isDesktopRuntime, getActiveWorkspace } from '~/lib/desktop/activeWorkspace';
 import { logWarn } from '~/lib/runtimeLog';
 import { clearCachedFeatureFlags } from '~/lib/featureFlagCache';
@@ -122,6 +123,7 @@ export default defineNuxtPlugin(() => {
 			}
 		};
 		const onAuthChange = (isAuthenticated: boolean) => {
+			reportConvexAuth(isAuthenticated);
 			if (isAuthenticated) {
 				staleSessionNotifies = 0;
 				return;
@@ -129,6 +131,7 @@ export default defineNuxtPlugin(() => {
 			resetSharedConvexSubscriptions();
 			void handleAuthLoss();
 		};
+		markConvexAuthPending();
 		client.setAuth(authCallback, onAuthChange);
 
 		if (!authListenerRegistered) {
@@ -138,6 +141,7 @@ export default defineNuxtPlugin(() => {
 			authClient.$store.listen('$sessionSignal', () => {
 				resetSharedConvexSubscriptions();
 				resetConvexAuthTokenCache();
+				markConvexAuthPending();
 				client.setAuth(authCallback, onAuthChange);
 			});
 		}
