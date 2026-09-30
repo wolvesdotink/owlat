@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';

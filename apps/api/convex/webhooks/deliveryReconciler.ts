@@ -1,4 +1,4 @@
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';

@@ -8,7 +8,8 @@
 
 import { v } from 'convex/values';
 import { literalUnion } from '../lib/literalUnion';
-import { internalMutation, internalQuery } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { publicQuery, authedMutation, adminMutation } from '../lib/authedFunctions';

@@ -28,7 +28,8 @@
 
 import { v } from 'convex/values';
 import { openStoredInlineBody } from '../lib/messageBodyStore';
-import { internalMutation, internalQuery } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { isBulkOrNoReplySender } from './needsReplyHeuristic';
 import { armThreadFollowUp, followUpWaitingOn } from './followUps';

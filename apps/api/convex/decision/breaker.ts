@@ -56,7 +56,8 @@
  */
 
 import { calculateRateLimit } from '@convex-dev/rate-limiter';
-import { internalMutation, internalQuery } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { rateLimiter } from '../lib/rateLimiter';
 

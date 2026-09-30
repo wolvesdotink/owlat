@@ -1,4 +1,5 @@
-import { internalMutation, type MutationCtx, type QueryCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { mailboxHasSendTransport } from '../mail/draftQueries';

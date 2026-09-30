@@ -24,7 +24,8 @@ import {
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
-import { internalMutation, internalQuery } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { recordHostedPluginAudit } from './audit';
 import type { HostedPluginActorScope } from './authorization';
 import { utf8CharWidth } from '../lib/bytes';

@@ -7,12 +7,8 @@
  */
 
 import { v, type Infer } from 'convex/values';
-import {
-	internalQuery,
-	internalMutation,
-	internalAction,
-	type ActionCtx,
-} from './_generated/server';
+import { internalQuery, internalAction, type ActionCtx } from './_generated/server';
+import { internalMutation } from './lib/writeFence';
 import type { Doc } from './_generated/dataModel';
 import { adminQuery } from './lib/authedFunctions';
 import { internal } from './_generated/api';

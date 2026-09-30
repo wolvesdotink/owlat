@@ -111,6 +111,15 @@ crons.interval(
 	internal.auth.accountDeletion.processPendingDeletions
 );
 
+// Resume a workspace deletion whose chain went quiet or ran out of retries, from
+// its saved step: the write fence stays up until the deletion completes.
+crons.interval(
+	'recover workspace deletion',
+	{ minutes: 10 },
+	internal.workspaces.deletion.walker.recover,
+	{}
+);
+
 // Clean up old webhook delivery logs weekly
 // Removes logs older than 30 days to prevent unbounded growth
 crons.interval('cleanup webhook logs', { hours: 168 }, internal.webhooks.cleanup.cleanupOldLogs);

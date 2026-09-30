@@ -27,7 +27,8 @@ import {
 	RELEASE_DOWNLOAD_BASE,
 } from '@owlat/shared/releaseArtifacts';
 import { parseVersion, semverCompare } from '@owlat/shared/semver';
-import { internalAction, internalMutation, internalQuery } from '../_generated/server';
+import { internalAction, internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import { internal } from '../_generated/api';

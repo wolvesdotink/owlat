@@ -21,7 +21,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { emitSeedRotationReminderFor } from './seedAccounts';
 

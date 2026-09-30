@@ -16,7 +16,8 @@
 import { v } from 'convex/values';
 import { Workpool, vOnCompleteArgs } from '@convex-dev/workpool';
 import { components } from '../_generated/api';
-import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { currentContentRevision } from '../lib/contentRevision';
 import { recordAuditLog } from '../lib/auditLog';
 import type { Doc, Id } from '../_generated/dataModel';

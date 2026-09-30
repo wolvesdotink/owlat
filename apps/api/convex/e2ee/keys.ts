@@ -19,7 +19,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
+import { internalQuery, type QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { adminMutation, publicQuery } from '../lib/authedFunctions';

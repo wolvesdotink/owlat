@@ -27,7 +27,7 @@ import { v } from 'convex/values';
 import { normalizeEmail } from '@owlat/shared';
 import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 import { api, internal } from '../_generated/api';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Id } from '../_generated/dataModel';
 import { authedAction, publicQuery } from '../lib/authedFunctions';
 import { requireMailboxAccess } from './permissions';

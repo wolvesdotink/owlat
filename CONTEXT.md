@@ -4424,10 +4424,11 @@ Four entry points:
   `organizationSettings.update` shell required `settings:manage` but
   the active `instanceSettings.update` only required a session,
   silently letting any org member edit theme/from-email. Unified here.
-- `remove(ctx)` — public mutation; owner-only. Schedules the
-  **Organization deletion walker**'s `start()`. The deletion module-
-  family is the only writer of the wipe; this entry is the public
-  shell (auth + scheduler call + synchronous response).
+- `remove(ctx)` — public mutation; owner-only. Opens (or joins) the
+  **Workspace deletion job** in its own transaction, so the **Write
+  fence** is up when the owner is told the deletion started. The
+  deletion module-family is the only writer of the wipe; this entry is
+  the public shell (auth + job + synchronous response).
 - `createInternal(ctx, args)` — internal mutation; no auth (called by
   `seedAdminHttp.ts`). Idempotent: skips if a row already exists.
 
@@ -4703,7 +4704,7 @@ Replaces the open-coded switch + `getNextStep(step: string)` helper
 The module-family does _not_ own: the public `remove` mutation (lives
 on the **Organization settings (module)** at
 `convex/organizations/settings.ts` — auth check, returns the "deletion
-started" response, schedules the walker's `start()`); the
+started" response, opens the **Workspace deletion job**); the
 contact-deletion cascade itself (lives in
 `lib/contactMutations.ts:permanentlyDeleteContactWithRelations`, the
 delegated single canonical writer); the per-provider sending-domain
@@ -4725,21 +4726,30 @@ Organization wipe (module) (informal), Organization cleanup
 cron).
 
 **Organization deletion walker**:
-The action-and-internal-mutation pair at
-`convex/organizations/deletion/walker.ts` that owns the
-self-scheduled per-table dispatch loop. Two entry points:
+The functions at `convex/workspaces/deletion/walker.ts` that drive a
+**Workspace deletion job** through the scheduler quiesce and the ordered
+table list:
 
-- `start()` — internal mutation called by the **Organization settings
-  (module)**'s `remove` entry. Schedules `runStep` for the first table
-  in the ordered list. No batch work in this entry — keeps the public
-  mutation's response synchronous.
-- `runStep({ table })` — internal mutation. Looks up the
-  **Organization deletion step (module)** for `table` via the typed
-  registry, calls `module.deleteBatch(ctx)`, then self-schedules:
-  `runStep({ table })` if the module reported `hasMore: true`,
-  otherwise `runStep({ table: nextTable(table) })`. When `table` is
-  the terminal `instanceSettings` and its batch resolves, deletes
-  the singleton settings row and stops.
+- `tick({ jobId })` — internal mutation. One bounded transaction: a page
+  of pending scheduled functions to cancel, a batch of the job's current
+  step (via the **Organization deletion step (module)** the typed
+  registry holds for that table), or a verification pass; then the
+  checkpoint on the job's progress row.
+- `drive({ jobId })` — internal action that chains ticks, records a
+  failed one (`recordFailure`: attempts, last error, backoff retry),
+  and reschedules itself.
+- `recover()` — the recovery driver, run by a cron: restarts a job
+  whose chain went quiet for longer than the longest retry backoff, and
+  re-arms a failed one from its saved step.
+- `abort({ operator, reason })` — run by hand: ends the job without
+  completing it and lifts the **Write fence**, with an audit row.
+- `status()` — the operator's view of the active (else latest) job.
+- `start()` / `runStep({ table })` — the previous release's entry and
+  hop, kept for one release: `start` opens or joins a job, a `runStep`
+  hop runs its batch and adopts the walk into a job.
+
+These are the only mutations built on the raw `internalMutation`: the
+walker is the one writer the **Write fence** exempts.
 
 The typed `Record<OrganizationDeletionTable,
 OrganizationDeletionStepModule>` makes a missing per-table
@@ -4758,6 +4768,32 @@ Org deletion executor (we deliberately renamed the automation
 `stepExecutor.ts` to `stepWalker.ts` in ADR-0004 for the same
 reason — "executor" doesn't signal the dispatch role), Deletion
 runner (vague), Org wipe action (informal).
+
+**Workspace deletion job**:
+The `workspaceDeletionJobs` row that is one deletion generation, plus its
+`workspaceDeletionProgress` row. The job row is the **Write fence**'s
+switch and changes only when the generation opens and ends; the progress
+row holds status, phase (`quiesce` / `sweep` / `verify`), the current
+step (the checkpoint), the scheduler cursor, counters and the last
+failure. At most one job is active; a second removal request joins it.
+Opened by `beginWorkspaceDeletion` (`workspaces/deletion/job.ts`) in the
+requesting transaction, completed only by a verification pass that finds
+every registered table empty, or ended early by an operator `abort`. Not
+tenant data: the deletion never sweeps it, and finished rows are the
+generation history.
+_Avoid_: deletion task, wipe job.
+
+**Write fence**:
+The rule in `lib/writeFence.ts` that refuses insert, patch and replace
+on every table the deletion sweeps while a **Workspace deletion job**
+is active. It lives in the database handle the mutation builders give
+their handlers (the public builders and the fenced `internalMutation`),
+so every producer (UI, API key, webhook, cron, late action commit)
+meets the same check. Deletes and non-swept tables pass. Inbound mail
+and feedback routes answer a refusal with a final 2xx "ignored"
+acknowledgement (accept and drop), so nothing is parked for a replay into
+the emptied workspace.
+_Avoid_: deletion lock (nothing is locked; writes are refused).
 
 **Organization deletion step (module)**:
 A per-table module at

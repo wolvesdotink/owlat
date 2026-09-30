@@ -32,7 +32,8 @@ import {
 	type ReferenceArmInput,
 } from '@owlat/shared/deliverabilityAlignment';
 import { normalizeDomain } from '@owlat/shared';
-import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
+import { internalQuery, type QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Doc } from '../_generated/dataModel';
 import { authedQuery } from '../lib/authedFunctions';
 import { getOptional } from '../lib/env';

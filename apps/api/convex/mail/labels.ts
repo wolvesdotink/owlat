@@ -9,7 +9,7 @@
 import { v } from 'convex/values';
 import { publicQuery } from '../lib/authedFunctions';
 import { postboxMutation } from './_helpers';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import {

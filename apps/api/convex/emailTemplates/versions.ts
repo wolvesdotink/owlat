@@ -16,7 +16,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, type MutationCtx, type QueryCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Doc, Id } from '../_generated/dataModel';
 import { authedQuery } from '../lib/authedFunctions';
 import { getOrThrow } from '../_utils/errors';

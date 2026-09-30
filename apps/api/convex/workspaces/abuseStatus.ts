@@ -17,7 +17,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Doc } from '../_generated/dataModel';
 import { recordAuditLog } from '../lib/auditLog';
 

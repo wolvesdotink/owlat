@@ -18,6 +18,7 @@ import type { ActionCtx } from '../_generated/server';
 import { getClientIp, rateLimitedResponse } from '../lib/publicRateLimit';
 import { logError } from '../lib/runtimeLog';
 import { InboundBatchDispatchError, dispatchEventsInOrder, jsonResponse } from './inboundHttp';
+import { isWorkspaceDeletionRefusal, workspaceDeletionAck } from './workspaceDeletionAck';
 import type { InboundEvent } from './types';
 
 /**
@@ -263,6 +264,9 @@ export async function runInboundPipeline(
 		event = outcome.event ?? event;
 		dispatchResult = outcome.result;
 	} catch (err) {
+		// The workspace is being deleted: acknowledge rather than have the
+		// provider redeliver into the emptied workspace.
+		if (isWorkspaceDeletionRefusal(err)) return workspaceDeletionAck(`[${adapter.source} Webhook]`);
 		if (err instanceof InboundBatchDispatchError) {
 			logError(`[${adapter.source} Webhook] Dispatcher error for ${err.event.kind}:`, err.reason);
 		} else {

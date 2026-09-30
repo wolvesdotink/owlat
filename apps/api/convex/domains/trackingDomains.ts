@@ -6,7 +6,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, internalMutation, internalAction } from '../_generated/server';
+import { internalQuery, internalAction } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireAdminContext } from '../lib/sessionOrganization';

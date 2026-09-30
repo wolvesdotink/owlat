@@ -11,7 +11,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 import type { Id, Doc } from '../../_generated/dataModel';
 import { bumpFolderModseq } from '../folders';
 import { recordMessageCounters } from '../messageCounters';

@@ -12,7 +12,7 @@
 
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { MutationCtx } from '../_generated/server';
 import { relayIdentityProviderFor } from './providers';
 import { mandrillProvider } from './providers/mandrill';

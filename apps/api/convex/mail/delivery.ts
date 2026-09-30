@@ -33,7 +33,8 @@
 import { v } from 'convex/values';
 import { spamVerdictValidator } from '../lib/convexValidators';
 import { mailUnsubscribeValidator } from '../lib/validators/mailContent';
-import { internalMutation, internalAction } from '../_generated/server';
+import { internalAction } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { extractEmail } from '../lib/emailAddress';

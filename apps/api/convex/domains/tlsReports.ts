@@ -19,7 +19,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { adminQuery } from '../lib/authedFunctions';
 import {
 	TLS_RPT_MAX_CONTACT_INFO_LENGTH,

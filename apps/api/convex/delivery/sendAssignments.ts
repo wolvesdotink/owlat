@@ -34,7 +34,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, type DatabaseReader, type MutationCtx } from '../_generated/server';
+import type { DatabaseReader, MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import {

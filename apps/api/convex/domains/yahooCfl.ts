@@ -37,7 +37,8 @@ import {
 } from '@owlat/shared/yahooCfl';
 import { yahooComplaintSubstitution } from '../delivery/signals/yahooCfl';
 import type { Doc, Id } from '../_generated/dataModel';
-import { internalMutation, type MutationCtx, type QueryCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { recordAuditLog } from '../lib/auditLog';
 import { getSingletonOrganizationId, requireOrgPermission } from '../lib/sessionOrganization';

@@ -8,7 +8,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, internalMutation } from './_generated/server';
+import { internalQuery } from './_generated/server';
+import { internalMutation } from './lib/writeFence';
 import type { Id } from './_generated/dataModel';
 import { adminQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission } from './lib/sessionOrganization';

@@ -29,12 +29,8 @@
  */
 
 import { v, type Infer } from 'convex/values';
-import {
-	internalMutation,
-	internalQuery,
-	type MutationCtx,
-	type QueryCtx,
-} from '../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { postboxMutation } from './_helpers';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden } from '../_utils/errors';

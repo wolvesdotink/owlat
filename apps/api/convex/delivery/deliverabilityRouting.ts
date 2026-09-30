@@ -5,7 +5,7 @@ import {
 	DESTINATION_PROVIDER_KEYS,
 	isActionableDeliverabilitySignalSource,
 } from '@owlat/shared/deliverabilityRouting';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { loadStreamlessRouteState } from '../lib/deliverabilityRouteState';

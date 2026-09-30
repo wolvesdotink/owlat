@@ -25,12 +25,8 @@
 
 import { v } from 'convex/values';
 import { mailUnsubscribeValidator } from '../../lib/validators/mailContent';
-import {
-	internalAction,
-	internalMutation,
-	internalQuery,
-	type MutationCtx,
-} from '../../_generated/server';
+import { internalAction, internalQuery, type MutationCtx } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import {

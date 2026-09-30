@@ -166,6 +166,8 @@ const NOT_ENTRY_BUILDERS: Readonly<Record<string, string>> = {
 	defineStep: 'declares one workspace-deletion step — data the deletion walker reads',
 	featureGated: 'RETURNS a builder; its products are collected as builders above',
 	featureGatedAny: 'RETURNS a builder (any-of flag floor); same as featureGated',
+	fenceMutationBuilder:
+		'RETURNS a builder (the write-fenced twin of the one it wraps); `internalMutation` is collected by name',
 	gateIds: 'projects a gate list to its ids',
 	getBundledPluginFeatureFlagDefinitions: 'reads the generated flag definitions',
 	literalUnion: 'builds a Convex validator from a literal tuple',
@@ -178,6 +180,13 @@ const NOT_ENTRY_BUILDERS: Readonly<Record<string, string>> = {
 // (`convex run migrations/<file>:run`); a caller would be a migration that
 // fires itself.
 const HAND_RUN_PREFIXES: readonly string[] = ['migrations/'];
+// Single entries outside `migrations/` that exist only for an operator to run
+// by hand, each with the reason. Exact: an entry that gains a caller, or is
+// deleted, fails until its line comes off.
+const HAND_RUN_ENTRIES: Readonly<Record<string, string>> = {
+	'workspaces/deletion/walker.ts#abort':
+		'the operator exit for a workspace deletion that cannot finish (`convex run`)',
+};
 const isHandRun = (module: string): boolean =>
 	HAND_RUN_PREFIXES.some((prefix) => module.startsWith(prefix));
 
@@ -405,8 +414,15 @@ for (const landmark of [
 }
 
 const reached = reachedEntries(CONVEX_ENTRIES);
+expectEmpty(
+	Object.keys(HAND_RUN_ENTRIES).filter(
+		(entry) => !CONVEX_ENTRIES.some((e) => label(e) === entry) || reached.has(entry)
+	),
+	'a hand-run entry gained a caller or was deleted — take its line out of HAND_RUN_ENTRIES:'
+);
 const unreachedWithShims = CONVEX_ENTRIES.filter(
-	(entry) => !isHandRun(entry.module) && !reached.has(label(entry))
+	(entry) =>
+		!isHandRun(entry.module) && !(label(entry) in HAND_RUN_ENTRIES) && !reached.has(label(entry))
 ).map(label);
 const unreached = unreachedWithShims.filter((entry) => !(entry in PREVIOUS_RELEASE_ENTRIES));
 

@@ -9,7 +9,8 @@ import {
 	type DeliverabilityChecklistStatus,
 } from '@owlat/shared';
 import { internal } from '../_generated/api';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Id } from '../_generated/dataModel';
 import { deliverabilityStatusValidator } from '../lib/convexValidators';
 import { literalUnion } from '../lib/literalUnion';

@@ -16,7 +16,8 @@ import {
 } from '@owlat/shared/retentionHorizons';
 import type { Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { loopbackTimeoutPatch } from './checklistLoopbackState';
 import { checklistTraits } from './checklistTraits';
 import {

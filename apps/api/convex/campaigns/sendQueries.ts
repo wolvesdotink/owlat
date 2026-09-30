@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
-import { internalMutation, internalQuery } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { components } from '../_generated/api';
 import { contentScanResultsFields } from '../schema/delivery';
 import type { StoredAudience } from './audience';
