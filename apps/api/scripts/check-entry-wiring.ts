@@ -166,6 +166,8 @@ const NOT_ENTRY_BUILDERS: Readonly<Record<string, string>> = {
 	defineStep: 'declares one workspace-deletion step — data the deletion walker reads',
 	featureGated: 'RETURNS a builder; its products are collected as builders above',
 	featureGatedAny: 'RETURNS a builder (any-of flag floor); same as featureGated',
+	fenceMutationBuilder:
+		'RETURNS a builder (the write-fenced twin of the one it wraps); `internalMutation` is collected by name',
 	gateIds: 'projects a gate list to its ids',
 	getBundledPluginFeatureFlagDefinitions: 'reads the generated flag definitions',
 	literalUnion: 'builds a Convex validator from a literal tuple',

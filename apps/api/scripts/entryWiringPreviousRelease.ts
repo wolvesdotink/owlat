@@ -39,6 +39,8 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 		'the previous IMAP server, until its container is replaced',
 	'mail/imap/fetch.ts#getRawStorageUrl':
 		'the previous IMAP server, until its container is replaced',
+	'workspaces/deletion/walker.ts#start': 'deletion starts queued before the deploy',
+	'workspaces/deletion/walker.ts#runStep': 'the previous walker chain, mid-deletion',
 	'mail/mailbox/messages.ts#getMessageBody':
 		'the previous web reader, in tabs opened before the deploy (plan 2.5)',
 };

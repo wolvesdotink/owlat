@@ -31,12 +31,9 @@
  */
 
 import { v } from 'convex/values';
-import {
-	internalAction,
-	// write-fence: exempt — the deletion worker (see the module comment).
-	internalMutation as deletionWorkerMutation,
-	internalQuery,
-} from '../../_generated/server';
+// The RAW `internalMutation`, not lib/writeFence's: the deletion worker is the
+// one writer the fence exempts (see above).
+import { internalAction, internalMutation, internalQuery } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { logError } from '../../lib/runtimeLog';
 import { readActiveWorkspaceDeletion } from '../../lib/writeFence';
@@ -66,7 +63,7 @@ export const DELETION_STALLED_AFTER_MS = 15 * 60 * 1000;
 /** How long a `failed` job waits before the recovery driver re-arms it. */
 export const FAILED_DELETION_RETRY_AFTER_MS = 60 * 60 * 1000;
 
-export const tick = deletionWorkerMutation({
+export const tick = internalMutation({
 	args: { jobId: v.id('workspaceDeletionJobs') },
 	handler: async (ctx, { jobId }): Promise<DeletionTickOutcome> =>
 		runWorkspaceDeletionTransaction(ctx, jobId),
@@ -100,7 +97,7 @@ export const drive = internalAction({
 	},
 });
 
-export const recordFailure = deletionWorkerMutation({
+export const recordFailure = internalMutation({
 	args: { jobId: v.id('workspaceDeletionJobs'), error: v.string() },
 	handler: async (ctx, { jobId, error }): Promise<void> => {
 		const job = await ctx.db.get(jobId);
@@ -135,7 +132,7 @@ export const recordFailure = deletionWorkerMutation({
  * redeploy), and re-arms a `failed` one once it has waited, so a deletion never
  * stays half done with the fence up just because one attempt ran out of luck.
  */
-export const recover = deletionWorkerMutation({
+export const recover = internalMutation({
 	args: {},
 	handler: async (ctx): Promise<{ isRestarted: boolean }> => {
 		const job = await readActiveWorkspaceDeletion(ctx.db);
@@ -172,7 +169,7 @@ export const status = internalQuery({
 // Jobs it queued before the deploy still arrive here by path.
 
 /** The previous release's entry point: now opens (or joins) the job. */
-export const start = deletionWorkerMutation({
+export const start = internalMutation({
 	args: {},
 	handler: async (ctx): Promise<void> => {
 		await beginWorkspaceDeletion(ctx, { source: 'previous_release' });
@@ -185,7 +182,7 @@ export const start = deletionWorkerMutation({
  * of it is fenced, checkpointed and verified. When a job already exists its
  * chain owns progress and the hop stops after its batch.
  */
-export const runStep = deletionWorkerMutation({
+export const runStep = internalMutation({
 	args: { table: organizationDeletionTableValidator },
 	handler: async (ctx, { table }): Promise<void> => {
 		const { hasMore } = await ORGANIZATION_DELETION_STEPS[table].deleteBatch(ctx);
