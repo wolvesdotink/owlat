@@ -16,10 +16,12 @@ import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import {
 	enableFeatures,
+	createTestContact,
 	createTestConversationThread,
 	createTestInboundMessage,
 } from './factories';
 import { normalizeQuestionKey } from '../inbox/clarificationMemoryMatch';
+import { deleteAskSessionsOfOwner } from '../mail/ai/composeDraftStore';
 import { runLlmStream, runLlmText } from '../lib/llm/dispatch';
 import { assembleInboundBriefing } from '../agent/steps/context_retrieval';
 import { NOT_READY_OPTION } from '../inbox/clarificationAnswers';
@@ -561,6 +563,11 @@ describe('retention', () => {
 		const { target, mailboxId, messageId } = await replyDraft(t, 'Thanks for the call, talk soon.');
 		const old = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
 		expect(old.streamId).toBeDefined();
+		// A draft row gone without its session (a Postbox session is kept while
+		// its draft exists, for the gap guard).
+		await t.run(async (ctx) => {
+			await ctx.db.delete(target.draftId);
+		});
 		vi.useFakeTimers({ toFake: ['Date'] });
 		try {
 			vi.setSystemTime(Date.now() + 31 * 24 * 60 * 60 * 1000);
@@ -583,5 +590,102 @@ describe('retention', () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+
+	const DAY = 24 * 60 * 60 * 1000;
+
+	/** `count` sessions straight into the table, on team threads unless `draftId` is given. */
+	async function seedSessions(
+		t: Tx,
+		count: number,
+		opts: { ownerId?: string; draftId?: Id<'mailDrafts'> } = {}
+	) {
+		return await t.run(async (ctx) => {
+			const ids: Id<'answerAskSessions'>[] = [];
+			for (let i = 0; i < count; i++) {
+				const now = Date.now();
+				let target;
+				if (opts.draftId) {
+					target = { kind: 'mailDraft' as const, draftId: opts.draftId };
+				} else {
+					const contactId = await ctx.db.insert('contacts', createTestContact());
+					const { updatedAt: _u, ...thread } = createTestConversationThread({ contactId });
+					target = {
+						kind: 'teamThread' as const,
+						threadId: await ctx.db.insert('conversationThreads', thread),
+					};
+				}
+				ids.push(
+					await ctx.db.insert('answerAskSessions', {
+						ownerId: opts.ownerId ?? 'user-a',
+						organizationId: ORG,
+						target,
+						targetKey:
+							target.kind === 'mailDraft'
+								? `mailDraft:${target.draftId}`
+								: `teamThread:${target.threadId}`,
+						locale: 'en',
+						round: 1,
+						status: 'ready',
+						questions: [],
+						attachedFiles: [],
+						createdAt: now,
+						updatedAt: now,
+					})
+				);
+			}
+			return ids;
+		});
+	}
+	const remaining = (t: Tx) =>
+		t.run(async (ctx) => (await ctx.db.query('answerAskSessions').collect()).length);
+
+	it('reads a bounded batch per run and continues in the next one', async () => {
+		const t = await makeT();
+		await seedSessions(t, 40);
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			vi.setSystemTime(Date.now() + 31 * DAY);
+			const first = await t.mutation(internal.mail.ai.composeDraftStore.sweepStaleSessions, {});
+			expect(first.deleted).toBeGreaterThan(0);
+			expect(first.deleted).toBeLessThanOrEqual(20);
+			expect(await remaining(t)).toBe(40 - first.deleted);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('keeps a Postbox session while its draft exists, and walks past it', async () => {
+		const t = await makeT();
+		const { draftId } = await replyDraft(t);
+		const kept = await seedSessions(t, 20, { draftId });
+		const gone = await seedSessions(t, 1);
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			vi.setSystemTime(Date.now() + 31 * DAY);
+			const first = await t.mutation(internal.mail.ai.composeDraftStore.sweepStaleSessions, {});
+			expect(first.deleted).toBe(0);
+			// The next run starts past the kept rows instead of reading them again.
+			const lastKept = await t.run(async (ctx) => (await ctx.db.get(kept[first.kept - 1]!))!);
+			const second = await t.mutation(internal.mail.ai.composeDraftStore.sweepStaleSessions, {
+				after: lastKept._creationTime,
+			});
+			expect(second.deleted).toBe(1);
+			const left = await t.run(async (ctx) => await ctx.db.query('answerAskSessions').collect());
+			expect(left.map((row) => row._id).sort()).toEqual([...kept].sort());
+			expect(left.map((row) => row._id)).not.toContain(gone[0]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('erasing a member drops their sessions a bounded batch at a time', async () => {
+		const t = await makeT();
+		await seedSessions(t, 40, { ownerId: 'leaver' });
+		const hasMore = await t.run(async (ctx) => await deleteAskSessionsOfOwner(ctx, 'leaver'));
+		expect(hasMore).toBe(true);
+		const left = await remaining(t);
+		expect(40 - left).toBeLessThanOrEqual(20);
+		expect(40 - left).toBeGreaterThan(0);
 	});
 });

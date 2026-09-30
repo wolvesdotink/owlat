@@ -371,7 +371,9 @@ describe('upload answers and Files', () => {
 
 		expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
 		const refused = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
-		expect(refused.reason).toMatchObject({ data: { category: 'invalid_state' } });
+		expect(refused.reason).toMatchObject({
+			data: { category: 'invalid_state', data: { code: 'ASK_SESSION_CLAIMED' } },
+		});
 		expect((await draftRow(t, draftId)).attachments).toHaveLength(1);
 		expect(vi.mocked(runLlmStream)).toHaveBeenCalledTimes(1);
 	});

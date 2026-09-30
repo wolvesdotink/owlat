@@ -19,10 +19,8 @@ import { isOutboundChannel } from '../lib/convexValidators';
 import { runReferenceMonitor } from './referenceMonitor';
 import { buildThreadingHeaders, extractRecipient } from './replyEnvelope';
 import { replyBodyToHtml } from '@owlat/shared/html';
-import type {
-	NonCampaignIntakeOutcome,
-	NonCampaignIntakeRejectionReason,
-} from '../delivery/nonCampaignIntake';
+import type { NonCampaignIntakeRejectionReason } from '../delivery/nonCampaignIntake';
+import type { AgentReplyIntakeOutcome } from '../inbox/replyAttachments';
 
 // ============================================================
 // Helper Queries
@@ -146,6 +144,14 @@ export const getAgentConfig = internalQuery({
  *     it — which is exactly the behaviour that would be wrong for a blocklist
  *     hit and is right here.
  */
+/**
+ * An autonomous reply whose file answer is still being copied waits this long
+ * between tries, at most this many times (two minutes, well inside the
+ * stuck-approved reconcile's ten), then stops for a person.
+ */
+const ATTACHMENT_WAIT_MS = 5_000;
+const MAX_ATTACHMENT_WAITS = 24;
+
 const REPLY_REFUSAL_BY_REASON: Record<
 	NonCampaignIntakeRejectionReason,
 	| { terminal: 'archived'; archiveReason: 'sender_blocked' }
@@ -189,6 +195,8 @@ export const sendApprovedReply = internalAction({
 		// The deterministic pre-send reference monitor runs ONLY on this path;
 		// human-reviewed approvals (`autonomous: false`/absent) send unchanged.
 		autonomous: v.optional(v.boolean()),
+		// How many times this send already waited for a file answer's copy.
+		attachmentWaits: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const fail = async (errorMessage: string): Promise<void> => {
@@ -343,7 +351,7 @@ export const sendApprovedReply = internalAction({
 		// pass `providerType`/`ipPool` down — a second resolution of the same
 		// message for a value the worker only uses as a fallback. Nothing above
 		// the intake reads a route, so it moved into the intake transaction.
-		let outcome: NonCampaignIntakeOutcome;
+		let outcome: AgentReplyIntakeOutcome;
 		try {
 			// Through the Team inbox reply attachments: the files a person attached
 			// in the thread composer go out with the reply (never the agent's
@@ -368,6 +376,27 @@ export const sendApprovedReply = internalAction({
 		}
 
 		if (!outcome.ok) {
+			if (outcome.reason === 'attachment_copying') {
+				// A file answered for this message is still being copied onto the reply.
+				const waits = args.attachmentWaits ?? 0;
+				if (waits < MAX_ATTACHMENT_WAITS) {
+					await ctx.scheduler.runAfter(
+						ATTACHMENT_WAIT_MS,
+						internal.agent.agentPipeline.sendApprovedReply,
+						{
+							...args,
+							attachmentWaits: waits + 1,
+						}
+					);
+					return;
+				}
+				await fail('A file for this reply is still being attached. Review and send it by hand.');
+				return;
+			}
+			if (outcome.reason === 'attachment_failed') {
+				await fail('A file for this reply could not be attached. Review and send it by hand.');
+				return;
+			}
 			const refusal = REPLY_REFUSAL_BY_REASON[outcome.reason];
 			if (refusal.terminal === 'failed') {
 				await fail(refusal.message(outcome.detail));

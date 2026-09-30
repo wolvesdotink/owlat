@@ -29,7 +29,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import { MAX_ASK_ROUNDS } from '@owlat/shared/answerMode';
 import { isAppLocale } from '@owlat/shared/appLocales';
 import { logError } from '../../lib/runtimeLog';
-import { throwInvalidInput, throwInvalidState } from '../../_utils/errors';
+import { throwInvalidInput } from '../../_utils/errors';
 import {
 	answerAskTargetValidator,
 	type AnswerAskTarget,
@@ -38,7 +38,7 @@ import {
 import { clarificationFileRefValidator } from '../../lib/validators/clarification';
 import { copyExistingIntoDraft } from '../attachExisting';
 import { candidateForLabel } from '../../inbox/clarificationAnswers';
-import { toAskSessionView, type AskSessionView } from './composeDraftStore';
+import { throwAskSessionClaimed, toAskSessionView, type AskSessionView } from './composeDraftStore';
 import { draftContextOf, loadAnswerContext } from './composeDraftLoad';
 import { normalizeTimeZone, resolveFollowUpAt } from './composeDraftDates';
 import { attributionFor, localizeForOwner, runGapCheck } from './composeDraftGap';
@@ -379,7 +379,7 @@ export const answer = authedAction({
 		const session = await ctx.runQuery(internal.mail.ai.composeDraftStore.getOwnSession, {
 			sessionId: args.sessionId,
 		});
-		if (session.status !== 'asking') throwInvalidState('These questions were already answered');
+		if (session.status !== 'asking') throwAskSessionClaimed();
 		// Claim the session before anything is attached: a second call racing
 		// this one (a double tap, a retry after a slow first call) is refused
 		// here instead of attaching the same file again and opening a second

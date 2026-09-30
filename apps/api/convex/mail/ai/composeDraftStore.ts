@@ -49,6 +49,12 @@ import {
 export interface AskSessionView {
 	sessionId: Id<'answerAskSessions'>;
 	target: AnswerAskTarget;
+	/**
+	 * `drafting` WITHOUT a `streamId` means busy, not broken: `answer` has
+	 * claimed the session and is still attaching file answers (or arming the
+	 * follow-up) before it opens the stream. Show it as working; `streamId`
+	 * appears the moment the draft starts streaming.
+	 */
 	status: AnswerAskStatus;
 	round: number;
 	questions: AskQuestion[];
@@ -138,6 +144,18 @@ async function deleteSessionRow(ctx: MutationCtx, row: Doc<'answerAskSessions'>)
 	await ctx.db.delete(row._id);
 }
 
+/**
+ * Rows read per transaction by every bulk walk of this table. A row can carry
+ * the drafter's context (up to MAX_STORED_CONTEXT_CHARS, mail/ai/composeDraftLoad.ts),
+ * so a batch stays far below the per-transaction read limit.
+ */
+const ASK_SESSION_BATCH = 16;
+
+/** The refusal a second `answer` on an already claimed session gets. */
+export function throwAskSessionClaimed(): never {
+	throwInvalidState('These questions were already answered', { code: 'ASK_SESSION_CLAIMED' });
+}
+
 /** Drop every ask session of a draft (discard, send). */
 export async function deleteAskSessionsForDraft(
 	ctx: MutationCtx,
@@ -148,52 +166,67 @@ export async function deleteAskSessionsForDraft(
 		.withIndex('by_target_owner', (q) =>
 			q.eq('targetKey', answerAskTargetKey({ kind: 'mailDraft', draftId }))
 		)
-		.take(20); // bounded: one session per person who drafted with AI on this draft
+		.take(ASK_SESSION_BATCH); // bounded: one session per person who drafted with AI on this draft
 	for (const row of rows) await deleteSessionRow(ctx, row);
 }
 
 /**
- * Drop up to `limit` of a person's ask sessions (member erasure). Returns true
+ * Drop one batch of a person's ask sessions (member erasure). Returns true
  * when more may remain, so the caller runs another batch.
  */
 export async function deleteAskSessionsOfOwner(
 	ctx: MutationCtx,
-	ownerId: string,
-	limit: number
+	ownerId: string
 ): Promise<boolean> {
 	const rows = await ctx.db
 		.query('answerAskSessions')
 		.withIndex('by_owner', (q) => q.eq('ownerId', ownerId))
-		.take(limit);
+		.take(ASK_SESSION_BATCH);
 	for (const row of rows) await deleteSessionRow(ctx, row);
-	return rows.length === limit;
+	return rows.length === ASK_SESSION_BATCH;
 }
 
 /** How long a session is kept: long past any draft someone is still writing. */
 const ASK_SESSION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-const ASK_SESSION_SWEEP_BATCH = 100;
 
 /**
  * Retention for ask sessions (daily, maintenance/cronRegistration.ts). A
  * Postbox session goes with its draft on send or discard, but a team-thread
  * session has no such end, and either one holds text quoted from mail and the
  * owner's answers. Sessions started more than {@link ASK_SESSION_RETENTION_MS}
- * ago are deleted with their draft streams, a bounded batch per run; a full
- * batch schedules the next one.
+ * ago are deleted with their draft streams, except a Postbox session whose
+ * draft still exists: its `[[gap]]` send guard lives on the session.
+ *
+ * Walks by creation time a bounded batch per run; `after` resumes past the
+ * last row read (kept rows included), so a run of kept sessions cannot stall
+ * the walk. A full batch schedules the next one.
  */
 export const sweepStaleSessions = internalMutation({
-	args: {},
-	handler: async (ctx): Promise<{ deleted: number }> => {
+	args: { after: v.optional(v.number()) },
+	handler: async (ctx, args): Promise<{ deleted: number; kept: number }> => {
 		const cutoff = Date.now() - ASK_SESSION_RETENTION_MS;
+		const after = args.after;
 		const rows = await ctx.db
 			.query('answerAskSessions')
-			.withIndex('by_creation_time', (q) => q.lt('_creationTime', cutoff))
-			.take(ASK_SESSION_SWEEP_BATCH);
-		for (const row of rows) await deleteSessionRow(ctx, row);
-		if (rows.length === ASK_SESSION_SWEEP_BATCH) {
-			await ctx.scheduler.runAfter(0, internal.mail.ai.composeDraftStore.sweepStaleSessions, {});
+			.withIndex('by_creation_time', (q) =>
+				after !== undefined
+					? q.gt('_creationTime', after).lt('_creationTime', cutoff)
+					: q.lt('_creationTime', cutoff)
+			)
+			.take(ASK_SESSION_BATCH);
+		let deleted = 0;
+		for (const row of rows) {
+			if (row.target.kind === 'mailDraft' && (await ctx.db.get(row.target.draftId))) continue;
+			await deleteSessionRow(ctx, row);
+			deleted++;
 		}
-		return { deleted: rows.length };
+		const last = rows[rows.length - 1];
+		if (rows.length === ASK_SESSION_BATCH && last) {
+			await ctx.scheduler.runAfter(0, internal.mail.ai.composeDraftStore.sweepStaleSessions, {
+				after: last._creationTime,
+			});
+		}
+		return { deleted, kept: rows.length - deleted };
 	},
 });
 
@@ -306,9 +339,7 @@ export const updateSession = internalMutation({
 	handler: async (ctx, args): Promise<Doc<'answerAskSessions'>> => {
 		const row = await requireOwnSession(ctx, args.sessionId);
 		const { sessionId, expectStatus, ...patch } = args;
-		if (expectStatus !== undefined && row.status !== expectStatus) {
-			throwInvalidState('These questions were already answered');
-		}
+		if (expectStatus !== undefined && row.status !== expectStatus) throwAskSessionClaimed();
 		await ctx.db.patch(sessionId, {
 			...patch,
 			...(args.status !== 'error' ? { errorMessage: undefined } : {}),
