@@ -183,7 +183,7 @@ function keepTyped() {
 	);
 }
 
-const answerNav = useAnswerModeNav();
+const answerNav = useAnswerModeNav({ currentPath: () => route.path });
 const queueSession = useAnswerQueueSession();
 const backLabel = computed(() => t(answerBackLabelKey(answerNav.returnPath.value)));
 

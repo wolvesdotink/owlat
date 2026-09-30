@@ -33,7 +33,16 @@ declare module '#app' {
  * history when the previous entry IS that page (keeping the browser's own Back
  * in step) and replaces otherwise (a deep link, a reload, the desktop window).
  */
-export function useAnswerModeNav() {
+export function useAnswerModeNav(
+	opts: {
+		/**
+		 * The host page's own route path (an Answer mode page passes its
+		 * `route.path`): the back link's fallback is read from it, so the
+		 * `returnPath` computed never reaches for the router itself.
+		 */
+		currentPath?: () => string;
+	} = {}
+) {
 	const returnTo = useState<string | null>('answer:return-to', () => null);
 
 	// The router is read when a verb runs, not at setup: most hosts of these
@@ -59,13 +68,13 @@ export function useAnswerModeNav() {
 		return go(answerTeamHref(threadId, opts));
 	}
 
-	/** The recorded page, else the list this Answer mode route belongs to. */
-	function returnTarget(): string {
-		return returnTo.value ?? answerFallbackReturn(useRouter().currentRoute.value.path);
+	/** The recorded page, else the list the Answer mode route at `path` belongs to. */
+	function returnTarget(path: string): string {
+		return returnTo.value ?? answerFallbackReturn(path);
 	}
 
 	function leave() {
-		const target = returnTarget();
+		const target = returnTarget(opts.currentPath?.() ?? useRouter().currentRoute.value.path);
 		returnTo.value = null;
 		const back =
 			typeof window === 'undefined'
@@ -78,8 +87,12 @@ export function useAnswerModeNav() {
 		void navigateTo(target, { replace: true });
 	}
 
-	/** The label of the back link: the page a reply returns to. */
-	const returnPath = computed(() => returnTarget());
+	/**
+	 * The label of the back link: the page a reply returns to. Without the
+	 * host's path the fallback is the Postbox inbox; only the Answer mode pages
+	 * read this, and they pass their path.
+	 */
+	const returnPath = computed(() => returnTarget(opts.currentPath?.() ?? ''));
 
 	/**
 	 * Name the page Esc returns to, for a host that moves between Answer mode

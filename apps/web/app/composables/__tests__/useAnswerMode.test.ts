@@ -71,7 +71,7 @@ describe('useAnswerModeNav', () => {
 
 	it('falls back to the Team inbox from a team thread opened by deep link or reload', () => {
 		currentRoute.value = { path: '/dashboard/answer/t/ct_1', fullPath: '/dashboard/answer/t/ct_1' };
-		const nav = useAnswerModeNav();
+		const nav = useAnswerModeNav({ currentPath: () => '/dashboard/answer/t/ct_1' });
 		expect(nav.returnPath.value).toBe('/dashboard/inbox');
 		nav.leave();
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/inbox', { replace: true });
@@ -85,6 +85,15 @@ describe('useAnswerModeNav', () => {
 		const nav = useAnswerModeNav();
 		nav.leave();
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox', { replace: true });
+	});
+
+	it('names the way back without touching the router (safe outside a component)', () => {
+		const useRouterSpy = vi.fn(() => ({ currentRoute, back }));
+		vi.stubGlobal('useRouter', useRouterSpy);
+		const nav = useAnswerModeNav({ currentPath: () => '/dashboard/answer/t/ct_1' });
+		expect(nav.returnPath.value).toBe('/dashboard/inbox');
+		expect(useRouterSpy).not.toHaveBeenCalled();
+		vi.stubGlobal('useRouter', () => ({ currentRoute, back }));
 	});
 
 	it('keeps the original way back while moving between replies', () => {

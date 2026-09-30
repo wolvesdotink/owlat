@@ -103,7 +103,7 @@ const { seed, kind } = useAnswerModeSession({
 	guard: guardReply,
 });
 
-const answerNav = useAnswerModeNav();
+const answerNav = useAnswerModeNav({ currentPath: () => route.path });
 const backLabel = computed(() => t(answerBackLabelKey(answerNav.returnPath.value)));
 const messageCount = ref<number | undefined>(undefined);
 const counterpart = computed(() => {
