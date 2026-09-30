@@ -16,11 +16,11 @@
  *
  * ACCESS. The caller must be able to write the draft (its mailbox) and pass
  * the shared read check in lib/existingAttachments.ts (also used by the team
- * inbox reply): a `mailAttachments` row only from a mailbox the caller can
- * read. A reply narrows Files further: a `semanticFiles` row only when it is
- * org-general or linked to a contact the draft is addressed to, the contact
- * scope the drafting path retrieves under, so a reply to contact A cannot
- * carry contact B's invoice.
+ * inbox reply and the file answers): a `mailAttachments` row only from a
+ * mailbox the caller can read, any Files row the caller could open on the
+ * Files page. There is no contact narrowing here: contact scope bounds what
+ * the AI retrieves on its own (the file search is contact-scoped), while this
+ * is a person's explicit pick of a file they can already download.
  *
  * A mutation cannot read blob bytes, so the public entry is an action
  * (`mail.drafts.attachExisting`) that copies synchronously and returns the
@@ -28,17 +28,14 @@
  */
 
 import { v, type Infer } from 'convex/values';
-import { internalQuery, type ActionCtx, type QueryCtx } from '../_generated/server';
+import { internalQuery, type ActionCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
-import type { Doc, Id } from '../_generated/dataModel';
-import { normalizeEmail } from '@owlat/shared';
+import type { Id } from '../_generated/dataModel';
 import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { requireMailboxAccess } from './permissions';
 import { assertStateIs } from './draftLifecycle/reducers';
 import { storedFileSize } from '../storage/uploads';
-import { findContactByIdentifier } from '../contacts/resolution';
-import { isContactScopeVisible } from '../lib/contactScope';
 import { getMutationContext, requireOrgMember } from '../lib/sessionOrganization';
 import {
 	existingAttachmentSourceValidator,
@@ -57,46 +54,6 @@ import type { mailDraftAttachmentValidator } from '../lib/validators/mailContent
 type AttachExistingSource = Infer<typeof existingAttachmentSourceValidator>;
 type DraftAttachment = Infer<typeof mailDraftAttachmentValidator>;
 
-/** The contacts a draft is addressed to, for the Files contact scope. */
-async function recipientContactIds(
-	ctx: QueryCtx,
-	draft: Doc<'mailDrafts'>
-): Promise<Id<'contacts'>[]> {
-	const ids: Id<'contacts'>[] = [];
-	const addresses = [...draft.toAddresses, ...draft.ccAddresses, ...draft.bccAddresses];
-	for (const address of addresses.slice(0, 20)) {
-		const identifier = normalizeEmail(address);
-		if (!identifier) continue;
-		const found = await findContactByIdentifier(ctx, 'email', identifier);
-		if (found && !ids.includes(found.contact._id)) ids.push(found.contact._id);
-	}
-	return ids;
-}
-
-/**
- * The shared read check (lib/existingAttachments.ts: any member reads Files, a
- * mail attachment needs its mailbox), narrowed for a reply: a Files row must
- * also be org-general or linked to one of `contactIds`, the scope the drafting
- * path retrieves under. Throws forbidden / not found.
- */
-async function resolveInScope(
-	ctx: QueryCtx,
-	source: AttachExistingSource,
-	id: string,
-	contactIds: readonly Id<'contacts'>[]
-): Promise<ExistingAttachment> {
-	const session = await requireOrgMember(ctx);
-	const resolved = await resolveReadableExistingAttachment(ctx, { source, id }, session);
-	if (resolved.source === 'semanticFile') {
-		const file = await ctx.db.get(resolved.id as Id<'semanticFiles'>);
-		const visible =
-			isContactScopeVisible(file?.contactIds, 'org-general-only') ||
-			contactIds.some((contactId) => isContactScopeVisible(file?.contactIds, contactId));
-		if (!visible) throwForbidden('This file belongs to another contact');
-	}
-	return resolved;
-}
-
 /** Resolve a source for a draft the caller can write. */
 export const resolveForDraft = internalQuery({
 	args: {
@@ -110,28 +67,21 @@ export const resolveForDraft = internalQuery({
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
 		assertStateIs(draft, 'draft');
-		return await resolveInScope(ctx, args.source, args.id, await recipientContactIds(ctx, draft));
+		const session = await requireOrgMember(ctx);
+		return await resolveReadableExistingAttachment(ctx, args, session);
 	},
 });
 
 /**
- * Check a source is readable under an explicit contact scope and return its
- * filename. For file answers that are not attached here (a team-thread reply,
- * where the team inbox attaches them).
+ * Check a source is readable and return its filename. For file answers that
+ * are not attached here (a team-thread reply, where the team inbox attaches
+ * them).
  */
 export const resolveReadableFile = internalQuery({
-	args: {
-		source: existingAttachmentSourceValidator,
-		id: v.string(),
-		contactId: v.optional(v.id('contacts')),
-	},
+	args: { source: existingAttachmentSourceValidator, id: v.string() },
 	handler: async (ctx, args): Promise<{ filename: string }> => {
-		const resolved = await resolveInScope(
-			ctx,
-			args.source,
-			args.id,
-			args.contactId ? [args.contactId] : []
-		);
+		const session = await requireOrgMember(ctx);
+		const resolved = await resolveReadableExistingAttachment(ctx, args, session);
 		return { filename: resolved.filename };
 	},
 });

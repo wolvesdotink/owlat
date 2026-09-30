@@ -91,9 +91,6 @@ export const answerClarification = adminMutation({
 						keepCopy: provided.keepCopy,
 						mimeType: provided.mimeType,
 						contactId: message.contactId,
-						// Team replies attach from Files; mailbox attachments are Postbox-only.
-						allowMailAttachment: false,
-						canSaveToFiles: true,
 					})
 				: undefined;
 			const value = provided.value ?? resolved?.ref.filename;

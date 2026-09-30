@@ -164,7 +164,8 @@ interface FileOwner {
  * Attach a file answer. A draft gets the file itself (a fresh upload is
  * consumed by `drafts.addAttachment`, an existing file is copied in); a team
  * thread only gets the reference checked and reported. An upload is also kept
- * in Files for the contact unless the owner opted out (plan decision 5).
+ * in Files for the contact unless the owner opted out (plan decision 5), when
+ * the caller may add to Files (lib/answerFileToFiles.ts).
  */
 async function attachFileAnswer(
 	ctx: ActionCtx,
@@ -182,7 +183,7 @@ async function attachFileAnswer(
 		const info = await ctx.runQuery(internal.mail.ai.composeDraftContext.ownUploadInfo, {
 			storageId,
 		});
-		if (keepCopy && session.contactId) {
+		if (keepCopy && session.contactId && info.canSaveToFiles) {
 			await keepCopyInFiles(ctx, session, {
 				storageId,
 				filename,
@@ -211,7 +212,6 @@ async function attachFileAnswer(
 	const readable = await ctx.runQuery(internal.mail.attachExisting.resolveReadableFile, {
 		source: file.source,
 		id: file.id,
-		...(session.contactId ? { contactId: session.contactId } : {}),
 	});
 	return { source: file.source, id: file.id, filename: readable.filename };
 }
@@ -235,7 +235,6 @@ async function keepCopyInFiles(
 			contentType:
 				file.contentType === 'application/octet-stream' && blob.type ? blob.type : file.contentType,
 			contactId: session.contactId,
-			isTeamInbox: session.target.kind === 'teamThread',
 		});
 	} catch (err) {
 		logError('[composeDraft] keeping a copy in Files failed:', err);

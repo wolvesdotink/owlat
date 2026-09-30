@@ -1,7 +1,7 @@
 /**
  * The V8 half of Answer mode "Draft with AI" context: what the Node action
  * (mail/ai/composeDraft.ts) reads before it checks for gaps and drafts, and the
- * two file writes a file answer needs.
+ * upload check and Files copy a file answer needs.
  *
  * Both loaders run with the caller's identity and re-check access: a Postbox
  * draft needs its mailbox, a team thread needs the shared-inbox reader role
@@ -11,12 +11,9 @@
 import { v } from 'convex/values';
 import { internalQuery, type QueryCtx } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
-import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { normalizeEmail } from '@owlat/shared';
 import { htmlToPlainText } from '@owlat/shared/html';
-import { MAX_LIBRARY_FILE_BYTES } from '@owlat/shared/attachments';
-import { DEFAULT_FILE_POLICY, isFileTypeAccepted } from '@owlat/email-scanner';
 import { requireMailboxAccess } from '../permissions';
 import { assertStateIs } from '../draftLifecycle/reducers';
 import { withStoredInlineBodies } from '../../lib/messageBodyStore';
@@ -24,7 +21,11 @@ import { openInboundMessageBody } from '../../lib/messageBodyInbound';
 import { requireOrgMember } from '../../lib/sessionOrganization';
 import { isSharedInboxReader } from '../../inbox/access';
 import { findContactByIdentifier } from '../../contacts/resolution';
-import { insertSemanticFile } from '../../semanticFiles';
+import {
+	assertOwnUnclaimedUpload,
+	canSaveAnswerToFiles,
+	saveAnswerFileToFiles,
+} from '../../lib/answerFileToFiles';
 import { asEagernessMode, type EagernessMode } from '../../inbox/askEagerness';
 import { throwForbidden, throwNotFound } from '../../_utils/errors';
 import { buildThreadTranscript, ANSWER_DRAFT } from './transcript';
@@ -169,28 +170,24 @@ export const loadTeamThreadContext = internalQuery({
 /**
  * A fresh upload given as a file answer: only the caller's own, still
  * unclaimed upload qualifies (the same rule `consumeUpload` enforces when the
- * draft or the team inbox binds it). Returns what the attach step needs.
+ * draft or the team inbox binds it). Returns what the attach step needs, and
+ * whether the caller may keep a copy in Files (lib/answerFileToFiles.ts).
  */
 export const ownUploadInfo = internalQuery({
 	args: { storageId: v.id('_storage') },
-	handler: async (ctx, args): Promise<{ contentType: string; size: number }> => {
+	handler: async (
+		ctx,
+		args
+	): Promise<{ contentType: string; size: number; canSaveToFiles: boolean }> => {
 		const session = await requireOrgMember(ctx);
-		const receipt = await ctx.db
-			.query('storageUploads')
-			.withIndex('by_storage', (q) => q.eq('storageId', args.storageId))
-			.unique();
-		if (
-			!receipt ||
-			receipt.status !== 'uploaded' ||
-			receipt.userId !== session.userId ||
-			receipt.organizationId !== session.activeOrganizationId ||
-			(receipt.expiresAt ?? 0) <= Date.now()
-		) {
-			throwForbidden('File is not an unclaimed upload owned by this user');
-		}
+		await assertOwnUnclaimedUpload(ctx, session, args.storageId);
 		const meta = await ctx.db.system.get(args.storageId);
 		if (!meta) throwNotFound('Upload');
-		return { contentType: meta.contentType ?? 'application/octet-stream', size: meta.size };
+		return {
+			contentType: meta.contentType ?? 'application/octet-stream',
+			size: meta.size,
+			canSaveToFiles: canSaveAnswerToFiles(session),
+		};
 	},
 });
 
@@ -198,10 +195,9 @@ export const ownUploadInfo = internalQuery({
  * Keep a copy of an uploaded file answer in Files, linked to the contact the
  * reply goes to, so the next request for it finds it (plan decision 5). The
  * copy is its own blob, bound to the new row, because the upload itself goes
- * to the reply and is freed with it. Runs the Files type policy and size cap
- * and schedules the usual extraction; a team-inbox copy falls under the team
- * inbox retention horizon like any file captured there. Returns null (and
- * drops the copy) when the file type is not allowed in Files.
+ * to the reply and is freed with it. The rules (admins only, the Files type
+ * policy and size cap, processing) are the shared ones in
+ * lib/answerFileToFiles.ts; a refusal throws and the caller drops the copy.
  */
 export const keepAnswerFileCopy = internalMutation({
 	args: {
@@ -209,40 +205,16 @@ export const keepAnswerFileCopy = internalMutation({
 		filename: v.string(),
 		contentType: v.string(),
 		contactId: v.id('contacts'),
-		isTeamInbox: v.boolean(),
 	},
-	handler: async (ctx, args): Promise<Id<'semanticFiles'> | null> => {
+	handler: async (ctx, args): Promise<Id<'semanticFiles'>> => {
 		const session = await requireOrgMember(ctx);
-		const meta = await ctx.db.system.get(args.storageId);
-		if (
-			!meta ||
-			meta.size <= 0 ||
-			meta.size > MAX_LIBRARY_FILE_BYTES ||
-			!isFileTypeAccepted(args.filename, args.contentType, DEFAULT_FILE_POLICY)
-		) {
-			await ctx.storage.delete(args.storageId);
-			return null;
-		}
-		const fileId = await insertSemanticFile(ctx, {
+		const row = await saveAnswerFileToFiles(ctx, session, {
 			storageId: args.storageId,
-			filename: args.filename.slice(0, 255),
+			filename: args.filename,
 			mimeType: args.contentType,
-			fileSize: meta.size,
-			sourceType: 'upload',
-			captureSource: args.isTeamInbox ? 'team_inbox' : 'mailbox',
-			uploadedBy: session.userId,
-			contactIds: [args.contactId],
+			contactId: args.contactId,
+			claim: 'copy',
 		});
-		// A user-created Files row frees its blob through a bound receipt
-		// (semanticFiles.remove), so give the copy one.
-		await ctx.db.insert('storageUploads', {
-			userId: session.userId,
-			organizationId: session.activeOrganizationId,
-			status: 'bound',
-			storageId: args.storageId,
-			resourceKey: `semanticFiles:${fileId}`,
-		});
-		await ctx.scheduler.runAfter(0, internal.semanticFileProcessing.processFile, { fileId });
-		return fileId;
+		return row._id;
 	},
 });

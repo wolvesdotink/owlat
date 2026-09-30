@@ -7,8 +7,9 @@
  *   - an older client's chip label resolves to the candidate it was built from;
  *   - an upload is saved to Files for the sender's contact (receipt bound), or
  *     kept out of Files with `keepCopy: false`;
- *   - someone else's upload, a mail attachment, and a file on a non-file
- *     question are refused;
+ *   - a mail attachment from a readable mailbox is taken; someone else's
+ *     upload, another mailbox's attachment, a released file and a file on a
+ *     non-file question are refused;
  *   - "It isn't ready yet" stays a plain answer, and file answers never become
  *     standing answer memory while typed answers still do.
  */
@@ -21,6 +22,8 @@ import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { createTestContact, createTestInboundMessage, createTestSemanticFile } from './factories';
 import { expectScheduledFailure } from './helpers/scheduledFailures';
+import { seedMailAttachment } from './helpers/answerAsk';
+import { seedFolder, seedMailbox } from '../mail/__tests__/helpers.testlib';
 
 // The resume and the new file's processing pass run in modules this suite's
 // map leaves out; their jobs fail when they fire. Not what these tests are about.
@@ -322,18 +325,59 @@ describe('inbox.answerClarification — file answers', () => {
 		expect((await readMessage(t, messageId)).processingStatus).toBe('awaiting_clarification');
 	});
 
-	it('refuses a mail attachment and a file on a question that does not take one', async () => {
+	it('takes a mail attachment from a mailbox the caller reads, as the composer does', async () => {
 		const t = convexTest(schema, modules);
-		const { messageId, fileA } = await seed(t);
+		const { messageId } = await seed(t);
+		const mailboxId = await seedMailbox(t, { userId: OWNER, organizationId: ORG });
+		await seedFolder(t, mailboxId, 'inbox');
+		const attachmentId = await seedMailAttachment(t, mailboxId, 'terms.pdf');
+
+		await answer(t, messageId, [
+			{
+				questionId: 'clarify_attachment',
+				file: { source: 'mailAttachment', id: attachmentId, filename: 'ignored.pdf' },
+			},
+		]);
+
+		const q = (await readMessage(t, messageId)).pendingClarification!.questions[0]!;
+		expect(q.answer?.file).toEqual({
+			source: 'mailAttachment',
+			id: attachmentId,
+			filename: 'terms.pdf',
+		});
+	});
+
+	it("refuses an unreadable mailbox's attachment, a released file, and a file on a non-file question", async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, fileA, fileB } = await seed(t);
+		// Admins read every mailbox of their organization, so: another org's.
+		const theirs = await seedMailbox(t, {
+			userId: 'someone-else',
+			organizationId: 'org-2',
+			address: 'bea@example.com',
+		});
+		await seedFolder(t, theirs, 'inbox');
+		const attachmentId = await seedMailAttachment(t, theirs, 'payroll.pdf');
+		await t.run(async (ctx) => {
+			await ctx.db.patch(fileB, { storageId: undefined, bytesReleasedAt: Date.now() });
+		});
 
 		await expect(
 			answer(t, messageId, [
 				{
 					questionId: 'clarify_attachment',
-					file: { source: 'mailAttachment', id: 'anything', filename: 'x.pdf' },
+					file: { source: 'mailAttachment', id: attachmentId, filename: 'x.pdf' },
 				},
 			])
-		).rejects.toThrow(/Pick a file from Files/);
+		).rejects.toThrow(/not accessible/);
+		await expect(
+			answer(t, messageId, [
+				{
+					questionId: 'clarify_attachment',
+					file: { source: 'semanticFile', id: fileB, filename: 'x.pdf' },
+				},
+			])
+		).rejects.toThrow(/no longer stored/);
 		await expect(
 			answer(t, messageId, [
 				{
@@ -342,6 +386,7 @@ describe('inbox.answerClarification — file answers', () => {
 				},
 			])
 		).rejects.toThrow(/does not take a file/);
+		expect((await readMessage(t, messageId)).processingStatus).toBe('awaiting_clarification');
 	});
 
 	it('keeps "It isn\'t ready yet" as a plain answer and never remembers file answers', async () => {

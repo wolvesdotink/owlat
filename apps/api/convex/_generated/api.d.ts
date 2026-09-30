@@ -637,6 +637,7 @@ import type * as knowledge_retrieval from '../knowledge/retrieval.js';
 import type * as lib_readBody from '../lib/readBody.js';
 import type * as lib_adminRequests from '../lib/adminRequests.js';
 import type * as lib_aiNotConfigured from '../lib/aiNotConfigured.js';
+import type * as lib_answerFileToFiles from '../lib/answerFileToFiles.js';
 import type * as lib_appLocales from '../lib/appLocales.js';
 import type * as lib_atRestBodies from '../lib/atRestBodies.js';
 import type * as lib_bytes from '../lib/bytes.js';
@@ -1960,6 +1961,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/readBody': typeof lib_readBody;
 	'lib/adminRequests': typeof lib_adminRequests;
 	'lib/aiNotConfigured': typeof lib_aiNotConfigured;
+	'lib/answerFileToFiles': typeof lib_answerFileToFiles;
 	'lib/appLocales': typeof lib_appLocales;
 	'lib/atRestBodies': typeof lib_atRestBodies;
 	'lib/bytes': typeof lib_bytes;

@@ -32,7 +32,7 @@ import {
 	type ClarificationFileRef,
 } from '../../inbox/clarificationFileAnswer';
 import { findContactByIdentifier } from '../../contacts/resolution';
-import { hasPermission } from '../../lib/sessionOrganization';
+import { canSaveAnswerToFiles } from '../../lib/answerFileToFiles';
 import { clarificationFileRefValidator } from '../../lib/validators/clarification';
 import { buildThreadTranscript, CLARIFY_DRAFT } from './transcript';
 import { withStoredInlineBodies } from '../../lib/messageBodyStore';
@@ -97,11 +97,10 @@ export const answerClarification = postboxMutation({
 
 		const senderMessage = await ctx.db.get(flag.messageId);
 		const fromAddress = senderMessage?.fromAddress;
-		// Uploaded answers are kept in Files for the sender's contact. Adding to
-		// Files is an admin action on the Files page, so it is here too.
-		const canSaveToFiles = hasPermission(session.role, 'organization:manage');
+		// Uploaded answers are kept in Files for the sender's contact, by the
+		// shared rules (lib/answerFileToFiles.ts: admins only, like the Files page).
 		let senderContactId: Id<'contacts'> | undefined;
-		if (fromAddress && canSaveToFiles) {
+		if (fromAddress && canSaveAnswerToFiles(session)) {
 			const identifier = normalizeEmail(fromAddress);
 			const found = identifier ? await findContactByIdentifier(ctx, 'email', identifier) : null;
 			senderContactId = found?.contact._id;
@@ -121,8 +120,6 @@ export const answerClarification = postboxMutation({
 						keepCopy: provided.keepCopy,
 						mimeType: provided.mimeType,
 						contactId: senderContactId,
-						allowMailAttachment: true,
-						canSaveToFiles,
 					})
 				: undefined;
 			const value = provided.value ?? resolved?.ref.filename;
