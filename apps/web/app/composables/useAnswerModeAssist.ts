@@ -68,7 +68,6 @@ export function useAnswerModeAssist(opts: {
 	// A draft the AI prepared earlier.
 	const prepared = useAnswerPreparedDraft({
 		threadId: () => opts.message()?.threadId,
-		mailboxId: () => opts.message()?.mailboxId,
 		enabled: () => aiEnabled.value && opts.freshReply(),
 	});
 	let preparedTaken = false;
