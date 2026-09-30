@@ -21,7 +21,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalAction, internalMutation, type QueryCtx } from '../_generated/server';
+import { internalAction, type QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { MAX_ATTACHMENT_BYTES, ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';

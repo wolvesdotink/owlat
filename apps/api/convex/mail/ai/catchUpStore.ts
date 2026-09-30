@@ -18,7 +18,8 @@
 
 import { v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { internalMutation, internalQuery, type QueryCtx } from '../../_generated/server';
+import { internalQuery, type QueryCtx } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 import { publicQuery } from '../../lib/authedFunctions';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { catchUpValidator } from '../../lib/validators/catchUp';

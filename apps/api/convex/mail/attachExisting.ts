@@ -28,12 +28,8 @@
  */
 
 import { v, type Infer } from 'convex/values';
-import {
-	internalMutation,
-	internalQuery,
-	type ActionCtx,
-	type QueryCtx,
-} from '../_generated/server';
+import { internalQuery, type ActionCtx, type QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { normalizeEmail } from '@owlat/shared';
