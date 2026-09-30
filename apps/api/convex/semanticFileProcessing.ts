@@ -24,7 +24,7 @@ import {
 	resolveAiConfig,
 	resolveLanguageModel,
 	resolveEmbeddingModel,
-	assertEmbeddingDimension,
+	toIndexVector,
 } from './lib/llmProvider';
 import { AiNotConfiguredError } from './lib/aiNotConfigured';
 import { CURRENT_EMBEDDING_MODEL } from './lib/constants';
@@ -201,8 +201,7 @@ ${textForAI}`,
 					model: embeddingModel,
 					value: embeddingText,
 				});
-				assertEmbeddingDimension(embeddingResult.embedding);
-				embedding = embeddingResult.embedding;
+				embedding = toIndexVector(embeddingResult.embedding);
 			} catch (error) {
 				logError('[semantic_file] embedding generation failed', {
 					fileId: args.fileId,
@@ -352,7 +351,7 @@ export const semanticSearch = internalAction({
 			const embeddingModel = await resolveEmbeddingModel(ctx);
 			try {
 				const { embedding } = await embed({ model: embeddingModel, value: queryText });
-				vector = Array.from(embedding);
+				vector = toIndexVector(embedding);
 			} catch (error) {
 				logInfo('[semantic_file] search embed failed', { error: String(error) });
 				return [];

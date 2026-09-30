@@ -25,7 +25,12 @@
 import { v } from 'convex/values';
 import { openStoredInlineBody } from '../lib/messageBodyStore';
 import { takeReceivedAtChunk } from '../lib/receivedAtCursor';
-import { internalAction, internalMutation, internalQuery } from '../_generated/server';
+import {
+	internalAction,
+	internalMutation,
+	internalQuery,
+	type ActionCtx,
+} from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { isFeatureEnabled } from '../lib/featureFlags';
@@ -33,10 +38,15 @@ import { resolveContact } from '../contacts/resolution';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { normalizeEmail } from '@owlat/shared';
 import { logError } from '../lib/runtimeLog';
+import { INDEX_CHUNK_SIZE } from './migrationBackfill';
 
-// Tunables — kept in step with knowledge/messageBackfill.ts.
-const INTER_MESSAGE_DELAY_MS = 150;
+// Tunables. Pacing comes from the concurrency cap: at most this many
+// extractions (LLM calls) in flight per sweep.
 const INTER_CHUNK_DELAY_MS = 1500;
+const INDEX_CONCURRENCY = 4;
+/** Stop taking new messages after this long; well inside the 600s action limit
+ *  plus one extraction's own LLM deadline (knowledge/extraction.ts). */
+const CHUNK_TIME_BUDGET_MS = 4 * 60 * 1000;
 
 // ============================================================
 // Internal queries
@@ -193,6 +203,53 @@ export const patchIndexProgress = internalMutation({
 	},
 });
 
+/**
+ * Re-run a finished import's indexing sweep (operator entry point:
+ * `migrations/0050_reindex_mailbox_knowledge`).
+ *
+ * For an import that finished WITHOUT knowledge — opted out, or swept while
+ * the embedder could not store a vector — which otherwise has no way back
+ * short of re-importing the whole mailbox. The sweep starts from the first
+ * message; messages that already produced entries are counted, not
+ * re-extracted.
+ */
+export const reindexMigration = internalMutation({
+	args: { migrationId: v.id('mailboxMigrations') },
+	handler: async (ctx, args): Promise<{ started: boolean; reason?: string }> => {
+		const migration = await ctx.db.get(args.migrationId);
+		if (!migration) return { started: false, reason: 'not_found' };
+		// Only a completed import has a settled message set to walk; a running
+		// one hands off to indexing by itself.
+		if (migration.status !== 'completed') {
+			return { started: false, reason: `status_${migration.status}` };
+		}
+		if (!(await isFeatureEnabled(ctx, 'ai.knowledge'))) {
+			return { started: false, reason: 'ai_knowledge_disabled' };
+		}
+		const now = Date.now();
+		await ctx.db.patch(migration._id, {
+			status: 'indexing',
+			isAiIndexingEnabled: true,
+			messagesIndexed: 0,
+			indexCursorReceivedAt: undefined,
+			indexCursorId: undefined,
+			completedAt: undefined,
+			updatedAt: now,
+		});
+		await ctx.db.insert('mailAuditLog', {
+			mailboxId: migration.mailboxId,
+			event: 'migration.reindex_started',
+			details: `migration=${migration._id}`,
+			occurredAt: now,
+		});
+		await ctx.scheduler.runAfter(0, internal.mail.migrationIndexing.runIndexChunk, {
+			migrationId: migration._id,
+			chunkSize: INDEX_CHUNK_SIZE,
+		});
+		return { started: true };
+	},
+});
+
 /** Move the migration to a terminal state. */
 export const finalizeMigration = internalMutation({
 	args: {
@@ -236,6 +293,48 @@ export const finalizeMigration = internalMutation({
 // ============================================================
 // Internal action — the chunk workhorse
 // ============================================================
+
+/**
+ * Extract one imported message into the knowledge graph, scoped to its
+ * sender's contact. Never throws: one message failing must not abort the chunk.
+ */
+async function indexOneMessage(
+	ctx: ActionCtx,
+	migrationId: Id<'mailboxMigrations'>,
+	msg: { _id: Id<'mailMessages'>; fromAddress: string; fromName?: string }
+): Promise<void> {
+	try {
+		// Idempotency: a message already swept (migration restart / retry) is
+		// counted but not re-extracted — saves a redundant LLM call.
+		const already = await ctx.runQuery(internal.knowledge.graph.countBySource, {
+			sourceType: 'email',
+			sourceId: msg._id,
+		});
+		if (already > 0) return;
+
+		// Scope the knowledge to the sender (quiet find-or-create).
+		const { contactId } = await ctx.runMutation(
+			internal.mail.migrationIndexing.resolveSenderContact,
+			{ email: msg.fromAddress, fromName: msg.fromName ?? undefined }
+		);
+		// An unresolvable sender (e.g. a malformed From header) would otherwise
+		// land org-general — visible in every contact's retrieval. The migration
+		// only imports contact-scoped knowledge; the message is still counted.
+		if (!contactId) return;
+
+		await ctx.runAction(internal.knowledge.extraction.extractFromMailMessage, {
+			mailMessageId: msg._id,
+			contactIds: [contactId],
+		});
+	} catch (err) {
+		// The migration id and message id make the gap traceable afterwards.
+		logError('[mailMigration] extraction failed for one message', {
+			migrationId,
+			mailMessageId: msg._id,
+			error: err,
+		});
+	}
+}
 
 /**
  * Process one chunk of imported messages through `extractFromMailMessage`,
@@ -282,56 +381,26 @@ export const runIndexChunk = internalAction({
 				}
 			);
 
-			let deltaIndexed = 0;
-			let lastReceivedAt: number | undefined;
-			let lastId: Id<'mailMessages'> | undefined;
-
-			for (const msg of messages) {
-				deltaIndexed++;
-				lastReceivedAt = msg.receivedAt;
-				lastId = msg._id;
-
-				// Idempotency: a message already swept (migration restart / retry)
-				// is counted but not re-extracted — saves the runAction round-trip
-				// and a redundant LLM call.
-				const already = await ctx.runQuery(internal.knowledge.graph.countBySource, {
-					sourceType: 'email',
-					sourceId: msg._id,
-				});
-				if (already > 0) continue;
-
-				// Scope the knowledge to the sender (quiet find-or-create).
-				const { contactId } = await ctx.runMutation(
-					internal.mail.migrationIndexing.resolveSenderContact,
-					{ email: msg.fromAddress, fromName: msg.fromName ?? undefined }
-				);
-
-				// An unresolvable sender (e.g. a malformed From header) would
-				// otherwise land org-general — visible in every contact's retrieval.
-				// The migration only imports contact-scoped knowledge; the message
-				// is still counted (deltaIndexed above) and the cursor advances.
-				if (!contactId) continue;
-
-				try {
-					await ctx.runAction(internal.knowledge.extraction.extractFromMailMessage, {
-						mailMessageId: msg._id,
-						contactIds: [contactId],
-					});
-				} catch (err) {
-					// One message failing extraction must not abort the chunk; the
-					// migration id and message id make the gap traceable afterwards.
-					logError('[mailMigration] extraction failed for one message', {
-						migrationId: args.migrationId,
-						mailMessageId: msg._id,
-						error: err,
-					});
-				}
-
-				// Light pacing between LLM calls.
-				if (INTER_MESSAGE_DELAY_MS > 0) {
-					await new Promise((r) => setTimeout(r, INTER_MESSAGE_DELAY_MS));
-				}
+			// Work through the chunk a few messages at a time, and stop taking new
+			// ones once the time budget is spent: one extraction is a 20-60s LLM
+			// call, so a whole chunk in sequence outran Convex's action limit, and
+			// an action killed mid-chunk never reschedules — the migration sat at
+			// `indexing` forever. Whatever is left is the next invocation's.
+			// The first group always runs, so every invocation makes progress.
+			const startedAt = Date.now();
+			let processed = 0;
+			while (processed < messages.length) {
+				if (processed > 0 && Date.now() - startedAt >= CHUNK_TIME_BUDGET_MS) break;
+				const group = messages.slice(processed, processed + INDEX_CONCURRENCY);
+				await Promise.all(group.map((msg) => indexOneMessage(ctx, args.migrationId, msg)));
+				processed += group.length;
 			}
+			const done = messages.slice(0, processed);
+			const last = done[done.length - 1];
+			const deltaIndexed = done.length;
+			const lastReceivedAt = last?.receivedAt;
+			const lastId = last?._id;
+			const moreToDo = hasMore || processed < messages.length;
 
 			await ctx.runMutation(internal.mail.migrationIndexing.patchIndexProgress, {
 				migrationId: args.migrationId,
@@ -340,7 +409,7 @@ export const runIndexChunk = internalAction({
 				cursorId: lastId,
 			});
 
-			if (hasMore) {
+			if (moreToDo) {
 				await ctx.scheduler.runAfter(
 					interChunkDelay,
 					internal.mail.migrationIndexing.runIndexChunk,

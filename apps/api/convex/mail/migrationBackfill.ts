@@ -31,7 +31,7 @@ import { scheduleVoiceProfileRefresh } from './ai/voiceProfile';
 import { findDuplicateInMailbox } from './deliveryPipeline/insert';
 
 // Chunk size for the post-import knowledge sweep (paced inside runIndexChunk).
-const INDEX_CHUNK_SIZE = 25;
+export const INDEX_CHUNK_SIZE = 25;
 
 /** Upper bound on one `findKnownMessageIds` call — one backfill batch's worth. */
 const MAX_KNOWN_MESSAGE_ID_LOOKUP = 500;
