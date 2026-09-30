@@ -4900,6 +4900,7 @@
 				"missing": "This draft no longer exists, or you no longer have access to it. Nothing here will be saved or sent.",
 				"notSaved": "Your latest changes couldn't be saved. Everything you wrote is still here.",
 				"notSent": "Your latest changes couldn't be saved, so nothing was sent. Everything you wrote is still here; try Send again.",
+				"stillChanging": "Your message changed while it was being saved, so nothing was sent. Everything you wrote is still here; try again.",
 				"tryAgain": "Try again"
 			},
 			"postboxPreviewAsSent": {

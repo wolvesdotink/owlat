@@ -334,7 +334,17 @@ describe('usePostboxCompose — Send needs the current snapshot saved (#895)', (
 		expect(sendRun).not.toHaveBeenCalled();
 		expect(undoArm).not.toHaveBeenCalled();
 		expect(retire).not.toHaveBeenCalled();
-		expect(composer.draftNotice.value).toBe('not_sent');
+		// Every write landed, so the notice says what actually happened.
+		expect(composer.draftNotice.value).toBe('still_changing');
+
+		// The edit made during the last write is not stranded: autosave is
+		// re-armed and carries it on the normal debounce.
+		duringUpdate = null;
+		await vi.advanceTimersByTimeAsync(1500);
+		expect(updateRun).toHaveBeenCalledTimes(4);
+		expect(lastUpdate()).toMatchObject({ subject: 'Still typing 3' });
+		expect(composer.subject.value).toBe('Still typing 3');
+		expect(composer.draftNotice.value).toBeNull();
 	});
 
 	it('does not write again when the current snapshot is already saved', async () => {
@@ -402,6 +412,23 @@ describe('usePostboxCompose — flush() reports whether it saved (#895)', () => 
 		expect(result).toEqual({ ok: true, result: 'draft-1' });
 		expect(updateRun).toHaveBeenCalledTimes(2);
 		expect(lastUpdate()).toMatchObject({ toAddresses: ['later@example.com'] });
+	});
+
+	it('reports still_changing, and keeps autosaving, when the fields change under every save', async () => {
+		const composer = await reopenDraft();
+		await editRecipientsAndBody(composer);
+		let edits = 0;
+		duringUpdate = () => {
+			edits += 1;
+			composer.subject.value = `Still typing ${edits}`;
+		};
+
+		expect(await composer.flush()).toEqual({ ok: false });
+		expect(composer.draftNotice.value).toBe('still_changing');
+
+		duringUpdate = null;
+		await vi.advanceTimersByTimeAsync(1500);
+		expect(lastUpdate()).toMatchObject({ subject: 'Still typing 3' });
 	});
 
 	it('resolves the draft id once the current snapshot is saved', async () => {

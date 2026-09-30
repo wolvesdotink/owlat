@@ -4900,6 +4900,7 @@
 				"missing": "Dieser Entwurf existiert nicht mehr, oder Sie haben keinen Zugriff mehr darauf. Hier wird nichts gespeichert oder gesendet.",
 				"notSaved": "Ihre letzten Änderungen konnten nicht gespeichert werden. Alles, was Sie geschrieben haben, ist noch hier.",
 				"notSent": "Ihre letzten Änderungen konnten nicht gespeichert werden, deshalb wurde nichts gesendet. Alles, was Sie geschrieben haben, ist noch hier; versuchen Sie es erneut.",
+				"stillChanging": "Ihre Nachricht hat sich während des Speicherns geändert, deshalb wurde nichts gesendet. Alles, was Sie geschrieben haben, ist noch hier; versuchen Sie es erneut.",
 				"tryAgain": "Erneut versuchen"
 			},
 			"postboxPreviewAsSent": {

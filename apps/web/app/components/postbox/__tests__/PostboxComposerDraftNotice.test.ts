@@ -14,7 +14,9 @@ beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
 
-function mountNotice(notice: 'load_failed' | 'missing' | 'not_sent' | 'not_saved' | null) {
+function mountNotice(
+	notice: 'load_failed' | 'missing' | 'not_sent' | 'not_saved' | 'still_changing' | null
+) {
 	return mount(PostboxComposerDraftNotice, {
 		props: { notice },
 		global: {
@@ -62,6 +64,12 @@ describe('PostboxComposerDraftNotice', () => {
 		await wrapper.vm.$nextTick();
 
 		expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+	});
+
+	it('says the message changed during the save, not that saving failed', () => {
+		const wrapper = mountNotice('still_changing');
+		expect(wrapper.text()).toContain('changed while it was being saved');
+		expect(wrapper.text()).not.toContain("couldn't be saved");
 	});
 
 	it('says nothing was sent when the final save failed', () => {

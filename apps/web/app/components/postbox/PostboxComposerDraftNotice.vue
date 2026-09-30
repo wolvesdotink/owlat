@@ -11,6 +11,9 @@
  *  - `missing`: the read answered that there is no row this member can open
  *    (deleted, or access lost). Nothing will load, so nothing is saved or sent;
  *    whatever is on screen can still be copied out.
+ *  - `still_changing`: every save landed, but the message kept changing while
+ *    Send (or the expand-to-popup) was saving it, so it stopped rather than
+ *    use an older version. Autosave carries the rest on its normal debounce.
  *  - `not_sent` / `not_saved`: the latest changes did not save, so Send (or
  *    the expand-to-popup) stopped. The failing save has already toasted its
  *    own reason; this is what it cost and what is still safe.
@@ -30,6 +33,7 @@ const COPY_KEYS: Record<ComposeDraftNotice, string> = {
 	missing: 'components.postbox.postboxComposerDraftNotice.missing',
 	not_sent: 'components.postbox.postboxComposerDraftNotice.notSent',
 	not_saved: 'components.postbox.postboxComposerDraftNotice.notSaved',
+	still_changing: 'components.postbox.postboxComposerDraftNotice.stillChanging',
 };
 const visible = computed(
 	() => props.notice !== null && (props.notice !== 'loading' || showLoading.value)

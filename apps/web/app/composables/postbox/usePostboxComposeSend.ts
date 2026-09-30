@@ -5,10 +5,11 @@
  *
  *  - SEND READS THE ROW, so the row must hold what the editor holds. Send goes
  *    ahead only once the server has acknowledged the CURRENT snapshot. A save
- *    that failed, or saved an older snapshot, is retried once at the Send
- *    boundary; if that fails too, nothing is sent (#895). The composer stays
- *    open with the text and its recovery mirror, no undo window is armed, and
- *    the composer says why in `persistNotice`.
+ *    that failed or carried an older snapshot, and an edit made while Send's
+ *    own save was out, are written again at the Send boundary (up to three
+ *    writes); if a write fails, or the fields are still changing after that,
+ *    nothing is sent (#895). The composer stays open with the text and its
+ *    recovery mirror, no undo window is armed, and `draftNotice` says why.
  *  - A TRANSPORT failure (a save or send the connection dropped) is claimed
  *    rather than toasted and hands the composition to the offline outbox, whose
  *    payload is the complete, current snapshot — never an online send of a
@@ -30,6 +31,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { OperationError } from '@owlat/shared/operationError';
 import type { BackendOperation, BackendOperationResult } from '~/composables/useBackendOperation';
 import { SurfacedOperationError } from '~/lib/operationError';
+import type { SettleOutcome } from './usePostboxComposeAutosave';
 import type { InitialHydrationState } from './usePostboxComposeHydration';
 import type { SendOpts } from './usePostboxComposeOfflineSend';
 
@@ -42,7 +44,9 @@ export type ComposeDraftNotice =
 	/** The latest changes did not save, so Send stopped. */
 	| 'not_sent'
 	/** The latest changes did not save (promotion, the seal re-check). */
-	| 'not_saved';
+	| 'not_saved'
+	/** Every save landed, but the fields kept changing under them. */
+	| 'still_changing';
 
 type SendReceipt = { undoToken: string; sendAt: number };
 
@@ -89,10 +93,8 @@ interface ComposeSendOptions {
 	isOffline: Readonly<Ref<boolean>>;
 	lastSavedAt: Ref<number | null>;
 	network: ReturnType<typeof createSendNetworkClaim>;
-	settlePendingSave: (
-		beforeWrite?: () => void
-	) => Promise<BackendOperationResult<Id<'mailDrafts'>>>;
-	flushSave: () => Promise<BackendOperationResult<Id<'mailDrafts'> | null>>;
+	settlePendingSave: (beforeWrite?: () => void) => Promise<SettleOutcome<Id<'mailDrafts'>>>;
+	flushSave: () => Promise<SettleOutcome<Id<'mailDrafts'> | null>>;
 	sendDraft: BackendOperation<typeof api.mail.drafts.send>;
 	/** The complete-payload offline queue; throws when the device cannot store it. */
 	queueOfflineSend: (opts?: SendOpts) => Promise<SendReceipt>;
@@ -103,7 +105,7 @@ interface ComposeSendOptions {
 }
 
 export function usePostboxComposeSend(o: ComposeSendOptions) {
-	const persistRefusal = ref<'not_sent' | 'not_saved' | null>(null);
+	const persistRefusal = ref<'not_sent' | 'not_saved' | 'still_changing' | null>(null);
 	// The server has the text now; whatever was refused before no longer applies.
 	watch(o.lastSavedAt, () => {
 		persistRefusal.value = null;
@@ -159,7 +161,7 @@ export function usePostboxComposeSend(o: ComposeSendOptions) {
 			// The connection dropped under the save (or the row's creation): the
 			// payload carries the current text, so queue it.
 			if (save.networkFailed) return queueSendOffline(opts);
-			persistRefusal.value = 'not_sent';
+			persistRefusal.value = 'stillChanging' in saved ? 'still_changing' : 'not_sent';
 			throw new SurfacedOperationError('Draft not saved');
 		}
 
@@ -197,8 +199,9 @@ export function usePostboxComposeSend(o: ComposeSendOptions) {
 		persistRefusal.value = null;
 		if (o.initialHydration.value !== 'ready') return { ok: false };
 		const saved = await o.flushSave();
-		if (!saved.ok) persistRefusal.value = 'not_saved';
-		return saved;
+		if (saved.ok) return saved;
+		persistRefusal.value = 'stillChanging' in saved ? 'still_changing' : 'not_saved';
+		return { ok: false };
 	}
 
 	return { send, flush, sendReady, draftNotice };

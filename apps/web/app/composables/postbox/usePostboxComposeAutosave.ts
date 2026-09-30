@@ -45,6 +45,13 @@ const AUTOSAVE_DEBOUNCE_MS = 1500;
 /** Writes `settlePendingSave` makes before giving up on fields that keep changing. */
 const SETTLE_WRITES = 3;
 
+/**
+ * What `settlePendingSave` / `flush` resolve to: the Operation envelope, plus
+ * one refusal no operation surfaced — every write landed, but the fields kept
+ * changing under them — which the caller has to explain itself.
+ */
+export type SettleOutcome<T> = BackendOperationResult<T> | { ok: false; stillChanging: true };
+
 interface AutosaveOptions {
 	mailboxId: Id<'mailboxes'>;
 	inReplyToMessageId?: Id<'mailMessages'>;
@@ -195,15 +202,16 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 	 * lands. After every awaited write the acknowledged snapshot is compared
 	 * with the current fields, and a mismatch writes again. The loop is bounded:
 	 * fields that are still changing after `SETTLE_WRITES` writes resolve to
-	 * `ok: false`, which the caller surfaces itself (Send and promotion show
-	 * their not-sent / not-saved notice) — never to a send of an older snapshot.
+	 * `stillChanging`, which the caller surfaces itself — never to a send of an
+	 * older snapshot. The autosave is re-armed first, so the last edit still
+	 * reaches the server on the normal debounce.
 	 *
 	 * `beforeWrite` runs before each write this call makes, so a caller can judge
 	 * those writes apart from an earlier one it only waited on.
 	 */
 	async function settlePendingSave(
 		beforeWrite?: () => void
-	): Promise<BackendOperationResult<Id<'mailDrafts'>>> {
+	): Promise<SettleOutcome<Id<'mailDrafts'>>> {
 		for (let writes = 0; ; writes += 1) {
 			clearTimer();
 			if (pendingSave) await pendingSave;
@@ -212,7 +220,11 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 			// nothing of the editor's they could be missing.
 			if (id && draftState.value !== 'draft') return { ok: true, result: id };
 			if (isAcknowledged(id)) return { ok: true, result: id };
-			if (writes === SETTLE_WRITES) return { ok: false };
+			if (writes === SETTLE_WRITES) {
+				// The loop cleared the timer the latest edit armed; put it back.
+				schedulePersist();
+				return { ok: false, stillChanging: true };
+			}
 			beforeWrite?.();
 			pendingSave = persist();
 			const saved = await pendingSave;
@@ -226,7 +238,7 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 	 * the SAME draft with nothing lost — which is only true when the save landed,
 	 * so a failure is `ok: false` and the caller stays put.
 	 */
-	async function flush(): Promise<BackendOperationResult<Id<'mailDrafts'> | null>> {
+	async function flush(): Promise<SettleOutcome<Id<'mailDrafts'> | null>> {
 		// Scheduled/pending rows are read-only (drafts.update rejects them) —
 		// just report the id without persisting.
 		if (draftState.value !== 'draft') {
