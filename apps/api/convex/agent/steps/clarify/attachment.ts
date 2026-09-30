@@ -109,9 +109,9 @@ function staticTranslations(
  * Shape an ambiguous attachment choice into the single "which file?" question.
  * The candidates ride along as `fileCandidates` (the Answer mode card shows
  * them as file chips) and, in the same order, as option labels for clients
- * that only render chips. Pure + exported for tests.
+ * that only render chips.
  */
-export function buildAttachmentQuestion(
+function buildAttachmentQuestion(
 	candidates: AttachmentSuggestions['candidates']
 ): ClarificationQuestion {
 	const options: string[] = [];
@@ -138,9 +138,9 @@ export function buildAttachmentQuestion(
  * Files"; `nearCandidates` (a weak match, if any) show as "close, but maybe not
  * it"; the only chip is "It isn't ready yet". `phrase` is the requested thing as
  * the sender worded it (untrusted, already credential-checked), or '' for the
- * generic wording. Pure + exported for tests.
+ * generic wording.
  */
-export function buildFileNotFoundQuestion(
+function buildFileNotFoundQuestion(
 	phrase: string,
 	nearCandidates: AttachmentSuggestions['candidates']
 ): ClarificationQuestion {
@@ -179,9 +179,9 @@ const SENDER_ATTACHED =
 /**
  * The phrase naming the file the sender wants back, or null when the current
  * message asks for no file (or asks for something credential-shaped, which is
- * never turned into a question). Pure + exported for tests.
+ * never turned into a question).
  */
-export function requestedFilePhrase(context: string): string | null {
+function requestedFilePhrase(context: string): string | null {
 	const text = currentMessageText(context).replace(SENDER_ATTACHED, ' ');
 	const request = detectAttachmentRequest(text);
 	if (!request.requested) return null;

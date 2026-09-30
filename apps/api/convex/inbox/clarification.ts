@@ -18,6 +18,7 @@ import {
 	ownerPickSuggestion,
 	resolveClarificationFile,
 	type ClarificationFileRef,
+	type ResolvedFileAnswer,
 } from './clarificationFileAnswer';
 
 /**
@@ -69,7 +70,7 @@ export const answerClarification = adminMutation({
 
 		const now = Date.now();
 		const answerByQuestion = new Map(args.answers.map((a) => [a.questionId, a] as const));
-		let pickedFile: Awaited<ReturnType<typeof resolveClarificationFile>>['semanticFile'];
+		let pickedFile: ResolvedFileAnswer['semanticFile'];
 		const questions = [];
 		for (const q of pending.questions) {
 			const provided = answerByQuestion.get(q.id);
