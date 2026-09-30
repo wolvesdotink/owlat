@@ -115,8 +115,12 @@ export async function loadAnswerContext(
 	};
 }
 
-/** Context strings past this size are rebuilt by `answer` rather than stored. */
-const MAX_STORED_CONTEXT_CHARS = 200_000;
+/**
+ * Context past this size is rebuilt by `answer` rather than stored. A team
+ * briefing is a few thousand tokens and a Postbox transcript is capped at 14k
+ * characters, so this only bounds the row the sweeps and erasure read in bulk.
+ */
+const MAX_STORED_CONTEXT_CHARS = 60_000;
 
 /** The drafter's part of a context, as the session keeps it, or undefined when too large. */
 export function draftContextOf(context: AnswerContext): AnswerDraftContext | undefined {

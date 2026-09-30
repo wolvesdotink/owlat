@@ -275,7 +275,7 @@ export const eraseMemberData = internalMutation({
 			.collect(); // bounded: a user's own app passwords
 		for (const pw of userPasswords) await ctx.db.delete(pw._id);
 		// Answer mode ask sessions quote their mail and hold the member's answers.
-		if (await deleteAskSessionsOfOwner(ctx, args.authUserId, MESSAGE_BATCH)) return reschedule();
+		if (await deleteAskSessionsOfOwner(ctx, args.authUserId)) return reschedule();
 
 		// Onboarding checklist, send-ready notices and the platform-admin grant:
 		// keyed by user id and outside the workspace deletion's sweep.
