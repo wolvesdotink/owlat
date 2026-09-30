@@ -1012,6 +1012,7 @@ import type * as mail_mtaClient from '../mail/mtaClient.js';
 import type * as mail_mute from '../mail/mute.js';
 import type * as mail_needsReply from '../mail/needsReply.js';
 import type * as mail_needsReplyHeuristic from '../mail/needsReplyHeuristic.js';
+import type * as mail_needsReplyPrepared from '../mail/needsReplyPrepared.js';
 import type * as mail_needsReplyQueueScan from '../mail/needsReplyQueueScan.js';
 import type * as mail_needsReplyTrigger from '../mail/needsReplyTrigger.js';
 import type * as mail_outbound from '../mail/outbound.js';
@@ -2338,6 +2339,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/mute': typeof mail_mute;
 	'mail/needsReply': typeof mail_needsReply;
 	'mail/needsReplyHeuristic': typeof mail_needsReplyHeuristic;
+	'mail/needsReplyPrepared': typeof mail_needsReplyPrepared;
 	'mail/needsReplyQueueScan': typeof mail_needsReplyQueueScan;
 	'mail/needsReplyTrigger': typeof mail_needsReplyTrigger;
 	'mail/outbound': typeof mail_outbound;
