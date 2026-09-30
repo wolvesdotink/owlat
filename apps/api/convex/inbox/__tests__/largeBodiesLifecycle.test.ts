@@ -18,6 +18,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
+import type * as MessagesModule from '../messages';
 import { permanentlyDeleteContactWithRelations } from '../../lib/contactMutations';
 import { DAY_MS } from '../../lib/constants';
 import {
@@ -44,7 +45,7 @@ function withHandler<T extends { _handler: (...args: never[]) => unknown }>(
 // the transactional check can catch a redelivery, and a receive that throws
 // after the action has staged its blobs.
 vi.mock('../messages', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../messages')>();
+	const actual = await importOriginal<typeof MessagesModule>();
 	const findIdByMessageId = actual.findIdByMessageId as unknown as {
 		_handler: (...args: never[]) => unknown;
 	};
