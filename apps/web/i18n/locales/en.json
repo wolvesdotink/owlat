@@ -1652,7 +1652,9 @@
 				"emptyForChannel": "No {channel} messages",
 				"emptyHint": "Cross-channel messages will appear here as they are sent and received.",
 				"loading": "Loading timeline...",
+				"longMessage": "Shortened: this is the beginning of a long email.",
 				"messagePlaceholder": "Type a message to send on this channel…",
+				"openFullMessage": "Open the full message",
 				"sendTitle": "Send a message",
 				"statuses": {
 					"delivered": "delivered",
@@ -3317,6 +3319,7 @@
 				"returned": "· Returned"
 			},
 			"threadChannelTimeline": {
+				"longMessage": "Shortened: the full message is shown above.",
 				"reply": "Reply",
 				"replyOn": "Reply on {channel}",
 				"replyPlaceholder": "Reply on {channel}…",

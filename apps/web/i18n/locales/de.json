@@ -1652,7 +1652,9 @@
 				"emptyForChannel": "Keine Nachrichten über {channel}",
 				"emptyHint": "Kanalübergreifende Nachrichten erscheinen hier, sobald sie gesendet und empfangen werden.",
 				"loading": "Chronik wird geladen ...",
+				"longMessage": "Gekürzt: Das ist der Anfang einer langen E-Mail.",
 				"messagePlaceholder": "Schreiben Sie eine Nachricht für diesen Kanal …",
+				"openFullMessage": "Ganze Nachricht öffnen",
 				"sendTitle": "Nachricht senden",
 				"statuses": {
 					"delivered": "zugestellt",
@@ -3317,6 +3319,7 @@
 				"returned": "· Zurückgekehrt"
 			},
 			"threadChannelTimeline": {
+				"longMessage": "Gekürzt: Die ganze Nachricht steht oben.",
 				"reply": "Antworten",
 				"replyOn": "Über {channel} antworten",
 				"replyPlaceholder": "Über {channel} antworten…",

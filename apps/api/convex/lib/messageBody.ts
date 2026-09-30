@@ -361,6 +361,10 @@ export interface UnifiedMessageContent {
 	html?: string;
 	subject?: string;
 	mediaUrl?: string;
+	/** A large team-inbox email mirrored as its excerpt (`inbox/bodyStorage.ts`);
+	 * the whole body is read through the Team Inbox. */
+	isBodyTruncated?: boolean;
+	inboundMessageId?: string;
 }
 
 /**
