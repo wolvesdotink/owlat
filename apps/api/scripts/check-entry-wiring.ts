@@ -345,7 +345,15 @@ function reachedEntries(entries: readonly ConvexEntry[]): ReadonlySet<string> {
  * or deleted; a listed entry that gains a caller or is deleted fails until its
  * line comes off. Empty, and the empty state is the point (issue #528).
  */
-const UNREACHED_ENTRIES: readonly string[] = [];
+const UNREACHED_ENTRIES: readonly string[] = [
+	// Answer mode run: the team reply attachment API lands before its web caller
+	// (lane web-queue-team). Drop these five lines when that lane is merged.
+	'inbox/replyAttachments.ts#list',
+	'inbox/replyAttachments.ts#add',
+	'inbox/replyAttachments.ts#attachExisting',
+	'inbox/replyAttachments.ts#remove',
+	'inbox/replyAttachments.ts#suggestions',
+];
 
 // ─── The checks ─────────────────────────────────────────────────────────────
 

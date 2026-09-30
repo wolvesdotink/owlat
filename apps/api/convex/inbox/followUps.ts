@@ -45,6 +45,12 @@ import type {
 import { resolveHumanApproveUndoDelayMs } from './processingLifecycle/effects';
 import { resolveReplyCollisionHold } from './decisionFeedback';
 import { isSharedInboxReader } from './access';
+import {
+	assertReplyAttachmentsReady,
+	replyAttachmentRefs,
+	returnReplyAttachments,
+	takeReadyReplyAttachments,
+} from './replyAttachmentStore';
 
 type FollowUpStatus = Doc<'inboxFollowUps'>['status'];
 
@@ -114,7 +120,7 @@ export const sendFollowUp = adminMutation({
 		const body = args.body.trim();
 		if (!body) throwInvalidInput('Write a message before sending');
 		validateStringLength(args.subject, STRING_LIMITS.SUBJECT, 'Subject');
-		await getOrThrow(ctx, args.threadId, 'Thread');
+		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
 
 		const latest = await ctx.db
 			.query('inboundMessages')
@@ -136,6 +142,11 @@ export const sendFollowUp = adminMutation({
 			};
 		}
 
+		// The composer's attachments leave with this follow-up, so the composer is
+		// free for the next one while this one waits out its undo window.
+		await assertReplyAttachmentsReady(ctx, args.threadId);
+		const attachments = await takeReadyReplyAttachments(ctx, thread);
+
 		const configs = await ctx.db.query('agentConfig').take(1);
 		const undoDelayMs = resolveHumanApproveUndoDelayMs(configs[0]?.humanApproveUndoDelayMs);
 		const now = Date.now();
@@ -149,6 +160,7 @@ export const sendFollowUp = adminMutation({
 			inReplyToMessageId: latest._id,
 			subject,
 			body,
+			...(attachments.length > 0 ? { attachments } : {}),
 			status: 'scheduled',
 			createdBy: session.userId,
 			createdAt: now,
@@ -179,7 +191,8 @@ export const sendFollowUp = adminMutation({
 
 /**
  * Undo a follow-up while its window is open. Hands the text back so the
- * composer can reopen with it. `cancelled: false` once it has left.
+ * composer can reopen with it, and puts its attachments back into the
+ * thread's composer. `cancelled: false` once it has left.
  */
 export const cancelFollowUp = adminMutation({
 	args: { followUpId: v.id('inboxFollowUps') },
@@ -187,7 +200,11 @@ export const cancelFollowUp = adminMutation({
 		const followUp = await getOrThrow(ctx, args.followUpId, 'Follow-up');
 		if (followUp.status !== 'scheduled') return { cancelled: false as const };
 		if (followUp.scheduledFnId) await ctx.scheduler.cancel(followUp.scheduledFnId);
-		await transitionFollowUp(ctx, followUp, 'cancelled', { scheduledFnId: undefined });
+		await transitionFollowUp(ctx, followUp, 'cancelled', {
+			scheduledFnId: undefined,
+			attachments: undefined,
+		});
+		await returnReplyAttachments(ctx, followUp.threadId, followUp.attachments);
 
 		await recordAuditLog(ctx, {
 			userId: session.userId,
@@ -241,6 +258,8 @@ export const dispatch = internalMutation({
 
 		let outcome: NonCampaignIntakeOutcome;
 		try {
+			// The follow-up keeps its attachments as the record of what it carried.
+			const attachmentRefs = await replyAttachmentRefs(ctx, followUp.attachments);
 			outcome = await ctx.runMutation(internal.delivery.nonCampaignIntake.intake, {
 				kind: 'team_reply',
 				email: recipient,
@@ -250,6 +269,7 @@ export const dispatch = internalMutation({
 				html: replyBodyToHtml(followUp.body),
 				from,
 				...(Object.keys(headers).length > 0 ? { headers } : {}),
+				...(attachmentRefs.length > 0 ? { attachmentRefs } : {}),
 			});
 		} catch (err) {
 			// Refusals are typed returns; a throw is an infrastructure fault.
@@ -330,6 +350,7 @@ export const listForThread = publicQuery({
 							inReplyToMessageId: row.inReplyToMessageId,
 							subject: row.subject,
 							body: row.body,
+							attachments: row.attachments ?? [],
 							status: row.status,
 							createdBy: row.createdBy,
 							createdAt: row.createdAt,

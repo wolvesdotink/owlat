@@ -286,6 +286,7 @@ import type * as decision_gate from '../decision/gate.js';
 import type * as delivery_contactToken from '../delivery/contactToken.js';
 import type * as delivery_alignmentPreflight from '../delivery/alignmentPreflight.js';
 import type * as delivery_alignmentPreflightGather from '../delivery/alignmentPreflightGather.js';
+import type * as delivery_attachmentFetch from '../delivery/attachmentFetch.js';
 import type * as delivery_automatedClicks from '../delivery/automatedClicks.js';
 import type * as delivery_automatedOpens from '../delivery/automatedOpens.js';
 import type * as delivery_cronRegistration from '../delivery/cronRegistration.js';
@@ -598,6 +599,8 @@ import type * as inbox_queries from '../inbox/queries.js';
 import type * as inbox_rawMessage from '../inbox/rawMessage.js';
 import type * as inbox_reads from '../inbox/reads.js';
 import type * as inbox_receiveInbound from '../inbox/receiveInbound.js';
+import type * as inbox_replyAttachmentStore from '../inbox/replyAttachmentStore.js';
+import type * as inbox_replyAttachments from '../inbox/replyAttachments.js';
 import type * as inbox_snooze from '../inbox/snooze.js';
 import type * as inbox_stepOutputs from '../inbox/stepOutputs.js';
 import type * as inbox_threadFilters from '../inbox/threadFilters.js';
@@ -675,6 +678,7 @@ import type * as lib_emailProviders_mtaIdentity from '../lib/emailProviders/mtaI
 import type * as lib_emailProviders_sesIdentity from '../lib/emailProviders/sesIdentity.js';
 import type * as lib_emailTranslations from '../lib/emailTranslations.js';
 import type * as lib_env from '../lib/env.js';
+import type * as lib_existingAttachments from '../lib/existingAttachments.js';
 import type * as lib_featureFlags from '../lib/featureFlags.js';
 import type * as lib_featureFlagSettings from '../lib/featureFlagSettings.js';
 import type * as lib_fetchWithTimeout from '../lib/fetchWithTimeout.js';
@@ -832,6 +836,7 @@ import type * as lib_validators_mailSettings from '../lib/validators/mailSetting
 import type * as lib_validators_readiness from '../lib/validators/readiness.js';
 import type * as lib_validators_senderHeuristics from '../lib/validators/senderHeuristics.js';
 import type * as lib_validators_send from '../lib/validators/send.js';
+import type * as lib_validators_teamReplyAttachment from '../lib/validators/teamReplyAttachment.js';
 import type * as lib_validators_templates from '../lib/validators/templates.js';
 import type * as lib_vectorMath from '../lib/vectorMath.js';
 import type * as lib_webSecretBox from '../lib/webSecretBox.js';
@@ -1298,6 +1303,7 @@ import type * as workspaces_deletion_steps_mediaAssets from '../workspaces/delet
 import type * as workspaces_deletion_steps_registry from '../workspaces/deletion/steps/registry.js';
 import type * as workspaces_deletion_steps_semanticFiles from '../workspaces/deletion/steps/semanticFiles.js';
 import type * as workspaces_deletion_steps_sweep from '../workspaces/deletion/steps/sweep.js';
+import type * as workspaces_deletion_steps_teamReplies from '../workspaces/deletion/steps/teamReplies.js';
 import type * as workspaces_deletion_steps_transactionalSends from '../workspaces/deletion/steps/transactionalSends.js';
 import type * as workspaces_deletion_walker from '../workspaces/deletion/walker.js';
 import type * as workspaces_featureFlags from '../workspaces/featureFlags.js';
@@ -1590,6 +1596,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/checklistAlertState': typeof delivery_checklistAlertState;
 	'delivery/alignmentPreflight': typeof delivery_alignmentPreflight;
 	'delivery/alignmentPreflightGather': typeof delivery_alignmentPreflightGather;
+	'delivery/attachmentFetch': typeof delivery_attachmentFetch;
 	'delivery/automatedClicks': typeof delivery_automatedClicks;
 	'delivery/automatedOpens': typeof delivery_automatedOpens;
 	'delivery/cronRegistration': typeof delivery_cronRegistration;
@@ -1896,6 +1903,8 @@ declare const fullApi: ApiFromModules<{
 	'inbox/rawMessage': typeof inbox_rawMessage;
 	'inbox/reads': typeof inbox_reads;
 	'inbox/receiveInbound': typeof inbox_receiveInbound;
+	'inbox/replyAttachmentStore': typeof inbox_replyAttachmentStore;
+	'inbox/replyAttachments': typeof inbox_replyAttachments;
 	'inbox/snooze': typeof inbox_snooze;
 	'inbox/stepOutputs': typeof inbox_stepOutputs;
 	'inbox/threadFilters': typeof inbox_threadFilters;
@@ -1973,6 +1982,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/emailProviders/sesIdentity': typeof lib_emailProviders_sesIdentity;
 	'lib/emailTranslations': typeof lib_emailTranslations;
 	'lib/env': typeof lib_env;
+	'lib/existingAttachments': typeof lib_existingAttachments;
 	'lib/featureFlags': typeof lib_featureFlags;
 	'lib/featureFlagSettings': typeof lib_featureFlagSettings;
 	'lib/fetchWithTimeout': typeof lib_fetchWithTimeout;
@@ -2130,6 +2140,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/validators/readiness': typeof lib_validators_readiness;
 	'lib/validators/senderHeuristics': typeof lib_validators_senderHeuristics;
 	'lib/validators/send': typeof lib_validators_send;
+	'lib/validators/teamReplyAttachment': typeof lib_validators_teamReplyAttachment;
 	'lib/validators/templates': typeof lib_validators_templates;
 	'lib/vectorMath': typeof lib_vectorMath;
 	'lib/webSecretBox': typeof lib_webSecretBox;
@@ -2596,6 +2607,7 @@ declare const fullApi: ApiFromModules<{
 	'workspaces/deletion/steps/registry': typeof workspaces_deletion_steps_registry;
 	'workspaces/deletion/steps/semanticFiles': typeof workspaces_deletion_steps_semanticFiles;
 	'workspaces/deletion/steps/sweep': typeof workspaces_deletion_steps_sweep;
+	'workspaces/deletion/steps/teamReplies': typeof workspaces_deletion_steps_teamReplies;
 	'workspaces/deletion/steps/transactionalSends': typeof workspaces_deletion_steps_transactionalSends;
 	'workspaces/deletion/walker': typeof workspaces_deletion_walker;
 	'workspaces/featureFlags': typeof workspaces_featureFlags;
