@@ -158,8 +158,11 @@ type DiscoveryOutcome = {
 
 /**
  * How many times one discovery starts over after its commit found the row
- * changed underneath it. Each attempt re-reads the row and re-fetches, so the
- * committed observation is always newer than the state it transitions from.
+ * changed underneath it. Each retry re-reads the row and fetches again (the
+ * cache check is skipped: the row was just written by the competing commit, so
+ * it always looks fresh), so the committed observation is always newer than the
+ * state it transitions from, and a key that differs from the competing pin is
+ * recorded as `keyChanged` rather than dropped.
  */
 const MAX_DISCOVERY_ATTEMPTS = 3;
 
@@ -185,13 +188,17 @@ async function runRecipientKeyDiscovery(
 	const address = normalizeEmail(args.address);
 	let latest: DiscoveryOutcome['outcome'] = 'notFound';
 	for (let attempt = 0; attempt < MAX_DISCOVERY_ATTEMPTS; attempt++) {
-		const result = await discoverOnce(ctx, address, args);
+		const result = await discoverOnce(ctx, address, {
+			...args,
+			force: args.force || attempt > 0,
+		});
 		if (!('stale' in result)) return result;
 		latest = result.current ?? 'notFound';
 	}
 	// Other writers kept committing between our read and our commit; each of
-	// those is at least as fresh as what we would have written.
-	return { outcome: latest, cached: true };
+	// those is at least as fresh as what we would have written, so report the
+	// row they left.
+	return { outcome: latest };
 }
 
 /** One read -> fetch -> commit pass of {@link runRecipientKeyDiscovery}. */

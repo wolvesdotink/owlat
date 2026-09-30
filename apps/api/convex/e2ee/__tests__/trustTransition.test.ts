@@ -323,18 +323,28 @@ describe('e2ee/recipientKeys · reacceptKeyChange', () => {
 describe('e2ee/recipientKeys · upsertDiscovery (previous-release shim)', () => {
 	const legacyUpsert = (
 		t: ConvexTestCtx,
-		fields: { outcome: 'trusted' | 'keyChanged' | 'notFound'; pinned?: string; observed?: string }
+		fields: {
+			outcome: 'trusted' | 'keyChanged' | 'notFound';
+			pinned?: string;
+			observed?: string;
+			armored?: string;
+			ttl?: number;
+		}
 	) =>
 		t.mutation(internal.e2ee.recipientKeys.upsertDiscovery, {
 			address: ADDRESS,
 			domain: DOMAIN,
 			outcome: fields.outcome,
 			pinnedFingerprint: fields.pinned,
-			pinnedPublicKeyArmored: fields.pinned ? `KEY:${fields.pinned}` : undefined,
+			pinnedPublicKeyArmored: fields.pinned
+				? (fields.armored ?? `KEY:${fields.pinned}`)
+				: undefined,
 			observedFingerprint: fields.observed,
-			observedPublicKeyArmored: fields.observed ? `KEY:${fields.observed}` : undefined,
+			observedPublicKeyArmored: fields.observed
+				? (fields.armored ?? `KEY:${fields.observed}`)
+				: undefined,
 			source: 'wkd',
-			expiresAt: Date.now() + DAY,
+			expiresAt: Date.now() + (fields.ttl ?? DAY),
 		});
 
 	it('pins a first key on a row with no pin', async () => {
@@ -364,14 +374,40 @@ describe('e2ee/recipientKeys · upsertDiscovery (previous-release shim)', () => 
 		expect((await readRow(t))?.outcome).toBe('keyChanged');
 	});
 
-	it('treats a miss as freshness only, whatever pin the old action copied', async () => {
+	it('treats a v0.6.5 miss on a pinned row as freshness only', async () => {
 		const t = await setup();
 		await seedRow(t, { outcome: 'trusted', pinned: KEY_A, observed: KEY_A, revision: 1 });
-		await legacyUpsert(t, { outcome: 'notFound' });
+		const before = await readRow(t);
+		// What v0.6.5 sends on a miss: the cached outcome and key fields copied
+		// back, with the short negative TTL.
+		await legacyUpsert(t, {
+			outcome: 'trusted',
+			pinned: KEY_A,
+			observed: KEY_A,
+			armored: 'KEY:A-cached-copy',
+			ttl: 60 * 60 * 1000,
+		});
 		const row = await readRow(t);
 		expect(row?.outcome).toBe('trusted');
 		expect(row?.pinnedFingerprint).toBe(KEY_A);
 		expect(row?.pinnedPublicKeyArmored).toBe(`KEY:${KEY_A}`);
+		expect(row?.observedPublicKeyArmored).toBe(`KEY:${KEY_A}`);
+		expect(row?.revision).toBe(1);
+		expect(row!.expiresAt).toBeLessThan(before!.expiresAt);
+	});
+
+	it('does not pin a key the old action itself held as a change', async () => {
+		const t = await setup();
+		await legacyUpsert(t, { outcome: 'keyChanged', pinned: KEY_A, observed: KEY_B });
+		expect(await readRow(t)).toBeNull();
+	});
+
+	it('writes a plain negative entry for a miss on an unknown address', async () => {
+		const t = await setup();
+		await legacyUpsert(t, { outcome: 'notFound' });
+		const row = await readRow(t);
+		expect(row?.outcome).toBe('notFound');
+		expect(row?.pinnedFingerprint).toBeUndefined();
 	});
 });
 
@@ -399,21 +435,24 @@ describe('e2ee/discovery · discoverRecipientKey starts over when its read goes 
 	 * runs while the first WKD request is outstanding, i.e. after the discovery
 	 * has read the row and before it commits.
 	 */
-	function stubWkd(opts: { wkd: boolean; duringFirstFetch: () => Promise<void> }) {
-		let first = true;
+	function stubWkd(opts: {
+		wkd: boolean;
+		duringFirstFetch: () => Promise<void>;
+		everyFetch?: boolean;
+	}) {
+		const calls = { wkd: 0 };
 		vi.stubGlobal('fetch', async (input: string | URL) => {
 			const url = new URL(String(input));
 			if (!url.pathname.startsWith('/.well-known/openpgpkey/hu/')) {
 				return new Response(null, { status: 404 });
 			}
-			if (first) {
-				first = false;
-				await opts.duringFirstFetch();
-			}
+			calls.wkd += 1;
+			if (calls.wkd === 1 || opts.everyFetch) await opts.duringFirstFetch();
 			return opts.wkd
 				? new Response(bobBinary.slice(), { status: 200 })
 				: new Response(null, { status: 404 });
 		});
+		return calls;
 	}
 
 	const competingFirstUse = (t: ConvexTestCtx) =>
@@ -427,18 +466,56 @@ describe('e2ee/discovery · discoverRecipientKey starts over when its read goes 
 			expiresAt: Date.now() + DAY,
 		});
 
-	it('surfaces a different key as keyChanged instead of replacing a pin committed mid-flight', async () => {
+	// Without `force` the retry would find the competing row fresh and return it
+	// from cache; it must fetch again so the differing key is still recorded.
+	it.each([true, false])(
+		'surfaces a different key as keyChanged instead of replacing a pin committed mid-flight (force=%s)',
+		async (force) => {
+			const t = await setup();
+			const calls = stubWkd({
+				wkd: true,
+				duringFirstFetch: async () => void (await competingFirstUse(t)),
+			});
+
+			const result = await t.action(internal.e2ee.discovery.discoverRecipientKey, {
+				address: BOB,
+				force,
+			});
+			expect(result).toMatchObject({ outcome: 'keyChanged', action: 'keyChanged' });
+			expect(calls.wkd).toBe(2);
+			const row = await readRow(t, BOB);
+			expect(row?.pinnedFingerprint).toBe(KEY_A);
+			expect(row?.observedFingerprint).toBe(bobFp);
+		}
+	);
+
+	it('gives up after its attempts and reports the row the other writers left', async () => {
 		const t = await setup();
-		stubWkd({ wkd: true, duringFirstFetch: async () => void (await competingFirstUse(t)) });
+		await competingFirstUse(t);
+		// Every fetch races another transition, so every commit is stale.
+		const calls = stubWkd({
+			wkd: true,
+			everyFetch: true,
+			duringFirstFetch: async () => {
+				await t.run(async (ctx: RunCtx) => {
+					const row = await ctx.db
+						.query('recipientKeys')
+						.withIndex('by_address', (q) => q.eq('address', BOB))
+						.first();
+					await ctx.db.patch(row!._id, { revision: (row!.revision ?? 0) + 1 });
+				});
+			},
+		});
 
 		const result = await t.action(internal.e2ee.discovery.discoverRecipientKey, {
 			address: BOB,
 			force: true,
 		});
-		expect(result).toMatchObject({ outcome: 'keyChanged', action: 'keyChanged' });
+		expect(result).toEqual({ outcome: 'trusted' });
+		expect(calls.wkd).toBe(3);
 		const row = await readRow(t, BOB);
 		expect(row?.pinnedFingerprint).toBe(KEY_A);
-		expect(row?.observedFingerprint).toBe(bobFp);
+		expect(row?.observedFingerprint).toBe(KEY_A);
 	});
 
 	it('keeps a pin committed while its failed lookup was outstanding', async () => {

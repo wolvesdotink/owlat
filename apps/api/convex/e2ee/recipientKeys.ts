@@ -150,10 +150,18 @@ export const commitDiscoveredKey = internalMutation({
 // v0.6.5's discovery action decided the pin itself and wrote it through
 // `upsertDiscovery`. One still running when this release deploys resolves that
 // call here (CONVENTIONS.md, "Old clients and workers against new functions").
-// It carries no record of the row it read, so only writes that cannot depend on
-// that row are applied: a miss (freshness only), a first pin on a row that has
-// none, and a refresh of the key already trusted. Anything else is dropped; the
-// next discovery re-evaluates it against the current row.
+// It carries no record of the row it read, and on a miss it copies that row's
+// pin, observed key and outcome back, so a v0.6.5 miss on a pinned row looks
+// like a positive write. Only writes that cannot depend on the row it read are
+// applied:
+//   - `notFound`: freshness only (`writeMiss`);
+//   - the old action trusted the observed key (`trusted`, pin === observed) and
+//     the row has no pin now: a first pin;
+//   - the same, and the row already trusts that same key: freshness only. The
+//     stored key material is left alone, since the payload may carry an older
+//     copy of it.
+// Anything else is dropped; the next discovery evaluates it against the
+// current row.
 
 /** Remove after release N+1: v0.6.5 compatibility (see the section comment above). */
 export const upsertDiscovery = internalMutation({
@@ -169,18 +177,25 @@ export const upsertDiscovery = internalMutation({
 		instanceFingerprint: v.optional(v.string()),
 		expiresAt: v.number(),
 	},
-	handler: async (ctx, args): Promise<{ id: Id<'recipientKeys'>; created: boolean }> => {
+	handler: async (ctx, args): Promise<{ id: Id<'recipientKeys'> | null; created: boolean }> => {
 		const address = normalizeEmail(args.address);
 		const { row, revision } = await loadRow(ctx, address);
+		if (args.outcome === 'notFound') return await writeMiss(ctx, address, row, args);
+
 		const observed = args.observedFingerprint;
 		const armored = args.observedPublicKeyArmored;
-		if (args.outcome === 'notFound' || !observed || !armored) {
-			return await writeMiss(ctx, address, row, args);
-		}
+		const trustedObserved =
+			args.outcome === 'trusted' &&
+			!!observed &&
+			!!armored &&
+			samePin(args.pinnedFingerprint, observed);
+		if (!trustedObserved) return { id: row?._id ?? null, created: false };
+
 		if (row?.pinnedFingerprint) {
 			const isRefresh =
 				row.outcome === 'trusted' && fingerprintsEqual(row.pinnedFingerprint, observed);
 			if (!isRefresh) return { id: row._id, created: false };
+			return await writeMiss(ctx, address, row, args);
 		}
 		const { id, created } = await writeDiscoveredKey(ctx, address, row, revision, {
 			domain: args.domain,
