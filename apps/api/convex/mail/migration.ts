@@ -32,10 +32,11 @@ import { publicQuery } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
 import { externalMailMutation } from './external/externalFeature';
-import { throwForbidden, throwInvalidInput } from '../_utils/errors';
+import { throwForbidden, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { getLivePersonalExternalAccountForUser } from './external/personalAccount';
 import { isActiveMigrationStatus, cancelActiveMigrationForAccount } from './external/accountShared';
+import { startReindexSweep } from './migrationIndexing';
 
 /** Provider label on a migration row — shared with the team-inbox twins. */
 export const migrationSourceValidator = v.union(v.literal('google'), v.literal('imap'));
@@ -252,6 +253,30 @@ export async function cancelMigrationForAccount(
 	return true;
 }
 
+/**
+ * Learn from the account's most recent import after the fact: re-run the
+ * knowledge sweep over a COMPLETED import that finished without it (knowledge
+ * off at the time, the team-inbox opt-in left unticked, or an embedder that
+ * could store nothing). Shared by the wizard and the team-inbox card; the
+ * sweep itself is `startReindexSweep`, the same one the operator migration
+ * runs. Throws rather than returning a reason, because both callers are
+ * buttons that surface the error as-is.
+ */
+export async function learnFromLatestImportForAccount(
+	ctx: MutationCtx,
+	accountId: Id<'externalMailAccounts'>
+): Promise<{ migrationId: Id<'mailboxMigrations'> }> {
+	await assertFeatureEnabled(ctx, 'ai.knowledge');
+	const migration = await latestMigrationRow(ctx, accountId);
+	if (!migration) throwInvalidState('Import this mailbox before learning from it.');
+	const result = await startReindexSweep(ctx, migration);
+	if (!result.started) {
+		// Only `status_*` is reachable here: the row exists and the flag is on.
+		throwInvalidState('Wait for the import to finish before learning from it.');
+	}
+	return { migrationId: migration._id };
+}
+
 // ============================================================
 // Public surface (the migration wizard)
 // ============================================================
@@ -332,5 +357,22 @@ export const cancel = externalMailMutation({
 		const account = await getLivePersonalExternalAccountForUser(ctx, s.userId);
 		if (!account) return false;
 		return await cancelMigrationForAccount(ctx, account);
+	},
+});
+
+/**
+ * Learn from the caller's finished import after the fact — for an import that
+ * completed while `ai.knowledge` was off, or whose sweep stored nothing. Starts
+ * the same knowledge sweep a fresh import hands off to; the wizard then shows
+ * its indexing step until the sweep completes.
+ */
+// authz: self — operates only on the caller's own connected external mailbox (by_user on the session userId)
+export const learnFromImport = externalMailMutation({
+	args: {},
+	handler: async (ctx, _args, session) => {
+		// The caller's LIVE PERSONAL account only, exactly like `start`/`cancel`.
+		const account = await getLivePersonalExternalAccountForUser(ctx, session.userId);
+		if (!account) throwInvalidInput('Connect a mailbox before learning from it.');
+		return await learnFromLatestImportForAccount(ctx, account._id);
 	},
 });

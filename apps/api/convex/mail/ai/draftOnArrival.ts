@@ -24,6 +24,7 @@ import type { Id } from '../../_generated/dataModel';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { buildReplySubject } from '../../lib/emailAddress';
 import { logError } from '../../lib/runtimeLog';
+import { recordLlmSpend } from '../../analytics/llmUsage';
 import { buildConfirmedContext, runSharedDraft } from '../../agent/shared/draftService';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 
@@ -104,6 +105,11 @@ export async function generateDraftOnArrival(
 			},
 			strategyScope: { mailboxId: loaded.mailboxId, classification: 'other' },
 		});
+
+		// The primary generation is the costliest call on this path, and it was
+		// the one call that recorded no spend: usage showed the self-check and
+		// options labels but never the draft itself.
+		await recordLlmSpend(ctx, 'postbox_draft', result.tokenUsage, result.modelUsed);
 
 		if (result.draftBody.trim().length === 0) return; // nothing usable
 

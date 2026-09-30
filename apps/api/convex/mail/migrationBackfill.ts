@@ -30,9 +30,7 @@ import { markOnboardingStep } from '../auth/userOnboarding';
 import { latestMigrationRow } from './migration';
 import { scheduleVoiceProfileRefresh } from './ai/voiceProfile';
 import { findDuplicateInMailbox } from './deliveryPipeline/insert';
-
-// Chunk size for the post-import knowledge sweep (paced inside runIndexChunk).
-export const INDEX_CHUNK_SIZE = 25;
+import { INDEX_CHUNK_SIZE } from './migrationIndexing';
 
 /** Upper bound on one `findKnownMessageIds` call — one backfill batch's worth. */
 const MAX_KNOWN_MESSAGE_ID_LOOKUP = 500;
