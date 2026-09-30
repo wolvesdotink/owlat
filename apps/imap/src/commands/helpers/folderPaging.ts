@@ -42,8 +42,9 @@ import type { FetchEnvelope } from '../fetch/format.js';
  * ends there. Callers wrap their body in try/catch and answer BAD (IDLE logs
  * and skips the tick), which is the honest protocol outcome.
  *
- * At the backend's page sizes this is ~500k UIDs / ~100k envelopes, i.e. a
- * ceiling no real mailbox reaches before the error means what it says.
+ * At the backend's page size this is ~500k UIDs, a ceiling no real mailbox
+ * reaches before the error means what it says. Range walks derive their
+ * ceiling from the request instead (see `walkUidRanges`).
  */
 const MAX_PAGES = 500;
 
@@ -96,48 +97,112 @@ export async function loadFolderUids(
 	exhausted('listFolderUidsPage');
 }
 
-/** Every envelope in a UID window, ascending by UID. Aborts like {@link loadFolderUids}. */
-export async function loadEnvelopes(
-	convex: ConvexClient,
-	folderId: string,
-	uidLow: number,
-	uidHigh: number,
-	signal?: AbortSignal
-): Promise<FetchEnvelope[]> {
-	const rows: FetchEnvelope[] = [];
-	let low = uidLow;
-	for (let page = 0; page < MAX_PAGES; page += 1) {
-		signal?.throwIfAborted();
-		const result = await convex.query(fn.fetchEnvelopes, { folderId, uidLow: low, uidHigh });
-		rows.push(...result.rows);
-		const next = advance(result.nextUid, low, 'fetchEnvelopes');
-		if (next === null || next > uidHigh) return rows;
-		low = next;
-	}
-	exhausted('fetchEnvelopes');
+/** An inclusive UID range; a set of them is ascending and disjoint. */
+export interface UidRange {
+	readonly low: number;
+	readonly high: number;
 }
 
-/** Every `{ _id, uid, modseq }` in a UID window, ascending by UID. */
+/**
+ * Sub-ranges sent per windowed read. Matches the backend's cap
+ * (`MAX_UID_RANGES` in apps/api `mail/imap/fetch.ts`); the backend's row limit
+ * still bounds each page, so this only bounds the argument size.
+ */
+export const MAX_RANGES_PER_READ = 100;
+
+type WindowRead<Row> = (window: {
+	uidLow: number;
+	uidHigh: number;
+	ranges?: Array<{ low: number; high: number }>;
+}) => Promise<{ rows: Row[]; nextUid: number | null }>;
+
+/**
+ * Walk `ranges` in bounded windowed reads and yield each page's rows as it
+ * arrives, ascending by UID.
+ *
+ * Each call carries up to {@link MAX_RANGES_PER_READ} ranges, and the backend
+ * reads only rows inside them — so a sparse set costs reads for the messages
+ * it names, not for everything between its smallest and largest UID. A full
+ * page resumes at `nextUid` inside the same ranges; ranges entirely below it
+ * are not sent again. One range goes out as a plain window, the read a
+ * contiguous set such as `1:*` has always made.
+ *
+ * `expectedRows` bounds the walk: every page that does not finish its ranges
+ * is full and carries at least one new row, so more pages than
+ * `expectedRows` plus one per batch means the backend is not advancing, and
+ * the walk fails rather than looping (see {@link MAX_PAGES}).
+ */
+async function* walkUidRanges<Row>(
+	ranges: readonly UidRange[],
+	expectedRows: number,
+	read: WindowRead<Row>,
+	what: string,
+	signal?: AbortSignal
+): AsyncGenerator<Row[]> {
+	const maxPages = expectedRows + Math.ceil(ranges.length / MAX_RANGES_PER_READ) + 1;
+	let i = 0;
+	let cursor = ranges[0]?.low ?? 0;
+	for (let page = 0; page < maxPages; page += 1) {
+		const first = ranges[i];
+		if (first === undefined) return;
+		signal?.throwIfAborted();
+		const batch = ranges.slice(i, i + MAX_RANGES_PER_READ);
+		const uidLow = Math.max(cursor, first.low);
+		const uidHigh = batch[batch.length - 1]!.high;
+		const result = await read(
+			batch.length === 1
+				? { uidLow, uidHigh }
+				: { uidLow, uidHigh, ranges: batch.map(({ low, high }) => ({ low, high })) }
+		);
+		if (result.rows.length > 0) yield result.rows;
+		const next = advance(result.nextUid, uidLow, what);
+		if (next === null || next > uidHigh) {
+			i += batch.length;
+		} else {
+			while (i < ranges.length && ranges[i]!.high < next) i += 1;
+			cursor = next;
+		}
+	}
+	if (i < ranges.length) exhausted(what);
+}
+
+/**
+ * The envelopes of `ranges`, one page at a time, ascending by UID. FETCH emits
+ * each page before asking for the next, so neither the first response nor the
+ * sidecar's memory waits on the whole set. Aborts like {@link loadFolderUids}.
+ */
+export function streamEnvelopes(
+	convex: ConvexClient,
+	folderId: string,
+	ranges: readonly UidRange[],
+	expectedRows: number,
+	signal?: AbortSignal
+): AsyncGenerator<FetchEnvelope[]> {
+	return walkUidRanges(
+		ranges,
+		expectedRows,
+		async (window) => await convex.query(fn.fetchEnvelopes, { folderId, ...window }),
+		'fetchEnvelopes',
+		signal
+	);
+}
+
+/** Every `{ _id, uid, modseq }` in `ranges`, ascending by UID. */
 export async function loadMessageIds(
 	convex: ConvexClient,
 	folderId: string,
-	uidLow: number,
-	uidHigh: number
+	ranges: readonly UidRange[],
+	expectedRows: number
 ): Promise<MessageIdPage['rows']> {
 	const rows: MessageIdPage['rows'] = [];
-	let low = uidLow;
-	for (let page = 0; page < MAX_PAGES; page += 1) {
-		const result = await convex.query(fn.resolveMessageIdsByUid, {
-			folderId,
-			uidLow: low,
-			uidHigh,
-		});
-		rows.push(...result.rows);
-		const next = advance(result.nextUid, low, 'resolveMessageIdsByUid');
-		if (next === null || next > uidHigh) return rows;
-		low = next;
-	}
-	exhausted('resolveMessageIdsByUid');
+	const pages = walkUidRanges(
+		ranges,
+		expectedRows,
+		async (window) => await convex.query(fn.resolveMessageIdsByUid, { folderId, ...window }),
+		'resolveMessageIdsByUid'
+	);
+	for await (const page of pages) rows.push(...page);
+	return rows;
 }
 
 /**

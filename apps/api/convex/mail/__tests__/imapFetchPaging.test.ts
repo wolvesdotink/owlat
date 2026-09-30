@@ -117,6 +117,84 @@ describe('fetchEnvelopes is bounded by the requested UID window', () => {
 	});
 });
 
+describe('UID window reads honour sparse ranges (#927)', () => {
+	it('fetchEnvelopes reads only the rows inside the ranges', async () => {
+		const t = convexTest(schema, modules);
+		const { folderId } = await seedFolderWithMessages(t, 12);
+
+		const page = await t.query(internal.mail.imap.fetch.fetchEnvelopes, {
+			folderId,
+			uidLow: 1,
+			uidHigh: 12,
+			ranges: [
+				{ low: 1, high: 1 },
+				{ low: 5, high: 6 },
+				{ low: 12, high: 12 },
+			],
+		});
+		expect(page.rows.map((r) => r.uid)).toEqual([1, 5, 6, 12]);
+		expect(page.nextUid).toBeNull();
+	});
+
+	it('pages across ranges and clips them to the resumed window', async () => {
+		const t = convexTest(schema, modules);
+		const { folderId } = await seedFolderWithMessages(t, 12);
+		const ranges = [
+			{ low: 2, high: 4 },
+			{ low: 8, high: 10 },
+		];
+
+		const first = await t.query(internal.mail.imap.fetch.resolveMessageIdsByUid, {
+			folderId,
+			uidLow: 2,
+			uidHigh: 10,
+			ranges,
+			limit: 4,
+		});
+		expect(first.rows.map((r) => r.uid)).toEqual([2, 3, 4, 8]);
+		expect(first.nextUid).toBe(9);
+
+		const second = await t.query(internal.mail.imap.fetch.resolveMessageIdsByUid, {
+			folderId,
+			uidLow: first.nextUid ?? 0,
+			uidHigh: 10,
+			ranges,
+			limit: 4,
+		});
+		expect(second.rows.map((r) => r.uid)).toEqual([9, 10]);
+		expect(second.nextUid).toBeNull();
+	});
+
+	it('rejects ranges that are unordered, overlapping, empty or too many', async () => {
+		const t = convexTest(schema, modules);
+		const { folderId } = await seedFolderWithMessages(t, 2);
+		const read = (ranges: Array<{ low: number; high: number }>) =>
+			t.query(internal.mail.imap.fetch.fetchEnvelopes, {
+				folderId,
+				uidLow: 1,
+				uidHigh: 1e6,
+				ranges,
+			});
+
+		await expect(
+			read([
+				{ low: 5, high: 6 },
+				{ low: 1, high: 2 },
+			])
+		).rejects.toThrow(/ascending/);
+		await expect(
+			read([
+				{ low: 1, high: 5 },
+				{ low: 5, high: 6 },
+			])
+		).rejects.toThrow(/disjoint/);
+		await expect(read([{ low: 3, high: 2 }])).rejects.toThrow(/non-empty/);
+		await expect(
+			read(Array.from({ length: 101 }, (_, i) => ({ low: i * 2 + 1, high: i * 2 + 1 })))
+		).rejects.toThrow(/At most 100/);
+	});
+});
+
 describe('CHANGEDSINCE reads the modseq index, not the folder', () => {
 	it('returns only the rows above the watermark, in one small page', async () => {
 		const t = convexTest(schema, modules);
