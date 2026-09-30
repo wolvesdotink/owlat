@@ -278,6 +278,12 @@ describe('PostboxComposer frame="answer"', () => {
 		w.unmount();
 	});
 
+	it('lets its footer row wrap, so the status never sits under the buttons on a phone', () => {
+		const w = mountComposer({ frame: 'answer' });
+		expect(w.get('[data-testid="composer-footer-row"]').classes()).toContain('flex-wrap');
+		w.unmount();
+	});
+
 	it('reports the draft row once it exists, for the URL', async () => {
 		const w = mountComposer({ frame: 'answer' });
 		expect(w.emitted('draft-id')).toBeUndefined();
@@ -371,6 +377,12 @@ describe('PostboxComposer frame="popup"', () => {
 		);
 		expect(w.find('[data-testid="PostboxComposerAdvisory"]').exists()).toBe(true);
 		expect(w.find('[data-testid="composer-toggle-quote"]').exists()).toBe(false);
+		w.unmount();
+	});
+
+	it('keeps the popup footer on one line, as before', () => {
+		const w = mountComposer({});
+		expect(w.get('[data-testid="composer-footer-row"]').classes()).not.toContain('flex-wrap');
 		w.unmount();
 	});
 
