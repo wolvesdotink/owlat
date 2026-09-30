@@ -80,6 +80,9 @@ export const workspaceDeletionTables = {
 		// shrinks when a read comes back cut short or runs into a limit, and grows
 		// back after a clean one.
 		scheduledAfter: v.optional(v.number()),
+		// The newest `_creationTime` the pass in progress has seen, carried across
+		// its pages; the next pass restarts a margin before it.
+		scheduledNewest: v.optional(v.number()),
 		scheduledCursor: v.optional(v.string()),
 		scheduledPageRows: v.optional(v.number()),
 		scheduledCancelled: v.number(),

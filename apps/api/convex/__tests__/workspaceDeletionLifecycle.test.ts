@@ -27,8 +27,11 @@ import { InboundBatchDispatchError } from '../webhooks/inboundHttp';
 import { createTestContact } from './factories';
 import { modules, newHarness } from './testModules';
 import {
+	SCHEDULER_RESCAN_MARGIN_MS,
 	SURVIVING_SCHEDULED_FUNCTIONS,
+	cancelPendingScheduledFunctions,
 	isSurvivingScheduledFunction,
+	shrunkPageRows,
 } from '../workspaces/deletion/quiesce';
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -504,9 +507,52 @@ describe('workspace deletion — the scheduler scan under the read limit', () =>
 		expect(done.phase).toBe('sweep');
 		expect(done.status).not.toBe('failed');
 		expect(done.lastError).toContain('Read too much data');
-		// It shrank from 200 rows to a page that fits.
-		expect(Math.min(...pageRows)).toBeLessThanOrEqual(3);
+		// A limit error drops the page straight from 200 rows to one, which fits.
+		expect(pageRows[0]).toBe(1);
 		expect(new Set(await states(t, ids))).toEqual(new Set(['canceled']));
+	});
+});
+
+describe('workspace deletion — where the next scheduler pass starts', () => {
+	it('restarts a margin before the newest row the pass saw, carried across an empty last page', async () => {
+		const t = newHarness();
+		await t.run(async (ctx) => {
+			await ctx.scheduler.runAfter(3_600_000, internal.contacts.contacts.createForTeam, {
+				email: 'later@example.com',
+			});
+		});
+		const newest = await t.run(async (ctx) =>
+			Math.max(
+				...(await ctx.db.system.query('_scheduled_functions').collect()).map((r) => r._creationTime)
+			)
+		);
+
+		const finished = await t.run(async (ctx) => cancelPendingScheduledFunctions(ctx, {}));
+		expect(finished.isDone).toBe(true);
+		expect(finished.position.scheduledAfter).toBe(newest - SCHEDULER_RESCAN_MARGIN_MS);
+		expect(finished.position.scheduledNewest).toBeUndefined();
+		expect(finished.position.scheduledCursor).toBeUndefined();
+
+		// A pass whose last page is empty keeps the newest row its earlier pages saw.
+		const emptyTail = await t.run(async (ctx) =>
+			cancelPendingScheduledFunctions(ctx, {
+				scheduledAfter: newest + 60_000,
+				scheduledNewest: newest,
+			})
+		);
+		expect(emptyTail.position.scheduledAfter).toBe(newest - SCHEDULER_RESCAN_MARGIN_MS);
+	});
+
+	it('retries a failed scan page with one row after a limit error, a quarter otherwise', () => {
+		const at200 = { scheduledPageRows: 200 };
+		expect(
+			shrunkPageRows(
+				at200,
+				'Read too much data in a single function execution. This is a Convex limit'
+			)
+		).toBe(1);
+		expect(shrunkPageRows(at200, 'something else')).toBe(50);
+		expect(shrunkPageRows({ scheduledPageRows: 1 }, 'something else')).toBe(1);
 	});
 });
 

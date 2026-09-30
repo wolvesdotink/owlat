@@ -34,6 +34,15 @@ import type { Doc } from '../../_generated/dataModel';
 export const SCHEDULER_SCAN_PAGE = 200;
 /** Bytes after which Convex stops a scan page (see above for the headroom). */
 export const SCHEDULER_SCAN_BYTES = 8 * 1024 * 1024;
+/**
+ * How far before the newest row a finished pass saw the next pass restarts.
+ * `_creationTime` is not commit order: a row committed after the pass read
+ * past it can carry an equal or earlier time (a concurrent transaction, or one
+ * that began before the newest row and committed after the read). A mutation
+ * runs for about a second at most, so a few seconds covers it; rows re-read in
+ * the overlap are stepped over or cancelled again, both harmless.
+ */
+export const SCHEDULER_RESCAN_MARGIN_MS = 5_000;
 
 /**
  * Scheduled functions that must survive the deletion: an exact
@@ -74,7 +83,7 @@ export function isSurvivingScheduledFunction(name: string): boolean {
 
 export type SchedulerScanPosition = Pick<
 	Doc<'workspaceDeletionProgress'>,
-	'scheduledAfter' | 'scheduledCursor' | 'scheduledPageRows'
+	'scheduledAfter' | 'scheduledNewest' | 'scheduledCursor' | 'scheduledPageRows'
 >;
 
 export interface SchedulerScan {
@@ -85,8 +94,20 @@ export interface SchedulerScan {
 	isDone: boolean;
 }
 
-/** The page size to retry with after a scan transaction failed. */
-export function shrunkPageRows(position: SchedulerScanPosition): number {
+/** A Convex limit error (read, write, scan or scheduling bytes/counts). */
+export function isConvexLimitError(error: string): boolean {
+	return /This is a Convex limit|too much data|too many (documents|index ranges|functions)/i.test(
+		error
+	);
+}
+
+/**
+ * The page size to retry with after a scan transaction failed: one row after a
+ * limit error (a one-row page always fits, so there is no point stepping down
+ * through retries while the workspace is read-only), a quarter otherwise.
+ */
+export function shrunkPageRows(position: SchedulerScanPosition, error: string): number {
+	if (isConvexLimitError(error)) return 1;
 	return Math.max(1, Math.floor((position.scheduledPageRows ?? SCHEDULER_SCAN_PAGE) / 4));
 }
 
@@ -126,13 +147,20 @@ export async function cancelPendingScheduledFunctions(
 		};
 	}
 	const grown = Math.min(SCHEDULER_SCAN_PAGE, pageRows * 2);
+	// Carried across the pass's pages: its last page is often empty.
+	const newest = page.page[page.page.length - 1]?._creationTime ?? position.scheduledNewest;
 	if (page.isDone) {
-		// Restart the next scan (verification's) after the newest row seen, with
-		// a fresh cursor: a cursor at the end of a range never sees rows added
-		// after it.
-		const newest = page.page[page.page.length - 1]?._creationTime ?? after;
+		// Restart the next scan (verification's) with a fresh cursor, since a
+		// cursor at the end of a range never sees rows added after it, and a
+		// margin before the newest row seen (see SCHEDULER_RESCAN_MARGIN_MS). A
+		// pass that saw no row keeps its start.
 		return {
-			position: { scheduledAfter: newest, scheduledCursor: undefined, scheduledPageRows: grown },
+			position: {
+				scheduledAfter: newest === undefined ? after : newest - SCHEDULER_RESCAN_MARGIN_MS,
+				scheduledNewest: undefined,
+				scheduledCursor: undefined,
+				scheduledPageRows: grown,
+			},
 			cancelled,
 			isDone: true,
 		};
@@ -140,6 +168,7 @@ export async function cancelPendingScheduledFunctions(
 	return {
 		position: {
 			scheduledAfter: after,
+			scheduledNewest: newest,
 			scheduledCursor: page.continueCursor,
 			scheduledPageRows: grown,
 		},

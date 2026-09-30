@@ -54,7 +54,7 @@ import {
 	type DeletionJobSummary,
 	type DeletionTickOutcome,
 } from './job';
-import { shrunkPageRows } from './quiesce';
+import { isConvexLimitError, shrunkPageRows } from './quiesce';
 import { organizationDeletionTableValidator } from './steps/_common';
 import { ORGANIZATION_DELETION_STEPS, STEPS } from './steps/registry';
 
@@ -118,11 +118,13 @@ export const recordFailure = internalMutation({
 		const attempts = progress.attempts + 1;
 		const isExhausted = attempts >= MAX_ATTEMPTS;
 		const now = Date.now();
-		// A scheduler page that failed (a limit it ran into, say) is retried
-		// smaller, down to one row, never as the same read again.
+		// A scheduler page that failed is retried smaller, never as the same read
+		// again: straight to one row after a limit error, which then fits, so its
+		// retry does not wait out the longer backoff with the fence up.
 		const isScanning = progress.phase === 'quiesce' || progress.phase === 'verify';
+		const isScanLimit = isScanning && isConvexLimitError(error);
 		await ctx.db.patch(progress._id, {
-			...(isScanning ? { scheduledPageRows: shrunkPageRows(progress) } : {}),
+			...(isScanning ? { scheduledPageRows: shrunkPageRows(progress, error) } : {}),
 			attempts,
 			lastError: error.slice(0, MAX_ERROR_CHARS),
 			lastErrorAt: now,
@@ -139,7 +141,10 @@ export const recordFailure = internalMutation({
 			isExhausted,
 		});
 		if (!isExhausted) {
-			await scheduleDeletionDrive(ctx, jobId, RETRY_DELAYS_MS[attempts - 1] ?? RETRY_DELAYS_MS[0]);
+			const delayMs = isScanLimit
+				? RETRY_DELAYS_MS[0]
+				: (RETRY_DELAYS_MS[attempts - 1] ?? RETRY_DELAYS_MS[0]);
+			await scheduleDeletionDrive(ctx, jobId, delayMs);
 		}
 	},
 });
