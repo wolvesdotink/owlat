@@ -4726,17 +4726,22 @@ cron).
 
 **Organization deletion walker**:
 The functions at `convex/workspaces/deletion/walker.ts` that drive a
-**Workspace deletion job** through the ordered table list:
+**Workspace deletion job** through the scheduler quiesce and the ordered
+table list:
 
-- `tick({ jobId })` — internal mutation. One bounded transaction: a
-  batch of the job's current step, via the **Organization deletion
-  step (module)** the typed registry holds for that table, or a
-  verification pass; then the checkpoint on the job row.
+- `tick({ jobId })` — internal mutation. One bounded transaction: a page
+  of pending scheduled functions to cancel, a batch of the job's current
+  step (via the **Organization deletion step (module)** the typed
+  registry holds for that table), or a verification pass; then the
+  checkpoint on the job's progress row.
 - `drive({ jobId })` — internal action that chains ticks, records a
   failed one (`recordFailure`: attempts, last error, backoff retry),
   and reschedules itself.
 - `recover()` — the recovery driver, run by a cron: restarts a job
-  whose chain went quiet and re-arms a failed one from its saved step.
+  whose chain went quiet for longer than the longest retry backoff, and
+  re-arms a failed one from its saved step.
+- `abort({ operator, reason })` — run by hand: ends the job without
+  completing it and lifts the **Write fence**, with an audit row.
 - `status()` — the operator's view of the active (else latest) job.
 - `start()` / `runStep({ table })` — the previous release's entry and
   hop, kept for one release: `start` opens or joins a job, a `runStep`
@@ -4764,14 +4769,17 @@ reason — "executor" doesn't signal the dispatch role), Deletion
 runner (vague), Org wipe action (informal).
 
 **Workspace deletion job**:
-The `workspaceDeletionJobs` row that is the durable state of one
-deletion generation: status, phase (`sweep` / `verify`), the current
-step (its checkpoint), counters and the last failure. At most one row
-is active; a second removal request joins it. Opened by
-`beginWorkspaceDeletion` (`workspaces/deletion/job.ts`) in the
-requesting transaction, completed only by a verification pass that
-finds every registered table empty. Not tenant data: the deletion
-never sweeps it, and finished rows are the generation history.
+The `workspaceDeletionJobs` row that is one deletion generation, plus its
+`workspaceDeletionProgress` row. The job row is the **Write fence**'s
+switch and changes only when the generation opens and ends; the progress
+row holds status, phase (`quiesce` / `sweep` / `verify`), the current
+step (the checkpoint), the scheduler cursor, counters and the last
+failure. At most one job is active; a second removal request joins it.
+Opened by `beginWorkspaceDeletion` (`workspaces/deletion/job.ts`) in the
+requesting transaction, completed only by a verification pass that finds
+every registered table empty, or ended early by an operator `abort`. Not
+tenant data: the deletion never sweeps it, and finished rows are the
+generation history.
 _Avoid_: deletion task, wipe job.
 
 **Write fence**:
@@ -4780,7 +4788,10 @@ on every table the deletion sweeps while a **Workspace deletion job**
 is active. It lives in the database handle the mutation builders give
 their handlers (the public builders and the fenced `internalMutation`),
 so every producer (UI, API key, webhook, cron, late action commit)
-meets the same check. Deletes and non-swept tables pass.
+meets the same check. Deletes and non-swept tables pass. Inbound mail
+and feedback routes answer a refusal with a final 2xx "ignored"
+acknowledgement (accept and drop), so nothing is parked for a replay into
+the emptied workspace.
 _Avoid_: deletion lock (nothing is locked; writes are refused).
 
 **Organization deletion step (module)**:

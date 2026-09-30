@@ -216,9 +216,14 @@ import { internalMutation } from '../lib/writeFence';
 `scripts/check-write-fence.ts` (part of `bun run lint`) fails on a raw
 `internalMutation` / `mutation` import anywhere except the fence module, the
 public builders and the deletion worker (`workspaces/deletion/walker.ts`), the
-one writer the fence exempts. A deletion step must therefore run its work
-inline on the worker's context: a `ctx.runMutation` callee is fenced. See
-ADR-0025's #898 amendment.
+one writer the fence exempts (it also fails on `import * as` of that module and
+on a re-export of a raw builder). A deletion step must therefore run its work
+inline on the worker's context: a `ctx.runMutation` callee is fenced.
+
+An HTTP route that ingests deliveries from the MTA or a provider answers a
+fence refusal with a final 2xx, not a 5xx that would be retried and parked for
+a replay into the emptied workspace: see `webhooks/workspaceDeletionAck.ts`.
+See ADR-0025's #898 amendment.
 
 ### Feature-flag floors
 
