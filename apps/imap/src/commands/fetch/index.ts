@@ -5,7 +5,7 @@ import { asyncSession } from '../helpers/session.js';
 import { resolveSelectedSet } from '../helpers/seqMap.js';
 import { loadEnvelopes } from '../helpers/folderPaging.js';
 import { type FetchEnvelope, formatEnvelope, formatFlags, formatInternalDate } from './format.js';
-import { type BodySectionRequest, formatBodySection, parseBodySectionItem } from './bodySection.js';
+import { type BodySectionRequest, bodySectionParts, parseBodySectionItem } from './bodySection.js';
 import { serverFailure } from '../helpers/replies.js';
 import {
 	downloadRaw,
@@ -41,6 +41,15 @@ const CLOSE_PAREN = Buffer.from(')', 'ascii');
  * partial `<offset.length>` slices. A non-`.PEEK` body retrieval on a
  * read-write mailbox sets \Seen as a side effect (§7.4.2) and the FETCH
  * response carries the resulting FLAGS.
+ *
+ * Output is paced by the socket: after each response the module waits for
+ * `deps.waitForDrain`, and the ordered download loop only starts the next
+ * body once the response ahead of it has been taken. A slow reader therefore
+ * holds at most the output budget plus {@link RAW_DOWNLOAD_CONCURRENCY}
+ * bodies, not the whole requested mailbox. When the connection closes the
+ * session is cancelled: no further Convex pages, \Seen writes, URL mints or
+ * downloads are issued, in-flight downloads are aborted, and nothing more is
+ * sent.
  */
 export const fetchModule: ImapCommandModule<FetchArgs> = {
 	verbs: ['FETCH'],
@@ -68,13 +77,22 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 
 		const label = args.byUid ? 'UID FETCH' : 'FETCH';
 
-		return asyncSession(async () => {
+		return asyncSession(async (signal) => {
+			/**
+			 * Pace output: when the socket is over its budget, a promise that
+			 * settles once it has taken what was sent (rejecting if the
+			 * connection went meanwhile); otherwise nothing to wait for.
+			 */
+			const paced = (): Promise<void> | undefined => {
+				const wait = deps.waitForDrain?.();
+				return wait?.then(() => signal.throwIfAborted());
+			};
 			try {
 				// Build the sequence ↔ UID map for the SELECTed folder, then
 				// resolve the set against it. A non-UID set holds positions; a
 				// UID set holds UIDs. Either way `resolved` is ordered by true
 				// sequence number and carries the UID to fetch.
-				const { resolved } = await resolveSelectedSet(deps, state, args.set, args.byUid);
+				const { resolved } = await resolveSelectedSet(deps, state, args.set, args.byUid, signal);
 
 				if (resolved.length === 0) {
 					send(`${tag} OK ${label} completed`);
@@ -92,7 +110,8 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 					deps.convex,
 					state.selected!.folderId,
 					resolved[0]!.uid,
-					resolved[resolved.length - 1]!.uid
+					resolved[resolved.length - 1]!.uid,
+					signal
 				);
 				const byUidMap = new Map<number, FetchEnvelope>();
 				for (const m of slice) byUidMap.set(m.uid, m);
@@ -116,7 +135,7 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 					{ seq, m }: { seq: number; m: FetchEnvelope },
 					seenFlags: string | undefined,
 					raw: Buffer | null
-				): void => {
+				): Promise<void> | undefined => {
 					const fields: string[] = [];
 					if (args.byUid || items.has('UID')) fields.push(`UID ${m.uid}`);
 					if (items.has('FLAGS') || setsSeen) {
@@ -137,7 +156,10 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 					if (raw != null) {
 						// The prose prefix keeps the UTF-8 text path (an ENVELOPE
 						// subject/name may carry non-ASCII); only the appended
-						// body literal is spliced in as verbatim raw octets.
+						// body literal is spliced in as verbatim raw octets. The
+						// section octets are views into `raw`, so the one concat
+						// below is the only copy of the body; the pump writes it
+						// and the CRLF without copying again.
 						const parts: Buffer[] = [
 							Buffer.from(
 								`* ${seq} FETCH (${fields.length > 0 ? `${fields.join(' ')} ` : ''}`,
@@ -146,23 +168,31 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 						];
 						bodyRequests.forEach((req, i) => {
 							if (i > 0) parts.push(SPACE);
-							parts.push(formatBodySection(req, raw));
+							parts.push(...bodySectionParts(req, raw));
 						});
 						parts.push(CLOSE_PAREN);
 						send(Buffer.concat(parts));
-						return;
+					} else {
+						send(`* ${seq} FETCH (${fields.join(' ')})`);
 					}
-					send(`* ${seq} FETCH (${fields.join(' ')})`);
+					return paced();
 				};
 
 				if (!needsRaw) {
-					for (const row of rows) emit(row, undefined, null);
+					for (const row of rows) {
+						signal.throwIfAborted();
+						const wait = emit(row, undefined, null);
+						if (wait) await wait;
+					}
 				} else {
 					// Per chunk: one \Seen write and one URL mint, side by side,
 					// then the downloads in parallel and the responses in order.
 					// The implicit \Seen still lands before the chunk's FLAGS are
 					// emitted, so each response reflects the new flag set.
 					for (let i = 0; i < rows.length; i += RAW_URL_BATCH) {
+						// A cancelled FETCH marks nothing \Seen and mints nothing
+						// past the chunk it was on.
+						signal.throwIfAborted();
 						const chunk = rows.slice(i, i + RAW_URL_BATCH);
 						const ids = chunk.map(({ m }) => m._id);
 						const [seen, urls] = await Promise.all([
@@ -177,8 +207,9 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 						await forEachOrdered(
 							chunk,
 							RAW_DOWNLOAD_CONCURRENCY,
-							({ m }) => downloadRaw(urls.get(m._id)),
-							(row, raw) => emit(row, seen.get(row.m._id), raw)
+							({ m }) => downloadRaw(urls.get(m._id), signal),
+							(row, raw) => emit(row, seen.get(row.m._id), raw),
+							signal
 						);
 					}
 				}
@@ -188,6 +219,8 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 				}
 				send(`${tag} OK ${label} completed`);
 			} catch (err) {
+				// The connection is gone: nobody is left to answer.
+				if (signal.aborted) return;
 				logger.error({ err }, 'FETCH failed');
 				send(serverFailure(tag, label));
 			}

@@ -32,11 +32,17 @@ export function syncSession(): CommandSession {
  * Worker rejections are swallowed — modules log + emit NO/BAD responses
  * themselves; the pump must always see completion resolve so it can
  * release the active-session slot.
+ *
+ * `cancel()` (the pump calls it when the socket closes) aborts the signal
+ * handed to the worker. A worker that honours it stops issuing Convex reads
+ * and downloads and returns; one that ignores it simply runs to completion
+ * as before. Either way `completion` still resolves.
  */
-export function asyncSession(worker: () => Promise<void>): CommandSession {
-	const completion = worker().catch(() => undefined);
+export function asyncSession(worker: (signal: AbortSignal) => Promise<void>): CommandSession {
+	const controller = new AbortController();
+	const completion = worker(controller.signal).catch(() => undefined);
 	return {
 		completion,
-		cancel: NOOP,
+		cancel: () => controller.abort(),
 	};
 }

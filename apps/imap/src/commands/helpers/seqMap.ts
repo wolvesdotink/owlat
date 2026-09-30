@@ -158,15 +158,17 @@ export function resolveSet(map: SeqMap, spec: string, byUid: boolean): ResolvedM
  * (FETCH, STORE, COPY, MOVE, UID EXPUNGE) goes through here, so a set can only
  * ever address messages that exist in the folder, and resolving it costs time
  * linear in the folder size plus the number of set parts (see
- * {@link resolveSet}).
+ * {@link resolveSet}). `signal` stops the UID paging once the connection
+ * has gone.
  */
 export async function resolveSelectedSet(
 	deps: CommandDeps,
 	state: ConnectionState,
 	set: string,
-	byUid: boolean
+	byUid: boolean,
+	signal?: AbortSignal
 ): Promise<{ seqMap: SeqMap; resolved: ResolvedMessage[] }> {
-	const folderUids = await loadFolderUids(deps.convex, state.selected!.folderId);
+	const folderUids = await loadFolderUids(deps.convex, state.selected!.folderId, signal);
 	const seqMap = buildSeqMap(folderUids);
 	return { seqMap, resolved: resolveSet(seqMap, set, byUid) };
 }
