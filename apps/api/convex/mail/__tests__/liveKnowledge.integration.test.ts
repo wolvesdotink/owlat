@@ -9,11 +9,48 @@
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
-import { describe, it, expect, vi } from 'vitest';
+import { v } from 'convex/values';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
-import { modules } from './helpers.testlib';
+import { internalAction } from '../../_generated/server';
+import { modules as mailModules } from './helpers.testlib';
+
+// The real extractor calls an LLM. Stand in for it with an action that records
+// which messages reached it, so a test can tell "extracted" from "refused".
+const extracted: string[] = [];
+const modules = {
+	...mailModules,
+	'../../knowledge/extraction.ts': async () => ({
+		extractFromMailMessage: internalAction({
+			args: {
+				mailMessageId: v.id('mailMessages'),
+				contactIds: v.optional(v.array(v.id('contacts'))),
+			},
+			handler: async (_ctx, args) => {
+				extracted.push(args.mailMessageId);
+			},
+		}),
+	}),
+};
+
+beforeEach(() => {
+	extracted.length = 0;
+});
+
+// Shaped like the credential-phishing mail a provider let into a real inbox: a
+// support-team sender threatening restrictions, a password prompt, and a link
+// whose text names a different site than it points to.
+const PHISHING = {
+	from: 'Support Team <support@page-help.example.com>',
+	subject: 'Action required: your page will be restricted',
+	textBodyInline:
+		'Dear user, verify your password within 24 hours or your page will be restricted.',
+	htmlBodyInline:
+		'<p>Dear user, verify your password within 24 hours or your page will be restricted.</p>' +
+		'<a href="https://paypa1.fake.xyz/login">https://www.example.com/support</a>',
+};
 
 const OWNER_ADDRESS = 'team@acme.test';
 
@@ -90,6 +127,9 @@ async function ingest(
 		folderRole?: 'inbox' | 'sent';
 		from?: string;
 		antiLoopHeaders?: Record<string, string>;
+		subject?: string;
+		textBodyInline?: string;
+		htmlBodyInline?: string;
 	} = {}
 ): Promise<Id<'mailMessages'>> {
 	const uid = ++nextUid;
@@ -106,8 +146,10 @@ async function ingest(
 		to: [OWNER_ADDRESS],
 		cc: [],
 		bcc: [],
-		subject: 'Renewal',
-		textBodyInline: 'We decided to renew the contract for another year starting in March.',
+		subject: opts.subject ?? 'Renewal',
+		textBodyInline:
+			opts.textBodyInline ?? 'We decided to renew the contract for another year starting in March.',
+		...(opts.htmlBodyInline ? { htmlBodyInline: opts.htmlBodyInline } : {}),
 		messageId: `<m${uid}@customer.test>`,
 		receivedAt: Date.now(),
 		attachments: [],
@@ -189,4 +231,46 @@ describe('live mail → knowledge extraction', () => {
 			expect(await extractionsScheduled(t)).toEqual([]);
 		});
 	});
+
+	it('extracts a normal message and resolves its sender contact', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t);
+		await withHeldScheduler(async () => {
+			const messageId = await ingest(t, seeded);
+			await t.action(internal.mail.liveKnowledge.extractLiveMessage, { mailMessageId: messageId });
+			expect(extracted).toEqual([messageId]);
+			expect(await contactEmails(t)).toContain('sam@customer.test');
+		});
+	});
+
+	it('refuses phishing from a connected mailbox (no verdict) and creates no contact', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t);
+		await withHeldScheduler(async () => {
+			const messageId = await ingest(t, seeded, PHISHING);
+			const row = await t.run(async (ctx) => await ctx.db.get(messageId));
+			// The external path leaves delivery alone: still in the inbox, no verdict.
+			expect(row?.spamVerdict).toBeUndefined();
+			await t.action(internal.mail.liveKnowledge.extractLiveMessage, { mailMessageId: messageId });
+			expect(extracted).toEqual([]);
+			expect(await contactEmails(t)).not.toContain('support@page-help.example.com');
+		});
+	});
+
+	it('refuses a clean-looking message whose DMARC failed', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t);
+		await withHeldScheduler(async () => {
+			const messageId = await ingest(t, seeded);
+			await t.run(async (ctx) => await ctx.db.patch(messageId, { dmarcResult: 'fail' }));
+			await t.action(internal.mail.liveKnowledge.extractLiveMessage, { mailMessageId: messageId });
+			expect(extracted).toEqual([]);
+		});
+	});
 });
+
+async function contactEmails(t: TestConvex<typeof schema>): Promise<string[]> {
+	return await t.run(async (ctx) =>
+		(await ctx.db.query('contacts').collect()).map((c) => c.email ?? '')
+	);
+}

@@ -20,6 +20,12 @@ export interface MailSyncConfig {
 	reconcileIntervalMs: number;
 	/** How often each account's non-INBOX folders are polled (INBOX is real-time via IDLE). */
 	folderPollIntervalMs: number;
+	/**
+	 * How often the INBOX is polled for new mail on its own, as a floor under
+	 * IDLE. IDLE only runs while the connection has nothing else to do, and a
+	 * busy account can starve it for good.
+	 */
+	inboxPollIntervalMs: number;
 	/** Messages per descending UID batch during a historical migration backfill. */
 	backfillBatchSize: number;
 	/**
@@ -55,6 +61,10 @@ export function loadConfig(): MailSyncConfig {
 		}),
 		folderPollIntervalMs: readIntEnv(process.env, 'MAIL_SYNC_FOLDER_POLL_MS', {
 			default: 5 * 60 * 1000,
+			...TIMER_DELAY_MS_RANGE,
+		}),
+		inboxPollIntervalMs: readIntEnv(process.env, 'MAIL_SYNC_INBOX_POLL_MS', {
+			default: 60 * 1000,
 			...TIMER_DELAY_MS_RANGE,
 		}),
 		backfillBatchSize: readIntEnv(process.env, 'MAIL_SYNC_BACKFILL_BATCH', {

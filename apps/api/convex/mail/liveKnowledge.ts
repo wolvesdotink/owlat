@@ -14,7 +14,9 @@
  * does before it extracts: the `ai.knowledge` flag, and mail that a person sent
  * (no RFC 3834 automated / list / bulk traffic). `extractLiveMessage` then scopes
  * the entries to the sender's contact exactly like the import sweep, so live and
- * imported mail retrieve through the same contact-scoped search.
+ * imported mail retrieve through the same contact-scoped search. Both screen
+ * the message first (`mail/knowledgeScreen.ts`): IMAP-synced mail carries no
+ * spam verdict, so phishing the provider let through is refused here.
  */
 
 import { v } from 'convex/values';
@@ -22,6 +24,7 @@ import { internalAction, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { isAutomatedMail } from '../lib/inboundClassification';
+import { loadExtractableMail } from './knowledgeScreen';
 
 /**
  * Whether one live inbound message should be extracted into the knowledge
@@ -51,9 +54,8 @@ export async function shouldExtractLiveMessage(
 export const extractLiveMessage = internalAction({
 	args: { mailMessageId: v.id('mailMessages') },
 	handler: async (ctx, args) => {
-		const msg = await ctx.runQuery(internal.mail.migrationIndexing.getMessageForExtraction, {
-			mailMessageId: args.mailMessageId,
-		});
+		// Gone, or phishing/spoofed mail that must not feed the graph.
+		const msg = await loadExtractableMail(ctx, args.mailMessageId);
 		if (!msg) return;
 		const { contactId } = await ctx.runMutation(
 			internal.mail.migrationIndexing.resolveSenderContact,

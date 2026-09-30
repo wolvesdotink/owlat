@@ -2,6 +2,7 @@
 import { postboxPageTransition } from '~/utils/postboxPageTransition';
 import { MAIL_SYNC_MAX_RAW_MESSAGE_BYTES } from '@owlat/shared/mailSyncLimits';
 import type { MailProvider } from '~/utils/mailAutodiscover';
+import { canLearnFromImport } from '~/composables/postbox/useMailMigration';
 import { MAIL_PROVIDERS, providerForImapHost } from '~/utils/mailAutodiscover';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
@@ -45,8 +46,10 @@ const {
 	failureMessage,
 	start,
 	cancel,
+	learn,
 	startBusy,
 	cancelBusy,
+	learnBusy,
 } = useMailMigration();
 
 // ── Provider pick (connect step) ────────────────────────────────────────────
@@ -105,6 +108,13 @@ const completedBodyCopy = computed(() => {
 	}
 	return t(isAiIndexing.value ? `${prefix}completedBodyWithAi` : `${prefix}completedBody`);
 });
+// An import that finished while `ai.knowledge` was off (or whose sweep stored
+// nothing) can still be learned from, without importing the mail again.
+const canLearn = computed(() => canLearnFromImport(migration.value, isEnabled('ai.knowledge')));
+async function handleLearn() {
+	const res = await learn();
+	if (res.ok) showToast(t('dashboard.postbox.migrate.toastLearnStarted'), 'success');
+}
 async function handleStartImport() {
 	const res = await start(connectedSource.value);
 	if (res.ok) showToast(t('dashboard.postbox.migrate.toastImportStarted'), 'success');
@@ -580,6 +590,35 @@ const steps = computed(() =>
 								<p class="text-xs text-text-secondary mt-0.5">
 									{{ t('dashboard.postbox.migrate.skippedBody') }}
 								</p>
+							</div>
+						</div>
+
+						<div
+							v-if="canLearn"
+							data-testid="migrate-learn"
+							class="mt-6 rounded-xl border border-border-subtle p-4 text-left flex items-start gap-3"
+						>
+							<UiIconBox
+								icon="lucide:brain"
+								size="sm"
+								variant="surface"
+								rounded="lg"
+								class="mt-0.5"
+							/>
+							<div class="flex-1">
+								<p class="text-sm font-medium">{{ t('dashboard.postbox.migrate.learnTitle') }}</p>
+								<p class="text-xs text-text-secondary mt-0.5">
+									{{ t('dashboard.postbox.migrate.learnBody') }}
+								</p>
+								<UiButton
+									class="mt-3"
+									size="sm"
+									variant="secondary"
+									:loading="learnBusy"
+									@click="handleLearn"
+								>
+									{{ t('dashboard.postbox.migrate.learnAction') }}
+								</UiButton>
 							</div>
 						</div>
 
