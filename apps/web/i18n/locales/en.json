@@ -8089,6 +8089,7 @@
 						"addedToTopic": "Added to \"{topic}\"",
 						"doiFailed": "Could not resend confirmation",
 						"doiSent": "Confirmation email sent",
+						"exportFailed": "Could not export the contact data",
 						"noteSaved": "Customer note saved",
 						"removedFromTopic": "Removed from \"{topic}\"",
 						"suppressionRemoved": "Suppression removed"
@@ -9147,6 +9148,7 @@
 				"assignedToAria": "Assigned to {name}",
 				"autoSendCancelledToast": "Automatic send cancelled and returned to review",
 				"backToInbox": "Back to team inbox",
+				"bodyExcerptNotice": "Showing the beginning of a long message.",
 				"breadcrumb": "Conversation",
 				"categories": {
 					"billing": "billing",

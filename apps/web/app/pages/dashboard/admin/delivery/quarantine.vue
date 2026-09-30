@@ -138,7 +138,11 @@ const confirmBlock = async () => {
 						{{ message.subject }}
 					</p>
 					<p class="text-text-secondary text-sm line-clamp-3 mb-4">
-						{{ message.textBody || t('dashboard.inbox.quarantine.noTextContent') }}
+						{{
+							message.textBody ||
+							message.bodyExcerpt ||
+							t('dashboard.inbox.quarantine.noTextContent')
+						}}
 					</p>
 
 					<!-- Actions -->

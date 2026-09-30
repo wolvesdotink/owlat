@@ -8089,6 +8089,7 @@
 						"addedToTopic": "Zu „{topic}“ hinzugefügt",
 						"doiFailed": "Bestätigung konnte nicht erneut gesendet werden",
 						"doiSent": "Bestätigungsmail gesendet",
+						"exportFailed": "Die Kontaktdaten konnten nicht exportiert werden",
 						"noteSaved": "Kundennotiz gespeichert",
 						"removedFromTopic": "Aus „{topic}“ entfernt",
 						"suppressionRemoved": "Unterdrückung entfernt"
@@ -9147,6 +9148,7 @@
 				"assignedToAria": "{name} zugewiesen",
 				"autoSendCancelledToast": "Automatischer Versand abgebrochen und zur Prüfung zurückgestellt",
 				"backToInbox": "Zurück zum Team-Postfach",
+				"bodyExcerptNotice": "Angezeigt wird der Anfang einer langen Nachricht.",
 				"breadcrumb": "Konversation",
 				"categories": {
 					"billing": "Abrechnung",

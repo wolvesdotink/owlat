@@ -86,7 +86,7 @@ const view = computed(() => {
 			from: m.from,
 			to: m.to,
 			at: m.receivedAt,
-			body: m.textBody?.trim() || '',
+			body: (m.textBody ?? m.bodyExcerpt)?.trim() || '',
 			attachments: [] as string[],
 		};
 	}

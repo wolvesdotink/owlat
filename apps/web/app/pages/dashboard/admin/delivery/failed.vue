@@ -116,7 +116,9 @@ const onRetry = async (messageId: Id<'inboundMessages'>) => {
 						{{ message.subject }}
 					</p>
 					<p class="text-text-secondary text-sm line-clamp-3 mb-4">
-						{{ message.textBody || t('dashboard.inbox.failed.noTextContent') }}
+						{{
+							message.textBody || message.bodyExcerpt || t('dashboard.inbox.failed.noTextContent')
+						}}
 					</p>
 
 					<!-- Actions -->
