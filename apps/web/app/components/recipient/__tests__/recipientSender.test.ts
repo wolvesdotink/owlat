@@ -38,7 +38,8 @@ beforeEach(() => {
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	// No token: every page lands in its error state without a network call.
-	vi.stubGlobal('useRoute', () => ({ query: {} }));
+	vi.stubGlobal('useRoute', () => ({ path: '/', query: {}, hash: '' }));
+	vi.stubGlobal('useRouter', () => ({ replace: vi.fn() }));
 	vi.stubGlobal('useRuntimeConfig', () => ({ public: { convexSiteUrl: 'https://api.test' } }));
 	vi.stubGlobal('useConvex', () => ({ query, mutation: vi.fn() }));
 });

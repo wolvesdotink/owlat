@@ -28,14 +28,21 @@ import RegisterPage from '../register.vue';
 import ResetPasswordPage from '../reset-password.vue';
 
 const signInWithEmail = vi.fn(async () => ({}));
+const resetPassword = vi.fn(async () => {});
+const routerReplace = vi.fn();
 
 /** What the public sender read returns (the workspace's from-name). */
 let senderName: string | null = null;
 
-function stubs(query: Record<string, string>, publicConfig: Record<string, unknown> = {}) {
+function stubs(
+	query: Record<string, string>,
+	publicConfig: Record<string, unknown> = {},
+	path = '/auth/login'
+) {
 	installNuxtStubs({
 		...i18nStubs,
-		useRoute: () => ({ path: '/auth/login', fullPath: '/auth/login', query, params: {}, meta: {} }),
+		useRoute: () => ({ path, fullPath: path, query, hash: '', params: {}, meta: {} }),
+		useRouter: () => ({ replace: routerReplace, push: vi.fn() }),
 		safeRedirect: (target: unknown, fallback: string) =>
 			typeof target === 'string' ? target : fallback,
 		useRuntimeConfig: () => ({
@@ -47,7 +54,7 @@ function stubs(query: Record<string, string>, publicConfig: Record<string, unkno
 			signInWithEmail,
 			completeTwoFactorSignIn: vi.fn(),
 			signUpWithEmail: vi.fn(),
-			resetPassword: vi.fn(),
+			resetPassword,
 		}),
 	});
 }
@@ -71,6 +78,9 @@ function mountPage(component: object) {
 beforeEach(() => {
 	senderName = null;
 	signInWithEmail.mockClear();
+	resetPassword.mockClear();
+	routerReplace.mockClear();
+	window.sessionStorage.clear();
 });
 
 describe('sign-in', () => {
@@ -157,6 +167,30 @@ describe('reset password', () => {
 		await wrapper.find('#new-password').setValue('a'.repeat(MIN_PASSWORD_LENGTH - 1));
 		await wrapper.find('#new-password').trigger('blur');
 		expect(wrapper.find('#new-password').attributes('aria-invalid')).toBe('true');
+	});
+
+	it('takes the token out of the URL and still submits it', async () => {
+		stubs({ token: 'reset-token', lang: 'de' }, {}, '/auth/reset-password');
+		const wrapper = mountPage(ResetPasswordPage);
+		await flushPromises();
+		expect(routerReplace).toHaveBeenCalledWith({ query: { lang: 'de' }, hash: '' });
+
+		// A reload of the cleaned URL keeps the form.
+		stubs({}, {}, '/auth/reset-password');
+		const reloaded = mountPage(ResetPasswordPage);
+		expect(reloaded.find('#new-password').exists()).toBe(true);
+
+		const password = 'a'.repeat(MIN_PASSWORD_LENGTH);
+		await reloaded.find('#new-password').setValue(password);
+		await reloaded.find('#confirm-password').setValue(password);
+		await reloaded.find('form').trigger('submit');
+		await flushPromises();
+		expect(resetPassword).toHaveBeenCalledWith(password, 'reset-token');
+
+		// Spent: reloading after success shows the invalid-link state.
+		const afterSuccess = mountPage(ResetPasswordPage);
+		expect(afterSuccess.find('#new-password').exists()).toBe(false);
+		wrapper.unmount();
 	});
 
 	it('links back to sign-in', () => {
