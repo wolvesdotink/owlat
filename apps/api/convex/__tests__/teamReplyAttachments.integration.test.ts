@@ -468,9 +468,10 @@ describe('team reply attachments: the send paths', () => {
 		expect(await t.query(api.inbox.replyAttachments.suggestions, { threadId })).not.toBeNull();
 	});
 
-	it('the autonomous send does take a file a person attached, but not one still copying', async () => {
+	it('the autonomous send takes a file attached for this message, but not one still copying', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId, messageId } = await seedThread(t, 'approved');
+		vi.advanceTimersByTime(60_000);
 		await t.mutation(api.inbox.replyAttachments.add, {
 			threadId,
 			storageId: await upload(t),
@@ -493,6 +494,40 @@ describe('team reply attachments: the send paths', () => {
 		expect((await threadAttachments(t, threadId)).map((entry) => entry.origin)).toEqual([
 			'semanticFile',
 		]);
+	});
+
+	it('the autonomous send leaves a file staged before the message arrived; a person sends it', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, messageId } = await seedThread(t, 'approved');
+		await t.mutation(api.inbox.replyAttachments.add, {
+			threadId,
+			storageId: await upload(t),
+			filename: 'staged-for-my-own-reply.pdf',
+		});
+		// The customer wrote again after the file was staged in the composer.
+		await t.run(async (ctx) => {
+			await ctx.db.patch(messageId, { receivedAt: Date.now() + 60_000 });
+		});
+
+		await t.action(internal.agent.agentPipeline.sendApprovedReply, {
+			inboundMessageId: messageId,
+			autonomous: true,
+		});
+		expect(enqueueActionMock).toHaveBeenCalledTimes(1);
+		expect(lastEnvelope()?.attachmentRefs).toBeUndefined();
+		expect((await t.run((ctx) => ctx.db.get(messageId)))?.replyAttachments).toBeUndefined();
+		expect((await threadAttachments(t, threadId)).map((entry) => entry.filename)).toEqual([
+			'staged-for-my-own-reply.pdf',
+		]);
+
+		// A person approving a reply on the same thread sends what the composer shows.
+		await t.action(internal.agent.agentPipeline.sendApprovedReply, {
+			inboundMessageId: messageId,
+		});
+		expect(lastEnvelope()?.attachmentRefs).toEqual([
+			expect.objectContaining({ filename: 'staged-for-my-own-reply.pdf' }),
+		]);
+		expect(await threadAttachments(t, threadId)).toEqual([]);
 	});
 
 	it('a follow-up takes the attachments, Undo hands them back, and the dispatch sends them', async () => {

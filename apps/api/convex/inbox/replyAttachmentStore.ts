@@ -79,16 +79,20 @@ export async function assertReplyAttachmentsReady(
 
 /**
  * Take the composer's ready attachments off the thread for a send. What is
- * still being copied (or failed) stays on the thread.
+ * still being copied (or failed), and what `include` turns down, stays on the
+ * thread.
  */
 export async function takeReadyReplyAttachments(
 	ctx: MutationCtx,
-	thread: Doc<'conversationThreads'> | null
+	thread: Doc<'conversationThreads'> | null,
+	include: (entry: TeamReplyAttachment) => boolean = () => true
 ): Promise<TeamReplyAttachment[]> {
 	const entries = thread?.replyAttachments ?? [];
-	const ready = entries.filter((entry) => replyAttachmentStatus(entry) === 'ready');
+	const isTaken = (entry: TeamReplyAttachment) =>
+		replyAttachmentStatus(entry) === 'ready' && include(entry);
+	const ready = entries.filter(isTaken);
 	if (!thread || ready.length === 0) return [];
-	const left = entries.filter((entry) => replyAttachmentStatus(entry) !== 'ready');
+	const left = entries.filter((entry) => !isTaken(entry));
 	await ctx.db.patch(thread._id, { replyAttachments: left.length > 0 ? left : undefined });
 	return ready;
 }

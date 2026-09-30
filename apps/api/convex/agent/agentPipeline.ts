@@ -347,8 +347,10 @@ export const sendApprovedReply = internalAction({
 		try {
 			// Through the Team inbox reply attachments: the files a person attached
 			// in the thread composer go out with the reply (never the agent's
-			// unconfirmed `attachmentSuggestions`), in the intake's transaction.
+			// unconfirmed `attachmentSuggestions`), in the intake's transaction. An
+			// autonomous send only takes files attached after the message arrived.
 			outcome = await ctx.runMutation(internal.inbox.replyAttachments.intakeAgentReply, {
+				autonomous: args.autonomous === true,
 				email: recipient,
 				...(message.contactId ? { contactId: message.contactId } : {}),
 				inboundMessageId: args.inboundMessageId,

@@ -328,12 +328,16 @@ export const finishCopy = internalMutation({
  * re-fired send) go out again.
  *
  * Only files a person attached are ever here; the agent's
- * `attachmentSuggestions` never are, so the autonomous path can take the same
- * route without sending anything nobody confirmed.
+ * `attachmentSuggestions` never are. The composer list belongs to the thread
+ * and outlives the message it was staged for, so an autonomous send takes only
+ * what was attached after this message arrived (a file answer to the agent's
+ * question, say); a file someone staged earlier for a reply of their own stays
+ * in the composer. A person approving the reply sees the list and sends it all.
  */
 export const intakeAgentReply = internalMutation({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
+		autonomous: v.optional(v.boolean()),
 		email: v.string(),
 		contactId: v.optional(v.id('contacts')),
 		subject: v.string(),
@@ -345,8 +349,10 @@ export const intakeAgentReply = internalMutation({
 		const message = await ctx.db.get(args.inboundMessageId);
 		if (!message) throw new Error('The message this reply answers no longer exists');
 		const thread = message.threadId ? await ctx.db.get(message.threadId) : null;
+		const include = (entry: TeamReplyAttachment) =>
+			args.autonomous !== true || entry.addedAt >= message.receivedAt;
 		const ready = (thread?.replyAttachments ?? []).filter(
-			(entry) => replyAttachmentStatus(entry) === 'ready'
+			(entry) => replyAttachmentStatus(entry) === 'ready' && include(entry)
 		);
 		const carried = [...(message.replyAttachments ?? []), ...ready];
 		const attachmentRefs = await replyAttachmentRefs(ctx, carried);
@@ -366,7 +372,7 @@ export const intakeAgentReply = internalMutation({
 			}
 		);
 		if (outcome.ok && ready.length > 0) {
-			await takeReadyReplyAttachments(ctx, thread);
+			await takeReadyReplyAttachments(ctx, thread, include);
 			await ctx.db.patch(args.inboundMessageId, { replyAttachments: carried });
 		}
 		return outcome;
