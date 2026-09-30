@@ -12,7 +12,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
-import { api } from '../_generated/api';
+import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import {
 	enableFeatures,
@@ -552,5 +552,36 @@ describe('team thread', () => {
 				locale: 'en',
 			})
 		).rejects.toMatchObject({ data: { category: 'forbidden' } });
+	});
+});
+
+describe('retention', () => {
+	it('sweeps sessions started more than 30 days ago, with their streams', async () => {
+		const t = await makeT();
+		const { target, mailboxId, messageId } = await replyDraft(t, 'Thanks for the call, talk soon.');
+		const old = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		expect(old.streamId).toBeDefined();
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			vi.setSystemTime(Date.now() + 31 * 24 * 60 * 60 * 1000);
+			const { draftId } = await t.mutation(api.mail.drafts.create, {
+				mailboxId,
+				inReplyToMessageId: messageId,
+			});
+			const fresh = { kind: 'mailDraft' as const, draftId };
+			const kept = await t.action(api.mail.ai.composeDraft.start, { target: fresh, locale: 'en' });
+
+			const swept = await t.mutation(internal.mail.ai.composeDraftStore.sweepStaleSessions, {});
+
+			expect(swept.deleted).toBe(1);
+			const left = await t.run(async (ctx) => ({
+				sessions: await ctx.db.query('answerAskSessions').collect(),
+				oldStream: await ctx.db.get(old.streamId!),
+			}));
+			expect(left.sessions.map((row) => row._id)).toEqual([kept.sessionId]);
+			expect(left.oldStream).toBeNull();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

@@ -17,6 +17,7 @@ import { v } from 'convex/values';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
 import type { Doc, Id } from '../../_generated/dataModel';
+import { internal } from '../../_generated/api';
 import { answerModeQuery } from '../_helpers';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { requireMailboxAccess } from '../permissions';
@@ -167,6 +168,34 @@ export async function deleteAskSessionsOfOwner(
 	for (const row of rows) await deleteSessionRow(ctx, row);
 	return rows.length === limit;
 }
+
+/** How long a session is kept: long past any draft someone is still writing. */
+export const ASK_SESSION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const ASK_SESSION_SWEEP_BATCH = 100;
+
+/**
+ * Retention for ask sessions (daily, maintenance/cronRegistration.ts). A
+ * Postbox session goes with its draft on send or discard, but a team-thread
+ * session has no such end, and either one holds text quoted from mail and the
+ * owner's answers. Sessions started more than {@link ASK_SESSION_RETENTION_MS}
+ * ago are deleted with their draft streams, a bounded batch per run; a full
+ * batch schedules the next one.
+ */
+export const sweepStaleSessions = internalMutation({
+	args: {},
+	handler: async (ctx): Promise<{ deleted: number }> => {
+		const cutoff = Date.now() - ASK_SESSION_RETENTION_MS;
+		const rows = await ctx.db
+			.query('answerAskSessions')
+			.withIndex('by_creation_time', (q) => q.lt('_creationTime', cutoff))
+			.take(ASK_SESSION_SWEEP_BATCH);
+		for (const row of rows) await deleteSessionRow(ctx, row);
+		if (rows.length === ASK_SESSION_SWEEP_BATCH) {
+			await ctx.scheduler.runAfter(0, internal.mail.ai.composeDraftStore.sweepStaleSessions, {});
+		}
+		return { deleted: rows.length };
+	},
+});
 
 /** Whether anyone started "Draft with AI" on this target (the send guards' trigger). */
 export async function targetHasAskSession(
