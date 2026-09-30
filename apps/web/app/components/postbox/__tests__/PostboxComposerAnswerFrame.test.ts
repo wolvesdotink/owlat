@@ -207,7 +207,9 @@ describe('PostboxComposer frame="answer"', () => {
 		expect(w.find('[data-testid="title-bar"]').exists()).toBe(false);
 		const line = w.get('[data-testid="composer-envelope-line"]');
 		expect(line.text()).toContain('To Jonas Berg');
-		expect(line.text()).toContain('From ada@example.com');
+		// The identity's label, not its address.
+		expect(line.text()).toContain('From Ada');
+		expect(line.text()).not.toContain('ada@example.com');
 		expect(line.text()).toContain('Re: September invoice');
 		// Folded, not unmounted: its guard dialogs must stay live.
 		expect(envelopeShown(w)).toBe(false);
@@ -215,6 +217,18 @@ describe('PostboxComposer frame="answer"', () => {
 		await line.get('button').trigger('click');
 		expect(w.find('[data-testid="composer-envelope-line"]').exists()).toBe(false);
 		expect(envelopeShown(w)).toBe(true);
+		w.unmount();
+	});
+
+	it('names a bare reply address as the thread does ("To Jonas Berg", not "To finance")', () => {
+		compose.toAddresses.value = ['finance@brightpath.example'];
+		const w = mountComposer({
+			frame: 'answer',
+			recipientNames: { 'finance@brightpath.example': 'Jonas Berg' },
+		});
+		const line = w.get('[data-testid="composer-envelope-line"]').text();
+		expect(line).toContain('To Jonas Berg');
+		expect(line).not.toContain('To finance');
 		w.unmount();
 	});
 

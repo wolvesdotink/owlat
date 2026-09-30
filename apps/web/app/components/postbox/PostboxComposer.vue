@@ -33,6 +33,8 @@ const props = defineProps<{
 	statusNote?: string;
 	/** The draft has an Answer mode ask session: its `[[...]]` gaps hold Send. */
 	askSession?: boolean;
+	/** Names the thread knows by address, for the folded envelope ("To Jonas Berg"). */
+	recipientNames?: Record<string, string>;
 }>();
 
 const emit = defineEmits<{
@@ -306,6 +308,8 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:cc-addresses="ccAddresses"
 			:bcc-addresses="bccAddresses"
 			:from="fromAddress || availableIdentities[0]?.address || ''"
+			:identities="availableIdentities"
+			:recipient-names="recipientNames"
 			:subject="subject"
 			:can-reply-all="(replyAllRecipients?.length ?? 0) > 0"
 			@expand="frameView.openEnvelope()"

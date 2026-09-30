@@ -22,7 +22,7 @@ import type { BackendOperationResult } from '~/composables/useBackendOperation';
 import type { ReplyRisk } from '~/utils/senderAuth';
 import { deriveReplyRisk, senderRiskInputOf } from '~/utils/senderAuth';
 import { extractEmailAddress } from '~/utils/emailAddress';
-import { recipientLabel } from '~/utils/recipientHints';
+import { messageRecipientNames, recipientLabel } from '~/utils/recipientHints';
 import { isDialogOpen } from '~/utils/dialogOpen';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { isChordPending } from '~/utils/shortcutScope';
@@ -116,6 +116,9 @@ const counterpart = computed(() => {
 	const m = message.value;
 	return m ? m.fromName || m.fromAddress : '';
 });
+// The composer's envelope line and the "Draft saved" offer name people as the
+// thread does, not by the bare address a reply is seeded with.
+const recipientNames = computed(() => (message.value ? messageRecipientNames(message.value) : {}));
 const { byId: inboxById } = useInboxes();
 const inbox = computed(() => {
 	const id = message.value?.mailboxId;
@@ -178,7 +181,10 @@ function leave() {
 	const msg = message.value;
 	const snapshot = composer?.snapshot();
 	if (composer && msg && snapshot?.hasContent) {
-		const recipient = recipientLabel(snapshot.toAddresses[0] ?? msg.fromAddress);
+		const recipient = recipientLabel(
+			snapshot.toAddresses[0] ?? msg.fromAddress,
+			recipientNames.value
+		);
 		void composer.flush().then((saved) => {
 			// A save that did not land still leaves the row (and the crash mirror
 			// holding the rest) worth offering back.
@@ -358,6 +364,7 @@ onBeforeUnmount(() => {
 					:reply-all-recipients="seed.replyAllRecipients"
 					:status-note="assist.statusNote.value"
 					:ask-session="!!ask.session.value"
+					:recipient-names="recipientNames"
 					@draft-id="onDraftId"
 					@sent="onSent"
 					@discarded="onDiscarded"

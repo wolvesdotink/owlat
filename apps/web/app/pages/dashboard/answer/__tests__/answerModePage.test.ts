@@ -127,7 +127,7 @@ const answerApi = { aiDraft: ref<string | null>(null), discardAiDraft: vi.fn() }
 const composerFocusBody = vi.fn();
 const ComposerStub = defineComponent({
 	name: 'PostboxComposer',
-	props: ['seed', 'replyAllRecipients', 'frame', 'statusNote', 'askSession'],
+	props: ['seed', 'replyAllRecipients', 'frame', 'statusNote', 'askSession', 'recipientNames'],
 	emits: ['draft-id', 'sent', 'discarded', 'minimize'],
 	setup(_p, { expose, slots }) {
 		expose({
@@ -336,6 +336,21 @@ describe('Answer mode page', () => {
 			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
 		);
 		expect(navigateTo).toHaveBeenCalledTimes(1);
+	});
+
+	it('names the reply recipient as the thread does, on the envelope line and in the draft offer', async () => {
+		const w = await mountAt({});
+		expect(w.getComponent(ComposerStub).props('recipientNames')).toEqual({
+			'jonas@example.com': 'Jonas Berg',
+		});
+		composerSnapshot.value = {
+			draftId: null,
+			toAddresses: ['jonas@example.com'],
+			hasContent: true,
+		};
+		press({ key: 'Escape' });
+		await flushPromises();
+		expect(useAnswerLeftDraft().left.value?.recipient).toBe('Jonas Berg');
 	});
 
 	it('lets the first Esc go of the editor instead of leaving', async () => {
