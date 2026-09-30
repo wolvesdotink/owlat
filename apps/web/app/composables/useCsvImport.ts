@@ -670,6 +670,8 @@ export function useCsvImport() {
 		// mapped custom columns actually land.
 		registerProperties?: RegisterPropertiesFn
 	) => {
+		// One run at a time: a second call would send the same rows twice.
+		if (step.value === 'importing') return;
 		step.value = 'importing';
 		progress.value = 0;
 		error.value = '';
@@ -716,7 +718,7 @@ export function useCsvImport() {
 	 */
 	const retryFailedRows = async (importFn: ImportBatchFn) => {
 		const queue = pendingContacts.value;
-		if (queue.length === 0 || !results.value) return;
+		if (step.value === 'importing' || queue.length === 0 || !results.value) return;
 		step.value = 'importing';
 		progress.value = 0;
 		error.value = '';

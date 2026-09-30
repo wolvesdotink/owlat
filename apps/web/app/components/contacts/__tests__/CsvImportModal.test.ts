@@ -243,6 +243,21 @@ describe('CsvImportModal — the close guard', () => {
 	});
 });
 
+describe('CsvImportModal — the error alert', () => {
+	/** A refused property registration lands here, after the toast has gone. */
+	it('announces itself', () => {
+		const { wrapper, csvImport } = mountModal({ step: 'preview' });
+		csvImport.error.value = 'Custom properties could not be registered';
+
+		return flushPromises().then(() => {
+			const alert = wrapper.findAll('[role="alert"]');
+			expect(
+				alert.some((a) => a.text().includes('Custom properties could not be registered'))
+			).toBe(true);
+		});
+	});
+});
+
 describe('CsvImportModal — the error rows', () => {
 	const errors = Array.from({ length: 12 }, (_, i) => `Invalid email: row-${i + 1}@bad`);
 
@@ -429,6 +444,23 @@ describe('CsvImportModal — a failed batch', () => {
 		const clean = mountModal({ step: 'complete', results: { imported: 3 } });
 		expect(clean.wrapper.text()).toContain('Import complete!');
 		expect(clean.wrapper.text()).not.toContain('Retry');
+	});
+
+	it('asks before a stray close drops the retry set', async () => {
+		const { wrapper, csvImport } = await mountAfterFailedBatch();
+
+		await wrapper.find('.dismiss').trigger('click');
+
+		expect(csvImport.isOpen.value).toBe(true);
+		expect(wrapper.text()).toContain(DISCARD_PROMPT);
+		expect(wrapper.text()).toContain('101 rows were not imported. Closing now drops them');
+		await clickButton(wrapper, 'Keep editing');
+		expect(csvImport.notImportedRowCount.value).toBe(101);
+		expect(wrapper.text()).toContain('Retry 101 rows');
+
+		await wrapper.find('.dismiss').trigger('click');
+		await clickButton(wrapper, 'Discard');
+		expect(csvImport.isOpen.value).toBe(false);
 	});
 
 	it('lists every row that did not make it in the error download', async () => {

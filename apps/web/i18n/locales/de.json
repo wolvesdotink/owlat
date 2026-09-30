@@ -1353,6 +1353,7 @@
 				},
 				"discard": {
 					"body": "Ihre Datei und die Spaltenzuordnung gehen verloren.",
+					"incompleteBody": "{count} Zeile wurde nicht importiert. Beim Schließen gehen sie und der erneute Versuch verloren; laden Sie vorher die Fehlerzeilen herunter, um sie zu behalten. | {count} Zeilen wurden nicht importiert. Beim Schließen gehen sie und der erneute Versuch verloren; laden Sie vorher die Fehlerzeilen herunter, um sie zu behalten.",
 					"keepEditing": "Weiter bearbeiten",
 					"title": "Diesen Import verwerfen?"
 				},

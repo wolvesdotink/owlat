@@ -1353,6 +1353,7 @@
 				},
 				"discard": {
 					"body": "Your file and column mapping will be lost.",
+					"incompleteBody": "{count} row was not imported. Closing now drops it and the retry; download the error rows first to keep it. | {count} rows were not imported. Closing now drops them and the retry; download the error rows first to keep them.",
 					"keepEditing": "Keep editing",
 					"title": "Discard this import?"
 				},

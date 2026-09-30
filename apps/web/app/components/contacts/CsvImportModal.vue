@@ -47,10 +47,17 @@ const canClose = computed(() => props.csvImport.step.value !== 'importing');
  * from any of them asks first — `close()` drops all of it, and `open()` resets,
  * so a stray backdrop click at `mapping` used to cost the whole upload silently.
  *
- * `upload` has nothing to lose and `complete` is already finished, so both close
- * straight away; `importing` is blocked by `canClose` and never reaches here.
+ * `upload` has nothing to lose, so it closes straight away, and so does a
+ * `complete` step that took every row. An INCOMPLETE one asks too: its retry set
+ * lives only in the composable, so closing it drops the one way to send the rows
+ * a failed batch left behind. `importing` is blocked by `canClose` and never
+ * reaches here.
  */
 const DISCARDABLE_STEPS: ReadonlySet<ImportStep> = new Set(['mapping', 'listMapping', 'preview']);
+
+const holdsUnsavedWork = () =>
+	DISCARDABLE_STEPS.has(props.csvImport.step.value) ||
+	(props.csvImport.step.value === 'complete' && props.csvImport.notImportedRowCount.value > 0);
 
 const isConfirmingDiscard = ref(false);
 
@@ -65,7 +72,7 @@ const requestClose = () => {
 		isConfirmingDiscard.value = false;
 		return;
 	}
-	if (DISCARDABLE_STEPS.has(props.csvImport.step.value)) {
+	if (holdsUnsavedWork()) {
 		isConfirmingDiscard.value = true;
 		return;
 	}
@@ -338,6 +345,7 @@ watch(
 		<div
 			v-if="csvImport.error.value"
 			class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
+			role="alert"
 		>
 			<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
 			<p class="text-sm text-error">{{ csvImport.error.value }}</p>
@@ -354,7 +362,15 @@ watch(
 					{{ t('components.contacts.csvImportModal.discard.title') }}
 				</p>
 				<p class="text-sm text-text-secondary max-w-sm">
-					{{ t('components.contacts.csvImportModal.discard.body') }}
+					{{
+						csvImport.step.value === 'complete'
+							? t(
+									'components.contacts.csvImportModal.discard.incompleteBody',
+									{ count: csvImport.notImportedRowCount.value },
+									csvImport.notImportedRowCount.value
+								)
+							: t('components.contacts.csvImportModal.discard.body')
+					}}
 				</p>
 			</div>
 		</div>

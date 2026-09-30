@@ -197,19 +197,18 @@ const handleAddSubmit = async () => {
 // ============================================
 // CSV Import
 // ============================================
+const processedCount = (results: ImportResults | null | undefined) =>
+	results ? results.imported + results.updated : 0;
+
 // A partial import is reported by the modal's completion step, with the rows
 // it did not get to; the success toast is only for a run that took every row.
-const toastCsvImport = (results: ImportResults | undefined) => {
+// `alreadyProcessed` keeps a retry's toast to the rows the retry itself sent,
+// not the import's running total.
+const toastCsvImport = (results: ImportResults | undefined, alreadyProcessed = 0) => {
 	if (!results || csvImport.notImportedRowCount.value > 0) return;
-	const totalProcessed = results.imported + results.updated;
-	if (totalProcessed === 0) return;
-	showToast(
-		t(
-			'dashboard.audience.contacts.index.toasts.imported',
-			{ count: totalProcessed },
-			totalProcessed
-		)
-	);
+	const count = processedCount(results) - alreadyProcessed;
+	if (count <= 0) return;
+	showToast(t('dashboard.audience.contacts.index.toasts.imported', { count }, count));
 };
 
 const handleCsvImport = async () => {
@@ -222,7 +221,11 @@ const handleCsvImport = async () => {
 };
 
 const handleCsvRetry = async () => {
-	toastCsvImport(await csvImport.retryFailedRows(csvImportOperations.importBatch));
+	const alreadyProcessed = processedCount(csvImport.results.value);
+	toastCsvImport(
+		await csvImport.retryFailedRows(csvImportOperations.importBatch),
+		alreadyProcessed
+	);
 };
 
 // ============================================

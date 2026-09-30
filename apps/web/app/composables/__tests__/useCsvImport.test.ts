@@ -754,6 +754,19 @@ describe('useCsvImport', () => {
 			expect(csvImport.notImportedRows.value[0]!.row).toBe(101);
 		});
 
+		it('ignores a second start or retry while a run is in flight', async () => {
+			const csvImport = await prepare();
+			const importFn = importFailingOn(2);
+
+			await Promise.all([csvImport.startImport(importFn), csvImport.startImport(importFn)]);
+			expect(importFn).toHaveBeenCalledTimes(2);
+
+			const retry = importFailingOn();
+			await Promise.all([csvImport.retryFailedRows(retry), csvImport.retryFailedRows(retry)]);
+			expect(retry).toHaveBeenCalledTimes(2);
+			expect(csvImport.results.value!.imported).toBe(201);
+		});
+
 		it('stops before any row is written when property registration fails', async () => {
 			const csvImport = useCsvImport();
 			await simulateFileSelect(csvImport, ['Email', 'Company'], [['a@example.com', 'Acme']]);
