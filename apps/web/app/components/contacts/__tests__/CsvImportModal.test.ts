@@ -454,6 +454,12 @@ describe('CsvImportModal — a failed batch', () => {
 		expect(csvImport.isOpen.value).toBe(true);
 		expect(wrapper.text()).toContain(DISCARD_PROMPT);
 		expect(wrapper.text()).toContain('101 rows were not imported. Closing now drops them');
+		// The prompt says to download the missing rows first, so it offers that.
+		await clickButton(wrapper, 'Download error rows');
+		expect(downloads).toHaveLength(1);
+		expect(await downloads[0]!.blob.text()).toContain('user201@example.com');
+		expect(wrapper.text()).toContain(DISCARD_PROMPT);
+
 		await clickButton(wrapper, 'Keep editing');
 		expect(csvImport.notImportedRowCount.value).toBe(101);
 		expect(wrapper.text()).toContain('Retry 101 rows');
@@ -461,6 +467,19 @@ describe('CsvImportModal — a failed batch', () => {
 		await wrapper.find('.dismiss').trigger('click');
 		await clickButton(wrapper, 'Discard');
 		expect(csvImport.isOpen.value).toBe(false);
+	});
+
+	it('keeps footer labels on one line, secondary actions left and Retry last', async () => {
+		const { wrapper } = await mountAfterFailedBatch([{ _id: 'topic-1', name: 'Newsletter' }]);
+
+		const groups = wrapper.findAll('.footer > div > div');
+		expect(groups).toHaveLength(2);
+		const [left, right] = groups.map((g) => g.findAll('button').map((b) => b.text()));
+		expect(left).toEqual(['Download error rows', 'Add to topic']);
+		expect(right).toEqual(['View imported', 'Retry 101 rows']);
+		for (const button of wrapper.findAll('.footer button')) {
+			expect(button.classes()).toContain('whitespace-nowrap');
+		}
 	});
 
 	it('lists every row that did not make it in the error download', async () => {

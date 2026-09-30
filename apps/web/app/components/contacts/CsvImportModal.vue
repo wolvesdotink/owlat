@@ -1093,12 +1093,35 @@ watch(
 
 		<!-- Footer -->
 		<template #footer>
-			<template v-if="isConfirmingDiscard">
-				<UiButton variant="secondary" @click="cancelDiscard()">{{
-					t('components.contacts.csvImportModal.discard.keepEditing')
-				}}</UiButton>
-				<UiButton variant="danger" @click="confirmDiscard()">{{ t('common.discard') }}</UiButton>
-			</template>
+			<!-- Footers with more than two actions: secondary actions on the left,
+				 the decision on the right. Labels stay on one line; when the row does
+				 not fit, the right-hand group wraps below as a whole. -->
+			<div
+				v-if="isConfirmingDiscard"
+				class="flex w-full flex-wrap items-center justify-between gap-3"
+			>
+				<div class="flex flex-wrap gap-3">
+					<!-- The prompt tells the operator to download the missing rows first,
+						 so the download is offered right here. -->
+					<UiButton
+						v-if="csvImport.step.value === 'complete' && downloadableErrorRows.length > 0"
+						variant="secondary"
+						class="whitespace-nowrap"
+						@click="downloadErrorRows()"
+					>
+						<template #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
+						{{ t('components.contacts.csvImportModal.complete.downloadErrors') }}
+					</UiButton>
+				</div>
+				<div class="ml-auto flex flex-wrap justify-end gap-3">
+					<UiButton variant="secondary" class="whitespace-nowrap" @click="cancelDiscard()">{{
+						t('components.contacts.csvImportModal.discard.keepEditing')
+					}}</UiButton>
+					<UiButton variant="danger" class="whitespace-nowrap" @click="confirmDiscard()">{{
+						t('common.discard')
+					}}</UiButton>
+				</div>
+			</div>
 			<template v-else-if="csvImport.step.value === 'upload'">
 				<UiButton variant="secondary" @click="requestClose()">{{ t('common.cancel') }}</UiButton>
 			</template>
@@ -1131,38 +1154,51 @@ watch(
 					}}
 				</UiButton>
 			</template>
-			<template v-else-if="csvImport.step.value === 'complete'">
-				<UiButton
-					v-if="downloadableErrorRows.length > 0"
-					variant="secondary"
-					@click="downloadErrorRows()"
-				>
-					<template #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
-					{{ t('components.contacts.csvImportModal.complete.downloadErrors') }}
-				</UiButton>
-				<UiButton
-					v-if="availableLists.length > 0"
-					variant="secondary"
-					@click="isAddToTopicOpen = !isAddToTopicOpen"
-				>
-					<template #iconLeft><Icon name="lucide:tag" class="w-4 h-4" /></template>
-					{{ t('components.contacts.csvImportModal.complete.addToTopic') }}
-				</UiButton>
-				<UiButton :variant="isIncomplete ? 'secondary' : 'primary'" @click="viewImported()">
-					{{ t('components.contacts.csvImportModal.complete.viewImported') }}
-					<template #iconRight><Icon name="lucide:arrow-right" class="w-4 h-4" /></template>
-				</UiButton>
-				<UiButton v-if="isIncomplete" @click="emit('retry')">
-					<template #iconLeft><Icon name="lucide:rotate-cw" class="w-4 h-4" /></template>
-					{{
-						t(
-							'components.contacts.csvImportModal.complete.retry',
-							{ count: notImportedCount },
-							notImportedCount
-						)
-					}}
-				</UiButton>
-			</template>
+			<div
+				v-else-if="csvImport.step.value === 'complete'"
+				class="flex w-full flex-wrap items-center justify-between gap-3"
+			>
+				<div class="flex flex-wrap gap-3">
+					<UiButton
+						v-if="downloadableErrorRows.length > 0"
+						variant="secondary"
+						class="whitespace-nowrap"
+						@click="downloadErrorRows()"
+					>
+						<template #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
+						{{ t('components.contacts.csvImportModal.complete.downloadErrors') }}
+					</UiButton>
+					<UiButton
+						v-if="availableLists.length > 0"
+						variant="secondary"
+						class="whitespace-nowrap"
+						@click="isAddToTopicOpen = !isAddToTopicOpen"
+					>
+						<template #iconLeft><Icon name="lucide:tag" class="w-4 h-4" /></template>
+						{{ t('components.contacts.csvImportModal.complete.addToTopic') }}
+					</UiButton>
+				</div>
+				<div class="ml-auto flex flex-wrap justify-end gap-3">
+					<UiButton
+						:variant="isIncomplete ? 'secondary' : 'primary'"
+						class="whitespace-nowrap"
+						@click="viewImported()"
+					>
+						{{ t('components.contacts.csvImportModal.complete.viewImported') }}
+						<template #iconRight><Icon name="lucide:arrow-right" class="w-4 h-4" /></template>
+					</UiButton>
+					<UiButton v-if="isIncomplete" class="whitespace-nowrap" @click="emit('retry')">
+						<template #iconLeft><Icon name="lucide:rotate-cw" class="w-4 h-4" /></template>
+						{{
+							t(
+								'components.contacts.csvImportModal.complete.retry',
+								{ count: notImportedCount },
+								notImportedCount
+							)
+						}}
+					</UiButton>
+				</div>
+			</div>
 		</template>
 	</UiModal>
 </template>
