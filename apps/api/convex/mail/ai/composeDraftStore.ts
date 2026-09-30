@@ -34,6 +34,7 @@ import {
 	clarificationFileRefValidator,
 	needsReplyClarificationQuestionValidator,
 } from '../../lib/validators/clarification';
+import { hasDraftGaps } from '@owlat/shared/answerMode';
 import { throwForbidden, throwInvalidState, throwNotFound } from '../../_utils/errors';
 import {
 	FILE_QUESTION_ID,
@@ -161,18 +162,37 @@ export async function deleteAskSessionsOfOwner(
 	return rows.length === limit;
 }
 
-/** Whether anyone started "Draft with AI" on this draft (the send guard's trigger). */
-export async function draftHasAskSession(
+/** Whether anyone started "Draft with AI" on this target (the send guards' trigger). */
+export async function targetHasAskSession(
 	ctx: QueryCtx,
-	draftId: Id<'mailDrafts'>
+	target: AnswerAskTarget
 ): Promise<boolean> {
 	const row = await ctx.db
 		.query('answerAskSessions')
-		.withIndex('by_target_owner', (q) =>
-			q.eq('targetKey', answerAskTargetKey({ kind: 'mailDraft', draftId }))
-		)
+		.withIndex('by_target_owner', (q) => q.eq('targetKey', answerAskTargetKey(target)))
 		.first();
 	return row !== null;
+}
+
+/**
+ * The send guard of plan §05: an Answer mode "draft with gaps" marks each
+ * missing fact `[[...]]`, and sending one would ship the marker to the
+ * recipient, so a send is refused (`DRAFT_HAS_GAPS`) until the person fills or
+ * deletes it. Only a target somebody drafted with AI on is checked: double
+ * brackets in hand-written mail are not ours to block. Every send path of both
+ * composers runs this (`mail/draftSend.ts`, the team inbox's approve and
+ * follow-up).
+ */
+export async function assertNoAnswerGaps(
+	ctx: QueryCtx,
+	target: AnswerAskTarget,
+	text: string | (() => Promise<string>)
+): Promise<void> {
+	if (!(await targetHasAskSession(ctx, target))) return;
+	const body = typeof text === 'string' ? text : await text();
+	if (hasDraftGaps(body)) {
+		throwInvalidState('Fill in the highlighted gaps before sending', { code: 'DRAFT_HAS_GAPS' });
+	}
 }
 
 /** The session when the calling identity owns it; throws otherwise. */

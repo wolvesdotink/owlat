@@ -614,6 +614,73 @@ describe('team reply attachments: the send paths', () => {
 	});
 });
 
+describe('team replies with Answer mode gaps', () => {
+	/** An ask session on the thread, as "Draft with AI" leaves one. */
+	async function drafted(t: Harness, threadId: Id<'conversationThreads'>) {
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert('answerAskSessions', {
+				ownerId: 'user-B',
+				organizationId: 'org-1',
+				target: { kind: 'teamThread', threadId },
+				targetKey: `teamThread:${threadId}`,
+				locale: 'en',
+				round: 1,
+				status: 'ready',
+				questions: [],
+				attachedFiles: [],
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+	}
+	const gapped = 'Hi Jonas, [[attach the September invoice]]';
+	const refused = { data: { category: 'invalid_state', data: { code: 'DRAFT_HAS_GAPS' } } };
+
+	it('approving a reply with a gap left is refused once someone drafted with AI', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, messageId } = await seedThread(t);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(messageId, { draftResponse: gapped });
+		});
+		await drafted(t, threadId);
+
+		await expect(
+			t.mutation(api.inbox.mutations.approveDraft, { inboundMessageId: messageId })
+		).rejects.toMatchObject(refused);
+
+		await t.mutation(api.inbox.mutations.editDraft, {
+			inboundMessageId: messageId,
+			draftResponse: 'Hi Jonas, the invoice is attached.',
+		});
+		const approved = await t.mutation(api.inbox.mutations.approveDraft, {
+			inboundMessageId: messageId,
+		});
+		expect(approved.success).toBe(true);
+	});
+
+	it('leaves hand-written double brackets alone on a thread nobody drafted with AI', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId } = await seedThread(t);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(messageId, { draftResponse: 'See [[wiki link]].' });
+		});
+		const approved = await t.mutation(api.inbox.mutations.approveDraft, {
+			inboundMessageId: messageId,
+		});
+		expect(approved.success).toBe(true);
+	});
+
+	it('a follow-up with a gap left is refused', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId } = await seedThread(t, 'sent');
+		await drafted(t, threadId);
+		await expect(
+			t.mutation(api.inbox.followUps.sendFollowUp, { threadId, body: gapped, subject: '' })
+		).rejects.toMatchObject(refused);
+	});
+});
+
 describe('team reply attachments: suggestions and cleanup', () => {
 	it("offers the newest message's stored suggestion until one of its files is attached", async () => {
 		const t = convexTest(schema, modules);
