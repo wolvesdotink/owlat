@@ -268,7 +268,7 @@ export const finishCopy = internalMutation({
  */
 export type AgentReplyIntakeOutcome =
 	| NonCampaignIntakeOutcome
-	| { ok: false; reason: 'attachment_copying' | 'attachment_failed' };
+	| { ok: false; reason: 'attachment_copying' | 'attachment_failed'; detail?: undefined };
 
 export const intakeAgentReply = internalMutation({
 	args: {

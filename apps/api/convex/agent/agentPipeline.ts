@@ -375,28 +375,28 @@ export const sendApprovedReply = internalAction({
 			return;
 		}
 
-		if (!outcome.ok && outcome.reason === 'attachment_copying') {
-			// A file answered for this message is still being copied onto the reply.
-			const waits = args.attachmentWaits ?? 0;
-			if (waits < MAX_ATTACHMENT_WAITS) {
-				await ctx.scheduler.runAfter(
-					ATTACHMENT_WAIT_MS,
-					internal.agent.agentPipeline.sendApprovedReply,
-					{
-						...args,
-						attachmentWaits: waits + 1,
-					}
-				);
+		if (!outcome.ok) {
+			if (outcome.reason === 'attachment_copying') {
+				// A file answered for this message is still being copied onto the reply.
+				const waits = args.attachmentWaits ?? 0;
+				if (waits < MAX_ATTACHMENT_WAITS) {
+					await ctx.scheduler.runAfter(
+						ATTACHMENT_WAIT_MS,
+						internal.agent.agentPipeline.sendApprovedReply,
+						{
+							...args,
+							attachmentWaits: waits + 1,
+						}
+					);
+					return;
+				}
+				await fail('A file for this reply is still being attached. Review and send it by hand.');
 				return;
 			}
-			await fail('A file for this reply is still being attached. Review and send it by hand.');
-			return;
-		}
-		if (!outcome.ok && outcome.reason === 'attachment_failed') {
-			await fail('A file for this reply could not be attached. Review and send it by hand.');
-			return;
-		}
-		if (!outcome.ok) {
+			if (outcome.reason === 'attachment_failed') {
+				await fail('A file for this reply could not be attached. Review and send it by hand.');
+				return;
+			}
 			const refusal = REPLY_REFUSAL_BY_REASON[outcome.reason];
 			if (refusal.terminal === 'failed') {
 				await fail(refusal.message(outcome.detail));
