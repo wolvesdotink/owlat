@@ -70,9 +70,7 @@ export function useAnswerThreadFiles(opts: { mailboxId: () => Id<'mailboxes'> | 
 			size: file.size,
 			...(file.partIndex ? { partIndex: file.partIndex } : {}),
 		});
-		return blob
-			? new File([blob], file.filename, { type: blob.type || file.contentType })
-			: null;
+		return blob ? new File([blob], file.filename, { type: blob.type || file.contentType }) : null;
 	}
 
 	return { indexIdOf, toFile };

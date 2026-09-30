@@ -124,7 +124,8 @@ const tab = ref<'conversation' | 'reply'>('conversation');
 const view = ref<AnswerConversationView>('summary');
 
 // ── The composer and the URL ────────────────────────────────────────────────
-const composerRef = ref<{
+// Shallow: the exposed Answer mode API carries refs its users read as refs.
+const composerRef = shallowRef<{
 	focusBody: () => void;
 	flush: () => Promise<string | null>;
 	snapshot: () => { draftId: string | null; toAddresses: string[]; hasContent: boolean };
@@ -154,6 +155,12 @@ const assist = useAnswerModeAssist({
 	view,
 });
 const { catchUp, ask } = assist;
+
+/** The resting phone/tablet sheet's "✦ Draft": open the reply and draft with AI. */
+function draftFromPeek() {
+	tab.value = 'reply';
+	void ask.start('');
+}
 
 const leftDraft = useAnswerLeftDraft();
 // Resuming the draft the list offered back: the offer is taken.
@@ -284,6 +291,21 @@ onBeforeUnmount(() => {
 						</NuxtLink>
 					</template>
 				</PostboxOverflowMenu>
+			</template>
+
+			<template v-if="assist.aiEnabled.value && seed" #peek-actions>
+				<UiButton
+					type="button"
+					size="sm"
+					variant="ghost"
+					class="shrink-0"
+					:disabled="ask.busy.value"
+					data-testid="answer-peek-draft"
+					@click="draftFromPeek"
+				>
+					<Icon name="lucide:sparkles" class="mr-1 size-3.5 text-brand" aria-hidden="true" />
+					{{ t('components.answer.aiBar.peekDraft') }}
+				</UiButton>
 			</template>
 
 			<template #conversation>

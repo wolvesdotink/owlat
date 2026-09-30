@@ -163,10 +163,7 @@ const titleId = useId();
 		</template>
 
 		<div v-if="asks.length > 0" :class="asksOnly ? '' : 'mt-3'">
-			<p
-				:id="asksOnly ? titleId : undefined"
-				class="text-xs font-semibold text-text-secondary"
-			>
+			<p :id="asksOnly ? titleId : undefined" class="text-xs font-semibold text-text-secondary">
 				{{ t('components.answer.catchUp.asksTitle') }}
 			</p>
 			<ul class="mt-1.5 space-y-1" data-testid="catch-up-asks">

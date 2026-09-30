@@ -171,6 +171,41 @@ describe('AnswerConversation', () => {
 		expect(w.emitted('count')?.[0]).toEqual([5]);
 	});
 
+	it('lets the card reveal a source message: opened, scrolled to and flashed', async () => {
+		const scrolled: string[] = [];
+		const original = Element.prototype.scrollIntoView;
+		Element.prototype.scrollIntoView = function (this: Element) {
+			scrolled.push(this.getAttribute('data-answer-message') ?? '');
+		};
+		let reveal!: (id: string) => Promise<void>;
+		const w = mount(AnswerConversation, {
+			props: { message: THREAD[4]! as never },
+			slots: {
+				'catch-up': (props: { reveal: (id: string) => Promise<void> }) => {
+					reveal = props.reveal;
+					return h('aside');
+				},
+			},
+			attachTo: document.body,
+			global: {
+				plugins: [createTestI18n()],
+				components: {
+					PostboxReaderMessage: CardStub,
+					PostboxThreadEarlier: inert('PostboxThreadEarlier'),
+					PostboxSenderProfile: inert('PostboxSenderProfile'),
+					PostboxAttachmentLightbox: inert('PostboxAttachmentLightbox'),
+				},
+			},
+		});
+		await reveal('m1');
+		await nextTick();
+		expect(expandedIds(w)).toContain('m1');
+		expect(scrolled).toEqual(['m1']);
+		expect(w.get('[data-answer-message="m1"]').classes()).toContain('ring-2');
+		Element.prototype.scrollIntoView = original;
+		w.unmount();
+	});
+
 	it('does not offer sender controls on our own messages', () => {
 		const w = mountColumn();
 		const own = w

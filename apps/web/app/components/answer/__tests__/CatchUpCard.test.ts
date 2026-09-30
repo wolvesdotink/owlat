@@ -69,9 +69,7 @@ describe('CatchUpCard', () => {
 		// Three for the first sentence (oldest first, capped), one for the second;
 		// an unknown source gets none.
 		expect(markers.map((m) => m.text())).toEqual(['Sep 1', 'Sep 3', 'Sep 10', 'Sep 3']);
-		expect(markers[0]!.attributes('aria-label')).toBe(
-			'Show the message from Jonas Berg, Sep 1'
-		);
+		expect(markers[0]!.attributes('aria-label')).toBe('Show the message from Jonas Berg, Sep 1');
 		await markers[1]!.trigger('click');
 		expect(w.emitted('reveal')).toEqual([['m2']]);
 		expectFullyLocalized(w);

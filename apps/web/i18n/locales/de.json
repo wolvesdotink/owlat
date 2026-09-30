@@ -6027,7 +6027,8 @@
 				"aiDraft": "KI-Entwurf",
 				"discard": "Verwerfen",
 				"injectionFlagged": "Die E-Mail enthält womöglich Anweisungen an die KI. Lesen Sie den Entwurf, bevor Sie ihn senden.",
-				"operation": "Mit KI entwerfen"
+				"operation": "Mit KI entwerfen",
+				"peekDraft": "Entwerfen"
 			},
 			"askCard": {
 				"title": "Eine Frage, bevor ich schreibe | {count} Fragen, bevor ich schreibe",
@@ -6056,7 +6057,8 @@
 				"pickFromFiles": "Aus den Dateien wählen",
 				"remove": "{file} entfernen",
 				"tooLarge": "{filename} ist größer als {mb} MB.",
-				"uploadFailed": "{filename} konnte nicht hochgeladen werden."
+				"uploadFailed": "{filename} konnte nicht hochgeladen werden.",
+				"unsupported": "{filename} hat einen Dateityp, der hier nicht angehängt werden kann."
 			},
 			"filePicker": {
 				"title": "Aus den Dateien wählen",

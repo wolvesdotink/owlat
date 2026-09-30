@@ -6027,7 +6027,8 @@
 				"aiDraft": "AI draft",
 				"discard": "Discard",
 				"injectionFlagged": "The email may contain instructions meant for the AI. Read the draft before you send it.",
-				"operation": "Draft with AI"
+				"operation": "Draft with AI",
+				"peekDraft": "Draft"
 			},
 			"askCard": {
 				"title": "One thing before I write this | {count} things before I write this",
@@ -6053,13 +6054,14 @@
 				"dontKeep": "Don't keep a copy in Files",
 				"nearMisses": "Close, but maybe not it:",
 				"candidates": "Which one?",
-				"pickFromFiles": "Pick from Files",
+				"pickFromFiles": "Pick from files",
 				"remove": "Remove {file}",
 				"tooLarge": "{filename} is larger than {mb} MB.",
-				"uploadFailed": "{filename} could not be uploaded."
+				"uploadFailed": "{filename} could not be uploaded.",
+				"unsupported": "{filename} is not a file type that can be attached here."
 			},
 			"filePicker": {
-				"title": "Pick from Files",
+				"title": "Pick from files",
 				"search": "Search by name",
 				"files": "Files",
 				"mail": "Mail attachments",

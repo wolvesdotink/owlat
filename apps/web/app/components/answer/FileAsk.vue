@@ -18,6 +18,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { AskQuestion } from '~/composables/useAnswerAskSession';
 import { useAnswerFileUpload } from '~/composables/useAnswerFileUpload';
 import { threadFileFromDrop, type ThreadFile } from '~/utils/answerThreadFiles';
+import { isAcceptedAnswerUpload, pickAnswerFile } from '~/utils/answerFilePicker';
 import { formatCompactFileSize } from '~/utils/formatters';
 import AnswerFilePicker, { type PickedFile } from './AnswerFilePicker.vue';
 
@@ -47,9 +48,9 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:modelValue': [value: FileAskValue] }>();
 
 const { t } = useI18n();
+const { showToast } = useToast();
 const { upload, uploading, progress } = useAnswerFileUpload();
 
-const fileInput = ref<HTMLInputElement | null>(null);
 const pickerOpen = ref(false);
 const dragOver = ref(false);
 const resolving = ref(false);
@@ -81,18 +82,25 @@ watch(dontKeep, (value) => {
 });
 
 async function uploadFile(file: File) {
+	// The picker filters by type; a drop or an "All files" pick does not.
+	if (!isAcceptedAnswerUpload(file)) {
+		showToast(t('components.answer.fileAsk.unsupported', { filename: file.name }), 'error');
+		return;
+	}
 	const done = await upload(file);
 	if (done) setFile({ source: 'upload', id: done.storageId, filename: done.filename });
 }
 
-function onChoose(event: Event) {
-	const input = event.target as HTMLInputElement;
-	const file = input.files?.[0];
-	input.value = '';
-	if (file) void uploadFile(file);
+/** The OS picker (on a phone it offers the camera too). Opened inside the tap. */
+async function choose() {
+	const file = await pickAnswerFile();
+	if (file) await uploadFile(file);
 }
 
+// Over this zone the drop is the answer's, not the composer's: its own
+// drop overlay stays off, and it never also attaches what lands here.
 function onDragOver(event: DragEvent) {
+	event.stopPropagation();
 	if (props.disabled) return;
 	event.preventDefault();
 	dragOver.value = true;
@@ -100,7 +108,6 @@ function onDragOver(event: DragEvent) {
 
 async function onDrop(event: DragEvent) {
 	event.preventDefault();
-	// The composer column around this card must not also take the drop.
 	event.stopPropagation();
 	dragOver.value = false;
 	if (props.disabled) return;
@@ -175,7 +182,9 @@ const busy = computed(() => uploading.value || resolving.value);
 				<div class="min-w-0">
 					<p class="text-text-secondary">
 						<template v-if="uploading">
-							{{ t('components.answer.fileAsk.uploading', { percent: Math.round(progress * 100) }) }}
+							{{
+								t('components.answer.fileAsk.uploading', { percent: Math.round(progress * 100) })
+							}}
 						</template>
 						<template v-else>
 							{{ t('components.answer.fileAsk.dropHere') }}
@@ -184,7 +193,7 @@ const busy = computed(() => uploading.value || resolving.value);
 								class="font-medium text-brand underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-brand"
 								:disabled="disabled || busy"
 								data-testid="file-ask-choose"
-								@click="fileInput?.click()"
+								@click="choose"
 							>
 								{{ t('components.answer.fileAsk.choose') }}
 							</button>
@@ -199,15 +208,6 @@ const busy = computed(() => uploading.value || resolving.value);
 					</p>
 				</div>
 			</div>
-			<input
-				ref="fileInput"
-				type="file"
-				class="hidden"
-				aria-hidden="true"
-				tabindex="-1"
-				data-testid="file-ask-input"
-				@change="onChoose"
-			/>
 		</div>
 
 		<label
@@ -284,7 +284,12 @@ const busy = computed(() => uploading.value || resolving.value);
 				data-testid="file-ask-option"
 				@click="pickOption(option)"
 			>
-				<Icon v-if="pickedOption === option" name="lucide:check" class="size-3" aria-hidden="true" />
+				<Icon
+					v-if="pickedOption === option"
+					name="lucide:check"
+					class="size-3"
+					aria-hidden="true"
+				/>
 				{{ option }}
 			</button>
 		</div>

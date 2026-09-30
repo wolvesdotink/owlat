@@ -4,11 +4,7 @@
  * foreign drop reads as nothing.
  */
 import { describe, it, expect } from 'vitest';
-import {
-	THREAD_FILE_DRAG_TYPE,
-	threadFileFromDrop,
-	threadFilesOf,
-} from '../answerThreadFiles';
+import { THREAD_FILE_DRAG_TYPE, threadFileFromDrop, threadFilesOf } from '../answerThreadFiles';
 
 const pdf = (partIndex: string, filename = 'invoice.pdf', size = 1000) => ({
 	filename,
@@ -20,7 +16,12 @@ const pdf = (partIndex: string, filename = 'invoice.pdf', size = 1000) => ({
 describe('threadFilesOf', () => {
 	it('lists attachments newest first, with their sender', () => {
 		const files = threadFilesOf([
-			{ _id: 'm1', receivedAt: 1, fromAddress: 'jonas@example.com', attachments: [pdf('1', 'po.pdf')] },
+			{
+				_id: 'm1',
+				receivedAt: 1,
+				fromAddress: 'jonas@example.com',
+				attachments: [pdf('1', 'po.pdf')],
+			},
 			{ _id: 'm2', receivedAt: 2, fromAddress: 'ada@example.com', attachments: [pdf('2')] },
 		]);
 		expect(files.map((f) => [f.key, f.filename, f.fromAddress])).toEqual([
@@ -66,7 +67,9 @@ describe('threadFileFromDrop', () => {
 	it('is null for anything else', () => {
 		expect(threadFileFromDrop(transfer({ 'text/plain': 'hi' }))).toBeNull();
 		expect(threadFileFromDrop(transfer({ [THREAD_FILE_DRAG_TYPE]: '{not json' }))).toBeNull();
-		expect(threadFileFromDrop(transfer({ [THREAD_FILE_DRAG_TYPE]: '{"filename":"x"}' }))).toBeNull();
+		expect(
+			threadFileFromDrop(transfer({ [THREAD_FILE_DRAG_TYPE]: '{"filename":"x"}' }))
+		).toBeNull();
 		expect(threadFileFromDrop(null)).toBeNull();
 	});
 });

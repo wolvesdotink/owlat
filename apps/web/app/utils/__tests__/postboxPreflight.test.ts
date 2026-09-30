@@ -156,7 +156,10 @@ describe('preflightDraft', () => {
 
 	it('names the first gap an AI draft left, and says how many there are', () => {
 		expect(
-			preflightDraft({ subject: 'Re: invoice', bodyHtml: '<p>Hi, [[attach the September invoice]].</p>' })
+			preflightDraft({
+				subject: 'Re: invoice',
+				bodyHtml: '<p>Hi, [[attach the September invoice]].</p>',
+			})
 		).toEqual([
 			{
 				id: 'draftGap',

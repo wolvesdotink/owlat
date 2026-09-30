@@ -35,7 +35,7 @@ export type AskAnswer = FunctionArgs<typeof api.mail.ai.composeDraft.answer>['an
 
 type AttachmentRow = { storageId: string; filename: string; contentType: string; size: number };
 
-export type AskPhase ='idle' | 'checking' | 'asking' | 'drafting' | 'ready' | 'error';
+export type AskPhase = 'idle' | 'checking' | 'asking' | 'drafting' | 'ready' | 'error';
 
 export function useAnswerAskSession(opts: {
 	/** The draft the session hangs off, once it exists. */

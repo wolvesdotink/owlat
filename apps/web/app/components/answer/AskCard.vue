@@ -56,6 +56,9 @@ type Kind = NonNullable<AskQuestion['answerKind']>;
 function kindOf(question: AskQuestion): Kind {
 	return question.answerKind ?? ((question.options?.length ?? 0) > 0 ? 'choice' : 'text');
 }
+/** The list hands its slot the shared question shape; this card needs its own. */
+const byId = computed(() => new Map(props.questions.map((q) => [q.id, q])));
+const askOf = (id: string): AskQuestion => byId.value.get(id)!;
 
 const listRef = ref<InstanceType<typeof ClarificationQuestions> | null>(null);
 /** What this card set per question (the list holds the same values). */
@@ -102,7 +105,9 @@ function onKeydown(event: KeyboardEvent) {
 	const withChips = props.questions.filter(
 		(q) => kindOf(q) !== 'file' && (q.options?.length ?? 0) > 0
 	);
-	const question = withChips.find((q) => !(values[q.id] ?? '').trim()) ?? withChips[0];
+	// A remembered answer counts as answered until the person clears it.
+	const question =
+		withChips.find((q) => !(values[q.id] ?? q.answer?.value ?? '').trim()) ?? withChips[0];
 	if (!question) return;
 	const copy = localizedQuestionCopy(question, locale.value);
 	const option = copy.options[Number(event.key) - 1];
@@ -136,7 +141,9 @@ const titleId = useId();
 				<div class="flex flex-wrap items-baseline gap-x-2">
 					<Icon name="lucide:sparkles" class="size-3.5 self-center text-brand" aria-hidden="true" />
 					<h2 :id="titleId" class="text-sm font-semibold text-text-primary">
-						{{ t('components.answer.askCard.title', { count: questions.length }, questions.length) }}
+						{{
+							t('components.answer.askCard.title', { count: questions.length }, questions.length)
+						}}
 					</h2>
 					<span class="text-xs text-text-tertiary" data-testid="ask-round">
 						{{ t('components.answer.askCard.round', { round, total: MAX_ASK_ROUNDS }) }}
@@ -149,8 +156,8 @@ const titleId = useId();
 
 			<template #answer="{ question, copy, remembered, value, setValue }">
 				<FileAsk
-					v-if="kindOf(question) === 'file'"
-					:question="question"
+					v-if="kindOf(askOf(question.id)) === 'file'"
+					:question="askOf(question.id)"
 					:options="copy.options"
 					:model-value="fileValues[question.id] ?? null"
 					:mailbox-id="mailboxId"
@@ -165,13 +172,13 @@ const titleId = useId();
 						:options="copy.options"
 						:remembered="remembered"
 						:disabled="submitting"
-						:placeholder="t(`components.answer.askCard.placeholder.${kindOf(question)}`)"
+						:placeholder="t(`components.answer.askCard.placeholder.${kindOf(askOf(question.id))}`)"
 						chip-test-id="ask-chip"
 						input-test-id="ask-input"
 						@update:model-value="set(question.id, $event, setValue)"
 					/>
 					<label
-						v-if="kindOf(question) === 'date'"
+						v-if="kindOf(askOf(question.id)) === 'date'"
 						class="mt-1.5 flex items-center gap-2 text-xs text-text-secondary"
 					>
 						{{ t('components.answer.askCard.pickDate') }}
