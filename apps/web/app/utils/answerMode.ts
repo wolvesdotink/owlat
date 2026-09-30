@@ -17,6 +17,8 @@ export type AnswerModeKind = (typeof ANSWER_MODE_KINDS)[number];
 
 /** The route prefix of Answer mode for Postbox mail. */
 const ANSWER_MAIL_PREFIX = '/dashboard/answer/m/';
+/** The route prefix of Answer mode for a Team inbox thread. */
+const ANSWER_TEAM_PREFIX = '/dashboard/answer/t/';
 
 /** A `?kind=` value, or null when it is absent or not one of the three verbs. */
 export function parseAnswerKind(raw: unknown): AnswerModeKind | null {
@@ -44,9 +46,19 @@ export function answerModeHref(
 	return `${ANSWER_MAIL_PREFIX}${encodeURIComponent(messageId)}${query ? `?${query}` : ''}`;
 }
 
+/**
+ * Where Answer mode for the Team inbox thread `threadId` lives. `message` picks
+ * the inbound message the reply answers when it is not the one the thread
+ * would pick itself (an older message that also holds a waiting draft).
+ */
+export function answerTeamHref(threadId: string, opts: { messageId?: string | null } = {}): string {
+	const query = opts.messageId ? `?message=${encodeURIComponent(opts.messageId)}` : '';
+	return `${ANSWER_TEAM_PREFIX}${encodeURIComponent(threadId)}${query}`;
+}
+
 /** True on an Answer mode route (a reply being written), not on the queue index. */
 export function isAnswerModePath(path: string): boolean {
-	return path.startsWith(ANSWER_MAIL_PREFIX);
+	return path.startsWith(ANSWER_MAIL_PREFIX) || path.startsWith(ANSWER_TEAM_PREFIX);
 }
 
 /**
@@ -72,4 +84,18 @@ export function answerDraftHasContent(bodyHtml: string, attachmentCount: number)
 /** True when a reply/forward body carries the quoted original the composer folds. */
 export function bodyHasQuote(bodyHtml: string): boolean {
 	return bodyHtml.includes('gmail_quote');
+}
+
+/**
+ * The catalog key of the back link's place ("Team inbox", "Answer queue"),
+ * named after the page a reply returns to.
+ */
+export function answerBackLabelKey(returnPath: string): string {
+	if (returnPath.startsWith('/dashboard/postbox')) return 'components.answer.mode.backTo.inbox';
+	if (returnPath.startsWith('/dashboard/inbox')) return 'components.answer.mode.backTo.teamInbox';
+	if (returnPath.startsWith('/dashboard/answer')) return 'components.answer.mode.backTo.queue';
+	if (returnPath === '/dashboard' || returnPath.startsWith('/dashboard?')) {
+		return 'components.answer.mode.backTo.workbench';
+	}
+	return 'components.answer.mode.backTo.previous';
 }

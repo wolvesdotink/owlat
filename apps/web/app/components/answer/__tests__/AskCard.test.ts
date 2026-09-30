@@ -179,4 +179,19 @@ describe('AskCard', () => {
 		expect(w.emitted('skip')).toBeUndefined();
 		w.unmount();
 	});
+
+	it('as a background clarification: no round, "Answer later", and every question required', async () => {
+		const w = mountCard({
+			questions: QUESTIONS.slice(2),
+			round: undefined,
+			requireAll: true,
+			skipLabel: 'Answer later',
+		});
+		expect(w.find('[data-testid="ask-round"]').exists()).toBe(false);
+		expect(w.get('[data-testid="ask-skip"]').text()).toBe('Answer later');
+		const submit = w.get('[data-testid="ask-submit"]');
+		await w.findAll('[data-testid="ask-input"]')[2]!.setValue('Nothing else');
+		expect(submit.attributes('disabled')).toBeDefined();
+		w.unmount();
+	});
 });

@@ -5976,7 +5976,8 @@
 					"inbox": "Posteingang",
 					"queue": "Antwortliste",
 					"workbench": "Werkbank",
-					"previous": "Vorherige Seite"
+					"previous": "Vorherige Seite",
+					"teamInbox": "Team-Postfach"
 				},
 				"messageCount": "{count} Nachricht | {count} Nachrichten",
 				"tabsLabel": "Unterhaltung oder Antwort",
@@ -6066,6 +6067,40 @@
 				"files": "Dateien",
 				"mail": "E-Mail-Anhänge",
 				"empty": "Keine Dateien gefunden."
+			},
+			"queueBar": {
+				"position": "{position} von {total}",
+				"previous": "Vorherige in der Antwortliste",
+				"next": "Nächste in der Antwortliste",
+				"menu": "Antwortliste",
+				"inQueue": "in der Antwortliste",
+				"markDone": "Als erledigt markieren",
+				"backToQueue": "Zurück zur Antwortliste"
+			},
+			"team": {
+				"to": "An {name}",
+				"more": "Mehr zu dieser Antwort",
+				"showChanges": "Änderungen am Entwurf des Agenten zeigen",
+				"hideChanges": "Änderungen ausblenden",
+				"discardDraft": "Entwurf verwerfen",
+				"clear": "Leeren",
+				"attachments": {
+					"attach": "Anhängen",
+					"upload": "Datei hochladen",
+					"fromThread": "Aus dieser Unterhaltung",
+					"fromContact": "Weitere Dateien für {name}",
+					"copying": "Wird kopiert…",
+					"failed": "Kopieren fehlgeschlagen",
+					"failedWithReason": "Kopieren fehlgeschlagen: {reason}",
+					"remove": "{file} entfernen",
+					"retry": "Erneut versuchen",
+					"cancelUpload": "Upload von {file} abbrechen",
+					"hold": {
+						"uploading": "Senden wartet, bis der Upload fertig ist.",
+						"copying": "Senden wartet, bis die Datei kopiert ist.",
+						"failed": "Entfernen Sie die Datei, die nicht kopiert werden konnte, und senden Sie dann."
+					}
+				}
 			}
 		}
 	},
@@ -9247,11 +9282,7 @@
 			},
 			"detail": {
 				"agentNeedsInput": "Der Agent braucht Ihre Eingabe",
-				"agentNeedsInputEyebrow": "Wartet auf Sie",
-				"answerAndResume": "Antworten und Entwurf fortsetzen",
 				"answerClarificationOperation": "Rückfrage beantworten",
-				"answerPlaceholder": "Antwort eingeben",
-				"answerRemaining": "Noch {count} Antwort bis zum Fortsetzen | Noch {count} Antworten bis zum Fortsetzen",
 				"assign": "Zuweisen",
 				"assignThreadAria": "Konversation zuweisen",
 				"assignToMe": "Mir zuweisen",
@@ -9272,8 +9303,6 @@
 				},
 				"changeStatusAria": "Status: {status}. Status der Konversation ändern",
 				"channelLinkFailedToast": "Kanal erstellt, aber die Verknüpfung ist fehlgeschlagen",
-				"clarificationLead": "Antworten Sie unten, dann stellt der Agent den Entwurf mit Ihren Angaben als bestätigten Fakten fertig.",
-				"clarificationProgress": "{answered} von {total} beantwortet",
 				"clarificationSavedToast": "Antworten gespeichert — Entwurf wird fortgesetzt",
 				"composer": {
 					"agentDraft": "Vom Agenten entworfen",
@@ -9395,7 +9424,8 @@
 				"waitingDraft": {
 					"notice": "Auch für diese Nachricht wartet ein Antwortentwurf.",
 					"answer": "Diese Nachricht beantworten"
-				}
+				},
+				"answerInReply": "In der Antwort beantworten"
 			},
 			"failed": {
 				"emptyBody": "Jede eingehende Nachricht wurde erfolgreich verarbeitet.",

@@ -179,8 +179,9 @@ async function sendReply() {
 	}
 }
 
+// Editing happens where every reply is written: Answer mode on the thread.
 function openThread() {
-	if (props.entry.thread) void navigateTo(`/dashboard/inbox/${props.entry.thread._id}`);
+	if (props.entry.thread) props.controls.openAnswer();
 }
 
 function onKeydown(event: KeyboardEvent) {

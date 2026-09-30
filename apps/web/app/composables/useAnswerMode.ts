@@ -8,7 +8,12 @@
  * the list starts from the list's own URL.
  */
 import type { Id } from '@owlat/api/dataModel';
-import { answerModeHref, isAnswerModePath, type AnswerModeKind } from '~/utils/answerMode';
+import {
+	answerModeHref,
+	answerTeamHref,
+	isAnswerModePath,
+	type AnswerModeKind,
+} from '~/utils/answerMode';
 
 declare module '#app' {
 	interface PageMeta {
@@ -35,16 +40,25 @@ export function useAnswerModeNav() {
 
 	// The router is read when a verb runs, not at setup: most hosts of these
 	// verbs (list rows, the reader, toasts) never open Answer mode at all.
-	function open(
-		messageId: string,
-		opts: { kind?: AnswerModeKind | null; draftId?: string | null } = {}
-	) {
+	function go(href: string) {
 		const current = useRouter().currentRoute.value;
 		if (!isAnswerModePath(current.path)) {
 			returnTo.value = current.fullPath;
 			markListReturn();
 		}
-		return navigateTo(answerModeHref(messageId, opts));
+		return navigateTo(href);
+	}
+
+	function open(
+		messageId: string,
+		opts: { kind?: AnswerModeKind | null; draftId?: string | null } = {}
+	) {
+		return go(answerModeHref(messageId, opts));
+	}
+
+	/** Answer mode for a Team inbox thread (optionally on one of its messages). */
+	function openTeam(threadId: string, opts: { messageId?: string | null } = {}) {
+		return go(answerTeamHref(threadId, opts));
 	}
 
 	function leave() {
@@ -64,7 +78,16 @@ export function useAnswerModeNav() {
 	/** The label of the back link: the page a reply returns to. */
 	const returnPath = computed(() => returnTo.value ?? FALLBACK_RETURN);
 
-	return { open, leave, returnPath };
+	/**
+	 * Name the page Esc returns to, for a host that moves between Answer mode
+	 * routes itself: the Answer queue steps from item to item with replaces, and
+	 * leaving any of them leaves the queue for the page it was opened from.
+	 */
+	function setReturnPath(path: string) {
+		returnTo.value = path;
+	}
+
+	return { open, openTeam, leave, returnPath, setReturnPath };
 }
 
 /** A reply draft left in Answer mode, offered back on the list ("Resume"). */

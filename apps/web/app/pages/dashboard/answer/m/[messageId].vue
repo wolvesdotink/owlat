@@ -32,6 +32,7 @@ import {
 	useAnswerModeNav,
 } from '~/composables/useAnswerMode';
 import { useAnswerModeSession, type AnswerModeMessage } from '~/composables/useAnswerModeSession';
+import { useAnswerQueueSession } from '~/composables/useAnswerQueueSession';
 import { useAnswerModeAssist } from '~/composables/useAnswerModeAssist';
 import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
 import type { PostboxReaderMessage } from '~/components/postbox/PostboxThreadReader.vue';
@@ -191,8 +192,14 @@ function leave() {
 	answerNav.leave();
 }
 
+// Opened by the Answer queue: a send finishes the item and moves on to the next.
+const queueSession = useAnswerQueueSession();
+// While the queue item's own questions are up, "Draft with AI" waits below them.
+const queueAskVisible = ref(false);
+
 function onSent() {
 	leftDraft.clear();
+	if (queueSession?.handleSent()) return;
 	answerNav.leave();
 }
 
@@ -277,6 +284,9 @@ onBeforeUnmount(() => {
 					</span>
 				</span>
 			</template>
+			<template #queue>
+				<AnswerQueueBar />
+			</template>
 			<template #menu>
 				<PostboxOverflowMenu :label="t('components.answer.mode.more')" align="right">
 					<template #default="{ close }">
@@ -348,26 +358,36 @@ onBeforeUnmount(() => {
 					@minimize="onComposerEsc"
 					@drop="assist.onComposerDrop"
 				>
-					<template v-if="assist.aiEnabled.value" #above-editor="{ composer }">
-						<AskCard
-							v-if="ask.phase.value === 'asking' && ask.session.value"
-							:questions="ask.session.value.questions"
-							:round="ask.session.value.round"
-							:submitting="ask.busy.value"
+					<template #above-editor="{ composer }">
+						<!-- A background clarification of the Answer queue item comes first. -->
+						<AnswerQueueMailAsk
+							:message-id="messageId"
 							:mailbox-id="seed.mailboxId"
 							:resolve-thread-file="assist.resolveThreadFile"
-							@answer="ask.answer($event)"
-							@skip="ask.answer($event, true)"
+							@visible="queueAskVisible = $event"
+							@use-draft="composer.applyAiDraft($event)"
 						/>
-						<AnswerAiBar
-							v-else
-							:phase="ask.phase.value"
-							:busy="ask.busy.value"
-							:has-ai-draft="composer.aiDraft.value !== null"
-							:injection-flagged="ask.injectionFlagged.value"
-							@draft="ask.start"
-							@discard="composer.discardAiDraft()"
-						/>
+						<template v-if="assist.aiEnabled.value && !queueAskVisible">
+							<AskCard
+								v-if="ask.phase.value === 'asking' && ask.session.value"
+								:questions="ask.session.value.questions"
+								:round="ask.session.value.round"
+								:submitting="ask.busy.value"
+								:mailbox-id="seed.mailboxId"
+								:resolve-thread-file="assist.resolveThreadFile"
+								@answer="ask.answer($event)"
+								@skip="ask.answer($event, true)"
+							/>
+							<AnswerAiBar
+								v-else
+								:phase="ask.phase.value"
+								:busy="ask.busy.value"
+								:has-ai-draft="composer.aiDraft.value !== null"
+								:injection-flagged="ask.injectionFlagged.value"
+								@draft="ask.start"
+								@discard="composer.discardAiDraft()"
+							/>
+						</template>
 					</template>
 				</PostboxComposer>
 				<div v-else class="flex-1 space-y-3 p-4" aria-hidden="true">

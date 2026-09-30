@@ -44,6 +44,12 @@ export function useAnswerAskSession(opts: {
 	composer: () => AnswerComposerApi | null;
 	/** An AI draft just settled in the editor (the asks get checked again). */
 	onSettled?: () => void;
+	/**
+	 * Files the session found or was given, for a target whose reply keeps its
+	 * own list (a team thread: the server only reports them, the host attaches).
+	 * Called with the files not reported before.
+	 */
+	onAttachedFiles?: (files: AskSession['attachedFiles']) => void;
 }) {
 	const { t, locale } = useI18n();
 
@@ -103,11 +109,15 @@ export function useAnswerAskSession(opts: {
 	async function start(instruction: string) {
 		const composer = opts.composer();
 		if (!composer || busy.value) return;
-		const draftId = await composer.ensureDraftId();
-		if (!draftId) return;
+		// A team thread is its own target; a Postbox reply needs its draft row.
+		const known = opts.target();
+		const draftId = known?.kind === 'teamThread' ? null : await composer.ensureDraftId();
+		const target: AskTarget | null =
+			known?.kind === 'teamThread' ? known : draftId ? { kind: 'mailDraft', draftId } : null;
+		if (!target) return;
 		const trimmed = instruction.trim();
 		const result = await startOp.run({
-			target: { kind: 'mailDraft', draftId },
+			target,
 			...(trimmed ? { instruction: trimmed } : {}),
 			locale: locale.value,
 		});
@@ -193,6 +203,24 @@ export function useAnswerAskSession(opts: {
 			const composer = opts.composer();
 			if (composer && count > (previous ?? 0)) void refreshAttachments(composer);
 		}
+	);
+	// Files for a host that attaches them itself: only those this page's own
+	// start or answer produced, each once (a reload does not attach them again).
+	let reportedSession: string | null = null;
+	let reported = 0;
+	watch(
+		() => [session.value?.sessionId ?? null, session.value?.attachedFiles.length ?? 0] as const,
+		([id, count]) => {
+			if (!opts.onAttachedFiles || !id) return;
+			if (reportedSession !== id) {
+				reportedSession = id;
+				reported = returned.value?.sessionId === id ? 0 : count;
+			}
+			if (count <= reported) return;
+			opts.onAttachedFiles(session.value?.attachedFiles.slice(reported) ?? []);
+			reported = count;
+		},
+		{ immediate: true }
 	);
 
 	return {
