@@ -20,7 +20,7 @@ import { DEFAULT_FILE_POLICY, isFileTypeAccepted } from '@owlat/email-scanner';
 import { requireMailboxAccess } from '../permissions';
 import { assertStateIs } from '../draftLifecycle/reducers';
 import { withStoredInlineBodies } from '../../lib/messageBodyStore';
-import { openInboundMessageBody } from '../../lib/messageBody';
+import { openInboundMessageBody } from '../../lib/messageBodyInbound';
 import { requireOrgMember } from '../../lib/sessionOrganization';
 import { isSharedInboxReader } from '../../inbox/access';
 import { findContactByIdentifier } from '../../contacts/resolution';
@@ -142,8 +142,14 @@ export const loadTeamThreadContext = internalQuery({
 			.order('desc')
 			.first();
 		if (!latest) throwNotFound('Message');
-		const body = await openInboundMessageBody(latest);
-		const text = body.text?.trim() ? body.text : body.html ? htmlToPlainText(body.html) : '';
+		// A query cannot read blobs: a body too large for its row gives its
+		// excerpt, which is longer than the trigger text keeps anyway.
+		const body = await openInboundMessageBody(latest, null);
+		const text = body.text?.trim()
+			? body.text
+			: body.html
+				? htmlToPlainText(body.html)
+				: (body.excerpt ?? '');
 		const contactId = latest.contactId ?? thread.contactId;
 		const contact = contactId ? await ctx.db.get(contactId) : null;
 		return {

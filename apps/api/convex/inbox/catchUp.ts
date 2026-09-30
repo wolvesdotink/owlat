@@ -21,7 +21,7 @@ import { isCatchUpWorthy } from '@owlat/shared/answerMode';
 import { authedAction } from '../lib/authedFunctions';
 import { api, internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
-import { openInboundMessageBody } from '../lib/messageBody';
+import { openInboundMessageBody } from '../lib/messageBodyInbound';
 import { stripHiddenContent } from '../agent/steps/security_scan/patterns';
 import { gatedInParallel } from '../mail/ai/gate';
 import { THREAD_SUMMARY } from '../mail/ai/transcript';
@@ -39,12 +39,16 @@ import {
  * The body the model may read: the text part, else the HTML as text, with
  * hidden content (comments, display:none, zero-width smuggling) removed first,
  * as the agent's own context step does.
+ *
+ * Read without storage, as the agent's history is: the transcript keeps a few
+ * thousand characters per message, so a part too large for its row contributes
+ * its excerpt (the opening of the message) instead of megabytes nobody reads.
  */
 async function inboundPlainText(message: Doc<'inboundMessages'>): Promise<string> {
-	const { text, html } = await openInboundMessageBody(message);
+	const { text, html, excerpt } = await openInboundMessageBody(message, null);
 	if (text != null && text.trim()) return stripHiddenContent(text).trim();
 	if (html != null) return htmlToPlainText(stripHiddenContent(html));
-	return '';
+	return stripHiddenContent(excerpt ?? '').trim();
 }
 
 /** Inbound messages oldest first, each followed by the reply the team sent to it. */
