@@ -180,10 +180,34 @@ function openSenderProfile(msg: { fromAddress: string; fromName?: string | null 
 }
 
 const showViewToggle = computed(() => allMessages.value.length > 1);
+
+// The catch-up card's date markers: open the source message, bring it into
+// view and flash it, so "which message said that?" is one click.
+const rootEl = ref<HTMLElement | null>(null);
+const highlightedId = ref<string | null>(null);
+let highlightTimer: ReturnType<typeof setTimeout> | undefined;
+async function reveal(messageId: string) {
+	if (!expanded.value.has(messageId)) toggleExpanded(messageId);
+	await nextTick();
+	const el = rootEl.value?.querySelector<HTMLElement>(
+		`[data-answer-message="${CSS.escape(messageId)}"]`
+	);
+	if (!el) return;
+	const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+	el.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' });
+	highlightedId.value = messageId;
+	clearTimeout(highlightTimer);
+	highlightTimer = setTimeout(() => (highlightedId.value = null), 1600);
+}
+onBeforeUnmount(() => clearTimeout(highlightTimer));
 </script>
 
 <template>
-	<div class="mx-auto flex max-w-3xl flex-col gap-2 p-4 md:p-6" data-testid="answer-conversation">
+	<div
+		ref="rootEl"
+		class="mx-auto flex max-w-3xl flex-col gap-2 p-4 md:p-6"
+		data-testid="answer-conversation"
+	>
 		<div v-if="showViewToggle" class="flex justify-end">
 			<div
 				role="group"
@@ -211,7 +235,7 @@ const showViewToggle = computed(() => allMessages.value.length > 1);
 		</div>
 
 		<!-- The catch-up card (summary, asks) of a thread worth summarising. -->
-		<slot name="catch-up" :view="view" :messages="allMessages" />
+		<slot name="catch-up" :view="view" :messages="allMessages" :reveal="reveal" />
 
 		<PostboxThreadEarlier
 			v-if="hasEarlier || loadingEarlier || earlierFailed"
@@ -225,6 +249,9 @@ const showViewToggle = computed(() => allMessages.value.length > 1);
 			v-for="msg in allMessages"
 			:key="msg._id"
 			reduced
+			:data-answer-message="msg._id"
+			class="scroll-mt-4 rounded-md transition-shadow duration-(--motion-fast)"
+			:class="highlightedId === msg._id ? 'ring-2 ring-brand/60' : ''"
 			:message="msg"
 			:mailbox-id="message.mailboxId"
 			:expanded="expanded.has(msg._id)"

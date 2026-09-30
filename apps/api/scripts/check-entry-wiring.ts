@@ -353,20 +353,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'inbox/replyAttachments.ts#attachExisting',
 	'inbox/replyAttachments.ts#remove',
 	'inbox/replyAttachments.ts#suggestions',
-	// Answer mode catch-up reads the web client calls (lane catchup, listed from
-	// lane ask so the integration branch stays green). Remove with the web lane.
-	'inbox/catchUp.ts#coverage',
-	'inbox/catchUp.ts#ensure',
-	'inbox/catchUpStore.ts#get',
-	'mail/ai/catchUp.ts#coverage',
-	'mail/ai/catchUp.ts#ensure',
-	'mail/ai/catchUpStore.ts#get',
-	// Answer mode backend, built ahead of the web lane that calls it. Remove
-	// these four lines when the Answer mode web client lands.
-	'mail/ai/composeDraft.ts#answer',
-	'mail/ai/composeDraft.ts#start',
-	'mail/ai/composeDraftStore.ts#getSession',
-	'mail/drafts.ts#attachExisting',
 ];
 
 // ─── The checks ─────────────────────────────────────────────────────────────

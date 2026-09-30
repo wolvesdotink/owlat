@@ -1,0 +1,11 @@
+/*
+ * Answer mode: the gap placeholders an AI draft leaves (`[[attach the
+ * invoice]]`). Painted through the CSS Custom Highlight API by
+ * composables/postbox/usePostboxComposerGaps.ts, so the draft's HTML never
+ * gains a wrapper. `::highlight()` takes colour and decoration only.
+ */
+::highlight(owlat-draft-gap) {
+	background-color: var(--color-warning-subtle);
+	color: var(--color-text-primary);
+	text-decoration: underline dotted var(--color-warning);
+}
