@@ -67,7 +67,7 @@ const message = usePostboxActiveMessage<PostboxReaderMessage>({
 
 useHead({ title: () => message.value?.subject || t('dashboard.answer.mode.pageTitle') });
 
-// ── The reply guard, for links that never passed through the reader ──────────
+// The reply guard, for links that never passed through the reader
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const replyGuardEl = ref<{
 	guard: (threadId: string, risk: ReplyRisk | null, to: string, run: () => void) => void;
@@ -102,7 +102,6 @@ const { seed, kind } = useAnswerModeSession({
 	guard: guardReply,
 });
 
-// ── Top bar ──────────────────────────────────────────────────────────────────
 const answerNav = useAnswerModeNav();
 const backLabel = computed(() => t(answerBackLabelKey(answerNav.returnPath.value)));
 const messageCount = ref<number | undefined>(undefined);
@@ -122,7 +121,7 @@ const inbox = computed(() => {
 const tab = ref<'conversation' | 'reply'>('conversation');
 const view = ref<AnswerConversationView>('summary');
 
-// ── The composer and the URL ────────────────────────────────────────────────
+// The composer and the URL
 // Shallow: the exposed Answer mode API carries refs its users read as refs.
 const composerRef = shallowRef<{
 	focusBody: () => void;
@@ -144,7 +143,7 @@ function onDraftId(id: string) {
 	});
 }
 
-// ── Catch-up, "Draft with AI" and thread files (plan §03 to §06) ────────────
+// Catch-up, "Draft with AI" and thread files (plan §03 to §06)
 const assist = useAnswerModeAssist({
 	message: () => message.value,
 	composer: () => composerRef.value?.answer ?? null,
@@ -225,7 +224,6 @@ function onComposerEsc() {
 	if (active instanceof HTMLElement) active.blur();
 }
 
-// ── Keys ────────────────────────────────────────────────────────────────────
 const aiFocus = useAnswerAiFocus();
 
 function onKeydown(event: KeyboardEvent) {

@@ -169,7 +169,6 @@ export function createAnswerQueueSession() {
 		{ immediate: true }
 	);
 
-	// ── Moving through the queue ────────────────────────────────────────────
 	function complete(outcome: string, inverse?: () => Promise<void> | void) {
 		const id = flow.currentId.value;
 		if (!id) return;

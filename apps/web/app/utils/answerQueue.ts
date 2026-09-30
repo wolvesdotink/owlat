@@ -76,7 +76,7 @@ export function answerItemMatches(
 	return item.source === 'mail' && item.mailboxId === filter;
 }
 
-// ── The queue on Answer mode (plan §07) ─────────────────────────────────────
+// The queue on Answer mode (plan §07)
 // Opening the queue opens Answer mode on its first item; the queue steps from
 // item to item by replacing the route. An Answer mode route the queue drives
 // carries `?queue=<filter>` (the same values as `?in=`), so a reload lands back

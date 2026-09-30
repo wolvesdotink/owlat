@@ -71,7 +71,6 @@ export function useAnswerSheet(options: {
 		state.value = next;
 	}
 
-	// ── Drag ─────────────────────────────────────────────────────────────────
 	let startY = 0;
 	let startHeight = 0;
 	let containerHeight = 0;
@@ -149,7 +148,6 @@ export function useAnswerSheet(options: {
 		event.stopPropagation();
 	}
 
-	// ── Tap and keys ───────────────────────────────────────────────────────────
 	function onHandleClick() {
 		state.value = toggleSheet(state.value);
 	}

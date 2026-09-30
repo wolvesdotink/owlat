@@ -58,7 +58,7 @@ const { thread, messages, contact, followUps, threadLoading, cancelFollowUp } = 
 
 useHead({ title: () => thread.value?.subject || t('dashboard.answer.mode.pageTitle') });
 
-// ── People: presence and the collision hold ─────────────────────────────────
+// People: presence and the collision hold
 const { members, fetchMembers } = useOrganization();
 const { isAdmin } = usePermissions();
 onMounted(() => void fetchMembers());
@@ -91,7 +91,6 @@ const holdReason = computed(() =>
 	heldBy.value ? localized(sendHoldReason(heldBy.value)) : undefined
 );
 
-// ── The reply ────────────────────────────────────────────────────────────────
 const reply = useAnswerTeamReply({
 	threadId,
 	detail,
@@ -122,7 +121,7 @@ const composerRef = shallowRef<{
 const tab = ref<'conversation' | 'reply'>('conversation');
 const view = ref<AnswerConversationView>('summary');
 
-// ── Catch-up, Draft with AI, and the agent's questions ──────────────────────
+// Catch-up, Draft with AI, and the agent's questions
 const assist = useAnswerTeamAssist({
 	threadId: () => threadId.value,
 	composer: () => composerRef.value?.answer ?? null,
@@ -223,7 +222,6 @@ async function undoFollowUp(followUpId: Parameters<typeof cancelFollowUp>[0]) {
 	}
 }
 
-// ── Keys ────────────────────────────────────────────────────────────────────
 function onKeydown(event: KeyboardEvent) {
 	if (event.defaultPrevented || event.isComposing) return;
 	if (event.key === 'Escape') {

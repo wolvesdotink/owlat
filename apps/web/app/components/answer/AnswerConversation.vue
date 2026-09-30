@@ -123,7 +123,7 @@ watch(
 );
 onBeforeUnmount(() => clearTimeout(markReadTimer));
 
-// ── What each card needs (the reader derives the same, per message) ─────────
+// What each card needs (the reader derives the same, per message)
 const mailboxIdRef = computed(() => props.message.mailboxId as Id<'mailboxes'>);
 const ownIdentitiesQuery = useConvexQuery(api.mail.identities.listForOwnedMailbox, () => ({
 	mailboxId: mailboxIdRef.value,

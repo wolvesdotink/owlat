@@ -148,7 +148,7 @@ export function useAnswerPendingLead() {
 	};
 }
 
-// ── The list's place, kept across the round trip ───────────────────────────
+// The list's place, kept across the round trip
 // The folder list's scroll offset already survives a remount (the per-folder
 // scroll memory in usePostboxVirtualList). What does not survive is the
 // keyboard focus: the j/k row. The list files it here as it unmounts, and takes
@@ -185,7 +185,7 @@ export function takeListPlace(folderKey: string): ListReturnSnapshot | null {
 	return snapshot;
 }
 
-// ── Cmd/Ctrl+J: "Draft with AI" ────────────────────────────────────────────
+// Cmd/Ctrl+J: "Draft with AI"
 // Inside Answer mode the chord focuses the draft's own AI entry point instead
 // of opening the Assistant (plan decision 6). The AI bar registers how to focus
 // itself; the page asks. Nothing registered means the chord does nothing, which

@@ -177,7 +177,6 @@ export function useAnswerTeamReply(opts: {
 		if (result.ok) showToast(t('dashboard.inbox.detail.replyRequestedToast'));
 	}
 
-	// ── The agent's questions ──
 	const clarification = computed(() => {
 		const message = target.value;
 		return message?.processingStatus === 'awaiting_clarification' && message.pendingClarification
@@ -213,7 +212,6 @@ export function useAnswerTeamReply(opts: {
 		);
 	});
 
-	// ── Rejecting the agent's draft ──
 	const rejectOpen = ref(false);
 	const rejectReason = ref('');
 	const isRejecting = ref(false);

@@ -83,7 +83,6 @@ const conversationPanelId = useId();
 const replyPanelId = useId();
 const sheetHintId = useId();
 
-// ── Layout and the reply sheet ───────────────────────────────────────────────
 const layout = useAnswerLayout();
 const keyboard = useKeyboardInset();
 const bodyEl = ref<HTMLElement | null>(null);
