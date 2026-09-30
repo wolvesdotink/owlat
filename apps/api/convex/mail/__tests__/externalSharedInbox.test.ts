@@ -17,6 +17,7 @@ import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api, internal } from '../../_generated/api';
 import { modules } from './helpers.testlib';
+import { newBetterAuthHarness } from '../../__tests__/testModules';
 
 // One mutable hoisted session drives both the wrapper floors and the in-handler
 // mailbox gate — same pattern as mailboxMembers.test.ts.
@@ -858,7 +859,7 @@ describe('purging a removed shared external inbox', () => {
 
 describe('member erasure preserves a shared team inbox (org infrastructure)', () => {
 	it('keeps the shared mailbox, its credentials, and the custodian owner row', async () => {
-		const t = convexTest(schema, modules);
+		const t = newBetterAuthHarness(modules);
 		await enableExternal(t);
 		setSession('admin-user', 'admin');
 		await seedUsers(t, 'admin-user');
@@ -886,6 +887,12 @@ describe('member erasure preserves a shared team inbox (org infrastructure)', ()
 
 		vi.useFakeTimers();
 		try {
+			// The hop of the previous release, which deleted the profile first.
+			await t.run(async (ctx) => {
+				for (const profile of await ctx.db.query('userProfiles').collect()) {
+					if (profile.authUserId === 'admin-user') await ctx.db.delete(profile._id);
+				}
+			});
 			await t.mutation(internal.auth.memberErasure.eraseMemberData, {
 				authUserId: 'admin-user',
 				requestId,

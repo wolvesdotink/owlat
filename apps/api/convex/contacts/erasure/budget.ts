@@ -105,6 +105,14 @@ export class ErasureBudget {
 		this.rowsSpent += count;
 	}
 
+	/**
+	 * Account for bytes a delegated call read without handing the documents
+	 * back to be measured (a component mutation that returns only ids).
+	 */
+	chargeBytes(bytes: number): void {
+		this.bytesSpent += bytes;
+	}
+
 	private affordableRows(): number {
 		return Math.floor((this.maxBytes - this.bytesSpent) / MAX_DOCUMENT_BYTES);
 	}

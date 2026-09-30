@@ -25,6 +25,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { modules } from './helpers.testlib';
+import { newBetterAuthHarness } from '../../__tests__/testModules';
 import { loadAccessibleMailboxes } from '../permissions';
 import { getActiveMailboxForUser } from '../mailbox/identity';
 import { SEED_ACCOUNTS_PER_ORG_LIMIT } from '@owlat/shared/seedPlacement';
@@ -332,7 +333,7 @@ describe('the seed set is bounded at connect time, never silently truncated', ()
 // leaving the org's placement probes pointing at a deleted account.
 describe('member erasure keeps the seeds an admin connected', () => {
 	it('keeps the seed mailboxes, accounts and owner rows, and still erases personal mail', async () => {
-		const t = convexTest(schema, modules);
+		const t = newBetterAuthHarness(modules);
 		await enableFeatures(t, ['mail.external']);
 		setSession('admin');
 		await connectSeed(t, 'owlat.seed.01@gmail.example');
@@ -381,6 +382,12 @@ describe('member erasure keeps the seeds an admin connected', () => {
 
 		vi.useFakeTimers();
 		try {
+			// The hop of the previous release, which deleted the profile first.
+			await t.run(async (ctx) => {
+				for (const profile of await ctx.db.query('userProfiles').collect()) {
+					if (profile.authUserId === 'admin-user') await ctx.db.delete(profile._id);
+				}
+			});
 			await t.mutation(internal.auth.memberErasure.eraseMemberData, {
 				authUserId: 'admin-user',
 				requestId,

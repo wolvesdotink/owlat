@@ -14,7 +14,7 @@
  *     is never rewritten, so a second admin's late click cannot overwrite who
  *     resolved it (or turn a `fulfilled` mailbox request back into `resolved`).
  *
- * Member erasure (auth/memberErasure.ts) deletes both tables' rows for the
+ * Member erasure (auth/erasure/memberPhases.ts) deletes both tables' rows for the
  * member, since each row carries the requester's email, name and note.
  */
 
