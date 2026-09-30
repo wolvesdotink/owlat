@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { publicQuery, publicMutation } from '../lib/authedFunctions';
 import { formsQuery, formsMutation } from './_helpers';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 
 /** Per-batch cap for the scheduled form-submission cascade delete. */

@@ -19,7 +19,7 @@
 
 import { v } from 'convex/values';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { rateLimiter } from '../lib/rateLimiter';
 
 export const consumeAttachmentIngestBudget = internalMutation({

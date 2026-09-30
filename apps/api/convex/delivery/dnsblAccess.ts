@@ -20,7 +20,7 @@ import {
 } from '@owlat/mta-protocol/dnsblAccess';
 import { isRecord } from '@owlat/shared/utils/guards';
 import { internal } from '../_generated/api';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { authedAction } from '../lib/authedFunctions';
 import { recordAuditLog } from '../lib/auditLog';
 import { requireOrgPermission } from '../lib/sessionOrganization';

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
+import { createRouter, createWebHistory, type Router } from 'vue-router';
 import { withSetup } from '~/__tests__/withSetup';
 import { PUBLIC_TOKEN_REASONS, type PublicTokenResult } from '~/lib/publicTokenClient';
 import {
@@ -10,9 +11,14 @@ import {
 
 let query: Record<string, unknown>;
 
+const replace = vi.fn();
+
 beforeEach(() => {
 	query = { token: 'tok' };
-	vi.stubGlobal('useRoute', () => ({ query }));
+	replace.mockClear();
+	vi.stubGlobal('useRoute', () => ({ path: '/unsubscribe', query, hash: '' }));
+	vi.stubGlobal('useRouter', () => ({ replace }));
+	window.sessionStorage.clear();
 });
 
 type Keys = Omit<RecipientTokenFlowOptions<unknown>, 'verify'>;
@@ -169,5 +175,102 @@ describe('useRecipientTokenFlow — run', () => {
 		const action = vi.fn(async () => ok({}));
 		expect(await flow.run(action, { fallbackKey: 'x' })).toBeNull();
 		expect(action).not.toHaveBeenCalled();
+	});
+});
+
+describe('useRecipientTokenFlow — the token leaves the URL', () => {
+	const empty = { render: () => null };
+	let router: Router;
+
+	/** The page's route as Nuxt hands it out: a live view of the router's location. */
+	async function openPage(path: string) {
+		router = createRouter({
+			history: createWebHistory(),
+			routes: [
+				{ path: '/unsubscribe', component: empty },
+				{ path: '/dashboard', component: empty },
+			],
+		});
+		await router.push(path);
+		vi.stubGlobal(
+			'useRoute',
+			() =>
+				new Proxy({} as Record<string, unknown>, {
+					get: (_target, key) => router.currentRoute.value[key as 'query'],
+				})
+		);
+		vi.stubGlobal('useRouter', () => router);
+	}
+
+	it("drops only the token from the router's location and its history", async () => {
+		await openPage('/unsubscribe?lang=de&token=tok#top');
+		setup(async () => ok({}));
+		await flushPromises();
+
+		expect(router.currentRoute.value.fullPath).toBe('/unsubscribe?lang=de#top');
+		expect(window.location.pathname + window.location.search + window.location.hash).toBe(
+			'/unsubscribe?lang=de#top'
+		);
+
+		// The next entry records where it came from; that must not be the token URL.
+		await router.push('/dashboard');
+		expect(JSON.stringify(window.history.state)).not.toContain('tok');
+		expect(window.history.state.back).toBe('/unsubscribe?lang=de#top');
+	});
+
+	it('still runs and retries the action with the token after removing it', async () => {
+		await openPage('/unsubscribe?token=tok');
+		const flow = setup(async () => ok({}));
+		await flushPromises();
+		expect(router.currentRoute.value.query).toEqual({});
+		const action = vi.fn(async () => fail('update_failed'));
+
+		await flow.run(action, { fallbackKey: 'x', inline: true });
+		await flow.run(action, { fallbackKey: 'x', inline: true });
+
+		expect(action).toHaveBeenNthCalledWith(1, 'tok');
+		expect(action).toHaveBeenNthCalledWith(2, 'tok');
+	});
+
+	it('verifies again after a reload of the cleaned URL', async () => {
+		await openPage('/unsubscribe?token=tok');
+		setup(async () => ok({}));
+		await flushPromises();
+
+		await openPage('/unsubscribe');
+		const verify = vi.fn(async () => ok({ subscribed: true }));
+		const reloaded = setup(verify);
+		await flushPromises();
+
+		expect(verify).toHaveBeenCalledWith('tok');
+		expect(reloaded.state.value).toBe('ready');
+	});
+
+	it('forgets a token the server rejected, but not one it could not reach', async () => {
+		await openPage('/unsubscribe?token=tok');
+		setup(async () => fail(PUBLIC_TOKEN_REASONS.network));
+		await flushPromises();
+		await openPage('/unsubscribe');
+		const retried = vi.fn(async () => fail('expired'));
+		setup(retried);
+		await flushPromises();
+		expect(retried).toHaveBeenCalledWith('tok');
+
+		await openPage('/unsubscribe');
+		const afterRejection = setup(async () => ok({}));
+		await flushPromises();
+		expect(afterRejection.errorKey.value).toBe('page.errors.missingToken');
+	});
+
+	it('forgets a token an action spends', async () => {
+		await openPage('/unsubscribe?token=tok');
+		const flow = setup(async () => ok({}));
+		await flushPromises();
+		await flow.run(async () => ok(true), { fallbackKey: 'x', spendsToken: true });
+
+		await openPage('/unsubscribe');
+		const reloaded = setup(async () => ok({}));
+		await flushPromises();
+		expect(reloaded.errorKey.value).toBe('page.errors.missingToken');
 	});
 });

@@ -34,7 +34,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, internalMutation, type MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { publicQuery, authedQuery, authedMutation } from '../lib/authedFunctions';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { isEnvPresent } from '../lib/env';

@@ -30,13 +30,15 @@
  * counter.
  */
 
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { components } from '../_generated/api';
 import { TENANT_TABLES } from '../lib/tenantTables';
 import { betterAuthAdapterArgs } from '../lib/betterAuthAdapterArgs';
 import { deleteMessageRowAndBlobs } from '../mail/messagePurge';
 import { partBlobIds } from '../mail/messageParts';
 import { deleteBlobQuietly } from '../lib/storageBlobs';
+import { inboundBodyBlobIds } from '../lib/messageBodyInbound';
 import type { Doc, Id, TableNames } from '../_generated/dataModel';
 
 interface ResetCounts {
@@ -213,6 +215,7 @@ function ownedBlobs(table: (typeof TENANT_TABLES)[number], row: Doc<TableNames>)
 			const message = row as Doc<'inboundMessages'>;
 			return [
 				...(message.rawStorageId ? [message.rawStorageId] : []),
+				...inboundBodyBlobIds(message),
 				...replyBlobs(message.replyAttachments),
 			];
 		}

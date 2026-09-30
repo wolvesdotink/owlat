@@ -178,7 +178,10 @@ function leave() {
 	const snapshot = composer?.snapshot();
 	if (composer && msg && snapshot?.hasContent) {
 		const recipient = recipientLabel(snapshot.toAddresses[0] ?? msg.fromAddress);
-		void composer.flush().then((draftId) => {
+		void composer.flush().then((saved) => {
+			// A save that did not land still leaves the row (and the crash mirror
+			// holding the rest) worth offering back.
+			const draftId = saved.ok ? saved.result : snapshot.draftId;
 			if (!draftId) return;
 			leftDraft.set({
 				draftId: draftId as never,

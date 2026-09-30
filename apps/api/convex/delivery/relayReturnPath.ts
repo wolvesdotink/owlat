@@ -19,12 +19,8 @@ import { v } from 'convex/values';
 import { extractDomainOrNull } from '@owlat/shared';
 import { normalizeReturnPathDomain } from '@owlat/shared/verpNormalize';
 import type { Doc } from '../_generated/dataModel';
-import {
-	internalMutation,
-	internalQuery,
-	type MutationCtx,
-	type QueryCtx,
-} from '../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { authedQuery } from '../lib/authedFunctions';
 import { referenceRelayTransportId } from './relayConfiguration';
 import {

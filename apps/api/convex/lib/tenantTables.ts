@@ -325,6 +325,11 @@ export const NON_TENANT_TABLES = [
 	// The deletion-tracking table itself — account deletion patches the request
 	// row to `completed`, so it must survive the wipe.
 	'accountDeletionRequests',
+	// Workspace deletion's own control plane (the durable job and the write
+	// fence's switch). It has to outlive the tables it empties, and its finished
+	// rows are the generation history.
+	'workspaceDeletionJobs',
+	'workspaceDeletionProgress',
 	// Instance configuration singleton — recreated by setup; reset clears it in a
 	// dedicated step. The flag singleton and counter rows split off it (plan 2.4)
 	// go with it, in the same reset step and the walker's terminal steps.

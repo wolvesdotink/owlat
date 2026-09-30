@@ -22,7 +22,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { requireOrgPermission } from '../lib/sessionOrganization';

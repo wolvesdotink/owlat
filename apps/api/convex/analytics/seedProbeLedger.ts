@@ -9,7 +9,7 @@
  * They are registered from `analytics/cronRegistration.ts`.
  */
 
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { SEED_PROBE_DISPATCH_HORIZON_MS } from './seedPlacement';
 

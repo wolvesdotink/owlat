@@ -1,6 +1,6 @@
 import { PLUGIN_DRAFT_STRATEGY_CAPABILITY } from '@owlat/plugin-kit';
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { pluginDraftStrategyDefinition } from './draftStrategyCatalog';
 import {
 	authorizeHostedContribution,

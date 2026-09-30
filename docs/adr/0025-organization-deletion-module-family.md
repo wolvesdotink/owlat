@@ -666,3 +666,152 @@ the typed-`TransitionInput` + `LEGAL_EDGES` + reducer + effects shape
 by convention, not by a generic factor. This ADR is *not* a lifecycle
 module (no status column, no `LEGAL_EDGES`) and so doesn't bear on
 that question.
+
+## Amendment: durable lifecycle and write fence (#898, 2026-09-30)
+
+The walker above sweeps each table once, in order, and carried its
+progress only in scheduled-function arguments. Two gaps followed. A row
+written into a table after its step had run survived the whole walk (a
+contact created after the `contacts` step, a webhook payload stored
+after `webhookPayloads`, a cron re-creating `instanceSettings`), and
+nothing recorded where a walk stood, whether a second request had
+started a second chain, or why a chain had stopped.
+
+**The job.** Starting a deletion opens one `workspaceDeletionJobs` row,
+in the requesting transaction (`settings.remove`, or the account
+deletion cron for an owner). At most one row is `isActive`; a second
+request reads it and joins instead of starting a second generation, and
+two concurrent requests serialize on the `by_is_active` index range, so
+the loser's re-run joins. The job row is the fence and is written only
+when a generation opens and when it ends; its checkpoint (status,
+phase, step, scheduler cursor, counters, last failure) lives on a
+`workspaceDeletionProgress` row that every walker transaction writes.
+The split keeps checkpoints from conflicting with writers that merely
+read the fence. Neither table is tenant data and the walk never sweeps
+them: finished rows are the generation history.
+
+**Quiescing the scheduler.** The deployment holds one workspace, so
+every pending `_scheduled_functions` row belongs to the one being
+deleted. The job's first phase cancels them, one page per transaction
+from a saved position, except a short survivor list
+(`workspaces/deletion/quiesce.ts`: the deletion's own chain, the
+provider-side release of a removed sending domain, member erasure, the
+account-deletion mail, Sealed Mail key material, the inbound TLS policy
+push). Verification re-scans from the saved position, catching anything
+a fenced mutation scheduled without writing; each pass restarts five
+seconds before the newest row the previous pass saw, because
+`_creationTime` is not commit order and a row committed after the pass
+can carry an equal or earlier time. Without this, a send-later, snooze
+wake-up, automation wait or long retry queued before the deletion would
+fire after completion into the emptied workspace. A page is bounded by
+bytes before rows are loaded (`maximumBytesRead`: a row carries its
+function's arguments, up to 4 MiB, so a row count alone can exceed the
+16 MiB a transaction may read). A page cut short at that bound is
+re-read smaller without advancing, and a scan transaction that fails
+anyway is retried smaller (straight to one row, after the shortest
+backoff, when it ran into a Convex limit; a quarter of the rows
+otherwise), so the scan always progresses.
+
+**Checkpoints and recovery.** `walker.tick` runs one bounded scheduler
+page, sweep batch or verification pass and saves the checkpoint in the
+same transaction. Every step deletes from the front of its table, so the
+step name is the whole sweep cursor. `walker.drive` chains ticks and
+records a failed tick (`recordFailure`: attempts, last error, backoff
+retry after 30 s / 2 min / 10 min / 30 min, `failed` after five
+attempts), the same shape as the contact erasure walker. The `recover
+workspace deletion` cron restarts a job whose heartbeat has been quiet
+longer than the longest backoff plus 15 minutes (so a job waiting out a
+scheduled retry never gets a second chain), and re-arms a failed one
+after an hour. Re-arming (the cron, or a new removal request) resets the
+attempt and verification counts; `walker.status` is the operator's view.
+
+**Verification before completion.** When the sweep passes the last
+table the job enters `verify`: with the fence still up it re-scans the
+scheduler, then checks every registered table for a row. A table that
+still has one moves the checkpoint back to sweeping that table; only an
+empty pass completes the job, and that transaction is what lifts the
+fence. A job that keeps finding rows fails after five passes instead of
+looping, with its checkpoint already on the table that refilled, so a
+re-armed job sweeps it rather than re-verifying into another failure.
+
+**The operator exit.** `walker.abort({ operator, reason })`, run by hand,
+ends the active job without completing it and lifts the fence. It writes
+a `settings.workspace_deletion_aborted` audit row (the sweep stops, so
+the row survives) and a process-log warning. It is the way out for a job
+that cannot finish, so a stuck deletion never leaves the deployment
+read-only with only a database edit to recover.
+
+An abort stops the deletion; it does not undo it. What the sweep already
+deleted stays deleted. Scheduled work the quiesce phase cancelled stays
+cancelled: send-laters, snooze wake-ups, automation waits and queued
+campaign chunks do not come back, and have to be rescheduled by hand. A
+non-owner account deletion that was closed during the job (member
+erasure removed only the rows outside the sweep and marked the request
+completed) is not reopened, so after an abort that member's mailbox and
+other workspace rows the sweep had not reached yet remain.
+
+**The write fence.** While a job is active, `lib/writeFence.ts` refuses
+every insert, patch and replace on a table in the deletion registry
+(`invalid_state`, `reason: workspace_deletion_in_progress`). Deletes
+pass, and tables outside the registry (auth identity, instance
+infrastructure, the job tables) stay writable, so sign-in, updates and
+backups keep working. A bare-id `patch(id, …)` is resolved with
+`normalizeId` against the unswept tables before the fence is read, so a
+write to one of them never reads the fence at all. The check sits in the
+database handle the builders give their handlers, so there is one check
+rather than one per mutation: the public mutation builders in
+`lib/authedFunctions.ts` build on a fenced `mutation`, and every internal
+mutation imports the fenced `internalMutation` from `lib/writeFence.ts`.
+Crons, scheduled chains, HTTP routes (API-key, inbound webhooks, service
+callbacks) and actions all write through those, so an action that was
+already running when the deletion began has its commit refused at the
+mutation it calls. The deletion worker is the one exemption: `walker.ts`
+builds on the raw builder, and `apps/api/scripts/check-write-fence.ts`
+(part of the api lint) fails on a raw mutation builder, a namespace
+import of `_generated/server` or a re-export of a raw builder anywhere
+else. For that reason the `domains` step now runs the sending domain
+removal inline on the worker's context instead of through
+`ctx.runMutation`, whose callee would be fenced.
+
+**Inbound deliveries: accept and drop.** The two MTA mail routes
+(`/webhooks/mta-mailbox`, `/webhooks/mta-inbound`), the provider feedback
+pipeline and the plugin feedback route answer a fence refusal (and the
+mail routes, a deletion already running) with a final
+`200 { success: true, ignored: 'workspace_deletion_in_progress' }` and a
+log line. A 5xx would make the MTA retry and then park the event in its
+Redis dead-letter queue, outside the deletion's reach, from where a
+replay would deliver a deleted tenant's mail into the emptied workspace.
+API-key REST routes keep answering the refusal as `invalid_state` (422).
+
+Not fenced: storage writes from actions (`ctx.storage.store` in an
+upload flow); the row that would name such a blob is refused, so the
+blob is left unreferenced. Component tables and component-scheduled
+work (BetterAuth, rate limiter, the workpool that queues campaign and
+transactional sends) are outside the application schema and the
+scheduler scan; a workpool item queued before the deletion runs later
+and has its commit refused while the fence is up, or finds its parent
+rows gone after completion. External calls an action has already made
+are not undone.
+
+**Accounts.** The organization, member and user rows live in the
+BetterAuth component and are not part of the sweep. An owner's account
+deletion removes the organization and that owner's membership in the
+same transaction that opens the job, before any tenant table is
+touched, and marks the account-deletion request `completed` then: that
+row records the account side, not proof that the tenant data is gone
+(the job row is). A non-owner's member erasure that runs while a job is
+active removes only the member's rows outside the sweep (onboarding
+checklist, send-ready notices, platform-admin grant) and closes the
+request; the sweep erases the rest. "Delete workspace" keeps the
+organization, its members and their accounts: after completion the
+deployment holds the same organization with an empty workspace, and
+`instanceSettings` is recreated on the next write. Because users remain,
+`/seed/admin` stays closed, so completion does not return the deployment
+to first-run setup.
+
+**Compatibility.** The tables and their indexes are new, so no existing
+row changes. `walker.start` and `walker.runStep` keep their paths and
+arguments for one release: the previous release's queued `start` opens
+(or joins) a job, and a previous-release `runStep` hop runs its batch
+and adopts the walk into a job that resumes at the table it would have
+continued with.

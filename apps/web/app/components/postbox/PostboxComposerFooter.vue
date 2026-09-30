@@ -15,6 +15,8 @@ const props = defineProps<{
 	signatures: { _id: Id<'mailSignatures'>; name: string }[];
 	activeSignatureId: Id<'mailSignatures'> | null;
 	composerMode: ComposerMode;
+	/** A reopened draft's body has not loaded: mode and signature wait for it. */
+	bodyPending?: boolean;
 	/** Live subject + body, for the read-only "Preview as sent" dialog below. */
 	subject: string;
 	bodyHtml: string;
@@ -206,6 +208,7 @@ function onPickFiles(event: Event) {
 							<span>{{ t('components.postbox.postboxComposerFooter.signature') }}</span>
 							<select
 								:value="activeSignatureId ?? ''"
+								:disabled="bodyPending"
 								class="ml-auto bg-bg-surface border border-border-subtle rounded px-1.5 py-1 text-xs outline-none"
 								:aria-label="t('components.postbox.postboxComposerFooter.signature')"
 								@change="emit('signature-change', $event)"
@@ -289,6 +292,7 @@ function onPickFiles(event: Event) {
 							<PostboxComposerModeControls
 								:mode="composerMode"
 								:persistent-toolbar="persistentToolbar"
+								:switch-disabled="bodyPending"
 								@toggle-toolbar="emit('toggle-toolbar')"
 								@switch-mode="emit('switch-mode', $event)"
 							/>

@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import {
 	lifecycleFor,

@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
-import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Doc, Id } from '../_generated/dataModel';
 import { stepKindValidator } from './steps/catalog';
 import { MAX_RETRY_ATTEMPTS } from '../lib/constants';

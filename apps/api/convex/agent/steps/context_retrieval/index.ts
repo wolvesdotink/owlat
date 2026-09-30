@@ -10,7 +10,7 @@ import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import type { ActionCtx } from '../../../_generated/server';
 import type { AgentStepModule } from '../types';
-import { openInboundMessageBody } from '../../../lib/messageBody';
+import { openInboundMessageBody } from '../../../lib/messageBodyInbound';
 import {
 	EMERGENCY_BUDGET,
 	activityContentSnippet,
@@ -213,11 +213,14 @@ export async function assembleInboundBriefing(
 					title: m.subject || '(no subject)',
 				});
 			}
+			// History is read without storage: the briefing is cut to a few
+			// thousand tokens below, so a prior message whose text is held in
+			// storage contributes its excerpt instead of megabytes nobody keeps.
 			const historyLines = await Promise.all(
-				threadMessages.map(
-					async (m) =>
-						`From: ${m.from}\nDate: ${new Date(m.receivedAt).toISOString()}\nSubject: ${m.subject}\n${(await openInboundMessageBody(m)).text ?? '(no text body)'}\n---`
-				)
+				threadMessages.map(async (m) => {
+					const { text, excerpt } = await openInboundMessageBody(m, null);
+					return `From: ${m.from}\nDate: ${new Date(m.receivedAt).toISOString()}\nSubject: ${m.subject}\n${text ?? excerpt ?? '(no text body)'}\n---`;
+				})
 			);
 			contextParts.push('[CONVERSATION HISTORY]\n' + historyLines.join('\n'));
 		}
@@ -225,7 +228,7 @@ export async function assembleInboundBriefing(
 
 	// The inbound body the model reads, with remote images / tracking pixels
 	// neutralized (privacy: the agent reads every inbound automatically).
-	const inboundBody = await inboundBodyForContext(message);
+	const inboundBody = await inboundBodyForContext(message, ctx.storage);
 
 	// Query text for semantic retrieval: the inbound subject + body.
 	const queryText = `${message.subject ?? ''}\n${inboundBody ?? ''}`.slice(0, 2000);

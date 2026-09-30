@@ -26,7 +26,7 @@ import {
 import { logError } from './lib/runtimeLog';
 import { throwInvalidInput } from './_utils/errors';
 import { internal } from './_generated/api';
-import { internalMutation } from './_generated/server';
+import { internalMutation } from './lib/writeFence';
 
 /**
  * Provider Routes — CRUD operations for per-org email provider routing.

@@ -27,7 +27,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, internalQuery } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { audienceValidator } from './audience';
 import { abVariantValidator } from '../lib/literalValidators';

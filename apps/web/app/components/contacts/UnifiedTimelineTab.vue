@@ -257,6 +257,14 @@ async function send() {
 						<p class="text-text-secondary text-sm mt-0.5">
 							{{ truncate(item.content.text || '') }}
 						</p>
+						<!-- A large Team Inbox email is mirrored as its excerpt; the whole
+						     message is read in the Team Inbox. -->
+						<p v-if="item.content.isBodyTruncated" class="text-text-tertiary text-xs mt-0.5">
+							{{ t('components.contacts.unifiedTimelineTab.longMessage') }}
+							<NuxtLink :to="`/dashboard/inbox/${item.threadId}`" class="text-brand hover:underline">
+								{{ t('components.contacts.unifiedTimelineTab.openFullMessage') }}
+							</NuxtLink>
+						</p>
 
 						<!-- Time -->
 						<p class="text-text-tertiary text-xs mt-1">

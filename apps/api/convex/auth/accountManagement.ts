@@ -8,6 +8,7 @@ import { randomToken } from '../lib/randomToken';
 import { getOptional } from '../lib/env';
 import { requireOrgPermission, requireSelf, loadOwnUserProfile } from '../lib/sessionOrganization';
 import { throwNotFound, throwInvalidState } from '../_utils/errors';
+import { beginWorkspaceDeletion } from '../workspaces/deletion/job';
 
 /**
  * Get contacts export data with property values (CSV format).
@@ -291,7 +292,14 @@ export async function deleteAccountForRequest(
 		// is batched, storage-aware, and covers all of TENANT_TABLES.
 		if (membership.role === 'owner') {
 			isOwner = true;
-			await ctx.scheduler.runAfter(0, internal.workspaces.deletion.walker.start, {});
+			// Opened in this transaction, so the write fence is up before the
+			// BetterAuth rows below go. Those rows are not part of the sweep: the
+			// organization and this owner's membership leave here, once, before
+			// any tenant table is touched.
+			await beginWorkspaceDeletion(ctx, {
+				source: 'account_deletion',
+				requestedBy: userProfile.authUserId,
+			});
 
 			// Delete the organization itself from BetterAuth's organization table
 			await ctx.runMutation(components.betterAuth.adapter.deleteOne, {
@@ -335,6 +343,9 @@ export async function deleteAccountForRequest(
 		// their mailbox + mail (and blobs), external account credentials, chat
 		// authorship. A batched background job erases it and marks the request
 		// completed when it finishes (previously this data silently survived).
+		// During a workspace deletion (opened by an owner above, or earlier) the
+		// job removes only the member's rows the sweep leaves alone and closes the
+		// request at once; the sweep erases the rest.
 		await ctx.scheduler.runAfter(0, internal.auth.memberErasure.eraseMemberData, {
 			authUserId: userProfile.authUserId,
 			requestId: request._id,

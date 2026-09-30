@@ -5,7 +5,7 @@
  * the HTTP shells that produce those events live in `webhooks/channelsHttp.ts`.
  */
 
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { createContact } from '../contacts/creation';

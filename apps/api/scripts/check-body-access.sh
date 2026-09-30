@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Enforce the message-body accessor family (lib/messageBody*.ts). A message body
-# lives in one of three shapes — inboundMessages inline `textBody`/`htmlBody`,
+# lives in one of three shapes — inboundMessages inline `textBody`/`htmlBody`
+# (or a `*BodyStorageId` blob, with a sealed `bodyExcerpt` stand-in),
 # mailMessages inline `textBodyInline`/`htmlBodyInline` (or a `*BodyStorageId`
 # blob), unifiedMessages `content` JSON — and every STORED-ROW read of a body
 # must go through the cohesive core/export sibling modules so Sealed Mail's
@@ -13,7 +14,8 @@
 # Three forbidden patterns, scoped to apps/api/convex/ source:
 #
 #   1. A dot-read of a body-content field —
-#      `<recv>.textBody` / `.htmlBody` / `.textBodyInline` / `.htmlBodyInline` —
+#      `<recv>.textBody` / `.htmlBody` / `.textBodyInline` / `.htmlBodyInline` /
+#      `.bodyExcerpt` —
 #      where <recv> is NOT a validated call argument / wire-payload receiver.
 #      Object-literal KEYS (`textBody: …`) are writes, not reads, and never
 #      match (the pattern requires a leading `.`). Reads off `args.`, `params.`,
@@ -44,7 +46,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
 
 root="${1:-convex}"
-fields='textBody|htmlBody|textBodyInline|htmlBodyInline'
+fields='textBody|htmlBody|textBodyInline|htmlBodyInline|bodyExcerpt'
 allowed='args|params|input|mp'
 
 # Files to scan: *.ts under the root, minus generated/tests/schema/self/dispatcher.
@@ -57,6 +59,7 @@ files=$(
 		-not -path '*/schema/*' \
 		-not -path '*/lib/messageBody.ts' \
 		-not -path '*/lib/messageBodyExport.ts' \
+		-not -path '*/lib/messageBodyInbound.ts' \
 		-not -path '*/lib/messageBodyStore.ts' \
 		-not -path '*/webhooks/dispatcher.ts' \
 		2>/dev/null | sort
@@ -88,7 +91,7 @@ if [ -n "$read_violations" ]; then
 	printf '%s' "$read_violations"
 	echo ""
 	echo "Read the body through the lib/messageBody*.ts accessor family instead:"
-	echo "  inboundMessages inline  -> inboundMessageBody(row).text / .html"
+	echo "  inboundMessages         -> await openInboundMessageBody(row, ctx.storage | null)"
 	echo "  mailMessages inline     -> mailMessageInlineBody(row).text / .html"
 	echo "  mailMessages inline+blob-> await readMailMessageText(ctx.storage, row)"
 	echo "  unifiedMessages.content -> parseUnifiedMessageContent(row.content)"

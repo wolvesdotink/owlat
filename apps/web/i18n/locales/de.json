@@ -1332,11 +1332,19 @@
 					"addToTopicTitle": "Diese Kontakte einem Thema zuordnen",
 					"addedToTopic": "{count} Kontakt zu {name} hinzugefügt | {count} Kontakte zu {name} hinzugefügt",
 					"addedToTopics": "{count} Kontakt zu Thema hinzugefügt | {count} Kontakte zu Themen hinzugefügt",
+					"batchFailed": "Zeile {first} fehlgeschlagen: {reason} | Zeilen {first}–{last} fehlgeschlagen: {reason}",
 					"chooseTopic": "Thema wählen…",
 					"downloadErrors": "Fehlerzeilen herunterladen",
 					"errorsTitle": "Fehler (erste {count})",
 					"failed": "Fehlgeschlagen",
 					"imported": "Importiert",
+					"incompleteTitle": "Import unvollständig",
+					"notImportedRow": "Nicht importiert (Zeile {row}): {email} – {reason}",
+					"notImportedSummary": "{processed} von {total} Zeilen verarbeitet. {count} Zeile wurde nicht importiert. | {processed} von {total} Zeilen verarbeitet. {count} Zeilen wurden nicht importiert.",
+					"notSent": "Zeile {first} wurde nach dem Fehler nicht gesendet. | Zeilen {first}–{last} wurden nach dem Fehler nicht gesendet.",
+					"notSentRow": "Nicht gesendet (Zeile {row}): {email}",
+					"retry": "{count} Zeile erneut versuchen | {count} Zeilen erneut versuchen",
+					"retryHint": "Ein erneuter Versuch sendet nur diese Zeilen. Bereits importierte Zeilen werden nicht noch einmal gesendet.",
 					"skipped": "Übersprungen",
 					"title": "Import abgeschlossen!",
 					"updated": "Aktualisiert",
@@ -1345,6 +1353,7 @@
 				},
 				"discard": {
 					"body": "Ihre Datei und die Spaltenzuordnung gehen verloren.",
+					"incompleteBody": "{count} Zeile wurde nicht importiert. Beim Schließen gehen sie und der erneute Versuch verloren; laden Sie vorher die Fehlerzeilen herunter, um sie zu behalten. | {count} Zeilen wurden nicht importiert. Beim Schließen gehen sie und der erneute Versuch verloren; laden Sie vorher die Fehlerzeilen herunter, um sie zu behalten.",
 					"keepEditing": "Weiter bearbeiten",
 					"title": "Diesen Import verwerfen?"
 				},
@@ -1652,7 +1661,9 @@
 				"emptyForChannel": "Keine Nachrichten über {channel}",
 				"emptyHint": "Kanalübergreifende Nachrichten erscheinen hier, sobald sie gesendet und empfangen werden.",
 				"loading": "Chronik wird geladen ...",
+				"longMessage": "Gekürzt: Das ist der Anfang einer langen E-Mail.",
 				"messagePlaceholder": "Schreiben Sie eine Nachricht für diesen Kanal …",
+				"openFullMessage": "Ganze Nachricht öffnen",
 				"sendTitle": "Nachricht senden",
 				"statuses": {
 					"delivered": "zugestellt",
@@ -3317,6 +3328,7 @@
 				"returned": "· Zurückgekehrt"
 			},
 			"threadChannelTimeline": {
+				"longMessage": "Gekürzt: Die ganze Nachricht steht oben.",
 				"reply": "Antworten",
 				"replyOn": "Über {channel} antworten",
 				"replyPlaceholder": "Über {channel} antworten…",
@@ -3659,6 +3671,7 @@
 				"suggestionCategory": "{category}:"
 			},
 			"postboxComposer": {
+				"bodyLoading": "Nachrichtentext wird geladen",
 				"bodyPlaceholder": "Schreiben Sie Ihre Nachricht…",
 				"composerName": "Postbox-Entwurf {timestamp}",
 				"dropHint": "Zum Anhängen ablegen · in den Text ziehen zum Einbetten",
@@ -4886,6 +4899,15 @@
 				"dismiss": "Gespeicherte Fassung behalten",
 				"message": "Ungespeicherte Änderungen von {time} wurden auf diesem Gerät gefunden.",
 				"restore": "Ungespeicherte Änderungen wiederherstellen"
+			},
+			"postboxComposerDraftNotice": {
+				"loadFailed": "Dieser Entwurf konnte nicht geladen werden. Er wurde nicht überschrieben; Änderungen, die Sie jetzt vornehmen, bleiben erhalten und werden übernommen, sobald er geladen ist.",
+				"loading": "Ihr gespeicherter Entwurf wird geladen … Senden ist möglich, sobald er da ist.",
+				"missing": "Dieser Entwurf existiert nicht mehr, oder Sie haben keinen Zugriff mehr darauf. Hier wird nichts gespeichert oder gesendet.",
+				"notSaved": "Ihre letzten Änderungen konnten nicht gespeichert werden. Alles, was Sie geschrieben haben, ist noch hier.",
+				"notSent": "Ihre letzten Änderungen konnten nicht gespeichert werden, deshalb wurde nichts gesendet. Alles, was Sie geschrieben haben, ist noch hier; versuchen Sie es erneut.",
+				"stillChanging": "Ihre Nachricht hat sich während des Speicherns geändert, deshalb wurde nichts gesendet. Alles, was Sie geschrieben haben, ist noch hier; versuchen Sie es erneut.",
+				"tryAgain": "Erneut versuchen"
 			},
 			"postboxPreviewAsSent": {
 				"ampNote": "+ AMP-Teil",
@@ -8236,6 +8258,7 @@
 						"addedToTopic": "Zu „{topic}“ hinzugefügt",
 						"doiFailed": "Bestätigung konnte nicht erneut gesendet werden",
 						"doiSent": "Bestätigungsmail gesendet",
+						"exportFailed": "Die Kontaktdaten konnten nicht exportiert werden",
 						"noteSaved": "Kundennotiz gespeichert",
 						"removedFromTopic": "Aus „{topic}“ entfernt",
 						"suppressionRemoved": "Unterdrückung entfernt"
@@ -9290,6 +9313,7 @@
 				"assignedToAria": "{name} zugewiesen",
 				"autoSendCancelledToast": "Automatischer Versand abgebrochen und zur Prüfung zurückgestellt",
 				"backToInbox": "Zurück zum Team-Postfach",
+				"bodyExcerptNotice": "Angezeigt wird der Anfang einer langen Nachricht.",
 				"breadcrumb": "Konversation",
 				"categories": {
 					"billing": "Abrechnung",
@@ -14801,6 +14825,7 @@
 				"importFailed": "Import fehlgeschlagen",
 				"noValidContacts": "Keine gültigen Kontakte in der CSV-Datei gefunden",
 				"parseFailed": "CSV-Lesefehler: {message}",
+				"propertiesFailed": "Die zugeordneten benutzerdefinierten Eigenschaften konnten nicht registriert werden, daher wurden keine Kontakte importiert: {reason}",
 				"selectCsv": "Bitte wählen Sie eine CSV-Datei aus",
 				"tooFewRows": "Die CSV-Datei muss mindestens eine Kopfzeile und eine Datenzeile enthalten"
 			},

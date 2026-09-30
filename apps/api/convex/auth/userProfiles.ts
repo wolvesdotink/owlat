@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { appLocaleValidator } from '../lib/convexValidators';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { authedIdentityMutation } from '../lib/authedFunctions';
 import {
 	validateStringLength,

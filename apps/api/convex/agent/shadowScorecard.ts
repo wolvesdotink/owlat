@@ -23,7 +23,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, internalMutation, type MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Doc } from '../_generated/dataModel';
 import { adminQuery } from '../lib/authedFunctions';
 import { assertFeatureEnabled } from '../lib/featureFlags';

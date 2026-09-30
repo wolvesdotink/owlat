@@ -14,8 +14,8 @@
  *                         `settings:manage` (owner/admin). Unifies the
  *                         pre-deepening drift where any signed-in member
  *                         could write these fields.
- *   - `remove`           — schedules the **Organization deletion**
- *                         walker; owner-only.
+ *   - `remove`           — opens (or joins) the **Organization deletion**
+ *                         job; owner-only.
  *   - `createInternal`   — idempotent bootstrap (called by
  *                         `seedAdminHttp.ts`); fills the seed columns onto a
  *                         row another writer created first.
@@ -31,13 +31,15 @@ import { MAX_TRUSTED_ARC_FORWARDERS, sanitizeTrustedForwarders } from '@owlat/sh
 import { sealPolicyValidator } from '../mail/sealPolicy';
 import { mtaStsModeValidator } from '../lib/convexValidators';
 import { inboundRawRetentionDaysValidator } from '../lib/literalValidators';
-import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import type { Doc } from '../_generated/dataModel';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { throwInvalidInput } from '../_utils/errors';
 import { internal } from '../_generated/api';
 import { recordAuditLog } from '../lib/auditLog';
 import { getInstanceSettings, upsertInstanceSettings } from '../lib/instanceSettings';
+import { beginWorkspaceDeletion } from './deletion/job';
 import {
 	getUserIdFromSession,
 	getMutationContext,
@@ -213,8 +215,21 @@ export const remove = authedMutation({
 	handler: async (ctx) => {
 		const session = await getMutationContext(ctx);
 		requirePermission(session.role === 'owner', 'Only the owner can delete the organization');
-		await ctx.scheduler.runAfter(0, internal.workspaces.deletion.walker.start, {});
-		return { success: true, message: 'Organization deletion started' };
+		// Opens the durable job in THIS transaction, so the write fence is up the
+		// moment the owner is told the deletion started. A repeated request joins
+		// the job in progress instead of starting a second one.
+		const job = await beginWorkspaceDeletion(ctx, {
+			source: 'workspace_settings',
+			requestedBy: session.userId,
+		});
+		return {
+			success: true,
+			message: job.isJoined
+				? 'Organization deletion is already in progress'
+				: 'Organization deletion started',
+			generation: job.generation,
+			isJoined: job.isJoined,
+		};
 	},
 });
 

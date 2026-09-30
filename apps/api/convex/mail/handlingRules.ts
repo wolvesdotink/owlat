@@ -14,7 +14,7 @@
 
 import { v } from 'convex/values';
 import { htmlToPlainText } from '@owlat/shared/html';
-import { openInboundMessageBody } from '../lib/messageBody';
+import { openInboundMessageBody } from '../lib/messageBodyInbound';
 import { internalQuery } from '../_generated/server';
 import { adminQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
@@ -170,9 +170,12 @@ export const evaluateForMessage = internalQuery({
 			.take(MAX_HANDLING_RULES);
 		if (rules.length === 0) return inert;
 
-		const { text: bodyText, html: bodyHtml } = await openInboundMessageBody(message);
+		// A query cannot read a part held in storage; a large message is matched
+		// on its excerpt, which is the opening of the same text.
+		const { text: bodyText, html: bodyHtml, excerpt } = await openInboundMessageBody(message, null);
 		// Bounded so a huge HTML body can't blow up matching.
-		const body = bodyText ?? (bodyHtml ? htmlToPlainText(bodyHtml.slice(0, 100_000)) : '');
+		const body =
+			bodyText ?? (bodyHtml ? htmlToPlainText(bodyHtml.slice(0, 100_000)) : (excerpt ?? ''));
 		return evaluateHandlingRules(rules as HandlingRuleLike[], {
 			from: message.from ?? '',
 			subject: message.subject ?? '',

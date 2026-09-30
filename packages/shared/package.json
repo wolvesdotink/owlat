@@ -138,6 +138,10 @@
 			"types": "./src/setupToken.ts",
 			"import": "./src/setupToken.ts"
 		},
+		"./canonicalJson": {
+			"types": "./src/canonicalJson.ts",
+			"import": "./src/canonicalJson.ts"
+		},
 		"./constantTimeEqual": {
 			"types": "./src/constantTimeEqual.ts",
 			"import": "./src/constantTimeEqual.ts"

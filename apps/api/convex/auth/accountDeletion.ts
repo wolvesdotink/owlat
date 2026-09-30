@@ -1,4 +1,4 @@
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { deleteAccountForRequest } from './accountManagement';
 
 // Process pending account deletions past their 30-day grace period.

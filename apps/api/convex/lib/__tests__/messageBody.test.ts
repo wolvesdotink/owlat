@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Id } from '../../_generated/dataModel';
+import { inboundMessageBody } from '../messageBodyInbound';
 import {
-	inboundMessageBody,
 	mailMessageInlineBody,
 	readMailMessageText,
 	parseUnifiedMessageContent,

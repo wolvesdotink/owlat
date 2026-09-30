@@ -4,7 +4,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, internalMutation } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import {
 	getMutationContext,
 	getUserIdFromSession,

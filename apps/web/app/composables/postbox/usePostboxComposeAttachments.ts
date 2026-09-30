@@ -40,6 +40,12 @@ export function usePostboxComposeAttachments(opts: {
 	 * have to happen against the same ref the parent autosaves.
 	 */
 	bodyHtml?: Ref<string>;
+	/**
+	 * True while a reopened draft's body has not loaded. The share swap appends
+	 * its link block to the body, which is still empty then, so the swap would
+	 * leave a link-only body that replaces the saved one.
+	 */
+	bodyLocked?: () => boolean;
 	/** Attach a transient generated file handed off via usePostboxPendingAttachments. */
 	attachPendingKey?: string;
 	/** Forward: clone the original message's attachments onto this draft. */
@@ -275,7 +281,7 @@ export function usePostboxComposeAttachments(opts: {
 	 */
 	async function shareAsLink(storageId: string): Promise<boolean> {
 		const id = opts.draftId.value;
-		if (!id) return false;
+		if (!id || opts.bodyLocked?.()) return false;
 		const attachment = attachments.value.find((a) => a.storageId === storageId);
 		if (!attachment) return false;
 

@@ -1,10 +1,6 @@
 import { v } from 'convex/values';
-import {
-	internalQuery,
-	internalMutation,
-	type MutationCtx,
-	type QueryCtx,
-} from '../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { paginationOptsValidator } from 'convex/server';
 import { internal } from '../_generated/api';

@@ -4,6 +4,7 @@ import {
 	openAccountExportBodyContent,
 	openBodyPreservingLegacyForContactExport,
 	readMailMessageBodiesForAccountExport,
+	readStoredInboundPartForContactExport,
 } from '../messageBodyExport';
 import { sealBodyAtWrite } from '../messageBody';
 import { sealBytesAtRest } from '../atRestBodies';
@@ -131,5 +132,34 @@ describe('messageBodyExport', () => {
 			content: '',
 			availability: 'corrupt',
 		});
+	});
+
+	it('charges a stored inbound part at its JSON size and omits what the budget cannot take', async () => {
+		// Every quote escapes, so the returned JSON is twice the blob.
+		const body = '"'.repeat(1000);
+		const storage = storageWith({ part: body });
+		const id = 'part' as Id<'_storage'>;
+
+		const tight = { remainingBytes: 1500 };
+		expect(await readStoredInboundPartForContactExport(storage, id, 1000, tight)).toEqual({
+			content: undefined,
+			availability: 'omitted',
+		});
+		expect(tight.remainingBytes).toBe(1500);
+
+		const roomy = { remainingBytes: 5000 };
+		expect(await readStoredInboundPartForContactExport(storage, id, 1000, roomy)).toEqual({
+			content: body,
+			availability: 'available',
+		});
+		expect(roomy.remainingBytes).toBe(5000 - 2002);
+
+		// Larger than what is left: not even read.
+		storage.get.mockClear();
+		expect(
+			(await readStoredInboundPartForContactExport(storage, id, 1000, { remainingBytes: 10 }))
+				.availability
+		).toBe('omitted');
+		expect(storage.get).not.toHaveBeenCalled();
 	});
 });

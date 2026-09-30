@@ -29,7 +29,8 @@ import {
 	deliverabilityCellKey,
 	type DeliverabilityCell,
 } from '@owlat/shared/deliverabilityRouting';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { RampControllerInput, RampDecision } from './ramp/controllerTypes';
 import type { PaceDecision, PaceUtilisationReading } from './ramp/paceTypes';

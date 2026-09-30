@@ -1,7 +1,7 @@
 /** Persistent, admin-visible incident seam for confirmed MTA IPv6 regressions. */
 
 import { internal } from '../_generated/api';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { mtaIpReadinessAlertFields } from '../schema/delivery';
 
 const ALERT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;

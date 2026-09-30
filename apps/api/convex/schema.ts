@@ -10,6 +10,7 @@ import { domainTables } from './schema/domains';
 import { relayIdentitiesTables } from './schema/relayIdentities';
 import { contactTables } from './schema/contacts';
 import { contactErasureTables } from './schema/contactErasure';
+import { workspaceDeletionTables } from './schema/workspaceDeletion';
 import { authTables } from './schema/auth';
 import { instanceTables } from './schema/instance';
 import { instanceHotRowTables } from './schema/instanceHotRows';
@@ -56,6 +57,7 @@ export default defineSchema({
 	...relayIdentitiesTables,
 	...contactTables,
 	...contactErasureTables,
+	...workspaceDeletionTables,
 	...authTables,
 	...instanceTables,
 	...instanceHotRowTables,

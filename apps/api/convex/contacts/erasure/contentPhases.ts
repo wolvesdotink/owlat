@@ -8,12 +8,14 @@
 
 import type { Doc, Id } from '../../_generated/dataModel';
 import { deleteBlobQuietly } from '../../lib/storageBlobs';
+import { deleteInboundBodyBlobs } from '../../lib/messageBodyInbound';
 import { purgeReplyAttachments } from '../../inbox/replyAttachmentStore';
 import { detachContactJunctionLink, SEMANTIC_FILE_JUNCTION } from '../../lib/contactJunctions';
 import {
 	deleteAll,
 	drainEach,
 	drainParents,
+	withoutRow,
 	type PhaseContext,
 	type PhaseRunner,
 } from './phaseKit';
@@ -32,6 +34,10 @@ type MessageRow = Doc<'unifiedMessages'> | Doc<'inboundMessages'> | Doc<'formSub
 async function deleteMessageRow({ ctx }: PhaseContext, row: MessageRow): Promise<void> {
 	if ('rawStorageId' in row && row.rawStorageId) {
 		await deleteBlobQuietly(ctx.storage, row.rawStorageId, LOG_TAG, { rowId: row._id });
+	}
+	// A team-inbox body too large for the row is in storage as well.
+	if ('textBodyStorageId' in row || 'htmlBodyStorageId' in row) {
+		await deleteInboundBodyBlobs(ctx.storage, row, LOG_TAG);
 	}
 	if ('replyAttachments' in row) await purgeReplyAttachments(ctx, row.replyAttachments, LOG_TAG);
 	await ctx.db.delete(row._id);
@@ -77,8 +83,9 @@ async function eraseInboundMessageDescendants(
 /**
  * Threads with the contact go with every message in them, including
  * organization replies that quote the person, with the team's follow-ups
- * written to them, and with their Answer mode catch-up cards. A follow-up still inside its undo window has its dispatch
- * cancelled; one already handed to a Send finds no row when that Send lands
+ * written to them, and with their Answer mode catch-up cards. A follow-up
+ * still inside its undo window has its dispatch cancelled; one already
+ * handed to a Send finds no row when that Send lands
  * (`inbox/followUps.ts completeSend` returns on a missing follow-up).
  */
 export const eraseConversationThreads: PhaseRunner = (phase) => {
@@ -201,6 +208,7 @@ export const eraseKnowledge: PhaseRunner = (phase) => {
 				.first(),
 		async (link) => {
 			const entry = await ctx.db.get(link.entryId);
+			if (entry) budget.chargeRead(entry);
 			const remaining = (entry?.contactIds ?? []).filter((c) => c !== contactId);
 			if (entry && remaining.length > 0) {
 				await ctx.db.patch(entry._id, { contactIds: remaining });
@@ -228,7 +236,7 @@ export const eraseKnowledge: PhaseRunner = (phase) => {
 						.query('knowledgeEntryContacts')
 						.withIndex('by_entry', (q) => q.eq('entryId', link.entryId))
 						.take(n + 1);
-					return rows.filter((row) => row._id !== link._id).slice(0, n);
+					return withoutRow(budget, rows, link._id, n);
 				},
 				(row) => ctx.db.delete(row._id)
 			);
@@ -262,6 +270,7 @@ export const eraseSemanticFiles: PhaseRunner = (phase) => {
 				await ctx.db.delete(link._id);
 				return true;
 			}
+			budget.chargeRead(file);
 			const othersRemain = (file.contactIds ?? []).some((c) => c !== contactId);
 			if (file.captureSource && !othersRemain) {
 				// Junction rows of other contacts on a file scoped to this contact
@@ -274,7 +283,7 @@ export const eraseSemanticFiles: PhaseRunner = (phase) => {
 							.query('semanticFileContacts')
 							.withIndex('by_file', (q) => q.eq('fileId', file._id))
 							.take(n + 1);
-						return rows.filter((row) => row._id !== link._id).slice(0, n);
+						return withoutRow(budget, rows, link._id, n);
 					},
 					(row) => ctx.db.delete(row._id)
 				);

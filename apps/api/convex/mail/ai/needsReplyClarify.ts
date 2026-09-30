@@ -18,7 +18,8 @@
 
 import { v } from 'convex/values';
 import { normalizeEmail } from '@owlat/shared';
-import { internalMutation, internalQuery } from '../../_generated/server';
+import { internalQuery } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 import { postboxMutation } from '../_helpers';
 import { internal } from '../../_generated/api';
 import { getOrThrow, throwForbidden, throwInvalidInput, throwNotFound } from '../../_utils/errors';

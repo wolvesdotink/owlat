@@ -20,6 +20,7 @@ import {
 	canonicalManifest,
 	MANIFEST_VERSION,
 	type KeyDirectoryEntry,
+	type ManifestPayload,
 } from '../manifest';
 
 const keyPath = (name: string) =>
@@ -114,5 +115,72 @@ describe('e2ee/manifest keyDirectoryDigest', () => {
 		// Keys appear in sorted order — `features` before `instance` before `version`.
 		expect(canonical.indexOf('"features"')).toBeLessThan(canonical.indexOf('"instance"'));
 		expect(canonical.indexOf('"instance"')).toBeLessThan(canonical.indexOf('"version"'));
+	});
+});
+
+/**
+ * The signed bytes are a contract between instances on different releases: a
+ * peer re-derives them from the fetched JSON to verify our signature. These
+ * vectors were produced by the serializer that preceded the shared
+ * `canonicalJson`, so any change to the bytes fails here before it breaks
+ * verification between an upgraded and a not-yet-upgraded instance.
+ */
+describe('e2ee/manifest canonical bytes (golden vectors)', () => {
+	const payload = buildManifestPayload({
+		instanceFingerprint: 'aabb',
+		instancePublicKeyArmored: 'PUB',
+		directory: [
+			{ address: 'bob@example.com', fingerprint: 'bbbb1111' },
+			{ address: 'alice@example.com', fingerprint: 'aaaa2222' },
+		],
+		rotationFeedUrl: 'https://owlat.example.com/.well-known/owlat.json',
+		generatedAt: 1_800_000_000_000,
+	});
+
+	it('serializes a payload to the pinned bytes', () => {
+		expect(canonicalManifest(payload)).toBe(
+			'{"features":{"e2ee":1},"generatedAt":1800000000000,"instance":{"fingerprint":"AABB","publicKeyArmored":"PUB"},"keyDirectoryDigest":"017cfc7533f0c60503269dcf9ec8326dea70c30671428158ded4e21319a32001","rotationFeedUrl":"https://owlat.example.com/.well-known/owlat.json","version":1}'
+		);
+	});
+
+	it('serializes extra fields a peer on a newer release may send to the pinned bytes', () => {
+		// verifyFetchedManifest passes the fetched `instance` object through whole.
+		const peer = {
+			...payload,
+			instance: {
+				publicKeyArmored: 'PUB',
+				fingerprint: 'AABB',
+				ｚ: 'wide',
+				'10': 1,
+				'2': [true, null, 1.5],
+				label: 'Ünïcode "quoted" \u2028',
+			},
+		} as unknown as ManifestPayload;
+		expect(canonicalManifest(peer)).toBe(
+			'{"features":{"e2ee":1},"generatedAt":1800000000000,"instance":{"10":1,"2":[true,null,1.5],"fingerprint":"AABB","label":"Ünïcode \\"quoted\\" \u2028","publicKeyArmored":"PUB","ｚ":"wide"},"keyDirectoryDigest":"017cfc7533f0c60503269dcf9ec8326dea70c30671428158ded4e21319a32001","rotationFeedUrl":"https://owlat.example.com/.well-known/owlat.json","version":1}'
+		);
+	});
+
+	it('verifies a signature made by the previous serializer', async () => {
+		const signed = buildManifestPayload({
+			instanceFingerprint: await fingerprintOf(alicePub),
+			instancePublicKeyArmored: alicePub,
+			directory: DIRECTORY,
+			rotationFeedUrl: 'https://sealed.example.com/.well-known/owlat.json',
+			generatedAt: 1_800_000_000_000,
+		});
+		const previousReleaseSignature = [
+			'-----BEGIN PGP SIGNATURE-----',
+			'',
+			'wrsEARYKAG0Fgmq9HEQJEJmLeayO8zevRRQAAAAAABwAIHNhbHRAbm90YXRp',
+			'b25zLm9wZW5wZ3Bqcy5vcmelb50K/BOrI8IGNoHFMnN2zxDZ9CrsAHt4Gii0',
+			'o51IGxYhBPOmAJAMZnnVLeaXsZmLeayO8zevAAAhmQEAoFBPcfQEWupkjN6U',
+			'N9mZpxKr4ia90W2MMiGGaVpzU3wBAMv3RTAINR+JuLAYQx2ZOkK6WyRHFx7r',
+			'jtBL9DJndm0N',
+			'=CJzQ',
+			'-----END PGP SIGNATURE-----',
+			'',
+		].join('\n');
+		expect(await verifyManifest(signed, previousReleaseSignature, alicePub)).toBe(true);
 	});
 });

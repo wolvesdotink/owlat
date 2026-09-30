@@ -11,7 +11,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { countLiveMatchesForSegments, evaluateSegmentCount } from '../conditions';
 import type { Doc } from '../_generated/dataModel';

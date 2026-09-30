@@ -19,6 +19,7 @@
 import { computed, ref, type Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { BackendOperationResult } from '~/composables/useBackendOperation';
 import type { ComposerAttachment } from './usePostboxComposeAttachments';
 import { freshDraftText, replaceAnswerText, splitAnswerBody } from '~/utils/answerDraft';
 
@@ -47,7 +48,7 @@ export function usePostboxComposerAnswerApi(opts: {
 	attachments: Ref<ComposerAttachment[]>;
 	followUpRemindAt: Ref<number | null>;
 	addFiles: (files: File[]) => Promise<void>;
-	flush: () => Promise<Id<'mailDrafts'> | null>;
+	flush: () => Promise<BackendOperationResult<Id<'mailDrafts'> | null>>;
 	focusBody: () => void;
 	isSaving: Ref<boolean>;
 	lastSavedAt: Ref<number | null>;
@@ -72,7 +73,11 @@ export function usePostboxComposerAnswerApi(opts: {
 	const answerApi: AnswerComposerApi = {
 		draftText: computed(() => freshDraftText(opts.bodyHtml.value)),
 		aiDraft,
-		ensureDraftId: () => opts.flush(),
+		async ensureDraftId() {
+			// Only an acknowledged save counts: the row must hold what is on screen.
+			const saved = await opts.flush();
+			return saved.ok ? saved.result : null;
+		},
 		streamAiDraft(text) {
 			keepWrittenBefore();
 			opts.bodyHtml.value = replaceAnswerText(opts.bodyHtml.value, text);
@@ -81,8 +86,10 @@ export function usePostboxComposerAnswerApi(opts: {
 			keepWrittenBefore();
 			opts.bodyHtml.value = replaceAnswerText(opts.bodyHtml.value, text);
 			aiDraft.value = text;
-			const draftId = await opts.flush();
-			if (draftId) await recordBaseline.run({ draftId, aiBaseline: text });
+			const saved = await opts.flush();
+			if (saved.ok && saved.result) {
+				await recordBaseline.run({ draftId: saved.result, aiBaseline: text });
+			}
 		},
 		discardAiDraft() {
 			const { tail } = splitAnswerBody(opts.bodyHtml.value);

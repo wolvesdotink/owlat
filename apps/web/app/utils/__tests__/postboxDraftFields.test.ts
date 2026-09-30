@@ -114,6 +114,7 @@ describe('autosave, mirror and offline payload share one snapshot', () => {
 			const autosave = usePostboxComposeAutosave({
 				...common,
 				draftState: ref('draft'),
+				initialHydration: ref('ready'),
 				ensuring: ref(false),
 				isSaving: ref(false),
 				// Kept null so the mirror's "server caught up" clear does not run

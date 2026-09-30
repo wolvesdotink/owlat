@@ -12,7 +12,7 @@
  * Pure observability — nothing here influences routing or auto-send.
  */
 
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { omit } from '../lib/validators/fields';
 import { clarificationAskLogFields } from '../schema/askEagerness';
 

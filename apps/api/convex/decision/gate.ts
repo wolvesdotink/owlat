@@ -25,7 +25,7 @@
  * the breaker's verdict back to the caller and lets the dispatch decide.
  */
 
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { rateLimiter } from '../lib/rateLimiter';
 import { throwForbidden, throwRateLimited } from '../_utils/errors';

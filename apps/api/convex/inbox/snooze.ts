@@ -17,7 +17,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { adminMutation } from '../lib/authedFunctions';
 import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';

@@ -25,6 +25,11 @@ import { internal } from '../_generated/api';
 import { logError } from '../lib/runtimeLog';
 import { jsonResponse } from '../webhooks/inboundHttp';
 import {
+	isWorkspaceBeingDeleted,
+	isWorkspaceDeletionRefusal,
+	workspaceDeletionAck,
+} from '../webhooks/workspaceDeletionAck';
+import {
 	base64ByteLength,
 	clampAuditField,
 	readVerifiedMtaBody,
@@ -131,6 +136,13 @@ export const handleMailWebhook = httpAction(async (ctx, request) => {
 		return jsonResponse(400, { error: `Unsupported event: ${payload.event}` });
 	}
 
+	// Accept and drop while the workspace is being deleted (see
+	// `webhooks/workspaceDeletionAck.ts`): no raw bytes stored, no DLQ replay.
+	if (await isWorkspaceBeingDeleted(ctx)) {
+		await audited;
+		return workspaceDeletionAck('[Mail Webhook]');
+	}
+
 	const mp = payload.mailboxPayload;
 
 	try {
@@ -171,8 +183,10 @@ export const handleMailWebhook = httpAction(async (ctx, request) => {
 
 		return jsonResponse(200, { success: true, result });
 	} catch (err) {
-		logError('[Mail Webhook] Delivery failed:', err);
 		await audited;
+		// A deletion that began after the check above.
+		if (isWorkspaceDeletionRefusal(err)) return workspaceDeletionAck('[Mail Webhook]');
+		logError('[Mail Webhook] Delivery failed:', err);
 		return jsonResponse(500, { error: 'Delivery failed' });
 	}
 });

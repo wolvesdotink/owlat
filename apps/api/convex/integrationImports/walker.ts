@@ -24,7 +24,8 @@
  */
 
 import { v, type Infer } from 'convex/values';
-import { internalAction, internalMutation, internalQuery } from '../_generated/server';
+import { internalAction, internalQuery } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { requireOrgPermission } from '../lib/sessionOrganization';

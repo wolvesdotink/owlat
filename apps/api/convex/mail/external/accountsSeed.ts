@@ -14,7 +14,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 import { adminMutation } from '../../lib/authedFunctions';
 import { requireAdminContext } from '../../lib/sessionOrganization';
 import {

@@ -131,9 +131,13 @@ export const inboxTables = {
 		from: v.string(), // Sender email address
 		to: v.string(), // Recipient email address
 		subject: v.string(),
-		// Message content
+		// Message content: each part inline (sealed) OR, too large for the row, a
+		// sealed blob — never both. lib/messageBodyInbound.ts reads either shape.
 		textBody: v.optional(v.string()),
 		htmlBody: v.optional(v.string()),
+		textBodyStorageId: v.optional(v.id('_storage')),
+		htmlBodyStorageId: v.optional(v.id('_storage')),
+		bodyExcerpt: v.optional(v.string()), // sealed stand-in for a stored readable part
 		// Threading headers (RFC 5322)
 		inReplyTo: v.optional(v.string()),
 		references: v.optional(v.string()),

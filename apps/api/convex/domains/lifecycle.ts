@@ -57,7 +57,8 @@
 
 import { v } from 'convex/values';
 import type { WithoutSystemFields } from 'convex/server';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { AuditAction } from '../lib/auditLog';
@@ -111,6 +112,7 @@ type SendingDomainCreateOutcome =
 	  };
 
 type SendingDomainRemoveOutcome = { ok: true } | { ok: false; reason: 'domain_not_found' };
+type RemoveArgs = { domainId: Id<'domains'>; userId: string };
 
 // Ingestion permits one row per UTC day and retains 90 days. Leave headroom
 // for an in-flight cleanup, but fail the parent deletion atomically if that
@@ -359,12 +361,11 @@ export const recordVerification = internalMutation({
 	},
 });
 
-export const remove = internalMutation({
-	args: {
-		domainId: v.id('domains'),
-		userId: v.string(),
-	},
-	handler: async (ctx, args): Promise<SendingDomainRemoveOutcome> => {
+// Exported so the workspace deletion's `domains` step runs it inline on the
+// deletion worker's context; via `runMutation` the fence would refuse it.
+export const removeSendingDomain = {
+	args: { domainId: v.id('domains'), userId: v.string() },
+	handler: async (ctx: MutationCtx, args: RemoveArgs): Promise<SendingDomainRemoveOutcome> => {
 		const domain = await ctx.db.get(args.domainId);
 		if (!domain) return { ok: false, reason: 'domain_not_found' };
 
@@ -433,7 +434,9 @@ export const remove = internalMutation({
 
 		return { ok: true };
 	},
-});
+};
+
+export const remove = internalMutation(removeSendingDomain);
 
 // ============== v0.6.3 compatibility shims — remove after release N+1 ==============
 //

@@ -85,9 +85,11 @@ vi.mock('../featureFlags', async (importOriginal) => {
 	};
 });
 
-/** Identity-comparable and deliberately featureless — no handler here reads it. */
-const ctx = { db: 'fake-db', runQuery: vi.fn(async () => MEMBER) } as unknown as QueryCtx &
-	MutationCtx;
+/**
+ * Identity-comparable and deliberately featureless — no handler here reads it.
+ * `db` is an object only because the mutation builders wrap it in the write fence.
+ */
+const ctx = { db: {}, runQuery: vi.fn(async () => MEMBER) } as unknown as QueryCtx & MutationCtx;
 
 async function invoke(registered: unknown, args: unknown = {}): Promise<unknown> {
 	const inner = registered as { _handler: (c: unknown, a: unknown) => Promise<unknown> };
@@ -137,10 +139,18 @@ describe('the org-scoped builders thread their floor’s session', () => {
 			};
 
 			// The SAME object the floor returned, not a re-derived copy — and `ctx` /
-			// `args` pass through untouched: nothing is spread onto, wrapped around or
-			// bolted into the Convex context.
+			// `args` pass through untouched: nothing is spread onto or bolted into the
+			// Convex context. The one exception is a mutation's `db`, which is the
+			// write-fenced handle (lib/writeFence.ts); everything else is the caller's.
 			expect(result.session).toBe(session);
-			expect(result.ctx).toBe(ctx);
+			if (name.endsWith('Query')) {
+				expect(result.ctx).toBe(ctx);
+			} else {
+				const handed = result.ctx as typeof ctx;
+				expect(handed.db).not.toBe(ctx.db);
+				expect({ ...handed, db: ctx.db }).toEqual(ctx);
+				expect(handed.runQuery).toBe(ctx.runQuery);
+			}
 			expect(result.args).toEqual({ page: 2 });
 			expect(vi.mocked(sessionOrganization[floor])).toHaveBeenCalledTimes(1);
 			expect(handler).toHaveBeenCalledTimes(1);

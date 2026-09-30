@@ -11,7 +11,8 @@
 import { v } from 'convex/values';
 import { postboxMutation } from './_helpers';
 import type { Id } from '../_generated/dataModel';
-import { internalMutation, type MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { createMailboxAccessGate, requireMailboxAccess } from './permissions';
 import type { MutationSessionContext } from '../lib/sessionOrganization';
