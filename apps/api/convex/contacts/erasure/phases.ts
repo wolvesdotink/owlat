@@ -250,8 +250,11 @@ const PHASE_RUNNERS: Record<ContactErasurePhase, PhaseRunner> = {
 					.withIndex('by_contact', (q) => q.eq('contactId', phase.contactId))
 					.take(n),
 			async (session) => {
-				if (session.streamId && (await phase.ctx.db.get(session.streamId))) {
-					await phase.ctx.db.delete(session.streamId);
+				// The stream holds the draft text: its read counts against the bytes.
+				const stream = session.streamId ? await phase.ctx.db.get(session.streamId) : null;
+				if (stream) {
+					phase.budget.chargeRead(stream);
+					await phase.ctx.db.delete(stream._id);
 				}
 				await phase.ctx.db.delete(session._id);
 			}

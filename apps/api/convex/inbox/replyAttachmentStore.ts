@@ -137,11 +137,15 @@ export async function replyAttachmentRefs(
 /**
  * Delete the blobs these entries own, and the upload receipt of a fresh upload
  * so no dangling "bound" receipt names a deleted blob. Never throws.
+ *
+ * `onRead` is told about each receipt read, for a caller that accounts for the
+ * documents its transaction reads (contact erasure's byte budget).
  */
 export async function purgeReplyAttachments(
 	ctx: Pick<MutationCtx, 'db' | 'storage'>,
 	entries: readonly TeamReplyAttachment[] | undefined,
-	logTag: string
+	logTag: string,
+	onRead?: (doc: unknown) => void
 ): Promise<void> {
 	for (const entry of entries ?? []) {
 		if (!entry.storageId) continue;
@@ -150,7 +154,10 @@ export async function purgeReplyAttachments(
 			.query('storageUploads')
 			.withIndex('by_storage', (q) => q.eq('storageId', storageId))
 			.unique();
-		if (receipt) await ctx.db.delete(receipt._id);
+		if (receipt) {
+			onRead?.(receipt);
+			await ctx.db.delete(receipt._id);
+		}
 		await deleteBlobQuietly(ctx.storage, storageId, logTag, { attachmentId: entry.id });
 	}
 }

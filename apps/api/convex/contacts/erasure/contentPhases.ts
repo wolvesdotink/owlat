@@ -31,7 +31,7 @@ type MessageRow = Doc<'unifiedMessages'> | Doc<'inboundMessages'> | Doc<'formSub
  * them (the retention sweep finds blobs by walking the rows). Older and swept
  * rows have no blob. It may also hold the files its reply carried.
  */
-async function deleteMessageRow({ ctx }: PhaseContext, row: MessageRow): Promise<void> {
+async function deleteMessageRow({ ctx, budget }: PhaseContext, row: MessageRow): Promise<void> {
 	if ('rawStorageId' in row && row.rawStorageId) {
 		await deleteBlobQuietly(ctx.storage, row.rawStorageId, LOG_TAG, { rowId: row._id });
 	}
@@ -39,7 +39,11 @@ async function deleteMessageRow({ ctx }: PhaseContext, row: MessageRow): Promise
 	if ('textBodyStorageId' in row || 'htmlBodyStorageId' in row) {
 		await deleteInboundBodyBlobs(ctx.storage, row, LOG_TAG);
 	}
-	if ('replyAttachments' in row) await purgeReplyAttachments(ctx, row.replyAttachments, LOG_TAG);
+	if ('replyAttachments' in row) {
+		await purgeReplyAttachments(ctx, row.replyAttachments, LOG_TAG, (doc) =>
+			budget.chargeRead(doc)
+		);
+	}
 	await ctx.db.delete(row._id);
 }
 
@@ -119,7 +123,9 @@ export const eraseConversationThreads: PhaseRunner = (phase) => {
 					if (followUp.status === 'scheduled' && followUp.scheduledFnId) {
 						await ctx.scheduler.cancel(followUp.scheduledFnId);
 					}
-					await purgeReplyAttachments(ctx, followUp.attachments, LOG_TAG);
+					await purgeReplyAttachments(ctx, followUp.attachments, LOG_TAG, (doc) =>
+						budget.chargeRead(doc)
+					);
 					await ctx.db.delete(followUp._id);
 				}
 			);
@@ -136,7 +142,9 @@ export const eraseConversationThreads: PhaseRunner = (phase) => {
 				(row) => ctx.db.delete(row._id)
 			);
 			if (!catchUpsGone) return false;
-			await purgeReplyAttachments(ctx, thread.replyAttachments, LOG_TAG);
+			await purgeReplyAttachments(ctx, thread.replyAttachments, LOG_TAG, (doc) =>
+				budget.chargeRead(doc)
+			);
 			await ctx.db.delete(thread._id);
 			return true;
 		}
