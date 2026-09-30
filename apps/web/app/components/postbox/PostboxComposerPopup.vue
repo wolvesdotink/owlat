@@ -2,6 +2,9 @@
 import type { Id } from '@owlat/api/dataModel';
 import type { ComposerSpec } from '~/composables/postbox/usePostboxComposerStack';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
+import { useKeyboardInset } from '~/composables/useKeyboardInset';
+import { useMediaQuery } from '~/composables/useMediaQuery';
+import { COMPOSER_SHEET_QUERY, popupComposerGeometry } from '~/utils/postboxComposerLayout';
 
 const props = defineProps<{
 	composer: ComposerSpec;
@@ -14,15 +17,20 @@ const { t } = useI18n();
 const stack = usePostboxComposerStack();
 const { size, setSize } = usePostboxComposerSize();
 
-// Floating popup box geometry: persisted size, anchored bottom-right and offset
-// left by its slot. Docked/minimized composers are rendered by the dock, so this
-// component only ever handles a floating popup.
-const popupStyle = computed(() => ({
-	width: `${size.value.width}px`,
-	height: `${size.value.height}px`,
-	right: `${24 + props.slotIndex * (size.value.width + 16)}px`,
-	bottom: 'var(--pbx-composer-inset-bottom, 0px)',
-}));
+// Floating popup geometry: on a wide screen the persisted size, anchored
+// bottom-right and offset left by its slot; on a phone a full-width bottom
+// sheet over the keyboard. Docked/minimized composers are rendered by the
+// dock, so this component only ever handles a floating popup.
+const isSmallScreen = useMediaQuery(COMPOSER_SHEET_QUERY);
+const keyboard = useKeyboardInset();
+const geometry = computed(() =>
+	popupComposerGeometry({
+		size: size.value,
+		slotIndex: props.slotIndex,
+		sheet: isSmallScreen.value,
+		keyboardInset: keyboard.value,
+	})
+);
 
 // Esc / header Minimize: dock the composer.
 function onMinimize() {
@@ -84,13 +92,16 @@ onBeforeUnmount(() => {
 			data-shortcut-boundary
 			@keydown.esc.prevent.stop="onMinimize"
 			:aria-label="t('components.postbox.postboxComposerPopup.dialogLabel')"
-			class="fixed flex flex-col z-40 bg-bg-elevated border border-border-subtle overflow-hidden rounded-t-md shadow-lg"
-			:style="popupStyle"
+			class="fixed flex flex-col z-40 bg-bg-elevated border-border-subtle overflow-hidden shadow-lg"
+			:class="geometry.mode === 'sheet' ? 'rounded-t-xl border-t' : 'rounded-t-md border'"
+			:style="geometry.style"
+			:data-geometry="geometry.mode"
 		>
 			<!-- Resize grip (top-left corner). Keyboard users resize via the
 			     OS-standard drag; the grip is a pointer affordance layered over the
-			     header. -->
+			     header. A sheet already spans the screen: nothing to resize. -->
 			<div
+				v-if="geometry.mode === 'box'"
 				class="absolute top-0 left-0 w-4 h-4 z-50 cursor-nwse-resize touch-none"
 				aria-hidden="true"
 				:title="t('components.postbox.postboxComposerPopup.resizeHandle')"
