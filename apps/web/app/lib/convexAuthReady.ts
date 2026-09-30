@@ -26,7 +26,8 @@ export function markConvexAuthPending(): void {
 /** The Convex client's `setAuth` onChange: the server accepted the token, or auth failed. */
 export function reportConvexAuth(isAuthenticated: boolean): void {
 	state = isAuthenticated ? 'authenticated' : 'unauthenticated';
-	for (const settle of [...waiters]) settle(isAuthenticated);
+	// Each waiter removes itself; deleting the visited entry is safe mid-iteration.
+	for (const settle of waiters) settle(isAuthenticated);
 }
 
 /**

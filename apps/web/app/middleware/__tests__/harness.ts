@@ -25,6 +25,7 @@ import { useI18n } from 'vue-i18n';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import type { RouteLocationNormalized } from 'vue-router';
 import { useConvex } from '@owlat/ui/composables/useConvex';
+import type * as ConvexAuthReady from '~/lib/convexAuthReady';
 import { useToast } from '@owlat/ui/composables/useToast';
 import { useAnnounce } from '~/composables/useAnnounce';
 import { usePostHog } from '~/composables/usePostHog';
@@ -281,7 +282,7 @@ export interface Loaded<T> {
 	/** Nuxt's `useState` buckets for this load, keyed like the app keys them. */
 	state: Map<string, { value: unknown }>;
 	/** This load's copy of the auth-settled signal the convex plugin drives. */
-	convexAuth: typeof import('~/lib/convexAuthReady');
+	convexAuth: typeof ConvexAuthReady;
 }
 
 /**
