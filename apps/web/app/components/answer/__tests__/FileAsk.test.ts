@@ -15,6 +15,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import FileAsk from '../FileAsk.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 import { THREAD_FILE_DRAG_TYPE } from '~/utils/answerThreadFiles';
+import type * as AnswerFilePickerModule from '~/utils/answerFilePicker';
 
 const upload = vi.fn();
 vi.mock('~/composables/useAnswerFileUpload', () => ({
@@ -22,7 +23,7 @@ vi.mock('~/composables/useAnswerFileUpload', () => ({
 }));
 const pickAnswerFile = vi.fn();
 vi.mock('~/utils/answerFilePicker', async (importOriginal) => ({
-	...(await importOriginal<typeof import('~/utils/answerFilePicker')>()),
+	...(await importOriginal<typeof AnswerFilePickerModule>()),
 	pickAnswerFile: () => pickAnswerFile(),
 }));
 
