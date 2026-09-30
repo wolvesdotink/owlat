@@ -159,10 +159,10 @@ export const attachExisting = adminMutation({
 	handler: async (ctx, args, session) => {
 		const thread = await loadAttachableThread(ctx, args.threadId);
 		const entries = thread.replyAttachments ?? [];
-		const file = await resolveReadableExistingAttachment(ctx, args, session);
-		if (entries.some((entry) => entry.origin === file.source && entry.sourceId === file.id)) {
+		if (entries.some((entry) => entry.origin === args.source && entry.sourceId === args.id)) {
 			return await viewOf(ctx, entries);
 		}
+		const file = await resolveReadableExistingAttachment(ctx, args, session);
 		assertReplyAttachmentFits(entries, file.size);
 		const entry: TeamReplyAttachment = {
 			id: crypto.randomUUID(),

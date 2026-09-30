@@ -24,7 +24,6 @@
 
 import { v, type Infer } from 'convex/values';
 import { extractAttachmentAt } from '@owlat/shared/mailMime';
-import type { Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import type { MutationSessionContext } from './sessionOrganization';
 import { readSealedBlobBytes, type BlobGet } from './sealedBlob';
