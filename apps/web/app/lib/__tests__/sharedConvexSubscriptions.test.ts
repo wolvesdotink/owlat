@@ -371,7 +371,7 @@ describe('shared Convex subscriptions', () => {
 	describe('growable windows (windowArg)', () => {
 		const live = (client: Client) => client.wire.filter((w) => !w.unsubscribe.mock.calls.length);
 
-		it('closes each outgrown window at once, leaving one live transport', async () => {
+		it('closes each intermediate window at once and lets the first one linger', async () => {
 			const client = fakeClient();
 			const limit = ref(100);
 			const chat = own(client, () => ({ roomId: 'r1', limit: limit.value }), {
@@ -384,14 +384,50 @@ describe('shared Convex subscriptions', () => {
 			}
 
 			expect(client.onUpdate).toHaveBeenCalledTimes(5);
-			expect(live(client).map((w) => w.args.limit)).toEqual([500]);
+			// The first window is where a return to this frame starts: it was left,
+			// not superseded, so it lingers next to the live one.
+			expect(live(client).map((w) => w.args.limit)).toEqual([100, 500]);
 
-			// The last window is an ordinary leave: it lingers, then closes.
+			// The last window is an ordinary leave: both linger, then close.
 			chat.leave();
 			vi.advanceTimersByTime(SUBSCRIPTION_LINGER_MS - 1);
-			expect(live(client)).toHaveLength(1);
+			expect(live(client)).toHaveLength(2);
 			vi.advanceTimersByTime(1);
 			expect(live(client)).toHaveLength(0);
+		});
+
+		it('reopens the first window warm when the frame comes back', async () => {
+			const client = fakeClient();
+			const args = ref({ roomId: 'r1', limit: 100 });
+			const view = own(client, () => args.value, { windowArg: 'limit' });
+			client.wire[0]!.push('room one, page one');
+			args.value = { roomId: 'r1', limit: 200 };
+			await nextTick();
+			client.wire[1]!.push('room one, two pages');
+			args.value = { roomId: 'r2', limit: 100 };
+			await nextTick();
+			client.wire[2]!.push('room two');
+
+			args.value = { roomId: 'r1', limit: 100 };
+			await nextTick();
+
+			expect(client.onUpdate).toHaveBeenCalledTimes(3);
+			expect(view.isLoading.value).toBe(false);
+			expect(view.data.value).toBe('room one, page one');
+		});
+
+		it('supersedes a larger window when the limit shrinks back', async () => {
+			const client = fakeClient();
+			const limit = ref(100);
+			own(client, () => ({ roomId: 'r1', limit: limit.value }), { windowArg: 'limit' });
+			limit.value = 200;
+			await nextTick();
+			limit.value = 100;
+			await nextTick();
+
+			expect(client.onUpdate).toHaveBeenCalledTimes(2);
+			expect(client.wire[1]!.unsubscribe).toHaveBeenCalledOnce();
+			expect(client.wire[0]!.unsubscribe).not.toHaveBeenCalled();
 		});
 
 		it('keeps an outgrown window live while another owner reads it', async () => {

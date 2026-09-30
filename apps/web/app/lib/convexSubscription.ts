@@ -134,7 +134,10 @@ export interface ConvexSubscriptionOptions<Args, Update> {
 	 * "Load more" raises. When the args change in this arg alone, the previous
 	 * window is superseded rather than left: it closes as soon as no other owner
 	 * holds it, instead of lingering live (and re-running on every change) next
-	 * to the window that replaced it. Any other args change lingers as usual.
+	 * to the window that replaced it. Any other args change lingers as usual, and
+	 * so does the first window opened for a frame, which is where a return to
+	 * that frame starts. A shrink with an unchanged frame (a limit reset whose
+	 * key is not part of the args) supersedes the larger window the same way.
 	 */
 	windowArg?: string;
 	/** Keep showing the previous value while new args load, flagged `isRefetching`. */
@@ -185,6 +188,14 @@ export function createConvexSubscription<Args, Update>(
 	/** Frame and full identity of the args the live subscription was opened with. */
 	let subscribedFrame: string | null = null;
 	let subscribedKey: string | null = null;
+	/**
+	 * The first window opened for the current frame, and that frame. A growable
+	 * limit starts every visit to a frame (a remount, a return to the room) at
+	 * this window, so it is the one a quick return reads: it is never
+	 * superseded, only left, and lingers like any other query.
+	 */
+	let baseFrame: string | null = null;
+	let baseKey: string | null = null;
 	let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
 	const resolvedArgs = computed<Args | 'skip'>(() =>
@@ -225,11 +236,13 @@ export function createConvexSubscription<Args, Update>(
 
 	// The live window is superseded when the next args differ from it only in
 	// `windowArg`. Same args (a reset) or a different frame (another room, another
-	// folder) is an ordinary leave, and the old query lingers.
+	// folder) is an ordinary leave, and the old query lingers. So is the frame's
+	// first window: a return to the frame starts there again and should find it
+	// warm. Only the intermediate windows ("Load more" steps) close at once.
 	const releaseReasonFor = (args: Args | 'skip'): ReleaseReason => {
 		const windowArg = options.windowArg;
 		if (!windowArg || args === 'skip' || subscribedFrame === null) return 'leave';
-		if (argsKey.value === subscribedKey) return 'leave';
+		if (argsKey.value === subscribedKey || subscribedKey === baseKey) return 'leave';
 		return frameIdentity(args, windowArg) === subscribedFrame ? 'superseded' : 'leave';
 	};
 
@@ -310,6 +323,10 @@ export function createConvexSubscription<Args, Update>(
 		if (options.windowArg) {
 			subscribedFrame = frameIdentity(args, options.windowArg);
 			subscribedKey = argsKey.value;
+			if (subscribedFrame !== baseFrame) {
+				baseFrame = subscribedFrame;
+				baseKey = subscribedKey;
+			}
 		}
 		if (shareKey === null) {
 			// An unshared transport has nothing to linger: it closes either way.
