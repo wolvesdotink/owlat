@@ -433,6 +433,7 @@ describe('privacy', () => {
 
 describe('team thread', () => {
 	async function seedTeamThread(t: Tx, contactId: Id<'contacts'>) {
+		await enableFeatures(t, ['inbox']);
 		return await t.run(async (ctx) => {
 			const { updatedAt: _unused, ...thread } = createTestConversationThread({
 				contactId,
@@ -500,6 +501,45 @@ describe('team thread', () => {
 		expect(res.status).toBe('ready');
 		expect(vi.mocked(assembleInboundBriefing)).toHaveBeenCalledTimes(1);
 		expect(lastDraftPrompt()).toContain('Jonas asks for the September invoice');
+	});
+
+	it('works on a team-only instance, and not once the team inbox is off', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		// No Postbox: only the team inbox and AI.
+		await enableFeatures(t, ['ai']);
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const contactId = await seedCustomer(t);
+		const threadId = await seedTeamThread(t, contactId);
+		const target = { kind: 'teamThread' as const, threadId };
+
+		const asked = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		expect(await t.query(api.mail.ai.composeDraftStore.getSession, { target })).toMatchObject({
+			status: 'asking',
+		});
+		const res = await t.action(api.mail.ai.composeDraft.answer, {
+			sessionId: asked.sessionId,
+			answers: [],
+			skip: true,
+		});
+		expect(res.status).toBe('ready');
+		const stream = await t.query(api.mail.draftStreamStore.getDraftStream, {
+			streamId: res.streamId!,
+		});
+		expect(stream?.status).toBe('complete');
+
+		await t.run(async (ctx) => {
+			const settings = (await ctx.db.query('instanceSettings').first())!;
+			await ctx.db.patch(settings._id, {
+				featureFlags: { ...settings.featureFlags, inbox: false },
+			});
+		});
+		// With the Postbox on, the team thread is still out of reach.
+		await enableFeatures(t, ['mail.external']);
+		expect(await t.query(api.mail.ai.composeDraftStore.getSession, { target })).toBeNull();
+		await expect(
+			t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' })
+		).rejects.toMatchObject({ data: { category: 'forbidden' } });
 	});
 
 	it('refuses a member who cannot read the shared inbox', async () => {

@@ -20,6 +20,7 @@ import { withStoredInlineBodies } from '../../lib/messageBodyStore';
 import { openInboundMessageBody } from '../../lib/messageBodyInbound';
 import { requireOrgMember } from '../../lib/sessionOrganization';
 import { isSharedInboxReader } from '../../inbox/access';
+import { isFeatureEnabled } from '../../lib/featureFlags';
 import { findContactByIdentifier } from '../../contacts/resolution';
 import {
 	assertOwnUnclaimedUpload,
@@ -135,6 +136,7 @@ export const loadTeamThreadContext = internalQuery({
 	handler: async (ctx, args) => {
 		const session = await requireOrgMember(ctx);
 		if (!isSharedInboxReader(session)) throwForbidden('Only inbox readers can draft here');
+		if (!(await isFeatureEnabled(ctx, 'inbox'))) throwForbidden('The team inbox is turned off');
 		const thread = await ctx.db.get(args.threadId);
 		if (!thread) throwNotFound('Conversation');
 		const latest = await ctx.db

@@ -17,7 +17,8 @@ import { v } from 'convex/values';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { postboxQuery } from '../_helpers';
+import { answerModeQuery } from '../_helpers';
+import { isFeatureEnabled } from '../../lib/featureFlags';
 import { requireMailboxAccess } from '../permissions';
 import { isSharedInboxReader } from '../../inbox/access';
 import { captureStandingAnswers } from '../../inbox/clarificationMemory';
@@ -77,8 +78,9 @@ export function toAskSessionView(row: Doc<'answerAskSessions'>): AskSessionView 
 }
 
 /**
- * Whether the caller can still reach a target: write the draft's mailbox, or
- * read the shared inbox for a team thread.
+ * Whether the caller can still reach a target: write the draft's mailbox (the
+ * mailbox gate includes the Postbox flag), or read the shared inbox for a team
+ * thread with the team inbox switched on.
  */
 async function canReachTarget(
 	ctx: QueryCtx,
@@ -86,7 +88,11 @@ async function canReachTarget(
 	session: MutationSessionContext
 ): Promise<boolean> {
 	if (target.kind === 'teamThread') {
-		return isSharedInboxReader(session) && (await ctx.db.get(target.threadId)) !== null;
+		return (
+			isSharedInboxReader(session) &&
+			(await isFeatureEnabled(ctx, 'inbox')) &&
+			(await ctx.db.get(target.threadId)) !== null
+		);
 	}
 	const draft = await ctx.db.get(target.draftId);
 	if (!draft) return false;
@@ -111,8 +117,8 @@ async function findOwnSession(
  * subscribes to this while "Draft with AI" runs: the questions, the stream to
  * render and the files attached along the way.
  */
-// all-members: owner-scoped read; the caller must also still reach the target (canReachTarget).
-export const getSession = postboxQuery({
+// all-members: owner-scoped read; the caller must also still reach the target (canReachTarget), which checks the target's own feature flag.
+export const getSession = answerModeQuery({
 	args: { target: answerAskTargetValidator },
 	handler: async (ctx, args, session): Promise<AskSessionView | null> => {
 		const row = await findOwnSession(ctx, args.target, session.userId);
