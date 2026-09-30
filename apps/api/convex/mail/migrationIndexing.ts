@@ -33,6 +33,7 @@ import { resolveContact } from '../contacts/resolution';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { normalizeEmail } from '@owlat/shared';
 import { logError } from '../lib/runtimeLog';
+import { INDEX_CHUNK_SIZE } from './migrationBackfill';
 
 // Tunables — kept in step with knowledge/messageBackfill.ts.
 const INTER_MESSAGE_DELAY_MS = 150;
@@ -190,6 +191,53 @@ export const patchIndexProgress = internalMutation({
 			indexCursorId: args.cursorId ?? migration.indexCursorId,
 			updatedAt: Date.now(),
 		});
+	},
+});
+
+/**
+ * Re-run a finished import's indexing sweep (operator entry point:
+ * `migrations/0050_reindex_mailbox_knowledge`).
+ *
+ * For an import that finished WITHOUT knowledge — opted out, or swept while
+ * the embedder could not store a vector — which otherwise has no way back
+ * short of re-importing the whole mailbox. The sweep starts from the first
+ * message; messages that already produced entries are counted, not
+ * re-extracted.
+ */
+export const reindexMigration = internalMutation({
+	args: { migrationId: v.id('mailboxMigrations') },
+	handler: async (ctx, args): Promise<{ started: boolean; reason?: string }> => {
+		const migration = await ctx.db.get(args.migrationId);
+		if (!migration) return { started: false, reason: 'not_found' };
+		// Only a completed import has a settled message set to walk; a running
+		// one hands off to indexing by itself.
+		if (migration.status !== 'completed') {
+			return { started: false, reason: `status_${migration.status}` };
+		}
+		if (!(await isFeatureEnabled(ctx, 'ai.knowledge'))) {
+			return { started: false, reason: 'ai_knowledge_disabled' };
+		}
+		const now = Date.now();
+		await ctx.db.patch(migration._id, {
+			status: 'indexing',
+			isAiIndexingEnabled: true,
+			messagesIndexed: 0,
+			indexCursorReceivedAt: undefined,
+			indexCursorId: undefined,
+			completedAt: undefined,
+			updatedAt: now,
+		});
+		await ctx.db.insert('mailAuditLog', {
+			mailboxId: migration.mailboxId,
+			event: 'migration.reindex_started',
+			details: `migration=${migration._id}`,
+			occurredAt: now,
+		});
+		await ctx.scheduler.runAfter(0, internal.mail.migrationIndexing.runIndexChunk, {
+			migrationId: migration._id,
+			chunkSize: INDEX_CHUNK_SIZE,
+		});
+		return { started: true };
 	},
 });
 

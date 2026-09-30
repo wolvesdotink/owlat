@@ -799,6 +799,44 @@ services:
       - dev
     restart: unless-stopped
 
+  # ── Ollama embedding model (one-shot, runs on every `up`) ─────────────
+  # The knowledge graph, semantic file search and quick answers embed text
+  # through the LOCAL embedding plane by default: the `ollama` service above,
+  # serving LOCAL_EMBEDDING_MODEL. A fresh Ollama holds no models, so every
+  # embed call answered "model not found" and nothing was ever stored. This
+  # pulls the model into the shared volume (a no-op once it is there).
+  #
+  # Always exits 0: a slow or failed download must not fail an update's
+  # readiness check. The next `up` retries it.
+  ollama-models:
+    logging: *default-logging
+    image: ollama/ollama:${OLLAMA_VERSION:-0.34.4}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        i=0
+        until ollama list >/dev/null 2>&1; do
+          i=$$((i + 1))
+          if [ "$$i" -ge 60 ]; then echo "ollama-models: ollama never answered, skipping"; exit 0; fi
+          sleep 2
+        done
+        ollama pull "$$EMBEDDING_MODEL" || echo "ollama-models: pulling $$EMBEDDING_MODEL failed, retried on the next start"
+        exit 0
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      EMBEDDING_MODEL: ${LOCAL_EMBEDDING_MODEL:-nomic-embed-text}
+    depends_on:
+      ollama:
+        condition: service_started
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - ai
+      - dev
+    restart: "no"
+
   # ── Mail TLS bootstrap (self-signed default cert for IMAPS + inbound SMTP) ──
   # The MTA's inbound listener (port 25) reads the same pair to offer STARTTLS;
   # without it the default-on "Require TLS for incoming mail" floor rejects every

@@ -32,8 +32,8 @@
  *
  * A misconfigured hosted embedder surfaces an actionable error at resolve time
  * (never a silent empty/zero vector); changing the embedder bumps the stored
- * `embeddingModelVersion` so a re-index can be prompted, and a mismatched-width
- * vector is rejected at write time by `assertEmbeddingDimension`.
+ * `embeddingModelVersion` so a re-index can be prompted, and every vector is
+ * fitted to the index width by `toIndexVector` (narrower ones zero-padded).
  *
  * Environment (fallback only):
  *   LLM_PROVIDER        openai (default) | openrouter | ollama
@@ -357,9 +357,9 @@ export async function resolveLanguageModelForClassifiedDraft(
 }
 
 // Known embedding models and their native output width. Used to fail fast when
-// a configured model's vectors won't fit the fixed EMBEDDING_DIMENSIONS-wide
-// vector index. Unknown/custom (e.g. local Ollama) models aren't listed — they're
-// caught at write time by assertEmbeddingDimension.
+// a configured model's vectors are WIDER than the fixed EMBEDDING_DIMENSIONS
+// index (narrower ones are zero-padded by toIndexVector). Unknown/custom models
+// aren't listed — an oversized vector is caught at embed time by toIndexVector.
 const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
 	'text-embedding-3-small': 1536,
 	'text-embedding-ada-002': 1536,
@@ -367,13 +367,13 @@ const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
 };
 
 /**
- * Fail fast when a resolved embedding model's known native width won't fit the
- * fixed vector index. Only checks models with a known width; local/custom ones
- * are validated at write time by {@link assertEmbeddingDimension}.
+ * Fail fast when a resolved embedding model's known native width is wider than
+ * the fixed vector index. Only checks models with a known width; local/custom
+ * ones are checked at embed time by {@link toIndexVector}.
  */
 function assertKnownEmbeddingWidth(modelId: string): void {
 	const known = KNOWN_EMBEDDING_DIMENSIONS[modelId];
-	if (known !== undefined && known !== EMBEDDING_DIMENSIONS) {
+	if (known !== undefined && known > EMBEDDING_DIMENSIONS) {
 		throw new Error(
 			`Embedding model '${modelId}' produces ${known}-dimensional vectors, but the ` +
 				`vector index is fixed at ${EMBEDDING_DIMENSIONS}. Choose a ${EMBEDDING_DIMENSIONS}-dim ` +
@@ -402,18 +402,35 @@ export async function resolveEmbeddingModel(ctx: ActionCtx): Promise<EmbeddingMo
 }
 
 /**
- * Throw if an embedding vector won't fit the fixed-width vector index. Catches
- * custom / unknown models whose dimension can't be validated at config time —
- * without this a wrong-width vector is silently stored and breaks every vector
- * search (or surfaces as an opaque Convex vectorIndex error).
+ * Fit an embedding vector to the fixed-width vector index.
+ *
+ * The index is EMBEDDING_DIMENSIONS wide (the OpenAI default), but the DEFAULT
+ * embedder is local (`nomic-embed-text`, 768-dim) and Google / most
+ * OpenAI-compatible models are narrower too. A narrower vector is right-padded
+ * with zeros: padding changes neither dot products nor norms, so cosine
+ * similarity between two padded vectors is exactly that of the originals, and
+ * the index ranks them identically. Rejecting them instead meant the default
+ * configuration could never store a single knowledge entry.
+ *
+ * A WIDER vector can't be fitted without changing its geometry, so it throws —
+ * an actionable error rather than a silently-broken vector search. Query-time
+ * vectors go through here too: a 768-dim query against 1536-wide rows would be
+ * refused by the index.
  */
-export function assertEmbeddingDimension(embedding: ArrayLike<number>): void {
-	if (embedding.length !== EMBEDDING_DIMENSIONS) {
+export function toIndexVector(embedding: ArrayLike<number>): number[] {
+	if (embedding.length > EMBEDDING_DIMENSIONS) {
 		throw new Error(
 			`Embedding model produced a ${embedding.length}-dimensional vector but the vector ` +
-				`index requires ${EMBEDDING_DIMENSIONS}. Set LLM_EMBEDDING_MODEL to a ${EMBEDDING_DIMENSIONS}-dim model.`
+				`index holds at most ${EMBEDDING_DIMENSIONS}. Choose an embedding model of at most ` +
+				`${EMBEDDING_DIMENSIONS} dimensions.`
 		);
 	}
+	if (embedding.length === 0) {
+		throw new Error('Embedding model returned an empty vector.');
+	}
+	const vector = Array.from(embedding);
+	while (vector.length < EMBEDDING_DIMENSIONS) vector.push(0);
+	return vector;
 }
 
 /** Snapshot of the active env LLM configuration for logging / debugging (no secrets). */

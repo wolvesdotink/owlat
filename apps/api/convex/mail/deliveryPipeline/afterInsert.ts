@@ -14,12 +14,14 @@
  */
 
 import type { MutationCtx } from '../../_generated/server';
+import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { clearNeedsReplyOnOwnerReply, scheduleNeedsReplyClassify } from '../needsReply';
 import { isFromMailboxOwner } from '../needsReplyHeuristic';
 import { enqueueCategoryCheck } from '../categoryArrival';
 import { clearThreadFollowUp } from '../followUps';
 import { clearSnoozeUntilReplyForThread } from '../snooze';
+import { shouldExtractLiveMessage } from '../liveKnowledge';
 import { queuesNeedsReplyCheck, type InboundOrigin } from './insert';
 
 export type { InboundOrigin };
@@ -46,6 +48,8 @@ const NOT_A_REPLY_ROLES: ReadonlySet<string> = new Set(['spam', 'trash', 'sent',
  *     for mail from someone other than the mailbox owner, outside Spam, Trash,
  *     Sent and Drafts, and never from a backfill (an old message is not a new
  *     reply).
+ *   - Knowledge extraction, under the same conditions (`../liveKnowledge`).
+ *     A backfill is history, which a mailbox import's indexing sweep covers.
  *   - The owner's own reply settles the thread's Reply Queue row.
  */
 export async function runPostInsertInboundEffects(
@@ -80,6 +84,13 @@ export async function runPostInsertInboundEffects(
 		if (mailbox && !isFromMailboxOwner(delivered, mailbox.address)) {
 			await clearThreadFollowUp(ctx, delivered.threadId);
 			await clearSnoozeUntilReplyForThread(ctx, delivered.threadId, Date.now());
+			if (
+				await shouldExtractLiveMessage(ctx, { spamVerdict: delivered.spamVerdict, antiLoopHeaders })
+			) {
+				await ctx.scheduler.runAfter(0, internal.mail.liveKnowledge.extractLiveMessage, {
+					mailMessageId: messageId,
+				});
+			}
 		}
 	}
 

@@ -619,3 +619,74 @@ describe('migrationIndexing — onboarding stamps are personal-only', () => {
 		expect(await onboardingRows(t)).toHaveLength(0);
 	});
 });
+
+// =====================================================================
+// reindexMigration — operator re-run of a finished import's sweep
+// =====================================================================
+
+describe('migrationIndexing.reindexMigration', () => {
+	it('re-sweeps a completed import that finished without knowledge', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
+		let migrationId!: Id<'mailboxMigrations'>;
+		await t.run(async (ctx) => {
+			const s = await seedMailbox(ctx);
+			for (let i = 0; i < 2; i++) {
+				const msgId = await seedMessage(ctx, s, { receivedAt: 1000 + i });
+				await ctx.db.insert(
+					'knowledgeEntries',
+					createTestKnowledgeEntry({ sourceType: 'email', sourceId: msgId })
+				);
+			}
+			migrationId = await seedMigration(ctx, s, {
+				status: 'completed',
+				isAiIndexingEnabled: false,
+				messagesImported: 2,
+				completedAt: Date.now(),
+			});
+		});
+
+		const res = await t.mutation(internal.mail.migrationIndexing.reindexMigration, {
+			migrationId,
+		});
+		expect(res).toEqual({ started: true });
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(migrationId);
+			expect(m!.status).toBe('indexing');
+			expect(m!.isAiIndexingEnabled).toBe(true);
+			expect(m!.messagesIndexed).toBe(0);
+		});
+
+		await t.finishAllScheduledFunctions(() => {});
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(migrationId);
+			expect(m!.status).toBe('completed');
+			expect(m!.messagesIndexed).toBe(2);
+		});
+	});
+
+	it('refuses an import that is still running', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
+		let migrationId!: Id<'mailboxMigrations'>;
+		await t.run(async (ctx) => {
+			migrationId = await seedMigration(ctx, await seedMailbox(ctx), { status: 'importing' });
+		});
+		const res = await t.mutation(internal.mail.migrationIndexing.reindexMigration, {
+			migrationId,
+		});
+		expect(res).toEqual({ started: false, reason: 'status_importing' });
+	});
+
+	it('refuses while ai.knowledge is off', async () => {
+		const t = convexTest(schema, modules);
+		let migrationId!: Id<'mailboxMigrations'>;
+		await t.run(async (ctx) => {
+			migrationId = await seedMigration(ctx, await seedMailbox(ctx), { status: 'completed' });
+		});
+		const res = await t.mutation(internal.mail.migrationIndexing.reindexMigration, {
+			migrationId,
+		});
+		expect(res).toEqual({ started: false, reason: 'ai_knowledge_disabled' });
+	});
+});

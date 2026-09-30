@@ -17,11 +17,7 @@ import { openInboundMessageBody, readMailMessageText } from '../lib/messageBody'
 import { CURRENT_EMBEDDING_MODEL } from '../lib/constants';
 import { embed, type EmbeddingModel } from 'ai';
 import { z } from 'zod';
-import {
-	resolveLanguageModel,
-	resolveEmbeddingModel,
-	assertEmbeddingDimension,
-} from '../lib/llmProvider';
+import { resolveLanguageModel, resolveEmbeddingModel, toIndexVector } from '../lib/llmProvider';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
@@ -90,7 +86,6 @@ async function persistExtractedEntries(
 			model: embeddingModel,
 			value: `${entry.title}: ${entry.content}`,
 		});
-		assertEmbeddingDimension(embedding);
 
 		// Deterministic fingerprint of the normalized title+content, so saveEntry's
 		// content-hash leg can dedup the same fact restated across sources.
@@ -106,7 +101,7 @@ async function persistExtractedEntries(
 			sourceId: source.sourceId,
 			contactIds: source.contactIds,
 			threadId: source.threadId,
-			embedding: Array.from(embedding),
+			embedding: toIndexVector(embedding),
 			embeddingModel: CURRENT_EMBEDDING_MODEL,
 			embeddingGeneratedAt: Date.now(),
 			confidence: entry.confidence,
