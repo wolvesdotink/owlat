@@ -98,6 +98,8 @@ export function useAnswerAskSession(opts: {
 		if (!current) return startOp.isLoading.value ? 'checking' : 'idle';
 		if (current.status === 'drafting' && stream.value?.status === 'complete') return 'ready';
 		if (current.status === 'drafting' && stream.value?.status === 'error') return 'error';
+		// `drafting` with no stream yet: the answers are being applied (a file
+		// answer copying) before the draft starts. Busy, not a missing stream.
 		return current.status;
 	});
 	/** A start or an answer is on its way, or a draft is being written. */

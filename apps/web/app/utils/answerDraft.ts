@@ -71,18 +71,24 @@ export function isDraftGapsRefusal(op: OperationError): boolean {
 	return op.data?.['code'] === DRAFT_HAS_GAPS;
 }
 
-/** The message `composeDraft.answer` refuses a second submit with (no typed code yet). */
+/** The typed code `composeDraft.answer` refuses a second submit with. */
+const ASK_SESSION_CLAIMED = 'ASK_SESSION_CLAIMED';
+/**
+ * The same refusal's message, from a backend that predates the code. A
+ * fallback only; drop it once every deployment sends the code.
+ */
 const ALREADY_ANSWERED = 'These questions were already answered';
 
 /**
  * Whether a failed `composeDraft.answer` is the double submit: the session had
  * already left `asking` because the first submit is drafting. Harmless: the
  * draft the first call started arrives through the session subscription.
- * Matched on the message because the refusal carries no code, and other
- * `invalid_state` refusals on the same path (a released file, a file answer on
- * a non-email thread) must still be shown.
+ * Other `invalid_state` refusals on the same path (a released file, a file
+ * answer on a non-email thread) must still be shown.
  */
 export function isAlreadyAnsweredRefusal(op: OperationError): boolean {
+	const code = op.data?.['code'];
+	if (code !== undefined) return code === ASK_SESSION_CLAIMED;
 	return op.category === 'invalid_state' && op.message === ALREADY_ANSWERED;
 }
 

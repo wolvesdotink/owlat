@@ -137,11 +137,25 @@ describe('useAnswerAskSession', () => {
 		});
 	});
 
+	it('reads a drafting session with no stream yet as busy, not as an error', () => {
+		data['getSession']!.value = session({ status: 'drafting' });
+		const { api } = host(composerMock());
+		expect(api.phase.value).toBe('drafting');
+		expect(api.busy.value).toBe(true);
+	});
+
 	it('takes a double submit quietly: the first answer is already drafting', () => {
 		host(composerMock());
 		const claim = onErrors['answer']!;
 		expect(
 			claim({ category: 'invalid_state', message: 'These questions were already answered' })
+		).toBe(true);
+		expect(
+			claim({
+				category: 'invalid_state',
+				message: 'Already claimed',
+				data: { code: 'ASK_SESSION_CLAIMED' },
+			})
 		).toBe(true);
 		// Anything else still surfaces.
 		expect(claim({ category: 'forbidden', message: 'No' })).toBe(false);
