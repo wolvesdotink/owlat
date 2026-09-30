@@ -12,6 +12,7 @@
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { batchGet } from '../_utils/batchLoader';
+import { deleteMailThreadCatchUps } from './ai/catchUpStore';
 
 /**
  * Most addresses a thread's `participants` array holds. Every message adds its
@@ -61,11 +62,7 @@ export async function rebuildThreadAggregates(
 
 	if (messages.length === 0) {
 		// Answer mode catch-up cards retell the purged mail: they go with the thread.
-		const catchUps = await ctx.db
-			.query('threadCatchUps')
-			.withIndex('by_mail_thread_and_locale', (q) => q.eq('mailThreadId', threadId))
-			.collect(); // bounded: one row per interface locale
-		for (const row of catchUps) await ctx.db.delete(row._id);
+		await deleteMailThreadCatchUps(ctx, threadId);
 		await ctx.db.delete(threadId);
 		return;
 	}

@@ -310,6 +310,92 @@ describe('which mailbox a purge deletes', () => {
 	});
 });
 
+describe('what a purge takes with the mailbox', () => {
+	it("deletes the threads' catch-up cards and the drafts' ask sessions", async () => {
+		const t = convexTest(schema, modules);
+		await enableExternal(t);
+		setSession('user-A', 'owner');
+		const { mailboxId } = await connectWithMail(t);
+		const seeded = await t.run(async (ctx) => {
+			const now = Date.now();
+			// A thread with no message left: the teardown's own thread sweep takes it.
+			const threadId = await ctx.db.insert('mailThreads', {
+				mailboxId,
+				normalizedSubject: 'invoice',
+				participants: ['me@example.com'],
+				messageCount: 0,
+				unreadCount: 0,
+				hasFlagged: false,
+				hasAttachments: false,
+				lastMessageAt: now,
+				firstMessageAt: now,
+				latestSnippet: '',
+				latestFromAddress: 'friend@example.com',
+				latestSubject: 'Invoice',
+				folderRoles: [],
+				labelIds: [],
+				createdAt: now,
+				updatedAt: now,
+			});
+			const catchUpId = await ctx.db.insert('threadCatchUps', {
+				mailThreadId: threadId,
+				mode: 'full',
+				sentences: [{ text: 'Jonas asked for the invoice.', sourceMessageIds: [] }],
+				asks: [],
+				messageCount: 3,
+				locale: 'en',
+				generatedAt: now,
+			});
+			const draftId = await ctx.db.insert('mailDrafts', {
+				mailboxId,
+				toAddresses: ['friend@example.com'],
+				ccAddresses: [],
+				bccAddresses: [],
+				fromAddress: 'me@example.com',
+				subject: 'Re: Invoice',
+				bodyHtml: '<p>[[attach the invoice]]</p>',
+				attachments: [],
+				state: 'draft',
+				lastEditedAt: now,
+				createdAt: now,
+			});
+			const streamId = await ctx.db.insert('aiDraftStreams', {
+				ownerId: 'user-A',
+				surface: 'answer',
+				status: 'complete',
+				text: 'Hi, [[attach the invoice]]',
+				createdAt: now,
+				updatedAt: now,
+			});
+			const sessionId = await ctx.db.insert('answerAskSessions', {
+				ownerId: 'user-A',
+				organizationId: 'org-1',
+				target: { kind: 'mailDraft', draftId },
+				targetKey: `mailDraft:${draftId}`,
+				locale: 'en',
+				round: 1,
+				status: 'ready',
+				questions: [],
+				streamId,
+				attachedFiles: [],
+				createdAt: now,
+				updatedAt: now,
+			});
+			return { catchUpId, sessionId, streamId };
+		});
+		await t.mutation(api.mail.external.accounts.disconnect, {});
+
+		await drainPurge(t);
+
+		const left = await t.run(async (ctx) => ({
+			catchUp: await ctx.db.get(seeded.catchUpId),
+			session: await ctx.db.get(seeded.sessionId),
+			stream: await ctx.db.get(seeded.streamId),
+		}));
+		expect(left).toEqual({ catchUp: null, session: null, stream: null });
+	});
+});
+
 describe('which mailboxes a reconnect may re-open', () => {
 	it('will not undo an admin removal', async () => {
 		const t = convexTest(schema, modules);

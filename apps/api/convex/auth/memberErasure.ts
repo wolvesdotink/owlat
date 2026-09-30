@@ -47,7 +47,8 @@ import { deleteFolderCounters, deleteMailboxCounters } from '../mail/messageCoun
 import { isOrgInfrastructureAccount } from '../mail/external/personalAccount';
 import { deleteStoredAccessToken } from '../mail/external/accessTokenStore';
 import { isPersonalMailbox } from '../mail/permissions';
-import { deleteAskSessionsOfOwner } from '../mail/ai/composeDraftStore';
+import { deleteAskSessionsForDraft, deleteAskSessionsOfOwner } from '../mail/ai/composeDraftStore';
+import { deleteMailThreadCatchUps } from '../mail/ai/catchUpStore';
 
 const MESSAGE_BATCH = 100;
 const CHAT_PAGE = 200;
@@ -201,6 +202,7 @@ export const eraseMemberData = internalMutation({
 				for (const att of draft.attachments) {
 					await ctx.storage.delete(att.storageId);
 				}
+				await deleteAskSessionsForDraft(ctx, draft._id);
 				await ctx.db.delete(draft._id);
 			}
 
@@ -210,11 +212,7 @@ export const eraseMemberData = internalMutation({
 				.collect(); // bounded: threads of one (already message-drained) mailbox
 			for (const thread of threads) {
 				// Answer mode catch-up cards retell the thread: they go with it.
-				const catchUps = await ctx.db
-					.query('threadCatchUps')
-					.withIndex('by_mail_thread_and_locale', (q) => q.eq('mailThreadId', thread._id))
-					.collect(); // bounded: one row per interface locale
-				for (const row of catchUps) await ctx.db.delete(row._id);
+				await deleteMailThreadCatchUps(ctx, thread._id);
 				await ctx.db.delete(thread._id);
 			}
 
