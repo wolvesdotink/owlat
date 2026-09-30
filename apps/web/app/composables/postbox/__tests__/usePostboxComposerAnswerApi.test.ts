@@ -35,7 +35,7 @@ function setup(body = `<p>my notes</p>${QUOTE}`) {
 		),
 		followUpRemindAt: ref<number | null>(null),
 		addFiles: vi.fn(async () => {}),
-		flush: vi.fn(async () => 'd1' as never),
+		flush: vi.fn(async () => ({ ok: true as const, result: 'd1' as never })),
 		focusBody: vi.fn(),
 		isSaving: ref(false),
 		lastSavedAt: ref<number | null>(null),

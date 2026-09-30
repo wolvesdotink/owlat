@@ -119,7 +119,7 @@ const composerSnapshot = shallowRef({
 	toAddresses: [] as string[],
 	hasContent: false,
 });
-const composerFlush = vi.fn(async () => 'draft_saved');
+const composerFlush = vi.fn(async () => ({ ok: true as const, result: 'draft_saved' }));
 const answerApi = { aiDraft: ref<string | null>(null), discardAiDraft: vi.fn() };
 const ComposerStub = defineComponent({
 	name: 'PostboxComposer',

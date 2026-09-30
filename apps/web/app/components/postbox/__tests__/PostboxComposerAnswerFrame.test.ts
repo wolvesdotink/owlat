@@ -27,7 +27,7 @@ const QUOTED =
 	'<blockquote class="gmail_quote">Could you send the invoice?</blockquote></div>';
 
 let compose: ReturnType<typeof makeCompose>;
-const flush = vi.fn(async () => 'draft_1');
+const flush = vi.fn(async () => ({ ok: true as const, result: 'draft_1' }));
 
 function makeCompose() {
 	return {
@@ -60,6 +60,9 @@ function makeCompose() {
 		isSaving: ref(false),
 		lastSavedAt: ref<number | null>(null),
 		draftMirror: reactive({ restorable: null, restore: vi.fn(), dismiss: vi.fn() }),
+		draftNotice: ref(null),
+		bodyPending: ref(false),
+		retryLoad: vi.fn(),
 		isUploading: ref(false),
 		canSend: ref(true),
 		isScheduled: ref(false),
@@ -170,6 +173,7 @@ function mountComposer(props: Record<string, unknown>, slots: Record<string, unk
 				PostboxComposerFooter,
 				PostboxBasicEditor: EditorStub,
 				PostboxComposerAdvisory: inert('PostboxComposerAdvisory'),
+				PostboxComposerDraftNotice: inert('PostboxComposerDraftNotice'),
 				PostboxComposerSealLock: inert('PostboxComposerSealLock'),
 				PostboxDraftRestoreBar: inert('PostboxDraftRestoreBar'),
 				PostboxComposerScheduledBanner: inert('PostboxComposerScheduledBanner'),
@@ -347,6 +351,17 @@ describe('PostboxComposer frame="popup"', () => {
 		await nextTick();
 		expect(flush).toHaveBeenCalledTimes(1);
 		expect(w.emitted('maximise')?.[0]).toEqual(['draft_1']);
+		w.unmount();
+	});
+
+	it('stays in the popup when the save before Answer mode did not land', async () => {
+		flush.mockResolvedValueOnce({ ok: false } as never);
+		const w = mountComposer({});
+		w.getComponent(HeaderStub).vm.$emit('maximise');
+		await nextTick();
+		await nextTick();
+		expect(flush).toHaveBeenCalledTimes(1);
+		expect(w.emitted('maximise')).toBeUndefined();
 		w.unmount();
 	});
 
