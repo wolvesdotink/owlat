@@ -8,6 +8,7 @@ import {
 	isExternalRecipient,
 	ownDomainsFromIdentities,
 	deriveReplyAllExtras,
+	knownRecipientLabel,
 	mergeRecipients,
 	messageRecipientNames,
 	recipientLabel,
@@ -97,11 +98,11 @@ describe('recipientLabel', () => {
 
 	it('names a bare address the thread knows, by its canonical form', () => {
 		const names = { 'finance@brightpath.example': 'Jonas Berg' };
-		expect(recipientLabel('finance@brightpath.example', names)).toBe('Jonas Berg');
-		expect(recipientLabel('Finance@Brightpath.example', names)).toBe('Jonas Berg');
+		expect(knownRecipientLabel('finance@brightpath.example', names)).toBe('Jonas Berg');
+		expect(knownRecipientLabel('Finance@Brightpath.example', names)).toBe('Jonas Berg');
 		// A name on the address itself still wins; strangers keep the local part.
-		expect(recipientLabel('Accounts <finance@brightpath.example>', names)).toBe('Accounts');
-		expect(recipientLabel('ben@acme.io', names)).toBe('ben');
+		expect(knownRecipientLabel('Accounts <finance@brightpath.example>', names)).toBe('Accounts');
+		expect(knownRecipientLabel('ben@acme.io', names)).toBe('ben');
 	});
 });
 

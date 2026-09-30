@@ -124,20 +124,24 @@ export function firstTimeRecipients(
 	return strangers;
 }
 
-/**
- * Best display label for a recipient chip/hint: the name, else a name the
- * thread already knows for the address (`names`, by canonical address), else
- * the local part. A reply is seeded with the sender's bare address, so without
- * `names` Jonas Berg <finance@…> reads as "finance".
- */
-export function recipientLabel(raw: string, names?: Readonly<Record<string, string>>): string {
+/** Best display label for a recipient chip/hint: the name, else the local part. */
+export function recipientLabel(raw: string): string {
 	const parsed = parseAddress(raw);
 	if (parsed?.name) return parsed.name;
 	const address = parsed?.address ?? normalizeEmail(raw);
-	const known = names?.[address];
-	if (known) return known;
 	const at = address.indexOf('@');
 	return at > 0 ? address.slice(0, at) : address;
+}
+
+/**
+ * `recipientLabel`, with a name the thread already knows for a bare address
+ * (`names`, by canonical address). A reply is seeded with the sender's bare
+ * address, so without it Jonas Berg <finance@…> reads as "finance".
+ */
+export function knownRecipientLabel(raw: string, names: Readonly<Record<string, string>>): string {
+	const parsed = parseAddress(raw);
+	const known = parsed?.name ? undefined : names[parsed?.address ?? normalizeEmail(raw)];
+	return known || recipientLabel(raw);
 }
 
 /**

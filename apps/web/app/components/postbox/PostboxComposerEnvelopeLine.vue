@@ -6,7 +6,7 @@
  * reply leaves people off, "Reply all" sits on the line itself, so the switch
  * is never hidden behind the fold.
  */
-import { recipientLabel } from '~/utils/recipientHints';
+import { knownRecipientLabel } from '~/utils/recipientHints';
 
 const props = defineProps<{
 	toAddresses: string[];
@@ -28,7 +28,7 @@ const emit = defineEmits<{ expand: []; 'reply-all': [] }>();
 const { t } = useI18n();
 
 const names = (list: string[]) =>
-	list.map((raw) => recipientLabel(raw, props.recipientNames)).join(', ');
+	list.map((raw) => knownRecipientLabel(raw, props.recipientNames ?? {})).join(', ');
 const toLine = computed(() => names(props.toAddresses));
 const fromLabel = computed(
 	() => props.identities?.find((i) => i.address === props.from)?.label || props.from

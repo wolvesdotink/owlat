@@ -22,7 +22,7 @@ import type { BackendOperationResult } from '~/composables/useBackendOperation';
 import type { ReplyRisk } from '~/utils/senderAuth';
 import { deriveReplyRisk, senderRiskInputOf } from '~/utils/senderAuth';
 import { extractEmailAddress } from '~/utils/emailAddress';
-import { messageRecipientNames, recipientLabel } from '~/utils/recipientHints';
+import { knownRecipientLabel, messageRecipientNames } from '~/utils/recipientHints';
 import { isDialogOpen } from '~/utils/dialogOpen';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { isChordPending } from '~/utils/shortcutScope';
@@ -181,7 +181,7 @@ function leave() {
 	const msg = message.value;
 	const snapshot = composer?.snapshot();
 	if (composer && msg && snapshot?.hasContent) {
-		const recipient = recipientLabel(
+		const recipient = knownRecipientLabel(
 			snapshot.toAddresses[0] ?? msg.fromAddress,
 			recipientNames.value
 		);
