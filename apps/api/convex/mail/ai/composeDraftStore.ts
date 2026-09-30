@@ -198,10 +198,7 @@ export const sweepStaleSessions = internalMutation({
 });
 
 /** Whether anyone started "Draft with AI" on this target (the send guards' trigger). */
-async function targetHasAskSession(
-	ctx: QueryCtx,
-	target: AnswerAskTarget
-): Promise<boolean> {
+async function targetHasAskSession(ctx: QueryCtx, target: AnswerAskTarget): Promise<boolean> {
 	const row = await ctx.db
 		.query('answerAskSessions')
 		.withIndex('by_target_owner', (q) => q.eq('targetKey', answerAskTargetKey(target)))
