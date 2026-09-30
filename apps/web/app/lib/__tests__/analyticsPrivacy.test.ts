@@ -145,6 +145,22 @@ describe('sanitizeAnalyticsEvent', () => {
 		expect(sent.uuid).toBe('u1');
 	});
 
+	it('reads URL objects and nested records the way they will be serialised', () => {
+		const deep: Record<string, unknown> = {};
+		let cursor = deep;
+		for (let i = 0; i < 20; i++) cursor = cursor['next'] = {} as Record<string, unknown>;
+		cursor['leaf'] = '/share?token=QUERY_SENTINEL';
+		const sent = sanitizeAnalyticsEvent(
+			event('owlat_probe', {
+				target: new URL(`${ORIGIN}/share?token=QUERY_SENTINEL`),
+				deep,
+			}),
+			onDashboard
+		)!;
+		expect(JSON.stringify(sent)).not.toMatch(/SENTINEL/);
+		expect(sent.properties['target']).toBe(`${ORIGIN}/share`);
+	});
+
 	it('drops everything captured on a credential page', () => {
 		expect(
 			sanitizeAnalyticsEvent(event('$pageleave', {}), at('/share?token=QUERY_SENTINEL'))

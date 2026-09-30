@@ -28,7 +28,7 @@ import type { CaptureResult } from 'posthog-js';
  * or a handshake nonce). Nuxt route names: the i18n strategy is `no_prefix`, so
  * a name is stable across locales.
  */
-export const PRIVATE_ROUTE_NAMES: ReadonlySet<string> = new Set([
+const PRIVATE_ROUTE_NAMES: ReadonlySet<string> = new Set([
 	'auth-reset-password',
 	'share',
 	'unsubscribe',
@@ -136,18 +136,32 @@ function sanitizeText(text: string, context: AnalyticsUrlContext): string {
 		});
 }
 
-/** Guards against a pathological (or cyclic) payload; real ones are shallow. */
+/**
+ * Guards against a pathological (or cyclic) payload; real ones are shallow.
+ * Anything nested deeper is dropped rather than sent unread.
+ */
 const MAX_DEPTH = 12;
 
-function sanitizeValue(value: unknown, key: string, context: AnalyticsUrlContext, depth: number) {
+function sanitizeValue(
+	value: unknown,
+	key: string,
+	context: AnalyticsUrlContext,
+	depth: number
+): unknown {
 	if (typeof value === 'string') {
 		return URL_KEY.test(key) ? sanitizeAnalyticsUrl(value, context) : sanitizeText(value, context);
 	}
-	if (depth >= MAX_DEPTH || value === null || typeof value !== 'object') return value;
+	if (value === null || typeof value !== 'object') return value;
+	if (depth >= MAX_DEPTH) return null;
 	if (Array.isArray(value)) {
-		return value.map((item) => sanitizeValue(item, key, context, depth + 1));
+		return value.map((item): unknown => sanitizeValue(item, key, context, depth + 1));
 	}
-	if (Object.getPrototypeOf(value) !== Object.prototype) return value;
+	// Serialised the way the SDK will serialise it: a `URL` or a `Date` by its
+	// `toJSON`, anything else by its own enumerable properties.
+	const toJSON = (value as { toJSON?: unknown }).toJSON;
+	if (typeof toJSON === 'function') {
+		return sanitizeValue(toJSON.call(value), key, context, depth + 1);
+	}
 	return sanitizeRecord(value as Record<string, unknown>, context, depth + 1);
 }
 
