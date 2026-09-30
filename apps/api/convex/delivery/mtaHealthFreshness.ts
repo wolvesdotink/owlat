@@ -22,6 +22,7 @@
  */
 
 import type { Infer } from 'convex/values';
+import { canonicalJson } from '@owlat/shared/canonicalJson';
 import type { mtaHealthSnapshotValidator } from '../schema/instance';
 
 type MtaHealthSnapshot = Infer<typeof mtaHealthSnapshotValidator>;
@@ -46,18 +47,6 @@ function signals(snapshot: MtaHealthSnapshot): unknown {
 	};
 }
 
-/** JSON with sorted object keys and `undefined` members dropped, so field order never counts. */
-function canonical(value: unknown): string {
-	if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-	if (value !== null && typeof value === 'object') {
-		const entries = Object.entries(value as Record<string, unknown>)
-			.filter(([, member]) => member !== undefined)
-			.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-		return `{${entries.map(([key, member]) => `${JSON.stringify(key)}:${canonical(member)}`).join(',')}}`;
-	}
-	return JSON.stringify(value);
-}
-
 /**
  * Whether `record` can leave `stored` in place for `next`: nothing but the
  * timestamps differs, and `stored` is still inside the re-stamp interval.
@@ -70,5 +59,6 @@ export function canSkipMtaHealthWrite(
 	// A poll that finished before the stored one (a checklist sweep racing the
 	// cron) and says the same thing has nothing to add either.
 	if (next.observedAt - stored.observedAt >= MTA_HEALTH_RESTAMP_MS) return false;
-	return canonical(signals(stored)) === canonical(signals(next));
+	// Sorted keys and dropped `undefined` members, so field order never counts.
+	return canonicalJson(signals(stored)) === canonicalJson(signals(next));
 }
