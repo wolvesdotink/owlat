@@ -594,7 +594,7 @@ services:
       # LEAST-PRIVILEGE (security review M4): this container runs UNTRUSTED,
       # inbound-email-driven code, so it holds NO deployment admin key. Instead
       # it reaches Convex ONLY through the `convex-fn-proxy` sidecar, which holds
-      # the real admin key and forwards ONLY the thirteen allowlisted
+      # the real admin key and forwards ONLY the fifteen allowlisted
       # `codeWorkTasks:*` / `plugins/workerTasks:*` calls the worker makes. The
       # worker authenticates to the proxy with CODE_WORKER_PROXY_TOKEN (presented
       # as its Convex key); the proxy validates+strips it and injects the admin
@@ -703,7 +703,7 @@ services:
   # ── Convex function-allowlist proxy (least-privilege for code-worker) ──
   # SECURITY REVIEW M4: self-hosted Convex mints only a FULL admin key, so the
   # least-privilege boundary is built OUTSIDE Convex here. This sidecar holds the
-  # real CONVEX_ADMIN_KEY and forwards ONLY the thirteen allowlisted
+  # real CONVEX_ADMIN_KEY and forwards ONLY the fifteen allowlisted
   # `codeWorkTasks:*` / `plugins/workerTasks:*` calls the worker makes; it
   # authenticates the worker with CODE_WORKER_PROXY_TOKEN (constant-time, then
   # stripped) and injects the admin key upstream. Any other function path → 403.
@@ -1038,7 +1038,7 @@ networks:
   # compromised (inbound-email-driven) code task cannot pivot to the mail/infra
   # tier on `default` AND cannot reach the internet directly. Its only paths off
   # this network are the two dual-homed sidecars it depends on: convex-fn-proxy
-  # (which alone holds the Convex admin key and forwards only the thirteen
+  # (which alone holds the Convex admin key and forwards only the fifteen
   # allowlisted worker functions to convex, which also attaches here) and
   # code-worker-egress (the tinyproxy forward-proxy — the SOLE bridge to
   # `default`, permitting only the git remote and the LLM endpoint). Because
