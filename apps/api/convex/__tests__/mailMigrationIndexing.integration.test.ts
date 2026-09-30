@@ -449,6 +449,51 @@ describe('migrationIndexing.runIndexChunk', () => {
 		});
 	});
 
+	it('stops a chunk that outruns its time budget, keeps its progress and reschedules', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
+		let s!: Seeded;
+		let migrationId!: Id<'mailboxMigrations'>;
+		const ids: Id<'mailMessages'>[] = [];
+		await t.run(async (ctx) => {
+			s = await seedMailbox(ctx);
+			for (let i = 0; i < 6; i++) {
+				const msgId = await seedMessage(ctx, s, { receivedAt: 1000 + i });
+				await ctx.db.insert(
+					'knowledgeEntries',
+					createTestKnowledgeEntry({ sourceType: 'email', sourceId: msgId })
+				);
+				ids.push(msgId);
+			}
+			migrationId = await seedMigration(ctx, s, { messagesImported: 6 });
+		});
+
+		// Every Date.now() read jumps 5 minutes: the budget is spent after the
+		// first group of four, as if each extraction were a slow LLM call.
+		let clock = Date.now();
+		const now = vi.spyOn(Date, 'now').mockImplementation(() => (clock += 5 * 60 * 1000));
+		try {
+			await t.action(internal.mail.migrationIndexing.runIndexChunk, {
+				migrationId,
+				chunkSize: 25,
+				interChunkDelayMs: 0,
+			});
+		} finally {
+			now.mockRestore();
+		}
+
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(migrationId);
+			expect(m!.status).toBe('indexing');
+			expect(m!.messagesIndexed).toBe(4);
+			expect(m!.indexCursorId).toBe(ids[3]);
+			const next = (await ctx.db.system.query('_scheduled_functions').collect()).filter((job) =>
+				job.name.includes('runIndexChunk')
+			);
+			expect(next).toHaveLength(1);
+		});
+	});
+
 	it('completes without indexing when ai.knowledge is disabled', async () => {
 		const t = convexTest(schema, modules);
 		// ai.knowledge NOT enabled → defaults off.

@@ -44,6 +44,14 @@ export function injectionRisk(text: string, html?: string): string | null {
 	return null;
 }
 
+/**
+ * Deadline for one extraction's LLM dispatch, all attempts included. Without
+ * one a hung provider held the action until Convex's 600s limit killed it, and
+ * an import sweep waiting on it stalled with it. Reasoning models take 20-60s
+ * on a long email; three attempts fit comfortably.
+ */
+const EXTRACTION_LLM_DEADLINE_MS = 180_000;
+
 type ExtractedEntry = z.infer<typeof extractionSchema>['entries'][number];
 
 const extractionSchema = z.object({
@@ -186,6 +194,7 @@ Extract any:
 
 Only extract knowledge you are confident about. Skip trivial greetings or small talk.`,
 				temperature: 0.1,
+				abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
 			});
 			logInfo('[knowledge.extract] llm call', { tokenUsage, modelUsed });
 			await recordLlmSpend(ctx, 'knowledge_extract_message', tokenUsage, modelUsed);
@@ -262,6 +271,7 @@ ${textContent}
 
 Extract any facts, decisions, events, preferences, goals, relationships, or action items. Skip boilerplate and formatting noise.`,
 				temperature: 0.1,
+				abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
 			});
 			logInfo('[knowledge.extractFile] llm call', { tokenUsage, modelUsed });
 			await recordLlmSpend(ctx, 'knowledge_extract_file', tokenUsage, modelUsed);
@@ -357,6 +367,7 @@ Extract any:
 
 Only extract knowledge you are confident about. Skip trivial greetings or small talk.`,
 				temperature: 0.1,
+				abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
 			});
 			logInfo('[knowledge.extractMail] llm call', { tokenUsage, modelUsed });
 			await recordLlmSpend(ctx, 'knowledge_extract_mail', tokenUsage, modelUsed);
