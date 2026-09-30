@@ -26,7 +26,7 @@ import { messageRecipientNames, recipientLabel } from '~/utils/recipientHints';
 import { isDialogOpen } from '~/utils/dialogOpen';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { isChordPending } from '~/utils/shortcutScope';
-import { parseAnswerKind, singleQueryValue } from '~/utils/answerMode';
+import { answerBackLabelKey, parseAnswerKind, singleQueryValue } from '~/utils/answerMode';
 import {
 	useAnswerAiFocus,
 	useAnswerLeftDraft,
@@ -103,14 +103,7 @@ const { seed, kind } = useAnswerModeSession({
 
 // ── Top bar ──────────────────────────────────────────────────────────────────
 const answerNav = useAnswerModeNav();
-const backLabel = computed(() => {
-	const path = answerNav.returnPath.value;
-	if (path.startsWith('/dashboard/postbox')) return t('components.answer.mode.backTo.inbox');
-	if (path.startsWith('/dashboard/answer')) return t('components.answer.mode.backTo.queue');
-	if (path === '/dashboard' || path.startsWith('/dashboard?'))
-		return t('components.answer.mode.backTo.workbench');
-	return t('components.answer.mode.backTo.previous');
-});
+const backLabel = computed(() => t(answerBackLabelKey(answerNav.returnPath.value)));
 const messageCount = ref<number | undefined>(undefined);
 const counterpart = computed(() => {
 	const m = message.value;
