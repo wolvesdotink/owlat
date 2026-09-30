@@ -38,6 +38,7 @@ import type { EditorBlock } from '@owlat/email-builder';
 import type { Ref } from 'vue';
 import type { BackendOperation, BackendOperationResult } from '~/composables/useBackendOperation';
 import { composeDraftFields } from '~/utils/postboxDraftFields';
+import { answerDraftHasContent } from '~/utils/answerMode';
 import type { ComposerMode } from './usePostboxCompose';
 import type { InitialHydrationState } from './usePostboxComposeHydration';
 
@@ -273,14 +274,33 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 		if (state === 'ready') schedulePersist();
 	});
 
-	// A composer that goes away before its first save never had a row, and a
-	// debounced write armed in its last moments would create one nobody can
-	// reach: not in the host's URL, not offered back by the "Draft saved" bar.
-	// A host that wants the text kept flushes before it lets go (Answer mode's
-	// leave does, when something was written). A composer with a row keeps its
-	// pending write: that row is already where the person will look.
+	// A composer that goes away with a debounced write still armed (a popup
+	// docked, Answer mode left by the browser's Back within 1.5 s) saves it now:
+	// the edit exists nowhere else (the crash mirror is keyed by the row). The
+	// one timer that is dropped is a row-less composer's that holds nothing the
+	// person wrote (a signature or a hydration re-arm, say): saving it would
+	// leave an empty draft nobody asked for. The editor itself emits nothing on
+	// a blur without an edit, so an untouched reply never arms the timer.
+	const seededEnvelope = envelopeKey();
+	function envelopeKey(): string {
+		return JSON.stringify([
+			toAddresses.value,
+			ccAddresses.value,
+			bccAddresses.value,
+			subject.value,
+		]);
+	}
+	function holdsAnEdit(): boolean {
+		return (
+			answerDraftHasContent(bodyHtml.value, 0) ||
+			bodyBlocks.value.length > 0 ||
+			envelopeKey() !== seededEnvelope
+		);
+	}
 	onScopeDispose(() => {
-		if (!draftId.value) clearTimer();
+		if (!saveTimer) return;
+		clearTimer();
+		if (draftId.value || holdsAnEdit()) pendingSave = persist();
 	});
 
 	/** Drop a debounced write on the floor — the row is going away or is stale. */
