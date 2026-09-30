@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { answerCounts } from '~/composables/useAnswerQueue';
 import { answerItemMatches } from '~/utils/answerQueue';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
+import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import type { TodayChange, TodayLine, TodaySource } from '~/utils/todayDigest';
 import { TODAY_PEEK, peekKey, threadHref } from '~/utils/todayPeek';
 import {
@@ -202,6 +203,7 @@ watch(scope, (_next, previous) => {
 onBeforeUnmount(() => leaveScope(scope.value));
 
 // ── Actions on lines ────────────────────────────────────────────────────────
+const answerNav = useAnswerModeNav();
 const { run: recordVisit } = useBackendOperation(api.mail.threadVisits.recordVisit, {
 	label: () => t('dashboard.today.operations.done'),
 });
@@ -229,20 +231,29 @@ async function doneLine(line: TodayLine | TodayChange) {
 	}
 	if (!ok) unhide(line.key);
 }
-async function replyAnyway(line: TodayLine) {
+async function replyAnyway(line: TodayLine, opts: { answer?: TodaySource } = {}) {
 	if (!line.inboundMessageId) return;
 	hidden.value = new Set([...hidden.value, line.key]);
 	const result = await requestReply({
 		inboundMessageId: line.inboundMessageId as Id<'inboundMessages'>,
 	});
-	if (result.ok) {
-		showToast(t('dashboard.today.replyRequested'), 'success', {
-			action: {
-				label: t('dashboard.today.openQueue'),
-				onAction: () => void navigateTo(`/dashboard/answer?in=${TEAM_SCOPE}`),
-			},
-		});
-	} else unhide(line.key);
+	if (!result.ok) {
+		unhide(line.key);
+		return;
+	}
+	// From the peek, the person is about to answer: the reply opens in Answer
+	// mode, where the agent's draft lands in the editor.
+	const source = opts.answer;
+	if (source) {
+		void answerNav.openTeam(source.threadId, { messageId: source.id });
+		return;
+	}
+	showToast(t('dashboard.today.replyRequested'), 'success', {
+		action: {
+			label: t('dashboard.today.openQueue'),
+			onAction: () => void navigateTo(`/dashboard/answer?in=${TEAM_SCOPE}`),
+		},
+	});
 }
 
 // ── Peek panel (state in the URL) ───────────────────────────────────────────
@@ -276,7 +287,7 @@ function replyAnywayFromPeek(source: TodaySource) {
 		.concat(model.value.also)
 		.find((l) => l.inboundMessageId === source.id);
 	closePeek();
-	if (line) void replyAnyway(line);
+	if (line) void replyAnyway(line, { answer: source });
 }
 
 // ── Keyboard: j/k between lines, Enter opens, d done, r reply anyway ───────
@@ -468,9 +479,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 			@step="(i) => openPeek(peekSources, i)"
 			@done="onPeekDone"
 		>
-			<template #actions="{ source }">
+			<template #actions="{ source, informational }">
 				<UiButton
-					v-if="source.kind === 'team'"
+					v-if="source.kind === 'team' && informational"
 					size="sm"
 					variant="secondary"
 					@click="replyAnywayFromPeek(source)"

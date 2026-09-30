@@ -114,11 +114,21 @@ watch(
 	}
 );
 
-// A Postbox email is answered where every reply is written: Answer mode.
+// Every reply is written in Answer mode: a Postbox email on its message, a
+// team message on its thread (answering that message).
 const answerNav = useAnswerModeNav();
-function reply(mail: TodaySource) {
-	void answerNav.open(mail.id);
+function reply(source: TodaySource) {
+	if (source.kind === 'team') void answerNav.openTeam(source.threadId, { messageId: source.id });
+	else void answerNav.open(source.id);
 }
+// A team update needs no reply until someone asks for one ("Reply anyway", the
+// page's own action); any other team message can be answered straight away.
+const teamInformational = computed(() => teamMessage.value?.processingStatus === 'informational');
+const canReply = computed(
+	() =>
+		source.value?.kind === 'mail' ||
+		(source.value?.kind === 'team' && !!teamMessage.value && !teamInformational.value)
+);
 
 function step(delta: number) {
 	const next = index.value + delta;
@@ -248,7 +258,7 @@ watch(target, async (value, previous) => {
 					{{ t('components.today.peek.done') }}
 				</UiButton>
 				<UiButton
-					v-if="source.kind === 'mail'"
+					v-if="canReply"
 					size="sm"
 					variant="secondary"
 					data-testid="peek-reply"
@@ -257,7 +267,7 @@ watch(target, async (value, previous) => {
 					<Icon name="lucide:reply" class="size-3.5" />
 					{{ t('components.today.peek.reply') }}
 				</UiButton>
-				<slot name="actions" :source="source" />
+				<slot name="actions" :source="source" :informational="teamInformational" />
 				<UiButton size="sm" variant="secondary" :to="threadHref(source)" class="ml-auto">
 					{{ t('components.today.peek.openThread') }}
 				</UiButton>
