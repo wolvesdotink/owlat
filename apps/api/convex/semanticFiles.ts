@@ -420,7 +420,7 @@ export const ingest = internalMutation({
  * produce. Validating in the one shared insert covers the user upload and both
  * server-side ingestion sources at once.
  */
-async function insertSemanticFile(
+export async function insertSemanticFile(
 	ctx: MutationCtx,
 	args: {
 		storageId: Id<'_storage'>;

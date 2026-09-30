@@ -108,6 +108,21 @@ describe('refineClarification', () => {
 		expect(mocks.runLlmText).toHaveBeenCalledTimes(3);
 	});
 
+	it('gives each question the input its slot kind calls for (answerKind)', async () => {
+		const dateSlot = {
+			...decisionSlot,
+			slotType: 'date_time' as const,
+			question: 'When?',
+			options: [],
+		};
+		mocks.runLlmObject
+			.mockResolvedValueOnce(objectResult({ slots: [decisionSlot, dateSlot] }))
+			.mockResolvedValueOnce(objectResult({ divergentSlotIndexes: [0, 1] }));
+
+		const result = await refineClarification(ctx, opts);
+		expect(result!.questions.map((q) => q.answerKind)).toEqual(['choice', 'date']);
+	});
+
 	it('returns undefined when the candidates converge (no real question)', async () => {
 		mocks.runLlmObject
 			.mockResolvedValueOnce(objectResult({ slots: [decisionSlot] }))
