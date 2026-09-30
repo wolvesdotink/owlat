@@ -7795,6 +7795,9 @@
 						},
 						"knowledgeDescription": "Builds the shared knowledge profile for each contact from this team's history. Off by default, because it reads the whole archive.",
 						"knowledgeLabel": "Also learn from the imported mail",
+						"learnAction": "Learn from imported mail",
+						"learnBody": "Build each contact's shared knowledge profile from the mail this import brought in. It reads the whole archive, and nothing is downloaded again.",
+						"learnTitle": "This import has not been learned from yet",
 						"paused": "Paused until {when}",
 						"pausedBody": "The provider's daily download limit is used up. The import picks up again on its own — there is nothing to do.",
 						"progressLabel": "Import progress",
@@ -7805,6 +7808,7 @@
 						"throttleExhausted": "The provider refused every download for {days} days in a row, so the import stopped where it got to.",
 						"title": "Import existing mail",
 						"toastCancelled": "Import stopped",
+						"toastLearnStarted": "Learning from the imported mail",
 						"toastStarted": "Import started"
 					},
 					"intro": "Shared addresses your team reads and sends from together — like {supportAddress} or {salesAddress}.",
@@ -9709,6 +9713,9 @@
 				"indexingBody": "Reading through your imported mail to learn about your contacts and conversations.",
 				"indexingFootnote": "Your mail is already in your inbox — this last step just makes the AI smarter.",
 				"indexingTitle": "Teaching your AI assistant",
+				"learnAction": "Learn from imported mail",
+				"learnBody": "Let it read through the imported mail to learn about your contacts and conversations. Nothing is downloaded again.",
+				"learnTitle": "Your AI assistant hasn't learned from this mail yet",
 				"openInbox": "Open your inbox",
 				"pageTitle": "Import your mail — Owlat",
 				"pausedBody": "Your mail provider limits how much mail can be downloaded each day, and today's share is used up. The import picks up again on its own — there is nothing you need to do.",
@@ -9743,6 +9750,7 @@
 				"toastCancelled": "Migration cancelled. Imported mail was kept.",
 				"toastCredentialsUpdated": "Credentials updated.",
 				"toastImportStarted": "Importing your mail history now.",
+				"toastLearnStarted": "Your AI assistant is learning from your imported mail.",
 				"toastSignatureSaved": "Saved as your default signature.",
 				"tryAgain": "Try again",
 				"useThisSignature": "Use this signature"
@@ -13111,6 +13119,8 @@
 			"useMailMigration": {
 				"cancelOperation": "Cancel mailbox migration",
 				"cancelSharedOperation": "Stop team inbox import",
+				"learnOperation": "Learn from imported mail",
+				"learnSharedOperation": "Learn from team inbox import",
 				"startOperation": "Start mailbox migration",
 				"startSharedOperation": "Start team inbox import"
 			},

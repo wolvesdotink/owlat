@@ -299,6 +299,67 @@ describe('TeamInboxImportCard', () => {
 		]);
 	});
 
+	it('offers to learn from a finished import that was not learned from', async () => {
+		// The opt-in used to exist only before the import started: an import that
+		// finished without it had no way to its knowledge short of re-importing.
+		knowledgeFlag.value = true;
+		status.value = migrationRow({
+			status: 'completed',
+			isAiIndexingEnabled: false,
+			messagesImported: 8300,
+			importPercent: 100,
+			completedAt: 3,
+		});
+		const wrapper = mountCard();
+
+		const learn = wrapper.find('[data-testid="team-inbox-import-learn"]');
+		expect(learn.exists()).toBe(true);
+		expect(learn.text()).toContain('Learn from imported mail');
+		expectFullyLocalized(wrapper);
+
+		await wrapper.find('[data-testid="team-inbox-import-learn-start"]').trigger('click');
+		await flushPromises();
+		expect(runs).toEqual([
+			{ name: 'mail/migrationShared:learnFromImportShared', args: { mailboxId: MAILBOX_ID } },
+		]);
+
+		// The sweep flips the row to indexing, and the card's progress takes over.
+		status.value = migrationRow({
+			status: 'indexing',
+			isAiIndexingEnabled: true,
+			messagesImported: 8300,
+			messagesIndexed: 0,
+			importPercent: 100,
+		});
+		await flushPromises();
+		expect(wrapper.find('[data-testid="team-inbox-import-indexing"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="team-inbox-import-learn"]').exists()).toBe(false);
+	});
+
+	it('does not offer learning without the knowledge graph, or once it has learned', () => {
+		status.value = migrationRow({
+			status: 'completed',
+			isAiIndexingEnabled: false,
+			messagesImported: 8300,
+			importPercent: 100,
+			completedAt: 3,
+		});
+		expect(mountCard().find('[data-testid="team-inbox-import-learn"]').exists()).toBe(false);
+
+		knowledgeFlag.value = true;
+		status.value = migrationRow({
+			status: 'completed',
+			isAiIndexingEnabled: true,
+			messagesImported: 8300,
+			messagesIndexed: 8300,
+			importPercent: 100,
+			completedAt: 3,
+		});
+		const wrapper = mountCard();
+		expect(wrapper.find('[data-testid="team-inbox-import-learn"]').exists()).toBe(false);
+		expect(wrapper.text()).toContain('8,300 conversations were learned from.');
+	});
+
 	it("says in the reader's language why a throttled import gave up", () => {
 		status.value = migrationRow({
 			status: 'failed',
