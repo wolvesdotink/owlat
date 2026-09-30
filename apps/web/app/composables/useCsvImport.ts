@@ -489,7 +489,7 @@ export function useCsvImport() {
 	const getContactsFromParsedData = (): PreparedContact[] => {
 		const contacts: PreparedContact[] = [];
 
-		parsedData.value.forEach((row, rowIndex) => {
+		for (const [rowIndex, row] of parsedData.value.entries()) {
 			const contact: ContactImport = { email: '' };
 			const properties: Record<string, ContactPropertyValue> = {};
 
@@ -518,7 +518,7 @@ export function useCsvImport() {
 				}
 				contacts.push({ row: rowIndex + 1, contact });
 			}
-		});
+		}
 
 		return contacts;
 	};
