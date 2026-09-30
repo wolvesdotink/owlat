@@ -17,6 +17,7 @@
 
 import { createHash } from 'node:crypto';
 import * as openpgp from 'openpgp';
+import { canonicalJson } from '@owlat/shared/canonicalJson';
 import { publicAction } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
@@ -33,11 +34,7 @@ export interface KeyDirectoryEntry {
 	fingerprint: string;
 }
 
-/**
- * The SIGNED payload (everything except the detached signature). Declared as a
- * `type` alias (not an `interface`) so it is structurally assignable to
- * `JsonValue` — `canonicalManifest` can serialize it without a cast.
- */
+/** The SIGNED payload (everything except the detached signature). */
 export type ManifestPayload = {
 	version: number;
 	instance: { fingerprint: string; publicKeyArmored: string };
@@ -94,9 +91,13 @@ export function buildManifestPayload(input: {
 	};
 }
 
-/** Recursively key-sorted JSON — the exact bytes the signature covers. */
+/**
+ * Recursively key-sorted JSON — the exact bytes the signature covers, and what
+ * a peer on another release re-derives to verify it. The golden vectors in
+ * manifest.test.ts pin these bytes.
+ */
 export function canonicalManifest(payload: ManifestPayload): string {
-	return stableStringify(payload);
+	return canonicalJson(payload);
 }
 
 /** Sign the canonical payload with the instance private key. Returns an armored detached signature. */
@@ -206,15 +207,3 @@ export const getSignedManifest = publicAction({
 		return signed;
 	},
 });
-
-// ─── stable JSON ────────────────────────────────────────────────────────────
-
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
-
-function stableStringify(value: JsonValue): string {
-	if (value === null || typeof value !== 'object') return JSON.stringify(value);
-	if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
-	const keys = Object.keys(value).sort();
-	const body = keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k] as JsonValue)}`);
-	return `{${body.join(',')}}`;
-}

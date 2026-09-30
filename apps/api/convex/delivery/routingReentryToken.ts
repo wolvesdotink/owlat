@@ -16,6 +16,7 @@
  */
 
 import { ROUTING_REENTRY_TOKEN_MAX_LENGTH } from '@owlat/shared';
+import { canonicalJson } from '@owlat/shared/canonicalJson';
 import { getOptional } from '../lib/env';
 import { base64UrlToBytes, bytesToBase64Url } from '../lib/bytes';
 
@@ -195,21 +196,12 @@ export async function decryptToken(token: string): Promise<RoutingReentryTokenPa
 	return previous && previous.length >= 32 ? tryDecrypt(token, previous) : null;
 }
 
-function canonicalJson(value: unknown): string {
-	if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
-	if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-	const record = value as Record<string, unknown>;
-	return `{${Object.keys(record)
-		.filter((key) => record[key] !== undefined)
-		.sort()
-		.map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
-		.join(',')}}`;
-}
-
 /**
  * The token's tamper-evident binding to the exact envelope it was issued for.
  * Key order is canonicalized so an identical envelope always digests identically
- * across the issue and the callback.
+ * across the issue and the callback. Tokens outlive a deploy, so these bytes are
+ * a cross-release contract: the golden vectors in routingReentryToken.test.ts
+ * were taken from the local serializer this replaced.
  */
 export async function callbackDigest(envelopeInput: unknown, retryState: unknown): Promise<string> {
 	const digest = await crypto.subtle.digest(
