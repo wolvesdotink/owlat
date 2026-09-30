@@ -129,24 +129,13 @@ export const inboxTables = {
 		from: v.string(), // Sender email address
 		to: v.string(), // Recipient email address
 		subject: v.string(),
-		// Message content. Each part is stored in ONE of two places: inline here
-		// (sealed at rest), or — when the parts together would crowd the 1 MiB
-		// document limit — as a sealed blob in the matching `*BodyStorageId`
-		// below. Never both. Read through `lib/messageBodyInbound.ts`, which knows
-		// the two shapes; see `inbox/bodyStorage.ts` for the split.
+		// Message content: each part inline (sealed) OR, too large for the row, a
+		// sealed blob — never both. lib/messageBodyInbound.ts reads either shape.
 		textBody: v.optional(v.string()),
 		htmlBody: v.optional(v.string()),
-		// The parts too large to keep inline, sealed byte-for-byte
-		// (`lib/sealedBlob.storeSealedBlob`, the Postbox body-blob cipher). Absent
-		// on every row written before large bodies were supported: those rows
-		// hold their bodies inline and read exactly as before.
 		textBodyStorageId: v.optional(v.id('_storage')),
 		htmlBodyStorageId: v.optional(v.id('_storage')),
-		// A bounded plain-text stand-in, sealed at rest, written only when the
-		// part a reader would show (text, else HTML) went to storage. Queries
-		// and mutations cannot read blob contents, so this is what the thread
-		// list, the handling rules and the code-task gate see of a large body.
-		bodyExcerpt: v.optional(v.string()),
+		bodyExcerpt: v.optional(v.string()), // sealed stand-in for a stored readable part
 		// Threading headers (RFC 5322)
 		inReplyTo: v.optional(v.string()),
 		references: v.optional(v.string()),

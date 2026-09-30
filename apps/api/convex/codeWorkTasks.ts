@@ -251,20 +251,14 @@ export const createFromInbound = internalMutation({
 			return null;
 		}
 
-		// Code-agent appropriateness check — distinct from the email-assistant
-		// injection guard. Rejects destructive / exfiltrating / backdoor
-		// instructions before a task is ever queued.
-		// A mutation cannot read a body part held in storage, so a large message
-		// is judged — and described to the code agent — by its excerpt. The check
-		// and the description see the same text, so nothing unchecked reaches the
-		// agent; the task says the message was cut so nobody mistakes it for all.
-		const read = await openInboundMessageBody(message, null);
-		const bodyText = read.text ?? read.excerpt;
-		const bodyHtml = read.html;
+		// Code-agent appropriateness check, distinct from the email-assistant
+		// injection guard. A body held in storage is checked (and described below)
+		// by its excerpt, because a mutation cannot read the blob.
+		const { text, html, excerpt, isComplete } = await openInboundMessageBody(message, null);
 		const safety = checkCodeAgentSafety({
 			subject: message.subject ?? '',
-			textBody: bodyText,
-			htmlBody: bodyHtml,
+			textBody: text ?? excerpt,
+			htmlBody: html,
 		});
 		if (!safety.safe) {
 			return null;
@@ -272,11 +266,9 @@ export const createFromInbound = internalMutation({
 
 		// Build the task description from the inbound subject + body.
 		const subject = message.subject?.trim() || '(no subject)';
-		const body = (bodyText ?? bodyHtml ?? '').trim();
-		const cut = read.isComplete
-			? ''
-			: '\n\n[Message shortened: the full text is in the Team Inbox.]';
-		const description = body ? `${subject}\n\n${body}${cut}` : subject;
+		const body = (text ?? excerpt ?? html ?? '').trim();
+		const note = isComplete ? '' : '\n\n[Shortened: the full text is in the Team Inbox.]';
+		const description = body ? `${subject}\n\n${body}${note}` : subject;
 
 		const now = Date.now();
 		return await ctx.db.insert('codeWorkTasks', {
