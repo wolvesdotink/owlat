@@ -71,15 +71,19 @@ export function isDraftGapsRefusal(op: OperationError): boolean {
 	return op.data?.['code'] === DRAFT_HAS_GAPS;
 }
 
+/** The message `composeDraft.answer` refuses a second submit with (no typed code yet). */
+const ALREADY_ANSWERED = 'These questions were already answered';
+
 /**
  * Whether a failed `composeDraft.answer` is the double submit: the session had
- * already left `asking` because the first submit is drafting ("These questions
- * were already answered"). It is the answer path's only `invalid_state`
- * without a typed code, and it is harmless: the draft the first call started
- * arrives through the session subscription.
+ * already left `asking` because the first submit is drafting. Harmless: the
+ * draft the first call started arrives through the session subscription.
+ * Matched on the message because the refusal carries no code, and other
+ * `invalid_state` refusals on the same path (a released file, a file answer on
+ * a non-email thread) must still be shown.
  */
 export function isAlreadyAnsweredRefusal(op: OperationError): boolean {
-	return op.category === 'invalid_state' && op.data?.['code'] === undefined;
+	return op.category === 'invalid_state' && op.message === ALREADY_ANSWERED;
 }
 
 /** The owner's IANA time zone, for dates the AI promises ("tomorrow" at 09:00 local). */

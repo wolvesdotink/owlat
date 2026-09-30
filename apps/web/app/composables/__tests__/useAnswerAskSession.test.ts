@@ -148,6 +148,9 @@ describe('useAnswerAskSession', () => {
 		expect(
 			claim({ category: 'invalid_state', message: 'Gaps', data: { code: 'DRAFT_HAS_GAPS' } })
 		).toBe(false);
+		expect(
+			claim({ category: 'invalid_state', message: 'Attachments can only be sent on email threads' })
+		).toBe(false);
 	});
 
 	it('streams into the editor, then settles the draft, the follow-up and the files once', async () => {

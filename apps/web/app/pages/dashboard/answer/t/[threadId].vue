@@ -133,7 +133,10 @@ const assist = useAnswerTeamAssist({
 	composer: () => composerRef.value?.answer ?? null,
 	messageCount: () => (thread.value ? messages.value.length : undefined),
 	view,
-	attachFile: (file) => void files.attachAnswerFile(file),
+	// A reply on another channel carries no files: the server would refuse.
+	attachFile: (file) => {
+		if (attachmentsAllowed.value) void files.attachAnswerFile(file);
+	},
 });
 const catchUpMessages = computed(() =>
 	messages.value.map((m) => ({ _id: m._id, receivedAt: m._creationTime, fromAddress: m.from }))
