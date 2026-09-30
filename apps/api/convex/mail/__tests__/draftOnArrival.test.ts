@@ -48,6 +48,7 @@ vi.mock('../replyOptions', () => ({
 vi.mock('../../analytics/llmUsage', () => ({ recordLlmSpend: vi.fn(async () => {}) }));
 
 import { generateDraftOnArrival } from '../ai/draftOnArrival';
+import { recordLlmSpend } from '../../analytics/llmUsage';
 
 type Persisted = { draft: string; confidence: number; quality?: unknown; options?: string[] };
 
@@ -111,6 +112,19 @@ describe('generateDraftOnArrival', () => {
 		const h = makeCtx({ loaded: null });
 		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
 		expect(h.persisted).toHaveLength(0);
+	});
+
+	it('records the primary draft generation under its own spend label', async () => {
+		const usage = { promptTokens: 10, completionTokens: 5, totalTokens: 15 };
+		runLlmTextMock.mockResolvedValueOnce({
+			text: 'PERSONAL DRAFT BODY',
+			tokenUsage: usage as never,
+			modelUsed: 'mock-model',
+		});
+		vi.mocked(recordLlmSpend).mockClear();
+		const h = makeCtx({ loaded: makeLoaded() });
+		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
+		expect(recordLlmSpend).toHaveBeenCalledWith(h.ctx, 'postbox_draft', usage, 'mock-model');
 	});
 
 	it('happy path: persists exactly one review slot with the quality score as confidence', async () => {
