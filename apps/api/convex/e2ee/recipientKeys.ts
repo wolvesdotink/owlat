@@ -2,11 +2,14 @@
  * Recipient-key discovery cache + TOFU trust ledger — the V8 (query/mutation)
  * plane of Sealed Mail key discovery.
  *
- * The fetch + OpenPGP + pin-evaluation logic lives in the `'use node'` sibling
- * `e2ee/discovery.ts` (it needs `openpgp`/`fetch`/`dns`); this file owns the DB
- * reads/writes for the `recipientKeys` table:
+ * The fetch + OpenPGP logic lives in the `'use node'` sibling `e2ee/discovery.ts`
+ * (it needs `openpgp`/`fetch`/`dns`); this file owns the DB reads/writes for the
+ * `recipientKeys` table, including the TOFU transition itself, so every pin
+ * change is decided against the row it replaces:
  *   - `getCached` (internal) — cache read the discovery action consults;
- *   - `upsertDiscovery` (internal) — persist a discovery + pin decision;
+ *   - `commitDiscoveredKey` (internal) — commit a discovered key as an atomic
+ *     trust transition, evaluated against the row at commit time;
+ *   - `recordDiscoveryMiss` (internal) — freshness-only update for a miss;
  *   - `listExpiring` (internal) — the refresh-cron worklist;
  *   - `getRecipientKeyStatus` (authed org-member read) — the recipient's PUBLIC
  *     key / trust state for a UI (never any private material — there is none
@@ -21,16 +24,19 @@
  *
  * The pure decision logic these writes apply lives in `e2ee/pinning.ts`, which
  * stays free of Convex imports by design (its whole state machine is testable
- * without a database); this file is the only place those decisions become rows.
+ * without a database); this file and its row helpers in
+ * `e2ee/recipientKeyTransitions.ts` are the only place those decisions become rows.
  */
 
 import { v } from 'convex/values';
+import type { Id } from '../_generated/dataModel';
 import { internalMutation, internalQuery } from '../_generated/server';
 import { adminMutation, authedMutation, authedQuery } from '../lib/authedFunctions';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { normalizeEmail } from '@owlat/shared';
 import { throwForbidden } from '../_utils/errors';
 import { fingerprintsEqual, normalizeFingerprint, reacceptObservedKey } from './pinning';
+import { loadRow, samePin, writeDiscoveredKey, writeMiss } from './recipientKeyTransitions';
 
 const outcomeValidator = v.union(
 	v.literal('trusted'),
@@ -38,6 +44,13 @@ const outcomeValidator = v.union(
 	v.literal('notFound')
 );
 const sourceValidator = v.union(v.literal('wkd'), v.literal('manifest'));
+const pinActionValidator = v.union(
+	v.literal('firstUse'),
+	v.literal('unchanged'),
+	v.literal('signedRotation'),
+	v.literal('keyChanged'),
+	v.literal('reaccept')
+);
 
 /**
  * The cached discovery row for an address (incl. the pinned + observed public
@@ -56,11 +69,93 @@ export const getCached = internalQuery({
 });
 
 /**
- * Persist a discovery + pin decision. Idempotent upsert on `address`. The
- * caller (discovery action) has already run the SSRF-guarded fetch, validated
- * the key<->address binding, and evaluated the TOFU pin, so this is a pure
- * write: it never re-pins on its own.
+ * Record a discovery MISS (no usable key, or the lookup failed) against the row
+ * as it is NOW. Only freshness/discovery metadata changes, so a miss whose lookup
+ * started before a pin was committed cannot remove or alter that pin. A pinned
+ * row is re-checked sooner; an unpinned one is (or becomes) the negative entry.
  */
+export const recordDiscoveryMiss = internalMutation({
+	args: {
+		address: v.string(),
+		domain: v.string(),
+		instanceFingerprint: v.optional(v.string()),
+		expiresAt: v.number(),
+	},
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		const address = normalizeEmail(args.address);
+		const { row } = await loadRow(ctx, address);
+		await writeMiss(ctx, address, row, args);
+		return null;
+	},
+});
+
+/**
+ * Commit a discovered key as one atomic trust transition. The discovery action
+ * has already done the network and OpenPGP work (SSRF-guarded fetch, key<->address
+ * binding, rotation-signature check); the TOFU decision itself is made HERE, by
+ * `evaluatePin`, against the row as it is at commit time.
+ *
+ * `basis` is the revision and pin the action read before its fetch. If the row
+ * has moved on since (another discovery, a signed rotation, an operator
+ * re-accept), nothing is written and `stale` is returned so the caller starts
+ * over from a fresh read. Re-evaluating the old observation against the new row
+ * instead would let a key fetched BEFORE a newer transition (say, the old key
+ * the peer just rotated away from) flip a freshly trusted row to `keyChanged`.
+ *
+ * `rotation` is the old -> new pair a signed rotation statement was verified
+ * for. It only counts when that old fingerprint is the pin on the row now and
+ * the new one is the key being committed; a statement verified against any other
+ * pin is ignored and the change is treated as unsigned.
+ */
+export const commitDiscoveredKey = internalMutation({
+	args: {
+		address: v.string(),
+		domain: v.string(),
+		basis: v.object({
+			revision: v.number(),
+			pinnedFingerprint: v.optional(v.string()),
+		}),
+		fingerprint: v.string(),
+		publicKeyArmored: v.string(),
+		source: sourceValidator,
+		rotation: v.optional(v.object({ oldFingerprint: v.string(), newFingerprint: v.string() })),
+		instanceFingerprint: v.optional(v.string()),
+		expiresAt: v.number(),
+	},
+	returns: v.union(
+		v.object({
+			status: v.literal('committed'),
+			outcome: v.union(v.literal('trusted'), v.literal('keyChanged')),
+			action: pinActionValidator,
+		}),
+		v.object({ status: v.literal('stale'), outcome: v.union(outcomeValidator, v.null()) })
+	),
+	handler: async (ctx, args) => {
+		const address = normalizeEmail(args.address);
+		const { row, revision } = await loadRow(ctx, address);
+		if (
+			revision !== args.basis.revision ||
+			!samePin(row?.pinnedFingerprint, args.basis.pinnedFingerprint)
+		) {
+			return { status: 'stale' as const, outcome: row?.outcome ?? null };
+		}
+		const { outcome, action } = await writeDiscoveredKey(ctx, address, row, revision, args);
+		return { status: 'committed' as const, outcome, action };
+	},
+});
+
+// ============== v0.6.5 compatibility shim — remove after release N+1 ==============
+//
+// v0.6.5's discovery action decided the pin itself and wrote it through
+// `upsertDiscovery`. One still running when this release deploys resolves that
+// call here (CONVENTIONS.md, "Old clients and workers against new functions").
+// It carries no record of the row it read, so only writes that cannot depend on
+// that row are applied: a miss (freshness only), a first pin on a row that has
+// none, and a refresh of the key already trusted. Anything else is dropped; the
+// next discovery re-evaluates it against the current row.
+
+/** Remove after release N+1: v0.6.5 compatibility (see the section comment above). */
 export const upsertDiscovery = internalMutation({
 	args: {
 		address: v.string(),
@@ -74,34 +169,28 @@ export const upsertDiscovery = internalMutation({
 		instanceFingerprint: v.optional(v.string()),
 		expiresAt: v.number(),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args): Promise<{ id: Id<'recipientKeys'>; created: boolean }> => {
 		const address = normalizeEmail(args.address);
-		const now = Date.now();
-		const existing = await ctx.db
-			.query('recipientKeys')
-			.withIndex('by_address', (q) => q.eq('address', address))
-			.first();
-
-		const fields = {
-			address,
-			domain: args.domain.toLowerCase(),
-			outcome: args.outcome,
-			pinnedFingerprint: args.pinnedFingerprint,
-			pinnedPublicKeyArmored: args.pinnedPublicKeyArmored,
-			observedFingerprint: args.observedFingerprint,
-			observedPublicKeyArmored: args.observedPublicKeyArmored,
-			source: args.source,
+		const { row, revision } = await loadRow(ctx, address);
+		const observed = args.observedFingerprint;
+		const armored = args.observedPublicKeyArmored;
+		if (args.outcome === 'notFound' || !observed || !armored) {
+			return await writeMiss(ctx, address, row, args);
+		}
+		if (row?.pinnedFingerprint) {
+			const isRefresh =
+				row.outcome === 'trusted' && fingerprintsEqual(row.pinnedFingerprint, observed);
+			if (!isRefresh) return { id: row._id, created: false };
+		}
+		const { id, created } = await writeDiscoveredKey(ctx, address, row, revision, {
+			domain: args.domain,
+			fingerprint: observed,
+			publicKeyArmored: armored,
+			source: args.source ?? 'wkd',
 			instanceFingerprint: args.instanceFingerprint,
 			expiresAt: args.expiresAt,
-			updatedAt: now,
-		};
-
-		if (existing) {
-			await ctx.db.patch(existing._id, fields);
-			return { id: existing._id, created: false as const };
-		}
-		const id = await ctx.db.insert('recipientKeys', { ...fields, discoveredAt: now });
-		return { id, created: true as const };
+		});
+		return { id, created };
 	},
 });
 
@@ -260,17 +349,31 @@ export const setContactKeyVerified = authedMutation({
  * Admin: explicitly re-accept a `keyChanged` conflict — adopt the observed key
  * as the new pin (the only path that re-pins across an UNSIGNED key change).
  * No-op unless the row is currently in `keyChanged` with a stored observed key.
+ *
+ * `observedFingerprint` is the key the operator was shown and is accepting. If
+ * discovery has since observed a different key, the acceptance does not cover
+ * it and nothing changes; the caller re-reads and decides again. A successful
+ * re-accept advances the trust revision, so a discovery that read the row
+ * before it cannot commit on top of it.
  */
 export const reacceptKeyChange = adminMutation({
-	args: { address: v.string() },
+	args: {
+		address: v.string(),
+		// Optional only for v0.6.5 web/desktop clients that do not send it yet —
+		// remove after release N+1 (make it required).
+		observedFingerprint: v.optional(v.string()),
+	},
 	handler: async (ctx, args) => {
 		await assertFeatureEnabled(ctx, 'sealedMail');
 		const address = normalizeEmail(args.address);
-		const row = await ctx.db
-			.query('recipientKeys')
-			.withIndex('by_address', (q) => q.eq('address', address))
-			.first();
+		const { row, revision } = await loadRow(ctx, address);
 		if (!row || row.outcome !== 'keyChanged' || !row.observedFingerprint) {
+			return { reaccepted: false as const };
+		}
+		if (
+			args.observedFingerprint !== undefined &&
+			!fingerprintsEqual(row.observedFingerprint, args.observedFingerprint)
+		) {
 			return { reaccepted: false as const };
 		}
 		const decision = reacceptObservedKey(row.observedFingerprint);
@@ -278,6 +381,7 @@ export const reacceptKeyChange = adminMutation({
 			outcome: 'trusted',
 			pinnedFingerprint: decision.pinnedFingerprint,
 			pinnedPublicKeyArmored: row.observedPublicKeyArmored,
+			revision: revision + 1,
 			updatedAt: Date.now(),
 		});
 		return { reaccepted: true as const, pinnedFingerprint: decision.pinnedFingerprint };

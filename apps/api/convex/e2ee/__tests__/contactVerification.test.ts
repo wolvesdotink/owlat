@@ -231,9 +231,10 @@ describe('e2ee/recipientKeys · a verification does not outlive its key', () => 
 				observedPublicKeyArmored: 'KEY:ROTATED',
 			});
 		});
-		await t
-			.withIdentity(ALICE)
-			.mutation(api.e2ee.recipientKeys.reacceptKeyChange, { address: 'contact@peer.test' });
+		await t.withIdentity(ALICE).mutation(api.e2ee.recipientKeys.reacceptKeyChange, {
+			address: 'contact@peer.test',
+			observedFingerprint: ROTATED,
+		});
 
 		// The verification was not deleted — it simply no longer describes the pin,
 		// which is what makes it self-invalidating rather than reliant on a sweep.
@@ -255,8 +256,8 @@ describe('e2ee/recipientKeys · a verification does not outlive its key', () => 
 				.query('recipientKeys')
 				.withIndex('by_address', (q) => q.eq('address', 'contact@peer.test'))
 				.first();
-			// What `upsertDiscovery` writes on a cache refresh: everything but the
-			// verification fields.
+			// What `commitDiscoveredKey` writes on a cache refresh: everything but
+			// the verification fields.
 			await ctx.db.patch(row!._id, { expiresAt: Date.now() + 86_400_000 });
 		});
 		const status = await readStatus(t);

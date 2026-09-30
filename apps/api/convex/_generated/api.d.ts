@@ -538,6 +538,7 @@ import type * as e2ee_lifecycleNode from '../e2ee/lifecycleNode.js';
 import type * as e2ee_manifest from '../e2ee/manifest.js';
 import type * as e2ee_open from '../e2ee/open.js';
 import type * as e2ee_pinning from '../e2ee/pinning.js';
+import type * as e2ee_recipientKeyTransitions from '../e2ee/recipientKeyTransitions.js';
 import type * as e2ee_recipientKeys from '../e2ee/recipientKeys.js';
 import type * as e2ee_recoveryKit from '../e2ee/recoveryKit.js';
 import type * as e2ee_recoveryKitGate from '../e2ee/recoveryKitGate.js';
@@ -1824,6 +1825,7 @@ declare const fullApi: ApiFromModules<{
 	'e2ee/manifest': typeof e2ee_manifest;
 	'e2ee/open': typeof e2ee_open;
 	'e2ee/pinning': typeof e2ee_pinning;
+	'e2ee/recipientKeyTransitions': typeof e2ee_recipientKeyTransitions;
 	'e2ee/recipientKeys': typeof e2ee_recipientKeys;
 	'e2ee/recoveryKit': typeof e2ee_recoveryKit;
 	'e2ee/recoveryKitGate': typeof e2ee_recoveryKitGate;

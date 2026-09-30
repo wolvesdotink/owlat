@@ -32,6 +32,7 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'automations/stepExecutorQueries.ts#markStepFailed': 'old step walker actions mid-run',
 	'automations/stepExecutorQueries.ts#markStepsSkipped': 'old step walker actions mid-run',
 	'blockedEmails.ts#isBlockedInternal': 'old email worker actions mid-run',
+	'e2ee/recipientKeys.ts#upsertDiscovery': 'old recipient-key discovery actions mid-run',
 	'domains/lifecycle.ts#reconcileReturnPathAfterRegistration': 'old registration actions mid-run',
 	'domains/lifecycle.ts#recordReturnPathPushResult': 'old return-path push actions mid-run',
 	'domains/lifecycle.ts#recordDkimRotation': 'old webhook dispatcher actions mid-run',

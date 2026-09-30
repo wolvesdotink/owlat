@@ -107,10 +107,13 @@ export const e2eeTables = {
 	 * negative one re-checked after ~1h. Only PUBLIC key material is stored — there
 	 * is no private key here — so this holds no secrets, but it IS trust state, so
 	 * a re-pin only happens via a signed rotation or an explicit re-accept.
+	 * Every trust transition is evaluated inside the writing mutation against the
+	 * row as it is at commit time (see `revision`).
 	 *
 	 * Instance discovery infrastructure, not per-org business data (classified in
 	 * `lib/tenantTables.ts` NON_TENANT_TABLES alongside `keyVault` / caches):
-	 * regenerable by re-discovery. Written only by `e2ee/recipientKeys.ts`.
+	 * regenerable by re-discovery. Written only by `e2ee/recipientKeys.ts` (row
+	 * transitions in `e2ee/recipientKeyTransitions.ts`).
 	 */
 	recipientKeys: defineTable({
 		// Full, lowercased recipient email (`localpart@domain`).
@@ -152,6 +155,13 @@ export const e2eeTables = {
 		// everybody assumes somebody else earned.
 		verifiedAt: v.optional(v.number()),
 		verifiedBy: v.optional(v.string()),
+		// Trust revision: advances whenever the pin, the observed key or the
+		// outcome changes (a discovery transition or an operator re-accept). A
+		// discovery records the revision it read before going to the network and
+		// only commits if the row is still at that revision, so a result computed
+		// against an older pin never lands on a newer one. Absent on rows written
+		// before the field existed; read as 0.
+		revision: v.optional(v.number()),
 		// Cache expiry: re-discover once `Date.now() >= expiresAt` (24h positive /
 		// 1h negative). Indexed so the refresh cron can page the soon-to-expire rows.
 		expiresAt: v.number(),
