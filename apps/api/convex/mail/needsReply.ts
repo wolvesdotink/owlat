@@ -41,7 +41,9 @@ import { buildThreadTranscript, NEEDS_REPLY } from './ai/transcript';
 import { withStoredInlineBodies } from '../lib/messageBodyStore';
 import { resolveCounterpartName } from './counterpartName';
 import { isFeatureEnabled } from '../lib/featureFlags';
-import { isFromMailboxOwner, type NeedsReplyHeaders } from './needsReplyHeuristic';
+import { type NeedsReplyHeaders } from './needsReplyHeuristic';
+import { mailboxOwnAddresses } from './identities';
+import { normalizeEmail } from '@owlat/shared';
 import { needsReplyResultFields } from '../schema/mailThreads';
 import type { needsReplyClarificationValidator } from '../lib/validators/clarification';
 
@@ -128,14 +130,23 @@ export async function clearNeedsReplyOnOwnerReply(
 	const message = await ctx.db.get(messageId);
 	if (!message) return;
 	const thread = await ctx.db.get(message.threadId);
+	if (!thread?.needsReply) return;
 	const mailbox = await ctx.db.get(message.mailboxId);
-	if (!thread?.needsReply || !mailbox || !isFromMailboxOwner(message, mailbox.address)) return;
+	if (!mailbox || !isOwnMessage(message, await mailboxOwnAddresses(ctx, mailbox))) return;
 	const trigger = await ctx.db.get(thread.needsReply.messageId);
 	if (trigger && trigger.receivedAt > message.receivedAt) return;
 	await clearThreadNeedsReply(ctx, thread._id);
 }
 
 // ─── Convex functions ────────────────────────────────────────────────────────
+
+/** Sent by the mailbox itself: outbound, or From one of its own addresses. */
+function isOwnMessage(
+	message: Pick<Doc<'mailMessages'>, 'outbound' | 'fromAddress'>,
+	ownAddresses: ReadonlySet<string>
+): boolean {
+	return message.outbound !== undefined || ownAddresses.has(normalizeEmail(message.fromAddress));
+}
 
 /**
  * Bounded thread context for the classify action: the mailbox owner address,
@@ -157,8 +168,14 @@ export const getThreadContext = internalQuery({
 			.sort((a, b) => a.receivedAt - b.receivedAt)
 			.slice(-NEEDS_REPLY_CONTEXT_MESSAGES);
 		const ownerAddress = mailbox.address.toLowerCase();
+		// Every address that is "us": the mailbox's own plus each alias that
+		// targets it. A team inbox reached through `info@` would otherwise read
+		// every customer mail as not addressed to it, and a reply sent from the
+		// alias as the customer's.
+		const ownAddresses = await mailboxOwnAddresses(ctx, mailbox);
 		return {
 			ownerAddress,
+			ownerAddresses: [...ownAddresses],
 			latestMessageId: thread.latestMessageId,
 			transcript: await buildThreadTranscript(await withStoredInlineBodies(ctx.db, newest), {
 				...NEEDS_REPLY,
@@ -175,7 +192,7 @@ export const getThreadContext = internalQuery({
 				// A real calendar invite (.ics) is handled by PostboxInviteCard —
 				// the scheduling chip must never double up on it.
 				hasCalendarInvite: (m.attachments ?? []).some(isCalendarAttachment),
-				isFromOwner: isFromMailboxOwner(m, ownerAddress),
+				isFromOwner: isOwnMessage(m, ownAddresses),
 				receivedAt: m.receivedAt,
 				subject: m.subject,
 			})),
@@ -257,7 +274,17 @@ export const applyResult = internalMutation({
 		// need a reply, pre-generate a draft into the review slot via the shared
 		// draft service. Flag-gated + fully async (own action) + fail-soft: it
 		// never blocks classification and degrades to no slot when AI is off.
-		if (resolved !== null && (await isFeatureEnabled(ctx, 'postbox.aiDraft'))) {
+		// Only the model's verdict confirms. The `heuristic` flag is the
+		// placeholder the classifier persists BEFORE the model has looked, and
+		// drafting off it wrote replies to PayPal notices and cold pitches the
+		// model then rejected (and a second draft for every real one once the
+		// model agreed). A heuristic flag that outlives a failed model call stays
+		// in the queue for a human, without a draft.
+		if (
+			resolved !== null &&
+			resolved.source === 'llm' &&
+			(await isFeatureEnabled(ctx, 'postbox.aiDraft'))
+		) {
 			await ctx.scheduler.runAfter(0, internal.mail.ai.draftOnArrival.generateForThread, {
 				threadId: args.threadId,
 			});
@@ -394,13 +421,20 @@ export const clear = postboxMutation({
 });
 
 /**
- * Pending markers older than this are considered lost and re-scheduled.
+ * Pending markers older than this are considered lost and re-scheduled. The
+ * marker clears the moment the classify action starts (its first applyResult),
+ * so an old marker means a run that never STARTED, and on a busy self-hosted
+ * deployment a scheduled action can wait several minutes for an action slot.
+ * At five minutes the sweep read a queued run as lost and scheduled a second
+ * one, which drafted twice and deepened the very backlog that delayed the
+ * first. Past the ten-minute action limit plus headroom, a marker this old
+ * really was lost (a restart, a dropped job).
  *
  * The Postbox clarification loop (answerClarification, getClarificationContext,
  * persistClarificationDraft) lives in the sibling `mail/ai/needsReplyClarify.ts`
  * to keep this file under the domain-file size gate.
  */
-const SWEEP_MIN_AGE_MS = 5 * 60 * 1000;
+const SWEEP_MIN_AGE_MS = 15 * 60 * 1000;
 const SWEEP_BATCH = 20;
 
 /**

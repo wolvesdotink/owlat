@@ -272,11 +272,17 @@ async function seedSharedExternalAccount(t: TestConvex<typeof schema>): Promise<
 	return { mailboxId, accountId };
 }
 
-/** Verdict + persistence: the real getThreadContext read → the real pure heuristic → applyResult. */
+/**
+ * Verdict + persistence: the real getThreadContext read → the real pure
+ * heuristic → applyResult. `source` is the stage the verdict comes from: the
+ * classifier writes a `heuristic` placeholder first and the model's `llm`
+ * verdict after it, and only the second one may start a draft.
+ */
 async function detectAndApplyVerdict(
 	t: TestConvex<typeof schema>,
 	threadId: Id<'mailThreads'>,
-	messageId: Id<'mailMessages'>
+	messageId: Id<'mailMessages'>,
+	source: 'heuristic' | 'llm' = 'llm'
 ): Promise<void> {
 	const context = await t.query(internal.mail.needsReply.getThreadContext, { threadId });
 	expect(context).not.toBeNull();
@@ -288,7 +294,7 @@ async function detectAndApplyVerdict(
 	await t.mutation(internal.mail.needsReply.applyResult, {
 		threadId,
 		expectedLatestMessageId: context!.latestMessageId,
-		needsReply: { messageId, source: 'heuristic', urgency: 'normal' },
+		needsReply: { messageId, source, urgency: 'normal' },
 	});
 }
 
@@ -381,6 +387,32 @@ describe('draft-on-arrival on an external-only install (postbox=false)', () => {
 		expect(llm.runLlmText).not.toHaveBeenCalled();
 	});
 
+	// The classifier persists the deterministic flag BEFORE the model has
+	// looked at the message. Drafting off that placeholder wrote replies to
+	// PayPal notices and sales pitches the model went on to reject, and a
+	// second draft for every message the model did confirm.
+	it('the heuristic placeholder flag schedules no draft; only the model verdict does', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await seedInstanceFlags(t, {
+			ai: true,
+			'mail.external': true,
+			postbox: false,
+			'postbox.aiDraft': true,
+		});
+		const { threadId, messageId } = await seedExternalThread(t);
+
+		await detectAndApplyVerdict(t, threadId, messageId, 'heuristic');
+		expect(await scheduledJobNames(t)).toEqual([]);
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(threadId))!.needsReply?.source).toBe('heuristic');
+		});
+
+		await detectAndApplyVerdict(t, threadId, messageId, 'llm');
+		const names = await scheduledJobNames(t);
+		expect(names.filter((name) => name.includes('draftOnArrival'))).toHaveLength(1);
+	});
+
 	// Gap 1 end-to-end on a TEAM inbox, starting at the worker's ingest:
 	//   ingestExternalMessage(origin: 'sync', INBOX)
 	//     → pending stamp in the insert + scheduleNeedsReplyClassify + enqueueCategoryCheck
@@ -451,6 +483,10 @@ describe('draft-on-arrival on an external-only install (postbox=false)', () => {
 			threadId: queue.items[0]!.threadId,
 		});
 		expect(slot?.draft).toBe('EXTERNAL DRAFT BODY');
+		// One draft per message: the placeholder flag the classifier writes
+		// before the model call does not start a draft of its own.
+		const names = await scheduledJobNames(t);
+		expect(names.filter((name) => name.includes('draftOnArrival'))).toHaveLength(1);
 	});
 
 	// The same synced path, for the mail that started this screen: an
