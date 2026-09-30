@@ -41,4 +41,6 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 		'the previous IMAP server, until its container is replaced',
 	'mail/mailbox/messages.ts#getMessageBody':
 		'the previous web reader, in tabs opened before the deploy (plan 2.5)',
+	'contacts/dataExport.ts#exportContactData':
+		'the previous contact page, in tabs opened before the deploy (#900)',
 };

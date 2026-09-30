@@ -16,18 +16,13 @@
  * (~13.3 MiB once base64'd) arrives intact — exactly as it already does on the
  * personal-mailbox route this file is modelled on (`mail/webhookHttp.ts`).
  *
- * TWO ceilings remain, and neither is this route's to raise:
- *   · Convex's 16 MiB ARGUMENT cap, which the forward is budgeted against —
- *     see `fitsForwardedArgBudget` below for the whole reasoning;
- *   · Convex's 1 MiB DOCUMENT cap. `inbox.messages.receiveMessage` inlines
- *     `textBody`/`htmlBody` on the row, so a message whose parsed body is over
- *     that — a 1.5 MiB HTML newsletter, well under the listener's own limit —
- *     throws on insert, answers 500 and is dead-lettered. The mailbox route
- *     splits its bodies into a sealed blob over 64 KiB
- *     (`deliveryPipeline/ingest.splitBodyForStorage`); the team inbox does not
- *     yet, and doing it means a stored-body column plus a reader that fetches
- *     it. Out of scope here, written down so the next reader does not assume
- *     the argument budget above covers it.
+ * ONE ceiling remains, and it is not this route's to raise: Convex's 16 MiB
+ * ARGUMENT cap, which the forward is budgeted against — see
+ * `fitsForwardedArgBudget` below for the whole reasoning. The 1 MiB DOCUMENT
+ * cap no longer bounds the body: a part too large for the row is written to a
+ * sealed blob before the row is inserted (`inbox/bodyStorage.ts`, staged by
+ * `receiveInbound.receiveStoringLargeBodies`), so a 1.5 MiB HTML newsletter is
+ * stored like any other message.
  *
  * Everything the two routes share — the per-source rate limit, the
  * `verifyMtaSignedRequest` HMAC, the unbounded body read and the bounded audit row —
