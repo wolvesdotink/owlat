@@ -56,6 +56,7 @@ import {
 } from '@owlat/shared/attachments';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
+import type { Id } from '../../_generated/dataModel';
 import { getInboundChannelAdapter } from '../../webhooks/adapters/inboundRegistry';
 import { readScanRequest } from '../../mail/__tests__/scannerStub.testlib';
 
@@ -288,6 +289,24 @@ async function ingest(
 			timestamp: Date.now(),
 		},
 		rawBytesBase64: raw,
+	});
+}
+
+/**
+ * The stored blobs the same size as the given one. Counting every `_storage`
+ * row made the staged-blob race test flaky: a delivery also schedules the agent
+ * pipeline, which convex-test runs on real timers, and a blob that background
+ * work stored between the two snapshots moved the count for reasons unrelated
+ * to the staged blob under test. convex-test keeps only `size` and `sha256` per
+ * blob, and a re-staged copy of the same raw message has the same size, so the
+ * size picks out exactly the copies the test is about.
+ */
+async function blobsSizedLike(t: ReturnType<typeof setupTest>, storageId: Id<'_storage'>) {
+	return await t.run(async (ctx) => {
+		const reference = await ctx.db.system.get(storageId);
+		if (!reference) throw new Error('reference blob missing');
+		const blobs = await ctx.db.system.query('_storage').collect();
+		return blobs.filter((blob) => blob.size === reference.size);
 	});
 }
 
@@ -599,7 +618,11 @@ describe('inboundIngest — idempotency', () => {
 		const raw = encode(buildEmlWithAttachment('race-1@example.com'));
 
 		await ingest(t, 'race-1@example.com', raw, NOTES_META);
-		const storedAfterFirst = await t.run((ctx) => ctx.db.system.query('_storage').collect());
+		const [firstRow] = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		if (!firstRow?.rawStorageId) throw new Error('first delivery stored no raw blob');
+		const rawStorageId = firstRow.rawStorageId;
+		const storedAfterFirst = await blobsSizedLike(t, rawStorageId);
+		expect(storedAfterFirst).toHaveLength(1);
 
 		// Losing the race means the cheap pre-check ran BEFORE the first attempt
 		// inserted, so only the transactional check inside `receiveMessage` can
@@ -617,7 +640,7 @@ describe('inboundIngest — idempotency', () => {
 		// dropped it. Without the drop this is one higher, and the orphan is
 		// unreachable forever — the retention sweep walks rows, and no row
 		// points at it.
-		const storedNow = await t.run((ctx) => ctx.db.system.query('_storage').collect());
+		const storedNow = await blobsSizedLike(t, rawStorageId);
 		expect(storedNow).toHaveLength(storedAfterFirst.length);
 	});
 
