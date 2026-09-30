@@ -120,6 +120,7 @@ beforeAll(() => {
 			cancelFollowUp: vi.fn(),
 		}),
 		usePermissions: () => ({ isAdmin: ref(true), canManageOrganization: ref(true) }),
+		useDesktopContext: () => ({ platform: ref('linux') }),
 		useFeatureFlag: () => ({ isEnabled: () => true }),
 		useAuth: () => ({ user: ref({ id: 'u_me' }) }),
 		useToast: () => ({ showToast: vi.fn() }),

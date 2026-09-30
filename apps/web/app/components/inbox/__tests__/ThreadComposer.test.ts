@@ -1,12 +1,16 @@
 // @vitest-environment happy-dom
 import { enableAutoUnmount, mount } from '@vue/test-utils';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { defineComponent, h, nextTick } from 'vue';
+import { defineComponent, h, nextTick, ref } from 'vue';
 import ThreadComposer from '../ThreadComposer.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
+const platform = ref('linux');
 beforeAll(() => {
-	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+	Object.assign(globalThis, {
+		useI18n: i18nStubs.useI18n,
+		useDesktopContext: () => ({ platform }),
+	});
 });
 enableAutoUnmount(afterEach);
 
@@ -43,6 +47,16 @@ function mountComposer(props: Record<string, unknown> = {}, slots: Record<string
 		},
 	});
 }
+
+describe('InboxThreadComposer send hint and ⋯', () => {
+	it('names the send chord for this machine: Ctrl on Linux, ⌘ on a Mac', () => {
+		platform.value = 'linux';
+		expect(mountComposer().get('kbd').text()).toBe('Ctrl Enter');
+		platform.value = 'mac';
+		expect(mountComposer().get('kbd').text()).toBe('⌘ Enter');
+		platform.value = 'linux';
+	});
+});
 
 describe('InboxThreadComposer and the gaps the AI left', () => {
 	const sendButton = (w: ReturnType<typeof mountComposer>) =>

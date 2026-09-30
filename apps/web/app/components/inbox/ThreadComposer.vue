@@ -34,6 +34,7 @@ import PostboxComposerPreflightChip from '~/components/postbox/PostboxComposerPr
 import { composerPreflight, type TeamThreadComposerTarget } from '~/utils/composerTarget';
 import { useTeamComposerAnswerApi } from '~/composables/useTeamComposerAnswerApi';
 import { useTeamComposerGaps } from '~/composables/useTeamComposerGaps';
+import { useChordKeys } from '~/composables/useChordKeys';
 import {
 	REPLY_BLOCKER_KEYS,
 	REPLY_NOTICE_KEYS,
@@ -161,11 +162,8 @@ function onSubjectInput(event: Event) {
 	subject.value = (event.target as HTMLInputElement).value;
 }
 
-/**
- * Now, when the textarea is there (Answer mode's phone "Reply to…" needs the
- * focus inside the tap for iOS to raise the keyboard), and again after the
- * render for callers that have just made it appear.
- */
+// Now (iOS raises the keyboard only for a focus inside the tap), and again
+// after the render for callers that have just made the textarea appear.
 function focus() {
 	textarea.value?.focus();
 	void nextTick(() => textarea.value?.focus());
@@ -232,6 +230,7 @@ const answer = useTeamComposerAnswerApi({
 });
 // An AI draft's `[[...]]` gaps hold Send and replace the note beside it.
 const gaps = useTeamComposerGaps(body, answer, props);
+const sendKeys = useChordKeys('mod+Enter');
 const canSend = computed(
 	() =>
 		body.value.trim().length > 0 &&
@@ -382,18 +381,20 @@ const menuItem =
 						/>
 						{{ sendLabel }}
 					</UiButton>
-					<kbd class="hidden font-mono text-2xs text-text-tertiary sm:inline" aria-hidden="true"
-						>⌘↵</kbd
-					>
+					<kbd class="hidden font-mono text-2xs text-text-tertiary sm:inline" aria-hidden="true">{{
+						sendKeys.join(' ')
+					}}</kbd>
 					<span
 						v-if="gaps.note.value"
 						class="ml-auto text-xs text-text-tertiary"
 						data-testid="thread-composer-status"
 						>{{ gaps.note.value }}</span
 					>
+					<!-- Always the row's last item, so the panel opens leftwards inside it. -->
 					<PostboxOverflowMenu
 						:label="t('components.answer.team.more')"
-						align="left"
+						:class="{ 'ml-auto': !gaps.note.value }"
+						align="right"
 						direction="up"
 					>
 						<template #default="{ close }">
