@@ -126,7 +126,8 @@ async function threadAttachments(t: Harness, threadId: Id<'conversationThreads'>
 }
 
 function lastEnvelope() {
-	return enqueueActionMock.mock.calls.at(-1)?.[2]?.envelopeInput;
+	const calls = enqueueActionMock.mock.calls;
+	return calls[calls.length - 1]?.[2]?.envelopeInput;
 }
 
 describe('team reply attachments: add, list, remove', () => {
@@ -529,7 +530,9 @@ describe('team reply attachments: the send paths', () => {
 			expect.objectContaining({ filename: 'invoice.pdf', storageId }),
 		]);
 		const listed = await t.query(api.inbox.followUps.listForThread, { threadId });
-		expect(listed.at(-1)?.attachments).toEqual([expect.objectContaining({ storageId })]);
+		expect(listed[listed.length - 1]?.attachments).toEqual([
+			expect.objectContaining({ storageId }),
+		]);
 	});
 });
 
