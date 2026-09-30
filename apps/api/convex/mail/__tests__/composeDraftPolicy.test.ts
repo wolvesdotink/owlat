@@ -7,8 +7,8 @@
 import { describe, it, expect } from 'vitest';
 import { findDraftGaps } from '@owlat/shared/answerMode';
 import type { FoundFile } from '../../inbox/attachmentSuggest';
+import { NOT_READY_OPTION } from '../../inbox/clarificationAnswers';
 import {
-	FILE_NOT_READY_OPTION,
 	FILE_QUESTION_ID,
 	FOLLOW_UP_QUESTION_ID,
 	buildAnswerConfirmedContext,
@@ -25,7 +25,6 @@ import {
 	rankFoundFiles,
 	resolveFollowUpAt,
 	scoreFileName,
-	slotAnswerKind,
 	type AskQuestion,
 } from '../ai/composeDraftPolicy';
 
@@ -102,7 +101,7 @@ describe('ranking and the three file outcomes', () => {
 		)!;
 		expect(question.id).toBe(FILE_QUESTION_ID);
 		expect(question.text).toContain("couldn't find it");
-		expect(question.options).toEqual([FILE_NOT_READY_OPTION]);
+		expect(question.options).toEqual([NOT_READY_OPTION]);
 		expect(question.fileCandidates).toEqual([
 			expect.objectContaining({ id: 'aug', note: 'August', source: 'semanticFile' }),
 		]);
@@ -135,14 +134,7 @@ describe('ranking and the three file outcomes', () => {
 	});
 });
 
-describe('answer kinds and round 2', () => {
-	it('maps slot types to pickers', () => {
-		expect(slotAnswerKind('date_time', undefined)).toBe('date');
-		expect(slotAnswerKind('price_number', ['10', '20'])).toBe('number');
-		expect(slotAnswerKind('decision', ['Yes', 'No'])).toBe('choice');
-		expect(slotAnswerKind('factual_lookup', undefined)).toBe('text');
-	});
-
+describe('round 2', () => {
 	const WED_2026_09_30 = Date.UTC(2026, 8, 30, 14, 0);
 
 	it('asks when the file can be sent, with tomorrow and the day after by name', () => {
@@ -174,12 +166,12 @@ describe('answer kinds and round 2', () => {
 			text: 'They asked for "invoice".',
 			attribution: 'a',
 			answerKind: 'file',
-			options: [FILE_NOT_READY_OPTION],
+			options: [NOT_READY_OPTION],
 			translations: [
 				{ locale: 'de', text: 'Sie wollten "invoice".', options: ['Noch nicht fertig'] },
 			],
 		};
-		expect(canonicalAnswerValue(q, 'Noch nicht fertig')).toBe(FILE_NOT_READY_OPTION);
+		expect(canonicalAnswerValue(q, 'Noch nicht fertig')).toBe(NOT_READY_OPTION);
 		expect(isNotReadyAnswer(q, 'Noch nicht fertig')).toBe(true);
 		expect(isNotReadyAnswer(q, 'invoice.pdf')).toBe(false);
 		expect(canonicalAnswerValue(q, ' something else ')).toBe('something else');
@@ -246,9 +238,7 @@ describe('gaps and the trusted block', () => {
 
 	it('does not quote "It isn\'t ready yet" as a confirmed fact', () => {
 		const block = buildAnswerConfirmedContext({
-			questions: [
-				{ ...questions[0]!, answer: { value: FILE_NOT_READY_OPTION, at: 1, source: 'user' } },
-			],
+			questions: [{ ...questions[0]!, answer: { value: NOT_READY_OPTION, at: 1, source: 'user' } }],
 			attachedFiles: [],
 			gapPlaceholders: [],
 		});

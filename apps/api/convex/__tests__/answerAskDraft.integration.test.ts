@@ -21,7 +21,7 @@ import {
 } from './factories';
 import { normalizeQuestionKey } from '../inbox/clarificationMemoryMatch';
 import { runLlmStream } from '../lib/llm/dispatch';
-import { FILE_NOT_READY_OPTION } from '../mail/ai/composeDraftPolicy';
+import { NOT_READY_OPTION } from '../inbox/clarificationAnswers';
 import { CUSTOMER, ORG, seedCustomer, seedFile, seedRequest } from './helpers/answerAsk';
 
 import type * as SessionOrganizationModule from '../lib/sessionOrganization';
@@ -219,7 +219,7 @@ describe('start', () => {
 		expect(file).toMatchObject({
 			id: 'file_request',
 			answerKind: 'file',
-			options: [FILE_NOT_READY_OPTION],
+			options: [NOT_READY_OPTION],
 		});
 		expect(file!.attribution).toContain('example.org');
 		expect(po).toMatchObject({ answerKind: 'choice', answer: { value: 'Yes', source: 'memory' } });
@@ -296,7 +296,7 @@ describe('answer', () => {
 
 		const round2 = await t.action(api.mail.ai.composeDraft.answer, {
 			sessionId: asked.sessionId,
-			answers: [{ questionId: 'file_request', value: FILE_NOT_READY_OPTION }],
+			answers: [{ questionId: 'file_request', value: NOT_READY_OPTION }],
 		});
 		expect(round2.status).toBe('asking');
 		expect(round2.round).toBe(2);

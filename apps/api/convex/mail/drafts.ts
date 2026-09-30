@@ -38,7 +38,8 @@ import {
 	listForMailboxHandler,
 } from './draftQueries';
 import { cancelPendingSendHandler, cancelScheduledSendHandler, sendHandler } from './draftSend';
-import { attachExistingSourceValidator, copyExistingIntoDraft } from './attachExisting';
+import { copyExistingIntoDraft } from './attachExisting';
+import { existingAttachmentSourceValidator } from '../lib/existingAttachments';
 import { deleteAskSessionsForDraft } from './ai/composeDraftStore';
 
 /** Queue bounded, cache-aware discovery whenever a draft's recipients change. */
@@ -321,7 +322,7 @@ export const addAttachment = postboxMutation({
 export const attachExisting = authedAction({
 	args: {
 		draftId: v.id('mailDrafts'),
-		source: attachExistingSourceValidator,
+		source: existingAttachmentSourceValidator,
 		id: v.string(),
 	},
 	handler: async (ctx, args) => (await copyExistingIntoDraft(ctx, args)).attachments,

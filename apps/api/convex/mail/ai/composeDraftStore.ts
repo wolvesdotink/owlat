@@ -147,6 +147,23 @@ export async function deleteAskSessionsForDraft(
 	for (const row of rows) await deleteSessionRow(ctx, row);
 }
 
+/**
+ * Drop up to `limit` of a person's ask sessions (member erasure). Returns true
+ * when more may remain, so the caller runs another batch.
+ */
+export async function deleteAskSessionsOfOwner(
+	ctx: MutationCtx,
+	ownerId: string,
+	limit: number
+): Promise<boolean> {
+	const rows = await ctx.db
+		.query('answerAskSessions')
+		.withIndex('by_owner', (q) => q.eq('ownerId', ownerId))
+		.take(limit);
+	for (const row of rows) await deleteSessionRow(ctx, row);
+	return rows.length === limit;
+}
+
 /** Whether anyone started "Draft with AI" on this draft (the send guard's trigger). */
 export async function draftHasAskSession(
 	ctx: QueryCtx,

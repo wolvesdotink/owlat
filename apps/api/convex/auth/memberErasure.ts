@@ -46,6 +46,7 @@ import { deleteFolderCounters, deleteMailboxCounters } from '../mail/messageCoun
 import { isOrgInfrastructureAccount } from '../mail/external/personalAccount';
 import { deleteStoredAccessToken } from '../mail/external/accessTokenStore';
 import { isPersonalMailbox } from '../mail/permissions';
+import { deleteAskSessionsOfOwner } from '../mail/ai/composeDraftStore';
 
 const MESSAGE_BATCH = 100;
 const CHAT_PAGE = 200;
@@ -266,12 +267,7 @@ export const eraseMemberData = internalMutation({
 			.collect(); // bounded: a user's own app passwords
 		for (const pw of userPasswords) await ctx.db.delete(pw._id);
 		// Answer mode ask sessions quote their mail and hold the member's answers.
-		const askSessions = await ctx.db
-			.query('answerAskSessions')
-			.withIndex('by_owner', (q) => q.eq('ownerId', args.authUserId))
-			.take(MESSAGE_BATCH);
-		for (const row of askSessions) await ctx.db.delete(row._id);
-		if (askSessions.length === MESSAGE_BATCH) return await reschedule();
+		if (await deleteAskSessionsOfOwner(ctx, args.authUserId, MESSAGE_BATCH)) return reschedule();
 
 		// Per-user onboarding checklist row (keyed by authUserId).
 		const onboarding = await ctx.db

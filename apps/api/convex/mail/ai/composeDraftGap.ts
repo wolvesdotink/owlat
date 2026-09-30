@@ -48,13 +48,13 @@ import {
 import { detectAttachmentRequest } from '../../inbox/attachmentMatch';
 import { searchFilesForRequest } from '../../inbox/attachmentSuggest';
 import { localizeQuestions } from '../../inbox/clarificationLocalize';
+import { answerKindForSlot, applyMemoryFills } from '../../inbox/clarificationAnswers';
 import {
 	FILE_QUESTION_ID,
 	buildFileQuestion,
 	decideFileOutcome,
 	fileRequestLabel,
 	rankFoundFiles,
-	slotAnswerKind,
 	type AskQuestion,
 	type RankedFile,
 } from './composeDraftPolicy';
@@ -160,12 +160,7 @@ async function applyMemory(
 			...(scope.counterpartAddress ? { fromAddress: scope.counterpartAddress } : {}),
 			questions: askable.map((q) => ({ id: q.id, slotType: q.slotType, text: q.text })),
 		});
-		const at = Date.now();
-		const byQuestion = new Map(fills.map((fill) => [fill.questionId, fill.value] as const));
-		return questions.map((q) => {
-			const value = byQuestion.get(q.id);
-			return value === undefined ? q : { ...q, answer: { value, at, source: 'memory' as const } };
-		});
+		return applyMemoryFills(questions, fills, Date.now());
 	} catch {
 		return questions;
 	}
@@ -240,7 +235,7 @@ export async function runGapCheck(ctx: ActionCtx, input: GapCheckInput): Promise
 	);
 	for (const q of sanitized) {
 		if (policy.highStakesOnly && !isHighStakesSlot(q.slotType)) continue;
-		questions.push({ ...q, answerKind: slotAnswerKind(q.slotType, q.options) });
+		questions.push({ ...q, answerKind: answerKindForSlot(q.slotType, q.options) });
 	}
 
 	// The dial caps what is asked; with the dial off nothing is asked, but the

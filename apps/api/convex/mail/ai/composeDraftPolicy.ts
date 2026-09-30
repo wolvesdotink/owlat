@@ -19,9 +19,10 @@
  */
 
 import type { Infer } from 'convex/values';
-import { formatDraftGap, type AskAnswerKind } from '@owlat/shared/answerMode';
+import { formatDraftGap } from '@owlat/shared/answerMode';
 import { pickAttachmentSuggestion, MATCH_FLOOR } from '../../inbox/attachmentMatch';
 import { isCredentialSolicitation } from '../../inbox/clarificationSlots';
+import { NOT_READY_OPTION } from '../../inbox/clarificationAnswers';
 import type { FoundFile } from '../../inbox/attachmentSuggest';
 import type {
 	clarificationFileCandidateValidator,
@@ -33,8 +34,6 @@ export type AskQuestion = Infer<typeof needsReplyClarificationQuestionValidator>
 export type AskFileRef = Infer<typeof clarificationFileRefValidator>;
 export type AskFileCandidate = Infer<typeof clarificationFileCandidateValidator>;
 
-/** The canonical way out of a file question. The web shows its translation. */
-export const FILE_NOT_READY_OPTION = "It isn't ready yet";
 /** Question ids the drafter assigns itself (slot questions are `clarify_N`). */
 export const FILE_QUESTION_ID = 'file_request';
 export const FOLLOW_UP_QUESTION_ID = 'follow_up_date';
@@ -265,19 +264,9 @@ export function buildFileQuestion(
 		text,
 		attribution,
 		answerKind: 'file',
-		...(outcome.kind === 'missing' ? { options: [FILE_NOT_READY_OPTION] } : {}),
+		...(outcome.kind === 'missing' ? { options: [NOT_READY_OPTION] } : {}),
 		...(candidates.length > 0 ? { fileCandidates: candidates.map(toFileCandidate) } : {}),
 	};
-}
-
-/** Answer kind of a slot question: a date or number picker, chips, or free text. */
-export function slotAnswerKind(
-	slotType: string,
-	options: readonly string[] | undefined
-): AskAnswerKind {
-	if (slotType === 'date_time') return 'date';
-	if (slotType === 'price_number') return 'number';
-	return options && options.length > 0 ? 'choice' : 'text';
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -368,7 +357,7 @@ export function canonicalAnswerValue(question: AskQuestion, value: string): stri
 /** Whether an answer to the file question says the file does not exist yet. */
 export function isNotReadyAnswer(question: AskQuestion, value: string | undefined): boolean {
 	if (question.id !== FILE_QUESTION_ID || value === undefined) return false;
-	return canonicalAnswerValue(question, value) === FILE_NOT_READY_OPTION;
+	return canonicalAnswerValue(question, value) === NOT_READY_OPTION;
 }
 
 // ─── Gaps and the trusted block ─────────────────────────────────────────────
@@ -428,7 +417,7 @@ export function buildAnswerConfirmedContext(args: {
 	const lines: string[] = [];
 	for (const q of args.questions) {
 		if (!q.answer || q.answer.value.trim().length === 0) continue;
-		if (q.id === FILE_QUESTION_ID && q.answer.value === FILE_NOT_READY_OPTION) continue;
+		if (q.id === FILE_QUESTION_ID && q.answer.value === NOT_READY_OPTION) continue;
 		lines.push(`- ${q.text.trim()} ${q.answer.value.trim()}`);
 	}
 	if (args.attachedFiles.length > 0) {

@@ -186,6 +186,25 @@ describe('the three file outcomes on a draft', () => {
 		]);
 	});
 
+	it('a chip label names the candidate it was built from', async () => {
+		const t = await makeT();
+		const a = await seedFile(t, { filename: 'invoice-2026-09.pdf' });
+		const b = await seedFile(t, { filename: 'invoice-2026-09-v2.pdf' });
+		llm.files = [hit(a, 'invoice-2026-09.pdf', 0.6), hit(b, 'invoice-2026-09-v2.pdf', 0.6)];
+		const { target, draftId } = await replyDraft(t);
+		const asked = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+
+		const res = await t.action(api.mail.ai.composeDraft.answer, {
+			sessionId: asked.sessionId,
+			answers: [{ questionId: 'file_request', value: 'invoice-2026-09.pdf' }],
+		});
+
+		expect(res.attachedFiles).toEqual([
+			{ source: 'semanticFile', id: a, filename: 'invoice-2026-09.pdf' },
+		]);
+		expect((await draftRow(t, draftId)).attachments).toHaveLength(1);
+	});
+
 	it('nothing found asks for an upload, offering August as a noted near miss', async () => {
 		const t = await makeT();
 		const aug = await seedFile(t, { filename: 'invoice-2026-08-brightpath.pdf' });

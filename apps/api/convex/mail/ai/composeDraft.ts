@@ -35,6 +35,7 @@ import { clarificationFileRefValidator } from '../../lib/validators/clarificatio
 import { assembleInboundBriefing } from '../../agent/steps/context_retrieval';
 import type { EagernessMode } from '../../inbox/askEagerness';
 import { copyExistingIntoDraft } from '../attachExisting';
+import { candidateForLabel } from '../../inbox/clarificationAnswers';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 import { toAskSessionView, type AskSessionView } from './composeDraftStore';
 import { attributionFor, localizeForOwner, runGapCheck } from './composeDraftGap';
@@ -406,9 +407,18 @@ export const answer = authedAction({
 		for (const given of args.answers) {
 			const question = questions.find((q) => q.id === given.questionId);
 			if (!question) continue;
-			if (given.file) {
+			// A client that sends a candidate's chip label instead of a file
+			// reference still picks that candidate.
+			const picked =
+				!given.file && given.value && question.answerKind === 'file'
+					? candidateForLabel(question.fileCandidates, given.value)
+					: undefined;
+			const givenFile =
+				given.file ??
+				(picked ? { source: picked.source, id: picked.id, filename: picked.filename } : undefined);
+			if (givenFile) {
 				if (question.answerKind !== 'file') throwInvalidInput('Only a file question takes a file');
-				const ref = await attachFileAnswer(ctx, session, given.file, given.keepCopy !== false);
+				const ref = await attachFileAnswer(ctx, session, givenFile, given.keepCopy !== false);
 				question.answer = { value: ref.filename, at: now, source: 'user', file: ref };
 				attachedFiles = [
 					...attachedFiles.filter((f) => !(f.source === ref.source && f.id === ref.id)),

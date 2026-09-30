@@ -14,14 +14,17 @@
  * stored as a new blob the draft owns through a bound upload receipt, and from
  * then on the copy lives and dies with the draft exactly like an upload.
  *
- * ACCESS. The caller must be able to write the draft (its mailbox) and read
- * the source: a `mailAttachments` row only from a mailbox the caller can read;
- * a `semanticFiles` row only when it is org-general or linked to a contact the
- * draft is addressed to, the same contact scope the drafting path retrieves
- * under, so a reply to contact A cannot carry contact B's invoice.
+ * ACCESS. The caller must be able to write the draft (its mailbox) and pass
+ * the shared read check in lib/existingAttachments.ts (also used by the team
+ * inbox reply): a `mailAttachments` row only from a mailbox the caller can
+ * read. A reply narrows Files further: a `semanticFiles` row only when it is
+ * org-general or linked to a contact the draft is addressed to, the contact
+ * scope the drafting path retrieves under, so a reply to contact A cannot
+ * carry contact B's invoice.
  *
  * A mutation cannot read blob bytes, so the public entry is an action
- * (`mail.drafts.attachExisting`) over the internal query and mutation here.
+ * (`mail.drafts.attachExisting`) that copies synchronously and returns the
+ * draft's attachments, over the internal query and mutation here.
  */
 
 import { v, type Infer } from 'convex/values';
@@ -35,16 +38,18 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { normalizeEmail } from '@owlat/shared';
 import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
-import { extractAttachmentAt } from '@owlat/shared/mailMime';
 import { requireMailboxAccess } from './permissions';
-import { pickStoredPart } from './messageParts';
 import { assertStateIs } from './draftLifecycle/reducers';
 import { storedFileSize } from '../storage/uploads';
 import { findContactByIdentifier } from '../contacts/resolution';
 import { isContactScopeVisible } from '../lib/contactScope';
-import { readSealedBlobBytes } from '../lib/sealedBlob';
-import { bytesToBinaryString } from '../lib/bytes';
-import { getMutationContext } from '../lib/sessionOrganization';
+import { getMutationContext, requireOrgMember } from '../lib/sessionOrganization';
+import {
+	existingAttachmentSourceValidator,
+	readExistingAttachmentBytes,
+	resolveReadableExistingAttachment,
+	type ExistingAttachment,
+} from '../lib/existingAttachments';
 import {
 	throwForbidden,
 	throwInvalidInput,
@@ -53,23 +58,8 @@ import {
 } from '../_utils/errors';
 import type { mailDraftAttachmentValidator } from '../lib/validators/mailContent';
 
-export const attachExistingSourceValidator = v.union(
-	v.literal('semanticFile'),
-	v.literal('mailAttachment')
-);
-type AttachExistingSource = Infer<typeof attachExistingSourceValidator>;
+type AttachExistingSource = Infer<typeof existingAttachmentSourceValidator>;
 type DraftAttachment = Infer<typeof mailDraftAttachmentValidator>;
-
-/** Where the bytes of a readable source are and what they are called. */
-type ResolvedSource =
-	| { kind: 'blob'; storageId: Id<'_storage'>; filename: string; contentType: string }
-	| {
-			kind: 'rawPart';
-			rawStorageId: Id<'_storage'>;
-			partIndex: string;
-			filename: string;
-			contentType: string;
-	  };
 
 /** The contacts a draft is addressed to, for the Files contact scope. */
 async function recipientContactIds(
@@ -88,83 +78,43 @@ async function recipientContactIds(
 }
 
 /**
- * Resolve a Files row or mail attachment the caller may read. `contactIds` is
- * the contact scope a Files row must fall in (org-general rows always do).
- * Throws forbidden / not found; never returns a source the caller cannot read.
+ * The shared read check (lib/existingAttachments.ts: any member reads Files, a
+ * mail attachment needs its mailbox), narrowed for a reply: a Files row must
+ * also be org-general or linked to one of `contactIds`, the scope the drafting
+ * path retrieves under. Throws forbidden / not found.
  */
-async function resolveReadableSource(
+async function resolveInScope(
 	ctx: QueryCtx,
 	source: AttachExistingSource,
 	id: string,
 	contactIds: readonly Id<'contacts'>[]
-): Promise<ResolvedSource> {
-	if (source === 'semanticFile') {
-		const fileId = ctx.db.normalizeId('semanticFiles', id);
-		const file = fileId ? await ctx.db.get(fileId) : null;
-		if (!file) throwNotFound('File');
+): Promise<ExistingAttachment> {
+	const session = await requireOrgMember(ctx);
+	const resolved = await resolveReadableExistingAttachment(ctx, { source, id }, session);
+	if (resolved.source === 'semanticFile') {
+		const file = await ctx.db.get(resolved.id as Id<'semanticFiles'>);
 		const visible =
-			isContactScopeVisible(file.contactIds, 'org-general-only') ||
-			contactIds.some((contactId) => isContactScopeVisible(file.contactIds, contactId));
+			isContactScopeVisible(file?.contactIds, 'org-general-only') ||
+			contactIds.some((contactId) => isContactScopeVisible(file?.contactIds, contactId));
 		if (!visible) throwForbidden('This file belongs to another contact');
-		if (!file.storageId) throwInvalidState('This file is no longer stored');
-		return {
-			kind: 'blob',
-			storageId: file.storageId,
-			filename: file.filename,
-			contentType: file.mimeType,
-		};
 	}
-	const rowId = ctx.db.normalizeId('mailAttachments', id);
-	const row = rowId ? await ctx.db.get(rowId) : null;
-	if (!row) throwNotFound('Attachment');
-	const readable = await requireMailboxAccess(ctx, row.mailboxId);
-	if (!readable.ok) throwForbidden('Attachment not accessible');
-	const message = await ctx.db.get(row.messageId);
-	if (!message) throwNotFound('Message');
-	const parts = await ctx.db
-		.query('mailMessageParts')
-		.withIndex('by_raw_storage', (q) => q.eq('rawStorageId', message.rawStorageId))
-		.first();
-	const part =
-		parts && parts.status === 'stored'
-			? pickStoredPart(parts.parts, row.partIndex, row.filename)
-			: null;
-	if (part) {
-		return {
-			kind: 'blob',
-			storageId: part.storageId,
-			filename: row.filename,
-			contentType: part.contentType,
-		};
-	}
-	return {
-		kind: 'rawPart',
-		rawStorageId: message.rawStorageId,
-		partIndex: row.partIndex,
-		filename: row.filename,
-		contentType: row.contentType,
-	};
+	return resolved;
 }
 
 /** Resolve a source for a draft the caller can write. */
 export const resolveForDraft = internalQuery({
 	args: {
 		draftId: v.id('mailDrafts'),
-		source: attachExistingSourceValidator,
+		source: existingAttachmentSourceValidator,
 		id: v.string(),
 	},
-	handler: async (ctx, args): Promise<ResolvedSource> => {
+	handler: async (ctx, args): Promise<ExistingAttachment> => {
 		const draft = await ctx.db.get(args.draftId);
 		if (!draft) throwNotFound('Draft');
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
 		assertStateIs(draft, 'draft');
-		return await resolveReadableSource(
-			ctx,
-			args.source,
-			args.id,
-			await recipientContactIds(ctx, draft)
-		);
+		return await resolveInScope(ctx, args.source, args.id, await recipientContactIds(ctx, draft));
 	},
 });
 
@@ -175,12 +125,12 @@ export const resolveForDraft = internalQuery({
  */
 export const resolveReadableFile = internalQuery({
 	args: {
-		source: attachExistingSourceValidator,
+		source: existingAttachmentSourceValidator,
 		id: v.string(),
 		contactId: v.optional(v.id('contacts')),
 	},
 	handler: async (ctx, args): Promise<{ filename: string }> => {
-		const resolved = await resolveReadableSource(
+		const resolved = await resolveInScope(
 			ctx,
 			args.source,
 			args.id,
@@ -273,18 +223,6 @@ export const bindCopiedAttachment = internalMutation({
 	},
 });
 
-/** The plaintext bytes of a resolved source, or null when they are gone. */
-async function readSourceBytes(
-	ctx: Pick<ActionCtx, 'storage'>,
-	resolved: ResolvedSource
-): Promise<Uint8Array | null> {
-	if (resolved.kind === 'blob') return await readSealedBlobBytes(ctx.storage, resolved.storageId);
-	const raw = await readSealedBlobBytes(ctx.storage, resolved.rawStorageId);
-	if (!raw) return null;
-	const part = extractAttachmentAt(bytesToBinaryString(raw), resolved.partIndex, resolved.filename);
-	return part ? part.bytes : null;
-}
-
 /**
  * Copy an existing file onto a draft the caller can write and return the
  * draft's attachments. Shared by `mail.drafts.attachExisting` and the Answer
@@ -294,11 +232,11 @@ export async function copyExistingIntoDraft(
 	ctx: Pick<ActionCtx, 'runQuery' | 'runMutation' | 'storage'>,
 	args: { draftId: Id<'mailDrafts'>; source: AttachExistingSource; id: string }
 ): Promise<{ attachments: DraftAttachment[]; filename: string }> {
-	const resolved: ResolvedSource = await ctx.runQuery(
+	const resolved: ExistingAttachment = await ctx.runQuery(
 		internal.mail.attachExisting.resolveForDraft,
 		args
 	);
-	const bytes = await readSourceBytes(ctx, resolved);
+	const bytes = await readExistingAttachmentBytes(ctx.storage, resolved.bytes);
 	if (!bytes || bytes.byteLength === 0) throwInvalidState('The file could not be read');
 	if (bytes.byteLength > MAX_ATTACHMENT_BYTES) {
 		throwInvalidInput('Attachment size exceeds the allowed limit');

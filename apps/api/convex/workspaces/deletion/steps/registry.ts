@@ -258,13 +258,10 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'chatRoomMembers',
 	'chatRooms',
 
-	// AI assistant (children before parent)
+	// AI assistant (children first), draft stream buffers, Answer mode ask sessions
 	'aiMessages',
 	'aiConversations',
-
-	// AI draft-revise stream buffers (ephemeral, owner-scoped)
 	'aiDraftStreams',
-	// Answer mode ask sessions (owner-scoped)
 	'answerAskSessions',
 
 	// Independent feature state
