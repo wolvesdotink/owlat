@@ -280,7 +280,8 @@ export type RecipientCountReadout = AudienceCount & { background: AudienceCountB
  * zero-match segment over 100,000 contacts costs the same as a small one.
  *
  *  1. A job for this exact definition is complete → its exact totals.
- *  2. A job is counting → its running totals, a lower bound.
+ *  2. A job is recounting → the previous complete result, still exact as of
+ *     its `countedAt`; a first count → its running totals, a lower bound.
  *  3. Otherwise the first page inline: `exact` when it reached the end,
  *     else a lower bound (`read_budget_exhausted`) and `unavailable`, which
  *     tells the client to request a job.
@@ -307,6 +308,21 @@ export async function countRecipientsForAudience(
 				status: 'complete',
 				countedAt,
 				retryAfter: countedAt + AUDIENCE_COUNT_MAX_AGE_MS,
+			},
+		};
+	}
+	if (job?.status === 'counting' && job.lastCountedAt !== undefined) {
+		// A recount: keep serving the previous complete result (exact as of when
+		// it was taken) rather than running totals that start again from zero.
+		return {
+			total: job.lastTotal ?? 0,
+			eligible: job.lastEligible ?? 0,
+			completeness: 'exact',
+			background: {
+				status: 'complete',
+				countedAt: job.lastCountedAt,
+				retryAfter: job.updatedAt + AUDIENCE_COUNT_STALL_MS,
+				recounting: true,
 			},
 		};
 	}

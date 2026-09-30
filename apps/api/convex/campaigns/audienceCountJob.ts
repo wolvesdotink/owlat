@@ -66,6 +66,43 @@ export async function planAudienceCountJob(
 	};
 }
 
+/**
+ * The complete result a restarted row keeps serving while it recounts: the
+ * row's own result when it finished, else the one it already carried (a
+ * stalled recount restarting again). Cleared when the row is reused for a
+ * different snapshot, whose old numbers would not describe it.
+ */
+export function lastCompleteResult(
+	existing: Pick<
+		Doc<'audienceCountJobs'>,
+		| 'status'
+		| 'total'
+		| 'eligible'
+		| 'completedAt'
+		| 'updatedAt'
+		| 'lastTotal'
+		| 'lastEligible'
+		| 'lastCountedAt'
+	>,
+	sameDefinition: boolean
+): Pick<Doc<'audienceCountJobs'>, 'lastTotal' | 'lastEligible' | 'lastCountedAt'> {
+	if (sameDefinition && existing.status === 'complete') {
+		return {
+			lastTotal: existing.total,
+			lastEligible: existing.eligible,
+			lastCountedAt: existing.completedAt ?? existing.updatedAt,
+		};
+	}
+	if (sameDefinition && existing.lastCountedAt !== undefined) {
+		return {
+			lastTotal: existing.lastTotal,
+			lastEligible: existing.lastEligible,
+			lastCountedAt: existing.lastCountedAt,
+		};
+	}
+	return { lastTotal: undefined, lastEligible: undefined, lastCountedAt: undefined };
+}
+
 export type AudienceCountStepOutcome =
 	| { kind: 'abandoned' }
 	| {
@@ -127,8 +164,9 @@ export const request = campaignsMutation({
 			.query('audienceCountJobs')
 			.withIndex('by_audience_key', (q) => q.eq('audienceKey', planned.target.key))
 			.first();
-		if (existing && jobCountsTarget(existing, planned.target)) {
-			if (isAudienceCountJobCurrent(existing, now)) return { status: 'current' };
+		const sameDefinition = existing !== null && jobCountsTarget(existing, planned.target);
+		if (existing && sameDefinition && isAudienceCountJobCurrent(existing, now)) {
+			return { status: 'current' };
 		}
 
 		const fresh = {
@@ -146,7 +184,12 @@ export const request = campaignsMutation({
 		if (existing) {
 			generation = existing.generation + 1;
 			jobId = existing._id;
-			await ctx.db.patch(jobId, { ...fresh, generation, completedAt: undefined });
+			await ctx.db.patch(jobId, {
+				...fresh,
+				generation,
+				completedAt: undefined,
+				...lastCompleteResult(existing, sameDefinition),
+			});
 		} else {
 			generation = 1;
 			jobId = await ctx.db.insert('audienceCountJobs', { ...fresh, generation });

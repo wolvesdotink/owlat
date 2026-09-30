@@ -20,6 +20,12 @@ interface CampaignData {
 	replyTo: string;
 	audienceDisplayText: string;
 	audienceCount: number;
+	/**
+	 * `audienceCount` is a lower bound (the wizard's readout stopped at one page
+	 * or is still on a first background count, #916): shown as "N+", always
+	 * confirmed, and kept out of the capacity note, which needs the real size.
+	 */
+	audienceCountAtLeast?: boolean;
 	campaignSubject: string;
 	selectedTemplate: EmailTemplate | null;
 	// A/B Test data
@@ -65,12 +71,19 @@ const isTestEmailModalOpen = ref(false);
 // a real audience has to be confirmed by name and by number first.
 const isSendConfirmOpen = ref(false);
 const numberFormat = computed(() => new Intl.NumberFormat(locale.value));
-const audienceCountLabel = computed(() => numberFormat.value.format(props.data.audienceCount ?? 0));
+const audienceCountLabel = computed(
+	() =>
+		`${numberFormat.value.format(props.data.audienceCount ?? 0)}${props.data.audienceCountAtLeast ? '+' : ''}`
+);
+/** The size a decision may be taken on: `null` (unknown) for a lower bound. */
+const decisionAudienceCount = computed(() =>
+	props.data.audienceCountAtLeast ? null : props.data.audienceCount
+);
 const undoWindowSeconds = Math.round(SEND_UNDO_WINDOW_MS / 1000);
 
 /** The 60s undo window only covers an immediate send; a date is its own undo. */
 const requiresSendConfirmation = computed(
-	() => sendOption.value === 'now' && needsSendConfirmation(props.data.audienceCount)
+	() => sendOption.value === 'now' && needsSendConfirmation(decisionAudienceCount.value)
 );
 
 // The undo window the send is held for, armed here and counted down by the
@@ -370,7 +383,7 @@ const variantBTemplateName = computed(() => {
 								scope="global"
 							>
 								<template #count>
-									<span class="font-medium text-brand">{{ data.audienceCount ?? 0 }}</span>
+									<span class="font-medium text-brand">{{ audienceCountLabel }}</span>
 								</template>
 							</I18nT>
 						</div>
@@ -524,7 +537,7 @@ const variantBTemplateName = computed(() => {
 			<!-- What can actually go out today, before either option is chosen. -->
 			<CampaignsSendReadinessNote
 				:readiness="sendingReadiness"
-				:audience-size="data.audienceCount"
+				:audience-size="decisionAudienceCount"
 				class="mb-4"
 			/>
 

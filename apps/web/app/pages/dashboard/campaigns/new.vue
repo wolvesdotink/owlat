@@ -3,7 +3,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { Audience } from '@owlat/shared';
 import { api } from '@owlat/api';
 import { isTransientQueryError } from '~/lib/queryRetry';
-import { useRecipientCount } from '~/composables/useRecipientCount';
+import { isLowerBoundCount, useRecipientCount } from '~/composables/useRecipientCount';
 
 const { t } = useI18n();
 
@@ -63,7 +63,7 @@ type SetupStepExpose = {
 		replyTo?: string;
 	};
 	audience?: Audience | null;
-	audienceCount?: { eligible: number; total: number } | null;
+	audienceCount?: { eligible: number; total: number; completeness?: string } | null;
 	selectedTopicName?: string | null;
 	selectedSegment?: { name: string } | null;
 	abTestEnabled?: boolean;
@@ -198,6 +198,7 @@ const handleComplete = () => {
 const reviewData = computed(() => {
 	const setup = setupStepRef.value;
 	const content = contentStepRef.value;
+	const shownCount = setup?.audienceCount ?? recipientCount.value;
 	const c = campaignDetails.value;
 	const cfg = c?.abTestConfig;
 
@@ -223,7 +224,8 @@ const reviewData = computed(() => {
 		fromEmail: setup?.form?.fromEmail ?? c?.fromEmail ?? '',
 		replyTo: setup?.form?.replyTo ?? c?.replyTo ?? '',
 		audienceDisplayText,
-		audienceCount: setup?.audienceCount?.eligible ?? recipientCount.value?.eligible ?? 0,
+		audienceCount: shownCount?.eligible ?? 0,
+		audienceCountAtLeast: isLowerBoundCount(shownCount),
 		campaignSubject: content?.campaignSubject ?? c?.subject ?? '',
 		selectedTemplate: content?.selectedTemplate ?? persistedTemplate.value,
 		abTestEnabled: setup?.abTestEnabled ?? !!cfg,

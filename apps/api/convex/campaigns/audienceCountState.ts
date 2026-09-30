@@ -127,7 +127,9 @@ export async function findAudienceCountJob(
  *  - `counting`    — a job is running; the numbers are its running totals (a
  *                    lower bound).
  *  - `complete`    — a job finished; the numbers are its exact result as of
- *                    `countedAt` (see the freshness contract).
+ *                    `countedAt` (see the freshness contract). `recounting`
+ *                    marks a newer count running behind it; the numbers stay
+ *                    the previous result until that one completes.
  *
  * `retryAfter` is when a request would do something again: a stalled job
  * restarts, a complete one recounts. Requesting earlier is a no-op.
@@ -136,7 +138,7 @@ export type AudienceCountBackground =
 	| { status: 'not_needed' }
 	| { status: 'unavailable' }
 	| { status: 'counting'; startedAt: number; retryAfter: number }
-	| { status: 'complete'; countedAt: number; retryAfter: number };
+	| { status: 'complete'; countedAt: number; retryAfter: number; recounting?: true };
 
 /** Is this row still worth serving and not worth restarting at `now`? */
 export function isAudienceCountJobCurrent(job: Doc<'audienceCountJobs'>, now: number): boolean {

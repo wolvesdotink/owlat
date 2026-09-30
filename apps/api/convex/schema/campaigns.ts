@@ -141,7 +141,9 @@ const campaignSendJobs = defineTable({
  * by the step that reads its page; rows written behind the cursor after that
  * step are not reflected. A `complete` row is served as the exact count with
  * `completedAt`, and the wizard asks for a recount once it is older than the
- * refresh window (`AUDIENCE_COUNT_MAX_AGE_MS`).
+ * refresh window (`AUDIENCE_COUNT_MAX_AGE_MS`). While that recount runs, the
+ * previous complete result (`last*`) stays the served number, still exact as of
+ * `lastCountedAt`, so the readout never drops back to running totals.
  */
 const audienceCountJobs = defineTable({
 	// Definition key; see the table comment.
@@ -163,6 +165,12 @@ const audienceCountJobs = defineTable({
 	startedAt: v.number(),
 	updatedAt: v.number(),
 	completedAt: v.optional(v.number()),
+	// The last COMPLETE result for this definition, kept while a recount runs so
+	// the readout serves it (exact as of `lastCountedAt`) instead of running
+	// totals. Absent on a first count.
+	lastTotal: v.optional(v.number()),
+	lastEligible: v.optional(v.number()),
+	lastCountedAt: v.optional(v.number()),
 })
 	.index('by_audience_key', ['audienceKey'])
 	.index('by_audience_ref', ['audienceRef']);

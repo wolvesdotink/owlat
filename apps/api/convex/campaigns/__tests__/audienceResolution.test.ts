@@ -815,6 +815,49 @@ describe('countRecipients — bounded readout and exact count job', () => {
 		}
 	});
 
+	it('a recount keeps serving the previous exact result until it completes', async () => {
+		vi.useFakeTimers();
+		try {
+			const t = convexTest(schema, modules);
+			const segmentId = await seedWideSegment(t, 1_100, 'recount.test');
+			const audience = { kind: 'segment' as const, segmentId };
+			await t.mutation(api.campaigns.audienceCountJob.request, { audience });
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+			const first = await t.query(api.campaigns.audienceResolution.countRecipients, {
+				audience,
+			});
+			expect(first.background.status).toBe('complete');
+			const countedAt = first.background.status === 'complete' ? first.background.countedAt : 0;
+
+			// Past the refresh window a request restarts the walk.
+			vi.setSystemTime(Date.now() + 16 * 60_000);
+			expect(await t.mutation(api.campaigns.audienceCountJob.request, { audience })).toEqual({
+				status: 'started',
+			});
+			const during = await t.query(api.campaigns.audienceResolution.countRecipients, {
+				audience,
+			});
+			// Not 0/0 running totals: the last complete count, still exact as of then.
+			expect(during.total).toBe(1_100);
+			expect(during.eligible).toBe(first.eligible);
+			expect(during.completeness).toBe('exact');
+			expect(during.background).toMatchObject({ status: 'complete', countedAt, recounting: true });
+
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+			const after = await t.query(api.campaigns.audienceResolution.countRecipients, {
+				audience,
+			});
+			expect(after.completeness).toBe('exact');
+			expect(after.background.status).toBe('complete');
+			expect(after.background).not.toHaveProperty('recounting');
+			if (after.background.status === 'complete') {
+				expect(after.background.countedAt).toBeGreaterThan(countedAt);
+			}
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it('no audience yields zero, exact', async () => {
 		const t = convexTest(schema, modules);
 		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {

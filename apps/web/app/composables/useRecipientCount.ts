@@ -1,4 +1,4 @@
-import { watch } from 'vue';
+import { getCurrentScope, onScopeDispose, ref, watch } from 'vue';
 import { api } from '@owlat/api';
 import type { FunctionArgs, FunctionReturnType } from 'convex/server';
 
@@ -8,6 +8,29 @@ type CountAudience = NonNullable<
 export type RecipientCount = FunctionReturnType<
 	typeof api.campaigns.audienceResolution.countRecipients
 >;
+
+/** The part of a readout the send surfaces read. */
+type CountReading = { eligible: number; completeness?: string } | null | undefined;
+
+/**
+ * Is this reading an "at least" number? A capped or budget-stopped enumeration
+ * (the inline page of a big audience, or a first count's running total) is.
+ * `suppression_truncated` is an over-count, not a lower bound, so it is not.
+ */
+export function isLowerBoundCount(count: CountReading): boolean {
+	return (
+		count?.completeness === 'candidate_capped' || count?.completeness === 'read_budget_exhausted'
+	);
+}
+
+/**
+ * The eligible count when it is exact, else `null` ("unknown"). What a surface
+ * that acts on the size (send estimate, readiness note, confirmation threshold)
+ * may use: a lower bound would understate the blast radius.
+ */
+export function exactEligibleCount(count: CountReading): number | null {
+	return count?.completeness === 'exact' ? count.eligible : null;
+}
 
 /**
  * Whether the readout asks for the background exact count now: the inline page
@@ -25,6 +48,9 @@ export function wantsExactCount(count: RecipientCount, now: number): boolean {
 	return false;
 }
 
+/** Longest single wait for a `retryAfter` re-check (setTimeout's own ceiling is ~24.8 days). */
+const MAX_RECHECK_MS = 60 * 60_000;
+
 /**
  * The campaign recipient readout for one audience (#916).
  *
@@ -35,6 +61,11 @@ export function wantsExactCount(count: RecipientCount, now: number): boolean {
  * state. The job is keyed by the audience definition on the server, so two
  * open wizards share one count, and the query switches to the job's running
  * and then exact totals on its own.
+ *
+ * A reading with a future `retryAfter` is checked again at that instant even
+ * if the data never changes, so a count that stalled (no more steps, so no
+ * rerun) or aged past its refresh window is re-requested while the page stays
+ * open.
  */
 export function useRecipientCount(audience: () => CountAudience | null | undefined) {
 	const { data } = useOrganizationQuery(api.campaigns.audienceResolution.countRecipients, () => ({
@@ -42,13 +73,35 @@ export function useRecipientCount(audience: () => CountAudience | null | undefin
 	}));
 	const convex = useConvex();
 	const asked = new Set<string>();
+	const recheck = ref(0);
+	let timer: ReturnType<typeof setTimeout> | null = null;
+
+	const clearTimer = () => {
+		if (timer !== null) clearTimeout(timer);
+		timer = null;
+	};
+	if (getCurrentScope()) onScopeDispose(clearTimer);
 
 	watch(
-		data,
-		(count) => {
+		[data, recheck],
+		([count]) => {
+			clearTimer();
 			const current = audience();
-			if (!count || !current || !convex || !wantsExactCount(count, Date.now())) return;
-			const background = count.background;
+			if (!count || !current || !convex) return;
+			// A server one release behind returns no `background`: no job to ask for.
+			const background = count.background as RecipientCount['background'] | undefined;
+			if (!background) return;
+			const now = Date.now();
+			if (!wantsExactCount(count, now)) {
+				if ('retryAfter' in background) {
+					const wait = Math.min(background.retryAfter - now + 1_000, MAX_RECHECK_MS);
+					timer = setTimeout(() => {
+						timer = null;
+						recheck.value += 1;
+					}, wait);
+				}
+				return;
+			}
 			const token = JSON.stringify([
 				current,
 				background.status,

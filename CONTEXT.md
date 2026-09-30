@@ -1575,7 +1575,9 @@ route through it so a count can never disagree with a send:
   which number is shown: `not_needed` (the inline page was the whole
   audience, exact and live), `unavailable` (a lower bound; the client
   requests a job), `counting` (the job's running totals, a lower bound) or
-  `complete` (the job's exact result as of `countedAt`). A multi-step count
+  `complete` (the job's exact result as of `countedAt`; while a recount
+  runs, the previous complete result stays served, flagged `recounting`,
+  instead of running totals). A multi-step count
   is not a snapshot: each Contact is judged once, by the step that reads
   its page, and a result older than the refresh window is recounted on the
   next request. An edited Segment or a Topic's DOI flag change is a new
@@ -2080,7 +2082,7 @@ Per-call order of operations:
     consolidating into the module closes the drift seam where any
     future non-HTTP shell would miss it.
 11. Enqueue through `enqueueGovernedSend(ctx, { kind: 'transactional',
-id: sendId }, { envelopeInput })` (`delivery/governedEnqueue.ts`), which
+    id: sendId }, { envelopeInput })` (`delivery/governedEnqueue.ts`), which
     picks the transactional pool and wires `onComplete: completeSend` with
     the `sendRef` context.
 

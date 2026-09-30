@@ -143,3 +143,44 @@ describe('useCampaignAudience', () => {
 		expect(requestCount).toHaveBeenCalledOnce();
 	});
 });
+
+describe('useRecipientCount — a stalled count is re-requested without new data (#916)', () => {
+	it('re-checks at retryAfter even when the readout never changes', async () => {
+		vi.useFakeTimers();
+		try {
+			const now = Date.now();
+			const state = useCampaignAudience();
+			state.selectedTopicId.value = topicId;
+			await nextTick();
+			// A first count whose steps stopped: no more commits, so no rerun.
+			countData.value = {
+				total: 0,
+				eligible: 0,
+				completeness: 'read_budget_exhausted',
+				background: { status: 'counting', startedAt: now, retryAfter: now + 120_000 },
+			};
+			await nextTick();
+			expect(requestCount).not.toHaveBeenCalled();
+
+			await vi.advanceTimersByTimeAsync(121_000);
+			expect(requestCount).toHaveBeenCalledOnce();
+			expect(requestCount.mock.calls[0]?.[1]).toEqual({ audience: { kind: 'topic', topicId } });
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
+describe('recipient count readings for send decisions (#916)', () => {
+	it('only an exact count is a size; lower bounds are "at least"', async () => {
+		const { exactEligibleCount, isLowerBoundCount } = await import('../useRecipientCount');
+		expect(exactEligibleCount({ eligible: 36_246, completeness: 'exact' })).toBe(36_246);
+		expect(exactEligibleCount({ eligible: 724, completeness: 'read_budget_exhausted' })).toBeNull();
+		expect(exactEligibleCount({ eligible: 600, completeness: 'suppression_truncated' })).toBeNull();
+		expect(exactEligibleCount(undefined)).toBeNull();
+		expect(isLowerBoundCount({ eligible: 724, completeness: 'read_budget_exhausted' })).toBe(true);
+		expect(isLowerBoundCount({ eligible: 25_000, completeness: 'candidate_capped' })).toBe(true);
+		expect(isLowerBoundCount({ eligible: 600, completeness: 'suppression_truncated' })).toBe(false);
+		expect(isLowerBoundCount({ eligible: 12, completeness: 'exact' })).toBe(false);
+	});
+});
