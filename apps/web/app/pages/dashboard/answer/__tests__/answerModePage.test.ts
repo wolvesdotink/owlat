@@ -21,6 +21,8 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import AnswerModeFrame from '~/components/answer/AnswerModeFrame.vue';
 import { useAnswerAiFocus, useAnswerLeftDraft } from '~/composables/useAnswerMode';
 import AnswerPage from '../m/[messageId].vue';
+import PostboxOverflowMenu from '~/components/postbox/PostboxOverflowMenu.vue';
+import { useClickOutside } from '~/composables/useClickOutside';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -92,6 +94,7 @@ beforeAll(() => {
 		definePageMeta: (meta: Record<string, unknown>) => {
 			capturedMeta = meta;
 		},
+		useClickOutside,
 		useRoute: () => route,
 		useRouter: () => ({
 			replace: routerReplace,
@@ -181,7 +184,7 @@ const inert = (name: string) => defineComponent({ name, setup: () => () => h('di
 
 let wrapper: VueWrapper | null = null;
 
-async function mountAt(query: Record<string, string>) {
+async function mountAt(query: Record<string, string>, opts: { realMenu?: boolean } = {}) {
 	route.query = query;
 	route.fullPath = `/dashboard/answer/m/msg_1${Object.keys(query).length ? '?' + new URLSearchParams(query) : ''}`;
 	wrapper = mount(AnswerPage, {
@@ -193,7 +196,9 @@ async function mountAt(query: Record<string, string>) {
 				AnswerConversation: ConversationStub,
 				PostboxComposer: ComposerStub,
 				PostboxReplyGuard: GuardStub,
-				PostboxOverflowMenu: passThrough('PostboxOverflowMenu'),
+				PostboxOverflowMenu: opts.realMenu
+					? PostboxOverflowMenu
+					: passThrough('PostboxOverflowMenu'),
 				InboxChip: inert('InboxChip'),
 				PostboxReaderSkeleton: inert('PostboxReaderSkeleton'),
 				UiSkeleton: inert('UiSkeleton'),
@@ -309,6 +314,28 @@ describe('Answer mode page', () => {
 			kind: 'reply',
 			recipient: 'Jonas Berg',
 		});
+	});
+
+	it('stays in Answer mode when Esc only closes an open popover (the top bar ⋯)', async () => {
+		const w = await mountAt({}, { realMenu: true });
+		const trigger = w.get('header button[aria-haspopup="menu"]');
+		await trigger.trigger('click');
+		expect(w.find('header [role="menu"]').exists()).toBe(true);
+
+		// Focus stays on the trigger after the click, outside the panel.
+		trigger.element.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+		);
+		await flushPromises();
+
+		expect(w.find('header [role="menu"]').exists()).toBe(false);
+		expect(navigateTo).not.toHaveBeenCalled();
+
+		// The next Esc, with nothing open, leaves.
+		document.body.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+		);
+		expect(navigateTo).toHaveBeenCalledTimes(1);
 	});
 
 	it('lets the first Esc go of the editor instead of leaving', async () => {

@@ -25,6 +25,7 @@ import type { SenderAuthInput, SenderHeuristics } from '~/utils/senderAuth';
 import type { InboundEncryptionInfo } from '~/utils/sealedMessage';
 import type { InboundSignatureInfo } from '~/utils/signatureBadge';
 import { deriveTrustChip, TRUST_CHIP_TONE_CLASSES } from '~/utils/postboxTrustChip';
+import { useEscapeToClose } from '~/composables/useEscapeToClose';
 
 const props = defineProps<{
 	mailboxId: string;
@@ -101,20 +102,12 @@ const showKeyPanel = computed(
 const open = ref(false);
 const rootRef = ref<HTMLElement | null>(null);
 
-// Outside click (the shared composable owns the listener lifecycle) and Escape
-// both dismiss — Escape at the document level, so it works while focus is still
-// on the chip trigger rather than inside the panel.
+// Outside click and Escape both dismiss. Escape is claimed, so the same press
+// does not also close the reader's conversation or leave Answer mode.
 useClickOutside(rootRef, () => {
 	if (open.value) open.value = false;
 });
-const handleEscape = (event: KeyboardEvent) => {
-	if (event.key === 'Escape') open.value = false;
-};
-watch(open, (isOpen) => {
-	if (isOpen) document.addEventListener('keydown', handleEscape);
-	else document.removeEventListener('keydown', handleEscape);
-});
-onUnmounted(() => document.removeEventListener('keydown', handleEscape));
+useEscapeToClose(open);
 </script>
 
 <template>
