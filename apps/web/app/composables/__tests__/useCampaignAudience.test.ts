@@ -6,7 +6,7 @@
  * like a workspace with no topics.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ref, type Ref } from 'vue';
+import { nextTick, ref, type Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 
 interface ListHandle {
@@ -18,6 +18,8 @@ interface ListHandle {
 let topics: ListHandle;
 let segments: ListHandle;
 let countArgs: () => unknown;
+let countData: Ref<unknown>;
+let requestCount: ReturnType<typeof vi.fn>;
 
 function list(rows: Array<{ _id: string; name: string }>): ListHandle {
 	return { results: ref(rows), error: ref(null), refetch: vi.fn() };
@@ -28,10 +30,18 @@ beforeEach(() => {
 	segments = list([{ _id: 'sg_1', name: 'Active buyers' }]);
 	vi.stubGlobal('useTopicsList', () => topics);
 	vi.stubGlobal('useOrganizationPaginatedQuery', () => segments);
+	countData = ref({
+		total: 3,
+		eligible: 2,
+		completeness: 'exact',
+		background: { status: 'not_needed' },
+	});
 	vi.stubGlobal('useOrganizationQuery', (_query: unknown, args: () => unknown) => {
 		countArgs = args;
-		return { data: ref({ total: 3, eligible: 2, completeness: 'exact' }) };
+		return { data: countData };
 	});
+	requestCount = vi.fn(async () => ({ status: 'started' }));
+	vi.stubGlobal('useConvex', () => ({ mutation: requestCount }));
 });
 
 const { useCampaignAudience } = await import('../useCampaignAudience');
@@ -99,5 +109,37 @@ describe('useCampaignAudience', () => {
 		expect(state.audienceLoadFailed.value).toBe(true);
 		state.retryAudienceLists();
 		expect(topics.refetch).toHaveBeenCalledOnce();
+	});
+
+	it('asks for the exact count once when the readout stopped at one page (#916)', async () => {
+		const state = useCampaignAudience();
+		state.selectedTopicId.value = topicId;
+		await nextTick();
+		expect(requestCount).not.toHaveBeenCalled(); // an exact inline count needs no job
+
+		countData.value = {
+			total: 1_000,
+			eligible: 724,
+			completeness: 'read_budget_exhausted',
+			background: { status: 'unavailable' },
+		};
+		await nextTick();
+		expect(requestCount).toHaveBeenCalledOnce();
+		expect(requestCount.mock.calls[0]?.[1]).toEqual({ audience: { kind: 'topic', topicId } });
+
+		// The same reading again (a rerun) does not ask twice.
+		countData.value = { ...(countData.value as object) };
+		await nextTick();
+		expect(requestCount).toHaveBeenCalledOnce();
+
+		// A running job is left alone until its retry instant has passed.
+		countData.value = {
+			total: 2_000,
+			eligible: 1_450,
+			completeness: 'read_budget_exhausted',
+			background: { status: 'counting', startedAt: 1, retryAfter: Date.now() + 60_000 },
+		};
+		await nextTick();
+		expect(requestCount).toHaveBeenCalledOnce();
 	});
 });

@@ -318,6 +318,8 @@ function defaultStubs(): Record<string, unknown> {
 		useConvex: convexClientStub,
 		useConvexQuery: () => queryResult(undefined),
 		useOrganizationQuery: () => queryResult(undefined),
+		// No backend: a page that would call a mutation (the recipient count job) gets no client.
+		useConvex: () => null,
 		usePaginatedQuery: () => paginatedResult([]),
 		useOrganizationPaginatedQuery: () => paginatedResult([]),
 		// Every flag on: the audit should see the fullest surface a page can

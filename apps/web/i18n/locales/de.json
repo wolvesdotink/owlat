@@ -908,6 +908,8 @@
 					"submit": "Absender hinzufügen"
 				},
 				"setupAudiencePicker": {
+					"countCountedAt": "Gezählt um {time} Uhr",
+					"countCounting": "Alle passenden Kontakte werden gezählt. Die Zahl wird aktualisiert, sobald die Zählung fertig ist.",
 					"createSegment": "Segment erstellen",
 					"createTopic": "Thema erstellen",
 					"empty": "Es gibt noch keine Themen oder Segmente.",

@@ -1566,8 +1566,20 @@ route through it so a count can never disagree with a send:
   grow with the blocklist or with any column a condition references.
   The page shrinks below the requested size when a segment's condition
   fan-out would exceed the per-page query/document budget.
-- `countRecipients({ audience }) → { total, eligible, completeness }` —
-  public query; the wizard's audience-size readout. `completeness` is
+- `countRecipients({ audience }) → { total, eligible, completeness, background }` —
+  public query; the wizard's audience-size readout. Every execution is
+  bounded (#916): it reads ONE page of the resolver above inline, and an
+  audience past that page is counted by a resumable job
+  (`campaigns/audienceCountJob.ts`, one page per scheduled step, rows in
+  `audienceCountJobs` keyed by the audience definition). `background` says
+  which number is shown: `not_needed` (the inline page was the whole
+  audience, exact and live), `unavailable` (a lower bound; the client
+  requests a job), `counting` (the job's running totals, a lower bound) or
+  `complete` (the job's exact result as of `countedAt`). A multi-step count
+  is not a snapshot: each Contact is judged once, by the step that reads
+  its page, and a result older than the refresh window is recounted on the
+  next request. An edited Segment or a Topic's DOI flag change is a new
+  definition, so an old result is never shown for it. `completeness` is
   the **discriminant that says what the two numbers license**, and it
   is load-bearing — the wizard branches on it (`SetupAudiencePicker`),
   and reading it wrong renders an _over_-count as "at least":
@@ -2068,7 +2080,7 @@ Per-call order of operations:
     consolidating into the module closes the drift seam where any
     future non-HTTP shell would miss it.
 11. Enqueue through `enqueueGovernedSend(ctx, { kind: 'transactional',
-    id: sendId }, { envelopeInput })` (`delivery/governedEnqueue.ts`), which
+id: sendId }, { envelopeInput })` (`delivery/governedEnqueue.ts`), which
     picks the transactional pool and wires `onComplete: completeSend` with
     the `sendRef` context.
 

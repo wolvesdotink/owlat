@@ -908,6 +908,8 @@
 					"submit": "Add sender"
 				},
 				"setupAudiencePicker": {
+					"countCountedAt": "Counted at {time}",
+					"countCounting": "Counting every matching contact. The number updates when the count is done.",
 					"createSegment": "Create a segment",
 					"createTopic": "Create a topic",
 					"empty": "There are no topics or segments yet.",

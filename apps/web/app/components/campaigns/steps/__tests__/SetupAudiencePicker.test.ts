@@ -27,48 +27,125 @@ type RecipientCount = FunctionReturnType<typeof api.campaigns.audienceResolution
 
 const stubs = { Icon: { template: '<i />' }, UiErrorAlert: true };
 
-function renderCount(audienceCount: RecipientCount | null): string {
-	const wrapper = mount(SetupAudiencePicker, {
+/** The inline page reached the end: nothing is counting in the background. */
+const LIVE = { status: 'not_needed' } as const;
+
+function mountPicker(audienceCount: RecipientCount | null, selectedTopicId: string | null = null) {
+	return mount(SetupAudiencePicker, {
 		props: {
 			topics: [],
 			segments: [],
 			audienceCount,
 			error: null,
 			audienceType: 'topic' as const,
-			selectedTopicId: null,
+			selectedTopicId: selectedTopicId as never,
 			selectedSegmentId: null,
 		},
 		global: { plugins: [createTestI18n()], stubs },
 	});
-	return wrapper.find('[data-testid="audience-eligible-count"]').text();
+}
+
+function renderCount(audienceCount: RecipientCount | null): string {
+	return mountPicker(audienceCount).find('[data-testid="audience-eligible-count"]').text();
 }
 
 describe('SetupAudiencePicker — the eligible-recipient readout', () => {
 	it('renders an exact count as a plain number', () => {
-		expect(renderCount({ eligible: 1234, total: 1300, completeness: 'exact' })).toBe('1,234');
+		expect(
+			renderCount({ eligible: 1234, total: 1300, completeness: 'exact', background: LIVE })
+		).toBe('1,234');
 	});
 
 	it('marks a capped enumeration as a lower bound', () => {
-		expect(renderCount({ eligible: 25_000, total: 25_000, completeness: 'candidate_capped' })).toBe(
-			'25,000+'
-		);
+		expect(
+			renderCount({
+				eligible: 25_000,
+				total: 25_000,
+				completeness: 'candidate_capped',
+				background: LIVE,
+			})
+		).toBe('25,000+');
 	});
 
 	it('marks a budget-stopped enumeration as a lower bound', () => {
 		expect(
-			renderCount({ eligible: 3_000, total: 3_000, completeness: 'read_budget_exhausted' })
+			renderCount({
+				eligible: 3_000,
+				total: 3_000,
+				completeness: 'read_budget_exhausted',
+				background: LIVE,
+			})
 		).toBe('3,000+');
 	});
 
 	/** An OVER-count bounds nothing from below — "at least" would be a lie. */
 	it('never marks a truncated suppression set as a lower bound', () => {
-		expect(renderCount({ eligible: 600, total: 600, completeness: 'suppression_truncated' })).toBe(
-			'600'
-		);
+		expect(
+			renderCount({
+				eligible: 600,
+				total: 600,
+				completeness: 'suppression_truncated',
+				background: LIVE,
+			})
+		).toBe('600');
 	});
 
 	it('renders zero while the count is still loading', () => {
 		expect(renderCount(null)).toBe('0');
+	});
+});
+
+describe('SetupAudiencePicker — the background exact count (#916)', () => {
+	function status(audienceCount: RecipientCount) {
+		const wrapper = mountPicker(audienceCount, 'topic_1');
+		return {
+			count: wrapper.find('[data-testid="audience-eligible-count"]').text(),
+			status: wrapper.find('[data-testid="audience-count-status"]'),
+			text: wrapper.text(),
+		};
+	}
+
+	it('shows the inline page as "at least" and says the full count is running', () => {
+		const shown = status({
+			eligible: 724,
+			total: 1_000,
+			completeness: 'read_budget_exhausted',
+			background: { status: 'unavailable' },
+		});
+		expect(shown.count).toBe('724+');
+		expect(shown.status.text()).toContain('Counting every matching contact');
+	});
+
+	it('shows the running total as "at least" while the job counts', () => {
+		const shown = status({
+			eligible: 14_500,
+			total: 20_000,
+			completeness: 'read_budget_exhausted',
+			background: { status: 'counting', startedAt: 1, retryAfter: 2 },
+		});
+		expect(shown.count).toBe('14,500+');
+		expect(shown.status.exists()).toBe(true);
+		// Two lower bounds say nothing about the excluded gap.
+		expect(shown.text).not.toContain('not eligible');
+	});
+
+	it('shows a finished count as exact, with the time it was taken', () => {
+		const countedAt = new Date(2026, 8, 30, 14, 5).getTime();
+		const shown = status({
+			eligible: 36_246,
+			total: 50_000,
+			completeness: 'exact',
+			background: { status: 'complete', countedAt, retryAfter: countedAt + 1 },
+		});
+		expect(shown.count).toBe('36,246');
+		expect(shown.status.text()).toMatch(/^Counted at 2:05/);
+		expect(shown.text).toContain('13,754 of 50,000 contacts in this topic are not eligible');
+	});
+
+	it('says nothing extra when the inline page was already the whole audience', () => {
+		const shown = status({ eligible: 12, total: 14, completeness: 'exact', background: LIVE });
+		expect(shown.count).toBe('12');
+		expect(shown.status.exists()).toBe(false);
 	});
 });
 

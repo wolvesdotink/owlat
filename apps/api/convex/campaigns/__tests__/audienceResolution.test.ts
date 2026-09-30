@@ -61,6 +61,23 @@ const modules = Object.fromEntries(
 	})
 );
 
+/**
+ * The wizard's count once it is exact: an audience past one page is counted by
+ * the job (#916), so request it, run it to the end, then read the readout.
+ */
+async function exactRecipientCount(t: TestConvex<typeof schema>, audience: StoredAudience) {
+	vi.useFakeTimers();
+	try {
+		await t.mutation(api.campaigns.audienceCountJob.request, { audience });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+	} finally {
+		vi.useRealTimers();
+	}
+	const count = await t.query(api.campaigns.audienceResolution.countRecipients, { audience });
+	expect(count.completeness).toBe('exact');
+	return count;
+}
+
 async function drainRecipientPages(
 	t: TestConvex<typeof schema>,
 	{ audience }: { audience: StoredAudience }
@@ -372,9 +389,7 @@ describe('Audience resolution — count and send share one predicate', () => {
 		const resolved = await drainRecipientPages(t, {
 			audience,
 		});
-		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {
-			audience,
-		});
+		const count = await exactRecipientCount(t, audience);
 
 		expect(resolved.length).toBe(ELIGIBLE); // every eligible member, across pages
 		expect(new Set(resolved.map((r) => r.email))).toEqual(new Set(eligibleEmails));
@@ -429,9 +444,7 @@ describe('Audience resolution — count and send share one predicate', () => {
 		const resolved = await drainRecipientPages(t, {
 			audience,
 		});
-		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {
-			audience,
-		});
+		const count = await exactRecipientCount(t, audience);
 
 		// DOI-pending is eligible for a segment (the named asymmetry); the
 		// soft-deleted contact never enters the live-only stream, the suppressed
@@ -508,9 +521,7 @@ describe('Audience resolution — count and send share one predicate', () => {
 		const resolved = await drainRecipientPages(t, {
 			audience,
 		});
-		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {
-			audience,
-		});
+		const count = await exactRecipientCount(t, audience);
 
 		expect(resolved.map((r) => r.email)).toEqual(['confirmed@form.test']);
 		expect(resolved.map((r) => String(r._id))).not.toContain(String(pendingFormId));
@@ -654,10 +665,36 @@ describe('resolveRecipientPage — per-page drain equivalence', () => {
 	});
 });
 
-// ── 6. Count cap — bounded wizard readout ────────────────────────────────
+// ── 6. Bounded wizard readout + the resumable exact count (#916) ───────────
 
-describe('countRecipients — capped at the ceiling', () => {
-	it('an audience under the ceiling reports an exact, uncapped count', async () => {
+/** `count` live contacts all matching one `email contains` segment. */
+async function seedWideSegment(t: TestConvex<typeof schema>, count: number, domain: string) {
+	return await t.run(async (ctx) => {
+		for (let i = 0; i < count; i++) {
+			await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: `c${i}@${domain}`, doiStatus: 'not_required' })
+			);
+		}
+		// Two suppressed, so eligible and total differ.
+		await ctx.db.insert('blockedEmails', createTestBlockedEmail({ email: `c0@${domain}` }));
+		await ctx.db.insert('blockedEmails', createTestBlockedEmail({ email: `c7@${domain}` }));
+		return await ctx.db.insert('segments', {
+			name: `${domain} folks`,
+			filters: {
+				logic: 'AND',
+				conditions: [
+					{ kind: 'contact_property', field: 'email', operator: 'contains', value: domain },
+				],
+			},
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+		});
+	});
+}
+
+describe('countRecipients — bounded readout and exact count job', () => {
+	it('an audience that fits one page reports an exact, live count', async () => {
 		const t = convexTest(schema, modules);
 		const { topicId } = await seed(t);
 		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {
@@ -666,46 +703,129 @@ describe('countRecipients — capped at the ceiling', () => {
 		expect(count.completeness).toBe('exact');
 		expect(count.total).toBe(6);
 		expect(count.eligible).toBe(2);
+		expect(count.background).toEqual({ status: 'not_needed' });
 	});
 
-	it('an audience over the ceiling reports candidate_capped clamped to 25,000', async () => {
-		const t = convexTest(schema, modules);
-		// Seed > 25,000 matching live contacts so the stream hits COUNT_CEILING.
-		const OVER = 25_010;
-		const segmentId = await t.run(async (ctx) => {
-			for (let i = 0; i < OVER; i++) {
-				await ctx.db.insert(
-					'contacts',
-					createTestContact({ email: `cap${i}@cap.test`, doiStatus: 'not_required' })
-				);
-			}
-			return await ctx.db.insert('segments', {
-				name: 'cap.test folks',
-				filters: {
-					logic: 'AND',
-					conditions: [
-						{ kind: 'contact_property', field: 'email', operator: 'contains', value: 'cap.test' },
-					],
-				},
-				createdAt: Date.now(),
-				updatedAt: Date.now(),
+	it('a bigger audience reads one page inline, then the job counts it exactly', async () => {
+		vi.useFakeTimers();
+		try {
+			const t = convexTest(schema, modules);
+			const segmentId = await seedWideSegment(t, 1_250, 'wide.test');
+			const audience = { kind: 'segment' as const, segmentId };
+
+			const inline = await t.query(api.campaigns.audienceResolution.countRecipients, {
+				audience,
 			});
-		});
+			// One page is a LOWER bound, never the size.
+			expect(inline.completeness).toBe('read_budget_exhausted');
+			expect(inline.total).toBeLessThan(1_250);
+			expect(inline.background).toEqual({ status: 'unavailable' });
 
-		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {
-			audience: { kind: 'segment', segmentId },
-		});
-		expect(count.completeness).toBe('candidate_capped');
-		expect(count.total).toBe(25_000); // clamped to the ceiling
-		expect(count.eligible).toBeLessThanOrEqual(25_000);
+			expect(await t.mutation(api.campaigns.audienceCountJob.request, { audience })).toEqual({
+				status: 'started',
+			});
+			// Identical work coalesces onto the running row.
+			expect(await t.mutation(api.campaigns.audienceCountJob.request, { audience })).toEqual({
+				status: 'current',
+			});
+			const counting = await t.query(api.campaigns.audienceResolution.countRecipients, {
+				audience,
+			});
+			expect(counting.background.status).toBe('counting');
+			expect(counting.completeness).toBe('read_budget_exhausted');
+
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+			const exact = await t.query(api.campaigns.audienceResolution.countRecipients, {
+				audience,
+			});
+			expect(exact.completeness).toBe('exact');
+			expect(exact.background.status).toBe('complete');
+			expect(exact.total).toBe(1_250);
+			// Anti-drift: the job's eligible count is what a send resolves.
+			const resolved = await drainRecipientPages(t, { audience });
+			expect(exact.eligible).toBe(resolved.length);
+			expect(exact.eligible).toBe(1_248);
+			// Exactly one row, so the two requests shared the work.
+			const rows = await t.run((ctx) => ctx.db.query('audienceCountJobs').collect());
+			expect(rows).toHaveLength(1);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
-	it('no audience yields zero, uncapped', async () => {
+	it("an edited segment never shows the old definition's count as current", async () => {
+		vi.useFakeTimers();
+		try {
+			const t = convexTest(schema, modules);
+			const segmentId = await seedWideSegment(t, 1_100, 'edit.test');
+			const audience = { kind: 'segment' as const, segmentId };
+			await t.mutation(api.campaigns.audienceCountJob.request, { audience });
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+			const before = await t.query(api.campaigns.audienceResolution.countRecipients, {
+				audience,
+			});
+			expect(before.background.status).toBe('complete');
+			expect(before.total).toBe(1_100);
+
+			// Narrow the segment to nobody: the finished count is for the OLD filters.
+			await t.run(async (ctx) => {
+				await ctx.db.patch(segmentId, {
+					filters: {
+						logic: 'AND',
+						conditions: [
+							{ kind: 'contact_property', field: 'email', operator: 'contains', value: 'nobody' },
+						],
+					},
+				});
+			});
+			const after = await t.query(api.campaigns.audienceResolution.countRecipients, {
+				audience,
+			});
+			expect(after).toEqual({
+				total: 0,
+				eligible: 0,
+				completeness: 'read_budget_exhausted',
+				background: { status: 'unavailable' },
+			});
+
+			// A job started for one definition and edited mid-walk is abandoned.
+			await t.mutation(api.campaigns.audienceCountJob.request, { audience });
+			await t.run(async (ctx) => {
+				await ctx.db.patch(segmentId, {
+					filters: {
+						logic: 'AND',
+						conditions: [
+							{ kind: 'contact_property', field: 'email', operator: 'contains', value: 'edit' },
+						],
+					},
+				});
+			});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+			const rows = await t.run((ctx) => ctx.db.query('audienceCountJobs').collect());
+			// The first definition's fresh result is kept for its own key; the
+			// second walk saw the definition move and stopped.
+			expect(rows.map((r) => r.status).sort()).toEqual(['abandoned', 'complete']);
+			const current = await t.query(api.campaigns.audienceResolution.countRecipients, {
+				audience,
+			});
+			expect(current.background).toEqual({ status: 'unavailable' });
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('no audience yields zero, exact', async () => {
 		const t = convexTest(schema, modules);
 		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {
 			audience: undefined,
 		});
-		expect(count).toEqual({ total: 0, eligible: 0, completeness: 'exact' });
+		expect(count).toEqual({
+			total: 0,
+			eligible: 0,
+			completeness: 'exact',
+			background: { status: 'not_needed' },
+		});
 	});
 });
 

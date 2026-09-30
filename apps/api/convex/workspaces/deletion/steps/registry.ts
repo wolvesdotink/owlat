@@ -180,6 +180,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 
 	// Campaign machinery before the campaign parents
 	'campaignSendJobs',
+	'audienceCountJobs',
 	'campaignStatShards',
 	'campaignSenders',
 	'sendDailyStats',
@@ -459,6 +460,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	webhookPayloads: makeSweepStep('webhookPayloads'),
 	automationStatShards: makeSweepStep('automationStatShards'),
 	campaignSendJobs: makeSweepStep('campaignSendJobs'),
+	audienceCountJobs: makeSweepStep('audienceCountJobs'),
 	campaignStatShards: makeSweepStep('campaignStatShards'),
 	campaignSenders: makeSweepStep('campaignSenders'),
 	sendDailyStats: makeSweepStep('sendDailyStats'),

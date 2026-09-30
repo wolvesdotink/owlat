@@ -121,6 +121,53 @@ const campaignSendJobs = defineTable({
 	.index('by_phase_updatedAt', ['phase', 'updatedAt']);
 
 /**
+ * Audience count job — the resumable EXACT count behind the campaign wizard's
+ * recipient readout (#916). The subscribed `countRecipients` query reads one
+ * budgeted page inline; when that page does not reach the end of the audience,
+ * the wizard asks `campaigns.audienceCountJob.request` for an exact count and
+ * this row carries it across as many bounded steps as the audience needs (one
+ * recipient page per step, the send walker's own page resolver).
+ *
+ * One row per audience DEFINITION: `audienceKey` folds in everything that
+ * decides membership and eligibility semantics (the topic and its DOI flag, or
+ * the segment and a hash of the filters it resolves), so an edited segment gets
+ * a new key and never reads the old definition's result. `resolvedAudience` is
+ * the snapshot every step resolves against (a segment's filters are frozen into
+ * it), and each step re-derives the key and abandons the row when it no longer
+ * matches. `generation` fences a restarted row against the steps of its
+ * previous run.
+ *
+ * FRESHNESS: a multi-step scan is not a snapshot. Each contact is judged once,
+ * by the step that reads its page; rows written behind the cursor after that
+ * step are not reflected. A `complete` row is served as the exact count with
+ * `completedAt`, and the wizard asks for a recount once it is older than the
+ * refresh window (`AUDIENCE_COUNT_MAX_AGE_MS`).
+ */
+const audienceCountJobs = defineTable({
+	// Definition key; see the table comment.
+	audienceKey: v.string(),
+	// The topic or segment id, so a new definition can drop its predecessors.
+	audienceRef: v.string(),
+	// The audience as the wizard asked for it (segment filters possibly live).
+	audience: audienceValidator,
+	// The snapshot every step resolves (segment filters frozen in).
+	resolvedAudience: audienceValidator,
+	generation: v.number(),
+	status: v.union(v.literal('counting'), v.literal('complete'), v.literal('abandoned')),
+	// Opaque page cursor for the NEXT step. `''` = start.
+	cursor: v.string(),
+	// Running totals over the committed steps (same units as `countRecipients`).
+	total: v.number(),
+	eligible: v.number(),
+	pages: v.number(),
+	startedAt: v.number(),
+	updatedAt: v.number(),
+	completedAt: v.optional(v.number()),
+})
+	.index('by_audience_key', ['audienceKey'])
+	.index('by_audience_ref', ['audienceRef']);
+
+/**
  * Campaign tables — one-time marketing email blasts + per-recipient send tracking.
  *
  * Spread into `defineSchema()` from schema.ts via `...campaignTables`.
@@ -274,6 +321,9 @@ export const campaignTables = {
 	// remainder); the orchestrator drives it page-by-page so no single query
 	// resolves the whole audience.
 	campaignSendJobs,
+
+	// Resumable exact audience counts for the campaign wizard (see above).
+	audienceCountJobs,
 
 	// Write-sharded per-campaign send counters. Each send/delivered/opened/clicked/
 	// bounced event bumps a RANDOM shard of (campaignId, shardKey) instead of the
