@@ -846,6 +846,7 @@ import type * as mail_ai_editLearning from '../mail/ai/editLearning.js';
 import type * as mail_ai_gate from '../mail/ai/gate.js';
 import type * as mail_ai_needsReplyClarify from '../mail/ai/needsReplyClarify.js';
 import type * as mail_ai_needsReplyClassify from '../mail/ai/needsReplyClassify.js';
+import type * as mail_ai_needsReplyDraft from '../mail/ai/needsReplyDraft.js';
 import type * as mail_ai_needsReplyScoring from '../mail/ai/needsReplyScoring.js';
 import type * as mail_ai_replyIntent from '../mail/ai/replyIntent.js';
 import type * as mail_ai_priorityScore from '../mail/ai/priorityScore.js';
@@ -2136,6 +2137,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/ai/gate': typeof mail_ai_gate;
 	'mail/ai/needsReplyClarify': typeof mail_ai_needsReplyClarify;
 	'mail/ai/needsReplyClassify': typeof mail_ai_needsReplyClassify;
+	'mail/ai/needsReplyDraft': typeof mail_ai_needsReplyDraft;
 	'mail/ai/needsReplyScoring': typeof mail_ai_needsReplyScoring;
 	'mail/ai/replyIntent': typeof mail_ai_replyIntent;
 	'mail/ai/priorityScore': typeof mail_ai_priorityScore;
