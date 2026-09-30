@@ -203,7 +203,7 @@ describe('every read is charged', () => {
 					budget,
 					'walker'
 				);
-				const sendIds = fetched.filter((doc) => 'contactEmail' in doc).map((doc) => doc._id);
+				const sendIds = fetched.filter((doc) => 'contactEmail' in doc).map((doc) => doc['_id']);
 				expect(new Set(sendIds).size).toBe(sendIds.length);
 				const fetchedBytes = fetched.reduce((sum, doc) => sum + estimateDocumentBytes(doc), 0);
 				expect(budget.bytes).toBeGreaterThanOrEqual(fetchedBytes);
