@@ -8,8 +8,18 @@
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import { logger } from './logger.js';
-
-const DELIVERY_LOG_PREFIX = 'mta:delivery-log:';
+import {
+	RECORD_DELIVERY_EVENT_SCRIPT,
+	indexCoversAllWrites,
+	indexMatchesRetainedStream,
+	messageIndexKeyFor,
+	orgStatsKeyFor,
+	readDayIndex,
+	scanDeliveryStream,
+	statsKeyFor,
+	streamKeyFor,
+	type StreamEntry,
+} from './deliveryLogIndex.js';
 
 export type DeliveryStatus =
 	| 'delivered'
@@ -45,7 +55,8 @@ export interface DeliveryEvent {
 }
 
 /**
- * Log a delivery event to a daily Redis Stream
+ * Log a delivery event to a daily Redis Stream and its per-day indexes
+ * (see deliveryLogIndex.ts) in one atomic script call.
  */
 export async function logDeliveryEvent(
 	redis: Redis,
@@ -53,7 +64,6 @@ export async function logDeliveryEvent(
 	config: MtaConfig
 ): Promise<void> {
 	const today = new Date().toISOString().split('T')[0]!;
-	const streamKey = `${DELIVERY_LOG_PREFIX}${today}`;
 
 	try {
 		// Build flat field array for XADD
@@ -86,14 +96,21 @@ export async function logDeliveryEvent(
 		if (event.provider) fields.push('provider', event.provider);
 		if (event.annotation) fields.push('annotation', event.annotation);
 
-		// XADD with approximate maxlen trimming
-		await redis.xadd(streamKey, 'MAXLEN', '~', String(config.deliveryLogMaxLen), '*', ...fields);
-
-		// Set TTL on the stream key (only if not already set — avoids resetting on every write)
-		const ttl = await redis.ttl(streamKey);
-		if (ttl === -1) {
-			await redis.expire(streamKey, config.deliveryLogTtlHours * 3600);
-		}
+		// XADD with approximate maxlen trimming, the stream TTL (set once, when
+		// the day's stream is created) and the index updates, atomically.
+		await redis.eval(
+			RECORD_DELIVERY_EVENT_SCRIPT,
+			4,
+			streamKeyFor(today),
+			statsKeyFor(today),
+			orgStatsKeyFor(today, event.orgId),
+			messageIndexKeyFor(today),
+			String(config.deliveryLogMaxLen),
+			String(config.deliveryLogTtlHours * 3_600_000),
+			event.status,
+			event.messageId,
+			...fields
+		);
 	} catch (err) {
 		// Non-critical — don't let logging failures affect delivery
 		logger.warn({ err, messageId: event.messageId }, 'Failed to write delivery log event');
@@ -163,7 +180,7 @@ export async function queryDeliveryLogs(
 	for (const date of dates) {
 		if (entries.length >= limit) break;
 
-		const streamKey = `${DELIVERY_LOG_PREFIX}${date}`;
+		const streamKey = streamKeyFor(date);
 		const startId = query.cursor ?? '-';
 		const remaining = limit - entries.length;
 
@@ -193,15 +210,22 @@ export async function queryDeliveryLogs(
 	return { entries, nextCursor };
 }
 
+/** Stream entries read per XRANGE page when a day has to be scanned. */
+export const STATS_SCAN_PAGE_SIZE = 1000;
+export const MESSAGE_SCAN_PAGE_SIZE = 500;
+
 /**
- * Get delivery log stats for a date range
+ * Status counts over the retained delivery log entries of one day,
+ * optionally for one organization.
+ *
+ * Reads the day's counters when they provably describe the retained stream
+ * (every entry indexed, nothing trimmed); otherwise scans the stream once.
  */
 export async function getDeliveryLogStats(
 	redis: Redis,
 	date: string,
 	orgId?: string
 ): Promise<Record<string, number>> {
-	const streamKey = `${DELIVERY_LOG_PREFIX}${date}`;
 	const stats: Record<string, number> = {
 		delivered: 0,
 		bounced: 0,
@@ -212,61 +236,79 @@ export async function getDeliveryLogStats(
 		total: 0,
 	};
 
-	// Read all entries and aggregate
-	let cursor = '-';
-	while (true) {
-		const results = await redis.xrange(streamKey, cursor, '+', 'COUNT', 1000);
-		if (results.length === 0) break;
-
-		for (const [id, fields] of results) {
-			const data = parseStreamFields(fields);
-			if (orgId && data.orgId !== orgId) continue;
-
-			stats[data.status] = (stats[data.status] ?? 0) + 1;
-			stats['total'] = (stats['total'] ?? 0) + 1;
-			cursor = id;
-		}
-
-		if (results.length < 1000) break;
+	const { coverage, value } = orgId
+		? await readDayIndex(redis, date, 'org', orgId)
+		: await readDayIndex(redis, date, 'stats');
+	if (coverage.kind === 'absent') return stats;
+	if (indexMatchesRetainedStream(coverage)) {
+		const counts = (value ?? {}) as Record<string, string>;
+		for (const [field, count] of Object.entries(counts)) stats[field] = Number(count);
+		return stats;
 	}
+
+	await scanDeliveryStream(redis, streamKeyFor(date), STATS_SCAN_PAGE_SIZE, (_id, fields) => {
+		const data = parseStreamFields(fields);
+		if (orgId && data.orgId !== orgId) return;
+		stats[data.status] = (stats[data.status] ?? 0) + 1;
+		stats['total'] = (stats['total'] ?? 0) + 1;
+	});
 
 	return stats;
 }
 
 /**
- * Get all events for a specific message ID
+ * Get all retained events for a specific message ID, newest day first and in
+ * stream order within a day.
  */
 export async function getMessageEvents(
 	redis: Redis,
 	messageId: string,
 	lookbackDays: number = 3
 ): Promise<DeliveryLogEntry[]> {
-	const entries: DeliveryLogEntry[] = [];
 	const today = new Date();
-
+	const dates: string[] = [];
 	for (let i = 0; i < lookbackDays; i++) {
 		const date = new Date(today);
 		date.setDate(date.getDate() - i);
-		const dateStr = date.toISOString().split('T')[0]!;
-		const streamKey = `${DELIVERY_LOG_PREFIX}${dateStr}`;
-
-		let cursor = '-';
-		while (true) {
-			const results = await redis.xrange(streamKey, cursor, '+', 'COUNT', 500);
-			if (results.length === 0) break;
-
-			for (const [id, fields] of results) {
-				const data = parseStreamFields(fields);
-				if (data.messageId === messageId) {
-					entries.push({ id, ...data });
-				}
-				cursor = id;
-			}
-
-			if (results.length < 500) break;
-		}
+		dates.push(date.toISOString().split('T')[0]!);
 	}
 
+	const perDay = await Promise.all(
+		dates.map((date) => getMessageEventsForDay(redis, date, messageId))
+	);
+	return perDay.flat();
+}
+
+async function getMessageEventsForDay(
+	redis: Redis,
+	date: string,
+	messageId: string
+): Promise<DeliveryLogEntry[]> {
+	const streamKey = streamKeyFor(date);
+	const { coverage, value } = await readDayIndex(redis, date, 'message', messageId);
+	if (coverage.kind === 'absent') return [];
+
+	const entries: DeliveryLogEntry[] = [];
+	if (indexCoversAllWrites(coverage)) {
+		const ids = typeof value === 'string' && value.length > 0 ? value.split(' ') : [];
+		if (ids.length === 0) return entries;
+		// Resolve each indexed ID against the stream; IDs trimmed by MAXLEN
+		// come back empty and are skipped, so histories stay "retained events".
+		const pipeline = redis.pipeline();
+		for (const id of ids) pipeline.xrange(streamKey, id, id);
+		const results = (await pipeline.exec()) ?? [];
+		for (const [err, reply] of results) {
+			if (err) throw err;
+			for (const [id, fields] of reply as StreamEntry[])
+				entries.push({ id, ...parseStreamFields(fields) });
+		}
+		return entries;
+	}
+
+	await scanDeliveryStream(redis, streamKey, MESSAGE_SCAN_PAGE_SIZE, (id, fields) => {
+		const data = parseStreamFields(fields);
+		if (data.messageId === messageId) entries.push({ id, ...data });
+	});
 	return entries;
 }
 

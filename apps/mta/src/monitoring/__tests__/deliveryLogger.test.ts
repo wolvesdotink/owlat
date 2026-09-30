@@ -8,6 +8,7 @@ import {
 } from '../deliveryLogger.js';
 import type { DeliveryEvent } from '../deliveryLogger.js';
 import { createTestConfig } from '../../__tests__/helpers/fixtures.js';
+import { messageIndexKeyFor, orgStatsKeyFor, statsKeyFor } from '../deliveryLogIndex.js';
 
 vi.mock('../logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -48,6 +49,41 @@ describe.skipIf(!STREAMS_SUPPORTED)('deliveryLogger', () => {
 			const today = new Date().toISOString().split('T')[0]!;
 			const entries = await redis.xrange(`mta:delivery-log:${today}`, '-', '+');
 			expect(entries.length).toBeGreaterThanOrEqual(1);
+		});
+
+		it('maintains the day, organization and message indexes in the same script call', async () => {
+			const redis = new Redis();
+			await redis.flushall();
+			const today = new Date().toISOString().split('T')[0]!;
+			await logDeliveryEvent(redis, createEvent({ messageId: 'ix-1', orgId: 'org-a' }), config);
+			await logDeliveryEvent(
+				redis,
+				createEvent({ messageId: 'ix-1', orgId: 'org-a', status: 'bounced' }),
+				config
+			);
+			await logDeliveryEvent(redis, createEvent({ messageId: 'ix-2', orgId: 'org-b' }), config);
+
+			const ids = (await redis.xrange(`mta:delivery-log:${today}`, '-', '+')).map(([id]) => id);
+			expect(ids).toHaveLength(3);
+			expect(await redis.hgetall(statsKeyFor(today))).toEqual({
+				delivered: '2',
+				bounced: '1',
+				total: '3',
+			});
+			expect(await redis.hgetall(orgStatsKeyFor(today, 'org-a'))).toEqual({
+				delivered: '1',
+				bounced: '1',
+				total: '2',
+			});
+			expect(await redis.hget(messageIndexKeyFor(today), 'ix-1')).toBe(`${ids[0]} ${ids[1]}`);
+			expect(await redis.hget(messageIndexKeyFor(today), 'ix-2')).toBe(ids[2]);
+			for (const key of [
+				statsKeyFor(today),
+				orgStatsKeyFor(today, 'org-a'),
+				messageIndexKeyFor(today),
+			]) {
+				expect(await redis.pttl(key)).toBeGreaterThan(0);
+			}
 		});
 	});
 
