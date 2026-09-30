@@ -13,6 +13,7 @@ import {
 	deleteAll,
 	drainEach,
 	drainParents,
+	withoutRow,
 	type PhaseContext,
 	type PhaseRunner,
 } from './phaseKit';
@@ -185,6 +186,7 @@ export const eraseKnowledge: PhaseRunner = (phase) => {
 				.first(),
 		async (link) => {
 			const entry = await ctx.db.get(link.entryId);
+			if (entry) budget.chargeRead(entry);
 			const remaining = (entry?.contactIds ?? []).filter((c) => c !== contactId);
 			if (entry && remaining.length > 0) {
 				await ctx.db.patch(entry._id, { contactIds: remaining });
@@ -212,7 +214,7 @@ export const eraseKnowledge: PhaseRunner = (phase) => {
 						.query('knowledgeEntryContacts')
 						.withIndex('by_entry', (q) => q.eq('entryId', link.entryId))
 						.take(n + 1);
-					return rows.filter((row) => row._id !== link._id).slice(0, n);
+					return withoutRow(budget, rows, link._id, n);
 				},
 				(row) => ctx.db.delete(row._id)
 			);
@@ -246,6 +248,7 @@ export const eraseSemanticFiles: PhaseRunner = (phase) => {
 				await ctx.db.delete(link._id);
 				return true;
 			}
+			budget.chargeRead(file);
 			const othersRemain = (file.contactIds ?? []).some((c) => c !== contactId);
 			if (file.captureSource && !othersRemain) {
 				// Junction rows of other contacts on a file scoped to this contact
@@ -258,7 +261,7 @@ export const eraseSemanticFiles: PhaseRunner = (phase) => {
 							.query('semanticFileContacts')
 							.withIndex('by_file', (q) => q.eq('fileId', file._id))
 							.take(n + 1);
-						return rows.filter((row) => row._id !== link._id).slice(0, n);
+						return withoutRow(budget, rows, link._id, n);
 					},
 					(row) => ctx.db.delete(row._id)
 				);
