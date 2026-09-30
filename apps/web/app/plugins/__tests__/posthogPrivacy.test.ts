@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref, type ShallowRef } from 'vue';
 import { createRouter, createWebHistory, type Router } from 'vue-router';
-import type PostHog from 'posthog-js';
+import type * as PostHogModule from 'posthog-js';
+import type { PostHog } from 'posthog-js';
 
 /**
  * The real plugin and the real posthog-js, with the transport intercepted at
@@ -15,11 +16,11 @@ const SENTINELS = ['QUERY_SENTINEL', 'FRAGMENT_SENTINEL', 'PATH_SENTINEL'];
 // A fresh client per plugin load: the package's default export is a singleton
 // that cannot be initialised twice.
 vi.mock('posthog-js', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('posthog-js')>();
+	const actual = await importOriginal<typeof PostHogModule>();
 	return { ...actual, default: new actual.PostHog() };
 });
 
-type Plugin = () => { provide: { posthog: ShallowRef<typeof PostHog | null> } };
+type Plugin = () => { provide: { posthog: ShallowRef<PostHog | null> } };
 type Request = { url: string; data?: unknown };
 
 const empty = { render: () => null };
@@ -44,7 +45,7 @@ function makeRouter(): Router {
 }
 
 let requests: Request[];
-let current: typeof PostHog | null = null;
+let current: PostHog | null = null;
 
 async function loadPlugin(router: Router) {
 	const flag = ref(false);
