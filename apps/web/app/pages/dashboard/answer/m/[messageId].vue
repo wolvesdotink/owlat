@@ -370,6 +370,7 @@ onBeforeUnmount(() => {
 							:message-id="messageId"
 							:mailbox-id="seed.mailboxId"
 							:resolve-thread-file="assist.resolveThreadFile"
+							:written="!!composer.draftText.value.trim()"
 							@visible="queueAskVisible = $event"
 							@use-draft="composer.applyAiDraft($event)"
 						/>
