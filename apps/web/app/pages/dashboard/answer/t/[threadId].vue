@@ -28,6 +28,7 @@ import { useAnswerTeamReply } from '~/composables/useAnswerTeamReply';
 import { useTeamReplyAttachments } from '~/composables/useTeamReplyAttachments';
 import { useTeamKeptReply } from '~/composables/useTeamKeptReply';
 import { useOrganization } from '~/composables/useOrganization';
+import { useLocalized } from '~/composables/useLocalized';
 import { answerBackLabelKey, singleQueryValue } from '~/utils/answerMode';
 import { sendHoldReason } from '~/utils/replyCollision';
 import { isChannelMessage } from '~/utils/teamThreadReply';
@@ -79,11 +80,10 @@ const presencePeople = computed<PresencePerson[]>(() =>
 const heldBy = computed(
 	() => presencePeople.value.find((p) => p.mode === 'replying')?.name ?? null
 );
-const holdReason = computed(() => {
-	if (!heldBy.value) return undefined;
-	const message = sendHoldReason(heldBy.value);
-	return t(message.key, message.params ?? {});
-});
+const localized = useLocalized();
+const holdReason = computed(() =>
+	heldBy.value ? localized(sendHoldReason(heldBy.value)) : undefined
+);
 
 // ── The reply ────────────────────────────────────────────────────────────────
 const reply = useAnswerTeamReply({
