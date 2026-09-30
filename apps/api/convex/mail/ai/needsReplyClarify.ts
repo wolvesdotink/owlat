@@ -244,7 +244,9 @@ export const getClarificationContext = internalQuery({
 			contactId: identity?.contactId,
 			transcript,
 			answers,
-			fileNotes: buildFileAnswerNotes(clarification.questions),
+			// No draft exists yet: the web attaches the files when it applies the
+			// prepared reply (needsReplyPrepared.getPreparedDraft), so say "will be".
+			fileNotes: buildFileAnswerNotes(clarification.questions, 'pending'),
 			answeredSlotTypes,
 		};
 	},

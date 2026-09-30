@@ -153,6 +153,18 @@ describe('buildFileAnswerNotes', () => {
 		expect(buildFileAnswerNotes([{}])).toBe('');
 	});
 
+	it('on the Reply Queue says the file will be attached, and never promises a bare upload', () => {
+		expect(
+			buildFileAnswerNotes(
+				[
+					{ answer: { file: { source: 'semanticFile', filename: 'invoice.pdf' } } },
+					{ answer: { file: { source: 'upload', filename: 'scan.pdf' } } },
+				],
+				'pending'
+			)
+		).toBe('- The file "invoice.pdf" will be attached to this reply; mention it naturally.');
+	});
+
 	it('joinConfirmedBlocks skips empty blocks', () => {
 		expect(joinConfirmedBlocks('- a', '', '- b')).toBe('- a\n- b');
 		expect(joinConfirmedBlocks('', ' ')).toBe('');

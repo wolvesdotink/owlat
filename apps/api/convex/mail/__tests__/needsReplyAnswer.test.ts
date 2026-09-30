@@ -389,7 +389,7 @@ describe('mail.needsReplyClarify.answerClarification — Answer mode', () => {
 			});
 		});
 
-		// The starter draft is told the file is attached, and recalls knowledge
+		// The starter draft is told the file will be attached, and recalls knowledge
 		// for the sender's contact when one resolves.
 		const contactId = await t.run(async (ctx) => {
 			const id = await ctx.db.insert('contacts', createTestContact({ email: 'ann@acme.com' }));
@@ -407,7 +407,7 @@ describe('mail.needsReplyClarify.answerClarification — Answer mode', () => {
 			ownerAddress: 'user-A@owlat.test',
 			answers: [{ question: 'Which invoice should I attach?', answer: 'invoice-2026-08.pdf' }],
 		});
-		expect(draftContext?.fileNotes).toContain('"invoice-2026-08.pdf" is attached');
+		expect(draftContext?.fileNotes).toContain('"invoice-2026-08.pdf" will be attached');
 	});
 
 	it("refuses another person's mail attachment and a file on a non-file question", async () => {

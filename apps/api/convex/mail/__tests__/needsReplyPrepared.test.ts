@@ -83,6 +83,7 @@ describe('mail.needsReplyPrepared.getPreparedDraft', () => {
 		expect(await t.query(api.mail.needsReplyPrepared.getPreparedDraft, { threadId })).toEqual({
 			clarificationDraft: 'Hi Jonas, attached.',
 			slotDraft: 'Hi Jonas, here it is.',
+			files: [],
 		});
 	});
 
@@ -91,11 +92,81 @@ describe('mail.needsReplyPrepared.getPreparedDraft', () => {
 		const flagged = await seedFlaggedThread(t, {});
 		expect(
 			await t.query(api.mail.needsReplyPrepared.getPreparedDraft, { threadId: flagged })
-		).toEqual({ clarificationDraft: null, slotDraft: null });
+		).toEqual({ clarificationDraft: null, slotDraft: null, files: [] });
 		const plain = await seedFlaggedThread(t, null);
 		expect(
 			await t.query(api.mail.needsReplyPrepared.getPreparedDraft, { threadId: plain })
 		).toBeNull();
+	});
+
+	it('returns the answered files the web can still attach', async () => {
+		const t = convexTest(schema, modules);
+		const threadId = await seedFlaggedThread(t, { clarificationDraft: 'Hi Jonas' });
+		const ids = await t.run(async (ctx) => {
+			const now = Date.now();
+			const file = (storageId?: Id<'_storage'>) =>
+				ctx.db.insert('semanticFiles', {
+					...(storageId ? { storageId } : {}),
+					filename: 'invoice.pdf',
+					mimeType: 'application/pdf',
+					fileSize: 10,
+					sourceType: 'upload',
+					version: 1,
+					embedding: [],
+					createdAt: now,
+					updatedAt: now,
+				});
+			const upload = async (userId: string, expiresAt: number) => {
+				const storageId = await ctx.storage.store(new Blob(['%PDF']));
+				await ctx.db.insert('storageUploads', {
+					userId,
+					organizationId: 'org-1',
+					status: 'uploaded',
+					storageId,
+					expiresAt,
+				});
+				return storageId;
+			};
+			return {
+				kept: await file(await ctx.storage.store(new Blob(['%PDF']))),
+				released: await file(),
+				live: await upload('user-A', now + 60_000),
+				expired: await upload('user-A', now - 1),
+				theirs: await upload('user-B', now + 60_000),
+			};
+		});
+		await t.run(async (ctx) => {
+			const thread = (await ctx.db.get(threadId))!;
+			const answered = (id: string, source: 'semanticFile' | 'upload', filename: string) => ({
+				id: `q-${id}`,
+				slotType: 'attachment',
+				text: 'Which file?',
+				attribution: 'a',
+				answerKind: 'file' as const,
+				answer: { value: filename, at: Date.now(), file: { source, id, filename } },
+			});
+			await ctx.db.patch(threadId, {
+				needsReply: {
+					...thread.needsReply!,
+					clarification: {
+						...thread.needsReply!.clarification!,
+						questions: [
+							answered(ids.kept, 'semanticFile', 'invoice.pdf'),
+							answered(ids.released, 'semanticFile', 'old.pdf'),
+							answered(ids.live, 'upload', 'scan.pdf'),
+							answered(ids.expired, 'upload', 'expired.pdf'),
+							answered(ids.theirs, 'upload', 'theirs.pdf'),
+						],
+					},
+				},
+			});
+		});
+
+		const prepared = await t.query(api.mail.needsReplyPrepared.getPreparedDraft, { threadId });
+		expect(prepared?.files).toEqual([
+			{ source: 'semanticFile', id: ids.kept, filename: 'invoice.pdf' },
+			{ source: 'upload', id: ids.live, filename: 'scan.pdf' },
+		]);
 	});
 
 	it('reads nothing from a mailbox the caller cannot open', async () => {

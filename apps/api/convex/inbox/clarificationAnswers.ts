@@ -102,19 +102,33 @@ const MAX_NOTE_FILENAME_CHARS = 120;
  * filename. The owner chose the file, but its name may have come in on a mail
  * attachment, so it is flattened to one short line before it enters the
  * trusted block. '' when no question carries a file.
+ *
+ * `attached` (the team inbox, where the answer puts the file on the reply in
+ * the same transaction) says the file is attached. `pending` (the Postbox
+ * Reply Queue, where no draft exists yet and the web attaches the file when it
+ * applies the prepared reply) says it will be, and leaves out a bare upload:
+ * nothing keeps an upload alive until then, so the reply must not promise it.
  */
 export function buildFileAnswerNotes(
-	questions: ReadonlyArray<{ answer?: { file?: { filename: string } | undefined } | undefined }>
+	questions: ReadonlyArray<{
+		answer?: { file?: { source?: string; filename: string } | undefined } | undefined;
+	}>,
+	mode: 'attached' | 'pending' = 'attached'
 ): string {
 	const lines: string[] = [];
 	for (const q of questions) {
-		const filename = q.answer?.file?.filename
+		const file = q.answer?.file;
+		if (!file || (mode === 'pending' && file.source === 'upload')) continue;
+		const filename = file.filename
 			.replace(/[\r\n"]+/g, ' ')
 			.trim()
 			.slice(0, MAX_NOTE_FILENAME_CHARS);
-		if (filename) {
-			lines.push(`- The file "${filename}" is attached to this reply; mention it naturally.`);
-		}
+		if (!filename) continue;
+		lines.push(
+			mode === 'attached'
+				? `- The file "${filename}" is attached to this reply; mention it naturally.`
+				: `- The file "${filename}" will be attached to this reply; mention it naturally.`
+		);
 	}
 	return lines.join('\n');
 }
