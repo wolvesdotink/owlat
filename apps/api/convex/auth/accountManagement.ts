@@ -343,6 +343,9 @@ export async function deleteAccountForRequest(
 		// their mailbox + mail (and blobs), external account credentials, chat
 		// authorship. A batched background job erases it and marks the request
 		// completed when it finishes (previously this data silently survived).
+		// During a workspace deletion (opened by an owner above, or earlier) the
+		// job removes only the member's rows the sweep leaves alone and closes the
+		// request at once; the sweep erases the rest.
 		await ctx.scheduler.runAfter(0, internal.auth.memberErasure.eraseMemberData, {
 			authUserId: userProfile.authUserId,
 			requestId: request._id,

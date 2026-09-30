@@ -121,6 +121,9 @@ export const AUDIT_ACTION_LITERALS = [
 	action('automation.reverted_to_draft'),
 	// Settings + team
 	action('settings.updated'),
+	// An operator ended a workspace deletion before it completed, lifting its
+	// write fence (workspaces/deletion/walker.ts `abort`).
+	action('settings.workspace_deletion_aborted'),
 	// Pluggable AI providers — admin save of the per-org language/embedding
 	// backend config (bring-your-own-key). Fired by aiProviderConfig.
 	action('ai_provider_config.updated'),

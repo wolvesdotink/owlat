@@ -29,8 +29,9 @@
  * Reads are never fenced.
  *
  * Cost when no deletion is running: one indexed read of an empty range, once
- * per transaction, and only in a transaction that writes a swept table (or
- * patches a row by bare id).
+ * per transaction, and only in a transaction that writes a swept table. The
+ * fence row changes only when a deletion starts and when it ends (its progress
+ * lives in a separate row), so reading it adds no contention between writers.
  */
 
 import {
@@ -49,9 +50,10 @@ const FENCED_TABLES: ReadonlySet<string> = new Set(
 );
 
 /**
- * The writable tables, for resolving an id-only `patch(id, …)`. Short on
- * purpose: the lookup runs only while a deletion is active, one
- * `normalizeId` per candidate.
+ * The writable tables, for resolving an id-only `patch(id, …)` without reading
+ * the fence: one synchronous `normalizeId` per candidate, no database read, so
+ * a bare-id write to an unswept table (a sign-in touching `userProfiles`, the
+ * updater's `systemUpdates`) never puts the fence row in its read set.
  */
 const UNFENCED_TABLES = NON_TENANT_TABLES.filter((table) => !FENCED_TABLES.has(table));
 
@@ -67,10 +69,33 @@ export async function readActiveWorkspaceDeletion(
 		.first();
 }
 
+/** The `data.reason` a fence refusal carries. */
+export const WORKSPACE_DELETION_REFUSAL = 'workspace_deletion_in_progress';
+
 function refuseWrite(job: WorkspaceDeletionJob): never {
 	throwInvalidState(
 		'This workspace is being deleted. Changes are not accepted until the deletion has finished.',
-		{ reason: 'workspace_deletion_in_progress', generation: job.generation }
+		{ reason: WORKSPACE_DELETION_REFUSAL, generation: job.generation }
+	);
+}
+
+/**
+ * Whether `error` is the fence refusing a write, however it travelled: thrown
+ * straight out of `runMutation` / `runAction` (a `ConvexError` whose `data` is
+ * the operation error), or wrapped by a caller that keeps the original under
+ * `reason` / `cause` (the inbound batch dispatcher).
+ */
+export function isWorkspaceDeletionRefusal(error: unknown, depth = 0): boolean {
+	if (typeof error !== 'object' || error === null || depth > 3) return false;
+	const data = (error as { data?: unknown }).data;
+	if (typeof data === 'object' && data !== null) {
+		const detail = (data as { data?: { reason?: unknown } }).data;
+		if (detail?.reason === WORKSPACE_DELETION_REFUSAL) return true;
+	}
+	const wrapped = error as { reason?: unknown; cause?: unknown };
+	return (
+		isWorkspaceDeletionRefusal(wrapped.reason, depth + 1) ||
+		isWorkspaceDeletionRefusal(wrapped.cause, depth + 1)
 	);
 }
 
@@ -89,15 +114,13 @@ export function fenceWorkspaceWrites<Ctx extends { db: Writer }>(ctx: Ctx): Ctx 
 
 	/** `table` is null when the call named only an id; `id` resolves it then. */
 	async function guard(table: string | null, id?: unknown): Promise<void> {
-		// A named table outside the registry never needs the job.
-		if (table !== null && !FENCED_TABLES.has(table)) return;
+		// A write to a table outside the registry never reads the fence. A bare
+		// id is resolved first, without a read; one that belongs to none of the
+		// writable tables is treated as fenced: unknown fails closed.
+		if (table !== null ? !FENCED_TABLES.has(table) : tableOfUnfencedId(db, id) !== null) return;
 		activeJob ??= readActiveWorkspaceDeletion(db);
 		const job = await activeJob;
-		if (job === null) return;
-		// A bare id is resolved only now, while a deletion runs. An id that
-		// belongs to none of the writable tables is fenced: unknown fails closed.
-		if (table === null && tableOfUnfencedId(db, id) !== null) return;
-		refuseWrite(job);
+		if (job !== null) refuseWrite(job);
 	}
 
 	const fencedDb = new Proxy(db, {

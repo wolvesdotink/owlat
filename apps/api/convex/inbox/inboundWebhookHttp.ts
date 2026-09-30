@@ -41,6 +41,11 @@ import { internal } from '../_generated/api';
 import { logError, logWarn } from '../lib/runtimeLog';
 import { jsonResponse } from '../webhooks/inboundHttp';
 import {
+	isWorkspaceBeingDeleted,
+	isWorkspaceDeletionRefusal,
+	workspaceDeletionAck,
+} from '../webhooks/workspaceDeletionAck';
+import {
 	base64ByteLength,
 	clampAuditField,
 	readVerifiedMtaBody,
@@ -142,6 +147,13 @@ export const handleInboundWebhook = httpAction(async (ctx, request) => {
 		return jsonResponse(400, { error: `Unsupported event: ${payload.event}` });
 	}
 
+	// Accept and drop while the workspace is being deleted (see
+	// `webhooks/workspaceDeletionAck.ts`): no raw bytes stored, no DLQ replay.
+	if (await isWorkspaceBeingDeleted(ctx)) {
+		await audited;
+		return workspaceDeletionAck('[Inbound Webhook]');
+	}
+
 	// Envelope normalization is the SHARED parser the legacy `/webhooks/mta`
 	// route also runs (`webhooks/adapters/mtaEventParsers.ts`), so the two
 	// surfaces cannot drift on field extraction. Named `input` on purpose:
@@ -180,8 +192,10 @@ export const handleInboundWebhook = httpAction(async (ctx, request) => {
 		// reading the MTA's log can tell a re-ack from a first delivery.
 		return jsonResponse(200, { success: true, duplicate: result.isDuplicate });
 	} catch (err) {
-		logError('[Inbound Webhook] Ingest failed:', err);
 		await audited;
+		// A deletion that began after the check above.
+		if (isWorkspaceDeletionRefusal(err)) return workspaceDeletionAck('[Inbound Webhook]');
+		logError('[Inbound Webhook] Ingest failed:', err);
 		return jsonResponse(500, { error: 'Ingest failed' });
 	}
 });

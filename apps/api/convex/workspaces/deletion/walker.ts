@@ -1,17 +1,22 @@
 /**
  * Organization deletion walker — the functions that drive a workspace deletion
- * job (`job.ts`) through the ordered cascade in `steps/registry.ts`.
+ * job (`job.ts`) through the scheduler quiesce and the ordered cascade in
+ * `steps/registry.ts`.
  *
- *   tick           one transaction of the job: a sweep batch or a verification
- *                  pass, then the checkpoint on the job row.
+ *   tick           one transaction of the job: a scheduler page, a sweep batch
+ *                  or a verification pass, then the checkpoint on the job's
+ *                  progress row.
  *   drive          the action that chains ticks and reschedules itself. It
  *                  exists so a failing tick can be RECORDED: a mutation that
  *                  throws rolls back everything it wrote, including any note
  *                  about the error.
- *   recordFailure  counts the attempt, keeps the error on the job, and retries
- *                  with backoff, or marks the job `failed` once retries run out.
+ *   recordFailure  counts the attempt, keeps the error on the progress row, and
+ *                  retries with backoff, or marks the job `failed` once retries
+ *                  run out.
  *   recover        the recovery driver (a cron): restarts a job whose chain went
  *                  quiet and re-arms a failed one, from the saved checkpoint.
+ *   abort          the operator's exit: ends the job without completing it and
+ *                  lifts the fence, with an audit row.
  *   status         the operator's view of the job.
  *
  * Two chains on one job are harmless: every tick is a serializable transaction
@@ -38,12 +43,14 @@ import { internal } from '../../_generated/api';
 import { logError } from '../../lib/runtimeLog';
 import { readActiveWorkspaceDeletion } from '../../lib/writeFence';
 import {
+	abortWorkspaceDeletion,
 	beginWorkspaceDeletion,
 	nextTable,
+	readDeletionProgress,
 	readLatestDeletionJob,
+	rearmWorkspaceDeletion,
 	runWorkspaceDeletionTransaction,
 	scheduleDeletionDrive,
-	summarizeDeletionJob,
 	type DeletionJobSummary,
 	type DeletionTickOutcome,
 } from './job';
@@ -55,11 +62,15 @@ export { nextTable };
 /** Ticks one `drive` invocation chains before it reschedules itself. */
 const TICKS_PER_DRIVE = 20;
 /** Backoff before retry N (1-based) of a failed transaction. */
-const RETRY_DELAYS_MS = [30_000, 120_000, 600_000, 1_800_000] as const;
+export const RETRY_DELAYS_MS = [30_000, 120_000, 600_000, 1_800_000] as const;
 const MAX_ATTEMPTS = RETRY_DELAYS_MS.length + 1;
 const MAX_ERROR_CHARS = 500;
-/** A `running` or `retrying` job untouched this long has lost its chain. */
-export const DELETION_STALLED_AFTER_MS = 15 * 60 * 1000;
+/**
+ * A `running` or `retrying` job untouched this long has lost its chain. Longer
+ * than the longest retry backoff, so a job waiting out a scheduled retry is
+ * never mistaken for a stalled one and given a second chain.
+ */
+export const DELETION_STALLED_AFTER_MS = Math.max(...RETRY_DELAYS_MS) + 15 * 60 * 1000;
 /** How long a `failed` job waits before the recovery driver re-arms it. */
 export const FAILED_DELETION_RETRY_AFTER_MS = 60 * 60 * 1000;
 
@@ -101,22 +112,24 @@ export const recordFailure = internalMutation({
 	args: { jobId: v.id('workspaceDeletionJobs'), error: v.string() },
 	handler: async (ctx, { jobId, error }): Promise<void> => {
 		const job = await ctx.db.get(jobId);
-		if (!job || !job.isActive) return;
-		const attempts = job.attempts + 1;
+		const progress = await readDeletionProgress(ctx.db, jobId);
+		if (!job || !job.isActive || !progress) return;
+		const attempts = progress.attempts + 1;
 		const isExhausted = attempts >= MAX_ATTEMPTS;
 		const now = Date.now();
-		await ctx.db.patch(jobId, {
+		await ctx.db.patch(progress._id, {
 			attempts,
 			lastError: error.slice(0, MAX_ERROR_CHARS),
 			lastErrorAt: now,
-			lastErrorStep: job.step,
+			lastErrorStep: progress.step,
 			status: isExhausted ? 'failed' : 'retrying',
 			updatedAt: now,
 		});
-		// The step only: the error text stays on the job row.
+		// The step only: the error text stays on the progress row.
 		logError('[workspace deletion] transaction failed', {
 			generation: job.generation,
-			step: job.step,
+			phase: progress.phase,
+			step: progress.step,
 			attempts,
 			isExhausted,
 		});
@@ -136,30 +149,42 @@ export const recover = internalMutation({
 	args: {},
 	handler: async (ctx): Promise<{ isRestarted: boolean }> => {
 		const job = await readActiveWorkspaceDeletion(ctx.db);
-		if (!job) return { isRestarted: false };
+		const progress = job ? await readDeletionProgress(ctx.db, job._id) : null;
+		if (!progress) return { isRestarted: false };
 		const now = Date.now();
-		const idleMs = now - job.updatedAt;
-		const isFailed = job.status === 'failed';
-		if (idleMs < (isFailed ? FAILED_DELETION_RETRY_AFTER_MS : DELETION_STALLED_AFTER_MS)) {
-			return { isRestarted: false };
+		const idleMs = now - progress.updatedAt;
+		if (progress.status === 'failed') {
+			if (idleMs < FAILED_DELETION_RETRY_AFTER_MS) return { isRestarted: false };
+			await rearmWorkspaceDeletion(ctx, progress, now);
+			return { isRestarted: true };
 		}
-		await ctx.db.patch(job._id, {
-			status: 'running',
-			updatedAt: now,
-			...(isFailed ? { attempts: 0 } : {}),
-		});
-		await scheduleDeletionDrive(ctx, job._id);
+		if (idleMs < DELETION_STALLED_AFTER_MS) return { isRestarted: false };
+		await ctx.db.patch(progress._id, { status: 'running', updatedAt: now });
+		await scheduleDeletionDrive(ctx, progress.jobId);
 		return { isRestarted: true };
 	},
+});
+
+/**
+ * End the active deletion WITHOUT completing it, lifting the write fence. The
+ * way out for a job that cannot finish; run it by hand
+ * (`npx convex run workspaces/deletion/walker:abort '{"operator":…,"reason":…}'`).
+ * Whatever the sweep had not reached stays in place, and the workspace takes
+ * writes again. Returns the aborted generation, or `null` when none was active.
+ */
+export const abort = internalMutation({
+	args: { operator: v.string(), reason: v.string() },
+	handler: async (ctx, args): Promise<{ generation: number } | null> =>
+		abortWorkspaceDeletion(ctx, {
+			operator: args.operator.slice(0, 200),
+			reason: args.reason.slice(0, MAX_ERROR_CHARS),
+		}),
 });
 
 /** The active deletion job, else the most recent one, else `null`. */
 export const status = internalQuery({
 	args: {},
-	handler: async (ctx): Promise<DeletionJobSummary | null> => {
-		const job = await readLatestDeletionJob(ctx.db);
-		return job ? summarizeDeletionJob(job) : null;
-	},
+	handler: async (ctx): Promise<DeletionJobSummary | null> => readLatestDeletionJob(ctx.db),
 });
 
 // ============== previous-release entry points — remove after the next release ==============
@@ -178,22 +203,19 @@ export const start = internalMutation({
 
 /**
  * The previous release's self-scheduled hop. Runs its batch, then adopts the
- * walk into a job at the table the hop would have continued with, so the rest
- * of it is fenced, checkpointed and verified. When a job already exists its
- * chain owns progress and the hop stops after its batch.
+ * walk into a job that resumes at the table the hop would have continued with
+ * (after quiescing the scheduler), so the rest of it is fenced, checkpointed
+ * and verified. When a job already exists its chain owns progress and the hop
+ * stops after its batch.
  */
 export const runStep = internalMutation({
 	args: { table: organizationDeletionTableValidator },
 	handler: async (ctx, { table }): Promise<void> => {
 		const { hasMore } = await ORGANIZATION_DELETION_STEPS[table].deleteBatch(ctx);
 		if (await readActiveWorkspaceDeletion(ctx.db)) return;
-		const resumeAt = hasMore ? table : nextTable(table);
-		await beginWorkspaceDeletion(
-			ctx,
-			{ source: 'previous_release' },
-			resumeAt === null
-				? { phase: 'verify', step: STEPS[STEPS.length - 1] ?? STEPS[0] }
-				: { phase: 'sweep', step: resumeAt }
-		);
+		// Past the last table there is nothing left to sweep: re-sweeping the
+		// (empty) last one costs one transaction and leads straight to verify.
+		const resumeAt = (hasMore ? table : nextTable(table)) ?? STEPS[STEPS.length - 1] ?? STEPS[0];
+		await beginWorkspaceDeletion(ctx, { source: 'previous_release' }, resumeAt);
 	},
 });

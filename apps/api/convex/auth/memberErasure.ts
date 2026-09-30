@@ -31,7 +31,8 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../lib/writeFence';
+import { internalMutation, readActiveWorkspaceDeletion } from '../lib/writeFence';
+import { completeDeletionRequest, deleteMemberInstanceRows } from './memberInstanceRows';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import {
@@ -64,6 +65,15 @@ export const eraseMemberData = internalMutation({
 		chatCursor: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		// While the whole workspace is being deleted its sweep erases everything
+		// below (and the fence would refuse the anonymizing patches of phases 4-6
+		// anyway): remove only the member's rows the sweep leaves alone, and close
+		// the request.
+		if (await readActiveWorkspaceDeletion(ctx.db)) {
+			await deleteMemberInstanceRows(ctx, args.authUserId);
+			await completeDeletionRequest(ctx, args.requestId);
+			return;
+		}
 		const reschedule = async (continuation?: {
 			alertCursor?: string;
 			isAlertErasureDone?: boolean;
@@ -258,32 +268,9 @@ export const eraseMemberData = internalMutation({
 			.collect(); // bounded: a user's own app passwords
 		for (const pw of userPasswords) await ctx.db.delete(pw._id);
 
-		// Per-user onboarding checklist row (keyed by authUserId).
-		const onboarding = await ctx.db
-			.query('userOnboarding')
-			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', args.authUserId))
-			.first(); // bounded: at most one row per user
-		if (onboarding) await ctx.db.delete(onboarding._id);
-
-		// Their "you can send now" onboarding notices go with that checklist —
-		// without the row they point at, they are orphaned nudges nobody reads.
-		const sendReadyNotices = await ctx.db
-			.query('sendReadyNotices')
-			.withIndex('by_user_and_created', (q) => q.eq('userId', args.authUserId))
-			.collect(); // bounded: at most one pending notice per readiness edge
-		for (const notice of sendReadyNotices) await ctx.db.delete(notice._id);
-
-		// Platform-admin grant. This is deployment-level power (in-app updates,
-		// backups, the operator console) keyed by BetterAuth user id, so leaving
-		// the row behind would mean a departed member's id still satisfies
-		// `requirePlatformAdmin` — and the id is reusable ground for whoever
-		// claims that identity next. It also carries their email, which this
-		// erasure is meant to remove.
-		const platformAdminRows = await ctx.db
-			.query('platformAdmins')
-			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', args.authUserId))
-			.collect(); // bounded: at most one row per user
-		for (const row of platformAdminRows) await ctx.db.delete(row._id);
+		// Onboarding checklist, send-ready notices and the platform-admin grant:
+		// keyed by user id and outside the workspace deletion's sweep.
+		await deleteMemberInstanceRows(ctx, args.authUserId);
 
 		// Admin requests (mailbox and access, open or decided) carry the member's
 		// email, name and free-text note; drop both queues' rows so no PII
@@ -475,12 +462,6 @@ export const eraseMemberData = internalMutation({
 		for (const mention of mentions) await ctx.db.delete(mention._id);
 
 		// ── Phase 7: done ──
-		const request = await ctx.db.get(args.requestId as Id<'accountDeletionRequests'>);
-		if (request && request.status !== 'completed') {
-			await ctx.db.patch(args.requestId, {
-				status: 'completed',
-				statusChangedAt: Date.now(),
-			});
-		}
+		await completeDeletionRequest(ctx, args.requestId);
 	},
 });
