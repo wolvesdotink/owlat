@@ -28,6 +28,17 @@ export interface FileAnswerRef {
 	filename: string;
 }
 
+/**
+ * Whether an uploaded answer is kept in Files, as the server decides it
+ * (lib/answerFileToFiles.ts): only for someone who may add to Files
+ * (organization:manage) and only for a known contact.
+ *  - `kept`: both hold; "Don't keep a copy" is offered.
+ *  - `ifContact`: the caller may, but the page cannot tell whether the sender
+ *    is a contact (a Postbox reply); offered, and the line says so.
+ *  - `never`: nothing is kept; no toggle, and the line says "this reply only".
+ */
+export type FileCopyPolicy = 'kept' | 'ifContact' | 'never';
+
 export type FileAskValue =
 	| { kind: 'file'; file: FileAnswerRef; keepCopy: boolean }
 	| { kind: 'option'; value: string }
@@ -43,6 +54,8 @@ const props = defineProps<{
 	/** Turn a thread file chip into a file reference (the page knows how). */
 	resolveThreadFile?: (file: ThreadFile) => Promise<FileAnswerRef | null>;
 	disabled?: boolean;
+	/** Whether an upload is kept in Files; `kept` when omitted. */
+	copyPolicy?: FileCopyPolicy;
 }>();
 
 const emit = defineEmits<{ 'update:modelValue': [value: FileAskValue] }>();
@@ -56,6 +69,9 @@ const dragOver = ref(false);
 const resolving = ref(false);
 /** "Don't keep a copy": only an upload is ever kept, so only an upload asks. */
 const dontKeep = ref(false);
+const neverKept = computed(() => props.copyPolicy === 'never');
+/** Nothing will be kept: by the person's choice or by the server's rule. */
+const attachedOnly = computed(() => neverKept.value || dontKeep.value);
 
 const candidates = computed(() => props.question.fileCandidates ?? []);
 const candidateLabels = computed(
@@ -72,7 +88,7 @@ const pickedOption = computed(() =>
 );
 
 function setFile(file: FileAnswerRef) {
-	emit('update:modelValue', { kind: 'file', file, keepCopy: !dontKeep.value });
+	emit('update:modelValue', { kind: 'file', file, keepCopy: !attachedOnly.value });
 }
 
 watch(dontKeep, (value) => {
@@ -201,9 +217,11 @@ const busy = computed(() => uploading.value || resolving.value);
 					</p>
 					<p class="mt-0.5 text-xs text-text-tertiary">
 						{{
-							dontKeep
+							attachedOnly
 								? t('components.answer.fileAsk.attachedOnly')
-								: t('components.answer.fileAsk.attachedAndSaved')
+								: copyPolicy === 'ifContact'
+									? t('components.answer.fileAsk.attachedAndSavedIfContact')
+									: t('components.answer.fileAsk.attachedAndSaved')
 						}}
 					</p>
 				</div>
@@ -211,7 +229,7 @@ const busy = computed(() => uploading.value || resolving.value);
 		</div>
 
 		<label
-			v-if="!picked || picked.source === 'upload'"
+			v-if="!neverKept && (!picked || picked.source === 'upload')"
 			class="flex items-center gap-2 text-xs text-text-secondary"
 		>
 			<input

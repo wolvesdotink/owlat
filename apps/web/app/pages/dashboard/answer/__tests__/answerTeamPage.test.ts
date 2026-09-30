@@ -119,7 +119,7 @@ beforeAll(() => {
 			sendFollowUp: vi.fn(async () => ({ ok: true, result: {} })),
 			cancelFollowUp: vi.fn(),
 		}),
-		usePermissions: () => ({ isAdmin: ref(true) }),
+		usePermissions: () => ({ isAdmin: ref(true), canManageOrganization: ref(true) }),
 		useFeatureFlag: () => ({ isEnabled: () => true }),
 		useAuth: () => ({ user: ref({ id: 'u_me' }) }),
 		useToast: () => ({ showToast: vi.fn() }),

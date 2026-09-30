@@ -32,7 +32,7 @@ import { localizedQuestionCopy } from '~/utils/clarificationLocale';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { isDialogOpen } from '~/utils/dialogOpen';
 import type { ThreadFile } from '~/utils/answerThreadFiles';
-import FileAsk, { type FileAnswerRef, type FileAskValue } from './FileAsk.vue';
+import FileAsk, { type FileAnswerRef, type FileAskValue, type FileCopyPolicy } from './FileAsk.vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -54,6 +54,8 @@ const props = withDefaults(
 		 * question left open would reach it as a guess); see ClarificationQuestions.
 		 */
 		requireAll?: boolean;
+		/** Whether an uploaded file answer is kept in Files (see FileAsk). */
+		copyPolicy?: FileCopyPolicy;
 	}>(),
 	{
 		requireAll: false,
@@ -193,6 +195,7 @@ const titleId = useId();
 					:mailbox-id="mailboxId"
 					:resolve-thread-file="resolveThreadFile"
 					:disabled="submitting"
+					:copy-policy="copyPolicy"
 					@update:model-value="onFileValue(question.id, $event, setValue)"
 				/>
 				<template v-else>

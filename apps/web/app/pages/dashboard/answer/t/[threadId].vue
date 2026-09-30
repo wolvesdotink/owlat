@@ -29,6 +29,7 @@ import { useAnswerTeamAssist } from '~/composables/useAnswerTeamAssist';
 import CatchUpCard from '~/components/answer/CatchUpCard.vue';
 import AnswerAiBar from '~/components/answer/AnswerAiBar.vue';
 import AskCard from '~/components/answer/AskCard.vue';
+import type { FileCopyPolicy } from '~/components/answer/FileAsk.vue';
 import { useAnswerQueueSession } from '~/composables/useAnswerQueueSession';
 import { useAnswerTeamReply } from '~/composables/useAnswerTeamReply';
 import { useTeamReplyAttachments } from '~/composables/useTeamReplyAttachments';
@@ -60,7 +61,12 @@ useHead({ title: () => thread.value?.subject || t('dashboard.answer.mode.pageTit
 
 // People: presence and the collision hold
 const { members, fetchMembers } = useOrganization();
-const { isAdmin } = usePermissions();
+const { isAdmin, canManageOrganization } = usePermissions();
+// An uploaded file answer is kept in Files only by someone who may add to
+// Files, and only for the thread's contact (lib/answerFileToFiles.ts).
+const copyPolicy = computed<FileCopyPolicy>(() =>
+	canManageOrganization.value && contact.value ? 'kept' : 'never'
+);
 onMounted(() => void fetchMembers());
 function memberName(userId: string): string {
 	const m = members.value.find((x) => x.userId === userId);
@@ -370,6 +376,7 @@ onBeforeUnmount(() => {
 							<AskCard
 								:questions="clarificationQuestions"
 								require-all
+								:copy-policy="copyPolicy"
 								:submitting="reply.isAnsweringClarification.value"
 								:skip-label="t('components.postbox.postboxClarificationCard.answerLater')"
 								@answer="onClarificationAnswers"
@@ -386,6 +393,7 @@ onBeforeUnmount(() => {
 									v-if="assist.ask.phase.value === 'asking' && assist.ask.session.value"
 									:questions="assist.ask.session.value.questions"
 									:round="assist.ask.session.value.round"
+									:copy-policy="copyPolicy"
 									:submitting="assist.ask.busy.value"
 									@answer="assist.ask.answer($event)"
 									@skip="assist.ask.answer($event, true)"

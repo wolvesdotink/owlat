@@ -2,7 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import AskCard from '~/components/answer/AskCard.vue';
-import type { FileAnswerRef } from '~/components/answer/FileAsk.vue';
+import type { FileAnswerRef, FileCopyPolicy } from '~/components/answer/FileAsk.vue';
 import type { AskAnswer, AskQuestion } from '~/composables/useAnswerAskSession';
 import { useAnswerQueueSession } from '~/composables/useAnswerQueueSession';
 import { backgroundAskAnswers } from '~/utils/backgroundAskAnswers';
@@ -32,6 +32,8 @@ const props = defineProps<{
 	resolveThreadFile?: (file: ThreadFile) => Promise<FileAnswerRef | null>;
 	/** The person has written something in the reply. */
 	written?: boolean;
+	/** Whether an uploaded file answer is kept in Files (see FileAsk). */
+	copyPolicy?: FileCopyPolicy;
 }>();
 const emit = defineEmits<{
 	/** The starter reply written from the answers, for the editor. */
@@ -116,6 +118,7 @@ async function submit(answers: AskAnswer[]) {
 			:submitting="submitting"
 			:mailbox-id="mailboxId"
 			:resolve-thread-file="resolveThreadFile"
+			:copy-policy="copyPolicy"
 			:skip-label="t('components.postbox.postboxClarificationCard.answerLater')"
 			@answer="submit"
 			@skip="deferred = true"

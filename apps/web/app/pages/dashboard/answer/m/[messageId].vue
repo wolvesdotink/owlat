@@ -41,6 +41,7 @@ import type { AnswerConversationView } from '~/components/answer/AnswerConversat
 import CatchUpCard from '~/components/answer/CatchUpCard.vue';
 import AnswerAiBar from '~/components/answer/AnswerAiBar.vue';
 import AskCard from '~/components/answer/AskCard.vue';
+import type { FileCopyPolicy } from '~/components/answer/FileAsk.vue';
 import AnswerMailMenu from '~/components/answer/AnswerMailMenu.vue';
 
 definePageMeta({
@@ -153,6 +154,12 @@ const assist = useAnswerModeAssist({
 	view,
 });
 const { catchUp, ask } = assist;
+// An uploaded file answer is kept in Files only by someone who may add to
+// Files, and only for a known contact, which the page cannot see from here.
+const { canManageOrganization } = usePermissions();
+const copyPolicy = computed<FileCopyPolicy>(() =>
+	canManageOrganization.value ? 'ifContact' : 'never'
+);
 
 // "Ask about this thread" from the ⋯: the reader's Q&A above the conversation.
 const askingThread = ref(false);
@@ -378,6 +385,7 @@ onBeforeUnmount(() => {
 							:mailbox-id="seed.mailboxId"
 							:resolve-thread-file="assist.resolveThreadFile"
 							:written="!!composer.draftText.value.trim()"
+							:copy-policy="copyPolicy"
 							@visible="queueAskVisible = $event"
 							@use-draft="composer.applyAiDraft($event)"
 						/>
@@ -389,6 +397,7 @@ onBeforeUnmount(() => {
 								:submitting="ask.busy.value"
 								:mailbox-id="seed.mailboxId"
 								:resolve-thread-file="assist.resolveThreadFile"
+								:copy-policy="copyPolicy"
 								@answer="ask.answer($event)"
 								@skip="ask.answer($event, true)"
 							/>
