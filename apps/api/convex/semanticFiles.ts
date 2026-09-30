@@ -419,6 +419,9 @@ export const ingest = internalMutation({
  * created with a dangling one was an inconsistency only the write path could
  * produce. Validating in the one shared insert covers the user upload and both
  * server-side ingestion sources at once.
+ *
+ * Exported for Answer mode (mail/ai/composeDraftContext.ts), which keeps an
+ * uploaded file answer in Files through this same insert.
  */
 export async function insertSemanticFile(
 	ctx: MutationCtx,

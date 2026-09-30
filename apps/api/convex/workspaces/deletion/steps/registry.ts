@@ -258,12 +258,11 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'chatRoomMembers',
 	'chatRooms',
 
-	// AI assistant (children before parent)
+	// AI assistant (children first), draft stream buffers, Answer mode ask sessions
 	'aiMessages',
 	'aiConversations',
-
-	// AI draft-revise stream buffers (ephemeral, owner-scoped)
 	'aiDraftStreams',
+	'answerAskSessions',
 
 	// Independent feature state
 	'coalesceBatches',
@@ -482,6 +481,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	aiMessages: makeSweepStep('aiMessages'),
 	aiConversations: makeSweepStep('aiConversations'),
 	aiDraftStreams: makeSweepStep('aiDraftStreams'),
+	answerAskSessions: makeSweepStep('answerAskSessions'),
 	coalesceBatches: makeSweepStep('coalesceBatches'),
 	visualizations: makeSweepStep('visualizations'),
 	dashboardLayouts: makeSweepStep('dashboardLayouts'),

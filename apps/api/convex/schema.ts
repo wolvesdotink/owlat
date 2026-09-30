@@ -33,6 +33,7 @@ import { codeWorkTables } from './schema/codeWork';
 import { chatTables } from './schema/chat';
 import { assistantTables } from './schema/assistant';
 import { draftStreamTables } from './schema/draftStream';
+import { answerAskTables } from './schema/answerAsk';
 import { e2eeTables } from './schema/e2ee';
 import { pluginTables } from './schema/plugins';
 import { postmasterTables } from './schema/postmaster';
@@ -78,6 +79,7 @@ export default defineSchema({
 	...chatTables,
 	...assistantTables,
 	...draftStreamTables,
+	...answerAskTables,
 	...e2eeTables,
 	...pluginTables,
 	...postmasterTables,

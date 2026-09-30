@@ -23,6 +23,7 @@ export const CONTACT_ERASURE_PHASES = [
 	'formSubmissions',
 	'knowledge',
 	'semanticFiles',
+	'answerAskSessions',
 ] as const;
 
 export type ContactErasurePhase = (typeof CONTACT_ERASURE_PHASES)[number];
