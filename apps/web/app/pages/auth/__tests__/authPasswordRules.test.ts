@@ -28,6 +28,7 @@ import RegisterPage from '../register.vue';
 import ResetPasswordPage from '../reset-password.vue';
 
 const signInWithEmail = vi.fn(async () => ({}));
+const resetPassword = vi.fn(async () => {});
 
 /** What the public sender read returns (the workspace's from-name). */
 let senderName: string | null = null;
@@ -47,7 +48,7 @@ function stubs(query: Record<string, string>, publicConfig: Record<string, unkno
 			signInWithEmail,
 			completeTwoFactorSignIn: vi.fn(),
 			signUpWithEmail: vi.fn(),
-			resetPassword: vi.fn(),
+			resetPassword,
 		}),
 	});
 }
@@ -71,6 +72,8 @@ function mountPage(component: object) {
 beforeEach(() => {
 	senderName = null;
 	signInWithEmail.mockClear();
+	resetPassword.mockClear();
+	window.sessionStorage.clear();
 });
 
 describe('sign-in', () => {
@@ -157,6 +160,31 @@ describe('reset password', () => {
 		await wrapper.find('#new-password').setValue('a'.repeat(MIN_PASSWORD_LENGTH - 1));
 		await wrapper.find('#new-password').trigger('blur');
 		expect(wrapper.find('#new-password').attributes('aria-invalid')).toBe('true');
+	});
+
+	it('takes the token out of the address bar and still submits it', async () => {
+		window.history.replaceState(null, '', '/auth/reset-password?token=reset-token');
+		stubs({ token: 'reset-token' });
+		const wrapper = mountPage(ResetPasswordPage);
+		await flushPromises();
+		expect(window.location.search).toBe('');
+
+		// A reload of the cleaned URL keeps the form.
+		stubs({});
+		const reloaded = mountPage(ResetPasswordPage);
+		expect(reloaded.find('#new-password').exists()).toBe(true);
+
+		const password = 'a'.repeat(MIN_PASSWORD_LENGTH);
+		await reloaded.find('#new-password').setValue(password);
+		await reloaded.find('#confirm-password').setValue(password);
+		await reloaded.find('form').trigger('submit');
+		await flushPromises();
+		expect(resetPassword).toHaveBeenCalledWith(password, 'reset-token');
+
+		// Spent: reloading after success shows the invalid-link state.
+		const afterSuccess = mountPage(ResetPasswordPage);
+		expect(afterSuccess.find('#new-password').exists()).toBe(false);
+		wrapper.unmount();
 	});
 
 	it('links back to sign-in', () => {

@@ -49,6 +49,7 @@ const contact = {
 };
 
 beforeEach(() => {
+	window.sessionStorage.clear();
 	answers = {};
 	fetchMock.mockClear();
 	convex.query.mockReset();

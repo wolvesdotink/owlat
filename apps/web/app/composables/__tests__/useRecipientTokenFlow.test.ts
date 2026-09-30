@@ -13,6 +13,8 @@ let query: Record<string, unknown>;
 beforeEach(() => {
 	query = { token: 'tok' };
 	vi.stubGlobal('useRoute', () => ({ query }));
+	window.sessionStorage.clear();
+	window.history.replaceState(null, '', '/unsubscribe');
 });
 
 type Keys = Omit<RecipientTokenFlowOptions<unknown>, 'verify'>;
@@ -169,5 +171,51 @@ describe('useRecipientTokenFlow — run', () => {
 		const action = vi.fn(async () => ok({}));
 		expect(await flow.run(action, { fallbackKey: 'x' })).toBeNull();
 		expect(action).not.toHaveBeenCalled();
+	});
+});
+
+describe('useRecipientTokenFlow — the token leaves the address bar', () => {
+	beforeEach(() => {
+		window.history.replaceState(
+			{ current: '/unsubscribe?lang=de&token=tok' },
+			'',
+			'/unsubscribe?lang=de&token=tok#top'
+		);
+	});
+
+	it('drops only the token from the URL and the router state once mounted', async () => {
+		setup(async () => ok({}));
+		await flushPromises();
+
+		expect(window.location.pathname + window.location.search + window.location.hash).toBe(
+			'/unsubscribe?lang=de#top'
+		);
+		expect(window.history.state).toEqual({ current: '/unsubscribe?lang=de' });
+	});
+
+	it('still runs and retries the action with the token after removing it', async () => {
+		const flow = setup(async () => ok({}));
+		await flushPromises();
+		const action = vi.fn(async () => fail('update_failed'));
+
+		await flow.run(action, { fallbackKey: 'x', inline: true });
+		await flow.run(action, { fallbackKey: 'x', inline: true });
+
+		expect(action).toHaveBeenNthCalledWith(1, 'tok');
+		expect(action).toHaveBeenNthCalledWith(2, 'tok');
+	});
+
+	it('verifies again after a reload of the cleaned URL', async () => {
+		setup(async () => ok({}));
+		await flushPromises();
+
+		// The reloaded page: same path, no token in the query.
+		query = {};
+		const verify = vi.fn(async () => ok({ subscribed: true }));
+		const reloaded = setup(verify);
+		await flushPromises();
+
+		expect(verify).toHaveBeenCalledWith('tok');
+		expect(reloaded.state.value).toBe('ready');
 	});
 });

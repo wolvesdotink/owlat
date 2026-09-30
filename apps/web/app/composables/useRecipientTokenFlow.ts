@@ -1,10 +1,12 @@
-import { computed, onMounted, ref, type Ref } from 'vue';
+import { onMounted, ref, type Ref } from 'vue';
 import { PUBLIC_TOKEN_REASONS, type PublicTokenResult } from '~/lib/publicTokenClient';
+import { useUrlCredential } from '~/composables/useUrlCredential';
 
 /**
  * The token flow behind every recipient page (unsubscribe, preferences,
- * double opt-in, share, archive): read `?token=`, verify it on mount, then run
- * the page's one action with it.
+ * double opt-in, share, archive): read `?token=` (then take it out of the
+ * address bar, see `useUrlCredential`), verify it on mount, then run the page's
+ * one action with it.
  *
  *   loading ──verify──▶ ready ──run──▶ done
  *      │                  │
@@ -56,11 +58,7 @@ const UNREACHABLE = new Set<string>([
 ]);
 
 export function useRecipientTokenFlow<V>(options: RecipientTokenFlowOptions<V>) {
-	const route = useRoute();
-	const token = computed(() => {
-		const raw = route.query['token'];
-		return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
-	});
+	const { token } = useUrlCredential('token');
 
 	const state = ref<RecipientFlowState>('loading');
 	/** What `verify` resolved to; the page may replace it after an action. */

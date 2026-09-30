@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { useUrlCredential } from '~/composables/useUrlCredential';
 
 const { t } = useI18n();
 
 useHead({ title: () => t('cancelDeletion.pageTitle') });
 
-// Get the cancellation token from the URL
-const route = useRoute();
-const token = computed(() => route.query['token'] as string | undefined);
+// The cancellation token from the URL (taken out of the address bar once read)
+const { token, forget: forgetToken } = useUrlCredential('token');
 
 // State
 const status = ref<'loading' | 'success' | 'error' | 'no-token'>('loading');
@@ -38,6 +38,7 @@ onMounted(async () => {
 		status.value = 'error';
 		return;
 	}
+	forgetToken();
 	status.value = 'success';
 });
 </script>
