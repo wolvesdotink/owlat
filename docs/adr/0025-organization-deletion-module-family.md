@@ -731,6 +731,15 @@ the row survives) and a process-log warning. It is the way out for a job
 that cannot finish, so a stuck deletion never leaves the deployment
 read-only with only a database edit to recover.
 
+An abort stops the deletion; it does not undo it. What the sweep already
+deleted stays deleted. Scheduled work the quiesce phase cancelled stays
+cancelled: send-laters, snooze wake-ups, automation waits and queued
+campaign chunks do not come back, and have to be rescheduled by hand. A
+non-owner account deletion that was closed during the job (member
+erasure removed only the rows outside the sweep and marked the request
+completed) is not reopened, so after an abort that member's mailbox and
+other workspace rows the sweep had not reached yet remain.
+
 **The write fence.** While a job is active, `lib/writeFence.ts` refuses
 every insert, patch and replace on a table in the deletion registry
 (`invalid_state`, `reason: workspace_deletion_in_progress`). Deletes

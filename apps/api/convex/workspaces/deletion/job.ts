@@ -281,6 +281,11 @@ export async function runWorkspaceDeletionTransaction(
  * job that cannot finish (a table that keeps refilling from a writer nobody can
  * stop) rather than leaving the deployment read-only. Recorded in the audit
  * log, which survives because the sweep stops here, and in the process log.
+ *
+ * It stops the deletion; it undoes nothing. Deleted rows stay deleted,
+ * scheduled work the quiesce cancelled stays cancelled, and a non-owner
+ * account deletion closed during the job is not reopened, so that member's
+ * rows the sweep had not reached remain.
  */
 export async function abortWorkspaceDeletion(
 	ctx: MutationCtx,

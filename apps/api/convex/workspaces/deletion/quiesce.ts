@@ -17,11 +17,14 @@
 import type { MutationCtx } from '../../_generated/server';
 
 /** `_scheduled_functions` rows one quiesce transaction inspects. */
-export const SCHEDULER_SCAN_PAGE = 500;
+export const SCHEDULER_SCAN_PAGE = 200;
 
 /**
- * Scheduled functions that must survive the deletion, matched as a prefix of
- * `<module path>:<export>`:
+ * Scheduled functions that must survive the deletion: an exact
+ * `<module path>:<export>`, or a `<directory>/` prefix for a whole family.
+ * `workspaceDeletionLifecycle.test.ts` resolves every entry against the real
+ * modules, so renaming a survivor fails a test instead of silently getting it
+ * cancelled.
  *
  *   - the deletion's own chain (drive, its retries);
  *   - the provider-side release of a removed sending domain, which the
@@ -34,11 +37,11 @@ export const SCHEDULER_SCAN_PAGE = 500;
  *   - the push of the inbound TLS policy to the MTA, which is instance
  *     infrastructure, not workspace data.
  */
-const SURVIVING_SCHEDULED_FUNCTIONS: readonly string[] = [
+export const SURVIVING_SCHEDULED_FUNCTIONS: readonly string[] = [
 	'workspaces/deletion/',
 	'domains/providers/registerAction:deleteDomainAction',
 	'auth/memberErasure:eraseMemberData',
-	'accountDeletionEmail:',
+	'accountDeletionEmail:sendAccountDeletionEmail',
 	'e2ee/',
 	'mail/mailboxActions:pushInboundTlsPolicy',
 ];

@@ -23,7 +23,11 @@ import {
 import { fenceWorkspaceWrites, isWorkspaceDeletionRefusal } from '../lib/writeFence';
 import { InboundBatchDispatchError } from '../webhooks/inboundHttp';
 import { createTestContact } from './factories';
-import { newHarness } from './testModules';
+import { modules, newHarness } from './testModules';
+import {
+	SURVIVING_SCHEDULED_FUNCTIONS,
+	isSurvivingScheduledFunction,
+} from '../workspaces/deletion/quiesce';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -389,6 +393,45 @@ describe('workspace deletion — the scheduler', () => {
 	});
 });
 
+describe('workspace deletion — the scheduler survivor list', () => {
+	type Registered = { isMutation?: boolean; isAction?: boolean; isQuery?: boolean };
+	const isRegistered = (value: unknown): boolean =>
+		typeof value === 'function' &&
+		((value as Registered).isMutation === true ||
+			(value as Registered).isAction === true ||
+			(value as Registered).isQuery === true);
+	async function exportsOf(key: string): Promise<Record<string, unknown>> {
+		const load = modules[key];
+		if (!load) throw new Error(`no module ${key}`);
+		return (await load()) as Record<string, unknown>;
+	}
+
+	// A renamed or moved survivor would otherwise be cancelled silently by
+	// every deletion; this pins each entry to a real Convex function.
+	for (const entry of SURVIVING_SCHEDULED_FUNCTIONS) {
+		it(`${entry} names an existing scheduled function`, async () => {
+			if (entry.endsWith('/')) {
+				const keys = Object.keys(modules).filter(
+					(key) => key.startsWith(`../${entry}`) && !key.includes('__tests__')
+				);
+				const exported = await Promise.all(keys.map(exportsOf));
+				expect(exported.some((mod) => Object.values(mod).some(isRegistered))).toBe(true);
+				return;
+			}
+			const [modulePath, exportName] = entry.split(':');
+			expect(exportName, `${entry} must name one export`).toBeTruthy();
+			const mod = await exportsOf(`../${modulePath}.ts`);
+			expect(isRegistered(mod[exportName!])).toBe(true);
+			expect(isSurvivingScheduledFunction(`${modulePath}.js:${exportName}`)).toBe(true);
+		});
+	}
+
+	it('keeps the deletion chain itself', () => {
+		expect(isSurvivingScheduledFunction('workspaces/deletion/walker:drive')).toBe(true);
+		expect(isSurvivingScheduledFunction('contacts/contacts:createForTeam')).toBe(false);
+	});
+});
+
 describe('workspace deletion — checkpoint and recovery', () => {
 	async function seedSegments(t: Harness): Promise<void> {
 		await t.run(async (ctx) => {
@@ -562,5 +605,10 @@ describe('workspace deletion — completion invariant', () => {
 		await expect(
 			t.mutation(internal.workspaces.deletion.walker.abort, { operator: 'ops', reason: 'again' })
 		).resolves.toBeNull();
+
+		// An aborted generation is over: a new request starts the next one.
+		const next = await t.mutation(api.workspaces.settings.remove, {});
+		expect(next).toMatchObject({ generation: 2, isJoined: false });
+		expect(await status(t)).toMatchObject({ generation: 2, isActive: true, status: 'running' });
 	});
 });
