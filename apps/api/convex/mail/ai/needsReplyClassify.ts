@@ -104,7 +104,7 @@ export const classifyThread = internalAction({
 		if (!context) return;
 
 		const evaluation = evaluateNeedsReplyCandidate({
-			ownerAddresses: [context.ownerAddress],
+			ownerAddresses: context.ownerAddresses,
 			messages: context.messages,
 			precedence: args.precedence,
 			autoSubmitted: args.autoSubmitted,

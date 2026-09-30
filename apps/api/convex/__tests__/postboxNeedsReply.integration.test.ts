@@ -706,9 +706,15 @@ describe('mail.needsReply.sweepPending', () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['mail.external']);
 		const seeded = await seedMailbox(t);
-		const staleAt = Date.now() - 10 * 60 * 1000;
+		const staleAt = Date.now() - 20 * 60 * 1000;
 		const { threadId: staleThread } = await seedThreadWithMessage(t, seeded, {
 			needsReplyPendingAt: staleAt,
+		});
+		// Still waiting for an action slot, not lost: re-scheduling it would
+		// classify (and draft) the thread twice.
+		const queuedAt = Date.now() - 8 * 60 * 1000;
+		const { threadId: queuedThread } = await seedThreadWithMessage(t, seeded, {
+			needsReplyPendingAt: queuedAt,
 		});
 		const { threadId: freshThread } = await seedThreadWithMessage(t, seeded, {
 			needsReplyPendingAt: Date.now(),
@@ -724,6 +730,8 @@ describe('mail.needsReply.sweepPending', () => {
 
 			const stale = await getThread(t, staleThread);
 			expect(stale?.needsReplyPendingAt).toBeGreaterThan(staleAt);
+			const queued = await getThread(t, queuedThread);
+			expect(queued?.needsReplyPendingAt).toBe(queuedAt);
 			const fresh = await getThread(t, freshThread);
 			expect(fresh?.needsReplyPendingAt).toBeDefined();
 			const idle = await getThread(t, idleThread);

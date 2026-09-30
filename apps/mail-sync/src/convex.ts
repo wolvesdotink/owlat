@@ -379,7 +379,7 @@ export const fn = {
 	),
 	forgetRemoteFolders: makeFunctionReference<
 		'mutation',
-		{ accountId: string; listed: string[] },
+		{ accountId: string; listed: string[]; retired?: string[] },
 		{ forgotten: number }
 	>('mail/external/remoteState:forgetRemoteFolders'),
 };

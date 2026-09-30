@@ -42,6 +42,21 @@ export function mapFolderRole(specialUse: string | undefined, path: string): Fol
 const VIRTUAL_SPECIAL_USE = new Set(['\\All', '\\Flagged', '\\Important']);
 
 /**
+ * Whether a LIST entry is a view onto mail filed elsewhere. Read from the raw
+ * LIST attributes as well as `specialUse`: imapflow only fills `specialUse` from
+ * the RFC 6154 set, which has no `\\Important`, so Gmail's Important view
+ * ("[Gmail]/Wichtig" on a German account) carries the attribute only in
+ * `flags`. Checking `specialUse` alone mirrored it as a real folder, and since a
+ * Gmail message sits in every label it carries, archived mail then landed in
+ * "Important" instead of Archive.
+ */
+export function isVirtualView(entry: { flags?: Set<string>; specialUse?: string }): boolean {
+	if (entry.specialUse && VIRTUAL_SPECIAL_USE.has(entry.specialUse)) return true;
+	for (const flag of entry.flags ?? []) if (VIRTUAL_SPECIAL_USE.has(flag)) return true;
+	return false;
+}
+
+/**
  * The local path a remote folder is mirrored under with full sync, or null for
  * one that is not mirrored: unselectable, INBOX itself, or a virtual view. The
  * personal namespace prefix ("INBOX." on Dovecot/Courier) is dropped, as is a
@@ -53,7 +68,7 @@ export function mirroredFolderPath(
 	namespacePrefix: string | null | undefined
 ): string[] | null {
 	if (entry.flags?.has('\\Noselect') || entry.flags?.has('\\NonExistent')) return null;
-	if (entry.specialUse && VIRTUAL_SPECIAL_USE.has(entry.specialUse)) return null;
+	if (isVirtualView(entry)) return null;
 	if (entry.path.toUpperCase() === 'INBOX') return null;
 	let path = entry.path;
 	if (namespacePrefix && path.startsWith(namespacePrefix))
