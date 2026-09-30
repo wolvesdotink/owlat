@@ -371,3 +371,90 @@ describe('CsvImportModal — where the import goes next', () => {
 		expect(wrapper.text()).not.toContain('Add to topic');
 	});
 });
+
+/**
+ * #897: a batch the backend did not commit. The completion step must not read
+ * as a clean import, must name the rows and the reason, and must offer a retry
+ * of exactly those rows.
+ */
+describe('CsvImportModal — a failed batch', () => {
+	const rows = Array.from({ length: 201 }, (_, i) => [`user${i + 1}@example.com`, `User ${i + 1}`]);
+
+	/** Runs the real import with the second batch failing, then shows its completion step. */
+	async function mountAfterFailedBatch(topics: Array<{ _id: string; name: string }> = []) {
+		const mounted = mountModal({ step: 'preview', rows }, topics);
+		let call = 0;
+		await mounted.csvImport.startImport(async (contacts) => {
+			call++;
+			return call === 2
+				? { ok: false, reason: 'Too many imports, try again in a minute' }
+				: {
+						ok: true,
+						result: {
+							imported: contacts.length,
+							updated: 0,
+							skipped: 0,
+							failed: 0,
+							errors: [],
+						},
+					};
+		});
+		await flushPromises();
+		return mounted;
+	}
+
+	it('says the import is incomplete and names the rows and the reason', async () => {
+		const { wrapper } = await mountAfterFailedBatch();
+
+		const text = wrapper.text();
+		expect(text).toContain('Import incomplete');
+		expect(text).not.toContain('Import complete!');
+		expect(text).toContain('100 of 201 rows processed. 101 rows were not imported.');
+		expect(text).toContain('Rows 101–200 failed: Too many imports, try again in a minute');
+		expect(text).toContain('Row 201 was not sent after the failure.');
+		// The Failed card counts every row that is not in.
+		const failedCard = wrapper
+			.findAll('ui-stat-card-stub')
+			.find((card) => card.attributes('label') === 'Failed');
+		expect(failedCard?.attributes('value')).toBe('101');
+	});
+
+	it('asks the page to retry, and keeps the clean summary for a clean run', async () => {
+		const { wrapper } = await mountAfterFailedBatch();
+
+		await clickButton(wrapper, 'Retry 101 rows');
+		expect(wrapper.emitted('retry')).toHaveLength(1);
+
+		const clean = mountModal({ step: 'complete', results: { imported: 3 } });
+		expect(clean.wrapper.text()).toContain('Import complete!');
+		expect(clean.wrapper.text()).not.toContain('Retry');
+	});
+
+	it('lists every row that did not make it in the error download', async () => {
+		const { wrapper } = await mountAfterFailedBatch();
+
+		await clickButton(wrapper, 'Download error rows');
+
+		const csv = await downloads[0]!.blob.text();
+		expect(csv).toContain('user101@example.com');
+		expect(csv).toContain('Not imported (row 101): user101@example.com – Too many imports');
+		expect(csv).toContain('Not sent (row 201): user201@example.com');
+		// Header + 101 rows.
+		expect(csv.split('\n')).toHaveLength(102);
+	});
+
+	it('assigns only the imported rows to a topic, never the ones left for the retry', async () => {
+		const { wrapper } = await mountAfterFailedBatch([{ _id: 'topic-1', name: 'Newsletter' }]);
+
+		await clickButton(wrapper, 'Add to topic');
+		await wrapper.find('select').setValue('topic-1');
+		await clickButton(wrapper, 'Add');
+		await flushPromises();
+
+		const sent = runOperation.mock.calls.flatMap(
+			([args]) => (args as { contacts: Array<{ email: string }> }).contacts
+		);
+		expect(sent).toHaveLength(100);
+		expect(sent.map((c) => c.email)).not.toContain('user101@example.com');
+	});
+});

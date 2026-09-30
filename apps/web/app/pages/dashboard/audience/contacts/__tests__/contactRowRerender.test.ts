@@ -25,6 +25,7 @@ import { useBulkOperation } from '~/composables/useBulkOperation';
 import { useBulkSelection } from '~/composables/useBulkSelection';
 import { useClickOutside } from '~/composables/useClickOutside';
 import { useContactBulkOperations } from '~/composables/useContactBulkOperations';
+import { useContactCsvImportOperations } from '~/composables/useContactCsvImportOperations';
 import { useCsvImport } from '~/composables/useCsvImport';
 import { useDataTable } from '~/composables/useDataTable';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
@@ -50,6 +51,7 @@ beforeEach(() => {
 		useClickOutside,
 		useClickOutsideSelector: useClickOutside,
 		useContactBulkOperations,
+		useContactCsvImportOperations,
 		useCsvImport,
 		useDataTable,
 		useDebouncedSearch,
