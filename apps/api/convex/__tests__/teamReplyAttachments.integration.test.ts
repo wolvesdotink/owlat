@@ -468,7 +468,7 @@ describe('team reply attachments: the send paths', () => {
 		expect(await t.query(api.inbox.replyAttachments.suggestions, { threadId })).not.toBeNull();
 	});
 
-	it('the autonomous send takes a file attached for this message, but not one still copying', async () => {
+	it('the autonomous send waits for a file attached for this message to finish copying', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId, messageId } = await seedThread(t, 'approved');
 		vi.advanceTimersByTime(60_000);
@@ -483,17 +483,52 @@ describe('team reply attachments: the send paths', () => {
 			source: 'semanticFile',
 			id: fileId,
 		});
+
+		// Delay 0: the send fires while the Files copy is still running.
 		await t.action(internal.agent.agentPipeline.sendApprovedReply, {
 			inboundMessageId: messageId,
 			autonomous: true,
 		});
-		expect(lastEnvelope()?.attachmentRefs).toEqual([
-			expect.objectContaining({ filename: 'invoice.pdf' }),
-		]);
-		// The copy stays in the composer for the next reply.
+		expect(enqueueActionMock).not.toHaveBeenCalled();
 		expect((await threadAttachments(t, threadId)).map((entry) => entry.origin)).toEqual([
+			'upload',
 			'semanticFile',
 		]);
+
+		// The copy lands, and the retried send carries both files.
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		expect(enqueueActionMock).toHaveBeenCalledTimes(1);
+		expect(lastEnvelope()?.attachmentRefs).toEqual([
+			expect.objectContaining({ filename: 'invoice.pdf' }),
+			expect.objectContaining({ filename: 'prices.pdf' }),
+		]);
+		expect(await threadAttachments(t, threadId)).toEqual([]);
+	});
+
+	it('the autonomous send stops when a file attached for this message failed to copy', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, messageId } = await seedThread(t, 'approved');
+		vi.advanceTimersByTime(60_000);
+		const { fileId, storageId } = await seedFile(t);
+		await t.mutation(api.inbox.replyAttachments.attachExisting, {
+			threadId,
+			source: 'semanticFile',
+			id: fileId,
+		});
+		// The bytes go before the copy runs, so the copy fails.
+		await t.run(async (ctx) => {
+			await ctx.storage.delete(storageId);
+		});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		expect((await threadAttachments(t, threadId))[0]?.copyError).toBeDefined();
+
+		await t.action(internal.agent.agentPipeline.sendApprovedReply, {
+			inboundMessageId: messageId,
+			autonomous: true,
+		});
+		expect(enqueueActionMock).not.toHaveBeenCalled();
+		const message = await t.run((ctx) => ctx.db.get(messageId));
+		expect(message?.processingStatus).toBe('failed');
 	});
 
 	it('the autonomous send leaves a file staged before the message arrived; a person sends it', async () => {

@@ -261,6 +261,15 @@ export const finishCopy = internalMutation({
  * question, say); a file someone staged earlier for a reply of their own stays
  * in the composer. A person approving the reply sees the list and sends it all.
  */
+/**
+ * The intake's outcome, or a hold on the autonomous path: a file attached for
+ * this message is still being copied (`sendApprovedReply` tries again) or
+ * could not be copied (the send is stopped for a person to look at).
+ */
+export type AgentReplyIntakeOutcome =
+	| NonCampaignIntakeOutcome
+	| { ok: false; reason: 'attachment_copying' | 'attachment_failed' };
+
 export const intakeAgentReply = internalMutation({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
@@ -272,12 +281,24 @@ export const intakeAgentReply = internalMutation({
 		from: v.string(),
 		headers: v.optional(v.record(v.string(), v.string())),
 	},
-	handler: async (ctx, args): Promise<NonCampaignIntakeOutcome> => {
+	handler: async (ctx, args): Promise<AgentReplyIntakeOutcome> => {
 		const message = await ctx.db.get(args.inboundMessageId);
 		if (!message) throw new Error('The message this reply answers no longer exists');
 		const thread = message.threadId ? await ctx.db.get(message.threadId) : null;
 		const include = (entry: TeamReplyAttachment) =>
 			args.autonomous !== true || entry.addedAt >= message.receivedAt;
+		// A file attached for this message is one the reply was told it carries
+		// (a file answer). Nobody is watching an autonomous send, so it waits for
+		// the copy rather than leaving without the file, and a failed copy stops it.
+		if (args.autonomous === true) {
+			const pending = (thread?.replyAttachments ?? []).filter(
+				(entry) => include(entry) && replyAttachmentStatus(entry) !== 'ready'
+			);
+			if (pending.some((entry) => replyAttachmentStatus(entry) === 'failed')) {
+				return { ok: false, reason: 'attachment_failed' };
+			}
+			if (pending.length > 0) return { ok: false, reason: 'attachment_copying' };
+		}
 		const ready = (thread?.replyAttachments ?? []).filter(
 			(entry) => replyAttachmentStatus(entry) === 'ready' && include(entry)
 		);
