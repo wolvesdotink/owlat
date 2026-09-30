@@ -23,6 +23,7 @@ import AnswerTeamPresence from '~/components/answer/AnswerTeamPresence.vue';
 import AttachSuggestion from '~/components/inbox/AttachSuggestion.vue';
 import ThreadComposer from '~/components/inbox/ThreadComposer.vue';
 import TeamPage from '../t/[threadId].vue';
+import { useReviewApproveUndo } from '~/composables/useReviewApproveUndo';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -228,6 +229,24 @@ describe('Answer mode for a Team inbox thread', () => {
 		expect(wrapper.get('[data-testid="answer-back"]').attributes('aria-label')).toBe(
 			'Back to Team inbox'
 		);
+	});
+
+	it('arms the Approved · Undo countdown for a held approve, and its Undo cancels the send', async () => {
+		handleApprove.mockResolvedValueOnce({ ok: true, result: { undo: { sendAt: 5_000 } } });
+		const wrapper = await mountPage();
+		await wrapper.get('[data-testid="thread-composer-send"]').trigger('click');
+		await flushPromises();
+		const armed = state.get('review:approve-undo')?.value as {
+			visible: boolean;
+			sendAt: number;
+			inboundMessageId: string;
+		};
+		expect(armed).toMatchObject({ visible: true, sendAt: 5_000, inboundMessageId: 'in_1' });
+
+		const undoRun = findRun('Undo approval');
+		undoRun.mockResolvedValueOnce({ ok: true, result: { cancelled: true } });
+		await useReviewApproveUndo().runUndo();
+		expect(undoRun).toHaveBeenCalledWith({ inboundMessageId: 'in_1' });
 	});
 
 	it('in the Answer queue, a send finishes the item and moves on', async () => {

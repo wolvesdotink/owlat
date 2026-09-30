@@ -624,6 +624,9 @@ const sidebarDesktopClass = computed(() => {
 		     campaign send): one bottom-left column, so two live windows stack
 		     instead of covering each other's Undo button. -->
 		<div :id="UNDO_TOAST_REGION_ID" class="fixed bottom-4 left-4 z-50 flex flex-col gap-2" />
+		<!-- A team draft's approve countdown: armed in Answer mode, it outlives
+		     the page the reply leaves from. -->
+		<AnswerReviewApproveUndoToast />
 
 		<!-- Keyboard shortcuts help modal -->
 		<LazyKeyboardShortcutsHelp v-if="helpRequested" />

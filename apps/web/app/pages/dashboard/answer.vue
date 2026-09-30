@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import ReviewApproveUndoToast from '~/components/answer/ReviewApproveUndoToast.vue';
 import { provideAnswerQueueSession } from '~/composables/useAnswerQueueSession';
 
 /**
@@ -9,8 +8,9 @@ import { provideAnswerQueueSession } from '~/composables/useAnswerQueueSession';
  * page to the next and keep its place, its undo and its end summary (see
  * useAnswerQueueSession). It renders no chrome of its own.
  *
- * The approve countdown toast lives here too, so approving a team draft and
- * moving on to the next item keeps its Undo on screen.
+ * The approve countdown toast is the dashboard layout's, so approving a team
+ * draft keeps its Undo on screen whether the queue moves on to the next item
+ * or the reply leaves Answer mode.
  */
 definePageMeta({ layout: 'dashboard', middleware: 'auth' });
 
@@ -20,6 +20,5 @@ provideAnswerQueueSession();
 <template>
 	<div class="contents">
 		<NuxtPage />
-		<ReviewApproveUndoToast />
 	</div>
 </template>

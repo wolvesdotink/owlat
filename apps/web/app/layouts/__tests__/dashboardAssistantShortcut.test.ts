@@ -64,6 +64,7 @@ function mountLayout() {
 				DashboardShellHeader: true,
 				LazyAppCommandPalette: true,
 				ShellComposerOverlay: true,
+				AnswerReviewApproveUndoToast: true,
 				LazyKeyboardShortcutsHelp: true,
 				AppLiveRegion: true,
 				Icon: true,
