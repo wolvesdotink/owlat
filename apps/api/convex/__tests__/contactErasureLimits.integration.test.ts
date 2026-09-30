@@ -273,6 +273,74 @@ describe('send scrubbing under enforced limits', () => {
 	});
 });
 
+describe('one paginated query per transaction', () => {
+	it('stops at the second send table instead of paging it in the same transaction', async () => {
+		const t = limitedHarness(true);
+		const contactId = await t.run(async (ctx) => {
+			const now = Date.now();
+			const id = await ctx.db.insert('contacts', createTestContact({ email: 'both@example.com' }));
+			const campaignId = await ctx.db.insert('campaigns', {
+				name: 'C',
+				status: 'sent' as const,
+				createdAt: now,
+				updatedAt: now,
+			});
+			const transactionalEmailId = await ctx.db.insert('transactionalEmails', {
+				name: 'TX',
+				slug: 'tx',
+				subject: 'Hi',
+				content: '[]',
+				status: 'published' as const,
+				createdAt: now,
+				updatedAt: now,
+			});
+			// Both tables longer than a probe: each needs a page.
+			for (let i = 0; i < 10; i++) {
+				await ctx.db.insert('emailSends', {
+					campaignId,
+					contactId: id,
+					contactEmail: 'both@example.com',
+					status: 'sent' as const,
+					queuedAt: now,
+				});
+				await ctx.db.insert('transactionalSends', {
+					kind: 'transactional' as const,
+					transactionalEmailId,
+					contactId: id,
+					email: 'both@example.com',
+					status: 'sent' as const,
+				});
+			}
+			return id;
+		});
+
+		// A second paginated query in one transaction throws in convex-test, as
+		// it does on a deployment.
+		await t.mutation(internal.contacts.contacts.removeForTeam, { contactId });
+		const job = await t.run((ctx) =>
+			ctx.db
+				.query('contactErasureJobs')
+				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+				.first()
+		);
+		expect(job?.phase).toBe('transactionalSends');
+		await tickToDone(t, job!._id);
+		await t.run(async (ctx) => {
+			expect(await ctx.db.get(contactId)).toBeNull();
+			for (const table of ['emailSends', 'transactionalSends'] as const) {
+				const sends = await ctx.db
+					.query(table)
+					.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+					.collect();
+				expect(sends).toHaveLength(10);
+				for (const send of sends) {
+					expect('contactEmail' in send ? send.contactEmail : send.email).toBe('[erased]');
+				}
+			}
+		});
+	});
+});
+
 describe('limit classification', () => {
 	it('matches Convex per-transaction limit errors and nothing else', () => {
 		expect(

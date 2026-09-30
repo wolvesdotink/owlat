@@ -71,8 +71,9 @@ const eraseAutomationRuns: PhaseRunner = async ({ ctx, contactId, budget }) => {
 			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
 			.first();
 		if (!run) return DONE;
-		// The helper re-reads the run and reads its step runs; `onRead` charges
-		// each of them as it happens.
+		budget.chargeRead(run);
+		// The helper reads the run again, then its step runs; `onRead` charges
+		// each of those reads as it happens.
 		const progress = await deleteAutomationRun(ctx, run._id, budget.chunk(256), (doc) =>
 			budget.chargeRead(doc)
 		);
@@ -131,10 +132,19 @@ function scrubSends<T extends SendTable>(table: T, scrub: () => Partial<Doc<T>>)
 							maximumBytesRead: bytesLeft,
 						}
 			);
-			for (const send of page.page) await scrubOne(send);
 			if (page.pageStatus === 'SplitRequired') {
+				// A page sized for maximum-size rows with no byte cap should never be
+				// cut short. Saving the same marker again would loop without a trace;
+				// failing the transaction puts it on the job's `lastError`.
+				if (isNarrow) {
+					throw new Error(
+						`Contact erasure: a ${sendTable} page without a byte cap came back SplitRequired`
+					);
+				}
+				for (const send of page.page) await scrubOne(send);
 				return { isDone: false, isPaginated: true, cursor: NARROW_PAGE + (from ?? '') };
 			}
+			for (const send of page.page) await scrubOne(send);
 			return page.isDone
 				? { isDone: true, isPaginated: true }
 				: { isDone: false, isPaginated: true, cursor: page.continueCursor };

@@ -26,8 +26,15 @@ const KiB = 1024;
 const MiB = 1024 * KiB;
 const utf8 = (text: string) => new TextEncoder().encode(text).length;
 
-/** `ctx` whose database hands every document it returns to `onRead`. */
-function recordingCtx(ctx: MutationCtx, onRead: (doc: Record<string, unknown>) => void) {
+/**
+ * `ctx` whose database hands every document it returns to `onRead`, after
+ * `rewrite` (for simulating backend answers convex-test never gives).
+ */
+function recordingCtx(
+	ctx: MutationCtx,
+	onRead: (doc: Record<string, unknown>) => void,
+	rewrite: (value: unknown) => unknown = (value) => value
+) {
 	const record = (value: unknown): void => {
 		if (Array.isArray(value)) {
 			for (const item of value) record(item);
@@ -45,8 +52,9 @@ function recordingCtx(ctx: MutationCtx, onRead: (doc: Record<string, unknown>) =
 					const result: unknown = value.apply(object, args);
 					if (result instanceof Promise) {
 						return result.then((resolved: unknown) => {
-							record(resolved);
-							return resolved;
+							const value = rewrite(resolved);
+							record(value);
+							return value;
 						});
 					}
 					return result !== null && typeof result === 'object' ? wrap(result) : result;
@@ -208,6 +216,45 @@ describe('every read is charged', () => {
 			expect(sends).toHaveLength(200);
 			for (const send of sends) expect(send.contactEmail).toBe('[erased]');
 		});
+	});
+
+	it('fails the transaction when a page sized for maximum-size rows is cut short', async () => {
+		const t = newHarness();
+		const contactId = await seedContact(t);
+		await t.run(async (ctx) => {
+			const campaignId = await ctx.db.insert('campaigns', {
+				name: 'C',
+				status: 'sent' as const,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			for (let i = 0; i < 5; i++) {
+				await ctx.db.insert('emailSends', {
+					campaignId,
+					contactId,
+					contactEmail: 'budget@example.com',
+					status: 'sent' as const,
+					queuedAt: Date.now(),
+				});
+			}
+		});
+		// A backend that splits even an uncapped page: saving the same narrow
+		// marker again would loop forever without failing.
+		const splitEveryPage = (value: unknown) =>
+			value !== null && typeof value === 'object' && 'page' in value
+				? { ...value, pageStatus: 'SplitRequired' }
+				: value;
+		await expect(
+			t.run((ctx) =>
+				advanceErasure(
+					recordingCtx(ctx, () => {}, splitEveryPage),
+					contactId,
+					{ phase: 'emailSends', cursor: 'narrow:' },
+					new ErasureBudget(ERASURE_ROWS_PER_TRANSACTION, ERASURE_BYTES_PER_TRANSACTION),
+					'walker'
+				)
+			)
+		).rejects.toThrow(/SplitRequired/);
 	});
 
 	it('charges the step runs an automation-run deletion reads on its behalf', async () => {
