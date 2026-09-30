@@ -530,6 +530,49 @@ describe('team reply attachments: the send paths', () => {
 		expect(await threadAttachments(t, threadId)).toEqual([]);
 	});
 
+	it("a file answered to the agent's question leaves with the autonomous reply", async () => {
+		const t = convexTest(schema, modules);
+		const { messageId } = await seedThread(t, 'awaiting_clarification');
+		await t.run(async (ctx) => {
+			await ctx.db.patch(messageId, {
+				pendingClarification: {
+					questions: [
+						{
+							id: 'clarify_attachment',
+							slotType: 'attachment',
+							answerKind: 'file',
+							text: 'They asked for the invoice. I could not find it.',
+						},
+					],
+					askedAt: Date.now(),
+				},
+			});
+		});
+		vi.advanceTimersByTime(60_000);
+		const storageId = await upload(t);
+		await t.mutation(api.inbox.clarification.answerClarification, {
+			inboundMessageId: messageId,
+			answers: [
+				{
+					questionId: 'clarify_attachment',
+					file: { source: 'upload', id: storageId, filename: 'invoice.pdf' },
+					keepCopy: false,
+				},
+			],
+		});
+		// The resumed draft is routed to an unattended send.
+		await t.run(async (ctx) => {
+			await ctx.db.patch(messageId, { processingStatus: 'approved' });
+		});
+		await t.action(internal.agent.agentPipeline.sendApprovedReply, {
+			inboundMessageId: messageId,
+			autonomous: true,
+		});
+		expect(lastEnvelope()?.attachmentRefs).toEqual([
+			expect.objectContaining({ filename: 'invoice.pdf', storageId }),
+		]);
+	});
+
 	it('a follow-up takes the attachments, Undo hands them back, and the dispatch sends them', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId } = await seedThread(t, 'sent');

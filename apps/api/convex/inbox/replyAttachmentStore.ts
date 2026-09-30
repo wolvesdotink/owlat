@@ -15,11 +15,16 @@
 
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { internal } from '../_generated/api';
 import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import type { TeamReplyAttachment } from '../lib/validators/teamReplyAttachment';
 import type { AttachmentRef } from '../delivery/sendComposition';
 import { deleteBlobQuietly } from '../lib/storageBlobs';
-import { throwInvalidInput, throwInvalidState } from '../_utils/errors';
+import { resolveReadableExistingAttachment } from '../lib/existingAttachments';
+import type { MutationSessionContext } from '../lib/sessionOrganization';
+import { STRING_LIMITS, validateStringLength } from '../lib/inputGuards';
+import { consumeUpload, storedFileSize } from '../storage/uploads';
+import { getOrThrow, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 
 /** The `storageUploads.resourceKey` a fresh upload is bound to. */
 export function replyUploadResourceKey(threadId: Id<'conversationThreads'>): string {
@@ -53,6 +58,110 @@ export function assertReplyAttachmentFits(
 	if (total > ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes) {
 		throwInvalidInput('Attachments exceed the total size limit');
 	}
+}
+
+/** The thread, if a reply on it can carry files: email only. */
+export async function loadAttachableThread(
+	ctx: QueryCtx,
+	threadId: Id<'conversationThreads'>
+): Promise<Doc<'conversationThreads'>> {
+	const thread = await getOrThrow(ctx, threadId, 'Thread');
+	if (thread.channel !== undefined && thread.channel !== 'email') {
+		throwInvalidState('Attachments can only be sent on email threads');
+	}
+	return thread;
+}
+
+function cleanFilename(filename: string | undefined): string {
+	const name = filename?.trim() ?? '';
+	if (name === '') return 'attachment';
+	validateStringLength(name, STRING_LIMITS.FILENAME, 'Filename');
+	// A path in a filename means nothing to the recipient's client and can
+	// mislead a careless one; keep the last segment.
+	return name.split(/[/\\]/).pop() || 'attachment';
+}
+
+/**
+ * Bind the caller's fresh upload (an unclaimed `storageUploads` receipt) to the
+ * thread's composer and return the new list. Binding and the limit checks
+ * share the transaction: a refused file leaves its receipt unclaimed, so the
+ * upload cleanup still reclaims it.
+ */
+export async function attachUploadToThread(
+	ctx: MutationCtx,
+	threadId: Id<'conversationThreads'>,
+	upload: {
+		storageId: Id<'_storage'>;
+		filename?: string | undefined;
+		contentType?: string | undefined;
+	},
+	session: MutationSessionContext
+): Promise<TeamReplyAttachment[]> {
+	const thread = await loadAttachableThread(ctx, threadId);
+	const entries = thread.replyAttachments ?? [];
+	const filename = cleanFilename(upload.filename);
+	if (upload.contentType !== undefined) {
+		validateStringLength(upload.contentType, STRING_LIMITS.MIME_TYPE, 'Content type');
+	}
+	await consumeUpload(ctx, upload.storageId, session, replyUploadResourceKey(threadId));
+	const size = await storedFileSize(ctx, upload.storageId);
+	assertReplyAttachmentFits(entries, size);
+	const stored = await ctx.db.system.get(upload.storageId);
+	const next: TeamReplyAttachment[] = [
+		...entries,
+		{
+			id: crypto.randomUUID(),
+			storageId: upload.storageId,
+			filename,
+			contentType: upload.contentType || stored?.contentType || 'application/octet-stream',
+			size,
+			origin: 'upload',
+			addedBy: session.userId,
+			addedAt: Date.now(),
+		},
+	];
+	await ctx.db.patch(threadId, { replyAttachments: next });
+	return next;
+}
+
+/**
+ * Attach a file from Files or a received email to the thread's composer, after
+ * the shared read check (lib/existingAttachments.ts), and schedule the copy
+ * into a blob the reply owns; the entry reads as "copying" until then.
+ * Attaching the same file twice is a no-op. Returns the new list.
+ */
+export async function attachExistingToThread(
+	ctx: MutationCtx,
+	threadId: Id<'conversationThreads'>,
+	file: { source: 'semanticFile' | 'mailAttachment'; id: string },
+	session: MutationSessionContext
+): Promise<TeamReplyAttachment[]> {
+	const thread = await loadAttachableThread(ctx, threadId);
+	const entries = thread.replyAttachments ?? [];
+	if (entries.some((entry) => entry.origin === file.source && entry.sourceId === file.id)) {
+		return entries;
+	}
+	const resolved = await resolveReadableExistingAttachment(ctx, file, session);
+	assertReplyAttachmentFits(entries, resolved.size);
+	const entry: TeamReplyAttachment = {
+		id: crypto.randomUUID(),
+		filename: resolved.filename,
+		contentType: resolved.contentType,
+		size: resolved.size,
+		origin: resolved.source,
+		sourceId: resolved.id,
+		addedBy: session.userId,
+		addedAt: Date.now(),
+	};
+	const next = [...entries, entry];
+	await ctx.db.patch(threadId, { replyAttachments: next });
+	await ctx.scheduler.runAfter(0, internal.inbox.replyAttachments.copyExisting, {
+		threadId,
+		entryId: entry.id,
+		bytes: resolved.bytes,
+		contentType: resolved.contentType,
+	});
+	return next;
 }
 
 /**

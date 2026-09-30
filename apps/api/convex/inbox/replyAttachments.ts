@@ -24,29 +24,26 @@ import { v } from 'convex/values';
 import { internalAction, type QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
-import type { Doc, Id } from '../_generated/dataModel';
+import type { Id } from '../_generated/dataModel';
 import { MAX_ATTACHMENT_BYTES, ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import { adminMutation, publicQuery } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
-import { STRING_LIMITS, validateStringLength } from '../lib/inputGuards';
 import {
 	existingAttachmentBytesValidator,
 	existingAttachmentSourceValidator,
 	readExistingAttachmentBytes,
-	resolveReadableExistingAttachment,
 } from '../lib/existingAttachments';
 import type { TeamReplyAttachment } from '../lib/validators/teamReplyAttachment';
-import { consumeUpload, storedFileSize } from '../storage/uploads';
-import { getOrThrow, throwInvalidInput, throwInvalidState } from '../_utils/errors';
+import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import { logError } from '../lib/runtimeLog';
 import type { NonCampaignIntakeOutcome } from '../delivery/nonCampaignIntake';
 import { isSharedInboxReader } from './access';
 import {
-	assertReplyAttachmentFits,
+	attachExistingToThread,
+	attachUploadToThread,
 	purgeReplyAttachments,
 	replyAttachmentRefs,
 	replyAttachmentStatus,
-	replyUploadResourceKey,
 	takeReadyReplyAttachments,
 } from './replyAttachmentStore';
 
@@ -72,27 +69,6 @@ async function viewOf(ctx: QueryCtx, entries: readonly TeamReplyAttachment[] | u
 	);
 }
 
-/** The thread, if a reply on it can carry files: email only. */
-async function loadAttachableThread(
-	ctx: QueryCtx,
-	threadId: Id<'conversationThreads'>
-): Promise<Doc<'conversationThreads'>> {
-	const thread = await getOrThrow(ctx, threadId, 'Thread');
-	if (thread.channel !== undefined && thread.channel !== 'email') {
-		throwInvalidState('Attachments can only be sent on email threads');
-	}
-	return thread;
-}
-
-function cleanFilename(filename: string | undefined): string {
-	const name = filename?.trim() ?? '';
-	if (name === '') return 'attachment';
-	validateStringLength(name, STRING_LIMITS.FILENAME, 'Filename');
-	// A path in a filename means nothing to the recipient's client and can
-	// mislead a careless one; keep the last segment.
-	return name.split(/[/\\]/).pop() || 'attachment';
-}
-
 /** The composer's attachments on a thread, in order. */
 // public: soft-auth — admin-only shared inbox; returns empty for non-admins
 export const list = publicQuery({
@@ -115,33 +91,8 @@ export const add = adminMutation({
 		contentType: v.optional(v.string()),
 	},
 	handler: async (ctx, args, session) => {
-		const thread = await loadAttachableThread(ctx, args.threadId);
-		const entries = thread.replyAttachments ?? [];
-		const filename = cleanFilename(args.filename);
-		if (args.contentType !== undefined) {
-			validateStringLength(args.contentType, STRING_LIMITS.MIME_TYPE, 'Content type');
-		}
-		// Binding and the limit checks share the transaction: a refused file
-		// leaves its receipt unclaimed, so the upload cleanup still reclaims it.
-		await consumeUpload(ctx, args.storageId, session, replyUploadResourceKey(args.threadId));
-		const size = await storedFileSize(ctx, args.storageId);
-		assertReplyAttachmentFits(entries, size);
-		const stored = await ctx.db.system.get(args.storageId);
-		const next: TeamReplyAttachment[] = [
-			...entries,
-			{
-				id: crypto.randomUUID(),
-				storageId: args.storageId,
-				filename,
-				contentType: args.contentType || stored?.contentType || 'application/octet-stream',
-				size,
-				origin: 'upload',
-				addedBy: session.userId,
-				addedAt: Date.now(),
-			},
-		];
-		await ctx.db.patch(args.threadId, { replyAttachments: next });
-		return await viewOf(ctx, next);
+		const { threadId, ...upload } = args;
+		return await viewOf(ctx, await attachUploadToThread(ctx, threadId, upload, session));
 	},
 });
 
@@ -158,32 +109,8 @@ export const attachExisting = adminMutation({
 		id: v.string(),
 	},
 	handler: async (ctx, args, session) => {
-		const thread = await loadAttachableThread(ctx, args.threadId);
-		const entries = thread.replyAttachments ?? [];
-		if (entries.some((entry) => entry.origin === args.source && entry.sourceId === args.id)) {
-			return await viewOf(ctx, entries);
-		}
-		const file = await resolveReadableExistingAttachment(ctx, args, session);
-		assertReplyAttachmentFits(entries, file.size);
-		const entry: TeamReplyAttachment = {
-			id: crypto.randomUUID(),
-			filename: file.filename,
-			contentType: file.contentType,
-			size: file.size,
-			origin: file.source,
-			sourceId: file.id,
-			addedBy: session.userId,
-			addedAt: Date.now(),
-		};
-		const next = [...entries, entry];
-		await ctx.db.patch(args.threadId, { replyAttachments: next });
-		await ctx.scheduler.runAfter(0, internal.inbox.replyAttachments.copyExisting, {
-			threadId: args.threadId,
-			entryId: entry.id,
-			bytes: file.bytes,
-			contentType: file.contentType,
-		});
-		return await viewOf(ctx, next);
+		const { threadId, ...file } = args;
+		return await viewOf(ctx, await attachExistingToThread(ctx, threadId, file, session));
 	},
 });
 
