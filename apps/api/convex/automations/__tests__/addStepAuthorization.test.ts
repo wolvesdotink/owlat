@@ -57,8 +57,10 @@ function makeCtx() {
 		db: {
 			// `addStep` runs on `automationsMutation`, whose feature floor reads
 			// the flag map from `featureFlagSettings` before the handler starts.
-			// Its write fence looks up an active workspace deletion (`first`, none)
-			// before the first write.
+			// Its write fence resolves a bare-id patch's table (`normalizeId`, not
+			// one of the unswept tables) and looks up an active workspace deletion
+			// (`first`, none) before the first write.
+			normalizeId: () => null,
 			query: (table: string) =>
 				table === 'featureFlagSettings'
 					? { first: async () => ({ featureFlags: { automations: true } }) }
