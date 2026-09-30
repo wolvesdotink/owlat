@@ -1,0 +1,14 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "provisioning",
+	"description": "The \"set up a new server\" wizard's SSH transport (src/ipc_commands.rs PROVISIONING_COMMANDS). Main window only: the compose window never provisions.",
+	"windows": ["main"],
+	"permissions": [
+		"allow-ssh-connect",
+		"allow-ssh-accept-host-key",
+		"allow-ssh-authenticate",
+		"allow-ssh-exec-stream",
+		"allow-ssh-write-file",
+		"allow-ssh-disconnect"
+	]
+}

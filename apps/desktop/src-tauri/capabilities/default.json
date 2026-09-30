@@ -1,7 +1,7 @@
 {
 	"$schema": "../gen/schemas/desktop-schema.json",
 	"identifier": "default",
-	"description": "Core capability for the main + compose windows: window control, notifications, deep links, updater, shell-open, and the workspace store. App-defined commands (secret_*, update_unread_badge, …) are not ACL-gated.",
+	"description": "Core capability for the main + compose windows: window control, notifications, deep links, updater, shell-open, the workspace store, and the app commands every window uses (src/ipc_commands.rs WINDOW_COMMANDS). Server provisioning is granted to the main window only (provisioning.json).",
 	"windows": ["main", "compose"],
 	"permissions": [
 		"core:default",
@@ -29,6 +29,24 @@
 		"autostart:allow-is-enabled",
 		"global-shortcut:allow-register",
 		"global-shortcut:allow-unregister",
-		"global-shortcut:allow-is-registered"
+		"global-shortcut:allow-is-registered",
+		"allow-update-unread-badge",
+		"allow-send-native-notification",
+		"allow-send-actionable-notification",
+		"allow-secret-set",
+		"allow-secret-get",
+		"allow-secret-delete",
+		"allow-pick-files",
+		"allow-read-authorized-file",
+		"allow-open-compose",
+		"allow-set-traffic-lights-visible",
+		"allow-set-accent-frame",
+		"allow-window-ready",
+		"allow-titlebar-double-click",
+		"allow-zoom-level",
+		"allow-updater-check",
+		"allow-updater-install",
+		"allow-updater-restart",
+		"allow-updater-notify-ready"
 	]
 }
