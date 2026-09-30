@@ -33,6 +33,7 @@ const G = {
 	compose: 'shared.shortcuts.groups.compose',
 	review: 'shared.shortcuts.groups.review',
 	workspace: 'shared.shortcuts.groups.workspace',
+	answer: 'shared.shortcuts.groups.answer',
 } as const;
 
 const L = (name: string) => `shared.shortcuts.labels.${name}`;
@@ -399,6 +400,59 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		keys: ['Enter'],
 		labelKey: L('openThread'),
 		groupKey: G.review,
+		remappable: false,
+	},
+
+	// --- Answer mode (claimed by AnswerModeFrame; the pages bind these keys
+	// themselves, so the entries document them for the "?" sheet and none can
+	// be remapped) ---------------------------------------------------------------
+	{
+		id: 'answer.leave',
+		scope: 'answer',
+		keys: ['Escape'],
+		labelKey: L('leaveAnswerMode'),
+		groupKey: G.answer,
+		remappable: false,
+	},
+	{
+		id: 'answer.toggleView',
+		scope: 'answer',
+		keys: ['t'],
+		labelKey: L('toggleAnswerView'),
+		groupKey: G.answer,
+		remappable: false,
+	},
+	{
+		id: 'answer.draftWithAi',
+		scope: 'answer',
+		keys: ['mod+j'],
+		labelKey: L('draftWithAi'),
+		groupKey: G.answer,
+		remappable: false,
+	},
+	{
+		id: 'answer.pickAskOption',
+		scope: 'answer',
+		keys: ['1', '2', '3', '4', '5', '6', '7', '8', '9'],
+		displayKeys: '1–9',
+		labelKey: L('pickAskOption'),
+		groupKey: G.answer,
+		remappable: false,
+	},
+	{
+		id: 'answer.previousItem',
+		scope: 'answer',
+		keys: ['['],
+		labelKey: L('previousQueueItem'),
+		groupKey: G.answer,
+		remappable: false,
+	},
+	{
+		id: 'answer.nextItem',
+		scope: 'answer',
+		keys: [']'],
+		labelKey: L('nextQueueItem'),
+		groupKey: G.answer,
 		remappable: false,
 	},
 

@@ -14115,7 +14115,8 @@
 				"organize": "Organisieren",
 				"triage": "Triage",
 				"workspace": "Workspaces",
-				"review": "Updates-Liste"
+				"review": "Updates-Liste",
+				"answer": "Antwortmodus"
 			},
 			"labels": {
 				"addLabel": "Label hinzufügen",
@@ -14168,7 +14169,13 @@
 				"goToMarketing": "Zu Marketing",
 				"next": "Weiter",
 				"previous": "Zurück",
-				"openThread": "Unterhaltung öffnen"
+				"openThread": "Unterhaltung öffnen",
+				"leaveAnswerMode": "Antwortmodus verlassen (im Editor verlässt das erste Esc nur den Editor)",
+				"toggleAnswerView": "Zwischen Zusammenfassung und ganzer Unterhaltung wechseln",
+				"draftWithAi": "Mit KI entwerfen (statt den Assistenten zu öffnen)",
+				"pickAskOption": "Eine Antwort auf der Fragekarte der KI wählen",
+				"previousQueueItem": "Vorheriger Eintrag in der Antwortliste",
+				"nextQueueItem": "Nächster Eintrag in der Antwortliste"
 			}
 		},
 		"signatureBadge": {

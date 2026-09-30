@@ -29,6 +29,7 @@
 import { useAnswerLayout, useAnswerSheet } from '~/composables/useAnswerSheet';
 import { useKeyboardInset } from '~/composables/useKeyboardInset';
 import type { AnswerSheetState, AnswerTab } from '~/utils/answerModeLayout';
+import { pushShortcutScope } from '~/utils/shortcutScope';
 
 const props = defineProps<{
 	/** Where "←" goes, spelled as a place ("Inbox", "Answer queue"). */
@@ -68,6 +69,15 @@ const metaPrefix = computed(() => {
 	);
 	return props.counterpart ? `${count} · ` : count;
 });
+
+// Answer mode's keys (Esc, t, Cmd/Ctrl+J, 1 to 9, [ and ]) are bound by the
+// pages and the ask card; claiming the scope puts them on the "?" sheet, in
+// place of the app-wide Esc they replace here.
+let releaseScope: (() => void) | null = null;
+onMounted(() => {
+	releaseScope = pushShortcutScope('answer');
+});
+onBeforeUnmount(() => releaseScope?.());
 
 const conversationPanelId = useId();
 const replyPanelId = useId();

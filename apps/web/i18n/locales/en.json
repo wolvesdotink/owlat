@@ -14115,7 +14115,8 @@
 				"organize": "Organize",
 				"triage": "Triage",
 				"workspace": "Workspaces",
-				"review": "Updates list"
+				"review": "Updates list",
+				"answer": "Answer mode"
 			},
 			"labels": {
 				"addLabel": "Add label",
@@ -14168,7 +14169,13 @@
 				"goToMarketing": "Go to marketing",
 				"next": "Next",
 				"previous": "Previous",
-				"openThread": "Open thread"
+				"openThread": "Open thread",
+				"leaveAnswerMode": "Leave Answer mode (in the editor, the first Esc only lets go of it)",
+				"toggleAnswerView": "Switch between Summary and Full conversation",
+				"draftWithAi": "Draft with AI (instead of opening the Assistant)",
+				"pickAskOption": "Pick an answer on the AI’s question card",
+				"previousQueueItem": "Previous item in the Answer queue",
+				"nextQueueItem": "Next item in the Answer queue"
 			}
 		},
 		"signatureBadge": {
