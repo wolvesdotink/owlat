@@ -54,21 +54,47 @@ import type { mailDraftAttachmentValidator } from '../lib/validators/mailContent
 type AttachExistingSource = Infer<typeof existingAttachmentSourceValidator>;
 type DraftAttachment = Infer<typeof mailDraftAttachmentValidator>;
 
-/** Resolve a source for a draft the caller can write. */
+/** Whether the draft already holds a copy of this file. */
+function hasCopyOf(
+	attachments: readonly DraftAttachment[],
+	source: AttachExistingSource,
+	id: string
+): boolean {
+	return attachments.some((a) => a.copiedFrom?.source === source && a.copiedFrom.id === id);
+}
+
+/**
+ * Resolve a source for a draft the caller can write. `attached` is the draft's
+ * list when it already holds a copy of the file (nothing to do), and a file
+ * over the per-file limit is refused here, before an action reads its bytes.
+ */
 export const resolveForDraft = internalQuery({
 	args: {
 		draftId: v.id('mailDrafts'),
 		source: existingAttachmentSourceValidator,
 		id: v.string(),
 	},
-	handler: async (ctx, args): Promise<ExistingAttachment> => {
+	handler: async (
+		ctx,
+		args
+	): Promise<{ file: ExistingAttachment; attached?: DraftAttachment[] }> => {
 		const draft = await ctx.db.get(args.draftId);
 		if (!draft) throwNotFound('Draft');
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
 		assertStateIs(draft, 'draft');
 		const session = await requireOrgMember(ctx);
-		return await resolveReadableExistingAttachment(ctx, args, session);
+		const file = await resolveReadableExistingAttachment(ctx, args, session);
+		if (hasCopyOf(draft.attachments, file.source, file.id)) {
+			return { file, attached: draft.attachments };
+		}
+		if (draft.attachments.length >= ATTACHMENT_COMPOSE_LIMITS.maxCount) {
+			throwInvalidInput('Too many attachments');
+		}
+		if (file.size > MAX_ATTACHMENT_BYTES) {
+			throwInvalidInput('Attachment size exceeds the allowed limit');
+		}
+		return { file };
 	},
 });
 
@@ -118,7 +144,8 @@ export const searchMailboxAttachments = internalQuery({
  * Put a copied blob on the draft. Re-checks access and the draft state (the
  * bytes were read in between), enforces the composer's count and size limits,
  * and binds the blob to the draft with an upload receipt so discard and send
- * free it like any upload. The caller deletes the blob when this throws.
+ * free it like any upload. The caller deletes the blob when this throws, or
+ * when `isBound` is false: a concurrent attach put the same file on first.
  */
 export const bindCopiedAttachment = internalMutation({
 	args: {
@@ -126,13 +153,17 @@ export const bindCopiedAttachment = internalMutation({
 		storageId: v.id('_storage'),
 		filename: v.string(),
 		contentType: v.string(),
+		copiedFrom: v.object({ source: existingAttachmentSourceValidator, id: v.string() }),
 	},
-	handler: async (ctx, args): Promise<DraftAttachment[]> => {
+	handler: async (ctx, args): Promise<{ attachments: DraftAttachment[]; isBound: boolean }> => {
 		const draft = await ctx.db.get(args.draftId);
 		if (!draft) throwNotFound('Draft');
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
 		assertStateIs(draft, 'draft');
+		if (hasCopyOf(draft.attachments, args.copiedFrom.source, args.copiedFrom.id)) {
+			return { attachments: draft.attachments, isBound: false };
+		}
 		if (draft.attachments.length >= ATTACHMENT_COMPOSE_LIMITS.maxCount) {
 			throwInvalidInput('Too many attachments');
 		}
@@ -162,47 +193,49 @@ export const bindCopiedAttachment = internalMutation({
 				contentType: args.contentType,
 				size,
 				isInline: false,
+				copiedFrom: args.copiedFrom,
 			},
 		];
 		await ctx.db.patch(args.draftId, { attachments, lastEditedAt: Date.now() });
-		return attachments;
+		return { attachments, isBound: true };
 	},
 });
 
 /**
  * Copy an existing file onto a draft the caller can write and return the
  * draft's attachments. Shared by `mail.drafts.attachExisting` and the Answer
- * mode file answers (mail/ai/composeDraft.ts).
+ * mode file answers (mail/ai/composeDraft.ts). A file the draft already holds
+ * a copy of is not copied again, so running "Draft with AI" twice or tapping
+ * a file twice leaves one attachment.
  */
 export async function copyExistingIntoDraft(
 	ctx: Pick<ActionCtx, 'runQuery' | 'runMutation' | 'storage'>,
 	args: { draftId: Id<'mailDrafts'>; source: AttachExistingSource; id: string }
 ): Promise<{ attachments: DraftAttachment[]; filename: string }> {
-	const resolved: ExistingAttachment = await ctx.runQuery(
-		internal.mail.attachExisting.resolveForDraft,
-		args
-	);
-	const bytes = await readExistingAttachmentBytes(ctx.storage, resolved.bytes);
+	const { file, attached }: { file: ExistingAttachment; attached?: DraftAttachment[] } =
+		await ctx.runQuery(internal.mail.attachExisting.resolveForDraft, args);
+	if (attached) return { attachments: attached, filename: file.filename };
+	const bytes = await readExistingAttachmentBytes(ctx.storage, file.bytes);
 	if (!bytes || bytes.byteLength === 0) throwInvalidState('The file could not be read');
 	if (bytes.byteLength > MAX_ATTACHMENT_BYTES) {
 		throwInvalidInput('Attachment size exceeds the allowed limit');
 	}
 	const storageId = await ctx.storage.store(
-		new Blob([bytes as BlobPart], { type: resolved.contentType })
+		new Blob([bytes as BlobPart], { type: file.contentType })
 	);
+	let bound: { attachments: DraftAttachment[]; isBound: boolean };
 	try {
-		const attachments: DraftAttachment[] = await ctx.runMutation(
-			internal.mail.attachExisting.bindCopiedAttachment,
-			{
-				draftId: args.draftId,
-				storageId,
-				filename: resolved.filename,
-				contentType: resolved.contentType,
-			}
-		);
-		return { attachments, filename: resolved.filename };
+		bound = await ctx.runMutation(internal.mail.attachExisting.bindCopiedAttachment, {
+			draftId: args.draftId,
+			storageId,
+			filename: file.filename,
+			contentType: file.contentType,
+			copiedFrom: { source: file.source, id: file.id },
+		});
 	} catch (err) {
 		await ctx.storage.delete(storageId);
 		throw err;
 	}
+	if (!bound.isBound) await ctx.storage.delete(storageId);
+	return { attachments: bound.attachments, filename: file.filename };
 }
