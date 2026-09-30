@@ -524,12 +524,14 @@ const {
 	plainText: previewPlainText,
 	plainTextSource: previewPlainTextSource,
 	ampHtml: previewAmpHtml,
+	ampRequested: previewAmpRequested,
 	renderWarnings: previewRenderWarnings,
 	emailAnalysis: previewEmailAnalysis,
 	healthScore: previewHealthScore,
 	validationIssues: previewValidationIssues,
 	emailDiff: previewEmailDiff,
 	regenerate: regeneratePreview,
+	regenerateHtml: regeneratePreviewHtml,
 	togglePreviewMode,
 } = usePreview({
 	canvasBlocks,
@@ -555,10 +557,11 @@ watch(blocksVersion, () => {
 	if (previewMode.value !== 'edit') regeneratePreview();
 });
 
-// Dark-mode toggle from the previewer re-renders against the new mode.
+// Dark-mode toggle from the previewer re-renders the HTML against the new mode;
+// plain text, AMP and Block validation do not depend on it.
 function handlePreviewDarkMode(value: boolean) {
 	previewDarkMode.value = value;
-	if (previewMode.value !== 'edit') regeneratePreview();
+	if (previewMode.value !== 'edit') regeneratePreviewHtml();
 }
 
 // ---------------------------------------------------------------------------
@@ -1115,6 +1118,7 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 				:plain-text-override="props.plainTextOverride ?? ''"
 				:allow-plain-text-override="props.allowPlainTextOverride ?? false"
 				:amp-html="previewAmpHtml"
+				amp-available
 				:render-warnings="previewRenderWarnings"
 				:email-analysis="previewEmailAnalysis"
 				:health-score="previewHealthScore"
@@ -1123,6 +1127,7 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 				:render-options="renderOptions"
 				@update:render-options="renderOptions = $event"
 				@update:dark-mode="handlePreviewDarkMode"
+				@update:amp-requested="previewAmpRequested = $event"
 				@send-test="emit('send-test', previewHtml)"
 				@update:plain-text-override="emit('update:plainTextOverride', $event)"
 			/>
