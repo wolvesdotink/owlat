@@ -14,7 +14,8 @@ type FollowUp = FunctionReturnType<typeof api.inbox.followUps.listForThread>[num
  * Answer mode's left column for a Team inbox thread (plan §07): the customer's
  * messages with their HTML bodies, rendered by the Postbox's sandboxed body
  * component (quotes folded, remote images behind "Show images"), each followed
- * by what the team sent back. The newest message, and the one the reply
+ * by what the team sent back (a body too large for its row shows as on the
+ * thread page: its excerpt, then the full text). The newest message, and the one the reply
  * answers, open in full; older ones are one-line rows. "Full conversation"
  * (`t` on the page) opens them all.
  *
@@ -87,7 +88,17 @@ function bodyOf(message: ThreadMessage) {
 }
 
 function preview(message: ThreadMessage): string {
-	return (message.textBody ?? '').replace(/\s+/g, ' ').trim().slice(0, 160);
+	return (message.textBody || message.bodyExcerpt || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+}
+
+// A body too large for its row is in storage and the query only has its
+// excerpt; the thread page's body component shows that, marked as the start of
+// the message, until the full text arrives.
+function hasInlineBody(message: ThreadMessage): boolean {
+	return Boolean(message.htmlBody || message.textBody?.trim());
+}
+function hasStoredBody(message: ThreadMessage): boolean {
+	return message.textBodyStorageId !== undefined || message.htmlBodyStorageId !== undefined;
 }
 
 function sentReplyAuthor(message: ThreadMessage): string {
@@ -181,9 +192,10 @@ const showViewToggle = computed(() => props.messages.length > 1);
 					data-testid="answer-team-message-body"
 				>
 					<PostboxMessageBody
-						v-if="entry.message.htmlBody || entry.message.textBody"
+						v-if="hasInlineBody(entry.message)"
 						:message="bodyOf(entry.message)"
 					/>
+					<InboxMessageBody v-else-if="hasStoredBody(entry.message)" :message="entry.message" />
 					<p v-else class="text-sm text-text-tertiary">
 						{{ t('dashboard.inbox.detail.noTextContent') }}
 					</p>
