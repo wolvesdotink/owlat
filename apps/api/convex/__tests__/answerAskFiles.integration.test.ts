@@ -158,6 +158,28 @@ describe('the three file outcomes on a draft', () => {
 		expect(prompt).toContain('mention them naturally: invoice-2026-09-brightpath.pdf');
 	});
 
+	it('running Draft with AI again does not attach the matched file a second time', async () => {
+		const t = await makeT();
+		const contactId = await seedCustomer(t);
+		const fileId = await seedFile(t, { filename: 'invoice-2026-09.pdf', contactIds: [contactId] });
+		llm.files = [hit(fileId, 'invoice-2026-09.pdf', 0.7)];
+		const { target, draftId } = await replyDraft(t);
+
+		await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		const again = await t.action(api.mail.ai.composeDraft.start, {
+			target,
+			instruction: 'Shorter, please',
+			locale: 'en',
+		});
+
+		expect(again.attachedFiles).toEqual([
+			{ source: 'semanticFile', id: fileId, filename: 'invoice-2026-09.pdf' },
+		]);
+		expect((await draftRow(t, draftId)).attachments.map((a) => a.filename)).toEqual([
+			'invoice-2026-09.pdf',
+		]);
+	});
+
 	it('several close matches ask which one; the pick is attached', async () => {
 		const t = await makeT();
 		const a = await seedFile(t, { filename: 'invoice-2026-09.pdf' });
@@ -233,6 +255,8 @@ describe('upload answers and Files', () => {
 
 	it('attaches the upload to the draft and keeps a contact-scoped copy in Files', async () => {
 		const t = await makeT();
+		// Adding to Files is an admin action, on the Files page and here.
+		sess.user = { userId: 'user-a', role: 'owner', activeOrganizationId: ORG };
 		const { contactId, draftId, sessionId } = await askForUpload(t);
 		const upload = await seedUpload(t, { filename: 'invoice-2026-09.pdf' });
 
@@ -270,8 +294,28 @@ describe('upload answers and Files', () => {
 		});
 	});
 
+	it("keeps no copy of a member's upload: only admins add to Files", async () => {
+		const t = await makeT();
+		const { draftId, sessionId } = await askForUpload(t);
+		const upload = await seedUpload(t);
+
+		await t.action(api.mail.ai.composeDraft.answer, {
+			sessionId,
+			answers: [
+				{
+					questionId: 'file_request',
+					file: { source: 'upload', id: upload, filename: 'invoice.pdf' },
+				},
+			],
+		});
+
+		expect((await draftRow(t, draftId)).attachments).toHaveLength(1);
+		expect(await t.run(async (ctx) => await ctx.db.query('semanticFiles').collect())).toEqual([]);
+	});
+
 	it('keeps no copy when the owner opts out', async () => {
 		const t = await makeT();
+		sess.user = { userId: 'user-a', role: 'owner', activeOrganizationId: ORG };
 		const { draftId, sessionId } = await askForUpload(t);
 		const upload = await seedUpload(t);
 
@@ -290,9 +334,9 @@ describe('upload answers and Files', () => {
 		expect(await t.run(async (ctx) => await ctx.db.query('semanticFiles').collect())).toEqual([]);
 	});
 
-	it('refuses somebody else’s upload', async () => {
+	it('refuses somebody else’s upload and hands the question back', async () => {
 		const t = await makeT();
-		const { sessionId } = await askForUpload(t);
+		const { draftId, sessionId } = await askForUpload(t);
 		const upload = await seedUpload(t, { userId: 'user-b' });
 		await expect(
 			t.action(api.mail.ai.composeDraft.answer, {
@@ -302,6 +346,34 @@ describe('upload answers and Files', () => {
 				],
 			})
 		).rejects.toMatchObject({ data: { category: 'forbidden' } });
+		const target = { kind: 'mailDraft' as const, draftId };
+		expect((await t.query(api.mail.ai.composeDraftStore.getSession, { target }))?.status).toBe(
+			'asking'
+		);
+	});
+
+	it('two answers racing on one session attach the file once', async () => {
+		const t = await makeT();
+		const { draftId, sessionId } = await askForUpload(t);
+		const fileId = await seedFile(t, { filename: 'invoice-2026-09.pdf' });
+		const answerWithFile = () =>
+			t.action(api.mail.ai.composeDraft.answer, {
+				sessionId,
+				answers: [
+					{
+						questionId: 'file_request',
+						file: { source: 'semanticFile', id: fileId, filename: 'invoice-2026-09.pdf' },
+					},
+				],
+			});
+
+		const results = await Promise.allSettled([answerWithFile(), answerWithFile()]);
+
+		expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+		const refused = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+		expect(refused.reason).toMatchObject({ data: { category: 'invalid_state' } });
+		expect((await draftRow(t, draftId)).attachments).toHaveLength(1);
+		expect(vi.mocked(runLlmStream)).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -321,6 +393,42 @@ describe('mail.drafts.attachExisting', () => {
 		expect(await blobText(t, attachments[0]!.storageId)).toBe('%PDF terms.pdf');
 	});
 
+	it('attaching the same file twice leaves one copy', async () => {
+		const t = await makeT();
+		const { draftId } = await replyDraft(t);
+		const general = await seedFile(t, { filename: 'price-list.pdf' });
+		await t.action(api.mail.drafts.attachExisting, {
+			draftId,
+			source: 'semanticFile',
+			id: general,
+		});
+		const attachments = await t.action(api.mail.drafts.attachExisting, {
+			draftId,
+			source: 'semanticFile',
+			id: general,
+		});
+		expect(attachments.map((a) => a.filename)).toEqual(['price-list.pdf']);
+		expect(attachments[0]?.copiedFrom).toEqual({ source: 'semanticFile', id: general });
+	});
+
+	it('refuses a file over the per-file limit before reading it', async () => {
+		const t = await makeT();
+		const { mailboxId, draftId } = await replyDraft(t);
+		const attachmentId = await seedMailAttachment(t, mailboxId, 'scan.pdf');
+		// The recorded size is what the check reads; the stored bytes stay small.
+		await t.run(async (ctx) => {
+			await ctx.db.patch(attachmentId, { size: 60 * 1024 * 1024 });
+		});
+		await expect(
+			t.action(api.mail.drafts.attachExisting, {
+				draftId,
+				source: 'mailAttachment',
+				id: attachmentId,
+			})
+		).rejects.toMatchObject({ data: { category: 'invalid_input' } });
+		expect((await draftRow(t, draftId)).attachments).toEqual([]);
+	});
+
 	it('refuses another mailbox’s attachment', async () => {
 		const t = await makeT();
 		const { draftId } = await replyDraft(t);
@@ -336,25 +444,33 @@ describe('mail.drafts.attachExisting', () => {
 		expect((await draftRow(t, draftId)).attachments).toEqual([]);
 	});
 
-	it('refuses a file linked to another contact, allows the recipient’s and org-general ones', async () => {
+	it('attaches any Files row the caller can open, whichever contact it is linked to', async () => {
 		const t = await makeT();
 		const customer = await seedCustomer(t);
 		const stranger = await seedCustomer(t, 'someone@example.net');
 		const { draftId } = await replyDraft(t);
 		const theirs = await seedFile(t, { filename: 'contract-other.pdf', contactIds: [stranger] });
 		const mine = await seedFile(t, { filename: 'invoice.pdf', contactIds: [customer] });
-		const general = await seedFile(t, { filename: 'price-list.pdf' });
 
-		await expect(
-			t.action(api.mail.drafts.attachExisting, { draftId, source: 'semanticFile', id: theirs })
-		).rejects.toMatchObject({ data: { category: 'forbidden' } });
 		await t.action(api.mail.drafts.attachExisting, { draftId, source: 'semanticFile', id: mine });
 		const attachments = await t.action(api.mail.drafts.attachExisting, {
 			draftId,
 			source: 'semanticFile',
-			id: general,
+			id: theirs,
 		});
-		expect(attachments.map((a) => a.filename)).toEqual(['invoice.pdf', 'price-list.pdf']);
+		expect(attachments.map((a) => a.filename)).toEqual(['invoice.pdf', 'contract-other.pdf']);
+	});
+
+	it('refuses a Files row whose bytes were released', async () => {
+		const t = await makeT();
+		const { draftId } = await replyDraft(t);
+		const released = await seedFile(t, { filename: 'old.pdf' });
+		await t.run(async (ctx) => {
+			await ctx.db.patch(released, { storageId: undefined, bytesReleasedAt: Date.now() });
+		});
+		await expect(
+			t.action(api.mail.drafts.attachExisting, { draftId, source: 'semanticFile', id: released })
+		).rejects.toMatchObject({ data: { category: 'invalid_state' } });
 	});
 
 	it('refuses a caller from another organization', async () => {

@@ -12,7 +12,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
-import { api } from '../_generated/api';
+import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import {
 	enableFeatures,
@@ -20,7 +20,8 @@ import {
 	createTestInboundMessage,
 } from './factories';
 import { normalizeQuestionKey } from '../inbox/clarificationMemoryMatch';
-import { runLlmStream } from '../lib/llm/dispatch';
+import { runLlmStream, runLlmText } from '../lib/llm/dispatch';
+import { assembleInboundBriefing } from '../agent/steps/context_retrieval';
 import { NOT_READY_OPTION } from '../inbox/clarificationAnswers';
 import { CUSTOMER, ORG, seedCustomer, seedFile, seedRequest } from './helpers/answerAsk';
 
@@ -64,7 +65,8 @@ vi.mock('../lib/sessionOrganization', async () => {
 });
 vi.mock('../lib/llmProvider', async () => {
 	const actual = await vi.importActual<typeof LlmProviderModule>('../lib/llmProvider');
-	return { ...actual, resolveLanguageModel: vi.fn(() => 'test-model') };
+	// The tier is the model name, so a test can tell which tier a call used.
+	return { ...actual, resolveLanguageModel: vi.fn((_ctx: unknown, tier: string) => tier) };
 });
 vi.mock('../lib/llm/dispatch', async () => {
 	const actual = await vi.importActual<typeof DispatchModule>('../lib/llm/dispatch');
@@ -151,6 +153,8 @@ beforeEach(() => {
 	llm.files = [];
 	llm.draft = 'Hi Jonas,\n\nthanks for your note.\n\nBest,\nAda';
 	vi.mocked(runLlmStream).mockReset();
+	vi.mocked(runLlmText).mockClear();
+	vi.mocked(assembleInboundBriefing).mockClear();
 	vi.mocked(runLlmStream).mockImplementation(async (opts) => {
 		await opts.onTextDelta?.(llm.draft, llm.draft);
 		return {
@@ -323,6 +327,67 @@ describe('answer', () => {
 		expect(memory).toEqual([]);
 	});
 
+	it("names the promised day on the owner's calendar, at 09:00 their time", async () => {
+		const t = await makeT();
+		await seedCustomer(t);
+		const { target } = await replyDraft(t);
+		const asked = await t.action(api.mail.ai.composeDraft.start, {
+			target,
+			locale: 'en',
+			timeZone: 'Pacific/Auckland',
+		});
+		await t.action(api.mail.ai.composeDraft.answer, {
+			sessionId: asked.sessionId,
+			answers: [{ questionId: 'file_request', value: NOT_READY_OPTION }],
+		});
+		const res = await t.action(api.mail.ai.composeDraft.answer, {
+			sessionId: asked.sessionId,
+			answers: [{ questionId: 'follow_up_date', value: 'Tomorrow' }],
+		});
+		const hour = new Intl.DateTimeFormat('en-US', {
+			timeZone: 'Pacific/Auckland',
+			hour: '2-digit',
+			minute: '2-digit',
+			hourCycle: 'h23',
+		}).format(res.followUpAt!);
+		expect(hour).toBe('09:00');
+	});
+
+	it('drafts from the context start built, without building it again', async () => {
+		const t = await makeT();
+		llm.slots = [slot('date_time', 'When will payment arrive?')];
+		const { target, messageId } = await replyDraft(t);
+		const asked = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		// Were the context rebuilt, the drafter would read the edited body.
+		await t.run(async (ctx) => {
+			await ctx.db.patch(messageId, { textBodyInline: 'Edited after the questions were asked.' });
+		});
+
+		await t.action(api.mail.ai.composeDraft.answer, {
+			sessionId: asked.sessionId,
+			answers: [{ questionId: asked.questions[0]!.id, value: 'Friday' }],
+		});
+		const prompt = lastDraftPrompt();
+		expect(prompt).toContain('Our books close on Friday');
+		expect(prompt).not.toContain('Edited after the questions were asked');
+	});
+
+	it('samples candidate replies on the cheap tier unless the dial is cautious', async () => {
+		const t = await makeT();
+		llm.slots = [slot('date_time', 'When will payment arrive?')];
+		const { target } = await replyDraft(t);
+		await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		const tiers = () => vi.mocked(runLlmText).mock.calls.map(([opts]) => opts.model);
+		expect(tiers()).toEqual(['summarize', 'summarize', 'summarize']);
+
+		vi.mocked(runLlmText).mockClear();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('askEagernessSettings', { mode: 'cautious', updatedAt: Date.now() });
+		});
+		await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		expect(tiers()).toEqual(['draft', 'draft', 'draft']);
+	});
+
 	it('remembers a typed answer for the contact', async () => {
 		const t = await makeT();
 		const contactId = await seedCustomer(t);
@@ -368,6 +433,7 @@ describe('privacy', () => {
 
 describe('team thread', () => {
 	async function seedTeamThread(t: Tx, contactId: Id<'contacts'>) {
+		await enableFeatures(t, ['inbox']);
 		return await t.run(async (ctx) => {
 			const { updatedAt: _unused, ...thread } = createTestConversationThread({
 				contactId,
@@ -417,6 +483,65 @@ describe('team thread', () => {
 		expect(prompt).toContain('mention them naturally: invoice-2026-09.pdf');
 	});
 
+	it('answering builds the pipeline briefing only once', async () => {
+		const t = await makeT();
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const contactId = await seedCustomer(t);
+		const threadId = await seedTeamThread(t, contactId);
+		llm.slots = [slot('date_time', 'When will payment arrive?')];
+		const target = { kind: 'teamThread' as const, threadId };
+
+		const asked = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		expect(asked.status).toBe('asking');
+		const res = await t.action(api.mail.ai.composeDraft.answer, {
+			sessionId: asked.sessionId,
+			answers: [],
+			skip: true,
+		});
+		expect(res.status).toBe('ready');
+		expect(vi.mocked(assembleInboundBriefing)).toHaveBeenCalledTimes(1);
+		expect(lastDraftPrompt()).toContain('Jonas asks for the September invoice');
+	});
+
+	it('works on a team-only instance, and not once the team inbox is off', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		// No Postbox: only the team inbox and AI.
+		await enableFeatures(t, ['ai']);
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const contactId = await seedCustomer(t);
+		const threadId = await seedTeamThread(t, contactId);
+		const target = { kind: 'teamThread' as const, threadId };
+
+		const asked = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		expect(await t.query(api.mail.ai.composeDraftStore.getSession, { target })).toMatchObject({
+			status: 'asking',
+		});
+		const res = await t.action(api.mail.ai.composeDraft.answer, {
+			sessionId: asked.sessionId,
+			answers: [],
+			skip: true,
+		});
+		expect(res.status).toBe('ready');
+		const stream = await t.query(api.mail.draftStreamStore.getDraftStream, {
+			streamId: res.streamId!,
+		});
+		expect(stream?.status).toBe('complete');
+
+		await t.run(async (ctx) => {
+			const settings = (await ctx.db.query('instanceSettings').first())!;
+			await ctx.db.patch(settings._id, {
+				featureFlags: { ...settings.featureFlags, inbox: false },
+			});
+		});
+		// With the Postbox on, the team thread is still out of reach.
+		await enableFeatures(t, ['mail.external']);
+		expect(await t.query(api.mail.ai.composeDraftStore.getSession, { target })).toBeNull();
+		await expect(
+			t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' })
+		).rejects.toMatchObject({ data: { category: 'forbidden' } });
+	});
+
 	it('refuses a member who cannot read the shared inbox', async () => {
 		const t = await makeT();
 		const contactId = await seedCustomer(t);
@@ -427,5 +552,36 @@ describe('team thread', () => {
 				locale: 'en',
 			})
 		).rejects.toMatchObject({ data: { category: 'forbidden' } });
+	});
+});
+
+describe('retention', () => {
+	it('sweeps sessions started more than 30 days ago, with their streams', async () => {
+		const t = await makeT();
+		const { target, mailboxId, messageId } = await replyDraft(t, 'Thanks for the call, talk soon.');
+		const old = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		expect(old.streamId).toBeDefined();
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			vi.setSystemTime(Date.now() + 31 * 24 * 60 * 60 * 1000);
+			const { draftId } = await t.mutation(api.mail.drafts.create, {
+				mailboxId,
+				inReplyToMessageId: messageId,
+			});
+			const fresh = { kind: 'mailDraft' as const, draftId };
+			const kept = await t.action(api.mail.ai.composeDraft.start, { target: fresh, locale: 'en' });
+
+			const swept = await t.mutation(internal.mail.ai.composeDraftStore.sweepStaleSessions, {});
+
+			expect(swept.deleted).toBe(1);
+			const left = await t.run(async (ctx) => ({
+				sessions: await ctx.db.query('answerAskSessions').collect(),
+				oldStream: await ctx.db.get(old.streamId!),
+			}));
+			expect(left.sessions.map((row) => row._id)).toEqual([kept.sessionId]);
+			expect(left.oldStream).toBeNull();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

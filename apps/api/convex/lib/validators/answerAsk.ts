@@ -32,6 +32,26 @@ export const answerAskStatusValidator = v.union(
 export type AnswerAskStatus = Infer<typeof answerAskStatusValidator>;
 
 /**
+ * What the drafter needs about a target, built once by `start` and kept on the
+ * session so `answer` does not rebuild it (for a team thread that is the whole
+ * pipeline briefing, with its knowledge and file searches). `context` is the
+ * untrusted thread text as the drafter reads it; the rest is the voice and
+ * house style the prompt is written in.
+ */
+export const answerDraftContextValidator = v.object({
+	context: v.string(),
+	audience: v.string(),
+	styleReference: v.string(),
+	toneInstruction: v.string(),
+	signatureInstruction: v.string(),
+	voiceSection: v.string(),
+	// The contact's language (ISO code); the reply is written in it.
+	language: v.optional(v.string()),
+});
+
+export type AnswerDraftContext = Infer<typeof answerDraftContextValidator>;
+
+/**
  * One string per target, indexed, so "the live session of this draft" is a
  * point read whichever kind of target it is.
  */

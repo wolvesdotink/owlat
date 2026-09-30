@@ -12,7 +12,9 @@ import { internal } from '../_generated/api';
 import { recordAuditLog } from '../lib/auditLog';
 import { getOrThrow, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import { clarificationFileRefValidator } from '../lib/validators/clarification';
+import type { Id } from '../_generated/dataModel';
 import { captureStandingAnswers } from './clarificationMemory';
+import { attachExistingToThread, attachUploadToThread } from './replyAttachmentStore';
 import { candidateForLabel, isFileQuestion } from './clarificationAnswers';
 import {
 	ownerPickSuggestion,
@@ -40,6 +42,13 @@ import {
  * upload is saved to Files for the sender's contact unless `keepCopy` is false,
  * and a Files pick is recorded as the message's confident attachment
  * suggestion, which the resumed draft step keeps instead of searching again.
+ *
+ * The file also goes on the thread's reply, here, through the same code the
+ * composer's attach runs (`./replyAttachmentStore.ts`). The resumed draft is
+ * told the file is attached, and the reply may leave on the autonomous path
+ * with nobody looking at the composer, so that has to be true whatever the
+ * client does next. It was attached after the message arrived, so the
+ * autonomous send takes it (`replyAttachments.intakeAgentReply`).
  */
 export const answerClarification = adminMutation({
 	args: {
@@ -71,6 +80,7 @@ export const answerClarification = adminMutation({
 		const now = Date.now();
 		const answerByQuestion = new Map(args.answers.map((a) => [a.questionId, a] as const));
 		let pickedFile: ResolvedFileAnswer['semanticFile'];
+		const attach: Array<{ ref: ClarificationFileRef; mimeType?: string | undefined }> = [];
 		const questions = [];
 		for (const q of pending.questions) {
 			const provided = answerByQuestion.get(q.id);
@@ -91,14 +101,12 @@ export const answerClarification = adminMutation({
 						keepCopy: provided.keepCopy,
 						mimeType: provided.mimeType,
 						contactId: message.contactId,
-						// Team replies attach from Files; mailbox attachments are Postbox-only.
-						allowMailAttachment: false,
-						canSaveToFiles: true,
 					})
 				: undefined;
 			const value = provided.value ?? resolved?.ref.filename;
 			if (value === undefined) throwInvalidInput('An answer needs a value or a file');
 			if (resolved?.semanticFile && !pickedFile) pickedFile = resolved.semanticFile;
+			if (resolved) attach.push({ ref: resolved.ref, mimeType: provided.mimeType });
 			questions.push({
 				...q,
 				answer: {
@@ -108,6 +116,29 @@ export const answerClarification = adminMutation({
 					...(resolved ? { file: resolved.ref } : {}),
 				},
 			});
+		}
+
+		// Put the answered files on the thread's reply. A refusal (a non-email
+		// thread, the reply's size limits) throws and undoes the whole answer, so
+		// the owner never sees a draft that promises a file it does not carry.
+		if (message.threadId) {
+			for (const { ref, mimeType } of attach) {
+				if (ref.source === 'upload') {
+					await attachUploadToThread(
+						ctx,
+						message.threadId,
+						{ storageId: ref.id as Id<'_storage'>, filename: ref.filename, contentType: mimeType },
+						session
+					);
+				} else {
+					await attachExistingToThread(
+						ctx,
+						message.threadId,
+						{ source: ref.source, id: ref.id },
+						session
+					);
+				}
+			}
 		}
 
 		// Persist the answers (advisory fields — direct patch, like editDraft). The

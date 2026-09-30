@@ -20,9 +20,8 @@ import { markOnboardingStep } from '../auth/userOnboarding';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { canSendWithSealState } from './sealPolicy';
 import { mailboxHasSendTransport } from './draftQueries';
-import { hasDraftGaps } from '@owlat/shared/answerMode';
 import { openMailDraftBody } from '../lib/messageBody';
-import { draftHasAskSession } from './ai/composeDraftStore';
+import { assertNoAnswerGaps } from './ai/composeDraftStore';
 
 /**
  * Initiate send: mark draft as pending_send with an undo window, schedule
@@ -42,16 +41,11 @@ export async function sendHandler(
 	const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 	if (!owned.ok) throwForbidden('Draft not accessible');
 
-	// An Answer mode "draft with gaps" marks each missing fact `[[...]]`. Sending
-	// one would ship the marker to the recipient, so it is refused until the
-	// person fills or deletes it. Only drafts that went through Draft with AI
-	// are checked: double brackets in hand-written mail are not ours to block.
-	if (await draftHasAskSession(ctx, args.draftId)) {
+	// Answer mode gap placeholders block the send (mail/ai/composeDraftStore.ts).
+	await assertNoAnswerGaps(ctx, { kind: 'mailDraft', draftId: args.draftId }, async () => {
 		const body = await openMailDraftBody(draft);
-		if (hasDraftGaps(`${body.bodyText ?? ''}\n${body.bodyHtml}`)) {
-			throwInvalidState('Fill in the highlighted gaps before sending', { code: 'DRAFT_HAS_GAPS' });
-		}
-	}
+		return `${body.bodyText ?? ''}\n${body.bodyHtml}`;
+	});
 
 	let isUnsealedSendAllowed = false;
 	if (await isFeatureEnabled(ctx, 'sealedMail')) {

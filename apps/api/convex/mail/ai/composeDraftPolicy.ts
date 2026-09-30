@@ -22,6 +22,8 @@ import type { Infer } from 'convex/values';
 import { formatDraftGap } from '@owlat/shared/answerMode';
 import { pickAttachmentSuggestion, MATCH_FLOOR } from '../../inbox/attachmentMatch';
 import { isCredentialSolicitation } from '../../inbox/clarificationSlots';
+import { detectInjection } from '../../agent/steps/security_scan/patterns';
+import { formatPromisedDay, weekdayAfter } from './composeDraftDates';
 import { NOT_READY_OPTION } from '../../inbox/clarificationAnswers';
 import type { FoundFile } from '../../inbox/attachmentSuggest';
 import type {
@@ -42,8 +44,6 @@ export const FOLLOW_UP_QUESTION_ID = 'follow_up_date';
 export const NEAR_MATCH_FLOOR = 0.15;
 /** Near misses shown with an upload question. */
 export const NEAR_MATCH_LIMIT = 3;
-
-// ─── Periods ────────────────────────────────────────────────────────────────
 
 const MONTH_NAMES = [
 	'January',
@@ -115,8 +115,6 @@ export function monthInFileName(filename: string, title?: string): number | unde
 	}
 	return found.size === 1 ? [...found][0] : undefined;
 }
-
-// ─── Ranking ────────────────────────────────────────────────────────────────
 
 /** Words in a request that say nothing about which file is meant. */
 const REQUEST_NOISE = new Set([
@@ -232,14 +230,18 @@ export function toFileCandidate(file: RankedFile): AskFileCandidate {
 	};
 }
 
-// ─── Questions ──────────────────────────────────────────────────────────────
-
 const MAX_LABEL_CHARS = 60;
 
-/** How the requested file is named in questions and its placeholder. */
+/**
+ * How the requested file is named in questions and its placeholder. The words
+ * come from the email, and an answered question is quoted in the trusted
+ * `[CONFIRMED BY OWNER]` block, so wording the injection scan flags is replaced
+ * by the generic name.
+ */
 export function fileRequestLabel(query: string): string {
 	const label = query.replace(/\s+/g, ' ').trim().slice(0, MAX_LABEL_CHARS).trim();
-	return label.length > 0 ? label : 'the requested file';
+	if (label.length === 0 || detectInjection(label).detected) return 'the requested file';
+	return label;
 }
 
 /**
@@ -269,75 +271,25 @@ export function buildFileQuestion(
 	};
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-const WEEKDAYS_EN = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-const WEEKDAYS_DE = [
-	'sonntag',
-	'montag',
-	'dienstag',
-	'mittwoch',
-	'donnerstag',
-	'freitag',
-	'samstag',
-];
-
-function capitalize(word: string): string {
-	return word.charAt(0).toUpperCase() + word.slice(1);
-}
-
 /**
  * Round 2 after "It isn't ready yet": when the owner can send it. Chips for
- * tomorrow and the day after (by name); the web adds a date picker.
+ * tomorrow and the day after (by name, on the owner's calendar); the web adds
+ * a date picker.
  */
 export function buildFollowUpQuestion(
 	label: string,
 	attribution: string,
-	now: number
+	now: number,
+	timeZone?: string
 ): AskQuestion {
-	const dayAfter = new Date(now + 2 * DAY_MS).getUTCDay();
 	return {
 		id: FOLLOW_UP_QUESTION_ID,
 		slotType: 'date_time',
 		text: `When can you send "${label}"?`,
 		attribution,
 		answerKind: 'date',
-		options: ['Tomorrow', capitalize(WEEKDAYS_EN[dayAfter]!)],
+		options: ['Tomorrow', weekdayAfter(now, 2, timeZone)],
 	};
-}
-
-/** Morning of a UTC day: reminders fire at 09:00 UTC on the promised day. */
-function morningOf(dayStart: number): number {
-	return dayStart + 9 * 60 * 60 * 1000;
-}
-
-/**
- * The reminder time an answer to the follow-up question names, or undefined
- * when it names none the server can resolve (free text like "next week" still
- * reaches the draft verbatim). Accepts a picker date (`2026-10-02`), a full ISO
- * timestamp, "tomorrow" and weekday names in English or German. Always in the
- * future.
- */
-export function resolveFollowUpAt(value: string, now: number): number | undefined {
-	const text = value.trim().toLowerCase();
-	const today = Math.floor(now / DAY_MS) * DAY_MS;
-	let at: number | undefined;
-	const isoDay = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
-	if (isoDay) {
-		at = morningOf(Date.UTC(Number(isoDay[1]), Number(isoDay[2]) - 1, Number(isoDay[3])));
-	} else if (/^\d{4}-\d{2}-\d{2}t/.test(text)) {
-		const parsed = Date.parse(value.trim());
-		at = Number.isNaN(parsed) ? undefined : parsed;
-	} else if (text === 'tomorrow' || text === 'morgen') {
-		at = morningOf(today + DAY_MS);
-	} else {
-		let weekday = WEEKDAYS_EN.indexOf(text);
-		if (weekday < 0) weekday = WEEKDAYS_DE.indexOf(text);
-		if (weekday >= 0) {
-			const ahead = (weekday - new Date(today).getUTCDay() + 7) % 7 || 7;
-			at = morningOf(today + ahead * DAY_MS);
-		}
-	}
-	return at !== undefined && Number.isFinite(at) && at > now ? at : undefined;
 }
 
 /**
@@ -359,8 +311,6 @@ export function isNotReadyAnswer(question: AskQuestion, value: string | undefine
 	if (question.id !== FILE_QUESTION_ID || value === undefined) return false;
 	return canonicalAnswerValue(question, value) === NOT_READY_OPTION;
 }
-
-// ─── Gaps and the trusted block ─────────────────────────────────────────────
 
 /** The placeholder label for an open question. */
 export function gapLabelFor(question: AskQuestion, fileLabel: string | undefined): string {
@@ -413,6 +363,8 @@ export function buildAnswerConfirmedContext(args: {
 	fileLabel?: string | undefined;
 	followUp?: { value: string; at?: number | undefined } | undefined;
 	instruction?: string | undefined;
+	/** The owner's IANA zone: the promised day is named on their calendar. */
+	timeZone?: string | undefined;
 }): string {
 	const lines: string[] = [];
 	for (const q of args.questions) {
@@ -430,7 +382,7 @@ export function buildAnswerConfirmedContext(args: {
 	if (args.followUp) {
 		const date =
 			args.followUp.at !== undefined
-				? ` (${new Date(args.followUp.at).toUTCString().slice(0, 16)})`
+				? ` (${formatPromisedDay(args.followUp.at, args.timeZone)})`
 				: '';
 		lines.push(
 			`- ${args.fileLabel ? `"${args.fileLabel}"` : 'The requested file'} is not ready yet. Say so and promise to send it by: ${args.followUp.value.trim()}${date}`

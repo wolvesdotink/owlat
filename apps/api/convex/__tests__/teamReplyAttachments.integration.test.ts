@@ -468,9 +468,10 @@ describe('team reply attachments: the send paths', () => {
 		expect(await t.query(api.inbox.replyAttachments.suggestions, { threadId })).not.toBeNull();
 	});
 
-	it('the autonomous send does take a file a person attached, but not one still copying', async () => {
+	it('the autonomous send takes a file attached for this message, but not one still copying', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId, messageId } = await seedThread(t, 'approved');
+		vi.advanceTimersByTime(60_000);
 		await t.mutation(api.inbox.replyAttachments.add, {
 			threadId,
 			storageId: await upload(t),
@@ -492,6 +493,83 @@ describe('team reply attachments: the send paths', () => {
 		// The copy stays in the composer for the next reply.
 		expect((await threadAttachments(t, threadId)).map((entry) => entry.origin)).toEqual([
 			'semanticFile',
+		]);
+	});
+
+	it('the autonomous send leaves a file staged before the message arrived; a person sends it', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, messageId } = await seedThread(t, 'approved');
+		await t.mutation(api.inbox.replyAttachments.add, {
+			threadId,
+			storageId: await upload(t),
+			filename: 'staged-for-my-own-reply.pdf',
+		});
+		// The customer wrote again after the file was staged in the composer.
+		await t.run(async (ctx) => {
+			await ctx.db.patch(messageId, { receivedAt: Date.now() + 60_000 });
+		});
+
+		await t.action(internal.agent.agentPipeline.sendApprovedReply, {
+			inboundMessageId: messageId,
+			autonomous: true,
+		});
+		expect(enqueueActionMock).toHaveBeenCalledTimes(1);
+		expect(lastEnvelope()?.attachmentRefs).toBeUndefined();
+		expect((await t.run((ctx) => ctx.db.get(messageId)))?.replyAttachments).toBeUndefined();
+		expect((await threadAttachments(t, threadId)).map((entry) => entry.filename)).toEqual([
+			'staged-for-my-own-reply.pdf',
+		]);
+
+		// A person approving a reply on the same thread sends what the composer shows.
+		await t.action(internal.agent.agentPipeline.sendApprovedReply, {
+			inboundMessageId: messageId,
+		});
+		expect(lastEnvelope()?.attachmentRefs).toEqual([
+			expect.objectContaining({ filename: 'staged-for-my-own-reply.pdf' }),
+		]);
+		expect(await threadAttachments(t, threadId)).toEqual([]);
+	});
+
+	it("a file answered to the agent's question leaves with the autonomous reply", async () => {
+		const t = convexTest(schema, modules);
+		const { messageId } = await seedThread(t, 'awaiting_clarification');
+		await t.run(async (ctx) => {
+			await ctx.db.patch(messageId, {
+				pendingClarification: {
+					questions: [
+						{
+							id: 'clarify_attachment',
+							slotType: 'attachment',
+							answerKind: 'file',
+							text: 'They asked for the invoice. I could not find it.',
+						},
+					],
+					askedAt: Date.now(),
+				},
+			});
+		});
+		vi.advanceTimersByTime(60_000);
+		const storageId = await upload(t);
+		await t.mutation(api.inbox.clarification.answerClarification, {
+			inboundMessageId: messageId,
+			answers: [
+				{
+					questionId: 'clarify_attachment',
+					file: { source: 'upload', id: storageId, filename: 'invoice.pdf' },
+					keepCopy: false,
+				},
+			],
+		});
+		// The resumed draft is routed to an unattended send.
+		await t.run(async (ctx) => {
+			await ctx.db.patch(messageId, { processingStatus: 'approved' });
+		});
+		await t.action(internal.agent.agentPipeline.sendApprovedReply, {
+			inboundMessageId: messageId,
+			autonomous: true,
+		});
+		expect(lastEnvelope()?.attachmentRefs).toEqual([
+			expect.objectContaining({ filename: 'invoice.pdf', storageId }),
 		]);
 	});
 
@@ -533,6 +611,73 @@ describe('team reply attachments: the send paths', () => {
 		expect(listed[listed.length - 1]?.attachments).toEqual([
 			expect.objectContaining({ storageId }),
 		]);
+	});
+});
+
+describe('team replies with Answer mode gaps', () => {
+	/** An ask session on the thread, as "Draft with AI" leaves one. */
+	async function drafted(t: Harness, threadId: Id<'conversationThreads'>) {
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert('answerAskSessions', {
+				ownerId: 'user-B',
+				organizationId: 'org-1',
+				target: { kind: 'teamThread', threadId },
+				targetKey: `teamThread:${threadId}`,
+				locale: 'en',
+				round: 1,
+				status: 'ready',
+				questions: [],
+				attachedFiles: [],
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+	}
+	const gapped = 'Hi Jonas, [[attach the September invoice]]';
+	const refused = { data: { category: 'invalid_state', data: { code: 'DRAFT_HAS_GAPS' } } };
+
+	it('approving a reply with a gap left is refused once someone drafted with AI', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, messageId } = await seedThread(t);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(messageId, { draftResponse: gapped });
+		});
+		await drafted(t, threadId);
+
+		await expect(
+			t.mutation(api.inbox.mutations.approveDraft, { inboundMessageId: messageId })
+		).rejects.toMatchObject(refused);
+
+		await t.mutation(api.inbox.mutations.editDraft, {
+			inboundMessageId: messageId,
+			draftResponse: 'Hi Jonas, the invoice is attached.',
+		});
+		const approved = await t.mutation(api.inbox.mutations.approveDraft, {
+			inboundMessageId: messageId,
+		});
+		expect(approved.success).toBe(true);
+	});
+
+	it('leaves hand-written double brackets alone on a thread nobody drafted with AI', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId } = await seedThread(t);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(messageId, { draftResponse: 'See [[wiki link]].' });
+		});
+		const approved = await t.mutation(api.inbox.mutations.approveDraft, {
+			inboundMessageId: messageId,
+		});
+		expect(approved.success).toBe(true);
+	});
+
+	it('a follow-up with a gap left is refused', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId } = await seedThread(t, 'sent');
+		await drafted(t, threadId);
+		await expect(
+			t.mutation(api.inbox.followUps.sendFollowUp, { threadId, body: gapped, subject: '' })
+		).rejects.toMatchObject(refused);
 	});
 });
 

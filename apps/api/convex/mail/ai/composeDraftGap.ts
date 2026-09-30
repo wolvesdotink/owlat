@@ -6,8 +6,9 @@
  *
  * Reuses the background clarification machinery rather than forking it:
  *  - the shared slot taxonomy and prompts (inbox/clarificationSlots.ts):
- *    cheap-tier slot extraction, then sampled candidate replies and a
- *    divergence judgment, so only a slot the samples disagree on is asked;
+ *    cheap-tier slot extraction, then sampled candidate replies (cheap tier
+ *    unless the dial is `cautious`) and a divergence judgment, so only a slot
+ *    the samples disagree on is asked;
  *  - the deterministic safety filter (`sanitizeClarificationQuestions`,
  *    credential solicitations dropped, every question attributed to the email);
  *  - attachment-request detection and ranking (inbox/attachmentMatch.ts) over
@@ -98,11 +99,20 @@ export function attributionFor(counterpartAddress: string | undefined): string {
 }
 
 /**
- * Stage 1 (cheap tier) and stage 2 (sampled replies + divergence, capable
- * tier) of the shared slot check. Returns the slots a good reply needs, that
- * the context does not answer, and that the samples fill differently.
+ * Stage 1 (cheap tier) and stage 2 (sampled replies + divergence judgment) of
+ * the shared slot check. Returns the slots a good reply needs, that the context
+ * does not answer, and that the samples fill differently.
+ *
+ * The background loop runs this once per inbound message; here it runs on
+ * every "Draft with AI" click, so the three samples use the cheap tier the
+ * slot extraction uses. Only the `cautious` dial, which asks for the most
+ * thorough check, pays for capable-tier samples. The judgment stays capable.
  */
-async function findOpenSlots(ctx: ActionCtx, context: string): Promise<ReplySlot[]> {
+async function findOpenSlots(
+	ctx: ActionCtx,
+	context: string,
+	eagerness: EagernessMode | undefined
+): Promise<ReplySlot[]> {
 	try {
 		const extracted = await runLlmObject({
 			model: await resolveLanguageModel(ctx, 'summarize'),
@@ -116,11 +126,15 @@ async function findOpenSlots(ctx: ActionCtx, context: string): Promise<ReplySlot
 		);
 		if (candidates.length === 0) return [];
 
+		const sampleModel = await resolveLanguageModel(
+			ctx,
+			eagerness === 'cautious' ? 'draft' : 'summarize'
+		);
 		const samples: string[] = [];
 		for (let i = 0; i < DIVERGENCE_SAMPLES; i++) {
 			try {
 				const sample = await runLlmText({
-					model: await resolveLanguageModel(ctx, 'draft'),
+					model: sampleModel,
 					prompt: buildCandidatePrompt(context),
 					temperature: 0.9,
 				});
@@ -194,7 +208,7 @@ export async function runGapCheck(ctx: ActionCtx, input: GapCheckInput): Promise
 	const slotContext = input.instruction
 		? `${input.context}\n\n(The recipient's note on what to answer: ${input.instruction})`
 		: input.context;
-	let slots = await findOpenSlots(ctx, slotContext);
+	let slots = await findOpenSlots(ctx, slotContext, input.eagerness);
 
 	// A file request: the phrasing in the email, or a slot of type attachment.
 	let request = detectAttachmentRequest(input.triggerText);

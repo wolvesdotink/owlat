@@ -7,8 +7,9 @@
  *   - an older client's chip label resolves to the candidate it was built from;
  *   - an upload is saved to Files for the sender's contact (receipt bound), or
  *     kept out of Files with `keepCopy: false`;
- *   - someone else's upload, a mail attachment, and a file on a non-file
- *     question are refused;
+ *   - a mail attachment from a readable mailbox is taken; someone else's
+ *     upload, another mailbox's attachment, a released file and a file on a
+ *     non-file question are refused;
  *   - "It isn't ready yet" stays a plain answer, and file answers never become
  *     standing answer memory while typed answers still do.
  */
@@ -19,8 +20,15 @@ import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
-import { createTestContact, createTestInboundMessage, createTestSemanticFile } from './factories';
+import {
+	createTestContact,
+	createTestConversationThread,
+	createTestInboundMessage,
+	createTestSemanticFile,
+} from './factories';
 import { expectScheduledFailure } from './helpers/scheduledFailures';
+import { seedMailAttachment } from './helpers/answerAsk';
+import { seedFolder, seedMailbox } from '../mail/__tests__/helpers.testlib';
 
 // The resume and the new file's processing pass run in modules this suite's
 // map leaves out; their jobs fail when they fire. Not what these tests are about.
@@ -72,10 +80,21 @@ interface Seeded {
 	fileB: Id<'semanticFiles'>;
 }
 
-/** A message parked on a "which file?" question plus a typed question. */
-async function seed(t: ReturnType<typeof convexTest>): Promise<Seeded> {
+/**
+ * A message parked on a "which file?" question plus a typed question. With
+ * `thread`, the message sits on a conversation thread of that channel.
+ */
+async function seed(
+	t: ReturnType<typeof convexTest>,
+	opts: { thread?: 'email' | 'sms' } = {}
+): Promise<Seeded & { threadId?: Id<'conversationThreads'> }> {
 	return await t.run(async (ctx) => {
 		const contactId = await ctx.db.insert('contacts', createTestContact());
+		const { updatedAt: _updatedAt, ...thread } = createTestConversationThread({
+			contactId,
+			channel: opts.thread,
+		});
+		const threadId = opts.thread ? await ctx.db.insert('conversationThreads', thread) : undefined;
 		const storeA = await ctx.storage.store(new Blob(['%PDF a'], { type: 'application/pdf' }));
 		const storeB = await ctx.storage.store(new Blob(['%PDF b'], { type: 'application/pdf' }));
 		const fileA = await ctx.db.insert(
@@ -98,7 +117,7 @@ async function seed(t: ReturnType<typeof convexTest>): Promise<Seeded> {
 		const messageId = await ctx.db.insert(
 			'inboundMessages',
 			createTestInboundMessage({
-				threadId: undefined,
+				threadId,
 				contactId,
 				processingStatus: 'awaiting_clarification',
 				classification: {
@@ -147,7 +166,7 @@ async function seed(t: ReturnType<typeof convexTest>): Promise<Seeded> {
 				},
 			})
 		);
-		return { messageId, contactId, fileA, fileB };
+		return { messageId, contactId, fileA, fileB, ...(threadId ? { threadId } : {}) };
 	});
 }
 
@@ -322,18 +341,59 @@ describe('inbox.answerClarification — file answers', () => {
 		expect((await readMessage(t, messageId)).processingStatus).toBe('awaiting_clarification');
 	});
 
-	it('refuses a mail attachment and a file on a question that does not take one', async () => {
+	it('takes a mail attachment from a mailbox the caller reads, as the composer does', async () => {
 		const t = convexTest(schema, modules);
-		const { messageId, fileA } = await seed(t);
+		const { messageId } = await seed(t);
+		const mailboxId = await seedMailbox(t, { userId: OWNER, organizationId: ORG });
+		await seedFolder(t, mailboxId, 'inbox');
+		const attachmentId = await seedMailAttachment(t, mailboxId, 'terms.pdf');
+
+		await answer(t, messageId, [
+			{
+				questionId: 'clarify_attachment',
+				file: { source: 'mailAttachment', id: attachmentId, filename: 'ignored.pdf' },
+			},
+		]);
+
+		const q = (await readMessage(t, messageId)).pendingClarification!.questions[0]!;
+		expect(q.answer?.file).toEqual({
+			source: 'mailAttachment',
+			id: attachmentId,
+			filename: 'terms.pdf',
+		});
+	});
+
+	it("refuses an unreadable mailbox's attachment, a released file, and a file on a non-file question", async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, fileA, fileB } = await seed(t);
+		// Admins read every mailbox of their organization, so: another org's.
+		const theirs = await seedMailbox(t, {
+			userId: 'someone-else',
+			organizationId: 'org-2',
+			address: 'bea@example.com',
+		});
+		await seedFolder(t, theirs, 'inbox');
+		const attachmentId = await seedMailAttachment(t, theirs, 'payroll.pdf');
+		await t.run(async (ctx) => {
+			await ctx.db.patch(fileB, { storageId: undefined, bytesReleasedAt: Date.now() });
+		});
 
 		await expect(
 			answer(t, messageId, [
 				{
 					questionId: 'clarify_attachment',
-					file: { source: 'mailAttachment', id: 'anything', filename: 'x.pdf' },
+					file: { source: 'mailAttachment', id: attachmentId, filename: 'x.pdf' },
 				},
 			])
-		).rejects.toThrow(/Pick a file from Files/);
+		).rejects.toThrow(/not accessible/);
+		await expect(
+			answer(t, messageId, [
+				{
+					questionId: 'clarify_attachment',
+					file: { source: 'semanticFile', id: fileB, filename: 'x.pdf' },
+				},
+			])
+		).rejects.toThrow(/no longer stored/);
 		await expect(
 			answer(t, messageId, [
 				{
@@ -342,6 +402,7 @@ describe('inbox.answerClarification — file answers', () => {
 				},
 			])
 		).rejects.toThrow(/does not take a file/);
+		expect((await readMessage(t, messageId)).processingStatus).toBe('awaiting_clarification');
 	});
 
 	it('keeps "It isn\'t ready yet" as a plain answer and never remembers file answers', async () => {
@@ -366,5 +427,93 @@ describe('inbox.answerClarification — file answers', () => {
 				[contactId, 'decision', 'Yes, two weeks'],
 			]);
 		});
+	});
+});
+
+describe('inbox.answerClarification — the answered file goes on the reply', () => {
+	async function replyAttachments(
+		t: ReturnType<typeof convexTest>,
+		threadId: Id<'conversationThreads'>
+	) {
+		return await t.run(async (ctx) => (await ctx.db.get(threadId))?.replyAttachments ?? []);
+	}
+
+	it('attaches a Files pick to the thread, so the drafter\'s "attached" is true', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId, fileA } = await seed(t, { thread: 'email' });
+
+		await answer(t, messageId, [
+			{
+				questionId: 'clarify_attachment',
+				file: { source: 'semanticFile', id: fileA, filename: 'ignored.pdf' },
+			},
+		]);
+
+		expect(await replyAttachments(t, threadId!)).toEqual([
+			expect.objectContaining({
+				origin: 'semanticFile',
+				sourceId: fileA,
+				filename: 'contract-v2.pdf',
+				addedBy: OWNER,
+			}),
+		]);
+	});
+
+	it('attaches an upload saved to Files as its Files row, and one kept out as the upload', async () => {
+		const t = convexTest(schema, modules);
+		const kept = await seed(t, { thread: 'email' });
+		const saved = await stageUpload(t);
+		await answer(t, kept.messageId, [
+			{
+				questionId: 'clarify_attachment',
+				file: { source: 'upload', id: saved, filename: 'contract-final.pdf' },
+				mimeType: 'application/pdf',
+			},
+		]);
+		const savedRow = await t.run(async (ctx) =>
+			ctx.db
+				.query('semanticFiles')
+				.filter((q) => q.eq(q.field('storageId'), saved))
+				.unique()
+		);
+		expect(await replyAttachments(t, kept.threadId!)).toEqual([
+			expect.objectContaining({ origin: 'semanticFile', sourceId: savedRow!._id }),
+		]);
+
+		const loose = await seed(t, { thread: 'email' });
+		const upload = await stageUpload(t);
+		await answer(t, loose.messageId, [
+			{
+				questionId: 'clarify_attachment',
+				file: { source: 'upload', id: upload, filename: 'contract-final.pdf' },
+				keepCopy: false,
+			},
+		]);
+		expect(await replyAttachments(t, loose.threadId!)).toEqual([
+			expect.objectContaining({ origin: 'upload', storageId: upload }),
+		]);
+		const receipt = await t.run(async (ctx) =>
+			ctx.db
+				.query('storageUploads')
+				.withIndex('by_storage', (q) => q.eq('storageId', upload))
+				.unique()
+		);
+		expect(receipt).toMatchObject({ status: 'bound', resourceKey: `teamReply:${loose.threadId}` });
+	});
+
+	it('refuses a file answer on a thread whose channel cannot carry files', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId, fileA } = await seed(t, { thread: 'sms' });
+
+		await expect(
+			answer(t, messageId, [
+				{
+					questionId: 'clarify_attachment',
+					file: { source: 'semanticFile', id: fileA, filename: 'x.pdf' },
+				},
+			])
+		).rejects.toThrow(/only be sent on email threads/);
+		expect((await readMessage(t, messageId)).processingStatus).toBe('awaiting_clarification');
+		expect(await replyAttachments(t, threadId!)).toEqual([]);
 	});
 });

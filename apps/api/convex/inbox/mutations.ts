@@ -19,6 +19,7 @@ import { extractEmail } from '../lib/emailAddress';
 import { recordAutonomyFeedback, resolveReplyCollisionHold } from './decisionFeedback';
 import { appendDraftRevision } from './draftRevisions';
 import { assertReplyAttachmentsReady } from './replyAttachmentStore';
+import { assertNoAnswerGaps } from '../mail/ai/composeDraftStore';
 
 /**
  * Approve an agent-generated draft for sending.
@@ -50,6 +51,11 @@ export const approveDraft = adminMutation({
 		// The composer's attachments ride the send (`replyAttachments.intakeAgentReply`
 		// takes them when it fires): never send while one is still being copied.
 		await assertReplyAttachmentsReady(ctx, message.threadId);
+		// Nor with an Answer mode gap placeholder left in the text.
+		if (message.threadId) {
+			const target = { kind: 'teamThread' as const, threadId: message.threadId };
+			await assertNoAnswerGaps(ctx, target, message.draftResponse);
+		}
 
 		// Resolve the human-approve undo window from the singleton agentConfig
 		// (default 15s, clamped 0–120s; 0 = the legacy immediate send) and thread

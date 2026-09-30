@@ -18,7 +18,7 @@
 
 import { v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { internalQuery, type QueryCtx } from '../../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
 import { publicQuery } from '../../lib/authedFunctions';
 import { isFeatureEnabled } from '../../lib/featureFlags';
@@ -40,6 +40,21 @@ export async function loadMailCatchUpRow(
 			q.eq('mailThreadId', threadId).eq('locale', locale)
 		)
 		.first();
+}
+
+/**
+ * Delete a Postbox thread's catch-up cards, one per interface locale. They
+ * retell the thread's mail, so every path that deletes the thread calls this.
+ */
+export async function deleteMailThreadCatchUps(
+	ctx: Pick<MutationCtx, 'db'>,
+	threadId: Id<'mailThreads'>
+): Promise<void> {
+	const rows = await ctx.db
+		.query('threadCatchUps')
+		.withIndex('by_mail_thread_and_locale', (q) => q.eq('mailThreadId', threadId))
+		.collect(); // bounded: one row per interface locale
+	for (const row of rows) await ctx.db.delete(row._id);
 }
 
 /** The message's thread and mailbox, when the caller may read them. */

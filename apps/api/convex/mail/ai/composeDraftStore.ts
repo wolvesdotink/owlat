@@ -17,7 +17,9 @@ import { v } from 'convex/values';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { postboxQuery } from '../_helpers';
+import { internal } from '../../_generated/api';
+import { answerModeQuery } from '../_helpers';
+import { isFeatureEnabled } from '../../lib/featureFlags';
 import { requireMailboxAccess } from '../permissions';
 import { isSharedInboxReader } from '../../inbox/access';
 import { captureStandingAnswers } from '../../inbox/clarificationMemory';
@@ -26,6 +28,7 @@ import {
 	answerAskStatusValidator,
 	answerAskTargetKey,
 	answerAskTargetValidator,
+	answerDraftContextValidator,
 	type AnswerAskStatus,
 	type AnswerAskTarget,
 } from '../../lib/validators/answerAsk';
@@ -33,7 +36,8 @@ import {
 	clarificationFileRefValidator,
 	needsReplyClarificationQuestionValidator,
 } from '../../lib/validators/clarification';
-import { throwForbidden, throwNotFound } from '../../_utils/errors';
+import { hasDraftGaps } from '@owlat/shared/answerMode';
+import { throwForbidden, throwInvalidState, throwNotFound } from '../../_utils/errors';
 import {
 	FILE_QUESTION_ID,
 	FOLLOW_UP_QUESTION_ID,
@@ -75,8 +79,9 @@ export function toAskSessionView(row: Doc<'answerAskSessions'>): AskSessionView 
 }
 
 /**
- * Whether the caller can still reach a target: write the draft's mailbox, or
- * read the shared inbox for a team thread.
+ * Whether the caller can still reach a target: write the draft's mailbox (the
+ * mailbox gate includes the Postbox flag), or read the shared inbox for a team
+ * thread with the team inbox switched on.
  */
 async function canReachTarget(
 	ctx: QueryCtx,
@@ -84,7 +89,11 @@ async function canReachTarget(
 	session: MutationSessionContext
 ): Promise<boolean> {
 	if (target.kind === 'teamThread') {
-		return isSharedInboxReader(session) && (await ctx.db.get(target.threadId)) !== null;
+		return (
+			isSharedInboxReader(session) &&
+			(await isFeatureEnabled(ctx, 'inbox')) &&
+			(await ctx.db.get(target.threadId)) !== null
+		);
 	}
 	const draft = await ctx.db.get(target.draftId);
 	if (!draft) return false;
@@ -109,8 +118,8 @@ async function findOwnSession(
  * subscribes to this while "Draft with AI" runs: the questions, the stream to
  * render and the files attached along the way.
  */
-// all-members: owner-scoped read; the caller must also still reach the target (canReachTarget).
-export const getSession = postboxQuery({
+// all-members: owner-scoped read; the caller must also still reach the target (canReachTarget), which checks the target's own feature flag.
+export const getSession = answerModeQuery({
 	args: { target: answerAskTargetValidator },
 	handler: async (ctx, args, session): Promise<AskSessionView | null> => {
 		const row = await findOwnSession(ctx, args.target, session.userId);
@@ -160,18 +169,62 @@ export async function deleteAskSessionsOfOwner(
 	return rows.length === limit;
 }
 
-/** Whether anyone started "Draft with AI" on this draft (the send guard's trigger). */
-export async function draftHasAskSession(
-	ctx: QueryCtx,
-	draftId: Id<'mailDrafts'>
-): Promise<boolean> {
+/** How long a session is kept: long past any draft someone is still writing. */
+const ASK_SESSION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const ASK_SESSION_SWEEP_BATCH = 100;
+
+/**
+ * Retention for ask sessions (daily, maintenance/cronRegistration.ts). A
+ * Postbox session goes with its draft on send or discard, but a team-thread
+ * session has no such end, and either one holds text quoted from mail and the
+ * owner's answers. Sessions started more than {@link ASK_SESSION_RETENTION_MS}
+ * ago are deleted with their draft streams, a bounded batch per run; a full
+ * batch schedules the next one.
+ */
+export const sweepStaleSessions = internalMutation({
+	args: {},
+	handler: async (ctx): Promise<{ deleted: number }> => {
+		const cutoff = Date.now() - ASK_SESSION_RETENTION_MS;
+		const rows = await ctx.db
+			.query('answerAskSessions')
+			.withIndex('by_creation_time', (q) => q.lt('_creationTime', cutoff))
+			.take(ASK_SESSION_SWEEP_BATCH);
+		for (const row of rows) await deleteSessionRow(ctx, row);
+		if (rows.length === ASK_SESSION_SWEEP_BATCH) {
+			await ctx.scheduler.runAfter(0, internal.mail.ai.composeDraftStore.sweepStaleSessions, {});
+		}
+		return { deleted: rows.length };
+	},
+});
+
+/** Whether anyone started "Draft with AI" on this target (the send guards' trigger). */
+async function targetHasAskSession(ctx: QueryCtx, target: AnswerAskTarget): Promise<boolean> {
 	const row = await ctx.db
 		.query('answerAskSessions')
-		.withIndex('by_target_owner', (q) =>
-			q.eq('targetKey', answerAskTargetKey({ kind: 'mailDraft', draftId }))
-		)
+		.withIndex('by_target_owner', (q) => q.eq('targetKey', answerAskTargetKey(target)))
 		.first();
 	return row !== null;
+}
+
+/**
+ * The send guard of plan §05: an Answer mode "draft with gaps" marks each
+ * missing fact `[[...]]`, and sending one would ship the marker to the
+ * recipient, so a send is refused (`DRAFT_HAS_GAPS`) until the person fills or
+ * deletes it. Only a target somebody drafted with AI on is checked: double
+ * brackets in hand-written mail are not ours to block. Every send path of both
+ * composers runs this (`mail/draftSend.ts`, the team inbox's approve and
+ * follow-up).
+ */
+export async function assertNoAnswerGaps(
+	ctx: QueryCtx,
+	target: AnswerAskTarget,
+	text: string | (() => Promise<string>)
+): Promise<void> {
+	if (!(await targetHasAskSession(ctx, target))) return;
+	const body = typeof text === 'string' ? text : await text();
+	if (hasDraftGaps(body)) {
+		throwInvalidState('Fill in the highlighted gaps before sending', { code: 'DRAFT_HAS_GAPS' });
+	}
 }
 
 /** The session when the calling identity owns it; throws otherwise. */
@@ -202,6 +255,8 @@ const sessionFields = {
 	contactId: v.optional(v.id('contacts')),
 	counterpartAddress: v.optional(v.string()),
 	fileRequest: v.optional(v.object({ questionId: v.string(), label: v.string() })),
+	draftContext: v.optional(answerDraftContextValidator),
+	timeZone: v.optional(v.string()),
 };
 
 /**
@@ -231,20 +286,29 @@ export const replaceSession = internalMutation({
 	},
 });
 
-/** Update an owned session after answers or a finished draft. */
+/**
+ * Update an owned session after answers or a finished draft. With
+ * `expectStatus`, a compare-and-set: refused unless the row is still in that
+ * status, so two `answer` calls racing on one session cannot both proceed.
+ */
 export const updateSession = internalMutation({
 	args: {
 		sessionId: v.id('answerAskSessions'),
 		status: answerAskStatusValidator,
+		expectStatus: v.optional(answerAskStatusValidator),
 		round: v.optional(v.number()),
 		questions: v.optional(v.array(needsReplyClarificationQuestionValidator)),
 		attachedFiles: v.optional(v.array(clarificationFileRefValidator)),
 		followUpAt: v.optional(v.number()),
+		timeZone: v.optional(v.string()),
 		errorMessage: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Doc<'answerAskSessions'>> => {
-		await requireOwnSession(ctx, args.sessionId);
-		const { sessionId, ...patch } = args;
+		const row = await requireOwnSession(ctx, args.sessionId);
+		const { sessionId, expectStatus, ...patch } = args;
+		if (expectStatus !== undefined && row.status !== expectStatus) {
+			throwInvalidState('These questions were already answered');
+		}
 		await ctx.db.patch(sessionId, {
 			...patch,
 			...(args.status !== 'error' ? { errorMessage: undefined } : {}),

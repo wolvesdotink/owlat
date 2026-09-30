@@ -1,6 +1,10 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { answerAskStatusValidator, answerAskTargetValidator } from '../lib/validators/answerAsk';
+import {
+	answerAskStatusValidator,
+	answerAskTargetValidator,
+	answerDraftContextValidator,
+} from '../lib/validators/answerAsk';
 import {
 	clarificationFileRefValidator,
 	needsReplyClarificationQuestionValidator,
@@ -55,6 +59,11 @@ export const answerAskTables = {
 		// The file the other party asked for, when one was detected: the id of
 		// its question and the short label its gap placeholder uses.
 		fileRequest: v.optional(v.object({ questionId: v.string(), label: v.string() })),
+		// The drafter's context, built at start (lib/validators/answerAsk.ts).
+		// Holds thread text; private to the owner like the rest of the row.
+		draftContext: v.optional(answerDraftContextValidator),
+		// The owner's IANA time zone: round 2's dates are on their calendar.
+		timeZone: v.optional(v.string()),
 		errorMessage: v.optional(v.string()),
 		createdAt: v.number(),
 		updatedAt: v.number(),

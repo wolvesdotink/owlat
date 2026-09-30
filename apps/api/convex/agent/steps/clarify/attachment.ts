@@ -26,6 +26,7 @@ import {
 } from '../../../inbox/attachmentSuggest';
 import { detectAttachmentRequest, MATCH_FLOOR } from '../../../inbox/attachmentMatch';
 import { isCredentialSolicitation } from '../../../inbox/clarificationSlots';
+import { detectInjection } from '../security_scan/patterns';
 import { NOT_READY_OPTION } from '../../../inbox/clarificationAnswers';
 import { translationTargets } from '../../../inbox/clarificationLocalize';
 import type { clarificationFileCandidateValidator } from '../../../lib/validators/clarification';
@@ -190,6 +191,10 @@ function requestedFilePhrase(context: string): string | null {
 		.trim()
 		.slice(0, MAX_REQUEST_PHRASE_CHARS);
 	if (isCredentialSolicitation(phrase)) return null;
+	// The phrase is the sender's wording and an answered question is quoted in
+	// the trusted `[CONFIRMED BY OWNER]` block: wording the injection scan
+	// flags falls back to the generic question.
+	if (detectInjection(phrase).detected) return '';
 	return phrase;
 }
 
