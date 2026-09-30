@@ -3,10 +3,12 @@
  * which message the reply answers, whether it can go out now, what the editor
  * starts with, and how it is sent, saved, rejected or asked for.
  *
- * The reply answers one message: the one the URL names (`?message=`, while it
- * still waits for a reply), otherwise the newest message still waiting,
+ * The reply answers one message: the one the URL names (`?message=`, unless it
+ * was already answered), otherwise the newest message still waiting,
  * otherwise the newest message (whose state then says why nothing can go
- * out). Sending rides `useTeamThreadComposer` (take over, edit + approve, or a
+ * out). The named message wins whatever it is waiting on: "Answer in reply"
+ * on a message whose agent is asking must open on that message's questions,
+ * not on a newer message's draft. Sending rides `useTeamThreadComposer` (take over, edit + approve, or a
  * follow-up); the refusals it can come back with are toasted there.
  *
  * The agent's questions (`awaiting_clarification`) are answered here too,
@@ -38,7 +40,7 @@ type ThreadMessage = ThreadDetail['messages']['value'][number];
 export function useAnswerTeamReply(opts: {
 	threadId: Ref<Id<'conversationThreads'>>;
 	detail: ThreadDetail;
-	/** `?message=`: the message the reply should answer, if still waiting. */
+	/** `?message=`: the message the reply should answer, unless already answered. */
 	chosenMessageId: () => string | null;
 	/** A teammate is replying: sending waits. */
 	held: () => boolean;
@@ -54,8 +56,10 @@ export function useAnswerTeamReply(opts: {
 
 	const target = computed<ThreadMessage | null>(() => {
 		const chosenId = opts.chosenMessageId();
+		// A message already answered (`sent`) has nothing left to reply to here;
+		// the thread's own pick then says what does.
 		const chosen = chosenId
-			? messages.value.find((m) => m._id === chosenId && m.processingStatus === 'draft_ready')
+			? messages.value.find((m) => m._id === chosenId && !isFollowUp(m.processingStatus))
 			: undefined;
 		return chosen ?? pickReplyTarget(messages.value);
 	});

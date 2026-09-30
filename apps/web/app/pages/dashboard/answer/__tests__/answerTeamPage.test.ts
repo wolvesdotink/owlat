@@ -342,6 +342,38 @@ describe('Answer mode for a Team inbox thread', () => {
 		expect(document.activeElement).toBe(body.element);
 	});
 
+	it('opens on the questions of the message ?message= names, not a newer draft', async () => {
+		route.query = { message: 'in_old' };
+		messages.value = [
+			inbound('in_old', {
+				_creationTime: 1,
+				processingStatus: 'awaiting_clarification',
+				draftResponse: undefined,
+				pendingClarification: {
+					questions: [{ id: 'q1', question: 'Which invoice?', options: [] }],
+				},
+			}),
+			inbound('in_new', { _creationTime: 2, draftResponse: 'New draft' }),
+		];
+		const wrapper = await mountPage();
+		expect(wrapper.find('[data-testid="answer-team-clarification"]').exists()).toBe(true);
+		expect(
+			wrapper.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]').element.value
+		).not.toBe('New draft');
+	});
+
+	it('falls back to the thread pick when ?message= names a message already answered', async () => {
+		route.query = { message: 'in_old' };
+		messages.value = [
+			inbound('in_old', { _creationTime: 1, processingStatus: 'sent', draftResponse: 'Sent' }),
+			inbound('in_new', { _creationTime: 2, draftResponse: 'New draft' }),
+		];
+		const wrapper = await mountPage();
+		expect(
+			wrapper.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]').element.value
+		).toBe('New draft');
+	});
+
 	it('answers the message ?message= names when it still waits', async () => {
 		route.query = { message: 'in_old' };
 		messages.value = [
