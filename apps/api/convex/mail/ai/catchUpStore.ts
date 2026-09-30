@@ -1,7 +1,8 @@
 /**
- * The cache behind Answer mode's catch-up card: the non-'use node' half of
- * mail/ai/catchUp.ts (Postbox) and inbox/catchUp.ts (team), since an action
- * cannot touch the database itself.
+ * The cache behind Answer mode's catch-up card for Postbox threads: the
+ * non-'use node' half of mail/ai/catchUp.ts, since an action cannot touch the
+ * database itself. The table and the visibility rule are shared with the team
+ * twin, inbox/catchUpStore.ts.
  *
  *   - {@link get}: the reactive read the card subscribes to, so a warm card
  *     paints without an action round trip. Serves a row only while its
@@ -9,7 +10,7 @@
  *     which is the web's cue to call `ensure`.
  *   - {@link readForMessage}: the same check for the actions, plus what they
  *     need to regenerate (the owner's address, the live count, the AI flag).
- *   - {@link store}: the one writer, for both kinds of thread.
+ *   - {@link store}: the writer (the team twin lives in inbox/catchUpStore.ts).
  *
  * Advisory and fail-soft like the reader's summary strip (mail/ai/summaryCache.ts):
  * nothing here moves or changes mail.
@@ -24,7 +25,7 @@ import { catchUpValidator } from '../../lib/validators/catchUp';
 import { loadReadableMailbox } from '../permissions';
 import { normalizeCatchUpLocale, visibleCatchUp, type CatchUp } from './catchUpPrompt';
 
-const catchUpModeValidator = v.union(v.literal('full'), v.literal('asksOnly'));
+export const catchUpModeValidator = v.union(v.literal('full'), v.literal('asksOnly'));
 
 /** The cached row for a Postbox thread in one locale, fresh or not. */
 export async function loadMailCatchUpRow(
@@ -59,6 +60,7 @@ async function readableThread(
 export const get = publicQuery({
 	args: { messageId: v.id('mailMessages'), locale: v.string() },
 	handler: async (ctx, args): Promise<CatchUp | null> => {
+		// authz: readableThread gates on loadReadableMailbox (null for a non-reader).
 		const readable = await readableThread(ctx, args.messageId);
 		if (!readable) return null;
 		if (!(await isFeatureEnabled(ctx, 'ai'))) return null;
@@ -99,38 +101,23 @@ export const readForMessage = internalQuery({
 });
 
 /**
- * Write a freshly generated card for a Postbox or team thread (exactly one of
- * the two ids), replacing whatever that thread had in the same locale.
- * Internal-only: its callers have already checked the reader and the AI gate.
+ * Write a freshly generated card for a Postbox thread, replacing whatever the
+ * thread had in the same locale (the team twin is inbox/catchUpStore.ts).
+ * Internal-only: its caller has already checked the reader and the AI gate.
  */
 export const store = internalMutation({
 	args: {
-		mailThreadId: v.optional(v.id('mailThreads')),
-		conversationThreadId: v.optional(v.id('conversationThreads')),
+		mailThreadId: v.id('mailThreads'),
 		mode: catchUpModeValidator,
 		catchUp: catchUpValidator,
 	},
 	handler: async (ctx, args) => {
-		const { mailThreadId, conversationThreadId, mode, catchUp } = args;
-		if (!mailThreadId === !conversationThreadId) {
-			throw new Error('threadCatchUps.store needs exactly one thread id');
-		}
-		const existing = mailThreadId
-			? await loadMailCatchUpRow(ctx, mailThreadId, catchUp.locale)
-			: await ctx.db
-					.query('threadCatchUps')
-					.withIndex('by_conversation_thread_and_locale', (q) =>
-						q.eq('conversationThreadId', conversationThreadId).eq('locale', catchUp.locale)
-					)
-					.first();
+		const { mailThreadId, mode, catchUp } = args;
+		const existing = await loadMailCatchUpRow(ctx, mailThreadId, catchUp.locale);
 		if (existing) {
 			await ctx.db.patch(existing._id, { mode, ...catchUp });
 			return;
 		}
-		await ctx.db.insert('threadCatchUps', {
-			...(mailThreadId ? { mailThreadId } : { conversationThreadId }),
-			mode,
-			...catchUp,
-		});
+		await ctx.db.insert('threadCatchUps', { mailThreadId, mode, ...catchUp });
 	},
 });

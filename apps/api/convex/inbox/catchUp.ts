@@ -111,7 +111,7 @@ export const ensure = authedAction({
 		if (!result) return null;
 
 		const catchUp: CatchUp = { ...result, messageCount, locale, generatedAt: Date.now() };
-		await ctx.runMutation(internal.mail.ai.catchUpStore.store, {
+		await ctx.runMutation(internal.inbox.catchUpStore.store, {
 			conversationThreadId: args.threadId,
 			mode,
 			catchUp,

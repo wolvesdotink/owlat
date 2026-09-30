@@ -79,7 +79,7 @@ async function seedTeamThread(messages: SeedMessage[]): Promise<{
 }> {
 	const t = convexTest(schema, modules);
 	rateLimiterTest.register(t);
-	await enableFeatures(t, ['ai']);
+	await enableFeatures(t, ['ai', 'inbox']);
 	const seeded = await t.run(async (ctx) => {
 		const now = Date.now();
 		const threadId = await ctx.db.insert('conversationThreads', {
