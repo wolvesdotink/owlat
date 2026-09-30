@@ -275,6 +275,7 @@ onBeforeUnmount(() => {
 			:message-count="thread ? messages.length : undefined"
 			:counterpart="reply.senderLabel.value"
 			@back="leave"
+			@start-reply="composerRef?.focus()"
 		>
 			<template #identity>
 				<span class="flex min-w-0 items-center gap-3" data-testid="answer-identity">

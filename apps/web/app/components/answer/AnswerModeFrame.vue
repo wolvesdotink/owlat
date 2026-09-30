@@ -40,7 +40,16 @@ const props = defineProps<{
 	counterpart?: string;
 }>();
 
-const emit = defineEmits<{ back: [] }>();
+const emit = defineEmits<{
+	back: [];
+	/**
+	 * "Reply to Jonas…" was tapped and the composer is showing: the page puts
+	 * the caret in the body through the composer (a DOM query here would find
+	 * the folded envelope's inputs, or the AI bar's, before the editor).
+	 * Emitted inside the tap, so the page's focus is too.
+	 */
+	'start-reply': [];
+}>();
 
 /** The phone layout's open tab. The page switches it (Cmd/Ctrl+J opens Reply). */
 const tab = defineModel<AnswerTab>('tab', { default: 'conversation' });
@@ -127,13 +136,20 @@ const peekLabel = computed(() =>
 /**
  * "Reply to Jonas…": raise the sheet to where the email stays in view, and put
  * the caret in the reply so the keyboard comes up with it.
+ *
+ * iOS raises the keyboard only for a focus made in the tap's own task, and a
+ * `display: none` editor takes no focus at all. So the composer is shown now,
+ * by hand, rather than on the next render; the render then agrees (a half
+ * sheet shows its composer) and the inline style is dropped.
  */
-async function startReply() {
+function startReply() {
 	sheet.set('half');
-	await nextTick();
-	contentEl.value
-		?.querySelector<HTMLElement>('[contenteditable="true"], textarea, input:not([type="hidden"])')
-		?.focus();
+	const content = contentEl.value;
+	if (content) content.style.display = 'flex';
+	emit('start-reply');
+	void nextTick(() => {
+		if (content) content.style.display = '';
+	});
 }
 </script>
 

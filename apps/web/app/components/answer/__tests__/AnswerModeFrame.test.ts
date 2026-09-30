@@ -176,9 +176,23 @@ describe('AnswerModeFrame on a phone', () => {
 
 	it('raises the reply over the conversation from its row and puts the caret in it', async () => {
 		setWidth(390);
-		const w = mountFrame();
-		await w.get('[data-testid="answer-sheet-peek"]').trigger('click');
+		let shownAtFocus: boolean | null = null;
+		const w = mountFrame({
+			// The page focuses the body through its composer, inside the tap.
+			'onStart-reply': () => {
+				const el = content(w).element as HTMLElement;
+				shownAtFocus = el.style.display === 'flex' || !el.classList.contains('hidden');
+				(w.get('[data-testid="editor"]').element as HTMLElement).focus();
+			},
+		});
+		// The row's click handler runs start-reply before the click returns.
+		(w.get('[data-testid="answer-sheet-peek"]').element as HTMLElement).click();
+		expect(w.emitted('start-reply')).toHaveLength(1);
+		// The composer was already out of display:none when the focus was asked for.
+		expect(shownAtFocus).toBe(true);
 		await nextTick();
+		await nextTick();
+		expect((content(w).element as HTMLElement).style.display).toBe('');
 		expect(sheet(w).attributes('data-sheet-state')).toBe('half');
 		// Both in view: the email to glance at, the reply to type in.
 		expect(conversation(w).classes()).not.toContain('hidden');

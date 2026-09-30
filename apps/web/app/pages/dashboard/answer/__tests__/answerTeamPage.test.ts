@@ -333,6 +333,15 @@ describe('Answer mode for a Team inbox thread', () => {
 		});
 	});
 
+	it('puts the caret in the reply inside the phone row tap', async () => {
+		const wrapper = await mountPage();
+		const body = wrapper.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]');
+		body.element.blur();
+		wrapper.getComponent(AnswerModeFrame).vm.$emit('start-reply');
+		// No render in between: iOS raises the keyboard only for a focus in the tap.
+		expect(document.activeElement).toBe(body.element);
+	});
+
 	it('answers the message ?message= names when it still waits', async () => {
 		route.query = { message: 'in_old' };
 		messages.value = [

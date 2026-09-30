@@ -121,13 +121,14 @@ const composerSnapshot = shallowRef({
 });
 const composerFlush = vi.fn(async () => ({ ok: true as const, result: 'draft_saved' }));
 const answerApi = { aiDraft: ref<string | null>(null), discardAiDraft: vi.fn() };
+const composerFocusBody = vi.fn();
 const ComposerStub = defineComponent({
 	name: 'PostboxComposer',
-	props: ['seed', 'replyAllRecipients', 'frame', 'statusNote'],
+	props: ['seed', 'replyAllRecipients', 'frame', 'statusNote', 'askSession'],
 	emits: ['draft-id', 'sent', 'discarded', 'minimize'],
 	setup(_p, { expose, slots }) {
 		expose({
-			focusBody: vi.fn(),
+			focusBody: composerFocusBody,
 			flush: composerFlush,
 			snapshot: () => composerSnapshot.value,
 			answer: answerApi,
@@ -217,6 +218,7 @@ beforeEach(() => {
 	routerReplace.mockClear();
 	navigateTo.mockClear();
 	composerFlush.mockClear();
+	composerFocusBody.mockClear();
 	guardCalls.length = 0;
 	composerSnapshot.value = { draftId: null, toAddresses: [], hasContent: false };
 	assist.aiEnabled.value = false;
@@ -395,6 +397,21 @@ describe('Answer mode page', () => {
 			[[{ questionId: 'q1', value: 'Yes' }]],
 			[[], true],
 		]);
+	});
+
+	it('puts the caret in the reply body through the composer when the phone row is tapped', async () => {
+		const w = await mountAt({});
+		w.getComponent(AnswerModeFrame).vm.$emit('start-reply');
+		// Synchronously: iOS only raises the keyboard for a focus inside the tap.
+		expect(composerFocusBody).toHaveBeenCalledTimes(1);
+	});
+
+	it('tells the composer when the draft has an ask session (its gaps then hold Send)', async () => {
+		const w = await mountAt({ draft: 'draft_1' });
+		expect(w.getComponent(ComposerStub).props('askSession')).toBe(false);
+		assist.ask.session.value = { sessionId: 's1', round: 1, questions: [] };
+		await flushPromises();
+		expect(w.getComponent(ComposerStub).props('askSession')).toBe(true);
 	});
 
 	it('hands the composer the asks covered for its footer', async () => {

@@ -160,7 +160,13 @@ function onSubjectInput(event: Event) {
 	subject.value = (event.target as HTMLInputElement).value;
 }
 
+/**
+ * Now, when the textarea is there (Answer mode's phone "Reply to…" needs the
+ * focus inside the tap for iOS to raise the keyboard), and again after the
+ * render for callers that have just made it appear.
+ */
 function focus() {
+	textarea.value?.focus();
 	void nextTick(() => textarea.value?.focus());
 }
 

@@ -274,6 +274,7 @@ onBeforeUnmount(() => {
 			:message-count="messageCount"
 			:counterpart="counterpart"
 			@back="leave"
+			@start-reply="composerRef?.focusBody()"
 		>
 			<template #identity>
 				<span
