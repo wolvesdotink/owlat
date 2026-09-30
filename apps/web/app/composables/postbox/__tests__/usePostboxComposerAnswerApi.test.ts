@@ -100,8 +100,10 @@ describe('usePostboxComposerAnswerApi', () => {
 
 	it('puts gaps first in the footer, then the host note, then the save state', () => {
 		const { footerStatus, state, gapsHoldSend } = setup();
-		state.lastSavedAt.value = Date.UTC(2026, 8, 30, 9, 31);
+		state.lastSavedAt.value = Date.UTC(2026, 8, 30, 9, 31, 30);
 		expect(footerStatus.value).toMatch(/^Saved/);
+		// Hours and minutes only: no seconds in the save note.
+		expect(footerStatus.value).not.toMatch(/\d:\d{2}:\d{2}/);
 		state.note.value = '2 of 3 asks covered';
 		expect(footerStatus.value).toBe('2 of 3 asks covered');
 		state.askSession.value = true;
