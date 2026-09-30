@@ -13,6 +13,7 @@ import { mount } from '@vue/test-utils';
 import { useId } from 'vue';
 
 import AnswerModeFrame from '../AnswerModeFrame.vue';
+import { auditA11y } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 beforeAll(() => {
@@ -81,5 +82,17 @@ describe('AnswerModeFrame', () => {
 		expect(mountFrame({ messageCount: 1, counterpart: '' }).text()).toContain('1 message');
 		const loading = mountFrame({ messageCount: undefined, counterpart: '' });
 		expect(loading.text()).not.toContain('message');
+	});
+
+	it('has no axe violations', async () => {
+		const violations = await auditA11y(AnswerModeFrame, {
+			props: { backLabel: 'Inbox', subject: 'September invoice', messageCount: 5 },
+			slots: {
+				conversation: '<p>the thread</p>',
+				composer: '<label>Reply <textarea></textarea></label>',
+			},
+			global: { plugins: [createTestI18n()] },
+		});
+		expect(violations).toEqual([]);
 	});
 });

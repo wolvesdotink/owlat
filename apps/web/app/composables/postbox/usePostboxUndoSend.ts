@@ -2,7 +2,7 @@
  * Undo-send window for Postbox mail.
  *
  * An undo window (useUndoWindow). `usePostboxCompose().send()` arms it after
- * every send that went out or was queued, so each host (popup, inline reply,
+ * every send that went out or was queued, so each host (popup, Answer mode,
  * desktop compose window) gets it without wiring; PostboxUndoSendToast reads
  * the shared state, shows the countdown and owns the reversal (cancel on the
  * server, or un-queue an offline send).

@@ -18,7 +18,11 @@ import { mount } from '@vue/test-utils';
 import AnswerConversation from '../AnswerConversation.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
-vi.mock('@owlat/api', () => ({ api: { mail: { identities: { listForOwnedMailbox: {} } } } }));
+vi.mock('@owlat/api', () => ({
+	api: {
+		mail: { identities: { listForOwnedMailbox: {} }, messageActions: { markThreadRead: {} } },
+	},
+}));
 
 const row = (id: string, receivedAt: number, flagSeen = true) => ({
 	_id: id,
@@ -39,7 +43,8 @@ const THREAD = [row('m1', 1), row('m2', 2), row('m3', 3, false), row('m4', 4), r
 
 vi.mock('~/composables/postbox/usePostboxThreadPages', () => ({
 	usePostboxThreadPages: () => ({
-		newest: { data: ref({ thread: { messageCount: 5 }, messages: THREAD }) },
+		newest: { data: ref({ thread: { _id: 'thr_1', messageCount: 5 }, messages: THREAD }) },
+		hasUnread: computed(() => THREAD.some((m) => !m.flagSeen)),
 		rows: computed(() => THREAD),
 		newestRows: computed(() => THREAD),
 		bodyIds: computed(() => new Set(THREAD.map((m) => m._id))),
@@ -56,9 +61,14 @@ vi.mock('~/composables/postbox/usePostboxReaderOpenRow', () => ({
 }));
 vi.mock('~/composables/useNow', () => ({ useNow: () => ref(0) }));
 
+const markRead = vi.fn();
+const markReadPolicy = ref('immediate');
+
 beforeAll(() => {
 	Object.assign(globalThis, {
 		useI18n: i18nStubs.useI18n,
+		usePostboxSettings: () => ({ markReadPolicy }),
+		useBackendOperation: () => ({ run: markRead }),
 		useFeatureFlag: () => ({ isEnabled: () => true }),
 		useConvexQuery: () => ({ data: ref(['ada@example.com']) }),
 		useAppTheme: () => ({ isDark: ref(false) }),
@@ -167,5 +177,17 @@ describe('AnswerConversation', () => {
 			.findAllComponents(CardStub)
 			.find((c) => (c.props('message') as { _id: string })._id === 'm2');
 		expect(own?.props('showSenderControls')).toBe(false);
+	});
+
+	it('reads the conversation it answers, under the mark-read policy', () => {
+		markRead.mockClear();
+		markReadPolicy.value = 'immediate';
+		mountColumn();
+		expect(markRead).toHaveBeenCalledWith({ threadId: 'thr_1', seen: true });
+
+		markRead.mockClear();
+		markReadPolicy.value = 'manual';
+		mountColumn();
+		expect(markRead).not.toHaveBeenCalled();
 	});
 });

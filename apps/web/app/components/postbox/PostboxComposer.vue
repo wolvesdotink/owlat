@@ -204,25 +204,12 @@ async function handleDiscard() {
 // --- Frames. Answer mode's view state (folded envelope/quote, Coach under ⋯)
 // lives in its own composable; the draft underneath is the popup's, untouched.
 const answerFrame = props.frame === 'answer';
-const envelopeRef = ref<{ switchToReplyAll: () => void } | null>(null);
-const envelopeAttention = ref(false);
 const frameView = usePostboxComposerAnswerFrame({
 	active: answerFrame,
 	bodyHtml,
-	attention: () => envelopeAttention.value || seal.blockingRecipients.length > 0,
+	sealBlocked: () => seal.blockingRecipients.length > 0,
 });
-function onLineReplyAll() {
-	frameView.openEnvelope();
-	envelopeRef.value?.switchToReplyAll();
-}
-
-const basicEditor = ref<{ focus: () => void } | null>(null);
-function focusBody() {
-	basicEditor.value?.focus();
-}
-onMounted(() => {
-	if (answerFrame) void nextTick(focusBody);
-});
+const { envelopeRef, basicEditor, focusBody, onLineReplyAll } = frameView;
 
 // Hosts keep the draft id (Answer mode writes it into its URL).
 watch(
@@ -340,7 +327,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:seal-states="chipSealStates"
 			@from-change="onFromChange"
 			@apply-reply-all="onApplyReplyAll"
-			@attention="envelopeAttention = $event"
+			@attention="frameView.envelopeAttention.value = $event"
 		/>
 
 		<!-- Sealed Mail (E5): honest seal-lock indicator, shown from the moment the

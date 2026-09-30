@@ -30,6 +30,8 @@ import {
 import { classifySecureMessage, isEncryptedClass } from '@owlat/shared/secureMessage';
 import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 import type { PostboxReaderMessage } from '~/components/postbox/PostboxThreadReader.vue';
+import { POSTBOX_MARK_READ_DWELL_MS, markReadOnOpen } from '~/utils/postboxMarkReadPolicy';
+import { optimisticMarkThreadRead } from '~/lib/mailOptimistic/mailUpdaters';
 
 export type AnswerConversationView = 'summary' | 'full';
 
@@ -94,6 +96,32 @@ watch(view, (next) => {
 			? new Set(rows.map((m) => m._id))
 			: initialExpandedIds(rows, props.message._id, threadPages.startsThread.value, false);
 });
+
+// Answering a conversation reads it: the same mark-read policy the reader
+// applies on open (now, after a dwell, or never), since `r` on a list row now
+// comes straight here without the reader in between.
+const { markReadPolicy } = usePostboxSettings();
+const markThreadRead = useBackendOperation(api.mail.messageActions.markThreadRead, {
+	label: () => t('components.postbox.postboxThreadReader.markReadOperation'),
+	optimisticUpdate: optimisticMarkThreadRead,
+});
+let markReadTimer: ReturnType<typeof setTimeout> | undefined;
+let markedThreadId: string | null = null;
+watch(
+	() => threadData.value?.thread?._id,
+	(threadId) => {
+		if (!threadId || threadId === markedThreadId || !threadPages.hasUnread.value) return;
+		const mode = markReadOnOpen(markReadPolicy.value);
+		if (mode === 'never') return;
+		markedThreadId = threadId;
+		const run = () =>
+			void markThreadRead.run({ threadId: threadId as Id<'mailThreads'>, seen: true });
+		if (mode === 'now') run();
+		else markReadTimer = setTimeout(run, POSTBOX_MARK_READ_DWELL_MS);
+	},
+	{ immediate: true }
+);
+onBeforeUnmount(() => clearTimeout(markReadTimer));
 
 // ── What each card needs (the reader derives the same, per message) ─────────
 const mailboxIdRef = computed(() => props.message.mailboxId as Id<'mailboxes'>);

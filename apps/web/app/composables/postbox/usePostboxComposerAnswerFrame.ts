@@ -17,36 +17,61 @@
  *
  * In the popup frame all three are simply "open", which is today's composer.
  */
-import { computed, ref, watch, type Ref } from 'vue';
+import { computed, nextTick, onMounted, ref, watch, type Ref } from 'vue';
 import { bodyHasQuote } from '~/utils/answerMode';
 
 export function usePostboxComposerAnswerFrame(opts: {
 	/** `frame === 'answer'`; fixed for the life of the composer. */
 	active: boolean;
 	bodyHtml: Ref<string>;
-	/** Something in the envelope needs to be seen. */
-	attention: () => boolean;
+	/** A recipient blocks sealing: the envelope is where that chip is. */
+	sealBlocked: () => boolean;
 }) {
 	const envelopeOpen = ref(!opts.active);
 	const quoteFolded = ref(opts.active);
 	const advisoryOpen = ref(!opts.active);
 	const hasQuote = computed(() => bodyHasQuote(opts.bodyHtml.value));
+	/** What the envelope itself reports (see its `attention` event). */
+	const envelopeAttention = ref(false);
 
 	watch(
-		opts.attention,
+		() => envelopeAttention.value || opts.sealBlocked(),
 		(needsAttention) => {
 			if (needsAttention) envelopeOpen.value = true;
 		},
 		{ immediate: true }
 	);
 
+	// Template refs the composer binds: the envelope (its reply-all switch) and
+	// the body editor, focused on mount in Answer mode, which only ever opens on
+	// an explicit reply, so this never steals focus on load.
+	const envelopeRef = ref<{ switchToReplyAll: () => void } | null>(null);
+	const basicEditor = ref<{ focus: () => void } | null>(null);
+	function focusBody() {
+		basicEditor.value?.focus();
+	}
+	onMounted(() => {
+		if (opts.active) void nextTick(focusBody);
+	});
+
+	function openEnvelope() {
+		envelopeOpen.value = true;
+	}
+
 	return {
 		envelopeOpen,
+		envelopeAttention,
 		quoteFolded,
 		advisoryOpen,
 		hasQuote,
-		openEnvelope: () => {
-			envelopeOpen.value = true;
+		envelopeRef,
+		basicEditor,
+		focusBody,
+		openEnvelope,
+		/** "Reply all" on the folded line: open the envelope and flip its switch. */
+		onLineReplyAll: () => {
+			openEnvelope();
+			envelopeRef.value?.switchToReplyAll();
 		},
 		toggleQuote: () => {
 			quoteFolded.value = !quoteFolded.value;

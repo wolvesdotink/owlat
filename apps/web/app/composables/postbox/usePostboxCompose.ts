@@ -47,7 +47,7 @@ export type SendAsIdentity = FunctionReturnType<
 
 /**
  * The one-time seed a composer opens with: the one declaration every host
- * writes (the popup stack's ComposerSpec, the reader's InlineComposeSpec, the
+ * writes (the popup stack's ComposerSpec, Answer mode's seed, the
  * desktop compose window) and PostboxComposer hands over whole.
  */
 export interface ComposerSeed {
