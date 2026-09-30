@@ -156,7 +156,22 @@ describe('selectQuestions', () => {
 	it('keeps only divergent slots and stamps stable ids', () => {
 		const slots: ReplySlot[] = [decisionSlot, { ...decisionSlot, question: 'What price?' }];
 		const qs = selectQuestions(slots, [1]);
-		expect(qs).toEqual([{ id: 'clarify_1', slotType: 'decision', text: 'What price?' }]);
+		expect(qs).toEqual([
+			{ id: 'clarify_1', slotType: 'decision', answerKind: 'text', text: 'What price?' },
+		]);
+	});
+
+	it('sets answerKind from the slot kind (options → choice, else text)', () => {
+		const slots: ReplySlot[] = [
+			{ ...decisionSlot, slotType: 'date_time', question: 'When?' },
+			{ ...decisionSlot, slotType: 'price_number', question: 'How much?' },
+			{ ...decisionSlot, slotType: 'attachment', question: 'Which contract?' },
+			{ ...decisionSlot, options: ['Yes', 'No'] },
+		];
+		const qs = selectQuestions(slots, [0, 1, 2, 3], { maxQuestions: 3, highStakesOnly: false });
+		expect(qs.map((q) => q.answerKind)).toEqual(['date', 'number', 'file']);
+		const withOptions = selectQuestions(slots, [3]);
+		expect(withOptions[0]).toMatchObject({ answerKind: 'choice', options: ['Yes', 'No'] });
 	});
 
 	it('caps at three questions', () => {
@@ -579,6 +594,100 @@ describe('clarifyStep.execute — attachment ambiguity', () => {
 		}
 		expect(route.transition.questions).toHaveLength(1);
 		expect(route.transition.questions[0]!.slotType).toBe('attachment');
+	});
+
+	it('offers the ambiguous matches as fileCandidates with their titles as options', async () => {
+		const ctx = makeAttachCtx([fileRow('a', 0.6), fileRow('b', 0.58)]);
+		const { output } = await clarifyStep.execute(ctx, attachInput());
+		const question = output.questions[0]!;
+		expect(question.answerKind).toBe('file');
+		expect(question.options).toEqual(['Title a', 'Title b']);
+		expect(question.fileCandidates).toEqual([
+			{
+				source: 'semanticFile',
+				id: 'a',
+				filename: 'a.pdf',
+				title: 'Title a',
+				mimeType: 'application/pdf',
+				size: 100,
+				score: 0.6,
+			},
+			expect.objectContaining({ id: 'b', score: 0.58 }),
+		]);
+		// The fixed copy ships its German rendering without a model call.
+		expect(question.translations).toEqual([
+			{
+				locale: 'de',
+				text: 'Welche Datei soll ich an diese Antwort anhängen?',
+				options: ['Title a', 'Title b'],
+			},
+		]);
+	});
+
+	it('asks a file question when nothing matches (upload, pick, or not ready yet)', async () => {
+		const ctx = makeAttachCtx([]);
+		const { output } = await clarifyStep.execute(ctx, attachInput());
+		expect(output.resolution).toBe('attachment_missing');
+		expect(output.questions).toHaveLength(1);
+		const question = output.questions[0]!;
+		expect(question).toMatchObject({
+			id: 'clarify_attachment',
+			slotType: 'attachment',
+			answerKind: 'file',
+			options: ["It isn't ready yet"],
+		});
+		expect(question.text).toContain('signed contract');
+		expect(question.fileCandidates).toBeUndefined();
+		expect(question.translations?.[0]).toMatchObject({
+			locale: 'de',
+			options: ['Noch nicht fertig'],
+		});
+		expect(mocks.runLlmObject).not.toHaveBeenCalled();
+		expect(mocks.runLlmText).not.toHaveBeenCalled();
+
+		const route = clarifyStep.route(output, attachInput(), runCtx);
+		if (route.kind !== 'transition' || route.transition.to !== 'awaiting_clarification') {
+			throw new Error('expected awaiting_clarification');
+		}
+	});
+
+	it('offers a single weak match as a near candidate instead of attaching it', async () => {
+		const ctx = makeAttachCtx([fileRow('aug', 0.1)]);
+		const { output } = await clarifyStep.execute(ctx, attachInput());
+		expect(output.resolution).toBe('attachment_missing');
+		expect(output.questions[0]!.fileCandidates).toEqual([
+			expect.objectContaining({ source: 'semanticFile', id: 'aug', score: 0.1 }),
+		]);
+	});
+
+	it('does not raise the not-found question for mail the sender attached to', async () => {
+		const ctx = makeAttachCtx([]);
+		const { output } = await clarifyStep.execute(ctx, {
+			...attachInput(),
+			context: 'Hi, please find attached our signed contract.',
+		});
+		expect(output.resolution).toBe('high_coverage_short_circuit');
+		expect(output.questions).toEqual([]);
+	});
+
+	it('only looks at the current message, not a request quoted from history', async () => {
+		const ctx = makeAttachCtx([]);
+		const { output } = await clarifyStep.execute(ctx, {
+			...attachInput(),
+			context:
+				'[CONVERSATION HISTORY]\nUs: could you send me the signed contract?\n\n' +
+				'[CURRENT MESSAGE]\nThanks, all good on our side.',
+		});
+		expect(output.questions).toEqual([]);
+	});
+
+	it('never turns a credential-shaped request into a question', async () => {
+		const ctx = makeAttachCtx([]);
+		const { output } = await clarifyStep.execute(ctx, {
+			...attachInput(),
+			context: 'Could you send me the admin password for the portal?',
+		});
+		expect(output.questions).toEqual([]);
 	});
 
 	it('does NOT ask when the file match is a single confident winner', async () => {

@@ -571,6 +571,8 @@ import type * as inbox_askEagernessSettings from '../inbox/askEagernessSettings.
 import type * as inbox_attachmentMatch from '../inbox/attachmentMatch.js';
 import type * as inbox_attachmentSuggest from '../inbox/attachmentSuggest.js';
 import type * as inbox_clarification from '../inbox/clarification.js';
+import type * as inbox_clarificationAnswers from '../inbox/clarificationAnswers.js';
+import type * as inbox_clarificationFileAnswer from '../inbox/clarificationFileAnswer.js';
 import type * as inbox_clarificationLog from '../inbox/clarificationLog.js';
 import type * as inbox_clarificationLocalize from '../inbox/clarificationLocalize.js';
 import type * as inbox_clarificationMemory from '../inbox/clarificationMemory.js';
@@ -810,6 +812,7 @@ import type * as lib_validators_aiProviderConfig from '../lib/validators/aiProvi
 import type * as lib_validators_attachment from '../lib/validators/attachment.js';
 import type * as lib_validators_autonomy from '../lib/validators/autonomy.js';
 import type * as lib_validators_campaigns from '../lib/validators/campaigns.js';
+import type * as lib_validators_catchUp from '../lib/validators/catchUp.js';
 import type * as lib_validators_clarification from '../lib/validators/clarification.js';
 import type * as lib_validators_classification from '../lib/validators/classification.js';
 import type * as lib_validators_contacts from '../lib/validators/contacts.js';
@@ -1858,6 +1861,8 @@ declare const fullApi: ApiFromModules<{
 	'inbox/attachmentMatch': typeof inbox_attachmentMatch;
 	'inbox/attachmentSuggest': typeof inbox_attachmentSuggest;
 	'inbox/clarification': typeof inbox_clarification;
+	'inbox/clarificationAnswers': typeof inbox_clarificationAnswers;
+	'inbox/clarificationFileAnswer': typeof inbox_clarificationFileAnswer;
 	'inbox/clarificationLog': typeof inbox_clarificationLog;
 	'inbox/clarificationLocalize': typeof inbox_clarificationLocalize;
 	'inbox/clarificationMemory': typeof inbox_clarificationMemory;
@@ -2097,6 +2102,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/validators/attachment': typeof lib_validators_attachment;
 	'lib/validators/autonomy': typeof lib_validators_autonomy;
 	'lib/validators/campaigns': typeof lib_validators_campaigns;
+	'lib/validators/catchUp': typeof lib_validators_catchUp;
 	'lib/validators/clarification': typeof lib_validators_clarification;
 	'lib/validators/classification': typeof lib_validators_classification;
 	'lib/validators/contacts': typeof lib_validators_contacts;
