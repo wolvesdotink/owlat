@@ -1,119 +1,159 @@
 /**
- * Synchronous storage adapter backed by the OS keychain.
+ * Synchronous session storage backed by the OS keychain, one instance per
+ * workspace keychain entry.
  *
  * `crossDomainClient` requires a *synchronous* `storage` ({ getItem, setItem }),
- * but the OS keychain is async (it goes through Tauri `invoke`). We bridge the
- * gap with a boot-hydrated, in-memory write-through cache:
+ * but the OS keychain is async (it goes through Tauri `invoke`). Each storage
+ * bridges the gap with an in-memory write-through cache:
  *
- *   - the boot plugin reads the active workspace's session blob from the keychain
- *     once and calls `configure()` to seed the cache + register a persister;
+ *   - it is created with the entry's persisted blob and (optionally) a persister;
  *   - `getItem`/`setItem` operate on the cache synchronously;
- *   - `setItem`/`removeItem` schedule a debounced flush of the whole blob back to
- *     the keychain via the registered (async) persister.
+ *   - `setItem`/`removeItem` schedule a debounced write of the whole blob back to
+ *     the keychain through the persister.
  *
- * The whole cache is serialized as one JSON blob per workspace, so we never need
- * to know `crossDomainClient`'s internal key names (cookie vs local-cache).
+ * A storage is bound to ONE account for its whole life and is never re-pointed,
+ * so an auth client built on it can only ever read and write that workspace's
+ * session. The whole cache is serialized as one JSON blob per workspace, so we
+ * never need to know `crossDomainClient`'s internal key names (cookie vs
+ * local-cache).
  */
 type Persister = (accountKey: string, blob: string) => void | Promise<void>;
 
-let cache: Record<string, string> = {};
-let accountKey: string | null = null;
-let persister: Persister | null = null;
-let flushTimer: ReturnType<typeof setTimeout> | null = null;
-
-function scheduleFlush(): void {
-	if (!persister || !accountKey) return;
-	if (flushTimer) clearTimeout(flushTimer);
-	const key = accountKey;
-	flushTimer = setTimeout(() => {
-		flushTimer = null;
-		void persister?.(key, JSON.stringify(cache));
-	}, 150);
+export interface KeychainSessionStorage {
+	/** The keychain entry this storage reads from and writes to. Fixed. */
+	readonly accountKey: string;
+	getItem(key: string): string | null;
+	setItem(key: string, value: string): void;
+	removeItem(key: string): void;
+	/** The cache serialized as the blob persisted to the keychain. */
+	snapshot(): string;
+	/**
+	 * Write any pending change now instead of after the debounce, and wait for
+	 * every write this storage has started. A reload would otherwise drop a
+	 * change the debounce was still holding.
+	 */
+	flush(): Promise<void>;
+	/**
+	 * Stop writing to the keychain and wait for the writes already started.
+	 * Resolves with a function that resumes writing (and writes what changed in
+	 * the meantime). Used while another owner writes the same entry.
+	 */
+	suspend(): Promise<() => void>;
+	/**
+	 * Stop writing for good and forget the cached session, without writing the
+	 * emptied cache: the workspace is being removed and its entry deleted.
+	 */
+	discard(): Promise<void>;
 }
 
-export const keychainStorage = {
-	getItem(key: string): string | null {
-		return key in cache ? cache[key]! : null;
-	},
-	setItem(key: string, value: string): void {
-		cache[key] = value;
-		scheduleFlush();
-	},
-	removeItem(key: string): void {
-		delete cache[key];
-		scheduleFlush();
-	},
-};
+const FLUSH_DEBOUNCE_MS = 150;
+
+function parseBlob(blob: string | null): Record<string, string> {
+	if (!blob) return {};
+	try {
+		const parsed = JSON.parse(blob) as Record<string, string>;
+		if (parsed && typeof parsed === 'object') return parsed;
+	} catch {
+		// Corrupt blob — start clean; the next auth flow re-populates it.
+	}
+	return {};
+}
 
 /**
- * Seed the cache for a workspace and register the keychain persister.
- * Called by the boot plugin after reading the keychain. `initialBlob` is the
- * previously-persisted JSON blob (or null/empty for a fresh workspace).
+ * A storage for one keychain entry. `initialBlob` is the previously persisted
+ * blob (null for a fresh entry). With no `persist`, the storage is memory-only
+ * until its owner writes `snapshot()` itself — the connect handshake keeps a
+ * session it has not confirmed off the keychain that way.
  */
-export function configureKeychainStorage(
-	key: string,
+export function createKeychainStorage(
+	accountKey: string,
 	initialBlob: string | null,
-	persist: Persister
-): void {
-	// Cancel any flush still queued for the PREVIOUS account. Its closure holds
-	// the old account key but would serialize the cache as it is when the timer
-	// fires — i.e. the new workspace's secrets written into the old workspace's
-	// keychain entry. Re-pointing the cache must drop the writes that belonged
-	// to where it used to point.
-	if (flushTimer) {
-		clearTimeout(flushTimer);
-		flushTimer = null;
-	}
-	accountKey = key;
-	persister = persist;
-	cache = {};
-	if (initialBlob) {
-		try {
-			const parsed = JSON.parse(initialBlob) as Record<string, string>;
-			if (parsed && typeof parsed === 'object') cache = parsed;
-		} catch {
-			// Corrupt blob — start clean; the next auth flow re-populates it.
-			cache = {};
+	persist: Persister | null
+): KeychainSessionStorage {
+	let cache = parseBlob(initialBlob);
+	let flushTimer: ReturnType<typeof setTimeout> | null = null;
+	let dirty = false;
+	let suspended = false;
+	let discarded = false;
+	// Writes are chained so two flushes can never land out of order.
+	let writes: Promise<void> = Promise.resolve();
+
+	function cancelTimer(): void {
+		if (flushTimer) {
+			clearTimeout(flushTimer);
+			flushTimer = null;
 		}
 	}
-}
 
-/**
- * The account key the cache is currently bound to, or null before the first
- * `configure`. Lets a caller that re-points the cache (the connect handshake)
- * capture the previous binding so it can put it back if the handshake fails.
- */
-export function currentKeychainAccount(): string | null {
-	return accountKey;
-}
-
-/**
- * Unbind the cache entirely — no flush, no persister, no account. Used to undo
- * a `configure` whose workspace is being abandoned: `clearKeychainStorage`
- * would instead SCHEDULE a write of the emptied cache to that account, racing
- * (and losing to) the keychain delete that follows.
- */
-export function resetKeychainStorage(): void {
-	if (flushTimer) {
-		clearTimeout(flushTimer);
-		flushTimer = null;
+	function writeNow(): Promise<void> {
+		cancelTimer();
+		if (!persist || !dirty || suspended || discarded) return writes;
+		dirty = false;
+		const blob = JSON.stringify(cache);
+		writes = writes.then(() => persist(accountKey, blob)).catch(() => {});
+		return writes;
 	}
-	cache = {};
-	accountKey = null;
-	persister = null;
-}
 
-/** Drop all stored secrets for the active workspace (sign-out). */
-export function clearKeychainStorage(): void {
-	cache = {};
-	scheduleFlush();
+	function changed(): void {
+		dirty = true;
+		if (!persist || suspended || discarded) return;
+		cancelTimer();
+		flushTimer = setTimeout(() => {
+			flushTimer = null;
+			void writeNow();
+		}, FLUSH_DEBOUNCE_MS);
+	}
+
+	return {
+		accountKey,
+		getItem(key) {
+			return key in cache ? cache[key]! : null;
+		},
+		setItem(key, value) {
+			cache[key] = value;
+			changed();
+		},
+		removeItem(key) {
+			delete cache[key];
+			changed();
+		},
+		snapshot() {
+			return JSON.stringify(cache);
+		},
+		flush() {
+			return writeNow();
+		},
+		async suspend() {
+			cancelTimer();
+			suspended = true;
+			await writes;
+			return () => {
+				if (discarded) return;
+				suspended = false;
+				void writeNow();
+			};
+		},
+		async discard() {
+			cancelTimer();
+			discarded = true;
+			cache = {};
+			dirty = false;
+			await writes;
+		},
+	};
 }
 
 /**
- * Current cache serialized as the JSON blob persisted to the keychain. Used to
- * force an immediate, awaitable write before a workspace switch/reload (which
- * would otherwise race the debounced flush).
+ * The storage of the workspace this webview is signed in to, set by the boot
+ * hydration (`loadWorkspaces`). A workspace switch reloads the webview, so this
+ * is set at most once per page load.
  */
-export function snapshotKeychain(): string {
-	return JSON.stringify(cache);
+let activeStorage: KeychainSessionStorage | null = null;
+
+export function setActiveKeychainStorage(storage: KeychainSessionStorage | null): void {
+	activeStorage = storage;
+}
+
+export function getActiveKeychainStorage(): KeychainSessionStorage | null {
+	return activeStorage;
 }

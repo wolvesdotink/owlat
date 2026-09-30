@@ -3,8 +3,11 @@
  * order it ahead of `convex.client.ts`).
  *
  * On the desktop runtime it awaits the active workspace + its keychain session
- * so that, by the time `convex.client.ts` and `auth-client.ts` are first
- * imported, the active workspace URLs and stored token are already in place.
+ * so that, by the time `convex.client.ts` builds the Convex client and the first
+ * auth call builds the auth client, the active workspace URLs and stored token
+ * are in place. Importing a module is not enough to wait on: every plugin file
+ * is imported before any plugin runs, which is why `auth-client.ts` builds its
+ * client on first use rather than at import.
  * Then it wires up deep-link handling (including the `owlat://auth` sign-in
  * return). Outside Tauri it is an immediate no-op, so web behavior is unchanged.
  */
