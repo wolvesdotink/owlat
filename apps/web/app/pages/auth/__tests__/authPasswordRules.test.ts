@@ -29,14 +29,20 @@ import ResetPasswordPage from '../reset-password.vue';
 
 const signInWithEmail = vi.fn(async () => ({}));
 const resetPassword = vi.fn(async () => {});
+const routerReplace = vi.fn();
 
 /** What the public sender read returns (the workspace's from-name). */
 let senderName: string | null = null;
 
-function stubs(query: Record<string, string>, publicConfig: Record<string, unknown> = {}) {
+function stubs(
+	query: Record<string, string>,
+	publicConfig: Record<string, unknown> = {},
+	path = '/auth/login'
+) {
 	installNuxtStubs({
 		...i18nStubs,
-		useRoute: () => ({ path: '/auth/login', fullPath: '/auth/login', query, params: {}, meta: {} }),
+		useRoute: () => ({ path, fullPath: path, query, hash: '', params: {}, meta: {} }),
+		useRouter: () => ({ replace: routerReplace, push: vi.fn() }),
 		safeRedirect: (target: unknown, fallback: string) =>
 			typeof target === 'string' ? target : fallback,
 		useRuntimeConfig: () => ({
@@ -73,6 +79,7 @@ beforeEach(() => {
 	senderName = null;
 	signInWithEmail.mockClear();
 	resetPassword.mockClear();
+	routerReplace.mockClear();
 	window.sessionStorage.clear();
 });
 
@@ -162,15 +169,14 @@ describe('reset password', () => {
 		expect(wrapper.find('#new-password').attributes('aria-invalid')).toBe('true');
 	});
 
-	it('takes the token out of the address bar and still submits it', async () => {
-		window.history.replaceState(null, '', '/auth/reset-password?token=reset-token');
-		stubs({ token: 'reset-token' });
+	it('takes the token out of the URL and still submits it', async () => {
+		stubs({ token: 'reset-token', lang: 'de' }, {}, '/auth/reset-password');
 		const wrapper = mountPage(ResetPasswordPage);
 		await flushPromises();
-		expect(window.location.search).toBe('');
+		expect(routerReplace).toHaveBeenCalledWith({ query: { lang: 'de' }, hash: '' });
 
 		// A reload of the cleaned URL keeps the form.
-		stubs({});
+		stubs({}, {}, '/auth/reset-password');
 		const reloaded = mountPage(ResetPasswordPage);
 		expect(reloaded.find('#new-password').exists()).toBe(true);
 

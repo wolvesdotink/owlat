@@ -1,18 +1,22 @@
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 
 /**
  * A credential that arrives in the page's query string (`?token=…`), read into
- * the page and then taken out of the address bar.
+ * the page and then taken out of the URL.
  *
- * Left in the URL, the value sits in the tab's history entry, in anything that
- * copies the address and in every URL-bearing report the page might produce.
- * Once mounted, the parameter is replaced out of the current history entry; the
- * value stays available to the page (retries included), because the router's
- * own copy of the query is untouched.
+ * Left in the URL, the value sits in the tab's history (and in the `back`
+ * state vue-router records for the next entry), in anything that copies the
+ * address and in every URL-bearing report the page might produce. Once
+ * mounted, the page keeps the value and replaces the route with the same one
+ * minus that parameter, so the router's own location is clean too. Retries
+ * keep working from the kept value.
  *
  * A reload, or coming back to the entry, finds a clean URL, so the value is
- * also kept in `sessionStorage` under the page's path: tab-scoped, gone when
- * the tab closes. A page whose credential is spent calls `forget()`.
+ * also kept in `sessionStorage` under the route's path: tab-scoped, gone when
+ * the tab closes. That also means a later visit to the bare path in the same
+ * tab (`/share` without a token) reuses the stored value. A page calls
+ * `forget()` once the value is spent or known to be invalid, which clears the
+ * stored copy (the page itself keeps what it has).
  */
 
 const STORAGE_PREFIX = 'owlat.urlCredential:';
@@ -30,58 +34,36 @@ function storage(): Storage | null {
 	}
 }
 
-function withoutParam(path: string, key: string): string {
-	const url = new URL(path, 'http://owlat.invalid');
-	url.searchParams.delete(key);
-	return url.pathname + url.search + url.hash;
-}
-
-function dropFromAddressBar(key: string): void {
-	const url = new URL(window.location.href);
-	if (!url.searchParams.has(key)) return;
-	const state: unknown = window.history.state;
-	// vue-router writes `state.current` back into this entry on the next push,
-	// which would put the parameter back into the history it was removed from.
-	const next =
-		state &&
-		typeof state === 'object' &&
-		typeof (state as { current?: unknown }).current === 'string'
-			? { ...state, current: withoutParam((state as { current: string }).current, key) }
-			: state;
-	window.history.replaceState(next, '', withoutParam(url.pathname + url.search + url.hash, key));
-}
-
 export function useUrlCredential(key = 'token') {
 	const route = useRoute();
-	const storageKey =
-		typeof window === 'undefined' ? null : `${STORAGE_PREFIX}${window.location.pathname}:${key}`;
+	const router = useRouter();
+	const storageKey = `${STORAGE_PREFIX}${route.path}:${key}`;
 
 	let stored: string | undefined;
-	if (storageKey) {
-		try {
-			stored = single(storage()?.getItem(storageKey));
-		} catch {
-			stored = undefined;
-		}
+	try {
+		stored = single(storage()?.getItem(storageKey));
+	} catch {
+		stored = undefined;
 	}
+	const kept = ref<string | undefined>(single(route.query[key]) ?? stored);
 
-	const token = computed(() => single(route.query[key]) ?? stored);
+	const token = computed(() => single(route.query[key]) ?? kept.value);
 
 	onMounted(() => {
 		const value = single(route.query[key]);
-		if (!value || !storageKey) return;
+		if (!value) return;
+		kept.value = value;
 		try {
 			storage()?.setItem(storageKey, value);
 		} catch {
 			// Without storage a reload shows the page's missing-link state; the
-			// value still leaves the address bar.
+			// value still leaves the URL.
 		}
-		dropFromAddressBar(key);
+		const { [key]: _dropped, ...query } = route.query;
+		void router.replace({ query, hash: route.hash });
 	});
 
 	function forget(): void {
-		stored = undefined;
-		if (!storageKey) return;
 		try {
 			storage()?.removeItem(storageKey);
 		} catch {

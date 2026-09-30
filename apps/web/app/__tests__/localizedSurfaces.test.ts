@@ -58,7 +58,7 @@ beforeAll(() => {
 		safeRedirect: (value: unknown, fallback: string) =>
 			typeof value === 'string' ? value : fallback,
 		useRoute: () => ({ query: routeQuery }),
-		useRouter: () => ({ push: vi.fn() }),
+		useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 		useAuth: () => ({
 			user,
 			isPending,

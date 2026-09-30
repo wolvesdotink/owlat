@@ -65,7 +65,7 @@ async function handleConfirm() {
 				? { ok: true, data: outcome.alreadyConfirmed }
 				: { ok: false, reason: outcome.error };
 		},
-		{ fallbackKey: 'recipient.confirm.errors.confirmFailed' }
+		{ fallbackKey: 'recipient.confirm.errors.confirmFailed', spendsToken: true }
 	);
 	if (result?.ok) wasAlreadyConfirmed.value = result.data;
 }
