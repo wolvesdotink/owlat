@@ -273,6 +273,16 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 		if (state === 'ready') schedulePersist();
 	});
 
+	// A composer that goes away before its first save never had a row, and a
+	// debounced write armed in its last moments would create one nobody can
+	// reach: not in the host's URL, not offered back by the "Draft saved" bar.
+	// A host that wants the text kept flushes before it lets go (Answer mode's
+	// leave does, when something was written). A composer with a row keeps its
+	// pending write: that row is already where the person will look.
+	onScopeDispose(() => {
+		if (!draftId.value) clearTimer();
+	});
+
 	/** Drop a debounced write on the floor — the row is going away or is stale. */
 	function cancelAutosave(): void {
 		clearTimer();
