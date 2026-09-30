@@ -398,6 +398,26 @@ describe('usePostboxCompose — a draft that no longer exists (#896)', () => {
 		expect(sendRun).not.toHaveBeenCalled();
 	});
 
+	it('does not queue a seeded composition offline once the draft is missing', async () => {
+		const composer = await openComposer({
+			draftId: 'draft-1' as never,
+			prefillTo: ['new@example.com'],
+			prefillCc: [],
+			prefillBcc: [],
+			prefillSubject: 'Hello',
+			prefillBodyHtml: '<p>Queued body</p>',
+		});
+		draftQuery.data.value = null;
+		await nextTick();
+		await vi.advanceTimersByTimeAsync(1_500);
+		expect(composer.draftNotice.value).toBe('missing');
+		isOffline.value = true;
+
+		expect(composer.canSend.value).toBe(false);
+		await expect(composer.send()).rejects.toSatisfy(isSurfacedOperationError);
+		expect(queueSend).not.toHaveBeenCalled();
+	});
+
 	it('merges a row that follows a brief null, without ever calling the draft missing', async () => {
 		const composer = await openComposer();
 		draftQuery.data.value = null;

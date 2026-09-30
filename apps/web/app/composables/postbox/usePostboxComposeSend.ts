@@ -117,8 +117,12 @@ export function usePostboxComposeSend(o: ComposeSendOptions) {
 	});
 
 	/** Whether a send may be attempted right now (a gate for `canSend`). */
+	// A missing draft sends nothing, not even a seeded composition queued
+	// offline: the drain would replay it onto a row that is gone.
 	const sendReady = computed(
-		() => o.initialHydration.value === 'ready' || (o.seedCarriesComposition && o.isOffline.value)
+		() =>
+			o.initialHydration.value === 'ready' ||
+			(o.initialHydration.value !== 'missing' && o.seedCarriesComposition && o.isOffline.value)
 	);
 
 	/**
