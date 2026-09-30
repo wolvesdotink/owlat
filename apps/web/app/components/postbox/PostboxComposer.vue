@@ -3,6 +3,8 @@ import type { Id } from '@owlat/api/dataModel';
 import type { ComposerMode, ComposerSeed } from '~/composables/postbox/usePostboxCompose';
 import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
 import { usePostboxComposerAnswerFrame } from '~/composables/postbox/usePostboxComposerAnswerFrame';
+import { usePostboxComposerAnswerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
+import { usePostboxComposerGaps } from '~/composables/postbox/usePostboxComposerGaps';
 import { convertReplyToReplyAll } from '~/utils/postboxReplyDefault';
 import { answerDraftHasContent } from '~/utils/answerMode';
 
@@ -27,6 +29,8 @@ const props = defineProps<{
 	 * opens on an explicit reply, so this never steals focus on load).
 	 */
 	frame?: 'popup' | 'answer';
+	/** Answer mode's line for the footer's save-state spot ("2 of 3 asks covered"). */
+	statusNote?: string;
 }>();
 
 const emit = defineEmits<{
@@ -190,7 +194,7 @@ const { sending, handleSend, guards, stale } = usePostboxComposerSendGate({
 	recipients: () => [...toAddresses.value, ...ccAddresses.value, ...bccAddresses.value],
 	attachmentCount: () => attachments.value.length,
 	isUploading: () => isUploading.value,
-	canSend: () => canSend.value,
+	canSend: () => sendable.value,
 	seal: () => seal,
 	send,
 	onSent: (outcome) => emit('sent', outcome),
@@ -233,9 +237,30 @@ async function handleMaximise() {
 	}
 }
 
+// Scoped OS-level file drops and clipboard attachment pastes.
+const { rootEl, dragActive, onDragOver, onDragLeave, onDrop, onPaste } =
+	usePostboxComposerDropZone(addFiles);
+
+// An AI draft's `[[...]]` gaps hold Send back until they are filled.
+const { gapCount } = usePostboxComposerGaps({ rootEl, bodyHtml });
+const sendable = computed(() => canSend.value && gapCount.value === 0);
+const { answerApi, footerStatus } = usePostboxComposerAnswerApi({
+	bodyHtml,
+	attachments,
+	followUpRemindAt,
+	addFiles,
+	flush,
+	focusBody,
+	isSaving,
+	lastSavedAt,
+	gapCount,
+	statusNote: () => props.statusNote,
+});
+
 defineExpose({
 	focusBody,
 	flush,
+	answer: answerApi,
 	/** What the host needs as it leaves: the row, who it is for, whether it holds anything. */
 	snapshot: () => ({
 		draftId: activeDraftId.value,
@@ -244,23 +269,11 @@ defineExpose({
 	}),
 });
 
-const lastSavedLabel = computed(() => {
-	if (isSaving.value) return t('common.saving');
-	if (!lastSavedAt.value) return '';
-	return t('components.postbox.postboxComposer.savedAt', {
-		time: new Date(lastSavedAt.value).toLocaleTimeString(locale.value),
-	});
-});
-
-// Scoped OS-level file drops and clipboard attachment pastes.
-const { rootEl, dragActive, onDragOver, onDragLeave, onDrop, onPaste } =
-	usePostboxComposerDropZone(addFiles);
-
 // Cmd/Ctrl+Enter send, +Shift schedule, Esc minimize — bound on the composer
 // root (capture) so each stacked composer only handles its own keys.
 const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostboxComposerKeys({
 	rootEl,
-	canSend,
+	canSend: sendable,
 	sending,
 	isScheduled,
 	scheduleOpen,
@@ -360,7 +373,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 		/>
 
 		<!-- Answer mode's AI bar / ask card (filled by the page). -->
-		<slot name="above-editor" />
+		<slot name="above-editor" :composer="answerApi" />
 
 		<div
 			class="flex-1 overflow-hidden"
@@ -426,7 +439,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:send-as="
 				availableIdentities.find((i) => i.address === fromAddress) ?? availableIdentities[0]
 			"
-			:can-send="canSend"
+			:can-send="sendable"
 			:sending="sending"
 			:is-uploading="isUploading"
 			:is-scheduled="isScheduled"
@@ -441,7 +454,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:body-blocks="bodyBlocks"
 			:persistent-toolbar="persistentToolbar"
 			:preflight="guards.preflight"
-			:last-saved-label="lastSavedLabel"
+			:last-saved-label="footerStatus"
 			:frame="frame"
 			:has-quote="frameView.hasQuote.value"
 			:quote-folded="frameView.quoteFolded.value"

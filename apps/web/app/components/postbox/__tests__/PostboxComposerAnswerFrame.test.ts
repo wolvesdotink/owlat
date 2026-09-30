@@ -125,6 +125,7 @@ beforeEach(() => {
 		}),
 		useNativeFilePicker: () => ({ isDesktop: ref(false), pickNativeFiles: vi.fn() }),
 		useInboxes: () => ({ byId: ref(new Map()) }),
+		useBackendOperation: () => ({ run: vi.fn(async () => ({ ok: true })), isLoading: ref(false) }),
 	});
 });
 
@@ -155,9 +156,10 @@ const EditorStub = defineComponent({
 const inert = (name: string) =>
 	defineComponent({ name, setup: () => () => h('div', { 'data-testid': name }) });
 
-function mountComposer(props: Record<string, unknown>) {
+function mountComposer(props: Record<string, unknown>, slots: Record<string, unknown> = {}) {
 	return mount(PostboxComposer, {
 		props: { seed: { mailboxId: 'mbx_1', inReplyToMessageId: 'msg_1' }, ...props },
+		slots: slots as never,
 		attachTo: document.body,
 		global: {
 			plugins: [createTestI18n()],
@@ -273,6 +275,43 @@ describe('PostboxComposer frame="answer"', () => {
 		compose.draftId.value = 'draft_7';
 		await nextTick();
 		expect(w.emitted('draft-id')?.[0]).toEqual(['draft_7']);
+		w.unmount();
+	});
+
+	it('holds Send back while an AI draft has a gap left, and says so where the save state was', async () => {
+		const w = mountComposer({ frame: 'answer', statusNote: '1 of 2 asks covered' });
+		const sendButton = () => w.findAll('button').find((b) => b.text() === 'Send')!;
+		expect(sendButton().attributes('disabled')).toBeUndefined();
+		expect(w.get('[data-testid="composer-save-state"]').text()).toBe('1 of 2 asks covered');
+
+		compose.bodyHtml.value = `<p>Attached. [[the PO number]]</p>${QUOTED}`;
+		await nextTick();
+		expect(sendButton().attributes('disabled')).toBeDefined();
+		expect(w.get('[data-testid="composer-save-state"]').text()).toBe('1 gap left');
+
+		// A gap inside the quoted original is not this draft's.
+		compose.bodyHtml.value = `<p>Attached.</p>${QUOTED.replace('the invoice', '[[x]]')}`;
+		await nextTick();
+		expect(sendButton().attributes('disabled')).toBeUndefined();
+		w.unmount();
+	});
+
+	it('hands its slot and its host the Answer mode API', async () => {
+		const w = mountComposer(
+			{ frame: 'answer' },
+			{
+				'above-editor': ({ composer }: { composer: { draftText: { value: string } } }) =>
+					h('p', { 'data-testid': 'slot' }, composer.draftText.value),
+			}
+		);
+		compose.bodyHtml.value = `<p>Hi Jonas</p>${QUOTED}`;
+		await nextTick();
+		expect(w.get('[data-testid="slot"]').text()).toBe('Hi Jonas');
+		const vm = w.vm as unknown as { answer: { applyAiDraft: (t: string) => Promise<void> } };
+		await vm.answer.applyAiDraft('Here it is.');
+		// The empty paragraph the reply opened with was the written part.
+		expect(compose.bodyHtml.value).toBe(`<p>Here it is.</p>${QUOTED.replace('<p><br></p>', '')}`);
+		expect(flush).toHaveBeenCalled();
 		w.unmount();
 	});
 

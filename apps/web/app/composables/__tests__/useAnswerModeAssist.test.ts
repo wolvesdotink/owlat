@@ -1,0 +1,227 @@
+// @vitest-environment happy-dom
+/**
+ * Answer mode's wiring around the composer (composables/useAnswerModeAssist):
+ *   - Summary when there is a card; a short thread without one opens in full,
+ *     decided once;
+ *   - a reply the AI prepared earlier goes into an untouched fresh reply only;
+ *   - a thread file is copied onto the draft by its index id, and uploaded from
+ *     the message when the index does not hold it; a chip dropped on the
+ *     composer attaches the same way;
+ *   - the footer note counts the asks the draft covers.
+ */
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { defineComponent, h, nextTick, ref, shallowRef } from 'vue';
+import { flushPromises, mount } from '@vue/test-utils';
+
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { useAnswerModeAssist } from '../useAnswerModeAssist';
+import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
+import type { AnswerConversationView } from '~/components/answer/AnswerConversation.vue';
+import { THREAD_FILE_DRAG_TYPE, type ThreadFile } from '~/utils/answerThreadFiles';
+
+vi.mock('@owlat/api', () => ({ api: { mail: { drafts: { attachExisting: 'attachExisting' } } } }));
+
+const catchUpState = {
+	catchUp: ref<{ asks: { id: string }[] } | null>(null),
+	loading: ref(false),
+	covered: ref<string[]>([]),
+	checkCoverage: vi.fn(async () => {}),
+};
+vi.mock('~/composables/useAnswerCatchUp', () => ({ useAnswerCatchUp: () => catchUpState }));
+vi.mock('~/composables/useAnswerAskSession', () => ({ useAnswerAskSession: () => ({}) }));
+const preparedText = ref<string | null>(null);
+vi.mock('~/composables/useAnswerPreparedDraft', () => ({
+	useAnswerPreparedDraft: () => ({ text: preparedText }),
+}));
+const indexIdOf = vi.fn();
+const toFile = vi.fn();
+vi.mock('~/composables/useAnswerThreadFiles', () => ({
+	useAnswerThreadFiles: () => ({ indexIdOf, toFile }),
+}));
+const upload = vi.fn();
+vi.mock('~/composables/useAnswerFileUpload', () => ({
+	useAnswerFileUpload: () => ({ upload }),
+}));
+
+const attachRun = vi.fn();
+const showToast = vi.fn();
+
+beforeEach(() => {
+	catchUpState.catchUp.value = null;
+	catchUpState.loading.value = false;
+	catchUpState.covered.value = [];
+	preparedText.value = null;
+	indexIdOf.mockReset();
+	toFile.mockReset();
+	upload.mockReset();
+	attachRun.mockReset();
+	showToast.mockReset();
+	Object.assign(globalThis, {
+		useI18n: i18nStubs.useI18n,
+		useToast: () => ({ showToast }),
+		useFeatureFlag: () => ({ isEnabled: () => true }),
+		useBackendOperation: () => ({ run: attachRun, isLoading: ref(false) }),
+	});
+});
+
+function composerMock(written = ''): AnswerComposerApi {
+	return {
+		draftText: ref(written),
+		aiDraft: ref(null),
+		ensureDraftId: vi.fn(async () => 'd1' as never),
+		streamAiDraft: vi.fn(),
+		applyAiDraft: vi.fn(async () => {}),
+		discardAiDraft: vi.fn(),
+		setAttachments: vi.fn(),
+		addFiles: vi.fn(async () => {}),
+		setFollowUp: vi.fn(),
+		focusBody: vi.fn(),
+	};
+}
+
+function host(opts: { composer?: AnswerComposerApi | null; count?: number; fresh?: boolean } = {}) {
+	// Shallow, as the page holds it: the API's refs stay refs.
+	const composer = shallowRef<AnswerComposerApi | null>(opts.composer ?? null);
+	const count = ref<number | undefined>(opts.count);
+	const view = ref<AnswerConversationView>('summary');
+	let assist!: ReturnType<typeof useAnswerModeAssist>;
+	mount(
+		defineComponent({
+			setup() {
+				assist = useAnswerModeAssist({
+					message: () => ({ _id: 'm1', mailboxId: 'mbx_1', threadId: 'thr_1' }),
+					composer: () => composer.value,
+					draftId: () => null,
+					freshReply: () => opts.fresh ?? true,
+					messageCount: () => count.value,
+					view,
+				});
+				return () => h('div');
+			},
+		}),
+		{ global: { plugins: [createTestI18n()] } }
+	);
+	return { assist, composer, count, view };
+}
+
+const FILE: ThreadFile = {
+	key: 'm2:2',
+	messageId: 'm2',
+	filename: 'po.pdf',
+	contentType: 'application/pdf',
+	size: 9,
+	partIndex: '2',
+	receivedAt: 1,
+};
+
+describe('useAnswerModeAssist: the view', () => {
+	it('opens a short thread without a card in full, once', async () => {
+		const { view, count } = host();
+		expect(view.value).toBe('summary');
+		count.value = 2;
+		await nextTick();
+		expect(view.value).toBe('full');
+		view.value = 'summary';
+		count.value = 1;
+		await nextTick();
+		expect(view.value).toBe('summary');
+	});
+
+	it('stays on Summary with a card, and for a long thread without one', async () => {
+		catchUpState.catchUp.value = { asks: [] };
+		expect(host({ count: 2 }).view.value).toBe('summary');
+		catchUpState.catchUp.value = null;
+		expect(host({ count: 5 }).view.value).toBe('summary');
+	});
+});
+
+describe('useAnswerModeAssist: a prepared draft', () => {
+	it('goes into an untouched fresh reply, once', async () => {
+		const composer = composerMock();
+		host({ composer });
+		preparedText.value = 'Hi Jonas, here it is.';
+		await flushPromises();
+		expect(composer.applyAiDraft).toHaveBeenCalledWith('Hi Jonas, here it is.');
+		expect(catchUpState.checkCoverage).toHaveBeenCalled();
+		preparedText.value = 'Another';
+		await flushPromises();
+		expect(composer.applyAiDraft).toHaveBeenCalledTimes(1);
+	});
+
+	it('never replaces something already written', async () => {
+		const composer = composerMock('my own words');
+		preparedText.value = 'AI words';
+		host({ composer });
+		await flushPromises();
+		expect(composer.applyAiDraft).not.toHaveBeenCalled();
+	});
+});
+
+describe('useAnswerModeAssist: thread files', () => {
+	it('copies an indexed file onto the draft', async () => {
+		const composer = composerMock();
+		const { assist } = host({ composer });
+		indexIdOf.mockResolvedValue('ma_1');
+		attachRun.mockResolvedValue({ ok: true, result: [{ storageId: 'st_1', filename: 'po.pdf' }] });
+		await assist.attachThreadFile(FILE);
+		expect(attachRun).toHaveBeenCalledWith({ draftId: 'd1', source: 'mailAttachment', id: 'ma_1' });
+		expect(composer.setAttachments).toHaveBeenCalledWith([
+			{ storageId: 'st_1', filename: 'po.pdf' },
+		]);
+		expect(assist.attaching.value).toBeNull();
+	});
+
+	it('uploads it from the message when the index does not hold it', async () => {
+		const composer = composerMock();
+		const { assist } = host({ composer });
+		indexIdOf.mockResolvedValue(null);
+		const local = new File(['x'], 'po.pdf');
+		toFile.mockResolvedValue(local);
+		await assist.attachThreadFile(FILE);
+		expect(attachRun).not.toHaveBeenCalled();
+		expect(composer.addFiles).toHaveBeenCalledWith([local]);
+	});
+
+	it('attaches a chip dropped on the composer, and ignores other drops', async () => {
+		const composer = composerMock();
+		const { assist } = host({ composer });
+		indexIdOf.mockResolvedValue(null);
+		toFile.mockResolvedValue(null);
+		const drop = (data: Record<string, string>) =>
+			({ dataTransfer: { getData: (t: string) => data[t] ?? '' } }) as unknown as DragEvent;
+		assist.onComposerDrop(drop({ 'text/plain': 'x' }));
+		expect(indexIdOf).not.toHaveBeenCalled();
+		assist.onComposerDrop(drop({ [THREAD_FILE_DRAG_TYPE]: JSON.stringify(FILE) }));
+		await flushPromises();
+		expect(indexIdOf).toHaveBeenCalled();
+		expect(showToast).toHaveBeenCalledWith('The file could not be attached.', 'error');
+	});
+
+	it('answers a file question with a thread file: by index id, else as an upload', async () => {
+		const { assist } = host({ composer: composerMock() });
+		indexIdOf.mockResolvedValueOnce('ma_1');
+		expect(await assist.resolveThreadFile(FILE)).toEqual({
+			source: 'mailAttachment',
+			id: 'ma_1',
+			filename: 'po.pdf',
+		});
+		indexIdOf.mockResolvedValueOnce(null);
+		toFile.mockResolvedValueOnce(new File(['x'], 'po.pdf'));
+		upload.mockResolvedValueOnce({ storageId: 'st_9', filename: 'po.pdf' });
+		expect(await assist.resolveThreadFile(FILE)).toEqual({
+			source: 'upload',
+			id: 'st_9',
+			filename: 'po.pdf',
+		});
+	});
+});
+
+describe('useAnswerModeAssist: the footer note', () => {
+	it('counts the asks the draft covers, and says nothing without asks', () => {
+		const { assist } = host();
+		expect(assist.statusNote.value).toBeUndefined();
+		catchUpState.catchUp.value = { asks: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] };
+		catchUpState.covered.value = ['b', 'c'];
+		expect(assist.statusNote.value).toBe('2 of 3 asks covered');
+	});
+});

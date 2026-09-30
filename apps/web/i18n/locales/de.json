@@ -3718,7 +3718,8 @@
 				"hideCoach": "Coach und Überarbeiten ausblenden",
 				"discardDraft": "Entwurf verwerfen",
 				"showQuote": "Zitierten Text anzeigen",
-				"hideQuote": "Zitierten Text ausblenden"
+				"hideQuote": "Zitierten Text ausblenden",
+				"gapsLeft": "1 Lücke offen | {count} Lücken offen"
 			},
 			"postboxComposerGuards": {
 				"alignment": {
@@ -5999,6 +6000,72 @@
 				},
 				"more": "Mehr zu dieser Unterhaltung",
 				"openInPostbox": "In Postbox öffnen"
+			},
+			"catchUp": {
+				"title": "Kurz zusammengefasst",
+				"meta": "{count} Nachricht seit {date} | {count} Nachrichten seit {date}",
+				"marker": "Nachricht von {sender} vom {date} anzeigen",
+				"loading": "Die Unterhaltung wird zusammengefasst",
+				"asksTitle": "Angefragt wird",
+				"askCovered": "Im Entwurf beantwortet:",
+				"askOpen": "Noch offen:",
+				"filesTitle": "Dateien in dieser Unterhaltung",
+				"attachHint": "Klicken, um sie an die Antwort anzuhängen, oder in die Antwort ziehen",
+				"attachFile": "{file} an die Antwort anhängen",
+				"attachFailed": "Die Datei konnte nicht angehängt werden.",
+				"attachOperation": "Datei anhängen",
+				"covered": "{covered} von {total} Anfrage beantwortet | {covered} von {total} Anfragen beantwortet"
+			},
+			"aiBar": {
+				"label": "Was soll in der Antwort stehen?",
+				"placeholder": "Was soll in der Antwort stehen? Optional, z. B. „schick es, entschuldige die Verspätung“",
+				"draft": "Mit KI entwerfen",
+				"shortcut": "Mit Cmd+J oder Strg+J hierher springen",
+				"checking": "Es wird geprüft, was die Antwort braucht …",
+				"drafting": "Der Entwurf wird geschrieben …",
+				"failed": "Der Entwurf konnte nicht geschrieben werden. Versuchen Sie es noch einmal.",
+				"aiDraft": "KI-Entwurf",
+				"discard": "Verwerfen",
+				"injectionFlagged": "Die E-Mail enthält womöglich Anweisungen an die KI. Lesen Sie den Entwurf, bevor Sie ihn senden.",
+				"operation": "Mit KI entwerfen",
+				"peekDraft": "Entwerfen"
+			},
+			"askCard": {
+				"title": "Eine Frage, bevor ich schreibe | {count} Fragen, bevor ich schreibe",
+				"round": "Runde {round} von {total}",
+				"subline": "Beantworten Sie, was Sie können. Was Sie auslassen, wird im Entwurf als markierte Lücke eingefügt.",
+				"placeholder": {
+					"choice": "Etwas anderes …",
+					"text": "Geben Sie Ihre Antwort ein …",
+					"number": "Eine Zahl oder ein Betrag …",
+					"date": "Oder geben Sie ein Datum ein …"
+				},
+				"pickDate": "Datum wählen",
+				"answerAndDraft": "Antworten und entwerfen",
+				"skip": "Überspringen, mit Lücken entwerfen",
+				"operation": "Fragen beantworten"
+			},
+			"fileAsk": {
+				"dropHere": "Legen Sie die Datei hier ab oder",
+				"choose": "wählen Sie eine Datei aus",
+				"uploading": "Wird hochgeladen … {percent} %",
+				"attachedAndSaved": "Wird an diese Antwort angehängt und in den Dateien des Kontakts gespeichert",
+				"attachedOnly": "Wird nur an diese Antwort angehängt",
+				"dontKeep": "Keine Kopie in den Dateien behalten",
+				"nearMisses": "Ähnlich, aber vielleicht nicht die richtige:",
+				"candidates": "Welche davon?",
+				"pickFromFiles": "Aus den Dateien wählen",
+				"remove": "{file} entfernen",
+				"tooLarge": "{filename} ist größer als {mb} MB.",
+				"uploadFailed": "{filename} konnte nicht hochgeladen werden.",
+				"unsupported": "{filename} hat einen Dateityp, der hier nicht angehängt werden kann."
+			},
+			"filePicker": {
+				"title": "Aus den Dateien wählen",
+				"search": "Nach Namen suchen",
+				"files": "Dateien",
+				"mail": "E-Mail-Anhänge",
+				"empty": "Keine Dateien gefunden."
 			}
 		}
 	},
@@ -13155,7 +13222,9 @@
 				"emptySubject": "kein Betreff",
 				"linkMismatch": "ein Link zeigt {text}, führt aber zu {host}",
 				"placeholder": "„{token}“ steht noch in der Nachricht",
-				"unfilledVariable": "{name} wurde nie ausgefüllt"
+				"unfilledVariable": "{name} wurde nie ausgefüllt",
+				"draftGap": "„{label}“ muss noch ausgefüllt werden",
+				"draftGaps": "{count} Lücken müssen noch ausgefüllt werden, zuerst „{label}“"
 			},
 			"useDraftRevise": {
 				"failed": "Überarbeitung fehlgeschlagen — Ihr Entwurf bleibt unverändert."

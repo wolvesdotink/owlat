@@ -20,6 +20,7 @@ import type { EditorBlock } from '@owlat/email-builder';
 import type { OperationError } from '@owlat/shared/operationError';
 import { SurfacedOperationError } from '~/lib/operationError';
 import { postboxUndoSendDelayMsArg } from '~/utils/postboxUndoSendWindow';
+import { freshDraftGaps, isDraftGapsRefusal } from '~/utils/answerDraft';
 import {
 	usePostboxComposeAttachments,
 	type ComposerAttachment,
@@ -147,9 +148,18 @@ export function usePostboxCompose(seed: ComposerSeed) {
 	const discardDraft = useBackendOperation(api.mail.drafts.discard, {
 		label: () => t('shared.postbox.usePostboxCompose.discardOperation'),
 	});
+	// An AI draft with a `[[...]]` gap left: Send is disabled for that already,
+	// so this is a race (a gap typed in the last moment); say it the same way.
+	const { showToast } = useToast();
+	const claimGapRefusal = (op: OperationError): boolean => {
+		if (!isDraftGapsRefusal(op)) return false;
+		const count = Math.max(1, freshDraftGaps(bodyHtml.value).length);
+		showToast(t('components.postbox.postboxComposerFooter.gapsLeft', { count }, count), 'error');
+		return true;
+	};
 	const sendDraft = useBackendOperation(api.mail.drafts.send, {
 		label: () => t('shared.postbox.usePostboxCompose.sendOperation'),
-		onError: claimSendNetworkFailure,
+		onError: (op) => claimSendNetworkFailure(op) || claimGapRefusal(op),
 	});
 	const cancelPending = useBackendOperation(api.mail.drafts.cancelPendingSend, {
 		label: () => t('shared.postbox.usePostboxCompose.undoSendOperation'),

@@ -11,7 +11,7 @@
 /** A thread with at least this many messages gets a catch-up summary. */
 export const CATCH_UP_MIN_MESSAGES = 3;
 /** ...or a newest message at least this long (characters of plain text). */
-export const CATCH_UP_MIN_CHARS = 1500;
+const CATCH_UP_MIN_CHARS = 1500;
 /** A short thread still shows its asks checklist when it has this many asks. */
 export const CATCH_UP_MIN_ASKS_FOR_CHECKLIST = 2;
 
