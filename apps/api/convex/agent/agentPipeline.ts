@@ -345,8 +345,10 @@ export const sendApprovedReply = internalAction({
 		// the intake reads a route, so it moved into the intake transaction.
 		let outcome: NonCampaignIntakeOutcome;
 		try {
-			outcome = await ctx.runMutation(internal.delivery.nonCampaignIntake.intake, {
-				kind: 'agent_reply',
+			// Through the Team inbox reply attachments: the files a person attached
+			// in the thread composer go out with the reply (never the agent's
+			// unconfirmed `attachmentSuggestions`), in the intake's transaction.
+			outcome = await ctx.runMutation(internal.inbox.replyAttachments.intakeAgentReply, {
 				email: recipient,
 				...(message.contactId ? { contactId: message.contactId } : {}),
 				inboundMessageId: args.inboundMessageId,

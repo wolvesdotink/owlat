@@ -40,6 +40,7 @@ import { postmasterTables } from './schema/postmaster';
 import { sndsTables } from './schema/snds';
 import { todayTables } from './schema/today';
 import { counterTables } from './schema/counters';
+import { answerCatchUpTables } from './schema/answerCatchUp';
 
 // Note: Team invites are now handled by BetterAuth organization plugin's invitation table
 
@@ -85,4 +86,5 @@ export default defineSchema({
 	...sndsTables,
 	...todayTables,
 	...counterTables,
+	...answerCatchUpTables,
 });

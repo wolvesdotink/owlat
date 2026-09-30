@@ -22,6 +22,9 @@ export type AttachmentRef = {
 	filename: string;
 	contentType?: string;
 	url: string;
+	// Set for a blob in this deployment's own storage (a Team inbox reply's
+	// attachment): the worker reads the bytes directly instead of fetching `url`.
+	storageId?: Id<'_storage'>;
 };
 
 /**

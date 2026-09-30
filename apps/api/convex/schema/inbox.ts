@@ -11,6 +11,7 @@ import {
 import { classificationValidator } from '../lib/validators/classification';
 import { pendingClarificationValidator } from '../lib/validators/clarification';
 import { attachmentSuggestionsValidator } from '../lib/validators/attachment';
+import { teamReplyAttachmentsValidator } from '../lib/validators/teamReplyAttachment';
 import { agentStepKindValidator } from '../agent/steps/catalog';
 import { llmUsageTagFields } from '../lib/llmUsageTags';
 import {
@@ -91,6 +92,7 @@ export const inboxTables = {
 		// thread row so a resurfaced thread is visibly distinct from a never-snoozed
 		// one. Never gates any query; purely a read-side hint.
 		snoozeReturnedAt: v.optional(v.number()),
+		replyAttachments: v.optional(teamReplyAttachmentsValidator), // the composer's, see validator
 		createdAt: v.number(),
 	})
 		.index('by_status', ['status'])
@@ -273,6 +275,7 @@ export const inboxTables = {
 		// "attach <file>?" chip in the review gate + composer. NEVER consumed by the
 		// autonomous send path — human-confirmed only. Absent when nothing matched.
 		attachmentSuggestions: v.optional(attachmentSuggestionsValidator),
+		replyAttachments: v.optional(teamReplyAttachmentsValidator), // what its reply carried
 		// Overall confidence score for routing decisions — the CLASSIFIER's
 		// certainty about category/sentiment. NOT a measure of draft correctness.
 		confidenceScore: v.optional(v.number()),

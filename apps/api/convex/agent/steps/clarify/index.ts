@@ -73,6 +73,7 @@ import {
 } from '../../../inbox/askEagerness';
 import { detectAttachmentClarification } from './attachment';
 import { boundedOptions } from './options';
+import { answerKindForSlot } from '../../../inbox/clarificationAnswers';
 import type { AgentStepModule, TokenUsage } from '../types';
 
 // The slot taxonomy + untrusted-data prompt module is SHARED with the personal
@@ -115,6 +116,7 @@ export type ClarifyOutput = {
 		| 'questions_emitted'
 		| 'memory_filled'
 		| 'attachment_ambiguous'
+		| 'attachment_missing'
 		| 'fail_soft';
 };
 
@@ -188,6 +190,7 @@ export function selectQuestions(
 		questions.push({
 			id: `clarify_${i}`,
 			slotType: slot.slotType,
+			answerKind: answerKindForSlot(slot.slotType, options),
 			text: slot.question,
 			...(options ? { options } : {}),
 		});
@@ -239,20 +242,20 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 				return { output: { questions: [], memoryAnswers: [], resolution: 'eagerness_off' } };
 			}
 
-			// Deterministic attachment-ambiguity ask (model-free), BEFORE the
-			// coverage short-circuit and the slot/divergence LLM passes. When the
-			// inbound asks for a document and the contact-scoped file match is
-			// genuinely ambiguous, park for the owner to pick the right file instead
+			// Deterministic attachment ask (model-free), BEFORE the coverage
+			// short-circuit and the slot/divergence LLM passes. When the inbound
+			// asks for a document and the contact-scoped file match is ambiguous or
+			// missing, park for the owner to pick or upload the right file instead
 			// of the agent guessing — the one thing we must never do on attachments.
 			// A single confident match yields no question here (the draft step
-			// surfaces it as a one-tap suggestion). FAIL-SOFT: any failure → [].
-			const attachmentQuestions = await detectAttachmentClarification(ctx, input);
-			if (attachmentQuestions.length > 0) {
+			// surfaces it as a one-tap suggestion). FAIL-SOFT: any failure → null.
+			const attachment = await detectAttachmentClarification(ctx, input);
+			if (attachment) {
 				return {
 					output: {
-						questions: attachmentQuestions,
+						questions: [attachment.question],
 						memoryAnswers: [],
-						resolution: 'attachment_ambiguous',
+						resolution: attachment.resolution,
 					},
 				};
 			}
