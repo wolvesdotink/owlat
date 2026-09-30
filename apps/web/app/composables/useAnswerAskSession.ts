@@ -25,6 +25,7 @@ import type { FunctionArgs, FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
+import { isAlreadyAnsweredRefusal, ownerTimeZone } from '~/utils/answerDraft';
 
 export type AskSession = NonNullable<
 	FunctionReturnType<typeof api.mail.ai.composeDraftStore.getSession>
@@ -76,6 +77,8 @@ export function useAnswerAskSession(opts: {
 		label: () => t('components.answer.askCard.operation'),
 		type: 'action',
 		announce: false,
+		// A double submit: the first one is already drafting. No error for that.
+		onError: isAlreadyAnsweredRefusal,
 	});
 
 	const streamId = computed(() => session.value?.streamId ?? null);
@@ -106,6 +109,13 @@ export function useAnswerAskSession(opts: {
 			phase.value === 'drafting'
 	);
 
+	// Promised dates ("Tomorrow", a weekday, a picked day) and the follow-up
+	// reminder resolve to 09:00 on the owner's calendar, not UTC.
+	function timeZoneArg(): { timeZone?: string } {
+		const timeZone = ownerTimeZone();
+		return timeZone ? { timeZone } : {};
+	}
+
 	async function start(instruction: string) {
 		const composer = opts.composer();
 		if (!composer || busy.value) return;
@@ -120,6 +130,7 @@ export function useAnswerAskSession(opts: {
 			target,
 			...(trimmed ? { instruction: trimmed } : {}),
 			locale: locale.value,
+			...timeZoneArg(),
 		});
 		if (result.ok) returned.value = result.result;
 	}
@@ -131,6 +142,7 @@ export function useAnswerAskSession(opts: {
 			sessionId: current.sessionId,
 			answers,
 			...(skip ? { skip: true } : {}),
+			...timeZoneArg(),
 		});
 		if (result.ok) returned.value = result.result;
 	}

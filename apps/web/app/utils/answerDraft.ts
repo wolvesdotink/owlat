@@ -70,3 +70,23 @@ export const DRAFT_HAS_GAPS = 'DRAFT_HAS_GAPS';
 export function isDraftGapsRefusal(op: OperationError): boolean {
 	return op.data?.['code'] === DRAFT_HAS_GAPS;
 }
+
+/**
+ * Whether a failed `composeDraft.answer` is the double submit: the session had
+ * already left `asking` because the first submit is drafting ("These questions
+ * were already answered"). It is the answer path's only `invalid_state`
+ * without a typed code, and it is harmless: the draft the first call started
+ * arrives through the session subscription.
+ */
+export function isAlreadyAnsweredRefusal(op: OperationError): boolean {
+	return op.category === 'invalid_state' && op.data?.['code'] === undefined;
+}
+
+/** The owner's IANA time zone, for dates the AI promises ("tomorrow" at 09:00 local). */
+export function ownerTimeZone(): string | undefined {
+	try {
+		return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+	} catch {
+		return undefined;
+	}
+}
