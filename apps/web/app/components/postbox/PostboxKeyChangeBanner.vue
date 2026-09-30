@@ -56,7 +56,16 @@ const newShort = computed(() => shortFingerprint(props.newFingerprint));
 
 async function accept() {
 	errored.value = false;
-	const result = await reaccept.run({ address: props.address });
+	// The acceptance names the key the reader was shown, so a key observed after
+	// this banner rendered is never adopted on the strength of this click.
+	if (!props.newFingerprint) {
+		errored.value = true;
+		return;
+	}
+	const result = await reaccept.run({
+		address: props.address,
+		observedFingerprint: props.newFingerprint,
+	});
 	if (result.ok && result.result.reaccepted) {
 		emit('accepted');
 	} else {
