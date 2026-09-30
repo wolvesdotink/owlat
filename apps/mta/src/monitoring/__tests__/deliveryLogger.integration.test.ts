@@ -115,6 +115,25 @@ describe.runIf(dockerRedisAvailable())('delivery log indexes on standalone Redis
 		expect(history).toHaveLength(1);
 	});
 
+	it('caps the message index at MAXLEN entries and scans histories past the cap', async () => {
+		const small = { ...config, deliveryLogMaxLen: 100 } as MtaConfig;
+		await logDeliveryEvent(redis, event(0, { messageId: 'target' }), small);
+		for (let i = 1; i < 1000; i++) await logDeliveryEvent(redis, event(i), small);
+		await logDeliveryEvent(redis, event(1000, { messageId: 'target' }), small);
+
+		expect(await redis.hlen(messageIndexKeyFor(today))).toBeLessThanOrEqual(100);
+		expect(await redis.hget(statsKeyFor(today), 'msgIndexed')).toBe('100');
+		const history = await getMessageEvents(redis, 'target');
+		expect(history.map((e) => e.messageId)).toEqual(['target']);
+	});
+
+	it('keeps no index keys when the TTL is zero, like the stream itself', async () => {
+		const noRetention = { ...config, deliveryLogTtlHours: 0 } as MtaConfig;
+		await logDeliveryEvent(redis, event(0, { messageId: 'target' }), noRetention);
+		expect(await redis.dbsize()).toBe(0);
+		expect(await getMessageEvents(redis, 'target')).toEqual([]);
+	});
+
 	it('scans a day that holds entries written without the indexes', async () => {
 		await redis.xadd(
 			streamKeyFor(today),

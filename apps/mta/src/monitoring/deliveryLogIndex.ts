@@ -9,7 +9,12 @@
  *   `total`, the number of stream entries this script has indexed.
  * - `{mta:delivery-log:<date>}:org:<orgId>` — the same counts for one
  *   organization.
- * - `{mta:delivery-log:<date>}:msg` — messageId -> space-separated stream IDs.
+ * - `{mta:delivery-log:<date>}:msg` — messageId -> space-separated stream IDs,
+ *   for the first `DELIVERY_LOG_MAX_LEN` entries of the day only. The day
+ *   stats hash counts them in `msgIndexed`; once the day's total reaches the
+ *   stream's MAXLEN the script stops adding to it, so the message index never
+ *   holds more IDs than the stream can retain (about 106 B per entry, ~10.6 MB
+ *   per day at the default 100,000).
  *
  * The hash tag equals the stream key, so all four keys share one Redis Cluster
  * slot. Index keys inherit the stream's expiry, so they disappear together.
@@ -23,7 +28,9 @@
  *   deleted — because the endpoint reports retained audit entries and counters
  *   cannot see `MAXLEN` trimming;
  * - message histories tolerate trimming, because they resolve every indexed ID
- *   against the stream and skip the ones it no longer holds.
+ *   against the stream and skip the ones it no longer holds, but need
+ *   `msgIndexed == total`: a day past the message-index cap is scanned, which
+ *   MAXLEN bounds to about the same number of entries.
  *
  * Anything else (older Redis, days written by an older MTA, an interrupted
  * write, a trimmed day for statistics) falls back to `scanDeliveryStream`,
@@ -42,6 +49,8 @@ export const messageIndexKeyFor = (date: string): string => `{${streamKeyFor(dat
 
 /** Field in both stats hashes counting indexed entries; also the coverage counter. */
 export const INDEXED_TOTAL_FIELD = 'total';
+/** Field in the day stats hash counting entries added to the message index. Not a status. */
+export const MESSAGE_INDEXED_FIELD = 'msgIndexed';
 
 /**
  * KEYS: stream, day stats, org stats, message index.
@@ -50,6 +59,10 @@ export const INDEXED_TOTAL_FIELD = 'total';
  * The day `total` is incremented last: if any earlier call fails, the stream
  * holds an entry the indexes do not fully cover, `entries-added` exceeds
  * `total`, and readers fall back to scanning that day.
+ *
+ * The message index takes an entry only while the day's `total` is below
+ * maxLen (see the module comment). A ttlMs of 0 or less expires the stream at
+ * once, as it always did, and then writes no indexes, so none outlive it.
  */
 export const RECORD_DELIVERY_EVENT_SCRIPT = `
 local id = redis.call('XADD', KEYS[1], 'MAXLEN', '~', ARGV[1], '*', unpack(ARGV, 5))
@@ -58,19 +71,21 @@ if ttl == -1 then
 	redis.call('PEXPIRE', KEYS[1], ARGV[2])
 	ttl = tonumber(ARGV[2])
 end
-local previous = redis.call('HGET', KEYS[4], ARGV[4])
-if previous then
-	redis.call('HSET', KEYS[4], ARGV[4], previous .. ' ' .. id)
-else
-	redis.call('HSET', KEYS[4], ARGV[4], id)
+if ttl <= 0 then return id end
+if tonumber(redis.call('HGET', KEYS[2], 'total') or '0') < tonumber(ARGV[1]) then
+	local previous = redis.call('HGET', KEYS[4], ARGV[4])
+	if previous then
+		redis.call('HSET', KEYS[4], ARGV[4], previous .. ' ' .. id)
+	else
+		redis.call('HSET', KEYS[4], ARGV[4], id)
+	end
+	redis.call('HINCRBY', KEYS[2], 'msgIndexed', 1)
 end
 redis.call('HINCRBY', KEYS[3], ARGV[3], 1)
 redis.call('HINCRBY', KEYS[3], 'total', 1)
 redis.call('HINCRBY', KEYS[2], ARGV[3], 1)
-if ttl > 0 then
-	for i = 2, 4 do
-		if redis.call('PTTL', KEYS[i]) == -1 then redis.call('PEXPIRE', KEYS[i], ttl) end
-	end
+for i = 2, 4 do
+	if redis.call('PTTL', KEYS[i]) == -1 then redis.call('PEXPIRE', KEYS[i], ttl) end
 end
 redis.call('HINCRBY', KEYS[2], 'total', 1)
 return id
@@ -82,7 +97,13 @@ export type StreamEntry = [id: string, fields: string[]];
 export type DayCoverage =
 	| { kind: 'absent' }
 	| { kind: 'unknown' }
-	| { kind: 'known'; length: number; entriesAdded: number; indexedTotal: number };
+	| {
+			kind: 'known';
+			length: number;
+			entriesAdded: number;
+			indexedTotal: number;
+			messageIndexed: number;
+	  };
 
 type ExecResult = Array<[Error | null, unknown]> | null;
 
@@ -114,7 +135,7 @@ export async function readDayIndex(
 		const tx = redis
 			.multi()
 			.xinfo('STREAM', streamKeyFor(date))
-			.hget(statsKeyFor(date), INDEXED_TOTAL_FIELD);
+			.hmget(statsKeyFor(date), INDEXED_TOTAL_FIELD, MESSAGE_INDEXED_FIELD);
 		if (read === 'stats') tx.hgetall(statsKeyFor(date));
 		else if (read === 'org') tx.hgetall(orgStatsKeyFor(date, arg ?? ''));
 		else tx.hget(messageIndexKeyFor(date), arg ?? '');
@@ -123,7 +144,7 @@ export async function readDayIndex(
 		return { coverage: { kind: 'unknown' }, value: undefined };
 	}
 	if (!result || result.length !== 3) return { coverage: { kind: 'unknown' }, value: undefined };
-	const [[infoErr, info], [totalErr, total], [valueErr, value]] = result as [
+	const [[infoErr, info], [totalErr, totals], [valueErr, value]] = result as [
 		[Error | null, unknown],
 		[Error | null, unknown],
 		[Error | null, unknown],
@@ -138,12 +159,14 @@ export async function readDayIndex(
 	if (!parsed || parsed.entriesAdded === undefined || totalErr || valueErr) {
 		return { coverage: { kind: 'unknown' }, value: undefined };
 	}
+	const [total, messageIndexed] = Array.isArray(totals) ? totals : [];
 	return {
 		coverage: {
 			kind: 'known',
 			length: parsed.length,
 			entriesAdded: parsed.entriesAdded,
 			indexedTotal: Number(total ?? 0),
+			messageIndexed: Number(messageIndexed ?? 0),
 		},
 		value,
 	};
@@ -152,6 +175,15 @@ export async function readDayIndex(
 /** Every entry ever appended went through the index script. */
 export function indexCoversAllWrites(coverage: DayCoverage): boolean {
 	return coverage.kind === 'known' && coverage.entriesAdded === coverage.indexedTotal;
+}
+
+/** The message index holds every entry ever appended (the day stayed below the cap). */
+export function messageIndexCoversAllWrites(coverage: DayCoverage): boolean {
+	return (
+		indexCoversAllWrites(coverage) &&
+		coverage.kind === 'known' &&
+		coverage.messageIndexed === coverage.indexedTotal
+	);
 }
 
 /** The indexes describe exactly the retained stream: nothing unindexed, nothing trimmed. */

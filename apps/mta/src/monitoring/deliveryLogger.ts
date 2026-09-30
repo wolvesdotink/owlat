@@ -10,8 +10,9 @@ import type { MtaConfig } from '../config.js';
 import { logger } from './logger.js';
 import {
 	RECORD_DELIVERY_EVENT_SCRIPT,
-	indexCoversAllWrites,
+	MESSAGE_INDEXED_FIELD,
 	indexMatchesRetainedStream,
+	messageIndexCoversAllWrites,
 	messageIndexKeyFor,
 	orgStatsKeyFor,
 	readDayIndex,
@@ -242,7 +243,9 @@ export async function getDeliveryLogStats(
 	if (coverage.kind === 'absent') return stats;
 	if (indexMatchesRetainedStream(coverage)) {
 		const counts = (value ?? {}) as Record<string, string>;
-		for (const [field, count] of Object.entries(counts)) stats[field] = Number(count);
+		for (const [field, count] of Object.entries(counts)) {
+			if (field !== MESSAGE_INDEXED_FIELD) stats[field] = Number(count);
+		}
 		return stats;
 	}
 
@@ -289,7 +292,7 @@ async function getMessageEventsForDay(
 	if (coverage.kind === 'absent') return [];
 
 	const entries: DeliveryLogEntry[] = [];
-	if (indexCoversAllWrites(coverage)) {
+	if (messageIndexCoversAllWrites(coverage)) {
 		const ids = typeof value === 'string' && value.length > 0 ? value.split(' ') : [];
 		if (ids.length === 0) return entries;
 		// Resolve each indexed ID against the stream; IDs trimmed by MAXLEN

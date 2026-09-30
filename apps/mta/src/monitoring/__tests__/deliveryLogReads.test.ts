@@ -199,6 +199,34 @@ describe('indexed delivery log reads', () => {
 		expect(fake.calls['xrange']).toBe(2);
 	});
 
+	it('stops growing the message index at the stream cap and scans histories past it', async () => {
+		const fake = new DeliveryLogRedisFake();
+		fake.messageIndexCap = 1000;
+		const early = fake.recordIndexed(today, {
+			messageId: 'target',
+			orgId: 'org-1',
+			status: 'deferred',
+		});
+		seed(fake, 1999, (i) => ({ orgId: 'org-1', messageId: `m-${i}` }), true);
+		const late = fake.recordIndexed(today, {
+			messageId: 'target',
+			orgId: 'org-1',
+			status: 'delivered',
+		});
+
+		// Statistics still come from the counters (nothing trimmed here) and do
+		// not report the message-index counter as a status.
+		const stats = await getDeliveryLogStats(fake.asRedis(), today);
+		expect(stats['total']).toBe(2001);
+		expect(stats).not.toHaveProperty('msgIndexed');
+		expect(fake.entriesReturned).toBe(0);
+
+		fake.resetCounts();
+		const history = await getMessageEvents(fake.asRedis(), 'target');
+		expect(history.map((e) => e.id)).toEqual([early, late]);
+		expect(fake.entriesReturned).toBe(2001);
+	});
+
 	it('scans a day that also holds entries written without the indexes', async () => {
 		const fake = new DeliveryLogRedisFake();
 		fake.recordUnindexed(today, { messageId: 'target', orgId: 'org-1', status: 'bounced' });

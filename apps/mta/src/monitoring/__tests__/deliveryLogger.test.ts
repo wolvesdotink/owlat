@@ -69,6 +69,7 @@ describe.skipIf(!STREAMS_SUPPORTED)('deliveryLogger', () => {
 				delivered: '2',
 				bounced: '1',
 				total: '3',
+				msgIndexed: '3',
 			});
 			expect(await redis.hgetall(orgStatsKeyFor(today, 'org-a'))).toEqual({
 				delivered: '1',

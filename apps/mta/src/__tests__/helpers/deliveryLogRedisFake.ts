@@ -12,6 +12,7 @@
 import type Redis from 'ioredis';
 import {
 	INDEXED_TOTAL_FIELD,
+	MESSAGE_INDEXED_FIELD,
 	compareStreamIds,
 	messageIndexKeyFor,
 	orgStatsKeyFor,
@@ -36,6 +37,8 @@ export class DeliveryLogRedisFake {
 	private readonly hashes = new Map<string, Map<string, string>>();
 	private clock = 1_700_000_000_000;
 	private sequence = 0;
+	/** The record script's maxLen argument: the message index stops at this many day entries. */
+	messageIndexCap = Infinity;
 
 	/** @param supportsXinfo false models a client/server without XINFO `entries-added` (Redis < 7). */
 	constructor(private readonly supportsXinfo = true) {}
@@ -102,9 +105,13 @@ export class DeliveryLogRedisFake {
 	 */
 	recordIndexed(date: string, event: FakeEvent, stopBeforeTotal = false): string {
 		const id = this.append(date, event);
-		const msg = this.hash(messageIndexKeyFor(date));
-		const previous = msg.get(event.messageId);
-		msg.set(event.messageId, previous ? `${previous} ${id}` : id);
+		const indexed = Number(this.hash(statsKeyFor(date)).get(INDEXED_TOTAL_FIELD) ?? 0);
+		if (indexed < this.messageIndexCap) {
+			const msg = this.hash(messageIndexKeyFor(date));
+			const previous = msg.get(event.messageId);
+			msg.set(event.messageId, previous ? `${previous} ${id}` : id);
+			this.hincr(statsKeyFor(date), MESSAGE_INDEXED_FIELD);
+		}
 		this.hincr(orgStatsKeyFor(date, event.orgId), event.status);
 		this.hincr(orgStatsKeyFor(date, event.orgId), INDEXED_TOTAL_FIELD);
 		this.hincr(statsKeyFor(date), event.status);
@@ -159,6 +166,13 @@ export class DeliveryLogRedisFake {
 				queued.push(() => {
 					this.count('hget');
 					return [null, this.hashes.get(key)?.get(field) ?? null];
+				});
+				return tx;
+			},
+			hmget: (key: string, ...fields: string[]) => {
+				queued.push(() => {
+					this.count('hmget');
+					return [null, fields.map((f) => this.hashes.get(key)?.get(f) ?? null)];
 				});
 				return tx;
 			},
