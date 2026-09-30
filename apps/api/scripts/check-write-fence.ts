@@ -17,6 +17,11 @@
  *   - `_generated/server`'s `mutation`: `lib/authedFunctions.ts` (it wraps it);
  *   - `convex/server`'s `mutationGeneric` / `internalMutationGeneric`: nowhere.
  *
+ * A namespace import of `_generated/server` (`import * as server`) and a
+ * re-export of a raw builder (`export { internalMutation } from …`,
+ * `export * from …`) reach the same builders through another name, so both
+ * fail everywhere.
+ *
  * Run by `bun run lint` (apps/api): `bun scripts/check-write-fence.ts`.
  */
 import { join } from 'node:path';
@@ -51,15 +56,33 @@ function importedNames(clause: string): string[] {
 const sources = sourceMap(convexRoot, productionModules(convexRoot));
 check(sources.size > 500, `walked only ${sources.size} backend modules`);
 
+/** A value re-export: `export { … } from '…'` or `export * from '…'`. */
+const REEXPORT_DECLARATION = /^export\s+(?!type\b)([\s\S]*?)\s*from\s*'([^']+)';/gm;
+
 const violations: string[] = [];
 const holders = new Map<string, Set<string>>();
 for (const [module, source] of sources) {
+	for (const match of source.matchAll(REEXPORT_DECLARATION)) {
+		const clause = (match[1] ?? '').trim();
+		const specifier = match[2] ?? '';
+		const isServer = resolveRelative(module, specifier).includes('_generated/server.ts');
+		const names = clause.startsWith('*') ? ['*'] : importedNames(clause);
+		const leaked = names.filter((n) => n === '*' || n in RAW_SERVER_BUILDERS);
+		if (isServer && leaked.length > 0) {
+			violations.push(`${module}: re-exports ${leaked.join(', ')} from _generated/server`);
+		}
+	}
 	for (const match of source.matchAll(IMPORT_DECLARATION)) {
 		const clause = match[1] ?? '';
 		const specifier = match[2] ?? '';
+		const isServer = resolveRelative(module, specifier).includes('_generated/server.ts');
+		// `import * as server` reaches every raw builder through one name.
+		if (isServer && clause.trim().startsWith('*')) {
+			violations.push(`${module}: namespace import of _generated/server`);
+			continue;
+		}
 		if (boundNames(clause).length === 0) continue;
 		const names = importedNames(clause);
-		const isServer = resolveRelative(module, specifier).includes('_generated/server.ts');
 		if (isServer) {
 			for (const name of names) {
 				const allowed = RAW_SERVER_BUILDERS[name];

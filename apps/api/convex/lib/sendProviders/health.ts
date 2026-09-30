@@ -13,7 +13,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../../lib/writeFence';
+import { internalMutation } from '../writeFence';
 
 type HealthStatus = 'healthy' | 'degraded' | 'down';
 
