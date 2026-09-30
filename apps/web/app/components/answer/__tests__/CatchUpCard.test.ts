@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 /**
  * The catch-up card (plan §03):
- *   - sentences with one date marker per source message, at most three, oldest
- *     first; a marker reveals its message;
+ *   - sentences with one date marker per day of their sources, at most three,
+ *     oldest first; a marker reveals that day's first message;
  *   - "They are asking for", ticked as the draft covers each ask, with a short
  *     reason only when one was given;
  *   - "Files in this thread" as chips: click attaches, dragging carries the file;
@@ -73,6 +73,26 @@ describe('CatchUpCard', () => {
 		await markers[1]!.trigger('click');
 		expect(w.emitted('reveal')).toEqual([['m2']]);
 		expectFullyLocalized(w);
+	});
+
+	it('gives two sources from the same day one marker, pointing at the earlier message', async () => {
+		const sameDay: CatchUpMessage[] = [
+			{ _id: 'a', receivedAt: Date.UTC(2026, 7, 28, 8), fromAddress: 'jonas@example.com' },
+			{ _id: 'b', receivedAt: Date.UTC(2026, 7, 28, 16), fromAddress: 'ada@example.com' },
+			{ _id: 'c', receivedAt: Date.UTC(2026, 8, 3, 9), fromAddress: 'jonas@example.com' },
+			{ _id: 'd', receivedAt: Date.UTC(2026, 8, 3, 11), fromAddress: 'jonas@example.com' },
+		];
+		const w = mountCard({
+			messages: sameDay,
+			catchUp: {
+				...CARD,
+				sentences: [{ text: 'Invoice and PO agreed.', sourceMessageIds: ['d', 'b', 'c', 'a'] }],
+			},
+		});
+		const markers = w.findAll('[data-testid="catch-up-marker"]');
+		expect(markers.map((m) => m.text())).toEqual(['Aug 28', 'Sep 3']);
+		await markers[1]!.trigger('click');
+		expect(w.emitted('reveal')).toEqual([['c']]);
 	});
 
 	it('ticks the asks the draft covers, with a reason only when given', () => {
