@@ -161,6 +161,41 @@ describe('sanitizeAnalyticsEvent', () => {
 		expect(sent.properties['target']).toBe(`${ORIGIN}/share`);
 	});
 
+	it('reduces URLs in an exception message whatever form they take', () => {
+		const messages = {
+			networkPath: 'Failed to fetch //owlat.example/confirm?token=QUERY_SENTINEL#FRAGMENT_SENTINEL',
+			sameOriginNetworkPath:
+				'Failed to fetch //app.example.com/dashboard/contacts/PATH_SENTINEL?q=QUERY_SENTINEL',
+			jsonEscaped: '{"next":"https:\\/\\/owlat.example\\/share?token=QUERY_SENTINEL"}',
+			encoded: `redirect=https%3A%2F%2Fapp.example.com%2Fshare%3Ftoken%3DQUERY_SENTINEL failed`,
+			www: 'Could not open www.owlat.example/confirm?token=QUERY_SENTINEL#FRAGMENT_SENTINEL',
+			detached: 'Unexpected ?token=QUERY_SENTINEL&x=1 and #state=FRAGMENT_SENTINEL',
+			bareHost: 'Could not open owlat.example/confirm?token=QUERY_SENTINEL&code=QUERY_SENTINEL',
+		};
+		const sent = sanitizeAnalyticsEvent(
+			event('$exception', { $exception_list: [{ value: messages.networkPath }], ...messages }),
+			onDashboard
+		)!;
+
+		expect(JSON.stringify(sent)).not.toMatch(/SENTINEL/);
+		expect(sent.properties).toMatchObject({
+			$exception_list: [{ value: 'Failed to fetch https://owlat.example' }],
+			networkPath: 'Failed to fetch https://owlat.example',
+			sameOriginNetworkPath: `Failed to fetch ${ORIGIN}/dashboard/contacts/:id`,
+			jsonEscaped: '{"next":"https://owlat.example"}',
+			encoded: `redirect=${ORIGIN}/share failed`,
+			www: 'Could not open https://www.owlat.example',
+			detached: 'Unexpected  and ',
+			bareHost: 'Could not open owlat.example/confirm?token=&code=',
+		});
+	});
+
+	it('leaves prose and quoted element attributes alone', () => {
+		const text = 'Are you sure? Use a/b testing // later, state="open" nth-child="2"';
+		const sent = sanitizeAnalyticsEvent(event('owlat_probe', { text }), onDashboard)!;
+		expect(sent.properties['text']).toBe(text);
+	});
+
 	it('drops everything captured on a credential page', () => {
 		expect(
 			sanitizeAnalyticsEvent(event('$pageleave', {}), at('/share?token=QUERY_SENTINEL'))

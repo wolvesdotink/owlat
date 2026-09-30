@@ -17,7 +17,13 @@ import type { CaptureResult } from 'posthog-js';
  * - A URL on another origin becomes that origin alone; a URL without a host
  *   (`mailto:`, `tel:`) becomes its scheme.
  * - Anything URL-shaped inside free text (an exception message, a stack trace,
- *   the autocapture element chain) gets the same treatment.
+ *   the autocapture element chain) gets the same treatment: absolute,
+ *   network-path (`//host/…`), percent-encoded, JSON-escaped and `www.` URLs
+ *   and paths. A query with no URL in front of it is dropped, and the value of
+ *   a credential-named parameter (`token=`, `code=`, `state=`, …) is emptied.
+ *   Not recognised as URLs: a scheme-less host without `www.` (only the value
+ *   of a credential-named parameter in it is emptied; the rest of its query
+ *   and its fragment stay), double-encoded or otherwise encoded URLs.
  * - Events captured while the page is one of `PRIVATE_ROUTE_NAMES` are dropped
  *   whole: those pages exist to handle a credential, and there is nothing on
  *   them worth measuring that would justify the risk.
@@ -123,18 +129,49 @@ const URL_KEY = /(?:url|href|referrer|pathname|^attr__(?:src|srcset|action|forma
 /** `href="…"` inside `$elements_chain`, where values are quote-escaped. */
 const CHAIN_HREF = /((?:^|[:";])(?:attr__)?href=")((?:\\.|[^"\\])*)"/g;
 const ABSOLUTE_URL = /\b[a-z][a-z\d+.-]*:\/\/[^\s"'<>()\\]*/gi;
-/** A path at the start of a token: after whitespace, a quote, `(` or `=`. */
-const RELATIVE_PATH = /(^|[\s"'(=,])(\/(?!\/)[^\s"'<>()\\]*)/g;
+/** The same, percent-encoded (`https%3A%2F%2F…`), as found in quoted redirect targets. */
+const ENCODED_URL = /\b[a-z][a-z\d+.-]*%3A%2F%2F[^\s"'<>()\\]*/gi;
+/**
+ * A path or a network-path URL (`//host/…`) at the start of a token: after
+ * whitespace, a quote, `(`, `=` or `,`. Not after `:`, so the `//` of an
+ * already reduced absolute URL is left alone.
+ */
+const RELATIVE_PATH = /(^|[\s"'(=,])(\/[^\s"'<>()\\]*)/g;
+/** A scheme-less host that still reads as a link. */
+const WWW_HOST = /(^|[\s"'(=,])(www\.[a-z\d-]+(?:\.[a-z\d-]+)+[^\s"'<>()\\]*)/gi;
+/** A query or fragment with no URL in front of it (`?token=…`, `#state=…`). */
+const DETACHED_QUERY = /(^|[\s"'(=,])[?#][\w.-]+=[^\s"'<>()\\]*/g;
+/** A credential-named parameter anywhere in text, as `name=value` (quoted values are not). */
+const CREDENTIAL_PARAM =
+	/(^|[\s?&#;,"'(])((?:access_|id_|refresh_)?token|code|state|secret|password|signature|sig|ott|otp|api_?key)=[^\s&#"'<>()\\;,]+/gi;
+
+function decoded(encoded: string): string {
+	try {
+		return decodeURIComponent(encoded);
+	} catch {
+		return encoded.replace(/%3F[\s\S]*$|%23[\s\S]*$/i, '');
+	}
+}
 
 function sanitizeText(text: string, context: AnalyticsUrlContext): string {
-	return text
-		.replace(CHAIN_HREF, (_m, head: string, value: string) => {
-			return `${head}${sanitizeAnalyticsUrl(value.replace(/\\"/g, '"'), context)}"`;
-		})
-		.replace(ABSOLUTE_URL, (match) => sanitizeAnalyticsUrl(match, context))
-		.replace(RELATIVE_PATH, (_m, lead: string, path: string) => {
-			return lead + sanitizeAnalyticsUrl(path, context);
-		});
+	return (
+		text
+			.replace(CHAIN_HREF, (_m, head: string, value: string) => {
+				return `${head}${sanitizeAnalyticsUrl(value.replace(/\\"/g, '"'), context)}"`;
+			})
+			// JSON-escaped slashes (`https:\/\/…`) read as plain ones.
+			.replace(/\\\//g, '/')
+			.replace(ENCODED_URL, (match) => sanitizeAnalyticsUrl(decoded(match), context))
+			.replace(ABSOLUTE_URL, (match) => sanitizeAnalyticsUrl(match, context))
+			.replace(RELATIVE_PATH, (_m, lead: string, path: string) => {
+				return lead + sanitizeAnalyticsUrl(path, context);
+			})
+			.replace(WWW_HOST, (_m, lead: string, host: string) => {
+				return lead + sanitizeAnalyticsUrl(`//${host}`, context);
+			})
+			.replace(DETACHED_QUERY, (_m, lead: string) => lead)
+			.replace(CREDENTIAL_PARAM, (_m, lead: string, name: string) => `${lead}${name}=`)
+	);
 }
 
 /**
