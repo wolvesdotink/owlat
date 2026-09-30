@@ -72,6 +72,19 @@ export class ErasureBudget {
 		return Math.max(1, Math.min(max, this.maxRows - this.rowsSpent, this.affordableRows()));
 	}
 
+	/**
+	 * Rows a read may ask for when the platform bounds its bytes itself
+	 * (`maximumBytesRead` on a page): the rows left, at most `max`, at least one.
+	 */
+	pageRows(max: number): number {
+		return Math.max(1, Math.min(max, this.maxRows - this.rowsSpent));
+	}
+
+	/** Bytes left in the allowance, at least one; infinite for an unlimited budget. */
+	get bytesLeft(): number {
+		return Math.max(1, this.maxBytes - this.bytesSpent);
+	}
+
 	/** Account for one document read and deleted or patched — a row of progress. */
 	charge(doc: unknown): void {
 		this.rowsSpent += 1;

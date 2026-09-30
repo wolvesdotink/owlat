@@ -474,8 +474,8 @@ export const removeForTeam = internalMutation({
 		// 30-day soft-delete grace to). The UI delete (`remove` above) soft-deletes.
 		// The tombstone hides the contact and frees its identifiers at once; the
 		// erasure's first bounded transaction runs right here, so an ordinary
-		// contact is gone on return and only a large history finishes in the
-		// background.
+		// contact (a few hundred rows, one page of sends) is gone on return and
+		// only a large history finishes in the background.
 		await softDeleteContact(ctx, args.contactId, 'api');
 		await eraseContactNow(ctx, args.contactId, 'api_delete');
 	},

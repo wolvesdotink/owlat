@@ -22,6 +22,8 @@ export interface PhaseContext {
 	/** The phase's saved pagination cursor, when it uses one. */
 	cursor: string | undefined;
 	mode: ErasureMode;
+	/** No earlier phase of this transaction has used its one paginated query. */
+	mayPaginate: boolean;
 }
 
 export interface PhaseOutcome {
@@ -44,8 +46,10 @@ export const NOT_DONE: PhaseOutcome = { isDone: false };
  * the loop would see it again. Returns whether the range is empty.
  *
  * `n` comes from `budget.chunk()`, which bounds it by the byte allowance left
- * as well as the rows left, so `read` can never fetch more than the
- * transaction may read even if every row is a maximum-size document.
+ * as well as the rows left, so a read of `n` rows stays inside the allowance
+ * even if every row is a maximum-size document. A `read` that has to skip a
+ * row it already holds (a junction reader passing over the row it resumes
+ * under) may fetch that one row more, and charges it.
  */
 export async function drainEach<Row>(
 	budget: ErasureBudget,
@@ -64,6 +68,22 @@ export async function drainEach<Row>(
 	return false;
 }
 
+/**
+ * For a `drainEach` reader that fetched `n + 1` rows to pass over the one it
+ * resumes under: the first `n` rows other than `skipId`. The rows read but not
+ * handed back are charged here, since `drainEach` never sees them.
+ */
+export function withoutRow<Row extends { _id: string }>(
+	budget: ErasureBudget,
+	rows: Row[],
+	skipId: string,
+	n: number
+): Row[] {
+	const kept = rows.filter((row) => row._id !== skipId).slice(0, n);
+	for (const row of rows) if (!kept.includes(row)) budget.chargeRead(row);
+	return kept;
+}
+
 /** `drainEach` that deletes every row it reads. */
 export function deleteAll<Row extends { _id: Id<TableNames> }>(
 	{ ctx, budget }: PhaseContext,
@@ -80,8 +100,10 @@ export function deleteAll<Row extends { _id: Id<TableNames> }>(
  *
  * Reading the parent costs its bytes; it only counts as a row once `each` has
  * finished with it. A transaction that resumes under a parent it cannot finish
- * therefore still has its first row of progress to spend on a child, so a
- * one-row budget moves a large parent forward instead of re-reading it forever.
+ * therefore still has its first row to spend on a child: with a one-row
+ * budget (`rowCap` 1 on the job) each transaction re-reads the parent and
+ * removes one child, so a large parent shrinks instead of being re-read
+ * forever.
  */
 export async function drainParents<Row>(
 	budget: ErasureBudget,

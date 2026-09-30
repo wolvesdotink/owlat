@@ -43,10 +43,11 @@ import {
 const SCRUB_PAGE = 128;
 
 /**
- * Saved in place of a pagination cursor when the probe found more sends than
- * one read holds: page from the start of the range in the next transaction.
+ * Prefixed to a saved cursor when the page read from it came back cut short
+ * (`SplitRequired`): the next transaction reads the same page again from that
+ * cursor, sized for maximum-size rows, before going back to full pages.
  */
-const PAGE_FROM_START = 'page-from-start';
+const NARROW_PAGE = 'narrow:';
 
 /** Delete every row of one `by_contact`-style index range. */
 function deleteByIndex(
@@ -70,14 +71,10 @@ const eraseAutomationRuns: PhaseRunner = async ({ ctx, contactId, budget }) => {
 			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
 			.first();
 		if (!run) return DONE;
-		budget.chargeRead(run);
-		// The helper counts the run itself as its first row, so it needs two to
-		// get past it; its step-run reads are charged as they happen.
-		const progress = await deleteAutomationRun(
-			ctx,
-			run._id,
-			Math.max(2, budget.chunk(256)),
-			(doc) => budget.chargeRead(doc)
+		// The helper re-reads the run and reads its step runs; `onRead` charges
+		// each of them as it happens.
+		const progress = await deleteAutomationRun(ctx, run._id, budget.chunk(256), (doc) =>
+			budget.chargeRead(doc)
 		);
 		budget.chargeRows(progress.rowsTouched);
 	}
@@ -99,10 +96,18 @@ function isErasedSend(send: Doc<'emailSends'> | Doc<'transactionalSends'>): bool
  * in delivery history (the suppression list keeps its own minimal record).
  * The rows stay in the `by_contact` range, so the walker pages through them
  * with a saved cursor; inline, they are streamed.
+ *
+ * A page asks for up to `SCRUB_PAGE` rows and lets Convex stop it at the
+ * byte allowance left (`maximumBytesRead`), so small sends go 128 at a time
+ * while a page of heavy ones stays inside the allowance plus one document.
+ * Convex documents a page stopped that way (`SplitRequired`) as possibly
+ * incomplete, so the walk never advances past one: it scrubs the rows it got
+ * (scrubbing is idempotent) and reads the page again from the same cursor in
+ * the next transaction, sized for maximum-size rows. No send is ever skipped.
  */
 function scrubSends<T extends SendTable>(table: T, scrub: () => Partial<Doc<T>>): PhaseRunner {
 	const sendTable: SendTable = table;
-	return async ({ ctx, contactId, budget, cursor, mode }): Promise<PhaseOutcome> => {
+	return async ({ ctx, contactId, budget, cursor, mode, mayPaginate }): Promise<PhaseOutcome> => {
 		// A fresh query per read: a Convex query object runs once.
 		const query = () =>
 			ctx.db.query(sendTable).withIndex('by_contact', (q) => q.eq('contactId', contactId));
@@ -114,29 +119,45 @@ function scrubSends<T extends SendTable>(table: T, scrub: () => Partial<Doc<T>>)
 			for await (const send of query()) await scrubOne(send);
 			return DONE;
 		}
-		// A short history fits in one read: scrub it without spending this
-		// transaction's one paginated query, so later phases can still run.
-		// A longer one keeps what the probe scrubbed and pages from the start
-		// in the next transaction; paging here too would fetch the same rows
-		// twice in one transaction.
-		if (cursor === undefined) {
-			const probeSize = budget.chunk(SCRUB_PAGE + 1);
-			const head = await query().take(probeSize);
-			for (const send of head) await scrubOne(send);
-			if (head.length < probeSize) return DONE;
-			return { isDone: false, cursor: PAGE_FROM_START };
+
+		const readPage = async (from: string | null, isNarrow: boolean): Promise<PhaseOutcome> => {
+			const bytesLeft = budget.bytesLeft;
+			const page = await query().paginate(
+				isNarrow || !Number.isFinite(bytesLeft)
+					? { cursor: from, numItems: budget.chunk(SCRUB_PAGE) }
+					: {
+							cursor: from,
+							numItems: budget.pageRows(SCRUB_PAGE),
+							maximumBytesRead: bytesLeft,
+						}
+			);
+			for (const send of page.page) await scrubOne(send);
+			if (page.pageStatus === 'SplitRequired') {
+				return { isDone: false, isPaginated: true, cursor: NARROW_PAGE + (from ?? '') };
+			}
+			return page.isDone
+				? { isDone: true, isPaginated: true }
+				: { isDone: false, isPaginated: true, cursor: page.continueCursor };
+		};
+
+		if (cursor !== undefined) {
+			// A saved cursor only ever starts a transaction, when no page has run.
+			if (!mayPaginate) return { isDone: false, cursor };
+			const isNarrow = cursor.startsWith(NARROW_PAGE);
+			const from = isNarrow ? cursor.slice(NARROW_PAGE.length) || null : cursor;
+			return readPage(from, isNarrow);
 		}
-		// Bounded by `chunk()` rather than `maximumBytesRead`: a page that option
-		// cuts short comes back `SplitRequired`, which Convex documents as
-		// possibly incomplete, and a skipped send would keep the address.
-		const page = await query().paginate({
-			cursor: cursor === PAGE_FROM_START ? null : cursor,
-			numItems: budget.chunk(SCRUB_PAGE),
-		});
-		for (const send of page.page) await scrubOne(send);
-		return page.isDone
-			? { isDone: true, isPaginated: true }
-			: { isDone: false, isPaginated: true, cursor: page.continueCursor };
+		// A short history fits in one read: scrub it without spending this
+		// transaction's one paginated query, so a later phase can still page.
+		// A longer one pages from the start right away; that page reads the
+		// probe's few rows again, and they are charged again.
+		const probeSize = budget.chunk(SCRUB_PAGE + 1);
+		const head = await query().take(probeSize);
+		for (const send of head) await scrubOne(send);
+		if (head.length < probeSize) return DONE;
+		// Another phase already paged in this transaction: start over next time.
+		if (!mayPaginate) return NOT_DONE;
+		return readPage(null, false);
 	};
 }
 
@@ -238,8 +259,9 @@ async function hasLateSend(
 }
 
 /**
- * Run phases from `from` onward until the budget runs out, a paginated query
- * has used this transaction's one allowance, or every phase is done.
+ * Run phases from `from` onward until the budget runs out or every phase is
+ * done. Convex allows one paginated query per transaction; a send phase that
+ * finds it spent stops the transaction there.
  *
  * Reaching the end in walker mode re-checks what the walk may have missed: it
  * spans many transactions, and something may have written a new child of the
@@ -258,15 +280,22 @@ export async function advanceErasure(
 ): Promise<ErasureProgress> {
 	let index = CONTACT_ERASURE_PHASES.indexOf(from.phase);
 	let cursor = from.cursor;
+	let hasPaginated = false;
 	while (index < CONTACT_ERASURE_PHASES.length) {
 		const phase = CONTACT_ERASURE_PHASES[index]!;
 		if (budget.isExhausted) return { phase, cursor, isComplete: false };
-		const outcome = await PHASE_RUNNERS[phase]({ ctx, contactId, budget, cursor, mode });
+		const outcome = await PHASE_RUNNERS[phase]({
+			ctx,
+			contactId,
+			budget,
+			cursor,
+			mode,
+			mayPaginate: !hasPaginated,
+		});
+		if (outcome.isPaginated) hasPaginated = true;
 		if (!outcome.isDone) return { phase, cursor: outcome.cursor, isComplete: false };
 		index += 1;
 		cursor = undefined;
-		const next = CONTACT_ERASURE_PHASES[index];
-		if (outcome.isPaginated && next !== undefined) return { phase: next, isComplete: false };
 	}
 
 	if (mode === 'walker') {
@@ -285,6 +314,8 @@ export async function advanceErasure(
 				budget,
 				cursor: undefined,
 				mode,
+				// The send phases are checked by `hasLateSend`; none of these pages.
+				mayPaginate: false,
 			});
 			if (!outcome.isDone) return { phase, isComplete: false };
 		}
