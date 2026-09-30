@@ -61,7 +61,9 @@ const trustMarkers = computed(() => isFlagEnabled('senderAuthBadges'));
 
 const mailboxIdRef = computed(() => props.mailboxId);
 // Which folder the rows belong to. The page stays mounted across folder
-// switches, so focus and scroll reset on this key instead of on a remount.
+// switches, so focus and scroll reset on this key instead of on a remount. It
+// is also the folder's route segment (a role, or a custom folder's id: its
+// role is empty), so every link into or out of a message is built from it.
 const folderKey = computed(() => props.folderId ?? props.folderRole);
 const bulk = usePostboxBulkActions(mailboxIdRef);
 
@@ -225,7 +227,7 @@ const {
 	onActivate: (m) =>
 		props.selectable
 			? emit('select', m._id)
-			: void navigateTo(`/dashboard/postbox/${props.folderRole}/${m._id}`),
+			: void navigateTo(`/dashboard/postbox/${folderKey.value}/${m._id}`),
 	// Shift+J / Shift+K drag the selection along with the focus, extending from
 	// the anchor the last plain toggle set.
 	onExtendSelection: (to, from) => bulk.extendTo(visibleIds.value, to._id, from?._id),
@@ -426,7 +428,7 @@ if (returnPlace?.focusedId) {
 					:trust-markers="trustMarkers"
 					:swipe-left="swipeLeftAction"
 					:swipe-right="swipeRightAction"
-					:folder-role="props.folderRole"
+					:folder-role="folderKey"
 					:virtualize="virtualize"
 					:selected="bulk.isSelected(msg._id)"
 					:focused="focusedIndex === windowStart + localI"

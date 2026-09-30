@@ -118,7 +118,15 @@ function onPickFiles(event: Event) {
 
 <template>
 	<footer class="px-3 py-2 border-t border-border-subtle flex flex-col gap-1.5">
-		<div class="flex items-center justify-between gap-2 min-w-0">
+		<!-- Answer mode's row carries schedule and the follow-up chip too, and
+		     does not fit a phone (or the narrowest split column) beside "Show
+		     quoted text" and the status: the status group wraps to its own line,
+		     right-aligned, instead of the buttons painting over it. -->
+		<div
+			class="flex items-center justify-between gap-x-2 gap-y-1 min-w-0"
+			:class="{ 'flex-wrap': answerFrame }"
+			data-testid="composer-footer-row"
+		>
 			<div class="flex items-center gap-2 min-w-0">
 				<UiButton
 					type="button"
@@ -316,7 +324,7 @@ function onPickFiles(event: Event) {
 					@confirm="(ts) => (followUpRemindAt = ts)"
 				/>
 			</div>
-			<div class="flex shrink-0 items-center gap-3 text-xs text-text-tertiary">
+			<div class="ml-auto flex shrink-0 items-center gap-3 text-xs text-text-tertiary">
 				<button
 					v-if="answerFrame && hasQuote"
 					type="button"

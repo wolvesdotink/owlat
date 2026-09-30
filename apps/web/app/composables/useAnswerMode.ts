@@ -9,6 +9,7 @@
  */
 import type { Id } from '@owlat/api/dataModel';
 import {
+	answerFallbackReturn,
 	answerModeHref,
 	answerTeamHref,
 	isAnswerModePath,
@@ -25,9 +26,6 @@ declare module '#app' {
 		answerMode?: boolean;
 	}
 }
-
-/** Where Esc goes when Answer mode was opened without a page to return to. */
-const FALLBACK_RETURN = '/dashboard/postbox/inbox';
 
 /**
  * Open and leave Answer mode. `open` remembers the page it was opened from, so
@@ -61,8 +59,13 @@ export function useAnswerModeNav() {
 		return go(answerTeamHref(threadId, opts));
 	}
 
+	/** The recorded page, else the list this Answer mode route belongs to. */
+	function returnTarget(): string {
+		return returnTo.value ?? answerFallbackReturn(useRouter().currentRoute.value.path);
+	}
+
 	function leave() {
-		const target = returnTo.value ?? FALLBACK_RETURN;
+		const target = returnTarget();
 		returnTo.value = null;
 		const back =
 			typeof window === 'undefined'
@@ -76,7 +79,7 @@ export function useAnswerModeNav() {
 	}
 
 	/** The label of the back link: the page a reply returns to. */
-	const returnPath = computed(() => returnTo.value ?? FALLBACK_RETURN);
+	const returnPath = computed(() => returnTarget());
 
 	/**
 	 * Name the page Esc returns to, for a host that moves between Answer mode
@@ -110,6 +113,14 @@ export function useAnswerLeftDraft() {
 		clear: () => {
 			left.value = null;
 		},
+		/**
+		 * Take the offer back only when it is for `draftId`: sending or
+		 * discarding one reply must not drop the offer of another draft left
+		 * earlier.
+		 */
+		clearFor: (draftId: string | null | undefined) => {
+			if (draftId && left.value?.draftId === draftId) left.value = null;
+		},
 	};
 }
 
@@ -137,7 +148,7 @@ export function useAnswerPendingLead() {
 	};
 }
 
-// ── The list's place, kept across the round trip ───────────────────────────
+// The list's place, kept across the round trip
 // The folder list's scroll offset already survives a remount (the per-folder
 // scroll memory in usePostboxVirtualList). What does not survive is the
 // keyboard focus: the j/k row. The list files it here as it unmounts, and takes
@@ -174,7 +185,7 @@ export function takeListPlace(folderKey: string): ListReturnSnapshot | null {
 	return snapshot;
 }
 
-// ── Cmd/Ctrl+J: "Draft with AI" ────────────────────────────────────────────
+// Cmd/Ctrl+J: "Draft with AI"
 // Inside Answer mode the chord focuses the draft's own AI entry point instead
 // of opening the Assistant (plan decision 6). The AI bar registers how to focus
 // itself; the page asks. Nothing registered means the chord does nothing, which

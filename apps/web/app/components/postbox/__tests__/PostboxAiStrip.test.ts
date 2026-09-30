@@ -76,8 +76,11 @@ beforeEach(() => {
 const iconStub = { props: ['name'], template: '<span />' };
 const mdStub = { props: ['source'], template: '<div class="md">{{ source }}</div>' };
 
-function mountStrip(props: { messageId?: string; warrantsSummary?: boolean } = {}) {
+function mountStrip(
+	props: { messageId?: string; warrantsSummary?: boolean; askOnly?: boolean } = {}
+) {
 	return mount(PostboxAiStrip, {
+		attachTo: document.body,
 		props: { messageId: 'msg-1', warrantsSummary: false, ...props },
 		global: {
 			plugins: [createTestI18n()],
@@ -85,6 +88,22 @@ function mountStrip(props: { messageId?: string; warrantsSummary?: boolean } = {
 		},
 	});
 }
+
+describe('PostboxAiStrip ask-only (Answer mode ⋯ "Ask about this thread")', () => {
+	it('opens straight on Ask, focused, with no summary read, and closes on request', async () => {
+		cacheData.value = { summary: '- Point one', messageCount: 5 };
+		const wrapper = mountStrip({ askOnly: true });
+		await flushPromises();
+		expect(wrapper.find('[data-testid="postbox-ask-thread"]').exists()).toBe(true);
+		expect(document.activeElement).toBe(wrapper.find('input').element);
+		// The catch-up card summarises in Answer mode: no gist here.
+		expect(wrapper.text()).not.toContain('Point one');
+		expect(genRun).not.toHaveBeenCalled();
+		await wrapper.get('[data-testid="postbox-ask-close"]').trigger('click');
+		expect(wrapper.emitted('close')).toHaveLength(1);
+		wrapper.unmount();
+	});
+});
 
 describe('PostboxAiStrip', () => {
 	it('renders nothing when the thread is too short and nothing is cached', async () => {

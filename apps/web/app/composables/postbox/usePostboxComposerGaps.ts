@@ -2,8 +2,9 @@
  * The `[[...]]` gaps an AI draft leaves where a fact is missing (Answer mode,
  * plan §05): counted, painted, and one click away from being replaced.
  *
- *  - `gaps`: the placeholders in what was written (not in the quote). The
- *    composer holds Send back while any is left, and the footer says how many.
+ *  - `gaps`: the placeholders in what was written (not in the quote). While
+ *    the AI wrote them, the composer holds Send back until none is left and
+ *    the footer says how many (policy in usePostboxComposerAnswerApi).
  *  - painting: a CSS Custom Highlight over each placeholder, so the body HTML
  *    (and so the draft row and the sent message) never gains a wrapper element.
  *    Browsers without the API show the brackets unpainted; the count and the

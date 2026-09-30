@@ -17,7 +17,9 @@ import type { ThreadFile } from '~/utils/answerThreadFiles';
  * pre-picked with "last time"). Answering goes through the Reply Queue's own
  * mutation; the card then waits for the starter reply and hands it to the
  * editor when it lands. "Answer later" puts the card away so the person can
- * simply write.
+ * simply write. Someone who started writing while the reply was drafted keeps
+ * their text: the card then says the draft is ready and puts it in only when
+ * asked.
  *
  * Renders nothing unless the page is the queue's current item and that item
  * carries a clarification still asking or drafting. A reply that was already
@@ -28,6 +30,8 @@ const props = defineProps<{
 	messageId: string;
 	mailboxId?: Id<'mailboxes'>;
 	resolveThreadFile?: (file: ThreadFile) => Promise<FileAnswerRef | null>;
+	/** The person has written something in the reply. */
+	written?: boolean;
 }>();
 const emit = defineEmits<{
 	/** The starter reply written from the answers, for the editor. */
@@ -52,8 +56,13 @@ const questions = computed(
 );
 
 const deferred = ref(false);
+/** A starter reply that landed after the person began writing, waiting to be asked for. */
+const waitingDraft = ref<string | null>(null);
 const visible = computed(
-	() => !!row.value && !deferred.value && (state.value === 'asking' || state.value === 'drafting')
+	() =>
+		!!row.value &&
+		!deferred.value &&
+		(state.value === 'asking' || state.value === 'drafting' || waitingDraft.value !== null)
 );
 watch(visible, (value) => emit('visible', value), { immediate: true });
 onBeforeUnmount(() => emit('visible', false));
@@ -67,11 +76,18 @@ watch(
 		const draft = row.value?.clarification?.draft;
 		if (next === 'ready' && sawDrafting && !deferred.value && draft) {
 			sawDrafting = false;
-			emit('use-draft', draft);
+			if (props.written) waitingDraft.value = draft;
+			else emit('use-draft', draft);
 		}
 	},
 	{ immediate: true }
 );
+
+function useWaitingDraft() {
+	const draft = waitingDraft.value;
+	waitingDraft.value = null;
+	if (draft) emit('use-draft', draft);
+}
 
 const answerOp = useBackendOperation(api.mail.ai.needsReplyClarify.answerClarification, {
 	label: () => t('components.postbox.postboxReplyFlow.operations.answer'),
@@ -104,6 +120,21 @@ async function submit(answers: AskAnswer[]) {
 			@answer="submit"
 			@skip="deferred = true"
 		/>
+		<div
+			v-else-if="waitingDraft !== null"
+			class="flex items-center gap-2 border-b border-border-subtle px-3 py-3 text-sm text-text-secondary"
+			role="status"
+			data-testid="answer-queue-ask-ready"
+		>
+			<Icon name="lucide:sparkles" class="size-4 text-brand" aria-hidden="true" />
+			<span class="flex-1">{{ t('components.answer.aiBar.readyKept') }}</span>
+			<UiButton variant="secondary" size="sm" @click="useWaitingDraft">
+				{{ t('components.answer.aiBar.useDraft') }}
+			</UiButton>
+			<UiButton variant="ghost" size="sm" @click="deferred = true">
+				{{ t('components.answer.aiBar.discard') }}
+			</UiButton>
+		</div>
 		<div
 			v-else
 			class="flex items-center gap-2 border-b border-border-subtle px-3 py-3 text-sm text-text-secondary"

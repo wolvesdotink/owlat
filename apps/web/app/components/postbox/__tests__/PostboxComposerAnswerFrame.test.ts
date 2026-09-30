@@ -27,6 +27,8 @@ const QUOTED =
 	'<blockquote class="gmail_quote">Could you send the invoice?</blockquote></div>';
 
 let compose: ReturnType<typeof makeCompose>;
+/** The gate Cmd/Ctrl+Enter reads, as the composer handed it to its key handler. */
+let keysCanSend: { value: boolean };
 const flush = vi.fn(async () => ({ ok: true as const, result: 'draft_1' }));
 
 function makeCompose() {
@@ -121,11 +123,14 @@ beforeEach(() => {
 			onDrop: vi.fn(),
 			onPaste: vi.fn(),
 		}),
-		usePostboxComposerKeys: () => ({
-			sendShortcutHint: ref('Send (Ctrl+Enter)'),
-			scheduleShortcutHint: ref('Schedule send (Ctrl+Shift+Enter)'),
-			onComposerKeydown: vi.fn(),
-		}),
+		usePostboxComposerKeys: (opts: { canSend: { value: boolean } }) => {
+			keysCanSend = opts.canSend;
+			return {
+				sendShortcutHint: ref('Send (Ctrl+Enter)'),
+				scheduleShortcutHint: ref('Schedule send (Ctrl+Shift+Enter)'),
+				onComposerKeydown: vi.fn(),
+			};
+		},
 		useNativeFilePicker: () => ({ isDesktop: ref(false), pickNativeFiles: vi.fn() }),
 		useInboxes: () => ({ byId: ref(new Map()) }),
 		useBackendOperation: () => ({ run: vi.fn(async () => ({ ok: true })), isLoading: ref(false) }),
@@ -202,7 +207,9 @@ describe('PostboxComposer frame="answer"', () => {
 		expect(w.find('[data-testid="title-bar"]').exists()).toBe(false);
 		const line = w.get('[data-testid="composer-envelope-line"]');
 		expect(line.text()).toContain('To Jonas Berg');
-		expect(line.text()).toContain('From ada@example.com');
+		// The identity's label, not its address.
+		expect(line.text()).toContain('From Ada');
+		expect(line.text()).not.toContain('ada@example.com');
 		expect(line.text()).toContain('Re: September invoice');
 		// Folded, not unmounted: its guard dialogs must stay live.
 		expect(envelopeShown(w)).toBe(false);
@@ -210,6 +217,18 @@ describe('PostboxComposer frame="answer"', () => {
 		await line.get('button').trigger('click');
 		expect(w.find('[data-testid="composer-envelope-line"]').exists()).toBe(false);
 		expect(envelopeShown(w)).toBe(true);
+		w.unmount();
+	});
+
+	it('names a bare reply address as the thread does ("To Jonas Berg", not "To finance")', () => {
+		compose.toAddresses.value = ['finance@brightpath.example'];
+		const w = mountComposer({
+			frame: 'answer',
+			recipientNames: { 'finance@brightpath.example': 'Jonas Berg' },
+		});
+		const line = w.get('[data-testid="composer-envelope-line"]').text();
+		expect(line).toContain('To Jonas Berg');
+		expect(line).not.toContain('To finance');
 		w.unmount();
 	});
 
@@ -273,6 +292,12 @@ describe('PostboxComposer frame="answer"', () => {
 		w.unmount();
 	});
 
+	it('lets its footer row wrap, so the status never sits under the buttons on a phone', () => {
+		const w = mountComposer({ frame: 'answer' });
+		expect(w.get('[data-testid="composer-footer-row"]').classes()).toContain('flex-wrap');
+		w.unmount();
+	});
+
 	it('reports the draft row once it exists, for the URL', async () => {
 		const w = mountComposer({ frame: 'answer' });
 		expect(w.emitted('draft-id')).toBeUndefined();
@@ -288,15 +313,41 @@ describe('PostboxComposer frame="answer"', () => {
 		expect(sendButton().attributes('disabled')).toBeUndefined();
 		expect(w.get('[data-testid="composer-save-state"]').text()).toBe('1 of 2 asks covered');
 
-		compose.bodyHtml.value = `<p>Attached. [[the PO number]]</p>${QUOTED}`;
+		const vm = w.vm as unknown as { answer: { applyAiDraft: (t: string) => Promise<void> } };
+		await vm.answer.applyAiDraft('Attached. [[the PO number]]');
 		await nextTick();
 		expect(sendButton().attributes('disabled')).toBeDefined();
+		expect(keysCanSend.value).toBe(false);
 		expect(w.get('[data-testid="composer-save-state"]').text()).toBe('1 gap left');
 
 		// A gap inside the quoted original is not this draft's.
 		compose.bodyHtml.value = `<p>Attached.</p>${QUOTED.replace('the invoice', '[[x]]')}`;
 		await nextTick();
 		expect(sendButton().attributes('disabled')).toBeUndefined();
+		expect(keysCanSend.value).toBe(true);
+		w.unmount();
+	});
+
+	it('leaves double brackets the person typed to the advisory chip: Send and Cmd+Enter stay live', async () => {
+		const w = mountComposer({ frame: 'answer', statusNote: '1 of 2 asks covered' });
+		const sendButton = () => w.findAll('button').find((b) => b.text() === 'Send')!;
+
+		compose.bodyHtml.value = `<p>See [[Onboarding checklist]] in the wiki.</p>${QUOTED}`;
+		await nextTick();
+
+		expect(sendButton().attributes('disabled')).toBeUndefined();
+		expect(keysCanSend.value).toBe(true);
+		expect(w.get('[data-testid="composer-save-state"]').text()).toBe('1 of 2 asks covered');
+		w.unmount();
+	});
+
+	it('holds Send on a resumed draft whose ask session the host reports', async () => {
+		const w = mountComposer({ frame: 'answer', askSession: true });
+		compose.bodyHtml.value = `<p>Attached. [[the PO number]]</p>${QUOTED}`;
+		await nextTick();
+
+		expect(keysCanSend.value).toBe(false);
+		expect(w.get('[data-testid="composer-save-state"]').text()).toBe('1 gap left');
 		w.unmount();
 	});
 
@@ -340,6 +391,12 @@ describe('PostboxComposer frame="popup"', () => {
 		);
 		expect(w.find('[data-testid="PostboxComposerAdvisory"]').exists()).toBe(true);
 		expect(w.find('[data-testid="composer-toggle-quote"]').exists()).toBe(false);
+		w.unmount();
+	});
+
+	it('keeps the popup footer on one line, as before', () => {
+		const w = mountComposer({});
+		expect(w.get('[data-testid="composer-footer-row"]').classes()).not.toContain('flex-wrap');
 		w.unmount();
 	});
 

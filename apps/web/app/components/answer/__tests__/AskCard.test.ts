@@ -131,6 +131,25 @@ describe('AskCard', () => {
 		w.unmount();
 	});
 
+	it('leaves 1 to 9 alone while the reply sheet hiding it is folded away (phone)', async () => {
+		const sheet = document.createElement('div');
+		sheet.setAttribute('data-sheet-hidden', '');
+		document.body.appendChild(sheet);
+		const w = mount(AskCard, {
+			props: { questions: QUESTIONS, round: 1 },
+			attachTo: sheet,
+			global: { plugins: [createTestI18n()], stubs: { AnswerFilePicker: PickerStub } },
+		});
+		const event = new KeyboardEvent('keydown', { key: '2', cancelable: true });
+		window.dispatchEvent(event);
+		await flushPromises();
+		expect(event.defaultPrevented).toBe(false);
+		await w.get('[data-testid="ask-submit"]').trigger('click');
+		expect(w.emitted('answer')?.[0]?.[0]).toEqual([]);
+		w.unmount();
+		sheet.remove();
+	});
+
 	it('takes a date from the picker, text and numbers as typed, and a file as a file', async () => {
 		const w = mountCard();
 		await w.get('[data-testid="ask-date"]').setValue('2026-10-02');

@@ -22,11 +22,11 @@ import type { BackendOperationResult } from '~/composables/useBackendOperation';
 import type { ReplyRisk } from '~/utils/senderAuth';
 import { deriveReplyRisk, senderRiskInputOf } from '~/utils/senderAuth';
 import { extractEmailAddress } from '~/utils/emailAddress';
-import { recipientLabel } from '~/utils/recipientHints';
+import { knownRecipientLabel, messageRecipientNames } from '~/utils/recipientHints';
 import { isDialogOpen } from '~/utils/dialogOpen';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { isChordPending } from '~/utils/shortcutScope';
-import { parseAnswerKind, singleQueryValue } from '~/utils/answerMode';
+import { answerBackLabelKey, parseAnswerKind, singleQueryValue } from '~/utils/answerMode';
 import {
 	useAnswerAiFocus,
 	useAnswerLeftDraft,
@@ -41,6 +41,7 @@ import type { AnswerConversationView } from '~/components/answer/AnswerConversat
 import CatchUpCard from '~/components/answer/CatchUpCard.vue';
 import AnswerAiBar from '~/components/answer/AnswerAiBar.vue';
 import AskCard from '~/components/answer/AskCard.vue';
+import AnswerMailMenu from '~/components/answer/AnswerMailMenu.vue';
 
 definePageMeta({
 	layout: 'dashboard',
@@ -66,7 +67,7 @@ const message = usePostboxActiveMessage<PostboxReaderMessage>({
 
 useHead({ title: () => message.value?.subject || t('dashboard.answer.mode.pageTitle') });
 
-// ── The reply guard, for links that never passed through the reader ──────────
+// The reply guard, for links that never passed through the reader
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const replyGuardEl = ref<{
 	guard: (threadId: string, risk: ReplyRisk | null, to: string, run: () => void) => void;
@@ -101,21 +102,16 @@ const { seed, kind } = useAnswerModeSession({
 	guard: guardReply,
 });
 
-// ── Top bar ──────────────────────────────────────────────────────────────────
 const answerNav = useAnswerModeNav();
-const backLabel = computed(() => {
-	const path = answerNav.returnPath.value;
-	if (path.startsWith('/dashboard/postbox')) return t('components.answer.mode.backTo.inbox');
-	if (path.startsWith('/dashboard/answer')) return t('components.answer.mode.backTo.queue');
-	if (path === '/dashboard' || path.startsWith('/dashboard?'))
-		return t('components.answer.mode.backTo.workbench');
-	return t('components.answer.mode.backTo.previous');
-});
+const backLabel = computed(() => t(answerBackLabelKey(answerNav.returnPath.value)));
 const messageCount = ref<number | undefined>(undefined);
 const counterpart = computed(() => {
 	const m = message.value;
 	return m ? m.fromName || m.fromAddress : '';
 });
+// The composer's envelope line and the "Draft saved" offer name people as the
+// thread does, not by the bare address a reply is seeded with.
+const recipientNames = computed(() => (message.value ? messageRecipientNames(message.value) : {}));
 const { byId: inboxById } = useInboxes();
 const inbox = computed(() => {
 	const id = message.value?.mailboxId;
@@ -125,7 +121,7 @@ const inbox = computed(() => {
 const tab = ref<'conversation' | 'reply'>('conversation');
 const view = ref<AnswerConversationView>('summary');
 
-// ── The composer and the URL ────────────────────────────────────────────────
+// The composer and the URL
 // Shallow: the exposed Answer mode API carries refs its users read as refs.
 const composerRef = shallowRef<{
 	focusBody: () => void;
@@ -147,7 +143,7 @@ function onDraftId(id: string) {
 	});
 }
 
-// ── Catch-up, "Draft with AI" and thread files (plan §03 to §06) ────────────
+// Catch-up, "Draft with AI" and thread files (plan §03 to §06)
 const assist = useAnswerModeAssist({
 	message: () => message.value,
 	composer: () => composerRef.value?.answer ?? null,
@@ -158,6 +154,13 @@ const assist = useAnswerModeAssist({
 });
 const { catchUp, ask } = assist;
 
+// "Ask about this thread" from the ⋯: the reader's Q&A above the conversation.
+const askingThread = ref(false);
+function askAboutThread() {
+	tab.value = 'conversation';
+	askingThread.value = true;
+}
+
 /** The resting phone/tablet sheet's "✦ Draft": open the reply and draft with AI. */
 function draftFromPeek() {
 	tab.value = 'reply';
@@ -166,7 +169,7 @@ function draftFromPeek() {
 
 const leftDraft = useAnswerLeftDraft();
 // Resuming the draft the list offered back: the offer is taken.
-if (openedDraftId && leftDraft.left.value?.draftId === openedDraftId) leftDraft.clear();
+leftDraft.clearFor(openedDraftId);
 
 /**
  * Back to where the reply started. What was typed is saved first (the flush
@@ -178,7 +181,10 @@ function leave() {
 	const msg = message.value;
 	const snapshot = composer?.snapshot();
 	if (composer && msg && snapshot?.hasContent) {
-		const recipient = recipientLabel(snapshot.toAddresses[0] ?? msg.fromAddress);
+		const recipient = knownRecipientLabel(
+			snapshot.toAddresses[0] ?? msg.fromAddress,
+			recipientNames.value
+		);
 		void composer.flush().then((saved) => {
 			// A save that did not land still leaves the row (and the crash mirror
 			// holding the rest) worth offering back.
@@ -202,13 +208,13 @@ const queueSession = useAnswerQueueSession();
 const queueAskVisible = ref(false);
 
 function onSent() {
-	leftDraft.clear();
+	leftDraft.clearFor(draftId.value);
 	if (queueSession?.handleSent()) return;
 	answerNav.leave();
 }
 
 function onDiscarded() {
-	leftDraft.clear();
+	leftDraft.clearFor(draftId.value);
 	answerNav.leave();
 }
 
@@ -218,7 +224,6 @@ function onComposerEsc() {
 	if (active instanceof HTMLElement) active.blur();
 }
 
-// ── Keys ────────────────────────────────────────────────────────────────────
 const aiFocus = useAnswerAiFocus();
 
 function onKeydown(event: KeyboardEvent) {
@@ -274,6 +279,7 @@ onBeforeUnmount(() => {
 			:message-count="messageCount"
 			:counterpart="counterpart"
 			@back="leave"
+			@start-reply="composerRef?.focusBody()"
 		>
 			<template #identity>
 				<span
@@ -292,19 +298,12 @@ onBeforeUnmount(() => {
 				<AnswerQueueBar />
 			</template>
 			<template #menu>
-				<PostboxOverflowMenu :label="t('components.answer.mode.more')" align="right">
-					<template #default="{ close }">
-						<NuxtLink
-							:to="`/dashboard/postbox/inbox/${messageId}`"
-							role="menuitem"
-							class="flex w-full items-center gap-2 px-3 py-1.5 text-sm hover:bg-bg-surface"
-							@click="close()"
-						>
-							<Icon name="lucide:mail-open" class="size-4 text-text-tertiary" />
-							{{ t('components.answer.mode.openInPostbox') }}
-						</NuxtLink>
-					</template>
-				</PostboxOverflowMenu>
+				<AnswerMailMenu
+					:message-id="messageId"
+					:mailbox-id="message?.mailboxId ?? null"
+					:can-ask="assist.aiEnabled.value"
+					@ask="askAboutThread"
+				/>
 			</template>
 
 			<template v-if="assist.aiEnabled.value && seed" #peek-actions>
@@ -323,6 +322,14 @@ onBeforeUnmount(() => {
 			</template>
 
 			<template #conversation>
+				<PostboxAiStrip
+					v-if="askingThread && message"
+					class="mx-4 mt-4"
+					:message-id="messageId"
+					:warrants-summary="false"
+					ask-only
+					@close="askingThread = false"
+				/>
 				<AnswerConversation
 					v-if="message"
 					v-model:view="view"
@@ -356,6 +363,8 @@ onBeforeUnmount(() => {
 					:seed="seed"
 					:reply-all-recipients="seed.replyAllRecipients"
 					:status-note="assist.statusNote.value"
+					:ask-session="!!ask.session.value"
+					:recipient-names="recipientNames"
 					@draft-id="onDraftId"
 					@sent="onSent"
 					@discarded="onDiscarded"
@@ -368,6 +377,7 @@ onBeforeUnmount(() => {
 							:message-id="messageId"
 							:mailbox-id="seed.mailboxId"
 							:resolve-thread-file="assist.resolveThreadFile"
+							:written="!!composer.draftText.value.trim()"
 							@visible="queueAskVisible = $event"
 							@use-draft="composer.applyAiDraft($event)"
 						/>

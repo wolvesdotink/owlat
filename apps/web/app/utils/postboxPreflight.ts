@@ -12,7 +12,8 @@
  *     findings as a quiet chip next to Send; the replay-confirm dialog is
  *     reserved for the irreversible mistakes (a send that will fail DMARC, a
  *     missing attachment). The one exception is an AI draft's `[[...]]` gap:
- *     the composer disables Send while one is left, and this chip says why.
+ *     the composer disables Send while one the AI wrote is left, and this chip
+ *     says why. Brackets the person typed stay advice.
  *   • QUIET WHEN UNSURE. Every check only fires on evidence, and only on the
  *     FRESH half of the body — a `[TODO]` inside the quoted original belongs to
  *     its author. A check that misfires trains people to ignore all of them.

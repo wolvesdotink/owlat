@@ -135,7 +135,6 @@ export function useAnswerAskSession(opts: {
 		if (result.ok) returned.value = result.result;
 	}
 
-	// ── The draft, into the editor ───────────────────────────────────────────
 	/** Streams seen running here: only these are applied when they finish. */
 	const liveStreams = new Set<string>();
 	const settledStreams = new Set<string>();

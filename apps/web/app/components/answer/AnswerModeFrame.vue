@@ -29,6 +29,7 @@
 import { useAnswerLayout, useAnswerSheet } from '~/composables/useAnswerSheet';
 import { useKeyboardInset } from '~/composables/useKeyboardInset';
 import type { AnswerSheetState, AnswerTab } from '~/utils/answerModeLayout';
+import { pushShortcutScope } from '~/utils/shortcutScope';
 
 const props = defineProps<{
 	/** Where "←" goes, spelled as a place ("Inbox", "Answer queue"). */
@@ -38,31 +39,50 @@ const props = defineProps<{
 	messageCount?: number;
 	/** A short line after the count: the correspondent. */
 	counterpart?: string;
+	/** Where the correspondent's name leads (their contact profile), if anywhere. */
+	counterpartTo?: string;
 }>();
 
-const emit = defineEmits<{ back: [] }>();
+const emit = defineEmits<{
+	back: [];
+	/**
+	 * "Reply to Jonas…" was tapped and the composer is showing: the page puts
+	 * the caret in the body through the composer (a DOM query here would find
+	 * the folded envelope's inputs, or the AI bar's, before the editor).
+	 * Emitted inside the tap, so the page's focus is too.
+	 */
+	'start-reply': [];
+}>();
 
 /** The phone layout's open tab. The page switches it (Cmd/Ctrl+J opens Reply). */
 const tab = defineModel<AnswerTab>('tab', { default: 'conversation' });
 
 const { t } = useI18n();
 
-const metaLine = computed(() => {
-	const parts: string[] = [];
-	if (props.messageCount !== undefined) {
-		parts.push(
-			t('components.answer.mode.messageCount', { count: props.messageCount }, props.messageCount)
-		);
-	}
-	if (props.counterpart) parts.push(props.counterpart);
-	return parts.join(' · ');
+/** The meta line before the correspondent: "5 messages · ", or just the count. */
+const metaPrefix = computed(() => {
+	if (props.messageCount === undefined) return '';
+	const count = t(
+		'components.answer.mode.messageCount',
+		{ count: props.messageCount },
+		props.messageCount
+	);
+	return props.counterpart ? `${count} · ` : count;
 });
+
+// Answer mode's keys (Esc, t, Cmd/Ctrl+J, 1 to 9, [ and ]) are bound by the
+// pages and the ask card; claiming the scope puts them on the "?" sheet, in
+// place of the app-wide Esc they replace here.
+let releaseScope: (() => void) | null = null;
+onMounted(() => {
+	releaseScope = pushShortcutScope('answer');
+});
+onBeforeUnmount(() => releaseScope?.());
 
 const conversationPanelId = useId();
 const replyPanelId = useId();
 const sheetHintId = useId();
 
-// ── Layout and the reply sheet ───────────────────────────────────────────────
 const layout = useAnswerLayout();
 const keyboard = useKeyboardInset();
 const bodyEl = ref<HTMLElement | null>(null);
@@ -127,13 +147,23 @@ const peekLabel = computed(() =>
 /**
  * "Reply to Jonas…": raise the sheet to where the email stays in view, and put
  * the caret in the reply so the keyboard comes up with it.
+ *
+ * iOS raises the keyboard only for a focus made in the tap's own task, and a
+ * `display: none` editor takes no focus at all. So the composer is shown now,
+ * by hand, rather than on the next render; the render then agrees (a half
+ * sheet shows its composer) and the inline style is dropped.
  */
-async function startReply() {
+function startReply() {
 	sheet.set('half');
-	await nextTick();
-	contentEl.value
-		?.querySelector<HTMLElement>('[contenteditable="true"], textarea, input:not([type="hidden"])')
-		?.focus();
+	const content = contentEl.value;
+	if (content) {
+		content.style.display = 'flex';
+		content.removeAttribute('data-sheet-hidden');
+	}
+	emit('start-reply');
+	void nextTick(() => {
+		if (content) content.style.display = '';
+	});
 }
 </script>
 
@@ -168,11 +198,18 @@ async function startReply() {
 				<!-- The phone's bar stays one line: back, subject, queue position.
 				     The sheet's "Reply to …" row names the correspondent. -->
 				<p
-					v-if="metaLine && layout !== 'phone'"
+					v-if="(metaPrefix || counterpart) && layout !== 'phone'"
 					class="truncate text-xs text-text-tertiary"
 					data-testid="answer-meta"
 				>
-					{{ metaLine }}
+					{{ metaPrefix
+					}}<NuxtLink
+						v-if="counterpart && counterpartTo"
+						:to="counterpartTo"
+						class="hover:text-text-primary hover:underline"
+						data-testid="answer-counterpart"
+						>{{ counterpart }}</NuxtLink
+					><template v-else-if="counterpart">{{ counterpart }}</template>
 				</p>
 			</div>
 			<div class="hidden min-w-0 lg:flex">
@@ -279,10 +316,13 @@ async function startReply() {
 						<slot name="peek-actions" />
 					</div>
 				</div>
+				<!-- `data-sheet-hidden`: what is in the composer stands down its
+				     window-wide keys while it is out of sight (AskCard's 1 to 9). -->
 				<div
 					ref="contentEl"
 					class="min-h-0 flex-1 flex-col"
 					:class="composerHidden ? 'hidden' : 'flex'"
+					:data-sheet-hidden="composerHidden ? '' : undefined"
 					data-testid="answer-composer-content"
 				>
 					<slot name="composer" />

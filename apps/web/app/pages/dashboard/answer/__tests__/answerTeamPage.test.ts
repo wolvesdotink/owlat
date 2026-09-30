@@ -23,6 +23,7 @@ import AnswerTeamPresence from '~/components/answer/AnswerTeamPresence.vue';
 import AttachSuggestion from '~/components/inbox/AttachSuggestion.vue';
 import ThreadComposer from '~/components/inbox/ThreadComposer.vue';
 import TeamPage from '../t/[threadId].vue';
+import { useReviewApproveUndo } from '~/composables/useReviewApproveUndo';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -211,8 +212,41 @@ describe('Answer mode for a Team inbox thread', () => {
 		await wrapper.get('[data-testid="thread-composer-send"]').trigger('click');
 		await flushPromises();
 		expect(handleApprove).toHaveBeenCalledWith('in_1');
-		// Not in a queue: a send goes back where the reply started.
-		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox', { replace: true });
+		// Not in a queue: a send goes back where the reply started; opened with
+		// no page to return to, that is the Team inbox.
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/inbox', { replace: true });
+	});
+
+	it("links the correspondent's name to their contact profile", async () => {
+		const wrapper = await mountPage();
+		const link = wrapper.get('[data-testid="answer-counterpart"]');
+		expect(link.text()).toBe('Ana Ruiz');
+		expect(link.attributes('href')).toBe('/dashboard/audience/contacts/c_1');
+	});
+
+	it('names the Team inbox as the way back when opened by deep link or reload', async () => {
+		const wrapper = await mountPage();
+		expect(wrapper.get('[data-testid="answer-back"]').attributes('aria-label')).toBe(
+			'Back to Team inbox'
+		);
+	});
+
+	it('arms the Approved · Undo countdown for a held approve, and its Undo cancels the send', async () => {
+		handleApprove.mockResolvedValueOnce({ ok: true, result: { undo: { sendAt: 5_000 } } });
+		const wrapper = await mountPage();
+		await wrapper.get('[data-testid="thread-composer-send"]').trigger('click');
+		await flushPromises();
+		const armed = state.get('review:approve-undo')?.value as {
+			visible: boolean;
+			sendAt: number;
+			inboundMessageId: string;
+		};
+		expect(armed).toMatchObject({ visible: true, sendAt: 5_000, inboundMessageId: 'in_1' });
+
+		const undoRun = findRun('Undo approval');
+		undoRun.mockResolvedValueOnce({ ok: true, result: { cancelled: true } });
+		await useReviewApproveUndo().runUndo();
+		expect(undoRun).toHaveBeenCalledWith({ inboundMessageId: 'in_1' });
 	});
 
 	it('in the Answer queue, a send finishes the item and moves on', async () => {
@@ -331,6 +365,47 @@ describe('Answer mode for a Team inbox thread', () => {
 			source: 'semanticFile',
 			id: 'sf_9',
 		});
+	});
+
+	it('puts the caret in the reply inside the phone row tap', async () => {
+		const wrapper = await mountPage();
+		const body = wrapper.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]');
+		body.element.blur();
+		wrapper.getComponent(AnswerModeFrame).vm.$emit('start-reply');
+		// No render in between: iOS raises the keyboard only for a focus in the tap.
+		expect(document.activeElement).toBe(body.element);
+	});
+
+	it('opens on the questions of the message ?message= names, not a newer draft', async () => {
+		route.query = { message: 'in_old' };
+		messages.value = [
+			inbound('in_old', {
+				_creationTime: 1,
+				processingStatus: 'awaiting_clarification',
+				draftResponse: undefined,
+				pendingClarification: {
+					questions: [{ id: 'q1', question: 'Which invoice?', options: [] }],
+				},
+			}),
+			inbound('in_new', { _creationTime: 2, draftResponse: 'New draft' }),
+		];
+		const wrapper = await mountPage();
+		expect(wrapper.find('[data-testid="answer-team-clarification"]').exists()).toBe(true);
+		expect(
+			wrapper.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]').element.value
+		).not.toBe('New draft');
+	});
+
+	it('falls back to the thread pick when ?message= names a message already answered', async () => {
+		route.query = { message: 'in_old' };
+		messages.value = [
+			inbound('in_old', { _creationTime: 1, processingStatus: 'sent', draftResponse: 'Sent' }),
+			inbound('in_new', { _creationTime: 2, draftResponse: 'New draft' }),
+		];
+		const wrapper = await mountPage();
+		expect(
+			wrapper.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]').element.value
+		).toBe('New draft');
 	});
 
 	it('answers the message ?message= names when it still waits', async () => {

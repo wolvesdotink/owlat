@@ -4,8 +4,8 @@
  * happened, what they want, and the files that went back and forth.
  *
  *  - "Catching up": two to four sentences, oldest to newest, each with a small
- *    date marker per source message (at most three). A marker scrolls to its
- *    message and highlights it.
+ *    date marker per day it draws on (at most three). A marker scrolls to that
+ *    day's first source message and highlights it.
  *  - "They are asking for": the asks, ticked as the draft covers them. A short
  *    "why" follows a tick only when the check said why.
  *  - "Files in this thread": every attachment exchanged, as chips. Click one to
@@ -88,20 +88,25 @@ const meta = computed(() => {
 		: t('components.answer.mode.messageCount', { count }, count);
 });
 
-/** The markers of one sentence: its known sources, oldest first, at most three. */
+/**
+ * The markers of one sentence: its known sources, oldest first, one per day,
+ * at most three. Two sources from the same day would render as two identical
+ * chips ("Sep 3 Sep 3") that scroll to different messages; the day's first
+ * message stands for it.
+ */
 function markersOf(sourceIds: readonly string[]) {
+	const seenDates = new Set<string>();
 	return sourceIds
 		.map((id) => byId.value.get(id))
 		.filter((m): m is CatchUpMessage => m !== undefined)
 		.sort((a, b) => a.receivedAt - b.receivedAt)
+		.map((m) => ({ message: m, date: dateOf(m.receivedAt) }))
+		.filter(({ date }) => !seenDates.has(date) && !!seenDates.add(date))
 		.slice(0, MAX_MARKERS)
-		.map((m) => ({
+		.map(({ message: m, date }) => ({
 			id: m._id,
-			date: dateOf(m.receivedAt),
-			label: t('components.answer.catchUp.marker', {
-				sender: m.fromName || m.fromAddress,
-				date: dateOf(m.receivedAt),
-			}),
+			date,
+			label: t('components.answer.catchUp.marker', { sender: m.fromName || m.fromAddress, date }),
 		}));
 }
 

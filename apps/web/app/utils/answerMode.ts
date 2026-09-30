@@ -87,6 +87,15 @@ export function bodyHasQuote(bodyHtml: string): boolean {
 }
 
 /**
+ * Where Esc goes from the Answer mode route `path` when no page to return to
+ * was recorded (a deep link, a reload, a notification): the list the reply
+ * belongs to, the Team inbox for a team thread and the Postbox otherwise.
+ */
+export function answerFallbackReturn(path: string): string {
+	return path.startsWith(ANSWER_TEAM_PREFIX) ? '/dashboard/inbox' : '/dashboard/postbox/inbox';
+}
+
+/**
  * The catalog key of the back link's place ("Team inbox", "Answer queue"),
  * named after the page a reply returns to.
  */

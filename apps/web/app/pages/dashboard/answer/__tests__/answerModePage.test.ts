@@ -21,6 +21,8 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import AnswerModeFrame from '~/components/answer/AnswerModeFrame.vue';
 import { useAnswerAiFocus, useAnswerLeftDraft } from '~/composables/useAnswerMode';
 import AnswerPage from '../m/[messageId].vue';
+import PostboxOverflowMenu from '~/components/postbox/PostboxOverflowMenu.vue';
+import { useClickOutside } from '~/composables/useClickOutside';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -92,6 +94,8 @@ beforeAll(() => {
 		definePageMeta: (meta: Record<string, unknown>) => {
 			capturedMeta = meta;
 		},
+		useClickOutside,
+		useBackendOperation: () => ({ run: labelRun, isLoading: ref(false) }),
 		useRoute: () => route,
 		useRouter: () => ({
 			replace: routerReplace,
@@ -120,14 +124,33 @@ const composerSnapshot = shallowRef({
 	hasContent: false,
 });
 const composerFlush = vi.fn(async () => ({ ok: true as const, result: 'draft_saved' }));
-const answerApi = { aiDraft: ref<string | null>(null), discardAiDraft: vi.fn() };
+const answerApi = {
+	aiDraft: ref<string | null>(null),
+	draftText: ref(''),
+	discardAiDraft: vi.fn(),
+};
+const composerFocusBody = vi.fn();
+/** Every mutation the page's ⋯ runs (the label toggle). */
+const labelRun = vi.fn(async () => ({ ok: true }));
+const LabelDialogStub = defineComponent({
+	name: 'PostboxLabelPickerDialog',
+	props: ['open', 'labels'],
+	emits: ['update:open', 'pick'],
+	setup: (props) => () => (props.open ? h('div', { 'data-testid': 'label-dialog' }) : null),
+});
+const AiStripStub = defineComponent({
+	name: 'PostboxAiStrip',
+	props: { messageId: String, warrantsSummary: Boolean, askOnly: Boolean },
+	emits: ['close'],
+	setup: () => () => h('div', { 'data-testid': 'ask-strip' }),
+});
 const ComposerStub = defineComponent({
 	name: 'PostboxComposer',
-	props: ['seed', 'replyAllRecipients', 'frame', 'statusNote'],
+	props: ['seed', 'replyAllRecipients', 'frame', 'statusNote', 'askSession', 'recipientNames'],
 	emits: ['draft-id', 'sent', 'discarded', 'minimize'],
 	setup(_p, { expose, slots }) {
 		expose({
-			focusBody: vi.fn(),
+			focusBody: composerFocusBody,
 			flush: composerFlush,
 			snapshot: () => composerSnapshot.value,
 			answer: answerApi,
@@ -180,7 +203,7 @@ const inert = (name: string) => defineComponent({ name, setup: () => () => h('di
 
 let wrapper: VueWrapper | null = null;
 
-async function mountAt(query: Record<string, string>) {
+async function mountAt(query: Record<string, string>, opts: { realMenu?: boolean } = {}) {
 	route.query = query;
 	route.fullPath = `/dashboard/answer/m/msg_1${Object.keys(query).length ? '?' + new URLSearchParams(query) : ''}`;
 	wrapper = mount(AnswerPage, {
@@ -192,12 +215,24 @@ async function mountAt(query: Record<string, string>) {
 				AnswerConversation: ConversationStub,
 				PostboxComposer: ComposerStub,
 				PostboxReplyGuard: GuardStub,
-				PostboxOverflowMenu: passThrough('PostboxOverflowMenu'),
+				PostboxOverflowMenu: opts.realMenu
+					? PostboxOverflowMenu
+					: passThrough('PostboxOverflowMenu'),
 				InboxChip: inert('InboxChip'),
 				PostboxReaderSkeleton: inert('PostboxReaderSkeleton'),
 				UiSkeleton: inert('UiSkeleton'),
 				AnswerQueueBar: inert('AnswerQueueBar'),
 				AnswerQueueMailAsk: inert('AnswerQueueMailAsk'),
+				PostboxLabelPickerDialog: LabelDialogStub,
+				PostboxAiStrip: AiStripStub,
+				NuxtLink: defineComponent({
+					name: 'NuxtLink',
+					props: ['to'],
+					setup:
+						(props, { slots }) =>
+						() =>
+							h('a', { href: props.to }, slots.default?.()),
+				}),
 			},
 			stubs: { Icon: true, AnswerAiBar: AiBarStub, AskCard: AskCardStub, CatchUpCard: true },
 		},
@@ -217,6 +252,8 @@ beforeEach(() => {
 	routerReplace.mockClear();
 	navigateTo.mockClear();
 	composerFlush.mockClear();
+	composerFocusBody.mockClear();
+	labelRun.mockClear();
 	guardCalls.length = 0;
 	composerSnapshot.value = { draftId: null, toAddresses: [], hasContent: false };
 	assist.aiEnabled.value = false;
@@ -309,6 +346,43 @@ describe('Answer mode page', () => {
 		});
 	});
 
+	it('stays in Answer mode when Esc only closes an open popover (the top bar ⋯)', async () => {
+		const w = await mountAt({}, { realMenu: true });
+		const trigger = w.get('header button[aria-haspopup="menu"]');
+		await trigger.trigger('click');
+		expect(w.find('header [role="menu"]').exists()).toBe(true);
+
+		// Focus stays on the trigger after the click, outside the panel.
+		trigger.element.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+		);
+		await flushPromises();
+
+		expect(w.find('header [role="menu"]').exists()).toBe(false);
+		expect(navigateTo).not.toHaveBeenCalled();
+
+		// The next Esc, with nothing open, leaves.
+		document.body.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+		);
+		expect(navigateTo).toHaveBeenCalledTimes(1);
+	});
+
+	it('names the reply recipient as the thread does, on the envelope line and in the draft offer', async () => {
+		const w = await mountAt({});
+		expect(w.getComponent(ComposerStub).props('recipientNames')).toEqual({
+			'jonas@example.com': 'Jonas Berg',
+		});
+		composerSnapshot.value = {
+			draftId: null,
+			toAddresses: ['jonas@example.com'],
+			hasContent: true,
+		};
+		press({ key: 'Escape' });
+		await flushPromises();
+		expect(useAnswerLeftDraft().left.value?.recipient).toBe('Jonas Berg');
+	});
+
 	it('lets the first Esc go of the editor instead of leaving', async () => {
 		await mountAt({});
 		const input = document.createElement('textarea');
@@ -334,6 +408,22 @@ describe('Answer mode page', () => {
 		w.getComponent(ComposerStub).vm.$emit('sent', { scheduled: false });
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox', { replace: true });
 		expect(useAnswerLeftDraft().left.value).toBeNull();
+	});
+
+	it("keeps another draft's offer when this reply is sent or discarded", async () => {
+		const other = {
+			draftId: 'draft_other' as never,
+			messageId: 'msg_9',
+			mailboxId: 'mbx_1',
+			kind: null,
+			recipient: 'Priya',
+		};
+		const w = await mountAt({ draft: 'draft_1' });
+		useAnswerLeftDraft().set(other);
+		w.getComponent(ComposerStub).vm.$emit('sent', { scheduled: false });
+		expect(useAnswerLeftDraft().left.value).toEqual(other);
+		w.getComponent(ComposerStub).vm.$emit('discarded');
+		expect(useAnswerLeftDraft().left.value).toEqual(other);
 	});
 
 	it('in the Answer queue, a send finishes the item and moves on instead of leaving', async () => {
@@ -395,6 +485,52 @@ describe('Answer mode page', () => {
 			[[{ questionId: 'q1', value: 'Yes' }]],
 			[[], true],
 		]);
+	});
+
+	it('puts the caret in the reply body through the composer when the phone row is tapped', async () => {
+		const w = await mountAt({});
+		w.getComponent(AnswerModeFrame).vm.$emit('start-reply');
+		// Synchronously: iOS only raises the keyboard for a focus inside the tap.
+		expect(composerFocusBody).toHaveBeenCalledTimes(1);
+	});
+
+	it('tells the composer when the draft has an ask session (its gaps then hold Send)', async () => {
+		const w = await mountAt({ draft: 'draft_1' });
+		expect(w.getComponent(ComposerStub).props('askSession')).toBe(false);
+		assist.ask.session.value = { sessionId: 's1', round: 1, questions: [] };
+		await flushPromises();
+		expect(w.getComponent(ComposerStub).props('askSession')).toBe(true);
+	});
+
+	it('offers "Ask about this thread" in the ⋯ with AI on, and shows the Q&A above the conversation', async () => {
+		assist.aiEnabled.value = true;
+		const w = await mountAt({});
+		expect(w.find('[data-testid="ask-strip"]').exists()).toBe(false);
+		await w.get('[data-testid="answer-menu-ask"]').trigger('click');
+		const strip = w.getComponent(AiStripStub);
+		expect(strip.props()).toMatchObject({ messageId: 'msg_1', askOnly: true });
+		strip.vm.$emit('close');
+		await flushPromises();
+		expect(w.find('[data-testid="ask-strip"]').exists()).toBe(false);
+	});
+
+	it('has no "Ask about this thread" with AI off', async () => {
+		const w = await mountAt({});
+		expect(w.find('[data-testid="answer-menu-ask"]').exists()).toBe(false);
+	});
+
+	it('labels the message answered from the ⋯', async () => {
+		const w = await mountAt({});
+		await w.get('[data-testid="answer-menu-label"]').trigger('click');
+		expect(w.find('[data-testid="label-dialog"]').exists()).toBe(true);
+		w.getComponent(LabelDialogStub).vm.$emit('pick', 'lbl_billing');
+		await flushPromises();
+		expect(labelRun).toHaveBeenCalledWith({
+			messageId: 'msg_1',
+			labelId: 'lbl_billing',
+			add: true,
+		});
+		expect(w.find('[data-testid="label-dialog"]').exists()).toBe(false);
 	});
 
 	it('hands the composer the asks covered for its footer', async () => {

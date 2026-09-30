@@ -1,19 +1,23 @@
 <script setup lang="ts">
 /**
- * Answer mode's envelope, folded to one line: "To Jonas · From Ada · Re: …".
+ * Answer mode's envelope, folded to one line: "To Jonas Berg · From Ada · Re: …".
  * The whole line opens the full envelope (From/To/Cc/Bcc/Subject); so does
  * anything in it needing attention, which the composer decides. When a plain
  * reply leaves people off, "Reply all" sits on the line itself, so the switch
  * is never hidden behind the fold.
  */
-import { recipientLabel } from '~/utils/recipientHints';
+import { knownRecipientLabel } from '~/utils/recipientHints';
 
 const props = defineProps<{
 	toAddresses: string[];
 	ccAddresses: string[];
 	bccAddresses: string[];
-	/** The From identity as shown (label or address). */
+	/** The From address. */
 	from: string;
+	/** Send-as identities: From shows the matching one's label ("Ada"). */
+	identities?: readonly { address: string; label: string }[];
+	/** Names the thread knows, by canonical address ("Jonas Berg"). */
+	recipientNames?: Readonly<Record<string, string>>;
 	subject: string;
 	/** A plain reply that Reply-all would widen. */
 	canReplyAll: boolean;
@@ -23,8 +27,12 @@ const emit = defineEmits<{ expand: []; 'reply-all': [] }>();
 
 const { t } = useI18n();
 
-const names = (list: string[]) => list.map(recipientLabel).join(', ');
+const names = (list: string[]) =>
+	list.map((raw) => knownRecipientLabel(raw, props.recipientNames ?? {})).join(', ');
 const toLine = computed(() => names(props.toAddresses));
+const fromLabel = computed(
+	() => props.identities?.find((i) => i.address === props.from)?.label || props.from
+);
 const copyCount = computed(() => props.ccAddresses.length + props.bccAddresses.length);
 </script>
 
@@ -45,10 +53,10 @@ const copyCount = computed(() => props.ccAddresses.length + props.bccAddresses.l
 			<span v-if="copyCount > 0" class="ml-1 text-text-tertiary">{{
 				t('components.postbox.postboxComposerEnvelopeLine.copies', { count: copyCount })
 			}}</span>
-			<template v-if="from">
+			<template v-if="fromLabel">
 				<span class="mx-1.5 text-text-tertiary" aria-hidden="true">·</span>
 				<span class="text-text-secondary">{{
-					t('components.postbox.postboxComposerEnvelopeLine.from', { address: from })
+					t('components.postbox.postboxComposerEnvelopeLine.from', { address: fromLabel })
 				}}</span>
 			</template>
 			<template v-if="subject">

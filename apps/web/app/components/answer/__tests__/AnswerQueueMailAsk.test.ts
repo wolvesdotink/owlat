@@ -74,9 +74,9 @@ beforeEach(() => {
 	};
 });
 
-function mountAsk() {
+function mountAsk(props: Record<string, unknown> = {}) {
 	return mount(AnswerQueueMailAsk, {
-		props: { messageId: 'msg_1' },
+		props: { messageId: 'msg_1', ...props },
 		global: {
 			plugins: [createTestI18n()],
 			stubs: { AnswerFilePicker: true },
@@ -114,6 +114,21 @@ describe('AnswerQueueMailAsk', () => {
 		expect(w.get('[data-testid="answer-queue-ask-drafting"]').exists()).toBe(true);
 		clarification.value = { ...clarification.value, draft: 'Hi Jonas, here it is.' };
 		await flushPromises();
+		expect(w.emitted('use-draft')).toEqual([['Hi Jonas, here it is.']]);
+		expect(w.find('[data-testid="answer-queue-ask"]').exists()).toBe(false);
+	});
+
+	it('keeps what the person wrote meanwhile, and puts the draft in only when asked', async () => {
+		const w = mountAsk({ written: true });
+		clarification.value = { ...clarification.value, answeredAt: 2 };
+		await flushPromises();
+		clarification.value = { ...clarification.value, draft: 'Hi Jonas, here it is.' };
+		await flushPromises();
+		expect(w.emitted('use-draft')).toBeUndefined();
+		const ready = w.get('[data-testid="answer-queue-ask-ready"]');
+		expect(ready.text()).toContain('The AI draft is ready');
+
+		await ready.findAll('button')[0]!.trigger('click');
 		expect(w.emitted('use-draft')).toEqual([['Hi Jonas, here it is.']]);
 		expect(w.find('[data-testid="answer-queue-ask"]').exists()).toBe(false);
 	});

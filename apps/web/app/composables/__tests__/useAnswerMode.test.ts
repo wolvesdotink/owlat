@@ -69,6 +69,24 @@ describe('useAnswerModeNav', () => {
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox', { replace: true });
 	});
 
+	it('falls back to the Team inbox from a team thread opened by deep link or reload', () => {
+		currentRoute.value = { path: '/dashboard/answer/t/ct_1', fullPath: '/dashboard/answer/t/ct_1' };
+		const nav = useAnswerModeNav();
+		expect(nav.returnPath.value).toBe('/dashboard/inbox');
+		nav.leave();
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/inbox', { replace: true });
+	});
+
+	it('falls back to the Postbox inbox from a Postbox reply opened the same way', () => {
+		currentRoute.value = {
+			path: '/dashboard/answer/m/msg_1',
+			fullPath: '/dashboard/answer/m/msg_1',
+		};
+		const nav = useAnswerModeNav();
+		nav.leave();
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox', { replace: true });
+	});
+
 	it('keeps the original way back while moving between replies', () => {
 		const nav = useAnswerModeNav();
 		void nav.open('msg_1');

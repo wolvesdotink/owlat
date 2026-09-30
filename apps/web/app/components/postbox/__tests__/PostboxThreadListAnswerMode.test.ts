@@ -54,6 +54,7 @@ let focusResetKey: Ref<unknown> | undefined;
 type KeyboardOptions = {
 	resetKey: Ref<unknown>;
 	onAction: (key: string, item: { _id: string }) => void;
+	onActivate: (item: { _id: string }) => void;
 };
 let keyboard: KeyboardOptions | undefined;
 const focusedIndex = ref(-1);
@@ -214,6 +215,27 @@ describe('PostboxThreadList and Answer mode', () => {
 		mountList({ loading: false, messages: rows, activeMessageId: 'msg-2' });
 		act('Escape', 'msg-2');
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox', { replace: true });
+	});
+
+	it('builds the open and the Esc paths from the same folder segment in a custom folder', () => {
+		const w = mountList({
+			loading: false,
+			messages: rows,
+			folderRole: '',
+			folderId: 'fold_1',
+			activeMessageId: 'msg-2',
+		});
+		act('Escape', 'msg-2');
+		expect(navigateTo).toHaveBeenLastCalledWith('/dashboard/postbox/fold_1', { replace: true });
+		keyboard!.onActivate({ _id: 'msg-3' });
+		expect(navigateTo).toHaveBeenLastCalledWith('/dashboard/postbox/fold_1/msg-3');
+		expect(w.findComponent(PostboxThreadRow).props('folderRole')).toBe('fold_1');
+	});
+
+	it('leaves a label list alone on Esc (it has no folder route to go back to)', () => {
+		mountList({ loading: false, messages: rows, emptyContext: 'label', activeMessageId: 'msg-2' });
+		act('Escape', 'msg-2');
+		expect(navigateTo).not.toHaveBeenCalled();
 	});
 
 	it('does nothing on Esc when no conversation is open', () => {
