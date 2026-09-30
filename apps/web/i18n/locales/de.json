@@ -4893,6 +4893,13 @@
 				"message": "Ungespeicherte Änderungen von {time} wurden auf diesem Gerät gefunden.",
 				"restore": "Ungespeicherte Änderungen wiederherstellen"
 			},
+			"postboxComposerDraftNotice": {
+				"loadFailed": "Dieser Entwurf konnte nicht geladen werden. Er wurde nicht überschrieben; Änderungen, die Sie jetzt vornehmen, bleiben erhalten und werden übernommen, sobald er geladen ist.",
+				"loading": "Ihr gespeicherter Entwurf wird geladen … Senden ist möglich, sobald er da ist.",
+				"notSaved": "Ihre letzten Änderungen konnten nicht gespeichert werden. Alles, was Sie geschrieben haben, ist noch hier.",
+				"notSent": "Ihre letzten Änderungen konnten nicht gespeichert werden, deshalb wurde nichts gesendet. Alles, was Sie geschrieben haben, ist noch hier; versuchen Sie es erneut.",
+				"tryAgain": "Erneut versuchen"
+			},
 			"postboxPreviewAsSent": {
 				"ampNote": "+ AMP-Teil",
 				"ampNoteTitle": "Dieses Design nutzt einen interaktiven Block, daher geht neben dem HTML eine AMP-Alternative mit.",

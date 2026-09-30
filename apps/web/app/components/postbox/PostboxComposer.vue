@@ -71,6 +71,9 @@ const {
 	isSaving,
 	lastSavedAt,
 	draftMirror,
+	draftNotice,
+	bodyPending,
+	retryLoad,
 	isUploading,
 	canSend,
 	isScheduled,
@@ -166,6 +169,8 @@ const builderConfig = computed(() => ({
 }));
 
 function switchMode(target: ComposerMode) {
+	// The mode decides which body goes out; it waits for the saved one to load.
+	if (bodyPending.value) return;
 	composerMode.value = target;
 }
 
@@ -366,6 +371,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			@restore="draftMirror.restore"
 			@dismiss="draftMirror.dismiss"
 		/>
+		<PostboxComposerDraftNotice :notice="draftNotice" @retry="retryLoad" />
 
 		<!-- A scheduled draft is read-only until it is taken back; the banner owns
 		     both the "goes out at" line and the unschedule control. -->
@@ -376,8 +382,10 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 		/>
 
 		<div class="flex-1 overflow-hidden">
+			<!-- Withheld until a reopened draft's body loads (see usePostboxCompose). -->
+			<div v-if="bodyPending" class="h-full" aria-busy="true" />
 			<PostboxBasicEditor
-				v-if="composerMode === 'simple'"
+				v-else-if="composerMode === 'simple'"
 				ref="basicEditor"
 				v-model="bodyHtml"
 				:placeholder="t('components.postbox.postboxComposer.bodyPlaceholder')"

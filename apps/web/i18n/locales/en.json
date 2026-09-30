@@ -4893,6 +4893,13 @@
 				"message": "Unsaved changes from {time} were recovered from this device.",
 				"restore": "Restore unsaved changes"
 			},
+			"postboxComposerDraftNotice": {
+				"loadFailed": "This draft couldn't be loaded. Nothing has been saved over it; changes you make now are kept and added once it loads.",
+				"loading": "Loading your saved draft… Send is available once it has arrived.",
+				"notSaved": "Your latest changes couldn't be saved. Everything you wrote is still here.",
+				"notSent": "Your latest changes couldn't be saved, so nothing was sent. Everything you wrote is still here; try Send again.",
+				"tryAgain": "Try again"
+			},
 			"postboxPreviewAsSent": {
 				"ampNote": "+ AMP part",
 				"ampNoteTitle": "This design uses an interactive block, so an AMP alternative ships alongside the HTML.",
