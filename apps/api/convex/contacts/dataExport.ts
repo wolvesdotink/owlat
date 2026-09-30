@@ -237,6 +237,7 @@ export const readContactDataForExport = internalQuery({
  * {@link STORED_BODY_EXPORT_BUDGET_BYTES}. A part that could not be included says
  * why in `storedBodyAvailability`, and its row keeps the excerpt.
  */
+// authz: gate lives in internal.contacts.dataExport.readContactDataForExport (organization:manage, inherited identity).
 export const exportContactDataBundle = authedAction({
 	args: { contactId: v.id('contacts') },
 	handler: async (ctx, args): Promise<ContactDataExport> => {
