@@ -22,6 +22,7 @@ import {
 	createTestContactIdentity,
 	enableFeatures,
 } from '../../__tests__/factories';
+import { expectScheduledFailure } from '../../__tests__/helpers/scheduledFailures';
 
 const sessionMocks = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -472,6 +473,108 @@ describe('mail.needsReplyClarify.answerClarification — Answer mode', () => {
 			expect(await ctx.db.query('semanticFiles').collect()).toEqual([]);
 			const answer = (await ctx.db.get(threadId))!.needsReply!.clarification!.questions[0]!.answer;
 			expect(answer?.file).toEqual({ source: 'upload', id: storageId, filename: 'inv.pdf' });
+		});
+	});
+
+	describe('the answered file reaches the prepared reply', () => {
+		async function stagedUpload(t: ReturnType<typeof convexTest>) {
+			return await t.run(async (ctx) => {
+				const id = await ctx.storage.store(new Blob(['%PDF'], { type: 'application/pdf' }));
+				await ctx.db.insert('storageUploads', {
+					userId: 'user-A',
+					organizationId: 'org-1',
+					status: 'uploaded',
+					storageId: id,
+					expiresAt: Date.now() + 60_000,
+				});
+				return id;
+			});
+		}
+		async function replyDraftFor(t: ReturnType<typeof convexTest>, threadId: Id<'mailThreads'>) {
+			const thread = await t.run(async (ctx) => (await ctx.db.get(threadId))!);
+			const { draftId } = await t.mutation(api.mail.drafts.create, {
+				mailboxId: thread.mailboxId,
+				inReplyToMessageId: thread.latestMessageId!,
+			});
+			return draftId;
+		}
+
+		it("a member's upload stays unclaimed until the draft binds it", async () => {
+			const t = convexTest(schema, modules);
+			await enableFeatures(t, ['mail.external']);
+			const threadId = await seedThreadWithClarification(t, 'user-A', [fileQuestion]);
+			const storageId = await stagedUpload(t);
+			await t.mutation(api.mail.ai.needsReplyClarify.answerClarification, {
+				threadId,
+				answers: [
+					{
+						questionId: 'clarify_1',
+						file: { source: 'upload', id: storageId, filename: 'inv.pdf' },
+					},
+				],
+			});
+
+			const prepared = await t.query(api.mail.needsReplyPrepared.getPreparedDraft, { threadId });
+			expect(prepared?.files).toEqual([{ source: 'upload', id: storageId, filename: 'inv.pdf' }]);
+
+			const draftId = await replyDraftFor(t, threadId);
+			const file = prepared!.files[0]!;
+			await t.mutation(api.mail.drafts.addAttachment, {
+				draftId,
+				storageId: file.id as Id<'_storage'>,
+				filename: file.filename,
+				contentType: 'application/pdf',
+				size: 4,
+			});
+			const draft = await t.run(async (ctx) => (await ctx.db.get(draftId))!);
+			expect(draft.attachments.map((a) => a.storageId)).toEqual([storageId]);
+			// Bound now, so the prepared reply stops offering it.
+			const after = await t.query(api.mail.needsReplyPrepared.getPreparedDraft, { threadId });
+			expect(after?.files).toEqual([]);
+		});
+
+		it("an admin's upload is kept in Files and comes back as the Files row", async () => {
+			// The new Files row's processing pass runs in a module this suite leaves out.
+			expectScheduledFailure('semanticFileProcessing:processFile');
+			const t = convexTest(schema, modules);
+			await enableFeatures(t, ['mail.external']);
+			sessionMocks.role = 'owner';
+			const threadId = await seedThreadWithClarification(t, 'user-A', [fileQuestion]);
+			await t.run(async (ctx) => {
+				const contactId = await ctx.db.insert(
+					'contacts',
+					createTestContact({ email: 'ann@acme.com' })
+				);
+				await ctx.db.insert(
+					'contactIdentities',
+					createTestContactIdentity({ contactId, identifier: 'ann@acme.com' })
+				);
+			});
+			const storageId = await stagedUpload(t);
+			await t.mutation(api.mail.ai.needsReplyClarify.answerClarification, {
+				threadId,
+				answers: [
+					{
+						questionId: 'clarify_1',
+						file: { source: 'upload', id: storageId, filename: 'inv.pdf' },
+						mimeType: 'application/pdf',
+					},
+				],
+			});
+
+			const prepared = await t.query(api.mail.needsReplyPrepared.getPreparedDraft, { threadId });
+			const saved = await t.run(async (ctx) => await ctx.db.query('semanticFiles').unique());
+			expect(prepared?.files).toEqual([
+				{ source: 'semanticFile', id: saved!._id, filename: 'inv.pdf' },
+			]);
+
+			const draftId = await replyDraftFor(t, threadId);
+			const attachments = await t.action(api.mail.drafts.attachExisting, {
+				draftId,
+				source: 'semanticFile',
+				id: prepared!.files[0]!.id,
+			});
+			expect(attachments.map((a) => a.filename)).toEqual(['inv.pdf']);
 		});
 	});
 });
