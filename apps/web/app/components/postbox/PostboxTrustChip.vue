@@ -140,7 +140,6 @@ useEscapeToClose(open);
 			role="region"
 			:aria-label="t('components.postbox.postboxTrustChip.panelLabel')"
 			data-testid="trust-chip-panel"
-			@keydown.esc.prevent.stop="open = false"
 		>
 			<!-- Sender authentication (flag `senderAuthBadges`): renders nothing on a
 			     legacy row with no verdicts, which is the honest answer. -->

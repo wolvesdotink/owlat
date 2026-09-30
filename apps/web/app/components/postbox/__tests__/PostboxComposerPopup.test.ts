@@ -23,17 +23,19 @@ const ComposerStub = defineComponent({
 });
 
 const stackClose = vi.fn();
+const stackMinimize = vi.fn();
 const undoArm = vi.fn();
 const navigateTo = vi.fn();
 
 beforeEach(() => {
 	stackClose.mockClear();
+	stackMinimize.mockClear();
 	undoArm.mockClear();
 	navigateTo.mockClear();
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('usePostboxComposerStack', () => ({
 		close: stackClose,
-		minimize: vi.fn(),
+		minimize: stackMinimize,
 	}));
 	const state = new Map<string, ReturnType<typeof ref>>();
 	vi.stubGlobal('useState', (key: string, init: () => unknown) => {
@@ -87,6 +89,23 @@ describe('PostboxComposerPopup', () => {
 			attachPendingKey: 'pending-1',
 		});
 		expect(stub.props('replyAllRecipients')).toEqual(['bob@example.com']);
+	});
+
+	it('docks on Esc, but not on an Esc a popover inside already claimed', () => {
+		const root = mountPopup().get('[role="region"]').element;
+		const claimed = new KeyboardEvent('keydown', {
+			key: 'Escape',
+			bubbles: true,
+			cancelable: true,
+		});
+		claimed.preventDefault();
+		root.dispatchEvent(claimed);
+		expect(stackMinimize).not.toHaveBeenCalled();
+
+		root.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+		);
+		expect(stackMinimize).toHaveBeenCalledWith('cmp-1');
 	});
 
 	it('closes after a send without arming undo itself', () => {
