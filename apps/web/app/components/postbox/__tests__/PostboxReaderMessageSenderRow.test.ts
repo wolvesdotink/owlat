@@ -2,7 +2,7 @@
 /**
  * The message card's sender row at phone widths (plan §10): the trust chip ran
  * off the card's right edge at 390px, because the row never wrapped and the
- * chip never shrinks. happy-dom cannot lay out, so what is pinned is the
+ * chip never shrinks. The wrap is for phones only; desktop keeps one line. happy-dom cannot lay out, so what is pinned is the
  * structure the fix relies on: a wrapping row, a sender that may shrink and
  * break its long address, and the chip's group pushed right on whatever line
  * it lands on (its popover opens leftwards from there, inside the card).
@@ -84,11 +84,17 @@ function mountCard(reduced: boolean) {
 }
 
 describe('PostboxReaderMessage sender row', () => {
-	it('wraps, so the trust chip takes a line of its own when the sender is long', () => {
+	it('wraps on a phone, so the trust chip takes a line of its own when the sender is long', () => {
 		for (const reduced of [false, true]) {
 			const row = mountCard(reduced).get('[data-testid="reader-message-sender-row"]');
-			expect(row.classes()).toEqual(expect.arrayContaining(['flex', 'flex-wrap']));
+			expect(row.classes()).toEqual(expect.arrayContaining(['flex', 'max-sm:flex-wrap']));
 		}
+	});
+
+	it('stays one line from sm up, as the desktop reader always was', () => {
+		const row = mountCard(false).get('[data-testid="reader-message-sender-row"]');
+		// An unconditional wrap made every expanded header a line taller at 1440px.
+		expect(row.classes()).not.toContain('flex-wrap');
 	});
 
 	it('lets the sender shrink and break its address instead of pushing the chip out', () => {

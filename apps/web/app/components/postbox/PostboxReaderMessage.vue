@@ -182,12 +182,13 @@ const renderToggleLabel = computed(() =>
 				aria-hidden="true"
 			/>
 			<div class="flex-1 min-w-0">
-				<!-- Wraps: on a phone the sender and the trust chip do not fit one
-				     line, and the chip (never shrinking) ran off the card's edge.
-				     The chip's group keeps to the right on the line it wraps to, so
-				     its popover (anchored right) opens inside the card. -->
+				<!-- Wraps on a phone only: there the sender and the trust chip do not
+				     fit one line, and the chip (never shrinking) ran off the card's
+				     edge. The chip's group keeps to the right on the line it wraps
+				     to, so its popover (anchored right) opens inside the card. From
+				     `sm` up the row stays one line and the sender shrinks instead. -->
 				<div
-					class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1"
+					class="flex items-baseline justify-between gap-x-3 gap-y-1 max-sm:flex-wrap"
 					data-testid="reader-message-sender-row"
 				>
 					<!-- Plan idea 45: the sender line was a text label. It now opens
