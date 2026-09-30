@@ -20,6 +20,8 @@ import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
+import type * as LlmProvider from '../lib/llmProvider';
+import type * as LlmDispatch from '../lib/llm/dispatch';
 import { rebuildThreadAggregates } from '../mail/threadAggregates';
 
 const session = vi.hoisted(() => ({
@@ -39,12 +41,12 @@ vi.mock('../lib/sessionOrganization', async () => {
 });
 
 vi.mock('../lib/llmProvider', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
+	const actual = await vi.importActual<typeof LlmProvider>('../lib/llmProvider');
 	return { ...actual, resolveLanguageModel: vi.fn(() => 'test-model') };
 });
 
 vi.mock('../lib/llm/dispatch', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llm/dispatch')>('../lib/llm/dispatch');
+	const actual = await vi.importActual<typeof LlmDispatch>('../lib/llm/dispatch');
 	return { ...actual, runLlmObject: runLlmObjectMock };
 });
 

@@ -55,7 +55,7 @@ async function teamCatchUpEntries(messages: Doc<'inboundMessages'>[]): Promise<{
 	const cap = THREAD_SUMMARY.perMessageChars;
 	const bodies = await Promise.all(messages.map(inboundPlainText));
 	const entries: CatchUpEntry[] = [];
-	messages.forEach((message, index) => {
+	for (const [index, message] of messages.entries()) {
 		entries.push({
 			label: `m${index + 1}`,
 			messageId: message._id,
@@ -72,7 +72,7 @@ async function teamCatchUpEntries(messages: Doc<'inboundMessages'>[]): Promise<{
 				text: `From: the team — the mailbox owner (you)\n${message.draftResponse.slice(0, cap)}`,
 			});
 		}
-	});
+	}
 	return { entries, newestInboundChars: (bodies[bodies.length - 1] ?? '').length };
 }
 
