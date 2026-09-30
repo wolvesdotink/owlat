@@ -15,6 +15,12 @@
  *
  * Plus the footer's status line: gaps left, else the host's note ("2 of 3
  * asks covered"), else the save state.
+ *
+ * `[[...]]` gaps hold Send back only when the AI wrote them: an AI draft went
+ * into this composer, or the host says the draft has an ask session (a resumed
+ * draft, whose AI text arrived before this composer mounted; the server refuses
+ * that send too). Anywhere else double brackets are the person's own text (a
+ * wiki link, a template token), and the preflight chip names them as advice.
  */
 import { computed, ref, type Ref } from 'vue';
 import { api } from '@owlat/api';
@@ -53,6 +59,8 @@ export function usePostboxComposerAnswerApi(opts: {
 	isSaving: Ref<boolean>;
 	lastSavedAt: Ref<number | null>;
 	gapCount: Readonly<Ref<number>>;
+	/** The host knows of an ask session on this draft (see the header). */
+	askSession?: () => boolean;
 	/** The host's line for the save-state spot (Answer mode: asks covered). */
 	statusNote: () => string | undefined;
 }) {
@@ -113,8 +121,12 @@ export function usePostboxComposerAnswerApi(opts: {
 		focusBody: () => opts.focusBody(),
 	};
 
+	const gapsHoldSend = computed(
+		() => opts.gapCount.value > 0 && (aiDraft.value !== null || !!opts.askSession?.())
+	);
+
 	const footerStatus = computed(() => {
-		if (opts.gapCount.value > 0) {
+		if (gapsHoldSend.value) {
 			return t(
 				'components.postbox.postboxComposerFooter.gapsLeft',
 				{ count: opts.gapCount.value },
@@ -130,5 +142,5 @@ export function usePostboxComposerAnswerApi(opts: {
 		});
 	});
 
-	return { answerApi, footerStatus };
+	return { answerApi, footerStatus, gapsHoldSend };
 }

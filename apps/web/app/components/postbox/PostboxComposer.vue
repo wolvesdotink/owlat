@@ -31,6 +31,8 @@ const props = defineProps<{
 	frame?: 'popup' | 'answer';
 	/** Answer mode's line for the footer's save-state spot ("2 of 3 asks covered"). */
 	statusNote?: string;
+	/** The draft has an Answer mode ask session: its `[[...]]` gaps hold Send. */
+	askSession?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -232,8 +234,7 @@ const { rootEl, dragActive, onDragOver, onDragLeave, onDrop, onPaste } =
 
 // An AI draft's `[[...]]` gaps hold Send back until they are filled.
 const { gapCount } = usePostboxComposerGaps({ rootEl, bodyHtml });
-const sendable = computed(() => canSend.value && gapCount.value === 0);
-const { answerApi, footerStatus } = usePostboxComposerAnswerApi({
+const { answerApi, footerStatus, gapsHoldSend } = usePostboxComposerAnswerApi({
 	bodyHtml,
 	attachments,
 	followUpRemindAt,
@@ -243,8 +244,10 @@ const { answerApi, footerStatus } = usePostboxComposerAnswerApi({
 	isSaving,
 	lastSavedAt,
 	gapCount,
+	askSession: () => props.askSession === true,
 	statusNote: () => props.statusNote,
 });
+const sendable = computed(() => canSend.value && !gapsHoldSend.value);
 
 defineExpose({
 	focusBody,
@@ -489,11 +492,3 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 		/>
 	</div>
 </template>
-
-<style scoped>
-/* Answer mode keeps the quoted original in the body (the draft and the sent
-   message are unchanged) and only folds it out of sight in the editor. */
-.pbx-quote-folded :deep(.postbox-basic-editor .gmail_quote) {
-	display: none;
-}
-</style>

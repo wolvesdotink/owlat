@@ -41,12 +41,17 @@ function setup(body = `<p>my notes</p>${QUOTE}`) {
 		lastSavedAt: ref<number | null>(null),
 		gapCount: ref(0),
 		note: ref<string | undefined>(undefined),
+		askSession: ref(false),
 	};
 	let result!: ReturnType<typeof usePostboxComposerAnswerApi>;
 	mount(
 		defineComponent({
 			setup() {
-				result = usePostboxComposerAnswerApi({ ...state, statusNote: () => state.note.value });
+				result = usePostboxComposerAnswerApi({
+					...state,
+					askSession: () => state.askSession.value,
+					statusNote: () => state.note.value,
+				});
 				return () => h('div');
 			},
 		}),
@@ -94,14 +99,31 @@ describe('usePostboxComposerAnswerApi', () => {
 	});
 
 	it('puts gaps first in the footer, then the host note, then the save state', () => {
-		const { footerStatus, state } = setup();
+		const { footerStatus, state, gapsHoldSend } = setup();
 		state.lastSavedAt.value = Date.UTC(2026, 8, 30, 9, 31);
 		expect(footerStatus.value).toMatch(/^Saved/);
 		state.note.value = '2 of 3 asks covered';
 		expect(footerStatus.value).toBe('2 of 3 asks covered');
+		state.askSession.value = true;
 		state.gapCount.value = 1;
+		expect(gapsHoldSend.value).toBe(true);
 		expect(footerStatus.value).toBe('1 gap left');
 		state.gapCount.value = 3;
 		expect(footerStatus.value).toBe('3 gaps left');
+	});
+
+	it('holds Send on gaps only when the AI wrote into this draft', async () => {
+		const { answerApi, gapsHoldSend, footerStatus, state } = setup();
+		state.note.value = '2 of 3 asks covered';
+		state.gapCount.value = 1;
+		// Brackets the person typed (a wiki link): advice, not a block.
+		expect(gapsHoldSend.value).toBe(false);
+		expect(footerStatus.value).toBe('2 of 3 asks covered');
+
+		await answerApi.applyAiDraft('Attached. [[the PO number]]');
+		expect(gapsHoldSend.value).toBe(true);
+
+		answerApi.discardAiDraft();
+		expect(gapsHoldSend.value).toBe(false);
 	});
 });

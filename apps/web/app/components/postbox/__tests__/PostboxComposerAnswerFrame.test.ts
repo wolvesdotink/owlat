@@ -27,6 +27,8 @@ const QUOTED =
 	'<blockquote class="gmail_quote">Could you send the invoice?</blockquote></div>';
 
 let compose: ReturnType<typeof makeCompose>;
+/** The gate Cmd/Ctrl+Enter reads, as the composer handed it to its key handler. */
+let keysCanSend: { value: boolean };
 const flush = vi.fn(async () => ({ ok: true as const, result: 'draft_1' }));
 
 function makeCompose() {
@@ -121,11 +123,14 @@ beforeEach(() => {
 			onDrop: vi.fn(),
 			onPaste: vi.fn(),
 		}),
-		usePostboxComposerKeys: () => ({
-			sendShortcutHint: ref('Send (Ctrl+Enter)'),
-			scheduleShortcutHint: ref('Schedule send (Ctrl+Shift+Enter)'),
-			onComposerKeydown: vi.fn(),
-		}),
+		usePostboxComposerKeys: (opts: { canSend: { value: boolean } }) => {
+			keysCanSend = opts.canSend;
+			return {
+				sendShortcutHint: ref('Send (Ctrl+Enter)'),
+				scheduleShortcutHint: ref('Schedule send (Ctrl+Shift+Enter)'),
+				onComposerKeydown: vi.fn(),
+			};
+		},
 		useNativeFilePicker: () => ({ isDesktop: ref(false), pickNativeFiles: vi.fn() }),
 		useInboxes: () => ({ byId: ref(new Map()) }),
 		useBackendOperation: () => ({ run: vi.fn(async () => ({ ok: true })), isLoading: ref(false) }),
@@ -288,15 +293,41 @@ describe('PostboxComposer frame="answer"', () => {
 		expect(sendButton().attributes('disabled')).toBeUndefined();
 		expect(w.get('[data-testid="composer-save-state"]').text()).toBe('1 of 2 asks covered');
 
-		compose.bodyHtml.value = `<p>Attached. [[the PO number]]</p>${QUOTED}`;
+		const vm = w.vm as unknown as { answer: { applyAiDraft: (t: string) => Promise<void> } };
+		await vm.answer.applyAiDraft('Attached. [[the PO number]]');
 		await nextTick();
 		expect(sendButton().attributes('disabled')).toBeDefined();
+		expect(keysCanSend.value).toBe(false);
 		expect(w.get('[data-testid="composer-save-state"]').text()).toBe('1 gap left');
 
 		// A gap inside the quoted original is not this draft's.
 		compose.bodyHtml.value = `<p>Attached.</p>${QUOTED.replace('the invoice', '[[x]]')}`;
 		await nextTick();
 		expect(sendButton().attributes('disabled')).toBeUndefined();
+		expect(keysCanSend.value).toBe(true);
+		w.unmount();
+	});
+
+	it('leaves double brackets the person typed to the advisory chip: Send and Cmd+Enter stay live', async () => {
+		const w = mountComposer({ frame: 'answer', statusNote: '1 of 2 asks covered' });
+		const sendButton = () => w.findAll('button').find((b) => b.text() === 'Send')!;
+
+		compose.bodyHtml.value = `<p>See [[Onboarding checklist]] in the wiki.</p>${QUOTED}`;
+		await nextTick();
+
+		expect(sendButton().attributes('disabled')).toBeUndefined();
+		expect(keysCanSend.value).toBe(true);
+		expect(w.get('[data-testid="composer-save-state"]').text()).toBe('1 of 2 asks covered');
+		w.unmount();
+	});
+
+	it('holds Send on a resumed draft whose ask session the host reports', async () => {
+		const w = mountComposer({ frame: 'answer', askSession: true });
+		compose.bodyHtml.value = `<p>Attached. [[the PO number]]</p>${QUOTED}`;
+		await nextTick();
+
+		expect(keysCanSend.value).toBe(false);
+		expect(w.get('[data-testid="composer-save-state"]').text()).toBe('1 gap left');
 		w.unmount();
 	});
 

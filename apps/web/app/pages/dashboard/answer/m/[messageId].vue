@@ -356,6 +356,7 @@ onBeforeUnmount(() => {
 					:seed="seed"
 					:reply-all-recipients="seed.replyAllRecipients"
 					:status-note="assist.statusNote.value"
+					:ask-session="!!ask.session.value"
 					@draft-id="onDraftId"
 					@sent="onSent"
 					@discarded="onDiscarded"
