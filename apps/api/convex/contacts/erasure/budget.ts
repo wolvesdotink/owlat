@@ -24,7 +24,7 @@ import { getConvexSize, type Value } from 'convex/values';
 export const ERASURE_READ_CHUNK = 32;
 
 /** Convex's per-document size limit: the most one row can cost to read. */
-export const MAX_DOCUMENT_BYTES = 1024 * 1024;
+const MAX_DOCUMENT_BYTES = 1024 * 1024;
 
 /**
  * Charged per document on top of its encoded value size, for the index entry
