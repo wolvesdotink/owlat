@@ -52,12 +52,14 @@ const isError = computed(() => props.notice !== null && props.notice !== 'loadin
 				isError ? 'text-error' : 'text-text-secondary animate-spin motion-reduce:animate-none'
 			"
 		/>
-		<span class="text-text-secondary">
+		<!-- One row: the sentence wraps inside its own column, and only when that
+		     column would drop under 12rem does the action move to a line below. -->
+		<span class="min-w-0 flex-1 basis-48 text-text-secondary">
 			{{ t(COPY_KEYS[notice]) }}
 		</span>
 		<UiButton
 			v-if="notice === 'load_failed'"
-			class="ml-auto"
+			class="ml-auto -my-1 flex-shrink-0"
 			size="sm"
 			variant="ghost"
 			type="button"
