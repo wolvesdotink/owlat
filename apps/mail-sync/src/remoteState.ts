@@ -3,13 +3,19 @@
  * Owlat already has, and reporting it (`apps/api/convex/mail/external/remoteState.ts`
  * applies it).
  *
- * Every synced folder keeps a view in memory — UID → Message-ID + flags. Each
- * cycle refreshes it cheaply: `UID SEARCH ALL` shows which UIDs left and which
- * arrived (only the arrivals' Message-ID headers are fetched), and flags come
- * from `CHANGEDSINCE` where the server has CONDSTORE, else from the newest
- * messages. Joining the views gives, per Message-ID, the folders holding it
- * now; a local message whose folder is not among them has moved, and one that
- * left its folder and is nowhere was deleted.
+ * Every synced folder keeps a view in memory (folderView.ts) — UID →
+ * Message-ID + flags. Each cycle refreshes it cheaply: `UID SEARCH UID n:*`
+ * above the highest UID it knows finds what arrived (only the arrivals'
+ * Message-ID headers are fetched), and flags come from `CHANGEDSINCE` where the
+ * server has CONDSTORE, else from the newest messages. What LEFT a folder needs
+ * a census — `UID SEARCH ALL` compared with the view — which runs only when
+ * something says it may have: the folder's message count no longer matches the
+ * view (UIDs only grow, so with every arrival accounted for, an equal count
+ * means nothing left), a known expunge, a reconnect, a UIDVALIDITY reset, a
+ * full reconcile, and at the latest every CENSUS_INTERVAL_MS as a safety net.
+ * Asking the views, per Message-ID, which folders hold it now (each view
+ * indexes its Message-IDs) tells a move — the local folder is not among them —
+ * from a deletion: it left its folder and is nowhere.
  *
  * Normally only the Message-IDs that changed are looked up in Owlat. A FULL
  * reconcile compares every local message instead: after a restart (the views
@@ -22,13 +28,36 @@
  * reported, and its flag changes are read with CHANGEDSINCE.
  */
 
+import {
+	chunks,
+	findInFolder,
+	readChangedFlags,
+	refreshFolder,
+	sameFlags,
+	CENSUS_INTERVAL_MS,
+	type ModseqCursor,
+	type RemoteStateClient,
+} from './folderRefresh.js';
+import { FolderView, type FlagState } from './folderView.js';
 import type { FolderRole } from './folders.js';
 
-export interface FlagState {
-	seen: boolean;
-	flagged: boolean;
-	answered: boolean;
-}
+export {
+	canonicalMessageId,
+	parseMessageIdHeader,
+	refreshFolder,
+	CENSUS_INTERVAL_MS,
+	type ModseqCursor,
+	type RefreshResult,
+	type RemoteStateClient,
+} from './folderRefresh.js';
+export { FolderView, type FlagState };
+
+/** All Mail look-ups per cycle; the rest wait for the next one. */
+const MAX_CONFIRMS_PER_CYCLE = 500;
+/** Local messages per page of a full reconcile. */
+export const LOCAL_PAGE = 500;
+const LOOKUP_CHUNK = 200;
+const APPLY_CHUNK = 100;
 
 /** One local message as `listLocalMessages` / `lookupLocalMessages` return it. */
 export interface LocalMessageRow {
@@ -47,271 +76,26 @@ export interface RemoteObservation {
 	flags?: FlagState;
 }
 
-interface CachedMessage {
-	messageId: string | null;
-	flags: FlagState;
-}
-
-type Mailbox = false | { uidValidity: bigint | number; highestModseq?: bigint | number };
-
-interface FetchedMessage {
-	uid: number;
-	flags?: Set<string>;
-	headers?: Buffer;
-	modseq?: bigint;
-}
-
-/** The slice of ImapFlow the views use, narrowed so tests can fake it. */
-export interface RemoteStateClient {
-	readonly mailbox: Mailbox;
-	getMailboxLock(path: string): Promise<{ release(): void }>;
-	search(query: object, options: { uid: true }): Promise<number[] | false | undefined>;
-	fetch(
-		range: string,
-		query: { uid: true; flags: true; headers?: string[] },
-		options: { uid: true; changedSince?: bigint }
-	): AsyncIterable<FetchedMessage>;
-}
-
-/** UIDs per header / flag fetch. */
-const FETCH_CHUNK = 200;
-/** Without CONDSTORE, flags are re-read for this many of the newest messages. */
-const FLAG_WINDOW = 500;
-/** Message-IDs per OR-search when looking for vanished mail in All Mail. */
-const CONFIRM_CHUNK = 20;
-/** All Mail look-ups per cycle; the rest wait for the next one. */
-const MAX_CONFIRMS_PER_CYCLE = 500;
-/** Local messages per page of a full reconcile. */
-export const LOCAL_PAGE = 500;
-const LOOKUP_CHUNK = 200;
-const APPLY_CHUNK = 100;
-
-const UID = { uid: true } as const;
-
-/** A synced folder's last known contents. */
-export class FolderView {
-	uidValidity: bigint | null = null;
-	highestModseq: bigint | null = null;
-	readonly messages = new Map<number, CachedMessage>();
-}
-
-/** All Mail's flag cursor: only CHANGEDSINCE is read there. */
-export interface ModseqCursor {
-	uidValidity: bigint | null;
-	highestModseq: bigint | null;
-}
-
-export function canonicalMessageId(raw: string): string {
-	return raw.replace(/[<>]/g, '').trim();
-}
-
-/** The Message-ID out of a `BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)]` answer. */
-export function parseMessageIdHeader(headers: Buffer | undefined): string | null {
-	if (!headers) return null;
-	const unfolded = headers.toString('utf8').replace(/\r?\n[ \t]+/g, ' ');
-	const match = /^message-id:\s*(.+)$/im.exec(unfolded);
-	const id = match?.[1] ? canonicalMessageId(match[1]) : '';
-	return id || null;
-}
-
-function toFlagState(flags: Set<string> | undefined): FlagState {
-	return {
-		seen: flags?.has('\\Seen') ?? false,
-		flagged: flags?.has('\\Flagged') ?? false,
-		answered: flags?.has('\\Answered') ?? false,
-	};
-}
-
-function sameFlags(a: FlagState, b: FlagState): boolean {
-	return a.seen === b.seen && a.flagged === b.flagged && a.answered === b.answered;
-}
-
-function chunks<T>(items: ReadonlyArray<T>, size: number): T[][] {
-	const out: T[][] = [];
-	for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-	return out;
-}
-
-function asBigInt(value: bigint | number | undefined): bigint | null {
-	return value === undefined ? null : BigInt(value);
-}
-
-export interface RefreshResult {
-	/** Message-IDs that arrived, left or changed flags since the last refresh. */
-	changed: Set<string>;
-	/** Message-IDs that left this folder. */
-	vanished: Set<string>;
-	/** The view was (re)built from scratch, so nothing is known to have changed. */
-	rebuilt: boolean;
-}
-
-/** Bring one folder's view up to date. */
-export async function refreshFolder(
-	client: RemoteStateClient,
-	path: string,
-	view: FolderView
-): Promise<RefreshResult> {
-	const result: RefreshResult = { changed: new Set(), vanished: new Set(), rebuilt: false };
-	const lock = await client.getMailboxLock(path);
-	try {
-		const mailbox = client.mailbox;
-		if (!mailbox) return result;
-		const uidValidity = BigInt(mailbox.uidValidity);
-		if (view.uidValidity !== uidValidity) {
-			view.messages.clear();
-			view.highestModseq = null;
-			view.uidValidity = uidValidity;
-			result.rebuilt = true;
-		}
-
-		const present = new Set((await client.search({ all: true }, UID)) || []);
-		for (const [uid, cached] of view.messages) {
-			if (present.has(uid)) continue;
-			view.messages.delete(uid);
-			if (cached.messageId) {
-				result.vanished.add(cached.messageId);
-				result.changed.add(cached.messageId);
-			}
-		}
-
-		const arrived = [...present].filter((uid) => !view.messages.has(uid));
-		for (const chunk of chunks(arrived, FETCH_CHUNK)) {
-			for await (const msg of client.fetch(
-				chunk.join(','),
-				{ uid: true, flags: true, headers: ['message-id'] },
-				UID
-			)) {
-				const messageId = parseMessageIdHeader(msg.headers);
-				view.messages.set(Number(msg.uid), { messageId, flags: toFlagState(msg.flags) });
-				if (messageId && !result.rebuilt) result.changed.add(messageId);
-			}
-		}
-
-		// Asked even when the mailbox's HIGHESTMODSEQ looks unchanged: for the
-		// folder kept selected for IDLE (INBOX) that value is only as fresh as the
-		// last SELECT, and an empty CHANGEDSINCE answer costs one round trip.
-		let modseq = asBigInt(mailbox.highestModseq);
-		if (!result.rebuilt) {
-			if (modseq !== null && view.highestModseq !== null) {
-				const seen = await readFlags(client, '1:*', view, result, view.highestModseq);
-				if (seen > modseq) modseq = seen;
-			} else if (modseq === null) {
-				const newest = [...view.messages.keys()].sort((a, b) => b - a).slice(0, FLAG_WINDOW);
-				for (const chunk of chunks(newest, FETCH_CHUNK)) {
-					await readFlags(client, chunk.join(','), view, result);
-				}
-			}
-		}
-		view.highestModseq = modseq;
-		return result;
-	} finally {
-		lock.release();
-	}
-}
-
-async function readFlags(
-	client: RemoteStateClient,
-	range: string,
-	view: FolderView,
-	result: RefreshResult,
-	changedSince?: bigint
-): Promise<bigint> {
-	const options = changedSince === undefined ? UID : { uid: true as const, changedSince };
-	let highest = changedSince ?? 0n;
-	for await (const msg of client.fetch(range, { uid: true, flags: true }, options)) {
-		if (msg.modseq !== undefined && msg.modseq > highest) highest = msg.modseq;
-		const cached = view.messages.get(Number(msg.uid));
-		if (!cached) continue;
-		const flags = toFlagState(msg.flags);
-		if (sameFlags(flags, cached.flags)) continue;
-		cached.flags = flags;
-		if (cached.messageId) result.changed.add(cached.messageId);
-	}
-	return highest;
+/** Per Message-ID, the tracked folders holding it (with their flags). */
+export interface RemoteIndex {
+	get(messageId: string): ReadonlyArray<{ remoteName: string; flags: FlagState }> | undefined;
 }
 
 /**
- * Flag changes in an untracked folder (All Mail) since the last call, by
- * CHANGEDSINCE. Empty on the first call, which only records the cursor, and on
- * a server without CONDSTORE.
+ * The views as a RemoteIndex, answered per question from each view's own
+ * Message-ID index — nothing account-wide is rebuilt per reconcile.
  */
-export async function readChangedFlags(
-	client: RemoteStateClient,
-	path: string,
-	cursor: ModseqCursor
-): Promise<Map<string, FlagState>> {
-	const changed = new Map<string, FlagState>();
-	const lock = await client.getMailboxLock(path);
-	try {
-		const mailbox = client.mailbox;
-		if (!mailbox) return changed;
-		const uidValidity = BigInt(mailbox.uidValidity);
-		const modseq = asBigInt(mailbox.highestModseq);
-		const since = cursor.uidValidity === uidValidity ? cursor.highestModseq : null;
-		if (since !== null && modseq !== null && modseq !== since) {
-			for await (const msg of client.fetch(
-				'1:*',
-				{ uid: true, flags: true, headers: ['message-id'] },
-				{ uid: true, changedSince: since }
-			)) {
-				const id = parseMessageIdHeader(msg.headers);
-				if (id) changed.set(id, toFlagState(msg.flags));
-			}
-		}
-		cursor.uidValidity = uidValidity;
-		cursor.highestModseq = modseq;
-		return changed;
-	} finally {
-		lock.release();
-	}
-}
-
-/** Which of `ids` All Mail holds — the check before calling a message moved or deleted. */
-export async function findInFolder(
-	client: RemoteStateClient,
-	path: string,
-	ids: ReadonlyArray<string>
-): Promise<Set<string>> {
-	const found = new Set<string>();
-	if (ids.length === 0) return found;
-	const lock = await client.getMailboxLock(path);
-	try {
-		for (const chunk of chunks(ids, CONFIRM_CHUNK)) {
-			const terms = chunk.map((id) => ({ header: { 'message-id': id } }));
-			const hits = await client.search(terms.length === 1 ? terms[0]! : { or: terms }, UID);
-			if (!hits || hits.length === 0) continue;
-			const wanted = new Set(chunk);
-			for (const part of chunks(hits, FETCH_CHUNK)) {
-				for await (const msg of client.fetch(
-					part.join(','),
-					{ uid: true, flags: true, headers: ['message-id'] },
-					UID
-				)) {
-					const id = parseMessageIdHeader(msg.headers);
-					if (id && wanted.has(id)) found.add(id);
-				}
-			}
-		}
-		return found;
-	} finally {
-		lock.release();
-	}
-}
-
-/** Per Message-ID, the tracked folders holding it (with their flags). */
-export type RemoteIndex = Map<string, Array<{ remoteName: string; flags: FlagState }>>;
-
 export function indexViews(views: ReadonlyMap<string, FolderView>): RemoteIndex {
-	const index: RemoteIndex = new Map();
-	for (const [remoteName, view] of views) {
-		for (const cached of view.messages.values()) {
-			if (!cached.messageId) continue;
-			const entry = index.get(cached.messageId) ?? [];
-			entry.push({ remoteName, flags: cached.flags });
-			index.set(cached.messageId, entry);
-		}
-	}
-	return index;
+	return {
+		get(messageId) {
+			const held: Array<{ remoteName: string; flags: FlagState }> = [];
+			for (const [remoteName, view] of views) {
+				const flags = view.flagsOf(messageId);
+				if (flags) held.push({ remoteName, flags });
+			}
+			return held.length > 0 ? held : undefined;
+		},
+	};
 }
 
 export interface DecideInput {
@@ -365,6 +149,24 @@ export function decide(rows: ReadonlyArray<LocalMessageRow>, input: DecideInput)
 	return { observations: [...observations.values()], unplaced };
 }
 
+/**
+ * What a reconcile noticed on the provider but has not settled locally yet.
+ * The views have already moved on, so a pass cut short (lost connection,
+ * shutdown) hands this to the next one instead of forgetting that a message
+ * left a folder or that a view was rebuilt.
+ */
+export interface PendingChanges {
+	changed: Set<string>;
+	vanished: Set<string>;
+	/** Flag changes read from the untracked folders (All Mail), whose cursor has moved on. */
+	untrackedFlags: Map<string, FlagState>;
+	rebuilt: boolean;
+}
+
+export function noPendingChanges(): PendingChanges {
+	return { changed: new Set(), vanished: new Set(), untrackedFlags: new Map(), rebuilt: false };
+}
+
 export interface ReconcileDeps {
 	client: RemoteStateClient;
 	/** Tracked folders, best first. */
@@ -376,6 +178,10 @@ export interface ReconcileDeps {
 	isAligned: boolean;
 	/** Compare every local message, not only the changed ones. */
 	forceFull: boolean;
+	/** Clock for the census cadence (CENSUS_INTERVAL_MS); defaults to Date.now. */
+	now?: () => number;
+	/** Carried across passes; a pass that completes empties it. */
+	pending?: PendingChanges;
 	listLocal(cursor: string | null): Promise<{
 		page: LocalMessageRow[];
 		isDone: boolean;
@@ -394,33 +200,38 @@ export interface ReconcileDeps {
 export async function reconcile(
 	deps: ReconcileDeps
 ): Promise<{ full: boolean; completed: boolean }> {
-	const changed = new Set<string>();
-	const vanished = new Set<string>();
-	let rebuilt = false;
+	const pending = deps.pending ?? noPendingChanges();
+	const { changed, vanished, untrackedFlags } = pending;
 	// A folder the provider no longer lists was renamed or deleted there: what it
 	// held has left it, and is looked for wherever it went (or reported gone).
 	for (const [name, view] of deps.views) {
 		if (deps.tracked.includes(name)) continue;
 		deps.views.delete(name);
-		for (const cached of view.messages.values()) {
+		for (const cached of view.messages()) {
 			if (!cached.messageId) continue;
 			vanished.add(cached.messageId);
 			changed.add(cached.messageId);
 		}
 	}
+	const now = (deps.now ?? Date.now)();
 	for (const name of deps.tracked) {
 		if (deps.isStopped()) return { full: false, completed: false };
 		const view = deps.views.get(name) ?? new FolderView();
 		deps.views.set(name, view);
-		const result = await refreshFolder(deps.client, name, view);
+		const census =
+			deps.forceFull || !deps.isAligned || now - view.lastCensusAt >= CENSUS_INTERVAL_MS;
+		const result = await refreshFolder(deps.client, name, view, { census, now });
 		for (const id of result.changed) changed.add(id);
 		for (const id of result.vanished) vanished.add(id);
-		rebuilt ||= result.rebuilt;
+		pending.rebuilt ||= result.rebuilt;
 	}
-	const untrackedFlags = deps.allMail
-		? await readChangedFlags(deps.client, deps.allMail, deps.allMailCursor)
-		: new Map<string, FlagState>();
-	for (const id of untrackedFlags.keys()) changed.add(id);
+	if (deps.allMail) {
+		const read = await readChangedFlags(deps.client, deps.allMail, deps.allMailCursor);
+		for (const [id, flags] of read) {
+			untrackedFlags.set(id, flags);
+			changed.add(id);
+		}
+	}
 
 	const input: DecideInput = {
 		index: indexViews(deps.views),
@@ -451,7 +262,7 @@ export async function reconcile(
 		for (const chunk of chunks(observations, APPLY_CHUNK)) await deps.apply(chunk);
 	};
 
-	const full = deps.forceFull || rebuilt || !deps.isAligned;
+	const full = deps.forceFull || pending.rebuilt || !deps.isAligned;
 	if (full) {
 		let cursor: string | null = null;
 		for (;;) {
@@ -468,5 +279,9 @@ export async function reconcile(
 			await settle(await deps.lookupLocal(ids));
 		}
 	}
+	changed.clear();
+	vanished.clear();
+	untrackedFlags.clear();
+	pending.rebuilt = false;
 	return { full, completed: true };
 }
