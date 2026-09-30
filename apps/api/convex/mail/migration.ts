@@ -369,11 +369,9 @@ export const cancel = externalMailMutation({
 // authz: self — operates only on the caller's own connected external mailbox (by_user on the session userId)
 export const learnFromImport = externalMailMutation({
 	args: {},
-	handler: async (ctx) => {
-		const s = await getBetterAuthSessionWithRole(ctx);
-		if (!s || !s.role) throwForbidden('Not authenticated');
+	handler: async (ctx, _args, session) => {
 		// The caller's LIVE PERSONAL account only, exactly like `start`/`cancel`.
-		const account = await getLivePersonalExternalAccountForUser(ctx, s.userId);
+		const account = await getLivePersonalExternalAccountForUser(ctx, session.userId);
 		if (!account) throwInvalidInput('Connect a mailbox before learning from it.');
 		return await learnFromLatestImportForAccount(ctx, account._id);
 	},
