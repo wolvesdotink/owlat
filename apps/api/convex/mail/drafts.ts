@@ -17,7 +17,7 @@ import { v } from 'convex/values';
 import { consumeUpload, deleteOwnedUpload, storedFileSize } from '../storage/uploads';
 import { internalQuery } from '../_generated/server';
 import type { MutationCtx } from '../_generated/server';
-import { publicQuery } from '../lib/authedFunctions';
+import { authedAction, publicQuery } from '../lib/authedFunctions';
 import { postboxQuery, postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -38,6 +38,8 @@ import {
 	listForMailboxHandler,
 } from './draftQueries';
 import { cancelPendingSendHandler, cancelScheduledSendHandler, sendHandler } from './draftSend';
+import { attachExistingSourceValidator, copyExistingIntoDraft } from './attachExisting';
+import { deleteAskSessionsForDraft } from './ai/composeDraftStore';
 
 /** Queue bounded, cache-aware discovery whenever a draft's recipients change. */
 async function scheduleRecipientDiscovery(ctx: MutationCtx, addresses: string[]): Promise<void> {
@@ -309,6 +311,22 @@ export const addAttachment = postboxMutation({
 	},
 });
 
+/**
+ * Attach a file that already exists (a Files row or an earlier email's
+ * attachment) without downloading and uploading it again. The bytes are copied
+ * into a blob the draft owns (mail/attachExisting.ts explains why a reference
+ * is unsafe), so this is an action. Returns the draft's attachments.
+ */
+// authz: mail/attachExisting.ts re-checks the draft's mailbox access and the caller's read access to the source in its internal query and mutation.
+export const attachExisting = authedAction({
+	args: {
+		draftId: v.id('mailDrafts'),
+		source: attachExistingSourceValidator,
+		id: v.string(),
+	},
+	handler: async (ctx, args) => (await copyExistingIntoDraft(ctx, args)).attachments,
+});
+
 export const removeAttachment = postboxMutation({
 	args: { draftId: v.id('mailDrafts'), storageId: v.id('_storage') },
 	handler: async (ctx, args) => {
@@ -339,6 +357,7 @@ export const discard = postboxMutation({
 		for (const att of draft.attachments) {
 			await deleteOwnedUpload(ctx, att.storageId, `mailDrafts:${args.draftId}`);
 		}
+		await deleteAskSessionsForDraft(ctx, args.draftId);
 		await ctx.db.delete(args.draftId);
 	},
 });

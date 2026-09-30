@@ -257,6 +257,13 @@ export const eraseMemberData = internalMutation({
 			.withIndex('by_user', (q) => q.eq('userId', args.authUserId))
 			.collect(); // bounded: a user's own app passwords
 		for (const pw of userPasswords) await ctx.db.delete(pw._id);
+		// Answer mode ask sessions quote their mail and hold the member's answers.
+		const askSessions = await ctx.db
+			.query('answerAskSessions')
+			.withIndex('by_owner', (q) => q.eq('ownerId', args.authUserId))
+			.take(MESSAGE_BATCH);
+		for (const row of askSessions) await ctx.db.delete(row._id);
+		if (askSessions.length === MESSAGE_BATCH) return await reschedule();
 
 		// Per-user onboarding checklist row (keyed by authUserId).
 		const onboarding = await ctx.db

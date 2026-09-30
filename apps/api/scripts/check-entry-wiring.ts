@@ -345,7 +345,14 @@ function reachedEntries(entries: readonly ConvexEntry[]): ReadonlySet<string> {
  * or deleted; a listed entry that gains a caller or is deleted fails until its
  * line comes off. Empty, and the empty state is the point (issue #528).
  */
-const UNREACHED_ENTRIES: readonly string[] = [];
+const UNREACHED_ENTRIES: readonly string[] = [
+	// Answer mode backend, built ahead of the web lane that calls it. Remove
+	// these four lines when the Answer mode web client lands.
+	'mail/ai/composeDraft.ts#answer',
+	'mail/ai/composeDraft.ts#start',
+	'mail/ai/composeDraftStore.ts#getSession',
+	'mail/drafts.ts#attachExisting',
+];
 
 // ─── The checks ─────────────────────────────────────────────────────────────
 

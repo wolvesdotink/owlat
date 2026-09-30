@@ -265,6 +265,8 @@ export const TENANT_TABLES = [
 
 	// ── AI draft-revise stream buffers (ephemeral, owner-scoped) ──
 	'aiDraftStreams',
+	// Answer mode ask sessions (owner-scoped, reference drafts and team threads).
+	'answerAskSessions',
 
 	// ── Dashboard & visualizations ──
 	'visualizations',
