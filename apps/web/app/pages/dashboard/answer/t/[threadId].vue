@@ -152,18 +152,11 @@ const clarificationDeferred = ref(false);
 const showClarification = computed(
 	() => !!reply.clarification.value && !clarificationDeferred.value
 );
+// A file given as an answer goes on the reply on the server, in the same
+// transaction as the answer (inbox.clarification.answerClarification); the
+// attachment list then updates through its subscription.
 async function onClarificationAnswers(answers: AskAnswer[]) {
-	const sent = await reply.submitClarification(answers);
-	// A file the person picked or uploaded as the answer goes on the reply. A
-	// Files pick is copied; an upload kept out of Files is bound as it is; an
-	// upload saved to Files comes back as the agent's (confident) suggestion.
-	for (const answer of sent ?? []) {
-		const file = answer.file;
-		if (!file || !attachmentsAllowed.value) continue;
-		if (file.source === 'semanticFile' || (file.source === 'upload' && answer.keepCopy === false)) {
-			void files.attachAnswerFile(file);
-		}
-	}
+	await reply.submitClarification(answers);
 }
 
 // Text typed and not sent stays with the thread for the session, so leaving
