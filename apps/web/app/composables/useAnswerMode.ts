@@ -9,6 +9,7 @@
  */
 import type { Id } from '@owlat/api/dataModel';
 import {
+	answerFallbackReturn,
 	answerModeHref,
 	answerTeamHref,
 	isAnswerModePath,
@@ -25,9 +26,6 @@ declare module '#app' {
 		answerMode?: boolean;
 	}
 }
-
-/** Where Esc goes when Answer mode was opened without a page to return to. */
-const FALLBACK_RETURN = '/dashboard/postbox/inbox';
 
 /**
  * Open and leave Answer mode. `open` remembers the page it was opened from, so
@@ -61,8 +59,13 @@ export function useAnswerModeNav() {
 		return go(answerTeamHref(threadId, opts));
 	}
 
+	/** The recorded page, else the list this Answer mode route belongs to. */
+	function returnTarget(): string {
+		return returnTo.value ?? answerFallbackReturn(useRouter().currentRoute.value.path);
+	}
+
 	function leave() {
-		const target = returnTo.value ?? FALLBACK_RETURN;
+		const target = returnTarget();
 		returnTo.value = null;
 		const back =
 			typeof window === 'undefined'
@@ -76,7 +79,7 @@ export function useAnswerModeNav() {
 	}
 
 	/** The label of the back link: the page a reply returns to. */
-	const returnPath = computed(() => returnTo.value ?? FALLBACK_RETURN);
+	const returnPath = computed(() => returnTarget());
 
 	/**
 	 * Name the page Esc returns to, for a host that moves between Answer mode

@@ -211,8 +211,16 @@ describe('Answer mode for a Team inbox thread', () => {
 		await wrapper.get('[data-testid="thread-composer-send"]').trigger('click');
 		await flushPromises();
 		expect(handleApprove).toHaveBeenCalledWith('in_1');
-		// Not in a queue: a send goes back where the reply started.
-		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox', { replace: true });
+		// Not in a queue: a send goes back where the reply started; opened with
+		// no page to return to, that is the Team inbox.
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/inbox', { replace: true });
+	});
+
+	it('names the Team inbox as the way back when opened by deep link or reload', async () => {
+		const wrapper = await mountPage();
+		expect(wrapper.get('[data-testid="answer-back"]').attributes('aria-label')).toBe(
+			'Back to Team inbox'
+		);
 	});
 
 	it('in the Answer queue, a send finishes the item and moves on', async () => {
