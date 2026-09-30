@@ -225,6 +225,7 @@ async function mountAt(query: Record<string, string>, opts: { realMenu?: boolean
 				UiSkeleton: inert('UiSkeleton'),
 				AnswerQueueBar: inert('AnswerQueueBar'),
 				AnswerQueueMailAsk: inert('AnswerQueueMailAsk'),
+				AnswerPeekDraft: inert('AnswerPeekDraft'),
 				PostboxLabelPickerDialog: LabelDialogStub,
 				PostboxAiStrip: AiStripStub,
 				NuxtLink: defineComponent({

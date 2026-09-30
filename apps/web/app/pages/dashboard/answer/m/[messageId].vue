@@ -321,18 +321,7 @@ onBeforeUnmount(() => {
 			</template>
 
 			<template v-if="assist.aiEnabled.value && seed" #peek-actions>
-				<UiButton
-					type="button"
-					size="sm"
-					variant="ghost"
-					class="shrink-0"
-					:disabled="ask.busy.value"
-					data-testid="answer-peek-draft"
-					@click="draftFromPeek"
-				>
-					<Icon name="lucide:sparkles" class="mr-1 size-3.5 text-brand" aria-hidden="true" />
-					{{ t('components.answer.aiBar.peekDraft') }}
-				</UiButton>
+				<AnswerPeekDraft :disabled="ask.busy.value" @draft="draftFromPeek" />
 			</template>
 
 			<template #conversation>

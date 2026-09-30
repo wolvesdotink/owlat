@@ -168,6 +168,12 @@ async function onClarificationAnswers(answers: AskAnswer[]) {
 	await reply.submitClarification(answers);
 }
 
+/** The resting phone/tablet sheet's "✦ Draft": open the reply and draft with AI. */
+function draftFromPeek() {
+	tab.value = 'reply';
+	void assist.ask.start('');
+}
+
 // Text typed and not sent stays with the thread for the session, so leaving
 // and coming back never throws it away (the team reply has no autosave row).
 const keptReply = useTeamKeptReply();
@@ -310,6 +316,13 @@ onBeforeUnmount(() => {
 				</PostboxOverflowMenu>
 			</template>
 
+			<template
+				v-if="assist.draftWithAi.value && isAdmin && reply.composerTarget.value"
+				#peek-actions
+			>
+				<AnswerPeekDraft :disabled="assist.ask.busy.value" @draft="draftFromPeek" />
+			</template>
+
 			<template #conversation>
 				<AnswerTeamConversation
 					v-if="thread"
@@ -449,39 +462,6 @@ onBeforeUnmount(() => {
 			</template>
 		</AnswerModeFrame>
 
-		<UiModal
-			:open="reply.reject.open.value"
-			:title="t('dashboard.inbox.detail.rejectDraft')"
-			:closable="!reply.reject.isRejecting.value"
-			:persistent="reply.reject.isRejecting.value"
-			@update:open="(v: boolean) => !v && (reply.reject.open.value = false)"
-		>
-			<p class="mb-4 text-sm text-text-secondary">
-				{{ t('dashboard.inbox.detail.rejectModalBody') }}
-			</p>
-			<textarea
-				v-model="reply.reject.reason.value"
-				rows="3"
-				class="input w-full resize-y"
-				:placeholder="t('dashboard.inbox.detail.rejectReasonPlaceholder')"
-				:disabled="reply.reject.isRejecting.value"
-			/>
-			<template #footer>
-				<UiButton
-					variant="secondary"
-					:disabled="reply.reject.isRejecting.value"
-					@click="reply.reject.open.value = false"
-				>
-					{{ t('common.cancel') }}
-				</UiButton>
-				<UiButton
-					variant="danger"
-					:loading="reply.reject.isRejecting.value"
-					@click="onConfirmReject"
-				>
-					{{ t('dashboard.inbox.detail.rejectDraft') }}
-				</UiButton>
-			</template>
-		</UiModal>
+		<AnswerTeamRejectModal :reject="reply.reject" @confirm="onConfirmReject" />
 	</div>
 </template>
