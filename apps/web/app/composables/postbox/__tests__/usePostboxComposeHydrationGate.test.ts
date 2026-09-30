@@ -375,6 +375,79 @@ describe('usePostboxCompose — a failed first read never becomes a write (#896)
 	});
 });
 
+describe('usePostboxCompose — a draft that no longer exists (#896)', () => {
+	it('turns a lasting "no such row" answer into the missing state and writes nothing', async () => {
+		const composer = await openComposer();
+		draftQuery.data.value = null;
+		await nextTick();
+		composer.subject.value = 'Edited after the draft was deleted';
+		await nextTick();
+
+		// Inside the grace a null may still be the pre-auth answer.
+		await vi.advanceTimersByTimeAsync(500);
+		expect(composer.draftNotice.value).toBe('loading');
+
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(composer.draftNotice.value).toBe('missing');
+		expect(composer.canSend.value).toBe(false);
+		expect(composer.bodyPending.value).toBe(true);
+		await expect(composer.send()).rejects.toSatisfy(isSurfacedOperationError);
+		expect(await composer.flush()).toEqual({ ok: false });
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(updateRun).not.toHaveBeenCalled();
+		expect(sendRun).not.toHaveBeenCalled();
+	});
+
+	it('merges a row that follows a brief null, without ever calling the draft missing', async () => {
+		const composer = await openComposer();
+		draftQuery.data.value = null;
+		await nextTick();
+		await vi.advanceTimersByTimeAsync(300);
+		await hydrate();
+		await vi.advanceTimersByTimeAsync(5_000);
+
+		expect(composer.draftNotice.value).toBeNull();
+		expect(composer.toAddresses.value).toEqual(['ada@example.com']);
+	});
+
+	it('still merges a row that arrives after the draft was called missing', async () => {
+		const composer = await openComposer();
+		composer.subject.value = 'Kept';
+		draftQuery.data.value = null;
+		await nextTick();
+		await vi.advanceTimersByTimeAsync(1_500);
+		expect(composer.draftNotice.value).toBe('missing');
+
+		await hydrate();
+
+		expect(composer.draftNotice.value).toBeNull();
+		expect(lastUpdate()).toMatchObject({ subject: 'Kept', toAddresses: ['ada@example.com'] });
+	});
+});
+
+describe('usePostboxCompose — the row merges once', () => {
+	it('ignores later live updates of the row, so edits after the load survive', async () => {
+		const composer = await openComposer();
+		await hydrate();
+		composer.subject.value = 'Mine';
+		composer.toAddresses.value = ['mine@example.com'];
+		await nextTick();
+
+		draftQuery.data.value = {
+			...SAVED_ROW,
+			subject: 'From another tab',
+			toAddresses: ['other@example.com'],
+			lastEditedAt: 300,
+		};
+		await nextTick();
+		await vi.advanceTimersByTimeAsync(1500);
+
+		expect(composer.subject.value).toBe('Mine');
+		expect(composer.toAddresses.value).toEqual(['mine@example.com']);
+		expect(lastUpdate()).toMatchObject({ subject: 'Mine', toAddresses: ['mine@example.com'] });
+	});
+});
+
 describe('usePostboxCompose — a new composition autosaves as before', () => {
 	it('creates the row and saves the fields after the debounce', async () => {
 		const composer = await openComposer({});

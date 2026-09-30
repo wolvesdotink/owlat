@@ -260,6 +260,30 @@ describe('usePostboxCompose — Send needs the current snapshot saved (#895)', (
 		expect(sendRun).toHaveBeenCalledOnce();
 	});
 
+	it('refuses, not queues, when only the earlier in-flight save lost its connection', async () => {
+		const composer = await reopenDraft();
+		await editRecipientsAndBody(composer);
+		let release!: () => void;
+		updateGate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		// The debounced save drops on the transport; the Send retry is refused.
+		updateOutcomes = ['network', 'reject'];
+		await vi.advanceTimersByTimeAsync(1500);
+
+		const sending = composer.send().catch((e: unknown) => e);
+		updateGate = null;
+		release();
+		const error = await sending;
+
+		expect(isSurfacedOperationError(error)).toBe(true);
+		expect(updateRun).toHaveBeenCalledTimes(2);
+		expect(queueSend).not.toHaveBeenCalled();
+		expect(sendRun).not.toHaveBeenCalled();
+		expect(undoArm).not.toHaveBeenCalled();
+		expect(composer.draftNotice.value).toBe('not_sent');
+	});
+
 	it('does not write again when the current snapshot is already saved', async () => {
 		const composer = await reopenDraft();
 		await editRecipientsAndBody(composer);

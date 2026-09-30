@@ -383,7 +383,13 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 
 		<div class="flex-1 overflow-hidden">
 			<!-- Withheld until a reopened draft's body loads (see usePostboxCompose). -->
-			<div v-if="bodyPending" class="h-full" aria-busy="true" />
+			<div
+				v-if="bodyPending"
+				class="h-full"
+				role="group"
+				aria-busy="true"
+				:aria-label="t('components.postbox.postboxComposer.bodyLoading')"
+			/>
 			<PostboxBasicEditor
 				v-else-if="composerMode === 'simple'"
 				ref="basicEditor"
@@ -423,6 +429,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:meter="attachmentSizeMeter"
 			:thumb-url-for="thumbUrlFor"
 			:is-sharing="isSharing"
+			:share-disabled="bodyPending"
 			@remove="removeAttachment"
 			@share="shareAsLink"
 			@cancel="cancelUpload"
@@ -453,6 +460,7 @@ const { sendShortcutHint, scheduleShortcutHint, onComposerKeydown } = usePostbox
 			:signatures="signatures"
 			:active-signature-id="activeSignatureId"
 			:composer-mode="composerMode"
+			:body-pending="bodyPending"
 			:subject="subject"
 			:body-html="bodyHtml"
 			:body-blocks="bodyBlocks"

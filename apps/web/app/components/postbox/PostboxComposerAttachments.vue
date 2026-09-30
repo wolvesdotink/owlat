@@ -21,6 +21,8 @@ const props = defineProps<{
 	thumbUrlFor: (storageId: string) => string | null;
 	/** A share swap is in flight (the scan runs server-side and takes a moment). */
 	isSharing?: boolean;
+	/** The body has not loaded yet, so there is nowhere to put the link. */
+	shareDisabled?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -69,7 +71,7 @@ const offerShare = computed(() => shouldOfferShareLink(props.meter));
 					v-if="offerShare"
 					type="button"
 					class="p-0.5 rounded hover:bg-bg-elevated text-text-tertiary hover:text-accent disabled:opacity-50"
-					:disabled="isSharing"
+					:disabled="isSharing || shareDisabled"
 					:title="t('components.postbox.postboxComposerAttachments.shareTitle')"
 					:aria-label="
 						t('components.postbox.postboxComposerAttachments.share', { filename: att.filename })

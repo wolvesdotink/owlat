@@ -209,6 +209,7 @@ export function usePostboxCompose(seed: ComposerSeed) {
 		// autosaves — otherwise the swap would drop the attachment and leave the
 		// recipient with no way to reach it.
 		bodyHtml,
+		bodyLocked: () => bodyPending.value,
 		attachPendingKey: seed.attachPendingKey,
 		forwardAttachmentsFromMessageId: seed.forwardAttachmentsFromMessageId,
 	});
@@ -299,25 +300,6 @@ export function usePostboxCompose(seed: ComposerSeed) {
 		bodyLocked: () => bodyPending.value,
 	});
 
-	const canSend = computed(() => {
-		// Never let a send fire while an attachment upload is still in flight: the
-		// draft's `attachments` array has not yet committed the pending file, so a
-		// mid-upload send would silently drop it from the outgoing message. Mirror
-		// the chat composer (ChatInput), which gates its Send on `!isUploading`.
-		if (isUploading.value) return false;
-		// A reopened draft that has not loaded would send (or queue) a snapshot
-		// of empty stand-ins; the draft notice says why Send is waiting.
-		if (!sendReady.value) return false;
-		if (toAddresses.value.length === 0) return false;
-		if (subject.value.trim().length > 0) return true;
-		if (attachments.value.length > 0) return true;
-		if (composerMode.value === 'full') return bodyBlocks.value.length > 0;
-		// Strip HTML tags before measuring length so an empty <p></p>
-		// from the contenteditable doesn't count as content.
-		const plain = bodyHtml.value.replace(/<[^>]+>/g, '').trim();
-		return plain.length > 0;
-	});
-
 	// The offline queue's payload builder lives in a sibling (file-size ratchet);
 	// it snapshots these exact refs, so nothing here needs to change on a send.
 	const queueOfflineSend = usePostboxComposeOfflineSend({
@@ -356,6 +338,25 @@ export function usePostboxCompose(seed: ComposerSeed) {
 		retireMirror: () => draftMirror.retire(),
 		armUndo,
 		undoSendDelayMs: () => undoSendDelayMs.value,
+	});
+
+	const canSend = computed(() => {
+		// Never let a send fire while an attachment upload is still in flight: the
+		// draft's `attachments` array has not yet committed the pending file, so a
+		// mid-upload send would silently drop it from the outgoing message. Mirror
+		// the chat composer (ChatInput), which gates its Send on `!isUploading`.
+		if (isUploading.value) return false;
+		// A reopened draft that has not loaded would send (or queue) a snapshot
+		// of empty stand-ins; the draft notice says why Send is waiting.
+		if (!sendReady.value) return false;
+		if (toAddresses.value.length === 0) return false;
+		if (subject.value.trim().length > 0) return true;
+		if (attachments.value.length > 0) return true;
+		if (composerMode.value === 'full') return bodyBlocks.value.length > 0;
+		// Strip HTML tags before measuring length so an empty <p></p>
+		// from the contenteditable doesn't count as content.
+		const plain = bodyHtml.value.replace(/<[^>]+>/g, '').trim();
+		return plain.length > 0;
 	});
 
 	async function discard() {

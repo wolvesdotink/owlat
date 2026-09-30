@@ -37,6 +37,8 @@ import type { SendOpts } from './usePostboxComposeOfflineSend';
 export type ComposeDraftNotice =
 	| 'loading'
 	| 'load_failed'
+	/** The draft is gone, or this member can no longer open it. */
+	| 'missing'
 	/** The latest changes did not save, so Send stopped. */
 	| 'not_sent'
 	/** The latest changes did not save (promotion, the seal re-check). */
@@ -59,6 +61,13 @@ export function createSendNetworkClaim() {
 			failed = true;
 			return true;
 		},
+		/**
+		 * Forget a failure claimed earlier in this step. For a step that first
+		 * waits on someone else's operation and then runs its own.
+		 */
+		reset() {
+			failed = false;
+		},
 		/** Run one step, reporting whether the connection failed under it. */
 		async intercept<T>(run: () => Promise<T>): Promise<{ value: T; networkFailed: boolean }> {
 			intercepting = true;
@@ -80,7 +89,9 @@ interface ComposeSendOptions {
 	isOffline: Readonly<Ref<boolean>>;
 	lastSavedAt: Ref<number | null>;
 	network: ReturnType<typeof createSendNetworkClaim>;
-	settlePendingSave: () => Promise<BackendOperationResult<Id<'mailDrafts'>>>;
+	settlePendingSave: (
+		beforeWrite?: () => void
+	) => Promise<BackendOperationResult<Id<'mailDrafts'>>>;
 	flushSave: () => Promise<BackendOperationResult<Id<'mailDrafts'> | null>>;
 	sendDraft: BackendOperation<typeof api.mail.drafts.send>;
 	/** The complete-payload offline queue; throws when the device cannot store it. */
@@ -100,6 +111,7 @@ export function usePostboxComposeSend(o: ComposeSendOptions) {
 
 	const draftNotice = computed<ComposeDraftNotice | null>(() => {
 		if (o.initialHydration.value === 'error') return 'load_failed';
+		if (o.initialHydration.value === 'missing') return 'missing';
 		if (o.initialHydration.value === 'loading') return 'loading';
 		return persistRefusal.value;
 	});
@@ -134,7 +146,10 @@ export function usePostboxComposeSend(o: ComposeSendOptions) {
 		// Offline never touches the network — queue the payload on-device.
 		if (o.isOffline.value) return queueSendOffline(opts);
 
-		const save = await o.network.intercept(() => o.settlePendingSave());
+		// A debounced save still in flight may fail on the transport; only the
+		// outcome of the write made for this send decides between the offline
+		// queue and a refusal.
+		const save = await o.network.intercept(() => o.settlePendingSave(() => o.network.reset()));
 		const saved = save.value;
 		if (!saved.ok) {
 			// The connection dropped under the save (or the row's creation): the

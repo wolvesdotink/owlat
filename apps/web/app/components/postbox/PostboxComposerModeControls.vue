@@ -11,6 +11,8 @@ defineProps<{
 	mode: ComposerMode;
 	/** Whether the classic persistent toolbar is active (drives the "Aa" state). */
 	persistentToolbar: boolean;
+	/** The mode decides which body goes out; it waits for the saved one to load. */
+	switchDisabled?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -42,6 +44,7 @@ const { t } = useI18n();
 			variant="ghost"
 			type="button"
 			class="text-xs"
+			:disabled="switchDisabled"
 			@click="emit('switch-mode', mode === 'simple' ? 'full' : 'simple')"
 		>
 			<Icon

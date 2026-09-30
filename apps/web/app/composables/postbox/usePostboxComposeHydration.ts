@@ -11,7 +11,9 @@
  * every other field takes the row's. Until then the state stays 'loading' (or
  * 'error' when the read failed), and the autosave and send paths refuse to
  * write the snapshot, which would carry empty stand-ins for everything not yet
- * loaded.
+ * loaded. A read that answers "no such row" for longer than a short grace
+ * becomes 'missing' and keeps refusing them; only a row that shows up after
+ * all (access restored) is merged and unlocks them.
  */
 
 import type { Ref, WatchStopHandle } from 'vue';
@@ -21,8 +23,20 @@ import type { EditorBlock } from '@owlat/email-builder';
 import type { ComposerMode } from './usePostboxCompose';
 import type { ComposerAttachment } from './usePostboxComposeAttachments';
 
-/** Whether a reopened draft's row has reached the composer yet. */
-export type InitialHydrationState = 'loading' | 'ready' | 'error';
+/**
+ * Whether a reopened draft's row has reached the composer yet. 'missing' means
+ * the read answered that there is no row this member can open (deleted, or
+ * access lost): nothing will ever load, so nothing may be written or sent.
+ */
+export type InitialHydrationState = 'loading' | 'ready' | 'error' | 'missing';
+
+/**
+ * How long a "no such row" answer must stand before the composer calls the
+ * draft missing. The composer only mounts behind auth, so a `null` is almost
+ * always final; the grace absorbs a soft-auth query answering once before the
+ * session token reaches the socket, which is then followed by the real row.
+ */
+const DRAFT_MISSING_GRACE_MS = 1000;
 
 /** The composer fields hydration fills in, all owned by usePostboxCompose. */
 interface ComposeHydrationTargets {
@@ -157,14 +171,35 @@ export function usePostboxComposeHydration(
 		}
 	}
 
+	let missingTimer: ReturnType<typeof setTimeout> | null = null;
+	function clearMissingTimer() {
+		if (missingTimer) clearTimeout(missingTimer);
+		missingTimer = null;
+	}
+	onScopeDispose(clearMissingTimer);
+
 	watch(
-		[() => hydrateQuery.data.value, () => hydrateQuery.error?.value ?? null],
+		[() => hydrateQuery.data.value, () => hydrateQuery.error.value],
 		([d, error]) => {
 			if (state.value === 'ready') return;
-			// `null` (the row is not readable yet, e.g. before auth settles) keeps
-			// waiting, as before; only a failed read is an error.
+			if (error && !d) {
+				clearMissingTimer();
+				state.value = 'error';
+				return;
+			}
+			if (d === null) {
+				// Still waiting until the answer has stood for the grace period.
+				if (state.value === 'missing' || missingTimer) return;
+				state.value = 'loading';
+				missingTimer = setTimeout(() => {
+					missingTimer = null;
+					if (state.value === 'loading') state.value = 'missing';
+				}, DRAFT_MISSING_GRACE_MS);
+				return;
+			}
+			clearMissingTimer();
 			if (!d) {
-				state.value = error ? 'error' : 'loading';
+				state.value = 'loading';
 				return;
 			}
 			applying = true;
@@ -181,7 +216,7 @@ export function usePostboxComposeHydration(
 
 	/** Read the row again after a failed load ("Try again"). */
 	function retry() {
-		hydrateQuery.refetch?.();
+		hydrateQuery.refetch();
 	}
 
 	return { retry };

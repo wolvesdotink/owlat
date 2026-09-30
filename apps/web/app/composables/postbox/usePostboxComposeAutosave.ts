@@ -192,8 +192,13 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 	 * an acknowledgement of the current fields skips the write; anything else
 	 * writes again, so a debounced save that failed earlier is retried here
 	 * rather than leaving the row a step behind the editor.
+	 *
+	 * `beforeWrite` runs between the two, so a caller can judge the write it
+	 * asked for apart from the earlier one it only waited on.
 	 */
-	async function settlePendingSave(): Promise<BackendOperationResult<Id<'mailDrafts'>>> {
+	async function settlePendingSave(
+		beforeWrite?: () => void
+	): Promise<BackendOperationResult<Id<'mailDrafts'>>> {
 		clearTimer();
 		if (pendingSave) await pendingSave;
 		const id = draftId.value;
@@ -201,6 +206,7 @@ export function usePostboxComposeAutosave(opts: AutosaveOptions) {
 		// nothing of the editor's they could be missing.
 		if (id && draftState.value !== 'draft') return { ok: true, result: id };
 		if (isAcknowledged(id)) return { ok: true, result: id };
+		beforeWrite?.();
 		pendingSave = persist();
 		return pendingSave;
 	}
