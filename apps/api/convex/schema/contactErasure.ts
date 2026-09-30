@@ -22,8 +22,16 @@ export const contactErasureTables = {
 		reason: v.union(v.literal('retention'), v.literal('api_delete')),
 		// running  — a transaction chain is (or should be) working on it;
 		// retrying — the last transaction failed and a retry is scheduled;
-		// failed   — retries are exhausted; the daily sweep re-arms it.
-		status: v.union(v.literal('running'), v.literal('retrying'), v.literal('failed')),
+		// failed   — retries are exhausted; the daily sweep re-arms it;
+		// blocked  — transactions of a single row kept hitting a platform
+		//            limit: retrying cannot help, so nothing re-arms it and
+		//            `lastError` says why. An operator has to step in.
+		status: v.union(
+			v.literal('running'),
+			v.literal('retrying'),
+			v.literal('failed'),
+			v.literal('blocked')
+		),
 		phase: contactErasurePhaseValidator,
 		// Pagination cursor inside `phase`, for the phases that keep their rows
 		// (scrubbed sends) and so cannot resume by re-reading from the start.
@@ -32,6 +40,10 @@ export const contactErasureTables = {
 		transactions: v.number(),
 		// Consecutive failed attempts; reset by the next successful transaction.
 		attempts: v.number(),
+		// Rows per transaction while recovering from one that hit a platform
+		// limit: one after the failure, doubling with every transaction that
+		// commits, absent once back at the full budget.
+		rowCap: v.optional(v.number()),
 		lastError: v.optional(v.string()),
 		lastErrorAt: v.optional(v.number()),
 		createdAt: v.number(),

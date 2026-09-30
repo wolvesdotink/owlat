@@ -12,6 +12,14 @@
  *                schedules a retry with backoff, or marks the job `failed` once
  *                retries run out.
  *
+ * The budget keeps every transaction inside the platform limits by
+ * construction, but the limits of a given deployment are not known here. A
+ * transaction that hits one anyway is retried at one row per transaction, and
+ * the allowance doubles back with every transaction that commits, so a range
+ * too large for the full budget is crossed rather than retried whole forever.
+ * A job whose single-row transactions still hit a limit is `blocked`: no
+ * retry can help it, so nothing re-arms it.
+ *
  * `retention.ts` feeds it (expired soft-deletes) and restarts stalled and
  * failed jobs; `contacts.removeForTeam` starts one for a REST hard delete.
  * Two chains on one job are harmless — every tick is a serializable
@@ -29,8 +37,13 @@ import { advanceErasure, finishErasure, FIRST_ERASURE_PHASE } from './phases';
 
 /** Rows one erasure transaction may read and write. */
 export const ERASURE_ROWS_PER_TRANSACTION = 400;
-/** Estimated document bytes one erasure transaction may read (platform cap: 16 MiB). */
-const ERASURE_BYTES_PER_TRANSACTION = 4 * 1024 * 1024;
+/**
+ * Document bytes one erasure transaction may read, counted before each read
+ * at the maximum document size (see `budget.ts`). A quarter of the 16 MiB
+ * platform ceiling: the rest covers reads the budget does not see (the job
+ * and contact rows, counters) and deployments on the older 8 MiB ceiling.
+ */
+export const ERASURE_BYTES_PER_TRANSACTION = 4 * 1024 * 1024;
 /** Ticks one `drive` invocation chains before it reschedules itself. */
 const TICKS_PER_DRIVE = 20;
 /** Backoff before retry N (1-based) of a failed transaction. */
@@ -40,6 +53,29 @@ const MAX_ERROR_CHARS = 500;
 
 type ErasureReason = Doc<'contactErasureJobs'>['reason'];
 type TickOutcome = 'done' | 'more' | 'stopped';
+
+/**
+ * Whether a failed transaction ran into a platform limit (data read or
+ * written, documents, time) rather than a fault a retry at the same size could
+ * clear. Convex reports limits as plain errors, so this reads the message.
+ */
+export function isTransactionLimitError(message: string): boolean {
+	return /single function execution|production\/state\/limits|too large|timed out|too long/i.test(
+		message
+	);
+}
+
+/** Whether a job's transactions stopped for good: gave up, or cannot fit. */
+function isStopped(job: Doc<'contactErasureJobs'>): boolean {
+	return job.status === 'failed' || job.status === 'blocked';
+}
+
+/** The row cap after a transaction under `rowCap` commits: doubled, until full. */
+function widenedRowCap(rowCap: number | undefined): number | undefined {
+	if (rowCap === undefined) return undefined;
+	const next = rowCap * 2;
+	return next >= ERASURE_ROWS_PER_TRANSACTION ? undefined : next;
+}
 
 /**
  * Create the job row for `contactId`, or return the existing one. A job that
@@ -56,6 +92,7 @@ async function ensureJob(
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
 		.first();
 	if (existing) {
+		// A blocked job stays put until an operator deals with it.
 		if (existing.status !== 'failed') return { jobId: existing._id, needsDrive: false };
 		await ctx.db.patch(existing._id, { status: 'running', attempts: 0, updatedAt: now });
 		return { jobId: existing._id, needsDrive: true };
@@ -119,10 +156,14 @@ async function runErasureTransaction(
 	jobId: Id<'contactErasureJobs'>
 ): Promise<TickOutcome> {
 	const job = await ctx.db.get(jobId);
-	// A failed job only moves again once the sweep re-arms it.
-	if (!job || job.status === 'failed') return 'stopped';
+	// A failed job only moves again once the sweep re-arms it; a blocked one
+	// not at all.
+	if (!job || isStopped(job)) return 'stopped';
 
-	const budget = new ErasureBudget(ERASURE_ROWS_PER_TRANSACTION, ERASURE_BYTES_PER_TRANSACTION);
+	const budget = new ErasureBudget(
+		job.rowCap ?? ERASURE_ROWS_PER_TRANSACTION,
+		ERASURE_BYTES_PER_TRANSACTION
+	);
 	const progress = await advanceErasure(
 		ctx,
 		job.contactId,
@@ -142,6 +183,7 @@ async function runErasureTransaction(
 		transactions: job.transactions + 1,
 		status: 'running',
 		attempts: 0,
+		rowCap: widenedRowCap(job.rowCap),
 		updatedAt: Date.now(),
 	});
 	return 'more';
@@ -180,12 +222,17 @@ export const recordFailure = internalMutation({
 		if (!job) return;
 		const attempts = job.attempts + 1;
 		const isExhausted = attempts >= MAX_ATTEMPTS;
+		const isLimit = isTransactionLimitError(error);
+		// Even one row per transaction does not fit: retrying cannot help.
+		const isBlocked = isExhausted && isLimit && job.rowCap === 1;
 		const now = Date.now();
 		await ctx.db.patch(jobId, {
 			attempts,
 			lastError: error.slice(0, MAX_ERROR_CHARS),
 			lastErrorAt: now,
-			status: isExhausted ? 'failed' : 'retrying',
+			status: isBlocked ? 'blocked' : isExhausted ? 'failed' : 'retrying',
+			// Retry what failed a row at a time; it widens again as it commits.
+			...(isLimit ? { rowCap: 1 } : {}),
 			updatedAt: now,
 		});
 		// Ids and the phase only: the error text stays on the job row.
@@ -194,6 +241,8 @@ export const recordFailure = internalMutation({
 			phase: job.phase,
 			attempts,
 			isExhausted,
+			isLimit,
+			rowCap: job.rowCap,
 		});
 		if (!isExhausted) {
 			await scheduleDrive(ctx, jobId, RETRY_DELAYS_MS[attempts - 1] ?? RETRY_DELAYS_MS[0]);
