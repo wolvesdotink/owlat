@@ -9,12 +9,12 @@
  * The properties a sample adds are a timing and a route NAME
  * (`dashboard-postbox-folder`), never a URL, an id or anything about the
  * person. PostHog itself still attaches its default properties to every
- * capture, `$current_url` and `$pathname` among them, as it does for the
- * `$pageview` this deployment already sends. The boot samples are taken before
- * the PostHog client can exist (the shell mounts while `posthog-js` is still
- * loading), so a handful of them wait in memory for the sender. They leave the
- * browser only once the flag is on and the client is started, and they are
- * forgotten when an admin switches the flag back off.
+ * capture, `$current_url` and `$pathname` among them, which the plugin's
+ * `before_send` reduces to the route pattern (`lib/analyticsPrivacy`). The
+ * boot samples are taken before the PostHog client can exist (the shell mounts
+ * while `posthog-js` is still loading), so a handful of them wait in memory for
+ * the sender. They leave the browser only once the flag is on and the client
+ * is started, and they are forgotten when an admin switches the flag back off.
  */
 
 export type PerfProperties = Record<string, number | string>;
