@@ -5,7 +5,7 @@
  *     cached (zero height, fail-soft)
  *   - a warm summary cache paints the collapsed one-line gist; "more" expands it
  *   - Ask is the only expandable section left, and it stays closed until asked
- *   - Draft reply is NOT here any more — it moved into PostboxInlineReply, and
+ *   - Draft reply is NOT here any more (drafting happens in Answer mode), and
  *     the strip must never dispatch mail.ai.suggestReplies again
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';

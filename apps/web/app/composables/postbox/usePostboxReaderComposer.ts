@@ -1,47 +1,35 @@
 import type { ComputedRef, Ref } from 'vue';
+import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { extractEmailAddress } from '~/utils/emailAddress';
-import { deriveReplyAllExtras } from '~/utils/recipientHints';
-import { resolvePrimaryReplyKind, type PostboxReplyDefaultMode } from '~/utils/postboxReplyDefault';
-import type { PostboxPendingCompose } from '~/utils/postboxShortcuts';
-import type {
-	ComposerSpec,
-	InlineComposeKind,
-	InlineComposeSpec,
-} from '~/composables/postbox/usePostboxComposerStack';
-
-/** The reply/forward source shape the composer quotes from. */
-export type ReplyForwardSource = {
-	_id: string;
-	subject: string;
-	fromAddress: string;
-	fromName?: string;
-	toAddresses: string[];
-	ccAddresses: string[];
-	receivedAt: number;
-	htmlBodyInline?: string;
-	textBodyInline?: string;
-};
+import type { PostboxReplyDefaultMode } from '~/utils/postboxReplyDefault';
+import type { AnswerModeKind } from '~/utils/answerMode';
+import { useAnswerModeNav, useAnswerPendingLead } from '~/composables/useAnswerMode';
+import {
+	buildReplyComposeSeed,
+	primaryReplyKindFor,
+	replyAllAddsRecipients,
+	type ReplyForwardSource,
+} from './postboxReplySpec';
+import { buildResendSpec, resolveBodyFields } from './usePostboxQuotedText';
 
 /** The open reader message — a reply source plus the routing/identity fields. */
 type ReaderComposerMessage = ReplyForwardSource & { mailboxId: string; threadId?: string };
 
 /**
- * The reply / reply-all / forward composer concerns of the thread reader:
- * popup openers, the pinned inline reply box, and the list→reader r/a/f
- * hand-off. Extracted from PostboxThreadReader.vue so both the reader shell and
- * this compose layer stay independently readable; behavior is unchanged.
+ * The reply / reply-all / forward verbs of the thread reader. Every one of
+ * them opens Answer mode (plan decision 2: every reply, no inline box); only
+ * the delivery strip's resend, which is not a reply, still opens a popup.
  *
  * `getMessage` returns the currently open message; `latestMessage` /
  * `ownAddresses` / `replyDefault` are the reader's live derived state, passed in
  * rather than re-derived so this composable is a pure view over them.
  *
- * `guardReply` (optional) wraps a reply/reply-all action with the sender-auth
- * reply guard (Sealed Mail A3): the reader supplies it, and EVERY reply /
- * reply-all entry point that lives in this layer — the keyboard `r`/`a`, the
- * pinned inline box, and the list→reader hand-off — is routed through it so the
- * interstitial can't be side-stepped by a non-button path. Forward is never
- * guarded. Defaults to running the action directly (flag off / no guard).
+ * `guardReply` (optional) wraps a reply/reply-all with the sender-auth reply
+ * guard (Sealed Mail A3). The keyboard paths (`r`/`a` against the latest
+ * message) go through it here; the per-message buttons are guarded by the
+ * reader itself. Forward is never guarded. Answer mode runs the same guard
+ * again on its own URL (a deep link skips the reader), and a thread already
+ * confirmed here passes straight through there.
  */
 export function usePostboxReaderComposer(opts: {
 	getMessage: () => ReaderComposerMessage;
@@ -52,94 +40,82 @@ export function usePostboxReaderComposer(opts: {
 }) {
 	const { getMessage, latestMessage, ownAddresses, replyDefault } = opts;
 	const guardReply = opts.guardReply ?? ((run: () => void) => run());
+	const { t } = useI18n();
 	const stack = usePostboxComposerStack();
+	const answerNav = useAnswerModeNav();
+	const pendingLead = useAnswerPendingLead();
 
-	/**
-	 * Build the one-time compose seed for a reply / reply-all / forward of
-	 * `source` — shared by the popup openers below and the inline reply box, so
-	 * both paths produce identical drafts (quoting, recipients, subject prefix).
-	 */
-	async function buildComposeSpec(
-		kind: InlineComposeKind,
-		source: ReplyForwardSource
-	): Promise<Omit<ComposerSpec, 'id' | 'minimized'>> {
-		const target = await resolveBodyFields(source);
-		const mailboxId = getMessage().mailboxId as Id<'mailboxes'>;
-		if (kind === 'forward') {
-			return {
-				mailboxId,
-				prefillSubject: target.subject.match(/^fwd?\s*:\s*/i)
-					? target.subject
-					: `Fwd: ${target.subject}`,
-				prefillBodyHtml: buildForwardedBody(target),
-				forwardAttachmentsFromMessageId: target._id as Id<'mailMessages'>,
-			};
-		}
-		const spec: Omit<ComposerSpec, 'id' | 'minimized'> = buildReplySpec(mailboxId, target);
-		const extras = deriveReplyAllExtras(target, [...ownAddresses.value]);
-		if (kind === 'replyAll') {
-			spec.prefillCc = extras;
-		} else if (kind === 'reply' && extras.length > 0) {
-			// Surface the "Also include …?" gap hint in the composer.
-			spec.replyAllRecipients = extras;
-		}
-		return spec;
-	}
+	const createDraft = useBackendOperation(api.mail.drafts.create, {
+		label: () => t('shared.postbox.usePostboxCompose.createOperation'),
+	});
+	const updateDraft = useBackendOperation(api.mail.drafts.update, {
+		label: () => t('shared.postbox.usePostboxCompose.saveOperation'),
+	});
 
-	async function openReplyAll(replyTo?: ReplyForwardSource) {
-		stack.open(await buildComposeSpec('replyAll', replyTo ?? getMessage()));
-	}
-
-	/**
-	 * The reply kind the PRIMARY affordance (Reply button / `r`) opens: honors the
-	 * user's default-reply preference, collapsing to a plain reply when reply-all
-	 * would add no one. The explicit Reply-all button / `a` bypass this.
-	 */
-	function primaryReplyKind(source: {
-		fromAddress: string;
-		toAddresses: string[];
-		ccAddresses: string[];
-	}): InlineComposeKind {
-		return resolvePrimaryReplyKind(replyDefault.value, hasOtherRecipients(source));
-	}
-
-	/** Open the popup composer for the primary reply (per the default preference). */
-	async function openPrimaryReply(replyTo?: ReplyForwardSource) {
-		const source = replyTo ?? getMessage();
-		stack.open(await buildComposeSpec(primaryReplyKind(source), source));
+	function openAnswer(source: ReplyForwardSource, kind: AnswerModeKind | null) {
+		void answerNav.open(source._id, { kind });
 	}
 
 	/** Whether Reply-All would add anyone beyond a plain Reply (extra To/Cc). */
-	function hasOtherRecipients(msg: {
-		fromAddress: string;
-		toAddresses: string[];
-		ccAddresses: string[];
-	}) {
-		const seen = new Set<string>([extractEmailAddress(msg.fromAddress), ...ownAddresses.value]);
-		return [...msg.toAddresses, ...msg.ccAddresses].some((a) => {
-			const c = extractEmailAddress(a);
-			return c.length > 0 && !seen.has(c);
-		});
+	function hasOtherRecipients(msg: ReplyForwardSource) {
+		return replyAllAddsRecipients(msg, ownAddresses.value);
 	}
 
-	/** Open a reply seeded with an AI-suggested body (above the quoted original). */
+	/** The primary reply (Reply button / `r`): the person's default reply mode. */
+	function openPrimaryReply(replyTo?: ReplyForwardSource) {
+		const source = replyTo ?? getMessage();
+		openAnswer(source, primaryReplyKindFor(replyDefault.value, source, ownAddresses.value));
+	}
+
+	function openReplyAll(replyTo?: ReplyForwardSource) {
+		openAnswer(replyTo ?? getMessage(), 'replyAll');
+	}
+
+	function openForward(msg?: ReplyForwardSource) {
+		openAnswer(msg ?? getMessage(), 'forward');
+	}
+
+	/**
+	 * A reply seeded with an AI-suggested body (a suggestion card, the
+	 * scheduling chip). The draft is created WITH the body before Answer mode
+	 * opens on it (`?draft=`), so a reload keeps the suggestion. Should the row
+	 * not be created, Answer mode still opens and takes the text from session
+	 * state instead: the suggestion is never lost to a failed round trip.
+	 */
 	async function openReplyWithBody(replyTarget: ReplyForwardSource, bodyText: string) {
-		const target = await resolveBodyFields(replyTarget);
-		stack.open(buildReplySpec(getMessage().mailboxId as Id<'mailboxes'>, target, bodyText));
-	}
-
-	async function openForward(msg?: ReplyForwardSource) {
-		stack.open(await buildComposeSpec('forward', msg ?? getMessage()));
+		const mailboxId = getMessage().mailboxId as Id<'mailboxes'>;
+		const seed = await buildReplyComposeSeed('reply', replyTarget, {
+			mailboxId,
+			ownAddresses: ownAddresses.value,
+			leadText: bodyText,
+		});
+		const created = await createDraft.run({
+			mailboxId,
+			inReplyToMessageId: replyTarget._id as Id<'mailMessages'>,
+		});
+		if (created.ok) {
+			const draftId = created.result.draftId as Id<'mailDrafts'>;
+			const saved = await updateDraft.run({
+				draftId,
+				toAddresses: seed.prefillTo ?? [],
+				ccAddresses: seed.prefillCc ?? [],
+				subject: seed.prefillSubject ?? '',
+				bodyHtml: seed.prefillBodyHtml ?? '',
+				composerMode: 'simple',
+			});
+			if (saved.ok) {
+				void answerNav.open(replyTarget._id, { kind: 'reply', draftId });
+				return;
+			}
+		}
+		pendingLead.set(replyTarget._id, bodyText);
+		openAnswer(replyTarget, 'reply');
 	}
 
 	/**
 	 * Open a composer that resends `source` to `addresses` only — the delivery
-	 * strip's "resend to the failed recipient" action (plan idea 1).
-	 *
-	 * Body resolution goes through the same `resolveBodyFields` every other
-	 * composer path uses, so a message whose body lives in blob storage resends
-	 * its real content rather than an empty one. A call with no addresses is a
-	 * no-op: an empty To field is not a composer anyone asked for.
+	 * strip's "resend to the failed recipient" action (plan idea 1). Not a
+	 * reply, so it stays a popup. A call with no addresses is a no-op.
 	 */
 	async function openResend(source: ReplyForwardSource, addresses: string[]) {
 		if (addresses.length === 0) return;
@@ -147,93 +123,20 @@ export function usePostboxReaderComposer(opts: {
 		stack.open(buildResendSpec(getMessage().mailboxId as Id<'mailboxes'>, target, addresses));
 	}
 
-	// --- Inline reply box pinned under the conversation (Spark-style). Expands
-	// via the collapsed affordance or the r/a/f keys; the popup path above stays
-	// for the per-message Reply/Forward buttons inside the thread. Both share
-	// buildComposeSpec, so the inline draft carries the same quoted text and
-	// recipients as a popup reply would.
-	const inlineSpec = ref<InlineComposeSpec | null>(null);
-	const inlineReplyEl = ref<{ focusEditor: () => void } | null>(null);
-	let inlineSeq = 0;
-
-	async function expandInline(kind: InlineComposeKind) {
+	// Keyboard entry points (`r` / `a` / `f`, the ⌘K bridge): against the
+	// thread's LATEST message, reply and reply-all behind the guard.
+	function replyToLatest() {
 		const target = latestMessage.value;
-		if (!target) return;
-		if (inlineSpec.value?.kind === kind) {
-			// Already open in this mode — just re-focus it (r/a re-press).
-			inlineReplyEl.value?.focusEditor();
-			return;
-		}
-		const seq = ++inlineSeq;
-		const seed = await buildComposeSpec(kind, target);
-		// Superseded by a newer expand or a thread change while resolving the body.
-		if (seq !== inlineSeq) return;
-		inlineSpec.value = { ...seed, kind, key: `${target._id}:${kind}` };
+		if (target) guardReply(() => openPrimaryReply(target));
 	}
-
-	/**
-	 * Expand the inline box for the PRIMARY reply (Reply affordance / `r`): honors
-	 * the default-reply preference, opening a reply-all when the user prefers it
-	 * and the message actually has other recipients. The explicit `a` / Reply-all
-	 * icon call expandInline('replyAll') directly and bypass this.
-	 */
-	async function expandPrimaryReply() {
+	function replyAllToLatest() {
 		const target = latestMessage.value;
-		if (!target) return;
-		await expandInline(primaryReplyKind(target));
+		if (target) guardReply(() => openReplyAll(target));
 	}
-
-	// Guarded inline entry points: the reply guard sees the reply BEFORE the box
-	// expands. Used by the reader's keyboard shortcuts, the pinned inline box's
-	// expand affordance, and the list→reader hand-off below.
-	function guardedExpandReply() {
-		guardReply(() => void expandPrimaryReply());
+	function forwardLatest() {
+		const target = latestMessage.value;
+		if (target) openForward(target);
 	}
-	function guardedExpandReplyAll() {
-		guardReply(() => void expandInline('replyAll'));
-	}
-
-	function collapseInline() {
-		inlineSeq++;
-		inlineSpec.value = null;
-	}
-
-	// A newly opened conversation always starts collapsed (and therefore can
-	// never steal focus on thread open).
-	watch(
-		() => getMessage().threadId ?? getMessage()._id,
-		() => collapseInline()
-	);
-
-	const inlineSenderLabel = computed(() => {
-		const m = latestMessage.value;
-		return m ? m.fromName || m.fromAddress : '';
-	});
-
-	// Consume a pending compose intent set by the thread list's r/a/f shortcuts:
-	// the list opens the message, then we open the matching composer once this
-	// reader renders it (the quoting/recipient logic lives here).
-	const pendingCompose = useState<PostboxPendingCompose | null>(
-		POSTBOX_PENDING_COMPOSE_KEY,
-		() => null
-	);
-	// Watch the intent as well as the id: r/a/f on a row whose message is already
-	// open never changes `message._id`. Stale intents (id changed to a
-	// non-matching message) are dropped so they can't fire on a later plain open;
-	// see settlePendingCompose in utils/postboxShortcuts.ts.
-	watch(
-		[() => getMessage()._id, pendingCompose] as const,
-		([id], prev) => {
-			const { open, clear } = settlePendingCompose(pendingCompose.value, id, prev?.[0]);
-			if (clear) pendingCompose.value = null;
-			// Reply / reply-all go through the guard (the list r/a hand-off is a
-			// primary reply path too); forward is never guarded.
-			if (open === 'reply') guardedExpandReply();
-			else if (open === 'replyAll') guardedExpandReplyAll();
-			else if (open === 'forward') void expandInline('forward');
-		},
-		{ immediate: true }
-	);
 
 	return {
 		openReplyAll,
@@ -242,13 +145,8 @@ export function usePostboxReaderComposer(opts: {
 		openForward,
 		openResend,
 		hasOtherRecipients,
-		inlineSpec,
-		inlineReplyEl,
-		expandInline,
-		expandPrimaryReply,
-		guardedExpandReply,
-		guardedExpandReplyAll,
-		collapseInline,
-		inlineSenderLabel,
+		replyToLatest,
+		replyAllToLatest,
+		forwardLatest,
 	};
 }

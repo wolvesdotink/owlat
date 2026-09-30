@@ -14,6 +14,8 @@ import { useUndoWindow } from '~/composables/useUndoWindow';
 interface UndoSendWindow {
 	undoToken: string | null;
 	mailboxId: Id<'mailboxes'> | null;
+	/** The message a reply answered: undo reopens the draft in Answer mode on it. */
+	replyToMessageId?: Id<'mailMessages'> | null;
 }
 
 const UNDO_SEND_KEY = 'postbox:undo-send';
@@ -45,8 +47,18 @@ export function usePostboxUndoSend() {
 	const { sendSound } = usePostboxSettings();
 	const { playSend } = useUiSound(sendSound);
 
-	function arm(args: { undoToken: string; sendAt: number; mailboxId: Id<'mailboxes'> }) {
-		armWindow({ undoToken: args.undoToken, sendAt: args.sendAt, mailboxId: args.mailboxId });
+	function arm(args: {
+		undoToken: string;
+		sendAt: number;
+		mailboxId: Id<'mailboxes'>;
+		replyToMessageId?: Id<'mailMessages'>;
+	}) {
+		armWindow({
+			undoToken: args.undoToken,
+			sendAt: args.sendAt,
+			mailboxId: args.mailboxId,
+			replyToMessageId: args.replyToMessageId ?? null,
+		});
 		playSend();
 	}
 

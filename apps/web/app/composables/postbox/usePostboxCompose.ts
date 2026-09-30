@@ -115,7 +115,11 @@ export function usePostboxCompose(seed: ComposerSeed) {
 	// completes, so every host gets the toast and the send sound.
 	const undoWindow = usePostboxUndoSend();
 	function armUndo(sent: { undoToken: string; sendAt: number }) {
-		undoWindow.arm({ ...sent, mailboxId: seed.mailboxId });
+		undoWindow.arm({
+			...sent,
+			mailboxId: seed.mailboxId,
+			replyToMessageId: seed.inReplyToMessageId,
+		});
 		return sent;
 	}
 	// While send() is actively intercepting, a TRANSPORT failure is claimed

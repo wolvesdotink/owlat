@@ -5,6 +5,7 @@ import type { TodaySource } from '~/utils/todayDigest';
 import { parsePeekKey, threadHref } from '~/utils/todayPeek';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { optimisticSetFlags } from '~/lib/mailOptimistic/mailUpdaters';
+import { useAnswerModeNav } from '~/composables/useAnswerMode';
 
 /**
  * The email behind a Today phrase, in a panel over the page. Today stays put
@@ -112,6 +113,12 @@ watch(
 		}
 	}
 );
+
+// A Postbox email is answered where every reply is written: Answer mode.
+const answerNav = useAnswerModeNav();
+function reply(mail: TodaySource) {
+	void answerNav.open(mail.id);
+}
 
 function step(delta: number) {
 	const next = index.value + delta;
@@ -239,6 +246,16 @@ watch(target, async (value, previous) => {
 			>
 				<UiButton size="sm" @click="emit('done', source)">
 					{{ t('components.today.peek.done') }}
+				</UiButton>
+				<UiButton
+					v-if="source.kind === 'mail'"
+					size="sm"
+					variant="secondary"
+					data-testid="peek-reply"
+					@click="reply(source)"
+				>
+					<Icon name="lucide:reply" class="size-3.5" />
+					{{ t('components.today.peek.reply') }}
 				</UiButton>
 				<slot name="actions" :source="source" />
 				<UiButton size="sm" variant="secondary" :to="threadHref(source)" class="ml-auto">

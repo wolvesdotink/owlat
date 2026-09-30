@@ -52,6 +52,11 @@ const props = defineProps<{
 	 * recovery controls in the message flow, and one rendering is the rule.
 	 */
 	showSecurityDetail: boolean;
+	/**
+	 * Answer mode: verified is the quiet default, so the chip renders only when
+	 * there is something to say (plan §09).
+	 */
+	hideWhenOk?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -113,7 +118,12 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 </script>
 
 <template>
-	<span ref="rootRef" class="relative inline-flex" data-testid="trust-chip">
+	<span
+		v-if="!(hideWhenOk && chip.tone === 'ok')"
+		ref="rootRef"
+		class="relative inline-flex"
+		data-testid="trust-chip"
+	>
 		<button
 			type="button"
 			class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
