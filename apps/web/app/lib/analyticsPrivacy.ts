@@ -23,10 +23,13 @@ import type { CaptureResult } from 'posthog-js';
  *   token starts (after a space, quote, bracket, backtick, `;`, `|`, …). A
  *   query or fragment with no URL in front of it is dropped, and the value of a
  *   credential-named parameter (`token=`, `code=`, `state=`, …) is emptied.
- *   Not recognised as URLs: a scheme-less host without `www.` (only the value
- *   of a credential-named parameter in it is emptied; the rest of its query,
- *   its path and its fragment stay), a URL glued to a preceding word
- *   (`see/share?x`), and double-encoded URLs (`%252F…`).
+ *   Not recognised as URLs (only the value of a credential-named parameter in
+ *   them is emptied; the rest of the path, query and fragment stay):
+ *   - a scheme-less host without `www.` (`owlat.example/share?x`);
+ *   - a URL or path glued to a preceding word or symbol (`see/share?x`,
+ *     `_//host/…`, `-//host/…`, `Failed:/share?x`);
+ *   - slash-less forms of schemes other than http(s) (`ftp:host`, `wss:/host`);
+ *   - double-encoded URLs (`%252F…`) and backslash path separators.
  * - Events captured while the page is one of `PRIVATE_ROUTE_NAMES` are dropped
  *   whole: those pages exist to handle a credential, and there is nothing on
  *   them worth measuring that would justify the risk.
@@ -141,9 +144,11 @@ const IPV6_HOST = String.raw`(?:\[[\da-f:.]+\])?`;
 /**
  * Not glued to a preceding word, scheme, path or escape: a path or URL starts
  * at the beginning of a token, whatever punctuation wraps it. Also keeps the
- * `//` of an already reduced absolute URL (after `:`) from matching again.
+ * `//` of an already reduced absolute URL (after `:`) from matching again, and
+ * leaves arithmetic and aliases alone (`(a)/(b)`, `+/-`, `5€/month`,
+ * `~/components`, `@/components`).
  */
-const TOKEN_START = String.raw`(?<![\w:/.%\\-])`;
+const TOKEN_START = String.raw`(?<![\w:/.%\\)\]}~@+*!€$£¥-])`;
 /**
  * An absolute URL, plus the slash-less `https:host/…` forms browsers accept.
  * The scheme is bounded and may not continue a longer run of scheme
@@ -151,7 +156,7 @@ const TOKEN_START = String.raw`(?<![\w:/.%\\-])`;
  * the text from every word boundary.
  */
 const ABSOLUTE_URL = new RegExp(
-	String.raw`(?<![a-z\d+.-])(?:[a-z][a-z\d+.-]{0,31}:\/\/|https?:\/?(?=[a-z\d[]))` +
+	String.raw`(?<![a-z\d+.-])(?:[a-z][a-z\d+.-]{0,31}(?::|%3A)\/\/|https?:\/?(?=[a-z\d[]))` +
 		IPV6_HOST +
 		URL_BODY,
 	'gi'
@@ -165,8 +170,11 @@ const ENCODED_URL = new RegExp(
 	String.raw`(?<![\w%.+-])(?:[a-z][a-z\d+.-]{0,31}%3A)?%2F[^\s"'<>()[\]{}${'`'}|\\&]*`,
 	'gi'
 );
-/** A path or a network-path URL (`//host/…`) at the start of a token. */
-const RELATIVE_PATH = new RegExp(TOKEN_START + String.raw`\/(?:\/${IPV6_HOST})?` + URL_BODY, 'gi');
+/** A path (`/…`, `./…`, `../…`) or a network-path URL (`//host/…`) at the start of a token. */
+const RELATIVE_PATH = new RegExp(
+	TOKEN_START + String.raw`(?:\.{1,2}\/|\/(?:\/${IPV6_HOST})?)` + URL_BODY,
+	'gi'
+);
 /** A scheme-less host that still reads as a link. */
 const WWW_HOST = new RegExp(
 	TOKEN_START + String.raw`www\.[a-z\d-]+(?:\.[a-z\d-]+)+` + URL_BODY,
@@ -177,6 +185,15 @@ const DETACHED_QUERY = new RegExp(TOKEN_START + String.raw`[?#][\w.-]+=` + URL_B
 /** A credential-named parameter anywhere in text, as `name=value` (quoted values are not). */
 const CREDENTIAL_PARAM =
 	/(^|[\s?&#;,"'(<[{`|])((?:access_|id_|refresh_)?token|code|state|secret|password|signature|sig|ott|otp|api_?key)=[^\s&#"'<>()[\]{}`|\\;,]+/gi;
+
+/**
+ * `https:host/…` and `https:/host/…` as browsers read them (`https://host/…`),
+ * and a scheme whose colon alone is encoded (`https%3A//host/…`). Parsed as
+ * written, the slash-less forms would resolve against the page itself.
+ */
+function withFullScheme(url: string): string {
+	return url.replace(/^([a-z][a-z\d+.-]*)%3A/i, '$1:').replace(/^(https?):\/?(?!\/)/i, '$1://');
+}
 
 function decoded(encoded: string): string {
 	try {
@@ -193,9 +210,9 @@ function sanitizeText(text: string, context: AnalyticsUrlContext): string {
 				return `${head}${sanitizeAnalyticsUrl(value.replace(/\\"/g, '"'), context)}"`;
 			})
 			// JSON-escaped slashes (`https:\/\/…`, or escaped twice) read as plain ones.
-			.replace(/\\+\//g, '/')
+			.replace(/(?<!\\)\\+\//g, '/')
 			.replace(ENCODED_URL, (match) => sanitizeAnalyticsUrl(decoded(match), context))
-			.replace(ABSOLUTE_URL, (match) => sanitizeAnalyticsUrl(match, context))
+			.replace(ABSOLUTE_URL, (match) => sanitizeAnalyticsUrl(withFullScheme(match), context))
 			.replace(RELATIVE_PATH, (match) => sanitizeAnalyticsUrl(match, context))
 			.replace(WWW_HOST, (match) => sanitizeAnalyticsUrl(`//${match}`, context))
 			.replace(DETACHED_QUERY, '')

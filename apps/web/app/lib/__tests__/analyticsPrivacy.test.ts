@@ -223,6 +223,8 @@ describe('sanitizeAnalyticsEvent', () => {
 			doublyEscaped: 'next: \\\\/\\\\/owlat.example/confirm?x=QUERY_SENTINEL',
 			noSlashes: 'open https:owlat.example/confirm?x=QUERY_SENTINEL',
 			oneSlash: 'open http:/owlat.example/confirm?x=QUERY_SENTINEL',
+			mixedEncoding: 'open https%3A//owlat.example/confirm?x=QUERY_SENTINEL',
+			dotted: 'go ./share?x=QUERY_SENTINEL or ../unsubscribe/PATH_SENTINEL',
 		};
 		const sent = sanitizeAnalyticsEvent(event('$exception', forms), onDashboard)!;
 
@@ -231,12 +233,32 @@ describe('sanitizeAnalyticsEvent', () => {
 			encodedNetworkPath: 'redirect=https://owlat.example&y=1',
 			encodedPath: 'next=/share',
 			doublyEscaped: 'next: https://owlat.example',
+			noSlashes: 'open https://owlat.example',
 			oneSlash: 'open http://owlat.example',
+			mixedEncoding: 'open https://owlat.example',
+			dotted: 'go /share or /:unmatched',
 		});
 	});
 
 	it('stays linear on long runs of URL-like characters', () => {
-		for (const unit of ['a.', 'a-', 'a+', 'a%', '%2F', 'www.', '?a', 'a/', '/', 'href="']) {
+		for (const unit of [
+			'a.',
+			'a-',
+			'a+',
+			'a%',
+			'%2F',
+			'www.',
+			'?a',
+			'a/',
+			'/',
+			'href="',
+			'\\',
+			'.',
+			'./',
+			'a%3A',
+			'https:',
+			'token=',
+		]) {
 			const text = unit.repeat(Math.ceil(100_000 / unit.length));
 			const started = performance.now();
 			sanitizeAnalyticsEvent(event('$exception', { $exception_message: text }), onDashboard);
@@ -245,10 +267,17 @@ describe('sanitizeAnalyticsEvent', () => {
 		}
 	});
 
-	it('leaves prose and quoted element attributes alone', () => {
-		const text = 'Are you sure? Use a/b testing // later, state="open" nth-child="2"';
-		const sent = sanitizeAnalyticsEvent(event('owlat_probe', { text }), onDashboard)!;
-		expect(sent.properties['text']).toBe(text);
+	it('leaves prose, arithmetic, aliases and quoted element attributes alone', () => {
+		const texts = [
+			'Are you sure? Use a/b testing // later, state="open" nth-child="2"',
+			'+/- 5% of (a)/(b) and [x]/[y] or {x}/{y}',
+			'5€/month, $5/month, 3!/4, 2*/3',
+			'import from ~/components or @/components',
+		];
+		for (const text of texts) {
+			const sent = sanitizeAnalyticsEvent(event('owlat_probe', { text }), onDashboard)!;
+			expect(sent.properties['text']).toBe(text);
+		}
 	});
 
 	it('drops everything captured on a credential page', () => {
